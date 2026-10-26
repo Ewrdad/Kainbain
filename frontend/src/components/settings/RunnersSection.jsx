@@ -77,9 +77,9 @@ export function RunnersSection() {
 
   return (
     <section aria-label="Runner onboarding" data-testid="runners-section" className="mt-6">
-      <h3 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+      <h2 className="text-lg font-bold uppercase tracking-tight text-text-high flex items-center gap-2 font-headline-md">
         Runners
-      </h3>
+      </h2>
       <p className="mt-2 text-xs text-text-muted">
         Out-of-process task executors (Phase 2, loopback only). A Runner joins
         with the operator join token set as KAINBAIN_RUNNER_JOIN_TOKEN on the
