@@ -1,9 +1,10 @@
 # Loopback Runner daemon (`runner/`)
 
-Out-of-process task executor for MigrationPlan Phase 2 (loopback only).
+Out-of-process task executor for MigrationPlan Phases 2–3 (loopback only).
 Implements ADR 0009 steps 1–6 over the HTTP wire protocol — no engine,
-session, or store access. Capability-aware dispatch (which task to run) is
-Phase 3; the assignment is explicit config.
+session, or store access. The assignment is explicit config by default;
+`KAINBAIN_RUNNER_DISPATCH=1` switches to the capability-aware dispatch
+loop (WP-3.1), where the backend picks each task.
 
 ## Onboard (human approval required, D4)
 
@@ -27,6 +28,31 @@ node runner/main.js
 Without `KAINBAIN_RUNNER_CREDENTIAL` the daemon registers, polls until the
 join is approved, then exits telling you to paste the credential. It never
 fetches the credential back over the wire.
+
+## Dispatch loop (WP-3.1)
+
+```sh
+KAINBAIN_RUNNER_BACKEND=http://localhost:3100 \
+KAINBAIN_RUNNER_JOIN_TOKEN=<operator secret> \
+KAINBAIN_RUNNER_CREDENTIAL=<one-time credential from Settings> \
+KAINBAIN_RUNNER_ID=host-1 \
+KAINBAIN_RUNNER_HARNESS=mock \
+KAINBAIN_RUNNER_DISPATCH=1 \
+KAINBAIN_RUNNER_PROJECTS=<projectId,optional allowlist> \
+KAINBAIN_RUNNER_DISPATCH_POLL_MS=5000 \
+KAINBAIN_RUNNER_DISPATCH_IDLE_LIMIT=3 \
+node runner/main.js
+```
+
+In dispatch mode no `PROJECT_ID`/`TASK_ID` is needed. After the same
+join + heartbeat prologue the daemon polls `POST /runners/dispatch`:
+the backend scans claimable tasks, matches them against this Runner's
+capabilities (harnesses, models, tiers, disk), and claim-fences the
+winner. The loop runs each assignment exactly like an explicit one,
+then polls again until `DISPATCH_IDLE_LIMIT` consecutive polls come
+back empty (`NO_CLAIMABLE_TASKS` / `NO_CLAIMABLE_MATCH` with a miss
+histogram), at which point it exits 0. A `STALE_RUNNER` answer triggers
+one fresh heartbeat and a single retry.
 
 ## What one assignment does
 

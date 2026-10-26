@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
+import { normalizeCapabilities } from "./dispatch/normalizeCapabilities.js";
 
 /***
  * MARK: RunnerRegistry
@@ -32,9 +33,11 @@ const MIN_RUNNER_PROTOCOL = "v1";
  * @example const r = new RunnerRegistry({ joinToken: 's3cret' }); r.register({ runnerId: 'h1', joinToken: 's3cret', facts: {} }) => { status: 'pending', ... }
  ***/
 export class RunnerRegistry {
-	constructor({ joinToken = "", newCredential = () => uuidv4() } = {}) {
+	constructor({ joinToken = "", newCredential = () => uuidv4(), staleAfterMs = 60000 } = {}) {
 		this.joinToken = joinToken;
 		this.newCredential = newCredential;
+		this.staleAfterMs =
+			typeof staleAfterMs === "number" && staleAfterMs > 0 ? staleAfterMs : 60000;
 		this.runners = new Map();
 		this.credentials = new Map();
 	}
@@ -61,8 +64,30 @@ export class RunnerRegistry {
 			runnerId: record.runnerId,
 			status: record.status,
 			facts: record.facts,
+			capabilities: record.capabilities || null,
 			lastSeenAt: record.lastSeenAt,
 		};
+	}
+
+	static _capabilitiesOrThrow(facts) {
+		const capabilities = normalizeCapabilities(facts);
+		if (capabilities.errors.length > 0) {
+			throw RunnerRegistry._fail(
+				400,
+				"CAPABILITIES_INVALID",
+				`Unusable capability advertisement: ${capabilities.errors.join("; ")}`,
+			);
+		}
+		return capabilities;
+	}
+
+	isFresh(record, now = Date.now()) {
+		const seen = Date.parse(record?.lastSeenAt || "");
+		return Number.isFinite(seen) && now - seen <= this.staleAfterMs;
+	}
+
+	records() {
+		return [...this.runners.values()];
 	}
 
 	register({ runnerId, joinToken, facts = {} } = {}) {
@@ -81,6 +106,7 @@ export class RunnerRegistry {
 				"Runner join token rejected.",
 			);
 		}
+		const capabilities = RunnerRegistry._capabilitiesOrThrow(facts);
 		const protocol = facts?.versions?.protocol;
 		if (protocol !== RUNNER_PROTOCOL) {
 			throw RunnerRegistry._fail(
@@ -92,12 +118,14 @@ export class RunnerRegistry {
 		const existing = this.runners.get(runnerId);
 		if (existing) {
 			existing.facts = facts;
+			existing.capabilities = capabilities;
 			return { ...this._public(existing), credential: null };
 		}
 		const record = {
 			runnerId,
 			status: "pending",
 			facts,
+			capabilities,
 			credential: null,
 			lastSeenAt: null,
 		};
@@ -186,6 +214,7 @@ export class RunnerRegistry {
 				"Credential does not belong to this Runner.",
 			);
 		}
+		const capabilities = RunnerRegistry._capabilitiesOrThrow(facts);
 		const protocol = facts?.versions?.protocol;
 		if (protocol && protocol !== RUNNER_PROTOCOL) {
 			throw RunnerRegistry._fail(
@@ -195,6 +224,7 @@ export class RunnerRegistry {
 			);
 		}
 		record.facts = facts;
+		record.capabilities = capabilities;
 		record.lastSeenAt = new Date().toISOString();
 		return this._public(record);
 	}

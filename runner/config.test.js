@@ -24,6 +24,21 @@ describe("loadRunnerConfig", () => {
 		assert.match(config.errors.join(" "), /KAINBAIN_RUNNER_HARNESS/);
 	});
 
+	it("drops the explicit-assignment requirement in dispatch mode", () => {
+		const config = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "mock",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+			KAINBAIN_RUNNER_PROJECTS: " p1 , p2 ",
+			KAINBAIN_RUNNER_DISPATCH_IDLE_LIMIT: "nope",
+		});
+		assert.equal(config.errors.length, 0);
+		assert.equal(config.dispatch, true);
+		assert.deepEqual(config.projectIds, ["p1", "p2"]);
+		assert.equal(config.dispatchPollMs, 5000);
+		assert.equal(config.dispatchIdleLimit, 3);
+	});
+
 	it("falls back on invalid numbers and customizes tiers", () => {
 		const config = loadRunnerConfig({
 			KAINBAIN_RUNNER_ID: "r1",

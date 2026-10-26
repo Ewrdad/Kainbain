@@ -157,7 +157,10 @@ const harnessRegistry = buildHarnessRoster(sessionStore);
 // Phase 2 Runner ledger (D1/D4, ADR 0009): in-memory while the backend is
 // the single writer; durability is Phase 4. The join token comes from
 // config (empty disables registration); claims share the ClaimStore TTL.
-const runnerRegistry = new RunnerRegistry({ joinToken: config.runnerJoinToken });
+const runnerRegistry = new RunnerRegistry({
+	joinToken: config.runnerJoinToken,
+	staleAfterMs: config.runnerStaleAfterMs,
+});
 const claimStore = new ClaimStore({ ttlMs: config.claimTtlMs });
 const executionLedger = new ExecutionLedger();
 // Leases live outside the task store, but the scheduler and the embedded

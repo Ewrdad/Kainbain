@@ -1,19 +1,22 @@
 import { loadRunnerConfig } from "./config.js";
 import { createRunnerClient } from "./client.js";
-import { runSingleAssignment } from "./daemon.js";
+import { runDispatchLoop, runSingleAssignment } from "./daemon.js";
 
 /***
  * MARK: main
  * @description Loopback Runner entrypoint (`node runner/main.js`): loads
- *   env config, runs one explicit assignment over the wire, and exits
- *   non-zero with the reason on failure. All behavior lives in
+ *   env config and runs one explicit assignment over the wire — or the
+ *   capability-aware dispatch loop with KAINBAIN_RUNNER_DISPATCH=1 — then
+ *   exits non-zero with the reason on failure. All behavior lives in
  *   test-covered units; this only wires env → client → daemon.
  * @example node runner/main.js
  ***/
 export async function main(env = process.env) {
 	const config = loadRunnerConfig(env);
 	const client = createRunnerClient({ backendUrl: config.backendUrl });
-	const summary = await runSingleAssignment({ config, client });
+	const summary = config.dispatch
+		? await runDispatchLoop({ config, client })
+		: await runSingleAssignment({ config, client });
 	console.log(`Runner assignment done: ${JSON.stringify(summary)}`);
 	return summary;
 }

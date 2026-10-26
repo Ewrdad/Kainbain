@@ -420,6 +420,108 @@ describe("Runner Routes Integration", () => {
 		}
 	});
 
+	async function mockProject(name = "Dispatch Fixture") {
+		const projRes = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: {
+				name,
+				gitUrl: "https://git.example.com/team/fixture.git",
+				harness: "mock",
+				defaultModel: "mock-model",
+			},
+		});
+		expect(projRes.statusCode).toBe(201);
+		const proj = JSON.parse(projRes.payload);
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: proj.id, goal: "Dispatchable fixture task" },
+		});
+		expect(taskRes.statusCode).toBe(200);
+		return { project: proj, taskId: JSON.parse(taskRes.payload).id };
+	}
+
+	async function dispatchAs(credential, body = {}) {
+		return app.inject({
+			method: "POST",
+			url: "/runners/dispatch",
+			headers: { "x-runner-credential": credential },
+			payload: body,
+		});
+	}
+
+	it("dispatch assigns a matching task and fences it with a lease", async () => {
+		const { project, taskId } = await mockProject("Dispatch Assign");
+		const credential = await onboard("dispatch-1");
+		await app.inject({
+			method: "POST",
+			url: "/runners/heartbeat",
+			headers: { "x-runner-credential": credential },
+			payload: { runnerId: "dispatch-1", facts: FACTS },
+		});
+		const res = await dispatchAs(credential);
+		expect(res.statusCode).toBe(200);
+		const out = JSON.parse(res.payload);
+		expect(out.assigned).toBe(true);
+		expect(out.projectId).toBe(project.id);
+		expect(out.taskId).toBe(taskId);
+		expect(typeof out.executionId).toBe("string");
+		expect(out.requirements).toMatchObject({ harness: "mock", tier: "T1" });
+		// Leased now: a second dispatch finds no work for this runner.
+		const again = JSON.parse((await dispatchAs(credential)).payload);
+		expect(again.assigned).toBe(false);
+	});
+
+	it("dispatch rejects stale runners loudly", async () => {
+		const credential = await onboard("dispatch-stale");
+		const res = await dispatchAs(credential);
+		expect(res.statusCode).toBe(409);
+		expect(JSON.parse(res.payload).code).toBe("STALE_RUNNER");
+	});
+
+	it("dispatch enforces the tier ceiling with loud misses", async () => {
+		await mockProject("Dispatch Ceiling");
+		const credential = await onboard("dispatch-t0");
+		await app.inject({
+			method: "POST",
+			url: "/runners/heartbeat",
+			headers: { "x-runner-credential": credential },
+			payload: {
+				runnerId: "dispatch-t0",
+				facts: { ...FACTS, tiers: ["T0"] },
+			},
+		});
+		const res = await dispatchAs(credential);
+		const out = JSON.parse(res.payload);
+		expect(out.assigned).toBe(false);
+		expect(out.code).toBe("NO_CAPABLE_MATCH");
+		expect(out.misses.TIER_CEILING).toBeGreaterThanOrEqual(1);
+	});
+
+	it("dispatch honors the Runner-enforced project allowlist", async () => {
+		const { project } = await mockProject("Dispatch Allowlist");
+		const credential = await onboard("dispatch-allow");
+		await app.inject({
+			method: "POST",
+			url: "/runners/heartbeat",
+			headers: { "x-runner-credential": credential },
+			payload: { runnerId: "dispatch-allow", facts: FACTS },
+		});
+		const res = await dispatchAs(credential, { projectIds: ["no-such-project"] });
+		expect(JSON.parse(res.payload)).toMatchObject({
+			assigned: false,
+			code: "NO_CLAIMABLE_TASKS",
+		});
+		const ok = await dispatchAs(credential, { projectIds: [project.id] });
+		expect(JSON.parse(ok.payload).assigned).toBe(true);
+	});
+
+	it("dispatch requires Runner auth", async () => {
+		const res = await app.inject({ method: "POST", url: "/runners/dispatch", payload: {} });
+		expect(res.statusCode).toBe(401);
+	});
+
 	it("claim on an unknown task is 404, approve on unknown Runner is 404", async () => {
 		const credential = await onboard("notfound-1");
 		const claim = await app.inject({

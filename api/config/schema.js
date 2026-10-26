@@ -337,6 +337,16 @@ export const CONFIG_SCHEMA = [
 		doc: "Node HTTP requestTimeout for the API server in ms; 0 (default) disables it so long chat turns are never killed with a bare 408. Set an explicit positive value only above any opt-in chat ceiling.",
 	},
 	{
+		key: "runnerStaleAfterMs",
+		env: "KAINBAIN_RUNNER_STALE_AFTER_MS",
+		aliases: [],
+		type: "int",
+		default: 60000,
+		min: 1000,
+		group: "tasks",
+		doc: "Heartbeat staleness horizon in ms (Phase 3 dispatch). A Runner unseen longer than this is excluded from backend-routed dispatch until it heartbeats again. Default 60s (4x the 15s daemon heartbeat).",
+	},
+	{
 		key: "claimTtlMs",
 		env: "KAINBAIN_CLAIM_TTL_MS",
 		aliases: [],

@@ -61,6 +61,12 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 				body: { projectId, ...(runnerId ? { runnerId } : {}) },
 			});
 		},
+		dispatchClaim({ projectIds } = {}) {
+			return call("/runners/dispatch", {
+				method: "POST",
+				body: { ...(projectIds?.length ? { projectIds } : {}) },
+			});
+		},
 		progress({ taskId, projectId, executionId, epoch, stageId, event }) {
 			return call(`/tasks/${encodeURIComponent(taskId)}/progress`, {
 				method: "POST",

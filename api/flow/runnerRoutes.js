@@ -1,4 +1,7 @@
 import { applyRunnerReport } from "./execution/applyRunnerReport.js";
+import { circuitSnapshot, isTripped } from "./circuitBreaker.js";
+import { scanClaimableTasks } from "./dispatch/scanClaimableTasks.js";
+import { runnerMatches } from "./dispatch/runnerMatches.js";
 
 /***
  * MARK: registerRunnerRoutes
@@ -294,5 +297,67 @@ export async function registerRunnerRoutes(app, { deps }) {
 		} catch (err) {
 			return sendStoreError(reply, err);
 		}
+	});
+
+	app.post("/runners/dispatch", async (request, reply) => {
+		let runner;
+		try {
+			runner = authedRunner(request);
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+		if (!runnerRegistry.isFresh(runner)) {
+			return reply.status(409).send({
+				error: `Runner ${runner.runnerId} is stale — heartbeat, then ask again`,
+				code: "STALE_RUNNER",
+			});
+		}
+		if (isTripped(taskStore)) {
+			const circuit = circuitSnapshot(taskStore);
+			return reply.status(409).send({
+				error: "Engine is tripped — dispatch is stopped",
+				tripped: true,
+				reason: circuit.reason,
+				source: circuit.source,
+				trippedAt: circuit.trippedAt,
+			});
+		}
+		const projectIds = Array.isArray(request.body?.projectIds)
+			? request.body.projectIds
+			: undefined;
+		const candidates = scanClaimableTasks(
+			{ projectStore, taskStore, claimStore },
+			{ projectIds },
+		);
+		if (candidates.length === 0) {
+			return { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+		}
+		const misses = {};
+		for (const cand of candidates) {
+			const verdict = runnerMatches(runner, cand.req, {
+				staleAfterMs: runnerRegistry.staleAfterMs,
+			});
+			if (!verdict.ok) {
+				misses[verdict.reason] = (misses[verdict.reason] || 0) + 1;
+				continue;
+			}
+			try {
+				const { executionId, epoch } = claimStore.claim(cand.taskId, runner.runnerId);
+				return {
+					assigned: true,
+					projectId: cand.projectId,
+					taskId: cand.taskId,
+					runnerId: runner.runnerId,
+					executionId,
+					epoch,
+					stageId: cand.stage?.id ?? null,
+					requirements: cand.req,
+				};
+			} catch (err) {
+				if (err?.code === "CLAIM_CONFLICT") continue;
+				return sendStoreError(reply, err);
+			}
+		}
+		return { assigned: false, code: "NO_CAPABLE_MATCH", misses };
 	});
 }

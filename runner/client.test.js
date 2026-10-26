@@ -54,6 +54,16 @@ describe("createRunnerClient", () => {
 		assert.ok(!("sha" in body));
 	});
 
+	it("posts the dispatch poll with and without an allowlist", async () => {
+		const { fetchImpl, calls } = stubFetch(() => ok({ assigned: false }));
+		const client = createRunnerClient({ backendUrl: "http://x:3100", fetchImpl });
+		await client.dispatchClaim({ projectIds: ["p1", "p2"] });
+		assert.equal(calls[0].url, "http://x:3100/runners/dispatch");
+		assert.deepEqual(JSON.parse(calls[0].opts.body), { projectIds: ["p1", "p2"] });
+		await client.dispatchClaim({});
+		assert.deepEqual(JSON.parse(calls[1].opts.body), {});
+	});
+
 	it("omits empty optional claim fields", async () => {
 		const { fetchImpl, calls } = stubFetch(() => ok({}));
 		const client = createRunnerClient({ backendUrl: "http://x:3100", fetchImpl });

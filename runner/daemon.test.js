@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { runSingleAssignment } from "./daemon.js";
+import { runDispatchLoop, runSingleAssignment } from "./daemon.js";
 
 function localRepo() {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-runner-d-"));
@@ -181,5 +181,91 @@ describe("runSingleAssignment", () => {
 			}),
 			/still pending/,
 		);
+	});
+});
+
+describe("runDispatchLoop", () => {
+	let dirs;
+	beforeEach(() => {
+		dirs = [];
+	});
+	afterEach(() => {
+		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+	});
+
+	const loopConfig = (overrides = {}) =>
+		baseConfig({ dispatch: true, dispatchPollMs: 1, dispatchIdleLimit: 2, ...overrides });
+
+	it("runs one dispatched assignment then idles out", async () => {
+		const repo = localRepo();
+		const config = loopConfig();
+		dirs.push(config.workRoot, repo);
+		const seen = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				seen.push(1);
+				return seen.length === 1
+					? { assigned: true, projectId: "p1", taskId: "t1", executionId: "e1", epoch: 1 }
+					: { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async () => ({ accepted: true, shaState: "present" }),
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.assignments, 1);
+		assert.equal(out.idle, true);
+		assert.ok(!client.calls.includes("interrupt"));
+		assert.ok(!client.calls.includes("claim"), "dispatch lease is consumed, never re-claimed");
+		assert.ok(fs.existsSync(path.join(config.workRoot, "kb-t1")));
+	});
+
+	it("re-heartbeats once on STALE_RUNNER then retries", async () => {
+		const repo = localRepo();
+		const config = loopConfig({ dispatchIdleLimit: 1 });
+		dirs.push(config.workRoot, repo);
+		let beats = 0;
+		let dispatches = 0;
+		const client = stubClient({
+			heartbeat: async () => {
+				beats += 1;
+				return { status: "active" };
+			},
+			dispatchClaim: async () => {
+				dispatches += 1;
+				if (dispatches === 1) {
+					const err = new Error("stale");
+					err.code = "STALE_RUNNER";
+					throw err;
+				}
+				return { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async () => ({ accepted: true }),
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.idle, true);
+		assert.equal(dispatches, 2);
+		assert.ok(beats >= 2);
 	});
 });

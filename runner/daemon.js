@@ -38,39 +38,19 @@ function factsFor({ config, harnessVersions }) {
 }
 
 /***
- * MARK: runSingleAssignment
- * @description One explicit task assignment over the wire (ADR 0009 steps
- *   1–6, loopback): register (or poll a pending join until the human
- *   approves, then exit asking for the pasted credential), heartbeat,
- *   claim, load (clone/pull or adopt + per-task worktree), run the stage
- *   through the harness, stream sequenced logs, commit/push (push skipped
- *   `no-remote`), and complete with the SHA. Any failure after the claim
- *   interrupts the task so it re-queues as interrupted, never
- *   failed/complete. Orphaned workdirs are surfaced at boot, never
- *   deleted. Capability-aware dispatch (which task to run) is Phase 3 —
- *   the assignment comes from config.
- * @example await runSingleAssignment({ config, client, loadHarness }) => { executionId, epoch, sha }
+ * MARK: joinAndHeartbeat
+ * @description Shared join prologue: poll a pending join until the human
+ *   approves (then exit asking for the pasted credential), load the
+ *   harness, heartbeat once, and start the background heartbeat timer.
+ * @example const { harness, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger })
  * @param {Object} opts - Options.
  * @param {Object} opts.config - Normalized runner config.
  * @param {Object} opts.client - Runner backend client.
- * @param {Function} [opts.loadHarness] - Harness loader (tests inject fakes).
- * @param {Object} [opts.logger] - Logger (defaults to console).
- * @returns {Promise<Object>} Execution summary.
+ * @param {Function} opts.loadHarness - Harness loader.
+ * @param {Object} opts.logger - Logger.
+ * @returns {Promise<Object>} Loaded harness plus `stop()` for the timer.
  ***/
-export async function runSingleAssignment({
-	config,
-	client,
-	loadHarness = defaultLoadHarness,
-	logger = console,
-}) {
-	if (config.errors?.length) {
-		throw new Error(`Invalid Runner config: ${config.errors.join(" ")}`);
-	}
-	const orphans = listOrphanWorkdirs(config.workRoot, config.taskId);
-	if (orphans.length) {
-		logger.warn(`Orphaned workdirs (left alone, may hold unpushed work): ${orphans.join(", ")}`);
-	}
-
+async function joinAndHeartbeat({ config, client, loadHarness, logger }) {
 	if (!config.credential) {
 		if (!config.joinToken) {
 			throw new Error("No credential and no KAINBAIN_RUNNER_JOIN_TOKEN: cannot join.");
@@ -107,21 +87,36 @@ export async function runSingleAssignment({
 		});
 	}, config.heartbeatMs);
 	if (typeof heartbeatTimer.unref === "function") heartbeatTimer.unref();
+	return { harness, facts, stop: () => clearInterval(heartbeatTimer) };
+}
 
-	try {
-		const project = await client.getProject(config.projectId);
-		const task = await client.getTask(config.projectId, config.taskId);
+/***
+ * MARK: executeAssignment
+ * @description Shared execution body: claim (or consume the dispatch
+ *   answer's lease — the route already claim-fenced it), load, run,
+ *   commit/push, and complete one assignment (used by both
+ *   single-assignment and loop).
+ * @example await executeAssignment({ config, client, logger, harness, projectId, taskId })
+ * @param {Object} opts - Options (config, client, logger, harness, projectId, taskId, lease?).
+ * @returns {Promise<Object>} Execution summary.
+ ***/
+async function executeAssignment({ config, client, logger, harness, projectId, taskId, lease }) {
+		const project = await client.getProject(projectId);
+		const task = await client.getTask(projectId, taskId);
 		const stageId = String(task.currentStageId ?? task.stages?.[0]?.id ?? "stage");
 
 		const runStartedAt = Date.now();
-		const { executionId, epoch } = await client.claim({
-			taskId: config.taskId,
-			projectId: config.projectId,
-		});
+		// Dispatch already holds the lease (scan → match → claim-fence);
+		// re-claiming it would 409 against ourselves. Single-assignment
+		// has no lease yet, so it claims here.
+		const { executionId, epoch } = lease ?? (await client.claim({
+			taskId,
+			projectId,
+		}));
 		try {
 			await client.progress({
-				taskId: config.taskId,
-				projectId: config.projectId,
+				taskId: taskId,
+				projectId: projectId,
 				executionId,
 				epoch,
 				stageId,
@@ -131,7 +126,7 @@ export async function runSingleAssignment({
 				repoUrl: project.gitUrl || project.repoUrl || null,
 				localPath: project.cwd || null,
 				workRoot: config.workRoot,
-				taskId: config.taskId,
+				taskId: taskId,
 			});
 			logger.log(`Workdir ${workdir} (${mode}${reused ? ", reused" : ""}).`);
 
@@ -140,8 +135,8 @@ export async function runSingleAssignment({
 				for (const chunk of String(bytes).split("\n")) {
 					if (!chunk) continue;
 					await client.logs({
-						taskId: config.taskId,
-						projectId: config.projectId,
+						taskId: taskId,
+						projectId: projectId,
 						executionId,
 						epoch,
 						seq: seq++,
@@ -151,7 +146,7 @@ export async function runSingleAssignment({
 			};
 
 			const prompt = [
-				`Task goal: ${task.goal || task.title || config.taskId}`,
+				`Task goal: ${task.goal || task.title || taskId}`,
 				`Stage: ${stageId}`,
 				`Working directory: ${workdir}`,
 				`Branch: ${branch}`,
@@ -162,7 +157,7 @@ export async function runSingleAssignment({
 				harness,
 				project,
 				workdir,
-				taskId: config.taskId,
+				taskId: taskId,
 				stageId,
 				model: config.model,
 				prompt,
@@ -173,8 +168,8 @@ export async function runSingleAssignment({
 				},
 			});
 			await client.progress({
-				taskId: config.taskId,
-				projectId: config.projectId,
+				taskId: taskId,
+				projectId: projectId,
 				executionId,
 				epoch,
 				stageId,
@@ -184,15 +179,15 @@ export async function runSingleAssignment({
 			const { sha, pushed, pushSkipped } = await commitAndPush({
 				workdir,
 				branch,
-				message: `kb/${config.taskId} ${stageId}: Runner ${config.runnerId} stage output`,
+				message: `kb/${taskId} ${stageId}: Runner ${config.runnerId} stage output`,
 			});
 			logger.log(`Committed ${sha} (pushed: ${pushed}${pushSkipped ? `, ${pushSkipped}` : ""}).`);
 			if (output) {
 				await sendLogs(`stage output: ${String(output).slice(0, 4000)}`);
 			}
 			return await client.complete({
-				taskId: config.taskId,
-				projectId: config.projectId,
+				taskId: taskId,
+				projectId: projectId,
 				executionId,
 				epoch,
 				sha,
@@ -208,8 +203,8 @@ export async function runSingleAssignment({
 				// The harness ran and failed: report through the engine's
 				// failure routing (verdict/failback) instead of parking.
 				return await client.complete({
-					taskId: config.taskId,
-					projectId: config.projectId,
+					taskId: taskId,
+					projectId: projectId,
 					executionId,
 					epoch,
 					outcome: "failed",
@@ -220,8 +215,8 @@ export async function runSingleAssignment({
 			}
 			try {
 				await client.interrupt({
-					taskId: config.taskId,
-					projectId: config.projectId,
+					taskId: taskId,
+					projectId: projectId,
 					executionId,
 				});
 			} catch {
@@ -229,7 +224,127 @@ export async function runSingleAssignment({
 			}
 			throw err;
 		}
+}
+
+/***
+ * MARK: runSingleAssignment
+ * @description One explicit task assignment over the wire (ADR 0009 steps
+ *   1–6, loopback): register (or poll a pending join until the human
+ *   approves, then exit asking for the pasted credential), heartbeat,
+ *   claim, load (clone/pull or adopt + per-task worktree), run the stage
+ *   through the harness, stream sequenced logs, commit/push (push skipped
+ *   `no-remote`), and complete with the SHA. Any failure after the claim
+ *   interrupts the task so it re-queues as interrupted, never
+ *   failed/complete. Orphaned workdirs are surfaced at boot, never
+ *   deleted.
+ * @example await runSingleAssignment({ config, client, loadHarness }) => { executionId, epoch, sha }
+ * @param {Object} opts - Options.
+ * @param {Object} opts.config - Normalized runner config.
+ * @param {Object} opts.client - Runner backend client.
+ * @param {Function} [opts.loadHarness] - Harness loader (tests inject fakes).
+ * @param {Object} [opts.logger] - Logger (defaults to console).
+ * @returns {Promise<Object>} Execution summary.
+ ***/
+export async function runSingleAssignment({
+	config,
+	client,
+	loadHarness = defaultLoadHarness,
+	logger = console,
+}) {
+	if (config.errors?.length) {
+		throw new Error(`Invalid Runner config: ${config.errors.join(" ")}`);
+	}
+	const orphans = listOrphanWorkdirs(config.workRoot, config.taskId);
+	if (orphans.length) {
+		logger.warn(`Orphaned workdirs (left alone, may hold unpushed work): ${orphans.join(", ")}`);
+	}
+
+	const { harness, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger });
+	try {
+		return await executeAssignment({
+			config,
+			client,
+			logger,
+			harness,
+			projectId: config.projectId,
+			taskId: config.taskId,
+		});
 	} finally {
-		clearInterval(heartbeatTimer);
+		stop();
+	}
+}
+
+/***
+ * MARK: runDispatchLoop
+ * @description Capability-aware dispatch loop (WP-3.1): joins and heartbeats
+ *   exactly like a single assignment, then polls `POST /runners/dispatch`
+ *   for backend-routed work until `dispatchIdleLimit` consecutive polls come
+ *   back empty. Every poll is server-side scan → match → claim-fence, so
+ *   concurrent loops never double-dispatch: a lost race surfaces as
+ *   `CLAIM_CONFLICT` inside the fence and the loop simply polls again. A
+ *   `STALE_RUNNER` answer triggers one fresh heartbeat and a single retry;
+ *   anything else throws loud.
+ * @example await runDispatchLoop({ config, client }) => { assignments: 2, polls: 5 }
+ * @param {Object} opts - Options.
+ * @param {Object} opts.config - Normalized runner config (dispatch mode).
+ * @param {Object} opts.client - Runner backend client.
+ * @param {Function} [opts.loadHarness] - Harness loader (tests inject fakes).
+ * @param {Object} [opts.logger] - Logger (defaults to console).
+ * @returns {Promise<Object>} Loop summary (`assignments`, `polls`).
+ ***/
+export async function runDispatchLoop({
+	config,
+	client,
+	loadHarness = defaultLoadHarness,
+	logger = console,
+}) {
+	if (config.errors?.length) {
+		throw new Error(`Invalid Runner config: ${config.errors.join(" ")}`);
+	}
+	const orphans = listOrphanWorkdirs(config.workRoot, null);
+	if (orphans.length) {
+		logger.warn(`Orphaned workdirs (left alone, may hold unpushed work): ${orphans.join(", ")}`);
+	}
+
+	const { harness, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger });
+	const idleLimit = config.dispatchIdleLimit ?? 3;
+	const pollMs = config.dispatchPollMs ?? 5000;
+	let assignments = 0;
+	let polls = 0;
+	try {
+		for (let idle = 0; ;) {
+			let answer;
+			try {
+				answer = await client.dispatchClaim({ projectIds: config.projectIds ?? null });
+			} catch (err) {
+				if (err?.code === "STALE_RUNNER") {
+					await client.heartbeat({ runnerId: config.runnerId, facts: factsFor({ config }) });
+					answer = await client.dispatchClaim({ projectIds: config.projectIds ?? null });
+				} else {
+					throw err;
+				}
+			}
+			polls += 1;
+			if (!answer.assigned) {
+				idle += 1;
+				logger.log(`Dispatch: no work (${answer.code ?? "empty"}); idle ${idle}/${idleLimit}.`);
+				if (idle >= idleLimit) return { assignments, polls, idle: true };
+				await new Promise((r) => setTimeout(r, pollMs));
+				continue;
+			}
+			idle = 0;
+			assignments += 1;
+			await executeAssignment({
+				config,
+				client,
+				logger,
+				harness,
+				projectId: answer.projectId,
+				taskId: answer.taskId,
+				lease: { executionId: answer.executionId, epoch: answer.epoch },
+			});
+		}
+	} finally {
+		stop();
 	}
 }

@@ -188,4 +188,45 @@ describe("RunnerRegistry", () => {
 		}
 		expect(reg.list()[0].status).toBe("revoked");
 	});
+
+	test("stores normalized capabilities on register and heartbeat", () => {
+		const reg = registry();
+		const first = reg.register({ runnerId: "r1", joinToken: "join-secret", facts: FACTS });
+		expect(first.capabilities.tiers).toEqual(["T0", "T1"]);
+		expect(first.capabilities.harnesses).toEqual([{ id: "pi", version: "1.2.3" }]);
+		expect(first.capabilities.runnable).toBe(true);
+		const { credential } = reg.approve("r1");
+		const beat = reg.heartbeat({
+			runnerId: "r1",
+			credential,
+			facts: { ...FACTS, tiers: ["T2"] },
+		});
+		expect(beat.capabilities.tiers).toEqual(["T2"]);
+	});
+
+	test("rejects malformed capability advertisements with 400", () => {
+		const reg = registry();
+		try {
+			reg.register({
+				runnerId: "r1",
+				joinToken: "join-secret",
+				facts: { harnesses: "pi", tiers: ["T9"] },
+			});
+			expect.unreachable();
+		} catch (err) {
+			expect(err.statusCode).toBe(400);
+			expect(err.code).toBe("CAPABILITIES_INVALID");
+		}
+		expect(reg.list()).toHaveLength(0);
+	});
+
+	test("isFresh expires heartbeats past staleAfterMs", () => {
+		const reg = registry();
+		expect(reg.isFresh({ lastSeenAt: null }, 1_000_000)).toBe(false);
+		const seen = new Date(1_000_000).toISOString();
+		expect(reg.isFresh({ lastSeenAt: seen }, 1_000_000 + 59_000)).toBe(true);
+		expect(reg.isFresh({ lastSeenAt: seen }, 1_000_000 + 61_000)).toBe(false);
+		const custom = new RunnerRegistry({ joinToken: "x", staleAfterMs: 10_000 });
+		expect(custom.isFresh({ lastSeenAt: seen }, 1_000_000 + 11_000)).toBe(false);
+	});
 });

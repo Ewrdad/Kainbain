@@ -1,0 +1,61 @@
+import { RUNNER_PROTOCOL } from "../runnerRegistry.js";
+
+/***
+ * MARK: runnerMatches
+ * @description Decides whether one Runner registration can take a task with
+ *   the given requirements: active status, fresh heartbeat (staleness
+ *   expiry), v1 protocol, runnable flag, harness id, model offering, tier
+ *   membership, and disk headroom floor. Returns `{ ok, reason }` — the
+ *   reason code is loud by design (step-6 NO_CAPABLE_RUNNER diagnostics
+ *   and the monitor surface distinguish "no runners" from "runners that
+ *   cannot take this job"). Alias requirements always miss here; WP-3.2
+ *   resolves them centrally first.
+ * @example runnerMatches(record, { harness: 'pi', tier: 'T1' }) => { ok: true, reason: 'MATCH' }
+ * @param {Object} record - Registry record (`status`, `facts`, `lastSeenAt`, `capabilities`).
+ * @param {Object} req - Task requirements from `taskRequirements`.
+ * @param {Object} [opts] - `{ now, staleAfterMs, minDiskHeadroomMb }`.
+ * @returns {Object} `{ ok, reason }`.
+ ***/
+export function runnerMatches(record = {}, req = {}, opts = {}) {
+	const now = typeof opts.now === "number" ? opts.now : Date.now();
+	const staleAfterMs =
+		typeof opts.staleAfterMs === "number" && opts.staleAfterMs > 0
+			? opts.staleAfterMs
+			: 60000;
+	const minDisk =
+		typeof opts.minDiskHeadroomMb === "number" && opts.minDiskHeadroomMb >= 0
+			? opts.minDiskHeadroomMb
+			: 100;
+
+	if (record.status !== "active") return { ok: false, reason: "NOT_ACTIVE" };
+	const seen = Date.parse(record.lastSeenAt || "");
+	if (!Number.isFinite(seen) || now - seen > staleAfterMs) {
+		return { ok: false, reason: "STALE_HEARTBEAT" };
+	}
+	const caps = record.capabilities || {};
+	if (caps.runnable === false) return { ok: false, reason: "NOT_RUNNABLE" };
+	const protocol =
+		caps.versions?.protocol || record.facts?.versions?.protocol;
+	if (protocol !== RUNNER_PROTOCOL) {
+		return { ok: false, reason: "PROTOCOL_SKEW" };
+	}
+	if (req.alias) return { ok: false, reason: "ALIAS_UNRESOLVED" };
+	if (req.harness) {
+		const offered = Array.isArray(caps.harnesses) ? caps.harnesses : [];
+		if (!offered.some((h) => h && h.id === req.harness)) {
+			return { ok: false, reason: "NO_HARNESS" };
+		}
+	}
+	if (req.model) {
+		const models = Array.isArray(caps.models) ? caps.models : [];
+		if (!models.includes(req.model)) return { ok: false, reason: "NO_MODEL" };
+	}
+	if (req.tier) {
+		const tiers = Array.isArray(caps.tiers) ? caps.tiers : [];
+		if (!tiers.includes(req.tier)) return { ok: false, reason: "TIER_CEILING" };
+	}
+	if (caps.diskHeadroomMb !== null && caps.diskHeadroomMb !== undefined) {
+		if (caps.diskHeadroomMb < minDisk) return { ok: false, reason: "DISK_LOW" };
+	}
+	return { ok: true, reason: "MATCH" };
+}
