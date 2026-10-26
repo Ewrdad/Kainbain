@@ -1,0 +1,18 @@
+{
+  "name": "kainbain-past-analyser-templates",
+  "version": "1.0.0",
+  "description": "First draft UI layout prototypes and interactive switcher for KainBain Past Analyser",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "kainbain",
+    "past-analyser",
+    "token-efficiency",
+    "dora-metrics",
+    "ui-prototypes"
+  ],
+  "author": "",
+  "license": "ISC"
+}

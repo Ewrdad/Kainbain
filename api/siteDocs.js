@@ -3,7 +3,8 @@
  * @description Single source of truth for the markdown-driven site docs that
  *   double as an agent-consumable knowledge base. The source files live in a
  *   repo-root content directory (default `site-docs/`, deliberately NOT under
- *   the `docs/` symlink to the SilverBullet notes space). Pure file/index
+ *   the in-repo `docs/` directory (curated docs; run history under
+ *   `docs/tasks/` is never committed). Pure file/index
  *   logic lives here so it is unit-testable; the thin HTTP layer is in
  *   `routes/docs.js`, matching the `agentGuide.js` layering convention.
  *

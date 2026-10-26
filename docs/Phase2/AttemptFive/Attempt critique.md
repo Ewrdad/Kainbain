@@ -1,0 +1,45 @@
+- report gives file address rather than link to where it exists in kainbain
+- Report is actually ai written as the one I saw just said “stage successfull” when it should include details of what was done
+- “run” button should be prioritise as you wouldn't want interrupt an existing job
+- Logs while watching had some just empty ones. Would like more system logs which are like “spinning up agent for task 123,” etc
+- File explorer should have an “open in SilverBullet” button on pages in .docs
+- doesn't allow for easy workflow hopping. Workflows should effectively be separate projects but just in the same physical location with the same context.
+- Numbers on tabs don't really make sense
+- Some sizing difficulties where the now playing goes off the bottom of the page
+- Stage settings should take up full column height when open
+- Fallback no longer allows custom stage fallback options
+- Pause on stage settings in ambiguous and likely needs either rework or a tooltip to tell me what it does
+- Drag and drop doesn't stay in position
+- Logs aren't actually resizable despite claiming to be
+- Now playing bar says now running despite no task to run
+- Now playing bar shows a task that is in the human eval stage
+- now playing bar allows scrubbing which just shows a task moving through current workflow rather than the next task planned
+- Reports in task view says 0 when reports exist
+- Duplicate timelines on task inspector ]
+- Run stage is visible on human stages
+- System prompt override should default to no override with no entry and then allow them to custom override it by selecting stage. As the system prompt would change every time it moves stages
+- Clicking task on now playing bar should reveal it in inspector
+- Some visual collisions of things.
+- Too much scrolling needed
+- Open repo in forejo would be nice as well
+- Clear and copy buttons don't work on logs
+- For some reason tasks exist in multiple workflows (should only exist in one at a time again like seperate projects just same folder)
+- per project colouring doesn't change anything
+- Probably should have auto save on many fields to avoid forgetting to click save
+- Might be good to hide or show projects (but make that a setting saved in the browsers local storage)
+- If possible feeding back mid session pi details to the now playing bar/logs would be greater
+- seen no evidence the automated AI failure works yet... Although seen no evidence the AI works yet
+- a bit too eager to use toast popup notifications
+- not really designed for long task descriptions since the override section takes up too much space.
+- likely needs to add button fall backs for drag and drop for accessibility
+- should be some indicator that failure causes a pop up to put in failure reason
+- markdown rendering may be nice as that is the primary way things will be written
+- zebra
+- active project is not persistent across page refreshes. This should be in browsers local settings
+- optional statistics should be able to be made visible to assess the success and efficiency of stages
+- some little animation when something automatically moves stages would be nice as yo not have it look so abrupt
+- drop downs are not particularly responsive and don't fit into the overall page design
+- ci scripts should be designed to be like 3-8 lines . Beyond that we'd make a dedicated script.
+- reports page on tickets it looks like it duplicates the same reports. 
+
+

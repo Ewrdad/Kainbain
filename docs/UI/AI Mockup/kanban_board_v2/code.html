@@ -1,0 +1,391 @@
+<!DOCTYPE html><html class="dark" lang="en" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>KainBain Orchestrator | Kanban Board</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,100..900;1,100..900&amp;family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<style>
+        body {
+            background-color: #0a0a0a;
+            color: #e5e2e1;
+            overflow-x: hidden;
+        }
+        .kanban-container {
+            height: calc(100vh - 64px - 72px);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #131313;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #333333;
+            border-radius: 10px;
+        }
+        .pulse-agent {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.4; }
+            100% { opacity: 1; }
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-secondary": "#003355",
+                        "inverse-primary": "#006e28",
+                        "secondary-container": "#006caf",
+                        "on-secondary-fixed-variant": "#004a79",
+                        "on-error-container": "#ffdad6",
+                        "surface-container-low": "#1c1b1b",
+                        "primary": "#7bdb85",
+                        "surface": "#131313",
+                        "on-tertiary": "#4e2600",
+                        "inverse-on-surface": "#313030",
+                        "tertiary-fixed-dim": "#ffb77f",
+                        "human-fill": "#0d2b45",
+                        "error-container": "#93000a",
+                        "on-background": "#e5e2e1",
+                        "surface-tint": "#7bdb85",
+                        "outline-variant": "#3f4a3e",
+                        "on-primary-container": "#00320e",
+                        "stage-fill": "#362600",
+                        "on-surface": "#e5e2e1",
+                        "on-error": "#690005",
+                        "agent-fill": "#043b0c",
+                        "surface-subtle": "#1e1e1e",
+                        "secondary": "#9acbff",
+                        "on-primary": "#003911",
+                        "secondary-fixed-dim": "#9acbff",
+                        "surface-container": "#201f1f",
+                        "on-primary-fixed-variant": "#00531c",
+                        "surface-container-highest": "#353534",
+                        "inverse-surface": "#e5e2e1",
+                        "on-primary-fixed": "#002107",
+                        "background": "#131313",
+                        "tertiary-container": "#d67920",
+                        "text-muted": "#6e757c",
+                        "primary-fixed": "#97f89e",
+                        "on-secondary-fixed": "#001d34",
+                        "tertiary": "#ffb77f",
+                        "surface-container-high": "#2a2a2a",
+                        "surface-dim": "#131313",
+                        "on-secondary-container": "#daeaff",
+                        "primary-container": "#44a354",
+                        "on-surface-variant": "#becaba",
+                        "surface-variant": "#353534",
+                        "outline": "#899486",
+                        "on-tertiary-container": "#442000",
+                        "border-standard": "#333333",
+                        "text-high": "#ededed",
+                        "surface-bright": "#393939",
+                        "surface-deep": "#0a0a0a",
+                        "tertiary-fixed": "#ffdcc4",
+                        "surface-container-lowest": "#0e0e0e",
+                        "secondary-fixed": "#d0e4ff",
+                        "primary-fixed-dim": "#7bdb85",
+                        "on-tertiary-fixed-variant": "#6f3900",
+                        "error": "#ffb4ab",
+                        "on-tertiary-fixed": "#2f1500",
+                        "error-red": "#ff8383",
+                        "ochre": "#b86200"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "xs": "4px",
+                        "base": "4px",
+                        "gutter": "12px",
+                        "sm": "8px",
+                        "lg": "24px",
+                        "control-bar-height": "72px",
+                        "xl": "32px",
+                        "md": "16px",
+                        "column-width": "280px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Hanken Grotesk"],
+                        "body-sm": ["Hanken Grotesk"],
+                        "display-lg": ["Hanken Grotesk"],
+                        "headline-sm": ["Hanken Grotesk"],
+                        "code-md": ["JetBrains Mono"],
+                        "label-caps": ["JetBrains Mono"],
+                        "code-sm": ["JetBrains Mono"],
+                        "body-md": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["20px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                        "body-sm": ["13px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "display-lg": ["32px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "headline-sm": ["16px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                        "code-md": ["13px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                        "label-caps": ["10px", {"lineHeight": "1.2", "letterSpacing": "0.08em", "fontWeight": "700"}],
+                        "code-sm": ["11px", {"lineHeight": "1.4", "fontWeight": "400"}],
+                        "body-md": ["14px", {"lineHeight": "1.6", "fontWeight": "400"}]
+                    }
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background font-body-md text-on-surface">
+<!-- TopNavBar -->
+<header class="bg-surface docked full-width top-0 flex justify-between items-center w-full px-lg h-16 bg-surface-container border-b border-border-standard z-50">
+<div class="flex items-center gap-md">
+<span class="font-headline-md text-headline-md font-bold text-primary">KainBain Orchestrator</span>
+<div class="h-6 w-px bg-border-standard mx-sm"></div>
+<div class="flex items-center bg-surface-container-highest px-sm py-xs rounded cursor-pointer border border-border-standard">
+<span class="font-label-caps text-label-caps text-on-surface-variant mr-xs">PROJECT</span>
+<span class="font-headline-sm text-headline-sm text-on-surface">Project Alpha</span>
+<span class="material-symbols-outlined text-on-surface ml-xs">expand_more</span>
+</div>
+</div>
+<nav class="hidden md:flex items-center gap-lg">
+<a class="text-primary border-b-2 border-primary font-semibold py-4 cursor-pointer active:opacity-80 transition-colors duration-200">Dashboard</a>
+<a class="text-on-surface-variant font-medium py-4 cursor-pointer active:opacity-80 transition-colors duration-200 hover:text-primary">Orchestration</a>
+<a class="text-on-surface-variant font-medium py-4 cursor-pointer active:opacity-80 transition-colors duration-200 hover:text-primary">Agents</a>
+<a class="text-on-surface-variant font-medium py-4 cursor-pointer active:opacity-80 transition-colors duration-200 hover:text-primary">Logs</a>
+</nav>
+<div class="flex items-center gap-md">
+<button class="material-symbols-outlined text-primary cursor-pointer active:opacity-80">notifications</button>
+<button class="material-symbols-outlined text-primary cursor-pointer active:opacity-80">settings</button>
+</div>
+</header>
+<!-- Main Wrapper -->
+<div class="flex flex-col min-h-screen">
+<!-- Main Content (Kanban Board) -->
+<main class="w-full bg-surface-deep kanban-container overflow-x-auto custom-scrollbar flex p-lg gap-gutter justify-center">
+<!-- Column: Idea -->
+<section class="flex-shrink-0 w-column-width h-full flex flex-col gap-md border-r border-border-standard/30">
+<header class="bg-stage-fill border-b-4 border-ochre p-md rounded-t relative">
+<div class="flex justify-between items-center mb-xs">
+<span class="font-label-caps text-label-caps text-ochre">IDEA</span>
+<button class="text-ochre text-[10px] border border-ochre/30 px-xs rounded">EDIT</button>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-on-surface-variant font-label-caps text-[9px]">BACKLOG QUEUE</span>
+<span class="font-label-caps text-[9px] text-ochre">HUMAN</span>
+</div>
+</header>
+<div class="flex-1 overflow-y-auto custom-scrollbar space-y-md">
+<!-- Task Card -->
+<div class="bg-surface-subtle p-md rounded border-l-4 border-secondary hover:border-primary transition-all cursor-pointer group">
+<div class="flex justify-between items-start mb-sm">
+<span class="font-code-sm text-code-sm text-text-muted">#KB-0892</span>
+</div>
+<h4 class="font-headline-sm text-headline-sm text-on-surface mb-md">Refactor logging middleware for better observability</h4>
+<div class="flex justify-between items-center text-text-muted font-label-caps text-[9px]">
+<span class="">3d ago</span>
+<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>PENDING</span>
+</div>
+</div>
+<!-- Task Card -->
+<div class="bg-surface-subtle p-md rounded border-l-4 border-secondary hover:border-primary transition-all cursor-pointer">
+<div class="flex justify-between items-start mb-sm">
+<span class="font-code-sm text-code-sm text-text-muted">#KB-1204</span>
+</div>
+<h4 class="font-headline-sm text-headline-sm text-on-surface mb-md">Update security headers for OAuth flow</h4>
+<div class="flex justify-between items-center text-text-muted font-label-caps text-[9px]">
+<span class="">12h ago</span>
+<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>PENDING</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Column: Technical Elab -->
+<section class="flex-shrink-0 w-column-width h-full flex flex-col gap-md border-r border-border-standard/30">
+<header class="bg-stage-fill border-b-4 border-ochre p-md rounded-t">
+<div class="flex justify-between items-center mb-xs">
+<span class="font-label-caps text-label-caps text-ochre">TECHNICAL ELAB</span>
+<button class="text-ochre text-[10px] border border-ochre/30 px-xs rounded">EDIT</button>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-on-surface-variant font-label-caps text-[9px]">SPECIFICATION</span>
+<span class="font-label-caps text-[9px] text-ochre text-primary">AGENT</span>
+</div>
+</header>
+<div class="flex-1 overflow-y-auto custom-scrollbar space-y-md">
+<div class="bg-surface-subtle p-md rounded border-l-4 border-primary hover:border-primary transition-all cursor-pointer">
+<div class="flex justify-between items-start mb-sm">
+<span class="font-code-sm text-code-sm text-text-muted">#KB-0412</span>
+</div>
+<h4 class="font-headline-sm text-headline-sm text-on-surface mb-md">Architecture review: New vector database integration</h4>
+<div class="flex justify-between items-center text-text-muted font-label-caps text-[9px]">
+<span class="">2h ago</span>
+<span class="flex items-center gap-1 text-primary"><span class="w-1.5 h-1.5 rounded-full bg-primary"></span>AGENT_WORK</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Column: Plan -->
+<section class="flex-shrink-0 w-column-width h-full flex flex-col gap-md border-r border-border-standard/30">
+<header class="bg-stage-fill border-b-4 border-ochre p-md rounded-t">
+<div class="flex justify-between items-center mb-xs">
+<span class="font-label-caps text-label-caps text-ochre">PLAN</span>
+<button class="text-ochre text-[10px] border border-ochre/30 px-xs rounded">EDIT</button>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-on-surface-variant font-label-caps text-[9px]">SEQUENCING</span>
+<span class="font-label-caps text-[9px] text-ochre text-primary">AGENT</span>
+</div>
+</header>
+<div class="flex-1 overflow-y-auto custom-scrollbar space-y-md">
+<div class="bg-surface-subtle p-md rounded border-l-4 border-primary border-primary transition-all cursor-pointer bg-agent-fill/20 outline outline-1 outline-primary/30">
+<div class="flex justify-between items-start mb-sm">
+<span class="font-code-sm text-code-sm text-text-muted">#KB-0015</span>
+</div>
+<h4 class="font-headline-sm text-headline-sm text-on-surface mb-md">Fix that the page doesn't load</h4>
+<div class="flex justify-between items-center text-text-muted font-label-caps text-[9px]">
+<span class="text-primary">14m ago</span>
+<span class="flex items-center gap-1 text-primary"><span class="w-1.5 h-1.5 rounded-full bg-primary"></span>ACTIVE</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Column: Review Plan -->
+<section class="flex-shrink-0 w-column-width h-full flex flex-col gap-md border-r border-border-standard/30">
+<header class="bg-stage-fill border-b-4 border-ochre p-md rounded-t">
+<div class="flex justify-between items-center mb-xs">
+<span class="font-label-caps text-label-caps text-ochre">REVIEW PLAN</span>
+<button class="text-ochre text-[10px] border border-ochre/30 px-xs rounded">EDIT</button>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-on-surface-variant font-label-caps text-[9px]">HUMAN GATEKEEPER</span>
+<span class="font-label-caps text-[9px] text-ochre">HUMAN</span>
+</div>
+</header>
+<div class="flex-1 overflow-y-auto custom-scrollbar space-y-md">
+<div class="bg-surface-subtle p-md rounded border-l-4 border-secondary hover:border-primary transition-all cursor-pointer">
+<div class="flex justify-between items-start mb-sm">
+<span class="font-code-sm text-code-sm text-text-muted">#KB-0771</span>
+</div>
+<h4 class="font-headline-sm text-headline-sm text-on-surface mb-md">Finalize Sprint 4 deployment roadmap</h4>
+<div class="flex justify-between items-center text-text-muted font-label-caps text-[9px]">
+<span class="">1d ago</span>
+<span class="flex items-center gap-1 text-secondary"><span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>AWAITING_REVIEW</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Column: In Progress -->
+<section class="flex-shrink-0 w-column-width h-full flex flex-col gap-md border-r border-border-standard/30">
+<header class="bg-stage-fill border-b-4 border-ochre p-md rounded-t">
+<div class="flex justify-between items-center mb-xs">
+<span class="font-label-caps text-label-caps text-ochre">IN PROGRESS</span>
+<button class="text-ochre text-[10px] border border-ochre/30 px-xs rounded">EDIT</button>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-on-surface-variant font-label-caps text-[9px]">EXECUTION</span>
+<span class="font-label-caps text-[9px] text-ochre text-primary">AGENT</span>
+</div>
+</header>
+<div class="flex-1 overflow-y-auto custom-scrollbar space-y-md">
+
+</div>
+</section>
+<section class="flex-shrink-0 w-column-width h-full flex flex-col gap-md">
+<div class="flex-1 border-2 border-dashed border-border-standard rounded flex flex-col items-center justify-center cursor-pointer hover:border-primary transition-colors group">
+<span class="material-symbols-outlined text-3xl text-text-muted group-hover:text-primary mb-sm">add_circle</span>
+<span class="font-label-caps text-label-caps text-text-muted group-hover:text-primary">Add Stage</span>
+</div>
+</section></main>
+</div>
+<!-- Bottom Control Bar (Now Playing) -->
+<footer class="fixed bottom-0 left-0 w-full h-control-bar-height z-50 bg-surface-container-highest border-t border-border-standard shadow-lg flex items-center justify-between px-xl">
+<!-- Status & Context -->
+<div class="flex items-center gap-lg w-1/3">
+<div class="flex items-center gap-md">
+<div class="w-3 h-3 rounded-full bg-secondary pulse-agent"></div>
+<div class="flex flex-col">
+<span class="font-label-caps text-label-caps text-secondary">NOW WORKING ON PLAN</span>
+<div class="flex items-center gap-sm">
+<span class="font-headline-sm text-headline-sm text-on-surface">Fix this thing</span>
+<span class="font-code-sm text-code-sm text-text-muted">#KB-0015</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Controls -->
+<div class="flex items-center justify-center gap-xl w-1/3">
+<button class="material-symbols-outlined text-on-surface-variant hover:text-secondary transition-colors">shuffle</button>
+<button class="material-symbols-outlined text-secondary text-3xl active:scale-90 transition-transform">skip_previous</button>
+<button class="w-12 h-12 rounded-full bg-secondary text-on-secondary flex items-center justify-center active:scale-90 transition-transform" id="main-play-btn">
+<span class="material-symbols-outlined text-3xl" style="font-variation-settings: 'FILL' 1;">pause</span>
+</button>
+<button class="material-symbols-outlined text-secondary text-3xl active:scale-90 transition-transform">skip_next</button>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-secondary transition-colors">repeat</button>
+</div>
+<!-- Progress & Info -->
+<div class="flex items-center justify-end gap-md w-1/3">
+<div class="flex flex-col items-end flex-1 max-w-[200px]">
+<div class="flex justify-between w-full font-label-caps text-[9px] text-on-surface-variant mb-1">
+<span class="">TIME ELAPSED</span>
+<span id="elapsed-counter" class="">02:20:23</span>
+</div>
+<div class="w-full h-1 bg-surface-container rounded-full overflow-hidden">
+<div class="bg-secondary h-full" style="width: 100%;"></div>
+</div>
+</div>
+
+</div>
+</footer>
+<script>
+    // Micro-interactions
+    const playBtn = document.getElementById('main-play-btn');
+    let isPlaying = true;
+
+    playBtn.addEventListener('click', () => {
+        isPlaying = !isPlaying;
+        const icon = playBtn.querySelector('.material-symbols-outlined');
+        icon.textContent = isPlaying ? 'pause' : 'play_arrow';
+        
+        if (!isPlaying) {
+            playBtn.classList.remove('bg-secondary');
+            playBtn.classList.add('bg-surface-bright');
+            playBtn.classList.add('text-secondary');
+        } else {
+            playBtn.classList.add('bg-secondary');
+            playBtn.classList.remove('bg-surface-bright');
+            playBtn.classList.remove('text-secondary');
+        }
+    });
+
+    // Column Horizontal Scroll Wheel Handling
+    const main = document.querySelector('main');
+    main.addEventListener('wheel', (evt) => {
+        if (evt.deltaY !== 0) {
+            main.scrollLeft += evt.deltaY;
+            evt.preventDefault();
+        }
+    });
+
+    // Simple Timer Mockup
+    let seconds = 8085; // 02:14:45
+    const counterDisplay = document.getElementById('elapsed-counter');
+    setInterval(() => {
+        if (isPlaying) {
+            seconds++;
+            const hrs = String(Math.floor(seconds / 3600)).padStart(2, '0');
+            const mins = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+            const secs = String(seconds % 60).padStart(2, '0');
+            counterDisplay.textContent = `${hrs}:${mins}:${secs}`;
+        }
+    }, 1000);
+</script>
+
+
+</body></html>

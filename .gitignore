@@ -53,15 +53,12 @@ frontend/.env
 # Local docs/ content is never tracked: fresh clones have no docs/ until WP-2
 # lands env-driven resolution, and any local copy stays untracked — this rule
 # only stops git from re-tracking it.
-# Task-storage link is host-local (mirrors master; see 2026-10-02 docs-link incidents)
-
-/docs
-
 # --- Past task/session run history: NEVER commit (leak guard) ---
 # Task runs accumulate prompts, full transcripts, stage reports and
 # tool output that cannot be guaranteed free of sensitive information.
-# This stays in force after the planned docs-symlink reversal (docs/
-# committed in-repo): curated docs may be tracked, run history may not.
+# Curated docs are tracked in-repo (docs-symlink reversal, 2026-10-26);
+# run history is not, including engine task storage that now lands in
+# in-repo docs/tasks/ for the kainbain project itself.
 # Current store (2,069 session files, ~679 MB at Oct 2026):
 .kainbain/sessions/
 # In-repo task storage after the reversal (259 run dirs, ~374 MB):

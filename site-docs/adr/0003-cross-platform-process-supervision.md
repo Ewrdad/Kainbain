@@ -3,7 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-10-04
 **Task:** `a4fabec2-2cfb-4c38-87bf-9953f31bfb60`
-**Audit:** `docs/tasks/b61469b8-5c10-498d-aa52-5bba8a397a9d/AUDIT.md`
+**Audit:** docs/tasks/b61469b8-5c10-498d-aa52-5bba8a397a9d/AUDIT.md (notes-space run archive, pre-reversal; not a repo path)
 §4.1 (L-6…L-9), §4.2, §4.4; peer review F-2, F-3.
 
 ## Context

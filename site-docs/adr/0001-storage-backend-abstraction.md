@@ -3,7 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-10-02
 **Task:** `a775d414-b3ef-4283-9c8b-f061730b285b`
-**Audit:** `docs/tasks/b61469b8-5c10-498d-aa52-5bba8a397a9d/AUDIT.md`
+**Audit:** docs/tasks/b61469b8-5c10-498d-aa52-5bba8a397a9d/AUDIT.md (notes-space run archive, pre-reversal; not a repo path)
 §2.2 (storage assumption), §3.1 H-3/H-6, §4.1 L-11, §5 S-2, §6.1 C-4,
 §7.1 (committed `docs` symlink); peer review F-7.
 

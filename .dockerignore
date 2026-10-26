@@ -15,10 +15,12 @@ node_modules/
 # The frontend is rebuilt in the image; never ship a stale host build.
 frontend/dist/
 
-# The root `docs` symlink points outside the build context (SilverBullet
-# notes space) — COPY would fail without this. api/docs/ is excluded too
-# (`deploy.sh --prod` drops it from production builds); nested component
-# dirs such as frontend/src/components/docs/ are unaffected (root-only match).
+# Curated in-repo `docs/` (11 MB: guides, plans, reports) is excluded from
+# the image: the engine never reads repo-root docs at runtime (it serves
+# `site-docs/` and project task stores), so shipping them would only bloat
+# every build. api/docs/ is excluded too (`deploy.sh --prod` drops it from
+# production builds); nested component dirs such as
+# frontend/src/components/docs/ are unaffected (root-only match).
 docs
 api/docs
 

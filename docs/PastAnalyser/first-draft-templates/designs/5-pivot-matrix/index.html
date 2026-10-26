@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Design 5: Analytical Pivot Matrix - Past Analyser</title>
+  <link rel="stylesheet" href="../../shared/sharedStyles.css">
+  <style>
+    body {
+      background: #090d14;
+      padding: 20px;
+    }
+    .matrix-wrapper {
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+    .matrix-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #111827;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 12px 18px;
+      margin-bottom: 16px;
+    }
+    .search-input {
+      background: #0b0f17;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 6px 12px;
+      color: #fff;
+      font-size: 0.82rem;
+      width: 260px;
+    }
+
+    .matrix-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+      background: #101622;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+    .matrix-table th {
+      background: #0a0f18;
+      padding: 10px 14px;
+      text-align: left;
+      font-weight: 700;
+      color: var(--text-muted);
+      border-bottom: 2px solid var(--border-color);
+      user-select: none;
+      cursor: pointer;
+    }
+    .matrix-table th:hover {
+      color: #38bdf8;
+    }
+    .matrix-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(36, 52, 77, 0.4);
+      color: #cbd5e1;
+    }
+    .matrix-table tr:hover {
+      background: #172234;
+    }
+    .cell-num {
+      font-family: var(--font-mono);
+      font-weight: 600;
+    }
+    .cell-heat-high {
+      background: rgba(244, 63, 94, 0.15);
+      color: #fda4af;
+      font-weight: 700;
+      border-radius: 4px;
+      padding: 2px 6px;
+    }
+    .cell-heat-good {
+      background: rgba(16, 185, 129, 0.15);
+      color: #6ee7b7;
+      font-weight: 700;
+      border-radius: 4px;
+      padding: 2px 6px;
+    }
+  </style>
+</head>
+<body>
+  <script src="../../shared/mockData.js"></script>
+  <script src="../../shared/switcher.js"></script>
+
+  <div class="matrix-wrapper">
+    <div class="matrix-toolbar">
+      <div style="display:flex; align-items:center; gap:16px;">
+        <h2 style="font-size:1.1rem; color:#fff; font-weight:700;">📊 Multi-Dimensional Cost & Telemetry Matrix</h2>
+        <input type="text" class="search-input" id="search-box" placeholder="Filter models, providers, stages..." oninput="filterTable()">
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn btn-sm" onclick="alert('Exporting full 4,820 run analysis to CSV...')">📥 Export CSV</button>
+        <button class="btn btn-sm btn-emerald" onclick="alert('Batch applying all active model downgrade rules...')">⚡ Batch Apply Downgrades</button>
+      </div>
+    </div>
+
+    <table class="matrix-table" id="data-matrix">
+      <thead>
+        <tr>
+          <th>Model Entity / Provider</th>
+          <th>Total Runs</th>
+          <th>Fail Rate %</th>
+          <th>Avg Tokens / Run</th>
+          <th>Total Spend ($)</th>
+          <th>Cost Share %</th>
+          <th>Over-Provisioned %</th>
+          <th>DORA Cost / Task</th>
+          <th>Optimization Directive</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Injected via JS -->
+      </tbody>
+    </table>
+
+    <div style="margin-top:20px; display:grid; grid-template-columns: repeat(4, 1fr); gap:16px;">
+      <div class="card" style="padding:12px;">
+        <div style="font-size:0.7rem; color:var(--text-dim);">AGGREGATE SPEND</div>
+        <div style="font-size:1.3rem; font-weight:800; font-family:var(--font-mono); color:var(--text-main);">$298.40</div>
+      </div>
+      <div class="card" style="padding:12px;">
+        <div style="font-size:0.7rem; color:var(--text-dim);">RECOVERABLE WASTE</div>
+        <div style="font-size:1.3rem; font-weight:800; font-family:var(--font-mono); color:var(--accent-emerald);">$124.60 (41.8%)</div>
+      </div>
+      <div class="card" style="padding:12px;">
+        <div style="font-size:0.7rem; color:var(--text-dim);">RETRY LOOP COST</div>
+        <div style="font-size:1.3rem; font-weight:800; font-family:var(--font-mono); color:var(--accent-rose);">$48.20</div>
+      </div>
+      <div class="card" style="padding:12px;">
+        <div style="font-size:0.7rem; color:var(--text-dim);">PROMPT BLOAT TOKENS</div>
+        <div style="font-size:1.3rem; font-weight:800; font-family:var(--font-mono); color:var(--accent-amber);">34.2% / Task</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const mock = window.PAST_ANALYSER_MOCK_DATA;
+
+    function renderMatrix() {
+      const tbody = document.querySelector("#data-matrix tbody");
+      tbody.innerHTML = mock.models.map(m => {
+        const doraCost = (m.totalCost / (m.totalRuns - m.failCount)).toFixed(3);
+        const isOver = m.overProvisionedPct > 30;
+        const isHighFail = m.failRate > 8;
+
+        return `
+          <tr>
+            <td>
+              <div style="font-weight:700; color:#fff;">${m.name}</div>
+              <div style="font-size:0.7rem; color:var(--text-dim); font-family:var(--font-mono);">${m.key}</div>
+            </td>
+            <td class="cell-num">${m.totalRuns.toLocaleString()}</td>
+            <td class="cell-num">
+              <span class="${isHighFail ? 'cell-heat-high' : 'cell-heat-good'}">${m.failRate}%</span>
+            </td>
+            <td class="cell-num">${(m.avgTokensPerRun / 1000).toFixed(1)}k</td>
+            <td class="cell-num" style="color:#38bdf8;">$${m.totalCost.toFixed(2)}</td>
+            <td class="cell-num">${m.costSharePct}%</td>
+            <td class="cell-num">
+              <span class="${isOver ? 'cell-heat-high' : ''}">${m.overProvisionedPct}%</span>
+            </td>
+            <td class="cell-num" style="color:var(--accent-cyan);">$${doraCost}</td>
+            <td>
+              ${m.recommendation.action === 'DOWNGRADE' ? `<span class="badge badge-rose">🔻 Downgrade ➔ Save ${m.recommendation.monthlySavingsEst}</span>` : ''}
+              ${m.recommendation.action === 'UPGRADE_NEEDED' ? `<span class="badge badge-amber">🔺 Upgrade to reduce loops</span>` : ''}
+              ${m.recommendation.action === 'PROMOTE_DEFAULT' ? `<span class="badge badge-emerald">⭐ Default Target</span>` : ''}
+              ${m.recommendation.action === 'OPTIMAL' || m.recommendation.action === 'STABLE' ? `<span class="badge badge-cyan">✓ Balanced</span>` : ''}
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function filterTable() {
+      const q = document.getElementById("search-box").value.toLowerCase();
+      document.querySelectorAll("#data-matrix tbody tr").forEach(tr => {
+        tr.style.display = tr.textContent.toLowerCase().includes(q) ? "" : "none";
+      });
+    }
+
+    document.addEventListener("DOMContentLoaded", renderMatrix);
+  </script>
+</body>
+</html>

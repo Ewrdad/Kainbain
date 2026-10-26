@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Design 4: Copilot Action Feed - Past Analyser</title>
+  <link rel="stylesheet" href="../../shared/sharedStyles.css">
+  <style>
+    .feed-layout {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 30px 20px 60px;
+    }
+    .hero-summary {
+      background: linear-gradient(135deg, #0f172a, #1e1b4b);
+      border: 1px solid #4338ca;
+      border-radius: var(--radius-lg);
+      padding: 24px 28px;
+      margin-bottom: 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 10px 30px rgba(67, 56, 202, 0.2);
+    }
+    .hero-text h1 {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+    .hero-stat-badge {
+      background: #312e81;
+      border: 1px solid #6366f1;
+      border-radius: var(--radius-md);
+      padding: 12px 20px;
+      text-align: right;
+    }
+    .feed-item-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 20px;
+      margin-bottom: 16px;
+      transition: all 0.2s ease;
+    }
+    .feed-item-card:hover {
+      border-color: var(--border-light);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+    .feed-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+    .feed-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    .feed-desc {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
+    .feed-meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 14px;
+      border-top: 1px solid rgba(36, 52, 77, 0.5);
+    }
+    .feed-impact-pill {
+      font-weight: 700;
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      color: var(--accent-emerald);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .confidence-meter {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Simulation Drawer */
+    .simulator-box {
+      background: #0d1522;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      margin-top: 14px;
+      display: none;
+    }
+    .simulator-box.open { display: block; }
+  </style>
+</head>
+<body>
+  <script src="../../shared/mockData.js"></script>
+  <script src="../../shared/switcher.js"></script>
+
+  <div class="feed-layout">
+    <!-- Hero Summary -->
+    <div class="hero-summary">
+      <div class="hero-text">
+        <h1>✨ AI Optimization Copilot</h1>
+        <p style="color:#c7d2fe; font-size:0.9rem;">
+          Past Analyser evaluated 4,820 runs across KainBain and identified 5 proactive optimizations.
+        </p>
+      </div>
+      <div class="hero-stat-badge">
+        <div style="font-size:0.75rem; color:#a5b4fc; text-transform:uppercase;">Recoverable AI Waste</div>
+        <div style="font-size:1.8rem; font-weight:800; font-family:var(--font-mono); color:#34d399;">$124.60 <span style="font-size:0.9rem; color:#a5b4fc;">/ mo</span></div>
+      </div>
+    </div>
+
+    <!-- Quick Filter Tags -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-sm btn-primary">All Recommendations (5)</button>
+        <button class="btn btn-sm" onclick="filterFeed('HIGH SAVINGS')">Model Downgrades</button>
+        <button class="btn btn-sm" onclick="filterFeed('TOOL SYNTHESIS')">Synthesized Tools</button>
+        <button class="btn btn-sm" onclick="filterFeed('PROMPT BLOAT')">Prompt Bloat</button>
+      </div>
+      <button class="btn btn-emerald btn-sm" onclick="alert('Batch applying all 5 optimizations to KainBain engine!')">
+        ⚡ 1-Click Apply All (Saves $124.60/mo)
+      </button>
+    </div>
+
+    <!-- Feed Cards Container -->
+    <div id="feed-container">
+      <!-- Injected via JS -->
+    </div>
+  </div>
+
+  <script>
+    const mock = window.PAST_ANALYSER_MOCK_DATA;
+
+    function renderFeed() {
+      const container = document.getElementById("feed-container");
+      container.innerHTML = mock.actionableFeed.map(item => `
+        <div class="feed-item-card" data-badge="${item.badge}">
+          <div class="feed-card-header">
+            <div>
+              <span class="badge badge-${item.badgeColor}" style="margin-bottom:6px;">${item.badge}</span>
+              <div class="feed-title">${item.title}</div>
+            </div>
+            <span class="badge badge-cyan">${item.effort}</span>
+          </div>
+
+          <p class="feed-desc">${item.description}</p>
+
+          <div class="feed-meta-row">
+            <div class="feed-impact-pill">
+              <span>💰</span> Est. Savings: ${item.impactMonthly}
+            </div>
+            <div class="confidence-meter">
+              <span>Confidence:</span>
+              <strong style="color:#f1f5f9;">${item.confidence}%</strong>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn btn-sm" onclick="toggleSim('${item.id}')">Simulate Impact</button>
+              <button class="btn btn-sm btn-emerald" onclick="alert('Applied: ${item.title}')">Apply Fix</button>
+            </div>
+          </div>
+
+          <!-- Interactive Simulator Container -->
+          <div class="simulator-box" id="sim-${item.id}">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <strong style="font-size:0.82rem; color:#38bdf8;">🔬 Before / After Simulation Model</strong>
+              <span style="font-size:0.72rem; color:var(--text-dim);">Based on 4,820 historical test runs</span>
+            </div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; font-size:0.78rem;">
+              <div style="background:#090d14; padding:10px; border-radius:6px;">
+                <div style="color:var(--text-dim); margin-bottom:2px;">Current State</div>
+                <div style="color:var(--accent-rose); font-weight:700; font-size:0.95rem;">Claude 3.7 ($142.50/mo)</div>
+                <div style="color:var(--text-muted); font-size:0.7rem;">97.9% success rate</div>
+              </div>
+              <div style="background:#090d14; padding:10px; border-radius:6px;">
+                <div style="color:var(--text-dim); margin-bottom:2px;">Simulated Projected State</div>
+                <div style="color:var(--accent-emerald); font-weight:700; font-size:0.95rem;">DeepSeek V4 Flash ($64.10/mo)</div>
+                <div style="color:var(--text-muted); font-size:0.7rem;">98.2% projected success (Zero drop)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function toggleSim(id) {
+      const el = document.getElementById("sim-" + id);
+      if (el) el.classList.toggle("open");
+    }
+
+    function filterFeed(badge) {
+      document.querySelectorAll(".feed-item-card").forEach(card => {
+        if (badge === "ALL" || card.getAttribute("data-badge") === badge) {
+          card.style.display = "block";
+        } else {
+          card.style.display = "none";
+        }
+      });
+    }
+
+    document.addEventListener("DOMContentLoaded", renderFeed);
+  </script>
+</body>
+</html>

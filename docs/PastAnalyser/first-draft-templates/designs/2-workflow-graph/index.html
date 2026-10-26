@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Design 2: Workflow Graph & Node Canvas - Past Analyser</title>
+  <link rel="stylesheet" href="../../shared/sharedStyles.css">
+  <style>
+    body {
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      background: #090d14;
+    }
+    .canvas-container {
+      display: flex;
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    .graph-viewport {
+      flex: 1;
+      position: relative;
+      background-image: 
+        radial-gradient(circle, #1a2638 1px, transparent 1px);
+      background-size: 24px 24px;
+      overflow: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+    }
+    .graph-stage-pipeline {
+      display: flex;
+      align-items: center;
+      gap: 50px;
+      position: relative;
+      padding: 60px 40px;
+    }
+
+    /* Node Card */
+    .node-card {
+      width: 240px;
+      background: #111a28;
+      border: 2px solid var(--border-color);
+      border-radius: var(--radius-md);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+      z-index: 2;
+    }
+    .node-card:hover, .node-card.selected {
+      border-color: var(--accent-cyan);
+      transform: translateY(-4px);
+      box-shadow: 0 12px 30px rgba(6, 182, 212, 0.25);
+    }
+    .node-card.high-cost {
+      border-color: rgba(244, 63, 94, 0.6);
+    }
+    .node-card.high-cost:hover, .node-card.high-cost.selected {
+      border-color: var(--accent-rose);
+      box-shadow: 0 12px 30px rgba(244, 63, 94, 0.3);
+    }
+    .node-header {
+      padding: 10px 14px;
+      background: #0d1522;
+      border-bottom: 1px solid var(--border-color);
+      border-top-left-radius: var(--radius-md);
+      border-top-right-radius: var(--radius-md);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .node-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #fff;
+    }
+    .node-body {
+      padding: 12px 14px;
+      font-size: 0.78rem;
+    }
+    .node-stat-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      color: var(--text-muted);
+    }
+    .node-stat-val {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    /* Edge connecting lines */
+    .edge-line {
+      position: absolute;
+      top: 50%;
+      height: 3px;
+      background: #2b3d58;
+      z-index: 1;
+    }
+
+    /* Retry Loop Curve Annotation */
+    .loop-overlay {
+      position: absolute;
+      border: 2px dashed var(--accent-rose);
+      border-radius: 40px;
+      pointer-events: none;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: pulse-glow 2s infinite ease-in-out;
+    }
+    @keyframes pulse-glow {
+      0%, 100% { opacity: 0.6; filter: drop-shadow(0 0 5px rgba(244, 63, 94, 0.4)); }
+      50% { opacity: 1; filter: drop-shadow(0 0 12px rgba(244, 63, 94, 0.8)); }
+    }
+    .loop-badge {
+      background: #881337;
+      color: #fecdd3;
+      border: 1px solid #f43f5e;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    }
+
+    /* Split / Combine badge hovering */
+    .split-combine-flag {
+      position: absolute;
+      top: -30px;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      background: #3b0764;
+      border: 1px solid #c084fc;
+      color: #f3e8ff;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      z-index: 3;
+    }
+
+    /* Inspector Drawer */
+    .inspector-drawer {
+      width: 420px;
+      background: #0e1624;
+      border-left: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      box-shadow: -10px 0 25px rgba(0,0,0,0.5);
+      z-index: 10;
+      overflow-y: auto;
+    }
+    .drawer-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #090e18;
+    }
+    .drawer-body {
+      padding: 20px;
+      font-size: 0.84rem;
+      line-height: 1.6;
+    }
+    
+    .toolbar-top {
+      background: #0c121e;
+      border-bottom: 1px solid var(--border-color);
+      padding: 8px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+  </style>
+</head>
+<body>
+  <script src="../../shared/mockData.js"></script>
+  <script src="../../shared/switcher.js"></script>
+
+  <!-- Toolbar -->
+  <div class="toolbar-top">
+    <div style="display:flex; align-items:center; gap:14px;">
+      <span style="font-weight:700; font-size:0.9rem; color:#38bdf8;">🌐 Visual Workflow Canvas</span>
+      <select id="wf-selector" style="background:#162032; color:#fff; border:1px solid #24344d; border-radius:6px; padding:4px 8px; font-size:0.8rem;">
+        <option value="wf-core-feature">Workflow: Core Feature Delivery Lifecycle</option>
+        <option value="wf-secobserve-patch">Workflow: SecObserve Vulnerability Patching</option>
+      </select>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center; font-size:0.75rem;">
+      <span style="display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--accent-emerald);"></span> First Pass: <strong>64.2%</strong></span>
+      <span style="display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--accent-rose);"></span> Loops Waste: <strong>$48.30</strong></span>
+      <button class="btn btn-sm btn-primary" onclick="alert('Auto-balancing subagent pipeline topology...')">Auto-Rebalance Flow</button>
+    </div>
+  </div>
+
+  <div class="canvas-container">
+    <!-- Graph Viewport -->
+    <div class="graph-viewport">
+      <div class="graph-stage-pipeline" id="pipeline-container">
+        <!-- Node 1: Plan -->
+        <div class="node-card" id="node-stage-plan" onclick="selectNode('stage-plan')">
+          <div class="node-header">
+            <span class="node-title">1. Plan</span>
+            <span class="badge badge-cyan">91% Pass</span>
+          </div>
+          <div class="node-body">
+            <div class="node-stat-row">
+              <span>Model</span>
+              <span class="node-stat-val">claude-3-7</span>
+            </div>
+            <div class="node-stat-row">
+              <span>Avg Tokens</span>
+              <span class="node-stat-val">9.4k</span>
+            </div>
+            <div class="node-stat-row">
+              <span>Avg Cost</span>
+              <span class="node-stat-val" style="color:var(--accent-amber);">$0.038</span>
+            </div>
+            <div style="margin-top:8px; font-size:0.7rem; color:var(--accent-emerald);">
+              💡 Downgrade candidate
+            </div>
+          </div>
+        </div>
+
+        <!-- Node 2: Spec / Elab -->
+        <div class="node-card" id="node-stage-elab" onclick="selectNode('stage-elab')">
+          <div class="split-combine-flag">⚡ COMBINE RECOMMENDED</div>
+          <div class="node-header">
+            <span class="node-title">2. Spec / Elab</span>
+            <span class="badge badge-cyan">84% Pass</span>
+          </div>
+          <div class="node-body">
+            <div class="node-stat-row">
+              <span>Model</span>
+              <span class="node-stat-val">gemini-2.5-pro</span>
+            </div>
+            <div class="node-stat-row">
+              <span>Avg Tokens</span>
+              <span class="node-stat-val">14.2k</span>
+            </div>
+            <div class="node-stat-row">
+              <span>Avg Cost</span>
+              <span class="node-stat-val">$0.024</span>
+            </div>
+            <div style="margin-top:8px; font-size:0.7rem; color:var(--text-dim);">
+              62 loopbacks from spec
+            </div>
+          </div>
+        </div>
+
+        <!-- Node 3: Implementation (High cost & Loop victim) -->
+        <div class="node-card high-cost selected" id="node-stage-impl" onclick="selectNode('stage-impl')">
+          <div class="split-combine-flag" style="background:#701a75; border-color:#f472b6;">✂️ SPLIT SUBAGENT REQUIRED</div>
+          <div class="node-header">
+            <span class="node-title">3. Implementation</span>
+            <span class="badge badge-rose">58% Pass</span>
+          </div>
+          <div class="node-body">
+            <div class="node-stat-row">
+              <span>Model</span>
+              <span class="node-stat-val">claude-3-7</span>
+            </div>
+            <div class="node-stat-row">
+              <span>Avg Tokens</span>
+              <span class="node-stat-val">24.6k</span>
+            </div>
+            <div class="node-stat-row">
+              <span>Avg Cost</span>
+              <span class="node-stat-val" style="color:var(--accent-rose); font-weight:700;">$0.089</span>
+            </div>
+            <div style="margin-top:8px; font-size:0.7rem; color:var(--accent-rose);">
+              🔥 242 Retry Loops recorded
+            </div>
+          </div>
+        </div>
+
+        <!-- Node 4: Unit Review -->
+        <div class="node-card" id="node-stage-review" onclick="selectNode('stage-review')">
+          <div class="node-header">
+            <span class="node-title">4. Unit Review</span>
+            <span class="badge badge-amber">72% Pass</span>
+          </div>
+          <div class="node-body">
+            <div class="node-stat-row">
+              <span>Model</span>
+              <span class="node-stat-val">gemini-2.5-flash</span>
+            </div>
+            <div class="node-stat-row">
+              <span>Avg Tokens</span>
+              <span class="node-stat-val">7.8k</span>
+            </div>
+            <div class="node-stat-row">
+              <span>Avg Cost</span>
+              <span class="node-stat-val">$0.003</span>
+            </div>
+            <div style="margin-top:8px; font-size:0.7rem; color:var(--accent-amber);">
+              198 failbacks to Impl
+            </div>
+          </div>
+        </div>
+
+        <!-- Node 5: Deploy -->
+        <div class="node-card" id="node-stage-deploy" onclick="selectNode('stage-deploy')">
+          <div class="node-header">
+            <span class="node-title">5. Deploy</span>
+            <span class="badge badge-emerald">98% Pass</span>
+          </div>
+          <div class="node-body">
+            <div class="node-stat-row">
+              <span>Model</span>
+              <span class="node-stat-val">deepseek-flash</span>
+            </div>
+            <div class="node-stat-row">
+              <span>Avg Tokens</span>
+              <span class="node-stat-val">4.2k</span>
+            </div>
+            <div class="node-stat-row">
+              <span>Avg Cost</span>
+              <span class="node-stat-val" style="color:var(--accent-emerald);">$0.001</span>
+            </div>
+            <div style="margin-top:8px; font-size:0.7rem; color:var(--accent-emerald);">
+              ✓ High efficiency node
+            </div>
+          </div>
+        </div>
+
+        <!-- Visual Loop Arc Indicator between Impl and Review -->
+        <div class="loop-overlay" style="left: 560px; width: 340px; top: 180px; height: 70px;">
+          <div class="loop-badge">🔁 198 Loops ($34.20 Waste)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Inspector Drawer -->
+    <div class="inspector-drawer" id="inspector-drawer">
+      <div class="drawer-header">
+        <div>
+          <h3 id="drawer-title" style="font-size:0.95rem; font-weight:700; color:#fff;">Stage 3: Implementation</h3>
+          <span style="font-size:0.72rem; color:var(--text-dim);">Workflow Node Diagnostics</span>
+        </div>
+        <span class="badge badge-rose" id="drawer-badge">58.4% 1-Pass Rate</span>
+      </div>
+      <div class="drawer-body" id="drawer-content">
+        <!-- Injected via selectNode -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const nodeDetails = {
+      "stage-plan": {
+        title: "Stage 1: Plan",
+        badge: "badge-cyan",
+        badgeText: "91.2% 1-Pass",
+        model: "anthropic::claude-3-7-sonnet",
+        tokens: "9,400 tokens / run",
+        cost: "$0.038",
+        waste: "$4.10",
+        insights: [
+          "Over-provisioned model: Claude 3.7 Sonnet is currently used for initial plan structuring.",
+          "Recommendation: Switch to <code>ollama-cloud::deepseek-v4-flash</code> to cut cost by 82% without degrading planning depth."
+        ],
+        tools: "Standard prompt keywords: {{taskGoal}}, {{projectRoot}}"
+      },
+      "stage-elab": {
+        title: "Stage 2: Spec / Technical Elab",
+        badge: "badge-cyan",
+        badgeText: "84.5% 1-Pass",
+        model: "google::gemini-2.5-pro",
+        tokens: "14,200 tokens / run",
+        cost: "$0.024",
+        waste: "$14.10",
+        insights: [
+          "62 loopbacks back to 'Plan' occurred due to missing keyword context ({{taskDocs}} missing).",
+          "Combine recommendation: For simple tasks (<100 LOC), automatically merge Stage 1 (Plan) and Stage 2 (Spec) into a single agent cycle."
+        ],
+        tools: "Prompt curation: Previous Reports (last 2 injected)"
+      },
+      "stage-impl": {
+        title: "Stage 3: Implementation",
+        badge: "badge-rose",
+        badgeText: "58.4% 1-Pass (Hotspot)",
+        model: "anthropic::claude-3-7-sonnet",
+        tokens: "24,600 tokens / run",
+        cost: "$0.089",
+        waste: "$34.20 in retry loops",
+        insights: [
+          "<strong>Monolithic Context Bloat:</strong> Agent loads both Fastify route files and React components into 1 single massive prompt context.",
+          "<strong>AI Breakdown Recommendation:</strong> Split into 2 specialized subagents: (A) Backend API Subagent, (B) Frontend UI Subagent.",
+          "<strong>Synthesized Preflight Hook:</strong> Inject fast linter before submitting to Stage 4 to prevent 198 syntax retry loops."
+        ],
+        tools: "Uses Fail_stage_skill, file write, terminal command execution"
+      },
+      "stage-review": {
+        title: "Stage 4: Unit & Spec Review",
+        badge: "badge-amber",
+        badgeText: "72.1% 1-Pass",
+        model: "google::gemini-2.5-flash",
+        tokens: "7,800 tokens / run",
+        cost: "$0.003",
+        waste: "$0.80",
+        insights: [
+          "Gemini 2.5 Flash is highly cost effective ($0.003/run).",
+          "Primary fail cause: Syntax and linter formatting issues rejected during review. A synthesized CLI preflight tool will resolve this."
+        ],
+        tools: "npm run test:unit, npm run capture:screenshot"
+      },
+      "stage-deploy": {
+        title: "Stage 5: Deploy & Verification",
+        badge: "badge-emerald",
+        badgeText: "98.1% 1-Pass (Optimal)",
+        model: "ollama-cloud::deepseek-v4-flash:0731-cloud",
+        tokens: "4,200 tokens / run",
+        cost: "$0.001",
+        waste: "$0.10",
+        insights: [
+          "Near perfect first-pass success rate (98.1%).",
+          "DeepSeek V4 Flash performs reliably on canary deployment and smoke verification scripts."
+        ],
+        tools: "deployManager.js, healthChecker.js"
+      }
+    };
+
+    function selectNode(stageId) {
+      document.querySelectorAll(".node-card").forEach(el => el.classList.remove("selected"));
+      const target = document.getElementById("node-" + stageId);
+      if (target) target.classList.add("selected");
+
+      const info = nodeDetails[stageId];
+      if (!info) return;
+
+      document.getElementById("drawer-title").textContent = info.title;
+      const badge = document.getElementById("drawer-badge");
+      badge.className = `badge ${info.badge}`;
+      badge.textContent = info.badgeText;
+
+      document.getElementById("drawer-content").innerHTML = `
+        <div style="background:#080d16; border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:12px; margin-bottom:16px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+            <span style="color:var(--text-muted);">Assigned Model:</span>
+            <span style="font-family:var(--font-mono); font-weight:600; color:var(--text-main); font-size:0.75rem;">${info.model}</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+            <span style="color:var(--text-muted);">Avg Token Burn:</span>
+            <span style="font-family:var(--font-mono); font-weight:600;">${info.tokens}</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+            <span style="color:var(--text-muted);">Avg Cost / Run:</span>
+            <span style="font-family:var(--font-mono); font-weight:700; color:var(--accent-cyan);">${info.cost}</span>
+          </div>
+          <div style="display:flex; justify-content:space-between;">
+            <span style="color:var(--text-muted);">Wasted Loop Spend:</span>
+            <span style="font-family:var(--font-mono); font-weight:700; color:var(--accent-rose);">${info.waste}</span>
+          </div>
+        </div>
+
+        <h4 style="font-size:0.82rem; text-transform:uppercase; color:var(--text-muted); margin-bottom:8px; letter-spacing:0.04em;">Analysis & Optimization</h4>
+        <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:18px;">
+          ${info.insights.map(i => `
+            <div style="background:#111a28; border-left:3px solid var(--accent-cyan); padding:8px 12px; border-radius:4px; font-size:0.78rem; color:#cbd5e1;">
+              ${i}
+            </div>
+          `).join("")}
+        </div>
+
+        <h4 style="font-size:0.82rem; text-transform:uppercase; color:var(--text-muted); margin-bottom:8px; letter-spacing:0.04em;">Stage Tools & Skills</h4>
+        <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:16px;">
+          ${info.tools}
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <button class="btn btn-primary" onclick="alert('Synthesizing subagent split configuration for this stage...')">
+            ✂️ Split Into Subagents
+          </button>
+          <button class="btn btn-emerald" onclick="alert('Synthesizing fast CLI tool to eliminate review loops...')">
+            ⚡ Generate Preflight Tool
+          </button>
+        </div>
+      `;
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      selectNode("stage-impl");
+    });
+  </script>
+</body>
+</html>

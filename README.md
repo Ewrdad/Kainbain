@@ -683,7 +683,7 @@ expand its stages inline again.
 
 - **Site docs (onboarding knowledge base):** the in-app **Docs** tab (`#/docs`, keyboard `5`) renders markdown from `site-docs/` — *How KainBain works* and *How to work with KainBain*. Agents fetch the same articles as raw markdown via `GET /docs` (index) and `GET /docs/:slug`; see `site-docs/README.md` for the authoring guide.
 - **Git Branch Support & Merge Stage:** See [docs/git-branch-support.md](docs/git-branch-support.md) for task branch lifecycle, merge conflict handling, and configuration.
-- **Architecture & Standards:** Design and standards live in the project's SilverBullet space (see `docs/` symlink): `KB Architecture.md`, `KB Code Standards.md`, and the `Phase1`/`Phase2` plans.
+- **Architecture & Standards:** Design and standards live in-repo under `docs/`: `KB Architecture.md`, `KB Code Standards.md`, and the `Phase1`/`Phase2` plans.
 - **Curated changelog:** `CHANGELOG.md` at the repository root is human-curated
   (Keep-a-Changelog) and is updated only at release time. The in-app **Changelog** dialog
   continues to read the baked commit history via `GET /deploy/changelog`

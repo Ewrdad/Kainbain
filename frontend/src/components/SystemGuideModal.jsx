@@ -335,9 +335,11 @@ export function SystemGuideModal() {
                   <span>Notes Integration</span>
                 </div>
                 <p className="text-text-muted text-[11px]">
-                  The <code>docs/</code> folder is symlinked directly to the project's
-                  notes workspace, allowing live bi-directional browsing between KainBain and your
-                  personal knowledge base.
+                  Curated docs ship inside the repo under <code>docs/</code>, so every
+                  Runner and every fresh clone reads the same knowledge base. Per-project
+                  task storage links out to your central notes workspace; an optional
+                  mirror of curated docs back to a central store is roadmap, not
+                  default — the repo copy is the source.
                 </p>
               </div>
             </div>

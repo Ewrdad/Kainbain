@@ -32,8 +32,8 @@ area stands in as **Docs Steward**.
 | `shared/` | Shared api↔frontend constants and helpers (`toolLogFormat`, report helpers, model keys/aliases, stage keyword tokens) | Watch reviewer for `toolLogFormat`; Crew reviewer for model keys/aliases; Flow reviewer for stage keyword tokens |
 | `site-docs/` | Markdown docs served by `GET /docs` | Docs Steward + affected domain reviewer |
 | `tests/`, `scripts/` | Bash/Node test harnesses, utility scripts | Docs Steward for doc-facing scripts; Platform owner for the rest |
-| `docs/tasks/` | Per-task engine artifacts and historical decision records | Docs Steward (rotation) — see `docs/TASK_DIRECTORY_HYGIENE.md` |
-| `docs/` | Architecture and task-directory hygiene notes | Docs Steward |
+| `docs/` | Curated architecture/plan/guide notes (tracked) | Docs Steward |
+| _(notes space, out-of-repo)_ | Frozen run archive: per-task engine artifacts and historical decision records | Docs Steward (rotation) — see `docs/TASK_DIRECTORY_HYGIENE.md` |
 
 ## God files — grep to the seam, never read whole
 
@@ -105,4 +105,4 @@ area stands in as **Docs Steward**.
 
 - Prefer `GET /tasks/:id/logs?projectId=<id>&feed=main|thinking|tools&format=entries|text` over scraping `task.md` process logs.
 - Never `ls -R`; use this map and grep.
-- The `docs/tasks/` tree (≈242 engine-generated directories) is not a search surface by convention; see `docs/TASK_DIRECTORY_HYGIENE.md`.
+- The run archive (≈242 engine-generated task directories, frozen in the notes space at the 2026-10-26 docs reversal) is not a search surface by convention; see `docs/TASK_DIRECTORY_HYGIENE.md`. Live run storage beside a repo is gitignored and never committed.

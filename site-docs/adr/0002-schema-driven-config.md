@@ -3,7 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-10-03
 **Task:** `c6252677-0f76-4b97-9401-7f6180b6aa2c`
-**Audit:** `docs/tasks/b61469b8-5c10-498d-aa52-5bba8a397a9d/AUDIT.md`
+**Audit:** docs/tasks/b61469b8-5c10-498d-aa52-5bba8a397a9d/AUDIT.md (notes-space run archive, pre-reversal; not a repo path)
 §2.2 item 3 (silent fallback), §6.1 C-1…C-18 (18 fragmented stores),
 §6.2 D-1 (README-vs-config drift), §8 item 7, §10 U-6.
 

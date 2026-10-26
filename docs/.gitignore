@@ -1,0 +1,43 @@
+# KainBain — gitignore for Forgejo backup AND future GitHub repo
+# Public-transfer rule: task run history never gets committed (long-running
+# project, cannot guarantee no sensitive info in run logs).
+
+# --- Task run history (259 run dirs, ~374M as of Oct 2026) ---
+# Each tasks/<uuid>/ holds per-run logs (in-progress-*, deep-review-*,
+# automated-tests-*, final-review-*, task.md, IMPLEMENTATION_PLAN.md, ...).
+# Curated docs (docs/, baseline/, progress report/) stay tracked.
+/tasks/
+
+# --- Logs, temp, editor backups ---
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+
+# --- Secrets / local env (none in tree as of Oct 2026 scan; belt-and-braces) ---
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+secrets.json
+.kainbain/
+
+# --- Dependencies / runtimes ---
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+dist/
+build/
+coverage/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

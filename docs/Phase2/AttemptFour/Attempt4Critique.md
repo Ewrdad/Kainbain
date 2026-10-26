@@ -1,0 +1,29 @@
+
+
+- The creating of a task creates two tasks
+- the tasks are stored in the kainbain space when they should be stored in the projects specific docs space
+- stage managment is still  a side panel when it should be integrated
+- The agent never seems to kick off, or at least zero logs are visible in the frontend and now code changes
+- each project should have its own git repo and such seperate to kainbain
+- Approve button doesnt fade after having moved to an agent step allowing you to accidentally double approve and skip a step
+- reports I dont think are reporting in the screen
+- Tasks should save task details as a markdown in the task folder aswell
+- skip forward and back should be replace with a series of buttons (look back but dont move active, look forward but dont move active, skip current , jump view to active)
+- the approve and reject at the top of a human section is largely unnecesary
+- CI/script stage types can be merged as they behave the same
+- now playing and logs should be global (ie the ai agent should be serialising accross all active projects)
+- some visual inconsistencies what the keys of different tasks are
+- would be good to link to specific tasks maybe with query params/hash routing
+- review and human stage types can be merged as they behave the same
+- custom stage type can be removed
+- pause stage should cause a visual change in the ui.
+- tasks shouldnt say “just now” they should always have a time display
+- the live logs should be resizable not just collapsible
+- A document viewer for the project repo in a new tab would be nice(ie like a simple repo/folder explorer)
+- active task in now playing should switch to paused when paused.
+- ai models still dont reflect whats in Pi , it should be done dynamically from there and projects should be able to set a default model
+- each project should have the ability to set its own custom colour/theme to help differentiate
+- should be able to make multiple workflows for the same project
+- should be able to put keywords into prompt (such as task repo, or most recent report from a given stage etc that are filled in dynamically)
+- hundreds of websocket errors in the ui
+- even more feedback would be nice 

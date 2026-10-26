@@ -1,0 +1,434 @@
+<!DOCTYPE html><html class="dark" lang="en" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Task Detail Orchestrator - KainBain</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #0a0a0a;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #333333;
+            border-radius: 10px;
+        }
+        .glass-panel {
+            background: rgba(30, 30, 30, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid #333333;
+        }
+        /* Custom input states for the palette request */
+        .input-vibrant-green {
+            border: 1px solid #39994b;
+            background: rgba(57, 153, 75, 0.05);
+        }
+        .input-vibrant-green:focus {
+            outline: 1px solid #39994b;
+            background: rgba(57, 153, 75, 0.1);
+        }
+        .input-ochre {
+            border: 1px solid #b86200;
+            background: rgba(184, 98, 0, 0.05);
+        }
+        .input-ochre:focus {
+            outline: 1px solid #b86200;
+            background: rgba(184, 98, 0, 0.1);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-secondary": "#003355",
+                      "inverse-primary": "#006e28",
+                      "secondary-container": "#006caf",
+                      "on-secondary-fixed-variant": "#004a79",
+                      "on-error-container": "#ffdad6",
+                      "surface-container-low": "#1c1b1b",
+                      "primary": "#7bdb85",
+                      "surface": "#131313",
+                      "on-tertiary": "#4e2600",
+                      "inverse-on-surface": "#313030",
+                      "tertiary-fixed-dim": "#ffb77f",
+                      "human-fill": "#0d2b45",
+                      "error-container": "#93000a",
+                      "on-background": "#e5e2e1",
+                      "surface-tint": "#7bdb85",
+                      "outline-variant": "#3f4a3e",
+                      "on-primary-container": "#00320e",
+                      "stage-fill": "#362600",
+                      "on-surface": "#e5e2e1",
+                      "on-error": "#690005",
+                      "agent-fill": "#043b0c",
+                      "surface-subtle": "#1e1e1e",
+                      "secondary": "#9acbff",
+                      "on-primary": "#003911",
+                      "secondary-fixed-dim": "#9acbff",
+                      "surface-container": "#201f1f",
+                      "on-primary-fixed-variant": "#00531c",
+                      "surface-container-highest": "#353534",
+                      "inverse-surface": "#e5e2e1",
+                      "on-primary-fixed": "#002107",
+                      "background": "#131313",
+                      "tertiary-container": "#d67920",
+                      "text-muted": "#6e757c",
+                      "primary-fixed": "#97f89e",
+                      "on-secondary-fixed": "#001d34",
+                      "tertiary": "#ffb77f",
+                      "surface-container-high": "#2a2a2a",
+                      "surface-dim": "#131313",
+                      "on-secondary-container": "#daeaff",
+                      "primary-container": "#44a354",
+                      "on-surface-variant": "#becaba",
+                      "surface-variant": "#353534",
+                      "outline": "#899486",
+                      "on-tertiary-container": "#442000",
+                      "border-standard": "#333333",
+                      "text-high": "#ededed",
+                      "surface-bright": "#393939",
+                      "surface-deep": "#0a0a0a",
+                      "tertiary-fixed": "#ffdcc4",
+                      "surface-container-lowest": "#0e0e0e",
+                      "secondary-fixed": "#d0e4ff",
+                      "primary-fixed-dim": "#7bdb85",
+                      "on-tertiary-fixed-variant": "#6f3900",
+                      "error": "#ffb4ab",
+                      "on-tertiary-fixed": "#2f1500",
+                      "error-red": "#ff8383"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "xs": "4px",
+                      "base": "4px",
+                      "gutter": "12px",
+                      "sm": "8px",
+                      "lg": "24px",
+                      "control-bar-height": "72px",
+                      "xl": "32px",
+                      "md": "16px",
+                      "column-width": "280px"
+              },
+              "fontFamily": {
+                      "headline-md": ["Hanken Grotesk"],
+                      "body-sm": ["Hanken Grotesk"],
+                      "display-lg": ["Hanken Grotesk"],
+                      "headline-sm": ["Hanken Grotesk"],
+                      "code-md": ["JetBrains Mono"],
+                      "label-caps": ["JetBrains Mono"],
+                      "code-sm": ["JetBrains Mono"],
+                      "body-md": ["Hanken Grotesk"]
+              },
+              "fontSize": {
+                      "headline-md": ["20px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                      "body-sm": ["13px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                      "display-lg": ["32px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "headline-sm": ["16px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                      "code-md": ["13px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                      "label-caps": ["10px", {"lineHeight": "1.2", "letterSpacing": "0.08em", "fontWeight": "700"}],
+                      "code-sm": ["11px", {"lineHeight": "1.4", "fontWeight": "400"}],
+                      "body-md": ["14px", {"lineHeight": "1.6", "fontWeight": "400"}]
+              }
+            },
+          },
+        }
+      </script>
+</head>
+<body class="bg-surface-deep text-on-surface font-body-md selection:bg-primary selection:text-surface-deep overflow-hidden">
+<!-- Top Navigation Bar -->
+<header class="bg-surface dark:bg-surface flex justify-between items-center w-full px-lg h-16 fixed top-0 z-40 bg-surface-container border-b border-border-standard">
+<div class="flex items-center gap-md">
+<span class="font-headline-md text-headline-md font-bold text-primary dark:text-primary">KainBain Orchestrator</span>
+<nav class="hidden md:flex items-center gap-lg ml-xl">
+<a class="text-on-surface-variant font-medium hover:text-primary transition-colors duration-200 font-headline-sm text-headline-sm" href="#">Dashboard</a>
+<a class="text-primary border-b-2 border-primary font-semibold hover:text-primary transition-colors duration-200 font-headline-sm text-headline-sm" href="#">Orchestration</a>
+<a class="text-on-surface-variant font-medium hover:text-primary transition-colors duration-200 font-headline-sm text-headline-sm" href="#">Agents</a>
+<a class="text-on-surface-variant font-medium hover:text-primary transition-colors duration-200 font-headline-sm text-headline-sm" href="#">Logs</a>
+</nav>
+</div>
+<div class="flex items-center gap-md">
+<div class="hidden lg:flex bg-surface-deep border border-border-standard rounded px-sm py-xs items-center gap-sm">
+<span class="material-symbols-outlined text-on-surface-variant" style="font-size: 18px;">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-body-sm w-48 text-on-surface" placeholder="Search tasks..." type="text">
+</div>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer active:opacity-80">notifications</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer active:opacity-80">settings</span>
+<div class="w-8 h-8 rounded bg-primary-container flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB4RBFoBuoRawhP3fULUkoroFhDst11QlwTW58GU3PfyZwaHmJaVUQaoDlU5n80abe7C-je7I0yqdN9ilr4LuP5hXf9_tF8TnB4RSfxq6mdL00zH_yRxFk5c-oI7eFn76ssxm273w5rh59z22JDMlKXbHFVJUvQTjJiu41gnt_gRZk7LNCEDjYWasx8ejh05wTopbduGBpg5SVC4xIJlfQSk1lmeDFwhGscxhd7pT8NClVV_tvQB95S">
+</div>
+</div>
+</header>
+<!-- Sidebar -->
+<aside class="fixed left-0 top-16 bottom-0 w-column-width bg-surface-container dark:bg-surface-container border-r border-border-standard flex flex-col h-full py-md z-30">
+<div class="px-md mb-lg">
+<div class="flex items-center gap-sm mb-xs">
+<div class="w-8 h-8 rounded-sm bg-agent-fill flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">auto_mode</span>
+</div>
+<div>
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Project Alpha</h2>
+<p class="font-label-caps text-label-caps text-primary uppercase">Automation Active</p>
+</div>
+</div>
+</div>
+<nav class="flex-grow space-y-xs">
+<div class="px-md">
+<button class="w-full text-left flex items-center gap-sm py-sm px-md rounded transition-all hover:bg-surface-container-high text-on-surface-variant font-label-caps text-label-caps active:scale-95 duration-150">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="">OVERVIEW</span>
+</button>
+</div>
+<div class="px-md">
+<button class="w-full text-left flex items-center gap-sm py-sm px-md rounded transition-all hover:bg-surface-container-high text-on-surface-variant font-label-caps text-label-caps active:scale-95 duration-150">
+<span class="material-symbols-outlined" data-icon="memory">memory</span>
+<span class="">ENGINES</span>
+</button>
+</div>
+<div class="px-md">
+<button class="w-full text-left flex items-center gap-sm py-sm px-md rounded transition-all bg-agent-fill text-primary border-r-4 border-primary font-label-caps text-label-caps active:scale-95 duration-150">
+<span class="material-symbols-outlined" data-icon="account_tree">account_tree</span>
+<span class="">WORKFLOWS</span>
+</button>
+</div>
+<div class="px-md">
+<button class="w-full text-left flex items-center gap-sm py-sm px-md rounded transition-all hover:bg-surface-container-high text-on-surface-variant font-label-caps text-label-caps active:scale-95 duration-150">
+<span class="material-symbols-outlined" data-icon="person_search">person_search</span>
+<span class="">HUMAN TASKS</span>
+</button>
+</div>
+<div class="px-md">
+<button class="w-full text-left flex items-center gap-sm py-sm px-md rounded transition-all hover:bg-surface-container-high text-on-surface-variant font-label-caps text-label-caps active:scale-95 duration-150">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+<span class="">HISTORY</span>
+</button>
+</div>
+</nav>
+<div class="px-md mb-md">
+<button class="w-full bg-secondary text-on-secondary font-headline-sm text-headline-sm py-sm rounded flex items-center justify-center gap-xs active:scale-95 transition-transform">
+<span class="material-symbols-outlined">add</span>
+                New Run
+            </button>
+</div>
+</aside>
+<!-- Main Kanban Board Canvas -->
+<main class="ml-column-width pt-16 h-screen flex flex-col bg-surface-deep">
+<div class="flex-grow flex gap-gutter p-lg overflow-x-auto custom-scrollbar">
+<!-- Stage Column 1 -->
+<div class="w-column-width flex-shrink-0 flex flex-col gap-sm">
+<div class="bg-stage-fill border-b-2 border-tertiary p-md flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">Queue</span>
+<span class="font-label-caps text-label-caps text-tertiary">SYSTEM INBOUND</span>
+</div>
+<div class="bg-surface-subtle p-md rounded border border-border-standard flex flex-col gap-sm">
+<div class="flex justify-between items-start">
+<span class="font-code-sm text-code-sm text-text-muted">ID_772A</span>
+<span class="px-xs py-1 rounded-sm bg-agent-fill text-primary font-label-caps text-label-caps">AGENT</span>
+</div>
+<div class="font-headline-sm text-headline-sm text-on-surface">Vector Index Validation</div>
+</div>
+</div>
+</div>
+</main>
+<!-- MODAL OVERLAY -->
+<div class="fixed inset-0 z-50 flex items-center justify-center p-md bg-black/70 backdrop-blur-sm">
+<!-- Modal Container - Structure aligned with sketch (Header, Body, Overlay) -->
+<div class="w-full max-w-5xl h-[870px] glass-panel rounded shadow-2xl flex flex-col animate-in fade-in zoom-in duration-300">
+<!-- Modal Header -->
+<div class="p-lg border-b border-border-standard flex items-start justify-between shrink-0"><div class="flex flex-col gap-sm w-full"><div class="flex items-center justify-between w-full"><h1 class="font-display-lg text-display-lg text-high leading-tight">Strategic Context Alignment</h1><div class="flex items-center gap-md"><div class="flex bg-surface-container rounded p-0.5 border border-border-standard"><button class="px-md py-1.5 rounded-sm bg-agent-fill text-primary font-headline-sm text-headline-sm ring-1 ring-primary/20">Details</button><button class="px-md py-1.5 rounded-sm text-on-surface-variant hover:bg-surface-container-high transition-colors font-headline-sm text-headline-sm">History</button></div><button class="p-sm text-on-surface-variant hover:text-on-surface transition-colors" onclick="this.closest('.fixed').style.display='none'"><span class="material-symbols-outlined" style="font-size: 28px;">close</span></button></div></div><div class="flex items-center justify-between w-full"><div class="flex items-center gap-sm"><span class="font-code-md text-code-md text-primary bg-primary/10 px-xs py-0.5 rounded">UUID: 881c-442a-99ef-771d</span><span class="text-text-muted">•</span><span class="font-body-sm text-body-sm text-text-muted">Instance initiated by Orchestrator_v2.4</span></div><div class="flex items-center gap-xs px-sm py-1 bg-agent-fill text-primary rounded-sm border border-primary/20 shrink-0"><span class="material-symbols-outlined" style="font-size: 16px; font-variation-settings: 'FILL' 1;">bolt</span><span class="font-label-caps text-label-caps">ORCHESTRATING</span></div></div></div></div>
+<!-- Modal Body (Two Columns for Prompt/History layout) -->
+<div class="flex-grow flex overflow-hidden">
+<!-- Left: Main Editing Section (Aligning with vibrant green/ochre request) -->
+<div class="flex-grow overflow-y-auto custom-scrollbar p-lg border-r border-border-standard">
+<!-- Title Input Area (Vibrant Green Palette) -->
+<div class="mb-lg">
+<label class="block font-label-caps text-label-caps text-[#39994b] mb-xs">TASK TITLE</label>
+<div class="relative group">
+<input class="w-full p-md font-headline-md text-headline-md input-vibrant-green text-high rounded focus:ring-0 transition-all" type="text" value="Strategic Context Alignment">
+<span class="absolute right-md top-1/2 -translate-y-1/2 material-symbols-outlined text-[#39994b] opacity-50 group-hover:opacity-100">edit</span>
+</div>
+</div>
+<!-- Prompt Input Area (Ochre Palette) -->
+<div class="mb-lg">
+<label class="block font-label-caps text-label-caps text-[#b86200] mb-xs">SYSTEM PROMPT</label>
+<div class="relative group">
+<textarea class="w-full h-64 p-md font-code-md text-code-md input-ochre text-on-surface-variant rounded focus:ring-0 transition-all leading-relaxed resize-none">As a Strategic Alignment Agent, your primary objective is to validate the incoming vector context against the established prompt strategy. 
+
+Ensure the following criteria are met:
+1. NLP_CORE alignment check.
+2. Latency threshold verification (&lt; 150ms).
+3. Human-in-the-loop confirmation if strategy deviates by &gt; 5%.</textarea>
+<div class="absolute bottom-md right-md flex gap-sm">
+<button class="px-sm py-1 bg-[#b86200]/10 text-[#b86200] border border-[#b86200]/30 rounded-sm font-label-caps text-label-caps hover:bg-[#b86200]/20">RESTORE DEFAULT</button>
+<span class="material-symbols-outlined text-[#b86200] opacity-50 group-hover:opacity-100 p-1">open_in_full</span>
+</div>
+</div>
+</div>
+<!-- External Documentation Section (New) -->
+<div class="grid grid-cols-2 gap-md">
+<div>
+<h3 class="font-label-caps text-label-caps text-text-muted mb-sm">RESOURCES</h3>
+<div class="flex flex-col gap-sm">
+<button class="w-full flex items-center justify-between p-sm bg-surface-container hover:bg-surface-container-high border border-border-standard rounded transition-colors group">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-secondary">description</span>
+<span class="font-body-md text-body-md">View Report</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-high" style="font-size: 18px;">arrow_forward</span>
+</button>
+<button class="w-full flex items-center justify-between p-sm bg-surface-container hover:bg-surface-container-high border border-border-standard rounded transition-colors group">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-secondary">terminal</span>
+<span class="font-body-md text-body-md">View Logs</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-high" style="font-size: 18px;">arrow_forward</span>
+</button>
+</div>
+</div>
+<div>
+<h3 class="font-label-caps text-label-caps text-text-muted mb-sm">KEYWORDS</h3>
+<div class="flex flex-wrap gap-xs">
+<span class="px-sm py-1 rounded bg-agent-fill border border-[#39994b]/30 text-[#39994b] font-code-sm">#NLP_CORE</span>
+<span class="px-sm py-1 rounded bg-agent-fill border border-[#39994b]/30 text-[#39994b] font-code-sm">#LLM_GEN</span>
+<span class="px-sm py-1 rounded bg-agent-fill border border-[#39994b]/30 text-[#39994b] font-code-sm">#STRATEGY</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Right: Technical Logs & Timeline (History) -->
+<div class="w-96 overflow-y-auto custom-scrollbar p-lg bg-surface-container-lowest/30 flex flex-col gap-xl">
+<!-- Technical Mini-Logs -->
+<div>
+<h3 class="font-label-caps text-label-caps text-tertiary mb-md flex items-center gap-sm">
+<span class="material-symbols-outlined" style="font-size: 14px;">terminal</span>
+                    LIVE PROCESS
+                </h3>
+<div class="bg-surface-deep border border-border-standard rounded p-sm font-code-sm text-code-sm leading-relaxed text-on-surface-variant/80 flex flex-col gap-xs max-h-48 overflow-y-auto custom-scrollbar">
+<div class="flex gap-sm">
+<span class="text-text-muted">14:22:01</span>
+<span class="text-primary">[INFO]</span>
+<span class="">Agent assigned.</span>
+</div>
+<div class="flex gap-sm">
+<span class="text-text-muted">14:25:30</span>
+<span class="text-secondary">[HUMAN]</span>
+<span class="">Wait for confirmation...</span>
+</div>
+<div class="flex gap-sm animate-pulse">
+<span class="text-text-muted">14:28:12</span>
+<span class="text-tertiary font-bold">[WARN]</span>
+<span class="text-tertiary">US-EAST-1 Latency</span>
+</div>
+</div>
+</div>
+<!-- Orchestration History Timeline (Refined for Sidebar) -->
+<div>
+<h3 class="font-label-caps text-label-caps text-tertiary mb-md flex items-center gap-sm">
+<span class="material-symbols-outlined" style="font-size: 14px;">timeline</span>
+                    HISTORY
+                </h3>
+<div class="flex flex-col gap-md ml-xs border-l border-border-standard pl-md">
+<!-- Item 1 -->
+<div class="relative flex flex-col gap-xs">
+<div class="absolute -left-[21px] top-1.5 w-2.5 h-2.5 rounded-full bg-[#39994b] shadow-[0_0_8px_rgba(57,153,75,0.4)]"></div>
+<div class="flex justify-between items-center">
+<span class="font-headline-sm text-headline-sm text-on-surface text-sm">Plan Extraction</span>
+<span class="font-code-sm text-code-sm text-[#39994b]">SUCCESS</span>
+</div>
+<span class="font-body-sm text-body-sm text-text-muted">2hrs 5min</span>
+</div>
+<!-- Item 2 -->
+<div class="relative flex flex-col gap-xs">
+<div class="absolute -left-[21px] top-1.5 w-2.5 h-2.5 rounded-full bg-[#ff8383]"></div>
+<div class="flex justify-between items-center">
+<span class="font-headline-sm text-headline-sm text-on-surface text-sm">Strategy Review</span>
+<span class="font-code-sm text-code-sm text-[#ff8383]">FAIL</span>
+</div>
+<span class="font-body-sm text-body-sm text-text-muted">2hrs 5min</span>
+</div>
+<!-- Item 3 -->
+<div class="relative flex flex-col gap-xs">
+<div class="absolute -left-[21px] top-1.5 w-2.5 h-2.5 rounded-full bg-secondary animate-pulse"></div>
+<div class="flex justify-between items-center">
+<span class="font-headline-sm text-headline-sm text-on-surface text-sm">Prompt Strategy</span>
+<span class="font-code-sm text-code-sm text-secondary">ACTIVE</span>
+</div>
+<span class="font-body-sm text-body-sm text-secondary">0hrs 42min</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Modal Overlay / Footer (Aligned with sketch) -->
+<div class="p-lg border-t border-border-standard flex items-center justify-between bg-surface-container-lowest/50 rounded-b shrink-0">
+<div class="flex items-center gap-lg">
+<div class="flex flex-col">
+<span class="font-label-caps text-label-caps text-secondary uppercase">Node Cluster</span>
+<span class="font-code-sm text-code-sm text-on-surface-variant">NODE_01 :: US-EAST-1</span>
+</div>
+<div class="h-8 w-px bg-border-standard"></div>
+<div class="flex flex-col">
+<span class="font-label-caps text-label-caps text-text-muted">LAST UPDATED</span>
+<span class="font-code-sm text-code-sm text-on-surface-variant">14:28:12 (Auto-sync)</span>
+</div>
+</div>
+<div class="flex gap-md">
+<button class="px-lg py-sm font-headline-sm text-headline-sm text-on-surface-variant hover:text-high hover:bg-surface-container-high rounded transition-all">
+                    Cancel Run
+                </button>
+<button class="px-xl py-sm font-headline-sm text-headline-sm bg-secondary text-on-secondary rounded flex items-center gap-xs active:scale-95 transition-transform shadow-lg shadow-secondary/10"><span class="material-symbols-outlined" style="font-size: 20px;">play_arrow</span>Prioritise Run</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom NavBar -->
+<footer class="fixed bottom-0 left-0 w-full h-control-bar-height z-50 bg-surface-container-highest border-t border-border-standard shadow-lg flex items-center justify-between px-xl">
+<div class="flex items-center gap-lg">
+<div class="flex items-center gap-sm">
+<div class="w-3 h-3 rounded-full bg-primary animate-pulse"></div>
+<div class="flex flex-col">
+<span class="font-label-caps text-label-caps text-secondary uppercase">Engine Status</span>
+<span class="font-code-sm text-code-sm text-on-surface-variant">NODE_01: NOMINAL</span>
+</div>
+</div>
+<div class="h-8 w-px bg-border-standard"></div>
+<div class="flex flex-col">
+<span class="font-label-caps text-label-caps text-on-surface-variant">CURRENT TASK</span>
+<span class="font-code-sm text-code-sm text-secondary">TASK_881C :: Strategy Review</span>
+</div>
+</div>
+<div class="flex items-center gap-xl">
+<button class="material-symbols-outlined text-secondary text-display-lg hover:bg-surface-bright rounded-full p-xs active:scale-90 transition-transform">play_arrow</button>
+<button class="material-symbols-outlined text-secondary text-display-lg hover:bg-surface-bright rounded-full p-xs active:scale-90 transition-transform">pause</button>
+<button class="material-symbols-outlined text-secondary text-display-lg hover:bg-surface-bright rounded-full p-xs active:scale-90 transition-transform">skip_next</button>
+</div>
+<div class="flex items-center gap-md w-64">
+<div class="flex-grow flex flex-col gap-xs">
+<div class="flex justify-between font-label-caps text-label-caps text-on-surface-variant">
+<span class="">STAGE 2 OF 5</span>
+<span class="">40%</span>
+</div>
+<div class="h-1.5 w-full bg-surface-deep rounded-full overflow-hidden border border-border-standard">
+<div class="h-full bg-secondary w-2/5 shadow-[0_0_8px_rgba(154,203,255,0.4)]"></div>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant">sensors</span>
+</div>
+</footer>
+
+
+</body></html>
