@@ -40,7 +40,10 @@ export function MonitorPopoutButton({ onOpenPopout = () => {}, onOpenCompact = (
           title="Open monitor popout (left-click) or compact logs view (right-click)"
         >
           <span>📡</span>
-          <span className="hidden xl:inline font-label-caps text-[10px] uppercase">Monitor</span>
+          {/* Label waits for 2xl: with remote + app link present the full
+              labeled row needs ~1333px, so at xl=1280 it overlaps the app
+              cluster — task 66ad153f guard. Icon + tooltip below that. */}
+          <span className="hidden 2xl:inline font-label-caps text-[10px] uppercase">Monitor</span>
           <span className="text-[10px] text-primary">↗</span>
         </button>
       </InfoTooltip>
