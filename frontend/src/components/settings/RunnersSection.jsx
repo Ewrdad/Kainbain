@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../services/api';
+import { copyToClipboard } from '../../services/clipboard';
 
 /***
  * MARK: RunnersSection
@@ -16,6 +17,8 @@ export function RunnersSection() {
   const [loadError, setLoadError] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [actionError, setActionError] = useState(null);
+  const [freshCredential, setFreshCredential] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   const loadRunners = useCallback(async () => {
     setLoadError(null);
@@ -37,8 +40,15 @@ export function RunnersSection() {
       setBusyId(runnerId);
       setActionError(null);
       try {
-        if (action === 'approve') await api.approveRunner(runnerId);
-        else if (action === 'deny') await api.denyRunner(runnerId);
+        if (action === 'approve') {
+          const res = await api.approveRunner(runnerId);
+          // The credential is shown exactly once: the Runner never fetches
+          // it back, and the list endpoint never renders it.
+          if (res?.credential) {
+            setFreshCredential({ runnerId, credential: res.credential });
+            setCopied(false);
+          }
+        } else if (action === 'deny') await api.denyRunner(runnerId);
         else await api.revokeRunner(runnerId);
         await loadRunners();
       } catch (err) {
@@ -91,6 +101,41 @@ export function RunnersSection() {
         <p className="mt-2 text-xs text-error" role="alert">
           {actionError}
         </p>
+      )}
+      {freshCredential && (
+        <div
+          className="mt-3 px-3 py-2 bg-surface-container border border-border-standard rounded-sm"
+          data-testid="runner-credential-once"
+        >
+          <p className="text-xs text-on-surface">
+            Runner {freshCredential.runnerId} approved. Paste this one-time
+            credential into its environment as KAINBAIN_RUNNER_CREDENTIAL and
+            restart it — it is never shown again.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-mono text-on-surface break-all" data-testid="runner-credential-value">
+              {freshCredential.credential}
+            </span>
+            <button
+              type="button"
+              onClick={async () => {
+                await copyToClipboard(freshCredential.credential);
+                setCopied(true);
+              }}
+              className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer"
+            >
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setFreshCredential(null)}
+              aria-label="Dismiss credential"
+              className="px-3 py-1.5 min-h-[44px] text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
       )}
       {runners.length === 0 ? (
         <p className="py-4 text-xs text-text-muted" data-testid="runners-section-empty">

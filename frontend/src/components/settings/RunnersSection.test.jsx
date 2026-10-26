@@ -81,6 +81,23 @@ describe('RunnersSection', () => {
     });
   });
 
+  it('shows the one-time credential after approve, exactly once', async () => {
+    getRunners.mockResolvedValue([
+      { runnerId: 'r1', status: 'pending', facts: {}, lastSeenAt: null },
+    ]);
+    approveRunner.mockResolvedValue({ status: 'active', credential: 'ONE-TIME-1' });
+    render(<RunnersSection />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve runner r1' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-credential-once')).toBeTruthy();
+    });
+    expect(screen.getByTestId('runner-credential-value').textContent).toBe('ONE-TIME-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss credential' }));
+    await waitFor(() => {
+      expect(screen.queryByTestId('runner-credential-once')).toBeNull();
+    });
+  });
+
   it('never renders credential values', async () => {
     getRunners.mockResolvedValue([
       { runnerId: 'r1', status: 'active', facts: {}, lastSeenAt: null, credential: 'SHOULD-NOT-RENDER' },

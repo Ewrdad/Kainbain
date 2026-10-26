@@ -1,0 +1,39 @@
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { loadRunnerConfig } from "./config.js";
+
+describe("loadRunnerConfig", () => {
+	it("fills defaults and reports no errors when complete", () => {
+		const config = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: " r1 ",
+			KAINBAIN_RUNNER_HARNESS: "mock",
+			KAINBAIN_RUNNER_PROJECT_ID: "p1",
+			KAINBAIN_RUNNER_TASK_ID: "t1",
+		});
+		assert.equal(config.errors.length, 0);
+		assert.equal(config.runnerId, "r1");
+		assert.equal(config.backendUrl, "http://localhost:3100");
+		assert.deepEqual(config.tiers, ["T0", "T1"]);
+		assert.equal(config.heartbeatMs, 15000);
+	});
+
+	it("lists every missing required key", () => {
+		const config = loadRunnerConfig({});
+		assert.equal(config.errors.length, 4);
+		assert.match(config.errors.join(" "), /KAINBAIN_RUNNER_ID/);
+		assert.match(config.errors.join(" "), /KAINBAIN_RUNNER_HARNESS/);
+	});
+
+	it("falls back on invalid numbers and customizes tiers", () => {
+		const config = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "mock",
+			KAINBAIN_RUNNER_PROJECT_ID: "p1",
+			KAINBAIN_RUNNER_TASK_ID: "t1",
+			KAINBAIN_RUNNER_HEARTBEAT_MS: "nan",
+			KAINBAIN_RUNNER_TIERS: "T0",
+		});
+		assert.equal(config.heartbeatMs, 15000);
+		assert.deepEqual(config.tiers, ["T0"]);
+	});
+});
