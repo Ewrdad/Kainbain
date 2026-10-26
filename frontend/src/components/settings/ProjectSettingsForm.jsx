@@ -29,7 +29,7 @@ import { parseRetrySettings } from './projectSettingsValidation';
  * harness scopes the model catalogue — list dropdown, empty state, or
  * hidden — per the harness's `modelSelection`), the custom harness's
  * free-text command line (model flags bake into the command itself),
- * accent color theme, working directory, SilverBullet notes directory,
+ * accent color theme, working directory, notes directory,
  * Git remote URL, and the per-project retry/timeout overrides.
  * @param {Object} props
  * @param {Object} props.project - The current project object.
@@ -63,10 +63,11 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
   const [modelAliasesTouched, setModelAliasesTouched] = useState(false);
   const [accentColor, setAccentColor] = useState(project?.accentColor || '#7bdb85');
   const [cwd, setCwd] = useState(project?.cwd || '');
+  // D13: no host default baked in — '' (unset) lets the server resolve the
+  // configured notes root (or report notes-missing loudly) instead of
+  // persisting one operator's path into every fresh project.
   const [notesDir, setNotesDir] = useState(
-    project?.notesDir ||
-      project?.notesPath ||
-      '/home/server/apps/notes/silverbullet/space/Projects/Personal/kainbain',
+    project?.notesDir || project?.notesPath || '',
   );
   const [docsDirName, setDocsDirName] = useState(project?.docsDirName || '');
   const [kainbainDirName, setKainbainDirName] = useState(project?.kainbainDirName || '');
@@ -132,11 +133,7 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
     setBranchSyncProjectId(project?.id ?? null);
     setProjectName(project?.name || '');
     setCwd(project?.cwd || '');
-    setNotesDir(
-      project?.notesDir ||
-        project?.notesPath ||
-        '/home/server/apps/notes/silverbullet/space/Projects/Personal/kainbain',
-    );
+    setNotesDir(project?.notesDir || project?.notesPath || '');
     setDocsDirName(project?.docsDirName || '');
     setKainbainDirName(project?.kainbainDirName || '');
     setCentralizedDocs(project?.centralizedDocs !== false);
@@ -304,6 +301,13 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
       notifyError?.('Working directory must not be blank', 'Invalid Directory');
       return;
     }
+    // D13 residual, classified: the default projects root is a fast-path
+    // duplicate of the server-side guard (projectStore refuses the
+    // configured root authoritatively). The literal only ever matches the
+    // default install; on a custom PROJECTS_ROOT it matches nothing real,
+    // so the check is conservative everywhere and the server stays the
+    // authority. Kept (not plumbed to server config) because this exact
+    // refusal saved a prod incident (orphaned project.json).
     if (cwd.trim().replace(/\/+$/, '') === '/home/server/projects') {
       setValidationError(
         'Working directory must be the project\u2019s own directory, not the projects root.',
@@ -825,11 +829,10 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
               value={cwd}
               onChange={(e) => setCwd(e.target.value)}
               className="p-2.5 bg-surface-container border border-border-standard rounded-sm text-xs font-mono outline-none focus:border-primary transition-colors text-on-surface"
-              placeholder="/home/server/projects/kainbain"
+              placeholder="/path/to/projects/YourProject"
             />
             <p className="text-[10px] text-text-muted">
-              Project source code directory residing in{' '}
-              <code className="font-mono text-primary">/home/server/projects/</code>
+              Project source code directory (a direct child of the configured projects root)
             </p>
           </div>
 
@@ -838,7 +841,7 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
               htmlFor="project-notes-input"
               className="text-xs font-bold uppercase text-text-muted tracking-wider"
             >
-              SilverBullet / Notes Space Symlink Directory
+              Notes Space Symlink Directory
             </label>
             <input
               id="project-notes-input"
@@ -849,7 +852,7 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
               className={`p-2.5 bg-surface-container border border-border-standard rounded-sm text-xs font-mono outline-none focus:border-primary transition-colors text-on-surface ${
                 !centralizedDocs ? 'opacity-50 cursor-not-allowed' : ''
               }`}
-              placeholder="/home/server/apps/notes/silverbullet/space/Projects/Personal/kainbain"
+              placeholder="/path/to/notes/YourProject"
             />
             <p className="text-[10px] text-text-muted">
               Knowledge store symlinked to{' '}
@@ -917,7 +920,7 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
                 onChange={(e) => setCentralizedDocs(e.target.checked)}
                 className="w-4 h-4 rounded border-border-standard text-primary focus:ring-primary focus:ring-offset-surface bg-surface-container"
               />
-              Link to Centralised Documentation (SilverBullet)
+              Link to Centralised Documentation
             </label>
             <p className="text-[10px] text-text-muted pl-6">
               When checked, symlinks the docs folder to the central notes space. Uncheck to opt out and store docs strictly in a local directory without symlinks.

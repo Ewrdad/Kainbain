@@ -35,7 +35,7 @@ import { LogsPanel, useTaskLogs } from './LogsPanel';
 /***
  * MARK: TaskDetailOverlay
  * @description An integrated slide-over inspector for task details, rich markdown goal editing,
- * SilverBullet links, deduplicated report inspection,
+ * notes-viewer links, deduplicated report inspection,
  * and orchestration history. Anchored as a right-hand side panel without a full-screen blocking backdrop.
  *
  * @param {Object} props

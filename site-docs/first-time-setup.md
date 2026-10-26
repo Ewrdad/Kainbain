@@ -116,7 +116,7 @@ is picked up on restart with no config edits.
 | ------- | --- |
 | `EADDRINUSE` on `:3100` or `:5173` | Something already occupies the port. Note `npm run dev` clears the occupants automatically; otherwise stop them yourself or set `PORT` / `VITE_PORT`. |
 | Changed `frontend/.env`, nothing happened | `VITE_*` values are inlined at dev-server start and at build time. Restart `npm run dev` (or rebuild) after editing. |
-| Opened `:3000` and found Forgejo | Wrong port: this host runs Forgejo on `:3000`. KainBain's API is `:3100`, frontend dev is `:5173`. |
+| Opened the wrong port and found another service | Wrong port: KainBain's API is `:3100`, frontend dev is `:5173` (on the author's host, `:3000` is Forgejo). |
 | Agent stages fail on model access | Check `GET /status` backend probes (LiteLLM / Ollama Cloud) and the `KAINBAIN_DEFAULT_MODEL` default before re-running. |
 
 ## Next steps

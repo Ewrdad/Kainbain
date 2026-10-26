@@ -572,7 +572,7 @@ test('renders keyword token buttons and copies token to clipboard', () => {
   expect(writeText).toHaveBeenCalledWith('{{projectRoot}}');
 });
 
-test('provides SilverBullet links and deduplicated reports in Reports tab (#1, #5, #43)', async () => {
+test('provides notes-viewer links and deduplicated reports in Reports tab (#1, #5, #43)', async () => {
   vi.stubEnv('VITE_NOTES_VIEWER_URL', 'http://notes.example.com');
   const duplicateReports = [
     { name: 'report-1.md', path: 'docs/tasks/t1/report-1.md', content: 'Report 1' },
@@ -597,7 +597,7 @@ test('provides SilverBullet links and deduplicated reports in Reports tab (#1, #
   fireEvent.click(screen.getByRole('tab', { name: /Reports/i }));
 
   await waitFor(() => {
-    const sbLink = screen.getByRole('link', { name: /Open in SilverBullet/i });
+    const sbLink = screen.getByRole('link', { name: /Open in Notes/i });
     expect(sbLink).toBeInTheDocument();
     expect(sbLink).toHaveAttribute(
       'href',

@@ -354,7 +354,7 @@ export const CONFIG_SCHEMA = [
 		type: "path",
 		default: "/home/server/apps/notes/silverbullet/space/Projects/Personal",
 		group: "storage",
-		doc: "SilverBullet notes space root for project-linked notes.",
+		doc: "Centralised notes space root for project-linked notes (any markdown notes store).",
 	},
 	{
 		key: "projectsRoots",

@@ -13,6 +13,7 @@ import { MonitorPopoutButton } from './MonitorPopoutButton';
 import { MOBILE_TOOLBAR_COLLAPSE_EVENT } from '../workflow/hooks/useMobileToolbarCollapse';
 import { requestCompactMonitorView } from '../observability/monitorCompact';
 import { openSystemSettings } from '../settings/openSystemSettings';
+import { getRepoHostFileUrl } from '../../services/repoHost';
 
 /***
  * MARK: SystemMenu
@@ -420,9 +421,10 @@ export function Header() {
   // guard: the full row needs ~1333px, which 1280 cannot hold).
   const hasAppLink = Boolean(activeProject?.appStatus?.url);
   // Web view of the configured remote, or null when none is configured —
-  // the link is hidden then, never pointed at a fabricated host.
-  const gitRemoteUrl =
-    repoUrlText || (gitUrlText.startsWith('http') ? gitUrlText.replace(/\.git$/, '') : null);
+  // the link is hidden then, never pointed at a fabricated host. D13:
+  // derived from the git remote in any form (https, ssh://, scp-like) via
+  // the shared derivation; prefers the server-derived repoUrl.
+  const gitRemoteUrl = getRepoHostFileUrl(repoUrlText || gitUrlText) || null;
   // Open a same-origin hash route in a popout window. The target is a hardcoded
   // internal route (never user input), so it is safe to open directly.
   const openPopout = () => {

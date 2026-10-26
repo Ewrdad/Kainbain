@@ -6,6 +6,7 @@ import { logger } from '../../services/logger';
 import { Icon } from '../Icon';
 import { BrandMark } from '../BrandMark';
 import { getSilverBulletUrl, isSilverBulletPath } from '../tasks/taskFormatters';
+import { getRepoHostFileUrl } from '../../services/repoHost';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { ResponsiveLabel } from '../common/ResponsiveLabel';
 import { GoToAppLink } from '../common/GoToAppLink';
@@ -227,9 +228,12 @@ export function ProjectExplorer() {
   );
 
   const gitUrl = activeProject?.gitUrl || activeProject?.gitRepo || '';
-  // Web view of the configured remote (never fabricated: hidden when absent).
+  // Web view of the configured remote (D13: derived from the git remote in
+  // any form — https, ssh://, scp-like — never fabricated: hidden when
+  // absent or unparseable). Prefers the server-derived repoUrl, falls back
+  // to the stored git URL.
   const gitRemoteWebUrl =
-    activeProject?.repoUrl || (gitUrl.startsWith('http') ? gitUrl.replace(/\.git$/, '') : '');
+    getRepoHostFileUrl(activeProject?.repoUrl || gitUrl) || '';
   const lines = fileContent?.content ? fileContent.content.split('\n') : [];
   const previewKind = getFileKind(fileContent ?? selectedFile ?? {});
   const isVisualPreview = previewKind === 'image' || previewKind === 'unsupported-binary';
@@ -535,22 +539,22 @@ export function ProjectExplorer() {
                   data-testid="viewer-actions"
                   className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full min-w-0 sm:w-auto py-0.5"
                 >
-                  {/* Open in SilverBullet — docs/ only (deep link 404s outside the notes space) */}
+                  {/* Open in Notes — docs/ only (deep link 404s outside the notes space) */}
                   {isSilverBulletPath(selectedFile?.path) && (
                     <InfoTooltip
-                      title="SilverBullet Notes Space"
-                      description="Open and edit this markdown document in your local SilverBullet notes workspace."
+                      title="Notes Space"
+                      description="Open and edit this markdown document in your connected notes workspace."
                       position="bottom"
                     >
                       <a
                         href={getSilverBulletUrl(activeProject?.name, selectedFile.path)}
                         target="_blank"
                         rel="noreferrer"
-                        aria-label="Open in SilverBullet"
+                        aria-label="Open in Notes"
                         className="px-2.5 py-1 bg-surface-container-high hover:bg-surface-container-highest border border-border-standard rounded-sm text-[10px] font-mono text-primary hover:text-primary transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap"
                       >
                         <span aria-hidden="true">📝</span>
-                        <ResponsiveLabel full="Open in SilverBullet" compact="SilverBullet" />
+                        <ResponsiveLabel full="Open in Notes" compact="Notes" />
                       </a>
                     </InfoTooltip>
                   )}

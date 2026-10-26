@@ -1,6 +1,6 @@
 # Project Agents
 
-Normative agent guidance for this repo. Architecture: [`agent-docs/KB-Architecture.md`](agent-docs/KB-Architecture.md) · Code standards: [`agent-docs/KB-Code-Standards.md`](agent-docs/KB-Code-Standards.md) — in-repo vendored copies of the SilverBullet KB pages; the external notes store is unreachable on a fresh checkout, so treat the in-repo copies as the source of truth (upstream edits must be re-vendored there).
+Normative agent guidance for this repo. Architecture: [`agent-docs/KB-Architecture.md`](agent-docs/KB-Architecture.md) · Code standards: [`agent-docs/KB-Code-Standards.md`](agent-docs/KB-Code-Standards.md) — in-repo vendored copies of the knowledge-base (KB) pages; the external notes store is unreachable on a fresh checkout, so treat the in-repo copies as the source of truth (upstream edits must be re-vendored there).
 
 **Read first:** [`AGENTS-MAP.md`](AGENTS-MAP.md) — one-page repo map (directory ownership, god-file entry points, test commands, log-feed endpoint).
 

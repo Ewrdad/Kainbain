@@ -78,7 +78,7 @@ npm run dev            # start API + frontend dev servers (any OS)
 ./deploy.sh --prod     # build + deploy the production "master" build (Linux)
 ```
 
-**Ports.** This host runs Forgejo on `:3000`, so KainBain uses a dedicated API
+**Ports.** KainBain uses a dedicated API
 port. The API defaults to `http://localhost:3100` (override with `PORT`); the
 frontend is told where the API lives via `frontend/.env`
 (`VITE_API_BASE` / `VITE_WS_URL`, default `:3100`), which Vite inlines at dev

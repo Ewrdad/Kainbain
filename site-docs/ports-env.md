@@ -7,7 +7,7 @@ slug: ports-env
 
 # Ports & Environment
 
-This host runs Forgejo on `:3000`, so KainBain uses its own ports: the **API defaults to `http://localhost:3100`** (override with `PORT`) and the **frontend dev server runs on `:5173`**. The frontend learns the API origin from `frontend/.env` (`VITE_API_BASE` / `VITE_WS_URL`), inlined at dev start and at `vite build`. In production both are served from one origin behind nginx at `https://kainbain.home`.
+KainBain uses its own ports: the **API defaults to `http://localhost:3100`** (override with `PORT`) and the **frontend dev server runs on `:5173`**. The frontend learns the API origin from `frontend/.env` (`VITE_API_BASE` / `VITE_WS_URL`), inlined at dev start and at `vite build`. In production both are served from one origin behind nginx at `https://kainbain.home`.
 
 ## Environment variables
 

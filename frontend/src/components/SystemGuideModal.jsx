@@ -332,10 +332,10 @@ export function SystemGuideModal() {
               <div className="p-4 bg-surface-container rounded border border-border-standard space-y-2">
                 <div className="font-bold text-on-surface flex items-center gap-1.5">
                   <span>📝</span>
-                  <span>SilverBullet Notes Integration</span>
+                  <span>Notes Integration</span>
                 </div>
                 <p className="text-text-muted text-[11px]">
-                  The <code>docs/</code> folder is symlinked directly to the project's SilverBullet
+                  The <code>docs/</code> folder is symlinked directly to the project's
                   notes workspace, allowing live bi-directional browsing between KainBain and your
                   personal knowledge base.
                 </p>

@@ -665,7 +665,7 @@ export function TaskCard({
           <InfoTooltip
             title="Generated Reports"
             description={`${reportsCount} markdown report${reportsCount === 1 ? '' : 's'} saved on disk.`}
-            behindTheScenes="Stored in docs/tasks/<id>/ and linked to SilverBullet notes."
+            behindTheScenes="Stored in docs/tasks/<id>/ and linked to the notes space."
             position="top"
           >
             <span

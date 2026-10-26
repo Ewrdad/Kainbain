@@ -92,7 +92,7 @@ import { KainBainContext } from '../../context/KainBainContext';
  * MARK: ProjectSettings tests
  * @description Verifies the per-project configuration page: active-project
  *   selector, project name editing, multi-location directory paths (working directory,
- *   SilverBullet notes symlink, git repo URL), save flow, and UI customization tab.
+ *   notes symlink, git repo URL), save flow, and UI customization tab.
  *   Also asserts that arbitrary environment variables table is removed.
  */
 const projects = [
@@ -269,7 +269,7 @@ test('saving persists the project name, paths, git repo, defaultModel, and accen
   fireEvent.change(screen.getByLabelText('Working Directory (Root)'), {
     target: { value: '/home/server/projects/custom' },
   });
-  fireEvent.change(screen.getByLabelText('SilverBullet / Notes Space Symlink Directory'), {
+  fireEvent.change(screen.getByLabelText('Notes Space Symlink Directory'), {
     target: { value: '/home/server/apps/notes/silverbullet/space/Projects/Personal/custom' },
   });
   fireEvent.change(screen.getByLabelText('Git Repository URL'), {
@@ -335,7 +335,7 @@ test('edits custom documentation folder name and centralized docs toggle, saving
   const docsDirInput = screen.getByLabelText('Documentation Folder Name');
   fireEvent.change(docsDirInput, { target: { value: 'kainbain-docs' } });
 
-  const centralizedToggle = screen.getByLabelText('Link to Centralised Documentation (SilverBullet)');
+  const centralizedToggle = screen.getByLabelText('Link to Centralised Documentation');
   fireEvent.click(centralizedToggle);
 
   const saveButton = screen.getByRole('button', { name: /save configuration/i });

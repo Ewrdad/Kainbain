@@ -167,7 +167,7 @@ describe('ProjectExplorer Component', () => {
     });
   });
 
-  it('shows the SilverBullet deep link for markdown under docs/', async () => {
+  it('shows the Notes deep link for markdown under docs/', async () => {
     renderWithKainBain(<ProjectExplorer />, {
       projects: mockProjects,
       activeProjectId: 'proj-1',
@@ -188,7 +188,7 @@ describe('ProjectExplorer Component', () => {
     await waitFor(() => {
       expect(api.getFileContent).toHaveBeenCalledWith('proj-1', 'docs/spec.md');
       expect(screen.getByText(/Docs-resident markdown/)).toBeInTheDocument();
-      const sbLink = screen.getByRole('link', { name: /Open in SilverBullet/i });
+      const sbLink = screen.getByRole('link', { name: /Open in Notes/i });
       expect(sbLink).toBeInTheDocument();
       expect(sbLink).toHaveAttribute(
         'href',
@@ -197,7 +197,7 @@ describe('ProjectExplorer Component', () => {
     });
   });
 
-  it('hides the SilverBullet link for root-level markdown while keeping the preview', async () => {
+  it('hides the Notes link for root-level markdown while keeping the preview', async () => {
     renderWithKainBain(<ProjectExplorer />, {
       projects: mockProjects,
       activeProjectId: 'proj-1',
@@ -214,7 +214,7 @@ describe('ProjectExplorer Component', () => {
       expect(screen.getByText(/This is a sample readme content/)).toBeInTheDocument();
     });
     expect(screen.getByRole('button', { name: /Copy Path/i })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /Open in SilverBullet/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Open in Notes/i })).not.toBeInTheDocument();
   });
 
   it('links the configured git remote and hides the link when no remote exists', async () => {
@@ -261,7 +261,7 @@ describe('ProjectExplorer Component', () => {
       expect(api.getFileContent).toHaveBeenCalledWith('proj-1', 'package.json');
       expect(screen.getByText(/{\s*"name": "alpha"\s*}/)).toBeInTheDocument();
     });
-    expect(screen.queryByRole('link', { name: /Open in SilverBullet/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Open in Notes/i })).not.toBeInTheDocument();
   });
 
   it('filters file entries in the explorer via the search input', async () => {
@@ -375,7 +375,7 @@ describe('ProjectExplorer Component', () => {
   });
 
   it('keeps every viewer action reachable on narrow viewports (wraps, no clipping)', async () => {
-    // Widest-toolbar case: a docs/tasks markdown file shows the SilverBullet link,
+    // Widest-toolbar case: a docs/tasks markdown file shows the Notes link,
     // the Inspector button, the Preview/Raw toggle, both copy buttons, and the
     // create-task button all at once.
     api.listFiles.mockImplementation(async () => ({
@@ -429,7 +429,7 @@ describe('ProjectExplorer Component', () => {
 
     // Every action stays mounted and pressable regardless of viewport width.
     expect(screen.getByLabelText('Back to file list')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Open in SilverBullet/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Open in Notes/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Open in Inspector/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Preview/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Raw/i })).toBeInTheDocument();
@@ -463,7 +463,7 @@ describe('ProjectExplorer Component', () => {
         (el) => el.getAttribute('aria-label') || el.textContent.trim(),
       ),
     ).toEqual([
-      'Open in SilverBullet',
+      'Open in Notes',
       'Open in Inspector',
       'Preview',
       'Raw',
@@ -474,7 +474,7 @@ describe('ProjectExplorer Component', () => {
 
     // Compact labels below sm free ~100-200px on mobile while desktop keeps
     // the full strings; buttons never wrap internally (the strip wraps instead).
-    for (const shortLabel of ['SilverBullet', 'Inspector', 'Content', 'Path', 'New Task']) {
+    for (const shortLabel of ['Notes', 'Inspector', 'Content', 'Path', 'New Task']) {
       const el = screen.getByText(shortLabel, { exact: true });
       expect(el.className).toContain('sm:hidden');
     }

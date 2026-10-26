@@ -183,10 +183,10 @@ export function ReportReviewView({
               href={silverBulletUrl}
               target="_blank"
               rel="noreferrer"
-              aria-label="Open in SilverBullet"
+              aria-label="Open in Notes"
               className="px-2.5 py-1.5 min-h-[44px] inline-flex items-center justify-center bg-surface hover:bg-surface-container-high border border-border-standard text-primary rounded text-[10px] uppercase font-bold cursor-pointer"
             >
-              📝 SilverBullet
+              📝 Notes
             </a>
           )}
           {reportPath && (

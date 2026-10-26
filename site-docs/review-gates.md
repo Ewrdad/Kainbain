@@ -40,7 +40,7 @@ the report-level `💬` button leaves a whole-report comment. Threads render
 inline, exactly like code comments, and use the same sidecar store.
 - Toggle **Rendered Preview** to read the formatted markdown; switch back to
 **Line Review** to comment.
-- **Copy Path**, **Copy Markdown**, and **SilverBullet** open the same report
+- **Copy Path**, **Copy Markdown**, and **Notes** open the same report
 in your notes workspace.
 - Report comments are anchored to the report path and line number and keep the
 commented line as an excerpt, so context survives later edits to the report.

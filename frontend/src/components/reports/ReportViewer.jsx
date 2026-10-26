@@ -268,19 +268,19 @@ export function ReportViewer({
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
             {reportPath && (
               <InfoTooltip
-                title="SilverBullet Notes"
-                description="Opens this markdown report in your local SilverBullet notes workspace."
+                title="Notes"
+                description="Opens this markdown report in your connected notes workspace."
                 position="top"
               >
                 <a
                   href={silverBulletUrl}
                   target="_blank"
                   rel="noreferrer"
-                  aria-label="Open in SilverBullet"
+                  aria-label="Open in Notes"
                   className="px-2.5 py-1.5 min-h-[44px] bg-surface hover:bg-surface-container-high border border-border-standard text-primary hover:text-primary rounded text-[10px] uppercase font-bold shrink-0 transition-colors cursor-pointer flex items-center gap-1"
                 >
                   <span>📝</span>
-                  <span className="hidden sm:inline">SilverBullet</span>
+                  <span className="hidden sm:inline">Notes</span>
                 </a>
               </InfoTooltip>
             )}

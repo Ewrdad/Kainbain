@@ -207,7 +207,7 @@ describe('ReportViewer component', () => {
     });
   });
 
-  test('SilverBullet link is configured with correct deep link URL', () => {
+  test('Notes link is configured with correct deep link URL', () => {
     vi.stubEnv('VITE_NOTES_VIEWER_URL', 'http://notes.example.com');
     render(
       <ReportViewer
@@ -217,7 +217,7 @@ describe('ReportViewer component', () => {
       />,
     );
 
-    const sbLink = screen.getByRole('link', { name: /Open in SilverBullet/i });
+    const sbLink = screen.getByRole('link', { name: /Open in Notes/i });
     expect(sbLink).toHaveAttribute('target', '_blank');
     expect(sbLink).toHaveAttribute('rel', 'noreferrer');
     expect(sbLink).toHaveAttribute(
@@ -226,7 +226,7 @@ describe('ReportViewer component', () => {
     );
   });
 
-  test('SilverBullet link degrades to the in-app explorer when no viewer is configured', () => {
+  test('Notes link degrades to the in-app explorer when no viewer is configured', () => {
     vi.stubEnv('VITE_NOTES_VIEWER_URL', '');
     render(
       <ReportViewer
@@ -236,7 +236,7 @@ describe('ReportViewer component', () => {
       />,
     );
 
-    const sbLink = screen.getByRole('link', { name: /Open in SilverBullet/i });
+    const sbLink = screen.getByRole('link', { name: /Open in Notes/i });
     expect(sbLink).toHaveAttribute('href', '#/explorer');
   });
 });
