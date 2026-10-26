@@ -180,6 +180,7 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		stuckCheckMaxLogChars: 20000,
 		reviewDiffMaxBytes: 256 * 1024,
 		reviewMaxCommentChars: 4000,
+		claimTtlMs: 300000,
 		pushNotificationsEnabled: true,
 		runnerJoinToken: "",
 		// Sessions & Workflows

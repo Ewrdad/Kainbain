@@ -26,6 +26,7 @@ import { taskStore } from "./taskStore.js";
 import { sessionStore } from "./sessionStore.js";
 import { ClaimStore } from "./flow/claimStore.js";
 import { RunnerRegistry } from "./flow/runnerRegistry.js";
+import { ExecutionLedger } from "./flow/executionLedger.js";
 import { workflowRegistry } from "./workflowRegistry.js";
 import { createAgentRunner } from "./agentRunner.js";
 import { ORPHANED_RUNNING_STATUSES } from "./flow/taskScheduler.js";
@@ -157,7 +158,8 @@ const harnessRegistry = buildHarnessRoster(sessionStore);
 // the single writer; durability is Phase 4. The join token comes from
 // config (empty disables registration); claims share the ClaimStore TTL.
 const runnerRegistry = new RunnerRegistry({ joinToken: config.runnerJoinToken });
-const claimStore = new ClaimStore();
+const claimStore = new ClaimStore({ ttlMs: config.claimTtlMs });
+const executionLedger = new ExecutionLedger();
 
 const deps = {
 	projectStore,
@@ -181,6 +183,7 @@ const deps = {
 	harnessRegistry,
 	runnerRegistry,
 	claimStore,
+	executionLedger,
 };
 
 // Wire the DEFAULT harness's optional probeHealth member into the health

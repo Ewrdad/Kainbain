@@ -129,4 +129,8 @@ export class ClaimStore {
 			epoch: hold.epoch,
 		};
 	}
+
+	invalidate(taskId) {
+		return this.holds.delete(taskId);
+	}
 }

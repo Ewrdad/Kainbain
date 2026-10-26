@@ -9,8 +9,14 @@
  * @example await app.register(runnerRoutes, { deps })
  ***/
 export async function registerRunnerRoutes(app, { deps }) {
-	const { runnerRegistry, claimStore, taskStore, resolveAndGuardProject } =
-		deps;
+	const {
+		runnerRegistry,
+		claimStore,
+		executionLedger,
+		taskStore,
+		projectStore,
+		resolveAndGuardProject,
+	} = deps;
 
 	const sendStoreError = (reply, err) => {
 		const status = err.statusCode || 500;
@@ -79,6 +85,127 @@ export async function registerRunnerRoutes(app, { deps }) {
 	app.post("/runners/:id/revoke", async (request, reply) => {
 		try {
 			return runnerRegistry.revoke(request.params.id);
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
+	const guardedTask = (request, reply) => {
+		const projectId = resolveAndGuardProject(
+			request.body?.projectId || request.query?.projectId,
+			reply,
+		);
+		if (!projectId) return null;
+		const task = taskStore.getTask(projectId, request.params.id);
+		if (!task) {
+			reply.status(404).send({ error: "Task not found" });
+			return null;
+		}
+		return { projectId, task };
+	};
+
+	app.get("/runners/monitor", async () => {
+		return executionLedger.snapshot();
+	});
+
+	app.post("/tasks/:id/progress", async (request, reply) => {
+		let runner;
+		try {
+			runner = authedRunner(request);
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+		const ctx = guardedTask(request, reply);
+		if (!ctx) return;
+		try {
+			return executionLedger.recordProgress({
+				claimStore,
+				taskStore,
+				projectId: ctx.projectId,
+				taskId: request.params.id,
+				runnerId: runner.runnerId,
+				executionId: request.body?.executionId,
+				epoch: request.body?.epoch,
+				stageId: request.body?.stageId,
+				event: request.body?.event,
+			});
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
+	app.post("/tasks/:id/logs", async (request, reply) => {
+		let runner;
+		try {
+			runner = authedRunner(request);
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+		const ctx = guardedTask(request, reply);
+		if (!ctx) return;
+		try {
+			return executionLedger.ingestLogs({
+				claimStore,
+				taskStore,
+				projectId: ctx.projectId,
+				taskId: request.params.id,
+				runnerId: runner.runnerId,
+				executionId: request.body?.executionId,
+				epoch: request.body?.epoch,
+				seq: request.body?.seq,
+				bytes: request.body?.bytes,
+			});
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
+	app.post("/tasks/:id/complete-execution", async (request, reply) => {
+		let runner;
+		try {
+			runner = authedRunner(request);
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+		const ctx = guardedTask(request, reply);
+		if (!ctx) return;
+		try {
+			return await executionLedger.completeExecution({
+				claimStore,
+				taskStore,
+				projectStore,
+				projectId: ctx.projectId,
+				taskId: request.params.id,
+				runnerId: runner.runnerId,
+				executionId: request.body?.executionId,
+				epoch: request.body?.epoch,
+				sha: request.body?.sha ?? null,
+				branch: request.body?.branch ?? null,
+				posture: request.body?.posture ?? null,
+			});
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
+	app.post("/tasks/:id/interrupt", async (request, reply) => {
+		let runner;
+		try {
+			runner = authedRunner(request);
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+		const ctx = guardedTask(request, reply);
+		if (!ctx) return;
+		try {
+			return executionLedger.interruptExecution({
+				claimStore,
+				taskStore,
+				projectId: ctx.projectId,
+				taskId: request.params.id,
+				runnerId: runner.runnerId,
+				executionId: request.body?.executionId ?? null,
+			});
 		} catch (err) {
 			return sendStoreError(reply, err);
 		}

@@ -6,6 +6,9 @@ import fs from "node:fs";
 // stay the first import. The Runner join token is set before the app (and
 // its RunnerRegistry) loads so the register route is enabled in this file.
 process.env.KAINBAIN_RUNNER_JOIN_TOKEN = "test-join-token";
+// Short lease so the R01 partition test can outlive a TTL without waiting
+// out the 5-minute production default (same unit, same lazy expiry).
+process.env.KAINBAIN_CLAIM_TTL_MS = "1000";
 
 const { default: app } = await import("../index.js");
 
@@ -196,6 +199,161 @@ describe("Runner Routes Integration", () => {
 			payload: { projectId: project.id },
 		});
 		expect(claim.statusCode).toBe(401);
+	});
+
+	it("progress and logs are idempotent; gaps are marked, never hidden", async () => {
+		const credential = await onboard("reporter-1");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Reporting fixture" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		const { executionId, epoch } = JSON.parse(claim.payload);
+
+		const progress = { projectId: project.id, executionId, epoch, stageId: "Development", event: "started" };
+		const p1 = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/progress`,
+			headers: { "x-runner-credential": credential },
+			payload: progress,
+		});
+		expect(JSON.parse(p1.payload)).toEqual({ recorded: true, duplicate: false });
+		const p2 = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/progress`,
+			headers: { "x-runner-credential": credential },
+			payload: progress,
+		});
+		expect(JSON.parse(p2.payload)).toEqual({ recorded: true, duplicate: true });
+
+		const logs = { projectId: project.id, executionId, epoch, bytes: "hi" };
+		const l1 = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/logs`,
+			headers: { "x-runner-credential": credential },
+			payload: { ...logs, seq: 0 },
+		});
+		expect(JSON.parse(l1.payload)).toMatchObject({ accepted: true, duplicate: false });
+		const lGap = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/logs`,
+			headers: { "x-runner-credential": credential },
+			payload: { ...logs, seq: 2, bytes: "after gap" },
+		});
+		expect(JSON.parse(lGap.payload)).toMatchObject({ accepted: true, duplicate: false });
+
+		const monitor = JSON.parse(
+			(await app.inject({ method: "GET", url: "/runners/monitor" })).payload,
+		);
+		expect(monitor.progressRecorded).toBeGreaterThanOrEqual(1);
+		expect(monitor.progressDuplicates).toBeGreaterThanOrEqual(1);
+		expect(monitor.logGaps).toBeGreaterThanOrEqual(1);
+	});
+
+	it("R01 wire: partitioned Runner's late completion is stale, exactly one wins", async () => {
+		const credA = await onboard("partition-a");
+		const credB = await onboard("partition-b");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Partition fixture" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+
+		// A claims then partitions (goes silent mid-stage; its credential
+		// stays valid, which is exactly what makes the late completion
+		// dangerous — and what the epoch fence must reject).
+		const claimA = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credA },
+			payload: { projectId: project.id },
+		});
+		const leaseA = JSON.parse(claimA.payload);
+
+		// The partition outlives A's lease (lazy TTL expiry — no sweeper).
+		await new Promise((r) => setTimeout(r, 1100));
+
+		// A peer interrupts A's orphaned execution; the task parks as
+		// interrupted, never failed/complete.
+		const interrupt = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/interrupt`,
+			headers: { "x-runner-credential": credB },
+			payload: { projectId: project.id, executionId: leaseA.executionId },
+		});
+		expect(interrupt.statusCode).toBe(200);
+		const parked = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${target}?projectId=${project.id}` })).payload,
+		);
+		expect(parked.status).toBe("interrupted");
+
+		// B claims fresh (higher epoch) and completes.
+		const claimB = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credB },
+			payload: { projectId: project.id },
+		});
+		const leaseB = JSON.parse(claimB.payload);
+		expect(leaseB.epoch).toBeGreaterThan(leaseA.epoch);
+		const doneB = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/complete-execution`,
+			headers: { "x-runner-credential": credB },
+			payload: { projectId: project.id, executionId: leaseB.executionId, epoch: leaseB.epoch },
+		});
+		expect(JSON.parse(doneB.payload)).toMatchObject({ accepted: true, duplicate: false });
+
+		// A's late completion carries a valid credential but a superseded
+		// epoch: stale by construction, rejected before any state changes.
+		const doneA = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/complete-execution`,
+			headers: { "x-runner-credential": credA },
+			payload: { projectId: project.id, executionId: leaseA.executionId, epoch: leaseA.epoch },
+		});
+		expect(doneA.statusCode).toBe(409);
+		expect(JSON.parse(doneA.payload).code).toBe("STALE_EPOCH");
+
+		const monitor = JSON.parse(
+			(await app.inject({ method: "GET", url: "/runners/monitor" })).payload,
+		);
+		expect(monitor.completions).toBeGreaterThanOrEqual(1);
+		expect(monitor.interrupts).toBeGreaterThanOrEqual(1);
+	});
+
+	it("R04: unauthenticated callers rejected on progress/logs/complete/interrupt", async () => {
+		const credential = await onboard("guarded-1");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Guarded fixture" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		const { executionId, epoch } = JSON.parse(claim.payload);
+		for (const [url, payload] of [
+			[`/tasks/${target}/progress`, { projectId: project.id, executionId, epoch, stageId: "s", event: "e" }],
+			[`/tasks/${target}/logs`, { projectId: project.id, executionId, epoch, seq: 0, bytes: "x" }],
+			[`/tasks/${target}/complete-execution`, { projectId: project.id, executionId, epoch }],
+			[`/tasks/${target}/interrupt`, { projectId: project.id, executionId }],
+		]) {
+			const res = await app.inject({ method: "POST", url, payload });
+			expect(res.statusCode).toBe(401);
+		}
 	});
 
 	it("claim on an unknown task is 404, approve on unknown Runner is 404", async () => {

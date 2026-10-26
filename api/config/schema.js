@@ -337,6 +337,16 @@ export const CONFIG_SCHEMA = [
 		doc: "Node HTTP requestTimeout for the API server in ms; 0 (default) disables it so long chat turns are never killed with a bare 408. Set an explicit positive value only above any opt-in chat ceiling.",
 	},
 	{
+		key: "claimTtlMs",
+		env: "KAINBAIN_CLAIM_TTL_MS",
+		aliases: [],
+		type: "int",
+		default: 300000,
+		min: 50,
+		group: "tasks",
+		doc: "Task-claim lease time-to-live in ms (D1). A Runner must complete or renew within the TTL; an expired hold may be re-claimed at a higher epoch, which is what makes a partitioned zombie's late completion stale.",
+	},
+	{
 		key: "runnerJoinToken",
 		env: "KAINBAIN_RUNNER_JOIN_TOKEN",
 		aliases: [],

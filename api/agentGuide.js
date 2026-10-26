@@ -282,6 +282,40 @@ export const ENDPOINTS = [
 		body: null,
 	},
 	{
+		method: "GET",
+		path: "/runners/monitor",
+		purpose: "Phase 2 monitor counters: progress/log ingest, stale rejections, divergences, unverifiable SHAs.",
+		body: null,
+	},
+	{
+		method: "POST",
+		path: "/tasks/:id/progress",
+		purpose:
+			"Runner-only: record a stage lifecycle event keyed by execution ID (idempotent; stale epochs rejected). Requires the x-runner-credential header.",
+		body: { executionId: "string (required)", epoch: "number (required)", stageId: "string (required)", event: "string (required)" },
+	},
+	{
+		method: "POST",
+		path: "/tasks/:id/logs",
+		purpose:
+			"Runner-only: ingest one sequenced log frame (gaps marked, never hidden). Requires the x-runner-credential header.",
+		body: { executionId: "string (required)", epoch: "number (required)", seq: "number (required)", bytes: "string (required)" },
+	},
+	{
+		method: "POST",
+		path: "/tasks/:id/complete-execution",
+		purpose:
+			"Runner-only: idempotent execution completion with epoch fence and SHA presence check (records the report, releases the lease; stage advancement stays engine-owned). Requires the x-runner-credential header.",
+		body: { executionId: "string (required)", epoch: "number (required)" },
+	},
+	{
+		method: "POST",
+		path: "/tasks/:id/interrupt",
+		purpose:
+			"Runner-only: park a task as interrupted and drop its lease (kill-mid-stage path; re-queues via startup recovery). Requires the x-runner-credential header.",
+		body: { executionId: "string (optional)" },
+	},
+	{
 		method: "POST",
 		path: "/runners/:id/approve",
 		purpose: "Approve a pending Runner; issues its per-Runner credential.",
