@@ -1,5 +1,12 @@
 import { expect, test, describe } from "vitest";
 import { ClaimStore } from "../claimStore.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+const tmpClaimState = () =>
+	path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kb-claim-test-")), "claims.json");
+
+
 import { findNextCandidateTask } from "../taskScheduler.js";
 import { isSchedulerRunnable } from "./isSchedulerRunnable.js";
 
@@ -48,7 +55,7 @@ describe("no double dispatch onto Runner-held tasks", () => {
 	});
 
 	test("findNextCandidateTask skips a live hold and resumes after expiry", () => {
-		const claimStore = new ClaimStore({ ttlMs: 60000, now: (() => { let t = 1_000_000; return () => t; })() });
+		const claimStore = new ClaimStore({ ttlMs: 60000, now: (() => { let t = 1_000_000; return () => t; })(), stateFile: tmpClaimState() });
 		const store = fakeStore(claimStore);
 		expect(findNextCandidateTask(store)?.taskId).toBe("t1");
 		claimStore.claim("t1", "runner-a");

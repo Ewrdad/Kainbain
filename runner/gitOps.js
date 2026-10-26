@@ -13,14 +13,25 @@ import { runGit } from "./project.js";
  * @param {string} opts.workdir - Task worktree.
  * @param {string} opts.branch - Task branch.
  * @param {string} opts.message - Commit message.
+ * @param {string} [opts.author] - Per-Runner commit identity (WP-4.1 push attribution), e.g. `kainbain-runner/host-1`. Recorded with `git -c` overrides so repo config is never touched.
  * @returns {Promise<Object>} `{ sha, pushed, skipped }`.
  ***/
-export async function commitAndPush({ workdir, branch, message }) {
+export async function commitAndPush({ workdir, branch, message, author = "" }) {
 	await runGit(workdir, ["add", "-A"]);
 	const status = await runGit(workdir, ["status", "--porcelain"]);
 	let skipped = false;
 	if (!status.stdout.trim()) {
 		skipped = true;
+	} else if (typeof author === "string" && author.trim()) {
+		await runGit(workdir, [
+			"-c",
+			`user.name=${author.trim()}`,
+			"-c",
+			"user.email=kainbain-runner@local",
+			"commit",
+			"-m",
+			message,
+		]);
 	} else {
 		await runGit(workdir, ["commit", "-m", message]);
 	}

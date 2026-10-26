@@ -1,6 +1,12 @@
 import { v4 as uuidv4 } from "uuid";
+import { config } from "../config.js";
+import { loadStateFile } from "./loadStateFile.js";
+import { resolveStatePath } from "./resolveStatePath.js";
+import { saveStateFile } from "./saveStateFile.js";
 
 const MAX_STEER_TEXT = 4000;
+const STEER_STATE_VERSION = 1;
+const MAX_RECEIPTS_KEPT = 1000;
 
 /***
  * MARK: SteerStore
@@ -15,10 +21,80 @@ const MAX_STEER_TEXT = 4000;
  *   queue; Phase 4 persists it).
  * @example const steers = new SteerStore(); steers.queue({ taskId: 't', executionId: 'e', text: 'wait' })
  ***/
+/***
+ * MARK: resolveSteerStatePath
+ * @description Resolves the durable steer-queue file: explicit wins, then
+ *   the schema path (env `KAINBAIN_STEER_STATE_FILE`), then the
+ *   conventional `~/.kainbain/engine/steers.json`. Pending steers survive
+ *   a restart so an operator nudge is never lost to a backend bounce;
+ *   receipts are capped. Empty disables persistence.
+ * @example resolveSteerStatePath('/tmp/s.json') => '/tmp/s.json'
+ * @param {string} [explicit] - Explicit path (tests).
+ * @returns {string|null} Resolved path, or null when disabled.
+ ***/
+export function resolveSteerStatePath(explicit) {
+	if (typeof explicit === "string") return explicit || null;
+	const configured = config?.steerStateFile;
+	if (typeof configured === "string" && !configured.trim()) return null;
+	return resolveStatePath(null, configured, "steers.json");
+}
+
+/***
+ * MARK: SteerStore
+ * @description Backend-held pending-steer queue per live execution (D5).
+ *   See the module block above for the pull/ack lifecycle.
+ * @example const steers = new SteerStore()
+ * @example steers.queue({ taskId: 't', executionId: 'e', text: 'wait' })
+ ***/
 export class SteerStore {
-	constructor() {
+	constructor({ stateFile = null } = {}) {
 		this.pending = new Map();
 		this.receipts = new Map();
+		this.stateFile = resolveSteerStatePath(stateFile);
+		this._loadState();
+	}
+
+	_loadState() {
+		if (!this.stateFile) return;
+		const raw = loadStateFile(this.stateFile, (v) => v);
+		if (!raw || typeof raw !== "object") return;
+		const pending = raw.pending;
+		if (pending && typeof pending === "object") {
+			for (const [executionId, rows] of Object.entries(pending)) {
+				if (typeof executionId !== "string" || !Array.isArray(rows)) continue;
+				const clean = rows.filter(
+					(row) =>
+						row &&
+						typeof row.steerId === "string" &&
+						typeof row.taskId === "string" &&
+						typeof row.text === "string",
+				);
+				if (clean.length) this.pending.set(executionId, clean);
+			}
+		}
+		const receipts = raw.receipts;
+		if (receipts && typeof receipts === "object") {
+			for (const [executionId, rows] of Object.entries(receipts)) {
+				if (typeof executionId !== "string" || !Array.isArray(rows)) continue;
+				const clean = rows
+					.filter((row) => row && typeof row.steerId === "string")
+					.slice(-MAX_RECEIPTS_KEPT);
+				if (clean.length) this.receipts.set(executionId, clean);
+			}
+		}
+	}
+
+	_persist() {
+		if (!this.stateFile) return;
+		const receipts = {};
+		for (const [executionId, rows] of this.receipts) {
+			receipts[executionId] = rows.slice(-MAX_RECEIPTS_KEPT);
+		}
+		saveStateFile(this.stateFile, {
+			version: STEER_STATE_VERSION,
+			pending: Object.fromEntries(this.pending),
+			receipts,
+		});
 	}
 
 	static _argError(message) {
@@ -58,6 +134,7 @@ export class SteerStore {
 		const list = this.pending.get(executionId) || [];
 		list.push({ steerId, taskId, executionId, text, queuedAt: new Date().toISOString() });
 		this.pending.set(executionId, list);
+		this._persist();
 		return { steerId };
 	}
 
@@ -104,7 +181,8 @@ export class SteerStore {
 		};
 		const receipts = this.receipts.get(executionId) || [];
 		receipts.push(receipt);
-		this.receipts.set(executionId, receipts);
+		this.receipts.set(executionId, receipts.slice(-MAX_RECEIPTS_KEPT));
+		this._persist();
 		return receipt;
 	}
 

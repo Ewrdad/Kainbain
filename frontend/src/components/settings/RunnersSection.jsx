@@ -180,6 +180,15 @@ export function RunnersSection() {
                   Running task {String(assignments[runner.runnerId].taskId).slice(0, 8)}
                 </span>
               )}
+              {runner.facts?.versions?.runner && (
+                <span
+                  className="text-[10px] font-mono text-text-muted"
+                  data-testid={`runner-version-${runner.runnerId}`}
+                  title={`Protocol ${runner.facts?.versions?.protocol || '?'}`}
+                >
+                  v{runner.facts.versions.runner}
+                </span>
+              )}
               {runner.status === 'pending' ? (
                 <>
                   <button

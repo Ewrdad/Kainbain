@@ -1282,6 +1282,39 @@ export const CONFIG_SCHEMA = [
 		doc: "Master switch for the global engine circuit breaker (Tier 5 containment). 0 disables every auto-trip sensor and the manual trip gate still works.",
 	},
 	{
+		key: "claimStateFile",
+		env: "KAINBAIN_CLAIM_STATE_FILE",
+		aliases: [],
+		type: "path",
+		default: () =>
+			path.join(os.homedir(), ".kainbain", "engine", "claims.json"),
+		defaultDoc: "~/.kainbain/engine/claims.json",
+		group: "tasks",
+		doc: "Durable JSON file holding the Runner lease fencing state (per-task epochs + completed execution IDs for exactly-once across restarts). Live holds are deliberately memory-only: a restart drops them so in-flight work re-queues as interrupted. Empty disables persistence.",
+	},
+	{
+		key: "runnerStateFile",
+		env: "KAINBAIN_RUNNER_STATE_FILE",
+		aliases: [],
+		type: "path",
+		default: () =>
+			path.join(os.homedir(), ".kainbain", "engine", "runners.json"),
+		defaultDoc: "~/.kainbain/engine/runners.json",
+		group: "tasks",
+		doc: "Durable JSON file holding Runner registrations (approvals + credentials survive restarts, 0600). Empty disables persistence.",
+	},
+	{
+		key: "steerStateFile",
+		env: "KAINBAIN_STEER_STATE_FILE",
+		aliases: [],
+		type: "path",
+		default: () =>
+			path.join(os.homedir(), ".kainbain", "engine", "steers.json"),
+		defaultDoc: "~/.kainbain/engine/steers.json",
+		group: "tasks",
+		doc: "Durable JSON file holding the D5 pending-steer queue + ack receipts across restarts. Empty disables persistence.",
+	},
+	{
 		key: "circuitStateFile",
 		env: "KAINBAIN_CIRCUIT_STATE_FILE",
 		aliases: [],

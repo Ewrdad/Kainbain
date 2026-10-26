@@ -1,5 +1,11 @@
 import { expect, test, describe, beforeEach } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { RunnerRegistry, RUNNER_PROTOCOL } from "./runnerRegistry.js";
+
+const tmpRunnerState = () =>
+	path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kb-runner-test-")), "runners.json");
 
 /***
  * MARK: RunnerRegistry Unit Tests
@@ -22,6 +28,7 @@ function registry() {
 	return new RunnerRegistry({
 		joinToken: "join-secret",
 		newCredential: () => `cred-${(n += 1)}`,
+		stateFile: tmpRunnerState(),
 	});
 }
 
@@ -39,7 +46,7 @@ describe("RunnerRegistry", () => {
 	});
 
 	test("refuses registration when no join token is configured", () => {
-		const open = new RunnerRegistry();
+		const open = new RunnerRegistry({ stateFile: tmpRunnerState() });
 		try {
 			open.register({ runnerId: "r1", joinToken: "x", facts: FACTS });
 			expect.unreachable();
@@ -226,7 +233,41 @@ describe("RunnerRegistry", () => {
 		const seen = new Date(1_000_000).toISOString();
 		expect(reg.isFresh({ lastSeenAt: seen }, 1_000_000 + 59_000)).toBe(true);
 		expect(reg.isFresh({ lastSeenAt: seen }, 1_000_000 + 61_000)).toBe(false);
-		const custom = new RunnerRegistry({ joinToken: "x", staleAfterMs: 10_000 });
+		const custom = new RunnerRegistry({
+			joinToken: "x",
+			staleAfterMs: 10_000,
+			stateFile: tmpRunnerState(),
+		});
 		expect(custom.isFresh({ lastSeenAt: seen }, 1_000_000 + 11_000)).toBe(false);
+	});
+
+	test("persists approvals and credentials across restarts, never liveness", () => {
+		const file = tmpRunnerState();
+		const first = new RunnerRegistry({
+			joinToken: "join-secret",
+			newCredential: () => "cred-1",
+			stateFile: file,
+		});
+		first.register({ runnerId: "r1", joinToken: "join-secret", facts: FACTS });
+		const { credential } = first.approve("r1");
+		expect(credential).toBe("cred-1");
+		// Second boot from the same file: identity + approval + credential
+		// survive, liveness does not (secure default: re-heartbeat).
+		const second = new RunnerRegistry({ joinToken: "join-secret", stateFile: file });
+		const revived = second.runners.get("r1");
+		expect(revived.status).toBe("active");
+		expect(revived.credential).toBe("cred-1");
+		expect(revived.lastSeenAt).toBeNull();
+		expect(second.authenticate("cred-1").runnerId).toBe("r1");
+	});
+
+	test("rotate issues a fresh credential and kills the old one", () => {
+		const { runners, credential } = approved();
+		const rotated = runners.rotate("r1");
+		expect(rotated.credential).not.toBe(credential);
+		expect(rotated.credentialIssuedAt).toEqual(expect.any(String));
+		expect(() => runners.authenticate(credential)).toThrowError(/Unknown or missing/);
+		expect(runners.authenticate(rotated.credential).runnerId).toBe("r1");
+		expect(() => runners.rotate("missing")).toThrowError(/Unknown Runner/);
 	});
 });

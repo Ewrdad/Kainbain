@@ -241,6 +241,7 @@ async function executeAssignment({ config, client, logger, harness, state, proje
 				workdir,
 				branch,
 				message: `kb/${taskId} ${stageId}: Runner ${config.runnerId} stage output`,
+				author: `kainbain-runner/${config.runnerId}`,
 			});
 			logger.log(`Committed ${sha} (pushed: ${pushed}${pushSkipped ? `, ${pushSkipped}` : ""}).`);
 			if (output) {

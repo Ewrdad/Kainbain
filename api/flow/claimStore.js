@@ -1,4 +1,11 @@
 import { v4 as uuidv4 } from "uuid";
+import { config } from "../config.js";
+import { loadStateFile } from "./loadStateFile.js";
+import { resolveStatePath } from "./resolveStatePath.js";
+import { saveStateFile } from "./saveStateFile.js";
+
+const CLAIM_STATE_VERSION = 1;
+const MAX_COMPLETED_KEPT = 10000;
 
 /***
  * MARK: ClaimStore
@@ -20,13 +27,74 @@ import { v4 as uuidv4 } from "uuid";
  * @param {number} [opts.ttlMs=300000] - Lease time-to-live per claim.
  * @param {Function} [opts.now] - Clock injection (tests control expiry).
  ***/
+/***
+ * MARK: resolveClaimStatePath
+ * @description Resolves the durable lease-state file: explicit wins, then
+ *   the schema path (env `KAINBAIN_CLAIM_STATE_FILE`), then the
+ *   conventional `~/.kainbain/engine/claims.json`. Persists fencing
+ *   epochs + completed execution IDs only — live holds are deliberately
+ *   NOT restored (a restart re-queues in-flight work as interrupted per
+ *   the Phase 4 gate; restoring holds would let a dead Runner's lease
+ *   block re-dispatch until TTL).
+ * @example resolveClaimStatePath('/tmp/c.json') => '/tmp/c.json'
+ * @param {string} [explicit] - Explicit path (tests).
+ * @returns {string} Resolved path.
+ ***/
+export function resolveClaimStatePath(explicit) {
+	if (typeof explicit === "string") return explicit || null;
+	const configured = config?.claimStateFile;
+	if (typeof configured === "string" && !configured.trim()) return null;
+	return resolveStatePath(null, configured, "claims.json");
+}
+
+/***
+ * MARK: ClaimStore
+ * @description Backend-side mutual-exclusion ledger (D1); epochs and
+ *   completed execution IDs persist across restarts (WP-4.1), live
+ *   holds stay memory-only. See the module block above for the full
+ *   fencing contract.
+ * @example const claims = new ClaimStore()
+ * @example claims.claim('t1', 'runner-a') => { executionId: '…', epoch: 1 }
+ ***/
 export class ClaimStore {
-	constructor({ ttlMs = 300000, now = () => Date.now() } = {}) {
+	constructor({ ttlMs = 300000, now = () => Date.now(), stateFile = null } = {}) {
 		this.ttlMs = ttlMs;
 		this.now = now;
 		this.holds = new Map();
 		this.epochs = new Map();
 		this.completed = new Set();
+		this.stateFile = resolveClaimStatePath(stateFile);
+		this._loadState();
+		// Holds are memory-only by design (see resolveClaimStatePath): a
+		// restart drops them so in-flight work re-queues as interrupted.
+	}
+
+	_loadState() {
+		if (!this.stateFile) return;
+		const raw = loadStateFile(this.stateFile, (v) => v);
+		const epochs = raw && typeof raw === "object" ? raw.epochs : null;
+		if (epochs && typeof epochs === "object") {
+			for (const [taskId, epoch] of Object.entries(epochs)) {
+				if (typeof taskId === "string" && Number.isInteger(epoch) && epoch > 0) {
+					this.epochs.set(taskId, epoch);
+				}
+			}
+		}
+		const completed = raw && typeof raw === "object" ? raw.completed : null;
+		if (Array.isArray(completed)) {
+			for (const id of completed.slice(-MAX_COMPLETED_KEPT)) {
+				if (typeof id === "string" && id) this.completed.add(id);
+			}
+		}
+	}
+
+	_persist() {
+		if (!this.stateFile) return;
+		saveStateFile(this.stateFile, {
+			version: CLAIM_STATE_VERSION,
+			epochs: Object.fromEntries(this.epochs),
+			completed: [...this.completed].slice(-MAX_COMPLETED_KEPT),
+		});
 	}
 
 	_holding(taskId) {
@@ -87,6 +155,7 @@ export class ClaimStore {
 			projectId: typeof projectId === "string" ? projectId : null,
 			expiresAt: this.now() + this.ttlMs,
 		});
+		this._persist();
 		return { executionId, epoch };
 	}
 
@@ -130,6 +199,7 @@ export class ClaimStore {
 		}
 		this.holds.delete(taskId);
 		this.completed.add(executionId);
+		this._persist();
 		return { accepted: true, duplicate: false };
 	}
 

@@ -1,5 +1,12 @@
 import { expect, test, describe, beforeEach, vi } from "vitest";
 import { ClaimStore } from "./claimStore.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+const tmpClaimState = () =>
+	path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kb-claim-test-")), "claims.json");
+
+
 
 /***
  * MARK: ClaimStore Unit Tests
@@ -13,7 +20,7 @@ describe("ClaimStore", () => {
 	let claims;
 	beforeEach(() => {
 		now = 1_000_000;
-		claims = new ClaimStore({ ttlMs: 60_000, now: () => now });
+		claims = new ClaimStore({ ttlMs: 60_000, now: () => now, stateFile: tmpClaimState() });
 	});
 
 	test("issues an epoch-1 claim with a stable execution ID", () => {
@@ -24,6 +31,31 @@ describe("ClaimStore", () => {
 			runnerId: "runner-a",
 			executionId,
 			epoch: 1,
+		});
+	});
+
+	test("restart drops holds but keeps epochs and completions (Phase 4 gate)", () => {
+		const file = tmpClaimState();
+		const boot1 = new ClaimStore({ ttlMs: 60_000, now: () => now, stateFile: file });
+		const first = boot1.claim("t1", "runner-a");
+		const done = boot1.claim("t2", "runner-b");
+		boot1.complete("t2", done.executionId, done.epoch);
+		// Simulated restart: new store, same file. No holds survive (the
+		// in-flight task re-queues as interrupted), but fencing does.
+		const boot2 = new ClaimStore({ ttlMs: 60_000, now: () => now, stateFile: file });
+		expect(boot2.describe("t1")).toBeNull();
+		expect(boot2.describe("t2")).toBeNull();
+		// The zombie's late completion is still stale, not a reopening.
+		expect(() => boot2.complete("t1", first.executionId, first.epoch)).toThrowError(
+			/Stale execution/,
+		);
+		// Re-claim fences HIGHER than any pre-restart epoch (R01).
+		const second = boot2.claim("t1", "runner-c");
+		expect(second.epoch).toBeGreaterThan(first.epoch);
+		// Pre-restart completions stay idempotent no-ops, never re-applied.
+		expect(boot2.complete("t2", done.executionId, done.epoch)).toMatchObject({
+			accepted: true,
+			duplicate: true,
 		});
 	});
 

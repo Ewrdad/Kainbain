@@ -145,6 +145,9 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		// Engine circuit breaker (Tier 5 containment)
 		circuitBreakerEnabled: true,
 		circuitStateFile: path.join(os.homedir(), ".kainbain", "engine", "circuit.json"),
+		claimStateFile: path.join(os.homedir(), ".kainbain", "engine", "claims.json"),
+		runnerStateFile: path.join(os.homedir(), ".kainbain", "engine", "runners.json"),
+		steerStateFile: path.join(os.homedir(), ".kainbain", "engine", "steers.json"),
 		circuitInfraSensorEnabled: true,
 		circuitInfraFailureThreshold: 3,
 		circuitInfraFailureWindowMs: 600000,

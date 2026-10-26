@@ -34,6 +34,30 @@ export const tempIsolatedRegistryFile = path.join(
 );
 process.env.KAINBAIN_PROJECTS_REGISTRY_FILE = tempIsolatedRegistryFile;
 
+// WP-4.1 durable fleet state: per-file temp files, same backstop — no suite
+// may read or write the live `~/.kainbain/engine/*.json` (leases, Runner
+// credentials, pending steers). Every isolated-roots importer mints its own
+// trio; importers delete them in `afterAll` via tempStateFiles.
+function tempStateFile(name) {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-test-state-"));
+	return path.join(dir, name);
+}
+/***
+ * MARK: tempStateFiles
+ * @description Per-file temp durable-state paths for WP-4.1 fleet stores
+ *   (leases, Runner credentials, pending steers). Importers delete them
+ *   in `afterAll`; no suite touches the live `~/.kainbain/engine/`.
+ * @example import { tempStateFiles } from "./isolatedTestRoots.js"
+ ***/
+export const tempStateFiles = {
+	claims: tempStateFile("claims.json"),
+	runners: tempStateFile("runners.json"),
+	steers: tempStateFile("steers.json"),
+};
+process.env.KAINBAIN_CLAIM_STATE_FILE = tempStateFiles.claims;
+process.env.KAINBAIN_RUNNER_STATE_FILE = tempStateFiles.runners;
+process.env.KAINBAIN_STEER_STATE_FILE = tempStateFiles.steers;
+
 // Hermetic vibe transport: the vibe harness auto-engages its ACP session when
 // a `vibe-acp` sibling of the resolved vibe binary EXISTS on the host running
 // the suite. Route-level tests (`/compute/models`, `/harnesses`) enumerate

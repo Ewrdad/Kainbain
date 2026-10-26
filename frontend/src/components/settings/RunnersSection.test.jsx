@@ -115,6 +115,18 @@ describe('RunnersSection', () => {
     expect(screen.queryByTestId('runner-assignment-r2')).toBeNull();
   });
 
+  it('shows the Runner version for the fleet version matrix', async () => {
+    getRunners.mockResolvedValue([
+      { runnerId: 'r1', status: 'active', facts: { versions: { runner: '0.3.0', protocol: 'v1' } }, lastSeenAt: null },
+      { runnerId: 'r2', status: 'active', facts: {}, lastSeenAt: null },
+    ]);
+    render(<RunnersSection />);
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-version-r1').textContent).toContain('0.3.0');
+    });
+    expect(screen.queryByTestId('runner-version-r2')).toBeNull();
+  });
+
   it('hides assignments but keeps the list when the monitor is down', async () => {
     getRunners.mockResolvedValue([
       { runnerId: 'r1', status: 'active', facts: {}, lastSeenAt: null },

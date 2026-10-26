@@ -163,7 +163,7 @@ const runnerRegistry = new RunnerRegistry({
 	staleAfterMs: config.runnerStaleAfterMs,
 });
 const claimStore = new ClaimStore({ ttlMs: config.claimTtlMs });
-const steerStore = new SteerStore();
+const steerStore = new SteerStore({});
 const executionLedger = new ExecutionLedger();
 // Leases live outside the task store, but the scheduler and the embedded
 // execute path must see them to avoid double-dispatching a Runner-held

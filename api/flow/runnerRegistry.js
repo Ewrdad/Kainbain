@@ -1,5 +1,11 @@
 import { v4 as uuidv4 } from "uuid";
+import { config } from "../config.js";
+import { loadStateFile } from "./loadStateFile.js";
+import { resolveStatePath } from "./resolveStatePath.js";
+import { saveStateFile } from "./saveStateFile.js";
 import { normalizeCapabilities } from "./dispatch/normalizeCapabilities.js";
+
+const RUNNER_STATE_VERSION = 1;
 
 /***
  * MARK: RunnerRegistry
@@ -11,10 +17,10 @@ import { normalizeCapabilities } from "./dispatch/normalizeCapabilities.js";
  *   versions; revocation invalidates the credential immediately and leases
  *   expire on their own TTL, so a revoked Runner's work re-queues instead
  *   of completing. Protocol `v1` only: outside-window Runners are rejected
- *   with an explicit signal, never best-effort dispatched (D7). In-memory
- *   for Phase 2 (the backend is still the single writer); durability is
- *   Phase 4 per the risk-retirement matrix — until then a restart drops
- *   registrations back to pending and Runners re-register.
+ *   with an explicit signal, never best-effort dispatched (D7). Identity
+ *   + approvals + credentials persist to disk (WP-4.1, 0600); liveness
+ *   is memory-only — after a restart every Runner re-establishes
+ *   freshness with its first heartbeat, which is the secure default.
  * @example const runners = new RunnerRegistry({ joinToken: 'secret' })
  * @param {Object} [opts] - Options.
  * @param {string} [opts.joinToken=""] - Operator join secret Runners present
@@ -25,21 +31,85 @@ import { normalizeCapabilities } from "./dispatch/normalizeCapabilities.js";
 
 export const RUNNER_PROTOCOL = "v1";
 const MIN_RUNNER_PROTOCOL = "v1";
+/***
+ * MARK: resolveRunnerStatePath
+ * @description Resolves the durable registry file: explicit wins, then the
+ *   schema path (env `KAINBAIN_RUNNER_STATE_FILE`), then the conventional
+ *   `~/.kainbain/engine/runners.json`. Persists identity + approvals +
+ *   credentials (0600) so a restart never forces fleet re-approval;
+ *   liveness (`lastSeenAt`) is deliberately NOT restored — every Runner
+ *   re-establishes freshness with its first post-boot heartbeat, which is
+ *   the secure default after an outage. Empty disables persistence.
+ * @example resolveRunnerStatePath('/tmp/r.json') => '/tmp/r.json'
+ * @param {string} [explicit] - Explicit path (tests).
+ * @returns {string|null} Resolved path, or null when disabled.
+ ***/
+export function resolveRunnerStatePath(explicit) {
+	if (typeof explicit === "string") return explicit || null;
+	const configured = config?.runnerStateFile;
+	if (typeof configured === "string" && !configured.trim()) return null;
+	return resolveStatePath(null, configured, "runners.json");
+}
 
 /***
  * MARK: RunnerRegistry
- * @description In-memory Runner identity ledger for D4/R04. See the module
- *   block above for the lifecycle.
- * @example const r = new RunnerRegistry({ joinToken: 's3cret' }); r.register({ runnerId: 'h1', joinToken: 's3cret', facts: {} }) => { status: 'pending', ... }
+ * @description Runner identity ledger for D4/R04: join/approve/deny/
+ *   revoke/rotate with per-Runner credentials. Identity + approvals +
+ *   credentials persist to disk (WP-4.1); liveness is memory-only.
+ * @example const r = new RunnerRegistry({ joinToken: 's3cret' })
+ * @example r.register({ runnerId: 'h1', joinToken: 's3cret', facts: {} }) => { status: 'pending', ... }
  ***/
 export class RunnerRegistry {
-	constructor({ joinToken = "", newCredential = () => uuidv4(), staleAfterMs = 60000 } = {}) {
+	constructor(
+		{ joinToken = "", newCredential = () => uuidv4(), staleAfterMs = 60000, stateFile = null } = {},
+	) {
 		this.joinToken = joinToken;
 		this.newCredential = newCredential;
 		this.staleAfterMs =
 			typeof staleAfterMs === "number" && staleAfterMs > 0 ? staleAfterMs : 60000;
 		this.runners = new Map();
 		this.credentials = new Map();
+		this.stateFile = resolveRunnerStatePath(stateFile);
+		this._loadState();
+	}
+
+	_loadState() {
+		if (!this.stateFile) return;
+		const raw = loadStateFile(this.stateFile, (v) => v);
+		const records = raw && typeof raw === "object" ? raw.runners : null;
+		if (!Array.isArray(records)) return;
+		for (const rec of records) {
+			if (!rec || typeof rec.runnerId !== "string") continue;
+			if (typeof rec.status !== "string") continue;
+			const record = {
+				runnerId: rec.runnerId,
+				status: rec.status,
+				facts: rec.facts && typeof rec.facts === "object" ? rec.facts : {},
+				capabilities:
+					rec.capabilities && typeof rec.capabilities === "object" ? rec.capabilities : null,
+				credential: typeof rec.credential === "string" ? rec.credential : null,
+				credentialIssuedAt:
+					typeof rec.credentialIssuedAt === "string" ? rec.credentialIssuedAt : null,
+				lastSeenAt: null,
+			};
+			this.runners.set(record.runnerId, record);
+			if (record.credential) this.credentials.set(record.credential, record.runnerId);
+		}
+	}
+
+	_persist() {
+		if (!this.stateFile) return;
+		saveStateFile(this.stateFile, {
+			version: RUNNER_STATE_VERSION,
+			runners: [...this.runners.values()].map((record) => ({
+				runnerId: record.runnerId,
+				status: record.status,
+				facts: record.facts || {},
+				capabilities: record.capabilities || null,
+				credential: record.credential || null,
+				credentialIssuedAt: record.credentialIssuedAt || null,
+			})),
+		});
 	}
 
 	static _fail(statusCode, code, message) {
@@ -66,6 +136,7 @@ export class RunnerRegistry {
 			facts: record.facts,
 			capabilities: record.capabilities || null,
 			lastSeenAt: record.lastSeenAt,
+			credentialIssuedAt: record.credentialIssuedAt || null,
 		};
 	}
 
@@ -119,6 +190,7 @@ export class RunnerRegistry {
 		if (existing) {
 			existing.facts = facts;
 			existing.capabilities = capabilities;
+			this._persist();
 			return { ...this._public(existing), credential: null };
 		}
 		const record = {
@@ -127,9 +199,11 @@ export class RunnerRegistry {
 			facts,
 			capabilities,
 			credential: null,
+			credentialIssuedAt: null,
 			lastSeenAt: null,
 		};
 		this.runners.set(runnerId, record);
+		this._persist();
 		return { ...this._public(record), credential: null };
 	}
 
@@ -145,16 +219,47 @@ export class RunnerRegistry {
 		return record;
 	}
 
+	_issueCredential(record) {
+		if (record.credential) this.credentials.delete(record.credential);
+		record.credential = this.newCredential();
+		record.credentialIssuedAt = new Date().toISOString();
+		record.status = "active";
+		this.credentials.set(record.credential, record.runnerId);
+		this._persist();
+		return { ...this._public(record), credential: record.credential };
+	}
+
 	approve(runnerId) {
 		const record = this._getOrThrow(runnerId);
 		if (record.status === "active" && record.credential) {
 			return { ...this._public(record), credential: null };
 		}
-		if (record.credential) this.credentials.delete(record.credential);
-		record.credential = this.newCredential();
-		record.status = "active";
-		this.credentials.set(record.credential, record.runnerId);
-		return { ...this._public(record), credential: record.credential };
+		return this._issueCredential(record);
+	}
+
+	/***
+	 * MARK: rotate
+	 * @description Fleet credential rotation rehearsal (WP-4.1): issues a
+	 *   fresh credential for an ACTIVE Runner, invalidating the old one
+	 *   immediately. Zero stage failures when rotated between assignments —
+	 *   the in-flight lease keeps working (it is epoch-fenced, not
+	 *   credential-fenced), but the next heartbeat with the old credential
+	 *   401s, so the operator rotates idle Runners or restarts the daemon
+	 *   with the new credential right after.
+	 * @example runners.rotate('h1') => { status: 'active', credential: '…' }
+	 * @param {string} runnerId - Runner id.
+	 * @returns {Object} Public record plus the one-time new credential.
+	 ***/
+	rotate(runnerId) {
+		const record = this._getOrThrow(runnerId);
+		if (record.status !== "active" || !record.credential) {
+			throw RunnerRegistry._fail(
+				409,
+				"ROTATE_INVALID_STATE",
+				`Cannot rotate Runner ${runnerId} in status ${record.status}; only active Runners with a credential rotate.`,
+			);
+		}
+		return this._issueCredential(record);
 	}
 
 	deny(runnerId) {
@@ -167,6 +272,7 @@ export class RunnerRegistry {
 			);
 		}
 		record.status = "denied";
+		this._persist();
 		return this._public(record);
 	}
 
@@ -175,6 +281,7 @@ export class RunnerRegistry {
 		if (record.credential) this.credentials.delete(record.credential);
 		record.credential = null;
 		record.status = "revoked";
+		this._persist();
 		return this._public(record);
 	}
 

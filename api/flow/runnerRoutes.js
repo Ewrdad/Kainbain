@@ -102,6 +102,14 @@ export async function registerRunnerRoutes(app, { deps }) {
 		}
 	});
 
+	app.post("/runners/:id/rotate", async (request, reply) => {
+		try {
+			return runnerRegistry.rotate(request.params.id);
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
 	app.post("/runners/:id/deny", async (request, reply) => {
 		try {
 			return runnerRegistry.deny(request.params.id);

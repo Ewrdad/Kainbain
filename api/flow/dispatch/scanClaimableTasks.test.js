@@ -1,6 +1,13 @@
 import { expect, test, describe } from "vitest";
 import { ClaimStore } from "../claimStore.js";
 import { scanClaimableTasks } from "./scanClaimableTasks.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+const tmpClaimState = () =>
+	path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kb-claim-test-")), "claims.json");
+
+
 
 /***
  * MARK: scanClaimableTasks Tests
@@ -13,7 +20,7 @@ describe("scanClaimableTasks", () => {
 	const agent = { id: "s1", name: "S1", type: "agent" };
 	const human = { id: "h1", name: "H1", type: "human" };
 
-	function deps(tasksByProject, claimStore = new ClaimStore()) {
+	function deps(tasksByProject, claimStore = new ClaimStore({ stateFile: tmpClaimState() })) {
 		const projects = Object.keys(tasksByProject).map((id) =>
 			project(id, [{ ...agent }]),
 		);
@@ -45,7 +52,7 @@ describe("scanClaimableTasks", () => {
 	});
 
 	test("skips claimed, blocked, non-model, and unstaged tasks", () => {
-		const claimStore = new ClaimStore();
+		const claimStore = new ClaimStore({ stateFile: tmpClaimState() });
 		claimStore.claim("held", "runner-a");
 		const out = scanClaimableTasks(
 			{
@@ -84,7 +91,7 @@ describe("scanClaimableTasks", () => {
 				listTasks: (pid) => (pid === "p1" ? [old, newer, far] : [t("other")]),
 				isTaskBlocked: () => ({ blocked: false }),
 			},
-			claimStore: new ClaimStore(),
+			claimStore: new ClaimStore({ stateFile: tmpClaimState() }),
 		};
 		expect(scanClaimableTasks(d).map((c) => c.taskId)).toEqual(["far", "old", "new", "other"]);
 		expect(
@@ -116,7 +123,7 @@ describe("scanClaimableTasks", () => {
 				],
 				isTaskBlocked: () => ({ blocked: false }),
 			},
-			claimStore: new ClaimStore(),
+			claimStore: new ClaimStore({ stateFile: tmpClaimState() }),
 		};
 		// Both wait past the 5s cap: oldest-first regardless of stage.
 		expect(

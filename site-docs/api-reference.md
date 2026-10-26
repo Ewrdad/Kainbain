@@ -136,6 +136,7 @@ approval, then heartbeat and claim with the issued per-Runner credential.
 | POST | `/runners/:id/deny` | Deny a pending join request. |
 | POST | `/runners/:id/revoke` | Revoke; the credential stops working immediately. |
 | GET | `/runners/monitor` | Phase 2 monitor counters (stale rejections, divergences, unverifiable SHAs) plus `liveAssignments` per live lease for the multi-Runner UI. |
+| POST | `/runners/:id/rotate` | WP-4.1 rotation: fresh credential for an active Runner, old one dies immediately; pending Runners 409. |
 | POST | `/runners/dispatch` | Runner-only (WP-3.1/3.2/3.3): backend-routed dispatch poll; scan has a wait-based starvation guard; alias stages resolve through the shared backend-central smooth-WRR rotation (D3, attribution in `requirements.alias`); D8 concurrency caps (429 fleet-wide, `PROJECT_BUSY` per project); 200 `assigned` + lease, or 200 unassigned (`NO_CLAIMABLE_TASKS` / `NO_CLAIMABLE_MATCH` + miss histogram); 409 `STALE_RUNNER` when the Runner is stale. |
 | POST | `/tasks/:id/progress` | Runner-only: record a stage lifecycle event keyed by execution ID (idempotent). |
 | POST | `/tasks/:id/logs` | Runner-only: ingest one sequenced log frame (gaps marked, never hidden). |

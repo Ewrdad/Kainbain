@@ -1,5 +1,11 @@
 import { expect, test, describe, beforeEach } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { SteerStore } from "./steerStore.js";
+
+const tmpSteerState = () =>
+	path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kb-steer-test-")), "steers.json");
 
 /***
  * MARK: SteerStore Unit Tests
@@ -11,7 +17,7 @@ import { SteerStore } from "./steerStore.js";
 describe("SteerStore", () => {
 	let steers;
 	beforeEach(() => {
-		steers = new SteerStore();
+		steers = new SteerStore({ stateFile: tmpSteerState() });
 	});
 
 	test("queues, pulls read-only, and acks exactly once", () => {
@@ -27,6 +33,20 @@ describe("SteerStore", () => {
 		// Second ack of the same steer is unknown, never a duplicate receipt.
 		expect(() => steers.ack("e1", steerId, { ok: true })).toThrowError(/Unknown steer/);
 		expect(steers.receiptsFor("e1")).toHaveLength(1);
+	});
+
+	test("pending steers survive a restart; acks do not double-deliver", () => {
+		const file = tmpSteerState();
+		const boot1 = new SteerStore({ stateFile: file });
+		const { steerId } = boot1.queue({ taskId: "t1", executionId: "e1", text: "hold" });
+		const boot2 = new SteerStore({ stateFile: file });
+		expect(boot2.pendingFor("e1")).toHaveLength(1);
+		const receipt = boot2.ack("e1", steerId, { ok: true });
+		expect(receipt).toMatchObject({ steerId, ok: true });
+		expect(boot2.pendingFor("e1")).toHaveLength(0);
+		const boot3 = new SteerStore({ stateFile: file });
+		expect(boot3.pendingFor("e1")).toHaveLength(0);
+		expect(boot3.receiptsFor("e1")).toHaveLength(1);
 	});
 
 	test("rejects blank, over-long, and unkeyed steers loudly", () => {

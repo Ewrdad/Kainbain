@@ -5,6 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import { ClaimStore } from "./claimStore.js";
 import { ExecutionLedger } from "./executionLedger.js";
+const tmpClaimState = () =>
+	path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kb-claim-test-")), "claims.json");
+
+
 
 /***
  * MARK: ExecutionLedger Unit Tests
@@ -15,7 +19,7 @@ import { ExecutionLedger } from "./executionLedger.js";
  ***/
 
 function stores() {
-	const claimStore = new ClaimStore();
+	const claimStore = new ClaimStore({ stateFile: tmpClaimState() });
 	const task = {
 		id: "t1",
 		status: "in_stage",

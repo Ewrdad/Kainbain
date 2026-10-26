@@ -652,6 +652,45 @@ describe("Runner Routes Integration", () => {
 		});
 	});
 
+	it("rotates a Runner credential with zero stage failures on idle", async () => {
+		const credential = await onboard("rotate-1");
+		await heartbeatAs(credential, "rotate-1");
+		const rotated = await app.inject({
+			method: "POST",
+			url: "/runners/rotate-1/rotate",
+		});
+		expect(rotated.statusCode).toBe(200);
+		const next = JSON.parse(rotated.payload);
+		expect(typeof next.credential).toBe("string");
+		expect(next.credential).not.toBe(credential);
+		// Old credential 401s everywhere immediately.
+		const stale = await app.inject({
+			method: "POST",
+			url: "/runners/heartbeat",
+			headers: { "x-runner-credential": credential },
+			payload: { runnerId: "rotate-1", facts: FACTS },
+		});
+		expect(stale.statusCode).toBe(401);
+		// New credential works first try — no re-approval round trip.
+		const fresh = await app.inject({
+			method: "POST",
+			url: "/runners/heartbeat",
+			headers: { "x-runner-credential": next.credential },
+			payload: { runnerId: "rotate-1", facts: FACTS },
+		});
+		expect(fresh.statusCode).toBe(200);
+		// Pending Runners have nothing to rotate (registered, never approved).
+		const reg = await app.inject({
+			method: "POST",
+			url: "/runners/register",
+			payload: { runnerId: "rotate-pending", joinToken: "test-join-token", facts: FACTS },
+		});
+		expect(reg.statusCode).toBe(202);
+		const bad = await app.inject({ method: "POST", url: "/runners/rotate-pending/rotate" });
+		expect(bad.statusCode).toBe(409);
+		expect(JSON.parse(bad.payload).code).toBe("ROTATE_INVALID_STATE");
+	});
+
 	it("steer on an unheld task takes the embedded path, never the queue", async () => {
 		const { project, taskId } = await mockProject("Steer Idle");
 		const res = await app.inject({

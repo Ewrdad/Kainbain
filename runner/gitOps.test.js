@@ -65,4 +65,19 @@ describe("commitAndPush", () => {
 		assert.equal(out.skipped, true);
 		assert.match(out.sha, /^[0-9a-f]{40}$/);
 	});
+
+	it("records per-Runner commit identity without touching repo config", async () => {
+		ctx = worktreeRepo(false);
+		fs.writeFileSync(path.join(ctx.dir, "g.txt"), "y");
+		await commitAndPush({
+			workdir: ctx.dir,
+			branch: "kb/t1",
+			message: "stage",
+			author: "kainbain-runner/host-9",
+		});
+		const show = (args) =>
+			execFileSync("git", args, { cwd: ctx.dir, encoding: "utf8" }).trim();
+		assert.equal(show(["log", "-1", "--format=%an"]), "kainbain-runner/host-9");
+		assert.equal(show(["config", "user.name"]), "t");
+	});
 });

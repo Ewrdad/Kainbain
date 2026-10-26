@@ -289,6 +289,13 @@ export const ENDPOINTS = [
 	},
 	{
 		method: "POST",
+		path: "/runners/:id/rotate",
+		purpose:
+			"WP-4.1 fleet credential rotation rehearsal: issues a fresh credential for an ACTIVE Runner, invalidating the old one immediately (401 everywhere). Pending Runners 409 (ROTATE_INVALID_STATE). Rotate idle Runners; in-flight leases are epoch-fenced and keep working.",
+		body: null,
+	},
+	{
+		method: "POST",
 		path: "/runners/dispatch",
 		purpose:
 			"Runner-only (WP-3.1/3.2/3.3): backend-routed dispatch poll — scan claimable tasks (starvation guard past KAINBAIN_DISPATCH_MAX_WAIT_MS), resolve alias stages through the shared backend-central smooth-WRR rotation (D3; attribution stamped as requirements.alias), enforce D8 concurrency caps (429 fleet-wide, PROJECT_BUSY per project), match against this Runner's capabilities, and claim-fence the winner (200 assigned + lease, or 200 unassigned with NO_CLAIMABLE_TASKS / NO_CLAIMABLE_MATCH + miss histogram). Stale Runners get 409 STALE_RUNNER. Requires the x-runner-credential header.",
