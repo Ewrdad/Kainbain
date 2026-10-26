@@ -116,7 +116,7 @@ export function GoToAppLink({ projectId, appStatus, variant = 'action', onHealth
           className={`inline-block w-2 h-2 rounded-full shrink-0 ${DOT_STYLES[state] || DOT_STYLES.running}`}
         />
         <span aria-hidden="true">🚀</span>
-        <span className={isHeader ? 'font-label-caps text-[10px] uppercase tracking-wider hidden xl:inline' : undefined}>
+        <span className={isHeader ? 'font-label-caps text-[10px] uppercase tracking-wider hidden 2xl:inline' : undefined}>
           {isHeader ? 'Go to App' : 'Open App'}
         </span>
       </a>

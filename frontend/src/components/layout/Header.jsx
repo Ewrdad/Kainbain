@@ -575,9 +575,11 @@ export function Header() {
           </div>
 
           {/* Git remote link button (#24, #32)
-              Icon-only from md (the label waits for xl, where the full row
-              fits); hidden on phones, where the strip holds tabs + app link.
-              Hidden entirely when no remote is configured. */}
+              Icon-only below 2xl (the label waits for 2xl: with an app link
+              present the full labeled row needs ~1333px, so at xl=1280 it
+              overlaps the monitor cluster — task 66ad153f guard); hidden on
+              phones, where the strip holds tabs + app link. Hidden entirely
+              when no remote is configured. */}
           {hasUpstreamRepo && gitRemoteUrl && (
             <InfoTooltip
               title="Git Remote"
@@ -594,7 +596,7 @@ export function Header() {
                 className="flex items-center gap-1.5 px-2.5 py-1.5 min-h-[44px] rounded-sm bg-surface-container hover:bg-surface-container-high border border-border-standard text-text-muted hover:text-on-surface transition-colors text-xs font-mono cursor-pointer"
               >
                 <span className="shrink-0">🐙</span>
-                <span className="font-label-caps text-[10px] uppercase tracking-wider hidden xl:inline">
+                <span className="font-label-caps text-[10px] uppercase tracking-wider hidden 2xl:inline">
                   Git remote
                 </span>
               </a>
