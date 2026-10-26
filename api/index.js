@@ -24,6 +24,8 @@ import { createProjectResolvers } from "./projectResolution.js";
 import { createSessionHelpers } from "./sessionResolution.js";
 import { taskStore } from "./taskStore.js";
 import { sessionStore } from "./sessionStore.js";
+import { ClaimStore } from "./flow/claimStore.js";
+import { RunnerRegistry } from "./flow/runnerRegistry.js";
 import { workflowRegistry } from "./workflowRegistry.js";
 import { createAgentRunner } from "./agentRunner.js";
 import { ORPHANED_RUNNING_STATUSES } from "./flow/taskScheduler.js";
@@ -42,6 +44,7 @@ import computeRoutes from "./routes/compute.js";
 import harnessesRoutes from "./routes/harnesses.js";
 import sessionsRoutes from "./routes/sessions.js";
 import tasksRoutes from "./routes/tasks.js";
+import { registerRunnerRoutes } from "./flow/runnerRoutes.js";
 import workflowsRoutes from "./routes/workflows.js";
 import filesRoutes from "./routes/files.js";
 import taskImagesRoutes from "./routes/taskImages.js";
@@ -150,6 +153,12 @@ taskStore.sessionStore = sessionStore;
 
 const harnessRegistry = buildHarnessRoster(sessionStore);
 
+// Phase 2 Runner ledger (D1/D4, ADR 0009): in-memory while the backend is
+// the single writer; durability is Phase 4. The join token comes from
+// config (empty disables registration); claims share the ClaimStore TTL.
+const runnerRegistry = new RunnerRegistry({ joinToken: config.runnerJoinToken });
+const claimStore = new ClaimStore();
+
 const deps = {
 	projectStore,
 	taskStore,
@@ -170,6 +179,8 @@ const deps = {
 	healthChecker,
 	skillsRegistry,
 	harnessRegistry,
+	runnerRegistry,
+	claimStore,
 };
 
 // Wire the DEFAULT harness's optional probeHealth member into the health
@@ -209,6 +220,7 @@ app.register(computeRoutes, { deps });
 app.register(harnessesRoutes, { deps });
 app.register(sessionsRoutes, { deps });
 app.register(tasksRoutes, { deps });
+app.register(registerRunnerRoutes, { deps });
 app.register(workflowsRoutes, { deps });
 app.register(filesRoutes, { deps });
 app.register(taskImagesRoutes, { deps });

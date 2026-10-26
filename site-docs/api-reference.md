@@ -118,6 +118,21 @@ Board lists return duration-enriched summaries; open one full task via
 | POST | `/tasks/:id/move` | Move the task (board/stage). |
 | POST | `/tasks/:id/jump` | Jump to a named stage. |
 | POST | `/tasks/:id/complete` | Mark the task complete. |
+| POST | `/tasks/:id/claim` | Runner-only: atomically claim a task (`x-runner-credential` header; 200 + lease or 409 + holder). |
+
+## Runners (`api/flow/runnerRoutes.js`, `api/flow/runnerRegistry.js`)
+
+Runner identity (D4, ADR 0009): join with the operator token, wait for human
+approval, then heartbeat and claim with the issued per-Runner credential.
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| POST | `/runners/register` | Join request (`runnerId`, `joinToken`, `facts`); 202 + `pending`. |
+| POST | `/runners/heartbeat` | Capability/version refresh (`x-runner-credential` header). |
+| GET | `/runners` | List registrations for the approval UI. |
+| POST | `/runners/:id/approve` | Approve; issues the per-Runner credential. |
+| POST | `/runners/:id/deny` | Deny a pending join request. |
+| POST | `/runners/:id/revoke` | Revoke; the credential stops working immediately. |
 
 ## Engine containment (`api/flow/taskFlowRoutes.js`, `api/flow/circuitBreaker.js`)
 

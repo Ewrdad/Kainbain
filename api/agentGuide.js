@@ -255,6 +255,53 @@ export const ENDPOINTS = [
 	},
 	{
 		method: "POST",
+		path: "/tasks/:id/claim",
+		purpose:
+			"Runner-only: atomically claim a task (200 + lease { executionId, epoch } or 409 + holder). Requires the x-runner-credential header.",
+		body: { projectId: "string (required)" },
+	},
+	// ---- Runners (D4, ADR 0009) -------------------------------------------
+	{
+		method: "POST",
+		path: "/runners/register",
+		purpose:
+			"Runner join request with the operator join token; pending until approved.",
+		body: { runnerId: "string (required)", joinToken: "string (required)", facts: "object" },
+	},
+	{
+		method: "POST",
+		path: "/runners/heartbeat",
+		purpose:
+			"Runner capability/version refresh. Requires the x-runner-credential header.",
+		body: { runnerId: "string (required)", facts: "object" },
+	},
+	{
+		method: "GET",
+		path: "/runners",
+		purpose: "List Runner registrations for the approval UI.",
+		body: null,
+	},
+	{
+		method: "POST",
+		path: "/runners/:id/approve",
+		purpose: "Approve a pending Runner; issues its per-Runner credential.",
+		body: null,
+	},
+	{
+		method: "POST",
+		path: "/runners/:id/deny",
+		purpose: "Deny a pending Runner join request.",
+		body: null,
+	},
+	{
+		method: "POST",
+		path: "/runners/:id/revoke",
+		purpose:
+			"Revoke a Runner; its credential stops working immediately and leases expire.",
+		body: null,
+	},
+	{
+		method: "POST",
 		path: "/tasks/:id/pause",
 		purpose: "Pause an in-progress or queued task.",
 		body: null,

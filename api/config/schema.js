@@ -336,6 +336,16 @@ export const CONFIG_SCHEMA = [
 		group: "server",
 		doc: "Node HTTP requestTimeout for the API server in ms; 0 (default) disables it so long chat turns are never killed with a bare 408. Set an explicit positive value only above any opt-in chat ceiling.",
 	},
+	{
+		key: "runnerJoinToken",
+		env: "KAINBAIN_RUNNER_JOIN_TOKEN",
+		aliases: [],
+		type: "string",
+		default: "",
+		secret: true,
+		group: "server",
+		doc: "Operator join secret Runners present at POST /runners/register (D4). Empty (default) disables registration; approved Runners get per-Runner credentials. Redacted in the config-spec endpoint.",
+	},
 
 	// --- Storage & Paths --------------------------------------------------
 	{

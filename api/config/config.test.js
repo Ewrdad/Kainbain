@@ -181,6 +181,7 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		reviewDiffMaxBytes: 256 * 1024,
 		reviewMaxCommentChars: 4000,
 		pushNotificationsEnabled: true,
+		runnerJoinToken: "",
 		// Sessions & Workflows
 		schedulerIntervalMs: 3000,
 		schedulerDisabled: false,
