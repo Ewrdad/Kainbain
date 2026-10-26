@@ -1,0 +1,6 @@
+{"event":"init","conversation_id":"conv-success-1","init":{"cwd":"/workspace","tools":["read_file","write_file","run_command"],"permission_mode":"request-review","model":"gemini-3.8-flash-high"}}
+{"event":"step_update","conversation_id":"conv-success-1","step_index":1,"state":"ACTIVE","step_type":"user_input"}
+{"event":"step_update","conversation_id":"conv-success-1","step_index":2,"state":"ACTIVE","step_type":"agent_response","text_delta":"Plan: "}
+{"event":"step_update","conversation_id":"conv-success-1","step_index":2,"state":"ACTIVE","step_type":"agent_response","text_delta":"write the harness"}
+{"event":"step_update","conversation_id":"conv-success-1","step_index":2,"state":"DONE","step_type":"agent_response"}
+{"event":"result","conversation_id":"conv-success-1","status":"SUCCESS","response":"Plan: write the harness","duration_seconds":3.2,"num_turns":1,"usage":{"input_tokens":120,"output_tokens":45,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":165}}

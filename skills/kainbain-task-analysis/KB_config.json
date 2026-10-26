@@ -1,0 +1,21 @@
+{
+  "isDefault": true,
+  "description": "How to analyse live and past KainBain tasks — where task folders live, where logs live (service journal, deploy log, session transcripts, per-task process logs), and how to inspect a task's state, history, reports, and failure reasons via the filesystem and the live API/WebSocket. Use when asked to investigate a task, debug a failed stage, trace a deploy, or audit what an agent did.",
+  "keywords": {
+    "kbApiBase": {
+      "value": "http://localhost:3100",
+      "description": "KainBain API base URL for live task/status lookups (default; override with KAINBAIN_API_BASE where different)."
+    },
+    "projectCwd": {
+      "value": "{{projectCwd}}",
+      "description": "Project root on disk; task folders live under docs/tasks/<id>/ below it. Resolved per stage run from the project's cwd."
+    },
+    "deployDir": {
+      "value": "{{deployDir}}",
+      "description": "Deployed build directory (api + frontend/dist + build.json). Optional — leave blank when the deployment layout differs. Resolved per stage run when available."
+    }
+  },
+  "defaults": {
+    "mode": "direct"
+  }
+}

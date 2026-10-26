@@ -1,0 +1,10 @@
+{
+ "schema": {
+  "fingerprint": "sha256:5d3b43e5ccdb7dc4f5a32c380f5f2cde0f10e3059b93610afb2e73f73b1d914c",
+  "version": 1
+ },
+ "serverInfo": {
+  "name": "muse",
+  "version": "1.4.9"
+ }
+}

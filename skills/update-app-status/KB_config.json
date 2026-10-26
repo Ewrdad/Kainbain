@@ -1,0 +1,31 @@
+{
+  "isDefault": true,
+  "description": "Point the project's \"Go to App\" quick-link at its running dev server via PATCH /projects/:id/app-status, with LAN network-host override and optional health endpoint.",
+  "keywords": {
+    "kbApiBase": {
+      "value": "http://localhost:3100",
+      "description": "KainBain API base URL the stage agent should call."
+    },
+    "targetProject": {
+      "value": "{{project}}",
+      "description": "Name (or slug) of the project whose app link is updated. Defaults to the current project. Accepts a project id, name, or slug; the stage editor offers a dropdown of known projects.",
+      "kbRef": "project"
+    },
+    "networkHost": {
+      "value": "",
+      "description": "LAN hostname or IP that replaces localhost/127.0.0.1 in the stored app URL for remote viewers (e.g. lan-host.example). Blank means no override; host:port also overrides the port."
+    },
+    "healthEndpoint": {
+      "value": "/health",
+      "description": "Optional path the backend health probe appends to the app URL (e.g. /health). Blank probes the app root."
+    },
+    "defaultPort": {
+      "value": "",
+      "description": "Port hint when the project's dev server port is fixed and known (e.g. 5173). Blank means the agent detects the port from the running process."
+    }
+  },
+  "context": "You may update the target project's \"Go to App\" link to reflect the dev server this run started, moved, or stopped. Set the link when the app starts, merge status-only updates while booting, and clear the link when the app stops.",
+  "defaults": {
+    "mode": "direct"
+  }
+}

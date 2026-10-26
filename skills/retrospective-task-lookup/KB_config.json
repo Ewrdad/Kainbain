@@ -1,0 +1,17 @@
+{
+  "isDefault": true,
+  "description": "Look up KainBain task details and analyse past tasks during retrospective chat turns. Use when answering questions about tasks, failures, durations, or trends.",
+  "keywords": {
+    "kbApiBase": {
+      "value": "http://localhost:3100",
+      "description": "KainBain API base URL for task/observability lookups."
+    },
+    "projectCwd": {
+      "value": "{{projectCwd}}",
+      "description": "Project root on disk; task folders live under docs/tasks/<id>/ below it. Resolved per chat turn."
+    }
+  },
+  "defaults": {
+    "mode": "direct"
+  }
+}

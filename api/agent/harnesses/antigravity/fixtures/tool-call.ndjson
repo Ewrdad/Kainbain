@@ -1,0 +1,10 @@
+{"event":"init","conversation_id":"conv-tool-1","init":{"cwd":"/workspace","tools":["read_file","write_file","run_command"],"permission_mode":"request-review","model":"gemini-3.1-pro-high"}}
+{"event":"step_update","conversation_id":"conv-tool-1","step_index":1,"state":"ACTIVE","step_type":"user_input"}
+{"event":"step_update","conversation_id":"conv-tool-1","step_index":2,"state":"ACTIVE","step_type":"agent_response","text_delta":"Running the test suite now."}
+{"event":"step_update","conversation_id":"conv-tool-1","step_index":3,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"run_command","parameters":{"command":"npm test"}}}
+{"event":"step_update","conversation_id":"conv-tool-1","step_index":3,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"run_command","parameters":{"command":"npm test"},"output":"Tests: 8 "}}
+{"event":"step_update","conversation_id":"conv-tool-1","step_index":3,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"run_command","parameters":{"command":"npm test"},"output":"Tests: 8 passed"}}
+{"event":"step_update","conversation_id":"conv-tool-1","step_index":3,"state":"DONE","step_type":"tool","tool_info":{"name":"run_command","parameters":{"command":"npm test"},"output":"Tests: 8 passed"}}
+{"event":"step_update","conversation_id":"conv-tool-1","step_index":4,"state":"ACTIVE","step_type":"agent_response","text_delta":"All 8 tests passed."}
+{"event":"step_update","conversation_id":"conv-tool-1","step_index":4,"state":"DONE","step_type":"agent_response"}
+{"event":"result","conversation_id":"conv-tool-1","status":"SUCCESS","response":"All 8 tests passed","duration_seconds":12.5,"num_turns":1,"usage":{"input_tokens":340,"output_tokens":210,"thinking_tokens":0,"cache_read_tokens":40,"total_tokens":550}}

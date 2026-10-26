@@ -1,0 +1,12 @@
+{
+  "ignore": [
+    "**/*.test.js",
+    "**/*.test.jsx",
+    "**/tests/**",
+    "**/test-results/**",
+    "**/playwright-report/**",
+    "**/agents.md",
+    "agent-docs/**"
+  ],
+  "maxProjectFiles": 3000
+}

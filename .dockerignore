@@ -1,0 +1,54 @@
+# KainBain Docker build context (WP-8). Never bake credentials, host state,
+# or test artifacts into the image. Secrets arrive at run time via compose
+# `env_file` / `environment`, never via COPY.
+#
+# Must stay OUT of this file (the build needs them in context):
+#   opencode-ai-sdk-1.18.34.tgz, .npmrc, api/, frontend/, shared/,
+#   site-docs/, skills/, docker-entrypoint.sh
+
+# Dependencies are installed inside the image (api + frontend via `npm ci`).
+# NOTE: patterns match at the context root only, so nested trees need `**/`
+# (verified: a bare `docs` line leaves `sub/docs/` in the context).
+node_modules/
+**/node_modules/
+
+# The frontend is rebuilt in the image; never ship a stale host build.
+frontend/dist/
+
+# The root `docs` symlink points outside the build context (SilverBullet
+# notes space) — COPY would fail without this. api/docs/ is excluded too
+# (`deploy.sh --prod` drops it from production builds); nested component
+# dirs such as frontend/src/components/docs/ are unaffected (root-only match).
+docs
+api/docs
+
+# Local task storage is a run-time bind mount, never image content.
+projects/
+
+# Credentials and host-specific state.
+.env
+**/.env
+server.pid
+*.pid
+t1.json
+screenshot.png
+screenshot-task-*.png
+
+# Test artifacts and caches.
+coverage/
+*/coverage/
+test-results/
+canary-e2e/
+scratch/
+.pi-subagents/
+.kainbain/
+sessions/
+*.log
+**/*.log
+.eslintcache
+**/.eslintcache
+
+# Generated artifacts and VCS history (no .git => the in-app changelog
+# reports its handled `not-baked` state instead of `generation-failed`).
+sbom.cyclonedx.json
+.git/

@@ -1,0 +1,11 @@
+{
+	"$comment": "Accepted npm-audit exceptions: each entry needs the advisory source id, a reason, and an expiry date. Expired or dateless entries never suppress (see scripts/check-dep-audit.mjs). Every entry must also be recorded in DEPRECATIONS.md.",
+	"advisories": [
+		{
+			"source": 1243084,
+			"module": "happy-dom",
+			"reason": "Frontend devDependency for Vitest testing environment only (never shipped to production). Revisit: happy-dom 21.0.4+ update.",
+			"expires": "2027-01-05"
+		}
+	]
+}

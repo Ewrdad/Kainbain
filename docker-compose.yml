@@ -1,0 +1,44 @@
+# KainBain turnkey local deployment (WP-8).
+#
+#   docker compose up -d          # build + start; UI at http://localhost:3100
+#   curl http://localhost:3100/status
+#
+# The container boots self-contained with no credentials (harness calls
+# degrade honestly until keys/CLIs are provided). To enable real agent
+# runs, copy `.env.example` to `.env` and fill in ONLY secrets / host
+# endpoints (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY, Ollama/LiteLLM URLs):
+# compose `.env` is for secrets only — the explicit `environment:` below
+# always wins, so homelab paths in `.env` can never override container paths.
+#
+# Host port: set KAINBAIN_PORT to avoid clashing with a host/dev instance,
+# e.g. `KAINBAIN_PORT=3200 docker compose up -d` -> http://localhost:3200.
+
+services:
+  kainbain:
+    build: .
+    image: kainbain:latest
+    ports:
+      - "${KAINBAIN_PORT:-3100}:3100"
+    volumes:
+      # Task storage (bind mount: your projects live on the host, survive
+      # rebuilds, and stay editable with host tooling). Created on first up.
+      - ./projects:/workspace/projects
+      # Container state: notes space, sessions, caches (named volume).
+      - kainbain-data:/home/node/.kainbain
+    env_file:
+      # Optional: absent on fresh clones (required: false), secrets only.
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      PORT: "3100"
+      PROJECTS_ROOT: /workspace/projects
+      NOTES_SPACE_ROOT: /home/node/.kainbain/notes
+      KAINBAIN_DIST: /app/frontend/dist
+      # Optional: force the mock harness (no CLI needed) instead of the
+      # default. Leave unset to follow KAINBAIN_DEFAULT_HARNESS (default pi).
+      # KAINBAIN_DEFAULT_HARNESS: mock
+    restart: unless-stopped
+
+volumes:
+  kainbain-data:

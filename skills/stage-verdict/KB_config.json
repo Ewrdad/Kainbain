@@ -1,0 +1,7 @@
+{
+  "isDefault": true,
+  "description": "Stage verdict contract: how an agent stage reports PASS or FAIL with reason and fix guidance so KainBain routes correctly on every harness.",
+  "defaults": {
+    "mode": "direct"
+  }
+}

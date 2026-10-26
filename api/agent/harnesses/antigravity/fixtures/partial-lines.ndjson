@@ -1,0 +1,5 @@
+{"event":"init","conversation_id":"conv-partial-1","init":{"cwd":"/workspace","tools":["read_file"],"permission_mode":"request-review","model":"gemini-3.8-flash-high"}}
+{"event":"step_update","conversation_id":"conv-partial-1","step_index":1,"state":"ACTIVE","step_type":"user_input"}
+{"event":"step_update","conversation_id":"conv-partial-1","step_index":2,"state":"ACTIVE","step_type":"agent_response","text_delta":"A deliberately long assistant delta that tests split reading: the parser must buffer a partial line across arbitrary chunk boundaries and only emit the event once its terminating newline finally arrives, no matter how the underlying transport decides to fragment the bytes underneath it. 0123456789012345678901234567890123456789012345678901234567890123456789"}
+{"event":"step_update","conversation_id":"conv-partial-1","step_index":2,"state":"DONE","step_type":"agent_response"}
+{"event":"result","conversation_id":"conv-partial-1","status":"SUCCESS","response":"Final answer without a trailing newline","duration_seconds":0.8,"num_turns":1,"usage":{"input_tokens":30,"output_tokens":12,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":42}}

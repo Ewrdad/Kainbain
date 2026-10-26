@@ -1,0 +1,50 @@
+{
+  "name": "kainbain",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "docs:check": "npm run test --prefix api -- siteDocs docs.apiCoverage agentGuide docs.envCoverage && node scripts/check-doc-links.mjs && node scripts/check-jsdoc-example.mjs",
+    "check:one-function": "node scripts/check-one-function-per-file.mjs",
+    "check:jsdoc-example": "node scripts/check-jsdoc-example.mjs",
+    "test": "node scripts/run-tests.mjs",
+    "audit:deprecations": "node scripts/check-dep-audit.mjs --report",
+    "dev": "node scripts/dev.mjs",
+    "setup": "node scripts/setup.mjs",
+    "depcheck": "node scripts/depcheck.mjs",
+    "depcheck:api": "depcheck api --ignore-dirs=node_modules",
+    "depcheck:frontend": "depcheck frontend --ignores=autoprefixer,postcss,tailwindcss --ignore-dirs=node_modules,dist",
+    "depcheck:root": "depcheck . --ignores=depcheck,playwright,@playwright/test,vitest --ignore-dirs=.pi-subagents,.pi-lens,.git,node_modules,scratch,frontend/dist,api,frontend",
+    "test:unit": "npm run test:api && npm run test:frontend",
+    "test:coverage": "npm run test:coverage --prefix api",
+    "test:api": "npm run test --prefix api",
+    "test:frontend": "npm run test --prefix frontend",
+    "test:canary": "npm run test --prefix canary-e2e",
+    "test:repeat": "node scripts/repeat-tests.mjs",
+    "test:visual": "npm run test --prefix canary-e2e -- tests/visual",
+    "capture:screenshot": "node scripts/capture-screenshot.mjs",
+    "lint": "npm run lint:api && npm run lint:frontend",
+    "lint:api": "npm run lint --prefix api",
+    "lint:frontend": "npm run lint --prefix frontend",
+    "build": "npm run build:api && npm run build:frontend",
+    "build:api": "npm run build --prefix api",
+    "build:frontend": "npm run build --prefix frontend",
+    "deploy": "./deploy.sh",
+    "deploy:fast": "./deploy.sh --prod --fast",
+    "deploy:rollback": "./deploy.sh --rollback",
+    "sec": "./Security_scans.sh",
+    "check:duplicate-settings": "node scripts/check-duplicate-settings.mjs"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.62.1"
+  },
+  "devDependencies": {
+    "depcheck": "^1.4.7"
+  },
+  "overrides": {
+    "js-yaml": "^3.15.2"
+  }
+}

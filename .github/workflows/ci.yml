@@ -1,0 +1,84 @@
+# KainBain continuous integration (WP-9).
+#
+# Guards the WP-1..WP-8 portability gains on every push and pull request: the
+# full verification gate runs on Linux, macOS, and Windows under the oldest
+# supported Node (20.x, the `engines` floor) and the container's Node (22.x).
+# Steps are the repo's own cross-platform entry points (`scripts/*.mjs` via
+# npm), so what CI runs is exactly what a contributor runs locally.
+#
+# Hosting note: this file uses only standard `actions/*` syntax, so the same
+# file runs on Forgejo Actions and on GitHub Actions runners. There is no
+# GitLab remote, so no GitLab equivalent ships (see the WP-9 report).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    name: verify (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ["20.x", "22.x"]
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            api/package-lock.json
+            frontend/package-lock.json
+            canary-e2e/package-lock.json
+
+      - name: Install dependencies
+        run: npm run setup
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      # WP-8 automated gates (exactly three — binding q9/q11/q13). Each step
+      # runs the same local entry point a contributor runs, so CI failures
+      # reproduce with one command. Coverage is opt-in locally (`npm test`
+      # stays fast); here it enforces the 70%-lines floor per core module.
+      - name: Coverage gate (core modules, 70% lines)
+        run: npm run test:coverage
+        timeout-minutes: 30
+
+      - name: New-file shape gate (one function per file)
+        run: npm run check:one-function
+
+      - name: JSDoc @example gate (new exports)
+        run: npm run check:jsdoc-example
+
+      - name: Docs check (links + @example)
+        run: npm run docs:check
+
+      # Cold-start storage gate (2026-10-02 incident: a missing `<cwd>/docs`
+      # link degraded into a one-task shadow directory and the UI showed 1 of
+      # 134 tasks). Boots fixture storage through the same
+      # `ensureDocsLink` + `scanTasks` path the UI reads, asserts the restore
+      # is non-empty, and proves the shadow detector fires. Fails the leg
+      # instead of presenting an empty board.
+      - name: Storage sanity (cold-start gate)
+        run: node scripts/storage-sanity.mjs
+
+      # Fresh-clone hygiene (guards WP-1): no dangling symlinks anywhere in
+      # the worktree, and none of the host-local artifacts WP-1 untracked
+      # (`server.pid`, `t1.json`, `screenshot.png`, `frontend/.env`,
+      # `sbom.cyclonedx.json`) may be tracked again. Node-only so the check
+      # itself is identical on all three OS legs.
+      - name: Fresh-clone hygiene
+        run: >-
+          node -e "const fs=require('node:fs'),path=require('node:path'),{execFileSync}=require('node:child_process');const bad=[];const skip=new Set(['.git','node_modules']);const walk=(d)=>{for(const e of fs.readdirSync(d,{withFileTypes:true})){if(skip.has(e.name))continue;const p=path.join(d,e.name);if(e.isSymbolicLink()){if(!fs.existsSync(p))bad.push('dangling symlink: '+p);}else if(e.isDirectory()){walk(p);}}};walk('.');const tracked=execFileSync('git',['ls-files'],{encoding:'utf8'}).split(/\r?\n/);for(const f of ['server.pid','t1.json','screenshot.png','frontend/.env','sbom.cyclonedx.json']){if(tracked.includes(f))bad.push('tracked artifact (must stay untracked): '+f);}if(bad.length){for(const b of bad)console.error('HYGIENE FAIL: '+b);process.exit(1);}console.log('hygiene: PASS (no dangling symlinks, no tracked artifacts)');"

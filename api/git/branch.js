@@ -1,0 +1,375 @@
+import { git } from "./exec.js";
+import { _assertValidBranchName, isValidBranchName } from "./validation.js";
+import { currentBranch, branchExists, hasCommits, isGitRepository } from "./status.js";
+import { requireCleanWorkingTree } from "./workingTreeRecovery.js";
+import { GitError } from "./errors.js";
+
+/***
+ * MARK: checkoutBranch
+ * @description Checks out an existing local branch. Idempotent: returns early
+ *   (switched: false) when already on the branch. Refuses to run on a dirty
+ *   working tree (GitDirtyTreeError) so uncommitted work is never carried or
+ *   lost across branches.
+ * @example await checkoutBranch('/repo', 'main') // throws GitDirtyTreeError when dirty
+ * @param {string} projectCwd
+ * @param {string} branch
+ * @param {Object} [opts]
+ * @param {boolean} [opts.checkClean=true] - Enforce the clean-tree guard.
+ * @param {Object} [opts.project] - Project record; its `kainbainDirName`/`docsDirName`
+ *   are threaded into the clean-tree guard.
+ * @returns {Promise<{switched: boolean}>}
+ ***/
+export async function checkoutBranch(projectCwd, branch, opts = {}) {
+	_assertValidBranchName(branch, "checkout");
+	const current = await currentBranch(projectCwd);
+	if (current === branch) return { switched: false };
+	if (opts.checkClean !== false) {
+		await requireCleanWorkingTree(projectCwd, {
+			...opts,
+			context: `checkout of branch '${branch}'`,
+		});
+	}
+	await git(projectCwd, ["checkout", branch]);
+	return { switched: true };
+}
+
+
+/***
+ * MARK: createBranch
+ * @description Creates a local branch. Idempotent: resolves { created: false }
+ *   (and does nothing) when the branch already exists — including a tolerant
+ *   re-check for the checkout/b race between concurrent ensures.
+ *   NOTE: does not switch branches; pair with checkoutBranch or use
+ *   ensureBranchCheckedOut for the guarded combined flow.
+ * @example await createBranch('/repo', 'kb/task') => { created: true }
+ * @example await createBranch('/repo', 'kb/task', { startPoint: 'main' }) => { created: true }
+ * @param {string} projectCwd
+ * @param {string} branch
+ * @param {Object} [opts]
+ * @param {string} [opts.startPoint] - Ref the new branch points at
+ *   (`git branch <name> <startPoint>`); defaults to the current HEAD. Must
+ *   pass branch-name validation, which covers branch names, HEAD, and SHAs
+ *   while excluding flag injection and rev-suffixes such as `~1`.
+ * @returns {Promise<{created: boolean}>}
+ ***/
+export async function createBranch(projectCwd, branch, opts = {}) {
+	_assertValidBranchName(branch, "create branch");
+	const startPoint = opts?.startPoint;
+	if (startPoint !== undefined && startPoint !== null) {
+		_assertValidBranchName(startPoint, "create branch start-point");
+	}
+	if (await branchExists(projectCwd, branch)) return { created: false };
+	try {
+		await git(
+			projectCwd,
+			startPoint ? ["branch", branch, startPoint] : ["branch", branch],
+		);
+		return { created: true };
+	} catch (e) {
+		// Concurrent creators can race; tolerate "already exists" outcomes.
+		if (await branchExists(projectCwd, branch)) return { created: false };
+		throw e;
+	}
+}
+
+
+/***
+ * MARK: ensureBranchCheckedOut
+ * @description The single, guarded entrypoint used by the pipeline: makes sure
+ *   `branch` exists locally and is the checked-out branch. Safety rules:
+ *     - no-op when already on the branch (dirty trees allowed there, because
+ *       agents legitimately edit files while working),
+ *     - refuses to switch on a dirty working tree (GitDirtyTreeError),
+ *     - creates the missing branch pinned to `opts.baseBranch` (default
+ *       branch) via an explicit start point when possible — never silently
+ *       from the current HEAD when a base was requested; without a usable
+ *       base it falls back to the current HEAD,
+ *     - skips the clean-tree check on unborn repositories (no tracked files
+ *       exist, so branch creation cannot lose anything).
+ * @example const { created } = await ensureBranchCheckedOut(cwd, 'kb/task-1', { baseBranch: 'main' })
+ * @param {string} projectCwd
+ * @param {string} branch
+ * @param {Object} [opts]
+ * @param {string} [opts.baseBranch] - Preferred base for new branches (default branch).
+ * @param {boolean} [opts.allowCreate=true] - Whether creation is allowed.
+ * @param {string} [opts.taskId] - Owning task id for the ladder stash marker.
+ * @param {string} [opts.recovery] - 'ladder' (default) or 'off' for the clean-tree guard.
+ * @param {Object} [opts.project] - Project record; its `kainbainDirName`/`docsDirName`
+ *   are threaded into the clean-tree guard so engine-owned state under a custom
+ *   folder never counts as dirty.
+ * @returns {Promise<{created: boolean, checkedOut: boolean, switched: boolean}>}
+ ***/
+export async function ensureBranchCheckedOut(projectCwd, branch, opts = {}) {
+	_assertValidBranchName(branch, "ensureBranchCheckedOut");
+	const repo = await isGitRepository(projectCwd);
+	if (!repo) {
+		throw new GitError(
+			`'${projectCwd}' is not a git repository — cannot use branches. Enable git for this project or turn off branch support.`,
+		);
+	}
+
+	const current = await currentBranch(projectCwd).catch(() => null);
+	if (current && current === branch) {
+		return { created: false, checkedOut: true, switched: false };
+	}
+
+	if (await branchExists(projectCwd, branch)) {
+		if (current !== "HEAD" || (await hasCommits(projectCwd))) {
+			await requireCleanWorkingTree(projectCwd, {
+				...opts,
+				context: `checkout of branch '${branch}'`,
+			});
+		}
+		await git(projectCwd, ["checkout", branch]);
+		return { created: false, checkedOut: true, switched: true };
+	}
+
+	if (opts.allowCreate === false) {
+		throw new GitError(
+			`Branch '${branch}' does not exist and branch creation is disabled — nothing to check out.`,
+		);
+	}
+
+	// Unborn repos have no tracked work to preserve; skipping the strict guard
+	// here is what makes fresh KainBain projects usable at all.
+	if (await hasCommits(projectCwd)) {
+		await requireCleanWorkingTree(projectCwd, {
+			...opts,
+			context: `creation of branch '${branch}'`,
+		});
+	}
+
+	const base = opts.baseBranch;
+	const pinnedBase =
+		base && isValidBranchName(base) && (await branchExists(projectCwd, base))
+			? base
+			: null;
+	if (pinnedBase) {
+		try {
+			await git(projectCwd, ["checkout", pinnedBase]);
+		} catch (checkoutError) {
+			// The base exists but cannot be checked out (worktree lock,
+			// corrupt ref): NEVER silently branch from the current HEAD —
+			// that would base this task on another task's unmerged work.
+			// Pin the start point explicitly instead; if pinning fails,
+			// fail loudly with the base recorded.
+			let pinnedCreation = null;
+			try {
+				pinnedCreation = await createBranch(projectCwd, branch, {
+					startPoint: pinnedBase,
+				});
+			} catch {
+				throw new GitError(
+					`Could not base branch '${branch}' on '${pinnedBase}': checkout of the base failed (${checkoutError?.message || checkoutError}) and pinning the start point failed too. Resolve the base branch before retrying.`,
+				);
+			}
+			await git(projectCwd, ["checkout", branch]);
+			return {
+				created: pinnedCreation?.created === true,
+				checkedOut: true,
+				switched: true,
+			};
+		}
+	}
+	try {
+		if (pinnedBase) {
+			// Explicit start point: the branch is pinned to the base even if
+			// the checkout above raced or the HEAD moved underneath us. Honor
+			// createBranch's own idempotence (a concurrent creator reporting
+			// `created: false`) instead of claiming we created it.
+			const { created } = await createBranch(projectCwd, branch, {
+				startPoint: pinnedBase,
+			});
+			await git(projectCwd, ["checkout", branch]);
+			return { created, checkedOut: true, switched: true };
+		}
+		await git(projectCwd, ["checkout", "-b", branch]);
+		return { created: true, checkedOut: true, switched: true };
+	} catch (e) {
+		// Tolerate the create/checkout race (branch appeared in between).
+		if (await branchExists(projectCwd, branch)) {
+			await git(projectCwd, ["checkout", branch]);
+			return { created: false, checkedOut: true, switched: true };
+		}
+		throw e;
+	}
+}
+
+
+/***
+ * MARK: defaultBranch
+ * @description Resolves the project's default (integration) branch with a
+ *   layered fallback chain so repos configured as 'master' (or without any
+ *   remote) keep working:
+ *     1. refs/remotes/origin/HEAD symbolic ref,
+ *     2. local 'main' branch,
+ *     3. local 'master' branch,
+ *     4. the currently checked-out branch,
+ *     5. the supplied fallback (default 'main').
+ * @example await defaultBranch('/repo') => 'master'
+ * @param {string} projectCwd
+ * @returns {Promise<string>}
+ ***/
+export async function defaultBranch(projectCwd, opts = {}) {
+	try {
+		const { stdout } = await git(projectCwd, [
+			"symbolic-ref",
+			"refs/remotes/origin/HEAD",
+		]);
+		const branch = stdout.replace("refs/remotes/origin/", "").trim();
+		if (isValidBranchName(branch)) return branch;
+	} catch {
+		// No origin HEAD configured (e.g. fresh local repo) — try known names.
+	}
+	try {
+		await git(projectCwd, ["rev-parse", "--verify", "refs/heads/main"]);
+		return "main";
+	} catch {
+		// fall through
+	}
+	try {
+		await git(projectCwd, ["rev-parse", "--verify", "refs/heads/master"]);
+		return "master";
+	} catch {
+		// fall through
+	}
+	try {
+		const current = await currentBranch(projectCwd);
+		if (current && current !== "HEAD" && isValidBranchName(current))
+			return current;
+	} catch {
+		// fall through
+	}
+	return opts.fallback || "main";
+}
+
+
+/***
+ * MARK: returnToDefaultBranch
+ * @description Checks out the project's default branch (resolved by
+ *   defaultBranch). Idempotent no-op when already there. Refuses on a dirty
+ *   working tree (GitDirtyTreeError) — callers finalize (commit first) so the
+ *   return lands clean, and a blocked return fails loudly instead of leaving
+ *   the tree stranded on a task branch.
+ * @example await returnToDefaultBranch('/repo') => { switched: true, branch: 'main' }
+ * @param {string} projectCwd - Working directory for the command.
+ * @param {Object} [opts]
+ * @param {string} [opts.fallback] - Fallback default-branch name.
+ * @param {boolean} [opts.checkClean=true] - Enforce the clean-tree guard.
+ * @param {string} [opts.recovery] - 'ladder' or 'off' for the clean-tree guard.
+ * @returns {Promise<{switched: boolean, branch: string}>}
+ ***/
+export async function returnToDefaultBranch(projectCwd, opts = {}) {
+	const fallback = typeof opts.fallback === "string" ? opts.fallback : undefined;
+	const def = await defaultBranch(projectCwd, fallback ? { fallback } : {});
+	const current = await currentBranch(projectCwd).catch(() => null);
+	if (current && current === def) return { switched: false, branch: def };
+	const checkoutOpts = { checkClean: opts.checkClean };
+	if (opts.taskId) checkoutOpts.taskId = opts.taskId;
+	if (opts.recovery) checkoutOpts.recovery = opts.recovery;
+	const result = await checkoutBranch(projectCwd, def, checkoutOpts);
+	return { switched: result.switched, branch: def };
+}
+
+
+/***
+ * MARK: deleteBranch
+ * @description Deletes a local branch (with -D; branch support is engine-owned
+ *   so a forced delete is acceptable). Used for optional cleanup after a
+ *   successful merge. Refuses silently-unsafe names via validation.
+ * @example await deleteBranch('/repo', 'kb/task-1') => { deleted: true }
+ * @param {string} projectCwd
+ * @param {string} branch
+ * @returns {Promise<{deleted: boolean}>}
+ ***/
+export async function deleteBranch(projectCwd, branch) {
+	_assertValidBranchName(branch, "deleteBranch");
+	if (!(await branchExists(projectCwd, branch))) return { deleted: false };
+	await git(projectCwd, ["branch", "-D", branch]);
+	return { deleted: true };
+}
+
+
+/***
+ * MARK: withCheckedOutBranch
+ * @description Runs `fn` on an existing `branch` inside the primary checkout,
+ *   then restores the project's default branch on every exit path (success,
+ *   command failure, timeout, thrown runner). Guards first: a dirty working
+ *   tree refuses the switch (recovery off — uncommitted work is never stashed
+ *   or lost by an execution helper). No checkout happens when `branch` is falsy
+ *   or already current, so callers can use it unconditionally.
+ *   Failure contract: a failed RESTORE always wins over a failed `fn` — the
+ *   checkout being stranded on `branch` is the operator-actionable state — but
+ *   the original error message is folded into the thrown GitError so neither
+ *   failure can mask the other. Nothing is force-cleaned: a stranded checkout
+ *   is left for a human (EscalationLadder Step 7), never auto-repaired.
+ * @example await withCheckedOutBranch('/repo', 'main', async () => runTests())
+ * @param {string} projectCwd - Primary checkout to switch.
+ * @param {string|null} branch - Branch to run on (falsy runs `fn` as-is).
+ * @param {Function} fn - Async callback executed on the target branch.
+ * @param {Object} [opts]
+ * @param {string} [opts.context] - Human string for the clean-tree guard.
+ * @param {string} [opts.fallback] - Fallback default-branch name.
+ * @param {string} [opts.taskId] - Owning task id for guard markers.
+ * @returns {Promise<*>} Whatever `fn` resolved with.
+ * @throws {GitError} Invalid branch name, dirty tree (refused switch), failed
+ *   checkout, failed restore, or the original `fn` error re-thrown unchanged
+ *   after a clean restore.
+ ***/
+export async function withCheckedOutBranch(projectCwd, branch, fn, opts = {}) {
+	if (!branch) {
+		return await fn();
+	}
+	_assertValidBranchName(branch, "withCheckedOutBranch");
+
+	const def = await defaultBranch(projectCwd, opts.fallback ? { fallback: opts.fallback } : {});
+	const current = await currentBranch(projectCwd).catch(() => null);
+
+	if (current === branch) {
+		return await fn();
+	}
+
+	const context = opts.context || `execution on branch '${branch}'`;
+	const cleanOpts = { context, recovery: "off" };
+	if (opts.taskId) cleanOpts.taskId = opts.taskId;
+	await requireCleanWorkingTree(projectCwd, cleanOpts);
+
+	const switchOpts = { checkClean: false, recovery: "off" };
+	if (opts.taskId) switchOpts.taskId = opts.taskId;
+	await checkoutBranch(projectCwd, branch, switchOpts);
+
+	// Capture (never swallow) the fn error so the restore below can run on
+	// the failure path too; a failed restore wins over it because a checkout
+	// left on `branch` is the state an operator must act on, but the original
+	// message rides along so nothing is masked.
+	let fnError = null;
+	let result;
+	try {
+		result = await fn();
+	} catch (err) {
+		fnError = err;
+	}
+
+	if (branch !== def) {
+		try {
+			const restoreOpts = { recovery: "off" };
+			if (opts.fallback) restoreOpts.fallback = opts.fallback;
+			if (opts.taskId) restoreOpts.taskId = opts.taskId;
+			await returnToDefaultBranch(projectCwd, restoreOpts);
+		} catch (restoreErr) {
+			throw new GitError(
+				`Could not return to the default branch '${def}' after running on '${branch}': ${restoreErr.message || restoreErr}` +
+					(fnError
+						? ` (the command on '${branch}' had already failed: ${fnError.message || fnError})`
+						: ""),
+			);
+		}
+	}
+
+	if (fnError) {
+		throw fnError;
+	}
+	return result;
+}
+
+

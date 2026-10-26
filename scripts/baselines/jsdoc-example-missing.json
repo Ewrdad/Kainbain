@@ -1,0 +1,3482 @@
+[
+  {
+    "file": "api/agent/harnessDiscovery.js",
+    "exportName": "agyAuthPath",
+    "kind": "function"
+  },
+  {
+    "file": "api/agent/harnessDiscovery.js",
+    "exportName": "codexAuthPath",
+    "kind": "function"
+  },
+  {
+    "file": "api/agent/harnessDiscovery.js",
+    "exportName": "HARNESS_IDS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnessDiscovery.js",
+    "exportName": "museAuthPath",
+    "kind": "function"
+  },
+  {
+    "file": "api/agent/harnessDiscovery.js",
+    "exportName": "vibeAuthPath",
+    "kind": "function"
+  },
+  {
+    "file": "api/agent/harnesses/acp/AcpClientConnection.js",
+    "exportName": "ACP_CLOSED_CODE",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/acp/AcpClientConnection.js",
+    "exportName": "ACP_METHOD_NOT_FOUND",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/acp/AcpClientConnection.js",
+    "exportName": "ACP_TIMEOUT_CODE",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/acp/AcpSessionRuntime.js",
+    "exportName": "DEFAULT_ACP_KILL_GRACE_MS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/acp/AcpSessionRuntime.js",
+    "exportName": "DEFAULT_ACP_START_TIMEOUT_MS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/acp/AcpSessionWrapper.js",
+    "exportName": "AcpSessionWrapper",
+    "kind": "class"
+  },
+  {
+    "file": "api/agent/harnesses/acp/AcpStreamTransport.js",
+    "exportName": "DEFAULT_ACP_MAX_LINE_BYTES",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/antigravity/agyAcpSupport.js",
+    "exportName": "AGY_ACP_PROTOCOL_VERSION",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/antigravity/agyAcpSupport.js",
+    "exportName": "buildAgyAcpHandshake",
+    "kind": "function"
+  },
+  {
+    "file": "api/agent/harnesses/antigravity/agyAcpSupport.js",
+    "exportName": "buildAgyAcpSessionParams",
+    "kind": "function"
+  },
+  {
+    "file": "api/agent/harnesses/antigravity/agyAcpSupport.js",
+    "exportName": "swallowed502Error",
+    "kind": "function"
+  },
+  {
+    "file": "api/agent/harnesses/antigravity/agyPermissions.js",
+    "exportName": "AGY_OUTPUT_FORMAT",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/antigravity/agyPermissions.js",
+    "exportName": "FORBIDDEN_AGY_FLAG",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/antigravity/agyStreamParser.js",
+    "exportName": "AGY_STREAM_EVENT_NAMES",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/codex/codexHarness.js",
+    "exportName": "CODEX_NOT_INSTALLED_HINT",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/codex/codexHarness.js",
+    "exportName": "HARNESS_ID",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/custom/customHarness.js",
+    "exportName": "CustomCommandError",
+    "kind": "class"
+  },
+  {
+    "file": "api/agent/harnesses/muse/msp/MspClientConnection.js",
+    "exportName": "createMspFrameParser",
+    "kind": "function"
+  },
+  {
+    "file": "api/agent/harnesses/muse/msp/MspClientConnection.js",
+    "exportName": "MSP_CLOSED_CODE",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/muse/msp/MspClientConnection.js",
+    "exportName": "MSP_METHOD_NOT_FOUND",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/muse/msp/MspClientConnection.js",
+    "exportName": "MSP_TIMEOUT_CODE",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/muse/msp/MspSessionRuntime.js",
+    "exportName": "DEFAULT_MSP_KILL_GRACE_MS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/muse/msp/MspSessionRuntime.js",
+    "exportName": "DEFAULT_MSP_START_TIMEOUT_MS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/muse/msp/museMspModelCatalog.js",
+    "exportName": "MUSE_MSP_MODEL_CACHE_TTL_MS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/muse/msp/museMspSession.js",
+    "exportName": "createMuseMspSession",
+    "kind": "function"
+  },
+  {
+    "file": "api/agent/harnesses/muse/msp/museMspSession.js",
+    "exportName": "MUSE_MSP_TURN_SETTLE_GRACE_MS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/muse/msp/museMspSupport.js",
+    "exportName": "DEFAULT_MUSE_MSP_TURN_SETTLE_GRACE_MS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/muse/msp/museMspSupport.js",
+    "exportName": "MUSE_MSP_APPROVAL_MODES",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/muse/msp/museMspSupport.js",
+    "exportName": "MUSE_MSP_CLIENT_NAME",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/muse/msp/museMspSupport.js",
+    "exportName": "MUSE_MSP_SCHEMA_FINGERPRINT",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/muse/msp/museMspSupport.js",
+    "exportName": "MUSE_MSP_SCHEMA_VERSION",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/muse/msp/museMspSupport.js",
+    "exportName": "MUSE_SERVE_GUARDED_FLAGS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/muse/msp/uuidv7.js",
+    "exportName": "generateUuidV7",
+    "kind": "function"
+  },
+  {
+    "file": "api/agent/harnesses/muse/museHarness.js",
+    "exportName": "museArgvShape",
+    "kind": "function"
+  },
+  {
+    "file": "api/agent/harnesses/muse/musePermissions.js",
+    "exportName": "MUSE_GUARDED_FLAGS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/muse/musePermissions.js",
+    "exportName": "MUSE_HARNESS_ID",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/muse/musePermissions.js",
+    "exportName": "MUSE_MAX_LINE_BYTES",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/muse/musePermissions.js",
+    "exportName": "MUSE_PROMPT_FILE_THRESHOLD_BYTES",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/muse/museStreamParser.js",
+    "exportName": "MUSE_PAYLOAD_TYPES",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/opencode/OpencodeModelDiscovery.js",
+    "exportName": "OpencodeModelDiscovery",
+    "kind": "class"
+  },
+  {
+    "file": "api/agent/harnesses/opencode/OpencodeServerManager.js",
+    "exportName": "OpencodeServerManager",
+    "kind": "class"
+  },
+  {
+    "file": "api/agent/harnesses/opencode/opencodeSessionEvents.js",
+    "exportName": "OPENCODE_EVENT_TO_NORMALIZED",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/opencode/OpencodeSessionWrapper.js",
+    "exportName": "OpencodeSessionWrapper",
+    "kind": "class"
+  },
+  {
+    "file": "api/agent/harnesses/pi/piExtensionUI.js",
+    "exportName": "createExtensionUIContext",
+    "kind": "function"
+  },
+  {
+    "file": "api/agent/harnesses/pi/piHarness.js",
+    "exportName": "DIAGNOSIS_SYSTEM_PROMPT",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/pi/piSessionEvents.js",
+    "exportName": "PI_EVENT_TO_NORMALIZED",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/shared/harnessScaffold.js",
+    "exportName": "DEFAULT_KILL_GRACE_MS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/shared/harnessScaffold.js",
+    "exportName": "DEFAULT_MAX_LINE_BYTES",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/vibe/vibeAcpSupport.js",
+    "exportName": "buildVibeAcpHandshake",
+    "kind": "function"
+  },
+  {
+    "file": "api/agent/harnesses/vibe/vibeAcpSupport.js",
+    "exportName": "VIBE_ACP_PROTOCOL_VERSION",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/vibe/vibeAcpSupport.js",
+    "exportName": "vibeTransportError",
+    "kind": "function"
+  },
+  {
+    "file": "api/agent/harnesses/vibe/vibeHarness.js",
+    "exportName": "clearVibeCapabilityCache",
+    "kind": "function"
+  },
+  {
+    "file": "api/agent/harnesses/vibe/vibeHarness.js",
+    "exportName": "VIBE_REQUIRED_CLI_FLAGS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/vibe/vibePermissions.js",
+    "exportName": "VIBE_GUARDED_FLAGS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/vibe/vibePermissions.js",
+    "exportName": "VIBE_HARNESS_ID",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/vibe/vibePermissions.js",
+    "exportName": "VIBE_MAX_LINE_BYTES",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/vibe/vibePermissions.js",
+    "exportName": "VIBE_PROMPT_FILE_THRESHOLD_BYTES",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/vibe/vibeStreamParser.js",
+    "exportName": "VIBE_ASSISTANT_TEXT_KINDS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnesses/vibe/vibeStreamParser.js",
+    "exportName": "VIBE_ROW_TYPES",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnessRegistry.js",
+    "exportName": "DEFAULT_HARNESS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/harnessRegistry.js",
+    "exportName": "resolveHarnessName",
+    "kind": "function"
+  },
+  {
+    "file": "api/agent/harnessSupportTiers.js",
+    "exportName": "DEFAULT_HARNESS_SUPPORT_TIER",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/logStream/agentLogStreamer.js",
+    "exportName": "DEFAULT_STREAMER_OPTIONS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/logStream/logProcessor.js",
+    "exportName": "createLogProcessor",
+    "kind": "function"
+  },
+  {
+    "file": "api/agent/logStream/logProcessor.js",
+    "exportName": "DEFAULT_PROCESSOR_OPTIONS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/logStream/logRecord.js",
+    "exportName": "FIDELITY_EXACT",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/logStream/logRecord.js",
+    "exportName": "FIDELITY_NORMALIZED",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/logStream/logRecord.js",
+    "exportName": "FIDELITY_SYNTHESIZED",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/logStream/logRecord.js",
+    "exportName": "KNOWN_RECORD_FEEDS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/logStream/logRecord.js",
+    "exportName": "KNOWN_RECORD_KINDS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/logStream/logRecord.js",
+    "exportName": "RECORD_LIMITS",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/sessionEvents.js",
+    "exportName": "AGENT_EVENT_NAMES",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/verdictContract.js",
+    "exportName": "DEFAULT_TOOL_LOOP_STRIKES",
+    "kind": "const"
+  },
+  {
+    "file": "api/agent/visionSupport.js",
+    "exportName": "VISION_CAPABLE_HARNESSES",
+    "kind": "const"
+  },
+  {
+    "file": "api/agentGuide.js",
+    "exportName": "AGENT_GUIDE",
+    "kind": "const"
+  },
+  {
+    "file": "api/agentRunner.js",
+    "exportName": "createAgentRunner",
+    "kind": "function"
+  },
+  {
+    "file": "api/agentRunner.js",
+    "exportName": "extractAssistantText",
+    "kind": "function"
+  },
+  {
+    "file": "api/config/index.js",
+    "exportName": "config",
+    "kind": "const"
+  },
+  {
+    "file": "api/config/index.js",
+    "exportName": "configSources",
+    "kind": "const"
+  },
+  {
+    "file": "api/config/index.js",
+    "exportName": "configWarnings",
+    "kind": "const"
+  },
+  {
+    "file": "api/config/index.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "api/continuity/deployFailureReason.js",
+    "exportName": "DEPLOY_FAILURE_TAIL_LINES",
+    "kind": "const"
+  },
+  {
+    "file": "api/continuity/deployMarkers.js",
+    "exportName": "DEPLOY_CHECKPOINT_FRESH_MS",
+    "kind": "const"
+  },
+  {
+    "file": "api/continuity/deployMarkers.js",
+    "exportName": "DEPLOY_COMMAND_PATTERN",
+    "kind": "const"
+  },
+  {
+    "file": "api/continuity/deployMarkers.js",
+    "exportName": "isDeployAttemptInFlight",
+    "kind": "function"
+  },
+  {
+    "file": "api/continuity/deployMarkers.js",
+    "exportName": "readDeployAttemptCheckpoint",
+    "kind": "function"
+  },
+  {
+    "file": "api/continuity/deployReconcile.js",
+    "exportName": "collectContinuityResumeEvidence",
+    "kind": "function"
+  },
+  {
+    "file": "api/continuity/deployReconcile.js",
+    "exportName": "completeDeployStage",
+    "kind": "function"
+  },
+  {
+    "file": "api/continuity/deployReconcile.js",
+    "exportName": "DEPLOY_ATTEMPT_IN_FLIGHT_REASON",
+    "kind": "const"
+  },
+  {
+    "file": "api/continuity/deployReconcile.js",
+    "exportName": "DEPLOY_LOCK_WAIT_NOTE_INTERVAL_MS",
+    "kind": "const"
+  },
+  {
+    "file": "api/continuity/deployReconcile.js",
+    "exportName": "DEPLOY_RECONCILE_PARK_REASON",
+    "kind": "const"
+  },
+  {
+    "file": "api/continuity/deployReconcile.js",
+    "exportName": "hasContinuityRehydrationMarkers",
+    "kind": "function"
+  },
+  {
+    "file": "api/continuity/deployReconcile.js",
+    "exportName": "hasDeployAttemptWaitMarker",
+    "kind": "function"
+  },
+  {
+    "file": "api/continuity/deployReconcile.js",
+    "exportName": "noteDeployAttemptInFlight",
+    "kind": "function"
+  },
+  {
+    "file": "api/continuity/deployReconcile.js",
+    "exportName": "noteDeployLockWait",
+    "kind": "function"
+  },
+  {
+    "file": "api/continuity/deployReconcile.js",
+    "exportName": "noteDeployReconcileParked",
+    "kind": "function"
+  },
+  {
+    "file": "api/continuity/deployReconcile.js",
+    "exportName": "reconcileInterruptedDeploys",
+    "kind": "function"
+  },
+  {
+    "file": "api/continuity/kainbainSelfDeploy.js",
+    "exportName": "SELF_DEPLOY_CONTINUITY_ENV",
+    "kind": "const"
+  },
+  {
+    "file": "api/continuity/kainbainSelfDeploy.js",
+    "exportName": "SELF_DEPLOY_PLUGIN_NAME",
+    "kind": "const"
+  },
+  {
+    "file": "api/continuity/sharedGateAttribution.js",
+    "exportName": "SHARED_DEPLOY_GATES",
+    "kind": "const"
+  },
+  {
+    "file": "api/continuity/sharedGateAttribution.js",
+    "exportName": "SHARED_GATE_HISTORY_LIMIT",
+    "kind": "const"
+  },
+  {
+    "file": "api/crew/modelDiscovery.js",
+    "exportName": "harnessesView",
+    "kind": "function"
+  },
+  {
+    "file": "api/crew/sessionCapabilities.js",
+    "exportName": "hasSessionCapability",
+    "kind": "function"
+  },
+  {
+    "file": "api/docsPath.js",
+    "exportName": "DOCS_DIR_RESERVED_NAMES",
+    "kind": "const"
+  },
+  {
+    "file": "api/eslint.config.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "api/eventBridge.js",
+    "exportName": "eventBridge",
+    "kind": "const"
+  },
+  {
+    "file": "api/eventBridge.js",
+    "exportName": "EventBridge",
+    "kind": "class"
+  },
+  {
+    "file": "api/flow/circuitBreaker.js",
+    "exportName": "broadcastCircuitState",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/circuitBreaker.js",
+    "exportName": "escalateProbeBackoff",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/circuitSensors.js",
+    "exportName": "AUTH_FAILURE_SIGNATURE",
+    "kind": "const"
+  },
+  {
+    "file": "api/flow/circuitSensors.js",
+    "exportName": "CONNECTION_FAILURE_SIGNATURE",
+    "kind": "const"
+  },
+  {
+    "file": "api/flow/circuitSensors.js",
+    "exportName": "getCircuitSensors",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/commandStages.js",
+    "exportName": "finalizePassedCommandStage",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/commandStages.js",
+    "exportName": "lastWorkStageOutcome",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/commandStages.js",
+    "exportName": "recordReviewBaseline",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/commandStages.js",
+    "exportName": "resolveCommandExecutionCwd",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/commandStages.js",
+    "exportName": "runCommandStage",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/commandStages.js",
+    "exportName": "STALE_BRANCH_WARNING_COMMITS",
+    "kind": "const"
+  },
+  {
+    "file": "api/flow/executionQueue.js",
+    "exportName": "ExecutionQueue",
+    "kind": "class"
+  },
+  {
+    "file": "api/flow/humanGitSafety.audit.js",
+    "exportName": "auditGitArgv",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/humanGitSafety.audit.js",
+    "exportName": "classifyGitArgv",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/humanGitSafety.audit.js",
+    "exportName": "installGitArgvAudit",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/humanGitSafety.audit.js",
+    "exportName": "realGit",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/humanGitSafety.audit.js",
+    "exportName": "realGitPath",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/scheduler/isResumedStageRunnable.js",
+    "exportName": "isResumedStageRunnable",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageHeartbeat.js",
+    "exportName": "clearStageHeartbeat",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageHeartbeat.js",
+    "exportName": "clearStallHandled",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageHeartbeat.js",
+    "exportName": "consumeStallHandled",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageHeartbeat.js",
+    "exportName": "getStageHeartbeat",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageHeartbeat.js",
+    "exportName": "markStallHandled",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageHeartbeat.js",
+    "exportName": "recordStageHeartbeat",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageHeartbeat.js",
+    "exportName": "recoverWedgedQueueEntry",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageHeartbeat.js",
+    "exportName": "resolveStallThresholdMs",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageHeartbeat.js",
+    "exportName": "resolveWedgeOccupant",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageHeartbeat.js",
+    "exportName": "resolveWedgeStuckMs",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageHeartbeat.js",
+    "exportName": "routeStallRecovery",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageHeartbeat.js",
+    "exportName": "STALL_HANDLED_TTL_MS",
+    "kind": "const"
+  },
+  {
+    "file": "api/flow/stageHeartbeat.js",
+    "exportName": "STALLED_STATUS_NOTE",
+    "kind": "const"
+  },
+  {
+    "file": "api/flow/stageHeartbeat.js",
+    "exportName": "watchdogTick",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageLifecycle.js",
+    "exportName": "clearStageLifecyclePlugins",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageLifecycle.js",
+    "exportName": "listStageLifecyclePlugins",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageTransitions.js",
+    "exportName": "completeTask",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageTransitions.js",
+    "exportName": "failbackStage",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageTransitions.js",
+    "exportName": "moveToStage",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageTransitions.js",
+    "exportName": "pauseTask",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageTransitions.js",
+    "exportName": "resumeTask",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/stageTransitions.js",
+    "exportName": "retryStage",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/startupRecovery.js",
+    "exportName": "autoResumeInterrupted",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/startupRecovery.js",
+    "exportName": "countInterrupted",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/startupRecovery.js",
+    "exportName": "performStartupRecovery",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/taskControl.js",
+    "exportName": "abortTask",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/taskControl.js",
+    "exportName": "followUpTask",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/taskControl.js",
+    "exportName": "killTaskProcess",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/taskControl.js",
+    "exportName": "registerChild",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/taskControl.js",
+    "exportName": "steerTask",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/taskControl.js",
+    "exportName": "unregisterChild",
+    "kind": "function"
+  },
+  {
+    "file": "api/flow/taskFlowRoutes.js",
+    "exportName": "registerTaskFlowRoutes",
+    "kind": "function"
+  },
+  {
+    "file": "api/git/commit.js",
+    "exportName": "DEFAULT_GIT_AUTHOR_EMAIL",
+    "kind": "const"
+  },
+  {
+    "file": "api/git/commit.js",
+    "exportName": "DEFAULT_GIT_AUTHOR_NAME",
+    "kind": "const"
+  },
+  {
+    "file": "api/git/errors.js",
+    "exportName": "GitDirtyTreeError",
+    "kind": "class"
+  },
+  {
+    "file": "api/git/errors.js",
+    "exportName": "GitMergeConflictError",
+    "kind": "class"
+  },
+  {
+    "file": "api/git/merge.js",
+    "exportName": "MERGE_STRATEGY",
+    "kind": "const"
+  },
+  {
+    "file": "api/git/staleLock.js",
+    "exportName": "_withLockCheckSuffix",
+    "kind": "function"
+  },
+  {
+    "file": "api/git/validation.js",
+    "exportName": "_assertValidBranchName",
+    "kind": "function"
+  },
+  {
+    "file": "api/git/workingTreeRecovery.js",
+    "exportName": "SWEEPABLE_BASENAME_PATTERNS",
+    "kind": "const"
+  },
+  {
+    "file": "api/git/workingTreeRecovery.js",
+    "exportName": "SWEEPABLE_DIR_PREFIXES",
+    "kind": "const"
+  },
+  {
+    "file": "api/git/workingTreeStatus.js",
+    "exportName": "_parsePorcelainEntries",
+    "kind": "function"
+  },
+  {
+    "file": "api/git/workingTreeStatus.js",
+    "exportName": "_resolveIgnorePaths",
+    "kind": "function"
+  },
+  {
+    "file": "api/git/workingTreeStatus.js",
+    "exportName": "DEFAULT_IGNORED_PATHS",
+    "kind": "const"
+  },
+  {
+    "file": "api/git/workingTreeStatus.js",
+    "exportName": "getWorkingTreeStatus",
+    "kind": "function"
+  },
+  {
+    "file": "api/healthChecker.js",
+    "exportName": "healthChecker",
+    "kind": "const"
+  },
+  {
+    "file": "api/healthChecker.js",
+    "exportName": "HealthChecker",
+    "kind": "class"
+  },
+  {
+    "file": "api/index.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "api/index.js",
+    "exportName": "setupGracefulShutdown",
+    "kind": "function"
+  },
+  {
+    "file": "api/isolatedTestRoots.js",
+    "exportName": "tempIsolatedRegistryFile",
+    "kind": "const"
+  },
+  {
+    "file": "api/isolatedTestRoots.js",
+    "exportName": "tempNotesRoot",
+    "kind": "const"
+  },
+  {
+    "file": "api/kainbainDir.js",
+    "exportName": "KAINBAIN_DIR_RESERVED_NAMES",
+    "kind": "const"
+  },
+  {
+    "file": "api/models.js",
+    "exportName": "discoveryErrorJsonSchema",
+    "kind": "const"
+  },
+  {
+    "file": "api/models.js",
+    "exportName": "FALLBACK_MODELS",
+    "kind": "const"
+  },
+  {
+    "file": "api/models.js",
+    "exportName": "modelListCache",
+    "kind": "const"
+  },
+  {
+    "file": "api/models.js",
+    "exportName": "publicModelJsonSchema",
+    "kind": "const"
+  },
+  {
+    "file": "api/project/aliasRenames.js",
+    "exportName": "warnLegacyNoneHarnessModel",
+    "kind": "function"
+  },
+  {
+    "file": "api/project/deployCommands.js",
+    "exportName": "DEFAULT_DEPLOY_COMMAND",
+    "kind": "const"
+  },
+  {
+    "file": "api/project/deployCommands.js",
+    "exportName": "DEPLOY_COMMAND_PATTERN",
+    "kind": "const"
+  },
+  {
+    "file": "api/project/projectConfigDiscovery.js",
+    "exportName": "_isKainbainConfig",
+    "kind": "function"
+  },
+  {
+    "file": "api/project/stageNormalizers.js",
+    "exportName": "DEFAULT_STAGES",
+    "kind": "const"
+  },
+  {
+    "file": "api/project/workflowDefaults.js",
+    "exportName": "createDefaultWorkflow",
+    "kind": "function"
+  },
+  {
+    "file": "api/project/workflowDefaults.js",
+    "exportName": "DEFAULT_WORKFLOW_NAME",
+    "kind": "const"
+  },
+  {
+    "file": "api/projectResolution.js",
+    "exportName": "createProjectResolvers",
+    "kind": "function"
+  },
+  {
+    "file": "api/projectStore.js",
+    "exportName": "DEFAULT_ACCENT_COLOR",
+    "kind": "const"
+  },
+  {
+    "file": "api/projectStore.js",
+    "exportName": "DEFAULT_AGENT_DIR",
+    "kind": "const"
+  },
+  {
+    "file": "api/projectStore.js",
+    "exportName": "DEFAULT_MODEL",
+    "kind": "const"
+  },
+  {
+    "file": "api/projectStore.js",
+    "exportName": "ProjectStore",
+    "kind": "class"
+  },
+  {
+    "file": "api/promptCuration.js",
+    "exportName": "formatTimestamp",
+    "kind": "function"
+  },
+  {
+    "file": "api/promptCuration.js",
+    "exportName": "interpolatePromptKeywords",
+    "kind": "function"
+  },
+  {
+    "file": "api/promptCuration.js",
+    "exportName": "PromptCurationEngine",
+    "kind": "class"
+  },
+  {
+    "file": "api/promptLayout/layoutStore.js",
+    "exportName": "PROMPT_LAYOUT_FILE_NAME",
+    "kind": "const"
+  },
+  {
+    "file": "api/promptLayout/layoutStore.js",
+    "exportName": "writeLayoutJsonFile",
+    "kind": "function"
+  },
+  {
+    "file": "api/push/atomicWrite.js",
+    "exportName": "writePushJsonFile",
+    "kind": "function"
+  },
+  {
+    "file": "api/push/index.js",
+    "exportName": "getPushService",
+    "kind": "function"
+  },
+  {
+    "file": "api/push/index.js",
+    "exportName": "resetPushServiceForTests",
+    "kind": "function"
+  },
+  {
+    "file": "api/push/pushService.js",
+    "exportName": "createWebPushSender",
+    "kind": "function"
+  },
+  {
+    "file": "api/push/pushService.js",
+    "exportName": "isGoneStatus",
+    "kind": "function"
+  },
+  {
+    "file": "api/push/pushService.js",
+    "exportName": "PUSH_SEND_OPTIONS",
+    "kind": "const"
+  },
+  {
+    "file": "api/push/pushService.js",
+    "exportName": "PushService",
+    "kind": "class"
+  },
+  {
+    "file": "api/push/pushSettings.js",
+    "exportName": "defaultPushSettings",
+    "kind": "function"
+  },
+  {
+    "file": "api/push/pushSettings.js",
+    "exportName": "getPushSettings",
+    "kind": "function"
+  },
+  {
+    "file": "api/push/pushSettings.js",
+    "exportName": "KNOWN_TRIGGERS",
+    "kind": "const"
+  },
+  {
+    "file": "api/push/pushSettings.js",
+    "exportName": "normalizePushSettings",
+    "kind": "function"
+  },
+  {
+    "file": "api/push/pushSettings.js",
+    "exportName": "PUSH_SETTINGS_FILE_NAME",
+    "kind": "const"
+  },
+  {
+    "file": "api/push/pushSettings.js",
+    "exportName": "updatePushSettings",
+    "kind": "function"
+  },
+  {
+    "file": "api/push/subscriptionStore.js",
+    "exportName": "isValidEndpoint",
+    "kind": "function"
+  },
+  {
+    "file": "api/push/subscriptionStore.js",
+    "exportName": "isValidSubscription",
+    "kind": "function"
+  },
+  {
+    "file": "api/push/subscriptionStore.js",
+    "exportName": "PushSubscriptionStore",
+    "kind": "class"
+  },
+  {
+    "file": "api/push/subscriptionStore.js",
+    "exportName": "SUBSCRIPTIONS_FILE_NAME",
+    "kind": "const"
+  },
+  {
+    "file": "api/push/vapidKeys.js",
+    "exportName": "DEFAULT_VAPID_SUBJECT",
+    "kind": "const"
+  },
+  {
+    "file": "api/push/vapidKeys.js",
+    "exportName": "getPublicVapidKey",
+    "kind": "function"
+  },
+  {
+    "file": "api/push/vapidKeys.js",
+    "exportName": "getVapidKeys",
+    "kind": "function"
+  },
+  {
+    "file": "api/push/vapidKeys.js",
+    "exportName": "getVapidSubject",
+    "kind": "function"
+  },
+  {
+    "file": "api/push/vapidKeys.js",
+    "exportName": "VAPID_FILE_NAME",
+    "kind": "const"
+  },
+  {
+    "file": "api/reviewDiff.js",
+    "exportName": "diffCommitList",
+    "kind": "function"
+  },
+  {
+    "file": "api/reviewDiff.js",
+    "exportName": "diffFilePatch",
+    "kind": "function"
+  },
+  {
+    "file": "api/reviewDiff.js",
+    "exportName": "diffFiles",
+    "kind": "function"
+  },
+  {
+    "file": "api/reviewDiff.js",
+    "exportName": "resolveSha",
+    "kind": "function"
+  },
+  {
+    "file": "api/reviewDiff.js",
+    "exportName": "revCount",
+    "kind": "function"
+  },
+  {
+    "file": "api/reviewStore.js",
+    "exportName": "ReviewStore",
+    "kind": "class"
+  },
+  {
+    "file": "api/routes/agent.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "api/routes/compute.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "api/routes/docs.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "api/routes/harnesses.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "api/routes/promptLayout.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "api/routes/push.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "api/routes/retrospective.js",
+    "exportName": "buildTaskContextBlock",
+    "kind": "function"
+  },
+  {
+    "file": "api/routes/retrospective.js",
+    "exportName": "CHAT_PROGRESS_BROADCAST_MIN_INTERVAL_MS",
+    "kind": "const"
+  },
+  {
+    "file": "api/routes/retrospective.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "api/routes/retrospective.js",
+    "exportName": "MAX_CHAT_CONTEXT_CHARS",
+    "kind": "const"
+  },
+  {
+    "file": "api/routes/retrospective.js",
+    "exportName": "MAX_CHAT_MESSAGE_CHARS",
+    "kind": "const"
+  },
+  {
+    "file": "api/routes/retrospective.js",
+    "exportName": "MAX_CHAT_MESSAGES",
+    "kind": "const"
+  },
+  {
+    "file": "api/routes/retrospective.js",
+    "exportName": "MAX_CHAT_TASK_IDS",
+    "kind": "const"
+  },
+  {
+    "file": "api/routes/retrospective.js",
+    "exportName": "MAX_CHAT_TRANSCRIPT_CHARS",
+    "kind": "const"
+  },
+  {
+    "file": "api/routes/retrospective.js",
+    "exportName": "MAX_HISTORY_ENTRIES_PER_TASK",
+    "kind": "const"
+  },
+  {
+    "file": "api/routes/retrospective.js",
+    "exportName": "RETROSPECTIVE_SESSION_META",
+    "kind": "const"
+  },
+  {
+    "file": "api/routes/retrospectiveChat.js",
+    "exportName": "CHAT_OUTPUT_TAIL_MAX_CHARS",
+    "kind": "const"
+  },
+  {
+    "file": "api/routes/retrospectiveChat.js",
+    "exportName": "CHAT_OUTPUT_TRUNCATED_MARKER",
+    "kind": "const"
+  },
+  {
+    "file": "api/routes/retrospectiveChat.js",
+    "exportName": "runChatTurn",
+    "kind": "function"
+  },
+  {
+    "file": "api/routes/review.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "api/routes/sessions.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "api/routes/skills.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "api/routes/taskImages.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "api/routes/tasks.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "api/routes/ws.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "api/sessionResolution.js",
+    "exportName": "createSessionHelpers",
+    "kind": "function"
+  },
+  {
+    "file": "api/sessionStore.js",
+    "exportName": "sessionStore",
+    "kind": "const"
+  },
+  {
+    "file": "api/sessionStore.js",
+    "exportName": "SessionStore",
+    "kind": "class"
+  },
+  {
+    "file": "api/skills/skillInjection.js",
+    "exportName": "buildDirectSkillBlock",
+    "kind": "function"
+  },
+  {
+    "file": "api/skills/skillInjection.js",
+    "exportName": "buildOptionManifestEntry",
+    "kind": "function"
+  },
+  {
+    "file": "api/skills/skillInjection.js",
+    "exportName": "estimateSkillInjectionChars",
+    "kind": "function"
+  },
+  {
+    "file": "api/skills/skillInjection.js",
+    "exportName": "setInterpolatePromptKeywords",
+    "kind": "function"
+  },
+  {
+    "file": "api/skills/skillsRegistry.js",
+    "exportName": "buildDescriptor",
+    "kind": "function"
+  },
+  {
+    "file": "api/skills/skillsRegistry.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "api/skills/skillsRegistry.js",
+    "exportName": "MAX_SKILL_CONFIG_CHARS",
+    "kind": "const"
+  },
+  {
+    "file": "api/skills/skillsRegistry.js",
+    "exportName": "MAX_SKILL_MARKDOWN_CHARS",
+    "kind": "const"
+  },
+  {
+    "file": "api/skills/skillsRegistry.js",
+    "exportName": "mergeSkillSources",
+    "kind": "function"
+  },
+  {
+    "file": "api/skills/skillsRegistry.js",
+    "exportName": "SKILL_MODES",
+    "kind": "const"
+  },
+  {
+    "file": "api/skills/skillsRegistry.js",
+    "exportName": "skillsRegistry",
+    "kind": "const"
+  },
+  {
+    "file": "api/skills/skillsRegistry.js",
+    "exportName": "SkillsRegistry",
+    "kind": "class"
+  },
+  {
+    "file": "api/stuckCheck.js",
+    "exportName": "STUCK_CHECK_SYSTEM_PROMPT",
+    "kind": "const"
+  },
+  {
+    "file": "api/stuckCheck.js",
+    "exportName": "STUCK_VERDICTS",
+    "kind": "const"
+  },
+  {
+    "file": "api/taskStore.js",
+    "exportName": "taskStore",
+    "kind": "const"
+  },
+  {
+    "file": "api/taskStore.js",
+    "exportName": "TaskStore",
+    "kind": "class"
+  },
+  {
+    "file": "api/testSetup.isolation.js",
+    "exportName": "tempCircuitStateFile",
+    "kind": "const"
+  },
+  {
+    "file": "api/testSetup.isolation.js",
+    "exportName": "tempNotesRoot",
+    "kind": "const"
+  },
+  {
+    "file": "api/testSetup.isolation.js",
+    "exportName": "tempProjectsRegistryFile",
+    "kind": "const"
+  },
+  {
+    "file": "api/testSetup.isolation.js",
+    "exportName": "tempPromptLayoutDir",
+    "kind": "const"
+  },
+  {
+    "file": "api/utils/platform.js",
+    "exportName": "buildStageEnv",
+    "kind": "function"
+  },
+  {
+    "file": "api/utils/platform.js",
+    "exportName": "findOnPath",
+    "kind": "function"
+  },
+  {
+    "file": "api/utils/platform.js",
+    "exportName": "isWindows",
+    "kind": "function"
+  },
+  {
+    "file": "api/utils/platform.js",
+    "exportName": "resolveShell",
+    "kind": "function"
+  },
+  {
+    "file": "api/utils/processTree.js",
+    "exportName": "killProcessTree",
+    "kind": "function"
+  },
+  {
+    "file": "api/utils/processTree.js",
+    "exportName": "killProcessTreeSync",
+    "kind": "function"
+  },
+  {
+    "file": "api/vitest.config.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "api/watch/observabilityMetrics.js",
+    "exportName": "computeObservabilityMetrics",
+    "kind": "function"
+  },
+  {
+    "file": "api/watch/stageReports.js",
+    "exportName": "getTaskReports",
+    "kind": "function"
+  },
+  {
+    "file": "api/watch/stageReports.js",
+    "exportName": "saveStageReport",
+    "kind": "function"
+  },
+  {
+    "file": "api/watch/taskWatchRoutes.js",
+    "exportName": "registerTaskWatchRoutes",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/kickIfRunnable.js",
+    "exportName": "kickIfRunnable",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/remediateNoVerdictRejections.js",
+    "exportName": "NO_VERDICT_REJECTION_DIAGNOSTIC",
+    "kind": "const"
+  },
+  {
+    "file": "api/work/remediateNoVerdictRejections.js",
+    "exportName": "REPORT_MATCH_WINDOW_MS",
+    "kind": "const"
+  },
+  {
+    "file": "api/work/repairDocsLink.js",
+    "exportName": "repairDocsLink",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/resolveEngineState.js",
+    "exportName": "resolveEngineState",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/resolveProjectCwd.js",
+    "exportName": "resolveProjectCwd",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/settleWedgedEntryForTask.js",
+    "exportName": "settleWedgedEntryForTask",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskAssets.js",
+    "exportName": "IMAGE_EXTENSIONS",
+    "kind": "const"
+  },
+  {
+    "file": "api/work/taskBranches.js",
+    "exportName": "TASK_BRANCH_PREFIX",
+    "kind": "const"
+  },
+  {
+    "file": "api/work/taskErrors.js",
+    "exportName": "classifyStageError",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskErrors.js",
+    "exportName": "isTransientInfrastructureError",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskErrors.js",
+    "exportName": "isUnrecoverableError",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskFinalize.js",
+    "exportName": "STAGE_COMMIT_BODY_MAX_CHARS",
+    "kind": "const"
+  },
+  {
+    "file": "api/work/taskFinalize.js",
+    "exportName": "STAGE_COMMIT_GOAL_SUBJECT_CHARS",
+    "kind": "const"
+  },
+  {
+    "file": "api/work/taskLifecycle.js",
+    "exportName": "cancelProjectExecutions",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskLifecycle.js",
+    "exportName": "clearProject",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskLifecycle.js",
+    "exportName": "createTask",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskLifecycle.js",
+    "exportName": "deleteTask",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskLifecycle.js",
+    "exportName": "getTask",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskLifecycle.js",
+    "exportName": "getTaskLogFeed",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskLifecycle.js",
+    "exportName": "getTasks",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskLifecycle.js",
+    "exportName": "isTaskBlocked",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskLifecycle.js",
+    "exportName": "listTasks",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskLifecycle.js",
+    "exportName": "removeTask",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskLifecycle.js",
+    "exportName": "scanTasks",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskLifecycle.js",
+    "exportName": "updateTask",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskLifecycle.js",
+    "exportName": "WORKTREE_REAPABLE_STATUSES",
+    "kind": "const"
+  },
+  {
+    "file": "api/work/taskPersistence.js",
+    "exportName": "_entryBaseline",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskPersistence.js",
+    "exportName": "_isTaskStillRegistered",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskPersistence.js",
+    "exportName": "docsProjectForStore",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskPersistence.js",
+    "exportName": "parseTaskMarkdown",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskPersistence.js",
+    "exportName": "recordHistory",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskPersistence.js",
+    "exportName": "recordTimeline",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskPersistence.js",
+    "exportName": "saveTaskMarkdown",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskPersistence.js",
+    "exportName": "syncTaskReports",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskSurvey.js",
+    "exportName": "appendSurveyRound",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskSurvey.js",
+    "exportName": "readSurvey",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskSurvey.js",
+    "exportName": "renderSurveyMarkdownFor",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskSurvey.js",
+    "exportName": "resolveSurveyGate",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskSurvey.js",
+    "exportName": "saveSurveyAnswers",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskSurvey.js",
+    "exportName": "spliceRoundsIntoMarkdown",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskSurvey.js",
+    "exportName": "SURVEY_FILENAME",
+    "kind": "const"
+  },
+  {
+    "file": "api/work/taskSurvey.js",
+    "exportName": "SURVEY_OUTPUT_FILE_KEYS",
+    "kind": "const"
+  },
+  {
+    "file": "api/work/taskSurvey.js",
+    "exportName": "surveyProjectFor",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskWorkRoutes.js",
+    "exportName": "registerTaskWorkRoutes",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskWorkRoutes.js",
+    "exportName": "surveyOutputFileForRequest",
+    "kind": "function"
+  },
+  {
+    "file": "api/work/taskWorkspace.js",
+    "exportName": "QUARANTINE_DIR",
+    "kind": "const"
+  },
+  {
+    "file": "api/work/taskWorkspace.js",
+    "exportName": "WORKTREE_BASE_DIR",
+    "kind": "const"
+  },
+  {
+    "file": "api/workflowRegistry.js",
+    "exportName": "workflowRegistry",
+    "kind": "const"
+  },
+  {
+    "file": "api/workflowRegistry.js",
+    "exportName": "WorkflowRegistry",
+    "kind": "class"
+  },
+  {
+    "file": "frontend/src/a11y/a11yTestHelpers.js",
+    "exportName": "assertAllNamed",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/a11y/a11yTestHelpers.js",
+    "exportName": "assertDialogLabelled",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/a11y/a11yTestHelpers.js",
+    "exportName": "assertHeadingOrder",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/a11y/a11yTestHelpers.js",
+    "exportName": "assertLiveRegion",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/a11y/a11yTestHelpers.js",
+    "exportName": "assertNamed",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/a11y/a11yTestHelpers.js",
+    "exportName": "assertSectionHeadings",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/a11y/Announce.jsx",
+    "exportName": "routeAnnouncement",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/a11y/reducedMotion.js",
+    "exportName": "prefersReducedMotion",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/a11y/reducedMotion.js",
+    "exportName": "scrollIntoViewRespectingMotion",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/common/CircuitBreakerBanner.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/common/GlossaryTerm.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/common/InfoTooltip.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/common/InfoTooltip.jsx",
+    "exportName": "HIDE_DELAY_MS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/common/InfoTooltip.jsx",
+    "exportName": "HOVER_DELAY_MS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/common/ModelSelector.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/common/ModelSelector.jsx",
+    "exportName": "DEFAULT_HARNESS_ID",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/common/Notifications.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/common/ResponsiveLabel.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/common/SelectDropdown.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/docs/DocsView.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/FeedbackDialog.jsx",
+    "exportName": "FeedbackDialog",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/Icon.jsx",
+    "exportName": "Icon",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/KeyboardShortcutsModal.jsx",
+    "exportName": "KeyboardShortcutsModal",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/layout/activeTaskVisibility.js",
+    "exportName": "resolveActiveTaskDisplay",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/layout/activeTaskVisibility.js",
+    "exportName": "resolveUniversalNowPlaying",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/layout/BuildBadge.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/layout/ChangelogModal.jsx",
+    "exportName": "CHANGELOG_FETCH_LIMIT",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/layout/ChangelogModal.jsx",
+    "exportName": "CHANGELOG_INITIAL_VISIBLE",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/layout/ChangelogModal.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/layout/MonitorPopoutButton.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/layout/TabNavigator.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/layout/TabNavigator.jsx",
+    "exportName": "TabNavigator",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/adapters.js",
+    "exportName": "adaptProcessLogLine",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/adapters.js",
+    "exportName": "adaptProcessLogLines",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/adapters.js",
+    "exportName": "adaptTaskEntries",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/adapters.js",
+    "exportName": "adaptTaskEntry",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/adapters.js",
+    "exportName": "excludeToolMirrorLinesWhenToolCardsShown",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "asCategorySet",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "categoriesFor",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "categoryFor",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "countByCategory",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "defaultCategorySet",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "extractDetail",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "filterLogRecords",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "formatLogRecordsForCopy",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "groupLogRecords",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "hydrateCategories",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "interventionSummary",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "isIntervention",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "isKnownCategory",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "legacyFeedToCategories",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "legacyTagToCategories",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "LOG_CATEGORIES",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "LOG_CATEGORY_IDS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "markRepeated",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "normalizeLogRecord",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "recordMatchesCategories",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "tagForRecord",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logCategories.js",
+    "exportName": "timestampLabel",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logScroll.js",
+    "exportName": "contentOverflows",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logScroll.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/logs/logScroll.js",
+    "exportName": "isNearBottom",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logScroll.js",
+    "exportName": "isStickToBottom",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/logs/logScroll.js",
+    "exportName": "isStuckToBottom",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/logs/logScroll.js",
+    "exportName": "NEAR_BOTTOM_THRESHOLD_PX",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/logs/logScroll.js",
+    "exportName": "nearBottom",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/logs/logScroll.js",
+    "exportName": "OVERFLOW_EPSILON_PX",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/logs/logScroll.js",
+    "exportName": "shouldAutoScroll",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/logs/logScroll.js",
+    "exportName": "shouldAutoScrollFollow",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/logs/logScroll.js",
+    "exportName": "shouldFollow",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/logs/logScroll.js",
+    "exportName": "shouldFollowScroll",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logScroll.js",
+    "exportName": "shouldStick",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/logs/logScroll.js",
+    "exportName": "STICK_TO_BOTTOM_THRESHOLD_PX",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/logs/logScroll.js",
+    "exportName": "stickToBottom",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/logs/logScroll.js",
+    "exportName": "useStickToBottom",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/logs/LogViewer.jsx",
+    "exportName": "DEFAULT_FILTERS_EXPANDED",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/logs/LogViewer.jsx",
+    "exportName": "LOG_WRAP_CLASSNAME",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/logs/LogViewer.jsx",
+    "exportName": "LOG_WRAP_STYLE",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/logs/LogViewer.jsx",
+    "exportName": "LogViewer",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logViewerState.js",
+    "exportName": "baseKeyForSurface",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logViewerState.js",
+    "exportName": "initialCategories",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logViewerState.js",
+    "exportName": "initialSearch",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/logs/logViewerState.js",
+    "exportName": "useLogViewerState",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/Modal.jsx",
+    "exportName": "Modal",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/observability/EngineStatePill.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/mobileModelDetails.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/MobileMonitorView.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/monitorCompact.js",
+    "exportName": "readCompactMonitorRequest",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/observability/ObservabilityDashboard.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/ObservabilityDashboard.jsx",
+    "exportName": "ObservabilityDashboard",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/observability/WidgetContainer.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/WidgetContainer.jsx",
+    "exportName": "WidgetContainer",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/observability/WidgetManagerModal.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgetRegistry.js",
+    "exportName": "COL_SPAN_OPTIONS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/observability/widgetRegistry.js",
+    "exportName": "DEFAULT_LAYOUT",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/observability/widgetRegistry.js",
+    "exportName": "HEIGHT_OPTIONS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/observability/widgetRegistry.js",
+    "exportName": "LAYOUT_SCHEMA_VERSION",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/observability/widgetRegistry.js",
+    "exportName": "PRESET_LAYOUTS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/observability/widgetRegistry.js",
+    "exportName": "WIDGET_CATALOG",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/observability/widgetRegistry.js",
+    "exportName": "WIDGET_CATEGORIES",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/ActiveTaskPromptWidget.jsx",
+    "exportName": "ActiveTaskPromptWidget",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/ActiveTaskPromptWidget.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/atoms/HealthStatusCard.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/atoms/KpiCard.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/HarnessReliabilityWidget.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/HealthDeviceWidget.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/HealthHarnessWidget.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/HealthLitellmWidget.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/HealthOllamaWidget.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/HealthWebsocketWidget.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/KpiCheckpointsWidget.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/KpiEngineWidget.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/KpiFailuresWidget.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/KpiQueueDepthWidget.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/KpiRibbonWidget.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/KpiSuccessesWidget.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/LiveConsoleWidget.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/LiveConsoleWidget.jsx",
+    "exportName": "LiveConsoleWidget",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/QueueOrderWidget.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/QueueOrderWidget.jsx",
+    "exportName": "QueueOrderWidget",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/RecentOutcomesWidget.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/RecentOutcomesWidget.jsx",
+    "exportName": "RecentOutcomesWidget",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/StatsBreakdownWidget.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/StatsBreakdownWidget.jsx",
+    "exportName": "StatsBreakdownWidget",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/observability/widgets/SubsystemHealthWidget.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/PromptReviewModal.jsx",
+    "exportName": "PromptReviewModal",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/reports/ReportViewer.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/retrospective/chatProgress.js",
+    "exportName": "CHAT_PROGRESS_TAIL_MAX_CHARS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/retrospective/chatProgress.js",
+    "exportName": "CHAT_PROGRESS_TRUNCATED_MARKER",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/retrospective/chatProgress.js",
+    "exportName": "elapsedSecondsSince",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/retrospective/ChatTurnProvider.jsx",
+    "exportName": "CHAT_ROUTE_PATH",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/retrospective/ChatTurnProvider.jsx",
+    "exportName": "CHAT_TOAST_SUCCESS_DURATION_MS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/retrospective/quickActions.js",
+    "exportName": "QUICK_ACTIONS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/retrospective/RetrospectivePage.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/retrospective/stageVisibility.js",
+    "exportName": "STAGE_VISIBILITY_QUERY_PARAM",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/retrospective/stageVisibility.js",
+    "exportName": "STAGE_VISIBILITY_STORAGE_KEY",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/retrospective/StageVisibilityToggle.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/retrospective/useRetrospectiveChat.js",
+    "exportName": "clearStoredChat",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/retrospective/useRetrospectiveChat.js",
+    "exportName": "INTERRUPTED_TURN_NOTICE",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/retrospective/useRetrospectiveChat.js",
+    "exportName": "loadStoredChat",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/retrospective/useRetrospectiveChat.js",
+    "exportName": "MAX_CHAT_MESSAGE_CHARS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/retrospective/useRetrospectiveChat.js",
+    "exportName": "MAX_CHAT_MESSAGES",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/retrospective/useRetrospectiveChat.js",
+    "exportName": "readChatError",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/retrospective/useRetrospectiveChat.js",
+    "exportName": "saveStoredChat",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/retrospective/useRetrospectiveChat.js",
+    "exportName": "useChatTurnController",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/retrospective/useRetrospectiveChat.js",
+    "exportName": "useRetrospectiveChat",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/review/diffParser.js",
+    "exportName": "countChanges",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/review/diffParser.js",
+    "exportName": "groupCommentsForFile",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/review/diffParser.js",
+    "exportName": "parseUnifiedDiff",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/review/DiffView.jsx",
+    "exportName": "DiffView",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/review/FileDiffList.jsx",
+    "exportName": "FileDiffList",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/review/ReportNavigator.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/review/ReportReviewView.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/settings/HarnessSection.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/settings/ModelAliasesSection.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/settings/ProjectSettingsForm.jsx",
+    "exportName": "ProjectSettingsForm",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/settings/promptLayoutTokens.js",
+    "exportName": "INLINE_LAYOUT_TOKENS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/settings/promptLayoutTokens.js",
+    "exportName": "SECTION_LAYOUT_TOKENS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/settings/ReliabilityLine.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/settings/RetryNumberField.jsx",
+    "exportName": "RetryNumberField",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/settings/SkillsSection.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/settings/SkillsSection.jsx",
+    "exportName": "keywordsOf",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/settings/StorageSection.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/settings/SystemSettingsContent.jsx",
+    "exportName": "DEFAULT_SYSTEM_SETTINGS_DRAFT",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/settings/SystemSettingsContent.jsx",
+    "exportName": "SYSTEM_SETTINGS_SECTIONS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/settings/SystemSettingsContent.jsx",
+    "exportName": "SystemSettingsContent",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/settings/SystemSettingsPage.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/settings/SystemSettingsPage.jsx",
+    "exportName": "DEFAULT_SYSTEM_SETTINGS_SECTION",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/settings/UiPreferencesModal.jsx",
+    "exportName": "UiPreferencesModal",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/settings/UiPreferencesPanel.jsx",
+    "exportName": "UiPreferencesPanel",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/stageTypes.js",
+    "exportName": "FALLBACK_MODELS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/stageTypes.js",
+    "exportName": "STAGE_TYPES",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/SystemGuideModal.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/tasks/DiffStatBadge.jsx",
+    "exportName": "DiffStatBadge",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/tasks/failureReason.js",
+    "exportName": "FAILURE_MESSAGE_PREVIEW_MAX",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/tasks/HistoryFailureReason.jsx",
+    "exportName": "HistoryFailureReason",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/tasks/logEntryModel.js",
+    "exportName": "LOG_FEEDS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/tasks/RunAttributionBadge.jsx",
+    "exportName": "RunAttributionBadge",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/tasks/runningTask.js",
+    "exportName": "LIVE_RUNNING_STATUSES",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/tasks/StuckCheck.jsx",
+    "exportName": "StuckCheckButton",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/tasks/StuckCheck.jsx",
+    "exportName": "StuckCheckResult",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/tasks/StuckCheck.jsx",
+    "exportName": "verdictMeta",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/tasks/SurveyBanner.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/tasks/SurveyPage.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/tasks/SurveyTaskPanel.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/tasks/TaskDetailHistoryPane.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/tasks/TaskDetailLogsPane.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/tasks/TaskDetailOverlayContent.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/tasks/TaskDetailPageContent.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/tasks/TaskDetailReportsPane.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/tasks/TaskDetailsTabContent.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/tasks/TaskDetailsTabContent.jsx",
+    "exportName": "TaskDetailsTab",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/tasks/TaskHistoryTab.jsx",
+    "exportName": "TaskHistoryTab",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/tasks/TaskImageAttach.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/tasks/TaskReportsTab.jsx",
+    "exportName": "TaskReportsTab",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/util/viewport.js",
+    "exportName": "isNarrowViewport",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/util/viewport.js",
+    "exportName": "narrowViewportOverride",
+    "kind": "let"
+  },
+  {
+    "file": "frontend/src/components/util/viewport.js",
+    "exportName": "useIsNarrowViewport",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/AddStageMenu.jsx",
+    "exportName": "AddStageMenu",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/hooks/useMobileToolbarCollapse.js",
+    "exportName": "COLLAPSE_DELTA_DOWN",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/hooks/useMobileToolbarCollapse.js",
+    "exportName": "COLLAPSE_SCROLL_TOP",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/hooks/useMobileToolbarCollapse.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/workflow/hooks/useMobileToolbarCollapse.js",
+    "exportName": "EXPAND_DELTA_UP",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/hooks/useMobileToolbarCollapse.js",
+    "exportName": "EXPAND_NEAR_TOP",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/hooks/useMobileToolbarCollapse.js",
+    "exportName": "MOBILE_TOOLBAR_BREAKPOINT",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/hooks/useMobileToolbarCollapse.js",
+    "exportName": "MOBILE_TOOLBAR_COLLAPSE_EVENT",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/KBReferenceSelect.jsx",
+    "exportName": "buildKnownOptions",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/KBReferenceSelect.jsx",
+    "exportName": "BUILTIN_OPTION_VALUE",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/KBReferenceSelect.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/workflow/KBReferenceSelect.jsx",
+    "exportName": "isTemplateValue",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/KBReferenceSelect.jsx",
+    "exportName": "MANUAL_OPTION_VALUE",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/pipelineTransfer.js",
+    "exportName": "isKnownTransferType",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/pipelineTransfer.js",
+    "exportName": "MAX_IMPORT_BYTES",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/pipelineTransfer.js",
+    "exportName": "MAX_STAGES",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/pipelineTransfer.js",
+    "exportName": "PIPELINE_EXPORT_VERSION",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/pipelineTransfer.js",
+    "exportName": "PIPELINE_FILE_SUFFIX",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/pipelineTransfer.js",
+    "exportName": "serializePipelineJson",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/searchQueryParser.js",
+    "exportName": "isTagToken",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/StageSkillsPanel.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/workflow/StageSkillsPanel.jsx",
+    "exportName": "dependentKeys",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/StageSkillsPanel.jsx",
+    "exportName": "estimateSkillsChars",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/StageSkillsPanel.jsx",
+    "exportName": "findKeyByKbRef",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/StageSkillsPanel.jsx",
+    "exportName": "hasKbRefKind",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/StageSkillsPanel.jsx",
+    "exportName": "keywordDefaultValue",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/StageSkillsPanel.jsx",
+    "exportName": "keywordStoredText",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/StageSkillsPanel.jsx",
+    "exportName": "resolveProjectIdForCascade",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/StageSkillsPanel.jsx",
+    "exportName": "resolveSkillTargets",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/StageSkillsPanel.jsx",
+    "exportName": "resolveWorkflowIdForCascade",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/StageSkillsPanel.jsx",
+    "exportName": "STAGE_SKILLS_MAX_CHARS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/StageSkillsPanel.jsx",
+    "exportName": "StageSkillsPanel",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/StageSkillsPanel.jsx",
+    "exportName": "storedOrDefault",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/StageTagEditor.jsx",
+    "exportName": "StageTagEditor",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/stageTagFilter.js",
+    "exportName": "currentStageTagFilter",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/stageTagFilter.js",
+    "exportName": "STAGE_TAG_FILTER_MODE_PARAM",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/stageTagFilter.js",
+    "exportName": "STAGE_TAG_FILTER_MODE_STORAGE_KEY",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/stageTagFilter.js",
+    "exportName": "STAGE_TAG_FILTER_PARAM",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/stageTagFilter.js",
+    "exportName": "STAGE_TAG_FILTER_STORAGE_KEY",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/stageTokens.js",
+    "exportName": "STAGE_HEADER_TAG_CHIP_CLASS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/stageTokens.js",
+    "exportName": "STAGE_TAB_PILL_CLASS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/stageTokens.js",
+    "exportName": "STAGE_TAG_CHIP_CLASS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/components/workflow/UnifiedSearchBar.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/components/workflow/UnifiedSearchBar.jsx",
+    "exportName": "UnifiedSearchBar",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/unifiedSearchBarUtils.js",
+    "exportName": "getTagLabel",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/components/workflow/WorkflowCanvas.jsx",
+    "exportName": "WorkflowCanvas",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/KainBainContext.jsx",
+    "exportName": "KainBainProvider",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/useAccentTheme.js",
+    "exportName": "useAccentTheme",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/useBoardSync.js",
+    "exportName": "useBoardSync",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/useEngineStatus.js",
+    "exportName": "useEngineStatus",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/useNotifications.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/context/usePendingTaskSave.js",
+    "exportName": "usePendingTaskSave",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/useReview.js",
+    "exportName": "useReview",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/useReview.js",
+    "exportName": "VIEWED_FILES_STORAGE_PREFIX",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/context/useSelectedTask.js",
+    "exportName": "useSelectedTask",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/useSkills.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/context/useStageNavigation.js",
+    "exportName": "useStageNavigation",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/useTaskBoard.js",
+    "exportName": "isValidProjectId",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/useTaskBoard.js",
+    "exportName": "useTaskBoard",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/useTaskMutations.js",
+    "exportName": "useTaskMutations",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/useTasks.js",
+    "exportName": "useTasks",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/useTaskSubmission.js",
+    "exportName": "useTaskSubmission",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/useUiPreferences.js",
+    "exportName": "applyPreferencesToDom",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/useUiPreferences.js",
+    "exportName": "DEFAULT_UI_PREFERENCES",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/context/useUiPreferences.js",
+    "exportName": "isValidPreferenceValue",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/useUiPreferences.js",
+    "exportName": "loadSavedPreferences",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/useUiPreferences.js",
+    "exportName": "STORAGE_KEY",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/context/useUiPreferences.js",
+    "exportName": "useUiPreferences",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/useViewNavigation.js",
+    "exportName": "useViewNavigation",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/useWebSocket.js",
+    "exportName": "useWebSocket",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/wsMessageDispatch.js",
+    "exportName": "dispatchWsMessage",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/wsUtils.js",
+    "exportName": "compactArgsForLog",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/context/wsUtils.js",
+    "exportName": "parseSystemToolInvocation",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/hooks/useAutoSave.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/hooks/useModelRefreshSetting.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/hooks/useTaskDraftCache.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/hooks/useTaskGoalDraft.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/routes.jsx",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/routing.js",
+    "exportName": "ROUTES",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/services/api.js",
+    "exportName": "api",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/services/apiBase.js",
+    "exportName": "API_BASE",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/services/apiBase.js",
+    "exportName": "pageHostname",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/apiBase.js",
+    "exportName": "pageProtocol",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/client/cache.js",
+    "exportName": "clearApiCaches",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/client/cache.js",
+    "exportName": "clearModelsCache",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/client/cache.js",
+    "exportName": "clearStatusCache",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/client/cache.js",
+    "exportName": "fetchCachedComputeStatus",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/client/cache.js",
+    "exportName": "fetchCachedHealthStatus",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/client/cache.js",
+    "exportName": "fetchCachedModels",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/client/cache.js",
+    "exportName": "fetchCachedObservabilityStatus",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/client/cache.js",
+    "exportName": "fetchCachedSystemStatus",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/client/request.js",
+    "exportName": "DEFAULT_REQUEST_TIMEOUT_MS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/services/client/request.js",
+    "exportName": "MAX_GET_RETRIES",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/services/client/request.js",
+    "exportName": "request",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/clipboard.js",
+    "exportName": "default",
+    "kind": "default"
+  },
+  {
+    "file": "frontend/src/services/logger.js",
+    "exportName": "logger",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/services/modelKeys.js",
+    "exportName": "modelKeyForValue",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/modelKeys.js",
+    "exportName": "modelOptionValue",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/pushNotifications.js",
+    "exportName": "getServiceWorkerRegistration",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/pushNotifications.js",
+    "exportName": "getSettings",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/pushNotifications.js",
+    "exportName": "getSubscriptionState",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/pushNotifications.js",
+    "exportName": "pushNotifications",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/services/pushNotifications.js",
+    "exportName": "sendTestPush",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/pushNotifications.js",
+    "exportName": "subscribeUser",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/pushNotifications.js",
+    "exportName": "unsubscribeUser",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/pushNotifications.js",
+    "exportName": "updateSettings",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/soundEffects.js",
+    "exportName": "soundEffects",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/services/taskDrafts.js",
+    "exportName": "getTaskDraftStats",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/taskDrafts.js",
+    "exportName": "noteTaskDraftConfirmed",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/taskDrafts.js",
+    "exportName": "noteTaskDraftWritten",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/taskDrafts.js",
+    "exportName": "resetTaskDraftStats",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/services/taskDrafts.js",
+    "exportName": "TASK_DRAFT_DISABLED_KEY",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/services/taskDrafts.js",
+    "exportName": "TASK_DRAFT_KEY_PREFIX",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/services/taskDrafts.js",
+    "exportName": "TASK_DRAFT_MAX_ENTRIES",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/services/taskDrafts.js",
+    "exportName": "TASK_DRAFT_TTL_MS",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/testUtils.jsx",
+    "exportName": "renderWithKainBain",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/theme/accentTokens.js",
+    "exportName": "accentTextPair",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/theme/accentTokens.js",
+    "exportName": "accentTokens",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/theme/accentTokens.js",
+    "exportName": "contrastOfPair",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/theme/accentTokens.js",
+    "exportName": "contrastRatio",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/theme/accentTokens.js",
+    "exportName": "ENHANCED_CONTRAST_MINIMUM",
+    "kind": "const"
+  },
+  {
+    "file": "frontend/src/theme/accentTokens.js",
+    "exportName": "hexToRgb",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/theme/accentTokens.js",
+    "exportName": "mixHexTowards",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/theme/accentTokens.js",
+    "exportName": "normalizeHex",
+    "kind": "function"
+  },
+  {
+    "file": "frontend/src/theme/accentTokens.js",
+    "exportName": "relativeLuminance",
+    "kind": "function"
+  },
+  {
+    "file": "shared/modelAliases.js",
+    "exportName": "ALIAS_HARNESS_ID",
+    "kind": "const"
+  },
+  {
+    "file": "shared/modelAliases.js",
+    "exportName": "ALIAS_NAME_MAX_LENGTH",
+    "kind": "const"
+  },
+  {
+    "file": "shared/modelAliases.js",
+    "exportName": "ALIAS_NAME_PATTERN",
+    "kind": "const"
+  },
+  {
+    "file": "shared/modelKeys.js",
+    "exportName": "HARNESS_ID_PATTERN",
+    "kind": "const"
+  },
+  {
+    "file": "shared/modelKeys.js",
+    "exportName": "MODEL_KEY_SEP",
+    "kind": "const"
+  },
+  {
+    "file": "shared/modelKeys.js",
+    "exportName": "resolveModel",
+    "kind": "function"
+  },
+  {
+    "file": "shared/stageTags.js",
+    "exportName": "availableStageTags",
+    "kind": "function"
+  },
+  {
+    "file": "shared/stageTags.js",
+    "exportName": "STAGE_TAG_MAX_COUNT",
+    "kind": "const"
+  },
+  {
+    "file": "shared/stageTags.js",
+    "exportName": "STAGE_TAG_MAX_LENGTH",
+    "kind": "const"
+  },
+  {
+    "file": "shared/stageTags.js",
+    "exportName": "stageHasTag",
+    "kind": "function"
+  },
+  {
+    "file": "shared/stageTags.js",
+    "exportName": "stageMatchesTags",
+    "kind": "function"
+  },
+  {
+    "file": "shared/stageTags.js",
+    "exportName": "stageTagKey",
+    "kind": "function"
+  },
+  {
+    "file": "shared/survey.js",
+    "exportName": "QUESTION_ME_SKILL_NAME",
+    "kind": "const"
+  },
+  {
+    "file": "shared/survey.js",
+    "exportName": "QUESTION_TYPES",
+    "kind": "const"
+  },
+  {
+    "file": "shared/toolLogFormat/collapseWhitespace.js",
+    "exportName": "collapseWhitespace",
+    "kind": "function"
+  },
+  {
+    "file": "shared/toolLogFormat/constants.js",
+    "exportName": "DEFAULT_RESULT_SUMMARY_LENGTH",
+    "kind": "const"
+  },
+  {
+    "file": "shared/toolLogFormat/constants.js",
+    "exportName": "DEFAULT_START_SUMMARY_LENGTH",
+    "kind": "const"
+  },
+  {
+    "file": "shared/toolLogFormat/constants.js",
+    "exportName": "MAX_BACKTRACK_FRAGMENT",
+    "kind": "const"
+  },
+  {
+    "file": "shared/toolLogFormat/normalizeBudget.js",
+    "exportName": "normalizeBudget",
+    "kind": "function"
+  },
+  {
+    "file": "shared/toolLogFormat/parseResultEnvelope.js",
+    "exportName": "parseEnvelopeValue",
+    "kind": "function"
+  },
+  {
+    "file": "shared/toolLogFormat/parseResultEnvelope.js",
+    "exportName": "parseEnvelopeValueFromText",
+    "kind": "function"
+  },
+  {
+    "file": "shared/toolLogFormat/parseResultEnvelope.js",
+    "exportName": "parseResultEnvelope",
+    "kind": "function"
+  },
+  {
+    "file": "shared/toolLogFormat/pickPrimaryArg.js",
+    "exportName": "pickPrimaryArg",
+    "kind": "function"
+  },
+  {
+    "file": "shared/toolLogFormat/readArgValue.js",
+    "exportName": "readArgValue",
+    "kind": "function"
+  },
+  {
+    "file": "shared/toolLogFormat/stripAnsi.js",
+    "exportName": "stripAnsi",
+    "kind": "function"
+  },
+  {
+    "file": "shared/toolLogFormat/summarizePermission.js",
+    "exportName": "summarizePermission",
+    "kind": "function"
+  },
+  {
+    "file": "shared/toolLogFormat/summarizePlan.js",
+    "exportName": "summarizePlan",
+    "kind": "function"
+  },
+  {
+    "file": "shared/toolLogFormat/summarizeRaw.js",
+    "exportName": "summarizeRaw",
+    "kind": "function"
+  },
+  {
+    "file": "shared/toolLogFormat/summarizeToolResult.js",
+    "exportName": "summarizeToolResult",
+    "kind": "function"
+  },
+  {
+    "file": "shared/toolLogFormat/summarizeToolStart.js",
+    "exportName": "summarizeToolStart",
+    "kind": "function"
+  },
+  {
+    "file": "shared/toolLogFormat/summarizeUsage.js",
+    "exportName": "summarizeUsage",
+    "kind": "function"
+  },
+  {
+    "file": "shared/toolLogFormat/toolFamilies.js",
+    "exportName": "toolFamily",
+    "kind": "function"
+  },
+  {
+    "file": "shared/toolLogFormat/truncateAtWord.js",
+    "exportName": "truncateAtWord",
+    "kind": "function"
+  }
+]

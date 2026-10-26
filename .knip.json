@@ -1,0 +1,9 @@
+{
+  "workspaces": {
+    ".": ["package.json"],
+    "api": ["package.json"],
+    "frontend": ["package.json"],
+    "canary-e2e": ["package.json"]
+  },
+  "ignore": ["**/*.test.js", "**/*.test.jsx", "**/tests/**", "**/test-results/**"]
+}

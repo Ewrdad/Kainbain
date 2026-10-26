@@ -1,0 +1,243 @@
+{
+  "diagnostics": {
+    "duplicate_records": 0,
+    "gaps": 0,
+    "omitted_live_only": 0,
+    "unknown_payload_kinds": 0,
+    "unparseable_lines": 0
+  },
+  "events": [
+    {
+      "derived": {
+        "decoded": true
+      },
+      "envelope": {
+        "children": [
+          {
+            "child_index": 0,
+            "record_json": "{\"causation_id\":null,\"durability\":\"durable\",\"id\":\"01a14441-a8cc-75c2-8584-69329ee42595\",\"payload\":{\"format\":\"profile_v1\",\"schema_version\":1},\"payload_schema_version\":1,\"payload_type\":\"runtime.session.permission_format_declared\",\"record_type\":\"event\",\"recorded_at\":1792146516172923,\"schema_version\":1,\"sequence\":1,\"stream\":{\"id\":\"01912f3a-1111-7000-8000-000000000001\",\"kind\":\"session\"}}"
+          }
+        ],
+        "content_sha256": "sha256:[redacted]",
+        "frame_schema_version": 1,
+        "outer_log_ordinal": 1,
+        "retained_frame": "01a14441-a8cc-75c2-8584-69329ee42595",
+        "transaction_id": null
+      },
+      "kind": "retained_frame",
+      "outer_log_ordinal": 1
+    },
+    {
+      "derived": {
+        "decoded": true,
+        "session_id": "01912f3a-1111-7000-8000-000000000001",
+        "step_id": 12,
+        "trajectory_id": "trajectory_01912f3a-1111-7000-8000-000000000001",
+        "turn_count": 1
+      },
+      "envelope": {
+        "causation_id": null,
+        "durability": "durable",
+        "id": "01a14441-aa33-7ad3-a450-2626d73be536",
+        "payload": {
+          "event": {
+            "kind": "started",
+            "prompt": "Say hello in 3 words"
+          },
+          "kind": "run",
+          "run_id": "01a14441-aa2a-77d0-b1f6-be678b664a0b",
+          "source_run_record_id": "a1f8bbba-99e1-4598-8ead-1deafab2e16c",
+          "source_run_record_sequence": 1
+        },
+        "payload_schema_version": 1,
+        "payload_type": "runtime.session",
+        "record_type": "event",
+        "recorded_at": 1792146516531144,
+        "schema_version": 1,
+        "sequence": 12,
+        "stream": {
+          "id": "01912f3a-1111-7000-8000-000000000001",
+          "kind": "session"
+        }
+      },
+      "kind": "record",
+      "recorded_at": 1792146516531144
+    },
+    {
+      "derived": {
+        "decoded": true,
+        "session_id": "01912f3a-1111-7000-8000-000000000001",
+        "step_id": 13,
+        "trajectory_id": "trajectory_01912f3a-1111-7000-8000-000000000001",
+        "turn_count": 1
+      },
+      "envelope": {
+        "causation_id": null,
+        "durability": "durable",
+        "id": "01a14441-aa7a-74c2-b245-ba855e042a42",
+        "payload": {
+          "event": {
+            "kind": "started",
+            "task_id": "01a14441-aa65-7cf3-912a-8f9e36b60fa1"
+          },
+          "kind": "task",
+          "run_id": "01a14441-aa2a-77d0-b1f6-be678b664a0b",
+          "task_id": "01a14441-aa65-7cf3-912a-8f9e36b60fa1"
+        },
+        "payload_schema_version": 1,
+        "payload_type": "runtime.session",
+        "record_type": "event",
+        "recorded_at": 1792146516602208,
+        "schema_version": 1,
+        "sequence": 31,
+        "stream": {
+          "id": "01912f3a-1111-7000-8000-000000000001",
+          "kind": "session"
+        }
+      },
+      "kind": "record",
+      "recorded_at": 1792146516602208
+    },
+    {
+      "derived": {
+        "decoded": true,
+        "session_id": "01912f3a-1111-7000-8000-000000000001",
+        "step_id": 44,
+        "trajectory_id": "trajectory_01912f3a-1111-7000-8000-000000000001",
+        "turn_count": 1
+      },
+      "envelope": {
+        "causation_id": null,
+        "durability": "durable",
+        "id": "01a14441-aaab-7b70-a277-b60427f08ad3",
+        "payload": {
+          "event": {
+            "kind": "assistant_message_committed",
+            "message_id": "9c8836b6-9d98-4146-aca8-80bc208565b7",
+            "response_id": "muse-tui-echo",
+            "text": "echo: Say hello in 3 words"
+          },
+          "kind": "run",
+          "run_id": "01a14441-aa2a-77d0-b1f6-be678b664a0b",
+          "source_run_record_id": "c974d6cd-57e9-465f-9401-f350e2098c25",
+          "source_run_record_sequence": 22
+        },
+        "payload_schema_version": 1,
+        "payload_type": "runtime.session",
+        "record_type": "event",
+        "recorded_at": 1792146516651309,
+        "schema_version": 1,
+        "sequence": 44,
+        "stream": {
+          "id": "01912f3a-1111-7000-8000-000000000001",
+          "kind": "session"
+        }
+      },
+      "kind": "record",
+      "recorded_at": 1792146516651309
+    },
+    {
+      "derived": {
+        "decoded": true,
+        "session_id": "01912f3a-1111-7000-8000-000000000001",
+        "step_id": 50,
+        "trajectory_id": "trajectory_01912f3a-1111-7000-8000-000000000001",
+        "turn_count": 1
+      },
+      "envelope": {
+        "causation_id": null,
+        "durability": "durable",
+        "id": "01a14441-bb50-7000-8000-000000000050",
+        "payload": {
+          "event": {
+            "kind": "started",
+            "prompt": "What is 2+2?"
+          },
+          "kind": "run",
+          "run_id": "01a14441-aa2a-77d0-b1f6-be678b664a0b",
+          "source_run_record_id": "a1f8bbba-99e1-4598-8ead-1deafab2e16c",
+          "source_run_record_sequence": 1
+        },
+        "payload_schema_version": 1,
+        "payload_type": "runtime.session",
+        "record_type": "event",
+        "recorded_at": 1792146516531194,
+        "schema_version": 1,
+        "sequence": 50,
+        "stream": {
+          "id": "01912f3a-1111-7000-8000-000000000001",
+          "kind": "session"
+        }
+      },
+      "kind": "record",
+      "recorded_at": 1792146516531194
+    },
+    {
+      "derived": {
+        "decoded": true,
+        "session_id": "01912f3a-1111-7000-8000-000000000001",
+        "step_id": 61,
+        "trajectory_id": "trajectory_01912f3a-1111-7000-8000-000000000001",
+        "turn_count": 1
+      },
+      "envelope": {
+        "causation_id": null,
+        "durability": "durable",
+        "id": "01a14441-bb61-7000-8000-000000000061",
+        "payload": {
+          "event": {
+            "kind": "assistant_message_committed",
+            "message_id": "9c8836b6-9d98-4146-aca8-80bc208565b7",
+            "response_id": "muse-tui-echo",
+            "text": "echo: What is 2+2?"
+          },
+          "kind": "run",
+          "run_id": "01a14441-aa2a-77d0-b1f6-be678b664a0b",
+          "source_run_record_id": "c974d6cd-57e9-465f-9401-f350e2098c25",
+          "source_run_record_sequence": 22
+        },
+        "payload_schema_version": 1,
+        "payload_type": "runtime.session",
+        "record_type": "event",
+        "recorded_at": 1792146516651370,
+        "schema_version": 1,
+        "sequence": 61,
+        "stream": {
+          "id": "01912f3a-1111-7000-8000-000000000001",
+          "kind": "session"
+        }
+      },
+      "kind": "record",
+      "recorded_at": 1792146516651370
+    }
+  ],
+  "export_schema_version": 1,
+  "exporter_version": {
+    "display": "Muse Code 1.4.9 (dd233a1bd0)",
+    "semver": "1.4.9",
+    "sha": "dd233a1bd0"
+  },
+  "redaction": "redacted",
+  "session_build": {
+    "display": "Muse Code 1.4.9 (dd233a1bd0)",
+    "semver": "1.4.9",
+    "sha": "dd233a1bd0"
+  },
+  "session_terminated_abnormally": false,
+  "sessions": [
+    {
+      "accepted_spawns": [],
+      "is_copied_context": false,
+      "root_session_id": "01912f3a-1111-7000-8000-000000000001",
+      "saw_history_gap": false,
+      "session_end": {
+        "exit_reason": "clean",
+        "uptime_ms": 307
+      },
+      "session_id": "01912f3a-1111-7000-8000-000000000001",
+      "step_count": 64,
+      "trajectory_id": "trajectory_01912f3a-1111-7000-8000-000000000001",
+      "turn_count": 1
+    }
+  ]
+}

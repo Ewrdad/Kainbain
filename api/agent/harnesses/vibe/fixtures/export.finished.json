@@ -1,0 +1,27 @@
+{
+  "outcome": "finished",
+  "stop_reason": null,
+  "error": null,
+  "session_id": "d225dcb5-7aa7-e6d7-023d-511d2b0c0a84",
+  "usage": {
+    "input_tokens": 8646,
+    "output_tokens": 6,
+    "cached_input_tokens": 0,
+    "total_tokens": 8652
+  },
+  "cost_usd": 0.012130799999999999,
+  "steps": 1,
+  "config": "<elided: full effective Vibe config — active/routed models, providers, tools, agents, limits context>",
+  "schema_version": 1,
+  "vibe_version": "3.0.2",
+  "journal_dir": "session",
+  "started_at": "2026-10-12T01:58:53.279357Z",
+  "ended_at": "2026-10-12T01:58:59.307064Z",
+  "limits": {
+    "max_turns": 2,
+    "max_price": null,
+    "max_tokens": null,
+    "time_limit_s": null
+  },
+  "exit_code": 0
+}

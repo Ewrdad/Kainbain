@@ -1,0 +1,7 @@
+{
+  "isDefault": true,
+  "description": "Opt an agent stage into writing a summary report to the task's documentation folder. Attach this skill (or set stage.report: true on the stage) when the stage's prose summary alone is not enough and you want a durable, structured report file in docs/tasks/<taskId>/.",
+  "defaults": {
+    "mode": "direct"
+  }
+}

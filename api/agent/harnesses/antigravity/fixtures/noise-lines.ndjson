@@ -1,0 +1,9 @@
+[gyd] 2026-09-15T22:00:00Z WARNING: telemetry endpoint unreachable, retrying
+
+42
+{"not":"an agy event","because":"no event discriminator"}
+{"event":"telemetry","ok":true}
+{"event":"init","conversation_id":"conv-noise-1","init":{"cwd":"/workspace","tools":["read_file"],"permission_mode":"request-review","model":"gemini-3.8-flash-high"}}
+another line of stderr-style noise with "quotes" and {braces}
+{"event":"step_update","conversation_id":"conv-noise-1","step_index":2,"state":"ACTIVE","step_type":"agent_response","text_delta":"Reply survived the noise."}
+{"event":"result","conversation_id":"conv-noise-1","status":"SUCCESS","response":"Reply survived the noise","duration_seconds":0.5,"num_turns":1,"usage":{"input_tokens":10,"output_tokens":5,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":15}}

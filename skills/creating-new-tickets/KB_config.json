@@ -1,0 +1,33 @@
+{
+  "isDefault": true,
+  "description": "Create follow-on KainBain tasks (tickets) into a chosen project/pipeline/stage via the KainBain API. Use when findings should become actionable work items.",
+  "keywords": {
+    "kbApiBase": {
+      "value": "http://localhost:3100",
+      "description": "KainBain API base URL the stage agent should call (default; override with KAINBAIN_API_BASE where different)."
+    },
+    "targetProject": {
+      "value": "{{project}}",
+      "description": "Name (or slug) of the project that receives the new tickets. Defaults to the current project. Accepts a project id, name, or slug; the stage editor offers a dropdown of known projects.",
+      "kbRef": "project"
+    },
+    "targetWorkflow": {
+      "value": "wf-default",
+      "description": "Workflow (pipeline) id that receives the new tickets. Accepts a workflow id or name (e.g. wf-default / Feature Pipeline); the stage editor offers a dropdown of the target project's workflows.",
+      "kbRef": "workflow",
+      "dependsOn": "targetProject"
+    },
+    "targetStage": {
+      "value": "Idea",
+      "description": "Stage (id or exact name) where new tickets land. Case-insensitive name matching is supported by POST /tasks. Accepts a stage id or name; the stage editor offers a dropdown of the target workflow's stages.",
+      "kbRef": "stage",
+      "dependsOn": "targetWorkflow"
+    }
+  },
+  "context": "You may create follow-on KainBain tasks for verified findings using the KainBain API. Follow the skill exactly: resolve ids, dedupe, cap at 10 tickets, and never target the currently executing stage.",
+  "defaults": {
+    "mode": "direct"
+  },
+  "ticketLabel": "audit-finding",
+  "maxTicketsPerRun": 10
+}

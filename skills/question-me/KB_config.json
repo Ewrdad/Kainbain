@@ -1,0 +1,18 @@
+{
+  "isDefault": true,
+  "description": "Generate a set of survey questions up-front for an agent stage, write them to {{outputFile}} in the task folder, and flag the stage as awaiting human input. The skill is used to replace iterative “grill-me” interactions with a single questionnaire.",
+  "keywords": {
+    "outputFile": {
+      "value": "SURVEY.md",
+      "description": "Name of the task-folder file that holds the question-me rounds. Defaults to SURVEY.md. Use distinct names (FEEDBACK.md, SECURITY_QUESTIONARY.md, INTENT_SURVEY.md, …) for multiple question stages. Canonical config key: outputFile (aliases: surveyFile, surveyFileName, fileName, targetFile, file)."
+    },
+    "minQuestions": {
+      "value": "0",
+      "description": "Suggested minimum number of questions for the round (soft guidance only; 0 disables). Surfaced as {{minQuestions}} in the skill body."
+    }
+  },
+  "context": "Question rounds are written as append-only JSON blocks to {{outputFile}} in the current task's docs/tasks/<taskId>/ folder. Re-read that file before appending so earlier rounds and answers are preserved. Suggested minimum number of questions for this round: {{minQuestions}} (0 = no minimum). Use a distinct outputFile per question stage when a task needs multiple surveys (e.g. FEEDBACK.md, SECURITY_QUESTIONARY.md, INTENT_SURVEY.md).",
+  "defaults": {
+    "mode": "direct"
+  }
+}

@@ -1,0 +1,525 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    /* Root type follows the user's browser setting (100% = 16px by default):
+       every rem-based size — including the retrospective page's mobile type —
+       scales with it. (Tailwind's preflight leaves this unset; the explicit
+       rule pins the contract instead of inheriting it by accident.) */
+    font-size: 100%;
+  }
+
+  :root {
+    --column-width: 280px;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+
+    /* Per-project accent theme. `--accent`/`--accent-on` are RGB triplets so
+       Tailwind's `rgb(var(--accent) / <alpha-value>)` opacity modifiers (e.g.
+       `bg-primary/20`) compile to valid CSS. `--accent-hex` is the raw hex for
+       SVG/`var()` consumers (e.g. BrandMark) that cannot read a triplet.
+       These are overridden at runtime from the active project's accentColor. */
+    --accent: 123 219 133;
+    --accent-on: 0 0 0;
+    --accent-glow: 123 219 133 / 0.2;
+    --accent-hex: #7bdb85;
+  }
+
+  body {
+    background-color: #0a0a0a;
+    color: #e5e2e1;
+    font-family: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+    transition:
+      background-color 0.2s ease,
+      color 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Visible focus indicator for keyboard users (WCAG 2.4.7 Focus Visible,
+     2.4.13 Focus Appearance AAA). The 3px accent outline exceeds the 2px
+     minimum thickness; the dark separator halo underneath guarantees the
+     ring holds 3:1 against ANY adjacent colour — including accent-tinted
+     surfaces where the ring alone would vanish into the background. This
+     also tracks the WCAG 3.0 focus-appearance draft (thicker, high-contrast
+     indicator). */
+  :focus-visible {
+    outline: 3px solid rgb(var(--accent, 123 219 133)) !important;
+    outline-offset: 2px !important;
+    /* No !important here: component focus rings (Tailwind utilities layer)
+       win where present; the halo covers everything else. */
+    box-shadow: 0 0 0 4px rgba(10, 10, 10, 0.9);
+  }
+
+  /* Respect users who prefer reduced motion (WCAG 2.3.3 Animation from Interactions). */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* Material Symbols configuration */
+.material-symbols-outlined {
+  font-variation-settings:
+    'FILL' 0,
+    'wght' 400,
+    'GRAD' 0,
+    'opsz' 24;
+  vertical-align: middle;
+}
+
+/* Custom scrollbars */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #131313;
+}
+/* WCAG 1.4.11: the thumb holds >= 3:1 against the track. */
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #757575;
+  border-radius: 10px;
+  border: 2px solid #131313;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #8a8a8a;
+}
+
+/* Glass panel effect for modals / overlays */
+.glass-panel {
+  background: rgba(30, 30, 30, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid #757575;
+}
+
+/* Custom input states for task detail view */
+.input-vibrant-green {
+  border: 1px solid #39994b;
+  background: rgba(57, 153, 75, 0.05);
+}
+.input-vibrant-green:focus {
+  outline: 1px solid #39994b;
+  background: rgba(57, 153, 75, 0.1);
+}
+
+.input-ochre {
+  border: 1px solid #b86200;
+  background: rgba(184, 98, 0, 0.05);
+}
+.input-ochre:focus {
+  outline: 1px solid #b86200;
+  background: rgba(184, 98, 0, 0.1);
+}
+
+/* Pulse animation for agent indicator */
+.pulse-agent {
+  animation: pulse-agent 2s infinite;
+}
+@keyframes pulse-agent {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Smooth Stage Transition Animation (#7, #40) */
+@keyframes stage-transition-fade-slide {
+  0% {
+    opacity: 0.2;
+    transform: translateY(8px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-stage-transition {
+  animation: stage-transition-fade-slide 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+/* Now Playing bar task-name entrance: short fade/slide replayed whenever the
+   active task (re)appears, including the idle -> running swap. Applied to the
+   decorative name wrapper only — never to the status badge text (WCAG 1.4.3:
+   badge text must hold contrast, so it never animates opacity). The global
+   prefers-reduced-motion / [data-reduce-motion] kills collapse this to an
+   instant swap for motion-sensitive users. */
+@keyframes now-playing-task-in {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.now-playing-task-enter {
+  animation: now-playing-task-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.task-card-enter {
+  transition:
+    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.25s ease;
+}
+
+/* Precise typography scale */
+.font-display-lg {
+  font-family: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.font-headline-md {
+  font-family: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.font-headline-sm {
+  font-family: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.font-body-md {
+  font-family: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+.font-body-sm {
+  font-family: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.font-code-md {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+.font-code-sm {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.font-label-caps {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+}
+
+/* ==========================================================================
+   DYNAMIC UI CUSTOMIZATION THEMING & ADAPTATIONS
+   ========================================================================== */
+
+/* Font Size Scaling */
+[data-font-size='small'] {
+  font-size: 14px;
+}
+[data-font-size='medium'] {
+  font-size: 16px;
+}
+[data-font-size='large'] {
+  font-size: 18px;
+}
+[data-font-size='extra-large'] {
+  font-size: 20px;
+}
+
+/* Monospace Font Overrides */
+[data-mono-font='jetbrains'] code,
+[data-mono-font='jetbrains'] .font-mono,
+[data-mono-font='jetbrains'] .font-code-md,
+[data-mono-font='jetbrains'] .font-code-sm,
+[data-mono-font='jetbrains'] .font-label-caps {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+[data-mono-font='fira'] code,
+[data-mono-font='fira'] .font-mono,
+[data-mono-font='fira'] .font-code-md,
+[data-mono-font='fira'] .font-code-sm,
+[data-mono-font='fira'] .font-label-caps {
+  font-family: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+[data-mono-font='source'] code,
+[data-mono-font='source'] .font-mono,
+[data-mono-font='source'] .font-code-md,
+[data-mono-font='source'] .font-code-sm,
+[data-mono-font='source'] .font-label-caps {
+  font-family: 'Source Code Pro', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+[data-mono-font='system'] code,
+[data-mono-font='system'] .font-mono,
+[data-mono-font='system'] .font-code-md,
+[data-mono-font='system'] .font-code-sm,
+[data-mono-font='system'] .font-label-caps {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* Reduced Motion Override */
+[data-reduce-motion='true'] *,
+[data-reduce-motion='true'] *::before,
+[data-reduce-motion='true'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Density: Compact */
+[data-density='compact'] .p-6 {
+  padding: 0.875rem;
+}
+[data-density='compact'] .p-4 {
+  padding: 0.625rem;
+}
+[data-density='compact'] .p-3 {
+  padding: 0.5rem;
+}
+[data-density='compact'] .gap-4 {
+  gap: 0.625rem;
+}
+[data-density='compact'] .gap-3 {
+  gap: 0.5rem;
+}
+
+/* Density: Spacious */
+[data-density='spacious'] .p-6 {
+  padding: 2rem;
+}
+[data-density='spacious'] .p-4 {
+  padding: 1.25rem;
+}
+[data-density='spacious'] .gap-4 {
+  gap: 1.25rem;
+}
+
+/* Light Mode Theme */
+[data-theme='light'] body,
+[data-theme='light'] .bg-surface-deep {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+[data-theme='light'] .bg-surface {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+[data-theme='light'] .bg-surface-container,
+[data-theme='light'] .bg-surface-container-low,
+[data-theme='light'] .bg-surface-container-high,
+[data-theme='light'] .bg-surface-container-highest {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+[data-theme='light'] .bg-surface-subtle {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+[data-theme='light'] .text-on-surface,
+[data-theme='light'] .text-text-high {
+  color: #0f172a !important;
+}
+[data-theme='light'] .text-text-muted,
+[data-theme='light'] .text-on-surface-variant {
+  /* #475569 holds 7.6:1 on white / 7.2:1 on #f8fafc (WCAG 1.4.6 AAA).
+     #64748b only reached 4.8:1. */
+  color: #475569 !important;
+}
+[data-theme='light'] .border-border-standard {
+  /* WCAG 1.4.11: #64748b holds ~4.8:1 on white; #cbd5e1 only reached ~1.3:1. */
+  border-color: #64748b !important;
+}
+[data-theme='light'] .text-error {
+  /* Dark red holds 8.3:1 on white (WCAG 1.4.6 AAA); the dark-theme pastel
+     falls to ~1.9:1 on near-white surfaces. */
+  color: #991b1b !important;
+}
+[data-theme='light'] .custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+[data-theme='light'] .custom-scrollbar::-webkit-scrollbar-thumb {
+  /* WCAG 1.4.11: ~4.3:1 against the track. */
+  background: #64748b;
+}
+
+/* Midnight Navy Theme */
+[data-theme='midnight'] body,
+[data-theme='midnight'] .bg-surface-deep {
+  background-color: #070c14 !important;
+  color: #e2e8f0 !important;
+}
+[data-theme='midnight'] .bg-surface {
+  background-color: #0b1320 !important;
+  color: #e2e8f0 !important;
+}
+[data-theme='midnight'] .bg-surface-container,
+[data-theme='midnight'] .bg-surface-container-low,
+[data-theme='midnight'] .bg-surface-container-high,
+[data-theme='midnight'] .bg-surface-container-highest {
+  background-color: #131f33 !important;
+  border-color: #223659 !important;
+}
+[data-theme='midnight'] .bg-surface-subtle {
+  background-color: #0f192b !important;
+}
+[data-theme='midnight'] .border-border-standard {
+  /* WCAG 1.4.11: #5a7bab holds ~3.8:1 on the midnight surfaces. */
+  border-color: #5a7bab !important;
+}
+[data-theme='midnight'] .custom-scrollbar::-webkit-scrollbar-track {
+  background: #070c14;
+}
+[data-theme='midnight'] .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #5a7bab;
+}
+
+/* High-Contrast Accessibility Theme */
+[data-theme='high-contrast'] body,
+[data-theme='high-contrast'] .bg-surface-deep,
+[data-theme='high-contrast'] .bg-surface {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+[data-theme='high-contrast'] .bg-surface-container,
+[data-theme='high-contrast'] .bg-surface-container-low,
+[data-theme='high-contrast'] .bg-surface-container-high,
+[data-theme='high-contrast'] .bg-surface-container-highest,
+[data-theme='high-contrast'] .bg-surface-subtle {
+  background-color: #0a0a0a !important;
+  border-color: #ffffff !important;
+}
+[data-theme='high-contrast'] .text-on-surface,
+[data-theme='high-contrast'] .text-text-high,
+[data-theme='high-contrast'] .text-text-muted,
+[data-theme='high-contrast'] .text-on-surface-variant {
+  color: #ffffff !important;
+}
+[data-theme='high-contrast'] .border-border-standard {
+  border-color: #ffffff !important;
+}
+[data-theme='high-contrast'] :focus-visible {
+  outline: 3px solid #ffff00 !important;
+  outline-offset: 3px !important;
+}
+
+/* Accent Color Variations
+   The per-project accent is now driven by the `--accent`/`--accent-on` CSS
+   custom properties (set at runtime from the active project's accentColor) and
+   the Tailwind `primary`/`on-primary` tokens, which are defined as
+   `rgb(var(--accent) / <alpha-value>)`. The previous hardcoded
+   `[data-accent='x'] .bg-primary { ... !important }` overrides were removed so
+   they cannot override the var-driven utilities. */
+
+/* ==========================================================================
+   ZEBRA STRIPING UTILITIES (#37)
+   ========================================================================== */
+.zebra-list > *:nth-child(even),
+.zebra-row:nth-child(even),
+.zebra-table tbody tr:nth-child(even),
+.zebra-console-row:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.025) !important;
+}
+
+.zebra-list > *:nth-child(odd),
+.zebra-row:nth-child(odd),
+.zebra-table tbody tr:nth-child(odd),
+.zebra-console-row:nth-child(odd) {
+  background-color: transparent !important;
+}
+
+[data-theme='light'] .zebra-list > *:nth-child(even),
+[data-theme='light'] .zebra-row:nth-child(even),
+[data-theme='light'] .zebra-table tbody tr:nth-child(even),
+[data-theme='light'] .zebra-console-row:nth-child(even) {
+  background-color: rgba(0, 0, 0, 0.03) !important;
+}
+
+/* ==========================================================================
+   BOUNDED BADGES & Z-INDEX NORMALIZATION (#22)
+   ========================================================================== */
+.badge-bound {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 140px;
+  min-width: 18px;
+  min-height: 18px;
+  padding: 0.125rem 0.375rem;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 9999px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+  vertical-align: middle;
+}
+
+/* Mobile pipeline board (< 768px, mirrors Tailwind's `md:` breakpoint): the
+   single visible stage column spans the whole board width. Desktop column
+   widths arrive as inline styles (user-configurable `columnWidth`, e.g.
+   `max-width: 280px`), which outrank the column's `w-full` class — so this
+   override carries `!important` to win on phones only. Non-active columns
+   stay `display:none` via `hidden md:flex` and are unaffected. */
+@media (max-width: 767px) {
+  section[data-stage-id] {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    flex: 1 1 auto !important;
+  }
+}
+
+.z-toast {
+  z-index: 60;
+}
+.z-modal {
+  z-index: 50;
+}
+.z-dropdown {
+  z-index: 45;
+}
+.z-overlay {
+  z-index: 40;
+}
+.z-header {
+  z-index: 30;
+}
+.z-nav {
+  z-index: 20;
+}

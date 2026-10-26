@@ -1,0 +1,78 @@
+{
+	"_comment": "Captured ground truth from the real `vibe-acp` 3.0.2 (2026-10-24): the `initialize` + `session/new` handshake probe output (see probe-vibe-acp.mjs). The model select is fed by the deployment — refresh this fixture and review vibeAcpSupport.js / vibeModelCatalog.js whenever vibe-acp is upgraded. The sessionId line is redacted (it changes per probe).",
+	"initialize": {
+		"protocolVersion": 1,
+		"agentCapabilities": {
+			"loadSession": true,
+			"promptCapabilities": { "image": true, "audio": false, "embeddedContext": true },
+			"sessionCapabilities": { "list": {}, "fork": {}, "close": {} }
+		},
+		"authMethods": [
+			{
+				"id": "browser-auth",
+				"name": "Sign in through Mistral AI Studio",
+				"description": "Sign into Mistral Vibe through your Mistral AI Studio account."
+			}
+		],
+		"agentInfo": {
+			"name": "@mistralai/mistral-vibe",
+			"title": "Mistral Vibe",
+			"version": "3.0.2"
+		}
+	},
+	"session/new": {
+		"sessionId": "<redacted: fresh per probe>",
+		"modes": {
+			"currentModeId": "accept-edits",
+			"availableModes": [
+				{ "id": "ask", "name": "Ask", "description": "Requires approval for tool executions" },
+				{ "id": "accept-edits", "name": "Accept Edits", "description": "Auto-approves file edits only" },
+				{ "id": "smart-approve", "name": "Smart Approve", "description": "Classifies each tool call and auto-runs the safe ones, prompting only for risky ones" },
+				{ "id": "auto-approve", "name": "Auto Approve", "description": "Auto-approves all tool executions" }
+			]
+		},
+		"configOptions": [
+			{
+				"id": "mode",
+				"name": "Session Mode",
+				"category": "mode",
+				"type": "select",
+				"currentValue": "accept-edits",
+				"options": [
+					{ "value": "ask", "name": "Ask", "description": "Requires approval for tool executions" },
+					{ "value": "accept-edits", "name": "Accept Edits", "description": "Auto-approves file edits only" },
+					{ "value": "smart-approve", "name": "Smart Approve", "description": "Classifies each tool call and auto-runs the safe ones, prompting only for risky ones" },
+					{ "value": "auto-approve", "name": "Auto Approve", "description": "Auto-approves all tool executions" }
+				]
+			},
+			{
+				"id": "model",
+				"name": "Model",
+				"category": "model",
+				"type": "select",
+				"currentValue": "mistral-large-4-0-3",
+				"options": [
+					{ "value": "mistral-large-4-0-3", "name": "Mistral Large 4 (Preview)", "description": "mistral-large-4" },
+					{ "value": "glm-5-3", "name": "GLM-5.3 (Mistral Hosted)", "description": "zai-glm-5-3" },
+					{ "value": "zai-glm-5-3-flash", "name": "GLM-5.3 Flash (Mistral Hosted)", "description": "zai-glm-5-3-flash" },
+					{ "value": "zai-glm-5-3", "name": "GLM 5.3 (Mistral Hosted)", "description": "zai-glm-5-3" },
+					{ "value": "mistral-medium-latest", "name": "Mistral Medium 3.5", "description": "mistral-medium-latest" },
+					{ "value": "mistral-medium-3.5", "name": "Mistral Medium 3.5", "description": "mistral-vibe-cli-latest" }
+				]
+			},
+			{
+				"id": "thinking",
+				"name": "Thinking",
+				"category": "thinking",
+				"type": "select",
+				"currentValue": "high",
+				"options": [
+					{ "value": "high", "name": "High" }
+				]
+			}
+		],
+		"_meta": {
+			"workspace_trust": { "status": "untrusted", "details": null }
+		}
+	}
+}
