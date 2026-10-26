@@ -10,12 +10,13 @@ import { flowRequests } from './flow/index.js';
 import { crewRequests } from './crew/index.js';
 import { watchRequests } from './watch/index.js';
 import { houseRequests } from './house/index.js';
+import { runnerRequests } from './runners/index.js';
 import { api } from './api.js';
 
 describe('Business-owned request lists', () => {
   it('has no duplicate operations and exposes every domain operation through the old client', () => {
     const request = vi.fn();
-    const clients = [workRequests(request, () => true), flowRequests(request), crewRequests(request), watchRequests(request), houseRequests(request)];
+    const clients = [workRequests(request, () => true), flowRequests(request), crewRequests(request), watchRequests(request), houseRequests(request), runnerRequests(request)];
     const names = clients.flatMap(Object.keys);
     expect(new Set(names).size).toBe(names.length);
     // 60 legacy operations + the 3 task-image operations (uploadTaskImage,
@@ -36,7 +37,9 @@ describe('Business-owned request lists', () => {
     // switcher's "+ Add Existing Project…" dialog +
     // the 2 survey operations (getSurvey, submitSurvey) for the question-me
     // survey page.
-    expect(names).toHaveLength(82);
+    // the 4 Runner identity operations (getRunners, approveRunner,
+    // denyRunner, revokeRunner) for Settings › Harness › Runners.
+    expect(names).toHaveLength(86);
     for (const name of names) expect(typeof api[name]).toBe('function');
   });
 

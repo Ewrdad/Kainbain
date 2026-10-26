@@ -3,6 +3,7 @@ import { workRequests } from './work/index.js';
 import { flowRequests } from './flow/index.js';
 import { crewRequests } from './crew/index.js';
 import { watchRequests } from './watch/index.js';
+import { runnerRequests } from './runners/index.js';
 import { houseRequests, getFileRawUrl } from './house/index.js';
 import { retrospectiveRequests } from './retrospective/index.js';
 
@@ -112,6 +113,7 @@ export const api = {
   ...flowRequests(request),
   ...crewRequests(request),
   ...watchRequests(request),
+  ...runnerRequests(request),
   ...houseRequests(request),
   ...retrospectiveRequests(request),
   getFileRawUrl: (projectId, filePath) => getFileRawUrl(API_BASE, projectId, filePath),

@@ -5,6 +5,7 @@ import { FALLBACK_MODELS } from '../stageTypes';
 import { useModelCatalog } from '../../hooks/useModelCatalog';
 import { useModelRefreshSetting } from '../../hooks/useModelRefreshSetting';
 import { HarnessSection } from './HarnessSection';
+import { RunnersSection } from './RunnersSection';
 import { StorageSection } from './StorageSection';
 import { PushNotificationsSection } from './PushNotificationsSection';
 import { PromptLayoutSection } from './PromptLayoutSection';
@@ -204,6 +205,7 @@ export function SystemSettingsContent({
               modelsRefreshing={modelsRefreshing}
               modelRefreshRuntimeValue={modelRefreshRuntimeValue}
             />
+            <RunnersSection />
           </div>
         )}
 
