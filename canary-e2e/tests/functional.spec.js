@@ -179,7 +179,7 @@ test.describe("KainBain Functional E2E Tests", () => {
 			page.getByText(/Working Directory/i),
 		).toBeVisible();
 		await expect(
-			page.getByText("SilverBullet / Notes Space Symlink Directory", {
+			page.getByText("Notes Space Symlink Directory", {
 				exact: true,
 			}),
 		).toBeVisible();
@@ -187,7 +187,7 @@ test.describe("KainBain Functional E2E Tests", () => {
 			page.getByText("Documentation Folder Name", { exact: true }),
 		).toBeVisible();
 		await expect(
-			page.getByText("Link to Centralised Documentation (SilverBullet)", {
+			page.getByText("Link to Centralised Documentation", {
 				exact: true,
 			}),
 		).toBeVisible();
