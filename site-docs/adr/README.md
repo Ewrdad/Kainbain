@@ -11,6 +11,9 @@ finding to its test.
 | [0002](0002-schema-driven-config.md) | Schema-driven config | Accepted 2026-10-03 |
 | [0003](0003-cross-platform-process-supervision.md) | Cross-platform process supervision | Accepted 2026-10-04 |
 | [0004](0004-harness-pluggability-and-mock-mode.md) | Harness pluggability and mock mode | Accepted 2026-10-04 |
+| [0005](0005-harness-model-target-ownership.md) | Harness model target ownership | Accepted (imported 2026-10-26) |
+| [0006](0006-git-workspace-isolation.md) | Git workspace isolation | Accepted (imported 2026-10-26) |
+| [0007](0007-resume-stall-recovery.md) | Resume stall recovery | Accepted (imported 2026-10-26) |
 | [0008](0008-portable-runner-decisions.md) | Portable Runner: Phase 0 decisions D1–D14 | Accepted 2026-10-26 |
 | [0009](0009-runner-protocol-sketch.md) | Runner↔Backend protocol sketch v1 | Accepted 2026-10-26 |
 
@@ -30,10 +33,9 @@ The copies in this directory are canonical — tracked by git, shipped with
 every clone — and any future edit must be applied here first, then
 re-mirrored to `docs/adr/`.
 
-Numbering gap (recorded 2026-10-26): ADRs 0005–0007
+Numbering note (resolved 2026-10-26): ADRs 0005–0007
 (harness-model-target-ownership, git-workspace-isolation,
-resume-stall-recovery) exist only in the notes-space `docs/adr/` and were
-never mirrored in-repo, so the in-repo sequence jumps 0004 → 0008. The
-jump is deliberate: renumbering either side would break existing
-references. A future WP-1.4 docs-reversal pass should import 0005–0007 here
-as byte-identical tracked copies.
+resume-stall-recovery) lived only in the notes space until the WP-1.4
+docs reversal, which imported them here as byte-identical tracked copies
+(the reversal also tracks them at `docs/adr/` as part of the curated set).
+New ADRs continue the single global sequence (0008, 0009, …).
