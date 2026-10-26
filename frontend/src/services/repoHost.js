@@ -123,4 +123,9 @@ export const getRepoHostLabel = (remoteUrl) => {
   return parsed.host;
 };
 
+/***
+ * MARK: getRepoHostFileUrl default export
+ * @description Default-export alias of the provider URL derivation above.
+ * @example getRepoHostFileUrl('https://github.com/acme/app.git', {}) => 'https://github.com/acme/app'
+ ***/
 export default getRepoHostFileUrl;

@@ -78,4 +78,9 @@ export function VersionMismatchBanner() {
   );
 }
 
+/***
+ * MARK: VersionMismatchBanner default export
+ * @description Default-export alias of the lockstep banner above.
+ * @example <VersionMismatchBanner />
+ ***/
 export default VersionMismatchBanner;
