@@ -73,7 +73,23 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 				body: { projectId, executionId, epoch, seq, bytes },
 			});
 		},
-		complete({ taskId, projectId, executionId, epoch, sha, branch, posture }) {
+		complete({
+			taskId,
+			projectId,
+			executionId,
+			epoch,
+			sha,
+			branch,
+			posture,
+			outcome,
+			output,
+			summary,
+			modifiedFiles,
+			harnessId,
+			failureKind,
+			failureReason,
+			durationMs,
+		}) {
 			return call(`/tasks/${encodeURIComponent(taskId)}/complete-execution`, {
 				method: "POST",
 				body: {
@@ -83,6 +99,14 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 					...(sha ? { sha } : {}),
 					...(branch ? { branch } : {}),
 					...(posture ? { posture } : {}),
+					...(outcome ? { outcome } : {}),
+					...(output ? { output } : {}),
+					...(summary ? { summary } : {}),
+					...(modifiedFiles ? { modifiedFiles } : {}),
+					...(harnessId ? { harnessId } : {}),
+					...(failureKind ? { failureKind } : {}),
+					...(failureReason ? { failureReason } : {}),
+					...(Number.isFinite(durationMs) ? { durationMs } : {}),
 				},
 			});
 		},

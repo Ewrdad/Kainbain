@@ -20,8 +20,14 @@ export async function main(env = process.env) {
 
 const isEntry = process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop() || "");
 if (isEntry) {
-	main().catch((err) => {
-		console.error(`Runner failed: ${err?.message || err}`);
-		process.exitCode = 1;
-	});
+	// One-shot CLI: exit explicitly. Harness dispose can leave inert open
+	// handles (pipes/watchers, no child processes) that would otherwise
+	// keep the loop alive after the assignment is fully reported.
+	main().then(
+		() => process.exit(0),
+		(err) => {
+			console.error(`Runner failed: ${err?.message || err}`);
+			process.exit(1);
+		},
+	);
 }

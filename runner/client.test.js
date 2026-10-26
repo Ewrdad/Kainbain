@@ -35,6 +35,25 @@ describe("createRunnerClient", () => {
 		);
 	});
 
+	it("forwards the execution outcome and output on complete", async () => {
+		const { fetchImpl, calls } = stubFetch(() => ok({ accepted: true }));
+		const client = createRunnerClient({ backendUrl: "http://x:3100", fetchImpl });
+		await client.complete({
+			taskId: "t1",
+			projectId: "p1",
+			executionId: "e1",
+			epoch: 1,
+			outcome: "passed",
+			output: "did the thing",
+			durationMs: 1500,
+		});
+		const body = JSON.parse(calls[0].opts.body);
+		assert.equal(body.outcome, "passed");
+		assert.equal(body.output, "did the thing");
+		assert.equal(body.durationMs, 1500);
+		assert.ok(!("sha" in body));
+	});
+
 	it("omits empty optional claim fields", async () => {
 		const { fetchImpl, calls } = stubFetch(() => ok({}));
 		const client = createRunnerClient({ backendUrl: "http://x:3100", fetchImpl });
