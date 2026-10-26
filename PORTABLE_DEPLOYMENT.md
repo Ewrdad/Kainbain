@@ -37,15 +37,19 @@ docker compose up -d
 curl http://localhost:3100/status
 ```
 
-Open **http://localhost:3100** — the API serves the built UI from the same
-port, so there is only one URL.
+Open **http://localhost:3100** — the frontend serves the built UI and proxies
+the API from the same port, so there is only one URL.
 
-What just happened: the image builds (`Dockerfile`: api + frontend trees,
-frontend compiled with same-origin API URLs), the entrypoint verifies the
-task-storage mounts *refuse-to-boot* style (an unreachable or unwritable
-projects root exits 1 rather than serving an empty list), and compose mounts
-`./projects` (your tasks, on the host, survive rebuilds) plus a named volume
-for container state.
+What just happened: compose builds **two images from this checkout in one
+`docker compose up --build`** (`backend` from `Dockerfile`, `frontend` from
+`frontend/Dockerfile`, frontend compiled with same-origin API URLs). They
+are a lockstep pair — never mix a frontend tag with a backend tag from
+another commit; a mismatched pair shows an explicit UI banner instead of
+failing obscurely. The backend entrypoint verifies the task-storage mounts
+*refuse-to-boot* style (an unreachable or unwritable projects root exits 1
+rather than serving an empty list), and compose mounts `./projects` (your
+tasks, on the host, survive rebuilds) plus a named volume for container
+state. See [State ownership across the container boundary](#state-ownership-across-the-container-boundary) for which side writes what.
 
 Useful follow-ups (all optional):
 
@@ -358,6 +362,34 @@ curl -s http://localhost:3100/projects \
 Want: every root’s projects plus the adopted path. A missing adopted project
 means the registry file (`~/.kainbain/projects.json`) is unreadable — check
 permissions and re-run the register call.
+
+## State ownership across the container boundary
+
+The one place that says which side writes what (D10, MigrationPlan Phase 1
+WP-1.2). The invariant underneath is unchanged: the repo/filesystem is the
+source of truth for projects and tasks; nothing here adds a database.
+
+| Mount | Held by | Contents | Writers |
+|---|---|---|---|
+| `./projects` → `/workspace/projects` | backend | Master project copies — repo-as-truth (project configs, `docs/tasks/` run state) | **Backend only.** The only writer of project/task files. |
+| `kainbain-data` → `/home/node/.kainbain` | backend | Container state: notes space, sessions, caches, `build.json` stamp | **Backend only** (entrypoint verifies writability at boot; an unreachable mount is a fatal boot error, never a silent empty board). |
+| (none) | frontend | Nothing at runtime — static UI + proxy config, `VITE_*` baked at build | No writes possible. A stale frontend can only disagree by version, which the mismatch banner names. |
+| Runner working dirs (Phase 2+) | each Runner (native, outside compose) | Git-operation copies: per-task worktrees | Runners mutate **only** their own worktree and push their branch; they converge via push + completion report. No second writable store for task truth exists — adding one is the programme kill criterion. |
+
+Consequences for operators:
+
+- General config (schema-driven settings plus `.env` secrets) is read by the
+  backend from its mounted folder; the frontend takes configuration only as
+  build-time `VITE_*` args. A frontend container never needs a volume.
+- `docker compose down` loses nothing: tasks live in `./projects` on the
+  host, state in the named volume. `docker compose down -v` discards the
+  named volume (sessions, caches) but never `./projects`.
+- Rollback to the single-service topology is `git show
+  HEAD~:docker-compose.yml` (or any pre-split commit): the backend image
+  still ships `frontend/dist` and serves it when reached directly.
+- New projects will require a fetchable remote (decided, D11); enforcement
+  lands with the Runner work. Existing local-only projects keep the
+  loopback transport and are never offered to remote Runners.
 
 ## Troubleshooting
 
