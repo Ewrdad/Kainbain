@@ -75,11 +75,21 @@ RUN find ./api ./shared -not -path "*/node_modules/*" -name "*.test.js" -delete 
 	&& mkdir -p /workspace/projects /home/node/.kainbain \
 	&& chown -R node:node /app /workspace/projects /home/node/.kainbain
 
+# Lockstep stamps (MigrationPlan Phase 1 WP-1.1, D7): the commit this image
+# was built from. The entrypoint writes these into build.json at boot so
+# /status reports the backend side of the frontend<->backend version check.
+# Build with --build-arg KAINBAIN_BUILD_REF=$(git rev-parse --short HEAD)
+# (compose passes KAINBAIN_BUILD_REF through automatically).
+ARG KAINBAIN_BUILD_REF=unknown
+ARG KAINBAIN_BUILD_NUMBER=0
+
 ENV NODE_ENV=production \
 	PORT=3100 \
 	PROJECTS_ROOT=/workspace/projects \
 	NOTES_SPACE_ROOT=/home/node/.kainbain/notes \
-	KAINBAIN_DIST=/app/frontend/dist
+	KAINBAIN_DIST=/app/frontend/dist \
+	KAINBAIN_BUILD_REF=${KAINBAIN_BUILD_REF} \
+	KAINBAIN_BUILD_NUMBER=${KAINBAIN_BUILD_NUMBER}
 
 EXPOSE 3100
 # NOTE: 127.0.0.1, NOT localhost — the server binds IPv4-only and BusyBox wget resolves localhost to ::1 without fallback, so a localhost probe always fails. Do not "fix" this back to the ticket-literal localhost.

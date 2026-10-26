@@ -4,6 +4,7 @@ import { Icon } from '../Icon';
 import { BrandMark } from '../BrandMark';
 import { Modal } from '../Modal';
 import { BuildBadge } from './BuildBadge';
+import { VersionMismatchBanner } from './VersionMismatchBanner';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { GoToAppLink } from '../common/GoToAppLink';
 import { TabNavigator } from './TabNavigator';
@@ -632,6 +633,10 @@ export function Header() {
           <SystemMenu />
         </div>
       </header>
+
+      {/* Frontend<->backend lockstep banner (D7): renders nothing unless the
+          baked-in frontend ref and /status build.commit provably disagree. */}
+      <VersionMismatchBanner />
 
       {/* New Project Modal */}
       {isCreatingProject && (

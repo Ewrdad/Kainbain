@@ -1,7 +1,37 @@
-# KainBain turnkey local deployment (WP-8).
+# KainBain split topology (MigrationPlan Phase 1 WP-1.1: containerise without
+# distribution). Two Compose services, ONE user-facing origin:
 #
-#   docker compose up -d          # build + start; UI at http://localhost:3100
+#   browser -> frontend:${KAINBAIN_PORT:-3100} (nginx: statics + API proxy)
+#           -> backend:3100 (Fastify API + WebSocket)
+#
+#   docker compose up --build   # build + start; UI at http://localhost:3100
 #   curl http://localhost:3100/status
+#
+# Same-origin is mandatory: the frontend container proxies API routes and
+# /ws to the backend (see frontend/nginx.conf). A two-port outcome is a
+# Goal violation requiring a Goal amendment, not a documentation note.
+#
+# STATE OWNERSHIP (D10, WP-1.2) — which side writes what:
+#   backend mounts ./projects (master project copies — repo-as-truth) and
+#     kainbain-data (notes space, sessions, caches, state). The backend is
+#     the SOLE writer of project/task files.
+#   frontend mounts nothing: stateless, build-time VITE_* only.
+#   Runners (Phase 2+): own git-operation copies only, converging via push +
+#     completion report. No second writable store exists for task truth
+#     (adding one would violate repo-as-truth and is the kill criterion).
+#
+# LOCKSTEP (D7): both images build from this checkout in one
+# `docker compose up --build`. Stamp both sides from the same commit:
+#   KAINBAIN_BUILD_REF=$(git rev-parse --short HEAD) docker compose up --build
+# Frontend carries VITE_BUILD_REF, backend carries build.json (stamped by
+# the entrypoint into its state dir and reported on /status); a mismatched
+# pair shows an explicit UI banner instead of failing obscurely. Mixing a
+# frontend tag with a backend tag from another commit is unsupported.
+#
+# Rollback: the previous single-service topology is `git show
+# HEAD~:docker-compose.yml` (image kainbain:latest, backend serving dist
+# directly on :3100). The backend image still ships frontend/dist and serves
+# it when reached directly, so the old path keeps working.
 #
 # The container boots self-contained with no credentials (harness calls
 # degrade honestly until keys/CLIs are provided). To enable real agent
@@ -11,14 +41,17 @@
 # always wins, so homelab paths in `.env` can never override container paths.
 #
 # Host port: set KAINBAIN_PORT to avoid clashing with a host/dev instance,
-# e.g. `KAINBAIN_PORT=3200 docker compose up -d` -> http://localhost:3200.
+# e.g. `KAINBAIN_PORT=3200 docker compose up --build` -> http://localhost:3200.
 
 services:
-  kainbain:
+  backend:
     build: .
-    image: kainbain:latest
-    ports:
-      - "${KAINBAIN_PORT:-3100}:3100"
+    image: kainbain-backend:latest
+    # No host ports: the frontend service is the only ingress. The backend
+    # is reachable from the host only via the frontend proxy (loopback-only
+    # by default, per D4 — remote Runner access is an explicit opt-in later).
+    expose:
+      - "3100"
     volumes:
       # Task storage (bind mount: your projects live on the host, survive
       # rebuilds, and stay editable with host tooling). Created on first up.
@@ -35,9 +68,30 @@ services:
       PROJECTS_ROOT: /workspace/projects
       NOTES_SPACE_ROOT: /home/node/.kainbain/notes
       KAINBAIN_DIST: /app/frontend/dist
+      # Lockstep stamps (D7): same commit must reach both images.
+      KAINBAIN_BUILD_REF: ${KAINBAIN_BUILD_REF:-dev}
+      KAINBAIN_BUILD_NUMBER: ${KAINBAIN_BUILD_NUMBER:-0}
       # Optional: force the mock harness (no CLI needed) instead of the
       # default. Leave unset to follow KAINBAIN_DEFAULT_HARNESS (default pi).
       # KAINBAIN_DEFAULT_HARNESS: mock
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # Empty = same origin (the UI calls the origin nginx serves it
+        # from; nginx proxies API + /ws to the backend).
+        VITE_API_BASE: ""
+        VITE_WS_URL: ""
+        VITE_BUILD_REF: ${KAINBAIN_BUILD_REF:-dev}
+        VITE_NOTES_VIEWER_URL: ${VITE_NOTES_VIEWER_URL:-}
+    image: kainbain-frontend:latest
+    ports:
+      - "${KAINBAIN_PORT:-3100}:80"
+    depends_on:
+      - backend
     restart: unless-stopped
 
 volumes:

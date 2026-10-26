@@ -40,6 +40,26 @@ if [ -e "$NOTES_SPACE_ROOT" ] && [ ! -d "$NOTES_SPACE_ROOT" ]; then
 	fail "notes space (NOTES_SPACE_ROOT) '$NOTES_SPACE_ROOT' exists but is not a directory - refusing to boot."
 fi
 
+# Lockstep version stamp (MigrationPlan Phase 1 WP-1.1, D7): /status reports
+# build.json from the production dir (see api/deployManager.js readBuild).
+# deploy.sh stamps it on host deploys; in compose there is no deploy.sh, so
+# the entrypoint stamps it from the image build args at every boot. Numbers
+# and refs are sanitised so build.json is always valid JSON.
+PROD_DIR="${KAINBAIN_PROD_DIR:-/home/node/apps/kainbain}"
+case "${KAINBAIN_BUILD_NUMBER:-0}" in ''|*[!0-9]*) STAMP_NUMBER=0 ;; *) STAMP_NUMBER="$KAINBAIN_BUILD_NUMBER" ;; esac
+STAMP_COMMIT="$(printf '%s' "${KAINBAIN_BUILD_REF:-unknown}" | tr -d '"\\')"
+if mkdir -p "$PROD_DIR" 2>/dev/null; then
+	cat >"$PROD_DIR/build.json" <<EOF
+{
+  "buildNumber": $STAMP_NUMBER,
+  "deployedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "commit": "$STAMP_COMMIT"
+}
+EOF
+	chown -R node:node "$PROD_DIR" || fail "cannot chown build stamp dir '$PROD_DIR' - check mount permissions."
+	echo "kainbain-entrypoint: build stamp OK (buildNumber=$STAMP_NUMBER commit=$STAMP_COMMIT)"
+fi
+
 # Fresh clones bind-mount host dirs Docker auto-creates as root; hand them to
 # the runtime user before dropping privileges.
 chown -R node:node "$PROJECTS_ROOT" "$STATE_DIR" || fail "cannot chown storage to user 'node' - check mount permissions."
