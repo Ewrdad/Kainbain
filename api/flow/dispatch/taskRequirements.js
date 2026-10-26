@@ -8,9 +8,11 @@ import { resolveHarnessName } from "../../agent/harnessRegistry.js";
  *   same order as the embedded `resolveHarnessName`),
  *   model (stage else project default), and required tier (explicit
  *   stage/task tier else T1 for model-driven stages else T0). Stages whose
- *   harness is the `alias` virtual id resolve in WP-3.2 (D3 central
- *   counters) and are marked `{ alias }` so dispatch skips them loudly
- *   instead of guessing. Only agent/review stages are Runner-runnable;
+ *   harness is the `alias` virtual id resolved by the dispatch route in
+ *   WP-3.2 (D3 central counters via `resolveAliasRequirement`, sharing the
+ *   embedded smooth-WRR rotation) and are marked `{ alias }` so
+ *   unresolvable aliases miss loudly instead of guessing. Only
+ *   agent/review stages are Runner-runnable;
  *   human, command, and ci stages stay embedded.
  * @example taskRequirements({ harness: 'pi' }, { currentStageId: 's1', stages: [{ id: 's1', type: 'agent' }] }) => { harness: 'pi', ... }
  * @param {Object} project - Project entity.

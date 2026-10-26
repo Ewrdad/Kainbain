@@ -1,6 +1,7 @@
 import { applyRunnerReport } from "./execution/applyRunnerReport.js";
 import { circuitSnapshot, isTripped } from "./circuitBreaker.js";
 import { scanClaimableTasks } from "./dispatch/scanClaimableTasks.js";
+import { resolveAliasRequirement } from "./dispatch/resolveAliasRequirement.js";
 import { runnerMatches } from "./dispatch/runnerMatches.js";
 
 /***
@@ -332,9 +333,38 @@ export async function registerRunnerRoutes(app, { deps }) {
 		if (candidates.length === 0) {
 			return { assigned: false, code: "NO_CLAIMABLE_TASKS" };
 		}
+		// A harness is dispatch-servable when some active, fresh Runner
+		// advertises it. Alias targets on unserved harnesses are skipped
+		// for this resolution (share redistributes, per the alias
+		// contract); nothing served at all resolves null → loud miss.
+		const isHarnessKnown = (name) =>
+			runnerRegistry.records().some(
+				(rec) =>
+					rec?.status === "active" &&
+					runnerRegistry.isFresh(rec) &&
+					(rec.capabilities?.harnesses || []).some((h) => h?.id === name),
+			);
 		const misses = {};
 		for (const cand of candidates) {
-			const verdict = runnerMatches(runner, cand.req, {
+			let req = cand.req;
+			if (cand.req.alias) {
+				const resolved = resolveAliasRequirement({
+					project: projectStore.getProject(cand.projectId),
+					aliasName: cand.req.alias,
+					isHarnessKnown,
+				});
+				if (!resolved) {
+					misses.ALIAS_UNRESOLVED = (misses.ALIAS_UNRESOLVED || 0) + 1;
+					continue;
+				}
+				req = {
+					...cand.req,
+					harness: resolved.harness,
+					model: resolved.model,
+					alias: { name: resolved.aliasName, targetIndex: resolved.targetIndex },
+				};
+			}
+			const verdict = runnerMatches(runner, req, {
 				staleAfterMs: runnerRegistry.staleAfterMs,
 			});
 			if (!verdict.ok) {
@@ -351,7 +381,7 @@ export async function registerRunnerRoutes(app, { deps }) {
 					executionId,
 					epoch,
 					stageId: cand.stage?.id ?? null,
-					requirements: cand.req,
+					requirements: req,
 				};
 			} catch (err) {
 				if (err?.code === "CLAIM_CONFLICT") continue;

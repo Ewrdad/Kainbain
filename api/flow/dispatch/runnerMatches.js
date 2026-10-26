@@ -39,7 +39,13 @@ export function runnerMatches(record = {}, req = {}, opts = {}) {
 	if (protocol !== RUNNER_PROTOCOL) {
 		return { ok: false, reason: "PROTOCOL_SKEW" };
 	}
-	if (req.alias) return { ok: false, reason: "ALIAS_UNRESOLVED" };
+	// Only the raw string marker (taskRequirements' `{ alias: name }`) is
+	// unservable here. A resolved alias object (`{ name, targetIndex }`,
+	// stamped by the route after central D3 resolution) carries the
+	// concrete harness/model below and matches like any direct requirement.
+	if (typeof req.alias === "string" && req.alias) {
+		return { ok: false, reason: "ALIAS_UNRESOLVED" };
+	}
 	if (req.harness) {
 		const offered = Array.isArray(caps.harnesses) ? caps.harnesses : [];
 		if (!offered.some((h) => h && h.id === req.harness)) {

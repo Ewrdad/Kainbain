@@ -291,7 +291,7 @@ export const ENDPOINTS = [
 		method: "POST",
 		path: "/runners/dispatch",
 		purpose:
-			"Runner-only (WP-3.1): backend-routed dispatch poll — scan claimable tasks, match against this Runner's capabilities, and claim-fence the winner (200 assigned + lease, or 200 unassigned with NO_CLAIMABLE_TASKS / NO_CLAIMABLE_MATCH + miss histogram). Stale Runners get 409 STALE_RUNNER. Requires the x-runner-credential header.",
+			"Runner-only (WP-3.1/3.2): backend-routed dispatch poll — scan claimable tasks, resolve alias stages through the shared backend-central smooth-WRR rotation (D3; attribution stamped as requirements.alias), match against this Runner's capabilities, and claim-fence the winner (200 assigned + lease, or 200 unassigned with NO_CLAIMABLE_TASKS / NO_CLAIMABLE_MATCH + miss histogram). Stale Runners get 409 STALE_RUNNER. Requires the x-runner-credential header.",
 		body: { projectIds: "string[] (optional allowlist)" },
 	},
 	{

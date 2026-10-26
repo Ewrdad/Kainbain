@@ -4,9 +4,12 @@ import { runnerMatches } from "./runnerMatches.js";
  * MARK: selectRunnerForTask
  * @description Picks one capable Runner for a task: filters registrations
  *   through `runnerMatches`, then takes the lowest runnerId for a
- *   deterministic, testable choice (priority-tiered P1/P2 ranking lands in
- *   WP-3.2 with D3 alias resolution; the signature already returns the
- *   per-runner miss map so that ranking only replaces the final pick).
+ *   deterministic, testable choice. (D3 alias resolution landed in WP-3.2
+ *   at the route layer, where each candidate resolves before matching;
+ *   priority-tiered P1/P2 final ranking still pending — the hand-notes
+ *   tier definitions are not repo-grounded, so no semantics are invented
+ *   here; the per-runner miss map already returned lets that ranking
+ *   replace only the final pick.)
  * @example selectRunnerForTask([rec], { harness: 'pi' }) => { record: rec, reason: 'MATCH' }
  * @param {Array} records - Registry records.
  * @param {Object} req - Task requirements.

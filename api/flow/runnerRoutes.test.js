@@ -522,6 +522,72 @@ describe("Runner Routes Integration", () => {
 		expect(res.statusCode).toBe(401);
 	});
 
+	async function aliasProject(name, { targets, aliasName = "fast", withAliases = true }) {
+		const projRes = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: {
+				name,
+				gitUrl: "https://git.example.com/team/fixture.git",
+				harness: "mock",
+				defaultModel: "mock-model",
+				...(withAliases ? { modelAliases: [{ name: aliasName, targets }] } : {}),
+				stages: [{ id: "s1", type: "agent", harness: "alias", model: aliasName }],
+			},
+		});
+		expect(projRes.statusCode).toBe(201);
+		const proj = JSON.parse(projRes.payload);
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: proj.id, goal: "Alias fixture task" },
+		});
+		expect(taskRes.statusCode).toBe(200);
+		return { projectId: proj.id, taskId: JSON.parse(taskRes.payload).id };
+	}
+
+	async function heartbeatAs(credential, runnerId, facts = FACTS) {
+		const beat = await app.inject({
+			method: "POST",
+			url: "/runners/heartbeat",
+			headers: { "x-runner-credential": credential },
+			payload: { runnerId, facts },
+		});
+		expect(beat.statusCode).toBe(200);
+	}
+
+	it("dispatch resolves alias stages to the concrete target with attribution", async () => {
+		const { projectId, taskId } = await aliasProject("Dispatch Alias", {
+			targets: [{ harness: "mock", model: "mock-model", percent: 100 }],
+		});
+		const credential = await onboard("dispatch-alias");
+		await heartbeatAs(credential, "dispatch-alias");
+		const out = JSON.parse(
+			(await dispatchAs(credential, { projectIds: [projectId] })).payload,
+		);
+		expect(out.assigned).toBe(true);
+		expect(out.taskId).toBe(taskId);
+		expect(out.requirements).toMatchObject({
+			harness: "mock",
+			model: "mock-model",
+			alias: { name: "fast", targetIndex: 0 },
+		});
+	});
+
+	it("dispatch reports ALIAS_UNRESOLVED loudly for deleted aliases", async () => {
+		const { projectId } = await aliasProject(
+			"Dispatch Alias Gone",
+			{ targets: [], withAliases: false },
+		);
+		const credential = await onboard("dispatch-alias-gone");
+		await heartbeatAs(credential, "dispatch-alias-gone");
+		const out = JSON.parse(
+			(await dispatchAs(credential, { projectIds: [projectId] })).payload,
+		);
+		expect(out).toMatchObject({ assigned: false, code: "NO_CAPABLE_MATCH" });
+		expect(out.misses.ALIAS_UNRESOLVED).toBeGreaterThanOrEqual(1);
+	});
+
 	it("claim on an unknown task is 404, approve on unknown Runner is 404", async () => {
 		const credential = await onboard("notfound-1");
 		const claim = await app.inject({

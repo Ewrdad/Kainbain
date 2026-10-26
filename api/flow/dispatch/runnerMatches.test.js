@@ -50,4 +50,14 @@ describe("runnerMatches", () => {
 	test("empty model requirement needs no offering", () => {
 		expect(runnerMatches(record(), { harness: "pi", tier: "T0" }, { now: at }).ok).toBe(true);
 	});
+
+	test("a resolved alias object matches on its concrete harness/model", () => {
+		expect(
+			runnerMatches(
+				record(),
+				{ harness: "pi", model: "m1", tier: "T1", alias: { name: "fast", targetIndex: 0 } },
+				{ now: at },
+			),
+		).toEqual({ ok: true, reason: "MATCH" });
+	});
 });

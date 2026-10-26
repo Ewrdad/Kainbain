@@ -52,7 +52,9 @@ winner. The loop runs each assignment exactly like an explicit one,
 then polls again until `DISPATCH_IDLE_LIMIT` consecutive polls come
 back empty (`NO_CLAIMABLE_TASKS` / `NO_CLAIMABLE_MATCH` with a miss
 histogram), at which point it exits 0. A `STALE_RUNNER` answer triggers
-one fresh heartbeat and a single retry.
+one fresh heartbeat and a single retry. Alias (`harness: alias`) stages
+resolve server-side through the shared backend-central rotation before
+matching, so the daemon needs no alias configuration.
 
 ## What one assignment does
 

@@ -134,7 +134,7 @@ approval, then heartbeat and claim with the issued per-Runner credential.
 | POST | `/runners/:id/deny` | Deny a pending join request. |
 | POST | `/runners/:id/revoke` | Revoke; the credential stops working immediately. |
 | GET | `/runners/monitor` | Phase 2 monitor counters (stale rejections, divergences, unverifiable SHAs). |
-| POST | `/runners/dispatch` | Runner-only (WP-3.1): backend-routed dispatch poll; 200 `assigned` + lease, or 200 unassigned (`NO_CLAIMABLE_TASKS` / `NO_CLAIMABLE_MATCH` + miss histogram); 409 `STALE_RUNNER` when the Runner is stale. |
+| POST | `/runners/dispatch` | Runner-only (WP-3.1/3.2): backend-routed dispatch poll; alias stages resolve through the shared backend-central smooth-WRR rotation (D3, attribution in `requirements.alias`); 200 `assigned` + lease, or 200 unassigned (`NO_CLAIMABLE_TASKS` / `NO_CLAIMABLE_MATCH` + miss histogram); 409 `STALE_RUNNER` when the Runner is stale. |
 | POST | `/tasks/:id/progress` | Runner-only: record a stage lifecycle event keyed by execution ID (idempotent). |
 | POST | `/tasks/:id/logs` | Runner-only: ingest one sequenced log frame (gaps marked, never hidden). |
 | POST | `/tasks/:id/complete-execution` | Runner-only: idempotent completion with epoch fence and SHA check; releases the lease and applies the engine-owned finish (report, survey park, failure routing, advance). |
