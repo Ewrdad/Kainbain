@@ -11,6 +11,8 @@ finding to its test.
 | [0002](0002-schema-driven-config.md) | Schema-driven config | Accepted 2026-10-03 |
 | [0003](0003-cross-platform-process-supervision.md) | Cross-platform process supervision | Accepted 2026-10-04 |
 | [0004](0004-harness-pluggability-and-mock-mode.md) | Harness pluggability and mock mode | Accepted 2026-10-04 |
+| [0008](0008-portable-runner-decisions.md) | Portable Runner: Phase 0 decisions D1–D14 | Accepted 2026-10-26 |
+| [0009](0009-runner-protocol-sketch.md) | Runner↔Backend protocol sketch v1 | Accepted 2026-10-26 |
 
 Location note: the roadmap tickets name `docs/adr/`, but `docs/` in this
 repo is a host-local symlink to the author's notes space (gitignored,
@@ -21,9 +23,17 @@ every clone, and is staged into production builds with the rest of
 (the index scans top-level articles only): ADRs are contributor history,
 not operator documentation.
 
-Mirror note: byte-identical copies of these four files also live at
+Mirror note: byte-identical copies of the in-repo files also live at
 `docs/adr/` in the author's live notes space (the literal scope path from
 the WP-9 ticket, which resolves through the host-local `docs` symlink).
 The copies in this directory are canonical — tracked by git, shipped with
 every clone — and any future edit must be applied here first, then
 re-mirrored to `docs/adr/`.
+
+Numbering gap (recorded 2026-10-26): ADRs 0005–0007
+(harness-model-target-ownership, git-workspace-isolation,
+resume-stall-recovery) exist only in the notes-space `docs/adr/` and were
+never mirrored in-repo, so the in-repo sequence jumps 0004 → 0008. The
+jump is deliberate: renumbering either side would break existing
+references. A future WP-1.4 docs-reversal pass should import 0005–0007 here
+as byte-identical tracked copies.
