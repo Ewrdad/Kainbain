@@ -308,7 +308,7 @@ export function setupGracefulShutdown(
  ***/
 const start = async () => {
 	try {
-		// This host runs Forgejo on :3000, so KainBain uses a dedicated API port.
+		// KainBain uses a dedicated API port (3000 is commonly taken on dev hosts).
 		// Aligns with the frontend's VITE_API_BASE/VITE_WS_URL (see frontend/.env).
 		// Both come validated from the config schema (PORT 1-65535, HOST).
 		const port = config.port;

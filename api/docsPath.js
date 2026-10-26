@@ -1,6 +1,6 @@
 // Domain: Project docs linkage — per-project docs folder name + centralised-docs opt-out.
 // The `<cwd>/<docsDirName>` entry (default `docs`) links a project's task
-// storage (`<name>/tasks/<taskId>/task.md`) into its SilverBullet notes space.
+// storage (`<name>/tasks/<taskId>/task.md`) into its notes space.
 // A project whose own repository already owns `docs/` picks another link name
 // (e.g. `kainbain-docs`); a project with `centralizedDocs === false` skips the
 // link entirely and stores tasks in a plain local directory.

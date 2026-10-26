@@ -83,7 +83,7 @@ export const DEFAULT_AGENT_DIR = config.piAgentDir;
 /***
  * MARK: ProjectStore
  * @description Manages filesystem-backed projects with support for multiple named workflows,
- * git repos, SilverBullet documentation symlinks, and persistence in `<projectRoot>/.kainbain/project.json`.
+ * git repos, documentation symlinks, and persistence in `<projectRoot>/.kainbain/project.json`.
  ***/
 const DEFAULT_PROJECTS_ROOT = config.projectsRoot;
 const DEFAULT_NOTES_ROOT = config.notesSpaceRoot;
@@ -96,7 +96,7 @@ export class ProjectStore {
 	 * @param {Object} [opts]
 	 * @param {string} [opts.projectsRoot] - Primary directory containing project folders.
 	 * @param {Array<string>} [opts.projectsRoots] - Extra directories scanned the same way (defaults to config.projectsRoots).
-	 * @param {string} [opts.notesRoot] - SilverBullet space directory for project documentation.
+	 * @param {string} [opts.notesRoot] - Notes space directory for project documentation.
 	 * @param {string} [opts.registryFile] - Adopted-projects registry path (defaults to config.projectsRegistryFile).
 	 * @param {boolean} [opts.autoScan=true] - Whether to scan the roots on initialization.
 	 ***/
@@ -662,13 +662,13 @@ export class ProjectStore {
 
 	/***
 	 * MARK: createProject
-	 * @description Creates a new filesystem-backed project with Git repo, .gitignore, Forgejo remote, SilverBullet docs symlink, and workflows.
+	 * @description Creates a new filesystem-backed project with Git repo, .gitignore, git remote, docs symlink, and workflows.
 	 * @example projectStore.createProject({ name: 'My Project' })
 	 * @param {Object} [opts]
 	 * @param {string} opts.name - Display name of the project.
 	 * @param {string} [opts.cwd] - Custom working directory (defaults to projectsRoot/<slug>).
 	 * @param {string} [opts.agentDir] - Agent working directory for the project.
-	 * @param {string} [opts.notesPath] - Custom SilverBullet notes space directory.
+	 * @param {string} [opts.notesPath] - Custom notes space directory.
 	 * @param {string} [opts.notesDir] - Alias for notesPath.
 	 * @param {string} [opts.gitUrl] - Git remote repository URL (falls back to `KAINBAIN_GIT_REMOTE_TEMPLATE`, or no remote when unset).
 	 * @param {string} [opts.gitRepo] - Alias for gitUrl.
@@ -786,7 +786,7 @@ export class ProjectStore {
 			fs.mkdirSync(projectDir, { recursive: true });
 		}
 
-		// 2. Create SilverBullet notes space directory (skipped when the
+		// 2. Create notes space directory (skipped when the
 		// project opts out of centralised docs: the notes space is never
 		// created or touched in that mode).
 		if (centralizedDocs !== false && !fs.existsSync(notesDir)) {

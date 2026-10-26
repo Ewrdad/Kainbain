@@ -104,7 +104,7 @@ export default async function projectsRoutes(app, { deps }) {
 
 	/***
 	 * MARK: Create Project
-	 * Automated provisioning: creates project directory, SilverBullet notes space,
+	 * Automated provisioning: creates project directory, notes space,
 	 * symlinks <projectRoot>/docs -> notes space, and initializes <kainbainDirName>/project.json.
 	 ***/
 	app.post(

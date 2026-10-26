@@ -11,7 +11,7 @@ import path from "node:path";
  *   Setup files execute before the test module graph is evaluated in each
  *   worker, so the config loader's import-time env snapshot always sees the
  *   temp roots — no suite in the standard run can read or write the live
- *   projects root or the live SilverBullet notes space, regardless of import
+ *   projects root or the live notes space, regardless of import
  *   order, worker reuse, or whether the file follows the per-file
  *   `isolatedTestRoots.js` convention (those files simply mint their own
  *   pair on top; this is the backstop beneath them).

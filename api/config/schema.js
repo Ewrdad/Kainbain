@@ -287,7 +287,7 @@ export const CONFIG_SCHEMA = [
 		min: 1,
 		max: 65535,
 		group: "server",
-		doc: "API listen port (this host runs Forgejo on :3000, so KainBain uses :3100).",
+		doc: "API listen port (dedicated port; override with PORT).",
 	},
 	{
 		key: "host",
@@ -352,6 +352,11 @@ export const CONFIG_SCHEMA = [
 		env: "NOTES_SPACE_ROOT",
 		aliases: [],
 		type: "path",
+		// D13 classification: this default targets the author's homelab and
+		// is kept so existing installs boot identically (minimal behaviour
+		// change). It is config-driven, not a product reference: override
+		// via NOTES_SPACE_ROOT on any other machine (compose and the deploy
+		// guide set it explicitly).
 		default: "/home/server/apps/notes/silverbullet/space/Projects/Personal",
 		group: "storage",
 		doc: "Centralised notes space root for project-linked notes (any markdown notes store).",
