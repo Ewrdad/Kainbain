@@ -61,13 +61,8 @@ import {
 	stageWantsReport,
 } from '../../promptCuration.js';
 import {
-	readSurvey,
-	resolveSurveyGate,
-	resolveQuestionMeOutputFile,
-} from '../../work/taskSurvey.js';
-import {
-	stageHasQuestionMe,
-} from '../../../shared/survey.js';
+	parkTaskForSurvey,
+} from './parkTaskForSurvey.js';
 import {
 	GitDirtyTreeError,
 	resolveSha,
@@ -1045,13 +1040,6 @@ export async function executeStage(
 					}
 				}
 
-				// Remember the configured survey file so the parked task keeps
-				// resolving the same document after a restart / pipeline edit.
-				if (stageHasQuestionMe(stage)) {
-					task.surveyFile = resolveQuestionMeOutputFile(stage);
-				}
-				store._saveTaskMarkdown(cwd, task);
-
 				bridge?.emitProcessEvent?.(projectId, "stage:complete", {
 					taskId,
 					stageId: stage.id,
@@ -1060,63 +1048,26 @@ export async function executeStage(
 					projectName,
 				});
 
-				// Question-me gate: a finished agent stage carrying the
-				// `question-me` skill parks for a human survey instead of
-				// auto-advancing — unless the agent explicitly asked nothing
-				// (`empty`) or the questions are already answered. Parked tasks
-				// leave `in_stage`, so the scheduler will not pick them up until
-				// the survey submit (or a skip) advances them.
-				const surveyGate = resolveSurveyGate(
+				// Question-me gate (shared with the Runner-report finish so a
+				// remote run can never skip the human survey the embedded
+				// path would require).
+				const surveyPark = parkTaskForSurvey({
+					store,
+					projectId,
+					taskId,
+					task,
 					stage,
-					readSurvey(cwd, projectObj, taskId, stage).rounds,
-				);
-				if (surveyGate.park) {
-					const parkedAt = new Date().toISOString();
-					task.status = "waiting_human";
-					task.surveyPending = true;
-					task.updatedAt = parkedAt;
-					task.history.push({
-						timestamp: parkedAt,
-						action: `Survey requested by the 'question-me' skill (${surveyGate.reason}) — awaiting human answers`,
-					});
-					_appendProcessLog(
-						task,
-						`[INFO] question-me parked stage '${stage.name || stage.id}' for a human survey (${surveyGate.reason})`,
-					);
-					store._saveTaskMarkdown(cwd, task);
-					void emitAlert(bridge, {
-						event: "task.survey_wait",
-						severity: "info",
-						projectId,
-						taskId,
-						stage: { id: stage.id, name: stage.name || stage.id, type: stageType },
-						message: "Awaiting survey answers",
-						ui: {
-							event: "stage:survey_wait",
-							payload: {
-								taskId,
-								stageId: stage.id,
-								stageName: stage.name || stage.id,
-								message: "Awaiting survey answers",
-							},
-						},
-					});
-					bridge?.broadcastGlobal?.("TASK_UPDATED", task);
-
-					task.infraRetryCount = 0;
-					store.lastCompletedTask = { projectId, taskId, timestamp: Date.now() };
-					return {
-						task,
-						stageType,
-						status: "waiting_human",
-						output: finalOutput || streamedOutput,
-						summary,
-						modifiedFiles,
-						model: stage.model || null,
-						duration,
-						surveyStatus: surveyGate.status,
-					};
-				}
+					projectObj,
+					cwd,
+					bridge,
+					stageType,
+					finalOutput,
+					streamedOutput,
+					summary,
+					modifiedFiles,
+					duration,
+				});
+				if (surveyPark.parked) return surveyPark.response;
 
 				task.surveyPending = false;
 				task.infraRetryCount = 0;

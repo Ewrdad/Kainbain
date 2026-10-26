@@ -305,8 +305,8 @@ export const ENDPOINTS = [
 		method: "POST",
 		path: "/tasks/:id/complete-execution",
 		purpose:
-			"Runner-only: idempotent execution completion with epoch fence and SHA presence check (records the report, releases the lease; stage advancement stays engine-owned). Requires the x-runner-credential header.",
-		body: { executionId: "string (required)", epoch: "number (required)" },
+			"Runner-only: idempotent execution completion with epoch fence and SHA presence check (records the report, releases the lease, applies the engine-owned finish: report, survey park, failure routing, advance). Requires the x-runner-credential header.",
+		body: { executionId: "string (required)", epoch: "number (required)", outcome: "passed|failed" },
 	},
 	{
 		method: "POST",

@@ -210,11 +210,11 @@ export class ExecutionLedger {
 			.join(", ");
 		task?.history?.push({
 			timestamp: new Date().toISOString(),
-			action: `Runner completed execution ${executionId} (${postureBits}). Lease released; stage advancement stays engine-owned.`,
+			action: `Runner completed execution ${executionId} (${postureBits}). Lease released.`,
 		});
 		this.lastStage.delete(executionId);
 		this.logNextSeq.delete(executionId);
-		return { accepted: true, duplicate: false, shaState };
+		return { accepted: true, duplicate: false, shaState, reportedStage };
 	}
 
 	interruptExecution({

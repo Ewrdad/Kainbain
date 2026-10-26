@@ -330,6 +330,70 @@ describe("Runner Routes Integration", () => {
 		expect(monitor.interrupts).toBeGreaterThanOrEqual(1);
 	});
 
+	it("failed outcome routes through the engine instead of advancing", async () => {
+		const credential = await onboard("failing-1");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Failing fixture" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+		const before = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${target}?projectId=${project.id}` })).payload,
+		);
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		const { executionId, epoch } = JSON.parse(claim.payload);
+		const done = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/complete-execution`,
+			headers: { "x-runner-credential": credential },
+			payload: {
+				projectId: project.id,
+				executionId,
+				epoch,
+				outcome: "failed",
+				failureKind: "error",
+				failureReason: "synthetic stage failure",
+			},
+		});
+		expect(done.statusCode).toBe(200);
+		expect(JSON.parse(done.payload).accepted).toBe(true);
+		const after = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${target}?projectId=${project.id}` })).payload,
+		);
+		expect(after.currentStageId).toBe(before.currentStageId);
+		const actions = after.history.map((h) => h.action).join("\n");
+		expect(actions).toMatch(/completed execution/);
+	});
+
+	it("embedded execute refuses Runner-held tasks (no double dispatch)", async () => {
+		const credential = await onboard("guard-exec-1");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Guarded execute fixture" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+		await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		const exec = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/execute`,
+			payload: { projectId: project.id },
+		});
+		expect(exec.statusCode).toBe(409);
+		expect(JSON.parse(exec.payload).code).toBe("CLAIM_CONFLICT");
+	});
+
 	it("R04: unauthenticated callers rejected on progress/logs/complete/interrupt", async () => {
 		const credential = await onboard("guarded-1");
 		const taskRes = await app.inject({

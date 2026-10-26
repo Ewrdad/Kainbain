@@ -100,10 +100,11 @@ describe("runSingleAssignment", () => {
 		assert.ok(fs.existsSync(path.join(config.workRoot, "kb-t1")));
 	});
 
-	it("interrupts the lease when the harness fails", async () => {
+	it("reports harness failure through the failed outcome, not interrupt", async () => {
 		const repo = localRepo();
 		const config = baseConfig();
 		dirs.push(config.workRoot, repo);
+		const completed = [];
 		const interrupted = [];
 		const client = stubClient({
 			heartbeat: async () => ({ status: "active" }),
@@ -112,7 +113,10 @@ describe("runSingleAssignment", () => {
 			claim: async () => ({ executionId: "e1", epoch: 1 }),
 			progress: async () => ({ recorded: true }),
 			logs: async () => ({ accepted: true }),
-			complete: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed.push(args);
+				return { accepted: true };
+			},
 			interrupt: async (args) => {
 				interrupted.push(args);
 				return { interrupted: true };
@@ -133,17 +137,16 @@ describe("runSingleAssignment", () => {
 				};
 			},
 		};
-		await assert.rejects(
-			runSingleAssignment({
-				config,
-				client,
-				loadHarness: async () => failing,
-				logger: { log: () => {}, warn: () => {} },
-			}),
-			/harness blew up/,
-		);
-		assert.equal(interrupted.length, 1);
-		assert.equal(interrupted[0].executionId, "e1");
+		await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => failing,
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].outcome, "failed");
+		assert.match(completed[0].failureReason, /harness blew up/);
+		assert.equal(interrupted.length, 0);
 	});
 
 	it("asks for the pasted credential once the join is approved", async () => {

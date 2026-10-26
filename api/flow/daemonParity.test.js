@@ -153,6 +153,10 @@ describe("Runner Daemon Parity", () => {
 			expect(actions).toMatch(/stage \S+: finished/);
 			expect(actions).toMatch(/completed execution/);
 			expect(actions).toMatch(/parity-runner/);
+			// Engine-owned finish over the wire: the stage advanced without
+			// any embedded run, and the canonical agent-stage entry landed.
+			expect(final.currentStageId).not.toBe(task.currentStageId);
+			expect(actions).toMatch(/Agent stage completed/);
 
 			// Push path: the task branch landed on the origin.
 			const pushed = execFileSync("git", [

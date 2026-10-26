@@ -57,6 +57,14 @@ export async function runHarnessStage({
 			if (typeof last === "string" && last) return { output: last };
 		}
 		return { output: typeof output === "string" ? output : "" };
+	} catch (err) {
+		// Mark prompt-phase throws as stage failures: the backend's
+		// routeStageError classifies them (infrastructure vs stage failure),
+		// mirroring the embedded engine's catch around the same call.
+		if (err && typeof err === "object") {
+			err.failedOutcome = err?.message || String(err);
+		}
+		throw err;
 	} finally {
 		if (typeof unsubscribe === "function") unsubscribe();
 		if (typeof session.dispose === "function") await session.dispose();

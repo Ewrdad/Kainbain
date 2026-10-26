@@ -136,7 +136,7 @@ approval, then heartbeat and claim with the issued per-Runner credential.
 | GET | `/runners/monitor` | Phase 2 monitor counters (stale rejections, divergences, unverifiable SHAs). |
 | POST | `/tasks/:id/progress` | Runner-only: record a stage lifecycle event keyed by execution ID (idempotent). |
 | POST | `/tasks/:id/logs` | Runner-only: ingest one sequenced log frame (gaps marked, never hidden). |
-| POST | `/tasks/:id/complete-execution` | Runner-only: idempotent completion with epoch fence and SHA check; releases the lease. |
+| POST | `/tasks/:id/complete-execution` | Runner-only: idempotent completion with epoch fence and SHA check; releases the lease and applies the engine-owned finish (report, survey park, failure routing, advance). |
 | POST | `/tasks/:id/interrupt` | Runner-only: park a task as interrupted and drop its lease. |
 
 ## Engine containment (`api/flow/taskFlowRoutes.js`, `api/flow/circuitBreaker.js`)

@@ -47,6 +47,7 @@ export async function registerTaskFlowRoutes(app, deps) {
 		taskStore,
 		promptEngine,
 		agentRunner,
+		claimStore,
 	} = deps;
 
 	const curateAndStorePrompt = (projectId, task, project, extraCtx = {}) => {
@@ -81,6 +82,18 @@ export async function registerTaskFlowRoutes(app, deps) {
 		const project = projectStore.getProject(id);
 		const existing = taskStore.getTask(id, request.params.id);
 		if (!existing) return reply.status(404).send({ error: "Task not found" });
+
+		// A Runner-held lease owns the task out-of-process: the embedded
+		// engine must not double-dispatch it (D1 — one holder, one runner).
+		// The Runner's own complete-execution path applies the finish.
+		const liveHold = claimStore?.describe?.(request.params.id);
+		if (liveHold) {
+			return reply.status(409).send({
+				error: `Task is claimed by Runner ${liveHold.runnerId} (epoch ${liveHold.epoch}); release or interrupt the lease first`,
+				code: "CLAIM_CONFLICT",
+				holder: { runnerId: liveHold.runnerId, epoch: liveHold.epoch },
+			});
+		}
 
 		const blockCheck = taskStore.isTaskBlocked(id, request.params.id);
 		if (blockCheck.blocked) {

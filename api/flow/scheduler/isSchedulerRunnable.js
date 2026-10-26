@@ -17,16 +17,20 @@ import { isAutoResumable } from './isAutoResumable.js';
  * @param {Object} [opts]
  * @param {boolean} [opts.blocked] - Whether the task is currently blocked.
  * @param {boolean} [opts.allowInterrupted] - Whether `interrupted` tasks may qualify.
+ * @param {boolean} [opts.claimed] - Whether a Runner holds a live lease:
+ *   claimed tasks run out-of-process, so the scheduler must not dispatch
+ *   the embedded engine at them (D1 — one holder, one runner).
  * @returns {boolean}
  * @example isSchedulerRunnable({ status: "in_stage" }, { type: "agent" }) => true
  ***/
 export function isSchedulerRunnable(
 	task,
 	stage,
-	{ blocked = false, allowInterrupted = false } = {},
+	{ blocked = false, allowInterrupted = false, claimed = false } = {},
 ) {
 	if (!task || !stage) return false;
 	if (blocked) return false;
+	if (claimed) return false;
 	if (task.status === "interrupted") {
 		if (!allowInterrupted) return false;
 		if (!isAutoResumable(task, stage, { blocked })) return false;

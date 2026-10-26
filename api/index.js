@@ -160,6 +160,10 @@ const harnessRegistry = buildHarnessRoster(sessionStore);
 const runnerRegistry = new RunnerRegistry({ joinToken: config.runnerJoinToken });
 const claimStore = new ClaimStore({ ttlMs: config.claimTtlMs });
 const executionLedger = new ExecutionLedger();
+// Leases live outside the task store, but the scheduler and the embedded
+// execute path must see them to avoid double-dispatching a Runner-held
+// task (same precedent as taskStore.sessionStore).
+taskStore.claimStore = claimStore;
 
 const deps = {
 	projectStore,

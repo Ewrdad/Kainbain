@@ -59,6 +59,7 @@ export function findNextCandidateTask(store, { ignoreTrip = false } = {}) {
 			if (
 				isSchedulerRunnable(task, stage || { type: "agent" }, {
 					blocked: blockCheck.blocked,
+					claimed: !!store.claimStore?.describe?.(task.id),
 				})
 			) {
 				return {
@@ -97,7 +98,12 @@ export function findNextCandidateTask(store, { ignoreTrip = false } = {}) {
 
 			const stage = stages[stageIndex];
 			const blockCheck = store.isTaskBlocked(project.id, task.id);
-			if (!isSchedulerRunnable(task, stage, { blocked: blockCheck.blocked })) {
+			if (
+				!isSchedulerRunnable(task, stage, {
+					blocked: blockCheck.blocked,
+					claimed: !!store.claimStore?.describe?.(task.id),
+				})
+			) {
 				continue;
 			}
 

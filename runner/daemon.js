@@ -113,6 +113,7 @@ export async function runSingleAssignment({
 		const task = await client.getTask(config.projectId, config.taskId);
 		const stageId = String(task.currentStageId ?? task.stages?.[0]?.id ?? "stage");
 
+		const runStartedAt = Date.now();
 		const { executionId, epoch } = await client.claim({
 			taskId: config.taskId,
 			projectId: config.projectId,
@@ -197,9 +198,26 @@ export async function runSingleAssignment({
 				sha,
 				branch,
 				posture: `${config.tiers.join("/")}:${config.harnessId}:${config.model || "default"}`,
+				outcome: "passed",
+				output: String(output || "").slice(0, 20000),
+				durationMs: Date.now() - runStartedAt,
 			});
 		} catch (err) {
 			if (err?.code === "STALE_EPOCH") throw err;
+			if (err?.failedOutcome) {
+				// The harness ran and failed: report through the engine's
+				// failure routing (verdict/failback) instead of parking.
+				return await client.complete({
+					taskId: config.taskId,
+					projectId: config.projectId,
+					executionId,
+					epoch,
+					outcome: "failed",
+					failureReason: err.failedOutcome,
+					posture: `${config.tiers.join("/")}:${config.harnessId}:${config.model || "default"}`,
+					durationMs: Date.now() - runStartedAt,
+				});
+			}
 			try {
 				await client.interrupt({
 					taskId: config.taskId,

@@ -1,9 +1,13 @@
+import { applyRunnerReport } from "./execution/applyRunnerReport.js";
+
 /***
  * MARK: registerRunnerRoutes
- * @description Runner-facing endpoints (ADR 0009 lifecycle steps 1–3): join
+ * @description Runner-facing endpoints (ADR 0009 lifecycle steps 1–6): join
  *   registration, heartbeat, the operator approve/deny/revoke + list
- *   surface the Phase 2 onboarding UI drives, and the atomic task-claim
- *   route backed by ClaimStore (200 + lease or 409 + holder). Credential
+ *   surface the Phase 2 onboarding UI drives, the atomic task-claim
+ *   route backed by ClaimStore (200 + lease or 409 + holder), and the
+ *   execution-report endpoints (progress, logs, complete-execution with
+ *   engine-owned finish, interrupt, monitor). Credential
  *   scope is enforced per request: the claim's Runner always comes from
  *   the authenticated credential, never from the body (R04 wrong-scope).
  * @example await app.register(runnerRoutes, { deps })
@@ -170,7 +174,7 @@ export async function registerRunnerRoutes(app, { deps }) {
 		const ctx = guardedTask(request, reply);
 		if (!ctx) return;
 		try {
-			return await executionLedger.completeExecution({
+			const receipt = await executionLedger.completeExecution({
 				claimStore,
 				taskStore,
 				projectStore,
@@ -183,6 +187,52 @@ export async function registerRunnerRoutes(app, { deps }) {
 				branch: request.body?.branch ?? null,
 				posture: request.body?.posture ?? null,
 			});
+			if (receipt.duplicate) return receipt;
+			// Engine-owned finish: the lease fence accepted the report, so
+			// the backend now applies the same transitions as the embedded
+			// path (report, survey park, failure routing, advance). The
+			// task must still be live and on the reported stage; anything
+			// else keeps the accepted report but skips the finish.
+			const live = taskStore.getTask(ctx.projectId, request.params.id);
+			const terminal = ["complete", "failed"].includes(
+				String(live?.status).toLowerCase(),
+			);
+			if (terminal) {
+				return { ...receipt, advanced: false, reason: "task-terminal" };
+			}
+			const runStage = receipt.reportedStage ?? live?.currentStageId ?? null;
+			if (runStage && live?.currentStageId && runStage !== live.currentStageId) {
+				return { ...receipt, advanced: false, reason: "stage-moved" };
+			}
+			const outcome = request.body?.outcome ?? "passed";
+			if (outcome !== "passed" && outcome !== "failed") {
+				return reply.status(400).send({
+					error: "outcome must be passed or failed",
+					code: "INVALID_OUTCOME",
+				});
+			}
+			const harnessId =
+				runner.facts?.harnesses?.[0]?.id || request.body?.harnessId || "unknown";
+			const finish = await applyRunnerReport({
+				store: taskStore,
+				projectStore,
+				projectId: ctx.projectId,
+				taskId: request.params.id,
+				outcome: {
+					status: outcome,
+					output: request.body?.output ?? "",
+					summary: request.body?.summary ?? "",
+					modifiedFiles: request.body?.modifiedFiles ?? [],
+					harnessId,
+					failureKind: request.body?.failureKind ?? null,
+					failureReason: request.body?.failureReason ?? null,
+					duration: request.body?.durationMs
+						? String(Number(request.body.durationMs) / 1000)
+						: "0.0",
+					runnerId: runner.runnerId,
+				},
+			});
+			return { ...receipt, ...finish };
 		} catch (err) {
 			return sendStoreError(reply, err);
 		}

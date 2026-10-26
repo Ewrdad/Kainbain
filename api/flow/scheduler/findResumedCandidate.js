@@ -61,6 +61,7 @@ export function findResumedCandidate(store) {
 				!isSchedulerRunnable(task, stage, {
 					blocked,
 					allowInterrupted: true,
+					claimed: !!store.claimStore?.describe?.(task.id),
 				})
 			) {
 				continue;
