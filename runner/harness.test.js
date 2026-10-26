@@ -30,6 +30,24 @@ describe("runHarnessStage", () => {
 		);
 	});
 
+	it("hands the live session to onSession for steering delivery", async () => {
+		const harness = createMockHarness({ models: [] });
+		let seen = null;
+		await runHarnessStage({
+			harness,
+			project: { id: "p1" },
+			workdir: "/tmp",
+			taskId: "t1",
+			stageId: "s1",
+			prompt: "do the thing",
+			onSession: (session) => {
+				seen = session;
+			},
+		});
+		assert.ok(seen && typeof seen.prompt === "function");
+		assert.equal(typeof seen.steer, "function");
+	});
+
 	it("disposes the session even when prompting throws", async () => {
 		let disposed = false;
 		const harness = {

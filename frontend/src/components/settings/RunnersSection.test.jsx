@@ -3,12 +3,13 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { RunnersSection } from './RunnersSection';
 
 const getRunners = vi.hoisted(() => vi.fn());
+const getRunnerMonitor = vi.hoisted(() => vi.fn());
 const approveRunner = vi.hoisted(() => vi.fn());
 const denyRunner = vi.hoisted(() => vi.fn());
 const revokeRunner = vi.hoisted(() => vi.fn());
 
 vi.mock('../../services/api', () => ({
-  api: { getRunners, approveRunner, denyRunner, revokeRunner },
+  api: { getRunners, getRunnerMonitor, approveRunner, denyRunner, revokeRunner },
 }));
 
 /***
@@ -20,6 +21,7 @@ vi.mock('../../services/api', () => ({
 describe('RunnersSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getRunnerMonitor.mockResolvedValue({ liveAssignments: [] });
   });
 
   it('shows loading then the empty state when no Runners registered', async () => {
@@ -96,6 +98,31 @@ describe('RunnersSection', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('runner-credential-once')).toBeNull();
     });
+  });
+
+  it('shows the live assignment under a running Runner', async () => {
+    getRunners.mockResolvedValue([
+      { runnerId: 'r1', status: 'active', facts: {}, lastSeenAt: null },
+      { runnerId: 'r2', status: 'active', facts: {}, lastSeenAt: null },
+    ]);
+    getRunnerMonitor.mockResolvedValue({
+      liveAssignments: [{ runnerId: 'r1', projectId: 'p1', taskId: 'abcdef12-3456', epoch: 1 }],
+    });
+    render(<RunnersSection />);
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-assignment-r1').textContent).toContain('abcdef12');
+    });
+    expect(screen.queryByTestId('runner-assignment-r2')).toBeNull();
+  });
+
+  it('hides assignments but keeps the list when the monitor is down', async () => {
+    getRunners.mockResolvedValue([
+      { runnerId: 'r1', status: 'active', facts: {}, lastSeenAt: null },
+    ]);
+    getRunnerMonitor.mockRejectedValueOnce(new Error('monitor down'));
+    render(<RunnersSection />);
+    await screen.findByTestId('runners-section');
+    expect(screen.queryByTestId('runner-assignment-r1')).toBeNull();
   });
 
   it('never renders credential values', async () => {

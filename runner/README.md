@@ -56,6 +56,14 @@ one fresh heartbeat and a single retry. Alias (`harness: alias`) stages
 resolve server-side through the shared backend-central rotation before
 matching, so the daemon needs no alias configuration.
 
+## Steering (D5)
+
+The daemon pulls operator steers on every heartbeat and delivers each
+to the live session (`session.steer`, falling back to `session.followUp`),
+acking exactly once. A session with neither method NACKs
+`UNSUPPORTED_HARNESS` — loud, never silently dropped. Steers queued
+while no execution is live for this Runner are ignored (never ours).
+
 ## What one assignment does
 
 register → heartbeat → claim → load the project (remote-backed: clone the

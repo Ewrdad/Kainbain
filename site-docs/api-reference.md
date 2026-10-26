@@ -108,7 +108,9 @@ Board lists return duration-enriched summaries; open one full task via
 | POST | `/tasks/:id/execute` | Execute the task's current stage. |
 | POST | `/tasks/:id/advance` | Advance to the next stage. |
 | POST | `/tasks/:id/follow-up` | Send a follow-up into the run. |
-| POST | `/tasks/:id/steer` | Steer a running execution. |
+| POST | `/tasks/:id/steer` | D5 unified steer (ADR 0011, C2 impromptu-T0): guidance for the live execution — queued against the Runner lease for heartbeat pull + ack when a Runner holds the task, else steers the embedded session. |
+| POST | `/tasks/:id/steer-ack` | Runner-only: ack one pulled steer exactly once. |
+| GET | `/tasks/:id/steers` | Pending steers + ack receipts for one execution (`?executionId=`). |
 | POST | `/tasks/:id/pause` | Pause execution. |
 | POST | `/tasks/:id/resume` | Resume a paused task. |
 | POST | `/tasks/:id/retry` | Retry the failed stage with a fresh attempt budget: auto-iteration and transient counters restart at zero and the stage clock re-enters. The last failure is preserved as context for the next attempt and clears once the stage consumes it. (Plain `execute` keeps counting from the current values.) |
@@ -133,7 +135,7 @@ approval, then heartbeat and claim with the issued per-Runner credential.
 | POST | `/runners/:id/approve` | Approve; issues the per-Runner credential. |
 | POST | `/runners/:id/deny` | Deny a pending join request. |
 | POST | `/runners/:id/revoke` | Revoke; the credential stops working immediately. |
-| GET | `/runners/monitor` | Phase 2 monitor counters (stale rejections, divergences, unverifiable SHAs). |
+| GET | `/runners/monitor` | Phase 2 monitor counters (stale rejections, divergences, unverifiable SHAs) plus `liveAssignments` per live lease for the multi-Runner UI. |
 | POST | `/runners/dispatch` | Runner-only (WP-3.1/3.2/3.3): backend-routed dispatch poll; scan has a wait-based starvation guard; alias stages resolve through the shared backend-central smooth-WRR rotation (D3, attribution in `requirements.alias`); D8 concurrency caps (429 fleet-wide, `PROJECT_BUSY` per project); 200 `assigned` + lease, or 200 unassigned (`NO_CLAIMABLE_TASKS` / `NO_CLAIMABLE_MATCH` + miss histogram); 409 `STALE_RUNNER` when the Runner is stale. |
 | POST | `/tasks/:id/progress` | Runner-only: record a stage lifecycle event keyed by execution ID (idempotent). |
 | POST | `/tasks/:id/logs` | Runner-only: ingest one sequenced log frame (gaps marked, never hidden). |

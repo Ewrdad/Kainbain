@@ -48,6 +48,7 @@ export async function registerTaskFlowRoutes(app, deps) {
 		promptEngine,
 		agentRunner,
 		claimStore,
+		steerStore,
 	} = deps;
 
 	const curateAndStorePrompt = (projectId, task, project, extraCtx = {}) => {
@@ -327,6 +328,33 @@ export async function registerTaskFlowRoutes(app, deps) {
 			reply,
 		);
 		if (!id) return;
+
+		// D5 unified steer (ADR 0011): a Runner-held lease owns the
+		// execution out-of-process, so the steer queues against the live
+		// lease for heartbeat pull + ack instead of touching the embedded
+		// session. No live lease → the embedded path below, unchanged.
+		const liveHold = claimStore?.describe?.(request.params.id);
+		if (liveHold) {
+			try {
+				const { steerId } = steerStore.queue({
+					taskId: request.params.id,
+					executionId: liveHold.executionId,
+					text: String(steerText),
+				});
+				return {
+					steerId,
+					taskId: request.params.id,
+					executionId: liveHold.executionId,
+					epoch: liveHold.epoch,
+					runnerId: liveHold.runnerId,
+					accepted: true,
+					via: "runner",
+				};
+			} catch (err) {
+				const status = err.statusCode || 500;
+				return reply.status(status).send({ error: err.message, code: err.code });
+			}
+		}
 
 		const project = projectStore.getProject(id);
 		const session = await getOrCreateSession(id);

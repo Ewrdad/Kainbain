@@ -67,6 +67,19 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 				body: { ...(projectIds?.length ? { projectIds } : {}) },
 			});
 		},
+		steerAck({ taskId, projectId, executionId, epoch, steerId, ok, detail }) {
+			return call(`/tasks/${encodeURIComponent(taskId)}/steer-ack`, {
+				method: "POST",
+				body: {
+					projectId,
+					executionId,
+					epoch,
+					steerId,
+					ok: ok !== false,
+					...(typeof detail === "string" && detail ? { detail: detail.slice(0, 500) } : {}),
+				},
+			});
+		},
 		progress({ taskId, projectId, executionId, epoch, stageId, event }) {
 			return call(`/tasks/${encodeURIComponent(taskId)}/progress`, {
 				method: "POST",

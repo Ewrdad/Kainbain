@@ -64,6 +64,7 @@ describe('api public surface', () => {
       'getModels',
       'getProject',
       'getPromptLayout',
+      'getRunnerMonitor',
       'getRunners',
       'getSkill',
       'getSkills',

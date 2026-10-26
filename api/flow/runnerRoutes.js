@@ -21,6 +21,7 @@ export async function registerRunnerRoutes(app, { deps }) {
 	const {
 		runnerRegistry,
 		claimStore,
+		steerStore,
 		executionLedger,
 		taskStore,
 		projectStore,
@@ -65,7 +66,25 @@ export async function registerRunnerRoutes(app, { deps }) {
 				).trim(),
 				facts: request.body?.facts || {},
 			});
-			return result;
+			// D5 pull channel (ADR 0011): pending steers for this
+			// Runner's live executions ride the heartbeat response, so
+			// steering needs no second channel. Stale Runner, live
+			// lease: the steer waits here until the TTL lapses.
+			const pendingSteers = [];
+			for (const hold of claimStore.liveHolds()) {
+				if (hold.runnerId !== runner.runnerId) continue;
+				for (const steer of steerStore.pendingFor(hold.executionId)) {
+					pendingSteers.push({
+						steerId: steer.steerId,
+						taskId: hold.taskId,
+						projectId: hold.projectId,
+						executionId: hold.executionId,
+						epoch: hold.epoch,
+						text: steer.text,
+					});
+				}
+			}
+			return { ...result, pendingSteers };
 		} catch (err) {
 			return sendStoreError(reply, err);
 		}
@@ -114,7 +133,15 @@ export async function registerRunnerRoutes(app, { deps }) {
 	};
 
 	app.get("/runners/monitor", async () => {
-		return executionLedger.snapshot();
+		// Multi-Runner UI (WP-3.4): who runs what right now, so
+		// Settings › Harness › Runners can show live assignments.
+		const liveAssignments = claimStore.liveHolds().map((hold) => ({
+			runnerId: hold.runnerId,
+			projectId: hold.projectId,
+			taskId: hold.taskId,
+			epoch: hold.epoch,
+		}));
+		return { ...executionLedger.snapshot(), liveAssignments };
 	});
 
 	app.post("/tasks/:id/progress", async (request, reply) => {
@@ -413,5 +440,57 @@ export async function registerRunnerRoutes(app, { deps }) {
 			}
 		}
 		return { assigned: false, code: "NO_CAPABLE_MATCH", misses };
+	});
+
+	// ---- Steering acks (D5, ADR 0011) --------------------------------------
+	// The unified POST /tasks/:id/steer (taskFlowRoutes) queues against the
+	// live lease; the Runner pulls on heartbeat and acks here.
+	app.post("/tasks/:id/steer-ack", async (request, reply) => {
+		let runner;
+		try {
+			runner = authedRunner(request);
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+		const ctx = guardedTask(request, reply);
+		if (!ctx) return;
+		try {
+			const hold = claimStore.describe(request.params.id);
+			if (
+				!hold ||
+				hold.executionId !== request.body?.executionId ||
+				hold.epoch !== request.body?.epoch ||
+				hold.runnerId !== runner.runnerId
+			) {
+				return reply.status(409).send({
+					error: `Ack targets a superseded execution (no matching live lease).`,
+					code: "STALE_EPOCH",
+				});
+			}
+			return steerStore.ack(request.body.executionId, request.body?.steerId, {
+				ok: request.body?.ok,
+				detail: request.body?.detail,
+			});
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
+	app.get("/tasks/:id/steers", async (request, reply) => {
+		const ctx = guardedTask(request, reply);
+		if (!ctx) return;
+		const executionId = request.query?.executionId;
+		if (!executionId || typeof executionId !== "string") {
+			return reply.status(400).send({
+				error: "steers requires an executionId query.",
+				code: "INVALID_STEER_ARGS",
+			});
+		}
+		return {
+			taskId: request.params.id,
+			executionId,
+			pending: steerStore.pendingFor(executionId),
+			receipts: steerStore.receiptsFor(executionId),
+		};
 	});
 }

@@ -25,6 +25,7 @@ import { createSessionHelpers } from "./sessionResolution.js";
 import { taskStore } from "./taskStore.js";
 import { sessionStore } from "./sessionStore.js";
 import { ClaimStore } from "./flow/claimStore.js";
+import { SteerStore } from "./flow/steerStore.js";
 import { RunnerRegistry } from "./flow/runnerRegistry.js";
 import { ExecutionLedger } from "./flow/executionLedger.js";
 import { workflowRegistry } from "./workflowRegistry.js";
@@ -162,6 +163,7 @@ const runnerRegistry = new RunnerRegistry({
 	staleAfterMs: config.runnerStaleAfterMs,
 });
 const claimStore = new ClaimStore({ ttlMs: config.claimTtlMs });
+const steerStore = new SteerStore();
 const executionLedger = new ExecutionLedger();
 // Leases live outside the task store, but the scheduler and the embedded
 // execute path must see them to avoid double-dispatching a Runner-held
@@ -190,6 +192,7 @@ const deps = {
 	harnessRegistry,
 	runnerRegistry,
 	claimStore,
+	steerStore,
 	executionLedger,
 };
 

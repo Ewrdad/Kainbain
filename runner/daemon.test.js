@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { runDispatchLoop, runSingleAssignment } from "./daemon.js";
+import { deliverSteers, runDispatchLoop, runSingleAssignment } from "./daemon.js";
 
 function localRepo() {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-runner-d-"));
@@ -181,6 +181,65 @@ describe("runSingleAssignment", () => {
 			}),
 			/still pending/,
 		);
+	});
+});
+
+describe("deliverSteers", () => {
+	const config = { runnerId: "r1" };
+	const facts = {};
+	const logger = { log: () => {}, warn: () => {} };
+	const steerRow = (over = {}) => ({
+		steerId: "s1",
+		taskId: "t1",
+		projectId: "p1",
+		executionId: "e1",
+		epoch: 1,
+		text: "hold on",
+		...over,
+	});
+
+	it("delivers the current execution's steers and acks each once", async () => {
+		const steered = [];
+		const acked = [];
+		const client = {
+			heartbeat: async () => ({ status: "active", pendingSteers: [steerRow()] }),
+			steerAck: async (args) => {
+				acked.push(args);
+				return { steerId: args.steerId };
+			},
+		};
+		const state = {
+			executionId: "e1",
+			epoch: 1,
+			session: { steer: async (text) => steered.push(text) },
+		};
+		const delivered = await deliverSteers({ config, client, logger, facts, state });
+		assert.equal(delivered, 1);
+		assert.deepEqual(steered, ["hold on"]);
+		assert.equal(acked.length, 1);
+		assert.equal(acked[0].steerId, "s1");
+		assert.equal(acked[0].ok, true);
+	});
+
+	it("ignores steers for other executions and NACKs unsupported harnesses", async () => {
+		const acked = [];
+		const client = {
+			heartbeat: async () => ({
+				status: "active",
+				pendingSteers: [steerRow({ executionId: "old", steerId: "s-old" }), steerRow()],
+			}),
+			steerAck: async (args) => {
+				acked.push(args);
+				return { steerId: args.steerId };
+			},
+		};
+		const state = { executionId: "e1", epoch: 1, session: {} };
+		const delivered = await deliverSteers({ config, client, logger, facts, state });
+		assert.equal(delivered, 1);
+		assert.equal(acked.length, 1);
+		assert.equal(acked[0].steerId, "s1");
+		assert.equal(acked[0].ok, false);
+		assert.equal(acked[0].detail, "UNSUPPORTED_HARNESS");
 	});
 });
 

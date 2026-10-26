@@ -9,6 +9,7 @@
 export function runnerRequests(request) {
   return {
     getRunners: () => request('/runners'),
+    getRunnerMonitor: () => request('/runners/monitor'),
     approveRunner: (id) =>
       request(`/runners/${encodeURIComponent(id)}/approve`, { method: 'POST' }),
     denyRunner: (id) =>

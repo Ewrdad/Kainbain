@@ -152,6 +152,30 @@ export class ClaimStore {
 		};
 	}
 
+	/***
+	 * MARK: liveHolds
+	 * @description Lists every unexpired hold with its owner, project, and
+	 *   fencing token (D5 steering pull + multi-Runner monitor, WP-3.4).
+	 *   Lazy expiry applies: lapsed holds are swept, never listed.
+	 * @example claims.liveHolds() => [{ taskId: 't', runnerId: 'r', … }]
+	 * @returns {Array} Live hold rows.
+	 ***/
+	liveHolds() {
+		const out = [];
+		for (const taskId of [...this.holds.keys()]) {
+			const hold = this._holding(taskId);
+			if (!hold) continue;
+			out.push({
+				taskId,
+				runnerId: hold.runnerId,
+				projectId: hold.projectId,
+				executionId: hold.executionId,
+				epoch: hold.epoch,
+			});
+		}
+		return out;
+	}
+
 	invalidate(taskId) {
 		return this.holds.delete(taskId);
 	}

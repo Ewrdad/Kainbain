@@ -15,6 +15,7 @@
  * @param {string} [opts.model] - Model pin (session meta).
  * @param {string} opts.prompt - Stage prompt text.
  * @param {Function} [opts.onLog] - Called with each log string, in order.
+ * @param {Function} [opts.onSession] - Called with the live session after creation (steering delivery, WP-3.4).
  * @returns {Promise<Object>} `{ output }` — the final assistant text.
  ***/
 export async function runHarnessStage({
@@ -26,6 +27,7 @@ export async function runHarnessStage({
 	model = "",
 	prompt,
 	onLog = () => {},
+	onSession = null,
 }) {
 	if (!harness || typeof harness.createSession !== "function") {
 		throw new Error("runHarnessStage needs a harness with createSession.");
@@ -39,6 +41,13 @@ export async function runHarnessStage({
 		sessionDir: workdir,
 		...(model ? { model } : {}),
 	});
+	if (typeof onSession === "function") {
+		try {
+			onSession(session);
+		} catch {
+			// Observer only: a throwing hook must never break the run.
+		}
+	}
 	const seen = new Set();
 	const unsubscribe = session.subscribe((event) => {
 		if (!event || typeof event !== "object") return;

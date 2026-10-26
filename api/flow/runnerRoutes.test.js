@@ -574,6 +574,107 @@ describe("Runner Routes Integration", () => {
 		});
 	});
 
+	it("steers a live execution, pulls it on heartbeat, and acks exactly once", async () => {
+		const { project, taskId } = await mockProject("Steer Fixture");
+		const credential = await onboard("steer-1");
+		await heartbeatAs(credential, "steer-1");
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${taskId}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		const { executionId, epoch } = JSON.parse(claim.payload);
+
+		const steer = await app.inject({
+			method: "POST",
+			url: `/tasks/${taskId}/steer`,
+			payload: { projectId: project.id, guidance: "hold on, checking" },
+		});
+		expect(steer.statusCode).toBe(200);
+		const steered = JSON.parse(steer.payload);
+		expect(steered).toMatchObject({ executionId, accepted: true, via: "runner" });
+		const { steerId } = steered;
+		expect(typeof steerId).toBe("string");
+
+		// The steer rides the next heartbeat for the owning Runner.
+		const beat = JSON.parse(
+			(
+				await app.inject({
+					method: "POST",
+					url: "/runners/heartbeat",
+					headers: { "x-runner-credential": credential },
+					payload: { runnerId: "steer-1", facts: FACTS },
+				})
+			).payload,
+		);
+		expect(beat.pendingSteers).toHaveLength(1);
+		expect(beat.pendingSteers[0]).toMatchObject({ steerId, executionId, text: "hold on, checking" });
+
+		// Ack with the wrong epoch is stale; the right one lands once.
+		const badAck = await app.inject({
+			method: "POST",
+			url: `/tasks/${taskId}/steer-ack`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id, executionId, epoch: epoch + 1, steerId, ok: true },
+		});
+		expect(badAck.statusCode).toBe(409);
+		const ack = await app.inject({
+			method: "POST",
+			url: `/tasks/${taskId}/steer-ack`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id, executionId, epoch, steerId, ok: true, detail: "delivered" },
+		});
+		expect(JSON.parse(ack.payload)).toMatchObject({ steerId, ok: true });
+
+		// Read-back: pending drained, receipt visible.
+		const read = JSON.parse(
+			(
+				await app.inject({
+					method: "GET",
+					url: `/tasks/${taskId}/steers?projectId=${project.id}&executionId=${executionId}`,
+				})
+			).payload,
+		);
+		expect(read.pending).toHaveLength(0);
+		expect(read.receipts).toHaveLength(1);
+		expect(read.receipts[0]).toMatchObject({ steerId, ok: true });
+
+		// Multi-Runner UI read: the live lease shows who runs what.
+		const monitor = JSON.parse(
+			(await app.inject({ method: "GET", url: "/runners/monitor" })).payload,
+		);
+		expect(monitor.liveAssignments).toContainEqual({
+			runnerId: "steer-1",
+			projectId: project.id,
+			taskId,
+			epoch,
+		});
+	});
+
+	it("steer on an unheld task takes the embedded path, never the queue", async () => {
+		const { project, taskId } = await mockProject("Steer Idle");
+		const res = await app.inject({
+			method: "POST",
+			url: `/tasks/${taskId}/steer`,
+			payload: { projectId: project.id, guidance: "hello?" },
+		});
+		// No live Runner lease: embedded steerTask answers with the task
+		// (no steerId, no via-runner marker), nothing queued anywhere.
+		expect(res.statusCode).toBe(200);
+		expect(JSON.parse(res.payload).via).toBeUndefined();
+		const read = JSON.parse(
+			(
+				await app.inject({
+					method: "GET",
+					url: `/tasks/${taskId}/steers?projectId=${project.id}&executionId=gone`,
+				})
+			).payload,
+		);
+		expect(read.pending).toHaveLength(0);
+		expect(read.receipts).toHaveLength(0);
+	});
+
 	it("dispatch reports ALIAS_UNRESOLVED loudly for deleted aliases", async () => {
 		const { projectId } = await aliasProject(
 			"Dispatch Alias Gone",

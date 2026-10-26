@@ -42,15 +42,16 @@ function factsFor({ config, harnessVersions }) {
  * @description Shared join prologue: poll a pending join until the human
  *   approves (then exit asking for the pasted credential), load the
  *   harness, heartbeat once, and start the background heartbeat timer.
- * @example const { harness, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger })
+ * @example const { harness, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger, state })
  * @param {Object} opts - Options.
  * @param {Object} opts.config - Normalized runner config.
  * @param {Object} opts.client - Runner backend client.
  * @param {Function} opts.loadHarness - Harness loader.
  * @param {Object} opts.logger - Logger.
+ * @param {Object} opts.state - Live-execution ref (`{ session, executionId, epoch }`), read by the steer pull cycle.
  * @returns {Promise<Object>} Loaded harness plus `stop()` for the timer.
  ***/
-async function joinAndHeartbeat({ config, client, loadHarness, logger }) {
+async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) {
 	if (!config.credential) {
 		if (!config.joinToken) {
 			throw new Error("No credential and no KAINBAIN_RUNNER_JOIN_TOKEN: cannot join.");
@@ -82,7 +83,7 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger }) {
 		throw new Error(`Runner ${config.runnerId} is ${beat.status}; need an active registration.`);
 	}
 	const heartbeatTimer = setInterval(() => {
-		client.heartbeat({ runnerId: config.runnerId, facts }).catch((err) => {
+		deliverSteers({ config, client, logger, facts, state }).catch((err) => {
 			logger.warn(`Heartbeat failed: ${err?.message || err}`);
 		});
 	}, config.heartbeatMs);
@@ -91,16 +92,67 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger }) {
 }
 
 /***
+ * MARK: deliverSteers
+ * @description One D5 pull cycle (ADR 0011): heartbeat, deliver each
+ *   pending steer for the CURRENT execution to the live session
+ *   (`steer`, falling back to `followUp`), and ack exactly once. Steers
+ *   for any other execution are ignored (stale lease, never ours).
+ *   A session without either method NACKs UNSUPPORTED_HARNESS — loud,
+ *   never silently dropped.
+ * @example await deliverSteers({ config, client, logger, facts, state })
+ * @param {Object} opts - Options (config, client, logger, facts, state).
+ * @returns {Promise<number>} Steers delivered (acked) this cycle.
+ ***/
+export async function deliverSteers({ config, client, logger, facts, state }) {
+	const beat = await client.heartbeat({ runnerId: config.runnerId, facts });
+	const due = (beat.pendingSteers || []).filter((s) => s && s.executionId === state?.executionId);
+	let delivered = 0;
+	for (const steer of due) {
+		const session = state.session;
+		let ok = true;
+		let detail = "delivered";
+		try {
+			if (session && typeof session.steer === "function") {
+				await session.steer(steer.text);
+			} else if (session && typeof session.followUp === "function") {
+				await session.followUp(steer.text);
+			} else {
+				ok = false;
+				detail = "UNSUPPORTED_HARNESS";
+			}
+		} catch (err) {
+			ok = false;
+			detail = String(err?.message || err).slice(0, 500);
+		}
+		try {
+			await client.steerAck({
+				taskId: steer.taskId,
+				projectId: steer.projectId,
+				executionId: steer.executionId,
+				epoch: steer.epoch,
+				steerId: steer.steerId,
+				ok,
+				detail,
+			});
+			delivered += 1;
+		} catch (err) {
+			logger.warn(`Steer ack failed: ${err?.message || err}`);
+		}
+	}
+	return delivered;
+}
+
+/***
  * MARK: executeAssignment
  * @description Shared execution body: claim (or consume the dispatch
  *   answer's lease — the route already claim-fenced it), load, run,
  *   commit/push, and complete one assignment (used by both
  *   single-assignment and loop).
- * @example await executeAssignment({ config, client, logger, harness, projectId, taskId })
- * @param {Object} opts - Options (config, client, logger, harness, projectId, taskId, lease?).
+ * @example await executeAssignment({ config, client, logger, harness, state, projectId, taskId })
+ * @param {Object} opts - Options (config, client, logger, harness, state, projectId, taskId, lease?).
  * @returns {Promise<Object>} Execution summary.
  ***/
-async function executeAssignment({ config, client, logger, harness, projectId, taskId, lease }) {
+async function executeAssignment({ config, client, logger, harness, state, projectId, taskId, lease }) {
 		const project = await client.getProject(projectId);
 		const task = await client.getTask(projectId, taskId);
 		const stageId = String(task.currentStageId ?? task.stages?.[0]?.id ?? "stage");
@@ -113,6 +165,11 @@ async function executeAssignment({ config, client, logger, harness, projectId, t
 			taskId,
 			projectId,
 		}));
+		// Publish the live execution for the steer pull cycle (D5); the
+		// heartbeat loop only ever delivers steers for THIS execution.
+		state.executionId = executionId;
+		state.epoch = epoch;
+		state.session = null;
 		try {
 			await client.progress({
 				taskId: taskId,
@@ -166,7 +223,11 @@ async function executeAssignment({ config, client, logger, harness, projectId, t
 						logger.warn(`Log ingest failed: ${err?.message || err}`);
 					});
 				},
+				onSession: (session) => {
+					state.session = session;
+				},
 			});
+			state.session = null;
 			await client.progress({
 				taskId: taskId,
 				projectId: projectId,
@@ -259,13 +320,15 @@ export async function runSingleAssignment({
 		logger.warn(`Orphaned workdirs (left alone, may hold unpushed work): ${orphans.join(", ")}`);
 	}
 
-	const { harness, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger });
+	const state = { session: null, executionId: null, epoch: null };
+	const { harness, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger, state });
 	try {
 		return await executeAssignment({
 			config,
 			client,
 			logger,
 			harness,
+			state,
 			projectId: config.projectId,
 			taskId: config.taskId,
 		});
@@ -306,7 +369,8 @@ export async function runDispatchLoop({
 		logger.warn(`Orphaned workdirs (left alone, may hold unpushed work): ${orphans.join(", ")}`);
 	}
 
-	const { harness, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger });
+	const state = { session: null, executionId: null, epoch: null };
+	const { harness, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger, state });
 	const idleLimit = config.dispatchIdleLimit ?? 3;
 	const pollMs = config.dispatchPollMs ?? 5000;
 	let assignments = 0;
@@ -348,6 +412,7 @@ export async function runDispatchLoop({
 				client,
 				logger,
 				harness,
+				state,
 				projectId: answer.projectId,
 				taskId: answer.taskId,
 				lease: { executionId: answer.executionId, epoch: answer.epoch },

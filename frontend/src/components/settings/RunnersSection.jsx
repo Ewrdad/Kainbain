@@ -5,15 +5,19 @@ import { copyToClipboard } from '../../services/clipboard';
 /***
  * MARK: RunnersSection
  * @description System Settings › Harness › Runner onboarding (D4, ADR 0009
- *   steps 1–2): lists Runner registrations from `GET /runners` — pending
- *   join requests with Approve/Deny, active Runners with Revoke — with
- *   honest loading, error-with-retry, and empty states. Credential values
- *   are never rendered (the approve response carries the single copy the
- *   Runner already holds). Stateless: refetches after every mutation.
+ *   steps 1–2) plus live assignments (D5, WP-3.4): lists Runner
+ *   registrations from `GET /runners` — pending join requests with
+ *   Approve/Deny, active Runners with Revoke — with honest loading,
+ *   error-with-retry, and empty states. Active Runners show their current
+ *   task from `GET /runners/monitor` (`liveAssignments`); a monitor miss
+ *   hides assignments but never the list. Credential values are never
+ *   rendered (the approve response carries the single copy the Runner
+ *   already holds). Stateless: refetches after every mutation.
  * @example <RunnersSection />
  ***/
 export function RunnersSection() {
   const [runners, setRunners] = useState(null);
+  const [assignments, setAssignments] = useState({});
   const [loadError, setLoadError] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [actionError, setActionError] = useState(null);
@@ -25,6 +29,18 @@ export function RunnersSection() {
     try {
       const list = await api.getRunners();
       setRunners(Array.isArray(list) ? list : []);
+      try {
+        const monitor = await api.getRunnerMonitor();
+        const byRunner = {};
+        for (const row of monitor?.liveAssignments || []) {
+          if (row && typeof row.runnerId === 'string') byRunner[row.runnerId] = row;
+        }
+        setAssignments(byRunner);
+      } catch {
+        // Monitor is best-effort: the onboarding list stays usable when
+        // the counters endpoint is down.
+        setAssignments({});
+      }
     } catch (err) {
       setRunners(null);
       setLoadError(err?.message || 'Could not load Runner registrations.');
@@ -156,6 +172,14 @@ export function RunnersSection() {
               >
                 {runner.status}
               </span>
+              {assignments[runner.runnerId] && (
+                <span
+                  className="text-[10px] font-mono text-text-muted"
+                  data-testid={`runner-assignment-${runner.runnerId}`}
+                >
+                  Running task {String(assignments[runner.runnerId].taskId).slice(0, 8)}
+                </span>
+              )}
               {runner.status === 'pending' ? (
                 <>
                   <button

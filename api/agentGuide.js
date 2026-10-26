@@ -284,7 +284,7 @@ export const ENDPOINTS = [
 	{
 		method: "GET",
 		path: "/runners/monitor",
-		purpose: "Phase 2 monitor counters: progress/log ingest, stale rejections, divergences, unverifiable SHAs.",
+		purpose: "Phase 2 monitor counters (progress/log ingest, stale rejections, divergences, unverifiable SHAs) plus WP-3.4 liveAssignments (runnerId, projectId, taskId, epoch per live lease) for the multi-Runner UI.",
 		body: null,
 	},
 	{
@@ -377,8 +377,22 @@ export const ENDPOINTS = [
 		method: "POST",
 		path: "/tasks/:id/steer",
 		purpose:
-			"Steer an executing task in real time. Body: { guidance } or { goal }.",
+			"D5 unified steer (ADR 0011, C2 impromptu-T0 channel): guidance for the LIVE execution — queued against the Runner lease for heartbeat pull + ack when a Runner holds the task (returns steerId, via runner), else steers the embedded session. Body: { guidance } or { goal }.",
 		body: { guidance: "string" },
+	},
+	{
+		method: "POST",
+		path: "/tasks/:id/steer-ack",
+		purpose:
+			"Runner-only: ack one pulled steer exactly once (ok or UNSUPPORTED_HARNESS NACK). Requires the x-runner-credential header.",
+		body: { executionId: "string (required)", epoch: "number (required)", steerId: "string (required)", ok: "boolean" },
+	},
+	{
+		method: "GET",
+		path: "/tasks/:id/steers",
+		purpose:
+			"Read pending steers + ack receipts for one execution (?executionId=). Operator/UI read-back for steering delivery.",
+		body: null,
 	},
 	{
 		method: "GET",
