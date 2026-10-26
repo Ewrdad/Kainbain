@@ -37,7 +37,7 @@ describe("Project model-alias API", () => {
 		const res = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name },
+			payload: { name, gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(201);
 		return JSON.parse(res.payload);
@@ -177,6 +177,7 @@ describe("Project model-alias API", () => {
 			url: "/projects",
 			payload: {
 				name: "Alias Rename API App",
+				gitUrl: "https://git.example.com/team/fixture.git",
 				harness: "alias",
 				defaultModel: "small",
 				modelAliases: [{ name: "small", harness: "pi", model: "google::m" }],
@@ -231,7 +232,7 @@ describe("Project model-alias API", () => {
 		const staleRes = await app.inject({
 			method: "PATCH",
 			url: `/projects/${created.id}`,
-			payload: { name: "Renamed Elsewhere" },
+			payload: { name: "Renamed Elsewhere", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(staleRes.statusCode).toBe(200);
 		expect(JSON.parse(staleRes.payload).modelAliases).toEqual(expected);
@@ -284,7 +285,7 @@ describe("Project model-alias API", () => {
 		const okRes = await app.inject({
 			method: "PATCH",
 			url: `/projects/${created.id}`,
-			payload: { name: "Fresh Write", expectedUpdatedAt: freshUpdatedAt },
+			payload: { name: "Fresh Write", expectedUpdatedAt: freshUpdatedAt, gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(okRes.statusCode).toBe(200);
 		const okBody = JSON.parse(okRes.payload);

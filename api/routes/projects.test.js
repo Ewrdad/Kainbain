@@ -41,7 +41,7 @@ describe("Project & Workflow API Integration", () => {
 		await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Initial Project" },
+			payload: { name: "Initial Project", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		const res = await app.inject({ method: "GET", url: "/projects" });
 		expect(res.statusCode).toBe(200);
@@ -53,7 +53,7 @@ describe("Project & Workflow API Integration", () => {
 		const res = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Provisioned App" },
+			payload: { name: "Provisioned App", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(201);
 		const project = JSON.parse(res.payload);
@@ -88,11 +88,21 @@ describe("Project & Workflow API Integration", () => {
 		expect(fetched.payload).not.toContain(token);
 	});
 
+	it("should reject project creation without a remote (D11)", async () => {
+		const res = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: { name: "Remote-less App" },
+		});
+		expect(res.statusCode).toBe(400);
+		expect(res.payload).toContain("KAINBAIN_GIT_REMOTE_TEMPLATE");
+	});
+
 	it("should reject project creation when name is missing", async () => {
 		const res = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "" },
+			payload: { name: "", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(400);
 		expect(JSON.parse(res.payload).error).toContain("name is required");
@@ -102,7 +112,7 @@ describe("Project & Workflow API Integration", () => {
 		const res = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Harness Route App", harness: "pi" },
+			payload: { name: "Harness Route App", harness: "pi", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(201);
 		const project = JSON.parse(res.payload);
@@ -120,7 +130,7 @@ describe("Project & Workflow API Integration", () => {
 		const res = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Harness Default App" },
+			payload: { name: "Harness Default App", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(201);
 		const project = JSON.parse(res.payload);
@@ -136,7 +146,7 @@ describe("Project & Workflow API Integration", () => {
 		const res = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Bad Harness App", harness: { nested: true } },
+			payload: { name: "Bad Harness App", harness: { nested: true }, gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(400);
 	});
@@ -145,7 +155,7 @@ describe("Project & Workflow API Integration", () => {
 		const createRes = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Harness Patch App", harness: "pi" },
+			payload: { name: "Harness Patch App", harness: "pi", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		const created = JSON.parse(createRes.payload);
 
@@ -168,7 +178,7 @@ describe("Project & Workflow API Integration", () => {
 		const createRes = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Harness Patch Bad App" },
+			payload: { name: "Harness Patch Bad App", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		const created = JSON.parse(createRes.payload);
 
@@ -186,6 +196,7 @@ describe("Project & Workflow API Integration", () => {
 			url: "/projects",
 			payload: {
 				name: "Retry Settings App",
+				gitUrl: "https://git.example.com/team/fixture.git",
 				maxAutoIterations: 3,
 				maxTransientRetries: 2,
 				autoIterationEnabled: false,
@@ -206,7 +217,7 @@ describe("Project & Workflow API Integration", () => {
 		const createRes = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Retry Patch App", maxAutoIterations: 3 },
+			payload: { name: "Retry Patch App", maxAutoIterations: 3, gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		const created = JSON.parse(createRes.payload);
 		expect(created.maxAutoIterations).toBe(3);
@@ -241,7 +252,7 @@ describe("Project & Workflow API Integration", () => {
 		const createRes = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Retry Patch Bad App" },
+			payload: { name: "Retry Patch Bad App", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		const created = JSON.parse(createRes.payload);
 
@@ -259,6 +270,7 @@ describe("Project & Workflow API Integration", () => {
 			url: "/projects",
 			payload: {
 				name: "Custom Command App",
+				gitUrl: "https://git.example.com/team/fixture.git",
 				harness: "custom",
 				harnessCommand: "claude -p",
 			},
@@ -284,6 +296,7 @@ describe("Project & Workflow API Integration", () => {
 			url: "/projects",
 			payload: {
 				name: "Custom Command Patch App",
+				gitUrl: "https://git.example.com/team/fixture.git",
 				harness: "custom",
 				harnessCommand: "claude -p",
 			},
@@ -312,7 +325,7 @@ describe("Project & Workflow API Integration", () => {
 		const createRes = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Command Patch Bad App" },
+			payload: { name: "Command Patch Bad App", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		const created = JSON.parse(createRes.payload);
 
@@ -376,7 +389,7 @@ describe("Project & Workflow API Integration", () => {
 		const res = await app.inject({
 			method: "PATCH",
 			url: `/projects/${target.id}`,
-			payload: { name: "Renamed Project" },
+			payload: { name: "Renamed Project", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(200);
 		expect(JSON.parse(res.payload).name).toBe("Renamed Project");
@@ -386,7 +399,7 @@ describe("Project & Workflow API Integration", () => {
 		const res = await app.inject({
 			method: "PATCH",
 			url: "/projects/non-existent-id",
-			payload: { name: "X" },
+			payload: { name: "X", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(404);
 	});
@@ -468,7 +481,7 @@ describe("Project & Workflow API Integration", () => {
 		const createRes = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "To Be Deleted" },
+			payload: { name: "To Be Deleted", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		const created = JSON.parse(createRes.payload);
 
@@ -555,7 +568,7 @@ describe("Project & Workflow API Integration", () => {
 		const projRes = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Workflow Route App" },
+			payload: { name: "Workflow Route App", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		const project = JSON.parse(projRes.payload);
 
@@ -598,7 +611,7 @@ describe("Project & Workflow API Integration", () => {
 		const patchRes = await app.inject({
 			method: "PATCH",
 			url: `/projects/${project.id}/workflows/${newWf.id}`,
-			payload: { name: "Automated Release Pipeline" },
+			payload: { name: "Automated Release Pipeline", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(patchRes.statusCode).toBe(200);
 		expect(JSON.parse(patchRes.payload).name).toBe("Automated Release Pipeline");
@@ -616,7 +629,7 @@ describe("Project & Workflow API Integration", () => {
 		const projRes = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Concurrency App" },
+			payload: { name: "Concurrency App", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		const project = JSON.parse(projRes.payload);
 
@@ -652,7 +665,7 @@ describe("Save-time skill reference validation", () => {
 		const res = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: SCRATCH },
+			payload: { name: SCRATCH, gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(201);
 		projectId = JSON.parse(res.payload).id;
@@ -842,14 +855,14 @@ describe("Save-time skill reference validation — cross-project targets", () =>
 		const src = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: SOURCE },
+			payload: { name: SOURCE, gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(src.statusCode).toBe(201);
 		sourceId = JSON.parse(src.payload).id;
 		const tgt = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: TARGET },
+			payload: { name: TARGET, gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(tgt.statusCode).toBe(201);
 		targetId = JSON.parse(tgt.payload).id;

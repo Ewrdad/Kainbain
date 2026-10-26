@@ -52,7 +52,9 @@ describe('prepareProjects', () => {
     const taskStore = { scanTasks: vi.fn() };
     prepareProjects(projectStore, taskStore, { seedSamples: true });
     expect(projectStore.createProject.mock.calls).toEqual([
-      [{ name: 'Project A' }], [{ name: 'Project C' }], [{ name: 'Project D' }],
+      [{ name: 'Project A', allowLocalOnly: true }],
+      [{ name: 'Project C', allowLocalOnly: true }],
+      [{ name: 'Project D', allowLocalOnly: true }],
     ]);
     expect(taskStore.scanTasks.mock.calls).toEqual([
       ['existing', '/existing'], ['Project A', undefined], ['Project C', undefined], ['Project D', undefined],

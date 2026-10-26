@@ -67,7 +67,7 @@ describe("TaskStore save-time docs-link repair", () => {
 	}
 
 	it("recreates a deleted docs link on save instead of growing a shadow dir", () => {
-		const project = projectStore.createProject({ name: "Demo" });
+		const project = projectStore.createProject({ name: "Demo" , allowLocalOnly: true });
 		const docsLink = path.join(project.cwd, "docs");
 		expect(fs.lstatSync(docsLink).isSymbolicLink()).toBe(true);
 
@@ -86,7 +86,7 @@ describe("TaskStore save-time docs-link repair", () => {
 	});
 
 	it("recreates a deleted docs link on report save instead of growing a shadow dir", () => {
-		const project = projectStore.createProject({ name: "Demo" });
+		const project = projectStore.createProject({ name: "Demo" , allowLocalOnly: true });
 		const docsLink = path.join(project.cwd, "docs");
 		taskStore._getMap(project.id).set("task-1", {
 			...makeTask(project),
@@ -113,7 +113,7 @@ describe("TaskStore save-time docs-link repair", () => {
 	});
 
 	it("leaves a healthy link untouched on save", () => {
-		const project = projectStore.createProject({ name: "Demo" });
+		const project = projectStore.createProject({ name: "Demo" , allowLocalOnly: true });
 		const docsLink = path.join(project.cwd, "docs");
 		const before = fs.readlinkSync(docsLink);
 

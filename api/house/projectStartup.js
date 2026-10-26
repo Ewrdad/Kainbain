@@ -76,16 +76,36 @@ export function prepareProjects(projectStore, taskStore, opts = {}) {
 			projectStore.listProjects().map((p) => p.name),
 		);
 		if (!existingProjectNames.has("Project A")) {
-			projectStore.createProject({ name: "Project A" });
+			projectStore.createProject({
+			name: "Project A",
+			// Opt-in local samples are local-only by design (D11b class);
+			// API-created projects still require a remote.
+			allowLocalOnly: true,
+		});
 		}
 		if (!existingProjectNames.has("Project B")) {
-			projectStore.createProject({ name: "Project B" });
+			projectStore.createProject({
+			name: "Project B",
+			// Opt-in local samples are local-only by design (D11b class);
+			// API-created projects still require a remote.
+			allowLocalOnly: true,
+		});
 		}
 		if (!existingProjectNames.has("Project C")) {
-			projectStore.createProject({ name: "Project C" });
+			projectStore.createProject({
+			name: "Project C",
+			// Opt-in local samples are local-only by design (D11b class);
+			// API-created projects still require a remote.
+			allowLocalOnly: true,
+		});
 		}
 		if (!existingProjectNames.has("Project D")) {
-			projectStore.createProject({ name: "Project D" });
+			projectStore.createProject({
+			name: "Project D",
+			// Opt-in local samples are local-only by design (D11b class);
+			// API-created projects still require a remote.
+			allowLocalOnly: true,
+		});
 		}
 	}
 

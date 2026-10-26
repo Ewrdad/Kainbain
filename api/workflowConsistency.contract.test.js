@@ -52,7 +52,7 @@ describe("workflow consistency contracts", () => {
 		});
 
 	it("loaded stages deep-equal the active workflow's stages", () => {
-		const project = store.createProject({ name: "Contract App" });
+		const project = store.createProject({ name: "Contract App" , allowLocalOnly: true });
 		expect(project.stages).toEqual(
 			project.workflows.find((w) => w.id === project.activeWorkflowId).stages,
 		);
@@ -63,7 +63,7 @@ describe("workflow consistency contracts", () => {
 	});
 
 	it("save/load round-trips workflows, activeWorkflowId, and stages", () => {
-		const project = store.createProject({ name: "Round Trip App" });
+		const project = store.createProject({ name: "Round Trip App" , allowLocalOnly: true });
 		const hotfix = store.createWorkflow(project.id, {
 			name: "Hotfix",
 			stages: [{ id: "h1", name: "Fix", type: "agent" }],
@@ -88,7 +88,7 @@ describe("workflow consistency contracts", () => {
 	});
 
 	it("activeWorkflowId fallback is deterministic (default, then first)", () => {
-		const project = store.createProject({ name: "Fallback App" });
+		const project = store.createProject({ name: "Fallback App" , allowLocalOnly: true });
 		const second = store.createWorkflow(project.id, { name: "Second" });
 		// Corrupt the active id on disk: load falls back to the default workflow.
 		const configFile = path.join(project.cwd, ".kainbain", "project.json");
@@ -106,7 +106,7 @@ describe("workflow consistency contracts", () => {
 	});
 
 	it("editing DEFAULT_STAGES never mutates a saved project's file or record", () => {
-		const project = store.createProject({ name: "Frozen App" });
+		const project = store.createProject({ name: "Frozen App" , allowLocalOnly: true });
 		const before = JSON.parse(
 			fs.readFileSync(
 				path.join(project.cwd, ".kainbain", "project.json"),
@@ -133,7 +133,7 @@ describe("workflow consistency contracts", () => {
 	});
 
 	it("switching the active workflow re-mirrors stages on the next load", () => {
-		const project = store.createProject({ name: "Switch App" });
+		const project = store.createProject({ name: "Switch App" , allowLocalOnly: true });
 		const hotfix = store.createWorkflow(project.id, {
 			name: "Hotfix",
 			stages: [{ id: "h1", name: "Fix", type: "ci" }],

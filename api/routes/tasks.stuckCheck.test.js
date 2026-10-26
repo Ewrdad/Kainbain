@@ -111,7 +111,7 @@ describe("POST /tasks/:id/stuck-check", () => {
 		const res = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Stuck Check Test Project" },
+			payload: { name: "Stuck Check Test Project", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(201);
 		testProject = JSON.parse(res.payload);

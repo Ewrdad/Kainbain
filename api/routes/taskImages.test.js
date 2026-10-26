@@ -83,7 +83,7 @@ describe("Task Images API", () => {
 		const res = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Task Images Test Project", cwd: tempProjectDir },
+			payload: { name: "Task Images Test Project", cwd: tempProjectDir, gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		testProjectId = JSON.parse(res.payload).id;
 	});

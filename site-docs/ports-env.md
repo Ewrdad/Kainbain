@@ -36,7 +36,7 @@ what used to be hardcoded, plus one frontend build var:
 | -------- | ------- | ------ |
 | `CORS_ALLOWED_ORIGINS` | _(unset)_ | Comma-separated exact origins allowed past CORS. Loopback (`localhost`, `127.0.0.1`, `0.0.0.0`, `[::1]`) and origin-less clients are always allowed; every other origin must be listed |
 | `NODE_EXTRA_CA_CERTS` | _(unset)_ | Custom CA bundle path, honored only when explicitly set (Node native; no implicit fallback) |
-| `KAINBAIN_GIT_REMOTE_TEMPLATE` | _(unset)_ | Default git remote for new projects, e.g. `https://git.example.com/${USER}/${SLUG}.git` (`${SLUG}`/`${NAME}`/`${USER}`). Blank = no remote: `gitUrl`/`gitRepo` stay null and no `origin` is added |
+| `KAINBAIN_GIT_REMOTE_TEMPLATE` | _(unset)_ | Default git remote for new projects, e.g. `https://git.example.com/${USER}/${SLUG}.git` (`${SLUG}`/`${NAME}`/`${USER}`). D11: creating a project with neither `gitUrl` nor a template is rejected (400 naming the missing remote) — existing local-only projects stay available via adoption (`POST /projects/register`) |
 | `KAINBAIN_GIT_AUTHOR_NAME` / `KAINBAIN_GIT_AUTHOR_EMAIL` | `KainBain Agent` / `kainbain@local` | Repo-local (`--local`) git identity provisioned before engine commits when the machine has no `user.name`/`user.email`; global config is never touched |
 | `VITE_NOTES_VIEWER_URL` | _(unset)_ | External notes-viewer base URL for report deep links (supports `${PROJECT}`/`${PATH}`); unset degrades to the in-app `#/explorer` route |
 

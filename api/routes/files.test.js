@@ -96,6 +96,7 @@ describe("Files API Integration & Security Tests", () => {
 			payload: {
 				name: "Files Test Project",
 				cwd: tempProjectDir,
+				gitUrl: "https://git.example.com/team/fixture.git",
 			},
 		});
 		const project = JSON.parse(res.payload);

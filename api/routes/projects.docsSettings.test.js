@@ -43,7 +43,7 @@ describe("POST /projects docs-folder settings", () => {
 		const res = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Custom Docs App", docsDirName: "kainbain-docs" },
+			payload: { name: "Custom Docs App", docsDirName: "kainbain-docs", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(201);
 		const project = JSON.parse(res.payload);
@@ -67,7 +67,7 @@ describe("POST /projects docs-folder settings", () => {
 		const res = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Opt Out Docs App", centralizedDocs: false },
+			payload: { name: "Opt Out Docs App", centralizedDocs: false, gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(201);
 		const project = JSON.parse(res.payload);
@@ -92,7 +92,7 @@ describe("POST /projects docs-folder settings", () => {
 		const res = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Bad Docs App", docsDirName: "../escape" },
+			payload: { name: "Bad Docs App", docsDirName: "../escape", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(400);
 		expect(JSON.parse(res.payload).error).toMatch(/docsDirName/i);
@@ -125,6 +125,7 @@ describe("docs-folder settings survive save + reload", () => {
 			url: "/projects",
 			payload: {
 				name: "Round Trip Docs App",
+				gitUrl: "https://git.example.com/team/fixture.git",
 				docsDirName: "kainbain-docs",
 				centralizedDocs: false,
 			},
@@ -152,7 +153,7 @@ describe("docs-folder settings survive save + reload", () => {
 		const res = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Default Shape Docs App" },
+			payload: { name: "Default Shape Docs App", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(201);
 		const project = JSON.parse(res.payload);
@@ -166,7 +167,7 @@ describe("docs-folder settings survive save + reload", () => {
 		const created = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Rename Persist Docs App" },
+			payload: { name: "Rename Persist Docs App", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(created.statusCode).toBe(201);
 		const project = JSON.parse(created.payload);

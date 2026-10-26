@@ -59,9 +59,9 @@ describe("ProjectStore multi-root + register", () => {
 
 	it("scans the primary root and every extra root", () => {
 		const storeA = makeStore();
-		const inA = storeA.createProject({ name: "Root A App" });
+		const inA = storeA.createProject({ name: "Root A App" , allowLocalOnly: true });
 		const storeB = makeStore({ projectsRoot: tempRootB });
-		const inB = storeB.createProject({ name: "Root B App" });
+		const inB = storeB.createProject({ name: "Root B App" , allowLocalOnly: true });
 
 		const store = makeStore({ projectsRoots: [tempRootB] });
 		const scanned = store.scanProjects();
@@ -71,7 +71,7 @@ describe("ProjectStore multi-root + register", () => {
 
 	it("dedupes by resolved cwd across roots and registry entries", () => {
 		const store = makeStore({ projectsRoots: [tempRootA] });
-		const created = store.createProject({ name: "Dedupe App" });
+		const created = store.createProject({ name: "Dedupe App" , allowLocalOnly: true });
 		// The same directory reachable twice (primary + extra root) is one project.
 		const scanned = store.scanProjects();
 		expect(scanned.filter((p) => p.id === created.id).length).toBe(1);
@@ -92,7 +92,7 @@ describe("ProjectStore multi-root + register", () => {
 
 	it("dedupes by the config's own cwd when two roots name the same checkout", () => {
 		const source = makeStore();
-		const project = source.createProject({ name: "Shared Checkout" });
+		const project = source.createProject({ name: "Shared Checkout" , allowLocalOnly: true });
 		// A second root holds a sibling config that names the same cwd (a moved
 		// or aliased checkout). Both must collapse to a single project record.
 		const aliasDir = path.join(tempRootB, "alias-dir");
@@ -191,7 +191,7 @@ describe("ProjectStore multi-root + register", () => {
 	it("refuses to create, register, save, or patch an extra scan root as a project", () => {
 		const store = makeStore({ projectsRoots: [tempRootB] });
 		expect(() =>
-			store.createProject({ name: "Bad Extra Root", cwd: tempRootB }),
+			store.createProject({ name: "Bad Extra Root", cwd: tempRootB, allowLocalOnly: true }),
 		).toThrow("not the projects root");
 
 		let registerErr = null;
@@ -203,7 +203,7 @@ describe("ProjectStore multi-root + register", () => {
 		expect(registerErr?.statusCode).toBe(400);
 		expect(registerErr?.code).toBe("INVALID_PROJECT_PATH");
 
-		const project = store.createProject({ name: "Valid Project" });
+		const project = store.createProject({ name: "Valid Project" , allowLocalOnly: true });
 		store._saveProjectFile({ ...project, cwd: tempRootB });
 		expect(fs.existsSync(path.join(tempRootB, ".kainbain", "project.json"))).toBe(
 			false,

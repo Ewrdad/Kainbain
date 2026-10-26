@@ -278,6 +278,7 @@ describe("ProjectStore ensureDocsLink", () => {
 
 	it("refuses rename if destination folder is an existing real directory (conflict)", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "RenameConflict",
 			cwd: path.join(tempProjectsDir, "RenameConflict"),
 		});
@@ -339,6 +340,7 @@ describe("ProjectStore docs-settings persistence", () => {
 
 	it("round-trips a custom name + opt-out through save and load", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "PersistDocs",
 			docsDirName: "kainbain-docs",
 			centralizedDocs: false,
@@ -352,14 +354,14 @@ describe("ProjectStore docs-settings persistence", () => {
 	});
 
 	it("keeps the legacy file shape for default projects", () => {
-		const project = store.createProject({ name: "DefaultShape" });
+		const project = store.createProject({ name: "DefaultShape" , allowLocalOnly: true });
 		const saved = readProjectFile(project.cwd);
 		expect("docsDirName" in saved).toBe(false);
 		expect("centralizedDocs" in saved).toBe(false);
 	});
 
 	it("degrades hand-edited garbage docs settings on load, never breaking", () => {
-		const project = store.createProject({ name: "GarbageDocs" });
+		const project = store.createProject({ name: "GarbageDocs" , allowLocalOnly: true });
 		const configFile = path.join(project.cwd, ".kainbain", "project.json");
 		const raw = JSON.parse(fs.readFileSync(configFile, "utf8"));
 		raw.docsDirName = "../escape";

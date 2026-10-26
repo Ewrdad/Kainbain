@@ -53,6 +53,7 @@ describe("ProjectStore kainbainDirName", () => {
 
 	it("creates the state folder, config, and gitignore entry under a custom name", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Custom State App",
 			kainbainDirName: ".kb",
 		});
@@ -74,7 +75,7 @@ describe("ProjectStore kainbainDirName", () => {
 	});
 
 	it("keeps the default file shape for default projects", () => {
-		const project = store.createProject({ name: "Default State App" });
+		const project = store.createProject({ name: "Default State App" , allowLocalOnly: true });
 		expect(project.kainbainDirName).toBe(undefined);
 		const saved = JSON.parse(
 			fs.readFileSync(
@@ -87,6 +88,7 @@ describe("ProjectStore kainbainDirName", () => {
 
 	it("reloads the custom folder through a fresh scan (restart simulation)", () => {
 		const created = store.createProject({
+			allowLocalOnly: true,
 			name: "Restart App",
 			kainbainDirName: ".kb",
 		});
@@ -110,7 +112,7 @@ describe("ProjectStore kainbainDirName", () => {
 	});
 
 	it("adopts a hand-moved state folder missing the persisted setting", () => {
-		const created = store.createProject({ name: "Moved App" });
+		const created = store.createProject({ name: "Moved App" , allowLocalOnly: true });
 		expect(created.kainbainDirName).toBe(undefined);
 		fs.renameSync(
 			path.join(created.cwd, ".kainbain"),
@@ -124,7 +126,7 @@ describe("ProjectStore kainbainDirName", () => {
 		for (const bad of ["../escape", "a/b", ".git", "node_modules", "docs"]) {
 			let err = null;
 			try {
-				store.createProject({ name: `Bad ${bad}`, kainbainDirName: bad });
+				store.createProject({ name: `Bad ${bad}`, kainbainDirName: bad , allowLocalOnly: true });
 			} catch (e) {
 				err = e;
 			}
@@ -136,7 +138,7 @@ describe("ProjectStore kainbainDirName", () => {
 	});
 
 	it("updateProject sets, clears, and validates the folder without moving state", () => {
-		const project = store.createProject({ name: "Rename App" });
+		const project = store.createProject({ name: "Rename App" , allowLocalOnly: true });
 		const updated = store.updateProject(project.id, { kainbainDirName: ".kb" });
 		expect(updated.kainbainDirName).toBe(".kb");
 		// v1 does not move state: the old folder is still on disk.
@@ -156,7 +158,7 @@ describe("ProjectStore kainbainDirName", () => {
 	});
 
 	it("setting change survives a restart and clears the stale config", () => {
-		const project = store.createProject({ name: "Survives Restart App" });
+		const project = store.createProject({ name: "Survives Restart App" , allowLocalOnly: true });
 		store.updateProject(project.id, { kainbainDirName: ".kb" });
 		// v1 does not move state, so the old folder stays on disk, but the
 		// superseded `.kainbain/project.json` is removed: otherwise a restart
@@ -196,6 +198,7 @@ describe("ProjectStore kainbainDirName", () => {
 
 	it("updateProject rejects docs/state folder collisions in both directions", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Collision App",
 			docsDirName: "k-docs",
 		});
@@ -208,6 +211,7 @@ describe("ProjectStore kainbainDirName", () => {
 		expect(first?.statusCode).toBe(400);
 
 		const custom = store.createProject({
+			allowLocalOnly: true,
 			name: "Collision App 2",
 			kainbainDirName: ".kb",
 		});
@@ -223,6 +227,7 @@ describe("ProjectStore kainbainDirName", () => {
 
 	it("updateProject rejects crossing the two folders onto each other's current name", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Swap App",
 			docsDirName: "k-docs",
 			kainbainDirName: ".kb",
@@ -301,6 +306,7 @@ describe("ProjectStore kainbainDirName", () => {
 
 	it("stale-config cleanup never removes another project's config", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Foreign Config App",
 			kainbainDirName: ".kb",
 		});
@@ -331,6 +337,7 @@ describe("ProjectStore kainbainDirName", () => {
 
 	it("session, worktree, and quarantine dirs honour the custom folder", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Dirs App",
 			kainbainDirName: ".kb",
 		});
@@ -350,6 +357,7 @@ describe("ProjectStore kainbainDirName", () => {
 
 	it("cleanliness guard ignores the custom folder with a project hint", async () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Guard App",
 			kainbainDirName: ".kb",
 		});
@@ -369,6 +377,7 @@ describe("ProjectStore kainbainDirName", () => {
 
 	it("sessionStore.sessionDirFor honours the custom folder", async () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Session App",
 			kainbainDirName: ".kb",
 		});
@@ -377,7 +386,7 @@ describe("ProjectStore kainbainDirName", () => {
 		expect(sessions.sessionDirFor(project)).toBe(
 			path.join(path.resolve(project.cwd), ".kb", "sessions"),
 		);
-		const def = store.createProject({ name: "Session Default App" });
+		const def = store.createProject({ name: "Session Default App" , allowLocalOnly: true });
 		expect(sessions.sessionDirFor(def)).toBe(
 			path.join(path.resolve(def.cwd), ".kainbain", "sessions"),
 		);
@@ -385,6 +394,7 @@ describe("ProjectStore kainbainDirName", () => {
 
 	it("restores docs link settings on scan so custom docs survive restart", () => {
 		const created = store.createProject({
+			allowLocalOnly: true,
 			name: "Docs Restart App",
 			docsDirName: "k-docs",
 		});
@@ -402,6 +412,7 @@ describe("ProjectStore kainbainDirName", () => {
 
 	it("clearing docsDirName migrates the old link back to docs", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Docs Clear App",
 			docsDirName: "k-docs",
 		});

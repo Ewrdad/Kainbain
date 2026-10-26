@@ -65,21 +65,29 @@ describe("ProjectStore", () => {
 			name: "Alpha Service",
 			defaultModel: "claude-3-7-sonnet",
 			accentColor: "#38bdf8",
+			gitUrl: "https://git.example.com/team/alpha-service.git",
 		});
 		expect(project.name).toBe("Alpha Service");
 		expect(project.slug).toBe("alpha-service");
-		// No remote template configured: no fabricated host, no origin remote.
-		expect(project.gitUrl).toBeNull();
-		expect(project.gitRepo).toBeNull();
-		expect(project.hasUpstreamRepo).toBe(false);
-		expect(project.repoUrl).toBeNull();
-		expect(() => {
+		// D11: the explicit remote is required and used verbatim — no
+		// fabricated host, origin remote configured.
+		expect(project.gitUrl).toBe(
+			"https://git.example.com/team/alpha-service.git",
+		);
+		expect(project.gitRepo).toBe(
+			"https://git.example.com/team/alpha-service.git",
+		);
+		expect(project.hasUpstreamRepo).toBe(true);
+		expect(project.repoUrl).toBe(
+			"https://git.example.com/team/alpha-service.git",
+		);
+		expect(
 			execFileSync("git", ["config", "--get", "remote.origin.url"], {
 				cwd: project.cwd,
 				encoding: "utf8",
 				stdio: ["ignore", "pipe", "ignore"],
-			});
-		}).toThrow();
+			}).trim(),
+		).toBe("https://git.example.com/team/alpha-service.git");
 		expect(project.defaultModel).toBe("claude-3-7-sonnet");
 		expect(project.accentColor).toBe("#38bdf8");
 		expect(project.stages).toHaveLength(DEFAULT_STAGES.length);
@@ -117,7 +125,9 @@ describe("ProjectStore", () => {
 		const saved = JSON.parse(fs.readFileSync(configFile, "utf8"));
 		expect(saved.id).toBe(project.id);
 		expect(saved.name).toBe("Alpha Service");
-		expect(saved.gitUrl).toBeNull();
+		expect(saved.gitUrl).toBe(
+			"https://git.example.com/team/alpha-service.git",
+		);
 		expect(saved.defaultModel).toBe("claude-3-7-sonnet");
 		expect(saved.accentColor).toBe("#38bdf8");
 	});
@@ -158,15 +168,15 @@ describe("ProjectStore", () => {
 	});
 
 	it("sets the first created project as active and supports activation", () => {
-		const p1 = store.createProject({ name: "Proj A" });
-		const p2 = store.createProject({ name: "Proj B" });
+		const p1 = store.createProject({ name: "Proj A" , allowLocalOnly: true });
+		const p2 = store.createProject({ name: "Proj B" , allowLocalOnly: true });
 		expect(store.getActiveProject().id).toBe(p1.id);
 		store.setActiveProject(p2.id);
 		expect(store.getActiveProject().id).toBe(p2.id);
 	});
 
 	it("rejects a project update that repoints cwd at the projects root", () => {
-		const p = store.createProject({ name: "Root Guard" });
+		const p = store.createProject({ name: "Root Guard" , allowLocalOnly: true });
 		let thrown = null;
 		try {
 			store.updateProject(p.id, { cwd: tempProjectsDir });
@@ -184,7 +194,7 @@ describe("ProjectStore", () => {
 	});
 
 	it("rejects a project update with a blank name or a missing cwd", () => {
-		const p = store.createProject({ name: "Name Guard" });
+		const p = store.createProject({ name: "Name Guard" , allowLocalOnly: true });
 		expect(() => store.updateProject(p.id, { name: "   " })).toThrow(
 			"Project name must not be blank",
 		);
@@ -201,7 +211,7 @@ describe("ProjectStore", () => {
 	});
 
 	it("ignores identity fields (id) and unchanged cwd on update", () => {
-		const p = store.createProject({ name: "Identity Guard" });
+		const p = store.createProject({ name: "Identity Guard" , allowLocalOnly: true });
 		const updated = store.updateProject(p.id, {
 			id: "some-other-id",
 			cwd: `${p.cwd}/`,
@@ -215,12 +225,12 @@ describe("ProjectStore", () => {
 
 	it("refuses to create a project inside the projects root itself", () => {
 		expect(() =>
-			store.createProject({ name: "Root Child", cwd: tempProjectsDir }),
+			store.createProject({ name: "Root Child", cwd: tempProjectsDir, allowLocalOnly: true }),
 		).toThrow("not the projects root");
 	});
 
 	it("refuses to persist a project whose cwd is the projects root", () => {
-		const p = store.createProject({ name: "Save Guard" });
+		const p = store.createProject({ name: "Save Guard" , allowLocalOnly: true });
 		store._saveProjectFile({ ...p, cwd: tempProjectsDir });
 		expect(
 			fs.existsSync(path.join(tempProjectsDir, ".kainbain", "project.json")),
@@ -228,7 +238,7 @@ describe("ProjectStore", () => {
 	});
 
 	it("updates project and workflow stages and persists to project.json", () => {
-		const p = store.createProject({ name: "Original" });
+		const p = store.createProject({ name: "Original" , allowLocalOnly: true });
 		store.updateProject(p.id, { name: "Renamed Project" });
 		expect(store.getProject(p.id).name).toBe("Renamed Project");
 
@@ -282,7 +292,7 @@ describe("ProjectStore", () => {
 		});
 
 		it("keeps legacy stages byte-identical through normalizeStage (no skills key)", () => {
-			const p = store.createProject({ name: "Skills Legacy" });
+			const p = store.createProject({ name: "Skills Legacy" , allowLocalOnly: true });
 			const stages = store.getStages(p.id);
 			expect(stages.some((s) => "skills" in s)).toBe(false);
 			store.updateStages(p.id, DEFAULT_STAGES.map((s) => ({ ...s })));
@@ -290,7 +300,7 @@ describe("ProjectStore", () => {
 		});
 
 		it("round-trips stage.skills through updateStages + _saveProjectFile", () => {
-			const p = store.createProject({ name: "Skills Roundtrip" });
+			const p = store.createProject({ name: "Skills Roundtrip" , allowLocalOnly: true });
 			const stages = store
 				.getStages(p.id)
 				.map((s, i) =>
@@ -372,7 +382,7 @@ describe("ProjectStore", () => {
 		});
 
 		it("keeps legacy stages byte-identical through normalizeStage (no tags key)", () => {
-			const p = store.createProject({ name: "Tags Legacy" });
+			const p = store.createProject({ name: "Tags Legacy" , allowLocalOnly: true });
 			const stages = store.getStages(p.id);
 			expect(stages.some((s) => "tags" in s)).toBe(false);
 			store.updateStages(p.id, DEFAULT_STAGES.map((s) => ({ ...s })));
@@ -380,7 +390,7 @@ describe("ProjectStore", () => {
 		});
 
 		it("round-trips stage.tags through updateStages + _saveProjectFile + reload", () => {
-			const p = store.createProject({ name: "Tags Roundtrip" });
+			const p = store.createProject({ name: "Tags Roundtrip" , allowLocalOnly: true });
 			const stages = store
 				.getStages(p.id)
 				.map((s, i) =>
@@ -411,11 +421,11 @@ describe("ProjectStore", () => {
 
 	it("persists useBranches (per-task branch support) as an opt-in project flag", () => {
 		// Default OFF for backwards compatibility.
-		const plain = store.createProject({ name: "Single Branch" });
+		const plain = store.createProject({ name: "Single Branch" , allowLocalOnly: true });
 		expect(plain.useBranches).toBe(false);
 
 		// Opt-in via createProject.
-		const branched = store.createProject({ name: "Branched", useBranches: true });
+		const branched = store.createProject({ name: "Branched", useBranches: true , allowLocalOnly: true });
 		expect(branched.useBranches).toBe(true);
 
 		// Survives a scan/reload from disk.
@@ -434,12 +444,13 @@ describe("ProjectStore", () => {
 	it("persists the review-diff preservation flags with current behaviour as default", () => {
 		// Defaults: preservation off, reset-on-each-merge on — existing
 		// projects behave exactly as today (empty diff after merge).
-		const plain = store.createProject({ name: "Plain Review" });
+		const plain = store.createProject({ name: "Plain Review" , allowLocalOnly: true });
 		expect(plain.preserveReviewDiffAfterMerge).toBe(false);
 		expect(plain.resetReviewBaselineOnMerge).toBe(true);
 
 		// Opt-in via createProject.
 		const preserved = store.createProject({
+			allowLocalOnly: true,
 			name: "Preserved Review",
 			preserveReviewDiffAfterMerge: true,
 			resetReviewBaselineOnMerge: false,
@@ -484,7 +495,7 @@ describe("ProjectStore", () => {
 	});
 
 	it("persists an explicit harness choice and round-trips it from disk", () => {
-		const project = store.createProject({ name: "Harness Picked", harness: "pi" });
+		const project = store.createProject({ name: "Harness Picked", harness: "pi" , allowLocalOnly: true });
 		expect(project.harness).toBe("pi");
 
 		// Survives a scan/reload from disk (savedData.harness restored when present).
@@ -507,7 +518,7 @@ describe("ProjectStore", () => {
 	});
 
 	it("leaves harness undefined (not a resolved default) when the project never chose one", () => {
-		const plain = store.createProject({ name: "No Harness" });
+		const plain = store.createProject({ name: "No Harness" , allowLocalOnly: true });
 		// Deliberately NOT defaulted to "pi": undefined means the resolution falls
 		// through to config.defaultHarness at session time, so config changes
 		// still apply to projects that never chose explicitly.
@@ -525,6 +536,7 @@ describe("ProjectStore", () => {
 
 	it("persists explicit retry and timeout settings and round-trips them from disk", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Budgeted",
 			maxAutoIterations: 3,
 			maxTransientRetries: 2,
@@ -579,7 +591,7 @@ describe("ProjectStore", () => {
 	});
 
 	it("leaves retry settings undefined (not resolved defaults) when the project never chose them", () => {
-		const plain = store.createProject({ name: "No Budgets" });
+		const plain = store.createProject({ name: "No Budgets" , allowLocalOnly: true });
 		expect(plain.maxAutoIterations).toBeUndefined();
 		expect(plain.maxTransientRetries).toBeUndefined();
 		expect(plain.autoIterationEnabled).toBeUndefined();
@@ -604,6 +616,7 @@ describe("ProjectStore", () => {
 
 	it("normalizes invalid retry settings instead of persisting garbage", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Messy Budgets",
 			maxAutoIterations: 2.9,
 			maxTransientRetries: -4,
@@ -630,7 +643,7 @@ describe("ProjectStore", () => {
 	});
 
 	it("loads projects with hand-edited retry garbage without throwing", () => {
-		const project = store.createProject({ name: "Hand Edited" });
+		const project = store.createProject({ name: "Hand Edited" , allowLocalOnly: true });
 		const configFile = path.join(project.cwd, ".kainbain", "project.json");
 		const saved = JSON.parse(fs.readFileSync(configFile, "utf8"));
 		saved.maxAutoIterations = "lots";
@@ -648,7 +661,7 @@ describe("ProjectStore", () => {
 	});
 
 	it("loads projects whose saved harness is unknown without throwing", () => {
-		const project = store.createProject({ name: "Stale Harness" });
+		const project = store.createProject({ name: "Stale Harness" , allowLocalOnly: true });
 		const configFile = path.join(project.cwd, ".kainbain", "project.json");
 		const saved = JSON.parse(fs.readFileSync(configFile, "utf8"));
 		saved.harness = "long-gone-harness";
@@ -661,6 +674,7 @@ describe("ProjectStore", () => {
 
 	it("persists the custom harness command line and round-trips it from disk", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Custom Command",
 			harness: "custom",
 			harnessCommand: "claude -p",
@@ -691,7 +705,7 @@ describe("ProjectStore", () => {
 	});
 
 	it("leaves harnessCommand undefined when the project never set one", () => {
-		const plain = store.createProject({ name: "No Custom Command" });
+		const plain = store.createProject({ name: "No Custom Command" , allowLocalOnly: true });
 		expect(plain.harnessCommand).toBeUndefined();
 
 		const reloaded = store
@@ -707,7 +721,7 @@ describe("ProjectStore", () => {
 	});
 
 	it("supports stage jumping and skipping", () => {
-		const p = store.createProject({ name: "Nav Test" });
+		const p = store.createProject({ name: "Nav Test" , allowLocalOnly: true });
 		store.jumpToStage(p.id, p.stages[2].id);
 		expect(store.getProject(p.id).currentStageId).toBe(p.stages[2].id);
 
@@ -716,13 +730,14 @@ describe("ProjectStore", () => {
 	});
 
 	it("deletes a project", () => {
-		const p = store.createProject({ name: "To Delete" });
+		const p = store.createProject({ name: "To Delete" , allowLocalOnly: true });
 		expect(store.deleteProject(p.id)).toBe(true);
 		expect(store.getProject(p.id)).toBeUndefined();
 	});
 
 	it("normalizes legacy stage types: review -> human, script -> ci, custom -> agent", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Legacy Pipeline",
 			stages: [
 				{ id: "s1", name: "Review Spec", type: "review" },
@@ -780,6 +795,7 @@ describe("ProjectStore", () => {
 
 	it("recognizes the 'merge' stage type (new authoritative type)", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Merge Pipeline",
 			stages: [
 				{ id: "s1", name: "Ship Work", type: "merge" },
@@ -925,7 +941,7 @@ describe("ProjectStore", () => {
 	});
 
 	it("supports multiple named workflows per project (create, switch, update, delete)", () => {
-		const project = store.createProject({ name: "Multi Pipeline Project" });
+		const project = store.createProject({ name: "Multi Pipeline Project" , allowLocalOnly: true });
 		expect(project.workflows).toBeDefined();
 		expect(project.workflows.length).toBe(1);
 		expect(project.workflows[0].isDefault).toBe(true);
@@ -965,7 +981,7 @@ describe("ProjectStore", () => {
 		expect(store.getProject(project.id).stages.length).toBe(3);
 
 		// 4. Guard against deleting the only workflow
-		const pSingle = store.createProject({ name: "Single WF" });
+		const pSingle = store.createProject({ name: "Single WF" , allowLocalOnly: true });
 		expect(() =>
 			store.deleteWorkflow(pSingle.id, pSingle.workflows[0].id),
 		).toThrow("Cannot delete the only workflow");
@@ -1009,6 +1025,7 @@ describe("ProjectStore", () => {
 
 	it("detects upstream git repo when remote origin is configured (#32)", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Remote Detection App",
 			hasUpstreamRepo: true,
 			repoUrl: "https://git.example.com/team/remote-detection-app.git",
@@ -1020,6 +1037,7 @@ describe("ProjectStore", () => {
 		);
 
 		const projectWithoutRemote = store.createProject({
+			allowLocalOnly: true,
 			name: "No Remote App",
 			hasUpstreamRepo: false,
 		});
@@ -1084,7 +1102,7 @@ describe("ProjectStore", () => {
 		it("sets origin to the expanded template URL on createProject", () => {
 			process.env.KAINBAIN_GIT_REMOTE_TEMPLATE =
 				"https://git.example.com/${USER}/${SLUG}.git";
-			const project = store.createProject({ name: "Templated App" });
+			const project = store.createProject({ name: "Templated App" , allowLocalOnly: true });
 			const user = (process.env.USER || process.env.USERNAME || "").trim();
 			const expected = `https://git.example.com/${user}/templated-app.git`;
 			expect(project.gitUrl).toBe(expected);
@@ -1187,7 +1205,7 @@ describe("ProjectStore", () => {
 		});
 
 		it("redacts token-bearing URLs on updateProject", () => {
-			const project = store.createProject({ name: "Update Redact App" });
+			const project = store.createProject({ name: "Update Redact App" , allowLocalOnly: true });
 			const updated = store.updateProject(project.id, {
 				gitUrl: `https://${TOKEN}@git.example.com/team/r.git`,
 			});
@@ -1215,6 +1233,7 @@ describe("ProjectStore", () => {
 
 	it("persists the custom harness command (model flags bake into the command)", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Custom Harness App",
 			harness: "custom",
 			harnessCommand: "claude -p",
@@ -1298,7 +1317,7 @@ describe("normalizeStage run-on-branch (ci stage data model)", () => {
 			notesRoot,
 			autoScan: false,
 		});
-		const project = store2.createProject({ name: "CI Branch Roundtrip" });
+		const project = store2.createProject({ name: "CI Branch Roundtrip" , allowLocalOnly: true });
 		const ciStage = {
 			id: "ci-1",
 			name: "Verify on main",

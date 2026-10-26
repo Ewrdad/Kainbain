@@ -39,7 +39,7 @@ describe("Project harness+model combination API", () => {
 		const res = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name },
+			payload: { name, gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(201);
 		return JSON.parse(res.payload);

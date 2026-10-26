@@ -82,7 +82,7 @@ describe("agentRunner + skills integration", () => {
 			},
 			{ id: "2", name: "Plan", type: "agent", prompt: "Plan.", failback: "previous" },
 		];
-		const project = store.createProject({ name: "Skills Integration", stages });
+		const project = store.createProject({ name: "Skills Integration", stages , allowLocalOnly: true });
 
 		// Loader backed by the real repo skills library.
 		promptEngine = new PromptCurationEngine({
@@ -125,7 +125,7 @@ describe("agentRunner + skills integration", () => {
 		const stages = [
 			{ id: "1", name: "Plain", type: "agent", prompt: "Do plain work.", failback: "previous" },
 		];
-		const project = store.createProject({ name: "Legacy Integration", stages });
+		const project = store.createProject({ name: "Legacy Integration", stages , allowLocalOnly: true });
 
 		const created = taskStore.createTask(project.id, {
 			title: "Legacy",

@@ -34,7 +34,7 @@ describe("Task blocking API", () => {
 		const res = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Task Blocking Test Project" },
+			payload: { name: "Task Blocking Test Project", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(201);
 		testProject = JSON.parse(res.payload);

@@ -67,7 +67,7 @@ describe("WebSocket Event Bridge", () => {
 		const created = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "WS Test Project" },
+			payload: { name: "WS Test Project", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		return JSON.parse(created.payload).id;
 	}

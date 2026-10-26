@@ -41,7 +41,7 @@ describe("POST/PATCH /projects kainbainDirName", () => {
 		const res = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Custom State Api App", kainbainDirName: ".kb" },
+			payload: { name: "Custom State Api App", kainbainDirName: ".kb", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(201);
 		const project = JSON.parse(res.payload);
@@ -63,7 +63,7 @@ describe("POST/PATCH /projects kainbainDirName", () => {
 			const res = await app.inject({
 				method: "POST",
 				url: "/projects",
-				payload: { name: `Bad State ${bad}`, kainbainDirName: bad },
+				payload: { name: `Bad State ${bad}`, kainbainDirName: bad, gitUrl: "https://git.example.com/team/fixture.git" },
 			});
 			expect(res.statusCode).toBe(400);
 		}
@@ -73,7 +73,7 @@ describe("POST/PATCH /projects kainbainDirName", () => {
 		const created = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Patch State App", docsDirName: "k-docs" },
+			payload: { name: "Patch State App", docsDirName: "k-docs", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		const project = JSON.parse(created.payload);
 
@@ -107,6 +107,7 @@ describe("POST/PATCH /projects kainbainDirName", () => {
 			url: "/projects",
 			payload: {
 				name: "Swap Api App",
+				gitUrl: "https://git.example.com/team/fixture.git",
 				docsDirName: "k-docs",
 				kainbainDirName: ".kb",
 			},

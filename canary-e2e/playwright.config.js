@@ -206,6 +206,12 @@ module.exports = {
 						// (Project A with Idea/... stages). Seed it even though
 						// production default keeps the board empty.
 						KAINBAIN_SEED_SAMPLE_PROJECTS: "true",
+						// D11: specs create projects through the UI without a
+						// remote; give the scratch stack a fixture template so
+						// creation succeeds (`git remote add` is local — no
+						// network). Specs never assert push behavior.
+						KAINBAIN_GIT_REMOTE_TEMPLATE:
+							"https://git.example.com/canary/${SLUG}.git",
 					},
 				},
 				{

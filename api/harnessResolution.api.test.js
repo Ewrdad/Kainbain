@@ -72,7 +72,7 @@ describe("per-project harness resolution (API smoke)", () => {
 		const createRes = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Bogus Harness Smoke", harness: "bogus-smoke-harness" },
+			payload: { name: "Bogus Harness Smoke", harness: "bogus-smoke-harness", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(createRes.statusCode).toBe(201);
 		const project = JSON.parse(createRes.payload);

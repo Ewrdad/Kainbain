@@ -670,7 +670,8 @@ export class ProjectStore {
 	 * @param {string} [opts.agentDir] - Agent working directory for the project.
 	 * @param {string} [opts.notesPath] - Custom notes space directory.
 	 * @param {string} [opts.notesDir] - Alias for notesPath.
-	 * @param {string} [opts.gitUrl] - Git remote repository URL (falls back to `KAINBAIN_GIT_REMOTE_TEMPLATE`, or no remote when unset).
+	 * @param {string} [opts.gitUrl] - Git remote repository URL (falls back to `KAINBAIN_GIT_REMOTE_TEMPLATE`; D11 requires one of the two for new projects).
+	 * @param {boolean} [opts.allowLocalOnly] - Internal escape hatch for adoption (registerProject) and opt-in sample seeding. Never set from the HTTP route: POST /projects always enforces D11.
 	 * @param {string} [opts.gitRepo] - Alias for gitUrl.
 	 * @param {boolean} [opts.useBranches] - Opt in to per-task branch support (kb/<taskId> branches). Default off.
  * @param {boolean} [opts.preserveReviewDiffAfterMerge] - Keep the PR-review diff visible after merge + deploy. Default off.
@@ -726,6 +727,7 @@ export class ProjectStore {
 		activeWorkflowId,
 		hasUpstreamRepo: hasUpstreamRepoOpt,
 		repoUrl: repoUrlOpt,
+		allowLocalOnly: allowLocalOnlyOpt,
 		useBranches: useBranchesOpt,
 		preserveReviewDiffAfterMerge: preserveReviewDiffAfterMergeOpt,
 		resetReviewBaselineOnMerge: resetReviewBaselineOnMergeOpt,
@@ -740,6 +742,25 @@ export class ProjectStore {
 		const cleanName = name.trim();
 		const slug = slugifyProjectName(cleanName);
 		const id = uuidv4();
+
+		// D11: new projects require a fetchable remote. Presence of a
+		// configured remote (explicit URL or template expansion) is
+		// validated here — before any directory is created. Network
+		// fetchability is not probed: a remote Runner advertises no
+		// capability for a repo it cannot fetch (transport matrix row 3).
+		// Existing local-only repositories are adopted via registerProject
+		// (allowLocalOnly), never created.
+		const allowLocalOnly = allowLocalOnlyOpt === true;
+		const remoteForValidation =
+			gitUrl || gitRepoOpt || resolveDefaultGitRemote(slug, { name: cleanName });
+		if (!allowLocalOnly && !remoteForValidation) {
+			const err = new Error(
+				"New projects require a fetchable git remote (D11): pass gitUrl or set KAINBAIN_GIT_REMOTE_TEMPLATE. Existing local-only repositories stay available via project adoption (POST /projects/register).",
+			);
+			err.statusCode = 400;
+			err.code = "REMOTE_REQUIRED";
+			throw err;
+		}
 
 		const projectDir = cwd
 			? path.resolve(cwd)
@@ -1052,6 +1073,9 @@ export class ProjectStore {
 					: path.basename(resolved),
 			cwd: resolved,
 			kainbainDirName,
+			// Adoption grandfathers existing local-only repositories (D11b):
+			// transport row 2, no clone-from-origin, no remote required.
+			allowLocalOnly: true,
 		});
 		this._rememberRegisteredPath(resolved);
 		return project;

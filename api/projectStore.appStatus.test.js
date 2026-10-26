@@ -113,7 +113,7 @@ describe("ProjectStore appStatus persistence", () => {
 	});
 
 	it("creates a project without a link by default", () => {
-		const project = store.createProject({ name: "No Link" });
+		const project = store.createProject({ name: "No Link" , allowLocalOnly: true });
 		expect(project.appStatus).toBeUndefined();
 		const saved = JSON.parse(
 			fs.readFileSync(
@@ -126,6 +126,7 @@ describe("ProjectStore appStatus persistence", () => {
 
 	it("accepts an initial link on create and persists it", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Linked",
 			appStatus: {
 				url: "http://localhost:5173",
@@ -148,7 +149,7 @@ describe("ProjectStore appStatus persistence", () => {
 	});
 
 	it("merges partial updates and stamps lastUpdated", () => {
-		const project = store.createProject({ name: "Partial" });
+		const project = store.createProject({ name: "Partial" , allowLocalOnly: true });
 		const first = store.updateAppStatus(project.id, {
 			url: "http://localhost:3000",
 		});
@@ -170,7 +171,7 @@ describe("ProjectStore appStatus persistence", () => {
 	});
 
 	it("refuses malformed writes with a 400", () => {
-		const project = store.createProject({ name: "Strict" });
+		const project = store.createProject({ name: "Strict" , allowLocalOnly: true });
 		expect(() =>
 			store.updateAppStatus(project.id, { url: "javascript:alert(1)" }),
 		).toThrowError(expect.objectContaining({ statusCode: 400 }));
@@ -192,6 +193,7 @@ describe("ProjectStore appStatus persistence", () => {
 
 	it("clears the link on an explicit null url", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Clear Me",
 			appStatus: { url: "http://localhost:3000" },
 		});
@@ -208,6 +210,7 @@ describe("ProjectStore appStatus persistence", () => {
 
 	it("clears just the override on a blank networkHost", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Keep Link",
 			appStatus: { url: "http://localhost:3000", networkHost: "home.home" },
 		});
@@ -218,7 +221,7 @@ describe("ProjectStore appStatus persistence", () => {
 	});
 
 	it("normalizes a full-record replacement through updateProject", () => {
-		const project = store.createProject({ name: "Replace" });
+		const project = store.createProject({ name: "Replace" , allowLocalOnly: true });
 		const updated = store.updateProject(project.id, {
 			appStatus: { url: "http://localhost:8080", status: "bogus" },
 		});
@@ -230,6 +233,7 @@ describe("ProjectStore appStatus persistence", () => {
 
 	it("restores the link on rescan and degrades a hand-corrupted file", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Rescan",
 			appStatus: { url: "http://localhost:4000", status: "starting" },
 		});

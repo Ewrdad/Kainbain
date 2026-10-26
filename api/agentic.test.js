@@ -48,6 +48,7 @@ describe("Agentic End-to-End Pipeline & Tool Execution", () => {
 			payload: {
 				name: "Agentic Verification Project",
 				cwd: testCwd,
+				gitUrl: "https://git.example.com/team/fixture.git",
 			},
 		});
 		testProject = JSON.parse(projRes.payload);

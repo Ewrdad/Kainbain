@@ -63,7 +63,7 @@ describe("Compute API Integration", () => {
 		const res = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Compute API Test Project" },
+			payload: { name: "Compute API Test Project", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(201);
 		testProject = JSON.parse(res.payload);

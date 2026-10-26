@@ -55,6 +55,7 @@ describe("ProjectStore model aliases", () => {
 
 	it("round-trips aliases through save and load", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Alias Roundtrip",
 			modelAliases: [{ name: "small", harness: "pi", model: "google::m" }],
 		});
@@ -88,6 +89,7 @@ describe("ProjectStore model aliases", () => {
 
 	it("normalizes on write (trim, dedupe, drop invalid)", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Alias Normalize",
 			modelAliases: [
 				{ name: " small ", harness: " pi ", model: " m " },
@@ -108,13 +110,14 @@ describe("ProjectStore model aliases", () => {
 	});
 
 	it("keeps the existing file shape for alias-free projects", () => {
-		const project = store.createProject({ name: "No Aliases" });
+		const project = store.createProject({ name: "No Aliases" , allowLocalOnly: true });
 		expect(project.modelAliases).toBe(undefined);
 		expect("modelAliases" in readProjectJson(project)).toBe(false);
 	});
 
 	it("renaming an alias migrates references atomically in the same save", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Alias Rename",
 			harness: "alias",
 			defaultModel: "small",
@@ -159,6 +162,7 @@ describe("ProjectStore model aliases", () => {
 
 	it("round-trips weighted splits through save and load", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Alias Weighted Roundtrip",
 			modelAliases: [
 				{
@@ -189,6 +193,7 @@ describe("ProjectStore model aliases", () => {
 
 	it("deleting an alias leaves the dangling reference for the loud fallback", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Alias Delete",
 			harness: "alias",
 			defaultModel: "small",
@@ -212,6 +217,7 @@ describe("ProjectStore model aliases", () => {
 			},
 		];
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Alias Restart",
 			modelAliases: aliases,
 		});
@@ -235,6 +241,7 @@ describe("ProjectStore model aliases", () => {
 
 	it("a PATCH without the modelAliases key never wipes aliases (stale page)", () => {
 		const project = store.createProject({
+			allowLocalOnly: true,
 			name: "Alias Stale Save",
 			modelAliases: [{ name: "small", harness: "pi", model: "google::m" }],
 		});
@@ -250,7 +257,7 @@ describe("ProjectStore model aliases", () => {
 	});
 
 	it("never persists the optimistic-concurrency token on the project", () => {
-		const project = store.createProject({ name: "Alias Token Hygiene" });
+		const project = store.createProject({ name: "Alias Token Hygiene" , allowLocalOnly: true });
 		const updated = store.updateProject(
 			project.id,
 			{ name: "Renamed", expectedUpdatedAt: project.updatedAt },
@@ -261,7 +268,7 @@ describe("ProjectStore model aliases", () => {
 	});
 
 	it("H4: loading a legacy none-harness + model target blanks the model", () => {
-		const project = store.createProject({ name: "Legacy None Alias" });
+		const project = store.createProject({ name: "Legacy None Alias" , allowLocalOnly: true });
 		// Hand-edit the file on disk (the legacy/API write path the API
 		// refusal cannot retroactively fix).
 		const configFile = path.join(project.cwd, ".kainbain", "project.json");

@@ -46,7 +46,7 @@ describe("Session History & Enhanced Human Review", () => {
 		const res = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: "Session History Test Project" },
+			payload: { name: "Session History Test Project", gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(201);
 		testProject = JSON.parse(res.payload);
@@ -646,6 +646,7 @@ describe("Session History & Enhanced Human Review", () => {
 			payload: {
 				name: `Cold History Reader ${unique}`,
 				cwd: projectCwd,
+				gitUrl: "https://git.example.com/team/fixture.git",
 				// Keep the notes space inside the throwaway project dir so the
 				// live SilverBullet notes root is never touched by this test.
 				notesPath: path.join(projectCwd, "notes"),

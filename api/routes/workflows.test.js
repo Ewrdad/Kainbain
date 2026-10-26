@@ -55,7 +55,7 @@ describe("Workflow API Integration", () => {
 			const created = await app.inject({
 				method: "POST",
 				url: "/projects",
-				payload: { name: "Workflow Progress App" },
+				payload: { name: "Workflow Progress App", gitUrl: "https://git.example.com/team/fixture.git" },
 			});
 			expect(created.statusCode).toBe(201);
 			const projectId = JSON.parse(created.payload).id;
@@ -89,7 +89,7 @@ describe("Workflow API Integration", () => {
 				const res = await app.inject({
 					method: "POST",
 					url: "/projects",
-					payload: { name },
+					payload: { name, gitUrl: "https://git.example.com/team/fixture.git" },
 				});
 				expect(res.statusCode).toBe(201);
 				return JSON.parse(res.payload);

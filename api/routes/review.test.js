@@ -47,7 +47,7 @@ describe("Review API Integration", () => {
 		const res = await app.inject({
 			method: "POST",
 			url: "/projects",
-			payload: { name: `Review Fixture ${Date.now()}-${createdProjects.length}`, cwd: dir, useBranches },
+			payload: { name: `Review Fixture ${Date.now()}-${createdProjects.length}`, cwd: dir, useBranches, gitUrl: "https://git.example.com/team/fixture.git" },
 		});
 		expect(res.statusCode).toBe(201);
 		const project = JSON.parse(res.payload);
