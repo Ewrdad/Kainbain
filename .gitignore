@@ -56,3 +56,17 @@ frontend/.env
 # Task-storage link is host-local (mirrors master; see 2026-10-02 docs-link incidents)
 
 /docs
+
+# --- Past task/session run history: NEVER commit (leak guard) ---
+# Task runs accumulate prompts, full transcripts, stage reports and
+# tool output that cannot be guaranteed free of sensitive information.
+# This stays in force after the planned docs-symlink reversal (docs/
+# committed in-repo): curated docs may be tracked, run history may not.
+# Current store (2,069 session files, ~679 MB at Oct 2026):
+.kainbain/sessions/
+# In-repo task storage after the reversal (259 run dirs, ~374 MB):
+docs/tasks/
+docs/docs/tasks/
+# Any future per-task/session artefact dropped at repo root or in scratch:
+scratch/sessions/
+*.session.jsonl
