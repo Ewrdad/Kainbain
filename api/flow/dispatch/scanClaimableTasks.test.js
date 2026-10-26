@@ -91,4 +91,42 @@ describe("scanClaimableTasks", () => {
 			scanClaimableTasks(d, { projectIds: ["p2"] }).map((c) => c.taskId),
 		).toEqual(["other"]);
 	});
+
+	test("over-waiting tasks jump ahead oldest-first (starvation guard)", () => {
+		const stages = [
+			{ id: "s1", type: "agent" },
+			{ id: "s2", type: "agent" },
+		];
+		const d = {
+			projectStore: { listProjects: () => [project("p1", stages)] },
+			taskStore: {
+				listTasks: () => [
+					t("fresh-far", {
+						currentStageId: "s2",
+						enteredStageAt: new Date(9_000).toISOString(),
+					}),
+					t("starved", {
+						currentStageId: "s1",
+						enteredStageAt: new Date(1_000).toISOString(),
+					}),
+					t("starved-older", {
+						currentStageId: "s1",
+						enteredStageAt: new Date(500).toISOString(),
+					}),
+				],
+				isTaskBlocked: () => ({ blocked: false }),
+			},
+			claimStore: new ClaimStore(),
+		};
+		// Both wait past the 5s cap: oldest-first regardless of stage.
+		expect(
+			scanClaimableTasks(d, { maxWaitMs: 5_000, now: 10_000 }).map((c) => c.taskId),
+		).toEqual(["starved-older", "starved", "fresh-far"]);
+		// Disabled (0): pure scheduler order — closest-to-completion first.
+		expect(scanClaimableTasks(d, { maxWaitMs: 0, now: 10_000 }).map((c) => c.taskId)).toEqual([
+			"fresh-far",
+			"starved-older",
+			"starved",
+		]);
+	});
 });

@@ -184,6 +184,9 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		pushNotificationsEnabled: true,
 		runnerJoinToken: "",
 		runnerStaleAfterMs: 60000,
+		runnerMaxConcurrentPerProject: 0,
+		runnerMaxConcurrentFleet: 0,
+		dispatchMaxWaitMs: 1800000,
 		// Sessions & Workflows
 		schedulerIntervalMs: 3000,
 		schedulerDisabled: false,

@@ -10,16 +10,24 @@ import { taskRequirements } from "./taskRequirements.js";
  *   — crucially — not already lease-held (the claim fence stays the
  *   single arbiter; the scan only avoids wasted attempts). Sorted like the
  *   scheduler (closest-to-completion, then oldest) so backend-routed and
- *   embedded dispatch prioritize identically. Human/non-model stages are
- *   excluded here (their requirements mark `runnableType: false`).
+ *   embedded dispatch prioritize identically — plus the WP-3.3 starvation
+ *   guard: candidates waiting past `maxWaitMs` jump ahead oldest-first,
+ *   bounding the worst-case wait under perpetual late-stage influx (R13).
+ *   Human/non-model stages are excluded here (their requirements mark
+ *   `runnableType: false`).
  * @example scanClaimableTasks({ projectStore, taskStore, claimStore }) => [{ projectId, taskId, task, req }]
  * @param {Object} deps - Stores (`projectStore`, `taskStore`, `claimStore`).
- * @param {Object} [opts] - `{ projectIds }` to restrict the scan (Runner-enforced allowlist).
+ * @param {Object} [opts] - `{ projectIds }` (Runner-enforced allowlist), `{ maxWaitMs, now }` (starvation boost; 0 disables).
  * @returns {Array} Claimable tasks with requirements, in dispatch order.
  ***/
 export function scanClaimableTasks(deps = {}, opts = {}) {
 	const { projectStore, taskStore, claimStore } = deps;
 	const only = Array.isArray(opts.projectIds) ? new Set(opts.projectIds) : null;
+	const maxWaitMs =
+		typeof opts.maxWaitMs === "number" && Number.isFinite(opts.maxWaitMs) && opts.maxWaitMs > 0
+			? opts.maxWaitMs
+			: 0;
+	const now = typeof opts.now === "number" && Number.isFinite(opts.now) ? opts.now : Date.now();
 	if (!projectStore || typeof projectStore.listProjects !== "function") return [];
 	if (!taskStore || typeof taskStore.listTasks !== "function") return [];
 	const out = [];
@@ -70,6 +78,12 @@ export function scanClaimableTasks(deps = {}, opts = {}) {
 		}
 	}
 	out.sort((a, b) => {
+		if (maxWaitMs > 0) {
+			const aOverdue = now - a.enteredStageAt > maxWaitMs;
+			const bOverdue = now - b.enteredStageAt > maxWaitMs;
+			if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
+			if (aOverdue && bOverdue) return a.enteredStageAt - b.enteredStageAt;
+		}
 		if (b.stageIndex !== a.stageIndex) return b.stageIndex - a.stageIndex;
 		return a.enteredStageAt - b.enteredStageAt;
 	});

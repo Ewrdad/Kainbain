@@ -320,6 +320,15 @@ export async function runDispatchLoop({
 				if (err?.code === "STALE_RUNNER") {
 					await client.heartbeat({ runnerId: config.runnerId, facts: factsFor({ config }) });
 					answer = await client.dispatchClaim({ projectIds: config.projectIds ?? null });
+				} else if (err?.statusCode === 429) {
+					// D8 backpressure (ADR 0010): the fleet is at its
+					// concurrency cap. Back off and re-poll WITHOUT
+					// consuming idle budget — work exists, we just
+					// may not take it yet.
+					polls += 1;
+					logger.log(`Dispatch: fleet busy (${err?.code ?? "capped"}); backing off.`);
+					await new Promise((r) => setTimeout(r, pollMs));
+					continue;
 				} else {
 					throw err;
 				}

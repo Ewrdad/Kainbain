@@ -1,3 +1,4 @@
+import { config } from "../config.js";
 import { applyRunnerReport } from "./execution/applyRunnerReport.js";
 import { circuitSnapshot, isTripped } from "./circuitBreaker.js";
 import { scanClaimableTasks } from "./dispatch/scanClaimableTasks.js";
@@ -293,6 +294,7 @@ export async function registerRunnerRoutes(app, { deps }) {
 			const { executionId, epoch } = claimStore.claim(
 				request.params.id,
 				runner.runnerId,
+				projectId,
 			);
 			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch };
 		} catch (err) {
@@ -326,9 +328,20 @@ export async function registerRunnerRoutes(app, { deps }) {
 		const projectIds = Array.isArray(request.body?.projectIds)
 			? request.body.projectIds
 			: undefined;
+		// D8 burn control (ADR 0010): the fleet cap stops parallel burn
+		// before any scan; per-project caps skip that project's candidates
+		// below. 0 disables that cap (default: single-Runner behaviour).
+		const fleetCap = config.runnerMaxConcurrentFleet || 0;
+		if (fleetCap > 0 && claimStore.countLiveHolds() >= fleetCap) {
+			return reply.status(429).send({
+				error: `Fleet at Runner concurrency cap (${fleetCap}); backing off.`,
+				code: "FLEET_CONCURRENCY_EXHAUSTED",
+			});
+		}
+		const projectCap = config.runnerMaxConcurrentPerProject || 0;
 		const candidates = scanClaimableTasks(
 			{ projectStore, taskStore, claimStore },
-			{ projectIds },
+			{ projectIds, maxWaitMs: config.dispatchMaxWaitMs || 0 },
 		);
 		if (candidates.length === 0) {
 			return { assigned: false, code: "NO_CLAIMABLE_TASKS" };
@@ -371,8 +384,19 @@ export async function registerRunnerRoutes(app, { deps }) {
 				misses[verdict.reason] = (misses[verdict.reason] || 0) + 1;
 				continue;
 			}
+			if (
+				projectCap > 0 &&
+				claimStore.countLiveHolds({ projectId: cand.projectId }) >= projectCap
+			) {
+				misses.PROJECT_BUSY = (misses.PROJECT_BUSY || 0) + 1;
+				continue;
+			}
 			try {
-				const { executionId, epoch } = claimStore.claim(cand.taskId, runner.runnerId);
+				const { executionId, epoch } = claimStore.claim(
+					cand.taskId,
+					runner.runnerId,
+					cand.projectId,
+				);
 				return {
 					assigned: true,
 					projectId: cand.projectId,

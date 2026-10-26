@@ -27,6 +27,20 @@ describe("ClaimStore", () => {
 		});
 	});
 
+	test("counts live holds fleet-wide and per project, expiry-aware", () => {
+		claims.claim("t1", "runner-a", "p1");
+		claims.claim("t2", "runner-b", "p1");
+		claims.claim("t3", "runner-c", "p2");
+		expect(claims.countLiveHolds()).toBe(3);
+		expect(claims.countLiveHolds({ projectId: "p1" })).toBe(2);
+		expect(claims.countLiveHolds({ projectId: "p2" })).toBe(1);
+		expect(claims.countLiveHolds({ projectId: "nope" })).toBe(0);
+		// Lazy expiry: lapsed holds stop counting with no sweeper.
+		now += 60_001;
+		expect(claims.countLiveHolds()).toBe(0);
+		expect(claims.countLiveHolds({ projectId: "p1" })).toBe(0);
+	});
+
 	test("rejects a double claim with 409 and the holder", () => {
 		claims.claim("t1", "runner-a");
 		try {

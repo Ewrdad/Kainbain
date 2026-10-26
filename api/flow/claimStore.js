@@ -69,7 +69,7 @@ export class ClaimStore {
 		return err;
 	}
 
-	claim(taskId, runnerId) {
+	claim(taskId, runnerId, projectId = null) {
 		if (!taskId || typeof taskId !== "string") {
 			throw ClaimStore._argError("claim requires a taskId.");
 		}
@@ -84,9 +84,31 @@ export class ClaimStore {
 			executionId,
 			epoch,
 			runnerId,
+			projectId: typeof projectId === "string" ? projectId : null,
 			expiresAt: this.now() + this.ttlMs,
 		});
 		return { executionId, epoch };
+	}
+
+	/***
+	 * MARK: countLiveHolds
+	 * @description Counts unexpired holds (D8 burn control, WP-3.3): expiry
+	 *   is lazy, so counting sweeps exactly like access does — a dead
+	 *   Runner's hold stops counting the moment its TTL lapses.
+	 * @example claims.countLiveHolds({ projectId: 'p1' }) => 2
+	 * @param {Object} [opts] - Options.
+	 * @param {string} [opts.projectId] - Restrict the count to one project.
+	 * @returns {number} Live hold count.
+	 ***/
+	countLiveHolds({ projectId } = {}) {
+		let count = 0;
+		for (const taskId of [...this.holds.keys()]) {
+			const hold = this._holding(taskId);
+			if (!hold) continue;
+			if (projectId !== undefined && hold.projectId !== projectId) continue;
+			count += 1;
+		}
+		return count;
 	}
 
 	heartbeat(taskId, executionId) {
