@@ -63,6 +63,26 @@ describe('useWorkflow', () => {
     expect(window.localStorage.getItem('kainbain:activeWorkflowId')).toBe('wf-1');
   });
 
+  it('fetchWorkflow renders the resolved pipeline: stored selection wins and columns follow it', async () => {
+    // Board contract: columns and the task gate must derive from ONE
+    // pipeline. The server is on wf-2 but this browser picked wf-1 — the
+    // columns must be wf-1's stages, never the server payload's, or tasks
+    // gated to wf-1 silently match no column (cleanup task b6f7da08).
+    window.localStorage.setItem('kainbain:activeWorkflowId', 'wf-1');
+    api.getWorkflow.mockResolvedValue({
+      stages: [{ id: 'hf-1', name: 'Fix', type: 'agent' }],
+      currentStageId: 'hf-1',
+      activeWorkflowId: 'wf-2',
+      workflows: baseWorkflows,
+    });
+    const { result } = renderHook(() => useWorkflow());
+    await act(async () => {
+      await result.current.fetchWorkflow('proj-1');
+    });
+    expect(result.current.activeWorkflowId).toBe('wf-1');
+    expect(result.current.stages).toEqual(baseStages);
+  });
+
   it('switchWorkflow switches active workflow, updates stages, and saves to localStorage', async () => {
     api.switchProjectWorkflow.mockResolvedValue({
       status: 'switched',

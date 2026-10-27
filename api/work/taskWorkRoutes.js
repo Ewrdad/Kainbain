@@ -328,6 +328,52 @@ export async function registerTaskWorkRoutes(app, deps) {
 		if (!task) return reply.status(404).send({ error: "Task not found" });
 
 		const updates = {};
+
+		// Pipeline transfer: rebind the task to another named workflow of
+		// the same project (the board gates tasks to exactly one pipeline,
+		// so a task left on a deselected pipeline can never render — the
+		// "approved then vanished" report on cleanup task b6f7da08). The
+		// rebind lands BEFORE any stage move below so labels, types, and
+		// status resolve against the destination pipeline, never the one
+		// being left. A transfer always names its destination stage: a
+		// silent placement is what stranded tasks in the first place.
+		const targetWorkflowId =
+			typeof request.body?.workflowId === "string"
+				? request.body.workflowId.trim()
+				: "";
+		if (targetWorkflowId && targetWorkflowId !== task.workflowId) {
+			const targetWorkflow = (project?.workflows || []).find(
+				(w) => String(w?.id) === targetWorkflowId,
+			);
+			if (!targetWorkflow) {
+				return reply
+					.status(404)
+					.send({ error: `Unknown workflow '${targetWorkflowId}'` });
+			}
+			const transferStageId =
+				typeof request.body?.stageId === "string"
+					? request.body.stageId.trim()
+					: "";
+			if (!transferStageId) {
+				return reply.status(400).send({
+					error: "stageId is required when changing pipeline",
+				});
+			}
+			const transferStage = (targetWorkflow.stages || []).find(
+				(st) => String(st?.id) === transferStageId,
+			);
+			if (!transferStage) {
+				return reply.status(400).send({
+					error: `Stage '${transferStageId}' is not in pipeline '${targetWorkflow.name || targetWorkflow.id}'`,
+				});
+			}
+			task.workflowId = targetWorkflowId;
+			updates.workflowId = targetWorkflowId;
+			taskStore._recordHistory(
+				task,
+				`Moved to pipeline '${targetWorkflow.name || targetWorkflow.id}'`,
+			);
+		}
 		if (typeof request.body?.title === "string" && request.body.title.trim()) {
 			updates.title = _sanitizeTaskTitle(request.body.title);
 		}

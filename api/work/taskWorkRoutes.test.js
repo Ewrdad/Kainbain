@@ -340,6 +340,72 @@ describe("PATCH /tasks/:id", () => {
 		expect(s.taskStore.moveToStage).not.toHaveBeenCalled();
 	});
 
+	it("transfers pipelines: binds workflowId before moving stages", async () => {
+		const s = await register(setup());
+		s.project.workflows = [
+			{ id: "wf-a", name: "A", stages: [{ id: "s-1", name: "Build", type: "agent" }] },
+			{ id: "wf-b", name: "B", stages: [{ id: "s-b1", name: "Spec", type: "human" }] },
+		];
+		const live = task({ workflowId: "wf-a", currentStageId: "s-1" });
+		s.taskStore.getTask = vi.fn(() => live);
+		await s.routes.get("PATCH /tasks/:id")(
+			{
+				params: { id: "t-1" },
+				body: { projectId: "p-1", workflowId: "wf-b", stageId: "s-b1" },
+			},
+			reply(),
+		);
+		expect(s.taskStore.updateTask).toHaveBeenCalledWith(
+			"p-1",
+			"t-1",
+			expect.objectContaining({ workflowId: "wf-b" }),
+			"/repo",
+		);
+		expect(s.taskStore.moveToStage).toHaveBeenCalledWith(
+			"p-1",
+			"t-1",
+			"s-b1",
+			"Updated stage",
+			undefined,
+			"/repo",
+			{ operatorMove: true },
+		);
+		// Rebound before the move so stage labels/types resolve against B.
+		expect(live.workflowId).toBe("wf-b");
+		expect(s.taskStore._recordHistory).toHaveBeenCalled();
+	});
+
+	it("rejects transfers to unknown pipelines, stageless transfers, and off-pipeline stages", async () => {
+		const s = await register(setup());
+		s.project.workflows = [
+			{ id: "wf-a", name: "A", stages: [{ id: "s-1", name: "Build", type: "agent" }] },
+			{ id: "wf-b", name: "B", stages: [{ id: "s-b1", name: "Spec", type: "human" }] },
+		];
+		s.taskStore.getTask = vi.fn(() => task({ workflowId: "wf-a", currentStageId: "s-1" }));
+
+		const unknown = reply();
+		await s.routes.get("PATCH /tasks/:id")(
+			{ params: { id: "t-1" }, body: { projectId: "p-1", workflowId: "wf-x", stageId: "s-b1" } },
+			unknown,
+		);
+		expect(unknown.status).toHaveBeenCalledWith(404);
+
+		const stageless = reply();
+		await s.routes.get("PATCH /tasks/:id")(
+			{ params: { id: "t-1" }, body: { projectId: "p-1", workflowId: "wf-b" } },
+			stageless,
+		);
+		expect(stageless.status).toHaveBeenCalledWith(400);
+
+		const offPipeline = reply();
+		await s.routes.get("PATCH /tasks/:id")(
+			{ params: { id: "t-1" }, body: { projectId: "p-1", workflowId: "wf-b", stageId: "s-1" } },
+			offPipeline,
+		);
+		expect(offPipeline.status).toHaveBeenCalledWith(400);
+		expect(s.taskStore.updateTask).not.toHaveBeenCalled();
+	});
+
 	it("rejects empty updates, unknown tasks, and bad blockers", async () => {
 		const s = await register(setup());
 		const empty = reply();

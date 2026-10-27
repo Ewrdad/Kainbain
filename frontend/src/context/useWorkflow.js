@@ -104,7 +104,6 @@ export function useWorkflow({ onNotification } = {}) {
     try {
       const data = await api.getWorkflow(projectId);
       if (data) {
-        setStages(data.stages || []);
         setCurrentStageId(data.currentStageId || null);
 
         const projectWorkflowsList =
@@ -123,6 +122,13 @@ export function useWorkflow({ onNotification } = {}) {
           projectWorkflowsList[0]?.id ||
           null;
 
+        // Board contract: columns and the task gate must derive from ONE
+        // pipeline. `data.stages` belongs to the server-active pipeline,
+        // which can differ from the resolved (stored) selection — rendering
+        // those stages while gating tasks to the selection silently drops
+        // every task from every column (cleanup task b6f7da08).
+        const resolvedWorkflow = projectWorkflowsList.find((w) => w.id === resolvedActiveId);
+        setStages(resolvedWorkflow?.stages || data.stages || []);
         setActiveWorkflowIdState(resolvedActiveId);
         if (resolvedActiveId) {
           saveStoredWorkflowId(projectId, resolvedActiveId);
