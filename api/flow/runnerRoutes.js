@@ -143,13 +143,25 @@ export async function registerRunnerRoutes(app, { deps }) {
 	app.get("/runners/monitor", async () => {
 		// Multi-Runner UI (WP-3.4): who runs what right now, so
 		// Settings › Harness › Runners can show live assignments.
+		// `scheduler` exposes the cutover deferral counters so a task
+		// sitting in_stage is diagnosable: a climbing `deferredDispatch`
+		// with no Runner pickup means the fleet is empty or mismatched.
 		const liveAssignments = claimStore.liveHolds().map((hold) => ({
 			runnerId: hold.runnerId,
 			projectId: hold.projectId,
 			taskId: hold.taskId,
 			epoch: hold.epoch,
 		}));
-		return { ...executionLedger.snapshot(), liveAssignments };
+		const sched = taskStore.schedulerStats || {};
+		const scheduler = {
+			ticks: sched.ticks || 0,
+			dispatched: sched.dispatched || 0,
+			deferredDispatch: sched.deferredDispatch || 0,
+			deferredTripped: sched.deferredTripped || 0,
+			lastOutcome: sched.lastOutcome ?? null,
+			lastDispatchAt: sched.lastDispatchAt ?? null,
+		};
+		return { ...executionLedger.snapshot(), liveAssignments, scheduler };
 	});
 
 	app.post("/tasks/:id/progress", async (request, reply) => {

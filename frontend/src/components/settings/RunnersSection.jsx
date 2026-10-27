@@ -5,7 +5,8 @@ import { copyToClipboard } from '../../services/clipboard';
 /***
  * MARK: RunnersSection
  * @description System Settings › Harness › Runner onboarding (D4, ADR 0009
- *   steps 1–2) plus live assignments (D5, WP-3.4): lists Runner
+ *   steps 1–2) plus live assignments (D5, WP-3.4) and cutover deferral
+ *   visibility: lists Runner
  *   registrations from `GET /runners` — pending join requests with
  *   Approve/Deny, active Runners with Revoke — with honest loading,
  *   error-with-retry, and empty states. Active Runners show their current
@@ -18,6 +19,7 @@ import { copyToClipboard } from '../../services/clipboard';
 export function RunnersSection() {
   const [runners, setRunners] = useState(null);
   const [assignments, setAssignments] = useState({});
+  const [scheduler, setScheduler] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [actionError, setActionError] = useState(null);
@@ -36,10 +38,12 @@ export function RunnersSection() {
           if (row && typeof row.runnerId === 'string') byRunner[row.runnerId] = row;
         }
         setAssignments(byRunner);
+        setScheduler(monitor?.scheduler || null);
       } catch {
         // Monitor is best-effort: the onboarding list stays usable when
         // the counters endpoint is down.
         setAssignments({});
+        setScheduler(null);
       }
     } catch (err) {
       setRunners(null);
@@ -113,6 +117,15 @@ export function RunnersSection() {
         with its own credential. Revoking stops the credential immediately;
         leases expire on their own.
       </p>
+      {scheduler && (
+        <p className="mt-1 text-[10px] font-mono text-text-muted" data-testid="runner-scheduler-deferrals">
+          Scheduler: {scheduler.dispatched ?? 0} embedded dispatches,{' '}
+          {scheduler.deferredDispatch ?? 0} deferred to Runners
+          {scheduler.lastOutcome ? ` (last: ${scheduler.lastOutcome})` : ''}.
+          A climbing deferred count with no Runner pickup means the fleet is
+          empty or mismatched.
+        </p>
+      )}
       {actionError && (
         <p className="mt-2 text-xs text-error" role="alert">
           {actionError}

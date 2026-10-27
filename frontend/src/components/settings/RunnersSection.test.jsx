@@ -115,6 +115,20 @@ describe('RunnersSection', () => {
     expect(screen.queryByTestId('runner-assignment-r2')).toBeNull();
   });
 
+  it('shows scheduler deferral counts when the monitor reports them', async () => {
+    getRunners.mockResolvedValue([
+      { runnerId: 'r1', status: 'active', facts: {}, lastSeenAt: null },
+    ]);
+    getRunnerMonitor.mockResolvedValue({
+      liveAssignments: [],
+      scheduler: { ticks: 41, dispatched: 3, deferredDispatch: 12, deferredTripped: 0, lastOutcome: 'deferred-runner-dispatch', lastDispatchAt: null },
+    });
+    render(<RunnersSection />);
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-scheduler-deferrals').textContent).toContain('12 deferred to Runners');
+    });
+  });
+
   it('shows the Runner version for the fleet version matrix', async () => {
     getRunners.mockResolvedValue([
       { runnerId: 'r1', status: 'active', facts: { versions: { runner: '0.3.0', protocol: 'v1' } }, lastSeenAt: null },

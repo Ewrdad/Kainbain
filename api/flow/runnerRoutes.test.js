@@ -255,6 +255,11 @@ describe("Runner Routes Integration", () => {
 		expect(monitor.progressRecorded).toBeGreaterThanOrEqual(1);
 		expect(monitor.progressDuplicates).toBeGreaterThanOrEqual(1);
 		expect(monitor.logGaps).toBeGreaterThanOrEqual(1);
+		expect(monitor.scheduler).toMatchObject({
+			ticks: expect.any(Number),
+			dispatched: expect.any(Number),
+			deferredDispatch: expect.any(Number),
+		});
 	});
 
 	it("R01 wire: partitioned Runner's late completion is stale, exactly one wins", async () => {
