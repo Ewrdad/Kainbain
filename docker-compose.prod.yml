@@ -1,0 +1,28 @@
+# KainBain minimal production install (installed to ~/apps/kainbain by deploy.sh --prod).
+# Only prebuilt images run here — no source checkout is needed in this folder.
+#   docker compose -f docker-compose.yml up -d   (file is renamed on install)
+# Host paths come from .env (KAINBAIN_PROJECTS_HOST / KAINBAIN_STATE_HOST /
+# KAINBAIN_NOTES_HOST) so an existing install keeps its current folders.
+services:
+  backend:
+    image: kainbain-backend:${KAINBAIN_IMAGE_TAG:-latest}
+    expose: ["3100"]
+    env_file: [{ path: .env, required: false }]
+    environment:
+      NODE_ENV: production
+      PORT: "3100"
+      PROJECTS_ROOT: /workspace/projects
+      NOTES_SPACE_ROOT: /home/node/.kainbain/notes
+      KAINBAIN_DIST: /app/frontend/dist
+      KAINBAIN_BUILD_REF: ${KAINBAIN_IMAGE_TAG:-latest}
+      KAINBAIN_BUILD_NUMBER: ${KAINBAIN_BUILD_NUMBER:-0}
+    volumes:
+      - ${KAINBAIN_PROJECTS_HOST:-./projects}:/workspace/projects
+      - ${KAINBAIN_STATE_HOST:-./data}:/home/node/.kainbain
+      - ${KAINBAIN_NOTES_HOST:-./notes}:/home/node/.kainbain/notes
+    restart: unless-stopped
+  frontend:
+    image: kainbain-frontend:${KAINBAIN_IMAGE_TAG:-latest}
+    ports: ["${KAINBAIN_PORT:-3100}:80"]
+    depends_on: [backend]
+    restart: unless-stopped
