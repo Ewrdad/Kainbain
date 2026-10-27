@@ -369,6 +369,25 @@ export async function deliverSteers({ config, client, logger, facts, state }) {
  *   line; defaults to the primary `config.harnessId`.
  * @returns {Promise<Object>} Execution summary.
  ***/
+export function collectTaskFiles({ workdir, taskId } = {}) {
+	const dir = `${workdir}/docs/tasks/${taskId}`;
+	const files = [];
+	let total = 0;
+	try {
+		for (const name of fs.readdirSync(dir)) {
+			if (name === "task.md") continue;
+			try {
+				const content = fs.readFileSync(`${dir}/${name}`, "utf8");
+				const bytes = Buffer.byteLength(content, "utf8");
+				if (bytes > 256 * 1024 || total + bytes > 1024 * 1024) continue;
+				files.push({ name, content });
+				total += bytes;
+			} catch { /* unreadable/binary: skip */ }
+		}
+	} catch { /* no task docs: nothing to ship */ }
+	return files;
+}
+
 async function executeAssignment({
 	config,
 	client,
@@ -529,6 +548,7 @@ async function executeAssignment({
 				branch,
 				posture: `${config.tiers.join("/")}:${servingHarnessId}:${config.model || "default"}`,
 				outcome: "passed",
+				taskFiles: collectTaskFiles({ workdir, taskId }),
 				output: String(output || "").slice(0, 20000),
 				durationMs: Date.now() - runStartedAt,
 			});

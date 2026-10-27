@@ -129,6 +129,7 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 			failureKind,
 			failureReason,
 			durationMs,
+			taskFiles,
 		}) {
 			return call(`/tasks/${encodeURIComponent(taskId)}/complete-execution`, {
 				method: "POST",
@@ -147,6 +148,7 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 					...(failureKind ? { failureKind } : {}),
 					...(failureReason ? { failureReason } : {}),
 					...(Number.isFinite(durationMs) ? { durationMs } : {}),
+				...(Array.isArray(taskFiles) && taskFiles.length ? { taskFiles } : {}),
 				},
 			});
 		},
