@@ -12,6 +12,7 @@ import {
   countByCategory,
   defaultCategorySet,
   extractDetail,
+  extractRunnerId,
   filterLogRecords,
   formatLogRecordsForCopy,
   groupLogRecords,
@@ -61,6 +62,7 @@ describe('LOG_CATEGORIES taxonomy', () => {
 describe('categoryFor on structured entries', () => {
   test.each([
     [{ kind: 'assistant', text: 'hello' }, 'output'],
+    [{ kind: 'runner', text: '[runner local-alpha] hi' }, 'runner'],
     [{ kind: 'tool', text: '[TOOL] bash' }, 'tools'],
     [{ kind: 'thinking', text: 'hmm' }, 'thinking'],
     [{ kind: 'error', text: '[ERROR] boom' }, 'error'],
@@ -94,6 +96,8 @@ describe('categoryFor on live process-log lines (tag-first, text fallback)', () 
     [{ tag: '[GIT]', text: 'push' }, 'git'],
     [{ tag: '[HUMAN]', text: 'approved' }, 'human'],
     [{ tag: '[AGENT]', text: 'reasoning' }, 'output'],
+    [{ tag: '[RUNNER]', text: 'frame' }, 'runner'],
+    [{ tag: '[LOG]', text: '[runner local-bravo] frame' }, 'runner'],
     [{ tag: '[INFO]', text: 'status' }, 'system'],
     [{ tag: '[INFO]', text: '[INFO] Task initialized in stage: X' }, 'system'],
     [{ tag: '[LOG]', text: '[TOOL] mirrored call' }, 'tools'],
@@ -148,6 +152,21 @@ describe('normalizeLogRecord', () => {
     expect(record.id).toMatch(/^log-rec-\d+$/);
   });
 
+  test('runner frames carry a RUNNER pill and structured runnerId', () => {
+    const fromMeta = normalizeLogRecord({
+      kind: 'runner',
+      text: '[runner local-alpha] hi',
+      meta: { source: 'process-log', runnerId: 'local-alpha' },
+    });
+    expect(fromMeta.tag).toBe('[RUNNER local-alpha]');
+    expect(fromMeta.runnerId).toBe('local-alpha');
+    expect(fromMeta.category).toBe('runner');
+    const fromText = normalizeLogRecord({ text: '[runner local-bravo] hi' });
+    expect(fromText.tag).toBe('[RUNNER local-bravo]');
+    expect(fromText.runnerId).toBe('local-bravo');
+    expect(fromText.category).toBe('runner');
+  });
+
   test('synthetic ids are unique and stable-looking', () => {
     const a = normalizeLogRecord({ text: 'a' });
     const b = normalizeLogRecord({ text: 'b' });
@@ -189,6 +208,24 @@ describe('filterLogRecords composition', () => {
     expect(
       filterLogRecords(records, { categories: new Set(['output']), search: '[AGENT]' }),
     ).toHaveLength(1);
+  });
+
+  test('runner allowlist selects one runner; runner frames ride the narrative', () => {
+    const a = normalizeLogRecord({ id: 'a', kind: 'runner', text: '[runner local-alpha] x' });
+    const b = normalizeLogRecord({ id: 'b', kind: 'runner', text: '[runner local-bravo] y' });
+    const c = normalizeLogRecord({ id: 'c', kind: 'assistant', text: 'narrative' });
+    const all = { categories: new Set(['runner', 'output']), runners: new Set() };
+    expect(filterLogRecords([a, b, c], all).map((r) => r.id)).toEqual(['a', 'b', 'c']);
+    const onlyAlpha = { categories: new Set(['runner', 'output']), runners: new Set(['local-alpha']) };
+    expect(filterLogRecords([a, b, c], onlyAlpha).map((r) => r.id)).toEqual(['a']);
+    expect(a.secondaryCategories).toContain('output');
+  });
+
+  test('extractRunnerId reads the inline frame prefix', () => {
+    expect(extractRunnerId('[runner local-alpha] hi')).toBe('local-alpha');
+    expect(extractRunnerId('[RUNNER local-bravo] hi')).toBe('local-bravo');
+    expect(extractRunnerId('[AGENT] hi')).toBeNull();
+    expect(extractRunnerId('plain')).toBeNull();
   });
 
   test('secondary membership counts as visible (thinking markers in narrative)', () => {

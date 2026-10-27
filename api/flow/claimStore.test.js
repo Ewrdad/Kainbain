@@ -34,6 +34,14 @@ describe("ClaimStore", () => {
 		});
 	});
 
+	test("stamps holds with a claim start time for elapsed widgets", () => {
+		claims.claim("t1", "runner-a");
+		const described = claims.describe("t1");
+		expect(typeof described.startedAt).toBe("string");
+		const [hold] = claims.liveHolds();
+		expect(hold).toMatchObject({ taskId: "t1", startedAt: described.startedAt });
+	});
+
 	test("restart drops holds but keeps epochs and completions (Phase 4 gate)", () => {
 		const file = tmpClaimState();
 		const boot1 = new ClaimStore({ ttlMs: 60_000, now: () => now, stateFile: file });

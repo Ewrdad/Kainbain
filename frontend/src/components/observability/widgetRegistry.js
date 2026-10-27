@@ -143,6 +143,19 @@ export const WIDGET_CATALOG = [
     allowMultiple: true,
   },
   {
+    id: 'runnerTasks',
+    title: 'Runner Tasks (per-Runner live assignments)',
+    shortTitle: 'Runner Tasks',
+    icon: '🏃',
+    category: WIDGET_CATEGORIES.EXECUTION,
+    description:
+      'One card per live Runner assignment: which Runner runs which task, on what stage, and for how long, with a runner log tail.',
+    defaultColSpan: 4,
+    defaultHeight: 'tall',
+    allowResize: true,
+    allowMultiple: true,
+  },
+  {
     id: 'activeTask',
     title: 'Active Task & Full Curated Prompt',
     shortTitle: 'Active Prompt',
@@ -293,7 +306,7 @@ export const WIDGET_CATALOG = [
 export const DEFAULT_LAYOUT = [
   { instanceId: 'kpis', id: 'kpis', colSpan: 12, height: 'compact', enabled: true },
   { instanceId: 'queue', id: 'queue', colSpan: 4, height: 'tall', enabled: true },
-  { instanceId: 'activeTask', id: 'activeTask', colSpan: 4, height: 'tall', enabled: true },
+  { instanceId: 'runnerTasks', id: 'runnerTasks', colSpan: 4, height: 'tall', enabled: true },
   { instanceId: 'console', id: 'console', colSpan: 4, height: 'tall', enabled: true },
   { instanceId: 'outcomes', id: 'outcomes', colSpan: 6, height: 'normal', enabled: true },
   { instanceId: 'health', id: 'health', colSpan: 6, height: 'normal', enabled: true },

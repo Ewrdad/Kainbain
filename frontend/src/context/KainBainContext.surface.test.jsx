@@ -104,6 +104,7 @@ describe('KainBainContext value surface', () => {
       'focusedStageId',
       'followUpTask',
       'getSkillByName',
+      'getTask',
       'getTaskReports',
       'handleAddStage',
       'handleRemoveStage',

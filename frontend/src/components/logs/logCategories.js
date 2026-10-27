@@ -97,6 +97,13 @@ export const LOG_CATEGORIES = [
     defaultOnFull: false,
     description: 'Usage telemetry and raw wire payloads; hidden unless selected.',
   },
+  {
+    id: 'runner',
+    label: 'Runner',
+    defaultOnCompact: true,
+    defaultOnFull: true,
+    description: 'Agent-stage output streamed from Runners over the wire.',
+  },
 ];
 
 export const LOG_CATEGORY_IDS = LOG_CATEGORIES.map((c) => c.id);
@@ -201,6 +208,17 @@ function firstLine(text) {
   return String(text || '').split('\n')[0] || '';
 }
 
+/***
+ * MARK: extractRunnerId
+ * @description Runner id from the inline `[runner <id>]` frame prefix
+ *   (ingested over the wire). Null when the text carries no runner prefix.
+ * @example extractRunnerId('[runner local-alpha] hi') => 'local-alpha'
+ ***/
+export function extractRunnerId(text) {
+  const m = String(text || '').match(/^\[runner\s+([^\]\s]+)\]/i);
+  return m ? m[1] : null;
+}
+
 const STAGE_TEXT = /STAGE_ENTER|STAGE_COMPLETE|STAGE_FAILBACK|stage entered|stage completed|stage moved|turn \d+/i;
 const CHECKPOINT_TEXT = /checkpoint|approval|human review|awaiting (human|approval)|decision required/i;
 const DEBUG_TEXT = /kainbain.*debug|debug.*kainbain|\[KB-[A-Z]+\]|\[TRACE\]|\[VERBOSE\]/i;
@@ -220,6 +238,7 @@ function categoryFromTag(upper) {
   if (upper === 'PERM' || upper === 'PERMISSION') return 'human';
   if (upper === 'PLAN') return 'stage';
   if (upper === 'AGENT') return 'output';
+  if (upper === 'RUNNER') return 'runner';
   if (upper === 'INFO' || upper === 'SYSTEM' || upper === 'WARN') return 'system';
   return null;
 }
@@ -246,6 +265,7 @@ export function categoryFor(recordLike = {}) {
   if (kind === 'thinking') return 'thinking';
   if (kind === 'tool') return 'tools';
   if (kind === 'assistant') return 'output';
+  if (kind === 'runner') return 'runner';
   if (kind === 'error') return 'error';
   if (kind === 'telemetry' || kind === 'raw') return 'raw';
   if (kind === 'permission') return 'human';
@@ -274,6 +294,8 @@ export function categoryFor(recordLike = {}) {
   // carries the grammar (`[TOOL] …` inside `text`). Stream wrappers
   // (`[STDOUT]`/`[STDERR]`) are unwrapped first so the content line classifies.
   const lineHead = checkLineFor(text);
+  // Runner frames carry `[runner <id>]` (space form the tag regex misses).
+  if (/^\[runner[\] ]/i.test(lineHead)) return 'runner';
   const bracket = lineHead.match(/^\[([A-Za-z/]+)\]/);
   if (bracket) {
     const fromText = categoryFromTag(bracket[1].toUpperCase());
@@ -311,6 +333,13 @@ export function categoriesFor(recordLike = {}) {
   const body = String(safe.text || '');
   // Collapsed markers ride along with the narrative; full blocks do not.
   if (safe.kind === 'thinking' && (safe.collapsedThinking || safe.meta?.collapsed)) {
+    if (!out.includes('output')) out.push('output');
+  }
+  // Runner frames ride along with the narrative: they used to classify
+  // as assistant output, so existing stored category sets (which lack the
+  // new runner id) keep showing them until the user resets. Unchecking
+  // both Runner and Direct output hides them.
+  if (safe.kind === 'runner') {
     if (!out.includes('output')) out.push('output');
   }
   // Failure signals surface under Errors even when their primary lane is
@@ -352,6 +381,10 @@ export function tagForRecord(recordLike = {}) {
       return '[ERROR]';
     case 'assistant':
       return '[AGENT]';
+    case 'runner': {
+      const id = safe.runnerId ?? safe.meta?.runnerId ?? extractRunnerId(safe.text);
+      return id ? `[RUNNER ${id}]` : '[RUNNER]';
+    }
     case 'telemetry':
       return '[USAGE]';
     case 'raw':
@@ -360,14 +393,18 @@ export function tagForRecord(recordLike = {}) {
       return '[PERM]';
     case 'plan':
       return '[PLAN]';
-    default:
+    default: {
       // No kind: extract the leading tag from the text (unwrapping
       // `[STDOUT]`/`[STDERR]` stream wrappers) so live lines keep their
       // grammar instead of collapsing to a generic `[LOG]` pill.
+      // Runner frames (`[runner <id>]`) keep their id in the pill.
+      const runnerId = extractRunnerId(safe.text);
+      if (runnerId) return `[RUNNER ${runnerId}]`;
       const head = checkLineFor(safe.text || '');
       const bracket = head.match(/^\[([A-Za-z/]+)\]/);
       if (bracket) return `[${bracket[1].toUpperCase()}]`;
       return '[LOG]';
+    }
   }
 }
 
@@ -432,6 +469,7 @@ export function normalizeLogRecord(recordLike = {}, fallbackSource = 'task') {
     fullTextId: safe.fullTextId ?? safe.meta?.fullTextId ?? null,
     turn: Number.isFinite(safe.turn) ? safe.turn : null,
     source: safe.source || fallbackSource,
+    runnerId: safe.runnerId ?? safe.meta?.runnerId ?? extractRunnerId(safe.text),
     projectName: safe.projectName ?? null,
     taskId: safe.taskId != null ? String(safe.taskId) : null,
     projectId: safe.projectId ?? null,
@@ -473,9 +511,20 @@ export function recordMatchesCategories(record, categories) {
 export function filterLogRecords(records, state = {}) {
   const set = asCategorySet(state.categories);
   const needle = String(state.search || '').trim().toLowerCase();
+  const runners =
+    state.runners instanceof Set
+      ? state.runners
+      : Array.isArray(state.runners)
+        ? new Set(state.runners)
+        : null;
   return (records || []).filter((record) => {
     if (!record) return false;
     if (!recordMatchesCategories(record, set)) return false;
+    // Per-runner selection: when a runner allowlist is given, only that
+    // runner's own frames pass (records without a runnerId are excluded).
+    if (runners && runners.size > 0) {
+      if (!record.runnerId || !runners.has(record.runnerId)) return false;
+    }
     if (needle) {
       const hay = `${record.text || ''}\n${record.tag || ''}\n${record.title || ''}`.toLowerCase();
       if (!hay.includes(needle)) return false;

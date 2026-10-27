@@ -3,12 +3,14 @@ import { executeStage } from "./executeStage.js";
 import { config } from "../../config.js";
 
 /***
- * MARK: executeStage Runner-Cutover Gate Tests
- * @description Verifies the `KAINBAIN_RUNNER_EXECUTION_ONLY` gate: wire-servable
+ * MARK: executeStage Runner-Only Gate Tests
+ * @description Verifies runner-only execution by default: wire-servable
  *   model stages defer to dispatch without touching budgets or state, while
  *   everything else flows through to the embedded queue unchanged.
+ *   Explicit `KAINBAIN_RUNNER_EXECUTION_ONLY=false` restores the legacy
+ *   embedded path (rollback hatch).
  ***/
-describe("executeStage runner-execution cutover gate", () => {
+describe("executeStage runner-only gate", () => {
 	const previous = config.runnerExecutionOnly;
 	afterEach(() => {
 		config.runnerExecutionOnly = previous;
@@ -73,7 +75,7 @@ describe("executeStage runner-execution cutover gate", () => {
 		expect(store.calls.enqueued).toBe(1);
 	});
 
-	it("is inert when the flag is off (embedded path unchanged)", async () => {
+	it("is inert when the flag is explicitly off (legacy embedded rollback)", async () => {
 		config.runnerExecutionOnly = false;
 		const store = fakeStore(agentTask());
 		const result = await executeStage(store, "p1", "t1", { stages: agentStages });

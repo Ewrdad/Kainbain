@@ -51,6 +51,7 @@ export class ExecutionLedger {
 		this.seenProgress = new Set();
 		this.logNextSeq = new Map();
 		this.lastStage = new Map();
+		this.stagePrompt = new Map();
 		this.counters = {
 			progressRecorded: 0,
 			progressDuplicates: 0,
@@ -97,6 +98,7 @@ export class ExecutionLedger {
 		epoch,
 		stageId,
 		event,
+		prompt = null,
 	}) {
 		const hold = this._holdOrThrow(claimStore, taskId, executionId, epoch);
 		if (hold.runnerId !== runnerId) {
@@ -116,6 +118,13 @@ export class ExecutionLedger {
 		}
 		this.seenProgress.add(key);
 		this.lastStage.set(executionId, stageId);
+		// Stage prompt payload (observability only): the exact prompt the
+		// Runner curated for this execution, capped at ingest. Kept per
+		// live execution and dropped on complete/interrupt with the rest
+		// of the per-execution state.
+		if (event === "prompted" && typeof prompt === "string" && prompt) {
+			this.stagePrompt.set(executionId, prompt.slice(0, 20000));
+		}
 		this.counters.progressRecorded += 1;
 		const task = taskStore.getTask(projectId, taskId);
 		task?.history?.push({
@@ -155,11 +164,12 @@ export class ExecutionLedger {
 			_appendProcessLog(
 				task,
 				`[runner ${runnerId}] logs truncated — Runner disconnected (frames ${next}–${seq - 1} missing)`,
+				{ runnerId },
 			);
 		} else {
 			this.counters.logFrames += 1;
 		}
-		_appendProcessLog(task, `[runner ${runnerId}] ${bytes}`);
+		_appendProcessLog(task, `[runner ${runnerId}] ${bytes}`, { runnerId });
 		this.logNextSeq.set(executionId, seq + 1);
 		return { accepted: true, duplicate: false, seq };
 	}
@@ -242,6 +252,7 @@ export class ExecutionLedger {
 		}
 		this.lastStage.delete(executionId);
 		this.logNextSeq.delete(executionId);
+		this.stagePrompt.delete(executionId);
 		return { accepted: true, duplicate: false, shaState, reportedStage };
 	}
 
@@ -300,9 +311,36 @@ export class ExecutionLedger {
 			if (id) {
 				this.lastStage.delete(id);
 				this.logNextSeq.delete(id);
+				this.stagePrompt.delete(id);
 			}
 		}
 		return { interrupted: true, interruptCount, escalated };
+	}
+
+	/***
+	 * MARK: stageFor
+	 * @description Current stage reported by a live execution (progress
+	 *   `started`/`finished` events). Null when unknown or finished —
+	 *   per-runner monitor widgets join this to the claim hold.
+	 * @example ledger.stageFor('exec-1') => 'stage-a'
+	 * @param {string} executionId - Lease execution id.
+	 * @returns {string|null} Last reported stage id.
+	 ***/
+	stageFor(executionId) {
+		return this.lastStage.get(executionId) ?? null;
+	}
+
+	/***
+	 * MARK: promptFor
+	 * @description Exact stage prompt a live execution reported at start
+	 *   (`prompted` progress event). Null when unreported or finished —
+	 *   per-runner monitor widgets render the with-prompt card from this.
+	 * @example ledger.promptFor('exec-1') => '# Task\n...'
+	 * @param {string} executionId - Lease execution id.
+	 * @returns {string|null} Reported stage prompt.
+	 ***/
+	promptFor(executionId) {
+		return this.stagePrompt.get(executionId) ?? null;
 	}
 
 	snapshot() {

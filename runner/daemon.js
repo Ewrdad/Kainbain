@@ -489,6 +489,23 @@ async function executeAssignment({
 				"Implement the stage goal in the working directory. Keep changes scoped to the task.",
 			].join("\n");
 
+			// Report the exact stage prompt for the monitor's with-prompt
+			// cards. Best-effort and observability-only: a failed report
+			// must never fail the stage itself.
+			try {
+				await client.progress({
+					taskId: taskId,
+					projectId: projectId,
+					executionId,
+					epoch,
+					stageId,
+					event: "prompted",
+					prompt,
+				});
+			} catch (err) {
+				logger.warn(`Prompt report failed: ${err?.message || err}`);
+			}
+
 			// The backend project record's cwd points at the backend's own
 			// checkout — on the Runner host the task's working copy is the
 			// prepared worktree. Run the session THERE, or the agent's file

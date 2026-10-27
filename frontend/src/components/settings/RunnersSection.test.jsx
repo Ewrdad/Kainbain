@@ -106,12 +106,25 @@ describe('RunnersSection', () => {
       { runnerId: 'r2', status: 'active', facts: {}, lastSeenAt: null },
     ]);
     getRunnerMonitor.mockResolvedValue({
-      liveAssignments: [{ runnerId: 'r1', projectId: 'p1', taskId: 'abcdef12-3456', epoch: 1 }],
+      liveAssignments: [
+        {
+          runnerId: 'r1',
+          projectId: 'p1',
+          taskId: 'abcdef12-3456',
+          executionId: 'exec-1',
+          epoch: 1,
+          startedAt: new Date(Date.now() - 65_000).toISOString(),
+          stageId: 'build',
+          lastSeenAt: new Date().toISOString(),
+        },
+      ],
     });
     render(<RunnersSection />);
     await waitFor(() => {
       expect(screen.getByTestId('runner-assignment-r1').textContent).toContain('abcdef12');
     });
+    expect(screen.getByTestId('runner-assignment-r1').textContent).toContain('build');
+    expect(screen.getByTestId('runner-assignment-r1').textContent).toMatch(/01:0\d/);
     expect(screen.queryByTestId('runner-assignment-r2')).toBeNull();
   });
 

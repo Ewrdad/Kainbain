@@ -726,12 +726,17 @@ describe("Runner Routes Integration", () => {
 		const monitor = JSON.parse(
 			(await app.inject({ method: "GET", url: "/runners/monitor" })).payload,
 		);
-		expect(monitor.liveAssignments).toContainEqual({
-			runnerId: "steer-1",
-			projectId: project.id,
-			taskId,
-			epoch,
-		});
+		expect(monitor.liveAssignments).toContainEqual(
+			expect.objectContaining({
+				runnerId: "steer-1",
+				projectId: project.id,
+				taskId,
+				epoch,
+			}),
+		);
+		const steerRow = monitor.liveAssignments.find((r) => r.runnerId === "steer-1");
+		expect(typeof steerRow.executionId).toBe("string");
+		expect(typeof steerRow.startedAt).toBe("string");
 	});
 
 	it("rotates a Runner credential with zero stage failures on idle", async () => {

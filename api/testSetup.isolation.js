@@ -72,3 +72,9 @@ process.env.KAINBAIN_PROMPT_LAYOUT_DIR = tempPromptLayoutDir;
 // `flow/circuitSensors.test.js` re-enables the sensor locally to exercise
 // its logic with injected probes.
 process.env.KAINBAIN_CIRCUIT_MEM_ENABLED = "false";
+// Runner-only execution is the production default, but the standard suite
+// exercises the legacy embedded agent path (the rollback hatch): pin the
+// flag off for every suite so embedded-execution tests keep running the
+// code they cover. Suites that verify runner-only behavior opt back in
+// explicitly per test (see `flow/execution/executeStage.cutover.test.js`).
+process.env.KAINBAIN_RUNNER_EXECUTION_ONLY = "false";

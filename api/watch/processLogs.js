@@ -25,6 +25,10 @@ function _logEntryKindFromText(text) {
 		return { kind: "system", feed: "main" };
 	}
 	if (/^\[AGENT\]/.test(checkLine)) return { kind: "assistant", feed: "main" };
+	// Runner frames carry an inline `[runner <id>]` prefix (ingested over
+	// the wire). They get their own kind so the log viewer can tag and
+	// filter them per runner instead of lumping them into assistant output.
+	if (/^\[runner[ \]]/i.test(checkLine)) return { kind: "runner", feed: "main" };
 	// Untagged text is assistant narrative (block text from the agent streamer).
 	return { kind: "assistant", feed: "main" };
 }
@@ -42,7 +46,7 @@ let _logEntryIdCounter = 0;
  * @param {string} chunk
  * @returns {Object} A structured log entry.
  ***/
-function _synthesizedLogEntry(chunk) {
+function _synthesizedLogEntry(chunk, meta = {}) {
 	_logEntryIdCounter += 1;
 	const { kind, feed } = _logEntryKindFromText(chunk);
 	return {
@@ -53,7 +57,7 @@ function _synthesizedLogEntry(chunk) {
 		kind,
 		turn: null,
 		text: String(chunk),
-		meta: { source: "process-log" },
+		meta: { source: "process-log", ...meta },
 	};
 }
 
@@ -219,9 +223,10 @@ export function _replaceLogEntries(task, startIndex, entries) {
  * @example _appendProcessLog(task, '[GIT] Switched to main')
  * @param {Object} task
  * @param {string} chunk
+ * @param {Object} [meta] - Extra entry metadata (e.g. `{ runnerId }`).
  * @returns {void}
  ***/
-export function _appendProcessLog(task, chunk) {
+export function _appendProcessLog(task, chunk, meta = {}) {
 	if (!task || !chunk) return;
-	_appendLogEntries(task, [_synthesizedLogEntry(String(chunk).trim())]);
+	_appendLogEntries(task, [_synthesizedLogEntry(String(chunk).trim(), meta)]);
 }

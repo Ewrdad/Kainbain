@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../services/api';
 import { copyToClipboard } from '../../services/clipboard';
+import { formatRunnerElapsed } from '../observability/widgets/PerRunnerTasksWidget';
 
 /***
  * MARK: RunnersSection
@@ -25,6 +26,9 @@ export function RunnersSection() {
   const [actionError, setActionError] = useState(null);
   const [freshCredential, setFreshCredential] = useState(null);
   const [copied, setCopied] = useState(false);
+  // Snapshot clock for the static elapsed readout below: set alongside
+  // each monitor fetch (never during render) so the row stays pure.
+  const [nowMs, setNowMs] = useState(null);
 
   const loadRunners = useCallback(async () => {
     setLoadError(null);
@@ -39,6 +43,7 @@ export function RunnersSection() {
         }
         setAssignments(byRunner);
         setScheduler(monitor?.scheduler || null);
+        setNowMs(Date.now());
       } catch {
         // Monitor is best-effort: the onboarding list stays usable when
         // the counters endpoint is down.
@@ -114,7 +119,8 @@ export function RunnersSection() {
         Runners
       </h2>
       <p className="mt-2 text-xs text-text-muted">
-        Out-of-process task executors (Phase 2, loopback only). A Runner joins
+        Out-of-process task executors (runner-only: every agent stage runs on
+        a Runner). A Runner joins
         with the operator join token set as KAINBAIN_RUNNER_JOIN_TOKEN on the
         backend, waits here for approval, then heartbeats and claims tasks
         with its own credential. Revoking stops the credential immediately;
@@ -192,8 +198,19 @@ export function RunnersSection() {
                 <span
                   className="text-[10px] font-mono text-text-muted"
                   data-testid={`runner-assignment-${runner.runnerId}`}
+                  title={
+                    assignments[runner.runnerId].startedAt
+                      ? `Claimed ${assignments[runner.runnerId].startedAt}`
+                      : 'Claim time unknown'
+                  }
                 >
                   Running task {String(assignments[runner.runnerId].taskId).slice(0, 8)}
+                  {' · '}
+                  {assignments[runner.runnerId].stageId || '…'}
+                  {' · '}
+                  {nowMs == null
+                    ? '…'
+                    : formatRunnerElapsed(assignments[runner.runnerId].startedAt, nowMs)}
                 </span>
               )}
               {Array.isArray(runner.capabilities?.harnesses) &&

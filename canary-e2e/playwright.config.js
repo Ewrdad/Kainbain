@@ -198,6 +198,13 @@ module.exports = {
 						// external default 404ed every agent run, tripped the
 						// breaker, and 409ed the engine-driven specs).
 						KAINBAIN_DEFAULT_HARNESS: "mock",
+						// The specs drive the legacy embedded agent loop end
+						// to end (execute -> survey/human -> advance). Keep
+						// the runner-only production default off here: there
+						// is no live Runner in the scratch stack, so servable
+						// agent stages would defer forever and never reach
+						// the stages under test.
+						KAINBAIN_RUNNER_EXECUTION_ONLY: "false",
 						// Pin hermetic transport for vibe and muse so model enumeration
 						// does not attempt host ACP/MSP spawns (mirrors isolatedTestRoots.js).
 						KAINBAIN_VIBE_ACP: "off",

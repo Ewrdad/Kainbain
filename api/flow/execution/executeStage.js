@@ -214,15 +214,17 @@ export async function executeStage(
 		};
 	}
 
-	// Runner-execution cutover gate (`KAINBAIN_RUNNER_EXECUTION_ONLY`): a
-	// model stage a Runner can serve over the wire is left for dispatch
-	// instead of spawning an in-process agent child. Pure skip — no budget
-	// touched, no state mutated, candidacy intact for the next tick and for
-	// the dispatch poll. Human checkpoints, commands, CI stages,
-	// unresolvable aliases, and circuit-canary probes keep their embedded
-	// behavior (canary bypass preserves the half-open probe).
+	// Runner-only execution by default (`KAINBAIN_RUNNER_EXECUTION_ONLY`,
+	// default true): a model stage a Runner can serve over the wire is
+	// left for dispatch instead of spawning an in-process agent child.
+	// Explicit `false` restores legacy embedded execution — emergency
+	// rollback hatch only, kept tested by the embedded suites. Pure skip —
+	// no budget touched, no state mutated, candidacy intact for the next
+	// tick and for the dispatch poll. Human checkpoints, commands, CI
+	// stages, unresolvable aliases, and circuit-canary probes keep their
+	// embedded behavior (canary bypass preserves the half-open probe).
 	if (
-		config.runnerExecutionOnly &&
+		config.runnerExecutionOnly !== false &&
 		!isCanaryTask(store, taskId) &&
 		isDispatchServable({ project: projectEntity || {}, task, stages, stage })
 	) {

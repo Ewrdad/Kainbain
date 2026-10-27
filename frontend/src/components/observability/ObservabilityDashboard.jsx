@@ -33,6 +33,7 @@ import { KpiCheckpointsWidget } from './widgets/KpiCheckpointsWidget';
 import { KpiEngineWidget } from './widgets/KpiEngineWidget';
 import { QueueOrderWidget } from './widgets/QueueOrderWidget';
 import { ActiveTaskPromptWidget } from './widgets/ActiveTaskPromptWidget';
+import { PerRunnerTasksWidget } from './widgets/PerRunnerTasksWidget';
 import { LiveConsoleWidget } from './widgets/LiveConsoleWidget';
 import { SubsystemHealthWidget } from './widgets/SubsystemHealthWidget';
 import { HealthLitellmWidget } from './widgets/HealthLitellmWidget';
@@ -632,6 +633,8 @@ export function ObservabilityDashboard() {
             activeTaskElapsed={activeTaskElapsed}
           />
         );
+      case 'runnerTasks':
+        return <PerRunnerTasksWidget tasks={filteredTasks} compact={false} />;
       case 'console':
         return <LiveConsoleWidget processLogs={processLogs} onClearLogs={clearLogs} />;
       case 'health':
@@ -689,6 +692,7 @@ export function ObservabilityDashboard() {
           activeTask={activeTask}
           stages={stages}
           isAgentRunning={isAgentRunning}
+          runnerTasks={filteredTasks}
           stats={stats}
           queueCount={scheduledQueue.length}
           schedulerRunning={metricsData?.schedulerRunning}

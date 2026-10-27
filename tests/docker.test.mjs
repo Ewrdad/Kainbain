@@ -220,7 +220,10 @@ describe("Container files (static)", () => {
 		assert.match(compose, /\.\/projects:\/workspace\/projects/);
 		assert.match(compose, /kainbain-data:\/home\/node\/\.kainbain/);
 		assert.match(compose, /required: false/);
-		assert.match(compose, /\$\{KAINBAIN_PORT:-3100\}:3100/);
+		// Frontend nginx listens on 80 in-container; the host side is the
+		// KAINBAIN_PORT convenience mapping (production sits behind a
+		// domain-based reverse proxy on 80/443, e.g. kainbain.home).
+		assert.match(compose, /\$\{KAINBAIN_PORT:-3100\}:80/);
 		assert.match(compose, /PROJECTS_ROOT: \/workspace\/projects/);
 	});
 

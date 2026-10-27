@@ -154,6 +154,7 @@ export class ClaimStore {
 			runnerId,
 			projectId: typeof projectId === "string" ? projectId : null,
 			expiresAt: this.now() + this.ttlMs,
+			startedAt: new Date().toISOString(),
 		});
 		this._persist();
 		return { executionId, epoch };
@@ -219,6 +220,7 @@ export class ClaimStore {
 			runnerId: hold.runnerId,
 			executionId: hold.executionId,
 			epoch: hold.epoch,
+			startedAt: hold.startedAt ?? null,
 		};
 	}
 
@@ -241,6 +243,7 @@ export class ClaimStore {
 				projectId: hold.projectId,
 				executionId: hold.executionId,
 				epoch: hold.epoch,
+				startedAt: hold.startedAt ?? null,
 			});
 		}
 		return out;

@@ -94,8 +94,19 @@ vi.mock('../../services/api', () => ({
     // Global per-harness reliability for the reliability widget: independent
     // of the observability poll so tests can assert the two cycles apart.
     getHarnessReliability: vi.fn().mockResolvedValue({ reliability: [] }),
+    getRunnerMonitor: vi.fn().mockResolvedValue({ liveAssignments: [] }),
+    getRunners: vi.fn().mockResolvedValue([]),
   },
 }));
+
+const seedActiveTaskLayout = () => {
+  localStorage.setItem(
+    'kainbain_observability_layout_v2',
+    JSON.stringify([
+      { instanceId: 'activeTask', id: 'activeTask', colSpan: 4, height: 'tall', enabled: true },
+    ]),
+  );
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -130,10 +141,11 @@ test('renders customizable Observability Dashboard with telemetry header and wid
   expect(screen.getByTestId('observability-dashboard')).toBeInTheDocument();
   expect(screen.getByRole('heading', { level: 2, name: /Observability/i })).toBeInTheDocument();
 
-  // Check default modular widgets exist in DOM
+  // Check default modular widgets exist in DOM (runner tasks replaced the
+  // single active-task card as the default execution widget)
   expect(screen.getByTestId('widget-kpis')).toBeInTheDocument();
   expect(screen.getByTestId('widget-queue')).toBeInTheDocument();
-  expect(screen.getByTestId('widget-activeTask')).toBeInTheDocument();
+  expect(screen.getByTestId('widget-runnerTasks')).toBeInTheDocument();
   expect(screen.getByTestId('widget-console')).toBeInTheDocument();
 
   await waitFor(() => {
@@ -203,6 +215,7 @@ test('opens Widget Manager modal to customize widgets and apply presets', async 
 });
 
 test('displays active task full prompt in viewer', async () => {
+  seedActiveTaskLayout();
   renderWithKainBain(<ObservabilityDashboard />, {
     engineState: {
       status: 'running',
@@ -428,6 +441,7 @@ test('pauses polling when tab is hidden and refreshes on visibility return', asy
 });
 
 test('coalesces socket invalidations, ignores unrelated tasks and cleans up on unmount', async () => {
+  seedActiveTaskLayout();
   vi.useFakeTimers();
   try {
     const { unmount } = renderWithKainBain(<ObservabilityDashboard />, {
@@ -464,6 +478,7 @@ test('coalesces socket invalidations, ignores unrelated tasks and cleans up on u
 });
 
 test('an event during a pending read schedules a fresh read rather than accepting the stale response', async () => {
+  seedActiveTaskLayout();
   vi.useFakeTimers();
   try {
     let resolveOld;
@@ -494,6 +509,7 @@ test('an event during a pending read schedules a fresh read rather than acceptin
 });
 
 test('continuous invalidations publish fresh prompts without starvation and coalesce follow-up reads', async () => {
+  seedActiveTaskLayout();
   vi.useFakeTimers();
   try {
     const finish = [];
@@ -542,6 +558,7 @@ test('continuous invalidations publish fresh prompts without starvation and coal
 });
 
 test('never shows the previous task prompt when live engine already names a new task', async () => {
+  seedActiveTaskLayout();
   renderWithKainBain(<ObservabilityDashboard />, {
     engineState: {
       activeTaskId: 'new-task',
@@ -557,6 +574,7 @@ test('never shows the previous task prompt when live engine already names a new 
 });
 
 test('never shows the previous run alias when live engine already names a new task', async () => {
+  seedActiveTaskLayout();
   renderWithKainBain(<ObservabilityDashboard />, {
     engineState: {
       activeTaskId: 'new-task',

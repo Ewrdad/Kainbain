@@ -1583,12 +1583,20 @@ $(gate_tail "$_verify_log")"
 		# Self-test the "Go to App" API against the NEW instance. Warn-only:
 		# must never fail a healthy deploy (see publish_app_link).
 		publish_app_link || true
-		# The cutover local-Runner service executes from PROD_DIR, which was
-		# just swapped underneath it: restart it onto the new build so the
+		# Runner-only fleet: every host ships one local Runner by default
+		# (same binary as a remote Runner — only KAINBAIN_RUNNER_BACKEND
+		# differs). Ensure the default unit exists before restarting the
+		# fleet onto the new build. Warn-only: approval stays manual (D4).
+		if [ -x "./scripts/install-local-runner.sh" ]; then
+			./scripts/install-local-runner.sh --ensure 2>/dev/null || true
+		else
+			log "⚠️ install-local-runner.sh not found — skipping default Runner ensure."
+		fi
+		# The local-Runner services execute from PROD_DIR, which was just
+		# swapped underneath them: restart them onto the new build so the
 		# Runner and backend stay version-locked. Warn-only (never fail a
 		# healthy deploy): a mid-assignment restart just lets the claim TTL
-		# expire and the task re-queues by design. Skipped when the unit is
-		# not installed yet (pre-cutover hosts).
+		# expire and the task re-queues by design.
 		for unit_file in "$HOME/.config/systemd/user"/kainbain-runner-local-*.service; do
 			[ -e "$unit_file" ] || continue
 			unit_name="$(basename "$unit_file")"

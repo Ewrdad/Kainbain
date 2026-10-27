@@ -43,6 +43,8 @@ describe("_appendProcessLog tag grammar", () => {
 		["[HUMAN] hi", "system", "main"],
 		["[WARN] careful", "system", "main"],
 		["[AGENT] reasoning", "assistant", "main"],
+		["[runner local-alpha] doing work", "runner", "main"],
+		["[RUNNER] legacy caps", "runner", "main"],
 		["plain narrative text", "assistant", "main"],
 	])("maps %j to kind=%s feed=%s", (chunk, kind, feed) => {
 		const task = { logEntries: [] };
@@ -71,6 +73,15 @@ describe("_appendProcessLog tag grammar", () => {
 	it("ignores a nullish task", () => {
 		expect(() => _appendProcessLog(null, "[INFO] x")).not.toThrow();
 		expect(() => _appendProcessLog(undefined, "[INFO] x")).not.toThrow();
+	});
+
+	it("carries a structured runnerId on ingested runner frames", () => {
+		const task = { logEntries: [] };
+		_appendProcessLog(task, "[runner local-alpha] hello", { runnerId: "local-alpha" });
+		expect(task.logEntries[0]).toMatchObject({
+			kind: "runner",
+			meta: { source: "process-log", runnerId: "local-alpha" },
+		});
 	});
 
 	it("initialises logEntries when missing", () => {

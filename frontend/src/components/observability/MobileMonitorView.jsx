@@ -1,4 +1,5 @@
 import { isMonitorRunning } from '../tasks/isMonitorRunning';
+import { PerRunnerTasksWidget } from './widgets/PerRunnerTasksWidget';
 import { formatTaskTitleFirstLine } from '../tasks/taskFormatters';
 import { EngineStatePill } from './EngineStatePill';
 import { resolveMobileModelDetails } from './mobileModelDetails';
@@ -56,6 +57,7 @@ export function MobileMonitorView({
   activeTask = null,
   stages = [],
   isAgentRunning = false,
+  runnerTasks = [],
   // Deprecated, ignored: retained for backwards compatibility with callers
   // that still pass task stats / queue length (see JSDoc above).
   stats: _stats = {},
@@ -160,6 +162,11 @@ export function MobileMonitorView({
           )}
         </div>
       </header>
+
+      {/* Per-runner compact rows: who runs what, for how long */}
+      <div className="shrink-0 max-h-40 overflow-y-auto border-b border-slate-800/80 px-2 py-1">
+        <PerRunnerTasksWidget tasks={runnerTasks} compact />
+      </div>
 
       {/* Full-height live log console (filters, auto-scroll, clear intact) */}
       <div className="flex-1 flex flex-col min-h-0 min-w-0 w-full">

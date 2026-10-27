@@ -125,6 +125,12 @@ function makeObservability({ modelId, dispatchedPrompt }) {
  ***/
 test('refreshes a non-pi session model and full dispatched prompt within five seconds', async () => {
   localStorage.clear();
+  localStorage.setItem(
+    'kainbain_observability_layout_v2',
+    JSON.stringify([
+      { instanceId: 'activeTask', id: 'activeTask', colSpan: 4, height: 'tall', enabled: true },
+    ]),
+  );
   const task = {
     id: TASK_ID,
     projectId: 'project',

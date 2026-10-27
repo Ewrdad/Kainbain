@@ -111,7 +111,7 @@ describe('useTasks', () => {
       await act(async () => {
         vi.advanceTimersByTime(150);
       });
-      expect(api.listTasks).toHaveBeenCalledWith('proj-1');
+      expect(api.listTasks).toHaveBeenCalledWith('proj-1', { includeCompleted: false });
       expect(result.current.tasks[0].prompt).toBe('curated');
     } finally {
       vi.useRealTimers();
@@ -429,7 +429,7 @@ describe('useTasks', () => {
       });
 
       expect(api.listTasks).toHaveBeenCalledTimes(1);
-      expect(api.listTasks).toHaveBeenCalledWith('proj-1');
+      expect(api.listTasks).toHaveBeenCalledWith('proj-1', { includeCompleted: false });
       expect(result.current.tasks).toEqual([{ id: 't1', currentStageId: '2' }]);
     } finally {
       vi.useRealTimers();

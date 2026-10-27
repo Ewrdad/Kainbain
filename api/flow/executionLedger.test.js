@@ -73,6 +73,39 @@ describe("ExecutionLedger", () => {
 		expect(ledger.snapshot().progressRecorded).toBe(1);
 		expect(ledger.snapshot().progressDuplicates).toBe(1);
 		expect(ctx.taskStore.getTask().history).toHaveLength(1);
+		expect(ledger.stageFor(executionId)).toBe("s1");
+		expect(ledger.stageFor("unknown-exec")).toBeNull();
+	});
+
+	test("stores the reported stage prompt and drops it on completion", async () => {
+		const ctx = stores();
+		const ledger = new ExecutionLedger();
+		const { executionId, epoch } = claimed(ctx);
+		const base = {
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+			stageId: "s1",
+		};
+		expect(ledger.promptFor(executionId)).toBeNull();
+		ledger.recordProgress({ ...base, event: "started" });
+		expect(ledger.promptFor(executionId)).toBeNull();
+		ledger.recordProgress({ ...base, event: "prompted", prompt: "# Do the thing" });
+		expect(ledger.promptFor(executionId)).toBe("# Do the thing");
+		const { dir, sha } = gitRepoWithCommit();
+		await ledger.completeExecution({
+			...base,
+			projectStore: { getProject: () => ({ cwd: dir }) },
+			sha,
+			branch: "kb/t1",
+			posture: "T1:pi:model",
+			outcome: { status: "passed" },
+		});
+		expect(ledger.promptFor(executionId)).toBeNull();
 	});
 
 	test("rejects progress on a stale epoch before touching state", () => {

@@ -401,9 +401,9 @@ export const CONFIG_SCHEMA = [
 		env: "KAINBAIN_RUNNER_EXECUTION_ONLY",
 		aliases: [],
 		type: "bool",
-		default: false,
+		default: true,
 		group: "tasks",
-		doc: "Cutover switch (final phase): when true, embedded model-stage execution retires — normalized-agent stages that a Runner can serve over the wire defer to dispatch (status 'deferred', deferred 'runner-dispatch') instead of spawning an in-process agent child. Human checkpoints, commands, CI, unresolvable aliases, and circuit-canary probes keep their embedded behavior. Off by default; flip only with at least one approved live Runner, revert to instantly restore embedded execution.",
+		doc: "Runner-only execution (default): servable agent stages defer to Runner dispatch instead of spawning an in-process agent child. Set false only as an emergency rollback to legacy embedded execution — the embedded agent path is deprecated and unmaintained. Human checkpoints, commands, CI, unresolvable aliases, and circuit-canary probes keep their embedded behavior regardless. Requires at least one approved live Runner (local by default).",
 	},
 
 	// --- Storage & Paths --------------------------------------------------

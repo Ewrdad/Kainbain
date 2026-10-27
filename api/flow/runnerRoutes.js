@@ -148,12 +148,20 @@ export async function registerRunnerRoutes(app, { deps }) {
 		// `scheduler` exposes the cutover deferral counters so a task
 		// sitting in_stage is diagnosable: a climbing `deferredDispatch`
 		// with no Runner pickup means the fleet is empty or mismatched.
-		const liveAssignments = claimStore.liveHolds().map((hold) => ({
-			runnerId: hold.runnerId,
-			projectId: hold.projectId,
-			taskId: hold.taskId,
-			epoch: hold.epoch,
-		}));
+		const liveAssignments = claimStore.liveHolds().map((hold) => {
+			const record = runnerRegistry.records().find((r) => r.runnerId === hold.runnerId) || null;
+			return {
+				runnerId: hold.runnerId,
+				projectId: hold.projectId,
+				taskId: hold.taskId,
+				executionId: hold.executionId,
+				epoch: hold.epoch,
+				startedAt: hold.startedAt ?? null,
+				stageId: executionLedger.stageFor(hold.executionId),
+				prompt: executionLedger.promptFor(hold.executionId),
+				lastSeenAt: record?.lastSeenAt ?? null,
+			};
+		});
 		const sched = taskStore.schedulerStats || {};
 		const scheduler = {
 			ticks: sched.ticks || 0,
@@ -186,6 +194,7 @@ export async function registerRunnerRoutes(app, { deps }) {
 				epoch: request.body?.epoch,
 				stageId: request.body?.stageId,
 				event: request.body?.event,
+				prompt: request.body?.prompt ?? null,
 			});
 		} catch (err) {
 			return sendStoreError(reply, err);

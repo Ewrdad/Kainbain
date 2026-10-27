@@ -22,8 +22,17 @@ export function useFullTask({ task, activeProjectId, getTask } = {}) {
   const hasLogs =
     (Array.isArray(task?.logEntries) && task.logEntries.length > 0) || task?.processLogs;
 
-  useEffect(() => {
+  // Reset the hydrated record whenever the inputs change. Done during
+  // render (the documented adjust-state-when-props-change pattern) rather
+  // than with a synchronous setState inside the fetch effect below.
+  const [resetKey, setResetKey] = useState(null);
+  const key = `${taskId}|${activeProjectId}|${hasLogs ? 1 : 0}|${typeof getTask}`;
+  if (resetKey !== key) {
+    setResetKey(key);
     setFull(null);
+  }
+
+  useEffect(() => {
     if (!taskId || !activeProjectId || hasLogs || typeof getTask !== 'function') return;
     let live = true;
     getTask(activeProjectId, taskId).then(

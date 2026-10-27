@@ -1,10 +1,21 @@
-# Loopback Runner daemon (`runner/`)
+# Runner daemon (`runner/`)
 
-Out-of-process task executor for MigrationPlan Phases 2–3 (loopback only).
+Out-of-process task executor — the ONLY way agent stages run (runner-only).
 Implements ADR 0009 steps 1–6 over the HTTP wire protocol — no engine,
 session, or store access. The assignment is explicit config by default;
 `KAINBAIN_RUNNER_DISPATCH=1` switches to the capability-aware dispatch
 loop (WP-3.1), where the backend picks each task.
+
+Local and remote Runners run the identical binary and protocol. The only
+difference is environment: a local Runner points at
+`KAINBAIN_RUNNER_BACKEND=http://localhost:3100`, a remote Runner at the
+backend URL (e.g. `https://kainbain.home`). Every host ships one local
+Runner by default — install it with:
+
+```sh
+scripts/install-local-runner.sh --id local-pi --harness pi
+# remote host: add --backend https://kainbain.home
+```
 
 ## Onboard (human approval required, D4)
 
