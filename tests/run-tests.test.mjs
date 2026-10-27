@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const { buildBranches, canaryDepsInstalled, depcheckAvailable, ensureCanaryDeps, pruneStaleTestDirectories, resolveCanary, splitGatePhases } = await import("../scripts/run-tests.mjs");
+const { buildBranches, depcheckAvailable, ensureWorkspaceDeps, pruneStaleTestDirectories, resolveCanary, splitGatePhases, workspaceDepsInstalled } = await import("../scripts/run-tests.mjs");
 
 /***
  * MARK: run-tests tests
@@ -279,142 +279,170 @@ describe("depcheckAvailable", () => {
 	});
 });
 
-describe("canaryDepsInstalled", () => {
-	function makeCanaryRoot({ devDependencies = { "@playwright/test": "^1.62.1", "@axe-core/playwright": "^4.13.0" }, installed = [] } = {}) {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-canary-deps-"));
-		fs.mkdirSync(path.join(root, "canary-e2e"), { recursive: true });
-		fs.writeFileSync(
-			path.join(root, "canary-e2e", "package.json"),
-			JSON.stringify({ name: "canary-e2e", devDependencies }),
-		);
-		for (const dep of installed) {
-			fs.mkdirSync(path.join(root, "canary-e2e", "node_modules", dep), { recursive: true });
+describe("workspaceDepsInstalled", () => {
+	function makeWorkspaceRoot({ manifests = { api: { fastify: "^5.0.0" }, frontend: { react: "^19.0.0" }, "canary-e2e": { "@playwright/test": "^1.62.1" } }, installed = {} } = {}) {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-workspace-deps-"));
+		for (const [pkg, devDependencies] of Object.entries(manifests)) {
+			fs.mkdirSync(path.join(root, pkg), { recursive: true });
 			fs.writeFileSync(
-				path.join(root, "canary-e2e", "node_modules", dep, "package.json"),
-				JSON.stringify({ name: dep }),
+				path.join(root, pkg, "package.json"),
+				JSON.stringify({ name: pkg, devDependencies }),
 			);
+			for (const dep of installed[pkg] || []) {
+				fs.mkdirSync(path.join(root, pkg, "node_modules", dep), { recursive: true });
+				fs.writeFileSync(
+					path.join(root, pkg, "node_modules", dep, "package.json"),
+					JSON.stringify({ name: dep }),
+				);
+			}
 		}
 		return root;
 	}
 
-	it("reports installed when every canary dependency resolves", () => {
-		const root = makeCanaryRoot({ installed: ["@playwright/test", "@axe-core/playwright"] });
+	it("reports installed when every workspace dependency resolves", () => {
+		const root = makeWorkspaceRoot({ installed: { api: ["fastify"], frontend: ["react"], "canary-e2e": ["@playwright/test"] } });
 		try {
-			assert.deepEqual(canaryDepsInstalled({ root }), { installed: true, missing: [] });
+			assert.deepEqual(workspaceDepsInstalled({ root }), { installed: true, missing: {} });
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});
 
-	it("names the missing modules when canary node_modules is absent (fresh runner clone)", () => {
-		const root = makeCanaryRoot({ installed: [] });
+	it("names the missing modules per package when node_modules is absent (fresh runner clone)", () => {
+		const root = makeWorkspaceRoot({ installed: { api: ["fastify"] } });
 		try {
-			const result = canaryDepsInstalled({ root });
+			const result = workspaceDepsInstalled({ root });
 			assert.equal(result.installed, false);
-			assert.deepEqual(result.missing.sort(), ["@axe-core/playwright", "@playwright/test"]);
+			assert.deepEqual(result.missing, {
+				frontend: ["react"],
+				"canary-e2e": ["@playwright/test"],
+			});
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});
 
-	it("reports not installed when the canary manifest is unreadable", () => {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-canary-deps-"));
+	it("reports not installed when a package manifest is unreadable", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-workspace-deps-"));
 		try {
-			const result = canaryDepsInstalled({ root });
+			const result = workspaceDepsInstalled({ root });
 			assert.equal(result.installed, false);
-			assert.ok(result.missing.length > 0);
+			assert.deepEqual(Object.keys(result.missing).sort(), ["api", "canary-e2e", "frontend"]);
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});
 });
 
-describe("ensureCanaryDeps", () => {
-	function makeCanaryRoot({ installed = [] } = {}) {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-canary-deps-"));
-		fs.mkdirSync(path.join(root, "canary-e2e"), { recursive: true });
-		fs.writeFileSync(
-			path.join(root, "canary-e2e", "package.json"),
-			JSON.stringify({ name: "canary-e2e", dependencies: { "@playwright/test": "^1.62.1" } }),
-		);
-		for (const dep of installed) {
-			fs.mkdirSync(path.join(root, "canary-e2e", "node_modules", dep), { recursive: true });
+describe("ensureWorkspaceDeps", () => {
+	function makeWorkspaceRoot({ manifests = { api: { fastify: "^5.0.0" }, frontend: { react: "^19.0.0" }, "canary-e2e": { "@playwright/test": "^1.62.1" } }, installed = {} } = {}) {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-workspace-deps-"));
+		for (const [pkg, devDependencies] of Object.entries(manifests)) {
+			fs.mkdirSync(path.join(root, pkg), { recursive: true });
 			fs.writeFileSync(
-				path.join(root, "canary-e2e", "node_modules", dep, "package.json"),
-				JSON.stringify({ name: dep }),
+				path.join(root, pkg, "package.json"),
+				JSON.stringify({ name: pkg, devDependencies }),
 			);
+			for (const dep of installed[pkg] || []) {
+				fs.mkdirSync(path.join(root, pkg, "node_modules", dep), { recursive: true });
+				fs.writeFileSync(
+					path.join(root, pkg, "node_modules", dep, "package.json"),
+					JSON.stringify({ name: dep }),
+				);
+			}
 		}
 		return root;
 	}
 
-	it("skips without spawning when canary is opted out", () => {
-		const root = makeCanaryRoot({ installed: [] });
+	function landInstalledPackages(root, pkgs, manifestDeps) {
+		for (const pkg of pkgs) {
+			for (const dep of Object.keys(manifestDeps[pkg])) {
+				fs.mkdirSync(path.join(root, pkg, "node_modules", dep), { recursive: true });
+				fs.writeFileSync(
+					path.join(root, pkg, "node_modules", dep, "package.json"),
+					JSON.stringify({ name: dep }),
+				);
+			}
+		}
+	}
+
+	it("provisions api and frontend but never touches canary when canary is opted out", () => {
+		const root = makeWorkspaceRoot({ installed: {} });
+		const calls = [];
+		const manifestDeps = { api: { fastify: "^5.0.0" }, frontend: { react: "^19.0.0" } };
 		try {
-			const result = ensureCanaryDeps({
+			const result = ensureWorkspaceDeps({
 				root,
 				withCanary: false,
-				spawnFn: () => { throw new Error("must not spawn when canary is opted out"); },
+				npmExec: "npm",
+				spawnFn: (file, args, opts) => {
+					calls.push({ file, args, opts });
+					landInstalledPackages(root, [args[args.length - 1]], manifestDeps);
+					return { status: 0 };
+				},
 			});
-			assert.deepEqual(result, { ok: true, skipped: true });
+			assert.deepEqual(result, { ok: true, installed: ["api", "frontend"] });
+			assert.deepEqual(calls.map((call) => call.args), [
+				["install", "--prefix", "api"],
+				["install", "--prefix", "frontend"],
+			]);
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});
 
-	it("does not spawn when the canary dependencies are already present", () => {
-		const root = makeCanaryRoot({ installed: ["@playwright/test"] });
+	it("does not spawn when every workspace dependency is already present", () => {
+		const root = makeWorkspaceRoot({ installed: { api: ["fastify"], frontend: ["react"], "canary-e2e": ["@playwright/test"] } });
 		try {
-			const result = ensureCanaryDeps({
+			const result = ensureWorkspaceDeps({
 				root,
 				withCanary: true,
 				spawnFn: () => { throw new Error("must not reinstall present dependencies"); },
 			});
-			assert.deepEqual(result, { ok: true, installed: false });
+			assert.deepEqual(result, { ok: true, installed: [] });
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});
 
-	it("installs through npm when dependencies are missing and re-verifies", () => {
-		const root = makeCanaryRoot({ installed: [] });
+	it("installs each missing package through npm and re-verifies", () => {
+		const root = makeWorkspaceRoot({ installed: { api: ["fastify"] } });
 		const calls = [];
+		const manifestDeps = { api: { fastify: "^5.0.0" }, frontend: { react: "^19.0.0" }, "canary-e2e": { "@playwright/test": "^1.62.1" } };
 		try {
-			const result = ensureCanaryDeps({
+			const result = ensureWorkspaceDeps({
 				root,
 				withCanary: true,
 				npmExec: "npm",
 				spawnFn: (file, args, opts) => {
 					calls.push({ file, args, opts });
-					// Simulate a successful install landing the packages.
-					fs.mkdirSync(path.join(root, "canary-e2e", "node_modules", "@playwright", "test"), { recursive: true });
-					fs.writeFileSync(
-						path.join(root, "canary-e2e", "node_modules", "@playwright", "test", "package.json"),
-						JSON.stringify({ name: "@playwright/test" }),
-					);
+					// Simulate a successful install landing that package's modules.
+					landInstalledPackages(root, [args[args.length - 1]], manifestDeps);
 					return { status: 0 };
 				},
 			});
-			assert.deepEqual(result, { ok: true, installed: true });
-			assert.equal(calls.length, 1);
-			assert.equal(calls[0].file, "npm");
-			assert.deepEqual(calls[0].args, ["install", "--prefix", "canary-e2e"]);
-			assert.equal(calls[0].opts.cwd, root);
+			assert.deepEqual(result, { ok: true, installed: ["frontend", "canary-e2e"] });
+			assert.deepEqual(calls.map((call) => call.args), [
+				["install", "--prefix", "frontend"],
+				["install", "--prefix", "canary-e2e"],
+			]);
+			assert.ok(calls.every((call) => call.file === "npm" && call.opts.cwd === root));
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});
 
-	it("fails loudly when the install exits non-zero (never a silent canary skip)", () => {
-		const root = makeCanaryRoot({ installed: [] });
+	it("fails loudly when an install exits non-zero (never a silent skip)", () => {
+		const root = makeWorkspaceRoot({ installed: { api: ["fastify"] } });
 		try {
-			const result = ensureCanaryDeps({
+			const result = ensureWorkspaceDeps({
 				root,
 				withCanary: true,
 				npmExec: "npm",
 				spawnFn: () => ({ status: 1 }),
 			});
 			assert.equal(result.ok, false);
-			assert.match(result.error, /@playwright\/test/);
+			assert.match(result.error, /frontend/);
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}

@@ -178,94 +178,127 @@ export function depcheckAvailable({ root = REPO_ROOT, targetPlatform = process.p
 }
 
 /***
- * MARK: canaryDepsInstalled
- * @description Whether the canary suite's own dependencies resolve from its
- *   package directory. canary-e2e is a separate package (its own
- *   package.json), so a root `npm install` — all a fresh Runner clone runs —
- *   never installs them. Reads the dependency names from
- *   canary-e2e/package.json (future-proof against added spec helpers) and
- *   checks each for a landed package.json under canary-e2e/node_modules.
- * @example canaryDepsInstalled({ root: "/repo" }) => { installed: true, missing: [] }
+ * MARK: WORKSPACE_PACKAGES
+ * @description Every package directory with its own install root. A root
+ *   `npm install` — all a fresh Runner clone runs — never installs these,
+ *   so the gate provisions each one itself (see ensureWorkspaceDeps) instead
+ *   of failing branches with "command not found" (2026-10-27 task b5716327:
+ *   fresh workdir, no api/frontend/canary-e2e node_modules).
+ * @example WORKSPACE_PACKAGES => ["api", "frontend", "canary-e2e"]
+ ***/
+export const WORKSPACE_PACKAGES = ["api", "frontend", "canary-e2e"];
+
+/***
+ * MARK: workspaceDepsInstalled
+ * @description Whether every workspace package's dependencies resolve from
+ *   its own package directory. Reads each package's dependency names from
+ *   its manifest (dependencies and devDependencies alike) and checks each
+ *   for a landed package.json under that package's node_modules.
+ * @example workspaceDepsInstalled({ root: "/repo" }) => { installed: true, missing: {} }
  * @param {Object} [opts]
  * @param {string} [opts.root] - repo root to probe, defaults to the gate's root.
- * @returns {{ installed: boolean, missing: string[] }} Install state plus the missing names.
+ * @param {string[]} [opts.packages] - package dirs to check, defaults to every workspace package.
+ * @returns {{ installed: boolean, missing: Record<string, string[]> }} Install state plus the missing names per package.
  ***/
-export function canaryDepsInstalled({ root = REPO_ROOT } = {}) {
-	let dependencies = null;
-	try {
-		const manifest = JSON.parse(
-			fs.readFileSync(path.join(root, "canary-e2e", "package.json"), "utf8"),
-		);
-		dependencies = { ...(manifest.dependencies || {}), ...(manifest.devDependencies || {}) };
-	} catch {
-		return { installed: false, missing: ["canary-e2e/package.json unreadable"] };
-	}
-	const missing = Object.keys(dependencies).filter((name) => {
+export function workspaceDepsInstalled({ root = REPO_ROOT, packages = WORKSPACE_PACKAGES } = {}) {
+	const missing = {};
+	for (const pkg of packages) {
+		let dependencies = null;
 		try {
-			return !fs.existsSync(path.join(root, "canary-e2e", "node_modules", name, "package.json"));
+			const manifest = JSON.parse(
+				fs.readFileSync(path.join(root, pkg, "package.json"), "utf8"),
+			);
+			dependencies = { ...(manifest.dependencies || {}), ...(manifest.devDependencies || {}) };
 		} catch {
-			return true;
+			missing[pkg] = [`${pkg}/package.json unreadable`];
+			continue;
 		}
-	});
-	return { installed: missing.length === 0, missing };
+		const absent = Object.keys(dependencies).filter((name) => {
+			try {
+				return !fs.existsSync(path.join(root, pkg, "node_modules", name, "package.json"));
+			} catch {
+				return true;
+			}
+		});
+		if (absent.length > 0) missing[pkg] = absent;
+	}
+	return { installed: Object.keys(missing).length === 0, missing };
 }
 
 /***
- * MARK: CANARY_INSTALL_TIMEOUT_MS
- * @description Honest ceiling for the one-shot canary dependency install
+ * MARK: WORKSPACE_INSTALL_TIMEOUT_MS
+ * @description Honest ceiling for one package's one-shot dependency install
  *   (registry fetch on a fresh clone). A wedged registry is killed by this
  *   budget instead of hanging the gate to the stage timeout.
- * @example CANARY_INSTALL_TIMEOUT_MS => 300000
+ * @example WORKSPACE_INSTALL_TIMEOUT_MS => 300000
  ***/
-export const CANARY_INSTALL_TIMEOUT_MS = 5 * 60 * 1000;
+export const WORKSPACE_INSTALL_TIMEOUT_MS = 5 * 60 * 1000;
 
 /***
- * MARK: ensureCanaryDeps
- * @description Installs the canary suite's dependencies when they are absent
- *   (fresh Runner clone) and only then. No-op when canary is opted out or
- *   the packages already resolve; re-verifies after installing so a silent
- *   partial install still fails loudly instead of sending Playwright out
- *   with a cryptic "Cannot find module" (2026-10-27 task b5716327).
- * @example ensureCanaryDeps({ root: "/repo", withCanary: true }) => { ok: true, installed: true }
+ * MARK: ensureWorkspaceDeps
+ * @description Installs each workspace package's dependencies when they are
+ *   absent (fresh Runner clone) and only then. No-op for packages that
+ *   already resolve (and for canary-e2e when canary is opted out);
+ *   re-verifies after installing so a silent partial install still fails
+ *   loudly instead of failing branches with "command not found".
+ * @example ensureWorkspaceDeps({ root: "/repo", withCanary: true }) => { ok: true, installed: [] }
  * @param {Object} [opts]
  * @param {string} [opts.root] - repo root, defaults to the gate's root.
- * @param {boolean} [opts.withCanary] - whether the Canary Tests branch will run.
+ * @param {boolean} [opts.withCanary] - whether the Canary Tests branch will run (only then is canary-e2e provisioned).
  * @param {string} [opts.npmExec] - npm binary, defaults to the platform one.
  * @param {Function} [opts.spawnFn] - spawnSync seam, defaults to a live spawn.
- * @returns {{ ok: boolean, installed?: boolean, skipped?: boolean, error?: string }}
+ * @returns {{ ok: boolean, installed?: string[], error?: string }}
  ***/
-export function ensureCanaryDeps({ root = REPO_ROOT, withCanary = true, npmExec = NPM, spawnFn = spawnSync } = {}) {
-	if (!withCanary) return { ok: true, skipped: true };
-	const before = canaryDepsInstalled({ root });
-	if (before.installed) return { ok: true, installed: false };
-	console.log(
-		`Canary dependencies missing (${before.missing.join(", ")}) — installing into canary-e2e (npm install --prefix canary-e2e)...`,
-	);
-	let status = null;
-	let spawnError = null;
-	try {
-		const result = spawnFn(npmExec, ["install", "--prefix", "canary-e2e"], {
-			cwd: root,
-			timeout: CANARY_INSTALL_TIMEOUT_MS,
-			stdio: "inherit",
-		});
-		status = result?.status ?? null;
-		spawnError = result?.error ?? null;
-	} catch (err) {
-		spawnError = err;
+export function ensureWorkspaceDeps({ root = REPO_ROOT, withCanary = true, npmExec = NPM, spawnFn = spawnSync } = {}) {
+	const packages = withCanary
+		? [...WORKSPACE_PACKAGES]
+		: WORKSPACE_PACKAGES.filter((name) => name !== "canary-e2e");
+	const before = workspaceDepsInstalled({ root, packages });
+	if (before.installed) return { ok: true, installed: [] };
+	const installed = [];
+	for (const pkg of Object.keys(before.missing)) {
+		if (before.missing[pkg].length === 1 && before.missing[pkg][0].endsWith("package.json unreadable")) {
+			return { ok: false, error: `Workspace dependencies could not be checked (${before.missing[pkg][0]}).` };
+		}
+		console.log(
+			`Dependencies missing for ${pkg} (${before.missing[pkg].join(", ")}) — installing (npm install --prefix ${pkg})...`,
+		);
+		let status = null;
+		let spawnError = null;
+		try {
+			const result = spawnFn(npmExec, ["install", "--prefix", pkg], {
+				cwd: root,
+				timeout: WORKSPACE_INSTALL_TIMEOUT_MS,
+				stdio: "inherit",
+			});
+			status = result?.status ?? null;
+			spawnError = result?.error ?? null;
+		} catch (err) {
+			spawnError = err;
+		}
+		if (spawnError != null || (typeof status === "number" && status !== 0)) {
+			const cause =
+				spawnError != null
+					? `install failed: ${spawnError.message || String(spawnError)}`
+					: `install exited with status ${status}`;
+			return {
+				ok: false,
+				error: `Workspace dependencies could not be installed for ${pkg} (${cause}). Refusing to run a gate whose branches would fail for missing setup.`,
+			};
+		}
+		installed.push(pkg);
 	}
-	const after = canaryDepsInstalled({ root });
+	const after = workspaceDepsInstalled({ root, packages });
 	if (after.installed) {
-		console.log("Canary dependencies installed.");
-		return { ok: true, installed: true };
+		console.log(`Workspace dependencies installed (${installed.join(", ")}).`);
+		return { ok: true, installed };
 	}
-	const cause =
-		spawnError != null
-			? `install failed: ${spawnError.message || String(spawnError)}`
-			: `install exited with status ${status}`;
+	const stillMissing = Object.entries(after.missing)
+		.map(([pkg, names]) => `${pkg}: ${names.join(", ")}`)
+		.join("; ");
 	return {
 		ok: false,
-		error: `Canary dependencies could not be installed (still missing: ${after.missing.join(", ")}; ${cause}). Refusing to run a gate whose Canary Tests branch would fail for missing setup.`,
+		error: `Workspace dependencies installed but still missing (${stillMissing}). Refusing to run a gate whose branches would fail for missing setup.`,
 	};
 }
 
@@ -467,9 +500,9 @@ async function main() {
 	console.log(
 		`✅ Settings duplicate check passed (${fastPreflightResult.totalFilesScanned} files in ${fastPreflightResult.durationMilliseconds}ms)`,
 	);
-	const canaryDeps = ensureCanaryDeps({ root: REPO_ROOT, withCanary, npmExec: NPM });
-	if (!canaryDeps.ok) {
-		console.error(canaryDeps.error);
+	const workspaceDeps = ensureWorkspaceDeps({ root: REPO_ROOT, withCanary, npmExec: NPM });
+	if (!workspaceDeps.ok) {
+		console.error(workspaceDeps.error);
 		process.exitCode = 1;
 		return;
 	}
