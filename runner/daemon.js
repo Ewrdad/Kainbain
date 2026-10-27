@@ -77,6 +77,24 @@ export function clearHarnessVersionCache() {
 }
 
 /***
+ * MARK: runnerHarnessIds
+ * @description Normalized harness list for one Runner: the csv
+ *   `harnessIds` when configured, else the singular primary `harnessId`.
+ *   Tolerates hand-built configs (tests) that only set `harnessId`.
+ * @example runnerHarnessIds({ harnessId: 'pi' }) => ['pi']
+ * @param {Object} [config] - Normalized runner config.
+ * @returns {string[]} Harness ids, primary first.
+ ***/
+export function runnerHarnessIds(config = {}) {
+	const ids = Array.isArray(config.harnessIds)
+		? config.harnessIds.map((h) => String(h ?? "").trim()).filter(Boolean)
+		: [];
+	if (ids.length > 0) return ids;
+	const primary = String(config.harnessId ?? "").trim();
+	return primary ? [primary] : [];
+}
+
+/***
  * MARK: resolveRunnerStagePrompt
  * @description Builds the harness prompt for one assignment with the same
  *   curation the embedded engine applies: the task goal plus the stage's
@@ -204,9 +222,10 @@ export async function defaultLoadHarness(harnessId) {
 }
 
 function factsFor({ config, harnessVersions }) {
-	const cached = harnessVersionCache.get(config.harnessId)?.[config.harnessId];
+	const versionFor = (id) =>
+		harnessVersions?.[id] ?? harnessVersionCache.get(id)?.[id] ?? "unknown";
 	return {
-		harnesses: [{ id: config.harnessId, version: harnessVersions?.[config.harnessId] ?? cached ?? "unknown" }],
+		harnesses: runnerHarnessIds(config).map((id) => ({ id, version: versionFor(id) })),
 		models:
 			Array.isArray(config.models) && config.models.length > 0
 				? [...config.models]
@@ -231,7 +250,7 @@ function factsFor({ config, harnessVersions }) {
  * @param {Function} opts.loadHarness - Harness loader.
  * @param {Object} opts.logger - Logger.
  * @param {Object} opts.state - Live-execution ref (`{ session, executionId, epoch }`), read by the steer pull cycle.
- * @returns {Promise<Object>} Loaded harness plus `stop()` for the timer.
+ * @returns {Promise<Object>} Primary `harness`, full `harnesses` map, plus `stop()` for the timer.
  ***/
 async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) {
 	if (!config.credential) {
@@ -240,8 +259,11 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
 		}
 		const deadline = Date.now() + config.approvalTimeoutMs;
 		// Probe before the first register so even a pending join advertises
-		// the real harness CLI version (G5).
-		const joinVersions = await probeHarnessVersions(config.harnessId);
+		// the real harness CLI versions (G5).
+		const joinVersions = {};
+		for (const id of runnerHarnessIds(config)) {
+			Object.assign(joinVersions, await probeHarnessVersions(id));
+		}
 		for (;;) {
 			const reg = await client.register({
 				runnerId: config.runnerId,
@@ -261,11 +283,23 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
 	}
 	client.setCredential(config.credential);
 
-	const harness = await loadHarness(config.harnessId);
-	// G5: probe the harness CLI version once at load; every later factsFor
-	// call (register, heartbeats, steer pulls) reuses the cached probe, so
+	// Multi-harness service: load every advertised harness once; each
+	// dispatch answer then serves with its required one.
+	const harnesses = {};
+	for (const id of runnerHarnessIds(config)) {
+		harnesses[id] = await loadHarness(id);
+	}
+	const harness = harnesses[config.harnessId] ?? Object.values(harnesses)[0];
+	if (!harness) {
+		throw new Error("Runner has no harness configured (KAINBAIN_RUNNER_HARNESS or KAINBAIN_RUNNER_HARNESSES).");
+	}
+	// G5: probe each harness CLI version once at load; every later factsFor
+	// call (register, heartbeats, steer pulls) reuses the cached probes, so
 	// the backend sees real CLI drift instead of "unknown".
-	const harnessVersions = await probeHarnessVersions(config.harnessId);
+	const harnessVersions = {};
+	for (const id of runnerHarnessIds(config)) {
+		Object.assign(harnessVersions, await probeHarnessVersions(id));
+	}
 	const facts = factsFor({ config, harnessVersions });
 	const beat = await client.heartbeat({ runnerId: config.runnerId, facts });
 	if (beat.status !== "active") {
@@ -279,7 +313,7 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
 		});
 	}, config.heartbeatMs);
 	if (typeof heartbeatTimer.unref === "function") heartbeatTimer.unref();
-	return { harness, facts, stop: () => clearInterval(heartbeatTimer) };
+	return { harness, harnesses, facts, stop: () => clearInterval(heartbeatTimer) };
 }
 
 /***
@@ -340,11 +374,13 @@ export async function deliverSteers({ config, client, logger, facts, state }) {
  *   commit/push, and complete one assignment (used by both
  *   single-assignment and loop).
  * @example await executeAssignment({ config, client, logger, harness, state, projectId, taskId })
- * @param {Object} opts - Options (config, client, logger, harness, state, projectId, taskId, lease?, model?).
+ * @param {Object} opts - Options (config, client, logger, harness, state, projectId, taskId, lease?, model?, harnessId?).
  * @param {string} [opts.model] - Required model from the dispatch answer
  *   (`requirements.model`); the runner serves exactly that, never a
  *   substitution. Falls back to the pinned `config.model` (single-assignment
  *   mode or a model-less task), else the harness default.
+ * @param {string} [opts.harnessId] - Serving harness id for the posture
+ *   line; defaults to the primary `config.harnessId`.
  * @returns {Promise<Object>} Execution summary.
  ***/
 async function executeAssignment({
@@ -357,7 +393,9 @@ async function executeAssignment({
 	taskId,
 	lease,
 	model = null,
+	harnessId = null,
 }) {
+	const servingHarnessId = harnessId || config.harnessId || "unknown";
 		const project = await client.getProject(projectId);
 		const task = await client.getTask(projectId, taskId);
 		const stageId = String(task.currentStageId ?? task.stages?.[0]?.id ?? "stage");
@@ -502,7 +540,7 @@ async function executeAssignment({
 				epoch,
 				sha,
 				branch,
-				posture: `${config.tiers.join("/")}:${config.harnessId}:${config.model || "default"}`,
+				posture: `${config.tiers.join("/")}:${servingHarnessId}:${config.model || "default"}`,
 				outcome: "passed",
 				output: String(output || "").slice(0, 20000),
 				durationMs: Date.now() - runStartedAt,
@@ -520,7 +558,7 @@ async function executeAssignment({
 					epoch,
 					outcome: "failed",
 					failureReason: err.failedOutcome,
-					posture: `${config.tiers.join("/")}:${config.harnessId}:${config.model || "default"}`,
+					posture: `${config.tiers.join("/")}:${servingHarnessId}:${config.model || "default"}`,
 					durationMs: Date.now() - runStartedAt,
 				});
 			}
@@ -578,6 +616,7 @@ export async function runSingleAssignment({
 			client,
 			logger,
 			harness,
+			harnessId: config.harnessId,
 			state,
 			projectId: config.projectId,
 			taskId: config.taskId,
@@ -621,7 +660,7 @@ export async function runDispatchLoop({
 	}
 
 	const state = { session: null, executionId: null, epoch: null };
-	const { harness, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger, state });
+	const { harness, harnesses, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger, state });
 	const idleLimit = config.dispatchIdleLimit ?? 3;
 	const pollMs = config.dispatchPollMs ?? 5000;
 	let assignments = 0;
@@ -661,11 +700,26 @@ export async function runDispatchLoop({
 			}
 			idle = 0;
 			assignments += 1;
+			// Multi-harness service: the dispatch answer names the
+			// required harness (alias-resolved server-side) — serve with
+			// that one, not the primary. An unloaded name falls back to
+			// the primary with a warning: the lease is already fenced to
+			// us, so stranding it would wedge the task, and the posture
+			// line records what actually served.
+			const wanted = answer.requirements?.harness || null;
+			const servingId =
+				wanted && harnesses[wanted] ? wanted : config.harnessId;
+			if (wanted && !harnesses[wanted]) {
+				logger.warn(
+					`Requirements want harness '${wanted}' (not loaded); serving with primary '${servingId}'.`,
+				);
+			}
 			await executeAssignment({
 				config,
 				client,
 				logger,
-				harness,
+				harness: harnesses[servingId] ?? harness,
+				harnessId: servingId,
 				state,
 				projectId: answer.projectId,
 				taskId: answer.taskId,

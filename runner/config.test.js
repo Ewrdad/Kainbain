@@ -78,6 +78,27 @@ describe("loadRunnerConfig", () => {
 		assert.equal(bare.model, "");
 	});
 
+	it("reads a csv HARNESSES list, singular HARNESS seeds it", () => {
+		const multi = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESSES: " pi ,muse,, vibe ",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+		});
+		assert.equal(multi.errors.length, 0);
+		assert.deepEqual(multi.harnessIds, ["pi", "muse", "vibe"]);
+		assert.equal(multi.harnessId, "pi");
+
+		const single = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "mock",
+			KAINBAIN_RUNNER_PROJECT_ID: "p1",
+			KAINBAIN_RUNNER_TASK_ID: "t1",
+		});
+		assert.equal(single.errors.length, 0);
+		assert.deepEqual(single.harnessIds, ["mock"]);
+		assert.equal(single.harnessId, "mock");
+	});
+
 	it("falls back on invalid numbers and customizes tiers", () => {
 		const config = loadRunnerConfig({
 			KAINBAIN_RUNNER_ID: "r1",

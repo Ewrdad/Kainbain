@@ -588,6 +588,22 @@ describe("Runner Routes Integration", () => {
 		expect(res.statusCode).toBe(401);
 	});
 
+	it("records the runner-enforced project scope for the settings UI", async () => {
+		const { project } = await mockProject("Scope Fixture");
+		const credential = await onboard("dispatch-scope");
+		await heartbeatAs(credential, "dispatch-scope");
+		await dispatchAs(credential, { projectIds: [project.id] });
+		const list = JSON.parse((await app.inject({ method: "GET", url: "/runners" })).payload);
+		const scoped = list.find((r) => r.runnerId === "dispatch-scope");
+		expect(scoped.projectScope).toEqual([project.id]);
+
+		const credential2 = await onboard("dispatch-scope-all");
+		await heartbeatAs(credential2, "dispatch-scope-all");
+		await dispatchAs(credential2);
+		const list2 = JSON.parse((await app.inject({ method: "GET", url: "/runners" })).payload);
+		expect(list2.find((r) => r.runnerId === "dispatch-scope-all").projectScope).toBeNull();
+	});
+
 	async function aliasProject(name, { targets, aliasName = "fast", withAliases = true }) {
 		const projRes = await app.inject({
 			method: "POST",

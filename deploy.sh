@@ -1589,13 +1589,15 @@ $(gate_tail "$_verify_log")"
 		# healthy deploy): a mid-assignment restart just lets the claim TTL
 		# expire and the task re-queues by design. Skipped when the unit is
 		# not installed yet (pre-cutover hosts).
-		if [ -f "$HOME/.config/systemd/user/kainbain-runner.service" ]; then
-			if systemctl --user restart kainbain-runner.service 2>/dev/null; then
-				log "Restarted kainbain-runner.service onto the new build."
+		for unit_file in "$HOME/.config/systemd/user"/kainbain-runner-local-*.service; do
+			[ -e "$unit_file" ] || continue
+			unit_name="$(basename "$unit_file")"
+			if systemctl --user restart "$unit_name" 2>/dev/null; then
+				log "Restarted $unit_name onto the new build."
 			else
-				log "⚠️ kainbain-runner.service restart failed (non-fatal) — restart it manually."
+				log "⚠️ $unit_name restart failed (non-fatal) — restart it manually."
 			fi
-		fi
+		done
 		write_result "success" "Deployment complete and healthy" "false"
 		echo "--------------------------------------------------"
 		echo "✅ Production deployment complete!"

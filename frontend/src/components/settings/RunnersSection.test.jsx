@@ -115,6 +115,28 @@ describe('RunnersSection', () => {
     expect(screen.queryByTestId('runner-assignment-r2')).toBeNull();
   });
 
+  it('shows harness options and project scope per Runner', async () => {
+    getRunners.mockResolvedValue([
+      {
+        runnerId: 'r1',
+        status: 'active',
+        facts: {},
+        capabilities: { harnesses: [{ id: 'pi' }, { id: 'vibe' }] },
+        projectScope: ['p1'],
+        lastSeenAt: null,
+      },
+      { runnerId: 'r2', status: 'active', facts: {}, lastSeenAt: null },
+    ]);
+    render(<RunnersSection />);
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-harnesses-r1').textContent).toContain('pi');
+      expect(screen.getByTestId('runner-harnesses-r1').textContent).toContain('vibe');
+    });
+    expect(screen.getByTestId('runner-scope-r1').textContent).toContain('1 scoped');
+    expect(screen.getByTestId('runner-scope-r2').textContent).toContain('all');
+    expect(screen.queryByTestId('runner-harnesses-r2')).toBeNull();
+  });
+
   it('shows scheduler deferral counts when the monitor reports them', async () => {
     getRunners.mockResolvedValue([
       { runnerId: 'r1', status: 'active', facts: {}, lastSeenAt: null },

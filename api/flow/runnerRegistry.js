@@ -145,7 +145,25 @@ export class RunnerRegistry {
 			lastSeenAt: record.lastSeenAt,
 			credentialIssuedAt: record.credentialIssuedAt || null,
 			originConflicts: record.originConflicts || 0,
+			projectScope: Array.isArray(record.projectScope) ? [...record.projectScope] : null,
 		};
+	}
+
+	/***
+	 * MARK: recordDispatchScope
+	 * @description Remembers the Runner-enforced project allowlist from its
+	 *   latest dispatch poll (`KAINBAIN_RUNNER_PROJECTS`): null means the
+	 *   Runner serves every project. Display-only for Settings › Runners —
+	 *   enforcement already happens in the dispatch scan.
+	 * @example registry.recordDispatchScope('r1', ['p1'])
+	 * @param {string} runnerId - Runner id.
+	 * @param {string[]|undefined} projectIds - Allowlist or undefined (all).
+	 ***/
+	recordDispatchScope(runnerId, projectIds) {
+		const record = this.runners.get(runnerId);
+		if (!record) return;
+		record.projectScope =
+			Array.isArray(projectIds) && projectIds.length > 0 ? [...projectIds] : null;
 	}
 
 	static _capabilitiesOrThrow(facts) {

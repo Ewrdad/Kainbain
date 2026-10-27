@@ -196,6 +196,29 @@ export function RunnersSection() {
                   Running task {String(assignments[runner.runnerId].taskId).slice(0, 8)}
                 </span>
               )}
+              {Array.isArray(runner.capabilities?.harnesses) &&
+                runner.capabilities.harnesses.length > 0 && (
+                  <span
+                    className="text-[10px] font-mono text-text-muted"
+                    data-testid={`runner-harnesses-${runner.runnerId}`}
+                    title="Harnesses this Runner can serve"
+                  >
+                    {runner.capabilities.harnesses.map((h) => h?.id || h).join(' · ')}
+                  </span>
+                )}
+              <span
+                className="text-[10px] font-mono text-text-muted"
+                data-testid={`runner-scope-${runner.runnerId}`}
+                title={
+                  Array.isArray(runner.projectScope) && runner.projectScope.length > 0
+                    ? `Scoped project ids: ${runner.projectScope.join(', ')}`
+                    : 'No project allowlist set — serves every project'
+                }
+              >
+                {Array.isArray(runner.projectScope) && runner.projectScope.length > 0
+                  ? `Projects: ${runner.projectScope.length} scoped`
+                  : 'Projects: all'}
+              </span>
               {runner.facts?.versions?.runner && (
                 <span
                   className="text-[10px] font-mono text-text-muted"

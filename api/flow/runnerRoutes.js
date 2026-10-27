@@ -410,6 +410,7 @@ export async function registerRunnerRoutes(app, { deps }) {
 		const projectIds = Array.isArray(request.body?.projectIds)
 			? request.body.projectIds
 			: undefined;
+		runnerRegistry.recordDispatchScope(runner.runnerId, projectIds);
 		// D8 burn control (ADR 0010): the fleet cap stops parallel burn
 		// before any scan; per-project caps skip that project's candidates
 		// below. 0 disables that cap (default: single-Runner behaviour).

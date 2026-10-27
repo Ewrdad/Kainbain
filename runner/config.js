@@ -20,7 +20,17 @@ export function loadRunnerConfig(env = process.env) {
 
 	const backendUrl = str("KAINBAIN_RUNNER_BACKEND", "http://localhost:3100").replace(/\/+$/, "");
 	const runnerId = str("KAINBAIN_RUNNER_ID", "");
-	const harnessId = str("KAINBAIN_RUNNER_HARNESS", "");
+	// Multi-harness service (one Runner, several harnesses): the csv
+	// KAINBAIN_RUNNER_HARNESSES wins when set; otherwise the singular
+	// KAINBAIN_RUNNER_HARNESS seeds a 1-element list. The first entry
+	// stays the primary harness (single-assignment default, posture).
+	const harnessIds = str("KAINBAIN_RUNNER_HARNESSES", "")
+		.split(",")
+		.map((h) => h.trim())
+		.filter(Boolean);
+	const singularHarness = str("KAINBAIN_RUNNER_HARNESS", "");
+	if (harnessIds.length === 0 && singularHarness) harnessIds.push(singularHarness);
+	const harnessId = harnessIds[0] ?? "";
 	// Servable model advertisement (capability matching is backend-side, so
 	// the list is the operator's claim of what this host can run; the
 	// dispatch answer carries the required model per assignment and the
@@ -57,6 +67,7 @@ export function loadRunnerConfig(env = process.env) {
 		credential: str("KAINBAIN_RUNNER_CREDENTIAL", ""),
 		runnerId,
 		harnessId,
+		harnessIds,
 		model,
 		models,
 		tiers: str("KAINBAIN_RUNNER_TIERS", "T0,T1")

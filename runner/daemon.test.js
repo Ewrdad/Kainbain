@@ -532,6 +532,112 @@ describe("runDispatchLoop", () => {
 		assert.equal(seenMeta?.model, "m-want");
 	});
 
+	it("serves the dispatch answer's required harness per assignment", async () => {
+		const repo = localRepo();
+		const config = loopConfig({ harnessId: "mock", harnessIds: ["mock", "pi"] });
+		dirs.push(config.workRoot, repo);
+		const servedBy = [];
+		const namedHarness = (id) => ({
+			async createSession() {
+				servedBy.push(id);
+				return {
+					getLastAssistantText: () => "done",
+					subscribe: () => () => {},
+					prompt: async () => "done",
+					dispose: async () => {},
+				};
+			},
+		});
+		let polls = 0;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				polls += 1;
+				return polls === 1
+					? {
+							assigned: true,
+							projectId: "p1",
+							taskId: "t1",
+							executionId: "e1",
+							epoch: 1,
+							requirements: { harness: "pi", model: null },
+						}
+					: { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			getWorkflow: async () => ({ workflow: { stages: [] } }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async () => ({ accepted: true, shaState: "present" }),
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const loaded = [];
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async (id) => {
+				loaded.push(id);
+				return namedHarness(id);
+			},
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.assignments, 1);
+		assert.deepEqual(loaded, ["mock", "pi"]);
+		assert.deepEqual(servedBy, ["pi"]);
+	});
+
+	it("falls back to the primary harness when requirements name an unloaded one", async () => {
+		const repo = localRepo();
+		const config = loopConfig({ harnessId: "mock", harnessIds: ["mock"] });
+		dirs.push(config.workRoot, repo);
+		const servedBy = [];
+		let polls = 0;
+		const warnings = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				polls += 1;
+				return polls === 1
+					? {
+							assigned: true,
+							projectId: "p1",
+							taskId: "t1",
+							executionId: "e1",
+							epoch: 1,
+							requirements: { harness: "nope", model: null },
+						}
+					: { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			getWorkflow: async () => ({ workflow: { stages: [] } }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async () => ({ accepted: true, shaState: "present" }),
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async (id) => ({
+				async createSession() {
+					servedBy.push(id);
+					return {
+						getLastAssistantText: () => "done",
+						subscribe: () => () => {},
+						prompt: async () => "done",
+						dispose: async () => {},
+					};
+				},
+			}),
+			logger: { log: () => {}, warn: (m) => warnings.push(m) },
+		});
+		assert.equal(out.assignments, 1);
+		assert.deepEqual(servedBy, ["mock"]);
+		assert.ok(warnings.some((w) => /primary/.test(w)));
+	});
+
 	it("backs off on 429 without consuming idle budget or crashing", async () => {
 		const repo = localRepo();
 		const config = loopConfig({ dispatchIdleLimit: 1 });
