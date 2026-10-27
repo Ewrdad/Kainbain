@@ -12,14 +12,14 @@ services:
       NODE_ENV: production
       PORT: "3100"
       PROJECTS_ROOT: /workspace/projects
-      NOTES_SPACE_ROOT: /home/node/.kainbain/notes
+      NOTES_SPACE_ROOT: ${KAINBAIN_NOTES_CONTAINER_PATH:-/home/node/.kainbain/notes}
       KAINBAIN_DIST: /app/frontend/dist
       KAINBAIN_BUILD_REF: ${KAINBAIN_IMAGE_TAG:-latest}
       KAINBAIN_BUILD_NUMBER: ${KAINBAIN_BUILD_NUMBER:-0}
     volumes:
       - ${KAINBAIN_PROJECTS_HOST:-./projects}:/workspace/projects
       - ${KAINBAIN_STATE_HOST:-./data}:/home/node/.kainbain
-      - ${KAINBAIN_NOTES_HOST:-./notes}:/home/node/.kainbain/notes
+      - ${KAINBAIN_NOTES_HOST:-./notes}:${KAINBAIN_NOTES_CONTAINER_PATH:-/home/node/.kainbain/notes}
     restart: unless-stopped
   frontend:
     image: kainbain-frontend:${KAINBAIN_IMAGE_TAG:-latest}

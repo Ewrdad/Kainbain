@@ -1389,6 +1389,7 @@ exec 9>"$LOCK_FILE"
 	else
 		sed -i "s/^KAINBAIN_IMAGE_TAG=.*/KAINBAIN_IMAGE_TAG=$IMAGE_TAG/; s/^KAINBAIN_BUILD_NUMBER=.*/KAINBAIN_BUILD_NUMBER=$BUILD_NUMBER/" "$PROD_DIR/.env"
 		grep -q '^KAINBAIN_IMAGE_TAG=' "$PROD_DIR/.env" || echo "KAINBAIN_IMAGE_TAG=$IMAGE_TAG" >> "$PROD_DIR/.env"
+		grep -q '^KAINBAIN_NOTES_CONTAINER_PATH=' "$PROD_DIR/.env" || { _nh="$(grep '^KAINBAIN_NOTES_HOST=' "$PROD_DIR/.env" | cut -d= -f2-)"; [ -n "$_nh" ] && echo "KAINBAIN_NOTES_CONTAINER_PATH=$_nh" >> "$PROD_DIR/.env" || true; }
 	fi
 	stamp_build_json
 	write_result "deploying" "Deploying build $BUILD_NUMBER (pre-restart marker)" "false"
