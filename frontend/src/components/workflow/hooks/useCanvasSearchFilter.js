@@ -119,7 +119,7 @@ export function useCanvasSearchFilter({
     setSelectedMobileStageId(null);
   }
 
-  const { filteredTasks } = useMemo(
+  const { filteredTasks, orphanTasks } = useMemo(
     () =>
       filterBoardTasksWithTags({
         tasks: activeWorkflowTasks,
@@ -186,6 +186,7 @@ export function useCanvasSearchFilter({
     setStageTagFilterMode,
     clearTagFilter,
     filteredTasks,
+    orphanTasks,
     stageTagOptions,
     tagRenderEntries,
     visibleStages,

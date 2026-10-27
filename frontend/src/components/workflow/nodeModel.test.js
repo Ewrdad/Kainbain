@@ -171,7 +171,7 @@ describe('filterBoardTasksWithTags', () => {
   test('empty tasks yield empty result', () => {
     expect(
       filterBoardTasksWithTags({ ...base, tasks: [], selectedTags: ['PO'] }),
-    ).toEqual({ visibleStageIds: ['s-po-1', 's-po-2'], filteredTasks: [] });
+    ).toEqual({ visibleStageIds: ['s-po-1', 's-po-2'], filteredTasks: [], orphanTasks: [] });
   });
 
   test('untagged stages hide as soon as any tag is selected', () => {
@@ -198,6 +198,101 @@ describe('filterBoardTasksWithTags', () => {
       textQuery: 'nonexistent-term',
     });
     expect(filteredTasks).toEqual([]);
+  });
+});
+
+describe('filterBoardTasksWithTags orphan tasks', () => {
+  const orphanStages = [
+    { id: 's-idea', name: 'Idea', type: 'agent', tags: ['PO'] },
+    { id: 's-review', name: 'Review', type: 'human', tags: ['PO'] },
+    { id: 's-dev', name: 'Build', type: 'agent', tags: ['Dev'] },
+  ];
+  const orphanTasksFixture = [
+    { id: 'KB-20', goal: 'Draft proposal', status: 'active', currentStageId: 's-idea' },
+    { id: 'KB-21', goal: 'Review spec', status: 'active', currentStageId: 's-review' },
+    { id: 'KB-22', goal: 'Implement login', status: 'active', currentStageId: 's-dev' },
+  ];
+  const orphanBase = {
+    tasks: orphanTasksFixture,
+    stages: orphanStages,
+    showCompleted: true,
+    textQuery: '',
+    selectedTags: [],
+    tagMode: 'any',
+  };
+  const deletedStageTask = {
+    id: 'KB-orphan',
+    goal: 'Cleanup markdown files',
+    status: 'in_stage',
+    currentStageId: 's-deleted',
+  };
+
+  test('task parked at a deleted stage is excluded from columns but reported as orphan', () => {
+    const { filteredTasks, orphanTasks } = filterBoardTasksWithTags({
+      ...orphanBase,
+      tasks: [...orphanTasksFixture, deletedStageTask],
+    });
+    expect(filteredTasks.map((t) => t.id)).not.toContain('KB-orphan');
+    expect(orphanTasks.map((t) => t.id)).toEqual(['KB-orphan']);
+  });
+
+  test('tag-hidden tasks whose stage still exists are not orphans', () => {
+    const { filteredTasks, orphanTasks } = filterBoardTasksWithTags({
+      ...orphanBase,
+      selectedTags: ['PO'],
+    });
+    expect(filteredTasks.map((t) => t.id)).toEqual(['KB-20', 'KB-21']);
+    expect(orphanTasks).toEqual([]);
+  });
+
+  test('completed orphans follow the showCompleted toggle', () => {
+    const done = { ...deletedStageTask, status: 'completed' };
+    const hidden = filterBoardTasksWithTags({
+      ...orphanBase,
+      tasks: [done],
+      showCompleted: false,
+    });
+    expect(hidden.filteredTasks).toEqual([]);
+    expect(hidden.orphanTasks).toEqual([]);
+    const shown = filterBoardTasksWithTags({
+      ...orphanBase,
+      tasks: [done],
+      showCompleted: true,
+    });
+    expect(shown.orphanTasks.map((t) => t.id)).toEqual([done.id]);
+  });
+
+  test('text query applies to orphans', () => {
+    const { orphanTasks } = filterBoardTasksWithTags({
+      ...orphanBase,
+      tasks: [deletedStageTask],
+      textQuery: 'markdown',
+    });
+    expect(orphanTasks.map((t) => t.id)).toEqual(['KB-orphan']);
+    const missed = filterBoardTasksWithTags({
+      ...orphanBase,
+      tasks: [deletedStageTask],
+      textQuery: 'nonexistent-term',
+    });
+    expect(missed.orphanTasks).toEqual([]);
+  });
+
+  test('system filters apply to orphans (waiting_human orphan matches !human)', () => {
+    const waiting = { ...deletedStageTask, status: 'waiting_human' };
+    const { orphanTasks } = filterBoardTasksWithTags({
+      ...orphanBase,
+      tasks: [waiting, deletedStageTask],
+      systemFilters: ['human'],
+    });
+    expect(orphanTasks.map((t) => t.id)).toEqual([waiting.id]);
+  });
+
+  test('empty tasks yield empty orphans', () => {
+    expect(filterBoardTasksWithTags({ ...orphanBase, tasks: [] })).toEqual({
+      visibleStageIds: ['s-idea', 's-review', 's-dev'],
+      filteredTasks: [],
+      orphanTasks: [],
+    });
   });
 });
 

@@ -7,6 +7,7 @@ import { useNow } from '../../hooks/useNow';
 import { AddStageMenu } from './AddStageMenu';
 import { CanvasToolbar } from './CanvasToolbar';
 import { StageColumn } from './StageColumn';
+import { OrphanStageColumn } from './OrphanStageColumn';
 import { CollapsedStageRunBar } from './CollapsedStageRunBar';
 import { ActivityConsole } from './ActivityConsole';
 import {
@@ -182,6 +183,7 @@ export function WorkflowCanvas() {
     setStageTagFilterMode,
     clearTagFilter,
     filteredTasks,
+    orphanTasks,
     stageTagOptions,
     tagRenderEntries,
     visibleStages,
@@ -469,7 +471,7 @@ export function WorkflowCanvas() {
             <div className="text-5xl grayscale">⏳</div>
             <p className="text-sm font-mono uppercase tracking-widest">Switching pipeline…</p>
           </div>
-        ) : allStagesHiddenByTags ? (
+        ) : allStagesHiddenByTags && (orphanTasks || []).length === 0 ? (
           <div
             className="flex-1 h-full flex flex-col items-center justify-center text-text-muted space-y-4"
             role="status"
@@ -508,6 +510,24 @@ export function WorkflowCanvas() {
           })
         )}
         {/* Per-stage column owns its <section> (see StageColumn.jsx) */}
+
+        {/* Fail-visible bucket for tasks parked at deleted stages: without
+            it an approval that lands just before a pipeline edit silently
+            drops the task from every column (cleanup task b6f7da08). */}
+        {(orphanTasks || []).length > 0 && (
+          <OrphanStageColumn
+            tasks={orphanTasks}
+            activeWfId={activeWfId}
+            colStyle={colStyle}
+            engineState={engineState}
+            isAgentRunning={isAgentRunning}
+            nowMs={nowMs}
+            setSelectedTask={setSelectedTask}
+            handleApprove={handleApprove}
+            handleReject={handleReject}
+            handleExecute={handleExecute}
+          />
+        )}
 
         {/* "+ Add Stage" Column at End of Pipeline (#12, #24). Desktop only
             (`hidden md:flex` inside): on mobile the board shows a single

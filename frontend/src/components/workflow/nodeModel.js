@@ -38,7 +38,12 @@ export function filterActiveWorkflowTasks(tasks, activeWfId, activeWorkflow) {
  *   by the selected stage tags (collapsing non-matching runs), and tasks within
  *   the surviving stages are filtered by the remaining text query, the `!`
  *   system filters (registry predicates under the tagMode any/all logic), and
- *   the completed toggle. Returns `{ visibleStageIds, filteredTasks }`.
+ *   the completed toggle. Returns `{ visibleStageIds, filteredTasks, orphanTasks }`.
+ *   `orphanTasks` are fail-visible: tasks passing every non-stage predicate
+ *   whose stage id exists nowhere in the pipeline (deleted stage, pipeline
+ *   switch) so the board can render them in an explicit bucket instead of
+ *   silently dropping them. Tasks merely hidden by an active tag filter are
+ *   NOT orphans — their stage still exists.
  * @example filterBoardTasksWithTags({ tasks, stages, showCompleted: false, textQuery: 'auth', selectedTags: ['Dev'], tagMode: 'any', systemFilters: ['failed'] })
  ***/
 export function filterBoardTasksWithTags({
@@ -58,12 +63,10 @@ export function filterBoardTasksWithTags({
           .filter((stage) => stageMatchesTags(stage, normalizedTags, tagMode))
           .map((stage) => stage.id);
   const visibleStageSet = new Set(visibleStageIds);
+  const pipelineStageSet = new Set((stages || []).map((stage) => stage?.id));
 
-  const filteredTasks = (tasks || []).filter((task) => {
+  const passesNonStageFilters = (task) => {
     if (isTaskCompleted(task) && !showCompleted) return false;
-
-    const stageId = task.currentStageId || task.stageId;
-    if (!visibleStageSet.has(stageId)) return false;
 
     if (textQuery && String(textQuery).trim()) {
       const query = String(textQuery).toLowerCase().trim();
@@ -87,9 +90,21 @@ export function filterBoardTasksWithTags({
     }
 
     return true;
-  });
+  };
 
-  return { visibleStageIds, filteredTasks };
+  const filteredTasks = [];
+  const orphanTasks = [];
+  for (const task of tasks || []) {
+    if (!passesNonStageFilters(task)) continue;
+    const stageId = task.currentStageId || task.stageId;
+    if (visibleStageSet.has(stageId)) {
+      filteredTasks.push(task);
+    } else if (!pipelineStageSet.has(stageId)) {
+      orphanTasks.push(task);
+    }
+  }
+
+  return { visibleStageIds, filteredTasks, orphanTasks };
 }
 
 /***

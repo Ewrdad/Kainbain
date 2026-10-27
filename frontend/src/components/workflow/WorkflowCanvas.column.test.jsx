@@ -439,3 +439,33 @@ test('canvas card on a mid-pipeline checkpoint keeps the approve-and-advance wor
     expect(advanceTask).toHaveBeenCalledWith('proj-1', 'task-2');
   });
 });
+
+test('task parked at a deleted stage renders in the Unknown-stage bucket instead of vanishing', () => {
+  renderWithKainBain(<WorkflowCanvas />, {
+    stages,
+    tasks: [
+      { id: 'task-1', goal: 'Build login page', currentStageId: '1', status: 'in_stage' },
+      { id: 'task-orphan', goal: 'Cleanup markdown files', currentStageId: 'stage-deleted', status: 'in_stage' },
+    ],
+    activeProjectId: 'proj-1',
+  });
+  // … while the orphaned task is fail-visible in its own bucket.
+  const bucket = screen.getByTestId('stage-col-orphan');
+  expect(screen.getByTestId('orphan-count-badge')).toHaveTextContent('1');
+  expect(within(bucket).getByText('Cleanup markdown files')).toBeInTheDocument();
+  // Matched task stays out of the bucket …
+  expect(within(bucket).queryByText('Build login page')).not.toBeInTheDocument();
+  // … and still renders somewhere on the board.
+  expect(screen.getByText('Build login page')).toBeInTheDocument();
+});
+
+test('no Unknown-stage bucket renders when every task resolves to a live stage', () => {
+  renderWithKainBain(<WorkflowCanvas />, {
+    stages,
+    tasks: [
+      { id: 'task-1', goal: 'Build login page', currentStageId: '1', status: 'in_stage' },
+    ],
+    activeProjectId: 'proj-1',
+  });
+  expect(screen.queryByTestId('stage-col-orphan')).not.toBeInTheDocument();
+});
