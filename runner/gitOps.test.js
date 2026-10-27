@@ -81,3 +81,22 @@ describe("commitAndPush", () => {
 		assert.equal(show(["config", "user.name"]), "t");
 	});
 });
+
+describe("commitAndPush task docs rescue", () => {
+	it("force-adds gitignored task docs so the backend can see plans", async () => {
+		const ctx2 = worktreeRepo(true);
+		try {
+			fs.writeFileSync(path.join(ctx2.dir, ".gitignore"), "docs/tasks/\n");
+			const docsDir = path.join(ctx2.dir, "docs/tasks/t1");
+			fs.mkdirSync(docsDir, { recursive: true });
+			fs.writeFileSync(path.join(docsDir, "IMPLEMENTATION_PLAN.md"), "plan");
+			const out = await commitAndPush({ workdir: ctx2.dir, branch: "kb/t1", message: "stage", taskDocsPath: "docs/tasks/t1" });
+			assert.equal(out.pushed, true);
+			const shown = execFileSync("git", ["show", "HEAD:docs/tasks/t1/IMPLEMENTATION_PLAN.md"], { cwd: ctx2.dir, encoding: "utf8" });
+			assert.equal(shown, "plan");
+		} finally {
+			fs.rmSync(ctx2.dir, { recursive: true, force: true });
+			if (ctx2.origin) fs.rmSync(ctx2.origin, { recursive: true, force: true });
+		}
+	});
+});

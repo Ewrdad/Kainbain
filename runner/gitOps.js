@@ -16,8 +16,13 @@ import { runGit } from "./project.js";
  * @param {string} [opts.author] - Per-Runner commit identity (WP-4.1 push attribution), e.g. `kainbain-runner/host-1`. Recorded with `git -c` overrides so repo config is never touched.
  * @returns {Promise<Object>} `{ sha, pushed, skipped }`.
  ***/
-export async function commitAndPush({ workdir, branch, message, author = "" }) {
+export async function commitAndPush({ workdir, branch, message, author = "", taskDocsPath = "" }) {
 	await runGit(workdir, ["add", "-A"]);
+	// Task docs (plans/reports) must reach the backend even on branches whose
+	// .gitignore predates tracked task storage — force-add that one folder.
+	if (taskDocsPath) {
+		try { await runGit(workdir, ["add", "-f", "--", taskDocsPath]); } catch { /* folder absent: nothing to rescue */ }
+	}
 	const status = await runGit(workdir, ["status", "--porcelain"]);
 	let skipped = false;
 	if (!status.stdout.trim()) {

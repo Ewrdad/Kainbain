@@ -513,6 +513,7 @@ async function executeAssignment({
 			const { sha, pushed, pushSkipped } = await commitAndPush({
 				workdir,
 				branch,
+				taskDocsPath: `docs/tasks/${taskId}`,
 				message: `kb/${taskId} ${stageId}: Runner ${config.runnerId} stage output`,
 				author: `kainbain-runner/${config.runnerId}`,
 			});
