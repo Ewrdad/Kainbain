@@ -15,7 +15,21 @@ import { resolveRunnerStatusWord } from './runnerBoxUi';
  * @returns {string|null} Trimmed runner id, or null.
  ***/
 const readTaskRunnerId = (task) => {
-  const raw = task?.runnerId ?? task?.runner;
+  // A task can name its Runner in several shapes depending on where the
+  // payload came from: a top-level `runnerId`/`runner` field (mocks, tests,
+  // and a few legacy writers), or the backend's fencing-token `claim`
+  // (`{ runnerId, epoch }`) attached by GET /tasks. Accept every shape so a
+  // box appears for every live Runner assignment instead of only the ones
+  // that happen to carry the legacy field. A missing/blank id means "no
+  // runner association" — the bar treats the task as ordinary queue data.
+  const raw =
+    task?.runnerId ??
+    task?.runner ??
+    task?.claim?.runnerId ??
+    task?.claimRunnerId ??
+    task?.runnerClaim?.runnerId ??
+    task?.execution?.runnerId ??
+    task?.claim?.runner?.id;
   if (typeof raw === 'string') {
     const id = raw.trim();
     return id !== '' ? id : null;

@@ -29,14 +29,26 @@ export function RunnerBox({ entry, onOpenTask }) {
   // A blank id renders as an empty name and an empty test id — fail closed
   // to 'unknown' instead so the box stays findable and labelled.
   const rawRunnerId = entry?.runnerId;
-  const runnerId =
-    typeof rawRunnerId === 'string'
-      ? (rawRunnerId.trim() !== '' ? rawRunnerId.trim() : 'unknown')
-      : (rawRunnerId ?? 'unknown');
-  const runnerName =
-    typeof entry?.runnerLabel === 'string' && entry.runnerLabel.trim() !== ''
-      ? entry.runnerLabel.trim()
-      : String(runnerId);
+  // Fail closed to 'unknown' for blank/null/undefined ids (and coerce other
+  // primitives to a string) so the box and its test id never go empty or
+  // render "[object Object]".
+  let runnerId = 'unknown';
+  if (typeof rawRunnerId === 'string') {
+    const trimmed = rawRunnerId.trim();
+    if (trimmed !== '') runnerId = trimmed;
+  } else if (rawRunnerId != null) {
+    const trimmed = String(rawRunnerId).trim();
+    if (trimmed !== '') runnerId = trimmed;
+  }
+  const rawRunnerLabel = entry?.runnerLabel;
+  let runnerName = String(runnerId);
+  if (typeof rawRunnerLabel === 'string') {
+    const trimmed = rawRunnerLabel.trim();
+    if (trimmed !== '') runnerName = trimmed;
+  } else if (rawRunnerLabel != null) {
+    const trimmed = String(rawRunnerLabel).trim();
+    if (trimmed !== '') runnerName = trimmed;
+  }
   const statusWord = entry?.statusWord || 'idle';
   const style = getRunnerBoxStyle(statusWord);
   const testId = `runner-box-${runnerId}`;
@@ -76,7 +88,9 @@ export function RunnerBox({ entry, onOpenTask }) {
   return (
     <button
       type="button"
-      onClick={() => onOpenTask?.(entry.task)}
+      onClick={() => {
+        if (typeof onOpenTask === 'function' && entry?.task) onOpenTask(entry.task);
+      }}
       aria-label={label}
       data-testid={testId}
       className={`${frameClass} cursor-pointer hover:bg-surface-container-high focus:outline-none focus:ring-1 focus:ring-primary`}

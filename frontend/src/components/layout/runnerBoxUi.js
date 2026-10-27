@@ -82,6 +82,13 @@ export const resolveRunnerStatusWord = (task, engineState, isAgentRunning = fals
   if (task.wasInterrupted === true || task.status === 'interrupted') return 'interrupted';
   if (isTaskCompleted(task)) return 'idle';
   if (engineState?.status === 'paused') return 'paused';
+  // A task held by a Runner (backend fencing token in `task.claim`) is
+  // executing off-process even when this browser's engine snapshot does not
+  // name it as the owner — the Runner is the one doing the work. Colour and
+  // word it as running so the box reflects live work instead of `queued`,
+  // unless a more specific settled state won above.
+  const claimRunnerId = task?.claim?.runnerId ?? task?.claimRunnerId ?? task?.runnerClaim?.runnerId;
+  if (typeof claimRunnerId === 'string' && claimRunnerId.trim() !== '') return 'running';
   if (isTaskRunning(task, engineState, isAgentRunning)) return 'running';
   if (isEngineOwner(task, engineState) && engineState?.status === 'checkpoint') {
     return 'checkpoint';
