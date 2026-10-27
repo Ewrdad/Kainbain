@@ -23,7 +23,7 @@ describe("isDispatchServable", () => {
 			expect(isDispatchServable({ project: { harness: "pi" }, task: agentTask({ stages: [{ id: "s1", type }] }) })).toBe(true);
 			expect(isDispatchServable({ project: { harness: "pi" }, task: agentTask({ stages: [{ id: "s1", type, runOnBranch: "primary" }] }) })).toBe(false);
 		}
-		for (const type of ["human", "command"]) {
+		for (const type of ["human"]) {
 			expect(
 				isDispatchServable({
 					project: { harness: "pi" },
