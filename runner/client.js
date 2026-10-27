@@ -61,6 +61,12 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 				body: { projectId, ...(runnerId ? { runnerId } : {}) },
 			});
 		},
+		claimHeartbeat({ taskId, projectId, executionId, epoch }) {
+			return call(`/tasks/${encodeURIComponent(taskId)}/claim-heartbeat`, {
+				method: "POST",
+				body: { projectId, executionId, epoch },
+			});
+		},
 		dispatchClaim({ projectIds } = {}) {
 			return call("/runners/dispatch", {
 				method: "POST",

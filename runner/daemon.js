@@ -7,6 +7,11 @@ import { commitAndPush } from "./gitOps.js";
 
 export const RUNNER_VERSION = "0.1.0";
 
+// Claim renewal cadence: comfortably inside the 5-minute production lease
+// TTL (KAINBAIN_CLAIM_TTL_MS) so long harness runs keep their fence. A
+// shorter operator TTL still heals via lazy expiry + STALE_EPOCH fencing.
+export const CLAIM_HEARTBEAT_MS = 60_000;
+
 const execFileAsync = promisify(execFile);
 
 /***
@@ -68,6 +73,37 @@ export async function probeHarnessVersions(harnessId, { timeoutMs = 4000 } = {})
  ***/
 export function clearHarnessVersionCache() {
 	harnessVersionCache.clear();
+}
+
+/***
+ * MARK: startClaimRenewal
+ * @description Renews the task claim on a cadence while a harness runs
+ *   (D1): agent stages routinely outlive the claim TTL, and without
+ *   renewal the hold lapses mid-stage — the task re-queues, the UI
+ *   assignment vanishes, and the finisher reports STALE_EPOCH. Renewal
+ *   is best-effort (a failure warns, the final complete surfaces
+ *   staleness) and the timer is unref'd so it dies with the daemon —
+ *   a dead Runner's hold still lapses.
+ * @example const stop = startClaimRenewal({ client, logger, taskId: 't1', ... }); stop();
+ * @param {Object} opts - Options (client, logger, taskId, projectId, executionId, epoch, intervalMs?).
+ * @returns {Function} Call to stop the renewal timer.
+ ***/
+export function startClaimRenewal({
+	client,
+	logger,
+	taskId,
+	projectId,
+	executionId,
+	epoch,
+	intervalMs = CLAIM_HEARTBEAT_MS,
+}) {
+	const timer = setInterval(() => {
+		client
+			.claimHeartbeat({ taskId, projectId, executionId, epoch })
+			.catch((err) => logger.warn(`Claim renewal failed: ${err?.message || err}`));
+	}, intervalMs);
+	if (typeof timer.unref === "function") timer.unref();
+	return () => clearInterval(timer);
 }
 
 /***
@@ -308,6 +344,17 @@ async function executeAssignment({
 		state.executionId = executionId;
 		state.epoch = epoch;
 		state.session = null;
+		// Lease renewal (D1): agent stages routinely outlive the claim
+		// TTL, so extend the hold while the harness runs (see
+		// startClaimRenewal).
+		const stopRenewal = startClaimRenewal({
+			client,
+			logger,
+			taskId,
+			projectId,
+			executionId,
+			epoch,
+		});
 		try {
 			await client.progress({
 				taskId: taskId,
@@ -372,6 +419,7 @@ async function executeAssignment({
 				},
 			});
 			state.session = null;
+			stopRenewal();
 			await client.progress({
 				taskId: taskId,
 				projectId: projectId,
@@ -404,6 +452,7 @@ async function executeAssignment({
 				durationMs: Date.now() - runStartedAt,
 			});
 		} catch (err) {
+			stopRenewal();
 			if (err?.code === "STALE_EPOCH") throw err;
 			if (err?.failedOutcome) {
 				// The harness ran and failed: report through the engine's

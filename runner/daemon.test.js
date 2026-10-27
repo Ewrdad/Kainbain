@@ -12,6 +12,7 @@ import {
 	probeHarnessVersions,
 	runDispatchLoop,
 	runSingleAssignment,
+	startClaimRenewal,
 } from "./daemon.js";
 
 describe("defaultLoadHarness", () => {
@@ -253,6 +254,62 @@ describe("runSingleAssignment", () => {
 			}),
 			/still pending/,
 		);
+	});
+});
+
+describe("startClaimRenewal", () => {
+	it("renews on a cadence with the lease ids and stops on demand", async () => {
+		const seen = [];
+		const warnings = [];
+		const client = {
+			claimHeartbeat: async (args) => {
+				seen.push(args);
+				return { epoch: 1 };
+			},
+		};
+		const logger = { log: () => {}, warn: (m) => warnings.push(m) };
+		const stop = startClaimRenewal({
+			client,
+			logger,
+			taskId: "t1",
+			projectId: "p1",
+			executionId: "e1",
+			epoch: 1,
+			intervalMs: 15,
+		});
+		await new Promise((r) => setTimeout(r, 60));
+		stop();
+		assert.ok(seen.length >= 2, `expected renewals, saw ${seen.length}`);
+		assert.ok(
+			seen.every((a) => a.taskId === "t1" && a.executionId === "e1" && a.epoch === 1),
+		);
+		const count = seen.length;
+		await new Promise((r) => setTimeout(r, 40));
+		assert.equal(seen.length, count);
+		assert.equal(warnings.length, 0);
+	});
+
+	it("warns instead of throwing when a renewal fails", async () => {
+		const warnings = [];
+		const client = {
+			claimHeartbeat: async () => {
+				throw Object.assign(new Error("gone"), { code: "STALE_EPOCH" });
+			},
+		};
+		const logger = { log: () => {}, warn: (m) => warnings.push(m) };
+		const stop = startClaimRenewal({
+			client,
+			logger,
+			taskId: "t1",
+			projectId: "p1",
+			executionId: "e1",
+			epoch: 1,
+			intervalMs: 10,
+		});
+		await new Promise((r) => setTimeout(r, 40));
+		stop();
+		assert.ok(warnings.length >= 1);
+		assert.match(warnings[0], /Claim renewal failed/);
 	});
 });
 
