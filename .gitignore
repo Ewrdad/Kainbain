@@ -61,9 +61,10 @@ frontend/.env
 # in-repo docs/tasks/ for the kainbain project itself.
 # Current store (2,069 session files, ~679 MB at Oct 2026):
 .kainbain/sessions/
-# In-repo task storage after the reversal (259 run dirs, ~374 MB):
-docs/tasks/
-docs/docs/tasks/
+# Task storage is TRACKED (2026-10-27 decision): Runner worktrees commit
+# docs/tasks/<id>/ files (plans, reports) and push them so the backend can
+# see them; the old history was moved to ~/archive/kainbain-tasks-* first.
+# Session transcripts stay ignored below.
 # Any future per-task/session artefact dropped at repo root or in scratch:
 scratch/sessions/
 *.session.jsonl
