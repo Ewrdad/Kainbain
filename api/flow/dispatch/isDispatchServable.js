@@ -33,10 +33,18 @@ export function isDispatchServable({ project = {}, task = {}, stages = null, sta
 		effectiveStages.find((s) => String(s?.id) === String(task.currentStageId)) ||
 		effectiveStages[0] ||
 		{};
+	const stageKind = normalizeStageType(resolved.type);
+	if (stageKind === "ci") {
+		// CI/command stages move to Runners too, but only in task-branch
+		// mode: primary/custom checkouts are backend-local by definition.
+		const runOn = String(resolved.runOnBranch || "task").toLowerCase();
+		if (runOn !== "task") return false;
+		return true;
+	}
 	// Only stages that would spawn an in-process model child move to a
-	// Runner. Everything else (human checkpoints, commands, CI, unknown
-	// legacy types) keeps its exact embedded behavior.
-	if (normalizeStageType(resolved.type) !== "agent") return false;
+	// Runner. Everything else (human checkpoints, merge, unknown legacy
+	// types) keeps its exact embedded behavior.
+	if (stageKind !== "agent") return false;
 	const req = taskRequirements(project, {
 		...task,
 		...(Array.isArray(stages) ? { stages } : {}),

@@ -1,0 +1,5629 @@
+<!-- KAINBAIN AUTO-GENERATED REPORT -->
+# Stage Report: Automated tests
+
+**Task:** Can you please modify the now playing bar in the ui so it can show little boxes for runners I want for under 5 runners to replace the left side with little boxes that just have the runners name, task name and stage and maybe some sort of colour indicator of health
+**Stage Type:** `ci`
+**Model:** `default`
+**Duration:** 198.184s
+**Status:** FAILED
+
+### Summary of Changes
+Execution failed: CI command failed with exit code 1
+
+### Execution Output
+```
+
+up to date, audited 4 packages in 820ms
+
+found 0 vulnerabilities
+
+> kainbain@1.0.0 test
+> node scripts/run-tests.mjs
+
+Starting full project verification...
+Running Security Script Tests... SKIP (no bash on PATH (the security-scan harness is bash-only))
+Running Dependency Check... SKIP (no depcheck binary in the root tree (run `npm install` to enable the unused-dependency check))
+Running Container Tests... SKIP (no Docker daemon reachable (container build/boot tests need one))
+✅ Settings duplicate check passed (23 files in 169ms)
+▸ started Unit Tests (api)
+▸ started Unit Tests (frontend)
+▸ started Linting (api)
+▸ started Linting (frontend)
+▸ started Frontend Build
+▸ started Dependency Audit Gate
+▸ started Harness Self-Tests
+⏳ still running: Unit Tests (api) (30s), Unit Tests (frontend) (30s)
+⏳ still running: Unit Tests (api) (1m00s)
+⏳ still running: Unit Tests (api) (1m30s)
+⏳ still running: Unit Tests (api) (2m00s)
+Running Unit Tests (api)... [0;31mFAIL[0m (125s)
+----------------------------------------------------------------------
+Details for Unit Tests (api):
+
+> kainbain@1.0.0 test:api
+> npm run test --prefix api
+
+
+> api@1.0.0 test
+> vitest run
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.3 [39m[90m/home/server/projects/kainbain/api[39m
+
+ [32m✓[39m flow/stallRecovery.integration.test.js [2m([22m[2m9 tests[22m[2m)[22m[33m 8778[2mms[22m[39m
+   [32m✓[39m WP6 stall and resume recovery [2m(9)[22m
+     [33m[2m✓[22m[39m kill -9 mid-agent resumes and records Resumed timeline evidence[33m 1198[2mms[22m[39m
+     [33m[2m✓[22m[39m kill mid-merge WITH landed marker resumes without rewinding the merge[33m 1578[2mms[22m[39m
+     [33m[2m✓[22m[39m kill mid-merge WITHOUT landed marker resumes and the merge re-runs[33m 1267[2mms[22m[39m
+     [33m[2m✓[22m[39m stalled CI child is killed by the watchdog and routed to retry[33m 620[2mms[22m[39m
+     [33m[2m✓[22m[39m a silent-but-alive CI child is NOT stalled while its keep-alive runs (incident shape)[33m 2104[2mms[22m[39m
+     [33m[2m✓[22m[39m the same silent child with the keep-alive opted out IS still stalled (control)[33m 1643[2mms[22m[39m
+Preparing worktree (checking out 'kb/wt-1')
+ [32m✓[39m flow/humanGitSafety.contract.test.js [2m([22m[2m13 tests[22m[2m)[22m[33m 11897[2mms[22m[39m
+   [32m✓[39m human entry leaves git state untouched [2m(5)[22m
+     [33m[2m✓[22m[39m dirty tree on the default branch: no switch, no commit, ref created[33m 1174[2mms[22m[39m
+     [33m[2m✓[22m[39m dirty tree with the task branch already existing: refs byte-identical[33m 886[2mms[22m[39m
+     [33m[2m✓[22m[39m dirty tree while sitting on another task branch: stays put[33m 1080[2mms[22m[39m
+     [33m[2m✓[22m[39m clean tree: parks without touching anything but the missing ref[33m 950[2mms[22m[39m
+     [33m[2m✓[22m[39m unborn repo: parks in waiting_human without throwing[33m 747[2mms[22m[39m
+   [32m✓[39m human approval leaves git state untouched [2m(5)[22m
+     [33m[2m✓[22m[39m dirty tree: advances without commit, push, or checkout[33m 854[2mms[22m[39m
+     [33m[2m✓[22m[39m missing task branch: ref created from the default tip, still no checkout[33m 879[2mms[22m[39m
+     [33m[2m✓[22m[39m clean tree: advances with zero git writes[33m 751[2mms[22m[39m
+     [33m[2m✓[22m[39m unborn repo: advances without throwing[33m 724[2mms[22m[39m
+     [33m[2m✓[22m[39m operator on another task branch: stays put, advances, ref from default tip[33m 1018[2mms[22m[39m
+   [32m✓[39m human rejection performs no git writes [2m(3)[22m
+     [33m[2m✓[22m[39m dirty tree: rejects with zero git mutations[33m 771[2mms[22m[39m
+     [33m[2m✓[22m[39m missing task branch: rejection creates no ref[33m 885[2mms[22m[39m
+     [33m[2m✓[22m[39m dirty tree on another branch: rejects with zero git mutations[33m 909[2mms[22m[39m
+ [32m✓[39m gitWorkspaceIsolation.integration.test.js [2m([22m[2m18 tests[22m[2m)[22m[33m 6682[2mms[22m[39m
+   [32m✓[39m quarantine isolation (default mode) [2m(8)[22m
+     [33m[2m✓[22m[39m stashes tracked sibling modifications with a task marker and proceeds[33m 341[2mms[22m[39m
+     [33m[2m✓[22m[39m ladder mode stashes a tracked modification the auto-commit could not clean[33m 436[2mms[22m[39m
+     [33m[2m✓[22m[39m strict opt-out {"dirtyTreeRecovery":"off"} refuses the dirty tree instead of stashing[33m 376[2mms[22m[39m
+   [32m✓[39m actionable merge conflict diagnostics [2m(1)[22m
+     [33m[2m✓[22m[39m carries conflicted files, source/target SHAs, and strategy[33m 322[2mms[22m[39m
+   [32m✓[39m per-task worktree isolation [2m(5)[22m
+     [33m[2m✓[22m[39m provisions one isolated tree per task; sibling strays never cross[33m 595[2mms[22m[39m
+     [33m[2m✓[22m[39m finalises inside the worktree and leaves the primary on default[33m 631[2mms[22m[39m
+     [33m[2m✓[22m[39m provisions worktrees under a custom state folder, not the default[33m 792[2mms[22m[39m
+     [33m[2m✓[22m[39m deletes the worktree with the task and reaps terminal orphans on scan[33m 877[2mms[22m[39m
+   [32m✓[39m zero unique commits fast path [2m(1)[22m
+     [33m[2m✓[22m[39m never merges a zero-change branch and never commits engine files as task work[33m 1037[2mms[22m[39m
+ [32m✓[39m git.integration.test.js [2m([22m[2m20 tests[22m[2m)[22m[33m 8201[2mms[22m[39m
+   [32m✓[39m git helper against a real repository [2m(20)[22m
+     [33m[2m✓[22m[39m creates a task branch from the default branch and is idempotent[33m 496[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses a branch switch on a dirty working tree but allows KainBain artifacts[33m 1401[2mms[22m[39m
+     [33m[2m✓[22m[39m merges a task branch into main and auto-commits agent work ahead of the merge[33m 962[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses to commit onto a sibling branch when expectedBranch is set (branch-bleed guard)[33m 531[2mms[22m[39m
+     [33m[2m✓[22m[39m rolls back the whole merge on conflict and reports the canonical message[33m 552[2mms[22m[39m
+     [33m[2m✓[22m[39m does not lose work when a merge conflicts: task branch content survives[33m 478[2mms[22m[39m
+     [33m[2m✓[22m[39m skips push on a pure-local repo with zero errors[33m 366[2mms[22m[39m
+     [33m[2m✓[22m[39m pushes task work to a file remote and lands commits there[33m 580[2mms[22m[39m
+     [33m[2m✓[22m[39m commits on a fresh machine with no git identity (repo-local fallback, peer review F-1)[33m 312[2mms[22m[39m
+     [33m[2m✓[22m[39m never switches branches on a repo with no commits (unborn)[33m 318[2mms[22m[39m
+     [33m[2m✓[22m[39m withCheckedOutBranch runs fn on the target branch and restores the default[33m 319[2mms[22m[39m
+{"level":30,"time":1793126035309,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126035463,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":201},"responseTime":149.70016100000066,"msg":"request completed"}
+{"level":30,"time":1793126035468,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126035492,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":23.90769899999941,"msg":"request completed"}
+{"level":30,"time":1793126035620,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"PATCH","url":"/tasks/82d55c26-ba57-4cc4-b9ba-118cfb28425f","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126035625,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":5.059089999998832,"msg":"request completed"}
+{"level":30,"time":1793126035626,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"GET","url":"/projects/b772719b-5375-413e-8c89-557a804105ae/tasks/82d55c26-ba57-4cc4-b9ba-118cfb28425f/review?projectId=b772719b-5375-413e-8c89-557a804105ae","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126035711,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":200},"responseTime":84.61458300000231,"msg":"request completed"}
+{"level":30,"time":1793126035754,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126035830,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":201},"responseTime":74.95761899999707,"msg":"request completed"}
+{"level":30,"time":1793126035832,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126035835,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":200},"responseTime":3.152589999997872,"msg":"request completed"}
+{"level":30,"time":1793126035970,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"PATCH","url":"/tasks/77b6dfe6-a2df-4930-9b5a-44932b00d29d","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126035978,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":200},"responseTime":8.62970999999743,"msg":"request completed"}
+{"level":30,"time":1793126035996,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"GET","url":"/projects/8ba5d0a3-cfb8-4d91-a3f3-c50e3bbf24bf/tasks/77b6dfe6-a2df-4930-9b5a-44932b00d29d/review?projectId=8ba5d0a3-cfb8-4d91-a3f3-c50e3bbf24bf","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+[90mstderr[2m | routes/review.test.js[2m > [22m[2mReview API Integration[2m > [22m[2mGET review records a D2 snapshot commit when the worktree is dirty ON the task branch
+[22m[39m[projectStore] failed to recreate docs symlink for 'Review Fixture 1793126035275-0': ENOENT: no such file or directory, symlink '/tmp/kainbain-test-notes-HnImPJ/Review Fixture 1793126035275-0' -> '/tmp/kb-review-route-cdbNIC/docs'
+
+{"level":30,"time":1793126036117,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":200},"responseTime":121.34817599999951,"msg":"request completed"}
+{"level":30,"time":1793126036134,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126036202,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":201},"responseTime":67.49173399999927,"msg":"request completed"}
+{"level":30,"time":1793126036202,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126036221,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","res":{"statusCode":200},"responseTime":17.302706999998918,"msg":"request completed"}
+{"level":30,"time":1793126036365,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","req":{"method":"PATCH","url":"/tasks/479b6834-987e-42c9-9c70-e79d1a442eee","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126036366,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","res":{"statusCode":200},"responseTime":1.5458060000019032,"msg":"request completed"}
+{"level":30,"time":1793126036410,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","req":{"method":"GET","url":"/projects/8d416f4b-d848-40e9-995c-5d7344d5f6c1/tasks/479b6834-987e-42c9-9c70-e79d1a442eee/review?projectId=8d416f4b-d848-40e9-995c-5d7344d5f6c1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+[90mstderr[2m | routes/review.test.js[2m > [22m[2mReview API Integration[2m > [22m[2mGET review flags uncommittedChanges when the tree is dirty OFF the task branch and never checks out
+[22m[39m[projectStore] failed to recreate docs symlink for 'Review Fixture 1793126035754-1': ENOENT: no such file or directory, symlink '/tmp/kainbain-test-notes-HnImPJ/Review Fixture 1793126035754-1' -> '/tmp/kb-review-route-AfGOba/docs'
+
+{"level":30,"time":1793126036531,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","res":{"statusCode":200},"responseTime":120.6033580000003,"msg":"request completed"}
+{"level":30,"time":1793126036547,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126036601,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","res":{"statusCode":201},"responseTime":53.932778999998845,"msg":"request completed"}
+{"level":30,"time":1793126036601,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126036611,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","res":{"statusCode":200},"responseTime":9.567505999999412,"msg":"request completed"}
+{"level":30,"time":1793126036611,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","req":{"method":"GET","url":"/projects/2003a073-02a7-4f0c-9fe9-5edf198f6bd3/tasks/20e4510d-512f-40ab-a361-354ad7a1f027/review?projectId=2003a073-02a7-4f0c-9fe9-5edf198f6bd3","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126036648,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","res":{"statusCode":200},"responseTime":36.82439699999668,"msg":"request completed"}
+{"level":30,"time":1793126036652,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126036733,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","res":{"statusCode":201},"responseTime":80.58759199999986,"msg":"request completed"}
+{"level":30,"time":1793126036733,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+[90mstderr[2m | routes/review.test.js[2m > [22m[2mReview API Integration[2m > [22m[2mGET review returns a documented empty state when the task branch does not exist yet
+[22m[39m[projectStore] failed to recreate docs symlink for 'Review Fixture 1793126036133-2': ENOENT: no such file or directory, symlink '/tmp/kainbain-test-notes-HnImPJ/Review Fixture 1793126036133-2' -> '/tmp/kb-review-route-hjEDBo/docs'
+
+{"level":30,"time":1793126036761,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","res":{"statusCode":200},"responseTime":27.70990399999937,"msg":"request completed"}
+{"level":30,"time":1793126036761,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","req":{"method":"GET","url":"/projects/c888bfd7-be04-4916-81b4-e7c09940989e/tasks/0f6ecddb-091c-403a-a5fd-eedeaebb854e/review?projectId=c888bfd7-be04-4916-81b4-e7c09940989e","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126036842,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","res":{"statusCode":200},"responseTime":80.61177300000054,"msg":"request completed"}
+{"level":30,"time":1793126036852,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126036904,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","res":{"statusCode":201},"responseTime":52.15556600000127,"msg":"request completed"}
+{"level":30,"time":1793126036904,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","req":{"method":"GET","url":"/projects/48f31721-6c11-44e2-9577-c0ba46d51a96/tasks/nope/review?projectId=48f31721-6c11-44e2-9577-c0ba46d51a96","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126036909,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","res":{"statusCode":404},"responseTime":5.1210119999996095,"msg":"request completed"}
+{"level":30,"time":1793126036911,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126036963,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","res":{"statusCode":201},"responseTime":51.61788799999704,"msg":"request completed"}
+{"level":30,"time":1793126036963,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126036975,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","res":{"statusCode":200},"responseTime":11.248552999997628,"msg":"request completed"}
+{"level":30,"time":1793126037086,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","req":{"method":"PATCH","url":"/tasks/3261781c-e98a-49b3-8ad9-a5459b21e9d8","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126037093,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","res":{"statusCode":200},"responseTime":7.542945000001055,"msg":"request completed"}
+{"level":30,"time":1793126037095,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","req":{"method":"POST","url":"/projects/c71c1c30-c2bf-4844-8ac2-db6393a28b22/tasks/3261781c-e98a-49b3-8ad9-a5459b21e9d8/review/comments?projectId=c71c1c30-c2bf-4844-8ac2-db6393a28b22","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+[90mstderr[2m | routes/review.test.js[2m > [22m[2mReview API Integration[2m > [22m[2mPOST comment creates a file-scope comment and broadcasts REVIEW_UPDATED
+[22m[39m[projectStore] failed to recreate docs symlink for 'Review Fixture 1793126036652-4': ENOENT: no such file or directory, symlink '/tmp/kainbain-test-notes-HnImPJ/Review Fixture 1793126036652-4' -> '/tmp/kb-review-route-njIHaN/docs'
+
+{"level":30,"time":1793126037213,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","res":{"statusCode":200},"responseTime":117.08764599999995,"msg":"request completed"}
+{"level":30,"time":1793126037215,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","req":{"method":"GET","url":"/projects/c71c1c30-c2bf-4844-8ac2-db6393a28b22/tasks/3261781c-e98a-49b3-8ad9-a5459b21e9d8/review?projectId=c71c1c30-c2bf-4844-8ac2-db6393a28b22","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126037277,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","res":{"statusCode":200},"responseTime":61.751006999998935,"msg":"request completed"}
+{"level":30,"time":1793126037286,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126037352,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","res":{"statusCode":201},"responseTime":65.7405319999998,"msg":"request completed"}
+{"level":30,"time":1793126037352,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126037355,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","res":{"statusCode":200},"responseTime":2.7465029999984836,"msg":"request completed"}
+{"level":30,"time":1793126037512,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","req":{"method":"PATCH","url":"/tasks/6f2d5c15-49e0-4a2d-b9c5-b1603713027f","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126037518,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","res":{"statusCode":200},"responseTime":6.358855000002222,"msg":"request completed"}
+{"level":30,"time":1793126037518,"pid":216,"hostname":"9a57735be6d4","reqId":"req-t","req":{"method":"POST","url":"/projects/c083ad14-3d6e-4994-a0bc-16fb0a05e0b7/tasks/6f2d5c15-49e0-4a2d-b9c5-b1603713027f/review/comments?projectId=c083ad14-3d6e-4994-a0bc-16fb0a05e0b7","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+[90mstderr[2m | routes/review.test.js[2m > [22m[2mReview API Integration[2m > [22m[2mPOST comment creates a line-scope comment anchored to a line and side
+[22m[39m[projectStore] failed to recreate docs symlink for 'Review Fixture 1793126036911-6': ENOENT: no such file or directory, symlink '/tmp/kainbain-test-notes-HnImPJ/Review Fixture 1793126036911-6' -> '/tmp/kb-review-route-LOdKHf/docs'
+
+{"level":30,"time":1793126037603,"pid":216,"hostname":"9a57735be6d4","reqId":"req-t","res":{"statusCode":200},"responseTime":84.54697600000145,"msg":"request completed"}
+{"level":30,"time":1793126037606,"pid":216,"hostname":"9a57735be6d4","reqId":"req-u","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126037679,"pid":216,"hostname":"9a57735be6d4","reqId":"req-u","res":{"statusCode":201},"responseTime":73.02226299999893,"msg":"request completed"}
+{"level":30,"time":1793126037679,"pid":216,"hostname":"9a57735be6d4","reqId":"req-v","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126037682,"pid":216,"hostname":"9a57735be6d4","reqId":"req-v","res":{"statusCode":200},"responseTime":2.8639060000023164,"msg":"request completed"}
+{"level":30,"time":1793126037873,"pid":216,"hostname":"9a57735be6d4","reqId":"req-w","req":{"method":"PATCH","url":"/tasks/9a9fa839-0b74-4ee9-af32-910e8e981c24","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126037875,"pid":216,"hostname":"9a57735be6d4","reqId":"req-w","res":{"statusCode":200},"responseTime":1.2149819999976899,"msg":"request completed"}
+{"level":30,"time":1793126037875,"pid":216,"hostname":"9a57735be6d4","reqId":"req-x","req":{"method":"POST","url":"/projects/c4f3a5e2-0bdb-4f6b-ab2d-d7e71077c989/tasks/9a9fa839-0b74-4ee9-af32-910e8e981c24/review/comments?projectId=c4f3a5e2-0bdb-4f6b-ab2d-d7e71077c989","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+[90mstderr[2m | routes/review.test.js[2m > [22m[2mReview API Integration[2m > [22m[2mPOST comment rejects unknown filePath, over-long body, bad scope, and line comments without a line
+[22m[39m[projectStore] failed to recreate docs symlink for 'Review Fixture 1793126037286-7': ENOENT: no such file or directory, symlink '/tmp/kainbain-test-notes-HnImPJ/Review Fixture 1793126037286-7' -> '/tmp/kb-review-route-LhdhcC/docs'
+
+{"level":30,"time":1793126038068,"pid":216,"hostname":"9a57735be6d4","reqId":"req-x","res":{"statusCode":200},"responseTime":193.04416599999968,"msg":"request completed"}
+{"level":30,"time":1793126038080,"pid":216,"hostname":"9a57735be6d4","reqId":"req-y","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126038132,"pid":216,"hostname":"9a57735be6d4","reqId":"req-y","res":{"statusCode":201},"responseTime":51.69336900000053,"msg":"request completed"}
+{"level":30,"time":1793126038132,"pid":216,"hostname":"9a57735be6d4","reqId":"req-z","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126038135,"pid":216,"hostname":"9a57735be6d4","reqId":"req-z","res":{"statusCode":200},"responseTime":3.5866359999999986,"msg":"request completed"}
+{"level":30,"time":1793126038276,"pid":216,"hostname":"9a57735be6d4","reqId":"req-10","req":{"method":"PATCH","url":"/tasks/9a06e45a-c399-4ca1-be8d-c661d532dd3f","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126038280,"pid":216,"hostname":"9a57735be6d4","reqId":"req-10","res":{"statusCode":200},"responseTime":3.5802790000016103,"msg":"request completed"}
+{"level":30,"time":1793126038282,"pid":216,"hostname":"9a57735be6d4","reqId":"req-11","req":{"method":"GET","url":"/projects/addbf6a8-30cc-4302-9d1e-f807ac62c38f/tasks/9a06e45a-c399-4ca1-be8d-c661d532dd3f/review?projectId=addbf6a8-30cc-4302-9d1e-f807ac62c38f","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+[90mstderr[2m | routes/review.test.js[2m > [22m[2mReview API Integration[2m > [22m[2mGET review returns task reports and accepts comments on report files even when a diff exists
+[22m[39m[projectStore] failed to recreate docs symlink for 'Review Fixture 1793126037606-8': ENOENT: no such file or directory, symlink '/tmp/kainbain-test-notes-HnImPJ/Review Fixture 1793126037606-8' -> '/tmp/kb-review-route-EGKEEM/docs'
+
+{"level":30,"time":1793126038369,"pid":216,"hostname":"9a57735be6d4","reqId":"req-11","res":{"statusCode":200},"responseTime":87.13607400000183,"msg":"request completed"}
+{"level":30,"time":1793126038370,"pid":216,"hostname":"9a57735be6d4","reqId":"req-12","req":{"method":"POST","url":"/projects/addbf6a8-30cc-4302-9d1e-f807ac62c38f/tasks/9a06e45a-c399-4ca1-be8d-c661d532dd3f/review/comments?projectId=addbf6a8-30cc-4302-9d1e-f807ac62c38f","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126038447,"pid":216,"hostname":"9a57735be6d4","reqId":"req-12","res":{"statusCode":200},"responseTime":76.80141600000206,"msg":"request completed"}
+{"level":30,"time":1793126038450,"pid":216,"hostname":"9a57735be6d4","reqId":"req-13","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126038509,"pid":216,"hostname":"9a57735be6d4","reqId":"req-13","res":{"statusCode":201},"responseTime":58.5081199999986,"msg":"request completed"}
+{"level":30,"time":1793126038509,"pid":216,"hostname":"9a57735be6d4","reqId":"req-14","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126038512,"pid":216,"hostname":"9a57735be6d4","reqId":"req-14","res":{"statusCode":200},"responseTime":2.27727799999775,"msg":"request completed"}
+{"level":30,"time":1793126038513,"pid":216,"hostname":"9a57735be6d4","reqId":"req-15","req":{"method":"GET","url":"/projects/37d87714-286d-4958-88c4-ade1f99154c6/tasks/9fcf1489-bd7a-48d1-b134-5878e8e4ae22/review?projectId=37d87714-286d-4958-88c4-ade1f99154c6","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126038554,"pid":216,"hostname":"9a57735be6d4","reqId":"req-15","res":{"statusCode":200},"responseTime":41.78017999999793,"msg":"request completed"}
+{"level":30,"time":1793126038555,"pid":216,"hostname":"9a57735be6d4","reqId":"req-16","req":{"method":"POST","url":"/projects/37d87714-286d-4958-88c4-ade1f99154c6/tasks/9fcf1489-bd7a-48d1-b134-5878e8e4ae22/review/comments?projectId=37d87714-286d-4958-88c4-ade1f99154c6","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+[90mstderr[2m | routes/review.test.js[2m > [22m[2mReview API Integration[2m > [22m[2maccepts report comments in an empty-state review and across ./ and bare path spellings
+[22m[39m[projectStore] failed to recreate docs symlink for 'Review Fixture 1793126038080-9': ENOENT: no such file or directory, symlink '/tmp/kainbain-test-notes-HnImPJ/Review Fixture 1793126038080-9' -> '/tmp/kb-review-route-AedKOm/docs'
+
+{"level":30,"time":1793126038641,"pid":216,"hostname":"9a57735be6d4","reqId":"req-16","res":{"statusCode":200},"responseTime":86.04821200000151,"msg":"request completed"}
+{"level":30,"time":1793126038642,"pid":216,"hostname":"9a57735be6d4","reqId":"req-17","req":{"method":"POST","url":"/projects/37d87714-286d-4958-88c4-ade1f99154c6/tasks/9fcf1489-bd7a-48d1-b134-5878e8e4ae22/review/comments?projectId=37d87714-286d-4958-88c4-ade1f99154c6","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126038667,"pid":216,"hostname":"9a57735be6d4","reqId":"req-17","res":{"statusCode":200},"responseTime":25.218362999999954,"msg":"request completed"}
+{"level":30,"time":1793126038674,"pid":216,"hostname":"9a57735be6d4","reqId":"req-18","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126038722,"pid":216,"hostname":"9a57735be6d4","reqId":"req-18","res":{"statusCode":201},"responseTime":47.25889100000131,"msg":"request completed"}
+{"level":30,"time":1793126038722,"pid":216,"hostname":"9a57735be6d4","reqId":"req-19","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126038731,"pid":216,"hostname":"9a57735be6d4","reqId":"req-19","res":{"statusCode":200},"responseTime":8.947555999999167,"msg":"request completed"}
+{"level":30,"time":1793126038941,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1a","req":{"method":"PATCH","url":"/tasks/a2fe5182-61b9-4a5c-9776-eb95153193d5","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126038949,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1a","res":{"statusCode":200},"responseTime":8.42103700000007,"msg":"request completed"}
+{"level":30,"time":1793126038950,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1b","req":{"method":"POST","url":"/projects/64c633d9-9dcb-46ee-b30d-991178ef2934/tasks/a2fe5182-61b9-4a5c-9776-eb95153193d5/review/comments?projectId=64c633d9-9dcb-46ee-b30d-991178ef2934","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126039044,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1b","res":{"statusCode":400},"responseTime":94.16339499999958,"msg":"request completed"}
+{"level":30,"time":1793126039044,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1c","req":{"method":"POST","url":"/projects/64c633d9-9dcb-46ee-b30d-991178ef2934/tasks/a2fe5182-61b9-4a5c-9776-eb95153193d5/review/comments?projectId=64c633d9-9dcb-46ee-b30d-991178ef2934","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126039125,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1c","res":{"statusCode":400},"responseTime":81.03592700000081,"msg":"request completed"}
+{"level":30,"time":1793126039126,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1d","req":{"method":"POST","url":"/projects/64c633d9-9dcb-46ee-b30d-991178ef2934/tasks/a2fe5182-61b9-4a5c-9776-eb95153193d5/review/comments?projectId=64c633d9-9dcb-46ee-b30d-991178ef2934","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126039193,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1d","res":{"statusCode":400},"responseTime":67.77414800000042,"msg":"request completed"}
+{"level":30,"time":1793126039194,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1e","req":{"method":"POST","url":"/projects/64c633d9-9dcb-46ee-b30d-991178ef2934/tasks/a2fe5182-61b9-4a5c-9776-eb95153193d5/review/comments?projectId=64c633d9-9dcb-46ee-b30d-991178ef2934","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126039344,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1e","res":{"statusCode":200},"responseTime":149.92450199999803,"msg":"request completed"}
+{"level":30,"time":1793126039353,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1f","req":{"method":"POST","url":"/projects/64c633d9-9dcb-46ee-b30d-991178ef2934/tasks/a2fe5182-61b9-4a5c-9776-eb95153193d5/review/comments?projectId=64c633d9-9dcb-46ee-b30d-991178ef2934","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126039468,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1f","res":{"statusCode":200},"responseTime":114.35090000000127,"msg":"request completed"}
+{"level":30,"time":1793126039468,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1g","req":{"method":"POST","url":"/projects/64c633d9-9dcb-46ee-b30d-991178ef2934/tasks/a2fe5182-61b9-4a5c-9776-eb95153193d5/review/comments?projectId=64c633d9-9dcb-46ee-b30d-991178ef2934","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126039578,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1g","res":{"statusCode":200},"responseTime":110.28986799999984,"msg":"request completed"}
+{"level":30,"time":1793126039579,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1h","req":{"method":"POST","url":"/projects/64c633d9-9dcb-46ee-b30d-991178ef2934/tasks/a2fe5182-61b9-4a5c-9776-eb95153193d5/review/comments?projectId=64c633d9-9dcb-46ee-b30d-991178ef2934","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126039627,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1h","res":{"statusCode":200},"responseTime":48.45744500000001,"msg":"request completed"}
+{"level":30,"time":1793126039639,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1i","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126039711,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1i","res":{"statusCode":201},"responseTime":71.10315300000002,"msg":"request completed"}
+{"level":30,"time":1793126039711,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1j","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126039718,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1j","res":{"statusCode":200},"responseTime":6.812939000003098,"msg":"request completed"}
+{"level":30,"time":1793126039819,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1k","req":{"method":"PATCH","url":"/tasks/858919cd-b247-497d-9d75-71dc98a37366","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126039821,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1k","res":{"statusCode":200},"responseTime":1.8963299999995797,"msg":"request completed"}
+{"level":30,"time":1793126039826,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1l","req":{"method":"POST","url":"/projects/525e23dd-a503-46ca-abfc-a8c1193b1881/tasks/858919cd-b247-497d-9d75-71dc98a37366/review/comments?projectId=525e23dd-a503-46ca-abfc-a8c1193b1881","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126039945,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1l","res":{"statusCode":200},"responseTime":118.25713900000119,"msg":"request completed"}
+{"level":30,"time":1793126039952,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1m","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126040059,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1m","res":{"statusCode":201},"responseTime":106.23580399999992,"msg":"request completed"}
+{"level":30,"time":1793126040059,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1n","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126040069,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1n","res":{"statusCode":200},"responseTime":9.65520000000106,"msg":"request completed"}
+{"level":30,"time":1793126040186,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1o","req":{"method":"PATCH","url":"/tasks/914b975a-7dd1-4161-a32b-93ddf3726c9a","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126040187,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1o","res":{"statusCode":200},"responseTime":1.2203079999999318,"msg":"request completed"}
+{"level":30,"time":1793126040187,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1p","req":{"method":"PATCH","url":"/projects/2c481c8b-53c4-4660-b30c-5aa091727256","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126040220,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1p","res":{"statusCode":200},"responseTime":32.984910000002856,"msg":"request completed"}
+{"level":30,"time":1793126040392,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1q","req":{"method":"GET","url":"/projects/2c481c8b-53c4-4660-b30c-5aa091727256/tasks/914b975a-7dd1-4161-a32b-93ddf3726c9a/review?projectId=2c481c8b-53c4-4660-b30c-5aa091727256","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+[90mstderr[2m | routes/review.test.js[2m > [22m[2mReview API Integration[2m > [22m[2mpreserved review after merge shows the merged change plus fix-ups, and fix-up files accept comments
+[22m[39m[projectStore] failed to recreate docs symlink for 'Review Fixture 1793126039639-12': ENOENT: no such file or directory, symlink '/tmp/kainbain-test-notes-HnImPJ/Review Fixture 1793126039639-12' -> '/tmp/kb-review-route-HhhkDN/docs'
+
+{"level":30,"time":1793126040659,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1q","res":{"statusCode":200},"responseTime":267.0933220000006,"msg":"request completed"}
+{"level":30,"time":1793126040668,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1r","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126040730,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1r","res":{"statusCode":201},"responseTime":61.54191400000127,"msg":"request completed"}
+{"level":30,"time":1793126040730,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1s","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126040733,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1s","res":{"statusCode":200},"responseTime":2.6497619999972812,"msg":"request completed"}
+{"level":30,"time":1793126040733,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1t","req":{"method":"POST","url":"/projects/06985cd7-f331-4378-8b3f-fd56d28749f8/tasks/7ac20f8a-bbf0-4db7-8ea1-10ec4745e4cf/review/comments?projectId=06985cd7-f331-4378-8b3f-fd56d28749f8","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126040750,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1t","res":{"statusCode":400},"responseTime":16.293271000002278,"msg":"request completed"}
+{"level":30,"time":1793126040750,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1u","req":{"method":"POST","url":"/projects/06985cd7-f331-4378-8b3f-fd56d28749f8/tasks/7ac20f8a-bbf0-4db7-8ea1-10ec4745e4cf/review/comments?projectId=06985cd7-f331-4378-8b3f-fd56d28749f8","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126040766,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1u","res":{"statusCode":400},"responseTime":16.43931000000157,"msg":"request completed"}
+{"level":30,"time":1793126040767,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1v","req":{"method":"POST","url":"/projects/06985cd7-f331-4378-8b3f-fd56d28749f8/tasks/7ac20f8a-bbf0-4db7-8ea1-10ec4745e4cf/review/comments?projectId=06985cd7-f331-4378-8b3f-fd56d28749f8","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126040783,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1v","res":{"statusCode":400},"responseTime":15.742131999999401,"msg":"request completed"}
+{"level":30,"time":1793126040783,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1w","req":{"method":"POST","url":"/projects/06985cd7-f331-4378-8b3f-fd56d28749f8/tasks/7ac20f8a-bbf0-4db7-8ea1-10ec4745e4cf/review/comments?projectId=06985cd7-f331-4378-8b3f-fd56d28749f8","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126040804,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1w","res":{"statusCode":400},"responseTime":21.40346700000009,"msg":"request completed"}
+{"level":30,"time":1793126040805,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1x","req":{"method":"POST","url":"/projects/06985cd7-f331-4378-8b3f-fd56d28749f8/tasks/7ac20f8a-bbf0-4db7-8ea1-10ec4745e4cf/review/comments?projectId=06985cd7-f331-4378-8b3f-fd56d28749f8","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126040826,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1x","res":{"statusCode":200},"responseTime":21.79652100000021,"msg":"request completed"}
+{"level":30,"time":1793126040828,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1y","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126040871,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1y","res":{"statusCode":201},"responseTime":42.86030000000028,"msg":"request completed"}
+{"level":30,"time":1793126040871,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1z","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126040874,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1z","res":{"statusCode":200},"responseTime":2.4400930000047083,"msg":"request completed"}
+{"level":30,"time":1793126040874,"pid":216,"hostname":"9a57735be6d4","reqId":"req-20","req":{"method":"POST","url":"/projects/a9759505-7558-4456-b00e-1573e9905c01/tasks/adef97fd-d265-4720-a6da-e548734184ea/review/comments?projectId=a9759505-7558-4456-b00e-1573e9905c01","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126040918,"pid":216,"hostname":"9a57735be6d4","reqId":"req-20","res":{"statusCode":200},"responseTime":43.621251999997185,"msg":"request completed"}
+{"level":30,"time":1793126040919,"pid":216,"hostname":"9a57735be6d4","reqId":"req-21","req":{"method":"PATCH","url":"/projects/a9759505-7558-4456-b00e-1573e9905c01/tasks/adef97fd-d265-4720-a6da-e548734184ea/review/comments/rc-89398017-563e-493d-8db6-0f177ecdf19d?projectId=a9759505-7558-4456-b00e-1573e9905c01","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126040927,"pid":216,"hostname":"9a57735be6d4","reqId":"req-21","res":{"statusCode":200},"responseTime":8.445752999999968,"msg":"request completed"}
+{"level":30,"time":1793126040927,"pid":216,"hostname":"9a57735be6d4","reqId":"req-22","req":{"method":"PATCH","url":"/projects/a9759505-7558-4456-b00e-1573e9905c01/tasks/adef97fd-d265-4720-a6da-e548734184ea/review/comments/rc-nope?projectId=a9759505-7558-4456-b00e-1573e9905c01","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126040933,"pid":216,"hostname":"9a57735be6d4","reqId":"req-22","res":{"statusCode":404},"responseTime":5.041505999994115,"msg":"request completed"}
+{"level":30,"time":1793126040934,"pid":216,"hostname":"9a57735be6d4","reqId":"req-23","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126040995,"pid":216,"hostname":"9a57735be6d4","reqId":"req-23","res":{"statusCode":201},"responseTime":60.344192999997176,"msg":"request completed"}
+{"level":30,"time":1793126040995,"pid":216,"hostname":"9a57735be6d4","reqId":"req-24","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041000,"pid":216,"hostname":"9a57735be6d4","reqId":"req-24","res":{"statusCode":200},"responseTime":4.589708999999857,"msg":"request completed"}
+{"level":30,"time":1793126041000,"pid":216,"hostname":"9a57735be6d4","reqId":"req-25","req":{"method":"POST","url":"/projects/84382493-f43a-43e8-9193-f6f37a80ed71/tasks/ec3c2741-d5b0-4ea3-b162-9b9e493eef2c/review/comments?projectId=84382493-f43a-43e8-9193-f6f37a80ed71","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041022,"pid":216,"hostname":"9a57735be6d4","reqId":"req-25","res":{"statusCode":200},"responseTime":22.3381389999995,"msg":"request completed"}
+{"level":30,"time":1793126041026,"pid":216,"hostname":"9a57735be6d4","reqId":"req-26","req":{"method":"POST","url":"/projects/84382493-f43a-43e8-9193-f6f37a80ed71/tasks/ec3c2741-d5b0-4ea3-b162-9b9e493eef2c/review/comments/rc-1ab9b71a-01fd-449f-875f-e4536e4d1ff7/replies?projectId=84382493-f43a-43e8-9193-f6f37a80ed71","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041030,"pid":216,"hostname":"9a57735be6d4","reqId":"req-26","res":{"statusCode":200},"responseTime":3.0574930000002496,"msg":"request completed"}
+{"level":30,"time":1793126041030,"pid":216,"hostname":"9a57735be6d4","reqId":"req-27","req":{"method":"POST","url":"/projects/84382493-f43a-43e8-9193-f6f37a80ed71/tasks/ec3c2741-d5b0-4ea3-b162-9b9e493eef2c/review/comments/rc-nope/replies?projectId=84382493-f43a-43e8-9193-f6f37a80ed71","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041036,"pid":216,"hostname":"9a57735be6d4","reqId":"req-27","res":{"statusCode":404},"responseTime":5.396447000006447,"msg":"request completed"}
+{"level":30,"time":1793126041040,"pid":216,"hostname":"9a57735be6d4","reqId":"req-28","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041139,"pid":216,"hostname":"9a57735be6d4","reqId":"req-28","res":{"statusCode":201},"responseTime":98.89732999999978,"msg":"request completed"}
+{"level":30,"time":1793126041149,"pid":216,"hostname":"9a57735be6d4","reqId":"req-29","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041155,"pid":216,"hostname":"9a57735be6d4","reqId":"req-29","res":{"statusCode":200},"responseTime":5.6983019999970566,"msg":"request completed"}
+{"level":30,"time":1793126041165,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2a","req":{"method":"POST","url":"/projects/0836828d-dbca-4186-8872-00660980468a/tasks/1e85ab98-f165-4a81-9abb-978a40ef5d41/review/comments?projectId=0836828d-dbca-4186-8872-00660980468a","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041193,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2a","res":{"statusCode":200},"responseTime":28.091212999999698,"msg":"request completed"}
+{"level":30,"time":1793126041193,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2b","req":{"method":"DELETE","url":"/projects/0836828d-dbca-4186-8872-00660980468a/tasks/1e85ab98-f165-4a81-9abb-978a40ef5d41/review/comments/rc-564a7134-c0e2-40bf-88cd-6310dbbd4484?projectId=0836828d-dbca-4186-8872-00660980468a","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041204,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2b","res":{"statusCode":200},"responseTime":10.82178500000009,"msg":"request completed"}
+{"level":30,"time":1793126041205,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2c","req":{"method":"DELETE","url":"/projects/0836828d-dbca-4186-8872-00660980468a/tasks/1e85ab98-f165-4a81-9abb-978a40ef5d41/review/comments/rc-564a7134-c0e2-40bf-88cd-6310dbbd4484?projectId=0836828d-dbca-4186-8872-00660980468a","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041206,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2c","res":{"statusCode":404},"responseTime":0.9263410000057775,"msg":"request completed"}
+ [32m✓[39m agent/harnesses/shared/harnessScaffold.test.js [2m([22m[2m33 tests[22m[2m)[22m[33m 31458[2mms[22m[39m
+   [32m✓[39m startSupervisedSpawn [2m(12)[22m
+     [33m[2m✓[22m[39m watchdog fires onTimeout then kills (SIGTERM→SIGKILL escalation)[33m 15234[2mms[22m[39m
+     [33m[2m✓[22m[39m watchdog firstSignal opt-in delivers SIGINT before escalating[33m 15036[2mms[22m[39m
+{"level":30,"time":1793126041207,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2d","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041267,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2d","res":{"statusCode":201},"responseTime":59.30899499999941,"msg":"request completed"}
+{"level":30,"time":1793126041267,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2e","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041277,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2e","res":{"statusCode":200},"responseTime":9.805368000001181,"msg":"request completed"}
+{"level":30,"time":1793126041278,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2f","req":{"method":"POST","url":"/projects/3ec0fb15-f641-4b71-9fb3-91c58d8a3666/tasks/01bcf9c5-74c9-4cb8-863b-8d1a0e3e4633/review/comments?projectId=3ec0fb15-f641-4b71-9fb3-91c58d8a3666","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041299,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2f","res":{"statusCode":200},"responseTime":21.370978999999352,"msg":"request completed"}
+{"level":30,"time":1793126041299,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2g","req":{"method":"PATCH","url":"/projects/3ec0fb15-f641-4b71-9fb3-91c58d8a3666/tasks/01bcf9c5-74c9-4cb8-863b-8d1a0e3e4633/review/comments/rc-8dbdecc3-6ded-4ab2-a33b-3be4b03004cc?projectId=3ec0fb15-f641-4b71-9fb3-91c58d8a3666","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041301,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2g","res":{"statusCode":200},"responseTime":1.9328979999991134,"msg":"request completed"}
+{"level":30,"time":1793126041302,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2h","req":{"method":"POST","url":"/projects/3ec0fb15-f641-4b71-9fb3-91c58d8a3666/tasks/01bcf9c5-74c9-4cb8-863b-8d1a0e3e4633/review/comments/rc-8dbdecc3-6ded-4ab2-a33b-3be4b03004cc/replies?projectId=3ec0fb15-f641-4b71-9fb3-91c58d8a3666","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041313,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2h","res":{"statusCode":200},"responseTime":10.09491899999557,"msg":"request completed"}
+{"level":30,"time":1793126041313,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2i","req":{"method":"DELETE","url":"/projects/3ec0fb15-f641-4b71-9fb3-91c58d8a3666/tasks/01bcf9c5-74c9-4cb8-863b-8d1a0e3e4633/review/comments/rc-8dbdecc3-6ded-4ab2-a33b-3be4b03004cc?projectId=3ec0fb15-f641-4b71-9fb3-91c58d8a3666","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041315,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2i","res":{"statusCode":200},"responseTime":2.102725000004284,"msg":"request completed"}
+ [31m❯[39m routes/review.test.js [2m([22m[2m19 tests[22m[2m | [22m[31m6 failed[39m[2m)[22m[33m 6696[2mms[22m[39m
+   [31m❯[39m Review API Integration [2m(19)[22m
+[31m     [31m×[31m GET review returns the diff for a task branch: files, counts, commits newest-first, ahead/behind[39m[33m 483[2mms[22m[39m
+[31m     [31m×[31m GET review records a D2 snapshot commit when the worktree is dirty ON the task branch[39m[33m 378[2mms[22m[39m
+[31m     [31m×[31m GET review flags uncommittedChanges when the tree is dirty OFF the task branch and never checks out[39m[33m 415[2mms[22m[39m
+     [32m✓[39m GET review returns a documented empty state when branch support is off[32m 106[2mms[22m[39m
+     [32m✓[39m GET review returns a documented empty state when the task branch does not exist yet[32m 192[2mms[22m[39m
+     [32m✓[39m GET review returns 404 for an unknown task[32m 67[2mms[22m[39m
+     [33m[2m✓[22m[39m POST comment creates a file-scope comment and broadcasts REVIEW_UPDATED[33m 374[2mms[22m[39m
+     [33m[2m✓[22m[39m POST comment creates a line-scope comment anchored to a line and side[33m 320[2mms[22m[39m
+[31m     [31m×[31m POST comment rejects unknown filePath, over-long body, bad scope, and line comments without a line[39m[33m 474[2mms[22m[39m
+     [33m[2m✓[22m[39m GET review returns task reports and accepts comments on report files even when a diff exists[33m 371[2mms[22m[39m
+     [32m✓[39m accepts report comments in an empty-state review and across ./ and bare path spellings[32m 219[2mms[22m[39m
+     [33m[2m✓[22m[39m rejects report-anchored line comments outside the report's line range[33m 970[2mms[22m[39m
+[31m     [31m×[31m rejects bare-filename anchors when the report has a full path[39m[33m 311[2mms[22m[39m
+[31m     [31m×[31m preserved review after merge shows the merged change plus fix-ups, and fix-up files accept comments[39m[33m 716[2mms[22m[39m
+     [32m✓[39m POST comment rejects injection-shaped filePaths in empty-state reviews[32m 162[2mms[22m[39m
+     [32m✓[39m PATCH comment updates body/resolved; PATCH unknown comment 404s[32m 106[2mms[22m[39m
+     [32m✓[39m POST reply appends to the thread; unknown comment 404s[32m 105[2mms[22m[39m
+     [32m✓[39m DELETE comment removes it from the sidecar; unknown comment 404s[32m 168[2mms[22m[39m
+     [32m✓[39m broadcasts REVIEW_UPDATED with the right type on update/reply/delete[32m 110[2mms[22m[39m
+{"level":30,"time":1793126041317,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2j","req":{"method":"DELETE","url":"/projects/b772719b-5375-413e-8c89-557a804105ae","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041318,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2j","res":{"statusCode":200},"responseTime":0.40668100000038976,"msg":"request completed"}
+{"level":30,"time":1793126041318,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2k","req":{"method":"DELETE","url":"/projects/8ba5d0a3-cfb8-4d91-a3f3-c50e3bbf24bf","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041319,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2k","res":{"statusCode":200},"responseTime":0.2079280000034487,"msg":"request completed"}
+{"level":30,"time":1793126041327,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2l","req":{"method":"DELETE","url":"/projects/8d416f4b-d848-40e9-995c-5d7344d5f6c1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041327,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2l","res":{"statusCode":200},"responseTime":0.228914999999688,"msg":"request completed"}
+{"level":30,"time":1793126041327,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2m","req":{"method":"DELETE","url":"/projects/2003a073-02a7-4f0c-9fe9-5edf198f6bd3","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041327,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2m","res":{"statusCode":200},"responseTime":0.11862700000347104,"msg":"request completed"}
+{"level":30,"time":1793126041327,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2n","req":{"method":"DELETE","url":"/projects/c888bfd7-be04-4916-81b4-e7c09940989e","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041327,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2n","res":{"statusCode":200},"responseTime":0.12429499999416294,"msg":"request completed"}
+{"level":30,"time":1793126041327,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2o","req":{"method":"DELETE","url":"/projects/48f31721-6c11-44e2-9577-c0ba46d51a96","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041328,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2o","res":{"statusCode":200},"responseTime":0.10004900000058115,"msg":"request completed"}
+{"level":30,"time":1793126041328,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2p","req":{"method":"DELETE","url":"/projects/c71c1c30-c2bf-4844-8ac2-db6393a28b22","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041328,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2p","res":{"statusCode":200},"responseTime":0.09457999999722233,"msg":"request completed"}
+{"level":30,"time":1793126041328,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2q","req":{"method":"DELETE","url":"/projects/c083ad14-3d6e-4994-a0bc-16fb0a05e0b7","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041328,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2q","res":{"statusCode":200},"responseTime":0.15679000000091037,"msg":"request completed"}
+{"level":30,"time":1793126041328,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2r","req":{"method":"DELETE","url":"/projects/c4f3a5e2-0bdb-4f6b-ab2d-d7e71077c989","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041328,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2r","res":{"statusCode":200},"responseTime":0.12194100000488106,"msg":"request completed"}
+{"level":30,"time":1793126041329,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2s","req":{"method":"DELETE","url":"/projects/addbf6a8-30cc-4302-9d1e-f807ac62c38f","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041329,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2s","res":{"statusCode":200},"responseTime":0.10738300000230083,"msg":"request completed"}
+{"level":30,"time":1793126041329,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2t","req":{"method":"DELETE","url":"/projects/37d87714-286d-4958-88c4-ade1f99154c6","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041329,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2t","res":{"statusCode":200},"responseTime":0.08769000000029337,"msg":"request completed"}
+{"level":30,"time":1793126041332,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2u","req":{"method":"DELETE","url":"/projects/64c633d9-9dcb-46ee-b30d-991178ef2934","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041332,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2u","res":{"statusCode":200},"responseTime":0.18894100000034086,"msg":"request completed"}
+{"level":30,"time":1793126041339,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2v","req":{"method":"DELETE","url":"/projects/525e23dd-a503-46ca-abfc-a8c1193b1881","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041340,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2v","res":{"statusCode":200},"responseTime":0.39643899999646237,"msg":"request completed"}
+{"level":30,"time":1793126041341,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2w","req":{"method":"DELETE","url":"/projects/2c481c8b-53c4-4660-b30c-5aa091727256","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041341,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2w","res":{"statusCode":200},"responseTime":0.1937160000015865,"msg":"request completed"}
+{"level":30,"time":1793126041342,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2x","req":{"method":"DELETE","url":"/projects/06985cd7-f331-4378-8b3f-fd56d28749f8","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041342,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2x","res":{"statusCode":200},"responseTime":0.11727499999688007,"msg":"request completed"}
+{"level":30,"time":1793126041342,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2y","req":{"method":"DELETE","url":"/projects/a9759505-7558-4456-b00e-1573e9905c01","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041342,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2y","res":{"statusCode":200},"responseTime":0.12647499999729916,"msg":"request completed"}
+{"level":30,"time":1793126041342,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2z","req":{"method":"DELETE","url":"/projects/84382493-f43a-43e8-9193-f6f37a80ed71","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041345,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2z","res":{"statusCode":200},"responseTime":2.8793270000023767,"msg":"request completed"}
+{"level":30,"time":1793126041345,"pid":216,"hostname":"9a57735be6d4","reqId":"req-30","req":{"method":"DELETE","url":"/projects/0836828d-dbca-4186-8872-00660980468a","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041346,"pid":216,"hostname":"9a57735be6d4","reqId":"req-30","res":{"statusCode":200},"responseTime":0.15262200000142911,"msg":"request completed"}
+{"level":30,"time":1793126041346,"pid":216,"hostname":"9a57735be6d4","reqId":"req-31","req":{"method":"DELETE","url":"/projects/3ec0fb15-f641-4b71-9fb3-91c58d8a3666","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126041346,"pid":216,"hostname":"9a57735be6d4","reqId":"req-31","res":{"statusCode":200},"responseTime":0.0996099999974831,"msg":"request completed"}
+ [32m✓[39m work/taskFinalize.test.js [2m([22m[2m22 tests[22m[2m)[22m[33m 9638[2mms[22m[39m
+   [32m✓[39m finalizeTaskBranch against a real repository [2m(12)[22m
+     [33m[2m✓[22m[39m commits work and returns to default on a pure-local repo without pushing[33m 794[2mms[22m[39m
+     [33m[2m✓[22m[39m pushes the task branch to a file remote and ends on the default branch[33m 874[2mms[22m[39m
+     [33m[2m✓[22m[39m treats push failure as a warning: the tree still returns to default[33m 737[2mms[22m[39m
+     [33m[2m✓[22m[39m still attempts the return when the commit is blocked, reporting loudly[33m 826[2mms[22m[39m
+     [33m[2m✓[22m[39m is a no-op success when there is nothing to commit[33m 773[2mms[22m[39m
+     [33m[2m✓[22m[39m accepts a commit message override[33m 1050[2mms[22m[39m
+     [33m[2m✓[22m[39m commits the whole curated prompt verbatim in the body[33m 778[2mms[22m[39m
+     [33m[2m✓[22m[39m lets an explicit message override win over the curated prompt[33m 656[2mms[22m[39m
+     [33m[2m✓[22m[39m truncates an oversized prompt with a marker and still commits[33m 650[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps pickup order default-first (existing branch via the default branch)[33m 902[2mms[22m[39m
+   [32m✓[39m commitFailedStageWork against a real repository [2m(4)[22m
+     [33m[2m✓[22m[39m commits dirty partial work with a '... (failed)' message and bounds the range[33m 727[2mms[22m[39m
+     [33m[2m✓[22m[39m is a clean-tree no-op that still resolves an end boundary[33m 531[2mms[22m[39m
+ [32m✓[39m work/taskBranches.test.js [2m([22m[2m21 tests[22m[2m)[22m[33m 4469[2mms[22m[39m
+   [32m✓[39m ensureTaskBranch default-first pickup [2m(4)[22m
+     [33m[2m✓[22m[39m passes through the default branch when the tree sits on another task branch[33m 726[2mms[22m[39m
+     [33m[2m✓[22m[39m switches straight from the default branch without a redundant hop[33m 605[2mms[22m[39m
+     [33m[2m✓[22m[39m is a no-op when already on the task branch[33m 830[2mms[22m[39m
+   [32m✓[39m ensureTaskBranchRef human-review policy [2m(11)[22m
+     [33m[2m✓[22m[39m falls back to HEAD when no default branch resolves[33m 363[2mms[22m[39m
+{"level":30,"time":1793126048250,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126048321,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":201},"responseTime":67.85978800000157,"msg":"request completed"}
+{"level":30,"time":1793126048324,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126048337,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":12.91997000000265,"msg":"request completed"}
+{"level":30,"time":1793126048340,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126048342,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":403},"responseTime":1.8214010000010603,"msg":"request completed"}
+{"level":30,"time":1793126048343,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126048344,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":202},"responseTime":1.3376939999943716,"msg":"request completed"}
+{"level":30,"time":1793126048345,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"GET","url":"/runners","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126048345,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":200},"responseTime":0.34968099999969127,"msg":"request completed"}
+{"level":30,"time":1793126048346,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126048347,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":202},"responseTime":0.9870010000013281,"msg":"request completed"}
+{"level":30,"time":1793126048349,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"POST","url":"/runners/claimer-1/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126048350,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":200},"responseTime":0.8933790000010049,"msg":"request completed"}
+{"level":30,"time":1793126048350,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"POST","url":"/runners/heartbeat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126048364,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":200},"responseTime":13.75400599999557,"msg":"request completed"}
+{"level":30,"time":1793126048364,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"POST","url":"/tasks/b5a3729c-f308-4870-bf8f-fe68b0f41621/claim","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126048368,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":200},"responseTime":3.1952929999970365,"msg":"request completed"}
+{"level":30,"time":1793126048368,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126048370,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","res":{"statusCode":202},"responseTime":1.3756400000056601,"msg":"request completed"}
+{"level":30,"time":1793126048370,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","req":{"method":"POST","url":"/runners/claimer-2/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126048371,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","res":{"statusCode":200},"responseTime":0.7418389999947976,"msg":"request completed"}
+{"level":30,"time":1793126048371,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","req":{"method":"POST","url":"/tasks/b5a3729c-f308-4870-bf8f-fe68b0f41621/claim","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126048372,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","res":{"statusCode":409},"responseTime":0.7166280000019469,"msg":"request completed"}
+{"level":30,"time":1793126048374,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126048375,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","res":{"statusCode":202},"responseTime":1.1394409999993513,"msg":"request completed"}
+{"level":30,"time":1793126048375,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","req":{"method":"POST","url":"/runners/heartbeat-1/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126048377,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","res":{"statusCode":200},"responseTime":2.077954000000318,"msg":"request completed"}
+{"level":30,"time":1793126048378,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126048381,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","res":{"statusCode":200},"responseTime":2.8200460000007297,"msg":"request completed"}
+{"level":30,"time":1793126048381,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","req":{"method":"POST","url":"/tasks/fd397c8d-b9bf-4853-b7a7-06667b75209d/claim","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126048382,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","res":{"statusCode":200},"responseTime":1.465844999998808,"msg":"request completed"}
+ [32m✓[39m agent/harnesses/muse/msp/museMspSession.contract.test.js [2m([22m[2m49 tests[22m[2m)[22m[33m 6872[2mms[22m[39m
+   [32m✓[39m muse MSP lifecycle (mock serve) [2m(8)[22m
+     [33m[2m✓[22m[39m runs the full handshake → session → turn spine and streams normalized events[33m 381[2mms[22m[39m
+     [33m[2m✓[22m[39m steers a RUNNING turn with the acknowledged turn id[33m 624[2mms[22m[39m
+     [33m[2m✓[22m[39m interrupts a running turn via turn/interrupt and settles as interrupted[33m 524[2mms[22m[39m
+     [33m[2m✓[22m[39m falls back to the exec transport when the MSP host cannot start[33m 406[2mms[22m[39m
+   [32m✓[39m muse MSP multiplexing + failure modes (mock serve) [2m(6)[22m
+     [33m[2m✓[22m[39m force-settles a wedged turn: run_error, rejection, and host eviction[33m 985[2mms[22m[39m
+{"level":30,"time":1793126048983,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","req":{"method":"POST","url":"/tasks/fd397c8d-b9bf-4853-b7a7-06667b75209d/claim-heartbeat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126048984,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","res":{"statusCode":200},"responseTime":0.6450970000005327,"msg":"request completed"}
+{"level":30,"time":1793126049688,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049689,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","res":{"statusCode":202},"responseTime":0.6397680000009132,"msg":"request completed"}
+{"level":30,"time":1793126049689,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","req":{"method":"POST","url":"/runners/heartbeat-2/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049696,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","res":{"statusCode":200},"responseTime":6.699473999993643,"msg":"request completed"}
+{"level":30,"time":1793126049696,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","req":{"method":"POST","url":"/tasks/fd397c8d-b9bf-4853-b7a7-06667b75209d/claim","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049697,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","res":{"statusCode":409},"responseTime":1.0069530000037048,"msg":"request completed"}
+{"level":30,"time":1793126049700,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049701,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","res":{"statusCode":202},"responseTime":0.68399999999383,"msg":"request completed"}
+{"level":30,"time":1793126049701,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","req":{"method":"POST","url":"/runners/heartbeat-stale/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049702,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","res":{"statusCode":200},"responseTime":0.46155800000269664,"msg":"request completed"}
+{"level":30,"time":1793126049702,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049714,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","res":{"statusCode":200},"responseTime":12.47292600000219,"msg":"request completed"}
+{"level":30,"time":1793126049715,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","req":{"method":"POST","url":"/tasks/ca0c9b6c-5ae1-4060-8431-c9e213285f09/claim-heartbeat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049717,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","res":{"statusCode":409},"responseTime":2.2195060000012745,"msg":"request completed"}
+{"level":30,"time":1793126049717,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","req":{"method":"POST","url":"/runners/heartbeat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049720,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","res":{"statusCode":401},"responseTime":2.6846779999978025,"msg":"request completed"}
+{"level":30,"time":1793126049725,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049729,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","res":{"statusCode":200},"responseTime":3.5587330000053043,"msg":"request completed"}
+{"level":30,"time":1793126049729,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","req":{"method":"POST","url":"/tasks/fe001ca7-27dc-4818-bc72-83eaa480f14d/claim","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049730,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","res":{"statusCode":401},"responseTime":0.3206839999984368,"msg":"request completed"}
+{"level":30,"time":1793126049730,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049731,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","res":{"statusCode":202},"responseTime":0.7302619999973103,"msg":"request completed"}
+{"level":30,"time":1793126049731,"pid":216,"hostname":"9a57735be6d4","reqId":"req-t","req":{"method":"POST","url":"/runners/scoped-1/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049732,"pid":216,"hostname":"9a57735be6d4","reqId":"req-t","res":{"statusCode":200},"responseTime":0.45454099999915343,"msg":"request completed"}
+{"level":30,"time":1793126049732,"pid":216,"hostname":"9a57735be6d4","reqId":"req-u","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049733,"pid":216,"hostname":"9a57735be6d4","reqId":"req-u","res":{"statusCode":202},"responseTime":0.9009060000025784,"msg":"request completed"}
+{"level":30,"time":1793126049734,"pid":216,"hostname":"9a57735be6d4","reqId":"req-v","req":{"method":"POST","url":"/runners/scoped-2/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049734,"pid":216,"hostname":"9a57735be6d4","reqId":"req-v","res":{"statusCode":200},"responseTime":0.5312720000001718,"msg":"request completed"}
+{"level":30,"time":1793126049735,"pid":216,"hostname":"9a57735be6d4","reqId":"req-w","req":{"method":"POST","url":"/tasks/b5a3729c-f308-4870-bf8f-fe68b0f41621/claim","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049735,"pid":216,"hostname":"9a57735be6d4","reqId":"req-w","res":{"statusCode":403},"responseTime":0.28165200000512414,"msg":"request completed"}
+{"level":30,"time":1793126049736,"pid":216,"hostname":"9a57735be6d4","reqId":"req-x","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049737,"pid":216,"hostname":"9a57735be6d4","reqId":"req-x","res":{"statusCode":202},"responseTime":1.002939999998489,"msg":"request completed"}
+{"level":30,"time":1793126049737,"pid":216,"hostname":"9a57735be6d4","reqId":"req-y","req":{"method":"POST","url":"/runners/doomed-1/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049738,"pid":216,"hostname":"9a57735be6d4","reqId":"req-y","res":{"statusCode":200},"responseTime":0.7095640000043204,"msg":"request completed"}
+{"level":30,"time":1793126049738,"pid":216,"hostname":"9a57735be6d4","reqId":"req-z","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049744,"pid":216,"hostname":"9a57735be6d4","reqId":"req-z","res":{"statusCode":200},"responseTime":5.257604999998875,"msg":"request completed"}
+{"level":30,"time":1793126049744,"pid":216,"hostname":"9a57735be6d4","reqId":"req-10","req":{"method":"POST","url":"/runners/doomed-1/revoke","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049745,"pid":216,"hostname":"9a57735be6d4","reqId":"req-10","res":{"statusCode":200},"responseTime":0.7510390000024927,"msg":"request completed"}
+{"level":30,"time":1793126049745,"pid":216,"hostname":"9a57735be6d4","reqId":"req-11","req":{"method":"POST","url":"/runners/heartbeat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049745,"pid":216,"hostname":"9a57735be6d4","reqId":"req-11","res":{"statusCode":401},"responseTime":0.38182899999810616,"msg":"request completed"}
+{"level":30,"time":1793126049745,"pid":216,"hostname":"9a57735be6d4","reqId":"req-12","req":{"method":"POST","url":"/tasks/6028e4fe-ccba-443b-85af-63f4b410d5ae/claim","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049746,"pid":216,"hostname":"9a57735be6d4","reqId":"req-12","res":{"statusCode":401},"responseTime":0.269588000002841,"msg":"request completed"}
+{"level":30,"time":1793126049747,"pid":216,"hostname":"9a57735be6d4","reqId":"req-13","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049748,"pid":216,"hostname":"9a57735be6d4","reqId":"req-13","res":{"statusCode":202},"responseTime":0.9681070000006002,"msg":"request completed"}
+{"level":30,"time":1793126049748,"pid":216,"hostname":"9a57735be6d4","reqId":"req-14","req":{"method":"POST","url":"/runners/reporter-1/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049749,"pid":216,"hostname":"9a57735be6d4","reqId":"req-14","res":{"statusCode":200},"responseTime":1.0383489999949234,"msg":"request completed"}
+{"level":30,"time":1793126049750,"pid":216,"hostname":"9a57735be6d4","reqId":"req-15","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049756,"pid":216,"hostname":"9a57735be6d4","reqId":"req-15","res":{"statusCode":200},"responseTime":6.208260999999766,"msg":"request completed"}
+{"level":30,"time":1793126049756,"pid":216,"hostname":"9a57735be6d4","reqId":"req-16","req":{"method":"POST","url":"/tasks/b821f154-ae46-4ef5-a2d4-0b7ad65ca3a7/claim","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049769,"pid":216,"hostname":"9a57735be6d4","reqId":"req-16","res":{"statusCode":200},"responseTime":12.956452999998874,"msg":"request completed"}
+{"level":30,"time":1793126049769,"pid":216,"hostname":"9a57735be6d4","reqId":"req-17","req":{"method":"POST","url":"/tasks/b821f154-ae46-4ef5-a2d4-0b7ad65ca3a7/progress","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049775,"pid":216,"hostname":"9a57735be6d4","reqId":"req-17","res":{"statusCode":200},"responseTime":5.7694679999985965,"msg":"request completed"}
+{"level":30,"time":1793126049778,"pid":216,"hostname":"9a57735be6d4","reqId":"req-18","req":{"method":"POST","url":"/tasks/b821f154-ae46-4ef5-a2d4-0b7ad65ca3a7/progress","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049779,"pid":216,"hostname":"9a57735be6d4","reqId":"req-18","res":{"statusCode":200},"responseTime":0.782933000002231,"msg":"request completed"}
+{"level":30,"time":1793126049784,"pid":216,"hostname":"9a57735be6d4","reqId":"req-19","req":{"method":"POST","url":"/tasks/b821f154-ae46-4ef5-a2d4-0b7ad65ca3a7/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049789,"pid":216,"hostname":"9a57735be6d4","reqId":"req-19","res":{"statusCode":200},"responseTime":4.5025840000016615,"msg":"request completed"}
+{"level":30,"time":1793126049794,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1a","req":{"method":"POST","url":"/tasks/b821f154-ae46-4ef5-a2d4-0b7ad65ca3a7/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049795,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1a","res":{"statusCode":200},"responseTime":0.8752840000015567,"msg":"request completed"}
+{"level":30,"time":1793126049796,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1b","req":{"method":"GET","url":"/runners/monitor","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049798,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1b","res":{"statusCode":200},"responseTime":1.5539669999998296,"msg":"request completed"}
+{"level":30,"time":1793126049805,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1c","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049808,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1c","res":{"statusCode":202},"responseTime":2.626329999999143,"msg":"request completed"}
+{"level":30,"time":1793126049808,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1d","req":{"method":"POST","url":"/runners/partition-a/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049809,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1d","res":{"statusCode":200},"responseTime":0.9528590000045369,"msg":"request completed"}
+{"level":30,"time":1793126049810,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1e","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049811,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1e","res":{"statusCode":202},"responseTime":1.5268280000018422,"msg":"request completed"}
+{"level":30,"time":1793126049820,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1f","req":{"method":"POST","url":"/runners/partition-b/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049821,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1f","res":{"statusCode":200},"responseTime":0.6371060000019497,"msg":"request completed"}
+{"level":30,"time":1793126049829,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1g","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049841,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1g","res":{"statusCode":200},"responseTime":12.650588999997126,"msg":"request completed"}
+{"level":30,"time":1793126049842,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1h","req":{"method":"POST","url":"/tasks/0cdec7b7-dd74-4464-b7dc-360d04157e25/claim","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126049853,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1h","res":{"statusCode":200},"responseTime":11.76793799999723,"msg":"request completed"}
+[90mstderr[2m | projectStore.test.js[2m > [22m[2mProjectStore[2m > [22m[2mrefuses to persist a project whose cwd is the projects root
+[22m[39m[projectStore] refusing to save 987f8937-66ba-4d00-853f-a6b307ad1af3: cwd is the projects root ('/tmp/kainbain-test-projects-PPfNBi')
+
+{"level":30,"time":1793126050069,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126050180,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":201},"responseTime":109.03544500000135,"msg":"request completed"}
+{"level":30,"time":1793126050181,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"PATCH","url":"/projects/67d47853-87d1-4a20-8080-e07fdec3c324","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126050954,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1i","req":{"method":"POST","url":"/tasks/0cdec7b7-dd74-4464-b7dc-360d04157e25/interrupt","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126050973,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1i","res":{"statusCode":200},"responseTime":17.739345000001776,"msg":"request completed"}
+{"level":30,"time":1793126050981,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1j","req":{"method":"GET","url":"/tasks/0cdec7b7-dd74-4464-b7dc-360d04157e25?projectId=2b1d6e31-33ec-4eba-a52d-1beaf5d530c1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126050991,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1j","res":{"statusCode":200},"responseTime":7.70819499999925,"msg":"request completed"}
+{"level":30,"time":1793126050993,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1k","req":{"method":"POST","url":"/tasks/0cdec7b7-dd74-4464-b7dc-360d04157e25/claim","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051006,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1k","res":{"statusCode":200},"responseTime":13.35448400000314,"msg":"request completed"}
+{"level":30,"time":1793126051010,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1l","req":{"method":"POST","url":"/tasks/0cdec7b7-dd74-4464-b7dc-360d04157e25/complete-execution","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051039,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1l","res":{"statusCode":200},"responseTime":28.79957000000286,"msg":"request completed"}
+{"level":30,"time":1793126051040,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1m","req":{"method":"POST","url":"/tasks/0cdec7b7-dd74-4464-b7dc-360d04157e25/complete-execution","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051044,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1m","res":{"statusCode":409},"responseTime":4.48784500000329,"msg":"request completed"}
+{"level":30,"time":1793126051044,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1n","req":{"method":"GET","url":"/runners/monitor","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051045,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1n","res":{"statusCode":200},"responseTime":0.151451999998244,"msg":"request completed"}
+{"level":30,"time":1793126051045,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1o","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051079,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1o","res":{"statusCode":202},"responseTime":33.7169950000025,"msg":"request completed"}
+{"level":30,"time":1793126051079,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1p","req":{"method":"POST","url":"/runners/failing-1/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051080,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1p","res":{"statusCode":200},"responseTime":0.4610289999982342,"msg":"request completed"}
+{"level":30,"time":1793126051080,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1q","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051106,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1q","res":{"statusCode":200},"responseTime":26.343613999997615,"msg":"request completed"}
+{"level":30,"time":1793126051107,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1r","req":{"method":"GET","url":"/tasks/2cb4cc16-6637-41c6-8d33-5d631f9c5f46?projectId=2b1d6e31-33ec-4eba-a52d-1beaf5d530c1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051107,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1r","res":{"statusCode":200},"responseTime":0.24824100000114413,"msg":"request completed"}
+{"level":30,"time":1793126051107,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1s","req":{"method":"POST","url":"/tasks/2cb4cc16-6637-41c6-8d33-5d631f9c5f46/claim","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051111,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1s","res":{"statusCode":200},"responseTime":3.8047589999987395,"msg":"request completed"}
+{"level":30,"time":1793126051111,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1t","req":{"method":"POST","url":"/tasks/2cb4cc16-6637-41c6-8d33-5d631f9c5f46/complete-execution","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051163,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1t","res":{"statusCode":200},"responseTime":51.56319799999619,"msg":"request completed"}
+{"level":30,"time":1793126051163,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1u","req":{"method":"GET","url":"/tasks/2cb4cc16-6637-41c6-8d33-5d631f9c5f46?projectId=2b1d6e31-33ec-4eba-a52d-1beaf5d530c1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051164,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1u","res":{"statusCode":200},"responseTime":0.30061299999943003,"msg":"request completed"}
+{"level":30,"time":1793126051166,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1v","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051167,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1v","res":{"statusCode":202},"responseTime":1.033912999999302,"msg":"request completed"}
+{"level":30,"time":1793126051176,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1w","req":{"method":"POST","url":"/runners/guard-exec-1/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051178,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1w","res":{"statusCode":200},"responseTime":2.4068269999988843,"msg":"request completed"}
+{"level":30,"time":1793126051178,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1x","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051203,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1x","res":{"statusCode":200},"responseTime":24.54508799999894,"msg":"request completed"}
+{"level":30,"time":1793126051203,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1y","req":{"method":"POST","url":"/tasks/81585ed3-afd1-4f20-aefe-f8a1d7ec685f/claim","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051212,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1y","res":{"statusCode":200},"responseTime":8.964585000001534,"msg":"request completed"}
+{"level":30,"time":1793126051213,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1z","req":{"method":"POST","url":"/tasks/81585ed3-afd1-4f20-aefe-f8a1d7ec685f/execute","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051216,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1z","res":{"statusCode":409},"responseTime":2.7928519999986747,"msg":"request completed"}
+{"level":30,"time":1793126051216,"pid":216,"hostname":"9a57735be6d4","reqId":"req-20","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051224,"pid":216,"hostname":"9a57735be6d4","reqId":"req-20","res":{"statusCode":202},"responseTime":7.481502999995428,"msg":"request completed"}
+{"level":30,"time":1793126051224,"pid":216,"hostname":"9a57735be6d4","reqId":"req-21","req":{"method":"POST","url":"/runners/guarded-1/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051225,"pid":216,"hostname":"9a57735be6d4","reqId":"req-21","res":{"statusCode":200},"responseTime":0.5833029999994324,"msg":"request completed"}
+{"level":30,"time":1793126051225,"pid":216,"hostname":"9a57735be6d4","reqId":"req-22","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051227,"pid":216,"hostname":"9a57735be6d4","reqId":"req-22","res":{"statusCode":200},"responseTime":2.351290999999037,"msg":"request completed"}
+{"level":30,"time":1793126051228,"pid":216,"hostname":"9a57735be6d4","reqId":"req-23","req":{"method":"POST","url":"/tasks/435adda2-bb36-43ea-bd05-aa2e84d462a3/claim","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051241,"pid":216,"hostname":"9a57735be6d4","reqId":"req-23","res":{"statusCode":200},"responseTime":13.1096400000024,"msg":"request completed"}
+{"level":30,"time":1793126051241,"pid":216,"hostname":"9a57735be6d4","reqId":"req-24","req":{"method":"POST","url":"/tasks/435adda2-bb36-43ea-bd05-aa2e84d462a3/progress","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051250,"pid":216,"hostname":"9a57735be6d4","reqId":"req-24","res":{"statusCode":401},"responseTime":8.68639300000359,"msg":"request completed"}
+{"level":30,"time":1793126051250,"pid":216,"hostname":"9a57735be6d4","reqId":"req-25","req":{"method":"POST","url":"/tasks/435adda2-bb36-43ea-bd05-aa2e84d462a3/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051250,"pid":216,"hostname":"9a57735be6d4","reqId":"req-25","res":{"statusCode":401},"responseTime":0.6301049999965471,"msg":"request completed"}
+{"level":30,"time":1793126051251,"pid":216,"hostname":"9a57735be6d4","reqId":"req-26","req":{"method":"POST","url":"/tasks/435adda2-bb36-43ea-bd05-aa2e84d462a3/complete-execution","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051251,"pid":216,"hostname":"9a57735be6d4","reqId":"req-26","res":{"statusCode":401},"responseTime":0.4693849999966915,"msg":"request completed"}
+{"level":30,"time":1793126051252,"pid":216,"hostname":"9a57735be6d4","reqId":"req-27","req":{"method":"POST","url":"/tasks/435adda2-bb36-43ea-bd05-aa2e84d462a3/interrupt","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051260,"pid":216,"hostname":"9a57735be6d4","reqId":"req-27","res":{"statusCode":401},"responseTime":7.740157000000181,"msg":"request completed"}
+{"level":30,"time":1793126051261,"pid":216,"hostname":"9a57735be6d4","reqId":"req-28","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051352,"pid":216,"hostname":"9a57735be6d4","reqId":"req-28","res":{"statusCode":201},"responseTime":91.1383730000016,"msg":"request completed"}
+{"level":30,"time":1793126051353,"pid":216,"hostname":"9a57735be6d4","reqId":"req-29","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051356,"pid":216,"hostname":"9a57735be6d4","reqId":"req-29","res":{"statusCode":200},"responseTime":2.9258699999991222,"msg":"request completed"}
+{"level":30,"time":1793126051356,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2a","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051357,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2a","res":{"statusCode":202},"responseTime":0.7774399999980233,"msg":"request completed"}
+{"level":30,"time":1793126051357,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2b","req":{"method":"POST","url":"/runners/dispatch-1/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051358,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2b","res":{"statusCode":200},"responseTime":1.0761139999958687,"msg":"request completed"}
+{"level":30,"time":1793126051358,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2c","req":{"method":"POST","url":"/runners/heartbeat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051359,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2c","res":{"statusCode":200},"responseTime":0.460348000000522,"msg":"request completed"}
+{"level":30,"time":1793126051359,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2d","req":{"method":"POST","url":"/runners/dispatch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051389,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2d","res":{"statusCode":200},"responseTime":29.98109000000113,"msg":"request completed"}
+{"level":30,"time":1793126051391,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2e","req":{"method":"POST","url":"/runners/dispatch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051394,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2e","res":{"statusCode":200},"responseTime":2.4864460000026156,"msg":"request completed"}
+{"level":30,"time":1793126051394,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2f","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051397,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2f","res":{"statusCode":202},"responseTime":2.7881930000003194,"msg":"request completed"}
+{"level":30,"time":1793126051401,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2g","req":{"method":"POST","url":"/runners/dispatch-stale/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051402,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2g","res":{"statusCode":200},"responseTime":0.835890999995172,"msg":"request completed"}
+{"level":30,"time":1793126051402,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2h","req":{"method":"POST","url":"/runners/dispatch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051402,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2h","res":{"statusCode":409},"responseTime":0.3620500000033644,"msg":"request completed"}
+{"level":30,"time":1793126051403,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2i","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051511,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2i","res":{"statusCode":201},"responseTime":108.24778000000515,"msg":"request completed"}
+{"level":30,"time":1793126051511,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2j","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051518,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2j","res":{"statusCode":200},"responseTime":6.704695000000356,"msg":"request completed"}
+{"level":30,"time":1793126051518,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2k","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051519,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2k","res":{"statusCode":202},"responseTime":0.6483659999939846,"msg":"request completed"}
+{"level":30,"time":1793126051519,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2l","req":{"method":"POST","url":"/runners/dispatch-t0/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051520,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2l","res":{"statusCode":200},"responseTime":0.4042380000028061,"msg":"request completed"}
+{"level":30,"time":1793126051522,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2m","req":{"method":"POST","url":"/runners/heartbeat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051522,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2m","res":{"statusCode":200},"responseTime":0.38800500000070315,"msg":"request completed"}
+{"level":30,"time":1793126051523,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2n","req":{"method":"POST","url":"/runners/dispatch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051523,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2n","res":{"statusCode":200},"responseTime":0.8182329999981448,"msg":"request completed"}
+{"level":30,"time":1793126051524,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2o","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051614,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2o","res":{"statusCode":201},"responseTime":83.15571699999418,"msg":"request completed"}
+{"level":30,"time":1793126051614,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2p","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051624,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2p","res":{"statusCode":200},"responseTime":10.225624999999127,"msg":"request completed"}
+{"level":30,"time":1793126051625,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2q","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051626,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2q","res":{"statusCode":202},"responseTime":1.2455960000006598,"msg":"request completed"}
+{"level":30,"time":1793126051627,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2r","req":{"method":"POST","url":"/runners/dispatch-allow/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051628,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2r","res":{"statusCode":200},"responseTime":0.9346969999969588,"msg":"request completed"}
+{"level":30,"time":1793126051628,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2s","req":{"method":"POST","url":"/runners/heartbeat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051628,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2s","res":{"statusCode":200},"responseTime":0.5739729999986594,"msg":"request completed"}
+{"level":30,"time":1793126051629,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2t","req":{"method":"POST","url":"/runners/dispatch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051629,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2t","res":{"statusCode":200},"responseTime":0.4343920000028447,"msg":"request completed"}
+{"level":30,"time":1793126051629,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2u","req":{"method":"POST","url":"/runners/dispatch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051631,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2u","res":{"statusCode":200},"responseTime":1.8713019999995595,"msg":"request completed"}
+{"level":30,"time":1793126051632,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2v","req":{"method":"POST","url":"/runners/dispatch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051632,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2v","res":{"statusCode":401},"responseTime":0.4016110000011395,"msg":"request completed"}
+{"level":30,"time":1793126051642,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2w","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051707,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2w","res":{"statusCode":201},"responseTime":65.68227900000056,"msg":"request completed"}
+{"level":30,"time":1793126051708,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2x","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051710,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2x","res":{"statusCode":200},"responseTime":2.1271429999978864,"msg":"request completed"}
+{"level":30,"time":1793126051710,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2y","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051711,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2y","res":{"statusCode":202},"responseTime":0.8440429999973276,"msg":"request completed"}
+{"level":30,"time":1793126051711,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2z","req":{"method":"POST","url":"/runners/dispatch-scope/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051712,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2z","res":{"statusCode":200},"responseTime":0.6068840000007185,"msg":"request completed"}
+{"level":30,"time":1793126051712,"pid":216,"hostname":"9a57735be6d4","reqId":"req-30","req":{"method":"POST","url":"/runners/heartbeat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051713,"pid":216,"hostname":"9a57735be6d4","reqId":"req-30","res":{"statusCode":200},"responseTime":0.3323270000037155,"msg":"request completed"}
+{"level":30,"time":1793126051713,"pid":216,"hostname":"9a57735be6d4","reqId":"req-31","req":{"method":"POST","url":"/runners/dispatch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051720,"pid":216,"hostname":"9a57735be6d4","reqId":"req-31","res":{"statusCode":200},"responseTime":7.021228999998129,"msg":"request completed"}
+{"level":30,"time":1793126051720,"pid":216,"hostname":"9a57735be6d4","reqId":"req-32","req":{"method":"GET","url":"/runners","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051720,"pid":216,"hostname":"9a57735be6d4","reqId":"req-32","res":{"statusCode":200},"responseTime":0.2988389999954961,"msg":"request completed"}
+{"level":30,"time":1793126051721,"pid":216,"hostname":"9a57735be6d4","reqId":"req-33","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051726,"pid":216,"hostname":"9a57735be6d4","reqId":"req-33","res":{"statusCode":202},"responseTime":5.477607000000717,"msg":"request completed"}
+{"level":30,"time":1793126051727,"pid":216,"hostname":"9a57735be6d4","reqId":"req-34","req":{"method":"POST","url":"/runners/dispatch-scope-all/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051727,"pid":216,"hostname":"9a57735be6d4","reqId":"req-34","res":{"statusCode":200},"responseTime":0.553330000002461,"msg":"request completed"}
+{"level":30,"time":1793126051727,"pid":216,"hostname":"9a57735be6d4","reqId":"req-35","req":{"method":"POST","url":"/runners/heartbeat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051728,"pid":216,"hostname":"9a57735be6d4","reqId":"req-35","res":{"statusCode":200},"responseTime":0.34636000000318745,"msg":"request completed"}
+{"level":30,"time":1793126051728,"pid":216,"hostname":"9a57735be6d4","reqId":"req-36","req":{"method":"POST","url":"/runners/dispatch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051731,"pid":216,"hostname":"9a57735be6d4","reqId":"req-36","res":{"statusCode":200},"responseTime":2.8336839999974472,"msg":"request completed"}
+{"level":30,"time":1793126051731,"pid":216,"hostname":"9a57735be6d4","reqId":"req-37","req":{"method":"GET","url":"/runners","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051733,"pid":216,"hostname":"9a57735be6d4","reqId":"req-37","res":{"statusCode":200},"responseTime":1.9867529999974067,"msg":"request completed"}
+{"level":30,"time":1793126051743,"pid":216,"hostname":"9a57735be6d4","reqId":"req-38","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051822,"pid":216,"hostname":"9a57735be6d4","reqId":"req-38","res":{"statusCode":201},"responseTime":79.24122299999726,"msg":"request completed"}
+{"level":30,"time":1793126051822,"pid":216,"hostname":"9a57735be6d4","reqId":"req-39","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051824,"pid":216,"hostname":"9a57735be6d4","reqId":"req-39","res":{"statusCode":200},"responseTime":1.8073290000029374,"msg":"request completed"}
+{"level":30,"time":1793126051824,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3a","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051825,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3a","res":{"statusCode":202},"responseTime":0.8570550000004005,"msg":"request completed"}
+{"level":30,"time":1793126051826,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3b","req":{"method":"POST","url":"/runners/dispatch-alias/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051826,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3b","res":{"statusCode":200},"responseTime":0.582697999998345,"msg":"request completed"}
+{"level":30,"time":1793126051826,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3c","req":{"method":"POST","url":"/runners/heartbeat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051827,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3c","res":{"statusCode":200},"responseTime":0.30127599999832455,"msg":"request completed"}
+{"level":30,"time":1793126051827,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3d","req":{"method":"POST","url":"/runners/dispatch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051836,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3d","res":{"statusCode":200},"responseTime":9.22412500000064,"msg":"request completed"}
+{"level":30,"time":1793126051842,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3e","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051938,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3e","res":{"statusCode":201},"responseTime":96.12495399999898,"msg":"request completed"}
+{"level":30,"time":1793126051939,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3f","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051948,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3f","res":{"statusCode":200},"responseTime":9.393171000003349,"msg":"request completed"}
+{"level":30,"time":1793126051949,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3g","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051951,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3g","res":{"statusCode":202},"responseTime":2.7544379999962985,"msg":"request completed"}
+{"level":30,"time":1793126051952,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3h","req":{"method":"POST","url":"/runners/steer-1/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051952,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3h","res":{"statusCode":200},"responseTime":0.4466329999995651,"msg":"request completed"}
+{"level":30,"time":1793126051952,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3i","req":{"method":"POST","url":"/runners/heartbeat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051953,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3i","res":{"statusCode":200},"responseTime":0.29689499999949476,"msg":"request completed"}
+{"level":30,"time":1793126051953,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3j","req":{"method":"POST","url":"/tasks/98be0903-02be-419c-af1b-12214fbeae8e/claim","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051965,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3j","res":{"statusCode":200},"responseTime":12.321451000003435,"msg":"request completed"}
+{"level":30,"time":1793126051965,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3k","req":{"method":"POST","url":"/tasks/98be0903-02be-419c-af1b-12214fbeae8e/steer","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051966,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3k","res":{"statusCode":200},"responseTime":0.9704879999990226,"msg":"request completed"}
+{"level":30,"time":1793126051969,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3l","req":{"method":"POST","url":"/runners/heartbeat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051982,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3l","res":{"statusCode":200},"responseTime":13.227508000003581,"msg":"request completed"}
+{"level":30,"time":1793126051992,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3m","req":{"method":"POST","url":"/tasks/98be0903-02be-419c-af1b-12214fbeae8e/steer-ack","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051992,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3m","res":{"statusCode":409},"responseTime":0.6632649999955902,"msg":"request completed"}
+{"level":30,"time":1793126051993,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3n","req":{"method":"POST","url":"/tasks/98be0903-02be-419c-af1b-12214fbeae8e/steer-ack","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051994,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3n","res":{"statusCode":200},"responseTime":0.9671170000001439,"msg":"request completed"}
+{"level":30,"time":1793126051994,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3o","req":{"method":"GET","url":"/tasks/98be0903-02be-419c-af1b-12214fbeae8e/steers?projectId=17b1304f-e47f-415f-9c4c-56deca8d9d70&executionId=1548095d-d908-434e-829e-ab947a0cd3cf","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051995,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3o","res":{"statusCode":200},"responseTime":0.7729419999959646,"msg":"request completed"}
+{"level":30,"time":1793126051995,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3p","req":{"method":"GET","url":"/runners/monitor","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126051995,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3p","res":{"statusCode":200},"responseTime":0.2649900000033085,"msg":"request completed"}
+{"level":30,"time":1793126052006,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3q","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052011,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3q","res":{"statusCode":202},"responseTime":4.627033999997366,"msg":"request completed"}
+{"level":30,"time":1793126052011,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3r","req":{"method":"POST","url":"/runners/rotate-1/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052012,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3r","res":{"statusCode":200},"responseTime":0.5313520000054268,"msg":"request completed"}
+{"level":30,"time":1793126052012,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3s","req":{"method":"POST","url":"/runners/heartbeat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052012,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3s","res":{"statusCode":200},"responseTime":0.36093000000255415,"msg":"request completed"}
+{"level":30,"time":1793126052012,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3t","req":{"method":"POST","url":"/runners/rotate-1/rotate","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052013,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3t","res":{"statusCode":200},"responseTime":0.5970470000029309,"msg":"request completed"}
+{"level":30,"time":1793126052017,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3u","req":{"method":"POST","url":"/runners/heartbeat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052031,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3u","res":{"statusCode":401},"responseTime":14.341733000001113,"msg":"request completed"}
+{"level":30,"time":1793126052031,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3v","req":{"method":"POST","url":"/runners/heartbeat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052032,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3v","res":{"statusCode":200},"responseTime":0.6694620000052964,"msg":"request completed"}
+{"level":30,"time":1793126052032,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3w","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052033,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3w","res":{"statusCode":202},"responseTime":0.8889350000026752,"msg":"request completed"}
+{"level":30,"time":1793126052033,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3x","req":{"method":"POST","url":"/runners/rotate-pending/rotate","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052034,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3x","res":{"statusCode":409},"responseTime":0.16998099999909755,"msg":"request completed"}
+{"level":30,"time":1793126052034,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3y","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052129,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3y","res":{"statusCode":201},"responseTime":94.4926159999959,"msg":"request completed"}
+{"level":30,"time":1793126052129,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3z","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052141,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3z","res":{"statusCode":200},"responseTime":11.458626999999979,"msg":"request completed"}
+{"level":30,"time":1793126052141,"pid":216,"hostname":"9a57735be6d4","reqId":"req-40","req":{"method":"POST","url":"/tasks/d21d272a-e9db-436e-85f1-20bc07f9a8af/steer","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052149,"pid":216,"hostname":"9a57735be6d4","reqId":"req-40","res":{"statusCode":200},"responseTime":8.401410000005853,"msg":"request completed"}
+{"level":30,"time":1793126052150,"pid":216,"hostname":"9a57735be6d4","reqId":"req-41","req":{"method":"GET","url":"/tasks/d21d272a-e9db-436e-85f1-20bc07f9a8af/steers?projectId=4ae65853-f1f3-4dd2-b637-ae84472f3366&executionId=gone","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052150,"pid":216,"hostname":"9a57735be6d4","reqId":"req-41","res":{"statusCode":200},"responseTime":0.15346100000169827,"msg":"request completed"}
+{"level":30,"time":1793126052151,"pid":216,"hostname":"9a57735be6d4","reqId":"req-42","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052224,"pid":216,"hostname":"9a57735be6d4","reqId":"req-42","res":{"statusCode":201},"responseTime":73.38699199999974,"msg":"request completed"}
+{"level":30,"time":1793126052224,"pid":216,"hostname":"9a57735be6d4","reqId":"req-43","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052234,"pid":216,"hostname":"9a57735be6d4","reqId":"req-43","res":{"statusCode":200},"responseTime":9.717388000004576,"msg":"request completed"}
+{"level":30,"time":1793126052234,"pid":216,"hostname":"9a57735be6d4","reqId":"req-44","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052235,"pid":216,"hostname":"9a57735be6d4","reqId":"req-44","res":{"statusCode":202},"responseTime":1.0399819999947795,"msg":"request completed"}
+{"level":30,"time":1793126052236,"pid":216,"hostname":"9a57735be6d4","reqId":"req-45","req":{"method":"POST","url":"/runners/dispatch-alias-gone/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052236,"pid":216,"hostname":"9a57735be6d4","reqId":"req-45","res":{"statusCode":200},"responseTime":0.7470389999944018,"msg":"request completed"}
+{"level":30,"time":1793126052237,"pid":216,"hostname":"9a57735be6d4","reqId":"req-46","req":{"method":"POST","url":"/runners/heartbeat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052238,"pid":216,"hostname":"9a57735be6d4","reqId":"req-46","res":{"statusCode":200},"responseTime":1.4809070000046631,"msg":"request completed"}
+{"level":30,"time":1793126052238,"pid":216,"hostname":"9a57735be6d4","reqId":"req-47","req":{"method":"POST","url":"/runners/dispatch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052242,"pid":216,"hostname":"9a57735be6d4","reqId":"req-47","res":{"statusCode":200},"responseTime":3.3914329999970505,"msg":"request completed"}
+{"level":30,"time":1793126052242,"pid":216,"hostname":"9a57735be6d4","reqId":"req-48","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052245,"pid":216,"hostname":"9a57735be6d4","reqId":"req-48","res":{"statusCode":202},"responseTime":2.1741239999973914,"msg":"request completed"}
+{"level":30,"time":1793126052245,"pid":216,"hostname":"9a57735be6d4","reqId":"req-49","req":{"method":"POST","url":"/runners/notfound-1/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052247,"pid":216,"hostname":"9a57735be6d4","reqId":"req-49","res":{"statusCode":200},"responseTime":2.239809000006062,"msg":"request completed"}
+{"level":30,"time":1793126052247,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4a","req":{"method":"POST","url":"/tasks/does-not-exist/claim","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052248,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4a","res":{"statusCode":404},"responseTime":0.5581590000001597,"msg":"request completed"}
+{"level":30,"time":1793126052248,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4b","req":{"method":"POST","url":"/runners/ghost-runner/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126052248,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4b","res":{"statusCode":404},"responseTime":0.16184100000100443,"msg":"request completed"}
+ [32m✓[39m flow/runnerRoutes.test.js [2m([22m[2m25 tests[22m[2m)[22m[33m 4549[2mms[22m[39m
+   [32m✓[39m Runner Routes Integration [2m(25)[22m
+     [33m[2m✓[22m[39m renews a live hold via claim-heartbeat: 200, still fenced past TTL[33m 1325[2mms[22m[39m
+     [33m[2m✓[22m[39m R01 wire: partitioned Runner's late completion is stale, exactly one wins[33m 1246[2mms[22m[39m
+ [32m✓[39m projectStore.test.js [2m([22m[2m66 tests[22m[2m)[22m[33m 3438[2mms[22m[39m
+{"level":30,"time":1793126053745,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":3563.762713999997,"msg":"request completed"}
+{"level":30,"time":1793126053748,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"GET","url":"/projects/67d47853-87d1-4a20-8080-e07fdec3c324","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126053750,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":2.5139039999994566,"msg":"request completed"}
+{"level":30,"time":1793126053753,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126053799,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":201},"responseTime":46.50620699999854,"msg":"request completed"}
+{"level":30,"time":1793126053801,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"PATCH","url":"/projects/4ee9b908-f532-44bc-905f-4da65b435218","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126053926,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":200},"responseTime":124.68299399999523,"msg":"request completed"}
+{"level":30,"time":1793126053930,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"PATCH","url":"/projects/4ee9b908-f532-44bc-905f-4da65b435218","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126053931,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":400},"responseTime":0.6176140000025043,"msg":"request completed"}
+{"level":30,"time":1793126053931,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"PATCH","url":"/projects/4ee9b908-f532-44bc-905f-4da65b435218","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126053932,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":400},"responseTime":0.4721110000027693,"msg":"request completed"}
+{"level":30,"time":1793126053932,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"PATCH","url":"/projects/4ee9b908-f532-44bc-905f-4da65b435218","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126053933,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":400},"responseTime":0.37530100000003586,"msg":"request completed"}
+{"level":30,"time":1793126053933,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054000,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":201},"responseTime":66.63784600000508,"msg":"request completed"}
+{"level":30,"time":1793126054001,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","req":{"method":"PATCH","url":"/projects/a3213fa7-96bb-4fc2-9853-61bb2bdb85d6","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054003,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","res":{"statusCode":400},"responseTime":2.1048870000013267,"msg":"request completed"}
+{"level":30,"time":1793126054003,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","req":{"method":"PATCH","url":"/projects/a3213fa7-96bb-4fc2-9853-61bb2bdb85d6","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054004,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","res":{"statusCode":400},"responseTime":0.49152199999662116,"msg":"request completed"}
+{"level":30,"time":1793126054004,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","req":{"method":"PATCH","url":"/projects/a3213fa7-96bb-4fc2-9853-61bb2bdb85d6","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054012,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","res":{"statusCode":400},"responseTime":7.541650999999547,"msg":"request completed"}
+{"level":30,"time":1793126054012,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","req":{"method":"PATCH","url":"/projects/a3213fa7-96bb-4fc2-9853-61bb2bdb85d6","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054014,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","res":{"statusCode":400},"err":{"type":"Error","message":"body/modelAliases/0 must be object","stack":"Error: body/modelAliases/0 must be object\n    at defaultSchemaErrorFormatter (/home/server/projects/kainbain/api/node_modules/fastify/lib/context.js:92:10)\n    at wrapValidationError (/home/server/projects/kainbain/api/node_modules/fastify/lib/validation.js:505:17)\n    at validate (/home/server/projects/kainbain/api/node_modules/fastify/lib/validation.js:423:16)\n    at preValidationCallback (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:115:25)\n    at handler (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:99:7)\n    at onDone (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:241:5)\n    at AsyncResource.runInAsyncScope (node:async_hooks:227:14)\n    at done (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:211:14)\n    at Parser.defaultJsonParser [as fn] (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:338:7)\n    at Request.onEnd (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:320:27)","statusCode":400,"code":"FST_ERR_VALIDATION","validation":[{"instancePath":"/modelAliases/0","schemaPath":"#/properties/modelAliases/items/type","keyword":"type","params":{"type":"object"},"message":"must be object"}],"validationContext":"body"},"msg":"body/modelAliases/0 must be object"}
+{"level":30,"time":1793126054022,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","res":{"statusCode":400},"responseTime":10.006262000002607,"msg":"request completed"}
+{"level":30,"time":1793126054025,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054069,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","res":{"statusCode":201},"responseTime":43.929708999996365,"msg":"request completed"}
+{"level":30,"time":1793126054069,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","req":{"method":"PATCH","url":"/projects/8697655f-6730-4387-a837-1c9873ae66d6","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054080,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","res":{"statusCode":400},"responseTime":10.62495299999864,"msg":"request completed"}
+{"level":30,"time":1793126054080,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054177,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","res":{"statusCode":201},"responseTime":96.81631999999809,"msg":"request completed"}
+{"level":30,"time":1793126054178,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","req":{"method":"PUT","url":"/projects/f1b2e12d-1288-4b14-b28b-6abbb9b289a5/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054212,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","res":{"statusCode":200},"responseTime":34.308868000000075,"msg":"request completed"}
+{"level":30,"time":1793126054212,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","req":{"method":"PATCH","url":"/projects/f1b2e12d-1288-4b14-b28b-6abbb9b289a5","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054241,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","res":{"statusCode":200},"responseTime":28.96432199999981,"msg":"request completed"}
+{"level":30,"time":1793126054242,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","req":{"method":"GET","url":"/projects/f1b2e12d-1288-4b14-b28b-6abbb9b289a5/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054242,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","res":{"statusCode":200},"responseTime":0.5223470000055386,"msg":"request completed"}
+{"level":30,"time":1793126054244,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054306,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","res":{"statusCode":201},"responseTime":61.818585000000894,"msg":"request completed"}
+{"level":30,"time":1793126054306,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","req":{"method":"PATCH","url":"/projects/8039a041-62b8-4a8d-817e-dd731860ef18","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054328,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","res":{"statusCode":200},"responseTime":21.360031999996863,"msg":"request completed"}
+{"level":30,"time":1793126054328,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","req":{"method":"PATCH","url":"/projects/8039a041-62b8-4a8d-817e-dd731860ef18","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054350,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","res":{"statusCode":200},"responseTime":22.23472000000038,"msg":"request completed"}
+{"level":30,"time":1793126054351,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","req":{"method":"GET","url":"/projects/8039a041-62b8-4a8d-817e-dd731860ef18","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054353,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","res":{"statusCode":200},"responseTime":2.2284969999964233,"msg":"request completed"}
+{"level":30,"time":1793126054353,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","req":{"method":"GET","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054354,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","res":{"statusCode":200},"responseTime":0.3670239999992191,"msg":"request completed"}
+{"level":30,"time":1793126054363,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054411,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","res":{"statusCode":201},"responseTime":48.0160809999943,"msg":"request completed"}
+{"level":30,"time":1793126054414,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","req":{"method":"PATCH","url":"/projects/5d5caa6e-00f3-4c79-a7fe-ceeee7f1da5b","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054433,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","res":{"statusCode":200},"responseTime":19.03906700000516,"msg":"request completed"}
+{"level":30,"time":1793126054433,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","req":{"method":"PATCH","url":"/projects/5d5caa6e-00f3-4c79-a7fe-ceeee7f1da5b","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054444,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","res":{"statusCode":409},"responseTime":10.375594999997702,"msg":"request completed"}
+{"level":30,"time":1793126054444,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","req":{"method":"GET","url":"/projects/5d5caa6e-00f3-4c79-a7fe-ceeee7f1da5b","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054444,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","res":{"statusCode":200},"responseTime":0.3018270000029588,"msg":"request completed"}
+{"level":30,"time":1793126054445,"pid":216,"hostname":"9a57735be6d4","reqId":"req-t","req":{"method":"PATCH","url":"/projects/5d5caa6e-00f3-4c79-a7fe-ceeee7f1da5b","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054471,"pid":216,"hostname":"9a57735be6d4","reqId":"req-t","res":{"statusCode":200},"responseTime":25.37137800000346,"msg":"request completed"}
+{"level":30,"time":1793126054485,"pid":216,"hostname":"9a57735be6d4","reqId":"req-u","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054539,"pid":216,"hostname":"9a57735be6d4","reqId":"req-u","res":{"statusCode":201},"responseTime":53.776444999995874,"msg":"request completed"}
+{"level":30,"time":1793126054539,"pid":216,"hostname":"9a57735be6d4","reqId":"req-v","req":{"method":"PATCH","url":"/projects/624c7e6a-86a0-4212-8a4e-d785a934b91b","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054541,"pid":216,"hostname":"9a57735be6d4","reqId":"req-v","res":{"statusCode":400},"responseTime":1.8316349999950035,"msg":"request completed"}
+{"level":30,"time":1793126054541,"pid":216,"hostname":"9a57735be6d4","reqId":"req-w","req":{"method":"GET","url":"/projects/624c7e6a-86a0-4212-8a4e-d785a934b91b","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054541,"pid":216,"hostname":"9a57735be6d4","reqId":"req-w","res":{"statusCode":200},"responseTime":0.2295959999974002,"msg":"request completed"}
+{"level":30,"time":1793126054542,"pid":216,"hostname":"9a57735be6d4","reqId":"req-x","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054616,"pid":216,"hostname":"9a57735be6d4","reqId":"req-x","res":{"statusCode":201},"responseTime":73.94031900000118,"msg":"request completed"}
+{"level":30,"time":1793126054616,"pid":216,"hostname":"9a57735be6d4","reqId":"req-y","req":{"method":"PATCH","url":"/projects/dde92241-4d8c-46fd-9f4f-666d8fb7638a","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054617,"pid":216,"hostname":"9a57735be6d4","reqId":"req-y","res":{"statusCode":400},"responseTime":0.47458900000492577,"msg":"request completed"}
+{"level":30,"time":1793126054617,"pid":216,"hostname":"9a57735be6d4","reqId":"req-z","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054681,"pid":216,"hostname":"9a57735be6d4","reqId":"req-z","res":{"statusCode":201},"responseTime":63.87739000000147,"msg":"request completed"}
+{"level":30,"time":1793126054681,"pid":216,"hostname":"9a57735be6d4","reqId":"req-10","req":{"method":"PATCH","url":"/projects/c2f2f807-8b68-4c7c-b734-64d7a6f22044","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126054704,"pid":216,"hostname":"9a57735be6d4","reqId":"req-10","res":{"statusCode":200},"responseTime":22.636019999998098,"msg":"request completed"}
+ [32m✓[39m routes/projects.alias.test.js [2m([22m[2m10 tests[22m[2m)[22m[33m 5473[2mms[22m[39m
+   [32m✓[39m Project model-alias API [2m(10)[22m
+     [33m[2m✓[22m[39m persists modelAliases through PATCH and echoes them on GET[33m 4499[2mms[22m[39m
+ [32m✓[39m flow/stageExecution.test.js [2m([22m[2m21 tests[22m[2m)[22m[33m 5408[2mms[22m[39m
+   [32m✓[39m executeStage branch lifecycle [2m(7)[22m
+     [33m[2m✓[22m[39m agent success commits work and returns to the default branch[33m 1373[2mms[22m[39m
+     [33m[2m✓[22m[39m human pickup creates the branch ref without checking out and waits[33m 497[2mms[22m[39m
+   [32m✓[39m deploy as a ci stage (ordinary ci runtime) [2m(6)[22m
+     [33m[2m✓[22m[39m provisions a task branch for a deploy-command ci stage like any other CI (branch mode)[33m 838[2mms[22m[39m
+     [33m[2m✓[22m[39m still gives an agent stage its task branch when a stray command mentions deploy.sh[33m 1285[2mms[22m[39m
+ [32m✓[39m flow/stageLifecycle.integration.test.js [2m([22m[2m6 tests[22m[2m)[22m[33m 5606[2mms[22m[39m
+   [32m✓[39m task branch lifecycle end to end [2m(6)[22m
+     [33m[2m✓[22m[39m agent stage: default → task → commit → push → default[33m 1243[2mms[22m[39m
+     [33m[2m✓[22m[39m CI stage: default → task → commit → push → default[33m 1085[2mms[22m[39m
+     [33m[2m✓[22m[39m merge stage: integrates, ends on default, pushes default[33m 1008[2mms[22m[39m
+     [33m[2m✓[22m[39m deploy stage: runs as an ordinary CI stage (default → task → commit → push → default)[33m 789[2mms[22m[39m
+ [32m✓[39m reviewAssembly.integration.test.js [2m([22m[2m7 tests[22m[2m)[22m[33m 4068[2mms[22m[39m
+   [32m✓[39m reviewAssembly preserved diff after merge [2m(7)[22m
+     [33m[2m✓[22m[39m shows an empty live diff after merge when preservation is off[33m 880[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps the merged change visible when preservation is on[33m 740[2mms[22m[39m
+     [33m[2m✓[22m[39m separates post-failback fix-ups into newSinceMerge[33m 748[2mms[22m[39m
+     [33m[2m✓[22m[39m shows only the latest pass after re-merge with a reset baseline[33m 690[2mms[22m[39m
+     [33m[2m✓[22m[39m still renders the baseline when the task branch was deleted post-merge[33m 442[2mms[22m[39m
+     [33m[2m✓[22m[39m falls back to the live diff with a note when baseline SHAs are gone[33m 442[2mms[22m[39m
+{"level":30,"time":1793126061518,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"GET","url":"/status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126061789,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"GET","url":"/status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126062961,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":200},"responseTime":1441.4611030000015,"msg":"request completed"}
+{"level":30,"time":1793126062968,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"GET","url":"/status/health","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126062971,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":3.384809999995923,"msg":"request completed"}
+{"level":30,"time":1793126062973,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"GET","url":"/status/observability","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126062978,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":4.554586999998719,"msg":"request completed"}
+{"level":30,"time":1793126063088,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":200},"responseTime":1297.664982000002,"msg":"request completed"}
+ [32m✓[39m routes/status.test.js [2m([22m[2m5 tests[22m[2m)[22m[33m 2001[2mms[22m[39m
+   [32m✓[39m Status API Integration [2m(5)[22m
+     [33m[2m✓[22m[39m should return 200 OK and valid status payload including global engine state and health checks[33m 1754[2mms[22m[39m
+ [32m✓[39m agent/harnesses/vibe/vibeHarness.acp.test.js [2m([22m[2m61 tests[22m[2m)[22m[33m 2617[2mms[22m[39m
+   [32m✓[39m vibe ACP session (mock agent) [2m(22)[22m
+     [33m[2m✓[22m[39m aborts a slow turn: the child dies and the turn settles as aborted[33m 524[2mms[22m[39m
+     [33m[2m✓[22m[39m times out a hung handshake instead of pinning session creation[33m 314[2mms[22m[39m
+[boot] projects root '/tmp/kainbain-ca-test-DgpFjC/projects' does not exist — no projects will be discovered. Set PROJECTS_ROOT (and optionally PROJECTS_ROOTS) to your projects directory and restart.
+{"level":30,"time":1793126063092,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"OPTIONS","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126063093,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":204},"responseTime":1.598139000001538,"msg":"request completed"}
+{"level":30,"time":1793126063094,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"OPTIONS","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126063094,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":204},"responseTime":0.2739140000048792,"msg":"request completed"}
+{"level":30,"time":1793126063095,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"OPTIONS","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126063095,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":204},"responseTime":0.17772400000103517,"msg":"request completed"}
+ [32m✓[39m index.test.js [2m([22m[2m8 tests[22m[2m)[22m[33m 2316[2mms[22m[39m
+   [32m✓[39m Server Configuration [2m(3)[22m
+     [33m[2m✓[22m[39m should respond to the health check[33m 1308[2mms[22m[39m
+   [32m✓[39m TLS trust [2m(1)[22m
+     [33m[2m✓[22m[39m never injects an implicit CA path at import time (audit H-1)[33m 678[2mms[22m[39m
+ [32m✓[39m changelog.test.js [2m([22m[2m31 tests[22m[2m)[22m[33m 1833[2mms[22m[39m
+ [32m✓[39m agent/harnesses/antigravity/agyHarness.contract.test.js [2m([22m[2m52 tests[22m[2m)[22m[33m 1867[2mms[22m[39m
+ [32m✓[39m agent/harnesses/muse/museHarness.contract.test.js [2m([22m[2m50 tests[22m[2m)[22m[33m 2226[2mms[22m[39m
+   [32m✓[39m muse harness lifecycle (mock muse) [2m(7)[22m
+     [33m[2m✓[22m[39m watchdog kills a hung run with a timeout run_error[33m 414[2mms[22m[39m
+   [32m✓[39m muse harness Tier-2 paths (mock muse + mock serve) [2m(4)[22m
+     [33m[2m✓[22m[39m plumbs a dispatch-resolved model through --model on the MSP→exec fallback[33m 476[2mms[22m[39m
+ [32m✓[39m flow/startupRecovery.integration.test.js [2m([22m[2m2 tests[22m[2m)[22m[33m 1354[2mms[22m[39m
+   [32m✓[39m startup recovery resumes interrupted work [2m(2)[22m
+     [33m[2m✓[22m[39m a kill -9 orphan (running_agent, hook never ran) resumes and runs once[33m 745[2mms[22m[39m
+     [33m[2m✓[22m[39m a SIGTERM interruption resumes and runs once[33m 529[2mms[22m[39m
+ [32m✓[39m agent/harnesses/vibe/vibeHarness.contract.test.js [2m([22m[2m54 tests[22m[2m | [22m[33m1 skipped[39m[2m)[22m[33m 1789[2mms[22m[39m
+   [32m✓[39m vibe harness lifecycle (mock vibe) [2m(10)[22m
+     [33m[2m✓[22m[39m watchdog kills a hung run with a timeout run_error[33m 413[2mms[22m[39m
+{"level":30,"time":1793126068667,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126068755,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":201},"responseTime":86.51560199999949,"msg":"request completed"}
+{"level":30,"time":1793126068764,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126069563,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+ [32m✓[39m git/branchWorktree.test.js [2m([22m[2m8 tests[22m[2m)[22m[33m 2047[2mms[22m[39m
+   [32m✓[39m reconcileBranchWorktreeLock + ensureBranchCheckedOut [2m(5)[22m
+     [33m[2m✓[22m[39m removes a clean, synced holder and checks out the branch[33m 445[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses a holder with uncommitted work and keeps it intact[33m 411[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses a holder with ignored files the checkout would delete[33m 318[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses a holder whose branch is ahead of upstream[33m 339[2mms[22m[39m
+{"level":30,"time":1793126069622,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":201},"responseTime":57.84770500000013,"msg":"request completed"}
+{"level":30,"time":1793126069625,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"POST","url":"/compute/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126069627,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":2.2868210000015097,"msg":"request completed"}
+{"level":30,"time":1793126069628,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"POST","url":"/compute/stop","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126068794,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":30.16663200000039,"msg":"request completed"}
+{"level":30,"time":1793126068795,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"GET","url":"/session/history?projectId=a7216c01-24f0-4e51-a58f-b4d2b7e16f57","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126069963,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":1167.752250999998,"msg":"request completed"}
+{"level":30,"time":1793126069965,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126069968,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":200},"responseTime":3.1877129999993485,"msg":"request completed"}
+{"level":30,"time":1793126069969,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"POST","url":"/tasks/12f7b193-990a-43da-b3c4-60cafd29b28c/jump","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126069975,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":200},"responseTime":5.7339910000009695,"msg":"request completed"}
+{"level":30,"time":1793126069975,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"POST","url":"/tasks/12f7b193-990a-43da-b3c4-60cafd29b28c/reject","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126069982,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":200},"responseTime":7.524057000002358,"msg":"request completed"}
+{"level":30,"time":1793126069984,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070003,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":200},"responseTime":19.389905000003637,"msg":"request completed"}
+{"level":30,"time":1793126070003,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"POST","url":"/tasks/7ec2d761-131a-4393-aafa-3430235eca79/reject","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070006,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":400},"responseTime":2.998212999998941,"msg":"request completed"}
+{"level":30,"time":1793126070007,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070010,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":200},"responseTime":2.538769000006141,"msg":"request completed"}
+{"level":30,"time":1793126070010,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","req":{"method":"POST","url":"/tasks/f84b23ad-b40a-4e7c-b016-37b6e71f554a/jump","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070013,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","res":{"statusCode":200},"responseTime":2.2100270000009914,"msg":"request completed"}
+{"level":30,"time":1793126070013,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","req":{"method":"POST","url":"/tasks/f84b23ad-b40a-4e7c-b016-37b6e71f554a/reject","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070029,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","res":{"statusCode":200},"responseTime":16.52751200000057,"msg":"request completed"}
+{"level":30,"time":1793126070030,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","req":{"method":"GET","url":"/tasks/f84b23ad-b40a-4e7c-b016-37b6e71f554a?projectId=a7216c01-24f0-4e51-a58f-b4d2b7e16f57","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070030,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","res":{"statusCode":200},"responseTime":0.67485800000577,"msg":"request completed"}
+{"level":30,"time":1793126070033,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","req":{"method":"GET","url":"/tasks/f84b23ad-b40a-4e7c-b016-37b6e71f554a/reports?projectId=a7216c01-24f0-4e51-a58f-b4d2b7e16f57","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070035,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","res":{"statusCode":200},"responseTime":1.7028280000013183,"msg":"request completed"}
+{"level":30,"time":1793126070035,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","req":{"method":"DELETE","url":"/tasks/f84b23ad-b40a-4e7c-b016-37b6e71f554a?projectId=a7216c01-24f0-4e51-a58f-b4d2b7e16f57","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070037,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","res":{"statusCode":200},"responseTime":1.7806729999938398,"msg":"request completed"}
+{"level":30,"time":1793126070037,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070039,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","res":{"statusCode":200},"responseTime":1.9683599999989383,"msg":"request completed"}
+{"level":30,"time":1793126070040,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","req":{"method":"PATCH","url":"/tasks/85274445-3c07-48ce-ac47-eece68ae07c8","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070054,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","res":{"statusCode":200},"responseTime":14.470847999997204,"msg":"request completed"}
+{"level":30,"time":1793126070054,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","req":{"method":"POST","url":"/tasks/85274445-3c07-48ce-ac47-eece68ae07c8/reject","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070055,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","res":{"statusCode":409},"responseTime":1.0456800000029034,"msg":"request completed"}
+{"level":30,"time":1793126070056,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","req":{"method":"DELETE","url":"/tasks/85274445-3c07-48ce-ac47-eece68ae07c8?projectId=a7216c01-24f0-4e51-a58f-b4d2b7e16f57","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070056,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","res":{"statusCode":200},"responseTime":0.7552719999948749,"msg":"request completed"}
+{"level":30,"time":1793126070057,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070059,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","res":{"statusCode":200},"responseTime":2.3479710000028717,"msg":"request completed"}
+{"level":30,"time":1793126070059,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","req":{"method":"PATCH","url":"/tasks/57f08761-8ce4-4264-ab66-383b58e31ff0","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070072,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","res":{"statusCode":200},"responseTime":12.738796999998158,"msg":"request completed"}
+{"level":30,"time":1793126070073,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","req":{"method":"POST","url":"/tasks/57f08761-8ce4-4264-ab66-383b58e31ff0/reject","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070073,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","res":{"statusCode":409},"responseTime":0.6922520000007353,"msg":"request completed"}
+{"level":30,"time":1793126070074,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","req":{"method":"DELETE","url":"/tasks/57f08761-8ce4-4264-ab66-383b58e31ff0?projectId=a7216c01-24f0-4e51-a58f-b4d2b7e16f57","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070074,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","res":{"statusCode":200},"responseTime":0.4538380000012694,"msg":"request completed"}
+{"level":30,"time":1793126070075,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","req":{"method":"POST","url":"/tasks/preview","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070089,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","res":{"statusCode":200},"responseTime":14.502552999998443,"msg":"request completed"}
+{"level":30,"time":1793126070090,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070093,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","res":{"statusCode":200},"responseTime":2.9256180000011227,"msg":"request completed"}
+{"level":30,"time":1793126070094,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","req":{"method":"POST","url":"/compute/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070096,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","res":{"statusCode":200},"responseTime":2.179473999996844,"msg":"request completed"}
+{"level":30,"time":1793126070098,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","req":{"method":"GET","url":"/session/tree?projectId=a7216c01-24f0-4e51-a58f-b4d2b7e16f57","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070099,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","res":{"statusCode":200},"responseTime":0.6986640000031912,"msg":"request completed"}
+{"level":30,"time":1793126070099,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","req":{"method":"POST","url":"/compute/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070111,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","res":{"statusCode":200},"responseTime":11.402476999995997,"msg":"request completed"}
+{"level":30,"time":1793126070113,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","req":{"method":"POST","url":"/session/navigate","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070117,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","res":{"statusCode":200},"responseTime":3.7126099999950384,"msg":"request completed"}
+{"level":30,"time":1793126070120,"pid":216,"hostname":"9a57735be6d4","reqId":"req-t","req":{"method":"POST","url":"/session/navigate","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070121,"pid":216,"hostname":"9a57735be6d4","reqId":"req-t","res":{"statusCode":200},"responseTime":0.5036629999958677,"msg":"request completed"}
+{"level":30,"time":1793126070121,"pid":216,"hostname":"9a57735be6d4","reqId":"req-u","req":{"method":"POST","url":"/session/navigate","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070122,"pid":216,"hostname":"9a57735be6d4","reqId":"req-u","res":{"statusCode":400},"responseTime":0.600016999997024,"msg":"request completed"}
+{"level":30,"time":1793126070123,"pid":216,"hostname":"9a57735be6d4","reqId":"req-v","req":{"method":"POST","url":"/session/navigate","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070124,"pid":216,"hostname":"9a57735be6d4","reqId":"req-v","res":{"statusCode":404},"responseTime":0.8527819999944768,"msg":"request completed"}
+{"level":30,"time":1793126070125,"pid":216,"hostname":"9a57735be6d4","reqId":"req-w","req":{"method":"POST","url":"/session/fork","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070126,"pid":216,"hostname":"9a57735be6d4","reqId":"req-w","res":{"statusCode":400},"responseTime":0.8308560000004945,"msg":"request completed"}
+{"level":30,"time":1793126070126,"pid":216,"hostname":"9a57735be6d4","reqId":"req-x","req":{"method":"POST","url":"/session/fork","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070127,"pid":216,"hostname":"9a57735be6d4","reqId":"req-x","res":{"statusCode":404},"responseTime":0.7068170000056853,"msg":"request completed"}
+{"level":30,"time":1793126070128,"pid":216,"hostname":"9a57735be6d4","reqId":"req-y","req":{"method":"POST","url":"/compute/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070128,"pid":216,"hostname":"9a57735be6d4","reqId":"req-y","res":{"statusCode":200},"responseTime":0.5503929999977117,"msg":"request completed"}
+{"level":30,"time":1793126070128,"pid":216,"hostname":"9a57735be6d4","reqId":"req-z","req":{"method":"POST","url":"/session/navigate","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070129,"pid":216,"hostname":"9a57735be6d4","reqId":"req-z","res":{"statusCode":501},"responseTime":0.4322420000025886,"msg":"request completed"}
+{"level":30,"time":1793126070130,"pid":216,"hostname":"9a57735be6d4","reqId":"req-10","req":{"method":"POST","url":"/compute/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070130,"pid":216,"hostname":"9a57735be6d4","reqId":"req-10","res":{"statusCode":200},"responseTime":0.6907790000041132,"msg":"request completed"}
+{"level":30,"time":1793126070130,"pid":216,"hostname":"9a57735be6d4","reqId":"req-11","req":{"method":"POST","url":"/session/fork","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070131,"pid":216,"hostname":"9a57735be6d4","reqId":"req-11","res":{"statusCode":501},"responseTime":0.3050809999986086,"msg":"request completed"}
+{"level":30,"time":1793126070132,"pid":216,"hostname":"9a57735be6d4","reqId":"req-12","req":{"method":"POST","url":"/compute/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070132,"pid":216,"hostname":"9a57735be6d4","reqId":"req-12","res":{"statusCode":200},"responseTime":0.34373799999593757,"msg":"request completed"}
+{"level":30,"time":1793126070132,"pid":216,"hostname":"9a57735be6d4","reqId":"req-13","req":{"method":"POST","url":"/session/navigate","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070133,"pid":216,"hostname":"9a57735be6d4","reqId":"req-13","res":{"statusCode":200},"responseTime":0.3081979999988107,"msg":"request completed"}
+{"level":30,"time":1793126070133,"pid":216,"hostname":"9a57735be6d4","reqId":"req-14","req":{"method":"POST","url":"/session/navigate","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070134,"pid":216,"hostname":"9a57735be6d4","reqId":"req-14","res":{"statusCode":200},"responseTime":0.3865650000007008,"msg":"request completed"}
+{"level":30,"time":1793126070134,"pid":216,"hostname":"9a57735be6d4","reqId":"req-15","req":{"method":"POST","url":"/session/navigate","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070134,"pid":216,"hostname":"9a57735be6d4","reqId":"req-15","res":{"statusCode":200},"responseTime":0.2534270000032848,"msg":"request completed"}
+{"level":30,"time":1793126070137,"pid":216,"hostname":"9a57735be6d4","reqId":"req-16","req":{"method":"POST","url":"/compute/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070137,"pid":216,"hostname":"9a57735be6d4","reqId":"req-16","res":{"statusCode":200},"responseTime":0.31054800000129035,"msg":"request completed"}
+{"level":30,"time":1793126070138,"pid":216,"hostname":"9a57735be6d4","reqId":"req-17","req":{"method":"POST","url":"/compute/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070139,"pid":216,"hostname":"9a57735be6d4","reqId":"req-17","res":{"statusCode":200},"responseTime":0.35542400000122143,"msg":"request completed"}
+{"level":30,"time":1793126070139,"pid":216,"hostname":"9a57735be6d4","reqId":"req-18","req":{"method":"POST","url":"/session/fork","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070139,"pid":216,"hostname":"9a57735be6d4","reqId":"req-18","res":{"statusCode":200},"responseTime":0.43389599999500206,"msg":"request completed"}
+{"level":30,"time":1793126070140,"pid":216,"hostname":"9a57735be6d4","reqId":"req-19","req":{"method":"GET","url":"/session/status?projectId=a7216c01-24f0-4e51-a58f-b4d2b7e16f57","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070140,"pid":216,"hostname":"9a57735be6d4","reqId":"req-19","res":{"statusCode":200},"responseTime":0.3952789999966626,"msg":"request completed"}
+{"level":30,"time":1793126070141,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1a","req":{"method":"POST","url":"/session/restore","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070141,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1a","res":{"statusCode":200},"responseTime":0.6367940000054659,"msg":"request completed"}
+{"level":30,"time":1793126070142,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1b","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070191,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1b","res":{"statusCode":201},"responseTime":48.718550999998115,"msg":"request completed"}
+{"level":30,"time":1793126070191,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1c","req":{"method":"GET","url":"/session/history?projectId=0f00750d-7657-438f-87a1-a694172a6665","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070200,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1c","res":{"statusCode":200},"responseTime":8.686209999999846,"msg":"request completed"}
+{"level":30,"time":1793126070203,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1d","req":{"method":"GET","url":"/session/tree?projectId=a7216c01-24f0-4e51-a58f-b4d2b7e16f57","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070203,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1d","res":{"statusCode":200},"responseTime":0.2520370000056573,"msg":"request completed"}
+ [32m✓[39m routes/sessions.test.js [2m([22m[2m26 tests[22m[2m)[22m[33m 2186[2mms[22m[39m
+   [32m✓[39m Session History & Enhanced Human Review [2m(24)[22m
+     [33m[2m✓[22m[39m GET /session/history returns messages and tree for a project[33m 1207[2mms[22m[39m
+{"level":30,"time":1793126069629,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":1.450596000002406,"msg":"request completed"}
+{"level":30,"time":1793126069630,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"GET","url":"/compute/models","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126070595,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":200},"responseTime":964.9234400000059,"msg":"request completed"}
+ [32m✓[39m harnessResolution.api.test.js [2m([22m[2m1 test[22m[2m)[22m[33m 1656[2mms[22m[39m
+   [32m✓[39m per-project harness resolution (API smoke) [2m(1)[22m
+     [33m[2m✓[22m[39m provisions a project with an unknown harness, warns on the process log wire, and still serves compute[33m 1055[2mms[22m[39m
+ [32m✓[39m sessionStore.test.js [2m([22m[2m27 tests[22m[2m)[22m[33m 968[2mms[22m[39m
+   [32m✓[39m SessionStore [2m(22)[22m
+     [32m✓[39m readSessionHistoryFromDisk & getSessionHistory [2m(3)[22m
+       [33m[2m✓[22m[39m reads messages and tree from disk without instantiating createSession or ModelRuntime[33m 934[2mms[22m[39m
+ [32m✓[39m flow/commandStages.ciBranch.integration.test.js [2m([22m[2m6 tests[22m[2m)[22m[33m 1335[2mms[22m[39m
+   [32m✓[39m runCommandStage ci run-on-branch (real git) [2m(6)[22m
+     [33m[2m✓[22m[39m runs custom-mode CI on the named branch and restores it afterwards[33m 311[2mms[22m[39m
+{"level":30,"time":1793126072584,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126072655,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":201},"responseTime":70.2039769999974,"msg":"request completed"}
+{"level":30,"time":1793126072658,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"POST","url":"/compute/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126072660,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":2.205606000003172,"msg":"request completed"}
+{"level":30,"time":1793126072660,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"GET","url":"/compute/status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126072661,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":0.35829799999919487,"msg":"request completed"}
+{"level":30,"time":1793126072661,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"POST","url":"/compute/stop","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126072663,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":200},"responseTime":1.6317679999992833,"msg":"request completed"}
+{"level":30,"time":1793126072664,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"POST","url":"/compute/stop","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126072665,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":200},"responseTime":0.7148749999978463,"msg":"request completed"}
+{"level":30,"time":1793126072665,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"POST","url":"/compute/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126072666,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":200},"responseTime":0.7707680000021355,"msg":"request completed"}
+{"level":30,"time":1793126072667,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"GET","url":"/compute/context?projectId=ffc3853e-bdab-4e33-8f57-564c31cbc266","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126072668,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":200},"responseTime":0.5066749999969034,"msg":"request completed"}
+{"level":30,"time":1793126072668,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"POST","url":"/compute/compact","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126072669,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":200},"responseTime":0.6732609999962733,"msg":"request completed"}
+{"level":30,"time":1793126072670,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"POST","url":"/compute/steer","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126072671,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":400},"responseTime":0.5640920000005281,"msg":"request completed"}
+{"level":30,"time":1793126072672,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","req":{"method":"POST","url":"/compute/steer","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126072673,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","res":{"statusCode":200},"responseTime":0.7922729999991134,"msg":"request completed"}
+{"level":30,"time":1793126072673,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","req":{"method":"POST","url":"/compute/follow-up","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126072674,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","res":{"statusCode":200},"responseTime":0.5634050000007846,"msg":"request completed"}
+{"level":30,"time":1793126072674,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126072683,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","res":{"statusCode":200},"responseTime":9.204219999999623,"msg":"request completed"}
+{"level":30,"time":1793126072684,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","req":{"method":"GET","url":"/tasks?projectId=ffc3853e-bdab-4e33-8f57-564c31cbc266","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126072688,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","res":{"statusCode":200},"responseTime":4.065517000002728,"msg":"request completed"}
+{"level":30,"time":1793126072688,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","req":{"method":"POST","url":"/test/reset","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+ [32m✓[39m agent/harnesses/antigravity/agyHarness.acp.test.js [2m([22m[2m49 tests[22m[2m)[22m[33m 1905[2mms[22m[39m
+   [32m✓[39m antigravity ACP session (mock agent) [2m(14)[22m
+     [33m[2m✓[22m[39m aborts a slow turn: the child dies and the turn settles as aborted[33m 522[2mms[22m[39m
+     [33m[2m✓[22m[39m times out a hung handshake instead of pinning session creation[33m 313[2mms[22m[39m
+{"level":30,"time":1793126073477,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126072689,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","res":{"statusCode":200},"responseTime":1.0296019999950659,"msg":"request completed"}
+{"level":30,"time":1793126072690,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","req":{"method":"GET","url":"/tasks?projectId=ffc3853e-bdab-4e33-8f57-564c31cbc266","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126072690,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","res":{"statusCode":200},"responseTime":0.15942699999868637,"msg":"request completed"}
+{"level":30,"time":1793126072691,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","req":{"method":"GET","url":"/compute/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126073573,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":201},"responseTime":89.91744299999846,"msg":"request completed"}
+{"level":30,"time":1793126073573,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"GET","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126073573,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":0.4505910000007134,"msg":"request completed"}
+{"level":30,"time":1793126073576,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126073685,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":201},"responseTime":108.12729200000467,"msg":"request completed"}
+{"level":30,"time":1793126073688,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126073775,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","res":{"statusCode":200},"responseTime":1084.029122,"msg":"request completed"}
+{"level":30,"time":1793126073779,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","req":{"method":"GET","url":"/compute/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126073795,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":201},"responseTime":106.44646700000158,"msg":"request completed"}
+{"level":30,"time":1793126073796,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"GET","url":"/projects/7f966d2a-d490-42f8-83cc-94624a7c8436","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126073806,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":200},"responseTime":9.979498999993666,"msg":"request completed"}
+{"level":30,"time":1793126073810,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126073818,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":400},"responseTime":7.56359400000656,"msg":"request completed"}
+{"level":30,"time":1793126073819,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126073819,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":400},"responseTime":0.8139989999908721,"msg":"request completed"}
+{"level":30,"time":1793126073820,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126073898,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":201},"responseTime":78.14536999999837,"msg":"request completed"}
+{"level":30,"time":1793126073899,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"GET","url":"/projects/695e5550-260e-4098-8530-894be42f2a18","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126073906,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":200},"responseTime":6.8751069999998435,"msg":"request completed"}
+{"level":30,"time":1793126073907,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126073916,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","res":{"statusCode":200},"responseTime":136.30843699999969,"msg":"request completed"}
+{"level":30,"time":1793126073916,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","req":{"method":"GET","url":"/compute/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126073981,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","res":{"statusCode":201},"responseTime":73.07710099998803,"msg":"request completed"}
+{"level":30,"time":1793126073982,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126073983,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","res":{"statusCode":400},"err":{"type":"Error","message":"body/harness must be string","stack":"Error: body/harness must be string\n    at defaultSchemaErrorFormatter (/home/server/projects/kainbain/api/node_modules/fastify/lib/context.js:92:10)\n    at wrapValidationError (/home/server/projects/kainbain/api/node_modules/fastify/lib/validation.js:505:17)\n    at validate (/home/server/projects/kainbain/api/node_modules/fastify/lib/validation.js:423:16)\n    at preValidationCallback (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:115:25)\n    at handler (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:99:7)\n    at onDone (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:241:5)\n    at AsyncResource.runInAsyncScope (node:async_hooks:227:14)\n    at done (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:211:14)\n    at Parser.defaultJsonParser [as fn] (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:338:7)\n    at Request.onEnd (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:320:27)","statusCode":400,"code":"FST_ERR_VALIDATION","validation":[{"instancePath":"/harness","schemaPath":"#/properties/harness/type","keyword":"type","params":{"type":"string"},"message":"must be string"}],"validationContext":"body"},"msg":"body/harness must be string"}
+{"level":30,"time":1793126073985,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","res":{"statusCode":400},"responseTime":2.5250689999957103,"msg":"request completed"}
+{"level":30,"time":1793126073985,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126073994,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","res":{"statusCode":200},"responseTime":78.1775639999978,"msg":"request completed"}
+{"level":30,"time":1793126073996,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","req":{"method":"GET","url":"/compute/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074038,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","res":{"statusCode":201},"responseTime":52.028449999997974,"msg":"request completed"}
+{"level":30,"time":1793126074038,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","req":{"method":"PATCH","url":"/projects/5a5522a4-7b17-41b7-8563-7288c02efaf1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074052,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","res":{"statusCode":200},"responseTime":13.574305000001914,"msg":"request completed"}
+{"level":30,"time":1793126074052,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","req":{"method":"GET","url":"/projects/5a5522a4-7b17-41b7-8563-7288c02efaf1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074052,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","res":{"statusCode":200},"responseTime":0.3253629999962868,"msg":"request completed"}
+{"level":30,"time":1793126074053,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074073,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","res":{"statusCode":200},"responseTime":77.0951209999912,"msg":"request completed"}
+{"level":30,"time":1793126074074,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","req":{"method":"GET","url":"/compute/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074101,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","res":{"statusCode":201},"responseTime":48.22644100000616,"msg":"request completed"}
+{"level":30,"time":1793126074102,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","req":{"method":"PATCH","url":"/projects/2e030565-6834-40e4-9ab9-33fe33ba592f","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074102,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","res":{"statusCode":400},"err":{"type":"Error","message":"body/harness must be string","stack":"Error: body/harness must be string\n    at defaultSchemaErrorFormatter (/home/server/projects/kainbain/api/node_modules/fastify/lib/context.js:92:10)\n    at wrapValidationError (/home/server/projects/kainbain/api/node_modules/fastify/lib/validation.js:505:17)\n    at validate (/home/server/projects/kainbain/api/node_modules/fastify/lib/validation.js:423:16)\n    at preValidationCallback (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:115:25)\n    at handler (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:99:7)\n    at onDone (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:241:5)\n    at AsyncResource.runInAsyncScope (node:async_hooks:227:14)\n    at done (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:211:14)\n    at Parser.defaultJsonParser [as fn] (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:338:7)\n    at Request.onEnd (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:320:27)","statusCode":400,"code":"FST_ERR_VALIDATION","validation":[{"instancePath":"/harness","schemaPath":"#/properties/harness/type","keyword":"type","params":{"type":"string"},"message":"must be string"}],"validationContext":"body"},"msg":"body/harness must be string"}
+{"level":30,"time":1793126074103,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","res":{"statusCode":400},"responseTime":0.9750740000017686,"msg":"request completed"}
+{"level":30,"time":1793126074103,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074153,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","res":{"statusCode":201},"responseTime":50.00655900000129,"msg":"request completed"}
+{"level":30,"time":1793126074154,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074163,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","res":{"statusCode":200},"responseTime":88.71493299999565,"msg":"request completed"}
+{"level":30,"time":1793126074165,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","req":{"method":"GET","url":"/compute/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074203,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","res":{"statusCode":201},"responseTime":49.51064599999518,"msg":"request completed"}
+{"level":30,"time":1793126074204,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","req":{"method":"PATCH","url":"/projects/6131f4a2-666f-4177-a109-9fe13ad2da16","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074215,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","res":{"statusCode":200},"responseTime":10.924207000003662,"msg":"request completed"}
+{"level":30,"time":1793126074215,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","req":{"method":"GET","url":"/projects/6131f4a2-666f-4177-a109-9fe13ad2da16","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074215,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","res":{"statusCode":200},"responseTime":0.2661789999983739,"msg":"request completed"}
+{"level":30,"time":1793126074216,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","req":{"method":"PATCH","url":"/projects/6131f4a2-666f-4177-a109-9fe13ad2da16","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074227,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","res":{"statusCode":200},"responseTime":10.942407000009553,"msg":"request completed"}
+{"level":30,"time":1793126074227,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074235,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","res":{"statusCode":200},"responseTime":70.10098499999731,"msg":"request completed"}
+{"level":30,"time":1793126074237,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","req":{"method":"POST","url":"/compute/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074238,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","res":{"statusCode":200},"responseTime":0.37516799999866635,"msg":"request completed"}
+{"level":30,"time":1793126074238,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","req":{"method":"GET","url":"/compute/context?projectId=ffc3853e-bdab-4e33-8f57-564c31cbc266","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074238,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","res":{"statusCode":501},"responseTime":0.3099499999952968,"msg":"request completed"}
+{"level":30,"time":1793126074239,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","req":{"method":"POST","url":"/compute/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074240,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","res":{"statusCode":200},"responseTime":0.3846040000062203,"msg":"request completed"}
+{"level":30,"time":1793126074240,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","req":{"method":"POST","url":"/compute/compact","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074240,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","res":{"statusCode":501},"responseTime":0.45966500000213273,"msg":"request completed"}
+{"level":30,"time":1793126074246,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","req":{"method":"POST","url":"/compute/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074247,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","res":{"statusCode":200},"responseTime":0.4643730000098003,"msg":"request completed"}
+{"level":30,"time":1793126074247,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","req":{"method":"POST","url":"/compute/steer","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074247,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","res":{"statusCode":501},"responseTime":0.2759259999875212,"msg":"request completed"}
+{"level":30,"time":1793126074248,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","req":{"method":"POST","url":"/compute/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074248,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","res":{"statusCode":200},"responseTime":0.2536590000090655,"msg":"request completed"}
+{"level":30,"time":1793126074248,"pid":216,"hostname":"9a57735be6d4","reqId":"req-t","req":{"method":"POST","url":"/compute/follow-up","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074248,"pid":216,"hostname":"9a57735be6d4","reqId":"req-t","res":{"statusCode":501},"responseTime":0.2604460000002291,"msg":"request completed"}
+{"level":30,"time":1793126074249,"pid":216,"hostname":"9a57735be6d4","reqId":"req-u","req":{"method":"POST","url":"/compute/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074249,"pid":216,"hostname":"9a57735be6d4","reqId":"req-u","res":{"statusCode":200},"responseTime":0.24961199999961536,"msg":"request completed"}
+{"level":30,"time":1793126074249,"pid":216,"hostname":"9a57735be6d4","reqId":"req-v","req":{"method":"POST","url":"/compute/compact","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074250,"pid":216,"hostname":"9a57735be6d4","reqId":"req-v","res":{"statusCode":200},"responseTime":0.5067410000046948,"msg":"request completed"}
+{"level":30,"time":1793126074251,"pid":216,"hostname":"9a57735be6d4","reqId":"req-w","req":{"method":"GET","url":"/compute/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074271,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","res":{"statusCode":201},"responseTime":44.04095199999574,"msg":"request completed"}
+{"level":30,"time":1793126074272,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","req":{"method":"PATCH","url":"/projects/7843e0d3-7e1c-4255-91cc-2c5da3a603af","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074272,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","res":{"statusCode":400},"err":{"type":"Error","message":"body/maxAutoIterations must be integer,null","stack":"Error: body/maxAutoIterations must be integer,null\n    at defaultSchemaErrorFormatter (/home/server/projects/kainbain/api/node_modules/fastify/lib/context.js:92:10)\n    at wrapValidationError (/home/server/projects/kainbain/api/node_modules/fastify/lib/validation.js:505:17)\n    at validate (/home/server/projects/kainbain/api/node_modules/fastify/lib/validation.js:423:16)\n    at preValidationCallback (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:115:25)\n    at handler (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:99:7)\n    at onDone (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:241:5)\n    at AsyncResource.runInAsyncScope (node:async_hooks:227:14)\n    at done (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:211:14)\n    at Parser.defaultJsonParser [as fn] (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:338:7)\n    at Request.onEnd (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:320:27)","statusCode":400,"code":"FST_ERR_VALIDATION","validation":[{"instancePath":"/maxAutoIterations","schemaPath":"#/properties/maxAutoIterations/type","keyword":"type","params":{"type":["integer","null"]},"message":"must be integer,null"}],"validationContext":"body"},"msg":"body/maxAutoIterations must be integer,null"}
+{"level":30,"time":1793126074272,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","res":{"statusCode":400},"responseTime":0.5579710000019986,"msg":"request completed"}
+{"level":30,"time":1793126074278,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074335,"pid":216,"hostname":"9a57735be6d4","reqId":"req-w","res":{"statusCode":200},"responseTime":83.91748600000574,"msg":"request completed"}
+{"level":30,"time":1793126074337,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","res":{"statusCode":201},"responseTime":58.44845599999826,"msg":"request completed"}
+{"level":30,"time":1793126074337,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","req":{"method":"GET","url":"/projects/8aa7006f-207b-4ab5-94b8-ca2895a770c3","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074337,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","res":{"statusCode":200},"responseTime":0.24668300000485033,"msg":"request completed"}
+{"level":30,"time":1793126074338,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074345,"pid":216,"hostname":"9a57735be6d4","reqId":"req-x","req":{"method":"GET","url":"/compute/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074393,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","res":{"statusCode":201},"responseTime":54.75863399999798,"msg":"request completed"}
+{"level":30,"time":1793126074393,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","req":{"method":"PATCH","url":"/projects/0179cf74-39b8-454e-8b97-e3e3e0af5bbb","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074404,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","res":{"statusCode":200},"responseTime":10.844473999997717,"msg":"request completed"}
+{"level":30,"time":1793126074404,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","req":{"method":"PATCH","url":"/projects/0179cf74-39b8-454e-8b97-e3e3e0af5bbb","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074416,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","res":{"statusCode":200},"responseTime":11.373704999990878,"msg":"request completed"}
+{"level":30,"time":1793126074416,"pid":216,"hostname":"9a57735be6d4","reqId":"req-t","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074429,"pid":216,"hostname":"9a57735be6d4","reqId":"req-x","res":{"statusCode":200},"responseTime":83.86646800000744,"msg":"request completed"}
+{"level":30,"time":1793126074437,"pid":216,"hostname":"9a57735be6d4","reqId":"req-y","req":{"method":"GET","url":"/compute/models","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074449,"pid":216,"hostname":"9a57735be6d4","reqId":"req-y","res":{"statusCode":200},"responseTime":12.531283000003896,"msg":"request completed"}
+{"level":30,"time":1793126074450,"pid":216,"hostname":"9a57735be6d4","reqId":"req-z","req":{"method":"GET","url":"/compute/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074462,"pid":216,"hostname":"9a57735be6d4","reqId":"req-t","res":{"statusCode":201},"responseTime":45.25052700001106,"msg":"request completed"}
+{"level":30,"time":1793126074462,"pid":216,"hostname":"9a57735be6d4","reqId":"req-u","req":{"method":"PATCH","url":"/projects/6c1075e2-e3b1-4bee-87b1-327a8266fa4a","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074478,"pid":216,"hostname":"9a57735be6d4","reqId":"req-u","res":{"statusCode":200},"responseTime":15.824082000006456,"msg":"request completed"}
+{"level":30,"time":1793126074478,"pid":216,"hostname":"9a57735be6d4","reqId":"req-v","req":{"method":"PATCH","url":"/projects/6c1075e2-e3b1-4bee-87b1-327a8266fa4a","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074479,"pid":216,"hostname":"9a57735be6d4","reqId":"req-v","res":{"statusCode":400},"err":{"type":"Error","message":"body/harnessCommand must be string","stack":"Error: body/harnessCommand must be string\n    at defaultSchemaErrorFormatter (/home/server/projects/kainbain/api/node_modules/fastify/lib/context.js:92:10)\n    at wrapValidationError (/home/server/projects/kainbain/api/node_modules/fastify/lib/validation.js:505:17)\n    at validate (/home/server/projects/kainbain/api/node_modules/fastify/lib/validation.js:423:16)\n    at preValidationCallback (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:115:25)\n    at handler (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:99:7)\n    at onDone (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:241:5)\n    at AsyncResource.runInAsyncScope (node:async_hooks:227:14)\n    at done (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:211:14)\n    at Parser.defaultJsonParser [as fn] (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:338:7)\n    at Request.onEnd (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:320:27)","statusCode":400,"code":"FST_ERR_VALIDATION","validation":[{"instancePath":"/harnessCommand","schemaPath":"#/properties/harnessCommand/type","keyword":"type","params":{"type":"string"},"message":"must be string"}],"validationContext":"body"},"msg":"body/harnessCommand must be string"}
+{"level":30,"time":1793126074479,"pid":216,"hostname":"9a57735be6d4","reqId":"req-v","res":{"statusCode":400},"responseTime":0.5862899999920046,"msg":"request completed"}
+{"level":30,"time":1793126074479,"pid":216,"hostname":"9a57735be6d4","reqId":"req-w","req":{"method":"GET","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074480,"pid":216,"hostname":"9a57735be6d4","reqId":"req-w","res":{"statusCode":200},"responseTime":0.4522129999968456,"msg":"request completed"}
+{"level":30,"time":1793126074480,"pid":216,"hostname":"9a57735be6d4","reqId":"req-x","req":{"method":"POST","url":"/projects/6c1075e2-e3b1-4bee-87b1-327a8266fa4a/activate","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074481,"pid":216,"hostname":"9a57735be6d4","reqId":"req-x","res":{"statusCode":200},"responseTime":0.28842499999154825,"msg":"request completed"}
+{"level":30,"time":1793126074481,"pid":216,"hostname":"9a57735be6d4","reqId":"req-y","req":{"method":"GET","url":"/projects/non-existent-id","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074481,"pid":216,"hostname":"9a57735be6d4","reqId":"req-y","res":{"statusCode":404},"responseTime":0.32270999999309424,"msg":"request completed"}
+{"level":30,"time":1793126074482,"pid":216,"hostname":"9a57735be6d4","reqId":"req-z","req":{"method":"GET","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074482,"pid":216,"hostname":"9a57735be6d4","reqId":"req-z","res":{"statusCode":200},"responseTime":0.43406299999332987,"msg":"request completed"}
+{"level":30,"time":1793126074483,"pid":216,"hostname":"9a57735be6d4","reqId":"req-10","req":{"method":"GET","url":"/projects/028f60dd-70d0-4b7b-95e3-851ac5710abb","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074483,"pid":216,"hostname":"9a57735be6d4","reqId":"req-10","res":{"statusCode":200},"responseTime":0.2133260000118753,"msg":"request completed"}
+{"level":30,"time":1793126074483,"pid":216,"hostname":"9a57735be6d4","reqId":"req-11","req":{"method":"GET","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074484,"pid":216,"hostname":"9a57735be6d4","reqId":"req-11","res":{"statusCode":200},"responseTime":0.38173200000892393,"msg":"request completed"}
+{"level":30,"time":1793126074484,"pid":216,"hostname":"9a57735be6d4","reqId":"req-12","req":{"method":"PATCH","url":"/projects/028f60dd-70d0-4b7b-95e3-851ac5710abb","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074495,"pid":216,"hostname":"9a57735be6d4","reqId":"req-12","res":{"statusCode":200},"responseTime":11.213205000007292,"msg":"request completed"}
+{"level":30,"time":1793126074496,"pid":216,"hostname":"9a57735be6d4","reqId":"req-13","req":{"method":"PATCH","url":"/projects/non-existent-id","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074496,"pid":216,"hostname":"9a57735be6d4","reqId":"req-13","res":{"statusCode":404},"responseTime":0.45471700000052806,"msg":"request completed"}
+{"level":30,"time":1793126074497,"pid":216,"hostname":"9a57735be6d4","reqId":"req-14","req":{"method":"GET","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074497,"pid":216,"hostname":"9a57735be6d4","reqId":"req-14","res":{"statusCode":200},"responseTime":0.3777760000084527,"msg":"request completed"}
+{"level":30,"time":1793126074497,"pid":216,"hostname":"9a57735be6d4","reqId":"req-15","req":{"method":"GET","url":"/projects/028f60dd-70d0-4b7b-95e3-851ac5710abb/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074498,"pid":216,"hostname":"9a57735be6d4","reqId":"req-15","res":{"statusCode":200},"responseTime":0.40299099999538157,"msg":"request completed"}
+{"level":30,"time":1793126074498,"pid":216,"hostname":"9a57735be6d4","reqId":"req-16","req":{"method":"PUT","url":"/projects/028f60dd-70d0-4b7b-95e3-851ac5710abb/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074511,"pid":216,"hostname":"9a57735be6d4","reqId":"req-16","res":{"statusCode":200},"responseTime":13.091130000000703,"msg":"request completed"}
+{"level":30,"time":1793126074512,"pid":216,"hostname":"9a57735be6d4","reqId":"req-17","req":{"method":"GET","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074512,"pid":216,"hostname":"9a57735be6d4","reqId":"req-17","res":{"statusCode":200},"responseTime":0.3918790000025183,"msg":"request completed"}
+{"level":30,"time":1793126074513,"pid":216,"hostname":"9a57735be6d4","reqId":"req-18","req":{"method":"POST","url":"/projects/028f60dd-70d0-4b7b-95e3-851ac5710abb/workflow/jump","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074525,"pid":216,"hostname":"9a57735be6d4","reqId":"req-18","res":{"statusCode":200},"responseTime":11.987919999999576,"msg":"request completed"}
+{"level":30,"time":1793126074525,"pid":216,"hostname":"9a57735be6d4","reqId":"req-19","req":{"method":"GET","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074526,"pid":216,"hostname":"9a57735be6d4","reqId":"req-19","res":{"statusCode":200},"responseTime":0.42702299999655224,"msg":"request completed"}
+{"level":30,"time":1793126074526,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1a","req":{"method":"POST","url":"/projects/028f60dd-70d0-4b7b-95e3-851ac5710abb/workflow/jump","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074536,"pid":216,"hostname":"9a57735be6d4","reqId":"req-z","res":{"statusCode":200},"responseTime":86.31393299999763,"msg":"request completed"}
+ [32m✓[39m routes/compute.test.js [2m([22m[2m23 tests[22m[2m)[22m[33m 2234[2mms[22m[39m
+   [32m✓[39m Compute API Integration [2m(21)[22m
+     [33m[2m✓[22m[39m GET /compute/models returns discovered models with input capabilities[33m 1087[2mms[22m[39m
+{"level":30,"time":1793126074539,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1a","res":{"statusCode":200},"responseTime":12.7272110000049,"msg":"request completed"}
+{"level":30,"time":1793126074539,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1b","req":{"method":"POST","url":"/projects/028f60dd-70d0-4b7b-95e3-851ac5710abb/workflow/skip","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074551,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1b","res":{"statusCode":200},"responseTime":12.185745000009774,"msg":"request completed"}
+{"level":30,"time":1793126074552,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1c","req":{"method":"GET","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074552,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1c","res":{"statusCode":200},"responseTime":0.4008499999908963,"msg":"request completed"}
+{"level":30,"time":1793126074552,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1d","req":{"method":"POST","url":"/projects/028f60dd-70d0-4b7b-95e3-851ac5710abb/workflow/jump","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074553,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1d","res":{"statusCode":404},"responseTime":0.3365570000023581,"msg":"request completed"}
+{"level":30,"time":1793126074553,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1e","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074606,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1e","res":{"statusCode":201},"responseTime":52.39386100000411,"msg":"request completed"}
+{"level":30,"time":1793126074606,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1f","req":{"method":"DELETE","url":"/projects/5262bb3c-1876-4a37-b44e-bca41593a54e","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074606,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1f","res":{"statusCode":200},"responseTime":0.39303799999470357,"msg":"request completed"}
+{"level":30,"time":1793126074606,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1g","req":{"method":"GET","url":"/projects/5262bb3c-1876-4a37-b44e-bca41593a54e","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074607,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1g","res":{"statusCode":404},"responseTime":0.13608900000690483,"msg":"request completed"}
+{"level":30,"time":1793126074607,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1h","req":{"method":"GET","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074608,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1h","res":{"statusCode":200},"responseTime":0.40170399998896755,"msg":"request completed"}
+{"level":30,"time":1793126074608,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1i","req":{"method":"GET","url":"/projects/028f60dd-70d0-4b7b-95e3-851ac5710abb/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074608,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1i","res":{"statusCode":200},"responseTime":0.22022000000288244,"msg":"request completed"}
+{"level":30,"time":1793126074609,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1j","req":{"method":"PUT","url":"/projects/028f60dd-70d0-4b7b-95e3-851ac5710abb/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074624,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1j","res":{"statusCode":200},"responseTime":15.19349200000579,"msg":"request completed"}
+{"level":30,"time":1793126074625,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1k","req":{"method":"GET","url":"/projects/028f60dd-70d0-4b7b-95e3-851ac5710abb/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074626,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1k","res":{"statusCode":200},"responseTime":0.24111699999775738,"msg":"request completed"}
+{"level":30,"time":1793126074626,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1l","req":{"method":"PUT","url":"/projects/028f60dd-70d0-4b7b-95e3-851ac5710abb/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074638,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1l","res":{"statusCode":200},"responseTime":11.554787000000942,"msg":"request completed"}
+{"level":30,"time":1793126074638,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1m","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074683,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1m","res":{"statusCode":201},"responseTime":45.27253900001233,"msg":"request completed"}
+{"level":30,"time":1793126074684,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1n","req":{"method":"GET","url":"/projects/d628d627-1590-4403-9aed-67bcecbe1d2a/workflows","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074684,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1n","res":{"statusCode":200},"responseTime":0.2767849999945611,"msg":"request completed"}
+{"level":30,"time":1793126074684,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1o","req":{"method":"POST","url":"/projects/d628d627-1590-4403-9aed-67bcecbe1d2a/workflows","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074695,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1o","res":{"statusCode":201},"responseTime":10.872287999998662,"msg":"request completed"}
+{"level":30,"time":1793126074695,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1p","req":{"method":"POST","url":"/projects/d628d627-1590-4403-9aed-67bcecbe1d2a/workflows/wf-release-pipeline-340e4c/switch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074706,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1p","res":{"statusCode":200},"responseTime":10.844140999994124,"msg":"request completed"}
+{"level":30,"time":1793126074707,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1q","req":{"method":"PATCH","url":"/projects/d628d627-1590-4403-9aed-67bcecbe1d2a/workflows/wf-release-pipeline-340e4c","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074718,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1q","res":{"statusCode":200},"responseTime":11.134428000004846,"msg":"request completed"}
+{"level":30,"time":1793126074718,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1r","req":{"method":"DELETE","url":"/projects/d628d627-1590-4403-9aed-67bcecbe1d2a/workflows/wf-release-pipeline-340e4c","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074729,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1r","res":{"statusCode":200},"responseTime":10.785455999997794,"msg":"request completed"}
+{"level":30,"time":1793126074730,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1s","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074773,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1s","res":{"statusCode":201},"responseTime":43.37592500000028,"msg":"request completed"}
+{"level":30,"time":1793126074773,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1t","req":{"method":"PATCH","url":"/projects/835a50f3-6800-4a79-bf78-828bae1d856a","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074774,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1t","res":{"statusCode":409},"responseTime":0.3912399999971967,"msg":"request completed"}
+{"level":30,"time":1793126074775,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1u","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074818,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1u","res":{"statusCode":201},"responseTime":42.866898000007495,"msg":"request completed"}
+{"level":30,"time":1793126074818,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1v","req":{"method":"GET","url":"/projects/dbef9d7f-68c3-49a0-aff1-c964e3c059b8/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074819,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1v","res":{"statusCode":200},"responseTime":0.1888899999903515,"msg":"request completed"}
+{"level":30,"time":1793126074819,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1w","req":{"method":"GET","url":"/projects/dbef9d7f-68c3-49a0-aff1-c964e3c059b8/workflows","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074819,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1w","res":{"statusCode":200},"responseTime":0.1272610000014538,"msg":"request completed"}
+{"level":30,"time":1793126074819,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1x","req":{"method":"PUT","url":"/projects/dbef9d7f-68c3-49a0-aff1-c964e3c059b8/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074831,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1x","res":{"statusCode":200},"responseTime":12.012581000002683,"msg":"request completed"}
+{"level":30,"time":1793126074832,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1y","req":{"method":"GET","url":"/projects/dbef9d7f-68c3-49a0-aff1-c964e3c059b8/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074832,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1y","res":{"statusCode":200},"responseTime":0.24114500000723638,"msg":"request completed"}
+{"level":30,"time":1793126074832,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1z","req":{"method":"PUT","url":"/projects/dbef9d7f-68c3-49a0-aff1-c964e3c059b8/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074834,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1z","res":{"statusCode":400},"responseTime":1.3830069999967236,"msg":"request completed"}
+{"level":30,"time":1793126074835,"pid":216,"hostname":"9a57735be6d4","reqId":"req-20","req":{"method":"GET","url":"/projects/dbef9d7f-68c3-49a0-aff1-c964e3c059b8/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074835,"pid":216,"hostname":"9a57735be6d4","reqId":"req-20","res":{"statusCode":200},"responseTime":0.19169599999440834,"msg":"request completed"}
+{"level":30,"time":1793126074835,"pid":216,"hostname":"9a57735be6d4","reqId":"req-21","req":{"method":"PUT","url":"/projects/dbef9d7f-68c3-49a0-aff1-c964e3c059b8/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074836,"pid":216,"hostname":"9a57735be6d4","reqId":"req-21","res":{"statusCode":400},"responseTime":1.103147000001627,"msg":"request completed"}
+{"level":30,"time":1793126074838,"pid":216,"hostname":"9a57735be6d4","reqId":"req-22","req":{"method":"GET","url":"/projects/dbef9d7f-68c3-49a0-aff1-c964e3c059b8/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074838,"pid":216,"hostname":"9a57735be6d4","reqId":"req-22","res":{"statusCode":200},"responseTime":0.2249829999927897,"msg":"request completed"}
+{"level":30,"time":1793126074838,"pid":216,"hostname":"9a57735be6d4","reqId":"req-23","req":{"method":"PUT","url":"/projects/dbef9d7f-68c3-49a0-aff1-c964e3c059b8/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074850,"pid":216,"hostname":"9a57735be6d4","reqId":"req-23","res":{"statusCode":200},"responseTime":11.938435999996727,"msg":"request completed"}
+{"level":30,"time":1793126074851,"pid":216,"hostname":"9a57735be6d4","reqId":"req-24","req":{"method":"GET","url":"/projects/dbef9d7f-68c3-49a0-aff1-c964e3c059b8/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074851,"pid":216,"hostname":"9a57735be6d4","reqId":"req-24","res":{"statusCode":200},"responseTime":0.21299400000134483,"msg":"request completed"}
+{"level":30,"time":1793126074851,"pid":216,"hostname":"9a57735be6d4","reqId":"req-25","req":{"method":"PUT","url":"/projects/dbef9d7f-68c3-49a0-aff1-c964e3c059b8/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074864,"pid":216,"hostname":"9a57735be6d4","reqId":"req-25","res":{"statusCode":200},"responseTime":12.219831999987946,"msg":"request completed"}
+{"level":30,"time":1793126074864,"pid":216,"hostname":"9a57735be6d4","reqId":"req-26","req":{"method":"GET","url":"/projects/dbef9d7f-68c3-49a0-aff1-c964e3c059b8/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074864,"pid":216,"hostname":"9a57735be6d4","reqId":"req-26","res":{"statusCode":200},"responseTime":0.18226999999023974,"msg":"request completed"}
+{"level":30,"time":1793126074864,"pid":216,"hostname":"9a57735be6d4","reqId":"req-27","req":{"method":"PUT","url":"/projects/dbef9d7f-68c3-49a0-aff1-c964e3c059b8/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074880,"pid":216,"hostname":"9a57735be6d4","reqId":"req-27","res":{"statusCode":200},"responseTime":16.025641000000178,"msg":"request completed"}
+{"level":30,"time":1793126074881,"pid":216,"hostname":"9a57735be6d4","reqId":"req-28","req":{"method":"PUT","url":"/projects/dbef9d7f-68c3-49a0-aff1-c964e3c059b8/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074882,"pid":216,"hostname":"9a57735be6d4","reqId":"req-28","res":{"statusCode":400},"responseTime":0.3824330000061309,"msg":"request completed"}
+{"level":30,"time":1793126074882,"pid":216,"hostname":"9a57735be6d4","reqId":"req-29","req":{"method":"DELETE","url":"/projects/dbef9d7f-68c3-49a0-aff1-c964e3c059b8","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074882,"pid":216,"hostname":"9a57735be6d4","reqId":"req-29","res":{"statusCode":200},"responseTime":0.1362760000047274,"msg":"request completed"}
+{"level":30,"time":1793126074883,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2a","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074932,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2a","res":{"statusCode":201},"responseTime":48.823397000000114,"msg":"request completed"}
+{"level":30,"time":1793126074932,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2b","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074985,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2b","res":{"statusCode":201},"responseTime":52.61439000000246,"msg":"request completed"}
+{"level":30,"time":1793126074985,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2c","req":{"method":"GET","url":"/projects/44cf712a-6107-4ab8-8b05-72f2d7a4d014/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074985,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2c","res":{"statusCode":200},"responseTime":0.19259099999908358,"msg":"request completed"}
+{"level":30,"time":1793126074986,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2d","req":{"method":"GET","url":"/projects/f0dcb207-1d32-468d-82c7-b68d14515bb5/workflows","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126074986,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2d","res":{"statusCode":200},"responseTime":0.12854499999957625,"msg":"request completed"}
+{"level":30,"time":1793126074986,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2e","req":{"method":"PUT","url":"/projects/44cf712a-6107-4ab8-8b05-72f2d7a4d014/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126075005,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2e","res":{"statusCode":200},"responseTime":18.520702999987407,"msg":"request completed"}
+{"level":30,"time":1793126075005,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2f","req":{"method":"GET","url":"/projects/44cf712a-6107-4ab8-8b05-72f2d7a4d014/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126075006,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2f","res":{"statusCode":200},"responseTime":0.2520220000005793,"msg":"request completed"}
+{"level":30,"time":1793126075006,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2g","req":{"method":"PUT","url":"/projects/44cf712a-6107-4ab8-8b05-72f2d7a4d014/workflow","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126075007,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2g","res":{"statusCode":400},"responseTime":1.432186999998521,"msg":"request completed"}
+{"level":30,"time":1793126075008,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2h","req":{"method":"DELETE","url":"/projects/44cf712a-6107-4ab8-8b05-72f2d7a4d014","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126075009,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2h","res":{"statusCode":200},"responseTime":0.20160600000235718,"msg":"request completed"}
+{"level":30,"time":1793126075009,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2i","req":{"method":"DELETE","url":"/projects/f0dcb207-1d32-468d-82c7-b68d14515bb5","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126075009,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2i","res":{"statusCode":200},"responseTime":0.11319200000434648,"msg":"request completed"}
+ [32m✓[39m routes/projects.test.js [2m([22m[2m38 tests[22m[2m)[22m[33m 1933[2mms[22m[39m
+ [32m✓[39m agent/harnesses/custom/customHarness.contract.test.js [2m([22m[2m61 tests[22m[2m)[22m[33m 1613[2mms[22m[39m
+   [32m✓[39m custom command execution [2m(12)[22m
+     [33m[2m✓[22m[39m streams stdout INCREMENTALLY while the command is still running[33m 316[2mms[22m[39m
+     [33m[2m✓[22m[39m ends a clean run with an exit-code line before run_finished[33m 317[2mms[22m[39m
+     [33m[2m✓[22m[39m isStreaming is true only while the child process runs[33m 318[2mms[22m[39m
+ [32m✓[39m agent/harnesses/acp/AcpSessionRuntime.test.js [2m([22m[2m15 tests[22m[2m)[22m[33m 1350[2mms[22m[39m
+   [32m✓[39m AcpSessionRuntime lifecycle (mock ACP agent) [2m(15)[22m
+     [33m[2m✓[22m[39m accepts the bare ACP_MOCK_* spellings (canonical env alias)[33m 316[2mms[22m[39m
+     [33m[2m✓[22m[39m times out a hung handshake instead of pinning startup[33m 319[2mms[22m[39m
+ [32m✓[39m config/boot.test.js [2m([22m[2m2 tests[22m[2m)[22m[33m 1338[2mms[22m[39m
+   [32m✓[39m config boot behavior [2m(2)[22m
+     [33m[2m✓[22m[39m fails fast with a clear diagnostic on KAINBAIN_AGENT_TIMEOUT_MS=invalid_number[33m 411[2mms[22m[39m
+     [33m[2m✓[22m[39m boots cleanly on defaults with an isolated environment[33m 924[2mms[22m[39m
+ [32m✓[39m gitConcurrency.integration.test.js [2m([22m[2m1 test[22m[2m)[22m[33m 996[2mms[22m[39m
+   [32m✓[39m concurrent branch ops on one repo [2m(1)[22m
+     [33m[2m✓[22m[39m task creation + approval-style branch work during a running stage: zero index.lock errors[33m 907[2mms[22m[39m
+[90mstderr[2m | sessionStore.harnessSelection.test.js[2m > [22m[2msessionStore harness selection (per project, via the registry)[2m > [22m[2mfalls back to the default harness for an unknown harness choice and still creates the session
+[22m[39m[SYSTEM] Unknown harness "nonexistent-x-5" for project proj-4; falling back to "pi". Update the project's harness in Settings.
+
+[90mstderr[2m | sessionStore.harnessSelection.test.js[2m > [22m[2msessionStore harness selection (per project, via the registry)[2m > [22m[2mcreates sessions consistently via the fallback harness when resolving repeatedly
+[22m[39m[SYSTEM] Unknown harness "nonexistent-y-8" for project proj-7; falling back to "pi". Update the project's harness in Settings.
+
+[90mstdout[2m | reviewDiff.integration.test.js[2m > [22m[2mreviewDiff Integration Tests[2m > [22m[2mdetects renamed files
+[22m[39mGit status output: 
+
+ [31m❯[39m reviewDiff.integration.test.js [2m([22m[2m7 tests[22m[2m | [22m[31m7 failed[39m[2m)[22m[33m 601[2mms[22m[39m
+   [31m❯[39m reviewDiff Integration Tests [2m(7)[22m
+[31m     [31m×[31m detects modified, added, and deleted files[39m[32m 95[2mms[22m[39m
+[31m     [31m×[31m detects renamed files[39m[32m 90[2mms[22m[39m
+[31m     [31m×[31m handles binary files[39m[32m 76[2mms[22m[39m
+[31m     [31m×[31m returns correct patch for modified file[39m[32m 78[2mms[22m[39m
+[31m     [31m×[31m returns correct commit list[39m[32m 100[2mms[22m[39m
+[31m     [31m×[31m returns correct ahead/behind counts[39m[32m 116[2mms[22m[39m
+[31m     [31m×[31m resolves shas correctly[39m[32m 45[2mms[22m[39m
+[90mstderr[2m | routes/retrospective.test.js[2m > [22m[2mPOST /retrospective/chat[2m > [22m[2mfalls back (never crashes) for an unknown harness name
+[22m[39m[SYSTEM] Unknown harness "no-such-harness" for project Fixture (proj-1); falling back to "retrospective-fallback-mock". Update the project's harness in Settings.
+
+[90mstderr[2m | sessionStore.harnessSelection.test.js[2m > [22m[2msessionStore harness selection (per project, via the registry)[2m > [22m[2man unknown stage override degrades and runs on the project harness
+[22m[39m[SYSTEM] Unknown harness "bogus-stage-x-24" for project proj-23; falling back to "fake-harness-22". Update the project's harness in Settings.
+
+ [32m✓[39m sessionStore.harnessSelection.test.js [2m([22m[2m9 tests[22m[2m)[22m[33m 1180[2mms[22m[39m
+   [32m✓[39m sessionStore harness selection (per project, via the registry) [2m(9)[22m
+     [33m[2m✓[22m[39m caches one model runtime per resolved harness (never shared across harnesses)[33m 1164[2mms[22m[39m
+ [32m✓[39m routes/retrospective.test.js [2m([22m[2m51 tests[22m[2m)[22m[33m 806[2mms[22m[39m
+{"level":30,"time":1793126079058,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"GET","url":"/compute/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126079152,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":200},"responseTime":92.66647199999716,"msg":"request completed"}
+{"level":30,"time":1793126079158,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"GET","url":"/compute/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126079247,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":88.39728099999775,"msg":"request completed"}
+{"level":30,"time":1793126079248,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"GET","url":"/compute/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126079315,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":66.39416999999958,"msg":"request completed"}
+{"level":30,"time":1793126079316,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"GET","url":"/compute/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126079385,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":200},"responseTime":68.68307800000184,"msg":"request completed"}
+{"level":30,"time":1793126079389,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"GET","url":"/compute/models","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126079399,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":200},"responseTime":9.716555000006338,"msg":"request completed"}
+{"level":30,"time":1793126079401,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"GET","url":"/compute/models","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126079414,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":200},"responseTime":12.082738999990397,"msg":"request completed"}
+{"level":30,"time":1793126079414,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"GET","url":"/compute/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126079549,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":200},"responseTime":135.1407739999995,"msg":"request completed"}
+{"level":30,"time":1793126079551,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"GET","url":"/compute/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126079639,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":200},"responseTime":88.27927899999486,"msg":"request completed"}
+{"level":30,"time":1793126079641,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"GET","url":"/compute/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126079710,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":200},"responseTime":69.15732199999911,"msg":"request completed"}
+ [32m✓[39m taskStore.test.js [2m([22m[2m158 tests[22m[2m)[22m[33m 972[2mms[22m[39m
+ [32m✓[39m routes/compute.models.test.js [2m([22m[2m10 tests[22m[2m)[22m[33m 1141[2mms[22m[39m
+{"level":30,"time":1793126079966,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+ [32m✓[39m deploy.attemptCheckpoint.test.js [2m([22m[2m26 tests[22m[2m | [22m[33m23 skipped[39m[2m)[22m[32m 6[2mms[22m[39m
+{"level":30,"time":1793126080041,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":201},"responseTime":73.64560599999095,"msg":"request completed"}
+{"level":30,"time":1793126080044,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080056,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":11.271074999996927,"msg":"request completed"}
+{"level":30,"time":1793126080057,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"GET","url":"/tasks?projectId=aaa9f643-041f-47bb-9217-bfb7d523e03a","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080062,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":5.594288000007509,"msg":"request completed"}
+{"level":30,"time":1793126080064,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080066,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":200},"responseTime":2.5776760000007926,"msg":"request completed"}
+{"level":30,"time":1793126080067,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"GET","url":"/tasks/d4f99f95-7eb7-4257-b89e-1f783cca93e5?projectId=aaa9f643-041f-47bb-9217-bfb7d523e03a","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080067,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":200},"responseTime":0.450314999994589,"msg":"request completed"}
+{"level":30,"time":1793126080068,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080070,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":200},"responseTime":2.2094489999872167,"msg":"request completed"}
+{"level":30,"time":1793126080071,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"GET","url":"/tasks?projectId=aaa9f643-041f-47bb-9217-bfb7d523e03a","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080071,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":200},"responseTime":0.6711599999980535,"msg":"request completed"}
+{"level":30,"time":1793126080074,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"GET","url":"/tasks/23ae5da5-ddfd-4193-bc23-78c0372b1296?projectId=aaa9f643-041f-47bb-9217-bfb7d523e03a","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080074,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":200},"responseTime":0.3227900000056252,"msg":"request completed"}
+{"level":30,"time":1793126080075,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080077,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":200},"responseTime":2.2618409999995492,"msg":"request completed"}
+{"level":30,"time":1793126080078,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","req":{"method":"PATCH","url":"/tasks/373cb0b8-a9bd-4ee8-a58e-10ca21dbcec5","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080079,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","res":{"statusCode":200},"responseTime":1.4584999999933643,"msg":"request completed"}
+{"level":30,"time":1793126080080,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080082,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","res":{"statusCode":200},"responseTime":2.2999459999991814,"msg":"request completed"}
+{"level":30,"time":1793126080083,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","req":{"method":"PATCH","url":"/tasks/7b06ce8d-4097-4a04-b5b5-1c873373e667","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080084,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","res":{"statusCode":200},"responseTime":1.0451309999916703,"msg":"request completed"}
+{"level":30,"time":1793126080085,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080087,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","res":{"statusCode":200},"responseTime":2.1294899999920744,"msg":"request completed"}
+{"level":30,"time":1793126080087,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080089,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","res":{"statusCode":200},"responseTime":1.986148999989382,"msg":"request completed"}
+{"level":30,"time":1793126080090,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","req":{"method":"POST","url":"/tasks/7d88d99b-d8ec-46ba-a26f-d2a6119d84b8/advance","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080095,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","res":{"statusCode":200},"responseTime":5.8068659999989904,"msg":"request completed"}
+{"level":30,"time":1793126080096,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080098,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","res":{"statusCode":200},"responseTime":1.9548630000062985,"msg":"request completed"}
+{"level":30,"time":1793126080098,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","req":{"method":"POST","url":"/tasks/63ffbefc-0f39-430e-8198-2b0ecb250593/failback","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080101,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","res":{"statusCode":200},"responseTime":2.6490710000070976,"msg":"request completed"}
+{"level":30,"time":1793126080102,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080115,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","res":{"statusCode":200},"responseTime":13.209203999998863,"msg":"request completed"}
+{"level":30,"time":1793126080115,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","req":{"method":"POST","url":"/tasks/adb219b4-d17c-4d3d-a2b1-e01fd41a2de2/advance","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080119,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","res":{"statusCode":200},"responseTime":3.8997240000026068,"msg":"request completed"}
+{"level":30,"time":1793126080119,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","req":{"method":"POST","url":"/tasks/adb219b4-d17c-4d3d-a2b1-e01fd41a2de2/reject","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080135,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","res":{"statusCode":200},"responseTime":15.995839000010164,"msg":"request completed"}
+{"level":30,"time":1793126080136,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080138,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","res":{"statusCode":200},"responseTime":1.8471340000105556,"msg":"request completed"}
+{"level":30,"time":1793126080138,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","req":{"method":"POST","url":"/tasks/c82be52a-d37b-4afd-8b34-fe37d15d695e/report","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080139,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","res":{"statusCode":200},"responseTime":1.2427210000023479,"msg":"request completed"}
+{"level":30,"time":1793126080140,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","req":{"method":"GET","url":"/tasks/c82be52a-d37b-4afd-8b34-fe37d15d695e/reports?projectId=aaa9f643-041f-47bb-9217-bfb7d523e03a","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080141,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","res":{"statusCode":200},"responseTime":1.1239599999971688,"msg":"request completed"}
+{"level":30,"time":1793126080141,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080143,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","res":{"statusCode":200},"responseTime":1.8923130000039237,"msg":"request completed"}
+{"level":30,"time":1793126080144,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","req":{"method":"POST","url":"/tasks/76fb1c53-cff9-47ad-890c-c846b3b4189b/jump","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080154,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","res":{"statusCode":200},"responseTime":10.652191999994102,"msg":"request completed"}
+{"level":30,"time":1793126080155,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080157,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","res":{"statusCode":200},"responseTime":2.2345530000020517,"msg":"request completed"}
+{"level":30,"time":1793126080157,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","req":{"method":"POST","url":"/tasks/92a94a76-afb6-4e6f-95dd-215ae77dcffa/complete","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080159,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","res":{"statusCode":200},"responseTime":1.593880000000354,"msg":"request completed"}
+{"level":30,"time":1793126080159,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080172,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","res":{"statusCode":200},"responseTime":12.806049999999232,"msg":"request completed"}
+{"level":30,"time":1793126080172,"pid":216,"hostname":"9a57735be6d4","reqId":"req-t","req":{"method":"POST","url":"/tasks/871e53b0-8f31-44ef-b698-11fe47bb3f9d/move","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080174,"pid":216,"hostname":"9a57735be6d4","reqId":"req-t","res":{"statusCode":200},"responseTime":1.4863150000019232,"msg":"request completed"}
+{"level":30,"time":1793126080180,"pid":216,"hostname":"9a57735be6d4","reqId":"req-u","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080193,"pid":216,"hostname":"9a57735be6d4","reqId":"req-u","res":{"statusCode":200},"responseTime":12.859757999991416,"msg":"request completed"}
+{"level":30,"time":1793126080193,"pid":216,"hostname":"9a57735be6d4","reqId":"req-v","req":{"method":"DELETE","url":"/tasks/989b5158-08be-4eba-a001-cf0327533b3d","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080194,"pid":216,"hostname":"9a57735be6d4","reqId":"req-v","res":{"statusCode":200},"responseTime":1.0740629999927478,"msg":"request completed"}
+{"level":30,"time":1793126080194,"pid":216,"hostname":"9a57735be6d4","reqId":"req-w","req":{"method":"GET","url":"/tasks/989b5158-08be-4eba-a001-cf0327533b3d?projectId=aaa9f643-041f-47bb-9217-bfb7d523e03a","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080195,"pid":216,"hostname":"9a57735be6d4","reqId":"req-w","res":{"statusCode":404},"responseTime":0.37328299999353476,"msg":"request completed"}
+{"level":30,"time":1793126080195,"pid":216,"hostname":"9a57735be6d4","reqId":"req-x","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080206,"pid":216,"hostname":"9a57735be6d4","reqId":"req-x","res":{"statusCode":200},"responseTime":10.917553999999654,"msg":"request completed"}
+{"level":30,"time":1793126080206,"pid":216,"hostname":"9a57735be6d4","reqId":"req-y","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080208,"pid":216,"hostname":"9a57735be6d4","reqId":"req-y","res":{"statusCode":200},"responseTime":1.4386110000050394,"msg":"request completed"}
+{"level":30,"time":1793126080208,"pid":216,"hostname":"9a57735be6d4","reqId":"req-z","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080210,"pid":216,"hostname":"9a57735be6d4","reqId":"req-z","res":{"statusCode":200},"responseTime":1.8970819999958621,"msg":"request completed"}
+{"level":30,"time":1793126080210,"pid":216,"hostname":"9a57735be6d4","reqId":"req-10","req":{"method":"POST","url":"/tasks/54665fdc-75b1-4a47-b676-dab8a5913f1f/execute","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080251,"pid":216,"hostname":"9a57735be6d4","reqId":"req-10","res":{"statusCode":200},"responseTime":40.623013999997056,"msg":"request completed"}
+{"level":30,"time":1793126080252,"pid":216,"hostname":"9a57735be6d4","reqId":"req-11","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080254,"pid":216,"hostname":"9a57735be6d4","reqId":"req-11","res":{"statusCode":200},"responseTime":2.0188299999863375,"msg":"request completed"}
+{"level":30,"time":1793126080254,"pid":216,"hostname":"9a57735be6d4","reqId":"req-12","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080256,"pid":216,"hostname":"9a57735be6d4","reqId":"req-12","res":{"statusCode":200},"responseTime":2.1857299999974202,"msg":"request completed"}
+{"level":30,"time":1793126080257,"pid":216,"hostname":"9a57735be6d4","reqId":"req-13","req":{"method":"POST","url":"/tasks/c880697d-76f2-443e-9b08-d62fc20fa84c/execute","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080267,"pid":216,"hostname":"9a57735be6d4","reqId":"req-13","res":{"statusCode":409},"responseTime":9.465374999999767,"msg":"request completed"}
+{"level":30,"time":1793126080267,"pid":216,"hostname":"9a57735be6d4","reqId":"req-14","req":{"method":"POST","url":"/tasks/does-not-exist/advance","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080268,"pid":216,"hostname":"9a57735be6d4","reqId":"req-14","res":{"statusCode":404},"responseTime":0.44000500001129694,"msg":"request completed"}
+{"level":30,"time":1793126080268,"pid":216,"hostname":"9a57735be6d4","reqId":"req-15","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080270,"pid":216,"hostname":"9a57735be6d4","reqId":"req-15","res":{"statusCode":200},"responseTime":2.026763000001665,"msg":"request completed"}
+{"level":30,"time":1793126080270,"pid":216,"hostname":"9a57735be6d4","reqId":"req-16","req":{"method":"POST","url":"/tasks/cf93e713-48b8-42fc-822c-108842893426/complete","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080283,"pid":216,"hostname":"9a57735be6d4","reqId":"req-16","res":{"statusCode":200},"responseTime":12.284210999991046,"msg":"request completed"}
+{"level":30,"time":1793126080283,"pid":216,"hostname":"9a57735be6d4","reqId":"req-17","req":{"method":"POST","url":"/tasks/cf93e713-48b8-42fc-822c-108842893426/advance","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080283,"pid":216,"hostname":"9a57735be6d4","reqId":"req-17","res":{"statusCode":409},"responseTime":0.4128459999919869,"msg":"request completed"}
+{"level":30,"time":1793126080284,"pid":216,"hostname":"9a57735be6d4","reqId":"req-18","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080295,"pid":216,"hostname":"9a57735be6d4","reqId":"req-18","res":{"statusCode":200},"responseTime":11.41398399999889,"msg":"request completed"}
+{"level":30,"time":1793126080295,"pid":216,"hostname":"9a57735be6d4","reqId":"req-19","req":{"method":"POST","url":"/tasks/868f182b-773d-4907-b912-ad40ce76fe5d/complete","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080297,"pid":216,"hostname":"9a57735be6d4","reqId":"req-19","res":{"statusCode":200},"responseTime":1.2699439999996684,"msg":"request completed"}
+{"level":30,"time":1793126080297,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1a","req":{"method":"POST","url":"/tasks/868f182b-773d-4907-b912-ad40ce76fe5d/reject","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080297,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1a","res":{"statusCode":409},"responseTime":0.4506439999968279,"msg":"request completed"}
+{"level":30,"time":1793126080298,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1b","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080309,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1b","res":{"statusCode":200},"responseTime":11.390919999990729,"msg":"request completed"}
+{"level":30,"time":1793126080309,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1c","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080312,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1c","res":{"statusCode":200},"responseTime":2.222284999996191,"msg":"request completed"}
+{"level":30,"time":1793126080312,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1d","req":{"method":"GET","url":"/tasks?projectId=aaa9f643-041f-47bb-9217-bfb7d523e03a&workflowId=wf-alpha-123","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080312,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1d","res":{"statusCode":200},"responseTime":0.4604879999969853,"msg":"request completed"}
+{"level":30,"time":1793126080313,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1e","req":{"method":"GET","url":"/tasks?projectId=aaa9f643-041f-47bb-9217-bfb7d523e03a&workflowId=wf-beta-456","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080313,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1e","res":{"statusCode":200},"responseTime":0.19882499999948777,"msg":"request completed"}
+{"level":30,"time":1793126080313,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1f","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080315,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1f","res":{"statusCode":200},"responseTime":1.763728000005358,"msg":"request completed"}
+{"level":30,"time":1793126080315,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1g","req":{"method":"POST","url":"/tasks/76957883-684a-43ba-8fc6-259d0e0698b6/advance","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080327,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1g","res":{"statusCode":200},"responseTime":11.539502999992692,"msg":"request completed"}
+{"level":30,"time":1793126080327,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1h","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080329,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1h","res":{"statusCode":200},"responseTime":1.6420470000011846,"msg":"request completed"}
+{"level":30,"time":1793126080329,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1i","req":{"method":"POST","url":"/tasks/2eb5f81c-7704-4b7a-833d-10c3ed09edc1/follow-up","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080337,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1i","res":{"statusCode":200},"responseTime":8.120546999998624,"msg":"request completed"}
+{"level":30,"time":1793126080338,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1j","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080340,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1j","res":{"statusCode":200},"responseTime":1.8121099999989383,"msg":"request completed"}
+{"level":30,"time":1793126080340,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1k","req":{"method":"POST","url":"/tasks/664b8e34-32fc-43c3-b9ee-3db5dcaf73b9/steer","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080351,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1k","res":{"statusCode":200},"responseTime":10.458425000004354,"msg":"request completed"}
+{"level":30,"time":1793126080351,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1l","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080353,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1l","res":{"statusCode":200},"responseTime":1.9615300000004936,"msg":"request completed"}
+{"level":30,"time":1793126080353,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1m","req":{"method":"POST","url":"/tasks/6e680736-9b67-46cc-a2a4-cfcf8c90eae3/pause","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080355,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1m","res":{"statusCode":200},"responseTime":1.1437129999976605,"msg":"request completed"}
+{"level":30,"time":1793126080355,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1n","req":{"method":"POST","url":"/tasks/6e680736-9b67-46cc-a2a4-cfcf8c90eae3/resume","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080375,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1n","res":{"statusCode":200},"responseTime":20.115204999994603,"msg":"request completed"}
+{"level":30,"time":1793126080376,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1o","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080378,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1o","res":{"statusCode":200},"responseTime":1.8993560000089929,"msg":"request completed"}
+{"level":30,"time":1793126080378,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1p","req":{"method":"POST","url":"/tasks/a7b80f25-3367-4ba3-bcbd-630b5805884d/retry","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080398,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1p","res":{"statusCode":200},"responseTime":20.225946999998996,"msg":"request completed"}
+{"level":30,"time":1793126080399,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1q","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080401,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1q","res":{"statusCode":200},"responseTime":2.092040999996243,"msg":"request completed"}
+{"level":30,"time":1793126080401,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1r","req":{"method":"POST","url":"/tasks/1c3e2d4b-c36b-4fc7-8840-1d23bf36b533/retry","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080409,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1r","res":{"statusCode":200},"responseTime":7.993445999993128,"msg":"request completed"}
+{"level":30,"time":1793126080410,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1s","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080422,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1s","res":{"statusCode":200},"responseTime":12.33821600000374,"msg":"request completed"}
+{"level":30,"time":1793126080423,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1t","req":{"method":"POST","url":"/tasks/0ca64c08-5366-4aad-bbfd-a44e8f3b40b5/abort","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080424,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1t","res":{"statusCode":200},"responseTime":1.5395770000031916,"msg":"request completed"}
+{"level":30,"time":1793126080425,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1u","req":{"method":"GET","url":"/tasks?projectId=1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080425,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1u","res":{"statusCode":404},"responseTime":0.15994500000670087,"msg":"request completed"}
+{"level":30,"time":1793126080425,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1v","req":{"method":"GET","url":"/tasks?projectId=stage-idea","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080425,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1v","res":{"statusCode":404},"responseTime":0.12254199999733828,"msg":"request completed"}
+{"level":30,"time":1793126080426,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1w","req":{"method":"GET","url":"/tasks?projectId=wf-default","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080426,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1w","res":{"statusCode":404},"responseTime":0.11153599999670405,"msg":"request completed"}
+{"level":30,"time":1793126080426,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1x","req":{"method":"GET","url":"/tasks?projectId=00000000-0000-0000-0000-000000000000","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080426,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1x","res":{"statusCode":404},"responseTime":0.1663680000056047,"msg":"request completed"}
+{"level":30,"time":1793126080426,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1y","req":{"method":"GET","url":"/tasks/queue?projectId=wf-default","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080427,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1y","res":{"statusCode":404},"responseTime":0.23763699999835808,"msg":"request completed"}
+{"level":30,"time":1793126080427,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1z","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080428,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1z","res":{"statusCode":400},"responseTime":0.5798199999990175,"msg":"request completed"}
+{"level":30,"time":1793126080428,"pid":216,"hostname":"9a57735be6d4","reqId":"req-20","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080438,"pid":216,"hostname":"9a57735be6d4","reqId":"req-20","res":{"statusCode":404},"responseTime":9.67133900000772,"msg":"request completed"}
+{"level":30,"time":1793126080438,"pid":216,"hostname":"9a57735be6d4","reqId":"req-21","req":{"method":"GET","url":"/tasks/any-task-id?projectId=stage-1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080438,"pid":216,"hostname":"9a57735be6d4","reqId":"req-21","res":{"statusCode":404},"responseTime":0.09983999999531079,"msg":"request completed"}
+{"level":30,"time":1793126080439,"pid":216,"hostname":"9a57735be6d4","reqId":"req-22","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080484,"pid":216,"hostname":"9a57735be6d4","reqId":"req-22","res":{"statusCode":201},"responseTime":44.42486599998665,"msg":"request completed"}
+{"level":30,"time":1793126080486,"pid":216,"hostname":"9a57735be6d4","reqId":"req-23","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080488,"pid":216,"hostname":"9a57735be6d4","reqId":"req-23","res":{"statusCode":200},"responseTime":2.174675999995088,"msg":"request completed"}
+{"level":30,"time":1793126080488,"pid":216,"hostname":"9a57735be6d4","reqId":"req-24","req":{"method":"GET","url":"/tasks/cc99f540-c7e4-49ea-8d2a-28bac24514e6/logs?projectId=33aa53bb-dd57-458a-841b-f871260d6b54&feed=thinking","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080489,"pid":216,"hostname":"9a57735be6d4","reqId":"req-24","res":{"statusCode":200},"responseTime":1.056414999999106,"msg":"request completed"}
+{"level":30,"time":1793126080490,"pid":216,"hostname":"9a57735be6d4","reqId":"req-25","req":{"method":"GET","url":"/tasks/cc99f540-c7e4-49ea-8d2a-28bac24514e6/logs?projectId=33aa53bb-dd57-458a-841b-f871260d6b54&feed=tools","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080490,"pid":216,"hostname":"9a57735be6d4","reqId":"req-25","res":{"statusCode":200},"responseTime":0.15996200000518002,"msg":"request completed"}
+{"level":30,"time":1793126080491,"pid":216,"hostname":"9a57735be6d4","reqId":"req-26","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080502,"pid":216,"hostname":"9a57735be6d4","reqId":"req-26","res":{"statusCode":200},"responseTime":11.492828000002191,"msg":"request completed"}
+{"level":30,"time":1793126080502,"pid":216,"hostname":"9a57735be6d4","reqId":"req-27","req":{"method":"GET","url":"/tasks/cc99f540-c7e4-49ea-8d2a-28bac24514e6/logs?projectId=33aa53bb-dd57-458a-841b-f871260d6b54&feed=tools&format=text","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080503,"pid":216,"hostname":"9a57735be6d4","reqId":"req-27","res":{"statusCode":200},"responseTime":0.3693879999918863,"msg":"request completed"}
+{"level":30,"time":1793126080503,"pid":216,"hostname":"9a57735be6d4","reqId":"req-28","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080505,"pid":216,"hostname":"9a57735be6d4","reqId":"req-28","res":{"statusCode":200},"responseTime":1.8752749999985099,"msg":"request completed"}
+{"level":30,"time":1793126080506,"pid":216,"hostname":"9a57735be6d4","reqId":"req-29","req":{"method":"GET","url":"/tasks/cc99f540-c7e4-49ea-8d2a-28bac24514e6/logs?projectId=33aa53bb-dd57-458a-841b-f871260d6b54&feed=nope","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080506,"pid":216,"hostname":"9a57735be6d4","reqId":"req-29","res":{"statusCode":400},"responseTime":0.14576600000145845,"msg":"request completed"}
+{"level":30,"time":1793126080506,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2a","req":{"method":"GET","url":"/tasks/cc99f540-c7e4-49ea-8d2a-28bac24514e6/logs?projectId=33aa53bb-dd57-458a-841b-f871260d6b54&format=yaml","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080506,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2a","res":{"statusCode":400},"responseTime":0.12094300000171643,"msg":"request completed"}
+{"level":30,"time":1793126080507,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2b","req":{"method":"GET","url":"/tasks/does-not-exist/logs?projectId=33aa53bb-dd57-458a-841b-f871260d6b54","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080507,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2b","res":{"statusCode":404},"responseTime":0.14859399999841116,"msg":"request completed"}
+{"level":30,"time":1793126080507,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2c","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080509,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2c","res":{"statusCode":200},"responseTime":1.996430999992299,"msg":"request completed"}
+{"level":30,"time":1793126080509,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2d","req":{"method":"GET","url":"/tasks/eaeb3ccd-6bd0-415c-b86c-29f275b11aed/logs?projectId=33aa53bb-dd57-458a-841b-f871260d6b54&feed=tools","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126080510,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2d","res":{"statusCode":200},"responseTime":0.27510199999960605,"msg":"request completed"}
+ [32m✓[39m routes/tasks.test.js [2m([22m[2m37 tests[22m[2m)[22m[33m 825[2mms[22m[39m
+ [31m❯[39m phase0-dry-run.test.js [2m([22m[2m3 tests[22m[2m | [22m[31m3 failed[39m[2m)[22m[33m 369[2mms[22m[39m
+   [31m❯[39m Phase 0: Git Branch Foundation Dry-Run [2m(3)[22m
+[31m     [31m×[31m should create task branch and commit work[39m[32m 151[2mms[22m[39m
+[31m     [31m×[31m should handle human review and failback[39m[32m 15[2mms[22m[39m
+[31m     [31m×[31m should merge to main in merge stage[39m[32m 106[2mms[22m[39m
+[90mstderr[2m | projectStore.kainbainDir.test.js[2m > [22m[2mProjectStore kainbainDirName[2m > [22m[2mupdateProject sets, clears, and validates the folder without moving state
+[22m[39m[projectStore] state folder changed to '.kb'; removed the stale config '/tmp/kainbain-test-kbdir-projects-PDnnjb/rename-app/.kainbain/project.json'. Move any sessions/worktrees from '/tmp/kainbain-test-kbdir-projects-PDnnjb/rename-app/.kainbain' by hand, then restart.
+[projectStore] state folder changed to '.kainbain'; removed the stale config '/tmp/kainbain-test-kbdir-projects-PDnnjb/rename-app/.kb/project.json'. Move any sessions/worktrees from '/tmp/kainbain-test-kbdir-projects-PDnnjb/rename-app/.kb' by hand, then restart.
+
+[90mstderr[2m | projectStore.kainbainDir.test.js[2m > [22m[2mProjectStore kainbainDirName[2m > [22m[2msetting change survives a restart and clears the stale config
+[22m[39m[projectStore] state folder changed to '.kb'; removed the stale config '/tmp/kainbain-test-kbdir-projects-fdAAEe/survives-restart-app/.kainbain/project.json'. Move any sessions/worktrees from '/tmp/kainbain-test-kbdir-projects-fdAAEe/survives-restart-app/.kainbain' by hand, then restart.
+[projectStore] state folder changed to '.kainbain'; removed the stale config '/tmp/kainbain-test-kbdir-projects-fdAAEe/survives-restart-app/.kb/project.json'. Move any sessions/worktrees from '/tmp/kainbain-test-kbdir-projects-fdAAEe/survives-restart-app/.kb' by hand, then restart.
+
+[90mstderr[2m | projectStore.kainbainDir.test.js[2m > [22m[2mProjectStore kainbainDirName[2m > [22m[2mupdateProject rejects crossing the two folders onto each other's current name
+[22m[39m[projectStore] state folder changed to '.kb2'; removed the stale config '/tmp/kainbain-test-kbdir-projects-gPIdCk/swap-app/.kb/project.json'. Move any sessions/worktrees from '/tmp/kainbain-test-kbdir-projects-gPIdCk/swap-app/.kb' by hand, then restart.
+[projectStore] recreated missing docs symlink for 'Swap App': '/tmp/kainbain-test-kbdir-projects-gPIdCk/swap-app/k-docs2' -> '/tmp/kainbain-test-kbdir-notes-loGhCk/Swap App'
+
+[90mstderr[2m | projectStore.kainbainDir.test.js[2m > [22m[2mProjectStore kainbainDirName[2m > [22m[2mstale-config cleanup never removes another project's config
+[22m[39m[projectStore] state folder changed to '.kb3'; removed the stale config '/tmp/kainbain-test-kbdir-projects-lmibPm/foreign-config-app/.kb2/project.json'. Move any sessions/worktrees from '/tmp/kainbain-test-kbdir-projects-lmibPm/foreign-config-app/.kb2' by hand, then restart.
+
+ [32m✓[39m flow/retryAfterRecovery.integration.test.js [2m([22m[2m1 test[22m[2m)[22m[33m 1075[2mms[22m[39m
+   [32m✓[39m retry recovers a lock-poisoned failed task [2m(1)[22m
+     [33m[2m✓[22m[39m a failed task passes after retry clears the stale lock[33m 964[2mms[22m[39m
+[90mstderr[2m | projectStore.kainbainDir.test.js[2m > [22m[2mProjectStore kainbainDirName[2m > [22m[2mclearing docsDirName migrates the old link back to docs
+[22m[39m[projectStore] recreated missing docs symlink for 'Docs Clear App': '/tmp/kainbain-test-kbdir-projects-IkkMJI/docs-clear-app/docs' -> '/tmp/kainbain-test-kbdir-notes-CLoPJI/Docs Clear App'
+
+ [32m✓[39m projectStore.kainbainDir.test.js [2m([22m[2m15 tests[22m[2m)[22m[33m 927[2mms[22m[39m
+{"level":30,"time":1793126083209,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+[90mstderr[2m | flow/stageExecution.attribution.test.js[2m > [22m[2mexecuteStage alias attribution[2m > [22m[2mleaves fallback runs unattributed when the alias does not resolve
+[22m[39m[SYSTEM] Unknown model alias "ghost" for project P1 (p1); falling back to "pi". Update the alias in Settings › Model Aliases.
+
+{"level":30,"time":1793126083327,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":201},"responseTime":116.85734899999807,"msg":"request completed"}
+{"level":30,"time":1793126083328,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083345,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":16.85620100000233,"msg":"request completed"}
+{"level":30,"time":1793126083346,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083347,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":202},"responseTime":1.6288820000045234,"msg":"request completed"}
+{"level":30,"time":1793126083348,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"POST","url":"/runners/parity-runner/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083349,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":200},"responseTime":0.6472450000001118,"msg":"request completed"}
+{"level":30,"time":1793126083356,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"POST","url":"/runners/heartbeat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083358,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":200},"responseTime":1.4250469999969937,"msg":"request completed"}
+{"level":30,"time":1793126083359,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"GET","url":"/projects/b937b63b-1a45-4833-a124-0d001dd40972","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083360,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":200},"responseTime":1.2699270000011893,"msg":"request completed"}
+{"level":30,"time":1793126083361,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"GET","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d?projectId=b937b63b-1a45-4833-a124-0d001dd40972","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083361,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":200},"responseTime":0.6879080000071554,"msg":"request completed"}
+{"level":30,"time":1793126083367,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/claim","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083370,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":200},"responseTime":2.995582999996259,"msg":"request completed"}
+{"level":30,"time":1793126083371,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/progress","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083378,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":200},"responseTime":6.136984999990091,"msg":"request completed"}
+{"level":30,"time":1793126083425,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/progress","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083426,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","res":{"statusCode":200},"responseTime":1.0027399999962654,"msg":"request completed"}
+{"level":30,"time":1793126083427,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083428,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083428,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/progress","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083435,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","res":{"statusCode":200},"responseTime":7.460747999997693,"msg":"request completed"}
+{"level":30,"time":1793126083435,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083437,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","res":{"statusCode":200},"responseTime":8.980456000004779,"msg":"request completed"}
+{"level":30,"time":1793126083437,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","res":{"statusCode":200},"responseTime":8.830149000001256,"msg":"request completed"}
+{"level":30,"time":1793126083447,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","res":{"statusCode":200},"responseTime":11.82479400000011,"msg":"request completed"}
+{"level":30,"time":1793126083447,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083448,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","res":{"statusCode":200},"responseTime":0.4607700000051409,"msg":"request completed"}
+{"level":30,"time":1793126083454,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083455,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","res":{"statusCode":200},"responseTime":1.2349010000034468,"msg":"request completed"}
+{"level":30,"time":1793126083455,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083465,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","res":{"statusCode":200},"responseTime":9.765124999990803,"msg":"request completed"}
+{"level":30,"time":1793126083465,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083466,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","res":{"statusCode":200},"responseTime":0.3758579999994254,"msg":"request completed"}
+{"level":30,"time":1793126083466,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083466,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","res":{"statusCode":200},"responseTime":0.3107589999999618,"msg":"request completed"}
+{"level":30,"time":1793126083466,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083467,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","res":{"statusCode":200},"responseTime":0.3020209999958752,"msg":"request completed"}
+{"level":30,"time":1793126083467,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083473,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","res":{"statusCode":200},"responseTime":6.726141999999527,"msg":"request completed"}
+{"level":30,"time":1793126083474,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083475,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","res":{"statusCode":200},"responseTime":1.0606520000001183,"msg":"request completed"}
+{"level":30,"time":1793126083475,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083485,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","res":{"statusCode":200},"responseTime":9.6291879999917,"msg":"request completed"}
+{"level":30,"time":1793126083490,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083492,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","res":{"statusCode":200},"responseTime":1.5721469999989495,"msg":"request completed"}
+{"level":30,"time":1793126083492,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083493,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","res":{"statusCode":200},"responseTime":0.5874719999992521,"msg":"request completed"}
+{"level":30,"time":1793126083494,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083503,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","res":{"statusCode":200},"responseTime":9.55117700000119,"msg":"request completed"}
+{"level":30,"time":1793126083503,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083504,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","res":{"statusCode":200},"responseTime":0.3078059999970719,"msg":"request completed"}
+{"level":30,"time":1793126083504,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083504,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","res":{"statusCode":200},"responseTime":0.569761999999173,"msg":"request completed"}
+{"level":30,"time":1793126083505,"pid":216,"hostname":"9a57735be6d4","reqId":"req-t","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083505,"pid":216,"hostname":"9a57735be6d4","reqId":"req-t","res":{"statusCode":200},"responseTime":0.3453379999991739,"msg":"request completed"}
+{"level":30,"time":1793126083505,"pid":216,"hostname":"9a57735be6d4","reqId":"req-u","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083520,"pid":216,"hostname":"9a57735be6d4","reqId":"req-u","res":{"statusCode":200},"responseTime":14.724144000007072,"msg":"request completed"}
+{"level":30,"time":1793126083520,"pid":216,"hostname":"9a57735be6d4","reqId":"req-v","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083521,"pid":216,"hostname":"9a57735be6d4","reqId":"req-v","res":{"statusCode":200},"responseTime":0.38278999998874497,"msg":"request completed"}
+{"level":30,"time":1793126083521,"pid":216,"hostname":"9a57735be6d4","reqId":"req-w","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083521,"pid":216,"hostname":"9a57735be6d4","reqId":"req-w","res":{"statusCode":200},"responseTime":0.30861300000105985,"msg":"request completed"}
+{"level":30,"time":1793126083522,"pid":216,"hostname":"9a57735be6d4","reqId":"req-x","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083522,"pid":216,"hostname":"9a57735be6d4","reqId":"req-x","res":{"statusCode":200},"responseTime":0.30589799999142997,"msg":"request completed"}
+{"level":30,"time":1793126083522,"pid":216,"hostname":"9a57735be6d4","reqId":"req-y","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083523,"pid":216,"hostname":"9a57735be6d4","reqId":"req-y","res":{"statusCode":200},"responseTime":0.27047799999127164,"msg":"request completed"}
+{"level":30,"time":1793126083523,"pid":216,"hostname":"9a57735be6d4","reqId":"req-z","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083523,"pid":216,"hostname":"9a57735be6d4","reqId":"req-z","res":{"statusCode":200},"responseTime":0.33608300000196323,"msg":"request completed"}
+{"level":30,"time":1793126083523,"pid":216,"hostname":"9a57735be6d4","reqId":"req-10","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083523,"pid":216,"hostname":"9a57735be6d4","reqId":"req-10","res":{"statusCode":200},"responseTime":0.2202640000032261,"msg":"request completed"}
+{"level":30,"time":1793126083524,"pid":216,"hostname":"9a57735be6d4","reqId":"req-11","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083524,"pid":216,"hostname":"9a57735be6d4","reqId":"req-11","res":{"statusCode":200},"responseTime":0.21596699999645352,"msg":"request completed"}
+{"level":30,"time":1793126083524,"pid":216,"hostname":"9a57735be6d4","reqId":"req-12","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083524,"pid":216,"hostname":"9a57735be6d4","reqId":"req-12","res":{"statusCode":200},"responseTime":0.2893550000007963,"msg":"request completed"}
+{"level":30,"time":1793126083524,"pid":216,"hostname":"9a57735be6d4","reqId":"req-13","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083525,"pid":216,"hostname":"9a57735be6d4","reqId":"req-13","res":{"statusCode":200},"responseTime":0.2680640000035055,"msg":"request completed"}
+{"level":30,"time":1793126083525,"pid":216,"hostname":"9a57735be6d4","reqId":"req-14","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083532,"pid":216,"hostname":"9a57735be6d4","reqId":"req-14","res":{"statusCode":200},"responseTime":7.079386999990675,"msg":"request completed"}
+{"level":30,"time":1793126083532,"pid":216,"hostname":"9a57735be6d4","reqId":"req-15","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083533,"pid":216,"hostname":"9a57735be6d4","reqId":"req-15","res":{"statusCode":200},"responseTime":0.9276070000050822,"msg":"request completed"}
+{"level":30,"time":1793126083533,"pid":216,"hostname":"9a57735be6d4","reqId":"req-16","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083534,"pid":216,"hostname":"9a57735be6d4","reqId":"req-16","res":{"statusCode":200},"responseTime":0.4289240000071004,"msg":"request completed"}
+{"level":30,"time":1793126083534,"pid":216,"hostname":"9a57735be6d4","reqId":"req-17","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083535,"pid":216,"hostname":"9a57735be6d4","reqId":"req-18","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083535,"pid":216,"hostname":"9a57735be6d4","reqId":"req-17","res":{"statusCode":200},"responseTime":0.9101139999984298,"msg":"request completed"}
+{"level":30,"time":1793126083535,"pid":216,"hostname":"9a57735be6d4","reqId":"req-19","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083536,"pid":216,"hostname":"9a57735be6d4","reqId":"req-18","res":{"statusCode":200},"responseTime":0.9463980000000447,"msg":"request completed"}
+{"level":30,"time":1793126083536,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1a","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083536,"pid":216,"hostname":"9a57735be6d4","reqId":"req-19","res":{"statusCode":200},"responseTime":0.6931750000076136,"msg":"request completed"}
+{"level":30,"time":1793126083536,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1b","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083536,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1a","res":{"statusCode":200},"responseTime":0.7420579999889014,"msg":"request completed"}
+{"level":30,"time":1793126083537,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1c","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083537,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1b","res":{"statusCode":200},"responseTime":0.6816320000070846,"msg":"request completed"}
+{"level":30,"time":1793126083537,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1d","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083537,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1c","res":{"statusCode":200},"responseTime":0.6588249999913387,"msg":"request completed"}
+{"level":30,"time":1793126083537,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1e","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083538,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1d","res":{"statusCode":200},"responseTime":0.6137259999959497,"msg":"request completed"}
+{"level":30,"time":1793126083538,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1f","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083538,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1e","res":{"statusCode":200},"responseTime":0.791215999997803,"msg":"request completed"}
+{"level":30,"time":1793126083544,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1g","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083545,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1f","res":{"statusCode":200},"responseTime":6.520818999997573,"msg":"request completed"}
+{"level":30,"time":1793126083545,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1h","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083545,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1g","res":{"statusCode":200},"responseTime":1.2562219999963418,"msg":"request completed"}
+{"level":30,"time":1793126083545,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1i","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083546,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1h","res":{"statusCode":200},"responseTime":0.7836439999955473,"msg":"request completed"}
+{"level":30,"time":1793126083546,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1i","res":{"statusCode":200},"responseTime":0.5543979999929434,"msg":"request completed"}
+{"level":30,"time":1793126083546,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1j","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083546,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1j","res":{"statusCode":200},"responseTime":0.3306869999942137,"msg":"request completed"}
+{"level":30,"time":1793126083546,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1k","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083547,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1k","res":{"statusCode":200},"responseTime":0.8354169999947771,"msg":"request completed"}
+{"level":30,"time":1793126083547,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1l","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083548,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1l","res":{"statusCode":200},"responseTime":0.278439999994589,"msg":"request completed"}
+{"level":30,"time":1793126083548,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1m","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083548,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1m","res":{"statusCode":200},"responseTime":0.2759469999873545,"msg":"request completed"}
+{"level":30,"time":1793126083549,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1n","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083549,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1n","res":{"statusCode":200},"responseTime":0.37343600000895094,"msg":"request completed"}
+{"level":30,"time":1793126083555,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1o","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083555,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1o","res":{"statusCode":200},"responseTime":0.849289999998291,"msg":"request completed"}
+{"level":30,"time":1793126083556,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1p","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083556,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1p","res":{"statusCode":200},"responseTime":0.44927300000563264,"msg":"request completed"}
+{"level":30,"time":1793126083556,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1q","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083557,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1q","res":{"statusCode":200},"responseTime":0.28756300000532065,"msg":"request completed"}
+{"level":30,"time":1793126083557,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1r","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083557,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1r","res":{"statusCode":200},"responseTime":0.33856200000445824,"msg":"request completed"}
+{"level":30,"time":1793126083557,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1s","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083558,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1s","res":{"statusCode":200},"responseTime":0.2604539999883855,"msg":"request completed"}
+{"level":30,"time":1793126083558,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1t","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083558,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1t","res":{"statusCode":200},"responseTime":0.46428699999523815,"msg":"request completed"}
+{"level":30,"time":1793126083558,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1u","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083559,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1u","res":{"statusCode":200},"responseTime":0.2975670000014361,"msg":"request completed"}
+{"level":30,"time":1793126083559,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1v","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083559,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1v","res":{"statusCode":200},"responseTime":0.330325000002631,"msg":"request completed"}
+{"level":30,"time":1793126083559,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1w","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083560,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1w","res":{"statusCode":200},"responseTime":0.2821479999984149,"msg":"request completed"}
+{"level":30,"time":1793126083560,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1x","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083566,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1x","res":{"statusCode":200},"responseTime":5.757909000007203,"msg":"request completed"}
+{"level":30,"time":1793126083566,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1y","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083566,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1y","res":{"statusCode":200},"responseTime":0.5551280000072438,"msg":"request completed"}
+{"level":30,"time":1793126083567,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1z","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083567,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1z","res":{"statusCode":200},"responseTime":0.3693440000060946,"msg":"request completed"}
+{"level":30,"time":1793126083567,"pid":216,"hostname":"9a57735be6d4","reqId":"req-20","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083568,"pid":216,"hostname":"9a57735be6d4","reqId":"req-20","res":{"statusCode":200},"responseTime":0.2914450000098441,"msg":"request completed"}
+{"level":30,"time":1793126083568,"pid":216,"hostname":"9a57735be6d4","reqId":"req-21","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083568,"pid":216,"hostname":"9a57735be6d4","reqId":"req-21","res":{"statusCode":200},"responseTime":0.5234369999961928,"msg":"request completed"}
+{"level":30,"time":1793126083568,"pid":216,"hostname":"9a57735be6d4","reqId":"req-22","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083569,"pid":216,"hostname":"9a57735be6d4","reqId":"req-22","res":{"statusCode":200},"responseTime":0.38479199999710545,"msg":"request completed"}
+{"level":30,"time":1793126083569,"pid":216,"hostname":"9a57735be6d4","reqId":"req-23","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083569,"pid":216,"hostname":"9a57735be6d4","reqId":"req-23","res":{"statusCode":200},"responseTime":0.37532599999394733,"msg":"request completed"}
+{"level":30,"time":1793126083570,"pid":216,"hostname":"9a57735be6d4","reqId":"req-24","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083570,"pid":216,"hostname":"9a57735be6d4","reqId":"req-24","res":{"statusCode":200},"responseTime":0.2921809999970719,"msg":"request completed"}
+{"level":30,"time":1793126083570,"pid":216,"hostname":"9a57735be6d4","reqId":"req-25","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083570,"pid":216,"hostname":"9a57735be6d4","reqId":"req-25","res":{"statusCode":200},"responseTime":0.2995870000013383,"msg":"request completed"}
+{"level":30,"time":1793126083571,"pid":216,"hostname":"9a57735be6d4","reqId":"req-26","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083571,"pid":216,"hostname":"9a57735be6d4","reqId":"req-26","res":{"statusCode":200},"responseTime":0.24559000000590459,"msg":"request completed"}
+{"level":30,"time":1793126083571,"pid":216,"hostname":"9a57735be6d4","reqId":"req-27","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083571,"pid":216,"hostname":"9a57735be6d4","reqId":"req-27","res":{"statusCode":200},"responseTime":0.2712270000047283,"msg":"request completed"}
+{"level":30,"time":1793126083572,"pid":216,"hostname":"9a57735be6d4","reqId":"req-28","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083572,"pid":216,"hostname":"9a57735be6d4","reqId":"req-28","res":{"statusCode":200},"responseTime":0.2530340000084834,"msg":"request completed"}
+{"level":30,"time":1793126083572,"pid":216,"hostname":"9a57735be6d4","reqId":"req-29","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083572,"pid":216,"hostname":"9a57735be6d4","reqId":"req-29","res":{"statusCode":200},"responseTime":0.34086099998967256,"msg":"request completed"}
+{"level":30,"time":1793126083572,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2a","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083573,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2a","res":{"statusCode":200},"responseTime":0.2737280000001192,"msg":"request completed"}
+{"level":30,"time":1793126083573,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2b","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083573,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2b","res":{"statusCode":200},"responseTime":0.2631309999997029,"msg":"request completed"}
+{"level":30,"time":1793126083573,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2c","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/logs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083574,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2c","res":{"statusCode":200},"responseTime":0.2473160000081407,"msg":"request completed"}
+{"level":30,"time":1793126083575,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2d","req":{"method":"POST","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d/complete-execution","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083590,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2d","res":{"statusCode":200},"responseTime":15.828850999998394,"msg":"request completed"}
+{"level":30,"time":1793126083591,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2e","req":{"method":"GET","url":"/tasks/56f46bfb-d41b-4c7f-8537-16b12503ac7d?projectId=b937b63b-1a45-4833-a124-0d001dd40972","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126083592,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2e","res":{"statusCode":200},"responseTime":0.7580709999892861,"msg":"request completed"}
+ [32m✓[39m flow/daemonParity.test.js [2m([22m[2m1 test[22m[2m)[22m[33m 994[2mms[22m[39m
+   [32m✓[39m Runner Daemon Parity [2m(1)[22m
+     [33m[2m✓[22m[39m completes a task over the wire with a mock harness[33m 567[2mms[22m[39m
+ [32m✓[39m flow/stageExecution.attribution.test.js [2m([22m[2m13 tests[22m[2m)[22m[33m 1032[2mms[22m[39m
+{"level":30,"time":1793126083973,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084045,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":201},"responseTime":71.33850299999176,"msg":"request completed"}
+{"level":30,"time":1793126084046,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"PATCH","url":"/projects/d02c3bd3-ebd5-4639-8f1b-ea549ccda7dc/app-status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084060,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":13.567431999996188,"msg":"request completed"}
+{"level":30,"time":1793126084062,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"GET","url":"/projects/d02c3bd3-ebd5-4639-8f1b-ea549ccda7dc","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084064,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":1.3306480000028387,"msg":"request completed"}
+{"level":30,"time":1793126084065,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084121,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":201},"responseTime":55.72033399999782,"msg":"request completed"}
+{"level":30,"time":1793126084123,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"PATCH","url":"/projects/ca47685a-5f11-47e2-ab80-f441c434cda7/app-status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084135,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":200},"responseTime":11.336255000001984,"msg":"request completed"}
+{"level":30,"time":1793126084135,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"PATCH","url":"/projects/ca47685a-5f11-47e2-ab80-f441c434cda7/app-status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084147,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":200},"responseTime":11.605014000000665,"msg":"request completed"}
+{"level":30,"time":1793126084148,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084200,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":201},"responseTime":52.61098199999833,"msg":"request completed"}
+{"level":30,"time":1793126084201,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"PATCH","url":"/projects/dd46c5f1-60a7-471b-b4ab-04471394f695/app-status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084215,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":200},"responseTime":14.179619999995339,"msg":"request completed"}
+{"level":30,"time":1793126084215,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"PATCH","url":"/projects/dd46c5f1-60a7-471b-b4ab-04471394f695/app-status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084227,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":200},"responseTime":11.564625999992131,"msg":"request completed"}
+{"level":30,"time":1793126084228,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084270,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","res":{"statusCode":201},"responseTime":42.385498999996344,"msg":"request completed"}
+{"level":30,"time":1793126084271,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","req":{"method":"PATCH","url":"/projects/50937931-7b9b-4825-9ee4-03a09b7da174/app-status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084272,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","res":{"statusCode":400},"responseTime":0.7204259999998612,"msg":"request completed"}
+{"level":30,"time":1793126084272,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","req":{"method":"PATCH","url":"/projects/50937931-7b9b-4825-9ee4-03a09b7da174/app-status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084272,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","res":{"statusCode":400},"responseTime":0.37367600000288803,"msg":"request completed"}
+{"level":30,"time":1793126084272,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","req":{"method":"PATCH","url":"/projects/50937931-7b9b-4825-9ee4-03a09b7da174/app-status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084273,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","res":{"statusCode":400},"responseTime":0.2906900000089081,"msg":"request completed"}
+{"level":30,"time":1793126084273,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","req":{"method":"PATCH","url":"/projects/does-not-exist/app-status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084274,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","res":{"statusCode":404},"responseTime":0.38264200001140125,"msg":"request completed"}
+{"level":30,"time":1793126084274,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084316,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","res":{"statusCode":201},"responseTime":41.69754500000272,"msg":"request completed"}
+{"level":30,"time":1793126084316,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","req":{"method":"GET","url":"/projects/196332f0-855b-4a89-a111-a0ad6e76e7ac/app-status/health","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084317,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","res":{"statusCode":404},"responseTime":0.3223290000023553,"msg":"request completed"}
+{"level":30,"time":1793126084325,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084367,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","res":{"statusCode":201},"responseTime":41.88292200000433,"msg":"request completed"}
+{"level":30,"time":1793126084367,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","req":{"method":"PATCH","url":"/projects/d4821e37-f501-4033-a909-dcf569dadb3b/app-status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084378,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","res":{"statusCode":200},"responseTime":11.040542999995523,"msg":"request completed"}
+{"level":30,"time":1793126084378,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","req":{"method":"GET","url":"/projects/d4821e37-f501-4033-a909-dcf569dadb3b/app-status/health","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084411,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","res":{"statusCode":200},"responseTime":33.07405799999833,"msg":"request completed"}
+{"level":30,"time":1793126084412,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","req":{"method":"GET","url":"/projects/d4821e37-f501-4033-a909-dcf569dadb3b","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084412,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","res":{"statusCode":200},"responseTime":0.2739549999969313,"msg":"request completed"}
+{"level":30,"time":1793126084415,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084458,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","res":{"statusCode":201},"responseTime":43.139074000006076,"msg":"request completed"}
+{"level":30,"time":1793126084459,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","req":{"method":"PATCH","url":"/projects/37022131-aa79-49da-8827-77442d72d7be/app-status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084473,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","res":{"statusCode":200},"responseTime":14.51113099999202,"msg":"request completed"}
+{"level":30,"time":1793126084473,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","req":{"method":"GET","url":"/projects/37022131-aa79-49da-8827-77442d72d7be/app-status/health","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084488,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","res":{"statusCode":200},"responseTime":14.836635999992723,"msg":"request completed"}
+{"level":30,"time":1793126084489,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","req":{"method":"GET","url":"/projects/37022131-aa79-49da-8827-77442d72d7be","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126084489,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","res":{"statusCode":200},"responseTime":0.26196399999025743,"msg":"request completed"}
+ [32m✓[39m routes/projects.appStatus.test.js [2m([22m[2m8 tests[22m[2m)[22m[33m 1204[2mms[22m[39m
+{"level":30,"time":1793126085485,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085564,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":201},"responseTime":78.05076699999336,"msg":"request completed"}
+{"level":30,"time":1793126085565,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"PATCH","url":"/projects/37f663c7-a198-43ca-81ed-228ba1986e25","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085569,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":400},"responseTime":3.425569999992149,"msg":"request completed"}
+{"level":30,"time":1793126085570,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085602,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":201},"responseTime":31.65944699999818,"msg":"request completed"}
+{"level":30,"time":1793126085602,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"PATCH","url":"/projects/3d16a5a5-83a5-44f1-b065-d48994a2cd28","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085603,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":400},"responseTime":1.0997539999953005,"msg":"request completed"}
+{"level":30,"time":1793126085604,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085636,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":201},"responseTime":32.157586000001174,"msg":"request completed"}
+{"level":30,"time":1793126085637,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"PATCH","url":"/projects/9a3c8d59-32f6-4381-b027-1a68bde270e6","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085637,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085653,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":200},"responseTime":16.019969000000856,"msg":"request completed"}
+{"level":30,"time":1793126085657,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085699,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":201},"responseTime":42.20033899998816,"msg":"request completed"}
+{"level":30,"time":1793126085699,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"PATCH","url":"/projects/607c9edc-e43e-4d5d-bc9d-3a430ba1fd4d","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085716,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":200},"responseTime":17.0748709999898,"msg":"request completed"}
+{"level":30,"time":1793126085717,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085752,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":201},"responseTime":34.63558000000194,"msg":"request completed"}
+{"level":30,"time":1793126085753,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","req":{"method":"PATCH","url":"/projects/84f5f675-c526-43f9-9641-7894f91582f8","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085754,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","res":{"statusCode":400},"responseTime":0.9733669999986887,"msg":"request completed"}
+{"level":30,"time":1793126085754,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085752,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":201},"responseTime":114.12439899999299,"msg":"request completed"}
+{"level":30,"time":1793126085755,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085785,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":30.53542899999593,"msg":"request completed"}
+{"level":30,"time":1793126085786,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"POST","url":"/tasks/3e59ccaf-8ea5-454f-8f54-7d9f6e12d4e7/stuck-check","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085787,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","res":{"statusCode":201},"responseTime":32.56576800000039,"msg":"request completed"}
+{"level":30,"time":1793126085787,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","req":{"method":"PATCH","url":"/projects/85df0450-12e6-440a-bbe6-ddeebfd8a09b","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085798,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","res":{"statusCode":200},"responseTime":10.922255999990739,"msg":"request completed"}
+{"level":30,"time":1793126085799,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085799,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":12.795916000002762,"msg":"request completed"}
+{"level":30,"time":1793126085816,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"POST","url":"/tasks/does-not-exist/stuck-check","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085817,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":404},"responseTime":0.7869800000044052,"msg":"request completed"}
+{"level":30,"time":1793126085818,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085826,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":200},"responseTime":8.788130999993882,"msg":"request completed"}
+{"level":30,"time":1793126085827,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"POST","url":"/tasks/5ee43483-a3bf-4921-bf41-65fb14e5df82/stuck-check","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085830,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","res":{"statusCode":201},"responseTime":31.017122000004747,"msg":"request completed"}
+{"level":30,"time":1793126085830,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","req":{"method":"PATCH","url":"/projects/84fdfe4c-7c08-41a3-ad9b-bbc32fd05500","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":50,"time":1793126085828,"pid":216,"hostname":"9a57735be6d4","err":{"type":"Error","message":"Model 'ollama-cloud::nope' could not be resolved for the stuck check. Pick a model from the list.","stack":"Error: Model 'ollama-cloud::nope' could not be resolved for the stuck check. Pick a model from the list.\n    at Object.checkStuck (/home/server/projects/kainbain/api/stuckCheck.js:398:18)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at Object.<anonymous> (/home/server/projects/kainbain/api/watch/taskWatchRoutes.js:85:19)","statusCode":400},"msg":"Task stuck check failed"}
+{"level":30,"time":1793126085844,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":400},"responseTime":16.544091999996454,"msg":"request completed"}
+{"level":30,"time":1793126085844,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"POST","url":"/tasks/whatever/stuck-check","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085841,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","res":{"statusCode":200},"responseTime":11.46020299999509,"msg":"request completed"}
+{"level":30,"time":1793126085845,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":404},"responseTime":0.5779120000079274,"msg":"request completed"}
+{"level":30,"time":1793126085846,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+ [32m✓[39m routes/projects.modelCombination.test.js [2m([22m[2m7 tests[22m[2m)[22m[33m 768[2mms[22m[39m
+   [32m✓[39m Project harness+model combination API [2m(7)[22m
+     [33m[2m✓[22m[39m refuses an alias target on an unknown harness with a 400[33m 491[2mms[22m[39m
+{"level":30,"time":1793126085849,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":200},"responseTime":2.483238999993773,"msg":"request completed"}
+{"level":30,"time":1793126085849,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"POST","url":"/tasks/762f6be8-56d7-453c-b176-dfcb84750940/stuck-check","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":50,"time":1793126085851,"pid":216,"hostname":"9a57735be6d4","err":{"type":"Error","message":"Stuck check failed: provider exploded","stack":"Error: Stuck check failed: provider exploded\n    at Object.checkStuck (/home/server/projects/kainbain/api/stuckCheck.js:438:17)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at Object.<anonymous> (/home/server/projects/kainbain/api/watch/taskWatchRoutes.js:85:19)","statusCode":502},"msg":"Task stuck check failed"}
+{"level":30,"time":1793126085851,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":502},"responseTime":1.9159579999977723,"msg":"request completed"}
+{"level":30,"time":1793126085852,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085855,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","res":{"statusCode":200},"responseTime":2.3885369999916293,"msg":"request completed"}
+{"level":30,"time":1793126085855,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","req":{"method":"POST","url":"/tasks/e4f72e7e-da3d-4b3f-ab93-a404f516d64c/stuck-check","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085858,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","res":{"statusCode":200},"responseTime":2.3067279999959283,"msg":"request completed"}
+{"level":30,"time":1793126085858,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085862,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","res":{"statusCode":200},"responseTime":3.592514999996638,"msg":"request completed"}
+{"level":30,"time":1793126085862,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","req":{"method":"POST","url":"/tasks/a5202dd7-d0ae-4bd4-b038-694490a9c890/stuck-check","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":50,"time":1793126085863,"pid":216,"hostname":"9a57735be6d4","err":{"type":"Error","message":"Unknown harness 'no-such-harness' for the stuck check. Available: antigravity, codex, custom, mock, muse, opencode, pi, vibe.","stack":"Error: Unknown harness 'no-such-harness' for the stuck check. Available: antigravity, codex, custom, mock, muse, opencode, pi, vibe.\n    at Object.checkStuck (/home/server/projects/kainbain/api/stuckCheck.js:352:17)\n    at Object.<anonymous> (/home/server/projects/kainbain/api/watch/taskWatchRoutes.js:85:38)\n    at routeOptions.handler (/home/server/projects/kainbain/api/node_modules/@fastify/websocket/index.js:223:24)\n    at preHandlerCallbackInner (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:190:24)\n    at preHandlerCallback (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:155:5)\n    at validationCompleted (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:145:5)\n    at preValidationCallback (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:122:5)\n    at handler (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:99:7)\n    at onDone (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:241:5)\n    at AsyncResource.runInAsyncScope (node:async_hooks:227:14)","statusCode":400},"msg":"Task stuck check failed"}
+{"level":30,"time":1793126085864,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","res":{"statusCode":400},"responseTime":1.388783999995212,"msg":"request completed"}
+{"level":30,"time":1793126085864,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126085867,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","res":{"statusCode":200},"responseTime":2.2390729999897303,"msg":"request completed"}
+{"level":30,"time":1793126085867,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","req":{"method":"POST","url":"/tasks/a75914cb-0e6f-4891-b9a4-aaccd755992b/stuck-check","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":50,"time":1793126085867,"pid":216,"hostname":"9a57735be6d4","err":{"type":"Error","message":"Harness 'custom' does not support the stuck check (no diagnosis session).","stack":"Error: Harness 'custom' does not support the stuck check (no diagnosis session).\n    at Object.checkStuck (/home/server/projects/kainbain/api/stuckCheck.js:372:17)\n    at Object.<anonymous> (/home/server/projects/kainbain/api/watch/taskWatchRoutes.js:85:38)\n    at routeOptions.handler (/home/server/projects/kainbain/api/node_modules/@fastify/websocket/index.js:223:24)\n    at preHandlerCallbackInner (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:190:24)\n    at preHandlerCallback (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:155:5)\n    at validationCompleted (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:145:5)\n    at preValidationCallback (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:122:5)\n    at handler (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:99:7)\n    at onDone (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:241:5)\n    at AsyncResource.runInAsyncScope (node:async_hooks:227:14)","statusCode":503},"msg":"Task stuck check failed"}
+{"level":30,"time":1793126085868,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","res":{"statusCode":503},"responseTime":0.6661929999972926,"msg":"request completed"}
+ [32m✓[39m routes/tasks.stuckCheck.test.js [2m([22m[2m8 tests[22m[2m)[22m[33m 643[2mms[22m[39m
+{"level":30,"time":1793126086135,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"GET","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126086141,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":200},"responseTime":4.952189000003273,"msg":"request completed"}
+{"level":30,"time":1793126086141,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126086209,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":201},"responseTime":67.49809799999639,"msg":"request completed"}
+{"level":30,"time":1793126086212,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"GET","url":"/ws?projectId=e376f32c-c954-44f7-baea-f1d0e64bb2d8","host":""},"msg":"incoming request"}
+{"level":30,"time":1793126086221,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"GET","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126086221,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":200},"responseTime":0.3693130000028759,"msg":"request completed"}
+{"level":30,"time":1793126086228,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"GET","url":"/ws?projectId=e376f32c-c954-44f7-baea-f1d0e64bb2d8","host":""},"msg":"incoming request"}
+{"level":30,"time":1793126086242,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"GET","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126086242,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":200},"responseTime":0.32753999999840744,"msg":"request completed"}
+{"level":30,"time":1793126086243,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"GET","url":"/ws?projectId=e376f32c-c954-44f7-baea-f1d0e64bb2d8","host":""},"msg":"incoming request"}
+{"level":30,"time":1793126086256,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"GET","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126086257,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":200},"responseTime":1.2010050000099,"msg":"request completed"}
+{"level":30,"time":1793126086258,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"GET","url":"/ws?projectId=e376f32c-c954-44f7-baea-f1d0e64bb2d8","host":""},"msg":"incoming request"}
+ [32m✓[39m routes/ws.test.js [2m([22m[2m4 tests[22m[2m)[22m[33m 609[2mms[22m[39m
+ [32m✓[39m deploy.gates.test.js [2m([22m[2m15 tests[22m[2m | [22m[33m8 skipped[39m[2m)[22m[32m 17[2mms[22m[39m
+[90mstderr[2m | agent/harnesses/antigravity/agyHarness.integration.test.js[2m > [22m[2mantigravity harness — discovery failure surfacing[2m > [22m[2mroutes discovery failures to the event bridge (the catalog log is wired)
+[22m[39m[WARN] antigravity model discovery failed [AGY_BIN_MISSING]: The agy CLI was not found ('/definitely/not/a/real/agy-binary' is not on PATH). Install the Antigravity CLI and ensure it is on PATH or in ~/.local/bin, or set KAINBAIN_AGY_BIN to its absolute path.
+
+[90mstderr[2m | agent/harnesses/antigravity/agyHarness.integration.test.js[2m > [22m[2mantigravity harness — discovery failure surfacing[2m > [22m[2mreports discovery health behind getModelDiscoveryStatus (harness + session)
+[22m[39m[WARN] antigravity model discovery failed [AGY_BIN_MISSING]: The agy CLI was not found ('/definitely/not/a/real/agy-binary' is not on PATH). Install the Antigravity CLI and ensure it is on PATH or in ~/.local/bin, or set KAINBAIN_AGY_BIN to its absolute path.
+
+[90mstderr[2m | agent/harnesses/antigravity/agyHarness.integration.test.js[2m > [22m[2mantigravity harness — discovery failure surfacing[2m > [22m[2mre-runs discovery past the TTL cache on { refresh: true }
+[22m[39m[WARN] antigravity model discovery failed [AGY_MODELS_FAILED]: 'agy models' failed ('/home/server/projects/kainbain/api/agent/harnesses/antigravity/fixtures/mock-agy.mjs models' exited with code 1: mock-agy: simulated models failure). Run `agy models` in a terminal to see the full error, then retry.
+
+[90mstderr[2m | agent/harnesses/antigravity/agyHarness.integration.test.js[2m > [22m[2mantigravity harness — discovery failure surfacing[2m > [22m[2mforwards listModels opts from the session so a session refresh re-discovers
+[22m[39m[WARN] antigravity model discovery failed [AGY_MODELS_FAILED]: 'agy models' failed ('/home/server/projects/kainbain/api/agent/harnesses/antigravity/fixtures/mock-agy.mjs models' exited with code 1: mock-agy: simulated models failure). Run `agy models` in a terminal to see the full error, then retry.
+
+[90mstderr[2m | agent/harnesses/antigravity/agyHarness.integration.test.js[2m > [22m[2mantigravity harness — discovery failure surfacing[2m > [22m[2mnames the discovery failure when the project default model cannot resolve
+[22m[39m[WARN] antigravity model discovery failed [AGY_BIN_MISSING]: The agy CLI was not found ('/definitely/not/a/real/agy-binary' is not on PATH). Install the Antigravity CLI and ensure it is on PATH or in ~/.local/bin, or set KAINBAIN_AGY_BIN to its absolute path.
+
+ [32m✓[39m agent/harnesses/antigravity/agyHarness.integration.test.js [2m([22m[2m7 tests[22m[2m)[22m[33m 595[2mms[22m[39m
+{"level":30,"time":1793126087123,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126087208,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":201},"responseTime":83.42324600000575,"msg":"request completed"}
+{"level":30,"time":1793126087212,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126087223,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":11.623379999989993,"msg":"request completed"}
+{"level":30,"time":1793126087224,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126087226,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":2.5097850000020117,"msg":"request completed"}
+{"level":30,"time":1793126087228,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"POST","url":"/tasks/af18b2a6-3733-48e4-8543-23c1bd562319/execute","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126087229,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":409},"responseTime":1.3348860000114655,"msg":"request completed"}
+{"level":30,"time":1793126087230,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126087231,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":400},"responseTime":0.7051630000059959,"msg":"request completed"}
+{"level":30,"time":1793126087232,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126087234,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":200},"responseTime":2.20050700000138,"msg":"request completed"}
+{"level":30,"time":1793126087234,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126087237,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":200},"responseTime":2.2234670000034384,"msg":"request completed"}
+{"level":30,"time":1793126087237,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"PATCH","url":"/tasks/36ab1da3-3e92-45ad-adf0-9297aa8b2fa3","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126087238,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":400},"responseTime":0.7105489999958081,"msg":"request completed"}
+{"level":30,"time":1793126087238,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"PATCH","url":"/tasks/040b5c1f-8ea0-419f-a621-68e5258d9dc4","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126087239,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":400},"responseTime":0.608382000005804,"msg":"request completed"}
+{"level":30,"time":1793126087240,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126087242,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","res":{"statusCode":200},"responseTime":2.4988529999973252,"msg":"request completed"}
+{"level":30,"time":1793126087242,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","req":{"method":"PATCH","url":"/tasks/e0fe557d-a0f8-4e0a-9c81-5cdd1235ea7a","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126087243,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","res":{"statusCode":400},"responseTime":0.42790700000477955,"msg":"request completed"}
+{"level":30,"time":1793126087243,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126087246,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","res":{"statusCode":200},"responseTime":2.1098429999983637,"msg":"request completed"}
+{"level":30,"time":1793126087246,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126087248,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","res":{"statusCode":200},"responseTime":2.0078690000082133,"msg":"request completed"}
+{"level":30,"time":1793126087248,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","req":{"method":"POST","url":"/tasks/d573ffd6-10e0-45e3-abe7-ae6862ae9ad9/complete","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126087252,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","res":{"statusCode":200},"responseTime":3.372401999993599,"msg":"request completed"}
+{"level":30,"time":1793126087252,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","req":{"method":"GET","url":"/tasks/queue?projectId=ac3dfa0d-dfb4-4191-a0f3-5f7c39781339","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126087259,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","res":{"statusCode":200},"responseTime":7.1227230000076815,"msg":"request completed"}
+ [32m✓[39m routes/tasks.blocking.test.js [2m([22m[2m5 tests[22m[2m)[22m[33m 459[2mms[22m[39m
+ [32m✓[39m routes/skills.import.test.js [2m([22m[2m24 tests[22m[2m)[22m[33m 801[2mms[22m[39m
+ [32m✓[39m flow/stageExecution.reliability.test.js [2m([22m[2m7 tests[22m[2m)[22m[33m 562[2mms[22m[39m
+ [32m✓[39m gitStaleLock.integration.test.js [2m([22m[2m5 tests[22m[2m)[22m[33m 642[2mms[22m[39m
+{"level":30,"time":1793126089243,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+ [32m✓[39m projectStore.appStatus.test.js [2m([22m[2m15 tests[22m[2m)[22m[33m 438[2mms[22m[39m
+{"level":30,"time":1793126089367,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":201},"responseTime":122.83030699999654,"msg":"request completed"}
+{"level":30,"time":1793126089374,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"GET","url":"/projects/c8f63fa1-8eb6-44f0-ac16-b9826780fb99","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126089377,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":2.5408279999974184,"msg":"request completed"}
+{"level":30,"time":1793126089379,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126089435,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":201},"responseTime":55.9039449999982,"msg":"request completed"}
+{"level":30,"time":1793126089435,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"GET","url":"/projects/22236c4c-70a4-4823-871b-a7a58714e123","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126089436,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":200},"responseTime":0.3112879999971483,"msg":"request completed"}
+{"level":30,"time":1793126089442,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126089444,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":400},"responseTime":1.6980230000044685,"msg":"request completed"}
+{"level":30,"time":1793126089446,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126089505,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":201},"responseTime":59.33034000000043,"msg":"request completed"}
+{"level":30,"time":1793126089509,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126089564,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":201},"responseTime":55.06422499999462,"msg":"request completed"}
+{"level":30,"time":1793126089565,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126089638,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":201},"responseTime":72.729456999994,"msg":"request completed"}
+{"level":30,"time":1793126089639,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"PATCH","url":"/projects/8b8b0d78-69e6-4832-82a2-2b5d093c1019","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+[90mstderr[2m | routes/projects.docsSettings.test.js[2m > [22m[2mdocs-folder settings survive save + reload[2m > [22m[2mpersists a PATCH rename to disk and migrates the link
+[22m[39m[projectStore] recreated missing docs symlink for 'Rename Persist Docs App': '/tmp/kainbain-test-docs-settings-projects-nGmckb/rename-persist-docs-app/renamed-docs' -> '/tmp/kainbain-test-docs-settings-notes-kMkgkb/Rename Persist Docs App'
+
+{"level":30,"time":1793126089658,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":200},"responseTime":19.456858999998076,"msg":"request completed"}
+ [32m✓[39m routes/projects.docsSettings.test.js [2m([22m[2m6 tests[22m[2m)[22m[33m 970[2mms[22m[39m
+[90mstderr[2m | projectStore.alias.test.js[2m > [22m[2mProjectStore model aliases[2m > [22m[2mH4: loading a legacy none-harness + model target blanks the model
+[22m[39m[projectStore] Alias "worker" in /tmp/kainbain-test-alias-projects-ODbHgj/legacy-none-alias targets harness "muse", which manages its own model — ignoring the stored model "antigravity::google::gemini-legacy". Clear the model in Settings › Model Aliases.
+
+ [32m✓[39m projectStore.alias.test.js [2m([22m[2m15 tests[22m[2m)[22m[33m 580[2mms[22m[39m
+ [32m✓[39m agent/harnesses/opencode/opencodeHarness.contract.test.js [2m([22m[2m56 tests[22m[2m)[22m[33m 455[2mms[22m[39m
+ [32m✓[39m flow/stageExecution.reportGating.test.js [2m([22m[2m6 tests[22m[2m)[22m[33m 529[2mms[22m[39m
+{"level":30,"time":1793126091511,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"GET","url":"/harnesses","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126091521,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":200},"responseTime":9.137306999997236,"msg":"request completed"}
+{"level":30,"time":1793126091525,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"GET","url":"/harnesses","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126091529,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":3.074670000001788,"msg":"request completed"}
+{"level":30,"time":1793126091539,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"GET","url":"/harnesses","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126091540,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":1.3060399999958463,"msg":"request completed"}
+{"level":30,"time":1793126091541,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"GET","url":"/harnesses","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126091542,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":200},"responseTime":0.3714439999894239,"msg":"request completed"}
+{"level":30,"time":1793126091542,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"GET","url":"/harnesses?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126091546,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":200},"responseTime":3.364000000001397,"msg":"request completed"}
+{"level":30,"time":1793126091547,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"GET","url":"/harnesses/pi/models","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126091550,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":200},"responseTime":2.478558000002522,"msg":"request completed"}
+{"level":30,"time":1793126091550,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"GET","url":"/harnesses/no-such-harness/models","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126091551,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":404},"responseTime":0.3291659999958938,"msg":"request completed"}
+{"level":30,"time":1793126091552,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"GET","url":"/harnesses/pi/models","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126091552,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":200},"responseTime":0.36309900000924245,"msg":"request completed"}
+{"level":30,"time":1793126091553,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"GET","url":"/harnesses/pi/models","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126091553,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":200},"responseTime":0.2850580000085756,"msg":"request completed"}
+{"level":30,"time":1793126091555,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","req":{"method":"GET","url":"/harnesses/pi/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126091555,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","res":{"statusCode":200},"responseTime":0.5850270000082674,"msg":"request completed"}
+{"level":30,"time":1793126091556,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","req":{"method":"GET","url":"/harnesses/pi/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126091557,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","res":{"statusCode":200},"responseTime":0.38933400000678375,"msg":"request completed"}
+{"level":30,"time":1793126091558,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","req":{"method":"GET","url":"/harnesses/custom/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126091558,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","res":{"statusCode":200},"responseTime":0.25590200000442564,"msg":"request completed"}
+{"level":30,"time":1793126091559,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","req":{"method":"GET","url":"/harnesses/antigravity/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126091638,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","res":{"statusCode":200},"responseTime":79.91495799999393,"msg":"request completed"}
+{"level":30,"time":1793126091639,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","req":{"method":"GET","url":"/harnesses/pi/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126091640,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","res":{"statusCode":200},"responseTime":0.3785529999877326,"msg":"request completed"}
+{"level":30,"time":1793126091641,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","req":{"method":"GET","url":"/harnesses/reliability","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126091642,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","res":{"statusCode":200},"responseTime":0.5826940000115428,"msg":"request completed"}
+{"level":30,"time":1793126091686,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","req":{"method":"GET","url":"/harnesses/antigravity/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126091756,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","res":{"statusCode":200},"responseTime":70.01982499999576,"msg":"request completed"}
+{"level":30,"time":1793126091757,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","req":{"method":"GET","url":"/harnesses/opencode/models?refresh=true","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126091760,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","res":{"statusCode":200},"responseTime":3.4149670000042534,"msg":"request completed"}
+ [32m✓[39m routes/harnesses.test.js [2m([22m[2m15 tests[22m[2m)[22m[33m 640[2mms[22m[39m
+[90mstderr[2m | agent/harnesses/antigravity/agyModelCatalog.test.js[2m > [22m[2magy model catalog (TTL cache + resolution)[2m > [22m[2mdegrades to an empty list when discovery fails
+[22m[39m[WARN] antigravity model discovery failed [AGY_MODELS_FAILED]: 'agy models' failed (agy not installed). Run `agy models` in a terminal to see the full error, then retry.
+
+[90mstderr[2m | agent/harnesses/antigravity/agyModelCatalog.test.js[2m > [22m[2magy model catalog (TTL cache + resolution)[2m > [22m[2mrecords an AGY_BIN_MISSING discovery error with a PATH hint on ENOENT
+[22m[39m[WARN] antigravity model discovery failed [AGY_BIN_MISSING]: The agy CLI was not found ('/home/server/projects/kainbain/api/agent/harnesses/antigravity/fixtures/mock-agy.mjs' is not on PATH). Install the Antigravity CLI and ensure it is on PATH or in ~/.local/bin, or set KAINBAIN_AGY_BIN to its absolute path.
+
+{"level":30,"time":1793126092070,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"GET","url":"/docs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092079,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":200},"responseTime":8.557268000004115,"msg":"request completed"}
+{"level":30,"time":1793126092082,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"GET","url":"/docs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092084,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":1.7389930000063032,"msg":"request completed"}
+{"level":30,"time":1793126092084,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"GET","url":"/docs/architecture","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092087,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":2.1952969999983907,"msg":"request completed"}
+{"level":30,"time":1793126092089,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"GET","url":"/docs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092091,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":200},"responseTime":1.8010970000032103,"msg":"request completed"}
+{"level":30,"time":1793126092091,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"GET","url":"/docs/architecture","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092093,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":200},"responseTime":1.7398699999903329,"msg":"request completed"}
+{"level":30,"time":1793126092093,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"GET","url":"/docs/pipeline-stages","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092095,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":200},"responseTime":1.5649960000009742,"msg":"request completed"}
+{"level":30,"time":1793126092095,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"GET","url":"/docs/stage-liveness-and-stalls","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092097,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":200},"responseTime":1.3367250000010245,"msg":"request completed"}
+{"level":30,"time":1793126092097,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"GET","url":"/docs/agent-execution","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092099,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":200},"responseTime":1.6860650000016904,"msg":"request completed"}
+{"level":30,"time":1793126092099,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"GET","url":"/docs/transport-health","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092101,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":200},"responseTime":1.4450289999949746,"msg":"request completed"}
+{"level":30,"time":1793126092101,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","req":{"method":"GET","url":"/docs/prompts-tokens","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092103,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","res":{"statusCode":200},"responseTime":1.5609039999981178,"msg":"request completed"}
+{"level":30,"time":1793126092103,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","req":{"method":"GET","url":"/docs/self-deploy","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092104,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","res":{"statusCode":200},"responseTime":1.299685000005411,"msg":"request completed"}
+{"level":30,"time":1793126092105,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","req":{"method":"GET","url":"/docs/activity-stream","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092106,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","res":{"statusCode":200},"responseTime":1.3978510000015376,"msg":"request completed"}
+{"level":30,"time":1793126092107,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","req":{"method":"GET","url":"/docs/unified-logging","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092108,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","res":{"statusCode":200},"responseTime":1.2405390000058105,"msg":"request completed"}
+{"level":30,"time":1793126092108,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","req":{"method":"GET","url":"/docs/install-run","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092109,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","res":{"statusCode":200},"responseTime":1.2239100000006147,"msg":"request completed"}
+{"level":30,"time":1793126092110,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","req":{"method":"GET","url":"/docs/first-time-setup","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092111,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","res":{"statusCode":200},"responseTime":1.3530849999951897,"msg":"request completed"}
+{"level":30,"time":1793126092111,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","req":{"method":"GET","url":"/docs/ports-env","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092113,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","res":{"statusCode":200},"responseTime":1.2618899999943096,"msg":"request completed"}
+{"level":30,"time":1793126092113,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","req":{"method":"GET","url":"/docs/first-project","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092114,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","res":{"statusCode":200},"responseTime":1.1258729999972275,"msg":"request completed"}
+{"level":30,"time":1793126092114,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","req":{"method":"GET","url":"/docs/task-images","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092115,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","res":{"statusCode":200},"responseTime":1.2459479999961331,"msg":"request completed"}
+{"level":30,"time":1793126092116,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","req":{"method":"GET","url":"/docs/surveys","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092117,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","res":{"statusCode":200},"responseTime":1.2805959999968763,"msg":"request completed"}
+{"level":30,"time":1793126092117,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","req":{"method":"GET","url":"/docs/submit-track-task","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092118,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","res":{"statusCode":200},"responseTime":1.1035379999957513,"msg":"request completed"}
+{"level":30,"time":1793126092118,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","req":{"method":"GET","url":"/docs/task-dependencies","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092119,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","res":{"statusCode":200},"responseTime":1.0255400000023656,"msg":"request completed"}
+{"level":30,"time":1793126092120,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","req":{"method":"GET","url":"/docs/review-gates","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092121,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","res":{"statusCode":200},"responseTime":1.0894439999974566,"msg":"request completed"}
+{"level":30,"time":1793126092121,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","req":{"method":"GET","url":"/docs/retrospective-review","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092122,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","res":{"statusCode":200},"responseTime":1.2781539999996312,"msg":"request completed"}
+{"level":30,"time":1793126092122,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","req":{"method":"GET","url":"/docs/keyboard-shortcuts","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092124,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","res":{"statusCode":200},"responseTime":1.2053440000017872,"msg":"request completed"}
+{"level":30,"time":1793126092124,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","req":{"method":"GET","url":"/docs/git-index-lock-runbook","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092125,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","res":{"statusCode":200},"responseTime":1.2019669999863254,"msg":"request completed"}
+{"level":30,"time":1793126092125,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","req":{"method":"GET","url":"/docs/red-shared-gate","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092127,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","res":{"statusCode":200},"responseTime":1.3367329999891808,"msg":"request completed"}
+{"level":30,"time":1793126092127,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","req":{"method":"GET","url":"/docs/editing-tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092128,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","res":{"statusCode":200},"responseTime":1.0547479999950156,"msg":"request completed"}
+{"level":30,"time":1793126092128,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","req":{"method":"GET","url":"/docs/faq","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092129,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","res":{"statusCode":200},"responseTime":1.1482539999997243,"msg":"request completed"}
+{"level":30,"time":1793126092130,"pid":216,"hostname":"9a57735be6d4","reqId":"req-t","req":{"method":"GET","url":"/docs/push-notifications","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092131,"pid":216,"hostname":"9a57735be6d4","reqId":"req-t","res":{"statusCode":200},"responseTime":1.207271999999648,"msg":"request completed"}
+{"level":30,"time":1793126092131,"pid":216,"hostname":"9a57735be6d4","reqId":"req-u","req":{"method":"GET","url":"/docs/alert-webhooks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092132,"pid":216,"hostname":"9a57735be6d4","reqId":"req-u","res":{"statusCode":200},"responseTime":1.0621460000111256,"msg":"request completed"}
+{"level":30,"time":1793126092133,"pid":216,"hostname":"9a57735be6d4","reqId":"req-v","req":{"method":"GET","url":"/docs/api-reference","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092134,"pid":216,"hostname":"9a57735be6d4","reqId":"req-v","res":{"statusCode":200},"responseTime":1.3703170000080718,"msg":"request completed"}
+{"level":30,"time":1793126092135,"pid":216,"hostname":"9a57735be6d4","reqId":"req-w","req":{"method":"GET","url":"/docs/no-such-article","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092136,"pid":216,"hostname":"9a57735be6d4","reqId":"req-w","res":{"statusCode":404},"responseTime":1.3780750000005355,"msg":"request completed"}
+{"level":30,"time":1793126092136,"pid":216,"hostname":"9a57735be6d4","reqId":"req-x","req":{"method":"GET","url":"/docs/..%2F..%2Fpackage","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092137,"pid":216,"hostname":"9a57735be6d4","reqId":"req-x","res":{"statusCode":404},"responseTime":0.13623200000438374,"msg":"request completed"}
+ [32m✓[39m routes/docs.test.js [2m([22m[2m5 tests[22m[2m)[22m[33m 368[2mms[22m[39m
+[90mstderr[2m | agent/harnesses/antigravity/agyModelCatalog.test.js[2m > [22m[2magy models discovery spawn watchdog[2m > [22m[2mbounds a hung `agy models` spawn: kills the child and degrades to empty list
+[22m[39m[WARN] antigravity model discovery failed [AGY_MODELS_TIMEOUT]: 'agy models' timed out ('/home/server/projects/kainbain/api/agent/harnesses/antigravity/fixtures/mock-agy.mjs models' timed out after 150ms). The CLI may be hanging — check the network and the CLI install, then retry (Settings › Harness › Refresh).
+
+{"level":30,"time":1793126092279,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+[90mstderr[2m | agent/harnesses/antigravity/agyModelCatalog.test.js[2m > [22m[2magy models discovery spawn watchdog[2m > [22m[2mbounds a hung `agy models` spawn: kills the child and degrades to empty list
+[22m[39m[WARN] antigravity model discovery failed [AGY_MODELS_TIMEOUT]: 'agy models' timed out ('/home/server/projects/kainbain/api/agent/harnesses/antigravity/fixtures/mock-agy.mjs models' timed out after 150ms). The CLI may be hanging — check the network and the CLI install, then retry (Settings › Harness › Refresh).
+
+{"level":30,"time":1793126092347,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":201},"responseTime":67.43082300000242,"msg":"request completed"}
+{"level":30,"time":1793126092350,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092360,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":9.945177999994485,"msg":"request completed"}
+{"level":30,"time":1793126092376,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092379,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":3.2571570000000065,"msg":"request completed"}
+{"level":30,"time":1793126092385,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+[90mstderr[2m | agent/harnesses/antigravity/agyModelCatalog.test.js[2m > [22m[2magy model catalog discovery status[2m > [22m[2mretains the last discovery error and reports it via getModelDiscoveryStatus
+[22m[39m[WARN] antigravity model discovery failed [AGY_BIN_MISSING]: The agy CLI was not found ('/definitely/not/a/real/agy-binary' is not on PATH). Install the Antigravity CLI and ensure it is on PATH or in ~/.local/bin, or set KAINBAIN_AGY_BIN to its absolute path.
+
+[90mstderr[2m | agent/harnesses/antigravity/agyModelCatalog.test.js[2m > [22m[2magy model catalog discovery status[2m > [22m[2mreports ok before any load and after a successful load clears a prior error
+[22m[39m[WARN] antigravity model discovery failed [AGY_BIN_MISSING]: The agy CLI was not found ('/home/server/projects/kainbain/api/agent/harnesses/antigravity/fixtures/mock-agy.mjs' is not on PATH). Install the Antigravity CLI and ensure it is on PATH or in ~/.local/bin, or set KAINBAIN_AGY_BIN to its absolute path.
+
+[90mstderr[2m | agent/harnesses/antigravity/agyModelCatalog.test.js[2m > [22m[2magy model catalog discovery status[2m > [22m[2mclassifies auth failures as AGY_MODELS_AUTH
+[22m[39m[WARN] antigravity model discovery failed [AGY_MODELS_AUTH]: 'agy models' reported an authentication problem ('agy models' exited with code 1: error: authentication required. Run `agy auth login` first.). Run `agy auth login` in a terminal, then retry (Settings › Harness › Refresh).
+
+[90mstderr[2m | agent/harnesses/antigravity/agyModelCatalog.test.js[2m > [22m[2magy model catalog discovery status[2m > [22m[2mclassifies other non-zero exits as AGY_MODELS_FAILED
+[22m[39m[WARN] antigravity model discovery failed [AGY_MODELS_FAILED]: 'agy models' failed ('agy models' exited with code 1: mock-agy: simulated models failure). Run `agy models` in a terminal to see the full error, then retry.
+
+[90mstderr[2m | agent/harnesses/antigravity/agyModelCatalog.test.js[2m > [22m[2magy model catalog discovery status[2m > [22m[2mclassifies exit-0 output with zero recognizable slugs as AGY_MODELS_UNPARSEABLE
+[22m[39m[WARN] antigravity model discovery failed [AGY_MODELS_UNPARSEABLE]: 'agy models' returned no recognizable models (output started with: "Available models:\n\nComing soon in this region\nPlease try again later"). The CLI output format may have changed — run `agy models` in a terminal and paste the output in a bug report.
+
+[90mstderr[2m | agent/harnesses/antigravity/agyModelCatalog.test.js[2m > [22m[2magy model catalog discovery status[2m > [22m[2mclassifies exit-0 empty output as AGY_MODELS_UNPARSEABLE
+[22m[39m[WARN] antigravity model discovery failed [AGY_MODELS_UNPARSEABLE]: 'agy models' returned no recognizable models (empty output). The CLI output format may have changed — run `agy models` in a terminal and paste the output in a bug report.
+
+[90mstderr[2m | agent/harnesses/antigravity/agyModelCatalog.test.js[2m > [22m[2magy model catalog discovery status[2m > [22m[2msurfaces a discovery failure as a non-ok status carrying the error
+[22m[39m[WARN] antigravity model discovery failed [AGY_MODELS_FAILED]: 'agy models' failed ('agy models' exited with code 1: boom). Run `agy models` in a terminal to see the full error, then retry.
+
+{"level":30,"time":1793126092407,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":200},"responseTime":21.785275999995065,"msg":"request completed"}
+{"level":30,"time":1793126092427,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092433,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":200},"responseTime":5.784255999999004,"msg":"request completed"}
+{"level":30,"time":1793126092434,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"POST","url":"/tasks/5c50b931-17ec-4fb3-9b94-624d0d1d29e5/execute","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126092450,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":200},"responseTime":15.77850899999612,"msg":"request completed"}
+ [32m✓[39m agentic.test.js [2m([22m[2m4 tests[22m[2m)[22m[33m 473[2mms[22m[39m
+[90mstderr[2m | agent/harnesses/antigravity/agyModelCatalog.test.js[2m > [22m[2magy model catalog discovery status[2m > [22m[2mclassifies a hung spawn as AGY_MODELS_TIMEOUT through the watchdog
+[22m[39m[WARN] antigravity model discovery failed [AGY_MODELS_TIMEOUT]: 'agy models' timed out ('/home/server/projects/kainbain/api/agent/harnesses/antigravity/fixtures/mock-agy.mjs models' timed out after 150ms). The CLI may be hanging — check the network and the CLI install, then retry (Settings › Harness › Refresh).
+
+ [32m✓[39m agent/harnesses/antigravity/agyModelCatalog.test.js [2m([22m[2m31 tests[22m[2m)[22m[33m 599[2mms[22m[39m
+   [32m✓[39m agy models discovery spawn watchdog [2m(2)[22m
+     [33m[2m✓[22m[39m bounds a hung `agy models` spawn: kills the child and degrades to empty list[33m 333[2mms[22m[39m
+{"level":30,"time":1793126093372,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093440,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":201},"responseTime":66.84505999999237,"msg":"request completed"}
+{"level":30,"time":1793126093441,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"GET","url":"/projects/11eb1c9e-05d7-4006-8b27-c62da8484393","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093442,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":1.3168109999969602,"msg":"request completed"}
+{"level":30,"time":1793126093444,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093445,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":400},"responseTime":1.4224370000010822,"msg":"request completed"}
+{"level":30,"time":1793126093446,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093446,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":400},"responseTime":0.744951000000583,"msg":"request completed"}
+{"level":30,"time":1793126093447,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093447,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":400},"responseTime":0.556189999988419,"msg":"request completed"}
+{"level":30,"time":1793126093448,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093498,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":201},"responseTime":49.988380999988294,"msg":"request completed"}
+{"level":30,"time":1793126093498,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"PATCH","url":"/projects/2138408f-e5fd-4fe4-8ec7-562dacc6b6b1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+[90mstderr[2m | routes/projects.kainbainDir.test.js[2m > [22m[2mPOST/PATCH /projects kainbainDirName[2m > [22m[2mPATCH sets and clears kainbainDirName, and 400s on collisions
+[22m[39m[projectStore] state folder changed to '.kb'; removed the stale config '/tmp/kainbain-test-kbdir-routes-projects-oPmCeN/patch-state-app/.kainbain/project.json'. Move any sessions/worktrees from '/tmp/kainbain-test-kbdir-routes-projects-oPmCeN/patch-state-app/.kainbain' by hand, then restart.
+
+{"level":30,"time":1793126093514,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":200},"responseTime":15.174234000005526,"msg":"request completed"}
+{"level":30,"time":1793126093514,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"PATCH","url":"/projects/2138408f-e5fd-4fe4-8ec7-562dacc6b6b1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093515,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":400},"responseTime":0.5537530000001425,"msg":"request completed"}
+{"level":30,"time":1793126093516,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"PATCH","url":"/projects/2138408f-e5fd-4fe4-8ec7-562dacc6b6b1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+[90mstderr[2m | routes/projects.kainbainDir.test.js[2m > [22m[2mPOST/PATCH /projects kainbainDirName[2m > [22m[2mPATCH sets and clears kainbainDirName, and 400s on collisions
+[22m[39m[projectStore] state folder changed to '.kainbain'; removed the stale config '/tmp/kainbain-test-kbdir-routes-projects-oPmCeN/patch-state-app/.kb/project.json'. Move any sessions/worktrees from '/tmp/kainbain-test-kbdir-routes-projects-oPmCeN/patch-state-app/.kb' by hand, then restart.
+
+{"level":30,"time":1793126093529,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":200},"responseTime":12.548569999999017,"msg":"request completed"}
+{"level":30,"time":1793126093530,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093580,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","res":{"statusCode":201},"responseTime":50.223257000005106,"msg":"request completed"}
+{"level":30,"time":1793126093580,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","req":{"method":"PATCH","url":"/projects/d449ccad-68f0-4bfa-947f-635c521b7a7b","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093581,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","res":{"statusCode":400},"responseTime":0.6619050000008428,"msg":"request completed"}
+{"level":30,"time":1793126093581,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","req":{"method":"GET","url":"/projects/d449ccad-68f0-4bfa-947f-635c521b7a7b","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093582,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","res":{"statusCode":200},"responseTime":0.3109779999940656,"msg":"request completed"}
+ [32m✓[39m routes/projects.kainbainDir.test.js [2m([22m[2m4 tests[22m[2m)[22m[33m 515[2mms[22m[39m
+{"level":30,"time":1793126093727,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093798,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":201},"responseTime":70.28911999998672,"msg":"request completed"}
+{"level":30,"time":1793126093803,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093806,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":2.161489000005531,"msg":"request completed"}
+{"level":30,"time":1793126093808,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files?path=docs/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093808,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":0.5381500000075903,"msg":"request completed"}
+{"level":30,"time":1793126093809,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files?path=../../etc","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093809,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":403},"responseTime":0.41119900000921916,"msg":"request completed"}
+{"level":30,"time":1793126093810,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files?path=non-existent-subfolder","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093816,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":404},"responseTime":6.104636999996728,"msg":"request completed"}
+{"level":30,"time":1793126093817,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files?path=README.md","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093818,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":400},"responseTime":0.5031340000132332,"msg":"request completed"}
+{"level":30,"time":1793126093819,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"GET","url":"/projects/unknown-proj-id/files","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093819,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":404},"responseTime":0.2253119999950286,"msg":"request completed"}
+{"level":30,"time":1793126093820,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files/content?path=README.md","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093821,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":200},"responseTime":1.2142370000074152,"msg":"request completed"}
+{"level":30,"time":1793126093822,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files/content?path=docs/tasks/task-1/task.md","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093822,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":200},"responseTime":0.5155149999918649,"msg":"request completed"}
+{"level":30,"time":1793126093823,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files/content?path=../../etc/passwd","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093823,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","res":{"statusCode":403},"responseTime":0.3419830000057118,"msg":"request completed"}
+{"level":30,"time":1793126093824,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files/content?path=docs/missing.md","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093824,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","res":{"statusCode":404},"responseTime":0.2247149999893736,"msg":"request completed"}
+{"level":30,"time":1793126093824,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files/content?path=src","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093825,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","res":{"statusCode":400},"responseTime":0.2557459999952698,"msg":"request completed"}
+{"level":30,"time":1793126093825,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files/content?path=logo.png","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093826,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","res":{"statusCode":415},"responseTime":0.463672999991104,"msg":"request completed"}
+{"level":30,"time":1793126093826,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files/content?path=archive.zip","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093826,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","res":{"statusCode":415},"responseTime":0.24892199999885634,"msg":"request completed"}
+{"level":30,"time":1793126093827,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files/content?path=blob","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093827,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","res":{"statusCode":415},"responseTime":0.28542499999457505,"msg":"request completed"}
+{"level":30,"time":1793126093827,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files/content?path=README.md","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093828,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","res":{"statusCode":200},"responseTime":0.31052899999485817,"msg":"request completed"}
+{"level":30,"time":1793126093828,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093829,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","res":{"statusCode":200},"responseTime":0.6654399999970337,"msg":"request completed"}
+{"level":30,"time":1793126093829,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files/content","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093830,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","res":{"statusCode":400},"err":{"type":"Error","message":"querystring must have required property 'path'","stack":"Error: querystring must have required property 'path'\n    at defaultSchemaErrorFormatter (/home/server/projects/kainbain/api/node_modules/fastify/lib/context.js:92:10)\n    at wrapValidationError (/home/server/projects/kainbain/api/node_modules/fastify/lib/validation.js:505:17)\n    at validate (/home/server/projects/kainbain/api/node_modules/fastify/lib/validation.js:434:16)\n    at preValidationCallback (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:115:25)\n    at handler (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:99:7)\n    at Object.handleRequest (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:35:5)\n    at runPreParsing (/home/server/projects/kainbain/api/node_modules/fastify/lib/route.js:665:19)\n    at next (/home/server/projects/kainbain/api/node_modules/fastify/lib/hooks.js:236:9)\n    at Object.<anonymous> (/home/server/projects/kainbain/api/node_modules/@fastify/websocket/index.js:151:5)\n    at hookIterator (/home/server/projects/kainbain/api/node_modules/fastify/lib/hooks.js:412:10)","statusCode":400,"code":"FST_ERR_VALIDATION","validation":[{"instancePath":"","schemaPath":"#/required","keyword":"required","params":{"missingProperty":"path"},"message":"must have required property 'path'"}],"validationContext":"querystring"},"msg":"querystring must have required property 'path'"}
+{"level":30,"time":1793126093832,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","res":{"statusCode":400},"responseTime":2.051955999995698,"msg":"request completed"}
+{"level":30,"time":1793126093832,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files/raw?path=logo.png","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093833,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","res":{"statusCode":200},"responseTime":0.8093709999957355,"msg":"request completed"}
+{"level":30,"time":1793126093833,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files/raw?path=icon.svg","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093834,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","res":{"statusCode":200},"responseTime":0.3833699999959208,"msg":"request completed"}
+{"level":30,"time":1793126093834,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files/raw?path=README.md","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093835,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","res":{"statusCode":200},"responseTime":0.3155430000042543,"msg":"request completed"}
+{"level":30,"time":1793126093835,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files/raw?path=big.bin","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093835,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","res":{"statusCode":413},"responseTime":0.3921919999993406,"msg":"request completed"}
+{"level":30,"time":1793126093836,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files/raw?path=../../etc/passwd","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093836,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","res":{"statusCode":403},"responseTime":0.15777499999967404,"msg":"request completed"}
+{"level":30,"time":1793126093836,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files/raw?path=escape.png","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093837,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","res":{"statusCode":403},"responseTime":0.2985610000032466,"msg":"request completed"}
+{"level":30,"time":1793126093837,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files/raw?path=nope.png","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093838,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","res":{"statusCode":404},"responseTime":0.20481199999630917,"msg":"request completed"}
+{"level":30,"time":1793126093838,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files/raw?path=src","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093838,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","res":{"statusCode":400},"responseTime":0.22732200000609737,"msg":"request completed"}
+{"level":30,"time":1793126093838,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","req":{"method":"GET","url":"/projects/64302df9-3bff-421e-95ae-cf670071315b/files/raw","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093838,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","res":{"statusCode":400},"err":{"type":"Error","message":"querystring must have required property 'path'","stack":"Error: querystring must have required property 'path'\n    at defaultSchemaErrorFormatter (/home/server/projects/kainbain/api/node_modules/fastify/lib/context.js:92:10)\n    at wrapValidationError (/home/server/projects/kainbain/api/node_modules/fastify/lib/validation.js:505:17)\n    at validate (/home/server/projects/kainbain/api/node_modules/fastify/lib/validation.js:434:16)\n    at preValidationCallback (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:115:25)\n    at handler (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:99:7)\n    at Object.handleRequest (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:35:5)\n    at runPreParsing (/home/server/projects/kainbain/api/node_modules/fastify/lib/route.js:665:19)\n    at next (/home/server/projects/kainbain/api/node_modules/fastify/lib/hooks.js:236:9)\n    at Object.<anonymous> (/home/server/projects/kainbain/api/node_modules/@fastify/websocket/index.js:151:5)\n    at hookIterator (/home/server/projects/kainbain/api/node_modules/fastify/lib/hooks.js:412:10)","statusCode":400,"code":"FST_ERR_VALIDATION","validation":[{"instancePath":"","schemaPath":"#/required","keyword":"required","params":{"missingProperty":"path"},"message":"must have required property 'path'"}],"validationContext":"querystring"},"msg":"querystring must have required property 'path'"}
+{"level":30,"time":1793126093839,"pid":216,"hostname":"9a57735be6d4","reqId":"req-r","res":{"statusCode":400},"responseTime":0.4473560000042198,"msg":"request completed"}
+{"level":30,"time":1793126093839,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","req":{"method":"GET","url":"/projects/unknown-proj-id/files/raw?path=logo.png","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126093839,"pid":216,"hostname":"9a57735be6d4","reqId":"req-s","res":{"statusCode":404},"responseTime":0.14208299999882001,"msg":"request completed"}
+ [32m✓[39m routes/files.test.js [2m([22m[2m29 tests[22m[2m)[22m[33m 529[2mms[22m[39m
+ [32m✓[39m routes/deploy.test.js [2m([22m[2m16 tests[22m[2m)[22m[33m 413[2mms[22m[39m
+{"level":30,"time":1793126095026,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095093,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":201},"responseTime":65.45471999999427,"msg":"request completed"}
+{"level":30,"time":1793126095096,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"POST","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-img-1/images","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095105,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":201},"responseTime":9.799337000004016,"msg":"request completed"}
+{"level":30,"time":1793126095107,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"GET","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-img-1/images/shot-one.png","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095108,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":1.1053089999913936,"msg":"request completed"}
+{"level":30,"time":1793126095109,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"POST","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-img-1/images","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095112,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":201},"responseTime":2.2156550000072457,"msg":"request completed"}
+{"level":30,"time":1793126095112,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"GET","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-img-1/images","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095113,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":200},"responseTime":1.0545389999897452,"msg":"request completed"}
+{"level":30,"time":1793126095115,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"POST","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-img-1/images","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095116,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":400},"responseTime":1.1822269999975106,"msg":"request completed"}
+{"level":30,"time":1793126095116,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"POST","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-img-1/images","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095117,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":400},"responseTime":0.7484190000104718,"msg":"request completed"}
+{"level":30,"time":1793126095117,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"POST","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-img-1/images","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095118,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":400},"responseTime":0.7723629999964032,"msg":"request completed"}
+{"level":30,"time":1793126095119,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"POST","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-img-1/images","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095120,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":400},"responseTime":0.7840549999964423,"msg":"request completed"}
+{"level":30,"time":1793126095120,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","req":{"method":"POST","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-img-1/images","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095122,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","res":{"statusCode":201},"responseTime":1.3649290000030305,"msg":"request completed"}
+{"level":30,"time":1793126095134,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","req":{"method":"POST","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-img-1/images","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095137,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","res":{"statusCode":413},"responseTime":2.8332189999928232,"msg":"request completed"}
+{"level":30,"time":1793126095137,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","req":{"method":"POST","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-cap/images","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095145,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","res":{"statusCode":201},"responseTime":7.4110490000020945,"msg":"request completed"}
+{"level":30,"time":1793126095145,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","req":{"method":"POST","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-cap/images","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095147,"pid":216,"hostname":"9a57735be6d4","reqId":"req-d","res":{"statusCode":201},"responseTime":1.7338670000026468,"msg":"request completed"}
+{"level":30,"time":1793126095147,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","req":{"method":"POST","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-cap/images","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095149,"pid":216,"hostname":"9a57735be6d4","reqId":"req-e","res":{"statusCode":413},"responseTime":1.1713270000036573,"msg":"request completed"}
+{"level":30,"time":1793126095149,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","req":{"method":"POST","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-img-1/images","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095150,"pid":216,"hostname":"9a57735be6d4","reqId":"req-f","res":{"statusCode":400},"responseTime":0.8191760000045178,"msg":"request completed"}
+{"level":30,"time":1793126095151,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","req":{"method":"POST","url":"/projects/nope/tasks/task-img-1/images","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095151,"pid":216,"hostname":"9a57735be6d4","reqId":"req-g","res":{"statusCode":404},"responseTime":0.13309400000434835,"msg":"request completed"}
+{"level":30,"time":1793126095151,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","req":{"method":"POST","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/no-such-task/images","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095151,"pid":216,"hostname":"9a57735be6d4","reqId":"req-h","res":{"statusCode":404},"responseTime":0.1861499999940861,"msg":"request completed"}
+{"level":30,"time":1793126095151,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","req":{"method":"GET","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-img-1/images/ghost.png","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095152,"pid":216,"hostname":"9a57735be6d4","reqId":"req-i","res":{"statusCode":404},"responseTime":0.22702799999387935,"msg":"request completed"}
+{"level":30,"time":1793126095152,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","req":{"method":"GET","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-img-1/images/..%2F..%2Ftask.md","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095152,"pid":216,"hostname":"9a57735be6d4","reqId":"req-j","res":{"statusCode":403},"responseTime":0.18215799999597948,"msg":"request completed"}
+{"level":30,"time":1793126095153,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","req":{"method":"GET","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-img-1/images/task.md","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095153,"pid":216,"hostname":"9a57735be6d4","reqId":"req-k","res":{"statusCode":400},"responseTime":0.22169400000711903,"msg":"request completed"}
+{"level":30,"time":1793126095153,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","req":{"method":"GET","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/..%2F..%2F/images","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095154,"pid":216,"hostname":"9a57735be6d4","reqId":"req-l","res":{"statusCode":400},"responseTime":0.14746300000115298,"msg":"request completed"}
+{"level":30,"time":1793126095154,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","req":{"method":"POST","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-img-1/images","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095155,"pid":216,"hostname":"9a57735be6d4","reqId":"req-m","res":{"statusCode":201},"responseTime":1.1693630000081612,"msg":"request completed"}
+{"level":30,"time":1793126095155,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","req":{"method":"DELETE","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-img-1/images/deleteme.png","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095156,"pid":216,"hostname":"9a57735be6d4","reqId":"req-n","res":{"statusCode":200},"responseTime":0.8176410000014585,"msg":"request completed"}
+{"level":30,"time":1793126095157,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","req":{"method":"GET","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-img-1/images/deleteme.png","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095157,"pid":216,"hostname":"9a57735be6d4","reqId":"req-o","res":{"statusCode":404},"responseTime":0.24111099999572616,"msg":"request completed"}
+{"level":30,"time":1793126095157,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","req":{"method":"DELETE","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-img-1/images/deleteme.png","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095157,"pid":216,"hostname":"9a57735be6d4","reqId":"req-p","res":{"statusCode":404},"responseTime":0.23041599999123719,"msg":"request completed"}
+{"level":30,"time":1793126095164,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","req":{"method":"POST","url":"/projects/5e47e025-6ba5-428a-8596-5d9b5850e89c/tasks/task-img-1/images","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095165,"pid":216,"hostname":"9a57735be6d4","reqId":"req-q","res":{"statusCode":201},"responseTime":1.4674680000025546,"msg":"request completed"}
+ [32m✓[39m routes/taskImages.test.js [2m([22m[2m17 tests[22m[2m)[22m[33m 436[2mms[22m[39m
+{"level":30,"time":1793126095454,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/workflows/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095467,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":400},"responseTime":12.620269999999437,"msg":"request completed"}
+{"level":30,"time":1793126095476,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095534,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":201},"responseTime":58.24850100000913,"msg":"request completed"}
+{"level":30,"time":1793126095535,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"POST","url":"/workflows/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095544,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":9.395332000000053,"msg":"request completed"}
+{"level":30,"time":1793126095545,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"GET","url":"/workflows","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095546,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":200},"responseTime":1.6337380000040866,"msg":"request completed"}
+{"level":30,"time":1793126095547,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095603,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":201},"responseTime":55.57021299999906,"msg":"request completed"}
+{"level":30,"time":1793126095603,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095663,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":201},"responseTime":59.890411999993376,"msg":"request completed"}
+{"level":30,"time":1793126095664,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"POST","url":"/workflows/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095665,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":200},"responseTime":0.7405140000046231,"msg":"request completed"}
+{"level":30,"time":1793126095665,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"POST","url":"/workflows/start","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095666,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":200},"responseTime":0.6816350000008242,"msg":"request completed"}
+{"level":30,"time":1793126095666,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"GET","url":"/workflows?projectId=d40b24f4-a7f5-42c0-a789-c73a7856bec5","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126095672,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":200},"responseTime":6.015303000007407,"msg":"request completed"}
+ [32m✓[39m routes/workflows.test.js [2m([22m[2m3 tests[22m[2m)[22m[33m 513[2mms[22m[39m
+   [32m✓[39m Workflow API Integration [2m(3)[22m
+     [33m[2m✓[22m[39m POST /workflows/start requires a workflowId[33m 303[2mms[22m[39m
+[90mstderr[2m | projectStore.multiroot.test.js[2m > [22m[2mProjectStore multi-root + register[2m > [22m[2mrefuses to create, register, save, or patch an extra scan root as a project
+[22m[39m[projectStore] refusing to save 6f295e37-5642-4888-ba28-af519dbb74b9: cwd is the projects root ('/tmp/kb-multi-b-GEkmAB')
+
+ [32m✓[39m projectStore.multiroot.test.js [2m([22m[2m10 tests[22m[2m)[22m[33m 399[2mms[22m[39m
+ [32m✓[39m flow/schedulerIdle.test.js [2m([22m[2m9 tests[22m[2m)[22m[33m 558[2mms[22m[39m
+ [32m✓[39m work/taskPersistence.test.js [2m([22m[2m57 tests[22m[2m)[22m[33m 562[2mms[22m[39m
+ [32m✓[39m workflowConsistency.contract.test.js [2m([22m[2m6 tests[22m[2m)[22m[33m 312[2mms[22m[39m
+ [32m✓[39m flow/stageFailureRouting.test.js [2m([22m[2m42 tests[22m[2m)[22m[33m 407[2mms[22m[39m
+ [31m❯[39m flow/stageCancel.integration.test.js [2m([22m[2m3 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 5298[2mms[22m[39m
+   [31m❯[39m stage cancel integration (launch + cleanup) [2m(3)[22m
+[31m     [31m×[31m cancel reaps the stage parent AND its grandchild, with no orphans[39m[33m 5028[2mms[22m[39m
+     [32m✓[39m stage timeout kills and reaps the child via the same path[32m 267[2mms[22m[39m
+     [32m✓[39m Windows dispatch routes cancel through taskkill /T /F[32m 2[2mms[22m[39m
+{"level":30,"time":1793126098908,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126098994,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":201},"responseTime":85.00749899999937,"msg":"request completed"}
+{"level":30,"time":1793126098995,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126099010,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":14.192068999996991,"msg":"request completed"}
+{"level":30,"time":1793126099010,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126099014,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":4.193893999996362,"msg":"request completed"}
+{"level":30,"time":1793126099015,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"POST","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126099074,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":201},"responseTime":58.56344899999385,"msg":"request completed"}
+{"level":30,"time":1793126099075,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"POST","url":"/tasks","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126099077,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":200},"responseTime":2.4084580000053393,"msg":"request completed"}
+{"level":30,"time":1793126099080,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","req":{"method":"POST","url":"/runners/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126099081,"pid":216,"hostname":"9a57735be6d4","reqId":"req-6","res":{"statusCode":202},"responseTime":1.646336000005249,"msg":"request completed"}
+{"level":30,"time":1793126099082,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","req":{"method":"POST","url":"/runners/caps-1/approve","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126099083,"pid":216,"hostname":"9a57735be6d4","reqId":"req-7","res":{"statusCode":200},"responseTime":0.6792000000132248,"msg":"request completed"}
+{"level":30,"time":1793126099083,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","req":{"method":"POST","url":"/runners/heartbeat","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126099084,"pid":216,"hostname":"9a57735be6d4","reqId":"req-8","res":{"statusCode":200},"responseTime":0.8543099999951664,"msg":"request completed"}
+{"level":30,"time":1793126099084,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","req":{"method":"POST","url":"/tasks/414403cf-9df8-48d3-9ef3-f1e87101ee3c/claim","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126099086,"pid":216,"hostname":"9a57735be6d4","reqId":"req-9","res":{"statusCode":200},"responseTime":2.062193000005209,"msg":"request completed"}
+{"level":30,"time":1793126099087,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","req":{"method":"POST","url":"/runners/dispatch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126099092,"pid":216,"hostname":"9a57735be6d4","reqId":"req-a","res":{"statusCode":200},"responseTime":5.457891999991261,"msg":"request completed"}
+{"level":30,"time":1793126099094,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","req":{"method":"POST","url":"/runners/dispatch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126099096,"pid":216,"hostname":"9a57735be6d4","reqId":"req-b","res":{"statusCode":200},"responseTime":2.2781249999970896,"msg":"request completed"}
+{"level":30,"time":1793126099097,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","req":{"method":"POST","url":"/runners/dispatch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126099097,"pid":216,"hostname":"9a57735be6d4","reqId":"req-c","res":{"statusCode":429},"responseTime":0.40692499998840503,"msg":"request completed"}
+ [32m✓[39m flow/runnerDispatchCaps.test.js [2m([22m[2m1 test[22m[2m)[22m[33m 507[2mms[22m[39m
+ [32m✓[39m routes/skills.test.js [2m([22m[2m11 tests[22m[2m)[22m[33m 483[2mms[22m[39m
+[90mstderr[2m | agent/harnesses/muse/musePermissions.test.js[2m > [22m[2mreadHistoryFromDisk (hermetic, mock muse export)[2m > [22m[2mdegrades to the honest empty history when the export fails
+[22m[39mFailed to read Muse session history: Command failed: /home/server/projects/kainbain/api/agent/harnesses/muse/fixtures/mock-muse.mjs export --last --redacted --out /tmp/kainbain-muse-export-lfFpDE/export.json
+mock-muse: export failed (MUSE_MOCK_EXPORT_FAIL=1)
+
+
+[90mstderr[2m | agent/harnesses/muse/musePermissions.test.js[2m > [22m[2mreadHistoryFromDisk (hermetic, mock muse export)[2m > [22m[2mdegrades to the honest empty history when the binary is missing
+[22m[39mFailed to read Muse session history: spawn /nonexistent/muse ENOENT
+
+ [32m✓[39m agent/harnesses/muse/musePermissions.test.js [2m([22m[2m23 tests[22m[2m)[22m[32m 281[2mms[22m[39m
+{"level":30,"time":1793126099656,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"GET","url":"/agent","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126099663,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":200},"responseTime":5.701910000003409,"msg":"request completed"}
+{"level":30,"time":1793126099666,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"GET","url":"/agent/schema","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126099667,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":0.7591430000029504,"msg":"request completed"}
+{"level":30,"time":1793126099668,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"GET","url":"/agent/guide","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126099669,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":1.1177089999982854,"msg":"request completed"}
+ [32m✓[39m routes/agent.test.js [2m([22m[2m5 tests[22m[2m)[22m[33m 344[2mms[22m[39m
+ [32m✓[39m routes/push.test.js [2m([22m[2m15 tests[22m[2m)[22m[32m 221[2mms[22m[39m
+{"level":30,"time":1793126100395,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"GET","url":"/docs","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+ [32m✓[39m routes/docs.apiCoverage.test.js [2m([22m[2m2 tests[22m[2m)[22m[33m 309[2mms[22m[39m
+{"level":30,"time":1793126100404,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":200},"responseTime":7.704014000002644,"msg":"request completed"}
+{"level":30,"time":1793126100405,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"GET","url":"/docs/api-reference","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126100408,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":2.5041980000096373,"msg":"request completed"}
+ [32m✓[39m flow/stageExecution.survey.test.js [2m([22m[2m5 tests[22m[2m)[22m[33m 359[2mms[22m[39m
+{"level":30,"time":1793126101068,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"POST","url":"/projects/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126101073,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":400},"err":{"type":"Error","message":"body must have required property 'path'","stack":"Error: body must have required property 'path'\n    at defaultSchemaErrorFormatter (/home/server/projects/kainbain/api/node_modules/fastify/lib/context.js:92:10)\n    at wrapValidationError (/home/server/projects/kainbain/api/node_modules/fastify/lib/validation.js:505:17)\n    at validate (/home/server/projects/kainbain/api/node_modules/fastify/lib/validation.js:423:16)\n    at preValidationCallback (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:115:25)\n    at handler (/home/server/projects/kainbain/api/node_modules/fastify/lib/handle-request.js:99:7)\n    at onDone (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:241:5)\n    at AsyncResource.runInAsyncScope (node:async_hooks:227:14)\n    at done (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:211:14)\n    at Parser.defaultJsonParser [as fn] (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:338:7)\n    at Request.onEnd (/home/server/projects/kainbain/api/node_modules/fastify/lib/content-type-parser.js:320:27)","statusCode":400,"code":"FST_ERR_VALIDATION","validation":[{"instancePath":"","schemaPath":"#/required","keyword":"required","params":{"missingProperty":"path"},"message":"must have required property 'path'"}],"validationContext":"body"},"msg":"body must have required property 'path'"}
+{"level":30,"time":1793126101078,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":400},"responseTime":8.929865999991307,"msg":"request completed"}
+{"level":30,"time":1793126101080,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"POST","url":"/projects/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126101083,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":400},"responseTime":2.652479999989737,"msg":"request completed"}
+{"level":30,"time":1793126101084,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"POST","url":"/projects/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126101129,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":201},"responseTime":44.59492800000589,"msg":"request completed"}
+{"level":30,"time":1793126101129,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","req":{"method":"POST","url":"/projects/register","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+ [32m✓[39m routes/projects.register.test.js [2m([22m[2m3 tests[22m[2m)[22m[33m 547[2mms[22m[39m
+{"level":30,"time":1793126101130,"pid":216,"hostname":"9a57735be6d4","reqId":"req-4","res":{"statusCode":200},"responseTime":0.9877649999980349,"msg":"request completed"}
+{"level":30,"time":1793126101133,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","req":{"method":"GET","url":"/projects","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126101133,"pid":216,"hostname":"9a57735be6d4","reqId":"req-5","res":{"statusCode":200},"responseTime":0.3576089999987744,"msg":"request completed"}
+ [32m✓[39m continuity/deployReconcile.test.js [2m([22m[2m63 tests[22m[2m)[22m[32m 247[2mms[22m[39m
+ [32m✓[39m projectStore.remoteRequired.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 192[2mms[22m[39m
+ [32m✓[39m routes/promptLayout.test.js [2m([22m[2m10 tests[22m[2m)[22m[33m 335[2mms[22m[39m
+ [32m✓[39m agent/harnesses/mock/mockHarness.registration.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 268[2mms[22m[39m
+ [32m✓[39m taskStore.summaryDurations.test.js [2m([22m[2m13 tests[22m[2m)[22m[32m 229[2mms[22m[39m
+{"level":30,"time":1793126103224,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","req":{"method":"GET","url":"/status/config","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+ [32m✓[39m routes/status.config.test.js [2m([22m[2m9 tests[22m[2m)[22m[33m 369[2mms[22m[39m
+   [32m✓[39m GET /status/config (+ /api/system/config-spec alias) [2m(9)[22m
+     [33m[2m✓[22m[39m serves one entry per schema variable with its value, default, and source[33m 323[2mms[22m[39m
+{"level":30,"time":1793126103231,"pid":216,"hostname":"9a57735be6d4","reqId":"req-1","res":{"statusCode":200},"responseTime":6.636996000001091,"msg":"request completed"}
+{"level":30,"time":1793126103238,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","req":{"method":"GET","url":"/status/config","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126103240,"pid":216,"hostname":"9a57735be6d4","reqId":"req-2","res":{"statusCode":200},"responseTime":1.267309999995632,"msg":"request completed"}
+{"level":30,"time":1793126103240,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","req":{"method":"GET","url":"/api/system/config-spec","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1793126103241,"pid":216,"hostname":"9a57735be6d4","reqId":"req-3","res":{"statusCode":200},"responseTime":1.5925660000066273,"msg":"request completed"}
+ [32m✓[39m routes/projects.aliasReliability.test.js [2m([22m[2m5 tests[22m[2m)[22m[33m 337[2mms[22m[39m
+ [32m✓[39m agent/harnesses/vibe/vibeHarness.preflight.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 211[2mms[22m[39m
+ [32m✓[39m work/taskDiffStat.test.js [2m([22m[2m27 tests[22m[2m)[22m[32m 169[2mms[22m[39m
+ [32m✓[39m routes/retrospectiveChat.test.js [2m([22m[2m25 tests[22m[2m)[22m[33m 356[2mms[22m[39m
+ [32m✓[39m flow/executionLedger.test.js [2m([22m[2m12 tests[22m[2m)[22m[32m 174[2mms[22m[39m
+ [32m✓[39m projectStore.docsLink.test.js [2m([22m[2m18 tests[22m[2m)[22m[32m 177[2mms[22m[39m
+ [32m✓[39m flow/stageExecution.initLine.test.js [2m([22m[2m10 tests[22m[2m)[22m[32m 209[2mms[22m[39m
+ [32m✓[39m flow/engineGuards.test.js [2m([22m[2m17 tests[22m[2m)[22m[32m 208[2mms[22m[39m
+ [32m✓[39m routes/skills.wiring.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 233[2mms[22m[39m
+ [32m✓[39m routes/agentGuide.apiCoverage.test.js [2m([22m[2m2 tests[22m[2m)[22m[33m 306[2mms[22m[39m
+ [32m✓[39m dependencySecurityFloor.test.js [2m([22m[2m5 tests[22m[2m)[22m[33m 313[2mms[22m[39m
+ [32m✓[39m git.test.js [2m([22m[2m84 tests[22m[2m)[22m[32m 176[2mms[22m[39m
+[90mstderr[2m | agent/harnesses/vibe/vibeModelCatalog.test.js[2m > [22m[2mcreateVibeModelCatalog (contract over the mock ACP agent)[2m > [22m[2mclassifies a missing ACP binary with the vibe ACP vocabulary
+[22m[39m[WARN] vibe model discovery failed [VIBE_ACP_BIN_MISSING]: The Mistral Vibe ACP agent was not found ('/nonexistent/vibe-acp-xyz' is not runnable). vibe-acp ships in the same install dir as vibe — reinstall Mistral Vibe, or set KAINBAIN_VIBE_ACP_BIN to the vibe-acp absolute path (systemd units cannot see ~/.local/bin), or set KAINBAIN_VIBE_ACP=off to use the legacy exec path.
+
+[90mstderr[2m | agent/harnesses/vibe/vibeModelCatalog.test.js[2m > [22m[2mcreateVibeModelCatalog (contract over the mock ACP agent)[2m > [22m[2mreports the unparseable error when the agent ships no model select
+[22m[39m[WARN] vibe model discovery failed [VIBE_MODELS_UNPARSEABLE]: The vibe-acp handshake succeeded but its session/new configOptions carried no model select. The vibe-acp output shape may have changed — run probe-vibe-acp.mjs (see api/agent/harnesses/vibe/fixtures/) and paste the result in a bug report.
+
+[90mstderr[2m | agent/harnesses/vibe/vibeModelCatalog.test.js[2m > [22m[2mcreateVibeModelCatalog (contract over the mock ACP agent)[2m > [22m[2mclears the retained error after a successful re-probe
+[22m[39m[WARN] vibe model discovery failed [VIBE_ACP_BIN_MISSING]: The Mistral Vibe ACP agent was not found ('vibe-acp' is not runnable). vibe-acp ships in the same install dir as vibe — reinstall Mistral Vibe, or set KAINBAIN_VIBE_ACP_BIN to the vibe-acp absolute path (systemd units cannot see ~/.local/bin), or set KAINBAIN_VIBE_ACP=off to use the legacy exec path.
+
+[90mstderr[2m | agent/harnesses/vibe/vibeModelCatalog.test.js[2m > [22m[2mcreateVibeModelCatalog (contract over the mock ACP agent)[2m > [22m[2mcleans the throwaway cwd even when spawn setup fails
+[22m[39m[WARN] vibe model discovery failed [VIBE_ACP_BIN_MISSING]: The Mistral Vibe ACP agent was not found ('/nonexistent/vibe-acp-xyz' is not runnable). vibe-acp ships in the same install dir as vibe — reinstall Mistral Vibe, or set KAINBAIN_VIBE_ACP_BIN to the vibe-acp absolute path (systemd units cannot see ~/.local/bin), or set KAINBAIN_VIBE_ACP=off to use the legacy exec path.
+
+ [32m✓[39m agent/harnesses/vibe/vibeModelCatalog.test.js [2m([22m[2m12 tests[22m[2m)[22m[32m 190[2mms[22m[39m
+ [32m✓[39m appHealth.test.js [2m([22m[2m9 tests[22m[2m)[22m[32m 221[2mms[22m[39m
+ [32m✓[39m stuckCheck.test.js [2m([22m[2m40 tests[22m[2m)[22m[32m 71[2mms[22m[39m
+ [32m✓[39m taskStore.docsLinkSave.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 136[2mms[22m[39m
+ [32m✓[39m testResidue.guard.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 141[2mms[22m[39m
+ [32m✓[39m skills/skillsRegistry.test.js [2m([22m[2m55 tests[22m[2m)[22m[32m 114[2mms[22m[39m
+ [32m✓[39m flow/singleActiveInvariant.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 198[2mms[22m[39m
+ [32m✓[39m agentRunner.test.js [2m([22m[2m53 tests[22m[2m)[22m[32m 98[2mms[22m[39m
+ [32m✓[39m config/config.test.js [2m([22m[2m82 tests[22m[2m)[22m[32m 140[2mms[22m[39m
+ [32m✓[39m agent/harnessBoundary.test.js [2m([22m[2m13 tests[22m[2m)[22m[32m 195[2mms[22m[39m
+ [32m✓[39m agentRunner.skills.integration.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 171[2mms[22m[39m
+ [32m✓[39m healthChecker.test.js [2m([22m[2m25 tests[22m[2m)[22m[32m 161[2mms[22m[39m
+ [32m✓[39m flow/commandStages.test.js [2m([22m[2m69 tests[22m[2m)[22m[32m 80[2mms[22m[39m
+ [32m✓[39m models.test.js [2m([22m[2m82 tests[22m[2m)[22m[32m 89[2mms[22m[39m
+ [32m✓[39m git/branch.test.js [2m([22m[2m32 tests[22m[2m)[22m[32m 70[2mms[22m[39m
+ [32m✓[39m skills/skillInjection.test.js [2m([22m[2m30 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m work/gitLock.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 102[2mms[22m[39m
+[90mstderr[2m | agent/harnessRegistry.test.js[2m > [22m[2mharness resolution order with per-stage override (stage > project > config > default)[2m > [22m[2man unknown stage override degrades to the project resolution
+[22m[39m[SYSTEM] Unknown harness "bogus-stage-1793126108932" for project proj-override-fallback; falling back to "custom". Update the project's harness in Settings.
+
+[90mstderr[2m | agent/harnessRegistry.test.js[2m > [22m[2mharnessRegistry — unknown names fall back (never throw)[2m > [22m[2mfalls back to the default harness consistently per project + name
+[22m[39m[SYSTEM] Unknown harness "bogus" for project Unknown Harness Project (proj-unknown); falling back to "pi". Update the project's harness in Settings.
+
+[90mstderr[2m | agent/harnessRegistry.test.js[2m > [22m[2mharnessRegistry — unknown names fall back (never throw)[2m > [22m[2mfalls back to the default harness for different (project, name) pairs
+[22m[39m[SYSTEM] Unknown harness "bogus-a" for project p-a; falling back to "pi". Update the project's harness in Settings.
+[SYSTEM] Unknown harness "bogus-b" for project p-b; falling back to "pi". Update the project's harness in Settings.
+
+[90mstderr[2m | agent/harnessRegistry.test.js[2m > [22m[2mharnessRegistry — unknown names fall back (never throw)[2m > [22m[2mfalls back when the CONFIGURED default is unknown, not just project choices
+[22m[39m[SYSTEM] Unknown harness "bogus-config-default" for project proj-config-fallback; falling back to "pi". Update the project's harness in Settings.
+
+ [32m✓[39m agent/harnessRegistry.test.js [2m([22m[2m44 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32m✓[39m customHarness.stageRun.integration.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 56[2mms[22m[39m
+ [2m[90m↓[39m[22m deployManager.lock.test.js [2m([22m[2m3 tests[22m[2m | [22m[33m3 skipped[39m[2m)[22m
+ [32m✓[39m deployManager.test.js [2m([22m[2m27 tests[22m[2m)[22m[32m 58[2mms[22m[39m
+ [32m✓[39m flow/taskScheduler.test.js [2m([22m[2m120 tests[22m[2m)[22m[32m 67[2mms[22m[39m
+ [32m✓[39m work/taskWorkRoutes.test.js [2m([22m[2m29 tests[22m[2m)[22m[32m 36[2mms[22m[39m
+ [32m✓[39m work/taskErrors.taxonomy.test.js [2m([22m[2m50 tests[22m[2m)[22m[32m 56[2mms[22m[39m
+ [32m✓[39m observability/alerts.test.js [2m([22m[2m42 tests[22m[2m)[22m[32m 40[2mms[22m[39m
+ [32m✓[39m flow/taskFlowRoutes.test.js [2m([22m[2m21 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+ [32m✓[39m agent/harnesses/opencode/OpencodeSessionWrapper.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 80[2mms[22m[39m
+ [32m✓[39m observability/engineAlertHookup.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 76[2mms[22m[39m
+ [32m✓[39m agent/harnesses/muse/msp/MspClientConnection.test.js [2m([22m[2m10 tests[22m[2m)[22m[32m 68[2mms[22m[39m
+ [32m✓[39m work/taskLifecycle.test.js [2m([22m[2m37 tests[22m[2m)[22m[32m 33[2mms[22m[39m
+ [32m✓[39m git/exec.test.js [2m([22m[2m9 tests[22m[2m)[22m[32m 74[2mms[22m[39m
+ [32m✓[39m agent/harnesses/vibe/vibeDiscovery.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 36[2mms[22m[39m
+ [32m✓[39m flow/noDeploySpecialBehaviour.guard.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 36[2mms[22m[39m
+ [32m✓[39m push/index.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m agent/harnesses/mock/mockHarness.contract.test.js [2m([22m[2m45 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+ [32m✓[39m aliasStageRun.integration.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 44[2mms[22m[39m
+ [32m✓[39m flow/taskControl.test.js [2m([22m[2m31 tests[22m[2m)[22m[32m 40[2mms[22m[39m
+ [32m✓[39m agent/harnesses/pi/piHarness.contract.test.js [2m([22m[2m44 tests[22m[2m)[22m[32m 36[2mms[22m[39m
+ [32m✓[39m flow/transientRetryPolicy.test.js [2m([22m[2m20 tests[22m[2m)[22m[32m 49[2mms[22m[39m
+ [32m✓[39m promptCuration.test.js [2m([22m[2m34 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [32m✓[39m engineStateSnapshot.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m flow/circuitSensors.test.js [2m([22m[2m26 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m taskStore.observability.test.js [2m([22m[2m21 tests[22m[2m)[22m[32m 39[2mms[22m[39m
+ [32m✓[39m flow/stageTransitions.test.js [2m([22m[2m56 tests[22m[2m)[22m[32m 40[2mms[22m[39m
+ [32m✓[39m agent/harnesses/muse/msp/MspSessionRuntime.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 52[2mms[22m[39m
+ [32m✓[39m agent/logStream/agentLogStreamer.test.js [2m([22m[2m28 tests[22m[2m)[22m[32m 27[2mms[22m[39m
+ [32m✓[39m agent/harnesses/vibe/vibePermissions.test.js [2m([22m[2m22 tests[22m[2m)[22m[32m 72[2mms[22m[39m
+ [32m✓[39m opencodeReliability.integration.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 64[2mms[22m[39m
+ [32m✓[39m agentRunner.alias.test.js [2m([22m[2m20 tests[22m[2m)[22m[32m 40[2mms[22m[39m
+ [32m✓[39m flow/circuitGate.test.js [2m([22m[2m14 tests[22m[2m)[22m[32m 91[2mms[22m[39m
+ [32m✓[39m toolLogFormat.shared.test.js [2m([22m[2m62 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m crew/modelDiscovery.test.js [2m([22m[2m14 tests[22m[2m)[22m[32m 40[2mms[22m[39m
+ [32m✓[39m flow/runningStageAgreement.integration.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 47[2mms[22m[39m
+ [32m✓[39m aliasSelector.test.js [2m([22m[2m14 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m sessionStore.alias.test.js [2m([22m[2m17 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m flow/stageFailureRouting.push.test.js [2m([22m[2m13 tests[22m[2m)[22m[32m 68[2mms[22m[39m
+ [32m✓[39m agent/harnessContract.test.js [2m([22m[2m37 tests[22m[2m)[22m[32m 39[2mms[22m[39m
+ [32m✓[39m flow/queueWedgeRecovery.test.js [2m([22m[2m22 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [32m✓[39m reviewAssembly.test.js [2m([22m[2m17 tests[22m[2m)[22m[32m 31[2mms[22m[39m
+ [32m✓[39m activeTaskDisplay.test.js [2m([22m[2m54 tests[22m[2m)[22m[32m 27[2mms[22m[39m
+ [32m✓[39m git/status.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m agent/harnesses/antigravity/agyStreamParser.test.js [2m([22m[2m14 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [32m✓[39m work/taskSurvey.test.js [2m([22m[2m21 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+ [32m✓[39m siteDocs.deploy.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 38[2mms[22m[39m
+ [32m✓[39m watch/processLogs.test.js [2m([22m[2m44 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m agent/harnessSupportTiers.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m agent/harnesses/muse/museDiscovery.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m git/commit.test.js [2m([22m[2m14 tests[22m[2m)[22m[32m 47[2mms[22m[39m
+ [32m✓[39m push/pushSettings.test.js [2m([22m[2m9 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m taskStore.blocking.test.js [2m([22m[2m14 tests[22m[2m)[22m[32m 57[2mms[22m[39m
+ [32m✓[39m agentRunner.stageTargetSession.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m agent/harnesses/antigravity/agyPermissions.test.js [2m([22m[2m18 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m agent/harnesses/acp/AcpClientConnection.test.js [2m([22m[2m9 tests[22m[2m)[22m[32m 33[2mms[22m[39m
+ [31m❯[39m skills/updateAppStatus.skill.test.js [2m([22m[2m3 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 25[2mms[22m[39m
+   [31m❯[39m update-app-status skill package [2m(3)[22m
+     [32m✓[39m loads valid from the repo skills library[32m 6[2mms[22m[39m
+     [32m✓[39m resolves keywords with safe defaults[32m 1[2mms[22m[39m
+[31m     [31m×[31m ships an executable helper script with working --help[39m[32m 15[2mms[22m[39m
+ [32m✓[39m flow/stageHeartbeat.test.js [2m([22m[2m35 tests[22m[2m)[22m[32m 40[2mms[22m[39m
+ [32m✓[39m push/pushService.test.js [2m([22m[2m30 tests[22m[2m)[22m[32m 66[2mms[22m[39m
+ [32m✓[39m git/merge.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+ [32m✓[39m watch/taskWatchRoutes.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m flow/startupRecovery.test.js [2m([22m[2m18 tests[22m[2m)[22m[32m 30[2mms[22m[39m
+ [32m✓[39m flow/circuitOutage.integration.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 37[2mms[22m[39m
+ [32m✓[39m agent/harnessDiscovery.test.js [2m([22m[2m36 tests[22m[2m)[22m[32m 36[2mms[22m[39m
+ [32m✓[39m agent/harnesses/acp/AcpSessionWrapper.test.js [2m([22m[2m19 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32m✓[39m agent/logStream/logRecord.test.js [2m([22m[2m19 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m agent/harnesses/opencode/OpencodeServerManager.test.js [2m([22m[2m14 tests[22m[2m)[22m[32m 45[2mms[22m[39m
+ [32m✓[39m agentRunner.contract.test.js [2m([22m[2m18 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+ [32m✓[39m work/taskSurvey.routes.test.js [2m([22m[2m16 tests[22m[2m)[22m[32m 37[2mms[22m[39m
+ [32m✓[39m reviewStore.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 48[2mms[22m[39m
+ [32m✓[39m reviewCommentFormatter.test.js [2m([22m[2m22 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m agent/harnesses/antigravity/agySpawnResolution.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 28[2mms[22m[39m
+ [32m✓[39m flow/commandStages.liveness.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 31[2mms[22m[39m
+ [32m✓[39m skills/pocCreatingNewTickets.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m agentRunner.verdictFailOpen.test.js [2m([22m[2m27 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [32m✓[39m taskStore.characterisation.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m kainbainDir.test.js [2m([22m[2m15 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m work/taskLifecycleBranch.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m push/vapidKeys.test.js [2m([22m[2m9 tests[22m[2m)[22m[32m 52[2mms[22m[39m
+ [32m✓[39m flow/runnerRegistry.test.js [2m([22m[2m17 tests[22m[2m)[22m[32m 39[2mms[22m[39m
+ [32m✓[39m aliasTargets.test.js [2m([22m[2m30 tests[22m[2m)[22m[32m 35[2mms[22m[39m
+ [32m✓[39m skills/zipEntries.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 46[2mms[22m[39m
+ [32m✓[39m flow/operatorAbort.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m work/remediateNoVerdictRejections.test.js [2m([22m[2m13 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m git/workingTreeRecovery.test.js [2m([22m[2m14 tests[22m[2m)[22m[32m 28[2mms[22m[39m
+ [32m✓[39m roleHeaders.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m kbReferences.test.js [2m([22m[2m40 tests[22m[2m)[22m[32m 37[2mms[22m[39m
+ [32m✓[39m flow/executionQueue.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 44[2mms[22m[39m
+ [32m✓[39m agent/harnesses/muse/museStreamParser.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m agent/harnesses/pi/piHarness.probeHealth.test.js [2m([22m[2m14 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m watch/harnessReliability.test.js [2m([22m[2m12 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m agent/harnesses/muse/msp/museMspSupport.test.js [2m([22m[2m18 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m watch/aliasReliability.test.js [2m([22m[2m13 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m eventBridge.test.js [2m([22m[2m20 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m git/staleLock.test.js [2m([22m[2m13 tests[22m[2m)[22m[32m 27[2mms[22m[39m
+ [32m✓[39m watch/observabilityMetrics.test.js [2m([22m[2m14 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m agent/harnesses/pi/piHarness.modelResolution.test.js [2m([22m[2m17 tests[22m[2m)[22m[32m 28[2mms[22m[39m
+ [32m✓[39m flow/taskScheduler.push.test.js [2m([22m[2m17 tests[22m[2m)[22m[32m 30[2mms[22m[39m
+ [32m✓[39m agent/harnesses/antigravity/agyEventMapper.test.js [2m([22m[2m13 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m flow/commandStages.platform.test.js [2m([22m[2m1 test[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m promptCuration.skills.contract.test.js [2m([22m[2m16 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m modelAliases.test.js [2m([22m[2m29 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m agent/harnesses/vibe/vibeEventMapper.test.js [2m([22m[2m15 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m skills/skillImport.test.js [2m([22m[2m41 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+ [32m✓[39m work/taskAssets.test.js [2m([22m[2m15 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m agent/harnesses/opencode/opencodeSessionEvents.test.js [2m([22m[2m34 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m reviewDiff.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m work/taskErrors.test.js [2m([22m[2m81 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m agent/harnesses/muse/msp/uuidv7.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 42[2mms[22m[39m
+ [32m✓[39m agent/harnesses/antigravity/agyHarness.targetHandoff.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m flow/curateRunnerPrompt.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m flow/circuitBreaker.test.js [2m([22m[2m19 tests[22m[2m)[22m[32m 37[2mms[22m[39m
+ [32m✓[39m flow/claimStore.test.js [2m([22m[2m10 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m continuity/deployFailureReason.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m observability/webhookNotifier.test.js [2m([22m[2m13 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m gitGate.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m agent/harnesses/pi/piSessionEvents.test.js [2m([22m[2m28 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m flow/commandStages.keywords.test.js [2m([22m[2m12 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m agent/harnesses/acp/AcpStreamTransport.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+[90mstderr[2m | sessionStore.displayTarget.test.js[2m > [22m[2mresolveDisplayTarget stage alias refs[2m > [22m[2mfalls back naming the alias when the stage alias is unknown
+[22m[39m[SYSTEM] Unknown model alias "ghost" for project proj-5011; falling back to "pi". Update the alias in Settings › Model Aliases.
+
+[90mstderr[2m | sessionStore.displayTarget.test.js[2m > [22m[2mresolveDisplayTarget stage alias refs[2m > [22m[2mnames '(blank)' when the stage alias name is blank
+[22m[39m[SYSTEM] Unknown model alias "(blank)" for project proj-5012; falling back to "pi". Update the alias in Settings › Model Aliases.
+
+[90mstderr[2m | sessionStore.displayTarget.test.js[2m > [22m[2mresolveDisplayTarget stage alias refs[2m > [22m[2mpeek-resolves the project-default alias for the fallback when the stage alias is unknown
+[22m[39m[SYSTEM] Unknown model alias "ghost" for project proj-5014; falling back to "display-target-harness-5013". Update the alias in Settings › Model Aliases.
+
+[90mstderr[2m | sessionStore.displayTarget.test.js[2m > [22m[2mresolveDisplayTarget project-default aliases[2m > [22m[2mfalls back with cleared model slots when the project alias is unknown
+[22m[39m[SYSTEM] Unknown model alias "ghost" for project proj-5021; falling back to "pi". Update the alias in Settings › Model Aliases.
+
+[90mstderr[2m | sessionStore.displayTarget.test.js[2m > [22m[2mresolveDisplayTarget project-default aliases[2m > [22m[2mnames '(blank)' when the project alias name is blank
+[22m[39m[SYSTEM] Unknown model alias "(blank)" for project proj-5022; falling back to "pi". Update the alias in Settings › Model Aliases.
+
+[90mstderr[2m | sessionStore.displayTarget.test.js[2m > [22m[2mresolveDisplayHarness delegation[2m > [22m[2mreturns the seam's harness half for every shape
+[22m[39m[SYSTEM] Unknown model alias "ghost" for project proj-5028; falling back to "pi". Update the alias in Settings › Model Aliases.
+
+ [32m✓[39m sessionStore.displayTarget.test.js [2m([22m[2m16 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m promptCuration.docsDir.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m agentGuide.test.js [2m([22m[2m12 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m siteDocs.test.js [2m([22m[2m14 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m flow/commandLiveness.test.js [2m([22m[2m9 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m agent/harnesses/codex/codexEventMapper.test.js [2m([22m[2m14 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m flow/stagePolicy.test.js [2m([22m[2m17 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m promptCuration.layout.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m flow/humanGitSafety.audit.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m flow/engineRoutes.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m agent/harnesses/opencode/OpencodeModelDiscovery.test.js [2m([22m[2m15 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m utils/processTree.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m agent/harnesses/codex/codexDiscovery.test.js [2m([22m[2m10 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m agent/harnesses/codex/codexHarness.contract.test.js [2m([22m[2m45 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32m✓[39m agent/logStream/logProcessor.test.js [2m([22m[2m21 tests[22m[2m)[22m[32m 34[2mms[22m[39m
+ [32m✓[39m git/remote.test.js [2m([22m[2m10 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m agent/harnesses/antigravity/agyAcpSupport.test.js [2m([22m[2m17 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m siteDocs.integrity.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m survey.shared.test.js [2m([22m[2m18 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m sessionStore.modelResolution.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m flow/dispatch/scanClaimableTasks.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m watch/observabilityMetrics.alias.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m flow/mergeReviewBaseline.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 41[2mms[22m[39m
+ [32m✓[39m sessionStore.lifecycle.test.js [2m([22m[2m12 tests[22m[2m)[22m[32m 53[2mms[22m[39m
+ [32m✓[39m work/taskWorkspace.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m watch/reliabilityShared.test.js [2m([22m[2m17 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m crew/sessionCapabilities.test.js [2m([22m[2m10 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m flow/stageLifecycle.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m agent/harnesses/muse/msp/museMspEventMapper.test.js [2m([22m[2m12 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m agent/logStream/harnessFidelity.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 31[2mms[22m[39m
+ [32m✓[39m flow/stageExecution.failureDetails.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m work/setEngineState.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m agent/sessionContract.test.js [2m([22m[2m18 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m agent/harnesses/vibe/vibeAcpSupport.test.js [2m([22m[2m40 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m git/workingTreeStatus.test.js [2m([22m[2m17 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m flow/execution/executionPure.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m push/subscriptionStore.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m docsPath.test.js [2m([22m[2m14 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m agent/harnesses/opencode/OpencodeDiscoveryStatus.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m agent/visionSupport.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m agent/harnesses/codex/codexHarness.test.js [2m([22m[2m13 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m project/appStatus.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m project/retrySettings.test.js [2m([22m[2m10 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m agent/harnesses/acp/AcpEventMapper.test.js [2m([22m[2m12 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m flow/dispatch/taskRequirements.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m flow/steerStore.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m utils/platform.test.js [2m([22m[2m13 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m work/taskFiles.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m eventBridge.contract.test.js [2m([22m[2m21 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m promptLayout/promptLayout.test.js [2m([22m[2m12 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m flow/routing/resolvers/pureResolvers.test.js [2m([22m[2m25 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m project/projectConfigDiscovery.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m agent/harnesses/muse/msp/museServeHostPool.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m work/notifySchedulerStall.test.js [2m([22m[2m1 test[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m work/resolveEngineState.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m project/stageNormalizers.test.js [2m([22m[2m18 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m promptCuration.keywords.test.js [2m([22m[2m13 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m agent/sessionEvents.test.js [2m([22m[2m31 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m continuity/sharedGateAttribution.test.js [2m([22m[2m12 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m project/projectSlug.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m deploy.packaging.test.js [2m([22m[2m15 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m config/docs.envCoverage.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m projectRegistry.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m capabilityGuard.test.js [2m([22m[2m10 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m agent/harnesses/muse/museEventMapper.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m flow/settleOperatorAbort.marker.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m flow/runAttribution.test.js [2m([22m[2m12 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m work/taskIdentity.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m projectStore.barrel.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m work/settleWedgedEntryForTask.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m agent/harnesses/vibe/vibeStreamParser.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m flow/dispatch/resolveAliasRequirement.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m continuity/deployStageFailure.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m project/workflowDefaults.test.js [2m([22m[2m9 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m promptLayout/layoutStore.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m workflowRegistry.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m crew/harnessRoster.test.js [2m([22m[2m9 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m appUrl.test.js [2m([22m[2m20 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m stageTags.shared.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m work/notifyQueueEmpty.test.js [2m([22m[2m1 test[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m house/projectStartup.test.js [2m([22m[2m9 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m watch/stageReports.test.js [2m([22m[2m9 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m continuity/deployMarkers.test.js [2m([22m[2m17 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m flow/routing/tables/routingTables.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m routes/tasks.aliasWiring.test.js [2m([22m[2m1 test[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m flow/execution/executeStage.cutover.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m project/gitRemote.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m git/validation.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m flow/scheduler/noDoubleDispatch.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m sessionResolution.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m work/taskEngineState.test.js [2m([22m[2m13 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m push/atomicWrite.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m promptCuration.layoutBaseline.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m agent/harnesses/antigravity/agyRunErrors.test.js [2m([22m[2m12 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m project/deployCommands.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m routes/fileTypes.test.js [2m([22m[2m9 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m flow/dispatch/isDispatchServable.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m flow/execution/materializeRunnerTaskDocs.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+[90mstderr[2m | project/aliasRenames.test.js[2m > [22m[2mwarnLegacyNoneHarnessModel[2m > [22m[2mreports the first occurrence per project + alias + harness
+[22m[39m[projectStore] Alias "x" in /proj-warn-once targets harness "none", which manages its own model — ignoring the stored model "m". Clear the model in Settings › Model Aliases.
+
+ [32m✓[39m project/aliasRenames.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m testIsolation.guard.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m work/kickIfRunnable.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m work/notifyStagePush.test.js [2m([22m[2m1 test[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m domainCompatibility.test.js [2m([22m[2m17 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m flow/dispatch/normalizeCapabilities.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m flow/durableState.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m flow/scheduler/schedulerPure.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m projectResolution.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m flow/dispatch/runnerMatches.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m testEnvGuard.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m flow/dispatch/selectRunnerForTask.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m agent/verdictContract.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m normalizeBudget.shared.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 18 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m phase0-dry-run.test.js[2m > [22mPhase 0: Git Branch Foundation Dry-Run[2m > [22mshould create task branch and commit work
+[41m[1m FAIL [22m[49m phase0-dry-run.test.js[2m > [22mPhase 0: Git Branch Foundation Dry-Run[2m > [22mshould handle human review and failback
+[31m[1mGitError[22m: git rev-parse --abbrev-ref HEAD failed (exit 128): fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'[39m
+[36m [2m❯[22m ChildProcess.<anonymous> git/exec.js:[2m159:6[22m[39m
+    [90m157|[39m    } else {
+    [90m158|[39m     reject(
+    [90m159|[39m      new GitError(
+    [90m   |[39m      [31m^[39m
+    [90m160|[39m       `git ${args.join(" ")} failed (exit ${code ?? signal ?? "unknown…
+    [90m161|[39m       { code, args, stdout, stderr },
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/18]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m phase0-dry-run.test.js[2m > [22mPhase 0: Git Branch Foundation Dry-Run[2m > [22mshould merge to main in merge stage
+[31m[1mGitError[22m: git checkout main failed (exit 1): error: pathspec 'main' did not match any file(s) known to git[39m
+[36m [2m❯[22m ChildProcess.<anonymous> git/exec.js:[2m159:6[22m[39m
+    [90m157|[39m    } else {
+    [90m158|[39m     reject(
+    [90m159|[39m      new GitError(
+    [90m   |[39m      [31m^[39m
+    [90m160|[39m       `git ${args.join(" ")} failed (exit ${code ?? signal ?? "unknown…
+    [90m161|[39m       { code, args, stdout, stderr },
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/18]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m reviewDiff.integration.test.js[2m > [22mreviewDiff Integration Tests[2m > [22mdetects modified, added, and deleted files
+[31m[1mGitError[22m: git diff --name-status --find-renames --no-color main...feat/test failed (exit 128): fatal: ambiguous argument 'main...feat/test': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'[39m
+[36m [2m❯[22m ChildProcess.<anonymous> git/exec.js:[2m159:6[22m[39m
+    [90m157|[39m    } else {
+    [90m158|[39m     reject(
+    [90m159|[39m      new GitError(
+    [90m   |[39m      [31m^[39m
+    [90m160|[39m       `git ${args.join(" ")} failed (exit ${code ?? signal ?? "unknown…
+    [90m161|[39m       { code, args, stdout, stderr },
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/18]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m reviewDiff.integration.test.js[2m > [22mreviewDiff Integration Tests[2m > [22mdetects renamed files
+[31m[1mGitError[22m: git diff --name-status --find-renames --no-color main...feat/rename failed (exit 128): fatal: ambiguous argument 'main...feat/rename': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'[39m
+[36m [2m❯[22m ChildProcess.<anonymous> git/exec.js:[2m159:6[22m[39m
+    [90m157|[39m    } else {
+    [90m158|[39m     reject(
+    [90m159|[39m      new GitError(
+    [90m   |[39m      [31m^[39m
+    [90m160|[39m       `git ${args.join(" ")} failed (exit ${code ?? signal ?? "unknown…
+    [90m161|[39m       { code, args, stdout, stderr },
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/18]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m reviewDiff.integration.test.js[2m > [22mreviewDiff Integration Tests[2m > [22mhandles binary files
+[31m[1mGitError[22m: git diff --name-status --find-renames --no-color main...feat/binary failed (exit 128): fatal: ambiguous argument 'main...feat/binary': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'[39m
+[36m [2m❯[22m ChildProcess.<anonymous> git/exec.js:[2m159:6[22m[39m
+    [90m157|[39m    } else {
+    [90m158|[39m     reject(
+    [90m159|[39m      new GitError(
+    [90m   |[39m      [31m^[39m
+    [90m160|[39m       `git ${args.join(" ")} failed (exit ${code ?? signal ?? "unknown…
+    [90m161|[39m       { code, args, stdout, stderr },
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/18]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m reviewDiff.integration.test.js[2m > [22mreviewDiff Integration Tests[2m > [22mreturns correct patch for modified file
+[31m[1mGitError[22m: git diff --unified=3 --no-color main...feat/patch -- file1.txt failed (exit 128): fatal: bad revision 'main...feat/patch'[39m
+[36m [2m❯[22m ChildProcess.<anonymous> git/exec.js:[2m159:6[22m[39m
+    [90m157|[39m    } else {
+    [90m158|[39m     reject(
+    [90m159|[39m      new GitError(
+    [90m   |[39m      [31m^[39m
+    [90m160|[39m       `git ${args.join(" ")} failed (exit ${code ?? signal ?? "unknown…
+    [90m161|[39m       { code, args, stdout, stderr },
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/18]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m reviewDiff.integration.test.js[2m > [22mreviewDiff Integration Tests[2m > [22mreturns correct commit list
+[31m[1mGitError[22m: git log --no-color --format=%H|%an|%ad|%s main..feat/commits failed (exit 128): fatal: ambiguous argument 'main..feat/commits': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'[39m
+[36m [2m❯[22m ChildProcess.<anonymous> git/exec.js:[2m159:6[22m[39m
+    [90m157|[39m    } else {
+    [90m158|[39m     reject(
+    [90m159|[39m      new GitError(
+    [90m   |[39m      [31m^[39m
+    [90m160|[39m       `git ${args.join(" ")} failed (exit ${code ?? signal ?? "unknown…
+    [90m161|[39m       { code, args, stdout, stderr },
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/18]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m reviewDiff.integration.test.js[2m > [22mreviewDiff Integration Tests[2m > [22mreturns correct ahead/behind counts
+[31m[1mGitError[22m: git rev-list --left-right --count b1...b2 failed (exit 128): fatal: ambiguous argument 'b1...b2': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'[39m
+[36m [2m❯[22m ChildProcess.<anonymous> git/exec.js:[2m159:6[22m[39m
+    [90m157|[39m    } else {
+    [90m158|[39m     reject(
+    [90m159|[39m      new GitError(
+    [90m   |[39m      [31m^[39m
+    [90m160|[39m       `git ${args.join(" ")} failed (exit ${code ?? signal ?? "unknown…
+    [90m161|[39m       { code, args, stdout, stderr },
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/18]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m reviewDiff.integration.test.js[2m > [22mreviewDiff Integration Tests[2m > [22mresolves shas correctly
+[31m[1mGitError[22m: git rev-parse main failed (exit 128): fatal: ambiguous argument 'main': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'[39m
+[36m [2m❯[22m ChildProcess.<anonymous> git/exec.js:[2m159:6[22m[39m
+    [90m157|[39m    } else {
+    [90m158|[39m     reject(
+    [90m159|[39m      new GitError(
+    [90m   |[39m      [31m^[39m
+    [90m160|[39m       `git ${args.join(" ")} failed (exit ${code ?? signal ?? "unknown…
+    [90m161|[39m       { code, args, stdout, stderr },
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/18]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m flow/stageCancel.integration.test.js[2m > [22mstage cancel integration (launch + cleanup)[2m > [22mcancel reaps the stage parent AND its grandchild, with no orphans
+[31m[1mError[22m: waitForFound timed out: process(es) never appeared[39m
+[36m [2m❯[22m waitForFound flow/stageCancel.integration.test.js:[2m60:10[22m[39m
+    [90m 58|[39m   if (check()) return;
+    [90m 59|[39m   if (Date.now() - started > timeoutMs) {
+    [90m 60|[39m    throw new Error("waitForFound timed out: process(es) never appeared…
+    [90m   |[39m          [31m^[39m
+    [90m 61|[39m   }
+    [90m 62|[39m   await new Promise((resolve) => setTimeout(resolve, 50));
+[90m [2m❯[22m flow/stageCancel.integration.test.js:[2m145:3[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/18]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m routes/review.test.js[2m > [22mReview API Integration[2m > [22mGET review returns the diff for a task branch: files, counts, commits newest-first, ahead/behind
+[31m[1mAssertionError[22m: expected null to be 'main' // Object.is equality[39m
+
+[32m- Expected:[39m
+"main"
+
+[31m+ Received:[39m
+null
+
+[36m [2m❯[22m routes/review.test.js:[2m137:29[22m[39m
+    [90m135|[39m   expect(review.branch).toBe(branch);
+    [90m136|[39m   expect(review.branchSupported).toBe(true);
+    [90m137|[39m   expect(review.baseBranch).toBe("main");
+    [90m   |[39m                             [31m^[39m
+    [90m138|[39m   expect(review.baseSha).toBeTruthy();
+    [90m139|[39m   expect(review.headSha).toBeTruthy();
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/18]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m routes/review.test.js[2m > [22mReview API Integration[2m > [22mGET review records a D2 snapshot commit when the worktree is dirty ON the task branch
+[31m[1mAssertionError[22m: expected [] to include 'src/late.js'[39m
+[36m [2m❯[22m routes/review.test.js:[2m179:17[22m[39m
+    [90m177|[39m   // Snapshot committed: the late file is part of the review.
+    [90m178|[39m   const paths = review.files.map((f) => f.path);
+    [90m179|[39m   expect(paths).toContain("src/late.js");
+    [90m   |[39m                 [31m^[39m
+    [90m180|[39m
+    [90m181|[39m   // History entry recorded like other transitions.
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/18]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m routes/review.test.js[2m > [22mReview API Integration[2m > [22mGET review flags uncommittedChanges when the tree is dirty OFF the task branch and never checks out
+[31m[1mAssertionError[22m: expected false to be true // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+[36m [2m❯[22m routes/review.test.js:[2m216:37[22m[39m
+    [90m214|[39m   });
+    [90m215|[39m   const review = JSON.parse(res.payload);
+    [90m216|[39m   expect(review.uncommittedChanges).toBe(true);
+    [90m   |[39m                                     [31m^[39m
+    [90m217|[39m
+    [90m218|[39m   // Review must be read-only w.r.t. refs: still on main.
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/18]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m routes/review.test.js[2m > [22mReview API Integration[2m > [22mPOST comment rejects unknown filePath, over-long body, bad scope, and line comments without a line
+[31m[1mAssertionError[22m: expected 200 to be 400 // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 400[39m
+[31m+ 200[39m
+
+[36m [2m❯[22m routes/review.test.js:[2m347:30[22m[39m
+    [90m345|[39m    payload: { scope: "file", filePath: "not/in/diff.js", body: "hi" },
+    [90m346|[39m   });
+    [90m347|[39m   expect(unknown.statusCode).toBe(400);
+    [90m   |[39m                              [31m^[39m
+    [90m348|[39m   expect(JSON.parse(unknown.payload).error).toContain("Unknown filePat…
+    [90m349|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/18]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m routes/review.test.js[2m > [22mReview API Integration[2m > [22mrejects bare-filename anchors when the report has a full path
+[31m[1mAssertionError[22m: expected 200 to be 400 // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 400[39m
+[31m+ 200[39m
+
+[36m [2m❯[22m routes/review.test.js:[2m525:26[22m[39m
+    [90m523|[39m    payload: { scope: "file", filePath: report.filename, body: "bare na…
+    [90m524|[39m   });
+    [90m525|[39m   expect(res.statusCode).toBe(400);
+    [90m   |[39m                          [31m^[39m
+    [90m526|[39m   expect(JSON.parse(res.payload).error).toContain("Unknown filePath");
+    [90m527|[39m  });
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/18]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m routes/review.test.js[2m > [22mReview API Integration[2m > [22mpreserved review after merge shows the merged change plus fix-ups, and fix-up files accept comments
+[31m[1mAssertionError[22m: expected undefined to be true // Object.is equality[39m
+
+[32m- Expected:[39m
+true
+
+[31m+ Received:[39m
+undefined
+
+[36m [2m❯[22m routes/review.test.js:[2m589:28[22m[39m
+    [90m587|[39m    ).payload,
+    [90m588|[39m   );
+    [90m589|[39m   expect(review.preserved).toBe(true);
+    [90m   |[39m                            [31m^[39m
+    [90m590|[39m   expect(review.files.map((f) => f.path)).toContain("src/auth.js");
+    [90m591|[39m   expect(review.newSinceMerge.files.map((f) => f.path)).toEqual(["src/…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/18]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m skills/updateAppStatus.skill.test.js[2m > [22mupdate-app-status skill package[2m > [22mships an executable helper script with working --help
+[31m[1mError[22m: spawnSync bash ENOENT[39m
+[36m [2m❯[22m skills/updateAppStatus.skill.test.js:[2m61:16[22m[39m
+    [90m 59|[39m   expect(fs.existsSync(script)).toBe(true);
+    [90m 60|[39m   expect(fs.statSync(script).mode & 0o111).toBeTruthy();
+    [90m 61|[39m   const help = execFileSync("bash", [script, "--help"], { encoding: "u…
+    [90m   |[39m                [31m^[39m
+    [90m 62|[39m   expect(help).toContain("--project");
+    [90m 63|[39m   expect(help).toContain("--port");
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/18]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m5 failed[39m[22m[2m | [22m[1m[32m345 passed[39m[22m[2m | [22m[33m1 skipped[39m[90m (351)[39m
+[2m      Tests [22m [1m[31m18 failed[39m[22m[2m | [22m[1m[32m5765 passed[39m[22m[2m | [22m[33m35 skipped[39m[90m (5818)[39m
+[2m   Start at [22m 18:33:28
+[2m   Duration [22m 123.20s[2m (tests 64%, import 24%, transform 11%, setup 1%, worker 1%)[22m
+
+[2m    Isolate [22m [33m351 workers spawned[39m[2m · ~126ms startup each (spawn + environment, per file)[22m
+[2m            [22m [2mat least ~14.62s faster with [22m[33misolate: false[39m[2m — reuses workers across files instead of one per file[22m
+
+----------------------------------------------------------------------
+Running Unit Tests (frontend)... [0;32mPASS[0m (125s)
+Running Linting (api)... [0;32mPASS[0m (125s)
+Running Linting (frontend)... [0;32mPASS[0m (125s)
+Running Frontend Build... [0;32mPASS[0m (125s)
+Running Dependency Audit Gate... [0;32mPASS[0m (125s)
+Running Harness Self-Tests... [0;31mFAIL[0m (125s)
+----------------------------------------------------------------------
+Details for Harness Self-Tests:
+▶ usesOperatorStack
+  ✔ is false when neither operator URL is set (scratch stack is ours) (1.076261ms)
+  ✔ is true when either operator URL is set (0.247341ms)
+✔ usesOperatorStack (3.265761ms)
+▶ isScratchOccupant
+  ✔ accepts a scratch API by cwd or command shape (1.000044ms)
+  ✔ accepts a scratch vite by its dedicated port flag (0.317369ms)
+  ✔ rejects an unrelated occupant on the API port (0.627084ms)
+  ✔ rejects an unrelated occupant on the vite port (0.690898ms)
+  ✔ rejects a real dev vite on the live dev port (0.416493ms)
+  ✔ rejects an arbitrary occupant on an unknown port (0.219375ms)
+  ✔ is not fooled by the empty/legacy probe shape (1.581775ms)
+✔ isScratchOccupant (5.575156ms)
+▶ probeProcess
+  ✔ reads cmdline and cwd from /proc on linux (1.719958ms)
+  ✔ still classifies when the cwd link is unreadable (0.411711ms)
+  ✔ returns null when the process is gone (1.46497ms)
+  ✔ falls back to ps on non-linux platforms (0.357006ms)
+  ✔ returns null on non-linux when the process is gone (0.249124ms)
+✔ probeProcess (5.06744ms)
+▶ freeScratchPorts
+  ✔ is a no-op when the operator drives their own stack (0.838541ms)
+  ✔ frees both scratch ports when their occupants verify (0.942202ms)
+  ✔ reports success without touching an already-free port (0.229103ms)
+  ✔ fails closed when an occupant does not verify as scratch (0.453524ms)
+  ✔ treats an uninspectable occupant as unverified (0.304607ms)
+✔ freeScratchPorts (3.018455ms)
+▶ scanSourceForDuplicateIdentifiers
+  ✔ reports no violations for a clean module (78.327977ms)
+  ✔ detects the task-efa802a6 splitReasoning duplicate import (10.128347ms)
+  ✔ detects duplicate variable declarations (0.528653ms)
+  ✔ detects var redeclarations that the parser permits (3.893629ms)
+  ✔ detects an import colliding with a variable declaration (0.595084ms)
+  ✔ detects duplicate function declarations (0.43321ms)
+  ✔ detects duplicate class declarations (6.831008ms)
+  ✔ detects duplicate destructured variable declarations (7.052078ms)
+  ✔ detects duplicate default imports (7.757632ms)
+  ✔ detects duplicate namespace imports (0.721107ms)
+  ✔ detects an exported variable colliding with an import (0.485135ms)
+  ✔ detects a named default export colliding with a variable (7.732669ms)
+  ✔ ignores identifiers shadowed in nested scopes (5.28915ms)
+  ✔ ignores block-scoped redeclarations (2.659813ms)
+  ✔ ignores duplicate words inside comments and strings (0.944233ms)
+  ✔ ignores re-exports with different names (export { x } from 'y') (5.449676ms)
+  ✔ reports re-exports with the same name as a parse error (0.460933ms)
+  ✔ ignores export-star (export * from 'y') (4.34385ms)
+  ✔ ignores side-effect imports (import 'y') (1.148877ms)
+  ✔ ignores anonymous default exports (3.991484ms)
+  ✔ reports parse errors as violations (23.059874ms)
+  ✔ reports const redeclarations caught by the parser itself (0.348988ms)
+  ✔ handles empty source code (0.361118ms)
+  ✔ handles source with only comments (0.608885ms)
+  ✔ reports multiple duplicates in one file (0.627948ms)
+  ✔ includes a remediation message on each violation (9.18132ms)
+✔ scanSourceForDuplicateIdentifiers (206.541592ms)
+▶ findSourceFilesInDirectory
+  ✔ returns only source files, excluding tests and non-JS files (8.963718ms)
+  ✔ skips node_modules, dist, and other build directories (0.87842ms)
+  ✔ returns an empty array for a nonexistent directory (0.209732ms)
+  ✔ throws when directoryPath is missing (7.664946ms)
+✔ findSourceFilesInDirectory (18.035487ms)
+▶ checkDirectoryForDuplicates
+  ✔ cleanly scans the real settings directory (614.477522ms)
+  ✔ reports injected duplicates (18.978958ms)
+  ✔ fails safe when the target directory has no source files (0.550887ms)
+  ✔ fails safe when the target directory does not exist (0.337483ms)
+  ✔ scans a custom target directory (1.00147ms)
+  ✔ reports syntax errors in scanned files (33.220406ms)
+✔ checkDirectoryForDuplicates (668.915636ms)
+▶ formatViolationsReport
+  ✔ renders a helpful message when there are no violations (12.05405ms)
+  ✔ renders a populated report with location and identifier (0.279392ms)
+  ✔ renders violations without an identifier name (0.20368ms)
+  ✔ renders violations without a message (7.360624ms)
+  ✔ handles a missing violationsList gracefully (0.106268ms)
+✔ formatViolationsReport (20.256992ms)
+▶ hasExampleTag
+  ✔ detects @example in a JSDoc block (1.268421ms)
+✔ hasExampleTag (15.388458ms)
+▶ nearestJsdoc
+  ✔ finds an attached block and rejects detached ones (0.571971ms)
+✔ nearestJsdoc (14.503553ms)
+▶ findPublicExports
+  ✔ finds functions, classes, bindings, and defaults with example status (9.06942ms)
+  ✔ splits multi-declarator consts under one JSDoc block (0.450708ms)
+  ✔ skips re-export lists and export-star (0.352327ms)
+  ✔ ignores the word export inside comments and strings (0.224535ms)
+  ✔ masks template raw text so apostrophes cannot swallow later exports (32.398615ms)
+✔ findPublicExports (43.104353ms)
+▶ isDocSourceFile
+  ✔ covers api, shared, and frontend/src JS/JSX (4.715269ms)
+  ✔ excludes tests, fixtures, mocks, and scripts (0.390104ms)
+✔ isDocSourceFile (36.882059ms)
+▶ checkMissing
+  ✔ passes baselined exports and fails new ones (0.536641ms)
+  ✔ fails everything in strict mode (0.15795ms)
+  ✔ reports baseline entries that now carry @example (0.150287ms)
+✔ checkMissing (1.056186ms)
+▶ formatExampleFailure
+  ✔ names the export and gives a fix recipe (0.470302ms)
+✔ formatExampleFailure (7.849789ms)
+▶ committed-tree grandfather proof
+  ✔ the baseline covers every currently-missing export (2440.172385ms)
+✔ committed-tree grandfather proof (2440.282178ms)
+▶ topLevelFunctions
+  ✔ counts one top-level declaration (40.066731ms)
+  ✔ counts multiple top-level declarations including async and default (0.318294ms)
+  ✔ ignores nested declarations and callbacks (0.227042ms)
+  ✔ ignores arrow-function constants (0.194617ms)
+  ✔ ignores the word function inside comments, strings, and JSDoc examples (0.376989ms)
+  ✔ masks template raw text so apostrophes cannot swallow later code (9.799077ms)
+  ✔ still sees functions declared inside ${} interpolations at depth (0.254255ms)
+✔ topLevelFunctions (71.677009ms)
+▶ isSourceFile
+  ✔ covers api, shared, and frontend/src JS/JSX (0.677006ms)
+  ✔ excludes tests, specs, configs, and out-of-scope roots (11.493962ms)
+✔ isSourceFile (15.527144ms)
+▶ checkFiles
+  ✔ passes single-function and zero-function files (11.100059ms)
+  ✔ fails unlisted multi-function files (2.04466ms)
+  ✔ grandfathers allowlisted paths that already existed (0.435637ms)
+  ✔ still fails an allowlisted path that is newly added (1.72569ms)
+  ✔ reports stale allowlist entries for pruning (0.226149ms)
+✔ checkFiles (15.952011ms)
+▶ formatFailure
+  ✔ names the file, the functions, and the remediation (0.672883ms)
+✔ formatFailure (0.833105ms)
+▶ git integration
+  ✔ resolves a diff base or degrades to null outside git (45.03962ms)
+  ✔ lists newly-added paths as an array (796.186605ms)
+✔ git integration (841.406098ms)
+▶ deploy.sh test gates (static contract)
+  ✔ runs the fast branches as the final-test-suite gate without canary (5.035722ms)
+  ✔ runs the canary suite exactly once as its own blocking canary-e2e gate (1.866951ms)
+  ✔ orders the canary-e2e gate after the final-test-suite gate (0.888752ms)
+  ✔ skips the canary gate only on exactly KAINBAIN_SKIP_CANARY=1 (fail-safe) (0.723091ms)
+✔ deploy.sh test gates (static contract) (38.808804ms)
+▶ deploy / npm test parity (executable contract)
+  ✔ final-test-suite branches + canary-e2e gate equal the default npm test branches (2.865694ms)
+  ✔ fast branches execute the identical command with and without canary (3.539478ms)
+  ✔ the canary-e2e gate command matches the gate's Canary Tests branch (1.405053ms)
+  ✔ root test:canary delegates to the canary-e2e package suite (0.393534ms)
+✔ deploy / npm test parity (executable contract) (8.757133ms)
+▶ deploy.sh re-exec line (static contract)
+  ✔ waits for the transient unit so its exit code propagates (--wait) (8.502354ms)
+  ✔ injects a node-aware PATH into the transient unit (--setenv) (10.678156ms)
+✔ deploy.sh re-exec line (static contract) (21.15465ms)
+▶ deploy.sh re-exec behaviour (fake systemd-run)
+  ✖ passes --wait and a node-aware PATH to systemd-run (36.588526ms)
+  ✖ propagates a failing unit's exit code to the caller (no vacuous PASS) (55.148651ms)
+  ✖ pins KAINBAIN_OUTSIDE_CGROUP=1 in the unit env (no re-exec loop) (64.413653ms)
+  ✖ re-pins KAINBAIN_DEPLOY_ATTEMPT_ID for the transient unit (per-attempt attribution) (65.203793ms)
+  ✖ omits the attempt-id setenv on manual runs without an attempt id (39.048955ms)
+✖ deploy.sh re-exec behaviour (fake systemd-run) (263.271198ms)
+▶ deploy.sh fail-safe contracts (static)
+  ✔ skips the canary E2E gate on exactly KAINBAIN_SKIP_CANARY=1 (parity with npm test) (0.953929ms)
+  ✔ labels the release snapshot with the pre-increment build (no mislabel) (6.330731ms)
+  ✔ guards the STAGE EXIT trap when the stage dir was never created (0.915561ms)
+  ✔ fails fast on missing jq/curl before consuming a build number (1.069552ms)
+  ✔ creates the deploy dir before taking the rollback lock (9.225441ms)
+  ✔ never re-enters auto-rollback through the ERR trap (0.68115ms)
+  ✔ never rolls back a healthy deploy over an nginx reload failure (1.968667ms)
+  ✔ always leaves a durable result from rollback-mode failures (0.648563ms)
+  ✔ never passes --pipe to systemd-run (dead-reader regression, 2026-10-12) (0.641706ms)
+  ✔ needs no stdio detach before restart_service (no pipe, no EPIPE) (6.753362ms)
+✔ deploy.sh fail-safe contracts (static) (29.919229ms)
+▶ deploy.sh re-exec argv (fake systemd-run, no --pipe)
+  ✖ omits --pipe from the real re-exec argv while keeping --wait (5.097163ms)
+✖ deploy.sh re-exec argv (fake systemd-run, no --pipe) (5.425166ms)
+▶ deploy.sh engine heartbeat pump (foreground liveness)
+  ✖ emits engine-visible heartbeats while the detached unit runs (12.132045ms)
+✖ deploy.sh engine heartbeat pump (foreground liveness) (12.27544ms)
+▶ findDeprecationWarnings
+  ✔ flags the three build-log warning shapes from the task screenshot (15.966206ms)
+  ✔ passes clean build output (including the chunk-size hint) (0.299587ms)
+  ✔ an allowlist entry suppresses its matching line only (0.306399ms)
+  ✔ an expired allowlist entry does not suppress (0.185321ms)
+  ✔ an entry without an expiry date does not suppress (1.030852ms)
+  ✔ an entry with an invalid regex pattern fails closed instead of crashing (0.308317ms)
+  ✔ an invalid pattern does not break its valid siblings (1.919788ms)
+✔ findDeprecationWarnings (25.730016ms)
+▶ compileAllowlistPattern
+  ✔ compiles a valid pattern (0.422316ms)
+  ✔ returns null for a pattern that does not compile (2.835095ms)
+✔ compileAllowlistPattern (5.82725ms)
+▶ loadBuildAllowlist
+  ✔ loads the shipped allowlist file without crashing (0.454513ms)
+✔ loadBuildAllowlist (0.574526ms)
+▶ check-no-deprecations binary
+  ✔ exits 0 and passes output through when the build is clean (398.798541ms)
+  ✔ exits non-zero when the build prints a deprecation warning (1260.650042ms)
+  ✔ exits non-zero when the build command itself fails (640.742838ms)
+✔ check-no-deprecations binary (2300.416773ms)
+▶ evaluateAudit
+  ✔ reports non-allowlisted high findings as blocking (0.51551ms)
+  ✔ ignores moderate and low findings (0.139551ms)
+  ✔ an allowlist entry with a valid expiry suppresses its advisory (0.148451ms)
+  ✔ an expired allowlist entry does not suppress (0.162237ms)
+  ✔ an entry for a different advisory source does not suppress (0.142637ms)
+  ✔ tolerates audit output with no vulnerabilities key (0.129919ms)
+  ✔ suppresses transitive dependents when the root advisory is allowlisted (0.211884ms)
+  ✔ a transitive chain with no reachable advisory stays blocking (0.154885ms)
+✔ evaluateAudit (1.984997ms)
+▶ resolveDevPlan
+  ✔ defaults to API :3100 and frontend :5173 (4.175787ms)
+  ✔ honors PORT and VITE_PORT (1.289207ms)
+  ✔ supervises the API node process and the Vite npm script (0.592313ms)
+  ✔ rejects a garbage port naming the variable (0.920179ms)
+✔ resolveDevPlan (9.290802ms)
+▶ dev --dry-run
+  ✔ prints the plan and exits without touching ports (417.814677ms)
+✔ dev --dry-run (420.895587ms)
+▶ entry points stay free of Linux-only tooling
+  ✔ scripts/run-tests.mjs references no Linux-only tooling (2.548706ms)
+  ✔ scripts/depcheck.mjs references no Linux-only tooling (0.348579ms)
+  ✔ scripts/dev.mjs references no Linux-only tooling (0.441315ms)
+  ✔ scripts/setup.mjs references no Linux-only tooling (0.406989ms)
+  ✔ scripts/free-port.mjs references no Linux-only tooling (0.391518ms)
+  ✔ scripts/lib/run-parallel.mjs references no Linux-only tooling (0.588761ms)
+  ✔ scripts/lib/run-supervised.mjs references no Linux-only tooling (0.271924ms)
+  ✔ package.json references no Linux-only tooling (0.348574ms)
+✔ entry points stay free of Linux-only tooling (8.735115ms)
+▶ root scripts point at the Node runners
+  ✔ test runs the Node gate (1.650489ms)
+  ✔ dev runs the Node supervisor (0.480535ms)
+  ✔ setup runs the Node installer (0.154083ms)
+  ✔ depcheck runs the Node fan-out (0.529415ms)
+✔ root scripts point at the Node runners (4.946646ms)
+▶ workspace test scripts carry no shell env prefix
+  ✔ api test runs under Windows cmd (no VAR= prefix) (1.092532ms)
+  ✔ frontend test runs under Windows cmd (no VAR= prefix) (0.368721ms)
+✔ workspace test scripts carry no shell env prefix (1.615788ms)
+▶ run-tests.sh stays a thin shim
+  ✔ delegates to the Node gate without its own runner (0.199927ms)
+✔ run-tests.sh stays a thin shim (0.284072ms)
+▶ installs resolve the way the lockfiles were built
+  ✔ root .npmrc pins legacy peer resolution (frontend needs it) (0.252861ms)
+✔ installs resolve the way the lockfiles were built (0.761256ms)
+▶ isPortOccupied
+  ✔ reports false for a free ephemeral port (15.166581ms)
+  ✔ reports true for a bound port (2.898962ms)
+  ✔ reports false again after the holder closes (15.672758ms)
+  ✔ rejects an out-of-range port number (10.217676ms)
+✔ isPortOccupied (49.752045ms)
+▶ findOccupantPids
+  ✔ parses lsof -ti output on linux (4.514367ms)
+  ✔ parses lsof -ti output on darwin (3.420015ms)
+  ✔ returns an empty list when lsof finds no occupant (exit 1) (0.428478ms)
+  ✔ falls back to ss when lsof is missing on linux (0.620569ms)
+  ✔ ss fallback only returns pids listening on the requested port (4.039142ms)
+  ✔ reports a clear error when neither lsof nor ss exists (3.248933ms)
+  ✔ parses netstat -ano output on win32 (0.442851ms)
+  ✔ returns an empty list when netstat shows no listener (0.174278ms)
+✔ findOccupantPids (32.267016ms)
+▶ freePort
+  ✔ is a no-op reporting alreadyFree when the port is free (0.517748ms)
+  ✔ terminates the occupant and reports freed when the port releases (0.361747ms)
+  ✔ escalates to SIGKILL when the occupant ignores SIGTERM (61.694961ms)
+  ✔ never kills its own process (3.736803ms)
+  ✔ fails with an actionable error when the port never releases (29.874494ms)
+  ✔ fails with an actionable error when no occupant pid is found (0.222247ms)
+  ✔ terminates a verified occupant when verifyFn approves it (0.295776ms)
+  ✔ refuses to kill any occupant when verifyFn rejects it (0.281471ms)
+  ✔ treats a throwing verifyFn as unverified instead of killing (9.962072ms)
+✔ freePort (107.483249ms)
+[remediate] --tasks-dir requires a value
+Usage: node scripts/remediate-no-verdict-rejections.mjs [--apply] [--tasks-dir <dir>] [--log <file>] [--no-backup]
+[remediate] tasks dir not found: /tmp/kainbain-remediate-absent
+[remediate] dry-run: 1 task(s) would be repaired (re-run with --apply)
+  - task-1: removed 1 spurious failure(s), repaired 1 report(s), removed stale verdictImplicitPassStages
+▶ parseArgs
+  ✔ defaults to a dry run that writes nothing (4.302925ms)
+  ✔ honours --apply, --no-backup, --tasks-dir, and --log (0.292995ms)
+  ✔ lets the last of --apply/--dry-run win (0.187514ms)
+  ✔ records an error instead of throwing when a value is missing (0.200504ms)
+  ✔ ignores unknown flags (a typo degrades to a dry run, never a write) (0.201831ms)
+✔ parseArgs (7.2793ms)
+▶ backupPathFor
+  ✔ appends .bak (0.780496ms)
+✔ backupPathFor (0.995636ms)
+▶ remediateTasks
+  ✔ reports victims without writing in dry-run mode (3.320623ms)
+  ✔ repairs task and report files with backups, then idles on re-run (4.412882ms)
+  ✔ leaves a task with only genuine failures byte-identical (2.067426ms)
+  ✔ returns an error for a missing tasks dir instead of throwing (0.738265ms)
+✔ remediateTasks (11.038224ms)
+▶ main
+  ✔ exits 2 with usage on argument errors before touching files (4.111629ms)
+  ✔ exits 1 on a missing tasks dir (0.603472ms)
+  ✔ dry-runs a temp tasks dir and exits 0 (1.618214ms)
+✔ main (6.609201ms)
+▶ parseArgs
+  ✔ defaults to the api suite, 5 runs, no pattern (1.383844ms)
+  ✔ parses every flag (0.315628ms)
+  ✔ rejects an unknown suite, unknown flag, and non-positive runs (6.541665ms)
+  ✔ rejects a flag with no value (0.326097ms)
+✔ parseArgs (47.230467ms)
+▶ normalizePattern
+  ✔ strips the suite directory prefix so the runner resolves the filter in its own workspace (11.656396ms)
+  ✔ passes through a bare substring filter unchanged (7.600506ms)
+  ✔ rejects an unknown suite (34.88451ms)
+✔ normalizePattern (64.658633ms)
+▶ buildRepeatCommand
+  ✔ targets the suite workspace through npm with no shell (49.133046ms)
+  ✔ passes the pattern as a workspace-relative positional filter after -- (0.534725ms)
+  ✔ maps canary to its own workspace (8.293271ms)
+  ✔ rejects an unknown suite (0.242884ms)
+✔ buildRepeatCommand (58.578581ms)
+▶ extractFailureSignatures
+  ✔ strips ANSI colour and keeps vitest FAIL headlines once each (11.128559ms)
+  ✔ falls back to Error lines when the run died before reporting tests (0.179258ms)
+  ✔ caps the number of signatures (0.226131ms)
+  ✔ returns an empty list for a clean run (0.147343ms)
+✔ extractFailureSignatures (11.916746ms)
+▶ summarizeRuns
+  ✔ counts passes, failing run numbers, and distinct signatures (34.239614ms)
+  ✔ reports a zero pass rate for an empty record set without dividing by zero (0.126175ms)
+✔ summarizeRuns (34.495335ms)
+▶ runRepeat
+  ✔ runs the suite N times, logs JSONL + raw output, and reports a green pass rate (32.194583ms)
+  ✔ records failures with their signatures and returns ok:false (6.734389ms)
+✔ runRepeat (39.126813ms)
+▶ runParallel
+  ✔ all branches pass -> ok:true with a PASS line per branch (365.362338ms)
+  ✔ one branch fails -> ok:false, FAIL names the branch, the other still passes, output shown (1354.20471ms)
+  ✔ all branches fail -> ok:false (229.986768ms)
+  ✔ seven branches work (mirrors the gate overlap window) (567.767478ms)
+  ✔ reports lines in argument order even when a later branch finishes first (1181.252308ms)
+  ✔ a missing command fails its branch instead of crashing the run (308.762245ms)
+  ✔ passing branch output stays hidden (305.91483ms)
+  ✔ lowPriority branches still run (niceness is best-effort) (150.691628ms)
+✔ runParallel (4482.479501ms)
+▶ runParallel progress output (no silent blackout)
+  ✔ announces every branch at spawn, in argument order, before any result line (156.668144ms)
+  ✔ emits a still-running tick naming outstanding branches while a slow branch runs (400.437331ms)
+  ✔ emits no tick when every branch settles inside the interval (91.334978ms)
+  ✔ progressIntervalMs 0 disables the tick entirely (358.369103ms)
+  ✔ an injected failing branch still prints its full details unchanged (141.816553ms)
+  ✔ resolveProgressIntervalMs: option wins, then env, then the 30s default (0.306946ms)
+  ✔ formatElapsedSeconds renders compact human durations (1.192829ms)
+✔ runParallel progress output (no silent blackout) (1150.765239ms)
+▶ hung-branch guard (a timed-out branch fails the gate, it cannot hang it)
+  ✔ reports exit 124 and settles even when the branch never emits close (98.806719ms)
+  ✔ keeps the branch's captured output when it is reaped (71.571523ms)
+  ✖ reaps the whole branch process tree, not just the direct child (11314.636101ms)
+✖ hung-branch guard (a timed-out branch fails the gate, it cannot hang it) (11486.250041ms)
+▶ vitest workers: defaults govern (no cap)
+  ✔ scripts/run-tests.mjs sets no worker cap (0.366679ms)
+  ✔ api vitest config uses vitest defaults (0.196366ms)
+  ✔ frontend vitest config uses vitest defaults (0.138076ms)
+✔ vitest workers: defaults govern (no cap) (0.861169ms)
+▶ api worker pool: thread workers, per-file isolation kept
+  ✔ runs the api suite on the threads pool (no fork per file) (0.318084ms)
+  ✔ never disables per-file isolation (0.240017ms)
+  ✔ keeps the per-file isolation setup file installed (0.185039ms)
+✔ api worker pool: thread workers, per-file isolation kept (1.041627ms)
+▶ vitest node-env contract: node builtins stay out of shared happy-dom workers
+  ✔ no frontend suite imports the api tree (no pin escape hatch) (64.619602ms)
+  ✔ every node:-importing suite runs in node env or the forks pool (21.399241ms)
+  ✔ every forks-pinned suite is excluded from the main project (no double run) (0.394194ms)
+✔ vitest node-env contract: node builtins stay out of shared happy-dom workers (86.614127ms)
+▶ runSupervised
+  ✔ streams each child's output with its prefix (445.682522ms)
+  ✔ resolves with the first child's exit code and stops the sibling (756.487925ms)
+  ✖ reaps wrapper grandchildren that inherit stdio (npm/vite shape) (5834.803154ms)
+  ✔ a missing command fails the run instead of hanging (67.50566ms)
+  ✔ SIGTERM to the supervisor stops every child and resolves ok (164.707279ms)
+✖ runSupervised (7289.636553ms)
+▶ buildBranches
+  ✔ builds the eleven canonical branches in order when bash and docker exist (4.93971ms)
+  ✔ every branch spawns a binary with argv (never a shell string) (0.443036ms)
+  ✔ unit tests run at normal priority, the rest low (0.474513ms)
+  ✔ reports SKIP (non-fatal) for Security Script Tests without bash (0.675909ms)
+  ✔ reports SKIP (non-fatal) for Container Tests without a docker daemon (0.861028ms)
+  ✔ reports SKIP (non-fatal) for Dependency Check without the depcheck binary (0.39056ms)
+  ✔ keeps Dependency Check runnable (low priority, via npm) when the binary exists (0.245326ms)
+  ✔ container tests run the docker suite through node --test (1.396466ms)
+  ✔ harness self-tests run the ported node suites (not the old shell one) (0.569917ms)
+  ✔ includes Canary Tests by default (npm test parity with deploy.sh --prod) (0.389163ms)
+  ✔ omits Canary Tests when opted out (withCanary: false — --no-canary / KAINBAIN_SKIP_CANARY=1) (0.336045ms)
+  ✔ spawns Canary Tests last as npm run test:canary (0.349604ms)
+✔ buildBranches (14.665966ms)
+▶ splitGatePhases
+  ✔ runs Canary Tests in the serial phase after the fast overlap window (0.567836ms)
+  ✔ leaves an opted-out gate as one fast phase with no canary phase (0.292242ms)
+✔ splitGatePhases (1.046604ms)
+▶ resolveCanary
+  ✔ runs canary by default (parity with deploy.sh --prod) (0.494828ms)
+  ✔ accepts the legacy --canary opt-in as a no-op (0.141779ms)
+  ✔ opts out via --no-canary (0.115363ms)
+  ✔ opts out via KAINBAIN_SKIP_CANARY=1 (the deploy emergency opt-out) (0.1023ms)
+  ✔ treats other KAINBAIN_SKIP_CANARY values as unset (0.37772ms)
+  ✔ skip flags win over the legacy opt-in flags (0.8807ms)
+✔ resolveCanary (3.393142ms)
+▶ depcheckAvailable
+  ✔ reports true when the root tree carries the posix binary (0.961908ms)
+  ✔ reports true when the root tree carries the Windows binary (1.326873ms)
+  ✔ reports false when the platform's binary name is missing (0.615189ms)
+  ✔ reports false when the root tree has no binaries at all (0.442454ms)
+✔ depcheckAvailable (3.587344ms)
+▶ pruneStaleTestDirectories
+  ✔ removes old directories matching test prefixes and preserves young or unrelated entries (1.582472ms)
+  ✔ returns zero and does not throw when directory does not exist (0.286879ms)
+✔ pruneStaleTestDirectories (2.171671ms)
+▶ installSteps
+  ✔ installs root, api, frontend, then canary-e2e in order (31.921122ms)
+✔ installSteps (57.692018ms)
+▶ installSteps npmrc
+  ✔ every install dir resolves legacy-peer-deps the way npm actually reads it (16.431118ms)
+  ✔ root .npmrc documents the per-dir mirrors (0.343913ms)
+✔ installSteps npmrc (17.037183ms)
+▶ playwrightAttempts
+  ✔ tries system deps first on linux, then the browser alone (32.621222ms)
+  ✔ installs the browser alone on macOS and Windows (1.660245ms)
+✔ playwrightAttempts (34.558667ms)
+▶ npxExecutable
+  ✔ uses npx.cmd on Windows, npx elsewhere (0.316638ms)
+✔ npxExecutable (0.555875ms)
+▶ browserInstallTargets
+  ✔ installs the root browser first, then the canary-e2e browser (34.746284ms)
+  ✔ keeps Linux --with-deps on the root target and browser-only on canary (5.401858ms)
+  ✔ installs the browser alone for every target on macOS and Windows (4.576128ms)
+✔ browserInstallTargets (49.249898ms)
+[projectStore] recreated missing docs symlink for 'Sanity': '/tmp/kainbain-sanity-projects-KeCfjK/Sanity/docs' -> '/tmp/kainbain-sanity-notes-nJgKmK/Sanity'
+[projectStore] recreated missing docs symlink for 'Sanity': '/tmp/kainbain-sanity-projects-ceNOIL/Sanity/docs' -> '/tmp/kainbain-sanity-notes-ggCbIL/Sanity'
+[projectStore] '/tmp/kainbain-sanity-projects-ceNOIL/Sanity/docs' is a real directory shadowing the notes space '/tmp/kainbain-sanity-notes-ggCbIL/Sanity' — task lists read the shadow copy, so most tasks are hidden. Merge any newer files from the shadow 'docs/tasks/' into the notes space, then replace '/tmp/kainbain-sanity-projects-ceNOIL/Sanity/docs' with a symlink to '/tmp/kainbain-sanity-notes-ggCbIL/Sanity'.
+[projectStore] recreated missing docs symlink for 'Sanity': '/tmp/kainbain-sanity-projects-obGNPL/Sanity/docs' -> '/tmp/kainbain-sanity-notes-oAIaPL/Sanity'
+[projectStore] recreated missing docs symlink for 'Sanity': '/tmp/kainbain-sanity-projects-KiopgL/Sanity/docs' -> '/tmp/kainbain-sanity-notes-JilChL/Sanity'
+[projectStore] '/tmp/kainbain-sanity-projects-KiopgL/Sanity/docs' is a real directory shadowing the notes space '/tmp/kainbain-sanity-notes-JilChL/Sanity' — task lists read the shadow copy, so most tasks are hidden. Merge any newer files from the shadow 'docs/tasks/' into the notes space, then replace '/tmp/kainbain-sanity-projects-KiopgL/Sanity/docs' with a symlink to '/tmp/kainbain-sanity-notes-JilChL/Sanity'.
+[projectStore] recreated missing docs symlink for 'Sanity': '/tmp/kainbain-sanity-projects-eGJhCI/Sanity/docs' -> '/tmp/kainbain-sanity-notes-hIGlCI/Sanity'
+[projectStore] recreated missing docs symlink for 'Sanity': '/tmp/kainbain-sanity-projects-pNmeNI/Sanity/docs' -> '/tmp/kainbain-sanity-notes-DPbhNI/Sanity'
+[projectStore] '/tmp/kainbain-sanity-projects-pNmeNI/Sanity/docs' is a real directory shadowing the notes space '/tmp/kainbain-sanity-notes-DPbhNI/Sanity' — task lists read the shadow copy, so most tasks are hidden. Merge any newer files from the shadow 'docs/tasks/' into the notes space, then replace '/tmp/kainbain-sanity-projects-pNmeNI/Sanity/docs' with a symlink to '/tmp/kainbain-sanity-notes-DPbhNI/Sanity'.
+▶ checkStorageSanity
+  ✔ restores every seeded task and arms the shadow detector (21.888688ms)
+  ✔ leaves no fixture residue in the OS temp dir (38.623753ms)
+✔ checkStorageSanity (62.847776ms)
+▶ isMainModule
+  ✔ matches URL-encoded entry paths (space decodes via fileURLToPath, not pathname) (0.719225ms)
+  ✔ rejects a missing entry path or a different file (0.299814ms)
+  ✔ fires on direct run: node scripts/storage-sanity.mjs prints PASS (883.002978ms)
+✔ isMainModule (884.402924ms)
+▶ countNotesTasks
+  ✔ counts only folders holding a task.md (1.613753ms)
+  ✔ returns 0 when the notes space has no tasks dir (0.890393ms)
+✔ countNotesTasks (2.843119ms)
+ℹ tests 287
+ℹ suites 72
+ℹ pass 278
+ℹ fail 9
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 22905.098735
+
+✖ failing tests:
+
+test at tests/deploy-reexec.test.mjs:101:2
+✖ passes --wait and a node-aware PATH to systemd-run (36.588526ms)
+  Error: ENOENT: no such file or directory, open '/tmp/kb-deploy-reexec-JcMlCL/argv.log'
+      at Object.readFileSync (node:fs:483:20)
+      at runWithFakeSystemdRun (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:94:20)
+      at TestContext.<anonymous> (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:102:20)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at node:internal/test_runner/test:1903:71
+      at node:internal/per_context/primordials:504:82
+      at new Promise (<anonymous>)
+      at new SafePromise (node:internal/per_context/primordials:478:3) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/tmp/kb-deploy-reexec-JcMlCL/argv.log'
+  }
+
+test at tests/deploy-reexec.test.mjs:113:2
+✖ propagates a failing unit's exit code to the caller (no vacuous PASS) (55.148651ms)
+  Error: ENOENT: no such file or directory, open '/tmp/kb-deploy-reexec-PblfFM/argv.log'
+      at Object.readFileSync (node:fs:483:20)
+      at runWithFakeSystemdRun (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:94:20)
+      at TestContext.<anonymous> (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:114:28)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Promise.all (index 0)
+      at async Suite.run (node:internal/test_runner/test:1905:7) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/tmp/kb-deploy-reexec-PblfFM/argv.log'
+  }
+
+test at tests/deploy-reexec.test.mjs:119:2
+✖ pins KAINBAIN_OUTSIDE_CGROUP=1 in the unit env (no re-exec loop) (64.413653ms)
+  Error: ENOENT: no such file or directory, open '/tmp/kb-deploy-reexec-FMMLkN/argv.log'
+      at Object.readFileSync (node:fs:483:20)
+      at runWithFakeSystemdRun (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:94:20)
+      at TestContext.<anonymous> (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:120:20)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/tmp/kb-deploy-reexec-FMMLkN/argv.log'
+  }
+
+test at tests/deploy-reexec.test.mjs:127:2
+✖ re-pins KAINBAIN_DEPLOY_ATTEMPT_ID for the transient unit (per-attempt attribution) (65.203793ms)
+  Error: ENOENT: no such file or directory, open '/tmp/kb-deploy-reexec-bEJnhP/argv.log'
+      at Object.readFileSync (node:fs:483:20)
+      at runWithFakeSystemdRun (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:94:20)
+      at TestContext.<anonymous> (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:133:20)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/tmp/kb-deploy-reexec-bEJnhP/argv.log'
+  }
+
+test at tests/deploy-reexec.test.mjs:140:2
+✖ omits the attempt-id setenv on manual runs without an attempt id (39.048955ms)
+  Error: ENOENT: no such file or directory, open '/tmp/kb-deploy-reexec-GilFgb/argv.log'
+      at Object.readFileSync (node:fs:483:20)
+      at runWithFakeSystemdRun (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:94:20)
+      at TestContext.<anonymous> (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:141:20)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/tmp/kb-deploy-reexec-GilFgb/argv.log'
+  }
+
+test at tests/deploy-reexec.test.mjs:280:2
+✖ omits --pipe from the real re-exec argv while keeping --wait (5.097163ms)
+  Error: ENOENT: no such file or directory, open '/tmp/kb-deploy-nopipe-kpAikd/argv.log'
+      at Object.readFileSync (node:fs:483:20)
+      at runReexecCapture (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:312:15)
+      at TestContext.<anonymous> (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:317:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at node:internal/test_runner/test:1903:71
+      at node:internal/per_context/primordials:504:82
+      at new Promise (<anonymous>)
+      at new SafePromise (node:internal/per_context/primordials:478:3) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/tmp/kb-deploy-nopipe-kpAikd/argv.log'
+  }
+
+test at tests/deploy-reexec.test.mjs:324:2
+✖ emits engine-visible heartbeats while the detached unit runs (12.132045ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  null !== 0
+  
+      at TestContext.<anonymous> (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:364:11)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at node:internal/test_runner/test:1903:71
+      at node:internal/per_context/primordials:504:82
+      at new Promise (<anonymous>)
+      at new SafePromise (node:internal/per_context/primordials:478:3)
+      at node:internal/per_context/primordials:504:9
+      at Array.map (<anonymous>) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/run-parallel.test.mjs:337:2
+✖ reaps the whole branch process tree, not just the direct child (11314.636101ms)
+  AssertionError [ERR_ASSERTION]: the grandchild should have been reaped with the branch's process group
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///home/server/projects/kainbain/tests/run-parallel.test.mjs:381:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/run-supervised.test.mjs:128:2
+✖ reaps wrapper grandchildren that inherit stdio (npm/vite shape) (5834.803154ms)
+  AssertionError [ERR_ASSERTION]: grandchild orphaned the wrapper's pipes
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///home/server/projects/kainbain/tests/run-supervised.test.mjs:163:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+----------------------------------------------------------------------
+Fast gate complete — starting Canary Tests alone (serial phase, no shared CPUs with the unit suites)...
+▸ started Canary Tests
+⏳ still running: Canary Tests (30s)
+⏳ still running: Canary Tests (1m00s)
+Running Canary Tests... [0;31mFAIL[0m (72s)
+----------------------------------------------------------------------
+Details for Canary Tests:
+
+> kainbain@1.0.0 test:canary
+> npm run test --prefix canary-e2e
+
+
+> canary-e2e@1.0.0 test
+> node ../scripts/canary-preflight.mjs && playwright test
+
+canary-preflight: port 3399 already free
+canary-preflight: port 5299 already free
+Port 3399: already free
+Port 5299: already free
+[WebServer] [boot] projects root '/tmp/kb-canary-e2e/projects' does not exist — no projects will be discovered. Set PROJECTS_ROOT (and optionally PROJECTS_ROOTS) to your projects directory and restart.
+
+Running 135 tests using 1 worker
+
+  ✘    1 tests/accessibility.spec.js:69:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › orchestrator view has no axe violations (3ms)
+  ✘    2 tests/accessibility.spec.js:74:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › settings view has no axe violations (4ms)
+  ✘    3 tests/accessibility.spec.js:81:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › stage settings tray has no axe violations (4ms)
+  ✘    4 tests/accessibility.spec.js:89:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › explorer view has no axe violations (4ms)
+  ✘    5 tests/accessibility.spec.js:95:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › docs view has no axe violations (4ms)
+  ✘    6 tests/accessibility.spec.js:101:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › observability view has no axe violations (5ms)
+  ✘    7 tests/accessibility.spec.js:107:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › task detail view has no axe violations (4ms)
+  ✘    8 tests/accessibility.spec.js:118:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › task review view has no axe violations (4ms)
+  ✘    9 tests/accessibility.spec.js:127:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › settings model-aliases reliability cards have no axe violations (5ms)
+  ✘   10 tests/accessibility.spec.js:146:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › compact mobile monitor view has no axe violations (4ms)
+  ✘   11 tests/accessibility.spec.js:157:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › contrast walk catches a planted 1.7:1 node (negative control) (4ms)
+  ✘   12 tests/accessibility.spec.js:177:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › keyboard: skip link is reachable and visible on focus (4ms)
+  ✘   13 tests/accessibility.spec.js:186:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › keyboard: project dropdown closes on Escape (4ms)
+  ✘   14 tests/accessibility.spec.js:198:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › keyboard: in-column stage configuration drawer closes on Escape and restores focus (4ms)
+  ✘   15 tests/accessibility.spec.js:211:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › keyboard: task inspector closes on Escape (4ms)
+  ✘   16 tests/accessibility.spec.js:243:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › idle engine names no task in the NowPlaying bar (3ms)
+  ✘   17 tests/accessibility.spec.js:272:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › system-settings view has no axe violations (4ms)
+  ✘   18 tests/accessibility.spec.js:278:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › system-settings deep section (models) has no axe violations (4ms)
+  ✘   19 tests/accessibility.spec.js:284:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › retrospective view has no axe violations (5ms)
+  ✘   20 tests/accessibility.spec.js:290:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › retrospective with chat panel open has no axe violations (3ms)
+  ✘   21 tests/accessibility.spec.js:303:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › task survey view has no axe violations (4ms)
+  ✘   22 tests/accessibility.spec.js:316:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › docs deep article (first-time-setup) has no axe violations (3ms)
+  ✘   23 tests/accessibility.spec.js:327:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › task detail with waiting_human status has no axe violations (4ms)
+  ✘   24 tests/accessibility.spec.js:344:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › explorer with file preview open has no axe violations (3ms)
+  ✘   25 tests/accessibility.spec.js:365:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › contrast walk exempts disabled controls (negative control) (4ms)
+  ✘   26 tests/app-status.spec.js:61:6 › App-status / goto-app link › files page shows the goto-app link when the API publishes a URL (1ms)
+  ✘   27 tests/app-status.spec.js:85:6 › App-status / goto-app link › loopback URL honors the networkHost override (1ms)
+  ✘   28 tests/app-status.spec.js:103:6 › App-status / goto-app link › no link renders — never a broken one — when no URL is published (1ms)
+  ✓   29 tests/engine-isolation.spec.js:20:6 › scratch-stack engine isolation › containment-state file resolves inside the scratch roots (44ms)
+  ✓   30 tests/engine-isolation.spec.js:34:6 › scratch-stack engine isolation › agent stages run on the mock harness, never ambient models (18ms)
+  ✘   31 tests/footer-overlay.spec.js:99:6 › Footer overlap consistency › Configure drawer buttons stay clickable above the collapsed activity console (1ms)
+  ✘   32 tests/footer-overlay.spec.js:158:6 › Footer overlap consistency › Configure drawer stays clear of an expanded activity console (1ms)
+  ✘   33 tests/footer-overlay.spec.js:188:6 › Footer overlap consistency › Task inspector ends above the Now Playing footer and keeps its controls clickable (2ms)
+  ✘   34 tests/functional.spec.js:6:6 › KainBain Functional E2E Tests › homepage loading and orchestrator cockpit (2ms)
+  ✘   35 tests/functional.spec.js:16:6 › KainBain Functional E2E Tests › workflow canvas renders stage columns with type badges (2ms)
+  ✘   36 tests/functional.spec.js:34:6 › KainBain Functional E2E Tests › now playing bar with engine controls (3ms)
+  ✘   37 tests/functional.spec.js:54:6 › KainBain Functional E2E Tests › right rail never overlaps the center transport controls at any supported width (3ms)
+  ✘   38 tests/functional.spec.js:134:6 › KainBain Functional E2E Tests › in-place column task creation (3ms)
+  ✘   39 tests/functional.spec.js:152:6 › KainBain Functional E2E Tests › project selector lists projects and switches (3ms)
+  ✘   40 tests/functional.spec.js:174:6 › KainBain Functional E2E Tests › settings tab renders per-project configuration (2ms)
+  ✘   41 tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 320px (1ms)
+  ✘   42 tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 360px (1ms)
+  ✘   43 tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 375px (1ms)
+  ✘   44 tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 390px (1ms)
+  ✘   45 tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 414px (1ms)
+  ✘   46 tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 430px (1ms)
+  ✘   47 tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 480px (1ms)
+  ✘   48 tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 640px (1ms)
+  ✘   49 tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 768px (2ms)
+  ✘   50 tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 859px (1ms)
+  ✘   51 tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 1024px (1ms)
+  ✘   52 tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 1280px (1ms)
+  ✘   53 tests/homepage.spec.js:4:5 › homepage has correct title (2ms)
+  ✘   54 tests/homepage.spec.js:9:5 › homepage displays the orchestrator cockpit (2ms)
+  ✘   55 tests/mobile-responsive.spec.js:36:6 › Mobile Responsive Layout › renders mobile stage column selector tab strip (4ms)
+  ✘   56 tests/mobile-responsive.spec.js:50:6 › Mobile Responsive Layout › switching mobile stage tabs displays the corresponding column (3ms)
+  ✘   57 tests/mobile-responsive.spec.js:64:6 › Mobile Responsive Layout › slide-over inspector opens in mobile drawer mode with accessible touch controls (3ms)
+  ✘   58 tests/mobile-responsive.spec.js:95:6 › Mobile Responsive Layout › now playing bar is compact and controls are visible without clipping (3ms)
+  ✘   59 tests/mobile-responsive.spec.js:113:6 › Mobile Responsive Layout › filter pills are gone; search bar with !filters is available on mobile (task 7a411b12 + c213d3a9) (3ms)
+  ✘   60 tests/mobile-responsive.spec.js:142:6 › Mobile Responsive Layout › search bar with !filters and Show Completed are visible on desktop (task 7a411b12 + c213d3a9) (3ms)
+  ✘   61 tests/mobile-responsive.spec.js:158:6 › Mobile Responsive Layout › task cards render the compact density on mobile (task 7a411b12) (3ms)
+  ✘   62 tests/mobile-responsive.spec.js:210:6 › Mobile tap popups deconfliction (task e2cf55ac) › tapping the pipeline switcher opens only the menu, never a tooltip popover (3ms)
+  ✘   63 tests/mobile-responsive.spec.js:225:6 › Mobile tap popups deconfliction (task e2cf55ac) › tapping the task search field focuses it without popping a tooltip (5ms)
+  ✘   64 tests/mobile-responsive.spec.js:237:6 › Mobile tap popups deconfliction (task e2cf55ac) › tapping a card body opens the inspector and it can be closed (3ms)
+  ✘   65 tests/mobile-responsive.spec.js:263:6 › Mobile tap popups deconfliction (task e2cf55ac) › tapping Approve on a checkpoint card advances the task without opening the inspector (3ms)
+  ✘   66 tests/mobile-responsive.spec.js:341:6 › Header controls on mobile (task 66ad153f) › every header control meets the touch floor and stays on-screen (3ms)
+  ✘   67 tests/mobile-responsive.spec.js:368:6 › Desktop regression for tap guard (task e2cf55ac) › switcher opens its menu on click and tooltip only on hover (2ms)
+  ✘   68 tests/mobile-responsive.spec.js:408:6 › Mobile search bar with tags (task da91c31e) › search bar with 6 tags remains width-bounded with input and clear within viewport (3ms)
+  ✘   69 tests/now-playing-cross-project.spec.js:206:6 › Now Playing bar is one pipeline for all projects › bar keeps naming the running owner when switching from Project A to Project B (23ms)
+  ✘   70 tests/now-playing-cross-project.spec.js:302:6 › Now Playing bar is one pipeline for all projects › Skip Current advances the engine owner even when another project is selected (15ms)
+  ✘   71 tests/pr-review.spec.js:150:6 › PR Review E2E › open review → comment → fail with comments → agent fix → re-review (stale) → pass → merge (1ms)
+  -   72 tests/pr-review.spec.js:349:6 › PR Review E2E › review page shows the branch-unsupported empty state when branch support is off (A10, D7)
+  -   73 tests/pr-review.spec.js:391:6 › PR Review E2E › reports tab enables line-by-line review of stage reports outside git diff
+  -   74 tests/pr-review.spec.js:487:6 › PR Review E2E › reports tab is usable at a mobile viewport without horizontal overflow
+  ✘   75 tests/reasoning-levels-browser.spec.js:71:7 › Reasoning levels browser verification (scratch stack) › picker + aliases: levels, persistence, invalid handling, null harnesses (1ms)
+  ✘   76 tests/retrospective-chat.spec.js:59:6 › retrospective long-turn chat › send shows the working card, then the reply replaces it (3ms)
+  ✘   77 tests/retrospective-chat.spec.js:86:6 › retrospective long-turn chat › navigate away mid-turn keeps the turn and toasts with a way back (3ms)
+  ✘   78 tests/retrospective.spec.js:13:5 › retrospective page renders without page errors (3ms)
+  ✘   79 tests/retrospective.spec.js:22:5 › retrospective ?show= share link renders without page errors (2ms)
+  ✘   80 tests/retrospective.spec.js:51:6 › retrospective mobile layout › phone shows one pane at a time behind the tab strip (3ms)
+  ✘   81 tests/retrospective.spec.js:83:6 › retrospective mobile layout › phone controls keep touch-sized targets (3ms)
+  ✘   82 tests/retrospective.spec.js:117:6 › retrospective mobile layout › phone page owns the vertical scroll region (2ms)
+  ✘   83 tests/retrospective.spec.js:151:6 › retrospective mobile layout › phone page never scrolls sideways (2ms)
+  ✘   84 tests/retrospective.spec.js:172:6 › retrospective mobile layout › desktop hides the strip and shows all three panes (2ms)
+  ✘   85 tests/runtime-errors.spec.js:13:5 › app renders without uncaught page errors (2ms)
+  ✘   86 tests/runtime-errors.spec.js:23:5 › app renders without console errors (3ms)
+  ✘   87 tests/settings.spec.js:60:6 › Settings save round-trip › edit, save, reload: values persist across UI and API (1ms)
+  ✘   88 tests/settings.spec.js:83:6 › Settings save round-trip › invalid input blocks the save and keeps the stored config (1ms)
+  ✘   89 tests/survey-verify.spec.js:121:7 › question-me survey verification › engine parks a question-me stage with no survey file; skip advances (4ms)
+  ✘   90 tests/survey-verify.spec.js:145:7 › question-me survey verification › desktop: conditional reveal, notes, save, submit advances; file stays append-only (4ms)
+  ✘   91 tests/survey-verify.spec.js:258:9 › question-me survey verification › touch context › mobile: survey renders, answers, and fits 375px (9ms)
+  ✘   92 tests/survey-verify.spec.js:289:7 › question-me survey verification › empty round advances via continue without parking (4ms)
+  ✘   93 tests/system-settings-mobile.spec.js:126:6 › System Settings screen tab bar (task 5ad55777) › tab bar renders at full height on mobile across all tabs (3ms)
+  ✘   94 tests/system-settings-mobile.spec.js:142:6 › System Settings screen tab bar (task 5ad55777) › tab bar renders at full height on a short mobile viewport (2ms)
+  ✘   95 tests/system-settings-mobile.spec.js:155:6 › System Settings screen tab bar (task 5ad55777) › scrolling the details never covers the tab bar (2ms)
+  ✘   96 tests/system-settings-mobile.spec.js:169:6 › System Settings screen tab bar (task 5ad55777) › tab bar renders at full height on desktop (3ms)
+  ✘   97 tests/system-settings-mobile.spec.js:175:6 › System Settings screen tab bar (task 5ad55777) › rotating the viewport never covers the tab bar (2ms)
+  ✘   98 tests/system-settings-mobile.spec.js:192:6 › System Settings screen tab bar (task 5ad55777) › a deep-linked tab survives a refresh and an unknown section falls back (4ms)
+  ✘   99 tests/system-settings-mobile.spec.js:221:6 › System Settings entry opens a screen, not a dialog (task cd669cc3) › no modal dialog shell remains on the settings route (2ms)
+  ✘  100 tests/system-settings-mobile.spec.js:228:6 › System Settings entry opens a screen, not a dialog (task cd669cc3) › desktop System Menu opens System Settings in a new window (3ms)
+  ✘  101 tests/system-settings-mobile.spec.js:253:6 › System Settings entry opens a screen, not a dialog (task cd669cc3) › mobile System Menu falls back to same-tab navigation (no popout trap) (2ms)
+  ✘  102 tests/task-editing.spec.js:34:6 › Task-view editing behaviors › attached image markdown is appended at the end, title line intact (3ms)
+  ✘  103 tests/task-editing.spec.js:71:6 › Task-view editing behaviors › preview/edit round-trip preserves edited content (3ms)
+  ✘  104 tests/task-errors.spec.js:93:6 › Task-view error display › long failure renders capped with a Show more/less toggle (2ms)
+  ✘  105 tests/task-inspector.spec.js:38:6 › Task inspector core behaviors › just-created task opens the goal in edit mode with context tokens (4ms)
+  ✘  106 tests/task-inspector.spec.js:57:6 › Task inspector core behaviors › preview toggle hides the editor and the context tokens, edit restores them (3ms)
+  ✘  107 tests/task-inspector.spec.js:85:6 › Task inspector core behaviors › clicking the task key copies the full task id and keeps the inspector open (3ms)
+  ✘  108 tests/task-lifecycle.spec.js:41:6 › Task Lifecycle E2E › submit -> kanban placement -> advance -> complete (3ms)
+  ✘  109 tests/task-lifecycle.spec.js:84:6 › Task Lifecycle E2E › kanban cards are draggable and columns are drop targets (3ms)
+  ✘  110 tests/task-lifecycle.spec.js:108:6 › Task Lifecycle E2E › human stage renders Approve/Reject checkpoint controls (3ms)
+  ✘  111 tests/task-lifecycle.spec.js:171:6 › Task Lifecycle E2E › clicking a card opens the slide-over task inspector (3ms)
+  ✘  112 tests/task-logs.spec.js:109:6 › Agent-log readability › structured run output renders readably across feeds (1ms)
+  -  113 tests/task-logs.spec.js:146:6 › Agent-log readability › long lines wrap without breaking the inspector layout
+  -  114 tests/task-logs.spec.js:167:6 › Agent-log readability › a fresh task shows the initialized placeholder, not a blank page
+  ✘  115 tests/visual/dashboard.spec.js:65:8 › Dashboard Visuals › Desktop › Empty state (3ms)
+  ✘  116 tests/visual/dashboard.spec.js:82:8 › Dashboard Visuals › Desktop › Active execution (task card in canvas) (3ms)
+  ✘  117 tests/visual/dashboard.spec.js:96:8 › Dashboard Visuals › Desktop › Populated history (tasks + session tree) (3ms)
+  ✘  118 tests/visual/dashboard.spec.js:65:8 › Dashboard Visuals › Tablet › Empty state (3ms)
+  ✘  119 tests/visual/dashboard.spec.js:82:8 › Dashboard Visuals › Tablet › Active execution (task card in canvas) (3ms)
+  ✘  120 tests/visual/dashboard.spec.js:96:8 › Dashboard Visuals › Tablet › Populated history (tasks + session tree) (3ms)
+  ✘  121 tests/visual/dashboard.spec.js:65:8 › Dashboard Visuals › Mobile › Empty state (3ms)
+  ✘  122 tests/visual/dashboard.spec.js:82:8 › Dashboard Visuals › Mobile › Active execution (task card in canvas) (3ms)
+  ✘  123 tests/visual/dashboard.spec.js:96:8 › Dashboard Visuals › Mobile › Populated history (tasks + session tree) (3ms)
+  ✘  124 tests/visual/header.spec.js:23:7 › Header Visuals (task 66ad153f) › header band at Mobile 375px (2ms)
+  ✘  125 tests/visual/header.spec.js:23:7 › Header Visuals (task 66ad153f) › header band at Tablet 1024px (2ms)
+  ✘  126 tests/visual/header.spec.js:23:7 › Header Visuals (task 66ad153f) › header band at Desktop 1280px (2ms)
+  ✘  127 tests/visual/homepage.spec.js:44:7 › Homepage Visuals › visual regression - Desktop (3ms)
+  ✘  128 tests/visual/homepage.spec.js:44:7 › Homepage Visuals › visual regression - Tablet (2ms)
+  ✘  129 tests/visual/homepage.spec.js:44:7 › Homepage Visuals › visual regression - Mobile (2ms)
+  ✘  130 tests/websocket.spec.js:42:5 › frontend connects to the backend WebSocket and receives the handshake (3ms)
+  ✘  131 tests/workflow.spec.js:18:6 › Workflow E2E Tests › Task Creation: In-line add task -> verify card appears in kanban stage (3ms)
+  ✘  132 tests/workflow.spec.js:38:6 › Workflow E2E Tests › Stage types: human stage shows review checkpoint (3ms)
+  ✘  133 tests/workflow.spec.js:66:6 › Workflow E2E Tests › Engine controls: Start engine, skip current stage, and Look Back in Now Playing Bar (3ms)
+  ✘  134 tests/workflow.spec.js:99:6 › Workflow E2E Tests › Project isolation: switching project loads its own workflow (3ms)
+  ✘  135 tests/workflow.spec.js:116:6 › Workflow E2E Tests › Stage skills: GET /skills serves the library and the stage editor exposes the Skills panel (3ms)
+
+
+  1) tests/accessibility.spec.js:69:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › orchestrator view has no axe violations 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-60249--view-has-no-axe-violations/error-context.md
+
+  2) tests/accessibility.spec.js:74:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › settings view has no axe violations 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-bc793--view-has-no-axe-violations/error-context.md
+
+  3) tests/accessibility.spec.js:81:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › stage settings tray has no axe violations 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-824ca--tray-has-no-axe-violations/error-context.md
+
+  4) tests/accessibility.spec.js:89:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › explorer view has no axe violations 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-1f429--view-has-no-axe-violations/error-context.md
+
+  5) tests/accessibility.spec.js:95:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › docs view has no axe violations 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-77cb9--view-has-no-axe-violations/error-context.md
+
+  6) tests/accessibility.spec.js:101:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › observability view has no axe violations 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-90adb--view-has-no-axe-violations/error-context.md
+
+  7) tests/accessibility.spec.js:107:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › task detail view has no axe violations 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-29414--view-has-no-axe-violations/error-context.md
+
+  8) tests/accessibility.spec.js:118:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › task review view has no axe violations 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-ab226--view-has-no-axe-violations/error-context.md
+
+  9) tests/accessibility.spec.js:127:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › settings model-aliases reliability cards have no axe violations 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-6f0c2-ards-have-no-axe-violations/error-context.md
+
+  10) tests/accessibility.spec.js:146:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › compact mobile monitor view has no axe violations 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-977ed--view-has-no-axe-violations/error-context.md
+
+  11) tests/accessibility.spec.js:157:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › contrast walk catches a planted 1.7:1 node (negative control) 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-d25f1--7-1-node-negative-control-/error-context.md
+
+  12) tests/accessibility.spec.js:177:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › keyboard: skip link is reachable and visible on focus 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-6d109-chable-and-visible-on-focus/error-context.md
+
+  13) tests/accessibility.spec.js:186:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › keyboard: project dropdown closes on Escape 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-44f1c-t-dropdown-closes-on-Escape/error-context.md
+
+  14) tests/accessibility.spec.js:198:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › keyboard: in-column stage configuration drawer closes on Escape and restores focus 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-ad6f8-n-Escape-and-restores-focus/error-context.md
+
+  15) tests/accessibility.spec.js:211:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › keyboard: task inspector closes on Escape 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-db734--inspector-closes-on-Escape/error-context.md
+
+  16) tests/accessibility.spec.js:243:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › idle engine names no task in the NowPlaying bar 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-b5155--task-in-the-NowPlaying-bar/error-context.md
+
+  17) tests/accessibility.spec.js:272:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › system-settings view has no axe violations 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-635bb--view-has-no-axe-violations/error-context.md
+
+  18) tests/accessibility.spec.js:278:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › system-settings deep section (models) has no axe violations 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-9b4b5-odels-has-no-axe-violations/error-context.md
+
+  19) tests/accessibility.spec.js:284:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › retrospective view has no axe violations 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-6d46d--view-has-no-axe-violations/error-context.md
+
+  20) tests/accessibility.spec.js:290:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › retrospective with chat panel open has no axe violations 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-2dcd0--open-has-no-axe-violations/error-context.md
+
+  21) tests/accessibility.spec.js:303:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › task survey view has no axe violations 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-daca0--view-has-no-axe-violations/error-context.md
+
+  22) tests/accessibility.spec.js:316:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › docs deep article (first-time-setup) has no axe violations 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-0adc5-setup-has-no-axe-violations/error-context.md
+
+  23) tests/accessibility.spec.js:327:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › task detail with waiting_human status has no axe violations 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-7e818-tatus-has-no-axe-violations/error-context.md
+
+  24) tests/accessibility.spec.js:344:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › explorer with file preview open has no axe violations 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-5ee16--open-has-no-axe-violations/error-context.md
+
+  25) tests/accessibility.spec.js:365:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › contrast walk exempts disabled controls (negative control) 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/accessibility-Accessibilit-668eb--controls-negative-control-/error-context.md
+
+  26) tests/app-status.spec.js:61:6 › App-status / goto-app link › files page shows the goto-app link when the API publishes a URL 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/app-status-App-status-goto-fdb6d-hen-the-API-publishes-a-URL/error-context.md
+
+  27) tests/app-status.spec.js:85:6 › App-status / goto-app link › loopback URL honors the networkHost override 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/app-status-App-status-goto-5f22e-rs-the-networkHost-override/error-context.md
+
+  28) tests/app-status.spec.js:103:6 › App-status / goto-app link › no link renders — never a broken one — when no URL is published 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/app-status-App-status-goto-19b05--—-when-no-URL-is-published/error-context.md
+
+  29) tests/footer-overlay.spec.js:99:6 › Footer overlap consistency › Configure drawer buttons stay clickable above the collapsed activity console 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/footer-overlay-Footer-over-5216c--collapsed-activity-console/error-context.md
+
+    Error Context: test-results/footer-overlay-Footer-over-5216c--collapsed-activity-console/error-context.md
+
+  30) tests/footer-overlay.spec.js:158:6 › Footer overlap consistency › Configure drawer stays clear of an expanded activity console 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/footer-overlay-Footer-over-70ccb-n-expanded-activity-console/error-context.md
+
+    Error Context: test-results/footer-overlay-Footer-over-70ccb-n-expanded-activity-console/error-context.md
+
+  31) tests/footer-overlay.spec.js:188:6 › Footer overlap consistency › Task inspector ends above the Now Playing footer and keeps its controls clickable 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/footer-overlay-Footer-over-795e0-eeps-its-controls-clickable/error-context.md
+
+    Error Context: test-results/footer-overlay-Footer-over-795e0-eeps-its-controls-clickable/error-context.md
+
+  32) tests/functional.spec.js:6:6 › KainBain Functional E2E Tests › homepage loading and orchestrator cockpit 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/functional-KainBain-Functi-b6164-ng-and-orchestrator-cockpit/error-context.md
+
+  33) tests/functional.spec.js:16:6 › KainBain Functional E2E Tests › workflow canvas renders stage columns with type badges 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/functional-KainBain-Functi-a2e2b-ge-columns-with-type-badges/error-context.md
+
+  34) tests/functional.spec.js:34:6 › KainBain Functional E2E Tests › now playing bar with engine controls 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/functional-KainBain-Functi-cfcbc-ng-bar-with-engine-controls/error-context.md
+
+  35) tests/functional.spec.js:54:6 › KainBain Functional E2E Tests › right rail never overlaps the center transport controls at any supported width 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/functional-KainBain-Functi-4999a-rols-at-any-supported-width/error-context.md
+
+  36) tests/functional.spec.js:134:6 › KainBain Functional E2E Tests › in-place column task creation 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/functional-KainBain-Functi-0b335--place-column-task-creation/error-context.md
+
+  37) tests/functional.spec.js:152:6 › KainBain Functional E2E Tests › project selector lists projects and switches 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/functional-KainBain-Functi-b427a-lists-projects-and-switches/error-context.md
+
+  38) tests/functional.spec.js:174:6 › KainBain Functional E2E Tests › settings tab renders per-project configuration 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/functional-KainBain-Functi-cee4d-s-per-project-configuration/error-context.md
+
+  39) tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 320px 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/header-responsive-Header-r-eb052-r-overlap-nor-clip-at-320px/error-context.md
+
+  40) tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 360px 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/header-responsive-Header-r-0becc-r-overlap-nor-clip-at-360px/error-context.md
+
+  41) tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 375px 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/header-responsive-Header-r-c8455-r-overlap-nor-clip-at-375px/error-context.md
+
+  42) tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 390px 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/header-responsive-Header-r-9d4fd-r-overlap-nor-clip-at-390px/error-context.md
+
+  43) tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 414px 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/header-responsive-Header-r-dc06a-r-overlap-nor-clip-at-414px/error-context.md
+
+  44) tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 430px 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/header-responsive-Header-r-5dc46-r-overlap-nor-clip-at-430px/error-context.md
+
+  45) tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 480px 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/header-responsive-Header-r-d1245-r-overlap-nor-clip-at-480px/error-context.md
+
+  46) tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 640px 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/header-responsive-Header-r-dbd5c-r-overlap-nor-clip-at-640px/error-context.md
+
+  47) tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 768px 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/header-responsive-Header-r-64c6e-r-overlap-nor-clip-at-768px/error-context.md
+
+  48) tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 859px 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/header-responsive-Header-r-814b8-r-overlap-nor-clip-at-859px/error-context.md
+
+  49) tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 1024px 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/header-responsive-Header-r-2ca85--overlap-nor-clip-at-1024px/error-context.md
+
+  50) tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 1280px 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/header-responsive-Header-r-190cb--overlap-nor-clip-at-1280px/error-context.md
+
+  51) tests/homepage.spec.js:4:5 › homepage has correct title ──────────────────────────────────────
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/homepage-homepage-has-correct-title/error-context.md
+
+  52) tests/homepage.spec.js:9:5 › homepage displays the orchestrator cockpit ──────────────────────
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/homepage-homepage-displays-the-orchestrator-cockpit/error-context.md
+
+  53) tests/mobile-responsive.spec.js:36:6 › Mobile Responsive Layout › renders mobile stage column selector tab strip 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/mobile-responsive-Mobile-R-95a5c-e-column-selector-tab-strip/error-context.md
+
+  54) tests/mobile-responsive.spec.js:50:6 › Mobile Responsive Layout › switching mobile stage tabs displays the corresponding column 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/mobile-responsive-Mobile-R-d37ac-ys-the-corresponding-column/error-context.md
+
+  55) tests/mobile-responsive.spec.js:64:6 › Mobile Responsive Layout › slide-over inspector opens in mobile drawer mode with accessible touch controls 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/mobile-responsive-Mobile-R-f02e9-h-accessible-touch-controls/error-context.md
+
+  56) tests/mobile-responsive.spec.js:95:6 › Mobile Responsive Layout › now playing bar is compact and controls are visible without clipping 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/mobile-responsive-Mobile-R-62688-re-visible-without-clipping/error-context.md
+
+  57) tests/mobile-responsive.spec.js:113:6 › Mobile Responsive Layout › filter pills are gone; search bar with !filters is available on mobile (task 7a411b12 + c213d3a9) 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/mobile-responsive-Mobile-R-bf790-ile-task-7a411b12-c213d3a9-/error-context.md
+
+  58) tests/mobile-responsive.spec.js:142:6 › Mobile Responsive Layout › search bar with !filters and Show Completed are visible on desktop (task 7a411b12 + c213d3a9) 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/mobile-responsive-Mobile-R-2da42-top-task-7a411b12-c213d3a9-/error-context.md
+
+  59) tests/mobile-responsive.spec.js:158:6 › Mobile Responsive Layout › task cards render the compact density on mobile (task 7a411b12) 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/mobile-responsive-Mobile-R-07fba-ty-on-mobile-task-7a411b12-/error-context.md
+
+  60) tests/mobile-responsive.spec.js:210:6 › Mobile tap popups deconfliction (task e2cf55ac) › tapping the pipeline switcher opens only the menu, never a tooltip popover 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/mobile-responsive-Mobile-t-880aa-enu-never-a-tooltip-popover/error-context.md
+
+  61) tests/mobile-responsive.spec.js:225:6 › Mobile tap popups deconfliction (task e2cf55ac) › tapping the task search field focuses it without popping a tooltip 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/mobile-responsive-Mobile-t-10d39-t-without-popping-a-tooltip/error-context.md
+
+  62) tests/mobile-responsive.spec.js:237:6 › Mobile tap popups deconfliction (task e2cf55ac) › tapping a card body opens the inspector and it can be closed 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/mobile-responsive-Mobile-t-7b83b-pector-and-it-can-be-closed/error-context.md
+
+  63) tests/mobile-responsive.spec.js:263:6 › Mobile tap popups deconfliction (task e2cf55ac) › tapping Approve on a checkpoint card advances the task without opening the inspector 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/mobile-responsive-Mobile-t-3980a-thout-opening-the-inspector/error-context.md
+
+  64) tests/mobile-responsive.spec.js:341:6 › Header controls on mobile (task 66ad153f) › every header control meets the touch floor and stays on-screen 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/mobile-responsive-Header-c-34693-h-floor-and-stays-on-screen/error-context.md
+
+  65) tests/mobile-responsive.spec.js:368:6 › Desktop regression for tap guard (task e2cf55ac) › switcher opens its menu on click and tooltip only on hover 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/mobile-responsive-Desktop--0cf89-k-and-tooltip-only-on-hover/error-context.md
+
+  66) tests/mobile-responsive.spec.js:408:6 › Mobile search bar with tags (task da91c31e) › search bar with 6 tags remains width-bounded with input and clear within viewport 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/mobile-responsive-Mobile-s-541b2-t-and-clear-within-viewport/error-context.md
+
+  67) tests/now-playing-cross-project.spec.js:206:6 › Now Playing bar is one pipeline for all projects › bar keeps naming the running owner when switching from Project A to Project B 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/now-playing-cross-project--2322a-from-Project-A-to-Project-B/error-context.md
+
+    Error Context: test-results/now-playing-cross-project--2322a-from-Project-A-to-Project-B/error-context.md
+
+  68) tests/now-playing-cross-project.spec.js:302:6 › Now Playing bar is one pipeline for all projects › Skip Current advances the engine owner even when another project is selected 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/now-playing-cross-project--003a9-another-project-is-selected/error-context.md
+
+    Error Context: test-results/now-playing-cross-project--003a9-another-project-is-selected/error-context.md
+
+  69) tests/pr-review.spec.js:150:6 › PR Review E2E › open review → comment → fail with comments → agent fix → re-review (stale) → pass → merge 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/pr-review-PR-Review-E2E-op-06c1d-review-stale-→-pass-→-merge/error-context.md
+
+  70) tests/reasoning-levels-browser.spec.js:71:7 › Reasoning levels browser verification (scratch stack) › picker + aliases: levels, persistence, invalid handling, null harnesses 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/reasoning-levels-browser-R-ef95b-lid-handling-null-harnesses/error-context.md
+
+  71) tests/retrospective-chat.spec.js:59:6 › retrospective long-turn chat › send shows the working card, then the reply replaces it 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/retrospective-chat-retrosp-ca34e--then-the-reply-replaces-it/error-context.md
+
+  72) tests/retrospective-chat.spec.js:86:6 › retrospective long-turn chat › navigate away mid-turn keeps the turn and toasts with a way back 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/retrospective-chat-retrosp-f414d--and-toasts-with-a-way-back/error-context.md
+
+  73) tests/retrospective.spec.js:13:5 › retrospective page renders without page errors ────────────
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/retrospective-retrospective-page-renders-without-page-errors/error-context.md
+
+  74) tests/retrospective.spec.js:22:5 › retrospective ?show= share link renders without page errors 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/retrospective-retrospectiv-cd6dc-renders-without-page-errors/error-context.md
+
+  75) tests/retrospective.spec.js:51:6 › retrospective mobile layout › phone shows one pane at a time behind the tab strip 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/retrospective-retrospectiv-7ab9b-a-time-behind-the-tab-strip/error-context.md
+
+  76) tests/retrospective.spec.js:83:6 › retrospective mobile layout › phone controls keep touch-sized targets 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/retrospective-retrospectiv-7707c-ls-keep-touch-sized-targets/error-context.md
+
+  77) tests/retrospective.spec.js:117:6 › retrospective mobile layout › phone page owns the vertical scroll region 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/retrospective-retrospectiv-9232c--the-vertical-scroll-region/error-context.md
+
+  78) tests/retrospective.spec.js:151:6 › retrospective mobile layout › phone page never scrolls sideways 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/retrospective-retrospectiv-70466-page-never-scrolls-sideways/error-context.md
+
+  79) tests/retrospective.spec.js:172:6 › retrospective mobile layout › desktop hides the strip and shows all three panes 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/retrospective-retrospectiv-65b2b-p-and-shows-all-three-panes/error-context.md
+
+  80) tests/runtime-errors.spec.js:13:5 › app renders without uncaught page errors ─────────────────
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/runtime-errors-app-renders-without-uncaught-page-errors/error-context.md
+
+  81) tests/runtime-errors.spec.js:23:5 › app renders without console errors ───────────────────────
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/runtime-errors-app-renders-without-console-errors/error-context.md
+
+  82) tests/settings.spec.js:60:6 › Settings save round-trip › edit, save, reload: values persist across UI and API 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/settings-Settings-save-rou-07336-s-persist-across-UI-and-API/error-context.md
+
+  83) tests/settings.spec.js:83:6 › Settings save round-trip › invalid input blocks the save and keeps the stored config 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/settings-Settings-save-rou-999ef-and-keeps-the-stored-config/error-context.md
+
+  84) tests/survey-verify.spec.js:121:7 › question-me survey verification › engine parks a question-me stage with no survey file; skip advances 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/survey-verify-question-me--c8135-o-survey-file-skip-advances/error-context.md
+
+    Error Context: test-results/survey-verify-question-me--c8135-o-survey-file-skip-advances/error-context.md
+
+  85) tests/survey-verify.spec.js:145:7 › question-me survey verification › desktop: conditional reveal, notes, save, submit advances; file stays append-only 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/survey-verify-question-me--a7aff-nces-file-stays-append-only/error-context.md
+
+    Error Context: test-results/survey-verify-question-me--a7aff-nces-file-stays-append-only/error-context.md
+
+  86) tests/survey-verify.spec.js:258:9 › question-me survey verification › touch context › mobile: survey renders, answers, and fits 375px 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/survey-verify-question-me--97851-ders-answers-and-fits-375px/error-context.md
+
+    Error Context: test-results/survey-verify-question-me--97851-ders-answers-and-fits-375px/error-context.md
+
+  87) tests/survey-verify.spec.js:289:7 › question-me survey verification › empty round advances via continue without parking 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/survey-verify-question-me--c631c-ia-continue-without-parking/error-context.md
+
+    Error Context: test-results/survey-verify-question-me--c631c-ia-continue-without-parking/error-context.md
+
+  88) tests/system-settings-mobile.spec.js:126:6 › System Settings screen tab bar (task 5ad55777) › tab bar renders at full height on mobile across all tabs 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/system-settings-mobile-Sys-10449-t-on-mobile-across-all-tabs/error-context.md
+
+  89) tests/system-settings-mobile.spec.js:142:6 › System Settings screen tab bar (task 5ad55777) › tab bar renders at full height on a short mobile viewport 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════���
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/system-settings-mobile-Sys-c9ee1--on-a-short-mobile-viewport/error-context.md
+
+  90) tests/system-settings-mobile.spec.js:155:6 › System Settings screen tab bar (task 5ad55777) › scrolling the details never covers the tab bar 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/system-settings-mobile-Sys-b3188-ls-never-covers-the-tab-bar/error-context.md
+
+  91) tests/system-settings-mobile.spec.js:169:6 › System Settings screen tab bar (task 5ad55777) › tab bar renders at full height on desktop 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/system-settings-mobile-Sys-90f3e-s-at-full-height-on-desktop/error-context.md
+
+  92) tests/system-settings-mobile.spec.js:175:6 › System Settings screen tab bar (task 5ad55777) › rotating the viewport never covers the tab bar 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/system-settings-mobile-Sys-b8fb6-rt-never-covers-the-tab-bar/error-context.md
+
+  93) tests/system-settings-mobile.spec.js:192:6 › System Settings screen tab bar (task 5ad55777) › a deep-linked tab survives a refresh and an unknown section falls back 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/system-settings-mobile-Sys-26f59--unknown-section-falls-back/error-context.md
+
+  94) tests/system-settings-mobile.spec.js:221:6 › System Settings entry opens a screen, not a dialog (task cd669cc3) › no modal dialog shell remains on the settings route 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/system-settings-mobile-Sys-764f2-mains-on-the-settings-route/error-context.md
+
+  95) tests/system-settings-mobile.spec.js:228:6 › System Settings entry opens a screen, not a dialog (task cd669cc3) › desktop System Menu opens System Settings in a new window 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/system-settings-mobile-Sys-3b7a8-em-Settings-in-a-new-window/error-context.md
+
+  96) tests/system-settings-mobile.spec.js:253:6 › System Settings entry opens a screen, not a dialog (task cd669cc3) › mobile System Menu falls back to same-tab navigation (no popout trap) 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/system-settings-mobile-Sys-cdee0--navigation-no-popout-trap-/error-context.md
+
+  97) tests/task-editing.spec.js:34:6 › Task-view editing behaviors › attached image markdown is appended at the end, title line intact 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/task-editing-Task-view-edi-c73ec-t-the-end-title-line-intact/error-context.md
+
+  98) tests/task-editing.spec.js:71:6 › Task-view editing behaviors › preview/edit round-trip preserves edited content 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/task-editing-Task-view-edi-431ba-ip-preserves-edited-content/error-context.md
+
+  99) tests/task-errors.spec.js:93:6 › Task-view error display › long failure renders capped with a Show more/less toggle 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/task-errors-Task-view-erro-70461-ith-a-Show-more-less-toggle/error-context.md
+
+  100) tests/task-inspector.spec.js:38:6 › Task inspector core behaviors › just-created task opens the goal in edit mode with context tokens 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/task-inspector-Task-inspec-5894b-it-mode-with-context-tokens/error-context.md
+
+  101) tests/task-inspector.spec.js:57:6 › Task inspector core behaviors › preview toggle hides the editor and the context tokens, edit restores them 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/task-inspector-Task-inspec-3e91e-t-tokens-edit-restores-them/error-context.md
+
+  102) tests/task-inspector.spec.js:85:6 › Task inspector core behaviors › clicking the task key copies the full task id and keeps the inspector open 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/task-inspector-Task-inspec-2fcff-nd-keeps-the-inspector-open/error-context.md
+
+  103) tests/task-lifecycle.spec.js:41:6 › Task Lifecycle E2E › submit -> kanban placement -> advance -> complete 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/task-lifecycle-Task-Lifecy-62075-cement---advance---complete/error-context.md
+
+  104) tests/task-lifecycle.spec.js:84:6 › Task Lifecycle E2E › kanban cards are draggable and columns are drop targets 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/task-lifecycle-Task-Lifecy-7db7d-nd-columns-are-drop-targets/error-context.md
+
+  105) tests/task-lifecycle.spec.js:108:6 › Task Lifecycle E2E › human stage renders Approve/Reject checkpoint controls 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/task-lifecycle-Task-Lifecy-db459--Reject-checkpoint-controls/error-context.md
+
+  106) tests/task-lifecycle.spec.js:171:6 › Task Lifecycle E2E › clicking a card opens the slide-over task inspector 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/task-lifecycle-Task-Lifecy-47fe1-e-slide-over-task-inspector/error-context.md
+
+  107) tests/task-logs.spec.js:109:6 › Agent-log readability › structured run output renders readably across feeds 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/task-logs-Agent-log-readab-f3e6a-nders-readably-across-feeds/error-context.md
+
+  108) tests/visual/dashboard.spec.js:65:8 › Dashboard Visuals › Desktop › Empty state ─────────────
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/visual-dashboard-Dashboard-Visuals-Desktop-Empty-state/error-context.md
+
+  109) tests/visual/dashboard.spec.js:82:8 › Dashboard Visuals › Desktop › Active execution (task card in canvas) 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/visual-dashboard-Dashboard-e80ca-cution-task-card-in-canvas-/error-context.md
+
+  110) tests/visual/dashboard.spec.js:96:8 › Dashboard Visuals › Desktop › Populated history (tasks + session tree) 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/visual-dashboard-Dashboard-bc914-history-tasks-session-tree-/error-context.md
+
+  111) tests/visual/dashboard.spec.js:65:8 › Dashboard Visuals › Tablet › Empty state ──────────────
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/visual-dashboard-Dashboard-Visuals-Tablet-Empty-state/error-context.md
+
+  112) tests/visual/dashboard.spec.js:82:8 › Dashboard Visuals › Tablet › Active execution (task card in canvas) 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/visual-dashboard-Dashboard-8c0a5-cution-task-card-in-canvas-/error-context.md
+
+  113) tests/visual/dashboard.spec.js:96:8 › Dashboard Visuals › Tablet › Populated history (tasks + session tree) 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/visual-dashboard-Dashboard-46fe0-history-tasks-session-tree-/error-context.md
+
+  114) tests/visual/dashboard.spec.js:65:8 › Dashboard Visuals › Mobile › Empty state ──────────────
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/visual-dashboard-Dashboard-Visuals-Mobile-Empty-state/error-context.md
+
+  115) tests/visual/dashboard.spec.js:82:8 › Dashboard Visuals › Mobile › Active execution (task card in canvas) 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/visual-dashboard-Dashboard-41220-cution-task-card-in-canvas-/error-context.md
+
+  116) tests/visual/dashboard.spec.js:96:8 › Dashboard Visuals › Mobile › Populated history (tasks + session tree) 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/visual-dashboard-Dashboard-d581d-history-tasks-session-tree-/error-context.md
+
+  117) tests/visual/header.spec.js:23:7 › Header Visuals (task 66ad153f) › header band at Mobile 375px 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/visual-header-Header-Visua-a97ef-header-band-at-Mobile-375px/error-context.md
+
+  118) tests/visual/header.spec.js:23:7 › Header Visuals (task 66ad153f) › header band at Tablet 1024px 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/visual-header-Header-Visua-3fb0f-eader-band-at-Tablet-1024px/error-context.md
+
+  119) tests/visual/header.spec.js:23:7 › Header Visuals (task 66ad153f) › header band at Desktop 1280px 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/visual-header-Header-Visua-73da6-ader-band-at-Desktop-1280px/error-context.md
+
+  120) tests/visual/homepage.spec.js:44:7 › Homepage Visuals › visual regression - Desktop ─────────
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/visual-homepage-Homepage-Visuals-visual-regression---Desktop/error-context.md
+
+  121) tests/visual/homepage.spec.js:44:7 › Homepage Visuals › visual regression - Tablet ──────────
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/visual-homepage-Homepage-Visuals-visual-regression---Tablet/error-context.md
+
+  122) tests/visual/homepage.spec.js:44:7 › Homepage Visuals › visual regression - Mobile ──────────
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/visual-homepage-Homepage-Visuals-visual-regression---Mobile/error-context.md
+
+  123) tests/websocket.spec.js:42:5 › frontend connects to the backend WebSocket and receives the handshake 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/websocket-frontend-connect-33560--and-receives-the-handshake/error-context.md
+
+  124) tests/workflow.spec.js:18:6 › Workflow E2E Tests › Task Creation: In-line add task -> verify card appears in kanban stage 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/workflow-Workflow-E2E-Test-a0b86-ard-appears-in-kanban-stage/error-context.md
+
+  125) tests/workflow.spec.js:38:6 › Workflow E2E Tests › Stage types: human stage shows review checkpoint 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/workflow-Workflow-E2E-Test-56497-age-shows-review-checkpoint/error-context.md
+
+  126) tests/workflow.spec.js:66:6 › Workflow E2E Tests › Engine controls: Start engine, skip current stage, and Look Back in Now Playing Bar 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/workflow-Workflow-E2E-Test-b9c90-ook-Back-in-Now-Playing-Bar/error-context.md
+
+  127) tests/workflow.spec.js:99:6 › Workflow E2E Tests › Project isolation: switching project loads its own workflow 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/workflow-Workflow-E2E-Test-b0511-ject-loads-its-own-workflow/error-context.md
+
+  128) tests/workflow.spec.js:116:6 › Workflow E2E Tests › Stage skills: GET /skills serves the library and the stage editor exposes the Skills panel 
+
+    Error: browserType.launch: Executable doesn't exist at /home/node/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: test-results/workflow-Workflow-E2E-Test-006ae-or-exposes-the-Skills-panel/error-context.md
+
+  128 failed
+    tests/accessibility.spec.js:69:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › orchestrator view has no axe violations 
+    tests/accessibility.spec.js:74:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › settings view has no axe violations 
+    tests/accessibility.spec.js:81:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › stage settings tray has no axe violations 
+    tests/accessibility.spec.js:89:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › explorer view has no axe violations 
+    tests/accessibility.spec.js:95:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › docs view has no axe violations 
+    tests/accessibility.spec.js:101:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › observability view has no axe violations 
+    tests/accessibility.spec.js:107:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › task detail view has no axe violations 
+    tests/accessibility.spec.js:118:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › task review view has no axe violations 
+    tests/accessibility.spec.js:127:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › settings model-aliases reliability cards have no axe violations 
+    tests/accessibility.spec.js:146:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › compact mobile monitor view has no axe violations 
+    tests/accessibility.spec.js:157:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › contrast walk catches a planted 1.7:1 node (negative control) 
+    tests/accessibility.spec.js:177:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › keyboard: skip link is reachable and visible on focus 
+    tests/accessibility.spec.js:186:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › keyboard: project dropdown closes on Escape 
+    tests/accessibility.spec.js:198:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › keyboard: in-column stage configuration drawer closes on Escape and restores focus 
+    tests/accessibility.spec.js:211:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › keyboard: task inspector closes on Escape 
+    tests/accessibility.spec.js:243:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › idle engine names no task in the NowPlaying bar 
+    tests/accessibility.spec.js:272:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › system-settings view has no axe violations 
+    tests/accessibility.spec.js:278:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › system-settings deep section (models) has no axe violations 
+    tests/accessibility.spec.js:284:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › retrospective view has no axe violations 
+    tests/accessibility.spec.js:290:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › retrospective with chat panel open has no axe violations 
+    tests/accessibility.spec.js:303:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › task survey view has no axe violations 
+    tests/accessibility.spec.js:316:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › docs deep article (first-time-setup) has no axe violations 
+    tests/accessibility.spec.js:327:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › task detail with waiting_human status has no axe violations 
+    tests/accessibility.spec.js:344:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › explorer with file preview open has no axe violations 
+    tests/accessibility.spec.js:365:7 › Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness) › contrast walk exempts disabled controls (negative control) 
+    tests/app-status.spec.js:61:6 › App-status / goto-app link › files page shows the goto-app link when the API publishes a URL 
+    tests/app-status.spec.js:85:6 › App-status / goto-app link › loopback URL honors the networkHost override 
+    tests/app-status.spec.js:103:6 › App-status / goto-app link › no link renders — never a broken one — when no URL is published 
+    tests/footer-overlay.spec.js:99:6 › Footer overlap consistency › Configure drawer buttons stay clickable above the collapsed activity console 
+    tests/footer-overlay.spec.js:158:6 › Footer overlap consistency › Configure drawer stays clear of an expanded activity console 
+    tests/footer-overlay.spec.js:188:6 › Footer overlap consistency › Task inspector ends above the Now Playing footer and keeps its controls clickable 
+    tests/functional.spec.js:6:6 › KainBain Functional E2E Tests › homepage loading and orchestrator cockpit 
+    tests/functional.spec.js:16:6 › KainBain Functional E2E Tests › workflow canvas renders stage columns with type badges 
+    tests/functional.spec.js:34:6 › KainBain Functional E2E Tests › now playing bar with engine controls 
+    tests/functional.spec.js:54:6 › KainBain Functional E2E Tests › right rail never overlaps the center transport controls at any supported width 
+    tests/functional.spec.js:134:6 › KainBain Functional E2E Tests › in-place column task creation ─
+    tests/functional.spec.js:152:6 › KainBain Functional E2E Tests › project selector lists projects and switches 
+    tests/functional.spec.js:174:6 › KainBain Functional E2E Tests › settings tab renders per-project configuration 
+    tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 320px 
+    tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 360px 
+    tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 375px 
+    tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 390px 
+    tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 414px 
+    tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 430px 
+    tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 480px 
+    tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 640px 
+    tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 768px 
+    tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 859px 
+    tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 1024px 
+    tests/header-responsive.spec.js:105:7 › Header responsive layout guard (task 66ad153f) › header controls neither overlap nor clip at 1280px 
+    tests/homepage.spec.js:4:5 › homepage has correct title ────────────────────────────────────────
+    tests/homepage.spec.js:9:5 › homepage displays the orchestrator cockpit ────────────────────────
+    tests/mobile-responsive.spec.js:36:6 › Mobile Responsive Layout › renders mobile stage column selector tab strip 
+    tests/mobile-responsive.spec.js:50:6 › Mobile Responsive Layout › switching mobile stage tabs displays the corresponding column 
+    tests/mobile-responsive.spec.js:64:6 › Mobile Responsive Layout › slide-over inspector opens in mobile drawer mode with accessible touch controls 
+    tests/mobile-responsive.spec.js:95:6 › Mobile Responsive Layout › now playing bar is compact and controls are visible without clipping 
+    tests/mobile-responsive.spec.js:113:6 › Mobile Responsive Layout › filter pills are gone; search bar with !filters is available on mobile (task 7a411b12 + c213d3a9) 
+    tests/mobile-responsive.spec.js:142:6 › Mobile Responsive Layout › search bar with !filters and Show Completed are visible on desktop (task 7a411b12 + c213d3a9) 
+    tests/mobile-responsive.spec.js:158:6 › Mobile Responsive Layout › task cards render the compact density on mobile (task 7a411b12) 
+    tests/mobile-responsive.spec.js:210:6 › Mobile tap popups deconfliction (task e2cf55ac) › tapping the pipeline switcher opens only the menu, never a tooltip popover 
+    tests/mobile-responsive.spec.js:225:6 › Mobile tap popups deconfliction (task e2cf55ac) › tapping the task search field focuses it without popping a tooltip 
+    tests/mobile-responsive.spec.js:237:6 › Mobile tap popups deconfliction (task e2cf55ac) › tapping a card body opens the inspector and it can be closed 
+    tests/mobile-responsive.spec.js:263:6 › Mobile tap popups deconfliction (task e2cf55ac) › tapping Approve on a checkpoint card advances the task without opening the inspector 
+    tests/mobile-responsive.spec.js:341:6 › Header controls on mobile (task 66ad153f) › every header control meets the touch floor and stays on-screen 
+    tests/mobile-responsive.spec.js:368:6 › Desktop regression for tap guard (task e2cf55ac) › switcher opens its menu on click and tooltip only on hover 
+    tests/mobile-responsive.spec.js:408:6 › Mobile search bar with tags (task da91c31e) › search bar with 6 tags remains width-bounded with input and clear within viewport 
+    tests/now-playing-cross-project.spec.js:206:6 › Now Playing bar is one pipeline for all projects › bar keeps naming the running owner when switching from Project A to Project B 
+    tests/now-playing-cross-project.spec.js:302:6 › Now Playing bar is one pipeline for all projects › Skip Current advances the engine owner even when another project is selected 
+    tests/pr-review.spec.js:150:6 › PR Review E2E › open review → comment → fail with comments → agent fix → re-review (stale) → pass → merge 
+    tests/reasoning-levels-browser.spec.js:71:7 › Reasoning levels browser verification (scratch stack) › picker + aliases: levels, persistence, invalid handling, null harnesses 
+    tests/retrospective-chat.spec.js:59:6 › retrospective long-turn chat › send shows the working card, then the reply replaces it 
+    tests/retrospective-chat.spec.js:86:6 › retrospective long-turn chat › navigate away mid-turn keeps the turn and toasts with a way back 
+    tests/retrospective.spec.js:13:5 › retrospective page renders without page errors ──────────────
+    tests/retrospective.spec.js:22:5 › retrospective ?show= share link renders without page errors ─
+    tests/retrospective.spec.js:51:6 › retrospective mobile layout › phone shows one pane at a time behind the tab strip 
+    tests/retrospective.spec.js:83:6 › retrospective mobile layout › phone controls keep touch-sized targets 
+    tests/retrospective.spec.js:117:6 › retrospective mobile layout › phone page owns the vertical scroll region 
+    tests/retrospective.spec.js:151:6 › retrospective mobile layout › phone page never scrolls sideways 
+    tests/retrospective.spec.js:172:6 › retrospective mobile layout › desktop hides the strip and shows all three panes 
+    tests/runtime-errors.spec.js:13:5 › app renders without uncaught page errors ───────────────────
+    tests/runtime-errors.spec.js:23:5 › app renders without console errors ─────────────────────────
+    tests/settings.spec.js:60:6 › Settings save round-trip › edit, save, reload: values persist across UI and API 
+    tests/settings.spec.js:83:6 › Settings save round-trip › invalid input blocks the save and keeps the stored config 
+    tests/survey-verify.spec.js:121:7 › question-me survey verification › engine parks a question-me stage with no survey file; skip advances 
+    tests/survey-verify.spec.js:145:7 › question-me survey verification › desktop: conditional reveal, notes, save, submit advances; file stays append-only 
+    tests/survey-verify.spec.js:258:9 › question-me survey verification › touch context › mobile: survey renders, answers, and fits 375px 
+    tests/survey-verify.spec.js:289:7 › question-me survey verification › empty round advances via continue without parking 
+    tests/system-settings-mobile.spec.js:126:6 › System Settings screen tab bar (task 5ad55777) › tab bar renders at full height on mobile across all tabs 
+    tests/system-settings-mobile.spec.js:142:6 › System Settings screen tab bar (task 5ad55777) › tab bar renders at full height on a short mobile viewport 
+    tests/system-settings-mobile.spec.js:155:6 › System Settings screen tab bar (task 5ad55777) › scrolling the details never covers the tab bar 
+    tests/system-settings-mobile.spec.js:169:6 › System Settings screen tab bar (task 5ad55777) › tab bar renders at full height on desktop 
+    tests/system-settings-mobile.spec.js:175:6 › System Settings screen tab bar (task 5ad55777) › rotating the viewport never covers the tab bar 
+    tests/system-settings-mobile.spec.js:192:6 › System Settings screen tab bar (task 5ad55777) › a deep-linked tab survives a refresh and an unknown section falls back 
+    tests/system-settings-mobile.spec.js:221:6 › System Settings entry opens a screen, not a dialog (task cd669cc3) › no modal dialog shell remains on the settings route 
+    tests/system-settings-mobile.spec.js:228:6 › System Settings entry opens a screen, not a dialog (task cd669cc3) › desktop System Menu opens System Settings in a new window 
+    tests/system-settings-mobile.spec.js:253:6 › System Settings entry opens a screen, not a dialog (task cd669cc3) › mobile System Menu falls back to same-tab navigation (no popout trap) 
+    tests/task-editing.spec.js:34:6 › Task-view editing behaviors › attached image markdown is appended at the end, title line intact 
+    tests/task-editing.spec.js:71:6 › Task-view editing behaviors › preview/edit round-trip preserves edited content 
+    tests/task-errors.spec.js:93:6 › Task-view error display › long failure renders capped with a Show more/less toggle 
+    tests/task-inspector.spec.js:38:6 › Task inspector core behaviors › just-created task opens the goal in edit mode with context tokens 
+    tests/task-inspector.spec.js:57:6 › Task inspector core behaviors › preview toggle hides the editor and the context tokens, edit restores them 
+    tests/task-inspector.spec.js:85:6 › Task inspector core behaviors › clicking the task key copies the full task id and keeps the inspector open 
+    tests/task-lifecycle.spec.js:41:6 › Task Lifecycle E2E › submit -> kanban placement -> advance -> complete 
+    tests/task-lifecycle.spec.js:84:6 › Task Lifecycle E2E › kanban cards are draggable and columns are drop targets 
+    tests/task-lifecycle.spec.js:108:6 › Task Lifecycle E2E › human stage renders Approve/Reject checkpoint controls 
+    tests/task-lifecycle.spec.js:171:6 › Task Lifecycle E2E › clicking a card opens the slide-over task inspector 
+    tests/task-logs.spec.js:109:6 › Agent-log readability › structured run output renders readably across feeds 
+    tests/visual/dashboard.spec.js:65:8 › Dashboard Visuals › Desktop › Empty state ────────────────
+    tests/visual/dashboard.spec.js:82:8 › Dashboard Visuals › Desktop › Active execution (task card in canvas) 
+    tests/visual/dashboard.spec.js:96:8 › Dashboard Visuals › Desktop › Populated history (tasks + session tree) 
+    tests/visual/dashboard.spec.js:65:8 › Dashboard Visuals › Tablet › Empty state ─────────────────
+    tests/visual/dashboard.spec.js:82:8 › Dashboard Visuals › Tablet › Active execution (task card in canvas) 
+    tests/visual/dashboard.spec.js:96:8 › Dashboard Visuals › Tablet › Populated history (tasks + session tree) 
+    tests/visual/dashboard.spec.js:65:8 › Dashboard Visuals › Mobile › Empty state ─────────────────
+    tests/visual/dashboard.spec.js:82:8 › Dashboard Visuals › Mobile › Active execution (task card in canvas) 
+    tests/visual/dashboard.spec.js:96:8 › Dashboard Visuals › Mobile › Populated history (tasks + session tree) 
+    tests/visual/header.spec.js:23:7 › Header Visuals (task 66ad153f) › header band at Mobile 375px 
+    tests/visual/header.spec.js:23:7 › Header Visuals (task 66ad153f) › header band at Tablet 1024px 
+    tests/visual/header.spec.js:23:7 › Header Visuals (task 66ad153f) › header band at Desktop 1280px 
+    tests/visual/homepage.spec.js:44:7 › Homepage Visuals › visual regression - Desktop ────────────
+    tests/visual/homepage.spec.js:44:7 › Homepage Visuals › visual regression - Tablet ─────────────
+    tests/visual/homepage.spec.js:44:7 › Homepage Visuals › visual regression - Mobile ─────────────
+    tests/websocket.spec.js:42:5 › frontend connects to the backend WebSocket and receives the handshake 
+    tests/workflow.spec.js:18:6 › Workflow E2E Tests › Task Creation: In-line add task -> verify card appears in kanban stage 
+    tests/workflow.spec.js:38:6 › Workflow E2E Tests › Stage types: human stage shows review checkpoint 
+    tests/workflow.spec.js:66:6 › Workflow E2E Tests › Engine controls: Start engine, skip current stage, and Look Back in Now Playing Bar 
+    tests/workflow.spec.js:99:6 › Workflow E2E Tests › Project isolation: switching project loads its own workflow 
+    tests/workflow.spec.js:116:6 › Workflow E2E Tests › Stage skills: GET /skills serves the library and the stage editor exposes the Skills panel 
+  5 did not run
+  2 passed (1.2m)
+----------------------------------------------------------------------
+
+```
+
+### Modified Files
+- (No files modified / inspection only)
+
+### Verification Status
+- Stage execution failed with error: CI command failed with exit code 1
+- Triggered fallback routing.

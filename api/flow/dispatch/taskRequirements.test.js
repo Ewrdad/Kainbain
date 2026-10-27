@@ -45,8 +45,10 @@ describe("taskRequirements", () => {
 		).toMatchObject({ harness: "pi", model: "", tier: "T1" });
 	});
 
-	test("non-model stages are not Runner-runnable and default T0", () => {
-		for (const type of ["human", "command", "ci"]) {
+	test("human stages are not Runner-runnable; ci stages are CI-runnable at T0", () => {
+		const ci = taskRequirements({}, { currentStageId: "s1", stages: [{ id: "s1", type: "ci" }] });
+		expect(ci).toMatchObject({ runnableType: true, kind: "ci", harness: null, tier: "T0" });
+		for (const type of ["human"]) {
 			const out = taskRequirements({}, { currentStageId: "s1", stages: [{ id: "s1", type }] });
 			expect(out.runnableType).toBe(false);
 			expect(out.tier).toBe("T0");

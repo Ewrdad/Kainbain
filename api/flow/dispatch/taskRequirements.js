@@ -30,7 +30,8 @@ export function taskRequirements(project = {}, task = {}) {
 		stages[0] ||
 		{};
 	const type = String(stage.type || "agent").toLowerCase();
-	const runnableType = type === "agent" || type === "review";
+	const kind = type === "ci" || type === "script" || type === "deploy" || type === "command" ? "ci" : type;
+	const runnableType = type === "agent" || type === "review" || kind === "ci";
 
 	// Same order as the embedded run path (`resolveHarnessName`): stage
 	// override → project default → configured default → built-in. Dispatch
@@ -63,9 +64,11 @@ export function taskRequirements(project = {}, task = {}) {
 	);
 	const tier = explicitTier
 		? String(explicitTier).trim()
-		: runnableType
-			? "T1"
-			: "T0";
+		: kind === "ci"
+			? "T0"
+			: runnableType
+				? "T1"
+				: "T0";
 
-	return { harness, model, tier, alias, runnableType, stageId: stage.id ?? null };
+	return { harness: kind === "ci" ? null : harness, model: kind === "ci" ? "" : model, tier, alias: kind === "ci" ? null : alias, runnableType, kind, stageId: stage.id ?? null };
 }

@@ -18,8 +18,12 @@ describe("isDispatchServable", () => {
 		expect(isDispatchServable({ project: { harness: "pi" }, task: agentTask() })).toBe(true);
 	});
 
-	test("human, command, and ci stages are never servable", () => {
-		for (const type of ["human", "command", "ci", "script"]) {
+	test("human stages are never servable; ci/command are servable in task-branch mode", () => {
+		for (const type of ["ci", "script"]) {
+			expect(isDispatchServable({ project: { harness: "pi" }, task: agentTask({ stages: [{ id: "s1", type }] }) })).toBe(true);
+			expect(isDispatchServable({ project: { harness: "pi" }, task: agentTask({ stages: [{ id: "s1", type, runOnBranch: "primary" }] }) })).toBe(false);
+		}
+		for (const type of ["human", "command"]) {
 			expect(
 				isDispatchServable({
 					project: { harness: "pi" },

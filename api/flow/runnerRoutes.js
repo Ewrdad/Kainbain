@@ -6,6 +6,8 @@ import { resolveAliasRequirement } from "./dispatch/resolveAliasRequirement.js";
 import { runnerMatches } from "./dispatch/runnerMatches.js";
 import { curateRunnerPrompt } from "./curateRunnerPrompt.js";
 import { materializeRunnerTaskDocs } from "./execution/materializeRunnerTaskDocs.js";
+import { buildCommandKeywordContext, expandStageCommand } from "./commandStages.js";
+import { resolveStagesForTask } from "./stageResolution.js";
 
 /***
  * MARK: registerRunnerRoutes
@@ -37,6 +39,24 @@ export async function registerRunnerRoutes(app, { deps }) {
 		if (err.code) body.code = err.code;
 		if (err.holder) body.holder = err.holder;
 		return reply.status(status).send(body);
+	};
+
+	const ciPayloadFor = (projectId, task, stage) => {
+		if (!stage) return {};
+		const project = projectStore.getProject(projectId);
+		const stages = resolveStagesForTask(project, task);
+		const resolved = stage || stages.find((x) => String(x?.id) === String(task?.currentStageId)) || stages[0];
+		if (!resolved) return {};
+		const type = String(resolved.type || "").toLowerCase();
+		if (!["ci", "script", "deploy", "command"].includes(type)) return {};
+		try {
+			const ctx = buildCommandKeywordContext({ task, stage: resolved, project, projectCwd: project?.cwd || "" });
+			return {
+				kind: "ci",
+				command: expandStageCommand(resolved.command || resolved.script || "echo 'CI stage completed'", ctx),
+				timeoutMs: Number(resolved.timeoutMs) || Number(project?.ciTimeoutMs) || 600000,
+			};
+		} catch { return { kind: "ci", command: resolved.command || resolved.script || "", timeoutMs: 600000 }; }
 	};
 
 	const authedRunner = (request) => {
@@ -388,7 +408,7 @@ export async function registerRunnerRoutes(app, { deps }) {
 				runner.runnerId,
 				projectId,
 			);
-			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, prompt: curateRunnerPrompt({ project: projectStore.getProject(projectId), task, stageId: task.currentStageId }) };
+			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project: projectStore.getProject(projectId), task, stageId: task.currentStageId }) };
 		} catch (err) {
 			return sendStoreError(reply, err);
 		}
@@ -532,6 +552,7 @@ export async function registerRunnerRoutes(app, { deps }) {
 					epoch,
 					stageId: cand.stage?.id ?? null,
 					prompt: curateRunnerPrompt({ project: projectStore.getProject(cand.projectId), task: cand.task, stageId: cand.stage?.id }),
+					...ciPayloadFor(cand.projectId, cand.task, cand.stage),
 					requirements: req,
 				};
 			} catch (err) {

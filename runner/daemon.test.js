@@ -10,6 +10,7 @@ import {
 	deliverSteers,
 	diskHeadroomMbFor,
 	probeHarnessVersions,
+	runCiCommand,
 	runDispatchLoop,
 	runSingleAssignment,
 	applyBackendPrompt,
@@ -705,5 +706,14 @@ describe("runDispatchLoop", () => {
 			/persistent-loop-probe/,
 		);
 		assert.equal(polls, 2);
+	});
+});
+
+describe("runCiCommand", () => {
+	it("runs a command in the workdir and reports exit codes", async () => {
+		const ok = await runCiCommand({ command: "echo hello-ci", workdir: "/tmp" });
+		assert.equal(ok.exitCode, 0); assert.match(ok.output, /hello-ci/);
+		const bad = await runCiCommand({ command: "exit 3", workdir: "/tmp" });
+		assert.equal(bad.exitCode, 3);
 	});
 });

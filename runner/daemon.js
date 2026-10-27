@@ -1,7 +1,7 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import { promisify } from "node:util";
-import { listOrphanWorkdirs, prepareWorkdir } from "./project.js";
+import { listOrphanWorkdirs, prepareWorkdir, runGit } from "./project.js";
 import { runHarnessStage } from "./harness.js";
 import { commitAndPush } from "./gitOps.js";
 
@@ -354,6 +354,33 @@ export async function deliverSteers({ config, client, logger, facts, state }) {
 }
 
 /***
+ * MARK: runCiCommand
+ * @description Runs one backend-dispatched CI/command stage in the worktree:
+ *   shell command (already keyword-expanded by the backend, backend cwd
+ *   retargeted to the worktree), output streamed to onLog and collected
+ *   (tail-capped). Resolves { exitCode, output } — non-zero is a result,
+ *   not a throw; spawn failure resolves exitCode 1 with the error as output.
+ * @example await runCiCommand({ command: 'true', workdir: '/w', onLog: () => {} }) => { exitCode: 0 }
+ * @param {Object} opts - `{ command, workdir, timeoutMs?, onLog?, env? }`.
+ * @returns {Promise<Object>} `{ exitCode, output }`.
+ ***/
+export function runCiCommand({ command, workdir, timeoutMs = 600000, onLog = () => {}, env = {} } = {}) {
+	return new Promise((resolve) => {
+		const shell = process.platform === "win32" ? "cmd" : "/bin/bash";
+		const args = process.platform === "win32" ? ["/c", command] : ["-c", command];
+		let child;
+		try { child = spawn(shell, args, { cwd: workdir, env: { ...process.env, ...env } }); }
+		catch (err) { resolve({ exitCode: 1, output: String(err?.message || err) }); return; }
+		let output = "";
+		const timer = setTimeout(() => { try { child.kill("SIGKILL"); } catch {} }, timeoutMs > 0 ? timeoutMs : 600000);
+		const onData = (buf) => { const text = buf.toString(); output = (output + text).slice(-20000); try { onLog(text); } catch {} };
+		child.stdout?.on("data", onData); child.stderr?.on("data", onData);
+		child.on("error", (err) => { clearTimeout(timer); resolve({ exitCode: 1, output: output + String(err?.message || err) }); });
+		child.on("close", (code) => { clearTimeout(timer); resolve({ exitCode: typeof code === "number" ? code : 1, output }); });
+	});
+}
+
+/***
  * MARK: executeAssignment
  * @description Shared execution body: claim (or consume the dispatch
  *   answer's lease — the route already claim-fenced it), load, run,
@@ -398,6 +425,9 @@ async function executeAssignment({
 	taskId,
 	lease,
 	backendPrompt = "",
+	kind = "",
+	ciCommand = "",
+	ciTimeoutMs = 0,
 	model = null,
 	harnessId = null,
 }) {
@@ -413,6 +443,9 @@ async function executeAssignment({
 		const claim = lease ?? (await client.claim({ taskId, projectId }));
 		const { executionId, epoch } = claim;
 		if (!backendPrompt && typeof claim.prompt === "string") backendPrompt = claim.prompt;
+		if (!kind && typeof claim.kind === "string") kind = claim.kind;
+		if (!ciCommand && typeof claim.command === "string") ciCommand = claim.command;
+		if (!ciTimeoutMs && Number(claim.timeoutMs)) ciTimeoutMs = Number(claim.timeoutMs);
 		// Publish the live execution for the steer pull cycle (D5); the
 		// heartbeat loop only ever delivers steers for THIS execution.
 		state.executionId = executionId;
@@ -493,6 +526,24 @@ async function executeAssignment({
 				});
 			} catch (err) {
 				logger.warn(`Prompt report failed: ${err?.message || err}`);
+			}
+
+			if (kind === "ci") {
+				const command = applyBackendPrompt({ prompt: ciCommand, backendCwd: project.cwd, workdir });
+				logger.log(`CI stage command: ${command}`);
+				const ci = await runCiCommand({
+					command, workdir,
+					timeoutMs: ciTimeoutMs || 600000,
+					env: { KAINBAIN_TASK_ID: taskId, KAINBAIN_TASK_DOCS: `${workdir}/docs/tasks/${taskId}` },
+					onLog: (text) => { sendLogs(text).catch(() => {}); },
+				});
+				state.session = null; stopRenewal();
+				await client.progress({ taskId, projectId, executionId, epoch, stageId, event: "finished" });
+				const sha = (await runGit(workdir, ["rev-parse", "HEAD"])).stdout.trim();
+				if (ci.exitCode !== 0) {
+					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason: `CI command failed with exit code ${ci.exitCode}`, taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: `${config.tiers.join("/")}:${servingHarnessId}:${config.model || "default"}`, durationMs: Date.now() - runStartedAt });
+				}
+				return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: `${config.tiers.join("/")}:${servingHarnessId}:${config.model || "default"}`, durationMs: Date.now() - runStartedAt });
 			}
 
 			// The backend project record's cwd points at the backend's own
@@ -733,6 +784,9 @@ export async function runDispatchLoop({
 				taskId: answer.taskId,
 				lease: { executionId: answer.executionId, epoch: answer.epoch },
 				backendPrompt: answer.prompt || "",
+				kind: answer.kind || "",
+				ciCommand: answer.command || "",
+				ciTimeoutMs: Number(answer.timeoutMs) || 0,
 				// The backend already matched this task against our
 				// advertised models: serve exactly its required model.
 				model: answer.requirements?.model || null,
