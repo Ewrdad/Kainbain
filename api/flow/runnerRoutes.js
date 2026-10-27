@@ -5,6 +5,7 @@ import { scanClaimableTasks } from "./dispatch/scanClaimableTasks.js";
 import { resolveAliasRequirement } from "./dispatch/resolveAliasRequirement.js";
 import { runnerMatches } from "./dispatch/runnerMatches.js";
 import { curateRunnerPrompt } from "./curateRunnerPrompt.js";
+import { materializeRunnerTaskDocs } from "./execution/materializeRunnerTaskDocs.js";
 
 /***
  * MARK: registerRunnerRoutes
@@ -299,6 +300,14 @@ export async function registerRunnerRoutes(app, { deps }) {
 					code: "INVALID_OUTCOME",
 				});
 			}
+			// Runner-authored task files (plan/survey) land in the backend
+			// task folder BEFORE the finish advances the task, so a following
+			// backend-run CI stage reading {{taskDocs}} can see them.
+			materializeRunnerTaskDocs({
+				project: projectStore.getProject(ctx.projectId),
+				taskId: request.params.id,
+				files: request.body?.taskFiles,
+			});
 			const harnessId =
 				runner.facts?.harnesses?.[0]?.id || request.body?.harnessId || "unknown";
 			const finish = await applyRunnerReport({
