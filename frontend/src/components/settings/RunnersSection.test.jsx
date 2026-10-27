@@ -151,6 +151,31 @@ describe('RunnersSection', () => {
     expect(screen.queryByTestId('runner-assignment-r1')).toBeNull();
   });
 
+  it('shows the credential issue time without the credential value', async () => {
+    getRunners.mockResolvedValue([
+      { runnerId: 'r1', status: 'active', facts: {}, lastSeenAt: null, credentialIssuedAt: '2026-10-26T00:00:00.000Z' },
+      { runnerId: 'r2', status: 'active', facts: {}, lastSeenAt: null },
+    ]);
+    render(<RunnersSection />);
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-credential-age-r1')).toBeTruthy();
+    });
+    expect(screen.getByTestId('runner-credential-age-r1').title).toContain('2026-10-26');
+    expect(screen.queryByTestId('runner-credential-age-r2')).toBeNull();
+  });
+
+  it('alerts when one Runner identity heartbeats from multiple origins', async () => {
+    getRunners.mockResolvedValue([
+      { runnerId: 'r1', status: 'active', facts: {}, lastSeenAt: null, originConflicts: 2 },
+      { runnerId: 'r2', status: 'active', facts: {}, lastSeenAt: null, originConflicts: 0 },
+    ]);
+    render(<RunnersSection />);
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-origin-alert-r1').textContent).toContain('origin ×3');
+    });
+    expect(screen.queryByTestId('runner-origin-alert-r2')).toBeNull();
+  });
+
   it('never renders credential values', async () => {
     getRunners.mockResolvedValue([
       { runnerId: 'r1', status: 'active', facts: {}, lastSeenAt: null, credential: 'SHOULD-NOT-RENDER' },

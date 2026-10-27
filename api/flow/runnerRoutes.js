@@ -65,6 +65,8 @@ export async function registerRunnerRoutes(app, { deps }) {
 					request.headers?.["x-runner-credential"] || "",
 				).trim(),
 				facts: request.body?.facts || {},
+				// G11 audit alert: one identity from multiple origins.
+				origin: request.ip || null,
 			});
 			// D5 pull channel (ADR 0011): pending steers for this
 			// Runner's live executions ride the heartbeat response, so

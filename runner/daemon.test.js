@@ -4,7 +4,15 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { defaultLoadHarness, deliverSteers, runDispatchLoop, runSingleAssignment } from "./daemon.js";
+import {
+	clearHarnessVersionCache,
+	defaultLoadHarness,
+	deliverSteers,
+	diskHeadroomMbFor,
+	probeHarnessVersions,
+	runDispatchLoop,
+	runSingleAssignment,
+} from "./daemon.js";
 
 describe("defaultLoadHarness", () => {
 	it("wires mock, pi, muse, antigravity, and vibe harnesses with createSession", async () => {
@@ -116,6 +124,54 @@ describe("runSingleAssignment", () => {
 		assert.ok(fs.existsSync(path.join(config.workRoot, "kb-t1")));
 	});
 
+	it("runs the harness session in the prepared worktree, not the backend checkout", async () => {
+		// Wire-proof 2026-10-27: the backend record's cwd is the backend's
+		// own checkout, so passing it through lets the agent write into the
+		// wrong repo while the worktree commit ships nothing.
+		const repo = localRepo();
+		const origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-runner-cwd-origin-"));
+		execFileSync("git", ["init", "-q", "--bare"], { cwd: origin, stdio: "ignore" });
+		execFileSync("git", ["-C", repo, "remote", "add", "origin", origin], { stdio: "ignore" });
+		execFileSync("git", ["-C", repo, "push", "-q", "origin", "HEAD:main"], { stdio: "ignore" });
+		execFileSync("git", ["--git-dir", origin, "symbolic-ref", "HEAD", "refs/heads/main"], {
+			stdio: "ignore",
+		});
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo, origin);
+		let seenProject = null;
+		let seenSessionDir = null;
+		const capturing = () => ({
+			async createSession(project, meta) {
+				seenProject = project;
+				seenSessionDir = meta.sessionDir;
+				return {
+					getLastAssistantText: () => "done",
+					subscribe: () => () => {},
+					prompt: async () => "done",
+					dispose: async () => {},
+				};
+			},
+		});
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", cwd: "/backend/projects/p1", gitUrl: origin }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async () => ({ accepted: true, shaState: "present" }),
+			interrupt: async () => ({ interrupted: true }),
+		});
+		await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => capturing(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.ok(seenSessionDir.startsWith(config.workRoot));
+		assert.equal(seenProject.cwd, seenSessionDir);
+	});
+
 	it("reports harness failure through the failed outcome, not interrupt", async () => {
 		const repo = localRepo();
 		const config = baseConfig();
@@ -197,6 +253,34 @@ describe("runSingleAssignment", () => {
 			}),
 			/still pending/,
 		);
+	});
+});
+
+describe("runner facts (G4/G5)", () => {
+	it("probes mock without spawning and unknown ids stay unknown", async () => {
+		clearHarnessVersionCache();
+		assert.deepEqual(await probeHarnessVersions("mock"), { mock: "mock" });
+		assert.deepEqual(await probeHarnessVersions("definitely-not-a-harness"), {
+			"definitely-not-a-harness": "unknown",
+		});
+	});
+
+	it("caches the version probe per process", async () => {
+		clearHarnessVersionCache();
+		const first = await probeHarnessVersions("mock");
+		const second = await probeHarnessVersions("mock");
+		assert.equal(first, second);
+	});
+
+	it("measures disk headroom on an existing work root", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-runner-disk-"));
+		try {
+			const mb = diskHeadroomMbFor(dir);
+			assert.equal(typeof mb, "number");
+			assert.ok(mb >= 0);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });
 

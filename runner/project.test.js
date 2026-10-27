@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { listOrphanWorkdirs, prepareWorkdir } from "./project.js";
+import { listOrphanWorkdirs, prepareWorkdir, refreshMirror } from "./project.js";
 
 function git(dir, args) {
 	execFileSync("git", args, { cwd: dir, stdio: "ignore" });
@@ -80,5 +80,50 @@ describe("runner project prep", () => {
 
 	it("requires a repo source", async () => {
 		await assert.rejects(prepareWorkdir({ workRoot: tmp, taskId: "t1" }), /repoUrl/);
+	});
+
+	it("self-heals a diverged mirror with a hard reset (G6)", async () => {
+		const origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-runner-div-origin-"));
+		try {
+			git(origin, ["init", "-q", "--bare"]);
+			git(repo, ["remote", "add", "origin", origin]);
+			git(repo, ["push", "-q", "origin", "HEAD:main"]);
+			execFileSync("git", ["--git-dir", origin, "symbolic-ref", "HEAD", "refs/heads/main"], {
+				stdio: "ignore",
+			});
+			const first = await prepareWorkdir({ repoUrl: origin, workRoot: tmp, taskId: "t1" });
+			assert.equal(first.mode, "clone");
+			// Advance the origin past what the mirror has.
+			fs.writeFileSync(path.join(repo, "g.txt"), "g");
+			git(repo, ["add", "."]);
+			git(repo, ["commit", "-qm", "second"]);
+			git(repo, ["push", "-q", "origin", "HEAD:main"]);
+			// Diverge the mirror checkout directly (a failed pull in the
+			// old code left exactly this state behind forever).
+			const [mirror] = fs
+				.readdirSync(path.join(tmp, "mirrors"))
+				.map((n) => path.join(tmp, "mirrors", n));
+			git(mirror, ["config", "user.email", "t@t.t"]);
+			git(mirror, ["config", "user.name", "t"]);
+			fs.writeFileSync(path.join(mirror, "local-only.txt"), "mine");
+			git(mirror, ["add", "."]);
+			git(mirror, ["commit", "-qm", "local divergence"]);
+			// The old `pull --ff-only` path rejects this; the refresh heals.
+			await refreshMirror(mirror);
+			const mirrorHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: mirror })
+				.toString()
+				.trim();
+			const originHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo })
+				.toString()
+				.trim();
+			assert.equal(mirrorHead, originHead);
+			// And the next task prep flows through the healed mirror.
+			const second = await prepareWorkdir({ repoUrl: origin, workRoot: tmp, taskId: "t2" });
+			assert.equal(second.mode, "clone");
+			assert.ok(fs.existsSync(path.join(second.workdir, "g.txt")));
+			assert.ok(!fs.existsSync(path.join(second.workdir, "local-only.txt")));
+		} finally {
+			fs.rmSync(origin, { recursive: true, force: true });
+		}
 	});
 });

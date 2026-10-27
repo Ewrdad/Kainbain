@@ -25,6 +25,27 @@ import { git } from "../git.js";
  *   interrupt keyed by lease. See the module block for the fencing contract.
  * @example const ledger = new ExecutionLedger(); ledger.snapshot() => { progressRecorded: 0, ... }
  ***/
+/***
+ * MARK: MAX_RUNNER_INTERRUPTS
+ * @description Bound on consecutive Runner-death interrupts for one
+ *   task+stage (G7): a Runner that keeps dying mid-stage re-queues as
+ *   `interrupted` each time, but past this many in a row the interrupt
+ *   escalates (history entry + `interruptEscalations` monitor counter +
+ *   `escalated` reply flag) so the death loop gets operator attention
+ *   instead of spinning forever. A successful completion resets the count.
+ * @example MAX_RUNNER_INTERRUPTS => 5
+ ***/
+export const MAX_RUNNER_INTERRUPTS = 5;
+
+/***
+ * MARK: ExecutionLedger
+ * @description In-memory receiving side for Runner progress/logs/complete/
+ *   interrupt keyed by lease (D1 fencing, R01/R14); consecutive Runner-death
+ *   interrupts escalate past MAX_RUNNER_INTERRUPTS (G7). See the module
+ *   block above for the full fencing contract.
+ * @example const ledger = new ExecutionLedger()
+ * @example ledger.snapshot() => { progressRecorded: 0, … }
+ ***/
 export class ExecutionLedger {
 	constructor() {
 		this.seenProgress = new Set();
@@ -40,6 +61,7 @@ export class ExecutionLedger {
 			completionDuplicates: 0,
 			staleRejected: 0,
 			interrupts: 0,
+			interruptEscalations: 0,
 			divergences: 0,
 			unverifiedSha: 0,
 		};
@@ -212,6 +234,12 @@ export class ExecutionLedger {
 			timestamp: new Date().toISOString(),
 			action: `Runner completed execution ${executionId} (${postureBits}). Lease released.`,
 		});
+		// G7: a finished stage breaks the death loop — the next stage (or
+		// a later retry of this one after real progress) counts from zero.
+		if (task) {
+			delete task.runnerInterruptCount;
+			delete task.runnerInterruptStage;
+		}
 		this.lastStage.delete(executionId);
 		this.logNextSeq.delete(executionId);
 		return { accepted: true, duplicate: false, shaState, reportedStage };
@@ -243,12 +271,30 @@ export class ExecutionLedger {
 		}
 		claimStore.invalidate(taskId);
 		this.counters.interrupts += 1;
+		// G7: consecutive interrupts per task+stage. A stage change (or a
+		// successful completion, which clears both fields) restarts the
+		// count — only a Runner dying repeatedly on the SAME stage trips
+		// the bound.
+		const stageId = task?.currentStageId ?? null;
+		const prevStage = task?.runnerInterruptStage ?? null;
+		const prevCount = Number.isInteger(task?.runnerInterruptCount) ? task.runnerInterruptCount : 0;
+		const interruptCount = prevStage === stageId ? prevCount + 1 : 1;
+		const escalated = interruptCount >= MAX_RUNNER_INTERRUPTS;
 		if (task) {
+			task.runnerInterruptStage = stageId;
+			task.runnerInterruptCount = interruptCount;
 			task.status = "interrupted";
 			task?.history?.push({
 				timestamp: new Date().toISOString(),
 				action: `Runner ${runnerId} interrupted execution ${executionId ?? hold?.executionId ?? "?"} — lease dropped, re-queues as interrupted.`,
 			});
+			if (escalated) {
+				this.counters.interruptEscalations += 1;
+				task?.history?.push({
+					timestamp: new Date().toISOString(),
+					action: `Runner deaths escalated: ${interruptCount} consecutive interrupts on stage ${stageId ?? "?"} (bound ${MAX_RUNNER_INTERRUPTS}) — needs operator attention, auto re-queue continues.`,
+				});
+			}
 		}
 		for (const id of [hold?.executionId, executionId]) {
 			if (id) {
@@ -256,7 +302,7 @@ export class ExecutionLedger {
 				this.logNextSeq.delete(id);
 			}
 		}
-		return { interrupted: true };
+		return { interrupted: true, interruptCount, escalated };
 	}
 
 	snapshot() {

@@ -155,6 +155,33 @@ describe("RunnerRegistry", () => {
 		}
 	});
 
+	test("heartbeat counts one identity arriving from multiple origins", () => {
+		const { runners: reg, credential } = approved();
+		const first = reg.heartbeat({
+			runnerId: "r1",
+			credential,
+			facts: FACTS,
+			origin: "10.0.0.1",
+		});
+		expect(first.originConflicts).toBe(0);
+		const same = reg.heartbeat({
+			runnerId: "r1",
+			credential,
+			facts: FACTS,
+			origin: "10.0.0.1",
+		});
+		expect(same.originConflicts).toBe(0);
+		const moved = reg.heartbeat({
+			runnerId: "r1",
+			credential,
+			facts: FACTS,
+			origin: "10.0.0.2",
+		});
+		expect(moved.originConflicts).toBe(1);
+		// The count is list-visible so the monitor/UI can alert on it.
+		expect(reg.list()[0].originConflicts).toBe(1);
+	});
+
 	test("heartbeat rejects a credential used for another Runner", () => {
 		const { runners: reg, credential } = approved();
 		reg.register({ runnerId: "r2", joinToken: "join-secret", facts: FACTS });

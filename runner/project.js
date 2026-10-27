@@ -24,6 +24,28 @@ function slugForRepo(repoUrl) {
 }
 
 /***
+ * MARK: refreshMirror
+ * @description Self-healing mirror refresh (G6, D14): fetches the origin
+ *   and hard-resets the mirror checkout to its upstream so a diverged
+ *   local master heals instead of failing pulls forever. Masters only —
+ *   per-task worktrees (`kb-*`) are never touched here.
+ * @example await refreshMirror('/work/mirrors/repo')
+ * @param {string} repoDir - Mirror checkout directory.
+ * @returns {Promise<void>}
+ ***/
+export async function refreshMirror(repoDir) {
+	await runGit(repoDir, ["fetch", "origin"]);
+	try {
+		await runGit(repoDir, ["reset", "--hard", "@{u}"]);
+	} catch {
+		// No upstream configured (e.g. a detached or hand-made mirror):
+		// fall back to the old fast-forward pull, which errors loudly
+		// when there is truly nothing to update from.
+		await runGit(repoDir, ["pull", "--ff-only"]);
+	}
+}
+
+/***
  * MARK: listOrphanWorkdirs
  * @description Worktree dirs under the root that do not belong to the given
  *   task. The daemon surfaces these at boot instead of discarding them
@@ -88,7 +110,7 @@ export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId }) {
 			fs.mkdirSync(path.dirname(repoDir), { recursive: true });
 			await runGit(workRoot, ["clone", repoUrl, repoDir]);
 		} else {
-			await runGit(repoDir, ["pull", "--ff-only"]);
+			await refreshMirror(repoDir);
 		}
 	} else {
 		mode = "adopt";

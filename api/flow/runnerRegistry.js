@@ -90,6 +90,11 @@ export class RunnerRegistry {
 				credential: typeof rec.credential === "string" ? rec.credential : null,
 				credentialIssuedAt:
 					typeof rec.credentialIssuedAt === "string" ? rec.credentialIssuedAt : null,
+				lastOrigin: typeof rec.lastOrigin === "string" ? rec.lastOrigin : null,
+				originConflicts:
+					Number.isInteger(rec.originConflicts) && rec.originConflicts > 0
+						? rec.originConflicts
+						: 0,
 				lastSeenAt: null,
 			};
 			this.runners.set(record.runnerId, record);
@@ -108,6 +113,8 @@ export class RunnerRegistry {
 				capabilities: record.capabilities || null,
 				credential: record.credential || null,
 				credentialIssuedAt: record.credentialIssuedAt || null,
+				lastOrigin: record.lastOrigin || null,
+				originConflicts: record.originConflicts || 0,
 			})),
 		});
 	}
@@ -137,6 +144,7 @@ export class RunnerRegistry {
 			capabilities: record.capabilities || null,
 			lastSeenAt: record.lastSeenAt,
 			credentialIssuedAt: record.credentialIssuedAt || null,
+			originConflicts: record.originConflicts || 0,
 		};
 	}
 
@@ -312,7 +320,7 @@ export class RunnerRegistry {
 		return record;
 	}
 
-	heartbeat({ runnerId, credential, facts = {} } = {}) {
+	heartbeat({ runnerId, credential, facts = {}, origin = null } = {}) {
 		const record = this.authenticate(credential);
 		if (record.runnerId !== runnerId) {
 			throw RunnerRegistry._fail(
@@ -329,6 +337,18 @@ export class RunnerRegistry {
 				"PROTOCOL_VERSION_UNSUPPORTED",
 				`Runner protocol ${String(protocol)} is outside the N-1 window (backend ${RUNNER_PROTOCOL}, floor ${MIN_RUNNER_PROTOCOL}).`,
 			);
+		}
+		// G11 audit alert: one identity (credential) heartbeating from
+		// multiple origins means the credential leaked or the Runner
+		// migrated hosts. Loopback Runners share one origin, so any change
+		// is worth counting loudly — the monitor surface exposes the
+		// per-Runner `originConflicts` count, never the address itself.
+		const seenOrigin = typeof origin === "string" && origin ? origin : null;
+		if (seenOrigin) {
+			if (record.lastOrigin && record.lastOrigin !== seenOrigin) {
+				record.originConflicts = (record.originConflicts || 0) + 1;
+			}
+			record.lastOrigin = seenOrigin;
 		}
 		record.facts = facts;
 		record.capabilities = capabilities;

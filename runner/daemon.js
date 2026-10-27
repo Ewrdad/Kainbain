@@ -1,8 +1,99 @@
+import { execFile } from "node:child_process";
+import fs from "node:fs";
+import { promisify } from "node:util";
 import { listOrphanWorkdirs, prepareWorkdir } from "./project.js";
 import { runHarnessStage } from "./harness.js";
 import { commitAndPush } from "./gitOps.js";
 
 export const RUNNER_VERSION = "0.1.0";
+
+const execFileAsync = promisify(execFile);
+
+/***
+ * MARK: HARNESS_VERSION_BINS
+ * @description CLI binaries probed for `--version` per harness id (G5:
+ *   R07/R11 version drift). First binary that answers wins; `mock` has no
+ *   CLI and reports a fixed marker. Probing is best-effort with a short
+ *   timeout — a missing CLI resolves to "unknown", never a boot failure.
+ * @example HARNESS_VERSION_BINS.vibe => ['vibe']
+ ***/
+export const HARNESS_VERSION_BINS = {
+	mock: [],
+	pi: ["pi"],
+	muse: ["muse"],
+	antigravity: ["agy", "antigravity"],
+	vibe: ["vibe"],
+};
+
+const harnessVersionCache = new Map();
+
+/***
+ * MARK: probeHarnessVersions
+ * @description Probes the harness CLI's `--version` once per process and
+ *   caches it (G5). Returns `{ [harnessId]: version }` for `factsFor`, so
+ *   the backend capability record names the real CLI drift instead of
+ *   "unknown". Unknown ids and missing/slow CLIs resolve to "unknown".
+ * @example await probeHarnessVersions('mock') => { mock: 'mock' }
+ * @param {string} harnessId - Harness id (mock, pi, muse, antigravity, vibe).
+ * @param {Object} [opts] - Options.
+ * @param {number} [opts.timeoutMs=4000] - Per-binary probe timeout.
+ * @returns {Promise<Object>} Version map for `factsFor`.
+ ***/
+export async function probeHarnessVersions(harnessId, { timeoutMs = 4000 } = {}) {
+	if (harnessVersionCache.has(harnessId)) return harnessVersionCache.get(harnessId);
+	let version = harnessId === "mock" ? "mock" : "unknown";
+	for (const bin of HARNESS_VERSION_BINS[harnessId] ?? []) {
+		try {
+			const res = await execFileAsync(bin, ["--version"], { timeout: timeoutMs });
+			const text = typeof res === "string" ? res : (res?.stdout ?? "");
+			const first = String(text).split("\n")[0].trim();
+			if (first) {
+				version = first.slice(0, 120);
+				break;
+			}
+		} catch {
+			// Try the next binary; a missing CLI is "unknown", not fatal.
+		}
+	}
+	const versions = { [harnessId]: version };
+	harnessVersionCache.set(harnessId, versions);
+	return versions;
+}
+
+/***
+ * MARK: clearHarnessVersionCache
+ * @description Test hook: drops the cached `--version` probes so each test
+ *   observes a fresh probe.
+ * @example clearHarnessVersionCache()
+ ***/
+export function clearHarnessVersionCache() {
+	harnessVersionCache.clear();
+}
+
+/***
+ * MARK: diskHeadroomMbFor
+ * @description Measures free space on the filesystem holding the Runner
+ *   work root (G4: R10 dispatch cut-off). Synchronous — one statfs call
+ *   per heartbeat. Returns null when unmeasurable so the backend
+ *   `DISK_LOW` check stays skipped rather than firing on bad data.
+ * @example diskHeadroomMbFor('/tmp') => 12345
+ * @param {string} workRoot - Runner work root (or any path on that fs).
+ * @returns {number|null} Free megabytes, or null when unmeasurable.
+ ***/
+export function diskHeadroomMbFor(workRoot) {
+	for (const candidate of [workRoot, process.cwd()]) {
+		try {
+			if (!candidate) continue;
+			const st = fs.statfsSync(candidate);
+			if (st && Number.isFinite(st.bavail) && Number.isFinite(st.bsize)) {
+				return Math.floor((st.bavail * st.bsize) / (1024 * 1024));
+			}
+		} catch {
+			// Try the next candidate; unmeasurable stays null.
+		}
+	}
+	return null;
+}
 
 /***
  * MARK: defaultLoadHarness
@@ -46,8 +137,9 @@ export async function defaultLoadHarness(harnessId) {
 }
 
 function factsFor({ config, harnessVersions }) {
+	const cached = harnessVersionCache.get(config.harnessId)?.[config.harnessId];
 	return {
-		harnesses: [{ id: config.harnessId, version: harnessVersions?.[config.harnessId] ?? "unknown" }],
+		harnesses: [{ id: config.harnessId, version: harnessVersions?.[config.harnessId] ?? cached ?? "unknown" }],
 		models:
 			Array.isArray(config.models) && config.models.length > 0
 				? [...config.models]
@@ -55,7 +147,7 @@ function factsFor({ config, harnessVersions }) {
 					? [config.model]
 					: [],
 		tiers: config.tiers,
-		diskHeadroomMb: null,
+		diskHeadroomMb: diskHeadroomMbFor(config.workRoot),
 		versions: { protocol: "v1", runner: RUNNER_VERSION },
 	};
 }
@@ -80,11 +172,14 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
 			throw new Error("No credential and no KAINBAIN_RUNNER_JOIN_TOKEN: cannot join.");
 		}
 		const deadline = Date.now() + config.approvalTimeoutMs;
+		// Probe before the first register so even a pending join advertises
+		// the real harness CLI version (G5).
+		const joinVersions = await probeHarnessVersions(config.harnessId);
 		for (;;) {
 			const reg = await client.register({
 				runnerId: config.runnerId,
 				joinToken: config.joinToken,
-				facts: factsFor({ config }),
+				facts: factsFor({ config, harnessVersions: joinVersions }),
 			});
 			if (reg.status === "active") break;
 			if (Date.now() > deadline) {
@@ -100,13 +195,19 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
 	client.setCredential(config.credential);
 
 	const harness = await loadHarness(config.harnessId);
-	const facts = factsFor({ config });
+	// G5: probe the harness CLI version once at load; every later factsFor
+	// call (register, heartbeats, steer pulls) reuses the cached probe, so
+	// the backend sees real CLI drift instead of "unknown".
+	const harnessVersions = await probeHarnessVersions(config.harnessId);
+	const facts = factsFor({ config, harnessVersions });
 	const beat = await client.heartbeat({ runnerId: config.runnerId, facts });
 	if (beat.status !== "active") {
 		throw new Error(`Runner ${config.runnerId} is ${beat.status}; need an active registration.`);
 	}
 	const heartbeatTimer = setInterval(() => {
-		deliverSteers({ config, client, logger, facts, state }).catch((err) => {
+		// Fresh facts every beat: disk headroom is re-measured (G4) while
+		// the harness CLI version resolves from the load-time probe cache.
+		deliverSteers({ config, client, logger, facts: factsFor({ config }), state }).catch((err) => {
 			logger.warn(`Heartbeat failed: ${err?.message || err}`);
 		});
 	}, config.heartbeatMs);
@@ -247,9 +348,15 @@ async function executeAssignment({
 				"Implement the stage goal in the working directory. Keep changes scoped to the task.",
 			].join("\n");
 
+			// The backend project record's cwd points at the backend's own
+			// checkout — on the Runner host the task's working copy is the
+			// prepared worktree. Run the session THERE, or the agent's file
+			// writes land in the wrong repo and the commit/push ships
+			// nothing (wire-proof 2026-10-27: hello-wire.txt landed in the
+			// backend project dir instead of the worktree).
 			const { output } = await runHarnessStage({
 				harness,
-				project,
+				project: { ...project, cwd: workdir },
 				workdir,
 				taskId: taskId,
 				stageId,

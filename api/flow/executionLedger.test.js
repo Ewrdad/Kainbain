@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { ClaimStore } from "./claimStore.js";
-import { ExecutionLedger } from "./executionLedger.js";
+import { ExecutionLedger, MAX_RUNNER_INTERRUPTS } from "./executionLedger.js";
 const tmpClaimState = () =>
 	path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kb-claim-test-")), "claims.json");
 
@@ -240,10 +240,70 @@ describe("ExecutionLedger", () => {
 			runnerId: "r1",
 			executionId,
 		});
-		expect(out).toEqual({ interrupted: true });
+		expect(out).toEqual({ interrupted: true, interruptCount: 1, escalated: false });
 		expect(ctx.taskStore.getTask().status).toBe("interrupted");
 		expect(ctx.claimStore.describe("t1")).toBeNull();
 		expect(ledger.snapshot().interrupts).toBe(1);
+	});
+
+	test("interrupts: escalates past the consecutive bound on the same stage", () => {
+		const interruptOnce = () => {
+			const { executionId } = claimed(ctx);
+			return ledger.interruptExecution({
+				claimStore: ctx.claimStore,
+				taskStore: ctx.taskStore,
+				projectId: "p1",
+				taskId: "t1",
+				runnerId: "r1",
+				executionId,
+			});
+		};
+		let out;
+		for (let i = 0; i < MAX_RUNNER_INTERRUPTS - 1; i++) {
+			out = interruptOnce();
+			expect(out.escalated).toBe(false);
+		}
+		out = interruptOnce();
+		expect(out).toEqual({
+			interrupted: true,
+			interruptCount: MAX_RUNNER_INTERRUPTS,
+			escalated: true,
+		});
+		expect(ledger.snapshot().interruptEscalations).toBe(1);
+		expect(
+			ctx.taskStore
+				.getTask()
+				.history.some((h) => String(h.action).includes("escalated")),
+		).toBe(true);
+		// The task still re-queues as interrupted — escalation is
+		// visibility, not a lifecycle change.
+		expect(ctx.taskStore.getTask().status).toBe("interrupted");
+	});
+
+	test("interrupts: a stage change restarts the consecutive count", () => {
+		for (let i = 0; i < MAX_RUNNER_INTERRUPTS - 1; i++) {
+			const { executionId } = claimed(ctx);
+			ledger.interruptExecution({
+				claimStore: ctx.claimStore,
+				taskStore: ctx.taskStore,
+				projectId: "p1",
+				taskId: "t1",
+				runnerId: "r1",
+				executionId,
+			});
+		}
+		ctx.taskStore.getTask().currentStageId = "s2";
+		const { executionId } = claimed(ctx);
+		const out = ledger.interruptExecution({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+		});
+		expect(out).toEqual({ interrupted: true, interruptCount: 1, escalated: false });
+		expect(ledger.snapshot().interruptEscalations).toBe(0);
 	});
 
 	test("interrupt refuses terminal tasks", () => {

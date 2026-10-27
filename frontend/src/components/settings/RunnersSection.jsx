@@ -52,7 +52,10 @@ export function RunnersSection() {
   }, []);
 
   useEffect(() => {
-    loadRunners();
+    // Deferred to a microtask so the mount effect never sets state
+    // synchronously (react-hooks/set-state-in-effect): the fetch still runs
+    // on mount, but its setState calls land outside the effect body.
+    void Promise.resolve().then(() => loadRunners());
   }, [loadRunners]);
 
   const mutate = useCallback(
@@ -200,6 +203,24 @@ export function RunnersSection() {
                   title={`Protocol ${runner.facts?.versions?.protocol || '?'}`}
                 >
                   v{runner.facts.versions.runner}
+                </span>
+              )}
+              {runner.credentialIssuedAt && (
+                <span
+                  className="text-[10px] font-mono text-text-muted"
+                  data-testid={`runner-credential-age-${runner.runnerId}`}
+                  title={`Credential issued ${runner.credentialIssuedAt}`}
+                >
+                  cred {new Date(runner.credentialIssuedAt).toLocaleString()}
+                </span>
+              )}
+              {runner.originConflicts > 0 && (
+                <span
+                  className="text-[10px] font-bold uppercase tracking-widest text-error"
+                  data-testid={`runner-origin-alert-${runner.runnerId}`}
+                  title={`This Runner identity heartbeated from ${runner.originConflicts + 1} different origins — the credential may have leaked or the Runner moved hosts.`}
+                >
+                  origin ×{runner.originConflicts + 1}
                 </span>
               )}
               {runner.status === 'pending' ? (
