@@ -146,6 +146,21 @@ test('shows completed tasks when checkbox is toggled', () => {
   expect(screen.getByText('Old task')).toBeInTheDocument();
 });
 
+test('toggling Show Completed refetches tasks with the matching scope', () => {
+  const retryTasks = vi.fn(() => Promise.resolve([]));
+  renderWithKainBain(<WorkflowCanvas />, {
+    stages,
+    tasks,
+    activeProjectId: 'proj-1',
+    retryTasks,
+  });
+
+  fireEvent.click(screen.getByLabelText(/Show Completed/i));
+  expect(retryTasks).toHaveBeenCalledWith('proj-1', { includeCompleted: true });
+  fireEvent.click(screen.getByLabelText(/Show Completed/i));
+  expect(retryTasks).toHaveBeenCalledWith('proj-1', { includeCompleted: false });
+});
+
 test('renders workflow selector dropdown pill and switches active workflow', () => {
   const switchWorkflow = vi.fn();
   const projectWorkflows = [

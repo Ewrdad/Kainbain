@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useKainBain } from '../../context/KainBainContext';
+import { readStoredShowCompleted } from '../../context/useTaskBoard';
 import { FALLBACK_MODELS } from '../stageTypes';
 import { useModelCatalog } from '../../hooks/useModelCatalog';
 import { useNow } from '../../hooks/useNow';
@@ -197,6 +198,20 @@ export function WorkflowCanvas() {
     currentStageId,
     setExpandedSettingsStageId,
   });
+
+  // Show-completed scope: the fetch layer defaults lean, so flipping the
+  // toggle re-pulls with the matching scope. Skipped on mount when the boot
+  // fetch already used this scope (persisted toggle, or the lean default) —
+  // otherwise a preference-defaulted ON toggle pulls the full history in.
+  const showCompletedMountRef = useRef(false);
+  useEffect(() => {
+    if (!activeProjectId) return;
+    if (!showCompletedMountRef.current) {
+      showCompletedMountRef.current = true;
+      if (showCompleted === readStoredShowCompleted()) return;
+    }
+    retryTasks(activeProjectId, { includeCompleted: showCompleted });
+  }, [showCompleted, activeProjectId, retryTasks]);
 
   // Task + stage mutation actions (approve/reject/execute, reorder/add/remove,
   // inline creation). Defined before useStageDnD so drops can reorder columns.

@@ -102,6 +102,7 @@ export function renderWithKainBain(ui, overrides = {}, options = {}) {
     createProject: () => {},
     registerProject: () => {},
     advanceTask: () => {},
+    retryTasks: () => Promise.resolve([]),
     rejectTask: () => {},
     rejectTaskWithFeedback: () => {},
     openFeedbackDialog: () => {},

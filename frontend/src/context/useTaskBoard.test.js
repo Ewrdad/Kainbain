@@ -45,6 +45,33 @@ describe('useTaskBoard', () => {
     expect(result.current.tasksError).toBeNull();
   });
 
+  it('fetchTasks defaults lean and honors the persisted toggle', async () => {
+    const { result } = renderHook(() => useTaskBoard());
+    await act(async () => {
+      await result.current.fetchTasks('proj-1');
+    });
+    expect(api.listTasks).toHaveBeenCalledWith('proj-1', { includeCompleted: false });
+
+    window.localStorage.setItem('kainbain:showCompleted', 'true');
+    const { result: full } = renderHook(() => useTaskBoard());
+    await act(async () => {
+      await full.current.fetchTasks('proj-1');
+    });
+    expect(api.listTasks).toHaveBeenCalledWith('proj-1', { includeCompleted: true });
+  });
+
+  it('fetchTasks passes an explicit scope and reuses it for refreshes', async () => {
+    const { result } = renderHook(() => useTaskBoard());
+    await act(async () => {
+      await result.current.fetchTasks('proj-1', { includeCompleted: true });
+    });
+    expect(api.listTasks).toHaveBeenLastCalledWith('proj-1', { includeCompleted: true });
+    await act(async () => {
+      await result.current.fetchTasks('proj-1');
+    });
+    expect(api.listTasks).toHaveBeenLastCalledWith('proj-1', { includeCompleted: true });
+  });
+
   it('fetchTasks ignores invalid project ids without fetching', async () => {
     const { result } = renderHook(() => useTaskBoard());
     await act(async () => {

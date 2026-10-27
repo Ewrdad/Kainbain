@@ -92,6 +92,35 @@ describe("GET /tasks", () => {
 		expect(result).toHaveLength(1);
 	});
 
+	it("excludes completed tasks when excludeCompleted is set", async () => {
+		const s = setup();
+		s.taskStore.listTasks = vi.fn(() => [
+			{ id: "t-1", status: "completed", currentStageId: "5" },
+			{ id: "t-2", status: "in_stage", currentStageId: "s-1" },
+			{ id: "t-3", status: "failed", currentStageId: "s-1" },
+		]);
+		await register(s);
+		const result = await s.routes.get("GET /tasks")(
+			{ query: { projectId: "p-1", excludeCompleted: "true" } },
+			reply(),
+		);
+		expect(result.map((t) => t.id)).toEqual(["t-2", "t-3"]);
+	});
+
+	it("includes completed tasks by default", async () => {
+		const s = setup();
+		s.taskStore.listTasks = vi.fn(() => [
+			{ id: "t-1", status: "completed", currentStageId: "5" },
+			{ id: "t-2", status: "in_stage", currentStageId: "s-1" },
+		]);
+		await register(s);
+		const result = await s.routes.get("GET /tasks")(
+			{ query: { projectId: "p-1" } },
+			reply(),
+		);
+		expect(result.map((t) => t.id)).toEqual(["t-1", "t-2"]);
+	});
+
 	it("attaches the live runner claim to listed tasks", async () => {
 		const s = setup();
 		s.deps.claimStore = {

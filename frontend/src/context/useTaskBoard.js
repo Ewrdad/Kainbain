@@ -23,6 +23,26 @@ export function isValidProjectId(projectId) {
   return true;
 }
 
+/***
+ * MARK: readStoredShowCompleted
+ * @description The board toggle persists synchronously on every change, so
+ *   the fetch layer can read it without prop-drilling: true means a past
+ *   session asked for the full history (boot fetches inclusive), anything
+ *   else means lean. First-visit default is lean.
+ * @example readStoredShowCompleted() => false
+ * @returns {boolean} Whether to include completed tasks in list fetches.
+ ***/
+export function readStoredShowCompleted() {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage.getItem('kainbain:showCompleted') === 'true';
+    }
+  } catch {
+    // Storage unavailable; lean default stands.
+  }
+  return false;
+}
+
 export function useTaskBoard() {
   const [tasks, setTasks] = useState([]);
   // True while a task-list fetch is in flight; the board shows a skeleton
@@ -32,22 +52,31 @@ export function useTaskBoard() {
   const [tasksError, setTasksError] = useState(null);
   const inFlightRef = useRef(0);
   const fetchSequenceRef = useRef(0);
+  // Current list filter: live-sync refreshes reuse the last explicit choice
+  // so a poll never silently widens a lean board back to the full history.
+  // Completed tasks stay server-side until the board asks for them. Boot
+  // honors the persisted toggle so returning full-history users fetch it
+  // directly instead of lean-then-full.
+  const filterRef = useRef({ includeCompleted: readStoredShowCompleted() });
   // Coalescing refresh used by live-sync sources (WebSocket task events and the
   // visibility-aware board poll) so bursts of events map to a single fetch.
   const refreshTimerRef = useRef(null);
   const pendingProjectRef = useRef(null);
 
-  const fetchTasks = useCallback(async (projectId) => {
+  const fetchTasks = useCallback(async (projectId, { includeCompleted } = {}) => {
     if (!projectId) return;
     if (!isValidProjectId(projectId)) {
       logger.warn(`Invalid projectId passed to fetchTasks: ${projectId}`);
       return;
     }
+    if (typeof includeCompleted === 'boolean') {
+      filterRef.current = { includeCompleted };
+    }
     const seq = ++fetchSequenceRef.current;
     inFlightRef.current += 1;
     setIsLoading(true);
     try {
-      const data = await api.listTasks(projectId);
+      const data = await api.listTasks(projectId, filterRef.current);
       if (seq === fetchSequenceRef.current && Array.isArray(data)) {
         setTasks(data);
         setTasksError(null);

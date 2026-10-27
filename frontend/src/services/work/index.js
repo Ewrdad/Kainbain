@@ -8,12 +8,16 @@ import { taskImageRequests } from '../taskImages.js';
 export function workRequests(request, isValidProjectId) {
   return {
     ...taskImageRequests(request),
-    listTasks: (projectId) => {
+    listTasks: (projectId, { includeCompleted = true } = {}) => {
     if (projectId && !isValidProjectId(projectId)) {
       console.warn(`[api.listTasks] Invalid projectId: ${projectId}`);
       return Promise.resolve([]);
     }
-    return request(`/tasks${projectId ? `?projectId=${projectId}` : ''}`);
+    const params = new URLSearchParams();
+    if (projectId) params.set('projectId', projectId);
+    if (!includeCompleted) params.set('excludeCompleted', 'true');
+    const query = params.toString();
+    return request(`/tasks${query ? `?${query}` : ''}`);
   },
     createTask: (projectId, { title, goal, stageId, idempotencyKey, workflowId, blockedBy }) =>
     request('/tasks', {

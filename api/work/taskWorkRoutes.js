@@ -126,6 +126,7 @@ export async function registerTaskWorkRoutes(app, deps) {
 					properties: {
 						projectId: { type: "string" },
 						workflowId: { type: "string" },
+						excludeCompleted: { type: "string" },
 					},
 				},
 				response: {
@@ -141,20 +142,34 @@ export async function registerTaskWorkRoutes(app, deps) {
 			if (!id) return;
 
 			const { workflowId } = request.query || {};
+			// Lean board loads: completed tasks only ride the list when the
+			// UI asks for them (Show Completed). Query values arrive as
+			// strings; default includes everything (other consumers).
+			const excludeCompleted =
+				request.query?.excludeCompleted === true ||
+				request.query?.excludeCompleted === "true" ||
+				request.query?.excludeCompleted === "1";
 			const project = projectStore.getProject(id);
 			// Board lists serve duration-enriched summaries (no log bodies,
 			// prompts, histories, or report content); detail views hydrate one
 			// full task through GET /tasks/:id on open. Enrich before compacting.
 			const toTaskDurationResponse = (task) =>
 				toTaskDurationSummary(task, resolveStagesForTask(project, task));
+			const toBoardTask = (t) => ({
+				...toTaskDurationResponse(t),
+				claim: liveClaim(t.id),
+			});
+			const visible = (t) => !excludeCompleted || t?.status !== "completed";
 			if (workflowId) {
 				return taskStore
 					.getTasks(id, workflowId, project?.cwd)
-					.map((t) => ({ ...toTaskDurationResponse(t), claim: liveClaim(t.id) }));
+					.filter(visible)
+					.map(toBoardTask);
 			}
 			return taskStore
 				.listTasks(id, project?.cwd)
-				.map((t) => ({ ...toTaskDurationResponse(t), claim: liveClaim(t.id) }));
+				.filter(visible)
+				.map(toBoardTask);
 		},
 	);
 
