@@ -1,0 +1,884 @@
+<!-- KAINBAIN AUTO-GENERATED REPORT -->
+# Stage Report: Automated tests
+
+**Task:** Can you please modify the now playing bar in the ui so it can show little boxes for runners I want for under 5 runners to replace the left side with little boxes that just have the runners name, task name and stage and maybe some sort of colour indicator of health
+**Stage Type:** `ci`
+**Model:** `default`
+**Duration:** 21.006s
+**Status:** FAILED
+
+### Summary of Changes
+Execution failed: CI command failed with exit code 1
+
+### Execution Output
+```
+
+up to date, audited 4 packages in 777ms
+
+found 0 vulnerabilities
+
+> kainbain@1.0.0 test
+> node scripts/run-tests.mjs
+
+Starting full project verification...
+Running Security Script Tests... SKIP (no bash on PATH (the security-scan harness is bash-only))
+Running Dependency Check... SKIP (no depcheck binary in the root tree (run `npm install` to enable the unused-dependency check))
+Running Container Tests... SKIP (no Docker daemon reachable (container build/boot tests need one))
+✅ Settings duplicate check passed (23 files in 120ms)
+▸ started Unit Tests (api)
+▸ started Unit Tests (frontend)
+▸ started Linting (api)
+▸ started Linting (frontend)
+▸ started Frontend Build
+▸ started Dependency Audit Gate
+▸ started Harness Self-Tests
+Running Unit Tests (api)... [0;31mFAIL[0m (1s)
+----------------------------------------------------------------------
+Details for Unit Tests (api):
+
+> kainbain@1.0.0 test:api
+> npm run test --prefix api
+
+
+> api@1.0.0 test
+> vitest run
+
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Startup Error [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯⎯[39m
+Error: Cannot find native binding. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828). Please try `npm i` again after removing both package-lock.json and node_modules directory.
+    at file:///home/server/projects/kainbain/api/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:601:34
+    at file:///home/server/projects/kainbain/api/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:9:49
+    ... 4 lines matching cause stack trace ...
+    at async CAC.run (file:///home/server/projects/kainbain/api/node_modules/vitest/dist/chunks/cac.DfDGTQ9W.js:2346:2) {
+  cause: Error: Cannot find module '@rolldown/binding-wasm32-wasi'
+  Require stack:
+  - /home/server/projects/kainbain/api/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs
+      at file:///home/server/projects/kainbain/api/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:495:18
+      ... 8 lines matching cause stack trace ...
+      at async CAC.run (file:///home/server/projects/kainbain/api/node_modules/vitest/dist/chunks/cac.DfDGTQ9W.js:2346:2) {
+    cause: Error: Cannot find module './rolldown-binding.wasi.cjs'
+    Require stack:
+    - /home/server/projects/kainbain/api/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs
+        at file:///home/server/projects/kainbain/api/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:495:18
+        ... 8 lines matching cause stack trace ...
+        at async CAC.run (file:///home/server/projects/kainbain/api/node_modules/vitest/dist/chunks/cac.DfDGTQ9W.js:2346:2) {
+      cause: [Error]
+    }
+  }
+}
+
+
+
+----------------------------------------------------------------------
+Running Unit Tests (frontend)... [0;31mFAIL[0m (1s)
+----------------------------------------------------------------------
+Details for Unit Tests (frontend):
+
+> kainbain@1.0.0 test:frontend
+> npm run test --prefix frontend
+
+
+> frontend@1.0.0 test
+> npm run check:duplicate-identifiers && vitest run
+
+
+> frontend@1.0.0 check:duplicate-identifiers
+> node ../scripts/check-duplicate-settings.mjs
+
+✅ Settings duplicate check passed (23 files in 207ms)
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Startup Error [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯⎯[39m
+Error: Cannot find native binding. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828). Please try `npm i` again after removing both package-lock.json and node_modules directory.
+    at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:601:34
+    at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:9:49
+    ... 4 lines matching cause stack trace ...
+    at async CAC.run (file:///home/server/projects/kainbain/frontend/node_modules/vitest/dist/chunks/cac.DfDGTQ9W.js:2346:2) {
+  cause: Error: Cannot find module '@rolldown/binding-wasm32-wasi'
+  Require stack:
+  - /home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs
+      at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:495:18
+      ... 8 lines matching cause stack trace ...
+      at async CAC.run (file:///home/server/projects/kainbain/frontend/node_modules/vitest/dist/chunks/cac.DfDGTQ9W.js:2346:2) {
+    cause: Error: Cannot find module './rolldown-binding.wasi.cjs'
+    Require stack:
+    - /home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs
+        at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:495:18
+        ... 8 lines matching cause stack trace ...
+        at async CAC.run (file:///home/server/projects/kainbain/frontend/node_modules/vitest/dist/chunks/cac.DfDGTQ9W.js:2346:2) {
+      cause: [Error]
+    }
+  }
+}
+
+
+
+----------------------------------------------------------------------
+Running Linting (api)... [0;32mPASS[0m (4s)
+Running Linting (frontend)... [0;32mPASS[0m (4s)
+Running Frontend Build... [0;31mFAIL[0m (4s)
+----------------------------------------------------------------------
+Details for Frontend Build:
+
+> kainbain@1.0.0 build:frontend
+> npm run build --prefix frontend
+
+
+> frontend@1.0.0 build
+> npm run check:react && node scripts/check-no-deprecations.js
+
+
+> frontend@1.0.0 check:react
+> node scripts/check-react-imports.js
+
+✅ React import check passed — all source files that use `React.` import it.
+file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:601
+			const error = /* @__PURE__ */ new Error("Cannot find native binding. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828). Please try `npm i` again after removing both package-lock.json and node_modules directory.");
+			                              ^
+
+Error: Cannot find native binding. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828). Please try `npm i` again after removing both package-lock.json and node_modules directory.
+    at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:601:34
+    at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:9:49
+    ... 2 lines matching cause stack trace ...
+    at async node:internal/modules/esm/loader:647:26 {
+  cause: Error: Cannot find module '@rolldown/binding-wasm32-wasi'
+  Require stack:
+  - /home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs
+      at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:495:18
+      ... 6 lines matching cause stack trace ...
+      at async node:internal/modules/esm/loader:647:26 {
+    cause: Error: Cannot find module './rolldown-binding.wasi.cjs'
+    Require stack:
+    - /home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs
+        at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:495:18
+        ... 6 lines matching cause stack trace ...
+        at async node:internal/modules/esm/loader:647:26 {
+      cause: Error: Cannot find module '@rolldown/binding-linux-x64-musl'
+      Require stack:
+      - /home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs
+          at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:495:18
+          ... 6 lines matching cause stack trace ...
+          at async node:internal/modules/esm/loader:647:26 {
+        cause: Error: Cannot find module './rolldown-binding.linux-x64-musl.node'
+        Require stack:
+        - /home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs
+            at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:495:18
+            at Array.reduce (<anonymous>)
+            at createLoadErrorChain (file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:488:17)
+            at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:602:18
+            at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:9:49
+            at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/parse-B7LUicIJ.mjs:3:46
+            at ModuleJob.run (node:internal/modules/esm/module_job:561:25)
+            at async node:internal/modules/esm/loader:647:26 {
+          cause: null
+        }
+      }
+    }
+  }
+}
+
+Node.js v24.22.1
+----------------------------------------------------------------------
+Running Dependency Audit Gate... [0;32mPASS[0m (5s)
+Running Harness Self-Tests... [0;31mFAIL[0m (17s)
+----------------------------------------------------------------------
+Details for Harness Self-Tests:
+▶ usesOperatorStack
+  ✔ is false when neither operator URL is set (scratch stack is ours) (2.328303ms)
+  ✔ is true when either operator URL is set (0.232243ms)
+✔ usesOperatorStack (12.72733ms)
+▶ isScratchOccupant
+  ✔ accepts a scratch API by cwd or command shape (4.674378ms)
+  ✔ accepts a scratch vite by its dedicated port flag (0.342087ms)
+  ✔ rejects an unrelated occupant on the API port (3.922163ms)
+  ✔ rejects an unrelated occupant on the vite port (0.403884ms)
+  ✔ rejects a real dev vite on the live dev port (0.280883ms)
+  ✔ rejects an arbitrary occupant on an unknown port (0.230144ms)
+  ✔ is not fooled by the empty/legacy probe shape (0.285827ms)
+✔ isScratchOccupant (10.829775ms)
+▶ probeProcess
+  ✔ reads cmdline and cwd from /proc on linux (14.913919ms)
+  ✔ still classifies when the cwd link is unreadable (5.488309ms)
+  ✔ returns null when the process is gone (1.063133ms)
+  ✔ falls back to ps on non-linux platforms (0.335769ms)
+  ✔ returns null on non-linux when the process is gone (0.230565ms)
+✔ probeProcess (41.217014ms)
+▶ freeScratchPorts
+  ✔ is a no-op when the operator drives their own stack (0.416947ms)
+  ✔ frees both scratch ports when their occupants verify (0.820301ms)
+  ✔ reports success without touching an already-free port (0.166551ms)
+  ✔ fails closed when an occupant does not verify as scratch (0.322204ms)
+  ✔ treats an uninspectable occupant as unverified (0.318931ms)
+✔ freeScratchPorts (2.355908ms)
+▶ scanSourceForDuplicateIdentifiers
+  ✔ reports no violations for a clean module (109.360871ms)
+  ✔ detects the task-efa802a6 splitReasoning duplicate import (8.167662ms)
+  ✔ detects duplicate variable declarations (0.79559ms)
+  ✔ detects var redeclarations that the parser permits (0.563303ms)
+  ✔ detects an import colliding with a variable declaration (4.16435ms)
+  ✔ detects duplicate function declarations (0.882014ms)
+  ✔ detects duplicate class declarations (6.580317ms)
+  ✔ detects duplicate destructured variable declarations (8.676044ms)
+  ✔ detects duplicate default imports (4.61985ms)
+  ✔ detects duplicate namespace imports (0.74225ms)
+  ✔ detects an exported variable colliding with an import (12.066006ms)
+  ✔ detects a named default export colliding with a variable (2.309618ms)
+  ✔ ignores identifiers shadowed in nested scopes (7.654021ms)
+  ✔ ignores block-scoped redeclarations (6.252661ms)
+  ✔ ignores duplicate words inside comments and strings (1.053995ms)
+  ✔ ignores re-exports with different names (export { x } from 'y') (17.371878ms)
+  ✔ reports re-exports with the same name as a parse error (1.446016ms)
+  ✔ ignores export-star (export * from 'y') (3.603299ms)
+  ✔ ignores side-effect imports (import 'y') (1.644864ms)
+  ✔ ignores anonymous default exports (5.160445ms)
+  ✔ reports parse errors as violations (2.846823ms)
+  ✔ reports const redeclarations caught by the parser itself (0.386719ms)
+  ✔ handles empty source code (1.859539ms)
+  ✔ handles source with only comments (2.015996ms)
+  ✔ reports multiple duplicates in one file (3.076205ms)
+  ✔ includes a remediation message on each violation (1.167527ms)
+✔ scanSourceForDuplicateIdentifiers (234.08252ms)
+▶ findSourceFilesInDirectory
+  ✔ returns only source files, excluding tests and non-JS files (6.514345ms)
+  ✔ skips node_modules, dist, and other build directories (7.327512ms)
+  ✔ returns an empty array for a nonexistent directory (0.208181ms)
+  ✔ throws when directoryPath is missing (0.659291ms)
+✔ findSourceFilesInDirectory (16.696491ms)
+▶ checkDirectoryForDuplicates
+  ✔ cleanly scans the real settings directory (373.540288ms)
+  ✔ reports injected duplicates (1.607617ms)
+  ✔ fails safe when the target directory has no source files (0.470817ms)
+  ✔ fails safe when the target directory does not exist (0.311599ms)
+  ✔ scans a custom target directory (0.60862ms)
+  ✔ reports syntax errors in scanned files (1.78841ms)
+✔ checkDirectoryForDuplicates (378.643572ms)
+▶ formatViolationsReport
+  ✔ renders a helpful message when there are no violations (0.265685ms)
+  ✔ renders a populated report with location and identifier (0.119325ms)
+  ✔ renders violations without an identifier name (0.099386ms)
+  ✔ renders violations without a message (0.105234ms)
+  ✔ handles a missing violationsList gracefully (0.077178ms)
+✔ formatViolationsReport (0.879811ms)
+▶ hasExampleTag
+  ✔ detects @example in a JSDoc block (14.506574ms)
+✔ hasExampleTag (17.845334ms)
+▶ nearestJsdoc
+  ✔ finds an attached block and rejects detached ones (1.405091ms)
+✔ nearestJsdoc (1.601547ms)
+▶ findPublicExports
+  ✔ finds functions, classes, bindings, and defaults with example status (10.134047ms)
+  ✔ splits multi-declarator consts under one JSDoc block (4.877854ms)
+  ✔ skips re-export lists and export-star (0.372423ms)
+  ✔ ignores the word export inside comments and strings (0.24716ms)
+  ✔ masks template raw text so apostrophes cannot swallow later exports (3.410836ms)
+✔ findPublicExports (19.621517ms)
+▶ isDocSourceFile
+  ✔ covers api, shared, and frontend/src JS/JSX (5.513946ms)
+  ✔ excludes tests, fixtures, mocks, and scripts (0.557155ms)
+✔ isDocSourceFile (10.557442ms)
+▶ checkMissing
+  ✔ passes baselined exports and fails new ones (4.010631ms)
+  ✔ fails everything in strict mode (0.17065ms)
+  ✔ reports baseline entries that now carry @example (0.138968ms)
+✔ checkMissing (4.543826ms)
+▶ formatExampleFailure
+  ✔ names the export and gives a fix recipe (4.772426ms)
+✔ formatExampleFailure (4.917174ms)
+▶ committed-tree grandfather proof
+  ✔ the baseline covers every currently-missing export (1267.592212ms)
+✔ committed-tree grandfather proof (1267.72776ms)
+▶ topLevelFunctions
+  ✔ counts one top-level declaration (17.936608ms)
+  ✔ counts multiple top-level declarations including async and default (0.269679ms)
+  ✔ ignores nested declarations and callbacks (0.218015ms)
+  ✔ ignores arrow-function constants (0.321479ms)
+  ✔ ignores the word function inside comments, strings, and JSDoc examples (0.36088ms)
+  ✔ masks template raw text so apostrophes cannot swallow later code (7.991328ms)
+  ✔ still sees functions declared inside ${} interpolations at depth (0.304031ms)
+✔ topLevelFunctions (36.983258ms)
+▶ isSourceFile
+  ✔ covers api, shared, and frontend/src JS/JSX (0.648801ms)
+  ✔ excludes tests, specs, configs, and out-of-scope roots (21.004367ms)
+✔ isSourceFile (23.284042ms)
+▶ checkFiles
+  ✔ passes single-function and zero-function files (18.255305ms)
+  ✔ fails unlisted multi-function files (0.219764ms)
+  ✔ grandfathers allowlisted paths that already existed (0.375043ms)
+  ✔ still fails an allowlisted path that is newly added (0.148725ms)
+  ✔ reports stale allowlist entries for pruning (0.198222ms)
+✔ checkFiles (20.407072ms)
+▶ formatFailure
+  ✔ names the file, the functions, and the remediation (2.631274ms)
+✔ formatFailure (5.009194ms)
+▶ git integration
+  ✔ resolves a diff base or degrades to null outside git (36.543912ms)
+  ✔ lists newly-added paths as an array (53.657468ms)
+✔ git integration (90.383291ms)
+▶ deploy.sh test gates (static contract)
+  ✔ runs the fast branches as the final-test-suite gate without canary (4.760458ms)
+  ✔ runs the canary suite exactly once as its own blocking canary-e2e gate (4.999425ms)
+  ✔ orders the canary-e2e gate after the final-test-suite gate (0.753438ms)
+  ✔ skips the canary gate only on exactly KAINBAIN_SKIP_CANARY=1 (fail-safe) (2.40011ms)
+✔ deploy.sh test gates (static contract) (16.135649ms)
+▶ deploy / npm test parity (executable contract)
+  ✔ final-test-suite branches + canary-e2e gate equal the default npm test branches (4.767805ms)
+  ✔ fast branches execute the identical command with and without canary (3.461093ms)
+  ✔ the canary-e2e gate command matches the gate's Canary Tests branch (2.506231ms)
+  ✔ root test:canary delegates to the canary-e2e package suite (1.909329ms)
+✔ deploy / npm test parity (executable contract) (13.434911ms)
+▶ deploy.sh re-exec line (static contract)
+  ✔ waits for the transient unit so its exit code propagates (--wait) (1.753309ms)
+  ✔ injects a node-aware PATH into the transient unit (--setenv) (0.836102ms)
+✔ deploy.sh re-exec line (static contract) (4.304625ms)
+▶ deploy.sh re-exec behaviour (fake systemd-run)
+  ✖ passes --wait and a node-aware PATH to systemd-run (4.145858ms)
+  ✖ propagates a failing unit's exit code to the caller (no vacuous PASS) (2.702051ms)
+  ✖ pins KAINBAIN_OUTSIDE_CGROUP=1 in the unit env (no re-exec loop) (2.395893ms)
+  ✖ re-pins KAINBAIN_DEPLOY_ATTEMPT_ID for the transient unit (per-attempt attribution) (4.385091ms)
+  ✖ omits the attempt-id setenv on manual runs without an attempt id (2.659288ms)
+✖ deploy.sh re-exec behaviour (fake systemd-run) (17.25725ms)
+▶ deploy.sh fail-safe contracts (static)
+  ✔ skips the canary E2E gate on exactly KAINBAIN_SKIP_CANARY=1 (parity with npm test) (0.949617ms)
+  ✔ labels the release snapshot with the pre-increment build (no mislabel) (1.528443ms)
+  ✔ guards the STAGE EXIT trap when the stage dir was never created (0.744303ms)
+  ✔ fails fast on missing jq/curl before consuming a build number (0.847389ms)
+  ✔ creates the deploy dir before taking the rollback lock (1.283356ms)
+  ✔ never re-enters auto-rollback through the ERR trap (0.799036ms)
+  ✔ never rolls back a healthy deploy over an nginx reload failure (1.289802ms)
+  ✔ always leaves a durable result from rollback-mode failures (0.600286ms)
+  ✔ never passes --pipe to systemd-run (dead-reader regression, 2026-10-12) (0.566494ms)
+  ✔ needs no stdio detach before restart_service (no pipe, no EPIPE) (0.807383ms)
+✔ deploy.sh fail-safe contracts (static) (10.095546ms)
+▶ deploy.sh re-exec argv (fake systemd-run, no --pipe)
+  ✖ omits --pipe from the real re-exec argv while keeping --wait (2.343377ms)
+✖ deploy.sh re-exec argv (fake systemd-run, no --pipe) (2.469014ms)
+▶ deploy.sh engine heartbeat pump (foreground liveness)
+  ✖ emits engine-visible heartbeats while the detached unit runs (3.34252ms)
+✖ deploy.sh engine heartbeat pump (foreground liveness) (3.47139ms)
+▶ findDeprecationWarnings
+  ✔ flags the three build-log warning shapes from the task screenshot (8.278591ms)
+  ✔ passes clean build output (including the chunk-size hint) (0.272997ms)
+  ✔ an allowlist entry suppresses its matching line only (0.370805ms)
+  ✔ an expired allowlist entry does not suppress (2.49453ms)
+  ✔ an entry without an expiry date does not suppress (0.314011ms)
+  ✔ an entry with an invalid regex pattern fails closed instead of crashing (0.252231ms)
+  ✔ an invalid pattern does not break its valid siblings (0.549206ms)
+✔ findDeprecationWarnings (19.218492ms)
+▶ compileAllowlistPattern
+  ✔ compiles a valid pattern (0.411842ms)
+  ✔ returns null for a pattern that does not compile (0.405495ms)
+✔ compileAllowlistPattern (7.697822ms)
+▶ loadBuildAllowlist
+  ✔ loads the shipped allowlist file without crashing (0.425424ms)
+✔ loadBuildAllowlist (0.553777ms)
+▶ check-no-deprecations binary
+  ✔ exits 0 and passes output through when the build is clean (217.033357ms)
+  ✔ exits non-zero when the build prints a deprecation warning (117.271791ms)
+  ✔ exits non-zero when the build command itself fails (215.706731ms)
+✔ check-no-deprecations binary (550.263826ms)
+▶ evaluateAudit
+  ✔ reports non-allowlisted high findings as blocking (0.762109ms)
+  ✔ ignores moderate and low findings (0.165645ms)
+  ✔ an allowlist entry with a valid expiry suppresses its advisory (1.677873ms)
+  ✔ an expired allowlist entry does not suppress (0.21492ms)
+  ✔ an entry for a different advisory source does not suppress (0.145516ms)
+  ✔ tolerates audit output with no vulnerabilities key (0.134375ms)
+  ✔ suppresses transitive dependents when the root advisory is allowlisted (2.269027ms)
+  ✔ a transitive chain with no reachable advisory stays blocking (0.262198ms)
+✔ evaluateAudit (8.341423ms)
+▶ resolveDevPlan
+  ✔ defaults to API :3100 and frontend :5173 (1.406786ms)
+  ✔ honors PORT and VITE_PORT (1.122176ms)
+  ✔ supervises the API node process and the Vite npm script (0.410498ms)
+  ✔ rejects a garbage port naming the variable (0.724077ms)
+✔ resolveDevPlan (5.66952ms)
+▶ dev --dry-run
+  ✔ prints the plan and exits without touching ports (102.406543ms)
+✔ dev --dry-run (102.82786ms)
+▶ entry points stay free of Linux-only tooling
+  ✔ scripts/run-tests.mjs references no Linux-only tooling (2.113353ms)
+  ✔ scripts/depcheck.mjs references no Linux-only tooling (0.258921ms)
+  ✔ scripts/dev.mjs references no Linux-only tooling (0.399231ms)
+  ✔ scripts/setup.mjs references no Linux-only tooling (0.34961ms)
+  ✔ scripts/free-port.mjs references no Linux-only tooling (0.323173ms)
+  ✔ scripts/lib/run-parallel.mjs references no Linux-only tooling (0.556917ms)
+  ✔ scripts/lib/run-supervised.mjs references no Linux-only tooling (0.248398ms)
+  ✔ package.json references no Linux-only tooling (0.405264ms)
+✔ entry points stay free of Linux-only tooling (7.542722ms)
+▶ root scripts point at the Node runners
+  ✔ test runs the Node gate (0.415329ms)
+  ✔ dev runs the Node supervisor (0.655286ms)
+  ✔ setup runs the Node installer (0.156691ms)
+  ✔ depcheck runs the Node fan-out (0.156717ms)
+✔ root scripts point at the Node runners (5.583127ms)
+▶ workspace test scripts carry no shell env prefix
+  ✔ api test runs under Windows cmd (no VAR= prefix) (1.693068ms)
+  ✔ frontend test runs under Windows cmd (no VAR= prefix) (0.245729ms)
+✔ workspace test scripts carry no shell env prefix (2.066329ms)
+▶ run-tests.sh stays a thin shim
+  ✔ delegates to the Node gate without its own runner (0.498791ms)
+✔ run-tests.sh stays a thin shim (0.60407ms)
+▶ installs resolve the way the lockfiles were built
+  ✔ root .npmrc pins legacy peer resolution (frontend needs it) (0.255176ms)
+✔ installs resolve the way the lockfiles were built (0.465659ms)
+▶ isPortOccupied
+  ✔ reports false for a free ephemeral port (17.37419ms)
+  ✔ reports true for a bound port (4.35614ms)
+  ✔ reports false again after the holder closes (6.500028ms)
+  ✔ rejects an out-of-range port number (4.629897ms)
+✔ isPortOccupied (36.498609ms)
+▶ findOccupantPids
+  ✔ parses lsof -ti output on linux (3.606048ms)
+  ✔ parses lsof -ti output on darwin (2.023117ms)
+  ✔ returns an empty list when lsof finds no occupant (exit 1) (1.207723ms)
+  ✔ falls back to ss when lsof is missing on linux (0.709577ms)
+  ✔ ss fallback only returns pids listening on the requested port (0.38358ms)
+  ✔ reports a clear error when neither lsof nor ss exists (1.536099ms)
+  ✔ parses netstat -ano output on win32 (0.423937ms)
+  ✔ returns an empty list when netstat shows no listener (0.29144ms)
+✔ findOccupantPids (10.850397ms)
+▶ freePort
+  ✔ is a no-op reporting alreadyFree when the port is free (0.820651ms)
+  ✔ terminates the occupant and reports freed when the port releases (0.362015ms)
+  ✔ escalates to SIGKILL when the occupant ignores SIGTERM (50.117536ms)
+  ✔ never kills its own process (7.113047ms)
+  ✔ fails with an actionable error when the port never releases (29.821519ms)
+  ✔ fails with an actionable error when no occupant pid is found (0.336714ms)
+  ✔ terminates a verified occupant when verifyFn approves it (0.446566ms)
+  ✔ refuses to kill any occupant when verifyFn rejects it (1.463057ms)
+  ✔ treats a throwing verifyFn as unverified instead of killing (0.390756ms)
+✔ freePort (91.358068ms)
+[remediate] --tasks-dir requires a value
+Usage: node scripts/remediate-no-verdict-rejections.mjs [--apply] [--tasks-dir <dir>] [--log <file>] [--no-backup]
+[remediate] tasks dir not found: /tmp/kainbain-remediate-absent
+[remediate] dry-run: 1 task(s) would be repaired (re-run with --apply)
+  - task-1: removed 1 spurious failure(s), repaired 1 report(s), removed stale verdictImplicitPassStages
+▶ parseArgs
+  ✔ defaults to a dry run that writes nothing (9.574149ms)
+  ✔ honours --apply, --no-backup, --tasks-dir, and --log (4.053701ms)
+  ✔ lets the last of --apply/--dry-run win (0.241361ms)
+  ✔ records an error instead of throwing when a value is missing (3.285767ms)
+  ✔ ignores unknown flags (a typo degrades to a dry run, never a write) (0.260921ms)
+✔ parseArgs (19.580668ms)
+▶ backupPathFor
+  ✔ appends .bak (2.123083ms)
+✔ backupPathFor (2.343963ms)
+▶ remediateTasks
+  ✔ reports victims without writing in dry-run mode (18.430914ms)
+  ✔ repairs task and report files with backups, then idles on re-run (26.431566ms)
+  ✔ leaves a task with only genuine failures byte-identical (3.519149ms)
+  ✔ returns an error for a missing tasks dir instead of throwing (0.597082ms)
+✔ remediateTasks (49.460863ms)
+▶ main
+  ✔ exits 2 with usage on argument errors before touching files (6.663122ms)
+  ✔ exits 1 on a missing tasks dir (2.04392ms)
+  ✔ dry-runs a temp tasks dir and exits 0 (3.672443ms)
+✔ main (12.608013ms)
+▶ parseArgs
+  ✔ defaults to the api suite, 5 runs, no pattern (1.613435ms)
+  ✔ parses every flag (0.31823ms)
+  ✔ rejects an unknown suite, unknown flag, and non-positive runs (3.974342ms)
+  ✔ rejects a flag with no value (0.310784ms)
+✔ parseArgs (13.546546ms)
+▶ normalizePattern
+  ✔ strips the suite directory prefix so the runner resolves the filter in its own workspace (7.384515ms)
+  ✔ passes through a bare substring filter unchanged (0.242152ms)
+  ✔ rejects an unknown suite (0.453835ms)
+✔ normalizePattern (21.257656ms)
+▶ buildRepeatCommand
+  ✔ targets the suite workspace through npm with no shell (2.642746ms)
+  ✔ passes the pattern as a workspace-relative positional filter after -- (0.776383ms)
+  ✔ maps canary to its own workspace (0.950625ms)
+  ✔ rejects an unknown suite (0.320989ms)
+✔ buildRepeatCommand (5.06042ms)
+▶ extractFailureSignatures
+  ✔ strips ANSI colour and keeps vitest FAIL headlines once each (0.60442ms)
+  ✔ falls back to Error lines when the run died before reporting tests (0.447248ms)
+  ✔ caps the number of signatures (0.237568ms)
+  ✔ returns an empty list for a clean run (0.162087ms)
+✔ extractFailureSignatures (2.375397ms)
+▶ summarizeRuns
+  ✔ counts passes, failing run numbers, and distinct signatures (0.771437ms)
+  ✔ reports a zero pass rate for an empty record set without dividing by zero (0.148288ms)
+✔ summarizeRuns (1.15872ms)
+▶ runRepeat
+  ✔ runs the suite N times, logs JSONL + raw output, and reports a green pass rate (2.290324ms)
+  ✔ records failures with their signatures and returns ok:false (1.34917ms)
+✔ runRepeat (3.783604ms)
+▶ runParallel
+  ✔ all branches pass -> ok:true with a PASS line per branch (181.428952ms)
+  ✔ one branch fails -> ok:false, FAIL names the branch, the other still passes, output shown (1118.467801ms)
+  ✔ all branches fail -> ok:false (90.056037ms)
+  ✔ seven branches work (mirrors the gate overlap window) (175.572772ms)
+  ✔ reports lines in argument order even when a later branch finishes first (848.981539ms)
+  ✔ a missing command fails its branch instead of crashing the run (43.058132ms)
+  ✔ passing branch output stays hidden (47.619822ms)
+  ✔ lowPriority branches still run (niceness is best-effort) (42.753905ms)
+✔ runParallel (2555.637305ms)
+▶ runParallel progress output (no silent blackout)
+  ✔ announces every branch at spawn, in argument order, before any result line (53.637849ms)
+  ✔ emits a still-running tick naming outstanding branches while a slow branch runs (401.827042ms)
+  ✔ emits no tick when every branch settles inside the interval (63.532197ms)
+  ✔ progressIntervalMs 0 disables the tick entirely (342.274898ms)
+  ✔ an injected failing branch still prints its full details unchanged (54.708666ms)
+  ✔ resolveProgressIntervalMs: option wins, then env, then the 30s default (0.269626ms)
+  ✔ formatElapsedSeconds renders compact human durations (0.215763ms)
+✔ runParallel progress output (no silent blackout) (917.306202ms)
+▶ hung-branch guard (a timed-out branch fails the gate, it cannot hang it)
+  ✔ reports exit 124 and settles even when the branch never emits close (91.816466ms)
+  ✔ keeps the branch's captured output when it is reaped (73.265318ms)
+  ✖ reaps the whole branch process tree, not just the direct child (11060.558074ms)
+✖ hung-branch guard (a timed-out branch fails the gate, it cannot hang it) (11228.773662ms)
+▶ vitest workers: defaults govern (no cap)
+  ✔ scripts/run-tests.mjs sets no worker cap (0.931286ms)
+  ✔ api vitest config uses vitest defaults (0.498092ms)
+  ✔ frontend vitest config uses vitest defaults (0.459375ms)
+✔ vitest workers: defaults govern (no cap) (2.434662ms)
+▶ api worker pool: thread workers, per-file isolation kept
+  ✔ runs the api suite on the threads pool (no fork per file) (0.843675ms)
+  ✔ never disables per-file isolation (0.664115ms)
+  ✔ keeps the per-file isolation setup file installed (0.483377ms)
+✔ api worker pool: thread workers, per-file isolation kept (2.494701ms)
+▶ vitest node-env contract: node builtins stay out of shared happy-dom workers
+  ✔ no frontend suite imports the api tree (no pin escape hatch) (40.852023ms)
+  ✔ every node:-importing suite runs in node env or the forks pool (15.936726ms)
+  ✔ every forks-pinned suite is excluded from the main project (no double run) (0.335937ms)
+✔ vitest node-env contract: node builtins stay out of shared happy-dom workers (57.404381ms)
+▶ runSupervised
+  ✔ streams each child's output with its prefix (198.9113ms)
+  ✔ resolves with the first child's exit code and stops the sibling (169.358391ms)
+  ✖ reaps wrapper grandchildren that inherit stdio (npm/vite shape) (5279.92769ms)
+  ✔ a missing command fails the run instead of hanging (64.160858ms)
+  ✔ SIGTERM to the supervisor stops every child and resolves ok (161.897737ms)
+✖ runSupervised (5880.918188ms)
+▶ buildBranches
+  ✔ builds the eleven canonical branches in order when bash and docker exist (15.902716ms)
+  ✔ every branch spawns a binary with argv (never a shell string) (6.508941ms)
+  ✔ unit tests run at normal priority, the rest low (1.36788ms)
+  ✔ reports SKIP (non-fatal) for Security Script Tests without bash (1.713428ms)
+  ✔ reports SKIP (non-fatal) for Container Tests without a docker daemon (0.818499ms)
+  ✔ reports SKIP (non-fatal) for Dependency Check without the depcheck binary (0.350801ms)
+  ✔ keeps Dependency Check runnable (low priority, via npm) when the binary exists (1.804355ms)
+  ✔ container tests run the docker suite through node --test (5.146828ms)
+  ✔ harness self-tests run the ported node suites (not the old shell one) (1.24764ms)
+  ✔ includes Canary Tests by default (npm test parity with deploy.sh --prod) (0.371952ms)
+  ✔ omits Canary Tests when opted out (withCanary: false — --no-canary / KAINBAIN_SKIP_CANARY=1) (3.638832ms)
+  ✔ spawns Canary Tests last as npm run test:canary (3.723121ms)
+✔ buildBranches (47.274902ms)
+▶ splitGatePhases
+  ✔ runs Canary Tests in the serial phase after the fast overlap window (0.561667ms)
+  ✔ leaves an opted-out gate as one fast phase with no canary phase (0.225521ms)
+✔ splitGatePhases (0.950342ms)
+▶ resolveCanary
+  ✔ runs canary by default (parity with deploy.sh --prod) (0.525824ms)
+  ✔ accepts the legacy --canary opt-in as a no-op (0.192365ms)
+  ✔ opts out via --no-canary (2.143184ms)
+  ✔ opts out via KAINBAIN_SKIP_CANARY=1 (the deploy emergency opt-out) (0.108697ms)
+  ✔ treats other KAINBAIN_SKIP_CANARY values as unset (0.104458ms)
+  ✔ skip flags win over the legacy opt-in flags (0.105607ms)
+✔ resolveCanary (5.990599ms)
+▶ depcheckAvailable
+  ✔ reports true when the root tree carries the posix binary (0.735218ms)
+  ✔ reports true when the root tree carries the Windows binary (0.517681ms)
+  ✔ reports false when the platform's binary name is missing (0.486223ms)
+  ✔ reports false when the root tree has no binaries at all (1.553362ms)
+✔ depcheckAvailable (3.503694ms)
+▶ pruneStaleTestDirectories
+  ✔ removes old directories matching test prefixes and preserves young or unrelated entries (1.393506ms)
+  ✔ returns zero and does not throw when directory does not exist (0.245887ms)
+✔ pruneStaleTestDirectories (1.921227ms)
+▶ installSteps
+  ✔ installs root, api, frontend, then canary-e2e in order (8.122394ms)
+✔ installSteps (12.10152ms)
+▶ installSteps npmrc
+  ✔ every install dir resolves legacy-peer-deps the way npm actually reads it (1.208801ms)
+  ✔ root .npmrc documents the per-dir mirrors (2.288356ms)
+✔ installSteps npmrc (4.456814ms)
+▶ playwrightAttempts
+  ✔ tries system deps first on linux, then the browser alone (0.401712ms)
+  ✔ installs the browser alone on macOS and Windows (1.704225ms)
+✔ playwrightAttempts (2.614142ms)
+▶ npxExecutable
+  ✔ uses npx.cmd on Windows, npx elsewhere (0.376752ms)
+✔ npxExecutable (0.63397ms)
+▶ browserInstallTargets
+  ✔ installs the root browser first, then the canary-e2e browser (6.655061ms)
+  ✔ keeps Linux --with-deps on the root target and browser-only on canary (0.509929ms)
+  ✔ installs the browser alone for every target on macOS and Windows (1.126701ms)
+✔ browserInstallTargets (8.638815ms)
+[projectStore] recreated missing docs symlink for 'Sanity': '/tmp/kainbain-sanity-projects-EpkpbE/Sanity/docs' -> '/tmp/kainbain-sanity-notes-ffKDcE/Sanity'
+[projectStore] recreated missing docs symlink for 'Sanity': '/tmp/kainbain-sanity-projects-FDOhjE/Sanity/docs' -> '/tmp/kainbain-sanity-notes-IIijjE/Sanity'
+[projectStore] '/tmp/kainbain-sanity-projects-FDOhjE/Sanity/docs' is a real directory shadowing the notes space '/tmp/kainbain-sanity-notes-IIijjE/Sanity' — task lists read the shadow copy, so most tasks are hidden. Merge any newer files from the shadow 'docs/tasks/' into the notes space, then replace '/tmp/kainbain-sanity-projects-FDOhjE/Sanity/docs' with a symlink to '/tmp/kainbain-sanity-notes-IIijjE/Sanity'.
+[projectStore] recreated missing docs symlink for 'Sanity': '/tmp/kainbain-sanity-projects-GnMIpE/Sanity/docs' -> '/tmp/kainbain-sanity-notes-MbnepE/Sanity'
+[projectStore] recreated missing docs symlink for 'Sanity': '/tmp/kainbain-sanity-projects-MjkhDF/Sanity/docs' -> '/tmp/kainbain-sanity-notes-GHCnDF/Sanity'
+[projectStore] '/tmp/kainbain-sanity-projects-MjkhDF/Sanity/docs' is a real directory shadowing the notes space '/tmp/kainbain-sanity-notes-GHCnDF/Sanity' — task lists read the shadow copy, so most tasks are hidden. Merge any newer files from the shadow 'docs/tasks/' into the notes space, then replace '/tmp/kainbain-sanity-projects-MjkhDF/Sanity/docs' with a symlink to '/tmp/kainbain-sanity-notes-GHCnDF/Sanity'.
+[projectStore] recreated missing docs symlink for 'Sanity': '/tmp/kainbain-sanity-projects-HeaIpN/Sanity/docs' -> '/tmp/kainbain-sanity-notes-PFDNpN/Sanity'
+[projectStore] recreated missing docs symlink for 'Sanity': '/tmp/kainbain-sanity-projects-hinkJO/Sanity/docs' -> '/tmp/kainbain-sanity-notes-gjanJO/Sanity'
+[projectStore] '/tmp/kainbain-sanity-projects-hinkJO/Sanity/docs' is a real directory shadowing the notes space '/tmp/kainbain-sanity-notes-gjanJO/Sanity' — task lists read the shadow copy, so most tasks are hidden. Merge any newer files from the shadow 'docs/tasks/' into the notes space, then replace '/tmp/kainbain-sanity-projects-hinkJO/Sanity/docs' with a symlink to '/tmp/kainbain-sanity-notes-gjanJO/Sanity'.
+▶ checkStorageSanity
+  ✔ restores every seeded task and arms the shadow detector (13.601206ms)
+  ✔ leaves no fixture residue in the OS temp dir (11.790091ms)
+✔ checkStorageSanity (27.107033ms)
+▶ isMainModule
+  ✔ matches URL-encoded entry paths (space decodes via fileURLToPath, not pathname) (3.138635ms)
+  ✔ rejects a missing entry path or a different file (1.678104ms)
+  ✔ fires on direct run: node scripts/storage-sanity.mjs prints PASS (335.921245ms)
+✔ isMainModule (341.227907ms)
+▶ countNotesTasks
+  ✔ counts only folders holding a task.md (7.495475ms)
+  ✔ returns 0 when the notes space has no tasks dir (0.858336ms)
+✔ countNotesTasks (8.739029ms)
+ℹ tests 287
+ℹ suites 72
+ℹ pass 278
+ℹ fail 9
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16867.040031
+
+✖ failing tests:
+
+test at tests/deploy-reexec.test.mjs:101:2
+✖ passes --wait and a node-aware PATH to systemd-run (4.145858ms)
+  Error: ENOENT: no such file or directory, open '/tmp/kb-deploy-reexec-PFDmgD/argv.log'
+      at Object.readFileSync (node:fs:483:20)
+      at runWithFakeSystemdRun (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:94:20)
+      at TestContext.<anonymous> (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:102:20)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at node:internal/test_runner/test:1903:71
+      at node:internal/per_context/primordials:504:82
+      at new Promise (<anonymous>)
+      at new SafePromise (node:internal/per_context/primordials:478:3) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/tmp/kb-deploy-reexec-PFDmgD/argv.log'
+  }
+
+test at tests/deploy-reexec.test.mjs:113:2
+✖ propagates a failing unit's exit code to the caller (no vacuous PASS) (2.702051ms)
+  Error: ENOENT: no such file or directory, open '/tmp/kb-deploy-reexec-JoHkkD/argv.log'
+      at Object.readFileSync (node:fs:483:20)
+      at runWithFakeSystemdRun (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:94:20)
+      at TestContext.<anonymous> (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:114:28)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Promise.all (index 0)
+      at async Suite.run (node:internal/test_runner/test:1905:7) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/tmp/kb-deploy-reexec-JoHkkD/argv.log'
+  }
+
+test at tests/deploy-reexec.test.mjs:119:2
+✖ pins KAINBAIN_OUTSIDE_CGROUP=1 in the unit env (no re-exec loop) (2.395893ms)
+  Error: ENOENT: no such file or directory, open '/tmp/kb-deploy-reexec-KGEdnD/argv.log'
+      at Object.readFileSync (node:fs:483:20)
+      at runWithFakeSystemdRun (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:94:20)
+      at TestContext.<anonymous> (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:120:20)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/tmp/kb-deploy-reexec-KGEdnD/argv.log'
+  }
+
+test at tests/deploy-reexec.test.mjs:127:2
+✖ re-pins KAINBAIN_DEPLOY_ATTEMPT_ID for the transient unit (per-attempt attribution) (4.385091ms)
+  Error: ENOENT: no such file or directory, open '/tmp/kb-deploy-reexec-AOfnpD/argv.log'
+      at Object.readFileSync (node:fs:483:20)
+      at runWithFakeSystemdRun (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:94:20)
+      at TestContext.<anonymous> (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:133:20)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/tmp/kb-deploy-reexec-AOfnpD/argv.log'
+  }
+
+test at tests/deploy-reexec.test.mjs:140:2
+✖ omits the attempt-id setenv on manual runs without an attempt id (2.659288ms)
+  Error: ENOENT: no such file or directory, open '/tmp/kb-deploy-reexec-NPJKEE/argv.log'
+      at Object.readFileSync (node:fs:483:20)
+      at runWithFakeSystemdRun (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:94:20)
+      at TestContext.<anonymous> (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:141:20)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/tmp/kb-deploy-reexec-NPJKEE/argv.log'
+  }
+
+test at tests/deploy-reexec.test.mjs:280:2
+✖ omits --pipe from the real re-exec argv while keeping --wait (2.343377ms)
+  Error: ENOENT: no such file or directory, open '/tmp/kb-deploy-nopipe-PgcDbE/argv.log'
+      at Object.readFileSync (node:fs:483:20)
+      at runReexecCapture (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:312:15)
+      at TestContext.<anonymous> (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:317:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at node:internal/test_runner/test:1903:71
+      at node:internal/per_context/primordials:504:82
+      at new Promise (<anonymous>)
+      at new SafePromise (node:internal/per_context/primordials:478:3) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/tmp/kb-deploy-nopipe-PgcDbE/argv.log'
+  }
+
+test at tests/deploy-reexec.test.mjs:324:2
+✖ emits engine-visible heartbeats while the detached unit runs (3.34252ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  null !== 0
+  
+      at TestContext.<anonymous> (file:///home/server/projects/kainbain/tests/deploy-reexec.test.mjs:364:11)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at node:internal/test_runner/test:1903:71
+      at node:internal/per_context/primordials:504:82
+      at new Promise (<anonymous>)
+      at new SafePromise (node:internal/per_context/primordials:478:3)
+      at node:internal/per_context/primordials:504:9
+      at Array.map (<anonymous>) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/run-parallel.test.mjs:337:2
+✖ reaps the whole branch process tree, not just the direct child (11060.558074ms)
+  AssertionError [ERR_ASSERTION]: the grandchild should have been reaped with the branch's process group
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///home/server/projects/kainbain/tests/run-parallel.test.mjs:381:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/run-supervised.test.mjs:128:2
+✖ reaps wrapper grandchildren that inherit stdio (npm/vite shape) (5279.92769ms)
+  AssertionError [ERR_ASSERTION]: grandchild orphaned the wrapper's pipes
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///home/server/projects/kainbain/tests/run-supervised.test.mjs:163:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+----------------------------------------------------------------------
+Fast gate complete — starting Canary Tests alone (serial phase, no shared CPUs with the unit suites)...
+▸ started Canary Tests
+Running Canary Tests... [0;31mFAIL[0m (3s)
+----------------------------------------------------------------------
+Details for Canary Tests:
+
+> kainbain@1.0.0 test:canary
+> npm run test --prefix canary-e2e
+
+
+> canary-e2e@1.0.0 test
+> node ../scripts/canary-preflight.mjs && playwright test
+
+canary-preflight: port 3399 already free
+canary-preflight: port 5299 already free
+Port 3399: already free
+Port 5299: already free
+[WebServer] file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:601
+[WebServer] 			const error = /* @__PURE__ */ new Error("Cannot find native binding. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828). Please try `npm i` again after removing both package-lock.json and node_modules directory.");
+[WebServer] 			                              ^
+[WebServer] 
+[WebServer] Error: Cannot find native binding. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828). Please try `npm i` again after removing both package-lock.json and node_modules directory.
+[WebServer]     at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:601:34
+[WebServer]     at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:9:49
+[WebServer]     ... 2 lines matching cause stack trace ...
+[WebServer]     at async node:internal/modules/esm/loader:647:26 {
+[WebServer]   cause: Error: Cannot find module '@rolldown/binding-wasm32-wasi'
+[WebServer]   Require stack:
+[WebServer]   - /home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs
+[WebServer]       at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:495:18
+[WebServer]       ... 6 lines matching cause stack trace ...
+[WebServer]       at async node:internal/modules/esm/loader:647:26 {
+[WebServer]     cause: Error: Cannot find module './rolldown-binding.wasi.cjs'
+[WebServer]     Require stack:
+[WebServer]     - /home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs
+[WebServer]         at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:495:18
+[WebServer]         ... 6 lines matching cause stack trace ...
+[WebServer]         at async node:internal/modules/esm/loader:647:26 {
+[WebServer]       cause: Error: Cannot find module '@rolldown/binding-linux-x64-musl'
+[WebServer]       Require stack:
+[WebServer]       - /home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs
+[WebServer]           at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:495:18
+[WebServer]           ... 6 lines matching cause stack trace ...
+[WebServer]           at async node:internal/modules/esm/loader:647:26 {
+[WebServer]         cause: Error: Cannot find module './rolldown-binding.linux-x64-musl.node'
+[WebServer]         Require stack:
+[WebServer]         - /home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs
+[WebServer]             at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:495:18
+[WebServer]             at Array.reduce (<anonymous>)
+[WebServer]             at createLoadErrorChain (file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:488:17)
+[WebServer]             at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:602:18
+[WebServer]             at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/binding-BMtuZhvP.mjs:9:49
+[WebServer]             at file:///home/server/projects/kainbain/frontend/node_modules/rolldown/dist/shared/parse-B7LUicIJ.mjs:3:46
+[WebServer]             at ModuleJob.run (node:internal/modules/esm/module_job:561:25)
+[WebServer]             at async node:internal/modules/esm/loader:647:26 {
+[WebServer]           cause: null
+[WebServer]         }
+[WebServer]       }
+[WebServer]     }
+[WebServer]   }
+[WebServer] }
+[WebServer] 
+[WebServer] Node.js v24.22.1
+Error: Process from config.webServer was not able to start. Exit code: 1
+
+----------------------------------------------------------------------
+
+```
+
+### Modified Files
+- (No files modified / inspection only)
+
+### Verification Status
+- Stage execution failed with error: CI command failed with exit code 1
+- Triggered fallback routing.
