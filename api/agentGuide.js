@@ -324,6 +324,13 @@ export const ENDPOINTS = [
 	},
 	{
 		method: "POST",
+		path: "/tasks/:id/claim-heartbeat",
+		purpose:
+			"Runner-only: renew a live claim mid-stage (extends the lease TTL; 409 STALE_EPOCH when superseded) so long harness runs keep their fence. Requires the x-runner-credential header.",
+		body: { projectId: "string (required)", executionId: "string (required)", epoch: "number (required)" },
+	},
+	{
+		method: "POST",
 		path: "/tasks/:id/interrupt",
 		purpose:
 			"Runner-only: park a task as interrupted and drop its lease (kill-mid-stage path; re-queues via startup recovery). Requires the x-runner-credential header.",
