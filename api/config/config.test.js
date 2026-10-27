@@ -186,6 +186,7 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		claimTtlMs: 300000,
 		pushNotificationsEnabled: true,
 		runnerJoinToken: "",
+		runnerExecutionOnly: false,
 		runnerStaleAfterMs: 60000,
 		runnerMaxConcurrentPerProject: 0,
 		runnerMaxConcurrentFleet: 0,

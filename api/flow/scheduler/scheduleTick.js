@@ -194,7 +194,14 @@ export async function scheduleTick(store, opts = {}) {
 		promptEngine: opts.promptEngine || store.defaultPromptEngine,
 		priority: "normal",
 	});
-	if (result?.queueEntryTimeout === true) {
+	if (result?.deferred === "runner-dispatch") {
+		// Runner-execution cutover: the stage stays queued for the fleet.
+		// Not a dispatch (no lastDispatchAt, no wedge-episode close — the
+		// wedge logic tracks embedded runs, and a deferred stage started
+		// nothing). Candidacy is intact; the next tick re-offers it.
+		stats.deferredDispatch = (stats.deferredDispatch || 0) + 1;
+		stats.lastOutcome = "deferred-runner-dispatch";
+	} else if (result?.queueEntryTimeout === true) {
 		// The entry outlived the settle guarantee mid-run: the timeout path
 		// already routed the occupant to the transient ladder and counted
 		// the stall recovery. This tick carried no fresh dispatch, so it

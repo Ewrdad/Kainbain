@@ -77,6 +77,7 @@ import { displayModelForInit } from './displayModelForInit.js';
 import { routeStageError } from './routeStageError.js';
 import { buildRetryFailureDetails } from './buildRetryFailureDetails.js';
 import { resolveCommandStageRuntime } from './resolveCommandStageRuntime.js';
+import { isDispatchServable } from '../dispatch/isDispatchServable.js';
 
 /***
  * MARK: executeStage
@@ -101,9 +102,11 @@ export async function executeStage(
 	if (!task) return null;
 
 	let projectName = projectId;
+	let projectEntity = null;
 	if (store.projectStore && typeof store.projectStore.getProject === "function") {
 		const project = store.projectStore.getProject(projectId);
 		if (project?.name) projectName = project.name;
+		projectEntity = project || null;
 	}
 
 	const stage = stages.find(
@@ -208,6 +211,27 @@ export async function executeStage(
 			stageType,
 			status: "paused",
 			message: "Stage is paused",
+		};
+	}
+
+	// Runner-execution cutover gate (`KAINBAIN_RUNNER_EXECUTION_ONLY`): a
+	// model stage a Runner can serve over the wire is left for dispatch
+	// instead of spawning an in-process agent child. Pure skip — no budget
+	// touched, no state mutated, candidacy intact for the next tick and for
+	// the dispatch poll. Human checkpoints, commands, CI stages,
+	// unresolvable aliases, and circuit-canary probes keep their embedded
+	// behavior (canary bypass preserves the half-open probe).
+	if (
+		config.runnerExecutionOnly &&
+		!isCanaryTask(store, taskId) &&
+		isDispatchServable({ project: projectEntity || {}, task, stages, stage })
+	) {
+		return {
+			task,
+			stageType,
+			status: "deferred",
+			deferred: "runner-dispatch",
+			message: "Runner execution only; stage left for wire dispatch",
 		};
 	}
 

@@ -396,6 +396,15 @@ export const CONFIG_SCHEMA = [
 		group: "server",
 		doc: "Operator join secret Runners present at POST /runners/register (D4). Empty (default) disables registration; approved Runners get per-Runner credentials. Redacted in the config-spec endpoint.",
 	},
+	{
+		key: "runnerExecutionOnly",
+		env: "KAINBAIN_RUNNER_EXECUTION_ONLY",
+		aliases: [],
+		type: "bool",
+		default: false,
+		group: "tasks",
+		doc: "Cutover switch (final phase): when true, embedded model-stage execution retires — normalized-agent stages that a Runner can serve over the wire defer to dispatch (status 'deferred', deferred 'runner-dispatch') instead of spawning an in-process agent child. Human checkpoints, commands, CI, unresolvable aliases, and circuit-canary probes keep their embedded behavior. Off by default; flip only with at least one approved live Runner, revert to instantly restore embedded execution.",
+	},
 
 	// --- Storage & Paths --------------------------------------------------
 	{

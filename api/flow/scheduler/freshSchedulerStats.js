@@ -21,6 +21,12 @@ export function freshSchedulerStats() {
 		// Tier-5 containment: ticks where dispatch was held back by the trip
 		// (queued work preserved, budgets untouched).
 		deferredTripped: 0,
+		// Runner-execution cutover: ticks where an embedded dispatch deferred
+		// a wire-servable model stage to the Runner fleet (budgets untouched,
+		// candidacy intact). A persistently climbing count with no Runner
+		// pickup means the fleet is empty or mismatched — check the Runner
+		// monitor, not the engine.
+		deferredDispatch: 0,
 		canaryDispatched: 0,
 		tripCount: 0,
 		// WP6 stall watchdog: stages terminated because their heartbeat went
