@@ -133,7 +133,9 @@ export function stripUnsupportedReasoningLevel({
  *   pairings in two tiers. HARD (returned `error`, save refused): a target
  *   on a `none` harness carrying a model string; a target naming an unknown
  *   harness id (including the virtual `"alias"` — aliases cannot point at
- *   aliases); a non-blank malformed model ref. SOFT (returned `warnings[]`,
+ *   aliases); a non-blank malformed model ref; a blank model on a `list`
+ *   harness (the pick would run the harness default and display as
+ *   "default" instead of the alias's model). SOFT (returned `warnings[]`,
  *   save succeeds): a model absent from its target harness's catalog right
  *   now (`list` harnesses only, and only when the probe actually read a
  *   catalog — an unreadable catalog warns about nothing).
@@ -170,7 +172,24 @@ export async function validateAliasTargetModels(
 				warnings,
 			};
 		}
-		if (!model) continue;
+		if (!model) {
+			// A blank pick runs the harness default and every display path
+			// (queue, init line, timeline attribution) renders it as the
+			// literal "default" instead of the alias's model — so a `list`
+			// harness (which takes an explicit model) must name one. Blank
+			// stays legal on `none` harnesses, which manage their own model.
+			// Mirrors the settings UI's hard row error.
+			if (modelSelectionFor(target.harness) === "list") {
+				return {
+					error:
+						`alias "${name}" needs a model for the ${target.percent}% ${harnessId} target — ` +
+						`pick one from the ${harnessId} catalog (a blank model runs the harness ` +
+						`default and shows as "default")`,
+					warnings,
+				};
+			}
+			continue;
+		}
 		if (modelSelectionFor(target.harness) === "none") {
 			return {
 				error:

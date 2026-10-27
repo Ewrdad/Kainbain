@@ -28,7 +28,9 @@ import { normalizeStageType } from "../projectStore.js";
  *   records satisfying the shared grammar, with unique names. HARD (returned
  *   `error` naming the offending row, save refused): structurally impossible
  *   target pairings — a `none` harness (muse, custom) with a model string,
- *   an unknown harness id, a malformed model ref. SOFT (returned
+ *   an unknown harness id, a malformed model ref, a blank model on a `list`
+ *   harness (the pick would run the harness default and display as
+ *   "default"). SOFT (returned
  *   `warnings[]`, save succeeds): catalog-miss pairings (valid shape, absent
  *   from the target harness's catalog right now). The catalog probe is
  *   memoized per call so N targets on one harness probe once.

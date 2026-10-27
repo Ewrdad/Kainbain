@@ -48,8 +48,10 @@ import {
  *   (the engine may dispatch a model ref, pinned via `session/setModel`); on
  *   exec it declares `"none"` — there is no exec-side catalogue, so the
  *   curated fallback applies and the monitor shows no Model pill. Alias
- *   targets for muse must leave the model blank; the API refuses muse +
- *   model rows and the load path blanks legacy ones.
+ *   targets for muse must leave the model blank on the exec transport
+ *   (`none`); on MSP (`list`) they must name a catalogued model like any
+ *   other list harness — the API refuses muse + model rows on exec and
+ *   blank muse rows on MSP, and the load path blanks legacy exec ones.
  *
  *   Safety: argv/env come from `musePermissions.js` — `--workspace` is
  *   always pinned, `--yolo` is ON by default (operator-chosen: no approval

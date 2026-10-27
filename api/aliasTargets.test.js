@@ -108,6 +108,32 @@ describe("validateAliasTargetModels", () => {
 		expect(error).toContain("a::b::c::d::e");
 	});
 
+	it("refuses a blank model on a list harness (it would show as default)", async () => {
+		// A blank pick runs the harness default and every display path
+		// (queue, init line, timeline attribution) renders it as the literal
+		// "default" instead of the alias's model — fail loud at save, like
+		// the settings UI already does. Blank stays legal on none harnesses.
+		const mspOpts = { ...opts, modelSelectionFor: () => "list" };
+		const { error } = await validateAliasTargetModels(
+			{
+				name: "worker",
+				targets: [
+					{ harness: "muse", model: "", percent: 45 },
+					{ harness: "pi", model: "pi::known-model", percent: 55 },
+				],
+			},
+			mspOpts,
+		);
+		expect(error).toContain("worker");
+		expect(error).toContain("muse");
+		expect(error).toContain("needs a model");
+		const { error: legacyError } = await validateAliasTargetModels(
+			{ name: "w", harness: "pi", model: "" },
+			opts,
+		);
+		expect(legacyError).toContain("needs a model");
+	});
+
 	it("warns softly (never blocks) on catalog misses", async () => {
 		const { error, warnings } = await validateAliasTargetModels(
 			{ name: "s", harness: "pi", model: "pi::missing-model" },
