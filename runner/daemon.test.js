@@ -4,7 +4,23 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { deliverSteers, runDispatchLoop, runSingleAssignment } from "./daemon.js";
+import { defaultLoadHarness, deliverSteers, runDispatchLoop, runSingleAssignment } from "./daemon.js";
+
+describe("defaultLoadHarness", () => {
+	it("wires mock, pi, muse, antigravity, and vibe harnesses with createSession", async () => {
+		for (const id of ["mock", "pi", "muse", "antigravity", "vibe"]) {
+			const harness = await defaultLoadHarness(id);
+			assert.equal(typeof harness.createSession, "function", id);
+		}
+	});
+
+	it("fails fast naming supported harnesses", async () => {
+		await assert.rejects(
+			defaultLoadHarness("nope"),
+			/supported: mock, pi, muse, antigravity, vibe/,
+		);
+	});
+});
 
 function localRepo() {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-runner-d-"));
@@ -287,6 +303,55 @@ describe("runDispatchLoop", () => {
 		assert.ok(!client.calls.includes("interrupt"));
 		assert.ok(!client.calls.includes("claim"), "dispatch lease is consumed, never re-claimed");
 		assert.ok(fs.existsSync(path.join(config.workRoot, "kb-t1")));
+	});
+
+	it("serves the dispatch answer's required model, never a substitution", async () => {
+		const repo = localRepo();
+		const config = loopConfig({ model: "m-pin", models: ["m-pin", "m-want"] });
+		dirs.push(config.workRoot, repo);
+		let seenMeta = null;
+		const capturingHarness = () => ({
+			async createSession(project, meta) {
+				seenMeta = meta;
+				return {
+					getLastAssistantText: () => "done",
+					subscribe: () => () => {},
+					prompt: async () => "done",
+					dispose: async () => {},
+				};
+			},
+		});
+		let polls = 0;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				polls += 1;
+				return polls === 1
+					? {
+							assigned: true,
+							projectId: "p1",
+							taskId: "t1",
+							executionId: "e1",
+							epoch: 1,
+							requirements: { harness: "mock", model: "m-want" },
+						}
+					: { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async () => ({ accepted: true, shaState: "present" }),
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => capturingHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.assignments, 1);
+		assert.equal(seenMeta?.model, "m-want");
 	});
 
 	it("backs off on 429 without consuming idle budget or crashing", async () => {

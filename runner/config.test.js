@@ -50,6 +50,34 @@ describe("loadRunnerConfig", () => {
 		assert.equal(config.dispatchIdleLimit, 0);
 	});
 
+	it("advertises a csv MODELS list, singular MODEL seeds it, empty stays unpinned", () => {
+		const csv = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "pi",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+			KAINBAIN_RUNNER_MODEL: "ignored-when-csv",
+			KAINBAIN_RUNNER_MODELS: " a ,b,, c ",
+		});
+		assert.deepEqual(csv.models, ["a", "b", "c"]);
+		assert.equal(csv.model, "ignored-when-csv");
+
+		const single = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "pi",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+			KAINBAIN_RUNNER_MODEL: "m1",
+		});
+		assert.deepEqual(single.models, ["m1"]);
+
+		const bare = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "pi",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+		});
+		assert.deepEqual(bare.models, []);
+		assert.equal(bare.model, "");
+	});
+
 	it("falls back on invalid numbers and customizes tiers", () => {
 		const config = loadRunnerConfig({
 			KAINBAIN_RUNNER_ID: "r1",

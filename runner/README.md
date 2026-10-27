@@ -37,12 +37,18 @@ KAINBAIN_RUNNER_JOIN_TOKEN=<operator secret> \
 KAINBAIN_RUNNER_CREDENTIAL=<one-time credential from Settings> \
 KAINBAIN_RUNNER_ID=host-1 \
 KAINBAIN_RUNNER_HARNESS=mock \
+KAINBAIN_RUNNER_MODELS=<csv this host can serve, optional> \
 KAINBAIN_RUNNER_DISPATCH=1 \
 KAINBAIN_RUNNER_PROJECTS=<projectId,optional allowlist> \
 KAINBAIN_RUNNER_DISPATCH_POLL_MS=5000 \
 KAINBAIN_RUNNER_DISPATCH_IDLE_LIMIT=3 \
 node runner/main.js
 ```
+
+`KAINBAIN_RUNNER_MODELS` is the servable-model advertisement the backend
+matches against (csv; singular `KAINBAIN_RUNNER_MODEL` seeds a 1-element
+list; empty matches model-less tasks only). Each assignment serves
+exactly the dispatch answer's required model — never a substitution.
 
 In dispatch mode no `PROJECT_ID`/`TASK_ID` is needed. After the same
 join + heartbeat prologue the daemon polls `POST /runners/dispatch`:

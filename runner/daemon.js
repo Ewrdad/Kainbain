@@ -10,7 +10,7 @@ export const RUNNER_VERSION = "0.1.0";
  *   Anything HarnessSession-conforming works; only the ids below are
  *   wired (anything else fails fast naming what is supported).
  * @example const h = await defaultLoadHarness('mock')
- * @param {string} harnessId - Harness id (mock, pi).
+ * @param {string} harnessId - Harness id (mock, pi, muse, antigravity, vibe).
  * @returns {Promise<Object>} Harness with `createSession`.
  ***/
 export async function defaultLoadHarness(harnessId) {
@@ -24,13 +24,36 @@ export async function defaultLoadHarness(harnessId) {
 		const { createPiHarness } = await import("../api/agent/harnesses/pi/piHarness.js");
 		return createPiHarness({});
 	}
-	throw new Error(`Unknown harness ${harnessId} (supported: mock, pi).`);
+	if (harnessId === "muse") {
+		const { createMuseHarness } = await import(
+			"../api/agent/harnesses/muse/museHarness.js"
+		);
+		return createMuseHarness({});
+	}
+	if (harnessId === "antigravity") {
+		const { createAntigravityHarness } = await import(
+			"../api/agent/harnesses/antigravity/agyHarness.js"
+		);
+		return createAntigravityHarness({});
+	}
+	if (harnessId === "vibe") {
+		const { createVibeHarness } = await import(
+			"../api/agent/harnesses/vibe/vibeHarness.js"
+		);
+		return createVibeHarness({});
+	}
+	throw new Error(`Unknown harness ${harnessId} (supported: mock, pi, muse, antigravity, vibe).`);
 }
 
 function factsFor({ config, harnessVersions }) {
 	return {
 		harnesses: [{ id: config.harnessId, version: harnessVersions?.[config.harnessId] ?? "unknown" }],
-		models: config.model ? [config.model] : [],
+		models:
+			Array.isArray(config.models) && config.models.length > 0
+				? [...config.models]
+				: config.model
+					? [config.model]
+					: [],
 		tiers: config.tiers,
 		diskHeadroomMb: null,
 		versions: { protocol: "v1", runner: RUNNER_VERSION },
@@ -149,10 +172,24 @@ export async function deliverSteers({ config, client, logger, facts, state }) {
  *   commit/push, and complete one assignment (used by both
  *   single-assignment and loop).
  * @example await executeAssignment({ config, client, logger, harness, state, projectId, taskId })
- * @param {Object} opts - Options (config, client, logger, harness, state, projectId, taskId, lease?).
+ * @param {Object} opts - Options (config, client, logger, harness, state, projectId, taskId, lease?, model?).
+ * @param {string} [opts.model] - Required model from the dispatch answer
+ *   (`requirements.model`); the runner serves exactly that, never a
+ *   substitution. Falls back to the pinned `config.model` (single-assignment
+ *   mode or a model-less task), else the harness default.
  * @returns {Promise<Object>} Execution summary.
  ***/
-async function executeAssignment({ config, client, logger, harness, state, projectId, taskId, lease }) {
+async function executeAssignment({
+	config,
+	client,
+	logger,
+	harness,
+	state,
+	projectId,
+	taskId,
+	lease,
+	model = null,
+}) {
 		const project = await client.getProject(projectId);
 		const task = await client.getTask(projectId, taskId);
 		const stageId = String(task.currentStageId ?? task.stages?.[0]?.id ?? "stage");
@@ -216,7 +253,7 @@ async function executeAssignment({ config, client, logger, harness, state, proje
 				workdir,
 				taskId: taskId,
 				stageId,
-				model: config.model,
+				model: model || config.model,
 				prompt,
 				onLog: (text) => {
 					sendLogs(text).catch((err) => {
@@ -421,6 +458,9 @@ export async function runDispatchLoop({
 				projectId: answer.projectId,
 				taskId: answer.taskId,
 				lease: { executionId: answer.executionId, epoch: answer.epoch },
+				// The backend already matched this task against our
+				// advertised models: serve exactly its required model.
+				model: answer.requirements?.model || null,
 			});
 		}
 	} finally {

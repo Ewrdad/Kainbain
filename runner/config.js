@@ -21,6 +21,18 @@ export function loadRunnerConfig(env = process.env) {
 	const backendUrl = str("KAINBAIN_RUNNER_BACKEND", "http://localhost:3100").replace(/\/+$/, "");
 	const runnerId = str("KAINBAIN_RUNNER_ID", "");
 	const harnessId = str("KAINBAIN_RUNNER_HARNESS", "");
+	// Servable model advertisement (capability matching is backend-side, so
+	// the list is the operator's claim of what this host can run; the
+	// dispatch answer carries the required model per assignment and the
+	// daemon serves exactly that). KAINBAIN_RUNNER_MODELS (csv) wins when
+	// set; otherwise the singular KAINBAIN_RUNNER_MODEL seeds a 1-element
+	// list; empty means unpinned (matches model-less tasks only).
+	const model = str("KAINBAIN_RUNNER_MODEL", "");
+	const models = str("KAINBAIN_RUNNER_MODELS", "")
+		.split(",")
+		.map((m) => m.trim())
+		.filter(Boolean);
+	if (models.length === 0 && model) models.push(model);
 	const projectId = str("KAINBAIN_RUNNER_PROJECT_ID", "");
 	const taskId = str("KAINBAIN_RUNNER_TASK_ID", "");
 	if (!runnerId) errors.push("KAINBAIN_RUNNER_ID is required (stable per host).");
@@ -45,7 +57,8 @@ export function loadRunnerConfig(env = process.env) {
 		credential: str("KAINBAIN_RUNNER_CREDENTIAL", ""),
 		runnerId,
 		harnessId,
-		model: str("KAINBAIN_RUNNER_MODEL", ""),
+		model,
+		models,
 		tiers: str("KAINBAIN_RUNNER_TIERS", "T0,T1")
 			.split(",")
 			.map((t) => t.trim())
