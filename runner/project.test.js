@@ -4,7 +4,12 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { listOrphanWorkdirs, prepareWorkdir, refreshMirror } from "./project.js";
+import {
+	listOrphanWorkdirs,
+	prepareWorkdir,
+	refreshMirror,
+	refreshWorktreeToRemote,
+} from "./project.js";
 
 function git(dir, args) {
 	execFileSync("git", args, { cwd: dir, stdio: "ignore" });
@@ -61,6 +66,66 @@ describe("runner project prep", () => {
 			const second = await prepareWorkdir({ repoUrl: origin, workRoot: tmp, taskId: "t2" });
 			assert.equal(second.mode, "clone");
 			assert.ok(fs.existsSync(path.join(second.workdir, "f.txt")));
+		} finally {
+			fs.rmSync(origin, { recursive: true, force: true });
+		}
+	});
+
+	it("resets a reused clone-mode worktree to the remote branch", async () => {
+		const origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-runner-origin-"));
+		try {
+			git(origin, ["init", "-q", "--bare"]);
+			git(repo, ["remote", "add", "origin", origin]);
+			git(repo, ["push", "-q", "origin", "HEAD:main"]);
+			execFileSync("git", ["--git-dir", origin, "symbolic-ref", "HEAD", "refs/heads/main"], {
+				stdio: "ignore",
+			});
+			const first = await prepareWorkdir({ repoUrl: origin, workRoot: tmp, taskId: "t9" });
+			assert.equal(first.reused, false);
+			// Publish the task branch, then simulate a dead run's leftovers:
+			// an unpushed commit plus a dirty file on top of the remote state.
+			git(first.workdir, ["push", "-q", "origin", "kb/t9"]);
+			fs.writeFileSync(path.join(first.workdir, "stale.txt"), "leftover");
+			git(first.workdir, ["add", "stale.txt"]);
+			git(first.workdir, ["commit", "-qm", "unpushed leftover"]);
+			fs.writeFileSync(path.join(first.workdir, "f.txt"), "dirty");
+			const again = await prepareWorkdir({ repoUrl: origin, workRoot: tmp, taskId: "t9" });
+			assert.equal(again.reused, true);
+			assert.equal(again.workdir, first.workdir);
+			const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: first.workdir })
+				.toString()
+				.trim();
+			const remoteHead = execFileSync("git", ["rev-parse", "origin/kb/t9"], {
+				cwd: first.workdir,
+			})
+				.toString()
+				.trim();
+			assert.equal(head, remoteHead);
+			assert.equal(fs.readFileSync(path.join(first.workdir, "f.txt"), "utf8"), "x");
+			assert.ok(!fs.existsSync(path.join(first.workdir, "stale.txt")));
+		} finally {
+			fs.rmSync(origin, { recursive: true, force: true });
+		}
+	});
+
+	it("checks out the local branch when the remote branch is missing", async () => {
+		const origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-runner-origin-"));
+		try {
+			git(origin, ["init", "-q", "--bare"]);
+			git(repo, ["remote", "add", "origin", origin]);
+			git(repo, ["push", "-q", "origin", "HEAD:main"]);
+			execFileSync("git", ["--git-dir", origin, "symbolic-ref", "HEAD", "refs/heads/main"], {
+				stdio: "ignore",
+			});
+			const first = await prepareWorkdir({ repoUrl: origin, workRoot: tmp, taskId: "t8" });
+			// Nothing pushed: refresh must not invent remote state.
+			await refreshWorktreeToRemote(first.workdir, "kb/t8");
+			const branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+				cwd: first.workdir,
+			})
+				.toString()
+				.trim();
+			assert.equal(branch, "kb/t8");
 		} finally {
 			fs.rmSync(origin, { recursive: true, force: true });
 		}

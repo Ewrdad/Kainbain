@@ -86,7 +86,7 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 				},
 			});
 		},
-		progress({ taskId, projectId, executionId, epoch, stageId, event, prompt = null }) {
+		progress({ taskId, projectId, executionId, epoch, stageId, event, prompt = null, harness = null, model = null }) {
 			return call(`/tasks/${encodeURIComponent(taskId)}/progress`, {
 				method: "POST",
 				body: {
@@ -97,10 +97,13 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 					event,
 					// Stage prompt payload (observability only, capped like
 					// stage output): reported once per assignment so the
-					// monitor can show what the Runner was actually told.
+					// monitor can show what the Runner was actually told,
+					// and on which harness/model it runs.
 					...(typeof prompt === "string" && prompt
 						? { prompt: prompt.slice(0, 20000) }
 						: {}),
+					...(typeof harness === "string" && harness ? { harness } : {}),
+					...(typeof model === "string" && model ? { model } : {}),
 				},
 			});
 		},

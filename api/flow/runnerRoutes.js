@@ -26,6 +26,7 @@ export async function registerRunnerRoutes(app, { deps }) {
 		taskStore,
 		projectStore,
 		resolveAndGuardProject,
+		eventBridge,
 	} = deps;
 
 	const sendStoreError = (reply, err) => {
@@ -159,6 +160,7 @@ export async function registerRunnerRoutes(app, { deps }) {
 				startedAt: hold.startedAt ?? null,
 				stageId: executionLedger.stageFor(hold.executionId),
 				prompt: executionLedger.promptFor(hold.executionId),
+				serving: executionLedger.servingFor(hold.executionId),
 				lastSeenAt: record?.lastSeenAt ?? null,
 			};
 		});
@@ -195,6 +197,8 @@ export async function registerRunnerRoutes(app, { deps }) {
 				stageId: request.body?.stageId,
 				event: request.body?.event,
 				prompt: request.body?.prompt ?? null,
+				harness: request.body?.harness ?? null,
+				model: request.body?.model ?? null,
 			});
 		} catch (err) {
 			return sendStoreError(reply, err);
@@ -211,7 +215,7 @@ export async function registerRunnerRoutes(app, { deps }) {
 		const ctx = guardedTask(request, reply);
 		if (!ctx) return;
 		try {
-			return executionLedger.ingestLogs({
+			const receipt = executionLedger.ingestLogs({
 				claimStore,
 				taskStore,
 				projectId: ctx.projectId,
@@ -222,6 +226,26 @@ export async function registerRunnerRoutes(app, { deps }) {
 				seq: request.body?.seq,
 				bytes: request.body?.bytes,
 			});
+			// Live turn-by-turn stream: fan the ingested frame out over the
+			// socket so the Logs tab shows Runner output as it happens, not
+			// only after the next task refetch. Fire-and-forget: a dead
+			// socket must never fail the ingest. Duplicates are suppressed
+			// once the stored entry arrives (client dedupes on
+			// executionId+seq), and duplicate/old frames are never emitted.
+			if (!receipt.duplicate) {
+				eventBridge
+					?.emitProcessEvent(ctx.projectId, "process:stdout", {
+						taskId: request.params.id,
+						projectId: ctx.projectId,
+						chunk: `[runner ${runner.runnerId}] ${request.body?.bytes ?? ""}`,
+						tag: "[RUNNER]",
+						runnerId: runner.runnerId,
+						executionId: request.body?.executionId,
+						seq: request.body?.seq,
+					})
+					?.catch?.(() => {});
+			}
+			return receipt;
 		} catch (err) {
 			return sendStoreError(reply, err);
 		}

@@ -58,6 +58,7 @@ describe('PerRunnerTasksWidget', () => {
           startedAt,
           stageId: 'build',
           prompt: '# Build auth\n\nImplement login.',
+          serving: { harness: 'pi', model: 'muse-spark' },
           lastSeenAt: new Date().toISOString(),
         },
       ],
@@ -75,7 +76,9 @@ describe('PerRunnerTasksWidget', () => {
         ],
       },
     ];
-    render(<PerRunnerTasksWidget tasks={tasks} />);
+    render(
+      <PerRunnerTasksWidget tasks={tasks} stages={[{ id: 'build', name: 'Build' }]} />,
+    );
     await waitFor(() => {
       expect(screen.getByTestId('per-runner-card-local-alpha')).toBeInTheDocument();
     });
@@ -83,6 +86,10 @@ describe('PerRunnerTasksWidget', () => {
     expect(screen.getByTestId('per-runner-elapsed-local-alpha')).toHaveTextContent('01:3');
     expect(screen.getByTestId('per-runner-tail-local-alpha')).toHaveTextContent('hello');
     expect(screen.getByTestId('per-runner-prompt-local-alpha')).toHaveTextContent('Implement login');
+    expect(screen.getByTestId('per-runner-card-local-alpha')).toHaveTextContent('Harness:');
+    expect(screen.getByTestId('per-runner-card-local-alpha')).toHaveTextContent('pi');
+    expect(screen.getByTestId('per-runner-card-local-alpha')).toHaveTextContent('muse-spark');
+    expect(screen.getByTestId('per-runner-card-local-alpha')).toHaveTextContent('Build');
   });
 
   test('full card shows a placeholder until the Runner reports its prompt', async () => {

@@ -20,6 +20,8 @@ export const LOG_FEEDS = ['ALL', 'ASSISTANT', 'TOOLS', 'THINKING', 'SYSTEM', 'TE
 
 const TAG_KIND_RULES = [
   { pattern: /^\[(TOOL|RESULT)\]/, kind: 'tool', feed: 'tools' },
+  { pattern: /^\[RUNNER\]/, kind: 'runner', feed: 'main' },
+  { pattern: /^\[runner[\] ]/i, kind: 'runner', feed: 'main' },
   { pattern: /^\[THINKING\]/, kind: 'thinking', feed: 'thinking' },
   { pattern: /^\[USAGE\]/, kind: 'telemetry', feed: 'telemetry' },
   { pattern: /^\[RAW\]/, kind: 'raw', feed: 'raw' },
@@ -105,9 +107,37 @@ export function parseLegacyProcessLogs(text) {
 export function normalizeEntries(task, wsProcessLines = []) {
   const structured = Array.isArray(task?.logEntries) ? task.logEntries.filter(Boolean) : [];
   const base = structured.length > 0 ? [...structured] : parseLegacyProcessLogs(task?.processLogs);
-  const live = (Array.isArray(wsProcessLines) ? wsProcessLines : []).map((p) =>
-    entryFromLogLine(p.raw || `${p.tag || '[INFO]'} ${p.text || ''}`),
-  );
+  // Frames already persisted (keyed by execution+seq) must not reappear
+  // as live lines after a refetch: the socket pushes each frame the
+  // moment it is ingested, and the same frame lands in stored entries on
+  // the next task fetch. Frames without an identity (legacy CI lines)
+  // always pass through, as before.
+  const storedKeys = new Set();
+  for (const entry of base) {
+    const meta = entry?.meta;
+    if (meta && meta.executionId != null && meta.seq != null) {
+      storedKeys.add(`${meta.executionId}:${meta.seq}`);
+    }
+  }
+  const live = [];
+  for (const p of Array.isArray(wsProcessLines) ? wsProcessLines : []) {
+    if (!p) continue;
+    if (p.executionId != null && p.seq != null && storedKeys.has(`${p.executionId}:${p.seq}`)) {
+      continue;
+    }
+    // WS records carry a `[Project] ` prefix; strip one leading bracket
+    // group so the tag grammar classifies the actual line kind.
+    const line = p.raw || `${p.tag || '[INFO]'} ${p.text || ''}`;
+    const entry = entryFromLogLine(String(line).replace(/^\[[^\]\n]+\] (?=\[)/, ''));
+    entry.meta = {
+      ...(entry.meta || {}),
+      source: 'ws-process-logs',
+      ...(p.executionId != null ? { executionId: p.executionId } : {}),
+      ...(p.seq != null ? { seq: p.seq } : {}),
+      ...(p.runnerId != null ? { runnerId: p.runnerId } : {}),
+    };
+    live.push(entry);
+  }
   return [...base, ...live];
 }
 

@@ -737,6 +737,7 @@ describe("Runner Routes Integration", () => {
 		const steerRow = monitor.liveAssignments.find((r) => r.runnerId === "steer-1");
 		expect(typeof steerRow.executionId).toBe("string");
 		expect(typeof steerRow.startedAt).toBe("string");
+		expect(steerRow.serving).toBeNull();
 	});
 
 	it("rotates a Runner credential with zero stage failures on idle", async () => {

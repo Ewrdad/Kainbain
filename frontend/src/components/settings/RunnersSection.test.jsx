@@ -115,6 +115,7 @@ describe('RunnersSection', () => {
           epoch: 1,
           startedAt: new Date(Date.now() - 65_000).toISOString(),
           stageId: 'build',
+          serving: { harness: 'pi', model: 'muse-spark' },
           lastSeenAt: new Date().toISOString(),
         },
       ],
@@ -125,6 +126,7 @@ describe('RunnersSection', () => {
     });
     expect(screen.getByTestId('runner-assignment-r1').textContent).toContain('build');
     expect(screen.getByTestId('runner-assignment-r1').textContent).toMatch(/01:0\d/);
+    expect(screen.getByTestId('runner-assignment-r1').textContent).toContain('pi/muse-spark');
     expect(screen.queryByTestId('runner-assignment-r2')).toBeNull();
   });
 

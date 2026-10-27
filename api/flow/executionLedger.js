@@ -52,6 +52,7 @@ export class ExecutionLedger {
 		this.logNextSeq = new Map();
 		this.lastStage = new Map();
 		this.stagePrompt = new Map();
+		this.stageServing = new Map();
 		this.counters = {
 			progressRecorded: 0,
 			progressDuplicates: 0,
@@ -99,6 +100,8 @@ export class ExecutionLedger {
 		stageId,
 		event,
 		prompt = null,
+		harness = null,
+		model = null,
 	}) {
 		const hold = this._holdOrThrow(claimStore, taskId, executionId, epoch);
 		if (hold.runnerId !== runnerId) {
@@ -124,6 +127,14 @@ export class ExecutionLedger {
 		// of the per-execution state.
 		if (event === "prompted" && typeof prompt === "string" && prompt) {
 			this.stagePrompt.set(executionId, prompt.slice(0, 20000));
+		}
+		// Serving harness/model (observability only): what the Runner
+		// actually runs this execution on. Same lifecycle as the prompt.
+		if (event === "prompted" && (harness || model)) {
+			this.stageServing.set(executionId, {
+				harness: typeof harness === "string" ? harness : null,
+				model: typeof model === "string" ? model : null,
+			});
 		}
 		this.counters.progressRecorded += 1;
 		const task = taskStore.getTask(projectId, taskId);
@@ -169,7 +180,11 @@ export class ExecutionLedger {
 		} else {
 			this.counters.logFrames += 1;
 		}
-		_appendProcessLog(task, `[runner ${runnerId}] ${bytes}`, { runnerId });
+		_appendProcessLog(task, `[runner ${runnerId}] ${bytes}`, {
+			runnerId,
+			executionId,
+			seq,
+		});
 		this.logNextSeq.set(executionId, seq + 1);
 		return { accepted: true, duplicate: false, seq };
 	}
@@ -253,6 +268,7 @@ export class ExecutionLedger {
 		this.lastStage.delete(executionId);
 		this.logNextSeq.delete(executionId);
 		this.stagePrompt.delete(executionId);
+		this.stageServing.delete(executionId);
 		return { accepted: true, duplicate: false, shaState, reportedStage };
 	}
 
@@ -312,6 +328,7 @@ export class ExecutionLedger {
 				this.lastStage.delete(id);
 				this.logNextSeq.delete(id);
 				this.stagePrompt.delete(id);
+				this.stageServing.delete(id);
 			}
 		}
 		return { interrupted: true, interruptCount, escalated };
@@ -341,6 +358,20 @@ export class ExecutionLedger {
 	 ***/
 	promptFor(executionId) {
 		return this.stagePrompt.get(executionId) ?? null;
+	}
+
+	/***
+	 * MARK: servingFor
+	 * @description Serving harness/model a live execution reported at start
+	 *   (`prompted` progress event). Null when unreported or finished —
+	 *   per-runner monitor widgets show these pills instead of the fleet
+	 *   advertised capabilities.
+	 * @example ledger.servingFor('exec-1') => { harness: 'pi', model: 'x' }
+	 * @param {string} executionId - Lease execution id.
+	 * @returns {Object|null} Serving `{ harness, model }`.
+	 ***/
+	servingFor(executionId) {
+		return this.stageServing.get(executionId) ?? null;
 	}
 
 	snapshot() {

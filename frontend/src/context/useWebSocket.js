@@ -117,6 +117,12 @@ export function useWebSocket({
     const projectId = meta?.projectId || null;
     const projectName = meta?.projectName || null;
     const taskId = meta?.taskId || null;
+    // Runner frame identity for stored/WS dedupe (see normalizeEntries):
+    // a live line is dropped once the same (executionId, seq) frame lands
+    // in the task's stored entries after a refetch.
+    const executionId = meta?.executionId ?? null;
+    const seq = Number.isInteger(meta?.seq) ? meta.seq : null;
+    const runnerId = meta?.runnerId ?? null;
     setProcessLogs((prev) => [
       ...prev.slice(-499), // Retain latest 500 lines
       {
@@ -128,6 +134,9 @@ export function useWebSocket({
         projectId,
         projectName,
         taskId,
+        executionId,
+        seq,
+        runnerId,
       },
     ]);
   }, []);

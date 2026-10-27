@@ -489,9 +489,10 @@ async function executeAssignment({
 				"Implement the stage goal in the working directory. Keep changes scoped to the task.",
 			].join("\n");
 
-			// Report the exact stage prompt for the monitor's with-prompt
-			// cards. Best-effort and observability-only: a failed report
-			// must never fail the stage itself.
+			// Report the exact stage prompt plus the serving harness/model
+			// for the monitor's with-prompt cards. Best-effort and
+			// observability-only: a failed report must never fail the
+			// stage itself.
 			try {
 				await client.progress({
 					taskId: taskId,
@@ -501,6 +502,8 @@ async function executeAssignment({
 					stageId,
 					event: "prompted",
 					prompt,
+					harness: servingHarnessId,
+					model: config.model || "default",
 				});
 			} catch (err) {
 				logger.warn(`Prompt report failed: ${err?.message || err}`);

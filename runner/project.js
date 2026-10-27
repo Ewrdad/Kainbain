@@ -69,12 +69,43 @@ export function listOrphanWorkdirs(workRoot, currentTaskId) {
 }
 
 /***
+ * MARK: refreshWorktreeToRemote
+ * @description Re-syncs a reused per-task worktree to the remote branch:
+ *   fetches the origin and force-checkouts `branch` at `origin/branch` so
+ *   a rerun never executes stale code left behind by a dead run. Only
+ *   unpushed residue can be lost — stage work is committed and pushed per
+ *   stage, and the refresh runs before the harness starts. When the remote
+ *   branch does not exist yet (nothing pushed), the local branch is simply
+ *   checked out as-is.
+ * @example await refreshWorktreeToRemote('/w/kb-t1', 'kb/t1')
+ * @param {string} workdir - Task worktree directory.
+ * @param {string} branch - Task branch (`kb/<taskId>`).
+ * @returns {Promise<void>}
+ ***/
+export async function refreshWorktreeToRemote(workdir, branch) {
+	await runGit(workdir, ["fetch", "origin"]);
+	let remoteRef = true;
+	try {
+		await runGit(workdir, ["rev-parse", "--verify", `origin/${branch}`]);
+	} catch {
+		remoteRef = false;
+	}
+	if (remoteRef) {
+		await runGit(workdir, ["checkout", "-f", "-B", branch, `origin/${branch}`]);
+	} else {
+		await runGit(workdir, ["checkout", "-f", branch]);
+	}
+}
+
+/***
  * MARK: prepareWorkdir
  * @description Project load per the transport matrix (MigrationPlan §4):
  *   remote-backed clones the origin into the Runner mirror dir and pulls,
  *   grandfathered local-only adopts the repo path (no clone-from-origin,
  *   `no-remote`). Both modes then open a per-task worktree `kb-<taskId>`
- *   on branch `kb/<taskId>` (reused when a previous run left it behind).
+ *   on branch `kb/<taskId>` (reused when a previous run left it behind;
+ *   a reused clone-mode worktree is fetched and force-reset to
+ *   `origin/kb/<taskId>` first so reruns never execute stale leftovers).
  *   Refuses when ~5 foreign worktrees already exist (D14 cap) and names
  *   the orphans instead of deleting them.
  * @example await prepareWorkdir({ repoUrl: 'https://...', workRoot: '/w', taskId: 't1' }) => { workdir: '/w/kb-t1', ... }
@@ -118,6 +149,9 @@ export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId }) {
 	}
 
 	if (fs.existsSync(workdir)) {
+		if (mode === "clone") {
+			await refreshWorktreeToRemote(workdir, branch);
+		}
 		return { workdir, branch, mode, reused: true, orphans };
 	}
 	try {

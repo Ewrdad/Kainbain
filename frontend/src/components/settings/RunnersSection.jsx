@@ -211,6 +211,15 @@ export function RunnersSection() {
                   {nowMs == null
                     ? '…'
                     : formatRunnerElapsed(assignments[runner.runnerId].startedAt, nowMs)}
+                  {assignments[runner.runnerId].serving?.harness && (
+                    <>
+                      {' · '}
+                      {assignments[runner.runnerId].serving.harness}
+                      {assignments[runner.runnerId].serving.model
+                        ? `/${assignments[runner.runnerId].serving.model}`
+                        : ''}
+                    </>
+                  )}
                 </span>
               )}
               {Array.isArray(runner.capabilities?.harnesses) &&

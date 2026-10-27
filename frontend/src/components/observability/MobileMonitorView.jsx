@@ -58,6 +58,7 @@ export function MobileMonitorView({
   stages = [],
   isAgentRunning = false,
   runnerTasks = [],
+  runnerStages = [],
   // Deprecated, ignored: retained for backwards compatibility with callers
   // that still pass task stats / queue length (see JSDoc above).
   stats: _stats = {},
@@ -165,7 +166,7 @@ export function MobileMonitorView({
 
       {/* Per-runner compact rows: who runs what, for how long */}
       <div className="shrink-0 max-h-40 overflow-y-auto border-b border-slate-800/80 px-2 py-1">
-        <PerRunnerTasksWidget tasks={runnerTasks} compact />
+        <PerRunnerTasksWidget tasks={runnerTasks} stages={runnerStages} compact />
       </div>
 
       {/* Full-height live log console (filters, auto-scroll, clear intact) */}

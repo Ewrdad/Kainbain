@@ -118,7 +118,7 @@ function runnerLogTail(task, runnerId, limit = 6) {
  *   Runner to one row with an expandable tail.
  * @example <PerRunnerTasksWidget tasks={tasks} compact={false} />
  ***/
-export function PerRunnerTasksWidget({ tasks = [], compact = false, pollMs = 5000 }) {
+export function PerRunnerTasksWidget({ tasks = [], stages = [], compact = false, pollMs = 5000 }) {
   const { assignments, registry } = useRunnerMonitor({ pollMs });
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -135,6 +135,21 @@ export function PerRunnerTasksWidget({ tasks = [], compact = false, pollMs = 500
     }
     return map;
   }, [tasks]);
+
+  const stageById = useMemo(() => {
+    const map = new Map();
+    for (const s of Array.isArray(stages) ? stages : []) {
+      if (s && s.id != null) map.set(String(s.id), s);
+    }
+    return map;
+  }, [stages]);
+
+  const stageName = (stageId) => {
+    if (stageId == null || stageId === '') return '…';
+    const stage = stageById.get(String(stageId));
+    const name = stage?.name || stage?.title;
+    return (typeof name === 'string' && name.trim()) || String(stageId);
+  };
 
   const cards = assignments.map((a) => ({
     assignment: a,
@@ -158,7 +173,7 @@ export function PerRunnerTasksWidget({ tasks = [], compact = false, pollMs = 500
     return (
       <section aria-label="Runner tasks" data-testid="per-runner-tasks" className="flex flex-col gap-1">
         {cards.map(({ assignment: a, task }) => (
-          <PerRunnerCompactRow key={`${a.runnerId}:${a.executionId || a.taskId}`} assignment={a} task={task} nowMs={nowMs} />
+          <PerRunnerCompactRow key={`${a.runnerId}:${a.executionId || a.taskId}`} assignment={a} task={task} nowMs={nowMs} stageName={stageName} />
         ))}
       </section>
     );
@@ -173,13 +188,14 @@ export function PerRunnerTasksWidget({ tasks = [], compact = false, pollMs = 500
           task={task}
           record={record}
           nowMs={nowMs}
+          stageName={stageName}
         />
       ))}
     </section>
   );
 }
 
-function PerRunnerCompactRow({ assignment: a, task, nowMs }) {
+function PerRunnerCompactRow({ assignment: a, task, nowMs, stageName }) {
   return (
     <details
       data-testid={`per-runner-row-${a.runnerId}`}
@@ -192,7 +208,7 @@ function PerRunnerCompactRow({ assignment: a, task, nowMs }) {
         />
         <strong className="text-slate-100">{a.runnerId}</strong>
         <span className="truncate">{String(a.taskId).slice(0, 8)}</span>
-        <span className="text-slate-400 truncate">{a.stageId || '…'}</span>
+        <span className="text-slate-400 truncate">{stageName(a.stageId)}</span>
         <span className="ml-auto text-emerald-300 shrink-0" data-testid={`per-runner-elapsed-${a.runnerId}`}>
           {formatRunnerElapsed(a.startedAt, nowMs)}
         </span>
@@ -202,10 +218,11 @@ function PerRunnerCompactRow({ assignment: a, task, nowMs }) {
   );
 }
 
-function PerRunnerCard({ assignment: a, task, record, nowMs }) {
+function PerRunnerCard({ assignment: a, task, record, nowMs, stageName }) {
   const harnesses = Array.isArray(record?.capabilities?.harnesses)
     ? record.capabilities.harnesses.map((h) => h?.id || h).filter(Boolean)
     : [];
+  const serving = a.serving && typeof a.serving === 'object' ? a.serving : null;
   const tail = runnerLogTail(task, a.runnerId);
   return (
     <article
@@ -236,11 +253,21 @@ function PerRunnerCard({ assignment: a, task, record, nowMs }) {
       </p>
       <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-slate-400">
         <span className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700">
-          Stage: <strong className="text-slate-200">{a.stageId || '…'}</strong>
+          Stage: <strong className="text-slate-200">{stageName(a.stageId)}</strong>
         </span>
         <span className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700">
           epoch {a.epoch ?? '?'}
         </span>
+        {serving?.harness && (
+          <span className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700">
+            Harness: <strong className="text-slate-200">{serving.harness}</strong>
+          </span>
+        )}
+        {serving?.model && (
+          <span className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700 truncate" title={serving.model}>
+            Model: <strong className="text-slate-200">{serving.model}</strong>
+          </span>
+        )}
         {harnesses.length > 0 && (
           <span className="truncate" title="Harnesses this Runner can serve">
             {harnesses.join(' · ')}

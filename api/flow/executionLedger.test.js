@@ -94,8 +94,16 @@ describe("ExecutionLedger", () => {
 		expect(ledger.promptFor(executionId)).toBeNull();
 		ledger.recordProgress({ ...base, event: "started" });
 		expect(ledger.promptFor(executionId)).toBeNull();
-		ledger.recordProgress({ ...base, event: "prompted", prompt: "# Do the thing" });
+		expect(ledger.servingFor(executionId)).toBeNull();
+		ledger.recordProgress({
+			...base,
+			event: "prompted",
+			prompt: "# Do the thing",
+			harness: "pi",
+			model: "muse-spark",
+		});
 		expect(ledger.promptFor(executionId)).toBe("# Do the thing");
+		expect(ledger.servingFor(executionId)).toEqual({ harness: "pi", model: "muse-spark" });
 		const { dir, sha } = gitRepoWithCommit();
 		await ledger.completeExecution({
 			...base,
@@ -106,6 +114,7 @@ describe("ExecutionLedger", () => {
 			outcome: { status: "passed" },
 		});
 		expect(ledger.promptFor(executionId)).toBeNull();
+		expect(ledger.servingFor(executionId)).toBeNull();
 	});
 
 	test("rejects progress on a stale epoch before touching state", () => {

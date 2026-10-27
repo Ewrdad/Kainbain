@@ -634,7 +634,7 @@ export function ObservabilityDashboard() {
           />
         );
       case 'runnerTasks':
-        return <PerRunnerTasksWidget tasks={filteredTasks} compact={false} />;
+        return <PerRunnerTasksWidget tasks={filteredTasks} stages={stages} compact={false} />;
       case 'console':
         return <LiveConsoleWidget processLogs={processLogs} onClearLogs={clearLogs} />;
       case 'health':
@@ -693,6 +693,7 @@ export function ObservabilityDashboard() {
           stages={stages}
           isAgentRunning={isAgentRunning}
           runnerTasks={filteredTasks}
+          runnerStages={stages}
           stats={stats}
           queueCount={scheduledQueue.length}
           schedulerRunning={metricsData?.schedulerRunning}

@@ -79,6 +79,55 @@ describe('logEntryModel — normalizeEntries', () => {
     expect(entries.map((e) => e.text)).toEqual(['base', '[INFO] live event']);
     expect(entries[1].kind).toBe('system');
   });
+
+  it('classifies live runner frames and drops them once stored', () => {
+    const stored = {
+      id: 'log-1',
+      kind: 'runner',
+      text: '[runner local-alpha] hello',
+      meta: { source: 'process-log', runnerId: 'local-alpha', executionId: 'exec-1', seq: 0 },
+    };
+    const task = { logEntries: [stored] };
+    const ws = [
+      // Same frame the socket already pushed: suppressed after refetch.
+      {
+        tag: '[RUNNER]',
+        text: '[runner local-alpha] hello',
+        raw: '[Project] [RUNNER] [runner local-alpha] hello',
+        taskId: 't1',
+        executionId: 'exec-1',
+        seq: 0,
+        runnerId: 'local-alpha',
+      },
+      // A newer frame not yet in stored entries: passes through live.
+      {
+        tag: '[RUNNER]',
+        text: '[runner local-alpha] world',
+        raw: '[Project] [RUNNER] [runner local-alpha] world',
+        taskId: 't1',
+        executionId: 'exec-1',
+        seq: 1,
+        runnerId: 'local-alpha',
+      },
+    ];
+    const entries = normalizeEntries(task, ws);
+    expect(entries.map((e) => e.text)).toEqual([
+      '[runner local-alpha] hello',
+      '[RUNNER] [runner local-alpha] world',
+    ]);
+    const live = entries[1];
+    expect(live.kind).toBe('runner');
+    expect(live.meta).toMatchObject({ executionId: 'exec-1', seq: 1, runnerId: 'local-alpha' });
+  });
+
+  it('keeps identity-free live lines passing through', () => {
+    const entries = normalizeEntries(
+      { logEntries: [] },
+      [{ tag: '[CI/CMD]', text: '$ ls', raw: '[Project] [CI/CMD] $ ls', taskId: 't1' }],
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0].kind).toBe('system');
+  });
 });
 
 describe('logEntryModel — grouping', () => {
