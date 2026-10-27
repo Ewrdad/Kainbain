@@ -59,6 +59,20 @@ COPY .npmrc ./api/.npmrc
 RUN npm ci --prefix ./api --omit=dev \
 	&& rm -f ./opencode-ai-sdk-1.18.34.tgz ./.npmrc ./api/.npmrc
 
+# Musl native bindings bundle: host (glibc) checkouts bind-mounted into this
+# Alpine container carry only gnu bindings, so embedded CI stages fail to load
+# rolldown/lightningcss. Bake the musl variants (versions read from the locks)
+# and let the entrypoint drop them next to the gnu ones on boot.
+COPY frontend/package-lock.json /tmp/frontend-package-lock.json
+RUN RB="$(node -p "require('/app/api/package-lock.json').packages['node_modules/rolldown'].version")" \
+ && LV="$(node -p "require('/tmp/frontend-package-lock.json').packages['node_modules/lightningcss'].version")" \
+ && mkdir -p /opt/native-bindings/@rolldown/binding-linux-x64-musl /opt/native-bindings/lightningcss-linux-x64-musl \
+ && cd /tmp && npm pack "@rolldown/binding-linux-x64-musl@$RB" --silent >/dev/null \
+ && tar -xzf rolldown-binding-linux-x64-musl-*.tgz -C /opt/native-bindings/@rolldown/binding-linux-x64-musl --strip-components=1 \
+ && npm pack "lightningcss-linux-x64-musl@$LV" --silent >/dev/null \
+ && tar -xzf lightningcss-linux-x64-musl-*.tgz -C /opt/native-bindings/lightningcss-linux-x64-musl --strip-components=1 \
+ && rm -f /tmp/*.tgz /tmp/frontend-package-lock.json
+
 # Runtime sources, pruned like `deploy.sh --prod` (no tests, docs, coverage).
 # The /app/api + /app/shared sibling layout preserves the `../shared/*`
 # runtime imports and the KAINBAIN_DIST / KAINBAIN_SITE_DOCS /

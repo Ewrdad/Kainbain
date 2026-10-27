@@ -1421,6 +1421,7 @@ exec 9>"$LOCK_FILE"
 		# differs). Ensure the default unit exists before restarting the
 		# fleet onto the new build. Warn-only: approval stays manual (D4).
 		if [ -x "$PROD_DIR/startRunner.sh" ]; then "$PROD_DIR/startRunner.sh" --ensure 2>/dev/null || true; else log "⚠️ startRunner.sh not found in $PROD_DIR — skipping Runner ensure."; fi
+		./scripts/ensure-native-bindings.sh "$PWD" >/dev/null 2>&1 || true
 		write_result "success" "Deployment complete and healthy" "false"
 		echo "--------------------------------------------------"
 		echo "✅ Production deployment complete!"
@@ -1445,5 +1446,6 @@ fi
 # --- Build-only mode ------------------------------------------------------
 log "🐳 Building Docker images (default mode)..."
 KAINBAIN_BUILD_REF="$(git rev-parse --short HEAD 2>/dev/null || echo dev)" docker compose -f docker-compose.yml build
+./scripts/ensure-native-bindings.sh "$PWD" || true
 ./scripts/package-runner.sh
 echo "✅ Images built (kainbain-backend/frontend:latest) + runner distributable in dist/. Deploy with: ./deploy.sh --prod [--prod-dir ~/apps/kainbain]"

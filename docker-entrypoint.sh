@@ -33,6 +33,21 @@ ensure_writable_dir() {
 	echo "kainbain-entrypoint: $_label '$_dir' OK"
 }
 
+# Drop baked musl bindings next to gnu ones in mounted project checkouts
+# (embedded CI runs host-installed node_modules inside this musl container).
+if [ -d /opt/native-bindings ]; then
+  for _tree in "$PROJECTS_ROOT"/*/api "$PROJECTS_ROOT"/*/frontend; do
+    [ -d "$_tree/node_modules" ] || continue
+    if [ -d "$_tree/node_modules/@rolldown" ] && [ ! -d "$_tree/node_modules/@rolldown/binding-linux-x64-musl" ]; then
+      cp -r /opt/native-bindings/@rolldown/binding-linux-x64-musl "$_tree/node_modules/@rolldown/" 2>/dev/null || true
+    fi
+    if [ -d "$_tree/node_modules/lightningcss" ] && [ ! -d "$_tree/node_modules/lightningcss-linux-x64-musl" ]; then
+      cp -r /opt/native-bindings/lightningcss-linux-x64-musl "$_tree/node_modules/" 2>/dev/null || true
+    fi
+  done
+  echo "kainbain-entrypoint: native bindings OK"
+fi
+
 ensure_writable_dir "$PROJECTS_ROOT" "projects root (PROJECTS_ROOT)"
 ensure_writable_dir "$(dirname "$NOTES_SPACE_ROOT")" "notes space parent (NOTES_SPACE_ROOT)"
 ensure_writable_dir "$STATE_DIR" "state dir"
