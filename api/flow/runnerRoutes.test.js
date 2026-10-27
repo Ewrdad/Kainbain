@@ -136,6 +136,67 @@ describe("Runner Routes Integration", () => {
 		});
 	});
 
+	it("renews a live hold via claim-heartbeat: 200, still fenced past TTL", async () => {
+		const credential = await onboard("heartbeat-1");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Heartbeat renewal target" },
+		});
+		expect(taskRes.statusCode).toBe(200);
+		const target = JSON.parse(taskRes.payload).id;
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		expect(claim.statusCode).toBe(200);
+		const lease = JSON.parse(claim.payload);
+		// Renew midway through the 1000ms test TTL, then prove the hold
+		// outlives its original expiry (a second Runner still conflicts).
+		await new Promise((r) => setTimeout(r, 600));
+		const beat = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim-heartbeat`,
+			headers: { "x-runner-credential": credential },
+			payload: {
+				projectId: project.id,
+				executionId: lease.executionId,
+				epoch: lease.epoch,
+			},
+		});
+		expect(beat.statusCode).toBe(200);
+		expect(JSON.parse(beat.payload)).toMatchObject({ epoch: lease.epoch });
+		await new Promise((r) => setTimeout(r, 700));
+		const credential2 = await onboard("heartbeat-2");
+		const conflict = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential2 },
+			payload: { projectId: project.id },
+		});
+		expect(conflict.statusCode).toBe(409);
+	});
+
+	it("rejects claim-heartbeat for a superseded execution", async () => {
+		const credential = await onboard("heartbeat-stale");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Heartbeat stale target" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+		const beat = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim-heartbeat`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id, executionId: "nope", epoch: 1 },
+		});
+		expect(beat.statusCode).toBe(409);
+		expect(JSON.parse(beat.payload).code).toBe("STALE_EPOCH");
+	});
+
 	it("R04: rejects unauthenticated callers on every Runner endpoint", async () => {
 		const beat = await app.inject({
 			method: "POST",

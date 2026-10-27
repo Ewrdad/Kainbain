@@ -351,6 +351,39 @@ export async function registerRunnerRoutes(app, { deps }) {
 		}
 	});
 
+	app.post("/tasks/:id/claim-heartbeat", async (request, reply) => {
+		// Lease renewal for long Runner executions (D1): the claim TTL
+		// bounds a dead Runner's hold, so a live Runner must extend it
+		// while the harness runs — otherwise the hold lapses mid-stage,
+		// the task re-queues, and the finisher reports STALE_EPOCH.
+		let runner;
+		try {
+			runner = authedRunner(request);
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+		const ctx = guardedTask(request, reply);
+		if (!ctx) return;
+		try {
+			const hold = claimStore.describe(request.params.id);
+			if (!hold || hold.runnerId !== runner.runnerId) {
+				const err = new Error(
+					`Stale execution for task ${request.params.id}: lease belongs to another Runner.`,
+				);
+				err.statusCode = 409;
+				err.code = "STALE_EPOCH";
+				throw err;
+			}
+			const { epoch } = claimStore.heartbeat(
+				request.params.id,
+				request.body?.executionId,
+			);
+			return { taskId: request.params.id, runnerId: runner.runnerId, epoch };
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
 	app.post("/runners/dispatch", async (request, reply) => {
 		let runner;
 		try {
