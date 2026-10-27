@@ -10,6 +10,29 @@ import { buildCommandKeywordContext, expandStageCommand } from "./commandStages.
 import { resolveStagesForTask } from "./stageResolution.js";
 
 /***
+ * MARK: resolveCiTimeoutMs
+ * @description CI budget for one dispatched stage, in milliseconds. Honors
+ *   the stage's explicit `timeoutMs`, then the legacy `timeout` field the
+ *   project file actually carries, then the project default, then the
+ *   10-minute floor. The `timeout` fallback matters: without it the
+ *   Automated-tests stage's configured 3600000ms never reached the runner
+ *   and every gate longer than 10 minutes was SIGKILLed mid-run (task
+ *   b5716327: green suites reported as "exit code 1").
+ * @example resolveCiTimeoutMs({ timeout: 3600000 }, {}) => 3600000
+ * @param {Object} [resolved] - resolved CI stage definition.
+ * @param {Object} [project] - project record (optional `ciTimeoutMs`).
+ * @returns {number} Effective CI timeout in milliseconds.
+ ***/
+export function resolveCiTimeoutMs(resolved, project) {
+	return (
+		Number(resolved?.timeoutMs) ||
+		Number(resolved?.timeout) ||
+		Number(project?.ciTimeoutMs) ||
+		600000
+	);
+}
+
+/***
  * MARK: registerRunnerRoutes
  * @description Runner-facing endpoints (ADR 0009 lifecycle steps 1–6): join
  *   registration, heartbeat, the operator approve/deny/revoke + list
@@ -54,7 +77,7 @@ export async function registerRunnerRoutes(app, { deps }) {
 			return {
 				kind: "ci",
 				command: expandStageCommand(resolved.command || resolved.script || "echo 'CI stage completed'", ctx),
-				timeoutMs: Number(resolved.timeoutMs) || Number(project?.ciTimeoutMs) || 600000,
+				timeoutMs: resolveCiTimeoutMs(resolved, project),
 			};
 		} catch { return { kind: "ci", command: resolved.command || resolved.script || "", timeoutMs: 600000 }; }
 	};

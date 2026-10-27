@@ -353,30 +353,59 @@ export async function deliverSteers({ config, client, logger, facts, state }) {
 	return delivered;
 }
 
+/**
+ * MARK: CI_TIMEOUT_EXIT_CODE
+ * @description Exit code reported when the CI budget fires (mirrors GNU
+ *   timeout's 124), so a timeout is distinguishable from a failing suite.
+ * @example CI_TIMEOUT_EXIT_CODE => 124
+ **/
+export const CI_TIMEOUT_EXIT_CODE = 124;
+
 /***
  * MARK: runCiCommand
  * @description Runs one backend-dispatched CI/command stage in the worktree:
  *   shell command (already keyword-expanded by the backend, backend cwd
  *   retargeted to the worktree), output streamed to onLog and collected
- *   (tail-capped). Resolves { exitCode, output } — non-zero is a result,
- *   not a throw; spawn failure resolves exitCode 1 with the error as output.
+ *   (tail-capped). Resolves { exitCode, timedOut, timeoutMs, output } —
+ *   non-zero is a result, not a throw; spawn failure resolves exitCode 1
+ *   with the error as output. The shell leads its own process group so the
+ *   timeout kills the whole tree: killing only the shell orphaned the gate
+ *   (it ran to green while close() reported signal-death as exit 1, task
+ *   b5716327).
  * @example await runCiCommand({ command: 'true', workdir: '/w', onLog: () => {} }) => { exitCode: 0 }
  * @param {Object} opts - `{ command, workdir, timeoutMs?, onLog?, env? }`.
- * @returns {Promise<Object>} `{ exitCode, output }`.
+ * @returns {Promise<Object>} `{ exitCode, timedOut, timeoutMs, output }`.
  ***/
 export function runCiCommand({ command, workdir, timeoutMs = 600000, onLog = () => {}, env = {} } = {}) {
 	return new Promise((resolve) => {
 		const shell = process.platform === "win32" ? "cmd" : "/bin/bash";
 		const args = process.platform === "win32" ? ["/c", command] : ["-c", command];
+		const effectiveTimeoutMs = timeoutMs > 0 ? timeoutMs : 600000;
 		let child;
-		try { child = spawn(shell, args, { cwd: workdir, env: { ...process.env, ...env } }); }
-		catch (err) { resolve({ exitCode: 1, output: String(err?.message || err) }); return; }
+		try {
+			child = spawn(shell, args, {
+				cwd: workdir,
+				env: { ...process.env, ...env },
+				detached: process.platform !== "win32",
+			});
+		}
+		catch (err) { resolve({ exitCode: 1, timedOut: false, timeoutMs: effectiveTimeoutMs, output: String(err?.message || err) }); return; }
 		let output = "";
-		const timer = setTimeout(() => { try { child.kill("SIGKILL"); } catch {} }, timeoutMs > 0 ? timeoutMs : 600000);
+		let timedOut = false;
+		const timer = setTimeout(() => {
+			timedOut = true;
+			try {
+				if (child.pid !== undefined && process.platform !== "win32") {
+					try { process.kill(-child.pid, "SIGKILL"); } catch {}
+				}
+				try { child.kill("SIGKILL"); } catch {}
+			} catch {}
+			output = `${output}\nCI command timed out after ${effectiveTimeoutMs}ms\n`;
+		}, effectiveTimeoutMs);
 		const onData = (buf) => { const text = buf.toString(); output = (output + text).slice(-20000); try { onLog(text); } catch {} };
 		child.stdout?.on("data", onData); child.stderr?.on("data", onData);
-		child.on("error", (err) => { clearTimeout(timer); resolve({ exitCode: 1, output: output + String(err?.message || err) }); });
-		child.on("close", (code) => { clearTimeout(timer); resolve({ exitCode: typeof code === "number" ? code : 1, output }); });
+		child.on("error", (err) => { clearTimeout(timer); resolve({ exitCode: 1, timedOut: false, timeoutMs: effectiveTimeoutMs, output: output + String(err?.message || err) }); });
+		child.on("close", (code) => { clearTimeout(timer); resolve({ exitCode: timedOut ? CI_TIMEOUT_EXIT_CODE : (typeof code === "number" ? code : 1), timedOut, timeoutMs: effectiveTimeoutMs, output }); });
 	});
 }
 
@@ -541,7 +570,10 @@ async function executeAssignment({
 				await client.progress({ taskId, projectId, executionId, epoch, stageId, event: "finished" });
 				const sha = (await runGit(workdir, ["rev-parse", "HEAD"])).stdout.trim();
 				if (ci.exitCode !== 0) {
-					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason: `CI command failed with exit code ${ci.exitCode}`, taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: `${config.tiers.join("/")}:${servingHarnessId}:${config.model || "default"}`, durationMs: Date.now() - runStartedAt });
+					const failureReason = ci.timedOut
+						? `CI command timed out after ${ci.timeoutMs}ms`
+						: `CI command failed with exit code ${ci.exitCode}`;
+					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: `${config.tiers.join("/")}:${servingHarnessId}:${config.model || "default"}`, durationMs: Date.now() - runStartedAt });
 				}
 				return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: `${config.tiers.join("/")}:${servingHarnessId}:${config.model || "default"}`, durationMs: Date.now() - runStartedAt });
 			}

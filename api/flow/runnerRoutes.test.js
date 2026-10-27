@@ -11,6 +11,7 @@ process.env.KAINBAIN_RUNNER_JOIN_TOKEN = "test-join-token";
 process.env.KAINBAIN_CLAIM_TTL_MS = "1000";
 
 const { default: app } = await import("../index.js");
+const { resolveCiTimeoutMs } = await import("./runnerRoutes.js");
 
 afterAll(() => {
 	try {
@@ -834,5 +835,16 @@ describe("Runner Routes Integration", () => {
 			url: "/runners/ghost-runner/approve",
 		});
 		expect(approval.statusCode).toBe(404);
+	});
+});
+
+describe("resolveCiTimeoutMs", () => {
+	it("prefers an explicit timeoutMs, honors legacy timeout, then project default, then the 10-minute floor", () => {
+		expect(resolveCiTimeoutMs({ timeoutMs: 1000, timeout: 3600000 }, {})).toBe(1000);
+		expect(resolveCiTimeoutMs({ timeout: 3600000 }, {})).toBe(3600000);
+		expect(resolveCiTimeoutMs({}, { ciTimeoutMs: 900000 })).toBe(900000);
+		expect(resolveCiTimeoutMs({}, {})).toBe(600000);
+		expect(resolveCiTimeoutMs({ timeoutMs: 0, timeout: 3600000 }, {})).toBe(3600000);
+		expect(resolveCiTimeoutMs({ timeout: "garbage" }, {})).toBe(600000);
 	});
 });
