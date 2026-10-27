@@ -477,6 +477,15 @@ async function main() {
 	pruneStaleTestDirectories();
 	ensureCompileCache();
 	const withCanary = resolveCanary();
+	// Provision workspace installs BEFORE anything that needs them: the
+	// Settings duplicate check below parses with the frontend toolchain, so
+	// it also depends on provisioned node_modules (fresh-clone gate, 2026-10-27).
+	const workspaceDeps = ensureWorkspaceDeps({ root: REPO_ROOT, withCanary, npmExec: NPM });
+	if (!workspaceDeps.ok) {
+		console.error(workspaceDeps.error);
+		process.exitCode = 1;
+		return;
+	}
 	const { branches, skipped } = buildBranches({ withCanary });
 	for (const entry of skipped) {
 		console.log(`Running ${entry.name}... SKIP (${entry.reason})`);
@@ -500,12 +509,6 @@ async function main() {
 	console.log(
 		`✅ Settings duplicate check passed (${fastPreflightResult.totalFilesScanned} files in ${fastPreflightResult.durationMilliseconds}ms)`,
 	);
-	const workspaceDeps = ensureWorkspaceDeps({ root: REPO_ROOT, withCanary, npmExec: NPM });
-	if (!workspaceDeps.ok) {
-		console.error(workspaceDeps.error);
-		process.exitCode = 1;
-		return;
-	}
 	const { ok: fastOk } = await runParallel(fast, { cwd: REPO_ROOT });
 	let canaryOk = true;
 	if (canary.length > 0) {
