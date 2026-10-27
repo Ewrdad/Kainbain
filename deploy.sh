@@ -1426,7 +1426,7 @@ exec 9>"$LOCK_FILE"
 		echo "✅ Production deployment complete!"
 		echo "   App:      https://kainbain.home"
 		echo "   Location: $PROD_DIR"
-		echo "   Service:  systemctl --user status $SERVICE_NAME"
+		echo "   Service:  docker compose -f $PROD_DIR/docker-compose.yml ps"
 		echo "--------------------------------------------------"
 		export KAINBAIN_DEPLOYED_ALREADY=1
 		exit 0
