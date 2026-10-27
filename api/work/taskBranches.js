@@ -403,6 +403,15 @@ export async function ensureTaskBranch(taskStore, task, projectCwd, opts = {}) {
 			: `Checked out task branch '${branch}' (was on '${switchedFrom}')`;
 		recordBranchHop(taskStore, task, cwd, bridge, detail);
 	}
+	if (outcome.worktreeRecoveredFrom) {
+		recordBranchHop(
+			taskStore,
+			task,
+			cwd,
+			bridge,
+			`Recovered stale linked worktree at '${outcome.worktreeRecoveredFrom}' holding '${branch}' (clean, nothing unpushed) and checked out '${branch}'`,
+		);
+	}
 	// Ensure task.branch is set on the entity itself if it was derived
 	task.branch = branch;
 	taskStore._saveTaskMarkdown(cwd, task);

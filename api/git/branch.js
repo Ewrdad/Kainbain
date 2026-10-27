@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { git } from "./exec.js";
 import { _assertValidBranchName, isValidBranchName } from "./validation.js";
 import { currentBranch, branchExists, hasCommits, isGitRepository } from "./status.js";
@@ -74,12 +75,185 @@ export async function createBranch(projectCwd, branch, opts = {}) {
 
 
 /***
+ * MARK: isWorktreeLockError
+ * @description Whether a checkout failure is git refusing because the branch
+ *   is already checked out in a linked worktree (`fatal: '...' is already
+ *   used by worktree at '...'`). Only this narrow shape qualifies — every
+ *   other checkout failure propagates untouched.
+ * @example isWorktreeLockError(new Error("fatal: 'kb/t' is already used by worktree at '/w'")) => true
+ * @param {*} error - The caught checkout error.
+ * @returns {boolean}
+ ***/
+export function isWorktreeLockError(error) {
+	const msg = String(error?.message || error || "");
+	return /already used by worktree/i.test(msg);
+}
+
+/***
+ * MARK: findBranchWorktreeHolder
+ * @description Parses `git worktree list --porcelain` for the linked worktree
+ *   currently holding `branch`. Returns null when no holder exists or the
+ *   worktree metadata cannot be read (fail closed: the caller rethrows the
+ *   original checkout error).
+ * @example await findBranchWorktreeHolder('/repo', 'kb/task-1') => { path, head, branch }
+ * @param {string} projectCwd
+ * @param {string} branch
+ * @returns {Promise<{path: string, head: string|null, branch: string|null}|null>}
+ ***/
+export async function findBranchWorktreeHolder(projectCwd, branch) {
+	let stdout;
+	try {
+		({ stdout } = await git(projectCwd, ["worktree", "list", "--porcelain"]));
+	} catch {
+		return null;
+	}
+	const want = `refs/heads/${branch}`;
+	let current = null;
+	const flush = () => {
+		const hit =
+			current && current.branch === want ? { ...current } : null;
+		current = null;
+		return hit;
+	};
+	for (const line of String(stdout || "").split("\n")) {
+		if (line.startsWith("worktree ")) {
+			current = { path: line.slice("worktree ".length).trim(), head: null, branch: null };
+		} else if (line.startsWith("HEAD ")) {
+			if (current) current.head = line.slice("HEAD ".length).trim() || null;
+		} else if (line.startsWith("branch ")) {
+			if (current) current.branch = line.slice("branch ".length).trim() || null;
+		} else if (line === "" && current) {
+			const hit = flush();
+			if (hit) return hit;
+		}
+	}
+	return flush();
+}
+
+/***
+ * MARK: reconcileBranchWorktreeLock
+ * @description Recovers a branch-held-by-worktree checkout block when it is
+ *   provably safe, so a stale linked worktree (e.g. orphaned by an isolation
+ *   mode change) fails one stage instead of burning the whole auto-iteration
+ *   budget. Removal requires ALL of:
+ *     - the holder path is still on disk (missing paths just need a prune),
+ *     - the holder tree is fully clean (`status --porcelain -uall` empty),
+ *     - the holder contains no ignored files (build outputs, `.env` files
+ *       are invisible to porcelain and must never be swept),
+ *     - the branch holds no commits ahead of its upstream (nothing unpushed
+ *       to lose; branches without an upstream are treated as ahead-unknown
+ *       and refused),
+ *     - the holder HEAD still matches the branch tip (sanity).
+ *   Anything else returns `{ recovered: false }` with the holder and reason
+ *   so the caller throws an actionable error naming the exact removal
+ *   command. Removing a worktree never deletes the branch or its commits —
+ *   only the checkout directory goes — but uncommitted or ignored files in
+ *   that directory would be lost, hence the checks above.
+ * @example await reconcileBranchWorktreeLock('/repo', 'kb/task-1') => { recovered, holder, reason }
+ * @param {string} projectCwd
+ * @param {string} branch
+ * @returns {Promise<{recovered: boolean, holder: string|null, reason: string|null, prunedStale?: boolean}>}
+ ***/
+export async function reconcileBranchWorktreeLock(projectCwd, branch) {
+	const holder = await findBranchWorktreeHolder(projectCwd, branch);
+	if (!holder) {
+		return { recovered: false, holder: null, reason: "no linked worktree holds the branch" };
+	}
+	const holderPath = holder.path;
+	try {
+		/* eslint-disable-next-line security/detect-non-literal-fs-filename -- holderPath is git-resolved worktree metadata for this repo */
+		if (!fs.existsSync(holderPath)) {
+			await git(projectCwd, ["worktree", "prune"]);
+			return { recovered: true, holder: holderPath, reason: null, prunedStale: true };
+		}
+		const [{ stdout: holderHead }, { stdout: branchTip }] = await Promise.all([
+			git(holderPath, ["rev-parse", "HEAD"]),
+			git(projectCwd, ["rev-parse", "--verify", branch]),
+		]);
+		if (holderHead.trim() !== branchTip.trim()) {
+			return {
+				recovered: false,
+				holder: holderPath,
+				reason: "holder HEAD does not match the branch tip — inspect it before removing",
+			};
+		}
+		const { stdout: statusOut } = await git(holderPath, [
+			"status",
+			"--porcelain",
+			"-uall",
+		]);
+		if (statusOut.trim() !== "") {
+			const dirtyCount = statusOut.trim().split("\n").length;
+			return {
+				recovered: false,
+				holder: holderPath,
+				reason: `holds ${dirtyCount} uncommitted path(s) — commit, stash, or move that work first`,
+			};
+		}
+		const { stdout: ignoredOut } = await git(holderPath, [
+			"status",
+			"--porcelain",
+			"--ignored",
+		]);
+		const ignored = ignoredOut.split("\n").filter((l) => l.startsWith("!!"));
+		if (ignored.length > 0) {
+			return {
+				recovered: false,
+				holder: holderPath,
+				reason: `holds ${ignored.length} ignored file(s) that removal would delete — clear it manually`,
+			};
+		}
+		let ahead = -1;
+		try {
+			const { stdout: aheadOut } = await git(projectCwd, [
+				"rev-list",
+				"--count",
+				`${branch}@{upstream}..${branch}`,
+			]);
+			ahead = Number.parseInt(aheadOut.trim(), 10);
+		} catch {
+			ahead = -1;
+		}
+		if (!Number.isFinite(ahead) || ahead < 0) {
+			return {
+				recovered: false,
+				holder: holderPath,
+				reason: "branch has no upstream — cannot prove nothing unpushed would be orphaned",
+			};
+		}
+		if (ahead > 0) {
+			return {
+				recovered: false,
+				holder: holderPath,
+				reason: `holds ${ahead} unpushed commit(s) — push the branch first`,
+			};
+		}
+		await git(projectCwd, ["worktree", "remove", holderPath]);
+		try {
+			await git(projectCwd, ["worktree", "prune"]);
+		} catch {
+			// Prune is hygiene; the remove already succeeded.
+		}
+		return { recovered: true, holder: holderPath, reason: null };
+	} catch (error) {
+		return {
+			recovered: false,
+			holder: holderPath,
+			reason: `recovery probe failed: ${error?.message || error}`,
+		};
+	}
+}
+
+/***
  * MARK: ensureBranchCheckedOut
  * @description The single, guarded entrypoint used by the pipeline: makes sure
  *   `branch` exists locally and is the checked-out branch. Safety rules:
  *     - no-op when already on the branch (dirty trees allowed there, because
  *       agents legitimately edit files while working),
  *     - refuses to switch on a dirty working tree (GitDirtyTreeError),
+ *     - recovers a branch-held-by-linked-worktree checkout block when the
+ *       holder is provably safe to remove (clean, no ignored files, nothing
+ *       unpushed); otherwise throws an actionable error naming the holder,
  *     - creates the missing branch pinned to `opts.baseBranch` (default
  *       branch) via an explicit start point when possible — never silently
  *       from the current HEAD when a base was requested; without a usable
@@ -120,7 +294,27 @@ export async function ensureBranchCheckedOut(projectCwd, branch, opts = {}) {
 				context: `checkout of branch '${branch}'`,
 			});
 		}
-		await git(projectCwd, ["checkout", branch]);
+		try {
+			await git(projectCwd, ["checkout", branch]);
+		} catch (checkoutError) {
+			if (!isWorktreeLockError(checkoutError)) throw checkoutError;
+			const recovery = await reconcileBranchWorktreeLock(projectCwd, branch);
+			if (!recovery.recovered) {
+				throw new GitError(
+					`Branch '${branch}' is already checked out in linked worktree '${recovery.holder || "unknown"}'` +
+						`${recovery.reason ? ` (${recovery.reason})` : ""}` +
+						`. Remove that worktree ('git worktree remove ${recovery.holder || "<path>"}') or move its work, then retry. ` +
+						`Original error: ${checkoutError?.message || checkoutError}`,
+				);
+			}
+			await git(projectCwd, ["checkout", branch]);
+			return {
+				created: false,
+				checkedOut: true,
+				switched: true,
+				worktreeRecoveredFrom: recovery.holder,
+			};
+		}
 		return { created: false, checkedOut: true, switched: true };
 	}
 
