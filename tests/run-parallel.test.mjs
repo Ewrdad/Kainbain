@@ -69,7 +69,7 @@ describe("runParallel", () => {
 				{
 					name: "Bad Step",
 					file: NODE,
-					args: ["-e", "console.log('boom-output'); process.exit(1)"],
+					args: ["-e", "console.log('boom-output');process.exitCode = 1"],
 				},
 			],
 			{ write: out.write },
@@ -176,7 +176,9 @@ describe("runParallel", () => {
 				{
 					name: "Noisy Step",
 					file: NODE,
-					args: ["-e", `${prints};process.exit(1)`],
+					// exitCode (not exit()) so the pipe flushes all 300 lines
+					// before the child dies — exit() truncates the tail under load.
+					args: ["-e", `${prints};process.exitCode = 1`],
 				},
 			],
 			{ write: out.write },
@@ -201,7 +203,7 @@ describe("runParallel", () => {
 				{
 					name: "Brief Step",
 					file: NODE,
-					args: ["-e", "console.log('brief-boom');process.exit(1)"],
+					args: ["-e", "console.log('brief-boom');process.exitCode = 1"],
 				},
 			],
 			{ write: out.write },
@@ -222,7 +224,7 @@ describe("runParallel", () => {
 				{
 					name: "Tuned Step",
 					file: NODE,
-					args: ["-e", `${prints};process.exit(1)`],
+					args: ["-e", `${prints};process.exitCode = 1`],
 				},
 			],
 			{ write: out.write, failureOutputTailLines: 10 },
@@ -312,7 +314,7 @@ describe("runParallel progress output (no silent blackout)", () => {
 				{
 					name: "Bad Step",
 					file: NODE,
-					args: ["-e", "console.log('boom-detail'); process.exit(1)"],
+					args: ["-e", "console.log('boom-detail');process.exitCode = 1"],
 				},
 			],
 			{ write: out.write, progressIntervalMs: 50 },
