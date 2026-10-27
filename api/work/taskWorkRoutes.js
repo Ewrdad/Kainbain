@@ -71,7 +71,24 @@ export async function registerTaskWorkRoutes(app, deps) {
 		promptEngine,
 		isAgentRunning,
 		agentRunner,
+		claimStore,
 	} = deps;
+
+	// Live Runner assignment for the UI (D5): who holds this task right
+	// now, if anyone. `{ runnerId, epoch }` or null — the execution id
+	// stays server-side (it rides runner-authenticated calls only).
+	const liveClaim = (taskId) => {
+		try {
+			const hold =
+				claimStore && typeof claimStore.describe === "function"
+					? claimStore.describe(taskId)
+					: null;
+			if (!hold) return null;
+			return { runnerId: hold.runnerId, epoch: hold.epoch };
+		} catch {
+			return null;
+		}
+	};
 
 	const resolveTaskContext = (request, reply) => {
 		const { title, goal, stageId, blockedBy } = request.body || {};
@@ -131,9 +148,13 @@ export async function registerTaskWorkRoutes(app, deps) {
 			const toTaskDurationResponse = (task) =>
 				toTaskDurationSummary(task, resolveStagesForTask(project, task));
 			if (workflowId) {
-				return taskStore.getTasks(id, workflowId, project?.cwd).map(toTaskDurationResponse);
+				return taskStore
+					.getTasks(id, workflowId, project?.cwd)
+					.map((t) => ({ ...toTaskDurationResponse(t), claim: liveClaim(t.id) }));
 			}
-			return taskStore.listTasks(id, project?.cwd).map(toTaskDurationResponse);
+			return taskStore
+				.listTasks(id, project?.cwd)
+				.map((t) => ({ ...toTaskDurationResponse(t), claim: liveClaim(t.id) }));
 		},
 	);
 
@@ -313,7 +334,7 @@ export async function registerTaskWorkRoutes(app, deps) {
 
 		const task = taskStore.getTask(id, request.params.id);
 		if (!task) return reply.status(404).send({ error: "Task not found" });
-		return task;
+		return { ...task, claim: liveClaim(task.id) };
 	});
 
 	/***

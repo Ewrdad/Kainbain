@@ -92,6 +92,21 @@ describe("GET /tasks", () => {
 		expect(result).toHaveLength(1);
 	});
 
+	it("attaches the live runner claim to listed tasks", async () => {
+		const s = setup();
+		s.deps.claimStore = {
+			describe: vi.fn((taskId) =>
+				taskId === "t-1" ? { runnerId: "local-vibe", epoch: 4 } : null,
+			),
+		};
+		await register(s);
+		const result = await s.routes.get("GET /tasks")(
+			{ query: { projectId: "p-1" } },
+			reply(),
+		);
+		expect(result[0].claim).toEqual({ runnerId: "local-vibe", epoch: 4 });
+	});
+
 	it("returns undefined when the project guard fails", async () => {
 		const s = await register(setup({ guardProjectId: null }));
 		await expect(
@@ -263,6 +278,28 @@ describe("GET /tasks/:id", () => {
 			reply(),
 		);
 		expect(result.id).toBe("t-1");
+	});
+
+	it("exposes the live runner claim when a runner holds the task", async () => {
+		const s = setup();
+		s.deps.claimStore = {
+			describe: vi.fn(() => ({ runnerId: "local-pi", epoch: 2 })),
+		};
+		await register(s);
+		const result = await s.routes.get("GET /tasks/:id")(
+			{ params: { id: "t-1" }, query: { projectId: "p-1" } },
+			reply(),
+		);
+		expect(result.claim).toEqual({ runnerId: "local-pi", epoch: 2 });
+	});
+
+	it("reports a null claim when no runner holds the task", async () => {
+		const s = await register(setup());
+		const result = await s.routes.get("GET /tasks/:id")(
+			{ params: { id: "t-1" }, query: { projectId: "p-1" } },
+			reply(),
+		);
+		expect(result.claim).toBeNull();
 	});
 
 	it("returns 404 for unknown tasks and undefined without a project", async () => {

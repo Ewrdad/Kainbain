@@ -164,7 +164,11 @@ export function TaskCard({
   // engine (or the explicit isActive flag from the board). A running_*
   // label on a non-owner is stale — it renders as interrupted (see
   // isStaleRunner below), never as a second RUNNING badge.
-  const isRunning = isActive || isTaskRunning(task, engineState, ctx?.isAgentRunning);
+  // Wire-executor assignments never touch the embedded engine state, so a
+  // claimed task would otherwise sit at AGENT_READY looking idle. A live
+  // claim means a Runner is executing it right now.
+  const isRunnerHeld = !!task?.claim?.runnerId;
+  const isRunning = isActive || isRunnerHeld || isTaskRunning(task, engineState, ctx?.isAgentRunning);
   const isStale = !isActive && isStaleRunner(task, engineState);
   // Manual dispatch while another task owns the engine answers 409
   // ("Engine is already running another task"): show queued/busy instead
@@ -456,6 +460,7 @@ export function TaskCard({
     if (isFailed) return 'FAILED';
     if (isInterrupted) return 'INTERRUPTED';
     if (isPaused) return 'PAUSED';
+    if (isRunnerHeld) return `RUNNING · ${task.claim.runnerId}`;
     if (isRunning) return 'RUNNING';
     if (isCompleted) return 'DONE';
     if (isBlocked) return 'BLOCKED';

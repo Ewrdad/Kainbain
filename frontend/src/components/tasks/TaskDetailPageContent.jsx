@@ -33,6 +33,7 @@ import { TaskDetailHistoryPane } from './TaskDetailHistoryPane';
 import { TaskDetailReportsPane } from './TaskDetailReportsPane';
 import { TaskDetailLogsPane } from './TaskDetailLogsPane';
 import { SurveyBanner } from './SurveyBanner';
+import { RunnerBanner } from './RunnerBanner';
 import { stageHasQuestionMe as stageHasQuestionMeSkill } from '../../../../shared/survey.js';
 
 /***
@@ -916,6 +917,9 @@ export function TaskDetailPage({ task: propTask, onBack }) {
                 </div>
               </div>
             )}
+
+            {/* Live runner assignment: a claimed task is executing off-process */}
+            <RunnerBanner claim={task?.claim} stageName={taskStage?.name} />
 
             {/* Question-me survey banner: parked agent stages route humans to /tasks/:id/survey */}
             <SurveyBanner

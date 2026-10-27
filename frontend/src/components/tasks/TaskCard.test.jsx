@@ -839,6 +839,19 @@ test('shows Open Survey on parked question-me stages with the skill record', () 
   cleanup();
 });
 
+test('runner-held card names the holding runner instead of looking idle', () => {
+  renderWithKainBain(
+    <TaskCard
+      task={{ ...task, status: 'in_stage', claim: { runnerId: 'local-pi', epoch: 3 } }}
+      stageName="Plan"
+      role="Agent"
+    />,
+    FULL_CARD_PREFS,
+  );
+  expect(screen.getByText('RUNNING · local-pi')).toBeInTheDocument();
+  cleanup();
+});
+
 test('hides Open Survey on human checkpoints (approval owns that wait)', () => {
   const stages = [
     { id: 's1', name: 'Build', type: 'agent' },
