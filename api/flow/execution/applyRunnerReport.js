@@ -69,12 +69,20 @@ export async function applyRunnerReport({
 	const duration = outcome.duration || "0.0";
 
 	if (outcome.status === "failed") {
+		const err = new Error(outcome.failureReason || "Stage failed on the Runner");
+		// The runner's completion payload carries the tail of the run output
+		// (runner/daemon.js caps it). Keep it on the error so the failure
+		// report renders the actual failing output instead of only the
+		// reason — thin "exit code 1" reports hid every branch result
+		// (task b5716327). handleStageFailure already renders error.stdout
+		// into the report, lastError, and timeline excerpt.
+		if (outcome.output) err.stdout = outcome.output;
 		return routeStageError(
 			store,
 			projectId,
 			taskId,
 			stage,
-			new Error(outcome.failureReason || "Stage failed on the Runner"),
+			err,
 			{
 				stages,
 				bridge,

@@ -164,6 +164,74 @@ describe("runParallel", () => {
 		assert.equal(result.ok, true);
 		assert.match(out.joined(), /Nice Step\.\.\. .*PASS/);
 	});
+
+	it("failure details keep the tail of long output, not the flood", async () => {
+		const out = makeCollector();
+		const prints = Array.from(
+			{ length: 300 },
+			(_, index) => `console.log('flood-line-${index}')`,
+		).join(";");
+		const result = await runParallel(
+			[
+				{
+					name: "Noisy Step",
+					file: NODE,
+					args: ["-e", `${prints};process.exit(1)`],
+				},
+			],
+			{ write: out.write },
+		);
+		assert.equal(result.ok, false);
+		assert.match(out.joined(), /Noisy Step\.\.\. .*FAIL/);
+		// The tail (what diagnoses the failure) is shown...
+		assert.match(out.joined(), /flood-line-299/);
+		// ...the head (passing noise) is not.
+		assert.doesNotMatch(out.joined(), /flood-line-0\n/);
+		assert.doesNotMatch(out.joined(), /flood-line-42\n/);
+		assert.match(out.joined(), /trimmed \d+ of \d+ lines/);
+		// The captured result keeps everything for programmatic use.
+		assert.match(result.results[0].output, /flood-line-0/);
+		assert.match(result.results[0].output, /flood-line-299/);
+	});
+
+	it("short failure output prints whole with no trim marker", async () => {
+		const out = makeCollector();
+		const result = await runParallel(
+			[
+				{
+					name: "Brief Step",
+					file: NODE,
+					args: ["-e", "console.log('brief-boom');process.exit(1)"],
+				},
+			],
+			{ write: out.write },
+		);
+		assert.equal(result.ok, false);
+		assert.match(out.joined(), /brief-boom/);
+		assert.doesNotMatch(out.joined(), /trimmed \d+ of \d+ lines/);
+	});
+
+	it("failureOutputTailLines tunes the kept tail", async () => {
+		const out = makeCollector();
+		const prints = Array.from(
+			{ length: 60 },
+			(_, index) => `console.log('tuned-line-${index}')`,
+		).join(";");
+		const result = await runParallel(
+			[
+				{
+					name: "Tuned Step",
+					file: NODE,
+					args: ["-e", `${prints};process.exit(1)`],
+				},
+			],
+			{ write: out.write, failureOutputTailLines: 10 },
+		);
+		assert.equal(result.ok, false);
+		assert.match(out.joined(), /tuned-line-59/);
+		assert.doesNotMatch(out.joined(), /tuned-line-49\n/);
+		assert.match(out.joined(), /trimmed 50 of 60 lines/);
+	});
 });
 
 describe("runParallel progress output (no silent blackout)", () => {

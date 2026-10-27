@@ -425,6 +425,7 @@ describe("Runner Routes Integration", () => {
 				outcome: "failed",
 				failureKind: "error",
 				failureReason: "synthetic stage failure",
+				output: "synthetic passing noise\nsynthetic failing detail",
 			},
 		});
 		expect(done.statusCode).toBe(200);
@@ -435,6 +436,9 @@ describe("Runner Routes Integration", () => {
 		expect(after.currentStageId).toBe(before.currentStageId);
 		const actions = after.history.map((h) => h.action).join("\n");
 		expect(actions).toMatch(/completed execution/);
+		// The runner's output tail must survive on the failure (it is what
+		// the stage report renders instead of a bare exit-code message).
+		expect(after.lastError.stdout).toMatch(/synthetic failing detail/);
 	});
 
 	it("embedded execute refuses Runner-held tasks (no double dispatch)", async () => {

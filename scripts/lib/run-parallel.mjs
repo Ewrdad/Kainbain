@@ -32,6 +32,41 @@ const NC = "\u001b[0m";
 export const DEFAULT_PROGRESS_INTERVAL_MS = 30000;
 
 /***
+ * MARK: FAILURE_OUTPUT_TAIL_LINES
+ * @description How many trailing lines of a failed branch's output the
+ *   `Details for <name>:` section keeps (default 120, overridable via the
+ *   `failureOutputTailLines` runParallel option). Passing branches print
+ *   nothing but their control lines, so a passing gate stays quiet; a
+ *   failing branch used to dump its entire output (a full api-suite dump is
+ *   hundreds of kilobytes that drown the task logs and evict the actual
+ *   failure from the capped log feed). The tail holds the diagnosis
+ *   (vitest/playwright print their failure summaries at the end); the full
+ *   text stays on `result.output` for programmatic use.
+ * @example FAILURE_OUTPUT_TAIL_LINES => 120
+ ***/
+export const FAILURE_OUTPUT_TAIL_LINES = 120;
+
+/***
+ * MARK: failureDetailsExcerpt
+ * @description Trims a failed branch's output to its last `tailLines`
+ *   content lines, prefixed with a `(trimmed N of M lines; …)` marker when
+ *   anything was cut. Short output prints whole with no marker. Exported
+ *   for tests; runParallel applies it to every failing branch's Details.
+ * @example failureDetailsExcerpt("a\nb\n", 10) => "a\nb\n"
+ * @param {string} output - the branch's captured output.
+ * @param {number} [tailLines] - lines to keep, defaults to FAILURE_OUTPUT_TAIL_LINES.
+ * @returns {string} Printable excerpt (always newline-terminated unless empty).
+ ***/
+export function failureDetailsExcerpt(output, tailLines = FAILURE_OUTPUT_TAIL_LINES) {
+	const text = output === "" || output.endsWith("\n") ? output : `${output}\n`;
+	const lines = text.split("\n");
+	if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+	if (lines.length <= tailLines) return text;
+	const kept = lines.slice(-tailLines);
+	return `(trimmed ${lines.length - tailLines} of ${lines.length} lines; showing the tail)\n${kept.join("\n")}\n`;
+}
+
+/***
  * MARK: resolveProgressIntervalMs
  * @description Resolves the progress-tick cadence: the `runParallel`
  *   option wins, otherwise the `KAINBAIN_GATE_PROGRESS_INTERVAL_MS` env
@@ -283,8 +318,10 @@ function runOneBranch(branch, { cwd, spawnFn = spawn, onSpawn, termGraceMs = TER
  * MARK: runParallel
  * @description Runs every branch command together, reports one PASS/FAIL line
  *   per branch in argument order (elapsed seconds measured from the batch
- *   start, like run_parallel's cumulative wall), shows full output only for
- *   failures, and resolves ok:false when any branch failed. While branches
+ *   start, like run_parallel's cumulative wall), shows the tail of the
+ *   output only for failures (bounded by `failureOutputTailLines`, so one
+ *   failing suite cannot flood the logs and evict its own failure), and
+ *   resolves ok:false when any branch failed. While branches
  *   are outstanding it emits a `⏳ still running: <name> (<elapsed>), …`
  *   progress line every `progressIntervalMs` (default 30s; 0 disables) so a
  *   slow branch never blanks the output for minutes; each branch also
@@ -301,6 +338,7 @@ function runOneBranch(branch, { cwd, spawnFn = spawn, onSpawn, termGraceMs = TER
  * @param {number} [opts.progressIntervalMs] - progress-tick cadence (defaults to resolveProgressIntervalMs).
  * @param {number} [opts.termGraceMs] - SIGTERM→(SIGKILL, branch report) grace for a timed-out branch.
  * @param {number} [opts.settleGraceMs] - extra wait after that before reporting a branch whose stdio never closed.
+ * @param {number} [opts.failureOutputTailLines] - failure Details tail size (defaults to FAILURE_OUTPUT_TAIL_LINES).
  * @returns {Promise<Object>} { ok, results: [{ name, ok, exitCode, output, timedOut?, wallSecs }] }.
  ***/
 export async function runParallel(
@@ -312,6 +350,7 @@ export async function runParallel(
 		progressIntervalMs = resolveProgressIntervalMs(),
 		termGraceMs = TERM_GRACE_MS,
 		settleGraceMs = KILL_SETTLE_GRACE_MS,
+		failureOutputTailLines = FAILURE_OUTPUT_TAIL_LINES,
 	} = {},
 ) {
 	const batchStart = Date.now();
@@ -389,7 +428,7 @@ export async function runParallel(
 				write(`Running ${entry.name}... ${RED}FAIL${NC} (${wallSecs}s)\n`);
 				write("----------------------------------------------------------------------\n");
 				write(`Details for ${entry.name}:\n`);
-				write(entry.output.endsWith("\n") || entry.output === "" ? entry.output : `${entry.output}\n`);
+				write(failureDetailsExcerpt(entry.output, failureOutputTailLines));
 				write("----------------------------------------------------------------------\n");
 			}
 		}
