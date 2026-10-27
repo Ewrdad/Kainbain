@@ -404,6 +404,7 @@ export function KainBainProvider({ children }) {
     updateProjectInState: projects.updateProjectInState,
     createTask: tasks.createTask,
     deleteTask: tasks.deleteTask,
+    getTask: tasks.getTask,
     getTaskReports: tasks.getTaskReports,
     advanceTask: tasks.advanceTask,
     executeTaskStage: tasks.executeTaskStage,

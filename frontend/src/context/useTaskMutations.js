@@ -481,9 +481,28 @@ export function useTaskMutations({
     }
   }, []);
 
+  /***
+   * MARK: getTask
+   * @description Fetches one full task record (log history included) for
+   *   read-only hydration. Never throws: null lets callers fall back to
+   *   the board summary they already hold.
+   * @param {string} projectId
+   * @param {string} taskId
+   * @returns {Promise<Object|null>}
+   ***/
+  const getTask = useCallback(async (projectId, taskId) => {
+    try {
+      return await api.getTask(projectId, taskId);
+    } catch (e) {
+      logger.error('Failed to fetch task', e);
+      return null;
+    }
+  }, []);
+
   return {
     createTask,
     deleteTask,
+    getTask,
     getTaskReports,
     advanceTask,
     executeTaskStage,

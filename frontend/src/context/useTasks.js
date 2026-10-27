@@ -32,6 +32,7 @@ export function useTasks({ onNotification } = {}) {
     upsertTask: board.upsertTask,
     createTask: mutations.createTask,
     deleteTask: mutations.deleteTask,
+    getTask: mutations.getTask,
     getTaskReports: mutations.getTaskReports,
     advanceTask: mutations.advanceTask,
     executeTaskStage: mutations.executeTaskStage,

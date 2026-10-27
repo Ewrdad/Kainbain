@@ -17,6 +17,7 @@ import { usePersistentState } from '../../hooks/usePersistentState';
 import { useTaskGoalDraft } from '../../hooks/useTaskGoalDraft';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { isTaskRunning } from './runningTask';
+import { useFullTask } from './useFullTask';
 import { ReportViewer } from '../reports/ReportViewer';
 import { copyToClipboard } from '../../services/clipboard';
 import { getTaskBranchName, buildCheckoutCommand } from './taskBranch';
@@ -56,6 +57,7 @@ export function TaskDetailPage({ task: propTask, onBack }) {
     activeProjectId,
     updateTask,
     deleteTask,
+    getTask,
     getTaskReports,
     jumpTask,
     moveTask,
@@ -623,8 +625,12 @@ export function TaskDetailPage({ task: propTask, onBack }) {
   const taskStageName = taskStage?.name;
   const activeProjectCwd = activeProject?.cwd;
 
+  // Board summaries strip log entries for list weight: hydrate the full
+  // record for the Logs tab only (read-only — edits keep using `task`).
+  const logsTask = useFullTask({ task, activeProjectId, getTask });
+
   const logs = useTaskLogs({
-    task,
+    task: logsTask,
     wsProcessLogs,
     activeProjectId,
     isTaskExecuting,

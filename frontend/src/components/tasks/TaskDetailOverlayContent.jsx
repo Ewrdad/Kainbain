@@ -15,6 +15,7 @@ import { resolveCheckpointState } from './checkpointState';
 import { SelectDropdown } from '../common/SelectDropdown';
 import { useNow } from '../../hooks/useNow';
 import { usePendingAction } from '../../hooks/usePendingAction';
+import { useFullTask } from './useFullTask';
 import { usePersistentState } from '../../hooks/usePersistentState';
 import { useTaskGoalDraft } from '../../hooks/useTaskGoalDraft';
 import { formatStageAge } from './stagePace';
@@ -53,6 +54,7 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
     activeProjectId,
     updateTask,
     deleteTask,
+    getTask,
     getTaskReports,
     jumpTask,
     moveTask,
@@ -542,8 +544,12 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
   const taskStageName = taskStage?.name;
   const activeProjectCwd = activeProject?.cwd;
 
+  // Board summaries strip log entries for list weight: hydrate the full
+  // record for the Logs tab only (read-only — edits keep using `task`).
+  const logsTask = useFullTask({ task, activeProjectId, getTask });
+
   const logs = useTaskLogs({
-    task,
+    task: logsTask,
     wsProcessLogs,
     activeProjectId,
     isTaskExecuting,
