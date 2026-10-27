@@ -60,7 +60,7 @@ export function loadRunnerConfig(env = process.env) {
 			.filter(Boolean),
 		dispatchPollMs: Number.isFinite(dispatchPollMs) && dispatchPollMs > 0 ? dispatchPollMs : 5000,
 		dispatchIdleLimit:
-			Number.isFinite(dispatchIdleLimit) && dispatchIdleLimit > 0 ? dispatchIdleLimit : 3,
+			Number.isFinite(dispatchIdleLimit) && dispatchIdleLimit >= 0 ? dispatchIdleLimit : 3,
 		heartbeatMs: Number.isFinite(heartbeatMs) && heartbeatMs > 0 ? heartbeatMs : 15000,
 		approvalPollMs: Number.isFinite(approvalPollMs) && approvalPollMs > 0 ? approvalPollMs : 5000,
 		approvalTimeoutMs:

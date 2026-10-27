@@ -1398,6 +1398,16 @@ if [ "$MODE" = "prod" ]; then
 		cp -r skills/. "$STAGE/skills/"
 	fi
 
+	# Ship the loopback Runner daemon next to the API: the cutover
+	# local-Runner service runs `$PROD_DIR/runner/main.js`, importing
+	# `../api/...` (pi harness, shared helpers) from the same build so the
+	# Runner and the backend are always version-locked. Tests stay in the
+	# repo (excluded here, like the api tar above).
+	if [ -d "runner" ]; then
+		mkdir -p "$STAGE/runner"
+		tar -C runner --exclude="*.test.js" -cf - . | tar -C "$STAGE/runner" -xf -
+	fi
+
 	# Bake the Kainbain changelog for the header build badge: production is a
 	# plain file copy without .git, so history is captured here at deploy time
 	# and shipped as $PROD_DIR/changelog.json. Non-fatal (same precedent as
@@ -1533,6 +1543,9 @@ $(gate_tail "$_verify_log")"
 	if [ -d "$STAGE/skills" ]; then
 		cp -r "$STAGE/skills" "$PROD_DIR/skills"
 	fi
+	if [ -d "$STAGE/runner" ]; then
+		cp -r "$STAGE/runner" "$PROD_DIR/runner"
+	fi
 	if [ -f "$STAGE/changelog.json" ]; then
 		cp "$STAGE/changelog.json" "$PROD_DIR/changelog.json"
 	fi
@@ -1570,6 +1583,19 @@ $(gate_tail "$_verify_log")"
 		# Self-test the "Go to App" API against the NEW instance. Warn-only:
 		# must never fail a healthy deploy (see publish_app_link).
 		publish_app_link || true
+		# The cutover local-Runner service executes from PROD_DIR, which was
+		# just swapped underneath it: restart it onto the new build so the
+		# Runner and backend stay version-locked. Warn-only (never fail a
+		# healthy deploy): a mid-assignment restart just lets the claim TTL
+		# expire and the task re-queues by design. Skipped when the unit is
+		# not installed yet (pre-cutover hosts).
+		if [ -f "$HOME/.config/systemd/user/kainbain-runner.service" ]; then
+			if systemctl --user restart kainbain-runner.service 2>/dev/null; then
+				log "Restarted kainbain-runner.service onto the new build."
+			else
+				log "⚠️ kainbain-runner.service restart failed (non-fatal) — restart it manually."
+			fi
+		fi
 		write_result "success" "Deployment complete and healthy" "false"
 		echo "--------------------------------------------------"
 		echo "✅ Production deployment complete!"

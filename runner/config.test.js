@@ -39,6 +39,17 @@ describe("loadRunnerConfig", () => {
 		assert.equal(config.dispatchIdleLimit, 3);
 	});
 
+	it("keeps dispatchIdleLimit 0 as persistent service mode", () => {
+		const config = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "mock",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+			KAINBAIN_RUNNER_DISPATCH_IDLE_LIMIT: "0",
+		});
+		assert.equal(config.errors.length, 0);
+		assert.equal(config.dispatchIdleLimit, 0);
+	});
+
 	it("falls back on invalid numbers and customizes tiers", () => {
 		const config = loadRunnerConfig({
 			KAINBAIN_RUNNER_ID: "r1",

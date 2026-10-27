@@ -356,4 +356,29 @@ describe("runDispatchLoop", () => {
 		assert.equal(dispatches, 2);
 		assert.ok(beats >= 2);
 	});
+
+	it("never idles out with dispatchIdleLimit 0 (persistent service mode)", async () => {
+		const repo = localRepo();
+		const config = loopConfig({ dispatchIdleLimit: 0 });
+		dirs.push(config.workRoot, repo);
+		let polls = 0;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				polls += 1;
+				if (polls === 1) return { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+				throw new Error("persistent-loop-probe");
+			},
+		});
+		await assert.rejects(
+			runDispatchLoop({
+				config,
+				client,
+				loadHarness: async () => fakeHarness(),
+				logger: { log: () => {}, warn: () => {} },
+			}),
+			/persistent-loop-probe/,
+		);
+		assert.equal(polls, 2);
+	});
 });

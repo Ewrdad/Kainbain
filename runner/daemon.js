@@ -343,7 +343,8 @@ export async function runSingleAssignment({
  * @description Capability-aware dispatch loop (WP-3.1): joins and heartbeats
  *   exactly like a single assignment, then polls `POST /runners/dispatch`
  *   for backend-routed work until `dispatchIdleLimit` consecutive polls come
- *   back empty. Every poll is server-side scan → match → claim-fence, so
+ *   back empty (`dispatchIdleLimit: 0` never idles out — the persistent
+ *   service mode). Every poll is server-side scan → match → claim-fence, so
  *   concurrent loops never double-dispatch: a lost race surfaces as
  *   `CLAIM_CONFLICT` inside the fence and the loop simply polls again. A
  *   `STALE_RUNNER` answer triggers one fresh heartbeat and a single retry;
@@ -401,8 +402,11 @@ export async function runDispatchLoop({
 			polls += 1;
 			if (!answer.assigned) {
 				idle += 1;
-				logger.log(`Dispatch: no work (${answer.code ?? "empty"}); idle ${idle}/${idleLimit}.`);
-				if (idle >= idleLimit) return { assignments, polls, idle: true };
+				// idleLimit 0 means a persistent service loop: never idle out.
+				if (idleLimit > 0 && idle >= idleLimit) return { assignments, polls, idle: true };
+				logger.log(
+					`Dispatch: no work (${answer.code ?? "empty"}); idle ${idle}${idleLimit > 0 ? `/${idleLimit}` : "/∞ (persistent)"}.`,
+				);
 				await new Promise((r) => setTimeout(r, pollMs));
 				continue;
 			}

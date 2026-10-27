@@ -51,10 +51,13 @@ capabilities (harnesses, models, tiers, disk), and claim-fences the
 winner. The loop runs each assignment exactly like an explicit one,
 then polls again until `DISPATCH_IDLE_LIMIT` consecutive polls come
 back empty (`NO_CLAIMABLE_TASKS` / `NO_CLAIMABLE_MATCH` with a miss
-histogram), at which point it exits 0. A `STALE_RUNNER` answer triggers
-one fresh heartbeat and a single retry. Alias (`harness: alias`) stages
-resolve server-side through the shared backend-central rotation before
-matching, so the daemon needs no alias configuration.
+histogram), at which point it exits 0. Set
+`KAINBAIN_RUNNER_DISPATCH_IDLE_LIMIT=0` for a persistent service loop
+that never idles out (the cutover local-Runner mode). A `STALE_RUNNER`
+answer triggers one fresh heartbeat and a single retry. Alias
+(`harness: alias`) stages resolve server-side through the shared
+backend-central rotation before matching, so the daemon needs no alias
+configuration.
 
 ## Steering (D5)
 
