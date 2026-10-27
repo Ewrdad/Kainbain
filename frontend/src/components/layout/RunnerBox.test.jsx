@@ -1,0 +1,92 @@
+import { expect, test, vi } from 'vitest';
+import { screen, fireEvent, within } from '@testing-library/react';
+import React from 'react';
+import '@testing-library/jest-dom';
+
+import { renderWithKainBain } from '../../testUtils';
+import { RunnerBox } from './RunnerBox';
+
+/***
+ * MARK: RunnerBox tests
+ * @description The compact box: name/task/stage/status word, colour per
+ * status, click opens the inspector, idle boxes are display-only panels,
+ * long names truncate with the full value on title.
+ ***/
+
+const runningEntry = {
+  runnerId: 'bravo',
+  runnerLabel: 'Bravo',
+  taskId: 't1',
+  task: { id: 't1', goal: 'Ship it', title: 'Ship it' },
+  taskTitleFirstLine: 'Ship it',
+  stageName: 'Plan',
+  statusWord: 'running',
+};
+
+function renderBox(entry = runningEntry, onOpenTask = () => {}) {
+  return renderWithKainBain(<RunnerBox entry={entry} onOpenTask={onOpenTask} />, {});
+}
+
+test('renders runner name, task name, stage, and status word with health colour', () => {
+  renderBox();
+  const box = screen.getByTestId('runner-box-bravo');
+  expect(box.tagName).toBe('BUTTON');
+  expect(box).toHaveTextContent('Bravo');
+  expect(box).toHaveTextContent('Ship it');
+  expect(box).toHaveTextContent('Stage: Plan');
+  // Colour is never the sole signal: the status word renders as text.
+  expect(box).toHaveTextContent('RUNNING');
+  expect(box.getAttribute('aria-label')).toBe('Runner Bravo, running, task Ship it, stage Plan');
+});
+
+test('failed status renders the error colour and word', () => {
+  renderBox({ ...runningEntry, statusWord: 'failed' });
+  const box = screen.getByTestId('runner-box-bravo');
+  expect(box).toHaveTextContent('FAILED');
+  expect(box.innerHTML).toContain('bg-error');
+});
+
+test('clicking a task box opens that task in the inspector', () => {
+  const onOpenTask = vi.fn();
+  renderBox(runningEntry, onOpenTask);
+  fireEvent.click(screen.getByTestId('runner-box-bravo'));
+  expect(onOpenTask).toHaveBeenCalledTimes(1);
+  expect(onOpenTask).toHaveBeenCalledWith(runningEntry.task);
+});
+
+test('a box without a task is a greyed-out idle panel, not a button', () => {
+  const onOpenTask = vi.fn();
+  renderWithKainBain(
+    <RunnerBox
+      entry={{ runnerId: 'solo', runnerLabel: 'Solo', task: null, taskId: null, taskTitleFirstLine: null, stageName: null, statusWord: 'idle' }}
+      onOpenTask={onOpenTask}
+    />,
+    {},
+  );
+  const box = screen.getByTestId('runner-box-solo');
+  expect(box.tagName).toBe('DIV');
+  expect(box).toHaveTextContent('Solo');
+  expect(box).toHaveTextContent('idle');
+  expect(box.className).toContain('opacity-60');
+  // Display-only: no click handler fires.
+  fireEvent.click(box);
+  expect(onOpenTask).not.toHaveBeenCalled();
+});
+
+test('missing stage renders an em dash and long names keep full titles', () => {
+  const longName = `Runner with a very long name ${'x'.repeat(300)}`;
+  const longTask = `Task with a very long title ${'y'.repeat(300)}`;
+  renderBox({
+    ...runningEntry,
+    runnerLabel: longName,
+    taskTitleFirstLine: longTask,
+    stageName: null,
+  });
+  const box = screen.getByTestId('runner-box-bravo');
+  expect(box).toHaveTextContent('—');
+  expect(within(box).queryByText(/Stage:/)).not.toBeInTheDocument();
+  // Truncated on screen (CSS) but the full value survives on title.
+  const nameLine = screen.getByTitle(longName.slice(0, 239) + '…');
+  expect(nameLine).toHaveTextContent(longName.slice(0, 20));
+  expect(screen.getByTitle(longTask.slice(0, 239) + '…')).toBeInTheDocument();
+});

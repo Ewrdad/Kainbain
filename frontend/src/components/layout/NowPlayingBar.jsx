@@ -1,13 +1,17 @@
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 import { useKainBain } from '../../context/KainBainContext';
-import { formatTaskKey, formatTaskTitleFirstLine } from '../tasks/taskFormatters';
+import { useIsNarrowViewport } from '../util/viewport';
 import { resolveDisplayedStage } from '../tasks/runningTask';
 import { resolveActiveTaskDisplay, resolveUniversalNowPlaying } from './activeTaskVisibility';
 import { HealthTrafficLight } from './HealthTrafficLight';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { usePendingAction } from '../../hooks/usePendingAction';
 import { isLastStage as isFinalStage } from '../stageTypes';
+import { EngineStatusChip, NowPlayingBarLeft } from './NowPlayingBarLeft';
+import { RunnerBoxesRow } from './RunnerBoxesRow';
+import { shouldShowRunnerBoxes } from './runnerBoxUi';
+import { selectRunnerEntries } from './selectRunnerEntries';
 
 /***
  * MARK: NowPlayingBar
@@ -38,9 +42,20 @@ import { isLastStage as isFinalStage } from '../stageTypes';
  * as the engine leaves idle. Paused, failed, interrupted, and checkpoint
  * states keep naming their task so the user knows what needs attention.
  *
+ * Runner boxes: with 1-4 live runner entries the left column shows compact
+ * per-runner boxes (runner name, task name, stage, health colour + status
+ * word) beside the compact engine status chip; 0 or 5+ entries render the
+ * legacy single-task view. Entries come from the optional `runnerEntries`
+ * prop (tests, story states, a future runner registry) or are derived from
+ * context runner association via selectRunnerEntries; setting
+ * `uiPreferences.showRunnerBoxes === false` forces the legacy view.
+ *
  * @example <NowPlayingBar />
+ * @example <NowPlayingBar runnerEntries={[{ runnerId: 'bravo', runnerLabel: 'Bravo', task: { id: 't1' }, taskTitleFirstLine: 'Ship it', stageName: 'Plan', statusWord: 'running' }]} />
+ * @param {Object} [props] - Component props.
+ * @param {Array<Object>|null} [props.runnerEntries=null] - Injected runner entries (null derives from context).
  ***/
-export function NowPlayingBar() {
+export function NowPlayingBar({ runnerEntries = null } = {}) {
   const {
     isAgentRunning,
     workflows,
@@ -57,7 +72,10 @@ export function NowPlayingBar() {
     skipCurrent,
     engineState,
     setSelectedTask,
+    uiPreferences,
   } = useKainBain();
+
+  const isNarrow = useIsNarrowViewport();
 
   // Single-flight guard for the transport mutations (skip stage, play/pause
   // dispatcher): while one is awaiting the backend the buttons are disabled so
@@ -92,6 +110,14 @@ export function NowPlayingBar() {
   const displayedStageName = activeTask
     ? (resolveDisplayedStage(activeTask, stages, engineState)?.name ?? null)
     : null;
+
+  // Runner boxes: explicit `runnerEntries` win (tests, story states, a
+  // future registry); null derives from context runner association. The
+  // <5 gate + kill switch live in shouldShowRunnerBoxes so the branch
+  // below stays a plain conditional.
+  const runnerBoxEntries =
+    runnerEntries ?? selectRunnerEntries({ tasks, stages, engineState, isAgentRunning });
+  const showRunnerBoxes = shouldShowRunnerBoxes(runnerBoxEntries, uiPreferences) && !isNarrow;
 
   let statusBadge = 'IDLE';
   let badgeClasses = 'text-text-muted bg-surface-container border-border-standard';
@@ -252,108 +278,44 @@ export function NowPlayingBar() {
           On mobile the bar shows only task details + transport (play/pause + skip),
           so this side flexes to fill the space freed by the hidden right rail. */}
       <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        {/* Left column: 1-4 runner entries render compact boxes beside the
+            engine status chip; anything else renders the legacy single-task
+            view (NowPlayingBarLeft). Centre transport and the right rail
+            below are untouched by this branch. */}
+        {showRunnerBoxes ? (
           <div
-            className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full shrink-0 ${dotClasses}`}
-            aria-hidden="true"
-          />
-          <div className="flex flex-col min-w-0" role="status" aria-live="polite">
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <span className="font-label-caps text-[9px] sm:text-label-caps text-secondary uppercase truncate">
-                Active Task
-              </span>
-              {engineState?.activeProjectName && (
-                <span className="text-[9px] text-text-muted font-mono truncate hidden sm:inline">
-                  [{engineState.activeProjectName}]
-                </span>
-              )}
-              <InfoTooltip
-                title={`Engine Status: ${statusBadge}`}
-                description={statusDesc}
-                behindTheScenes={statusBehind}
-                position="top-left"
-              >
-                <span
-                  className={`text-[8px] sm:text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border cursor-help ${badgeClasses}`}
-                  aria-label={`Engine status is ${statusBadge}`}
-                >
-                  {statusBadge}
-                </span>
-              </InfoTooltip>
-              {/* Wedge signal: the queue claims to run while the engine reads
-                  idle with no owner. Auto-recovery settles it on the next
-                  scheduler tick, but a calm IDLE badge alone would hide the
-                  stall — so the stuck state gets its own chip while it lasts.
-                  (Bound to `engineState.busyWhileIdle` from GET /engine/state;
-                  no extra plumbing: it rides the existing ENGINE_STATE feed.) */}
-              {engineState?.busyWhileIdle === true && (
-                <span
-                  className="text-[8px] sm:text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border cursor-help text-warning bg-warning/20 border-warning/40 shadow-sm"
-                  role="status"
-                  aria-label="Execution queue is stuck while the engine is idle; the scheduler is recovering it automatically"
-                  title="The execution queue is latched by a run that never settled. The scheduler force-settles it automatically and the stuck task is queued for retry — no action needed, but check the run before trusting its output."
-                >
-                  Queue stuck — recovering
-                </span>
-              )}
-            </div>
-            {/* Clickable Active Task Card / Title to open Task Inspector (#21) */}
-            <InfoTooltip
-              title="Inspect Active Task"
-              description="Click to open the Slide-Over Inspector for live logs, markdown goals, and reports."
-              behindTheScenes="Loads task details and disk-persisted reports from docs/tasks/<id>/"
-              position="top"
-            >
-              <button
-                type="button"
-                onClick={() => activeTask && setSelectedTask?.(activeTask)}
-                disabled={!activeTask}
-                aria-label={
-                  activeTask
-                    ? `Open active task ${activeTask.goal || activeTask.title || activeTask.id} in inspector`
-                    : 'No active task'
-                }
-                className="flex items-center gap-1.5 sm:gap-2 min-w-0 mt-0.5 text-left cursor-pointer hover:underline focus:outline-none focus:ring-1 focus:ring-primary rounded-xs group disabled:cursor-default disabled:no-underline"
-              >
-                {/* Task name clears while idle (no lingering last-task label);
-                    the keyed wrapper remounts on every task/idle swap so the
-                    entrance animation replays. The key chip only ever shows a
-                    real task key — never a fabricated fallback. */}
-                <span
-                  key={activeTask?.id ?? 'idle'}
-                  data-testid={activeTask ? 'now-playing-task-name' : 'now-playing-idle-hint'}
-                  className={
-                    activeTask
-                      ? 'now-playing-task-enter font-headline-sm text-xs sm:text-headline-sm text-on-surface group-hover:text-primary transition-colors truncate'
-                      : 'font-headline-sm text-xs sm:text-headline-sm text-text-muted truncate'
-                  }
-                >
-                  {activeTask
-                    ? `${activeWorkflowLabel ? `${activeWorkflowLabel} | ` : ''}${
-                        formatTaskTitleFirstLine(activeTask, '') ||
-                        (isRunning
-                          ? 'Executing Orchestration...'
-                          : isStagePaused
-                            ? 'Stage Paused'
-                            : 'Idle')
-                      }`
-                    : 'No active task — engine idle'}
-                </span>
-                {/* Show active stage name when a task is running */}
-                {displayedStageName && (
-                  <span className="text-xs text-text-muted ml-2">
-                    {`Stage: ${displayedStageName}`}
-                  </span>
-                )}
-                {activeTask && (
-                  <span className="font-mono text-xs font-semibold text-text-muted group-hover:text-primary transition-colors shrink-0 hidden md:inline">
-                    {formatTaskKey(activeTask.id)}
-                  </span>
-                )}
-              </button>
-            </InfoTooltip>
+            data-testid="now-playing-runner-mode"
+            className="flex items-center gap-2 sm:gap-3 min-w-0"
+          >
+            <EngineStatusChip
+              dotClasses={dotClasses}
+              badgeClasses={badgeClasses}
+              statusBadge={statusBadge}
+              statusDesc={statusDesc}
+              statusBehind={statusBehind}
+              busyWhileIdle={engineState?.busyWhileIdle}
+            />
+            <RunnerBoxesRow
+              entries={runnerBoxEntries}
+              onOpenTask={(task) => setSelectedTask?.(task)}
+            />
           </div>
-        </div>
+        ) : (
+          <NowPlayingBarLeft
+            activeTask={activeTask}
+            displayedStageName={displayedStageName}
+            statusBadge={statusBadge}
+            badgeClasses={badgeClasses}
+            dotClasses={dotClasses}
+            statusDesc={statusDesc}
+            statusBehind={statusBehind}
+            activeWorkflowLabel={activeWorkflowLabel}
+            engineState={engineState}
+            isRunning={isRunning}
+            isStagePaused={isStagePaused}
+            setSelectedTask={setSelectedTask}
+          />
+        )}
       </div>
 
       {/* Center: Redesigned Transport Controls (Critique #9, #16) */}

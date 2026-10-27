@@ -978,3 +978,158 @@ test('shows a stuck-queue chip only while the engine reads idle with a latched q
     screen.queryByText('Queue stuck — recovering'),
   ).not.toBeInTheDocument();
 });
+
+/***
+ * MARK: runner boxes in the now playing bar
+ * @description With 1-4 runner entries the left side shows compact boxes
+ * (runner name, task name, stage, health colour + status word) beside the
+ * compact engine badge; 0 or 5+ entries, the kill switch, or plain queue
+ * data without runner association keep the legacy single-task view.
+ ***/
+
+function runnerEntry(runnerId, overrides = {}) {
+  return {
+    runnerId,
+    runnerLabel: runnerId,
+    taskId: `task-${runnerId}`,
+    task: { id: `task-${runnerId}`, title: `Work ${runnerId}`, goal: `Work ${runnerId}` },
+    taskTitleFirstLine: `Work ${runnerId}`,
+    stageName: 'Plan',
+    statusWord: 'running',
+    ...overrides,
+  };
+}
+
+test('box mode replaces the single-task title but keeps the engine badge', () => {
+  const setSelectedTask = vi.fn();
+  renderWithKainBain(
+    <NowPlayingBar runnerEntries={[runnerEntry('alpha'), runnerEntry('bravo', { statusWord: 'failed' })]} />,
+    {
+      stages,
+      currentStageId: '1',
+      isAgentRunning: true,
+      engineState: { status: 'running', activeTaskId: 'task-alpha' },
+      setSelectedTask,
+    },
+  );
+
+  expect(screen.getByTestId('now-playing-runner-mode')).toBeInTheDocument();
+  expect(screen.getByTestId('runner-boxes-row')).toBeInTheDocument();
+  expect(screen.getByTestId('runner-box-alpha')).toHaveTextContent('Work alpha');
+  expect(screen.getByTestId('runner-box-alpha')).toHaveTextContent('Stage: Plan');
+  expect(screen.getByTestId('runner-box-alpha')).toHaveTextContent('RUNNING');
+  expect(screen.getByTestId('runner-box-bravo')).toHaveTextContent('FAILED');
+  // The single-task title is replaced…
+  expect(screen.queryByTestId('now-playing-task-name')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('now-playing-idle-hint')).not.toBeInTheDocument();
+  // …but the global engine badge stays beside the boxes (q8). The badge
+  // is pinned by its aria-label: the boxes render their own RUNNING words,
+  // so a bare text query would match twice.
+  expect(screen.getByLabelText('Engine status is RUNNING')).toHaveTextContent('RUNNING');
+
+  // Clicking a box opens that runner's task in the inspector (q4).
+  fireEvent.click(screen.getByTestId('runner-box-bravo'));
+  expect(setSelectedTask).toHaveBeenCalledTimes(1);
+  expect(setSelectedTask).toHaveBeenCalledWith({
+    id: 'task-bravo',
+    title: 'Work bravo',
+    goal: 'Work bravo',
+  });
+});
+
+test('five or more entries fall back to the legacy single-task view', () => {
+  const entries = ['a', 'b', 'c', 'd', 'e'].map((id) => runnerEntry(id));
+  renderWithKainBain(<NowPlayingBar runnerEntries={entries} />, {
+    stages,
+    currentStageId: '1',
+    isAgentRunning: true,
+    engineState: { status: 'running', activeTaskId: 'task-a' },
+    tasks: [
+      { id: 'task-a', currentStageId: '1', status: 'running_agent', title: 'Work a', goal: 'Work a' },
+    ],
+  });
+
+  expect(screen.queryByTestId('now-playing-runner-mode')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('runner-boxes-row')).not.toBeInTheDocument();
+  expect(screen.getByTestId('now-playing-task-name')).toHaveTextContent('Work a');
+});
+
+test('kill switch forces the legacy view even with entries present', () => {
+  renderWithKainBain(<NowPlayingBar runnerEntries={[runnerEntry('alpha')]} />, {
+    stages,
+    currentStageId: '1',
+    engineState: { status: 'idle' },
+    uiPreferences: { showRunnerBoxes: false },
+  });
+
+  expect(screen.queryByTestId('now-playing-runner-mode')).not.toBeInTheDocument();
+  expect(screen.getByTestId('now-playing-idle-hint')).toBeInTheDocument();
+});
+
+test('plain queue data without runner association keeps the legacy view', () => {
+  // Regression guard: tasks that carry no runner fields are queue data,
+  // not runners — the single-task view must not flip into box mode.
+  renderWithKainBain(<NowPlayingBar />, {
+    stages,
+    currentStageId: '1',
+    isAgentRunning: true,
+    engineState: { status: 'running', activeTaskId: 't1' },
+    tasks: [
+      { id: 't1', currentStageId: '1', status: 'running_agent', title: 'Build it', goal: 'Build it' },
+      { id: 't2', currentStageId: '2', status: 'in_stage', title: 'Review it' },
+    ],
+  });
+
+  expect(screen.queryByTestId('now-playing-runner-mode')).not.toBeInTheDocument();
+  expect(screen.getByTestId('now-playing-task-name')).toHaveTextContent('Build it');
+});
+
+test('context-derived entries show boxes without the prop', () => {
+  renderWithKainBain(<NowPlayingBar />, {
+    stages,
+    currentStageId: '1',
+    isAgentRunning: true,
+    engineState: { status: 'running', activeTaskId: 't1' },
+    tasks: [
+      { id: 't1', runnerId: 'alpha', currentStageId: '1', status: 'running_agent', title: 'Build it' },
+      { id: 't2', runnerId: 'bravo', currentStageId: '1', status: 'in_stage', title: 'Review it' },
+    ],
+  });
+
+  expect(screen.getByTestId('now-playing-runner-mode')).toBeInTheDocument();
+  expect(screen.getByTestId('runner-box-alpha')).toHaveTextContent('Build it');
+  expect(screen.getByTestId('runner-box-bravo')).toHaveTextContent('Review it');
+  expect(screen.getByLabelText('Engine status is RUNNING')).toBeInTheDocument();
+});
+
+test('idle runner entries render grey boxes that do not navigate', () => {
+  const setSelectedTask = vi.fn();
+  renderWithKainBain(
+    <NowPlayingBar
+      runnerEntries={[
+        runnerEntry('alpha'),
+        {
+          runnerId: 'solo',
+          runnerLabel: 'Solo',
+          taskId: null,
+          task: null,
+          taskTitleFirstLine: null,
+          stageName: null,
+          statusWord: 'idle',
+        },
+      ]}
+    />,
+    {
+      stages,
+      currentStageId: '1',
+      engineState: { status: 'running', activeTaskId: 'task-alpha' },
+      setSelectedTask,
+    },
+  );
+
+  const idleBox = screen.getByTestId('runner-box-solo');
+  expect(idleBox).toHaveTextContent('idle');
+  expect(idleBox.className).toContain('opacity-60');
+  fireEvent.click(idleBox);
+  expect(setSelectedTask).not.toHaveBeenCalled();
+});
