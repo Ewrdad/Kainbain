@@ -6,7 +6,8 @@
 # Each tasks/<uuid>/ holds per-run logs (in-progress-*, deep-review-*,
 # automated-tests-*, final-review-*, task.md, IMPLEMENTATION_PLAN.md, ...).
 # Curated docs (docs/, baseline/, progress report/) stay tracked.
-/tasks/
+# /tasks/ is TRACKED (2026-10-27): runner-pushed task files (plans/reports)
+# must be visible to the backend. Old history archived to ~/archive.
 
 # --- Logs, temp, editor backups ---
 *.log
