@@ -4,6 +4,7 @@ import { circuitSnapshot, isTripped } from "./circuitBreaker.js";
 import { scanClaimableTasks } from "./dispatch/scanClaimableTasks.js";
 import { resolveAliasRequirement } from "./dispatch/resolveAliasRequirement.js";
 import { runnerMatches } from "./dispatch/runnerMatches.js";
+import { curateRunnerPrompt } from "./curateRunnerPrompt.js";
 
 /***
  * MARK: registerRunnerRoutes
@@ -378,7 +379,7 @@ export async function registerRunnerRoutes(app, { deps }) {
 				runner.runnerId,
 				projectId,
 			);
-			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch };
+			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, prompt: curateRunnerPrompt({ project: projectStore.getProject(projectId), task, stageId: task.currentStageId }) };
 		} catch (err) {
 			return sendStoreError(reply, err);
 		}
@@ -521,6 +522,7 @@ export async function registerRunnerRoutes(app, { deps }) {
 					executionId,
 					epoch,
 					stageId: cand.stage?.id ?? null,
+					prompt: curateRunnerPrompt({ project: projectStore.getProject(cand.projectId), task: cand.task, stageId: cand.stage?.id }),
 					requirements: req,
 				};
 			} catch (err) {

@@ -12,7 +12,7 @@ import {
 	probeHarnessVersions,
 	runDispatchLoop,
 	runSingleAssignment,
-	resolveRunnerStagePrompt,
+	applyBackendPrompt,
 	startClaimRenewal,
 } from "./daemon.js";
 
@@ -314,39 +314,15 @@ describe("startClaimRenewal", () => {
 	});
 });
 
-describe("resolveRunnerStagePrompt", () => {
-	it("curates the matched stage prompt with runner-relative taskDocs", () => {
-		const { prompt, stage } = resolveRunnerStagePrompt({
-			task: { id: "t1", goal: "Clean up markdowns" },
-			project: { id: "p1", name: "P" },
-			stages: [
-				{
-					id: "s1",
-					name: "Plan",
-					prompt: "Write the plan for {{taskGoal}} into {{taskDocs}} as PLAN.md.",
-				},
-			],
-			stageId: "s1",
-			workdir: "/w/kb-t1",
-		});
-		assert.equal(stage.id, "s1");
-		assert.match(prompt, /Write the plan for Clean up markdowns/);
-		assert.ok(!prompt.includes("{{taskDocs}}"), "taskDocs must be interpolated");
-		assert.ok(
-			prompt.includes("/w/kb-t1") && prompt.includes("docs/tasks/t1"),
-			`taskDocs must point into the runner workdir, saw: ${prompt}`,
-		);
+describe("applyBackendPrompt", () => {
+	it("retargets the backend cwd prefix into the runner worktree", () => {
+		const out = applyBackendPrompt({ prompt: "Write into /repo/docs/tasks/t1 and read /repo/src", backendCwd: "/repo", workdir: "/w/kb-t1" });
+		assert.equal(out, "Write into /w/kb-t1/docs/tasks/t1 and read /w/kb-t1/src");
 	});
-
-	it("falls back to the task goal when the stage is unknown", () => {
-		const { prompt } = resolveRunnerStagePrompt({
-			task: { id: "t1", goal: "Clean up markdowns" },
-			project: { id: "p1", name: "P" },
-			stages: [],
-			stageId: "missing",
-			workdir: "/w/kb-t1",
-		});
-		assert.match(prompt, /Clean up markdowns/);
+	it("leaves empty or same-cwd prompts untouched", () => {
+		assert.equal(applyBackendPrompt({ prompt: "", backendCwd: "/repo", workdir: "/w" }), "");
+		assert.equal(applyBackendPrompt({ prompt: "x /repo", backendCwd: "/repo", workdir: "/repo" }), "x /repo");
+		assert.equal(applyBackendPrompt({ prompt: "x", backendCwd: "", workdir: "/w" }), "x");
 	});
 });
 

@@ -4,7 +4,6 @@ import { promisify } from "node:util";
 import { listOrphanWorkdirs, prepareWorkdir } from "./project.js";
 import { runHarnessStage } from "./harness.js";
 import { commitAndPush } from "./gitOps.js";
-import { PromptCurationEngine } from "../api/promptCuration.js";
 
 export const RUNNER_VERSION = "0.1.0";
 
@@ -95,33 +94,20 @@ export function runnerHarnessIds(config = {}) {
 }
 
 /***
- * MARK: resolveRunnerStagePrompt
- * @description Builds the harness prompt for one assignment with the same
- *   curation the embedded engine applies: the task goal plus the stage's
- *   own authored prompt (instructions like "write IMPLEMENTATION_PLAN.md"
- *   live there — without it agents finish empty stages and the pipeline
- *   failback-loops). Templates resolve runner-side so `{{taskDocs}}`
- *   points into the prepared worktree, not the backend checkout. Throws
- *   are the caller's to catch: failure falls back to the minimal prompt.
- * @example resolveRunnerStagePrompt({ task: { id: 't1', goal: 'x' }, stages: [], stageId: 's', workdir: '/w' }).prompt => '# Task\nx...'
- * @param {Object} opts - Options (task, project, stages, stageId, workdir).
- * @returns {Object} `{ prompt, stage }`.
+ * MARK: applyBackendPrompt
+ * @description Retargets a backend-curated prompt to the prepared worktree:
+ *   the backend curates with its own project cwd (it owns task/stage truth),
+ *   so every occurrence of that cwd prefix is rewritten to the worktree the
+ *   harness will actually run in. Empty prompt (old backend) stays empty so
+ *   the caller falls back to its minimal prompt.
+ * @example applyBackendPrompt({ prompt: 'see /repo/docs', backendCwd: '/repo', workdir: '/w' }) => 'see /w/docs'
+ * @param {Object} opts - `{ prompt, backendCwd, workdir }`.
+ * @returns {string} The retargeted prompt.
  ***/
-export function resolveRunnerStagePrompt({ task, project, stages, stageId, workdir }) {
-	const list = Array.isArray(stages) ? stages : [];
-	const stage =
-		list.find((s) => String(s?.id) === String(stageId)) ||
-		list[0] || { id: stageId || "stage", name: "Stage" };
-	const runnerProject = { ...(project || {}), cwd: workdir };
-	const engine = new PromptCurationEngine();
-	const prompt = engine.curatePrompt(task || {}, stage, {
-		project: runnerProject,
-		projectName: runnerProject.name || runnerProject.id || project?.id,
-		projectRepo: runnerProject.gitUrl || runnerProject.repoUrl || null,
-		projectCwd: workdir,
-		reports: Array.isArray(task?.reports) ? task.reports : [],
-	});
-	return { prompt, stage };
+export function applyBackendPrompt({ prompt, backendCwd, workdir } = {}) {
+	const text = typeof prompt === "string" ? prompt : "";
+	if (!text || !backendCwd || !workdir || backendCwd === workdir) return text;
+	return text.split(backendCwd).join(workdir);
 }
 
 /***
@@ -392,6 +378,7 @@ async function executeAssignment({
 	projectId,
 	taskId,
 	lease,
+	backendPrompt = "",
 	model = null,
 	harnessId = null,
 }) {
@@ -404,10 +391,9 @@ async function executeAssignment({
 		// Dispatch already holds the lease (scan → match → claim-fence);
 		// re-claiming it would 409 against ourselves. Single-assignment
 		// has no lease yet, so it claims here.
-		const { executionId, epoch } = lease ?? (await client.claim({
-			taskId,
-			projectId,
-		}));
+		const claim = lease ?? (await client.claim({ taskId, projectId }));
+		const { executionId, epoch } = claim;
+		if (!backendPrompt && typeof claim.prompt === "string") backendPrompt = claim.prompt;
 		// Publish the live execution for the steer pull cycle (D5); the
 		// heartbeat loop only ever delivers steers for THIS execution.
 		state.executionId = executionId;
@@ -456,31 +442,12 @@ async function executeAssignment({
 				}
 			};
 
-			// Curated stage prompt (same curation as the embedded engine):
-			// the stage's authored instructions live in the workflow
-			// config, and without them agents finish empty stages while
-			// the pipeline failback-loops. Templates resolve against the
-			// prepared worktree. Falls back to the minimal prompt, never
-			// a failure.
-			let prompt;
-			try {
-				const flow = await client.getWorkflow(projectId);
-				const stages = flow?.workflow?.stages || flow?.stages || [];
-				({ prompt } = resolveRunnerStagePrompt({
-					task,
-					project,
-					stages,
-					stageId,
-					workdir,
-				}));
-			} catch (err) {
-				logger.warn(
-					`Stage prompt curation failed, using minimal prompt: ${err?.message || err}`,
-				);
-				prompt = [
-					`Task goal: ${task.goal || task.title || taskId}`,
-					`Stage: ${stageId}`,
-				].join("\n");
+			// Backend-curated stage prompt (backend owns curation; the
+			// Runner only retargets the backend cwd prefix to the worktree).
+			// Absent prompt (old backend) falls back to the minimal prompt.
+			let prompt = applyBackendPrompt({ prompt: backendPrompt, backendCwd: project.cwd, workdir });
+			if (!prompt) {
+				prompt = [`Task goal: ${task.goal || task.title || taskId}`, `Stage: ${stageId}`].join("\n");
 			}
 			prompt = [
 				prompt,
@@ -744,6 +711,7 @@ export async function runDispatchLoop({
 				projectId: answer.projectId,
 				taskId: answer.taskId,
 				lease: { executionId: answer.executionId, epoch: answer.epoch },
+				backendPrompt: answer.prompt || "",
 				// The backend already matched this task against our
 				// advertised models: serve exactly its required model.
 				model: answer.requirements?.model || null,
