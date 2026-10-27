@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import { listOrphanWorkdirs, prepareWorkdir } from "./project.js";
 import { runHarnessStage } from "./harness.js";
 import { commitAndPush } from "./gitOps.js";
+import { PromptCurationEngine } from "../api/promptCuration.js";
 
 export const RUNNER_VERSION = "0.1.0";
 
@@ -73,6 +74,36 @@ export async function probeHarnessVersions(harnessId, { timeoutMs = 4000 } = {})
  ***/
 export function clearHarnessVersionCache() {
 	harnessVersionCache.clear();
+}
+
+/***
+ * MARK: resolveRunnerStagePrompt
+ * @description Builds the harness prompt for one assignment with the same
+ *   curation the embedded engine applies: the task goal plus the stage's
+ *   own authored prompt (instructions like "write IMPLEMENTATION_PLAN.md"
+ *   live there — without it agents finish empty stages and the pipeline
+ *   failback-loops). Templates resolve runner-side so `{{taskDocs}}`
+ *   points into the prepared worktree, not the backend checkout. Throws
+ *   are the caller's to catch: failure falls back to the minimal prompt.
+ * @example resolveRunnerStagePrompt({ task: { id: 't1', goal: 'x' }, stages: [], stageId: 's', workdir: '/w' }).prompt => '# Task\nx...'
+ * @param {Object} opts - Options (task, project, stages, stageId, workdir).
+ * @returns {Object} `{ prompt, stage }`.
+ ***/
+export function resolveRunnerStagePrompt({ task, project, stages, stageId, workdir }) {
+	const list = Array.isArray(stages) ? stages : [];
+	const stage =
+		list.find((s) => String(s?.id) === String(stageId)) ||
+		list[0] || { id: stageId || "stage", name: "Stage" };
+	const runnerProject = { ...(project || {}), cwd: workdir };
+	const engine = new PromptCurationEngine();
+	const prompt = engine.curatePrompt(task || {}, stage, {
+		project: runnerProject,
+		projectName: runnerProject.name || runnerProject.id || project?.id,
+		projectRepo: runnerProject.gitUrl || runnerProject.repoUrl || null,
+		projectCwd: workdir,
+		reports: Array.isArray(task?.reports) ? task.reports : [],
+	});
+	return { prompt, stage };
 }
 
 /***
@@ -387,9 +418,34 @@ async function executeAssignment({
 				}
 			};
 
-			const prompt = [
-				`Task goal: ${task.goal || task.title || taskId}`,
-				`Stage: ${stageId}`,
+			// Curated stage prompt (same curation as the embedded engine):
+			// the stage's authored instructions live in the workflow
+			// config, and without them agents finish empty stages while
+			// the pipeline failback-loops. Templates resolve against the
+			// prepared worktree. Falls back to the minimal prompt, never
+			// a failure.
+			let prompt;
+			try {
+				const flow = await client.getWorkflow(projectId);
+				const stages = flow?.workflow?.stages || flow?.stages || [];
+				({ prompt } = resolveRunnerStagePrompt({
+					task,
+					project,
+					stages,
+					stageId,
+					workdir,
+				}));
+			} catch (err) {
+				logger.warn(
+					`Stage prompt curation failed, using minimal prompt: ${err?.message || err}`,
+				);
+				prompt = [
+					`Task goal: ${task.goal || task.title || taskId}`,
+					`Stage: ${stageId}`,
+				].join("\n");
+			}
+			prompt = [
+				prompt,
 				`Working directory: ${workdir}`,
 				`Branch: ${branch}`,
 				"Implement the stage goal in the working directory. Keep changes scoped to the task.",

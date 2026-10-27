@@ -150,5 +150,8 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 		getTask(projectId, taskId) {
 			return call(`/tasks/${encodeURIComponent(taskId)}?projectId=${encodeURIComponent(projectId)}`);
 		},
+		getWorkflow(projectId) {
+			return call(`/projects/${encodeURIComponent(projectId)}/workflow`);
+		},
 	};
 }

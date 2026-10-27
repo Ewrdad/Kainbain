@@ -12,6 +12,7 @@ import {
 	probeHarnessVersions,
 	runDispatchLoop,
 	runSingleAssignment,
+	resolveRunnerStagePrompt,
 	startClaimRenewal,
 } from "./daemon.js";
 
@@ -310,6 +311,42 @@ describe("startClaimRenewal", () => {
 		stop();
 		assert.ok(warnings.length >= 1);
 		assert.match(warnings[0], /Claim renewal failed/);
+	});
+});
+
+describe("resolveRunnerStagePrompt", () => {
+	it("curates the matched stage prompt with runner-relative taskDocs", () => {
+		const { prompt, stage } = resolveRunnerStagePrompt({
+			task: { id: "t1", goal: "Clean up markdowns" },
+			project: { id: "p1", name: "P" },
+			stages: [
+				{
+					id: "s1",
+					name: "Plan",
+					prompt: "Write the plan for {{taskGoal}} into {{taskDocs}} as PLAN.md.",
+				},
+			],
+			stageId: "s1",
+			workdir: "/w/kb-t1",
+		});
+		assert.equal(stage.id, "s1");
+		assert.match(prompt, /Write the plan for Clean up markdowns/);
+		assert.ok(!prompt.includes("{{taskDocs}}"), "taskDocs must be interpolated");
+		assert.ok(
+			prompt.includes("/w/kb-t1") && prompt.includes("docs/tasks/t1"),
+			`taskDocs must point into the runner workdir, saw: ${prompt}`,
+		);
+	});
+
+	it("falls back to the task goal when the stage is unknown", () => {
+		const { prompt } = resolveRunnerStagePrompt({
+			task: { id: "t1", goal: "Clean up markdowns" },
+			project: { id: "p1", name: "P" },
+			stages: [],
+			stageId: "missing",
+			workdir: "/w/kb-t1",
+		});
+		assert.match(prompt, /Clean up markdowns/);
 	});
 });
 
