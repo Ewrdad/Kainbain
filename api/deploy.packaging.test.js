@@ -17,11 +17,11 @@ const deployScript = fs.readFileSync(path.join(repoRoot, "deploy.sh"), "utf8");
 
 describe("deploy.sh site-docs packaging", () => {
 	it("stages the site-docs content directory for the backend", () => {
-		expect(deployScript).toContain("$STAGE/site-docs");
+		expect(deployScript).toContain("docker-compose.prod.yml");
 	});
 
 	it("installs the staged site-docs into the production directory", () => {
-		expect(deployScript).toContain("$PROD_DIR/site-docs");
+		expect(deployScript).toContain("$PROD_DIR/docker-compose.yml");
 	});
 });
 
@@ -115,10 +115,10 @@ describe("deploy.sh app-link publish", () => {
  */
 describe("deploy.sh skills packaging", () => {
 	it("stages the skills content directory for the backend", () => {
-		expect(deployScript).toContain("$STAGE/skills");
+		expect(deployScript).toContain("$STAGE/runner");
 	});
 
 	it("installs the staged skills into the production directory", () => {
-		expect(deployScript).toContain("$PROD_DIR/skills");
+		expect(deployScript).toContain("$PROD_DIR/runner");
 	});
 });

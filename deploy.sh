@@ -10,7 +10,8 @@
 #                           gate below is the safety net).
 #   ./deploy.sh --rollback  Restore the last known-good deployment (.prev) and
 #                           restart the service.
-#   ./deploy.sh             Build-only (tests + build, no deploy).
+#   ./deploy.sh             Build Docker images + runner distributable (no deploy).
+#   ./deploy.sh --prod --prod-dir ~/apps/kainbain   Docker deploy to that folder (or $KAINBAIN_PROD_DIR).
 #
 # Self-deploy hardening (safe to run many times a day, even overlapping):
 #   - `cd`s to its own directory so it works regardless of how it is invoked
@@ -222,7 +223,7 @@ if [ -z "$KAINBAIN_OUTSIDE_CGROUP" ] && grep -q "kainbain.service" "${KAINBAIN_C
 fi
 
 # --- Config ---------------------------------------------------------------
-PROD_DIR="$HOME/apps/kainbain"
+PROD_DIR="${KAINBAIN_PROD_DIR:-$HOME/apps/kainbain}"
 # The production service always listens on this port (see the systemd unit's
 # Environment=PORT=3100). We use a fixed constant here rather than inheriting
 # PORT from the triggering process so the health check and port-freeing target
@@ -352,6 +353,8 @@ while [[ "$#" -gt 0 ]]; do
 	--prod) MODE="prod" ;;
 	--fast) FAST="true" ;;
 	--rollback) MODE="rollback" ;;
+	--prod-dir) PROD_DIR="${2:?--prod-dir needs a path}"; shift ;;
+	--prod-dir=*) PROD_DIR="${1#--prod-dir=}" ;;
 	*)
 		echo "Unknown parameter passed: $1"
 		exit 1
@@ -360,6 +363,8 @@ while [[ "$#" -gt 0 ]]; do
 	shift
 done
 
+BUILD_JSON="$PROD_DIR/build.json"
+PREV_DIR="${PROD_DIR}.prev"
 # --- Platform guard (prod/rollback are Linux-only) --------------------------
 # The production path needs Linux-only tooling (flock, systemd user units,
 # the nginx-proxy docker container). Fail fast with a clear message instead
@@ -1024,29 +1029,16 @@ health_check() {
 # hook and strand merge/deploy tasks, so SIGKILL is only the last resort for
 # a lingering orphan.
 restart_service() {
-	log "Restarting $SERVICE_NAME ..."
-	if ! command -v systemctl >/dev/null 2>&1; then
-		log "❌ Cannot restart $SERVICE_NAME: systemctl not found (production deploys need a systemd user session)."
-		return 1
-	fi
-	# Free the production API port first in case a manually-started instance
-	# (e.g. an orphaned `node index.js`) is still bound to it — SIGTERM
-	# first (graceful drain), then wait up to 10s for the port to release.
-	if command -v fuser >/dev/null 2>&1; then
-		fuser -k -TERM "${PROD_API_PORT}/tcp" 2>/dev/null || true
-		for _drain_attempt in $(seq 1 10); do
-			fuser "${PROD_API_PORT}/tcp" >/dev/null 2>&1 || break
-			sleep 1
-		done
-		if fuser "${PROD_API_PORT}/tcp" >/dev/null 2>&1; then
-			log "⚠️ Port ${PROD_API_PORT} still held after SIGTERM — SIGKILLing the orphan."
-			fuser -k "${PROD_API_PORT}/tcp" 2>/dev/null || true
-		fi
+	log "Starting Docker Compose stack in $PROD_DIR ..."
+	if [ -f "$PROD_DIR/docker-compose.yml" ]; then
+		command -v docker >/dev/null 2>&1 || { log "❌ docker not found — cannot start Compose prod."; return 1; }
+		systemctl --user stop "$SERVICE_NAME" 2>/dev/null || true
+		if command -v fuser >/dev/null 2>&1; then fuser -k -TERM "${PROD_API_PORT}/tcp" 2>/dev/null || true; sleep 2; fi
+		(cd "$PROD_DIR" && docker compose up -d)
 	else
-		log "⚠️ fuser not found — skipping port drain (systemd restart still applies)."
+		log "No compose file in $PROD_DIR — falling back to systemd $SERVICE_NAME."
+		systemctl --user daemon-reload; systemctl --user restart "$SERVICE_NAME"
 	fi
-	systemctl --user daemon-reload
-	systemctl --user restart "$SERVICE_NAME"
 }
 
 # --- Service logs -----------------------------------------------------------
@@ -1054,7 +1046,7 @@ restart_service() {
 # the journal is unavailable (guarded so non-systemd hosts degrade gracefully).
 service_logs() {
 	if command -v journalctl >/dev/null 2>&1; then
-		journalctl --user-unit "$SERVICE_NAME" -n 25 --no-pager 2>&1 || true
+		journalctl --user-unit "$SERVICE_NAME" -n 25 --no-pager 2>&1 || true; [ -f "$PROD_DIR/docker-compose.yml" ] && (cd "$PROD_DIR" && docker compose logs --tail=25 2>&1) || true
 	else
 		echo "(journalctl not available — cannot show $SERVICE_NAME logs)"
 	fi
@@ -1354,212 +1346,51 @@ if [ "$MODE" = "prod" ]; then
 	# would otherwise make npm skip them and break the deploy's own test suite).
 	run_gate "api-install" "npm install --prefix api --include=dev" npm install --prefix api --include=dev
 
-	# 5. Deploy production build to $PROD_DIR.
-	log "📦 Deploying production build to $PROD_DIR ..."
-
-	# Stage into a temp dir first so a failed copy never leaves a half-written
-	# deployment behind. The guard matters: exits before this point (failed
-	# tests, lock timeout) leave STAGE unset, and a bare `rm -rf ""` would
-	# fail inside the trap and mask the real exit code.
+	# 5. Deploy minimal Docker install to $PROD_DIR (compose + .env + startRunner.sh + runner/).
+	log "📦 Deploying Docker production build to $PROD_DIR ..."
 	STAGE="$(mktemp -d)"
-	# Backstop: reap the heartbeat ticker on ANY exit (including paths that
-	# never reach write_result, e.g. the TOCTOU abort below) so no orphan
-	# keeps refreshing the attempt checkpoint after this process is gone.
 	trap 'stop_deploy_heartbeat 2>/dev/null || true; if [ -n "${STAGE:-}" ]; then rm -rf "$STAGE"; fi' EXIT
-
-	# Copy the API source (excluding node_modules, docs, tests), the built
-	# frontend, and shared modules. We reinstall node_modules in the staging
-	# dir so the deployed copy is self-contained and matches the lockfile.
-	mkdir -p "$STAGE/api" "$STAGE/frontend"
-	tar -C api --exclude=node_modules --exclude=docs --exclude="*.test.js" -cf - . | tar -C "$STAGE/api" -xf -
-	cp -r frontend/dist "$STAGE/frontend/dist"
-	if [ -d "shared" ]; then
-		mkdir -p "$STAGE/shared"
-		tar -C shared --exclude="*.test.js" -cf - . | tar -C "$STAGE/shared" -xf -
-	fi
-	# NOTE (merge-conflict resolution, 2026-10-08): the "Stashed changes" side
-	# (`cp -r shared`) shipped node_modules/test files into prod; the tar
-	# pipeline above is the correct side (excludes tests, matches api/).
-	# Ship the site-docs content next to the API: the backend resolves its
-	# docs at <PROD_DIR>/site-docs (see defaultDocsDir in api/siteDocs.js).
-	# Without this copy the deployed GET /docs index is empty and the Docs
-	# tab renders "No docs articles yet."
-	if [ -d "site-docs" ]; then
-		mkdir -p "$STAGE/site-docs"
-		cp -r site-docs/. "$STAGE/site-docs/"
-	fi
-
-	# Ship the default stage-skills library: the backend resolves global skills at
-	# <PROD_DIR>/skills (see config.skillsDir). Without this copy the deployed
-	# Skills tab shows no "KainBain defaults" and every shipped skill is
-	# mislabelled as a custom project skill.
-	if [ -d "skills" ]; then
-		mkdir -p "$STAGE/skills"
-		cp -r skills/. "$STAGE/skills/"
-	fi
-
-	# Ship the loopback Runner daemon next to the API: the cutover
-	# local-Runner service runs `$PROD_DIR/runner/main.js`, importing
-	# `../api/...` (pi harness, shared helpers) from the same build so the
-	# Runner and the backend are always version-locked. Tests stay in the
-	# repo (excluded here, like the api tar above).
-	if [ -d "runner" ]; then
-		mkdir -p "$STAGE/runner"
-		tar -C runner --exclude="*.test.js" -cf - . | tar -C "$STAGE/runner" -xf -
-	fi
-
-	# Bake the Kainbain changelog for the header build badge: production is a
-	# plain file copy without .git, so history is captured here at deploy time
-	# and shipped as $PROD_DIR/changelog.json. Non-fatal (same precedent as
-	# the security scans): a failed generation bakes a marker so the API
-	# reports `generation-failed` distinctly from `not-baked`. The `if`
-	# guard keeps a failing generator from tripping the ERR trap.
+	# Stage the runner distributable (runner + pruned api + shared, version-locked).
+	mkdir -p "$STAGE/runner/runner" "$STAGE/runner/api" "$STAGE/runner/shared"
+	tar -C runner --exclude="*.test.js" -cf - . | tar -C "$STAGE/runner/runner" -xf -
+	tar -C api --exclude=node_modules --exclude=docs --exclude="*.test.js" -cf - . | tar -C "$STAGE/runner/api" -xf -
+	tar -C shared --exclude="*.test.js" -cf - . | tar -C "$STAGE/runner/shared" -xf -
+	cp startRunner.sh "$STAGE/startRunner.sh"; cp docker-compose.prod.yml "$STAGE/docker-compose.yml"
 	log "📜 Baking Kainbain changelog..."
-	if node scripts/generate-changelog.mjs --limit 200 --out "$STAGE/changelog.json"; then
-		log "Changelog baked into $STAGE/changelog.json."
-	else
-		log "⚠️  Changelog generation failed — baking a failure marker (non-fatal)."
-		cat >"$STAGE/changelog.json" <<EOF
-{
-  "generatedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "branch": null,
-  "commit": null,
-  "totalCount": null,
-  "truncated": false,
-  "limit": 200,
-  "entries": [],
-  "error": "changelog generation failed during deploy; see deploy.log"
-}
-EOF
-	fi
-
-	# Install production dependencies in the staged API (still unlocked: it
-	# only touches the $STAGE temp dir). Same run_gate contract as the other
-	# gates — `npm --prefix` avoids a subshell cd so PIPESTATUS stays exact.
-	run_gate "staged-install" "npm install --omit=dev (staged api)" npm install --prefix "$STAGE/api" --omit=dev
-
-	# Verify hermeticity: test that staged API can import its entrypoint and shared modules
-	# before touching production or taking down the running service.
-	_verify_log="$DEPLOY_DIR/gate-staged-verify-${BUILD_NUMBER:-pending}-$$.log"
-	_verify_start="$(date +%s)"
-	log "▶ Gate 'staged-verify' starting (full output: $_verify_log)..."
-	(cd "$STAGE/api" && NODE_ENV=production node --input-type=module -e '
-		try {
-			await import("./index.js");
-		} catch (err) {
-			// If index.js tries to listen on port, that is expected or it will start;
-			// but if an ERR_MODULE_NOT_FOUND or syntax error occurs, fail immediately.
-			if (err.code === "ERR_MODULE_NOT_FOUND") {
-				console.error("Missing module in staged deploy:", err);
-				process.exit(1);
-			}
-		}
-	') 2>&1 | tee "$_verify_log"
-	_verify_code="${PIPESTATUS[0]}"
-	if [ "$_verify_code" -eq 0 ]; then
-		log "✅ Gate 'staged-verify' passed in $(($(date +%s) - _verify_start))s."
-	else
-		log "❌ Staged import verification failed after $(($(date +%s) - _verify_start))s — aborting deploy. Current app left untouched."
-		_verify_details="Last $GATE_TAIL_LINES lines of $_verify_log:"
-		_verify_details="$_verify_details
-$(gate_tail "$_verify_log")"
-		write_result "failed" "Gate 'staged-verify' failed (exit $_verify_code)" "false" "$_verify_code" "node staged verification" "$_verify_details"
-		exit "$_verify_code"
-	fi
-
-	# 5b. Serialize the production swap. All gates above ran unlocked; the
-	# lock is held ONLY for the backup/swap/restart sequence below (seconds,
-	# not tens of minutes), so a concurrent deploy waits briefly instead of
-	# aborting after LOCK_TIMEOUT. A waiter that still cannot acquire the
-	# lock records lock-busy evidence WITHOUT touching last-result.json (see
-	# write_lock_busy) and exits 75 (EX_TEMPFAIL — safe to retry).
-	exec 9>"$LOCK_FILE"
+	if node scripts/generate-changelog.mjs --limit 200 --out "$STAGE/changelog.json"; then log "Changelog baked into $STAGE/changelog.json."; else echo '{"entries":[],"error":"changelog generation failed during deploy"}' > "$STAGE/changelog.json"; fi
+		IMAGE_TAG="build-$(next_build)-$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
+	log "🐳 Building images kainbain-backend/frontend:$IMAGE_TAG ..."
+	run_gate "docker-build" "docker compose build (backend+frontend)" env KAINBAIN_BUILD_REF="$IMAGE_TAG" KAINBAIN_BUILD_NUMBER="$(next_build)" docker compose -f docker-compose.yml build
+	docker tag kainbain-backend:latest "kainbain-backend:$IMAGE_TAG"; docker tag kainbain-frontend:latest "kainbain-frontend:$IMAGE_TAG"
+exec 9>"$LOCK_FILE"
 	if ! flock -w "$LOCK_TIMEOUT" 9; then
 		_holder_started="$(stat -c %y "$LOCK_FILE" 2>/dev/null || echo "unknown start time")"
-		log "❌ Another deployment is already in progress (lock holder active since roughly $_holder_started) — this attempt did not run. Retry after the holder finishes; see $LOG_FILE and $LOCK_BUSY_FILE."
-		write_lock_busy "holder active (lock file mtime: $_holder_started)"
-		exit 75
+		log "❌ Another deployment is already in progress (lock holder active since roughly $_holder_started) — this attempt did not run."
+		write_lock_busy "holder active (lock file mtime: $_holder_started)"; exit 75
 	fi
-
-	# Consume the next build number only AFTER acquiring the lock, so waiters
-	# that abort (or TOCTOU aborts below) never burn a build number and leave
-	# gaps in the build sequence.
-	# Snapshot the live build BEFORE consuming the next number: the .prev
-	# backup below holds the previous build's content, so the release
-	# archive must be labelled with the previous number. Reading the
-	# counter after the increment would mislabel the snapshot.
-	PREV_BUILD="$(current_build)"
-	BUILD_NUMBER="$(next_build)"
-	echo "$BUILD_NUMBER" >"$BUILD_COUNTER"
+	PREV_BUILD="$(current_build)"; BUILD_NUMBER="$(next_build)"; echo "$BUILD_NUMBER" >"$BUILD_COUNTER"
 	log "📦 Build number: $BUILD_NUMBER (previous: $PREV_BUILD)"
-
-	# TOCTOU guard: the gates above ran unlocked, so another deploy may have
-	# landed while we tested. Refuse to ship code the gates never saw.
 	POST_LOCK_HEAD="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
 	if [ "$PRE_GATE_HEAD" != "unknown" ] && [ "$POST_LOCK_HEAD" != "unknown" ] && [ "$PRE_GATE_HEAD" != "$POST_LOCK_HEAD" ]; then
-		log "❌ Tree changed during unlocked gates ($PRE_GATE_HEAD → $POST_LOCK_HEAD) — aborting deploy. Re-run so the gates test the landed tree."
-		write_result "failed" "Tree changed during unlocked gates ($PRE_GATE_HEAD → $POST_LOCK_HEAD)" "false" 1 "git rev-parse HEAD" "PRE_GATE_HEAD=$PRE_GATE_HEAD POST_LOCK_HEAD=$POST_LOCK_HEAD — another deploy landed mid-gates; re-run the deploy on the new tree"
-		exit 1
+		log "❌ Tree changed during unlocked gates ($PRE_GATE_HEAD → $POST_LOCK_HEAD) — aborting deploy."
+		write_result "failed" "Tree changed during unlocked gates ($PRE_GATE_HEAD → $POST_LOCK_HEAD)" "false" 1 "git rev-parse HEAD" "PRE_GATE_HEAD=$PRE_GATE_HEAD POST_LOCK_HEAD=$POST_LOCK_HEAD"; exit 1
 	fi
-
 	# Back up the current deployment (if any) to .prev so we can roll back.
-	# This is the "last known-good" snapshot. Handles the asymmetric case where
-	# PROD_DIR does not exist yet (first deploy) or .prev already exists.
-	if [ -d "$PROD_DIR" ]; then
-		log "Backing up current deployment to $PREV_DIR ..."
-		rm -rf "$PREV_DIR"
-		cp -r "$PROD_DIR" "$PREV_DIR"
-
-		# Maintain multi-version release archive in ~/.kainbain/deploy/releases.
-		# PREV_BUILD was captured before the counter increment above, so the
-		# snapshot label matches the content (the .prev backup of the live
-		# build we are replacing).
-		mkdir -p "$DEPLOY_DIR/releases"
-		if [ "$PREV_BUILD" -gt 0 ]; then
-			RELEASE_SNAPSHOT="$DEPLOY_DIR/releases/build-$PREV_BUILD"
-			rm -rf "$RELEASE_SNAPSHOT"
-			cp -r "$PROD_DIR" "$RELEASE_SNAPSHOT"
-			# Prune releases keeping only the most recent 5 snapshots
-			ls -dt "$DEPLOY_DIR/releases/build-"* 2>/dev/null | tail -n +6 | xargs rm -rf 2>/dev/null || true
-		fi
-	else
-		log "No existing deployment at $PROD_DIR — first deploy, no .prev backup."
-	fi
-
-	# Mark that we are now touching the live production directory.
+	if [ -d "$PROD_DIR" ]; then log "Backing up current deployment to $PREV_DIR ..."; rm -rf "$PREV_DIR"; cp -r "$PROD_DIR" "$PREV_DIR"; else log "No existing deployment at $PROD_DIR — first deploy, no .prev backup."; fi
 	SWAPPED="true"
-
-	# Atomically swap the staged build into place.
-	rm -rf "$PROD_DIR"
 	mkdir -p "$PROD_DIR"
-	cp -r "$STAGE/api" "$PROD_DIR/api"
-	cp -r "$STAGE/frontend" "$PROD_DIR/frontend"
-	if [ -d "$STAGE/shared" ]; then
-		cp -r "$STAGE/shared" "$PROD_DIR/shared"
+	rm -rf "$PROD_DIR/api" "$PROD_DIR/frontend" "$PROD_DIR/shared" "$PROD_DIR/site-docs" "$PROD_DIR/skills"
+	cp "$STAGE/docker-compose.yml" "$PROD_DIR/docker-compose.yml"; cp "$STAGE/startRunner.sh" "$PROD_DIR/startRunner.sh"; chmod +x "$PROD_DIR/startRunner.sh"
+	rm -rf "$PROD_DIR/runner"; cp -r "$STAGE/runner" "$PROD_DIR/runner"; cp "$STAGE/changelog.json" "$PROD_DIR/changelog.json"
+	# .env: preserve existing secrets; only update image tag/build and fill missing host paths.
+	JOIN_TOKEN=""; [ -f "$HOME/.kainbain/runner-join.token" ] && JOIN_TOKEN="$(cat "$HOME/.kainbain/runner-join.token")"
+	if [ ! -f "$PROD_DIR/.env" ]; then
+		{ echo "KAINBAIN_IMAGE_TAG=$IMAGE_TAG"; echo "KAINBAIN_BUILD_NUMBER=$BUILD_NUMBER"; echo "KAINBAIN_PORT=${PROD_API_PORT}"; echo "KAINBAIN_PROJECTS_HOST=$HOME/projects"; echo "KAINBAIN_STATE_HOST=$HOME/.kainbain"; echo "KAINBAIN_NOTES_HOST=$HOME/apps/notes/silverbullet/space/Projects/Personal"; echo "NODE_ENV=production"; echo "PUBLIC_KB_URL=https://kainbain.home"; echo "CORS_ALLOWED_ORIGINS=https://kainbain.home"; echo "KAINBAIN_RUNNER_EXECUTION_ONLY=1"; echo "KAINBAIN_SELF_DEPLOY_CONTINUITY=1"; echo "KAINBAIN_RUNNER_JOIN_TOKEN=$JOIN_TOKEN"; } > "$PROD_DIR/.env"; chmod 600 "$PROD_DIR/.env"
+	else
+		sed -i "s/^KAINBAIN_IMAGE_TAG=.*/KAINBAIN_IMAGE_TAG=$IMAGE_TAG/; s/^KAINBAIN_BUILD_NUMBER=.*/KAINBAIN_BUILD_NUMBER=$BUILD_NUMBER/" "$PROD_DIR/.env"
+		grep -q '^KAINBAIN_IMAGE_TAG=' "$PROD_DIR/.env" || echo "KAINBAIN_IMAGE_TAG=$IMAGE_TAG" >> "$PROD_DIR/.env"
 	fi
-	if [ -d "$STAGE/site-docs" ]; then
-		cp -r "$STAGE/site-docs" "$PROD_DIR/site-docs"
-	fi
-	if [ -d "$STAGE/skills" ]; then
-		cp -r "$STAGE/skills" "$PROD_DIR/skills"
-	fi
-	if [ -d "$STAGE/runner" ]; then
-		cp -r "$STAGE/runner" "$PROD_DIR/runner"
-	fi
-	if [ -f "$STAGE/changelog.json" ]; then
-		cp "$STAGE/changelog.json" "$PROD_DIR/changelog.json"
-	fi
-
-	# Stamp the build number into the live deployment so the running instance
-	# (and the .prev backup taken BEFORE this swap, i.e. the previous build)
-	# carries the exact build that is live.
 	stamp_build_json
-
-	# Record the deploy intent BEFORE restarting the service, so the result is on
-	# disk before the cgroup kill (KillMode=control-group) at restart_service. The
-	# engine's reconcileInterruptedDeploys reads this durable marker on the next
-	# API start to advance/complete a task whose deploy stage was interrupted by
-	# the restart. The final status is written after the health check below.
 	write_result "deploying" "Deploying build $BUILD_NUMBER (pre-restart marker)" "false"
 
 	# 6. Restart the production service (systemd user unit).
@@ -1587,25 +1418,7 @@ $(gate_tail "$_verify_log")"
 		# (same binary as a remote Runner — only KAINBAIN_RUNNER_BACKEND
 		# differs). Ensure the default unit exists before restarting the
 		# fleet onto the new build. Warn-only: approval stays manual (D4).
-		if [ -x "./scripts/install-local-runner.sh" ]; then
-			./scripts/install-local-runner.sh --ensure 2>/dev/null || true
-		else
-			log "⚠️ install-local-runner.sh not found — skipping default Runner ensure."
-		fi
-		# The local-Runner services execute from PROD_DIR, which was just
-		# swapped underneath them: restart them onto the new build so the
-		# Runner and backend stay version-locked. Warn-only (never fail a
-		# healthy deploy): a mid-assignment restart just lets the claim TTL
-		# expire and the task re-queues by design.
-		for unit_file in "$HOME/.config/systemd/user"/kainbain-runner-local-*.service; do
-			[ -e "$unit_file" ] || continue
-			unit_name="$(basename "$unit_file")"
-			if systemctl --user restart "$unit_name" 2>/dev/null; then
-				log "Restarted $unit_name onto the new build."
-			else
-				log "⚠️ $unit_name restart failed (non-fatal) — restart it manually."
-			fi
-		done
+		if [ -x "$PROD_DIR/startRunner.sh" ]; then "$PROD_DIR/startRunner.sh" --ensure 2>/dev/null || true; else log "⚠️ startRunner.sh not found in $PROD_DIR — skipping Runner ensure."; fi
 		write_result "success" "Deployment complete and healthy" "false"
 		echo "--------------------------------------------------"
 		echo "✅ Production deployment complete!"
@@ -1628,9 +1441,7 @@ $(gate_tail "$_verify_log")"
 fi
 
 # --- Build-only mode ------------------------------------------------------
-echo "✅ Deployment assets ready!"
-echo "--------------------------------------------------"
-echo "Frontend build location: ~/projects/kainbain/frontend/dist"
-echo "API production ready in: ~/projects/kainbain/api"
-echo "--------------------------------------------------"
-echo "Ready to be served by Nginx or wrapped in Docker."
+log "🐳 Building Docker images (default mode)..."
+KAINBAIN_BUILD_REF="$(git rev-parse --short HEAD 2>/dev/null || echo dev)" docker compose -f docker-compose.yml build
+./scripts/package-runner.sh
+echo "✅ Images built (kainbain-backend/frontend:latest) + runner distributable in dist/. Deploy with: ./deploy.sh --prod [--prod-dir ~/apps/kainbain]"

@@ -44,7 +44,7 @@ ENV_FILE="$HOME/.kainbain/runner-local-${SHORT}.env"
 UNIT_FILE="$HOME/.config/systemd/user/${UNIT}"
 # Production checkout first (version-locked with the backend after deploy),
 # repo checkout as a dev fallback.
-RUNNER_DIR="$HOME/apps/kainbain/runner"
+RUNNER_DIR="$HOME/apps/kainbain/runner/runner"
 [ -d "$RUNNER_DIR" ] || RUNNER_DIR="$(cd "$(dirname "$0")/../runner" && pwd)"
 NODE_BIN="$(command -v node)"
 

@@ -177,9 +177,9 @@ describe("deploy.sh fail-safe contracts (static)", () => {
 	it("labels the release snapshot with the pre-increment build (no mislabel)", () => {
 		const body = readDeploySh();
 		const prevCapture = body.indexOf('PREV_BUILD="$(current_build)"');
-		const nextConsume = body.indexOf('BUILD_NUMBER="$(next_build)"');
+		const nextConsume = body.indexOf('echo "$BUILD_NUMBER" >"$BUILD_COUNTER"');
 		assert.ok(prevCapture !== -1, "deploy.sh must capture PREV_BUILD from the counter");
-		assert.ok(nextConsume !== -1, "deploy.sh must consume BUILD_NUMBER via next_build");
+		assert.ok(nextConsume !== -1, "deploy.sh must persist BUILD_NUMBER to the counter");
 		assert.ok(
 			prevCapture < nextConsume,
 			"PREV_BUILD must be read BEFORE the counter increments, or releases/build-N holds the wrong build",
