@@ -31,7 +31,7 @@ export function _sanitizeTaskTitle(raw) {
  *   stats, and full report bodies — a 45-task project serves ~20MB with
  *   them, seconds on a fast link and effectively never over a relayed
  *   phone connection). Report entries keep their metadata (path, name,
- *   stage) so counts and links still resolve, capped at the 10 most
+ *   stage) so counts and links still resolve, capped at the 5 most
  *   recent with the total in `reportCount`; detail views hydrate the
  *   full task through `GET /tasks/:id` on open.
  * @example toTaskSummary(task) => { id: 'task-1', reports: [{ path, … }], … }
@@ -40,7 +40,10 @@ export function _sanitizeTaskTitle(raw) {
  ***/
 // Board lists fetch every task on load: a long-lived task can accumulate
 // hundreds of report entries, so summaries carry only the recent few.
-const SUMMARY_REPORT_LIMIT = 10;
+// `body` mirrors `goal`, and `reliabilitySamples`/`reviewBaseline` serve
+// api-side or detail views — none of them ride the list (detail views
+// hydrate the full task through `GET /tasks/:id` on open).
+const SUMMARY_REPORT_LIMIT = 5;
 
 export function toTaskSummary(task) {
 	if (!task || typeof task !== "object") return {};
@@ -51,6 +54,9 @@ export function toTaskSummary(task) {
 		history: _history,
 		timeline: _timeline,
 		stats: _stats,
+		body: _body,
+		reliabilitySamples: _reliabilitySamples,
+		reviewBaseline: _reviewBaseline,
 		reports,
 		...rest
 	} = task;

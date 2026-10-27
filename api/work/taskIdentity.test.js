@@ -68,9 +68,9 @@ describe('The Work: task identity and classification', () => {
 		};
 		const summary = toTaskSummary(fullTask);
 		expect(summary.reportCount).toBe(15);
-		expect(summary.reports).toHaveLength(10);
-		expect(summary.reports[0]).toEqual({ path: 'r-5.md', name: 'R5' });
-		expect(summary.reports[9]).toEqual({ path: 'r-14.md', name: 'R14' });
+		expect(summary.reports).toHaveLength(5);
+		expect(summary.reports[0]).toEqual({ path: 'r-10.md', name: 'R10' });
+		expect(summary.reports[4]).toEqual({ path: 'r-14.md', name: 'R14' });
 	});
 
 	it('classifies unrecoverable vs transient infrastructure errors', () => {
