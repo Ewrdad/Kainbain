@@ -115,8 +115,12 @@ export const formatRunnerStatusDisplay = (statusWord) =>
  * @returns {string} aria-label text.
  ***/
 export const buildRunnerBoxAriaLabel = (entry) => {
-  const label = entry?.runnerLabel || 'Runner';
-  const status = entry?.statusWord || 'idle';
+  const rawLabel = entry?.runnerLabel;
+  const label =
+    typeof rawLabel === 'string' && rawLabel.trim() !== '' ? rawLabel.trim() : 'Runner';
+  const rawStatus = entry?.statusWord;
+  const status =
+    typeof rawStatus === 'string' && rawStatus.trim() !== '' ? rawStatus.trim() : 'idle';
   let text = `Runner ${label}, ${status}`;
   if (entry?.taskTitleFirstLine) text += `, task ${entry.taskTitleFirstLine}`;
   if (entry?.stageName) text += `, stage ${entry.stageName}`;
@@ -142,19 +146,38 @@ export const truncateRunnerText = (value, max = RUNNER_BOX_TITLE_MAX_CHARS) => {
 };
 
 /***
+ * MARK: selectRenderableRunnerEntries
+ * @description Fail-safe filter for runner box entries: keeps only plain
+ *   entry objects and drops junk array items (null, strings, numbers) that a
+ *   half-written registry payload or a bad map could inject. Junk must never
+ *   flip the bar into box mode or render a phantom "unknown" box — with no
+ *   renderable entries the bar falls back to the legacy single-task view.
+ *   Never throws and never mutates its input; non-array input yields [].
+ * @example selectRenderableRunnerEntries([{ runnerId: 'b' }, null, 'junk']) => [{ runnerId: 'b' }]
+ * @example selectRenderableRunnerEntries(null) => []
+ * @param {Array} [entries] - Candidate runner box entries.
+ * @returns {Array<Object>} Only the renderable entry objects, in order.
+ ***/
+export const selectRenderableRunnerEntries = (entries) =>
+  Array.isArray(entries) ? entries.filter((entry) => entry !== null && typeof entry === 'object' && !Array.isArray(entry)) : [];
+
+/***
  * MARK: shouldShowRunnerBoxes
- * @description The <5 visibility gate plus the kill switch: 1-4 entries
- *   render boxes unless `uiPreferences.showRunnerBoxes === false` (absent
- *   preference means enabled, so existing stored profiles need no migration).
+ * @description The <5 visibility gate plus the kill switch: 1-4 renderable
+ *   entries render boxes unless `uiPreferences.showRunnerBoxes === false`
+ *   (absent preference means enabled, so existing stored profiles need no
+ *   migration). Junk array items are not counted: `[null]` keeps the legacy
+ *   view instead of rendering a phantom box.
  * @example shouldShowRunnerBoxes([{}], {}) => true
  * @example shouldShowRunnerBoxes([{}, {}, {}, {}, {}], {}) => false
  * @example shouldShowRunnerBoxes([{}], { showRunnerBoxes: false }) => false
+ * @example shouldShowRunnerBoxes([null], {}) => false
  * @param {Array} [entries] - Runner box entries.
  * @param {Object} [uiPreferences] - UI preferences (kill switch read only).
  * @returns {boolean} True when the box row replaces the single-task view.
  ***/
 export const shouldShowRunnerBoxes = (entries, uiPreferences) => {
-  const count = Array.isArray(entries) ? entries.length : 0;
+  const count = selectRenderableRunnerEntries(entries).length;
   if (count === 0 || count > RUNNER_BOX_MAX_COUNT) return false;
   return uiPreferences?.showRunnerBoxes !== false;
 };

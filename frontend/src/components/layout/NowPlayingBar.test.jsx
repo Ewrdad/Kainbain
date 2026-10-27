@@ -1066,6 +1066,22 @@ test('kill switch forces the legacy view even with entries present', () => {
   expect(screen.getByTestId('now-playing-idle-hint')).toBeInTheDocument();
 });
 
+test('junk runner entries keep the legacy view instead of phantom boxes', () => {
+  renderWithKainBain(<NowPlayingBar runnerEntries={[null, 'junk']} />, {
+    stages,
+    currentStageId: '1',
+    isAgentRunning: true,
+    engineState: { status: 'running', activeTaskId: 't1' },
+    tasks: [
+      { id: 't1', currentStageId: '1', status: 'running_agent', title: 'Build it', goal: 'Build it' },
+    ],
+  });
+
+  expect(screen.queryByTestId('now-playing-runner-mode')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('runner-boxes-row')).not.toBeInTheDocument();
+  expect(screen.getByTestId('now-playing-task-name')).toHaveTextContent('Build it');
+});
+
 test('plain queue data without runner association keeps the legacy view', () => {
   // Regression guard: tasks that carry no runner fields are queue data,
   // not runners — the single-task view must not flip into box mode.

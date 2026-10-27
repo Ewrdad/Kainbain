@@ -50,13 +50,29 @@ const readTaskRunnerLabel = (task, fallbackId) => {
  * @description Sort key for "most recent task wins" inside a runner group:
  *   updatedAt, then enteredStageAt/createdAt, then stable id order — the
  *   same pipeline-independent recency the universal now-playing fallback
- *   uses, so boxes agree with the bar about what is current.
+ *   uses, so boxes agree with the bar about what is current. Accepts epoch
+ *   numbers as well as date strings: a numeric timestamp the old
+ *   `Date.parse` path stringified to NaN (and silently lost every recency
+ *   comparison); anything unparseable is 0, never NaN, so the sort below
+ *   can never see an unordered key.
  * @example taskRecency({}) => 0
+ * @example taskRecency({ updatedAt: 5 }) => 5
  * @param {Object} [task] - Task payload.
  * @returns {number} Millis epoch (0 when unparseable).
  ***/
-const taskRecency = (task) =>
-  Date.parse(task?.updatedAt || task?.enteredStageAt || task?.createdAt || 0) || 0;
+const taskRecency = (task) => {
+  // First usable stamp wins: blank strings fall through to the older stamp
+  // instead of short-circuiting the group to 0.
+  const candidates = [task?.updatedAt, task?.enteredStageAt, task?.createdAt];
+  for (const raw of candidates) {
+    if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+    if (typeof raw === 'string' && raw.trim() !== '') {
+      const parsed = Date.parse(raw);
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+  }
+  return 0;
+};
 
 /***
  * MARK: pickGroupTask

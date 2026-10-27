@@ -124,6 +124,27 @@ test('a later group task can supply the display name', () => {
   expect(entry.runnerLabel).toBe('Bravo');
 });
 
+test('numeric timestamps order the group; blank stamps fall through', () => {
+  const tasks = [
+    { id: 't-old', runnerId: 'b', status: 'in_stage', title: 'Old work', updatedAt: 1000 },
+    { id: 't-new', runnerId: 'b', status: 'in_stage', title: 'New work', updatedAt: 2000 },
+  ];
+  const [entry] = selectRunnerEntries({ tasks, stages: [], engineState: { status: 'idle' } });
+  expect(entry.taskId).toBe('t-new');
+
+  // A blank updatedAt falls through to the older stamp instead of pinning 0.
+  const mixed = [
+    { id: 't-blank', runnerId: 'c', status: 'in_stage', title: 'Blank', updatedAt: '', createdAt: '2026-10-27T00:00:02Z' },
+    { id: 't-dated', runnerId: 'c', status: 'in_stage', title: 'Dated', updatedAt: '2026-10-27T00:00:01Z' },
+  ];
+  const [mixedEntry] = selectRunnerEntries({
+    tasks: mixed,
+    stages: [],
+    engineState: { status: 'idle' },
+  });
+  expect(mixedEntry.taskId).toBe('t-blank');
+});
+
 test('stage falls back to the task stage name when the stage list misses', () => {
   const tasks = [
     { id: 't1', runnerId: 'b', currentStageId: '9', stageName: 'Custom', status: 'in_stage', title: 'Work' },

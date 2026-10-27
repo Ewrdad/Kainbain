@@ -354,6 +354,23 @@ export function UiPreferencesPanel({ onOpenPushNotifications } = {}) {
             <label className="flex items-center gap-3 cursor-pointer select-none bg-surface-container p-3 rounded-sm border border-border-standard hover:border-outline-variant">
               <input
                 type="checkbox"
+                aria-label="Show per-runner boxes in Now Playing bar"
+                checked={uiPreferences?.showRunnerBoxes !== false}
+                onChange={(e) => updateUiPreference('showRunnerBoxes', e.target.checked)}
+                className="rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0 w-4 h-4"
+              />
+              <div>
+                <span className="text-xs font-bold">Show per-runner boxes in "Now Playing" bar</span>
+                <p className="text-[10px] text-text-muted">
+                  With 1-4 live runners the bar shows one compact box per runner
+                  (name, task, stage, health); uncheck to always keep the single-task view
+                </p>
+              </div>
+            </label>
+
+            <label className="flex items-center gap-3 cursor-pointer select-none bg-surface-container p-3 rounded-sm border border-border-standard hover:border-outline-variant">
+              <input
+                type="checkbox"
                 aria-label="Live Agent Activity Drawer Default Expanded"
                 checked={uiPreferences?.activityDrawerDefaultOpen === true}
                 onChange={(e) => updateUiPreference('activityDrawerDefaultOpen', e.target.checked)}

@@ -132,6 +132,55 @@ describe('useUiPreferences', () => {
     expect(DEFAULT_UI_PREFERENCES.keepScreenAwakeOnMonitor).toBe(true);
   });
 
+  test('showRunnerBoxes defaults to true so boxes need no migration', () => {
+    const { result } = renderHook(() => useUiPreferences());
+    expect(result.current.preferences.showRunnerBoxes).toBe(true);
+    expect(DEFAULT_UI_PREFERENCES.showRunnerBoxes).toBe(true);
+  });
+
+  test('showRunnerBoxes kill switch persists, survives import/export/reset, rejects junk', () => {
+    const { result } = renderHook(() => useUiPreferences());
+
+    act(() => {
+      result.current.updatePreference('showRunnerBoxes', false);
+    });
+    expect(result.current.preferences.showRunnerBoxes).toBe(false);
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)).showRunnerBoxes).toBe(false);
+
+    // A hand-edited "false" string must NOT disable the boxes.
+    act(() => {
+      result.current.updatePreference('showRunnerBoxes', 'false');
+    });
+    expect(result.current.preferences.showRunnerBoxes).toBe(false);
+
+    // Export carries the key; import restores it; unknown values report dropped.
+    const exported = JSON.parse(result.current.exportPreferences());
+    expect(exported.showRunnerBoxes).toBe(false);
+    act(() => {
+      result.current.updatePreference('showRunnerBoxes', true);
+    });
+    let status;
+    act(() => {
+      status = result.current.importPreferences(JSON.stringify(exported));
+    });
+    expect(status.success).toBe(true);
+    expect(result.current.preferences.showRunnerBoxes).toBe(false);
+
+    // Reset restores the default (boxes back on).
+    act(() => {
+      result.current.resetPreferences();
+    });
+    expect(result.current.preferences.showRunnerBoxes).toBe(true);
+  });
+
+  test('missing showRunnerBoxes in stored JSON falls back to default', () => {
+    const { showRunnerBoxes: _dropped, ...legacy } = DEFAULT_UI_PREFERENCES;
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(legacy));
+
+    const { result } = renderHook(() => useUiPreferences());
+    expect(result.current.preferences.showRunnerBoxes).toBe(true);
+  });
+
   test('keepScreenAwakeOnMonitor persists across reload and survives import/export/reset', () => {
     const { result } = renderHook(() => useUiPreferences());
 

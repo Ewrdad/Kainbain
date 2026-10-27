@@ -6,6 +6,7 @@ import {
   formatRunnerStatusDisplay,
   getRunnerBoxStyle,
   resolveRunnerStatusWord,
+  selectRenderableRunnerEntries,
   shouldShowRunnerBoxes,
   truncateRunnerText,
 } from './runnerBoxUi';
@@ -141,4 +142,30 @@ test('visibility gate: 1-4 entries show boxes unless killed', () => {
   expect(shouldShowRunnerBoxes('nope', {})).toBe(false);
   // Kill switch: explicit false forces the legacy view.
   expect(shouldShowRunnerBoxes(two, { showRunnerBoxes: false })).toBe(false);
+});
+
+test('junk array items are dropped and never counted toward the gate', () => {
+  expect(selectRenderableRunnerEntries([{ runnerId: 'b' }, null, 'junk', 42])).toEqual([
+    { runnerId: 'b' },
+  ]);
+  expect(selectRenderableRunnerEntries(null)).toEqual([]);
+  expect(selectRenderableRunnerEntries('nope')).toEqual([]);
+  // The input array is never mutated.
+  const input = [{ runnerId: 'b' }, null];
+  selectRenderableRunnerEntries(input);
+  expect(input).toHaveLength(2);
+  // Junk alone keeps the legacy view; junk beside real entries is ignored.
+  expect(shouldShowRunnerBoxes([null], {})).toBe(false);
+  expect(shouldShowRunnerBoxes([null, 'junk'], {})).toBe(false);
+  expect(shouldShowRunnerBoxes([{ runnerId: 'b' }, null], {})).toBe(true);
+});
+
+test('aria label trims whitespace and fails closed on blank values', () => {
+  expect(
+    buildRunnerBoxAriaLabel({ runnerLabel: '  bravo  ', statusWord: '  running  ' }),
+  ).toBe('Runner bravo, running');
+  expect(buildRunnerBoxAriaLabel({ runnerLabel: '   ', statusWord: '   ' })).toBe(
+    'Runner Runner, idle',
+  );
+  expect(buildRunnerBoxAriaLabel(null)).toBe('Runner Runner, idle');
 });

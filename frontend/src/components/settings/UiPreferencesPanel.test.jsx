@@ -185,6 +185,32 @@ describe('UiPreferencesPanel', () => {
     expect(screen.getByLabelText('Keep screen awake while monitoring')).not.toBeChecked();
   });
 
+  test('runner-boxes toggle writes the kill switch on the Workspace tab', () => {
+    const updateUiPreference = vi.fn();
+    renderWithKainBain(<UiPreferencesPanel />, {
+      updateUiPreference,
+      uiPreferences: { showRunnerBoxes: true },
+    });
+
+    fireEvent.click(screen.getByText('🗂️ Workspace'));
+    const toggle = screen.getByLabelText('Show per-runner boxes in Now Playing bar');
+    expect(toggle).toBeChecked();
+    fireEvent.click(toggle);
+    expect(updateUiPreference).toHaveBeenCalledWith('showRunnerBoxes', false);
+  });
+
+  test('runner-boxes toggle is on when the preference is unset and off when disabled', () => {
+    const { unmount } = renderWithKainBain(<UiPreferencesPanel />, { uiPreferences: {} });
+    fireEvent.click(screen.getByText('🗂️ Workspace'));
+    // Absent means enabled: existing stored profiles need no migration.
+    expect(screen.getByLabelText('Show per-runner boxes in Now Playing bar')).toBeChecked();
+    unmount();
+
+    renderWithKainBain(<UiPreferencesPanel />, { uiPreferences: { showRunnerBoxes: false } });
+    fireEvent.click(screen.getByText('🗂️ Workspace'));
+    expect(screen.getByLabelText('Show per-runner boxes in Now Playing bar')).not.toBeChecked();
+  });
+
   test('activity drawer default toggle is only checked on an explicit opt-in', () => {
     // The drawer opens on first visit only when the preference is explicitly
     // true — an unset preference must render unchecked so the checkbox never

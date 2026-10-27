@@ -14,6 +14,7 @@ export const DEFAULT_UI_PREFERENCES = {
   // Layout & Workspace
   columnWidth: '280px', // '240px' | '280px' | '320px' | '360px' | 'fill'
   showNowPlayingBar: true,
+  showRunnerBoxes: true, // Now Playing left side shows per-runner boxes for 1-4 runners; false forces the single-task view
   activityDrawerDefaultOpen: false,
   consoleHeight: 256, // 120px to 600px resizable Activity Console height
   keepScreenAwakeOnMonitor: true, // hold a screen wake lock while the monitor is open and running
@@ -49,6 +50,7 @@ const ENUM_PREFERENCE_VALUES = {
 const BOOLEAN_PREFERENCE_KEYS = [
   'reduceMotion',
   'showNowPlayingBar',
+  'showRunnerBoxes',
   'activityDrawerDefaultOpen',
   'keepScreenAwakeOnMonitor',
   'showTaskId',

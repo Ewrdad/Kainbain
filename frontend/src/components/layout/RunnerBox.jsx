@@ -26,10 +26,16 @@ import {
  * @returns {React.ReactElement} The box (button when it has a task, panel when idle).
  ***/
 export function RunnerBox({ entry, onOpenTask }) {
-  const runnerId = entry?.runnerId ?? 'unknown';
+  // A blank id renders as an empty name and an empty test id — fail closed
+  // to 'unknown' instead so the box stays findable and labelled.
+  const rawRunnerId = entry?.runnerId;
+  const runnerId =
+    typeof rawRunnerId === 'string'
+      ? (rawRunnerId.trim() !== '' ? rawRunnerId.trim() : 'unknown')
+      : (rawRunnerId ?? 'unknown');
   const runnerName =
     typeof entry?.runnerLabel === 'string' && entry.runnerLabel.trim() !== ''
-      ? entry.runnerLabel
+      ? entry.runnerLabel.trim()
       : String(runnerId);
   const statusWord = entry?.statusWord || 'idle';
   const style = getRunnerBoxStyle(statusWord);

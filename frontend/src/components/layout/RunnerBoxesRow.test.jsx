@@ -74,6 +74,32 @@ test('zero and non-array entries render null', () => {
   expect(screen.queryByTestId('runner-boxes-row')).not.toBeInTheDocument();
 });
 
+test('junk items are dropped so the row and the gate never disagree', () => {
+  const { unmount } = renderWithKainBain(<RunnerBoxesRow entries={[null, 'junk']} />, {});
+  expect(screen.queryByTestId('runner-boxes-row')).not.toBeInTheDocument();
+  unmount();
+
+  renderWithKainBain(
+    <RunnerBoxesRow entries={[entry('alpha'), null]} onOpenTask={() => {}} />,
+    {},
+  );
+  expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  expect(screen.getByTestId('runner-box-alpha')).toBeInTheDocument();
+});
+
+test('duplicate runner ids render both boxes without key collision', () => {
+  const onOpenTask = vi.fn();
+  renderWithKainBain(
+    <RunnerBoxesRow entries={[entry('alpha'), entry('alpha')]} onOpenTask={onOpenTask} />,
+    {},
+  );
+  const items = screen.getAllByRole('listitem');
+  expect(items).toHaveLength(2);
+  // Both boxes stay clickable and forward their own task.
+  fireEvent.click(screen.getAllByTestId('runner-box-alpha')[1]);
+  expect(onOpenTask).toHaveBeenCalledTimes(1);
+});
+
 test('the row is scroll-contained so it cannot cover transport controls', () => {
   renderWithKainBain(
     <RunnerBoxesRow entries={[entry('a'), entry('b'), entry('c'), entry('d')]} />,

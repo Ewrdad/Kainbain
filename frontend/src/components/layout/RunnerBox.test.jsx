@@ -73,6 +73,15 @@ test('a box without a task is a greyed-out idle panel, not a button', () => {
   expect(onOpenTask).not.toHaveBeenCalled();
 });
 
+test('blank runner id and label fail closed to unknown instead of empty', () => {
+  renderBox({ ...runningEntry, runnerId: '   ', runnerLabel: '   ' });
+  const box = screen.getByTestId('runner-box-unknown');
+  expect(box).toHaveTextContent('unknown');
+  expect(box.getAttribute('aria-label')).toBe(
+    'Runner unknown, running, task Ship it, stage Plan',
+  );
+});
+
 test('missing stage renders an em dash and long names keep full titles', () => {
   const longName = `Runner with a very long name ${'x'.repeat(300)}`;
   const longTask = `Task with a very long title ${'y'.repeat(300)}`;

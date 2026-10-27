@@ -52,6 +52,7 @@ export function renderWithKainBain(ui, overrides = {}, options = {}) {
       reduceMotion: false,
       columnWidth: '280px',
       showNowPlayingBar: true,
+      showRunnerBoxes: true,
       activityDrawerDefaultOpen: false,
       keepScreenAwakeOnMonitor: true,
       showTaskId: true,
