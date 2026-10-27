@@ -217,6 +217,7 @@ describe("freshSchedulerStats / scheduleTick", () => {
 			skippedBusyWhileIdle: 0,
 			resumedInterrupted: 0,
 			deferredTripped: 0,
+			deferredDispatch: 0,
 			canaryDispatched: 0,
 			tripCount: 0,
 			stallRecoveries: 0,
