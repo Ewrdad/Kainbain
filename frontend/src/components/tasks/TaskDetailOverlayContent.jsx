@@ -558,17 +558,24 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
     const taskId = task?.id || 'task';
     const projectRoot = activeProject?.cwd || './';
     const taskDocs = `${projectRoot.replace(/\/+$/, '')}/docs/tasks/${taskId}/`;
-    const priorPaths = Array.isArray(task?.reports)
-      ? task.reports
-          .map((r) => {
-            if (typeof r === 'string') return r;
-            return r.path || r.filename;
-          })
-          .filter(Boolean)
-      : [];
+    // Board summaries cap task.reports at the recent few: prefer the full
+    // separately-fetched report list when it has loaded so old plan paths
+    // still resolve, falling back to the summary's recent entries.
+    const tokenReports =
+      Array.isArray(reportsData) && reportsData.length > 0
+        ? reportsData
+        : Array.isArray(task?.reports)
+          ? task.reports
+          : [];
+    const priorPaths = tokenReports
+      .map((r) => {
+        if (typeof r === 'string') return r;
+        return r.path || r.filename;
+      })
+      .filter(Boolean);
     const latestPath = priorPaths.at(-1) || '';
     const planPath =
-      (Array.isArray(task?.reports) ? task.reports : [])
+      tokenReports
         .filter((r) => {
           if (typeof r === 'string') return false;
           return r.stageSlug === 'plan' || String(r.stageName || '').toLowerCase() === 'plan';
@@ -645,7 +652,7 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
         value: task?.taskRepo || task?.gitUrl || task?.gitRepo || '',
       },
     ];
-  }, [task, activeProject, taskStage]);
+  }, [task, activeProject, taskStage, reportsData]);
 
   const [copiedKeyword, setCopiedKeyword] = useState(null);
   const handleCopyKeyword = (kw) => {

@@ -21,10 +21,10 @@ describe('Task boundary characterisation', () => {
       reports: [{ path: 'report.md', stage: 'review', content: 'large' }, null, 'legacy'] };
     const before = structuredClone(task);
     expect(toTaskSummary(task)).toEqual({ id: 'a', status: 'in_stage', custom: 42,
-      reports: [{ path: 'report.md', stage: 'review' }, null, 'legacy'] });
+      reports: [{ path: 'report.md', stage: 'review' }, null, 'legacy'], reportCount: 3 });
     expect(task).toEqual(before);
     expect(toTaskSummary(null)).toEqual({});
-    expect(toTaskSummary({ id: 'a' })).toEqual({ id: 'a', reports: undefined });
+    expect(toTaskSummary({ id: 'a' })).toEqual({ id: 'a', reports: undefined, reportCount: 0 });
   });
 
   it('preserves stage-name matching order, including ambiguous references', () => {

@@ -31,12 +31,17 @@ export function _sanitizeTaskTitle(raw) {
  *   stats, and full report bodies — a 45-task project serves ~20MB with
  *   them, seconds on a fast link and effectively never over a relayed
  *   phone connection). Report entries keep their metadata (path, name,
- *   stage) so counts and links still resolve; detail views hydrate the
+ *   stage) so counts and links still resolve, capped at the 10 most
+ *   recent with the total in `reportCount`; detail views hydrate the
  *   full task through `GET /tasks/:id` on open.
  * @example toTaskSummary(task) => { id: 'task-1', reports: [{ path, … }], … }
  * @param {Object} [task] - The full task record (never mutated).
  * @returns {Object} The summary projection ({} when task is missing).
  ***/
+// Board lists fetch every task on load: a long-lived task can accumulate
+// hundreds of report entries, so summaries carry only the recent few.
+const SUMMARY_REPORT_LIMIT = 10;
+
 export function toTaskSummary(task) {
 	if (!task || typeof task !== "object") return {};
 	const {
@@ -49,14 +54,16 @@ export function toTaskSummary(task) {
 		reports,
 		...rest
 	} = task;
+	const meta = Array.isArray(reports)
+		? reports.map((r) => {
+				if (r === null || typeof r !== "object") return r;
+				const { content: _content, ...meta } = r;
+				return meta;
+			})
+		: reports;
 	return {
 		...rest,
-		reports: Array.isArray(reports)
-			? reports.map((r) => {
-					if (r === null || typeof r !== "object") return r;
-					const { content: _content, ...meta } = r;
-					return meta;
-				})
-			: reports,
+		reports: Array.isArray(meta) ? meta.slice(-SUMMARY_REPORT_LIMIT) : meta,
+		reportCount: Array.isArray(reports) ? reports.length : 0,
 	};
 }

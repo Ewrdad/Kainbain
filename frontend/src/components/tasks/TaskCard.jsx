@@ -522,6 +522,14 @@ export function TaskCard({
           : 'text-text-muted';
   const paceDotClass = pace === 'over' ? 'bg-error' : pace === 'near' ? 'bg-warning' : 'bg-primary';
   const reportsCount = (() => {
+    // Board summaries cap the reports array (see toTaskSummary) and carry
+    // the total separately — prefer it so old tasks don't undercount, but
+    // keep the outputReport fallback when there is genuinely no report list.
+    if (
+      Number.isFinite(task.reportCount) &&
+      (task.reportCount > 0 || Array.isArray(task.reports))
+    )
+      return task.reportCount;
     if (Array.isArray(task.reports)) return task.reports.length;
     if (task.outputReport) return 1;
     return 0;

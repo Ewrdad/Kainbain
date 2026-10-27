@@ -839,6 +839,20 @@ test('shows Open Survey on parked question-me stages with the skill record', () 
   cleanup();
 });
 
+test('report badge uses the summary total when reports are capped', () => {
+  const capped = {
+    ...task,
+    reports: Array.from({ length: 10 }, (_, i) => ({
+      filename: `r-${i}.md`,
+      path: `./docs/tasks/abc-1234-def/r-${i}.md`,
+    })),
+    reportCount: 1500,
+  };
+  renderWithKainBain(<TaskCard task={capped} stageName="Idea" role="Agent" />, FULL_CARD_PREFS);
+  expect(screen.getByLabelText('1500 reports')).toBeInTheDocument();
+  cleanup();
+});
+
 test('runner-held card names the holding runner instead of looking idle', () => {
   renderWithKainBain(
     <TaskCard

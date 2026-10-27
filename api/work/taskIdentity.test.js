@@ -54,6 +54,25 @@ describe('The Work: task identity and classification', () => {
 		expect(summary.reports).toEqual([{ path: 'doc.md', name: 'Doc' }]);
 	});
 
+	it('caps board-summary reports at the recent few with a total count', () => {
+		const fullTask = {
+			id: 'task-1',
+			title: 'Old Task',
+			reports: Array.from({ length: 15 }, (_, i) => ({
+				path: `r-${i}.md`,
+				name: `R${i}`,
+				content: 'x'.repeat(1000),
+			})),
+			status: 'completed',
+			currentStageId: '5',
+		};
+		const summary = toTaskSummary(fullTask);
+		expect(summary.reportCount).toBe(15);
+		expect(summary.reports).toHaveLength(10);
+		expect(summary.reports[0]).toEqual({ path: 'r-5.md', name: 'R5' });
+		expect(summary.reports[9]).toEqual({ path: 'r-14.md', name: 'R14' });
+	});
+
 	it('classifies unrecoverable vs transient infrastructure errors', () => {
 		expect(isUnrecoverableError('Invalid API Key provided')).toBe(true);
 		expect(isUnrecoverableError('Syntax error in script')).toBe(false);

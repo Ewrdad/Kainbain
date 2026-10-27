@@ -67,7 +67,7 @@ describe("board summary duration compatibility", () => {
 		const original = structuredClone(task);
 		expect(toTaskSummary.length).toBe(1);
 		const compact = toTaskSummary(task);
-		expect(compact).toEqual({ id: "t1", reports: [{ stageName: "Plan" }] });
+		expect(compact).toEqual({ id: "t1", reports: [{ stageName: "Plan" }], reportCount: 1 });
 		const enriched = toTaskDurationSummary(task, stages);
 		expect(enriched).toEqual({ ...compact, stageDurationSamples: [
 			{ stageId: "1", stageName: "Plan", stageType: "agent", seconds: [180] },
