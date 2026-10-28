@@ -120,7 +120,9 @@ test('status filter pills filter by All, Failed, and Human only (#16)', () => {
 
   // Clear, then apply !human
   fireEvent.click(screen.getByLabelText('Clear search'));
-  fireEvent.change(screen.getByRole('combobox', { name: 'Search tasks' }), { target: { value: '!human' } });
+  fireEvent.change(screen.getByRole('combobox', { name: 'Search tasks' }), {
+    target: { value: '!human' },
+  });
   expect(screen.getByText('Human Checkpoint Task')).toBeInTheDocument();
   expect(screen.getByText('Waiting Human Task')).toBeInTheDocument();
   expect(screen.queryByText('Agent Task')).not.toBeInTheDocument();
@@ -280,7 +282,9 @@ test('board system filter choice is written to localStorage via search', () => {
     activeProjectId: 'proj-1',
   });
 
-  fireEvent.change(screen.getByRole('combobox', { name: 'Search tasks' }), { target: { value: '!human' } });
+  fireEvent.change(screen.getByRole('combobox', { name: 'Search tasks' }), {
+    target: { value: '!human' },
+  });
   expect(screen.getByRole('button', { name: 'Remove filter human' })).toBeInTheDocument();
 });
 
@@ -295,9 +299,7 @@ test('board search text is flushed to localStorage on unmount (refresh)', () => 
     target: { value: 'api spec' },
   });
   unmount();
-  expect(localStorage.getItem('kainbain:board:search')).toBe(
-    JSON.stringify('api spec'),
-  );
+  expect(localStorage.getItem('kainbain:board:search')).toBe(JSON.stringify('api spec'));
 });
 
 test('corrupt board filter values fall back to defaults', () => {

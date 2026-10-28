@@ -86,9 +86,7 @@ describe('FileDiffList', () => {
       target: { value: 'gone' },
     });
     unmount();
-    expect(window.localStorage.getItem('kainbain:review:fileFilter')).toBe(
-      JSON.stringify('gone'),
-    );
+    expect(window.localStorage.getItem('kainbain:review:fileFilter')).toBe(JSON.stringify('gone'));
   });
 
   it('falls back to an empty filter on corrupt storage', () => {

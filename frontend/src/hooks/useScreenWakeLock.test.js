@@ -15,7 +15,10 @@ function makeSentinel() {
       listeners.set(type, [...(listeners.get(type) || []), cb]);
     }),
     removeEventListener: vi.fn((type, cb) => {
-      listeners.set(type, (listeners.get(type) || []).filter((fn) => fn !== cb));
+      listeners.set(
+        type,
+        (listeners.get(type) || []).filter((fn) => fn !== cb),
+      );
     }),
     __emit(type) {
       for (const cb of listeners.get(type) || []) cb();
@@ -100,9 +103,12 @@ describe('useScreenWakeLock', () => {
     const sentinel = makeSentinel();
     installWakeLockMock(() => Promise.resolve(sentinel));
     const onChange = vi.fn();
-    const { result, rerender } = renderHook(({ wanted }) => useScreenWakeLock({ wanted, onChange }), {
-      initialProps: { wanted: true },
-    });
+    const { result, rerender } = renderHook(
+      ({ wanted }) => useScreenWakeLock({ wanted, onChange }),
+      {
+        initialProps: { wanted: true },
+      },
+    );
 
     await waitFor(() => expect(result.current.active).toBe(true));
     rerender({ wanted: false });

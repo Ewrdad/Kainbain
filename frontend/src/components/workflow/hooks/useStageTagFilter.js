@@ -34,9 +34,7 @@ function readStoredStageTags() {
 function readStoredStageTagMode() {
   try {
     if (typeof window === 'undefined' || !window.localStorage) return 'any';
-    return window.localStorage.getItem(STAGE_TAG_FILTER_MODE_STORAGE_KEY) === 'all'
-      ? 'all'
-      : 'any';
+    return window.localStorage.getItem(STAGE_TAG_FILTER_MODE_STORAGE_KEY) === 'all' ? 'all' : 'any';
   } catch {
     return 'any';
   }

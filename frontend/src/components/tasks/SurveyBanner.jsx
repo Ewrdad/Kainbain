@@ -60,8 +60,8 @@ export function SurveyBanner({ taskId, projectId, enabled, client }) {
         </span>
       </div>
       <p className="text-xs text-on-surface leading-relaxed">
-        This stage asked a set of questions before the work continues. Open the survey,
-        answer what you can, and submit to move on.
+        This stage asked a set of questions before the work continues. Open the survey, answer what
+        you can, and submit to move on.
       </p>
       <a
         href={`#/tasks/${encodeURIComponent(taskId)}/survey`}

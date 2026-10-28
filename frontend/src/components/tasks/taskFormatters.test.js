@@ -148,9 +148,7 @@ describe('taskFormatters', () => {
         getSilverBulletUrl('Files Test Project', 'docs/notes.md', {
           baseUrl: 'http://notes.example.com',
         }),
-      ).toBe(
-        'http://notes.example.com/Projects/Personal/Files%20Test%20Project/notes.md',
-      );
+      ).toBe('http://notes.example.com/Projects/Personal/Files%20Test%20Project/notes.md');
     });
 
     it('falls back to the in-app explorer route when no viewer is configured', () => {
@@ -167,9 +165,7 @@ describe('taskFormatters', () => {
           baseUrl: 'https://viewer.example.org/notes/',
         }),
       ).toBe('https://viewer.example.org/notes/Projects/Personal/KainBain/notes.md');
-      expect(getSilverBulletUrl('KainBain', 'docs/notes.md', { baseUrl: '' })).toBe(
-        '#/explorer',
-      );
+      expect(getSilverBulletUrl('KainBain', 'docs/notes.md', { baseUrl: '' })).toBe('#/explorer');
     });
 
     it('expands ${PROJECT} and ${PATH} placeholders in the base URL', () => {
@@ -342,9 +338,7 @@ describe('taskFormatters', () => {
 
     it('leaves a non-numeric label (already a name) unchanged', () => {
       expect(resolveTimelineStageLabel('Idea', stages)).toBe('Idea');
-      expect(resolveTimelineStageLabel("Technical Elab", stages)).toBe(
-        'Technical Elab',
-      );
+      expect(resolveTimelineStageLabel('Technical Elab', stages)).toBe('Technical Elab');
     });
 
     it('leaves an unknown numeric label unchanged', () => {
@@ -366,10 +360,7 @@ describe('taskFormatters', () => {
 
     it('returns newest entries first without mutating the stored order', () => {
       const stored = [{ stage: 'Idea' }, { stage: 'Plan' }];
-      expect(selectDisplayTimeline(stored, stages)).toEqual([
-        { stage: 'Plan' },
-        { stage: 'Idea' },
-      ]);
+      expect(selectDisplayTimeline(stored, stages)).toEqual([{ stage: 'Plan' }, { stage: 'Idea' }]);
       expect(stored).toEqual([{ stage: 'Idea' }, { stage: 'Plan' }]);
     });
 
@@ -607,9 +598,7 @@ describe('taskFormatters', () => {
       ];
       const display = selectDisplayTimeline(stored, typedStages);
       const byTimestamp = Object.fromEntries(display.map((row) => [row.timestamp, row]));
-      expect(byTimestamp['t-agent'].modelRef).toBe(
-        'antigravity::gemini-3.8-flash-medium',
-      );
+      expect(byTimestamp['t-agent'].modelRef).toBe('antigravity::gemini-3.8-flash-medium');
       // Unresolvable stage: never assumed human/CI, stored fields preserved.
       expect(byTimestamp['t-unknown'].modelRef).toBe('glm');
       // Empty stage list: nothing resolves, nothing is stripped.
@@ -880,7 +869,13 @@ describe('taskFormatters', () => {
     });
 
     it('suppresses arrival-status variants, case-insensitively', () => {
-      for (const status of ['Advanced (First Stage)', 'moved', 'MOVED', 'advanced', 'Failed back']) {
+      for (const status of [
+        'Advanced (First Stage)',
+        'moved',
+        'MOVED',
+        'advanced',
+        'Failed back',
+      ]) {
         const display = buildDisplayTimeline({
           storedTimeline: [
             { stage: 'Idea', status: 'Moved', duration: '5s', timestamp: 't1' },
@@ -1063,9 +1058,9 @@ describe('taskFormatters', () => {
           status: 'Active',
         },
       ]);
-      expect(buildDisplayTimeline({ storedTimeline: undefined, includeLiveRow: false })[0].stage).toBe(
-        'Current Stage',
-      );
+      expect(
+        buildDisplayTimeline({ storedTimeline: undefined, includeLiveRow: false })[0].stage,
+      ).toBe('Current Stage');
     });
 
     it('never mutates the stored timeline', () => {
@@ -1147,4 +1142,3 @@ describe('taskFormatters', () => {
     });
   });
 });
-

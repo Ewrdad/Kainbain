@@ -176,10 +176,7 @@ export function useAutoSave(value, onSave, options = {}) {
    ***/
   const handleBlur = useCallback(() => {
     if (!enabled) return;
-    const isCurrentlyDirty = !equalsRef.current(
-      latestValueRef.current,
-      lastSavedValue,
-    );
+    const isCurrentlyDirty = !equalsRef.current(latestValueRef.current, lastSavedValue);
     if (isCurrentlyDirty || timerRef.current !== null) {
       return executeSave(latestValueRef.current);
     }

@@ -17,8 +17,21 @@ describe('FilePreview Component', () => {
   it('renders an image entry as an <img> with expected src and alt', () => {
     renderWithKainBain(
       <FilePreview
-        fileContent={{ name: 'logo.png', path: 'logo.png', content: null, size: 512, extension: '.png', kind: 'image' }}
-        selectedFile={{ name: 'logo.png', path: 'logo.png', isDirectory: false, size: 512, extension: '.png' }}
+        fileContent={{
+          name: 'logo.png',
+          path: 'logo.png',
+          content: null,
+          size: 512,
+          extension: '.png',
+          kind: 'image',
+        }}
+        selectedFile={{
+          name: 'logo.png',
+          path: 'logo.png',
+          isDirectory: false,
+          size: 512,
+          extension: '.png',
+        }}
         previewMode="rendered"
         lines={[]}
         rawUrl={rawUrl}
@@ -35,8 +48,20 @@ describe('FilePreview Component', () => {
   it('derives the image kind from the entry when the server omits kind', () => {
     renderWithKainBain(
       <FilePreview
-        fileContent={{ name: 'photo.JPG', path: 'photo.JPG', content: null, size: 100, extension: '.JPG' }}
-        selectedFile={{ name: 'photo.JPG', path: 'photo.JPG', isDirectory: false, size: 100, extension: '.JPG' }}
+        fileContent={{
+          name: 'photo.JPG',
+          path: 'photo.JPG',
+          content: null,
+          size: 100,
+          extension: '.JPG',
+        }}
+        selectedFile={{
+          name: 'photo.JPG',
+          path: 'photo.JPG',
+          isDirectory: false,
+          size: 100,
+          extension: '.JPG',
+        }}
         previewMode="rendered"
         lines={[]}
         rawUrl={rawUrl}
@@ -50,8 +75,21 @@ describe('FilePreview Component', () => {
   it('shows natural dimensions once the image loads', () => {
     renderWithKainBain(
       <FilePreview
-        fileContent={{ name: 'logo.png', path: 'logo.png', content: null, size: 512, extension: '.png', kind: 'image' }}
-        selectedFile={{ name: 'logo.png', path: 'logo.png', isDirectory: false, size: 512, extension: '.png' }}
+        fileContent={{
+          name: 'logo.png',
+          path: 'logo.png',
+          content: null,
+          size: 512,
+          extension: '.png',
+          kind: 'image',
+        }}
+        selectedFile={{
+          name: 'logo.png',
+          path: 'logo.png',
+          isDirectory: false,
+          size: 512,
+          extension: '.png',
+        }}
         previewMode="rendered"
         lines={[]}
         rawUrl={rawUrl}
@@ -71,8 +109,21 @@ describe('FilePreview Component', () => {
   it('shows a download fallback when the image fails to load', () => {
     renderWithKainBain(
       <FilePreview
-        fileContent={{ name: 'logo.png', path: 'logo.png', content: null, size: 512, extension: '.png', kind: 'image' }}
-        selectedFile={{ name: 'logo.png', path: 'logo.png', isDirectory: false, size: 512, extension: '.png' }}
+        fileContent={{
+          name: 'logo.png',
+          path: 'logo.png',
+          content: null,
+          size: 512,
+          extension: '.png',
+          kind: 'image',
+        }}
+        selectedFile={{
+          name: 'logo.png',
+          path: 'logo.png',
+          isDirectory: false,
+          size: 512,
+          extension: '.png',
+        }}
         previewMode="rendered"
         lines={[]}
         rawUrl={rawUrl}
@@ -90,8 +141,21 @@ describe('FilePreview Component', () => {
   it('shows a download state instead of fetching oversize images', () => {
     renderWithKainBain(
       <FilePreview
-        fileContent={{ name: 'huge.png', path: 'huge.png', content: null, size: 16 * 1024 * 1024, extension: '.png', kind: 'image' }}
-        selectedFile={{ name: 'huge.png', path: 'huge.png', isDirectory: false, size: 16 * 1024 * 1024, extension: '.png' }}
+        fileContent={{
+          name: 'huge.png',
+          path: 'huge.png',
+          content: null,
+          size: 16 * 1024 * 1024,
+          extension: '.png',
+          kind: 'image',
+        }}
+        selectedFile={{
+          name: 'huge.png',
+          path: 'huge.png',
+          isDirectory: false,
+          size: 16 * 1024 * 1024,
+          extension: '.png',
+        }}
         previewMode="rendered"
         lines={[]}
         rawUrl={rawUrl}
@@ -107,8 +171,21 @@ describe('FilePreview Component', () => {
   it('offers a download for unsupported binary files', () => {
     renderWithKainBain(
       <FilePreview
-        fileContent={{ name: 'archive.zip', path: 'archive.zip', content: null, size: 99, extension: '.zip', kind: 'unsupported-binary' }}
-        selectedFile={{ name: 'archive.zip', path: 'archive.zip', isDirectory: false, size: 99, extension: '.zip' }}
+        fileContent={{
+          name: 'archive.zip',
+          path: 'archive.zip',
+          content: null,
+          size: 99,
+          extension: '.zip',
+          kind: 'unsupported-binary',
+        }}
+        selectedFile={{
+          name: 'archive.zip',
+          path: 'archive.zip',
+          isDirectory: false,
+          size: 99,
+          extension: '.zip',
+        }}
         previewMode="rendered"
         lines={[]}
         rawUrl={rawUrl}
@@ -123,8 +200,20 @@ describe('FilePreview Component', () => {
   it('keeps markdown rendering unchanged', () => {
     renderWithKainBain(
       <FilePreview
-        fileContent={{ name: 'README.md', path: 'README.md', content: '# Hello', size: 7, extension: '.md' }}
-        selectedFile={{ name: 'README.md', path: 'README.md', isDirectory: false, size: 7, extension: '.md' }}
+        fileContent={{
+          name: 'README.md',
+          path: 'README.md',
+          content: '# Hello',
+          size: 7,
+          extension: '.md',
+        }}
+        selectedFile={{
+          name: 'README.md',
+          path: 'README.md',
+          isDirectory: false,
+          size: 7,
+          extension: '.md',
+        }}
         previewMode="rendered"
         lines={['# Hello']}
         rawUrl={null}
@@ -138,8 +227,20 @@ describe('FilePreview Component', () => {
   it('keeps code rendering with line numbers unchanged', () => {
     renderWithKainBain(
       <FilePreview
-        fileContent={{ name: 'a.json', path: 'a.json', content: '{"a": 1}', size: 9, extension: '.json' }}
-        selectedFile={{ name: 'a.json', path: 'a.json', isDirectory: false, size: 9, extension: '.json' }}
+        fileContent={{
+          name: 'a.json',
+          path: 'a.json',
+          content: '{"a": 1}',
+          size: 9,
+          extension: '.json',
+        }}
+        selectedFile={{
+          name: 'a.json',
+          path: 'a.json',
+          isDirectory: false,
+          size: 9,
+          extension: '.json',
+        }}
         previewMode="raw"
         lines={['{"a": 1}']}
         rawUrl={null}

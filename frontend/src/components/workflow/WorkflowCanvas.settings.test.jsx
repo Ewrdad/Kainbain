@@ -219,18 +219,14 @@ test('renders and updates timeout override for agent, ci, and deploy stages in s
   // A deploy-command ci stage acts like any other ci stage: ordinary bash command
   // label and standard Run-on-branch control.
   expect(screen.getByText('Verification Script / Bash Command')).toBeInTheDocument();
-  expect(
-    screen.getByRole('combobox', { name: /Run-on branch for Deploy/i }),
-  ).toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: /Run-on branch for Deploy/i })).toBeInTheDocument();
   expect(screen.queryByText(/Run-on-branch setting is ignored/i)).not.toBeInTheDocument();
 
   // Close Deploy settings and confirm a plain CI stage still offers it.
   fireEvent.click(deploySettings);
   fireEvent.click(verifySettings);
   expect(screen.getByText('Verification Script / Bash Command')).toBeInTheDocument();
-  expect(
-    screen.getByRole('combobox', { name: /Run-on branch for Verify/i }),
-  ).toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: /Run-on branch for Verify/i })).toBeInTheDocument();
 });
 
 test('stage prompt settings includes dynamic keyword token picker chips (#35)', () => {

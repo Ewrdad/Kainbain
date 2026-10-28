@@ -67,9 +67,13 @@ describe('RetrospectivePage', () => {
       expect(screen.getByTestId('retrospective-task-task-done-1')).toBeInTheDocument();
     });
     expect(screen.getByTestId('retrospective-action-find-trends')).toBeDisabled();
-    fireEvent.click(screen.getByLabelText('Select Add pagination to the task list as chat context'));
+    fireEvent.click(
+      screen.getByLabelText('Select Add pagination to the task list as chat context'),
+    );
     expect(screen.getByTestId('retrospective-action-find-trends')).toBeEnabled();
-    expect(screen.getByTestId('retrospective-action-context')).toHaveTextContent('1 task selected.');
+    expect(screen.getByTestId('retrospective-action-context')).toHaveTextContent(
+      '1 task selected.',
+    );
     expect(screen.getByText('Use selection (1)')).toBeInTheDocument();
   });
 });

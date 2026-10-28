@@ -24,9 +24,13 @@ import {
  * @returns {{prefs: Object, updatePref: Function, resetPrefs: Function, prefsFor: Function, isHarnessDisabled: Function}}
  ***/
 export function useHarnessPrefs() {
-  const [stored, setStored, clear] = usePersistentState(HARNESS_PREFS_KEY, {}, {
-    validate: (value) => !!value && typeof value === 'object' && !Array.isArray(value),
-  });
+  const [stored, setStored, clear] = usePersistentState(
+    HARNESS_PREFS_KEY,
+    {},
+    {
+      validate: (value) => !!value && typeof value === 'object' && !Array.isArray(value),
+    },
+  );
 
   // Belt-and-braces normalization: a hand-edited or older payload with
   // non-boolean flags resolves to safe defaults instead of crashing a toggle.

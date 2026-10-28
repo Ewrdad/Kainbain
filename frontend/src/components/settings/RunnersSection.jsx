@@ -119,20 +119,20 @@ export function RunnersSection() {
         Runners
       </h2>
       <p className="mt-2 text-xs text-text-muted">
-        Out-of-process task executors (runner-only: every agent stage runs on
-        a Runner). A Runner joins
-        with the operator join token set as KAINBAIN_RUNNER_JOIN_TOKEN on the
-        backend, waits here for approval, then heartbeats and claims tasks
-        with its own credential. Revoking stops the credential immediately;
-        leases expire on their own.
+        Out-of-process task executors (runner-only: every agent stage runs on a Runner). A Runner
+        joins with the operator join token set as KAINBAIN_RUNNER_JOIN_TOKEN on the backend, waits
+        here for approval, then heartbeats and claims tasks with its own credential. Revoking stops
+        the credential immediately; leases expire on their own.
       </p>
       {scheduler && (
-        <p className="mt-1 text-[10px] font-mono text-text-muted" data-testid="runner-scheduler-deferrals">
+        <p
+          className="mt-1 text-[10px] font-mono text-text-muted"
+          data-testid="runner-scheduler-deferrals"
+        >
           Scheduler: {scheduler.dispatched ?? 0} embedded dispatches,{' '}
           {scheduler.deferredDispatch ?? 0} deferred to Runners
-          {scheduler.lastOutcome ? ` (last: ${scheduler.lastOutcome})` : ''}.
-          A climbing deferred count with no Runner pickup means the fleet is
-          empty or mismatched.
+          {scheduler.lastOutcome ? ` (last: ${scheduler.lastOutcome})` : ''}. A climbing deferred
+          count with no Runner pickup means the fleet is empty or mismatched.
         </p>
       )}
       {actionError && (
@@ -146,12 +146,14 @@ export function RunnersSection() {
           data-testid="runner-credential-once"
         >
           <p className="text-xs text-on-surface">
-            Runner {freshCredential.runnerId} approved. Paste this one-time
-            credential into its environment as KAINBAIN_RUNNER_CREDENTIAL and
-            restart it — it is never shown again.
+            Runner {freshCredential.runnerId} approved. Paste this one-time credential into its
+            environment as KAINBAIN_RUNNER_CREDENTIAL and restart it — it is never shown again.
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-mono text-on-surface break-all" data-testid="runner-credential-value">
+            <span
+              className="text-xs font-mono text-on-surface break-all"
+              data-testid="runner-credential-value"
+            >
               {freshCredential.credential}
             </span>
             <button
@@ -177,8 +179,8 @@ export function RunnersSection() {
       )}
       {runners.length === 0 ? (
         <p className="py-4 text-xs text-text-muted" data-testid="runners-section-empty">
-          No Runner registrations yet. Boot a Runner pointed at this backend and
-          its join request will appear here.
+          No Runner registrations yet. Boot a Runner pointed at this backend and its join request
+          will appear here.
         </p>
       ) : (
         <ul className="mt-3 flex flex-col gap-2">

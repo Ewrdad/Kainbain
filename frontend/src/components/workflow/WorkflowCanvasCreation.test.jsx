@@ -33,9 +33,7 @@ const mockTask = {
   status: 'waiting_human',
 };
 
-const mockStages = [
-  { id: 'stage-1', name: 'Idea', type: 'agent' },
-];
+const mockStages = [{ id: 'stage-1', name: 'Idea', type: 'agent' }];
 
 describe('WorkflowCanvas Task Creation', () => {
   it('immediately opens the task inspector after inline creation', async () => {
@@ -68,7 +66,7 @@ describe('WorkflowCanvas Task Creation', () => {
     // Fill in title and submit
     const input = screen.getByPlaceholderText(/Task goal/i);
     fireEvent.change(input, { target: { value: 'New Task' } });
-    
+
     const form = input.closest('form');
     if (form) {
       fireEvent.submit(form);

@@ -88,7 +88,9 @@ export function ChatTurnProvider({ children }) {
     const goToChat = () => navigateRef.current(CHAT_ROUTE_PATH);
     if (outcome?.ok) {
       const excerpt = chatReplyExcerpt(outcome.replyText);
-      const message = excerpt ? `Chat reply ready — ${excerpt}` : 'Chat turn finished with no content.';
+      const message = excerpt
+        ? `Chat reply ready — ${excerpt}`
+        : 'Chat turn finished with no content.';
       if (typeof addNotification === 'function') {
         addNotification({
           type: 'success',

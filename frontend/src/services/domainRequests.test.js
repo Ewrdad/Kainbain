@@ -16,7 +16,14 @@ import { api } from './api.js';
 describe('Business-owned request lists', () => {
   it('has no duplicate operations and exposes every domain operation through the old client', () => {
     const request = vi.fn();
-    const clients = [workRequests(request, () => true), flowRequests(request), crewRequests(request), watchRequests(request), houseRequests(request), runnerRequests(request)];
+    const clients = [
+      workRequests(request, () => true),
+      flowRequests(request),
+      crewRequests(request),
+      watchRequests(request),
+      houseRequests(request),
+      runnerRequests(request),
+    ];
     const names = clients.flatMap(Object.keys);
     expect(new Set(names).size).toBe(names.length);
     // 60 legacy operations + the 3 task-image operations (uploadTaskImage,
@@ -45,24 +52,99 @@ describe('Business-owned request lists', () => {
 
   it.each([
     [workRequests, 'getTask', ['project', 'task'], '/tasks/task?projectId=project', undefined],
-    [workRequests, 'getSurvey', ['project', 'task'], '/tasks/task/survey?projectId=project', undefined],
-    [workRequests, 'submitSurvey', ['project', 'task', { answers: { q1: { selected: ['a'], notes: '' } } }], '/tasks/task/survey', { method: 'POST', body: '{"projectId":"project","answers":{"q1":{"selected":["a"],"notes":""}}}' }],
-    [workRequests, 'submitSurvey', ['project', 'task', { action: 'skip' }], '/tasks/task/survey', { method: 'POST', body: '{"projectId":"project","action":"skip"}' }],
-    [workRequests, 'updateTask', ['project', 'task', { title: 'Changed' }], '/tasks/task', { method: 'PATCH', body: '{"projectId":"project","title":"Changed"}' }],
-    [flowRequests, 'advanceTask', ['project', 'task', 'next'], '/tasks/task/advance', { method: 'POST', body: '{"projectId":"project","guidance":"next"}' }],
-    [flowRequests, 'updateWorkflow', [undefined, []], '/projects/workflow', { method: 'PUT', body: '{"stages":[]}' }],
-    [crewRequests, 'restoreSession', ['project'], '/session/restore', { method: 'POST', body: '{"projectId":"project"}' }],
+    [
+      workRequests,
+      'getSurvey',
+      ['project', 'task'],
+      '/tasks/task/survey?projectId=project',
+      undefined,
+    ],
+    [
+      workRequests,
+      'submitSurvey',
+      ['project', 'task', { answers: { q1: { selected: ['a'], notes: '' } } }],
+      '/tasks/task/survey',
+      {
+        method: 'POST',
+        body: '{"projectId":"project","answers":{"q1":{"selected":["a"],"notes":""}}}',
+      },
+    ],
+    [
+      workRequests,
+      'submitSurvey',
+      ['project', 'task', { action: 'skip' }],
+      '/tasks/task/survey',
+      { method: 'POST', body: '{"projectId":"project","action":"skip"}' },
+    ],
+    [
+      workRequests,
+      'updateTask',
+      ['project', 'task', { title: 'Changed' }],
+      '/tasks/task',
+      { method: 'PATCH', body: '{"projectId":"project","title":"Changed"}' },
+    ],
+    [
+      flowRequests,
+      'advanceTask',
+      ['project', 'task', 'next'],
+      '/tasks/task/advance',
+      { method: 'POST', body: '{"projectId":"project","guidance":"next"}' },
+    ],
+    [
+      flowRequests,
+      'updateWorkflow',
+      [undefined, []],
+      '/projects/workflow',
+      { method: 'PUT', body: '{"stages":[]}' },
+    ],
+    [
+      crewRequests,
+      'restoreSession',
+      ['project'],
+      '/session/restore',
+      { method: 'POST', body: '{"projectId":"project"}' },
+    ],
     [crewRequests, 'getHarnessReliability', [], '/harnesses/reliability', undefined],
     [houseRequests, 'getAliasReliability', ['p1'], '/projects/p1/aliases/reliability', undefined],
-    [watchRequests, 'checkTaskStuck', ['project', 'task'], '/tasks/task/stuck-check', { method: 'POST', body: '{"projectId":"project"}' }],
+    [
+      watchRequests,
+      'checkTaskStuck',
+      ['project', 'task'],
+      '/tasks/task/stuck-check',
+      { method: 'POST', body: '{"projectId":"project"}' },
+    ],
     [houseRequests, 'getSkill', ['a/b', 'a b'], '/skills/a%2Fb?projectId=a%20b', undefined],
     [houseRequests, 'triggerDeploy', [], '/deploy', { method: 'POST', body: '{"fast":false}' }],
     [houseRequests, 'deployChangelog', [50], '/deploy/changelog?limit=50', undefined],
     [houseRequests, 'deployChangelog', [], '/deploy/changelog', undefined],
-    [houseRequests, 'updateProject', ['p1', { name: 'A' }], '/projects/p1', { method: 'PATCH', body: '{"name":"A"}' }],
-    [houseRequests, 'updateProject', ['p1', { name: 'A' }, { expectedUpdatedAt: 't' }], '/projects/p1', { method: 'PATCH', body: '{"name":"A","expectedUpdatedAt":"t"}' }],
-    [houseRequests, 'updateProject', ['p1', { name: 'A' }, { ifMatch: 't' }], '/projects/p1', { method: 'PATCH', body: '{"name":"A"}', headers: { 'If-Match': 't' } }],
-    [houseRequests, 'updateAppStatus', ['p1', { url: 'http://localhost:3000' }], '/projects/p1/app-status', { method: 'PATCH', body: '{"url":"http://localhost:3000"}' }],
+    [
+      houseRequests,
+      'updateProject',
+      ['p1', { name: 'A' }],
+      '/projects/p1',
+      { method: 'PATCH', body: '{"name":"A"}' },
+    ],
+    [
+      houseRequests,
+      'updateProject',
+      ['p1', { name: 'A' }, { expectedUpdatedAt: 't' }],
+      '/projects/p1',
+      { method: 'PATCH', body: '{"name":"A","expectedUpdatedAt":"t"}' },
+    ],
+    [
+      houseRequests,
+      'updateProject',
+      ['p1', { name: 'A' }, { ifMatch: 't' }],
+      '/projects/p1',
+      { method: 'PATCH', body: '{"name":"A"}', headers: { 'If-Match': 't' } },
+    ],
+    [
+      houseRequests,
+      'updateAppStatus',
+      ['p1', { url: 'http://localhost:3000' }],
+      '/projects/p1/app-status',
+      { method: 'PATCH', body: '{"url":"http://localhost:3000"}' },
+    ],
     [houseRequests, 'checkAppHealth', ['p1'], '/projects/p1/app-status/health', undefined],
   ])('preserves %s / %s arguments and request result', (requests, name, args, url, options) => {
     const response = Promise.resolve({ ok: true });

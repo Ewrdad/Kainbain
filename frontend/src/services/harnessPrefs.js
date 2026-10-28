@@ -132,9 +132,7 @@ export function withHarnessPref(prefs, id, patch = {}) {
  * @returns {Array<Object>} Enabled entries in list order.
  ***/
 export function enabledHarnesses(harnesses, prefs) {
-  return (Array.isArray(harnesses) ? harnesses : []).filter((h) =>
-    isHarnessEnabled(prefs, h?.id),
-  );
+  return (Array.isArray(harnesses) ? harnesses : []).filter((h) => isHarnessEnabled(prefs, h?.id));
 }
 
 /***

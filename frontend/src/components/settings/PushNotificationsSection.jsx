@@ -349,7 +349,9 @@ export function PushNotificationsSection() {
             disabled={busy === 'settings' || settings?.enabled === false}
             className="rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0 cursor-pointer"
           />
-          <span>Scheduler recovered stuck work — a run that never settled was force-settled and retried</span>
+          <span>
+            Scheduler recovered stuck work — a run that never settled was force-settled and retried
+          </span>
         </label>
         <span className="text-[11px] text-text-muted">
           Routine failures (test failures, review rejections, automatic retries) never notify — only

@@ -171,10 +171,7 @@ export function ChangelogModal({ buildNumber, onClose }) {
               return (
                 <li key={entry.sha} className="py-2 flex flex-col gap-1">
                   <div className="flex items-baseline gap-2 min-w-0">
-                    <span
-                      className="font-mono text-[11px] text-primary shrink-0"
-                      title={entry.sha}
-                    >
+                    <span className="font-mono text-[11px] text-primary shrink-0" title={entry.sha}>
                       {entry.shortSha}
                     </span>
                     <span className="text-xs text-on-surface font-medium break-words min-w-0 grow">

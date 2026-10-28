@@ -107,7 +107,9 @@ export function excludeToolMirrorLinesWhenToolCardsShown(records = [], options =
   const { showToolCards = true } = options || {};
   if (!showToolCards) return records || [];
   return (records || []).filter((record) => {
-    const tag = String(record?.tag || '').toUpperCase().replace(/[[\]]/g, '');
+    const tag = String(record?.tag || '')
+      .toUpperCase()
+      .replace(/[[\]]/g, '');
     if (tag !== 'TOOL') return true;
     // Tool-call-sourced records (adapted tool cards) are the representation;
     // only raw live mirrors are dropped.

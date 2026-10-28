@@ -72,7 +72,10 @@ test('queue chip is live: count updates as tasks advance and drops to zero when 
       name: /Execution queue: \d+ open tasks? across all pipelines/,
     });
   expect(chip()).toHaveTextContent('3');
-  expect(chip()).toHaveAttribute('aria-label', 'Execution queue: 3 open tasks across all pipelines');
+  expect(chip()).toHaveAttribute(
+    'aria-label',
+    'Execution queue: 3 open tasks across all pipelines',
+  );
 
   // Two tasks complete — the count tracks the live task list.
   rerender(
@@ -102,7 +105,10 @@ test('queue chip is live: count updates as tasks advance and drops to zero when 
       }}
     />,
   );
-  expect(chip()).toHaveAttribute('aria-label', 'Execution queue: 0 open tasks across all pipelines');
+  expect(chip()).toHaveAttribute(
+    'aria-label',
+    'Execution queue: 0 open tasks across all pipelines',
+  );
   expect(chip()).toHaveTextContent('0');
 });
 
@@ -373,9 +379,7 @@ test('renders dynamic status badges correctly (IDLE, RUNNING, CHECKPOINT, WAITIN
   expect(waitingBadge.className).not.toContain('animate-pulse');
 
   // 4. PAUSED
-  const pausedStages = [
-    { id: '1', name: 'Idea', type: 'agent', paused: true },
-  ];
+  const pausedStages = [{ id: '1', name: 'Idea', type: 'agent', paused: true }];
   rerender(
     <NowPlayingBarContextOverlay
       value={{
@@ -393,7 +397,12 @@ test('shows the active task title and active project name, and clicking title op
   const setSelectedTask = vi.fn();
   // The provenance chip resolves from the universal owner's workflowId
   // (never the selected pipeline), so the task carries its pipeline here.
-  const sampleTask = { id: 'task-1', workflowId: 'wf-1', goal: 'Fix the page', title: 'Fix the page' };
+  const sampleTask = {
+    id: 'task-1',
+    workflowId: 'wf-1',
+    goal: 'Fix the page',
+    title: 'Fix the page',
+  };
 
   renderWithKainBain(<NowPlayingBar />, {
     computeRunning: true,
@@ -421,7 +430,9 @@ test('shows the active task title and active project name, and clicking title op
   expect(screen.getByText(/Fix the page/)).toBeInTheDocument();
 
   // Click on active task card / title
-  const taskButton = screen.getByRole('button', { name: /Open active task Fix the page in inspector/i });
+  const taskButton = screen.getByRole('button', {
+    name: /Open active task Fix the page in inspector/i,
+  });
   fireEvent.click(taskButton);
   expect(setSelectedTask).toHaveBeenCalledWith(sampleTask);
 });
@@ -514,9 +525,30 @@ test('Now Playing is universal: switching pipelines never changes the named task
     { id: 'wf-b', name: 'Pipeline B' },
   ];
   const tasks = [
-    { id: 't-a1', workflowId: 'wf-a', currentStageId: '1', status: 'in_stage', title: 'Alpha session', goal: 'Alpha session' },
-    { id: 't-b1', workflowId: 'wf-b', currentStageId: '1', status: 'in_stage', title: 'Beta session', goal: 'Beta session' },
-    { id: 't-b2', workflowId: 'wf-b', currentStageId: '2', status: 'in_stage', title: 'Beta follow-up', goal: 'Beta follow-up' },
+    {
+      id: 't-a1',
+      workflowId: 'wf-a',
+      currentStageId: '1',
+      status: 'in_stage',
+      title: 'Alpha session',
+      goal: 'Alpha session',
+    },
+    {
+      id: 't-b1',
+      workflowId: 'wf-b',
+      currentStageId: '1',
+      status: 'in_stage',
+      title: 'Beta session',
+      goal: 'Beta session',
+    },
+    {
+      id: 't-b2',
+      workflowId: 'wf-b',
+      currentStageId: '2',
+      status: 'in_stage',
+      title: 'Beta follow-up',
+      goal: 'Beta follow-up',
+    },
   ];
   const engineState = { status: 'running', activeTaskId: 't-a1' };
   const { rerender } = renderWithKainBain(<NowPlayingBar />, {
@@ -554,9 +586,9 @@ test('Now Playing is universal: switching pipelines never changes the named task
 
   expect(screen.getByTestId('now-playing-task-name').textContent).toBe(namedBefore);
   expect(screen.getByText('RUNNING')).toBeInTheDocument();
-  expect(
-    screen.getByRole('status', { name: /Execution queue:/ }).getAttribute('aria-label'),
-  ).toBe(queueBefore);
+  expect(screen.getByRole('status', { name: /Execution queue:/ }).getAttribute('aria-label')).toBe(
+    queueBefore,
+  );
 });
 
 /***
@@ -584,11 +616,32 @@ test('project switch keeps the whole bar put: owner named, badge/timer/queue/tra
   };
   const projectATasks = [
     ownerA,
-    { id: 't-a2', workflowId: 'wf-a', projectId: 'proj-a', currentStageId: '2', status: 'in_stage', title: 'Alpha two' },
+    {
+      id: 't-a2',
+      workflowId: 'wf-a',
+      projectId: 'proj-a',
+      currentStageId: '2',
+      status: 'in_stage',
+      title: 'Alpha two',
+    },
   ];
   const projectBTasks = [
-    { id: 't-b1', workflowId: 'wf-b', projectId: 'proj-b', currentStageId: '1', status: 'in_stage', title: 'Beta session' },
-    { id: 't-b2', workflowId: 'wf-b', projectId: 'proj-b', currentStageId: '2', status: 'in_stage', title: 'Beta follow-up' },
+    {
+      id: 't-b1',
+      workflowId: 'wf-b',
+      projectId: 'proj-b',
+      currentStageId: '1',
+      status: 'in_stage',
+      title: 'Beta session',
+    },
+    {
+      id: 't-b2',
+      workflowId: 'wf-b',
+      projectId: 'proj-b',
+      currentStageId: '2',
+      status: 'in_stage',
+      title: 'Beta follow-up',
+    },
   ];
   // Production shape after the fix: the engine snapshot carries the owner
   // snapshot and the global depth across both projects (2 open in A + 2 in B).
@@ -656,9 +709,9 @@ test('project switch keeps the whole bar put: owner named, badge/timer/queue/tra
   expect(screen.queryByText(/Beta follow-up/)).not.toBeInTheDocument();
   expect(screen.getByText('RUNNING')).toBeInTheDocument();
   expect(screen.getByLabelText('Elapsed time in current stage')).toBeInTheDocument();
-  expect(
-    screen.getByRole('status', { name: /Execution queue:/ }).getAttribute('aria-label'),
-  ).toBe(queueBefore);
+  expect(screen.getByRole('status', { name: /Execution queue:/ }).getAttribute('aria-label')).toBe(
+    queueBefore,
+  );
   expect(screen.getByLabelText('Skip Current')).not.toBeDisabled();
   expect(screen.getByTitle('Stop engine')).toBeInTheDocument();
 });
@@ -690,7 +743,6 @@ function NowPlayingBarContextOverlay({ value }) {
     </KainBainContext.Provider>
   );
 }
-
 
 test('Skip Current shows a loading state and a fast double-click skips once', async () => {
   let resolveSkip;
@@ -930,7 +982,6 @@ test('shows resolved stage name and reconciles disagreeing engine snapshot', () 
   expect(screen.queryByText(/^Stage:/)).not.toBeInTheDocument();
 });
 
-
 test('shows a stuck-queue chip only while the engine reads idle with a latched queue', () => {
   const { rerender } = renderWithKainBain(<NowPlayingBar />, {
     stages,
@@ -974,9 +1025,7 @@ test('shows a stuck-queue chip only while the engine reads idle with a latched q
       }}
     />,
   );
-  expect(
-    screen.queryByText('Queue stuck — recovering'),
-  ).not.toBeInTheDocument();
+  expect(screen.queryByText('Queue stuck — recovering')).not.toBeInTheDocument();
 });
 
 /***
@@ -1003,7 +1052,9 @@ function runnerEntry(runnerId, overrides = {}) {
 test('box mode replaces the single-task title but keeps the engine badge', () => {
   const setSelectedTask = vi.fn();
   renderWithKainBain(
-    <NowPlayingBar runnerEntries={[runnerEntry('alpha'), runnerEntry('bravo', { statusWord: 'failed' })]} />,
+    <NowPlayingBar
+      runnerEntries={[runnerEntry('alpha'), runnerEntry('bravo', { statusWord: 'failed' })]}
+    />,
     {
       stages,
       currentStageId: '1',
@@ -1045,7 +1096,13 @@ test('five or more entries fall back to the legacy single-task view', () => {
     isAgentRunning: true,
     engineState: { status: 'running', activeTaskId: 'task-a' },
     tasks: [
-      { id: 'task-a', currentStageId: '1', status: 'running_agent', title: 'Work a', goal: 'Work a' },
+      {
+        id: 'task-a',
+        currentStageId: '1',
+        status: 'running_agent',
+        title: 'Work a',
+        goal: 'Work a',
+      },
     ],
   });
 
@@ -1073,7 +1130,13 @@ test('junk runner entries keep the legacy view instead of phantom boxes', () => 
     isAgentRunning: true,
     engineState: { status: 'running', activeTaskId: 't1' },
     tasks: [
-      { id: 't1', currentStageId: '1', status: 'running_agent', title: 'Build it', goal: 'Build it' },
+      {
+        id: 't1',
+        currentStageId: '1',
+        status: 'running_agent',
+        title: 'Build it',
+        goal: 'Build it',
+      },
     ],
   });
 
@@ -1091,7 +1154,13 @@ test('plain queue data without runner association keeps the legacy view', () => 
     isAgentRunning: true,
     engineState: { status: 'running', activeTaskId: 't1' },
     tasks: [
-      { id: 't1', currentStageId: '1', status: 'running_agent', title: 'Build it', goal: 'Build it' },
+      {
+        id: 't1',
+        currentStageId: '1',
+        status: 'running_agent',
+        title: 'Build it',
+        goal: 'Build it',
+      },
       { id: 't2', currentStageId: '2', status: 'in_stage', title: 'Review it' },
     ],
   });
@@ -1107,7 +1176,13 @@ test('context-derived entries show boxes without the prop', () => {
     isAgentRunning: true,
     engineState: { status: 'running', activeTaskId: 't1' },
     tasks: [
-      { id: 't1', runnerId: 'alpha', currentStageId: '1', status: 'running_agent', title: 'Build it' },
+      {
+        id: 't1',
+        runnerId: 'alpha',
+        currentStageId: '1',
+        status: 'running_agent',
+        title: 'Build it',
+      },
       { id: 't2', runnerId: 'bravo', currentStageId: '1', status: 'in_stage', title: 'Review it' },
     ],
   });
@@ -1161,14 +1236,11 @@ test('a poisoned explicit entry is dropped while healthy boxes still render', ()
       throw new Error('poisoned entry');
     },
   });
-  renderWithKainBain(
-    <NowPlayingBar runnerEntries={[runnerEntry('alpha'), poisoned]} />,
-    {
-      stages,
-      currentStageId: '1',
-      engineState: { status: 'running', activeTaskId: 'task-alpha' },
-    },
-  );
+  renderWithKainBain(<NowPlayingBar runnerEntries={[runnerEntry('alpha'), poisoned]} />, {
+    stages,
+    currentStageId: '1',
+    engineState: { status: 'running', activeTaskId: 'task-alpha' },
+  });
 
   expect(screen.getByTestId('now-playing-runner-mode')).toBeInTheDocument();
   expect(screen.getByTestId('runner-box-alpha')).toHaveTextContent('Work alpha');
@@ -1209,7 +1281,13 @@ test('a poisoned task payload degrades to the legacy view instead of blanking th
     isAgentRunning: true,
     engineState: { status: 'running', activeTaskId: 't1' },
     tasks: [
-      { id: 't1', currentStageId: '1', status: 'running_agent', title: 'Build it', goal: 'Build it' },
+      {
+        id: 't1',
+        currentStageId: '1',
+        status: 'running_agent',
+        title: 'Build it',
+        goal: 'Build it',
+      },
       poisoned,
     ],
   });

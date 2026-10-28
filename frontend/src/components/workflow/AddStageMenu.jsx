@@ -153,7 +153,10 @@ export function AddStageMenu({
     try {
       text = serializePipelineJson({ name: workflowName }, stages);
     } catch {
-      notifyError?.('Could not serialize this pipeline — a stage holds data that cannot be saved to JSON.', 'Export failed');
+      notifyError?.(
+        'Could not serialize this pipeline — a stage holds data that cannot be saved to JSON.',
+        'Export failed',
+      );
       return;
     }
     const filename = exportFilename(workflowName);

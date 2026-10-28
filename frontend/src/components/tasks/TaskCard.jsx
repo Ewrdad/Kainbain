@@ -48,16 +48,13 @@ import { isRejectedTask } from './failureReason';
  * @returns {{ harnessId: string|null, modelRef: string|null, aliasName: string|null }|null} The last run choice, or null when none is recorded.
  */
 export function extractModelHarnessInfo(task) {
-  if (!task || typeof task.reportMetadata !== 'string' || !task.reportMetadata.trim())
-    return null;
+  if (!task || typeof task.reportMetadata !== 'string' || !task.reportMetadata.trim()) return null;
   try {
     const reportMetadata = JSON.parse(task.reportMetadata);
     if (!Array.isArray(reportMetadata)) return null;
-    const lastStage =
-      reportMetadata.length > 0 ? reportMetadata[reportMetadata.length - 1] : null;
+    const lastStage = reportMetadata.length > 0 ? reportMetadata[reportMetadata.length - 1] : null;
     if (!lastStage || typeof lastStage !== 'object') return null;
-    const clean = (value) =>
-      typeof value === 'string' && value.trim() ? value.trim() : null;
+    const clean = (value) => (typeof value === 'string' && value.trim() ? value.trim() : null);
     return {
       modelRef: clean(lastStage.modelRef),
       harnessId: clean(lastStage.harnessId),
@@ -168,7 +165,8 @@ export function TaskCard({
   // claimed task would otherwise sit at AGENT_READY looking idle. A live
   // claim means a Runner is executing it right now.
   const isRunnerHeld = !!task?.claim?.runnerId;
-  const isRunning = isActive || isRunnerHeld || isTaskRunning(task, engineState, ctx?.isAgentRunning);
+  const isRunning =
+    isActive || isRunnerHeld || isTaskRunning(task, engineState, ctx?.isAgentRunning);
   const isStale = !isActive && isStaleRunner(task, engineState);
   // Manual dispatch while another task owns the engine answers 409
   // ("Engine is already running another task"): show queued/busy instead
@@ -525,10 +523,7 @@ export function TaskCard({
     // Board summaries cap the reports array (see toTaskSummary) and carry
     // the total separately — prefer it so old tasks don't undercount, but
     // keep the outputReport fallback when there is genuinely no report list.
-    if (
-      Number.isFinite(task.reportCount) &&
-      (task.reportCount > 0 || Array.isArray(task.reports))
-    )
+    if (Number.isFinite(task.reportCount) && (task.reportCount > 0 || Array.isArray(task.reports)))
       return task.reportCount;
     if (Array.isArray(task.reports)) return task.reports.length;
     if (task.outputReport) return 1;

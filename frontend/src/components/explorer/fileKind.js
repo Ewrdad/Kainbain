@@ -150,11 +150,7 @@ export function getFileKind(entryOrExtension) {
  * @returns {boolean}
  ***/
 export function isImageKind(kindOrEntry) {
-  if (
-    typeof kindOrEntry === 'string' &&
-    !kindOrEntry.includes('.') &&
-    !kindOrEntry.includes('/')
-  ) {
+  if (typeof kindOrEntry === 'string' && !kindOrEntry.includes('.') && !kindOrEntry.includes('/')) {
     return kindOrEntry.toLowerCase() === 'image';
   }
   return getFileKind(kindOrEntry) === 'image';

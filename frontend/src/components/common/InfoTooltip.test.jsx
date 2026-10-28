@@ -17,12 +17,7 @@ describe('InfoTooltip', () => {
   });
 
   it('renders default info icon when no children provided', () => {
-    render(
-      <InfoTooltip
-        title="Test Tooltip"
-        description="Explains a backend feature."
-      />
-    );
+    render(<InfoTooltip title="Test Tooltip" description="Explains a backend feature." />);
     const trigger = screen.getByRole('button', { name: /Learn more about Test Tooltip/i });
     expect(trigger).toBeInTheDocument();
   });
@@ -37,7 +32,7 @@ describe('InfoTooltip', () => {
         tip="Press Esc to close"
       >
         <button type="button">Trigger Button</button>
-      </InfoTooltip>
+      </InfoTooltip>,
     );
 
     const trigger = screen.getByText('Trigger Button');
@@ -64,12 +59,7 @@ describe('InfoTooltip', () => {
   });
 
   it('pins tooltip open on click and unpins on Escape key', () => {
-    render(
-      <InfoTooltip
-        title="Pinnable Tooltip"
-        description="Stays open when clicked."
-      />
-    );
+    render(<InfoTooltip title="Pinnable Tooltip" description="Stays open when clicked." />);
 
     const trigger = screen.getByRole('button', { name: /Learn more about Pinnable Tooltip/i });
 
@@ -91,12 +81,9 @@ describe('InfoTooltip', () => {
 
   it('supports focus and blur for keyboard accessibility', () => {
     render(
-      <InfoTooltip
-        title="Accessible Tooltip"
-        description="Visible on keyboard focus."
-      >
+      <InfoTooltip title="Accessible Tooltip" description="Visible on keyboard focus.">
         <button type="button">Focusable</button>
-      </InfoTooltip>
+      </InfoTooltip>,
     );
 
     const trigger = screen.getByText('Focusable');
@@ -120,8 +107,10 @@ describe('InfoTooltip', () => {
     setTouchInputOverride(true);
     render(
       <InfoTooltip title="Switcher Tooltip" description="Should never appear.">
-        <button type="button" aria-haspopup="menu">Select pipeline workflow</button>
-      </InfoTooltip>
+        <button type="button" aria-haspopup="menu">
+          Select pipeline workflow
+        </button>
+      </InfoTooltip>,
     );
 
     const trigger = screen.getByRole('button', { name: 'Select pipeline workflow' });
@@ -138,8 +127,8 @@ describe('InfoTooltip', () => {
     setTouchInputOverride(true);
     render(
       <InfoTooltip title="Search Tooltip" description="Should never appear.">
-      	<input type="text" aria-label="Search tasks" />
-      </InfoTooltip>
+        <input type="text" aria-label="Search tasks" />
+      </InfoTooltip>,
     );
 
     const input = screen.getByLabelText('Search tasks');
@@ -160,7 +149,7 @@ describe('InfoTooltip', () => {
         <InfoTooltip title="Task ID Tooltip" description="Unique task identifier.">
           <span>#KB-ABC1</span>
         </InfoTooltip>
-      </div>
+      </div>,
     );
 
     fireEvent.click(screen.getByText('#KB-ABC1'));
@@ -184,7 +173,7 @@ describe('InfoTooltip', () => {
         <InfoTooltip title="Approve Tooltip" description="Should never appear.">
           <button type="button">Approve</button>
         </InfoTooltip>
-      </div>
+      </div>,
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
@@ -199,7 +188,7 @@ describe('InfoTooltip', () => {
     render(
       <InfoTooltip title="Badge Tooltip" description="Pinned on tap.">
         <span>Done</span>
-      </InfoTooltip>
+      </InfoTooltip>,
     );
 
     const badge = screen.getByText('Done');
@@ -221,7 +210,7 @@ describe('InfoTooltip', () => {
     render(
       <InfoTooltip title="Desktop Tooltip" description="Hover and focus still work.">
         <button type="button">Desktop Trigger</button>
-      </InfoTooltip>
+      </InfoTooltip>,
     );
 
     const trigger = screen.getByRole('button', { name: 'Desktop Trigger' });
@@ -246,9 +235,7 @@ describe('InfoTooltip', () => {
 
   it('keeps the default info icon click-to-pin in touch mode', () => {
     setTouchInputOverride(true);
-    render(
-      <InfoTooltip title="Icon Tooltip" description="Tapping the icon pins it." />
-    );
+    render(<InfoTooltip title="Icon Tooltip" description="Tapping the icon pins it." />);
 
     const icon = screen.getByRole('button', { name: /Learn more about Icon Tooltip/i });
     fireEvent.click(icon);

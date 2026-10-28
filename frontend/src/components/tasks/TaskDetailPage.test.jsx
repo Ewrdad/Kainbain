@@ -218,9 +218,7 @@ describe('TaskDetailPage full-page route component', () => {
   test('maps legacy numeric timeline stage ids to current stage names', () => {
     const legacyTimelineTask = {
       ...sampleTask,
-      timeline: [
-        { timestamp: '12:00', stage: 's1', duration: '2m', status: 'Advanced' },
-      ],
+      timeline: [{ timestamp: '12:00', stage: 's1', duration: '2m', status: 'Advanced' }],
     };
 
     renderWithKainBain(<TaskDetailPage task={legacyTimelineTask} />, {
@@ -432,9 +430,7 @@ describe('TaskDetailPage full-page route component', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     expect(screen.getByRole('note')).toBeInTheDocument();
     expect(screen.getByText(/applies from the next stage/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(/will not reach the running agent/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/will not reach the running agent/i)).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Task Title'), {
       target: { value: 'Revised goal picked up next stage' },
@@ -469,7 +465,9 @@ describe('TaskDetailPage full-page route component', () => {
 
     expect(screen.getByText('Human Review Checkpoint')).toBeInTheDocument();
     // s2 is the last stage and human, so approving completes the task.
-    const approveBtn = screen.getByRole('button', { name: 'Approve task #KB-TASK and mark complete' });
+    const approveBtn = screen.getByRole('button', {
+      name: 'Approve task #KB-TASK and mark complete',
+    });
     expect(approveBtn).toHaveTextContent('✓ Approve & Mark Complete');
     expect(screen.getByText(/Approve to mark it complete/)).toBeInTheDocument();
     fireEvent.click(approveBtn);
@@ -509,8 +507,12 @@ describe('TaskDetailPage full-page route component', () => {
     });
 
     expect(screen.queryByText('Human Review Checkpoint')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Approve task #KB-TASK/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Retry failed stage on task #KB-TASK/i })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Approve task #KB-TASK/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Retry failed stage on task #KB-TASK/i }),
+    ).toBeInTheDocument();
   });
 
   test('mid-pipeline checkpoint banner keeps the approve-and-advance wording', () => {
@@ -569,7 +571,9 @@ describe('TaskDetailPage full-page route component', () => {
       stages: sampleStages,
       projects: sampleProjects, // no useBranches
     });
-    expect(screen.getByRole('button', { name: /Open PR review for task #KB-TASK/i })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: /Open PR review for task #KB-TASK/i }),
+    ).toBeDisabled();
   });
 
   test('approve flushes pending goal edits BEFORE advancing (auto-save gate)', async () => {
@@ -746,9 +750,10 @@ describe('TaskDetailPage full-page route component', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     expect(screen.getByText(/FINAL TAIL MARKER/)).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Show less' }),
-    ).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
     expect(screen.queryByText(/FINAL TAIL MARKER/)).not.toBeInTheDocument();
@@ -985,38 +990,24 @@ describe('TaskDetailPage optimistic action guards', () => {
   });
 
   test('restores the active tab from localStorage after refresh', () => {
-    window.localStorage.setItem(
-      'kainbain:taskDetail:activeTab',
-      JSON.stringify('history'),
-    );
+    window.localStorage.setItem('kainbain:taskDetail:activeTab', JSON.stringify('history'));
     renderWithKainBain(<TaskDetailPage task={sampleTask} />, {
       stages: sampleStages,
       projects: sampleProjects,
     });
 
-    expect(screen.getByRole('tab', { name: /History/ })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    expect(
-      screen.getByRole('tab', { name: /Details/ }),
-    ).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByRole('tab', { name: /History/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: /Details/ })).toHaveAttribute('aria-selected', 'false');
   });
 
   test('falls back to the details tab on corrupt storage', () => {
-    window.localStorage.setItem(
-      'kainbain:taskDetail:activeTab',
-      JSON.stringify('bogus'),
-    );
+    window.localStorage.setItem('kainbain:taskDetail:activeTab', JSON.stringify('bogus'));
     renderWithKainBain(<TaskDetailPage task={sampleTask} />, {
       stages: sampleStages,
       projects: sampleProjects,
     });
 
-    expect(screen.getByRole('tab', { name: /Details/ })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    expect(screen.getByRole('tab', { name: /Details/ })).toHaveAttribute('aria-selected', 'true');
   });
 
   test('Copy Checkout copies the derived branch command and shows Copied feedback', async () => {
@@ -1031,7 +1022,9 @@ describe('TaskDetailPage optimistic action guards', () => {
       stages: sampleStages,
       projects: [{ ...sampleProjects[0], useBranches: true }],
     });
-    const copyBtn = screen.getByRole('button', { name: /Copy checkout command for task #KB-TASK/i });
+    const copyBtn = screen.getByRole('button', {
+      name: /Copy checkout command for task #KB-TASK/i,
+    });
     expect(copyBtn).toBeInTheDocument();
     expect(copyBtn).not.toBeDisabled();
     fireEvent.click(copyBtn);
@@ -1058,7 +1051,9 @@ describe('TaskDetailPage optimistic action guards', () => {
       stages: sampleStages,
       projects: [{ ...sampleProjects[0], useBranches: true }],
     });
-    fireEvent.click(screen.getByRole('button', { name: /Copy checkout command for task #KB-TASK/i }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /Copy checkout command for task #KB-TASK/i }),
+    );
     expect(writeTextMock).toHaveBeenCalledWith('git fetch origin && git checkout kb/custom-branch');
   });
 
@@ -1068,7 +1063,9 @@ describe('TaskDetailPage optimistic action guards', () => {
       stages: sampleStages,
       projects: sampleProjects, // no useBranches
     });
-    expect(screen.getByRole('button', { name: /Copy checkout command for task #KB-TASK/i })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: /Copy checkout command for task #KB-TASK/i }),
+    ).toBeDisabled();
   });
 });
 
@@ -1097,7 +1094,9 @@ describe('TaskDetailPage Copy Checkout buttons', () => {
       stages: sampleStages,
       projects: [{ id: 'proj-1', name: 'KainBain', cwd: '/home/user/kainbain', useBranches: true }],
     });
-    const copyBtn = screen.getByRole('button', { name: /Copy checkout command for task #KB-TASK/i });
+    const copyBtn = screen.getByRole('button', {
+      name: /Copy checkout command for task #KB-TASK/i,
+    });
     expect(copyBtn).toBeInTheDocument();
     expect(copyBtn).not.toBeDisabled();
     fireEvent.click(copyBtn);
@@ -1124,7 +1123,9 @@ describe('TaskDetailPage Copy Checkout buttons', () => {
       stages: sampleStages,
       projects: [{ id: 'proj-1', name: 'KainBain', cwd: '/home/user/kainbain', useBranches: true }],
     });
-    fireEvent.click(screen.getByRole('button', { name: /Copy checkout command for task #KB-TASK/i }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /Copy checkout command for task #KB-TASK/i }),
+    );
     expect(writeTextMock).toHaveBeenCalledWith('git fetch origin && git checkout kb/custom-branch');
   });
 
@@ -1134,7 +1135,9 @@ describe('TaskDetailPage Copy Checkout buttons', () => {
       stages: sampleStages,
       projects: [{ id: 'proj-1', name: 'KainBain', cwd: '/home/user/kainbain' }], // no useBranches
     });
-    expect(screen.getByRole('button', { name: /Copy checkout command for task #KB-TASK/i })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: /Copy checkout command for task #KB-TASK/i }),
+    ).toBeDisabled();
   });
 
   test('PR row shares the Approve/Reject row layout so edges line up at equal widths', () => {

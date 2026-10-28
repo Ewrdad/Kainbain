@@ -64,9 +64,10 @@ test('expand toggle calls onToggle and reflects aria state', () => {
 
 test('expanded state flips the accessible label', () => {
   renderBar({ isExpanded: true });
-  expect(
-    screen.getByRole('button', { name: 'Collapse 2 hidden stages' }),
-  ).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: 'Collapse 2 hidden stages' })).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  );
 });
 
 test('missing analytics degrades to a zero task count', () => {

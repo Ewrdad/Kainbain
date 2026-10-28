@@ -174,9 +174,12 @@ describe('useCollapsibleRows startCollapsed', () => {
   });
 
   it('addRowKey still starts expanded when startCollapsed is set', () => {
-    const { result, rerender } = renderHook(({ count }) => useCollapsibleRows(count, { startCollapsed: true }), {
-      initialProps: { count: 1 },
-    });
+    const { result, rerender } = renderHook(
+      ({ count }) => useCollapsibleRows(count, { startCollapsed: true }),
+      {
+        initialProps: { count: 1 },
+      },
+    );
     expect(result.current.isCollapsed(result.current.keys[0])).toBe(true);
     act(() => result.current.addRowKey());
     rerender({ count: 2 });
@@ -187,9 +190,12 @@ describe('useCollapsibleRows startCollapsed', () => {
   });
 
   it('reconciles externally added rows collapsed', () => {
-    const { result, rerender } = renderHook(({ count }) => useCollapsibleRows(count, { startCollapsed: true }), {
-      initialProps: { count: 1 },
-    });
+    const { result, rerender } = renderHook(
+      ({ count }) => useCollapsibleRows(count, { startCollapsed: true }),
+      {
+        initialProps: { count: 1 },
+      },
+    );
     rerender({ count: 3 });
     expect(result.current.keys).toHaveLength(3);
     for (const key of result.current.keys) {
@@ -201,9 +207,12 @@ describe('useCollapsibleRows startCollapsed', () => {
     // Regression: the in-flight reservation for an internally added row must
     // clear once counts catch up — otherwise a later discard/reset that
     // grows the list would wrongly leave its first new row expanded.
-    const { result, rerender } = renderHook(({ count }) => useCollapsibleRows(count, { startCollapsed: true }), {
-      initialProps: { count: 1 },
-    });
+    const { result, rerender } = renderHook(
+      ({ count }) => useCollapsibleRows(count, { startCollapsed: true }),
+      {
+        initialProps: { count: 1 },
+      },
+    );
     act(() => result.current.addRowKey());
     rerender({ count: 2 });
     expect(result.current.keys).toHaveLength(2);
@@ -220,9 +229,12 @@ describe('useCollapsibleRows startCollapsed', () => {
   });
 
   it('prunes stale collapsed entries on shrink', () => {
-    const { result, rerender } = renderHook(({ count }) => useCollapsibleRows(count, { startCollapsed: true }), {
-      initialProps: { count: 2 },
-    });
+    const { result, rerender } = renderHook(
+      ({ count }) => useCollapsibleRows(count, { startCollapsed: true }),
+      {
+        initialProps: { count: 2 },
+      },
+    );
     const first = result.current.keys[0];
     act(() => result.current.toggle(first)); // expand first
     rerender({ count: 1 });

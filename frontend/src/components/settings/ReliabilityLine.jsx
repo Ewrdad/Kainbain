@@ -80,11 +80,7 @@ export function ReliabilityLine({
   }
   if (!hasRate) {
     return (
-      <span
-        data-testid={testId}
-        title={emptyTitle}
-        className="text-[11px] text-text-muted"
-      >
+      <span data-testid={testId} title={emptyTitle} className="text-[11px] text-text-muted">
         No reliability data yet
       </span>
     );
@@ -95,11 +91,7 @@ export function ReliabilityLine({
 
   if (!showRecent) {
     return (
-      <span
-        data-testid={testId}
-        title={title}
-        className="text-[11px] text-text-muted"
-      >
+      <span data-testid={testId} title={title} className="text-[11px] text-text-muted">
         {allTimeText}
       </span>
     );

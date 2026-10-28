@@ -92,13 +92,17 @@ function baseProps(overrides = {}) {
 
 const young = { id: 'young', goal: 'Young task', currentStageId: 's-1', enteredStageAt: at(30) };
 const old = { id: 'old', goal: 'Old task', currentStageId: 's-1', enteredStageAt: at(300) };
-const middle = { id: 'middle', goal: 'Middle task', currentStageId: 's-1', enteredStageAt: at(120) };
+const middle = {
+  id: 'middle',
+  goal: 'Middle task',
+  currentStageId: 's-1',
+  enteredStageAt: at(120),
+};
 
 test('manual sort (default) preserves insertion order', () => {
-  renderWithKainBain(
-    <StageColumn {...baseProps({ filteredTasks: [young, old, middle] })} />,
-    { uiPreferences: { taskSort: 'manual', taskCardDensity: 'compact' } },
-  );
+  renderWithKainBain(<StageColumn {...baseProps({ filteredTasks: [young, old, middle] })} />, {
+    uiPreferences: { taskSort: 'manual', taskCardDensity: 'compact' },
+  });
   const cards = screen.getAllByTestId('task-stage-age');
   expect(cards).toHaveLength(3);
   // Insertion order kept: young (30s) renders before old (300s).

@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../services/api';
-import {
-  ALIAS_HARNESS_ID,
-  aliasPseudoModels,
-} from '../../../shared/modelAliases.js';
+import { ALIAS_HARNESS_ID, aliasPseudoModels } from '../../../shared/modelAliases.js';
 
 /***
  * MARK: withAliasEntry
@@ -65,9 +62,7 @@ export function useModelCatalog(fallbackModels, { aliases, enabled = true } = {}
   // Lazy initializer: only fetch-capable api modules (i.e. not mocked-away
   // test doubles) start in the loading state, so the effect body below never
   // needs to call setState synchronously.
-  const [loading, setLoading] = useState(
-    () => enabled && typeof api.getModels === 'function',
-  );
+  const [loading, setLoading] = useState(() => enabled && typeof api.getModels === 'function');
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {

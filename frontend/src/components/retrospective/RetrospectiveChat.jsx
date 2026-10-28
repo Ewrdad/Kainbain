@@ -234,7 +234,9 @@ export function RetrospectiveChat({ tasks = [] }) {
         ))}
         {chatTaskIds.length === 0 && (
           <>
-            <span className="text-[0.6875rem] text-text-muted">No task context — general chat.</span>
+            <span className="text-[0.6875rem] text-text-muted">
+              No task context — general chat.
+            </span>
             <span className="text-[0.6875rem] text-text-muted">
               The agent may search recent tasks.
             </span>
@@ -253,8 +255,8 @@ export function RetrospectiveChat({ tasks = [] }) {
         {messages.length === 0 && !pending && (
           <p className="text-xs text-text-muted">
             Ask about trends across the selected tasks — or pick tasks and use “Find trends in
-            selection”. With no task context, the agent can still review recent jobs using
-            its task tools.
+            selection”. With no task context, the agent can still review recent jobs using its task
+            tools.
           </p>
         )}
         {messages.map((message, index) => (

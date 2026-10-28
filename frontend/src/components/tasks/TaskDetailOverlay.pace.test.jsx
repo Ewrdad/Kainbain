@@ -84,10 +84,10 @@ test('completed tasks show history only, with no live current-stage row', () => 
 });
 
 test('stages without samples show no average hint', () => {
-  renderWithKainBain(
-    <TaskDetailOverlay task={openTask} onClose={() => {}} />,
-    { stages, tasks: [] },
-  );
+  renderWithKainBain(<TaskDetailOverlay task={openTask} onClose={() => {}} />, {
+    stages,
+    tasks: [],
+  });
   fireEvent.click(screen.getByRole('tab', { name: /History/i }));
   expect(screen.getByText(/1m in stage/)).toBeInTheDocument();
   expect(screen.queryByTitle(/Stage average/)).not.toBeInTheDocument();

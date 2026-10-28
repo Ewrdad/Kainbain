@@ -23,7 +23,11 @@ describe('readChatError', () => {
     expect(
       readChatError({
         status: 501,
-        body: JSON.stringify({ code: 'unsupported_by_harness', capability: 'prompt', harness: 'x' }),
+        body: JSON.stringify({
+          code: 'unsupported_by_harness',
+          capability: 'prompt',
+          harness: 'x',
+        }),
       }),
     ).toEqual({ kind: 'degraded', capability: 'prompt', harness: 'x' });
   });
@@ -363,9 +367,7 @@ describe('chat storage helpers', () => {
     const original = window.sessionStorage.setItem;
     window.sessionStorage.setItem = throwingSet;
     try {
-      expect(() =>
-        saveStoredChat('proj-1', { messages: [], chatTaskIds: [] }),
-      ).not.toThrow();
+      expect(() => saveStoredChat('proj-1', { messages: [], chatTaskIds: [] })).not.toThrow();
     } finally {
       window.sessionStorage.setItem = original;
     }

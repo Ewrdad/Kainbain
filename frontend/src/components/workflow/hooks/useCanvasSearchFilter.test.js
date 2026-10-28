@@ -17,7 +17,12 @@ describe('useCanvasSearchFilter', () => {
     window.localStorage.setItem('kainbain:board:stageTagFilter', JSON.stringify(['QA']));
     window.history.replaceState(null, '', '/?tags=PO');
     const { result } = renderHook(() =>
-      useCanvasSearchFilter({ stages: [], tasks: [], activeWfId: 'wf-1', activeWorkflow: { id: 'wf-1' } }),
+      useCanvasSearchFilter({
+        stages: [],
+        tasks: [],
+        activeWfId: 'wf-1',
+        activeWorkflow: { id: 'wf-1' },
+      }),
     );
     expect(result.current.searchQuery).toContain('#PO');
     expect(window.localStorage.getItem('kainbain:board:stageTagFilter')).toBeNull();
@@ -25,7 +30,12 @@ describe('useCanvasSearchFilter', () => {
 
   test('URL sync skips initial mount then writes on change', () => {
     const { result } = renderHook(() =>
-      useCanvasSearchFilter({ stages: [], tasks: [], activeWfId: 'wf-1', activeWorkflow: { id: 'wf-1' } }),
+      useCanvasSearchFilter({
+        stages: [],
+        tasks: [],
+        activeWfId: 'wf-1',
+        activeWorkflow: { id: 'wf-1' },
+      }),
     );
     expect(window.location.search).not.toContain('tags=');
     act(() => {
@@ -36,7 +46,12 @@ describe('useCanvasSearchFilter', () => {
 
   test('clearTagFilter keeps free text', () => {
     const { result } = renderHook(() =>
-      useCanvasSearchFilter({ stages: [], tasks: [], activeWfId: 'wf-1', activeWorkflow: { id: 'wf-1' } }),
+      useCanvasSearchFilter({
+        stages: [],
+        tasks: [],
+        activeWfId: 'wf-1',
+        activeWorkflow: { id: 'wf-1' },
+      }),
     );
     act(() => {
       result.current.setSearchQuery('auth #Dev');
@@ -49,19 +64,16 @@ describe('useCanvasSearchFilter', () => {
 
   test('pipeline switch resets selection state but keeps query', () => {
     const stages = [{ id: 's1', name: 'Idea', tags: ['PO'] }];
-    const { result, rerender } = renderHook(
-      (props) => useCanvasSearchFilter(props),
-      {
-        initialProps: {
-          stages,
-          tasks: [],
-          activeWfId: 'wf-1',
-          activeWorkflow: { id: 'wf-1' },
-          currentStageId: null,
-          uiPreferences: {},
-        },
+    const { result, rerender } = renderHook((props) => useCanvasSearchFilter(props), {
+      initialProps: {
+        stages,
+        tasks: [],
+        activeWfId: 'wf-1',
+        activeWorkflow: { id: 'wf-1' },
+        currentStageId: null,
+        uiPreferences: {},
       },
-    );
+    });
     act(() => {
       result.current.setSearchQuery('auth #Dev');
     });
@@ -90,7 +102,12 @@ describe('useCanvasSearchFilter', () => {
       { id: 's2', name: 'Build', tags: ['Dev'] },
     ];
     const { result } = renderHook(() =>
-      useCanvasSearchFilter({ stages, tasks: [], activeWfId: 'wf-1', activeWorkflow: { id: 'wf-1' } }),
+      useCanvasSearchFilter({
+        stages,
+        tasks: [],
+        activeWfId: 'wf-1',
+        activeWorkflow: { id: 'wf-1' },
+      }),
     );
     act(() => {
       result.current.setSearchQuery('#PO');
@@ -104,9 +121,27 @@ describe('useCanvasSearchFilter', () => {
       { id: 's2', name: 'Review', type: 'human' },
     ];
     const tasks = [
-      { id: 'KB-1', goal: 'build login', status: 'failed', currentStageId: 's1', workflowId: 'wf-1' },
-      { id: 'KB-2', goal: 'review auth', status: 'waiting_human', currentStageId: 's2', workflowId: 'wf-1' },
-      { id: 'KB-3', goal: 'build search', status: 'active', currentStageId: 's1', workflowId: 'wf-1' },
+      {
+        id: 'KB-1',
+        goal: 'build login',
+        status: 'failed',
+        currentStageId: 's1',
+        workflowId: 'wf-1',
+      },
+      {
+        id: 'KB-2',
+        goal: 'review auth',
+        status: 'waiting_human',
+        currentStageId: 's2',
+        workflowId: 'wf-1',
+      },
+      {
+        id: 'KB-3',
+        goal: 'build search',
+        status: 'active',
+        currentStageId: 's1',
+        workflowId: 'wf-1',
+      },
     ];
     const { result } = renderHook(() =>
       useCanvasSearchFilter({ stages, tasks, activeWfId: 'wf-1', activeWorkflow: { id: 'wf-1' } }),
@@ -141,9 +176,21 @@ describe('useCanvasSearchFilter', () => {
       { id: 's2', name: 'Build', tags: ['Dev'] },
     ];
     const tasks = [
-      { id: 'KB-1', goal: 'auth login', status: 'failed', currentStageId: 's1', workflowId: 'wf-1' },
+      {
+        id: 'KB-1',
+        goal: 'auth login',
+        status: 'failed',
+        currentStageId: 's1',
+        workflowId: 'wf-1',
+      },
       { id: 'KB-2', goal: 'auth spec', status: 'active', currentStageId: 's1', workflowId: 'wf-1' },
-      { id: 'KB-3', goal: 'auth build', status: 'failed', currentStageId: 's2', workflowId: 'wf-1' },
+      {
+        id: 'KB-3',
+        goal: 'auth build',
+        status: 'failed',
+        currentStageId: 's2',
+        workflowId: 'wf-1',
+      },
     ];
     const { result } = renderHook(() =>
       useCanvasSearchFilter({ stages, tasks, activeWfId: 'wf-1', activeWorkflow: { id: 'wf-1' } }),

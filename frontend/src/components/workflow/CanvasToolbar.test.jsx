@@ -88,7 +88,10 @@ test('hidden-by-workflow notice is never rendered', () => {
   // data any more, so a board whose tasks sit under another workflow just
   // renders empty columns — nothing here may announce them.
   renderToolbar({
-    projectWorkflows: [{ id: 'wf-1', name: 'Main' }, { id: 'wf-2', name: 'Other' }],
+    projectWorkflows: [
+      { id: 'wf-1', name: 'Main' },
+      { id: 'wf-2', name: 'Other' },
+    ],
   });
   expect(screen.queryByLabelText('Tasks hidden by workflow filter')).toBeNull();
   expect(screen.queryByText(/waiting in/i)).toBeNull();

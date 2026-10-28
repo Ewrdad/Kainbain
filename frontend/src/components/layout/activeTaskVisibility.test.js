@@ -104,7 +104,9 @@ test('idle engine still names a waiting-human task (task-level checkpoint)', () 
   // Pins the canary setup contract: PATCHing a task to waiting_human is a
   // metadata-only update that leaves engineState idle, yet the bar must keep
   // naming that task so the inspector trigger exists.
-  const waiting = [{ id: 't7', currentStageId: '1', status: 'waiting_human', title: 'Needs review' }];
+  const waiting = [
+    { id: 't7', currentStageId: '1', status: 'waiting_human', title: 'Needs review' },
+  ];
   const { activeTask, hasActiveDisplay, isCheckpoint } = resolveActiveTaskDisplay({
     tasks: waiting,
     engineState: { status: 'idle' },
@@ -180,9 +182,27 @@ test('running engine derives badge flags from the owner, not the fallback', () =
  * pipeline-independent (most-recently-updated open task, never list order).
  ***/
 const multiPipelineTasks = [
-  { id: 't-a1', workflowId: 'wf-a', status: 'in_stage', title: 'Alpha', updatedAt: '2026-09-24T08:00:00.000Z' },
-  { id: 't-b1', workflowId: 'wf-b', status: 'in_stage', title: 'Beta', updatedAt: '2026-09-24T09:00:00.000Z' },
-  { id: 't-b2', workflowId: 'wf-b', status: 'completed', title: 'Beta done', updatedAt: '2026-09-24T10:00:00.000Z' },
+  {
+    id: 't-a1',
+    workflowId: 'wf-a',
+    status: 'in_stage',
+    title: 'Alpha',
+    updatedAt: '2026-09-24T08:00:00.000Z',
+  },
+  {
+    id: 't-b1',
+    workflowId: 'wf-b',
+    status: 'in_stage',
+    title: 'Beta',
+    updatedAt: '2026-09-24T09:00:00.000Z',
+  },
+  {
+    id: 't-b2',
+    workflowId: 'wf-b',
+    status: 'completed',
+    title: 'Beta done',
+    updatedAt: '2026-09-24T10:00:00.000Z',
+  },
 ];
 
 test('universal selector resolves the engine owner across pipelines', () => {
@@ -224,12 +244,16 @@ test('universal selector excludes completed/done tasks and empties honestly', ()
       engineState: { status: 'idle' },
     }),
   ).toMatchObject({ queueDepth: 0, hasNextTask: false, candidateTask: null, ownerTask: null });
-  expect(
-    resolveUniversalNowPlaying({ tasks: [], engineState: { status: 'idle' } }),
-  ).toMatchObject({ queueDepth: 0, hasNextTask: false, candidateTask: null });
-  expect(
-    resolveUniversalNowPlaying({ engineState: { status: 'idle' } }),
-  ).toMatchObject({ queueDepth: 0, hasNextTask: false, candidateTask: null });
+  expect(resolveUniversalNowPlaying({ tasks: [], engineState: { status: 'idle' } })).toMatchObject({
+    queueDepth: 0,
+    hasNextTask: false,
+    candidateTask: null,
+  });
+  expect(resolveUniversalNowPlaying({ engineState: { status: 'idle' } })).toMatchObject({
+    queueDepth: 0,
+    hasNextTask: false,
+    candidateTask: null,
+  });
 });
 
 test('universal selector keeps the owner-absent invariant (name nothing, keep candidate)', () => {
@@ -270,8 +294,20 @@ const ownerSnapshot = {
   updatedAt: '2026-09-24T09:00:00.000Z',
 };
 const projectBTasks = [
-  { id: 't-b1', workflowId: 'wf-b', status: 'in_stage', title: 'Beta session', updatedAt: '2026-09-24T10:00:00.000Z' },
-  { id: 't-b2', workflowId: 'wf-b', status: 'in_stage', title: 'Beta follow-up', updatedAt: '2026-09-24T11:00:00.000Z' },
+  {
+    id: 't-b1',
+    workflowId: 'wf-b',
+    status: 'in_stage',
+    title: 'Beta session',
+    updatedAt: '2026-09-24T10:00:00.000Z',
+  },
+  {
+    id: 't-b2',
+    workflowId: 'wf-b',
+    status: 'in_stage',
+    title: 'Beta follow-up',
+    updatedAt: '2026-09-24T11:00:00.000Z',
+  },
 ];
 const snapshotEngine = {
   status: 'running',
@@ -379,9 +415,7 @@ test('running engine with a paused selected stage keeps isStagePaused false (bad
 });
 
 test('candidate prefers the flagged task, then the open current-stage task, then the first task', () => {
-  expect(
-    resolveCandidateTask(openTasks, { activeTaskId: 't2' }, '1')?.id,
-  ).toBe('t2');
+  expect(resolveCandidateTask(openTasks, { activeTaskId: 't2' }, '1')?.id).toBe('t2');
   expect(resolveCandidateTask(openTasks, {}, '2')?.id).toBe('t2');
   expect(resolveCandidateTask(openTasks, {}, '9')?.id).toBe('t1');
   expect(resolveCandidateTask([], {}, '1')).toBeNull();

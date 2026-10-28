@@ -59,8 +59,7 @@ export function RunnerBox({ entry, onOpenTask }) {
   // a number) would render as "Stage: [object Object]" beside honest data.
   // The single flag below also gates the tooltip, so a junk stage value can
   // never leave a stray "—" tooltip behind.
-  const hasStageName =
-    typeof entry?.stageName === 'string' && entry.stageName.trim() !== '';
+  const hasStageName = typeof entry?.stageName === 'string' && entry.stageName.trim() !== '';
   const stageLine = hasStageName ? `Stage: ${entry.stageName}` : '—';
 
   const frameClass =
@@ -80,7 +79,10 @@ export function RunnerBox({ entry, onOpenTask }) {
       >
         <span className="flex min-w-0 items-center gap-1">
           <span className={`h-2 w-2 shrink-0 rounded-full ${style.dotClass}`} aria-hidden="true" />
-          <span className="truncate text-[11px] font-bold text-text-muted" title={truncateRunnerText(runnerName)}>
+          <span
+            className="truncate text-[11px] font-bold text-text-muted"
+            title={truncateRunnerText(runnerName)}
+          >
             {runnerName}
           </span>
         </span>
@@ -107,14 +109,13 @@ export function RunnerBox({ entry, onOpenTask }) {
         >
           {runnerName}
         </span>
-        <span className={`shrink-0 text-[10px] font-semibold uppercase tracking-wide ${style.statusClass}`}>
+        <span
+          className={`shrink-0 text-[10px] font-semibold uppercase tracking-wide ${style.statusClass}`}
+        >
           {formatRunnerStatusDisplay(statusWord)}
         </span>
       </span>
-      <span
-        className="truncate text-[11px] text-on-surface"
-        title={truncateRunnerText(taskTitle)}
-      >
+      <span className="truncate text-[11px] text-on-surface" title={truncateRunnerText(taskTitle)}>
         {taskTitle}
       </span>
       <span

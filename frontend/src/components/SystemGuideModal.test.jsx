@@ -31,7 +31,9 @@ describe('SystemGuideModal', () => {
     // Click on "Agent & Sandboxing" tab
     const agentTab = screen.getByRole('button', { name: /Agent & Sandboxing/i });
     fireEvent.click(agentTab);
-    expect(screen.getByText(/Agent Execution, Tool Calls & Artifact Persistence/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Agent Execution, Tool Calls & Artifact Persistence/i),
+    ).toBeInTheDocument();
 
     // Click on "Context Tokens" tab
     const tokensTab = screen.getByRole('button', { name: /Context Tokens/i });

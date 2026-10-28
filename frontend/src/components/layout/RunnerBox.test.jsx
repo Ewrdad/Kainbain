@@ -58,7 +58,15 @@ test('a box without a task is a greyed-out idle panel, not a button', () => {
   const onOpenTask = vi.fn();
   renderWithKainBain(
     <RunnerBox
-      entry={{ runnerId: 'solo', runnerLabel: 'Solo', task: null, taskId: null, taskTitleFirstLine: null, stageName: null, statusWord: 'idle' }}
+      entry={{
+        runnerId: 'solo',
+        runnerLabel: 'Solo',
+        task: null,
+        taskId: null,
+        taskTitleFirstLine: null,
+        stageName: null,
+        statusWord: 'idle',
+      }}
       onOpenTask={onOpenTask}
     />,
     {},
@@ -77,9 +85,7 @@ test('blank runner id and label fail closed to unknown instead of empty', () => 
   renderBox({ ...runningEntry, runnerId: '   ', runnerLabel: '   ' });
   const box = screen.getByTestId('runner-box-unknown');
   expect(box).toHaveTextContent('unknown');
-  expect(box.getAttribute('aria-label')).toBe(
-    'Runner unknown, running, task Ship it, stage Plan',
-  );
+  expect(box.getAttribute('aria-label')).toBe('Runner unknown, running, task Ship it, stage Plan');
 });
 
 test('untrimmed and non-string status words normalise so dot, word, and aria agree', () => {

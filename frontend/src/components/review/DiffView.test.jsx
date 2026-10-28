@@ -34,8 +34,7 @@ const baseFile = {
 };
 
 const noop = () => {};
-const threadFor = (container, id) =>
-  container.querySelector(`[data-comment-id="${id}"]`);
+const threadFor = (container, id) => container.querySelector(`[data-comment-id="${id}"]`);
 
 describe('DiffView', () => {
   let handlers;
@@ -54,7 +53,9 @@ describe('DiffView', () => {
     const { container } = render(
       <DiffView file={baseFile} viewedFiles={new Set()} {...handlers} headSha="sha-2" />,
     );
-    expect(container.querySelector('[data-testid="diff-view"][data-file-path="src/app.js"]')).toBeTruthy();
+    expect(
+      container.querySelector('[data-testid="diff-view"][data-file-path="src/app.js"]'),
+    ).toBeTruthy();
     expect(screen.getByText('+2')).toBeTruthy();
     expect(screen.getByText('−1')).toBeTruthy();
     expect(screen.getByText('modified')).toBeTruthy();
@@ -138,7 +139,14 @@ describe('DiffView', () => {
 
   it('renders inline threads under their anchored line and file-level threads above the diff', () => {
     const comments = [
-      { id: 'rc-line', filePath: 'src/app.js', line: 1, side: 'right', scope: 'line', body: 'line note' },
+      {
+        id: 'rc-line',
+        filePath: 'src/app.js',
+        line: 1,
+        side: 'right',
+        scope: 'line',
+        body: 'line note',
+      },
       { id: 'rc-file', filePath: 'src/app.js', scope: 'file', body: 'file note' },
       { id: 'rc-other', filePath: 'other.js', scope: 'file', body: 'not mine' },
     ];
@@ -150,13 +158,7 @@ describe('DiffView', () => {
   });
 
   it('shows the Viewed checkbox and forwards toggles', () => {
-    render(
-      <DiffView
-        file={baseFile}
-        viewedFiles={new Set(['src/app.js'])}
-        {...handlers}
-      />,
-    );
+    render(<DiffView file={baseFile} viewedFiles={new Set(['src/app.js'])} {...handlers} />);
     const checkbox = screen.getByLabelText('Mark src/app.js as viewed');
     expect(checkbox.checked).toBe(true);
     fireEvent.click(checkbox);
@@ -167,9 +169,7 @@ describe('DiffView', () => {
     const comments = [
       { id: 'rc-1', filePath: 'src/app.js', line: 1, side: 'right', scope: 'line', body: 'note' },
     ];
-    render(
-      <DiffView file={baseFile} comments={comments} viewedFiles={new Set()} {...handlers} />,
-    );
+    render(<DiffView file={baseFile} comments={comments} viewedFiles={new Set()} {...handlers} />);
     fireEvent.click(screen.getByLabelText('Collapse file diff'));
     expect(screen.getByText('Diff collapsed · 1 threads on lines')).toBeTruthy();
     expect(screen.queryByText(/@@ -1,3 \+1,4 @@/)).toBeNull();
@@ -177,7 +177,11 @@ describe('DiffView', () => {
 
   it('renders the binary and too-large states without a diff body', () => {
     const { rerender } = render(
-      <DiffView file={{ ...baseFile, binary: true, diff: 'Binary files differ' }} viewedFiles={new Set()} {...handlers} />,
+      <DiffView
+        file={{ ...baseFile, binary: true, diff: 'Binary files differ' }}
+        viewedFiles={new Set()}
+        {...handlers}
+      />,
     );
     expect(screen.getByText('Binary file not shown.')).toBeTruthy();
 
@@ -210,19 +214,31 @@ describe('DiffView', () => {
 
   it('marks threads stale when headSha mismatches (A6)', () => {
     const comments = [
-      { id: 'rc-1', filePath: 'src/app.js', line: 1, side: 'right', scope: 'line', headSha: 'old-sha', body: 'note' },
+      {
+        id: 'rc-1',
+        filePath: 'src/app.js',
+        line: 1,
+        side: 'right',
+        scope: 'line',
+        headSha: 'old-sha',
+        body: 'note',
+      },
     ];
     const { container } = render(
-      <DiffView file={baseFile} comments={comments} viewedFiles={new Set()} {...handlers} headSha="new-sha" />,
+      <DiffView
+        file={baseFile}
+        comments={comments}
+        viewedFiles={new Set()}
+        {...handlers}
+        headSha="new-sha"
+      />,
     );
     expect(screen.getByText('Outdated')).toBeTruthy();
     expect(threadFor(container, 'rc-1')).toBeTruthy();
   });
 
   it('hides comment affordances when canComment is false (read-only)', () => {
-    render(
-      <DiffView file={baseFile} viewedFiles={new Set()} {...handlers} canComment={false} />,
-    );
+    render(<DiffView file={baseFile} viewedFiles={new Set()} {...handlers} canComment={false} />);
     expect(screen.queryByLabelText(/Add comment on new line/)).toBeNull();
     expect(screen.queryByLabelText('Comment on file src/app.js')).toBeNull();
     // Viewed checkbox stays available in read-only mode.

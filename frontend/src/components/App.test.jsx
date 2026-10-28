@@ -288,9 +288,7 @@ test('keyboard shortcut S opens the System Settings screen with the Harness tab'
     await waitFor(() => {
       expect(screen.getByTestId('system-settings-page')).toBeInTheDocument();
     });
-    expect(
-      screen.getByRole('heading', { level: 1, name: 'System Settings' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'System Settings' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Harness' })).toBeInTheDocument();
     // The Harness tab is live: rows render from the registry, each with an
     // Enabled toggle — this is the reachability proof for the feature.

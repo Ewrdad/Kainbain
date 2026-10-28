@@ -6,7 +6,10 @@ export function DiffStatBadge({ entry }) {
   return (
     <>
       {' • '}
-      <span className="font-mono" title={`${entry.additions} lines added, ${entry.deletions} lines removed`}>
+      <span
+        className="font-mono"
+        title={`${entry.additions} lines added, ${entry.deletions} lines removed`}
+      >
         <span className="text-primary font-bold">+{entry.additions}</span>{' '}
         <span className="text-error">-{entry.deletions}</span>
       </span>

@@ -12,10 +12,7 @@ import {
   adaptTaskEntry,
   excludeToolMirrorLinesWhenToolCardsShown,
 } from './adapters';
-import {
-  liveProcessLogs,
-  structuredTaskEntries,
-} from './__fixtures__';
+import { liveProcessLogs, structuredTaskEntries } from './__fixtures__';
 
 describe('adaptTaskEntry', () => {
   test('preserves id/ts/turn/text/meta and classifies', () => {
@@ -139,7 +136,9 @@ describe('null/undefined safety', () => {
     expect(excludeToolMirrorLinesWhenToolCardsShown(undefined)).toEqual([]);
     expect(excludeToolMirrorLinesWhenToolCardsShown(null, { showToolCards: false })).toEqual([]);
     // Null options defaults to showToolCards: true
-    expect(excludeToolMirrorLinesWhenToolCardsShown([{ tag: '[TOOL]', source: 'process-live' }], null)).toEqual([]);
+    expect(
+      excludeToolMirrorLinesWhenToolCardsShown([{ tag: '[TOOL]', source: 'process-live' }], null),
+    ).toEqual([]);
   });
 });
 

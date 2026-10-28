@@ -57,12 +57,10 @@ describe('light-theme muted text on card surfaces holds 7:1 (WCAG 1.4.6)', () =>
     const cardSurfaces = ['#ffffff', '#f8fafc'];
     for (const bg of cardSurfaces) {
       for (const hex of hexes) {
-        expect(
-          ratio(hex, bg),
-          `${hex} must hold 7:1 on card surface ${bg}`,
-        ).toBeGreaterThanOrEqual(7);
+        expect(ratio(hex, bg), `${hex} must hold 7:1 on card surface ${bg}`).toBeGreaterThanOrEqual(
+          7,
+        );
       }
     }
   });
 });
-

@@ -77,14 +77,30 @@ function installPushMocks({ permission = 'default', subscription = null } = {}) 
 }
 
 function removePushMocks() {
-  try { delete window.serviceWorker; } catch {}
-  try { delete window.PushManager; } catch {}
-  try { delete window.Notification; } catch {}
-  try { delete window.isSecureContext; } catch {}
-  try { delete window.navigator.serviceWorker; } catch {}
-  try { delete window.navigator.PushManager; } catch {}
-  try { delete window.navigator.Notification; } catch {}
-  try { delete window.navigator.isSecureContext; } catch {}
+  try {
+    delete window.serviceWorker;
+  } catch {}
+  try {
+    delete window.PushManager;
+  } catch {}
+  try {
+    delete window.Notification;
+  } catch {}
+  try {
+    delete window.isSecureContext;
+  } catch {}
+  try {
+    delete window.navigator.serviceWorker;
+  } catch {}
+  try {
+    delete window.navigator.PushManager;
+  } catch {}
+  try {
+    delete window.navigator.Notification;
+  } catch {}
+  try {
+    delete window.navigator.isSecureContext;
+  } catch {}
 }
 
 beforeEach(() => {
@@ -133,10 +149,11 @@ describe('pushNotifications service', () => {
   });
 
   test('getSubscriptionState reports registered:true when the server has the endpoint', async () => {
-    installPushMocks({ permission: 'granted', subscription: { endpoint: 'https://example.push/sub-1' } });
-    fetch.mockResolvedValue(
-      jsonFetchResponse({ ok: true, registered: true }),
-    );
+    installPushMocks({
+      permission: 'granted',
+      subscription: { endpoint: 'https://example.push/sub-1' },
+    });
+    fetch.mockResolvedValue(jsonFetchResponse({ ok: true, registered: true }));
     const state = await getSubscriptionState();
     expect(state).toMatchObject({
       supported: true,
@@ -152,7 +169,10 @@ describe('pushNotifications service', () => {
   });
 
   test('getSubscriptionState self-heals a local subscription missing on the server', async () => {
-    installPushMocks({ permission: 'granted', subscription: { endpoint: 'https://example.push/sub-1' } });
+    installPushMocks({
+      permission: 'granted',
+      subscription: { endpoint: 'https://example.push/sub-1' },
+    });
     fetch.mockImplementation(async (url) => {
       if (String(url).includes('/push/subscription-status')) {
         return jsonFetchResponse({ ok: true, registered: false });
@@ -174,7 +194,10 @@ describe('pushNotifications service', () => {
   });
 
   test('getSubscriptionState reports registered:false when self-heal cannot repair', async () => {
-    installPushMocks({ permission: 'granted', subscription: { endpoint: 'https://example.push/sub-1' } });
+    installPushMocks({
+      permission: 'granted',
+      subscription: { endpoint: 'https://example.push/sub-1' },
+    });
     fetch.mockImplementation(async (url) => {
       if (String(url).includes('/push/subscription-status')) {
         return jsonFetchResponse({ ok: true, registered: false });
@@ -186,7 +209,10 @@ describe('pushNotifications service', () => {
   });
 
   test('getSubscriptionState degrades to registered:null when the check fails', async () => {
-    installPushMocks({ permission: 'granted', subscription: { endpoint: 'https://example.push/sub-1' } });
+    installPushMocks({
+      permission: 'granted',
+      subscription: { endpoint: 'https://example.push/sub-1' },
+    });
     fetch.mockRejectedValue(new Error('network down'));
     const state = await getSubscriptionState();
     expect(state).toMatchObject({ subscribed: true, registered: null });
@@ -263,7 +289,12 @@ describe('pushNotifications service', () => {
     });
 
     test('returns subscribed & registered when local subscription exists and verified registered', () => {
-      const desc = describePushState({ supported: true, permission: 'granted', subscribed: true, registered: true });
+      const desc = describePushState({
+        supported: true,
+        permission: 'granted',
+        subscribed: true,
+        registered: true,
+      });
       expect(desc).toMatchObject({
         label: 'Subscribed & registered',
         tone: 'ok',
@@ -273,7 +304,12 @@ describe('pushNotifications service', () => {
     });
 
     test('warns and offers a re-register action when the server is missing the subscription', () => {
-      const desc = describePushState({ supported: true, permission: 'granted', subscribed: true, registered: false });
+      const desc = describePushState({
+        supported: true,
+        permission: 'granted',
+        subscribed: true,
+        registered: false,
+      });
       expect(desc).toMatchObject({
         label: 'Not registered on server',
         tone: 'warning',
@@ -284,7 +320,12 @@ describe('pushNotifications service', () => {
     });
 
     test('returns subscribed when registered status is null (unverified/degraded)', () => {
-      const desc = describePushState({ supported: true, permission: 'granted', subscribed: true, registered: null });
+      const desc = describePushState({
+        supported: true,
+        permission: 'granted',
+        subscribed: true,
+        registered: null,
+      });
       expect(desc).toMatchObject({
         label: 'Subscribed',
         tone: 'ok',
@@ -335,7 +376,11 @@ describe('pushNotifications service', () => {
     window.Notification.requestPermission = vi.fn().mockResolvedValue('granted');
     fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ publicKey: VAPID_KEY }) });
     // Server-side subscribe POST fails (e.g. SPA-fallback HTML response).
-    fetch.mockResolvedValueOnce({ ok: false, status: 200, json: async () => ({ error: 'unexpected token' }) });
+    fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 200,
+      json: async () => ({ error: 'unexpected token' }),
+    });
 
     await expect(subscribeUser()).rejects.toThrow(/Could not register the push subscription/);
     expect(unsubscribe).toHaveBeenCalledTimes(1);
@@ -369,7 +414,11 @@ describe('pushNotifications service', () => {
       permission: 'granted',
       subscription: { endpoint: 'https://example.push/sub-2', unsubscribe: unsubscribe2 },
     });
-    fetch.mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ error: 'Bad request' }) });
+    fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({ error: 'Bad request' }),
+    });
     await expect(unsubscribeUser()).rejects.toThrow('Bad request');
   });
 
@@ -387,7 +436,11 @@ describe('pushNotifications service', () => {
 
   test('failed requests throw with the server error', async () => {
     installPushMocks();
-    fetch.mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ error: 'Bad keys' }) });
+    fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({ error: 'Bad keys' }),
+    });
     await expect(getSettings()).rejects.toThrow('Bad keys');
   });
 
@@ -397,7 +450,8 @@ describe('pushNotifications service', () => {
       ok: true,
       json: async () => ({
         ok: false,
-        error: 'No push subscriptions registered on the server — try disabling and re-enabling push notifications',
+        error:
+          'No push subscriptions registered on the server — try disabling and re-enabling push notifications',
       }),
     });
     await expect(sendTestPush()).rejects.toThrow(/No push subscriptions/);
@@ -424,8 +478,13 @@ describe('pushNotifications service', () => {
     return {
       ok: status >= 200 && status < 300,
       status,
-      headers: { get: (name) => (String(name).toLowerCase() === 'content-type' ? 'text/html; charset=utf-8' : '') },
-      json: async () => { throw new SyntaxError('Unexpected token < in JSON'); },
+      headers: {
+        get: (name) =>
+          String(name).toLowerCase() === 'content-type' ? 'text/html; charset=utf-8' : '',
+      },
+      json: async () => {
+        throw new SyntaxError('Unexpected token < in JSON');
+      },
       text: async () => '<!doctype html><html></html>',
     };
   }
@@ -444,20 +503,26 @@ describe('pushNotifications service', () => {
     window.Notification.requestPermission = vi.fn().mockResolvedValue('granted');
     fetch.mockResolvedValueOnce(htmlResponse(200));
 
-    await expect(subscribeUser()).rejects.toThrow(/does not include push-notification support.*Redeploy/i);
+    await expect(subscribeUser()).rejects.toThrow(
+      /does not include push-notification support.*Redeploy/i,
+    );
     expect(subscribe).not.toHaveBeenCalled();
   });
 
   test('sendTestPush reports redeploy guidance when the test endpoint answers with HTML', async () => {
     installPushMocks();
     fetch.mockResolvedValueOnce(htmlResponse(200));
-    await expect(sendTestPush()).rejects.toThrow(/does not include push-notification support.*Redeploy/i);
+    await expect(sendTestPush()).rejects.toThrow(
+      /does not include push-notification support.*Redeploy/i,
+    );
   });
 
   test('getSettings reports redeploy guidance when the settings endpoint answers with HTML', async () => {
     installPushMocks();
     fetch.mockResolvedValueOnce(htmlResponse(200));
-    await expect(getSettings()).rejects.toThrow(/does not include push-notification support.*Redeploy/i);
+    await expect(getSettings()).rejects.toThrow(
+      /does not include push-notification support.*Redeploy/i,
+    );
   });
 
   test('subscribeUser reports redeploy guidance when /sw.js serves HTML', async () => {
@@ -525,7 +590,9 @@ describe('pushNotifications service', () => {
     });
     window.Notification.requestPermission = vi.fn().mockResolvedValue('granted');
     fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ publicKey: VAPID_KEY }) });
-    fetch.mockResolvedValueOnce(jsonResponse({ ok: true, subscription: { endpoint: 'https://example.push/other' } }));
+    fetch.mockResolvedValueOnce(
+      jsonResponse({ ok: true, subscription: { endpoint: 'https://example.push/other' } }),
+    );
 
     await expect(subscribeUser()).rejects.toThrow(/Could not register the push subscription/);
     expect(unsubscribe).toHaveBeenCalledTimes(1);
@@ -541,10 +608,14 @@ describe('pushNotifications service', () => {
   test('push API 404s report redeploy guidance instead of "Not found"', async () => {
     installPushMocks();
     fetch.mockResolvedValueOnce(notFoundResponse());
-    await expect(getSettings()).rejects.toThrow(/does not include push-notification support.*Redeploy/i);
+    await expect(getSettings()).rejects.toThrow(
+      /does not include push-notification support.*Redeploy/i,
+    );
 
     fetch.mockResolvedValueOnce(notFoundResponse());
-    await expect(sendTestPush()).rejects.toThrow(/does not include push-notification support.*Redeploy/i);
+    await expect(sendTestPush()).rejects.toThrow(
+      /does not include push-notification support.*Redeploy/i,
+    );
   });
 
   test('subscribeUser wraps a push API 404 as a failed registration with redeploy guidance', async () => {
@@ -559,7 +630,9 @@ describe('pushNotifications service', () => {
     fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ publicKey: VAPID_KEY }) });
     fetch.mockResolvedValueOnce(notFoundResponse());
 
-    await expect(subscribeUser()).rejects.toThrow(/does not include push-notification support.*Redeploy/i);
+    await expect(subscribeUser()).rejects.toThrow(
+      /does not include push-notification support.*Redeploy/i,
+    );
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 
@@ -582,7 +655,10 @@ describe('pushNotifications service', () => {
   test('subscribeUser waits for service-worker readiness on first install', async () => {
     const subscribe = vi.fn().mockResolvedValue({
       endpoint: 'https://example.push/sub-ready',
-      toJSON: () => ({ endpoint: 'https://example.push/sub-ready', keys: { p256dh: 'a', auth: 'b' } }),
+      toJSON: () => ({
+        endpoint: 'https://example.push/sub-ready',
+        keys: { p256dh: 'a', auth: 'b' },
+      }),
     });
     const readyRegistration = { active: { state: 'activated' }, pushManager: { subscribe } };
     installPushMocks({ permission: 'granted' });
@@ -598,7 +674,10 @@ describe('pushNotifications service', () => {
     fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ publicKey: VAPID_KEY }) });
     fetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ ok: true, subscription: { endpoint: 'https://example.push/sub-ready' } }),
+      json: async () => ({
+        ok: true,
+        subscription: { endpoint: 'https://example.push/sub-ready' },
+      }),
     });
 
     await subscribeUser();
@@ -643,7 +722,9 @@ describe('pushNotifications service', () => {
         result: {
           delivered: 0,
           subscriptions: 1,
-          errors: [{ endpoint: 'fcm.googleapis.com', statusCode: 401, message: 'VAPID key mismatch' }],
+          errors: [
+            { endpoint: 'fcm.googleapis.com', statusCode: 401, message: 'VAPID key mismatch' },
+          ],
         },
       }),
     });
@@ -715,7 +796,10 @@ describe('pushNotifications service', () => {
   test('subscribeUser reports an invalid server push key without touching PushManager', async () => {
     const { subscribe } = installPushMocks({ permission: 'granted' });
     window.Notification.requestPermission = vi.fn().mockResolvedValue('granted');
-    fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ publicKey: '!!!not-base64!!!' }) });
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ publicKey: '!!!not-base64!!!' }),
+    });
 
     await expect(subscribeUser()).rejects.toThrow(/invalid push key.*edeploy/i);
     expect(subscribe).not.toHaveBeenCalled();
@@ -732,7 +816,8 @@ describe('pushNotifications service', () => {
   test('subscribeUser explains the Home-Screen requirement on iOS when subscription is rejected', async () => {
     const { subscribe } = installPushMocks({ permission: 'granted' });
     Object.defineProperty(window.navigator, 'userAgent', {
-      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      value:
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
       configurable: true,
     });
     try {
@@ -744,7 +829,9 @@ describe('pushNotifications service', () => {
 
       await expect(subscribeUser()).rejects.toThrow(/Add to Home Screen/i);
     } finally {
-      try { delete window.navigator.userAgent; } catch {}
+      try {
+        delete window.navigator.userAgent;
+      } catch {}
     }
   });
 });

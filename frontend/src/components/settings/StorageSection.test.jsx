@@ -28,14 +28,28 @@ vi.mock('../../services/clipboard', () => ({
 }));
 
 function entry(key, env, value, source = 'env', doc = `${key} doc`) {
-  return { key, env, value, default: value, type: 'path', group: 'storage', doc, source, secret: false };
+  return {
+    key,
+    env,
+    value,
+    default: value,
+    type: 'path',
+    group: 'storage',
+    doc,
+    source,
+    secret: false,
+  };
 }
 
 const CONFIG_PAYLOAD = vi.hoisted(() => ({
   entries: [
     entry('projectsRoot', 'PROJECTS_ROOT', '/home/server/projects'),
     entry('siteDocsDir', 'KAINBAIN_SITE_DOCS', '/home/server/projects/kainbain/site-docs'),
-    entry('notesSpaceRoot', 'NOTES_SPACE_ROOT', '/home/server/apps/notes/silverbullet/space/Projects/Personal'),
+    entry(
+      'notesSpaceRoot',
+      'NOTES_SPACE_ROOT',
+      '/home/server/apps/notes/silverbullet/space/Projects/Personal',
+    ),
     entry('agyBin', 'KAINBAIN_AGY_BIN', 'agy'),
     entry('museBin', 'KAINBAIN_MUSE_BIN', 'muse'),
     entry('opencodeBin', 'KAINBAIN_OPENCODE_BIN', 'opencode'),
@@ -121,9 +135,7 @@ test('a location the payload omits stays visible, padded as (not set) with its e
   // silently dropped — it pads in as an honest placeholder so the four
   // requested locations keep rendering.
   getConfigSpec.mockResolvedValue({
-    entries: CONFIG_PAYLOAD.entries.filter(
-      (e) => !['notesSpaceRoot', 'distDir'].includes(e.key),
-    ),
+    entries: CONFIG_PAYLOAD.entries.filter((e) => !['notesSpaceRoot', 'distDir'].includes(e.key)),
     warnings: [],
   });
   renderWithKainBain(<StorageSection />);
@@ -132,7 +144,9 @@ test('a location the payload omits stays visible, padded as (not set) with its e
   expect(screen.getByTestId('storage-group-docs')).toBeInTheDocument();
   expect(screen.getByLabelText('Centralised docs location')).toHaveValue('(not set)');
   expect(screen.getByText('NOTES_SPACE_ROOT · missing')).toBeInTheDocument();
-  expect(screen.getByText(/Not reported by the running backend — NOTES_SPACE_ROOT/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/Not reported by the running backend — NOTES_SPACE_ROOT/),
+  ).toBeInTheDocument();
   // Nothing to copy when the value does not exist.
   expect(screen.getByRole('button', { name: 'Copy Centralised docs location' })).toBeDisabled();
 

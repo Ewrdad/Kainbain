@@ -195,7 +195,13 @@ export function selectRunnerEntries({ tasks, stages, engineState, isAgentRunning
  * @param {boolean} [args.isAgentRunning=false] - Agent-loop liveness flag.
  * @returns {Array<Object>} Runner entries (possibly empty, never null).
  ***/
-export const resolveRunnerBoxEntries = ({ runnerEntries = null, tasks, stages, engineState, isAgentRunning = false } = {}) => {
+export const resolveRunnerBoxEntries = ({
+  runnerEntries = null,
+  tasks,
+  stages,
+  engineState,
+  isAgentRunning = false,
+} = {}) => {
   if (runnerEntries !== null && runnerEntries !== undefined) return runnerEntries;
   try {
     return selectRunnerEntries({ tasks, stages, engineState, isAgentRunning });

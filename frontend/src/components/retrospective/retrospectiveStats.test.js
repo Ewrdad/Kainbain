@@ -93,9 +93,9 @@ describe('retrospectiveStats', () => {
     expect(selectVisibleTasks(tasks, { statusFilter: 'completed' }).map((t) => t.id)).toEqual([
       'task-done-1',
     ]);
-    expect(
-      selectVisibleTasks(tasks, { workflowFilter: 'wf-experiment' }).map((t) => t.id),
-    ).toEqual(['task-active-3']);
+    expect(selectVisibleTasks(tasks, { workflowFilter: 'wf-experiment' }).map((t) => t.id)).toEqual(
+      ['task-active-3'],
+    );
   });
 
   it('derives stats-strip counts', () => {

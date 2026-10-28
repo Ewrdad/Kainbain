@@ -134,8 +134,7 @@ function normalizePreferenceValue(key, value) {
  * @returns {{ preferences: Object, dropped: string[] }} Sanitized copy plus the dropped key names.
  */
 export function sanitizePreferences(input, base = DEFAULT_UI_PREFERENCES) {
-  const safeBase =
-    base && typeof base === 'object' ? base : DEFAULT_UI_PREFERENCES;
+  const safeBase = base && typeof base === 'object' ? base : DEFAULT_UI_PREFERENCES;
   const next = { ...DEFAULT_UI_PREFERENCES, ...safeBase };
   const dropped = [];
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
@@ -173,9 +172,7 @@ export function applyPreferencesToDom(prefs) {
   const source = prefs && typeof prefs === 'object' ? prefs : {};
   /* eslint-disable security/detect-object-injection -- pick is only ever called with compile-time literal keys below */
   const pick = (key) =>
-    isValidPreferenceValue(key, source[key])
-      ? source[key]
-      : DEFAULT_UI_PREFERENCES[key];
+    isValidPreferenceValue(key, source[key]) ? source[key] : DEFAULT_UI_PREFERENCES[key];
   /* eslint-enable security/detect-object-injection */
 
   const root = document.documentElement;

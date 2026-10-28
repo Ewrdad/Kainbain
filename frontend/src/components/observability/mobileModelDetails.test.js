@@ -86,7 +86,7 @@ test("harness-managed stage (modelSelection 'none') hides only the model pill", 
   expect(details.showProviderLine).toBe(false);
 });
 
-test("harness-managed alias run hides the model pill even when a stale model field leaks through", () => {
+test('harness-managed alias run hides the model pill even when a stale model field leaks through', () => {
   const details = resolveMobileModelDetails(
     {
       id: 't1',
@@ -94,7 +94,12 @@ test("harness-managed alias run hides the model pill even when a stale model fie
       harness: 'muse',
       model: 'antigravity::google::gemini-2.5-flash',
       modelSelection: 'none',
-      modelDetails: { provider: 'google', id: 'gemini-2.5-flash', key: 'antigravity::google::gemini-2.5-flash', source: 'stage' },
+      modelDetails: {
+        provider: 'google',
+        id: 'gemini-2.5-flash',
+        key: 'antigravity::google::gemini-2.5-flash',
+        source: 'stage',
+      },
       alias: { name: 'worker' },
       aliasMissing: null,
     },

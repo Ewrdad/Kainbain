@@ -49,9 +49,7 @@ describe('HarnessReliabilityWidget', () => {
     render(<HarnessReliabilityWidget reliability={[healthyEntry, failingEntry]} />);
 
     const healthy = within(screen.getByTestId('reliability-row-pi'));
-    expect(healthy.getByTestId('reliability-line-pi')).toHaveTextContent(
-      'All-time 100% · 40 runs',
-    );
+    expect(healthy.getByTestId('reliability-line-pi')).toHaveTextContent('All-time 100% · 40 runs');
     expect(healthy.getByText(/Last 10 runs/)).toHaveTextContent('100%');
     expect(healthy.getByText(/Infra fails/)).toHaveTextContent('0');
 

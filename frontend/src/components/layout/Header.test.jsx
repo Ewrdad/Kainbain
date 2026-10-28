@@ -425,7 +425,9 @@ test('opens adopt project modal and registers the directory on submit', async ()
 });
 
 test('adopt modal omits blank optional fields and shows a registration error inline', async () => {
-  const registerProject = vi.fn().mockRejectedValue(new Error("Project path '/nope' does not exist"));
+  const registerProject = vi
+    .fn()
+    .mockRejectedValue(new Error("Project path '/nope' does not exist"));
   renderWithKainBain(<Header />, {
     projects,
     activeProjectId: 'proj-1',

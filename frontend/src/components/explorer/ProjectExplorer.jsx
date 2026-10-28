@@ -232,8 +232,7 @@ export function ProjectExplorer() {
   // any form — https, ssh://, scp-like — never fabricated: hidden when
   // absent or unparseable). Prefers the server-derived repoUrl, falls back
   // to the stored git URL.
-  const gitRemoteWebUrl =
-    getRepoHostFileUrl(activeProject?.repoUrl || gitUrl) || '';
+  const gitRemoteWebUrl = getRepoHostFileUrl(activeProject?.repoUrl || gitUrl) || '';
   const lines = fileContent?.content ? fileContent.content.split('\n') : [];
   const previewKind = getFileKind(fileContent ?? selectedFile ?? {});
   const isVisualPreview = previewKind === 'image' || previewKind === 'unsupported-binary';

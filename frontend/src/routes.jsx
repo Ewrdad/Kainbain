@@ -61,7 +61,11 @@ export function AppRoutes() {
 function SingularTaskRedirect() {
   const { id } = useParams();
   const { pathname } = useLocation();
-  const suffix = pathname.endsWith('/review') ? '/review' : pathname.endsWith('/survey') ? '/survey' : '';
+  const suffix = pathname.endsWith('/review')
+    ? '/review'
+    : pathname.endsWith('/survey')
+      ? '/survey'
+      : '';
   return <Navigate to={`/tasks/${id}${suffix}`} replace />;
 }
 

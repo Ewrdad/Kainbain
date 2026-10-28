@@ -93,9 +93,7 @@ export function HarnessSection({
   const [harnessList, setHarnessList] = useState([]);
   const [loading, setLoading] = useState(() => typeof api.getHarnesses === 'function');
   const [loadError, setLoadError] = useState(() =>
-    typeof api.getHarnesses === 'function'
-      ? ''
-      : 'Harness discovery is unavailable in this build.',
+    typeof api.getHarnesses === 'function' ? '' : 'Harness discovery is unavailable in this build.',
   );
   // Probe results per harness id: { models, discoveryError? } on success,
   // { error: true } on failure, absent when not probed yet. Feeds the badge
@@ -127,8 +125,7 @@ export function HarnessSection({
       try {
         const res = await api.getHarnessModels(id, refresh);
         const models = Array.isArray(res?.models) ? res.models : [];
-        const discoveryError =
-          res?.discoveryError?.message ? res.discoveryError : null;
+        const discoveryError = res?.discoveryError?.message ? res.discoveryError : null;
         setProbes((prev) => ({ ...prev, [id]: { models, discoveryError } }));
       } catch {
         setProbes((prev) => ({ ...prev, [id]: { error: true } }));
@@ -310,19 +307,18 @@ export function HarnessSection({
   return (
     <div data-testid="harness-section">
       <p className="mt-3 px-3 py-2 text-[11px] font-mono text-text-muted bg-surface-container-high border border-border-standard rounded-sm">
-        Enabled and auto-detect choices save automatically. Enabled controls which
-        harnesses are offered; auto-detect probes availability without ever overriding
-        an explicit off. The default-harness selector and the timeout / bypass controls
-        below are draft-only until backend persistence lands.
+        Enabled and auto-detect choices save automatically. Enabled controls which harnesses are
+        offered; auto-detect probes availability without ever overriding an explicit off. The
+        default-harness selector and the timeout / bypass controls below are draft-only until
+        backend persistence lands.
       </p>
       <p data-testid="harness-reliability-note" className="mt-2 text-[11px] text-text-muted">
-        Reliability counts timeouts and harness errors as failures; deliberate agent
-        decisions to fail a stage are excluded from the rate.
+        Reliability counts timeouts and harness errors as failures; deliberate agent decisions to
+        fail a stage are excluded from the rate.
       </p>
       <p data-testid="harness-tier-legend" className="mt-2 text-[11px] text-text-muted">
-        Support tiers describe integration depth, not model quality — Tier 1 direct
-        in-KainBain integration → Tier 4 separate invocation. See
-        docs/EngineDetails/HarnessSupportTeirs.md.
+        Support tiers describe integration depth, not model quality — Tier 1 direct in-KainBain
+        integration → Tier 4 separate invocation. See docs/EngineDetails/HarnessSupportTeirs.md.
       </p>
       {modelsRefreshing && (
         <p
@@ -335,9 +331,7 @@ export function HarnessSection({
       )}
       {reliabilityError && (
         <div data-testid="harness-reliability-error" className="mt-2 flex items-center gap-3">
-          <p className="text-[11px] text-text-muted">
-            Could not load harness reliability.
-          </p>
+          <p className="text-[11px] text-text-muted">Could not load harness reliability.</p>
           <button
             type="button"
             onClick={loadReliability}

@@ -34,9 +34,7 @@ describe('isNewlyCreatedTask', () => {
   });
 
   test('just inside the window counts as newly created', () => {
-    expect(
-      isNewlyCreatedTask(isoAt(NOW_MS - NEW_TASK_EDIT_WINDOW_MS + 1), NOW_MS),
-    ).toBe(true);
+    expect(isNewlyCreatedTask(isoAt(NOW_MS - NEW_TASK_EDIT_WINDOW_MS + 1), NOW_MS)).toBe(true);
   });
 
   test('exactly on the boundary counts as newly created (inclusive)', () => {
@@ -44,9 +42,7 @@ describe('isNewlyCreatedTask', () => {
   });
 
   test('just outside the window counts as old', () => {
-    expect(
-      isNewlyCreatedTask(isoAt(NOW_MS - NEW_TASK_EDIT_WINDOW_MS - 1), NOW_MS),
-    ).toBe(false);
+    expect(isNewlyCreatedTask(isoAt(NOW_MS - NEW_TASK_EDIT_WINDOW_MS - 1), NOW_MS)).toBe(false);
   });
 
   test('an old task is not newly created', () => {

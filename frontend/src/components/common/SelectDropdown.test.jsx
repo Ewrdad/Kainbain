@@ -28,13 +28,7 @@ describe('SelectDropdown Component', () => {
   });
 
   it('renders the label of the currently selected value', () => {
-    render(
-      <SelectDropdown
-        options={mockOptions}
-        value="stage-2"
-        ariaLabel="Stage Selector"
-      />,
-    );
+    render(<SelectDropdown options={mockOptions} value="stage-2" ariaLabel="Stage Selector" />);
 
     expect(screen.getByRole('combobox', { name: 'Stage Selector' })).toHaveTextContent(
       'Implementation Stage',
@@ -179,11 +173,7 @@ describe('SelectDropdown Component', () => {
         data-testid="overflow-container"
         style={{ overflow: 'hidden', height: '40px', width: '120px', position: 'relative' }}
       >
-        <SelectDropdown
-          options={mockOptions}
-          value="stage-1"
-          ariaLabel="Constrained Dropdown"
-        />
+        <SelectDropdown options={mockOptions} value="stage-1" ariaLabel="Constrained Dropdown" />
       </div>,
     );
 
@@ -302,10 +292,7 @@ describe('SelectDropdown Component', () => {
     const trigger = screen.getByRole('combobox', { name: 'Model Picker' });
     fireEvent.click(trigger);
 
-    const optionIds = () =>
-      screen
-        .getAllByRole('option')
-        .map((o) => o.id);
+    const optionIds = () => screen.getAllByRole('option').map((o) => o.id);
     const validIds = optionIds();
 
     // Walk down through every position and back up; at each step the

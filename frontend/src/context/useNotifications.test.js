@@ -20,7 +20,10 @@ describe('useNotifications', () => {
     const { result } = renderHook(() => useNotifications());
     let id;
     act(() => {
-      id = result.current.addNotification({ message: 'Task dispatch started', title: 'Task Dispatched' });
+      id = result.current.addNotification({
+        message: 'Task dispatch started',
+        title: 'Task Dispatched',
+      });
     });
 
     expect(id).toBeDefined();
@@ -106,8 +109,14 @@ describe('useNotifications', () => {
 
     act(() => {
       result.current.addNotification({ title: 'Heartbeat', message: 'Keepalive ping' });
-      result.current.addNotification({ title: 'Polling update', message: 'Periodic background poll' });
-      result.current.addNotification({ title: 'Task Approved', message: 'Stage approved by reviewer' });
+      result.current.addNotification({
+        title: 'Polling update',
+        message: 'Periodic background poll',
+      });
+      result.current.addNotification({
+        title: 'Task Approved',
+        message: 'Stage approved by reviewer',
+      });
     });
 
     expect(result.current.notifications).toHaveLength(1);

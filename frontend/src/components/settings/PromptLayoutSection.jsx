@@ -46,7 +46,9 @@ export function PromptLayoutSection() {
     setLayout(raw);
     setSavedLayout(raw);
     setIsDefault(Boolean(state?.isDefault));
-    setConsecutiveFallbacks(typeof state?.consecutiveFallbacks === 'number' ? state.consecutiveFallbacks : 0);
+    setConsecutiveFallbacks(
+      typeof state?.consecutiveFallbacks === 'number' ? state.consecutiveFallbacks : 0,
+    );
     setDegraded(Boolean(state?.degraded));
   }, []);
 
@@ -136,7 +138,9 @@ export function PromptLayoutSection() {
   };
 
   const handleReset = async () => {
-    if (!window.confirm('Reset prompt layout to factory default? Any custom format will be lost.')) {
+    if (
+      !window.confirm('Reset prompt layout to factory default? Any custom format will be lost.')
+    ) {
       return;
     }
     setResetting(true);
@@ -179,8 +183,9 @@ export function PromptLayoutSection() {
             </span>
           </div>
           <p className="text-[11px] text-amber-300/90">
-            A syntax or rendering error occurred during task prompt dispatch. The engine automatically fell
-            back to the default prompt layout to keep tasks running. Please review the layout or reset it to default.
+            A syntax or rendering error occurred during task prompt dispatch. The engine
+            automatically fell back to the default prompt layout to keep tasks running. Please
+            review the layout or reset it to default.
           </p>
         </div>
       )}
@@ -192,7 +197,8 @@ export function PromptLayoutSection() {
           className="p-2.5 rounded-sm bg-surface-container-high border border-border-standard text-on-surface-variant flex items-center justify-between"
         >
           <span>
-            <strong className="text-on-surface">Custom layout active:</strong> Applied globally to all task prompts.
+            <strong className="text-on-surface">Custom layout active:</strong> Applied globally to
+            all task prompts.
           </span>
           <span className="text-[11px] text-text-muted">
             Tasks can run in canonical safe mode with <code>useDefaultLayout</code>.
@@ -208,8 +214,8 @@ export function PromptLayoutSection() {
             statusMessage.type === 'error'
               ? 'bg-red-950/40 border-red-700/60 text-red-200'
               : statusMessage.type === 'success'
-              ? 'bg-emerald-950/40 border-emerald-700/60 text-emerald-200'
-              : 'bg-surface-container-highest border-border-standard text-on-surface'
+                ? 'bg-emerald-950/40 border-emerald-700/60 text-emerald-200'
+                : 'bg-surface-container-highest border-border-standard text-on-surface'
           }`}
         >
           {statusMessage.text}
@@ -223,7 +229,8 @@ export function PromptLayoutSection() {
             Section Blocks (Click to insert at cursor)
           </span>
           <p className="text-[11px] text-text-muted mt-0.5">
-            Injects curated section headers and dynamic content. Contract sections cannot be dropped.
+            Injects curated section headers and dynamic content. Contract sections cannot be
+            dropped.
           </p>
           <div className="flex flex-wrap gap-1.5 mt-2">
             {SECTION_LAYOUT_TOKENS.map((token) => (
@@ -310,7 +317,10 @@ export function PromptLayoutSection() {
 
       {/* Validation Warnings & Errors */}
       {!validation.ok && (
-        <div data-testid="layout-errors" className="p-2.5 rounded-sm bg-red-950/40 border border-red-700/60 text-red-200 text-xs flex flex-col gap-1">
+        <div
+          data-testid="layout-errors"
+          className="p-2.5 rounded-sm bg-red-950/40 border border-red-700/60 text-red-200 text-xs flex flex-col gap-1"
+        >
           <strong className="font-bold">Cannot save layout:</strong>
           <ul className="list-disc list-inside space-y-0.5 text-[11px]">
             {validation.errors.map((err, idx) => (
@@ -321,7 +331,10 @@ export function PromptLayoutSection() {
       )}
 
       {validation.ok && validation.warnings.length > 0 && (
-        <div data-testid="layout-warnings" className="p-2.5 rounded-sm bg-amber-950/30 border border-amber-700/50 text-amber-200 text-xs flex flex-col gap-1">
+        <div
+          data-testid="layout-warnings"
+          className="p-2.5 rounded-sm bg-amber-950/30 border border-amber-700/50 text-amber-200 text-xs flex flex-col gap-1"
+        >
           <strong className="font-bold">Omitted section notices:</strong>
           <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-300/90">
             {validation.warnings.map((warn, idx) => (

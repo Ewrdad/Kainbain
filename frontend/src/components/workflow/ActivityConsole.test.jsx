@@ -163,9 +163,7 @@ test('console frame uses the shared dark terminal chrome', () => {
   expect(bar.className).toContain(CONSOLE_CHROME.outerBg);
   expect(bar.className).toContain(CONSOLE_CHROME.headerBorder);
 
-  const header = screen
-    .getByText('Live Agent Activity Console')
-    .closest('div.h-9');
+  const header = screen.getByText('Live Agent Activity Console').closest('div.h-9');
   expect(header.className).toContain(CONSOLE_CHROME.headerBg);
   expect(header.className).toContain(CONSOLE_CHROME.headerBorder);
   expect(screen.getByText('Live Agent Activity Console').className).toContain(
@@ -218,10 +216,7 @@ test('legacy board tag migrates to the errors lane', () => {
   ];
   renderConsole({ processLogs: logs });
   fireEvent.click(screen.getByTestId('log-filter-toggle'));
-  expect(screen.getByRole('button', { name: 'Errors' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  expect(screen.getByRole('button', { name: 'Errors' })).toHaveAttribute('aria-pressed', 'true');
   expect(screen.getByRole('button', { name: 'Direct output' })).toHaveAttribute(
     'aria-pressed',
     'false',

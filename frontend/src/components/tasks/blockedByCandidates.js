@@ -28,9 +28,7 @@ export function normalizeKbQuery(query) {
  * @returns {Array<Object>} Active, non-complete candidates.
  ***/
 export function filterBlockedByCandidates(tasks = [], selfId) {
-  return (tasks || []).filter(
-    (t) => String(t?.id) !== String(selfId) && !isTaskCompleted(t),
-  );
+  return (tasks || []).filter((t) => String(t?.id) !== String(selfId) && !isTaskCompleted(t));
 }
 
 /***

@@ -147,9 +147,7 @@ describe('fallback guarantees', () => {
 
   it('summarizeToolResult respects the budget on every hostile input', () => {
     for (const input of hostileInputs) {
-      expect(summarizeToolResult('bash', input, { maxLength: 80 }).length).toBeLessThanOrEqual(
-        80,
-      );
+      expect(summarizeToolResult('bash', input, { maxLength: 80 }).length).toBeLessThanOrEqual(80);
     }
   });
 
@@ -167,9 +165,7 @@ describe('fallback guarantees', () => {
 
   it('summarizeToolStart respects the budget on every hostile input', () => {
     for (const input of hostileInputs) {
-      expect(summarizeToolStart('bash', input, { maxLength: 120 }).length).toBeLessThanOrEqual(
-        120,
-      );
+      expect(summarizeToolStart('bash', input, { maxLength: 120 }).length).toBeLessThanOrEqual(120);
     }
   });
 

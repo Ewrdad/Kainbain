@@ -128,7 +128,10 @@ test('clicking Edit while the stage is executing reveals the next-stage warning 
 
   const editToggle = screen.getAllByRole('button', { name: 'Edit' })[0];
   // Discoverable before the click: the toggle explains the implication.
-  expect(editToggle).toHaveAttribute('title', expect.stringMatching(/only affects the next stage/i));
+  expect(editToggle).toHaveAttribute(
+    'title',
+    expect.stringMatching(/only affects the next stage/i),
+  );
   fireEvent.click(editToggle);
 
   expect(screen.getByRole('note')).toBeInTheDocument();
@@ -425,11 +428,7 @@ describe('TaskGoalSection image affordance', () => {
     // would leave only the last reference in the textarea.
     function Harness() {
       const [value, setValue] = React.useState('Goal text');
-      return (
-        <TaskGoalSection
-          {...makeImageProps({ title: value, onTitleChange: setValue })}
-        />
-      );
+      return <TaskGoalSection {...makeImageProps({ title: value, onTitleChange: setValue })} />;
     }
     renderWithKainBain(<Harness />);
     const input = document.querySelector('[data-testid="task-image-input"]');

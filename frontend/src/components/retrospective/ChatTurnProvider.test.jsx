@@ -8,10 +8,7 @@ import { ChatTurnProvider, chatReplyExcerpt } from './ChatTurnProvider';
 import { RetrospectiveProvider, useRetrospective } from './useRetrospective';
 import { RetrospectiveChat } from './RetrospectiveChat';
 import { saveStoredChat } from './useRetrospectiveChat';
-import {
-  retrospectiveTaskFixtures,
-  retrospectiveChatTurnFixture,
-} from './__fixtures__/index.js';
+import { retrospectiveTaskFixtures, retrospectiveChatTurnFixture } from './__fixtures__/index.js';
 import '@testing-library/jest-dom';
 
 vi.mock('../../services/api', async (importOriginal) => {
@@ -311,9 +308,13 @@ describe('ChatTurnProvider', () => {
     expect(screen.queryByTestId('retrospective-chat-working-output')).not.toBeInTheDocument();
     // Our turn: the tail scrolls into the card (and replaces, never appends twice).
     rerenderWithProgress({ turnId, tail: 'warming up…', _seq: 2 });
-    expect(screen.getByTestId('retrospective-chat-working-output')).toHaveTextContent('warming up…');
+    expect(screen.getByTestId('retrospective-chat-working-output')).toHaveTextContent(
+      'warming up…',
+    );
     rerenderWithProgress({ turnId, tail: 'warming up…\nalmost there', _seq: 3 });
-    expect(screen.getByTestId('retrospective-chat-working-output')).toHaveTextContent('almost there');
+    expect(screen.getByTestId('retrospective-chat-working-output')).toHaveTextContent(
+      'almost there',
+    );
 
     // The settled reply replaces the card exactly once.
     resolveTurn(retrospectiveChatTurnFixture.response);

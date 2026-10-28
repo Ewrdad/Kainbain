@@ -12,17 +12,13 @@ import '@testing-library/jest-dom';
 
 describe('KpiEngineWidget', () => {
   it('shows the model when one is reported', () => {
-    render(
-      <KpiEngineWidget activeTask={{ model: 'pi::provider::model:cloud', harness: 'pi' }} />,
-    );
+    render(<KpiEngineWidget activeTask={{ model: 'pi::provider::model:cloud', harness: 'pi' }} />);
     expect(screen.getByText('Model: pi::provider::model:cloud')).toBeInTheDocument();
   });
 
   it('shows the harness when no model is reported (harness-managed stage)', () => {
     render(
-      <KpiEngineWidget
-        activeTask={{ model: null, harness: 'custom', modelSelection: 'none' }}
-      />,
+      <KpiEngineWidget activeTask={{ model: null, harness: 'custom', modelSelection: 'none' }} />,
     );
     expect(screen.getByText('Harness: custom')).toBeInTheDocument();
     expect(screen.queryByText(/Model:/)).not.toBeInTheDocument();
@@ -65,7 +61,12 @@ describe('KpiEngineWidget', () => {
   it('shows the unresolved alias with the fallback identity', () => {
     render(
       <KpiEngineWidget
-        activeTask={{ model: 'pi::provider::base', harness: 'pi', alias: null, aliasMissing: 'ghost' }}
+        activeTask={{
+          model: 'pi::provider::base',
+          harness: 'pi',
+          alias: null,
+          aliasMissing: 'ghost',
+        }}
       />,
     );
     expect(screen.getByText('alias: ghost (unresolved)')).toBeInTheDocument();

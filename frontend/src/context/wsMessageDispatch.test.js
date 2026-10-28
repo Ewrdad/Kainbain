@@ -113,7 +113,9 @@ describe('dispatchWsMessage', () => {
 
   it('ignores CHAT_PROGRESS frames when no progress ref is wired', () => {
     const { ctx } = setup();
-    expect(() => dispatchWsMessage('CHAT_PROGRESS', { turnId: 't1', tail: 'x' }, ctx)).not.toThrow();
+    expect(() =>
+      dispatchWsMessage('CHAT_PROGRESS', { turnId: 't1', tail: 'x' }, ctx),
+    ).not.toThrow();
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
@@ -127,9 +129,7 @@ describe('dispatchWsMessage', () => {
 
   it('ignores APP_STATUS_UPDATED frames when no project ref is wired', () => {
     const { ctx } = setup();
-    expect(() =>
-      dispatchWsMessage('APP_STATUS_UPDATED', { id: 'p1' }, ctx),
-    ).not.toThrow();
+    expect(() => dispatchWsMessage('APP_STATUS_UPDATED', { id: 'p1' }, ctx)).not.toThrow();
     expect(logger.warn).not.toHaveBeenCalled();
   });
 

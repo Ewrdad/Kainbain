@@ -49,7 +49,9 @@ describe('frontend modelKeys service', () => {
 
     it('appends and updates reasoning level on harness-scoped references', () => {
       expect(appendReasoning('pi::provider::id', 'high')).toBe('pi::provider::id::high');
-      expect(appendReasoning({ ref: 'pi::provider::id', level: 'high' })).toBe('pi::provider::id::high');
+      expect(appendReasoning({ ref: 'pi::provider::id', level: 'high' })).toBe(
+        'pi::provider::id::high',
+      );
       expect(appendReasoning('pi::provider::id::low', 'high')).toBe('pi::provider::id::high');
       expect(() => appendReasoning('provider::id', 'high')).toThrow();
     });
@@ -96,11 +98,7 @@ describe('frontend modelKeys service', () => {
         }),
       ).toEqual(['low', 'medium', 'high']);
       // Missing model falls back to the harness set.
-      expect(resolveReasoningOptions({ harnessEntry: harness })).toEqual([
-        'low',
-        'medium',
-        'high',
-      ]);
+      expect(resolveReasoningOptions({ harnessEntry: harness })).toEqual(['low', 'medium', 'high']);
       // A model set alone (no harness advertisement) still resolves.
       expect(
         resolveReasoningOptions({
@@ -160,13 +158,9 @@ describe('frontend modelKeys service', () => {
     it('strips a stored level only on null-harness targets, keeping capable refs verbatim (Q2)', () => {
       // 3-part refs pass through untouched either way.
       expect(stripReasoningIfUnsupported('pi::provider::id', null)).toBe('pi::provider::id');
-      expect(stripReasoningIfUnsupported('pi::provider::id', ['high'])).toBe(
-        'pi::provider::id',
-      );
+      expect(stripReasoningIfUnsupported('pi::provider::id', ['high'])).toBe('pi::provider::id');
       // 4-part on a null harness strips to the bare ref.
-      expect(stripReasoningIfUnsupported('pi::provider::id::high', null)).toBe(
-        'pi::provider::id',
-      );
+      expect(stripReasoningIfUnsupported('pi::provider::id::high', null)).toBe('pi::provider::id');
       expect(stripReasoningIfUnsupported('pi::provider::id::high', undefined)).toBe(
         'pi::provider::id',
       );
@@ -180,9 +174,9 @@ describe('frontend modelKeys service', () => {
         'pi::provider::id::bogus',
       );
       // Single-colon model ids survive the strip intact.
-      expect(
-        stripReasoningIfUnsupported('pi::ollama-cloud::glm-5.3-flash:cloud::high', null),
-      ).toBe('pi::ollama-cloud::glm-5.3-flash:cloud');
+      expect(stripReasoningIfUnsupported('pi::ollama-cloud::glm-5.3-flash:cloud::high', null)).toBe(
+        'pi::ollama-cloud::glm-5.3-flash:cloud',
+      );
       // Empty input stays empty.
       expect(stripReasoningIfUnsupported('', null)).toBe('');
       // Supports labelled options object input ({ storedRef, optionsOrNull }).
@@ -199,7 +193,12 @@ describe('frontend modelKeys service', () => {
 
     it('resolves model attaching reasoning level to the matching model', () => {
       const available = [
-        { key: 'pi::ollama-cloud::glm-5.3', provider: 'ollama-cloud', id: 'glm-5.3', harness: 'pi' },
+        {
+          key: 'pi::ollama-cloud::glm-5.3',
+          provider: 'ollama-cloud',
+          id: 'glm-5.3',
+          harness: 'pi',
+        },
       ];
       const resolved = resolveModel(available, 'pi::ollama-cloud::glm-5.3::high');
       expect(resolved).toEqual({

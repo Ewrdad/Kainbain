@@ -22,9 +22,7 @@ const task = {
   id: 'd7767ec9-task',
   goal: '# Fix the survey panel\n\nSee the layout in ![screenshot](assets/shot.png).',
   currentStageId: 's-2',
-  timeline: [
-    { stage: 'Plan', status: 'Moved', duration: '9s', timestamp: '2026-10-20T15:00:00Z' },
-  ],
+  timeline: [{ stage: 'Plan', status: 'Moved', duration: '9s', timestamp: '2026-10-20T15:00:00Z' }],
   history: [{ timestamp: '2026-10-20T15:00:00Z', action: 'Stage report generated: plan.md' }],
 };
 
@@ -79,11 +77,7 @@ describe('SurveyTaskPanel', () => {
     renderPanel();
     const tablist = screen.getByRole('tablist', { name: 'Task context views' });
     const tabs = within(tablist).getAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual([
-      'Description',
-      'Reports (2)',
-      'Timeline',
-    ]);
+    expect(tabs.map((t) => t.textContent)).toEqual(['Description', 'Reports (2)', 'Timeline']);
 
     fireEvent.click(screen.getByRole('tab', { name: /reports/i }));
     expect(screen.getByText('The plan is complete.')).toBeInTheDocument();

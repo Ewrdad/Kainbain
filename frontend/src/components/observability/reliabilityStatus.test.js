@@ -32,9 +32,9 @@ describe('RELIABILITY_INTERVENTION_RULES', () => {
 
 describe('needsIntervention', () => {
   it('flags a harness below the all-time threshold once it has enough counted runs', () => {
-    expect(needsIntervention(entry({ runs: 5, successes: 4, infraFailures: 1, successRate: 80 }))).toBe(
-      true,
-    );
+    expect(
+      needsIntervention(entry({ runs: 5, successes: 4, infraFailures: 1, successRate: 80 })),
+    ).toBe(true);
   });
 
   it('treats the threshold as a boundary: 89.9 is flagged, 90.0 is not', () => {
@@ -43,9 +43,9 @@ describe('needsIntervention', () => {
   });
 
   it('does not flag a badly-rated harness with too few counted runs', () => {
-    expect(needsIntervention(entry({ runs: 4, successes: 0, infraFailures: 4, successRate: 0 }))).toBe(
-      false,
-    );
+    expect(
+      needsIntervention(entry({ runs: 4, successes: 0, infraFailures: 4, successRate: 0 })),
+    ).toBe(false);
     expect(needsIntervention(undefined)).toBe(false);
   });
 
@@ -90,9 +90,7 @@ describe('needsIntervention', () => {
     expect(needsIntervention(bad, { threshold: NaN })).toBe(true);
     expect(needsIntervention(bad, { threshold: 'low' })).toBe(true);
     expect(needsIntervention(bad, { threshold: Number.POSITIVE_INFINITY })).toBe(true);
-    expect(needsIntervention(entry({ runs: 10, successRate: 95 }), { threshold: NaN })).toBe(
-      false,
-    );
+    expect(needsIntervention(entry({ runs: 10, successRate: 95 }), { threshold: NaN })).toBe(false);
     // A negative minRuns behaves as the default 5: too few runs never flags.
     expect(needsIntervention(entry({ runs: 3, successRate: 0 }), { minRuns: -1 })).toBe(false);
     // …while an explicit valid 0 keeps flagging a badly-rated harness.

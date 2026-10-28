@@ -172,9 +172,7 @@ describe('StageTypeConfig - CI command keyword tokens', () => {
     expect(
       screen.getByText('Command Keyword Tokens (interpolated at runtime)'),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Insert keyword {{taskDocs}}' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Insert keyword {{taskDocs}}' })).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Insert keyword {{latestReportPath:plan}}' }),
     ).toBeInTheDocument();
@@ -266,4 +264,3 @@ describe('StageTypeConfig - deploy-command Run on branch', () => {
     expect(onUpdate).toHaveBeenCalledWith('deploy-1', { runOnBranch: 'custom' });
   });
 });
-

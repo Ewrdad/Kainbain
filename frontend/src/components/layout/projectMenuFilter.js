@@ -20,5 +20,9 @@ export function filterProjects(projects = [], query) {
     .trim()
     .toLowerCase();
   if (!q) return list;
-  return list.filter((project) => String(project?.name ?? '').toLowerCase().includes(q));
+  return list.filter((project) =>
+    String(project?.name ?? '')
+      .toLowerCase()
+      .includes(q),
+  );
 }

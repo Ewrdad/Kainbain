@@ -68,9 +68,7 @@ test('shows the permission badge and an enable action when unsubscribed', async 
 
 test('allowed-but-unsubscribed explains the permission/subscription difference (the reported bug)', async () => {
   renderWithKainBain(<PushNotificationsSection />);
-  expect(await screen.findByTestId('push-subscription-status')).toHaveTextContent(
-    'Not subscribed',
-  );
+  expect(await screen.findByTestId('push-subscription-status')).toHaveTextContent('Not subscribed');
   // The exact state from the reported bug: permission already Allowed, so
   // the copy says what is actually missing instead of a permission prompt.
   expect(screen.getByTestId('push-subscription-detail')).toHaveTextContent(
@@ -132,9 +130,7 @@ test('server-verified subscription shows "Subscribed & registered" and enables t
   expect(await screen.findByTestId('push-subscription-status')).toHaveTextContent(
     'Subscribed & registered',
   );
-  expect(
-    screen.getByRole('button', { name: /Disable push notifications/i }),
-  ).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Disable push notifications/i })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /Send test notification/i })).toBeEnabled();
 });
 
@@ -227,9 +223,7 @@ test('successful test send appends OS-level troubleshooting guidance', async () 
     registered: true,
   });
   renderWithKainBain(<PushNotificationsSection />);
-  expect(
-    screen.queryByTestId('push-os-troubleshooting'),
-  ).not.toBeInTheDocument();
+  expect(screen.queryByTestId('push-os-troubleshooting')).not.toBeInTheDocument();
   fireEvent.click(await screen.findByRole('button', { name: /Send test notification/i }));
   await waitFor(() => expect(pushNotifications.sendTestPush).toHaveBeenCalledTimes(1));
   expect(await screen.findByTestId('push-os-troubleshooting')).toHaveTextContent(
@@ -252,9 +246,7 @@ test('test send surfaces zero-delivery as an error, not a false success', async 
   const testButton = await screen.findByRole('button', { name: /Send test notification/i });
   fireEvent.click(testButton);
   await waitFor(() => expect(pushNotifications.sendTestPush).toHaveBeenCalledTimes(1));
-  expect(
-    await screen.findByText(/no subscriptions.*may not have been saved/i),
-  ).toBeInTheDocument();
+  expect(await screen.findByText(/no subscriptions.*may not have been saved/i)).toBeInTheDocument();
 });
 
 test('test send surfaces a server-side error message when delivery fails', async () => {
@@ -270,9 +262,7 @@ test('test send surfaces a server-side error message when delivery fails', async
   const testButton = await screen.findByRole('button', { name: /Send test notification/i });
   fireEvent.click(testButton);
   await waitFor(() => expect(pushNotifications.sendTestPush).toHaveBeenCalledTimes(1));
-  expect(
-    await screen.findByText(/was not delivered/i),
-  ).toBeInTheDocument();
+  expect(await screen.findByText(/was not delivered/i)).toBeInTheDocument();
 });
 
 test('master and trigger toggles persist through updateSettings', async () => {
@@ -320,9 +310,7 @@ test('blocked permission with a stale subscription still offers unsubscribe', as
   expect(await screen.findByTestId('push-permission-badge')).toHaveTextContent('Blocked');
   // The browser normally drops the subscription when permission is revoked,
   // but a stale one must not leave the operator stuck with no cleanup path.
-  expect(
-    screen.getByRole('button', { name: /Disable push notifications/i }),
-  ).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Disable push notifications/i })).toBeInTheDocument();
   expect(
     screen.queryByRole('button', { name: /Enable push notifications/i }),
   ).not.toBeInTheDocument();

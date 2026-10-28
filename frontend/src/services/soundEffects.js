@@ -30,7 +30,9 @@ class SoundEffectsService {
   }
 
   isSupported() {
-    return typeof window !== 'undefined' && Boolean(window.AudioContext || window.webkitAudioContext);
+    return (
+      typeof window !== 'undefined' && Boolean(window.AudioContext || window.webkitAudioContext)
+    );
   }
 
   /**

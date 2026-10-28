@@ -2,7 +2,14 @@ import React from 'react';
 import { describe, expect, test, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { renderWithKainBain } from '../../testUtils';
-import { ModelAliasesSection, aliasReliabilityByName, reliabilityForTarget, reliabilityForAlias, sameModelRefForReliability, aliasReliabilityTitles } from './ModelAliasesSection';
+import {
+  ModelAliasesSection,
+  aliasReliabilityByName,
+  reliabilityForTarget,
+  reliabilityForAlias,
+  sameModelRefForReliability,
+  aliasReliabilityTitles,
+} from './ModelAliasesSection';
 import { api } from '../../services/api';
 import '@testing-library/jest-dom';
 
@@ -85,7 +92,13 @@ function reliabilityPayload() {
             excludedRejected: 2,
             successRate: 66.7,
             lastRunAt: '2026-10-01T12:00:00.000Z',
-            recent: { runs: 3, successes: 2, infraFailures: 1, excludedRejected: 0, successRate: 66.7 },
+            recent: {
+              runs: 3,
+              successes: 2,
+              infraFailures: 1,
+              excludedRejected: 0,
+              successRate: 66.7,
+            },
           },
         ],
       },
@@ -133,9 +146,7 @@ test('each target row shows its own success rate and run count', async () => {
 
   expect(getAliasReliability).toHaveBeenCalledWith('p1');
   const line = await screen.findByTestId('alias-reliability-0-0');
-  await waitFor(() =>
-    expect(line).toHaveTextContent('All-time 66.7% · 3 runs'),
-  );
+  await waitFor(() => expect(line).toHaveTextContent('All-time 66.7% · 3 runs'));
   // The unattributed target shows the honest no-data state, never 0%.
   const mixLine = await screen.findByTestId('alias-reliability-1-0');
   expect(mixLine).toHaveTextContent('No reliability data yet');
@@ -156,9 +167,7 @@ test('lines show an explicit loading state until the fetch lands', async () => {
   expect(await screen.findByTestId('alias-reliability-0')).toHaveTextContent(
     'Loading reliability…',
   );
-  expect(screen.getByTestId('alias-reliability-0-0')).toHaveTextContent(
-    'Loading reliability…',
-  );
+  expect(screen.getByTestId('alias-reliability-0-0')).toHaveTextContent('Loading reliability…');
 
   resolveFetch(reliabilityPayload());
   const line = await screen.findByTestId('alias-reliability-0-0');
@@ -170,9 +179,7 @@ test('each alias shows its aggregate rate across all its targets', async () => {
   renderSection();
 
   const aliasLine = await screen.findByTestId('alias-reliability-0');
-  await waitFor(() =>
-    expect(aliasLine).toHaveTextContent('All-time 66.7% · 3 runs'),
-  );
+  await waitFor(() => expect(aliasLine).toHaveTextContent('All-time 66.7% · 3 runs'));
   // The unattributed alias shows the honest no-data state, never 0%.
   const mixAliasLine = await screen.findByTestId('alias-reliability-1');
   expect(mixAliasLine).toHaveTextContent('No reliability data yet');
@@ -278,9 +285,7 @@ test('a reliability retry re-fetches and renders the lines on success', async ()
   fireEvent.click(within(errorNote).getByRole('button', { name: 'Retry' }));
 
   const line = await screen.findByTestId('alias-reliability-0-0');
-  await waitFor(() =>
-    expect(line).toHaveTextContent('All-time 66.7% · 3 runs'),
-  );
+  await waitFor(() => expect(line).toHaveTextContent('All-time 66.7% · 3 runs'));
   expect(getAliasReliability).toHaveBeenCalledTimes(2);
   expect(screen.queryByTestId('alias-reliability-error')).not.toBeInTheDocument();
 });
@@ -303,12 +308,7 @@ test('aliasReliabilityByName folds payloads into trimmed alias entries', () => {
 
   const entry = { aliasName: 'worker', targets: [] };
   const folded = aliasReliabilityByName({
-    aliases: [
-      entry,
-      { aliasName: '  ', targets: [] },
-      { targets: [] },
-      null,
-    ],
+    aliases: [entry, { aliasName: '  ', targets: [] }, { targets: [] }, null],
   });
   expect(folded.worker).toBe(entry);
   expect(Object.keys(folded)).toEqual(['worker']);
@@ -391,15 +391,11 @@ test('reliabilityForTarget matches exact trimmed harness+model pairs', () => {
       ],
     },
   };
-  expect(
-    reliabilityForTarget(byAlias, 'worker', 'pi', 'google::m1'),
-  ).toMatchObject({ runs: 3 });
-  expect(
-    reliabilityForTarget(byAlias, ' worker ', 'pi', ' google::m1 '),
-  ).toMatchObject({ runs: 3 });
-  expect(
-    reliabilityForTarget(byAlias, 'worker', 'muse', ''),
-  ).toMatchObject({ runs: 1 });
+  expect(reliabilityForTarget(byAlias, 'worker', 'pi', 'google::m1')).toMatchObject({ runs: 3 });
+  expect(reliabilityForTarget(byAlias, ' worker ', 'pi', ' google::m1 ')).toMatchObject({
+    runs: 3,
+  });
+  expect(reliabilityForTarget(byAlias, 'worker', 'muse', '')).toMatchObject({ runs: 1 });
   expect(reliabilityForTarget(byAlias, 'worker', 'pi', 'google::other')).toBeUndefined();
   expect(reliabilityForTarget(byAlias, 'ghost', 'pi', 'google::m1')).toBeUndefined();
   expect(reliabilityForTarget(null, 'worker', 'pi', 'google::m1')).toBeUndefined();
@@ -440,9 +436,7 @@ describe('reliability metric grouping', () => {
     expect(card).toHaveTextContent('Target reliability:');
     // The label introduces the value, so the rate reads as the target's own.
     const label = within(card).getByText('Target reliability:');
-    expect(
-      label.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(label.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // The resolution status stays grouped with the target it describes.
     expect(within(card).getByTestId('model-alias-target-validity-0-0')).toBeInTheDocument();
   });
@@ -455,9 +449,7 @@ describe('reliability metric grouping', () => {
     const percent = within(card).getByLabelText('Alias 1 percent');
     const line = within(card).getByTestId('alias-reliability-0-0');
     // The rate closes the card — it can never sit above the next target.
-    expect(
-      percent.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(percent.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   test('target cards announce themselves as labelled groups', async () => {
@@ -579,9 +571,7 @@ describe('reliability metric grouping', () => {
     // No resolution status to show and no fetch to scope: the footer (status
     // + rate) is omitted rather than rendered empty.
     expect(card).toHaveAttribute('role', 'group');
-    expect(
-      within(card).queryByTestId('model-alias-target-validity-0-0'),
-    ).not.toBeInTheDocument();
+    expect(within(card).queryByTestId('model-alias-target-validity-0-0')).not.toBeInTheDocument();
     expect(screen.queryByTestId('alias-reliability-0-0')).not.toBeInTheDocument();
   });
 });

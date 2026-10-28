@@ -153,10 +153,21 @@ test('tool invocations render once in the activity drawer: raw [TOOL] log lines 
   // Survey Q3: drawer starts collapsed; open it via stored preference.
   window.localStorage.setItem('kainbain:showActivityDrawer', 'true');
   const toolCalls = [
-    { id: 'tc1', toolName: 'frobnicate', args: { cmd: 'unique-arg-value' }, status: 'executing', logs: [] },
+    {
+      id: 'tc1',
+      toolName: 'frobnicate',
+      args: { cmd: 'unique-arg-value' },
+      status: 'executing',
+      logs: [],
+    },
   ];
   const processLogs = [
-    { id: 'log-1', timestamp: '12:00:01', tag: '[TOOL]', text: '⚡ frobnicate({"cmd":"unique-arg-value"})' },
+    {
+      id: 'log-1',
+      timestamp: '12:00:01',
+      tag: '[TOOL]',
+      text: '⚡ frobnicate({"cmd":"unique-arg-value"})',
+    },
     { id: 'log-2', timestamp: '12:00:02', tag: '[CI/CMD]', text: 'npm test passed' },
   ];
 
@@ -268,9 +279,6 @@ test('activity console tag and search filters restore from localStorage', () => 
   fireEvent.click(screen.getByTestId('log-filter-toggle'));
   // The legacy single-tag pill migrates once to the Errors lane (no error
   // lines exist here, so the lane reads selected-but-empty).
-  expect(screen.getByRole('button', { name: 'Errors' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  expect(screen.getByRole('button', { name: 'Errors' })).toHaveAttribute('aria-pressed', 'true');
   expect(screen.getByLabelText('Filter logs')).toHaveValue('timeout');
 });

@@ -82,9 +82,7 @@ function SkillRow({
 }) {
   const isCustom = skill.source === 'project';
   const keywordEntries = Object.entries(configKeywords || {});
-  const showConfigToggle = Boolean(
-    skill.hasConfig || keywordEntries.length > 0 || configOpen,
-  );
+  const showConfigToggle = Boolean(skill.hasConfig || keywordEntries.length > 0 || configOpen);
   return (
     <li className="flex flex-wrap items-center gap-2 p-3 bg-surface-deep border border-border-standard rounded-sm">
       <div className="flex-1 min-w-0">
@@ -143,10 +141,9 @@ function SkillRow({
             ) : (
               <dl className="space-y-1.5">
                 {keywordEntries.map(([key, entry]) => {
-                  const entryObject =
-                    entry && typeof entry === 'object' && !Array.isArray(entry);
+                  const entryObject = entry && typeof entry === 'object' && !Array.isArray(entry);
                   const value = entryObject ? (entry.value ?? '') : (entry ?? '');
-                  const description = entryObject ? (entry.description || '') : '';
+                  const description = entryObject ? entry.description || '' : '';
                   return (
                     <div key={key} className="space-y-0.5">
                       <dt className="font-mono text-[10px] font-bold text-on-surface">{key}</dt>
@@ -162,8 +159,8 @@ function SkillRow({
               </dl>
             )}
             <p className="text-[9px] text-text-muted italic">
-              Defaults are read-only here — set per-stage values in the workflow
-              editor&apos;s Skills panel (Keywords › config).
+              Defaults are read-only here — set per-stage values in the workflow editor&apos;s
+              Skills panel (Keywords › config).
             </p>
           </div>
         )}
@@ -252,10 +249,7 @@ export function SkillsSection({ activeProjectId }) {
       customs: list.filter((skill) => skill.source === 'project'),
     };
   }, [skills]);
-  const defaultNames = useMemo(
-    () => new Set(defaults.map((skill) => skill.name)),
-    [defaults],
-  );
+  const defaultNames = useMemo(() => new Set(defaults.map((skill) => skill.name)), [defaults]);
 
   /***
    * MARK: handleImport
@@ -321,7 +315,11 @@ export function SkillsSection({ activeProjectId }) {
    ***/
   const handleDelete = async (name) => {
     setDeleteError('');
-    if (!window.confirm(`Delete custom skill "${name}"? Stages using it will keep the name but resolve nothing.`)) {
+    if (
+      !window.confirm(
+        `Delete custom skill "${name}"? Stages using it will keep the name but resolve nothing.`,
+      )
+    ) {
       return;
     }
     setDeletingName(name);
@@ -362,7 +360,10 @@ export function SkillsSection({ activeProjectId }) {
     try {
       const raw = await getSkillByName(name, activeProjectId);
       const keywords = raw?.config?.keywords;
-      setConfigDetails((prev) => ({ ...prev, [name]: keywords && typeof keywords === 'object' ? keywords : {} }));
+      setConfigDetails((prev) => ({
+        ...prev,
+        [name]: keywords && typeof keywords === 'object' ? keywords : {},
+      }));
     } catch (err) {
       logger.error(`Failed to fetch skill config ${name}`, err);
       setConfigDetails((prev) => ({ ...prev, [name]: {} }));
@@ -380,9 +381,7 @@ export function SkillsSection({ activeProjectId }) {
     setPreviewName(name);
     setPreviewLoading(true);
     const raw =
-      typeof getSkillByName === 'function'
-        ? await getSkillByName(name, activeProjectId)
-        : null;
+      typeof getSkillByName === 'function' ? await getSkillByName(name, activeProjectId) : null;
     setPreviewMarkdown(raw?.markdown || `*Skill "${name}" not available.*`);
     setPreviewLoading(false);
   };
@@ -407,8 +406,8 @@ export function SkillsSection({ activeProjectId }) {
         <p className="text-xs text-text-muted">
           KainBain default skills plus this project&apos;s custom skills. Import a{' '}
           <code className="font-mono text-primary">.md</code> file or a single-skill{' '}
-          <code className="font-mono text-primary">.zip</code>, then attach skills to
-          stages in the workflow editor&apos;s Skills panel.
+          <code className="font-mono text-primary">.zip</code>, then attach skills to stages in the
+          workflow editor&apos;s Skills panel.
         </p>
       </div>
 
@@ -556,8 +555,8 @@ export function SkillsSection({ activeProjectId }) {
               KainBain defaults ({defaults.length})
             </h3>
             <p className="text-[10px] text-text-muted mb-2">
-              Shipped with KainBain — read-only here. Import a custom skill of the
-              same name to override one for this project.
+              Shipped with KainBain — read-only here. Import a custom skill of the same name to
+              override one for this project.
             </p>
             <ul className="space-y-2">
               {defaults.map((skill) => (
@@ -577,7 +576,11 @@ export function SkillsSection({ activeProjectId }) {
           </section>
         </div>
       )}
-      {deletingName && <span className="sr-only" role="status">Deleting {deletingName}…</span>}
+      {deletingName && (
+        <span className="sr-only" role="status">
+          Deleting {deletingName}…
+        </span>
+      )}
 
       {/* Preview modal (same pattern as the stage skill picker) */}
       {previewName && (

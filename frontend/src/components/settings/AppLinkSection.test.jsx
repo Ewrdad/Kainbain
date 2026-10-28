@@ -53,9 +53,7 @@ describe('AppLinkSection', () => {
     };
     api.updateAppStatus.mockResolvedValue(updated);
     const onChanged = vi.fn();
-    renderWithKainBain(
-      <AppLinkSection project={project} projectId="p1" onChanged={onChanged} />,
-    );
+    renderWithKainBain(<AppLinkSection project={project} projectId="p1" onChanged={onChanged} />);
     fireEvent.change(screen.getByLabelText('App URL'), {
       target: { value: 'http://localhost:3000' },
     });
@@ -76,9 +74,7 @@ describe('AppLinkSection', () => {
     renderWithKainBain(<AppLinkSection project={project} projectId="p1" />);
     fireEvent.change(screen.getByLabelText('App URL'), { target: { value: '  ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save Link' }));
-    await waitFor(() =>
-      expect(api.updateAppStatus).toHaveBeenCalledWith('p1', { url: null }),
-    );
+    await waitFor(() => expect(api.updateAppStatus).toHaveBeenCalledWith('p1', { url: null }));
   });
 
   it('refuses an invalid URL locally without calling the API', async () => {
@@ -94,7 +90,11 @@ describe('AppLinkSection', () => {
   });
 
   it('probes health on demand and shows the outcome', async () => {
-    const fresh = { ...project.appStatus, isHealthy: true, lastHealthCheck: '2026-10-04T16:05:00.000Z' };
+    const fresh = {
+      ...project.appStatus,
+      isHealthy: true,
+      lastHealthCheck: '2026-10-04T16:05:00.000Z',
+    };
     api.checkAppHealth.mockResolvedValue({
       healthy: true,
       statusCode: 200,
@@ -102,9 +102,7 @@ describe('AppLinkSection', () => {
       appStatus: fresh,
     });
     const onChanged = vi.fn();
-    renderWithKainBain(
-      <AppLinkSection project={project} projectId="p1" onChanged={onChanged} />,
-    );
+    renderWithKainBain(<AppLinkSection project={project} projectId="p1" onChanged={onChanged} />);
     fireEvent.click(screen.getByRole('button', { name: 'Test Health' }));
     await waitFor(() => expect(api.checkAppHealth).toHaveBeenCalledWith('p1'));
     expect(await screen.findByTestId('applink-probe-result')).toHaveTextContent(
@@ -114,9 +112,7 @@ describe('AppLinkSection', () => {
   });
 
   it('disables probing until a link is saved', () => {
-    renderWithKainBain(
-      <AppLinkSection project={{ id: 'p1', name: 'Bare' }} projectId="p1" />,
-    );
+    renderWithKainBain(<AppLinkSection project={{ id: 'p1', name: 'Bare' }} projectId="p1" />);
     expect(screen.getByRole('button', { name: 'Test Health' })).toBeDisabled();
   });
 

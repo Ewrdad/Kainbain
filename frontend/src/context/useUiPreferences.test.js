@@ -238,9 +238,7 @@ describe('useUiPreferences', () => {
     expect(result.current.preferences.density).toBe('compact');
     expect(result.current.preferences.theme).toBe(DEFAULT_UI_PREFERENCES.theme);
     expect(result.current.preferences.reduceMotion).toBe(false);
-    expect(result.current.preferences.consoleHeight).toBe(
-      DEFAULT_UI_PREFERENCES.consoleHeight,
-    );
+    expect(result.current.preferences.consoleHeight).toBe(DEFAULT_UI_PREFERENCES.consoleHeight);
     expect(result.current.preferences.cardPreviewLines).toBe(
       DEFAULT_UI_PREFERENCES.cardPreviewLines,
     );
@@ -343,9 +341,7 @@ describe('useUiPreferences', () => {
     expect(root.getAttribute('data-font-size')).toBe(DEFAULT_UI_PREFERENCES.fontSize);
     expect(root.getAttribute('data-mono-font')).toBe(DEFAULT_UI_PREFERENCES.fontMono);
     expect(root.hasAttribute('data-reduce-motion')).toBe(false);
-    expect(root.style.getPropertyValue('--column-width')).toBe(
-      DEFAULT_UI_PREFERENCES.columnWidth,
-    );
+    expect(root.style.getPropertyValue('--column-width')).toBe(DEFAULT_UI_PREFERENCES.columnWidth);
   });
 });
 

@@ -230,8 +230,8 @@ export function CreateTaskFromFileModal({ filePath, onClose }) {
           )}
           {selectedStage && stageAutoStarts && (
             <p className="text-[10px] font-mono text-text-muted">
-              The agent will start work on this stage immediately. Human checkpoints wait for
-              review instead.
+              The agent will start work on this stage immediately. Human checkpoints wait for review
+              instead.
             </p>
           )}
 

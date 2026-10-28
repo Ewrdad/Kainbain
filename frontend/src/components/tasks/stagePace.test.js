@@ -31,9 +31,7 @@ describe('elapsedStageSeconds', () => {
   });
 
   test('prefers enteredStageAt over the fallbacks', () => {
-    expect(
-      elapsedStageSeconds({ enteredStageAt: at(5), updatedAt: at(500) }, NOW),
-    ).toBe(5);
+    expect(elapsedStageSeconds({ enteredStageAt: at(5), updatedAt: at(500) }, NOW)).toBe(5);
   });
 
   test('returns 0 for missing, invalid, or future timestamps (clock skew)', () => {
@@ -103,7 +101,10 @@ describe('shouldShowPace', () => {
 
   test('treats auto-retrying tasks as running work', () => {
     expect(
-      shouldShowPace({ status: 'failed', autoRetrying: true }, { isRunning: false, isReview: false }),
+      shouldShowPace(
+        { status: 'failed', autoRetrying: true },
+        { isRunning: false, isReview: false },
+      ),
     ).toBe(true);
   });
 

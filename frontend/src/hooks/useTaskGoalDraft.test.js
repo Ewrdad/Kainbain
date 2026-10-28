@@ -22,9 +22,14 @@ function seedDraft(taskId, value, { updatedAt = Date.now(), projectId = 'proj-1'
 function setup(task, overrides = {}) {
   const updateTask = overrides.updateTask ?? vi.fn().mockResolvedValue({ id: task?.id });
   const setPendingTaskSaveFlush = overrides.setPendingTaskSaveFlush ?? vi.fn();
-  const runTaskAction =
-    overrides.runTaskAction ?? vi.fn((_key, fn) => fn());
-  const props = { task, activeProjectId: 'proj-1', updateTask, setPendingTaskSaveFlush, runTaskAction };
+  const runTaskAction = overrides.runTaskAction ?? vi.fn((_key, fn) => fn());
+  const props = {
+    task,
+    activeProjectId: 'proj-1',
+    updateTask,
+    setPendingTaskSaveFlush,
+    runTaskAction,
+  };
   const hook = renderHook((hookProps) => useTaskGoalDraft(hookProps), {
     initialProps: props,
   });

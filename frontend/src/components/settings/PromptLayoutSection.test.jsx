@@ -61,7 +61,9 @@ test('loads the saved layout with required badges and char count', async () => {
 test('chip click inserts the token into the layout', async () => {
   renderWithKainBain(<PromptLayoutSection />);
   const textarea = await screen.findByTestId('prompt-layout-textarea');
-  fireEvent.change(textarea, { target: { value: '# Custom\n\n{{task}}\n\n{{stage}}\n\n{{failureGuidance}}' } });
+  fireEvent.change(textarea, {
+    target: { value: '# Custom\n\n{{task}}\n\n{{stage}}\n\n{{failureGuidance}}' },
+  });
   fireEvent.click(screen.getByRole('button', { name: /{{taskImages}}/ }));
   await waitFor(() => expect(textarea.value).toContain('{{taskImages}}'));
 });

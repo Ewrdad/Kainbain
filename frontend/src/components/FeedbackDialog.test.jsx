@@ -198,7 +198,9 @@ test('removing an attached image strips its markdown ref from the draft', async 
 
   // ...and removing the thumbnail takes it back out, keeping the prose.
   fireEvent.click(await screen.findByTestId('task-image-remove-shot.png'));
-  await waitFor(() => expect(api.deleteTaskImage).toHaveBeenCalledWith('proj-1', 'task-1', 'shot.png'));
+  await waitFor(() =>
+    expect(api.deleteTaskImage).toHaveBeenCalledWith('proj-1', 'task-1', 'shot.png'),
+  );
   await waitFor(() => expect(textarea.value).not.toContain('shot.png'));
   expect(textarea.value).toBe('The button overlaps the label.');
 });

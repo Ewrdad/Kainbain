@@ -116,9 +116,24 @@ describe('no new sub-44px interactive controls (WCAG 2.5.5 AAA / 2.5.8 AA)', () 
   });
 
   it('flags all three banned sizes (negative control)', () => {
-    expect(sub44InteractiveHeights('<button className="min-h-[32px] cursor-pointer">x</button>', 'c/N.jsx')).toHaveLength(1);
-    expect(sub44InteractiveHeights('<button className="min-h-[36px] cursor-pointer">x</button>', 'c/N.jsx')).toHaveLength(1);
-    expect(sub44InteractiveHeights('<button className="min-h-[40px] cursor-pointer">x</button>', 'c/N.jsx')).toHaveLength(1);
+    expect(
+      sub44InteractiveHeights(
+        '<button className="min-h-[32px] cursor-pointer">x</button>',
+        'c/N.jsx',
+      ),
+    ).toHaveLength(1);
+    expect(
+      sub44InteractiveHeights(
+        '<button className="min-h-[36px] cursor-pointer">x</button>',
+        'c/N.jsx',
+      ),
+    ).toHaveLength(1);
+    expect(
+      sub44InteractiveHeights(
+        '<button className="min-h-[40px] cursor-pointer">x</button>',
+        'c/N.jsx',
+      ),
+    ).toHaveLength(1);
   });
 
   it('allows 44px and above (negative control)', () => {
@@ -132,10 +147,7 @@ describe('no new sub-44px interactive controls (WCAG 2.5.5 AAA / 2.5.8 AA)', () 
   });
 
   it('allows allowlisted exemption sites (negative control)', () => {
-    const exempt =
-      '<button className="min-h-[32px] cursor-pointer">chip</button>';
-    expect(
-      sub44InteractiveHeights(exempt, 'components/logs/LogViewer.jsx'),
-    ).toHaveLength(0);
+    const exempt = '<button className="min-h-[32px] cursor-pointer">chip</button>';
+    expect(sub44InteractiveHeights(exempt, 'components/logs/LogViewer.jsx')).toHaveLength(0);
   });
 });

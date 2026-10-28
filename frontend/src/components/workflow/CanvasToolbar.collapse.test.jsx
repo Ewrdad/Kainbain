@@ -58,10 +58,16 @@ beforeEach(() => {
   if (typeof window !== 'undefined' && window.localStorage) {
     window.localStorage.clear();
   }
-  vi.stubGlobal('fetch', vi.fn(async () => new Response(
-    JSON.stringify({ models: [], harnesses: [] }),
-    { status: 200, headers: { 'Content-Type': 'application/json' } },
-  )));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ models: [], harnesses: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    ),
+  );
 });
 
 afterEach(() => {
@@ -152,9 +158,7 @@ test('compact mobile density classes are applied', () => {
   // 44px pointer targets are never sacrificed for density (WCAG 2.5.8).
   const pipeline = screen.getByRole('button', { name: /select pipeline workflow/i });
   expect(pipeline.className).toContain('min-h-[44px]');
-  expect(screen.getByRole('button', { name: /card order:/i }).className).toContain(
-    'min-h-[44px]',
-  );
+  expect(screen.getByRole('button', { name: /card order:/i }).className).toContain('min-h-[44px]');
 });
 
 test('header tab row folds and unfolds on the collapse event (phones only)', () => {
@@ -229,10 +233,7 @@ test('scrolling the mobile card list collapses and re-expands the toolbar', () =
   act(() => {
     fireEvent.scroll(list, { target: { scrollTop: 150 } });
   });
-  expect(screen.getByTestId('toolbar-secondary-row')).toHaveAttribute(
-    'aria-hidden',
-    'true',
-  );
+  expect(screen.getByTestId('toolbar-secondary-row')).toHaveAttribute('aria-hidden', 'true');
   expect(screen.getByTestId('toolbar-expand')).toBeInTheDocument();
   expect(screen.getByRole('combobox', { name: 'Search tasks' })).toBeInTheDocument();
 
@@ -240,10 +241,7 @@ test('scrolling the mobile card list collapses and re-expands the toolbar', () =
   act(() => {
     fireEvent.scroll(list, { target: { scrollTop: 0 } });
   });
-  expect(screen.getByTestId('toolbar-secondary-row')).toHaveAttribute(
-    'aria-hidden',
-    'false',
-  );
+  expect(screen.getByTestId('toolbar-secondary-row')).toHaveAttribute('aria-hidden', 'false');
   expect(screen.queryByTestId('toolbar-expand')).toBeNull();
 });
 

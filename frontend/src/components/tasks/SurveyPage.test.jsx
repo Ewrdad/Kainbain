@@ -49,7 +49,11 @@ const pendingSurvey = {
 function makeClient(survey = pendingSurvey) {
   return {
     getSurvey: vi.fn(async () => JSON.parse(JSON.stringify(survey))),
-    submitSurvey: vi.fn(async () => ({ status: 'pending', advanced: false, missing: [{ round: 1, id: 'q1' }] })),
+    submitSurvey: vi.fn(async () => ({
+      status: 'pending',
+      advanced: false,
+      missing: [{ round: 1, id: 'q1' }],
+    })),
   };
 }
 
@@ -113,7 +117,11 @@ describe('SurveyPage', () => {
 
   it('saves answers without advancing and surfaces the saved notice', async () => {
     const client = makeClient();
-    client.submitSurvey.mockResolvedValue({ status: 'pending', advanced: false, missing: [{ round: 1, id: 'q1' }] });
+    client.submitSurvey.mockResolvedValue({
+      status: 'pending',
+      advanced: false,
+      missing: [{ round: 1, id: 'q1' }],
+    });
     renderPage(client);
     await screen.findByText('Primary concern?');
     fireEvent.click(screen.getByLabelText('Primary concern?: Auth'));
@@ -128,13 +136,19 @@ describe('SurveyPage', () => {
 
   it('submits complete answers, reports completion, and calls onDone', async () => {
     const client = makeClient();
-    client.submitSurvey.mockResolvedValue({ status: 'answered', advanced: true, currentStageId: 's-2' });
+    client.submitSurvey.mockResolvedValue({
+      status: 'answered',
+      advanced: true,
+      currentStageId: 's-2',
+    });
     const onDone = vi.fn();
     renderPage(client, { onDone });
     await screen.findByText('Primary concern?');
     fireEvent.click(screen.getByLabelText('Primary concern?: Auth'));
     fireEvent.click(screen.getByRole('button', { name: /submit & continue/i }));
-    await waitFor(() => expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ advanced: true })));
+    await waitFor(() =>
+      expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ advanced: true })),
+    );
     expect(await screen.findByText(/moved to its next stage/i)).toBeInTheDocument();
   });
 
@@ -157,7 +171,14 @@ describe('SurveyPage', () => {
   });
 
   it('explains a missing survey file and still offers continue', async () => {
-    const client = makeClient({ taskId: 't1', exists: false, status: 'none', rounds: [], errors: [], missing: [] });
+    const client = makeClient({
+      taskId: 't1',
+      exists: false,
+      status: 'none',
+      rounds: [],
+      errors: [],
+      missing: [],
+    });
     renderPage(client);
     expect(await screen.findByText(/did not write any survey questions/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /continue without questions/i })).toBeInTheDocument();
@@ -214,7 +235,11 @@ describe('SurveyPage task context split', () => {
 
   it('keeps the survey fully usable while the context panel is shown', async () => {
     const client = makeFullClient();
-    client.submitSurvey.mockResolvedValue({ status: 'pending', advanced: false, missing: [{ round: 1, id: 'q1' }] });
+    client.submitSurvey.mockResolvedValue({
+      status: 'pending',
+      advanced: false,
+      missing: [{ round: 1, id: 'q1' }],
+    });
     renderPage(client);
     await screen.findByText('Primary concern?');
     fireEvent.click(screen.getByLabelText('Primary concern?: Auth'));

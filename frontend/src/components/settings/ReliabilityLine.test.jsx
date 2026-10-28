@@ -33,9 +33,7 @@ describe('ReliabilityLine', () => {
     expect(line).toHaveTextContent('All-time 90% · 20 runs');
     expect(line).toHaveTextContent('Last 10 runs 70% · 10 runs');
     expect(screen.getByTestId('rel-blip-all-time')).toHaveAttribute('title', 'all-time tooltip');
-    expect(screen.getByTestId('rel-blip-recent').getAttribute('title')).toMatch(
-      /last 10 runs/i,
-    );
+    expect(screen.getByTestId('rel-blip-recent').getAttribute('title')).toMatch(/last 10 runs/i);
   });
 
   it('renders an honest recent placeholder when the recent window is empty', () => {
@@ -130,9 +128,7 @@ describe('recentReliabilityTitle', () => {
     expect(
       recentReliabilityTitle({ runs: 10, successes: 8, infraFailures: 2, successRate: 80 }),
     ).toMatch(/last 10 runs/i);
-    expect(recentReliabilityTitle(null)).toBe(
-      'No runs recorded in the last 10 runs window yet.',
-    );
+    expect(recentReliabilityTitle(null)).toBe('No runs recorded in the last 10 runs window yet.');
     expect(recentReliabilityTitle({ runs: 0, successRate: null })).toBe(
       'No runs recorded in the last 10 runs window yet.',
     );

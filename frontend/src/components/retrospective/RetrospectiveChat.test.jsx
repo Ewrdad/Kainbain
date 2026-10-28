@@ -85,9 +85,9 @@ describe('RetrospectiveChat', () => {
     renderChat();
     expect(screen.getByText('No task context — general chat.')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Use selection (1)'));
-    expect(
-      screen.getByTestId('retrospective-chat-chip-task-failed-2'),
-    ).toHaveTextContent('Migrate the session store');
+    expect(screen.getByTestId('retrospective-chat-chip-task-failed-2')).toHaveTextContent(
+      'Migrate the session store',
+    );
     fireEvent.click(screen.getByLabelText('Remove Migrate the session store from chat context'));
     expect(screen.queryByTestId('retrospective-chat-chip-task-failed-2')).not.toBeInTheDocument();
   });
@@ -96,9 +96,7 @@ describe('RetrospectiveChat', () => {
     renderChat([]);
     expect(screen.getByText('No task context — general chat.')).toBeInTheDocument();
     expect(screen.getByText('The agent may search recent tasks.')).toBeInTheDocument();
-    expect(
-      screen.getByText(/the agent can still review recent jobs/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/the agent can still review recent jobs/)).toBeInTheDocument();
   });
 
   it('sends a stateless turn and renders the reply with suggestions', async () => {
@@ -516,17 +514,13 @@ describe('RetrospectiveChat', () => {
     });
     renderChat();
     fireEvent.click(screen.getByText('Use selection (1)'));
-    expect(
-      screen.getByTestId('retrospective-chat-chip-task-failed-2'),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId('retrospective-chat-chip-task-failed-2')).toBeInTheDocument();
     fireEvent.change(screen.getByTestId('retrospective-chat-input'), {
       target: { value: 'hi' },
     });
     fireEvent.click(screen.getByTestId('retrospective-chat-send'));
     await waitFor(() => {
-      expect(
-        screen.queryByTestId('retrospective-chat-chip-task-failed-2'),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId('retrospective-chat-chip-task-failed-2')).not.toBeInTheDocument();
     });
     expect(screen.getByTestId('retrospective-chat-notice')).toHaveTextContent(
       '1 task(s) no longer exist and were removed from context.',
@@ -620,9 +614,7 @@ describe('RetrospectiveChat', () => {
     await waitFor(() => {
       expect(screen.getByTestId('retrospective-chat-message-3')).toBeInTheDocument();
     });
-    expect(
-      screen.queryByTestId('retrospective-chat-message-output-3'),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId('retrospective-chat-message-output-3')).not.toBeInTheDocument();
   });
 
   it('drops stale partial output when ticket creation fails after a tailed error', async () => {
@@ -744,9 +736,7 @@ describe('RetrospectiveChat', () => {
     });
     fireEvent.click(screen.getByTestId('retrospective-chat-clear'));
     expect(screen.queryByTestId('retrospective-chat-message-0')).not.toBeInTheDocument();
-    expect(
-      screen.queryByTestId('retrospective-chat-chip-task-failed-2'),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId('retrospective-chat-chip-task-failed-2')).not.toBeInTheDocument();
     // Storage holds the cleared (empty) transcript — a reload restores nothing.
     expect(JSON.parse(window.sessionStorage.getItem('kb.retroChat.v2.proj-1'))).toEqual(
       expect.objectContaining({ messages: [], chatTaskIds: [] }),
@@ -770,9 +760,7 @@ describe('RetrospectiveChat', () => {
     expect(screen.getByTestId('retrospective-chat-message-1')).toHaveTextContent(
       'The migration task failed its tests.',
     );
-    expect(
-      screen.getByTestId('retrospective-chat-chip-task-failed-2'),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId('retrospective-chat-chip-task-failed-2')).toBeInTheDocument();
   });
 
   it('starts fresh when stored chat state is corrupt', () => {

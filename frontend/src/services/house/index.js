@@ -24,9 +24,9 @@ export function houseRequests(request) {
   return {
     listProjects: () => request('/projects'),
     createProject: (payload) =>
-    request('/projects', { method: 'POST', body: JSON.stringify(payload) }),
+      request('/projects', { method: 'POST', body: JSON.stringify(payload) }),
     registerProject: (payload) =>
-    request('/projects/register', { method: 'POST', body: JSON.stringify(payload) }),
+      request('/projects/register', { method: 'POST', body: JSON.stringify(payload) }),
     getProject: (id) => request(`/projects/${id}`),
     updateProject: (id, payload, opts = {}) => {
       const body = { ...(payload || {}) };
@@ -48,19 +48,21 @@ export function houseRequests(request) {
     },
     activateProject: (id) => request(`/projects/${id}/activate`, { method: 'POST' }),
     getAliasReliability: (projectId) =>
-    request(`/projects/${encodeURIComponent(projectId)}/aliases/reliability`),
+      request(`/projects/${encodeURIComponent(projectId)}/aliases/reliability`),
     updateAppStatus: (projectId, payload) =>
-    request(`/projects/${projectId}/app-status`, { method: 'PATCH', body: JSON.stringify(payload || {}) }),
-    checkAppHealth: (projectId) =>
-    request(`/projects/${projectId}/app-status/health`),
+      request(`/projects/${projectId}/app-status`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload || {}),
+      }),
+    checkAppHealth: (projectId) => request(`/projects/${projectId}/app-status/health`),
     getSkills: (projectId) =>
-    request(`/skills${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`),
+      request(`/skills${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`),
     getSkill: (name, projectId) =>
-    request(
-      `/skills/${encodeURIComponent(name)}${
-        projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''
-      }`,
-    ),
+      request(
+        `/skills/${encodeURIComponent(name)}${
+          projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''
+        }`,
+      ),
     importSkill: (projectId, { file, name, overwrite } = {}) => {
       const formData = new FormData();
       formData.append('file', file, file?.name || 'skill.md');
@@ -72,32 +74,31 @@ export function houseRequests(request) {
       });
     },
     deleteSkill: (projectId, name) =>
-    request(`/projects/${projectId}/skills/${encodeURIComponent(name)}`, {
-      method: 'DELETE',
-    }),
+      request(`/projects/${projectId}/skills/${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+      }),
     listFiles: (projectId, subpath = '') =>
-    request(`/projects/${projectId}/files${subpath ? `?path=${encodeURIComponent(subpath)}` : ''}`),
+      request(
+        `/projects/${projectId}/files${subpath ? `?path=${encodeURIComponent(subpath)}` : ''}`,
+      ),
     getFileContent: (projectId, filePath) =>
-    request(`/projects/${projectId}/files/content?path=${encodeURIComponent(filePath)}`),
+      request(`/projects/${projectId}/files/content?path=${encodeURIComponent(filePath)}`),
     getFileRawUrl: (projectId, filePath) =>
-    `${API_BASE}/projects/${projectId}/files/raw?path=${encodeURIComponent(filePath)}`,
+      `${API_BASE}/projects/${projectId}/files/raw?path=${encodeURIComponent(filePath)}`,
     deployStatus: () => request('/deploy/status'),
     triggerDeploy: (fast = false) =>
-    request('/deploy', { method: 'POST', body: JSON.stringify({ fast }) }),
+      request('/deploy', { method: 'POST', body: JSON.stringify({ fast }) }),
     triggerRollback: () => request('/deploy/rollback', { method: 'POST' }),
     deployLog: (maxLines = 200) => request(`/deploy/log?maxLines=${maxLines}`),
     deployChangelog: (limit) =>
-      request(
-        `/deploy/changelog${Number.isInteger(limit) && limit > 0 ? `?limit=${limit}` : ''}`,
-      ),
+      request(`/deploy/changelog${Number.isInteger(limit) && limit > 0 ? `?limit=${limit}` : ''}`),
     getPromptLayout: () => request('/settings/prompt-layout'),
     updatePromptLayout: (layout) =>
       request('/settings/prompt-layout', {
         method: 'PUT',
         body: JSON.stringify({ layout }),
       }),
-    resetPromptLayout: () =>
-      request('/settings/prompt-layout/reset', { method: 'POST' }),
+    resetPromptLayout: () => request('/settings/prompt-layout/reset', { method: 'POST' }),
     dryRunPromptLayout: (payload = {}) =>
       request('/settings/prompt-layout/dry-run', {
         method: 'POST',

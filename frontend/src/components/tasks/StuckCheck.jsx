@@ -166,9 +166,7 @@ export function useStuckCheck({ task, taskStage } = {}) {
   const defaultModelKey = useMemo(() => {
     const stored = stageModel || activeProject?.defaultModel;
     const resolved = stored ? modelKeyForValue(modelsForHarness, stored) : '';
-    const valid = modelsForHarness.some((m) => modelOptionValue(m) === resolved)
-      ? resolved
-      : '';
+    const valid = modelsForHarness.some((m) => modelOptionValue(m) === resolved) ? resolved : '';
     if (valid) return valid;
     return modelsForHarness.length > 0 ? modelOptionValue(modelsForHarness[0]) : '';
   }, [modelsForHarness, stageModel, activeProject?.defaultModel]);
@@ -178,8 +176,7 @@ export function useStuckCheck({ task, taskStage } = {}) {
   // of sending a stale key the new harness would reject. Switching back
   // restores the earlier pick (the explicit value is kept, just shadowed).
   const modelKey =
-    explicitModelKey &&
-    modelsForHarness.some((m) => modelOptionValue(m) === explicitModelKey)
+    explicitModelKey && modelsForHarness.some((m) => modelOptionValue(m) === explicitModelKey)
       ? explicitModelKey
       : defaultModelKey;
 
@@ -322,8 +319,7 @@ export function StuckCheckPanel({ state }) {
           onHarnessChange={(val) => state.setHarnessId(val)}
           isHarnessDisabled={
             typeof isHarnessDisabled === 'function'
-              ? (harness) =>
-                  isHarnessDisabled(harness) || stuckCheckHarnessDisabledReason(harness)
+              ? (harness) => isHarnessDisabled(harness) || stuckCheckHarnessDisabledReason(harness)
               : stuckCheckHarnessDisabledReason
           }
           size="sm"

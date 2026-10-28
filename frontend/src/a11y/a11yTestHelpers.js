@@ -51,9 +51,7 @@ export function assertDialogLabelled(dialog) {
       'a11y (WCAG 4.1.2): dialog has no aria-labelledby. Pass labelledBy pointing at the dialog title id.',
     );
   }
-  const missing = labelledBy
-    .split(/\s+/)
-    .filter((id) => !dialog.ownerDocument.getElementById(id));
+  const missing = labelledBy.split(/\s+/).filter((id) => !dialog.ownerDocument.getElementById(id));
   if (missing.length > 0) {
     throw new Error(
       `a11y (WCAG 4.1.2): dialog aria-labelledby points at missing id(s): ${missing.join(', ')}.`,
@@ -71,9 +69,7 @@ export function assertDialogLabelled(dialog) {
  * @returns {HTMLElement} The live region found.
  ***/
 export function assertLiveRegion(container, roles = ['status', 'alert', 'log']) {
-  const found = roles
-    .map((role) => container.querySelector(`[role="${role}"]`))
-    .find(Boolean);
+  const found = roles.map((role) => container.querySelector(`[role="${role}"]`)).find(Boolean);
   if (!found) {
     throw new Error(
       `a11y (WCAG 4.1.3): no live region (${roles.join('/')}) found. ` +

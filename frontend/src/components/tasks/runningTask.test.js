@@ -99,7 +99,11 @@ describe('resolveDisplayedStage (stage agreement)', () => {
     // The reported desync: engine names the merge stage while the task is in
     // Catchup. The task's pipeline stage is authoritative.
     const task = { id: 't1', currentStageId: '1' };
-    const engineState = { activeTaskId: 't1', activeStageId: 'merge', activeStageName: 'Merge and deploy' };
+    const engineState = {
+      activeTaskId: 't1',
+      activeStageId: 'merge',
+      activeStageName: 'Merge and deploy',
+    };
     expect(resolveDisplayedStage(task, stages, engineState)).toEqual({
       id: '1',
       name: 'Catchup',

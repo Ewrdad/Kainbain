@@ -24,8 +24,7 @@ const TABS = [
     icon: '📁',
     keyHint: '2',
     desc: 'Sandboxed file and document explorer with Markdown and code preview.',
-    behindTheScenes:
-      'Reads project filesystem and links to notes and the git remote.',
+    behindTheScenes: 'Reads project filesystem and links to notes and the git remote.',
   },
   {
     id: 'settings',
@@ -54,7 +53,10 @@ export function TabNavigator() {
   const isOrchestratorActive = view === 'orchestrator' || view === 'tasks';
 
   return (
-    <nav className="flex items-center gap-0.5 sm:gap-1 shrink-0 min-w-0" aria-label="Primary navigation">
+    <nav
+      className="flex items-center gap-0.5 sm:gap-1 shrink-0 min-w-0"
+      aria-label="Primary navigation"
+    >
       {TABS.map((tab) => {
         const isActive = tab.id === 'orchestrator' ? isOrchestratorActive : view === tab.id;
 

@@ -27,10 +27,7 @@ import {
   tagForRecord,
   timestampLabel,
 } from './logCategories';
-import {
-  liveProcessLogs,
-  structuredTaskEntries,
-} from './__fixtures__';
+import { liveProcessLogs, structuredTaskEntries } from './__fixtures__';
 
 describe('LOG_CATEGORIES taxonomy', () => {
   test('covers every user-requested lane plus practical extras', () => {
@@ -174,12 +171,10 @@ describe('normalizeLogRecord', () => {
   });
 
   test('extractDetail prefers tool results, usage JSON, and raw sources', () => {
-    expect(
-      extractDetail({ kind: 'tool', text: '[TOOL] x', tool: { result: 'full output' } }),
-    ).toBe('full output');
-    expect(
-      extractDetail({ kind: 'telemetry', usage: { tokens: 1 } }),
-    ).toContain('"tokens"');
+    expect(extractDetail({ kind: 'tool', text: '[TOOL] x', tool: { result: 'full output' } })).toBe(
+      'full output',
+    );
+    expect(extractDetail({ kind: 'telemetry', usage: { tokens: 1 } })).toContain('"tokens"');
     expect(extractDetail({ text: 'plain' })).toBeNull();
   });
 });
@@ -201,9 +196,10 @@ describe('filterLogRecords composition', () => {
       filterLogRecords(records, { categories: new Set(['tools', 'error']) }).map((r) => r.id),
     ).toEqual(['b', 'c']);
     expect(
-      filterLogRecords(records, { categories: new Set(['output', 'tools', 'error']), search: 'bash' }).map(
-        (r) => r.id,
-      ),
+      filterLogRecords(records, {
+        categories: new Set(['output', 'tools', 'error']),
+        search: 'bash',
+      }).map((r) => r.id),
     ).toEqual(['b']);
     expect(
       filterLogRecords(records, { categories: new Set(['output']), search: '[AGENT]' }),
@@ -216,7 +212,10 @@ describe('filterLogRecords composition', () => {
     const c = normalizeLogRecord({ id: 'c', kind: 'assistant', text: 'narrative' });
     const all = { categories: new Set(['runner', 'output']), runners: new Set() };
     expect(filterLogRecords([a, b, c], all).map((r) => r.id)).toEqual(['a', 'b', 'c']);
-    const onlyAlpha = { categories: new Set(['runner', 'output']), runners: new Set(['local-alpha']) };
+    const onlyAlpha = {
+      categories: new Set(['runner', 'output']),
+      runners: new Set(['local-alpha']),
+    };
     expect(filterLogRecords([a, b, c], onlyAlpha).map((r) => r.id)).toEqual(['a']);
     expect(a.secondaryCategories).toContain('output');
   });
@@ -260,7 +259,10 @@ describe('groupLogRecords', () => {
   });
 
   test('source mode and none mode', () => {
-    const records = [{ id: '1', source: 'task' }, { id: '2', source: 'process-live' }];
+    const records = [
+      { id: '1', source: 'task' },
+      { id: '2', source: 'process-live' },
+    ];
     expect(groupLogRecords(records, { mode: 'source' })).toHaveLength(2);
     expect(groupLogRecords(records)).toHaveLength(1);
   });
@@ -275,9 +277,7 @@ describe('timestampLabel', () => {
     expect(timestampLabel('2026-10-16T10:00:01.000Z', 'HH:MM:SS.mmm')).toMatch(
       /^\d{2}:\d{2}:\d{2}\.\d{3}$/,
     );
-    expect(timestampLabel('2026-10-16T10:00:01.000Z', 'ISO')).toBe(
-      '2026-10-16T10:00:01.000Z',
-    );
+    expect(timestampLabel('2026-10-16T10:00:01.000Z', 'ISO')).toBe('2026-10-16T10:00:01.000Z');
   });
 });
 
@@ -350,7 +350,9 @@ describe('CI stream-wrapper classification ([STDOUT]/[STDERR])', () => {
     // Text-level [ERROR] behind a non-error primary surfaces Errors as secondary.
     expect(categoriesFor({ kind: 'assistant', text: 'prefix\n[ERROR] hidden' })).toContain('error');
     // [STDERR] text behind a non-error primary surfaces Errors as secondary.
-    expect(categoriesFor({ kind: 'assistant', text: 'prefix\n[STDERR] hidden' })).toContain('error');
+    expect(categoriesFor({ kind: 'assistant', text: 'prefix\n[STDERR] hidden' })).toContain(
+      'error',
+    );
   });
 });
 
@@ -528,11 +530,18 @@ describe('null/undefined safety (fail-safe)', () => {
       normalizeLogRecord({ id: 'b', kind: 'error', text: '[ERROR] boom' }),
     ];
     // filterLogRecords drops nulls
-    expect(filterLogRecords(withNulls, { categories: new Set(['output', 'error']) }).map((r) => r.id)).toEqual(['a', 'b']);
+    expect(
+      filterLogRecords(withNulls, { categories: new Set(['output', 'error']) }).map((r) => r.id),
+    ).toEqual(['a', 'b']);
     // countByCategory skips nulls
     expect(countByCategory(withNulls)).toEqual({ output: 1, error: 1 });
     // interventionSummary skips nulls
-    expect(interventionSummary(withNulls)).toEqual({ errors: 1, checkpoints: 0, repeated: 0, needsAttention: true });
+    expect(interventionSummary(withNulls)).toEqual({
+      errors: 1,
+      checkpoints: 0,
+      repeated: 0,
+      needsAttention: true,
+    });
     // formatLogRecordsForCopy skips nulls
     expect(formatLogRecordsForCopy(withNulls)).toContain('hi');
     expect(formatLogRecordsForCopy(withNulls)).toContain('boom');
@@ -580,15 +589,18 @@ describe('countByCategory and copy formatting', () => {
       normalizeLogRecord({ id: 'b', kind: 'assistant', text: 'yo' }),
     ];
     expect(countByCategory(records)).toEqual({ output: 2 });
-    const text = formatLogRecordsForCopy([
-      { ...records[0], ts: '2026-10-16T10:00:01.000Z' },
-    ]);
+    const text = formatLogRecordsForCopy([{ ...records[0], ts: '2026-10-16T10:00:01.000Z' }]);
     expect(text).toContain('[AGENT] hi');
   });
 
   test('copy is summary-only unless the row was expanded', () => {
     const record = {
-      ...normalizeLogRecord({ id: 'a', kind: 'tool', text: '[TOOL] edit', meta: { output: 'full diff here' } }),
+      ...normalizeLogRecord({
+        id: 'a',
+        kind: 'tool',
+        text: '[TOOL] edit',
+        meta: { output: 'full diff here' },
+      }),
       detail: 'full diff here',
     };
     expect(formatLogRecordsForCopy([record])).not.toContain('full diff here');

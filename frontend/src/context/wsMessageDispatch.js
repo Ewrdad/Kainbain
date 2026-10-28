@@ -76,8 +76,7 @@ export function dispatchWsMessage(type, payload, ctx) {
       setIsAgentRunning(true);
       break;
     case 'PROCESS_STDOUT': {
-      const defaultTag =
-        payload.tag || (payload.stageType === 'agent' ? '[AGENT]' : '[CI/CMD]');
+      const defaultTag = payload.tag || (payload.stageType === 'agent' ? '[AGENT]' : '[CI/CMD]');
       // The backend mirrors tool invocations globally as "[SYSTEM] Tool
       // invocation: <name> with arguments: <args>" system logs
       // (api/eventBridge.js). Re-tag them as compact, TOOL-chip-filterable

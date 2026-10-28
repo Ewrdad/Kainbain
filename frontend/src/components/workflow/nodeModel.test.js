@@ -23,7 +23,13 @@ const stages = [
 ];
 
 const tasks = [
-  { id: 'KB-1', goal: 'Build login', status: 'active', currentStageId: 's-idea', workflowId: 'wf-1' },
+  {
+    id: 'KB-1',
+    goal: 'Build login',
+    status: 'active',
+    currentStageId: 's-idea',
+    workflowId: 'wf-1',
+  },
   {
     id: 'KB-2',
     goal: 'Review auth',
@@ -31,7 +37,13 @@ const tasks = [
     currentStageId: 's-review',
     workflowId: 'wf-1',
   },
-  { id: 'KB-3', goal: 'Other pipeline', status: 'active', currentStageId: 's-idea', workflowId: 'wf-2' },
+  {
+    id: 'KB-3',
+    goal: 'Other pipeline',
+    status: 'active',
+    currentStageId: 's-idea',
+    workflowId: 'wf-2',
+  },
   { id: 'KB-4', goal: 'Legacy task', status: 'active', currentStageId: 's-idea' },
 ];
 
@@ -42,7 +54,10 @@ describe('filterActiveWorkflowTasks', () => {
   });
 
   test('tasks without workflowId fall back to the default pipeline', () => {
-    const out = filterActiveWorkflowTasks(tasks, 'wf-default', { id: 'wf-default', isDefault: true });
+    const out = filterActiveWorkflowTasks(tasks, 'wf-default', {
+      id: 'wf-default',
+      isDefault: true,
+    });
     expect(out.map((t) => t.id)).toEqual(['KB-4']);
   });
 
@@ -60,9 +75,9 @@ describe('filterActiveWorkflowTasks', () => {
       filterActiveWorkflowTasks(tasks, 'wf-9', { id: 'wf-1', isDefault: true }).map((t) => t.id),
     ).toEqual([]);
     // A non-default pipeline never admits unscoped tasks.
-    expect(
-      filterActiveWorkflowTasks(tasks, 'wf-2', { id: 'wf-2' }).map((t) => t.id),
-    ).toEqual(['KB-3']);
+    expect(filterActiveWorkflowTasks(tasks, 'wf-2', { id: 'wf-2' }).map((t) => t.id)).toEqual([
+      'KB-3',
+    ]);
   });
 });
 
@@ -169,9 +184,10 @@ describe('filterBoardTasksWithTags', () => {
   });
 
   test('empty tasks yield empty result', () => {
-    expect(
-      filterBoardTasksWithTags({ ...base, tasks: [], selectedTags: ['PO'] }),
-    ).toEqual({ visibleStageIds: ['s-po-1', 's-po-2'], filteredTasks: [] });
+    expect(filterBoardTasksWithTags({ ...base, tasks: [], selectedTags: ['PO'] })).toEqual({
+      visibleStageIds: ['s-po-1', 's-po-2'],
+      filteredTasks: [],
+    });
   });
 
   test('untagged stages hide as soon as any tag is selected', () => {
@@ -396,4 +412,3 @@ describe('formatLogsForCopy', () => {
     expect(formatLogsForCopy({ filteredProcessLogs: [], messages: [], toolCalls: [] })).toBe('');
   });
 });
-

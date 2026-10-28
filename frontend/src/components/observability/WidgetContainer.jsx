@@ -42,12 +42,8 @@ export function WidgetContainer({
   // Coerce sizes to the registry's valid options first: the layout validator
   // already guarantees this, but the container is reusable — an out-of-range
   // value must render a sane default, never a blank select with broken grid.
-  const safeColSpan = COL_SPAN_OPTIONS.some((option) => option.value === colSpan)
-    ? colSpan
-    : 6;
-  const safeHeight = HEIGHT_OPTIONS.some((option) => option.value === height)
-    ? height
-    : 'normal';
+  const safeColSpan = COL_SPAN_OPTIONS.some((option) => option.value === colSpan) ? colSpan : 6;
+  const safeHeight = HEIGHT_OPTIONS.some((option) => option.value === height) ? height : 'normal';
 
   // Map colSpan to Tailwind grid classes
   const colSpanClass =

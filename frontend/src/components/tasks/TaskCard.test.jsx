@@ -39,12 +39,14 @@ test('renders accurate report count badge when reports exist (#17)', () => {
       { filename: 'plan-2.md', path: './docs/tasks/abc-1234-def/plan-2.md' },
     ],
   };
-  renderWithKainBain(<TaskCard task={taskWithReports} stageName="Idea" role="Agent" />, FULL_CARD_PREFS);
+  renderWithKainBain(
+    <TaskCard task={taskWithReports} stageName="Idea" role="Agent" />,
+    FULL_CARD_PREFS,
+  );
   const badge = screen.getByLabelText('2 reports');
   expect(badge).toBeInTheDocument();
   expect(badge).toHaveTextContent('2');
 });
-
 
 test('renders the Human badge and checkpoint Approve/Reject buttons for human stages', () => {
   renderWithKainBain(<TaskCard task={task} stageName="Review" role="Human" />, FULL_CARD_PREFS);
@@ -155,9 +157,12 @@ test('fires onClick when clicked', () => {
 
 test('disables Approve button and displays loading indicator while in-flight', async () => {
   let resolveApprove;
-  const onApprove = vi.fn().mockImplementation(() => new Promise((resolve) => {
-    resolveApprove = resolve;
-  }));
+  const onApprove = vi.fn().mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        resolveApprove = resolve;
+      }),
+  );
 
   render(<TaskCard task={task} stageName="Review" role="Human" onApprove={onApprove} />);
   const approveBtn = screen.getByRole('button', { name: /Approve task #KB-ABC1/i });
@@ -227,7 +232,12 @@ test('a fast double-click on the move-right control fires one move', async () =>
 
   render(
     <KainBainContext.Provider
-      value={{ stages, moveTask, activeProjectId: 'proj-1', uiPreferences: { taskCardDensity: 'default' } }}
+      value={{
+        stages,
+        moveTask,
+        activeProjectId: 'proj-1',
+        uiPreferences: { taskCardDensity: 'default' },
+      }}
     >
       <TaskCard task={{ ...task, currentStageId: 'stage-2' }} stageName="Develop" role="agent" />
     </KainBainContext.Provider>,
@@ -436,8 +446,12 @@ test('compact density (default prefs) renders one-line goal without Run Stage, s
   // Dropped in compact: Run Stage row, stage-navigation row, timestamp,
   // stage badge, report badge.
   expect(screen.queryByRole('button', { name: /Run stage for task/i })).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /Move task #KB-ABC1 left/i })).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /Move task #KB-ABC1 right/i })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: /Move task #KB-ABC1 left/i }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: /Move task #KB-ABC1 right/i }),
+  ).not.toBeInTheDocument();
   expect(
     screen.queryByRole('combobox', { name: /Move task #KB-ABC1 to stage/i }),
   ).not.toBeInTheDocument();
@@ -457,10 +471,9 @@ test('bare render (no preferences) resolves to the compact card', () => {
 });
 
 test('compact keeps checkpoint Approve/Reject, PR review, and the card aria-label', () => {
-  renderWithKainBain(
-    <TaskCard task={task} stageName="Review" role="Human" />,
-    { uiPreferences: { taskCardDensity: 'compact' } },
-  );
+  renderWithKainBain(<TaskCard task={task} stageName="Review" role="Human" />, {
+    uiPreferences: { taskCardDensity: 'compact' },
+  });
 
   expect(screen.getByRole('button', { name: /Approve task #KB-ABC1/i })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /Reject task #KB-ABC1/i })).toBeInTheDocument();
@@ -472,11 +485,22 @@ test('compact keeps checkpoint Approve/Reject, PR review, and the card aria-labe
 
 test('compact overrides cardPreviewLines to a single clamped line', () => {
   renderWithKainBain(
-    <TaskCard task={{ ...task, goal: 'A very long goal title that would wrap onto three lines when clamped' }} stageName="Idea" role="Agent" />,
+    <TaskCard
+      task={{
+        ...task,
+        goal: 'A very long goal title that would wrap onto three lines when clamped',
+      }}
+      stageName="Idea"
+      role="Agent"
+    />,
     { uiPreferences: { taskCardDensity: 'compact', cardPreviewLines: 3 } },
   );
 
-  expect(screen.getByText('A very long goal title that would wrap onto three lines when clamped', { exact: false }).className).toContain('line-clamp-1');
+  expect(
+    screen.getByText('A very long goal title that would wrap onto three lines when clamped', {
+      exact: false,
+    }).className,
+  ).toContain('line-clamp-1');
 });
 
 test('full-card density keeps badge, timestamp, and quick-action rows', () => {
@@ -510,10 +534,9 @@ test('full-card density keeps badge, timestamp, and quick-action rows', () => {
 test('tap on the card title opens the inspector (compact and full densities)', () => {
   for (const density of ['compact', 'default']) {
     const onClick = vi.fn();
-    renderWithKainBain(
-      <TaskCard task={task} stageName="Idea" role="Agent" onClick={onClick} />,
-      { uiPreferences: { taskCardDensity: density } },
-    );
+    renderWithKainBain(<TaskCard task={task} stageName="Idea" role="Agent" onClick={onClick} />, {
+      uiPreferences: { taskCardDensity: density },
+    });
     fireEvent.click(screen.getByText('Build the API'));
     expect(onClick).toHaveBeenCalledTimes(1);
     cleanup();
@@ -573,7 +596,12 @@ test('tap on a status badge pins its tooltip without opening the inspector in to
   setTouchInputOverride(true);
   const onClick = vi.fn();
   renderWithKainBain(
-    <TaskCard task={{ ...task, status: 'completed' }} stageName="Idea" role="Agent" onClick={onClick} />,
+    <TaskCard
+      task={{ ...task, status: 'completed' }}
+      stageName="Idea"
+      role="Agent"
+      onClick={onClick}
+    />,
     { uiPreferences: { taskCardDensity: 'compact' } },
   );
 
@@ -593,7 +621,12 @@ test('tap on a status badge still opens the inspector on desktop (unchanged)', (
   setTouchInputOverride(false);
   const onClick = vi.fn();
   renderWithKainBain(
-    <TaskCard task={{ ...task, status: 'completed' }} stageName="Idea" role="Agent" onClick={onClick} />,
+    <TaskCard
+      task={{ ...task, status: 'completed' }}
+      stageName="Idea"
+      role="Agent"
+      onClick={onClick}
+    />,
     { uiPreferences: { taskCardDensity: 'compact' } },
   );
 
@@ -618,7 +651,9 @@ test('Enter key on the Approve button actuates the approve instead of opening th
 
   // Enter on a focused button bubbles to the card's keydown handler; the card
   // must let the button activate natively instead of opening the inspector.
-  fireEvent.keyDown(screen.getByRole('button', { name: /Approve task #KB-ABC1/i }), { key: 'Enter' });
+  fireEvent.keyDown(screen.getByRole('button', { name: /Approve task #KB-ABC1/i }), {
+    key: 'Enter',
+  });
 
   expect(onClick).not.toHaveBeenCalled();
 });
@@ -630,7 +665,6 @@ test('Enter key on the focused card still opens the inspector (keyboard fallback
   fireEvent.keyDown(screen.getByLabelText(/Task #KB-ABC1 in Idea/i), { key: 'Enter' });
   expect(onClick).toHaveBeenCalledTimes(1);
 });
-
 
 test('Copy Checkout sits beside Open PR Review and copies the derived branch command', async () => {
   const writeTextMock = vi.fn().mockResolvedValue(undefined);
@@ -654,7 +688,9 @@ test('Copy Checkout sits beside Open PR Review and copies the derived branch com
     expect(writeTextMock).toHaveBeenCalledWith('git fetch origin && git checkout kb/abc-1234-def');
   });
   await waitFor(() => {
-    expect(screen.getByRole('button', { name: /Copy checkout command for task #KB-ABC1/i })).toHaveTextContent('Copied ✓');
+    expect(
+      screen.getByRole('button', { name: /Copy checkout command for task #KB-ABC1/i }),
+    ).toHaveTextContent('Copied ✓');
   });
   cleanup();
 });
@@ -688,7 +724,9 @@ test('Copy Checkout is disabled without branch support', () => {
       <TaskCard task={task} stageName="Review" role="Human" />
     </KainBainContext.Provider>,
   );
-  expect(screen.getByRole('button', { name: /Copy checkout command for task #KB-ABC1/i })).toBeDisabled();
+  expect(
+    screen.getByRole('button', { name: /Copy checkout command for task #KB-ABC1/i }),
+  ).toBeDisabled();
   cleanup();
 });
 
@@ -700,7 +738,10 @@ test('Copy Checkout is disabled without branch support', () => {
  ***/
 test('blocked agent-role task shows BLOCKED instead of AGENT_READY (full card)', () => {
   const blockedTask = { ...task, isBlocked: true, blockedBy: ['abc-1234-def'] };
-  renderWithKainBain(<TaskCard task={blockedTask} stageName="Execution" role="agent" />, FULL_CARD_PREFS);
+  renderWithKainBain(
+    <TaskCard task={blockedTask} stageName="Execution" role="agent" />,
+    FULL_CARD_PREFS,
+  );
   expect(screen.getByText('BLOCKED')).toBeInTheDocument();
   expect(screen.queryByText('AGENT_READY')).not.toBeInTheDocument();
   cleanup();
@@ -719,7 +760,10 @@ test('blocked task shows BLOCKED in compact density meta row', () => {
 test('blocked meta-row status names blocker keys, never raw ids', () => {
   const blockerId = '73c4560d-1417-4fe1-8695-a829237de9ec';
   const blockedTask = { ...task, isBlocked: true, blockedBy: [blockerId] };
-  renderWithKainBain(<TaskCard task={blockedTask} stageName="Execution" role="agent" />, FULL_CARD_PREFS);
+  renderWithKainBain(
+    <TaskCard task={blockedTask} stageName="Execution" role="agent" />,
+    FULL_CARD_PREFS,
+  );
   const labelled = screen.getAllByLabelText(/Blocked by #KB-73C4/i);
   const status = labelled.find((el) => el.textContent.includes('BLOCKED'));
   expect(status).toBeInTheDocument();
@@ -733,7 +777,10 @@ test('blocked tooltip caps long blocker lists with +N more', () => {
     isBlocked: true,
     blockedBy: ['a-1111', 'b-2222', 'c-3333', 'd-4444'],
   };
-  renderWithKainBain(<TaskCard task={blockedTask} stageName="Execution" role="agent" />, FULL_CARD_PREFS);
+  renderWithKainBain(
+    <TaskCard task={blockedTask} stageName="Execution" role="agent" />,
+    FULL_CARD_PREFS,
+  );
   const labelled = screen.getAllByLabelText(/\+1 more/i);
   expect(labelled.length).toBeGreaterThan(0);
   expect(labelled.find((el) => el.textContent.includes('BLOCKED'))).toBeInTheDocument();
@@ -742,13 +789,19 @@ test('blocked tooltip caps long blocker lists with +N more', () => {
 
 test('failed and running signals keep precedence over blocked', () => {
   const failedBlocked = { ...task, status: 'failed', failureReason: 'boom', isBlocked: true };
-  renderWithKainBain(<TaskCard task={failedBlocked} stageName="Execution" role="agent" />, FULL_CARD_PREFS);
+  renderWithKainBain(
+    <TaskCard task={failedBlocked} stageName="Execution" role="agent" />,
+    FULL_CARD_PREFS,
+  );
   expect(screen.getByText('FAILED')).toBeInTheDocument();
   expect(screen.queryByText('BLOCKED')).not.toBeInTheDocument();
   cleanup();
 
   const runningBlocked = { ...task, status: 'running_agent', isBlocked: true };
-  renderWithKainBain(<TaskCard task={runningBlocked} stageName="Execution" role="agent" />, FULL_CARD_PREFS);
+  renderWithKainBain(
+    <TaskCard task={runningBlocked} stageName="Execution" role="agent" />,
+    FULL_CARD_PREFS,
+  );
   expect(screen.getByText('RUNNING')).toBeInTheDocument();
   expect(screen.queryByText('BLOCKED')).not.toBeInTheDocument();
   cleanup();
@@ -766,10 +819,10 @@ test('single-active invariant: owner RUNNING, stale running_* INTERRUPTED, never
   const owner = { id: 'task-a', goal: 'Owner work', status: 'running_agent' };
   const stale = { id: 'task-b', goal: 'Stale work', status: 'running_agent' };
 
-  const { unmount } = renderWithKainBain(
-    <TaskCard task={owner} stageName="Work" role="agent" />,
-    { ...FULL_CARD_PREFS, engineState },
-  );
+  const { unmount } = renderWithKainBain(<TaskCard task={owner} stageName="Work" role="agent" />, {
+    ...FULL_CARD_PREFS,
+    engineState,
+  });
   expect(screen.getByText('RUNNING')).toBeInTheDocument();
   unmount();
 
@@ -801,7 +854,10 @@ test('hides checkpoint Approve/Reject on terminal-failed tasks (approve would 40
     status: 'failed',
     failureReason: 'git checkout master failed (exit 128)',
   };
-  renderWithKainBain(<TaskCard task={failedTask} stageName="Review" role="Human" />, FULL_CARD_PREFS);
+  renderWithKainBain(
+    <TaskCard task={failedTask} stageName="Review" role="Human" />,
+    FULL_CARD_PREFS,
+  );
   expect(screen.queryByRole('button', { name: /Approve task #KB-ABC1/i })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Reject task #KB-ABC1/i })).not.toBeInTheDocument();
   // The failure signal itself stays: recovery lives in the detail view.
@@ -835,7 +891,9 @@ test('shows Open Survey on parked question-me stages with the skill record', () 
     />,
     { ...FULL_CARD_PREFS, stages },
   );
-  expect(screen.getByRole('button', { name: /Open survey for task #KB-ABC1/i })).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: /Open survey for task #KB-ABC1/i }),
+  ).toBeInTheDocument();
   cleanup();
 });
 

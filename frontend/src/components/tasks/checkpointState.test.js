@@ -16,9 +16,9 @@ const LEGACY_REVIEW_STAGE = { id: 's-3', name: 'Review', type: 'review' };
 
 describe('resolveTaskStage', () => {
   test('matches by currentStageId', () => {
-    expect(
-      resolveTaskStage([AGENT_STAGE, HUMAN_STAGE], { currentStageId: 's-2' }),
-    ).toBe(HUMAN_STAGE);
+    expect(resolveTaskStage([AGENT_STAGE, HUMAN_STAGE], { currentStageId: 's-2' })).toBe(
+      HUMAN_STAGE,
+    );
   });
 
   test('returns null when nothing resolves', () => {
@@ -57,10 +57,7 @@ describe('resolveCheckpointState', () => {
   test('non-checkpoint types (ci/deploy/merge) never show the checkpoint', () => {
     for (const type of ['ci', 'script', 'deploy', 'merge']) {
       expect(
-        resolveCheckpointState(
-          { status: 'waiting_human' },
-          { id: 's-x', name: 'X', type },
-        ),
+        resolveCheckpointState({ status: 'waiting_human' }, { id: 's-x', name: 'X', type }),
       ).toEqual({ showCheckpoint: false });
     }
   });
@@ -82,12 +79,12 @@ describe('resolveCheckpointState', () => {
     expect(resolveCheckpointState({ status: 'active' }, null, { role: 'human' })).toEqual({
       showCheckpoint: true,
     });
-    expect(
-      resolveCheckpointState({ status: 'active' }, null, { role: 'agent' }),
-    ).toEqual({ showCheckpoint: false });
+    expect(resolveCheckpointState({ status: 'active' }, null, { role: 'agent' })).toEqual({
+      showCheckpoint: false,
+    });
     // A stale waiting_human payload alone never promotes an agent role.
-    expect(
-      resolveCheckpointState({ status: 'waiting_human' }, null, { role: 'agent' }),
-    ).toEqual({ showCheckpoint: false });
+    expect(resolveCheckpointState({ status: 'waiting_human' }, null, { role: 'agent' })).toEqual({
+      showCheckpoint: false,
+    });
   });
 });

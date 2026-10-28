@@ -27,9 +27,9 @@ describe('resolveTaskImageUrl', () => {
   it('tolerates ./ and / prefixed asset paths and fuller task-folder prefixes', () => {
     const cases = ['./assets/a.png', '/assets/a.png', 'docs/tasks/t1/assets/a.png'];
     for (const src of cases) {
-      expect(
-        resolveTaskImageUrl({ projectId: 'p', taskId: 't', src }),
-      ).toBe('/projects/p/tasks/t/images/a.png');
+      expect(resolveTaskImageUrl({ projectId: 'p', taskId: 't', src })).toBe(
+        '/projects/p/tasks/t/images/a.png',
+      );
     }
   });
 
@@ -54,22 +54,20 @@ describe('resolveTaskImageUrl', () => {
     expect(
       resolveTaskImageUrl({ projectId: 'p', taskId: 't', src: 'data:image/png;base64,AA' }),
     ).toBe('data:image/png;base64,AA');
-    expect(
-      resolveTaskImageUrl({ projectId: 'p', taskId: 't', src: 'javascript:alert(1)' }),
-    ).toBe('javascript:alert(1)');
+    expect(resolveTaskImageUrl({ projectId: 'p', taskId: 't', src: 'javascript:alert(1)' })).toBe(
+      'javascript:alert(1)',
+    );
   });
 
   it('returns non-asset relative paths unchanged', () => {
-    expect(
-      resolveTaskImageUrl({ projectId: 'p', taskId: 't', src: 'src/logo.svg' }),
-    ).toBe('src/logo.svg');
+    expect(resolveTaskImageUrl({ projectId: 'p', taskId: 't', src: 'src/logo.svg' })).toBe(
+      'src/logo.svg',
+    );
   });
 
   it('returns the source as-is when task context is missing', () => {
     expect(resolveTaskImageUrl({ src: 'assets/a.png' })).toBe('assets/a.png');
-    expect(resolveTaskImageUrl({ projectId: 'p', src: 'assets/a.png' })).toBe(
-      'assets/a.png',
-    );
+    expect(resolveTaskImageUrl({ projectId: 'p', src: 'assets/a.png' })).toBe('assets/a.png');
   });
 
   it('handles empty and non-string sources', () => {
@@ -119,9 +117,7 @@ describe('taskImageRequests', () => {
     const request = vi.fn().mockResolvedValue({});
     const requests = taskImageRequests(request);
     await requests.deleteTaskImage('p1', 't1', 'my image.png');
-    expect(request.mock.calls[0][0]).toBe(
-      '/projects/p1/tasks/t1/images/my%20image.png',
-    );
+    expect(request.mock.calls[0][0]).toBe('/projects/p1/tasks/t1/images/my%20image.png');
   });
 });
 
@@ -167,9 +163,9 @@ describe('appendImageMarkdown', () => {
     // Defense in depth: backend sanitizeImageName already flattens names, but
     // a crafted/legacy stored path must not be able to close the `(...)`
     // destination early and inject arbitrary markdown.
-    expect(
-      appendImageMarkdown('Fix it', { name: 'a.png', path: 'assets/a.png) ![evil](x' }),
-    ).toBe('Fix it\n\n![a.png](assets/a.png  ![evil] x)\n');
+    expect(appendImageMarkdown('Fix it', { name: 'a.png', path: 'assets/a.png) ![evil](x' })).toBe(
+      'Fix it\n\n![a.png](assets/a.png  ![evil] x)\n',
+    );
     expect(
       appendImageMarkdown('Fix it', { name: 'a.png', path: 'assets/a".png\n![injected](y)' }),
     ).toBe('Fix it\n\n![a.png](assets/a .png ![injected] y)\n');
@@ -230,15 +226,13 @@ describe('removeImageMarkdown', () => {
   });
 
   it('strips hand-edited alt text by basename', () => {
-    expect(
-      removeImageMarkdown('Fix it\n\n![screenshot of the bug](assets/a.png)\n', 'a.png'),
-    ).toBe('Fix it');
+    expect(removeImageMarkdown('Fix it\n\n![screenshot of the bug](assets/a.png)\n', 'a.png')).toBe(
+      'Fix it',
+    );
   });
 
   it('strips refs carrying a trailing title', () => {
-    expect(
-      removeImageMarkdown('Fix it\n\n![a](assets/a.png "shot")\n', 'a.png'),
-    ).toBe('Fix it');
+    expect(removeImageMarkdown('Fix it\n\n![a](assets/a.png "shot")\n', 'a.png')).toBe('Fix it');
   });
 
   it('leaves unrelated image refs and plain text alone', () => {

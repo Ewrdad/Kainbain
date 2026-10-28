@@ -1,10 +1,7 @@
 import { expect, test, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { StageTagEditor } from './StageTagEditor';
-import {
-  STAGE_TAG_MAX_COUNT,
-  STAGE_TAG_MAX_LENGTH,
-} from '../../../../shared/stageTags.js';
+import { STAGE_TAG_MAX_COUNT, STAGE_TAG_MAX_LENGTH } from '../../../../shared/stageTags.js';
 import '@testing-library/jest-dom';
 
 /***
@@ -92,7 +89,9 @@ test('caps at the max tag count and hides the input', () => {
   const value = Array.from({ length: STAGE_TAG_MAX_COUNT }, (_, i) => `tag-${i}`);
   const { onChange } = renderEditor({ value });
   expect(screen.queryByLabelText('Add tag for Idea')).not.toBeInTheDocument();
-  expect(screen.getByText(`Tags (${STAGE_TAG_MAX_COUNT}/${STAGE_TAG_MAX_COUNT})`)).toBeInTheDocument();
+  expect(
+    screen.getByText(`Tags (${STAGE_TAG_MAX_COUNT}/${STAGE_TAG_MAX_COUNT})`),
+  ).toBeInTheDocument();
   expect(onChange).not.toHaveBeenCalled();
 });
 

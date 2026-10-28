@@ -129,7 +129,12 @@ describe('selection', () => {
   });
 
   test('project legacy slug values resolve too', () => {
-    renderSelect({ kind: 'project', entities: { projects }, value: 'BETA', ariaLabel: 'Target project' });
+    renderSelect({
+      kind: 'project',
+      entities: { projects },
+      value: 'BETA',
+      ariaLabel: 'Target project',
+    });
     expect(screen.getByRole('combobox', { name: 'Target project' })).toHaveTextContent(
       'Beta (proj-2)',
     );
@@ -212,7 +217,12 @@ describe('custom (legacy) values', () => {
   });
 
   test('template values are not flagged custom', () => {
-    renderSelect({ kind: 'stage', entities: { stages: [] }, value: '{{currentStage}}', ariaLabel: 'Target stage' });
+    renderSelect({
+      kind: 'stage',
+      entities: { stages: [] },
+      value: '{{currentStage}}',
+      ariaLabel: 'Target stage',
+    });
     expect(screen.queryByText('custom value')).not.toBeInTheDocument();
   });
 });

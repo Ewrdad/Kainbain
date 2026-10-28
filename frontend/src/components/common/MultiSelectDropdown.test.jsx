@@ -137,7 +137,12 @@ test('clicking outside closes the dropdown', () => {
   render(
     <div>
       <button type="button">outside</button>
-      <MultiSelectDropdown options={mockOptions} selected={[]} onChange={() => {}} ariaLabel="Prerequisite tasks" />
+      <MultiSelectDropdown
+        options={mockOptions}
+        selected={[]}
+        onChange={() => {}}
+        ariaLabel="Prerequisite tasks"
+      />
     </div>,
   );
   fireEvent.click(screen.getByRole('button', { name: 'Prerequisite tasks' }));

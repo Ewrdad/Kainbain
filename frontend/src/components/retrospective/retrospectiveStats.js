@@ -145,10 +145,15 @@ export function selectVisibleTasks(
   return list
     .filter((task) => {
       if (workflowFilter !== 'all' && task?.workflowId !== workflowFilter) return false;
-      if (statusFilter === 'completed') return task?.status === 'completed' || task?.status === 'done';
+      if (statusFilter === 'completed')
+        return task?.status === 'completed' || task?.status === 'done';
       if (statusFilter === 'failed') return isRetrospectiveTaskFailed(task);
       if (statusFilter === 'active') {
-        return task?.status !== 'completed' && task?.status !== 'done' && !isRetrospectiveTaskFailed(task);
+        return (
+          task?.status !== 'completed' &&
+          task?.status !== 'done' &&
+          !isRetrospectiveTaskFailed(task)
+        );
       }
       return true;
     })

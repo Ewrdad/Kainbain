@@ -29,8 +29,12 @@ describe('appLinkState', () => {
     expect(appLinkState({ url: 'http://localhost:3000', status: 'starting' })).toBe('starting');
     expect(appLinkState({ url: 'http://localhost:3000', status: 'degraded' })).toBe('degraded');
     expect(appLinkState({ url: 'http://localhost:3000', status: 'stopped' })).toBe('stopped');
-    expect(appLinkState({ url: 'http://localhost:3000', status: 'running', isHealthy: true })).toBe('running');
-    expect(appLinkState({ url: 'http://localhost:3000', status: 'running', isHealthy: false })).toBe('down');
+    expect(appLinkState({ url: 'http://localhost:3000', status: 'running', isHealthy: true })).toBe(
+      'running',
+    );
+    expect(
+      appLinkState({ url: 'http://localhost:3000', status: 'running', isHealthy: false }),
+    ).toBe('down');
   });
 
   it('reports hidden for non-string and blank URLs (matching the null render)', () => {
@@ -43,9 +47,7 @@ describe('appLinkState', () => {
 
 describe('GoToAppLink', () => {
   it('renders nothing when the project has no link', () => {
-    const { container } = renderWithKainBain(
-      <GoToAppLink projectId="p1" appStatus={undefined} />,
-    );
+    const { container } = renderWithKainBain(<GoToAppLink projectId="p1" appStatus={undefined} />);
     expect(container).toBeEmptyDOMElement();
   });
 
@@ -84,7 +86,9 @@ describe('GoToAppLink', () => {
         appStatus={{ url: 'http://localhost:3000', status: 'starting' }}
       />,
     );
-    expect(screen.getByRole('link', { name: /Open app \(starting\)/i })).toHaveTextContent('Go to App');
+    expect(screen.getByRole('link', { name: /Open app \(starting\)/i })).toHaveTextContent(
+      'Go to App',
+    );
   });
 
   it('shows a red dot when the last probe failed', () => {
@@ -98,19 +102,25 @@ describe('GoToAppLink', () => {
   });
 
   it('hides the probe button without a project id', () => {
-    renderWithKainBain(
-      <GoToAppLink appStatus={{ url: 'http://localhost:3000' }} />,
-    );
+    renderWithKainBain(<GoToAppLink appStatus={{ url: 'http://localhost:3000' }} />);
     expect(screen.getByRole('link', { name: /Open app/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Check app health/i })).not.toBeInTheDocument();
   });
 
   it('probes on demand and reports the fresh link record', async () => {
-    const fresh = { url: 'http://localhost:3000', isHealthy: true, lastHealthCheck: '2026-10-04T16:05:00.000Z' };
+    const fresh = {
+      url: 'http://localhost:3000',
+      isHealthy: true,
+      lastHealthCheck: '2026-10-04T16:05:00.000Z',
+    };
     api.checkAppHealth.mockResolvedValue({ healthy: true, appStatus: fresh });
     const onHealthChange = vi.fn();
     renderWithKainBain(
-      <GoToAppLink projectId="p1" appStatus={{ url: 'http://localhost:3000' }} onHealthChange={onHealthChange} />,
+      <GoToAppLink
+        projectId="p1"
+        appStatus={{ url: 'http://localhost:3000' }}
+        onHealthChange={onHealthChange}
+      />,
     );
     fireEvent.click(screen.getByRole('button', { name: /Check app health now/i }));
     await waitFor(() => expect(api.checkAppHealth).toHaveBeenCalledWith('p1'));
@@ -121,7 +131,11 @@ describe('GoToAppLink', () => {
     api.checkAppHealth.mockResolvedValue({ healthy: true, appStatus: 'not-a-record' });
     const onHealthChange = vi.fn();
     renderWithKainBain(
-      <GoToAppLink projectId="p1" appStatus={{ url: 'http://localhost:3000' }} onHealthChange={onHealthChange} />,
+      <GoToAppLink
+        projectId="p1"
+        appStatus={{ url: 'http://localhost:3000' }}
+        onHealthChange={onHealthChange}
+      />,
     );
     fireEvent.click(screen.getByRole('button', { name: /Check app health now/i }));
     await waitFor(() => expect(api.checkAppHealth).toHaveBeenCalledWith('p1'));
@@ -140,7 +154,11 @@ describe('GoToAppLink', () => {
     api.checkAppHealth.mockRejectedValue(new Error('boom'));
     const onHealthChange = vi.fn();
     renderWithKainBain(
-      <GoToAppLink projectId="p1" appStatus={{ url: 'http://localhost:3000' }} onHealthChange={onHealthChange} />,
+      <GoToAppLink
+        projectId="p1"
+        appStatus={{ url: 'http://localhost:3000' }}
+        onHealthChange={onHealthChange}
+      />,
     );
     fireEvent.click(screen.getByRole('button', { name: /Check app health now/i }));
     await waitFor(() => expect(api.checkAppHealth).toHaveBeenCalledWith('p1'));

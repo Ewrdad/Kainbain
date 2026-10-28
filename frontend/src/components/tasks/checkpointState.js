@@ -47,7 +47,6 @@ export function resolveCheckpointState(task, stage, fallback = {}) {
   }
   const { role, stageName } = fallback;
   return {
-    showCheckpoint:
-      isCheckpoint(role) || String(stageName || '').toLowerCase() === 'human',
+    showCheckpoint: isCheckpoint(role) || String(stageName || '').toLowerCase() === 'human',
   };
 }

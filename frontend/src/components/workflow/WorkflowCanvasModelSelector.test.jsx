@@ -101,7 +101,9 @@ test('stages inherit the project harness by default (explicit inherit choice)', 
   expect(screen.getByText('ollama-cloud')).toBeInTheDocument();
   expect(screen.getByText('google')).toBeInTheDocument();
   expect(screen.getByRole('option', { name: 'GLM 5.3 Flash (Cloud)' })).toBeInTheDocument();
-  expect(screen.queryByRole('option', { name: /GLM 5\.3 Flash \(Cloud\) \(/ })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('option', { name: /GLM 5\.3 Flash \(Cloud\) \(/ }),
+  ).not.toBeInTheDocument();
 });
 
 test('picking a stage harness persists the override and rescopes the model control', async () => {

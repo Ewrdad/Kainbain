@@ -1,7 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { ModelAliasesSection, formatAliasSummary, targetValidity, validateAliasList, rowTargetsForEdit, canonicalRowForSave } from './ModelAliasesSection';
+import {
+  ModelAliasesSection,
+  formatAliasSummary,
+  targetValidity,
+  validateAliasList,
+  rowTargetsForEdit,
+  canonicalRowForSave,
+} from './ModelAliasesSection';
 
 /**
  * MARK: ModelAliasesSection tests
@@ -44,10 +51,7 @@ function expandAllCards() {
 describe('validateAliasList', () => {
   it('accepts a valid table', () => {
     expect(
-      validateAliasList(
-        [{ name: 'small', harness: 'pi', model: 'google::m1' }],
-        HARNESSES,
-      ),
+      validateAliasList([{ name: 'small', harness: 'pi', model: 'google::m1' }], HARNESSES),
     ).toEqual([]);
   });
 
@@ -67,9 +71,9 @@ describe('validateAliasList', () => {
   });
 
   it('allows blank models on self-managed (none) harnesses', () => {
-    expect(
-      validateAliasList([{ name: 'cli', harness: 'custom', model: '' }], HARNESSES),
-    ).toEqual([]);
+    expect(validateAliasList([{ name: 'cli', harness: 'custom', model: '' }], HARNESSES)).toEqual(
+      [],
+    );
   });
 
   it('refuses a model on a self-managed (none) harness, naming the alias and harness', () => {
@@ -148,7 +152,9 @@ describe('ModelAliasesSection', () => {
 
   it('edits a row name and shows the usage hint', () => {
     const onChange = vi.fn();
-    const usagesForName = vi.fn().mockReturnValue({ stages: [{ stageId: '1' }], usesAsDefault: true });
+    const usagesForName = vi
+      .fn()
+      .mockReturnValue({ stages: [{ stageId: '1' }], usesAsDefault: true });
     render(
       <ModelAliasesSection
         aliases={[{ name: 'small', harness: 'pi', model: 'google::m1' }]}
@@ -203,7 +209,9 @@ describe('ModelAliasesSection', () => {
       />,
     );
     expandAllCards();
-    expect(screen.getByTestId('model-alias-managed-note-0')).toHaveTextContent('manages its own model');
+    expect(screen.getByTestId('model-alias-managed-note-0')).toHaveTextContent(
+      'manages its own model',
+    );
     expect(screen.queryByRole('button', { name: /Clear stored model/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('Delete alias cli'));
     expect(onChange).toHaveBeenCalledWith([]);
@@ -445,10 +453,7 @@ describe('targetValidity', () => {
 
 describe('validateAliasList unknown-harness parity', () => {
   it('refuses unknown harness ids (backend hard-error parity)', () => {
-    const errors = validateAliasList(
-      [{ name: 'w', harness: 'nope', model: 'm' }],
-      HARNESSES,
-    );
+    const errors = validateAliasList([{ name: 'w', harness: 'nope', model: 'm' }], HARNESSES);
     expect(errors).toHaveLength(1);
     expect(errors[0].message).toContain('unknown harness');
   });
@@ -479,7 +484,9 @@ describe('ModelAliasesSection validity badges', () => {
     );
     expandAllCards();
     expect(screen.getByTestId('model-alias-target-validity-0-0')).toHaveTextContent('✓ Resolves');
-    expect(screen.getByTestId('model-alias-target-validity-1-0')).toHaveTextContent('Unknown model');
+    expect(screen.getByTestId('model-alias-target-validity-1-0')).toHaveTextContent(
+      'Unknown model',
+    );
     // Hard badges stay visual-only: the row error remains the single alert channel.
     const hard = screen.getByTestId('model-alias-target-validity-2-0');
     expect(hard).toHaveTextContent('Unknown harness');
@@ -593,17 +600,23 @@ describe('ModelAliasesSection mobile wrapping layout', () => {
 
     // The remove button sits in the card header, so the card reads as one
     // labelled unit; the inputs keep their harness -> model -> percent order.
-    expect(removeButton.compareDocumentPosition(harnessCombobox) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(harnessCombobox.compareDocumentPosition(modelCombobox) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(modelCombobox.compareDocumentPosition(percentInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      removeButton.compareDocumentPosition(harnessCombobox) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      harnessCombobox.compareDocumentPosition(modelCombobox) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      modelCombobox.compareDocumentPosition(percentInput) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
 
 describe('formatAliasSummary', () => {
   it('formats a single target with 100% share', () => {
-    expect(
-      formatAliasSummary([{ harness: 'custom', percent: 100 }], HARNESSES),
-    ).toBe('1 target · 100% Custom');
+    expect(formatAliasSummary([{ harness: 'custom', percent: 100 }], HARNESSES)).toBe(
+      '1 target · 100% Custom',
+    );
     expect(
       formatAliasSummary([{ harness: 'pi', model: 'google::m1', percent: 100 }], HARNESSES),
     ).toBe('1 target · 100% pi (google::m1)');
@@ -637,9 +650,9 @@ describe('formatAliasSummary', () => {
     expect(
       formatAliasSummary([{ harness: 'pi', model: 'google::m1', percent: 100 }], HARNESSES),
     ).toBe('1 target · 100% pi (google::m1)');
-    expect(
-      formatAliasSummary([{ harness: 'pi', model: '', percent: 100 }], HARNESSES),
-    ).toBe('1 target · 100% pi');
+    expect(formatAliasSummary([{ harness: 'pi', model: '', percent: 100 }], HARNESSES)).toBe(
+      '1 target · 100% pi',
+    );
   });
 });
 
@@ -754,7 +767,9 @@ describe('ModelAliasesSection collapsible behaviour', () => {
       },
     ];
 
-    render(<ModelAliasesSection aliases={invalidAlias} onChange={() => {}} harnesses={HARNESSES} />);
+    render(
+      <ModelAliasesSection aliases={invalidAlias} onChange={() => {}} harnesses={HARNESSES} />,
+    );
 
     const toggleBtn = screen.getByTestId('model-alias-toggle-0');
 
@@ -1350,5 +1365,3 @@ describe('ModelAliasesSection reasoning validation', () => {
     ).toEqual([]);
   });
 });
-
-

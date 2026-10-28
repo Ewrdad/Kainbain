@@ -285,9 +285,7 @@ test('unknown-id prefs entries are ignored and missing prefs show all enabled', 
 
   for (const harness of HARNESS_PAYLOAD.harnesses) {
     const row = await screen.findByTestId(`harness-row-${harness.id}`);
-    expect(
-      within(row).getByLabelText(`Enable ${harness.name} harness`),
-    ).toBeChecked();
+    expect(within(row).getByLabelText(`Enable ${harness.name} harness`)).toBeChecked();
   }
   const select = screen.getByLabelText('Default harness');
   expect(within(select).getAllByRole('option')).toHaveLength(5);
@@ -321,9 +319,7 @@ test('an older backend payload without availability fields renders all-enabled',
 
   for (const harness of HARNESS_PAYLOAD.harnesses) {
     const row = await screen.findByTestId(`harness-row-${harness.id}`);
-    expect(
-      within(row).getByLabelText(`Enable ${harness.name} harness`),
-    ).toBeChecked();
+    expect(within(row).getByLabelText(`Enable ${harness.name} harness`)).toBeChecked();
     // Honest status, never silent: unknown until probed.
     expect(within(row).getByTestId(`harness-status-${harness.id}`)).toHaveTextContent(
       /Unknown|Unavailable|Auto-detect off/,
@@ -360,20 +356,16 @@ test('a probe discoveryError renders the specific reason + fix under the badge',
 
   const row = await screen.findByTestId('harness-row-antigravity');
   await waitFor(() =>
-    expect(
-      within(row).getByTestId('harness-status-detail-antigravity'),
-    ).toBeInTheDocument(),
+    expect(within(row).getByTestId('harness-status-detail-antigravity')).toBeInTheDocument(),
   );
-  expect(
-    within(row).getByTestId('harness-status-detail-antigravity'),
-  ).toHaveTextContent('The agy CLI was not found.');
-  expect(
-    within(row).getByTestId('harness-status-detail-antigravity'),
-  ).toHaveTextContent('Install the Antigravity CLI.');
+  expect(within(row).getByTestId('harness-status-detail-antigravity')).toHaveTextContent(
+    'The agy CLI was not found.',
+  );
+  expect(within(row).getByTestId('harness-status-detail-antigravity')).toHaveTextContent(
+    'Install the Antigravity CLI.',
+  );
   // The badge still reports the honest probe outcome underneath.
-  expect(within(row).getByTestId('harness-status-antigravity')).toHaveTextContent(
-    'Unavailable',
-  );
+  expect(within(row).getByTestId('harness-status-antigravity')).toHaveTextContent('Unavailable');
 });
 
 test('a probe without discoveryError renders no reason line', async () => {
@@ -382,13 +374,9 @@ test('a probe without discoveryError renders no reason line', async () => {
 
   const row = await screen.findByTestId('harness-row-antigravity');
   await waitFor(() =>
-    expect(within(row).getByTestId('harness-status-antigravity')).toHaveTextContent(
-      'Unavailable',
-    ),
+    expect(within(row).getByTestId('harness-status-antigravity')).toHaveTextContent('Unavailable'),
   );
-  expect(
-    within(row).queryByTestId('harness-status-detail-antigravity'),
-  ).not.toBeInTheDocument();
+  expect(within(row).queryByTestId('harness-status-detail-antigravity')).not.toBeInTheDocument();
 });
 
 test('each harness row shows its success rate and run count', async () => {
@@ -416,15 +404,13 @@ test('each harness row shows its success rate and run count', async () => {
 
   const piRow = await screen.findByTestId('harness-row-pi');
   await waitFor(() =>
-    expect(
-      within(piRow).getByTestId('harness-reliability-pi'),
-    ).toHaveTextContent('All-time 97.5% · 120 runs'),
+    expect(within(piRow).getByTestId('harness-reliability-pi')).toHaveTextContent(
+      'All-time 97.5% · 120 runs',
+    ),
   );
   // Badge and toggles are undisturbed by the reliability line.
   expect(within(piRow).getByTestId('harness-status-pi')).toBeInTheDocument();
-  expect(
-    within(piRow).getByLabelText('Enable pi coding agent harness'),
-  ).toBeInTheDocument();
+  expect(within(piRow).getByLabelText('Enable pi coding agent harness')).toBeInTheDocument();
 });
 
 test('harnesses without attributed runs show an honest no-data state (never 0%)', async () => {
@@ -433,13 +419,11 @@ test('harnesses without attributed runs show an honest no-data state (never 0%)'
 
   const row = await screen.findByTestId('harness-row-pi');
   await waitFor(() =>
-    expect(
-      within(row).getByTestId('harness-reliability-pi'),
-    ).toHaveTextContent('No reliability data yet'),
+    expect(within(row).getByTestId('harness-reliability-pi')).toHaveTextContent(
+      'No reliability data yet',
+    ),
   );
-  expect(
-    within(row).getByTestId('harness-reliability-pi'),
-  ).not.toHaveTextContent('0%');
+  expect(within(row).getByTestId('harness-reliability-pi')).not.toHaveTextContent('0%');
 });
 
 test('a reliability fetch failure shows one honest error note and no fake lines', async () => {
@@ -456,28 +440,26 @@ test('a reliability fetch failure shows one honest error note and no fake lines'
 });
 
 test('a reliability retry re-fetches and renders the lines on success', async () => {
-  getHarnessReliability
-    .mockRejectedValueOnce(new Error('network down'))
-    .mockResolvedValueOnce({
-      reliability: [
-        {
-          harnessId: 'pi',
+  getHarnessReliability.mockRejectedValueOnce(new Error('network down')).mockResolvedValueOnce({
+    reliability: [
+      {
+        harnessId: 'pi',
+        runs: 10,
+        successes: 9,
+        infraFailures: 1,
+        excludedRejected: 0,
+        successRate: 90,
+        lastRunAt: '2026-10-01T12:00:00.000Z',
+        recent: {
           runs: 10,
           successes: 9,
           infraFailures: 1,
           excludedRejected: 0,
           successRate: 90,
-          lastRunAt: '2026-10-01T12:00:00.000Z',
-          recent: {
-            runs: 10,
-            successes: 9,
-            infraFailures: 1,
-            excludedRejected: 0,
-            successRate: 90,
-          },
         },
-      ],
-    });
+      },
+    ],
+  });
   renderWithKainBain(<HarnessTestBed />);
 
   await screen.findByTestId('harness-row-pi');
@@ -488,9 +470,9 @@ test('a reliability retry re-fetches and renders the lines on success', async ()
 
   const piRow = await screen.findByTestId('harness-row-pi');
   await waitFor(() =>
-    expect(
-      within(piRow).getByTestId('harness-reliability-pi'),
-    ).toHaveTextContent('All-time 90% · 10 runs'),
+    expect(within(piRow).getByTestId('harness-reliability-pi')).toHaveTextContent(
+      'All-time 90% · 10 runs',
+    ),
   );
   expect(getHarnessReliability).toHaveBeenCalledTimes(2);
   expect(screen.queryByTestId('harness-reliability-error')).not.toBeInTheDocument();
@@ -548,7 +530,12 @@ test('falls back to the backend availability hint when the probe reports nothing
   getHarnesses.mockResolvedValue({
     harnesses: HARNESS_PAYLOAD.harnesses.map((harness) =>
       harness.id === 'muse'
-        ? { ...harness, available: false, detectionSource: 'not-found', hint: 'Install the Muse CLI or set KAINBAIN_MUSE_BIN.' }
+        ? {
+            ...harness,
+            available: false,
+            detectionSource: 'not-found',
+            hint: 'Install the Muse CLI or set KAINBAIN_MUSE_BIN.',
+          }
         : harness,
     ),
   });

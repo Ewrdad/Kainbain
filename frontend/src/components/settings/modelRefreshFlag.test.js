@@ -55,7 +55,9 @@ describe('runtimeModelRefreshValue', () => {
   });
 
   it('returns undefined when the running backend omits the key', () => {
-    expect(runtimeModelRefreshValue([{ key: 'modelsHarnessTimeoutMs', value: 8000 }])).toBeUndefined();
+    expect(
+      runtimeModelRefreshValue([{ key: 'modelsHarnessTimeoutMs', value: 8000 }]),
+    ).toBeUndefined();
     expect(runtimeModelRefreshValue([])).toBeUndefined();
     expect(runtimeModelRefreshValue(undefined)).toBeUndefined();
   });
@@ -75,13 +77,10 @@ describe('isSystemSettingsModelRefreshEnabled', () => {
     },
   );
 
-  it.each(['1', 'true', 'yes', 'anything'])(
-    'stays enabled for build flag value %j',
-    (value) => {
-      vi.stubEnv(MODEL_REFRESH_FLAG_ENV, value);
-      expect(isSystemSettingsModelRefreshEnabled()).toBe(true);
-    },
-  );
+  it.each(['1', 'true', 'yes', 'anything'])('stays enabled for build flag value %j', (value) => {
+    vi.stubEnv(MODEL_REFRESH_FLAG_ENV, value);
+    expect(isSystemSettingsModelRefreshEnabled()).toBe(true);
+  });
 
   it('lets an explicit runtime config value win over the build flag', () => {
     vi.stubEnv(MODEL_REFRESH_FLAG_ENV, '0');

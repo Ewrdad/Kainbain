@@ -35,7 +35,12 @@ import { copyToClipboard } from '../../services/clipboard';
  *   end-to-end in the mocked harness in the final test.
  */
 const baseReview = {
-  task: { id: 'task-101', title: 'Fix auth race', goal: 'Fix the auth race.', status: 'waiting_human' },
+  task: {
+    id: 'task-101',
+    title: 'Fix auth race',
+    goal: 'Fix the auth race.',
+    status: 'waiting_human',
+  },
   branch: 'kb/task-101',
   baseBranch: 'main',
   baseSha: 'aaa',
@@ -193,9 +198,7 @@ describe('TaskReviewPage', () => {
   it('shows the nothing-to-review empty state for zero changes', async () => {
     api.getTaskReview.mockResolvedValue({ ...baseReview, files: [] });
     renderPage();
-    await waitFor(() =>
-      expect(screen.getByText(/Nothing to review yet/)).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByText(/Nothing to review yet/)).toBeTruthy());
   });
 
   it('shows the uncommitted-changes badge when the tree is dirty off-branch', async () => {
@@ -276,7 +279,11 @@ describe('TaskReviewPage', () => {
     fireEvent.change(textarea, { target: { value: 'Fix the failing test' } });
     fireEvent.click(screen.getAllByText('✕ Fail Stage').pop());
     await waitFor(() => {
-      expect(ctx.rejectTaskWithFeedback).toHaveBeenCalledWith('proj-1', 'task-101', 'Fix the failing test');
+      expect(ctx.rejectTaskWithFeedback).toHaveBeenCalledWith(
+        'proj-1',
+        'task-101',
+        'Fix the failing test',
+      );
     });
     expect(ctx.setView).toHaveBeenCalledWith('task-detail', { taskId: 'task-101' });
   });
@@ -595,7 +602,9 @@ describe('TaskReviewPage', () => {
     await waitFor(() => expect(screen.getByTestId('diff-view')).toBeTruthy());
     fireEvent.click(screen.getByLabelText('Add comment on new line 1'));
     const composer = screen.getByTestId('review-comment-composer');
-    fireEvent.change(composer.querySelector('textarea'), { target: { value: 'Prefer early return' } });
+    fireEvent.change(composer.querySelector('textarea'), {
+      target: { value: 'Prefer early return' },
+    });
     fireEvent.click(screen.getByText('Add comment'));
     await waitFor(() => {
       expect(api.addReviewComment).toHaveBeenCalledWith(
@@ -624,7 +633,11 @@ describe('TaskReviewPage', () => {
       setView: vi.fn(),
       activeProjectId: 'proj-1',
       projects: [
-        { id: 'proj-1', useBranches: true, stages: [{ id: 'st-2', name: 'Code Review', type: 'human' }] },
+        {
+          id: 'proj-1',
+          useBranches: true,
+          stages: [{ id: 'st-2', name: 'Code Review', type: 'human' }],
+        },
       ],
       lastReviewEvent: null,
       advanceTask: vi.fn().mockResolvedValue(undefined),
@@ -651,7 +664,9 @@ describe('TaskReviewPage', () => {
     });
     fireEvent.click(screen.getByLabelText('Add comment on old line 2'));
     const composer = screen.getByTestId('review-comment-composer');
-    fireEvent.change(composer.querySelector('textarea'), { target: { value: 'This guard drops the null case' } });
+    fireEvent.change(composer.querySelector('textarea'), {
+      target: { value: 'This guard drops the null case' },
+    });
     fireEvent.click(screen.getByText('Add comment'));
     await waitFor(() => expect(screen.getByText('This guard drops the null case')).toBeTruthy());
 
@@ -756,9 +771,7 @@ describe('TaskReviewPage', () => {
     expect(screen.getByText('New since merge')).toBeTruthy();
     // Both the frozen file and the fix-up file render.
     expect(screen.getAllByTestId('diff-view')).toHaveLength(2);
-    expect(
-      screen.getByText(/Showing the preserved diff from the merge/),
-    ).toBeTruthy();
+    expect(screen.getByText(/Showing the preserved diff from the merge/)).toBeTruthy();
   });
 
   it('shows the fix-up commits under New since merge in the Conversation tab', async () => {
@@ -798,26 +811,29 @@ describe('TaskReviewPage', () => {
     api.getTaskReview.mockResolvedValue({
       ...structuredClone(baseReview),
       preserved: false,
-      preserveNote: 'The preserved merge diff is unavailable (history pruned); showing the live diff instead.',
+      preserveNote:
+        'The preserved merge diff is unavailable (history pruned); showing the live diff instead.',
     });
     renderPage();
-    await waitFor(() =>
-      expect(screen.getByText(/history pruned/)).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByText(/history pruned/)).toBeTruthy());
   });
 });
 describe('TaskReviewPage copy checkout', () => {
   it('copies the authoritative branch command and shows Copied feedback', async () => {
     renderPage();
     await waitFor(() => expect(screen.getByTestId('diff-view')).toBeTruthy());
-    const copyBtn = screen.getByRole('button', { name: 'Copy checkout command for branch kb/task-101' });
+    const copyBtn = screen.getByRole('button', {
+      name: 'Copy checkout command for branch kb/task-101',
+    });
     expect(copyBtn).toBeInTheDocument();
     fireEvent.click(copyBtn);
     await waitFor(() => {
       expect(copyToClipboard).toHaveBeenCalledWith('git fetch origin && git checkout kb/task-101');
     });
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Copy checkout command for branch kb/task-101' })).toHaveTextContent('Copied ✓');
+      expect(
+        screen.getByRole('button', { name: 'Copy checkout command for branch kb/task-101' }),
+      ).toHaveTextContent('Copied ✓');
     });
   });
 
@@ -1080,9 +1096,7 @@ describe('TaskReviewPage reports tab', () => {
     await waitFor(() => expect(screen.getByTestId('diff-view')).toBeTruthy());
     fireEvent.click(screen.getByLabelText(/Pass this stage/i));
     const dialog = screen.getByRole('dialog', { name: /Pass stage/i });
-    expect(
-      within(dialog).getByText(/attached to the approval report/i),
-    ).toBeTruthy();
+    expect(within(dialog).getByText(/attached to the approval report/i)).toBeTruthy();
   });
 
   it('counts sidebar badges across ./ and bare comment spellings', async () => {
@@ -1189,9 +1203,9 @@ describe('TaskReviewPage reports tab', () => {
     fireEvent.click(
       within(screen.getByTestId('report-review-list')).getByRole('button', { name: /Review/ }),
     );
-    expect(
-      screen.getByTestId('report-review-view').getAttribute('data-report-path'),
-    ).toBe(REPORT_B.path);
+    expect(screen.getByTestId('report-review-view').getAttribute('data-report-path')).toBe(
+      REPORT_B.path,
+    );
 
     // Centralised docs re-sync returns the same reports in bare spelling.
     const bare = (r) => ({ ...r, path: r.path.replace(/^\.\//, '') });
@@ -1208,9 +1222,9 @@ describe('TaskReviewPage reports tab', () => {
     await waitFor(() => expect(api.getTaskReview).toHaveBeenCalledTimes(2));
     // Still on OTHER.md — not reset to the first report.
     await waitFor(() =>
-      expect(
-        screen.getByTestId('report-review-view').getAttribute('data-report-path'),
-      ).toBe(bare(REPORT_B).path),
+      expect(screen.getByTestId('report-review-view').getAttribute('data-report-path')).toBe(
+        bare(REPORT_B).path,
+      ),
     );
   });
 });

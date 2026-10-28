@@ -219,10 +219,13 @@ export function extractRunnerId(text) {
   return m ? m[1] : null;
 }
 
-const STAGE_TEXT = /STAGE_ENTER|STAGE_COMPLETE|STAGE_FAILBACK|stage entered|stage completed|stage moved|turn \d+/i;
-const CHECKPOINT_TEXT = /checkpoint|approval|human review|awaiting (human|approval)|decision required/i;
+const STAGE_TEXT =
+  /STAGE_ENTER|STAGE_COMPLETE|STAGE_FAILBACK|stage entered|stage completed|stage moved|turn \d+/i;
+const CHECKPOINT_TEXT =
+  /checkpoint|approval|human review|awaiting (human|approval)|decision required/i;
 const DEBUG_TEXT = /kainbain.*debug|debug.*kainbain|\[KB-[A-Z]+\]|\[TRACE\]|\[VERBOSE\]/i;
-const FAILURE_TEXT = /timed?\s?out|exit code [1-9]|exit [1-9]\b|command failed|failed with|traceback|ERR[A-Z_]*:/i;
+const FAILURE_TEXT =
+  /timed?\s?out|exit code [1-9]|exit [1-9]\b|command failed|failed with|traceback|ERR[A-Z_]*:/i;
 // `[INFO] Task initialized…` placeholders are system, never stage movement.
 const INIT_PLACEHOLDER = /task initialized/i;
 
@@ -277,7 +280,10 @@ export function categoryFor(recordLike = {}) {
   if ((!kind || kind === 'system') && /STAGE_FAILBACK|failback/i.test(body)) return 'stage';
   // KainBain verbose-debug content wins over a generic [INFO]/[SYSTEM] tag —
   // the whole point of the debug lane is isolating these diagnostics.
-  if ((!kind || kind === 'system') && (DEBUG_TEXT.test(body) || DEBUG_TEXT.test(String(tag || '')))) {
+  if (
+    (!kind || kind === 'system') &&
+    (DEBUG_TEXT.test(body) || DEBUG_TEXT.test(String(tag || '')))
+  ) {
     return 'debug';
   }
 
@@ -285,7 +291,10 @@ export function categoryFor(recordLike = {}) {
   if (fromTag && kind !== 'system') {
     // Live lines (no kind) and unknown kinds trust the tag outright, except
     // the init placeholder which is always system.
-    if (INIT_PLACEHOLDER.test(String(text || '')) && (fromTag === 'stage' || fromTag === 'output')) {
+    if (
+      INIT_PLACEHOLDER.test(String(text || '')) &&
+      (fromTag === 'stage' || fromTag === 'output')
+    ) {
       return 'system';
     }
     return fromTag;
@@ -424,11 +433,7 @@ export function extractDetail(recordLike = {}) {
       return null;
     }
   }
-  const output =
-    safe.tool?.result ??
-    safe.tool?.partials ??
-    safe.meta?.output ??
-    null;
+  const output = safe.tool?.result ?? safe.tool?.partials ?? safe.meta?.output ?? null;
   if (typeof output === 'string' && output && output !== safe.text) return output;
   if (safe.usage && typeof safe.usage === 'object') {
     try {
@@ -510,7 +515,9 @@ export function recordMatchesCategories(record, categories) {
  ***/
 export function filterLogRecords(records, state = {}) {
   const set = asCategorySet(state.categories);
-  const needle = String(state.search || '').trim().toLowerCase();
+  const needle = String(state.search || '')
+    .trim()
+    .toLowerCase();
   const runners =
     state.runners instanceof Set
       ? state.runners

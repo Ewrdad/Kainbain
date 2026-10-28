@@ -37,7 +37,13 @@ const stages = [
 ];
 
 const tasks = [
-  { id: 'task-1', goal: 'Build Auth API', title: 'Build Auth API', currentStageId: '1', status: 'in_stage' },
+  {
+    id: 'task-1',
+    goal: 'Build Auth API',
+    title: 'Build Auth API',
+    currentStageId: '1',
+    status: 'in_stage',
+  },
 ];
 
 beforeEach(() => {

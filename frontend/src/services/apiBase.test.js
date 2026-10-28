@@ -53,9 +53,7 @@ describe('resolveApiBase', () => {
   });
 
   it('leaves a non-loopback base untouched', () => {
-    expect(resolveApiBase('https://kainbain.home', '100.104.3.73')).toBe(
-      'https://kainbain.home',
-    );
+    expect(resolveApiBase('https://kainbain.home', '100.104.3.73')).toBe('https://kainbain.home');
   });
 
   it('passes an invalid URL through unchanged', () => {

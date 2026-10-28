@@ -48,9 +48,7 @@ test('mobile button taps straight into the compact view (no popout)', () => {
 
 test('desktop popout and mobile compact buttons coexist with distinct labels', () => {
   renderWithKainBain(<MonitorPopoutButton />);
-  expect(
-    screen.getByRole('button', { name: /Open Observability Screen/i }),
-  ).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Open Observability Screen/i })).toBeInTheDocument();
   expect(
     screen.getByRole('button', { name: /Open Compact Monitor Logs View/i }),
   ).toBeInTheDocument();

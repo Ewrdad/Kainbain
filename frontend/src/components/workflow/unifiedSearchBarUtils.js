@@ -50,10 +50,8 @@ export function getTagLabel(option) {
   // Prefer an explicit label, falling back to value even when the label is
   // the empty string. Coerce defensively so a symbol (or similar exotic)
   // can never throw inside the toolbar.
-  const label =
-    option.label != null ? safeString(option.label) : '';
-  const value =
-    option.value != null ? safeString(option.value) : '';
+  const label = option.label != null ? safeString(option.label) : '';
+  const value = option.value != null ? safeString(option.value) : '';
   return label || value;
 }
 

@@ -79,10 +79,7 @@ test('junk items are dropped so the row and the gate never disagree', () => {
   expect(screen.queryByTestId('runner-boxes-row')).not.toBeInTheDocument();
   unmount();
 
-  renderWithKainBain(
-    <RunnerBoxesRow entries={[entry('alpha'), null]} onOpenTask={() => {}} />,
-    {},
-  );
+  renderWithKainBain(<RunnerBoxesRow entries={[entry('alpha'), null]} onOpenTask={() => {}} />, {});
   expect(screen.getAllByRole('listitem')).toHaveLength(1);
   expect(screen.getByTestId('runner-box-alpha')).toBeInTheDocument();
 });

@@ -184,9 +184,7 @@ describe('availabilityBadge', () => {
     expect(availabilityBadge({ enabled: true, autoDetect: true }, 'unavailable').text).toBe(
       'Unavailable',
     );
-    expect(availabilityBadge({ enabled: true, autoDetect: true }, 'unknown').text).toBe(
-      'Unknown',
-    );
+    expect(availabilityBadge({ enabled: true, autoDetect: true }, 'unknown').text).toBe('Unknown');
   });
 
   it('names auto-detect-off instead of silently showing unknown', () => {

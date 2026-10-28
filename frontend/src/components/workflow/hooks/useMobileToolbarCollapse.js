@@ -168,7 +168,11 @@ export function useMobileToolbarCollapse() {
         if (isCollapsed) setIsCollapsed(false);
         return;
       }
-      if (!isCollapsed && scrollTop > COLLAPSE_SCROLL_TOP && scrollTop - previous > COLLAPSE_DELTA_DOWN) {
+      if (
+        !isCollapsed &&
+        scrollTop > COLLAPSE_SCROLL_TOP &&
+        scrollTop - previous > COLLAPSE_DELTA_DOWN
+      ) {
         setIsCollapsed(true);
         return;
       }

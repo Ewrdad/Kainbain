@@ -109,9 +109,9 @@ describe('useReview', () => {
     });
     // Temp id replaced by the server record; no optimistic duplicate remains.
     expect(result.current.review.comments).toEqual([serverComment]);
-    expect(
-      result.current.review.comments.some((c) => String(c.id).startsWith('rc-temp-')),
-    ).toBe(false);
+    expect(result.current.review.comments.some((c) => String(c.id).startsWith('rc-temp-'))).toBe(
+      false,
+    );
   });
 
   it('addComment rolls back the optimistic insert when the mutation fails', async () => {
@@ -188,7 +188,12 @@ describe('useReview', () => {
     await act(async () => {
       await result.current.addReply('rc-1', 'Good point');
     });
-    expect(api.addReviewCommentReply).toHaveBeenCalledWith('proj-1', 'task-1', 'rc-1', 'Good point');
+    expect(api.addReviewCommentReply).toHaveBeenCalledWith(
+      'proj-1',
+      'task-1',
+      'rc-1',
+      'Good point',
+    );
     expect(result.current.review.comments[0].replies).toEqual([
       { id: 'rep-1', body: 'Good point', author: 'human' },
     ]);
@@ -287,9 +292,9 @@ describe('useReview', () => {
       result.current.toggleFileViewed('src/app.js');
     });
     expect(result.current.viewedFiles.has('src/app.js')).toBe(true);
-    expect(
-      JSON.parse(window.localStorage.getItem(`${VIEWED_FILES_STORAGE_PREFIX}task-1`)),
-    ).toEqual(['src/app.js']);
+    expect(JSON.parse(window.localStorage.getItem(`${VIEWED_FILES_STORAGE_PREFIX}task-1`))).toEqual(
+      ['src/app.js'],
+    );
 
     await act(async () => {
       result.current.toggleFileViewed('src/app.js');
@@ -303,9 +308,9 @@ describe('useReview', () => {
     await act(async () => {
       second.result.current.toggleFileViewed('src/app.js');
     });
-    expect(
-      JSON.parse(window.localStorage.getItem(`${VIEWED_FILES_STORAGE_PREFIX}task-1`)),
-    ).toEqual(['src/app.js']);
+    expect(JSON.parse(window.localStorage.getItem(`${VIEWED_FILES_STORAGE_PREFIX}task-1`))).toEqual(
+      ['src/app.js'],
+    );
   });
 
   it('unresolvedCount counts unresolved comments', async () => {

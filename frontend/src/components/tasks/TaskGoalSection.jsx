@@ -127,12 +127,7 @@ export function TaskGoalSection({
   // untouched.
   const prevIsExecutingRef = useRef(isExecuting);
   useEffect(() => {
-    if (
-      isExecuting &&
-      !prevIsExecutingRef.current &&
-      !isDirty &&
-      !isNewlyCreatedTask(createdAt)
-    ) {
+    if (isExecuting && !prevIsExecutingRef.current && !isDirty && !isNewlyCreatedTask(createdAt)) {
       setGoalMode('preview');
     }
     prevIsExecutingRef.current = isExecuting;

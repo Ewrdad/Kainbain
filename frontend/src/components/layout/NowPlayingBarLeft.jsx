@@ -192,9 +192,7 @@ export function NowPlayingBarLeft({
             </span>
             {/* Show active stage name when a task is running */}
             {displayedStageName && (
-              <span className="text-xs text-text-muted ml-2">
-                {`Stage: ${displayedStageName}`}
-              </span>
+              <span className="text-xs text-text-muted ml-2">{`Stage: ${displayedStageName}`}</span>
             )}
             {activeTask && (
               <span className="font-mono text-xs font-semibold text-text-muted group-hover:text-primary transition-colors shrink-0 hidden md:inline">

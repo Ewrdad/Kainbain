@@ -30,18 +30,9 @@ import {
   pageProtocol,
 } from './apiBase.js';
 
-export {
-  API_BASE,
-  resolveApiBase,
-  isLoopbackHost,
-  resolveWsBase,
-} from './apiBase.js';
+export { API_BASE, resolveApiBase, isLoopbackHost, resolveWsBase } from './apiBase.js';
 
-export {
-  DEFAULT_REQUEST_TIMEOUT_MS,
-  MAX_GET_RETRIES,
-  request,
-} from './client/request.js';
+export { DEFAULT_REQUEST_TIMEOUT_MS, MAX_GET_RETRIES, request } from './client/request.js';
 
 export {
   MODEL_KEY_SEP,

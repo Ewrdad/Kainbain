@@ -56,7 +56,11 @@ export const MAX_GET_RETRIES = 1;
  * @param {AbortSignal} [opts.signal] - External abort (caller cancel). Linked to the attempt; never retried.
  * @returns {Promise<any>}
  */
-export async function request(path, options = {}, { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, retries, signal } = {}) {
+export async function request(
+  path,
+  options = {},
+  { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, retries, signal } = {},
+) {
   const method = (options.method || 'GET').toUpperCase();
   const maxRetries = retries ?? (method === 'GET' ? MAX_GET_RETRIES : 0);
   let lastError = null;
@@ -108,7 +112,9 @@ export async function request(path, options = {}, { timeoutMs = DEFAULT_REQUEST_
         ...options,
         headers: { ...headers, ...options.headers },
       });
-      const res = timeoutArmed ? await Promise.race([attemptFetch, timeoutPromise]) : await attemptFetch;
+      const res = timeoutArmed
+        ? await Promise.race([attemptFetch, timeoutPromise])
+        : await attemptFetch;
       clearTimeout(timer);
       unlinkExternalAbort();
       if (!res.ok) {

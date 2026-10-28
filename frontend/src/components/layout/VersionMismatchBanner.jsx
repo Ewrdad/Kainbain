@@ -72,8 +72,8 @@ export function VersionMismatchBanner() {
       className="w-full px-4 py-2 border-b-2 border-red-500 bg-red-950/90 text-red-50 text-sm text-center"
     >
       Frontend build {frontendBuildRef()} does not match backend build {backendRef}. This
-      combination is unsupported — rebuild both images from the same commit
-      (`docker compose up --build`).
+      combination is unsupported — rebuild both images from the same commit (`docker compose up
+      --build`).
     </div>
   );
 }

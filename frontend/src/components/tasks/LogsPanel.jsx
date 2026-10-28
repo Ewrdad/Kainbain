@@ -71,7 +71,10 @@ export function useTaskLogs({
   // within them filter. Copy follows the viewer selection and stays
   // marker-safe (full thinking never leaks unless its lane is selected).
   const logRecords = useMemo(() => adaptTaskEntries(entries), [entries]);
-  const logRecordGroups = useMemo(() => groupLogRecords(logRecords, { mode: 'turn' }), [logRecords]);
+  const logRecordGroups = useMemo(
+    () => groupLogRecords(logRecords, { mode: 'turn' }),
+    [logRecords],
+  );
   const filteredLogRecords = useMemo(
     () => filterLogRecords(logRecords, viewer),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- viewer is a stable-shape state object; categories/search are the live inputs

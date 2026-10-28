@@ -63,4 +63,3 @@ export function clearCompactMonitorView() {
     logger.warn('Failed to clear compact monitor preference', err);
   }
 }
-

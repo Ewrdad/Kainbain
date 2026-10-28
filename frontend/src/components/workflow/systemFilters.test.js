@@ -91,18 +91,13 @@ describe('registerSystemFilter', () => {
   test('missing id or non-function match throws', () => {
     expect(() => registerSystemFilter({ match: () => true })).toThrow(/id is required/);
     expect(() => registerSystemFilter(null)).toThrow(/must be an object/);
-    expect(() => registerSystemFilter({ id: 'test-only-bad' })).toThrow(
-      /match must be a function/,
-    );
+    expect(() => registerSystemFilter({ id: 'test-only-bad' })).toThrow(/match must be a function/);
   });
 });
 
 describe('normalizeSystemFilterTokens', () => {
   test('dedupes case-insensitively, first casing wins', () => {
-    expect(normalizeSystemFilterTokens(['Failed', 'failed', 'HUMAN'])).toEqual([
-      'Failed',
-      'HUMAN',
-    ]);
+    expect(normalizeSystemFilterTokens(['Failed', 'failed', 'HUMAN'])).toEqual(['Failed', 'HUMAN']);
   });
 
   test('strips leading ! and drops empties', () => {
@@ -127,13 +122,9 @@ describe('systemFilterMatches', () => {
   });
 
   test('human matches checkpoint stage type or waiting_human status', () => {
-    expect(
-      systemFilterMatches('human', { currentStageId: 's-review' }, reviewStages),
-    ).toBe(true);
+    expect(systemFilterMatches('human', { currentStageId: 's-review' }, reviewStages)).toBe(true);
     expect(systemFilterMatches('human', { status: 'waiting_human' }, [])).toBe(true);
-    expect(systemFilterMatches('human', { currentStageId: 's-other' }, reviewStages)).toBe(
-      false,
-    );
+    expect(systemFilterMatches('human', { currentStageId: 's-other' }, reviewStages)).toBe(false);
   });
 
   test('unknown ids never match so they cannot wipe the board', () => {

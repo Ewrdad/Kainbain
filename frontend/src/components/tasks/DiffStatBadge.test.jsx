@@ -16,9 +16,7 @@ describe('DiffStatBadge', () => {
   });
 
   test('renders nothing for invalid counts', () => {
-    const { container } = render(
-      <DiffStatBadge entry={{ additions: 'many', deletions: 1 }} />,
-    );
+    const { container } = render(<DiffStatBadge entry={{ additions: 'many', deletions: 1 }} />);
     expect(container).toBeEmptyDOMElement();
   });
 });

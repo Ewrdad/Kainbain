@@ -105,135 +105,135 @@ export function CanvasToolbar({
                 : 'max-md:max-h-32 max-md:opacity-100'
             }`}
           >
-          {/* Workflow Selector Dropdown */}
-          {projectWorkflows && projectWorkflows.length > 0 && (
-            <div className="relative sm:order-1" ref={workflowMenuRef}>
-              <InfoTooltip
-                title="Workflow Pipeline Switcher"
-                description="Select which named multi-stage workflow pipeline to view and execute."
-                position="bottom"
-              >
-                <button
-                  type="button"
-                  onClick={() => setIsWorkflowDropdownOpen((v) => !v)}
-                  aria-haspopup="menu"
-                  aria-expanded={isWorkflowDropdownOpen}
-                  aria-label="Select pipeline workflow"
-                  className="flex items-center gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1.5 min-h-[44px] bg-surface-container hover:bg-surface-container-high border border-border-standard rounded-sm text-xs font-medium text-on-surface transition-colors cursor-pointer"
+            {/* Workflow Selector Dropdown */}
+            {projectWorkflows && projectWorkflows.length > 0 && (
+              <div className="relative sm:order-1" ref={workflowMenuRef}>
+                <InfoTooltip
+                  title="Workflow Pipeline Switcher"
+                  description="Select which named multi-stage workflow pipeline to view and execute."
+                  position="bottom"
                 >
-                  <span className="text-primary text-[10px]">🔀</span>
-                  <span className="font-mono text-xs truncate max-w-[80px] sm:max-w-[140px]">
-                    {activeWorkflow?.name || 'Default Pipeline'}
-                  </span>
-                  <span className="text-[10px] text-text-muted">▼</span>
-                </button>
-              </InfoTooltip>
+                  <button
+                    type="button"
+                    onClick={() => setIsWorkflowDropdownOpen((v) => !v)}
+                    aria-haspopup="menu"
+                    aria-expanded={isWorkflowDropdownOpen}
+                    aria-label="Select pipeline workflow"
+                    className="flex items-center gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1.5 min-h-[44px] bg-surface-container hover:bg-surface-container-high border border-border-standard rounded-sm text-xs font-medium text-on-surface transition-colors cursor-pointer"
+                  >
+                    <span className="text-primary text-[10px]">🔀</span>
+                    <span className="font-mono text-xs truncate max-w-[80px] sm:max-w-[140px]">
+                      {activeWorkflow?.name || 'Default Pipeline'}
+                    </span>
+                    <span className="text-[10px] text-text-muted">▼</span>
+                  </button>
+                </InfoTooltip>
 
-              {isWorkflowDropdownOpen && (
-                <div
-                  role="menu"
-                  className="absolute left-0 top-full mt-1 w-64 bg-surface-container border border-border-standard shadow-2xl z-50 rounded-sm overflow-hidden"
-                >
-                  <div className="p-1 space-y-0.5">
-                    <div className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider text-text-muted flex justify-between items-center">
-                      <span>Workflows</span>
-                      <span>{projectWorkflows.length}</span>
-                    </div>
-                    {workflowSwitching && (
-                      <div
-                        role="status"
-                        aria-label="Switching workflow"
-                        className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider text-text-muted flex items-center gap-2"
-                      >
-                        <span
-                          aria-hidden="true"
-                          className="w-3 h-3 rounded-full border-2 border-text-muted border-t-transparent animate-spin"
-                        />
-                        Switching…
+                {isWorkflowDropdownOpen && (
+                  <div
+                    role="menu"
+                    className="absolute left-0 top-full mt-1 w-64 bg-surface-container border border-border-standard shadow-2xl z-50 rounded-sm overflow-hidden"
+                  >
+                    <div className="p-1 space-y-0.5">
+                      <div className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider text-text-muted flex justify-between items-center">
+                        <span>Workflows</span>
+                        <span>{projectWorkflows.length}</span>
                       </div>
-                    )}
-                    {projectWorkflows.map((wf) => (
-                      <button
-                        key={wf.id}
-                        role="menuitem"
-                        disabled={workflowSwitching}
-                        onClick={async () => {
-                          setIsWorkflowDropdownOpen(false);
-                          if (activeProjectId) {
-                            await switchWorkflow(activeProjectId, wf.id);
-                          }
-                        }}
-                        className={`w-full text-left px-3 py-1.5 text-xs rounded-sm transition-colors flex items-center justify-between cursor-pointer ${
-                          activeWorkflowId === wf.id
-                            ? 'bg-primary text-on-primary font-bold'
-                            : 'text-on-surface hover:bg-surface-container-high'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="truncate">{wf.name}</span>
-                          {wf.isDefault && (
-                            <span
-                              className={`text-[8px] px-1 rounded uppercase font-mono ${
-                                activeWorkflowId === wf.id
-                                  ? 'bg-black/20 text-on-primary'
-                                  : 'bg-surface-deep text-text-muted'
-                              }`}
-                            >
-                              default
-                            </span>
-                          )}
+                      {workflowSwitching && (
+                        <div
+                          role="status"
+                          aria-label="Switching workflow"
+                          className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider text-text-muted flex items-center gap-2"
+                        >
+                          <span
+                            aria-hidden="true"
+                            className="w-3 h-3 rounded-full border-2 border-text-muted border-t-transparent animate-spin"
+                          />
+                          Switching…
                         </div>
-                        {activeWorkflowId === wf.id && <span className="font-bold">✓</span>}
+                      )}
+                      {projectWorkflows.map((wf) => (
+                        <button
+                          key={wf.id}
+                          role="menuitem"
+                          disabled={workflowSwitching}
+                          onClick={async () => {
+                            setIsWorkflowDropdownOpen(false);
+                            if (activeProjectId) {
+                              await switchWorkflow(activeProjectId, wf.id);
+                            }
+                          }}
+                          className={`w-full text-left px-3 py-1.5 text-xs rounded-sm transition-colors flex items-center justify-between cursor-pointer ${
+                            activeWorkflowId === wf.id
+                              ? 'bg-primary text-on-primary font-bold'
+                              : 'text-on-surface hover:bg-surface-container-high'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="truncate">{wf.name}</span>
+                            {wf.isDefault && (
+                              <span
+                                className={`text-[8px] px-1 rounded uppercase font-mono ${
+                                  activeWorkflowId === wf.id
+                                    ? 'bg-black/20 text-on-primary'
+                                    : 'bg-surface-deep text-text-muted'
+                                }`}
+                              >
+                                default
+                              </span>
+                            )}
+                          </div>
+                          {activeWorkflowId === wf.id && <span className="font-bold">✓</span>}
+                        </button>
+                      ))}
+                      <div className="h-px bg-border-standard my-1" role="separator" />
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setIsWorkflowDropdownOpen(false);
+                          setView?.('settings');
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-primary hover:bg-primary hover:text-on-primary rounded-sm transition-colors flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>⚙️ Manage Workflows</span>
                       </button>
-                    ))}
-                    <div className="h-px bg-border-standard my-1" role="separator" />
-                    <button
-                      role="menuitem"
-                      onClick={() => {
-                        setIsWorkflowDropdownOpen(false);
-                        setView?.('settings');
-                      }}
-                      className="w-full text-left px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-primary hover:bg-primary hover:text-on-primary rounded-sm transition-colors flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>⚙️ Manage Workflows</span>
-                    </button>
-                    <p className="px-3 py-1.5 text-[10px] font-mono text-text-muted">
-                      Tip: export or import a pipeline from the ▾ menu next to “Add stage”.
-                    </p>
+                      <p className="px-3 py-1.5 text-[10px] font-mono text-text-muted">
+                        Tip: export or import a pipeline from the ▾ menu next to “Add stage”.
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          )}
+                )}
+              </div>
+            )}
 
-          {/* Card order toggle (manual drag order vs oldest-in-stage first).
+            {/* Card order toggle (manual drag order vs oldest-in-stage first).
               Lives in the collapsible secondary row with the pipeline
               selector — not the desktop-only pill row — so phones get it too
               when expanded. `sm:order-3` restores the exact desktop sequence
               (pipeline, search, order) through the `sm:contents` row. */}
-          <InfoTooltip
-            title="Card Order"
-            description="Manual keeps your drag-and-drop order. Oldest first surfaces the longest-waiting task at the top of each stage without changing the stored order."
-            position="bottom"
-            className="sm:order-3"
-          >
-            <button
-              type="button"
-              onClick={() => onTaskSortChange?.(taskSort === 'oldest' ? 'manual' : 'oldest')}
-              aria-label={`Card order: ${taskSort === 'oldest' ? 'oldest first' : 'manual'}. Activate to switch.`}
-              aria-pressed={taskSort === 'oldest'}
-              className={`flex items-center gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1.5 min-h-[44px] border rounded-sm text-xs font-medium transition-colors cursor-pointer ${
-                taskSort === 'oldest'
-                  ? 'bg-primary text-on-primary border-primary font-bold'
-                  : 'bg-surface-container hover:bg-surface-container-high border-border-standard text-on-surface'
-              }`}
+            <InfoTooltip
+              title="Card Order"
+              description="Manual keeps your drag-and-drop order. Oldest first surfaces the longest-waiting task at the top of each stage without changing the stored order."
+              position="bottom"
+              className="sm:order-3"
             >
-              <span aria-hidden="true">{taskSort === 'oldest' ? '⏳' : '⇅'}</span>
-              <span className="font-mono text-xs max-w-[90px] sm:max-w-none truncate">
-                {taskSort === 'oldest' ? 'Oldest first' : 'Manual order'}
-              </span>
-            </button>
-          </InfoTooltip>
+              <button
+                type="button"
+                onClick={() => onTaskSortChange?.(taskSort === 'oldest' ? 'manual' : 'oldest')}
+                aria-label={`Card order: ${taskSort === 'oldest' ? 'oldest first' : 'manual'}. Activate to switch.`}
+                aria-pressed={taskSort === 'oldest'}
+                className={`flex items-center gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1.5 min-h-[44px] border rounded-sm text-xs font-medium transition-colors cursor-pointer ${
+                  taskSort === 'oldest'
+                    ? 'bg-primary text-on-primary border-primary font-bold'
+                    : 'bg-surface-container hover:bg-surface-container-high border-border-standard text-on-surface'
+                }`}
+              >
+                <span aria-hidden="true">{taskSort === 'oldest' ? '⏳' : '⇅'}</span>
+                <span className="font-mono text-xs max-w-[90px] sm:max-w-none truncate">
+                  {taskSort === 'oldest' ? 'Oldest first' : 'Manual order'}
+                </span>
+              </button>
+            </InfoTooltip>
           </div>
 
           {/* One-tap expand affordance (task 34793321): only in the collapsed

@@ -103,10 +103,7 @@ describe('LogViewer chrome', () => {
     expect(group).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
     // CI lane has exactly one fixture line.
-    expect(screen.getByRole('button', { name: 'CI logs' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    expect(screen.getByRole('button', { name: 'CI logs' })).toHaveAttribute('aria-pressed', 'true');
     // Debug lane exists with one fixture line but stays off by default.
     expect(screen.getByRole('button', { name: 'Verbose debug' })).toHaveAttribute(
       'aria-pressed',
@@ -171,10 +168,7 @@ describe('LogViewer chrome', () => {
     openLogFilters();
     expect(screen.getByRole('button', { name: 'Full' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: 'Compact' }));
-    expect(screen.getByRole('button', { name: 'Compact' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    expect(screen.getByRole('button', { name: 'Compact' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('filter block collapses and expands behind one toggle on every viewport', () => {
@@ -423,7 +417,9 @@ describe('LogViewer rows', () => {
     // The thinking marker renders; the expander is hidden because fullTextById
     // is not a Map (no full text available).
     expect(screen.getByText('[THINKING] (64 chars)')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Show thinking (64 chars)' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Show thinking (64 chars)' }),
+    ).not.toBeInTheDocument();
   });
 });
 

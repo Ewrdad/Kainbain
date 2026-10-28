@@ -63,11 +63,23 @@ function makeActiveTask({ modelId, dispatchedPrompt }) {
 function makeObservability({ modelId, dispatchedPrompt }) {
   return {
     stats: {
-      total: 1, completed: 0, failed: 0, running: 1, waitingHuman: 0,
-      paused: 0, inStage: 0, blocked: 0, queueDepth: 1, successRate: 100, failureRate: 0,
+      total: 1,
+      completed: 0,
+      failed: 0,
+      running: 1,
+      waitingHuman: 0,
+      paused: 0,
+      inStage: 0,
+      blocked: 0,
+      queueDepth: 1,
+      successRate: 100,
+      failureRate: 0,
     },
     engineState: {
-      status: 'running', activeTaskId: TASK_ID, activeProjectId: 'project', activeStageId: 'build',
+      status: 'running',
+      activeTaskId: TASK_ID,
+      activeProjectId: 'project',
+      activeStageId: 'build',
     },
     queue: [
       {
@@ -105,8 +117,13 @@ function makeObservability({ modelId, dispatchedPrompt }) {
     executionQueue: { isRunning: false, size: 0, highQueueSize: 0, normalQueueSize: 0 },
     schedulerRunning: false,
     schedulerStats: {
-      ticks: 0, dispatched: 0, idleNoCandidate: 0, skippedBusy: 0,
-      lastTickAt: null, lastDispatchAt: null, lastOutcome: null,
+      ticks: 0,
+      dispatched: 0,
+      idleNoCandidate: 0,
+      skippedBusy: 0,
+      lastTickAt: null,
+      lastDispatchAt: null,
+      lastOutcome: null,
     },
   };
 }
@@ -156,7 +173,10 @@ test('refreshes a non-pi session model and full dispatched prompt within five se
     feedback: null,
   };
   const engineState = {
-    status: 'running', activeTaskId: task.id, activeProjectId: task.projectId, activeStageId: 'build',
+    status: 'running',
+    activeTaskId: task.id,
+    activeProjectId: task.projectId,
+    activeStageId: 'build',
   };
   let modelId = 'initial-model';
   let prompt = 'Initial dispatched prompt\n# Git Context\nInitial context';
@@ -164,7 +184,8 @@ test('refreshes a non-pi session model and full dispatched prompt within five se
     observability: makeObservability({ modelId, dispatchedPrompt: prompt }),
   }));
   const { unmount } = renderWithKainBain(<ObservabilityDashboard />, {
-    engineState, tasks: [task],
+    engineState,
+    tasks: [task],
   });
   try {
     const card = within(screen.getByTestId('widget-activeTask'));
@@ -175,19 +196,32 @@ test('refreshes a non-pi session model and full dispatched prompt within five se
     prompt = 'Changed full dispatched prompt\n# Git Context\nNew dispatch-only context';
     const startedAt = performance.now();
     act(() => {
-      invalidateObservability('PROCESS_START', { taskId: task.id, projectId: task.projectId, prompt: 'Never trust socket prompt' });
+      invalidateObservability('PROCESS_START', {
+        taskId: task.id,
+        projectId: task.projectId,
+        prompt: 'Never trust socket prompt',
+      });
       invalidateObservability('TASK_UPDATED', { id: task.id, projectId: task.projectId });
     });
-    await waitFor(() => {
-      expect(card.getByText('changed-model')).toBeInTheDocument();
-      expect(card.getByTestId('active-prompt-viewer')).toHaveTextContent('Changed full dispatched prompt');
-      expect(card.getByTestId('active-prompt-viewer')).toHaveTextContent('New dispatch-only context');
-    }, { timeout: 4500 });
+    await waitFor(
+      () => {
+        expect(card.getByText('changed-model')).toBeInTheDocument();
+        expect(card.getByTestId('active-prompt-viewer')).toHaveTextContent(
+          'Changed full dispatched prompt',
+        );
+        expect(card.getByTestId('active-prompt-viewer')).toHaveTextContent(
+          'New dispatch-only context',
+        );
+      },
+      { timeout: 4500 },
+    );
     expect(performance.now() - startedAt).toBeLessThan(5000);
     expect(card.getByText('antigravity', { exact: true })).toBeInTheDocument();
     expect(card.queryByText('initial-model')).not.toBeInTheDocument();
     expect(card.queryByText('Pi Agent')).not.toBeInTheDocument();
-    expect(card.getByTestId('active-prompt-viewer')).not.toHaveTextContent('Never trust socket prompt');
+    expect(card.getByTestId('active-prompt-viewer')).not.toHaveTextContent(
+      'Never trust socket prompt',
+    );
     expect(api.observabilityStatus).toHaveBeenCalledTimes(2);
     expect(api.observabilityStatus).toHaveBeenLastCalledWith(undefined, true);
     expect(task.prompt).toBe('Persisted curated prompt');

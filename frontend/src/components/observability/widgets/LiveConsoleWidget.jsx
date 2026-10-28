@@ -22,7 +22,9 @@ export function LiveConsoleWidget({ processLogs = [], onClearLogs = null }) {
   const records = useMemo(() => adaptProcessLogLines(processLogs), [processLogs]);
 
   return (
-    <div className={`flex-1 flex flex-col min-h-0 min-w-0 w-full ${CONSOLE_CHROME.outerBg} overflow-hidden`}>
+    <div
+      className={`flex-1 flex flex-col min-h-0 min-w-0 w-full ${CONSOLE_CHROME.outerBg} overflow-hidden`}
+    >
       {/* Console Controls Bar */}
       <div
         className={`px-3 py-1.5 ${CONSOLE_CHROME.headerBg} border-b ${CONSOLE_CHROME.headerBorder} flex flex-wrap items-center justify-between gap-2 shrink-0 text-xs font-mono`}

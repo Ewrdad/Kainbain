@@ -30,7 +30,9 @@ describe('WidgetContainer', () => {
 
     expect(screen.getByTestId('widget-queue-2')).toBeInTheDocument();
     expect(screen.getByLabelText('Move Execution Queue Order (queue-2) down')).toBeInTheDocument();
-    expect(screen.getByLabelText('Resize width for Execution Queue Order (queue-2)')).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('Resize width for Execution Queue Order (queue-2)'),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText('Hide Execution Queue Order (queue-2)')).toBeInTheDocument();
   });
 
@@ -104,8 +106,6 @@ describe('WidgetContainer', () => {
     // Half-width grid and the standard height, with working selects.
     expect(screen.getByTestId('widget-queue').className).toContain('lg:col-span-6');
     expect(screen.getByLabelText('Resize width for Execution Queue Order')).toHaveValue('6');
-    expect(screen.getByLabelText('Resize height for Execution Queue Order')).toHaveValue(
-      'normal',
-    );
+    expect(screen.getByLabelText('Resize height for Execution Queue Order')).toHaveValue('normal');
   });
 });

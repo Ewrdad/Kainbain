@@ -114,10 +114,7 @@ export function mixHexTowards(hex, targetHex, t) {
  * @returns {number}
  ***/
 export function contrastOfPair(fgHex, bgHex) {
-  return contrastRatio(
-    relativeLuminance(hexToRgb(fgHex)),
-    relativeLuminance(hexToRgb(bgHex)),
-  );
+  return contrastRatio(relativeLuminance(hexToRgb(fgHex)), relativeLuminance(hexToRgb(bgHex)));
 }
 
 /***

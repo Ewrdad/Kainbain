@@ -17,7 +17,10 @@ describe('prefersReducedMotion', () => {
   });
 
   it('honours the OS media query', () => {
-    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: true })),
+    );
     expect(prefersReducedMotion()).toBe(true);
   });
 });

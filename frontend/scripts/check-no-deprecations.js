@@ -76,7 +76,9 @@ export function loadBuildAllowlist() {
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((entry) => {
       if (entry?.pattern && compileAllowlistPattern(entry.pattern) === null) {
-        process.stderr.write(`check-no-deprecations: ignoring allowlist entry with invalid pattern: ${entry.pattern}\n`);
+        process.stderr.write(
+          `check-no-deprecations: ignoring allowlist entry with invalid pattern: ${entry.pattern}\n`,
+        );
         return false;
       }
       return true;
@@ -133,7 +135,10 @@ export function runGatedBuild(buildCommand, allowlistEntries) {
         resolve(status ?? 1);
         return;
       }
-      const warnings = findDeprecationWarnings(capturedLines.join('').split('\n'), allowlistEntries);
+      const warnings = findDeprecationWarnings(
+        capturedLines.join('').split('\n'),
+        allowlistEntries,
+      );
       if (warnings.length > 0) {
         process.stderr.write(
           `check-no-deprecations: ${warnings.length} deprecation warning(s) in the build output:\n` +
@@ -148,8 +153,12 @@ export function runGatedBuild(buildCommand, allowlistEntries) {
   });
 }
 
-const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const invokedDirectly =
+  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invokedDirectly) {
-  const status = await runGatedBuild(resolveBuildCommand(process.argv.slice(2)), loadBuildAllowlist());
+  const status = await runGatedBuild(
+    resolveBuildCommand(process.argv.slice(2)),
+    loadBuildAllowlist(),
+  );
   process.exit(status);
 }

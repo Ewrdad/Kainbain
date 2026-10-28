@@ -35,14 +35,17 @@ describe('retrospectiveRequests', () => {
     const request = vi.fn().mockResolvedValue({ reply: 'hi' });
     const { retrospectiveChat } = retrospectiveRequests(request);
     const controller = new AbortController();
-    await retrospectiveChat('proj-1', { messages: [{ role: 'user', content: 'hi' }] }, {
+    await retrospectiveChat(
+      'proj-1',
+      { messages: [{ role: 'user', content: 'hi' }] },
+      {
+        timeoutMs: 60000,
+        signal: controller.signal,
+      },
+    );
+    expect(request).toHaveBeenCalledWith('/retrospective/chat', expect.any(Object), {
       timeoutMs: 60000,
       signal: controller.signal,
     });
-    expect(request).toHaveBeenCalledWith(
-      '/retrospective/chat',
-      expect.any(Object),
-      { timeoutMs: 60000, signal: controller.signal },
-    );
   });
 });

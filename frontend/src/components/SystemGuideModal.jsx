@@ -335,11 +335,10 @@ export function SystemGuideModal() {
                   <span>Notes Integration</span>
                 </div>
                 <p className="text-text-muted text-[11px]">
-                  Curated docs ship inside the repo under <code>docs/</code>, so every
-                  Runner and every fresh clone reads the same knowledge base. Per-project
-                  task storage links out to your central notes workspace; an optional
-                  mirror of curated docs back to a central store is roadmap, not
-                  default — the repo copy is the source.
+                  Curated docs ship inside the repo under <code>docs/</code>, so every Runner and
+                  every fresh clone reads the same knowledge base. Per-project task storage links
+                  out to your central notes workspace; an optional mirror of curated docs back to a
+                  central store is roadmap, not default — the repo copy is the source.
                 </p>
               </div>
             </div>
@@ -537,17 +536,15 @@ export function SystemGuideModal() {
                     <td className="p-2.5 text-primary font-bold">{`{{projectRepo}}`}</td>
                     <td className="p-2.5 text-text-muted">Git repository URL</td>
                     <td className="p-2.5 text-on-surface font-mono">
-                      {activeProject?.gitUrl ||
-                        activeProject?.gitRepo ||
-                        '(no remote configured)'}
+                      {activeProject?.gitUrl || activeProject?.gitRepo || '(no remote configured)'}
                     </td>
                   </tr>
                   <tr>
                     <td className="p-2.5 text-primary font-bold">{`{{latestReportPath:<slug>}}`}</td>
                     <td className="p-2.5 text-text-muted">
                       Path of the most recent report from one stage (replace &lt;slug&gt; with the
-                      stage slug) — ideal for CI gates such as test -f
-                      &quot;{'{{latestReportPath:plan}}'}&quot;
+                      stage slug) — ideal for CI gates such as test -f &quot;
+                      {'{{latestReportPath:plan}}'}&quot;
                     </td>
                     <td className="p-2.5 text-on-surface font-mono">./docs/tasks/.../02-plan.md</td>
                   </tr>
@@ -558,10 +555,11 @@ export function SystemGuideModal() {
               <p className="font-bold text-on-surface mb-1">CI stage keywords</p>
               <p>
                 CI and deploy commands support the same tokens (interpolated when the command
-                starts; unknown tokens stay literal). Quote tokens in shell commands and prefer
-                the KAINBAIN_* environment variables (KAINBAIN_TASK_DOCS, KAINBAIN_PROJECT_ROOT,
+                starts; unknown tokens stay literal). Quote tokens in shell commands and prefer the
+                KAINBAIN_* environment variables (KAINBAIN_TASK_DOCS, KAINBAIN_PROJECT_ROOT,
                 KAINBAIN_TASK_ID, KAINBAIN_STAGE_NAME, KAINBAIN_LATEST_REPORT, …) for values with
-                spaces. Example gate: test -f &quot;{'{{taskDocs}}'}plan-*.md&quot; || {'{ echo "missing plan report"; exit 1; }'}
+                spaces. Example gate: test -f &quot;{'{{taskDocs}}'}plan-*.md&quot; ||{' '}
+                {'{ echo "missing plan report"; exit 1; }'}
               </p>
             </div>
           </div>

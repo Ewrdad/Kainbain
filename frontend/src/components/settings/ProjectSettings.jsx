@@ -17,8 +17,6 @@ import { parseRetrySettings } from './projectSettingsValidation';
 import { ProjectSettingsForm } from './ProjectSettingsForm';
 import { WorkflowManagementPanel } from './WorkflowManagementPanel';
 
-
-
 /***
  * MARK: PROJECT_SETTINGS_SECTIONS
  * @description Allowlisted sub-sections of the Project Settings page.

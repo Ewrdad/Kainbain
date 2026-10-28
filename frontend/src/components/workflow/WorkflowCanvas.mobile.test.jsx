@@ -21,10 +21,16 @@ beforeEach(() => {
   // teardown, printing an AbortError and racing the run. An empty catalogue
   // resolves immediately, so nothing is pending and no test touches the
   // network. These suites assert board layout only, never model data.
-  vi.stubGlobal('fetch', vi.fn(async () => new Response(
-    JSON.stringify({ models: [], harnesses: [] }),
-    { status: 200, headers: { 'Content-Type': 'application/json' } },
-  )));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ models: [], harnesses: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    ),
+  );
 });
 
 afterEach(() => {
@@ -64,10 +70,7 @@ test('mobile tab defaults to the first stage with visible tasks instead of an em
     'aria-selected',
     'true',
   );
-  expect(screen.getByRole('tab', { name: /idea/i })).toHaveAttribute(
-    'aria-selected',
-    'false',
-  );
+  expect(screen.getByRole('tab', { name: /idea/i })).toHaveAttribute('aria-selected', 'false');
 });
 
 test('mobile tab falls back to the first stage when no stage has visible tasks', () => {
@@ -80,10 +83,7 @@ test('mobile tab falls back to the first stage when no stage has visible tasks',
     activeProjectId: 'proj-1',
   });
 
-  expect(screen.getByRole('tab', { name: /idea/i })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  expect(screen.getByRole('tab', { name: /idea/i })).toHaveAttribute('aria-selected', 'true');
 });
 
 test('renders stable board with no workflow notice when tasks hide under another workflow', async () => {

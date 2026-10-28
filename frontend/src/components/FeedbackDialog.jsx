@@ -84,8 +84,8 @@ export function FeedbackDialog() {
           <span>Reject with Feedback</span>
         </h2>
         <p className="text-[10px] font-mono text-text-muted mt-1">
-          Describe what needs correcting. You can attach or paste screenshots —
-          they travel with the feedback so the agent can see the issue. Press{' '}
+          Describe what needs correcting. You can attach or paste screenshots — they travel with the
+          feedback so the agent can see the issue. Press{' '}
           <kbd className="px-1.5 py-0.5 bg-surface-container-high rounded text-text-high border border-border-standard">
             Ctrl+Enter
           </kbd>{' '}

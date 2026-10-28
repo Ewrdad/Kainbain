@@ -66,17 +66,11 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
   // D13: no host default baked in — '' (unset) lets the server resolve the
   // configured notes root (or report notes-missing loudly) instead of
   // persisting one operator's path into every fresh project.
-  const [notesDir, setNotesDir] = useState(
-    project?.notesDir || project?.notesPath || '',
-  );
+  const [notesDir, setNotesDir] = useState(project?.notesDir || project?.notesPath || '');
   const [docsDirName, setDocsDirName] = useState(project?.docsDirName || '');
   const [kainbainDirName, setKainbainDirName] = useState(project?.kainbainDirName || '');
-  const [centralizedDocs, setCentralizedDocs] = useState(
-    project?.centralizedDocs !== false,
-  );
-  const [gitRepo, setGitRepo] = useState(
-    project?.gitRepo || project?.gitUrl || '',
-  );
+  const [centralizedDocs, setCentralizedDocs] = useState(project?.centralizedDocs !== false);
+  const [gitRepo, setGitRepo] = useState(project?.gitRepo || project?.gitUrl || '');
   // Per-task branch support (kb/<taskId> branches + merge-to-main stage).
   // Opt-in: defaults off so existing single-branch projects are unaffected.
   const [useBranches, setUseBranches] = useState(project?.useBranches === true);
@@ -95,8 +89,7 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
   // stored in milliseconds, so they convert through the shared helper; the
   // auto-iteration switch is tri-state: 'default' (follow global),
   // 'enabled', or 'disabled'.
-  const retryDraft = (stored) =>
-    stored === undefined || stored === null ? '' : String(stored);
+  const retryDraft = (stored) => (stored === undefined || stored === null ? '' : String(stored));
   const retryDraftMinutes = (storedMs) => {
     const minutes = msToMinutes(storedMs);
     return minutes === '' ? '' : String(minutes);
@@ -112,13 +105,9 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
   const [autoIterationEnabled, setAutoIterationEnabled] = useState(
     retrySwitch(project?.autoIterationEnabled),
   );
-  const [agentTimeoutMs, setAgentTimeoutMs] = useState(
-    retryDraftMinutes(project?.agentTimeoutMs),
-  );
+  const [agentTimeoutMs, setAgentTimeoutMs] = useState(retryDraftMinutes(project?.agentTimeoutMs));
   const [ciTimeoutMs, setCiTimeoutMs] = useState(retryDraftMinutes(project?.ciTimeoutMs));
-  const [mergeTimeoutMs, setMergeTimeoutMs] = useState(
-    retryDraftMinutes(project?.mergeTimeoutMs),
-  );
+  const [mergeTimeoutMs, setMergeTimeoutMs] = useState(retryDraftMinutes(project?.mergeTimeoutMs));
   const [retryErrors, setRetryErrors] = useState({});
   // Sync form state once the project object loads WITHOUT an effect
   // (react-hooks/set-state-in-effect): adjust state during render when the
@@ -199,10 +188,7 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
   const availabilityKnown = harnesses.some((h) => h?.available !== undefined);
   const runnableRealHarnesses = harnesses.filter(
     (h) =>
-      h?.available === true &&
-      h.id !== 'mock' &&
-      h.id !== 'custom' &&
-      h.id !== ALIAS_HARNESS_ID,
+      h?.available === true && h.id !== 'mock' && h.id !== 'custom' && h.id !== ALIAS_HARNESS_ID,
   );
   const showHarnessGuidance = availabilityKnown && runnableRealHarnesses.length === 0;
   // Harness↔default-model mismatch: the stored default no longer resolves in
@@ -221,11 +207,7 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
     effectiveHarnessModels.length > 0 &&
     dismissedMismatch !== mismatchSignature;
   const guidanceHints = harnesses.filter(
-    (h) =>
-      h?.hint &&
-      h.id !== 'mock' &&
-      h.id !== 'custom' &&
-      h.id !== ALIAS_HARNESS_ID,
+    (h) => h?.hint && h.id !== 'mock' && h.id !== 'custom' && h.id !== ALIAS_HARNESS_ID,
   );
   // Track whether the user has edited the default model so a late-arriving
   // project object (projects list still fetching when the form mounts) can
@@ -322,7 +304,9 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
     // Guard: the custom harness cannot run without a command line — refuse to
     // save instead of persisting a project whose stages fail at runtime.
     if (isCustomHarness && !harnessCommand.trim()) {
-      setValidationError('Set a command line (e.g. claude -p) — the custom harness has nothing to run without one.');
+      setValidationError(
+        'Set a command line (e.g. claude -p) — the custom harness has nothing to run without one.',
+      );
       setSaveState('error');
       notifyError?.('Custom harness needs a command line', 'Missing Command');
       return;
@@ -434,9 +418,7 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
       // Optimistic concurrency: a rival save from another tab/browser
       // surfaces HTTP 409 instead of silently clobbering this page's
       // fields (or vice versa).
-      const saveOpts = project?.updatedAt
-        ? { expectedUpdatedAt: project.updatedAt }
-        : {};
+      const saveOpts = project?.updatedAt ? { expectedUpdatedAt: project.updatedAt } : {};
       const updated = await api.updateProject(
         projectId,
         {
@@ -482,9 +464,7 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
       // from another browser between this page's load and its save), and
       // the next edit must start from those — not from the stale snapshot.
       if (!modelAliasesTouched) {
-        setModelAliases(
-          Array.isArray(updated?.modelAliases) ? updated.modelAliases : [],
-        );
+        setModelAliases(Array.isArray(updated?.modelAliases) ? updated.modelAliases : []);
       }
       onProjectUpdated(projectId);
       setSaveState('saved');
@@ -584,13 +564,13 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
             }
           />
           <p className="text-[10px] text-text-muted">
-            Engine that runs agent stages for this project; it scopes the model catalogue.
-            The default model is used across all workflow agent stages unless explicitly
-            overridden. Harnesses with adjustable reasoning (pi, antigravity, mock) show
-            a Reasoning dropdown under the model — Default (no level) stores the bare
-            model reference. &quot;Custom command&quot; runs any CLI agent
-            (e.g. <code className="font-mono text-primary">claude -p</code>) with the curated stage
-            prompt appended as the final argument.
+            Engine that runs agent stages for this project; it scopes the model catalogue. The
+            default model is used across all workflow agent stages unless explicitly overridden.
+            Harnesses with adjustable reasoning (pi, antigravity, mock) show a Reasoning dropdown
+            under the model — Default (no level) stores the bare model reference. &quot;Custom
+            command&quot; runs any CLI agent (e.g.{' '}
+            <code className="font-mono text-primary">claude -p</code>) with the curated stage prompt
+            appended as the final argument.
           </p>
           {showDefaultModelMismatch && (
             <div
@@ -599,10 +579,10 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
             >
               <p className="text-[11px] text-on-surface">
                 <span className="font-bold">⚠ Model mismatch:</span>{' '}
-                <code className="font-mono text-primary">{defaultModel}</code> is not
-                in the <span className="font-semibold">{effectiveHarnessId}</span> catalogue —
-                stages without an override will fall back at dispatch. The stored value
-                is kept until you change it.
+                <code className="font-mono text-primary">{defaultModel}</code> is not in the{' '}
+                <span className="font-semibold">{effectiveHarnessId}</span> catalogue — stages
+                without an override will fall back at dispatch. The stored value is kept until you
+                change it.
               </p>
               <div className="flex gap-2">
                 <button
@@ -636,17 +616,15 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
                 No AI harnesses detected on this host
               </p>
               <p className="text-[11px] text-text-muted">
-                Install a harness CLI or configure its credentials, then Refresh —
-                or evaluate the workflow with the zero-credential mock harness (no
-                AI runs there; output is synthetic).
+                Install a harness CLI or configure its credentials, then Refresh — or evaluate the
+                workflow with the zero-credential mock harness (no AI runs there; output is
+                synthetic).
               </p>
               {guidanceHints.length > 0 && (
                 <ul className="flex flex-col gap-1">
                   {guidanceHints.map((h) => (
                     <li key={h.id} className="text-[11px] text-text-muted">
-                      <span className="font-semibold text-on-surface">
-                        {h.label || h.id}:
-                      </span>{' '}
+                      <span className="font-semibold text-on-surface">{h.label || h.id}:</span>{' '}
                       {h.hint}
                     </li>
                   ))}
@@ -689,10 +667,11 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
               <p className="text-[10px] text-text-muted">
                 Runs without a shell; the curated stage prompt is appended as the final quoted
                 argument, so <code className="font-mono text-primary">claude -p</code> becomes{' '}
-                <code className="font-mono text-primary">claude -p &quot;&lt;prompt&gt;&quot;</code>.
-                Flags and quoted arguments are supported — bake model selection into the command
-                itself (e.g. <code className="font-mono text-primary">claude --model sonnet -p</code>);
-                shell operators (|, ;, &amp;, &gt;) are not — use a wrapper script for those.
+                <code className="font-mono text-primary">claude -p &quot;&lt;prompt&gt;&quot;</code>
+                . Flags and quoted arguments are supported — bake model selection into the command
+                itself (e.g.{' '}
+                <code className="font-mono text-primary">claude --model sonnet -p</code>); shell
+                operators (|, ;, &amp;, &gt;) are not — use a wrapper script for those.
               </p>
             </div>
             {validationError && (
@@ -856,7 +835,9 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
             />
             <p className="text-[10px] text-text-muted">
               Knowledge store symlinked to{' '}
-              <code className="font-mono text-primary">&lt;projectRoot&gt;/{docsDirName.trim() || 'docs'}</code>
+              <code className="font-mono text-primary">
+                &lt;projectRoot&gt;/{docsDirName.trim() || 'docs'}
+              </code>
             </p>
           </div>
 
@@ -880,7 +861,10 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
               placeholder="docs"
             />
             <p className="text-[10px] text-text-muted">
-              Folder in the project root used for task storage and docs (default: <code className="font-mono text-primary">docs</code>). Change to e.g. <code className="font-mono text-primary">kainbain-docs</code> if this project already uses a <code className="font-mono text-primary">docs/</code> directory.
+              Folder in the project root used for task storage and docs (default:{' '}
+              <code className="font-mono text-primary">docs</code>). Change to e.g.{' '}
+              <code className="font-mono text-primary">kainbain-docs</code> if this project already
+              uses a <code className="font-mono text-primary">docs/</code> directory.
             </p>
           </div>
 
@@ -904,7 +888,13 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
               placeholder=".kainbain"
             />
             <p className="text-[10px] text-text-muted">
-              Folder in the project root used for KainBain internal state, sessions, and worktrees (default: <code className="font-mono text-primary">.kainbain</code>). Changing this writes the new config and removes the old one, but never moves existing state — move <code className="font-mono text-primary">sessions/</code>, <code className="font-mono text-primary">worktrees/</code> and <code className="font-mono text-primary">quarantine/</code> across by hand, or stop the API, rename the folder on disk, and restart.
+              Folder in the project root used for KainBain internal state, sessions, and worktrees
+              (default: <code className="font-mono text-primary">.kainbain</code>). Changing this
+              writes the new config and removes the old one, but never moves existing state — move{' '}
+              <code className="font-mono text-primary">sessions/</code>,{' '}
+              <code className="font-mono text-primary">worktrees/</code> and{' '}
+              <code className="font-mono text-primary">quarantine/</code> across by hand, or stop
+              the API, rename the folder on disk, and restart.
             </p>
           </div>
 
@@ -923,7 +913,8 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
               Link to Centralised Documentation
             </label>
             <p className="text-[10px] text-text-muted pl-6">
-              When checked, symlinks the docs folder to the central notes space. Uncheck to opt out and store docs strictly in a local directory without symlinks.
+              When checked, symlinks the docs folder to the central notes space. Uncheck to opt out
+              and store docs strictly in a local directory without symlinks.
             </p>
           </div>
 
@@ -965,12 +956,11 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
             <p className="text-[10px] text-text-muted">
               When enabled, each task creates and works on its own git branch ({'kb/<taskId>'}); add
               a <strong>Merge</strong> stage to your pipeline to integrate it into main (add a
-              <strong>Deploy</strong> CI stage with the deploy command after it to deploy).
-              Branch changes are refused on a dirty
-              working tree; merge conflicts fail the stage with a clear message and standard
-              failback. Human review stages gain an MR-style <strong>PR review</strong> view with
-              per-line commenting; without task branches there is nothing to review and merge stages
-              fail with a clear message.
+              <strong>Deploy</strong> CI stage with the deploy command after it to deploy). Branch
+              changes are refused on a dirty working tree; merge conflicts fail the stage with a
+              clear message and standard failback. Human review stages gain an MR-style{' '}
+              <strong>PR review</strong> view with per-line commenting; without task branches there
+              is nothing to review and merge stages fail with a clear message.
             </p>
           </div>
 
@@ -1033,10 +1023,10 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
         </h3>
         <div className="space-y-4 max-w-2xl">
           <p className="text-[11px] text-text-muted leading-relaxed">
-            How many times this project&apos;s tasks may fail back and re-run before parking
-            as failed, and how long each stage type may run. Counts of 0 disable that loop;
-            blank fields follow the global default. A manual stage retry restarts every
-            budget below from zero.
+            How many times this project&apos;s tasks may fail back and re-run before parking as
+            failed, and how long each stage type may run. Counts of 0 disable that loop; blank
+            fields follow the global default. A manual stage retry restarts every budget below from
+            zero.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <RetryNumberField
@@ -1140,10 +1130,7 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated }) {
         {/* Soft combination warnings from the last save (the save succeeded;
             these name catalog-miss pairings to fix in a follow-up edit). */}
         {saveWarnings.length > 0 && (
-          <ul
-            data-testid="save-warnings-panel"
-            className="flex flex-col gap-1 max-w-2xl"
-          >
+          <ul data-testid="save-warnings-panel" className="flex flex-col gap-1 max-w-2xl">
             {saveWarnings.map((warning, index) => (
               <li
                 key={`${index}-${warning}`}

@@ -53,7 +53,7 @@ const ENRICHED_MODELS = vi.hoisted(() => [
     authConfigured: true,
     statusLabel: 'Unavailable',
   },
-]);;
+]);
 
 vi.mock('../../services/api', async (importOriginal) => {
   const actual = await importOriginal();
@@ -322,7 +322,11 @@ test('saving persists the project name, paths, git repo, defaultModel, and accen
 });
 
 test('edits custom documentation folder name and centralized docs toggle, saving them', async () => {
-  api.updateProject.mockResolvedValue({ id: 'p1', docsDirName: 'kainbain-docs', centralizedDocs: false });
+  api.updateProject.mockResolvedValue({
+    id: 'p1',
+    docsDirName: 'kainbain-docs',
+    centralizedDocs: false,
+  });
   const updateProjectInState = vi.fn();
 
   renderWithKainBain(<ProjectSettings />, {
@@ -415,9 +419,7 @@ test('invalid KainBain folder name prevents save with validation alert', async (
   fireEvent.click(saveButton);
 
   await waitFor(() => {
-    expect(
-      screen.getByText(/KainBain folder name must be 1-64 characters/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/KainBain folder name must be 1-64 characters/i)).toBeInTheDocument();
   });
 
   expect(api.updateProject).not.toHaveBeenCalled();
@@ -454,9 +456,7 @@ test('rejects state folder `docs` even with a custom docs folder (UI/server pari
   });
   fireEvent.click(screen.getByRole('button', { name: /save configuration/i }));
   await waitFor(() => {
-    expect(
-      screen.getByText(/KainBain folder name must be 1-64 characters/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/KainBain folder name must be 1-64 characters/i)).toBeInTheDocument();
   });
   expect(api.updateProject).not.toHaveBeenCalled();
 });
@@ -663,8 +663,7 @@ test('syncs stored name, cwd, notes, git, and accent when the project loads afte
     expect.objectContaining({
       name: 'Project A',
       cwd: '/home/server/projects/project-a',
-      notesDir:
-        '/home/server/apps/notes/silverbullet/space/Projects/Personal/project-a',
+      notesDir: '/home/server/apps/notes/silverbullet/space/Projects/Personal/project-a',
       gitRepo: 'https://git.example.com/team/ProjectA.git',
       accentColor: '#38bdf8',
     }),
@@ -836,7 +835,9 @@ test('harness control lists registered harnesses with the default flagged', asyn
   const trigger = await screen.findByRole('combobox', { name: 'AI Harness' });
   fireEvent.click(trigger);
   await waitFor(() => {
-    expect(screen.getByRole('option', { name: /pi coding agent \(default\)/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: /pi coding agent \(default\)/i }),
+    ).toBeInTheDocument();
   });
   expect(screen.getByRole('option', { name: /Custom command/i })).toBeInTheDocument();
 });
@@ -1072,12 +1073,8 @@ test('renders the Retry & Timeouts section prefilled from stored overrides', () 
   expect(screen.getByLabelText('Max transient retries')).toHaveValue(2);
   expect(screen.getByLabelText('Automatic iteration')).toHaveValue('disabled');
   // Stored milliseconds display as minutes through the shared helper.
-  expect(screen.getByLabelText('Agent stage timeout (minutes)')).toHaveValue(
-    msToMinutes(111111),
-  );
-  expect(screen.getByLabelText('CI stage timeout (minutes)')).toHaveValue(
-    msToMinutes(22222),
-  );
+  expect(screen.getByLabelText('Agent stage timeout (minutes)')).toHaveValue(msToMinutes(111111));
+  expect(screen.getByLabelText('CI stage timeout (minutes)')).toHaveValue(msToMinutes(22222));
   // Unset fields stay blank and point at the global default.
   expect(screen.getByLabelText('Merge stage timeout (minutes)')).toHaveValue(null);
   // Set fields claim the project override; blank ones the global default.
@@ -1113,8 +1110,12 @@ test('saving persists edited retry budgets and the tri-state switch', async () =
   fireEvent.change(screen.getByLabelText('Max transient retries'), { target: { value: '0' } });
   fireEvent.change(screen.getByLabelText('Automatic iteration'), { target: { value: 'disabled' } });
   // Minute inputs persist as the identical millisecond values as before.
-  fireEvent.change(screen.getByLabelText('Agent stage timeout (minutes)'), { target: { value: '1' } });
-  fireEvent.change(screen.getByLabelText('CI stage timeout (minutes)'), { target: { value: '1.5' } });
+  fireEvent.change(screen.getByLabelText('Agent stage timeout (minutes)'), {
+    target: { value: '1' },
+  });
+  fireEvent.change(screen.getByLabelText('CI stage timeout (minutes)'), {
+    target: { value: '1.5' },
+  });
 
   fireEvent.click(screen.getByText('Save Configuration'));
   await waitFor(() => {
@@ -1236,7 +1237,10 @@ test('a 409 save conflict tells the user to reload instead of failing silently',
   await waitFor(() => {
     expect(screen.getByRole('alert')).toHaveTextContent(/another tab or browser.*reload/i);
   });
-  expect(notifyError).toHaveBeenCalledWith(expect.stringMatching(/reload and try again/i), 'Save Conflict');
+  expect(notifyError).toHaveBeenCalledWith(
+    expect.stringMatching(/reload and try again/i),
+    'Save Conflict',
+  );
   expect(screen.getByText('Error — Retry')).toBeInTheDocument();
 });
 
@@ -1341,9 +1345,7 @@ test('the guidance mock opt-in selects mock and saves it (never silently)', asyn
     selectProject: vi.fn(),
   });
 
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Use mock harness for evaluation' }),
-  );
+  fireEvent.click(await screen.findByRole('button', { name: 'Use mock harness for evaluation' }));
   expect(screen.getByRole('combobox', { name: 'AI Harness' })).toHaveTextContent('Mock');
 
   fireEvent.click(screen.getByText('Save Configuration'));

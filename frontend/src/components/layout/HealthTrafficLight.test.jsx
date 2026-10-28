@@ -56,7 +56,12 @@ describe('HealthTrafficLight', () => {
         status: 'degraded',
         checks: {
           litellm: { status: 'error', message: 'LiteLLM unreachable: ECONNREFUSED' },
-          device: { status: 'warning', memoryUsagePct: 88, loadAvg: [3.2, 2.8, 2.1], message: 'High memory' },
+          device: {
+            status: 'warning',
+            memoryUsagePct: 88,
+            loadAvg: [3.2, 2.8, 2.1],
+            message: 'High memory',
+          },
           ollamaCloud: { status: 'ok', latencyMs: 95 },
         },
       },
@@ -172,7 +177,12 @@ describe('HealthTrafficLight', () => {
         status: 'ok',
         checks: {
           litellm: { status: 'disabled', message: 'LiteLLM not configured (optional)' },
-          device: { status: 'ok', memoryUsagePct: 40, loadAvg: [0.5, 0.4, 0.3], message: 'Device healthy' },
+          device: {
+            status: 'ok',
+            memoryUsagePct: 40,
+            loadAvg: [0.5, 0.4, 0.3],
+            message: 'Device healthy',
+          },
           ollamaCloud: { status: 'unconfigured', message: 'Ollama Cloud unreachable (optional)' },
         },
       },

@@ -66,11 +66,7 @@ function Harness() {
   return (
     <div data-testid="harness">
       <span data-testid="active">{ctx.activeProject?.accentColor || ''}</span>
-      <button
-        data-testid="switch"
-        type="button"
-        onClick={() => ctx.selectProject('p2')}
-      >
+      <button data-testid="switch" type="button" onClick={() => ctx.selectProject('p2')}>
         switch
       </button>
     </div>
@@ -189,7 +185,9 @@ describe('KainBainContext live board sync', () => {
   let routerNav;
 
   const compactDetail = {
-    id: 'detail-task', title: 'Compact', reports: [{ path: 'plan.md', stageName: 'Plan' }],
+    id: 'detail-task',
+    title: 'Compact',
+    reports: [{ path: 'plan.md', stageName: 'Plan' }],
   };
   const fullDetail = {
     ...compactDetail,
@@ -278,27 +276,36 @@ describe('KainBainContext live board sync', () => {
     vi.unstubAllGlobals();
   });
 
-  it.each([
-    '/tasks/detail-task',
-    '/task/detail-task/review',
-    '/tasks/detail-task/review',
-  ])('retains early hydration when the initial board loads after deep link %s', async (entry) => {
-    let finishBoard;
-    api.listTasks.mockImplementation(() => new Promise((resolve) => { finishBoard = resolve; }));
-    api.getTask.mockResolvedValue(fullDetail);
-    renderProvider([entry]);
-    await flushEffects();
-    expectHydratedDetail();
-    await act(async () => finishBoard([compactDetail]));
-    expectHydratedDetail();
-    expect(ctxRef.current.tasks).toEqual([compactDetail]);
-    expect(api.getTask).toHaveBeenCalledTimes(1);
-  });
+  it.each(['/tasks/detail-task', '/task/detail-task/review', '/tasks/detail-task/review'])(
+    'retains early hydration when the initial board loads after deep link %s',
+    async (entry) => {
+      let finishBoard;
+      api.listTasks.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishBoard = resolve;
+          }),
+      );
+      api.getTask.mockResolvedValue(fullDetail);
+      renderProvider([entry]);
+      await flushEffects();
+      expectHydratedDetail();
+      await act(async () => finishBoard([compactDetail]));
+      expectHydratedDetail();
+      expect(ctxRef.current.tasks).toEqual([compactDetail]);
+      expect(api.getTask).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it('hydrates an initial deep link when detail arrives after the compact board', async () => {
     let finishDetail;
     api.listTasks.mockResolvedValue([compactDetail]);
-    api.getTask.mockImplementation(() => new Promise((resolve) => { finishDetail = resolve; }));
+    api.getTask.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishDetail = resolve;
+        }),
+    );
     renderProvider(['/tasks/detail-task']);
     await flushEffects();
     expect(ctxRef.current.selectedTask.history).toBeUndefined();
@@ -357,8 +364,12 @@ describe('KainBainContext live board sync', () => {
   it('clears old detail on a different task URL and ignores its late response after closing', async () => {
     let finishSecond;
     api.listTasks.mockResolvedValue([compactDetail, { id: 'second' }]);
-    api.getTask.mockResolvedValueOnce(fullDetail)
-      .mockImplementationOnce(() => new Promise((resolve) => { finishSecond = resolve; }));
+    api.getTask.mockResolvedValueOnce(fullDetail).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishSecond = resolve;
+        }),
+    );
     renderProvider();
     await flushEffects();
     navigate('/tasks/detail-task');
@@ -373,10 +384,17 @@ describe('KainBainContext live board sync', () => {
 
   it('does not carry hydrated fields into another project with the same task id', async () => {
     let finishNew;
-    api.listProjects.mockResolvedValue([{ id: 'p1', name: 'A' }, { id: 'p2', name: 'B' }]);
+    api.listProjects.mockResolvedValue([
+      { id: 'p1', name: 'A' },
+      { id: 'p2', name: 'B' },
+    ]);
     api.listTasks.mockResolvedValue([compactDetail]);
-    api.getTask.mockResolvedValueOnce(fullDetail)
-      .mockImplementationOnce(() => new Promise((resolve) => { finishNew = resolve; }));
+    api.getTask.mockResolvedValueOnce(fullDetail).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishNew = resolve;
+        }),
+    );
     renderProvider();
     await flushEffects();
     navigate('/tasks/detail-task');
@@ -392,9 +410,18 @@ describe('KainBainContext live board sync', () => {
 
   it('ignores a late hydration response from the previous project for the same task id', async () => {
     let finishOld;
-    api.listProjects.mockResolvedValue([{ id: 'p1', name: 'A' }, { id: 'p2', name: 'B' }]);
+    api.listProjects.mockResolvedValue([
+      { id: 'p1', name: 'A' },
+      { id: 'p2', name: 'B' },
+    ]);
     api.listTasks.mockResolvedValue([compactDetail]);
-    api.getTask.mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }))
+    api.getTask
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishOld = resolve;
+          }),
+      )
       .mockResolvedValueOnce({ id: 'detail-task', history: [{ action: 'New project' }] });
     renderProvider();
     await flushEffects();
@@ -528,7 +555,11 @@ describe('KainBainContext live board sync', () => {
 
   it('hydrates compact board selections without losing detail to fresh board metadata', async () => {
     const compact = { id: 'detail-task', title: 'Compact', reports: [{ stageName: 'Plan' }] };
-    const full = { ...compact, history: [{ action: 'Created' }], reports: [{ stageName: 'Plan', content: 'Full report' }] };
+    const full = {
+      ...compact,
+      history: [{ action: 'Created' }],
+      reports: [{ stageName: 'Plan', content: 'Full report' }],
+    };
     api.listTasks.mockResolvedValue([compact]);
     api.getTask.mockResolvedValueOnce(full);
     ctxRef = { current: null };
@@ -541,7 +572,8 @@ describe('KainBainContext live board sync', () => {
     expect(ctxRef.current.selectedTask.reports).toEqual(full.reports);
     expect(ctxRef.current.tasks[0]).toEqual(compact);
     dispatchWs(mockInstances.at(-1), {
-      type: 'TASK_UPDATED', payload: { ...compact, status: 'running_agent', projectId: 'p1' },
+      type: 'TASK_UPDATED',
+      payload: { ...compact, status: 'running_agent', projectId: 'p1' },
     });
     expect(ctxRef.current.selectedTask.status).toBe('running_agent');
     expect(ctxRef.current.selectedTask.reports).toEqual(full.reports);
@@ -549,7 +581,12 @@ describe('KainBainContext live board sync', () => {
 
   it('ignores late detail responses after selecting another task', async () => {
     let finishFirst;
-    api.getTask.mockImplementationOnce(() => new Promise((resolve) => { finishFirst = resolve; }));
+    api.getTask.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishFirst = resolve;
+        }),
+    );
     api.getTask.mockResolvedValueOnce({ id: 'second', history: [] });
     ctxRef = { current: null };
     renderProvider();

@@ -12,9 +12,7 @@ export function runnerRequests(request) {
     getRunnerMonitor: () => request('/runners/monitor'),
     approveRunner: (id) =>
       request(`/runners/${encodeURIComponent(id)}/approve`, { method: 'POST' }),
-    denyRunner: (id) =>
-      request(`/runners/${encodeURIComponent(id)}/deny`, { method: 'POST' }),
-    revokeRunner: (id) =>
-      request(`/runners/${encodeURIComponent(id)}/revoke`, { method: 'POST' }),
+    denyRunner: (id) => request(`/runners/${encodeURIComponent(id)}/deny`, { method: 'POST' }),
+    revokeRunner: (id) => request(`/runners/${encodeURIComponent(id)}/revoke`, { method: 'POST' }),
   };
 }

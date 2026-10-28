@@ -77,9 +77,7 @@ afterEach(() => {
 
 test('tags in the query render as chips with remove buttons', () => {
   const setSearchQuery = vi.fn();
-  renderWithKainBain(
-    <CanvasToolbar {...baseProps({ searchQuery: 'auth #PO', setSearchQuery })} />,
-  );
+  renderWithKainBain(<CanvasToolbar {...baseProps({ searchQuery: 'auth #PO', setSearchQuery })} />);
   expect(screen.getByRole('button', { name: 'Remove tag PO' })).toBeInTheDocument();
   // The committed tag renders only as a chip — the field keeps just the text.
   expect(screen.getByLabelText('Search tasks')).toHaveValue('auth');
@@ -90,9 +88,7 @@ test('tags in the query render as chips with remove buttons', () => {
 
 test('typing # offers the available tags as suggestions', () => {
   const setSearchQuery = vi.fn();
-  const { rerender } = renderWithKainBain(
-    <CanvasToolbar {...baseProps({ setSearchQuery })} />,
-  );
+  const { rerender } = renderWithKainBain(<CanvasToolbar {...baseProps({ setSearchQuery })} />);
   const input = screen.getByLabelText('Search tasks');
   fireEvent.change(input, { target: { value: '#' } });
   expect(setSearchQuery).toHaveBeenCalledWith('#');
@@ -114,11 +110,7 @@ test('match-mode toggle only renders while tags are in the query', () => {
   );
   expect(screen.queryByRole('button', { name: 'Match any selected tag' })).not.toBeInTheDocument();
 
-  rerender(
-    <CanvasToolbar
-      {...baseProps({ setStageTagFilterMode, searchQuery: 'auth #PO' })}
-    />,
-  );
+  rerender(<CanvasToolbar {...baseProps({ setStageTagFilterMode, searchQuery: 'auth #PO' })} />);
   fireEvent.click(screen.getByRole('button', { name: 'Match all selected tags' }));
   expect(setStageTagFilterMode).toHaveBeenCalledWith('all');
 });
@@ -145,9 +137,7 @@ test('search bar stays visible even when no stage has tags', () => {
 
 test('clear button wipes text and tags together', () => {
   const setSearchQuery = vi.fn();
-  renderWithKainBain(
-    <CanvasToolbar {...baseProps({ searchQuery: 'auth #PO', setSearchQuery })} />,
-  );
+  renderWithKainBain(<CanvasToolbar {...baseProps({ searchQuery: 'auth #PO', setSearchQuery })} />);
   fireEvent.click(screen.getByLabelText('Clear search'));
   expect(setSearchQuery).toHaveBeenCalledWith('');
 });
@@ -170,7 +160,9 @@ test('mobile strip lists only visible stages plus a hidden summary tab', () => {
   expect(screen.getByText('2. Review')).toBeInTheDocument();
   expect(screen.queryByText('3. Build')).not.toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole('tab', { name: 'Show 1 hidden stages (clears the tag filter)' }));
+  fireEvent.click(
+    screen.getByRole('tab', { name: 'Show 1 hidden stages (clears the tag filter)' }),
+  );
   expect(onClearStageTagFilter).toHaveBeenCalledTimes(1);
 });
 

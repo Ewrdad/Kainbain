@@ -23,9 +23,7 @@ describe('KeyboardShortcutsModal', () => {
     expect(screen.getByText('Open platform docs')).toBeInTheDocument();
     expect(screen.queryByText('Switch to Docs knowledge base')).not.toBeInTheDocument();
     expect(screen.getByText('Switch to Orchestrator view')).toBeInTheDocument();
-    expect(
-      screen.getByText('Open UI Customization & Preferences modal'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Open UI Customization & Preferences modal')).toBeInTheDocument();
     expect(screen.getByText('Open System Settings')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Close'));

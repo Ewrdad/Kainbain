@@ -40,15 +40,19 @@ describe('SurveyBanner', () => {
 
   it('renders nothing once answered or explicitly empty', async () => {
     const { container } = renderBanner('answered');
-    await waitFor(() => expect(screen.queryByRole('region', { name: /survey awaiting/i })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: /survey awaiting/i })).not.toBeInTheDocument(),
+    );
     expect(container).toBeEmptyDOMElement();
   });
 
   it('keeps the entry link when the status fetch fails (fail-visible)', async () => {
-    const client = { getSurvey: vi.fn(async () => { throw new Error('offline'); }) };
-    renderWithKainBain(
-      <SurveyBanner taskId="t1" projectId="p1" enabled client={client} />,
-    );
+    const client = {
+      getSurvey: vi.fn(async () => {
+        throw new Error('offline');
+      }),
+    };
+    renderWithKainBain(<SurveyBanner taskId="t1" projectId="p1" enabled client={client} />);
     const link = await screen.findByRole('link', { name: /open survey/i });
     expect(link).toHaveAttribute('href', '#/tasks/t1/survey');
   });

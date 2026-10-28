@@ -753,8 +753,8 @@ export function Header() {
                 className="w-full p-2.5 bg-surface-deep border border-border-standard rounded-sm text-sm text-on-surface outline-none focus:border-primary transition-colors font-mono"
               />
               <p className="text-[10px] text-text-muted mt-2">
-                Absolute path to an existing repository. KainBain initialises its state folder
-                there and never moves or deletes your files.
+                Absolute path to an existing repository. KainBain initialises its state folder there
+                and never moves or deletes your files.
               </p>
             </div>
 

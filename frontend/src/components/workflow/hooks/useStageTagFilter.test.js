@@ -1,10 +1,7 @@
 import { describe, expect, test, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useStageTagFilter } from './useStageTagFilter';
-import {
-  STAGE_TAG_FILTER_STORAGE_KEY,
-  STAGE_TAG_FILTER_MODE_STORAGE_KEY,
-} from '../stageTagFilter';
+import { STAGE_TAG_FILTER_STORAGE_KEY, STAGE_TAG_FILTER_MODE_STORAGE_KEY } from '../stageTagFilter';
 
 /***
  * MARK: useStageTagFilter tests

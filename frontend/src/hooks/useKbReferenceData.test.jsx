@@ -445,9 +445,9 @@ describe('resolveReference', () => {
       id: 'wf-hotfix',
       label: 'Hotfix (wf-hotfix)',
     });
-    expect(resolveReference({ kind: 'workflow', value: 'feature pipeline', entities })).toMatchObject(
-      { id: 'wf-default' },
-    );
+    expect(
+      resolveReference({ kind: 'workflow', value: 'feature pipeline', entities }),
+    ).toMatchObject({ id: 'wf-default' });
     expect(resolveReference({ kind: 'workflow', value: 'wf-missing', entities })).toBeNull();
   });
 

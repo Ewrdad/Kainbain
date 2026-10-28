@@ -144,9 +144,7 @@ test('switches between Details, Reports, and History tabs', async () => {
 test('maps legacy numeric timeline stage ids to current stage names', () => {
   const legacyTimelineTask = {
     ...task,
-    timeline: [
-      { timestamp: '14:00', stage: '2', duration: '1m', status: 'Advanced' },
-    ],
+    timeline: [{ timestamp: '14:00', stage: '2', duration: '1m', status: 'Advanced' }],
   };
 
   renderWithKainBain(<TaskDetailOverlay task={legacyTimelineTask} onClose={() => {}} />, {
@@ -230,9 +228,10 @@ test('overlay failure banner caps a long message behind Show more', () => {
 
   fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
   expect(screen.getByText(/FINAL TAIL MARKER/)).toBeInTheDocument();
-  expect(
-    screen.getByRole('button', { name: 'Show less' }),
-  ).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  );
 });
 
 test('overlay flags a deliberate rejection as REJECTED with the reason at the top', () => {
@@ -562,10 +561,16 @@ test('renders keyword token buttons and copies token to clipboard', () => {
 
   // Core keyword buttons are present
   expect(screen.getByRole('button', { name: /Copy keyword \{\{project\}\}/ })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Copy keyword \{\{projectRoot\}\}/ })).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: /Copy keyword \{\{projectRoot\}\}/ }),
+  ).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /Copy keyword \{\{taskDocs\}\}/ })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Copy keyword \{\{previousReports\}\}/ })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Copy keyword \{\{latestReportPath\}\}/ })).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: /Copy keyword \{\{previousReports\}\}/ }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: /Copy keyword \{\{latestReportPath\}\}/ }),
+  ).toBeInTheDocument();
 
   // Clicking a keyword copies its literal token
   fireEvent.click(screen.getByRole('button', { name: /Copy keyword \{\{projectRoot\}\}/ }));
@@ -609,7 +614,8 @@ test('provides notes-viewer links and deduplicated reports in Reports tab (#1, #
 test('switches to dedicated Logs tab and displays streamed process logs with filter and copy', async () => {
   const logTask = {
     ...task,
-    processLogs: '[AGENT] Initializing Pi agent...\n[TOOL] write({"path":"src/test.js"})\n[RESULT] File created\n[INFO] Stage finished',
+    processLogs:
+      '[AGENT] Initializing Pi agent...\n[TOOL] write({"path":"src/test.js"})\n[RESULT] File created\n[INFO] Stage finished',
   };
 
   renderWithKainBain(<TaskDetailOverlay task={logTask} onClose={() => {}} />, {
@@ -688,7 +694,9 @@ test('supports approving checkpoint with human guidance', async () => {
   // Expand guidance input
   fireEvent.click(screen.getByText('+ Add guidance note'));
   expect(screen.getByText('Guidance note (optional):')).toBeInTheDocument();
-  const guidanceInput = screen.getByPlaceholderText(/Please ensure API error handling covers timeout cases/i);
+  const guidanceInput = screen.getByPlaceholderText(
+    /Please ensure API error handling covers timeout cases/i,
+  );
   expect(guidanceInput).toBeInTheDocument();
 
   fireEvent.change(guidanceInput, { target: { value: 'Include security headers in response.' } });
@@ -741,10 +749,11 @@ test('mid-pipeline checkpoint banner keeps the approve-and-advance wording', asy
 
 test('approve shows "Saving edits..." state when flushing pending changes', async () => {
   let resolveUpdate;
-  const updateTask = vi.fn().mockImplementation(() =>
-    new Promise((resolve) => {
-      resolveUpdate = resolve;
-    })
+  const updateTask = vi.fn().mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        resolveUpdate = resolve;
+      }),
   );
   const advanceTask = vi.fn();
   // Fresh task so the goal editor is open (preview-by-default otherwise).
@@ -782,10 +791,11 @@ test('approve shows "Saving edits..." state when flushing pending changes', asyn
 
 test('reject shows "Saving edits..." state when flushing pending changes', async () => {
   let resolveUpdate;
-  const updateTask = vi.fn().mockImplementation(() =>
-    new Promise((resolve) => {
-      resolveUpdate = resolve;
-    })
+  const updateTask = vi.fn().mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        resolveUpdate = resolve;
+      }),
   );
   const openFeedbackDialog = vi.fn();
   // Fresh task so the goal editor is open (preview-by-default otherwise).
@@ -1024,7 +1034,6 @@ test('supports live pause and abort execution controls when task is running', as
   confirmSpy.mockRestore();
 });
 
-
 test('delete shows a loading state, disables the button, and double-click deletes once', async () => {
   let resolveDelete;
   const deleteTask = vi.fn().mockImplementation(
@@ -1153,10 +1162,9 @@ test('inspector reserves the Now Playing footer height by default (footer-overla
 });
 
 test('inspector fills the full height when the Now Playing footer is hidden', () => {
-  renderWithKainBain(
-    <TaskDetailOverlay task={task} onClose={() => {}} footerReserved={false} />,
-    { stages },
-  );
+  renderWithKainBain(<TaskDetailOverlay task={task} onClose={() => {}} footerReserved={false} />, {
+    stages,
+  });
 
   const aside = screen.getByRole('complementary', { name: 'Task Inspector' });
   expect(aside.className).toContain('h-full');
@@ -1251,5 +1259,7 @@ test('hides the checkpoint approve banner on terminal-failed tasks and keeps Ret
   renderWithKainBain(<TaskDetailOverlay task={failedTask} onClose={() => {}} />, { stages });
   expect(screen.queryByText('Human Review Checkpoint')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Approve task #KB-T1/i })).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Retry failed stage on task #KB-T1/i })).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: /Retry failed stage on task #KB-T1/i }),
+  ).toBeInTheDocument();
 });

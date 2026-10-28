@@ -21,7 +21,13 @@ export class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     this.setState({ errorInfo });
-    console.error('[ErrorBoundary]', this.props?.name || 'Global', 'Uncaught render error:', error, errorInfo);
+    console.error(
+      '[ErrorBoundary]',
+      this.props?.name || 'Global',
+      'Uncaught render error:',
+      error,
+      errorInfo,
+    );
   }
 
   handleReset = () => {
@@ -48,10 +54,13 @@ export class ErrorBoundary extends React.Component {
           </div>
           <div>
             <h2 className="text-base font-bold uppercase tracking-wider text-on-surface">
-              {this.props.name ? `${this.props.name} Component Error` : 'Unexpected UI Rendering Error'}
+              {this.props.name
+                ? `${this.props.name} Component Error`
+                : 'Unexpected UI Rendering Error'}
             </h2>
             <p className="text-xs text-text-muted mt-1 max-w-md">
-              A problem occurred while rendering this section. You can attempt to recover or reload the application.
+              A problem occurred while rendering this section. You can attempt to recover or reload
+              the application.
             </p>
           </div>
 

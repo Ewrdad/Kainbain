@@ -76,11 +76,8 @@ export function formatTaskTitleFirstLine(taskOrText, fallback = 'Untitled Task')
   // `||` (not `??`) matches every call site this replaces: an empty goal
   // falls through to the title, exactly like `(goal || title || '')` did.
   const raw =
-    typeof taskOrText === 'string'
-      ? taskOrText
-      : (taskOrText?.goal || taskOrText?.title || '');
-  const line =
-    typeof raw === 'string' ? raw.split('\n')[0].replace(/^#\s+/, '') : '';
+    typeof taskOrText === 'string' ? taskOrText : taskOrText?.goal || taskOrText?.title || '';
+  const line = typeof raw === 'string' ? raw.split('\n')[0].replace(/^#\s+/, '') : '';
   return line || fallback;
 }
 
@@ -218,10 +215,7 @@ export function formatTaskTimestamp(task) {
  * @returns {string} Display label for the timeline entry.
  ***/
 export function resolveTimelineStageLabel(stageLabel, stages = []) {
-  const label =
-    stageLabel === undefined || stageLabel === null
-      ? ''
-      : String(stageLabel).trim();
+  const label = stageLabel === undefined || stageLabel === null ? '' : String(stageLabel).trim();
   if (!label || !/^\d+$/.test(label) || !Array.isArray(stages)) return label;
   const match = stages.find((s) => String(s?.id) === label);
   return match?.name || label;
@@ -264,10 +258,7 @@ function resolveTimelineStageRecord(stages, label) {
     ) {
       return candidate;
     }
-    if (
-      typeof candidate.name === 'string' &&
-      candidate.name.trim().toLowerCase() === lowered
-    ) {
+    if (typeof candidate.name === 'string' && candidate.name.trim().toLowerCase() === lowered) {
       return candidate;
     }
   }
@@ -439,11 +430,13 @@ export function buildDisplayTimeline({
       presentation && presentation.ticking === false && typeof presentation.label === 'string'
         ? presentation.label.trim().toUpperCase()
         : '';
-    const isSettledRow = settledLabel === 'PARKED' || settledLabel === 'WAITING' || settledLabel === 'DONE';
+    const isSettledRow =
+      settledLabel === 'PARKED' || settledLabel === 'WAITING' || settledLabel === 'DONE';
     if (isSettledRow) {
       const settledRow = {
         stage: fallbackStageName,
-        duration: settledLabel === 'PARKED' ? 'Parked — awaiting retry' : liveDurationLabel || 'Settled',
+        duration:
+          settledLabel === 'PARKED' ? 'Parked — awaiting retry' : liveDurationLabel || 'Settled',
         timestamp: settledLabel.charAt(0) + settledLabel.slice(1).toLowerCase(),
         status: settledLabel.charAt(0) + settledLabel.slice(1).toLowerCase(),
       };
@@ -462,10 +455,7 @@ export function buildDisplayTimeline({
       arrivalIndex !== -1 &&
       displayStored
         .slice(0, arrivalIndex)
-        .every(
-          (entry) =>
-            entry?.stage === liveRow.stage && isFailedTimelineOutcome(entry?.status),
-        );
+        .every((entry) => entry?.stage === liveRow.stage && isFailedTimelineOutcome(entry?.status));
     if (!superseded) return [liveRow, ...displayStored];
     // The live row replaces the current visit's arrival row, so it inherits
     // that row's run attribution (stamped at the stage's dispatch): the
@@ -518,8 +508,7 @@ export function formatDiffStat(entry) {
  * @returns {string} Trimmed base URL without trailing slashes, or '' when unconfigured.
  ***/
 export function getNotesViewerBaseUrl({ baseUrl } = {}) {
-  const raw =
-    baseUrl !== undefined ? baseUrl : import.meta.env?.VITE_NOTES_VIEWER_URL;
+  const raw = baseUrl !== undefined ? baseUrl : import.meta.env?.VITE_NOTES_VIEWER_URL;
   return typeof raw === 'string' ? raw.trim().replace(/\/+$/, '') : '';
 }
 

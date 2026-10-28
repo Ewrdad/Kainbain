@@ -80,14 +80,25 @@ describe('useProjects', () => {
   });
 
   it('registerProject adopts the project and selects it', async () => {
-    api.registerProject.mockResolvedValue({ id: 'p4', name: 'Adopted Repo', cwd: '/repos/adopted' });
+    api.registerProject.mockResolvedValue({
+      id: 'p4',
+      name: 'Adopted Repo',
+      cwd: '/repos/adopted',
+    });
     const { result } = renderHook(() => useProjects({}));
     let adopted;
     await act(async () => {
-      adopted = await result.current.registerProject({ path: '/repos/adopted', name: 'Adopted Repo' });
+      adopted = await result.current.registerProject({
+        path: '/repos/adopted',
+        name: 'Adopted Repo',
+      });
     });
     expect(adopted.id).toBe('p4');
-    expect(result.current.projects).toContainEqual({ id: 'p4', name: 'Adopted Repo', cwd: '/repos/adopted' });
+    expect(result.current.projects).toContainEqual({
+      id: 'p4',
+      name: 'Adopted Repo',
+      cwd: '/repos/adopted',
+    });
     expect(result.current.activeProjectId).toBe('p4');
   });
 
@@ -134,7 +145,11 @@ describe('useProjects', () => {
       result.current.updateProjectInState({ id: 'p1', accentColor: '#38bdf8', name: 'A2' });
     });
 
-    expect(result.current.projects[0]).toMatchObject({ id: 'p1', accentColor: '#38bdf8', name: 'A2' });
+    expect(result.current.projects[0]).toMatchObject({
+      id: 'p1',
+      accentColor: '#38bdf8',
+      name: 'A2',
+    });
     expect(result.current.projects[1]).toEqual({ id: 'p2', name: 'B' });
   });
 

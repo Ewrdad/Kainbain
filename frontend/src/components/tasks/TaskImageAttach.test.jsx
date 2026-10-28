@@ -34,12 +34,7 @@ describe('TaskImageAttach Component', () => {
 
   const renderAttach = (props = {}) =>
     renderWithKainBain(
-      <TaskImageAttach
-        projectId="proj-1"
-        taskId="task-1"
-        onUploaded={vi.fn()}
-        {...props}
-      />,
+      <TaskImageAttach projectId="proj-1" taskId="task-1" onUploaded={vi.fn()} {...props} />,
     );
 
   it('lists existing task images as removable thumbnails', async () => {
@@ -63,7 +58,9 @@ describe('TaskImageAttach Component', () => {
     fireEvent.change(input, { target: { files: [file] } });
 
     await waitFor(() => expect(api.uploadTaskImage).toHaveBeenCalledWith('proj-1', 'task-1', file));
-    await waitFor(() => expect(onUploaded).toHaveBeenCalledWith({ name: 'shot.png', path: 'assets/shot.png' }));
+    await waitFor(() =>
+      expect(onUploaded).toHaveBeenCalledWith({ name: 'shot.png', path: 'assets/shot.png' }),
+    );
   });
 
   it('ignores non-image files without calling the API', async () => {
@@ -93,9 +90,7 @@ describe('TaskImageAttach Component', () => {
 
     await waitFor(() => expect(api.uploadTaskImage).toHaveBeenCalledTimes(3));
     expect(onUploaded).toHaveBeenCalledTimes(3);
-    await waitFor(() =>
-      expect(onUploadedBatch).toHaveBeenCalledTimes(1),
-    );
+    await waitFor(() => expect(onUploadedBatch).toHaveBeenCalledTimes(1));
     expect(onUploadedBatch).toHaveBeenCalledWith([
       { name: 'a.png', path: 'assets/a.png' },
       { name: 'b.png', path: 'assets/b.png' },
@@ -224,7 +219,9 @@ describe('TaskImageAttach Component', () => {
     textareaRef.current.dispatchEvent(event);
 
     await waitFor(() => expect(api.uploadTaskImage).toHaveBeenCalledWith('proj-1', 'task-1', file));
-    await waitFor(() => expect(onUploaded).toHaveBeenCalledWith({ name: 'pasted.png', path: 'assets/pasted.png' }));
+    await waitFor(() =>
+      expect(onUploaded).toHaveBeenCalledWith({ name: 'pasted.png', path: 'assets/pasted.png' }),
+    );
     textareaRef.current.remove();
   });
 
@@ -241,7 +238,9 @@ describe('TaskImageAttach Component', () => {
     const removeButton = await screen.findByTestId('task-image-remove-doomed.png');
     fireEvent.click(removeButton);
 
-    await waitFor(() => expect(api.deleteTaskImage).toHaveBeenCalledWith('proj-1', 'task-1', 'doomed.png'));
+    await waitFor(() =>
+      expect(api.deleteTaskImage).toHaveBeenCalledWith('proj-1', 'task-1', 'doomed.png'),
+    );
     await waitFor(() => expect(onRemoved).toHaveBeenCalledWith('doomed.png'));
     await waitFor(() => expect(screen.queryByTestId('task-image-thumbnails')).toBeNull());
   });

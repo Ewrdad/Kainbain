@@ -44,7 +44,9 @@ vi.mock('../services/api', async (importOriginal) => {
       listTasks: vi.fn().mockResolvedValue([]),
       createTask: vi.fn().mockResolvedValue({ id: 't1', title: 'Task 1' }),
       deleteTask: vi.fn().mockResolvedValue({}),
-      getTask: vi.fn().mockResolvedValue({ id: 't1', title: 'T', goal: 'T', history: [], reports: [] }),
+      getTask: vi
+        .fn()
+        .mockResolvedValue({ id: 't1', title: 'T', goal: 'T', history: [], reports: [] }),
       getTaskReports: vi.fn().mockResolvedValue({ taskId: 't1', reports: [] }),
       submitTask: vi.fn().mockResolvedValue({ status: 'prompted' }),
       getTaskLogs: vi.fn().mockResolvedValue({ logs: [] }),

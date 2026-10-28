@@ -259,7 +259,9 @@ describe('UiPreferencesPanel', () => {
 
       fireEvent.click(screen.getByText('🗂️ Workspace'));
       expect(screen.getByLabelText('Keep screen awake while monitoring')).toBeInTheDocument();
-      expect(screen.queryByText(/Not supported on this browser\/connection/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/Not supported on this browser\/connection/),
+      ).not.toBeInTheDocument();
     } finally {
       delete window.navigator.wakeLock;
     }

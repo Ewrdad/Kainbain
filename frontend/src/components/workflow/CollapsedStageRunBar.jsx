@@ -22,18 +22,14 @@ export function CollapsedStageRunBar({
   const hiddenLabel = `${hiddenCount} stage${hiddenCount === 1 ? '' : 's'} hidden`;
   const hiddenNames = hiddenStages.map((s) => s?.name || s?.id || 'stage').join(', ');
   const hiddenTags = [
-    ...new Set(
-      hiddenStages.flatMap((s) => (Array.isArray(s?.tags) ? s.tags : [])),
-    ),
+    ...new Set(hiddenStages.flatMap((s) => (Array.isArray(s?.tags) ? s.tags : []))),
   ];
   const activeTasksCount = hiddenStages.reduce((sum, s) => {
     const stat = stageAnalytics?.byStage?.[s.id];
     return sum + (stat?.activeTasksCount || 0);
   }, 0);
   const tooltipDescription =
-    hiddenTags.length > 0
-      ? `${hiddenNames} — tags: ${hiddenTags.join(', ')}`
-      : hiddenNames;
+    hiddenTags.length > 0 ? `${hiddenNames} — tags: ${hiddenTags.join(', ')}` : hiddenNames;
 
   return (
     <section

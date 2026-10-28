@@ -51,9 +51,7 @@ describe('modelStatusBadge', () => {
     expect(modelStatusBadge({ runnable: false, authConfigured: false }).label).toBe(
       'No credentials',
     );
-    expect(modelStatusBadge({ runnable: false, authConfigured: true }).label).toBe(
-      'Unavailable',
-    );
+    expect(modelStatusBadge({ runnable: false, authConfigured: true }).label).toBe('Unavailable');
   });
 });
 

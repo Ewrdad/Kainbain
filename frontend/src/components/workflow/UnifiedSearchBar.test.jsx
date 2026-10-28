@@ -165,11 +165,15 @@ test('ArrowDown/ArrowUp move the highlight, Enter selects the tag', () => {
 
   fireEvent.keyDown(input, { key: 'ArrowDown' });
   fireEvent.keyDown(input, { key: 'ArrowDown' });
-  const highlighted = screen.getAllByRole('option').filter((o) => o.getAttribute('aria-selected') === 'true');
+  const highlighted = screen
+    .getAllByRole('option')
+    .filter((o) => o.getAttribute('aria-selected') === 'true');
   expect(highlighted).toHaveLength(1);
 
   fireEvent.keyDown(input, { key: 'ArrowUp' });
-  const moved = screen.getAllByRole('option').filter((o) => o.getAttribute('aria-selected') === 'true');
+  const moved = screen
+    .getAllByRole('option')
+    .filter((o) => o.getAttribute('aria-selected') === 'true');
   expect(moved).toHaveLength(1);
 
   fireEvent.keyDown(input, { key: 'Enter' });
@@ -511,8 +515,12 @@ function ExternalHarness() {
         tagFilterMode="any"
         onTagFilterModeChange={() => {}}
       />
-      <button type="button" onClick={() => setValue('plan #Design')}>hydrate</button>
-      <button type="button" onClick={() => setValue('')}>wipe</button>
+      <button type="button" onClick={() => setValue('plan #Design')}>
+        hydrate
+      </button>
+      <button type="button" onClick={() => setValue('')}>
+        wipe
+      </button>
     </>
   );
 }
@@ -643,9 +651,7 @@ function renderBarWithOptions(options, props = {}) {
 }
 
 test('fails safe with a null value and null tag options', () => {
-  renderWithKainBain(
-    <UnifiedSearchBar value={null} onChange={() => {}} tagOptions={null} />,
-  );
+  renderWithKainBain(<UnifiedSearchBar value={null} onChange={() => {}} tagOptions={null} />);
   const input = searchInput();
   // A null query degrades to an empty field — no crash, no chips.
   expect(input).toHaveValue('');
@@ -668,9 +674,7 @@ test('null tag options never open the dropdown, even with a # draft', () => {
 });
 
 test('fails safe with a non-string value (coerced like the parser does)', () => {
-  renderWithKainBain(
-    <UnifiedSearchBar value={123} onChange={() => {}} tagOptions={tagOptions} />,
-  );
+  renderWithKainBain(<UnifiedSearchBar value={123} onChange={() => {}} tagOptions={tagOptions} />);
   expect(searchInput()).toHaveValue('123');
 });
 

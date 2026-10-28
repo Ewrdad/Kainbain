@@ -3,7 +3,12 @@
 import { expect, test, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { renderWithKainBain } from '../../testUtils';
-import { StageSkillsPanel, estimateSkillsChars, keywordDefaultValue, keywordStoredText } from './StageSkillsPanel';
+import {
+  StageSkillsPanel,
+  estimateSkillsChars,
+  keywordDefaultValue,
+  keywordStoredText,
+} from './StageSkillsPanel';
 import '@testing-library/jest-dom';
 
 // The panel mounts useKbReferenceData (cascading KB reference data), so the
@@ -60,7 +65,8 @@ const rawSkill = {
   source: 'global',
   path: '/skills/creating-new-tickets/SKILL.md',
   config: { keywords: { targetStage: { value: 'Intake' } } },
-  markdown: '---\nname: creating-new-tickets\ndescription: d\n---\n# Creating New Tickets\nCreate tickets into {{targetStage}}.',
+  markdown:
+    '---\nname: creating-new-tickets\ndescription: d\n---\n# Creating New Tickets\nCreate tickets into {{targetStage}}.',
   body: '# Creating New Tickets\nCreate tickets into {{targetStage}}.',
 };
 
@@ -138,7 +144,9 @@ test('config editor renders KB_config keyword inputs and overrides write stage c
   };
   renderPanel({ stage: stageWithSkill, onChange });
 
-  fireEvent.click(screen.getByRole('button', { name: /Toggle config editor for creating-new-tickets/i }));
+  fireEvent.click(
+    screen.getByRole('button', { name: /Toggle config editor for creating-new-tickets/i }),
+  );
 
   const input = await screen.findByLabelText('Keyword targetStage for creating-new-tickets');
   expect(input).toBeInTheDocument();
@@ -147,7 +155,9 @@ test('config editor renders KB_config keyword inputs and overrides write stage c
   fireEvent.change(input, { target: { value: 'Audit Intake' } });
 
   expect(onChange).toHaveBeenCalledWith({
-    skills: [{ name: 'creating-new-tickets', mode: 'direct', config: { targetStage: 'Audit Intake' } }],
+    skills: [
+      { name: 'creating-new-tickets', mode: 'direct', config: { targetStage: 'Audit Intake' } },
+    ],
   });
 });
 
@@ -209,13 +219,17 @@ test('raw JSON escape hatch applies valid objects and rejects invalid JSON', asy
   };
   renderPanel({ stage: stageWithSkill, onChange });
 
-  fireEvent.click(screen.getByRole('button', { name: /Toggle config editor for creating-new-tickets/i }));
+  fireEvent.click(
+    screen.getByRole('button', { name: /Toggle config editor for creating-new-tickets/i }),
+  );
   fireEvent.click(screen.getByRole('button', { name: /raw JSON/ }));
   const textarea = screen.getByLabelText('Raw config JSON for creating-new-tickets');
   fireEvent.change(textarea, { target: { value: '{ not valid' } });
   fireEvent.click(screen.getByRole('button', { name: /Apply JSON/i }));
   await waitFor(() =>
-    expect(screen.getByText(/JSON at position|Unexpected token|Config must be a JSON object/)).toBeInTheDocument(),
+    expect(
+      screen.getByText(/JSON at position|Unexpected token|Config must be a JSON object/),
+    ).toBeInTheDocument(),
   );
   expect(onChange).not.toHaveBeenCalled();
 
@@ -235,7 +249,9 @@ test('raw JSON escape hatch applies valid objects and rejects invalid JSON', asy
 test('preview modal renders the resolved skill markdown', async () => {
   const stageWithSkill = {
     ...stage,
-    skills: [{ name: 'creating-new-tickets', mode: 'direct', config: { targetStage: 'Audit Intake' } }],
+    skills: [
+      { name: 'creating-new-tickets', mode: 'direct', config: { targetStage: 'Audit Intake' } },
+    ],
   };
   renderPanel({ stage: stageWithSkill });
 
@@ -358,7 +374,8 @@ const kbSkillRaw = {
       },
     },
   },
-  markdown: '---\nname: creating-new-tickets\ndescription: d\n---\n# Creating New Tickets\nTargets {{targetStage}}.',
+  markdown:
+    '---\nname: creating-new-tickets\ndescription: d\n---\n# Creating New Tickets\nTargets {{targetStage}}.',
   body: '# Creating New Tickets\nTargets {{targetStage}}.',
 };
 
@@ -387,7 +404,9 @@ function renderKbPanel({ config = {}, onChange = vi.fn(), activeProjectId = 'pro
 }
 
 async function expandConfig() {
-  fireEvent.click(screen.getByRole('button', { name: /Toggle config editor for creating-new-tickets/i }));
+  fireEvent.click(
+    screen.getByRole('button', { name: /Toggle config editor for creating-new-tickets/i }),
+  );
   await screen.findByRole('combobox', { name: 'Keyword targetProject for creating-new-tickets' });
 }
 
@@ -413,7 +432,9 @@ test('selecting a workflow writes the canonical id into stage config via onChang
   const onChange = vi.fn();
   renderKbPanel({ onChange });
   await expandConfig();
-  const combo = screen.getByRole('combobox', { name: 'Keyword targetWorkflow for creating-new-tickets' });
+  const combo = screen.getByRole('combobox', {
+    name: 'Keyword targetWorkflow for creating-new-tickets',
+  });
   fireEvent.click(combo);
   fireEvent.click(await screen.findByRole('option', { name: /Hotfix \(wf-hotfix\)/ }));
   await waitFor(() =>
@@ -441,7 +462,9 @@ test('changing the project keyword clears dependent workflow/stage overrides', a
     config: { targetProject: 'proj-2', targetWorkflow: 'wf-hotfix', targetStage: 'stage-ship' },
   });
   await expandConfig();
-  fireEvent.click(screen.getByRole('combobox', { name: 'Keyword targetProject for creating-new-tickets' }));
+  fireEvent.click(
+    screen.getByRole('combobox', { name: 'Keyword targetProject for creating-new-tickets' }),
+  );
   fireEvent.click(await screen.findByRole('option', { name: /Alpha \(proj-1\)/ }));
   await waitFor(() =>
     expect(onChange).toHaveBeenCalledWith({
@@ -456,7 +479,9 @@ test('project selector offers the {{project}} built-in and stores it verbatim', 
   const onChange = vi.fn();
   renderKbPanel({ onChange });
   await expandConfig();
-  fireEvent.click(screen.getByRole('combobox', { name: 'Keyword targetProject for creating-new-tickets' }));
+  fireEvent.click(
+    screen.getByRole('combobox', { name: 'Keyword targetProject for creating-new-tickets' }),
+  );
   fireEvent.click(screen.getByRole('option', { name: /Use current project/i }));
   await waitFor(() =>
     expect(onChange).toHaveBeenCalledWith({
@@ -470,7 +495,9 @@ test('project selector offers the {{project}} built-in and stores it verbatim', 
 test('stage selector is disabled with a reason when the stored workflow is unknown', async () => {
   renderKbPanel({ config: { targetWorkflow: 'wf-ghost' } });
   await expandConfig();
-  const stageCombo = screen.getByRole('combobox', { name: 'Keyword targetStage for creating-new-tickets' });
+  const stageCombo = screen.getByRole('combobox', {
+    name: 'Keyword targetStage for creating-new-tickets',
+  });
   expect(stageCombo).toBeDisabled();
   expect(
     screen.getByText(/Parent target workflow does not match a known workflow/),
@@ -480,7 +507,9 @@ test('stage selector is disabled with a reason when the stored workflow is unkno
 test('unmatched legacy stored values render as-is with a custom value badge', async () => {
   renderKbPanel({ config: { targetWorkflow: 'my-legacy-wf' } });
   await expandConfig();
-  const combo = screen.getByRole('combobox', { name: 'Keyword targetWorkflow for creating-new-tickets' });
+  const combo = screen.getByRole('combobox', {
+    name: 'Keyword targetWorkflow for creating-new-tickets',
+  });
   expect(combo).toHaveTextContent('my-legacy-wf');
   expect(screen.getByText('custom value')).toBeInTheDocument();
 });
@@ -489,7 +518,9 @@ test('manual entry fallback stores the typed value', async () => {
   const onChange = vi.fn();
   renderKbPanel({ onChange });
   await expandConfig();
-  fireEvent.click(screen.getByRole('combobox', { name: 'Keyword targetWorkflow for creating-new-tickets' }));
+  fireEvent.click(
+    screen.getByRole('combobox', { name: 'Keyword targetWorkflow for creating-new-tickets' }),
+  );
   fireEvent.click(await screen.findByRole('option', { name: /Enter value manually…/ }));
   const input = screen.getByRole('textbox', {
     name: /Keyword targetWorkflow for creating-new-tickets \(manual entry\)/i,
@@ -507,7 +538,11 @@ test('manual entry fallback stores the typed value', async () => {
 
 test('preview modal shows the resolved-targets summary for kbRef keywords', async () => {
   renderKbPanel({
-    config: { targetProject: '{{project}}', targetWorkflow: 'wf-hotfix', targetStage: 'stage-ship' },
+    config: {
+      targetProject: '{{project}}',
+      targetWorkflow: 'wf-hotfix',
+      targetStage: 'stage-ship',
+    },
   });
   fireEvent.click(screen.getByRole('button', { name: /Preview skill creating-new-tickets/i }));
   const dialog = await screen.findByRole('dialog');
@@ -547,7 +582,9 @@ test('keywordDefaultValue mirrors the engine coercion and fails safe', () => {
 });
 
 test('keywordStoredText only passes strings to the text input', () => {
-  expect(keywordStoredText({ config: { outputFile: 'FEEDBACK.md' } }, 'outputFile')).toBe('FEEDBACK.md');
+  expect(keywordStoredText({ config: { outputFile: 'FEEDBACK.md' } }, 'outputFile')).toBe(
+    'FEEDBACK.md',
+  );
   expect(keywordStoredText({ config: { outputFile: 5 } }, 'outputFile')).toBeUndefined();
   expect(keywordStoredText({ config: {} }, 'outputFile')).toBeUndefined();
   expect(keywordStoredText(null, 'outputFile')).toBeUndefined();
@@ -584,7 +621,9 @@ test('string-form keyword entries render their default without a detail fetch', 
 
   fireEvent.click(screen.getByRole('button', { name: /Toggle config editor for question-me/i }));
 
-  expect(await screen.findByLabelText('Keyword outputFile for question-me')).toHaveValue('SURVEY.md');
+  expect(await screen.findByLabelText('Keyword outputFile for question-me')).toHaveValue(
+    'SURVEY.md',
+  );
   expect(screen.getByLabelText('Keyword minQuestions for question-me')).toHaveValue('0');
 });
 
@@ -615,7 +654,9 @@ test('non-string stored overrides fall back to the default in the text input', a
 
   fireEvent.click(screen.getByRole('button', { name: /Toggle config editor for question-me/i }));
 
-  expect(await screen.findByLabelText('Keyword outputFile for question-me')).toHaveValue('SURVEY.md');
+  expect(await screen.findByLabelText('Keyword outputFile for question-me')).toHaveValue(
+    'SURVEY.md',
+  );
 });
 
 test('legacy skill without kbRef metadata keeps plain text inputs', async () => {
@@ -634,7 +675,9 @@ test('legacy skill without kbRef metadata keeps plain text inputs', async () => 
     />,
     { activeProjectId: 'proj-1' },
   );
-  fireEvent.click(screen.getByRole('button', { name: /Toggle config editor for creating-new-tickets/i }));
+  fireEvent.click(
+    screen.getByRole('button', { name: /Toggle config editor for creating-new-tickets/i }),
+  );
   const input = await screen.findByLabelText('Keyword targetStage for creating-new-tickets');
   expect(input.tagName).toBe('INPUT');
   expect(

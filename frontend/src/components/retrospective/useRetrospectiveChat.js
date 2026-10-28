@@ -59,8 +59,7 @@ function cleanStoredMessages(raw) {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter(
-      (m) =>
-        m && typeof m.content === 'string' && (m.role === 'user' || m.role === 'assistant'),
+      (m) => m && typeof m.content === 'string' && (m.role === 'user' || m.role === 'assistant'),
     )
     .map((m) => ({
       role: m.role,
@@ -87,9 +86,7 @@ function cleanPendingTurn(raw) {
   return {
     turnId: raw.turnId,
     turnMessages,
-    taskIds: Array.isArray(raw.taskIds)
-      ? raw.taskIds.filter((id) => typeof id === 'string')
-      : [],
+    taskIds: Array.isArray(raw.taskIds) ? raw.taskIds.filter((id) => typeof id === 'string') : [],
     userText: raw.userText,
     startedAt: typeof raw.startedAt === 'number' ? raw.startedAt : null,
     progressTail:
@@ -313,9 +310,7 @@ export function readChatError(err) {
     return {
       kind: 'task_not_found',
       taskId: parsedBody?.taskId,
-      unknownTaskIds: Array.isArray(parsedBody?.unknownTaskIds)
-        ? parsedBody.unknownTaskIds
-        : [],
+      unknownTaskIds: Array.isArray(parsedBody?.unknownTaskIds) ? parsedBody.unknownTaskIds : [],
       message: errorMsg || 'Task not found.',
     };
   }
@@ -438,7 +433,17 @@ export function useChatTurnController({
           }
         : {}),
     });
-  }, [dormant, activeProjectId, messages, chatTaskIds, harnessId, model, pending, turnStartedAt, progressTail]);
+  }, [
+    dormant,
+    activeProjectId,
+    messages,
+    chatTaskIds,
+    harnessId,
+    model,
+    pending,
+    turnStartedAt,
+    progressTail,
+  ]);
 
   // Live progress: a CHAT_PROGRESS frame only lands on the card when its
   // turnId matches the in-flight turn (other tabs' turns are ignored).
@@ -562,7 +567,13 @@ export function useChatTurnController({
       // in-flight descriptor; the working card remounts on it.
       const startedTurnId = newChatTurnId();
       const startedAt = Date.now();
-      currentTurnRef.current = { turnMessages, taskIds, userText, baseLength, turnId: startedTurnId };
+      currentTurnRef.current = {
+        turnMessages,
+        taskIds,
+        userText,
+        baseLength,
+        turnId: startedTurnId,
+      };
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
@@ -626,13 +637,9 @@ export function useChatTurnController({
           const count = res.unknownTaskIds.length;
           const stale = res.unknownTaskIds;
           setChatTaskIds((prev) => prev.filter((id) => !stale.includes(id)));
-          setInlineNotice(
-            `${count} task(s) no longer exist and were removed from context.`,
-          );
+          setInlineNotice(`${count} task(s) no longer exist and were removed from context.`);
         } else if (res?.contextTruncated) {
-          const injectedCount = Array.isArray(res?.contextTaskIds)
-            ? res.contextTaskIds.length
-            : 0;
+          const injectedCount = Array.isArray(res?.contextTaskIds) ? res.contextTaskIds.length : 0;
           setInlineNotice(
             `Context truncated: oldest tasks were dropped to fit the budget (${injectedCount} tasks included).`,
           );

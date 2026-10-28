@@ -165,11 +165,7 @@ export function usePersistentState(key, defaultValue, options = {}) {
       if (event.key !== latestRef.current.key) return;
       const cfg = configRef.current;
       if (event.newValue === null || event.newValue === undefined) {
-        setValue(
-          typeof cfg.defaultValue === 'function'
-            ? cfg.defaultValue()
-            : cfg.defaultValue,
-        );
+        setValue(typeof cfg.defaultValue === 'function' ? cfg.defaultValue() : cfg.defaultValue);
         return;
       }
       try {
@@ -189,9 +185,7 @@ export function usePersistentState(key, defaultValue, options = {}) {
   const clear = useCallback(() => {
     const cfg = configRef.current;
     const resolvedDefault =
-      typeof cfg.defaultValue === 'function'
-        ? cfg.defaultValue()
-        : cfg.defaultValue;
+      typeof cfg.defaultValue === 'function' ? cfg.defaultValue() : cfg.defaultValue;
     // Only skip the write-back when the reset actually changes state;
     // otherwise a stale flag would swallow the next legitimate write.
     if (!Object.is(latestRef.current.value, resolvedDefault)) {

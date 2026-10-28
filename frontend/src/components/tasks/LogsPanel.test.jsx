@@ -18,9 +18,7 @@ vi.mock('../../services/api', async (importOriginal) => {
     api: {
       ...actual.api,
       getModels: vi.fn(async () => ({
-        models: [
-          { key: 'prov-a::model-a', id: 'model-a', name: 'Model A', provider: 'prov-a' },
-        ],
+        models: [{ key: 'prov-a::model-a', id: 'model-a', name: 'Model A', provider: 'prov-a' }],
       })),
     },
   };
@@ -284,10 +282,7 @@ test('task log categories and search restore from per-task localStorage after re
     'kainbain:logViewer:task:task-g1:categories',
     JSON.stringify(['tools']),
   );
-  window.localStorage.setItem(
-    'kainbain:logViewer:task:task-g1:search',
-    JSON.stringify('patched'),
-  );
+  window.localStorage.setItem('kainbain:logViewer:task:task-g1:search', JSON.stringify('patched'));
   renderWithKainBain(<HarnessPanel task={groupedTask} />);
   fireEvent.click(screen.getByTestId('log-filter-toggle'));
 
@@ -334,10 +329,7 @@ test('task log filters never bleed into another task', () => {
 });
 
 test('corrupt task log filter values fall back to defaults', () => {
-  window.localStorage.setItem(
-    'kainbain:logViewer:task:task-g1:categories',
-    'not-json{{{',
-  );
+  window.localStorage.setItem('kainbain:logViewer:task:task-g1:categories', 'not-json{{{');
   window.localStorage.setItem('kainbain:taskLogs:task-g1:feed', JSON.stringify('BOGUS'));
   renderWithKainBain(<HarnessPanel task={groupedTask} />);
   fireEvent.click(screen.getByTestId('log-filter-toggle'));

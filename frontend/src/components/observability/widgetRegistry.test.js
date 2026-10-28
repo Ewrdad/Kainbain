@@ -86,12 +86,12 @@ describe('nextInstanceId', () => {
 
   it('uses the smallest unused suffix for further copies', () => {
     expect(nextInstanceId('queue', [{ instanceId: 'queue' }])).toBe('queue-2');
-    expect(
-      nextInstanceId('queue', [{ instanceId: 'queue' }, { instanceId: 'queue-3' }]),
-    ).toBe('queue-2');
-    expect(
-      nextInstanceId('queue', [{ instanceId: 'queue' }, { instanceId: 'queue-2' }]),
-    ).toBe('queue-3');
+    expect(nextInstanceId('queue', [{ instanceId: 'queue' }, { instanceId: 'queue-3' }])).toBe(
+      'queue-2',
+    );
+    expect(nextInstanceId('queue', [{ instanceId: 'queue' }, { instanceId: 'queue-2' }])).toBe(
+      'queue-3',
+    );
   });
 
   it('ignores entries of other widget types', () => {

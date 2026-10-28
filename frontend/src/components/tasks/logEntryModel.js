@@ -285,11 +285,7 @@ export function renderEntryDetail(entry) {
   const summary = entry.text || '';
   const kind = entry.kind;
   if (kind === 'tool') {
-    const output =
-      entry.tool?.result ||
-      entry.tool?.partials ||
-      entry.meta?.output ||
-      null;
+    const output = entry.tool?.result || entry.tool?.partials || entry.meta?.output || null;
     return {
       summary,
       detail: typeof output === 'string' && output && output !== summary ? output : null,

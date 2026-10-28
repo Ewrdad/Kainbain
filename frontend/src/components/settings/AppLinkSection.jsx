@@ -35,11 +35,8 @@ export function AppLinkSection({ project, projectId, onChanged }) {
   const [error, setError] = useState('');
   const [probeResult, setProbeResult] = useState(null);
 
-  const pageHost =
-    typeof window !== 'undefined' && window.location ? window.location.hostname : '';
-  const preview = url.trim()
-    ? resolveAppUrl(url.trim(), networkHost.trim() || null, pageHost)
-    : '';
+  const pageHost = typeof window !== 'undefined' && window.location ? window.location.hostname : '';
+  const preview = url.trim() ? resolveAppUrl(url.trim(), networkHost.trim() || null, pageHost) : '';
 
   const applySaved = (updated) => {
     const next = updated?.appStatus || {};
@@ -63,11 +60,11 @@ export function AppLinkSection({ project, projectId, onChanged }) {
       // A blank URL clears the link (same rule as the API: explicit null).
       const payload = url.trim()
         ? {
-          url: url.trim(),
-          networkHost: networkHost.trim() || null,
-          healthEndpoint: healthEndpoint.trim() || null,
-          status,
-        }
+            url: url.trim(),
+            networkHost: networkHost.trim() || null,
+            healthEndpoint: healthEndpoint.trim() || null,
+            status,
+          }
         : { url: null };
       const updated = await api.updateAppStatus(projectId, payload);
       applySaved(updated);
@@ -103,9 +100,9 @@ export function AppLinkSection({ project, projectId, onChanged }) {
         <span className="text-primary">🚀</span> Application Link & Health
       </h3>
       <p className="text-[11px] text-text-muted">
-        Points the “Go to App” quick-link (Files &amp; Repo header, top bar) at this
-        project&apos;s running app. Agents set it via the update-app-status skill;
-        scripts PATCH the same endpoint directly.
+        Points the “Go to App” quick-link (Files &amp; Repo header, top bar) at this project&apos;s
+        running app. Agents set it via the update-app-status skill; scripts PATCH the same endpoint
+        directly.
       </p>
 
       <div className="flex flex-col gap-2">

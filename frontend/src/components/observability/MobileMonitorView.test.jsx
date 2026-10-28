@@ -241,20 +241,17 @@ test('header falls back to the goal first line when the task has no title', () =
 });
 
 test('running without a resolved task shows a no-task label, not the stage twice', () => {
-  renderWithKainBain(
-    <MobileMonitorView {...baseProps} activeTask={null} onExit={() => {}} />,
-  );
+  renderWithKainBain(<MobileMonitorView {...baseProps} activeTask={null} onExit={() => {}} />);
 
-  expect(screen.getByTestId('mobile-engine-state')).toHaveTextContent(
-    /ACTIVE: Code Generation/i,
-  );
+  expect(screen.getByTestId('mobile-engine-state')).toHaveTextContent(/ACTIVE: Code Generation/i);
   const headerText = screen.getByTestId('mobile-active-stage');
   expect(headerText).toHaveTextContent('No active task');
   expect(headerText).not.toHaveTextContent('Code Generation');
 });
 
 test('long task titles truncate with a full-text tooltip', () => {
-  const longTitle = 'Implement the extremely long task title that must not overflow a 360px viewport';
+  const longTitle =
+    'Implement the extremely long task title that must not overflow a 360px viewport';
   renderWithKainBain(
     <MobileMonitorView
       {...baseProps}

@@ -48,9 +48,7 @@ describe('RunnersSection', () => {
 
   it('approves a pending Runner and refetches', async () => {
     getRunners
-      .mockResolvedValueOnce([
-        { runnerId: 'r1', status: 'pending', facts: {}, lastSeenAt: null },
-      ])
+      .mockResolvedValueOnce([{ runnerId: 'r1', status: 'pending', facts: {}, lastSeenAt: null }])
       .mockResolvedValueOnce([
         { runnerId: 'r1', status: 'active', facts: {}, lastSeenAt: '2026-10-26T00:00:00.000Z' },
       ]);
@@ -158,17 +156,31 @@ describe('RunnersSection', () => {
     ]);
     getRunnerMonitor.mockResolvedValue({
       liveAssignments: [],
-      scheduler: { ticks: 41, dispatched: 3, deferredDispatch: 12, deferredTripped: 0, lastOutcome: 'deferred-runner-dispatch', lastDispatchAt: null },
+      scheduler: {
+        ticks: 41,
+        dispatched: 3,
+        deferredDispatch: 12,
+        deferredTripped: 0,
+        lastOutcome: 'deferred-runner-dispatch',
+        lastDispatchAt: null,
+      },
     });
     render(<RunnersSection />);
     await waitFor(() => {
-      expect(screen.getByTestId('runner-scheduler-deferrals').textContent).toContain('12 deferred to Runners');
+      expect(screen.getByTestId('runner-scheduler-deferrals').textContent).toContain(
+        '12 deferred to Runners',
+      );
     });
   });
 
   it('shows the Runner version for the fleet version matrix', async () => {
     getRunners.mockResolvedValue([
-      { runnerId: 'r1', status: 'active', facts: { versions: { runner: '0.3.0', protocol: 'v1' } }, lastSeenAt: null },
+      {
+        runnerId: 'r1',
+        status: 'active',
+        facts: { versions: { runner: '0.3.0', protocol: 'v1' } },
+        lastSeenAt: null,
+      },
       { runnerId: 'r2', status: 'active', facts: {}, lastSeenAt: null },
     ]);
     render(<RunnersSection />);
@@ -190,7 +202,13 @@ describe('RunnersSection', () => {
 
   it('shows the credential issue time without the credential value', async () => {
     getRunners.mockResolvedValue([
-      { runnerId: 'r1', status: 'active', facts: {}, lastSeenAt: null, credentialIssuedAt: '2026-10-26T00:00:00.000Z' },
+      {
+        runnerId: 'r1',
+        status: 'active',
+        facts: {},
+        lastSeenAt: null,
+        credentialIssuedAt: '2026-10-26T00:00:00.000Z',
+      },
       { runnerId: 'r2', status: 'active', facts: {}, lastSeenAt: null },
     ]);
     render(<RunnersSection />);
@@ -215,7 +233,13 @@ describe('RunnersSection', () => {
 
   it('never renders credential values', async () => {
     getRunners.mockResolvedValue([
-      { runnerId: 'r1', status: 'active', facts: {}, lastSeenAt: null, credential: 'SHOULD-NOT-RENDER' },
+      {
+        runnerId: 'r1',
+        status: 'active',
+        facts: {},
+        lastSeenAt: null,
+        credential: 'SHOULD-NOT-RENDER',
+      },
     ]);
     const { container } = render(<RunnersSection />);
     await screen.findByTestId('runners-section');

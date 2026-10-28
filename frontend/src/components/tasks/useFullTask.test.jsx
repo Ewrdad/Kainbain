@@ -35,9 +35,7 @@ describe('useFullTask', () => {
       expect(r1.current).toBe(task);
     });
 
-    const { result: r2 } = renderHook(() =>
-      useFullTask({ task, activeProjectId: 'p1' }),
-    );
+    const { result: r2 } = renderHook(() => useFullTask({ task, activeProjectId: 'p1' }));
     expect(r2.current).toBe(task);
   });
 });

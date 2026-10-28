@@ -213,7 +213,14 @@ describe('api client endpoints', () => {
     const { api, clearStatusCache } = await import('./api');
     clearStatusCache();
     let finishPoll;
-    global.fetch = vi.fn().mockImplementationOnce(() => new Promise((resolve) => { finishPoll = resolve; }))
+    global.fetch = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishPoll = resolve;
+          }),
+      )
       .mockResolvedValue({ ok: true, json: async () => ({ observability: { prompt: 'new' } }) });
     const poll = api.observabilityStatus('project');
     const refresh1 = api.observabilityStatus('project', true);
@@ -226,7 +233,10 @@ describe('api client endpoints', () => {
     expect(first.observability.prompt).toBe('new');
     expect(global.fetch.mock.calls[1][0]).toContain('projectId=project');
     expect(global.fetch.mock.calls[1][0]).not.toContain('refresh=true');
-    await Promise.all([api.observabilityStatus('project', true), api.observabilityStatus('project', true)]);
+    await Promise.all([
+      api.observabilityStatus('project', true),
+      api.observabilityStatus('project', true),
+    ]);
     expect(global.fetch).toHaveBeenCalledTimes(3);
   });
 
@@ -260,19 +270,27 @@ describe('api client endpoints', () => {
 describe('remote-link resilience', () => {
   it('resolveApiBase rewrites a baked-in loopback base to the serving host', async () => {
     const { resolveApiBase } = await import('./api');
-    expect(resolveApiBase('http://localhost:3100', '100.104.3.73')).toBe('http://100.104.3.73:3100');
-    expect(resolveApiBase('http://127.0.0.1:3100', '100.104.3.73')).toBe('http://100.104.3.73:3100');
+    expect(resolveApiBase('http://localhost:3100', '100.104.3.73')).toBe(
+      'http://100.104.3.73:3100',
+    );
+    expect(resolveApiBase('http://127.0.0.1:3100', '100.104.3.73')).toBe(
+      'http://100.104.3.73:3100',
+    );
     // Same-origin builds and loopback-served pages are untouched.
     expect(resolveApiBase('', '100.104.3.73')).toBe('');
     expect(resolveApiBase('http://localhost:3100', 'localhost')).toBe('http://localhost:3100');
     expect(resolveApiBase('http://localhost:3100', '')).toBe('http://localhost:3100');
     // A non-loopback base is never rewritten.
-    expect(resolveApiBase('https://api.example.com', '100.104.3.73')).toBe('https://api.example.com');
+    expect(resolveApiBase('https://api.example.com', '100.104.3.73')).toBe(
+      'https://api.example.com',
+    );
   });
 
   it('resolveWsBase heals loopback and upgrades to wss on https pages', async () => {
     const { resolveWsBase } = await import('./api');
-    expect(resolveWsBase('ws://localhost:3100', '100.104.3.73', 'http:')).toBe('ws://100.104.3.73:3100');
+    expect(resolveWsBase('ws://localhost:3100', '100.104.3.73', 'http:')).toBe(
+      'ws://100.104.3.73:3100',
+    );
     expect(resolveWsBase('ws://localhost:3100', 'example.ts.net', 'https:')).toBe(
       'wss://example.ts.net:3100',
     );
@@ -406,7 +424,12 @@ describe('groupModelsByProvider', () => {
   it('emits composite option values so selection keys stay provider-scoped', async () => {
     const { groupModelsByProvider, modelOptionValue } = await import('./api');
     const models = [
-      { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'google', key: 'google::gemini-2.5-pro' },
+      {
+        id: 'gemini-2.5-pro',
+        name: 'Gemini 2.5 Pro',
+        provider: 'google',
+        key: 'google::gemini-2.5-pro',
+      },
       { id: 'x-model', provider: 'ollama-cloud' },
     ];
     const options = groupModelsByProvider(models);
@@ -532,9 +555,7 @@ describe('PR review endpoints', () => {
     const { api } = await import('./api');
     await api.addReviewCommentReply('proj-1', 'task-1', 'rc-1', 'Good point');
     expect(requests.length).toBe(1);
-    expect(requests[0].url).toContain(
-      '/projects/proj-1/tasks/task-1/review/comments/rc-1/replies',
-    );
+    expect(requests[0].url).toContain('/projects/proj-1/tasks/task-1/review/comments/rc-1/replies');
     expect(requests[0].opts.method).toBe('POST');
     expect(JSON.parse(requests[0].opts.body)).toEqual({ body: 'Good point' });
   });
@@ -586,9 +607,9 @@ describe('model key mapping', () => {
   // --- Harness-scoped option mapping (harness::provider::id) ---
   it('modelOptionValue prefers the harness-scoped backend key and computes one when absent', async () => {
     const { modelOptionValue } = await import('./api');
-    expect(
-      modelOptionValue({ id: 'm1', provider: 'p', harness: 'pi', key: 'pi::p::m1' }),
-    ).toBe('pi::p::m1');
+    expect(modelOptionValue({ id: 'm1', provider: 'p', harness: 'pi', key: 'pi::p::m1' })).toBe(
+      'pi::p::m1',
+    );
     expect(modelOptionValue({ id: 'm1', provider: 'p', harness: 'pi' })).toBe('pi::p::m1');
     // Legacy shapes are untouched.
     expect(modelOptionValue({ id: 'm1', provider: 'p' })).toBe('p::m1');
@@ -597,16 +618,26 @@ describe('model key mapping', () => {
   it('modelKeyForValue maps stored legacy 2-part keys onto harness-scoped options (and vice versa)', async () => {
     const { modelKeyForValue } = await import('./api');
     const models = [
-      { id: 'glm:cloud', name: 'GLM', provider: 'ollama-cloud', key: 'pi::ollama-cloud::glm:cloud', harness: 'pi' },
+      {
+        id: 'glm:cloud',
+        name: 'GLM',
+        provider: 'ollama-cloud',
+        key: 'pi::ollama-cloud::glm:cloud',
+        harness: 'pi',
+      },
     ];
     // Canonical 3-part stored → exact option.
-    expect(modelKeyForValue(models, 'pi::ollama-cloud::glm:cloud')).toBe('pi::ollama-cloud::glm:cloud');
+    expect(modelKeyForValue(models, 'pi::ollama-cloud::glm:cloud')).toBe(
+      'pi::ollama-cloud::glm:cloud',
+    );
     // Legacy 2-part stored → remapped onto the harness-scoped option.
     expect(modelKeyForValue(models, 'ollama-cloud::glm:cloud')).toBe('pi::ollama-cloud::glm:cloud');
     // Bare id stored → remapped too.
     expect(modelKeyForValue(models, 'glm:cloud')).toBe('pi::ollama-cloud::glm:cloud');
     // A 3-part reference naming an unknown harness still maps by provider::id.
-    expect(modelKeyForValue(models, 'other::ollama-cloud::glm:cloud')).toBe('pi::ollama-cloud::glm:cloud');
+    expect(modelKeyForValue(models, 'other::ollama-cloud::glm:cloud')).toBe(
+      'pi::ollama-cloud::glm:cloud',
+    );
     // Unresolvable → passthrough.
     expect(modelKeyForValue(models, 'gone')).toBe('gone');
   });
@@ -651,17 +682,13 @@ describe('model key mapping', () => {
 
     for (const ref of matrix) {
       expect(parseModelKey(ref)).toEqual(backendResults.parseModelKey(ref));
-      expect(normalizeModelRef(ref, 'pi')).toBe(
-        backendResults.normalizeModelRef(ref, 'pi'),
-      );
+      expect(normalizeModelRef(ref, 'pi')).toBe(backendResults.normalizeModelRef(ref, 'pi'));
       expect(validateModelRefShape(ref)).toBe(backendResults.validateModelRefShape(ref));
       expect(classifiesForeignHarness(ref, 'pi')).toBe(
         backendResults.classifiesForeignHarness(ref, 'pi'),
       );
     }
-    expect(modelKey('ollama-cloud', 'm1')).toBe(
-      backendResults.modelKey('ollama-cloud', 'm1'),
-    );
+    expect(modelKey('ollama-cloud', 'm1')).toBe(backendResults.modelKey('ollama-cloud', 'm1'));
     expect(harnessModelKey('pi', 'ollama-cloud', 'm1')).toBe(
       backendResults.harnessModelKey('pi', 'ollama-cloud', 'm1'),
     );

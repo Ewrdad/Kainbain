@@ -141,7 +141,9 @@ test('flags invalid skills and global shadowing with badges', () => {
   const defaultGroup = screen.getByRole('region', { name: 'KainBain default skills' });
   expect(within(defaultGroup).getByText('creating-new-tickets')).toBeInTheDocument();
   expect(within(defaultGroup).queryByText('Shadows default')).not.toBeInTheDocument();
-  expect(within(defaultGroup).getByText('Create follow-on KainBain tasks via the API.')).toBeInTheDocument();
+  expect(
+    within(defaultGroup).getByText('Create follow-on KainBain tasks via the API.'),
+  ).toBeInTheDocument();
   expect(within(customGroup).getByText('Project override.')).toBeInTheDocument();
 });
 
@@ -333,9 +335,7 @@ test('shows a read-only config view with keyword defaults from the list payload'
   expect(within(panel).getByText(/default: SURVEY\.md/)).toBeInTheDocument();
   expect(within(panel).getByText('minQuestions')).toBeInTheDocument();
   expect(within(panel).getByText(/default: 0/)).toBeInTheDocument();
-  expect(
-    within(panel).getByText(/Defaults are read-only here/),
-  ).toBeInTheDocument();
+  expect(within(panel).getByText(/Defaults are read-only here/)).toBeInTheDocument();
   // List payload already carried the keywords: no detail fetch needed.
   expect(getSkillByName).not.toHaveBeenCalled();
 

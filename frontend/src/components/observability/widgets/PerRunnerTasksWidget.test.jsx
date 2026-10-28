@@ -13,9 +13,9 @@ import '@testing-library/jest-dom';
 
 describe('formatRunnerElapsed', () => {
   test('formats mm:ss and never invents a time', () => {
-    expect(formatRunnerElapsed('2026-10-27T12:00:00.000Z', Date.parse('2026-10-27T12:01:30.000Z'))).toBe(
-      '01:30',
-    );
+    expect(
+      formatRunnerElapsed('2026-10-27T12:00:00.000Z', Date.parse('2026-10-27T12:01:30.000Z')),
+    ).toBe('01:30');
     expect(formatRunnerElapsed(null, Date.now())).toBe('—');
     expect(formatRunnerElapsed('not-a-date', Date.now())).toBe('—');
   });
@@ -72,20 +72,25 @@ describe('PerRunnerTasksWidget', () => {
         title: 'Build auth',
         goal: 'Implement login',
         logEntries: [
-          { id: 'l1', kind: 'runner', text: '[runner local-alpha] hello', meta: { runnerId: 'local-alpha' } },
+          {
+            id: 'l1',
+            kind: 'runner',
+            text: '[runner local-alpha] hello',
+            meta: { runnerId: 'local-alpha' },
+          },
         ],
       },
     ];
-    render(
-      <PerRunnerTasksWidget tasks={tasks} stages={[{ id: 'build', name: 'Build' }]} />,
-    );
+    render(<PerRunnerTasksWidget tasks={tasks} stages={[{ id: 'build', name: 'Build' }]} />);
     await waitFor(() => {
       expect(screen.getByTestId('per-runner-card-local-alpha')).toBeInTheDocument();
     });
     expect(screen.getByTestId('per-runner-task-local-alpha')).toHaveTextContent('abcdef12');
     expect(screen.getByTestId('per-runner-elapsed-local-alpha')).toHaveTextContent('01:3');
     expect(screen.getByTestId('per-runner-tail-local-alpha')).toHaveTextContent('hello');
-    expect(screen.getByTestId('per-runner-prompt-local-alpha')).toHaveTextContent('Implement login');
+    expect(screen.getByTestId('per-runner-prompt-local-alpha')).toHaveTextContent(
+      'Implement login',
+    );
     expect(screen.getByTestId('per-runner-card-local-alpha')).toHaveTextContent('Harness:');
     expect(screen.getByTestId('per-runner-card-local-alpha')).toHaveTextContent('pi');
     expect(screen.getByTestId('per-runner-card-local-alpha')).toHaveTextContent('muse-spark');

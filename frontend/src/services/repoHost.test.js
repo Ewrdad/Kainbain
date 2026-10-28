@@ -39,9 +39,9 @@ describe('getRepoHostFileUrl', () => {
     expect(getRepoHostFileUrl('https://github.com/acme/app', { path: 'x.md' })).toBe(
       'https://github.com/acme/app/blob/HEAD/x.md',
     );
-    expect(
-      getRepoHostFileUrl('ssh://git@git.home:222/team/app.git', { path: 'x.md' }),
-    ).toBe('https://git.home/team/app/src/branch/HEAD/x.md');
+    expect(getRepoHostFileUrl('ssh://git@git.home:222/team/app.git', { path: 'x.md' })).toBe(
+      'https://git.home/team/app/src/branch/HEAD/x.md',
+    );
   });
 
   test('links the repo home when no path is given', () => {

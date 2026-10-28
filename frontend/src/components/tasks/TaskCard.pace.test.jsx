@@ -41,24 +41,19 @@ afterEach(() => {
 });
 
 test('compact running card shows short age tinted green when under average', () => {
-  renderPace(
-    { id: 't1', goal: 'Do work', enteredStageAt: at(10) },
-    'agent',
-    COMPACT_PREFS,
-    { isActive: true, avgDurationSeconds: 100 },
-  );
+  renderPace({ id: 't1', goal: 'Do work', enteredStageAt: at(10) }, 'agent', COMPACT_PREFS, {
+    isActive: true,
+    avgDurationSeconds: 100,
+  });
   expect(age()).toHaveTextContent('10s');
   expect(age()).toHaveAttribute('data-pace', 'under');
   expect(age().className).toMatch(/text-primary/);
 });
 
 test('full-density review card shows full timestamp tinted amber when near average', () => {
-  renderPace(
-    { id: 't2', goal: 'Needs review', enteredStageAt: at(80) },
-    'human',
-    FULL_PREFS,
-    { avgDurationSeconds: 100 },
-  );
+  renderPace({ id: 't2', goal: 'Needs review', enteredStageAt: at(80) }, 'human', FULL_PREFS, {
+    avgDurationSeconds: 100,
+  });
   expect(age()).toHaveAttribute('data-pace', 'near');
   expect(age().className).toMatch(/text-warning/);
   expect(age().textContent).toMatch(/in stage/);
@@ -130,12 +125,9 @@ test('idle tasks show a neutral age with no tooltip wrapper', () => {
 test('pace tooltip explains elapsed versus average on hover', () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date(NOW));
-  renderPace(
-    { id: 't8', goal: 'Slow review', enteredStageAt: at(150) },
-    'human',
-    COMPACT_PREFS,
-    { avgDurationSeconds: 100 },
-  );
+  renderPace({ id: 't8', goal: 'Slow review', enteredStageAt: at(150) }, 'human', COMPACT_PREFS, {
+    avgDurationSeconds: 100,
+  });
   // Hover the tooltip trigger (the age span's wrapper), then let the delayed
   // reveal fire.
   fireEvent.mouseEnter(age().parentElement);

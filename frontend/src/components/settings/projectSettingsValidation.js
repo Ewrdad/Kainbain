@@ -39,8 +39,7 @@ export function parseRetrySettings(drafts) {
     // Positive decimal minutes, no exponents or hex (same `^\d+$` pieces
     // the count parser uses, so no new lint surface).
     const parts = raw.split('.');
-    const isDecimalMinutes =
-      parts.length <= 2 && parts.every((part) => /^\d+$/.test(part));
+    const isDecimalMinutes = parts.length <= 2 && parts.every((part) => /^\d+$/.test(part));
     if (!isDecimalMinutes || Number(raw) <= 0) {
       errors[key] = `${label} must be a number of minutes above 0 (blank follows the default).`;
       return;

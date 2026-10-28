@@ -73,25 +73,32 @@ export function useViewNavigation({ tasksList, selectedSnapshot, setSelectedSnap
   // view (no silent switch). Non-task locations clear the inspector snapshot
   // — same as the old hashchange handler — while overlay opens never touch
   // the location and so never clear it.
-  const syncRouteLocation = useCallback((pathname) => {
-    pendingTargetRef.current = null;
-    routerBindingRef.current.pathname = pathname;
-    const resolved = routeToView(pathname);
-    if (!resolved) return;
-    if (resolved.view !== viewRef.current) {
-      viewRef.current = resolved.view;
-      setViewState(resolved.view);
-    }
-    if (resolved.view === 'task-detail' || resolved.view === 'task-review' || resolved.view === 'task-survey') {
-      const id = resolved.taskId;
-      const match = tasksListRef.current.find((t) => String(t.id) === String(id));
-      setSelectedSnapshot((previous) =>
-        previous && String(previous.id) === String(id) ? previous : match || { id },
-      );
-    } else {
-      setSelectedSnapshot((previous) => (previous ? null : previous));
-    }
-  }, [setSelectedSnapshot]);
+  const syncRouteLocation = useCallback(
+    (pathname) => {
+      pendingTargetRef.current = null;
+      routerBindingRef.current.pathname = pathname;
+      const resolved = routeToView(pathname);
+      if (!resolved) return;
+      if (resolved.view !== viewRef.current) {
+        viewRef.current = resolved.view;
+        setViewState(resolved.view);
+      }
+      if (
+        resolved.view === 'task-detail' ||
+        resolved.view === 'task-review' ||
+        resolved.view === 'task-survey'
+      ) {
+        const id = resolved.taskId;
+        const match = tasksListRef.current.find((t) => String(t.id) === String(id));
+        setSelectedSnapshot((previous) =>
+          previous && String(previous.id) === String(id) ? previous : match || { id },
+        );
+      } else {
+        setSelectedSnapshot((previous) => (previous ? null : previous));
+      }
+    },
+    [setSelectedSnapshot],
+  );
 
   return {
     view,

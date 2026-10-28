@@ -9,9 +9,7 @@ describe('UiPreferencesModal', () => {
     renderWithKainBain(<UiPreferencesModal />, {
       isCustomizationModalOpen: false,
     });
-    expect(
-      screen.queryByText('UI Customization & Workspace Preferences'),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText('UI Customization & Workspace Preferences')).not.toBeInTheDocument();
   });
 
   test('renders dialog when isCustomizationModalOpen is true and closes on Done button', () => {
@@ -22,7 +20,9 @@ describe('UiPreferencesModal', () => {
     });
 
     expect(screen.getByText('UI Customization & Workspace Preferences')).toBeInTheDocument();
-    expect(screen.getByText('Settings are automatically saved to local storage')).toBeInTheDocument();
+    expect(
+      screen.getByText('Settings are automatically saved to local storage'),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Done'));
     expect(setIsCustomizationModalOpen).toHaveBeenCalledWith(false);

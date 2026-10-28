@@ -13,10 +13,9 @@ describe('useAutoSave Hook', () => {
 
   it('debounces and automatically invokes onSave after 600ms of inactivity', async () => {
     const onSave = vi.fn().mockResolvedValue('ok');
-    const { rerender } = renderHook(
-      ({ val }) => useAutoSave(val, onSave, { delay: 600 }),
-      { initialProps: { val: 'initial' } },
-    );
+    const { rerender } = renderHook(({ val }) => useAutoSave(val, onSave, { delay: 600 }), {
+      initialProps: { val: 'initial' },
+    });
 
     expect(onSave).not.toHaveBeenCalled();
 
@@ -41,10 +40,9 @@ describe('useAutoSave Hook', () => {
 
   it('coalesces rapid consecutive changes into a single save with the latest value', async () => {
     const onSave = vi.fn().mockResolvedValue('ok');
-    const { rerender } = renderHook(
-      ({ val }) => useAutoSave(val, onSave, { delay: 600 }),
-      { initialProps: { val: 'a' } },
-    );
+    const { rerender } = renderHook(({ val }) => useAutoSave(val, onSave, { delay: 600 }), {
+      initialProps: { val: 'a' },
+    });
 
     // Rapid keystrokes
     rerender({ val: 'ab' });
@@ -71,10 +69,9 @@ describe('useAutoSave Hook', () => {
 
   it('triggers immediate save on handleBlur without waiting for 600ms timer', async () => {
     const onSave = vi.fn().mockResolvedValue('ok');
-    const { result, rerender } = renderHook(
-      ({ val }) => useAutoSave(val, onSave, { delay: 600 }),
-      { initialProps: { val: 'initial' } },
-    );
+    const { result, rerender } = renderHook(({ val }) => useAutoSave(val, onSave, { delay: 600 }), {
+      initialProps: { val: 'initial' },
+    });
 
     rerender({ val: 'dirty value' });
     expect(onSave).not.toHaveBeenCalled();
@@ -103,10 +100,9 @@ describe('useAutoSave Hook', () => {
         }),
     );
 
-    const { result, rerender } = renderHook(
-      ({ val }) => useAutoSave(val, onSave, { delay: 600 }),
-      { initialProps: { val: 'v1' } },
-    );
+    const { result, rerender } = renderHook(({ val }) => useAutoSave(val, onSave, { delay: 600 }), {
+      initialProps: { val: 'v1' },
+    });
 
     expect(result.current.isSaving).toBe(false);
     expect(result.current.lastSaved).toBeNull();
@@ -164,10 +160,9 @@ describe('useAutoSave Hook', () => {
 
   it('resetBaseline re-anchors the saved value without saving', async () => {
     const onSave = vi.fn().mockResolvedValue('ok');
-    const { result, rerender } = renderHook(
-      ({ val }) => useAutoSave(val, onSave, { delay: 600 }),
-      { initialProps: { val: 'entity-a-text' } },
-    );
+    const { result, rerender } = renderHook(({ val }) => useAutoSave(val, onSave, { delay: 600 }), {
+      initialProps: { val: 'entity-a-text' },
+    });
 
     // The edited entity changes underneath the hook (task switch in a mounted
     // editor): the old baseline would mark the new text dirty and schedule a
@@ -188,10 +183,9 @@ describe('useAutoSave Hook', () => {
 
   it('cancels pending debounced save when cancel is called', async () => {
     const onSave = vi.fn().mockResolvedValue('ok');
-    const { result, rerender } = renderHook(
-      ({ val }) => useAutoSave(val, onSave, { delay: 600 }),
-      { initialProps: { val: 'init' } },
-    );
+    const { result, rerender } = renderHook(({ val }) => useAutoSave(val, onSave, { delay: 600 }), {
+      initialProps: { val: 'init' },
+    });
 
     rerender({ val: 'changed' });
 

@@ -34,4 +34,3 @@ export const STAGE_TAG_CHIP_CLASS =
  ***/
 export const STAGE_HEADER_TAG_CHIP_CLASS =
   'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono bg-black/40 text-[#ffe0b2] border border-[#ffb77f]/40';
-

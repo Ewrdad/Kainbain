@@ -12,10 +12,13 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
  * @returns {Array<Object>} Matching options (all when the query is blank).
  ***/
 export function defaultMultiSelectFilter(options = [], query) {
-  const q = String(query || '').trim().toLowerCase();
+  const q = String(query || '')
+    .trim()
+    .toLowerCase();
   if (!q) return options || [];
   return (options || []).filter((opt) => {
-    const haystack = `${opt?.label || ''} ${opt?.secondary || ''} ${opt?.value || ''}`.toLowerCase();
+    const haystack =
+      `${opt?.label || ''} ${opt?.secondary || ''} ${opt?.value || ''}`.toLowerCase();
     return haystack.includes(q);
   });
 }
@@ -167,7 +170,10 @@ export function MultiSelectDropdown({
         while (next >= 0 && visibleOptions[next]?.disabled) next -= 1;
         return next >= 0 ? next : start;
       });
-    } else if ((e.key === 'Enter' || e.key === ' ') && document.activeElement === searchRef.current) {
+    } else if (
+      (e.key === 'Enter' || e.key === ' ') &&
+      document.activeElement === searchRef.current
+    ) {
       // Let Space type in the search box; only Enter toggles the highlight.
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -177,9 +183,7 @@ export function MultiSelectDropdown({
   };
 
   const triggerText =
-    selectedStrings.length === 0
-      ? placeholder
-      : `${selectedStrings.length} selected`;
+    selectedStrings.length === 0 ? placeholder : `${selectedStrings.length} selected`;
 
   return (
     <div ref={containerRef} className="relative" data-testid="multiselect-dropdown">
@@ -254,9 +258,7 @@ export function MultiSelectDropdown({
             className="max-h-[240px] overflow-y-auto custom-scrollbar py-1"
           >
             {(options || []).length === 0 ? (
-              <p className="px-3 py-2 text-[11px] font-mono text-text-muted italic">
-                {emptyText}
-              </p>
+              <p className="px-3 py-2 text-[11px] font-mono text-text-muted italic">{emptyText}</p>
             ) : visibleOptions.length === 0 ? (
               <p className="px-3 py-2 text-[11px] font-mono text-text-muted italic">
                 {noResultsText}
@@ -303,9 +305,7 @@ export function MultiSelectDropdown({
                     </span>
                     <span className="truncate flex-1">{opt.label}</span>
                     {opt.secondary && (
-                      <span className="shrink-0 text-[10px] text-text-muted">
-                        {opt.secondary}
-                      </span>
+                      <span className="shrink-0 text-[10px] text-text-muted">{opt.secondary}</span>
                     )}
                   </div>
                 );

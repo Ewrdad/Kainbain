@@ -67,8 +67,7 @@ export function TaskHistoryTab({
           Audit Log Events
         </h3>
         {auditEvents.map((event, i) => {
-          const reportMatch =
-            event.action && event.action.match(/Stage report generated: (.*)$/);
+          const reportMatch = event.action && event.action.match(/Stage report generated: (.*)$/);
           return (
             <div
               key={i}

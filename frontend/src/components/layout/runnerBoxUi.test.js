@@ -46,11 +46,14 @@ test('status word is task-state first: settled task states beat engine state', (
   expect(resolveRunnerStatusWord(undefined, { status: 'running' })).toBe('idle');
   // A failed task stays failed even while the engine runs something else.
   expect(
-    resolveRunnerStatusWord({ id: 't1', status: 'failed' }, { status: 'running', activeTaskId: 't9' }),
+    resolveRunnerStatusWord(
+      { id: 't1', status: 'failed' },
+      { status: 'running', activeTaskId: 't9' },
+    ),
   ).toBe('failed');
-  expect(
-    resolveRunnerStatusWord({ id: 't1', status: 'interrupted' }, { status: 'idle' }),
-  ).toBe('interrupted');
+  expect(resolveRunnerStatusWord({ id: 't1', status: 'interrupted' }, { status: 'idle' })).toBe(
+    'interrupted',
+  );
   expect(resolveRunnerStatusWord({ id: 't1', wasInterrupted: true }, { status: 'idle' })).toBe(
     'interrupted',
   );
@@ -60,9 +63,9 @@ test('status word is task-state first: settled task states beat engine state', (
   );
   expect(resolveRunnerStatusWord({ id: 't1', status: 'done' }, { status: 'idle' })).toBe('idle');
   // Global pause colours every live box amber.
-  expect(
-    resolveRunnerStatusWord({ id: 't1', status: 'in_stage' }, { status: 'paused' }),
-  ).toBe('paused');
+  expect(resolveRunnerStatusWord({ id: 't1', status: 'in_stage' }, { status: 'paused' })).toBe(
+    'paused',
+  );
   // The genuine owner under a running engine is running.
   expect(
     resolveRunnerStatusWord(
@@ -81,7 +84,10 @@ test('status word is task-state first: settled task states beat engine state', (
   ).toBe('queued');
   // Checkpoint words attach only to the engine owner.
   expect(
-    resolveRunnerStatusWord({ id: 't1', status: 'in_stage' }, { status: 'checkpoint', activeTaskId: 't1' }),
+    resolveRunnerStatusWord(
+      { id: 't1', status: 'in_stage' },
+      { status: 'checkpoint', activeTaskId: 't1' },
+    ),
   ).toBe('checkpoint');
   expect(
     resolveRunnerStatusWord(
@@ -90,7 +96,10 @@ test('status word is task-state first: settled task states beat engine state', (
     ),
   ).toBe('waiting_human');
   expect(
-    resolveRunnerStatusWord({ id: 't1', status: 'in_stage' }, { status: 'checkpoint', activeTaskId: 't9' }),
+    resolveRunnerStatusWord(
+      { id: 't1', status: 'in_stage' },
+      { status: 'checkpoint', activeTaskId: 't9' },
+    ),
   ).toBe('queued');
   // Open, owned by nobody, engine calm: queued.
   expect(resolveRunnerStatusWord({ id: 't1', status: 'in_stage' }, { status: 'idle' })).toBe(
@@ -224,9 +233,9 @@ test('aria label drops non-string task and stage instead of leaking objects', ()
 });
 
 test('aria label trims whitespace and fails closed on blank values', () => {
-  expect(
-    buildRunnerBoxAriaLabel({ runnerLabel: '  bravo  ', statusWord: '  running  ' }),
-  ).toBe('Runner bravo, running');
+  expect(buildRunnerBoxAriaLabel({ runnerLabel: '  bravo  ', statusWord: '  running  ' })).toBe(
+    'Runner bravo, running',
+  );
   expect(buildRunnerBoxAriaLabel({ runnerLabel: '   ', statusWord: '   ' })).toBe(
     'Runner Runner, idle',
   );

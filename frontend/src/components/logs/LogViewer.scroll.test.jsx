@@ -17,7 +17,10 @@ import '@testing-library/jest-dom';
 
 function StreamingHarness({ initialRecords, taskId, autoScroll }) {
   const viewer = useLogViewerState({ surface: 'task', taskId });
-  const effectiveViewer = { ...viewer, autoScroll: autoScroll !== undefined ? autoScroll : viewer.autoScroll };
+  const effectiveViewer = {
+    ...viewer,
+    autoScroll: autoScroll !== undefined ? autoScroll : viewer.autoScroll,
+  };
   const [extra, setExtra] = useState([]);
   return (
     <>
@@ -26,7 +29,9 @@ function StreamingHarness({ initialRecords, taskId, autoScroll }) {
         onClick={() =>
           setExtra((prev) => [
             ...prev,
-            ...adaptTaskEntries([{ id: `late-${prev.length}`, kind: 'assistant', text: 'late line' }]),
+            ...adaptTaskEntries([
+              { id: `late-${prev.length}`, kind: 'assistant', text: 'late line' },
+            ]),
           ])
         }
       >
@@ -53,26 +58,44 @@ function patchGeometry(initialHeight) {
   };
   Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
     configurable: true,
-    get() { return h; },
+    get() {
+      return h;
+    },
   });
   Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
     configurable: true,
-    get() { return 50; },
+    get() {
+      return 50;
+    },
   });
   Object.defineProperty(HTMLElement.prototype, 'scrollTop', {
     configurable: true,
-    get() { return top; },
-    set(v) { top = v; },
+    get() {
+      return top;
+    },
+    set(v) {
+      top = v;
+    },
   });
   return {
-    get height() { return h; },
-    set height(v) { h = v; },
-    get top() { return top; },
-    set top(v) { top = v; },
+    get height() {
+      return h;
+    },
+    set height(v) {
+      h = v;
+    },
+    get top() {
+      return top;
+    },
+    set top(v) {
+      top = v;
+    },
     restore() {
-      if (desc.scrollHeight) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', desc.scrollHeight);
+      if (desc.scrollHeight)
+        Object.defineProperty(HTMLElement.prototype, 'scrollHeight', desc.scrollHeight);
       else delete HTMLElement.prototype.scrollHeight;
-      if (desc.clientHeight) Object.defineProperty(HTMLElement.prototype, 'clientHeight', desc.clientHeight);
+      if (desc.clientHeight)
+        Object.defineProperty(HTMLElement.prototype, 'clientHeight', desc.clientHeight);
       else delete HTMLElement.prototype.clientHeight;
       if (desc.scrollTop) Object.defineProperty(HTMLElement.prototype, 'scrollTop', desc.scrollTop);
       else delete HTMLElement.prototype.scrollTop;
@@ -171,7 +194,9 @@ describe('LogViewer follow-scroll component', () => {
             onClick={() =>
               setExtra((prev) => [
                 ...prev,
-                ...adaptTaskEntries([{ id: `late-${prev.length}`, kind: 'assistant', text: 'late line' }]),
+                ...adaptTaskEntries([
+                  { id: `late-${prev.length}`, kind: 'assistant', text: 'late line' },
+                ]),
               ])
             }
           >

@@ -107,10 +107,9 @@ describe('useTaskDraftCache', () => {
   it('re-reads per task so one task never bleeds into another', () => {
     seedDraft('task-a', 'Goal A');
     seedDraft('task-b', 'Goal B');
-    const { result, rerender } = renderHook(
-      ({ taskId }) => useTaskDraftCache(taskId, 'proj-1'),
-      { initialProps: { taskId: 'task-a' } },
-    );
+    const { result, rerender } = renderHook(({ taskId }) => useTaskDraftCache(taskId, 'proj-1'), {
+      initialProps: { taskId: 'task-a' },
+    });
     expect(result.current.draftValue).toBe('Goal A');
 
     rerender({ taskId: 'task-b' });

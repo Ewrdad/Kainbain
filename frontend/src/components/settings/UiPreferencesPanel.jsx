@@ -183,7 +183,10 @@ export function UiPreferencesPanel({ onOpenPushNotifications } = {}) {
         <div className="space-y-6 animate-in fade-in duration-150 max-w-3xl">
           {/* Theme selection */}
           <div className="space-y-3">
-            <span id="prefs-theme-caption" className="text-xs font-bold uppercase text-text-muted tracking-wider block">
+            <span
+              id="prefs-theme-caption"
+              className="text-xs font-bold uppercase text-text-muted tracking-wider block"
+            >
               Color Theme Mode
             </span>
             <div
@@ -219,7 +222,10 @@ export function UiPreferencesPanel({ onOpenPushNotifications } = {}) {
 
           {/* Density & Spacing */}
           <div className="space-y-3 border-t border-border-standard pt-6">
-            <span id="prefs-density-caption" className="text-xs font-bold uppercase text-text-muted tracking-wider block">
+            <span
+              id="prefs-density-caption"
+              className="text-xs font-bold uppercase text-text-muted tracking-wider block"
+            >
               UI Density & Information Spacing
             </span>
             <div
@@ -305,7 +311,10 @@ export function UiPreferencesPanel({ onOpenPushNotifications } = {}) {
       {effectiveTab === 'workspace' && (
         <div className="space-y-6 animate-in fade-in duration-150 max-w-3xl">
           <div className="space-y-3">
-            <span id="prefs-column-caption" className="text-xs font-bold uppercase text-text-muted tracking-wider block">
+            <span
+              id="prefs-column-caption"
+              className="text-xs font-bold uppercase text-text-muted tracking-wider block"
+            >
               Pipeline Column Width
             </span>
             <div
@@ -360,10 +369,12 @@ export function UiPreferencesPanel({ onOpenPushNotifications } = {}) {
                 className="rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0 w-4 h-4"
               />
               <div>
-                <span className="text-xs font-bold">Show per-runner boxes in "Now Playing" bar</span>
+                <span className="text-xs font-bold">
+                  Show per-runner boxes in "Now Playing" bar
+                </span>
                 <p className="text-[10px] text-text-muted">
-                  With 1-4 live runners the bar shows one compact box per runner
-                  (name, task, stage, health); uncheck to always keep the single-task view
+                  With 1-4 live runners the bar shows one compact box per runner (name, task, stage,
+                  health); uncheck to always keep the single-task view
                 </p>
               </div>
             </label>
@@ -397,8 +408,8 @@ export function UiPreferencesPanel({ onOpenPushNotifications } = {}) {
               <div>
                 <span className="text-xs font-bold">Keep screen awake while monitoring</span>
                 <p className="text-[10px] text-text-muted">
-                  Prevents the screen from dimming or sleeping while the monitor is open and
-                  a task is running, like a video player does
+                  Prevents the screen from dimming or sleeping while the monitor is open and a task
+                  is running, like a video player does
                   {!wakeLockSupported && (
                     <span className="mt-0.5 block">
                       Not supported on this browser/connection — the screen may still sleep.
@@ -597,8 +608,8 @@ export function UiPreferencesPanel({ onOpenPushNotifications } = {}) {
               <span className="text-xs font-bold">System Notifications (Web Push)</span>
               <p className="text-[10px] text-text-muted">
                 Push notifications are configured in one place — General App Settings →
-                Notifications — so they work the same on desktop and mobile (Android/iOS
-                browsers do not support the old in-page notification path).
+                Notifications — so they work the same on desktop and mobile (Android/iOS browsers do
+                not support the old in-page notification path).
               </p>
             </div>
             {typeof onOpenPushNotifications === 'function' ? (
@@ -611,8 +622,8 @@ export function UiPreferencesPanel({ onOpenPushNotifications } = {}) {
               </button>
             ) : (
               <p className="text-[10px] text-text-muted">
-                Open General App Settings and choose the Notifications tab to allow and
-                subscribe this browser.
+                Open General App Settings and choose the Notifications tab to allow and subscribe
+                this browser.
               </p>
             )}
           </div>

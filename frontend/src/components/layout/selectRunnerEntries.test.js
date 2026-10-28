@@ -24,7 +24,11 @@ test('tasks without runner association yield no entries', () => {
     { id: 't-b1', workflowId: 'wf-b', status: 'in_stage', title: 'Beta' },
   ];
   expect(
-    selectRunnerEntries({ tasks, stages: [], engineState: { status: 'running', activeTaskId: 't-a1' } }),
+    selectRunnerEntries({
+      tasks,
+      stages: [],
+      engineState: { status: 'running', activeTaskId: 't-a1' },
+    }),
   ).toEqual([]);
 });
 
@@ -90,8 +94,20 @@ test('distinct runners yield sorted entries with names, stages, and words', () =
 
 test('the engine owner wins over recency inside its runner group', () => {
   const tasks = [
-    { id: 't-fresh', runnerId: 'b', status: 'in_stage', title: 'Fresh', updatedAt: '2026-10-27T00:00:02Z' },
-    { id: 't-owner', runnerId: 'b', status: 'running_agent', title: 'Owner', updatedAt: '2026-10-27T00:00:01Z' },
+    {
+      id: 't-fresh',
+      runnerId: 'b',
+      status: 'in_stage',
+      title: 'Fresh',
+      updatedAt: '2026-10-27T00:00:02Z',
+    },
+    {
+      id: 't-owner',
+      runnerId: 'b',
+      status: 'running_agent',
+      title: 'Owner',
+      updatedAt: '2026-10-27T00:00:01Z',
+    },
   ];
   const [entry] = selectRunnerEntries({
     tasks,
@@ -134,8 +150,21 @@ test('numeric timestamps order the group; blank stamps fall through', () => {
 
   // A blank updatedAt falls through to the older stamp instead of pinning 0.
   const mixed = [
-    { id: 't-blank', runnerId: 'c', status: 'in_stage', title: 'Blank', updatedAt: '', createdAt: '2026-10-27T00:00:02Z' },
-    { id: 't-dated', runnerId: 'c', status: 'in_stage', title: 'Dated', updatedAt: '2026-10-27T00:00:01Z' },
+    {
+      id: 't-blank',
+      runnerId: 'c',
+      status: 'in_stage',
+      title: 'Blank',
+      updatedAt: '',
+      createdAt: '2026-10-27T00:00:02Z',
+    },
+    {
+      id: 't-dated',
+      runnerId: 'c',
+      status: 'in_stage',
+      title: 'Dated',
+      updatedAt: '2026-10-27T00:00:01Z',
+    },
   ];
   const [mixedEntry] = selectRunnerEntries({
     tasks: mixed,
@@ -147,7 +176,14 @@ test('numeric timestamps order the group; blank stamps fall through', () => {
 
 test('stage falls back to the task stage name when the stage list misses', () => {
   const tasks = [
-    { id: 't1', runnerId: 'b', currentStageId: '9', stageName: 'Custom', status: 'in_stage', title: 'Work' },
+    {
+      id: 't1',
+      runnerId: 'b',
+      currentStageId: '9',
+      stageName: 'Custom',
+      status: 'in_stage',
+      title: 'Work',
+    },
   ];
   const [entry] = selectRunnerEntries({ tasks, stages: [], engineState: { status: 'idle' } });
   expect(entry.stageName).toBe('Custom');
@@ -167,10 +203,13 @@ test('an explicit runnerEntries list wins untouched, even an empty one', () => {
 });
 
 test('null or absent runnerEntries derives from context runner association', () => {
-  const tasks = [
-    { id: 't1', runnerId: 'b', status: 'in_stage', title: 'Work' },
-  ];
-  const derived = resolveRunnerBoxEntries({ runnerEntries: null, tasks, stages: [], engineState: { status: 'idle' } });
+  const tasks = [{ id: 't1', runnerId: 'b', status: 'in_stage', title: 'Work' }];
+  const derived = resolveRunnerBoxEntries({
+    runnerEntries: null,
+    tasks,
+    stages: [],
+    engineState: { status: 'idle' },
+  });
   expect(derived).toHaveLength(1);
   expect(derived[0].runnerId).toBe('b');
   expect(resolveRunnerBoxEntries({})).toEqual([]);
@@ -184,7 +223,5 @@ test('a poisoned task payload degrades to the legacy view instead of throwing', 
       throw new Error('poisoned payload');
     },
   });
-  expect(
-    resolveRunnerBoxEntries({ tasks: [poisoned], stages: [], engineState: {} }),
-  ).toEqual([]);
+  expect(resolveRunnerBoxEntries({ tasks: [poisoned], stages: [], engineState: {} })).toEqual([]);
 });

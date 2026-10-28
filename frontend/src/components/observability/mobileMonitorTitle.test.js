@@ -36,9 +36,7 @@ describe('formatMobileMonitorTitle', () => {
 
   test('idle with no task keeps the legacy stage/empty text', () => {
     expect(formatMobileMonitorTitle(null, {}, false)).toBe('No active stage');
-    expect(
-      formatMobileMonitorTitle(null, { activeStageName: 'Review' }, false),
-    ).toBe('Review');
+    expect(formatMobileMonitorTitle(null, { activeStageName: 'Review' }, false)).toBe('Review');
   });
 
   test('handles null task and empty engineState without crashing', () => {

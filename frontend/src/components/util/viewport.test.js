@@ -1,9 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, afterEach } from 'vitest';
-import {
-  isNarrowViewport,
-  setNarrowViewportOverride,
-} from './viewport.js';
+import { isNarrowViewport, setNarrowViewportOverride } from './viewport.js';
 import {
   isNarrowViewport as compatIsNarrowViewport,
   setNarrowViewportOverride as compatSetOverride,

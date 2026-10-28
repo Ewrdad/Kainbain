@@ -91,11 +91,21 @@ describe('serializePipeline', () => {
     expect(payload.stages.map((s) => s.name)).toEqual(stages.map((s) => s.name));
     payload.stages.forEach((imported, i) => {
       const original = stages[i];
-      for (const key of ['type', 'description', 'prompt', 'model', 'harness', 'command', 'timeout', 'paused', 'failback', 'runOnBranch']) {
+      for (const key of [
+        'type',
+        'description',
+        'prompt',
+        'model',
+        'harness',
+        'command',
+        'timeout',
+        'paused',
+        'failback',
+        'runOnBranch',
+      ]) {
         if (original[key] !== undefined) {
           // Legacy `deploy` is accepted on import and normalizes to `ci`.
-          const expected =
-            key === 'type' && original.type === 'deploy' ? 'ci' : original[key];
+          const expected = key === 'type' && original.type === 'deploy' ? 'ci' : original[key];
           expect(imported[key], `${key} of stage ${i}`).toEqual(expected);
         }
       }
@@ -104,10 +114,17 @@ describe('serializePipeline', () => {
   });
 
   test('coalesces legacy aliases to canonical keys', () => {
-    const doc = serializePipeline(
-      { name: 'Legacy' },
-      [{ id: 's1', name: 'R', type: 'review', criteria: 'check it', script: 'make test', fallback: 'start', timeoutMs: 5000 }],
-    );
+    const doc = serializePipeline({ name: 'Legacy' }, [
+      {
+        id: 's1',
+        name: 'R',
+        type: 'review',
+        criteria: 'check it',
+        script: 'make test',
+        fallback: 'start',
+        timeoutMs: 5000,
+      },
+    ]);
     const stage = doc.stages[0];
     expect(stage.type).toBe('human');
     expect(stage.prompt).toBe('check it');
@@ -129,14 +146,24 @@ describe('serializePipeline', () => {
   test('round-trips the ci run-on-branch fields (custom mode keeps its branch)', () => {
     const stages = [
       { id: 's1', name: 'Verify main', type: 'ci', command: 'npm test', runOnBranch: 'primary' },
-      { id: 's2', name: 'Verify release', type: 'ci', command: 'npm test', runOnBranch: 'custom', customBranch: 'release/next' },
+      {
+        id: 's2',
+        name: 'Verify release',
+        type: 'ci',
+        command: 'npm test',
+        runOnBranch: 'custom',
+        customBranch: 'release/next',
+      },
     ];
     const doc = serializePipeline({ name: 'Branched' }, stages);
     expect(doc.stages[0].runOnBranch).toBe('primary');
     expect(doc.stages[1]).toMatchObject({ runOnBranch: 'custom', customBranch: 'release/next' });
     const payload = buildImportPayload(doc, { name: 'Copy', timestamp: 42 });
     expect(payload.stages[0].runOnBranch).toBe('primary');
-    expect(payload.stages[1]).toMatchObject({ runOnBranch: 'custom', customBranch: 'release/next' });
+    expect(payload.stages[1]).toMatchObject({
+      runOnBranch: 'custom',
+      customBranch: 'release/next',
+    });
   });
 
   test('validates runOnBranch/customBranch values on import (typos fail loud)', () => {
@@ -229,7 +256,9 @@ describe('import size guards', () => {
 describe('validatePipelineDoc', () => {
   function validDoc() {
     return JSON.parse(
-      serializePipelineJson({ name: 'Main' }, [{ id: 's1', name: 'A', type: 'agent', prompt: 'hi' }]),
+      serializePipelineJson({ name: 'Main' }, [
+        { id: 's1', name: 'A', type: 'agent', prompt: 'hi' },
+      ]),
     );
   }
 
@@ -287,7 +316,15 @@ describe('validatePipelineDoc', () => {
   test('rejects wrong field types naming each problem', () => {
     const doc = validDoc();
     doc.stages = [
-      { name: 'Bad', type: 'agent', prompt: 42, timeout: 'soon', paused: 'yes', failback: 7, skills: 'x' },
+      {
+        name: 'Bad',
+        type: 'agent',
+        prompt: 42,
+        timeout: 'soon',
+        paused: 'yes',
+        failback: 7,
+        skills: 'x',
+      },
     ];
     const result = validatePipelineDoc(doc);
     expect(result.ok).toBe(false);
@@ -328,9 +365,12 @@ describe('stage tags in pipeline transfer', () => {
     // Legacy stage without tags stays without the key.
     expect(doc.stages[1]).not.toHaveProperty('tags');
 
-    const payload = buildImportPayload(JSON.parse(serializePipelineJson({ name: 'Main' }, stages)), {
-      timestamp: 7,
-    });
+    const payload = buildImportPayload(
+      JSON.parse(serializePipelineJson({ name: 'Main' }, stages)),
+      {
+        timestamp: 7,
+      },
+    );
     expect(payload.stages[0].tags).toEqual(['PO', 'Dev']);
     expect(payload.stages[1]).not.toHaveProperty('tags');
   });
@@ -360,9 +400,7 @@ describe('stage tags in pipeline transfer', () => {
       stages: [{ name: 'A', type: 'agent', tags: { label: 'PO' } }],
     });
     expect(badType.ok).toBe(false);
-    expect(badType.errors.some((e) => e.includes('"tags" must be an array of strings'))).toBe(
-      true,
-    );
+    expect(badType.errors.some((e) => e.includes('"tags" must be an array of strings'))).toBe(true);
   });
 });
 
@@ -390,12 +428,16 @@ describe('buildImportPayload', () => {
   });
 
   test('throws on invalid docs so callers never write partial imports', () => {
-    expect(() => buildImportPayload({ kainbainPipeline: 1, name: 'X', stages: [] })).toThrow(/empty/i);
+    expect(() => buildImportPayload({ kainbainPipeline: 1, name: 'X', stages: [] })).toThrow(
+      /empty/i,
+    );
     expect(() => buildImportPayload(null)).toThrow(/invalid pipeline file/i);
   });
 
   test('uses the doc name when no override is given', () => {
-    const doc = JSON.parse(serializePipelineJson({ name: 'Original' }, [{ name: 'A', type: 'agent' }]));
+    const doc = JSON.parse(
+      serializePipelineJson({ name: 'Original' }, [{ name: 'A', type: 'agent' }]),
+    );
     expect(buildImportPayload(doc, { timestamp: 1 }).name).toBe('Original');
   });
 
@@ -453,12 +495,23 @@ describe('hostile key hardening', () => {
       name: 'Hostile',
       stages: [{ name: 'Bad', type: 'agent', __proto__: { poisoned: true } }],
     };
-    const plain = JSON.parse(JSON.stringify({ kainbainPipeline: 1, name: 'Hostile', stages: [{ name: 'Bad', type: 'agent', constructor: 'x' }] }));
+    const plain = JSON.parse(
+      JSON.stringify({
+        kainbainPipeline: 1,
+        name: 'Hostile',
+        stages: [{ name: 'Bad', type: 'agent', constructor: 'x' }],
+      }),
+    );
     const validation = validatePipelineDoc(plain);
     expect(validation.ok).toBe(false);
-    expect(validation.errors.some((e) => e.includes('prototype-polluting') || e.includes('are not valid stage fields'))).toBe(true);
+    expect(
+      validation.errors.some(
+        (e) => e.includes('prototype-polluting') || e.includes('are not valid stage fields'),
+      ),
+    ).toBe(true);
     // The JSON.parse-materialized `__proto__` own-property case:
-    const hostileText = '{"kainbainPipeline":1,"name":"Hostile","stages":[{"name":"Bad","type":"agent","__proto__":{"poisoned":true}}]}';
+    const hostileText =
+      '{"kainbainPipeline":1,"name":"Hostile","stages":[{"name":"Bad","type":"agent","__proto__":{"poisoned":true}}]}';
     const hostileDoc = JSON.parse(hostileText);
     const hostileValidation = validatePipelineDoc(hostileDoc);
     expect(hostileValidation.ok).toBe(false);

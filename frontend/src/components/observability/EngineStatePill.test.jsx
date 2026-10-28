@@ -46,7 +46,9 @@ test('running pill keeps the engine stage when no task context resolves one', ()
 });
 
 test('running pill falls back to RUNNING when nothing names a stage', () => {
-  render(<EngineStatePill engineState={{ status: 'running' }} isRunning testId="engine-state-badge" />);
+  render(
+    <EngineStatePill engineState={{ status: 'running' }} isRunning testId="engine-state-badge" />,
+  );
   expect(screen.getByTestId('engine-state-badge')).toHaveTextContent('ACTIVE: RUNNING');
 });
 
@@ -71,7 +73,11 @@ test('paused and stopped/idle labels stay intact', () => {
   expect(screen.getByTestId('engine-state-badge')).toHaveTextContent('PAUSED');
   unmount();
   render(
-    <EngineStatePill engineState={{ status: 'idle' }} schedulerRunning={false} testId="engine-state-badge" />,
+    <EngineStatePill
+      engineState={{ status: 'idle' }}
+      schedulerRunning={false}
+      testId="engine-state-badge"
+    />,
   );
   expect(screen.getByTestId('engine-state-badge')).toHaveTextContent('STOPPED');
 });

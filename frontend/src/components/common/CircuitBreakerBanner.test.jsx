@@ -68,9 +68,7 @@ test('reset is disabled until a reason is typed, then posts the reason', async (
   expect(button).toBeEnabled();
   fireEvent.click(button);
 
-  await waitFor(() =>
-    expect(engineResetMock).toHaveBeenCalledWith('provider recovered'),
-  );
+  await waitFor(() => expect(engineResetMock).toHaveBeenCalledWith('provider recovered'));
 });
 
 test('the banner disappears once the WebSocket reports a reset', async () => {

@@ -41,7 +41,10 @@ export function oversizeImportError() {
  ***/
 export function isFileOversize(file) {
   return (
-    !!file && typeof file.size === 'number' && Number.isFinite(file.size) && file.size > MAX_IMPORT_BYTES
+    !!file &&
+    typeof file.size === 'number' &&
+    Number.isFinite(file.size) &&
+    file.size > MAX_IMPORT_BYTES
   );
 }
 

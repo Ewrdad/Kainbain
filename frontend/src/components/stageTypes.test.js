@@ -184,9 +184,9 @@ describe('stageTypes', () => {
     expect(isTerminalHumanApproval(humanThenMerge, { currentStageId: 's2' })).toBe(false);
     expect(isTerminalHumanApproval(agentThenHuman, { currentStageId: 's1' })).toBe(false);
     // Single-stage human pipeline: the only approval is terminal.
-    expect(
-      isTerminalHumanApproval([{ id: 'only', name: 'Solo', type: 'human' }], 'only'),
-    ).toBe(true);
+    expect(isTerminalHumanApproval([{ id: 'only', name: 'Solo', type: 'human' }], 'only')).toBe(
+      true,
+    );
     // Legacy 'review' type still counts as human.
     expect(
       isTerminalHumanApproval(
@@ -263,7 +263,6 @@ describe('stageTypes', () => {
     expect(`Approve task #KB-1${terminal.cardAriaSuffix}`).toMatch(/^Approve task #KB-1/);
     expect(terminal.reviewFooterAria.startsWith(advance.reviewFooterAria)).toBe(true);
   });
-
 
   it('isAutomatedStage returns true for ci/merge (and legacy script/deploy), fail-visible otherwise', () => {
     expect(isAutomatedStage('ci')).toBe(true);

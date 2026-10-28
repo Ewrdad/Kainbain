@@ -45,10 +45,7 @@ export function ProjectMenu({
   setShowArchived,
   triggerRef,
 }) {
-  const list = useMemo(
-    () => visibleProjects ?? projects ?? [],
-    [visibleProjects, projects],
-  );
+  const list = useMemo(() => visibleProjects ?? projects ?? [], [visibleProjects, projects]);
   const [query, setQuery] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
@@ -73,10 +70,9 @@ export function ProjectMenu({
   // inside the bounded list region.
   useEffect(() => {
     searchRef.current?.focus?.();
-    scrollIntoViewRespectingMotion(
-      listRef.current?.querySelector('[data-active="true"]'),
-      { block: 'nearest' },
-    );
+    scrollIntoViewRespectingMotion(listRef.current?.querySelector('[data-active="true"]'), {
+      block: 'nearest',
+    });
     // Run once per mount: the menu mounts fresh on every open.
   }, []);
 

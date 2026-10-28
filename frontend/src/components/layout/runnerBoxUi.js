@@ -64,8 +64,7 @@ export const getRunnerBoxStyle = (statusWord) => {
   // normalise before the map so the dot can never disagree with the visible
   // word, which the box always renders upper-cased. Anything else fails
   // closed to the grey idle pair — the colour is never the sole signal.
-  const key =
-    typeof statusWord === 'string' ? statusWord.trim().toLowerCase() : '';
+  const key = typeof statusWord === 'string' ? statusWord.trim().toLowerCase() : '';
   return STYLE_BY_STATUS.get(key) ?? IDLE_STYLE;
 };
 
@@ -132,8 +131,7 @@ export const formatRunnerStatusDisplay = (statusWord) =>
  ***/
 export const buildRunnerBoxAriaLabel = (entry) => {
   const rawLabel = entry?.runnerLabel;
-  const label =
-    typeof rawLabel === 'string' && rawLabel.trim() !== '' ? rawLabel.trim() : 'Runner';
+  const label = typeof rawLabel === 'string' && rawLabel.trim() !== '' ? rawLabel.trim() : 'Runner';
   const rawStatus = entry?.statusWord;
   const status =
     typeof rawStatus === 'string' && rawStatus.trim() !== '' ? rawStatus.trim() : 'idle';
@@ -178,8 +176,7 @@ export const truncateRunnerText = (value, max = RUNNER_BOX_TITLE_MAX_CHARS) => {
  * @returns {string} Trimmed text or the fallback.
  ***/
 export const coerceBoxText = (value, fallback) => {
-  const safeFallback =
-    typeof fallback === 'string' && fallback !== '' ? fallback : 'unknown';
+  const safeFallback = typeof fallback === 'string' && fallback !== '' ? fallback : 'unknown';
   if (typeof value === 'string') {
     const trimmed = value.trim();
     return trimmed !== '' ? trimmed : safeFallback;

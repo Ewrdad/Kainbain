@@ -2,8 +2,7 @@ import { renderWithKainBain } from '../../testUtils';
 import { WorkflowCanvas } from './WorkflowCanvas';
 import { screen, fireEvent } from '@testing-library/react';
 
-const sectionFor = (container, id) =>
-  container.querySelector(`section[data-stage-id="${id}"]`);
+const sectionFor = (container, id) => container.querySelector(`section[data-stage-id="${id}"]`);
 
 test('collapse non-human columns when filter is Human only', () => {
   const collapsibleStages = [

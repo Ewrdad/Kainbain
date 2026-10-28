@@ -227,7 +227,13 @@ const PI_MODELS = [
   },
 ];
 const B_MODELS = [
-  { key: 'cloud-b::prov-b::model-b', id: 'model-b', name: 'Model B', provider: 'prov-b', harness: 'cloud-b' },
+  {
+    key: 'cloud-b::prov-b::model-b',
+    id: 'model-b',
+    name: 'Model B',
+    provider: 'prov-b',
+    harness: 'cloud-b',
+  },
 ];
 
 function listCatalogue() {

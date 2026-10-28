@@ -96,7 +96,10 @@ describe('useWebSocket', () => {
     await act(async () => {
       result.current.connectWebSocket('proj-1');
       const ws = currentSocket();
-      ws._message({ type: 'TOOL_START', payload: { id: 't1', toolName: 'bash', args: { cmd: 'ls' } } });
+      ws._message({
+        type: 'TOOL_START',
+        payload: { id: 't1', toolName: 'bash', args: { cmd: 'ls' } },
+      });
       ws._message({ type: 'TOOL_UPDATE', payload: { id: 't1', log: 'line1' } });
       ws._message({ type: 'TOOL_END', payload: { id: 't1', finalOutput: 'done' } });
     });
@@ -475,7 +478,7 @@ describe('useWebSocket', () => {
       });
       ws._message({
         type: 'PROCESS_STDOUT',
-        payload: { chunk: '[SYSTEM] Enqueued task #KB-123 for stage \'Plan\'' },
+        payload: { chunk: "[SYSTEM] Enqueued task #KB-123 for stage 'Plan'" },
       });
     });
     // The backend tool-invocation copy is re-tagged as [TOOL] (asserted in the
@@ -508,9 +511,7 @@ describe('useWebSocket', () => {
   it('forwards TASK_UPDATED / TASK_DELETED to the live-sync callbacks', async () => {
     const onTaskUpdated = vi.fn();
     const onTaskDeleted = vi.fn();
-    const { result } = renderHook(() =>
-      useWebSocket({ onTaskUpdated, onTaskDeleted }),
-    );
+    const { result } = renderHook(() => useWebSocket({ onTaskUpdated, onTaskDeleted }));
     await act(async () => {
       result.current.connectWebSocket('proj-1');
       const ws = currentSocket();
@@ -530,9 +531,7 @@ describe('useWebSocket', () => {
       expect.objectContaining({ id: 'task-1', currentStageId: '3' }),
     );
     expect(onTaskDeleted).toHaveBeenCalledTimes(1);
-    expect(onTaskDeleted).toHaveBeenCalledWith(
-      expect.objectContaining({ taskId: 'task-1' }),
-    );
+    expect(onTaskDeleted).toHaveBeenCalledWith(expect.objectContaining({ taskId: 'task-1' }));
   });
 
   it('forwards REVIEW_UPDATED comment mutations to the review callback', async () => {
@@ -597,15 +596,23 @@ describe('useWebSocket', () => {
         result.current.connectWebSocket('proj-1');
         const ws = currentSocket();
         ws._open();
-        ws._message({ type: 'PROCESS_START', payload: { taskId: 't1', stageId: 's1', prompt: 'Secret dispatched prompt' } });
+        ws._message({
+          type: 'PROCESS_START',
+          payload: { taskId: 't1', stageId: 's1', prompt: 'Secret dispatched prompt' },
+        });
         ws._message({ type: 'ENGINE_STATE', payload: { status: 'running', activeTaskId: 't1' } });
         ws._message({ type: 'TASK_UPDATED', payload: { id: 't1' } });
         ws._message({ type: 'PROCESS_STDOUT', payload: { chunk: 'ignored' } });
       });
-      expect(events.map((event) => event.type)).toEqual(['PROCESS_START', 'ENGINE_STATE', 'TASK_UPDATED']);
+      expect(events.map((event) => event.type)).toEqual([
+        'PROCESS_START',
+        'ENGINE_STATE',
+        'TASK_UPDATED',
+      ]);
       expect(events.map((event) => event.taskId)).toEqual(['t1', undefined, 't1']);
       expect(JSON.stringify(events)).not.toContain('Secret dispatched prompt');
-    } finally { unsubscribe(); }
+    } finally {
+      unsubscribe();
+    }
   });
 });
-

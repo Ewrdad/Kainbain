@@ -78,7 +78,7 @@ export function StageTagEditor({
   };
 
   const unselectedSuggestions = (availableTags || []).filter(
-    (cand) => !tags.some((t) => stageTagKey(t) === stageTagKey(cand))
+    (cand) => !tags.some((t) => stageTagKey(t) === stageTagKey(cand)),
   );
 
   return (

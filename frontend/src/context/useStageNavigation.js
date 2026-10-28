@@ -23,7 +23,11 @@ export function useStageNavigation({ tasks, workflow, engineState }) {
       setFocusedStageId(targetStage.id);
       if (typeof document !== 'undefined') {
         const el = document.getElementById(`stage-col-${targetStage.id}`);
-        scrollIntoViewRespectingMotion(el, { behavior: 'smooth', inline: 'center', block: 'nearest' });
+        scrollIntoViewRespectingMotion(el, {
+          behavior: 'smooth',
+          inline: 'center',
+          block: 'nearest',
+        });
       }
     }
   }, [workflow.stages, effectiveFocusedStageId]);
@@ -42,7 +46,11 @@ export function useStageNavigation({ tasks, workflow, engineState }) {
       setFocusedStageId(targetStage.id);
       if (typeof document !== 'undefined') {
         const el = document.getElementById(`stage-col-${targetStage.id}`);
-        scrollIntoViewRespectingMotion(el, { behavior: 'smooth', inline: 'center', block: 'nearest' });
+        scrollIntoViewRespectingMotion(el, {
+          behavior: 'smooth',
+          inline: 'center',
+          block: 'nearest',
+        });
       }
     }
   }, [workflow.stages, effectiveFocusedStageId]);
@@ -58,7 +66,11 @@ export function useStageNavigation({ tasks, workflow, engineState }) {
       setFocusedStageId(activeId);
       if (typeof document !== 'undefined') {
         const el = document.getElementById(`stage-col-${activeId}`);
-        scrollIntoViewRespectingMotion(el, { behavior: 'smooth', inline: 'center', block: 'nearest' });
+        scrollIntoViewRespectingMotion(el, {
+          behavior: 'smooth',
+          inline: 'center',
+          block: 'nearest',
+        });
       }
     }
   }, [workflow.currentStageId, workflow.stages]);
@@ -80,9 +92,7 @@ export function useStageNavigation({ tasks, workflow, engineState }) {
     async (projectId) => {
       const ownerId = engineState?.activeTaskId;
       const listedOwner =
-        ownerId != null
-          ? tasks.tasks.find((t) => String(t?.id) === String(ownerId))
-          : null;
+        ownerId != null ? tasks.tasks.find((t) => String(t?.id) === String(ownerId)) : null;
       // Off-list owner (another project is selected): the backend snapshot
       // still identifies it, so Skip acts on the engine owner regardless.
       const snapshotOwner =
@@ -94,8 +104,7 @@ export function useStageNavigation({ tasks, workflow, engineState }) {
           : null;
       const ownerTask = listedOwner || snapshotOwner;
       if (ownerTask) {
-        const ownerProjectId =
-          ownerTask?.projectId || engineState?.activeProjectId || projectId;
+        const ownerProjectId = ownerTask?.projectId || engineState?.activeProjectId || projectId;
         await tasks.advanceTask(ownerProjectId, ownerTask.id);
         return;
       }

@@ -140,7 +140,10 @@ test('export with no stages notifies instead of downloading', () => {
   openMenu({ stages: [], notifyError });
   fireEvent.click(screen.getByRole('menuitem', { name: /export pipeline/i }));
   expect(createSpy).not.toHaveBeenCalled();
-  expect(notifyError).toHaveBeenCalledWith(expect.stringMatching(/nothing to export/i), expect.anything());
+  expect(notifyError).toHaveBeenCalledWith(
+    expect.stringMatching(/nothing to export/i),
+    expect.anything(),
+  );
 });
 
 test('export of unserializable stages notifies and downloads nothing', () => {
@@ -166,9 +169,13 @@ test('import of truncated JSON notifies and writes nothing', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Pipeline transfer options' }));
   const menu = screen.getByRole('menu');
   fireEvent.click(within(menu).getByRole('menuitem', { name: /import pipeline/i }));
-  const file = new File(['{"kainbainPipeline": 1, "name": "Main", "stages": ['], 'bad.pipeline.json', {
-    type: 'application/json',
-  });
+  const file = new File(
+    ['{"kainbainPipeline": 1, "name": "Main", "stages": ['],
+    'bad.pipeline.json',
+    {
+      type: 'application/json',
+    },
+  );
   const input = document.querySelector('input[type="file"]');
   Object.defineProperty(input, 'files', { value: [file], configurable: true });
   fireEvent.change(input);
@@ -291,7 +298,12 @@ async function openImportDialog(props) {
 
 test('Escape during the create call keeps the dialog open', async () => {
   let resolveImport;
-  const onImportWorkflow = vi.fn(() => new Promise((resolve) => { resolveImport = resolve; }));
+  const onImportWorkflow = vi.fn(
+    () =>
+      new Promise((resolve) => {
+        resolveImport = resolve;
+      }),
+  );
   const dialog = await openImportDialog({ onImportWorkflow });
   fireEvent.click(within(dialog).getByRole('button', { name: 'Import pipeline' }));
   await waitFor(() => expect(onImportWorkflow).toHaveBeenCalledTimes(1));

@@ -87,11 +87,7 @@ describe('FailureMessage image references', () => {
 
   test('ignores external image URLs', () => {
     render(
-      <FailureMessage
-        message={'See ![x](https://example.com/x.png)'}
-        projectId="p1"
-        taskId="t1"
-      />,
+      <FailureMessage message={'See ![x](https://example.com/x.png)'} projectId="p1" taskId="t1" />,
     );
     expect(screen.queryByTestId('failure-message-images')).not.toBeInTheDocument();
   });

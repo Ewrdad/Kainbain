@@ -144,7 +144,6 @@ export function groupModelsByProvider(models, { ungroupedLabel = 'Ungrouped' } =
   return options;
 }
 
-
 /***
  * MARK: resolveReasoningOptions
  * @description Resolves the set of reasoning levels advertised for a given
@@ -168,8 +167,7 @@ export function resolveReasoningOptions({ harnessEntry, selectedModel } = {}) {
   const harnessLevels = Array.isArray(harnessEntry?.reasoningLevels)
     ? harnessEntry.reasoningLevels
     : null;
-  const candidate =
-    modelLevels && modelLevels.length > 0 ? modelLevels : harnessLevels;
+  const candidate = modelLevels && modelLevels.length > 0 ? modelLevels : harnessLevels;
   if (!Array.isArray(candidate) || candidate.length === 0) return null;
   return [...candidate];
 }

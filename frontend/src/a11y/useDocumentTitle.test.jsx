@@ -10,8 +10,8 @@ function Titled({ title }) {
 describe('titleForView (WCAG 2.4.2)', () => {
   it('titles every in-scope view distinctly', () => {
     const titles = new Set(
-      ['orchestrator', 'explorer', 'settings', 'observability', 'docs', 'retrospective'].map(
-        (v) => titleForView(v, { projectName: 'MyProject' }),
+      ['orchestrator', 'explorer', 'settings', 'observability', 'docs', 'retrospective'].map((v) =>
+        titleForView(v, { projectName: 'MyProject' }),
       ),
     );
     expect(titles.size).toBe(6);
@@ -21,9 +21,9 @@ describe('titleForView (WCAG 2.4.2)', () => {
   });
 
   it('follows the [Running/Paused] Kainbain - Project - page format', () => {
-    expect(
-      titleForView('orchestrator', { computeRunning: true, projectName: 'MyProject' }),
-    ).toBe('[Running] Kainbain - MyProject - Orchestrator');
+    expect(titleForView('orchestrator', { computeRunning: true, projectName: 'MyProject' })).toBe(
+      '[Running] Kainbain - MyProject - Orchestrator',
+    );
     expect(titleForView('explorer', { computeRunning: false, projectName: 'MyProject' })).toBe(
       '[Paused] Kainbain - MyProject - Files & Repo',
     );
@@ -52,12 +52,12 @@ describe('titleForView (WCAG 2.4.2)', () => {
   });
 
   it('includes the task key on task-scoped views', () => {
-    expect(
-      titleForView('task-detail', { taskKey: 'task-1', projectName: 'MyProject' }),
-    ).toBe('[Paused] Kainbain - MyProject - Task task-1');
-    expect(
-      titleForView('task-review', { taskKey: 'task-1', projectName: 'MyProject' }),
-    ).toBe('[Paused] Kainbain - MyProject - Review task-1');
+    expect(titleForView('task-detail', { taskKey: 'task-1', projectName: 'MyProject' })).toBe(
+      '[Paused] Kainbain - MyProject - Task task-1',
+    );
+    expect(titleForView('task-review', { taskKey: 'task-1', projectName: 'MyProject' })).toBe(
+      '[Paused] Kainbain - MyProject - Review task-1',
+    );
   });
 
   it('falls back gracefully for unknown views', () => {
@@ -77,9 +77,9 @@ describe('titleForView (WCAG 2.4.2)', () => {
   });
 
   it('accepts legacy positional task key plus trailing options', () => {
-    expect(
-      titleForView('orchestrator', 'task-1', { computeRunning: true, projectName: 'P' }),
-    ).toBe('[Running] Kainbain - P - Orchestrator');
+    expect(titleForView('orchestrator', 'task-1', { computeRunning: true, projectName: 'P' })).toBe(
+      '[Running] Kainbain - P - Orchestrator',
+    );
   });
 });
 
@@ -93,9 +93,7 @@ describe('useDocumentTitle', () => {
   });
 
   it('updates when the view changes', () => {
-    const { rerender } = render(
-      <Titled title="[Paused] Kainbain - MyProject - Orchestrator" />,
-    );
+    const { rerender } = render(<Titled title="[Paused] Kainbain - MyProject - Orchestrator" />);
     expect(document.title).toBe('[Paused] Kainbain - MyProject - Orchestrator');
     rerender(<Titled title="[Paused] Kainbain - MyProject - Settings" />);
     expect(document.title).toBe('[Paused] Kainbain - MyProject - Settings');

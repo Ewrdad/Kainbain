@@ -66,7 +66,9 @@ export const retrospectiveTaskFixtures = [
     workflowId: 'wf-experiment',
     createdAt: '2026-09-28T08:00:00.000Z',
     updatedAt: '2026-09-28T09:15:00.000Z',
-    stageDurationSamples: [{ stageId: 'idea', stageName: 'Idea', stageType: 'agent', seconds: [240] }],
+    stageDurationSamples: [
+      { stageId: 'idea', stageName: 'Idea', stageType: 'agent', seconds: [240] },
+    ],
     reports: [{ path: 'idea.md', stageId: 'idea', stageName: 'Idea', status: 'PASSED' }],
   },
   {
@@ -265,4 +267,3 @@ export const retrospectiveOversizedInputFixture = {
     detail: 'message exceeds 8000 characters',
   }),
 };
-

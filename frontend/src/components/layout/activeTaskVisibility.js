@@ -80,8 +80,7 @@ export function resolveCandidateTask(tasks, engineState, currentStageId) {
 export function resolveOwnerTask(taskList, engineState) {
   const list = Array.isArray(taskList) ? taskList : [];
   if (engineState?.activeTaskId == null) return null;
-  const inList =
-    list.find((task) => String(task?.id) === String(engineState.activeTaskId)) || null;
+  const inList = list.find((task) => String(task?.id) === String(engineState.activeTaskId)) || null;
   if (inList) return inList;
   const snapshot = engineState?.activeTask;
   if (snapshot && String(snapshot?.id) === String(engineState.activeTaskId)) {
@@ -121,7 +120,10 @@ export function resolveUniversalNowPlaying({ tasks, engineState }) {
     queueDepth,
     hasNextTask,
     ownerWorkflowId: candidateTask?.workflowId || null,
-    ownerWorkflowName: candidateTask?.workflowName || (ownerTask ? engineState?.activeTask?.workflowName : null) || null,
+    ownerWorkflowName:
+      candidateTask?.workflowName ||
+      (ownerTask ? engineState?.activeTask?.workflowName : null) ||
+      null,
   };
 }
 
@@ -148,8 +150,7 @@ export function resolveActiveTaskDisplay({
   // list keeps naming the same task; only a genuinely absent owner (no
   // snapshot) clears the name. The ungated candidateTask keeps the existing
   // chain for queue-depth style derivations that must keep working.
-  const engineHasOwner =
-    engineState?.status === 'running' && engineState?.activeTaskId != null;
+  const engineHasOwner = engineState?.status === 'running' && engineState?.activeTaskId != null;
   const taskList = Array.isArray(tasks) ? tasks : [];
   const ownerTask = engineHasOwner ? resolveOwnerTask(taskList, engineState) : null;
   const displayTask = engineHasOwner ? ownerTask : candidateTask;
@@ -167,8 +168,7 @@ export function resolveActiveTaskDisplay({
     engineState?.status === 'checkpoint' ||
     engineState?.status === 'waiting_human' ||
     displayTask?.status === 'waiting_human';
-  const hasActiveDisplay =
-    isRunning || isCheckpoint || isStagePaused || isFailed || isInterrupted;
+  const hasActiveDisplay = isRunning || isCheckpoint || isStagePaused || isFailed || isInterrupted;
   return {
     activeTask: hasActiveDisplay ? displayTask : null,
     candidateTask,

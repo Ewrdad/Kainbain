@@ -53,7 +53,7 @@ describe('useTasks', () => {
     expect(result.current.tasks).toEqual([{ id: 't1', goal: 'A' }]);
   });
 
-  it('createTask creates and refreshes the task list with idempotencyKey', async ({ }) =>{
+  it('createTask creates and refreshes the task list with idempotencyKey', async ({}) => {
     api.createTask.mockResolvedValue({ id: 't2', title: 'New Task', goal: 'Goal' });
     api.listTasks.mockResolvedValue([{ id: 't2', title: 'New Task', goal: 'Goal' }]);
     const { result } = renderHook(() => useTasks());

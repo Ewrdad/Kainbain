@@ -69,13 +69,7 @@ describe('ReportViewer component', () => {
   });
 
   test('renders sidebar list of all reports with count badge and initial report in main pane', () => {
-    render(
-      <ReportViewer
-        reports={mockReports}
-        activeProject={mockProject}
-        taskId="task-1"
-      />,
-    );
+    render(<ReportViewer reports={mockReports} activeProject={mockProject} taskId="task-1" />);
 
     // Sidebar reports count
     expect(screen.getByText('3')).toBeInTheDocument();
@@ -123,13 +117,7 @@ describe('ReportViewer component', () => {
   });
 
   test('prev and next buttons navigate between reports and disable appropriately', () => {
-    render(
-      <ReportViewer
-        reports={mockReports}
-        activeProject={mockProject}
-        taskId="task-1"
-      />,
-    );
+    render(<ReportViewer reports={mockReports} activeProject={mockProject} taskId="task-1" />);
 
     const prevBtn = screen.getByRole('button', { name: 'Previous report' });
     const nextBtn = screen.getByRole('button', { name: 'Next report' });
@@ -165,13 +153,7 @@ describe('ReportViewer component', () => {
       clipboard: { writeText: writeTextMock },
     });
 
-    render(
-      <ReportViewer
-        reports={mockReports}
-        activeProject={mockProject}
-        taskId="task-1"
-      />,
-    );
+    render(<ReportViewer reports={mockReports} activeProject={mockProject} taskId="task-1" />);
 
     const copyBtn = screen.getByRole('button', { name: 'Copy report path' });
     fireEvent.click(copyBtn);
@@ -188,13 +170,7 @@ describe('ReportViewer component', () => {
       clipboard: { writeText: writeTextMock },
     });
 
-    render(
-      <ReportViewer
-        reports={mockReports}
-        activeProject={mockProject}
-        taskId="task-1"
-      />,
-    );
+    render(<ReportViewer reports={mockReports} activeProject={mockProject} taskId="task-1" />);
 
     const copyMarkdownBtn = screen.getByRole('button', { name: 'Copy markdown content' });
     fireEvent.click(copyMarkdownBtn);
@@ -209,13 +185,7 @@ describe('ReportViewer component', () => {
 
   test('Notes link is configured with correct deep link URL', () => {
     vi.stubEnv('VITE_NOTES_VIEWER_URL', 'http://notes.example.com');
-    render(
-      <ReportViewer
-        reports={mockReports}
-        activeProject={mockProject}
-        taskId="task-1"
-      />,
-    );
+    render(<ReportViewer reports={mockReports} activeProject={mockProject} taskId="task-1" />);
 
     const sbLink = screen.getByRole('link', { name: /Open in Notes/i });
     expect(sbLink).toHaveAttribute('target', '_blank');
@@ -228,13 +198,7 @@ describe('ReportViewer component', () => {
 
   test('Notes link degrades to the in-app explorer when no viewer is configured', () => {
     vi.stubEnv('VITE_NOTES_VIEWER_URL', '');
-    render(
-      <ReportViewer
-        reports={mockReports}
-        activeProject={mockProject}
-        taskId="task-1"
-      />,
-    );
+    render(<ReportViewer reports={mockReports} activeProject={mockProject} taskId="task-1" />);
 
     const sbLink = screen.getByRole('link', { name: /Open in Notes/i });
     expect(sbLink).toHaveAttribute('href', '#/explorer');

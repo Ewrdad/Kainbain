@@ -42,10 +42,7 @@ describe('filterBlockedByCandidates', () => {
   });
 
   test('excludes completed and legacy done tasks', () => {
-    const result = filterBlockedByCandidates(
-      [self, active, completed, legacyDone],
-      'self-1',
-    );
+    const result = filterBlockedByCandidates([self, active, completed, legacyDone], 'self-1');
     expect(result.map((t) => t.id)).toEqual(['task-a']);
   });
 
@@ -85,9 +82,7 @@ describe('matchesBlockedByQuery', () => {
   });
 
   test('falls back to goal then id when title is missing', () => {
-    expect(
-      matchesBlockedByQuery({ id: 'task-g', goal: 'Migrate database' }, 'migrate'),
-    ).toBe(true);
+    expect(matchesBlockedByQuery({ id: 'task-g', goal: 'Migrate database' }, 'migrate')).toBe(true);
     expect(matchesBlockedByQuery({ id: 'unique-id-9' }, 'unique-id')).toBe(true);
     expect(matchesBlockedByQuery({ id: 'unique-id-9' }, 'nope')).toBe(false);
   });

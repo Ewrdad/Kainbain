@@ -95,7 +95,13 @@ test('formats arguments that JSON cannot stringify', () => {
   circularArgs.self = circularArgs;
   render(
     <ToolCard
-      toolCall={{ id: 'tool-5', toolName: 'write', args: circularArgs, logs: [], status: 'executing' }}
+      toolCall={{
+        id: 'tool-5',
+        toolName: 'write',
+        args: circularArgs,
+        logs: [],
+        status: 'executing',
+      }}
     />,
   );
   expect(screen.getByText(/write/)).toBeInTheDocument();

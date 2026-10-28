@@ -95,10 +95,7 @@ describe('BuildBadge', () => {
     render(<BuildBadge />);
     const badge = await screen.findByTestId('build-badge');
     expect(badge.tagName).toBe('BUTTON');
-    expect(badge).toHaveAttribute(
-      'aria-label',
-      expect.stringContaining('show Kainbain changelog'),
-    );
+    expect(badge).toHaveAttribute('aria-label', expect.stringContaining('show Kainbain changelog'));
     // The changelog is fetched on open only — not during status polling.
     expect(api.deployChangelog).not.toHaveBeenCalled();
     fireEvent.click(badge);

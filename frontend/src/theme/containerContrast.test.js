@@ -55,11 +55,36 @@ const TEXT_PAIRS_AAA = [
   // Midnight theme.
   ['midnight on-surface on deep', '#e2e8f0', '#070c14', 7],
   // Collapsed error badge (WCAG 1.4.6 AAA >= 7:1 across themes)
-  ['error badge text on surface with bg-error/10', '#ffb4ab', mixHexTowards('#131313', '#ffb4ab', 0.1), 7],
-  ['error badge text on container with bg-error/10', '#ffb4ab', mixHexTowards('#201f1f', '#ffb4ab', 0.1), 7],
-  ['error badge text on surface-deep with bg-error/10', '#ffb4ab', mixHexTowards('#0a0a0a', '#ffb4ab', 0.1), 7],
-  ['light error badge text on white with bg-error/10', '#991b1b', mixHexTowards('#ffffff', '#ffb4ab', 0.1), 7],
-  ['midnight error badge text on container with bg-error/10', '#ffb4ab', mixHexTowards('#131f33', '#ffb4ab', 0.1), 7],
+  [
+    'error badge text on surface with bg-error/10',
+    '#ffb4ab',
+    mixHexTowards('#131313', '#ffb4ab', 0.1),
+    7,
+  ],
+  [
+    'error badge text on container with bg-error/10',
+    '#ffb4ab',
+    mixHexTowards('#201f1f', '#ffb4ab', 0.1),
+    7,
+  ],
+  [
+    'error badge text on surface-deep with bg-error/10',
+    '#ffb4ab',
+    mixHexTowards('#0a0a0a', '#ffb4ab', 0.1),
+    7,
+  ],
+  [
+    'light error badge text on white with bg-error/10',
+    '#991b1b',
+    mixHexTowards('#ffffff', '#ffb4ab', 0.1),
+    7,
+  ],
+  [
+    'midnight error badge text on container with bg-error/10',
+    '#ffb4ab',
+    mixHexTowards('#131f33', '#ffb4ab', 0.1),
+    7,
+  ],
 ];
 
 // [description, foreground, background] — floor is 3:1 per 1.4.11.

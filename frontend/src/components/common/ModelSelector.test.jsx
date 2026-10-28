@@ -11,14 +11,34 @@ import { ModelSelector, resolveStoredModelValidity } from './ModelSelector';
  *   allowEmpty is set.
  */
 const MODELS = [
-  { id: 'deepseek-v4-flash', name: 'DeepSeek v4 Flash', provider: 'ollama-cloud', key: 'ollama-cloud::deepseek-v4-flash' },
-  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'google', key: 'google::gemini-2.5-pro' },
-  { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet', provider: 'anthropic', key: 'anthropic::claude-3-7-sonnet' },
+  {
+    id: 'deepseek-v4-flash',
+    name: 'DeepSeek v4 Flash',
+    provider: 'ollama-cloud',
+    key: 'ollama-cloud::deepseek-v4-flash',
+  },
+  {
+    id: 'gemini-2.5-pro',
+    name: 'Gemini 2.5 Pro',
+    provider: 'google',
+    key: 'google::gemini-2.5-pro',
+  },
+  {
+    id: 'claude-3-7-sonnet',
+    name: 'Claude 3.7 Sonnet',
+    provider: 'anthropic',
+    key: 'anthropic::claude-3-7-sonnet',
+  },
 ];
 
 // A second catalogue scoped to the pi harness (distinct from the flat list).
 const PI_MODELS = [
-  { id: 'glm-5.3-flash:cloud', name: 'GLM 5.3 Flash', provider: 'pi', key: 'pi::glm-5.3-flash:cloud' },
+  {
+    id: 'glm-5.3-flash:cloud',
+    name: 'GLM 5.3 Flash',
+    provider: 'pi',
+    key: 'pi::glm-5.3-flash:cloud',
+  },
 ];
 
 describe('ModelSelector', () => {
@@ -38,7 +58,9 @@ describe('ModelSelector', () => {
 
   it('keeps emitting composite option values on selection (stored-format guard)', () => {
     const onChange = vi.fn();
-    render(<ModelSelector models={MODELS} value="" onChange={onChange} ariaLabel="Default AI Model" />);
+    render(
+      <ModelSelector models={MODELS} value="" onChange={onChange} ariaLabel="Default AI Model" />,
+    );
 
     fireEvent.click(screen.getByRole('combobox', { name: 'Default AI Model' }));
     fireEvent.click(screen.getByRole('option', { name: 'Gemini 2.5 Pro' }));
@@ -54,7 +76,11 @@ describe('ModelSelector', () => {
 
   it('resolves a stored composite key to the exact matching option', () => {
     render(
-      <ModelSelector models={MODELS} value="anthropic::claude-3-7-sonnet" ariaLabel="Default AI Model" />,
+      <ModelSelector
+        models={MODELS}
+        value="anthropic::claude-3-7-sonnet"
+        ariaLabel="Default AI Model"
+      />,
     );
     expect(screen.getByRole('combobox', { name: 'Default AI Model' })).toHaveTextContent(
       'Claude 3.7 Sonnet',
@@ -67,7 +93,9 @@ describe('ModelSelector', () => {
       <ModelSelector models={MODELS} value="" onChange={onChange} ariaLabel="Stage Model" />,
     );
     fireEvent.click(screen.getByRole('combobox', { name: 'Stage Model' }));
-    expect(screen.queryByRole('option', { name: 'Inherit Project Default' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('option', { name: 'Inherit Project Default' }),
+    ).not.toBeInTheDocument();
     withoutEmpty.unmount();
 
     render(
@@ -85,9 +113,7 @@ describe('ModelSelector', () => {
   });
 
   it('forwards disabled state and size to the underlying dropdown', () => {
-    render(
-      <ModelSelector models={MODELS} disabled size="sm" ariaLabel="Stage Model" />,
-    );
+    render(<ModelSelector models={MODELS} disabled size="sm" ariaLabel="Stage Model" />);
     const trigger = screen.getByRole('combobox', { name: 'Stage Model' });
     expect(trigger).toBeDisabled();
     expect(trigger.className).toContain('text-[10px]');
@@ -113,7 +139,12 @@ describe('ModelSelector', () => {
 describe('ModelSelector harness-first selector', () => {
   it('wraps a harness-less catalogue as the single pi harness (older backend)', () => {
     render(
-      <ModelSelector models={MODELS} harnesses={[]} ariaLabel="Default AI Model" harnessAriaLabel="AI Harness" />,
+      <ModelSelector
+        models={MODELS}
+        harnesses={[]}
+        ariaLabel="Default AI Model"
+        harnessAriaLabel="AI Harness"
+      />,
     );
     const harnessTrigger = screen.getByRole('combobox', { name: 'AI Harness' });
     expect(harnessTrigger).toHaveTextContent('pi');
@@ -187,7 +218,12 @@ describe('ModelSelector harness-first selector', () => {
         models={MODELS}
         harnesses={[
           { id: 'pi', label: 'pi', description: 'pi', models: PI_MODELS },
-          { id: 'cloud-b', label: 'cloud-b', description: 'b', models: [{ id: 'b-model', name: 'Model B', provider: 'cloud-b' }] },
+          {
+            id: 'cloud-b',
+            label: 'cloud-b',
+            description: 'b',
+            models: [{ id: 'b-model', name: 'Model B', provider: 'cloud-b' }],
+          },
         ]}
         harnessId="does-not-exist"
         ariaLabel="Stage Model"
@@ -231,7 +267,12 @@ describe('ModelSelector harness-first selector', () => {
         models={MODELS}
         harnesses={[
           { id: 'pi', label: 'pi', description: 'pi', models: PI_MODELS },
-          { id: 'cloud-b', label: 'cloud-b', description: 'b', models: [{ id: 'b-model', name: 'Model B', provider: 'cloud-b' }] },
+          {
+            id: 'cloud-b',
+            label: 'cloud-b',
+            description: 'b',
+            models: [{ id: 'b-model', name: 'Model B', provider: 'cloud-b' }],
+          },
         ]}
         harnessId="pi"
         onHarnessChange={onHarnessChange}
@@ -290,7 +331,13 @@ describe('ModelSelector modelSelection none (custom: model baked into the comman
 
 describe('ModelSelector harness inherit option (stage-level default)', () => {
   const TWO_HARNESSES = [
-    { id: 'pi', label: 'pi coding agent', description: 'pi', modelSelection: 'list', models: PI_MODELS },
+    {
+      id: 'pi',
+      label: 'pi coding agent',
+      description: 'pi',
+      modelSelection: 'list',
+      models: PI_MODELS,
+    },
     { id: 'agy', label: 'Antigravity', description: 'agy', modelSelection: 'list', models: MODELS },
   ];
 
@@ -340,7 +387,9 @@ describe('ModelSelector harness inherit option (stage-level default)', () => {
     );
 
     fireEvent.click(screen.getByRole('combobox', { name: 'Harness for Idea' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Inherit project default (pi coding agent)' }));
+    fireEvent.click(
+      screen.getByRole('option', { name: 'Inherit project default (pi coding agent)' }),
+    );
     expect(onHarnessChange).toHaveBeenCalledWith('', expect.anything());
   });
 });
@@ -521,7 +570,13 @@ describe('ModelSelector alias harness entry', () => {
         models={MODELS}
         harnesses={[
           { id: 'pi', label: 'pi', description: 'pi', modelSelection: 'list', models: PI_MODELS },
-          { id: 'alias', label: 'Alias', description: 'aliases', modelSelection: 'list', models: [] },
+          {
+            id: 'alias',
+            label: 'Alias',
+            description: 'aliases',
+            modelSelection: 'list',
+            models: [],
+          },
         ]}
         harnessId="alias"
         value=""
@@ -578,7 +633,9 @@ describe('ModelSelector harness availability', () => {
     );
 
     // The selected option's badge renders in the trigger.
-    expect(screen.getByRole('combobox', { name: 'Harness for Idea' })).toHaveTextContent('Detected');
+    expect(screen.getByRole('combobox', { name: 'Harness for Idea' })).toHaveTextContent(
+      'Detected',
+    );
     fireEvent.click(screen.getByRole('combobox', { name: 'Harness for Idea' }));
     expect(screen.getByRole('option', { name: /Agy/ })).toHaveTextContent('Unavailable');
     // Entries from older backends (no available field) stay badge-free.
@@ -663,9 +720,7 @@ describe('ModelSelector reasoning level picker', () => {
         ariaLabel="Model"
         harnessAriaLabel="Harness"
         id="default-model-select"
-        reasoningLabelNode={
-          <label htmlFor="default-model-select-reasoning">Reasoning</label>
-        }
+        reasoningLabelNode={<label htmlFor="default-model-select-reasoning">Reasoning</label>}
       />,
     );
     expect(screen.getByRole('combobox', { name: 'Reasoning' })).toBeInTheDocument();
@@ -1062,6 +1117,9 @@ describe('resolveStoredModelValidity', () => {
 
   it('reports blank values as blank', () => {
     expect(resolveStoredModelValidity(MODELS, '')).toEqual({ status: 'blank', resolvedValue: '' });
-    expect(resolveStoredModelValidity(MODELS, undefined)).toEqual({ status: 'blank', resolvedValue: '' });
+    expect(resolveStoredModelValidity(MODELS, undefined)).toEqual({
+      status: 'blank',
+      resolvedValue: '',
+    });
   });
 });

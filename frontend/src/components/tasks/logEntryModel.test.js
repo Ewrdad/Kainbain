@@ -73,7 +73,11 @@ describe('logEntryModel — normalizeEntries', () => {
 
   it('appends live WebSocket process lines as entries', () => {
     const entries = normalizeEntries(
-      { logEntries: [{ id: 1, feed: 'main', feeds: ['main'], kind: 'assistant', turn: 1, text: 'base' }] },
+      {
+        logEntries: [
+          { id: 1, feed: 'main', feeds: ['main'], kind: 'assistant', turn: 1, text: 'base' },
+        ],
+      },
       [{ tag: '[INFO]', text: 'live event' }],
     );
     expect(entries.map((e) => e.text)).toEqual(['base', '[INFO] live event']);
@@ -121,10 +125,9 @@ describe('logEntryModel — normalizeEntries', () => {
   });
 
   it('keeps identity-free live lines passing through', () => {
-    const entries = normalizeEntries(
-      { logEntries: [] },
-      [{ tag: '[CI/CMD]', text: '$ ls', raw: '[Project] [CI/CMD] $ ls', taskId: 't1' }],
-    );
+    const entries = normalizeEntries({ logEntries: [] }, [
+      { tag: '[CI/CMD]', text: '$ ls', raw: '[Project] [CI/CMD] $ ls', taskId: 't1' },
+    ]);
     expect(entries).toHaveLength(1);
     expect(entries[0].kind).toBe('system');
   });
@@ -137,7 +140,7 @@ describe('logEntryModel — grouping', () => {
       { id: 2, kind: 'assistant', turn: 1, text: 'do things' },
       { id: 3, kind: 'tool', turn: 1, text: '[TOOL] bash()' },
       { id: 4, kind: 'assistant', turn: 2, text: 'again' },
-   ];
+    ];
     const groups = groupByTurn(entries);
     expect(groups).toHaveLength(2);
     expect(groups[0]).toEqual({ turn: 1, entries: entries.slice(0, 3) });
@@ -157,7 +160,15 @@ describe('logEntryModel — filtering', () => {
   );
 
   it('exposes the feed chips', () => {
-    expect(LOG_FEEDS).toEqual(['ALL', 'ASSISTANT', 'TOOLS', 'THINKING', 'SYSTEM', 'TELEMETRY', 'RAW']);
+    expect(LOG_FEEDS).toEqual([
+      'ALL',
+      'ASSISTANT',
+      'TOOLS',
+      'THINKING',
+      'SYSTEM',
+      'TELEMETRY',
+      'RAW',
+    ]);
   });
 
   it('filters by feed chip', () => {
@@ -167,10 +178,7 @@ describe('logEntryModel — filtering', () => {
     expect(filterEntries(entries, { feed: 'ASSISTANT' }).map((e) => e.text)).toEqual([
       '[AGENT] narrative',
     ]);
-    expect(filterEntries(entries, { feed: 'TOOLS' }).map((e) => e.kind)).toEqual([
-      'tool',
-      'tool',
-    ]);
+    expect(filterEntries(entries, { feed: 'TOOLS' }).map((e) => e.kind)).toEqual(['tool', 'tool']);
     expect(filterEntries(entries, { feed: 'THINKING' })).toHaveLength(1);
     // Errors surface under SYSTEM alongside operational lines.
     expect(filterEntries(entries, { feed: 'SYSTEM' }).map((e) => e.kind)).toEqual([
@@ -246,10 +254,33 @@ describe('logEntryModel — severity classes', () => {
 
 describe('logEntryModel — unified lanes', () => {
   const unified = [
-    { id: 1, kind: 'telemetry', feed: 'telemetry', feeds: ['telemetry'], text: '[USAGE] tokens=1/2/3', usage: { inputTokens: 1 }, meta: {} },
-    { id: 2, kind: 'permission', feed: 'main', feeds: ['main'], text: '[PERM] request bash', meta: {} },
+    {
+      id: 1,
+      kind: 'telemetry',
+      feed: 'telemetry',
+      feeds: ['telemetry'],
+      text: '[USAGE] tokens=1/2/3',
+      usage: { inputTokens: 1 },
+      meta: {},
+    },
+    {
+      id: 2,
+      kind: 'permission',
+      feed: 'main',
+      feeds: ['main'],
+      text: '[PERM] request bash',
+      meta: {},
+    },
     { id: 3, kind: 'plan', feed: 'main', feeds: ['main'], text: '[PLAN] updated', meta: {} },
-    { id: 4, kind: 'raw', feed: 'raw', feeds: ['raw'], text: '[RAW] x: unmapped', evidence: { wireType: 'x', sourceEvent: '{"a":1}', reason: 'unmapped' }, meta: {} },
+    {
+      id: 4,
+      kind: 'raw',
+      feed: 'raw',
+      feeds: ['raw'],
+      text: '[RAW] x: unmapped',
+      evidence: { wireType: 'x', sourceEvent: '{"a":1}', reason: 'unmapped' },
+      meta: {},
+    },
     { id: 5, kind: 'assistant', feed: 'main', feeds: ['main'], text: 'narrative', meta: {} },
   ];
 
@@ -261,7 +292,9 @@ describe('logEntryModel — unified lanes', () => {
   });
 
   it('parses unified tags from legacy text', () => {
-    const parsed = parseLegacyProcessLogs('[USAGE] tokens=1/2/3\n[PERM] request bash\n[PLAN] updated\n[RAW] x: unmapped');
+    const parsed = parseLegacyProcessLogs(
+      '[USAGE] tokens=1/2/3\n[PERM] request bash\n[PLAN] updated\n[RAW] x: unmapped',
+    );
     expect(parsed.map((e) => e.kind)).toEqual(['telemetry', 'permission', 'plan', 'raw']);
     expect(parsed.map((e) => e.feed)).toEqual(['telemetry', 'main', 'main', 'raw']);
   });

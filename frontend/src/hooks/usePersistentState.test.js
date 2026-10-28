@@ -19,23 +19,17 @@ describe('usePersistentState', () => {
 
   it('restores a pre-seeded value (refresh simulation)', () => {
     window.localStorage.setItem('kainbain:test:seeded', JSON.stringify('hello'));
-    const { result } = renderHook(() =>
-      usePersistentState('kainbain:test:seeded', 'fallback'),
-    );
+    const { result } = renderHook(() => usePersistentState('kainbain:test:seeded', 'fallback'));
     expect(result.current[0]).toBe('hello');
   });
 
   it('survives a simulated reload: set, unmount, remount', () => {
-    const { result, unmount } = renderHook(() =>
-      usePersistentState('kainbain:test:reload', ''),
-    );
+    const { result, unmount } = renderHook(() => usePersistentState('kainbain:test:reload', ''));
     act(() => {
       result.current[1]('persisted-value');
     });
     unmount();
-    const { result: next } = renderHook(() =>
-      usePersistentState('kainbain:test:reload', ''),
-    );
+    const { result: next } = renderHook(() => usePersistentState('kainbain:test:reload', ''));
     expect(next.current[0]).toBe('persisted-value');
   });
 
@@ -62,9 +56,7 @@ describe('usePersistentState', () => {
     act(() => {
       result.current[1]('typed');
     });
-    expect(window.localStorage.getItem('kainbain:test:sync')).toBe(
-      JSON.stringify('typed'),
-    );
+    expect(window.localStorage.getItem('kainbain:test:sync')).toBe(JSON.stringify('typed'));
   });
 
   it('debounces writes and flushes the latest value on unmount', () => {
@@ -82,9 +74,7 @@ describe('usePersistentState', () => {
     expect(window.localStorage.getItem('kainbain:test:debounced')).toBeNull();
     // Unmount before the timer fires: latest value must still be flushed.
     unmount();
-    expect(window.localStorage.getItem('kainbain:test:debounced')).toBe(
-      JSON.stringify('ab'),
-    );
+    expect(window.localStorage.getItem('kainbain:test:debounced')).toBe(JSON.stringify('ab'));
   });
 
   it('writes debounced value after the delay elapses', () => {
@@ -98,15 +88,11 @@ describe('usePersistentState', () => {
     act(() => {
       vi.advanceTimersByTime(800);
     });
-    expect(window.localStorage.getItem('kainbain:test:delay')).toBe(
-      JSON.stringify('settled'),
-    );
+    expect(window.localStorage.getItem('kainbain:test:delay')).toBe(JSON.stringify('settled'));
   });
 
   it('clear() removes the key and resets to default', () => {
-    const { result } = renderHook(() =>
-      usePersistentState('kainbain:test:clear', 'default'),
-    );
+    const { result } = renderHook(() => usePersistentState('kainbain:test:clear', 'default'));
     act(() => {
       result.current[1]('custom');
     });
@@ -135,9 +121,7 @@ describe('usePersistentState', () => {
     window.localStorage.getItem.mockImplementationOnce(() => {
       throw new Error('denied');
     });
-    const { result } = renderHook(() =>
-      usePersistentState('kainbain:test:unreadable', 'default'),
-    );
+    const { result } = renderHook(() => usePersistentState('kainbain:test:unreadable', 'default'));
     expect(result.current[0]).toBe('default');
   });
 
@@ -157,9 +141,7 @@ describe('usePersistentState', () => {
   });
 
   it('ignores cross-tab events when syncAcrossTabs is false', () => {
-    const { result } = renderHook(() =>
-      usePersistentState('kainbain:test:local', 'a'),
-    );
+    const { result } = renderHook(() => usePersistentState('kainbain:test:local', 'a'));
     act(() => {
       window.dispatchEvent(
         new StorageEvent('storage', {
@@ -186,9 +168,7 @@ describe('usePersistentState', () => {
   });
 
   it('supports lazy default initializers', () => {
-    const { result } = renderHook(() =>
-      usePersistentState('kainbain:test:lazy', () => 'computed'),
-    );
+    const { result } = renderHook(() => usePersistentState('kainbain:test:lazy', () => 'computed'));
     expect(result.current[0]).toBe('computed');
   });
 });

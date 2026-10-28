@@ -86,9 +86,7 @@ describe('ReviewCommentThread', () => {
 
   it('ignores a second click while a mutation is pending (single-flight)', async () => {
     let release;
-    handlers.onDelete = vi.fn(
-      () => new Promise((resolve) => setTimeout(() => resolve(true), 30)),
-    );
+    handlers.onDelete = vi.fn(() => new Promise((resolve) => setTimeout(() => resolve(true), 30)));
     render(<ReviewCommentThread comment={baseComment} {...handlers} />);
     const deleteBtn = screen.getByLabelText('Delete comment');
     fireEvent.click(deleteBtn);

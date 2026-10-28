@@ -66,10 +66,9 @@ export function QuickActionsPanel({ tasks = [] }) {
         <div className="text-xs text-text-muted">
           <p>Select tasks to enable actions.</p>
           <p className="mt-1">
-            No tasks selected. In Task Histories, sort/filter to find recent tasks, then
-            tick their checkboxes to pin focused context. For a broader review, leave
-            nothing selected and ask the chat; the agent can inspect recent jobs with
-            its tools.
+            No tasks selected. In Task Histories, sort/filter to find recent tasks, then tick their
+            checkboxes to pin focused context. For a broader review, leave nothing selected and ask
+            the chat; the agent can inspect recent jobs with its tools.
           </p>
         </div>
       ) : (

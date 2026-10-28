@@ -5,13 +5,21 @@ import '@testing-library/jest-dom';
 import { QueueOrderWidget } from './QueueOrderWidget';
 
 test('empty queue reads as idle-waiting while the scheduler runs', () => {
-  render(<QueueOrderWidget scheduledQueue={[]} engineState={{ status: 'idle' }} schedulerRunning />);
+  render(
+    <QueueOrderWidget scheduledQueue={[]} engineState={{ status: 'idle' }} schedulerRunning />,
+  );
   expect(screen.getByText('Queue is Clear')).toBeInTheDocument();
   expect(screen.getByText(/waiting for work/i)).toBeInTheDocument();
 });
 
 test('empty queue reads as stopped only when the scheduler is explicitly off', () => {
-  render(<QueueOrderWidget scheduledQueue={[]} engineState={{ status: 'idle' }} schedulerRunning={false} />);
+  render(
+    <QueueOrderWidget
+      scheduledQueue={[]}
+      engineState={{ status: 'idle' }}
+      schedulerRunning={false}
+    />,
+  );
   expect(screen.getByText('Scheduler Stopped')).toBeInTheDocument();
   expect(screen.queryByText('Queue is Clear')).not.toBeInTheDocument();
 });
@@ -26,7 +34,13 @@ test('queued items still render when work exists', () => {
   render(
     <QueueOrderWidget
       scheduledQueue={[
-        { id: 'task-1', title: 'Do things', projectName: 'P', currentStageName: 'Work', queueOrder: 1 },
+        {
+          id: 'task-1',
+          title: 'Do things',
+          projectName: 'P',
+          currentStageName: 'Work',
+          queueOrder: 1,
+        },
       ]}
       engineState={{ status: 'idle' }}
       schedulerRunning
@@ -42,9 +56,30 @@ test('only the engine owner renders active with a stale runner present', () => {
   const { container } = render(
     <QueueOrderWidget
       scheduledQueue={[
-        { id: 'task-b', title: 'Stale runner', projectName: 'P', currentStageName: 'Work', queueOrder: 1, status: 'running_agent' },
-        { id: 'task-a', title: 'Engine owner', projectName: 'P', currentStageName: 'Work', queueOrder: 2, status: 'running_agent' },
-        { id: 'task-c', title: 'Queued work', projectName: 'P', currentStageName: 'Work', queueOrder: 3, status: 'in_stage' },
+        {
+          id: 'task-b',
+          title: 'Stale runner',
+          projectName: 'P',
+          currentStageName: 'Work',
+          queueOrder: 1,
+          status: 'running_agent',
+        },
+        {
+          id: 'task-a',
+          title: 'Engine owner',
+          projectName: 'P',
+          currentStageName: 'Work',
+          queueOrder: 2,
+          status: 'running_agent',
+        },
+        {
+          id: 'task-c',
+          title: 'Queued work',
+          projectName: 'P',
+          currentStageName: 'Work',
+          queueOrder: 3,
+          status: 'in_stage',
+        },
       ]}
       engineState={{ status: 'running', activeTaskId: 'task-a' }}
       schedulerRunning

@@ -104,10 +104,7 @@ describe('useLogViewerState', () => {
     expect(activity.result.current.search).toBe('timeout');
     activity.unmount();
     clearStorage();
-    window.localStorage.setItem(
-      'kainbain:taskLogs:t7:search',
-      JSON.stringify('legacy-query'),
-    );
+    window.localStorage.setItem('kainbain:taskLogs:t7:search', JSON.stringify('legacy-query'));
     const task = renderHook(() => useLogViewerState({ surface: 'task', taskId: 't7' }));
     expect(task.result.current.search).toBe('legacy-query');
   });

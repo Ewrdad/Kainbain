@@ -60,9 +60,7 @@ test('checkpoint rows share one equal-width layout so PR buttons align with Appr
   // above): byte-identity with master's Copy Checkout block is what keeps
   // the branch merge to a single button.
   for (const wrapper of wrappers.slice(2)) {
-    expect(wrapper.className.split(/\s+/)).toEqual(
-      expect.arrayContaining(['flex-1']),
-    );
+    expect(wrapper.className.split(/\s+/)).toEqual(expect.arrayContaining(['flex-1']));
     expect(wrapper.className.split(/\s+/)).not.toContain('min-w-0');
   }
   // Both rows must use the same gap so the outer edges line up.

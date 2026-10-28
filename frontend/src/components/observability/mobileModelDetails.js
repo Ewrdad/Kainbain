@@ -21,8 +21,7 @@ import { isAutomatedStage } from '../stageTypes';
  ***/
 export function resolveMobileModelDetails(activeTask = null, engineState = {}) {
   const hasTask =
-    !!activeTask &&
-    (typeof activeTask !== 'object' || Object.keys(activeTask).length > 0);
+    !!activeTask && (typeof activeTask !== 'object' || Object.keys(activeTask).length > 0);
   const modelRef = activeTask?.modelDetails?.key || activeTask?.model || null;
   const model = formatModelRef(modelRef);
   const harness = activeTask?.harness || model.harness || 'Unknown';

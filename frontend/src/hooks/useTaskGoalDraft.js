@@ -40,10 +40,7 @@ export function useTaskGoalDraft({
   // Local draft cache for the goal editor: text is cached on every keystroke
   // and only dropped once the backend confirms the PATCH. A draft restored on
   // reopen survives a slow connection (the reported close/reopen data loss).
-  const { draftEntry, cacheDraft, confirmReceived } = useTaskDraftCache(
-    taskId,
-    activeProjectId,
-  );
+  const { draftEntry, cacheDraft, confirmReceived } = useTaskDraftCache(taskId, activeProjectId);
 
   const [title, setTitle] = useState(() => draftEntry?.value ?? serverGoal);
 

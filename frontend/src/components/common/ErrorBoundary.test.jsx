@@ -15,7 +15,7 @@ describe('ErrorBoundary', () => {
     render(
       <ErrorBoundary>
         <ProblemChild shouldThrow={false} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
     expect(screen.getByText('Healthy Child Content')).toBeInTheDocument();
   });
@@ -25,7 +25,7 @@ describe('ErrorBoundary', () => {
     render(
       <ErrorBoundary name="Workflow">
         <ProblemChild shouldThrow={true} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     expect(screen.getByRole('alert')).toBeInTheDocument();
@@ -43,7 +43,7 @@ describe('ErrorBoundary', () => {
     render(
       <ErrorBoundary onReset={onReset}>
         <ProblemChild shouldThrow={true} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Try to Recover/i }));

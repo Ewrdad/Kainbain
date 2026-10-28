@@ -229,9 +229,12 @@ describe('useModelCatalog alias entry', () => {
       models: [{ id: 'fetched-model', name: 'Fetched', provider: 'google' }],
       harnesses: [{ id: 'pi', label: 'pi', description: 'pi', models: [] }],
     });
-    const { result, rerender } = renderHook(({ aliases }) => useModelCatalog(FALLBACK, { aliases }), {
-      initialProps: { aliases: [] },
-    });
+    const { result, rerender } = renderHook(
+      ({ aliases }) => useModelCatalog(FALLBACK, { aliases }),
+      {
+        initialProps: { aliases: [] },
+      },
+    );
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);

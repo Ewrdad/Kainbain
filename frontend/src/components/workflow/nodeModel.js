@@ -76,13 +76,11 @@ export function filterBoardTasksWithTags({
 
     const normalizedSystemFilters = normalizeSystemFilterTokens(systemFilters);
     if (normalizedSystemFilters.length > 0) {
-      const matchers = normalizedSystemFilters.map((id) => () =>
-        systemFilterMatches(id, task, stages),
+      const matchers = normalizedSystemFilters.map(
+        (id) => () => systemFilterMatches(id, task, stages),
       );
       const passes =
-        tagMode === 'all'
-          ? matchers.every((match) => match())
-          : matchers.some((match) => match());
+        tagMode === 'all' ? matchers.every((match) => match()) : matchers.some((match) => match());
       if (!passes) return false;
     }
 

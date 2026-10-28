@@ -22,9 +22,9 @@ export const FAILURE_MESSAGE_PREVIEW_MAX = 300;
  * @returns {string|null} Trimmed reason, or null when there is nothing to show.
  ***/
 export function getFailureReason(entry) {
-	if (!entry || typeof entry.reason !== "string") return null;
-	const reason = entry.reason.trim();
-	return reason ? reason : null;
+  if (!entry || typeof entry.reason !== 'string') return null;
+  const reason = entry.reason.trim();
+  return reason ? reason : null;
 }
 
 /***
@@ -38,7 +38,7 @@ export function getFailureReason(entry) {
  * @returns {boolean} True when a non-blank reason exists.
  ***/
 export function hasFailureDetails(entry) {
-	return getFailureReason(entry) !== null;
+  return getFailureReason(entry) !== null;
 }
 
 /***
@@ -54,8 +54,8 @@ export function hasFailureDetails(entry) {
  * @returns {string|null} Trimmed kind, or null when none was recorded.
  ***/
 export function getFailureKind(task) {
-	const kind = task?.lastError?.failureKind;
-	return typeof kind === "string" && kind.trim() ? kind.trim() : null;
+  const kind = task?.lastError?.failureKind;
+  return typeof kind === 'string' && kind.trim() ? kind.trim() : null;
 }
 
 /***
@@ -70,7 +70,7 @@ export function getFailureKind(task) {
  * @returns {boolean} True when the recorded kind is "rejected".
  ***/
 export function isRejectedTask(task) {
-	return getFailureKind(task) === "rejected";
+  return getFailureKind(task) === 'rejected';
 }
 
 /***
@@ -84,10 +84,10 @@ export function isRejectedTask(task) {
  * @returns {string} First line, truncated with an ellipsis when too long.
  ***/
 export function firstLine(text, max = FAILURE_REASON_PREVIEW_MAX) {
-	if (typeof text !== "string") return "";
-	const line = text.split("\n", 1)[0].trim();
-	if (line.length <= max) return line;
-	return `${line.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+  if (typeof text !== 'string') return '';
+  const line = text.split('\n', 1)[0].trim();
+  if (line.length <= max) return line;
+  return `${line.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
 }
 
 /***
@@ -105,10 +105,10 @@ export function firstLine(text, max = FAILURE_REASON_PREVIEW_MAX) {
  * when capped, plus whether the message exceeded the cap.
  ***/
 export function truncateFailureMessage(text, max = FAILURE_MESSAGE_PREVIEW_MAX) {
-	if (typeof text !== "string") return { preview: "", truncated: false };
-	if (text.length <= max) return { preview: text, truncated: false };
-	return {
-		preview: `${text.slice(0, Math.max(0, max - 1)).trimEnd()}…`,
-		truncated: true,
-	};
+  if (typeof text !== 'string') return { preview: '', truncated: false };
+  if (text.length <= max) return { preview: text, truncated: false };
+  return {
+    preview: `${text.slice(0, Math.max(0, max - 1)).trimEnd()}…`,
+    truncated: true,
+  };
 }

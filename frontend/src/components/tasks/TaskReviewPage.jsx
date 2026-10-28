@@ -192,13 +192,16 @@ export function TaskReviewPage({ task: propTask, onBack }) {
     return undefined;
   }, [lastReviewEvent, data, review]);
 
-  const scrollToFile = useCallback((path) => {
-    setActiveTab('files');
-    requestAnimationFrame(() => {
-      const el = document.querySelector(`[data-file-path="${CSS.escape(path)}"]`);
-      scrollIntoViewRespectingMotion(el, { behavior: 'smooth', block: 'start' });
-    });
-  }, [setActiveTab]);
+  const scrollToFile = useCallback(
+    (path) => {
+      setActiveTab('files');
+      requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-file-path="${CSS.escape(path)}"]`);
+        scrollIntoViewRespectingMotion(el, { behavior: 'smooth', block: 'start' });
+      });
+    },
+    [setActiveTab],
+  );
 
   /***
    * MARK: handlePass

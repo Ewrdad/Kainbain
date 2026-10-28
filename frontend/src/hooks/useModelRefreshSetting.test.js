@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useModelRefreshSetting } from './useModelRefreshSetting';
-import { MODEL_REFRESH_FLAG_ENV, MODEL_REFRESH_CONFIG_KEY } from '../components/settings/modelRefreshFlag';
+import {
+  MODEL_REFRESH_FLAG_ENV,
+  MODEL_REFRESH_CONFIG_KEY,
+} from '../components/settings/modelRefreshFlag';
 
 /***
  * MARK: useModelRefreshSetting tests
@@ -27,7 +30,9 @@ afterEach(() => {
 
 describe('useModelRefreshSetting', () => {
   it('is enabled by default when the backend omits the key', async () => {
-    api.getConfigSpec.mockResolvedValue({ entries: [{ key: 'modelsHarnessTimeoutMs', value: 8000 }] });
+    api.getConfigSpec.mockResolvedValue({
+      entries: [{ key: 'modelsHarnessTimeoutMs', value: 8000 }],
+    });
     const { result } = renderHook(() => useModelRefreshSetting());
 
     await waitFor(() => {
@@ -87,10 +92,9 @@ describe('useModelRefreshSetting', () => {
   });
 
   it('makes no config request while disabled and resolves once enabled', async () => {
-    const { result, rerender } = renderHook(
-      ({ enabled }) => useModelRefreshSetting(enabled),
-      { initialProps: { enabled: false } },
-    );
+    const { result, rerender } = renderHook(({ enabled }) => useModelRefreshSetting(enabled), {
+      initialProps: { enabled: false },
+    });
 
     // A closed always-mounted dialog pays no /status/config read on app load.
     expect(api.getConfigSpec).not.toHaveBeenCalled();

@@ -66,8 +66,16 @@ describe('SubsystemHealthWidget', () => {
         healthState={{
           checks: {
             ...baseHealth.checks,
-            litellm: { status: 'disabled', latencyMs: null, message: 'LiteLLM not detected (optional)' },
-            ollamaCloud: { status: 'unconfigured', latencyMs: null, message: 'Ollama Cloud unreachable (optional)' },
+            litellm: {
+              status: 'disabled',
+              latencyMs: null,
+              message: 'LiteLLM not detected (optional)',
+            },
+            ollamaCloud: {
+              status: 'unconfigured',
+              latencyMs: null,
+              message: 'Ollama Cloud unreachable (optional)',
+            },
           },
         }}
         connectionStatus="connected"

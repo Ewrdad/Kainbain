@@ -37,8 +37,6 @@ describe('Announcer', () => {
 
   it('RouteAnnouncer voices the active view', () => {
     render(<RouteAnnouncer view="settings" />);
-    expect(screen.getByTestId('a11y-announcer')).toHaveTextContent(
-      'Project settings loaded.',
-    );
+    expect(screen.getByTestId('a11y-announcer')).toHaveTextContent('Project settings loaded.');
   });
 });

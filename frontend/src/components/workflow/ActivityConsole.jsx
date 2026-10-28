@@ -171,9 +171,7 @@ export function ActivityConsole({
                           onClick={() => setAutoScroll((v) => !v)}
                           aria-pressed={autoScroll}
                           className={`px-2 py-1 rounded text-[10px] uppercase font-bold flex items-center gap-1 transition-colors cursor-pointer min-h-[32px] border ${
-                            autoScroll
-                              ? CONSOLE_CHROME.autoScrollOn
-                              : CONSOLE_CHROME.autoScrollOff
+                            autoScroll ? CONSOLE_CHROME.autoScrollOn : CONSOLE_CHROME.autoScrollOff
                           }`}
                         >
                           <span>{autoScroll ? 'Auto-scroll ON' : 'Auto-scroll OFF'}</span>

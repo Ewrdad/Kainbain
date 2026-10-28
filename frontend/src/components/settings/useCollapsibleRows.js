@@ -89,8 +89,7 @@ function pruneCollapsed(collapsed, liveKeys) {
  ***/
 export function useCollapsibleRows(count, options) {
   const safeCount = sanitizeRowCount(count);
-  const startCollapsed =
-    typeof options === 'boolean' ? options : Boolean(options?.startCollapsed);
+  const startCollapsed = typeof options === 'boolean' ? options : Boolean(options?.startCollapsed);
   const instancePrefix = useId().replace(/[^a-zA-Z0-9_-]/g, '');
 
   // The sequence lives in state (never a render-touched ref), so StrictMode

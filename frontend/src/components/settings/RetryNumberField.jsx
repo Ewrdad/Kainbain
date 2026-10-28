@@ -15,14 +15,20 @@ import React from 'react';
  * @param {string} [props.placeholder] - Placeholder showing the global default.
  * @param {string} [props.step] - Number-input step ('1' for counts, '0.5' for minute timeouts).
  ***/
-export function RetryNumberField({ id, label, value, onChange, error, help, placeholder, step = '1' }) {
+export function RetryNumberField({
+  id,
+  label,
+  value,
+  onChange,
+  error,
+  help,
+  placeholder,
+  step = '1',
+}) {
   const isSet = value !== '' && value !== null && value !== undefined;
   return (
     <div className="flex flex-col gap-2">
-      <label
-        htmlFor={id}
-        className="text-xs font-bold uppercase text-text-muted tracking-wider"
-      >
+      <label htmlFor={id} className="text-xs font-bold uppercase text-text-muted tracking-wider">
         {label}
       </label>
       <input

@@ -114,8 +114,8 @@ export function StageSettingsDrawer({
               }}
             />
             <p className="text-[10px] text-text-muted font-mono">
-              Tags let you filter the board down to a subset of stages (e.g. split a
-              long pipeline between PO and Dev views).
+              Tags let you filter the board down to a subset of stages (e.g. split a long pipeline
+              between PO and Dev views).
             </p>
 
             {/* Stage Type Selector */}

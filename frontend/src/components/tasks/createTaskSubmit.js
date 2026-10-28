@@ -22,7 +22,10 @@ export function formatFileReference(filePath) {
  * @returns {string} The suggested title.
  ***/
 export function defaultFileTaskTitle(filePath) {
-  const baseName = String(filePath || '').split('/').pop() || 'file';
+  const baseName =
+    String(filePath || '')
+      .split('/')
+      .pop() || 'file';
   return `Cleanup: ${baseName}`;
 }
 

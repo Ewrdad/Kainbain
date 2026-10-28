@@ -29,8 +29,7 @@ const tasks = [
   { id: 't2', goal: 'Dev work item', currentStageId: 's4', status: 'in_stage' },
 ];
 
-const sectionFor = (container, id) =>
-  container.querySelector(`section[data-stage-id="${id}"]`);
+const sectionFor = (container, id) => container.querySelector(`section[data-stage-id="${id}"]`);
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -38,10 +37,13 @@ beforeEach(() => {
   // Hermetic HTTP boundary: useModelCatalog fetches /compute/models on mount.
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => new Response(
-      JSON.stringify({ models: [], harnesses: [] }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } },
-    )),
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ models: [], harnesses: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    ),
   );
 });
 
