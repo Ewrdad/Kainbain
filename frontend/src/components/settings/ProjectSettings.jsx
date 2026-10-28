@@ -17,7 +17,7 @@ import { SettingsSearchInput } from './SettingsSearchInput';
  *   App-wide UI & Workspace customization is NOT one of them — it lives in
  *   System Settings (SystemSettingsPage, `/system-settings`); per-project
  *   visual branding stays here as the accent-color picker inside the form.
- * @example PROJECT_SETTINGS_TABS.map((tab) => tab.id) => ['project', 'aliases', 'links', 'files', 'workflows', 'skills']
+ * @example PROJECT_SETTINGS_TABS.map((tab) => tab.id) => ['project', 'aliases', 'files', 'workflows', 'skills']
  ***/
 export const PROJECT_SETTINGS_TABS = [
   {
@@ -37,19 +37,11 @@ export const PROJECT_SETTINGS_TABS = [
     sharesProjectForm: true,
   },
   {
-    id: 'links',
-    label: 'App Links',
-    buttonIcon: '🔗',
-    heading: 'Application Links & Health',
-    headingIcon: '🚀',
-    sharesProjectForm: true,
-  },
-  {
     id: 'files',
-    label: 'Files & Repos',
+    label: 'Files & Links',
     buttonIcon: '📁',
-    heading: 'Files & Repositories',
-    headingIcon: '📂',
+    heading: 'Files & Links',
+    headingIcon: '📁',
     sharesProjectForm: true,
   },
   {
@@ -99,8 +91,8 @@ const HIGHLIGHT_HIDE_DELAY_MS = 2100;
  * MARK: ProjectSettings
  * @description A dedicated Project Management / Settings page for configuring
  * the active project across focused tabs — Project (basics + retry/timeouts),
- * Aliases (model aliases), App Links (custom web addresses), Files & Repos
- * (paths and repositories) — plus multiple named workflows, and skills.
+ * Aliases (model aliases), Files & Links (paths, repos, app link) — plus
+ * multiple named workflows, and skills.
  * App-wide UI & Workspace customization lives in System Settings
  * (SystemSettingsPage, `/system-settings`). Distinct from that platform-scoped
  * screen, this page is per-project and keeps the `/settings` route.

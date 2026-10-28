@@ -13,7 +13,6 @@ import { parseRetrySettings } from './projectSettingsValidation';
 import { ProjectBasicsSection } from './ProjectBasicsSection';
 import { RetryTimeoutsSection } from './RetryTimeoutsSection';
 import { PathsAndReposSection } from './PathsAndReposSection';
-import { LinksSection } from './LinksSection';
 
 /***
  * MARK: ProjectSettingsForm
@@ -45,7 +44,7 @@ export function ProjectSettingsForm({
 }) {
   // Fail-safe: an unknown section id renders the project tab instead of a
   // blank page.
-  const activeFormSection = ['project', 'aliases', 'links', 'files'].includes(section)
+  const activeFormSection = ['project', 'aliases', 'files'].includes(section)
     ? section
     : 'project';
   const {
@@ -639,43 +638,6 @@ export function ProjectSettingsForm({
             </p>
           )}
         </div>
-      )}
-
-      {activeFormSection === 'links' && (
-        <LinksSection
-          appUrl={project?.appStatus?.url || ''}
-          setAppUrl={(value) => {
-            markDirty();
-            const next = project ? { ...project } : {};
-            next.appStatus = { ...next.appStatus, url: value };
-            updateProjectInState?.(next);
-          }}
-          networkHost={project?.appStatus?.networkHost || ''}
-          setNetworkHost={(value) => {
-            markDirty();
-            const next = project ? { ...project } : {};
-            next.appStatus = { ...next.appStatus, networkHost: value };
-            updateProjectInState?.(next);
-          }}
-          healthEndpoint={project?.appStatus?.healthEndpoint || ''}
-          setHealthEndpoint={(value) => {
-            markDirty();
-            const next = project ? { ...project } : {};
-            next.appStatus = { ...next.appStatus, healthEndpoint: value };
-            updateProjectInState?.(next);
-          }}
-          status={project?.appStatus?.status || 'running'}
-          setStatus={(value) => {
-            markDirty();
-            const next = project ? { ...project } : {};
-            next.appStatus = { ...next.appStatus, status: value };
-            updateProjectInState?.(next);
-          }}
-          clearValidationError={() => setValidationError('')}
-          project={project}
-          projectId={projectId}
-          updateProjectInState={updateProjectInState}
-        />
       )}
 
       {activeFormSection === 'files' && (
