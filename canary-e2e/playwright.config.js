@@ -1,6 +1,7 @@
 // Canary suite target selection.
 
 const { execFileSync } = require("node:child_process");
+const fs = require("node:fs");
 const path = require("node:path");
 
 // CANARY_BASE_URL / CANARY_API_URL (both, verbatim): the suite drives the
@@ -120,17 +121,50 @@ function drainScratchPorts() {
 }
 
 drainScratchPorts();
-// Fixed scratch roots (not per-run tmpdir) so reuseExistingServer finds a
-// coherent backend when a previous scratch stack is still up. Both roots are
-// scratch: the specs create throwaway projects, whose notes dirs must never
-// land in the live SilverBullet notes space.
-const scratchProjectsRoot = "/tmp/kb-canary-e2e/projects";
-const scratchNotesRoot = "/tmp/kb-canary-e2e/notes";
+// Per-run namespaced scratch roots: every invocation gets a hermetic backend
+// state dir, so tasks/projects/workflows left behind by an earlier run (or a
+// concurrent local run) can never leak into this run's boards, queue-depth
+// counts, or card ordering. The tag travels via KB_CANARY_RUN_TAG (deploy
+// sets a fresh tag per deploy; concurrent runs must use distinct tags).
+// Local runs without a tag keep the historical "default" roots. Both roots
+// are scratch: the specs create throwaway projects, whose notes dirs must
+// never land in the live SilverBullet notes space.
+const scratchRunTag = /[A-Za-z0-9][A-Za-z0-9_.-]{0,63}/.test(
+	String(process.env.KB_CANARY_RUN_TAG || ""),
+)
+	? String(process.env.KB_CANARY_RUN_TAG)
+	: "default";
+const scratchRunBase = path.join("/tmp", "kb-canary-e2e", scratchRunTag);
+const scratchProjectsRoot = path.join(scratchRunBase, "projects");
+const scratchNotesRoot = path.join(scratchRunBase, "notes");
 // Own containment-state file: the engine persists the WP1 circuit-breaker
 // trip in ~/.kainbain/engine/circuit.json by default, so a scratch trip
 // would poison prod's next boot (and a stale prod trip would 409 every
-// scratch /execute). Scratch stacks must never share it.
-const scratchCircuitFile = "/tmp/kb-canary-e2e/engine/circuit.json";
+// scratch /execute). Scratch stacks must never share it. global-setup.js
+// derives the same path from KB_CANARY_RUN_TAG, so keep the derivation in
+// sync (base + "engine/circuit.json").
+const scratchCircuitFile = path.join(scratchRunBase, "engine", "circuit.json");
+// Best-effort reclamation of stale runs: drop sibling run dirs older than a
+// day (never the current tag, never anything else under /tmp). A crashed run
+// otherwise leaves its projects on disk forever; concurrent live runs are
+// hours old at most, so a 24h floor can never reap one.
+try {
+	const base = path.join("/tmp", "kb-canary-e2e");
+	for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
+		if (!entry.isDirectory() || entry.name === scratchRunTag) continue;
+		const dir = path.join(base, entry.name);
+		try {
+			const ageMs = Date.now() - fs.statSync(dir).mtimeMs;
+			if (ageMs > 24 * 60 * 60 * 1000) {
+				fs.rmSync(dir, { recursive: true, force: true });
+			}
+		} catch {
+			// One unreclaimable sibling must never block the suite.
+		}
+	}
+} catch {
+	// Missing base dir on first ever run: the backend creates what it needs.
+}
 
 // The canary suite drives a single live backend (Project A) whose session
 // tree and tasks are mutated by every test. Run serially so tests don't

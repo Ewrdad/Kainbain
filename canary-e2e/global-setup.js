@@ -13,7 +13,15 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 async function globalSetup() {
-	const file = "/tmp/kb-canary-e2e/engine/circuit.json";
+	// Same run-tag derivation as playwright.config.js (base +
+	// "engine/circuit.json"): the trip reset must land in THIS run's
+	// containment file, never a sibling run's or prod's.
+	const tag = /[A-Za-z0-9][A-Za-z0-9_.-]{0,63}/.test(
+		String(process.env.KB_CANARY_RUN_TAG || ""),
+	)
+		? String(process.env.KB_CANARY_RUN_TAG)
+		: "default";
+	const file = path.join("/tmp", "kb-canary-e2e", tag, "engine", "circuit.json");
 	try {
 		fs.rmSync(file, { force: true });
 	} catch {

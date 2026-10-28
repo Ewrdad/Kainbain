@@ -1310,6 +1310,10 @@ if [ "$MODE" = "prod" ]; then
 			# Drain scratch ports (3399, 5299) to prevent collisions
 			log "🚦 Draining scratch ports (3399, 5299) before canary E2E..."
 			scripts/drain-ports.sh 3399 5299
+			# Hermetic canary state: a fresh run tag per deploy so tasks left
+			# behind by earlier runs can never leak into this run's boards or
+			# queue-depth counts (see playwright.config.js).
+			export KB_CANARY_RUN_TAG="deploy-${BUILD_NUMBER:-0}-$(date +%s)"
 			run_gate "canary-e2e" "npm run test:canary" npm run test:canary
 		fi
 
