@@ -100,6 +100,15 @@ test('untrimmed and non-string status words normalise so dot, word, and aria agr
   cleanup();
 });
 
+test('non-string stage and task values fail closed instead of leaking objects', () => {
+  renderBox({ ...runningEntry, taskTitleFirstLine: { text: 'Ship it' }, stageName: 42 });
+  const box = screen.getByTestId('runner-box-bravo');
+  expect(box).toHaveTextContent('Untitled Task');
+  expect(box).toHaveTextContent('—');
+  expect(box.innerHTML).not.toContain('[object Object]');
+  expect(box.getAttribute('aria-label')).toBe('Runner Bravo, running');
+});
+
 test('missing stage renders an em dash and long names keep full titles', () => {
   const longName = `Runner with a very long name ${'x'.repeat(300)}`;
   const longTask = `Task with a very long title ${'y'.repeat(300)}`;

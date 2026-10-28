@@ -41,12 +41,24 @@ export function RunnerBox({ entry, onOpenTask }) {
       : 'idle';
   const style = getRunnerBoxStyle(statusWord);
   const testId = `runner-box-${runnerId}`;
-  const label = buildRunnerBoxAriaLabel({ ...entry, runnerLabel: runnerName, statusWord });
+  // Explicit fields only (never `{...entry}`): a spread would invoke every
+  // getter on a hand-built prop, so one poisoned field could blank the bar.
+  const label = buildRunnerBoxAriaLabel({
+    runnerLabel: runnerName,
+    statusWord,
+    taskTitleFirstLine: entry?.taskTitleFirstLine,
+    stageName: entry?.stageName,
+  });
   const taskTitle =
     typeof entry?.taskTitleFirstLine === 'string' && entry.taskTitleFirstLine !== ''
       ? entry.taskTitleFirstLine
       : 'Untitled Task';
-  const stageLine = entry?.stageName ? `Stage: ${entry.stageName}` : '—';
+  // Only a non-blank string names a stage: anything else (a bad-merge object,
+  // a number) would render as "Stage: [object Object]" beside honest data.
+  const stageLine =
+    typeof entry?.stageName === 'string' && entry.stageName.trim() !== ''
+      ? `Stage: ${entry.stageName}`
+      : '—';
 
   const frameClass =
     'flex min-w-[120px] max-w-[180px] flex-col justify-center gap-0.5 rounded border border-border-standard bg-surface-container px-2 py-1 text-left';

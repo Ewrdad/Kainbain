@@ -129,8 +129,13 @@ export const buildRunnerBoxAriaLabel = (entry) => {
   const status =
     typeof rawStatus === 'string' && rawStatus.trim() !== '' ? rawStatus.trim() : 'idle';
   let text = `Runner ${label}, ${status}`;
-  if (entry?.taskTitleFirstLine) text += `, task ${entry.taskTitleFirstLine}`;
-  if (entry?.stageName) text += `, stage ${entry.stageName}`;
+  // Task and stage ride along only as non-blank strings: anything else (a
+  // number from a hand-built prop, an object from a bad merge) would
+  // stringify into the accessible name as "5" or "[object Object]".
+  const rawTask = entry?.taskTitleFirstLine;
+  if (typeof rawTask === 'string' && rawTask.trim() !== '') text += `, task ${rawTask.trim()}`;
+  const rawStage = entry?.stageName;
+  if (typeof rawStage === 'string' && rawStage.trim() !== '') text += `, stage ${rawStage.trim()}`;
   return text;
 };
 

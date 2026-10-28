@@ -76,6 +76,18 @@ status word always renders as text and the dot is `aria-hidden`.
   `check-jsdoc-example` gates pass; `npm run build --prefix frontend` green.
   No api files touched (`test:api` vite failure remains pre-existing and out
   of scope).
+- Cleanup hardening 2 (2026-10-28): `buildRunnerBoxAriaLabel` only appends
+  task/stage when they are non-blank strings (an object from a bad merge
+  can no longer leak "[object Object]" into the accessible name);
+  `RunnerBox` builds the label from explicit fields instead of `{...entry}`
+  so one poisoned getter cannot blank the bar, and the `Stage:` line only
+  renders for non-blank strings (else the `—` fallback). New tests: object
+  task/stage label case; non-string task/stage box case. Full
+  `npm run test --prefix frontend`: 284 files / 3858 tests green; eslint
+  clean on all touched files; both gates pass; `npm run build --prefix
+  frontend` green. Ops continuity unchanged: kill switch
+  (`uiPreferences.showRunnerBoxes === false`), no stored-profile migration,
+  no backend, revert is deleting the `showRunnerBoxes` branch.
 
 ## Verification (this session)
 

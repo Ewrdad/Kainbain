@@ -176,6 +176,27 @@ test('box text trims strings, coerces primitives, and fails closed', () => {
   expect(coerceBoxText('   ', coerceBoxText('  b1 ', 'unknown'))).toBe('b1');
 });
 
+test('aria label drops non-string task and stage instead of leaking objects', () => {
+  // A bad merge can hand the box an object where a string belongs: the
+  // accessible name must stay clean, never "[object Object]".
+  expect(
+    buildRunnerBoxAriaLabel({
+      runnerLabel: 'bravo',
+      statusWord: 'running',
+      taskTitleFirstLine: { text: 'Ship it' },
+      stageName: ['Plan'],
+    }),
+  ).toBe('Runner bravo, running');
+  expect(
+    buildRunnerBoxAriaLabel({
+      runnerLabel: 'bravo',
+      statusWord: 'running',
+      taskTitleFirstLine: '   ',
+      stageName: '',
+    }),
+  ).toBe('Runner bravo, running');
+});
+
 test('aria label trims whitespace and fails closed on blank values', () => {
   expect(
     buildRunnerBoxAriaLabel({ runnerLabel: '  bravo  ', statusWord: '  running  ' }),
