@@ -331,12 +331,18 @@ test.describe("Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness)", () => {
     // Drive the task to waiting_human (a checkpoint state) so the detail
     // page renders the human-review badge and Approve/Reject controls —
     // a different rendered state than the idle task-detail scan above.
-    await page.request.patch(`${API_BASE}/tasks/${created.id}`, {
+    // The transition response is asserted: a rejected PATCH would leave an
+    // idle task and the heading wait below would blame the wrong layer.
+    const patched = await page.request.patch(`${API_BASE}/tasks/${created.id}`, {
       data: { projectId, status: "waiting_human" },
     });
+    expect(patched.ok(), `PATCH to waiting_human failed: ${await patched.text()}`).toBe(true);
     await page.goto(`${APP_URL}/#/tasks/${created.id}`, { waitUntil: "domcontentloaded" });
+    // Loaded-host budget (60s, like the other full-run specs): the detail
+    // page fans out to task, project, workflow, models, and runners fetches,
+    // which serialize behind a busy scratch backend late in a full shard.
     await expect(page.getByRole("heading", { name: new RegExp(goal, "i") })).toBeVisible({
-      timeout: 15000,
+      timeout: 60000,
     });
     await scanState(page, "task detail / waiting_human");
   });
