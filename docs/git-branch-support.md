@@ -109,6 +109,16 @@ If a merge conflict occurs:
 - The same payload travels machine-readable as `lastError.gitDiagnostics` (`{ kind: "merge-conflict", taskBranch, mainBranch, sourceSha, targetSha, baseSha, strategy, conflictedFiles }`) so failback agents can resolve each listed file and retry the merge stage autonomously.
 - Standard failback options (Previous, Start, Abort, or specific stage) are provided to the operator.
 
+**Snapshot-only conflicts self-heal.** When every conflicted path is an
+engine-regenerated snapshot — `docs/tasks/<id>/task.md` (live state,
+rewritten from store after every stage event) or files under
+`docs/tasks/<id>/assets/` (review attachments) — the stage resolves them
+with the incoming task-branch version and finalizes the merge with an audit
+commit instead of failing. Both sides append to these files on every merge
+attempt, so they conflict structurally rather than from any real
+disagreement. Any conflict touching real code, configs, or task-deliverable
+docs keeps the loud failure path above unchanged.
+
 ### Once the merge has landed
 
 The merge stage has two failure domains. Failures *before* the git merge lands

@@ -9,9 +9,12 @@ vi.mock("node:child_process", () => ({
 import {
 	MERGE_STRATEGY,
 	isBranchMergedInto,
+	isRegeneratedSnapshotPath,
 	abortMerge,
 	buildGitConflictDiagnostics,
 	mergeBranch,
+	partitionMergeConflicts,
+	resolveConflictsWithIncoming,
 } from "./merge.js";
 import { GitError, GitMergeConflictError } from "./errors.js";
 
@@ -238,6 +241,89 @@ describe("mergeBranch", () => {
 
 	it("rejects invalid branch names without spawning", async () => {
 		await expect(mergeBranch("/repo", "--force")).rejects.toBeInstanceOf(GitError);
+		expect(spawnMock).not.toHaveBeenCalled();
+	});
+});
+
+describe("isRegeneratedSnapshotPath", () => {
+	it("accepts task snapshots and review assets only", () => {
+		expect(isRegeneratedSnapshotPath("docs/tasks/abc-123/task.md")).toBe(true);
+		expect(
+			isRegeneratedSnapshotPath("docs/tasks/abc-123/assets/screenshot-live.png"),
+		).toBe(true);
+		expect(isRegeneratedSnapshotPath("src/app.js")).toBe(false);
+		expect(
+			isRegeneratedSnapshotPath("docs/tasks/abc-123/merge-failure-20261028.md"),
+		).toBe(false);
+		expect(isRegeneratedSnapshotPath("docs/tasks/abc-123/other.md")).toBe(false);
+		// Never matches traversal, absolute paths, or option-looking input.
+		expect(isRegeneratedSnapshotPath("docs/tasks/../escape/task.md")).toBe(false);
+		expect(isRegeneratedSnapshotPath("/docs/tasks/abc/task.md")).toBe(false);
+		expect(isRegeneratedSnapshotPath("--theirs")).toBe(false);
+		expect(isRegeneratedSnapshotPath("")).toBe(false);
+		expect(isRegeneratedSnapshotPath(null)).toBe(false);
+		expect(isRegeneratedSnapshotPath(42)).toBe(false);
+	});
+});
+
+describe("partitionMergeConflicts", () => {
+	it("splits snapshots from blocking paths and fails closed on junk", () => {
+		expect(
+			partitionMergeConflicts([
+				"docs/tasks/a/task.md",
+				"docs/tasks/b/assets/x.png",
+				"src/code.js",
+			]),
+		).toEqual({
+			snapshots: ["docs/tasks/a/task.md", "docs/tasks/b/assets/x.png"],
+			blocking: ["src/code.js"],
+		});
+		expect(partitionMergeConflicts([])).toEqual({ snapshots: [], blocking: [] });
+		expect(partitionMergeConflicts(null)).toEqual({ snapshots: [], blocking: [] });
+	});
+});
+
+describe("resolveConflictsWithIncoming", () => {
+	beforeEach(() => {
+		spawnMock.mockReset();
+	});
+
+	it("checks out snapshot paths with the incoming version", async () => {
+		spawnMock.mockImplementation(() => fakeChildFromResponse({ stdout: "" }));
+		const resolved = await resolveConflictsWithIncoming("/repo", [
+			"docs/tasks/a/task.md",
+			"docs/tasks/a/assets/shot.png",
+		]);
+		expect(resolved).toEqual([
+			"docs/tasks/a/task.md",
+			"docs/tasks/a/assets/shot.png",
+		]);
+		expect(spawnMock).toHaveBeenCalledWith(
+			"git",
+			[
+				"checkout",
+				"--theirs",
+				"--",
+				"docs/tasks/a/task.md",
+				"docs/tasks/a/assets/shot.png",
+			],
+			expect.objectContaining({ cwd: "/repo" }),
+		);
+	});
+
+	it("fails closed on code conflicts, empties, and junk without spawning", async () => {
+		await expect(
+			resolveConflictsWithIncoming("/repo", [
+				"docs/tasks/a/task.md",
+				"src/code.js",
+			]),
+		).rejects.toBeInstanceOf(GitError);
+		await expect(resolveConflictsWithIncoming("/repo", [])).rejects.toBeInstanceOf(
+			GitError,
+		);
+		await expect(resolveConflictsWithIncoming("/repo", null)).rejects.toBeInstanceOf(
+			GitError,
+		);
 		expect(spawnMock).not.toHaveBeenCalled();
 	});
 });

@@ -66,6 +66,95 @@ export const MERGE_STRATEGY = "merge --no-edit (auto-abort on conflict)";
 
 
 /***
+ * MARK: REGENERATED_SNAPSHOT_PATHS
+ * @description Conflict paths the merge stage may resolve without a human:
+ *   the engine's own live-state snapshots, which regenerate from store
+ *   state on the next task activity. `docs/tasks/<id>/task.md` is rewritten
+ *   by `_saveTaskMarkdown` after every stage event, and
+ *   `docs/tasks/<id>/assets/` holds binary review attachments (screenshots).
+ *   Both sides of a task-branch/main merge append to these files on every
+ *   attempt, so they conflict structurally — never from a real disagreement.
+ *   Anything outside this set (source code, configs, docs written as task
+ *   deliverables) is a genuine conflict and must keep failing loudly.
+ * ***/
+const REGENERATED_SNAPSHOT_PATTERNS = [
+	/^docs\/tasks\/[^/]+\/task\.md$/,
+	/^docs\/tasks\/[^/]+\/assets\/.+$/,
+];
+
+
+/***
+ * MARK: isRegeneratedSnapshotPath
+ * @description Pure predicate: true when a merge-conflicted path is an
+ *   engine-regenerated snapshot (see REGENERATED_SNAPSHOT_PATHS) that the
+ *   merge stage may auto-resolve. Anchored patterns only — absolute paths,
+ *   parent traversal, and option-looking entries never match.
+ * @example isRegeneratedSnapshotPath('docs/tasks/abc/task.md') => true
+ * @param {string} path - Repo-relative conflicted path from git.
+ * @returns {boolean}
+ ***/
+export function isRegeneratedSnapshotPath(path) {
+	if (typeof path !== "string" || path.length === 0) return false;
+	return REGENERATED_SNAPSHOT_PATTERNS.some((re) => re.test(path));
+}
+
+
+/***
+ * MARK: partitionMergeConflicts
+ * @description Splits a merge's unmerged-path list into engine-regenerated
+ *   snapshots (safe to auto-resolve) and blocking paths (genuine conflicts
+ *   that must fail loudly). Pure — no git involved.
+ * @example partitionMergeConflicts(['docs/tasks/a/task.md', 'src/x.js']) => { snapshots: ['docs/tasks/a/task.md'], blocking: ['src/x.js'] }
+ * @param {Array<string>} [conflictedFiles] - Unmerged paths from git.
+ * @returns {{snapshots: Array<string>, blocking: Array<string>}}
+ ***/
+export function partitionMergeConflicts(conflictedFiles) {
+	const files = Array.isArray(conflictedFiles) ? conflictedFiles : [];
+	const snapshots = [];
+	const blocking = [];
+	for (const file of files) {
+		if (isRegeneratedSnapshotPath(file)) snapshots.push(file);
+		else blocking.push(file);
+	}
+	return { snapshots, blocking };
+}
+
+
+/***
+ * MARK: resolveConflictsWithIncoming
+ * @description Resolves already-partitioned snapshot conflicts with the
+ *   incoming (merged-in task branch) version via `git checkout --theirs`.
+ *   Must run while the merge is still in progress (MERGE_HEAD present); the
+ *   caller finalizes with a commit. Fails closed: any blocking path, an
+ *   empty list, or a non-string entry throws GitError and resolves nothing.
+ * @example await resolveConflictsWithIncoming('/repo', ['docs/tasks/a/task.md'])
+ * @param {string} projectCwd
+ * @param {Array<string>} files - Conflicted paths to resolve with theirs.
+ * @returns {Promise<Array<string>>} The resolved paths.
+ ***/
+export async function resolveConflictsWithIncoming(projectCwd, files) {
+	const { snapshots, blocking } = partitionMergeConflicts(files);
+	if (!Array.isArray(files) || files.length === 0) {
+		throw new GitError(
+			"Refusing to auto-resolve merge conflicts: no conflicted files provided",
+		);
+	}
+	if (blocking.length > 0) {
+		throw new GitError(
+			`Refusing to auto-resolve merge conflicts: genuine code conflicts require a human (${blocking.join(", ")})`,
+		);
+	}
+	if (snapshots.length !== files.length) {
+		throw new GitError(
+			"Refusing to auto-resolve merge conflicts: unexpected path entries",
+		);
+	}
+	await git(projectCwd, ["checkout", "--theirs", "--", ...snapshots]);
+	return snapshots;
+}
+
+
+/***
  * MARK: buildGitConflictDiagnostics
  * @description Builds the structured, machine-actionable conflict block that
  *   travels with every GitMergeConflictError into the Tier 3 failback prompt:

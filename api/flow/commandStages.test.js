@@ -12,10 +12,12 @@ class MockGitMergeConflictError extends MockGitError {
 }
 
 const gitMocks = vi.hoisted(() => ({
+	abortMerge: vi.fn(),
 	commitAllIfNeeded: vi.fn(),
 	pushBranchIfRemote: vi.fn(),
 	checkoutBranch: vi.fn(),
 	mergeBranch: vi.fn(),
+	resolveConflictsWithIncoming: vi.fn(),
 	currentBranch: vi.fn(),
 	defaultBranch: vi.fn(),
 	branchExists: vi.fn(),
@@ -59,8 +61,11 @@ vi.mock("../git.js", async () => {
 	return {
 		GitError: MockGitError,
 		GitMergeConflictError: MockGitMergeConflictError,
+		abortMerge: gitMocks.abortMerge,
 		buildGitConflictDiagnostics: actual.buildGitConflictDiagnostics,
 		MERGE_STRATEGY: actual.MERGE_STRATEGY,
+		partitionMergeConflicts: actual.partitionMergeConflicts,
+		resolveConflictsWithIncoming: gitMocks.resolveConflictsWithIncoming,
 		branchExists: gitMocks.branchExists,
 		commitAllIfNeeded: gitMocks.commitAllIfNeeded,
 		countBehindCommits: gitMocks.countBehindCommits,
@@ -304,6 +309,8 @@ describe("executeMergeStage publishing", () => {
 		gitMocks.isBranchMergedInto.mockResolvedValue(false);
 		gitMocks.resolveSha.mockResolvedValue("a".repeat(40));
 		gitMocks.diffRangeNumstat.mockResolvedValue({ stdout: "", stderr: "", code: 0 });
+		gitMocks.abortMerge.mockResolvedValue(undefined);
+		gitMocks.resolveConflictsWithIncoming.mockResolvedValue(["docs/tasks/task-1/task.md"]);
 	});
 
 	function mergeSetup() {
@@ -600,6 +607,79 @@ describe("executeMergeStage publishing", () => {
 			conflictedFiles: ["a.txt"],
 		});
 	});
+
+	it("heals snapshot-only conflicts with task-branch versions and passes", async () => {
+		const conflict = new MockGitMergeConflictError("Merge conflict", [
+			"docs/tasks/task-1/task.md",
+		]);
+		// First (auto-aborting) merge fails; the heal retry keeps the
+		// conflicted state instead of aborting.
+		gitMocks.mergeBranch
+			.mockRejectedValueOnce(conflict)
+			.mockRejectedValueOnce(
+				new MockGitMergeConflictError("Merge conflict", ["docs/tasks/task-1/task.md"]),
+			);
+		// Only the heal-finalize commit reports work; earlier stage
+		// bookkeeping commits stay empty as in the default fixture.
+		gitMocks.commitAllIfNeeded.mockImplementation(async (_cwd, message) =>
+			String(message).includes("auto-resolve regenerated snapshot conflicts")
+				? { committed: true, hash: "heal123" }
+				: { committed: false, hash: null },
+		);
+		const { store, task, stage } = mergeSetup();
+
+		const result = await executeMergeStage(store, {
+			projectId: "proj-1",
+			taskId: "task-1",
+			stage,
+			stages: [stage],
+			cwd: "/repo",
+			execRunner: okRunner,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(store.handleStageFailure).not.toHaveBeenCalled();
+		// Retry ran without the auto-abort so resolution was possible.
+		expect(gitMocks.mergeBranch).toHaveBeenCalledWith("/repo", "kb/task-1", {
+			abortOnConflict: false,
+		});
+		expect(gitMocks.resolveConflictsWithIncoming).toHaveBeenCalledWith("/repo", [
+			"docs/tasks/task-1/task.md",
+		]);
+		expect(task.history.some((entry) =>
+			String(entry.action).includes("auto-resolved regenerated snapshot conflicts"),
+		)).toBe(true);
+		expect(logText(task)).toContain("Auto-resolved snapshot-only conflicts");
+	});
+
+	it("fails loudly when a code file joins the snapshot conflicts", async () => {
+		const conflict = new MockGitMergeConflictError("Merge conflict", [
+			"docs/tasks/task-1/task.md",
+			"src/real-code.js",
+		]);
+		gitMocks.mergeBranch.mockRejectedValue(conflict);
+		const { store, stage } = mergeSetup();
+
+		await executeMergeStage(store, {
+			projectId: "proj-1",
+			taskId: "task-1",
+			stage,
+			stages: [stage],
+			cwd: "/repo",
+			execRunner: okRunner,
+		});
+
+		expect(store.handleStageFailure).toHaveBeenCalledTimes(1);
+		// No heal retry, no resolution, no finalize commit for the merge.
+		expect(gitMocks.mergeBranch).toHaveBeenCalledTimes(1);
+		expect(gitMocks.resolveConflictsWithIncoming).not.toHaveBeenCalled();
+		expect(gitMocks.abortMerge).not.toHaveBeenCalled();
+		const failure = store.handleStageFailure.mock.calls[0][3];
+		expect(failure.conflictedFiles).toEqual([
+			"docs/tasks/task-1/task.md",
+			"src/real-code.js",
+		]);
+	});
 });
 
 describe("ghost-task diagnostics", () => {
@@ -690,6 +770,8 @@ describe("executeMergeStage landed-merge handling", () => {
 		gitMocks.isBranchMergedInto.mockResolvedValue(false);
 		gitMocks.resolveSha.mockResolvedValue("a".repeat(40));
 		gitMocks.diffRangeNumstat.mockResolvedValue({ stdout: "", stderr: "", code: 0 });
+		gitMocks.abortMerge.mockResolvedValue(undefined);
+		gitMocks.resolveConflictsWithIncoming.mockResolvedValue(["docs/tasks/task-1/task.md"]);
 	});
 
 	const failRunner = async () => ({ exitCode: 1, stdout: "", stderr: "boom" });
