@@ -6,8 +6,6 @@ import { ProjectSettingsForm } from './ProjectSettingsForm';
 import { WorkflowManagementPanel } from './WorkflowManagementPanel';
 import { SettingsSearchInput } from './SettingsSearchInput';
 
-
-
 /***
  * MARK: PROJECT_SETTINGS_TABS
  * @description Single source of truth for the Project Settings tab bar: every
@@ -19,14 +17,57 @@ import { SettingsSearchInput } from './SettingsSearchInput';
  *   App-wide UI & Workspace customization is NOT one of them — it lives in
  *   System Settings (SystemSettingsPage, `/system-settings`); per-project
  *   visual branding stays here as the accent-color picker inside the form.
- * @example PROJECT_SETTINGS_TABS.map((tab) => tab.id) => ['project', 'aliases', 'files', 'workflows', 'skills']
+ * @example PROJECT_SETTINGS_TABS.map((tab) => tab.id) => ['project', 'aliases', 'links', 'files', 'workflows', 'skills']
  ***/
 export const PROJECT_SETTINGS_TABS = [
-  { id: 'project', label: 'Project Settings', buttonIcon: '📂', heading: 'Project Configuration', headingIcon: '⚙️', sharesProjectForm: true },
-  { id: 'aliases', label: 'Aliases', buttonIcon: '🏷️', heading: 'Model Aliases', headingIcon: '🏷️', sharesProjectForm: true },
-  { id: 'files', label: 'Files & Links', buttonIcon: '📁', heading: 'Files & Links', headingIcon: '📁', sharesProjectForm: true },
-  { id: 'workflows', label: 'Named Workflows', buttonIcon: '🔀', heading: null, headingIcon: null, sharesProjectForm: false },
-  { id: 'skills', label: 'Skills', buttonIcon: '🧩', heading: null, headingIcon: null, sharesProjectForm: false },
+  {
+    id: 'project',
+    label: 'Project Settings',
+    buttonIcon: '📂',
+    heading: 'Project Configuration',
+    headingIcon: '⚙️',
+    sharesProjectForm: true,
+  },
+  {
+    id: 'aliases',
+    label: 'Aliases',
+    buttonIcon: '🏷️',
+    heading: 'Model Aliases',
+    headingIcon: '🏷️',
+    sharesProjectForm: true,
+  },
+  {
+    id: 'links',
+    label: 'App Links',
+    buttonIcon: '🔗',
+    heading: 'Application Links & Health',
+    headingIcon: '🚀',
+    sharesProjectForm: true,
+  },
+  {
+    id: 'files',
+    label: 'Files & Repos',
+    buttonIcon: '📁',
+    heading: 'Files & Repositories',
+    headingIcon: '📂',
+    sharesProjectForm: true,
+  },
+  {
+    id: 'workflows',
+    label: 'Named Workflows',
+    buttonIcon: '🔀',
+    heading: null,
+    headingIcon: null,
+    sharesProjectForm: false,
+  },
+  {
+    id: 'skills',
+    label: 'Skills',
+    buttonIcon: '🧩',
+    heading: null,
+    headingIcon: null,
+    sharesProjectForm: false,
+  },
 ];
 
 /***
@@ -44,7 +85,9 @@ export const PROJECT_SETTINGS_SECTIONS = PROJECT_SETTINGS_TABS.map((tab) => tab.
  *   Derived from `PROJECT_SETTINGS_TABS` so a new form tab needs no second edit.
  * @example PROJECT_FORM_SECTIONS.includes('files') => true
  ***/
-export const PROJECT_FORM_SECTIONS = PROJECT_SETTINGS_TABS.filter((tab) => tab.sharesProjectForm).map((tab) => tab.id);
+export const PROJECT_FORM_SECTIONS = PROJECT_SETTINGS_TABS.filter(
+  (tab) => tab.sharesProjectForm,
+).map((tab) => tab.id);
 
 // How the jump-to-setting highlight behaves: a short wait lets the newly
 // selected tab render before scrolling, then the ring stays visible briefly
@@ -56,11 +99,11 @@ const HIGHLIGHT_HIDE_DELAY_MS = 2100;
  * MARK: ProjectSettings
  * @description A dedicated Project Management / Settings page for configuring
  * the active project across focused tabs — Project (basics + retry/timeouts),
- * Aliases (model aliases), Files & Links (paths, repos, app link) — plus
- * multiple named workflows, and skills. App-wide UI &
- * Workspace customization lives in System Settings (SystemSettingsPage,
- * `/system-settings`). Distinct from that platform-scoped screen, this page is
- * per-project and keeps the `/settings` route.
+ * Aliases (model aliases), App Links (custom web addresses), Files & Repos
+ * (paths and repositories) — plus multiple named workflows, and skills.
+ * App-wide UI & Workspace customization lives in System Settings
+ * (SystemSettingsPage, `/system-settings`). Distinct from that platform-scoped
+ * screen, this page is per-project and keeps the `/settings` route.
  * @example <ProjectSettings />
  ***/
 export function ProjectSettings() {
@@ -81,8 +124,8 @@ export function ProjectSettings() {
   const highlightSeqRef = useRef(0);
   // Fail-safe: `effectiveSection` is always a known tab, but the lookup still
   // falls back to the first tab so a heading always renders (never blank).
-  const activeTab = PROJECT_SETTINGS_TABS.find((tab) => tab.id === effectiveSection)
-    ?? PROJECT_SETTINGS_TABS[0];
+  const activeTab =
+    PROJECT_SETTINGS_TABS.find((tab) => tab.id === effectiveSection) ?? PROJECT_SETTINGS_TABS[0];
   // Unsaved-edits flag reported by the shared project form.
   const [formDirty, setFormDirty] = useState(false);
   // Focus targets for arrow-key tab navigation (automatic activation: moving
@@ -158,15 +201,11 @@ export function ProjectSettings() {
     if (!highlightTarget) return undefined;
     const targetId = highlightTarget.id;
     const clearRing = () => {
-      const el = typeof document !== 'undefined'
-        ? document.getElementById(targetId)
-        : null;
+      const el = typeof document !== 'undefined' ? document.getElementById(targetId) : null;
       el?.classList?.remove('ring-2', 'ring-primary', 'rounded-sm');
     };
     const showTimer = setTimeout(() => {
-      const el = typeof document !== 'undefined'
-        ? document.getElementById(targetId)
-        : null;
+      const el = typeof document !== 'undefined' ? document.getElementById(targetId) : null;
       if (el) {
         if (typeof el.scrollIntoView === 'function') {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -194,27 +233,29 @@ export function ProjectSettings() {
       {/* Top section switcher (tabs left, settings search right) */}
       <div className="flex gap-2 justify-between items-center border-b border-border-standard pb-4">
         <div className="flex gap-2 flex-wrap" role="tablist" aria-label="Project settings sections">
-        {PROJECT_SETTINGS_TABS.map((tab, index) => (
-        <button
-          key={tab.id}
-          ref={(el) => { tabButtonRefs.current[index] = el; }}
-          id={`project-settings-tab-${tab.id}`}
-          type="button"
-          role="tab"
-          aria-selected={effectiveSection === tab.id}
-          aria-controls="project-settings-tabpanel"
-          onClick={() => handleSectionChange(tab.id)}
-          onKeyDown={(event) => onTabKeyDown(event, index)}
-          className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-sm transition-all flex items-center gap-2 cursor-pointer ${
-            effectiveSection === tab.id
-              ? 'bg-primary text-on-primary font-bold shadow-sm'
-              : 'bg-surface-container hover:bg-surface-container-high text-text-muted hover:text-on-surface'
-          }`}
-        >
-          <span aria-hidden="true">{tab.buttonIcon}</span>
-          <span>{tab.label}</span>
-        </button>
-        ))}
+          {PROJECT_SETTINGS_TABS.map((tab, index) => (
+            <button
+              key={tab.id}
+              ref={(el) => {
+                tabButtonRefs.current[index] = el;
+              }}
+              id={`project-settings-tab-${tab.id}`}
+              type="button"
+              role="tab"
+              aria-selected={effectiveSection === tab.id}
+              aria-controls="project-settings-tabpanel"
+              onClick={() => handleSectionChange(tab.id)}
+              onKeyDown={(event) => onTabKeyDown(event, index)}
+              className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-sm transition-all flex items-center gap-2 cursor-pointer ${
+                effectiveSection === tab.id
+                  ? 'bg-primary text-on-primary font-bold shadow-sm'
+                  : 'bg-surface-container hover:bg-surface-container-high text-text-muted hover:text-on-surface'
+              }`}
+            >
+              <span aria-hidden="true">{tab.buttonIcon}</span>
+              <span>{tab.label}</span>
+            </button>
+          ))}
         </div>
         <div className="shrink-0">
           <SettingsSearchInput onSelect={handleSearchSelect} />
@@ -226,56 +267,56 @@ export function ProjectSettings() {
         role="tabpanel"
         aria-labelledby={`project-settings-tab-${effectiveSection}`}
       >
-      {PROJECT_FORM_SECTIONS.includes(effectiveSection) && (
-        <div>
-          {/* Every project-related tab gets an h2 tab title: the section
+        {PROJECT_FORM_SECTIONS.includes(effectiveSection) && (
+          <div>
+            {/* Every project-related tab gets an h2 tab title: the section
               components below use h3 subtitles, and starting at h3 would skip
               a heading level (axe heading-order violation). */}
-          <h2 className="text-lg font-bold uppercase tracking-tight text-text-high mb-4 flex items-center gap-2 font-headline-md">
-            <span className="text-primary">{activeTab.headingIcon}</span> {activeTab.heading}
-          </h2>
-          {effectiveSection === 'project' && (
-            <>
-              <div className="space-y-4 max-w-2xl mb-8">
-                <div className="flex flex-col gap-2">
-                  <label
-                    htmlFor="active-project-select"
-                    className="text-xs font-bold uppercase text-text-muted tracking-wider"
-                  >
-                    Active Project
-                  </label>
-                  <SelectDropdown
-                    id="active-project-select"
-                    ariaLabel="Active Project"
-                    value={activeProjectId || ''}
-                    onChange={selectProject}
-                    options={projects.map((p) => ({ value: p.id, label: p.name }))}
-                  />
+            <h2 className="text-lg font-bold uppercase tracking-tight text-text-high mb-4 flex items-center gap-2 font-headline-md">
+              <span className="text-primary">{activeTab.headingIcon}</span> {activeTab.heading}
+            </h2>
+            {effectiveSection === 'project' && (
+              <>
+                <div className="space-y-4 max-w-2xl mb-8">
+                  <div className="flex flex-col gap-2">
+                    <label
+                      htmlFor="active-project-select"
+                      className="text-xs font-bold uppercase text-text-muted tracking-wider"
+                    >
+                      Active Project
+                    </label>
+                    <SelectDropdown
+                      id="active-project-select"
+                      ariaLabel="Active Project"
+                      value={activeProjectId || ''}
+                      onChange={selectProject}
+                      options={projects.map((p) => ({ value: p.id, label: p.name }))}
+                    />
+                  </div>
                 </div>
-              </div>
-            </>
-          )}
+              </>
+            )}
 
-          {/* One mounted form across the project-related tabs: edits survive
+            {/* One mounted form across the project-related tabs: edits survive
               tab switches because only the `section` prop changes. */}
-          <ProjectSettingsForm
-            key={activeProjectId}
-            project={activeProject}
-            projectId={activeProjectId}
-            onProjectUpdated={selectProject}
-            section={effectiveSection}
-            onDirtyChange={setFormDirty}
-          />
-        </div>
-      )}
+            <ProjectSettingsForm
+              key={activeProjectId}
+              project={activeProject}
+              projectId={activeProjectId}
+              onProjectUpdated={selectProject}
+              section={effectiveSection}
+              onDirtyChange={setFormDirty}
+            />
+          </div>
+        )}
 
-      {effectiveSection === 'workflows' && (
-        <WorkflowManagementPanel key={activeProjectId} projectId={activeProjectId} />
-      )}
+        {effectiveSection === 'workflows' && (
+          <WorkflowManagementPanel key={activeProjectId} projectId={activeProjectId} />
+        )}
 
-      {effectiveSection === 'skills' && (
-        <SkillsSection key={activeProjectId} activeProjectId={activeProjectId} />
-      )}
+        {effectiveSection === 'skills' && (
+          <SkillsSection key={activeProjectId} activeProjectId={activeProjectId} />
+        )}
       </div>
     </section>
   );

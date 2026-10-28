@@ -13,6 +13,7 @@ import { parseRetrySettings } from './projectSettingsValidation';
 import { ProjectBasicsSection } from './ProjectBasicsSection';
 import { RetryTimeoutsSection } from './RetryTimeoutsSection';
 import { PathsAndReposSection } from './PathsAndReposSection';
+import { LinksSection } from './LinksSection';
 
 /***
  * MARK: ProjectSettingsForm
@@ -35,10 +36,16 @@ import { PathsAndReposSection } from './PathsAndReposSection';
  * @param {Function} [props.onDirtyChange] - Called with true/false as edits are made or saved.
  * @example <ProjectSettingsForm project={project} projectId="p1" onProjectUpdated={select} section="aliases" onDirtyChange={setDirty} />
  ***/
-export function ProjectSettingsForm({ project, projectId, onProjectUpdated, section = 'project', onDirtyChange }) {
+export function ProjectSettingsForm({
+  project,
+  projectId,
+  onProjectUpdated,
+  section = 'project',
+  onDirtyChange,
+}) {
   // Fail-safe: an unknown section id renders the project tab instead of a
   // blank page.
-  const activeFormSection = ['project', 'aliases', 'files'].includes(section)
+  const activeFormSection = ['project', 'aliases', 'links', 'files'].includes(section)
     ? section
     : 'project';
   const {
@@ -70,17 +77,11 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
   // D13: no host default baked in — '' (unset) lets the server resolve the
   // configured notes root (or report notes-missing loudly) instead of
   // persisting one operator's path into every fresh project.
-  const [notesDir, setNotesDir] = useState(
-    project?.notesDir || project?.notesPath || '',
-  );
+  const [notesDir, setNotesDir] = useState(project?.notesDir || project?.notesPath || '');
   const [docsDirName, setDocsDirName] = useState(project?.docsDirName || '');
   const [kainbainDirName, setKainbainDirName] = useState(project?.kainbainDirName || '');
-  const [centralizedDocs, setCentralizedDocs] = useState(
-    project?.centralizedDocs !== false,
-  );
-  const [gitRepo, setGitRepo] = useState(
-    project?.gitRepo || project?.gitUrl || '',
-  );
+  const [centralizedDocs, setCentralizedDocs] = useState(project?.centralizedDocs !== false);
+  const [gitRepo, setGitRepo] = useState(project?.gitRepo || project?.gitUrl || '');
   // Per-task branch support (kb/<taskId> branches + merge-to-main stage).
   // Opt-in: defaults off so existing single-branch projects are unaffected.
   const [useBranches, setUseBranches] = useState(project?.useBranches === true);
@@ -99,8 +100,7 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
   // stored in milliseconds, so they convert through the shared helper; the
   // auto-iteration switch is tri-state: 'default' (follow global),
   // 'enabled', or 'disabled'.
-  const retryDraft = (stored) =>
-    stored === undefined || stored === null ? '' : String(stored);
+  const retryDraft = (stored) => (stored === undefined || stored === null ? '' : String(stored));
   const retryDraftMinutes = (storedMs) => {
     const minutes = msToMinutes(storedMs);
     return minutes === '' ? '' : String(minutes);
@@ -119,13 +119,9 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
   const [autoIterationEnabled, setAutoIterationEnabled] = useState(
     retrySwitch(project?.autoIterationEnabled),
   );
-  const [agentTimeoutMs, setAgentTimeoutMs] = useState(
-    retryDraftMinutes(project?.agentTimeoutMs),
-  );
+  const [agentTimeoutMs, setAgentTimeoutMs] = useState(retryDraftMinutes(project?.agentTimeoutMs));
   const [ciTimeoutMs, setCiTimeoutMs] = useState(retryDraftMinutes(project?.ciTimeoutMs));
-  const [mergeTimeoutMs, setMergeTimeoutMs] = useState(
-    retryDraftMinutes(project?.mergeTimeoutMs),
-  );
+  const [mergeTimeoutMs, setMergeTimeoutMs] = useState(retryDraftMinutes(project?.mergeTimeoutMs));
   const [retryErrors, setRetryErrors] = useState({});
   // Unsaved-edits tracking: any draft change flips the ref; a successful
   // save or a project switch clears it. The post-render effect below reports
@@ -225,10 +221,7 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
   const availabilityKnown = harnesses.some((h) => h?.available !== undefined);
   const runnableRealHarnesses = harnesses.filter(
     (h) =>
-      h?.available === true &&
-      h.id !== 'mock' &&
-      h.id !== 'custom' &&
-      h.id !== ALIAS_HARNESS_ID,
+      h?.available === true && h.id !== 'mock' && h.id !== 'custom' && h.id !== ALIAS_HARNESS_ID,
   );
   const showHarnessGuidance = availabilityKnown && runnableRealHarnesses.length === 0;
   // Harness↔default-model mismatch: the stored default no longer resolves in
@@ -247,11 +240,7 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
     effectiveHarnessModels.length > 0 &&
     dismissedMismatch !== mismatchSignature;
   const guidanceHints = harnesses.filter(
-    (h) =>
-      h?.hint &&
-      h.id !== 'mock' &&
-      h.id !== 'custom' &&
-      h.id !== ALIAS_HARNESS_ID,
+    (h) => h?.hint && h.id !== 'mock' && h.id !== 'custom' && h.id !== ALIAS_HARNESS_ID,
   );
   // Track whether the user has edited the default model so a late-arriving
   // project object (projects list still fetching when the form mounts) can
@@ -366,7 +355,9 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
     // Guard: the custom harness cannot run without a command line — refuse to
     // save instead of persisting a project whose stages fail at runtime.
     if (isCustomHarness && !harnessCommand.trim()) {
-      setValidationError('Set a command line (e.g. claude -p) — the custom harness has nothing to run without one.');
+      setValidationError(
+        'Set a command line (e.g. claude -p) — the custom harness has nothing to run without one.',
+      );
       setSaveState('error');
       notifyError?.('Custom harness needs a command line', 'Missing Command');
       return;
@@ -478,40 +469,38 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
       // Optimistic concurrency: a rival save from another tab/browser
       // surfaces HTTP 409 instead of silently clobbering this page's
       // fields (or vice versa).
-      const saveOpts = project?.updatedAt
-        ? { expectedUpdatedAt: project.updatedAt }
-        : {};
+      const saveOpts = project?.updatedAt ? { expectedUpdatedAt: project.updatedAt } : {};
       const savePayload = {
-          name: projectName,
-          cwd,
-          notesDir,
-          notesPath: notesDir,
-          gitRepo,
-          gitUrl: gitRepo,
-          useBranches,
-          preserveReviewDiffAfterMerge: preserveReviewDiff,
-          resetReviewBaselineOnMerge: resetReviewBaseline,
-          defaultModel,
-          // Retry & timeout overrides (numbers when set, null when blank =
-          // follow the global default). Sent on every save like the other
-          // scalar fields; optimistic concurrency (409) guards rival saves.
-          ...retryPayload,
-          // Dirty-field save: the alias table is full-replaced whenever the
-          // key is present, so a page whose snapshot predates another
-          // browser's alias save must NOT send its stale list. Only an
-          // edited table (including clearing it to []) carries the key.
-          // Docs linkage: custom folder name (blank clears to default 'docs')
-          // and centralized docs opt-out toggle.
-          docsDirName: trimmedDocsName || '',
-          kainbainDirName: trimmedKainbainName || '',
-          centralizedDocs,
-          accentColor: accentTokens(accentColor).hex,
-          // Harness choice: selecting the server's default harness saves as ''
-          // so the project keeps following the configured default (the backend
-          // normalizes '' → undefined). "custom" additionally carries the
-          // command line (model flags bake into it); other harnesses clear it.
-          harness: harness === defaultHarnessId ? '' : harness,
-          harnessCommand: isCustomHarness ? harnessCommand : '',
+        name: projectName,
+        cwd,
+        notesDir,
+        notesPath: notesDir,
+        gitRepo,
+        gitUrl: gitRepo,
+        useBranches,
+        preserveReviewDiffAfterMerge: preserveReviewDiff,
+        resetReviewBaselineOnMerge: resetReviewBaseline,
+        defaultModel,
+        // Retry & timeout overrides (numbers when set, null when blank =
+        // follow the global default). Sent on every save like the other
+        // scalar fields; optimistic concurrency (409) guards rival saves.
+        ...retryPayload,
+        // Dirty-field save: the alias table is full-replaced whenever the
+        // key is present, so a page whose snapshot predates another
+        // browser's alias save must NOT send its stale list. Only an
+        // edited table (including clearing it to []) carries the key.
+        // Docs linkage: custom folder name (blank clears to default 'docs')
+        // and centralized docs opt-out toggle.
+        docsDirName: trimmedDocsName || '',
+        kainbainDirName: trimmedKainbainName || '',
+        centralizedDocs,
+        accentColor: accentTokens(accentColor).hex,
+        // Harness choice: selecting the server's default harness saves as ''
+        // so the project keeps following the configured default (the backend
+        // normalizes '' → undefined). "custom" additionally carries the
+        // command line (model flags bake into it); other harnesses clear it.
+        harness: harness === defaultHarnessId ? '' : harness,
+        harnessCommand: isCustomHarness ? harnessCommand : '',
       };
       // Only edited alias tables are sent (see above) — assign explicitly
       // instead of a conditional empty spread so the payload's field set is
@@ -519,11 +508,7 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
       if (modelAliasesTouched) {
         savePayload.modelAliases = modelAliases;
       }
-      const updated = await api.updateProject(
-        projectId,
-        savePayload,
-        saveOpts,
-      );
+      const updated = await api.updateProject(projectId, savePayload, saveOpts);
       // Refresh the in-memory project so the applied accent/name survives
       // view/tab switches without a full re-fetch.
       updateProjectInState?.(updated);
@@ -536,11 +521,7 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
       // each other's alias table. Without this reset, one alias edit would
       // keep re-sending the full table on every later save — a stale page
       // could then wipe aliases stored by another browser.
-      setModelAliases(
-        Array.isArray(updated?.modelAliases)
-          ? updated.modelAliases
-          : modelAliases,
-      );
+      setModelAliases(Array.isArray(updated?.modelAliases) ? updated.modelAliases : modelAliases);
       setModelAliasesTouched(false);
       onProjectUpdated(projectId);
       dirtyRef.current = false;
@@ -636,7 +617,10 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
       )}
 
       {activeFormSection === 'aliases' && (
-        <div id="model-aliases-section" className="border-t border-border-standard pt-8 scroll-mt-4">
+        <div
+          id="model-aliases-section"
+          className="border-t border-border-standard pt-8 scroll-mt-4"
+        >
           <ModelAliasesSection
             aliases={modelAliases}
             onChange={(next) => {
@@ -655,6 +639,43 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
             </p>
           )}
         </div>
+      )}
+
+      {activeFormSection === 'links' && (
+        <LinksSection
+          appUrl={project?.appStatus?.url || ''}
+          setAppUrl={(value) => {
+            markDirty();
+            const next = project ? { ...project } : {};
+            next.appStatus = { ...next.appStatus, url: value };
+            updateProjectInState?.(next);
+          }}
+          networkHost={project?.appStatus?.networkHost || ''}
+          setNetworkHost={(value) => {
+            markDirty();
+            const next = project ? { ...project } : {};
+            next.appStatus = { ...next.appStatus, networkHost: value };
+            updateProjectInState?.(next);
+          }}
+          healthEndpoint={project?.appStatus?.healthEndpoint || ''}
+          setHealthEndpoint={(value) => {
+            markDirty();
+            const next = project ? { ...project } : {};
+            next.appStatus = { ...next.appStatus, healthEndpoint: value };
+            updateProjectInState?.(next);
+          }}
+          status={project?.appStatus?.status || 'running'}
+          setStatus={(value) => {
+            markDirty();
+            const next = project ? { ...project } : {};
+            next.appStatus = { ...next.appStatus, status: value };
+            updateProjectInState?.(next);
+          }}
+          clearValidationError={() => setValidationError('')}
+          project={project}
+          projectId={projectId}
+          updateProjectInState={updateProjectInState}
+        />
       )}
 
       {activeFormSection === 'files' && (
@@ -705,10 +726,7 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
         {/* Soft combination warnings from the last save (the save succeeded;
             these name catalog-miss pairings to fix in a follow-up edit). */}
         {saveWarnings.length > 0 && (
-          <ul
-            data-testid="save-warnings-panel"
-            className="flex flex-col gap-1 max-w-2xl"
-          >
+          <ul data-testid="save-warnings-panel" className="flex flex-col gap-1 max-w-2xl">
             {saveWarnings.map((warning, index) => (
               <li
                 key={`${index}-${warning}`}

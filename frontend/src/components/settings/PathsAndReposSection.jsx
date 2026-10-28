@@ -1,12 +1,10 @@
-import { AppLinkSection } from './AppLinkSection';
-
 /***
  * MARK: PathsAndReposSection
- * @description Files & Links block of the project settings form: working
- *   directory, notes symlink, docs/KainBain folder names, the centralised
- *   docs toggle, git repo URL, task-branch and review-diff options, and the
- *   Application Link & Health card (which saves independently). Pure
- *   presentational section — all state lives in `ProjectSettingsForm`.
+ * @description Files & Repositories block of the project settings form:
+ *   working directory, notes symlink, docs/KainBain folder names, the
+ *   centralised docs toggle, git repo URL, task-branch and review-diff
+ *   options. Pure presentational section — all state lives in
+ *   `ProjectSettingsForm`.
  * @example <PathsAndReposSection cwd="/p/a" setCwd={fn} notesDir="" setNotesDir={fn} docsDirName="" setDocsDirName={fn} kainbainDirName="" setKainbainDirName={fn} centralizedDocs={true} setCentralizedDocs={fn} gitRepo="" setGitRepo={fn} useBranches={false} setUseBranches={fn} preserveReviewDiff={false} setPreserveReviewDiff={fn} resetReviewBaseline={true} setResetReviewBaseline={fn} clearValidationError={fn} project={{}} projectId="p1" updateProjectInState={fn} />
  * @param {Object} props
  * @param {string} props.cwd - Draft working directory.
@@ -52,22 +50,12 @@ export function PathsAndReposSection({
   resetReviewBaseline,
   setResetReviewBaseline,
   clearValidationError,
-  project,
-  projectId,
-  updateProjectInState,
+  _project,
+  _projectId,
+  _updateProjectInState,
 }) {
   return (
     <div className="space-y-8">
-      {/* Application Link & Health (own section: applies immediately, not via Save) */}
-      <div className="border-t border-border-standard pt-8">
-        <AppLinkSection
-          key={`applink-${projectId}`}
-          project={project}
-          projectId={projectId}
-          onChanged={(updated) => updateProjectInState?.(updated)}
-        />
-      </div>
-
       {/* Multi-Location Paths & Repositories */}
       <div className="border-t border-border-standard pt-8">
         <h3 className="text-sm font-bold uppercase tracking-wide text-text-high mb-4 flex items-center gap-2">
@@ -114,7 +102,9 @@ export function PathsAndReposSection({
             />
             <p className="text-[10px] text-text-muted">
               Knowledge store symlinked to{' '}
-              <code className="font-mono text-primary">&lt;projectRoot&gt;/{docsDirName?.trim() || 'docs'}</code>
+              <code className="font-mono text-primary">
+                &lt;projectRoot&gt;/{docsDirName?.trim() || 'docs'}
+              </code>
             </p>
           </div>
 
@@ -138,7 +128,10 @@ export function PathsAndReposSection({
               placeholder="docs"
             />
             <p className="text-[10px] text-text-muted">
-              Folder in the project root used for task storage and docs (default: <code className="font-mono text-primary">docs</code>). Change to e.g. <code className="font-mono text-primary">kainbain-docs</code> if this project already uses a <code className="font-mono text-primary">docs/</code> directory.
+              Folder in the project root used for task storage and docs (default:{' '}
+              <code className="font-mono text-primary">docs</code>). Change to e.g.{' '}
+              <code className="font-mono text-primary">kainbain-docs</code> if this project already
+              uses a <code className="font-mono text-primary">docs/</code> directory.
             </p>
           </div>
 
@@ -162,7 +155,13 @@ export function PathsAndReposSection({
               placeholder=".kainbain"
             />
             <p className="text-[10px] text-text-muted">
-              Folder in the project root used for KainBain internal state, sessions, and worktrees (default: <code className="font-mono text-primary">.kainbain</code>). Changing this writes the new config and removes the old one, but never moves existing state — move <code className="font-mono text-primary">sessions/</code>, <code className="font-mono text-primary">worktrees/</code> and <code className="font-mono text-primary">quarantine/</code> across by hand, or stop the API, rename the folder on disk, and restart.
+              Folder in the project root used for KainBain internal state, sessions, and worktrees
+              (default: <code className="font-mono text-primary">.kainbain</code>). Changing this
+              writes the new config and removes the old one, but never moves existing state — move{' '}
+              <code className="font-mono text-primary">sessions/</code>,{' '}
+              <code className="font-mono text-primary">worktrees/</code> and{' '}
+              <code className="font-mono text-primary">quarantine/</code> across by hand, or stop
+              the API, rename the folder on disk, and restart.
             </p>
           </div>
 
@@ -181,7 +180,8 @@ export function PathsAndReposSection({
               Link to Centralised Documentation
             </label>
             <p className="text-[10px] text-text-muted pl-6">
-              When checked, symlinks the docs folder to the central notes space. Uncheck to opt out and store docs strictly in a local directory without symlinks.
+              When checked, symlinks the docs folder to the central notes space. Uncheck to opt out
+              and store docs strictly in a local directory without symlinks.
             </p>
           </div>
 
@@ -223,12 +223,11 @@ export function PathsAndReposSection({
             <p className="text-[10px] text-text-muted">
               When enabled, each task creates and works on its own git branch ({'kb/<taskId>'}); add
               a <strong>Merge</strong> stage to your pipeline to integrate it into main (add a
-              <strong>Deploy</strong> CI stage with the deploy command after it to deploy).
-              Branch changes are refused on a dirty
-              working tree; merge conflicts fail the stage with a clear message and standard
-              failback. Human review stages gain an MR-style <strong>PR review</strong> view with
-              per-line commenting; without task branches there is nothing to review and merge stages
-              fail with a clear message.
+              <strong>Deploy</strong> CI stage with the deploy command after it to deploy). Branch
+              changes are refused on a dirty working tree; merge conflicts fail the stage with a
+              clear message and standard failback. Human review stages gain an MR-style{' '}
+              <strong>PR review</strong> view with per-line commenting; without task branches there
+              is nothing to review and merge stages fail with a clear message.
             </p>
           </div>
 
