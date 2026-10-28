@@ -297,4 +297,65 @@ describe("RunnerRegistry", () => {
 		expect(runners.authenticate(rotated.credential).runnerId).toBe("r1");
 		expect(() => runners.rotate("missing")).toThrowError(/Unknown Runner/);
 	});
+
+	test("pause parks an active Runner without touching its credential", () => {
+		const { runners, credential } = approved();
+		expect(runners.list()[0].paused).toBe(false);
+		const parked = runners.pause("r1");
+		expect(parked.status).toBe("active");
+		expect(parked.paused).toBe(true);
+		// Credential, heartbeat, and liveness keep working while parked.
+		expect(runners.authenticate(credential).runnerId).toBe("r1");
+		// Idempotent: pausing a paused Runner is a no-op success.
+		expect(runners.pause("r1").paused).toBe(true);
+	});
+
+	test("resume clears the pause flag", () => {
+		const { runners } = approved();
+		runners.pause("r1");
+		const back = runners.resume("r1");
+		expect(back.paused).toBe(false);
+		// Idempotent: resuming an unpaused Runner is a no-op success.
+		expect(runners.resume("r1").paused).toBe(false);
+	});
+
+	test("pause/resume require an active Runner", () => {
+		runners.register({ runnerId: "r1", joinToken: "join-secret", facts: FACTS });
+		try {
+			runners.pause("r1");
+			expect.unreachable();
+		} catch (err) {
+			expect(err.statusCode).toBe(409);
+			expect(err.code).toBe("PAUSE_INVALID_STATE");
+		}
+		try {
+			runners.resume("r1");
+			expect.unreachable();
+		} catch (err) {
+			expect(err.statusCode).toBe(409);
+			expect(err.code).toBe("RESUME_INVALID_STATE");
+		}
+		try {
+			runners.pause("ghost");
+			expect.unreachable();
+		} catch (err) {
+			expect(err.statusCode).toBe(404);
+			expect(err.code).toBe("UNKNOWN_RUNNER");
+		}
+	});
+
+	test("persists the pause flag across restarts", () => {
+		const file = tmpRunnerState();
+		const first = new RunnerRegistry({
+			joinToken: "join-secret",
+			newCredential: () => "cred-1",
+			stateFile: file,
+		});
+		first.register({ runnerId: "r1", joinToken: "join-secret", facts: FACTS });
+		first.approve("r1");
+		first.pause("r1");
+		const second = new RunnerRegistry({ joinToken: "join-secret", stateFile: file });
+		expect(second.list()[0].paused).toBe(true);
+		expect(second.resume("r1").paused).toBe(false);
+	});
 });

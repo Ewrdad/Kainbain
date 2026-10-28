@@ -77,4 +77,8 @@ export {
 	isBranchMergedInto,
 } from "./git/merge.js";
 
-export { hasRemote, pushBranchIfRemote } from "./git/remote.js";
+export {
+	hasRemote,
+	pushBranchIfRemote,
+	syncDefaultBranchToRemote,
+} from "./git/remote.js";

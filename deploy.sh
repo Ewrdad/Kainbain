@@ -1310,7 +1310,18 @@ if [ "$MODE" = "prod" ]; then
 			# Drain scratch ports (3399, 5299) to prevent collisions
 			log "🚦 Draining scratch ports (3399, 5299) before canary E2E..."
 			scripts/drain-ports.sh 3399 5299
-			run_gate "canary-e2e" "npm run test:canary" npm run test:canary
+			# Hermetic canary state: a fresh run tag per deploy so tasks left
+			# behind by earlier runs can never leak into this run's boards or
+			# queue-depth counts (see playwright.config.js).
+			# Sharded 1/2 + 2/2 over two fresh stacks: one 135-test browser
+			# process grows unbounded memory over ~10 minutes on the shared
+			# 4-core gate host until the stack dies mid-run and cascades.
+			# Two sequential shards run the identical 135 assertions with a
+			# fresh browser, backend, and state dir each.
+			export KB_CANARY_RUN_TAG="deploy-${BUILD_NUMBER:-0}-$(date +%s)-s1"
+			run_gate "canary-e2e-shard-1" "npm run test:canary -- --shard=1/2" npm run test:canary -- --shard=1/2
+			export KB_CANARY_RUN_TAG="deploy-${BUILD_NUMBER:-0}-$(date +%s)-s2"
+			run_gate "canary-e2e-shard-2" "npm run test:canary -- --shard=2/2" npm run test:canary -- --shard=2/2
 		fi
 
 		# 2. Run security scans and publish to SecObserve (non-fatal: findings

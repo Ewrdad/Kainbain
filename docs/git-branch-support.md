@@ -74,7 +74,7 @@ Because every work-stage pickup returns to the default branch first, you can pau
 Stage differences:
 
 - **Agent and CI/script stages** follow the full lifecycle above.
-- **Human stages** never touch the working tree: entering the checkpoint and approving it only ensure the task-branch ref exists (created from the default tip when missing) — no checkout, commit, push, or return. Reviewer edits made while the checkpoint is open stay uncommitted until the operator commits them (agent/CI stages sweep them up; the merge stage refuses a dirty tree).
+- **Human stages** never touch the working tree: entering the checkpoint and approving it only ensure the task-branch ref exists (created from the default tip when missing) — no checkout, commit, push, or return. Reviewer edits made while the checkpoint is open stay uncommitted until the next operation: work-stage pickup auto-commits them, and the merge stage auto-commits task-branch leftovers before its strict guard (untracked user files still refuse loudly).
 - **Merge stages** integrate instead of doing task work (see below) and additionally push the default branch when a remote exists.
 - **Deploy stages** run their command only and perform no branch operations at all.
 
@@ -90,11 +90,15 @@ Every ladder action is journaled into task history like stale-lock recoveries. A
 
 The `merge` stage performs the following sequence:
 
-1. **Switch to the task branch** (it is picked up default-first like any other stage) and **auto-commit** any uncommitted changes there.
-2. **Switch to the default branch.**
-3. **Merge:** The task branch is merged into the project's default branch (e.g., `master` or `main`).
-4. **Post-Merge Command:** An optional bash command (e.g., `./deploy.sh --prod`) is executed after a successful merge.
-5. **Auto-commit** the post-merge output, then **push the default branch** when a remote exists (push failure stays a warning).
+1. **Sync the default branch to the remote** (best-effort, warn-only): fetch `origin` and hard-reset the local default branch to it, so stale main-side state can never dirty-tree-block the merge. The reset is journaled with before/after SHAs; orphaned local commits stay recoverable via reflog. Offline, remote-less, or failed fetches keep local state and the strict guard below still applies.
+2. **Switch to the task branch** (it is picked up default-first like any other stage) and **auto-commit** any uncommitted changes there — including leftover stage work on the previous branch (affinity-guarded).
+3. **Switch to the default branch.**
+4. **Merge:** The task branch is merged into the project's default branch (e.g., `master` or `main`).
+5. **Post-Merge Command:** An optional bash command (e.g., `./deploy.sh --prod`) is executed after a successful merge.
+6. **Auto-commit** the post-merge output, then **push the default branch** when a remote exists (push failure stays a warning).
+7. **Commit and push the merge report** on the default branch (affinity-guarded, warn-only), so the report is published instead of lingering as main-side dirt.
+
+The same source-of-truth sync runs on every work-stage pickup and after every stage finalise (once back on the default branch), so the only expected merge-stage failures are merge conflicts. Untracked user files still refuse loudly everywhere: `reset --hard` never deletes them, and silently dropping them would lose work no commit recorded.
 
 ### Merge Conflicts
 

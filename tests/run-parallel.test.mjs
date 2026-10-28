@@ -26,7 +26,7 @@ const NODE = process.execPath;
 // Cross-platform pass/fail stubs: `process.execPath` is absolute, so these
 // resolve with no PATH lookup and work on Linux, macOS, and Windows.
 const PASS_ARGS = ["-e", "process.exit(0)"];
-const FAIL_ARGS = ["-e", "process.exit(1)"];
+const FAIL_ARGS = ["-e", "process.exitCode=1"];
 
 // Collects every line the helper prints instead of writing to stdout.
 function makeCollector() {
@@ -69,7 +69,7 @@ describe("runParallel", () => {
 				{
 					name: "Bad Step",
 					file: NODE,
-					args: ["-e", "console.log('boom-output'); process.exit(1)"],
+					args: ["-e", "console.log('boom-output'); process.exitCode=1"],
 				},
 			],
 			{ write: out.write },
@@ -176,7 +176,7 @@ describe("runParallel", () => {
 				{
 					name: "Noisy Step",
 					file: NODE,
-					args: ["-e", `${prints};process.exit(1)`],
+					args: ["-e", `${prints};process.exitCode=1`],
 				},
 			],
 			{ write: out.write },
@@ -201,7 +201,7 @@ describe("runParallel", () => {
 				{
 					name: "Brief Step",
 					file: NODE,
-					args: ["-e", "console.log('brief-boom');process.exit(1)"],
+					args: ["-e", "console.log('brief-boom');process.exitCode=1"],
 				},
 			],
 			{ write: out.write },
@@ -222,7 +222,7 @@ describe("runParallel", () => {
 				{
 					name: "Tuned Step",
 					file: NODE,
-					args: ["-e", `${prints};process.exit(1)`],
+					args: ["-e", `${prints};process.exitCode=1`],
 				},
 			],
 			{ write: out.write, failureOutputTailLines: 10 },
@@ -312,7 +312,7 @@ describe("runParallel progress output (no silent blackout)", () => {
 				{
 					name: "Bad Step",
 					file: NODE,
-					args: ["-e", "console.log('boom-detail'); process.exit(1)"],
+					args: ["-e", "console.log('boom-detail'); process.exitCode=1"],
 				},
 			],
 			{ write: out.write, progressIntervalMs: 50 },

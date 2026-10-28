@@ -727,6 +727,7 @@ export async function runSingleAssignment({
  *   concurrent loops never double-dispatch: a lost race surfaces as
  *   `CLAIM_CONFLICT` inside the fence and the loop simply polls again. A
  *   `STALE_RUNNER` answer triggers one fresh heartbeat and a single retry;
+ *   `RUNNER_PAUSED` (operator-parked) backs off and re-polls until resumed;
  *   anything else throws loud.
  * @example await runDispatchLoop({ config, client }) => { assignments: 2, polls: 5 }
  * @param {Object} opts - Options.
@@ -772,6 +773,15 @@ export async function runDispatchLoop({
 					// may not take it yet.
 					polls += 1;
 					logger.log(`Dispatch: fleet busy (${err?.code ?? "capped"}); backing off.`);
+					await new Promise((r) => setTimeout(r, pollMs));
+					continue;
+				} else if (err?.code === "RUNNER_PAUSED") {
+					// Operator-parked: this Runner takes no new tasks until
+					// resumed. Back off and re-poll WITHOUT consuming idle
+					// budget — resuming picks the loop straight back up
+					// with no restart.
+					polls += 1;
+					logger.log(`Dispatch: Runner paused by operator; backing off.`);
 					await new Promise((r) => setTimeout(r, pollMs));
 					continue;
 				} else {

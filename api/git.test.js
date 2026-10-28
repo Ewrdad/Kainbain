@@ -1450,10 +1450,11 @@ describe("git barrel surface contract", () => {
 		"requireCleanWorkingTree",
 		"resolveSha",
 		"returnToDefaultBranch",
+		"syncDefaultBranchToRemote",
 		"withCheckedOutBranch",
 	];
 
-	it("exports exactly the 48 canonical public symbols", () => {
+	it("exports exactly the 49 canonical public symbols", () => {
 		expect(Object.keys(gitBarrel).sort()).toEqual(EXPECTED_EXPORTS);
 	});
 

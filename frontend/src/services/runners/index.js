@@ -16,5 +16,9 @@ export function runnerRequests(request) {
       request(`/runners/${encodeURIComponent(id)}/deny`, { method: 'POST' }),
     revokeRunner: (id) =>
       request(`/runners/${encodeURIComponent(id)}/revoke`, { method: 'POST' }),
+    pauseRunner: (id) =>
+      request(`/runners/${encodeURIComponent(id)}/pause`, { method: 'POST' }),
+    resumeRunner: (id) =>
+      request(`/runners/${encodeURIComponent(id)}/resume`, { method: 'POST' }),
   };
 }

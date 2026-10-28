@@ -22,7 +22,7 @@
     "test:coverage": "npm run test:coverage --prefix api",
     "test:api": "npm run test --prefix api",
     "test:frontend": "npm run test --prefix frontend",
-    "test:canary": "npm run test --prefix canary-e2e",
+    "test:canary": "npm run test --prefix canary-e2e --",
     "test:repeat": "node scripts/repeat-tests.mjs",
     "test:visual": "npm run test --prefix canary-e2e -- tests/visual",
     "capture:screenshot": "node scripts/capture-screenshot.mjs",

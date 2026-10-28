@@ -39,7 +39,12 @@ import { extractGateName } from "./deployFailureReason.js";
  * @description Gates that run on the shared default-branch workspace (not
  *   the task branch), so their failure implicates the project, not the task.
  ***/
-export const SHARED_DEPLOY_GATES = ["canary-e2e", "final-test-suite"];
+export const SHARED_DEPLOY_GATES = [
+	"canary-e2e",
+	"canary-e2e-shard-1",
+	"canary-e2e-shard-2",
+	"final-test-suite",
+];
 
 /***
  * MARK: isSharedDeployGate

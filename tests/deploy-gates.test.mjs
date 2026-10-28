@@ -44,18 +44,28 @@ describe("deploy.sh test gates (static contract)", () => {
 		);
 	});
 
-	it("runs the canary suite exactly once as its own blocking canary-e2e gate", () => {
+	it("runs the canary suite as two blocking sharded gates (1/2 then 2/2)", () => {
 		const body = readDeploySh();
-		const matches = body.match(/run_gate "canary-e2e" "npm run test:canary" npm run test:canary/g) || [];
-		assert.equal(matches.length, 1, `expected exactly one canary-e2e gate, found ${matches.length}`);
+		const shard1 = body.match(/run_gate "canary-e2e-shard-1" "npm run test:canary -- --shard=1\/2" npm run test:canary -- --shard=1\/2/g) || [];
+		const shard2 = body.match(/run_gate "canary-e2e-shard-2" "npm run test:canary -- --shard=2\/2" npm run test:canary -- --shard=2\/2/g) || [];
+		assert.equal(shard1.length, 1, `expected exactly one canary-e2e-shard-1 gate, found ${shard1.length}`);
+		assert.equal(shard2.length, 1, `expected exactly one canary-e2e-shard-2 gate, found ${shard2.length}`);
+		assert.ok(
+			body.indexOf('run_gate "canary-e2e-shard-1"') < body.indexOf('run_gate "canary-e2e-shard-2"'),
+			"shard 1/2 must run before shard 2/2",
+		);
+		// No unsharded legacy gate may survive alongside: it would run the
+		// whole suite a third time on a stale stack.
+		assert.equal((body.match(/run_gate "canary-e2e" /g) || []).length, 0, "legacy unsharded canary-e2e gate must be gone");
 	});
 
-	it("orders the canary-e2e gate after the final-test-suite gate", () => {
+	it("orders the canary-e2e gates after the final-test-suite gate", () => {
 		const body = readDeploySh();
 		const fastGate = body.indexOf('run_gate "final-test-suite"');
-		const canaryGate = body.indexOf('run_gate "canary-e2e"');
-		assert.ok(fastGate !== -1 && canaryGate !== -1, "both gates must exist");
-		assert.ok(fastGate < canaryGate, "canary-e2e must run after final-test-suite");
+		const shard1 = body.indexOf('run_gate "canary-e2e-shard-1"');
+		const shard2 = body.indexOf('run_gate "canary-e2e-shard-2"');
+		assert.ok(fastGate !== -1 && shard1 !== -1 && shard2 !== -1, "all gates must exist");
+		assert.ok(fastGate < shard1 && shard1 < shard2, "order must be final-test-suite, shard 1/2, shard 2/2");
 	});
 
 	it("skips the canary gate only on exactly KAINBAIN_SKIP_CANARY=1 (fail-safe)", () => {
@@ -112,7 +122,11 @@ describe("deploy / npm test parity (executable contract)", () => {
 		assert.deepEqual(canary.file, "npm");
 		assert.deepEqual(canary.args, ["run", "test:canary"]);
 		const body = readDeploySh();
-		assert.match(body, /run_gate "canary-e2e" "npm run test:canary" npm run test:canary/);
+		// Sharded 1/2 + 2/2 over fresh stacks: both shards must delegate to
+		// the same suite (identical 135 assertions, split for memory), so pin
+		// both gate lines — a missing shard would silently halve coverage.
+		assert.match(body, /run_gate "canary-e2e-shard-1" "npm run test:canary -- --shard=1\/2" npm run test:canary -- --shard=1\/2/);
+		assert.match(body, /run_gate "canary-e2e-shard-2" "npm run test:canary -- --shard=2\/2" npm run test:canary -- --shard=2\/2/);
 	});
 
 	it("root test:canary delegates to the canary-e2e package suite", () => {

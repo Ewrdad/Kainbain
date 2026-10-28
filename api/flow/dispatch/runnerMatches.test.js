@@ -3,9 +3,9 @@ import { runnerMatches } from "./runnerMatches.js";
 
 /***
  * MARK: runnerMatches Tests
- * @description Verifies each gate (status, freshness, protocol, runnable,
- *   harness, model, tier ceiling, disk floor) and that alias requirements
- *   miss loudly until WP-3.2.
+ * @description Verifies each gate (status, pause, freshness, protocol,
+ *   runnable, harness, model, tier ceiling, disk floor) and that alias
+ *   requirements miss loudly until WP-3.2.
  ***/
 describe("runnerMatches", () => {
 	const record = (over = {}) => ({
@@ -33,6 +33,7 @@ describe("runnerMatches", () => {
 	test("rejects each gate with its own reason", () => {
 		const cases = [
 			[{ status: "pending" }, {}, "NOT_ACTIVE"],
+			[{ paused: true }, {}, "PAUSED"],
 			[{ lastSeenAt: new Date(at - 61_000).toISOString() }, {}, "STALE_HEARTBEAT"],
 			[{ capabilities: { runnable: false, versions: { protocol: "v1" } } }, {}, "NOT_RUNNABLE"],
 			[{ facts: { versions: { protocol: "v0" } }, capabilities: { versions: { protocol: "v0" } } }, {}, "PROTOCOL_SKEW"],

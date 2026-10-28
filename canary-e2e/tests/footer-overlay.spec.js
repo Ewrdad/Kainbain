@@ -206,7 +206,12 @@ test.describe("Footer overlap consistency", () => {
 
 		// Open the inspector by clicking the task card's goal text — the card's
 		// action row stops click propagation, so a click there would not open it.
-		const taskCard = page.locator('[aria-label^="Task #KB-"]').first();
+		// Scoped to the created card (not .first()): the board accumulates
+		// cards from earlier specs in a full run, so positional lookup is
+		// order-dependent and flakes.
+		const taskCard = page.locator('[aria-label^="Task #KB-"]', {
+			hasText: "Inspector overlap e2e",
+		});
 		await expect(taskCard).toBeVisible({ timeout: 15000 });
 		await taskCard.getByText("Inspector overlap e2e").click();
 

@@ -551,6 +551,60 @@ describe("Runner Routes Integration", () => {
 		expect(JSON.parse(res.payload).code).toBe("STALE_RUNNER");
 	});
 
+	it("pause parks a Runner: dispatch + claim refuse with RUNNER_PAUSED, resume restores pickup", async () => {
+		const { project } = await mockProject("Dispatch Pause");
+		const credential = await onboard("dispatch-pause");
+		await heartbeatAs(credential, "dispatch-pause");
+		const pause = await app.inject({ method: "POST", url: "/runners/dispatch-pause/pause" });
+		expect(pause.statusCode).toBe(200);
+		expect(JSON.parse(pause.payload).paused).toBe(true);
+
+		const blocked = await dispatchAs(credential);
+		expect(blocked.statusCode).toBe(409);
+		expect(JSON.parse(blocked.payload).code).toBe("RUNNER_PAUSED");
+
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Paused claim target" },
+		});
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${JSON.parse(taskRes.payload).id}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		expect(claim.statusCode).toBe(409);
+		expect(JSON.parse(claim.payload).code).toBe("RUNNER_PAUSED");
+
+		// Heartbeats keep working while parked (freshness is liveness,
+		// not eligibility): heartbeatAs asserts 200 internally.
+		await heartbeatAs(credential, "dispatch-pause");
+
+		const resume = await app.inject({ method: "POST", url: "/runners/dispatch-pause/resume" });
+		expect(resume.statusCode).toBe(200);
+		expect(JSON.parse(resume.payload).paused).toBe(false);
+		const res = await dispatchAs(credential);
+		expect(res.statusCode).toBe(200);
+		expect(JSON.parse(res.payload).assigned).toBe(true);
+	});
+
+	it("pause/resume require an active Runner", async () => {
+		await app.inject({
+			method: "POST",
+			url: "/runners/register",
+			payload: { runnerId: "pause-pending", joinToken: "test-join-token", facts: FACTS },
+		});
+		const pause = await app.inject({ method: "POST", url: "/runners/pause-pending/pause" });
+		expect(pause.statusCode).toBe(409);
+		expect(JSON.parse(pause.payload).code).toBe("PAUSE_INVALID_STATE");
+		const resume = await app.inject({ method: "POST", url: "/runners/pause-pending/resume" });
+		expect(resume.statusCode).toBe(409);
+		expect(JSON.parse(resume.payload).code).toBe("RESUME_INVALID_STATE");
+		const ghost = await app.inject({ method: "POST", url: "/runners/ghost-runner/pause" });
+		expect(ghost.statusCode).toBe(404);
+	});
+
 	it("dispatch enforces the tier ceiling with loud misses", async () => {
 		await mockProject("Dispatch Ceiling");
 		const credential = await onboard("dispatch-t0");

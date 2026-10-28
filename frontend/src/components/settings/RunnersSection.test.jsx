@@ -7,16 +7,19 @@ const getRunnerMonitor = vi.hoisted(() => vi.fn());
 const approveRunner = vi.hoisted(() => vi.fn());
 const denyRunner = vi.hoisted(() => vi.fn());
 const revokeRunner = vi.hoisted(() => vi.fn());
+const pauseRunner = vi.hoisted(() => vi.fn());
+const resumeRunner = vi.hoisted(() => vi.fn());
 
 vi.mock('../../services/api', () => ({
-  api: { getRunners, getRunnerMonitor, approveRunner, denyRunner, revokeRunner },
+  api: { getRunners, getRunnerMonitor, approveRunner, denyRunner, revokeRunner, pauseRunner, resumeRunner },
 }));
 
 /***
  * MARK: RunnersSection Tests
  * @description Verifies the minimal Runner onboarding UI: honest
- *   loading/error/empty states, pending approve/deny, active revoke, and
- *   refetch after every mutation. Credentials never render.
+ *   loading/error/empty states, pending approve/deny, active
+ *   pause/resume/revoke, and refetch after every mutation. Credentials
+ *   never render.
  ***/
 describe('RunnersSection', () => {
   beforeEach(() => {
@@ -63,6 +66,36 @@ describe('RunnersSection', () => {
       expect(getRunners).toHaveBeenCalledTimes(2);
     });
     expect(await screen.findByTestId('runner-status-r1')).toBeTruthy();
+  });
+
+  it('pauses an active Runner and resumes a paused one', async () => {
+    getRunners
+      .mockResolvedValueOnce([
+        { runnerId: 'r1', status: 'active', facts: {}, paused: false, lastSeenAt: null },
+      ])
+      .mockResolvedValueOnce([
+        { runnerId: 'r1', status: 'active', facts: {}, paused: true, lastSeenAt: null },
+      ])
+      .mockResolvedValueOnce([
+        { runnerId: 'r1', status: 'active', facts: {}, paused: false, lastSeenAt: null },
+      ]);
+    pauseRunner.mockResolvedValue({ status: 'active', paused: true });
+    resumeRunner.mockResolvedValue({ status: 'active', paused: false });
+    render(<RunnersSection />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pause runner r1' }));
+    await waitFor(() => {
+      expect(pauseRunner).toHaveBeenCalledWith('r1');
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-paused-r1')).toBeTruthy();
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Resume runner r1' }));
+    await waitFor(() => {
+      expect(resumeRunner).toHaveBeenCalledWith('r1');
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('runner-paused-r1')).toBeNull();
+    });
   });
 
   it('denies a pending Runner and revokes an active one', async () => {

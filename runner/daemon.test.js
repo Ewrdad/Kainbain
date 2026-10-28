@@ -644,6 +644,35 @@ describe("runDispatchLoop", () => {
 		assert.equal(dispatches, 3);
 	});
 
+	it("backs off on RUNNER_PAUSED without consuming idle budget or crashing", async () => {
+		const repo = localRepo();
+		const config = loopConfig({ dispatchIdleLimit: 1 });
+		dirs.push(config.workRoot, repo);
+		let dispatches = 0;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				dispatches += 1;
+				if (dispatches <= 2) {
+					const err = new Error("Runner dispatch-pause is paused");
+					err.statusCode = 409;
+					err.code = "RUNNER_PAUSED";
+					throw err;
+				}
+				return { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.idle, true);
+		assert.equal(out.assignments, 0);
+		assert.equal(dispatches, 3);
+	});
+
 	it("re-heartbeats once on STALE_RUNNER then retries", async () => {
 		const repo = localRepo();
 		const config = loopConfig({ dispatchIdleLimit: 1 });

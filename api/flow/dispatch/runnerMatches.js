@@ -3,9 +3,10 @@ import { RUNNER_PROTOCOL } from "../runnerRegistry.js";
 /***
  * MARK: runnerMatches
  * @description Decides whether one Runner registration can take a task with
- *   the given requirements: active status, fresh heartbeat (staleness
- *   expiry), v1 protocol, runnable flag, harness id, model offering, tier
- *   membership, and disk headroom floor. Returns `{ ok, reason }` — the
+ *   the given requirements: active status, not paused, fresh heartbeat
+ *   (staleness expiry), v1 protocol, runnable flag, harness id, model
+ *   offering, tier membership, and disk headroom floor. Returns
+ *   `{ ok, reason }` — the
  *   reason code is loud by design (step-6 NO_CAPABLE_RUNNER diagnostics
  *   and the monitor surface distinguish "no runners" from "runners that
  *   cannot take this job"). Alias requirements always miss here; WP-3.2
@@ -28,6 +29,7 @@ export function runnerMatches(record = {}, req = {}, opts = {}) {
 			: 100;
 
 	if (record.status !== "active") return { ok: false, reason: "NOT_ACTIVE" };
+	if (record.paused === true) return { ok: false, reason: "PAUSED" };
 	const seen = Date.parse(record.lastSeenAt || "");
 	if (!Number.isFinite(seen) || now - seen > staleAfterMs) {
 		return { ok: false, reason: "STALE_HEARTBEAT" };
