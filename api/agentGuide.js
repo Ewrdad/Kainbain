@@ -357,6 +357,20 @@ export const ENDPOINTS = [
 	},
 	{
 		method: "POST",
+		path: "/runners/:id/pause",
+		purpose:
+			"Pause an active Runner; it keeps heartbeating but takes no new tasks (claim and dispatch-match fail fast with 409 RUNNER_PAUSED). Idempotent.",
+		body: null,
+	},
+	{
+		method: "POST",
+		path: "/runners/:id/resume",
+		purpose:
+			"Clears the pause flag so the Runner picks up new tasks again. Idempotent: resuming an unpaused Runner is a no-op success.",
+		body: null,
+	},
+	{
+		method: "POST",
 		path: "/tasks/:id/pause",
 		purpose: "Pause an in-progress or queued task.",
 		body: null,
