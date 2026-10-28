@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest';
-import { screen, fireEvent, within } from '@testing-library/react';
+import { screen, fireEvent, within, cleanup } from '@testing-library/react';
 import React from 'react';
 import '@testing-library/jest-dom';
 
@@ -80,6 +80,24 @@ test('blank runner id and label fail closed to unknown instead of empty', () => 
   expect(box.getAttribute('aria-label')).toBe(
     'Runner unknown, running, task Ship it, stage Plan',
   );
+});
+
+test('untrimmed and non-string status words normalise so dot, word, and aria agree', () => {
+  renderBox({ ...runningEntry, statusWord: '  running  ' });
+  const padded = screen.getByTestId('runner-box-bravo');
+  expect(padded).toHaveTextContent('RUNNING');
+  expect(padded.getAttribute('aria-label')).toBe('Runner Bravo, running, task Ship it, stage Plan');
+  expect(padded.innerHTML).toContain('bg-[#7bdb85]');
+  cleanup();
+
+  // A non-string status used to miss the colour map while the label read
+  // something else — now every channel agrees on idle.
+  renderBox({ ...runningEntry, statusWord: 5 });
+  const coerced = screen.getByTestId('runner-box-bravo');
+  expect(coerced).toHaveTextContent('IDLE');
+  expect(coerced.getAttribute('aria-label')).toBe('Runner Bravo, idle, task Ship it, stage Plan');
+  expect(coerced.innerHTML).toContain('bg-text-muted');
+  cleanup();
 });
 
 test('missing stage renders an em dash and long names keep full titles', () => {

@@ -100,6 +100,23 @@ test('duplicate runner ids render both boxes without key collision', () => {
   expect(onOpenTask).toHaveBeenCalledTimes(1);
 });
 
+test('non-string runner ids share the box coercion so keys and test ids agree', () => {
+  renderWithKainBain(
+    <RunnerBoxesRow
+      entries={[
+        { ...entry('alpha'), runnerId: 7, runnerLabel: 'Seven' },
+        { ...entry('alpha'), runnerId: Symbol('sigil'), runnerLabel: 'Sigil' },
+      ]}
+      onOpenTask={() => {}}
+    />,
+    {},
+  );
+  // Numeric ids render as their string form; symbols fail closed to unknown.
+  expect(screen.getByTestId('runner-box-7')).toHaveTextContent('Seven');
+  expect(screen.getByTestId('runner-box-unknown')).toHaveTextContent('Sigil');
+  expect(screen.getAllByRole('listitem')).toHaveLength(2);
+});
+
 test('the row is scroll-contained so it cannot cover transport controls', () => {
   renderWithKainBain(
     <RunnerBoxesRow entries={[entry('a'), entry('b'), entry('c'), entry('d')]} />,

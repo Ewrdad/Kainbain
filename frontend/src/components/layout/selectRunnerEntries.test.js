@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 
-import { selectRunnerEntries } from './selectRunnerEntries';
+import { resolveRunnerBoxEntries, selectRunnerEntries } from './selectRunnerEntries';
 
 /***
  * MARK: selectRunnerEntries tests
@@ -151,4 +151,40 @@ test('stage falls back to the task stage name when the stage list misses', () =>
   ];
   const [entry] = selectRunnerEntries({ tasks, stages: [], engineState: { status: 'idle' } });
   expect(entry.stageName).toBe('Custom');
+});
+
+/***
+ * MARK: resolveRunnerBoxEntries tests
+ * @description The bar's single entry-resolution point: explicit props win
+ * untouched, null derives from context, and poisoned payloads degrade to
+ * the legacy view instead of throwing.
+ ***/
+
+test('an explicit runnerEntries list wins untouched, even an empty one', () => {
+  const injected = [{ runnerId: 'b' }];
+  expect(resolveRunnerBoxEntries({ runnerEntries: injected })).toBe(injected);
+  expect(resolveRunnerBoxEntries({ runnerEntries: [] })).toEqual([]);
+});
+
+test('null or absent runnerEntries derives from context runner association', () => {
+  const tasks = [
+    { id: 't1', runnerId: 'b', status: 'in_stage', title: 'Work' },
+  ];
+  const derived = resolveRunnerBoxEntries({ runnerEntries: null, tasks, stages: [], engineState: { status: 'idle' } });
+  expect(derived).toHaveLength(1);
+  expect(derived[0].runnerId).toBe('b');
+  expect(resolveRunnerBoxEntries({})).toEqual([]);
+  expect(resolveRunnerBoxEntries()).toEqual([]);
+});
+
+test('a poisoned task payload degrades to the legacy view instead of throwing', () => {
+  const poisoned = {};
+  Object.defineProperty(poisoned, 'runnerId', {
+    get() {
+      throw new Error('poisoned payload');
+    },
+  });
+  expect(
+    resolveRunnerBoxEntries({ tasks: [poisoned], stages: [], engineState: {} }),
+  ).toEqual([]);
 });

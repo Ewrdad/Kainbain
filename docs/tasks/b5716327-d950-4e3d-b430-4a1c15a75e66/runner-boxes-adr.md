@@ -56,6 +56,20 @@ status word always renders as text and the dot is `aria-hidden`.
   back to the legacy single-task view instead of blanking the bar, so the
   transport controls keep working on an operational screen. Explicit
   `runnerEntries` props bypass the derivation untouched.
+- Cleanup hardening (2026-10-28): the try/catch moved into a unit-testable
+  `resolveRunnerBoxEntries` helper in `selectRunnerEntries.js` (explicit prop
+  wins, else derive, poison degrades to `[]`), so the bar owns a single
+  immutable binding; `taskRecency` renamed to `readTaskRecency` (verb-first
+  per KB standards); `RunnerBox` normalises the status word once so dot
+  colour, visible word, and aria label can never disagree on untrimmed or
+  non-string input; `RunnerBoxesRow` keys use the same fail-closed id
+  coercion as the box test ids (a Symbol id can no longer throw in the key).
+  Full `npm run test --prefix frontend`: 284 files / 3856 tests green;
+  eslint clean on all touched files; `check-one-function-per-file` and
+  `check-jsdoc-example` gates pass; `npm run build --prefix frontend` green.
+  Ops continuity is unchanged: kill switch
+  (`uiPreferences.showRunnerBoxes === false`), no stored-profile migration,
+  no backend, revert is deleting the `showRunnerBoxes` branch.
 - New tests: `coerceBoxText` unit cases; a poisoned-payload bar test proving
   the legacy fallback. Full `npm run test --prefix frontend`: 284 files /
   3851 tests green; eslint clean; `check-one-function-per-file` and

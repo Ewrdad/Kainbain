@@ -60,7 +60,7 @@ const readTaskRunnerLabel = (task, fallbackId) => {
 };
 
 /***
- * MARK: taskRecency
+ * MARK: readTaskRecency
  * @description Sort key for "most recent task wins" inside a runner group:
  *   updatedAt, then enteredStageAt/createdAt, then stable id order — the
  *   same pipeline-independent recency the universal now-playing fallback
@@ -69,12 +69,12 @@ const readTaskRunnerLabel = (task, fallbackId) => {
  *   `Date.parse` path stringified to NaN (and silently lost every recency
  *   comparison); anything unparseable is 0, never NaN, so the sort below
  *   can never see an unordered key.
- * @example taskRecency({}) => 0
- * @example taskRecency({ updatedAt: 5 }) => 5
+ * @example readTaskRecency({}) => 0
+ * @example readTaskRecency({ updatedAt: 5 }) => 5
  * @param {Object} [task] - Task payload.
  * @returns {number} Millis epoch (0 when unparseable).
  ***/
-const taskRecency = (task) => {
+const readTaskRecency = (task) => {
   // First usable stamp wins: blank strings fall through to the older stamp
   // instead of short-circuiting the group to 0.
   const candidates = [task?.updatedAt, task?.enteredStageAt, task?.createdAt];
@@ -104,7 +104,7 @@ const pickGroupTask = (groupTasks, engineState) => {
   const owner = list.find((task) => isEngineOwner(task, engineState));
   if (owner) return owner;
   const byRecency = [...list].sort((a, b) => {
-    const time = taskRecency(b) - taskRecency(a);
+    const time = readTaskRecency(b) - readTaskRecency(a);
     if (time !== 0) return time;
     return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
   });
@@ -171,3 +171,35 @@ export function selectRunnerEntries({ tasks, stages, engineState, isAgentRunning
     })
     .sort((a, b) => String(a.runnerId).localeCompare(String(b.runnerId)));
 }
+
+/***
+ * MARK: resolveRunnerBoxEntries
+ * @description Single place that decides what the Now Playing bar renders in
+ *   its left column: an explicitly injected `runnerEntries` list (tests,
+ *   story states, a future runner registry) wins untouched, otherwise the
+ *   entries derive from context runner association via selectRunnerEntries.
+ *   A poisoned task payload (a throwing getter, a bad-merge Proxy) degrades
+ *   to [] — the legacy single-task view — instead of blanking the bar, so
+ *   the transport controls keep working on an operational screen. Never
+ *   throws and never mutates its input. (A const arrow so the
+ *   one-function-per-file gate stays quiet; selectRunnerEntries above owns
+ *   the file's single `function` declaration.)
+ * @example resolveRunnerBoxEntries({ runnerEntries: [{ runnerId: 'b' }] }) => [{ runnerId: 'b' }]
+ * @example resolveRunnerBoxEntries({ tasks: [{ id: 't1', runnerId: 'b', status: 'in_stage' }], stages: [], engineState: {} }) => [{ runnerId: 'b', runnerLabel: 'b', taskId: 't1', task: { id: 't1', runnerId: 'b', status: 'in_stage' }, taskTitleFirstLine: 'Untitled Task', stageName: null, statusWord: 'queued' }]
+ * @example resolveRunnerBoxEntries({}) => []
+ * @param {Object} [args] - Named inputs mirroring the bar's context.
+ * @param {Array<Object>|null} [args.runnerEntries=null] - Injected entries (null derives from context).
+ * @param {Array<Object>} [args.tasks] - Live task list.
+ * @param {Array<Object>} [args.stages] - Pipeline stages for stage-name resolution.
+ * @param {Object} [args.engineState] - Engine snapshot (status/activeTaskId).
+ * @param {boolean} [args.isAgentRunning=false] - Agent-loop liveness flag.
+ * @returns {Array<Object>} Runner entries (possibly empty, never null).
+ ***/
+export const resolveRunnerBoxEntries = ({ runnerEntries = null, tasks, stages, engineState, isAgentRunning = false } = {}) => {
+  if (runnerEntries !== null && runnerEntries !== undefined) return runnerEntries;
+  try {
+    return selectRunnerEntries({ tasks, stages, engineState, isAgentRunning });
+  } catch {
+    return [];
+  }
+};

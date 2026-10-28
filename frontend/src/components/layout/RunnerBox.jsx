@@ -32,10 +32,16 @@ export function RunnerBox({ entry, onOpenTask }) {
   // bindings: the coercion helper owns every blank/coerce/fallback branch.
   const runnerId = coerceBoxText(entry?.runnerId, 'unknown');
   const runnerName = coerceBoxText(entry?.runnerLabel, runnerId);
-  const statusWord = entry?.statusWord || 'idle';
+  // Normalised once so the dot colour, the visible word, and the aria label
+  // can never disagree: an untrimmed (' running ') or non-string (5, {}, [])
+  // status used to miss the colour map while the label read something else.
+  const statusWord =
+    typeof entry?.statusWord === 'string' && entry.statusWord.trim() !== ''
+      ? entry.statusWord.trim()
+      : 'idle';
   const style = getRunnerBoxStyle(statusWord);
   const testId = `runner-box-${runnerId}`;
-  const label = buildRunnerBoxAriaLabel({ ...entry, runnerLabel: runnerName });
+  const label = buildRunnerBoxAriaLabel({ ...entry, runnerLabel: runnerName, statusWord });
   const taskTitle =
     typeof entry?.taskTitleFirstLine === 'string' && entry.taskTitleFirstLine !== ''
       ? entry.taskTitleFirstLine
