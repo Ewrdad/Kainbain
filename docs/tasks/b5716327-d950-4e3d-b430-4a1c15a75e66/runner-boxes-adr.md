@@ -128,6 +128,23 @@ status word always renders as text and the dot is `aria-hidden`.
   proves no box paints under transport buttons (row clips + scrolls: 684px
   content in a 384px row at 1280, 110px at 700px). 60fps during row scroll and
   across 700/1024/1280 resizes. Screenshots read back and inspected.
+
+## Cleanup stage (2026-10-28, final pass)
+
+- Reviewed every runner-box file against `./docs/KB Code Standards.md`:
+  verb-first functions, labelled data-import args, MARK + `@example` JSDoc
+  on every export, tests co-located, no class or pattern language, one
+  top-level `function` per file. No structural changes were needed.
+- One real edge fixed in `RunnerBox.jsx`: the `Stage:` line tooltip was
+  gated on the raw `entry.stageName` truthiness, so a junk truthy value (a
+  number, an object) left a stray "—" tooltip. A single `hasStageName` flag
+  now gates both the line and its tooltip; pinned by a new assertion in
+  `RunnerBox.test.jsx`.
+- Full verification: `npm run test --prefix frontend` 284 files / 3863
+  tests green; eslint clean; `check-one-function-per-file` and
+  `check-jsdoc-example` PASS; `npm run build --prefix frontend` green.
+  Working tree had no api changes, so the pre-existing `test:api` vite
+  failure stays out of scope (proven pre-existing on the stashed tree).
   (One false alarm during the pass: an early rect-overlap check flagged
   clipped-away boxes whose unclipped rects extend under buttons —
   getBoundingClientRect ignores clipping; hit-testing confirmed nothing paints

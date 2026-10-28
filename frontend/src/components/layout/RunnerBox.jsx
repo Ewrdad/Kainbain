@@ -57,10 +57,11 @@ export function RunnerBox({ entry, onOpenTask }) {
       : 'Untitled Task';
   // Only a non-blank string names a stage: anything else (a bad-merge object,
   // a number) would render as "Stage: [object Object]" beside honest data.
-  const stageLine =
-    typeof entry?.stageName === 'string' && entry.stageName.trim() !== ''
-      ? `Stage: ${entry.stageName}`
-      : '—';
+  // The single flag below also gates the tooltip, so a junk stage value can
+  // never leave a stray "—" tooltip behind.
+  const hasStageName =
+    typeof entry?.stageName === 'string' && entry.stageName.trim() !== '';
+  const stageLine = hasStageName ? `Stage: ${entry.stageName}` : '—';
 
   const frameClass =
     'flex min-w-[120px] max-w-[180px] flex-col justify-center gap-0.5 rounded border border-border-standard bg-surface-container px-2 py-1 text-left';
@@ -118,7 +119,7 @@ export function RunnerBox({ entry, onOpenTask }) {
       </span>
       <span
         className="truncate text-[10px] text-text-muted"
-        title={entry?.stageName ? truncateRunnerText(stageLine) : undefined}
+        title={hasStageName ? truncateRunnerText(stageLine) : undefined}
       >
         {stageLine}
       </span>

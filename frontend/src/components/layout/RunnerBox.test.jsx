@@ -116,6 +116,8 @@ test('non-string stage and task values fail closed instead of leaking objects', 
   expect(box).toHaveTextContent('—');
   expect(box.innerHTML).not.toContain('[object Object]');
   expect(box.getAttribute('aria-label')).toBe('Runner Bravo, running');
+  // A junk stage value leaves no stray tooltip on the dash line.
+  expect(within(box).getByText('—').getAttribute('title')).toBeNull();
 });
 
 test('missing stage renders an em dash and long names keep full titles', () => {
