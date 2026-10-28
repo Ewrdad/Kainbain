@@ -59,7 +59,7 @@ and pre-fill the feedback draft (without duplicating text already there).
 Normally the PR review diff goes empty once the task branch is merged: there
 is nothing left unmerged to show. For rapid iteration (merge, deploy, then
 review what actually shipped), two per-project settings in Project Settings
-change that:
+(Files & Links tab) change that:
 
 - **Preserve PR Review Diff After Merge** (default off) — the final review
   keeps showing the merged change, frozen at the merge commit, instead of an

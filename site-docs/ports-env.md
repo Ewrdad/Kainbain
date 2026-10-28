@@ -18,7 +18,7 @@ introspectable with secrets redacted via `GET /status/config`.
 
 The retry/timeout knobs (`KAINBAIN_AGENT_TIMEOUT_MS`, `KAINBAIN_CI_TIMEOUT_MS`,
 `KAINBAIN_QUEUE_ENTRY_TIMEOUT_MS`, `KAINBAIN_MAX_AUTO_ITERATIONS`, …) are global defaults: each project may
-override them in Project Settings › Retry & Timeouts, and a per-stage override
+override them in Project Settings › Retry & Timeouts (Project tab), and a per-stage override
 (when set) still wins over both. Precedence per stage is **stage → project →
 global**; a project budget of `0` disables that loop for the project, and a
 blank project field follows the global default. Hitting retry on a failed
