@@ -15,6 +15,7 @@ import {
 	isGitRepository,
 	isValidBranchName,
 	resolveSha,
+	syncBranchWithUpstream,
 	syncDefaultBranchToRemote,
 } from "../git.js";
 import { ensureTaskWorktree } from "./taskWorkspace.js";
@@ -321,6 +322,67 @@ export async function syncMainToRemoteBestEffort(
 
 
 /***
+ * MARK: syncTaskBranchToRemoteBestEffort
+ * @description Best-effort "merge in the latest" for a task branch: fetches
+ *   the remote and converges the local branch ref with its upstream (see
+ *   syncBranchWithUpstream) — merging `origin/<branch>` when the branch is
+ *   checked out, fast-forwarding the ref otherwise. A converged move is
+ *   journaled like the main-branch sync; every other outcome degrades to a
+ *   process-log warning and never fails the calling stage. Never throws.
+ * @example await syncTaskBranchToRemoteBestEffort(store, task, '/repo', bridge, 'task-branch pickup', 'kb/task-1') => { synced: true, ... }
+ * @param {Object} taskStore - TaskStore instance.
+ * @param {Object} task - The task entity.
+ * @param {string} cwd - Project working directory.
+ * @param {Object} [bridge] - Event bridge (may be undefined).
+ * @param {string} [context] - Human operation name for audit lines.
+ * @param {string} branch - Task branch to converge with its upstream.
+ * @returns {Promise<Object|null>} Sync result, or null when sync itself errored unexpectedly.
+ ***/
+export async function syncTaskBranchToRemoteBestEffort(
+	taskStore,
+	task,
+	cwd,
+	bridge,
+	context,
+	branch,
+) {
+	const label =
+		typeof context === "string" && context.trim() ? context.trim() : "operation";
+	const short = (sha) =>
+		typeof sha === "string" && sha ? sha.slice(0, 7) : "unknown";
+	try {
+		const res = await syncBranchWithUpstream(cwd, branch);
+		if (!res) return null;
+		if (res.synced) {
+			recordBranchHop(
+				taskStore,
+				task,
+				cwd,
+				bridge,
+				`Synced task branch '${branch}' with '${res.remote}/${branch}' before ${label} (${short(res.before)} → ${short(res.after)})${res.detail ? ` — ${res.detail}` : ""}`,
+			);
+		} else if (res.skipped && res.skipped !== "no-remote" && res.skipped !== "no-upstream") {
+			_appendProcessLog(
+				task,
+				`[WARN] Task-branch sync before ${label} skipped (${res.skipped}${res.detail ? `: ${res.detail}` : ""}) — continuing with local state`,
+			);
+		}
+		return res;
+	} catch (e) {
+		try {
+			_appendProcessLog(
+				task,
+				`[WARN] Task-branch sync before ${label} errored (${e?.message || e}) — continuing with local state`,
+			);
+		} catch {
+			// Audit is best-effort; the operation continues regardless.
+		}
+		return null;
+	}
+}
+
+
+/***
  * MARK: ensureTaskBranch
  * @description Safely makes sure the task's branch exists and is checked out
  *   in the project working directory. Work stages only — human review stages
@@ -501,6 +563,20 @@ export async function ensureTaskBranch(taskStore, task, projectCwd, opts = {}) {
 			`Recovered stale linked worktree at '${outcome.worktreeRecoveredFrom}' holding '${branch}' (clean, nothing unpushed) and checked out '${branch}'`,
 		);
 	}
+	// Always merge in the latest: converge the freshly checked-out task
+	// branch with its upstream tracking ref (fast-forward, else a merge
+	// commit; conflicts and divergence stay local and warn-only). Without
+	// this, a remote that advanced out of band — restart, second writer,
+	// operator push — silently leaves the stage working on a stale base
+	// whose merge later conflicts structurally.
+	await syncTaskBranchToRemoteBestEffort(
+		taskStore,
+		task,
+		cwd,
+		bridge,
+		"task-branch pickup",
+		branch,
+	);
 	// Ensure task.branch is set on the entity itself if it was derived
 	task.branch = branch;
 	taskStore._saveTaskMarkdown(cwd, task);

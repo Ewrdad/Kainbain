@@ -199,6 +199,37 @@ describe("ensureTaskBranch default-first pickup", () => {
 		expect(historyText(task)).toBe(historyBefore);
 	});
 
+	it("merges remote advances into the task branch on pickup (never works stale)", async () => {
+		const { store, dir, task } = makeStore();
+		const parent = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-pickup-remote-"));
+		tempDirs.push(parent);
+		git(parent, "init", "--bare", "origin.git");
+		const remoteDir = path.join(parent, "origin.git");
+		git(dir, "remote", "add", "origin", remoteDir);
+
+		await store.ensureTaskBranch(task, dir);
+		git(dir, "push", "-u", "origin", task.branch);
+
+		// A second writer advances the remote out of band (restart,
+		// operator push, sibling checkout).
+		const other = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-pickup-other-"));
+		tempDirs.push(other);
+		git(parent, "clone", remoteDir, other);
+		git(other, "config", "user.email", "kainbain-test@example.com");
+		git(other, "config", "user.name", "KainBain Test");
+		git(other, "checkout", task.branch);
+		fs.writeFileSync(path.join(other, "remote-work.txt"), "remote work\n");
+		git(other, "add", "-A");
+		git(other, "commit", "-m", "remote advance");
+		git(other, "push", "origin", task.branch);
+		const remoteTip = git(other, "rev-parse", "HEAD").trim();
+
+		await store.ensureTaskBranch(task, dir);
+
+		expect(git(dir, "rev-parse", task.branch).trim()).toBe(remoteTip);
+		expect(historyText(task)).toContain(`Synced task branch '${task.branch}'`);
+	});
+
 	it("still provisions on an unborn repo with no default branch to hop through", async () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-pickup-unborn-"));
 		tempDirs.push(dir);

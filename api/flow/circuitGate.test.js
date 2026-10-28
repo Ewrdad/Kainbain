@@ -30,6 +30,7 @@ vi.mock("../git.js", () => ({
 	requireCleanWorkingTree: vi.fn(async () => {}),
 	commitAllIfNeeded: vi.fn(async () => ({ committed: false, hash: null })),
 	mergeBranch: vi.fn(async () => ({ stdout: "merged", stderr: "" })),
+	syncBranchWithUpstream: vi.fn(async () => ({ synced: false, skipped: "no-remote" })),
 }));
 
 const STAGES = [{ id: "s-1", name: "Build", type: "agent" }];

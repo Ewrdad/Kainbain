@@ -154,6 +154,30 @@ Post-merge commands (like production deployments) can be long-running. The defau
 - **No Half-Merges:** All conflicts trigger an immediate abort.
 - **No Self-Integration:** Agents are strictly forbidden from performing their own merges via prompt-level guards.
 
+## Convergence Rules (no repeated conflicts)
+
+Three ordering rules keep every writer on the latest so the same conflict
+cannot recur attempt after attempt:
+
+1. **File operations end committed and pushed.** Every stage finalize
+   commits its reports and work, then pushes the branch (warn-only) — on
+   both the pass path (`finalizeTaskBranch`) and the failure path
+   (`commitFailedStageWork`). The merge stage publishes `main` on both
+   sides of the merge attempt too, so a failed attempt never strands
+   unpushed commits the next entry sync would reset away unpublished.
+2. **Commit and push happen before the stage ends.** A stage's file writes
+   are committed first and pushed second, always before routing or the next
+   stage runs. Nothing crosses a stage boundary uncommitted; nothing
+   committed stays local-only. Push failures warn and never fail a stage
+   whose work already passed.
+3. **Always merge in the latest.** Task-branch pickup converges the branch
+   with its upstream tracking ref (merge when checked out, fast-forward
+   otherwise — never a hard reset, local stage work may be unpushed), and
+   merge entry fast-forwards the task ref the same way. The final
+   branch-into-main merge therefore fast-forwards whenever the two sides
+   have converged, and only genuine code disagreements still conflict —
+   which fail back loudly with the diagnostics above, never silently.
+
 ## Serialization Gate (single-gate rule)
 
 Every engine git process — reads and writes — runs inside `git()` in

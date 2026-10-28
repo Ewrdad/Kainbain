@@ -80,6 +80,7 @@ import {
 	shouldResetReviewBaseline,
 	isValidReviewBaseline,
 	syncMainToRemoteBestEffort,
+	syncTaskBranchToRemoteBestEffort,
 } from "../work/taskBranches.js";
 import { resolveShell, buildStageEnv, isWindows } from "../utils/platform.js";
 
@@ -1387,6 +1388,20 @@ async function mergeTaskBranchIntoMain(
 		// Best-effort and warn-only — a failed sync keeps local state and
 		// the strict guard below still protects operator work.
 		await syncMainToRemoteBestEffort(store, task, cwd, bridge, "merge");
+		// Always merge in the latest on the task side too: fast-forward the
+		// task ref to its upstream when it is not checked out (merge entry
+		// normally sits on the default branch after finalize). A stale task
+		// ref would merge outdated work and re-conflict on files the remote
+		// already settled. Diverged refs stay local and warn-only — the
+		// merge below, not the sync, owns that decision.
+		await syncTaskBranchToRemoteBestEffort(
+			store,
+			task,
+			cwd,
+			bridge,
+			"merge",
+			branch,
+		);
 		// Landed evidence (frozen marker OR git ancestry) is decided
 		// IMMEDIATELY upon entry (before any checkout, commit, or
 		// measurement) so the `catch` below can route every later failure
@@ -1642,6 +1657,24 @@ async function mergeTaskBranchIntoMain(
 		} catch {
 			// Non-fatal: the merge below owns the failure loudly.
 		}
+		// Commit-and-push before the attempt ends: publish the bookkeeping
+		// above so a failed merge never strands unpushed main-side commits
+		// that the next entry sync would reset away unpublished. Warn-only —
+		// the merge below owns the outcome, never the push.
+		try {
+			const preMergePush = await pushBranchIfRemote(cwd, mainBranch);
+			if (preMergePush?.pushed) {
+				_appendProcessLog(
+					task,
+					`[GIT] Pushed '${mainBranch}' before merging '${branch}'`,
+				);
+			}
+		} catch (pushErr) {
+			_appendProcessLog(
+				task,
+				`[WARN] Pre-merge push of '${mainBranch}' skipped (${pushErr?.message || pushErr}) — merge still proceeds`,
+			);
+		}
 
 		try {
 			recordStageHeartbeat(store, taskId, { stageId: stage.id, kind: "merge" });
@@ -1667,6 +1700,22 @@ async function mergeTaskBranchIntoMain(
 					conflictedFiles: e.conflictedFiles,
 				});
 				if (!healed) {
+				// Commit-and-push before the attempt ends: the aborted merge
+				// left the tree clean, but routing reports written so far
+				// (and any heartbeat dirt) are stage file operations — commit
+				// them on main and publish, so the failure carries no
+				// unpushed state into the next attempt. Warn-only; the
+				// diagnostics below own the failure loudly either way.
+				try {
+					await commitAllIfNeeded(
+						cwd,
+						`KainBain (task ${task.id}): commit merge-attempt notes on '${mainBranch}' after conflict with '${branch}'`,
+						{ expectedBranch: mainBranch },
+					);
+					await pushBranchIfRemote(cwd, mainBranch);
+				} catch {
+					// Best-effort: the conflict diagnostics below report.
+				}
 				// Structured Tier 3 payload: file list + source/target SHAs
 				// + strategy travel both as fields and as a rendered block in
 				// the message (the prompt surface reads failureReason first).

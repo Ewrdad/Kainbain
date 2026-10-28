@@ -453,6 +453,40 @@ export async function commitFailedStageWork(taskStore, task, projectCwd, opts = 
 			} catch {
 				// Audit writes never block failure routing.
 			}
+			// File operations end pushed: publish the failed attempt's commit
+			// now, so the retry (or a second writer after a restart) merges
+			// the latest instead of re-conflicting on stale unpublished work.
+			// Warn-only — routing below owns the failure either way.
+			try {
+				const pushRes = await pushBranchIfRemote(execCwd, branch);
+				if (pushRes?.pushed === true) {
+					try {
+						if (Array.isArray(task.history)) {
+							task.history.push({
+								timestamp: new Date().toISOString(),
+								action: `Pushed '${branch}' to remote after failed stage '${stageLabel}'`,
+							});
+						}
+					} catch {
+						// Audit writes never block failure routing.
+					}
+					_appendProcessLog(
+						task,
+						`[GIT] Pushed '${branch}' to remote after failed stage '${stageLabel}'`,
+					);
+				}
+			} catch (pushErr) {
+				try {
+					if (Array.isArray(task.history)) {
+						task.history.push({
+							timestamp: new Date().toISOString(),
+							action: `Warning: push of '${branch}' after failed stage '${stageLabel}' failed (${pushErr?.message || pushErr}) — retry still proceeds`,
+						});
+					}
+				} catch {
+					// Audit writes never block failure routing.
+				}
+			}
 		}
 		return commitRes;
 	} catch {

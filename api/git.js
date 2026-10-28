@@ -78,6 +78,7 @@ export {
 	isBranchMergedInto,
 	partitionMergeConflicts,
 	resolveConflictsWithIncoming,
+	syncBranchWithUpstream,
 } from "./git/merge.js";
 
 export {
