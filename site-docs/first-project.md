@@ -45,7 +45,7 @@ adopted explicitly.
 
 Per-project engine state (`project.json`, `sessions/`, `worktrees/`,
 `quarantine/`) lives under `<cwd>/.kainbain` by default. A repo that already owns
-`.kainbain`, or that wants a different name, sets **Project Settings → KainBain
+`.kainbain`, or that wants a different name, sets **Project Settings → Files & Links → KainBain
 Folder Name** (or `kainbainDirName` on the register/create payload), e.g. `.kb`.
 
 Changing the setting does not move existing state. The safe flow is to stop
@@ -80,3 +80,7 @@ Keep stage instructions short and verifiable ("implement X, prove with `npm test
 ## Explore
 
 The **Files & Repo** tab (keyboard `2`) browses the project's sandboxed filesystem with markdown/code preview and links out to notes and git. It is read-only exploration — real changes happen through tasks.
+
+## Project settings tabs
+
+Project Settings is split into focused tabs: **Project** (name, model, look, retry/timeout budgets), **Aliases** (model nicknames), and **Files & Links** (folders, git address, app link), plus **Named Workflows** and **Skills**. The search box at the top right jumps to and highlights the matching setting across every tab. Switching between the Project, Aliases, and Files & Links tabs keeps unsaved edits; leaving for Named Workflows or Skills with unsaved edits asks for confirmation first.

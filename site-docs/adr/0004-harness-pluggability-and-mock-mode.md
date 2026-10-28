@@ -19,7 +19,7 @@ an agent stage at all — and failures surfaced as generic 500s, not as
 documentation lived in `docs/EngineDetails/*.md`, out-of-repo in the
 notes space (C-13): it does not travel with a clone, so it could neither
 record platform decisions (§8 item 9) nor guide an independent user.
-(`api/docs/` is untracked pi-harness scratch with one tracked exception,
+(api/docs/ is untracked pi-harness scratch with one tracked exception,
 `testing-with-mock-harness.md` — F-8 — not engine state.)
 
 Hard constraint: the app is in active use for its own development on the

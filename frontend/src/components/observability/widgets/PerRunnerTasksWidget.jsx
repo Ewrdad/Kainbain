@@ -10,18 +10,17 @@ import { formatTaskTitleFirstLine } from '../../tasks/taskFormatters';
  *   Missing/unparseable starts render as an em dash — never invented.
  * @example formatRunnerElapsed('2026-10-27T12:00:00.000Z', Date.parse('2026-10-27T12:01:30.000Z')) => '01:30'
  ***/
-export function formatRunnerElapsed(startedAt, nowMs) {
+export const formatRunnerElapsed = (startedAt, nowMs) => {
   const start = Date.parse(startedAt || '');
   if (!Number.isFinite(start) || !Number.isFinite(nowMs) || nowMs < start) return '—';
   const totalSeconds = Math.floor((nowMs - start) / 1000);
   const mins = Math.floor(totalSeconds / 60);
   const secs = totalSeconds % 60;
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-}
+};
 
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+const escapeRegExp = (value) =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /***
  * MARK: runnerFreshness
@@ -30,11 +29,11 @@ function escapeRegExp(value) {
  *   unknown (grey) rather than alarming.
  * @example runnerFreshness(new Date().toISOString(), Date.now()) => 'live'
  ***/
-export function runnerFreshness(lastSeenAt, nowMs) {
+export const runnerFreshness = (lastSeenAt, nowMs) => {
   const seen = Date.parse(lastSeenAt || '');
   if (!Number.isFinite(seen)) return 'unknown';
   return nowMs - seen <= 60000 ? 'live' : 'stale';
-}
+};
 
 const FRESHNESS_DOT = {
   live: 'bg-emerald-400 animate-pulse',
@@ -50,7 +49,7 @@ const FRESHNESS_DOT = {
  *   the same fleet picture.
  * @example const { assignments, registry } = useRunnerMonitor({ pollMs: 5000 });
  ***/
-export function useRunnerMonitor({ pollMs = 5000 } = {}) {
+export const useRunnerMonitor = ({ pollMs = 5000 } = {}) => {
   const [monitor, setMonitor] = useState(null);
   const [runners, setRunners] = useState(null);
 
@@ -89,14 +88,14 @@ export function useRunnerMonitor({ pollMs = 5000 } = {}) {
     );
     return { assignments, registry, scheduler: monitor?.scheduler || null };
   }, [monitor, runners]);
-}
+};
 
-function taskTitle(task) {
+const taskTitle = (task) => {
   const title = formatTaskTitleFirstLine(task?.title || task?.goal || '', '');
   return (typeof title === 'string' && title.trim()) || '(untitled task)';
-}
+};
 
-function runnerLogTail(task, runnerId, limit = 6) {
+const runnerLogTail = (task, runnerId, limit = 6) => {
   const entries = Array.isArray(task?.logEntries) ? task.logEntries : [];
   const mine = entries.filter((e) => {
     if (!e) return false;
@@ -106,7 +105,7 @@ function runnerLogTail(task, runnerId, limit = 6) {
     return new RegExp(`^\\[runner\\s+${escapeRegExp(runnerId)}\\]`, 'i').test(e.text);
   });
   return mine.slice(-limit);
-}
+};
 
 /***
  * MARK: PerRunnerTasksWidget
@@ -195,7 +194,7 @@ export function PerRunnerTasksWidget({ tasks = [], stages = [], compact = false,
   );
 }
 
-function PerRunnerCompactRow({ assignment: a, task, nowMs, stageName }) {
+const PerRunnerCompactRow = ({ assignment: a, task, nowMs, stageName }) => {
   return (
     <details
       data-testid={`per-runner-row-${a.runnerId}`}
@@ -216,9 +215,9 @@ function PerRunnerCompactRow({ assignment: a, task, nowMs, stageName }) {
       <RunnerLogTail task={task} runnerId={a.runnerId} />
     </details>
   );
-}
+};
 
-function PerRunnerCard({ assignment: a, task, record, nowMs, stageName }) {
+const PerRunnerCard = ({ assignment: a, task, record, nowMs, stageName }) => {
   const harnesses = Array.isArray(record?.capabilities?.harnesses)
     ? record.capabilities.harnesses.map((h) => h?.id || h).filter(Boolean)
     : [];
@@ -290,7 +289,7 @@ function PerRunnerCard({ assignment: a, task, record, nowMs, stageName }) {
       )}
     </article>
   );
-}
+};
 
 /***
  * MARK: RunnerPromptPayload
@@ -300,7 +299,7 @@ function PerRunnerCard({ assignment: a, task, record, nowMs, stageName }) {
  *   prompt-free. Empty until the `prompted` progress event lands.
  * @example <RunnerPromptPayload assignment={assignment} taskId="t1" />
  ***/
-export function RunnerPromptPayload({ assignment, taskId }) {
+export const RunnerPromptPayload = ({ assignment, taskId }) => {
   const [viewMode, setViewMode] = useState('raw');
   const [isCopied, setIsCopied] = useState(false);
   const prompt = typeof assignment?.prompt === 'string' ? assignment.prompt : '';
@@ -369,9 +368,9 @@ export function RunnerPromptPayload({ assignment, taskId }) {
       )}
     </div>
   );
-}
+};
 
-function RunnerLogTail({ task, runnerId }) {
+const RunnerLogTail = ({ task, runnerId }) => {
   const tail = runnerLogTail(task, runnerId);
   if (tail.length === 0) {
     return <p className="mt-1 text-[11px] font-mono text-slate-400">No runner frames yet.</p>;
@@ -384,4 +383,4 @@ function RunnerLogTail({ task, runnerId }) {
       {tail.map((e) => e.text).join('\n')}
     </pre>
   );
-}
+};
