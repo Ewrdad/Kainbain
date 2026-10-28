@@ -137,7 +137,8 @@ describe("deploy.sh structural contracts", () => {
 	it("runs every blocking gate through run_gate", () => {
 		for (const gate of [
 			'run_gate "final-test-suite"',
-			'run_gate "canary-e2e"',
+			'run_gate "canary-e2e-shard-1"',
+			'run_gate "canary-e2e-shard-2"',
 			'run_gate "frontend-build"',
 			'run_gate "api-install"',
 			'run_gate "docker-build"',
@@ -146,25 +147,30 @@ describe("deploy.sh structural contracts", () => {
 		}
 	});
 
-	it("drains the canary scratch ports before the canary-e2e gate", () => {
+	it("drains the canary scratch ports before the canary-e2e gates", () => {
 		const drainCall = deployScript.indexOf("drain-ports.sh 3399 5299");
-		const canaryGate = deployScript.indexOf('run_gate "canary-e2e"');
+		const shard1 = deployScript.indexOf('run_gate "canary-e2e-shard-1"');
+		const shard2 = deployScript.indexOf('run_gate "canary-e2e-shard-2"');
 		expect(drainCall).toBeGreaterThan(-1);
-		expect(canaryGate).toBeGreaterThan(-1);
-		expect(drainCall).toBeLessThan(canaryGate);
+		expect(shard1).toBeGreaterThan(-1);
+		expect(shard2).toBeGreaterThan(-1);
+		expect(drainCall).toBeLessThan(shard1);
+		expect(shard1).toBeLessThan(shard2);
 	});
 
 	it("keeps test parity with npm test without running canary twice", () => {
 		// `npm test` runs the ten fast branches plus the canary suite in one
-		// gate. Deploy keeps the identical coverage, split across its two
+		// gate. Deploy keeps the identical coverage, split across its three
 		// named gates: final-test-suite must pass --no-canary so the canary
-		// suite runs exactly once, in the blocking canary-e2e gate below it
-		// (the #KB-0417 parity fix).
+		// suite runs in the two blocking shard gates below it (1/2 then 2/2;
+		// the sharded split keeps one 135-test browser from growing unbounded
+		// memory on the shared gate host).
 		expect(deployScript).toContain('run_gate "final-test-suite" "./run-tests.sh --no-canary" ./run-tests.sh --no-canary');
-		expect(deployScript).toContain('run_gate "canary-e2e" "npm run test:canary" npm run test:canary');
+		expect(deployScript).toContain('run_gate "canary-e2e-shard-1" "npm run test:canary -- --shard=1/2" npm run test:canary -- --shard=1/2');
+		expect(deployScript).toContain('run_gate "canary-e2e-shard-2" "npm run test:canary -- --shard=2/2" npm run test:canary -- --shard=2/2');
 		expect(
 			deployScript.indexOf('run_gate "final-test-suite"'),
-		).toBeLessThan(deployScript.indexOf('run_gate "canary-e2e"'));
+		).toBeLessThan(deployScript.indexOf('run_gate "canary-e2e-shard-1"'));
 	});
 });
 
