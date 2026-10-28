@@ -46,6 +46,12 @@ export const PROJECT_SETTINGS_SECTIONS = PROJECT_SETTINGS_TABS.map((tab) => tab.
  ***/
 export const PROJECT_FORM_SECTIONS = PROJECT_SETTINGS_TABS.filter((tab) => tab.sharesProjectForm).map((tab) => tab.id);
 
+// How the jump-to-setting highlight behaves: a short wait lets the newly
+// selected tab render before scrolling, then the ring stays visible briefly
+// so the eye lands on the right field before it clears.
+const HIGHLIGHT_SHOW_DELAY_MS = 80;
+const HIGHLIGHT_HIDE_DELAY_MS = 2100;
+
 /***
  * MARK: ProjectSettings
  * @description A dedicated Project Management / Settings page for configuring
@@ -124,13 +130,13 @@ export function ProjectSettings() {
         }
         el.classList.add('ring-2', 'ring-primary', 'rounded-sm');
       }
-    }, 80);
+    }, HIGHLIGHT_SHOW_DELAY_MS);
     const hideTimer = setTimeout(() => {
       const el = typeof document !== 'undefined'
         ? document.getElementById(highlightTarget.id)
         : null;
       el?.classList?.remove('ring-2', 'ring-primary', 'rounded-sm');
-    }, 2100);
+    }, HIGHLIGHT_HIDE_DELAY_MS);
     return () => {
       clearTimeout(showTimer);
       clearTimeout(hideTimer);
@@ -223,5 +229,3 @@ export function ProjectSettings() {
     </section>
   );
 }
-
-export { ProjectSettingsForm, WorkflowManagementPanel };

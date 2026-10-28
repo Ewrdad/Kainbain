@@ -91,10 +91,14 @@ import { SETTINGS_SEARCH_INDEX } from './projectSettingsSearch';
 
 /**
  * MARK: ProjectSettings tests
- * @description Verifies the per-project configuration page: active-project
- *   selector, project name editing, multi-location directory paths (working directory,
- *   notes symlink, git repo URL), save flow, and UI customization tab.
- *   Also asserts that arbitrary environment variables table is removed.
+ * @description Verifies the per-project configuration page across its tabs —
+ *   Project (active-project selector, name, harness/model, retry/timeouts),
+ *   Aliases (model alias table), Files & Links (working directory, notes
+ *   symlink, git repo URL, app link), plus the settings search, the
+ *   unsaved-edits tab guard, and the save flow (including the alias
+ *   dirty-field and 409 conflict handling). Also asserts that UI
+ *   customization lives in System Settings, not here, and that the arbitrary
+ *   environment variables table is removed.
  */
 const projects = [
   {
