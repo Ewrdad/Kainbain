@@ -132,7 +132,11 @@ export function ProjectSettingsForm({
   const dirtyRef = useRef(false);
   const markDirty = useCallback(() => {
     dirtyRef.current = true;
-  }, []);
+    // Report synchronously too: the debounced effect below re-reports on the
+    // next render, but waiting for it can leave the parent tab guard stale by
+    // one interaction when an edit is immediately followed by a tab click.
+    onDirtyChange?.(true);
+  }, [onDirtyChange]);
   // Wraps a draft setter so the edit also marks the form dirty.
   const touch = useCallback(
     (setter) => (value) => {
@@ -524,6 +528,7 @@ export function ProjectSettingsForm({
       setModelAliasesTouched(false);
       onProjectUpdated(projectId);
       dirtyRef.current = false;
+      onDirtyChange?.(false);
       setSaveState('saved');
       // Soft combination warnings ride the save response (the save
       // succeeded): surface them inline so the mismatch is visible where
