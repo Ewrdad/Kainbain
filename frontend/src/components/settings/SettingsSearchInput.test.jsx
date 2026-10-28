@@ -57,6 +57,19 @@ describe('SettingsSearchInput', () => {
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
+  it('Enter jumps to the top result even after the dropdown is dismissed', () => {
+    const onSelect = vi.fn();
+    renderWithKainBain(<SettingsSearchInput onSelect={onSelect} />);
+    const input = screen.getByLabelText('Search settings');
+    fireEvent.change(input, { target: { value: 'git' } });
+    // Dismiss with Escape (text stays), then Enter still follows the top hit.
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect.mock.calls[0][0]).toMatchObject({ id: 'git-repo', tab: 'files' });
+  });
+
   it('Escape closes the dropdown without selecting', () => {
     const onSelect = vi.fn();
     renderWithKainBain(<SettingsSearchInput onSelect={onSelect} />);

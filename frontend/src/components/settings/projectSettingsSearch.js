@@ -38,27 +38,32 @@ export const SETTINGS_SEARCH_INDEX = [
 ];
 
 /***
- * MARK: matchesSetting
- * @description Scores one index entry against a normalized query: 3 for a
- *   label prefix match, 2 for a label substring, 1 for a keyword substring,
- *   0 for no match. Scores rank `searchSettings` so label hits lead.
- * @example matchesSetting({ label: 'Git Repository URL', keywords: ['git'] }, 'git') => 3
+ * MARK: scoreWord
+ * @description Scores one index entry against a single normalized word: 3 for
+ *   a label prefix match, 2 for a label substring, 1 for a keyword
+ *   substring, 0 for no match. Scores rank `searchSettings` so label hits
+ *   lead. A non-array `keywords` field scores 0 instead of throwing.
+ * @example scoreWord({ label: 'Git Repository URL', keywords: ['git'] }, 'git') => 3
  * @param {Object} entry - One `SETTINGS_SEARCH_INDEX` entry.
- * @param {string} query - Lowercase trimmed query.
+ * @param {string} word - Lowercase query word.
  * @returns {number} Match score (0 = no match).
  ***/
-const matchesSetting = (entry, query) => {
-  const label = entry.label.toLowerCase();
-  if (label.startsWith(query)) return 3;
-  if (label.includes(query)) return 2;
-  if (entry.keywords.some((keyword) => keyword.toLowerCase().includes(query))) return 1;
+const scoreWord = (entry, word) => {
+  const label = String(entry?.label ?? '').toLowerCase();
+  if (label.startsWith(word)) return 3;
+  if (label.includes(word)) return 2;
+  const keywords = Array.isArray(entry?.keywords) ? entry.keywords : [];
+  if (keywords.some((keyword) => String(keyword).toLowerCase().includes(word))) return 1;
   return 0;
 };
 
 /***
  * MARK: searchSettings
- * @description Returns index entries matching a query (case-insensitive
- *   substring over labels + keywords), best matches first. Blank queries
+ * @description Returns index entries matching a query (case-insensitive).
+ *   Multi-word queries match when EVERY word hits (label substring or
+ *   keyword substring), so "centralised docs folder" finds the docs-link
+ *   setting however the words are ordered. Scores sum the per-word best
+ *   hits, best matches first with index order breaking ties. Blank queries
  *   and non-matches return an empty array.
  * @example searchSettings('git') => [{ id: 'git-repo', tab: 'files', … }]
  * @param {string} query - Raw user input.
@@ -67,9 +72,19 @@ const matchesSetting = (entry, query) => {
 export const searchSettings = (query) => {
   const normalized = String(query ?? '').trim().toLowerCase();
   if (!normalized) return [];
-  return SETTINGS_SEARCH_INDEX.map((entry) => ({ entry, score: matchesSetting(entry, normalized) }))
-    .filter((hit) => hit.score > 0)
-    .sort((a, b) => b.score - a.score)
+  const words = normalized.split(/\s+/).filter(Boolean);
+  return SETTINGS_SEARCH_INDEX.map((entry, index) => {
+    let score = 0;
+    for (const word of words) {
+      const wordScore = scoreWord(entry, word);
+      // One missed word disqualifies the entry (AND semantics).
+      if (wordScore === 0) return null;
+      score += wordScore;
+    }
+    return { entry, score, index };
+  })
+    .filter((hit) => hit !== null)
+    .sort((first, second) => second.score - first.score || first.index - second.index)
     .map((hit) => hit.entry);
 };
 

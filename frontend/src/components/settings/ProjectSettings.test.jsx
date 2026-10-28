@@ -2,7 +2,7 @@ import { expect, test, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { renderWithKainBain } from '../../testUtils';
-import { ProjectSettings, PROJECT_SETTINGS_SECTIONS } from './ProjectSettings';
+import { ProjectSettings, PROJECT_SETTINGS_SECTIONS, PROJECT_SETTINGS_TABS, PROJECT_FORM_SECTIONS } from './ProjectSettings';
 import { msToMinutes } from '../../utils/timeoutUnits';
 import '@testing-library/jest-dom';
 
@@ -551,6 +551,23 @@ test('section allowlist keeps UI Customization out of project settings', () => {
   // stays as the accent-color picker inside the project form.
   expect(PROJECT_SETTINGS_SECTIONS).toEqual(['project', 'aliases', 'files', 'workflows', 'skills']);
   expect(PROJECT_SETTINGS_SECTIONS).not.toContain('ui');
+});
+
+test('tab config, section allowlists, and search index agree (no drift)', () => {
+  // The tab bar, the section allowlists, and the headings all derive from
+  // PROJECT_SETTINGS_TABS — a new tab is one entry, not three edits.
+  expect(PROJECT_SETTINGS_SECTIONS).toEqual(PROJECT_SETTINGS_TABS.map((tab) => tab.id));
+  expect(PROJECT_FORM_SECTIONS).toEqual(
+    PROJECT_SETTINGS_TABS.filter((tab) => tab.sharesProjectForm).map((tab) => tab.id),
+  );
+  // Every searchable setting lives on a form tab (the only tabs with
+  // elementIds to jump to), and every form tab has a heading for the h2.
+  for (const entry of SETTINGS_SEARCH_INDEX) {
+    expect(PROJECT_FORM_SECTIONS).toContain(entry.tab);
+  }
+  for (const tab of PROJECT_SETTINGS_TABS.filter((candidate) => candidate.sharesProjectForm)) {
+    expect(typeof tab.heading).toBe('string');
+  }
 });
 
 test('does not offer UI Customization in project settings (lives in System Settings)', () => {
@@ -1292,6 +1309,56 @@ test('untouched aliases are omitted from the save but the concurrency token is s
     );
   });
   expect(api.updateProject.mock.calls[0][1]).not.toHaveProperty('modelAliases');
+});
+
+test('a saved alias edit stops re-sending the table on later saves (no stale re-send)', async () => {
+  const projectWithAliases = {
+    ...projects[0],
+    modelAliases: [{ name: 'small', harness: 'pi', model: 'google::gemini-2.5-pro' }],
+  };
+  api.updateProject.mockResolvedValue({
+    id: 'p1',
+    modelAliases: [{ name: 'medium', harness: 'pi', model: 'google::gemini-2.5-pro' }],
+  });
+  renderWithKainBain(<ProjectSettings />, {
+    projects: [projectWithAliases],
+    activeProjectId: 'p1',
+    selectProject: vi.fn(),
+    updateProjectInState: vi.fn(),
+  });
+  fireEvent.click(screen.getByText('Aliases'));
+
+  // Edit the alias and save: the first payload carries the table.
+  expect(await screen.findByTestId('model-aliases-section')).toBeInTheDocument();
+  fireEvent.click(screen.getByTestId('model-alias-toggle-0'));
+  fireEvent.change(screen.getByLabelText('Alias 1 name'), { target: { value: 'medium' } });
+  fireEvent.click(screen.getByText('Save Configuration'));
+  await waitFor(() => {
+    expect(api.updateProject).toHaveBeenCalledWith(
+      'p1',
+      expect.objectContaining({ modelAliases: expect.any(Array) }),
+      {},
+    );
+  });
+
+  // A later save that touches only the project name must omit the alias
+  // table again — the saved draft now equals server truth, so re-sending it
+  // could wipe aliases stored by another browser since.
+  await waitFor(() => {
+    expect(screen.getByText('Saved ✓')).toBeInTheDocument();
+  });
+  // The name field lives on the Project tab; the saved alias edit survives
+  // the switch because the shared form stays mounted.
+  fireEvent.click(screen.getByText('Project Settings'));
+  fireEvent.change(screen.getByLabelText('Project Name'), {
+    target: { value: 'Project A Renamed' },
+  });
+  // The save button still shows the first save's confirmation label.
+  fireEvent.click(screen.getByRole('button', { name: /saved/i }));
+  await waitFor(() => {
+    expect(api.updateProject).toHaveBeenCalledTimes(2);
+  });
+  expect(api.updateProject.mock.calls[1][1]).not.toHaveProperty('modelAliases');
 });
 
 test('clearing every alias row still sends the (empty) list — an explicit wipe', async () => {

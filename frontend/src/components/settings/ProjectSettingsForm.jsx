@@ -533,7 +533,9 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
       // its save), and the next edit must start from those. Resetting
       // `modelAliasesTouched` makes the NEXT untouched save omit the key
       // again, so two browsers editing different fields cannot clobber
-      // each other's alias table.
+      // each other's alias table. Without this reset, one alias edit would
+      // keep re-sending the full table on every later save — a stale page
+      // could then wipe aliases stored by another browser.
       setModelAliases(
         Array.isArray(updated?.modelAliases)
           ? updated.modelAliases

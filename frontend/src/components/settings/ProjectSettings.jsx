@@ -9,24 +9,42 @@ import { SettingsSearchInput } from './SettingsSearchInput';
 
 
 /***
+ * MARK: PROJECT_SETTINGS_TABS
+ * @description Single source of truth for the Project Settings tab bar: every
+ *   tab's section id, button label + icon, tab-title heading, and whether the
+ *   tab shares the one mounted `ProjectSettingsForm` (edits survive switches
+ *   between form tabs; workflows/skills render their own panels). Adding a
+ *   tab means adding one entry here — the buttons, the `h2` titles, and the
+ *   section allowlists below all derive from this list so they cannot drift.
+ *   App-wide UI & Workspace customization is NOT one of them — it lives in
+ *   System Settings (SystemSettingsPage, `/system-settings`); per-project
+ *   visual branding stays here as the accent-color picker inside the form.
+ * @example PROJECT_SETTINGS_TABS.map((tab) => tab.id) => ['project', 'aliases', 'files', 'workflows', 'skills']
+ ***/
+export const PROJECT_SETTINGS_TABS = [
+  { id: 'project', label: 'Project Settings', buttonIcon: '📂', heading: 'Project Configuration', headingIcon: '⚙️', sharesProjectForm: true },
+  { id: 'aliases', label: 'Aliases', buttonIcon: '🏷️', heading: 'Model Aliases', headingIcon: '🏷️', sharesProjectForm: true },
+  { id: 'files', label: 'Files & Links', buttonIcon: '📁', heading: 'Files & Links', headingIcon: '📁', sharesProjectForm: true },
+  { id: 'workflows', label: 'Named Workflows', buttonIcon: '🔀', heading: null, headingIcon: null, sharesProjectForm: false },
+  { id: 'skills', label: 'Skills', buttonIcon: '🧩', heading: null, headingIcon: null, sharesProjectForm: false },
+];
+
+/***
  * MARK: PROJECT_SETTINGS_SECTIONS
- * @description Allowlisted sub-sections of the Project Settings page:
- * `project` (basics + retry/timeouts), `aliases` (model aliases), `files`
- * (paths, repos, app link), `workflows` (named workflows), and `skills`.
- * App-wide UI & Workspace customization is NOT one of them — it lives in
- * System Settings (SystemSettingsPage, `/system-settings`); per-project visual
- * branding stays here as the accent-color picker inside the project form.
+ * @description Allowlisted sub-sections of the Project Settings page, derived
+ *   from `PROJECT_SETTINGS_TABS` so the allowlist and the tab bar agree.
  * @example PROJECT_SETTINGS_SECTIONS.includes('aliases') => true
  ***/
-export const PROJECT_SETTINGS_SECTIONS = ['project', 'aliases', 'files', 'workflows', 'skills'];
+export const PROJECT_SETTINGS_SECTIONS = PROJECT_SETTINGS_TABS.map((tab) => tab.id);
 
 /***
  * MARK: PROJECT_FORM_SECTIONS
  * @description The project-related tabs share one mounted `ProjectSettingsForm`
  *   (edits survive tab switches); workflows/skills render their own panels.
+ *   Derived from `PROJECT_SETTINGS_TABS` so a new form tab needs no second edit.
  * @example PROJECT_FORM_SECTIONS.includes('files') => true
  ***/
-export const PROJECT_FORM_SECTIONS = ['project', 'aliases', 'files'];
+export const PROJECT_FORM_SECTIONS = PROJECT_SETTINGS_TABS.filter((tab) => tab.sharesProjectForm).map((tab) => tab.id);
 
 /***
  * MARK: ProjectSettings
@@ -52,6 +70,10 @@ export function ProjectSettings() {
   // Jump-to-setting target: `{ id, at }` so repeating the same search still
   // re-fires the highlight effect below (object identity changes each time).
   const [highlightTarget, setHighlightTarget] = useState(null);
+  // Fail-safe: `effectiveSection` is always a known tab, but the lookup still
+  // falls back to the first tab so a heading always renders (never blank).
+  const activeTab = PROJECT_SETTINGS_TABS.find((tab) => tab.id === effectiveSection)
+    ?? PROJECT_SETTINGS_TABS[0];
   // Unsaved-edits flag reported by the shared project form.
   const [formDirty, setFormDirty] = useState(false);
 
@@ -127,66 +149,21 @@ export function ProjectSettings() {
       {/* Top section switcher (tabs left, settings search right) */}
       <div className="flex gap-2 justify-between items-center border-b border-border-standard pb-4">
         <div className="flex gap-2 flex-wrap">
+        {PROJECT_SETTINGS_TABS.map((tab) => (
         <button
+          key={tab.id}
           type="button"
-          onClick={() => handleSectionChange('project')}
+          onClick={() => handleSectionChange(tab.id)}
           className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-sm transition-all flex items-center gap-2 cursor-pointer ${
-            effectiveSection === 'project'
+            effectiveSection === tab.id
               ? 'bg-primary text-on-primary font-bold shadow-sm'
               : 'bg-surface-container hover:bg-surface-container-high text-text-muted hover:text-on-surface'
           }`}
         >
-          <span>📂</span>
-          <span>Project Settings</span>
+          <span>{tab.buttonIcon}</span>
+          <span>{tab.label}</span>
         </button>
-        <button
-          type="button"
-          onClick={() => handleSectionChange('aliases')}
-          className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-sm transition-all flex items-center gap-2 cursor-pointer ${
-            effectiveSection === 'aliases'
-              ? 'bg-primary text-on-primary font-bold shadow-sm'
-              : 'bg-surface-container hover:bg-surface-container-high text-text-muted hover:text-on-surface'
-          }`}
-        >
-          <span>🏷️</span>
-          <span>Aliases</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => handleSectionChange('files')}
-          className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-sm transition-all flex items-center gap-2 cursor-pointer ${
-            effectiveSection === 'files'
-              ? 'bg-primary text-on-primary font-bold shadow-sm'
-              : 'bg-surface-container hover:bg-surface-container-high text-text-muted hover:text-on-surface'
-          }`}
-        >
-          <span>📁</span>
-          <span>Files & Links</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => handleSectionChange('workflows')}
-          className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-sm transition-all flex items-center gap-2 cursor-pointer ${
-            effectiveSection === 'workflows'
-              ? 'bg-primary text-on-primary font-bold shadow-sm'
-              : 'bg-surface-container hover:bg-surface-container-high text-text-muted hover:text-on-surface'
-          }`}
-        >
-          <span>🔀</span>
-          <span>Named Workflows</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => handleSectionChange('skills')}
-          className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-sm transition-all flex items-center gap-2 cursor-pointer ${
-            effectiveSection === 'skills'
-              ? 'bg-primary text-on-primary font-bold shadow-sm'
-              : 'bg-surface-container hover:bg-surface-container-high text-text-muted hover:text-on-surface'
-          }`}
-        >
-          <span>🧩</span>
-          <span>Skills</span>
-        </button>
+        ))}
         </div>
         <div className="shrink-0">
           <SettingsSearchInput onSelect={handleSearchSelect} />
@@ -198,21 +175,9 @@ export function ProjectSettings() {
           {/* Every project-related tab gets an h2 tab title: the section
               components below use h3 subtitles, and starting at h3 would skip
               a heading level (axe heading-order violation). */}
-          {effectiveSection === 'project' && (
-            <h2 className="text-lg font-bold uppercase tracking-tight text-text-high mb-4 flex items-center gap-2 font-headline-md">
-              <span className="text-primary">⚙️</span> Project Configuration
-            </h2>
-          )}
-          {effectiveSection === 'aliases' && (
-            <h2 className="text-lg font-bold uppercase tracking-tight text-text-high mb-4 flex items-center gap-2 font-headline-md">
-              <span className="text-primary">🏷️</span> Model Aliases
-            </h2>
-          )}
-          {effectiveSection === 'files' && (
-            <h2 className="text-lg font-bold uppercase tracking-tight text-text-high mb-4 flex items-center gap-2 font-headline-md">
-              <span className="text-primary">📁</span> Files &amp; Links
-            </h2>
-          )}
+          <h2 className="text-lg font-bold uppercase tracking-tight text-text-high mb-4 flex items-center gap-2 font-headline-md">
+            <span className="text-primary">{activeTab.headingIcon}</span> {activeTab.heading}
+          </h2>
           {effectiveSection === 'project' && (
             <>
               <div className="space-y-4 max-w-2xl mb-8">

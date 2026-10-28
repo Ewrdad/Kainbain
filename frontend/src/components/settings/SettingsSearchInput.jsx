@@ -49,7 +49,10 @@ export function SettingsSearchInput({ onSelect }) {
       setOpen(true);
       setActiveIndex((index) => (index - 1 + results.length) % results.length);
     } else if (event.key === 'Enter') {
-      if (open && activeEntry) {
+      // Jump even when the dropdown was dismissed (Escape or click-outside):
+      // the text still names the top result, so Enter follows it instead of
+      // doing nothing. With an empty query there is no result — no-op.
+      if (activeEntry) {
         event.preventDefault();
         choose(activeEntry);
       }

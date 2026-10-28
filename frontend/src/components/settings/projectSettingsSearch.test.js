@@ -29,6 +29,23 @@ describe('searchSettings', () => {
     expect(searchSettings('')).toEqual([]);
     expect(searchSettings('   ')).toEqual([]);
     expect(searchSettings('zzz-no-such-setting')).toEqual([]);
+    // Non-string input never throws — it matches nothing.
+    expect(searchSettings(null)).toEqual([]);
+    expect(searchSettings(undefined)).toEqual([]);
+  });
+
+  it('matches multi-word queries on every word, in any order', () => {
+    expect(searchSettings('git repo')[0]?.id).toBe('git-repo');
+    expect(searchSettings('repo git')[0]?.id).toBe('git-repo');
+    expect(searchSettings('centralised docs')[0]?.id).toBe('centralized-docs');
+    expect(searchSettings('use task branches')[0]?.id).toBe('task-branches');
+  });
+
+  it('requires every word to hit (one miss disqualifies the entry)', () => {
+    // No single setting is about both git and timeouts.
+    expect(searchSettings('git timeout')).toEqual([]);
+    // "git repo health" nearly matches git-repo, but health lives elsewhere.
+    expect(searchSettings('git repo health')).toEqual([]);
   });
 
   it('covers every project-related tab', () => {
