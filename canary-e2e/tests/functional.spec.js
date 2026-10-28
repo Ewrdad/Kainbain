@@ -171,10 +171,17 @@ test.describe("KainBain Functional E2E Tests", () => {
 		).toBeVisible();
 	});
 
-	test("settings tab renders per-project configuration", async ({ page }) => {
+	test("settings tab renders per-project configuration across its tabs", async ({ page }) => {
 		await waitForAppReady(page);
 		await page.getByRole("button", { name: /Settings/i }).click();
+		// Project tab: basics (name, harness/model) + retry/timeouts.
 		await expect(page.getByText(/Project Configuration/)).toBeVisible();
+		await expect(page.getByLabel("Project Name")).toBeVisible();
+		await expect(
+			page.getByRole("button", { name: "Save Configuration" }),
+		).toBeVisible();
+		// Files & Links tab: paths, docs folders, git, app link.
+		await page.getByRole("button", { name: /Files & Links/i }).click();
 		await expect(
 			page.getByText(/Working Directory/i),
 		).toBeVisible();
@@ -191,6 +198,12 @@ test.describe("KainBain Functional E2E Tests", () => {
 				exact: true,
 			}),
 		).toBeVisible();
+		await expect(
+			page.getByRole("button", { name: "Save Configuration" }),
+		).toBeVisible();
+		// Aliases tab: the model aliases table.
+		await page.getByRole("button", { name: /Aliases/i }).click();
+		await expect(page.getByTestId("model-aliases-section")).toBeVisible();
 		await expect(
 			page.getByRole("button", { name: "Save Configuration" }),
 		).toBeVisible();

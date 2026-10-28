@@ -612,6 +612,27 @@ test('renders the Files & Links tab and switches to it', () => {
   expect(screen.getByLabelText('App URL')).toBeInTheDocument();
 });
 
+test('each project-related tab renders an h2 tab title above its h3 sections', () => {
+  renderWithKainBain(<ProjectSettings />, {
+    projects,
+    activeProjectId: 'p1',
+    selectProject: vi.fn(),
+  });
+
+  // The section components use h3 subtitles, so every project-related tab
+  // needs an h2 tab title — starting at h3 would skip a heading level (axe
+  // heading-order violation caught by the canary a11y scan).
+  const tabTitles = [
+    ['Project Settings', /Project Configuration/],
+    ['Aliases', /Model Aliases/],
+    ['Files & Links', /Files & Links/],
+  ];
+  for (const [tab, title] of tabTitles) {
+    fireEvent.click(screen.getByText(tab));
+    expect(screen.getByRole('heading', { level: 2, name: title })).toBeInTheDocument();
+  }
+});
+
 test('form state persists across project-tab switches', () => {
   renderWithKainBain(<ProjectSettings />, {
     projects,

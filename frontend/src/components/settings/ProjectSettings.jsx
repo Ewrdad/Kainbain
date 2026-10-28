@@ -207,11 +207,26 @@ export function ProjectSettings() {
 
       {PROJECT_FORM_SECTIONS.includes(effectiveSection) && (
         <div>
+          {/* Every project-related tab gets an h2 tab title: the section
+              components below use h3 subtitles, and starting at h3 would skip
+              a heading level (axe heading-order violation). */}
+          {effectiveSection === 'project' && (
+            <h2 className="text-lg font-bold uppercase tracking-tight text-text-high mb-4 flex items-center gap-2 font-headline-md">
+              <span className="text-primary">⚙️</span> Project Configuration
+            </h2>
+          )}
+          {effectiveSection === 'aliases' && (
+            <h2 className="text-lg font-bold uppercase tracking-tight text-text-high mb-4 flex items-center gap-2 font-headline-md">
+              <span className="text-primary">🏷️</span> Model Aliases
+            </h2>
+          )}
+          {effectiveSection === 'files' && (
+            <h2 className="text-lg font-bold uppercase tracking-tight text-text-high mb-4 flex items-center gap-2 font-headline-md">
+              <span className="text-primary">📁</span> Files &amp; Links
+            </h2>
+          )}
           {effectiveSection === 'project' && (
             <>
-              <h2 className="text-lg font-bold uppercase tracking-tight text-text-high mb-4 flex items-center gap-2 font-headline-md">
-                <span className="text-primary">⚙️</span> Project Configuration
-              </h2>
               <div className="space-y-4 max-w-2xl mb-8">
                 <div className="flex flex-col gap-2">
                   <label
