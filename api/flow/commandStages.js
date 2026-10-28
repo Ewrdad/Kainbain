@@ -1445,6 +1445,30 @@ async function mergeTaskBranchIntoMain(
 		}
 
 		recordStageHeartbeat(store, taskId, { stageId: stage.id, kind: "merge" });
+		// Commit-then-checkout: stage notes written after the pre-merge
+		// auto-commit above (stale-base warning history, heartbeat
+		// bookkeeping) re-dirty the task branch's task.md — git's own
+		// checkout safety trips on exactly our own just-written report and
+		// the merge fails before attempting anything. Commit those leftovers
+		// here (affinity-guarded, warn-only) with NO task mutations after,
+		// so the strict checkout below only ever fires on genuinely foreign
+		// dirt (e.g. untracked user files, which reset never deletes).
+		try {
+			const preCheckout = await commitAllIfNeeded(
+				cwd,
+				`KainBain (task ${task.id}): commit stage notes before switching to '${mainBranch}' for merge`,
+				{ expectedBranch: branch },
+			);
+			if (preCheckout?.committed) {
+				bridge?.emitSystemLog?.(
+					projectId,
+					`[GIT] Task #KB-${taskShortId}: committed stage notes on '${branch}' before merge checkout (${preCheckout.hash || "no hash"})`,
+					{ taskId },
+				);
+			}
+		} catch {
+			// Non-fatal: the strict checkout below owns the failure loudly.
+		}
 		// Same strictness as the guard above: the tree was just verified clean
 		// (or the commit step above cleaned it), so a dirty tree here means the
 		// commit failed — refuse instead of stashing the work out of the merge.
