@@ -129,7 +129,7 @@ test.describe("Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness)", () => {
     await page.getByRole("button", { name: /Settings/i }).click();
     await expect(page.getByText(/Project Configuration/)).toBeVisible();
     // Model aliases live on their own tab since the settings split.
-    await page.getByRole("button", { name: /Aliases/i }).click();
+    await page.getByRole("tab", { name: /Aliases/i }).click();
     // The alias section is the delta surface: add one alias so the reliability
     // cards (and their colour-independent status text) actually render, expand
     // it, then scan.

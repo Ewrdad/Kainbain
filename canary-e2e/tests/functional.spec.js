@@ -181,7 +181,7 @@ test.describe("KainBain Functional E2E Tests", () => {
 			page.getByRole("button", { name: "Save Configuration" }),
 		).toBeVisible();
 		// Files & Links tab: paths, docs folders, git, app link.
-		await page.getByRole("button", { name: /Files & Links/i }).click();
+		await page.getByRole("tab", { name: /Files & Links/i }).click();
 		await expect(
 			page.getByText(/Working Directory/i),
 		).toBeVisible();
@@ -202,7 +202,7 @@ test.describe("KainBain Functional E2E Tests", () => {
 			page.getByRole("button", { name: "Save Configuration" }),
 		).toBeVisible();
 		// Aliases tab: the model aliases table.
-		await page.getByRole("button", { name: /Aliases/i }).click();
+		await page.getByRole("tab", { name: /Aliases/i }).click();
 		await expect(page.getByTestId("model-aliases-section")).toBeVisible();
 		await expect(
 			page.getByRole("button", { name: "Save Configuration" }),

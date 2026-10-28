@@ -703,6 +703,81 @@ test('settings search jumps to the matching tab and highlights the setting', asy
   });
 });
 
+test('a second search jump clears the previous highlight ring (no stuck rings)', () => {
+  vi.useFakeTimers();
+  try {
+    renderWithKainBain(<ProjectSettings />, {
+      projects,
+      activeProjectId: 'p1',
+      selectProject: vi.fn(),
+    });
+
+    const searchBox = () => screen.getByLabelText('Search settings');
+    fireEvent.change(searchBox(), { target: { value: 'git' } });
+    fireEvent.mouseDown(screen.getByText('Git Repository URL'));
+    vi.advanceTimersByTime(80);
+    expect(
+      document.getElementById('project-git-input')?.classList.contains('ring-2'),
+    ).toBe(true);
+
+    // Jump again while the first ring is still showing: the first ring must
+    // clear (its hide timer is superseded) instead of sticking around.
+    fireEvent.change(searchBox(), { target: { value: 'branch' } });
+    fireEvent.mouseDown(screen.getByText('Use Task Branches'));
+    vi.advanceTimersByTime(80);
+    expect(
+      document.getElementById('project-git-input')?.classList.contains('ring-2'),
+    ).toBe(false);
+    expect(
+      document.getElementById('project-use-branches-input')?.classList.contains('ring-2'),
+    ).toBe(true);
+
+    // The second ring still clears on its own timer.
+    vi.advanceTimersByTime(2100);
+    expect(
+      document.getElementById('project-use-branches-input')?.classList.contains('ring-2'),
+    ).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('tab bar exposes tablist semantics and arrow-key navigation', () => {
+  renderWithKainBain(<ProjectSettings />, {
+    projects,
+    activeProjectId: 'p1',
+    selectProject: vi.fn(),
+  });
+
+  expect(screen.getByRole('tablist', { name: 'Project settings sections' })).toBeInTheDocument();
+  // Five tabs in order; icons are aria-hidden so names are the labels.
+  expect(screen.getAllByRole('tab')).toHaveLength(5);
+  for (const name of ['Project Settings', 'Aliases', 'Files & Links', 'Named Workflows', 'Skills']) {
+    expect(screen.getByRole('tab', { name })).toBeInTheDocument();
+  }
+  // Exactly one tab is selected, and the panel names it.
+  expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('Project Settings');
+  expect(screen.getByRole('tabpanel')).toHaveAttribute(
+    'aria-labelledby',
+    'project-settings-tab-project',
+  );
+
+  // ArrowRight moves focus and selects the next tab (automatic activation).
+  screen.getByRole('tab', { name: 'Project Settings' }).focus();
+  fireEvent.keyDown(document.activeElement, { key: 'ArrowRight' });
+  expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('Aliases');
+  expect(screen.getByTestId('model-aliases-section')).toBeInTheDocument();
+
+  // ArrowLeft wraps back, End jumps to the last tab, Home to the first.
+  fireEvent.keyDown(document.activeElement, { key: 'ArrowLeft' });
+  expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('Project Settings');
+  fireEvent.keyDown(document.activeElement, { key: 'End' });
+  expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('Skills');
+  fireEvent.keyDown(document.activeElement, { key: 'Home' });
+  expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('Project Settings');
+  expect(screen.getByLabelText('Project Name')).toBeInTheDocument();
+});
+
 test('every search index entry resolves to an element on its tab', async () => {
   const { unmount } = renderWithKainBain(<ProjectSettings />, {
     projects,

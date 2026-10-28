@@ -68,7 +68,7 @@ export function SettingsSearchInput({ onSelect }) {
         role="combobox"
         aria-expanded={open && results.length > 0}
         aria-controls="project-settings-search-listbox"
-        aria-activedescendant={activeEntry ? `project-settings-search-option-${activeEntry.id}` : undefined}
+        aria-activedescendant={open && activeEntry ? `project-settings-search-option-${activeEntry.id}` : undefined}
         aria-label="Search settings"
         placeholder="Search settings…"
         value={query}

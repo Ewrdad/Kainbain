@@ -70,6 +70,20 @@ describe('SettingsSearchInput', () => {
     expect(onSelect.mock.calls[0][0]).toMatchObject({ id: 'git-repo', tab: 'files' });
   });
 
+  it('clears aria-activedescendant when the dropdown closes', () => {
+    renderWithKainBain(<SettingsSearchInput onSelect={vi.fn()} />);
+    const input = screen.getByLabelText('Search settings');
+    fireEvent.change(input, { target: { value: 'git' } });
+    // While open, the active descendant names the highlighted option.
+    expect(input).toHaveAttribute(
+      'aria-activedescendant',
+      'project-settings-search-option-git-repo',
+    );
+    fireEvent.keyDown(input, { key: 'Escape' });
+    // Closed dropdowns must not reference a removed option id.
+    expect(input.getAttribute('aria-activedescendant')).toBeNull();
+  });
+
   it('Escape closes the dropdown without selecting', () => {
     const onSelect = vi.fn();
     renderWithKainBain(<SettingsSearchInput onSelect={onSelect} />);

@@ -167,7 +167,7 @@ test.describe("Reasoning levels browser verification (scratch stack)", () => {
     await page.getByRole("option", { name: "Mock" }).first().click();
     // Model aliases live on their own tab since the settings split; moving
     // between the project-related tabs keeps the unsaved harness edit.
-    await page.getByRole("button", { name: /Aliases/i }).click();
+    await page.getByRole("tab", { name: /Aliases/i }).click();
     const section = page.getByTestId("model-aliases-section");
     await section.getByRole("button", { name: "+ Add alias" }).click();
     await section.locator("#model-alias-name-0").fill("browser-small");
@@ -188,7 +188,7 @@ test.describe("Reasoning levels browser verification (scratch stack)", () => {
     expect(JSON.stringify(savedAliases)).toContain("::medium");
     await gotoSettings(page, project.name);
     // The reloaded form opens on the Project tab; aliases live on their tab.
-    await page.getByRole("button", { name: /Aliases/i }).click();
+    await page.getByRole("tab", { name: /Aliases/i }).click();
     await page.getByTestId("model-alias-toggle-0").click();
     await expect(
       page.getByTestId("model-aliases-section").getByRole("combobox", { name: "Reasoning" }),

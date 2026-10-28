@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useKainBain } from '../../context/KainBainContext';
 import { SkillsSection } from './SkillsSection';
 import { SelectDropdown } from '../common/SelectDropdown';
@@ -75,13 +75,45 @@ export function ProjectSettings() {
     : 'project';
   // Jump-to-setting target: `{ id, at }` so repeating the same search still
   // re-fires the highlight effect below (object identity changes each time).
+  // `at` is a monotonic counter (not Date.now()): the value only needs to be
+  // unique per selection, and a counter keeps the update pure and testable.
   const [highlightTarget, setHighlightTarget] = useState(null);
+  const highlightSeqRef = useRef(0);
   // Fail-safe: `effectiveSection` is always a known tab, but the lookup still
   // falls back to the first tab so a heading always renders (never blank).
   const activeTab = PROJECT_SETTINGS_TABS.find((tab) => tab.id === effectiveSection)
     ?? PROJECT_SETTINGS_TABS[0];
   // Unsaved-edits flag reported by the shared project form.
   const [formDirty, setFormDirty] = useState(false);
+  // Focus targets for arrow-key tab navigation (automatic activation: moving
+  // focus also selects the tab, matching the APG tabs pattern).
+  const tabButtonRefs = useRef([]);
+  const focusTabAt = (index) => {
+    const count = PROJECT_SETTINGS_TABS.length;
+    const wrapped = ((index % count) + count) % count;
+    tabButtonRefs.current[wrapped]?.focus();
+    handleSectionChange(PROJECT_SETTINGS_TABS[wrapped].id);
+  };
+  // Arrow-key navigation between tabs (APG automatic activation: moving
+  // focus also selects the tab). Wired per-button rather than on the tablist
+  // container so the handler always lives on a focusable element. Movement is
+  // relative to the focused tab: if the dirty-guard blocks a switch, focus
+  // and selection can briefly diverge, and focus-relative movement stays sane.
+  const onTabKeyDown = (event, fromIndex) => {
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      focusTabAt(fromIndex + 1);
+    } else if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      focusTabAt(fromIndex - 1);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      focusTabAt(0);
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      focusTabAt(PROJECT_SETTINGS_TABS.length - 1);
+    }
+  };
 
   /***
    * MARK: handleSectionChange
@@ -112,17 +144,28 @@ export function ProjectSettings() {
   const handleSearchSelect = (entry) => {
     if (!entry) return;
     handleSectionChange(entry.tab);
-    setHighlightTarget({ id: entry.elementId, at: Date.now() });
+    highlightSeqRef.current += 1;
+    setHighlightTarget({ id: entry.elementId, at: highlightSeqRef.current });
   };
 
   // Scrolls the search target into view and highlights it briefly. Guarded
   // for test DOMs without `scrollIntoView`, and no-ops when the target id
-  // is not on the active tab (e.g. a conditional field).
+  // is not on the active tab (e.g. a conditional field). Cleanup removes the
+  // ring from the previous target: without this, picking a second result
+  // while the first ring is still showing would clear the first hide timer
+  // and leave that ring stuck on forever.
   useEffect(() => {
     if (!highlightTarget) return undefined;
+    const targetId = highlightTarget.id;
+    const clearRing = () => {
+      const el = typeof document !== 'undefined'
+        ? document.getElementById(targetId)
+        : null;
+      el?.classList?.remove('ring-2', 'ring-primary', 'rounded-sm');
+    };
     const showTimer = setTimeout(() => {
       const el = typeof document !== 'undefined'
-        ? document.getElementById(highlightTarget.id)
+        ? document.getElementById(targetId)
         : null;
       if (el) {
         if (typeof el.scrollIntoView === 'function') {
@@ -131,15 +174,11 @@ export function ProjectSettings() {
         el.classList.add('ring-2', 'ring-primary', 'rounded-sm');
       }
     }, HIGHLIGHT_SHOW_DELAY_MS);
-    const hideTimer = setTimeout(() => {
-      const el = typeof document !== 'undefined'
-        ? document.getElementById(highlightTarget.id)
-        : null;
-      el?.classList?.remove('ring-2', 'ring-primary', 'rounded-sm');
-    }, HIGHLIGHT_HIDE_DELAY_MS);
+    const hideTimer = setTimeout(clearRing, HIGHLIGHT_HIDE_DELAY_MS);
     return () => {
       clearTimeout(showTimer);
       clearTimeout(hideTimer);
+      clearRing();
     };
   }, [highlightTarget, effectiveSection]);
 
@@ -154,19 +193,25 @@ export function ProjectSettings() {
     >
       {/* Top section switcher (tabs left, settings search right) */}
       <div className="flex gap-2 justify-between items-center border-b border-border-standard pb-4">
-        <div className="flex gap-2 flex-wrap">
-        {PROJECT_SETTINGS_TABS.map((tab) => (
+        <div className="flex gap-2 flex-wrap" role="tablist" aria-label="Project settings sections">
+        {PROJECT_SETTINGS_TABS.map((tab, index) => (
         <button
           key={tab.id}
+          ref={(el) => { tabButtonRefs.current[index] = el; }}
+          id={`project-settings-tab-${tab.id}`}
           type="button"
+          role="tab"
+          aria-selected={effectiveSection === tab.id}
+          aria-controls="project-settings-tabpanel"
           onClick={() => handleSectionChange(tab.id)}
+          onKeyDown={(event) => onTabKeyDown(event, index)}
           className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-sm transition-all flex items-center gap-2 cursor-pointer ${
             effectiveSection === tab.id
               ? 'bg-primary text-on-primary font-bold shadow-sm'
               : 'bg-surface-container hover:bg-surface-container-high text-text-muted hover:text-on-surface'
           }`}
         >
-          <span>{tab.buttonIcon}</span>
+          <span aria-hidden="true">{tab.buttonIcon}</span>
           <span>{tab.label}</span>
         </button>
         ))}
@@ -176,6 +221,11 @@ export function ProjectSettings() {
         </div>
       </div>
 
+      <div
+        id="project-settings-tabpanel"
+        role="tabpanel"
+        aria-labelledby={`project-settings-tab-${effectiveSection}`}
+      >
       {PROJECT_FORM_SECTIONS.includes(effectiveSection) && (
         <div>
           {/* Every project-related tab gets an h2 tab title: the section
@@ -226,6 +276,7 @@ export function ProjectSettings() {
       {effectiveSection === 'skills' && (
         <SkillsSection key={activeProjectId} activeProjectId={activeProjectId} />
       )}
+      </div>
     </section>
   );
 }
