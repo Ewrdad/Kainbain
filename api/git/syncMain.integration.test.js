@@ -122,17 +122,21 @@ describe("syncDefaultBranchToRemote", () => {
 		);
 	});
 
-	it("orphans local-only commits and reports the ahead count", async () => {
+	it("never resets an ahead ref: unpushed work survives the sync", async () => {
 		if (!gitAvailable) return;
 		const work = track(cloneRemote(remoteDirOf()));
 		fs.writeFileSync(path.join(work, "local-only.txt"), "never pushed\n");
 		run(work, "add", "-A");
 		run(work, "commit", "-m", "local-only commit");
+		const before = run(work, "rev-parse", "main").trim();
 		const res = await syncDefaultBranchToRemote(work);
-		expect(res.synced).toBe(true);
+		// Resetting here would orphan completed work (e.g. a landed merge
+		// whose push failed) and trap the task in a land-it, lose-it loop.
+		expect(res.synced).toBe(false);
+		expect(res.skipped).toBe("local-ahead");
 		expect(res.ahead).toBe(1);
-		expect(run(work, "rev-parse", "main").trim()).toBe(res.after);
-		expect(fs.existsSync(path.join(work, "local-only.txt"))).toBe(false);
+		expect(run(work, "rev-parse", "main").trim()).toBe(before);
+		expect(fs.existsSync(path.join(work, "local-only.txt"))).toBe(true);
 	});
 
 	it("moves the main ref while checked out on a task branch", async () => {

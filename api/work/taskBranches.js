@@ -262,8 +262,9 @@ async function reportDirtyTreeRecoveries(taskStore, task, cwd, bridge) {
  *   that switches branches: fetches the remote and hard-resets the local
  *   default branch to it (see syncDefaultBranchToRemote). A moved ref is
  *   journaled into task history + process log + system log with its
- *   before/after SHAs (orphaned local commits stay recoverable via reflog);
- *   fetch/ref failures only leave a process-log warning and never fail the
+ *   before/after SHAs; an ahead ref is never moved (see the git layer —
+ *   unpushed work such as a landed merge survives, loudly reported).
+ *   Fetch/ref failures only leave a process-log warning and never fail the
  *   calling stage. Never throws.
  * @example await syncMainToRemoteBestEffort(store, task, '/repo', bridge, 'task-branch pickup') => { synced: true, ... }
  * @param {Object} taskStore - TaskStore instance.
@@ -288,19 +289,22 @@ export async function syncMainToRemoteBestEffort(
 		const short = (sha) =>
 			typeof sha === "string" && sha ? sha.slice(0, 7) : "unknown";
 		if (res.synced) {
-			const orphan =
-				typeof res.ahead === "number" && res.ahead > 0
-					? ` (orphaned ${res.ahead} local commit(s) ahead of remote ${short(res.before)}; prior state in reflog)`
-					: "";
 			const discarded = res.detail ? ` ${res.detail}` : "";
 			recordBranchHop(
 				taskStore,
 				task,
 				cwd,
 				bridge,
-				`Synced default branch '${res.mainBranch}' to '${res.remote}/${res.mainBranch}' before ${label} (${short(res.before)} → ${short(res.after)})${orphan}${discarded}`,
+				`Synced default branch '${res.mainBranch}' to '${res.remote}/${res.mainBranch}' before ${label} (${short(res.before)} → ${short(res.after)})${discarded}`,
 			);
-		} else if (res.skipped === "fetch-failed" || res.skipped === "ref-update-failed") {
+		} else if (
+			res.skipped === "fetch-failed" ||
+			res.skipped === "ref-update-failed" ||
+			res.skipped === "local-ahead"
+		) {
+			// local-ahead is LOUD on purpose: the remote is stale and a
+			// host-side push is needed to converge it — silently proceeding
+			// here once orphaned landed merges in a land-it, lose-it loop.
 			_appendProcessLog(
 				task,
 				`[WARN] Main-branch sync before ${label} skipped (${res.skipped}${res.detail ? `: ${res.detail}` : ""}) — continuing with local state`,

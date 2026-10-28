@@ -173,7 +173,11 @@ cannot recur attempt after attempt:
 3. **Always merge in the latest.** Task-branch pickup converges the branch
    with its upstream tracking ref (merge when checked out, fast-forward
    otherwise — never a hard reset, local stage work may be unpushed), and
-   merge entry fast-forwards the task ref the same way. The final
+   merge entry fast-forwards the task ref the same way. The default-branch
+   sync likewise never resets an ahead ref: unpushed commits (a landed
+   merge whose push failed, bookkeeping) survive and the skip is loud, so
+   completed work can never be orphaned into a land-it, lose-it loop. A
+   host-side push job publishes ahead refs within about a minute. The final
    branch-into-main merge therefore fast-forwards whenever the two sides
    have converged, and only genuine code disagreements still conflict —
    which fail back loudly with the diagnostics above, never silently.
