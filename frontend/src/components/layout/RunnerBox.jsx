@@ -33,11 +33,13 @@ export function RunnerBox({ entry, onOpenTask }) {
   const runnerId = coerceBoxText(entry?.runnerId, 'unknown');
   const runnerName = coerceBoxText(entry?.runnerLabel, runnerId);
   // Normalised once so the dot colour, the visible word, and the aria label
-  // can never disagree: an untrimmed (' running ') or non-string (5, {}, [])
-  // status used to miss the colour map while the label read something else.
+  // can never disagree: an untrimmed (' running '), differently-cased
+  // ('RUNNING'), or non-string (5, {}, []) status used to miss the colour
+  // map while the label read something else. Lower-cased: the display
+  // upper-cases it back, and the map only holds lower-case keys.
   const statusWord =
     typeof entry?.statusWord === 'string' && entry.statusWord.trim() !== ''
-      ? entry.statusWord.trim()
+      ? entry.statusWord.trim().toLowerCase()
       : 'idle';
   const style = getRunnerBoxStyle(statusWord);
   const testId = `runner-box-${runnerId}`;

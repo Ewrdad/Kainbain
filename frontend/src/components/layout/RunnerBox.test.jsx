@@ -100,6 +100,15 @@ test('untrimmed and non-string status words normalise so dot, word, and aria agr
   cleanup();
 });
 
+test('case-variant status words still colour the dot to match the word', () => {
+  renderBox({ ...runningEntry, statusWord: 'RUNNING' });
+  const box = screen.getByTestId('runner-box-bravo');
+  expect(box).toHaveTextContent('RUNNING');
+  expect(box.getAttribute('aria-label')).toBe('Runner Bravo, running, task Ship it, stage Plan');
+  expect(box.innerHTML).toContain('bg-[#7bdb85]');
+  cleanup();
+});
+
 test('non-string stage and task values fail closed instead of leaking objects', () => {
   renderBox({ ...runningEntry, taskTitleFirstLine: { text: 'Ship it' }, stageName: 42 });
   const box = screen.getByTestId('runner-box-bravo');

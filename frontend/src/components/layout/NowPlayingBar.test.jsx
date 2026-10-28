@@ -1150,6 +1150,49 @@ test('idle runner entries render grey boxes that do not navigate', () => {
   expect(setSelectedTask).not.toHaveBeenCalled();
 });
 
+test('a poisoned explicit entry is dropped while healthy boxes still render', () => {
+  // The explicit runnerEntries prop bypasses derivation untouched, so a
+  // throwing getter smuggled in that way must be dropped by the shared
+  // filter — the bar cannot recover mid-render, and transport controls on
+  // this operational screen must never blank.
+  const poisoned = {};
+  Object.defineProperty(poisoned, 'runnerId', {
+    get() {
+      throw new Error('poisoned entry');
+    },
+  });
+  renderWithKainBain(
+    <NowPlayingBar runnerEntries={[runnerEntry('alpha'), poisoned]} />,
+    {
+      stages,
+      currentStageId: '1',
+      engineState: { status: 'running', activeTaskId: 'task-alpha' },
+    },
+  );
+
+  expect(screen.getByTestId('now-playing-runner-mode')).toBeInTheDocument();
+  expect(screen.getByTestId('runner-box-alpha')).toHaveTextContent('Work alpha');
+  expect(screen.queryByTestId('runner-box-unknown')).not.toBeInTheDocument();
+});
+
+test('poisoned-only explicit entries fall back to the legacy view', () => {
+  const poisoned = {};
+  Object.defineProperty(poisoned, 'runnerId', {
+    get() {
+      throw new Error('poisoned entry');
+    },
+  });
+  renderWithKainBain(<NowPlayingBar runnerEntries={[poisoned]} />, {
+    stages,
+    currentStageId: '1',
+    engineState: { status: 'idle' },
+  });
+
+  expect(screen.queryByTestId('now-playing-runner-mode')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('runner-boxes-row')).not.toBeInTheDocument();
+  expect(screen.getByTestId('now-playing-idle-hint')).toBeInTheDocument();
+});
+
 test('a poisoned task payload degrades to the legacy view instead of blanking the bar', () => {
   // Operational fail-safe: a task whose property access throws (bad merge,
   // Proxy, corrupt store entry) must not take down the whole bar — the

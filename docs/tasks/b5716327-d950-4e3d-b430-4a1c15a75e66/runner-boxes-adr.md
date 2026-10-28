@@ -89,6 +89,25 @@ status word always renders as text and the dot is `aria-hidden`.
   (`uiPreferences.showRunnerBoxes === false`), no stored-profile migration,
   no backend, revert is deleting the `showRunnerBoxes` branch.
 
+- Cleanup hardening 3 (2026-10-28): `selectRenderableRunnerEntries` now
+  probes every field the box render reads inside try/catch and drops entries
+  whose reads throw. This closes a real fail-safe hole: a throwing getter
+  smuggled via the explicit `runnerEntries` prop (which bypasses derivation
+  untouched) crashed React mid-render in `RunnerBoxesRow`, blanking the whole
+  footer including transport controls — proven by a failing test before the
+  fix. Healthy entries still pass through by reference (the "explicit wins
+  untouched" contract and its identity test are unchanged); the gate and the
+  row share the filter so they can never disagree. `getRunnerBoxStyle` trims
+  and lower-cases before the map and `RunnerBox` lower-cases the normalised
+  word, so 'RUNNING' colours the same green dot as 'running' — dot, word,
+  and aria label can never disagree on case. New tests: 2 unit (case colours,
+  throwing-entry filter), 1 box (uppercase word), 2 bar (poisoned explicit
+  entry beside a healthy box; poisoned-only falls back to legacy). Full
+  `npm run test --prefix frontend`: 284 files / 3863 tests green; eslint
+  clean on all touched files; both gates pass; `npm run build --prefix
+  frontend` green. Ops continuity unchanged: kill switch, no migration, no
+  backend, revert is deleting the `showRunnerBoxes` branch.
+
 ## Verification (this session)
 
 - `npm run test:frontend`: 278 files / 3789 tests pass, including 6 new/extended runner-box

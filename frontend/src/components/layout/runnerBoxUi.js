@@ -48,17 +48,26 @@ const IDLE_STYLE = { dotClass: 'bg-text-muted', statusClass: 'text-text-muted' }
 
 /***
  * MARK: getRunnerBoxStyle
- * @description Colour pair for a runner status word. Unknown words fail
- *   closed to the grey idle pair — never a missing dot. The colour is never
- *   the sole signal: RunnerBox always renders the status word as text beside
- *   the dot (WCAG 1.4.1).
+ * @description Colour pair for a runner status word. The lookup trims and
+ *   lower-cases first, so 'RUNNING' and ' running ' colour the same green
+ *   dot as 'running'. Unknown words fail closed to the grey idle pair —
+ *   never a missing dot. The colour is never the sole signal: RunnerBox
+ *   always renders the status word as text beside the dot (WCAG 1.4.1).
  * @example getRunnerBoxStyle('failed') => { dotClass: 'bg-error', statusClass: 'text-error' }
+ * @example getRunnerBoxStyle('RUNNING') => { dotClass: 'bg-[#7bdb85]', statusClass: 'text-primary-fixed' }
  * @example getRunnerBoxStyle('nope') => { dotClass: 'bg-text-muted', statusClass: 'text-text-muted' }
  * @param {string} [statusWord] - One of the resolveRunnerStatusWord words.
  * @returns {{ dotClass: string, statusClass: string }} Tailwind classes.
  ***/
-export const getRunnerBoxStyle = (statusWord) =>
-  STYLE_BY_STATUS.get(statusWord) ?? IDLE_STYLE;
+export const getRunnerBoxStyle = (statusWord) => {
+  // Hand-built entries can carry any case or padding ('RUNNING', ' Running '):
+  // normalise before the map so the dot can never disagree with the visible
+  // word, which the box always renders upper-cased. Anything else fails
+  // closed to the grey idle pair — the colour is never the sole signal.
+  const key =
+    typeof statusWord === 'string' ? statusWord.trim().toLowerCase() : '';
+  return STYLE_BY_STATUS.get(key) ?? IDLE_STYLE;
+};
 
 /***
  * MARK: resolveRunnerStatusWord
@@ -185,17 +194,43 @@ export const coerceBoxText = (value, fallback) => {
  * MARK: selectRenderableRunnerEntries
  * @description Fail-safe filter for runner box entries: keeps only plain
  *   entry objects and drops junk array items (null, strings, numbers) that a
- *   half-written registry payload or a bad map could inject. Junk must never
+ *   half-written registry payload or a bad map could inject. It also drops
+ *   entries whose field reads throw (a throwing getter from a bad merge or
+ *   corrupt store entry): the bar has no error boundary around the footer,
+ *   so such an entry must degrade to the legacy view HERE, not blank the
+ *   whole bar — transport controls included — mid-render. Junk must never
  *   flip the bar into box mode or render a phantom "unknown" box — with no
  *   renderable entries the bar falls back to the legacy single-task view.
  *   Never throws and never mutates its input; non-array input yields [].
+ *   Kept entries pass through by reference, in order.
  * @example selectRenderableRunnerEntries([{ runnerId: 'b' }, null, 'junk']) => [{ runnerId: 'b' }]
  * @example selectRenderableRunnerEntries(null) => []
  * @param {Array} [entries] - Candidate runner box entries.
  * @returns {Array<Object>} Only the renderable entry objects, in order.
  ***/
-export const selectRenderableRunnerEntries = (entries) =>
-  Array.isArray(entries) ? entries.filter((entry) => entry !== null && typeof entry === 'object' && !Array.isArray(entry)) : [];
+export const selectRenderableRunnerEntries = (entries) => {
+  if (!Array.isArray(entries)) return [];
+  return entries.filter((entry) => {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    // Touch every field the box render reads. A throw here means the entry
+    // would crash React mid-render (unrecoverable without a boundary), so
+    // the entry is dropped and the gate below falls back to the legacy view.
+    // Reading into locals keeps the no-unused-expressions lint rule quiet.
+    try {
+      const boxFields = [
+        entry.runnerId,
+        entry.runnerLabel,
+        entry.statusWord,
+        entry.taskTitleFirstLine,
+        entry.stageName,
+        entry.task,
+      ];
+      return boxFields.length > 0;
+    } catch {
+      return false;
+    }
+  });
+};
 
 /***
  * MARK: shouldShowRunnerBoxes

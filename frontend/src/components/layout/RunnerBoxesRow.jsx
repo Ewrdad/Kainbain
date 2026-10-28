@@ -9,9 +9,9 @@ import { RUNNER_BOX_MAX_COUNT, coerceBoxText, selectRenderableRunnerEntries } fr
  *   `role="list"` labelled "Live runners", one `role="listitem"` per box.
  *   Renders null unless there are 1-4 renderable entries — 0 or 5+ falls
  *   back to the legacy single-task view in the parent, so this component
- *   never decides the fallback itself. Junk array items are dropped by the
- *   shared filter (same one the parent gate counts), so the row and the
- *   gate can never disagree. Keys use the same fail-closed id coercion as
+ *   never decides the fallback itself. Junk array items and entries whose
+ *   field reads throw are dropped by the shared filter (same one the parent
+ *   gate counts), so the row and the gate can never disagree. Keys use the same fail-closed id coercion as
  *   the box test ids (so a numeric or symbol id can never throw in the
  *   key or disagree with the box), plus the list index so two entries
  *   sharing a runner id (hand-injected props) cannot collide and swap

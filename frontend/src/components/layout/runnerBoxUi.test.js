@@ -98,6 +98,32 @@ test('status word is task-state first: settled task states beat engine state', (
   );
 });
 
+test('status colours ignore case and padding so dot and word never disagree', () => {
+  expect(getRunnerBoxStyle('RUNNING')).toEqual(getRunnerBoxStyle('running'));
+  expect(getRunnerBoxStyle('  failed  ')).toEqual(getRunnerBoxStyle('failed'));
+  expect(getRunnerBoxStyle('Waiting_Human')).toEqual(getRunnerBoxStyle('waiting_human'));
+  // Non-strings still fail closed to the grey idle pair, never a missing dot.
+  expect(getRunnerBoxStyle(5)).toEqual(getRunnerBoxStyle('idle'));
+  expect(getRunnerBoxStyle(null)).toEqual(getRunnerBoxStyle('idle'));
+});
+
+test('entries whose field reads throw are dropped before render', () => {
+  // A bad merge or corrupt store entry can hand the bar an object whose
+  // property access throws. The bar cannot recover mid-render (no boundary
+  // around the footer), so the filter must drop such entries here and let
+  // the gate fall back to the legacy single-task view.
+  const poisoned = {};
+  Object.defineProperty(poisoned, 'runnerId', {
+    get() {
+      throw new Error('poisoned entry');
+    },
+  });
+  const healthy = { runnerId: 'b' };
+  expect(selectRenderableRunnerEntries([poisoned])).toEqual([]);
+  expect(selectRenderableRunnerEntries([healthy, poisoned])).toEqual([healthy]);
+  expect(selectRenderableRunnerEntries([healthy, null])).toEqual([healthy]);
+});
+
 test('status display text is upper-cased with underscores as spaces', () => {
   expect(formatRunnerStatusDisplay('waiting_human')).toBe('WAITING HUMAN');
   expect(formatRunnerStatusDisplay('running')).toBe('RUNNING');
