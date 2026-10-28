@@ -272,7 +272,7 @@ export function ProjectBasicsSection({
                 aria-label={preset.label}
                 onClick={() => handleAccentChange(preset.value)}
                 className={`w-7 h-7 rounded-sm transition-transform cursor-pointer border ${
-                  accentColor.toLowerCase() === preset.value.toLowerCase()
+                  accentColor?.toLowerCase() === preset.value.toLowerCase()
                     ? 'scale-110 border-on-surface shadow-md ring-2 ring-primary/50'
                     : 'border-border-standard hover:scale-105 opacity-80 hover:opacity-100'
                 }`}
@@ -322,12 +322,12 @@ export function ProjectBasicsSection({
           type="button"
           onClick={() => toggleHideProject?.(projectId)}
           className={`px-3 py-1.5 rounded-sm text-xs font-bold uppercase cursor-pointer transition-colors ${
-            hiddenProjectIds.includes(projectId)
+            hiddenProjectIds?.includes?.(projectId)
               ? 'bg-primary text-on-primary font-bold'
               : 'bg-surface-deep border border-border-standard text-text-muted hover:text-on-surface'
           }`}
         >
-          {hiddenProjectIds.includes(projectId) ? 'Hidden (Archived)' : 'Visible'}
+          {hiddenProjectIds?.includes?.(projectId) ? 'Hidden (Archived)' : 'Visible'}
         </button>
       </div>
     </div>
