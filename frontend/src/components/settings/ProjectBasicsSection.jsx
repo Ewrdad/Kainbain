@@ -1,4 +1,3 @@
-import React from 'react';
 import { ModelSelector } from '../common/ModelSelector';
 
 const ACCENT_PRESETS = [

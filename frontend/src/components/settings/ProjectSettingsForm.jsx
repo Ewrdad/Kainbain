@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useKainBain } from '../../context/KainBainContext';
 import { api } from '../../services/api';
 import { logger } from '../../services/logger';
@@ -105,8 +105,11 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
     const minutes = msToMinutes(storedMs);
     return minutes === '' ? '' : String(minutes);
   };
-  const retrySwitch = (stored) =>
-    stored === true ? 'enabled' : stored === false ? 'disabled' : 'default';
+  const retrySwitch = (stored) => {
+    if (stored === true) return 'enabled';
+    if (stored === false) return 'disabled';
+    return 'default';
+  };
   const [maxAutoIterations, setMaxAutoIterations] = useState(
     retryDraft(project?.maxAutoIterations),
   );
@@ -131,12 +134,12 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
   // re-renders on its own; the setter call that follows already does.)
   // Declared BEFORE the branch-sync block below so the reset effect further
   // down can observe the project identity the fields were synced from.
-  const dirtyRef = React.useRef(false);
-  const markDirty = React.useCallback(() => {
+  const dirtyRef = useRef(false);
+  const markDirty = useCallback(() => {
     dirtyRef.current = true;
   }, []);
   // Wraps a draft setter so the edit also marks the form dirty.
-  const touch = React.useCallback(
+  const touch = useCallback(
     (setter) => (value) => {
       markDirty();
       setter(value);
@@ -253,12 +256,12 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
   // Track whether the user has edited the default model so a late-arriving
   // project object (projects list still fetching when the form mounts) can
   // fill in the stored value WITHOUT clobbering an in-progress edit.
-  const defaultModelTouchedRef = React.useRef(false);
+  const defaultModelTouchedRef = useRef(false);
 
   // Sync the default model from the project once it loads. Without this, a
   // form mounted before the project fetch resolved keeps its empty initial
   // state and a subsequent Save overwrites the stored model selection.
-  React.useEffect(() => {
+  useEffect(() => {
     if (!project?.defaultModel || defaultModelTouchedRef.current) return;
     setDefaultModel(project.defaultModel);
   }, [project?.id, project?.defaultModel]);
@@ -266,12 +269,12 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
   // Tracks which project identity the dirty flag was last reset for. A new
   // project means freshly synced fields, so the flag clears. All ref access
   // stays inside effects (never during render).
-  const cleanProjectIdRef = React.useRef(project?.id ?? null);
+  const cleanProjectIdRef = useRef(project?.id ?? null);
   // Reports the current dirty flag after every render (ref mutations don't
   // re-run dep-keyed effects, and every mutation rides a state update that
   // re-renders, so the dep-less effect is what observes them). The parent
   // setState with an unchanged value bails out, so this never loops.
-  React.useEffect(() => {
+  useEffect(() => {
     if ((cleanProjectIdRef.current ?? null) !== (project?.id ?? null)) {
       cleanProjectIdRef.current = project?.id ?? null;
       dirtyRef.current = false;
@@ -478,9 +481,7 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
       const saveOpts = project?.updatedAt
         ? { expectedUpdatedAt: project.updatedAt }
         : {};
-      const updated = await api.updateProject(
-        projectId,
-        {
+      const savePayload = {
           name: projectName,
           cwd,
           notesDir,
@@ -499,7 +500,6 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
           // key is present, so a page whose snapshot predates another
           // browser's alias save must NOT send its stale list. Only an
           // edited table (including clearing it to []) carries the key.
-          ...(modelAliasesTouched ? { modelAliases } : {}),
           // Docs linkage: custom folder name (blank clears to default 'docs')
           // and centralized docs opt-out toggle.
           docsDirName: trimmedDocsName || '',
@@ -512,21 +512,34 @@ export function ProjectSettingsForm({ project, projectId, onProjectUpdated, sect
           // command line (model flags bake into it); other harnesses clear it.
           harness: harness === defaultHarnessId ? '' : harness,
           harnessCommand: isCustomHarness ? harnessCommand : '',
-        },
+      };
+      // Only edited alias tables are sent (see above) — assign explicitly
+      // instead of a conditional empty spread so the payload's field set is
+      // obvious.
+      if (modelAliasesTouched) {
+        savePayload.modelAliases = modelAliases;
+      }
+      const updated = await api.updateProject(
+        projectId,
+        savePayload,
         saveOpts,
       );
       // Refresh the in-memory project so the applied accent/name survives
       // view/tab switches without a full re-fetch.
       updateProjectInState?.(updated);
-      // Keep an untouched alias draft tracking the server truth: a save
-      // that omitted the key may still have received newer aliases (saved
-      // from another browser between this page's load and its save), and
-      // the next edit must start from those — not from the stale snapshot.
-      if (!modelAliasesTouched) {
-        setModelAliases(
-          Array.isArray(updated?.modelAliases) ? updated.modelAliases : [],
-        );
-      }
+      // Keep the alias draft aligned with server truth after a successful
+      // save: a save that omitted the key may still have received newer
+      // aliases (saved from another browser between this page's load and
+      // its save), and the next edit must start from those. Resetting
+      // `modelAliasesTouched` makes the NEXT untouched save omit the key
+      // again, so two browsers editing different fields cannot clobber
+      // each other's alias table.
+      setModelAliases(
+        Array.isArray(updated?.modelAliases)
+          ? updated.modelAliases
+          : modelAliases,
+      );
+      setModelAliasesTouched(false);
       onProjectUpdated(projectId);
       dirtyRef.current = false;
       setSaveState('saved');
