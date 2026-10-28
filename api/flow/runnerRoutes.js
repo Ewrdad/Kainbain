@@ -23,14 +23,14 @@ import { resolveStagesForTask } from "./stageResolution.js";
  * @param {Object} [project] - project record (optional `ciTimeoutMs`).
  * @returns {number} Effective CI timeout in milliseconds.
  ***/
-export function resolveCiTimeoutMs(resolved, project) {
+export const resolveCiTimeoutMs = (resolved, project) => {
 	return (
 		Number(resolved?.timeoutMs) ||
 		Number(resolved?.timeout) ||
 		Number(project?.ciTimeoutMs) ||
 		600000
 	);
-}
+};
 
 /***
  * MARK: registerRunnerRoutes
@@ -44,7 +44,7 @@ export function resolveCiTimeoutMs(resolved, project) {
  *   the authenticated credential, never from the body (R04 wrong-scope).
  * @example await app.register(runnerRoutes, { deps })
  ***/
-export async function registerRunnerRoutes(app, { deps }) {
+export const registerRunnerRoutes = async (app, { deps }) => {
 	const {
 		runnerRegistry,
 		claimStore,
@@ -670,4 +670,4 @@ export async function registerRunnerRoutes(app, { deps }) {
 			receipts: steerStore.receiptsFor(executionId),
 		};
 	});
-}
+};

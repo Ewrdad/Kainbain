@@ -67,7 +67,7 @@ Auto-iteration can re-run a failed stage automatically (fix, re-test, re-review)
 
 ## Retry budgets
 
-Every failed stage consumes from two loop budgets: the **auto-iteration budget** (failback-and-retry cycles) and the **transient budget** (same-stage retries for timeouts and infrastructure errors). Budgets resolve per stage as **stage override → project override → global default**; a project-wide value lives in Project Settings › Retry & Timeouts, and a per-stage value (when set) still wins over both. A budget of `0` disables that loop; a blank project field follows the global default.
+Every failed stage consumes from two loop budgets: the **auto-iteration budget** (failback-and-retry cycles) and the **transient budget** (same-stage retries for timeouts and infrastructure errors). Budgets resolve per stage as **stage override → project override → global default**; a project-wide value lives in Project Settings › Retry & Timeouts (Project tab), and a per-stage value (when set) still wins over both. A budget of `0` disables that loop; a blank project field follows the global default.
 
 Hitting **retry** (`POST /tasks/:id/retry`, the failed-stage banner button) gives the task a genuinely fresh attempt: both loop counters restart at zero and the stage clock re-enters, so the next failure auto-retries again instead of parking immediately. The parking failure is still reinjected into the retried attempt's prompt as context. Plain **execute** (`POST /tasks/:id/execute`, the Run Stage button) is first-run/manual dispatch — it keeps counting from the current values and never restarts a budget, so the scheduler can never silently grant infinite retries.
 
