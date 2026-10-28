@@ -1514,6 +1514,30 @@ async function mergeTaskBranchIntoMain(
 		task.mergeAttemptId = mergeAttemptId;
 		store._saveTaskMarkdown(cwd, task);
 
+		// Commit-then-merge: the baseline bookkeeping above (switched-branch
+		// note, preMergeMainSha/mergeAttemptId, report rewrite) re-dirties
+		// task.md on the default branch AFTER the checkout — git's own merge
+		// safety trips on exactly our own just-written report. Commit those
+		// leftovers here (affinity-guarded, warn-only) with NO task mutations
+		// after, so a merge refusal now means a genuine conflict or foreign
+		// dirt, never our own bookkeeping.
+		try {
+			const preMerge = await commitAllIfNeeded(
+				cwd,
+				`KainBain (task ${task.id}): commit merge bookkeeping on '${mainBranch}' before merging '${branch}'`,
+				{ expectedBranch: mainBranch },
+			);
+			if (preMerge?.committed) {
+				bridge?.emitSystemLog?.(
+					projectId,
+					`[GIT] Task #KB-${taskShortId}: committed merge bookkeeping on '${mainBranch}' before merge (${preMerge.hash || "no hash"})`,
+					{ taskId },
+				);
+			}
+		} catch {
+			// Non-fatal: the merge below owns the failure loudly.
+		}
+
 		try {
 			recordStageHeartbeat(store, taskId, { stageId: stage.id, kind: "merge" });
 			await mergeBranch(cwd, branch);
