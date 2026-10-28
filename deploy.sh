@@ -1284,6 +1284,41 @@ if [ "$MODE" = "prod" ]; then
 	# shipping code the gates never tested (TOCTOU guard).
 	PRE_GATE_HEAD="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
 
+	# 0. Deploy-tree gate (blocking): deploy ships the live checkout, so a
+	#    tree stranded on a task branch (kb/*) would ship unmerged task code
+	#    with stale engine modules (the build-581 incident did exactly
+	#    that). Refuses unless the checkout is on the default branch.
+	#    Emergency opt-out only: KAINBAIN_ALLOW_BRANCH_DEPLOY=1 (exactly
+	#    "1", logged loudly). Detached HEAD or an unresolvable default
+	#    branch warns and proceeds (CI checkouts must keep working).
+	require_default_branch_tree() {
+		if [ "${KAINBAIN_ALLOW_BRANCH_DEPLOY:-}" = "1" ]; then
+			log "⚠️ KAINBAIN_ALLOW_BRANCH_DEPLOY=1 — deploying from a non-default branch (emergency opt-out)."
+			return 0
+		fi
+		local current default_branch
+		current="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+		default_branch="$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')"
+		if [ -z "$default_branch" ]; then
+			if git show-ref --verify --quiet refs/heads/main 2>/dev/null; then
+				default_branch="main"
+			elif git show-ref --verify --quiet refs/heads/master 2>/dev/null; then
+				default_branch="master"
+			fi
+		fi
+		if [ "$current" = "HEAD" ] || [ "$current" = "unknown" ] || [ -z "$default_branch" ]; then
+			log "⚠️ Deploy-tree check skipped (current='$current', default='${default_branch:-unknown}') — proceeding."
+			return 0
+		fi
+		if [ "$current" != "$default_branch" ]; then
+			log "❌ Refusing deploy: checkout is on '$current', not the default branch '$default_branch'. Switch to '$default_branch' first (or set KAINBAIN_ALLOW_BRANCH_DEPLOY=1 to override)."
+			return 1
+		fi
+		log "✅ Deploy tree is on the default branch '$current'."
+		return 0
+	}
+	run_gate "deploy-tree" "require_default_branch_tree" require_default_branch_tree
+
 	# 1. Run all tests before deploying to ensure stability (skipped in --fast).
 	#    --no-canary keeps parity WITHOUT duplication: `npm test` runs the
 	#    same fast branches plus the canary suite in one gate, so here the
