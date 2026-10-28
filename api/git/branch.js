@@ -3,7 +3,31 @@ import { git } from "./exec.js";
 import { _assertValidBranchName, isValidBranchName } from "./validation.js";
 import { currentBranch, branchExists, hasCommits, isGitRepository } from "./status.js";
 import { requireCleanWorkingTree } from "./workingTreeRecovery.js";
+import { commitEngineSnapshots } from "./commit.js";
 import { GitError } from "./errors.js";
+
+/***
+ * MARK: commitSnapshotsBeforeSwitch
+ * @description Commit-then-switch backstop shared by every branch switch
+ *   below: the clean-tree guard deliberately ignores the engine's own
+ *   snapshot paths (`docs/tasks/`, state dir) so mid-task report writes
+ *   never block a hop — but git's own checkout safety does not ignore
+ *   them, and trips on exactly our own just-written reports. Committing
+ *   those snapshots onto the current branch (affinity-guarded) closes the
+ *   gap; real dirt is never staged and still refuses loudly at the guard.
+ *   Best-effort and warn-silent: the guard below owns real failures.
+ ***/
+async function commitSnapshotsBeforeSwitch(projectCwd, branch, current) {
+	try {
+		await commitEngineSnapshots(
+			projectCwd,
+			`KainBain: auto-commit engine snapshots before switching to '${branch}'`,
+			{ expectedBranch: current || undefined },
+		);
+	} catch {
+		// Best-effort: the clean-tree guard below owns real failures loudly.
+	}
+}
 
 /***
  * MARK: checkoutBranch
@@ -24,6 +48,10 @@ export async function checkoutBranch(projectCwd, branch, opts = {}) {
 	_assertValidBranchName(branch, "checkout");
 	const current = await currentBranch(projectCwd);
 	if (current === branch) return { switched: false };
+	// Commit-then-switch: our own just-written snapshots must be committed
+	// before git's checkout safety sees them (the guard below ignores them
+	// by design). Real dirt is never staged and still refuses loudly.
+	await commitSnapshotsBeforeSwitch(projectCwd, branch, current);
 	if (opts.checkClean !== false) {
 		await requireCleanWorkingTree(projectCwd, {
 			...opts,
@@ -287,6 +315,10 @@ export async function ensureBranchCheckedOut(projectCwd, branch, opts = {}) {
 		return { created: false, checkedOut: true, switched: false };
 	}
 
+	// Commit-then-switch backstop (see checkoutBranch): snapshot dirt must
+	// be committed before either the checkout guard or git's own safety.
+	await commitSnapshotsBeforeSwitch(projectCwd, branch, current);
+
 	if (await branchExists(projectCwd, branch)) {
 		if (current !== "HEAD" || (await hasCommits(projectCwd))) {
 			await requireCleanWorkingTree(projectCwd, {
@@ -488,10 +520,13 @@ export async function deleteBranch(projectCwd, branch) {
  * MARK: withCheckedOutBranch
  * @description Runs `fn` on an existing `branch` inside the primary checkout,
  *   then restores the project's default branch on every exit path (success,
- *   command failure, timeout, thrown runner). Guards first: a dirty working
- *   tree refuses the switch (recovery off — uncommitted work is never stashed
- *   or lost by an execution helper). No checkout happens when `branch` is falsy
- *   or already current, so callers can use it unconditionally.
+ *   command failure, timeout, thrown runner). Commit-then-switch first: the
+ *   engine's own snapshot dirt (`docs/tasks/`, state dir — ignored by the
+ *   guard but not by git) auto-commits onto the current branch so our own
+ *   just-written reports can never trip the switch. Guards second: real
+ *   dirt refuses the switch (recovery off — uncommitted work is never
+ *   stashed or lost by an execution helper). No checkout happens when
+ *   `branch` is falsy or already current, so callers can use it unconditionally.
  *   Failure contract: a failed RESTORE always wins over a failed `fn` — the
  *   checkout being stranded on `branch` is the operator-actionable state — but
  *   the original error message is folded into the thrown GitError so neither

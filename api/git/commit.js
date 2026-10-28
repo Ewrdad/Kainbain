@@ -1,6 +1,10 @@
 import { git } from "./exec.js";
 import { currentBranch, hasCommits, isGitRepository } from "./status.js";
-import { getWorkingTreeStatus, isWorkingTreeClean } from "./workingTreeStatus.js";
+import {
+	getWorkingTreeStatus,
+	isWorkingTreeClean,
+	_resolveIgnorePaths,
+} from "./workingTreeStatus.js";
 import { GitBranchMismatchError } from "./errors.js";
 
 /***
@@ -131,6 +135,83 @@ export async function commitAllIfNeeded(projectCwd, message, opts = {}) {
 		);
 	} catch (e) {
 		// 'nothing to commit' after add means everything was gitignored — fine.
+		const stillDirty = !(await isWorkingTreeClean(projectCwd, {
+			ignorePaths: [],
+		}));
+		if (stillDirty) throw e;
+		return { committed: false, hash: null };
+	}
+	let hash = null;
+	try {
+		const { stdout } = await git(projectCwd, ["rev-parse", "--short", "HEAD"]);
+		hash = stdout;
+	} catch {
+		// cosmetic only
+	}
+	return { committed: true, hash };
+}
+
+
+/***
+ * MARK: commitEngineSnapshots
+ * @description Commits ONLY the engine's own snapshot dirt (the guard-ignored
+ *   paths: `docs/tasks/` live state and review reports plus the state dir)
+ *   so a branch switch never trips on the engine's just-written bookkeeping.
+ *   Real work — operator edits, task deliverables, anything outside the
+ *   ignore prefixes — is never staged: the clean-tree guard still refuses
+ *   loudly on it after this runs. Staged real changes stay staged (the
+ *   commit is pathspec-limited to snapshot paths). No-op when no snapshot
+ *   dirt exists. Opt-in branch affinity via `opts.expectedBranch`, same
+ *   fail-closed contract as commitAllIfNeeded.
+ * @example await commitEngineSnapshots('/repo', 'pre-switch snapshots') => { committed: true, hash: 'abc' }
+ * @param {string} projectCwd
+ * @param {string} [message='KainBain: commit engine snapshots'] - Commit subject.
+ * @param {Object} [opts]
+ * @param {string} [opts.expectedBranch] - Branch affinity guard (fail closed).
+ * @param {Object} [opts.project] - Project record hint for custom docs/state dir names.
+ * @param {Array<string>} [opts.ignorePaths] - Explicit ignore prefixes (overrides the resolved defaults).
+ * @returns {Promise<{committed: boolean, hash: string|null}>}
+ * @throws {GitBranchMismatchError} When `opts.expectedBranch` is set and mismatched.
+ ***/
+export async function commitEngineSnapshots(projectCwd, message, opts = {}) {
+	if (!(await isGitRepository(projectCwd)))
+		return { committed: false, hash: null };
+	if (!(await hasCommits(projectCwd))) return { committed: false, hash: null };
+
+	if (opts.expectedBranch) {
+		const actualBranch = await currentBranch(projectCwd).catch(() => null);
+		if (actualBranch !== opts.expectedBranch) {
+			throw new GitBranchMismatchError(
+				`Refusing to commit on the wrong branch: expected '${opts.expectedBranch}' but the working tree is on '${actualBranch || "unknown"}'. ` +
+					`A concurrent task likely moved HEAD; re-run the stage so it can re-establish its branch.`,
+				{ expectedBranch: opts.expectedBranch, actualBranch },
+			);
+		}
+	}
+
+	// Full status (no ignores), then keep only the guard-ignored snapshot
+	// paths using the exact prefix semantics the guard itself applies.
+	const { dirtyPaths } = await getWorkingTreeStatus(projectCwd, {
+		ignorePaths: [],
+	});
+	const prefixes = _resolveIgnorePaths(opts);
+	const snapshotPaths = dirtyPaths.filter((raw) => {
+		const p = String(raw).replace(/\\/g, "/").replace(/["']/g, "");
+		return prefixes.some((prefix) => {
+			const normPrefix = prefix.endsWith("/") ? prefix : `${prefix}/`;
+			return p === prefix || p.startsWith(normPrefix);
+		});
+	});
+	if (snapshotPaths.length === 0) return { committed: false, hash: null };
+
+	await ensureGitIdentity(projectCwd);
+	await git(projectCwd, ["add", "--", ...snapshotPaths]);
+	const subject = message || "KainBain: commit engine snapshots";
+	try {
+		await git(projectCwd, ["commit", "-m", subject, "--", ...snapshotPaths]);
+	} catch (e) {
+		// 'nothing to commit' after add means the dirt vanished mid-flight
+		// (concurrent commit) — fine. Anything still dirty is a real failure.
 		const stillDirty = !(await isWorkingTreeClean(projectCwd, {
 			ignorePaths: [],
 		}));

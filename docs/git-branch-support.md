@@ -150,7 +150,7 @@ Post-merge commands (like production deployments) can be long-running. The defau
 ## Safety Invariants
 
 - **No Shell Strings:** All git operations use `spawn` with argument arrays to prevent injection.
-- **Dirty Tree Guard:** Branches are never switched if the working tree is dirty.
+- **Dirty Tree Guard:** Branches are never switched with real uncommitted work pending — but the guard deliberately ignores the engine's own snapshot paths (`docs/tasks/`, state dir), and git's checkout safety does not. Every switch therefore commits those snapshots first (commit-then-switch, onto the current branch, affinity-guarded), so our own just-written reports can never trip a checkout or merge. Anything else dirty still refuses loudly.
 - **No Half-Merges:** All conflicts trigger an immediate abort.
 - **No Self-Integration:** Agents are strictly forbidden from performing their own merges via prompt-level guards.
 

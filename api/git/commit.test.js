@@ -11,6 +11,7 @@ import {
 	DEFAULT_GIT_AUTHOR_EMAIL,
 	ensureGitIdentity,
 	commitAllIfNeeded,
+	commitEngineSnapshots,
 } from "./commit.js";
 import { GitBranchMismatchError } from "./errors.js";
 
@@ -330,5 +331,62 @@ describe("commitAllIfNeeded", () => {
 			"-m",
 			"# Heading\nprompt body",
 		]);
+	});
+});
+
+describe("commitEngineSnapshots", () => {
+	beforeEach(() => {
+		spawnMock.mockReset();
+	});
+
+	/** Routes status output per test; everything else succeeds. */
+	function routeStatus(statusStdout, { current = "kb/t" } = {}) {
+		const calls = [];
+		spawnMock.mockImplementation((cmd, args) => {
+			calls.push([...args]);
+			if (args.includes("--abbrev-ref")) {
+				return fakeChildFromResponse({ stdout: `${current}\n` });
+			}
+			if (args[0] === "status") return fakeChildFromResponse({ stdout: statusStdout });
+			return fakeChildFromResponse({ stdout: "" });
+		});
+		return calls;
+	}
+
+	it("commits only snapshot paths and leaves real dirt uncommitted", async () => {
+		const calls = routeStatus(" M docs/tasks/t/task.md\n M dirty.js\n");
+		const res = await commitEngineSnapshots("/repo", "snapshots");
+		expect(res.committed).toBe(true);
+		expect(calls).toContainEqual(["add", "--", "docs/tasks/t/task.md"]);
+		const commit = calls.find((a) => a[0] === "commit");
+		expect(commit).toBeTruthy();
+		expect(commit).toContain("docs/tasks/t/task.md");
+		expect(commit.some((a) => String(a).includes("dirty.js"))).toBe(false);
+	});
+
+	it("is a no-op when only real dirt exists (never stages it)", async () => {
+		const calls = routeStatus(" M dirty.js\n");
+		const res = await commitEngineSnapshots("/repo", "snapshots");
+		expect(res).toEqual({ committed: false, hash: null });
+		expect(calls.some((a) => a[0] === "add" || a[0] === "commit")).toBe(false);
+	});
+
+	it("refuses the wrong branch without staging anything", async () => {
+		const calls = routeStatus(" M docs/tasks/t/task.md\n", { current: "main" });
+		await expect(
+			commitEngineSnapshots("/repo", "snapshots", { expectedBranch: "kb/t" }),
+		).rejects.toBeInstanceOf(GitBranchMismatchError);
+		expect(calls.some((a) => a[0] === "add" || a[0] === "commit")).toBe(false);
+	});
+
+	it("is a no-op outside a repository", async () => {
+		spawnMock.mockImplementation((cmd, args) => {
+			if (args.includes("--inside-work-tree")) {
+				return fakeChildFromResponse({ code: 128, stderr: "fatal" });
+			}
+			return fakeChildFromResponse({ stdout: "" });
+		});
+		const res = await commitEngineSnapshots("/repo", "snapshots");
+		expect(res).toEqual({ committed: false, hash: null });
 	});
 });

@@ -448,32 +448,37 @@ describe("git helper", () => {
 		});
 
 		it("refuses to switch on a dirty tree", async () => {
-			const responses = [
-				{ stdout: "main" }, // current branch
-				{ stdout: " M dirty.js\n" }, // status --porcelain
-			];
-			let call = 0;
-			spawnMock.mockImplementation(() => {
-				return fakeChildFromResponse(responses[Math.min(call++, responses.length - 1)]);
+			spawnMock.mockImplementation((cmd, args) => {
+				if (args.includes("--abbrev-ref")) {
+					return fakeChildFromResponse({ stdout: "main\n" });
+				}
+				if (args[0] === "status") {
+					return fakeChildFromResponse({ stdout: " M dirty.js\n" });
+				}
+				return fakeChildFromResponse({ stdout: "" });
 			});
 			await expect(checkoutBranch("/repo", "kb/task-1")).rejects.toBeInstanceOf(
 				GitDirtyTreeError,
 			);
-			// Never spawned the checkout.
+			// Never spawned the checkout — and never committed real work.
 			expect(
 				spawnMock.mock.calls.some(([, args]) => args[0] === "checkout"),
+			).toBe(false);
+			expect(
+				spawnMock.mock.calls.some(([, args]) => args[0] === "commit"),
 			).toBe(false);
 		});
 
 		it("checks out when the tree is clean", async () => {
-			const responses = [
-				{ stdout: "main" },
-				{ stdout: "" },
-				{ stdout: "Switched to branch 'kb/task-1'" },
-			];
-			let call = 0;
-			spawnMock.mockImplementation(() => {
-				return fakeChildFromResponse(responses[Math.min(call++, responses.length - 1)]);
+			spawnMock.mockImplementation((cmd, args) => {
+				if (args.includes("--abbrev-ref")) {
+					return fakeChildFromResponse({ stdout: "main\n" });
+				}
+				if (args[0] === "status") return fakeChildFromResponse({ stdout: "" });
+				if (args[0] === "checkout") {
+					return fakeChildFromResponse({ stdout: "Switched to branch 'kb/task-1'" });
+				}
+				return fakeChildFromResponse({ stdout: "" });
 			});
 			const res = await checkoutBranch("/repo", "kb/task-1");
 			expect(res).toEqual({ switched: true });
