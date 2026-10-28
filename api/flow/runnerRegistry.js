@@ -95,6 +95,7 @@ export class RunnerRegistry {
 					Number.isInteger(rec.originConflicts) && rec.originConflicts > 0
 						? rec.originConflicts
 						: 0,
+				paused: rec.paused === true,
 				lastSeenAt: null,
 			};
 			this.runners.set(record.runnerId, record);
@@ -115,6 +116,7 @@ export class RunnerRegistry {
 				credentialIssuedAt: record.credentialIssuedAt || null,
 				lastOrigin: record.lastOrigin || null,
 				originConflicts: record.originConflicts || 0,
+				paused: record.paused === true,
 			})),
 		});
 	}
@@ -145,6 +147,7 @@ export class RunnerRegistry {
 			lastSeenAt: record.lastSeenAt,
 			credentialIssuedAt: record.credentialIssuedAt || null,
 			originConflicts: record.originConflicts || 0,
+			paused: record.paused === true,
 			projectScope: Array.isArray(record.projectScope) ? [...record.projectScope] : null,
 		};
 	}
@@ -226,6 +229,7 @@ export class RunnerRegistry {
 			capabilities,
 			credential: null,
 			credentialIssuedAt: null,
+			paused: false,
 			lastSeenAt: null,
 		};
 		this.runners.set(runnerId, record);
@@ -307,6 +311,54 @@ export class RunnerRegistry {
 		if (record.credential) this.credentials.delete(record.credential);
 		record.credential = null;
 		record.status = "revoked";
+		this._persist();
+		return this._public(record);
+	}
+
+	/***
+	 * MARK: pause
+	 * @description Parks an ACTIVE Runner so it stops picking up new tasks
+	 *   (dispatch and direct claim both refuse it) while its credential,
+	 *   heartbeats, and any in-flight lease keep working — pausing never
+	 *   strands running work. The flag persists to disk, so a restart
+	 *   keeps the fleet parked. Idempotent: pausing a paused Runner is a
+	 *   no-op success.
+	 * @example runners.pause('r1') => { status: 'active', paused: true }
+	 * @param {string} runnerId - Runner id.
+	 * @returns {Object} Public record with the paused flag.
+	 ***/
+	pause(runnerId) {
+		const record = this._getOrThrow(runnerId);
+		if (record.status !== "active") {
+			throw RunnerRegistry._fail(
+				409,
+				"PAUSE_INVALID_STATE",
+				`Cannot pause a Runner in status ${record.status}; only active Runners pause.`,
+			);
+		}
+		record.paused = true;
+		this._persist();
+		return this._public(record);
+	}
+
+	/***
+	 * MARK: resume
+	 * @description Clears the pause flag so the Runner picks up new tasks
+	 *   again. Idempotent: resuming an unpaused Runner is a no-op success.
+	 * @example runners.resume('r1') => { status: 'active', paused: false }
+	 * @param {string} runnerId - Runner id.
+	 * @returns {Object} Public record with the paused flag.
+	 ***/
+	resume(runnerId) {
+		const record = this._getOrThrow(runnerId);
+		if (record.status !== "active") {
+			throw RunnerRegistry._fail(
+				409,
+				"RESUME_INVALID_STATE",
+				`Cannot resume a Runner in status ${record.status}; only active Runners resume.`,
+			);
+		}
+		record.paused = false;
 		this._persist();
 		return this._public(record);
 	}

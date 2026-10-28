@@ -35,8 +35,8 @@ export function resolveCiTimeoutMs(resolved, project) {
 /***
  * MARK: registerRunnerRoutes
  * @description Runner-facing endpoints (ADR 0009 lifecycle steps 1–6): join
- *   registration, heartbeat, the operator approve/deny/revoke + list
- *   surface the Phase 2 onboarding UI drives, the atomic task-claim
+ *   registration, heartbeat, the operator approve/deny/revoke/pause/resume
+ *   + list surface the Phase 2 onboarding UI drives, the atomic task-claim
  *   route backed by ClaimStore (200 + lease or 409 + holder), and the
  *   execution-report endpoints (progress, logs, complete-execution with
  *   engine-owned finish, interrupt, monitor). Credential
@@ -169,6 +169,22 @@ export async function registerRunnerRoutes(app, { deps }) {
 	app.post("/runners/:id/revoke", async (request, reply) => {
 		try {
 			return runnerRegistry.revoke(request.params.id);
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
+	app.post("/runners/:id/pause", async (request, reply) => {
+		try {
+			return runnerRegistry.pause(request.params.id);
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
+	app.post("/runners/:id/resume", async (request, reply) => {
+		try {
+			return runnerRegistry.resume(request.params.id);
 		} catch (err) {
 			return sendStoreError(reply, err);
 		}
@@ -418,6 +434,12 @@ export async function registerRunnerRoutes(app, { deps }) {
 				code: "SCOPE_MISMATCH",
 			});
 		}
+		if (runner.paused === true) {
+			return reply.status(409).send({
+				error: `Runner ${runner.runnerId} is paused — resume it to take new tasks`,
+				code: "RUNNER_PAUSED",
+			});
+		}
 		const projectId = resolveAndGuardProject(
 			request.body?.projectId || request.query?.projectId,
 			reply,
@@ -483,6 +505,16 @@ export async function registerRunnerRoutes(app, { deps }) {
 				code: "STALE_RUNNER",
 			});
 		}
+		// Parked Runners keep heartbeating (freshness is liveness, not
+		// eligibility) but take no new work: fail fast here as well as in
+		// the per-candidate match, so a paused fleet reads as paused and
+		// not "no capable match".
+		if (runner.paused === true) {
+			return reply.status(409).send({
+				error: `Runner ${runner.runnerId} is paused — resume it to take new tasks`,
+				code: "RUNNER_PAUSED",
+			});
+		}
 		if (isTripped(taskStore)) {
 			const circuit = circuitSnapshot(taskStore);
 			return reply.status(409).send({
@@ -523,6 +555,7 @@ export async function registerRunnerRoutes(app, { deps }) {
 			runnerRegistry.records().some(
 				(rec) =>
 					rec?.status === "active" &&
+					rec?.paused !== true &&
 					runnerRegistry.isFresh(rec) &&
 					(rec.capabilities?.harnesses || []).some((h) => h?.id === name),
 			);

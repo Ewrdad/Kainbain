@@ -9,7 +9,7 @@ import { formatRunnerElapsed } from '../observability/widgets/PerRunnerTasksWidg
  *   steps 1–2) plus live assignments (D5, WP-3.4) and cutover deferral
  *   visibility: lists Runner
  *   registrations from `GET /runners` — pending join requests with
- *   Approve/Deny, active Runners with Revoke — with honest loading,
+ *   Approve/Deny, active Runners with Pause/Resume/Revoke — with honest loading,
  *   error-with-retry, and empty states. Active Runners show their current
  *   task from `GET /runners/monitor` (`liveAssignments`); a monitor miss
  *   hides assignments but never the list. Credential values are never
@@ -77,6 +77,8 @@ export function RunnersSection() {
             setCopied(false);
           }
         } else if (action === 'deny') await api.denyRunner(runnerId);
+        else if (action === 'pause') await api.pauseRunner(runnerId);
+        else if (action === 'resume') await api.resumeRunner(runnerId);
         else await api.revokeRunner(runnerId);
         await loadRunners();
       } catch (err) {
@@ -123,7 +125,9 @@ export function RunnersSection() {
         a Runner). A Runner joins
         with the operator join token set as KAINBAIN_RUNNER_JOIN_TOKEN on the
         backend, waits here for approval, then heartbeats and claims tasks
-        with its own credential. Revoking stops the credential immediately;
+        with its own credential. Pausing parks a Runner so it stops picking
+        up new tasks while its in-flight work finishes. Revoking stops the
+        credential immediately;
         leases expire on their own.
       </p>
       {scheduler && (
@@ -295,15 +299,47 @@ export function RunnersSection() {
                 </>
               ) : (
                 runner.status === 'active' && (
-                  <button
-                    type="button"
-                    disabled={busyId === runner.runnerId}
-                    onClick={() => mutate(runner.runnerId, 'revoke')}
-                    aria-label={`Revoke runner ${runner.runnerId}`}
-                    className="ml-auto px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
-                  >
-                    Revoke
-                  </button>
+                  <>
+                    {runner.paused ? (
+                      <span
+                        className="text-[10px] font-bold uppercase tracking-widest text-warning"
+                        data-testid={`runner-paused-${runner.runnerId}`}
+                        title="Paused: this Runner finishes in-flight work but takes no new tasks"
+                      >
+                        paused
+                      </span>
+                    ) : null}
+                    {runner.paused ? (
+                      <button
+                        type="button"
+                        disabled={busyId === runner.runnerId}
+                        onClick={() => mutate(runner.runnerId, 'resume')}
+                        aria-label={`Resume runner ${runner.runnerId}`}
+                        className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
+                      >
+                        Resume
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={busyId === runner.runnerId}
+                        onClick={() => mutate(runner.runnerId, 'pause')}
+                        aria-label={`Pause runner ${runner.runnerId}`}
+                        className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
+                      >
+                        Pause
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={busyId === runner.runnerId}
+                      onClick={() => mutate(runner.runnerId, 'revoke')}
+                      aria-label={`Revoke runner ${runner.runnerId}`}
+                      className="ml-auto px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
+                    >
+                      Revoke
+                    </button>
+                  </>
                 )
               )}
             </li>
