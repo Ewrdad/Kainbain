@@ -15,6 +15,7 @@ import {
 	isGitRepository,
 	isValidBranchName,
 	resolveSha,
+	syncDefaultBranchToRemote,
 } from "../git.js";
 import { ensureTaskWorktree } from "./taskWorkspace.js";
 import { _appendProcessLog } from "../watch/index.js";
@@ -255,6 +256,71 @@ async function reportDirtyTreeRecoveries(taskStore, task, cwd, bridge) {
 }
 
 /***
+ * MARK: syncMainToRemoteBestEffort
+ * @description Best-effort source-of-truth sync shared by every operation
+ *   that switches branches: fetches the remote and hard-resets the local
+ *   default branch to it (see syncDefaultBranchToRemote). A moved ref is
+ *   journaled into task history + process log + system log with its
+ *   before/after SHAs (orphaned local commits stay recoverable via reflog);
+ *   fetch/ref failures only leave a process-log warning and never fail the
+ *   calling stage. Never throws.
+ * @example await syncMainToRemoteBestEffort(store, task, '/repo', bridge, 'task-branch pickup') => { synced: true, ... }
+ * @param {Object} taskStore - TaskStore instance.
+ * @param {Object} task - The task entity.
+ * @param {string} cwd - Project working directory.
+ * @param {Object} [bridge] - Event bridge (may be undefined).
+ * @param {string} [context] - Human operation name for audit lines (e.g. 'task-branch pickup').
+ * @returns {Promise<Object|null>} Sync result, or null when sync itself errored unexpectedly.
+ ***/
+export async function syncMainToRemoteBestEffort(
+	taskStore,
+	task,
+	cwd,
+	bridge,
+	context,
+) {
+	const label =
+		typeof context === "string" && context.trim() ? context.trim() : "operation";
+	try {
+		const res = await syncDefaultBranchToRemote(cwd);
+		if (!res) return null;
+		const short = (sha) =>
+			typeof sha === "string" && sha ? sha.slice(0, 7) : "unknown";
+		if (res.synced) {
+			const orphan =
+				typeof res.ahead === "number" && res.ahead > 0
+					? ` (orphaned ${res.ahead} local commit(s) ahead of remote ${short(res.before)}; prior state in reflog)`
+					: "";
+			const discarded = res.detail ? ` ${res.detail}` : "";
+			recordBranchHop(
+				taskStore,
+				task,
+				cwd,
+				bridge,
+				`Synced default branch '${res.mainBranch}' to '${res.remote}/${res.mainBranch}' before ${label} (${short(res.before)} → ${short(res.after)})${orphan}${discarded}`,
+			);
+		} else if (res.skipped === "fetch-failed" || res.skipped === "ref-update-failed") {
+			_appendProcessLog(
+				task,
+				`[WARN] Main-branch sync before ${label} skipped (${res.skipped}${res.detail ? `: ${res.detail}` : ""}) — continuing with local state`,
+			);
+		}
+		return res;
+	} catch (e) {
+		try {
+			_appendProcessLog(
+				task,
+				`[WARN] Main-branch sync before ${label} errored (${e?.message || e}) — continuing with local state`,
+			);
+		} catch {
+			// Audit is best-effort; the operation continues regardless.
+		}
+		return null;
+	}
+}
+
+
+/***
  * MARK: ensureTaskBranch
  * @description Safely makes sure the task's branch exists and is checked out
  *   in the project working directory. Work stages only — human review stages
@@ -299,6 +365,16 @@ export async function ensureTaskBranch(taskStore, task, projectCwd, opts = {}) {
 			repo = false;
 		}
 		if (repo) {
+			// Source-of-truth sync before provisioning: the primary
+			// checkout's default branch tracks the remote, so worktree bases
+			// never start from stale main-side state.
+			await syncMainToRemoteBestEffort(
+				taskStore,
+				task,
+				cwd,
+				bridge,
+				"task worktree provisioning",
+			);
 			const baseBranch = await defaultBranch(cwd).catch(() => null);
 			let created = false;
 			try {
@@ -341,6 +417,19 @@ export async function ensureTaskBranch(taskStore, task, projectCwd, opts = {}) {
 	// `dirtyTreeRecovery: 'off'`) disable the ladder: the switch refuses a
 	// dirty tree immediately instead of sweeping/stashing it away.
 	const recovery = resolveDirtyTreeRecoveryMode(taskStore, task.projectId);
+
+	// Source-of-truth sync on every pickup: the remote owns the default
+	// branch, so fetch and hard-reset it before any hop. Stale main-side
+	// state (operator edits, unpushed auto-commits) can never dirty-tree
+	// block the switch after this — only genuinely precious untracked files
+	// (which reset never deletes) still report loudly.
+	await syncMainToRemoteBestEffort(
+		taskStore,
+		task,
+		cwd,
+		bridge,
+		"task-branch pickup",
+	);
 
 	// If we are about to switch branches and the current branch is dirty,
 	// auto-commit the current branch's work first so cross-task switching

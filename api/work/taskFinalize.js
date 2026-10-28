@@ -11,7 +11,7 @@ import {
 	returnToDefaultBranch,
 	resolveSha,
 } from "../git.js";
-import { resolveTaskBranch } from "./taskBranches.js";
+import { resolveTaskBranch, syncMainToRemoteBestEffort } from "./taskBranches.js";
 import { resolveTaskCwd } from "./taskWorkspace.js";
 import { _appendProcessLog } from "../watch/index.js";
 
@@ -299,6 +299,24 @@ export async function finalizeTaskBranch(
 		const detail = `Could not return to the default branch after stage '${stageLabel}': ${summary.returnError}`;
 		record(detail);
 		_appendProcessLog(task, `[ERROR] ${detail}`);
+	}
+
+	// Source-of-truth sync once back on the default branch: the remote owns
+	// it, so fetch and hard-reset it now while the task branch work is
+	// safely committed and pushed above. Best-effort and warn-only — a
+	// failed sync keeps local state for the next pickup's own sync.
+	if (!summary.returnError) {
+		try {
+			await syncMainToRemoteBestEffort(
+				taskStore,
+				task,
+				cwd,
+				bridge,
+				`finalise after stage '${stageLabel}'`,
+			);
+		} catch {
+			// Audit is best-effort; finalise already succeeded.
+		}
 	}
 
 	// Audit any stale lock the gated ops above auto-cleared, plus any

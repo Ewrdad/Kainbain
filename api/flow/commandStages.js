@@ -76,6 +76,7 @@ export const STALE_BRANCH_WARNING_COMMITS = 10;
 import {
 	shouldResetReviewBaseline,
 	isValidReviewBaseline,
+	syncMainToRemoteBestEffort,
 } from "../work/taskBranches.js";
 import { resolveShell, buildStageEnv, isWindows } from "../utils/platform.js";
 
@@ -1276,6 +1277,11 @@ async function mergeTaskBranchIntoMain(
 			);
 		}
 		mainBranch = await defaultBranch(cwd);
+		// Source-of-truth sync on merge entry: the remote owns the default
+		// branch, so fetch and hard-reset it before measuring or switching.
+		// Best-effort and warn-only — a failed sync keeps local state and
+		// the strict guard below still protects operator work.
+		await syncMainToRemoteBestEffort(store, task, cwd, bridge, "merge");
 		// Landed evidence (frozen marker OR git ancestry) is decided
 		// IMMEDIATELY upon entry (before any checkout, commit, or
 		// measurement) so the `catch` below can route every later failure
@@ -1296,6 +1302,29 @@ async function mergeTaskBranchIntoMain(
 
 		const branchBefore = await currentBranch(cwd);
 		if (branchBefore !== branch) {
+			// Commit-then-guard: the main-side sync above already reset
+			// tracked main dirt, so anything still pending here is leftover
+			// stage work (human edits, failed-stage partial output).
+			// Commit it on its own branch first — affinity-guarded so a
+			// concurrent task that moved HEAD can never receive an alien
+			// commit — leaving only untracked user files and real merge
+			// conflicts as merge-stage failures.
+			try {
+				const pending = await commitAllIfNeeded(
+					cwd,
+					`KainBain (task ${task.id}): auto-commit pending work on '${branchBefore}' before merge`,
+					{ expectedBranch: branchBefore },
+				);
+				if (pending?.committed) {
+					_appendProcessLog(
+						task,
+						`[GIT] Auto-committed uncommitted work on '${branchBefore}' before merge (${pending.hash || "no hash"})`,
+					);
+					store._saveTaskMarkdown(cwd, task);
+				}
+			} catch {
+				// Non-fatal: the strict guard below owns the failure loudly.
+			}
 			// The project's custom docs link name (if any) must stay ignored
 			// here, exactly like the `docs/tasks/` default — otherwise task
 			// writes under e.g. `kainbain-docs/tasks/` would read as dirty
@@ -1307,6 +1336,8 @@ async function mergeTaskBranchIntoMain(
 			// stray edit may be the operator's uncommitted review work —
 			// stashing it would silently drop it from the merge the operator
 			// asked for. Failing back keeps the work visible and recoverable.
+			// (The main-side sync and the commit above already cleared every
+			// tracked leftover, so this now fires only for untracked files.)
 			await requireCleanWorkingTree(cwd, {
 				context: landed
 					? `switching to '${mainBranch}' to finish an already-landed merge`
@@ -1718,13 +1749,54 @@ export async function executeMergeStage(
 		`**Landed at:** ${task.reviewBaseline?.mergedAt || new Date().toISOString()}`,
 	].join("\n");
 
-	return await finalizePassedCommandStage(store, projectId, taskId, stage, {
-		stages,
-		cwd,
-		bridge,
-		kind: "merge",
-		label: "Merge",
-		reportContent,
-		historyAction: `Merge stage passed: '${branch}' integrated into '${mainBranch}'`,
-	});
+	const mergeResult = await finalizePassedCommandStage(
+		store,
+		projectId,
+		taskId,
+		stage,
+		{
+			stages,
+			cwd,
+			bridge,
+			kind: "merge",
+			label: "Merge",
+			reportContent,
+			historyAction: `Merge stage passed: '${branch}' integrated into '${mainBranch}'`,
+		},
+	);
+	// The merge report above is written after the post-merge auto-commit, so
+	// commit it here (affinity-guarded, warn-only): the next operation must
+	// see a clean tree. The push below publishes it — without it the next
+	// source-of-truth sync would orphan this commit as ahead-of-remote.
+	try {
+		const reportCommit = await commitAllIfNeeded(
+			cwd,
+			`KainBain (task ${task.id}): commit merge report on '${mainBranch}'`,
+			{ expectedBranch: mainBranch },
+		);
+		if (reportCommit?.committed) {
+			_appendProcessLog(
+				task,
+				`[GIT] Committed merge report on '${mainBranch}' (${reportCommit.hash || "no hash"})`,
+			);
+			store._saveTaskMarkdown(cwd, task);
+			try {
+				const pushRes = await pushBranchIfRemote(cwd, mainBranch);
+				if (pushRes?.pushed) {
+					_appendProcessLog(task, `[GIT] Pushed '${mainBranch}' to remote with merge report`);
+				}
+			} catch (pushError) {
+				_appendProcessLog(
+					task,
+					`[WARN] Push of '${mainBranch}' with merge report failed (${pushError?.message || pushError}) — merge still passes`,
+				);
+			}
+		}
+	} catch (commitError) {
+		_appendProcessLog(
+			task,
+			`[WARN] Merge-report auto-commit on '${mainBranch}' skipped (${commitError?.message || commitError}) — merge still passes`,
+		);
+	}
+	return mergeResult;
 }
