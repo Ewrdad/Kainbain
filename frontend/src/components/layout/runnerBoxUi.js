@@ -153,6 +153,30 @@ export const truncateRunnerText = (value, max = RUNNER_BOX_TITLE_MAX_CHARS) => {
 };
 
 /***
+ * MARK: coerceBoxText
+ * @description Fail-closed text for a box line: trims strings, coerces other
+ *   primitives (so an id of 7 renders as "7", never "[object Object]" or an
+ *   empty name), and falls back for blank/missing/object values. Never throws.
+ * @example coerceBoxText('  Bravo  ', 'unknown') => 'Bravo'
+ * @example coerceBoxText(null, 'unknown') => 'unknown'
+ * @param {*} [value] - Candidate text.
+ * @param {string} fallback - Used when the value has no usable text.
+ * @returns {string} Trimmed text or the fallback.
+ ***/
+export const coerceBoxText = (value, fallback) => {
+  const safeFallback =
+    typeof fallback === 'string' && fallback !== '' ? fallback : 'unknown';
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed !== '' ? trimmed : safeFallback;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+  return safeFallback;
+};
+
+/***
  * MARK: selectRenderableRunnerEntries
  * @description Fail-safe filter for runner box entries: keeps only plain
  *   entry objects and drops junk array items (null, strings, numbers) that a

@@ -114,9 +114,18 @@ export function NowPlayingBar({ runnerEntries = null } = {}) {
   // Runner boxes: explicit `runnerEntries` win (tests, story states, a
   // future registry); null derives from context runner association. The
   // <5 gate + kill switch live in shouldShowRunnerBoxes so the branch
-  // below stays a plain conditional.
-  const runnerBoxEntries =
-    runnerEntries ?? selectRunnerEntries({ tasks, stages, engineState, isAgentRunning });
+  // below stays a plain conditional. The derivation is wrapped so a
+  // poisoned task payload (a throwing getter, a Proxy from a bad merge)
+  // degrades to the legacy view instead of blanking the whole bar — the
+  // transport controls must keep working on an operational screen.
+  let runnerBoxEntries = runnerEntries;
+  if (runnerBoxEntries === null || runnerBoxEntries === undefined) {
+    try {
+      runnerBoxEntries = selectRunnerEntries({ tasks, stages, engineState, isAgentRunning });
+    } catch {
+      runnerBoxEntries = [];
+    }
+  }
   const showRunnerBoxes = shouldShowRunnerBoxes(runnerBoxEntries, uiPreferences) && !isNarrow;
 
   let statusBadge = 'IDLE';

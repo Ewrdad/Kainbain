@@ -44,6 +44,25 @@ checkpoint/waiting_human, grey queued/idle. System-health colouring needs a hear
 that does not exist; recorded follow-up, not built here. Colour is never the sole signal: the
 status word always renders as text and the dot is `aria-hidden`.
 
+## Cleanup stage (2026-10-28)
+
+- `runnerBoxUi.js` gains `coerceBoxText` (fail-closed box text: trims strings,
+  coerces numeric/boolean/bigint primitives, falls back for blank/objects —
+  objects can never leak `[object Object]` into a box). `RunnerBox.jsx` uses
+  it for both id and label, removing the duplicated mutable (`let`) coercion
+  branches in favour of immutable bindings.
+- `NowPlayingBar.jsx` wraps the context-derived `selectRunnerEntries` call in
+  try/catch: a poisoned task payload (throwing getter, bad-merge Proxy) falls
+  back to the legacy single-task view instead of blanking the bar, so the
+  transport controls keep working on an operational screen. Explicit
+  `runnerEntries` props bypass the derivation untouched.
+- New tests: `coerceBoxText` unit cases; a poisoned-payload bar test proving
+  the legacy fallback. Full `npm run test --prefix frontend`: 284 files /
+  3851 tests green; eslint clean; `check-one-function-per-file` and
+  `check-jsdoc-example` gates pass; `npm run build --prefix frontend` green.
+  No api files touched (`test:api` vite failure remains pre-existing and out
+  of scope).
+
 ## Verification (this session)
 
 - `npm run test:frontend`: 278 files / 3789 tests pass, including 6 new/extended runner-box

@@ -2,6 +2,7 @@ import React from 'react';
 
 import {
   buildRunnerBoxAriaLabel,
+  coerceBoxText,
   formatRunnerStatusDisplay,
   getRunnerBoxStyle,
   truncateRunnerText,
@@ -27,28 +28,10 @@ import {
  ***/
 export function RunnerBox({ entry, onOpenTask }) {
   // A blank id renders as an empty name and an empty test id — fail closed
-  // to 'unknown' instead so the box stays findable and labelled.
-  const rawRunnerId = entry?.runnerId;
-  // Fail closed to 'unknown' for blank/null/undefined ids (and coerce other
-  // primitives to a string) so the box and its test id never go empty or
-  // render "[object Object]".
-  let runnerId = 'unknown';
-  if (typeof rawRunnerId === 'string') {
-    const trimmed = rawRunnerId.trim();
-    if (trimmed !== '') runnerId = trimmed;
-  } else if (rawRunnerId != null) {
-    const trimmed = String(rawRunnerId).trim();
-    if (trimmed !== '') runnerId = trimmed;
-  }
-  const rawRunnerLabel = entry?.runnerLabel;
-  let runnerName = String(runnerId);
-  if (typeof rawRunnerLabel === 'string') {
-    const trimmed = rawRunnerLabel.trim();
-    if (trimmed !== '') runnerName = trimmed;
-  } else if (rawRunnerLabel != null) {
-    const trimmed = String(rawRunnerLabel).trim();
-    if (trimmed !== '') runnerName = trimmed;
-  }
+  // to 'unknown' instead so the box stays findable and labelled. Immutable
+  // bindings: the coercion helper owns every blank/coerce/fallback branch.
+  const runnerId = coerceBoxText(entry?.runnerId, 'unknown');
+  const runnerName = coerceBoxText(entry?.runnerLabel, runnerId);
   const statusWord = entry?.statusWord || 'idle';
   const style = getRunnerBoxStyle(statusWord);
   const testId = `runner-box-${runnerId}`;

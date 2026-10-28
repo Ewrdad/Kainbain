@@ -1149,3 +1149,29 @@ test('idle runner entries render grey boxes that do not navigate', () => {
   fireEvent.click(idleBox);
   expect(setSelectedTask).not.toHaveBeenCalled();
 });
+
+test('a poisoned task payload degrades to the legacy view instead of blanking the bar', () => {
+  // Operational fail-safe: a task whose property access throws (bad merge,
+  // Proxy, corrupt store entry) must not take down the whole bar — the
+  // legacy single-task view renders and transport stays usable.
+  const poisoned = {};
+  Object.defineProperty(poisoned, 'runnerId', {
+    get() {
+      throw new Error('poisoned payload');
+    },
+  });
+  renderWithKainBain(<NowPlayingBar />, {
+    stages,
+    currentStageId: '1',
+    isAgentRunning: true,
+    engineState: { status: 'running', activeTaskId: 't1' },
+    tasks: [
+      { id: 't1', currentStageId: '1', status: 'running_agent', title: 'Build it', goal: 'Build it' },
+      poisoned,
+    ],
+  });
+
+  expect(screen.queryByTestId('now-playing-runner-mode')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('runner-boxes-row')).not.toBeInTheDocument();
+  expect(screen.getByTestId('now-playing-task-name')).toHaveTextContent('Build it');
+});

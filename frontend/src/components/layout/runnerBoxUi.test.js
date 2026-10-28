@@ -3,6 +3,7 @@ import { expect, test } from 'vitest';
 import {
   RUNNER_BOX_MAX_COUNT,
   buildRunnerBoxAriaLabel,
+  coerceBoxText,
   formatRunnerStatusDisplay,
   getRunnerBoxStyle,
   resolveRunnerStatusWord,
@@ -158,6 +159,21 @@ test('junk array items are dropped and never counted toward the gate', () => {
   expect(shouldShowRunnerBoxes([null], {})).toBe(false);
   expect(shouldShowRunnerBoxes([null, 'junk'], {})).toBe(false);
   expect(shouldShowRunnerBoxes([{ runnerId: 'b' }, null], {})).toBe(true);
+});
+
+test('box text trims strings, coerces primitives, and fails closed', () => {
+  expect(coerceBoxText('  Bravo  ', 'unknown')).toBe('Bravo');
+  expect(coerceBoxText('   ', 'unknown')).toBe('unknown');
+  expect(coerceBoxText(null, 'unknown')).toBe('unknown');
+  expect(coerceBoxText(undefined, 'unknown')).toBe('unknown');
+  // Objects and arrays never leak "[object Object]" into the box.
+  expect(coerceBoxText({ id: 'b' }, 'unknown')).toBe('unknown');
+  expect(coerceBoxText(['b'], 'unknown')).toBe('unknown');
+  // Other primitives render as their string form, not the fallback.
+  expect(coerceBoxText(7, 'unknown')).toBe('7');
+  expect(coerceBoxText(false, 'unknown')).toBe('false');
+  // The label falls back to the (already coerced) id, never an empty name.
+  expect(coerceBoxText('   ', coerceBoxText('  b1 ', 'unknown'))).toBe('b1');
 });
 
 test('aria label trims whitespace and fails closed on blank values', () => {
