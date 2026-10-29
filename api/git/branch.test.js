@@ -69,36 +69,55 @@ describe("checkoutBranch", () => {
 	});
 
 	it("refuses to switch on a dirty tree", async () => {
-		const responses = [
-			{ stdout: "main" }, // current branch
-			{ stdout: " M dirty.js\n" }, // status --porcelain
-		];
-		let call = 0;
-		spawnMock.mockImplementation(() => {
-			return fakeChildFromResponse(responses[Math.min(call++, responses.length - 1)]);
+		spawnMock.mockImplementation((cmd, args) => {
+			if (args.includes("--abbrev-ref")) return fakeChildFromResponse({ stdout: "main\n" });
+			if (args[0] === "status") return fakeChildFromResponse({ stdout: " M dirty.js\n" });
+			return fakeChildFromResponse({ stdout: "" });
 		});
 		await expect(checkoutBranch("/repo", "kb/task-1")).rejects.toBeInstanceOf(
 			GitDirtyTreeError,
 		);
-		// Never spawned the checkout.
+		// Never spawned the checkout — and never committed real work.
 		expect(
 			spawnMock.mock.calls.some(([, args]) => args[0] === "checkout"),
+		).toBe(false);
+		expect(
+			spawnMock.mock.calls.some(([, args]) => args[0] === "commit"),
 		).toBe(false);
 	});
 
 	it("checks out when the tree is clean", async () => {
-		const responses = [
-			{ stdout: "main" },
-			{ stdout: "" },
-			{ stdout: "Switched to branch 'kb/task-1'" },
-		];
-		let call = 0;
-		spawnMock.mockImplementation(() => {
-			return fakeChildFromResponse(responses[Math.min(call++, responses.length - 1)]);
+		spawnMock.mockImplementation((cmd, args) => {
+			if (args.includes("--abbrev-ref")) return fakeChildFromResponse({ stdout: "main\n" });
+			if (args[0] === "status") return fakeChildFromResponse({ stdout: "" });
+			if (args[0] === "checkout") {
+				return fakeChildFromResponse({ stdout: "Switched to branch 'kb/task-1'" });
+			}
+			return fakeChildFromResponse({ stdout: "" });
 		});
 		const res = await checkoutBranch("/repo", "kb/task-1");
 		expect(res).toEqual({ switched: true });
 		expect(spawnMock.mock.calls.at(-1)[1]).toEqual(["checkout", "kb/task-1"]);
+	});
+
+	it("auto-commits engine snapshots before switching (real dirt still refuses)", async () => {
+		const calls = [];
+		spawnMock.mockImplementation((cmd, args) => {
+			calls.push([...args]);
+			if (args.includes("--abbrev-ref")) return fakeChildFromResponse({ stdout: "main\n" });
+			if (args[0] === "status") {
+				return fakeChildFromResponse({ stdout: " M docs/tasks/t/task.md\n" });
+			}
+			return fakeChildFromResponse({ stdout: "" });
+		});
+		const res = await checkoutBranch("/repo", "kb/task-1");
+		expect(res).toEqual({ switched: true });
+		// Only the snapshot path was staged and committed — nothing else.
+		expect(calls).toContainEqual(["add", "--", "docs/tasks/t/task.md"]);
+		const commit = calls.find((a) => a[0] === "commit");
+		expect(commit).toBeTruthy();
+		expect(commit.slice(3)).toEqual(["--", "docs/tasks/t/task.md"]);
+		expect(calls.at(-1)).toEqual(["checkout", "kb/task-1"]);
 	});
 
 	it("rejects invalid branch names without spawning", async () => {

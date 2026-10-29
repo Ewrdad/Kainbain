@@ -9,9 +9,13 @@ vi.mock("node:child_process", () => ({
 import {
 	MERGE_STRATEGY,
 	isBranchMergedInto,
+	isRegeneratedSnapshotPath,
 	abortMerge,
 	buildGitConflictDiagnostics,
 	mergeBranch,
+	partitionMergeConflicts,
+	resolveConflictsWithIncoming,
+	syncBranchWithUpstream,
 } from "./merge.js";
 import { GitError, GitMergeConflictError } from "./errors.js";
 
@@ -239,5 +243,235 @@ describe("mergeBranch", () => {
 	it("rejects invalid branch names without spawning", async () => {
 		await expect(mergeBranch("/repo", "--force")).rejects.toBeInstanceOf(GitError);
 		expect(spawnMock).not.toHaveBeenCalled();
+	});
+});
+
+describe("isRegeneratedSnapshotPath", () => {
+	it("accepts task snapshots and review assets only", () => {
+		expect(isRegeneratedSnapshotPath("docs/tasks/abc-123/task.md")).toBe(true);
+		expect(
+			isRegeneratedSnapshotPath("docs/tasks/abc-123/assets/screenshot-live.png"),
+		).toBe(true);
+		expect(isRegeneratedSnapshotPath("src/app.js")).toBe(false);
+		expect(
+			isRegeneratedSnapshotPath("docs/tasks/abc-123/merge-failure-20261028.md"),
+		).toBe(false);
+		expect(isRegeneratedSnapshotPath("docs/tasks/abc-123/other.md")).toBe(false);
+		// Never matches traversal, absolute paths, or option-looking input.
+		expect(isRegeneratedSnapshotPath("docs/tasks/../escape/task.md")).toBe(false);
+		expect(isRegeneratedSnapshotPath("/docs/tasks/abc/task.md")).toBe(false);
+		expect(isRegeneratedSnapshotPath("--theirs")).toBe(false);
+		expect(isRegeneratedSnapshotPath("")).toBe(false);
+		expect(isRegeneratedSnapshotPath(null)).toBe(false);
+		expect(isRegeneratedSnapshotPath(42)).toBe(false);
+	});
+});
+
+describe("partitionMergeConflicts", () => {
+	it("splits snapshots from blocking paths and fails closed on junk", () => {
+		expect(
+			partitionMergeConflicts([
+				"docs/tasks/a/task.md",
+				"docs/tasks/b/assets/x.png",
+				"src/code.js",
+			]),
+		).toEqual({
+			snapshots: ["docs/tasks/a/task.md", "docs/tasks/b/assets/x.png"],
+			blocking: ["src/code.js"],
+		});
+		expect(partitionMergeConflicts([])).toEqual({ snapshots: [], blocking: [] });
+		expect(partitionMergeConflicts(null)).toEqual({ snapshots: [], blocking: [] });
+	});
+});
+
+describe("resolveConflictsWithIncoming", () => {
+	beforeEach(() => {
+		spawnMock.mockReset();
+	});
+
+	it("checks out snapshot paths with the incoming version", async () => {
+		spawnMock.mockImplementation(() => fakeChildFromResponse({ stdout: "" }));
+		const resolved = await resolveConflictsWithIncoming("/repo", [
+			"docs/tasks/a/task.md",
+			"docs/tasks/a/assets/shot.png",
+		]);
+		expect(resolved).toEqual([
+			"docs/tasks/a/task.md",
+			"docs/tasks/a/assets/shot.png",
+		]);
+		expect(spawnMock).toHaveBeenCalledWith(
+			"git",
+			[
+				"checkout",
+				"--theirs",
+				"--",
+				"docs/tasks/a/task.md",
+				"docs/tasks/a/assets/shot.png",
+			],
+			expect.objectContaining({ cwd: "/repo" }),
+		);
+	});
+
+	it("fails closed on code conflicts, empties, and junk without spawning", async () => {
+		await expect(
+			resolveConflictsWithIncoming("/repo", [
+				"docs/tasks/a/task.md",
+				"src/code.js",
+			]),
+		).rejects.toBeInstanceOf(GitError);
+		await expect(resolveConflictsWithIncoming("/repo", [])).rejects.toBeInstanceOf(
+			GitError,
+		);
+		await expect(resolveConflictsWithIncoming("/repo", null)).rejects.toBeInstanceOf(
+			GitError,
+		);
+		expect(spawnMock).not.toHaveBeenCalled();
+	});
+});
+
+describe("syncBranchWithUpstream", () => {
+	beforeEach(() => {
+		spawnMock.mockReset();
+	});
+
+	const LOCAL = "a".repeat(40);
+	const REMOTE = "b".repeat(40);
+
+	/** Args-router faking a repo whose task branch relates to origin as told. */
+	function routeSync({
+		current = "kb/t",
+		localSha = LOCAL,
+		remoteSha = REMOTE,
+		fetchFails = false,
+		noUpstream = false,
+		mergeBaseOk = true,
+		mergeResult = "ok",
+	} = {}) {
+		const calls = [];
+		let head = localSha;
+		spawnMock.mockImplementation((cmd, args) => {
+			calls.push([...args]);
+			if (args[0] === "remote") return fakeChildFromResponse({ stdout: "/tmp/r.git\n" });
+			if (args[0] === "fetch") {
+				return fetchFails
+					? fakeChildFromResponse({ code: 128, stderr: "fatal: fetch failed" })
+					: fakeChildFromResponse({ stdout: "" });
+			}
+			if (args[0] === "rev-parse") {
+				if (args.includes("MERGE_HEAD")) {
+					return fakeChildFromResponse({ code: 1, stderr: "fatal: no merge" });
+				}
+				if (args.includes("--abbrev-ref")) return fakeChildFromResponse({ stdout: `${current}\n` });
+				const ref = args[args.length - 1];
+				if (ref === "origin/kb/t") {
+					return noUpstream
+						? fakeChildFromResponse({ code: 128, stderr: "fatal: no such ref" })
+						: fakeChildFromResponse({ stdout: `${remoteSha}\n` });
+				}
+				if (ref === "HEAD") return fakeChildFromResponse({ stdout: `${head}\n` });
+				if (ref === "kb/t") {
+					return localSha === null
+						? fakeChildFromResponse({ code: 128, stderr: "fatal: no such ref" })
+						: fakeChildFromResponse({ stdout: `${localSha}\n` });
+				}
+				return fakeChildFromResponse({ stdout: `${LOCAL}\n` });
+			}
+			if (args[0] === "merge-base") {
+				return mergeBaseOk
+					? fakeChildFromResponse({ stdout: "" })
+					: fakeChildFromResponse({ code: 1, stderr: "" });
+			}
+			if (args[0] === "merge" && args[1] === "--abort") {
+				return fakeChildFromResponse({ stdout: "" });
+			}
+			if (args[0] === "merge") {
+				if (mergeResult === "conflict") {
+					return fakeChildFromResponse({
+						code: 1,
+						stdout: "Auto-merging docs/tasks/t/task.md\nCONFLICT (content)\n",
+						stderr: "Automatic merge failed",
+					});
+				}
+				head = remoteSha;
+				return fakeChildFromResponse({ stdout: "Merge made by ort.\n" });
+			}
+			if (args[0] === "diff") {
+				return fakeChildFromResponse({ stdout: "docs/tasks/t/task.md\n" });
+			}
+			if (args[0] === "update-ref" || args[0] === "branch" || args[0] === "config") {
+				return fakeChildFromResponse({ stdout: "" });
+			}
+			return fakeChildFromResponse({ stdout: "" });
+		});
+		return calls;
+	}
+
+	it("skips quietly with no remote and rejects bad names without spawning", async () => {
+		routeSync();
+		spawnMock.mockImplementationOnce(() =>
+			fakeChildFromResponse({ code: 128, stderr: "fatal: No such remote" }),
+		);
+		const res = await syncBranchWithUpstream("/repo", "kb/t");
+		expect(res.synced).toBe(false);
+		expect(res.skipped).toBe("no-remote");
+
+		await expect(syncBranchWithUpstream("/repo", "--evil")).resolves.toMatchObject({
+			synced: false,
+			skipped: "invalid-branch",
+		});
+	});
+
+	it("reports up-to-date when the checked-out branch already matches", async () => {
+		const calls = routeSync({ localSha: REMOTE, remoteSha: REMOTE });
+		const res = await syncBranchWithUpstream("/repo", "kb/t");
+		expect(res).toMatchObject({ synced: true, before: REMOTE, after: REMOTE });
+		expect(calls.some((a) => a[0] === "merge" && a[1] !== "--abort")).toBe(false);
+	});
+
+	it("merges the upstream into the checked-out branch when behind", async () => {
+		const calls = routeSync();
+		const res = await syncBranchWithUpstream("/repo", "kb/t");
+		expect(res).toMatchObject({ synced: true, before: LOCAL, after: REMOTE });
+		expect(
+			calls.some((a) => a[0] === "merge" && a.includes("origin/kb/t")),
+		).toBe(true);
+	});
+
+	it("leaves the tree untouched and reports conflict on divergent merge", async () => {
+		const calls = routeSync({ mergeResult: "conflict" });
+		const res = await syncBranchWithUpstream("/repo", "kb/t");
+		expect(res).toMatchObject({ synced: false, skipped: "conflict" });
+		expect(calls.some((a) => a[0] === "merge" && a[1] === "--abort")).toBe(true);
+	});
+
+	it("fast-forwards the ref when the branch is not checked out", async () => {
+		const calls = routeSync({ current: "main" });
+		const res = await syncBranchWithUpstream("/repo", "kb/t");
+		expect(res).toMatchObject({ synced: true, before: LOCAL, after: REMOTE });
+		expect(calls).toContainEqual(["update-ref", "refs/heads/kb/t", REMOTE, LOCAL]);
+	});
+
+	it("never forces a diverged ref and reports no-upstream plainly", async () => {
+		const divergedCalls = routeSync({ current: "main", mergeBaseOk: false });
+		const diverged = await syncBranchWithUpstream("/repo", "kb/t");
+		expect(diverged).toMatchObject({ synced: false, skipped: "diverged" });
+		expect(divergedCalls.some((a) => a[0] === "update-ref")).toBe(false);
+
+		routeSync({ current: "main", noUpstream: true });
+		const missing = await syncBranchWithUpstream("/repo", "kb/t");
+		expect(missing).toMatchObject({ synced: false, skipped: "no-upstream" });
+	});
+
+	it("creates a missing local ref at the upstream tip", async () => {
+		const calls = routeSync({ current: "main", localSha: null });
+		const res = await syncBranchWithUpstream("/repo", "kb/t");
+		expect(res).toMatchObject({ synced: true, after: REMOTE });
+		expect(calls).toContainEqual(["branch", "kb/t", "origin/kb/t"]);
+	});
+
+	it("warns on fetch failure without throwing", async () => {
+		routeSync({ fetchFails: true });
+		const res = await syncBranchWithUpstream("/repo", "kb/t");
+		expect(res).toMatchObject({ synced: false, skipped: "fetch-failed" });
 	});
 });

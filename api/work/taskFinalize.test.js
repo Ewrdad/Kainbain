@@ -487,6 +487,38 @@ describe.skipIf(!gitAvailable)("commitFailedStageWork against a real repository"
 		}
 	});
 
+	it("pushes the failed attempt's commit so the retry merges the latest", async () => {
+		const base = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-failed-pushbase-"));
+		const repo = path.join(base, "repo");
+		initRepo(repo);
+		run(base, "init", "--bare", "origin.git");
+		const remoteDir = path.join(base, "origin.git");
+		run(repo, "remote", "add", "origin", remoteDir);
+		const store = fakeStore();
+		const task = fakeTask("failed-push");
+		try {
+			await ensureTaskBranch(store, task, repo);
+			task.branch = resolveTaskBranch(task);
+			fs.writeFileSync(path.join(repo, "partial.txt"), "partial\n");
+
+			const res = await commitFailedStageWork(store, task, repo, {
+				stageName: "Dev",
+			});
+
+			expect(res?.committed).toBe(true);
+			const localHead = run(repo, "rev-parse", task.branch).trim();
+			const remoteHead = run(repo, "ls-remote", "origin", task.branch)
+				.trim()
+				.split(/\s+/)[0];
+			expect(remoteHead).toBe(localHead);
+			expect(
+				task.history.some((h) => h.action.includes(`Pushed '${task.branch}'`)),
+			).toBe(true);
+		} finally {
+			teardown(base);
+		}
+	});
+
 	it("is a clean-tree no-op that still resolves an end boundary", async () => {
 		const { repo, store, task } = setupRepo("clean");
 		try {

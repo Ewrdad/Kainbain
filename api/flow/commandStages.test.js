@@ -12,10 +12,13 @@ class MockGitMergeConflictError extends MockGitError {
 }
 
 const gitMocks = vi.hoisted(() => ({
+	abortMerge: vi.fn(),
 	commitAllIfNeeded: vi.fn(),
 	pushBranchIfRemote: vi.fn(),
 	checkoutBranch: vi.fn(),
 	mergeBranch: vi.fn(),
+	resolveConflictsWithIncoming: vi.fn(),
+	syncBranchWithUpstream: vi.fn(),
 	currentBranch: vi.fn(),
 	defaultBranch: vi.fn(),
 	branchExists: vi.fn(),
@@ -59,8 +62,12 @@ vi.mock("../git.js", async () => {
 	return {
 		GitError: MockGitError,
 		GitMergeConflictError: MockGitMergeConflictError,
+		abortMerge: gitMocks.abortMerge,
 		buildGitConflictDiagnostics: actual.buildGitConflictDiagnostics,
 		MERGE_STRATEGY: actual.MERGE_STRATEGY,
+		partitionMergeConflicts: actual.partitionMergeConflicts,
+		resolveConflictsWithIncoming: gitMocks.resolveConflictsWithIncoming,
+		syncBranchWithUpstream: gitMocks.syncBranchWithUpstream,
 		branchExists: gitMocks.branchExists,
 		commitAllIfNeeded: gitMocks.commitAllIfNeeded,
 		countBehindCommits: gitMocks.countBehindCommits,
@@ -304,6 +311,9 @@ describe("executeMergeStage publishing", () => {
 		gitMocks.isBranchMergedInto.mockResolvedValue(false);
 		gitMocks.resolveSha.mockResolvedValue("a".repeat(40));
 		gitMocks.diffRangeNumstat.mockResolvedValue({ stdout: "", stderr: "", code: 0 });
+		gitMocks.abortMerge.mockResolvedValue(undefined);
+		gitMocks.resolveConflictsWithIncoming.mockResolvedValue(["docs/tasks/task-1/task.md"]);
+		gitMocks.syncBranchWithUpstream.mockResolvedValue({ synced: false, skipped: "no-remote" });
 	});
 
 	function mergeSetup() {
@@ -509,7 +519,7 @@ describe("executeMergeStage publishing", () => {
 		expect(task.history.some((entry) => String(entry.action).includes("Stale base warning"))).toBe(false);
 	});
 
-	it("keeps merge-conflict semantics: abort path fails with no push", async () => {
+	it("keeps merge-conflict semantics: abort path fails back, main notes published", async () => {
 		const conflict = new MockGitMergeConflictError("Merge conflict", ["a.txt"]);
 		gitMocks.mergeBranch.mockRejectedValue(conflict);
 		const { store, stage } = mergeSetup();
@@ -528,7 +538,13 @@ describe("executeMergeStage publishing", () => {
 		expect(failure.conflictedFiles).toEqual(["a.txt"]);
 		expect(failure.taskBranch).toBe("kb/task-1");
 		expect(failure.mainBranch).toBe("main");
-		expect(gitMocks.pushBranchIfRemote).not.toHaveBeenCalled();
+		// The conflict still fails back with no merge — but stage file ops
+		// end pushed: only main-side bookkeeping is published, never the
+		// unmerged task branch.
+		for (const call of gitMocks.pushBranchIfRemote.mock.calls) {
+			expect(call[1]).toBe("main");
+		}
+		expect(gitMocks.pushBranchIfRemote.mock.calls.length).toBeGreaterThan(0);
 	});
 
 	it("routes ghost tasks to failback with a structured diagnostic and no merge attempt", async () => {
@@ -599,6 +615,144 @@ describe("executeMergeStage publishing", () => {
 			sourceSha: "s".repeat(40),
 			conflictedFiles: ["a.txt"],
 		});
+	});
+
+	it("heals snapshot-only conflicts with task-branch versions and passes", async () => {
+		const conflict = new MockGitMergeConflictError("Merge conflict", [
+			"docs/tasks/task-1/task.md",
+		]);
+		// First (auto-aborting) merge fails; the heal retry keeps the
+		// conflicted state instead of aborting.
+		gitMocks.mergeBranch
+			.mockRejectedValueOnce(conflict)
+			.mockRejectedValueOnce(
+				new MockGitMergeConflictError("Merge conflict", ["docs/tasks/task-1/task.md"]),
+			);
+		// Only the heal-finalize commit reports work; earlier stage
+		// bookkeeping commits stay empty as in the default fixture.
+		gitMocks.commitAllIfNeeded.mockImplementation(async (_cwd, message) =>
+			String(message).includes("auto-resolve regenerated snapshot conflicts")
+				? { committed: true, hash: "heal123" }
+				: { committed: false, hash: null },
+		);
+		const { store, task, stage } = mergeSetup();
+
+		const result = await executeMergeStage(store, {
+			projectId: "proj-1",
+			taskId: "task-1",
+			stage,
+			stages: [stage],
+			cwd: "/repo",
+			execRunner: okRunner,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(store.handleStageFailure).not.toHaveBeenCalled();
+		// Retry ran without the auto-abort so resolution was possible.
+		expect(gitMocks.mergeBranch).toHaveBeenCalledWith("/repo", "kb/task-1", {
+			abortOnConflict: false,
+		});
+		expect(gitMocks.resolveConflictsWithIncoming).toHaveBeenCalledWith("/repo", [
+			"docs/tasks/task-1/task.md",
+		]);
+		expect(task.history.some((entry) =>
+			String(entry.action).includes("auto-resolved regenerated snapshot conflicts"),
+		)).toBe(true);
+		expect(logText(task)).toContain("Auto-resolved snapshot-only conflicts");
+	});
+
+	it("fails loudly when a code file joins the snapshot conflicts", async () => {
+		const conflict = new MockGitMergeConflictError("Merge conflict", [
+			"docs/tasks/task-1/task.md",
+			"src/real-code.js",
+		]);
+		gitMocks.mergeBranch.mockRejectedValue(conflict);
+		const { store, stage } = mergeSetup();
+
+		await executeMergeStage(store, {
+			projectId: "proj-1",
+			taskId: "task-1",
+			stage,
+			stages: [stage],
+			cwd: "/repo",
+			execRunner: okRunner,
+		});
+
+		expect(store.handleStageFailure).toHaveBeenCalledTimes(1);
+		// No heal retry, no resolution, no finalize commit for the merge.
+		expect(gitMocks.mergeBranch).toHaveBeenCalledTimes(1);
+		expect(gitMocks.resolveConflictsWithIncoming).not.toHaveBeenCalled();
+		expect(gitMocks.abortMerge).not.toHaveBeenCalled();
+		const failure = store.handleStageFailure.mock.calls[0][3];
+		expect(failure.conflictedFiles).toEqual([
+			"docs/tasks/task-1/task.md",
+			"src/real-code.js",
+		]);
+	});
+
+	it("converges the task branch with upstream at merge entry", async () => {
+		const { store, stage } = mergeSetup();
+
+		await executeMergeStage(store, {
+			projectId: "proj-1",
+			taskId: "task-1",
+			stage,
+			stages: [stage],
+			cwd: "/repo",
+			execRunner: okRunner,
+		});
+
+		expect(gitMocks.syncBranchWithUpstream).toHaveBeenCalledWith(
+			"/repo",
+			"kb/task-1",
+		);
+	});
+
+	it("publishes main bookkeeping before the merge attempt", async () => {
+		const { store, stage } = mergeSetup();
+
+		const result = await executeMergeStage(store, {
+			projectId: "proj-1",
+			taskId: "task-1",
+			stage,
+			stages: [stage],
+			cwd: "/repo",
+			execRunner: okRunner,
+		});
+
+		expect(result.status).toBe("passed");
+		// Pre-merge bookkeeping push runs before the merge; the post-merge
+		// publish runs after — main is pushed on both sides of the attempt.
+		const mainPushes = gitMocks.pushBranchIfRemote.mock.calls.filter(
+			(call) => call[1] === "main",
+		);
+		expect(mainPushes.length).toBeGreaterThanOrEqual(2);
+		expect(gitMocks.mergeBranch.mock.invocationCallOrder[0]).toBeGreaterThan(
+			gitMocks.pushBranchIfRemote.mock.invocationCallOrder[0],
+		);
+	});
+
+	it("commits and publishes merge-attempt notes on main after a genuine conflict", async () => {
+		const conflict = new MockGitMergeConflictError("Merge conflict", ["src/real-code.js"]);
+		gitMocks.mergeBranch.mockRejectedValue(conflict);
+		const { store, stage } = mergeSetup();
+
+		await executeMergeStage(store, {
+			projectId: "proj-1",
+			taskId: "task-1",
+			stage,
+			stages: [stage],
+			cwd: "/repo",
+			execRunner: okRunner,
+		});
+
+		expect(store.handleStageFailure).toHaveBeenCalledTimes(1);
+		expect(
+			gitMocks.commitAllIfNeeded.mock.calls.some((call) =>
+				String(call[1]).includes("after conflict"),
+			),
+		).toBe(true);
+		expect(gitMocks.pushBranchIfRemote).toHaveBeenCalledWith("/repo", "main");
 	});
 });
 
@@ -690,6 +844,9 @@ describe("executeMergeStage landed-merge handling", () => {
 		gitMocks.isBranchMergedInto.mockResolvedValue(false);
 		gitMocks.resolveSha.mockResolvedValue("a".repeat(40));
 		gitMocks.diffRangeNumstat.mockResolvedValue({ stdout: "", stderr: "", code: 0 });
+		gitMocks.abortMerge.mockResolvedValue(undefined);
+		gitMocks.resolveConflictsWithIncoming.mockResolvedValue(["docs/tasks/task-1/task.md"]);
+		gitMocks.syncBranchWithUpstream.mockResolvedValue({ synced: false, skipped: "no-remote" });
 	});
 
 	const failRunner = async () => ({ exitCode: 1, stdout: "", stderr: "boom" });

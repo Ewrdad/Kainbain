@@ -448,32 +448,37 @@ describe("git helper", () => {
 		});
 
 		it("refuses to switch on a dirty tree", async () => {
-			const responses = [
-				{ stdout: "main" }, // current branch
-				{ stdout: " M dirty.js\n" }, // status --porcelain
-			];
-			let call = 0;
-			spawnMock.mockImplementation(() => {
-				return fakeChildFromResponse(responses[Math.min(call++, responses.length - 1)]);
+			spawnMock.mockImplementation((cmd, args) => {
+				if (args.includes("--abbrev-ref")) {
+					return fakeChildFromResponse({ stdout: "main\n" });
+				}
+				if (args[0] === "status") {
+					return fakeChildFromResponse({ stdout: " M dirty.js\n" });
+				}
+				return fakeChildFromResponse({ stdout: "" });
 			});
 			await expect(checkoutBranch("/repo", "kb/task-1")).rejects.toBeInstanceOf(
 				GitDirtyTreeError,
 			);
-			// Never spawned the checkout.
+			// Never spawned the checkout — and never committed real work.
 			expect(
 				spawnMock.mock.calls.some(([, args]) => args[0] === "checkout"),
+			).toBe(false);
+			expect(
+				spawnMock.mock.calls.some(([, args]) => args[0] === "commit"),
 			).toBe(false);
 		});
 
 		it("checks out when the tree is clean", async () => {
-			const responses = [
-				{ stdout: "main" },
-				{ stdout: "" },
-				{ stdout: "Switched to branch 'kb/task-1'" },
-			];
-			let call = 0;
-			spawnMock.mockImplementation(() => {
-				return fakeChildFromResponse(responses[Math.min(call++, responses.length - 1)]);
+			spawnMock.mockImplementation((cmd, args) => {
+				if (args.includes("--abbrev-ref")) {
+					return fakeChildFromResponse({ stdout: "main\n" });
+				}
+				if (args[0] === "status") return fakeChildFromResponse({ stdout: "" });
+				if (args[0] === "checkout") {
+					return fakeChildFromResponse({ stdout: "Switched to branch 'kb/task-1'" });
+				}
+				return fakeChildFromResponse({ stdout: "" });
 			});
 			const res = await checkoutBranch("/repo", "kb/task-1");
 			expect(res).toEqual({ switched: true });
@@ -1396,7 +1401,7 @@ describe("git helper", () => {
 /***
  * MARK: Git barrel surface contract
  * @description Guards the WP-4 zero-caller-churn contract: `api/git.js` must
- *   re-export exactly the 48 canonical public symbols (classes, functions,
+ *   re-export exactly the 53 canonical public symbols (classes, functions,
  *   constants) with identical names, so flow/work/store callers need no
  *   import changes. Command-family implementations live under `api/git/`
  *   and are covered directly by the co-located `api/git/*.test.js` suites.
@@ -1440,21 +1445,25 @@ describe("git barrel surface contract", () => {
 		"isBranchMergedInto",
 		"isGitRepository",
 		"isMergeInProgress",
+		"isRegeneratedSnapshotPath",
 		"isValidBranchName",
 		"isWorkingTreeClean",
 		"maybeRecoverStaleLock",
 		"mergeBranch",
+		"partitionMergeConflicts",
 		"pushBranchIfRemote",
 		"recoverDirtyTree",
 		"redactCredentials",
 		"requireCleanWorkingTree",
+		"resolveConflictsWithIncoming",
 		"resolveSha",
 		"returnToDefaultBranch",
+		"syncBranchWithUpstream",
 		"syncDefaultBranchToRemote",
 		"withCheckedOutBranch",
 	];
 
-	it("exports exactly the 49 canonical public symbols", () => {
+	it("exports exactly the 53 canonical public symbols", () => {
 		expect(Object.keys(gitBarrel).sort()).toEqual(EXPECTED_EXPORTS);
 	});
 

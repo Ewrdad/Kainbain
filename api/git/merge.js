@@ -1,7 +1,8 @@
 import { git } from "./exec.js";
 import { _assertValidBranchName, isValidBranchName } from "./validation.js";
-import { isMergeInProgress } from "./status.js";
+import { currentBranch, isMergeInProgress } from "./status.js";
 import { ensureGitIdentity } from "./commit.js";
+import { hasRemote } from "./remote.js";
 import { GitError, GitMergeConflictError } from "./errors.js";
 
 /***
@@ -63,6 +64,209 @@ export async function abortMerge(projectCwd) {
  *   the conflicted state they must resolve.
  ***/
 export const MERGE_STRATEGY = "merge --no-edit (auto-abort on conflict)";
+
+
+/***
+ * MARK: REGENERATED_SNAPSHOT_PATHS
+ * @description Conflict paths the merge stage may resolve without a human:
+ *   the engine's own live-state snapshots, which regenerate from store
+ *   state on the next task activity. `docs/tasks/<id>/task.md` is rewritten
+ *   by `_saveTaskMarkdown` after every stage event, and
+ *   `docs/tasks/<id>/assets/` holds binary review attachments (screenshots).
+ *   Both sides of a task-branch/main merge append to these files on every
+ *   attempt, so they conflict structurally — never from a real disagreement.
+ *   Anything outside this set (source code, configs, docs written as task
+ *   deliverables) is a genuine conflict and must keep failing loudly.
+ * ***/
+const REGENERATED_SNAPSHOT_PATTERNS = [
+	/^docs\/tasks\/[^/]+\/task\.md$/,
+	/^docs\/tasks\/[^/]+\/assets\/.+$/,
+];
+
+
+/***
+ * MARK: isRegeneratedSnapshotPath
+ * @description Pure predicate: true when a merge-conflicted path is an
+ *   engine-regenerated snapshot (see REGENERATED_SNAPSHOT_PATHS) that the
+ *   merge stage may auto-resolve. Anchored patterns only — absolute paths,
+ *   parent traversal, and option-looking entries never match.
+ * @example isRegeneratedSnapshotPath('docs/tasks/abc/task.md') => true
+ * @param {string} path - Repo-relative conflicted path from git.
+ * @returns {boolean}
+ ***/
+export function isRegeneratedSnapshotPath(path) {
+	if (typeof path !== "string" || path.length === 0) return false;
+	return REGENERATED_SNAPSHOT_PATTERNS.some((re) => re.test(path));
+}
+
+
+/***
+ * MARK: partitionMergeConflicts
+ * @description Splits a merge's unmerged-path list into engine-regenerated
+ *   snapshots (safe to auto-resolve) and blocking paths (genuine conflicts
+ *   that must fail loudly). Pure — no git involved.
+ * @example partitionMergeConflicts(['docs/tasks/a/task.md', 'src/x.js']) => { snapshots: ['docs/tasks/a/task.md'], blocking: ['src/x.js'] }
+ * @param {Array<string>} [conflictedFiles] - Unmerged paths from git.
+ * @returns {{snapshots: Array<string>, blocking: Array<string>}}
+ ***/
+export function partitionMergeConflicts(conflictedFiles) {
+	const files = Array.isArray(conflictedFiles) ? conflictedFiles : [];
+	const snapshots = [];
+	const blocking = [];
+	for (const file of files) {
+		if (isRegeneratedSnapshotPath(file)) snapshots.push(file);
+		else blocking.push(file);
+	}
+	return { snapshots, blocking };
+}
+
+
+/***
+ * MARK: resolveConflictsWithIncoming
+ * @description Resolves already-partitioned snapshot conflicts with the
+ *   incoming (merged-in task branch) version via `git checkout --theirs`.
+ *   Must run while the merge is still in progress (MERGE_HEAD present); the
+ *   caller finalizes with a commit. Fails closed: any blocking path, an
+ *   empty list, or a non-string entry throws GitError and resolves nothing.
+ * @example await resolveConflictsWithIncoming('/repo', ['docs/tasks/a/task.md'])
+ * @param {string} projectCwd
+ * @param {Array<string>} files - Conflicted paths to resolve with theirs.
+ * @returns {Promise<Array<string>>} The resolved paths.
+ ***/
+export async function resolveConflictsWithIncoming(projectCwd, files) {
+	const { snapshots, blocking } = partitionMergeConflicts(files);
+	if (!Array.isArray(files) || files.length === 0) {
+		throw new GitError(
+			"Refusing to auto-resolve merge conflicts: no conflicted files provided",
+		);
+	}
+	if (blocking.length > 0) {
+		throw new GitError(
+			`Refusing to auto-resolve merge conflicts: genuine code conflicts require a human (${blocking.join(", ")})`,
+		);
+	}
+	if (snapshots.length !== files.length) {
+		throw new GitError(
+			"Refusing to auto-resolve merge conflicts: unexpected path entries",
+		);
+	}
+	await git(projectCwd, ["checkout", "--theirs", "--", ...snapshots]);
+	return snapshots;
+}
+
+
+/***
+ * MARK: syncBranchWithUpstream
+ * @description "Always merge in the latest" for task branches: fetches the
+ *   remote, then converges the local branch ref with its upstream tracking
+ *   ref — merging `origin/<branch>` into the working tree when the branch
+ *   is checked out (fast-forward, else a merge commit; conflicts abort back
+ *   to the pre-merge tree), or fast-forwarding the ref in place when it is
+ *   not checked out (compare-and-swap update, diverged refs are never
+ *   forced). A missing local ref is created at the upstream tip. Never
+ *   throws: every failure mode (no remote, fetch failure, no upstream,
+ *   conflict, divergence) resolves to a warn-only `{ synced: false,
+ *   skipped }` so callers treat this as best-effort freshness, not a gate.
+ *   The task branch is never hard-reset — unlike the default branch, the
+ *   remote does not own it; local stage work may legitimately be unpushed.
+ * @example await syncBranchWithUpstream('/repo', 'kb/task-1') => { synced: true, before: 'abc', after: 'def', ... }
+ * @param {string} projectCwd
+ * @param {string} branch - Local branch to converge with its upstream.
+ * @param {Object} [opts]
+ * @param {string} [opts.remote='origin'] - Remote holding the upstream ref.
+ * @param {number} [opts.timeout=60000] - Fetch command timeout in ms.
+ * @returns {Promise<{synced: boolean, skipped: string|null, remote: string, branch: string, before: string|null, after: string|null, detail: string|null}>}
+ ***/
+export async function syncBranchWithUpstream(projectCwd, branch, opts = {}) {
+	const remote =
+		typeof opts.remote === "string" && opts.remote.trim()
+			? opts.remote.trim()
+			: "origin";
+	const timeout = opts.timeout || 60000;
+	const done = (partial = {}) => ({
+		synced: false,
+		skipped: null,
+		remote,
+		branch,
+		before: null,
+		after: null,
+		detail: null,
+		...partial,
+	});
+	if (!isValidBranchName(branch) || /^-/.test(remote) || remote.length > 255) {
+		return done({ skipped: "invalid-branch" });
+	}
+	if (!(await hasRemote(projectCwd, remote).catch(() => false))) {
+		return done({ skipped: "no-remote" });
+	}
+	try {
+		await git(projectCwd, ["fetch", remote], { timeout });
+	} catch (e) {
+		return done({ skipped: "fetch-failed", detail: e?.message || String(e) });
+	}
+	const tracking = `${remote}/${branch}`;
+	const readSha = async (args) => {
+		try {
+			const { stdout } = await git(projectCwd, args);
+			return stdout.trim() || null;
+		} catch {
+			return null;
+		}
+	};
+	const remoteSha = await readSha(["rev-parse", "--verify", tracking]);
+	if (!remoteSha) return done({ skipped: "no-upstream" });
+	const current = await currentBranch(projectCwd).catch(() => null);
+
+	// Checked-out branch: merge the upstream in (fast-forward when clean,
+	// merge commit otherwise). mergeBranch aborts on conflict, so a
+	// 'conflict' outcome always leaves the tree exactly as it was.
+	if (current === branch) {
+		const before = await readSha(["rev-parse", "--verify", "HEAD"]);
+		if (before === remoteSha) {
+			return done({ synced: true, before, after: before, detail: "already up to date" });
+		}
+		try {
+			await mergeBranch(projectCwd, tracking);
+		} catch (e) {
+			if (e instanceof GitMergeConflictError) {
+				return done({ skipped: "conflict", before, after: before });
+			}
+			return done({ skipped: "merge-failed", before, after: before, detail: e?.message || String(e) });
+		}
+		const after = (await readSha(["rev-parse", "--verify", "HEAD"])) || remoteSha;
+		return done({ synced: true, before, after, detail: `merged '${tracking}'` });
+	}
+
+	// Branch not checked out: converge the ref without touching the tree.
+	const localSha = await readSha(["rev-parse", "--verify", branch]);
+	if (!localSha) {
+		try {
+			await git(projectCwd, ["branch", branch, tracking]);
+			return done({ synced: true, before: null, after: remoteSha, detail: `created from '${tracking}'` });
+		} catch (e) {
+			return done({ skipped: "create-failed", detail: e?.message || String(e) });
+		}
+	}
+	if (localSha === remoteSha) {
+		return done({ synced: true, before: localSha, after: localSha, detail: "already up to date" });
+	}
+	let ancestor = false;
+	try {
+		await git(projectCwd, ["merge-base", "--is-ancestor", localSha, remoteSha]);
+		ancestor = true;
+	} catch {
+		ancestor = false;
+	}
+	if (!ancestor) {
+		return done({ skipped: "diverged", before: localSha, after: remoteSha });
+	}
+	try {
+		await git(projectCwd, ["update-ref", `refs/heads/${branch}`, remoteSha, localSha]);
+		return done({ synced: true, before: localSha, after: remoteSha, detail: "fast-forwarded" });
+	} catch (e) {
+		return done({ skipped: "ref-update-failed", before: localSha, after: remoteSha, detail: e?.message || String(e) });
+	}
+}
 
 
 /***

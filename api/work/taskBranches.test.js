@@ -11,6 +11,7 @@ import {
 	shouldResetReviewBaseline,
 	isValidReviewBaseline,
 	resolveDirtyTreeRecoveryMode,
+	syncMainToRemoteBestEffort,
 } from "./taskBranches.js";
 
 /***
@@ -197,6 +198,58 @@ describe("ensureTaskBranch default-first pickup", () => {
 		expect(outcome.switched).toBe(false);
 		expect(await currentBranch(dir)).toBe(task.branch);
 		expect(historyText(task)).toBe(historyBefore);
+	});
+
+	it("warns loudly when the main sync refuses to reset an ahead ref", async () => {
+		const { store, dir, task } = makeStore();
+		const parent = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-ahead-remote-"));
+		tempDirs.push(parent);
+		git(parent, "init", "--bare", "origin.git");
+		const remoteDir = path.join(parent, "origin.git");
+		git(dir, "remote", "add", "origin", remoteDir);
+		git(dir, "push", "-u", "origin", "master:master");
+		fs.writeFileSync(path.join(dir, "ahead.txt"), "unpushed\n");
+		git(dir, "add", "-A");
+		git(dir, "commit", "-m", "ahead commit");
+		const before = git(dir, "rev-parse", "master").trim();
+
+		const res = await syncMainToRemoteBestEffort(store, task, dir, null, "test");
+
+		expect(res.skipped).toBe("local-ahead");
+		// The ref is untouched and the skip is loud in the process log.
+		expect(git(dir, "rev-parse", "master").trim()).toBe(before);
+		expect(JSON.stringify(task.logEntries)).toContain("local-ahead");
+	});
+
+	it("merges remote advances into the task branch on pickup (never works stale)", async () => {
+		const { store, dir, task } = makeStore();
+		const parent = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-pickup-remote-"));
+		tempDirs.push(parent);
+		git(parent, "init", "--bare", "origin.git");
+		const remoteDir = path.join(parent, "origin.git");
+		git(dir, "remote", "add", "origin", remoteDir);
+
+		await store.ensureTaskBranch(task, dir);
+		git(dir, "push", "-u", "origin", task.branch);
+
+		// A second writer advances the remote out of band (restart,
+		// operator push, sibling checkout).
+		const other = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-pickup-other-"));
+		tempDirs.push(other);
+		git(parent, "clone", remoteDir, other);
+		git(other, "config", "user.email", "kainbain-test@example.com");
+		git(other, "config", "user.name", "KainBain Test");
+		git(other, "checkout", task.branch);
+		fs.writeFileSync(path.join(other, "remote-work.txt"), "remote work\n");
+		git(other, "add", "-A");
+		git(other, "commit", "-m", "remote advance");
+		git(other, "push", "origin", task.branch);
+		const remoteTip = git(other, "rev-parse", "HEAD").trim();
+
+		await store.ensureTaskBranch(task, dir);
+
+		expect(git(dir, "rev-parse", task.branch).trim()).toBe(remoteTip);
+		expect(historyText(task)).toContain(`Synced task branch '${task.branch}'`);
 	});
 
 	it("still provisions on an unborn repo with no default branch to hop through", async () => {

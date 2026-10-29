@@ -12,6 +12,7 @@ import { emitStageLifecycle } from "./stageLifecycle.js";
 import {
 	GitError,
 	GitMergeConflictError,
+	abortMerge,
 	branchExists,
 	buildGitConflictDiagnostics,
 	commitAllIfNeeded,
@@ -29,8 +30,10 @@ import {
 	isValidBranchName,
 	checkoutBranch,
 	mergeBranch,
+	partitionMergeConflicts,
 	pushBranchIfRemote,
 	requireCleanWorkingTree,
+	resolveConflictsWithIncoming,
 	withCheckedOutBranch,
 } from "../git.js";
 import { resolveSha } from "../reviewDiff.js";
@@ -77,6 +80,7 @@ import {
 	shouldResetReviewBaseline,
 	isValidReviewBaseline,
 	syncMainToRemoteBestEffort,
+	syncTaskBranchToRemoteBestEffort,
 } from "../work/taskBranches.js";
 import { resolveShell, buildStageEnv, isWindows } from "../utils/platform.js";
 
@@ -1245,6 +1249,108 @@ export function buildGhostTaskDiagnostic({ branch = null, mainBranch = null, tas
  *       reason — never rewind, never silently skip (unmerged work must stay
  *       visible as a failed retry, not a quiet pretend-pass).
  ***/
+/***
+ * MARK: healSnapshotOnlyMergeConflict
+ * @description Self-healing for the structural merge conflict both sides of
+ *   a task merge create on every attempt: the first (auto-aborting) merge
+ *   fails listing unmerged paths; when every path is an engine-regenerated
+ *   snapshot (`docs/tasks/<id>/task.md` live state, `assets/` review
+ *   attachments — see partitionMergeConflicts), the merge is re-run without
+ *   the auto-abort, the snapshots resolve with the incoming task-branch
+ *   version, and the merge is finalized with an audit commit. Returns true
+ *   when the merge landed this way (caller continues on the success path).
+ *   Any genuine code conflict, empty file list, resolve failure, or
+ *   uncommittable result returns false WITHOUT side effects beyond a
+ *   best-effort abort back to the pre-merge state — the caller then keeps
+ *   the existing loud conflict-failure path.
+ ***/
+async function healSnapshotOnlyMergeConflict({
+	cwd,
+	branch,
+	mainBranch,
+	task,
+	store,
+	bridge,
+	projectId,
+	taskId,
+	conflictedFiles,
+}) {
+	const taskShortId = String(task.id).slice(0, 4).toUpperCase();
+	const initial = partitionMergeConflicts(conflictedFiles);
+	if (initial.snapshots.length === 0 || initial.blocking.length > 0) return false;
+
+	// Re-run without the auto-abort so the conflicted state stays available
+	// for resolution. A clean merge here (dirt moved between attempts) needs
+	// no healing at all.
+	try {
+		await mergeBranch(cwd, branch, { abortOnConflict: false });
+		return true;
+	} catch (retryErr) {
+		if (!(retryErr instanceof GitMergeConflictError)) return false;
+		const retry = partitionMergeConflicts(retryErr.conflictedFiles);
+		if (retry.snapshots.length === 0 || retry.blocking.length > 0) {
+			try {
+				await abortMerge(cwd);
+			} catch {
+				// Best effort: the failure path below reports the conflict.
+			}
+			return false;
+		}
+		try {
+			await resolveConflictsWithIncoming(cwd, retry.snapshots);
+		} catch {
+			try {
+				await abortMerge(cwd);
+			} catch {
+				// Best effort: the failure path below reports the conflict.
+			}
+			return false;
+		}
+	}
+
+	let healCommit = null;
+	try {
+		healCommit = await commitAllIfNeeded(
+			cwd,
+			`KainBain (task ${task.id}): auto-resolve regenerated snapshot conflicts merging '${branch}'`,
+			{ expectedBranch: mainBranch },
+		);
+	} catch {
+		try {
+			await abortMerge(cwd);
+		} catch {
+			// Best effort: the failure path below reports the conflict.
+		}
+		return false;
+	}
+	if (!healCommit?.committed) {
+		// Nothing finalized — restore the pre-merge state, do not leave a
+		// half-resolved MERGE_HEAD for later stages to trip on.
+		try {
+			await abortMerge(cwd);
+		} catch {
+			// Best effort.
+		}
+		return false;
+	}
+	const healed = healCommit?.hash ? ` (${healCommit.hash})` : "";
+	task.history.push({
+		timestamp: new Date().toISOString(),
+		action: `Merge stage auto-resolved regenerated snapshot conflicts with task-branch versions and finalized the merge${healed}`,
+	});
+	_appendProcessLog(
+		task,
+		`[MERGE] Auto-resolved snapshot-only conflicts with '${branch}' versions; merge finalized${healed}`,
+	);
+	store._saveTaskMarkdown(cwd, task);
+	bridge?.emitSystemLog?.(
+		projectId,
+		`[GIT] Task #KB-${taskShortId}: auto-resolved regenerated snapshot conflicts merging '${branch}'${healed}`,
+		{ taskId },
+	);
+	return true;
+}
+
 async function mergeTaskBranchIntoMain(
 	store,
 	{ projectId, taskId, task, stage, stages, cwd, bridge, branch },
@@ -1282,6 +1388,20 @@ async function mergeTaskBranchIntoMain(
 		// Best-effort and warn-only — a failed sync keeps local state and
 		// the strict guard below still protects operator work.
 		await syncMainToRemoteBestEffort(store, task, cwd, bridge, "merge");
+		// Always merge in the latest on the task side too: fast-forward the
+		// task ref to its upstream when it is not checked out (merge entry
+		// normally sits on the default branch after finalize). A stale task
+		// ref would merge outdated work and re-conflict on files the remote
+		// already settled. Diverged refs stay local and warn-only — the
+		// merge below, not the sync, owns that decision.
+		await syncTaskBranchToRemoteBestEffort(
+			store,
+			task,
+			cwd,
+			bridge,
+			"merge",
+			branch,
+		);
 		// Landed evidence (frozen marker OR git ancestry) is decided
 		// IMMEDIATELY upon entry (before any checkout, commit, or
 		// measurement) so the `catch` below can route every later failure
@@ -1537,12 +1657,65 @@ async function mergeTaskBranchIntoMain(
 		} catch {
 			// Non-fatal: the merge below owns the failure loudly.
 		}
+		// Commit-and-push before the attempt ends: publish the bookkeeping
+		// above so a failed merge never strands unpushed main-side commits
+		// that the next entry sync would reset away unpublished. Warn-only —
+		// the merge below owns the outcome, never the push.
+		try {
+			const preMergePush = await pushBranchIfRemote(cwd, mainBranch);
+			if (preMergePush?.pushed) {
+				_appendProcessLog(
+					task,
+					`[GIT] Pushed '${mainBranch}' before merging '${branch}'`,
+				);
+			}
+		} catch (pushErr) {
+			_appendProcessLog(
+				task,
+				`[WARN] Pre-merge push of '${mainBranch}' skipped (${pushErr?.message || pushErr}) — merge still proceeds`,
+			);
+		}
 
 		try {
 			recordStageHeartbeat(store, taskId, { stageId: stage.id, kind: "merge" });
 			await mergeBranch(cwd, branch);
 		} catch (e) {
 			if (e instanceof GitMergeConflictError) {
+				// Self-healing first: conflicts confined to regenerated
+				// snapshots (task.md live state, review assets) resolve with
+				// the task-branch version and finalize — these files
+				// regenerate from store state, so no human decision is
+				// needed. A `true` return means the merge LANDED: fall
+				// through to the success path below. Anything else keeps
+				// the loud conflict-failure path unchanged.
+				const healed = await healSnapshotOnlyMergeConflict({
+					cwd,
+					branch,
+					mainBranch,
+					task,
+					store,
+					bridge,
+					projectId,
+					taskId,
+					conflictedFiles: e.conflictedFiles,
+				});
+				if (!healed) {
+				// Commit-and-push before the attempt ends: the aborted merge
+				// left the tree clean, but routing reports written so far
+				// (and any heartbeat dirt) are stage file operations — commit
+				// them on main and publish, so the failure carries no
+				// unpushed state into the next attempt. Warn-only; the
+				// diagnostics below own the failure loudly either way.
+				try {
+					await commitAllIfNeeded(
+						cwd,
+						`KainBain (task ${task.id}): commit merge-attempt notes on '${mainBranch}' after conflict with '${branch}'`,
+						{ expectedBranch: mainBranch },
+					);
+					await pushBranchIfRemote(cwd, mainBranch);
+				} catch {
+					// Best-effort: the conflict diagnostics below report.
+				}
 				// Structured Tier 3 payload: file list + source/target SHAs
 				// + strategy travel both as fields and as a rendered block in
 				// the message (the prompt surface reads failureReason first).
@@ -1574,8 +1747,12 @@ async function mergeTaskBranchIntoMain(
 						projectCwd: cwd,
 					}),
 				};
+				} // end if (!healed)
+			} else {
+				throw e;
 			}
-			throw e;
+			// Healed snapshot-only conflicts land here: the merge finalized
+			// above, so execution continues on the success path below.
 		}
 
 		_appendProcessLog(

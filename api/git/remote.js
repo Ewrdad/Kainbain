@@ -89,11 +89,15 @@ export async function pushBranchIfRemote(projectCwd, branch, opts = {}) {
  *   branch are discarded by the reset — the remote is authoritative — while
  *   untracked files are left untouched (reset never deletes them; the
  *   clean-tree guard still reports genuinely precious untracked user files).
- *   Local-only commits ahead of the remote are orphaned by the reset; their
- *   SHAs travel on the result (and the reflog keeps them) so nothing vanishes
- *   silently. Pure-local repositories, missing remotes/refs, and failed
- *   fetches resolve to a warn-only `{ synced: false, skipped }` — never a
- *   throw — so callers treat sync as best-effort freshness, not a gate.
+ *   Hard rule: a local ref that is AHEAD of the remote (unpushed commits —
+ *   e.g. a just-landed merge whose push failed) is NEVER reset. Resetting it
+ *   would orphan completed work and trap the task in a land-it, lose-it,
+ *   land-it-again loop, so the sync skips loudly (`skipped: 'local-ahead'`)
+ *   and the caller proceeds on the ahead line; a host-side push job is
+ *   expected to publish the ahead commits shortly after. Pure-local
+ *   repositories, missing remotes/refs, and failed fetches resolve to a
+ *   warn-only `{ synced: false, skipped }` — never a throw — so callers
+ *   treat sync as best-effort freshness, not a gate.
  *   Never throws: every failure mode resolves to a skipped result with
  *   `detail` for audit logging.
  * @example await syncDefaultBranchToRemote('/repo') => { synced: true, mainBranch: 'main', before: 'abc', after: 'def' }
@@ -250,9 +254,13 @@ export async function syncDefaultBranchToRemote(projectCwd, opts = {}) {
 				skipped: "already-in-sync",
 			});
 		}
-		// Local-only commits ahead of the remote are orphaned by the reset
-		// below: count them for the audit line (best-effort; a failed read
-		// is "unknown", never a sync failure).
+		// Local-only commits ahead of the remote are counted for the audit
+		// line (best-effort; a failed read is "unknown", never a sync
+		// failure) — and when the count is positive the sync STOPS HERE.
+		// Resetting an ahead ref would orphan completed work (e.g. a
+		// just-landed merge whose push failed), trapping the task in a
+		// land-it, lose-it, land-it-again loop. The caller proceeds on the
+		// ahead line and reports the skip loudly.
 		let ahead = null;
 		if (localSha) {
 			try {
@@ -268,6 +276,16 @@ export async function syncDefaultBranchToRemote(projectCwd, opts = {}) {
 			}
 		} else {
 			ahead = 0;
+		}
+		if (typeof ahead === "number" && ahead > 0) {
+			return done({
+				mainBranch,
+				before: localSha,
+				after: localSha,
+				ahead,
+				skipped: "local-ahead",
+				detail: `local '${mainBranch}' is ${ahead} commit(s) ahead of '${remote}/${mainBranch}' — refusing to reset so unpushed work (e.g. a landed merge) is never orphaned; proceeding on the ahead line`,
+			});
 		}
 		let current = null;
 		try {

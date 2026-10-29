@@ -73,8 +73,12 @@ export {
 	MERGE_STRATEGY,
 	abortMerge,
 	buildGitConflictDiagnostics,
+	isRegeneratedSnapshotPath,
 	mergeBranch,
 	isBranchMergedInto,
+	partitionMergeConflicts,
+	resolveConflictsWithIncoming,
+	syncBranchWithUpstream,
 } from "./git/merge.js";
 
 export {

@@ -40,6 +40,7 @@ vi.mock("./git.js", () => {
 		requireCleanWorkingTree: vi.fn(async () => {}),
 		commitAllIfNeeded: vi.fn(async () => ({ committed: false, hash: null })),
 		mergeBranch: vi.fn(async () => ({ stdout: "merged", stderr: "" })),
+		syncBranchWithUpstream: vi.fn(async () => ({ synced: false, skipped: "no-remote" })),
 		hasRemote: vi.fn(async () => false),
 		pushBranchIfRemote: vi.fn(async () => ({ pushed: false, skipped: "no-remote" })),
 		returnToDefaultBranch: vi.fn(async () => ({ switched: false, branch: "main" })),
