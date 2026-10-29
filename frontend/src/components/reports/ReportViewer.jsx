@@ -1,7 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { MarkdownViewer } from '../common/MarkdownViewer';
-import { InfoTooltip } from '../common/InfoTooltip';
-import { getSilverBulletUrl } from '../tasks/taskFormatters';
 
 /***
  * MARK: ReportViewer
@@ -12,7 +10,7 @@ import { getSilverBulletUrl } from '../tasks/taskFormatters';
  * @param {Object} props
  * @param {Array<Object>} [props.reports=[]] - List of report objects.
  * @param {boolean} [props.loading=false] - Whether reports are currently loading.
- * @param {Object} [props.activeProject] - Active project object for SilverBullet URL resolution.
+ * @param {Object} [props.activeProject] - Active project object (used for in-app report actions).
  * @param {string} [props.taskId] - Task ID for fallback path generation.
  * @param {number} [props.initialSelectedIndex=0] - Starting report index.
  * @param {Function} [props.onSelectReport] - Optional callback when active report changes.
@@ -102,8 +100,6 @@ export function ReportViewer({
       setTimeout(() => setCopiedMarkdown(false), 2000);
     }
   };
-
-  const silverBulletUrl = getSilverBulletUrl(activeProject?.name, reportPath);
 
   if (loading) {
     return (
@@ -266,25 +262,6 @@ export function ReportViewer({
 
           {/* Action buttons */}
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
-            {reportPath && (
-              <InfoTooltip
-                title="Notes"
-                description="Opens this markdown report in your connected notes workspace."
-                position="top"
-              >
-                <a
-                  href={silverBulletUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label="Open in Notes"
-                  className="px-2.5 py-1.5 min-h-[44px] bg-surface hover:bg-surface-container-high border border-border-standard text-primary hover:text-primary rounded text-[10px] uppercase font-bold shrink-0 transition-colors cursor-pointer flex items-center gap-1"
-                >
-                  <span>📝</span>
-                  <span className="hidden sm:inline">Notes</span>
-                </a>
-              </InfoTooltip>
-            )}
-
             {reportPath && (
               <button
                 type="button"

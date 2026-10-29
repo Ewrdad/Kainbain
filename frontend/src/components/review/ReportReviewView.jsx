@@ -3,7 +3,6 @@ import { MarkdownViewer } from '../common/MarkdownViewer';
 import { ReviewCommentThread } from './ReviewCommentThread';
 import { ReviewCommentComposer } from './ReviewCommentComposer';
 import { copyToClipboard } from '../../services/clipboard';
-import { getSilverBulletUrl } from '../tasks/taskFormatters';
 import { normalizeReportPath } from './reportPaths';
 
 // Backwards-compatible re-export: report identity lives in `reportPaths.js`
@@ -30,7 +29,7 @@ export { normalizeReportPath } from './reportPaths';
  * @param {Function} [props.onDelete] - (commentId) => Promise
  * @param {boolean} [props.canComment] - False outside a human checkpoint → read-only.
  * @param {string} [props.headSha] - Review head; older threads get an "Outdated" badge.
- * @param {Object} [props.activeProject] - For the SilverBullet deep link.
+ * @param {Object} [props.activeProject] - Active project object (used for in-app report actions).
  * @param {string} [props.taskId] - Fallback report-path context.
  * @example <ReportReviewView report={r} comments={comments} addComment={add} canComment />
  ***/
@@ -85,8 +84,6 @@ export function ReportReviewView({
     }
     return { fileLevel: fileComments, byLine: lineComments };
   }, [reportComments]);
-
-  const silverBulletUrl = reportPath ? getSilverBulletUrl(activeProject?.name, reportPath) : null;
 
   const handleCopyPath = async () => {
     if (!reportPath) return;
@@ -178,17 +175,6 @@ export function ReportReviewView({
               Rendered Preview
             </button>
           </div>
-          {silverBulletUrl && (
-            <a
-              href={silverBulletUrl}
-              target="_blank"
-              rel="noreferrer"
-              aria-label="Open in Notes"
-              className="px-2.5 py-1.5 min-h-[44px] inline-flex items-center justify-center bg-surface hover:bg-surface-container-high border border-border-standard text-primary rounded text-[10px] uppercase font-bold cursor-pointer"
-            >
-              📝 Notes
-            </a>
-          )}
           {reportPath && (
             <button
               type="button"

@@ -585,8 +585,7 @@ test('report banner offers View Report with no SilverBullet button', () => {
   expect(screen.queryByText('SilverBullet')).not.toBeInTheDocument();
 });
 
-test('provides notes-viewer links and deduplicated reports in Reports tab (#1, #5, #43)', async () => {
-  vi.stubEnv('VITE_NOTES_VIEWER_URL', 'http://notes.example.com');
+test('provides deduplicated reports with no notes-viewer links in Reports tab (#1, #5, #43)', async () => {
   const duplicateReports = [
     { name: 'report-1.md', path: 'docs/tasks/t1/report-1.md', content: 'Report 1' },
     { name: 'report-1.md', path: 'docs/tasks/t1/report-1.md', content: 'Report 1 copy' },
@@ -609,14 +608,13 @@ test('provides notes-viewer links and deduplicated reports in Reports tab (#1, #
 
   fireEvent.click(screen.getByRole('tab', { name: /Reports/i }));
 
+  // Badge reflects deduplicated count (2 unique reports) and no
+  // SilverBullet deep link is rendered anywhere in the tab.
   await waitFor(() => {
-    const sbLink = screen.getByRole('link', { name: /Open in Notes/i });
-    expect(sbLink).toBeInTheDocument();
-    expect(sbLink).toHaveAttribute(
-      'href',
-      'http://notes.example.com/Projects/Personal/KainBain/tasks/t1/report-1.md',
-    );
+    expect(screen.getByRole('tab', { name: /Reports \(2\)/i })).toBeInTheDocument();
   });
+  expect(screen.queryByRole('link', { name: /Open in Notes/i })).not.toBeInTheDocument();
+  expect(screen.queryByText('SilverBullet')).not.toBeInTheDocument();
 });
 
 test('switches to dedicated Logs tab and displays streamed process logs with filter and copy', async () => {

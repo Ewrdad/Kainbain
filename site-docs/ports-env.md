@@ -38,7 +38,7 @@ what used to be hardcoded, plus one frontend build var:
 | `NODE_EXTRA_CA_CERTS` | _(unset)_ | Custom CA bundle path, honored only when explicitly set (Node native; no implicit fallback) |
 | `KAINBAIN_GIT_REMOTE_TEMPLATE` | _(unset)_ | Default git remote for new projects, e.g. `https://git.example.com/${USER}/${SLUG}.git` (`${SLUG}`/`${NAME}`/`${USER}`). D11: creating a project with neither `gitUrl` nor a template is rejected (400 naming the missing remote) — existing local-only projects stay available via adoption (`POST /projects/register`) |
 | `KAINBAIN_GIT_AUTHOR_NAME` / `KAINBAIN_GIT_AUTHOR_EMAIL` | `KainBain Agent` / `kainbain@local` | Repo-local (`--local`) git identity provisioned before engine commits when the machine has no `user.name`/`user.email`; global config is never touched |
-| `VITE_NOTES_VIEWER_URL` | _(unset)_ | External notes-viewer base URL for report deep links (supports `${PROJECT}`/`${PATH}`); unset degrades to the in-app `#/explorer` route |
+
 
 Token-bearing remote URLs are credential-redacted in API responses,
 `project.json`, and prompts; git keeps authenticating against the live remote
@@ -99,9 +99,7 @@ KAINBAIN_GIT_REMOTE_TEMPLATE=https://github.com/Ewrdad/${SLUG}.git
 NODE_EXTRA_CA_CERTS=/home/server/certs/ca/ca.crt
 ```
 
-plus `VITE_NOTES_VIEWER_URL=http://notes.local` in `frontend/.env` before
-`vite build` (Vite inlines `VITE_*` vars at build time). The production
-systemd unit already sets `NODE_EXTRA_CA_CERTS` explicitly and is unaffected.
+The production systemd unit already sets `NODE_EXTRA_CA_CERTS` explicitly and is unaffected.
 
 The full variable list lives in the config schema (`api/config/schema.js`) and
 the generated root `.env.example` — this article stays the pointer for ports

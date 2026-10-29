@@ -12,9 +12,6 @@ import {
   formatTaskTimestamp,
   formatTaskTitleFirstLine,
   getBlockedState,
-  getNotesViewerBaseUrl,
-  getSilverBulletUrl,
-  isSilverBulletPath,
   isTaskCompleted,
   resolveTimelineStageLabel,
   selectDisplayTimeline,
@@ -115,122 +112,6 @@ describe('taskFormatters', () => {
     it('handles null or empty task gracefully', () => {
       expect(formatTaskTimestamp(null)).toBe('0m in stage');
       expect(formatTaskTimestamp({})).toBe('0m in stage');
-    });
-  });
-
-  describe('getSilverBulletUrl', () => {
-    afterEach(() => {
-      vi.unstubAllEnvs();
-    });
-
-    it('constructs a viewer URL for docs paths from VITE_NOTES_VIEWER_URL', () => {
-      vi.stubEnv('VITE_NOTES_VIEWER_URL', 'http://notes.example.com');
-      expect(getSilverBulletUrl('KainBain', 'docs/tasks/task-1/plan.md')).toBe(
-        'http://notes.example.com/Projects/Personal/KainBain/tasks/task-1/plan.md',
-      );
-    });
-
-    it('strips leading ./, docs/, and space/ correctly', () => {
-      const base = { baseUrl: 'http://notes.example.com' };
-      expect(getSilverBulletUrl('KainBain', './docs/tasks/t1/report-2026.md', base)).toBe(
-        'http://notes.example.com/Projects/Personal/KainBain/tasks/t1/report-2026.md',
-      );
-      expect(getSilverBulletUrl('KainBain', './spec.md', base)).toBe(
-        'http://notes.example.com/Projects/Personal/KainBain/spec.md',
-      );
-      expect(getSilverBulletUrl('KainBain', 'space/docs/tasks/t1/report.md', base)).toBe(
-        'http://notes.example.com/Projects/Personal/KainBain/tasks/t1/report.md',
-      );
-    });
-
-    it('encodes project name with special characters/spaces', () => {
-      expect(
-        getSilverBulletUrl('Files Test Project', 'docs/notes.md', {
-          baseUrl: 'http://notes.example.com',
-        }),
-      ).toBe(
-        'http://notes.example.com/Projects/Personal/Files%20Test%20Project/notes.md',
-      );
-    });
-
-    it('falls back to the in-app explorer route when no viewer is configured', () => {
-      vi.stubEnv('VITE_NOTES_VIEWER_URL', '');
-      const url = getSilverBulletUrl('KainBain', 'docs/tasks/task-1/plan.md');
-      expect(url).toBe('#/explorer');
-      expect(url).not.toContain('notes.home');
-    });
-
-    it('prefers the explicit baseUrl override over the env var (even when empty)', () => {
-      vi.stubEnv('VITE_NOTES_VIEWER_URL', 'http://notes.example.com');
-      expect(
-        getSilverBulletUrl('KainBain', 'docs/notes.md', {
-          baseUrl: 'https://viewer.example.org/notes/',
-        }),
-      ).toBe('https://viewer.example.org/notes/Projects/Personal/KainBain/notes.md');
-      expect(getSilverBulletUrl('KainBain', 'docs/notes.md', { baseUrl: '' })).toBe(
-        '#/explorer',
-      );
-    });
-
-    it('expands ${PROJECT} and ${PATH} placeholders in the base URL', () => {
-      expect(
-        getSilverBulletUrl('My Project', 'docs/tasks/t1/plan.md', {
-          baseUrl: 'https://viewer.example.org/n/${PROJECT}?path=${PATH}',
-        }),
-      ).toBe('https://viewer.example.org/n/My%20Project?path=tasks/t1/plan.md');
-    });
-  });
-
-  describe('getNotesViewerBaseUrl', () => {
-    afterEach(() => {
-      vi.unstubAllEnvs();
-    });
-
-    it('trims whitespace and trailing slashes', () => {
-      expect(getNotesViewerBaseUrl({ baseUrl: '  http://notes.example.com/ ' })).toBe(
-        'http://notes.example.com',
-      );
-    });
-
-    it('returns empty string when unconfigured or non-string', () => {
-      vi.stubEnv('VITE_NOTES_VIEWER_URL', '');
-      expect(getNotesViewerBaseUrl({})).toBe('');
-      vi.stubEnv('VITE_NOTES_VIEWER_URL', 'http://notes.example.com');
-      expect(getNotesViewerBaseUrl({ baseUrl: '' })).toBe('');
-    });
-  });
-
-  describe('isSilverBulletPath', () => {
-    it.each([
-      ['docs/a.md', true],
-      ['./docs/a.md', true],
-      ['space/docs/a.md', true],
-      ['docs/tasks/task-1/plan.md', true],
-      ['docs', true],
-      ['docs\\a.md', true],
-    ])('classifies docs-resident path %s as %s', (input, expected) => {
-      expect(isSilverBulletPath(input)).toBe(expected);
-    });
-
-    it.each([
-      ['README.md', false],
-      ['./README.md', false],
-      ['frontend/README.md', false],
-      ['package.json', false],
-      ['docs2/a.md', false],
-      ['my-docs/a.md', false],
-      ['Docs/a.md', false],
-      ['', false],
-      ['   ', false],
-    ])('classifies non-docs path %s as %s', (input, expected) => {
-      expect(isSilverBulletPath(input)).toBe(expected);
-    });
-
-    it('returns false for non-string input without throwing', () => {
-      expect(isSilverBulletPath(null)).toBe(false);
-      expect(isSilverBulletPath(undefined)).toBe(false);
-      expect(isSilverBulletPath(42)).toBe(false);
-      expect(isSilverBulletPath({})).toBe(false);
     });
   });
 

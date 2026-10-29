@@ -167,7 +167,7 @@ describe('ProjectExplorer Component', () => {
     });
   });
 
-  it('shows the Notes deep link for markdown under docs/', async () => {
+  it('shows no Notes deep link for markdown under docs/ (SilverBullet removed)', async () => {
     renderWithKainBain(<ProjectExplorer />, {
       projects: mockProjects,
       activeProjectId: 'proj-1',
@@ -188,13 +188,9 @@ describe('ProjectExplorer Component', () => {
     await waitFor(() => {
       expect(api.getFileContent).toHaveBeenCalledWith('proj-1', 'docs/spec.md');
       expect(screen.getByText(/Docs-resident markdown/)).toBeInTheDocument();
-      const sbLink = screen.getByRole('link', { name: /Open in Notes/i });
-      expect(sbLink).toBeInTheDocument();
-      expect(sbLink).toHaveAttribute(
-        'href',
-        'http://notes.example.com/Projects/Personal/Project%20Alpha/spec.md',
-      );
     });
+    expect(screen.queryByRole('link', { name: /Open in Notes/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Copy Path/i })).toBeInTheDocument();
   });
 
   it('hides the Notes link for root-level markdown while keeping the preview', async () => {
@@ -429,7 +425,7 @@ describe('ProjectExplorer Component', () => {
 
     // Every action stays mounted and pressable regardless of viewport width.
     expect(screen.getByLabelText('Back to file list')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Open in Notes/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Open in Notes/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Open in Inspector/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Preview/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Raw/i })).toBeInTheDocument();
@@ -463,7 +459,6 @@ describe('ProjectExplorer Component', () => {
         (el) => el.getAttribute('aria-label') || el.textContent.trim(),
       ),
     ).toEqual([
-      'Open in Notes',
       'Open in Inspector',
       'Preview',
       'Raw',
@@ -474,7 +469,7 @@ describe('ProjectExplorer Component', () => {
 
     // Compact labels below sm free ~100-200px on mobile while desktop keeps
     // the full strings; buttons never wrap internally (the strip wraps instead).
-    for (const shortLabel of ['Notes', 'Inspector', 'Content', 'Path', 'New Task']) {
+    for (const shortLabel of ['Inspector', 'Content', 'Path', 'New Task']) {
       const el = screen.getByText(shortLabel, { exact: true });
       expect(el.className).toContain('sm:hidden');
     }
