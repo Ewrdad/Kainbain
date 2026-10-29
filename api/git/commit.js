@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { git } from "./exec.js";
 import { currentBranch, hasCommits, isGitRepository } from "./status.js";
 import {
@@ -153,10 +156,73 @@ export async function commitAllIfNeeded(projectCwd, message, opts = {}) {
 
 
 /***
+ * MARK: isLiveTaskSnapshotPath
+ * @description Pure predicate: true when a repo-relative path is a live
+ *   task snapshot (`task.md` under a task-docs prefix such as
+ *   `docs/tasks/<id>/`). Live snapshots are store state regenerated on
+ *   every save — they must never be staged or merged (Step 5). Stage
+ *   reports (`docs/tasks/<id>/report-*.md`) and review assets are
+ *   deliverables and return false.
+ * @example isLiveTaskSnapshotPath('docs/tasks/abc/task.md') => true
+ * @example isLiveTaskSnapshotPath('docs/tasks/abc/report.md') => false
+ * @param {string} path - Repo-relative path from git.
+ * @param {Object} [opts] - Same prefix hints as the clean-tree guard.
+ * @returns {boolean}
+ ***/
+export function isLiveTaskSnapshotPath(p, opts = {}) {
+	if (typeof p !== "string" || p.length === 0) return false;
+	const norm = String(p).replace(/\\/g, "/").replace(/["']/g, "");
+	if (path.basename(norm) !== "task.md") return false;
+	const prefixes = _resolveIgnorePaths(opts);
+	return prefixes.some((prefix) => {
+		const normPrefix = prefix.endsWith("/") ? prefix : `${prefix}/`;
+		return norm.startsWith(normPrefix);
+	});
+}
+
+/***
+ * MARK: untrackLiveTaskSnapshots
+ * @description One-time-per-checkout migration (Step 5): removes tracked
+ *   live snapshots (`docs/tasks/<id>/task.md`) from the index WITHOUT
+ *   touching the worktree file. Tracked snapshots are the dual-ownership
+ *   residue — the backend rewrites them on main while old task branches
+ *   carry committed copies, which is what produced the untracked-overwrite
+ *   and snapshot-conflict merge failures. After untracking, the guard
+ *   ignores them, switches no longer trip on them, and no branch can carry
+ *   them again (commitEngineSnapshots never stages them). Best-effort:
+ *   returns the untracked paths, or `[]` when there is nothing to do.
+ * @example await untrackLiveTaskSnapshots('/repo') => { untracked: ['docs/tasks/t/task.md'] }
+ * @param {string} projectCwd - Working directory for the command.
+ * @param {Object} [opts] - Same prefix hints as the clean-tree guard.
+ * @returns {Promise<{untracked: Array<string>}>}
+ ***/
+export async function untrackLiveTaskSnapshots(projectCwd, opts = {}) {
+	if (!(await isGitRepository(projectCwd))) return { untracked: [] };
+	if (!(await hasCommits(projectCwd))) return { untracked: [] };
+	let files;
+	try {
+		const { stdout } = await git(projectCwd, ["ls-files", "-z"]);
+		files = stdout.split("\0").map((s) => s.trim()).filter(Boolean);
+	} catch {
+		return { untracked: [] };
+	}
+	const live = files.filter((f) => isLiveTaskSnapshotPath(f, opts));
+	if (live.length === 0) return { untracked: [] };
+	try {
+		await git(projectCwd, ["rm", "--cached", "-q", "--", ...live]);
+	} catch {
+		return { untracked: [] };
+	}
+	return { untracked: live };
+}
+
+/***
  * MARK: commitEngineSnapshots
  * @description Commits ONLY the engine's own snapshot dirt (the guard-ignored
- *   paths: `docs/tasks/` live state and review reports plus the state dir)
- *   so a branch switch never trips on the engine's just-written bookkeeping.
+ *   report/asset paths plus the state dir) so a branch switch never
+ *   trips on the engine's just-written bookkeeping. Live task snapshots
+ *   (`docs/tasks/<id>/task.md`) are untracked, never staged (Step 5) —
+ *   a just-untracked deletion rides along in the same snapshot commit.
  *   Real work — operator edits, task deliverables, anything outside the
  *   ignore prefixes — is never staged: the clean-tree guard still refuses
  *   loudly on it after this runs. Staged real changes stay staged (the
@@ -202,13 +268,66 @@ export async function commitEngineSnapshots(projectCwd, message, opts = {}) {
 			return p === prefix || p.startsWith(normPrefix);
 		});
 	});
+	// Nothing engine-owned to do: return BEFORE untracking. Untracking
+	// stages a deletion in the real index, so it must only ever run when
+	// a snapshot commit follows in the same call — otherwise the staged
+	// deletion is left behind and blocks the pending switch with
+	// "untracked files would be removed".
 	if (snapshotPaths.length === 0) return { committed: false, hash: null };
 
+	// Live task snapshots are store state, never branch content: untrack
+	// them (worktree files preserved) and never stage them — only the
+	// remaining report/asset snapshots are committable (Step 5). A
+	// just-untracked snapshot leaves a staged deletion that would block
+	// the very switch this commit prepares, so the deletion rides along
+	// in the same snapshot commit.
+	let untracked = [];
+	try {
+		({ untracked } = await untrackLiveTaskSnapshots(projectCwd, opts));
+	} catch {
+		// Best-effort: the staging below owns real failures.
+	}
+	const committable = snapshotPaths.filter((raw) => !isLiveTaskSnapshotPath(raw, opts));
+	const normalized = new Set(
+		snapshotPaths.map((raw) => String(raw).replace(/\\/g, "/").replace(/["']/g, "")),
+	);
+	const stagedRemovals = untracked.filter((u) => normalized.has(u));
+	const commitPaths = [...committable, ...stagedRemovals];
+	if (commitPaths.length === 0) return { committed: false, hash: null };
+
 	await ensureGitIdentity(projectCwd);
-	await git(projectCwd, ["add", "--", ...snapshotPaths]);
 	const subject = message || "KainBain: commit engine snapshots";
 	try {
-		await git(projectCwd, ["commit", "-m", subject, "--", ...snapshotPaths]);
+		// The snapshot commit is built in a scratch index: porcelain
+		// `commit -- <path>` implies --include and would re-add the
+		// untracked-again snapshot's worktree file, defeating the untrack;
+		// and a full-index commit would sweep unrelated staged operator
+		// work into the snapshot commit. The scratch index holds exactly
+		// the snapshot additions plus the untrack deletions, and HEAD moves
+		// forward compare-and-swap (a concurrent commit fails loud instead
+		// of being overwritten).
+		const scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-snap-idx-"));
+		try {
+			const scratchEnv = { env: { GIT_INDEX_FILE: path.join(scratchDir, "index") } };
+			await git(projectCwd, ["read-tree", "HEAD"], scratchEnv);
+			if (committable.length > 0) {
+				await git(projectCwd, ["add", "--", ...committable], scratchEnv);
+			}
+			if (stagedRemovals.length > 0) {
+				await git(projectCwd, ["rm", "--cached", "-q", "--", ...stagedRemovals], scratchEnv);
+			}
+			const tree = (await git(projectCwd, ["write-tree"], scratchEnv)).stdout;
+			const parent = (await git(projectCwd, ["rev-parse", "HEAD"])).stdout;
+			const newSha = (await git(projectCwd, ["commit-tree", tree, "-p", parent, "-m", subject])).stdout;
+			await git(projectCwd, ["update-ref", "HEAD", newSha, parent]);
+			// Re-point the real index at the new HEAD for exactly these
+			// paths (worktree untouched): the scratch commit bypassed the
+			// real index, which still stages the pre-commit state and
+			// would read as phantom dirt / block the pending switch.
+			await git(projectCwd, ["reset", "-q", "HEAD", "--", ...commitPaths]);
+		} finally {
+			fs.rmSync(scratchDir, { recursive: true, force: true });
+		}
 	} catch (e) {
 		// 'nothing to commit' after add means the dirt vanished mid-flight
 		// (concurrent commit) — fine. Anything still dirty is a real failure.

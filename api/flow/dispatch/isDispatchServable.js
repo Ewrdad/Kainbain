@@ -11,13 +11,14 @@ import { normalizeStageType } from "../../projectStore.js";
  *   honours runOnBranch 'primary'/'custom' by executing in the matching
  *   checkout on its host (which has the toolchain). Normalized-`agent`
  *   stages qualify as before. `review` normalizes to a human checkpoint
- *   (parks, never spawns), and human / merge / unknown legacy types keep
- *   their embedded behavior.
+ *   (parks, never spawns), and human / unknown legacy types keep their
+ *   embedded behavior.
  *   Alias-harness stages additionally require the alias to resolve in
  *   principle (peek: shared smooth-WRR counters untouched,
  *   every target treated as known — liveness is the dispatch poll's job,
  *   not this predicate's). Used by the runner-execution cutover gate in
- *   `executeStage`.
+ *   `executeStage`. Remote-backed merge stages are dispatch-servable
+ *   as leased `integrate` jobs; other merge stages keep embedded behavior.
  * @example isDispatchServable({ project, task, stages }) => true
  * @param {Object} [opts]
  * @param {Object} [opts.project] - Project entity.
@@ -43,9 +44,15 @@ export function isDispatchServable({ project = {}, task = {}, stages = null, sta
 	if (stageKind === "ci") {
 		return true;
 	}
+	// Merge stages run on Runners as leased `integrate` jobs (Step 4) —
+	// but only for remote-backed projects. The integration Runner clones
+	// the origin, so local-only repos keep the embedded merge path.
+	if (stageKind === "merge") {
+		return project?.hasUpstreamRepo === true;
+	}
 	// Only stages that would spawn an in-process model child move to a
-	// Runner. Everything else (human checkpoints, merge, unknown legacy
-	// types) keeps its exact embedded behavior.
+	// Runner. Everything else (human checkpoints, unknown legacy types)
+	// keeps its exact embedded behavior.
 	if (stageKind !== "agent") return false;
 	const req = taskRequirements(project, {
 		...task,

@@ -1,9 +1,11 @@
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { git } from "./exec.js";
 import { _assertValidBranchName, isValidBranchName } from "./validation.js";
 import { currentBranch, branchExists, hasCommits, isGitRepository } from "./status.js";
 import { requireCleanWorkingTree } from "./workingTreeRecovery.js";
-import { commitEngineSnapshots } from "./commit.js";
+import { commitEngineSnapshots, isLiveTaskSnapshotPath } from "./commit.js";
 import { GitError } from "./errors.js";
 
 /***
@@ -58,8 +60,110 @@ export async function checkoutBranch(projectCwd, branch, opts = {}) {
 			context: `checkout of branch '${branch}'`,
 		});
 	}
-	await git(projectCwd, ["checkout", branch]);
+	// Step 5 residue: the target branch may still track a live snapshot
+	// from the dual-ownership era while this checkout holds the same path
+	// as an untracked file (the untracked side always wins the migration —
+	// the content is backend-regenerated store state). Move those files
+	// aside across the checkout and restore them after: without this, git's
+	// own untracked-overwrite safety blocks the switch even though the
+	// clean-tree guard (correctly) ignores these paths.
+	const aside = await moveAsideBlockingLiveSnapshots(projectCwd, branch, opts);
+	try {
+		await git(projectCwd, ["checkout", branch]);
+	} finally {
+		await restoreMovedAsideSnapshots(aside);
+	}
 	return { switched: true };
+}
+
+/***
+ * MARK: moveAsideBlockingLiveSnapshots
+ * @description Finds live task snapshots (`docs/tasks/<id>/task.md`) that
+ *   the TARGET branch still tracks while this checkout holds as untracked
+ *   files — the exact shape that makes git refuse a checkout with
+ *   "untracked working tree files would be overwritten". Moves those
+ *   files to a temp backup dir and returns a restore handle (null when
+ *   nothing blocks). Only untracked-here files move: paths the current
+ *   index tracks are git's normal checkout business and are left alone.
+ * @example await moveAsideBlockingLiveSnapshots('/repo', 'main') => { cwd: '/repo', backupDir: '/tmp/...', moved: [...] } | null
+ ***/
+async function moveAsideBlockingLiveSnapshots(projectCwd, targetBranch, opts = {}) {
+	let tracked;
+	try {
+		({ stdout: tracked } = await git(projectCwd, ["ls-tree", "-r", "--name-only", targetBranch]));
+	} catch {
+		return null;
+	}
+	const live = tracked
+		.split("\n")
+		.map((s) => s.trim())
+		.filter((f) => f && isLiveTaskSnapshotPath(f, opts));
+	if (live.length === 0) return null;
+	let indexed;
+	try {
+		indexed = new Set(
+			(await git(projectCwd, ["ls-files", "-z"])).stdout.split("\0").map((s) => s.trim()).filter(Boolean),
+		);
+	} catch {
+		return null;
+	}
+	const backupDir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-snap-aside-"));
+	const moved = [];
+	for (const rel of live) {
+		if (indexed.has(rel)) continue;
+		const full = path.join(projectCwd, rel);
+		let stat;
+		try {
+			stat = fs.statSync(full);
+		} catch {
+			continue;
+		}
+		if (!stat.isFile()) continue;
+		try {
+			const backup = path.join(backupDir, `${moved.length}.snapshot`);
+			fs.renameSync(full, backup);
+			moved.push({ rel, backup });
+		} catch {
+			// Best-effort per file; successfully moved files still restore.
+		}
+	}
+	if (moved.length === 0) {
+		fs.rmSync(backupDir, { recursive: true, force: true });
+		return null;
+	}
+	return { cwd: projectCwd, backupDir, moved };
+}
+
+/***
+ * MARK: restoreMovedAsideSnapshots
+ * @description Restores files moved aside by moveAsideBlockingLiveSnapshots,
+ *   overwriting the target branch's stale tracked copy with the newer
+ *   backend-regenerated content (the backend re-saves task.md on every
+ *   event, so the aside copy is authoritative). Never throws: leftovers
+ *   are inert files the next save overwrites.
+ * @example await restoreMovedAsideSnapshots(aside)
+ ***/
+async function restoreMovedAsideSnapshots(aside) {
+	if (!aside) return;
+	for (const { rel, backup } of aside.moved) {
+		try {
+			const full = path.join(aside.cwd, rel);
+			fs.mkdirSync(path.dirname(full), { recursive: true });
+			try {
+				fs.rmSync(full, { force: true });
+			} catch {
+				// Fall through to the rename.
+			}
+			fs.renameSync(backup, full);
+		} catch {
+			// Inert leftover in the temp dir; the next save regenerates.
+		}
+	}
+	try {
+		fs.rmSync(aside.backupDir, { recursive: true, force: true });
+	} catch {
+		// Scratch dir only.
+	}
 }
 
 

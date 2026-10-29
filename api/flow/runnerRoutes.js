@@ -1,5 +1,8 @@
 import { config } from "../config.js";
 import { applyRunnerReport } from "./execution/applyRunnerReport.js";
+import { applyIntegrationReport } from "./execution/applyIntegrationReport.js";
+import { normalizeStageType } from "../projectStore.js";
+import { git, defaultBranch } from "../git.js";
 import { circuitSnapshot, isTripped } from "./circuitBreaker.js";
 import { scanClaimableTasks } from "./dispatch/scanClaimableTasks.js";
 import { resolveAliasRequirement } from "./dispatch/resolveAliasRequirement.js";
@@ -38,6 +41,70 @@ export const resolveCiTimeoutMs = (resolved, project) => {
 };
 
 /***
+ * MARK: prepareIntegrationAttempt
+ * @description Backend-side preparation for one leased `integrate` dispatch
+ *   (Step 4): fetches the origin (read-only — the backend never pushes),
+ *   reads the remote task-branch and target-branch tips as the attempt's
+ *   expected SHAs, and pins a stable `mergeAttemptId` on the task so every
+ *   dispatch poll for this merge reuses one queue entry (idempotent
+ *   re-enqueue) instead of queueing a duplicate merge per poll. Throws
+ *   `INTEGRATION_UNPREPARED` when the refs cannot be read (no origin ref
+ *   yet, fetch failure) — the task stays `in_stage` for the next poll.
+ * @example await prepareIntegrationAttempt({ taskStore, projectStore, projectId: 'p', task }) => { targetBranch: 'main', ... }
+ * @param {Object} args - `{ taskStore, projectStore, projectId, task }`.
+ * @returns {Promise<Object>} `{ targetBranch, taskBranch, expectedTaskSha, expectedTargetSha, mergeAttemptId }`.
+ ***/
+export const prepareIntegrationAttempt = async ({ taskStore, projectStore, projectId, task }) => {
+	const unprepared = (detail) => {
+		const err = new Error(`Integration attempt unprepared: ${detail}`);
+		err.code = "INTEGRATION_UNPREPARED";
+		throw err;
+	};
+	const project = projectStore?.getProject?.(projectId);
+	const cwd = project?.cwd;
+	if (!cwd) unprepared("project has no checkout");
+	const taskBranch = taskStore.resolveTaskBranch(task);
+	let targetBranch;
+	try {
+		targetBranch = await defaultBranch(cwd);
+	} catch {
+		unprepared("cannot resolve the target branch");
+	}
+	try {
+		// Prune: a deleted remote task branch must vanish from the
+		// remote-tracking refs too, or a later attempt would merge a
+		// resurrected stale tip.
+		await git(cwd, ["fetch", "--prune", "origin"], { timeout: 60000 });
+	} catch (e) {
+		unprepared(`fetch failed (${e?.message || e})`);
+	}
+	const readRef = async (ref) => {
+		try {
+			return (await git(cwd, ["rev-parse", "--verify", ref])).stdout.trim() || null;
+		} catch {
+			return null;
+		}
+	};
+	const expectedTargetSha = await readRef(`origin/${targetBranch}`);
+	const expectedTaskSha = await readRef(`origin/${taskBranch}`);
+	if (!expectedTargetSha) unprepared(`remote ref 'origin/${targetBranch}' does not exist`);
+	if (!expectedTaskSha) unprepared(`remote ref 'origin/${taskBranch}' does not exist (task work not pushed yet)`);
+	// A retry after a failed attempt gets a FRESH attempt id: the failed
+	// lease settled terminal (landed/conflict/stale-head/failed) in the
+	// integration queue, and re-enqueueing the same id would collide with
+	// that settled entry instead of queueing a re-based merge.
+	const failedBefore = !!(task.lastError && (task.lastError.message || task.lastError.reason || task.lastError.stageId || task.lastError.stderr));
+	let mergeAttemptId = `merge-${String(task.id).slice(0, 8)}-${Date.now()}`;
+	if (typeof task.mergeAttemptId === "string" && task.mergeAttemptId.trim() && !failedBefore) {
+		mergeAttemptId = task.mergeAttemptId.trim();
+	} else {
+		taskStore.updateTask(projectId, task.id, { mergeAttemptId }, cwd);
+		task.mergeAttemptId = mergeAttemptId;
+	}
+	return { targetBranch, taskBranch, expectedTaskSha, expectedTargetSha, mergeAttemptId };
+};
+
+/***
  * MARK: registerRunnerRoutes
  * @description Runner-facing endpoints (ADR 0009 lifecycle steps 1–6): join
  *   registration, heartbeat, the operator approve/deny/revoke/pause/resume
@@ -55,6 +122,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		claimStore,
 		steerStore,
 		executionLedger,
+		integrationQueue,
 		taskStore,
 		projectStore,
 		resolveAndGuardProject,
@@ -326,7 +394,11 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			lastOutcome: sched.lastOutcome ?? null,
 			lastDispatchAt: sched.lastDispatchAt ?? null,
 		};
-		return { ...executionLedger.snapshot(), liveAssignments, scheduler };
+		// Step 6: surface integration-queue health (depth/lease per scope
+		// via GET /runners/integration; global lease counters here) so a
+		// stuck merge queue is visible before tasks pile up behind it.
+		const integration = integrationQueue ? integrationQueue.snapshot() : {};
+		return { ...executionLedger.snapshot(), liveAssignments, scheduler, integration };
 	});
 
 	app.post("/tasks/:id/progress", async (request, reply) => {
@@ -404,6 +476,32 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		}
 	});
 
+	app.post("/tasks/:id/verify-sha", async (request, reply) => {
+		let runner;
+		try {
+			runner = authedRunner(request);
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+		const ctx = guardedTask(request, reply);
+		if (!ctx) return;
+		try {
+			return executionLedger.noteRemoteVerification({
+				claimStore,
+				taskStore,
+				projectId: ctx.projectId,
+				taskId: request.params.id,
+				runnerId: runner.runnerId,
+				executionId: request.body?.executionId,
+				epoch: request.body?.epoch,
+				sha: request.body?.sha ?? null,
+				present: request.body?.present,
+			});
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
 	app.post("/tasks/:id/complete-execution", async (request, reply) => {
 		let runner;
 		try {
@@ -461,6 +559,29 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			});
 			const harnessId =
 				runner.facts?.harnesses?.[0]?.id || request.body?.harnessId || "unknown";
+			// Runner-run integration: the merge already landed via the
+			// leased CAS push — verify read-only, freeze the baseline,
+			// and advance. Never the generic stage finish.
+			const project = projectStore.getProject(ctx.projectId);
+			const allStages = resolveStagesForTask(project, live);
+			const currentStage =
+				allStages.find((s) => String(s?.id) === String(live?.currentStageId)) || allStages[0] || {};
+			if (
+				normalizeStageType(currentStage.type) === "merge" &&
+				request.body?.integration?.outcome === "landed"
+			) {
+				const finish = await applyIntegrationReport({
+					store: taskStore,
+					projectStore,
+					projectId: ctx.projectId,
+					taskId: request.params.id,
+					stage: currentStage,
+					stages: allStages,
+					integration: request.body.integration,
+					runnerId: runner.runnerId,
+				});
+				return { ...receipt, ...finish };
+			}
 			const finish = await applyRunnerReport({
 				store: taskStore,
 				projectStore,
@@ -739,6 +860,89 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				misses.PROJECT_BUSY = (misses.PROJECT_BUSY || 0) + 1;
 				continue;
 			}
+			// Merge stages dispatch as leased `integrate` jobs (Step 4): the
+			// task claim fences progress/logs/completion exactly like any
+			// stage, while the integration lease serializes target-branch
+			// writes. A busy integration slot backs the Runner off to poll
+			// again (the request stays queued — never lost, never doubled).
+			if (req.kind === "merge") {
+				let attempt;
+				try {
+					attempt = await prepareIntegrationAttempt({
+						taskStore,
+						projectStore,
+						projectId: cand.projectId,
+						task: cand.task,
+					});
+				} catch (err) {
+					if (err?.code === "INTEGRATION_UNPREPARED") {
+						misses.INTEGRATION_UNPREPARED = (misses.INTEGRATION_UNPREPARED || 0) + 1;
+						continue;
+					}
+					return sendStoreError(reply, err);
+				}
+				let executionId;
+				let epoch;
+				try {
+					({ executionId, epoch } = claimStore.claim(cand.taskId, runner.runnerId, cand.projectId));
+				} catch (err) {
+					if (err?.code === "CLAIM_CONFLICT") continue;
+					return sendStoreError(reply, err);
+				}
+				if (!integrationQueue) {
+					claimStore.invalidate(cand.taskId);
+					misses.NO_INTEGRATION_QUEUE = (misses.NO_INTEGRATION_QUEUE || 0) + 1;
+					continue;
+				}
+				integrationQueue.enqueue({
+					projectId: cand.projectId,
+					targetBranch: attempt.targetBranch,
+					taskId: cand.taskId,
+					taskBranch: attempt.taskBranch,
+					expectedTaskSha: attempt.expectedTaskSha,
+					expectedTargetSha: attempt.expectedTargetSha,
+					mergeAttemptId: attempt.mergeAttemptId,
+				});
+				let lease;
+				try {
+					lease = integrationQueue.acquire({
+						projectId: cand.projectId,
+						targetBranch: attempt.targetBranch,
+						runnerId: runner.runnerId,
+					});
+				} catch (err) {
+					claimStore.invalidate(cand.taskId);
+					if (err?.code === "INTEGRATION_BUSY") {
+						return { assigned: false, code: "INTEGRATION_BUSY" };
+					}
+					return sendStoreError(reply, err);
+				}
+				if (!lease.leased) {
+					claimStore.invalidate(cand.taskId);
+					misses.INTEGRATION_EMPTY = (misses.INTEGRATION_EMPTY || 0) + 1;
+					continue;
+				}
+				return {
+					assigned: true,
+					projectId: cand.projectId,
+					taskId: cand.taskId,
+					runnerId: runner.runnerId,
+					executionId,
+					epoch,
+					stageId: cand.stage?.id ?? null,
+					kind: "integrate",
+					integration: {
+						taskBranch: attempt.taskBranch,
+						expectedTaskSha: attempt.expectedTaskSha,
+						targetBranch: attempt.targetBranch,
+						expectedTargetSha: attempt.expectedTargetSha,
+						mergeAttemptId: attempt.mergeAttemptId,
+						integrationExecutionId: lease.executionId,
+						integrationEpoch: lease.epoch,
+					},
+					requirements: req,
+				};
+			}
 			try {
 				const { executionId, epoch } = claimStore.claim(
 					cand.taskId,
@@ -763,6 +967,92 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			}
 		}
 		return { assigned: false, code: "NO_CAPABLE_MATCH", misses };
+	});
+
+	// ---- Integration leases (Step 3: serialized Runner-run merges) ---------
+	// The backend never merges or pushes: it queues merge requests
+	// (enqueue is backend-internal, called by the merge stage) and leases
+	// the head entry to one Runner per project + target branch. The Runner
+	// holds `executionId`/`epoch` exactly like a task claim; a superseded
+	// report is stale by construction.
+	app.post("/runners/integration/acquire", async (request, reply) => {
+		let runner;
+		try {
+			runner = authedRunner(request);
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+		if (!integrationQueue) {
+			return reply.status(503).send({ error: "Integration queue unavailable.", code: "NO_INTEGRATION_QUEUE" });
+		}
+		try {
+			return integrationQueue.acquire({
+				projectId: request.body?.projectId,
+				targetBranch: request.body?.targetBranch,
+				runnerId: runner.runnerId,
+			});
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
+	app.post("/runners/integration/heartbeat", async (request, reply) => {
+		let runner;
+		try {
+			runner = authedRunner(request);
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+		if (!integrationQueue) {
+			return reply.status(503).send({ error: "Integration queue unavailable.", code: "NO_INTEGRATION_QUEUE" });
+		}
+		try {
+			return integrationQueue.heartbeat({
+				projectId: request.body?.projectId,
+				targetBranch: request.body?.targetBranch,
+				executionId: request.body?.executionId,
+				epoch: request.body?.epoch,
+			});
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
+	app.post("/runners/integration/report", async (request, reply) => {
+		let runner;
+		try {
+			runner = authedRunner(request);
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+		if (!integrationQueue) {
+			return reply.status(503).send({ error: "Integration queue unavailable.", code: "NO_INTEGRATION_QUEUE" });
+		}
+		try {
+			const receipt = integrationQueue.report({
+				projectId: request.body?.projectId,
+				targetBranch: request.body?.targetBranch,
+				executionId: request.body?.executionId,
+				epoch: request.body?.epoch,
+				outcome: request.body?.outcome,
+				mergeSha: request.body?.mergeSha ?? null,
+				detail: request.body?.detail ?? null,
+			});
+			return { ...receipt, runnerId: runner.runnerId };
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
+	app.get("/runners/integration", async (request) => {
+		if (!integrationQueue) return { depth: 0, lease: null, counters: {} };
+		return {
+			...integrationQueue.describe({
+				projectId: request.query?.projectId,
+				targetBranch: request.query?.targetBranch,
+			}),
+			counters: integrationQueue.snapshot(),
+		};
 	});
 
 	// ---- Steering acks (D5, ADR 0011) --------------------------------------

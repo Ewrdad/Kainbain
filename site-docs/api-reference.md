@@ -146,6 +146,11 @@ approval, then heartbeat and claim with the issued per-Runner credential.
 | POST | `/tasks/:id/complete-execution` | Runner-only: idempotent completion with epoch fence and SHA check; releases the lease and applies the engine-owned finish (report, survey park, failure routing, advance). |
 | POST | `/tasks/:id/claim-heartbeat` | Runner-only: renew a live claim mid-stage (extends the lease TTL; 409 `STALE_EPOCH` when superseded) so long harness runs keep their fence. |
 | POST | `/tasks/:id/interrupt` | Runner-only: park a task as interrupted and drop its lease. |
+| POST | `/runners/integration/acquire` | Runner-only: lease the head queued integration for a project + target branch (200 `leased` + `executionId`/`epoch`, 200 unassigned when empty, 409 `INTEGRATION_BUSY` when a live lease is held). |
+| POST | `/runners/integration/heartbeat` | Runner-only: renew a live integration lease (409 `STALE_EPOCH` when superseded). |
+| POST | `/runners/integration/report` | Runner-only: terminal integration report (`landed`/`conflict`/`stale-head`/`needs-sync`/`failed`; idempotent re-reports, stale executions rejected). |
+| GET | `/runners/integration` | Per-scope integration queue depth, live lease, and global lease counters. |
+| POST | `/tasks/:id/verify-sha` | Runner-only: confirm a reported push SHA against a fresh fetch (claim-lease fenced; refuted SHAs park visibly). |
 
 ## Engine containment (`api/flow/taskFlowRoutes.js`, `api/flow/circuitBreaker.js`)
 

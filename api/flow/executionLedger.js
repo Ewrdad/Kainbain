@@ -66,6 +66,7 @@ export class ExecutionLedger {
 			interruptEscalations: 0,
 			divergences: 0,
 			unverifiedSha: 0,
+			verifiedSha: 0,
 		};
 	}
 
@@ -231,6 +232,20 @@ export class ExecutionLedger {
 		} else if (sha) {
 			shaState = "unverified-remote";
 			this.counters.unverifiedSha += 1;
+			// Deferred verification (Step 3): the backend cannot fetch the
+			// remote (D2), so the reported SHA stays pending until a Runner
+			// with a fresh fetch confirms it via noteRemoteVerification
+			// (POST /tasks/:id/verify-sha). Visible per task, not just as a
+			// monitor counter.
+			if (task && branch) {
+				task.pendingPushVerification = {
+					sha,
+					branch,
+					verified: false,
+					reportedAt: new Date().toISOString(),
+					reportedBy: runnerId,
+				};
+			}
 		}
 
 		const reportedStage = this.lastStage.get(executionId) ?? null;
@@ -270,6 +285,61 @@ export class ExecutionLedger {
 		this.stagePrompt.delete(executionId);
 		this.stageServing.delete(executionId);
 		return { accepted: true, duplicate: false, shaState, reportedStage };
+	}
+
+	/***
+	 * MARK: noteRemoteVerification
+	 * @description Confirms (or refutes) a previously reported push SHA
+	 *   against a Runner's fresh fetch of the remote (Step 3 deferred
+	 *   verification). Fenced by the task-claim lease exactly like progress
+	 *   and logs: a stale execution's confirmation is rejected, never
+	 *   recorded. Sets `task.pendingPushVerification.verified` and counts
+	 *   `verifiedSha`; a refuted SHA leaves `verified: false` with the
+	 *   refuting Runner named, so the task visibly needs a re-push.
+	 * @example ledger.noteRemoteVerification({ claimStore, taskStore, projectId: 'p', taskId: 't', runnerId: 'r', executionId: 'e', epoch: 1, sha: 'abc', present: true }) => { verified: true }
+	 ***/
+	noteRemoteVerification({
+		claimStore,
+		taskStore,
+		projectId,
+		taskId,
+		runnerId,
+		executionId,
+		epoch,
+		sha,
+		present,
+	}) {
+		const hold = this._holdOrThrow(claimStore, taskId, executionId, epoch);
+		if (hold.runnerId !== runnerId) {
+			this.counters.staleRejected += 1;
+			throw ExecutionLedger._stale(taskId, "lease belongs to another Runner");
+		}
+		if (!sha || typeof sha !== "string") {
+			const err = new Error("verify-sha requires a sha.");
+			err.statusCode = 400;
+			err.code = "INVALID_VERIFY_ARGS";
+			throw err;
+		}
+		const task = taskStore.getTask(projectId, taskId);
+		const verified = present !== false;
+		if (task) {
+			task.pendingPushVerification = {
+				...(task.pendingPushVerification || {}),
+				sha,
+				verified,
+				verifiedAt: new Date().toISOString(),
+				verifiedBy: runnerId,
+			};
+			task?.history?.push({
+				timestamp: new Date().toISOString(),
+				action: verified
+					? `Runner ${runnerId} verified push SHA ${sha.slice(0, 7)} against the remote.`
+					: `Runner ${runnerId} could NOT find push SHA ${sha.slice(0, 7)} on the remote — task needs a re-push.`,
+			});
+		}
+		if (verified) this.counters.verifiedSha += 1;
+		else this.counters.unverifiedSha += 1;
+		return { verified };
 	}
 
 	interruptExecution({

@@ -945,6 +945,41 @@ describe("Runner Routes Integration", () => {
 		expect(JSON.parse(bad.payload).code).toBe("ROTATE_INVALID_STATE");
 	});
 
+	it("exposes integration leases over HTTP with stale-execution fencing", async () => {
+		// Step 3 HTTP surface (lease semantics live in
+		// integrationQueue.test.js): empty queue leases nothing, unknown
+		// executions fence as stale, and the monitor exposes lease
+		// counters (Step 6 observability).
+		const credA = await onboard("integ-1");
+		const credB = await onboard("integ-2");
+		const scope = { projectId: "scope-proj", targetBranch: "main" };
+		const first = JSON.parse(
+			(
+				await app.inject({
+					method: "POST",
+					url: "/runners/integration/acquire",
+					headers: { "x-runner-credential": credA },
+					payload: scope,
+				})
+			).payload,
+		);
+		// Nothing queued: no lease.
+		expect(first).toEqual({ leased: false });
+		// Enqueue happens backend-side (prepareIntegrationAttempt, covered
+		// in integrationDispatch.test.js against a real origin).
+		const monitor = JSON.parse((await app.inject({ method: "GET", url: "/runners/monitor" })).payload);
+		expect(monitor.integration).toMatchObject({ enqueued: expect.any(Number) });
+		// Unknown execution heartbeats are stale, never propped up.
+		const stale = await app.inject({
+			method: "POST",
+			url: "/runners/integration/heartbeat",
+			headers: { "x-runner-credential": credB },
+			payload: { ...scope, executionId: "nope", epoch: 1 },
+		});
+		expect(stale.statusCode).toBe(409);
+		expect(JSON.parse(stale.payload).code).toBe("STALE_EPOCH");
+	});
+
 	it("steer on an unheld task takes the embedded path, never the queue", async () => {
 		const { project, taskId } = await mockProject("Steer Idle");
 		const res = await app.inject({

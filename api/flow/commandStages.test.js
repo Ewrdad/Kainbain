@@ -731,8 +731,13 @@ describe("executeMergeStage publishing", () => {
 
 		expect(store.handleStageFailure).toHaveBeenCalledTimes(1);
 		const failure = store.handleStageFailure.mock.calls[0][3];
+		const failureOpts = store.handleStageFailure.mock.calls[0][4];
 		expect(String(failure?.message || failure)).toContain("kb/task-1");
 		expect(String(failure?.message || failure)).toContain("diverged");
+		// Sync-blocked parks on the merge stage (no rewind to work stages:
+		// no local actor can reconcile a diverged Runner ref).
+		expect(failureOpts?.skipFailback).toBe(true);
+		expect(failure?.gitDiagnostics?.kind).toBe("sync-blocked");
 		expect(gitMocks.mergeBranch).not.toHaveBeenCalled();
 	});
 
@@ -758,6 +763,8 @@ describe("executeMergeStage publishing", () => {
 		});
 
 		expect(store.handleStageFailure).toHaveBeenCalledTimes(1);
+		const syncFailureOpts = store.handleStageFailure.mock.calls[0][4];
+		expect(syncFailureOpts?.skipFailback).toBe(true);
 		expect(gitMocks.mergeBranch).not.toHaveBeenCalled();
 	});
 
