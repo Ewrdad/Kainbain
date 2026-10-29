@@ -108,6 +108,8 @@ export function formatImageRefs(imageRefs, { maxRefs } = {}) {
  * @description Replaces runtime template keywords in stage or task prompts with live context:
  *   - {{project}}: Name of the project.
  *   - {{projectRoot}}: Absolute path to the project root (working directory).
+ *   - {{projectCwd}}: Legacy alias of {{projectRoot}} (kept for skills
+ *     authored against the pre-runner keyword set).
  *   - {{projectRepo}} / {{taskRepo}}: Git repository URL or path.
  *   - {{taskGoal}}: Goal or title of the task.
  *   - {{taskDocs}}: Path to <projectRoot>/docs/tasks/<taskId>/.
@@ -134,7 +136,7 @@ export function formatImageRefs(imageRefs, { maxRefs } = {}) {
  * @example buildInterpolationContext({ task: { id: 't1' }, projectCwd: '/repo' }).task.id => 't1'
  * @param {Object} [args]
  * @param {Object} [args.task] - Task entity (goal, reports, project fallbacks).
- * @param {Object} [args.stage] - Current stage entity (name for {{stageName}}, skills for custom keywords).
+ * @param {Object} [args.stage] - Current stage entity (name for {{stageName}}, id for {{stageId}}, skills for custom keywords).
  * @param {Object} [args.project] - Project record (overrides task.project).
  * @param {string} [args.projectName] - Project name override.
  * @param {string} [args.projectRepo] - Project repo URL override.
@@ -339,6 +341,10 @@ export function interpolatePromptKeywords(template, context = {}) {
 			return projectCwd || "./";
 		}
 
+		if (key === "projectCwd") {
+			return projectCwd || "./";
+		}
+
 		if (key === "previousReports") {
 			const paths = allReports
 				.map((r) =>
@@ -361,6 +367,14 @@ export function interpolatePromptKeywords(template, context = {}) {
 				(typeof resolvedContext.stage === "string" ? resolvedContext.stage : "") ||
 				""
 			);
+		}
+
+		if (key === "stageId") {
+			const stage = resolvedContext.stage;
+			if (stage && typeof stage === "object" && stage.id != null) {
+				return String(stage.id);
+			}
+			return "";
 		}
 
 		if (key === "latestReportPath") {

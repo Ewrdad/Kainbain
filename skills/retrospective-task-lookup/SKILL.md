@@ -1,7 +1,7 @@
 ---
 name: retrospective-task-lookup
 description: How to look up KainBain task details and analyse past tasks during a retrospective chat turn — how to read the injected task-context block, when and how to fetch deeper detail (report bodies, task files, API), and the citation contract for grounded answers. Use when answering questions about tasks, failures, durations, or trends.
-lastUpdated: 2026-09-29
+lastUpdated: 2026-10-29
 ---
 
 # Retrospective Task Lookup
@@ -54,11 +54,11 @@ tasks — say which tasks your answer covers.
 
 1. **Context block first.** Most questions (status, failure reason, stage
    history, duration outliers) are answerable without leaving it.
-2. **Task files** under `{{projectCwd}}/docs/tasks/<taskId>/`: `task.md` holds
-   the canonical record (`# Goal`, `# History`, process-log tail); each
-   `<stage>-<timestamp>.md` report holds one stage run (summary, output,
-   modified files, verification). Read the FAILED report plus the log tail to
-   reconstruct a failure.
+2. **Task files** under `{{projectCwd}}/docs/tasks/<taskId>/`: `task.md`
+   holds the record (`# Goal`, `# History`, `# Log Entries` — the stored log,
+   no rendered tail); each `<stage-slug>-<timestamp>.md` is one stage run.
+   Read the FAILED report plus the entries tail; Runner tasks ran in a
+   Runner-host worktree.
 3. **API** when files are stale or you need live state:
    `GET {{kbApiBase}}/tasks/<id>` (full task incl. history/reports),
    `GET {{kbApiBase}}/status/observability` (engine + recent failed lists).

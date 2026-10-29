@@ -1,7 +1,7 @@
 ---
 name: stage-report
 description: Opt an agent stage into writing a summary report to the task's documentation folder. Attach this skill (or set stage.report: true) when a stage's prose summary alone is not enough and you want a durable, structured report file (duration, model, modified files, verification status) in docs/tasks/<taskId>/.
-lastUpdated: 2026-10-11
+lastUpdated: 2026-10-29
 ---
 
 # Stage Report (opt-in)
@@ -34,6 +34,6 @@ Keep the report concise but complete:
 - **Failure reports** are always written by the engine on stage failure
   (`<stage-slug>-failure-<timestamp>.md`, status FAILED) — they are separate
   from this opt-in success report and need no skill.
-- **CI / script / deploy / merge** stages write their own command reports
-  regardless of this skill.
+- **CI** (including legacy `script` / `deploy` commands) and **merge**
+  stages write their own command reports regardless of this skill.
 - **Human checkpoint** approvals are recorded by the engine regardless.

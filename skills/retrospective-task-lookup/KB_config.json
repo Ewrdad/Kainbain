@@ -7,7 +7,7 @@
       "description": "KainBain API base URL for task/observability lookups."
     },
     "projectCwd": {
-      "value": "{{projectCwd}}",
+      "value": "{{projectRoot}}",
       "description": "Project root on disk; task folders live under docs/tasks/<id>/ below it. Resolved per chat turn."
     }
   },

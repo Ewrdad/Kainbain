@@ -7,12 +7,12 @@
       "description": "KainBain API base URL for live task/status lookups (default; override with KAINBAIN_API_BASE where different)."
     },
     "projectCwd": {
-      "value": "{{projectCwd}}",
+      "value": "{{projectRoot}}",
       "description": "Project root on disk; task folders live under docs/tasks/<id>/ below it. Resolved per stage run from the project's cwd."
     },
     "deployDir": {
-      "value": "{{deployDir}}",
-      "description": "Deployed build directory (api + frontend/dist + build.json). Optional — leave blank when the deployment layout differs. Resolved per stage run when available."
+      "value": "~/apps/kainbain",
+      "description": "Deployed build directory holding the live build (api + frontend/dist + build.json). Default matches deploy.sh ($KAINBAIN_PROD_DIR or ~/apps/kainbain); override per stage for Docker/container layouts where the build lives inside the image, or leave as-is when this run has no deployed copy to inspect."
     }
   },
   "defaults": {

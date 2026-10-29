@@ -233,3 +233,43 @@ describe("shared stage keyword catalogue consistency", () => {
 		}
 	});
 });
+
+describe("legacy skill keywords", () => {
+	it("resolves {{projectCwd}} to the project working directory", () => {
+		const context = buildInterpolationContext({
+			task: { id: "t1" },
+			stage: { id: "s1", name: "Plan" },
+			projectCwd: "/repo",
+		});
+		expect(interpolatePromptKeywords("root: {{projectCwd}}", context)).toBe(
+			"root: /repo",
+		);
+		// Matches the {{projectRoot}} alias for the same context.
+		expect(interpolatePromptKeywords("{{projectCwd}}", context)).toBe(
+			interpolatePromptKeywords("{{projectRoot}}", context),
+		);
+	});
+
+	it("resolves {{stageId}} to the current stage id", () => {
+		const context = buildInterpolationContext({
+			task: { id: "t1" },
+			stage: { id: "ask-1", name: "Ask" },
+			projectCwd: "/repo",
+		});
+		expect(interpolatePromptKeywords("stage: {{stageId}}", context)).toBe(
+			"stage: ask-1",
+		);
+	});
+
+	it("lets stage-skill custom keywords win over the restored built-ins", () => {
+		const context = buildInterpolationContext({
+			task: { id: "t1" },
+			stage: { id: "s1", name: "Plan" },
+			projectCwd: "/repo",
+			customKeywords: { projectCwd: "/override", stageId: "custom" },
+		});
+		expect(interpolatePromptKeywords("{{projectCwd}} / {{stageId}}", context)).toBe(
+			"/override / custom",
+		);
+	});
+});

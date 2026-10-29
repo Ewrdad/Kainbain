@@ -1,7 +1,7 @@
 ---
 name: question-me
 description: Generate a set of survey questions up‑front for an agent stage, write them to `{{outputFile}}` in the task folder, and flag the stage as awaiting human input. The skill is used to replace iterative “grill‑me” interactions with a single questionnaire.
-lastUpdated: 2026-10-18
+lastUpdated: 2026-10-29
 ---
 
 # Question‑Me (Survey Generator)
@@ -25,7 +25,7 @@ The file contains a **machine‑parseable JSON block** wrapped in a fenced code 
 ```survey-json
 {
   "round": 1,
-  "generatedAt": "{{ISO_TIMESTAMP}}",
+  "generatedAt": "2026-10-29T13:00:00.000Z",
   "stage": "{{stageId}}",
   "questions": [
     {
@@ -51,7 +51,7 @@ The file contains a **machine‑parseable JSON block** wrapped in a fenced code 
 }
 ```
 
-*The UI renders each question as a set of radio‑buttons or check‑boxes with a **Notes** textarea underneath.*
+*The UI renders each question as a set of radio‑buttons or check‑boxes with a **Notes** textarea underneath. Fill `generatedAt` with the current UTC time in ISO‑8601 (as above) and `stage` with the stage id already resolved into this prompt (`{{stageId}}`) — never leave a placeholder token in the written file; the backend validates the round and rejects unreadable ones.*
 
 When the user finishes the survey, the UI updates the `answers` object in‑place (preserving the surrounding JSON) and saves the file.
 

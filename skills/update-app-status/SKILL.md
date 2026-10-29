@@ -1,7 +1,7 @@
 ---
 name: update-app-status
 description: Point the project's "Go to App" quick-link at its running dev server via PATCH /projects/:id/app-status, with LAN network-host override and optional health endpoint. Use when starting, moving, or stopping the project's app.
-lastUpdated: 2026-10-04
+lastUpdated: 2026-10-29
 ---
 
 # Update App Status
@@ -19,8 +19,11 @@ the app this run started. One PATCH call — no filesystem work.
 ## 1. Find the app port
 
 Check what this run actually started (dev server log, `package.json` scripts,
-framework default). Prefer the process you started over a guessed port. If no
-app is running, skip to step 4 and clear the link instead.
+framework default). Prefer the process you started over a guessed port. When
+`{{defaultPort}}` is set for this run it names the project's fixed dev-server
+port — use it instead of guessing; when blank, detect the port from the
+running process. If no app is running, skip to step 4 and clear the link
+instead.
 
 ## 2. Resolve the project id
 

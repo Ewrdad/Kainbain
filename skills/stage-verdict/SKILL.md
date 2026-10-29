@@ -1,7 +1,7 @@
 ---
 name: stage-verdict
-description: How an agent stage reports PASS or FAIL so KainBain routes correctly. Use on any AGENT stage (especially reviews on wrapped harnesses like muse/antigravity/custom that have no Fail_stage_skill tool). Human, CI, deploy, and merge stages never render or require a verdict. The engine fails the stage only on a FAIL block WITH reason and fix guidance — reasonless failures pass open and a human reviews them.
-lastUpdated: 2026-10-11
+description: How an agent stage reports PASS or FAIL so KainBain routes correctly. Use on any AGENT stage (especially reviews on wrapped harnesses like muse/antigravity/custom that have no Fail_stage_skill tool). Human, CI (including legacy script/deploy), and merge stages never render or require a verdict. The engine fails the stage only on a FAIL block WITH reason and fix guidance — reasonless failures pass open and a human reviews them.
+lastUpdated: 2026-10-29
 ---
 
 # Stage Verdict (KainBain)
@@ -22,13 +22,16 @@ KAINBAIN_FIX: <how the next attempt should fix it — what to change, run, or ch
 Rules:
 
 - **Agent stages only.** A verdict is optional guidance for AGENT stages.
-  Human checkpoints (including legacy `review`), CI/`script`, deploy, and
-  merge stages never render, require, or are failed by a verdict — the engine
-  ignores any verdict block in their output. Never instruct a human or CI
-  stage to produce one.
+  Human checkpoints (including legacy `review`), CI stages (including legacy
+  `script` and the removed `deploy` type), and merge stages never render,
+  require, or are failed by a verdict — the engine ignores any verdict block
+  in their output. Never instruct a human or CI stage to produce one.
 - Before the verdict block, write a short summary (2–5 sentences) of what you
   did and which files you changed.
-- If a stage fails, your summary should be written to a failure report in the task folder (e.g., `failure-stage-name.md`) to preserve the reasoning for the next attempt.
+- If a stage fails, put the reasoning in the FAIL block's reason and fix
+  lines — the engine preserves your final message in the failure report
+  (`<stage-slug>-failure-<timestamp>.md`) for the next attempt. Do not
+  hand-write a separate failure file; the engine is the single writer.
 - If this session offers a `Fail_stage_skill` (or `fail_stage`) tool, calling
   it is the primary fail path — still end with the FAIL block too.
 - On wrapped harnesses (muse, antigravity, custom command, opencode) there is
