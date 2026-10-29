@@ -1,6 +1,6 @@
 {
   "isDefault": true,
-  "description": "How to analyse live and past KainBain tasks — where task folders live, where logs live (service journal, deploy log, session transcripts, per-task process logs), and how to inspect a task's state, history, reports, and failure reasons via the filesystem and the live API/WebSocket. Use when asked to investigate a task, debug a failed stage, trace a deploy, or audit what an agent did.",
+  "description": "How to analyse live and past KainBain tasks — where task folders live, where logs live (service logs, deploy log, session transcripts, per-task log entries), and how to inspect a task's state, history, reports, and failure reasons via the filesystem and the live API/WebSocket. Use when asked to investigate a task, debug a failed stage, trace a deploy, or audit what an agent did.",
   "keywords": {
     "kbApiBase": {
       "value": "http://localhost:3100",
