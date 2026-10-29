@@ -81,6 +81,24 @@ describe("deploy.sh test gates (static contract)", () => {
 			"a stray KAINBAIN_SKIP_CANARY value must warn and still run the gate, never silently skip it",
 		);
 	});
+
+	it("refuses to build from a non-default checkout (deploy-tree gate first)", () => {
+		const body = readDeploySh();
+		assert.match(
+			body,
+			/run_gate "deploy-tree" "require_default_branch_tree" require_default_branch_tree/,
+			"deploy.sh must gate on require_default_branch_tree before any other gate (build-581 shipped a stranded task branch)",
+		);
+		assert.ok(
+			body.indexOf('run_gate "deploy-tree"') < body.indexOf('run_gate "final-test-suite"'),
+			"deploy-tree must run before final-test-suite",
+		);
+		assert.match(
+			body,
+			/if \[ "\$\{KAINBAIN_ALLOW_BRANCH_DEPLOY:-\}" = "1" \]/,
+			"branch-deploy opt-out must require exactly '1'",
+		);
+	});
 });
 
 describe("deploy / npm test parity (executable contract)", () => {

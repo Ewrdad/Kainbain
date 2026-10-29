@@ -109,6 +109,16 @@ If a merge conflict occurs:
 - The same payload travels machine-readable as `lastError.gitDiagnostics` (`{ kind: "merge-conflict", taskBranch, mainBranch, sourceSha, targetSha, baseSha, strategy, conflictedFiles }`) so failback agents can resolve each listed file and retry the merge stage autonomously.
 - Standard failback options (Previous, Start, Abort, or specific stage) are provided to the operator.
 
+**Snapshot-only conflicts self-heal.** When every conflicted path is an
+engine-regenerated snapshot — `docs/tasks/<id>/task.md` (live state,
+rewritten from store after every stage event) or files under
+`docs/tasks/<id>/assets/` (review attachments) — the stage resolves them
+with the incoming task-branch version and finalizes the merge with an audit
+commit instead of failing. Both sides append to these files on every merge
+attempt, so they conflict structurally rather than from any real
+disagreement. Any conflict touching real code, configs, or task-deliverable
+docs keeps the loud failure path above unchanged.
+
 ### Once the merge has landed
 
 The merge stage has two failure domains. Failures *before* the git merge lands
@@ -140,9 +150,37 @@ Post-merge commands (like production deployments) can be long-running. The defau
 ## Safety Invariants
 
 - **No Shell Strings:** All git operations use `spawn` with argument arrays to prevent injection.
-- **Dirty Tree Guard:** Branches are never switched if the working tree is dirty.
+- **Dirty Tree Guard:** Branches are never switched with real uncommitted work pending — but the guard deliberately ignores the engine's own snapshot paths (`docs/tasks/`, state dir), and git's checkout safety does not. Every switch therefore commits those snapshots first (commit-then-switch, onto the current branch, affinity-guarded), so our own just-written reports can never trip a checkout or merge. Anything else dirty still refuses loudly.
 - **No Half-Merges:** All conflicts trigger an immediate abort.
 - **No Self-Integration:** Agents are strictly forbidden from performing their own merges via prompt-level guards.
+
+## Convergence Rules (no repeated conflicts)
+
+Three ordering rules keep every writer on the latest so the same conflict
+cannot recur attempt after attempt:
+
+1. **File operations end committed and pushed.** Every stage finalize
+   commits its reports and work, then pushes the branch (warn-only) — on
+   both the pass path (`finalizeTaskBranch`) and the failure path
+   (`commitFailedStageWork`). The merge stage publishes `main` on both
+   sides of the merge attempt too, so a failed attempt never strands
+   unpushed commits the next entry sync would reset away unpublished.
+2. **Commit and push happen before the stage ends.** A stage's file writes
+   are committed first and pushed second, always before routing or the next
+   stage runs. Nothing crosses a stage boundary uncommitted; nothing
+   committed stays local-only. Push failures warn and never fail a stage
+   whose work already passed.
+3. **Always merge in the latest.** Task-branch pickup converges the branch
+   with its upstream tracking ref (merge when checked out, fast-forward
+   otherwise — never a hard reset, local stage work may be unpushed), and
+   merge entry fast-forwards the task ref the same way. The default-branch
+   sync likewise never resets an ahead ref: unpushed commits (a landed
+   merge whose push failed, bookkeeping) survive and the skip is loud, so
+   completed work can never be orphaned into a land-it, lose-it loop. A
+   host-side push job publishes ahead refs within about a minute. The final
+   branch-into-main merge therefore fast-forwards whenever the two sides
+   have converged, and only genuine code disagreements still conflict —
+   which fail back loudly with the diagnostics above, never silently.
 
 ## Serialization Gate (single-gate rule)
 
