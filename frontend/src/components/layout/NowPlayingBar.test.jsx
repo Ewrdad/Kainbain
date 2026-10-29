@@ -3,10 +3,18 @@
 import { expect, test, vi } from 'vitest';
 import { screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { renderWithKainBain } from '../../testUtils';
-import { NowPlayingBar } from './NowPlayingBar';
+import { NowPlayingBar, resolveRunnerBoxes, runnerBoxHealth } from './NowPlayingBar';
 import { KainBainContext } from '../../context/KainBainContext';
 import React from 'react';
 import '@testing-library/jest-dom';
+
+// The bar polls GET /runners/monitor for live assignments when the context
+// carries no `runnerAssignments` override. Pin that poll to empty here so
+// tests never depend on a real backend (a live fleet would otherwise flip
+// the legacy-display assertions to runner boxes mid-suite).
+vi.mock('../../services/api', () => ({
+  api: { getRunnerMonitor: vi.fn(async () => ({ liveAssignments: [] })) },
+}));
 
 /***
  * MARK: NowPlayingBar tests
@@ -661,6 +669,175 @@ test('project switch keeps the whole bar put: owner named, badge/timer/queue/tra
   ).toBe(queueBefore);
   expect(screen.getByLabelText('Skip Current')).not.toBeDisabled();
   expect(screen.getByTitle('Stop engine')).toBeInTheDocument();
+});
+
+/***
+ * MARK: runner boxes
+ * @description With under 5 runners the bar's left side shows one little box
+ * per runner (runner name, task name, stage, health colour dot) instead of
+ * the single-task card. Zero runners or 5+ keep the legacy display.
+ ***/
+test('runner boxes replace the left side for under 5 runners', () => {
+  const now = new Date().toISOString();
+  renderWithKainBain(<NowPlayingBar />, {
+    stages,
+    currentStageId: '1',
+    isAgentRunning: true,
+    engineState: { status: 'running', activeTaskId: 't1' },
+    tasks: [
+      { id: 't1', currentStageId: '1', status: 'running_agent', title: 'Build the widget', goal: 'Build the widget' },
+      { id: 't2', currentStageId: '2', status: 'running_agent', title: 'Review the widget', goal: 'Review the widget' },
+    ],
+    runnerAssignments: [
+      { runnerId: 'runner-a', taskId: 't1', stageId: '1', lastSeenAt: now },
+      { runnerId: 'runner-b', taskId: 't2', stageId: '2', lastSeenAt: now },
+    ],
+  });
+
+  const boxes = screen.getByTestId('now-playing-runner-boxes');
+  expect(boxes).toHaveAttribute('aria-label', '2 active runners');
+  // Each box names its runner, task, and stage.
+  expect(screen.getByTestId('now-playing-runner-box-runner-a')).toHaveTextContent('runner-a');
+  expect(screen.getByTestId('now-playing-runner-box-runner-a')).toHaveTextContent('Build the widget');
+  expect(screen.getByTestId('now-playing-runner-box-runner-a')).toHaveTextContent('Idea');
+  expect(screen.getByTestId('now-playing-runner-box-runner-b')).toHaveTextContent('runner-b');
+  expect(screen.getByTestId('now-playing-runner-box-runner-b')).toHaveTextContent('Review the widget');
+  expect(screen.getByTestId('now-playing-runner-box-runner-b')).toHaveTextContent('Review');
+  // The legacy single-task card is gone while boxes show.
+  expect(screen.queryByTestId('now-playing-task-name')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('now-playing-idle-hint')).not.toBeInTheDocument();
+  // The engine badge still reads honestly above the boxes.
+  expect(screen.getByText('RUNNING')).toBeInTheDocument();
+});
+
+test('runner boxes carry a health colour dot: live green, stale amber, unknown grey', () => {
+  const nowMs = Date.now();
+  renderWithKainBain(<NowPlayingBar />, {
+    stages,
+    currentStageId: '1',
+    tasks: [
+      { id: 't1', currentStageId: '1', status: 'running_agent', title: 'Task one' },
+      { id: 't2', currentStageId: '1', status: 'running_agent', title: 'Task two' },
+      { id: 't3', currentStageId: '1', status: 'running_agent', title: 'Task three' },
+    ],
+    runnerAssignments: [
+      { runnerId: 'live-r', taskId: 't1', stageId: '1', lastSeenAt: new Date(nowMs).toISOString() },
+      { runnerId: 'stale-r', taskId: 't2', stageId: '1', lastSeenAt: new Date(nowMs - 120000).toISOString() },
+      { runnerId: 'unknown-r', taskId: 't3', stageId: '1', lastSeenAt: null },
+    ],
+  });
+
+  const live = screen.getByTestId('now-playing-runner-health-live-r');
+  const stale = screen.getByTestId('now-playing-runner-health-stale-r');
+  const unknown = screen.getByTestId('now-playing-runner-health-unknown-r');
+  expect(live).toHaveAttribute('data-health', 'live');
+  expect(live.className).toContain('bg-[#7bdb85]');
+  expect(stale).toHaveAttribute('data-health', 'stale');
+  expect(stale.className).toContain('bg-warning');
+  expect(unknown).toHaveAttribute('data-health', 'unknown');
+  expect(unknown.className).toContain('bg-text-muted');
+  // The health also reads out in each box's accessible name.
+  expect(screen.getByTestId('now-playing-runner-box-live-r')).toHaveAttribute(
+    'aria-label',
+    expect.stringContaining('healthy'),
+  );
+  expect(screen.getByTestId('now-playing-runner-box-stale-r')).toHaveAttribute(
+    'aria-label',
+    expect.stringContaining('stale heartbeat'),
+  );
+
+  // Unit-level: the freshness rule itself.
+  expect(runnerBoxHealth(new Date(nowMs).toISOString(), nowMs)).toBe('live');
+  expect(runnerBoxHealth(new Date(nowMs - 120000).toISOString(), nowMs)).toBe('stale');
+  expect(runnerBoxHealth(null, nowMs)).toBe('unknown');
+  expect(runnerBoxHealth('not-a-date', nowMs)).toBe('unknown');
+});
+
+test('clicking a runner box opens that task in the inspector', () => {
+  const setSelectedTask = vi.fn();
+  const task = { id: 't1', currentStageId: '1', status: 'running_agent', title: 'Build the widget' };
+  renderWithKainBain(<NowPlayingBar />, {
+    stages,
+    currentStageId: '1',
+    tasks: [task],
+    runnerAssignments: [{ runnerId: 'runner-a', taskId: 't1', stageId: '1', lastSeenAt: new Date().toISOString() }],
+    setSelectedTask,
+  });
+
+  fireEvent.click(screen.getByTestId('now-playing-runner-box-runner-a'));
+  expect(setSelectedTask).toHaveBeenCalledWith(task);
+});
+
+test('runner box stage falls back to the task stage when the assignment carries none', () => {
+  renderWithKainBain(<NowPlayingBar />, {
+    stages,
+    currentStageId: '1',
+    tasks: [{ id: 't1', currentStageId: '2', status: 'running_agent', title: 'Build the widget' }],
+    runnerAssignments: [{ runnerId: 'runner-a', taskId: 't1', lastSeenAt: new Date().toISOString() }],
+  });
+
+  expect(screen.getByTestId('now-playing-runner-box-runner-a')).toHaveTextContent('Review');
+});
+
+test('runner boxes fall back to the legacy display for zero runners and for 5+', () => {
+  // Zero runners: fleet idle keeps the legacy idle hint.
+  const { rerender } = renderWithKainBain(<NowPlayingBar />, {
+    stages,
+    currentStageId: '1',
+    engineState: { status: 'idle' },
+    tasks: [{ id: 't1', currentStageId: '1', status: 'in_stage', title: 'Build the widget' }],
+    runnerAssignments: [],
+  });
+  expect(screen.queryByTestId('now-playing-runner-boxes')).not.toBeInTheDocument();
+  expect(screen.getByTestId('now-playing-idle-hint')).toBeInTheDocument();
+
+  // Five runners: no room in the 72px bar, so the single-task card stays.
+  const many = (n) =>
+    Array.from({ length: n }, (_, i) => ({
+      runnerId: `runner-${i}`,
+      taskId: `t${i}`,
+      stageId: '1',
+      lastSeenAt: new Date().toISOString(),
+    }));
+  const manyTasks = Array.from({ length: 5 }, (_, i) => ({
+    id: `t${i}`,
+    currentStageId: '1',
+    status: 'running_agent',
+    title: `Task ${i}`,
+  }));
+  rerender(
+    <NowPlayingBarContextOverlay
+      value={{
+        stages,
+        currentStageId: '1',
+        isAgentRunning: true,
+        engineState: { status: 'running', activeTaskId: 't0' },
+        tasks: manyTasks,
+        runnerAssignments: many(5),
+      }}
+    />,
+  );
+  expect(screen.queryByTestId('now-playing-runner-boxes')).not.toBeInTheDocument();
+  expect(screen.getByTestId('now-playing-task-name')).toBeInTheDocument();
+
+  // Unit-level: the under-5 threshold itself (deduped by runner id).
+  expect(resolveRunnerBoxes({ assignments: [], tasks: [], stages: [] })).toBeNull();
+  expect(
+    resolveRunnerBoxes({ assignments: many(5), tasks: manyTasks, stages }),
+  ).toBeNull();
+  expect(
+    resolveRunnerBoxes({ assignments: many(4), tasks: manyTasks, stages }),
+  ).toHaveLength(4);
+  expect(
+    resolveRunnerBoxes({
+      assignments: [
+        { runnerId: 'dup', taskId: 't0' },
+        { runnerId: 'dup', taskId: 't1' },
+      ],
+      tasks: manyTasks,
+      stages,
+    }),
+  ).toHaveLength(1);
 });
 
 // Helper to rerender NowPlayingBar with an overridden context.
