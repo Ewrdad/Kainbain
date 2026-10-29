@@ -76,6 +76,7 @@ const runnerBoxHealthLabel = (health) => {
  *   count stays honest about the whole fleet and a "+N more" chip names
  *   the overflow. The data layer never hides runners — only the render
  *   slices — so the count always matches the configured fleet.
+ * @example MAX_VISIBLE_RUNNER_BOXES => 4
  * ***/
 export const MAX_VISIBLE_RUNNER_BOXES = 4;
 
@@ -240,6 +241,11 @@ function useNowPlayingRunnerDirectory(assignmentsOverride, runnersOverride) {
   return { assignments, runners };
 }
 
+/***
+ * MARK: NowPlayingBar
+ * @description Fleet status bar: 72px runner boxes plus the currently-playing track.
+ * @example <NowPlayingBar />
+ ***/
 export function NowPlayingBar() {
   const {
     isAgentRunning,

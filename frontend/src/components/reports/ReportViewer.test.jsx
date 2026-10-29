@@ -207,7 +207,7 @@ describe('ReportViewer component', () => {
     });
   });
 
-  test('Notes link is configured with correct deep link URL', () => {
+  test('no external notes link is rendered (SilverBullet removed)', () => {
     vi.stubEnv('VITE_NOTES_VIEWER_URL', 'http://notes.example.com');
     render(
       <ReportViewer
@@ -217,26 +217,9 @@ describe('ReportViewer component', () => {
       />,
     );
 
-    const sbLink = screen.getByRole('link', { name: /Open in Notes/i });
-    expect(sbLink).toHaveAttribute('target', '_blank');
-    expect(sbLink).toHaveAttribute('rel', 'noreferrer');
-    expect(sbLink).toHaveAttribute(
-      'href',
-      'http://notes.example.com/Projects/Personal/KainBain/tasks/task-1/plan-20260824T100000.md',
-    );
-  });
-
-  test('Notes link degrades to the in-app explorer when no viewer is configured', () => {
-    vi.stubEnv('VITE_NOTES_VIEWER_URL', '');
-    render(
-      <ReportViewer
-        reports={mockReports}
-        activeProject={mockProject}
-        taskId="task-1"
-      />,
-    );
-
-    const sbLink = screen.getByRole('link', { name: /Open in Notes/i });
-    expect(sbLink).toHaveAttribute('href', '#/explorer');
+    expect(screen.queryByRole('link', { name: /Open in Notes/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('SilverBullet')).not.toBeInTheDocument();
+    // In-app actions stay: path copy keeps working.
+    expect(screen.getByRole('button', { name: /Copy report path/i })).toBeInTheDocument();
   });
 });

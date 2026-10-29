@@ -5,7 +5,6 @@ import { api } from '../../services/api';
 import { logger } from '../../services/logger';
 import { Icon } from '../Icon';
 import { BrandMark } from '../BrandMark';
-import { getSilverBulletUrl, isSilverBulletPath } from '../tasks/taskFormatters';
 import { getRepoHostFileUrl } from '../../services/repoHost';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { ResponsiveLabel } from '../common/ResponsiveLabel';
@@ -539,26 +538,6 @@ export function ProjectExplorer() {
                   data-testid="viewer-actions"
                   className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full min-w-0 sm:w-auto py-0.5"
                 >
-                  {/* Open in Notes — docs/ only (deep link 404s outside the notes space) */}
-                  {isSilverBulletPath(selectedFile?.path) && (
-                    <InfoTooltip
-                      title="Notes Space"
-                      description="Open and edit this markdown document in your connected notes workspace."
-                      position="bottom"
-                    >
-                      <a
-                        href={getSilverBulletUrl(activeProject?.name, selectedFile.path)}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label="Open in Notes"
-                        className="px-2.5 py-1 bg-surface-container-high hover:bg-surface-container-highest border border-border-standard rounded-sm text-[10px] font-mono text-primary hover:text-primary transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap"
-                      >
-                        <span aria-hidden="true">📝</span>
-                        <ResponsiveLabel full="Open in Notes" compact="Notes" />
-                      </a>
-                    </InfoTooltip>
-                  )}
-
                   {/* Open in Inspector for task files */}
                   {selectedFile?.path?.includes('docs/tasks/') && (
                     <InfoTooltip
