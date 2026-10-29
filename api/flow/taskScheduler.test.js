@@ -5,6 +5,7 @@ import path from "node:path";
 import { SessionStore } from "../sessionStore.js";
 import { registerHarness } from "../agent/harnessRegistry.js";
 import { DeployManager } from "../deployManager.js";
+import { MAX_RUNNER_INTERRUPTS } from "./executionLedger.js";
 
 let schedulerProbeUnique = 8000;
 const nextSchedulerProbeId = (prefix) => `${prefix}-${++schedulerProbeUnique}`;
@@ -531,6 +532,28 @@ describe("isAutoResumable", () => {
 		);
 		expect(isAutoResumable(interrupted, null)).toBe(false);
 		expect(isAutoResumable(null, { type: "agent" })).toBe(false);
+	});
+
+	it("parks an escalated runner-death streak instead of re-dispatching", () => {
+		const dying = task({
+			status: "interrupted",
+			runnerInterruptStage: "s-1",
+			runnerInterruptCount: MAX_RUNNER_INTERRUPTS,
+		});
+		expect(isAutoResumable(dying, { type: "ci" })).toBe(false);
+		expect(isAutoResumableWithReason(dying, { type: "ci" })).toMatchObject({
+			resumable: false,
+			reason: "runner-death-loop",
+		});
+	});
+
+	it("still resumes below the runner-death bound", () => {
+		const recovering = task({
+			status: "interrupted",
+			runnerInterruptStage: "s-1",
+			runnerInterruptCount: MAX_RUNNER_INTERRUPTS - 1,
+		});
+		expect(isAutoResumable(recovering, { type: "ci" })).toBe(true);
 	});
 });
 

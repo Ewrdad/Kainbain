@@ -3,6 +3,7 @@ import {
 } from '../../projectStore.js';
 import { hasContinuityHold } from './hasContinuityHold.js';
 import { hasRehydrationMarkers } from './hasRehydrationMarkers.js';
+import { MAX_RUNNER_INTERRUPTS } from '../executionLedger.js';
 
 /**
  * MARK: isAutoResumableWithReason
@@ -11,7 +12,9 @@ import { hasRehydrationMarkers } from './hasRehydrationMarkers.js';
  *   command happens to run the deploy script, which is an ordinary ci
  *   stage; merge stages qualify ONLY when a rehydration marker proves the
  *   attempt is resumable-or-reconcilable (see `hasRehydrationMarkers`) —
- *   otherwise the exclusion reason names the missing evidence. Every
+ *   otherwise the exclusion reason names the missing evidence. Tasks with
+ *   an escalated Runner-death streak (`runner-death-loop`) are parked for
+ *   the operator instead of re-dispatched. Every
  *   exclusion carries its reason so startup recovery can record WHY a task
  *   stayed parked instead of leaving a silent `interrupted`.
  * @param {Object} task
@@ -38,6 +41,20 @@ export function isAutoResumableWithReason(task, stage, { blocked = false, trippe
 	if (blocked) return { resumable: false, reason: "blocked" };
 	if (tripped) return { resumable: false, reason: "engine-tripped" };
 	if (hasContinuityHold(task)) return { resumable: false, reason: "continuity-hold" };
+	// Runner-death loop guard (G7 bound, enforced): the ledger counts
+	// consecutive Runner deaths per task+stage and escalates at
+	// MAX_RUNNER_INTERRUPTS — a death streak that long means re-dispatch
+	// is feeding the loop (e.g. a deploy stage that restarts its own
+	// Runner). Park for the operator instead of auto-resuming; a human
+	// resume is unaffected. The ledger resets the count on every stage
+	// change and clears it on completion, so a count at/over the bound
+	// always belongs to the stage being resumed.
+	if (
+		Number.isInteger(task.runnerInterruptCount) &&
+		task.runnerInterruptCount >= MAX_RUNNER_INTERRUPTS
+	) {
+		return { resumable: false, reason: "runner-death-loop" };
+	}
 	if (!stage) return { resumable: false, reason: "unknown-stage" };
 	if (stage?.paused === true) return { resumable: false, reason: "stage-paused" };
 	// Normalized: legacy `script` reads as `ci`, `review` as `human`.
