@@ -572,6 +572,19 @@ test('renders keyword token buttons and copies token to clipboard', () => {
   expect(writeText).toHaveBeenCalledWith('{{projectRoot}}');
 });
 
+test('report banner offers View Report with no SilverBullet button', () => {
+  renderWithKainBain(<TaskDetailOverlay task={task} onClose={() => {}} />, {
+    stages,
+  });
+
+  // The generated-report banner still routes in-app via View Report ...
+  expect(screen.getByText(/Generated Stage Report Available/i)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /View Report/i })).toBeInTheDocument();
+  // ... but the personal SilverBullet deep link is gone entirely.
+  expect(screen.queryByRole('link', { name: /SilverBullet/i })).not.toBeInTheDocument();
+  expect(screen.queryByText('SilverBullet')).not.toBeInTheDocument();
+});
+
 test('provides notes-viewer links and deduplicated reports in Reports tab (#1, #5, #43)', async () => {
   vi.stubEnv('VITE_NOTES_VIEWER_URL', 'http://notes.example.com');
   const duplicateReports = [

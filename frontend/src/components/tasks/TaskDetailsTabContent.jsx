@@ -9,7 +9,6 @@ import { TaskGoalSection } from './TaskGoalSection';
 import { BlockedByEditor } from './BlockedByEditor';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { approvalCopy } from '../stageTypes';
-import { getSilverBulletUrl } from './taskFormatters';
 import { FailureMessage } from './FailureMessage';
 
 export function TaskDetailsTab({
@@ -382,25 +381,6 @@ export function TaskDetailsTab({
             </div>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            <InfoTooltip
-              title="SilverBullet Notes Space"
-              description="Opens this markdown report in your local SilverBullet knowledge store."
-              position="top"
-            >
-              <a
-                href={getSilverBulletUrl(
-                  activeProject?.name,
-                  task.outputReport || uniqueReports[0]?.path,
-                )}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Open report in SilverBullet"
-                className="px-2.5 py-2 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest border border-border-standard rounded text-[10px] font-mono text-primary hover:text-primary transition-all cursor-pointer flex items-center gap-1"
-              >
-                <span className="shrink-0">📝</span>
-                <span className="hidden sm:inline">SilverBullet</span>
-              </a>
-            </InfoTooltip>
             <button
               type="button"
               onClick={() => setActiveTab('reports')}
