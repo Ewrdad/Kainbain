@@ -660,19 +660,19 @@ test('runner boxes replace the left side for under 5 runners', () => {
   expect(screen.queryByTestId('now-playing-task-name')).not.toBeInTheDocument();
   expect(screen.queryByTestId('now-playing-idle-hint')).not.toBeInTheDocument();
   // Fleet mode carries no engine-status pill: the header reads as just
-  // "Runners (n)" and per-runner boxes name each Runner's live state.
+  // "Runners n" and per-runner boxes name each Runner's live state.
   expect(screen.queryByText('RUNNING')).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Engine status is RUNNING')).not.toBeInTheDocument();
 });
 
 /***
  * MARK: fleet mode hides the engine-status pill
- * @description With runner boxes shown the header reads as just "Runners (n)":
+ * @description With runner boxes shown the header reads as just "Runners n":
  *   the global CHECKPOINT/WAITING_HUMAN pill is retired (per-runner boxes
  *   already name each Runner's live state). The pill stays in the legacy
  *   single-task display (see the dynamic-status-badges test above).
  ***/
-test('fleet mode shows no CHECKPOINT pill: header reads as just Runners (n)', () => {
+test('fleet mode shows no CHECKPOINT pill: header reads as just Runners n', () => {
   const now = new Date().toISOString();
   renderWithKainBain(<NowPlayingBar />, {
     stages,
@@ -686,7 +686,7 @@ test('fleet mode shows no CHECKPOINT pill: header reads as just Runners (n)', ()
     ],
   });
 
-  expect(screen.getByText('Runners (2)')).toBeInTheDocument();
+  expect(screen.getByText('Runners 2')).toBeInTheDocument();
   expect(screen.queryByText('CHECKPOINT')).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Engine status is CHECKPOINT')).not.toBeInTheDocument();
   expect(screen.queryByText('WAITING_HUMAN')).not.toBeInTheDocument();
@@ -797,7 +797,7 @@ test('runner boxes show idle runners; legacy display only with zero runners conf
   expect(screen.getByLabelText('Resume runner runner-b')).not.toBeDisabled();
   expect(screen.getByLabelText('Skip current task for runner runner-a')).toBeDisabled();
   // Fleet mode carries no engine-status pill, even when idle: the header
-  // reads as just "Runners (n)".
+  // reads as just "Runners n".
   expect(screen.queryByText('IDLE')).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Engine status is IDLE')).not.toBeInTheDocument();
 
