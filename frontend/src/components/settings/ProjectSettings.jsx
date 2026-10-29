@@ -37,10 +37,26 @@ export const PROJECT_SETTINGS_TABS = [
     sharesProjectForm: true,
   },
   {
+    id: 'aliases',
+    label: 'Aliases',
+    buttonIcon: '🏷️',
+    heading: 'Model Aliases',
+    headingIcon: '🏷️',
+    sharesProjectForm: true,
+  },
+  {
+    id: 'links',
+    label: 'App Links',
+    buttonIcon: '🔗',
+    heading: 'App Links',
+    headingIcon: '🔗',
+    sharesProjectForm: true,
+  },
+  {
     id: 'files',
-    label: 'Files & Links',
+    label: 'Files & Repos',
     buttonIcon: '📁',
-    heading: 'Files & Links',
+    heading: 'Files & Repositories',
     headingIcon: '📁',
     sharesProjectForm: true,
   },
@@ -123,6 +139,26 @@ export function ProjectSettings() {
   // Focus targets for arrow-key tab navigation (automatic activation: moving
   // focus also selects the tab, matching the APG tabs pattern).
   const tabButtonRefs = useRef([]);
+  /***
+   * MARK: handleSectionChange
+   * @description Tab switch guard: leaving the project-related tabs
+   *   (Project/Aliases/Files & Links) with unsaved edits asks for
+   *   confirmation first. Moving between project tabs never warns — the
+   *   shared form stays mounted and keeps the edits.
+   ***/
+  const handleSectionChange = (nextSection) => {
+    if (
+      formDirty &&
+      PROJECT_FORM_SECTIONS.includes(effectiveSection) &&
+      !PROJECT_FORM_SECTIONS.includes(nextSection) &&
+      typeof window !== 'undefined' &&
+      typeof window.confirm === 'function' &&
+      !window.confirm('You have unsaved changes. Switch tabs anyway?')
+    ) {
+      return;
+    }
+    setSettingsSection(nextSection);
+  };
   const focusTabAt = (index) => {
     const count = PROJECT_SETTINGS_TABS.length;
     const wrapped = ((index % count) + count) % count;
@@ -148,27 +184,6 @@ export function ProjectSettings() {
       event.preventDefault();
       focusTabAt(PROJECT_SETTINGS_TABS.length - 1);
     }
-  };
-
-  /***
-   * MARK: handleSectionChange
-   * @description Tab switch guard: leaving the project-related tabs
-   *   (Project/Aliases/Files & Links) with unsaved edits asks for
-   *   confirmation first. Moving between project tabs never warns — the
-   *   shared form stays mounted and keeps the edits.
-   ***/
-  const handleSectionChange = (nextSection) => {
-    if (
-      formDirty &&
-      PROJECT_FORM_SECTIONS.includes(effectiveSection) &&
-      !PROJECT_FORM_SECTIONS.includes(nextSection) &&
-      typeof window !== 'undefined' &&
-      typeof window.confirm === 'function' &&
-      !window.confirm('You have unsaved changes. Switch tabs anyway?')
-    ) {
-      return;
-    }
-    setSettingsSection(nextSection);
   };
 
   /***
@@ -268,25 +283,23 @@ export function ProjectSettings() {
               <span className="text-primary">{activeTab.headingIcon}</span> {activeTab.heading}
             </h2>
             {effectiveSection === 'project' && (
-              <>
-                <div className="space-y-4 max-w-2xl mb-8">
-                  <div className="flex flex-col gap-2">
-                    <label
-                      htmlFor="active-project-select"
-                      className="text-xs font-bold uppercase text-text-muted tracking-wider"
-                    >
-                      Active Project
-                    </label>
-                    <SelectDropdown
-                      id="active-project-select"
-                      ariaLabel="Active Project"
-                      value={activeProjectId || ''}
-                      onChange={selectProject}
-                      options={projects.map((p) => ({ value: p.id, label: p.name }))}
-                    />
-                  </div>
+              <div className="space-y-4 max-w-2xl mb-8">
+                <div className="flex flex-col gap-2">
+                  <label
+                    htmlFor="active-project-select"
+                    className="text-xs font-bold uppercase text-text-muted tracking-wider"
+                  >
+                    Active Project
+                  </label>
+                  <SelectDropdown
+                    id="active-project-select"
+                    ariaLabel="Active Project"
+                    value={activeProjectId || ''}
+                    onChange={selectProject}
+                    options={projects.map((p) => ({ value: p.id, label: p.name }))}
+                  />
                 </div>
-              </>
+              </div>
             )}
 
             {/* One mounted form across the project-related tabs: edits survive

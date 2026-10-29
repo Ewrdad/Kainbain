@@ -13,6 +13,7 @@ import { parseRetrySettings } from './projectSettingsValidation';
 import { ProjectBasicsSection } from './ProjectBasicsSection';
 import { RetryTimeoutsSection } from './RetryTimeoutsSection';
 import { PathsAndReposSection } from './PathsAndReposSection';
+import { LinksSection } from './LinksSection';
 
 /***
  * MARK: ProjectSettingsForm
@@ -43,8 +44,11 @@ export function ProjectSettingsForm({
   onDirtyChange,
 }) {
   // Fail-safe: an unknown section id renders the project tab instead of a
-  // blank page.
-  const activeFormSection = ['project', 'aliases', 'files'].includes(section)
+  // blank page. This list mirrors PROJECT_FORM_SECTIONS in ProjectSettings.jsx
+  // (kept local to avoid a render-cycle import between the tab bar and the
+  // form); the "tab config, section allowlists, and search index agree"
+  // test pins them together, so adding a form tab means updating both.
+  const activeFormSection = ['project', 'aliases', 'files', 'links'].includes(section)
     ? section
     : 'project';
   const {
@@ -132,7 +136,11 @@ export function ProjectSettingsForm({
   const dirtyRef = useRef(false);
   const markDirty = useCallback(() => {
     dirtyRef.current = true;
-  }, []);
+    // Report synchronously too: the debounced effect below re-reports on the
+    // next render, but waiting for it can leave the parent tab guard stale by
+    // one interaction when an edit is immediately followed by a tab click.
+    onDirtyChange?.(true);
+  }, [onDirtyChange]);
   // Wraps a draft setter so the edit also marks the form dirty.
   const touch = useCallback(
     (setter) => (value) => {
@@ -524,6 +532,7 @@ export function ProjectSettingsForm({
       setModelAliasesTouched(false);
       onProjectUpdated(projectId);
       dirtyRef.current = false;
+      onDirtyChange?.(false);
       setSaveState('saved');
       // Soft combination warnings ride the save response (the save
       // succeeded): surface them inline so the mismatch is visible where
@@ -640,6 +649,10 @@ export function ProjectSettingsForm({
         </div>
       )}
 
+      {activeFormSection === 'links' && (
+        <LinksSection project={project} projectId={projectId} onChanged={updateProjectInState} />
+      )}
+
       {activeFormSection === 'files' && (
         <PathsAndReposSection
           cwd={cwd}
@@ -661,9 +674,6 @@ export function ProjectSettingsForm({
           resetReviewBaseline={resetReviewBaseline}
           setResetReviewBaseline={touch(setResetReviewBaseline)}
           clearValidationError={() => setValidationError('')}
-          project={project}
-          projectId={projectId}
-          updateProjectInState={updateProjectInState}
         />
       )}
 
