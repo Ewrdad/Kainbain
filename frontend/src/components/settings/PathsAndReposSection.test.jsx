@@ -107,9 +107,9 @@ describe('PathsAndReposSection', () => {
     expect(clearValidationError).toHaveBeenCalledTimes(2);
   });
 
-  it('renders the Application Link & Health card', () => {
+  it('does not render the Application Link & Health card (moved to Addresses)', () => {
     renderWithKainBain(<PathsAndReposSection {...baseProps} />);
-    expect(screen.getByText('Application Link & Health')).toBeInTheDocument();
-    expect(screen.getByLabelText('App URL')).toBeInTheDocument();
+    expect(screen.queryByText('Application Link & Health')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('App URL')).not.toBeInTheDocument();
   });
 });

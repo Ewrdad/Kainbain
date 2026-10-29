@@ -41,7 +41,7 @@ describe('SettingsSearchInput', () => {
     fireEvent.keyDown(input, { key: 'ArrowDown' });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(onSelect).toHaveBeenCalledTimes(1);
-    expect(onSelect.mock.calls[0][0].tab).toBe('files');
+    expect(onSelect.mock.calls[0][0].tab).toBe('files-repos');
     // Choosing clears the query and closes the dropdown.
     expect(input).toHaveValue('');
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
@@ -67,7 +67,7 @@ describe('SettingsSearchInput', () => {
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(onSelect).toHaveBeenCalledTimes(1);
-    expect(onSelect.mock.calls[0][0]).toMatchObject({ id: 'git-repo', tab: 'files' });
+    expect(onSelect.mock.calls[0][0]).toMatchObject({ id: 'git-repo', tab: 'files-repos' });
   });
 
   it('clears aria-activedescendant when the dropdown closes', () => {

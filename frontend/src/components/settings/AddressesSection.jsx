@@ -16,9 +16,6 @@ export function AddressesSection({ project, projectId, onChanged }) {
     <div className="space-y-8">
       {/* Application Link & Health */}
       <div className="border-t border-border-standard pt-8">
-        <h3 className="text-sm font-bold uppercase tracking-wide text-text-high mb-4 flex items-center gap-2">
-          <span className="text-primary">🌐</span> Application Link & Health
-        </h3>
         <div className="space-y-4 max-w-2xl">
           <AppLinkSection project={project} projectId={projectId} onChanged={onChanged} />
         </div>

@@ -12,13 +12,155 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..");
-const requireFromApi = createRequire(path.join(REPO_ROOT, "api", "package.json"));
-const semver = requireFromApi("semver");
+// Self-contained semver implementation. The publish/deploy path runs this
+// script from a checkout that may not have api/node_modules installed (the
+// primary checkout is dependency-free), so resolving the `semver` package
+// would take down the whole compatibility gate. Keeping the logic here makes
+// the gate runnable in any checkout.
+const semver = (function buildSemver() {
+	function parseVersion(input) {
+		if (typeof input !== 'string') return null;
+		const m = input.trim().match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-.]+))?(?:\+([0-9A-Za-z-.]+))?$/);
+		if (!m) return null;
+		return {
+			major: Number(m[1]),
+			minor: Number(m[2]),
+			patch: Number(m[3]),
+			prerelease: m[4] ? m[4].split('.') : [],
+			build: m[5] ? m[5].split('.') : [],
+		};
+	}
+
+	function comparePrerelease(a, b) {
+		const len = Math.max(a.length, b.length);
+		for (let i = 0; i < len; i += 1) {
+			const x = a[i];
+			const y = b[i];
+			if (x === undefined) return y === undefined ? 0 : -1;
+			if (y === undefined) return 1;
+			const xn = /^\d+$/.test(x);
+			const yn = /^\d+$/.test(y);
+			if (xn !== yn) return xn ? -1 : 1;
+			if (xn) {
+				const nx = Number(x);
+				const ny = Number(y);
+				if (nx !== ny) return nx < ny ? -1 : 1;
+			} else if (x !== y) {
+				return x < y ? -1 : 1;
+			}
+		}
+		return 0;
+	}
+
+	function compare(a, b) {
+		if (a.major !== b.major) return a.major < b.major ? -1 : 1;
+		if (a.minor !== b.minor) return a.minor < b.minor ? -1 : 1;
+		if (a.patch !== b.patch) return a.patch < b.patch ? -1 : 1;
+		const ap = a.prerelease;
+		const bp = b.prerelease;
+		if (ap.length === 0 && bp.length > 0) return 1;
+		if (bp.length === 0 && ap.length > 0) return -1;
+		return comparePrerelease(ap, bp);
+	}
+
+	function valid(input) {
+		const v = parseVersion(input);
+		if (!v) return false;
+		let out = `${v.major}.${v.minor}.${v.patch}`;
+		if (v.prerelease.length > 0) out += `-${v.prerelease.join('.')}`;
+		return out;
+	}
+
+	function isWildcard(tok) {
+		return tok === '*' || tok.toLowerCase() === 'x';
+	}
+
+	function toVersion(tok) {
+		return parseVersion(tok.replace(/[xX*]/g, '0'));
+	}
+
+	function xSatisfies(spec, v) {
+		const s = spec.toLowerCase();
+		if (s === '*' || s === 'x') return true;
+		const parts = spec.split('.');
+		// Handle major-only / major.minor / major.minor.patch with x.
+		if (parts.length === 1 && !isWildcard(parts[0])) {
+			const maj = Number(parts[0]);
+			return !Number.isNaN(maj) && v.major === maj;
+		}
+		if (parts.length >= 2 && isWildcard(parts[1])) {
+			const maj = Number(parts[0]);
+			return !Number.isNaN(maj) && v.major === maj;
+		}
+		if (parts.length >= 3 && isWildcard(parts[2])) {
+			const maj = Number(parts[0]);
+			const min = Number(parts[1]);
+			return !Number.isNaN(maj) && !Number.isNaN(min) && v.major === maj && v.minor === min;
+		}
+		const rv = parseVersion(parts.join('.').replace(/[xX*]/g, '0'));
+		if (!rv) return false;
+		return compare(v, rv) === 0;
+	}
+
+	function satisfyPart(part, v) {
+		const p = part.trim();
+		if (!p) return true;
+		if (p === '*' || p.toLowerCase() === 'x') return true;
+		// Plain version or x-range without operator.
+		const ops = ['>=', '<=', '>', '<', '^', '~', '===', '==', '='];
+		let op = '';
+		let rest = p;
+		for (const candidate of ops) {
+			if (p.startsWith(candidate)) {
+				op = candidate;
+				rest = p.slice(candidate.length);
+				break;
+			}
+		}
+		// x-range like "1.2.x" without operator.
+		if (!op && /[xX*]/.test(rest)) return xSatisfies(rest, v);
+		const rv = toVersion(rest);
+		if (!rv) return false;
+		if (!op) return compare(v, rv) === 0;
+
+		if (op === '^') {
+			if (compare(v, rv) < 0) return false;
+			if (rv.major > 0) return v.major === rv.major;
+			if (rv.minor > 0) return v.major === 0 && v.minor === rv.minor;
+			return v.major === 0 && v.minor === 0 && v.patch === rv.patch;
+		}
+		if (op === '~') {
+			if (compare(v, rv) < 0) return false;
+			return v.major === rv.major && v.minor === rv.minor;
+		}
+		const c = compare(v, rv);
+		if (op === '>') return c > 0;
+		if (op === '>=') return c >= 0;
+		if (op === '<') return c < 0;
+		if (op === '<=') return c <= 0;
+		if (op === '=' || op === '==' || op === '===') return c === 0;
+		return false;
+	}
+
+	function satisfies(version, range) {
+		const v = parseVersion(version);
+		if (!v) return false;
+		if (typeof range !== 'string') return false;
+		const r = range.trim();
+		if (!r) return false;
+		return r.split('||').some((group) => {
+			const parts = group.trim().split(/\s+/).filter(Boolean);
+			if (parts.length === 0) return true;
+			return parts.every((part) => satisfyPart(part, v));
+		});
+	}
+
+	return { valid, satisfies };
+})();
 
 function readJson(file) {
 	try {
@@ -88,7 +230,7 @@ export function checkCompatibility(versions, { manifestMode = false } = {}) {
 			["backend-accepts-runner", "backend accepts runner", versions.backend.accepts?.runner, versions.runner.apiVersion, "runner"],
 		);
 	}
-	for (const [pair, label, range, providerVersion, providerName] of pairs) {
+	for (const [pair, _label, range, providerVersion, providerName] of pairs) {
 		if (typeof range !== "string" || !range) {
 			if (manifestMode) continue;
 			failures.push(`INCOMPATIBLE ${pair}: missing range`);
