@@ -19,7 +19,8 @@ describe("projectSettingsTabs", () => {
 		expect(PROJECT_SETTINGS_SECTIONS).toEqual([
 			"project",
 			"aliases",
-			"files",
+			"files-repos",
+			"addresses",
 			"workflows",
 			"skills",
 		]);
@@ -30,7 +31,7 @@ describe("projectSettingsTabs", () => {
 	});
 
 	it("shares the form across exactly the project-related tabs", () => {
-		expect(PROJECT_FORM_SECTIONS).toEqual(["project", "aliases", "files"]);
+		expect(PROJECT_FORM_SECTIONS).toEqual(["project", "aliases", "files-repos", "addresses"]);
 		expect(PROJECT_FORM_SECTIONS).toEqual(
 			PROJECT_SETTINGS_TABS.filter((tab) => tab.sharesProjectForm).map(
 				(tab) => tab.id,

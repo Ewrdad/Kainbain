@@ -25,14 +25,14 @@ import { PathsAndReposSection } from './PathsAndReposSection';
  * accent color theme, working directory, notes directory,
  * Git remote URL, and the per-project retry/timeout overrides.
  * The form stays mounted across the project-related tabs (project, aliases,
- * files) so edits survive tab switches — the `section` prop only selects
+ * files-repos, addresses) so edits survive tab switches — the `section` prop only selects
  * which blocks render. Dirty state is reported through `onDirtyChange` so
  * the tab bar can warn before leaving with unsaved edits.
  * @param {Object} props
  * @param {Object} props.project - The current project object.
  * @param {string} props.projectId - Active project identifier.
  * @param {Function} props.onProjectUpdated - Callback when project is updated.
- * @param {string} [props.section] - Visible tab ('project'|'aliases'|'files').
+ * @param {string} [props.section] - Visible tab ('project'|'aliases'|'files-repos'|'addresses').
  * @param {Function} [props.onDirtyChange] - Called with true/false as edits are made or saved.
  * @example <ProjectSettingsForm project={project} projectId="p1" onProjectUpdated={select} section="aliases" onDirtyChange={setDirty} />
  ***/

@@ -15,9 +15,9 @@ vi.mock('../../services/logger', () => ({
 
 /***
  * MARK: PathsAndReposSection tests
- * @description Verifies the extracted Files & Links section renders every
+ * @description Verifies the extracted Files & Repos section renders every
  *   path/repo/branch field prefilled, calls its setters on change, and
- *   renders the Application Link & Health card.
+ *   does not render the Application Link & Health card (moved to AddressesSection).
  ***/
 describe('PathsAndReposSection', () => {
   beforeEach(() => {

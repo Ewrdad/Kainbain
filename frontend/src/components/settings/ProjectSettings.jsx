@@ -5,6 +5,7 @@ import { SelectDropdown } from '../common/SelectDropdown';
 import { ProjectSettingsForm } from './ProjectSettingsForm';
 import { WorkflowManagementPanel } from './WorkflowManagementPanel';
 import { SettingsSearchInput } from './SettingsSearchInput';
+import { AddressesSection } from './AddressesSection';
 import {
   PROJECT_SETTINGS_TABS,
   PROJECT_SETTINGS_SECTIONS,
@@ -26,7 +27,7 @@ const HIGHLIGHT_HIDE_DELAY_MS = 2100;
  * MARK: ProjectSettings
  * @description A dedicated Project Management / Settings page for configuring
  * the active project across focused tabs — Project (basics + retry/timeouts),
- * Aliases (model aliases), Files & Links (paths, repos, app link) — plus
+ * Aliases (model aliases), Files & Repos (paths, repos), Addresses (app link) — plus
  * multiple named workflows, and skills.
  * App-wide UI & Workspace customization lives in System Settings
  * (SystemSettingsPage, `/system-settings`). Distinct from that platform-scoped
@@ -52,8 +53,7 @@ export function ProjectSettings() {
   // Fail-safe: `effectiveSection` is always a known tab, but the lookup still
   // falls back to the first tab so a heading always renders (never blank).
   const activeTab =
-    PROJECT_SETTINGS_TABS.find((tab) => tab.id === effectiveSection) ??
-    PROJECT_SETTINGS_TABS.at(0);
+    PROJECT_SETTINGS_TABS.find((tab) => tab.id === effectiveSection) ?? PROJECT_SETTINGS_TABS.at(0);
   // Unsaved-edits flag reported by the shared project form.
   const [formDirty, setFormDirty] = useState(false);
   // Focus targets for arrow-key tab navigation (automatic activation: moving
@@ -62,7 +62,7 @@ export function ProjectSettings() {
   /***
    * MARK: handleSectionChange
    * @description Tab switch guard: leaving the project-related tabs
-   *   (Project/Aliases/Files & Links) with unsaved edits asks for
+   *   (Project/Aliases/Files & Repos/Addresses) with unsaved edits asks for
    *   confirmation first. Moving between project tabs never warns — the
    *   shared form stays mounted and keeps the edits.
    ***/
@@ -294,6 +294,15 @@ export function ProjectSettings() {
 
         {effectiveSection === 'skills' && (
           <SkillsSection key={activeProjectId} activeProjectId={activeProjectId} />
+        )}
+
+        {effectiveSection === 'addresses' && (
+          <AddressesSection
+            key={activeProjectId}
+            project={activeProject}
+            projectId={activeProjectId}
+            onChanged={selectProject}
+          />
         )}
       </div>
     </section>

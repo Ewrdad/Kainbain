@@ -20,7 +20,7 @@ describe('SettingsSearchInput', () => {
     expect(screen.getByRole('listbox')).toBeInTheDocument();
     expect(screen.getByText('Git Repository URL')).toBeInTheDocument();
     // Results name their home tab.
-    expect(screen.getAllByText('Files & Links').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Files & Repos').length).toBeGreaterThan(0);
   });
 
   it('shows no dropdown for a blank query or no matches', () => {

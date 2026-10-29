@@ -109,91 +109,91 @@ const SETTINGS_SEARCH_INDEX_SOURCE_ENTRIES = [
   },
   {
     id: 'app-url',
-    tab: 'files',
+    tab: 'addresses',
     label: 'App URL',
     keywords: ['app', 'url', 'link', 'go to app', 'address', 'health'],
     elementId: 'project-applink-url-input',
   },
   {
     id: 'app-network-host',
-    tab: 'files',
+    tab: 'addresses',
     label: 'Network Host Override',
     keywords: ['network', 'host', 'lan', 'app', 'override'],
     elementId: 'project-applink-network-input',
   },
   {
     id: 'app-health-endpoint',
-    tab: 'files',
+    tab: 'addresses',
     label: 'Health Endpoint',
     keywords: ['health', 'endpoint', 'probe', 'app'],
     elementId: 'project-applink-health-input',
   },
   {
     id: 'app-status',
-    tab: 'files',
+    tab: 'addresses',
     label: 'App Status',
     keywords: ['status', 'running', 'stopped', 'degraded', 'app'],
     elementId: 'project-applink-status-select',
   },
   {
     id: 'working-dir',
-    tab: 'files',
+    tab: 'files-repos',
     label: 'Working Directory',
     keywords: ['working', 'directory', 'cwd', 'root', 'folder', 'path'],
     elementId: 'project-cwd-input',
   },
   {
     id: 'notes-dir',
-    tab: 'files',
+    tab: 'files-repos',
     label: 'Notes Space Symlink Directory',
     keywords: ['notes', 'symlink', 'knowledge', 'directory', 'space'],
     elementId: 'project-notes-input',
   },
   {
     id: 'docs-dir',
-    tab: 'files',
+    tab: 'files-repos',
     label: 'Documentation Folder Name',
     keywords: ['docs', 'documentation', 'folder', 'directory', 'name'],
     elementId: 'project-docs-dir-input',
   },
   {
     id: 'kainbain-dir',
-    tab: 'files',
+    tab: 'files-repos',
     label: 'KainBain Folder Name',
     keywords: ['kainbain', 'state', 'folder', 'directory', 'sessions', 'name'],
     elementId: 'project-kainbain-dir-input',
   },
   {
     id: 'centralized-docs',
-    tab: 'files',
+    tab: 'files-repos',
     label: 'Link to Centralised Documentation',
     keywords: ['centralised', 'centralized', 'docs', 'symlink', 'link'],
     elementId: 'project-centralized-docs-input',
   },
   {
     id: 'git-repo',
-    tab: 'files',
+    tab: 'files-repos',
     label: 'Git Repository URL',
     keywords: ['git', 'repo', 'repository', 'remote', 'url', 'origin'],
     elementId: 'project-git-input',
   },
   {
     id: 'task-branches',
-    tab: 'files',
+    tab: 'files-repos',
     label: 'Use Task Branches',
     keywords: ['branch', 'branches', 'task', 'merge', 'git'],
     elementId: 'project-use-branches-input',
   },
   {
     id: 'preserve-review-diff',
-    tab: 'files',
+    tab: 'files-repos',
     label: 'Preserve PR Review Diff After Merge',
     keywords: ['review', 'diff', 'preserve', 'merge', 'pr'],
     elementId: 'project-preserve-review-diff-input',
   },
   {
     id: 'reset-review-baseline',
-    tab: 'files',
+    tab: 'files-repos',
     label: 'Reset Review Baseline On Each Merge',
     keywords: ['review', 'baseline', 'reset', 'merge'],
     elementId: 'project-reset-review-baseline-input',
@@ -208,12 +208,11 @@ const SETTINGS_SEARCH_INDEX_SOURCE_ENTRIES = [
  *   An entry pointing at an unknown tab keeps a plain fallback name and is
  *   caught by the agreement test; at runtime the jump handler also ignores
  *   unknown tabs, so a bad entry can never switch to a blank page.
- * @example SETTINGS_SEARCH_INDEX.find((e) => e.id === 'git-repo').tabLabel => 'Files & Links'
+ * @example SETTINGS_SEARCH_INDEX.find((e) => e.id === 'git-repo').tabLabel => 'Files & Repos'
  ***/
 export const SETTINGS_SEARCH_INDEX = SETTINGS_SEARCH_INDEX_SOURCE_ENTRIES.map((entry) => ({
   ...entry,
-  tabLabel:
-    PROJECT_SETTINGS_TABS.find((tab) => tab.id === entry.tab)?.label ?? 'Project Settings',
+  tabLabel: PROJECT_SETTINGS_TABS.find((tab) => tab.id === entry.tab)?.label ?? 'Project Settings',
 }));
 
 /***

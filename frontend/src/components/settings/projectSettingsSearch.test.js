@@ -51,7 +51,7 @@ describe('searchSettings', () => {
 
   it('covers every project-related tab', () => {
     const tabs = new Set(SETTINGS_SEARCH_INDEX.map((entry) => entry.tab));
-    expect(tabs).toEqual(new Set(['project', 'aliases', 'files']));
+    expect(tabs).toEqual(new Set(['project', 'aliases', 'files-repos', 'addresses']));
   });
 
   it('names each entry with the current label of its home tab', () => {
