@@ -102,23 +102,21 @@ describe('GoToAppLink', () => {
       <GoToAppLink appStatus={{ url: 'http://localhost:3000' }} />,
     );
     expect(screen.getByRole('link', { name: /Open app/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Open menu with refresh option/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Check app health now/i })).not.toBeInTheDocument();
   });
 
-  it('visually merges the link and refresh into one unified button with dropdown', () => {
+  it('visually merges the link and refresh into one unified button with a refresh option', () => {
     const { container } = renderWithKainBain(
       <GoToAppLink projectId="p1" appStatus={{ url: 'http://localhost:3000' }} />,
     );
     const group = container.firstChild;
-    expect(group).toHaveClass('relative');
     expect(group.className).toMatch(/inline-flex/);
+    expect(group.className).toMatch(/overflow-hidden/);
     const link = screen.getByRole('link', { name: /Open app/i });
-    expect(link.className).toMatch(/border/);
     expect(link.className).toMatch(/rounded-l-sm/);
-    const menuButton = screen.getByRole('button', { name: /Open menu with refresh option/i });
-    expect(menuButton.className).toMatch(/border/);
-    expect(menuButton.className).toMatch(/border-l-0/);
-    expect(menuButton.className).toMatch(/rounded-r-sm/);
+    const refreshButton = screen.getByRole('button', { name: /Check app health now/i });
+    expect(refreshButton.className).toMatch(/border-l/);
+    expect(refreshButton.className).toMatch(/rounded-r-sm/);
   });
 
   it('probes on demand and reports the fresh link record', async () => {
@@ -128,8 +126,7 @@ describe('GoToAppLink', () => {
     renderWithKainBain(
       <GoToAppLink projectId="p1" appStatus={{ url: 'http://localhost:3000' }} onHealthChange={onHealthChange} />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /Open menu with refresh option/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Refresh Status/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Check app health now/i }));
     await waitFor(() => expect(api.checkAppHealth).toHaveBeenCalledWith('p1'));
     await waitFor(() => expect(onHealthChange).toHaveBeenCalledWith(fresh));
   });
@@ -140,8 +137,7 @@ describe('GoToAppLink', () => {
     renderWithKainBain(
       <GoToAppLink projectId="p1" appStatus={{ url: 'http://localhost:3000' }} onHealthChange={onHealthChange} />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /Open menu with refresh option/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Refresh Status/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Check app health now/i }));
     await waitFor(() => expect(api.checkAppHealth).toHaveBeenCalledWith('p1'));
     expect(onHealthChange).not.toHaveBeenCalled();
     expect(screen.getByRole('link', { name: /Open app/i })).toBeInTheDocument();
@@ -160,8 +156,7 @@ describe('GoToAppLink', () => {
     renderWithKainBain(
       <GoToAppLink projectId="p1" appStatus={{ url: 'http://localhost:3000' }} onHealthChange={onHealthChange} />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /Open menu with refresh option/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Refresh Status/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Check app health now/i }));
     await waitFor(() => expect(api.checkAppHealth).toHaveBeenCalledWith('p1'));
     expect(onHealthChange).not.toHaveBeenCalled();
     expect(screen.getByRole('link', { name: /Open app/i })).toBeInTheDocument();

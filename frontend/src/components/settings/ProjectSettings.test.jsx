@@ -293,9 +293,9 @@ test('saving persists the project name, paths, git repo, defaultModel, and accen
   fireEvent.change(screen.getByLabelText('Accent Theme Color Hex'), {
     target: { value: '#38bdf8' },
   });
-  // Path fields live on the Files Files & Links Repos tab; the mounted form keeps the
+  // Path fields live on the Files & Repos tab; the mounted form keeps the
   // Project-tab edits above across the switch.
-  fireEvent.click(screen.getByText('Files Files & Links Repos'));
+  fireEvent.click(screen.getByText('Files & Repos'));
   fireEvent.change(screen.getByLabelText('Working Directory (Root)'), {
     target: { value: '/home/server/projects/custom' },
   });
@@ -361,7 +361,7 @@ test('edits custom documentation folder name and centralized docs toggle, saving
     selectProject: vi.fn(),
     updateProjectInState,
   });
-  fireEvent.click(screen.getByText('Files Files & Links Repos'));
+  fireEvent.click(screen.getByText('Files & Repos'));
 
   const docsDirInput = screen.getByLabelText('Documentation Folder Name');
   fireEvent.change(docsDirInput, { target: { value: 'kainbain-docs' } });
@@ -389,7 +389,7 @@ test('invalid documentation folder name prevents save with validation alert', as
     activeProjectId: 'p1',
     selectProject: vi.fn(),
   });
-  fireEvent.click(screen.getByText('Files Files & Links Repos'));
+  fireEvent.click(screen.getByText('Files & Repos'));
 
   const docsDirInput = screen.getByLabelText('Documentation Folder Name');
   fireEvent.change(docsDirInput, { target: { value: 'invalid/path' } });
@@ -416,7 +416,7 @@ test('edits custom KainBain state folder name, saving it', async () => {
     selectProject: vi.fn(),
     updateProjectInState,
   });
-  fireEvent.click(screen.getByText('Files Files & Links Repos'));
+  fireEvent.click(screen.getByText('Files & Repos'));
 
   const kainbainDirInput = screen.getByLabelText('KainBain Folder Name');
   fireEvent.change(kainbainDirInput, { target: { value: '.kb' } });
@@ -440,7 +440,7 @@ test('invalid KainBain folder name prevents save with validation alert', async (
     activeProjectId: 'p1',
     selectProject: vi.fn(),
   });
-  fireEvent.click(screen.getByText('Files Files & Links Repos'));
+  fireEvent.click(screen.getByText('Files & Repos'));
 
   const kainbainDirInput = screen.getByLabelText('KainBain Folder Name');
   fireEvent.change(kainbainDirInput, { target: { value: 'invalid/slash' } });
@@ -464,7 +464,7 @@ test('rejects docs name `.kainbain` even with a custom state folder (UI/server p
     activeProjectId: 'p1',
     selectProject: vi.fn(),
   });
-  fireEvent.click(screen.getByText('Files Files & Links Repos'));
+  fireEvent.click(screen.getByText('Files & Repos'));
   fireEvent.change(screen.getByLabelText('Documentation Folder Name'), {
     target: { value: '.kainbain' },
   });
@@ -484,7 +484,7 @@ test('rejects state folder `docs` even with a custom docs folder (UI/server pari
     activeProjectId: 'p1',
     selectProject: vi.fn(),
   });
-  fireEvent.click(screen.getByText('Files Files & Links Repos'));
+  fireEvent.click(screen.getByText('Files & Repos'));
   fireEvent.change(screen.getByLabelText('KainBain Folder Name'), {
     target: { value: 'docs' },
   });
@@ -668,7 +668,7 @@ test('each project-related tab renders an h2 tab title above its h3 sections', (
   const tabTitles = [
     ['Project Settings', /Project Configuration/],
     ['Aliases', /Model Aliases/],
-    ['Files Files & Links Repos', /Files Files & Links Repos/],
+    ['Files & Repos', /Files & Repos/],
   ];
   for (const [tab, title] of tabTitles) {
     fireEvent.click(screen.getByText(tab));
@@ -689,14 +689,14 @@ test('form state persists across project-tab switches', () => {
   });
   fireEvent.click(screen.getByText('Aliases'));
   expect(screen.getByTestId('model-aliases-section')).toBeInTheDocument();
-  fireEvent.click(screen.getByText('Files Files & Links Repos'));
+  fireEvent.click(screen.getByText('Files & Repos'));
   expect(screen.getByLabelText('Working Directory (Root)')).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Git Repository URL'), {
     target: { value: 'https://git.example.com/team/Draft.git' },
   });
   fireEvent.click(screen.getByText('Project Settings'));
   expect(screen.getByLabelText('Project Name')).toHaveValue('Draft Name');
-  fireEvent.click(screen.getByText('Files Files & Links Repos'));
+  fireEvent.click(screen.getByText('Files & Repos'));
   expect(screen.getByLabelText('Git Repository URL')).toHaveValue(
     'https://git.example.com/team/Draft.git',
   );
@@ -709,7 +709,7 @@ test('settings search jumps to the matching tab and highlights the setting', asy
     selectProject: vi.fn(),
   });
 
-  // The git setting lives on Files Files & Links Repos — searching jumps there.
+  // The git setting lives on Files & Repos — searching jumps there.
   expect(screen.queryByLabelText('Git Repository URL')).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Search settings'), {
     target: { value: 'git' },
@@ -773,8 +773,8 @@ test('tab bar exposes tablist semantics and arrow-key navigation', () => {
 
   expect(screen.getByRole('tablist', { name: 'Project settings sections' })).toBeInTheDocument();
   // Five tabs in order; icons are aria-hidden so names are the labels.
-  expect(screen.getAllByRole('tab')).toHaveLength(5);
-  for (const name of ['Project Settings', 'Aliases', 'Files Files & Links Repos', 'Named Workflows', 'Skills']) {
+  expect(screen.getAllByRole('tab')).toHaveLength(6);
+  for (const name of ['Project Settings', 'Aliases', 'Files & Repos', 'Addresses', 'Named Workflows', 'Skills']) {
     expect(screen.getByRole('tab', { name })).toBeInTheDocument();
   }
   // Exactly one tab is selected, and the panel names it.
@@ -820,7 +820,7 @@ test('every search index entry resolves to an element on its tab', async () => {
   for (const entry of entriesFor('aliases')) {
     expect(document.getElementById(entry.elementId)).not.toBeNull();
   }
-  fireEvent.click(screen.getByText('Files Files & Links Repos'));
+  fireEvent.click(screen.getByText('Files & Repos'));
   for (const entry of entriesFor('files')) {
     expect(document.getElementById(entry.elementId)).not.toBeNull();
   }
@@ -910,7 +910,7 @@ test('switching between project tabs with unsaved edits never warns', () => {
       target: { value: 'Draft Name' },
     });
     fireEvent.click(screen.getByText('Aliases'));
-    fireEvent.click(screen.getByText('Files Files & Links Repos'));
+    fireEvent.click(screen.getByText('Files & Repos'));
     fireEvent.click(screen.getByText('Project Settings'));
     expect(confirm).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Project Name')).toHaveValue('Draft Name');
@@ -1177,9 +1177,9 @@ test('refuses to save a blank name or a projects-root working directory', () => 
   fireEvent.change(screen.getByLabelText('Project Name'), {
     target: { value: 'Project A' },
   });
-  // The working directory lives on the Files Files & Links Repos tab; the corrected
+  // The working directory lives on the Files & Repos tab; the corrected
   // name above survives the switch because the form stays mounted.
-  fireEvent.click(screen.getByText('Files Files & Links Repos'));
+  fireEvent.click(screen.getByText('Files & Repos'));
   fireEvent.change(screen.getByLabelText('Working Directory (Root)'), {
     target: { value: '/home/server/projects/' },
   });

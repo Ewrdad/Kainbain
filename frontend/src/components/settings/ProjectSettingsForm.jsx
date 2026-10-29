@@ -645,7 +645,7 @@ export function ProjectSettingsForm({
         </div>
       )}
 
-      {activeFormSection === 'files' && (
+      {activeFormSection === 'files-repos' && (
         <PathsAndReposSection
           project={project}
           projectId={projectId}
