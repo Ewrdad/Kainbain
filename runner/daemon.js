@@ -465,8 +465,42 @@ export function runCiCommand({ command, workdir, timeoutMs = 600000, onLog = () 
  *   mode or a model-less task), else the harness default.
  * @param {string} [opts.harnessId] - Serving harness id for the posture
  *   line; defaults to the primary `config.harnessId`.
+ * @param {Object} [opts.ciEnv] - Backend-curated extra environment for a
+ *   dispatched CI command (opaque string bag, e.g. continuity markers the
+ *   command needs to recognise a re-dispatch). Sanitized and merged under
+ *   the daemon-owned identity keys, which always win.
  * @returns {Promise<Object>} Execution summary.
  ***/
+
+/***
+ * MARK: sanitizeCiEnv
+ * @description Bounds an assignment-provided env bag to a flat map of
+ *   non-empty string keys to non-empty string values (at most 100 entries,
+ *   mirroring the backend lifecycle seam): the dispatch payload is
+ *   backend-curated, but the child environment must stay a string map.
+ *   Non-objects read as empty so a missing/foreign `env` degrades to
+ *   today's behaviour. Total on untrusted input.
+ * @example sanitizeCiEnv({ A: '1', B: 2 }) => { A: '1' }
+ * @param {unknown} value - Candidate env bag from the dispatch answer/claim.
+ * @returns {Object} Sanitized string map (possibly empty).
+ ***/
+export function sanitizeCiEnv(value) {
+	try {
+		if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+		const out = {};
+		let count = 0;
+		for (const [key, val] of Object.entries(value)) {
+			if (count >= 100) break;
+			if (typeof key !== "string" || !key) continue;
+			if (typeof val !== "string" || !val) continue;
+			out[key] = val;
+			count += 1;
+		}
+		return out;
+	} catch {
+		return {};
+	}
+}
 export function collectTaskFiles({ workdir, taskId } = {}) {
 	const dir = `${workdir}/docs/tasks/${taskId}`;
 	const files = [];
@@ -499,6 +533,7 @@ async function executeAssignment({
 	kind = "",
 	ciCommand = "",
 	ciTimeoutMs = 0,
+	ciEnv = null,
 	model = null,
 	harnessId = null,
 	runOnBranch = "",
@@ -519,6 +554,7 @@ async function executeAssignment({
 		if (!ciCommand && typeof claim.command === "string") ciCommand = claim.command;
 		if (!ciTimeoutMs && Number(claim.timeoutMs)) ciTimeoutMs = Number(claim.timeoutMs);
 		if (!runOnBranch && typeof claim.runOnBranch === "string") runOnBranch = claim.runOnBranch;
+		if (ciEnv === null || ciEnv === undefined) ciEnv = claim.env;
 		// Publish the live execution for the steer pull cycle (D5); the
 		// heartbeat loop only ever delivers steers for THIS execution.
 		state.executionId = executionId;
@@ -614,10 +650,13 @@ async function executeAssignment({
 				const ciWorkdir = ciWorkdirFor({ runOnBranch, workdir, projectCwd: project.cwd });
 				const command = applyBackendPrompt({ prompt: ciCommand, backendCwd: project.cwd, workdir: ciWorkdir });
 				logger.log(`CI stage command: ${command} (cwd ${ciWorkdir})`);
+				// Backend-curated assignment env (continuity markers et al.)
+				// flows to the child under the daemon-owned identity keys,
+				// which always win so an assignment can never spoof them.
 				const ci = await runCiCommand({
 					command, workdir: ciWorkdir,
 					timeoutMs: ciTimeoutMs || 600000,
-					env: { KAINBAIN_TASK_ID: taskId, KAINBAIN_TASK_DOCS: `${workdir}/docs/tasks/${taskId}` },
+					env: { ...sanitizeCiEnv(ciEnv), KAINBAIN_TASK_ID: taskId, KAINBAIN_TASK_DOCS: `${workdir}/docs/tasks/${taskId}` },
 					onLog: (text) => { sendLogs(text).catch(() => {}); },
 				});
 				state.session = null; stopRenewal();
@@ -884,6 +923,7 @@ export async function runDispatchLoop({
 				ciCommand: answer.command || "",
 				runOnBranch: answer.runOnBranch || "",
 				ciTimeoutMs: Number(answer.timeoutMs) || 0,
+				ciEnv: answer.env,
 				// The backend already matched this task against our
 				// advertised models: serve exactly its required model.
 				model: answer.requirements?.model || null,

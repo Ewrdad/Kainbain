@@ -527,6 +527,49 @@ describe("runDispatchLoop", () => {
 		assert.equal(seenMeta?.model, "m-want");
 	});
 
+	it("forwards the dispatch answer env to the CI command", async () => {
+		const repo = localRepo();
+		const config = loopConfig();
+		dirs.push(config.workRoot, repo);
+		let polls = 0;
+		let completed = null;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				polls += 1;
+				return polls === 1
+					? {
+							assigned: true,
+							projectId: "p1",
+							taskId: "t1",
+							executionId: "e1",
+							epoch: 1,
+							kind: "ci",
+							command: "echo \"probe=$CI_DISPATCH_PROBE\"",
+							env: { CI_DISPATCH_PROBE: "hello-env" },
+						}
+					: { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed = args;
+				return { accepted: true, shaState: "present" };
+			},
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.assignments, 1);
+		assert.match(String(completed?.output ?? ""), /probe=hello-env/);
+	});
+
 	it("serves the dispatch answer's required harness per assignment", async () => {
 		const repo = localRepo();
 		const config = loopConfig({ harnessId: "mock", harnessIds: ["mock", "pi"] });
