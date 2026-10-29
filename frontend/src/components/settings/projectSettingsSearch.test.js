@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SETTINGS_SEARCH_INDEX, searchSettings, findBestMatch } from './projectSettingsSearch';
+import { PROJECT_SETTINGS_TABS } from './projectSettingsTabs.js';
 
 /***
  * MARK: projectSettingsSearch tests
@@ -50,7 +51,17 @@ describe('searchSettings', () => {
 
   it('covers every project-related tab', () => {
     const tabs = new Set(SETTINGS_SEARCH_INDEX.map((entry) => entry.tab));
-    expect(tabs).toEqual(new Set(['project', 'aliases', 'files']));
+    expect(tabs).toEqual(new Set(['project', 'aliases', 'files-repos', 'addresses']));
+  });
+
+  it('names each entry with the current label of its home tab', () => {
+    // tabLabel is derived from the tab config, so a tab rename cannot leave
+    // a stale copied name in search results.
+    for (const entry of SETTINGS_SEARCH_INDEX) {
+      const homeTab = PROJECT_SETTINGS_TABS.find((tab) => tab.id === entry.tab);
+      expect(homeTab).toBeDefined();
+      expect(entry.tabLabel).toBe(homeTab.label);
+    }
   });
 
   it('uses unique ids and elementIds', () => {

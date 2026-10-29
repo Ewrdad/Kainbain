@@ -280,15 +280,6 @@ export function PathsAndReposSection({
           </div>
         </div>
       </div>
-
-      {/* Application Link & Health (saves independently of the main form) */}
-      <div className="border-t border-border-standard pt-8">
-        <AppLinkSection
-          project={project}
-          projectId={projectId}
-          onChanged={updateProjectInState}
-        />
-      </div>
     </div>
   );
 }

@@ -1,17 +1,17 @@
+import { PROJECT_SETTINGS_TABS } from './projectSettingsTabs.js';
+
 /***
- * MARK: SETTINGS_SEARCH_INDEX
- * @description Single source of truth mapping search terms to project
- *   settings locations. Each entry names the tab that renders the setting
- *   (`tab`), the human-readable tab name (`tabLabel`, stored per entry so
- *   consumers never index a map by a variable), and the DOM id to scroll to
- *   and highlight (`elementId`).
- * @example SETTINGS_SEARCH_INDEX.find((e) => e.id === 'git-repo') => { id: 'git-repo', tab: 'files', … }
+ * MARK: SETTINGS_SEARCH_INDEX entries (raw)
+ * @description Mapping of search terms to project settings locations. Each
+ *   entry names the tab that renders the setting (`tab`) and the DOM id to
+ *   scroll to and highlight (`elementId`). The human-readable tab name is
+ *   not copied here — it is filled in from the tab config below.
+ * @example SETTINGS_SEARCH_INDEX_SOURCE_ENTRIES.find((e) => e.id === 'git-repo') => { id: 'git-repo', tab: 'files', … }
  ***/
-export const SETTINGS_SEARCH_INDEX = [
+const SETTINGS_SEARCH_INDEX_SOURCE_ENTRIES = [
   {
     id: 'active-project',
     tab: 'project',
-    tabLabel: 'Project',
     label: 'Active Project',
     keywords: ['project', 'switch', 'select', 'active'],
     elementId: 'active-project-select',
@@ -19,7 +19,6 @@ export const SETTINGS_SEARCH_INDEX = [
   {
     id: 'project-name',
     tab: 'project',
-    tabLabel: 'Project',
     label: 'Project Name',
     keywords: ['project', 'name', 'rename', 'title'],
     elementId: 'project-name-input',
@@ -27,7 +26,6 @@ export const SETTINGS_SEARCH_INDEX = [
   {
     id: 'ai-harness',
     tab: 'project',
-    tabLabel: 'Project',
     label: 'AI Harness',
     keywords: ['harness', 'engine', 'agent', 'pi', 'antigravity', 'mock', 'custom'],
     elementId: 'project-harness-select',
@@ -35,7 +33,6 @@ export const SETTINGS_SEARCH_INDEX = [
   {
     id: 'default-model',
     tab: 'project',
-    tabLabel: 'Project',
     label: 'Default AI Model',
     keywords: ['model', 'default', 'ai', 'llm', 'picker'],
     elementId: 'project-default-model-select',
@@ -43,7 +40,6 @@ export const SETTINGS_SEARCH_INDEX = [
   {
     id: 'harness-command',
     tab: 'project',
-    tabLabel: 'Project',
     label: 'Custom Harness Command',
     keywords: ['custom', 'command', 'cli', 'harness'],
     elementId: 'project-harness-command-input',
@@ -51,7 +47,6 @@ export const SETTINGS_SEARCH_INDEX = [
   {
     id: 'accent-color',
     tab: 'project',
-    tabLabel: 'Project',
     label: 'Accent Theme Color',
     keywords: ['accent', 'color', 'colour', 'theme', 'brand'],
     elementId: 'project-accent-color-input',
@@ -59,7 +54,6 @@ export const SETTINGS_SEARCH_INDEX = [
   {
     id: 'visibility',
     tab: 'project',
-    tabLabel: 'Project',
     label: 'Hide Project from Active List',
     keywords: ['hide', 'archive', 'visible', 'show'],
     elementId: 'project-visibility-toggle',
@@ -67,7 +61,6 @@ export const SETTINGS_SEARCH_INDEX = [
   {
     id: 'max-auto-iterations',
     tab: 'project',
-    tabLabel: 'Project',
     label: 'Max auto-iterations',
     keywords: ['retry', 'retries', 'iterations', 'failback', 'loop', 'budget'],
     elementId: 'project-retry-max-auto-iterations',
@@ -75,7 +68,6 @@ export const SETTINGS_SEARCH_INDEX = [
   {
     id: 'max-transient-retries',
     tab: 'project',
-    tabLabel: 'Project',
     label: 'Max transient retries',
     keywords: ['retry', 'retries', 'transient', 'infrastructure', 'timeout', 'budget'],
     elementId: 'project-retry-max-transient-retries',
@@ -83,7 +75,6 @@ export const SETTINGS_SEARCH_INDEX = [
   {
     id: 'auto-iteration',
     tab: 'project',
-    tabLabel: 'Project',
     label: 'Automatic iteration',
     keywords: ['automatic', 'iteration', 'auto', 'retry', 'rerun'],
     elementId: 'project-retry-auto-iteration',
@@ -91,7 +82,6 @@ export const SETTINGS_SEARCH_INDEX = [
   {
     id: 'agent-timeout',
     tab: 'project',
-    tabLabel: 'Project',
     label: 'Agent stage timeout',
     keywords: ['timeout', 'agent', 'minutes', 'ceiling', 'retry'],
     elementId: 'project-retry-agent-timeout',
@@ -99,7 +89,6 @@ export const SETTINGS_SEARCH_INDEX = [
   {
     id: 'ci-timeout',
     tab: 'project',
-    tabLabel: 'Project',
     label: 'CI stage timeout',
     keywords: ['timeout', 'ci', 'deploy', 'minutes', 'ceiling'],
     elementId: 'project-retry-ci-timeout',
@@ -107,7 +96,6 @@ export const SETTINGS_SEARCH_INDEX = [
   {
     id: 'merge-timeout',
     tab: 'project',
-    tabLabel: 'Project',
     label: 'Merge stage timeout',
     keywords: ['timeout', 'merge', 'minutes', 'ceiling'],
     elementId: 'project-retry-merge-timeout',
@@ -115,116 +103,117 @@ export const SETTINGS_SEARCH_INDEX = [
   {
     id: 'model-aliases',
     tab: 'aliases',
-    tabLabel: 'Aliases',
     label: 'Model Aliases',
     keywords: ['alias', 'aliases', 'nickname', 'model', 'small', 'medium', 'large'],
     elementId: 'model-aliases-section',
   },
   {
     id: 'app-url',
-    tab: 'files',
-    tabLabel: 'Files & Links',
+    tab: 'addresses',
     label: 'App URL',
     keywords: ['app', 'url', 'link', 'go to app', 'address', 'health'],
     elementId: 'project-applink-url-input',
   },
   {
     id: 'app-network-host',
-    tab: 'files',
-    tabLabel: 'Files & Links',
+    tab: 'addresses',
     label: 'Network Host Override',
     keywords: ['network', 'host', 'lan', 'app', 'override'],
     elementId: 'project-applink-network-input',
   },
   {
     id: 'app-health-endpoint',
-    tab: 'files',
-    tabLabel: 'Files & Links',
+    tab: 'addresses',
     label: 'Health Endpoint',
     keywords: ['health', 'endpoint', 'probe', 'app'],
     elementId: 'project-applink-health-input',
   },
   {
     id: 'app-status',
-    tab: 'files',
-    tabLabel: 'Files & Links',
+    tab: 'addresses',
     label: 'App Status',
     keywords: ['status', 'running', 'stopped', 'degraded', 'app'],
     elementId: 'project-applink-status-select',
   },
   {
     id: 'working-dir',
-    tab: 'files',
-    tabLabel: 'Files & Links',
+    tab: 'files-repos',
     label: 'Working Directory',
     keywords: ['working', 'directory', 'cwd', 'root', 'folder', 'path'],
     elementId: 'project-cwd-input',
   },
   {
     id: 'notes-dir',
-    tab: 'files',
-    tabLabel: 'Files & Links',
+    tab: 'files-repos',
     label: 'Notes Space Symlink Directory',
     keywords: ['notes', 'symlink', 'knowledge', 'directory', 'space'],
     elementId: 'project-notes-input',
   },
   {
     id: 'docs-dir',
-    tab: 'files',
-    tabLabel: 'Files & Links',
+    tab: 'files-repos',
     label: 'Documentation Folder Name',
     keywords: ['docs', 'documentation', 'folder', 'directory', 'name'],
     elementId: 'project-docs-dir-input',
   },
   {
     id: 'kainbain-dir',
-    tab: 'files',
-    tabLabel: 'Files & Links',
+    tab: 'files-repos',
     label: 'KainBain Folder Name',
     keywords: ['kainbain', 'state', 'folder', 'directory', 'sessions', 'name'],
     elementId: 'project-kainbain-dir-input',
   },
   {
     id: 'centralized-docs',
-    tab: 'files',
-    tabLabel: 'Files & Links',
+    tab: 'files-repos',
     label: 'Link to Centralised Documentation',
     keywords: ['centralised', 'centralized', 'docs', 'symlink', 'link'],
     elementId: 'project-centralized-docs-input',
   },
   {
     id: 'git-repo',
-    tab: 'files',
-    tabLabel: 'Files & Links',
+    tab: 'files-repos',
     label: 'Git Repository URL',
     keywords: ['git', 'repo', 'repository', 'remote', 'url', 'origin'],
     elementId: 'project-git-input',
   },
   {
     id: 'task-branches',
-    tab: 'files',
-    tabLabel: 'Files & Links',
+    tab: 'files-repos',
     label: 'Use Task Branches',
     keywords: ['branch', 'branches', 'task', 'merge', 'git'],
     elementId: 'project-use-branches-input',
   },
   {
     id: 'preserve-review-diff',
-    tab: 'files',
-    tabLabel: 'Files & Links',
+    tab: 'files-repos',
     label: 'Preserve PR Review Diff After Merge',
     keywords: ['review', 'diff', 'preserve', 'merge', 'pr'],
     elementId: 'project-preserve-review-diff-input',
   },
   {
     id: 'reset-review-baseline',
-    tab: 'files',
-    tabLabel: 'Files & Links',
+    tab: 'files-repos',
     label: 'Reset Review Baseline On Each Merge',
     keywords: ['review', 'baseline', 'reset', 'merge'],
     elementId: 'project-reset-review-baseline-input',
   },
 ];
+
+/***
+ * MARK: SETTINGS_SEARCH_INDEX
+ * @description Search entries with their tab name filled in from
+ *   `PROJECT_SETTINGS_TABS` (the one place tab names live), so a tab rename
+ *   updates search results instead of leaving a stale copied name behind.
+ *   An entry pointing at an unknown tab keeps a plain fallback name and is
+ *   caught by the agreement test; at runtime the jump handler also ignores
+ *   unknown tabs, so a bad entry can never switch to a blank page.
+ * @example SETTINGS_SEARCH_INDEX.find((e) => e.id === 'git-repo').tabLabel => 'Files & Repos'
+ ***/
+export const SETTINGS_SEARCH_INDEX = SETTINGS_SEARCH_INDEX_SOURCE_ENTRIES.map((entry) => ({
+  ...entry,
+  tabLabel: PROJECT_SETTINGS_TABS.find((tab) => tab.id === entry.tab)?.label ?? 'Project Settings',
+}));
 
 /***
  * MARK: scoreWord

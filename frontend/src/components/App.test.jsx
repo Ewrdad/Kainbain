@@ -136,9 +136,9 @@ test('switches to the Settings tab and renders project configuration', async () 
     expect(screen.getByText('Project Configuration')).toBeInTheDocument();
   });
   expect(screen.getByText('Project Details')).toBeInTheDocument();
-  // Paths live on the Files & Links tab.
+  // Paths live on the Files & Repos tab.
   expect(screen.queryByText('Multi-Location Paths & Repositories')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByText('Files & Links'));
+  fireEvent.click(screen.getByText('Files & Repos'));
   expect(screen.getByText('Multi-Location Paths & Repositories')).toBeInTheDocument();
 });
 

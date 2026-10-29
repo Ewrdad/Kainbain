@@ -18,7 +18,11 @@ export function SettingsSearchInput({ onSelect }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const rootRef = useRef(null);
   const results = query.trim() ? searchSettings(query).slice(0, 8) : [];
-  const activeEntry = results[Math.min(activeIndex, Math.max(results.length - 1, 0))] ?? null;
+  // Clamped once and used for both aria-activedescendant and the highlighted
+  // option below, so the two can never point at different results.
+  const clampedActiveIndex =
+    results.length > 0 ? Math.min(activeIndex, results.length - 1) : 0;
+  const activeEntry = results.at(clampedActiveIndex) ?? null;
 
   // Clicking outside closes the dropdown.
   useEffect(() => {
@@ -96,7 +100,7 @@ export function SettingsSearchInput({ onSelect }) {
               key={entry.id}
               id={`project-settings-search-option-${entry.id}`}
               role="option"
-              aria-selected={index === activeIndex}
+              aria-selected={index === clampedActiveIndex}
             >
               <button
                 type="button"
@@ -107,7 +111,7 @@ export function SettingsSearchInput({ onSelect }) {
                 }}
                 onMouseEnter={() => setActiveIndex(index)}
                 className={`w-full text-left px-3 py-1.5 flex items-center justify-between gap-2 cursor-pointer ${
-                  index === activeIndex
+                  index === clampedActiveIndex
                     ? 'bg-primary/15 text-on-surface'
                     : 'text-text-muted hover:text-on-surface'
                 }`}

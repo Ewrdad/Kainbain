@@ -93,12 +93,12 @@ import { SETTINGS_SEARCH_INDEX } from './projectSettingsSearch';
  * MARK: ProjectSettings tests
  * @description Verifies the per-project configuration page across its tabs —
  *   Project (active-project selector, name, harness/model, retry/timeouts),
- *   Aliases (model alias table), Files & Links (working directory, notes
- *   symlink, git repo URL, app link), plus the settings search, the
- *   unsaved-edits tab guard, and the save flow (including the alias
- *   dirty-field and 409 conflict handling). Also asserts that UI
- *   customization lives in System Settings, not here, and that the arbitrary
- *   environment variables table is removed.
+ *   Aliases (model alias table), Files & Repos (working directory, notes
+ *   symlink, git repo URL), Addresses (app URL, network host, health endpoint),
+ *   plus the settings search, the unsaved-edits tab guard, and the save flow
+ *   (including the alias dirty-field and 409 conflict handling). Also asserts
+ *   that UI customization lives in System Settings, not here, and that the
+ *   arbitrary environment variables table is removed.
  */
 const projects = [
   {
@@ -129,11 +129,15 @@ test('renders configuration sections across tabs and verifies environment variab
   expect(screen.queryByTestId('model-aliases-section')).not.toBeInTheDocument();
   expect(screen.queryByText('Environment Variables')).not.toBeInTheDocument();
 
-  // Files & Links tab holds paths, repos, and the app link.
-  fireEvent.click(screen.getByText('Files & Links'));
+  // Files & Repos tab holds paths and repos.
+  fireEvent.click(screen.getByText('Files & Repos'));
   expect(screen.getByText('Multi-Location Paths & Repositories')).toBeInTheDocument();
-  expect(screen.getByText('Application Link & Health')).toBeInTheDocument();
+  expect(screen.queryByText('Application Link & Health')).not.toBeInTheDocument();
   expect(screen.queryByText('Project Details')).not.toBeInTheDocument();
+
+  // Addresses tab holds app link settings.
+  fireEvent.click(screen.getByText('Addresses'));
+  expect(screen.getByText('Application Link & Health')).toBeInTheDocument();
 
   // Aliases tab holds the model alias table.
   fireEvent.click(screen.getByText('Aliases'));
@@ -154,7 +158,7 @@ test('renders the Use Task Branches toggle reflected from the project and saves 
     selectProject: vi.fn(),
     updateProjectInState: vi.fn(),
   });
-  fireEvent.click(screen.getByText('Files & Links'));
+  fireEvent.click(screen.getByText('Files & Repos'));
 
   // The stored flag (true) is reflected in the checkbox.
   const toggle = screen.getByLabelText(/Use Task Branches/i);
@@ -179,7 +183,7 @@ test('renders the Use Task Branches toggle unchecked by default (opt-in)', () =>
     activeProjectId: 'p1',
     selectProject: vi.fn(),
   });
-  fireEvent.click(screen.getByText('Files & Links'));
+  fireEvent.click(screen.getByText('Files & Repos'));
   expect(screen.getByLabelText(/Use Task Branches/i)).not.toBeChecked();
 });
 
@@ -197,7 +201,7 @@ test('renders the preserved-diff toggles reflected from the project and saves th
     selectProject: vi.fn(),
     updateProjectInState: vi.fn(),
   });
-  fireEvent.click(screen.getByText('Files & Links'));
+  fireEvent.click(screen.getByText('Files & Repos'));
 
   // The stored flags are reflected in the checkboxes.
   const preserveToggle = screen.getByLabelText(/Preserve PR Review Diff/i);
@@ -228,7 +232,7 @@ test('preserved-diff toggles default to off / reset-on (current behaviour)', () 
     activeProjectId: 'p1',
     selectProject: vi.fn(),
   });
-  fireEvent.click(screen.getByText('Files & Links'));
+  fireEvent.click(screen.getByText('Files & Repos'));
   expect(screen.getByLabelText(/Preserve PR Review Diff/i)).not.toBeChecked();
   expect(screen.getByLabelText(/Reset Review Baseline/i)).toBeChecked();
 });
@@ -289,9 +293,9 @@ test('saving persists the project name, paths, git repo, defaultModel, and accen
   fireEvent.change(screen.getByLabelText('Accent Theme Color Hex'), {
     target: { value: '#38bdf8' },
   });
-  // Path fields live on the Files & Links tab; the mounted form keeps the
+  // Path fields live on the Files Files & Links Repos tab; the mounted form keeps the
   // Project-tab edits above across the switch.
-  fireEvent.click(screen.getByText('Files & Links'));
+  fireEvent.click(screen.getByText('Files Files & Links Repos'));
   fireEvent.change(screen.getByLabelText('Working Directory (Root)'), {
     target: { value: '/home/server/projects/custom' },
   });
@@ -357,7 +361,7 @@ test('edits custom documentation folder name and centralized docs toggle, saving
     selectProject: vi.fn(),
     updateProjectInState,
   });
-  fireEvent.click(screen.getByText('Files & Links'));
+  fireEvent.click(screen.getByText('Files Files & Links Repos'));
 
   const docsDirInput = screen.getByLabelText('Documentation Folder Name');
   fireEvent.change(docsDirInput, { target: { value: 'kainbain-docs' } });
@@ -385,7 +389,7 @@ test('invalid documentation folder name prevents save with validation alert', as
     activeProjectId: 'p1',
     selectProject: vi.fn(),
   });
-  fireEvent.click(screen.getByText('Files & Links'));
+  fireEvent.click(screen.getByText('Files Files & Links Repos'));
 
   const docsDirInput = screen.getByLabelText('Documentation Folder Name');
   fireEvent.change(docsDirInput, { target: { value: 'invalid/path' } });
@@ -412,7 +416,7 @@ test('edits custom KainBain state folder name, saving it', async () => {
     selectProject: vi.fn(),
     updateProjectInState,
   });
-  fireEvent.click(screen.getByText('Files & Links'));
+  fireEvent.click(screen.getByText('Files Files & Links Repos'));
 
   const kainbainDirInput = screen.getByLabelText('KainBain Folder Name');
   fireEvent.change(kainbainDirInput, { target: { value: '.kb' } });
@@ -436,7 +440,7 @@ test('invalid KainBain folder name prevents save with validation alert', async (
     activeProjectId: 'p1',
     selectProject: vi.fn(),
   });
-  fireEvent.click(screen.getByText('Files & Links'));
+  fireEvent.click(screen.getByText('Files Files & Links Repos'));
 
   const kainbainDirInput = screen.getByLabelText('KainBain Folder Name');
   fireEvent.change(kainbainDirInput, { target: { value: 'invalid/slash' } });
@@ -460,7 +464,7 @@ test('rejects docs name `.kainbain` even with a custom state folder (UI/server p
     activeProjectId: 'p1',
     selectProject: vi.fn(),
   });
-  fireEvent.click(screen.getByText('Files & Links'));
+  fireEvent.click(screen.getByText('Files Files & Links Repos'));
   fireEvent.change(screen.getByLabelText('Documentation Folder Name'), {
     target: { value: '.kainbain' },
   });
@@ -480,7 +484,7 @@ test('rejects state folder `docs` even with a custom docs folder (UI/server pari
     activeProjectId: 'p1',
     selectProject: vi.fn(),
   });
-  fireEvent.click(screen.getByText('Files & Links'));
+  fireEvent.click(screen.getByText('Files Files & Links Repos'));
   fireEvent.change(screen.getByLabelText('KainBain Folder Name'), {
     target: { value: 'docs' },
   });
@@ -553,7 +557,7 @@ test('section allowlist keeps UI Customization out of project settings', () => {
   // Contract pin: only project-scoped sections may live here. App-wide UI
   // customization belongs to System Settings; per-project visual branding
   // stays as the accent-color picker inside the project form.
-  expect(PROJECT_SETTINGS_SECTIONS).toEqual(['project', 'aliases', 'files', 'workflows', 'skills']);
+  expect(PROJECT_SETTINGS_SECTIONS).toEqual(['project', 'aliases', 'files-repos', 'addresses', 'workflows', 'skills']);
   expect(PROJECT_SETTINGS_SECTIONS).not.toContain('ui');
 });
 
@@ -588,10 +592,11 @@ test('does not offer UI Customization in project settings (lives in System Setti
   });
 
   // Only the project-scoped sections remain: project config, aliases,
-  // files & links, workflows, skills.
+  // files & repos, addresses, workflows, skills.
   expect(screen.getByText('Project Settings')).toBeInTheDocument();
   expect(screen.getByText('Aliases')).toBeInTheDocument();
-  expect(screen.getByText('Files & Links')).toBeInTheDocument();
+  expect(screen.getByText('Files & Repos')).toBeInTheDocument();
+  expect(screen.getByText('Addresses')).toBeInTheDocument();
   expect(screen.getByText('Named Workflows')).toBeInTheDocument();
   expect(screen.getByText('Skills')).toBeInTheDocument();
   expect(screen.queryByText('UI Customization')).not.toBeInTheDocument();
@@ -618,24 +623,35 @@ test('renders the Aliases tab and switches to it', async () => {
   expect(screen.getByLabelText('Alias 1 name')).toHaveValue('small');
 });
 
-test('renders the Files & Links tab and switches to it', () => {
+test('renders the Files & Repos tab and switches to it', () => {
   renderWithKainBain(<ProjectSettings />, {
     projects,
     activeProjectId: 'p1',
     selectProject: vi.fn(),
   });
 
-  // Paths, repos, and the app link are hidden on the Project tab.
+  // Paths and repos are hidden on the Project tab.
   expect(screen.queryByLabelText('Working Directory (Root)')).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Git Repository URL')).not.toBeInTheDocument();
-  expect(screen.queryByLabelText('App URL')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByText('Files & Links'));
+  fireEvent.click(screen.getByText('Files & Repos'));
   expect(screen.getByLabelText('Working Directory (Root)')).toHaveValue(
     '/home/server/projects/project-a',
   );
   expect(screen.getByLabelText('Git Repository URL')).toHaveValue(
     'https://git.example.com/team/ProjectA.git',
   );
+});
+
+test('renders the Addresses tab and switches to it', () => {
+  renderWithKainBain(<ProjectSettings />, {
+    projects,
+    activeProjectId: 'p1',
+    selectProject: vi.fn(),
+  });
+
+  // App link settings are hidden on the Project tab.
+  expect(screen.queryByLabelText('App URL')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByText('Addresses'));
   expect(screen.getByLabelText('App URL')).toBeInTheDocument();
 });
 
@@ -652,7 +668,7 @@ test('each project-related tab renders an h2 tab title above its h3 sections', (
   const tabTitles = [
     ['Project Settings', /Project Configuration/],
     ['Aliases', /Model Aliases/],
-    ['Files & Links', /Files & Links/],
+    ['Files Files & Links Repos', /Files Files & Links Repos/],
   ];
   for (const [tab, title] of tabTitles) {
     fireEvent.click(screen.getByText(tab));
@@ -673,14 +689,14 @@ test('form state persists across project-tab switches', () => {
   });
   fireEvent.click(screen.getByText('Aliases'));
   expect(screen.getByTestId('model-aliases-section')).toBeInTheDocument();
-  fireEvent.click(screen.getByText('Files & Links'));
+  fireEvent.click(screen.getByText('Files Files & Links Repos'));
   expect(screen.getByLabelText('Working Directory (Root)')).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Git Repository URL'), {
     target: { value: 'https://git.example.com/team/Draft.git' },
   });
   fireEvent.click(screen.getByText('Project Settings'));
   expect(screen.getByLabelText('Project Name')).toHaveValue('Draft Name');
-  fireEvent.click(screen.getByText('Files & Links'));
+  fireEvent.click(screen.getByText('Files Files & Links Repos'));
   expect(screen.getByLabelText('Git Repository URL')).toHaveValue(
     'https://git.example.com/team/Draft.git',
   );
@@ -693,7 +709,7 @@ test('settings search jumps to the matching tab and highlights the setting', asy
     selectProject: vi.fn(),
   });
 
-  // The git setting lives on Files & Links — searching jumps there.
+  // The git setting lives on Files Files & Links Repos — searching jumps there.
   expect(screen.queryByLabelText('Git Repository URL')).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Search settings'), {
     target: { value: 'git' },
@@ -758,7 +774,7 @@ test('tab bar exposes tablist semantics and arrow-key navigation', () => {
   expect(screen.getByRole('tablist', { name: 'Project settings sections' })).toBeInTheDocument();
   // Five tabs in order; icons are aria-hidden so names are the labels.
   expect(screen.getAllByRole('tab')).toHaveLength(5);
-  for (const name of ['Project Settings', 'Aliases', 'Files & Links', 'Named Workflows', 'Skills']) {
+  for (const name of ['Project Settings', 'Aliases', 'Files Files & Links Repos', 'Named Workflows', 'Skills']) {
     expect(screen.getByRole('tab', { name })).toBeInTheDocument();
   }
   // Exactly one tab is selected, and the panel names it.
@@ -804,7 +820,7 @@ test('every search index entry resolves to an element on its tab', async () => {
   for (const entry of entriesFor('aliases')) {
     expect(document.getElementById(entry.elementId)).not.toBeNull();
   }
-  fireEvent.click(screen.getByText('Files & Links'));
+  fireEvent.click(screen.getByText('Files Files & Links Repos'));
   for (const entry of entriesFor('files')) {
     expect(document.getElementById(entry.elementId)).not.toBeNull();
   }
@@ -850,6 +866,35 @@ test('switching to Workflows with unsaved edits asks for confirmation', () => {
   }
 });
 
+test('arrow-key tab switch blocked by the unsaved-edits guard keeps focus on the selected tab', () => {
+  const originalConfirm = window.confirm;
+  const confirm = vi.fn(() => false);
+  window.confirm = confirm;
+  try {
+    renderWithKainBain(<ProjectSettings />, {
+      projects,
+      activeProjectId: 'p1',
+      selectProject: vi.fn(),
+    });
+
+    fireEvent.change(screen.getByLabelText('Project Name'), {
+      target: { value: 'Draft Name' },
+    });
+    const projectTab = screen.getByRole('tab', { name: 'Project Settings' });
+    projectTab.focus();
+    // End would jump to Skills (outside the shared form): the guard blocks
+    // it, so selection AND focus must stay on the Project tab — focus landing
+    // on an unselected tab would mislead keyboard and screen-reader users.
+    fireEvent.keyDown(projectTab, { key: 'End' });
+    expect(confirm).toHaveBeenCalledWith('You have unsaved changes. Switch tabs anyway?');
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('Project Settings');
+    expect(document.activeElement).toBe(projectTab);
+    expect(screen.getByLabelText('Project Name')).toHaveValue('Draft Name');
+  } finally {
+    window.confirm = originalConfirm;
+  }
+});
+
 test('switching between project tabs with unsaved edits never warns', () => {
   const originalConfirm = window.confirm;
   const confirm = vi.fn();
@@ -865,7 +910,7 @@ test('switching between project tabs with unsaved edits never warns', () => {
       target: { value: 'Draft Name' },
     });
     fireEvent.click(screen.getByText('Aliases'));
-    fireEvent.click(screen.getByText('Files & Links'));
+    fireEvent.click(screen.getByText('Files Files & Links Repos'));
     fireEvent.click(screen.getByText('Project Settings'));
     expect(confirm).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Project Name')).toHaveValue('Draft Name');
@@ -1132,9 +1177,9 @@ test('refuses to save a blank name or a projects-root working directory', () => 
   fireEvent.change(screen.getByLabelText('Project Name'), {
     target: { value: 'Project A' },
   });
-  // The working directory lives on the Files & Links tab; the corrected
+  // The working directory lives on the Files Files & Links Repos tab; the corrected
   // name above survives the switch because the form stays mounted.
-  fireEvent.click(screen.getByText('Files & Links'));
+  fireEvent.click(screen.getByText('Files Files & Links Repos'));
   fireEvent.change(screen.getByLabelText('Working Directory (Root)'), {
     target: { value: '/home/server/projects/' },
   });

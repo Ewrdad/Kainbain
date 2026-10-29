@@ -9,7 +9,7 @@
  *   App-wide UI & Workspace customization is NOT one of them — it lives in
  *   System Settings (SystemSettingsPage, `/system-settings`); per-project
  *   visual branding stays here as the accent-color picker inside the form.
- * @example PROJECT_SETTINGS_TABS.map((tab) => tab.id) => ['project', 'aliases', 'files', 'workflows', 'skills']
+ * @example PROJECT_SETTINGS_TABS.map((tab) => tab.id) => ['project', 'aliases', 'files-repos', 'addresses', 'workflows', 'skills']
  ***/
 export const PROJECT_SETTINGS_TABS = [
   {
@@ -29,11 +29,19 @@ export const PROJECT_SETTINGS_TABS = [
     sharesProjectForm: true,
   },
   {
-    id: 'files',
-    label: 'Files & Links',
+    id: 'files-repos',
+    label: 'Files & Repos',
     buttonIcon: '📁',
-    heading: 'Files & Links',
+    heading: 'Files & Repositories',
     headingIcon: '📁',
+    sharesProjectForm: true,
+  },
+  {
+    id: 'addresses',
+    label: 'Addresses',
+    buttonIcon: '🌐',
+    heading: 'Application Links & Health',
+    headingIcon: '🌐',
     sharesProjectForm: true,
   },
   {
