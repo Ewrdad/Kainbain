@@ -80,12 +80,13 @@ test.describe("Workflow E2E Tests", () => {
 			await expect(page.getByRole("button", { name, exact: true })).toHaveCount(0);
 		}
 
-		// Active task and honest live indicators are visible: elapsed timer +
-		// queue-depth chip. The fake percentage progressbar was removed (no
-		// percent-complete data exists in the stack) and must stay gone, and so
-		// must the stale workflow-pointer stage label ("Stage 1 of 10 — Idea").
+		// Active task and the honest live indicator are visible: the queue-depth
+		// chip (the right rail is queue-only). The fake percentage progressbar
+		// was removed (no percent-complete data exists in the stack) and must
+		// stay gone, and so must the stale workflow-pointer stage label
+		// ("Stage 1 of 10 — Idea"), the elapsed timer, and the health light.
 		await expect(page.getByText("Active Task", { exact: true })).toBeVisible();
-		await expect(page.locator("#elapsed-counter")).toBeVisible();
+		await expect(page.locator("#elapsed-counter")).toHaveCount(0);
 		await expect(
 			page.getByLabel(/Execution queue: \d+ open tasks? across all pipelines/),
 		).toBeVisible();

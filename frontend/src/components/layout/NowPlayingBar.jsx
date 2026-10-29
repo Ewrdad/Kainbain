@@ -4,7 +4,6 @@ import { useKainBain } from '../../context/KainBainContext';
 import { formatTaskKey, formatTaskTitleFirstLine } from '../tasks/taskFormatters';
 import { resolveDisplayedStage } from '../tasks/runningTask';
 import { resolveActiveTaskDisplay, resolveUniversalNowPlaying } from './activeTaskVisibility';
-import { HealthTrafficLight } from './HealthTrafficLight';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { api } from '../../services/api';
 
@@ -13,18 +12,17 @@ import { api } from '../../services/api';
  * @description The persistent "Now Playing" bar. Anchored to the bottom of
  * the viewport (72px height). Shows the global engine state (status badge:
  * IDLE, RUNNING, CHECKPOINT, PAUSED), one box per configured Runner (fleet
- * roster, running or idle) with its own play/pause + skip, live elapsed
- * time, live execution queue depth, and subsystem health.
+ * roster, running or idle) with its own play/pause + skip, and the live
+ * execution queue depth (right rail, queue chip only).
  *
  * There is no global transport cluster: the Runner boxes own play/pause
  * (pause parks a Runner, resume re-arms it) and skip (advances that
  * Runner's held task one stage). The right rail shows honest, live data:
- * the open-task count across all pipelines (queue depth) and the elapsed
- * timer.
+ * the open-task count across all pipelines (queue depth) only.
  *
  * Universal contract: the engine owns a single queue fed by every pipeline,
- * so this bar never follows the selected pipeline. The named task, badge,
- * and timer resolve from the engine owner (engineState.activeTaskId).
+ * so this bar never follows the selected pipeline. The named task and badge
+ * resolve from the engine owner (engineState.activeTaskId).
  * Switching pipelines only changes the board/canvas view. The owning
  * pipeline's name is kept purely as a provenance chip in the title.
  *
@@ -393,37 +391,6 @@ export function NowPlayingBar() {
    ***/
   const queueDepth = universal.queueDepth;
 
-  // Elapsed-time counter for the active run. Reset whenever the active task
-  // (or running state) changes so the timer never counts across task
-  // boundaries (D2).
-  const [elapsedSec, setElapsedSec] = useState(0);
-  const prevTaskRef = useRef(engineState?.activeTaskId);
-  useEffect(() => {
-    if (!isRunning) return undefined;
-    const id = setInterval(() => {
-      if (prevTaskRef.current !== engineState?.activeTaskId) {
-        prevTaskRef.current = engineState?.activeTaskId;
-        setElapsedSec(0);
-      } else {
-        setElapsedSec((prev) => prev + 1);
-      }
-    }, 1000);
-    return () => clearInterval(id);
-  }, [isRunning, engineState?.activeTaskId]);
-
-  /***
-   * MARK: fmtElapsed
-   * @description Formats elapsed seconds into HH:MM:SS format.
-   * @example fmtElapsed() => '00:01:23'
-   * @returns {string}
-   ***/
-  const fmtElapsed = () => {
-    const hrs = String(Math.floor(elapsedSec / 3600)).padStart(2, '0');
-    const m = String(Math.floor((elapsedSec % 3600) / 60)).padStart(2, '0');
-    const s = String(elapsedSec % 60).padStart(2, '0');
-    return `${hrs}:${m}:${s}`;
-  };
-
   return (
     <footer className="fixed bottom-0 left-0 w-full h-[72px] z-50 bg-surface-container-highest border-t border-border-standard shadow-lg flex items-center justify-between px-3 sm:px-6 md:px-8 pb-[env(safe-area-inset-bottom,0px)]">
       {/* Left: Global Status, Active Project & Context
@@ -647,35 +614,16 @@ export function NowPlayingBar() {
         </div>
       </div>
 
-      {/* Right: Execution Queue Depth, Stage Timer & Health Traffic Light
-          Hidden entirely on mobile to avoid crushing the runner boxes.
-          Revealed from `sm` up where horizontal space is available.
-          Deliberately NO percentage bar: the stack has no percent-complete data,
-          so any percentage would be fabricated. The live elapsed timer and the
-          live queue-depth chip are the honest indicators; the stale
-          workflow-pointer stage label ("Stage 1 of 10 — Idea") was removed
-          because it never updated with the active task's real stage.
-
-          MARK: right-rail shrink contract — every child is fixed-width nowrap
-          content, so the rail has no natural shrink path and its min-content
-          (~430px with the health light) would overflow LEFTWARD over the
-          runner boxes at 640–~1190px. Guarded in three layers:
-            1. below `xl` the decorative extras (health light + dividers) are
-               hidden so the min-content (~111px at sm, ~151px at lg) always
-               fits the box's share. The health light cannot return before
-               `xl`: measured at 1024px the rail's share is 338px but chip +
-               timer + health + dividers + gaps need ~428px, and flex items
-               with min-width:auto overflow leftward instead of shrinking
-               (measured by the e2e gate, which failed at 1024px when the
-               extras were hidden below `lg` only);
-            2. `overflow-hidden` clips instead of ever painting over the runner
-               boxes if content ever outgrows the box again (tooltips are
-               portal-rendered to document.body, so they are not clipped);
-            3. a canary e2e gate measures button-vs-rail rect intersections at
-               640/768/800/900/1024/1280px (functional.spec.js). */}
+      {/* Right: queue depth only. The elapsed timer and the subsystem
+          health traffic light were removed — the right rail is now just the
+          live queue-depth chip. Single child, so there is no overlap path
+          with the runner boxes; overflow-hidden stays as cheap insurance
+          (tooltips are portal-rendered to document.body, so they are not
+          clipped). A canary e2e gate checks button-vs-rail rect
+          intersections at 640/768/800/900/1024/1280px (functional.spec.js). */}
       <div
         data-testid="now-playing-right-rail"
-        className="hidden sm:flex items-center justify-end gap-2.5 sm:gap-3.5 flex-1 min-w-0 max-w-[45%] overflow-hidden"
+        className="hidden sm:flex items-center justify-end flex-none min-w-0 overflow-hidden"
       >
         {/* Live queue-depth chip: universal queue depth across all pipelines.
             role="status" (aria-live polite) so screen readers hear the count
@@ -707,42 +655,6 @@ export function NowPlayingBar() {
             </span>
           </div>
         </InfoTooltip>
-
-        <span
-          data-testid="rail-divider-elapsed"
-          className="hidden xl:block h-6 w-px bg-border-standard/60 shrink-0"
-          aria-hidden="true"
-        />
-
-        <InfoTooltip
-          title="Stage Timer"
-          description="Live elapsed timer for the active task in its current stage."
-          behindTheScenes="Timer measures active execution duration in the current stage without leaking across task boundaries"
-          position="top-left"
-        >
-          <div className="flex flex-col items-end cursor-help select-none">
-            <span className="font-label-caps text-[9px] text-on-surface-variant">Elapsed</span>
-            <span
-              id="elapsed-counter"
-              aria-label="Elapsed time in current stage"
-              className="tabular-nums text-[13px] font-semibold text-on-surface"
-            >
-              {fmtElapsed()}
-            </span>
-          </div>
-        </InfoTooltip>
-
-        <span
-          data-testid="rail-divider-health"
-          className="hidden xl:block h-6 w-px bg-border-standard/60 shrink-0"
-          aria-hidden="true"
-        />
-
-        {/* Health light only from `xl` up: ~233px of fixed-width content that
-            cannot fit the rail's share below ~1190px (shrink contract above). */}
-        <div data-testid="now-playing-health-slot" className="hidden xl:block">
-          <HealthTrafficLight />
-        </div>
       </div>
     </footer>
   );
