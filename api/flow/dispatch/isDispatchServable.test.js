@@ -33,6 +33,15 @@ describe("isDispatchServable", () => {
 		}
 	});
 
+	test("publish ci stages are servable even in primary mode; other primary ci stages stay embedded", () => {
+		const publish = { id: "s1", type: "ci", runOnBranch: "primary", command: "./publish.sh --detect" };
+		expect(isDispatchServable({ project: { harness: "pi" }, task: agentTask({ stages: [publish] }) })).toBe(true);
+		const deploy = { id: "s1", type: "ci", runOnBranch: "primary", command: "./deploy.sh --prod" };
+		expect(isDispatchServable({ project: { harness: "pi" }, task: agentTask({ stages: [deploy] }) })).toBe(false);
+		const tests = { id: "s1", type: "ci", runOnBranch: "primary", command: "npm test" };
+		expect(isDispatchServable({ project: { harness: "pi" }, task: agentTask({ stages: [tests] }) })).toBe(false);
+	});
+
 	test("review stages park at the checkpoint and stay embedded", () => {
 		// normalizeStageType('review') === 'human': the embedded engine parks
 		// instead of spawning, so there is no model child to move.

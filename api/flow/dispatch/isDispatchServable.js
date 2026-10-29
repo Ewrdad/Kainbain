@@ -1,6 +1,6 @@
 import { taskRequirements } from "./taskRequirements.js";
 import { selectAliasTarget } from "../../aliasSelector.js";
-import { normalizeStageType } from "../../projectStore.js";
+import { normalizeStageType, isPublishCommand } from "../../projectStore.js";
 
 /***
  * MARK: isDispatchServable
@@ -37,8 +37,15 @@ export function isDispatchServable({ project = {}, task = {}, stages = null, sta
 	if (stageKind === "ci") {
 		// CI/command stages move to Runners too, but only in task-branch
 		// mode: primary/custom checkouts are backend-local by definition.
+		// One exception: publish stages. A Runner honours
+		// runOnBranch 'primary' by executing in the primary checkout on its
+		// host (which has Docker), while the embedded backend may be a
+		// container without bash/Docker at all — publish is therefore
+		// Runner-served in every branch mode.
 		const runOn = String(resolved.runOnBranch || "task").toLowerCase();
-		if (runOn !== "task") return false;
+		if (runOn !== "task") {
+			return isPublishCommand(resolved.command || resolved.script || "");
+		}
 		return true;
 	}
 	// Only stages that would spawn an in-process model child move to a
