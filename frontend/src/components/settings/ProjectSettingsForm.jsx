@@ -43,7 +43,10 @@ export function ProjectSettingsForm({
   onDirtyChange,
 }) {
   // Fail-safe: an unknown section id renders the project tab instead of a
-  // blank page.
+  // blank page. This list mirrors PROJECT_FORM_SECTIONS in ProjectSettings.jsx
+  // (kept local to avoid a render-cycle import between the tab bar and the
+  // form); the "tab config, section allowlists, and search index agree"
+  // test pins them together, so adding a form tab means updating both.
   const activeFormSection = ['project', 'aliases', 'files'].includes(section)
     ? section
     : 'project';

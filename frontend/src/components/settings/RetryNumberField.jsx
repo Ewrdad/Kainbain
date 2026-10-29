@@ -1,5 +1,3 @@
-import React from 'react';
-
 /***
  * MARK: RetryNumberField
  * @description One numeric retry/timeout override row: label, number input,

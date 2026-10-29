@@ -24,11 +24,15 @@ export function parseRetrySettings(drafts) {
       payload[key] = null;
       return;
     }
-    if (!/^\d+$/.test(raw)) {
+    // Digits only — then a finite-range check so a hundreds-of-digits
+    // paste cannot slip through as Infinity (JSON would serialise it to
+    // null and the save would silently mean "follow the default").
+    const count = /^\d+$/.test(raw) ? Number(raw) : NaN;
+    if (!Number.isFinite(count)) {
       errors[key] = `${label} must be a whole number (0 disables, blank follows the default).`;
       return;
     }
-    payload[key] = Number(raw);
+    payload[key] = count;
   };
   const parseTimeout = (key, label) => {
     const raw = String(drafts[key] ?? '').trim();
@@ -37,11 +41,13 @@ export function parseRetrySettings(drafts) {
       return;
     }
     // Positive decimal minutes, no exponents or hex (same `^\d+$` pieces
-    // the count parser uses, so no new lint surface).
+    // the count parser uses, so no new lint surface). The finite check
+    // rejects overflow past ~1.8e308 minutes, which `minutesToMs` would
+    // otherwise coerce to blank and save as "follow the default" silently.
     const parts = raw.split('.');
-    const isDecimalMinutes =
-      parts.length <= 2 && parts.every((part) => /^\d+$/.test(part));
-    if (!isDecimalMinutes || Number(raw) <= 0) {
+    const minutes =
+      parts.length <= 2 && parts.every((part) => /^\d+$/.test(part)) ? Number(raw) : NaN;
+    if (!Number.isFinite(minutes) || minutes <= 0) {
       errors[key] = `${label} must be a number of minutes above 0 (blank follows the default).`;
       return;
     }
