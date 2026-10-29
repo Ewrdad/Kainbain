@@ -19,8 +19,7 @@ export const formatRunnerElapsed = (startedAt, nowMs) => {
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 };
 
-const escapeRegExp = (value) =>
-  String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /***
  * MARK: runnerFreshness
@@ -158,11 +157,17 @@ export function PerRunnerTasksWidget({ tasks = [], stages = [], compact = false,
 
   if (cards.length === 0) {
     return (
-      <section aria-label="Runner tasks" data-testid="per-runner-tasks" className="h-full flex flex-col">
+      <section
+        aria-label="Runner tasks"
+        data-testid="per-runner-tasks"
+        className="h-full flex flex-col"
+      >
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-slate-400 font-mono text-xs">
           <span className="text-3xl mb-2 opacity-40">💤</span>
           <p className="font-bold text-slate-300">Fleet idle — no live Runner assignments</p>
-          <p className="text-[11px] mt-1">Deferred agent stages appear here when a Runner claims them.</p>
+          <p className="text-[11px] mt-1">
+            Deferred agent stages appear here when a Runner claims them.
+          </p>
         </div>
       </section>
     );
@@ -170,16 +175,30 @@ export function PerRunnerTasksWidget({ tasks = [], stages = [], compact = false,
 
   if (compact) {
     return (
-      <section aria-label="Runner tasks" data-testid="per-runner-tasks" className="flex flex-col gap-1">
+      <section
+        aria-label="Runner tasks"
+        data-testid="per-runner-tasks"
+        className="flex flex-col gap-1"
+      >
         {cards.map(({ assignment: a, task }) => (
-          <PerRunnerCompactRow key={`${a.runnerId}:${a.executionId || a.taskId}`} assignment={a} task={task} nowMs={nowMs} stageName={stageName} />
+          <PerRunnerCompactRow
+            key={`${a.runnerId}:${a.executionId || a.taskId}`}
+            assignment={a}
+            task={task}
+            nowMs={nowMs}
+            stageName={stageName}
+          />
         ))}
       </section>
     );
   }
 
   return (
-    <section aria-label="Runner tasks" data-testid="per-runner-tasks" className="h-full flex flex-col gap-2 overflow-y-auto">
+    <section
+      aria-label="Runner tasks"
+      data-testid="per-runner-tasks"
+      className="h-full flex flex-col gap-2 overflow-y-auto"
+    >
       {cards.map(({ assignment: a, task, record }) => (
         <PerRunnerCard
           key={`${a.runnerId}:${a.executionId || a.taskId}`}
@@ -208,7 +227,10 @@ const PerRunnerCompactRow = ({ assignment: a, task, nowMs, stageName }) => {
         <strong className="text-slate-100">{a.runnerId}</strong>
         <span className="truncate">{String(a.taskId).slice(0, 8)}</span>
         <span className="text-slate-400 truncate">{stageName(a.stageId)}</span>
-        <span className="ml-auto text-emerald-300 shrink-0" data-testid={`per-runner-elapsed-${a.runnerId}`}>
+        <span
+          className="ml-auto text-emerald-300 shrink-0"
+          data-testid={`per-runner-elapsed-${a.runnerId}`}
+        >
           {formatRunnerElapsed(a.startedAt, nowMs)}
         </span>
       </summary>
@@ -263,7 +285,10 @@ const PerRunnerCard = ({ assignment: a, task, record, nowMs, stageName }) => {
           </span>
         )}
         {serving?.model && (
-          <span className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700 truncate" title={serving.model}>
+          <span
+            className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700 truncate"
+            title={serving.model}
+          >
             Model: <strong className="text-slate-200">{serving.model}</strong>
           </span>
         )}
@@ -351,7 +376,10 @@ export const RunnerPromptPayload = ({ assignment, taskId }) => {
         )}
       </div>
       {!prompt ? (
-        <p className="text-[11px] font-mono text-slate-400" data-testid={`per-runner-prompt-empty-${assignment?.runnerId}`}>
+        <p
+          className="text-[11px] font-mono text-slate-400"
+          data-testid={`per-runner-prompt-empty-${assignment?.runnerId}`}
+        >
           Prompt not reported yet — appears once the Runner starts the stage.
         </p>
       ) : viewMode === 'raw' ? (
@@ -362,8 +390,15 @@ export const RunnerPromptPayload = ({ assignment, taskId }) => {
           {prompt}
         </pre>
       ) : (
-        <div className="prose prose-invert prose-sm max-w-none select-text" data-testid={`per-runner-prompt-${assignment?.runnerId}`}>
-          <MarkdownViewer content={prompt} projectId={assignment?.projectId || null} taskId={taskId || null} />
+        <div
+          className="prose prose-invert prose-sm max-w-none select-text"
+          data-testid={`per-runner-prompt-${assignment?.runnerId}`}
+        >
+          <MarkdownViewer
+            content={prompt}
+            projectId={assignment?.projectId || null}
+            taskId={taskId || null}
+          />
         </div>
       )}
     </div>
