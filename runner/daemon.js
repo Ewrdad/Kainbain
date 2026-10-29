@@ -153,7 +153,14 @@ export function startClaimRenewal({
 	const timer = setInterval(() => {
 		client
 			.claimHeartbeat({ taskId, projectId, executionId, epoch })
-			.catch((err) => logger.warn(`Claim renewal failed: ${err?.message || err}`));
+			.catch((err) => {
+				logger.warn(`Claim renewal failed: ${err?.message || err}`);
+				// The backend timed the stage out and released the hold:
+				// stop propping it up. The harness run itself continues to
+				// its natural finish, whose complete is then stale-rejected
+				// by the lease fence — never reported as fresh work.
+				if (err?.code === "STAGE_TIMEOUT") clearInterval(timer);
+			});
 	}, intervalMs);
 	if (typeof timer.unref === "function") timer.unref();
 	return () => clearInterval(timer);
