@@ -832,6 +832,7 @@ describe("ProjectStore", () => {
 			name: "Deploy",
 			type: "ci",
 			command: "./deploy.sh --prod",
+			hostOnly: true,
 			paused: false,
 			failback: "previous",
 		});
@@ -905,6 +906,7 @@ describe("ProjectStore", () => {
 			name: "Deploy",
 			type: "ci",
 			command: "./deploy.sh --prod",
+			hostOnly: true,
 			paused: false,
 			failback: "previous",
 		});

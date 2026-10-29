@@ -122,5 +122,5 @@ is picked up on restart with no config edits.
 ## Next steps
 
 - Ports & Environment (`#/docs/ports-env`) — overrides and tunables.
-- Self-Deployment & Rollback (`#/docs/self-deploy`) — `./deploy.sh --prod`.
+- Self-Deployment & Rollback (`#/docs/self-deploy`) — `./publish.sh` + `redeploy.sh`.
 - Triage FAQ (`#/docs/faq`) — symptom → fix index (formerly partly in `working-with-kainbain`, removed).

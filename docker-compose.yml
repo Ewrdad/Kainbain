@@ -20,13 +20,15 @@
 #     completion report. No second writable store exists for task truth
 #     (adding one would violate repo-as-truth and is the kill criterion).
 #
-# LOCKSTEP (D7): both images build from this checkout in one
-# `docker compose up --build`. Stamp both sides from the same commit:
-#   KAINBAIN_BUILD_REF=$(git rev-parse --short HEAD) docker compose up --build
-# Frontend carries VITE_BUILD_REF, backend carries build.json (stamped by
-# the entrypoint into its state dir and reported on /status); a mismatched
-# pair shows an explicit UI banner instead of failing obscurely. Mixing a
-# frontend tag with a backend tag from another commit is unsupported.
+# Independent component updates (AsymmetricUpdatesPlan): backend, frontend
+# and runner are versioned by the API contract each publishes
+# (api/version.json, frontend/version.json, runner/version.json), not by
+# commit lockstep. A frontend may run against any backend inside its
+# declared range (frontend/version.json `requires.backendApi`, baked in as
+# VITE_BACKEND_API_RANGE); the UI banner names both versions when the
+# backend reported on /status (build.apiVersion) is outside that range.
+# Publish with ./publish.sh, deploy with ~/apps/kainbain/redeploy.sh — see
+# docs/MuseCodeHackathon2026/Portability/AsymmetricUpdatesPlan.md.
 #
 # Rollback: the previous single-service topology is `git show
 # HEAD~:docker-compose.yml` (image kainbain:latest, backend serving dist
@@ -86,6 +88,7 @@ services:
         VITE_API_BASE: ""
         VITE_WS_URL: ""
         VITE_BUILD_REF: ${KAINBAIN_BUILD_REF:-dev}
+        VITE_BACKEND_API_RANGE: ${VITE_BACKEND_API_RANGE:-}
         VITE_NOTES_VIEWER_URL: ${VITE_NOTES_VIEWER_URL:-}
     image: kainbain-frontend:latest
     ports:

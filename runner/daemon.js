@@ -7,6 +7,24 @@ import { commitAndPush } from "./gitOps.js";
 
 export const RUNNER_VERSION = "0.1.0";
 
+/***
+ * MARK: RUNNER_API_VERSION
+ * @description Backend API version this Runner speaks, loaded from
+ *   runner/version.json at startup (kept beside daemon.js in the bundle).
+ *   Falls back to the pinned fallback when the file is unreadable; the test
+ *   suite pins the fallback to runner/version.json.
+ * @example RUNNER_API_VERSION => '1.0.0'
+ ***/
+export const RUNNER_API_VERSION = (() => {
+	try {
+		const file = new URL("./version.json", import.meta.url);
+		const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+		return typeof parsed?.apiVersion === "string" && parsed.apiVersion ? parsed.apiVersion : "1.0.0";
+	} catch {
+		return "1.0.0";
+	}
+})();
+
 // Claim renewal cadence: comfortably inside the 5-minute production lease
 // TTL (KAINBAIN_CLAIM_TTL_MS) so long harness runs keep their fence. A
 // shorter operator TTL still heals via lazy expiry + STALE_EPOCH fencing.
@@ -220,7 +238,7 @@ function factsFor({ config, harnessVersions }) {
 					: [],
 		tiers: config.tiers,
 		diskHeadroomMb: diskHeadroomMbFor(config.workRoot),
-		versions: { protocol: "v1", runner: RUNNER_VERSION },
+		versions: { protocol: "v1", runner: RUNNER_VERSION, api: RUNNER_API_VERSION },
 	};
 }
 

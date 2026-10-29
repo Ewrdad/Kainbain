@@ -7,7 +7,7 @@ slug: self-deploy
 
 # Self-Deployment & Rollback
 
-KainBain deploys itself — a CI stage whose command runs `./deploy.sh --prod` (an ordinary `ci` stage to the generic pipeline) or a manual action runs the script and the app restarts with the new build. Because a deploy restarts the very service that may have triggered it, the script is hardened for many safe runs per day. KainBain's cross-restart deploy continuity (surviving its own redeploy) lives outside the shared pipeline in `api/continuity/`, enabled only by `KAINBAIN_SELF_DEPLOY_CONTINUITY=1`; generic projects never load it.
+KainBain publishes itself, then a human deploys it: a CI stage whose command runs `./publish.sh --detect` (a host command that only ever runs on the backend in the primary checkout) builds and pushes the changed components and writes the release manifest, and `~/apps/kainbain/redeploy.sh` pulls and restarts each component on demand. The legacy `./deploy.sh --prod` path is retired and just prints this pointer. Because a deploy restarts the very service that may have triggered it, the script is hardened for many safe runs per day. KainBain's cross-restart deploy continuity (surviving its own redeploy) lives outside the shared pipeline in `api/continuity/`, enabled only by `KAINBAIN_SELF_DEPLOY_CONTINUITY=1`; generic projects never load it.
 
 - **Self-locating** — `cd`s to its own directory, however it was invoked (even detached by the API).
 - **flock lock** — concurrent deploys serialize instead of corrupting the install; a second deploy waits or aborts rather than racing.
@@ -27,9 +27,17 @@ KainBain deploys itself — a CI stage whose command runs `./deploy.sh --prod` (
 ## Modes and surfaces
 
 ```bash
-./deploy.sh --prod          # full: tests + security scans + build + deploy
-./deploy.sh --prod --fast   # skip tests/scans (health gate still applies)
-./deploy.sh --rollback      # restore the last known-good deployment
+./publish.sh --detect       # publish changed components (build + push + manifest)
+./publish.sh --all          # publish every component
+cd ~/apps/kainbain
+./redeploy.sh --frontend    # pull + restart only the frontend
+./redeploy.sh --frontend --tag <previous>   # per-component rollback
+./redeploy.sh --all         # pull + restart everything recorded
+./deploy.sh --rollback      # legacy: restore the last known-good deployment files
 ```
+
+Set `KAINBAIN_DOCKERHUB_NAMESPACE` wherever publish runs; a one-time
+`./redeploy.sh --init` in `~/apps/kainbain` seeds the release manifest and
+the per-component tag keys in `.env` (the legacy single tag key stays).
 
 API: `GET /deploy/status`, `POST /deploy` (`{ fast: true }`), `POST /deploy/rollback`, `GET /deploy/log`, `GET /deploy/changelog?limit=` — the manager spawns detached so it survives the restart. UI: the **Deployment** section in **Settings** with Deploy Now, Fast Deploy, and Rollback. If the changelog dialog says no changelog was baked, redeploy: the artifact only exists from the first deploy that includes the generator step.

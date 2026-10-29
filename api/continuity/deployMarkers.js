@@ -14,7 +14,19 @@
  *   all degrade to a safe negative (`false` / `null`) instead of throwing.
  ***/
 
-export const DEPLOY_COMMAND_PATTERN = /deploy\.sh/;
+/***
+ * MARK: DEPLOY_COMMAND_PATTERN
+ * @description Matches a stage command that invokes a deploy/publish/redeploy script.
+ * @example DEPLOY_COMMAND_PATTERN.test('./publish.sh') => true
+ ***/
+export const DEPLOY_COMMAND_PATTERN = /(?:deploy|publish|redeploy)\.sh/;
+
+/***
+ * MARK: HOST_COMMAND_PATTERN
+ * @description Alias of DEPLOY_COMMAND_PATTERN for host-command classification.
+ * @example HOST_COMMAND_PATTERN.test('./redeploy.sh --frontend') => true
+ ***/
+export const HOST_COMMAND_PATTERN = DEPLOY_COMMAND_PATTERN;
 
 /***
  * MARK: isDeployCommand
@@ -32,6 +44,18 @@ export const DEPLOY_COMMAND_PATTERN = /deploy\.sh/;
 export function isDeployCommand(command) {
 	if (typeof command !== "string" || command.length === 0) return false;
 	return DEPLOY_COMMAND_PATTERN.test(command);
+}
+
+/***
+ * MARK: isHostCommand
+ * @description Whether a stage command is a host command (deploy/publish/
+ *   redeploy script). Twin of the helper in api/project/deployCommands.js.
+ * @example isHostCommand('./publish.sh --detect') => true
+ * @param {unknown} command - Stage `command` or `script` value.
+ * @returns {boolean}
+ ***/
+export function isHostCommand(command) {
+	return isDeployCommand(command);
 }
 
 /***

@@ -1,0 +1,2 @@
+{ "component": "backend", "apiVersion": "1.0.0",
+  "accepts": { "frontend": ">=1.0.0 <2.0.0", "runner": ">=1.0.0 <2.0.0" } }

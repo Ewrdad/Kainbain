@@ -7,21 +7,83 @@ import { logger } from '../../services/logger';
  * @description The commit this frontend bundle was built from (Vite inlines
  *   VITE_* at build; compose passes KAINBAIN_BUILD_REF through as
  *   VITE_BUILD_REF). Empty in dev and in builds that predate the stamp —
- *   callers treat empty as "unknown, do not compare".
+ *   kept for diagnostics only; the banner decision no longer uses it.
  * @example frontendBuildRef() => 'a1b2c3d' (or '' when unstamped)
  ***/
 const frontendBuildRef = () => (import.meta.env?.VITE_BUILD_REF ?? '').trim();
 
 /***
+ * MARK: frontendBackendApiRange
+ * @description The backend API range this frontend was built against
+ *   (VITE_BACKEND_API_RANGE, baked from frontend/version.json by publish).
+ *   Empty in dev ⇒ no banner, exactly like the unstamped behaviour before.
+ * @example frontendBackendApiRange() => '>=1.0.0 <2.0.0' (or '' in dev)
+ ***/
+const frontendBackendApiRange = () =>
+  (import.meta.env?.VITE_BACKEND_API_RANGE ?? '').trim();
+
+const parseVersion = (v) => {
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(typeof v === 'string' ? v.trim() : '');
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+};
+
+const cmpVersion = (a, b) => {
+  for (let i = 0; i < 3; i += 1) {
+    if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1;
+  }
+  return 0;
+};
+
+/***
+ * MARK: satisfiesRange
+ * @description Minimal semver-range check supporting the `>=a.b.c <d.e.f`
+ *   ranges this project declares in its version.json files (plus a bare
+ *   exact version). Anything unparseable does not satisfy.
+ * @example satisfiesRange('1.2.0', '>=1.0.0 <2.0.0') => true
+ * @example satisfiesRange('2.0.0', '>=1.0.0 <2.0.0') => false
+ ***/
+export const satisfiesRange = (version, range) => {
+  const v = parseVersion(version);
+  if (!v || typeof range !== 'string') return false;
+  const parts = range.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return false;
+  return parts.every((part) => {
+    const m = /^(>=|<=|>|<|=)?(\d+\.\d+\.\d+)$/.exec(part);
+    if (!m) return false;
+    const target = parseVersion(m[2]);
+    const cmp = cmpVersion(v, target);
+    switch (m[1] || '=') {
+      case '>=': return cmp >= 0;
+      case '<=': return cmp <= 0;
+      case '>': return cmp > 0;
+      case '<': return cmp < 0;
+      default: return cmp === 0;
+    }
+  });
+};
+
+/***
+ * MARK: isApiMismatch
+ * @description Pure API-range check: true only when BOTH the frontend's
+ *   required range and the backend's apiVersion are present and the version
+ *   falls outside the range. Empty/null on either side ⇒ no mismatch (never
+ *   break the board over an unverifiable version).
+ * @example isApiMismatch('>=1.0.0 <2.0.0', '2.0.0') => true
+ * @example isApiMismatch('>=1.0.0 <2.0.0', '1.0.0') => false
+ * @example isApiMismatch('', '2.0.0') => false
+ ***/
+export const isApiMismatch = (frontendRequires, backendApiVersion) => {
+  const range = typeof frontendRequires === 'string' ? frontendRequires.trim() : '';
+  const version = typeof backendApiVersion === 'string' ? backendApiVersion.trim() : '';
+  if (!range || !version || !parseVersion(version)) return false;
+  return !satisfiesRange(version, range);
+};
+
+/***
  * MARK: isBuildMismatch
- * @description Pure lockstep check (D7): true only when BOTH sides carry a
- *   real ref and they disagree. 'unknown'/'dev' placeholders and empty
- *   values never count as a mismatch — an unstamped side is unverified,
- *   not mismatched — so dev builds and pre-stamp backends stay silent.
- * @example isBuildMismatch('a1b2c3d', 'a1b2c3d') => false
+ * @description Legacy commit-equality check, retained for diagnostics
+ *   callers. The banner itself no longer decides on commits.
  * @example isBuildMismatch('a1b2c3d', 'e4f5g6h') => true
- * @example isBuildMismatch('', 'e4f5g6h') => false
- * @example isBuildMismatch('dev', 'e4f5g6h') => false
  ***/
 export const isBuildMismatch = (frontendRef, backendRef) => {
   const clean = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -34,28 +96,28 @@ export const isBuildMismatch = (frontendRef, backendRef) => {
 
 /***
  * MARK: VersionMismatchBanner
- * @description Explicit frontend<->backend lockstep banner (D7,
- *   MigrationPlan Phase 1 WP-1.1). Compares the baked-in VITE_BUILD_REF
- *   against /status build.commit once on mount and renders a full-width
- *   alert only on a proven mismatch. Renders nothing in dev (unstamped
- *   frontend), against unstamped backends, while loading, or on fetch
- *   failure — a version check must never break the board it guards.
+ * @description Frontend<->backend API compatibility banner
+ *   (AsymmetricUpdatesPlan WP-A4). Compares the baked-in
+ *   VITE_BACKEND_API_RANGE against /status build.apiVersion once on mount
+ *   and renders a full-width alert, naming both numbers, only on a proven
+ *   range mismatch. Renders nothing in dev (no range baked), against
+ *   unstamped backends, while loading, or on fetch failure.
  * @example <VersionMismatchBanner />
  ***/
 export function VersionMismatchBanner() {
-  const [backendRef, setBackendRef] = useState(null);
+  const [backendApiVersion, setBackendApiVersion] = useState(null);
 
   useEffect(() => {
     let active = true;
     (async () => {
       try {
         const data = await api.systemStatus();
-        const commit = data?.build?.commit;
-        if (active && typeof commit === 'string' && commit.trim() !== '') {
-          setBackendRef(commit.trim());
+        const version = data?.build?.apiVersion;
+        if (active && typeof version === 'string' && version.trim() !== '') {
+          setBackendApiVersion(version.trim());
         }
       } catch (e) {
-        logger.error('Failed to fetch backend build ref', e);
+        logger.error('Failed to fetch backend API version', e);
       }
     })();
     return () => {
@@ -63,7 +125,8 @@ export function VersionMismatchBanner() {
     };
   }, []);
 
-  if (!isBuildMismatch(frontendBuildRef(), backendRef)) return null;
+  const range = frontendBackendApiRange();
+  if (!isApiMismatch(range, backendApiVersion)) return null;
 
   return (
     <div
@@ -71,16 +134,16 @@ export function VersionMismatchBanner() {
       data-testid="version-mismatch-banner"
       className="w-full px-4 py-2 border-b-2 border-red-500 bg-red-950/90 text-red-50 text-sm text-center"
     >
-      Frontend build {frontendBuildRef()} does not match backend build {backendRef}. This
-      combination is unsupported — rebuild both images from the same commit
-      (`docker compose up --build`).
+      Frontend needs backend API {range}, backend is {backendApiVersion} — redeploy a
+      compatible backend or frontend.
+      {frontendBuildRef() ? ` (frontend build ${frontendBuildRef()})` : ''}
     </div>
   );
 }
 
 /***
  * MARK: VersionMismatchBanner default export
- * @description Default-export alias of the lockstep banner above.
+ * @description Default-export alias of the API compatibility banner above.
  * @example <VersionMismatchBanner />
  ***/
 export default VersionMismatchBanner;

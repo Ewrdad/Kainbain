@@ -3,9 +3,14 @@
 #   docker compose -f docker-compose.yml up -d   (file is renamed on install)
 # Host paths come from .env (KAINBAIN_PROJECTS_HOST / KAINBAIN_STATE_HOST /
 # KAINBAIN_NOTES_HOST) so an existing install keeps its current folders.
+# Per-component images/tags (AsymmetricUpdatesPlan DA7): KAINBAIN_BACKEND_IMAGE /
+# KAINBAIN_FRONTEND_IMAGE carry the fully-qualified published image (set by
+# publish/redeploy from the release manifest; default stays the local names)
+# and KAINBAIN_BACKEND_TAG / KAINBAIN_FRONTEND_TAG pin each component's tag,
+# each falling back to the legacy single KAINBAIN_IMAGE_TAG, then latest.
 services:
   backend:
-    image: kainbain-backend:${KAINBAIN_IMAGE_TAG:-latest}
+    image: ${KAINBAIN_BACKEND_IMAGE:-kainbain-backend}:${KAINBAIN_BACKEND_TAG:-${KAINBAIN_IMAGE_TAG:-latest}}
     expose: ["3100"]
     env_file: [{ path: .env, required: false }]
     environment:
@@ -22,7 +27,7 @@ services:
       - ${KAINBAIN_NOTES_HOST:-./notes}:${KAINBAIN_NOTES_CONTAINER_PATH:-/home/node/.kainbain/notes}
     restart: unless-stopped
   frontend:
-    image: kainbain-frontend:${KAINBAIN_IMAGE_TAG:-latest}
+    image: ${KAINBAIN_FRONTEND_IMAGE:-kainbain-frontend}:${KAINBAIN_FRONTEND_TAG:-${KAINBAIN_IMAGE_TAG:-latest}}
     ports: ["${KAINBAIN_PORT:-3100}:80"]
     depends_on: [backend]
     restart: unless-stopped

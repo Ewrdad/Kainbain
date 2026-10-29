@@ -17,7 +17,7 @@ afterAll(() => {
 import { describe, it, expect, vi } from "vitest";
 import fastify from "fastify";
 import app from "../index.js";
-import statusRoutes from "./status.js";
+import statusRoutes, { readApiVersion, withApiVersion } from "./status.js";
 
 /**
  * MARK: API Integration Tests
@@ -45,6 +45,16 @@ describe("Status API Integration", () => {
 				}),
 			}),
 		);
+	});
+
+	it("publishes build.apiVersion from api/version.json on /status", async () => {
+		await app.ready();
+		const res = await app.inject({ method: "GET", url: "/status" });
+		expect(res.statusCode).toBe(200);
+		expect(JSON.parse(res.payload).build.apiVersion).toBe("1.0.0");
+		expect(readApiVersion()).toBe("1.0.0");
+		expect(withApiVersion(null)).toEqual({ apiVersion: "1.0.0" });
+		expect(withApiVersion({ commit: "abc" })).toEqual({ commit: "abc", apiVersion: "1.0.0" });
 	});
 
 	it("should return health checks from /status/health", async () => {

@@ -31,7 +31,7 @@ npm run setup          # once per clone: all deps + Playwright Chromium
 npm run build          # build api + frontend
 npm run deploy         # ./deploy.sh (tests + build, idempotent)
 npm run dev            # start API + frontend dev servers (any OS)
-./deploy.sh --prod     # build + deploy the production "master" build (Linux)
+./publish.sh --detect  # build + push changed components; then ~/apps/kainbain/redeploy.sh deploys
 ```
 
 For manual control instead of the all-in-one script:

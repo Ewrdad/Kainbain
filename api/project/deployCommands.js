@@ -1,11 +1,22 @@
 /***
  * MARK: DEPLOY_COMMAND_PATTERN
- * @description Matches a stage command that invokes the deploy script.
- *   Data-migration heuristic ONLY (see `migrateMergeDeployStages`): it
- *   carries no runtime semantics. The generic pipeline never branches on
- *   command text; a deploy-command stage is an ordinary ci stage.
+ * @description Matches a stage command that invokes a deploy/publish/redeploy
+ *   script. Used by the merge/deploy stage data migration
+ *   (migrateMergeDeployStages) and by host-command classification
+ *   (isHostCommand): host commands are stamped hostOnly at stage
+ *   normalization and never dispatched to a Runner.
+ * @example DEPLOY_COMMAND_PATTERN.test('./publish.sh') => true
  ***/
-export const DEPLOY_COMMAND_PATTERN = /deploy\.sh/;
+export const DEPLOY_COMMAND_PATTERN = /(?:deploy|publish|redeploy)\.sh/;
+
+/***
+ * MARK: HOST_COMMAND_PATTERN
+ * @description Alias of DEPLOY_COMMAND_PATTERN: deploy/publish/redeploy are
+ *   all host commands that must run on the backend in the primary checkout,
+ *   never on a Runner (AsymmetricUpdatesPlan DA9).
+ * @example HOST_COMMAND_PATTERN.test('./redeploy.sh --frontend') => true
+ ***/
+export const HOST_COMMAND_PATTERN = DEPLOY_COMMAND_PATTERN;
 
 /***
  * MARK: isDeployCommand
@@ -19,6 +30,19 @@ export const DEPLOY_COMMAND_PATTERN = /deploy\.sh/;
 export function isDeployCommand(command) {
 	if (typeof command !== "string" || command.length === 0) return false;
 	return DEPLOY_COMMAND_PATTERN.test(command);
+}
+
+/***
+ * MARK: isHostCommand
+ * @description Whether a stage command is a host command (deploy/publish/
+ *   redeploy script). Host commands run only on the backend in the primary
+ *   checkout; they must never be dispatched to a Runner.
+ * @example isHostCommand('./publish.sh --detect') => true
+ * @param {unknown} command - Stage `command` or `script` value.
+ * @returns {boolean}
+ ***/
+export function isHostCommand(command) {
+	return isDeployCommand(command);
 }
 
 /***

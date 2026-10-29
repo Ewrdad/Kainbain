@@ -1,4 +1,5 @@
 import { RUNNER_PROTOCOL } from "../runnerRegistry.js";
+import { runnerApiCompatible } from "./runnerApiCompat.js";
 
 /***
  * MARK: runnerMatches
@@ -28,6 +29,7 @@ export function runnerMatches(record = {}, req = {}, opts = {}) {
 			? opts.minDiskHeadroomMb
 			: 100;
 
+	if (req.hostCommand === true) return { ok: false, reason: "HOST_COMMAND" };
 	if (record.status !== "active") return { ok: false, reason: "NOT_ACTIVE" };
 	if (record.paused === true) return { ok: false, reason: "PAUSED" };
 	const seen = Date.parse(record.lastSeenAt || "");
@@ -39,6 +41,10 @@ export function runnerMatches(record = {}, req = {}, opts = {}) {
 	const protocol =
 		caps.versions?.protocol || record.facts?.versions?.protocol;
 	if (protocol !== RUNNER_PROTOCOL) {
+		return { ok: false, reason: "PROTOCOL_SKEW" };
+	}
+	const runnerApi = caps.versions?.api || record.facts?.versions?.api;
+	if (!runnerApiCompatible(runnerApi).ok) {
 		return { ok: false, reason: "PROTOCOL_SKEW" };
 	}
 	// Only the raw string marker (taskRequirements' `{ alias: name }`) is

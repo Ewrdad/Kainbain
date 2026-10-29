@@ -1,11 +1,8 @@
-# KainBain frontend image (MigrationPlan Phase 1 WP-1.1).
-#
-# Lockstep rule: this image and the backend image are ALWAYS built together
-# from the same checkout (`docker compose up --build`). Never mix a
-# frontend tag with a backend tag from another commit — the UI shows an
-# explicit mismatch banner (VersionMismatchBanner) instead of failing
-# obscurely when KAINBAIN_BUILD_REF/VITE_BUILD_REF disagree, but mixed
-# tags are unsupported, not merely warned about.
+# KainBain frontend image. Independently versioned (AsymmetricUpdatesPlan):
+# this image may deploy against any backend inside the API range declared
+# in frontend/version.json (baked in as VITE_BACKEND_API_RANGE by the
+# publish build). The UI banner names both versions when /status reports a
+# backend apiVersion outside that range; commits are diagnostics only.
 
 # --- Build stage: install frontend deps, build the SPA ---------------------
 FROM node:24-alpine AS build
@@ -20,15 +17,16 @@ COPY frontend/ ./frontend/
 COPY .npmrc ./frontend/.npmrc
 RUN npm ci --prefix ./frontend
 
-# Empty VITE_API_BASE/VITE_WS_URL = "same origin" (mirrors deploy.sh --prod):
-# the UI talks to the origin nginx serves it from, which proxies /api + /ws
-# to the backend. VITE_BUILD_REF stamps the frontend side of the
-# frontend<->backend lockstep check (backend side is build.json via /status).
+# Empty VITE_API_BASE/VITE_WS_URL = "same origin": the UI talks to the
+# origin nginx serves it from, which proxies /api + /ws to the backend.
+# VITE_BUILD_REF is a diagnostics stamp; VITE_BACKEND_API_RANGE carries the
+# compatibility contract checked against /status build.apiVersion.
 ARG VITE_API_BASE=
 ARG VITE_WS_URL=
 ARG VITE_BUILD_REF=dev
+ARG VITE_BACKEND_API_RANGE=
 ARG VITE_NOTES_VIEWER_URL=
-RUN VITE_API_BASE="$VITE_API_BASE" VITE_WS_URL="$VITE_WS_URL" VITE_BUILD_REF="$VITE_BUILD_REF" VITE_NOTES_VIEWER_URL="$VITE_NOTES_VIEWER_URL" npm run build --prefix ./frontend
+RUN VITE_API_BASE="$VITE_API_BASE" VITE_WS_URL="$VITE_WS_URL" VITE_BUILD_REF="$VITE_BUILD_REF" VITE_BACKEND_API_RANGE="$VITE_BACKEND_API_RANGE" VITE_NOTES_VIEWER_URL="$VITE_NOTES_VIEWER_URL" npm run build --prefix ./frontend
 
 # --- Serve stage: nginx statics + same-origin API proxy --------------------
 FROM nginx:alpine

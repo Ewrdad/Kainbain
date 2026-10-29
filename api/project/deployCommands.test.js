@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_DEPLOY_COMMAND, DEPLOY_COMMAND_PATTERN, isDeployCommand } from "./deployCommands.js";
+import { DEFAULT_DEPLOY_COMMAND, DEPLOY_COMMAND_PATTERN, isDeployCommand, isHostCommand } from "./deployCommands.js";
+import { isDeployCommand as markersIsDeployCommand, DEPLOY_COMMAND_PATTERN as MARKERS_PATTERN } from "../continuity/deployMarkers.js";
 
 describe("isDeployCommand", () => {
 	it("matches deploy.sh commands", () => {
@@ -16,6 +17,25 @@ describe("isDeployCommand", () => {
 		expect(isDeployCommand(undefined)).toBe(false);
 		expect(isDeployCommand(null)).toBe(false);
 		expect(isDeployCommand(42)).toBe(false);
+	});
+});
+
+describe("host commands (DA9)", () => {
+	it("classifies publish/redeploy/deploy scripts as host commands in both detectors", () => {
+		for (const cmd of ["./publish.sh --detect", "./redeploy.sh --frontend", "./deploy.sh --prod"]) {
+			expect(isDeployCommand(cmd)).toBe(true);
+			expect(isHostCommand(cmd)).toBe(true);
+			expect(markersIsDeployCommand(cmd)).toBe(true);
+		}
+		expect(isHostCommand("npm test")).toBe(false);
+		expect(markersIsDeployCommand("npm test")).toBe(false);
+	});
+
+	it("pins agreement between the two detector implementations", () => {
+		expect(MARKERS_PATTERN.source).toBe(DEPLOY_COMMAND_PATTERN.source);
+		for (const cmd of ["./publish.sh", "./redeploy.sh --all", "./deploy.sh --prod", "echo hi", ""]) {
+			expect(markersIsDeployCommand(cmd)).toBe(isDeployCommand(cmd));
+		}
 	});
 });
 

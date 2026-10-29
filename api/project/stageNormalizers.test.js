@@ -73,6 +73,13 @@ describe("normalizeStage", () => {
 		expect("executionBranch" in migrated).toBe(false);
 	});
 
+	it("stamps hostOnly on host-command ci stages only (DA9)", () => {
+		expect(normalizeStage({ id: "1", type: "ci", command: "./publish.sh --detect" }).hostOnly).toBe(true);
+		expect(normalizeStage({ id: "1", type: "ci", command: "./deploy.sh --prod" }).hostOnly).toBe(true);
+		expect("hostOnly" in normalizeStage({ id: "1", type: "ci", command: "npm test" })).toBe(false);
+		expect("hostOnly" in normalizeStage({ id: "1", type: "agent", command: "./deploy.sh --prod" })).toBe(false);
+	});
+
 	it("keeps legacy stages byte-identical when no optional keys are present", () => {
 		const legacy = { id: "s1", name: "Ship", type: "deploy" };
 		expect(normalizeStage(legacy)).toEqual({ id: "s1", name: "Ship", type: "ci" });

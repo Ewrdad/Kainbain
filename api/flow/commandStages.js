@@ -251,8 +251,11 @@ export async function resolveCiBranchPlan({ stage, cwd } = {}) {
 	const rawMode = stage?.runOnBranch;
 	const mode = typeof rawMode === "string" ? rawMode.trim().toLowerCase() : "task";
 	const stageLabel = stage?.name || stage?.id || "unnamed";
+	// Host commands run only in the primary checkout (DA9), whatever the
+	// stage's branch mode says.
+	const effectiveMode = stage?.hostOnly === true ? "primary" : mode;
 
-	if (mode === "primary") {
+	if (effectiveMode === "primary") {
 		if (!(await isGitRepository(cwd))) {
 			throw new GitError(
 				`Cannot run CI stage '${stageLabel}' on the primary branch: '${cwd}' is not a git repository.`,

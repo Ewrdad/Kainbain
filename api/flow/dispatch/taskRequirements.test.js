@@ -45,6 +45,17 @@ describe("taskRequirements", () => {
 		).toMatchObject({ harness: "pi", model: "", tier: "T1" });
 	});
 
+	test("host-command ci stages are not Runner-runnable; ordinary ci stages still are", () => {
+		for (const command of ["./publish.sh --detect", "./redeploy.sh --frontend", "./deploy.sh --prod"]) {
+			const out = taskRequirements({}, { currentStageId: "s1", stages: [{ id: "s1", type: "ci", command }] });
+			expect(out).toMatchObject({ runnableType: false, hostCommand: true, kind: "ci" });
+		}
+		const normal = taskRequirements({}, { currentStageId: "s1", stages: [{ id: "s1", type: "ci", command: "npm test" }] });
+		expect(normal).toMatchObject({ runnableType: true, hostCommand: false });
+		const stamped = taskRequirements({}, { currentStageId: "s1", stages: [{ id: "s1", type: "ci", hostOnly: true }] });
+		expect(stamped).toMatchObject({ runnableType: false, hostCommand: true });
+	});
+
 	test("human stages are not Runner-runnable; ci stages are CI-runnable at T0", () => {
 		const ci = taskRequirements({}, { currentStageId: "s1", stages: [{ id: "s1", type: "ci" }] });
 		expect(ci).toMatchObject({ runnableType: true, kind: "ci", harness: null, tier: "T0" });

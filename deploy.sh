@@ -61,6 +61,19 @@ fi
 # no matter how this script is invoked.
 cd "$(dirname "$0")"
 
+# Host commands must never run inside a task worktree (branch kb/*): they
+# publish/deploy the primary checkout only (AsymmetricUpdatesPlan DA9).
+if [ -n "${KAINBAIN_TASK_ID:-}" ]; then
+    _kb_branch="$(git branch --show-current 2>/dev/null || true)"
+    case "$_kb_branch" in
+        kb/*)
+            echo "deploy.sh: refusing to run from a task worktree (branch kb/*) — deploy/publish stages must run on the primary checkout" >&2
+            exit 78
+            ;;
+    esac
+    unset _kb_branch
+fi
+
 # systemd --user tooling (systemd-run below, systemctl --user in restart_service)
 # needs the user session bus. Some callers spawn this script with a sanitized
 # environment that drops both vars (e.g. TaskStore command stages), which made

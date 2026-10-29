@@ -43,9 +43,11 @@ the API from the same port, so there is only one URL.
 What just happened: compose builds **two images from this checkout in one
 `docker compose up --build`** (`backend` from `Dockerfile`, `frontend` from
 `frontend/Dockerfile`, frontend compiled with same-origin API URLs). They
-are a lockstep pair — never mix a frontend tag with a backend tag from
-another commit; a mismatched pair shows an explicit UI banner instead of
-failing obscurely. The backend entrypoint verifies the task-storage mounts
+are independently versioned by API contract (see
+`api/version.json`, `frontend/version.json`, `runner/version.json`): a
+frontend may run against any backend inside its declared API range, and an
+out-of-range pair shows an explicit UI banner naming both versions instead
+of failing obscurely. The backend entrypoint verifies the task-storage mounts
 *refuse-to-boot* style (an unreachable or unwritable projects root exits 1
 rather than serving an empty list), and compose mounts `./projects` (your
 tasks, on the host, survive rebuilds) plus a named volume for container
@@ -67,9 +69,19 @@ for zero-credential evaluation, or add provider keys / a LiteLLM URL
 (see [Scenario C](#scenario-c-workcorporate-laptop)) and recreate
 (`docker compose up -d` again).
 
+Publishing and deploying are separate steps. `./publish.sh` (repo root)
+builds and pushes the changed components' images to Docker Hub and writes
+`dist/release-manifest.json`; it never restarts anything.
+`~/apps/kainbain/redeploy.sh` then pulls and restarts per component
+(`--backend`, `--frontend`, `--runner`, `--all`; `--tag <tag>` pins a
+previous tag for rollback). Set `KAINBAIN_DOCKERHUB_NAMESPACE` wherever
+publish runs. The pipeline's Publish stage runs `./publish.sh --detect`
+and publishes only — deployment stays a human, local act. The old
+`./deploy.sh --prod` path is retired (it prints the pointer above).
+
 If this instance runs its own KainBain pipeline and deploys itself (a `ci`
-stage whose command runs `./deploy.sh --prod` — an ordinary `ci` stage to
-the generic pipeline), set `KAINBAIN_SELF_DEPLOY_CONTINUITY=1` in `.env`.
+stage whose command runs `./publish.sh --detect`, a host command that only
+ever runs on the backend in the primary checkout), set `KAINBAIN_SELF_DEPLOY_CONTINUITY=1` in `.env`.
 That implementation-specific flag enables the cross-restart continuity
 plugin (`api/continuity/`) so the app survives its own redeploy; it is off
 by default and generic projects never load that code.

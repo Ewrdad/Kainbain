@@ -45,6 +45,21 @@ describe("RunnerRegistry", () => {
 		runners = registry();
 	});
 
+	test("accepts in-range versions.api, rejects out-of-range naming both versions, accepts absent api", () => {
+		const inRange = { ...FACTS, versions: { ...FACTS.versions, api: "1.0.0" } };
+		expect(() => runners.register({ runnerId: "ok", joinToken: "join-secret", facts: inRange })).not.toThrow();
+		try {
+			runners.register({ runnerId: "bad", joinToken: "join-secret", facts: { ...FACTS, versions: { ...FACTS.versions, api: "9.0.0" } } });
+			expect.unreachable();
+		} catch (err) {
+			expect(err.statusCode).toBe(409);
+			expect(err.code).toBe("PROTOCOL_VERSION_UNSUPPORTED");
+			expect(err.message).toContain("9.0.0");
+			expect(err.message).toContain(">=1.0.0 <2.0.0");
+		}
+		expect(() => runners.register({ runnerId: "old", joinToken: "join-secret", facts: FACTS })).not.toThrow();
+	});
+
 	test("refuses registration when no join token is configured", () => {
 		const open = new RunnerRegistry({ stateFile: tmpRunnerState() });
 		try {

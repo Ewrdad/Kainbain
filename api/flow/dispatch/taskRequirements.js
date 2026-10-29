@@ -1,5 +1,6 @@
 import { ALIAS_HARNESS_ID } from "../../../shared/modelAliases.js";
 import { resolveHarnessName } from "../../agent/harnessRegistry.js";
+import { isHostCommand } from "../../project/deployCommands.js";
 
 /***
  * MARK: taskRequirements
@@ -31,7 +32,12 @@ export function taskRequirements(project = {}, task = {}) {
 		{};
 	const type = String(stage.type || "agent").toLowerCase();
 	const kind = type === "ci" || type === "script" || type === "deploy" || type === "command" ? "ci" : type;
-	const runnableType = type === "agent" || type === "review" || kind === "ci";
+	// Host commands (stamped hostOnly at stage normalization) run only on the
+	// backend in the primary checkout: never Runner-runnable (DA9).
+	const hostCommand =
+		kind === "ci" &&
+		(stage.hostOnly === true || isHostCommand(stage.command || stage.script || ""));
+	const runnableType = !hostCommand && (type === "agent" || type === "review" || kind === "ci");
 
 	// Same order as the embedded run path (`resolveHarnessName`): stage
 	// override → project default → configured default → built-in. Dispatch
@@ -70,5 +76,5 @@ export function taskRequirements(project = {}, task = {}) {
 				? "T1"
 				: "T0";
 
-	return { harness: kind === "ci" ? null : harness, model: kind === "ci" ? "" : model, tier, alias: kind === "ci" ? null : alias, runnableType, kind, stageId: stage.id ?? null };
+	return { harness: kind === "ci" ? null : harness, model: kind === "ci" ? "" : model, tier, alias: kind === "ci" ? null : alias, runnableType, hostCommand, kind, stageId: stage.id ?? null };
 }

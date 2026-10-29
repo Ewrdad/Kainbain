@@ -4,6 +4,7 @@ import { loadStateFile } from "./loadStateFile.js";
 import { resolveStatePath } from "./resolveStatePath.js";
 import { saveStateFile } from "./saveStateFile.js";
 import { normalizeCapabilities } from "./dispatch/normalizeCapabilities.js";
+import { runnerApiCompatible } from "./dispatch/runnerApiCompat.js";
 
 const RUNNER_STATE_VERSION = 1;
 
@@ -215,6 +216,14 @@ export class RunnerRegistry {
 				`Runner protocol ${String(protocol)} is outside the N-1 window (backend ${RUNNER_PROTOCOL}, floor ${MIN_RUNNER_PROTOCOL}).`,
 			);
 		}
+		const apiCompat = runnerApiCompatible(facts?.versions?.api);
+		if (!apiCompat.ok) {
+			throw RunnerRegistry._fail(
+				409,
+				"PROTOCOL_VERSION_UNSUPPORTED",
+				`Runner API version ${String(facts?.versions?.api)} does not satisfy backend accepts.runner ${apiCompat.range}.`,
+			);
+		}
 		const existing = this.runners.get(runnerId);
 		if (existing) {
 			existing.facts = facts;
@@ -400,6 +409,14 @@ export class RunnerRegistry {
 			);
 		}
 		const capabilities = RunnerRegistry._capabilitiesOrThrow(facts);
+		const apiCompat = runnerApiCompatible(facts?.versions?.api);
+		if (!apiCompat.ok) {
+			throw RunnerRegistry._fail(
+				409,
+				"PROTOCOL_VERSION_UNSUPPORTED",
+				`Runner API version ${String(facts?.versions?.api)} does not satisfy backend accepts.runner ${apiCompat.range}.`,
+			);
+		}
 		const protocol = facts?.versions?.protocol;
 		if (protocol && protocol !== RUNNER_PROTOCOL) {
 			throw RunnerRegistry._fail(

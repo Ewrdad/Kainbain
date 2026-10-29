@@ -1432,6 +1432,15 @@ describe("resolveCiBranchPlan", () => {
 		expect(gitMocks.branchExists).not.toHaveBeenCalled();
 	});
 
+	it("resolves hostOnly stages to the primary branch regardless of runOnBranch", async () => {
+		gitMocks.defaultBranch.mockResolvedValue("trunk");
+		const plan = await resolveCiBranchPlan({
+			stage: { name: "Publish", hostOnly: true },
+			cwd: "/repo",
+		});
+		expect(plan).toEqual({ mode: "primary", branch: "trunk" });
+	});
+
 	it("resolves primary mode to the project's default branch", async () => {
 		gitMocks.defaultBranch.mockResolvedValue("trunk");
 		const plan = await resolveCiBranchPlan({

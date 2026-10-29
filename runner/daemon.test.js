@@ -15,7 +15,15 @@ import {
 	runSingleAssignment,
 	applyBackendPrompt,
 	startClaimRenewal,
+	RUNNER_API_VERSION,
 } from "./daemon.js";
+
+describe("RUNNER_API_VERSION", () => {
+	it("equals runner/version.json apiVersion", () => {
+		const parsed = JSON.parse(fs.readFileSync(new URL("./version.json", import.meta.url), "utf8"));
+		assert.equal(RUNNER_API_VERSION, parsed.apiVersion);
+	});
+});
 
 describe("defaultLoadHarness", () => {
 	it("wires mock, pi, muse, antigravity, and vibe harnesses with createSession", async () => {
