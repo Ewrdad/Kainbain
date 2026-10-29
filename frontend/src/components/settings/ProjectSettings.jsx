@@ -52,7 +52,8 @@ export function ProjectSettings() {
   // Fail-safe: `effectiveSection` is always a known tab, but the lookup still
   // falls back to the first tab so a heading always renders (never blank).
   const activeTab =
-    PROJECT_SETTINGS_TABS.find((tab) => tab.id === effectiveSection) ?? PROJECT_SETTINGS_TABS[0];
+    PROJECT_SETTINGS_TABS.find((tab) => tab.id === effectiveSection) ??
+    PROJECT_SETTINGS_TABS.at(0);
   // Unsaved-edits flag reported by the shared project form.
   const [formDirty, setFormDirty] = useState(false);
   // Focus targets for arrow-key tab navigation (automatic activation: moving
@@ -66,6 +67,11 @@ export function ProjectSettings() {
    *   shared form stays mounted and keeps the edits.
    ***/
   const handleSectionChange = (nextSection) => {
+    // Fail-safe: an unknown section id is ignored, never stored — storing it
+    // would only be masked by the effectiveSection fallback and would hide
+    // the bad caller. Returns whether the switch was accepted so callers
+    // (arrow-key focus, search highlight) only follow a switch that happened.
+    if (!PROJECT_SETTINGS_SECTIONS.includes(nextSection)) return false;
     if (
       formDirty &&
       PROJECT_FORM_SECTIONS.includes(effectiveSection) &&
@@ -74,24 +80,31 @@ export function ProjectSettings() {
       typeof window.confirm === 'function' &&
       !window.confirm('You have unsaved changes. Switch tabs anyway?')
     ) {
-      return;
+      return false;
     }
     setSettingsSection(nextSection);
+    return true;
   };
   const focusTabAt = (index) => {
     const count = PROJECT_SETTINGS_TABS.length;
+    if (count === 0) return;
     const wrapped = ((index % count) + count) % count;
     // `.at()` reads by index without the bracket-access pattern the
     // security linter flags; the wrapped index is always in range.
-    tabButtonRefs.current.at(wrapped)?.focus();
     const tab = PROJECT_SETTINGS_TABS.at(wrapped);
-    if (tab) handleSectionChange(tab.id);
+    if (!tab) return;
+    // Switch first, focus second: when the unsaved-edits guard blocks the
+    // switch, focus must stay on the still-selected tab instead of landing
+    // on a tab that aria-selected says is not active.
+    if (handleSectionChange(tab.id)) {
+      tabButtonRefs.current.at(wrapped)?.focus();
+    }
   };
   // Arrow-key navigation between tabs (APG automatic activation: moving
   // focus also selects the tab). Wired per-button rather than on the tablist
   // container so the handler always lives on a focusable element. Movement is
-  // relative to the focused tab: if the dirty-guard blocks a switch, focus
-  // and selection can briefly diverge, and focus-relative movement stays sane.
+  // relative to the focused tab; if the dirty-guard blocks a switch, focus
+  // stays on the selected tab, so the next keypress still starts from there.
   const onTabKeyDown = (event, fromIndex) => {
     if (event.key === 'ArrowRight') {
       event.preventDefault();
@@ -149,7 +162,10 @@ export function ProjectSettings() {
     ) {
       return;
     }
-    handleSectionChange(entry.tab);
+    // Only highlight when the switch actually happened: if the unsaved-edits
+    // guard blocks it, the target is not on screen and ringing it (or a stale
+    // element with the same id) would mislead.
+    if (!handleSectionChange(entry.tab)) return;
     highlightSeqRef.current += 1;
     setHighlightTarget({ id: entry.elementId, at: highlightSeqRef.current });
   };

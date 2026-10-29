@@ -850,6 +850,35 @@ test('switching to Workflows with unsaved edits asks for confirmation', () => {
   }
 });
 
+test('arrow-key tab switch blocked by the unsaved-edits guard keeps focus on the selected tab', () => {
+  const originalConfirm = window.confirm;
+  const confirm = vi.fn(() => false);
+  window.confirm = confirm;
+  try {
+    renderWithKainBain(<ProjectSettings />, {
+      projects,
+      activeProjectId: 'p1',
+      selectProject: vi.fn(),
+    });
+
+    fireEvent.change(screen.getByLabelText('Project Name'), {
+      target: { value: 'Draft Name' },
+    });
+    const projectTab = screen.getByRole('tab', { name: 'Project Settings' });
+    projectTab.focus();
+    // End would jump to Skills (outside the shared form): the guard blocks
+    // it, so selection AND focus must stay on the Project tab — focus landing
+    // on an unselected tab would mislead keyboard and screen-reader users.
+    fireEvent.keyDown(projectTab, { key: 'End' });
+    expect(confirm).toHaveBeenCalledWith('You have unsaved changes. Switch tabs anyway?');
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('Project Settings');
+    expect(document.activeElement).toBe(projectTab);
+    expect(screen.getByLabelText('Project Name')).toHaveValue('Draft Name');
+  } finally {
+    window.confirm = originalConfirm;
+  }
+});
+
 test('switching between project tabs with unsaved edits never warns', () => {
   const originalConfirm = window.confirm;
   const confirm = vi.fn();
