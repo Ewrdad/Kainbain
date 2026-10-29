@@ -206,7 +206,21 @@ export async function untrackLiveTaskSnapshots(projectCwd, opts = {}) {
 	} catch {
 		return { untracked: [] };
 	}
-	const live = files.filter((f) => isLiveTaskSnapshotPath(f, opts));
+	// Scope the migration to files with snapshot dirt RIGHT NOW. Untracking
+	// a clean tracked copy would stage a deletion with no corresponding
+	// snapshot commit in the same call — the staged deletion is left behind
+	// and blocks the very switch the caller is preparing ("untracked files
+	// would be removed"). Clean copies migrate lazily on their next dirt.
+	let dirty = [];
+	try {
+		({ dirtyPaths: dirty } = await getWorkingTreeStatus(projectCwd, { ignorePaths: [] }));
+	} catch {
+		return { untracked: [] };
+	}
+	const dirtySet = new Set(
+		(dirty || []).map((raw) => String(raw).replace(/\\/g, "/").replace(/["']/g, "")),
+	);
+	const live = files.filter((f) => isLiveTaskSnapshotPath(f, opts) && dirtySet.has(f));
 	if (live.length === 0) return { untracked: [] };
 	try {
 		await git(projectCwd, ["rm", "--cached", "-q", "--", ...live]);

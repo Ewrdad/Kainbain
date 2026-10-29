@@ -453,12 +453,15 @@ describe("untrackLiveTaskSnapshots", () => {
 		spawnMock.mockReset();
 	});
 
-	function routeLsFiles(tracked) {
+	function routeLsFiles(tracked, status = "") {
 		const calls = [];
 		spawnMock.mockImplementation((cmd, args) => {
 			calls.push([...args]);
 			if (args.includes("--abbrev-ref")) {
 				return fakeChildFromResponse({ stdout: "main\n" });
+			}
+			if (args[0] === "status") {
+				return fakeChildFromResponse({ stdout: status });
 			}
 			if (args[0] === "ls-files") {
 				return fakeChildFromResponse({ stdout: tracked });
@@ -470,7 +473,10 @@ describe("untrackLiveTaskSnapshots", () => {
 
 	it("removes tracked task.md snapshots from the index, keeps everything else", async () => {
 		const { untrackLiveTaskSnapshots } = await import("./commit.js");
-		const calls = routeLsFiles("docs/tasks/t/task.md\0src/code.js\0");
+		const calls = routeLsFiles(
+			"docs/tasks/t/task.md\0src/code.js\0",
+			" M docs/tasks/t/task.md\n",
+		);
 		const res = await untrackLiveTaskSnapshots("/repo");
 		expect(res).toEqual({ untracked: ["docs/tasks/t/task.md"] });
 		const rm = calls.find((a) => a[0] === "rm");
@@ -482,7 +488,18 @@ describe("untrackLiveTaskSnapshots", () => {
 
 	it("is a no-op when no live snapshot is tracked", async () => {
 		const { untrackLiveTaskSnapshots } = await import("./commit.js");
-		const calls = routeLsFiles("src/code.js\0");
+		const calls = routeLsFiles("src/code.js\0", " M src/code.js\n");
+		const res = await untrackLiveTaskSnapshots("/repo");
+		expect(res).toEqual({ untracked: [] });
+		expect(calls.some((a) => a[0] === "rm")).toBe(false);
+	});
+
+	it("leaves clean tracked snapshots alone (lazy migration on next dirt)", async () => {
+		const { untrackLiveTaskSnapshots } = await import("./commit.js");
+		const calls = routeLsFiles(
+			"docs/tasks/t/task.md\0",
+			" M docs/tasks/t/report.md\n",
+		);
 		const res = await untrackLiveTaskSnapshots("/repo");
 		expect(res).toEqual({ untracked: [] });
 		expect(calls.some((a) => a[0] === "rm")).toBe(false);
