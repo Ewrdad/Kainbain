@@ -37,8 +37,13 @@ export function RunnerBox({ entry, onOpenTask }) {
   // ('RUNNING'), or non-string (5, {}, []) status used to miss the colour
   // map while the label read something else. Lower-cased: the display
   // upper-cases it back, and the map only holds lower-case keys.
-  const statusWord =
-    typeof entry?.statusWord === 'string' && entry.statusWord.trim() !== ''
+  // A box without a task is idle by definition: every channel (dot, visible
+  // word, aria label) reads idle/grey even when a hand-injected entry
+  // carries a stale non-idle word beside its null task.
+  const hasTask = Boolean(entry?.task);
+  const statusWord = !hasTask
+    ? 'idle'
+    : typeof entry?.statusWord === 'string' && entry.statusWord.trim() !== ''
       ? entry.statusWord.trim().toLowerCase()
       : 'idle';
   const style = getRunnerBoxStyle(statusWord);
@@ -48,11 +53,11 @@ export function RunnerBox({ entry, onOpenTask }) {
   const label = buildRunnerBoxAriaLabel({
     runnerLabel: runnerName,
     statusWord,
-    taskTitleFirstLine: entry?.taskTitleFirstLine,
-    stageName: entry?.stageName,
+    taskTitleFirstLine: hasTask ? entry?.taskTitleFirstLine : undefined,
+    stageName: hasTask ? entry?.stageName : undefined,
   });
   const taskTitle =
-    typeof entry?.taskTitleFirstLine === 'string' && entry.taskTitleFirstLine !== ''
+    typeof entry?.taskTitleFirstLine === 'string' && entry.taskTitleFirstLine.trim() !== ''
       ? entry.taskTitleFirstLine
       : 'Untitled Task';
   // Only a non-blank string names a stage: anything else (a bad-merge object,
@@ -68,7 +73,7 @@ export function RunnerBox({ entry, onOpenTask }) {
   // Idle variant (plan q5): greyed-out panel, no click target. role="group"
   // so the aria-label (runner + status) stays valid on a non-interactive
   // element; the word `idle` is visible text, never colour-only.
-  if (!entry?.task) {
+  if (!hasTask) {
     return (
       <div
         role="group"

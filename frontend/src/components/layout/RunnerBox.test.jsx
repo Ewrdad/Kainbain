@@ -143,3 +143,29 @@ test('missing stage renders an em dash and long names keep full titles', () => {
   expect(nameLine).toHaveTextContent(longName.slice(0, 20));
   expect(screen.getByTitle(longTask.slice(0, 239) + '…')).toBeInTheDocument();
 });
+
+test('an idle panel never disagrees with its own status word', () => {
+  // A hand-injected entry with no task but a non-idle word used to paint a
+  // red dot beside the word `idle`: the panel is idle, so every channel
+  // (dot, visible word, aria label) must read idle/grey.
+  renderBox({
+    runnerId: 'solo',
+    runnerLabel: 'Solo',
+    task: null,
+    taskId: null,
+    taskTitleFirstLine: null,
+    stageName: null,
+    statusWord: 'failed',
+  });
+  const box = screen.getByTestId('runner-box-solo');
+  expect(box).toHaveTextContent('idle');
+  expect(box.innerHTML).toContain('bg-text-muted');
+  expect(box.innerHTML).not.toContain('bg-error');
+  expect(box.getAttribute('aria-label')).toBe('Runner Solo, idle');
+});
+
+test('a whitespace-only task title falls back to Untitled Task', () => {
+  renderBox({ ...runningEntry, taskTitleFirstLine: '   ' });
+  const box = screen.getByTestId('runner-box-bravo');
+  expect(box).toHaveTextContent('Untitled Task');
+});
