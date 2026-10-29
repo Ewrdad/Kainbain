@@ -9,6 +9,14 @@ const execFileAsync = promisify(execFile);
 // wedged stages before the timeout existed), 60s per command.
 export const RUNNER_GIT_TIMEOUT_MS = 60000;
 export const RUNNER_GIT_LOCK_STALE_MS = 30000;
+// Worktree fleet hygiene (e79b1d25 outage): at most WORKTREE_CAP foreign
+// task workdirs live under the work root. A new task past the cap evicts
+// the least-recently-used STALE workdir (no use within
+// WORKTREE_EVICT_STALE_MS) instead of refusing — unpushed residue is parked
+// on a kb-recovery/* branch first, never deleted. Tasks that completed (or
+// vanished from the backend) are reaped right after their execution.
+export const WORKTREE_CAP = 5;
+export const WORKTREE_EVICT_STALE_MS = 30 * 60 * 1000;
 
 /***
  * MARK: RunnerGitError
@@ -269,6 +277,255 @@ export function listOrphanWorkdirs(workRoot, currentTaskId) {
 }
 
 /***
+ * MARK: touchWorkdir
+ * @description Marks a task workdir as recently used (directory mtime). The
+ *   daemon touches the workdir on every prepare/reuse and on every claim
+ *   renewal tick, so the LRU eviction below can tell a live workdir from a
+ *   stale orphan without reading file contents. Directory mtime only (no
+ *   marker file — a marker would pollute `git status` inside the worktree).
+ *   Best-effort: returns false instead of throwing.
+ * @example touchWorkdir('/w/kb-t1') => true
+ * @param {string} workdir - Task workdir path.
+ * @returns {boolean} Whether the touch succeeded.
+ ***/
+export function touchWorkdir(workdir) {
+	try {
+		if (!workdir || !fs.existsSync(workdir)) return false;
+		const now = new Date();
+		fs.utimesSync(workdir, now, now);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/***
+ * MARK: workdirMtimeMs
+ * @description Last-use timestamp of a task workdir (directory mtime, kept
+ *   current by `touchWorkdir`). Unstatable paths read as 0 (oldest) so a
+ *   half-removed workdir is reclaimed first, never protected.
+ * @example workdirMtimeMs('/w/kb-t1') => 1793315019524
+ * @param {string} dir - Workdir path.
+ * @returns {number} mtime in ms, or 0 when unreadable.
+ ***/
+export function workdirMtimeMs(dir) {
+	try {
+		return fs.statSync(dir).mtimeMs || 0;
+	} catch {
+		return 0;
+	}
+}
+
+/***
+ * MARK: preserveEvictedWorkdir
+ * @description Parks a workdir's unpushed residue on a `kb-recovery/*`
+ *   branch before the workdir is removed: dirty files are committed (with a
+ *   repo-local identity, like the reuse path) and unpushed commits already
+ *   live on the branch, so `git worktree remove` afterwards loses nothing.
+ *   Resolves to the recovery branch name, or null when the workdir was
+ *   clean and fully pushed (nothing to preserve).
+ * @example await preserveEvictedWorkdir('/w/kb-t1') => 'kb-recovery/t1/2026-…'
+ * @param {string} workdir - Task workdir to inspect and park.
+ * @returns {Promise<string|null>} Recovery branch, or null when clean.
+ ***/
+export async function preserveEvictedWorkdir(workdir) {
+	const branch = await runGit(workdir, ["rev-parse", "--abbrev-ref", "HEAD"])
+		.then((r) => r.stdout.trim())
+		.catch(() => "");
+	const slug = (branch.startsWith("kb/")
+		? branch.slice("kb/".length)
+		: path.basename(workdir).replace(/^kb-/, "") || "task"
+	).replaceAll("/", "-");
+	const dirty = (await runGit(workdir, ["status", "--porcelain"])).stdout.trim() !== "";
+	let ahead = 0;
+	if (branch && branch !== "HEAD") {
+		try {
+			const { stdout } = await runGit(workdir, ["rev-list", "--count", `origin/${branch}..${branch}`]);
+			ahead = Number.parseInt(stdout.trim(), 10) || 0;
+		} catch {
+			ahead = 0;
+		}
+	}
+	if (!dirty && ahead <= 0) return null;
+	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+	const recoveredTo = `kb-recovery/${slug}/${stamp}`;
+	if (branch && branch !== "HEAD") {
+		await runGit(workdir, ["branch", recoveredTo, branch]);
+	} else {
+		await runGit(workdir, ["branch", recoveredTo]);
+	}
+	if (dirty) {
+		await runGit(workdir, ["checkout", recoveredTo]);
+		await runGit(workdir, ["add", "-A"]);
+		await runGit(workdir, [
+			"-c", "user.name=KainBain Runner",
+			"-c", "user.email=kainbain-runner@local",
+			"commit", "-m", `recovery: unpushed work parked before eviction (${path.basename(workdir)})`,
+		]);
+	}
+	return recoveredTo;
+}
+
+/***
+ * MARK: removeTaskWorkdir
+ * @description Removes one task workdir and its worktree registration. Finds
+ *   the owning repo (the mode repo, the backend checkout, or any mirror
+ *   under the work root) via `git worktree list` and removes through it so
+ *   no stale admin entries remain; falls back to plain directory removal
+ *   for hand-made dirs. Always prunes the owners afterwards. Total: never
+ *   throws (returns whether the directory is gone).
+ * @example await removeTaskWorkdir({ workRoot: '/w', dir: '/w/kb-t1' }) => true
+ * @param {Object} opts
+ * @param {string} opts.workRoot - Runner work root (scanned for mirrors).
+ * @param {string} [opts.repoDir] - Mode repo dir (mirror or adopted path).
+ * @param {string} [opts.localPath] - Backend checkout for worktree removal.
+ * @param {string} opts.dir - Task workdir to remove.
+ * @returns {Promise<boolean>} Whether the directory is gone.
+ ***/
+export async function removeTaskWorkdir({ workRoot, repoDir = null, localPath = null, dir } = {}) {
+	try {
+		if (!dir) return true;
+		const owners = [];
+		for (const candidate of [repoDir, localPath]) {
+			if (candidate && fs.existsSync(path.join(candidate, ".git"))) owners.push(candidate);
+		}
+		try {
+			const mirrors = path.join(workRoot, "mirrors");
+			for (const entry of fs.readdirSync(mirrors, { withFileTypes: true })) {
+				if (!entry.isDirectory()) continue;
+				const full = path.join(mirrors, entry.name);
+				if (fs.existsSync(path.join(full, ".git"))) owners.push(full);
+			}
+		} catch {
+			// No mirrors dir — clone mode was never used here.
+		}
+		for (const owner of owners) {
+			let list = "";
+			try {
+				list = (await runGit(owner, ["worktree", "list", "--porcelain"])).stdout;
+			} catch {
+				continue;
+			}
+			if (!list.split("\n").some((line) => line.trim() === `worktree ${dir}`)) continue;
+			try {
+				await runGit(owner, ["worktree", "remove", "--force", dir]);
+			} catch {
+				// Fall through to directory removal + prune below.
+			}
+			try {
+				await runGit(owner, ["worktree", "prune"]);
+			} catch {
+				// Prune is hygiene; the removal is what matters.
+			}
+			break;
+		}
+		try {
+			if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+		} catch {
+			// A racing remover may own it; the exists check below decides.
+		}
+		return !fs.existsSync(dir);
+	} catch {
+		try {
+			return !fs.existsSync(dir);
+		} catch {
+			return false;
+		}
+	}
+}
+
+/***
+ * MARK: evictOldestWorkdir
+ * @description Frees one worktree slot past the cap by removing the
+ *   least-recently-used STALE workdir (no touch within `staleMs`). Unpushed
+ *   residue is parked on a `kb-recovery/*` branch first (see
+ *   `preserveEvictedWorkdir`); workdirs touched recently are never evicted,
+ *   so a live run on a sibling Runner is safe. Tries oldest-first and
+ *   resolves null when nothing is evictable (all fresh, all removals
+ *   failed) — the caller then reports WORKTREE_CAP_REACHED instead of
+ *   deleting live work.
+ * @example await evictOldestWorkdir({ workRoot: '/w' }) => { evicted: '/w/kb-old', parkedTo: null }
+ * @param {Object} opts
+ * @param {string} opts.workRoot - Runner work root.
+ * @param {string} [opts.currentTaskId] - Never evicts this task's own workdir.
+ * @param {number} [opts.staleMs] - Staleness threshold (default WORKTREE_EVICT_STALE_MS).
+ * @param {string} [opts.repoDir] - Mode repo dir for worktree removal.
+ * @param {string} [opts.localPath] - Backend checkout for worktree removal.
+ * @returns {Promise<{evicted: string, parkedTo: string|null}|null>} Eviction record, or null.
+ ***/
+export async function evictOldestWorkdir({ workRoot, currentTaskId = null, staleMs = WORKTREE_EVICT_STALE_MS, repoDir = null, localPath = null } = {}) {
+	const orphans = listOrphanWorkdirs(workRoot, currentTaskId);
+	if (!orphans.length) return null;
+	const now = Date.now();
+	const aged = orphans
+		.filter((dir) => fs.existsSync(dir))
+		.map((dir) => ({ dir, mtime: workdirMtimeMs(dir) }))
+		.filter((entry) => now - entry.mtime > staleMs)
+		.sort((a, b) => a.mtime - b.mtime);
+	for (const { dir } of aged) {
+		try {
+			const parkedTo = await preserveEvictedWorkdir(dir);
+			const gone = await removeTaskWorkdir({ workRoot, repoDir, localPath, dir });
+			if (gone) return { evicted: dir, parkedTo };
+		} catch {
+			// Try the next-oldest candidate instead of failing the deploy.
+		}
+	}
+	return null;
+}
+
+/***
+ * MARK: reapTaskWorkdirIfTerminal
+ * @description Removes a task's workdir once it can never run again: the
+ *   backend reports the task `completed`, or the task is gone (404 — a true
+ *   orphan). Anything else is kept for reuse or resume. Unpushed residue
+ *   is parked on a `kb-recovery/*` branch first, like eviction. Total:
+ *   never throws — resolves "reaped", "kept", "absent" (nothing there), or
+ *   "skipped" (backend unreadable; an outage must never delete work).
+ * @example await reapTaskWorkdirIfTerminal({ client, projectId: 'p', taskId: 't', workRoot: '/w' }) => 'kept'
+ * @param {Object} opts
+ * @param {Object} opts.client - Runner backend client (`getTask`, `getProject`).
+ * @param {string} opts.projectId - Project id.
+ * @param {string} opts.taskId - Task id.
+ * @param {string} opts.workRoot - Runner work root.
+ * @param {string} [opts.localPath] - Backend checkout (adopt-mode owner).
+ * @returns {Promise<string>} "reaped"|"kept"|"absent"|"skipped".
+ ***/
+export async function reapTaskWorkdirIfTerminal({ client, projectId, taskId, workRoot, localPath = null } = {}) {
+	try {
+		const dir = path.join(workRoot, `kb-${taskId}`);
+		if (!fs.existsSync(dir)) return "absent";
+		let task = null;
+		let missing = false;
+		try {
+			task = await client.getTask(projectId, taskId);
+		} catch (err) {
+			if (err?.statusCode === 404) missing = true;
+			else return "skipped";
+		}
+		if (!missing && String(task?.status || "").toLowerCase() !== "completed") return "kept";
+		let ownerPath = localPath;
+		if (!ownerPath) {
+			try {
+				const project = await client.getProject(projectId);
+				ownerPath = project?.cwd || null;
+			} catch {
+				ownerPath = null;
+			}
+		}
+		try {
+			await preserveEvictedWorkdir(dir);
+		} catch {
+			// Preservation is best-effort; removal still reclaims the slot.
+		}
+		const gone = await removeTaskWorkdir({ workRoot, localPath: ownerPath, dir });
+		return gone ? "reaped" : "skipped";
+	} catch {
+		return "skipped";
+	}
+}
+
+/***
  * MARK: refreshWorktreeToRemote
  * @description Re-syncs a reused per-task worktree to the remote branch:
  *   fetches the origin and checks out `branch` at `origin/branch` so
@@ -405,18 +662,21 @@ function walkFiles(dir) {
  *   on branch `kb/<taskId>` (reused when a previous run left it behind;
  *   a reused clone-mode worktree is fetched and force-reset to
  *   `origin/kb/<taskId>` first so reruns never execute stale leftovers).
- *   Refuses when ~5 foreign worktrees already exist (D14 cap) and names
- *   the orphans instead of deleting them.
+ *   Past WORKTREE_CAP foreign workdirs the least-recently-used STALE
+ *   workdir is evicted first (unpushed residue parked on `kb-recovery/*`,
+ *   never deleted); only when nothing stale is evictable does it refuse
+ *   with WORKTREE_CAP_REACHED so the refusal reports instead of crashing.
  * @example await prepareWorkdir({ repoUrl: 'https://...', workRoot: '/w', taskId: 't1' }) => { workdir: '/w/kb-t1', ... }
- * @returns {Promise<Object>} `{ workdir, branch, mode, reused, recoveredTo, baseSha }`: `recoveredTo` names the recovery branch when a reused worktree's unpushed residue was parked, `baseSha` is the `origin/<branch>` tip the worktree is based on (null when unpushed).
+ * @returns {Promise<Object>} `{ workdir, branch, mode, reused, recoveredTo, baseSha, evicted }`: `recoveredTo` names the recovery branch when a reused worktree's unpushed residue was parked, `baseSha` is the `origin/<branch>` tip the worktree is based on (null when unpushed), `evicted` names the LRU workdir removed to free the slot (null when none).
  * @param {Object} opts - Options.
  * @param {string} [opts.repoUrl] - Origin to clone (remote-backed mode).
  * @param {string} [opts.localPath] - Repo path to adopt (local-only mode).
  * @param {string} opts.workRoot - Runner work root.
  * @param {string} opts.taskId - Task id.
+ * @param {number} [opts.evictStaleMs] - Staleness threshold for LRU eviction (default WORKTREE_EVICT_STALE_MS).
  * @returns {Promise<Object>} `{ workdir, branch, mode, reused }`.
  ***/
-export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId }) {
+export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evictStaleMs = WORKTREE_EVICT_STALE_MS }) {
 	if (!repoUrl && !localPath) {
 		throw new Error("prepareWorkdir needs repoUrl (clone) or localPath (adopt).");
 	}
@@ -424,12 +684,22 @@ export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId }) {
 	const branch = `kb/${taskId}`;
 	const workdir = path.join(workRoot, `kb-${taskId}`);
 	const orphans = listOrphanWorkdirs(workRoot, taskId);
-	if (orphans.length >= 5 && !fs.existsSync(workdir)) {
-		const err = new Error(
-			`Worktree cap reached (~5); refusing to add kb-${taskId}. Orphans: ${orphans.join(", ")}`,
-		);
-		err.code = "WORKTREE_CAP_REACHED";
-		throw err;
+	let evicted = null;
+	if (orphans.length >= WORKTREE_CAP && !fs.existsSync(workdir)) {
+		const outcome = await evictOldestWorkdir({
+			workRoot,
+			currentTaskId: taskId,
+			staleMs: evictStaleMs,
+			localPath: localPath || null,
+		});
+		if (!outcome) {
+			const err = new Error(
+				`Worktree cap reached (~${WORKTREE_CAP}); refusing to add kb-${taskId} (every orphan was used recently, nothing stale to evict). Orphans: ${orphans.join(", ")}`,
+			);
+			err.code = "WORKTREE_CAP_REACHED";
+			throw err;
+		}
+		evicted = outcome;
 	}
 
 	let repoDir;
@@ -456,7 +726,8 @@ export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId }) {
 		const baseSha = await runGit(workdir, ["rev-parse", "--verify", `origin/${branch}`])
 			.then((r) => r.stdout.trim())
 			.catch(() => null);
-		return { workdir, branch, mode, reused: true, orphans, recoveredTo, baseSha };
+		touchWorkdir(workdir);
+		return { workdir, branch, mode, reused: true, orphans, recoveredTo, baseSha, evicted };
 	}
 	try {
 		await runGit(repoDir, ["worktree", "add", workdir, "-b", branch]);
@@ -471,7 +742,8 @@ export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId }) {
 	const baseSha = await runGit(workdir, ["rev-parse", "--verify", `origin/${branch}`])
 		.then((r) => r.stdout.trim())
 		.catch(() => null);
-	return { workdir, branch, mode, reused: false, orphans, recoveredTo: null, baseSha };
+	touchWorkdir(workdir);
+	return { workdir, branch, mode, reused: false, orphans, recoveredTo: null, baseSha, evicted };
 }
 
 /***

@@ -347,6 +347,25 @@ describe("ExecutionLedger", () => {
 		expect(ledger.snapshot().interrupts).toBe(1);
 	});
 
+	test("interrupts: records the runner-supplied reason in task history", () => {
+		const { executionId } = claimed(ctx);
+		const out = ledger.interruptExecution({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			reason: "Runner workdir unavailable: Worktree cap reached (~5)",
+		});
+		expect(out).toEqual({ interrupted: true, interruptCount: 1, escalated: false });
+		const actions = ctx.taskStore.getTask().history.map((h) => String(h.action));
+		expect(actions.some((a) => a.includes("lease dropped"))).toBe(true);
+		expect(
+			actions.some((a) => a.includes("Reason: Runner workdir unavailable: Worktree cap reached")),
+		).toBe(true);
+	});
+
 	test("interrupts: escalates past the consecutive bound on the same stage", () => {
 		const interruptOnce = () => {
 			const { executionId } = claimed(ctx);

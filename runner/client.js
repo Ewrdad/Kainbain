@@ -170,12 +170,13 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 				},
 			});
 		},
-		interrupt({ taskId, projectId, executionId }) {
+		interrupt({ taskId, projectId, executionId, reason = null }) {
 			return call(`/tasks/${encodeURIComponent(taskId)}/interrupt`, {
 				method: "POST",
 				body: {
 					projectId,
 					...(executionId ? { executionId } : {}),
+					...(typeof reason === "string" && reason.trim() ? { reason: reason.trim().slice(0, 500) } : {}),
 				},
 			});
 		},

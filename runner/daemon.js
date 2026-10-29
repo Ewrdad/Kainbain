@@ -1,7 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import { promisify } from "node:util";
-import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, removeIntegrationWorkdir, runGit, syncTaskDocs } from "./project.js";
+import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, removeIntegrationWorkdir, runGit, syncTaskDocs, touchWorkdir } from "./project.js";
 import { RunnerGitError } from "./project.js";
 import { runHarnessStage } from "./harness.js";
 import { commitAndPush } from "./gitOps.js";
@@ -150,11 +150,21 @@ export function startClaimRenewal({
 	executionId,
 	epoch,
 	intervalMs = CLAIM_HEARTBEAT_MS,
+	onTick = null,
 }) {
+	const fireTick = () => {
+		try {
+			if (typeof onTick === "function") onTick();
+		} catch {
+			// Liveness marking must never break lease renewal.
+		}
+	};
 	const timer = setInterval(() => {
 		client
 			.claimHeartbeat({ taskId, projectId, executionId, epoch })
-			.catch((err) => {
+			.then(
+				() => fireTick(),
+				(err) => {
 				logger.warn(`Claim renewal failed: ${err?.message || err}`);
 				// The backend timed the stage out and released the hold:
 				// stop propping it up. The harness run itself continues to
@@ -587,6 +597,11 @@ async function executeAssignment({
 			projectId,
 			executionId,
 			epoch,
+			// Keep this workdir fresh for LRU eviction: a live run must never
+			// look stale to a sibling Runner's cap relief.
+			onTick: () => {
+				if (state.workdir) touchWorkdir(state.workdir);
+			},
 		});
 		try {
 			await client.progress({
@@ -597,13 +612,14 @@ async function executeAssignment({
 				stageId,
 				event: "started",
 			});
-			const { workdir, branch, mode, reused, recoveredTo, baseSha } = await prepareWorkdir({
+			const { workdir, branch, mode, reused, recoveredTo, baseSha, evicted } = await prepareWorkdir({
 				repoUrl: project.gitUrl || project.repoUrl || null,
 				localPath: project.cwd || null,
 				workRoot: config.workRoot,
 				taskId: taskId,
 			});
-			logger.log(`Workdir ${workdir} (${mode}${reused ? ", reused" : ""}${baseSha ? `, base ${baseSha.slice(0, 7)}` : ""}${recoveredTo ? `, residue parked on ${recoveredTo}` : ""}).`);
+			state.workdir = workdir;
+			logger.log(`Workdir ${workdir} (${mode}${reused ? ", reused" : ""}${baseSha ? `, base ${baseSha.slice(0, 7)}` : ""}${recoveredTo ? `, residue parked on ${recoveredTo}` : ""}${evicted ? `, evicted stale ${evicted.evicted}${evicted.parkedTo ? ` (residue parked on ${evicted.parkedTo})` : ""}` : ""}).`);
 			// Task prompt inputs (idea files, reference images) land in the
 			// live task folder outside the task branch — mirror them into
 			// the worktree so the harness actually sees them.
@@ -749,6 +765,23 @@ async function executeAssignment({
 		} catch (err) {
 			stopRenewal();
 			if (err?.code === "STALE_EPOCH") throw err;
+			if (err?.code === "WORKTREE_CAP_REACHED") {
+				// Infra exhaustion, not task fault: re-queue via interrupt
+				// and keep polling. Throwing here killed the Runner process,
+				// and systemd restart storms turned one refusal into a task
+				// death loop (e79b1d25). The reason travels on the interrupt
+				// so the task history names the cause instead of a bare
+				// "lease dropped".
+				const reason = `Runner workdir unavailable: ${err.message}`;
+				if (typeof logger.error === "function") logger.error(reason);
+				else logger.log(reason);
+				try {
+					await client.interrupt({ taskId, projectId, executionId, reason });
+				} catch {
+					// Interrupting is best-effort: the lease TTL still bounds the damage.
+				}
+				return { interrupted: true, executionId, epoch, reason };
+			}
 			if (err?.failedOutcome) {
 				// The harness ran and failed: report through the engine's
 				// failure routing (verdict/failback) instead of parking.
@@ -964,8 +997,11 @@ async function executeIntegrationAssignment({
  *   through the harness, stream sequenced logs, commit/push (push skipped
  *   `no-remote`), and complete with the SHA. Any failure after the claim
  *   interrupts the task so it re-queues as interrupted, never
- *   failed/complete. Orphaned workdirs are surfaced at boot, never
- *   deleted.
+ *   failed/complete. Orphaned workdirs are surfaced at boot (never deleted
+ *   there); past the worktree cap the least-recently-used stale workdir is
+ *   evicted on demand, and terminal tasks have their workdir reaped after
+ *   the execution reports. Unpushed residue is always parked on
+ *   kb-recovery/* first, never deleted.
  * @example await runSingleAssignment({ config, client, loadHarness }) => { executionId, epoch, sha }
  * @param {Object} opts - Options.
  * @param {Object} opts.config - Normalized runner config.
@@ -991,7 +1027,7 @@ export async function runSingleAssignment({
 	const state = { session: null, executionId: null, epoch: null };
 	const { harness, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger, state });
 	try {
-		return await executeAssignment({
+		const result = await executeAssignment({
 			config,
 			client,
 			logger,
@@ -1001,6 +1037,15 @@ export async function runSingleAssignment({
 			projectId: config.projectId,
 			taskId: config.taskId,
 		});
+		// Terminal tasks never run again: reclaim their workdir slot now
+		// instead of growing into the cap (best-effort, never throws).
+		await reapTaskWorkdirIfTerminal({
+			client,
+			projectId: config.projectId,
+			taskId: config.taskId,
+			workRoot: config.workRoot,
+		});
+		return result;
 	} finally {
 		stop();
 	}
@@ -1135,6 +1180,15 @@ export async function runDispatchLoop({
 				// executeAssignment routes `integrate` to the merge
 				// procedure instead of a harness.
 				integration: answer.integration ?? null,
+			});
+			// Terminal tasks never run again: reclaim their workdir slot
+			// now instead of growing into the cap (best-effort, never
+			// throws).
+			await reapTaskWorkdirIfTerminal({
+				client,
+				projectId: answer.projectId,
+				taskId: answer.taskId,
+				workRoot: config.workRoot,
 			});
 		}
 	} finally {

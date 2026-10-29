@@ -145,6 +145,41 @@ describe("runSingleAssignment", () => {
 		assert.ok(fs.existsSync(path.join(config.workRoot, "kb-t1")));
 	});
 
+	it("reports a worktree-cap refusal as an interrupt instead of crashing", async () => {
+		// e79b1d25 outage: the cap refusal killed the Runner process, and
+		// systemd restart storms turned one refusal into a death loop. The
+		// Runner must interrupt (task re-queues) and keep polling.
+		const repo = localRepo();
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo);
+		// Five freshly-used foreign workdirs: none stale enough to evict.
+		for (let i = 0; i < 5; i++) fs.mkdirSync(path.join(config.workRoot, `kb-old-${i}`));
+		const errors = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1", status: "in_stage" }),
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async () => ({ accepted: true, shaState: "present" }),
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const out = await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {}, error: (m) => errors.push(String(m)) },
+		});
+		assert.equal(out.interrupted, true);
+		assert.ok(client.calls.includes("interrupt"), "task re-queues via interrupt");
+		assert.ok(!client.calls.includes("complete"), "no completion reported for unrun work");
+		assert.ok(errors.some((m) => /WORKTREE_CAP_REACHED|Worktree cap/.test(m)), "loud runner-side report");
+		for (let i = 0; i < 5; i++) {
+			assert.ok(fs.existsSync(path.join(config.workRoot, `kb-old-${i}`)), "fresh workdirs never deleted");
+		}
+	});
+
 	it("runs the harness session in the prepared worktree, not the backend checkout", async () => {
 		// Wire-proof 2026-10-27: the backend record's cwd is the backend's
 		// own checkout, so passing it through lets the agent write into the

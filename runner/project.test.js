@@ -333,8 +333,190 @@ describe("runner project prep", () => {
 		assert.deepEqual(listOrphanWorkdirs(tmp, "old-0").length, 4);
 	});
 
+	it("evicts the least-recently-used stale workdir instead of refusing", async () => {
+		// e79b1d25 outage: 5 stale orphans wedged every new task. The
+		// oldest-stale workdir is removed and the new task proceeds.
+		const { evictOldestWorkdir, touchWorkdir } = await import("./project.js");
+		const now = Date.now();
+		for (let i = 0; i < 5; i++) {
+			await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: `old-${i}` });
+		}
+		// Age them staggered: old-0 is the least recently used.
+		for (let i = 0; i < 5; i++) {
+			const at = new Date(now - (5 - i) * 3600_000);
+			fs.utimesSync(path.join(tmp, `kb-old-${i}`), at, at);
+		}
+		assert.ok(typeof touchWorkdir === "function");
+		assert.ok(typeof evictOldestWorkdir === "function");
+
+		const made = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "new" });
+		assert.equal(made.reused, false);
+		assert.ok(!fs.existsSync(path.join(tmp, "kb-old-0")), "LRU workdir evicted");
+		for (let i = 1; i < 5; i++) {
+			assert.ok(fs.existsSync(path.join(tmp, `kb-old-${i}`)), `kb-old-${i} kept`);
+		}
+		assert.ok(fs.existsSync(path.join(tmp, "kb-new")));
+	});
+
+	it("parks unpushed dirt on a recovery branch when evicting", async () => {
+		const now = Date.now();
+		for (let i = 0; i < 5; i++) {
+			await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: `old-${i}` });
+		}
+		// Unpushed work in the LRU workdir: uncommitted edits (adopt mode
+		// has no origin, so all local work counts as unpushed).
+		fs.writeFileSync(path.join(tmp, "kb-old-0", "precious.txt"), "do not lose\n");
+		// Age them staggered AFTER the write: old-0 stays least recently used
+		// (creating a file refreshes its parent's mtime).
+		for (let i = 0; i < 5; i++) {
+			const at = new Date(now - (5 - i) * 3600_000);
+			fs.utimesSync(path.join(tmp, `kb-old-${i}`), at, at);
+		}
+
+		const made = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "new" });
+		assert.equal(made.reused, false);
+		assert.ok(!fs.existsSync(path.join(tmp, "kb-old-0")));
+		const branches = execFileSync("git", ["branch", "--list", "kb-recovery/old-0/*"], {
+			cwd: repo,
+			encoding: "utf8",
+		}).trim();
+		assert.ok(branches.length > 0, "recovery branch preserves the evicted residue");
+		const kept = execFileSync("git", ["ls-tree", "-r", "--name-only", branches.split("\n")[0].trim()], {
+			cwd: repo,
+			encoding: "utf8",
+		});
+		assert.ok(kept.split("\n").includes("precious.txt"));
+	});
+
+	it("refuses with WORKTREE_CAP_REACHED when every orphan is freshly used", async () => {
+		for (let i = 0; i < 5; i++) {
+			await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: `old-${i}` });
+		}
+		// All five touched just now: none is stale enough to evict, and
+		// nothing may be deleted — the error reports instead of crashing.
+		await assert.rejects(
+			prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "new" }),
+			(err) => err.code === "WORKTREE_CAP_REACHED" && /kb-old-/.test(err.message),
+		);
+		for (let i = 0; i < 5; i++) {
+			assert.ok(fs.existsSync(path.join(tmp, `kb-old-${i}`)), `kb-old-${i} kept`);
+		}
+	});
+
+	it("evicts through the mirror in clone mode without stale admin entries", async () => {
+		const origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-runner-evict-origin-"));
+		try {
+			git(origin, ["init", "-q", "--bare"]);
+			git(repo, ["remote", "add", "origin", origin]);
+			git(repo, ["push", "-q", "origin", "HEAD:main"]);
+			execFileSync("git", ["--git-dir", origin, "symbolic-ref", "HEAD", "refs/heads/main"], {
+				stdio: "ignore",
+			});
+			const now = Date.now();
+			for (let i = 0; i < 5; i++) {
+				await prepareWorkdir({ repoUrl: origin, workRoot: tmp, taskId: `cold-${i}` });
+			}
+			for (let i = 0; i < 5; i++) {
+				const at = new Date(now - (5 - i) * 3600_000);
+				fs.utimesSync(path.join(tmp, `kb-cold-${i}`), at, at);
+			}
+			const made = await prepareWorkdir({ repoUrl: origin, workRoot: tmp, taskId: "cnew" });
+			assert.equal(made.mode, "clone");
+			assert.equal(made.reused, false);
+			assert.ok(!fs.existsSync(path.join(tmp, "kb-cold-0")), "LRU workdir evicted");
+			assert.ok(fs.existsSync(path.join(tmp, "kb-cnew")));
+			const [mirror] = fs
+				.readdirSync(path.join(tmp, "mirrors"))
+				.map((n) => path.join(tmp, "mirrors", n));
+			const listed = execFileSync("git", ["worktree", "list", "--porcelain"], {
+				cwd: mirror,
+				encoding: "utf8",
+			});
+			assert.ok(!listed.includes("kb-cold-0"), "no stale mirror admin entry");
+			assert.ok(listed.includes("kb-cnew"), "new worktree registered");
+		} finally {
+			fs.rmSync(origin, { recursive: true, force: true });
+		}
+	});
+
 	it("requires a repo source", async () => {
 		await assert.rejects(prepareWorkdir({ workRoot: tmp, taskId: "t1" }), /repoUrl/);
+	});
+
+	describe("reapTaskWorkdirIfTerminal", () => {
+		it("removes the workdir once the task completed and keeps live ones", async () => {
+			const { reapTaskWorkdirIfTerminal } = await import("./project.js");
+			const done = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "done-1" });
+			const live = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "live-1" });
+			assert.ok(typeof reapTaskWorkdirIfTerminal === "function");
+			const calls = [];
+			const client = {
+				getTask: async (projectId, taskId) => {
+					calls.push(taskId);
+					return { id: taskId, status: taskId.startsWith("done-") ? "completed" : "in_stage" };
+				},
+			};
+			assert.equal(
+				await reapTaskWorkdirIfTerminal({ client, projectId: "p", taskId: "done-1", workRoot: tmp, localPath: repo }),
+				"reaped",
+			);
+			assert.ok(!fs.existsSync(done.workdir), "completed workdir reaped");
+			assert.equal(
+				await reapTaskWorkdirIfTerminal({ client, projectId: "p", taskId: "live-1", workRoot: tmp, localPath: repo }),
+				"kept",
+			);
+			assert.ok(fs.existsSync(live.workdir), "live workdir kept");
+			assert.deepEqual(calls, ["done-1", "live-1"]);
+		});
+
+		it("reaps workdirs whose task is gone and never throws", async () => {
+			const { reapTaskWorkdirIfTerminal } = await import("./project.js");
+			const gone = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "gone-1" });
+			const missing = new Error("Task not found");
+			missing.statusCode = 404;
+			const down = new Error("connect ECONNREFUSED");
+			assert.equal(
+				await reapTaskWorkdirIfTerminal({
+					client: {
+						getTask: async () => {
+							throw missing;
+						},
+					},
+					projectId: "p",
+					taskId: "gone-1",
+					workRoot: tmp,
+					localPath: repo,
+				}),
+				"reaped",
+			);
+			assert.ok(!fs.existsSync(gone.workdir), "orphan of a deleted task reaped");
+			const kept = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "kept-1" });
+			assert.equal(
+				await reapTaskWorkdirIfTerminal({
+					client: {
+						getTask: async () => {
+							throw down;
+						},
+					},
+					projectId: "p",
+					taskId: "kept-1",
+					workRoot: tmp,
+					localPath: repo,
+				}),
+				"skipped",
+			);
+			assert.ok(fs.existsSync(kept.workdir), "backend outage never deletes work");
+			assert.equal(
+				await reapTaskWorkdirIfTerminal({
+					client: { getTask: async () => ({ id: "x", status: "completed" }) },
+					projectId: "p",
+					taskId: "absent-1",
+					workRoot: tmp,
+					localPath: repo,
+				}),
+				"absent",
+			);
+		});
 	});
 
 	it("self-heals a diverged mirror with a hard reset (G6)", async () => {
