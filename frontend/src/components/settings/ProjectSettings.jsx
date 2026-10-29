@@ -5,81 +5,16 @@ import { SelectDropdown } from '../common/SelectDropdown';
 import { ProjectSettingsForm } from './ProjectSettingsForm';
 import { WorkflowManagementPanel } from './WorkflowManagementPanel';
 import { SettingsSearchInput } from './SettingsSearchInput';
+import {
+  PROJECT_SETTINGS_TABS,
+  PROJECT_SETTINGS_SECTIONS,
+  PROJECT_FORM_SECTIONS,
+} from './projectSettingsTabs';
 
-/***
- * MARK: PROJECT_SETTINGS_TABS
- * @description Single source of truth for the Project Settings tab bar: every
- *   tab's section id, button label + icon, tab-title heading, and whether the
- *   tab shares the one mounted `ProjectSettingsForm` (edits survive switches
- *   between form tabs; workflows/skills render their own panels). Adding a
- *   tab means adding one entry here — the buttons, the `h2` titles, and the
- *   section allowlists below all derive from this list so they cannot drift.
- *   App-wide UI & Workspace customization is NOT one of them — it lives in
- *   System Settings (SystemSettingsPage, `/system-settings`); per-project
- *   visual branding stays here as the accent-color picker inside the form.
- * @example PROJECT_SETTINGS_TABS.map((tab) => tab.id) => ['project', 'aliases', 'files', 'workflows', 'skills']
- ***/
-export const PROJECT_SETTINGS_TABS = [
-  {
-    id: 'project',
-    label: 'Project Settings',
-    buttonIcon: '📂',
-    heading: 'Project Configuration',
-    headingIcon: '⚙️',
-    sharesProjectForm: true,
-  },
-  {
-    id: 'aliases',
-    label: 'Aliases',
-    buttonIcon: '🏷️',
-    heading: 'Model Aliases',
-    headingIcon: '🏷️',
-    sharesProjectForm: true,
-  },
-  {
-    id: 'files',
-    label: 'Files & Links',
-    buttonIcon: '📁',
-    heading: 'Files & Links',
-    headingIcon: '📁',
-    sharesProjectForm: true,
-  },
-  {
-    id: 'workflows',
-    label: 'Named Workflows',
-    buttonIcon: '🔀',
-    heading: null,
-    headingIcon: null,
-    sharesProjectForm: false,
-  },
-  {
-    id: 'skills',
-    label: 'Skills',
-    buttonIcon: '🧩',
-    heading: null,
-    headingIcon: null,
-    sharesProjectForm: false,
-  },
-];
-
-/***
- * MARK: PROJECT_SETTINGS_SECTIONS
- * @description Allowlisted sub-sections of the Project Settings page, derived
- *   from `PROJECT_SETTINGS_TABS` so the allowlist and the tab bar agree.
- * @example PROJECT_SETTINGS_SECTIONS.includes('aliases') => true
- ***/
-export const PROJECT_SETTINGS_SECTIONS = PROJECT_SETTINGS_TABS.map((tab) => tab.id);
-
-/***
- * MARK: PROJECT_FORM_SECTIONS
- * @description The project-related tabs share one mounted `ProjectSettingsForm`
- *   (edits survive tab switches); workflows/skills render their own panels.
- *   Derived from `PROJECT_SETTINGS_TABS` so a new form tab needs no second edit.
- * @example PROJECT_FORM_SECTIONS.includes('files') => true
- ***/
-export const PROJECT_FORM_SECTIONS = PROJECT_SETTINGS_TABS.filter(
-  (tab) => tab.sharesProjectForm,
-).map((tab) => tab.id);
+// Re-exported so existing consumers (`ProjectSettings.test.jsx`) keep one
+// import site; the tab config itself lives in `projectSettingsTabs.js` where
+// `ProjectSettingsForm` shares it without a render-cycle import.
+export { PROJECT_SETTINGS_TABS, PROJECT_SETTINGS_SECTIONS, PROJECT_FORM_SECTIONS };
 
 // How the jump-to-setting highlight behaves: a short wait lets the newly
 // selected tab render before scrolling, then the ring stays visible briefly
@@ -171,12 +106,46 @@ export function ProjectSettings() {
   };
 
   /***
+   * MARK: handleActiveProjectChange
+   * @description Active-project switch guard: switching projects remounts the
+   *   shared form (`key={activeProjectId}`), which would silently drop unsaved
+   *   drafts — so with unsaved edits on a project-related tab, ask first,
+   *   matching the tab-switch guard below. Re-selecting the current project
+   *   never warns. Extra dropdown args `(value, option)` forward untouched to
+   *   `selectProject`, mirroring the previous direct wiring.
+   ***/
+  const handleActiveProjectChange = (nextProjectId, ...rest) => {
+    if (
+      formDirty &&
+      PROJECT_FORM_SECTIONS.includes(effectiveSection) &&
+      nextProjectId !== activeProjectId &&
+      typeof window !== 'undefined' &&
+      typeof window.confirm === 'function' &&
+      !window.confirm('You have unsaved changes. Switch projects anyway?')
+    ) {
+      return;
+    }
+    // Forward untouched (value, option): the previous wiring passed
+    // `selectProject` straight to the dropdown, and callers rely on both.
+    selectProject(nextProjectId, ...rest);
+  };
+
+  /***
    * MARK: handleSearchSelect
    * @description Jumps to a search result: switches to the entry's tab, then
    *   the highlight effect scrolls the target into view and rings it.
+   *   Fail-safe: a malformed entry (unknown tab, missing element id) is
+   *   ignored instead of switching tabs or highlighting nothing.
    ***/
   const handleSearchSelect = (entry) => {
-    if (!entry) return;
+    if (!entry || typeof entry !== 'object') return;
+    if (
+      !PROJECT_SETTINGS_SECTIONS.includes(entry.tab) ||
+      typeof entry.elementId !== 'string' ||
+      !entry.elementId
+    ) {
+      return;
+    }
     handleSectionChange(entry.tab);
     highlightSeqRef.current += 1;
     setHighlightTarget({ id: entry.elementId, at: highlightSeqRef.current });
@@ -279,7 +248,7 @@ export function ProjectSettings() {
                     id="active-project-select"
                     ariaLabel="Active Project"
                     value={activeProjectId || ''}
-                    onChange={selectProject}
+                    onChange={handleActiveProjectChange}
                     options={projects.map((p) => ({ value: p.id, label: p.name }))}
                   />
                 </div>

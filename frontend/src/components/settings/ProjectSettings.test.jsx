@@ -568,6 +568,12 @@ test('tab config, section allowlists, and search index agree (no drift)', () => 
   // elementIds to jump to), and every form tab has a heading for the h2.
   for (const entry of SETTINGS_SEARCH_INDEX) {
     expect(PROJECT_FORM_SECTIONS).toContain(entry.tab);
+    // The jump-to-setting highlight needs a real DOM id: a future index edit
+    // with an unknown tab or a blank elementId fails here instead of silently
+    // jumping nowhere at runtime (the search-select handler ignores those).
+    expect(PROJECT_SETTINGS_SECTIONS).toContain(entry.tab);
+    expect(typeof entry.elementId).toBe('string');
+    expect(entry.elementId.length).toBeGreaterThan(0);
   }
   for (const tab of PROJECT_SETTINGS_TABS.filter((candidate) => candidate.sharesProjectForm)) {
     expect(typeof tab.heading).toBe('string');
@@ -892,6 +898,86 @@ test('saving clears the dirty flag so leaving no longer warns', async () => {
     fireEvent.click(screen.getByText('Named Workflows'));
     expect(confirm).not.toHaveBeenCalled();
     expect(screen.getByText('Named Workflows & Pipelines')).toBeInTheDocument();
+  } finally {
+    window.confirm = originalConfirm;
+  }
+});
+
+test('switching projects with unsaved edits asks for confirmation', () => {
+  const originalConfirm = window.confirm;
+  const confirm = vi.fn();
+  window.confirm = confirm;
+  const selectProject = vi.fn();
+  try {
+    renderWithKainBain(<ProjectSettings />, {
+      projects,
+      activeProjectId: 'p1',
+      selectProject,
+    });
+
+    fireEvent.change(screen.getByLabelText('Project Name'), {
+      target: { value: 'Draft Name' },
+    });
+
+    // Cancelling keeps the current project (and the draft) in place.
+    confirm.mockReturnValue(false);
+    fireEvent.click(screen.getByLabelText('Active Project'));
+    fireEvent.click(screen.getByRole('option', { name: /Project B/i }));
+    expect(confirm).toHaveBeenCalledWith(
+      'You have unsaved changes. Switch projects anyway?',
+    );
+    expect(selectProject).not.toHaveBeenCalled();
+
+    // Confirming switches: the form remounts for the new project.
+    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByLabelText('Active Project'));
+    fireEvent.click(screen.getByRole('option', { name: /Project B/i }));
+    expect(selectProject).toHaveBeenCalledWith('p2', expect.anything());
+  } finally {
+    window.confirm = originalConfirm;
+  }
+});
+
+test('switching projects without edits never warns', () => {
+  const originalConfirm = window.confirm;
+  const confirm = vi.fn();
+  window.confirm = confirm;
+  const selectProject = vi.fn();
+  try {
+    renderWithKainBain(<ProjectSettings />, {
+      projects,
+      activeProjectId: 'p1',
+      selectProject,
+    });
+
+    fireEvent.click(screen.getByLabelText('Active Project'));
+    fireEvent.click(screen.getByRole('option', { name: /Project B/i }));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(selectProject).toHaveBeenCalledWith('p2', expect.anything());
+  } finally {
+    window.confirm = originalConfirm;
+  }
+});
+
+test('re-selecting the current project with unsaved edits never warns', () => {
+  const originalConfirm = window.confirm;
+  const confirm = vi.fn();
+  window.confirm = confirm;
+  const selectProject = vi.fn();
+  try {
+    renderWithKainBain(<ProjectSettings />, {
+      projects,
+      activeProjectId: 'p1',
+      selectProject,
+    });
+
+    fireEvent.change(screen.getByLabelText('Project Name'), {
+      target: { value: 'Draft Name' },
+    });
+    fireEvent.click(screen.getByLabelText('Active Project'));
+    fireEvent.click(screen.getByRole('option', { name: /Project A/i }));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(selectProject).toHaveBeenCalledWith('p1', expect.anything());
   } finally {
     window.confirm = originalConfirm;
   }

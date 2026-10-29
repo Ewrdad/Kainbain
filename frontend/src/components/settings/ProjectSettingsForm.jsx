@@ -10,6 +10,7 @@ import { accentTokens } from '../../theme/accentTokens';
 import { ALIAS_HARNESS_ID, findAliasUsages } from '../../../../shared/modelAliases.js';
 import { msToMinutes } from '../../utils/timeoutUnits';
 import { parseRetrySettings } from './projectSettingsValidation';
+import { PROJECT_FORM_SECTIONS } from './projectSettingsTabs';
 import { ProjectBasicsSection } from './ProjectBasicsSection';
 import { RetryTimeoutsSection } from './RetryTimeoutsSection';
 import { PathsAndReposSection } from './PathsAndReposSection';
@@ -43,11 +44,9 @@ export function ProjectSettingsForm({
   onDirtyChange,
 }) {
   // Fail-safe: an unknown section id renders the project tab instead of a
-  // blank page. This list mirrors PROJECT_FORM_SECTIONS in ProjectSettings.jsx
-  // (kept local to avoid a render-cycle import between the tab bar and the
-  // form); the "tab config, section allowlists, and search index agree"
-  // test pins them together, so adding a form tab means updating both.
-  const activeFormSection = ['project', 'aliases', 'files'].includes(section) ? section : 'project';
+  // blank page. The allowlist is shared with the tab bar (see
+  // `projectSettingsTabs.js`), so a new form tab needs no second edit here.
+  const activeFormSection = PROJECT_FORM_SECTIONS.includes(section) ? section : 'project';
   const {
     notifySuccess,
     notifyError,
