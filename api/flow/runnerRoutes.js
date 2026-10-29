@@ -9,6 +9,10 @@ import { materializeRunnerTaskDocs } from "./execution/materializeRunnerTaskDocs
 import { buildCommandKeywordContext, expandStageCommand } from "./commandStages.js";
 import { resolveStagesForTask } from "./stageResolution.js";
 import { emitStageLifecycle } from "./stageLifecycle.js";
+import {
+	resolveStageTimeout,
+	runnerStageTimeoutStatus,
+} from "./stagePolicy.js";
 
 /***
  * MARK: resolveCiTimeoutMs
@@ -569,6 +573,60 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				err.statusCode = 409;
 				err.code = "STALE_EPOCH";
 				throw err;
+			}
+			// Wall-clock stage timeout (no infinite renewal): a live Runner
+			// renewing its lease forever must not outrun the stage budget —
+			// otherwise a stuck harness sits claimed indefinitely and the
+			// task reads frozen. On breach the hold is released and the
+			// stage fails through the normal failure routing (retry/failback),
+			// so the task re-queues instead of stranding.
+			const project = projectStore.getProject(ctx.projectId);
+			const stages = resolveStagesForTask(project, ctx.task);
+			const stage =
+				stages.find(
+					(s) => String(s?.id) === String(ctx.task?.currentStageId),
+				) || null;
+			const timeoutMs = resolveStageTimeout(
+				stage,
+				stage?.type,
+				config,
+				project,
+			);
+			const { timedOut, elapsedMs } = runnerStageTimeoutStatus({
+				startedAt: hold.startedAt ?? null,
+				timeoutMs,
+			});
+			if (timedOut) {
+				claimStore.invalidate(request.params.id);
+				const reason =
+					`Stage timed out after ${elapsedMs}ms (budget ${timeoutMs}ms) ` +
+					`on stage '${stage?.name || stage?.id || ctx.task?.currentStageId}'.`;
+				try {
+					await applyRunnerReport({
+						store: taskStore,
+						projectStore,
+						projectId: ctx.projectId,
+						taskId: request.params.id,
+						outcome: {
+							status: "failed",
+							output: "",
+							harnessId: runner.facts?.harnesses?.[0]?.id || "unknown",
+							failureKind: "timeout",
+							failureReason: reason,
+							duration: String(elapsedMs / 1000),
+							runnerId: runner.runnerId,
+						},
+					});
+				} catch {
+					// The 409 below is the contract; a reporting failure must
+					// never mask it (the zombie's late finish stays stale).
+				}
+				return reply.status(409).send({
+					error: reason,
+					code: "STAGE_TIMEOUT",
+					timeoutMs,
+					elapsedMs,
+				});
 			}
 			const { epoch } = claimStore.heartbeat(
 				request.params.id,

@@ -233,6 +233,33 @@ export function resolveProjectTimeout(project, normalizedType) {
 }
 
 /***
+ * MARK: runnerStageTimeoutStatus
+ * @description Wall-clock check for a Runner claim hold against its stage
+ *   budget: a live Runner renewing its lease forever must not outrun the
+ *   stage timeout, otherwise an agent stage with a stuck harness sits
+ *   claimed indefinitely (the engine watchdog only covers engine-owned
+ *   stages). Anchored on the hold's start (execution time), not stage
+ *   entry, so queue wait never consumes the budget. Unparseable anchors
+ *   never time out — bad data fails open, the budget still applies.
+ * @example runnerStageTimeoutStatus({ startedAt: '2026-10-29T19:00:00.000Z', timeoutMs: 1800000, now: Date.parse('2026-10-29T19:00:00.000Z') + 1800001 }) => { timedOut: true, ... }
+ * @param {Object} [args] - Check inputs.
+ * @param {string|null} [args.startedAt] - Claim hold start (ISO string).
+ * @param {number} [args.timeoutMs] - Effective stage budget in ms.
+ * @param {number} [args.now] - Clock injection (defaults to Date.now()).
+ * @returns {{timedOut: boolean, elapsedMs: number, timeoutMs: number}} Timeout status.
+ ***/
+export function runnerStageTimeoutStatus({ startedAt, timeoutMs, now = Date.now() } = {}) {
+	const startedAtMs = Date.parse(startedAt ?? "");
+	if (!Number.isFinite(startedAtMs)) {
+		return { timedOut: false, elapsedMs: 0, timeoutMs };
+	}
+	const elapsedMs = Math.max(0, now - startedAtMs);
+	const timedOut =
+		Number.isFinite(timeoutMs) && timeoutMs > 0 && elapsedMs > timeoutMs;
+	return { timedOut, elapsedMs, timeoutMs };
+}
+
+/***
  * MARK: isAutomatedStage
  * @description Whether a stage type is fully scripted (no model runs): `ci`
  *   (absorbs legacy `script` and the removed `deploy` type) or `merge`.

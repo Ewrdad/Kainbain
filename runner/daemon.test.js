@@ -309,6 +309,33 @@ describe("startClaimRenewal", () => {
 		assert.equal(warnings.length, 0);
 	});
 
+	it("stops renewing after a STAGE_TIMEOUT so a timed-out run is not propped up", async () => {
+		const seen = [];
+		const warnings = [];
+		const client = {
+			claimHeartbeat: async (args) => {
+				seen.push(args);
+				throw Object.assign(new Error("Stage timed out after 10ms (budget 5ms)"), { code: "STAGE_TIMEOUT" });
+			},
+		};
+		const logger = { log: () => {}, warn: (m) => warnings.push(m) };
+		startClaimRenewal({
+			client,
+			logger,
+			taskId: "t1",
+			projectId: "p1",
+			executionId: "e1",
+			epoch: 1,
+			intervalMs: 10,
+		});
+		await new Promise((r) => setTimeout(r, 50));
+		assert.ok(seen.length >= 1);
+		assert.ok(warnings.length >= 1);
+		const count = seen.length;
+		await new Promise((r) => setTimeout(r, 40));
+		assert.equal(seen.length, count);
+	});
+
 	it("warns instead of throwing when a renewal fails", async () => {
 		const warnings = [];
 		const client = {
