@@ -104,8 +104,8 @@ if [ "$INIT" = "1" ]; then
   changed=0
   if [ ! -f ./release-manifest.json ]; then
     legacy_tag="$(get_env KAINBAIN_IMAGE_TAG)"; legacy_tag="${legacy_tag:-latest}"
-    backend_image="$(docker compose images backend 2>/dev/null | awk 'NR==2{print $1":"$2}')"
-    frontend_image="$(docker compose images frontend 2>/dev/null | awk 'NR==2{print $1":"$2}')"
+    backend_image="$(docker compose images backend 2>/dev/null | awk 'NR==2{print $2":"$3}')"
+    frontend_image="$(docker compose images frontend 2>/dev/null | awk 'NR==2{print $2":"$3}')"
     BACKEND_IMAGE="${backend_image:-kainbain-backend:$legacy_tag}" \
     FRONTEND_IMAGE="${frontend_image:-kainbain-frontend:$legacy_tag}" \
     node <<'NODE'

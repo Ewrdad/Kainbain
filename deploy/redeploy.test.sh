@@ -18,7 +18,7 @@ setup_case() {
 echo "docker $*" >> "$SHIM_LOG"
 # `docker compose images <svc>` (used by --init) prints a fake table.
 if [ "$1 $2" = "compose images" ]; then
-  printf 'REPOSITORY TAG\nkainbain-%s build-1\n' "$3"
+  printf 'CONTAINER REPOSITORY TAG\nkainbain-%s-1 kainbain-%s build-1\n' "$3" "$3"
 fi
 exit 0
 SHIM
