@@ -439,26 +439,33 @@ export function NowPlayingBar() {
           <div className="flex flex-col min-w-0" role="status" aria-live="polite">
             <div className="flex items-center gap-1.5 sm:gap-2">
               <span className="font-label-caps text-[9px] sm:text-label-caps text-secondary uppercase truncate">
-                {showRunnerBoxes ? `Runners (${runnerBoxes.length})` : 'Active Task'}
+                {showRunnerBoxes ? `Runners ${runnerBoxes.length}` : 'Active Task'}
               </span>
               {engineState?.activeProjectName && (
                 <span className="text-[9px] text-text-muted font-mono truncate hidden sm:inline">
                   [{engineState.activeProjectName}]
                 </span>
               )}
-              <InfoTooltip
-                title={`Engine Status: ${statusBadge}`}
-                description={statusDesc}
-                behindTheScenes={statusBehind}
-                position="top-left"
-              >
-                <span
-                  className={`text-[8px] sm:text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border cursor-help ${badgeClasses}`}
-                  aria-label={`Engine status is ${statusBadge}`}
+              {/* Fleet mode (runner boxes shown) carries no engine-status pill:
+                  per-runner boxes already name each Runner's live state, so a
+                  single global CHECKPOINT/RUNNING/IDLE chip misleads — the
+                  header reads as just "Runners n". The pill stays in the
+                  legacy single-task display where it is the only signal. */}
+              {!showRunnerBoxes && (
+                <InfoTooltip
+                  title={`Engine Status: ${statusBadge}`}
+                  description={statusDesc}
+                  behindTheScenes={statusBehind}
+                  position="top-left"
                 >
-                  {statusBadge}
-                </span>
-              </InfoTooltip>
+                  <span
+                    className={`text-[8px] sm:text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border cursor-help ${badgeClasses}`}
+                    aria-label={`Engine status is ${statusBadge}`}
+                  >
+                    {statusBadge}
+                  </span>
+                </InfoTooltip>
+              )}
               {/* Wedge signal: the queue claims to run while the engine reads
                   idle with no owner. Auto-recovery settles it on the next
                   scheduler tick, but a calm IDLE badge alone would hide the

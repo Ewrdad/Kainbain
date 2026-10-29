@@ -659,8 +659,37 @@ test('runner boxes replace the left side for under 5 runners', () => {
   // The legacy single-task card is gone while boxes show.
   expect(screen.queryByTestId('now-playing-task-name')).not.toBeInTheDocument();
   expect(screen.queryByTestId('now-playing-idle-hint')).not.toBeInTheDocument();
-  // The engine badge still reads honestly above the boxes.
-  expect(screen.getByText('RUNNING')).toBeInTheDocument();
+  // Fleet mode carries no engine-status pill: the header reads as just
+  // "Runners n" and per-runner boxes name each Runner's live state.
+  expect(screen.queryByText('RUNNING')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Engine status is RUNNING')).not.toBeInTheDocument();
+});
+
+/***
+ * MARK: fleet mode hides the engine-status pill
+ * @description With runner boxes shown the header reads as just "Runners n":
+ *   the global CHECKPOINT/WAITING_HUMAN pill is retired (per-runner boxes
+ *   already name each Runner's live state). The pill stays in the legacy
+ *   single-task display (see the dynamic-status-badges test above).
+ ***/
+test('fleet mode shows no CHECKPOINT pill: header reads as just Runners n', () => {
+  const now = new Date().toISOString();
+  renderWithKainBain(<NowPlayingBar />, {
+    stages,
+    currentStageId: '2',
+    isAgentRunning: false,
+    engineState: { status: 'checkpoint' },
+    tasks: [{ id: 't1', currentStageId: '2', status: 'waiting_human', title: 'Needs review' }],
+    runnerAssignments: [
+      { runnerId: 'runner-a', taskId: 't1', stageId: '2', lastSeenAt: now },
+      { runnerId: 'runner-b', taskId: null, stageId: null, lastSeenAt: null },
+    ],
+  });
+
+  expect(screen.getByText('Runners 2')).toBeInTheDocument();
+  expect(screen.queryByText('CHECKPOINT')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Engine status is CHECKPOINT')).not.toBeInTheDocument();
+  expect(screen.queryByText('WAITING_HUMAN')).not.toBeInTheDocument();
 });
 
 test('runner boxes carry a health colour dot: live green, stale amber, unknown grey', () => {
@@ -767,8 +796,10 @@ test('runner boxes show idle runners; legacy display only with zero runners conf
   expect(screen.getByLabelText('Pause runner runner-a')).not.toBeDisabled();
   expect(screen.getByLabelText('Resume runner runner-b')).not.toBeDisabled();
   expect(screen.getByLabelText('Skip current task for runner runner-a')).toBeDisabled();
-  // The engine badge still reads honestly above the idle boxes.
-  expect(screen.getByText('IDLE')).toBeInTheDocument();
+  // Fleet mode carries no engine-status pill, even when idle: the header
+  // reads as just "Runners n".
+  expect(screen.queryByText('IDLE')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Engine status is IDLE')).not.toBeInTheDocument();
 
   // Zero Runners configured: the legacy display keeps its idle hint.
   rerender(
