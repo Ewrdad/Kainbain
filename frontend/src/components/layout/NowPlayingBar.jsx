@@ -8,6 +8,7 @@ import { HealthTrafficLight } from './HealthTrafficLight';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { usePendingAction } from '../../hooks/usePendingAction';
 import { isLastStage as isFinalStage } from '../stageTypes';
+import { api } from '../../services/api';
 
 /***
  * MARK: NowPlayingBar
@@ -40,6 +41,145 @@ import { isLastStage as isFinalStage } from '../stageTypes';
  *
  * @example <NowPlayingBar />
  ***/
+
+/***
+ * MARK: runnerBoxHealth
+ * @description Heartbeat freshness behind each runner box's colour dot. A
+ *   Runner heartbeats every 15s, so anything seen within 60s counts as live
+ *   (green). Older than that is stale (amber); a missing/unparseable
+ *   timestamp stays grey (unknown) rather than alarming.
+ * @example runnerBoxHealth(new Date().toISOString(), Date.now()) => 'live'
+ ***/
+export function runnerBoxHealth(lastSeenAt, nowMs) {
+  const seen = Date.parse(lastSeenAt || '');
+  if (!Number.isFinite(seen)) return 'unknown';
+  return nowMs - seen <= 60000 ? 'live' : 'stale';
+}
+
+/***
+ * MARK: runnerBoxDotClass / runnerBoxHealthLabel
+ * @description Explicit branches (never dynamic indexing) for the box colour
+ * dot and its accessible health text: live green, stale amber, unknown grey.
+ ***/
+const runnerBoxDotClass = (health) => {
+  if (health === 'stale') return 'bg-warning';
+  if (health === 'unknown') return 'bg-text-muted';
+  return 'bg-[#7bdb85]';
+};
+
+const runnerBoxHealthLabel = (health) => {
+  if (health === 'stale') return 'stale heartbeat';
+  if (health === 'unknown') return 'health unknown';
+  return 'healthy';
+};
+
+/***
+ * MARK: resolveRunnerBoxes
+ * @description Builds the per-runner box models for the Now Playing bar's
+ *   left side. Returns null (legacy single-task display) unless there are
+ *   1–4 distinct runners: zero means the fleet is idle and 5+ would crush
+ *   the 72px bar, so both keep the existing display. Each box carries the
+ *   runner name, its task's display name, the resolved stage name, and the
+ *   heartbeat timestamp behind the colour dot.
+ * @example resolveRunnerBoxes({ assignments: [], tasks: [], stages: [] }) => null
+ ***/
+export function resolveRunnerBoxes({ assignments, tasks, stages }) {
+  const list = Array.isArray(assignments) ? assignments.filter((a) => a && a.runnerId) : [];
+  const seen = new Set();
+  const distinct = list.filter((a) => {
+    const key = String(a.runnerId);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  // Under-5 contract: boxes replace the left side only for 1–4 runners.
+  if (distinct.length === 0 || distinct.length >= 5) return null;
+  const taskById = new Map(
+    (Array.isArray(tasks) ? tasks : [])
+      .filter((t) => t && t.id != null)
+      .map((t) => [String(t.id), t]),
+  );
+  const stageById = new Map(
+    (Array.isArray(stages) ? stages : [])
+      .filter((s) => s && s.id != null)
+      .map((s) => [String(s.id), s]),
+  );
+  const stageNameFor = (stageId, task) => {
+    const ids = [stageId, task?.currentStageId];
+    for (const id of ids) {
+      if (id == null || id === '') continue;
+      const stage = stageById.get(String(id));
+      const name = stage?.name || stage?.title;
+      if (typeof name === 'string' && name.trim()) return name;
+      return String(id);
+    }
+    return '…';
+  };
+  const taskNameFor = (task, taskId) =>
+    formatTaskTitleFirstLine(task || '', '') ||
+    (typeof taskId === 'string' || typeof taskId === 'number' ? String(taskId).slice(0, 8) : '…');
+  return distinct.map((a) => {
+    const task = taskById.get(String(a.taskId)) || null;
+    return {
+      runnerId: String(a.runnerId),
+      taskId: a.taskId,
+      task,
+      taskName: taskNameFor(task, a.taskId),
+      stageName: stageNameFor(a.stageId, task),
+      lastSeenAt: a.lastSeenAt ?? null,
+      startedAt: a.startedAt ?? null,
+    };
+  });
+}
+
+/***
+ * MARK: useNowPlayingRunnerAssignments
+ * @description Live Runner assignments behind the bar's runner boxes. Tests
+ *   (and any future context wiring) can inject `override` to skip polling;
+ *   otherwise the bar polls GET /runners/monitor on the same 5s cadence as
+ *   the observability widget. Failures are best-effort: the bar keeps the
+ *   legacy single-task display until a poll succeeds.
+ ***/
+function useNowPlayingRunnerAssignments(override) {
+  const [monitor, setMonitor] = useState(null);
+  // No-op polls (still no live runners) skip the state update entirely —
+  // compared via ref so idle polling never schedules a render (nor an
+  // act() warning in tests) every 5s.
+  const countRef = useRef(-1);
+  const disabled = override !== undefined;
+  useEffect(() => {
+    if (disabled) return undefined;
+    let mounted = true;
+    const load = async () => {
+      try {
+        const m = await api.getRunnerMonitor().catch(() => null);
+        if (!mounted || !m) return;
+        const count = Array.isArray(m?.liveAssignments)
+          ? m.liveAssignments.filter((a) => a && a.runnerId).length
+          : 0;
+        if (count === 0 && countRef.current <= 0) {
+          countRef.current = 0;
+          return;
+        }
+        countRef.current = count;
+        setMonitor(m);
+      } catch {
+        // Best-effort: legacy display stays until the next poll succeeds.
+      }
+    };
+    void load();
+    const timer = setInterval(() => void load(), 5000);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, [disabled]);
+  if (disabled) return override;
+  return Array.isArray(monitor?.liveAssignments)
+    ? monitor.liveAssignments.filter((a) => a && a.runnerId)
+    : [];
+}
+
 export function NowPlayingBar() {
   const {
     isAgentRunning,
@@ -57,6 +197,7 @@ export function NowPlayingBar() {
     skipCurrent,
     engineState,
     setSelectedTask,
+    runnerAssignments: runnerAssignmentsOverride,
   } = useKainBain();
 
   // Single-flight guard for the transport mutations (skip stage, play/pause
@@ -92,6 +233,20 @@ export function NowPlayingBar() {
   const displayedStageName = activeTask
     ? (resolveDisplayedStage(activeTask, stages, engineState)?.name ?? null)
     : null;
+
+  // Runner boxes: with 1–4 distinct live runners the left side shows one
+  // little box per runner (name, task, stage, health dot) instead of the
+  // single-task card. Zero runners (fleet idle) or 5+ (no room in 72px)
+  // keep the legacy display.
+  const runnerAssignments = useNowPlayingRunnerAssignments(runnerAssignmentsOverride);
+  const runnerBoxes = resolveRunnerBoxes({ assignments: runnerAssignments, tasks, stages });
+  const showRunnerBoxes = runnerBoxes !== null;
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!showRunnerBoxes) return undefined;
+    const timer = setInterval(() => setNowMs(Date.now()), 15000);
+    return () => clearInterval(timer);
+  }, [showRunnerBoxes]);
 
   let statusBadge = 'IDLE';
   let badgeClasses = 'text-text-muted bg-surface-container border-border-standard';
@@ -260,7 +415,7 @@ export function NowPlayingBar() {
           <div className="flex flex-col min-w-0" role="status" aria-live="polite">
             <div className="flex items-center gap-1.5 sm:gap-2">
               <span className="font-label-caps text-[9px] sm:text-label-caps text-secondary uppercase truncate">
-                Active Task
+                {showRunnerBoxes ? `Runners (${runnerBoxes.length})` : 'Active Task'}
               </span>
               {engineState?.activeProjectName && (
                 <span className="text-[9px] text-text-muted font-mono truncate hidden sm:inline">
@@ -297,7 +452,51 @@ export function NowPlayingBar() {
                 </span>
               )}
             </div>
-            {/* Clickable Active Task Card / Title to open Task Inspector (#21) */}
+            {/* Runner boxes (1–4 runners): one little box per runner with its
+                name, task name, stage, and a heartbeat colour dot. Clicking a
+                box opens the same Slide-Over Inspector as the task card. */}
+            {showRunnerBoxes ? (
+              <div
+                data-testid="now-playing-runner-boxes"
+                role="group"
+                aria-label={`${runnerBoxes.length} active ${runnerBoxes.length === 1 ? 'runner' : 'runners'}`}
+                className="flex items-center gap-1.5 mt-0.5 min-w-0 max-w-full overflow-hidden"
+              >
+                {runnerBoxes.map((box) => {
+                  const health = runnerBoxHealth(box.lastSeenAt, nowMs);
+                  return (
+                    <button
+                      key={box.runnerId}
+                      type="button"
+                      data-testid={`now-playing-runner-box-${box.runnerId}`}
+                      onClick={() => box.task && setSelectedTask?.(box.task)}
+                      disabled={!box.task}
+                      aria-label={`Runner ${box.runnerId} running ${box.taskName}, stage ${box.stageName}, ${runnerBoxHealthLabel(health)}`}
+                      title={`Runner ${box.runnerId} · ${box.taskName} · Stage: ${box.stageName}`}
+                      className="flex items-center gap-1.5 min-w-0 max-w-[220px] px-2 py-1 rounded bg-surface-container border border-border-standard text-left cursor-pointer hover:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-default shrink-0"
+                    >
+                      <span
+                        data-testid={`now-playing-runner-health-${box.runnerId}`}
+                        data-health={health}
+                        aria-hidden="true"
+                        className={`w-2 h-2 rounded-full shrink-0 ${runnerBoxDotClass(health)}`}
+                      />
+                      <span className="flex flex-col min-w-0 leading-tight">
+                        <span className="font-mono text-[11px] font-semibold text-on-surface truncate">
+                          {box.runnerId}
+                        </span>
+                        <span className="text-[11px] text-text-muted truncate">
+                          {box.taskName}
+                        </span>
+                        <span className="font-mono text-[10px] text-text-muted truncate">
+                          {box.stageName}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
             <InfoTooltip
               title="Inspect Active Task"
               description="Click to open the Slide-Over Inspector for live logs, markdown goals, and reports."
@@ -352,6 +551,7 @@ export function NowPlayingBar() {
                 )}
               </button>
             </InfoTooltip>
+            )}
           </div>
         </div>
       </div>
