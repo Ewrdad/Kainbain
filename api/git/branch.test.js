@@ -106,17 +106,42 @@ describe("checkoutBranch", () => {
 			calls.push([...args]);
 			if (args.includes("--abbrev-ref")) return fakeChildFromResponse({ stdout: "main\n" });
 			if (args[0] === "status") {
-				return fakeChildFromResponse({ stdout: " M docs/tasks/t/task.md\n" });
+				return fakeChildFromResponse({ stdout: " M docs/tasks/t/report.md\n" });
 			}
 			return fakeChildFromResponse({ stdout: "" });
 		});
 		const res = await checkoutBranch("/repo", "kb/task-1");
 		expect(res).toEqual({ switched: true });
 		// Only the snapshot path was staged and committed — nothing else.
-		expect(calls).toContainEqual(["add", "--", "docs/tasks/t/task.md"]);
-		const commit = calls.find((a) => a[0] === "commit");
-		expect(commit).toBeTruthy();
-		expect(commit.slice(3)).toEqual(["--", "docs/tasks/t/task.md"]);
+		expect(calls).toContainEqual(["add", "--", "docs/tasks/t/report.md"]);
+		expect(calls.some((a) => a[0] === "commit-tree")).toBe(true);
+		expect(calls.some((a) => a[0] === "update-ref")).toBe(true);
+		expect(calls.at(-1)).toEqual(["checkout", "kb/task-1"]);
+	});
+
+	it("untracks live task.md content (never stages it) before switching (Step 5)", async () => {
+		const calls = [];
+		spawnMock.mockImplementation((cmd, args) => {
+			calls.push([...args]);
+			if (args.includes("--abbrev-ref")) return fakeChildFromResponse({ stdout: "main\n" });
+			if (args[0] === "status") {
+				return fakeChildFromResponse({ stdout: " M docs/tasks/t/task.md\n" });
+			}
+			if (args[0] === "ls-files") {
+				return fakeChildFromResponse({ stdout: "docs/tasks/t/task.md" });
+			}
+			return fakeChildFromResponse({ stdout: "" });
+		});
+		const res = await checkoutBranch("/repo", "kb/task-1");
+		expect(res).toEqual({ switched: true });
+		// The live snapshot leaves the index but is never staged; the
+		// removal rides along in the plumbing snapshot commit.
+		const rm = calls.find((a) => a[0] === "rm");
+		expect(rm).toBeTruthy();
+		expect(rm).toContain("--cached");
+		expect(rm).toContain("docs/tasks/t/task.md");
+		expect(calls.some((a) => a[0] === "commit-tree")).toBe(true);
+		expect(calls.some((a) => a[0] === "update-ref")).toBe(true);
 		expect(calls.at(-1)).toEqual(["checkout", "kb/task-1"]);
 	});
 

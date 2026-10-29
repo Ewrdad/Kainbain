@@ -1,7 +1,8 @@
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import { promisify } from "node:util";
-import { listOrphanWorkdirs, prepareWorkdir, runGit, syncTaskDocs } from "./project.js";
+import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, removeIntegrationWorkdir, runGit, syncTaskDocs } from "./project.js";
+import { RunnerGitError } from "./project.js";
 import { runHarnessStage } from "./harness.js";
 import { commitAndPush } from "./gitOps.js";
 
@@ -544,6 +545,7 @@ async function executeAssignment({
 	model = null,
 	harnessId = null,
 	runOnBranch = "",
+	integration = null,
 }) {
 	const servingHarnessId = harnessId || config.harnessId || "unknown";
 		const project = await client.getProject(projectId);
@@ -562,6 +564,14 @@ async function executeAssignment({
 		if (!ciTimeoutMs && Number(claim.timeoutMs)) ciTimeoutMs = Number(claim.timeoutMs);
 		if (!runOnBranch && typeof claim.runOnBranch === "string") runOnBranch = claim.runOnBranch;
 		if (ciEnv === null || ciEnv === undefined) ciEnv = claim.env;
+		if (integration === null || integration === undefined) integration = claim.integration ?? null;
+		// Leased integrations run their own procedure (Step 4): ephemeral
+		// worktree, merge, CAS-push, verify — no harness, no task worktree.
+		if (kind === "integrate") {
+			return executeIntegrationAssignment({
+				config, client, logger, state, projectId, taskId, claim, integration: integration || {},
+			});
+		}
 		// Publish the live execution for the steer pull cycle (D5); the
 		// heartbeat loop only ever delivers steers for THIS execution.
 		state.executionId = executionId;
@@ -587,13 +597,13 @@ async function executeAssignment({
 				stageId,
 				event: "started",
 			});
-			const { workdir, branch, mode, reused } = await prepareWorkdir({
+			const { workdir, branch, mode, reused, recoveredTo, baseSha } = await prepareWorkdir({
 				repoUrl: project.gitUrl || project.repoUrl || null,
 				localPath: project.cwd || null,
 				workRoot: config.workRoot,
 				taskId: taskId,
 			});
-			logger.log(`Workdir ${workdir} (${mode}${reused ? ", reused" : ""}).`);
+			logger.log(`Workdir ${workdir} (${mode}${reused ? ", reused" : ""}${baseSha ? `, base ${baseSha.slice(0, 7)}` : ""}${recoveredTo ? `, residue parked on ${recoveredTo}` : ""}).`);
 			// Task prompt inputs (idea files, reference images) land in the
 			// live task folder outside the task branch — mirror them into
 			// the worktree so the harness actually sees them.
@@ -712,14 +722,14 @@ async function executeAssignment({
 				event: "finished",
 			});
 
-			const { sha, pushed, pushSkipped } = await commitAndPush({
+			const { sha, pushed, pushSkipped, beforeSha, pushState } = await commitAndPush({
 				workdir,
 				branch,
 				taskDocsPath: `docs/tasks/${taskId}`,
 				message: `kb/${taskId} ${stageId}: Runner ${config.runnerId} stage output`,
 				author: `kainbain-runner/${config.runnerId}`,
 			});
-			logger.log(`Committed ${sha} (pushed: ${pushed}${pushSkipped ? `, ${pushSkipped}` : ""}).`);
+			logger.log(`Committed ${sha} (pushed: ${pushed}${pushSkipped ? `, ${pushSkipped}` : ""}${pushState && pushState !== "pushed" ? `, ${pushState}` : ""}${beforeSha && beforeSha !== sha ? `, base was ${beforeSha.slice(0, 7)}` : ""}).`);
 			if (output) {
 				await sendLogs(`stage output: ${String(output).slice(0, 4000)}`);
 			}
@@ -764,6 +774,185 @@ async function executeAssignment({
 			}
 			throw err;
 		}
+}
+
+/***
+ * MARK: executeIntegrationAssignment
+ * @description Runs one leased `integrate` job (Step 4): merges
+ *   `origin/<taskBranch>` into the target in an ephemeral detached worktree,
+ *   CAS-pushes the target against the expected SHA, re-verifies, and reports.
+ *   The task claim fences progress/logs/completion exactly like any stage;
+ *   the integration lease serializes target writes. Outcomes:
+ *   `landed` (merge pushed + verified → task completes passed with the
+ *   integration payload the backend finalize needs), `conflict` (structured
+ *   file list — never resolved here — task fails back visibly), or
+ *   `stale-head` (a ref moved mid-lease → task fails with a retryable
+ *   reason; the retry re-bases with fresh SHAs). The ephemeral worktree is
+ *   removed in all outcomes.
+ * @example await executeIntegrationAssignment({ config, client, logger, state, projectId: 'p', taskId: 't', claim, integration }) => { ... }
+ ***/
+async function executeIntegrationAssignment({
+	config,
+	client,
+	logger,
+	state,
+	projectId,
+	taskId,
+	claim,
+	integration,
+}) {
+	const { taskBranch, expectedTaskSha, targetBranch, expectedTargetSha, mergeAttemptId } = integration;
+	const integrationExecutionId = integration.integrationExecutionId;
+	const integrationEpoch = integration.integrationEpoch;
+	const runStartedAt = Date.now();
+	const project = await client.getProject(projectId);
+	const task = await client.getTask(projectId, taskId);
+	const stageId = String(task.currentStageId ?? task.stages?.[0]?.id ?? "stage");
+	const { executionId, epoch } = claim;
+	state.executionId = executionId;
+	state.epoch = epoch;
+	state.session = null;
+	const posture = `${(config.tiers || []).join("/")}:integration:${config.model || "default"}`;
+	const stopRenewal = startClaimRenewal({ client, logger, taskId, projectId, executionId, epoch });
+	const integrationTimer = setInterval(() => {
+		client
+			.integrationHeartbeat({ projectId, targetBranch, executionId: integrationExecutionId, epoch: integrationEpoch })
+			.catch((err) => {
+				logger.warn(`Integration renewal failed: ${err?.message || err}`);
+				if (err?.code === "STALE_EPOCH") clearInterval(integrationTimer);
+			});
+	}, CLAIM_HEARTBEAT_MS);
+	if (typeof integrationTimer.unref === "function") integrationTimer.unref();
+
+	let seq = 0;
+	const sendLogs = async (bytes) => {
+		for (const chunk of String(bytes).split("\n")) {
+			if (!chunk) continue;
+			await client.logs({ taskId, projectId, executionId, epoch, seq: seq++, bytes: chunk.slice(0, 4000) });
+		}
+	};
+	const finishProgress = () =>
+		client.progress({ taskId, projectId, executionId, epoch, stageId, event: "finished" }).catch(() => {});
+	const failTask = (failureReason, extra = {}) =>
+		client.complete({
+			taskId, projectId, executionId, epoch,
+			branch: taskBranch, outcome: "failed", failureReason,
+			posture, durationMs: Date.now() - runStartedAt, ...extra,
+		});
+
+	try {
+		await client.progress({ taskId, projectId, executionId, epoch, stageId, event: "started" });
+		const { workdir, mirrorDir } = await prepareIntegrationWorkdir({
+			repoUrl: project.gitUrl || project.repoUrl || null,
+			workRoot: config.workRoot,
+			taskBranch,
+			expectedTaskSha,
+			targetBranch,
+			expectedTargetSha,
+		});
+		logger.log(`Integration workdir ${workdir} (ephemeral, detached at ${String(expectedTargetSha).slice(0, 7)}).`);
+		try {
+			try {
+				await sendLogs(`[integrate] merging origin/${taskBranch} into ${targetBranch}`);
+				await runGit(workdir, [
+					"-c", "user.name=KainBain Integration",
+					"-c", "user.email=kainbain-runner@local",
+					"merge", "--no-edit", `origin/${taskBranch}`,
+				]);
+			} catch (mergeErr) {
+				let conflicted = [];
+				try {
+					const { stdout } = await runGit(workdir, ["diff", "--name-only", "--diff-filter=U"]);
+					conflicted = stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+				} catch {
+					// Best effort: the file list below degrades to unknown.
+				}
+				try {
+					await runGit(workdir, ["merge", "--abort"]);
+				} catch {
+					// Best effort: the tree may already be clean.
+				}
+				const looksLikeConflict =
+					conflicted.length > 0 ||
+					/CONFLICT|Automatic merge failed|unmerged/i.test(`${mergeErr?.message || ""}\n${mergeErr?.stderr || ""}`);
+				if (!looksLikeConflict) throw mergeErr;
+				const detail = `Merge conflicts in: ${conflicted.join(", ") || "unknown files"} — resolve on '${taskBranch}' and retry the merge stage`;
+				await sendLogs(`[integrate] conflict: ${detail}`);
+				await client.integrationReport({
+					projectId, targetBranch, executionId: integrationExecutionId, epoch: integrationEpoch,
+					outcome: "conflict", detail,
+				}).catch(() => {});
+				state.session = null; stopRenewal(); clearInterval(integrationTimer);
+				await finishProgress();
+				return await failTask(detail, { taskFiles: collectTaskFiles({ workdir, taskId }) });
+			}
+			const mergeSha = (await runGit(workdir, ["rev-parse", "HEAD"])).stdout.trim();
+			try {
+				await runGit(workdir, [
+					"push", `--force-with-lease=${targetBranch}:${expectedTargetSha}`,
+					"origin", `${mergeSha}:${targetBranch}`,
+				]);
+			} catch (pushErr) {
+				const detail = `Target '${targetBranch}' moved during integration (CAS push pinned at ${String(expectedTargetSha).slice(0, 7)} rejected) — retry re-bases with fresh SHAs`;
+				await sendLogs(`[integrate] stale-head: ${detail}`);
+				await client.integrationReport({
+					projectId, targetBranch, executionId: integrationExecutionId, epoch: integrationEpoch,
+					outcome: "stale-head", detail,
+				}).catch(() => {});
+				state.session = null; stopRenewal(); clearInterval(integrationTimer);
+				await finishProgress();
+				return await failTask(detail);
+			}
+			await runGit(mirrorDir, ["fetch", "origin"]);
+			const tip = (await runGit(mirrorDir, ["rev-parse", "--verify", `origin/${targetBranch}`])).stdout.trim();
+			let ancestry = false;
+			try {
+				await runGit(mirrorDir, ["merge-base", "--is-ancestor", mergeSha, tip]);
+				ancestry = true;
+			} catch {
+				ancestry = false;
+			}
+			await client.integrationReport({
+				projectId, targetBranch, executionId: integrationExecutionId, epoch: integrationEpoch,
+				outcome: "landed", mergeSha, detail: `merged '${taskBranch}' into '${targetBranch}'`,
+			});
+			state.session = null; stopRenewal(); clearInterval(integrationTimer);
+			await finishProgress();
+			if (ancestry) {
+				await client.verifySha({ taskId, projectId, executionId, epoch, sha: mergeSha, present: true }).catch(() => {});
+			}
+			return await client.complete({
+				taskId, projectId, executionId, epoch,
+				sha: mergeSha, branch: taskBranch, outcome: "passed",
+				posture, durationMs: Date.now() - runStartedAt,
+				output: `[integrate] merged '${taskBranch}' into '${targetBranch}' (${mergeSha.slice(0, 7)})`,
+				integration: {
+					outcome: "landed", mergeSha, taskBranch, expectedTaskSha,
+					targetBranch, expectedTargetSha, mergeAttemptId,
+				},
+			});
+		} finally {
+			await removeIntegrationWorkdir(mirrorDir, workdir);
+		}
+	} catch (err) {
+		stopRenewal();
+		clearInterval(integrationTimer);
+		if (err?.code === "STALE_EPOCH") throw err;
+		if (err instanceof RunnerGitError && err.code === "stale-head") {
+			await client.integrationReport({
+				projectId, targetBranch, executionId: integrationExecutionId, epoch: integrationEpoch,
+				outcome: "stale-head", detail: err.message,
+			}).catch(() => {});
+			await finishProgress();
+			return await failTask(`stale-head: ${err.message}`);
+		}
+		try {
+			await client.interrupt({ taskId, projectId, executionId });
+		} catch {
+			// Interrupting is best-effort: the lease TTL still bounds the damage.
+		}
+		throw err;
+	}
 }
 
 /***
@@ -890,6 +1079,14 @@ export async function runDispatchLoop({
 			}
 			polls += 1;
 			if (!answer.assigned) {
+				// A busy integration slot is work waiting, not idleness:
+				// back off WITHOUT consuming idle budget, like fleet
+				// backpressure (D8) and operator pause.
+				if (answer.code === "INTEGRATION_BUSY") {
+					logger.log(`Dispatch: integration slot busy; backing off.`);
+					await new Promise((r) => setTimeout(r, pollMs));
+					continue;
+				}
 				idle += 1;
 				// idleLimit 0 means a persistent service loop: never idle out.
 				if (idleLimit > 0 && idle >= idleLimit) return { assignments, polls, idle: true };
@@ -934,6 +1131,10 @@ export async function runDispatchLoop({
 				// The backend already matched this task against our
 				// advertised models: serve exactly its required model.
 				model: answer.requirements?.model || null,
+				// Leased integrations carry their target/task SHAs here;
+				// executeAssignment routes `integrate` to the merge
+				// procedure instead of a harness.
+				integration: answer.integration ?? null,
 			});
 		}
 	} finally {

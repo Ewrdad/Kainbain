@@ -60,14 +60,19 @@ describe("commit-then-switch (real git)", () => {
 
 	it("auto-commits snapshot dirt and switches", async () => {
 		if (!gitAvailable) return;
+		// Step 5: the live task.md snapshot is untracked (worktree content
+		// preserved), while the report IS committed on the task branch.
 		fs.writeFileSync(path.join(dir, "docs", "tasks", "t", "task.md"), "new snapshot\n");
+		fs.writeFileSync(path.join(dir, "docs", "tasks", "t", "report.md"), "report\n");
 
 		const res = await checkoutBranch(dir, "main");
 
 		expect(res).toEqual({ switched: true });
 		expect(run(dir, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("main");
 		expect(run(dir, "log", "-1", "--format=%s", "kb/t")).toContain("snapshots");
-		expect(run(dir, "show", "kb/t:docs/tasks/t/task.md").trim()).toBe("new snapshot");
+		expect(run(dir, "show", "kb/t:docs/tasks/t/report.md").trim()).toBe("report");
+		expect(() => run(dir, "show", "kb/t:docs/tasks/t/task.md")).toThrow();
+		expect(fs.readFileSync(path.join(dir, "docs", "tasks", "t", "task.md"), "utf8")).toBe("new snapshot\n");
 	});
 
 	it("still refuses real dirt without committing anything", async () => {
@@ -87,15 +92,20 @@ describe("commit-then-switch (real git)", () => {
 		expect(run(dir, "rev-list", "--count", "HEAD").trim()).toBe(before);
 	});
 
-	it("commitEngineSnapshots stages only snapshot paths", async () => {
+	it("commitEngineSnapshots untracks task.md but still stages reports", async () => {
 		if (!gitAvailable) return;
 		fs.writeFileSync(path.join(dir, "docs", "tasks", "t", "task.md"), "new snapshot\n");
+		fs.writeFileSync(path.join(dir, "docs", "tasks", "t", "report.md"), "report\n");
 		fs.writeFileSync(path.join(dir, "real.js"), "operator edit\n");
 
 		const res = await commitEngineSnapshots(dir, "snapshots");
 
+		// Step 5: the report commits, the live snapshot leaves the tree
+		// (its worktree content is preserved verbatim).
 		expect(res.committed).toBe(true);
-		expect(run(dir, "show", "HEAD:docs/tasks/t/task.md").trim()).toBe("new snapshot");
+		expect(run(dir, "show", "HEAD:docs/tasks/t/report.md").trim()).toBe("report");
+		expect(() => run(dir, "show", "HEAD:docs/tasks/t/task.md")).toThrow();
+		expect(fs.readFileSync(path.join(dir, "docs", "tasks", "t", "task.md"), "utf8")).toBe("new snapshot\n");
 		// The real edit is still uncommitted working-tree dirt.
 		expect(run(dir, "status", "--porcelain")).toContain("real.js");
 	});

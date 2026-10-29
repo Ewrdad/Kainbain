@@ -100,6 +100,13 @@ describe("isDispatchServable", () => {
 		expect(isDispatchServable({ project, task })).toBe(true);
 	});
 
+	test("merge stages are servable only for remote-backed projects", () => {
+		const merge = { stages: [{ id: "s1", type: "merge" }] };
+		expect(isDispatchServable({ project: { hasUpstreamRepo: true }, task: agentTask(merge) })).toBe(true);
+		expect(isDispatchServable({ project: { hasUpstreamRepo: false }, task: agentTask(merge) })).toBe(false);
+		expect(isDispatchServable({ project: {}, task: agentTask(merge) })).toBe(false);
+	});
+
 	test("unresolvable aliases are not servable", () => {
 		const project = { id: "p1", harness: "pi", modelAliases: [] };
 		expect(

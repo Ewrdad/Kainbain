@@ -25,6 +25,7 @@ import { createSessionHelpers } from "./sessionResolution.js";
 import { taskStore } from "./taskStore.js";
 import { sessionStore } from "./sessionStore.js";
 import { ClaimStore } from "./flow/claimStore.js";
+import { IntegrationQueue } from "./flow/integrationQueue.js";
 import { SteerStore } from "./flow/steerStore.js";
 import { RunnerRegistry } from "./flow/runnerRegistry.js";
 import { ExecutionLedger } from "./flow/executionLedger.js";
@@ -165,6 +166,11 @@ const runnerRegistry = new RunnerRegistry({
 const claimStore = new ClaimStore({ ttlMs: config.claimTtlMs });
 const steerStore = new SteerStore({});
 const executionLedger = new ExecutionLedger();
+// Serialized integration leases for Runner-run merges (Step 3): one
+// project + target branch, one leased integration at a time. In-memory
+// like the claim ledger; a restart drops live leases and merge requests
+// re-enter through the merge stage's normal retry.
+const integrationQueue = new IntegrationQueue({ ttlMs: config.claimTtlMs });
 // Leases live outside the task store, but the scheduler and the embedded
 // execute path must see them to avoid double-dispatching a Runner-held
 // task (same precedent as taskStore.sessionStore).
@@ -194,6 +200,7 @@ const deps = {
 	claimStore,
 	steerStore,
 	executionLedger,
+	integrationQueue,
 };
 
 // Wire the DEFAULT harness's optional probeHealth member into the health

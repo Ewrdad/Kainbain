@@ -244,6 +244,65 @@ describe("ExecutionLedger", () => {
 		}
 	});
 
+	test("defers remote SHA verification to a Runner with a fresh fetch", async () => {
+		const remote = {
+			getProject: () => ({ cwd: "/repo", hasUpstreamRepo: true }),
+		};
+		const first = claimed(ctx);
+		const sha = "a".repeat(40);
+		const out = await ledger.completeExecution({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectStore: remote,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId: first.executionId,
+			epoch: first.epoch,
+			sha,
+			branch: "kb/t1",
+		});
+		expect(out.shaState).toBe("unverified-remote");
+		expect(ctx.taskStore.getTask().pendingPushVerification).toMatchObject({
+			sha,
+			verified: false,
+		});
+		// Stale executions cannot confirm: the lease was released.
+		expect(() =>
+			ledger.noteRemoteVerification({
+				claimStore: ctx.claimStore,
+				taskStore: ctx.taskStore,
+				projectId: "p1",
+				taskId: "t1",
+				runnerId: "r1",
+				executionId: first.executionId,
+				epoch: first.epoch,
+				sha,
+				present: true,
+			}),
+		).toThrowError(expect.objectContaining({ code: "STALE_EPOCH" }));
+		// The next lease holder confirms against its fresh fetch.
+		const next = ctx.claimStore.claim("t1", "r2");
+		const confirmed = ledger.noteRemoteVerification({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r2",
+			executionId: next.executionId,
+			epoch: next.epoch,
+			sha,
+			present: true,
+		});
+		expect(confirmed).toEqual({ verified: true });
+		expect(ctx.taskStore.getTask().pendingPushVerification).toMatchObject({
+			sha,
+			verified: true,
+			verifiedBy: "r2",
+		});
+		expect(ledger.snapshot().verifiedSha).toBe(1);
+	});
+
 	test("counts divergence when the task moved past the reported stage", async () => {
 		const { executionId, epoch } = claimed(ctx);
 		ledger.recordProgress({

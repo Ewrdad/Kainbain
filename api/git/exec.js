@@ -22,12 +22,14 @@ const MAX_CAPTURE_BYTES = 1024 * 1024; // 1 MB per stream, defensive cap.
  *   integration test asserting recovery must stub "no live holder" to stay
  *   deterministic under parallel workers spawning their own git processes).
  *   Production callers omit it and always get the real machine-wide scan.
+ * @param {Object} [opts.env] - Extra environment for the child (merged over
+ *   process.env), e.g. `{ GIT_INDEX_FILE: tmp }` for scratch-index plumbing.
  * @returns {Promise<{stdout: string, stderr: string, code: number}>}
  ***/
 export function git(
 	projectCwd,
 	args,
-	{ timeout = 60000, listLiveGitProcesses } = {},
+	{ timeout = 60000, listLiveGitProcesses, env } = {},
 ) {
 	if (typeof projectCwd !== "string" || !projectCwd.trim()) {
 		return Promise.reject(new GitError("git requires a working directory"));
@@ -50,7 +52,7 @@ export function git(
 	// is one fast local op, and the engine runs one task at a time anyway.
 	return withRepoGitLock(projectCwd, async () => {
 		try {
-			return await _spawnGit(projectCwd, args, { timeout });
+			return await _spawnGit(projectCwd, args, { timeout, env });
 		} catch (err) {
 			if (!isGitLockError(err)) throw err;
 			const recoveryOpts = {};
@@ -65,7 +67,7 @@ export function git(
 				throw _withLockCheckSuffix(err, recovery);
 			}
 			try {
-				return await _spawnGit(projectCwd, args, { timeout });
+				return await _spawnGit(projectCwd, args, { timeout, env });
 			} catch (retryErr) {
 				// The retry ran on a cleared lock and still failed: keep the
 				// recovery evidence on the error so failure routing and logs
@@ -94,11 +96,15 @@ export function git(
  * @param {string[]} args - Argument array for the git binary.
  * @param {Object} [opts]
  * @param {number} [opts.timeout=60000] - Hard timeout in milliseconds.
+ * @param {Object} [opts.env] - Extra environment merged over process.env.
  * @returns {Promise<{stdout: string, stderr: string, code: number}>}
  ***/
-function _spawnGit(projectCwd, args, { timeout = 60000 } = {}) {
+function _spawnGit(projectCwd, args, { timeout = 60000, env } = {}) {
 	return new Promise((resolve, reject) => {
-		const child = spawn("git", args, { cwd: projectCwd });
+		const child = spawn("git", args, {
+			cwd: projectCwd,
+			env: env ? { ...process.env, ...env } : process.env,
+		});
 		let stdout = "";
 		let stderr = "";
 		let settled = false;

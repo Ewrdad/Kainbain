@@ -1416,14 +1416,30 @@ async function mergeTaskBranchIntoMain(
 		) {
 			const remoteRef = `${taskSync.remote || "origin"}/${branch}`;
 			const detail = taskSync.detail ? `: ${taskSync.detail}` : "";
-			if (taskSync.skipped === "diverged") {
-				throw new GitError(
-					`Task branch '${branch}' has diverged from '${remoteRef}' — refusing to merge a stale local branch and silently drop remote Runner work. Reconcile the task branch with '${remoteRef}' (merge '${remoteRef}' into '${branch}' locally or reset to it), then retry the merge stage.`,
-				);
-			}
-			throw new GitError(
-				`Task-branch sync before merge failed (${taskSync.skipped}${detail}) — refusing to merge without the latest remote work on '${branch}'. Resolve the conflict between the local branch and '${remoteRef}' (commit or stash local changes, then merge '${remoteRef}'), then retry the merge stage.`,
-			);
+			// Sync-blocked, not failed-back: no local actor can reconcile
+			// this (the Runner fleet has no shared "locally"), so the task
+			// parks on the merge stage (skipFailback) with a structured
+			// `sync-blocked` diagnostic instead of rewinding to a work
+			// stage. The owning fix is a Runner sync job (Step 4 of the
+			// git-runner-coordination spike), not a human at a shell.
+			const syncError =
+				taskSync.skipped === "diverged"
+					? new GitError(
+							`Task branch '${branch}' has diverged from '${remoteRef}' — refusing to merge a stale local branch and silently drop remote Runner work. A Runner sync job must merge '${remoteRef}' into '${branch}' and push before this merge stage is retried.`,
+						)
+					: new GitError(
+							`Task-branch sync before merge failed (${taskSync.skipped}${detail}) — refusing to merge without the latest remote work on '${branch}'. A Runner sync job must resolve the state between the local branch and '${remoteRef}' before this merge stage is retried.`,
+						);
+			syncError.gitDiagnostics = {
+				kind: "sync-blocked",
+				taskBranch: branch,
+				mainBranch,
+				remoteRef,
+				syncSkipped: taskSync.skipped,
+				syncDetail: taskSync.detail || null,
+			};
+			syncError.skipFailback = true;
+			throw syncError;
 		}
 		// Landed evidence (frozen marker OR git ancestry) is decided
 		// IMMEDIATELY upon entry (before any checkout, commit, or
@@ -1847,7 +1863,9 @@ async function mergeTaskBranchIntoMain(
 			// (entry decision) or the re-entry path is taken, any failure
 			// (dirty-tree switch, clean tree, ambiguous commit count,
 			// main checkout) parks the task `failed` on the merge stage.
-			...((landedReentry || landedEvidence) ? { skipFailback: true } : {}),
+			// A sync-blocked merge (no local actor can reconcile a diverged
+			// task ref) also parks instead of failing back to work stages.
+			...((landedReentry || landedEvidence || e?.skipFailback) ? { skipFailback: true } : {}),
 		});
 		return { handled: true, result };
 	}

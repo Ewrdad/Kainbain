@@ -99,4 +99,61 @@ describe("commitAndPush task docs rescue", () => {
 			if (ctx2.origin) fs.rmSync(ctx2.origin, { recursive: true, force: true });
 		}
 	});
+
+	it("integrates a sibling stage push before publishing (no silent divergence)", async () => {
+		const origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-runner-bare-"));
+		execFileSync("git", ["init", "-q", "--bare"], { cwd: origin, stdio: "ignore" });
+		const clone = (name) => {
+			const dir = fs.mkdtempSync(path.join(os.tmpdir(), `kb-runner-${name}-`));
+			execFileSync("git", ["clone", "-q", origin, dir], { stdio: "ignore" });
+			execFileSync("git", ["config", "user.email", "t@t.t"], { cwd: dir, stdio: "ignore" });
+			execFileSync("git", ["config", "user.name", "t"], { cwd: dir, stdio: "ignore" });
+			return dir;
+		};
+		const a = clone("a");
+		const b = clone("b");
+		try {
+			execFileSync("git", ["checkout", "-qb", "kb/t1"], { cwd: a, stdio: "ignore" });
+			fs.writeFileSync(path.join(a, "base.txt"), "base");
+			execFileSync("git", ["add", "."], { cwd: a, stdio: "ignore" });
+			execFileSync("git", ["commit", "-qm", "init"], { cwd: a, stdio: "ignore" });
+			execFileSync("git", ["push", "-q", "origin", "kb/t1"], { cwd: a, stdio: "ignore" });
+			// Sibling stage (B) based on the same tip, then A lands first.
+			execFileSync("git", ["fetch", "-q", "origin"], { cwd: b, stdio: "ignore" });
+			execFileSync("git", ["checkout", "-qb", "kb/t1", "origin/kb/t1"], { cwd: b, stdio: "ignore" });
+			fs.writeFileSync(path.join(a, "a.txt"), "a");
+			execFileSync("git", ["add", "."], { cwd: a, stdio: "ignore" });
+			execFileSync("git", ["commit", "-qm", "a work"], { cwd: a, stdio: "ignore" });
+			execFileSync("git", ["push", "-q", "origin", "kb/t1"], { cwd: a, stdio: "ignore" });
+			fs.writeFileSync(path.join(b, "b.txt"), "b");
+			const out = await commitAndPush({ workdir: b, branch: "kb/t1", message: "b work" });
+			assert.equal(out.pushed, true);
+			execFileSync("git", ["fetch", "-q", "origin"], { cwd: a, stdio: "ignore" });
+			const logAfter = execFileSync("git", ["log", "--format=%s", "origin/kb/t1"], { cwd: a, encoding: "utf8" });
+			assert.match(logAfter, /b work/);
+			assert.match(logAfter, /a work/);
+		} finally {
+			fs.rmSync(a, { recursive: true, force: true });
+			fs.rmSync(b, { recursive: true, force: true });
+			fs.rmSync(origin, { recursive: true, force: true });
+		}
+	});
+
+	it("never commits the backend-owned task.md snapshot (a5228675)", async () => {
+		const ctx2 = worktreeRepo(true);
+		try {
+			fs.writeFileSync(path.join(ctx2.dir, ".gitignore"), "docs/tasks/\n");
+			const docsDir = path.join(ctx2.dir, "docs/tasks/t1");
+			fs.mkdirSync(docsDir, { recursive: true });
+			fs.writeFileSync(path.join(docsDir, "task.md"), "live snapshot");
+			fs.writeFileSync(path.join(docsDir, "report.md"), "report");
+			await commitAndPush({ workdir: ctx2.dir, branch: "kb/t1", message: "stage", taskDocsPath: "docs/tasks/t1" });
+			const listed = execFileSync("git", ["ls-tree", "-r", "--name-only", "HEAD"], { cwd: ctx2.dir, encoding: "utf8" });
+			assert.ok(listed.split("\n").includes("docs/tasks/t1/report.md"));
+			assert.ok(!listed.split("\n").includes("docs/tasks/t1/task.md"));
+		} finally {
+			fs.rmSync(ctx2.dir, { recursive: true, force: true });
+			if (ctx2.origin) fs.rmSync(ctx2.origin, { recursive: true, force: true });
+		}
+	});
 });

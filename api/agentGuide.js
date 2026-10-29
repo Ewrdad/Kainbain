@@ -303,6 +303,40 @@ export const ENDPOINTS = [
 	},
 	{
 		method: "POST",
+		path: "/runners/integration/acquire",
+		purpose:
+			"Runner-only: lease the head queued integration for a project + target branch (200 leased + executionId/epoch, 200 unassigned when the queue is empty, 409 INTEGRATION_BUSY when a live lease is held). Requires the x-runner-credential header.",
+		body: { projectId: "string (required)", targetBranch: "string (required)" },
+	},
+	{
+		method: "POST",
+		path: "/runners/integration/heartbeat",
+		purpose:
+			"Runner-only: renew a live integration lease (409 STALE_EPOCH when superseded). Requires the x-runner-credential header.",
+		body: { projectId: "string (required)", targetBranch: "string (required)", executionId: "string (required)", epoch: "number (required)" },
+	},
+	{
+		method: "POST",
+		path: "/runners/integration/report",
+		purpose:
+			"Runner-only: record a terminal integration report (outcome landed|conflict|stale-head|needs-sync|failed; idempotent re-reports, stale executions rejected). Requires the x-runner-credential header.",
+		body: { projectId: "string (required)", targetBranch: "string (required)", executionId: "string (required)", epoch: "number (required)", outcome: "string (required)" },
+	},
+	{
+		method: "GET",
+		path: "/runners/integration",
+		purpose: "Per-scope integration queue depth, live lease, and global lease counters for the multi-Runner UI.",
+		body: null,
+	},
+	{
+		method: "POST",
+		path: "/tasks/:id/verify-sha",
+		purpose:
+			"Runner-only: confirm a reported push SHA against a fresh fetch (claim-lease fenced; refuted SHAs park visibly). Requires the x-runner-credential header.",
+		body: { projectId: "string (required)", executionId: "string (required)", epoch: "number (required)", sha: "string (required)", present: "boolean" },
+	},
+	{
+		method: "POST",
 		path: "/tasks/:id/progress",
 		purpose:
 			"Runner-only: record a stage lifecycle event keyed by execution ID (idempotent; stale epochs rejected). Requires the x-runner-credential header.",
