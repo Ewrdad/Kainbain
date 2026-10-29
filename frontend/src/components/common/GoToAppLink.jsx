@@ -46,10 +46,12 @@ const STATE_LABELS = {
  * MARK: GoToAppLink
  * @description The shared "Go to App" quick-link: an external link to the
  *   project's running app with a live status dot and an on-demand health
- *   probe button. Renders nothing when the project carries no safe link, so
- *   link-free projects keep their exact current layout. Two sizes: 'action'
- *   for the Files & Repo quick-action strip, 'header' for the compact top
- *   header (icon-only on narrow screens, like the Git remote link).
+ *   probe, visually merged into one split button (single outer frame, link
+ *   segment plus divider-separated refresh segment). Renders nothing when
+ *   the project carries no safe link, so link-free projects keep their
+ *   exact current layout. Two sizes: 'action' for the Files & Repo
+ *   quick-action strip, 'header' for the compact top header (icon-only on
+ *   narrow screens, like the Git remote link).
  * @example <GoToAppLink projectId="p1" appStatus={project.appStatus} variant="action" onHealthChange={merge} />
  * @param {Object} props
  * @param {string} props.projectId - Owning project (enables the probe button).
@@ -97,7 +99,7 @@ export function GoToAppLink({ projectId, appStatus, variant = 'action', onHealth
   const isHeader = variant === 'header';
 
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap">
+    <span className="inline-flex shrink-0 items-stretch whitespace-nowrap rounded-sm border border-border-standard bg-surface-container overflow-hidden">
       <a
         href={href}
         target="_blank"
@@ -106,8 +108,8 @@ export function GoToAppLink({ projectId, appStatus, variant = 'action', onHealth
         title={tooltip}
         className={
           isHeader
-            ? 'flex items-center gap-1.5 px-2.5 py-1.5 min-h-[44px] rounded-sm bg-surface-container hover:bg-surface-container-high border border-border-standard text-text-muted hover:text-on-surface transition-colors text-xs font-mono cursor-pointer'
-            : 'px-2.5 py-1 text-[10px] font-mono font-bold uppercase bg-surface-container hover:bg-surface-container-high border border-border-standard rounded-sm text-on-surface hover:text-primary transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap'
+            ? 'flex items-center gap-1.5 px-2.5 py-1.5 min-h-[44px] hover:bg-surface-container-high text-text-muted hover:text-on-surface transition-colors text-xs font-mono cursor-pointer'
+            : 'px-2.5 py-1 text-[10px] font-mono font-bold uppercase hover:bg-surface-container-high rounded-l-sm text-on-surface hover:text-primary transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap'
         }
       >
         <span
@@ -129,8 +131,8 @@ export function GoToAppLink({ projectId, appStatus, variant = 'action', onHealth
           title={probing ? 'Checking app health…' : 'Check app health now'}
           className={
             isHeader
-              ? 'px-2 py-1.5 min-h-[44px] min-w-[44px] rounded-sm bg-surface-container hover:bg-surface-container-high border border-border-standard text-text-muted hover:text-on-surface transition-colors text-xs cursor-pointer disabled:opacity-60'
-              : 'px-1.5 py-1 text-[10px] bg-surface-container hover:bg-surface-container-high border border-border-standard rounded-sm text-text-muted hover:text-on-surface transition-colors cursor-pointer disabled:opacity-60'
+              ? 'px-2 py-1.5 min-h-[44px] min-w-[44px] border-l border-border-standard hover:bg-surface-container-high text-text-muted hover:text-on-surface transition-colors text-xs cursor-pointer disabled:opacity-60 flex items-center justify-center'
+              : 'px-1.5 py-1 text-[10px] border-l border-border-standard hover:bg-surface-container-high rounded-r-sm text-text-muted hover:text-on-surface transition-colors cursor-pointer disabled:opacity-60 flex items-center justify-center'
           }
         >
           <span aria-hidden="true" className={probing ? 'animate-spin inline-block' : undefined}>
