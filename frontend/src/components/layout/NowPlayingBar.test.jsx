@@ -1,7 +1,7 @@
 // jsdom pin: this suite needs window.confirm stub (happy-dom differs); keep on jsdom.
 // @vitest-environment jsdom
 import { expect, test, vi } from 'vitest';
-import { screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { screen, fireEvent, act } from '@testing-library/react';
 import { renderWithKainBain } from '../../testUtils';
 import { NowPlayingBar, resolveRunnerBoxes, runnerBoxHealth } from './NowPlayingBar';
 import { KainBainContext } from '../../context/KainBainContext';
@@ -18,11 +18,12 @@ vi.mock('../../services/api', () => ({
 
 /***
  * MARK: NowPlayingBar tests
- * @description Verifies the global control bar: current task display,
- * compute play/pause toggle, 4 transport controls (Look Back, Look Forward, Skip Current, Jump to Active),
- * global engine status badge (IDLE, RUNNING, CHECKPOINT, PAUSED), the honest
- * elapsed stage timer, the live queue-depth chip, and the absence of any
- * fabricated percentage bar or stale stage-position label.
+ * @description Verifies the Now Playing bar: current task display, the
+ * always-on runner boxes (fleet roster with per-runner play/pause + skip,
+ * idle boxes included), global engine status badge
+ * (IDLE, RUNNING, CHECKPOINT, PAUSED), the honest elapsed stage timer, the
+ * live queue-depth chip, and the absence of any fabricated percentage bar,
+ * stale stage-position label, or global transport cluster.
  ***/
 const stages = [
   { id: '1', name: 'Idea', type: 'agent' },
@@ -172,150 +173,103 @@ test('elapsed timer ticks while the engine runs and resets when the active task 
   }
 });
 
-test('play/pause button toggles compute', () => {
-  const toggleCompute = vi.fn();
-  const { rerender } = renderWithKainBain(<NowPlayingBar />, {
-    computeRunning: false,
-    toggleCompute,
-    stages,
-    currentStageId: '1',
-  });
-  fireEvent.click(screen.getByTitle('Start engine'));
-  expect(toggleCompute).toHaveBeenCalled();
-
-  // When running, the button offers a pause action.
-  rerender(
-    <NowPlayingBarContextOverlay
-      value={{ computeRunning: true, toggleCompute, stages, currentStageId: '1' }}
-    />,
-  );
-  expect(screen.getByTitle(/Pause|Stop engine/)).toBeInTheDocument();
-});
-
-test('Look Back and Look Forward trigger view-only navigation without server mutation', () => {
-  const lookBack = vi.fn();
-  const lookForward = vi.fn();
+test('no global transport cluster remains: play/skip live on the runner boxes', () => {
   renderWithKainBain(<NowPlayingBar />, {
     stages,
-    currentStageId: '2',
-    focusedStageId: '2',
-    tasks: [
-      { id: 't1', currentStageId: '1', status: 'in_stage' },
-      { id: 't2', currentStageId: '2', status: 'in_stage' },
+    currentStageId: '1',
+    isAgentRunning: true,
+    engineState: { status: 'running', activeTaskId: 't1' },
+    tasks: [{ id: 't1', currentStageId: '1', status: 'running_agent', title: 'Build' }],
+    runnerAssignments: [
+      { runnerId: 'runner-a', taskId: 't1', stageId: '1', lastSeenAt: new Date().toISOString() },
     ],
-    lookBack,
-    lookForward,
-    activeProjectId: 'proj-1',
   });
 
-  fireEvent.click(screen.getByLabelText('Look Back'));
-  expect(lookBack).toHaveBeenCalled();
-
-  fireEvent.click(screen.getByLabelText('Look Forward'));
-  expect(lookForward).toHaveBeenCalled();
+  // The old center cluster is gone for good.
+  expect(screen.queryByLabelText('Look Back')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Look Forward')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Jump to Active')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Skip Current')).not.toBeInTheDocument();
+  expect(screen.queryByTitle('Start engine')).not.toBeInTheDocument();
+  expect(screen.queryByTitle(/Pause engine|Stop engine/)).not.toBeInTheDocument();
+  expect(screen.queryByTestId('main-play-btn')).not.toBeInTheDocument();
+  // Per-runner transport replaces it.
+  expect(screen.getByLabelText('Pause runner runner-a')).toBeInTheDocument();
+  expect(screen.getByLabelText('Skip current task for runner runner-a')).toBeInTheDocument();
 });
 
-test('Look Forward and Skip Current are disabled when no next task is queued (#28)', () => {
-  // Scenario 1: Empty tasks list
+/***
+ * MARK: per-runner transport (replaces the removed global cluster)
+ * @description Play/pause and skip live on each runner box now: pause parks
+ * the Runner, resume re-arms it, skip advances its held task one stage.
+ * Skip is parked while the Runner holds nothing.
+ ***/
+test('per-runner play/pause calls the matching runner control', () => {
+  const pauseRunner = vi.fn();
+  const resumeRunner = vi.fn();
   const { rerender } = renderWithKainBain(<NowPlayingBar />, {
     stages,
     currentStageId: '1',
-    focusedStageId: '1',
-    tasks: [],
-    activeProjectId: 'proj-1',
+    tasks: [{ id: 't1', currentStageId: '1', status: 'running_agent', title: 'Build' }],
+    runnerAssignments: [
+      { runnerId: 'runner-a', taskId: 't1', stageId: '1', lastSeenAt: new Date().toISOString() },
+    ],
+    pauseRunner,
+    resumeRunner,
   });
 
-  expect(screen.getByLabelText('Look Forward')).toBeDisabled();
-  expect(screen.getByLabelText('Skip Current')).toBeDisabled();
+  fireEvent.click(screen.getByLabelText('Pause runner runner-a'));
+  expect(pauseRunner).toHaveBeenCalledWith('runner-a');
+  expect(resumeRunner).not.toHaveBeenCalled();
 
-  // Scenario 2: Single task only (active task, no subsequent queued task)
   rerender(
     <NowPlayingBarContextOverlay
       value={{
         stages,
         currentStageId: '1',
-        focusedStageId: '1',
-        tasks: [{ id: 't1', currentStageId: '1', status: 'in_stage' }],
-        activeProjectId: 'proj-1',
-      }}
-    />,
-  );
-  expect(screen.getByLabelText('Look Forward')).toBeDisabled();
-  expect(screen.getByLabelText('Skip Current')).toBeDisabled();
-
-  // Scenario 3: Multiple tasks with next queued task enables Look Forward & Skip Current
-  rerender(
-    <NowPlayingBarContextOverlay
-      value={{
-        stages,
-        currentStageId: '1',
-        focusedStageId: '1',
-        tasks: [
-          { id: 't1', currentStageId: '1', status: 'in_stage' },
-          { id: 't2', currentStageId: '2', status: 'in_stage' },
+        tasks: [{ id: 't1', currentStageId: '1', status: 'running_agent', title: 'Build' }],
+        runnerAssignments: [
+          {
+            runnerId: 'runner-a',
+            taskId: 't1',
+            stageId: '1',
+            lastSeenAt: new Date().toISOString(),
+            paused: true,
+          },
         ],
-        activeProjectId: 'proj-1',
+        pauseRunner,
+        resumeRunner,
       }}
     />,
   );
-  expect(screen.getByLabelText('Look Forward')).not.toBeDisabled();
-  expect(screen.getByLabelText('Skip Current')).not.toBeDisabled();
+  fireEvent.click(screen.getByLabelText('Resume runner runner-a'));
+  expect(resumeRunner).toHaveBeenCalledWith('runner-a');
 });
 
-test('Skip Current triggers mutation to advance active stage/task when confirmed', () => {
-  const skipCurrent = vi.fn();
-  const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+test('per-runner skip advances that runner only, and is disabled while idle', () => {
+  const skipRunner = vi.fn();
   renderWithKainBain(<NowPlayingBar />, {
     stages,
     currentStageId: '1',
-    focusedStageId: '1',
-    tasks: [
-      { id: 't1', currentStageId: '1', status: 'in_stage' },
-      { id: 't2', currentStageId: '2', status: 'in_stage' },
+    tasks: [{ id: 't1', currentStageId: '1', status: 'running_agent', title: 'Build' }],
+    runners: [
+      { runnerId: 'runner-a', status: 'active', paused: false },
+      { runnerId: 'runner-b', status: 'active', paused: false },
     ],
-    skipCurrent,
-    activeProjectId: 'proj-1',
-  });
-
-  fireEvent.click(screen.getByLabelText('Skip Current'));
-  expect(confirmSpy).toHaveBeenCalled();
-  expect(skipCurrent).toHaveBeenCalledWith('proj-1');
-  confirmSpy.mockRestore();
-});
-
-test('Skip Current cancels mutation when user cancels confirmation', () => {
-  const skipCurrent = vi.fn();
-  const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-  renderWithKainBain(<NowPlayingBar />, {
-    stages,
-    currentStageId: '1',
-    focusedStageId: '1',
-    tasks: [
-      { id: 't1', currentStageId: '1', status: 'in_stage' },
-      { id: 't2', currentStageId: '2', status: 'in_stage' },
+    runnerAssignments: [
+      { runnerId: 'runner-a', taskId: 't1', stageId: '1', lastSeenAt: new Date().toISOString() },
     ],
-    skipCurrent,
-    activeProjectId: 'proj-1',
+    skipRunner,
   });
 
-  fireEvent.click(screen.getByLabelText('Skip Current'));
-  expect(confirmSpy).toHaveBeenCalled();
-  expect(skipCurrent).not.toHaveBeenCalled();
-  confirmSpy.mockRestore();
-});
+  const skipBusy = screen.getByLabelText('Skip current task for runner runner-a');
+  expect(skipBusy).not.toBeDisabled();
+  fireEvent.click(skipBusy);
+  expect(skipRunner).toHaveBeenCalledWith('runner-a');
 
-test('Jump to Active triggers view reset back to executing stage', () => {
-  const jumpToActive = vi.fn();
-  renderWithKainBain(<NowPlayingBar />, {
-    stages,
-    currentStageId: '2',
-    focusedStageId: '1',
-    jumpToActive,
-    activeProjectId: 'proj-1',
-  });
-
-  fireEvent.click(screen.getByLabelText('Jump to Active'));
-  expect(jumpToActive).toHaveBeenCalled();
+  // runner-b holds nothing: its skip is parked, its pause still works.
+  expect(screen.getByLabelText('Skip current task for runner runner-b')).toBeDisabled();
+  expect(screen.getByLabelText('Pause runner runner-b')).not.toBeDisabled();
 });
 
 test('renders dynamic status badges correctly (IDLE, RUNNING, CHECKPOINT, WAITING_HUMAN, PAUSED)', () => {
@@ -658,7 +612,7 @@ test('project switch keeps the whole bar put: owner named, badge/timer/queue/tra
     />,
   );
 
-  // Named task, badge, timer, queue depth, and transport all stay put.
+  // Named task, badge, timer, and queue depth all stay put.
   expect(screen.getByTestId('now-playing-task-name').textContent).toBe(namedBefore);
   expect(screen.queryByText(/Beta session/)).not.toBeInTheDocument();
   expect(screen.queryByText(/Beta follow-up/)).not.toBeInTheDocument();
@@ -667,15 +621,14 @@ test('project switch keeps the whole bar put: owner named, badge/timer/queue/tra
   expect(
     screen.getByRole('status', { name: /Execution queue:/ }).getAttribute('aria-label'),
   ).toBe(queueBefore);
-  expect(screen.getByLabelText('Skip Current')).not.toBeDisabled();
-  expect(screen.getByTitle('Stop engine')).toBeInTheDocument();
 });
 
 /***
  * MARK: runner boxes
- * @description With under 5 runners the bar's left side shows one little box
- * per runner (runner name, task name, stage, health colour dot) instead of
- * the single-task card. Zero runners or 5+ keep the legacy display.
+ * @description The bar's left side is the fleet roster: one little box per
+ * configured Runner (runner name, task name, stage, health colour dot,
+ * play/pause + skip) instead of the single-task card. Only zero configured
+ * Runners keep the legacy display.
  ***/
 test('runner boxes replace the left side for under 5 runners', () => {
   const now = new Date().toISOString();
@@ -695,7 +648,7 @@ test('runner boxes replace the left side for under 5 runners', () => {
   });
 
   const boxes = screen.getByTestId('now-playing-runner-boxes');
-  expect(boxes).toHaveAttribute('aria-label', '2 active runners');
+  expect(boxes).toHaveAttribute('aria-label', '2 runners');
   // Each box names its runner, task, and stage.
   expect(screen.getByTestId('now-playing-runner-box-runner-a')).toHaveTextContent('runner-a');
   expect(screen.getByTestId('now-playing-runner-box-runner-a')).toHaveTextContent('Build the widget');
@@ -764,7 +717,7 @@ test('clicking a runner box opens that task in the inspector', () => {
     setSelectedTask,
   });
 
-  fireEvent.click(screen.getByTestId('now-playing-runner-box-runner-a'));
+  fireEvent.click(screen.getByLabelText('Inspect task for runner runner-a'));
   expect(setSelectedTask).toHaveBeenCalledWith(task);
 });
 
@@ -779,65 +732,120 @@ test('runner box stage falls back to the task stage when the assignment carries 
   expect(screen.getByTestId('now-playing-runner-box-runner-a')).toHaveTextContent('Review');
 });
 
-test('runner boxes fall back to the legacy display for zero runners and for 5+', () => {
-  // Zero runners: fleet idle keeps the legacy idle hint.
+/***
+ * MARK: always-on fleet roster
+ * @description Runner boxes show even when nothing is running: every
+ * configured Runner keeps its box (idle ones read "Idle / Waiting for
+ * work"), so the count always matches the fleet. Only a fleet of zero
+ * keeps the legacy single-task display. Past the render cap the data
+ * layer still returns everyone and the bar shows a "+N more" chip.
+ ***/
+test('runner boxes show idle runners; legacy display only with zero runners configured', () => {
+  // Nothing running, two Runners configured: both boxes show, idle.
   const { rerender } = renderWithKainBain(<NowPlayingBar />, {
     stages,
     currentStageId: '1',
     engineState: { status: 'idle' },
     tasks: [{ id: 't1', currentStageId: '1', status: 'in_stage', title: 'Build the widget' }],
+    runners: [
+      { runnerId: 'runner-a', status: 'active', paused: false, lastSeenAt: new Date().toISOString() },
+      { runnerId: 'runner-b', status: 'active', paused: true, lastSeenAt: null },
+    ],
     runnerAssignments: [],
   });
-  expect(screen.queryByTestId('now-playing-runner-boxes')).not.toBeInTheDocument();
-  expect(screen.getByTestId('now-playing-idle-hint')).toBeInTheDocument();
+  const boxes = screen.getByTestId('now-playing-runner-boxes');
+  expect(boxes).toHaveAttribute('aria-label', '2 runners');
+  expect(screen.getByTestId('now-playing-runner-box-runner-a')).toHaveTextContent('Idle');
+  expect(screen.getByTestId('now-playing-runner-box-runner-a')).toHaveTextContent(
+    'Waiting for work',
+  );
+  expect(screen.getByTestId('now-playing-runner-box-runner-b')).toHaveTextContent('Idle');
+  // The legacy single-task card is gone while boxes show — even idle.
+  expect(screen.queryByTestId('now-playing-task-name')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('now-playing-idle-hint')).not.toBeInTheDocument();
+  // Idle boxes still offer pause/resume; skip stays parked with no task.
+  expect(screen.getByLabelText('Pause runner runner-a')).not.toBeDisabled();
+  expect(screen.getByLabelText('Resume runner runner-b')).not.toBeDisabled();
+  expect(screen.getByLabelText('Skip current task for runner runner-a')).toBeDisabled();
+  // The engine badge still reads honestly above the idle boxes.
+  expect(screen.getByText('IDLE')).toBeInTheDocument();
 
-  // Five runners: no room in the 72px bar, so the single-task card stays.
-  const many = (n) =>
-    Array.from({ length: n }, (_, i) => ({
-      runnerId: `runner-${i}`,
-      taskId: `t${i}`,
-      stageId: '1',
-      lastSeenAt: new Date().toISOString(),
-    }));
-  const manyTasks = Array.from({ length: 5 }, (_, i) => ({
-    id: `t${i}`,
-    currentStageId: '1',
-    status: 'running_agent',
-    title: `Task ${i}`,
-  }));
+  // Zero Runners configured: the legacy display keeps its idle hint.
   rerender(
     <NowPlayingBarContextOverlay
       value={{
         stages,
         currentStageId: '1',
-        isAgentRunning: true,
-        engineState: { status: 'running', activeTaskId: 't0' },
-        tasks: manyTasks,
-        runnerAssignments: many(5),
+        engineState: { status: 'idle' },
+        tasks: [{ id: 't1', currentStageId: '1', status: 'in_stage', title: 'Build the widget' }],
+        runners: [],
+        runnerAssignments: [],
       }}
     />,
   );
   expect(screen.queryByTestId('now-playing-runner-boxes')).not.toBeInTheDocument();
-  expect(screen.getByTestId('now-playing-task-name')).toBeInTheDocument();
+  expect(screen.getByTestId('now-playing-idle-hint')).toBeInTheDocument();
 
-  // Unit-level: the under-5 threshold itself (deduped by runner id).
-  expect(resolveRunnerBoxes({ assignments: [], tasks: [], stages: [] })).toBeNull();
-  expect(
-    resolveRunnerBoxes({ assignments: many(5), tasks: manyTasks, stages }),
-  ).toBeNull();
-  expect(
-    resolveRunnerBoxes({ assignments: many(4), tasks: manyTasks, stages }),
-  ).toHaveLength(4);
+  // Unit-level: always an array (empty only with no Runners at all);
+  // duplicates collapse; pending Runners never get a box.
+  expect(resolveRunnerBoxes({ assignments: [], tasks: [], stages: [], runners: [] })).toEqual([]);
+  expect(resolveRunnerBoxes({ assignments: [], tasks: [], stages: [], runners: null })).toEqual([]);
   expect(
     resolveRunnerBoxes({
       assignments: [
         { runnerId: 'dup', taskId: 't0' },
         { runnerId: 'dup', taskId: 't1' },
       ],
-      tasks: manyTasks,
-      stages,
+      tasks: [],
+      stages: [],
+      runners: null,
     }),
   ).toHaveLength(1);
+  expect(
+    resolveRunnerBoxes({
+      assignments: [],
+      tasks: [],
+      stages: [],
+      runners: [
+        { runnerId: 'waiting', status: 'pending' },
+        { runnerId: 'fleet', status: 'active' },
+      ],
+    }),
+  ).toEqual([
+    expect.objectContaining({ runnerId: 'fleet', idle: true, taskName: 'Idle' }),
+  ]);
+});
+
+test('past the render cap the bar shows the first boxes plus a "+N more" chip', () => {
+  const runners = Array.from({ length: 6 }, (_, i) => ({
+    runnerId: `runner-${i}`,
+    status: 'active',
+    paused: false,
+    lastSeenAt: new Date().toISOString(),
+  }));
+  renderWithKainBain(<NowPlayingBar />, {
+    stages,
+    currentStageId: '1',
+    engineState: { status: 'idle' },
+    tasks: [],
+    runners,
+    runnerAssignments: [],
+  });
+
+  // The header count stays honest about the whole fleet.
+  expect(screen.getByTestId('now-playing-runner-boxes')).toHaveAttribute(
+    'aria-label',
+    '6 runners',
+  );
+  for (let i = 0; i < 4; i += 1) {
+    expect(screen.getByTestId(`now-playing-runner-box-runner-${i}`)).toBeInTheDocument();
+  }
+  expect(screen.queryByTestId('now-playing-runner-box-runner-4')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('now-playing-runner-box-runner-5')).not.toBeInTheDocument();
+  const overflow = screen.getByTestId('now-playing-runner-overflow');
+  expect(overflow).toHaveTextContent('+2 more');
+  expect(overflow).toHaveAttribute('title', expect.stringContaining('runner-4'));
+  expect(overflow).toHaveAttribute('title', expect.stringContaining('runner-5'));
 });
 
 // Helper to rerender NowPlayingBar with an overridden context.
@@ -869,77 +877,31 @@ function NowPlayingBarContextOverlay({ value }) {
 }
 
 
-test('Skip Current shows a loading state and a fast double-click skips once', async () => {
-  let resolveSkip;
-  const skipCurrent = vi.fn().mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        resolveSkip = resolve;
-      }),
-  );
-  const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+/***
+ * MARK: per-runner controls stay usable without a global single-flight guard
+ * @description Each box fires its own context action directly (pause, resume,
+ * skip); there is no shared pending key to disable the bar anymore.
+ ***/
+test('per-runner controls fire immediately with no global pending state', () => {
+  const pauseRunner = vi.fn();
+  const skipRunner = vi.fn();
   renderWithKainBain(<NowPlayingBar />, {
     stages,
     currentStageId: '1',
-    focusedStageId: '1',
-    tasks: [
-      { id: 't1', currentStageId: '1', status: 'in_stage' },
-      { id: 't2', currentStageId: '2', status: 'in_stage' },
+    tasks: [{ id: 't1', currentStageId: '1', status: 'running_agent', title: 'Build' }],
+    runnerAssignments: [
+      { runnerId: 'runner-a', taskId: 't1', stageId: '1', lastSeenAt: new Date().toISOString() },
     ],
-    skipCurrent,
-    activeProjectId: 'proj-1',
+    pauseRunner,
+    skipRunner,
   });
 
-  const skipBtn = screen.getByLabelText('Skip Current');
-  fireEvent.click(skipBtn);
-  fireEvent.click(skipBtn); // fast second click while the backend is responding
-
-  expect(confirmSpy).toHaveBeenCalledTimes(1); // confirm not re-prompted
-  expect(skipCurrent).toHaveBeenCalledTimes(1);
-  expect(skipCurrent).toHaveBeenCalledWith('proj-1');
-  expect(skipBtn).toBeDisabled();
-  expect(skipBtn).toHaveAttribute('aria-busy', 'true');
-
-  await act(async () => {
-    resolveSkip({});
-  });
-  await waitFor(() => {
-    expect(skipBtn).not.toBeDisabled();
-  });
-
-  confirmSpy.mockRestore();
-});
-
-test('play/pause toggle is disabled while the dispatcher change is in flight', async () => {
-  let resolveToggle;
-  const toggleCompute = vi.fn().mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        resolveToggle = resolve;
-      }),
-  );
-  renderWithKainBain(<NowPlayingBar />, {
-    stages,
-    currentStageId: '1',
-    computeRunning: false,
-    toggleCompute,
-    activeProjectId: 'proj-1',
-  });
-
-  const playBtn = screen.getByTitle('Start engine');
-  fireEvent.click(playBtn);
-  fireEvent.click(playBtn); // fast second click before the backend responds
-
-  expect(toggleCompute).toHaveBeenCalledTimes(1);
-  expect(playBtn).toBeDisabled();
-  expect(playBtn).toHaveAttribute('aria-busy', 'true');
-
-  await act(async () => {
-    resolveToggle({});
-  });
-  await waitFor(() => {
-    expect(playBtn).not.toBeDisabled();
-  });
+  fireEvent.click(screen.getByLabelText('Pause runner runner-a'));
+  fireEvent.click(screen.getByLabelText('Skip current task for runner runner-a'));
+  expect(pauseRunner).toHaveBeenCalledTimes(1);
+  expect(skipRunner).toHaveBeenCalledTimes(1);
+  expect(screen.getByLabelText('Pause runner runner-a')).not.toBeDisabled();
+  expect(screen.getByLabelText('Skip current task for runner runner-a')).not.toBeDisabled();
 });
 
 test('idle engine hides the active task name and key chip behind an idle placeholder', () => {

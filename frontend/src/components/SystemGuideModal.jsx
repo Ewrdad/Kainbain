@@ -355,8 +355,9 @@ export function SystemGuideModal() {
                 <span>Now Playing Transport Controls & Subsystem Health</span>
               </h3>
               <p className="text-text-muted">
-                The persistent bottom bar displays live engine status, progress counters, subsystem
-                traffic lights, and redesigned transport buttons.
+                The persistent bottom bar displays live engine status, one box per configured
+                Runner with its own play/pause and skip, progress counters, and subsystem
+                traffic lights.
               </p>
             </div>
 
@@ -372,51 +373,33 @@ export function SystemGuideModal() {
                 </thead>
                 <tbody className="divide-y divide-border-standard/50">
                   <tr>
-                    <td className="p-2.5 font-bold text-secondary">◀ Look Back</td>
+                    <td className="p-2.5 font-bold text-primary">Runner box</td>
                     <td className="p-2.5 text-[10px] uppercase text-text-muted font-bold">
-                      View Only
+                      Fleet Roster
                     </td>
                     <td className="p-2.5 text-text-muted">
-                      Scrolls Kanban board focus to previous stage column without mutating any
-                      active task.
+                      One box per configured Runner — running or idle — with its name, task,
+                      stage, and heartbeat dot. Clicking it opens the task in the inspector.
                     </td>
                   </tr>
                   <tr>
-                    <td className="p-2.5 font-bold text-primary">🎯 Jump to Active</td>
-                    <td className="p-2.5 text-[10px] uppercase text-text-muted font-bold">
-                      View Only
-                    </td>
-                    <td className="p-2.5 text-text-muted">
-                      Resets viewport focus directly to the currently running stage column.
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="p-2.5 font-bold text-primary">⏯ Play / Pause Engine</td>
+                    <td className="p-2.5 font-bold text-primary">⏯ Play / Pause Runner</td>
                     <td className="p-2.5 text-[10px] uppercase text-primary font-bold">
-                      Scheduler Toggle
+                      Runner Toggle
                     </td>
                     <td className="p-2.5 text-text-muted">
-                      Starts or pauses the global background task scheduler loop.
+                      Pauses a Runner (in-flight work finishes, nothing new is picked up) or
+                      resumes a parked one.
                     </td>
                   </tr>
                   <tr>
-                    <td className="p-2.5 font-bold text-[#ffb77f]">⏩ Skip Stage</td>
+                    <td className="p-2.5 font-bold text-[#ffb77f]">⏩ Skip Runner task</td>
                     <td className="p-2.5 text-[10px] uppercase text-amber-400 font-bold">
-                      Mutation (Confirm)
+                      Mutation
                     </td>
                     <td className="p-2.5 text-text-muted">
-                      Prompts confirmation to immediately advance the active task past the current
-                      stage.
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="p-2.5 font-bold text-secondary">▶ Look Forward</td>
-                    <td className="p-2.5 text-[10px] uppercase text-text-muted font-bold">
-                      View Only
-                    </td>
-                    <td className="p-2.5 text-text-muted">
-                      Scrolls Kanban board focus to next stage column without mutating any active
-                      task.
+                      Advances that Runner&apos;s held task past its current stage. Parked while
+                      the Runner holds no task.
                     </td>
                   </tr>
                 </tbody>

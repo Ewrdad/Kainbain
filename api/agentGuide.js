@@ -371,6 +371,13 @@ export const ENDPOINTS = [
 	},
 	{
 		method: "POST",
+		path: "/runners/:id/skip",
+		purpose:
+			"Operator skip: advance the task this Runner currently holds past its stage and release the lease (in-flight Runner reports land stale). 404 when the Runner is unknown or holds nothing; 409 when its task is already on the last stage.",
+		body: null,
+	},
+	{
+		method: "POST",
 		path: "/tasks/:id/pause",
 		purpose: "Pause an in-progress or queued task.",
 		body: null,

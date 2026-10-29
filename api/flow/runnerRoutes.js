@@ -215,6 +215,69 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		}
 	});
 
+	app.post("/runners/:id/skip", async (request, reply) => {
+		// Operator skip: advance the task this Runner currently holds past
+		// its stage and release the lease, so the in-flight Runner report
+		// lands stale (stage-moved) instead of re-advancing. Same operator
+		// surface as pause/resume — no Runner credential needed. 404 when
+		// the Runner is unknown or holds nothing; 409 when its task is
+		// already on the last stage.
+		try {
+			const runnerId = request.params.id;
+			const record = runnerRegistry
+				.records()
+				.find((r) => r && r.runnerId === runnerId);
+			if (!record) {
+				return reply
+					.status(404)
+					.send({ error: `Unknown Runner ${runnerId}.`, code: "UNKNOWN_RUNNER" });
+			}
+			const hold = claimStore
+				.liveHolds()
+				.find((h) => h && h.runnerId === runnerId);
+			if (!hold) {
+				return reply.status(404).send({
+					error: `Runner ${runnerId} has no active task to skip.`,
+					code: "NOTHING_TO_SKIP",
+				});
+			}
+			const project = projectStore.getProject(hold.projectId);
+			const task = taskStore.getTask(hold.projectId, hold.taskId);
+			if (!task) {
+				claimStore.invalidate(hold.taskId);
+				return reply.status(404).send({
+					error: "Held task not found.",
+					code: "NOTHING_TO_SKIP",
+				});
+			}
+			const stages = Array.isArray(project?.stages) ? project.stages : [];
+			const index = stages.findIndex((s) => s && s.id === task.currentStageId);
+			if (index === -1 || index >= stages.length - 1) {
+				return reply.status(409).send({
+					error: `Task ${hold.taskId} is already on the last stage.`,
+					code: "NOTHING_TO_SKIP",
+				});
+			}
+			const next = stages[index + 1];
+			taskStore.updateTask(
+				hold.projectId,
+				hold.taskId,
+				{ currentStageId: next.id },
+				project?.cwd,
+			);
+			claimStore.invalidate(hold.taskId);
+			return {
+				success: true,
+				runnerId,
+				taskId: hold.taskId,
+				from: task.currentStageId,
+				to: next.id,
+			};
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
 	const guardedTask = (request, reply) => {
 		const projectId = resolveAndGuardProject(
 			request.body?.projectId || request.query?.projectId,

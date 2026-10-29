@@ -925,6 +925,67 @@ describe("Runner Routes Integration", () => {
 		expect(out.misses.ALIAS_UNRESOLVED).toBeGreaterThanOrEqual(1);
 	});
 
+	it("operator skip advances the held task one stage and releases the lease", async () => {
+		const credential = await onboard("skipper-1");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Skip fixture" },
+		});
+		expect(taskRes.statusCode).toBe(200);
+		const target = JSON.parse(taskRes.payload).id;
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		expect(claim.statusCode).toBe(200);
+
+		const listRes = await app.inject({ method: "GET", url: "/projects" });
+		const proj = JSON.parse(listRes.payload).find((p) => p.id === project.id);
+		const stages = proj.stages;
+		expect(stages.length).toBeGreaterThan(1);
+		const before = JSON.parse(
+			(
+				await app.inject({
+					method: "GET",
+					url: `/tasks/${target}?projectId=${project.id}`,
+				})
+			).payload,
+		);
+		const expectedNext = stages[stages.findIndex((s) => s.id === before.currentStageId) + 1];
+
+		// No Runner credential needed: same operator surface as pause/resume.
+		const skip = await app.inject({ method: "POST", url: "/runners/skipper-1/skip" });
+		expect(skip.statusCode).toBe(200);
+		expect(JSON.parse(skip.payload)).toMatchObject({
+			success: true,
+			runnerId: "skipper-1",
+			taskId: target,
+			to: expectedNext.id,
+		});
+		const after = JSON.parse(
+			(
+				await app.inject({
+					method: "GET",
+					url: `/tasks/${target}?projectId=${project.id}`,
+				})
+			).payload,
+		);
+		expect(after.currentStageId).toBe(expectedNext.id);
+
+		// The lease is released: the Runner holds nothing, so a second skip 404s.
+		const again = await app.inject({ method: "POST", url: "/runners/skipper-1/skip" });
+		expect(again.statusCode).toBe(404);
+		expect(JSON.parse(again.payload).code).toBe("NOTHING_TO_SKIP");
+
+		// Unknown Runner 404s without leaking the fleet.
+		const ghost = await app.inject({ method: "POST", url: "/runners/ghost-runner/skip" });
+		expect(ghost.statusCode).toBe(404);
+		expect(JSON.parse(ghost.payload).code).toBe("UNKNOWN_RUNNER");
+	});
+
 	it("claim on an unknown task is 404, approve on unknown Runner is 404", async () => {
 		const credential = await onboard("notfound-1");
 		const claim = await app.inject({

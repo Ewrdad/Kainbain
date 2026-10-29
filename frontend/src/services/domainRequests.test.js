@@ -37,10 +37,10 @@ describe('Business-owned request lists', () => {
     // switcher's "+ Add Existing Project…" dialog +
     // the 2 survey operations (getSurvey, submitSurvey) for the question-me
     // survey page.
-    // the 7 Runner operations (getRunners, getRunnerMonitor, approveRunner,
-    // denyRunner, revokeRunner, pauseRunner, resumeRunner) for
-    // Settings › Harness › Runners.
-    expect(names).toHaveLength(89);
+    // the 8 Runner operations (getRunners, getRunnerMonitor, approveRunner,
+    // denyRunner, revokeRunner, pauseRunner, resumeRunner, skipRunner) for
+    // Settings › Harness › Runners and the per-runner Now Playing controls.
+    expect(names).toHaveLength(90);
     for (const name of names) expect(typeof api[name]).toBe('function');
   });
 
