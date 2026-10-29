@@ -12,6 +12,10 @@ process.env.KAINBAIN_CLAIM_TTL_MS = "1000";
 
 const { default: app } = await import("../index.js");
 const { resolveCiTimeoutMs } = await import("./runnerRoutes.js");
+const {
+	registerStageLifecyclePlugin,
+	clearStageLifecyclePlugins,
+} = await import("./stageLifecycle.js");
 
 afterAll(() => {
 	try {
@@ -645,6 +649,52 @@ describe("Runner Routes Integration", () => {
 	it("dispatch requires Runner auth", async () => {
 		const res = await app.inject({ method: "POST", url: "/runners/dispatch", payload: {} });
 		expect(res.statusCode).toBe(401);
+	});
+
+	it("dispatch attaches stage lifecycle env to CI assignments", async () => {
+		const projRes = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: {
+				name: "Dispatch Env",
+				gitUrl: "https://git.example.com/team/fixture.git",
+				harness: "mock",
+				defaultModel: "mock-model",
+				stages: [{ id: "build", name: "Build", type: "ci", command: "echo hello-ci" }],
+			},
+		});
+		expect(projRes.statusCode).toBe(201);
+		const proj = JSON.parse(projRes.payload);
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: proj.id, goal: "CI env fixture" },
+		});
+		expect(taskRes.statusCode).toBe(200);
+		const target = JSON.parse(taskRes.payload).id;
+
+		// A deploy-command stage is an ordinary ci stage to the generic
+		// pipeline: continuity plugins re-attach their env (attempt /
+		// operation markers) through this same seam. The stub stands in
+		// for the continuity plugin so this suite stays deploy-agnostic.
+		registerStageLifecyclePlugin({
+			name: "test-dispatch-env",
+			onStageEvent: (event) =>
+				event === "stage:enter" ? { env: { KAINBAIN_TEST_DISPATCH_ENV: "probe-123" } } : null,
+		});
+		try {
+			const credential = await onboard("dispatch-env");
+			await heartbeatAs(credential, "dispatch-env");
+			const res = await dispatchAs(credential, { projectIds: [proj.id] });
+			expect(res.statusCode).toBe(200);
+			const out = JSON.parse(res.payload);
+			expect(out.assigned).toBe(true);
+			expect(out.taskId).toBe(target);
+			expect(out.kind).toBe("ci");
+			expect(out.env).toMatchObject({ KAINBAIN_TEST_DISPATCH_ENV: "probe-123" });
+		} finally {
+			clearStageLifecyclePlugins();
+		}
 	});
 
 	it("records the runner-enforced project scope for the settings UI", async () => {

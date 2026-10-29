@@ -8,6 +8,7 @@ import { curateRunnerPrompt } from "./curateRunnerPrompt.js";
 import { materializeRunnerTaskDocs } from "./execution/materializeRunnerTaskDocs.js";
 import { buildCommandKeywordContext, expandStageCommand } from "./commandStages.js";
 import { resolveStagesForTask } from "./stageResolution.js";
+import { emitStageLifecycle } from "./stageLifecycle.js";
 
 /***
  * MARK: resolveCiTimeoutMs
@@ -64,7 +65,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		return reply.status(status).send(body);
 	};
 
-	const ciPayloadFor = (projectId, task, stage) => {
+	const ciPayloadFor = async (projectId, task, stage) => {
 		if (!stage) return {};
 		const project = projectStore.getProject(projectId);
 		const stages = resolveStagesForTask(project, task);
@@ -72,6 +73,28 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		if (!resolved) return {};
 		const type = String(resolved.type || "").toLowerCase();
 		if (!["ci", "script", "deploy", "command"].includes(type)) return {};
+		// Generic lifecycle seam (mirrors runCommandStage): every command
+		// stage announces entry the same way, whether a Runner or the
+		// backend executes it. Installed continuity plugins may record
+		// entry markers and contribute child-process environment here;
+		// with no plugins this is an empty bag. Never throws: a plugin
+		// failure must not break dispatch.
+		let lifecycleEnv = {};
+		try {
+			const lifecycle = await emitStageLifecycle("stage:enter", {
+				store: taskStore,
+				projectId,
+				taskId: task?.id,
+				stage: resolved,
+				kind: "ci",
+				cwd: project?.cwd || "",
+			});
+			if (lifecycle && typeof lifecycle.env === "object") {
+				lifecycleEnv = lifecycle.env;
+			}
+		} catch {
+			lifecycleEnv = {};
+		}
 		try {
 			const ctx = buildCommandKeywordContext({ task, stage: resolved, project, projectCwd: project?.cwd || "" });
 			return {
@@ -79,8 +102,9 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				command: expandStageCommand(resolved.command || resolved.script || "echo 'CI stage completed'", ctx),
 				timeoutMs: resolveCiTimeoutMs(resolved, project),
 				runOnBranch: typeof resolved.runOnBranch === "string" ? resolved.runOnBranch : "task",
+				env: lifecycleEnv,
 			};
-		} catch { return { kind: "ci", command: resolved.command || resolved.script || "", timeoutMs: 600000 }; }
+		} catch { return { kind: "ci", command: resolved.command || resolved.script || "", timeoutMs: 600000, env: lifecycleEnv }; }
 	};
 
 	const authedRunner = (request) => {
@@ -517,7 +541,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				runner.runnerId,
 				projectId,
 			);
-			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project: projectStore.getProject(projectId), task, stageId: task.currentStageId }) };
+			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...await ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project: projectStore.getProject(projectId), task, stageId: task.currentStageId }) };
 		} catch (err) {
 			return sendStoreError(reply, err);
 		}
@@ -672,7 +696,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					epoch,
 					stageId: cand.stage?.id ?? null,
 					prompt: curateRunnerPrompt({ project: projectStore.getProject(cand.projectId), task: cand.task, stageId: cand.stage?.id }),
-					...ciPayloadFor(cand.projectId, cand.task, cand.stage),
+					...await ciPayloadFor(cand.projectId, cand.task, cand.stage),
 					requirements: req,
 				};
 			} catch (err) {
