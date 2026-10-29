@@ -1,5 +1,5 @@
 import { normalizeStageTags } from "../../shared/stageTags.js";
-import { DEFAULT_DEPLOY_COMMAND, isDeployCommand, isHostCommand } from "./deployCommands.js";
+import { DEFAULT_DEPLOY_COMMAND, isDeployCommand } from "./deployCommands.js";
 
 /***
  * MARK: DEFAULT_STAGES
@@ -200,21 +200,11 @@ export function normalizeStage(stage) {
 	}
 	delete normalized.executionBranch;
 	delete normalized.customExecutionBranch;
-	// Host commands (deploy/publish/redeploy scripts) run only on the backend
-	// in the primary checkout, never on a Runner (DA9). Stamp the generic
-	// hostOnly flag here, where command-text heuristics already live, so the
-	// generic pipeline branches only on this boolean.
-	const stageCommand =
-		typeof normalized.command === "string" && normalized.command.trim()
-			? normalized.command
-			: typeof normalized.script === "string"
-				? normalized.script
-				: "";
-	if ((normalized.type === "ci" || normalized.type === "script") && isHostCommand(stageCommand)) {
-		normalized.hostOnly = true;
-	} else if (normalized.hostOnly !== true) {
-		delete normalized.hostOnly;
-	}
+	// Retired (was DA9): every command stage runs on a Runner — the backend
+	// never executes stage commands, so no stage is ever host-only. Strip
+	// any legacy hostOnly stamp so previously stored stages rejoin fleet
+	// dispatch on the next normalization.
+	delete normalized.hostOnly;
 	return normalized;
 }
 
@@ -279,7 +269,6 @@ export function migrateMergeDeployStages(stages) {
 			name: "Deploy",
 			type: "ci",
 			command,
-			hostOnly: true,
 			paused: false,
 			failback: "previous",
 		});

@@ -45,17 +45,13 @@ describe("taskRequirements", () => {
 		).toMatchObject({ harness: "pi", model: "", tier: "T1" });
 	});
 
-	test("host-command ci stages are not Runner-runnable; ordinary ci stages still are", () => {
-		const publish = taskRequirements({}, { currentStageId: "s1", stages: [{ id: "s1", type: "ci", command: "./publish.sh --detect" }] });
-		expect(publish).toMatchObject({ runnableType: true, hostCommand: false, kind: "ci" });
-		for (const command of ["./redeploy.sh --frontend", "./deploy.sh --prod"]) {
+	test("every command ci stage is Runner-runnable, including deploy/publish and legacy hostOnly stamps", () => {
+		for (const command of ["./publish.sh --detect", "./redeploy.sh --frontend", "./deploy.sh --prod", "./deploy.sh --prod --fast", "npm test"]) {
 			const out = taskRequirements({}, { currentStageId: "s1", stages: [{ id: "s1", type: "ci", command }] });
-			expect(out).toMatchObject({ runnableType: false, hostCommand: true, kind: "ci" });
+			expect(out).toMatchObject({ runnableType: true, hostCommand: false, kind: "ci" });
 		}
-		const normal = taskRequirements({}, { currentStageId: "s1", stages: [{ id: "s1", type: "ci", command: "npm test" }] });
-		expect(normal).toMatchObject({ runnableType: true, hostCommand: false });
 		const stamped = taskRequirements({}, { currentStageId: "s1", stages: [{ id: "s1", type: "ci", hostOnly: true }] });
-		expect(stamped).toMatchObject({ runnableType: false, hostCommand: true });
+		expect(stamped).toMatchObject({ runnableType: true, hostCommand: false });
 	});
 
 	test("human stages are not Runner-runnable; ci stages are CI-runnable at T0", () => {

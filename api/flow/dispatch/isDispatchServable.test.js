@@ -18,10 +18,11 @@ describe("isDispatchServable", () => {
 		expect(isDispatchServable({ project: { harness: "pi" }, task: agentTask() })).toBe(true);
 	});
 
-	test("human stages are never servable; ci/command are servable in task-branch mode", () => {
+	test("human stages are never servable; ci/command are servable in every branch mode", () => {
 		for (const type of ["ci", "script"]) {
 			expect(isDispatchServable({ project: { harness: "pi" }, task: agentTask({ stages: [{ id: "s1", type }] }) })).toBe(true);
-			expect(isDispatchServable({ project: { harness: "pi" }, task: agentTask({ stages: [{ id: "s1", type, runOnBranch: "primary" }] }) })).toBe(false);
+			expect(isDispatchServable({ project: { harness: "pi" }, task: agentTask({ stages: [{ id: "s1", type, runOnBranch: "primary" }] }) })).toBe(true);
+			expect(isDispatchServable({ project: { harness: "pi" }, task: agentTask({ stages: [{ id: "s1", type, runOnBranch: "custom", customBranch: "release/next" }] }) })).toBe(true);
 		}
 		for (const type of ["human"]) {
 			expect(
@@ -33,13 +34,11 @@ describe("isDispatchServable", () => {
 		}
 	});
 
-	test("publish ci stages are servable even in primary mode; other primary ci stages stay embedded", () => {
-		const publish = { id: "s1", type: "ci", runOnBranch: "primary", command: "./publish.sh --detect" };
-		expect(isDispatchServable({ project: { harness: "pi" }, task: agentTask({ stages: [publish] }) })).toBe(true);
-		const deploy = { id: "s1", type: "ci", runOnBranch: "primary", command: "./deploy.sh --prod" };
-		expect(isDispatchServable({ project: { harness: "pi" }, task: agentTask({ stages: [deploy] }) })).toBe(false);
-		const tests = { id: "s1", type: "ci", runOnBranch: "primary", command: "npm test" };
-		expect(isDispatchServable({ project: { harness: "pi" }, task: agentTask({ stages: [tests] }) })).toBe(false);
+	test("every command runs on a Runner, including deploy/publish in primary mode", () => {
+		for (const command of ["./publish.sh --detect", "./deploy.sh --prod", "./deploy.sh --prod --fast", "./redeploy.sh --frontend", "npm test"]) {
+			const stage = { id: "s1", type: "ci", runOnBranch: "primary", command };
+			expect(isDispatchServable({ project: { harness: "pi" }, task: agentTask({ stages: [stage] }) })).toBe(true);
+		}
 	});
 
 	test("review stages park at the checkpoint and stay embedded", () => {

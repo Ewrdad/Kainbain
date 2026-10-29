@@ -126,7 +126,7 @@ describe("deploy.sh structural contracts", () => {
 		const prodSection = deployScript.slice(
 			deployScript.indexOf("# --- Production deploy"),
 		);
-		const stagedGate = prodSection.indexOf('run_gate "docker-build"');
+		const stagedGate = prodSection.indexOf('run_gate "image-pull-');
 		const lockAcquire = prodSection.indexOf('flock -w "$LOCK_TIMEOUT" 9');
 		expect(stagedGate).toBeGreaterThan(-1);
 		expect(lockAcquire).toBeGreaterThan(stagedGate);
@@ -141,7 +141,8 @@ describe("deploy.sh structural contracts", () => {
 			'run_gate "canary-e2e-shard-2"',
 			'run_gate "frontend-build"',
 			'run_gate "api-install"',
-			'run_gate "docker-build"',
+			'run_gate "registry-publish"',
+			'run_gate "image-pull-',
 		]) {
 			expect(deployScript).toContain(gate);
 		}

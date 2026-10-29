@@ -73,11 +73,15 @@ describe("normalizeStage", () => {
 		expect("executionBranch" in migrated).toBe(false);
 	});
 
-	it("stamps hostOnly on host-command ci stages only (DA9)", () => {
-		expect("hostOnly" in normalizeStage({ id: "1", type: "ci", command: "./publish.sh --detect" })).toBe(false);
-		expect(normalizeStage({ id: "1", type: "ci", command: "./deploy.sh --prod" }).hostOnly).toBe(true);
-		expect("hostOnly" in normalizeStage({ id: "1", type: "ci", command: "npm test" })).toBe(false);
+	it("never stamps hostOnly: every command stage runs on a Runner", () => {
+		for (const command of ["./publish.sh --detect", "./deploy.sh --prod", "./redeploy.sh --frontend", "npm test"]) {
+			expect("hostOnly" in normalizeStage({ id: "1", type: "ci", command })).toBe(false);
+		}
 		expect("hostOnly" in normalizeStage({ id: "1", type: "agent", command: "./deploy.sh --prod" })).toBe(false);
+	});
+
+	it("strips a legacy hostOnly stamp on renormalize", () => {
+		expect("hostOnly" in normalizeStage({ id: "1", type: "ci", command: "./deploy.sh --prod", hostOnly: true })).toBe(false);
 	});
 
 	it("keeps legacy stages byte-identical when no optional keys are present", () => {
@@ -99,6 +103,7 @@ describe("migrateMergeDeployStages", () => {
 			command: "./deploy.sh --prod",
 			failback: "previous",
 		});
+		expect("hostOnly" in out[1]).toBe(false);
 	});
 
 	it("is idempotent: re-running never duplicates the deploy stage", () => {

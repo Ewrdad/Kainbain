@@ -11,12 +11,11 @@ export const DEPLOY_COMMAND_PATTERN = /(?:deploy|publish|redeploy)\.sh/;
 
 /***
  * MARK: HOST_COMMAND_PATTERN
- * @description Matches deploy/redeploy scripts only: those are host commands
- *   that must run on the backend in the primary checkout, never on a Runner.
- *   publish.sh is NOT a host command — it is an ordinary ci stage that a
- *   Runner executes (the Runner is native on the host and has Docker access);
- *   publish.sh re-execs itself into the primary checkout when a Runner runs
- *   it from a task worktree, so it still only ever publishes merged main.
+ * @description Matches deploy/redeploy scripts. Retired as a dispatch
+ *   signal: every command stage runs on a Runner (the backend never
+ *   executes stage commands), so nothing consults this pattern to keep
+ *   work embedded. Kept for command recognition alongside the other
+ *   patterns in this module.
  * @example HOST_COMMAND_PATTERN.test('./redeploy.sh --frontend') => true
  * @example HOST_COMMAND_PATTERN.test('./publish.sh --detect') => false
  ***/
@@ -45,10 +44,11 @@ export function isDeployCommand(command) {
 
 /***
  * MARK: isHostCommand
- * @description Whether a stage command is a host command (deploy/publish/
- *   redeploy script). Host commands run only on the backend in the primary
- *   checkout; they must never be dispatched to a Runner.
- * @example isHostCommand('./publish.sh --detect') => true
+ * @description Whether a stage command invokes a deploy/redeploy script.
+ *   Retired as a dispatch signal: every command stage runs on a Runner.
+ *   Kept for command recognition alongside the other predicates here.
+ * @example isHostCommand('./deploy.sh --prod') => true
+ * @example isHostCommand('./publish.sh --detect') => false
  * @param {unknown} command - Stage `command` or `script` value.
  * @returns {boolean}
  ***/

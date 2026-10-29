@@ -1,14 +1,18 @@
 import { taskRequirements } from "./taskRequirements.js";
 import { selectAliasTarget } from "../../aliasSelector.js";
-import { normalizeStageType, isPublishCommand } from "../../projectStore.js";
+import { normalizeStageType } from "../../projectStore.js";
 
 /***
  * MARK: isDispatchServable
- * @description True when a task's current stage would spawn an in-process
- *   model child under the embedded engine AND a Runner could serve it over
- *   the wire instead. Only normalized-`agent` stages qualify: `review`
- *   normalizes to a human checkpoint (parks, never spawns), and human /
- *   command / ci stages stay embedded by design (local, non-model work).
+ * @description True when a task's current stage should run on a Runner over
+ *   the wire instead of embedded in the backend. Every command stage
+ *   qualifies in every branch mode: the backend never executes stage
+ *   commands (it may be a container without bash/Docker), and a Runner
+ *   honours runOnBranch 'primary'/'custom' by executing in the matching
+ *   checkout on its host (which has the toolchain). Normalized-`agent`
+ *   stages qualify as before. `review` normalizes to a human checkpoint
+ *   (parks, never spawns), and human / merge / unknown legacy types keep
+ *   their embedded behavior.
  *   Alias-harness stages additionally require the alias to resolve in
  *   principle (peek: shared smooth-WRR counters untouched,
  *   every target treated as known — liveness is the dispatch poll's job,
@@ -34,18 +38,9 @@ export function isDispatchServable({ project = {}, task = {}, stages = null, sta
 		effectiveStages[0] ||
 		{};
 	const stageKind = normalizeStageType(resolved.type);
+	// All command stages run on Runners (any branch mode, any command):
+	// the backend never executes stage commands.
 	if (stageKind === "ci") {
-		// CI/command stages move to Runners too, but only in task-branch
-		// mode: primary/custom checkouts are backend-local by definition.
-		// One exception: publish stages. A Runner honours
-		// runOnBranch 'primary' by executing in the primary checkout on its
-		// host (which has Docker), while the embedded backend may be a
-		// container without bash/Docker at all — publish is therefore
-		// Runner-served in every branch mode.
-		const runOn = String(resolved.runOnBranch || "task").toLowerCase();
-		if (runOn !== "task") {
-			return isPublishCommand(resolved.command || resolved.script || "");
-		}
 		return true;
 	}
 	// Only stages that would spawn an in-process model child move to a

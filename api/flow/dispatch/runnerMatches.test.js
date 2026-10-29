@@ -52,9 +52,10 @@ describe("runnerMatches", () => {
 		expect(runnerMatches(record(), { harness: "pi", tier: "T0" }, { now: at }).ok).toBe(true);
 	});
 
-	test("host-command requirements never match a Runner (DA9)", () => {
-		expect(runnerMatches(record(), { hostCommand: true }, { now: at })).toEqual({ ok: false, reason: "HOST_COMMAND" });
+	test("deploy-command requirements match like any other ci stage (no host-command gate)", () => {
 		expect(runnerMatches(record(), { hostCommand: false, harness: "pi", tier: "T0" }, { now: at }).ok).toBe(true);
+		// The retired hostCommand flag is ignored when present on legacy records.
+		expect(runnerMatches(record(), { hostCommand: true, harness: "pi", tier: "T0" }, { now: at }).ok).toBe(true);
 	});
 
 	test("a resolved alias object matches on its concrete harness/model", () => {

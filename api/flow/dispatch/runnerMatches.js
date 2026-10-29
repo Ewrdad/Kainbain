@@ -29,7 +29,6 @@ export function runnerMatches(record = {}, req = {}, opts = {}) {
 			? opts.minDiskHeadroomMb
 			: 100;
 
-	if (req.hostCommand === true) return { ok: false, reason: "HOST_COMMAND" };
 	if (record.status !== "active") return { ok: false, reason: "NOT_ACTIVE" };
 	if (record.paused === true) return { ok: false, reason: "PAUSED" };
 	const seen = Date.parse(record.lastSeenAt || "");

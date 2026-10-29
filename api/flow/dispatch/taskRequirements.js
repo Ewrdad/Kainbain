@@ -1,6 +1,5 @@
 import { ALIAS_HARNESS_ID } from "../../../shared/modelAliases.js";
 import { resolveHarnessName } from "../../agent/harnessRegistry.js";
-import { isHostCommand } from "../../project/deployCommands.js";
 
 /***
  * MARK: taskRequirements
@@ -32,12 +31,11 @@ export function taskRequirements(project = {}, task = {}) {
 		{};
 	const type = String(stage.type || "agent").toLowerCase();
 	const kind = type === "ci" || type === "script" || type === "deploy" || type === "command" ? "ci" : type;
-	// Host commands (stamped hostOnly at stage normalization) run only on the
-	// backend in the primary checkout: never Runner-runnable (DA9).
-	const hostCommand =
-		kind === "ci" &&
-		(stage.hostOnly === true || isHostCommand(stage.command || stage.script || ""));
-	const runnableType = !hostCommand && (type === "agent" || type === "review" || kind === "ci");
+	// Retired (was DA9): every command stage is Runner-runnable — the
+	// backend never executes stage commands. `hostCommand` stays in the
+	// returned shape (always false) so existing consumers keep working.
+	const hostCommand = false;
+	const runnableType = type === "agent" || type === "review" || kind === "ci";
 
 	// Same order as the embedded run path (`resolveHarnessName`): stage
 	// override → project default → configured default → built-in. Dispatch

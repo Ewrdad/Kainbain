@@ -448,19 +448,6 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		if (!projectId) return;
 		const task = taskStore.getTask(projectId, request.params.id);
 		if (!task) return reply.status(404).send({ error: "Task not found" });
-		// Host commands are never Runner work (DA9): refuse the claim so the
-		// stage stays for the backend's primary-checkout path.
-		try {
-			const project = projectStore.getProject(projectId);
-			const stages = resolveStagesForTask(project, task);
-			const current = stages.find((x) => String(x?.id) === String(task?.currentStageId)) || stages[0];
-			if (current?.hostOnly === true) {
-				return reply.status(409).send({
-					error: "Host commands run on the backend in the primary checkout, not on a Runner",
-					code: "HOST_COMMAND",
-				});
-			}
-		} catch { /* guard is best-effort; claim fence below remains authoritative */ }
 		try {
 			const { executionId, epoch } = claimStore.claim(
 				request.params.id,

@@ -1465,21 +1465,9 @@ if [ "$MODE" = "prod" ]; then
 		IMAGE_TAG="build-$(next_build)-$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
 	fi
 	log "🐳 Prod images pinned by release manifest (backend tag: $IMAGE_TAG)."
-exec 9>"$LOCK_FILE"
-	if ! flock -w "$LOCK_TIMEOUT" 9; then
-		_holder_started="$(stat -c %y "$LOCK_FILE" 2>/dev/null || echo "unknown start time")"
-		log "❌ Another deployment is already in progress (lock holder active since roughly $_holder_started) — this attempt did not run."
-		write_lock_busy "holder active (lock file mtime: $_holder_started)"; exit 75
-	fi
-	PREV_BUILD="$(current_build)"; BUILD_NUMBER="$(next_build)"; echo "$BUILD_NUMBER" >"$BUILD_COUNTER"
-	log "📦 Build number: $BUILD_NUMBER (previous: $PREV_BUILD)"
-	POST_LOCK_HEAD="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
-	if [ "$PRE_GATE_HEAD" != "unknown" ] && [ "$POST_LOCK_HEAD" != "unknown" ] && [ "$PRE_GATE_HEAD" != "$POST_LOCK_HEAD" ]; then
-		log "❌ Tree changed during unlocked gates ($PRE_GATE_HEAD → $POST_LOCK_HEAD) — aborting deploy."
-		write_result "failed" "Tree changed during unlocked gates ($PRE_GATE_HEAD → $POST_LOCK_HEAD)" "false" 1 "git rev-parse HEAD" "PRE_GATE_HEAD=$PRE_GATE_HEAD POST_LOCK_HEAD=$POST_LOCK_HEAD"; exit 1
-	fi
-	# Pull the published images now so a registry problem fails loudly before
-	# touching prod (compose would otherwise fail mid-restart instead).
+	# Pull the published images before taking the lock (heavy gates never
+	# hold it): a registry problem fails loudly before touching prod
+	# (compose would otherwise fail mid-restart instead).
 	_pull_images="$(node -e 'try{const m=JSON.parse(require("fs").readFileSync("dist/release-manifest.json","utf8"));const imgs=[m.components?.backend?.image,m.components?.frontend?.image].filter(Boolean);console.log(imgs.join(" "))}catch(e){}' 2>/dev/null)"
 	if [ -n "$_pull_images" ]; then
 		# One gate per image: `docker pull` takes a single reference, and
@@ -1494,6 +1482,19 @@ exec 9>"$LOCK_FILE"
 		log "⚠️ No images in dist/release-manifest.json — skipping pull (compose falls back to local tags)."
 	fi
 	unset _pull_images
+exec 9>"$LOCK_FILE"
+	if ! flock -w "$LOCK_TIMEOUT" 9; then
+		_holder_started="$(stat -c %y "$LOCK_FILE" 2>/dev/null || echo "unknown start time")"
+		log "❌ Another deployment is already in progress (lock holder active since roughly $_holder_started) — this attempt did not run."
+		write_lock_busy "holder active (lock file mtime: $_holder_started)"; exit 75
+	fi
+	PREV_BUILD="$(current_build)"; BUILD_NUMBER="$(next_build)"; echo "$BUILD_NUMBER" >"$BUILD_COUNTER"
+	log "📦 Build number: $BUILD_NUMBER (previous: $PREV_BUILD)"
+	POST_LOCK_HEAD="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+	if [ "$PRE_GATE_HEAD" != "unknown" ] && [ "$POST_LOCK_HEAD" != "unknown" ] && [ "$PRE_GATE_HEAD" != "$POST_LOCK_HEAD" ]; then
+		log "❌ Tree changed during unlocked gates ($PRE_GATE_HEAD → $POST_LOCK_HEAD) — aborting deploy."
+		write_result "failed" "Tree changed during unlocked gates ($PRE_GATE_HEAD → $POST_LOCK_HEAD)" "false" 1 "git rev-parse HEAD" "PRE_GATE_HEAD=$PRE_GATE_HEAD POST_LOCK_HEAD=$POST_LOCK_HEAD"; exit 1
+	fi
 	# Back up the current deployment (if any) to .prev so we can roll back.
 	if [ -d "$PROD_DIR" ]; then log "Backing up current deployment to $PREV_DIR ..."; rm -rf "$PREV_DIR"; cp -r "$PROD_DIR" "$PREV_DIR"; else log "No existing deployment at $PROD_DIR — first deploy, no .prev backup."; fi
 	SWAPPED="true"
