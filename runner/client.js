@@ -73,6 +73,24 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 				body: { ...(projectIds?.length ? { projectIds } : {}) },
 			});
 		},
+		integrationHeartbeat({ projectId, targetBranch, executionId, epoch }) {
+			return call(`/runners/integration/heartbeat`, {
+				method: "POST",
+				body: { projectId, targetBranch, executionId, epoch },
+			});
+		},
+		integrationReport({ projectId, targetBranch, executionId, epoch, outcome, mergeSha = null, detail = null }) {
+			return call(`/runners/integration/report`, {
+				method: "POST",
+				body: { projectId, targetBranch, executionId, epoch, outcome, ...(mergeSha ? { mergeSha } : {}), ...(detail ? { detail } : {}) },
+			});
+		},
+		verifySha({ taskId, projectId, executionId, epoch, sha, present }) {
+			return call(`/tasks/${encodeURIComponent(taskId)}/verify-sha`, {
+				method: "POST",
+				body: { projectId, executionId, epoch, sha, present: present !== false },
+			});
+		},
 		steerAck({ taskId, projectId, executionId, epoch, steerId, ok, detail }) {
 			return call(`/tasks/${encodeURIComponent(taskId)}/steer-ack`, {
 				method: "POST",

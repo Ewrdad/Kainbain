@@ -184,6 +184,63 @@ describe("Runner Routes Integration", () => {
 		expect(conflict.statusCode).toBe(409);
 	});
 
+	it("rejects claim-heartbeat past the stage timeout with STAGE_TIMEOUT", async () => {
+		// Own project: shrinking the stage budget must not leak into the
+		// shared fixture other tests claim against.
+		const projRes = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: { name: "Timeout Budget Fixture", gitUrl: "https://git.example.com/team/timeout.git" },
+		});
+		expect(projRes.statusCode).toBe(201);
+		const timeoutProject = JSON.parse(projRes.payload);
+		const credential = await onboard("heartbeat-timeout");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: timeoutProject.id, goal: "Timeout target" },
+		});
+		expect(taskRes.statusCode).toBe(200);
+		const target = JSON.parse(taskRes.payload).id;
+		const detail = await app.inject({
+			method: "GET",
+			url: `/tasks/${target}?projectId=${timeoutProject.id}`,
+		});
+		expect(detail.statusCode).toBe(200);
+		const currentStageId = JSON.parse(detail.payload).currentStageId;
+		// Shrink this task's stage budget to 150ms so the test does not
+		// wait out the 30-minute agent default.
+		const wf = await app.inject({
+			method: "PUT",
+			url: `/projects/${timeoutProject.id}/workflow`,
+			payload: {
+				stages: [{ id: currentStageId, name: "Hurried", type: "agent", timeout: 150 }],
+			},
+		});
+		expect(wf.statusCode).toBe(200);
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: timeoutProject.id },
+		});
+		expect(claim.statusCode).toBe(200);
+		const lease = JSON.parse(claim.payload);
+		await new Promise((r) => setTimeout(r, 400));
+		const beat = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim-heartbeat`,
+			headers: { "x-runner-credential": credential },
+			payload: {
+				projectId: timeoutProject.id,
+				executionId: lease.executionId,
+				epoch: lease.epoch,
+			},
+		});
+		expect(beat.statusCode).toBe(409);
+		expect(JSON.parse(beat.payload).code).toBe("STAGE_TIMEOUT");
+	});
+
 	it("rejects claim-heartbeat for a superseded execution", async () => {
 		const credential = await onboard("heartbeat-stale");
 		const taskRes = await app.inject({
@@ -886,6 +943,41 @@ describe("Runner Routes Integration", () => {
 		const bad = await app.inject({ method: "POST", url: "/runners/rotate-pending/rotate" });
 		expect(bad.statusCode).toBe(409);
 		expect(JSON.parse(bad.payload).code).toBe("ROTATE_INVALID_STATE");
+	});
+
+	it("exposes integration leases over HTTP with stale-execution fencing", async () => {
+		// Step 3 HTTP surface (lease semantics live in
+		// integrationQueue.test.js): empty queue leases nothing, unknown
+		// executions fence as stale, and the monitor exposes lease
+		// counters (Step 6 observability).
+		const credA = await onboard("integ-1");
+		const credB = await onboard("integ-2");
+		const scope = { projectId: "scope-proj", targetBranch: "main" };
+		const first = JSON.parse(
+			(
+				await app.inject({
+					method: "POST",
+					url: "/runners/integration/acquire",
+					headers: { "x-runner-credential": credA },
+					payload: scope,
+				})
+			).payload,
+		);
+		// Nothing queued: no lease.
+		expect(first).toEqual({ leased: false });
+		// Enqueue happens backend-side (prepareIntegrationAttempt, covered
+		// in integrationDispatch.test.js against a real origin).
+		const monitor = JSON.parse((await app.inject({ method: "GET", url: "/runners/monitor" })).payload);
+		expect(monitor.integration).toMatchObject({ enqueued: expect.any(Number) });
+		// Unknown execution heartbeats are stale, never propped up.
+		const stale = await app.inject({
+			method: "POST",
+			url: "/runners/integration/heartbeat",
+			headers: { "x-runner-credential": credB },
+			payload: { ...scope, executionId: "nope", epoch: 1 },
+		});
+		expect(stale.statusCode).toBe(409);
+		expect(JSON.parse(stale.payload).code).toBe("STALE_EPOCH");
 	});
 
 	it("steer on an unheld task takes the embedded path, never the queue", async () => {

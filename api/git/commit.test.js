@@ -340,7 +340,7 @@ describe("commitEngineSnapshots", () => {
 	});
 
 	/** Routes status output per test; everything else succeeds. */
-	function routeStatus(statusStdout, { current = "kb/t" } = {}) {
+	function routeStatus(statusStdout, { current = "kb/t", tracked = "" } = {}) {
 		const calls = [];
 		spawnMock.mockImplementation((cmd, args) => {
 			calls.push([...args]);
@@ -348,20 +348,63 @@ describe("commitEngineSnapshots", () => {
 				return fakeChildFromResponse({ stdout: `${current}\n` });
 			}
 			if (args[0] === "status") return fakeChildFromResponse({ stdout: statusStdout });
+			if (args[0] === "ls-files") return fakeChildFromResponse({ stdout: tracked });
 			return fakeChildFromResponse({ stdout: "" });
 		});
 		return calls;
 	}
 
 	it("commits only snapshot paths and leaves real dirt uncommitted", async () => {
-		const calls = routeStatus(" M docs/tasks/t/task.md\n M dirty.js\n");
+		const calls = routeStatus(" M docs/tasks/t/report.md\n M dirty.js\n");
 		const res = await commitEngineSnapshots("/repo", "snapshots");
 		expect(res.committed).toBe(true);
-		expect(calls).toContainEqual(["add", "--", "docs/tasks/t/task.md"]);
-		const commit = calls.find((a) => a[0] === "commit");
-		expect(commit).toBeTruthy();
-		expect(commit).toContain("docs/tasks/t/task.md");
-		expect(commit.some((a) => String(a).includes("dirty.js"))).toBe(false);
+		expect(calls).toContainEqual(["add", "--", "docs/tasks/t/report.md"]);
+		// Plumbing commit: scratch-index commit-tree + CAS update-ref.
+		expect(calls.some((a) => a[0] === "commit-tree")).toBe(true);
+		const updateRef = calls.find((a) => a[0] === "update-ref");
+		expect(updateRef?.[1]).toBe("HEAD");
+		expect(calls.some((a) => a.slice(1).some((x) => String(x).includes("dirty.js")))).toBe(false);
+	});
+
+	it("never stages the live task.md snapshot (Step 5: untracked, not committed)", async () => {
+		const calls = routeStatus(
+			" M docs/tasks/t/task.md\n M docs/tasks/t/report.md\n",
+		);
+		const res = await commitEngineSnapshots("/repo", "snapshots");
+		expect(res.committed).toBe(true);
+		const adds = calls.filter((a) => a[0] === "add");
+		expect(adds.length).toBeGreaterThan(0);
+		for (const add of adds) {
+			expect(add.some((a) => String(a).endsWith("task.md"))).toBe(false);
+		}
+		expect(calls.some((a) => a[0] === "commit-tree")).toBe(true);
+		expect(calls.some((a) => a[0] === "update-ref")).toBe(true);
+	});
+
+	it("is a no-op when only an already-untracked task.md snapshot is dirty", async () => {
+		const calls = routeStatus("?? docs/tasks/t/task.md\n");
+		const res = await commitEngineSnapshots("/repo", "snapshots");
+		expect(res).toEqual({ committed: false, hash: null });
+		expect(calls.some((a) => a[0] === "commit-tree")).toBe(false);
+		expect(calls.some((a) => a[0] === "update-ref")).toBe(false);
+	});
+
+	it("commits the untrack removal (staged deletion rides along) without staging content", async () => {
+		const calls = routeStatus(" M docs/tasks/t/task.md\n", {
+			tracked: "docs/tasks/t/task.md",
+		});
+		const res = await commitEngineSnapshots("/repo", "snapshots");
+		expect(res.committed).toBe(true);
+		// Content is never staged: no `add` carries task.md ...
+		for (const add of calls.filter((a) => a[0] === "add")) {
+			expect(add.some((a) => String(a).endsWith("task.md"))).toBe(false);
+		}
+		// ... but the removal is recorded via the scratch index so the
+		// pending switch can proceed.
+		const rm = calls.find((a) => a[0] === "rm");
+		expect(rm).toContain("--cached");
+		expect(calls.some((a) => a[0] === "commit-tree")).toBe(true);
+		expect(calls.some((a) => a[0] === "update-ref")).toBe(true);
 	});
 
 	it("is a no-op when only real dirt exists (never stages it)", async () => {
@@ -388,5 +431,60 @@ describe("commitEngineSnapshots", () => {
 		});
 		const res = await commitEngineSnapshots("/repo", "snapshots");
 		expect(res).toEqual({ committed: false, hash: null });
+	});
+});
+
+describe("isLiveTaskSnapshotPath", () => {
+	it("matches task.md under task-docs prefixes only", async () => {
+		const { isLiveTaskSnapshotPath } = await import("./commit.js");
+		expect(isLiveTaskSnapshotPath("docs/tasks/abc/task.md")).toBe(true);
+		expect(isLiveTaskSnapshotPath("docs/tasks/abc/report.md")).toBe(false);
+		expect(isLiveTaskSnapshotPath("docs/tasks/abc/assets/image.png")).toBe(false);
+		expect(isLiveTaskSnapshotPath("task.md")).toBe(false);
+		expect(isLiveTaskSnapshotPath("src/task.md")).toBe(false);
+		expect(isLiveTaskSnapshotPath("docs/tasks.md")).toBe(false);
+		expect(isLiveTaskSnapshotPath("")).toBe(false);
+		expect(isLiveTaskSnapshotPath(null)).toBe(false);
+	});
+});
+
+describe("untrackLiveTaskSnapshots", () => {
+	beforeEach(() => {
+		spawnMock.mockReset();
+	});
+
+	function routeLsFiles(tracked) {
+		const calls = [];
+		spawnMock.mockImplementation((cmd, args) => {
+			calls.push([...args]);
+			if (args.includes("--abbrev-ref")) {
+				return fakeChildFromResponse({ stdout: "main\n" });
+			}
+			if (args[0] === "ls-files") {
+				return fakeChildFromResponse({ stdout: tracked });
+			}
+			return fakeChildFromResponse({ stdout: "" });
+		});
+		return calls;
+	}
+
+	it("removes tracked task.md snapshots from the index, keeps everything else", async () => {
+		const { untrackLiveTaskSnapshots } = await import("./commit.js");
+		const calls = routeLsFiles("docs/tasks/t/task.md\0src/code.js\0");
+		const res = await untrackLiveTaskSnapshots("/repo");
+		expect(res).toEqual({ untracked: ["docs/tasks/t/task.md"] });
+		const rm = calls.find((a) => a[0] === "rm");
+		expect(rm).toBeTruthy();
+		expect(rm).toContain("--cached");
+		expect(rm).toContain("docs/tasks/t/task.md");
+		expect(rm.some((a) => String(a).includes("code.js"))).toBe(false);
+	});
+
+	it("is a no-op when no live snapshot is tracked", async () => {
+		const { untrackLiveTaskSnapshots } = await import("./commit.js");
+		const calls = routeLsFiles("src/code.js\0");
+		const res = await untrackLiveTaskSnapshots("/repo");
+		expect(res).toEqual({ untracked: [] });
+		expect(calls.some((a) => a[0] === "rm")).toBe(false);
 	});
 });

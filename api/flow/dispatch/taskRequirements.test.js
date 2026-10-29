@@ -54,6 +54,11 @@ describe("taskRequirements", () => {
 		expect(stamped).toMatchObject({ runnableType: true, hostCommand: false });
 	});
 
+	test("merge stages are Runner-runnable as harness-less T0 integrate jobs", () => {
+		const out = taskRequirements({}, { currentStageId: "s1", stages: [{ id: "s1", type: "merge" }] });
+		expect(out).toMatchObject({ runnableType: true, kind: "merge", harness: null, model: "", tier: "T0", alias: null });
+	});
+
 	test("human stages are not Runner-runnable; ci stages are CI-runnable at T0", () => {
 		const ci = taskRequirements({}, { currentStageId: "s1", stages: [{ id: "s1", type: "ci" }] });
 		expect(ci).toMatchObject({ runnableType: true, kind: "ci", harness: null, tier: "T0" });

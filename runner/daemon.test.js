@@ -309,6 +309,33 @@ describe("startClaimRenewal", () => {
 		assert.equal(warnings.length, 0);
 	});
 
+	it("stops renewing after a STAGE_TIMEOUT so a timed-out run is not propped up", async () => {
+		const seen = [];
+		const warnings = [];
+		const client = {
+			claimHeartbeat: async (args) => {
+				seen.push(args);
+				throw Object.assign(new Error("Stage timed out after 10ms (budget 5ms)"), { code: "STAGE_TIMEOUT" });
+			},
+		};
+		const logger = { log: () => {}, warn: (m) => warnings.push(m) };
+		startClaimRenewal({
+			client,
+			logger,
+			taskId: "t1",
+			projectId: "p1",
+			executionId: "e1",
+			epoch: 1,
+			intervalMs: 10,
+		});
+		await new Promise((r) => setTimeout(r, 50));
+		assert.ok(seen.length >= 1);
+		assert.ok(warnings.length >= 1);
+		const count = seen.length;
+		await new Promise((r) => setTimeout(r, 40));
+		assert.equal(seen.length, count);
+	});
+
 	it("warns instead of throwing when a renewal fails", async () => {
 		const warnings = [];
 		const client = {
@@ -443,6 +470,102 @@ describe("runDispatchLoop", () => {
 
 	const loopConfig = (overrides = {}) =>
 		baseConfig({ dispatch: true, dispatchPollMs: 1, dispatchIdleLimit: 2, ...overrides });
+
+	it("runs a leased integrate job: merge, CAS-push, verify, cleanup", async () => {
+		// Step 4 E2E on the Runner side: bare origin with main + kb/t1,
+		// dispatch hands a leased integrate assignment, the daemon merges
+		// in an ephemeral worktree and CAS-pushes main.
+		const origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-int-origin-"));
+		execFileSync("git", ["init", "-q", "--bare"], { cwd: origin, stdio: "ignore" });
+		const seed = fs.mkdtempSync(path.join(os.tmpdir(), "kb-int-seed-"));
+		execFileSync("git", ["clone", "-q", origin, seed], { stdio: "ignore" });
+		execFileSync("git", ["config", "user.email", "t@t.t"], { cwd: seed, stdio: "ignore" });
+		execFileSync("git", ["config", "user.name", "t"], { cwd: seed, stdio: "ignore" });
+		fs.writeFileSync(path.join(seed, "base.txt"), "base");
+		execFileSync("git", ["add", "."], { cwd: seed, stdio: "ignore" });
+		execFileSync("git", ["commit", "-qm", "init"], { cwd: seed, stdio: "ignore" });
+		execFileSync("git", ["branch", "-M", "main"], { cwd: seed, stdio: "ignore" });
+		execFileSync("git", ["push", "-q", "origin", "main"], { cwd: seed, stdio: "ignore" });
+		execFileSync("git", ["checkout", "-qb", "kb/t1"], { cwd: seed, stdio: "ignore" });
+		fs.writeFileSync(path.join(seed, "task.txt"), "task work");
+		execFileSync("git", ["add", "."], { cwd: seed, stdio: "ignore" });
+		execFileSync("git", ["commit", "-qm", "task work"], { cwd: seed, stdio: "ignore" });
+		execFileSync("git", ["push", "-q", "origin", "kb/t1"], { cwd: seed, stdio: "ignore" });
+		const shaOf = (ref) => execFileSync("git", ["rev-parse", ref], { cwd: seed, encoding: "utf8" }).trim();
+		const expectedTargetSha = shaOf("main");
+		const expectedTaskSha = shaOf("kb/t1");
+		const config = loopConfig({ dispatchIdleLimit: 1 });
+		dirs.push(config.workRoot, origin, seed);
+		const completed = [];
+		const reports = [];
+		let polls = 0;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				polls += 1;
+				return polls === 1
+					? {
+							assigned: true,
+							projectId: "p1",
+							taskId: "t1",
+							executionId: "e1",
+							epoch: 1,
+							stageId: "merge-1",
+							kind: "integrate",
+							integration: {
+								taskBranch: "kb/t1",
+								expectedTaskSha,
+								targetBranch: "main",
+								expectedTargetSha,
+								mergeAttemptId: "merge-t1-1",
+								integrationExecutionId: "ie1",
+								integrationEpoch: 1,
+							},
+							requirements: { kind: "merge", harness: null, model: "", tier: "T0" },
+						}
+					: { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => ({ id: "p1", cwd: seed, gitUrl: origin }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "merge-1" }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			integrationHeartbeat: async () => ({ executionId: "ie1", epoch: 1 }),
+			integrationReport: async (args) => {
+				reports.push(args);
+				return { accepted: true };
+			},
+			verifySha: async () => ({ verified: true }),
+			complete: async (args) => {
+				completed.push(args);
+				return { accepted: true };
+			},
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.assignments, 1);
+		assert.equal(reports.length, 1);
+		assert.equal(reports[0].outcome, "landed");
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].outcome, "passed");
+		assert.equal(completed[0].sha, reports[0].mergeSha);
+		assert.equal(completed[0].integration.outcome, "landed");
+		// The CAS push landed both files on origin/main.
+		execFileSync("git", ["fetch", "-q", "origin"], { cwd: seed, stdio: "ignore" });
+		const tipAfter = execFileSync("git", ["rev-parse", "origin/main"], { cwd: seed, encoding: "utf8" }).trim();
+		assert.equal(tipAfter, completed[0].sha);
+		const tree = execFileSync("git", ["ls-tree", "-r", "--name-only", tipAfter], { cwd: seed, encoding: "utf8" });
+		assert.ok(tree.split("\n").includes("base.txt"));
+		assert.ok(tree.split("\n").includes("task.txt"));
+		// The ephemeral worktree is gone.
+		const leftovers = fs.readdirSync(config.workRoot).filter((n) => n.startsWith("kb-integrate-"));
+		assert.equal(leftovers.length, 0);
+		assert.ok(!client.calls.includes("interrupt"));
+	});
 
 	it("runs one dispatched assignment then idles out", async () => {
 		const repo = localRepo();

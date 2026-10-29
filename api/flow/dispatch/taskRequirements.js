@@ -30,12 +30,15 @@ export function taskRequirements(project = {}, task = {}) {
 		stages[0] ||
 		{};
 	const type = String(stage.type || "agent").toLowerCase();
-	const kind = type === "ci" || type === "script" || type === "deploy" || type === "command" ? "ci" : type;
+	const kind = type === "ci" || type === "script" || type === "deploy" || type === "command" ? "ci" : type === "merge" ? "merge" : type;
 	// Retired (was DA9): every command stage is Runner-runnable — the
 	// backend never executes stage commands. `hostCommand` stays in the
 	// returned shape (always false) so existing consumers keep working.
 	const hostCommand = false;
-	const runnableType = type === "agent" || type === "review" || kind === "ci";
+	// Merge stages are Runner-runnable as leased `integrate` jobs (Step 4):
+	// the dispatch route matches them like CI (no harness/model, T0) and
+	// the integration lease — not a harness — is the fencing token.
+	const runnableType = type === "agent" || type === "review" || kind === "ci" || kind === "merge";
 
 	// Same order as the embedded run path (`resolveHarnessName`): stage
 	// override → project default → configured default → built-in. Dispatch
@@ -74,5 +77,6 @@ export function taskRequirements(project = {}, task = {}) {
 				? "T1"
 				: "T0";
 
-	return { harness: kind === "ci" ? null : harness, model: kind === "ci" ? "" : model, tier, alias: kind === "ci" ? null : alias, runnableType, hostCommand, kind, stageId: stage.id ?? null };
+	const runnerless = kind === "ci" || kind === "merge";
+	return { harness: runnerless ? null : harness, model: runnerless ? "" : model, tier: runnerless && !explicitTier ? "T0" : tier, alias: runnerless ? null : alias, runnableType, hostCommand, kind, stageId: stage.id ?? null };
 }

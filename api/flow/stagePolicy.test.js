@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
 	resolveStageTimeout,
+	runnerStageTimeoutStatus,
 	resolveEffectiveStageType,
 	resolveStageLabel,
 	resolveStage,
@@ -197,6 +198,24 @@ describe('The Flow: shared stage lookup and engine ownership', () => {
 		expect(isEngineOwnerOf({ activeTaskId: 't1' }, undefined)).toBe(false);
 		expect(isEngineOwnerOf(null, 't1')).toBe(false);
 		expect(isEngineOwnerOf(undefined, 't1')).toBe(false);
+	});
+
+	it('runnerStageTimeoutStatus bounds a claim hold against the stage budget', () => {
+		const startedAt = new Date('2026-10-29T19:00:00.000Z').toISOString();
+		const at = (ms) => Date.parse('2026-10-29T19:00:00.000Z') + ms;
+		expect(
+			runnerStageTimeoutStatus({ startedAt, timeoutMs: 1800000, now: at(1000) }),
+		).toMatchObject({ timedOut: false, timeoutMs: 1800000 });
+		expect(
+			runnerStageTimeoutStatus({ startedAt, timeoutMs: 1800000, now: at(1800001) }).timedOut,
+		).toBe(true);
+		// Unparseable anchors never time out (fail-open on bad data, not on budget).
+		expect(
+			runnerStageTimeoutStatus({ startedAt: 'not-a-date', timeoutMs: 1000, now: at(99999) }).timedOut,
+		).toBe(false);
+		expect(
+			runnerStageTimeoutStatus({ startedAt: null, timeoutMs: 1000, now: at(99999) }).timedOut,
+		).toBe(false);
 	});
 
 	it('isTerminalTaskStatus pins the never-resurrect contract', () => {

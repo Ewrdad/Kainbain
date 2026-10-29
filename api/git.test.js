@@ -1401,7 +1401,7 @@ describe("git helper", () => {
 /***
  * MARK: Git barrel surface contract
  * @description Guards the WP-4 zero-caller-churn contract: `api/git.js` must
- *   re-export exactly the 53 canonical public symbols (classes, functions,
+ *   re-export exactly the 55 canonical public symbols (classes, functions,
  *   constants) with identical names, so flow/work/store callers need no
  *   import changes. Command-family implementations live under `api/git/`
  *   and are covered directly by the co-located `api/git/*.test.js` suites.
@@ -1444,6 +1444,7 @@ describe("git barrel surface contract", () => {
 		"hasRemote",
 		"isBranchMergedInto",
 		"isGitRepository",
+		"isLiveTaskSnapshotPath",
 		"isMergeInProgress",
 		"isRegeneratedSnapshotPath",
 		"isValidBranchName",
@@ -1460,10 +1461,11 @@ describe("git barrel surface contract", () => {
 		"returnToDefaultBranch",
 		"syncBranchWithUpstream",
 		"syncDefaultBranchToRemote",
+		"untrackLiveTaskSnapshots",
 		"withCheckedOutBranch",
 	];
 
-	it("exports exactly the 53 canonical public symbols", () => {
+	it("exports exactly the 55 canonical public symbols", () => {
 		expect(Object.keys(gitBarrel).sort()).toEqual(EXPECTED_EXPORTS);
 	});
 
