@@ -3,8 +3,10 @@
 #
 #   ./deploy.sh --dev       Start local dev servers (API + Vite frontend).
 #   ./deploy.sh --prod      Full production deploy: tests + security scans +
-#                           build + deploy to ~/apps/kainbain, restart the
-#                           systemd service, reload nginx.
+#                           build + publish (git push via dev-box ssh auth +
+#                           Hub images via publish.sh) + deploy to
+#                           ~/apps/kainbain, restart, reload nginx.
+#                           This is the only publisher — no cron job needed.
 #   ./deploy.sh --prod --fast   Production deploy WITHOUT tests/security scans
 #                           (rapid self-iteration; the health-check + rollback
 #                           gate below is the safety net).
@@ -1405,7 +1407,45 @@ if [ "$MODE" = "prod" ]; then
 	# would otherwise make npm skip them and break the deploy's own test suite).
 	run_gate "api-install" "npm install --prefix api --include=dev" npm install --prefix api --include=dev
 
-	# 5. Deploy minimal Docker install to $PROD_DIR (compose + .env + startRunner.sh + runner/).
+	# 5. Publish everything from this checkout (replaces the per-minute cron
+	#    convergence job): push git refs with the dev box's ssh auth, then
+	#    build + push Hub images via publish.sh. Prod serves the Hub images,
+	#    so the registry publish is blocking; the git push is warn-only (a
+	#    stale remote must never block a local prod deploy — the next deploy
+	#    pushes again).
+	publish_git_refs() {
+		local pushed=0 failed=0 b out
+		for b in $(git for-each-ref --format='%(refname:short)' refs/heads/ 2>/dev/null); do
+			case "$b" in main|kb/*) ;; *) continue ;; esac
+			if ! git rev-parse --verify --quiet "refs/remotes/origin/$b" >/dev/null; then
+				log "⏭️ Skipping new local branch '$b' (no remote ref yet — publish it once by hand: git push -u origin $b)."
+				continue
+			fi
+			if out="$(git push origin "$b" 2>&1 | head -n 2)"; then
+				log "📤 Pushed '$b': $out"
+				pushed=$((pushed + 1))
+			else
+				log "⚠️ Push of '$b' failed (warn-only — local deploy continues): $out"
+				failed=$((failed + 1))
+			fi
+		done
+		log "📤 Git publish: $pushed ref(s) pushed, $failed failed."
+	}
+	publish_git_refs || true
+	if [ -z "${KAINBAIN_DOCKERHUB_NAMESPACE:-}" ]; then
+		log "⚠️ KAINBAIN_DOCKERHUB_NAMESPACE unset — defaulting to 'ewrdad' (repo remote owner); override via env."
+		export KAINBAIN_DOCKERHUB_NAMESPACE="ewrdad"
+	fi
+	if [ "$FAST" = "true" ]; then
+		run_gate "registry-publish" "./publish.sh --detect --fast" ./publish.sh --detect --fast
+	else
+		run_gate "registry-publish" "./publish.sh --detect" ./publish.sh --detect
+	fi
+
+	# 6. Stage the minimal Docker install for $PROD_DIR (compose + .env +
+	#    startRunner.sh + runner/ + release manifest). Prod runs the Hub
+	#    images named in dist/release-manifest.json (written by the publish
+	#    step above) — no separate local image build here.
 	log "📦 Deploying Docker production build to $PROD_DIR ..."
 	STAGE="$(mktemp -d)"
 	trap 'stop_deploy_heartbeat 2>/dev/null || true; if [ -n "${STAGE:-}" ]; then rm -rf "$STAGE"; fi' EXIT
@@ -1417,10 +1457,14 @@ if [ "$MODE" = "prod" ]; then
 	cp startRunner.sh "$STAGE/startRunner.sh"; cp docker-compose.prod.yml "$STAGE/docker-compose.yml"
 	log "📜 Baking Kainbain changelog..."
 	if node scripts/generate-changelog.mjs --limit 200 --out "$STAGE/changelog.json"; then log "Changelog baked into $STAGE/changelog.json."; else echo '{"entries":[],"error":"changelog generation failed during deploy"}' > "$STAGE/changelog.json"; fi
+	# Backend manifest tag doubles as the deploy's image tag (legacy
+	# KAINBAIN_IMAGE_TAG consumers fall back to it); purely informational
+	# when the manifest is absent.
+	IMAGE_TAG="$(node -e 'try{const m=JSON.parse(require("fs").readFileSync("dist/release-manifest.json","utf8"));console.log(m.components?.backend?.tag||"")}catch(e){}' 2>/dev/null)"
+	if [ -z "$IMAGE_TAG" ]; then
 		IMAGE_TAG="build-$(next_build)-$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
-	log "🐳 Building images kainbain-backend/frontend:$IMAGE_TAG ..."
-	run_gate "docker-build" "docker compose build (backend+frontend)" env KAINBAIN_BUILD_REF="$IMAGE_TAG" KAINBAIN_BUILD_NUMBER="$(next_build)" docker compose -f docker-compose.yml build
-	docker tag kainbain-backend:latest "kainbain-backend:$IMAGE_TAG"; docker tag kainbain-frontend:latest "kainbain-frontend:$IMAGE_TAG"
+	fi
+	log "🐳 Prod images pinned by release manifest (backend tag: $IMAGE_TAG)."
 exec 9>"$LOCK_FILE"
 	if ! flock -w "$LOCK_TIMEOUT" 9; then
 		_holder_started="$(stat -c %y "$LOCK_FILE" 2>/dev/null || echo "unknown start time")"
@@ -1434,6 +1478,22 @@ exec 9>"$LOCK_FILE"
 		log "❌ Tree changed during unlocked gates ($PRE_GATE_HEAD → $POST_LOCK_HEAD) — aborting deploy."
 		write_result "failed" "Tree changed during unlocked gates ($PRE_GATE_HEAD → $POST_LOCK_HEAD)" "false" 1 "git rev-parse HEAD" "PRE_GATE_HEAD=$PRE_GATE_HEAD POST_LOCK_HEAD=$POST_LOCK_HEAD"; exit 1
 	fi
+	# Pull the published images now so a registry problem fails loudly before
+	# touching prod (compose would otherwise fail mid-restart instead).
+	_pull_images="$(node -e 'try{const m=JSON.parse(require("fs").readFileSync("dist/release-manifest.json","utf8"));const imgs=[m.components?.backend?.image,m.components?.frontend?.image].filter(Boolean);console.log(imgs.join(" "))}catch(e){}' 2>/dev/null)"
+	if [ -n "$_pull_images" ]; then
+		# One gate per image: `docker pull` takes a single reference, and
+		# separate gates keep per-image logs (gate-image-pull-N-*.log).
+		_pull_n=0
+		for _pull_img in $_pull_images; do
+			_pull_n=$((_pull_n + 1))
+			run_gate "image-pull-$_pull_n" "docker pull $_pull_img" docker pull "$_pull_img"
+		done
+		unset _pull_n _pull_img
+	else
+		log "⚠️ No images in dist/release-manifest.json — skipping pull (compose falls back to local tags)."
+	fi
+	unset _pull_images
 	# Back up the current deployment (if any) to .prev so we can roll back.
 	if [ -d "$PROD_DIR" ]; then log "Backing up current deployment to $PREV_DIR ..."; rm -rf "$PREV_DIR"; cp -r "$PROD_DIR" "$PREV_DIR"; else log "No existing deployment at $PROD_DIR — first deploy, no .prev backup."; fi
 	SWAPPED="true"
@@ -1441,6 +1501,16 @@ exec 9>"$LOCK_FILE"
 	rm -rf "$PROD_DIR/api" "$PROD_DIR/frontend" "$PROD_DIR/shared" "$PROD_DIR/site-docs" "$PROD_DIR/skills"
 	cp "$STAGE/docker-compose.yml" "$PROD_DIR/docker-compose.yml"; cp "$STAGE/startRunner.sh" "$PROD_DIR/startRunner.sh"; chmod +x "$PROD_DIR/startRunner.sh"
 	rm -rf "$PROD_DIR/runner"; cp -r "$STAGE/runner" "$PROD_DIR/runner"; cp "$STAGE/changelog.json" "$PROD_DIR/changelog.json"
+	# Ship the release manifest + runner tarball so any host (or pipeline
+	# step) can roll forward to exactly these bits with homelab-pull.sh.
+	cp dist/release-manifest.json "$PROD_DIR/release-manifest.json"
+	_manifest_runner="$(node -e 'try{console.log(JSON.parse(require("fs").readFileSync("dist/release-manifest.json","utf8")).components?.runner?.artifact||"")}catch(e){}' 2>/dev/null)"
+	if [ -n "$_manifest_runner" ] && [ -f "dist/$_manifest_runner" ]; then
+		cp "dist/$_manifest_runner" "$PROD_DIR/"
+	else
+		log "⚠️ Runner artifact '${_manifest_runner:-none}' not in dist/ — leaving $PROD_DIR runner tarballs as-is."
+	fi
+	unset _manifest_runner
 	# .env: preserve existing secrets; only update image tag/build and fill missing host paths.
 	JOIN_TOKEN=""; [ -f "$HOME/.kainbain/runner-join.token" ] && JOIN_TOKEN="$(cat "$HOME/.kainbain/runner-join.token")"
 	if [ ! -f "$PROD_DIR/.env" ]; then
@@ -1450,11 +1520,31 @@ exec 9>"$LOCK_FILE"
 		grep -q '^KAINBAIN_IMAGE_TAG=' "$PROD_DIR/.env" || echo "KAINBAIN_IMAGE_TAG=$IMAGE_TAG" >> "$PROD_DIR/.env"
 		grep -q '^KAINBAIN_PROJECTS_CONTAINER_PATH=' "$PROD_DIR/.env" || { _ph="$(grep '^KAINBAIN_PROJECTS_HOST=' "$PROD_DIR/.env" | cut -d= -f2-)"; [ -n "$_ph" ] && echo "KAINBAIN_PROJECTS_CONTAINER_PATH=$_ph" >> "$PROD_DIR/.env" || true; }
 		grep -q '^KAINBAIN_NOTES_CONTAINER_PATH=' "$PROD_DIR/.env" || { _nh="$(grep '^KAINBAIN_NOTES_HOST=' "$PROD_DIR/.env" | cut -d= -f2-)"; [ -n "$_nh" ] && echo "KAINBAIN_NOTES_CONTAINER_PATH=$_nh" >> "$PROD_DIR/.env" || true; }
+		# Pin the just-published Hub images (prod serves these, not local
+		# builds — without this the compose file keeps running stale tags).
+		# IMAGE holds the repo only (no :tag); the compose file appends
+		# :TAG itself — same split as redeploy.sh (repo="${image%:*}").
+		if [ -f "dist/release-manifest.json" ]; then
+			_manifest_tags="$(node -e 'try{const m=JSON.parse(require("fs").readFileSync("dist/release-manifest.json","utf8"));const b=m.components?.backend||{},f=m.components?.frontend||{};const repo=(i)=>(i||"").replace(/:[^/:]+$/,"");console.log([repo(b.image),b.tag||"",repo(f.image),f.tag||""].join("\n"))}catch(e){}' 2>/dev/null)"
+			_mbi="$(printf '%s' "$_manifest_tags" | sed -n '1p')"; _mbt="$(printf '%s' "$_manifest_tags" | sed -n '2p')"
+			_mfi="$(printf '%s' "$_manifest_tags" | sed -n '3p')"; _mft="$(printf '%s' "$_manifest_tags" | sed -n '4p')"
+			for _kv in "KAINBAIN_BACKEND_IMAGE:$_mbi" "KAINBAIN_BACKEND_TAG:$_mbt" "KAINBAIN_FRONTEND_IMAGE:$_mfi" "KAINBAIN_FRONTEND_TAG:$_mft"; do
+				_k="${_kv%%:*}"; _v="${_kv#*:}"
+				if [ -n "$_v" ]; then
+					if grep -q "^${_k}=" "$PROD_DIR/.env"; then
+						sed -i "s|^${_k}=.*|${_k}=${_v}|" "$PROD_DIR/.env"
+					else
+						echo "${_k}=${_v}" >> "$PROD_DIR/.env"
+					fi
+				fi
+			done
+			unset _manifest_tags _mbi _mbt _mfi _mft _kv _k _v
+		fi
 	fi
 	stamp_build_json
 	write_result "deploying" "Deploying build $BUILD_NUMBER (pre-restart marker)" "false"
 
-	# 6. Restart the production service (systemd user unit).
+	# 7. Restart the production service (systemd user unit).
 	# No stdio detach is needed here: the transient unit's stdout/stderr go
 	# to the journal (no --pipe, see the re-exec contract above), and the
 	# journal never has a dead reader — so the cgroup kill of the API and
@@ -1462,7 +1552,7 @@ exec 9>"$LOCK_FILE"
 	# write_result "success", and auto-rollback below always run.
 	restart_service
 
-	# 7. Health-check the NEW instance. If it fails to come up, auto-roll back
+	# 8. Health-check the NEW instance. If it fails to come up, auto-roll back
 	#    to .prev so a small bug never leaves the app down.
 	if health_check; then
 		log "✅ New deployment is healthy."
