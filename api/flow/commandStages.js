@@ -1395,9 +1395,11 @@ async function mergeTaskBranchIntoMain(
 		// task ref to its upstream when it is not checked out (merge entry
 		// normally sits on the default branch after finalize). A stale task
 		// ref would merge outdated work and re-conflict on files the remote
-		// already settled. Diverged refs stay local and warn-only — the
-		// merge below, not the sync, owns that decision.
-		await syncTaskBranchToRemoteBestEffort(
+		// already settled. A diverged or conflicting task ref fails the
+		// merge stage loudly (normal dev flow: fail and send back) instead
+		// of silently merging the stale local branch and dropping remote
+		// Runner work.
+		const taskSync = await syncTaskBranchToRemoteBestEffort(
 			store,
 			task,
 			cwd,
@@ -1405,6 +1407,24 @@ async function mergeTaskBranchIntoMain(
 			"merge",
 			branch,
 		);
+		if (
+			taskSync &&
+			taskSync.synced !== true &&
+			(taskSync.skipped === "diverged" ||
+				taskSync.skipped === "conflict" ||
+				taskSync.skipped === "merge-failed")
+		) {
+			const remoteRef = `${taskSync.remote || "origin"}/${branch}`;
+			const detail = taskSync.detail ? `: ${taskSync.detail}` : "";
+			if (taskSync.skipped === "diverged") {
+				throw new GitError(
+					`Task branch '${branch}' has diverged from '${remoteRef}' — refusing to merge a stale local branch and silently drop remote Runner work. Reconcile the task branch with '${remoteRef}' (merge '${remoteRef}' into '${branch}' locally or reset to it), then retry the merge stage.`,
+				);
+			}
+			throw new GitError(
+				`Task-branch sync before merge failed (${taskSync.skipped}${detail}) — refusing to merge without the latest remote work on '${branch}'. Resolve the conflict between the local branch and '${remoteRef}' (commit or stash local changes, then merge '${remoteRef}'), then retry the merge stage.`,
+			);
+		}
 		// Landed evidence (frozen marker OR git ancestry) is decided
 		// IMMEDIATELY upon entry (before any checkout, commit, or
 		// measurement) so the `catch` below can route every later failure

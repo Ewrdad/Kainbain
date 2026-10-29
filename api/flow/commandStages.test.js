@@ -708,6 +708,59 @@ describe("executeMergeStage publishing", () => {
 		);
 	});
 
+	it("fails the merge when the task branch has diverged from its upstream", async () => {
+		gitMocks.syncBranchWithUpstream.mockResolvedValue({
+			synced: false,
+			skipped: "diverged",
+			remote: "origin",
+			branch: "kb/task-1",
+			before: "l".repeat(40),
+			after: "r".repeat(40),
+			detail: null,
+		});
+		const { store, stage } = mergeSetup();
+
+		await executeMergeStage(store, {
+			projectId: "proj-1",
+			taskId: "task-1",
+			stage,
+			stages: [stage],
+			cwd: "/repo",
+			execRunner: okRunner,
+		});
+
+		expect(store.handleStageFailure).toHaveBeenCalledTimes(1);
+		const failure = store.handleStageFailure.mock.calls[0][3];
+		expect(String(failure?.message || failure)).toContain("kb/task-1");
+		expect(String(failure?.message || failure)).toContain("diverged");
+		expect(gitMocks.mergeBranch).not.toHaveBeenCalled();
+	});
+
+	it("fails the merge when the upstream sync conflicts", async () => {
+		gitMocks.syncBranchWithUpstream.mockResolvedValue({
+			synced: false,
+			skipped: "merge-failed",
+			remote: "origin",
+			branch: "kb/task-1",
+			before: "l".repeat(40),
+			after: "r".repeat(40),
+			detail: "Your local changes would be overwritten by merge",
+		});
+		const { store, stage } = mergeSetup();
+
+		await executeMergeStage(store, {
+			projectId: "proj-1",
+			taskId: "task-1",
+			stage,
+			stages: [stage],
+			cwd: "/repo",
+			execRunner: okRunner,
+		});
+
+		expect(store.handleStageFailure).toHaveBeenCalledTimes(1);
+		expect(gitMocks.mergeBranch).not.toHaveBeenCalled();
+	});
+
 	it("publishes main bookkeeping before the merge attempt", async () => {
 		const { store, stage } = mergeSetup();
 
