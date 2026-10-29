@@ -11,12 +11,23 @@ export const DEPLOY_COMMAND_PATTERN = /(?:deploy|publish|redeploy)\.sh/;
 
 /***
  * MARK: HOST_COMMAND_PATTERN
- * @description Alias of DEPLOY_COMMAND_PATTERN: deploy/publish/redeploy are
- *   all host commands that must run on the backend in the primary checkout,
- *   never on a Runner (AsymmetricUpdatesPlan DA9).
+ * @description Matches deploy/redeploy scripts only: those are host commands
+ *   that must run on the backend in the primary checkout, never on a Runner.
+ *   publish.sh is NOT a host command — it is an ordinary ci stage that a
+ *   Runner executes (the Runner is native on the host and has Docker access);
+ *   publish.sh re-execs itself into the primary checkout when a Runner runs
+ *   it from a task worktree, so it still only ever publishes merged main.
  * @example HOST_COMMAND_PATTERN.test('./redeploy.sh --frontend') => true
+ * @example HOST_COMMAND_PATTERN.test('./publish.sh --detect') => false
  ***/
-export const HOST_COMMAND_PATTERN = DEPLOY_COMMAND_PATTERN;
+export const HOST_COMMAND_PATTERN = /(?:deploy|redeploy)\.sh/;
+
+/***
+ * MARK: PUBLISH_COMMAND_PATTERN
+ * @description Matches a stage command that invokes the publish script.
+ * @example PUBLISH_COMMAND_PATTERN.test('./publish.sh --detect') => true
+ ***/
+export const PUBLISH_COMMAND_PATTERN = /publish\.sh/;
 
 /***
  * MARK: isDeployCommand
@@ -42,7 +53,22 @@ export function isDeployCommand(command) {
  * @returns {boolean}
  ***/
 export function isHostCommand(command) {
-	return isDeployCommand(command);
+	if (typeof command !== "string" || command.length === 0) return false;
+	return HOST_COMMAND_PATTERN.test(command);
+}
+
+/***
+ * MARK: isPublishCommand
+ * @description Whether a stage command invokes the publish script. Publish
+ *   stages are ordinary ci stages (Runner-dispatchable); publish.sh handles
+ *   the primary-checkout requirement itself.
+ * @example isPublishCommand('./publish.sh --detect') => true
+ * @param {unknown} command - Stage `command` or `script` value.
+ * @returns {boolean}
+ ***/
+export function isPublishCommand(command) {
+	if (typeof command !== "string" || command.length === 0) return false;
+	return PUBLISH_COMMAND_PATTERN.test(command);
 }
 
 /***

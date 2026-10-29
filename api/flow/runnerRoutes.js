@@ -78,6 +78,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				kind: "ci",
 				command: expandStageCommand(resolved.command || resolved.script || "echo 'CI stage completed'", ctx),
 				timeoutMs: resolveCiTimeoutMs(resolved, project),
+				runOnBranch: typeof resolved.runOnBranch === "string" ? resolved.runOnBranch : "task",
 			};
 		} catch { return { kind: "ci", command: resolved.command || resolved.script || "", timeoutMs: 600000 }; }
 	};

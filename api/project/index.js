@@ -7,7 +7,7 @@
  ***/
 
 export { inferAliasRenames } from './aliasRenames.js';
-export { DEPLOY_COMMAND_PATTERN, HOST_COMMAND_PATTERN, isDeployCommand, isHostCommand, DEFAULT_DEPLOY_COMMAND } from './deployCommands.js';
+export { DEPLOY_COMMAND_PATTERN, HOST_COMMAND_PATTERN, PUBLISH_COMMAND_PATTERN, isDeployCommand, isHostCommand, isPublishCommand, DEFAULT_DEPLOY_COMMAND } from './deployCommands.js';
 export { DEFAULT_STAGES, normalizeStageType, normalizeStageSkills, normalizeStage, migrateMergeDeployStages, normalizeStages } from './stageNormalizers.js';
 export { RETRY_SETTING_KEYS, normalizeRetryCount, normalizeTimeoutMs, normalizeRetryEnabled, normalizeProjectRetrySettings } from './retrySettings.js';
 export { APP_STATUS_VALUES, normalizeAppStatus } from './appStatus.js';

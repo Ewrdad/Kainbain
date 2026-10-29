@@ -74,7 +74,7 @@ describe("normalizeStage", () => {
 	});
 
 	it("stamps hostOnly on host-command ci stages only (DA9)", () => {
-		expect(normalizeStage({ id: "1", type: "ci", command: "./publish.sh --detect" }).hostOnly).toBe(true);
+		expect("hostOnly" in normalizeStage({ id: "1", type: "ci", command: "./publish.sh --detect" })).toBe(false);
 		expect(normalizeStage({ id: "1", type: "ci", command: "./deploy.sh --prod" }).hostOnly).toBe(true);
 		expect("hostOnly" in normalizeStage({ id: "1", type: "ci", command: "npm test" })).toBe(false);
 		expect("hostOnly" in normalizeStage({ id: "1", type: "agent", command: "./deploy.sh --prod" })).toBe(false);

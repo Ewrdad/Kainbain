@@ -16,7 +16,17 @@ import {
 	applyBackendPrompt,
 	startClaimRenewal,
 	RUNNER_API_VERSION,
+	ciWorkdirFor,
 } from "./daemon.js";
+
+describe("ciWorkdirFor", () => {
+	it("runs primary stages in the primary checkout, task stages in the worktree", () => {
+		assert.equal(ciWorkdirFor({ runOnBranch: "primary", workdir: "/w/kb-t", projectCwd: "/repo" }), "/repo");
+		assert.equal(ciWorkdirFor({ runOnBranch: "task", workdir: "/w/kb-t", projectCwd: "/repo" }), "/w/kb-t");
+		assert.equal(ciWorkdirFor({ runOnBranch: "", workdir: "/w/kb-t", projectCwd: "/repo" }), "/w/kb-t");
+		assert.equal(ciWorkdirFor({ runOnBranch: "primary", workdir: "/w/kb-t", projectCwd: "" }), "/w/kb-t");
+	});
+});
 
 describe("RUNNER_API_VERSION", () => {
 	it("equals runner/version.json apiVersion", () => {

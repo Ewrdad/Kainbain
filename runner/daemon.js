@@ -380,6 +380,30 @@ export async function deliverSteers({ config, client, logger, facts, state }) {
 export const CI_TIMEOUT_EXIT_CODE = 124;
 
 /***
+ * MARK: ciWorkdirFor
+ * @description Working directory for a dispatched CI stage: the task
+ *   worktree by default, or the primary checkout (project.cwd on this host)
+ *   when the stage declares runOnBranch 'primary' — the same contract the
+ *   backend's embedded path honours. Post-merge stages (e.g. publish) need
+ *   the primary tree, not the task branch.
+ * @example ciWorkdirFor({ runOnBranch: 'primary', workdir: '/w/kb-t', projectCwd: '/repo' }) => '/repo'
+ * @example ciWorkdirFor({ runOnBranch: 'task', workdir: '/w/kb-t', projectCwd: '/repo' }) => '/w/kb-t'
+ * @param {Object} opts - `{ runOnBranch, workdir, projectCwd }`.
+ * @returns {string} Directory the CI command runs in.
+ ***/
+export function ciWorkdirFor({ runOnBranch, workdir, projectCwd } = {}) {
+	if (
+		typeof runOnBranch === "string" &&
+		runOnBranch.trim().toLowerCase() === "primary" &&
+		typeof projectCwd === "string" &&
+		projectCwd
+	) {
+		return projectCwd;
+	}
+	return workdir;
+}
+
+/***
  * MARK: runCiCommand
  * @description Runs one backend-dispatched CI/command stage in the worktree:
  *   shell command (already keyword-expanded by the backend, backend cwd
@@ -477,6 +501,7 @@ async function executeAssignment({
 	ciTimeoutMs = 0,
 	model = null,
 	harnessId = null,
+	runOnBranch = "",
 }) {
 	const servingHarnessId = harnessId || config.harnessId || "unknown";
 		const project = await client.getProject(projectId);
@@ -493,6 +518,7 @@ async function executeAssignment({
 		if (!kind && typeof claim.kind === "string") kind = claim.kind;
 		if (!ciCommand && typeof claim.command === "string") ciCommand = claim.command;
 		if (!ciTimeoutMs && Number(claim.timeoutMs)) ciTimeoutMs = Number(claim.timeoutMs);
+		if (!runOnBranch && typeof claim.runOnBranch === "string") runOnBranch = claim.runOnBranch;
 		// Publish the live execution for the steer pull cycle (D5); the
 		// heartbeat loop only ever delivers steers for THIS execution.
 		state.executionId = executionId;
@@ -576,17 +602,18 @@ async function executeAssignment({
 			}
 
 			if (kind === "ci") {
-				const command = applyBackendPrompt({ prompt: ciCommand, backendCwd: project.cwd, workdir });
-				logger.log(`CI stage command: ${command}`);
+				const ciWorkdir = ciWorkdirFor({ runOnBranch, workdir, projectCwd: project.cwd });
+				const command = applyBackendPrompt({ prompt: ciCommand, backendCwd: project.cwd, workdir: ciWorkdir });
+				logger.log(`CI stage command: ${command} (cwd ${ciWorkdir})`);
 				const ci = await runCiCommand({
-					command, workdir,
+					command, workdir: ciWorkdir,
 					timeoutMs: ciTimeoutMs || 600000,
 					env: { KAINBAIN_TASK_ID: taskId, KAINBAIN_TASK_DOCS: `${workdir}/docs/tasks/${taskId}` },
 					onLog: (text) => { sendLogs(text).catch(() => {}); },
 				});
 				state.session = null; stopRenewal();
 				await client.progress({ taskId, projectId, executionId, epoch, stageId, event: "finished" });
-				const sha = (await runGit(workdir, ["rev-parse", "HEAD"])).stdout.trim();
+				const sha = (await runGit(ciWorkdir, ["rev-parse", "HEAD"])).stdout.trim();
 				if (ci.exitCode !== 0) {
 					const failureReason = ci.timedOut
 						? `CI command timed out after ${ci.timeoutMs}ms`
@@ -846,6 +873,7 @@ export async function runDispatchLoop({
 				backendPrompt: answer.prompt || "",
 				kind: answer.kind || "",
 				ciCommand: answer.command || "",
+				runOnBranch: answer.runOnBranch || "",
 				ciTimeoutMs: Number(answer.timeoutMs) || 0,
 				// The backend already matched this task against our
 				// advertised models: serve exactly its required model.

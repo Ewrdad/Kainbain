@@ -23,10 +23,11 @@ export const DEPLOY_COMMAND_PATTERN = /(?:deploy|publish|redeploy)\.sh/;
 
 /***
  * MARK: HOST_COMMAND_PATTERN
- * @description Alias of DEPLOY_COMMAND_PATTERN for host-command classification.
+ * @description Host commands (deploy/redeploy only; publish is ordinary ci).
  * @example HOST_COMMAND_PATTERN.test('./redeploy.sh --frontend') => true
+ * @example HOST_COMMAND_PATTERN.test('./publish.sh --detect') => false
  ***/
-export const HOST_COMMAND_PATTERN = DEPLOY_COMMAND_PATTERN;
+export const HOST_COMMAND_PATTERN = /(?:deploy|redeploy)\.sh/;
 
 /***
  * MARK: isDeployCommand
@@ -55,7 +56,8 @@ export function isDeployCommand(command) {
  * @returns {boolean}
  ***/
 export function isHostCommand(command) {
-	return isDeployCommand(command);
+	if (typeof command !== "string" || command.length === 0) return false;
+	return HOST_COMMAND_PATTERN.test(command);
 }
 
 /***

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_DEPLOY_COMMAND, DEPLOY_COMMAND_PATTERN, isDeployCommand, isHostCommand } from "./deployCommands.js";
-import { isDeployCommand as markersIsDeployCommand, DEPLOY_COMMAND_PATTERN as MARKERS_PATTERN } from "../continuity/deployMarkers.js";
+import { DEFAULT_DEPLOY_COMMAND, DEPLOY_COMMAND_PATTERN, isDeployCommand, isHostCommand, isPublishCommand } from "./deployCommands.js";
+import { isDeployCommand as markersIsDeployCommand, isHostCommand as markersIsHostCommand, DEPLOY_COMMAND_PATTERN as MARKERS_PATTERN } from "../continuity/deployMarkers.js";
 
 describe("isDeployCommand", () => {
 	it("matches deploy.sh commands", () => {
@@ -21,12 +21,19 @@ describe("isDeployCommand", () => {
 });
 
 describe("host commands (DA9)", () => {
-	it("classifies publish/redeploy/deploy scripts as host commands in both detectors", () => {
-		for (const cmd of ["./publish.sh --detect", "./redeploy.sh --frontend", "./deploy.sh --prod"]) {
+	it("classifies redeploy/deploy scripts as host commands in both detectors; publish is ordinary ci", () => {
+		for (const cmd of ["./redeploy.sh --frontend", "./deploy.sh --prod"]) {
 			expect(isDeployCommand(cmd)).toBe(true);
 			expect(isHostCommand(cmd)).toBe(true);
+			expect(markersIsHostCommand(cmd)).toBe(true);
 			expect(markersIsDeployCommand(cmd)).toBe(true);
 		}
+		// publish.sh is a standard ci stage (runner-dispatchable); publish.sh
+		// itself re-execs into the primary checkout from a runner worktree.
+		expect(isDeployCommand("./publish.sh --detect")).toBe(true);
+		expect(isPublishCommand("./publish.sh --detect")).toBe(true);
+		expect(isHostCommand("./publish.sh --detect")).toBe(false);
+		expect(markersIsHostCommand("./publish.sh --detect")).toBe(false);
 		expect(isHostCommand("npm test")).toBe(false);
 		expect(markersIsDeployCommand("npm test")).toBe(false);
 	});

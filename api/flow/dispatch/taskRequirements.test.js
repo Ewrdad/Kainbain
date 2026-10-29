@@ -46,7 +46,9 @@ describe("taskRequirements", () => {
 	});
 
 	test("host-command ci stages are not Runner-runnable; ordinary ci stages still are", () => {
-		for (const command of ["./publish.sh --detect", "./redeploy.sh --frontend", "./deploy.sh --prod"]) {
+		const publish = taskRequirements({}, { currentStageId: "s1", stages: [{ id: "s1", type: "ci", command: "./publish.sh --detect" }] });
+		expect(publish).toMatchObject({ runnableType: true, hostCommand: false, kind: "ci" });
+		for (const command of ["./redeploy.sh --frontend", "./deploy.sh --prod"]) {
 			const out = taskRequirements({}, { currentStageId: "s1", stages: [{ id: "s1", type: "ci", command }] });
 			expect(out).toMatchObject({ runnableType: false, hostCommand: true, kind: "ci" });
 		}

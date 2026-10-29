@@ -10,6 +10,7 @@
 # 78 refused from a task worktree (kb/* branch).
 set -uo pipefail
 cd "$(dirname "$0")"
+ORIG_ARGS=("$@")
 
 MODE="detect"; BASE=""; DRY_RUN=0; FAST=0
 COMPONENTS=""
@@ -35,9 +36,18 @@ run() {
 }
 
 # --- Preflight (a): primary checkout only --------------------------------
+# A Runner executes publish.sh as an ordinary ci stage inside the per-task
+# worktree (branch kb/*). Publishing must ship merged main, so from a task
+# worktree we re-exec ourselves in the primary checkout (first worktree).
 _branch="$(git branch --show-current 2>/dev/null || true)"
 case "$_branch" in
   kb/*)
+    _primary="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')"
+    if [ -n "$_primary" ] && [ "$_primary" != "$PWD" ]; then
+      echo "publish: running from task worktree (branch $_branch) — re-exec in primary checkout $_primary"
+      cd "$_primary"
+      exec ./publish.sh "${ORIG_ARGS[@]}"
+    fi
     echo "publish.sh: refusing to run from a task worktree (branch kb/*) — deploy/publish stages must run on the primary checkout" >&2
     exit 78 ;;
 esac
