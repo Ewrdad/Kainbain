@@ -1,3 +1,5 @@
+import { AppLinkSection } from './AppLinkSection';
+
 /***
  * MARK: PathsAndReposSection
  * @description Files & Repositories block of the project settings form:
@@ -50,6 +52,9 @@ export function PathsAndReposSection({
   resetReviewBaseline,
   setResetReviewBaseline,
   clearValidationError,
+  project,
+  projectId,
+  updateProjectInState,
 }) {
   return (
     <div className="space-y-8">
@@ -274,6 +279,15 @@ export function PathsAndReposSection({
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Application Link & Health (saves independently of the main form) */}
+      <div className="border-t border-border-standard pt-8">
+        <AppLinkSection
+          project={project}
+          projectId={projectId}
+          onChanged={updateProjectInState}
+        />
       </div>
     </div>
   );

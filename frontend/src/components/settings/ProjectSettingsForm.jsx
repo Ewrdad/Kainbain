@@ -13,7 +13,6 @@ import { parseRetrySettings } from './projectSettingsValidation';
 import { ProjectBasicsSection } from './ProjectBasicsSection';
 import { RetryTimeoutsSection } from './RetryTimeoutsSection';
 import { PathsAndReposSection } from './PathsAndReposSection';
-import { LinksSection } from './LinksSection';
 
 /***
  * MARK: ProjectSettingsForm
@@ -48,9 +47,7 @@ export function ProjectSettingsForm({
   // (kept local to avoid a render-cycle import between the tab bar and the
   // form); the "tab config, section allowlists, and search index agree"
   // test pins them together, so adding a form tab means updating both.
-  const activeFormSection = ['project', 'aliases', 'files', 'links'].includes(section)
-    ? section
-    : 'project';
+  const activeFormSection = ['project', 'aliases', 'files'].includes(section) ? section : 'project';
   const {
     notifySuccess,
     notifyError,
@@ -649,12 +646,11 @@ export function ProjectSettingsForm({
         </div>
       )}
 
-      {activeFormSection === 'links' && (
-        <LinksSection project={project} projectId={projectId} onChanged={updateProjectInState} />
-      )}
-
       {activeFormSection === 'files' && (
         <PathsAndReposSection
+          project={project}
+          projectId={projectId}
+          updateProjectInState={updateProjectInState}
           cwd={cwd}
           setCwd={touch(setCwd)}
           notesDir={notesDir}
