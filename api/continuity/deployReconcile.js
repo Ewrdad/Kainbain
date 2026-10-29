@@ -42,6 +42,8 @@ import {
 	deployFailureReasonText,
 	resolveDeployFailureContext,
 } from "./deployStageFailure.js";
+import { checkoutBranch, defaultBranch } from "../git/branch.js";
+import { syncDefaultBranchToRemote } from "../git/remote.js";
 
 /***
  * MARK: isContinuityDeployStage
@@ -124,10 +126,94 @@ export function collectContinuityResumeEvidence(
 }
 
 /***
+ * MARK: syncDeploySourceToTip
+ * @description Best-effort pre-deploy sync: converges the deploy source
+ *   checkout to the integration tip BEFORE the deploy builds it. A Runner
+ *   merge pushes the landed tip to origin but never touches this checkout,
+ *   so without this the deploy ships whatever the tree happens to hold
+ *   (prod stayed behind main even when the deploy itself ran). Ensures the
+ *   working tree is on the default branch (safe checkout: refuses on
+ *   genuinely dirty trees) and fast-forwards its ref to the remote tip.
+ *   Never throws: every failure mode resolves to a skipped result with an
+ *   audit line, and deploy.sh's tip guard parks loudly instead of shipping
+ *   stale code when the sync cannot converge.
+ * @example await syncDeploySourceToTip(store, task, '/repo') => { synced: true, ... }
+ * @param {Object} store - Task store (audit helpers are best-effort).
+ * @param {Object} task - The task entity (audit context).
+ * @param {string} cwd - Deploy source checkout.
+ * @returns {Promise<Object>} `{ synced, skipped, mainBranch, before, after, detail }` (never throws).
+ ***/
+export async function syncDeploySourceToTip(store, task, cwd) {
+	const skipped = (reason, detail = null) => ({
+		synced: false,
+		skipped: reason,
+		mainBranch: null,
+		before: null,
+		after: null,
+		detail,
+	});
+	const note = (action) => {
+		try {
+			store?._recordHistory?.(task, action, new Date().toISOString());
+		} catch {
+			// Audit is best-effort; the sync result still applies.
+		}
+		try {
+			_appendProcessLog(task, `[DEPLOY] ${action}`);
+		} catch {
+			// Audit is best-effort; the sync result still applies.
+		}
+	};
+	try {
+		if (!cwd || typeof cwd !== "string" || !cwd.trim()) {
+			return skipped("no-cwd");
+		}
+		let branch = null;
+		try {
+			branch = await defaultBranch(cwd);
+		} catch (e) {
+			return skipped("no-main", e?.message || String(e));
+		}
+		if (!branch) return skipped("no-main");
+		try {
+			await checkoutBranch(cwd, branch);
+		} catch (e) {
+			// Dirty tree / locked worktree: leave the source untouched and
+			// loud. deploy.sh's tip guard will park instead of shipping it.
+			const detail = e?.message || String(e);
+			note(`Pre-deploy tip sync: refusing to check out '${branch}' (${detail}) — deploy will park on its tip guard until the tree is clean`);
+			return skipped("checkout-refused", detail);
+		}
+		const res = await syncDefaultBranchToRemote(cwd, { mainBranch: branch });
+		if (res?.synced) {
+			const short = (sha) => (typeof sha === "string" && sha ? sha.slice(0, 7) : "unknown");
+			note(
+				`Pre-deploy tip sync: '${res.mainBranch || branch}' ${short(res.before)} → ${short(res.after)}${res.detail ? ` (${res.detail})` : ""}`,
+			);
+		} else if (res?.skipped && res.skipped !== "already-in-sync") {
+			note(
+				`Pre-deploy tip sync skipped (${res.skipped}${res.detail ? `: ${res.detail}` : ""}) — deploy will park on its tip guard unless the source already matches the tip`,
+			);
+		}
+		return {
+			synced: Boolean(res?.synced),
+			skipped: res?.skipped ?? null,
+			mainBranch: res?.mainBranch ?? branch,
+			before: res?.before ?? null,
+			after: res?.after ?? null,
+			detail: res?.detail ?? null,
+		};
+	} catch (e) {
+		return skipped("error", e?.message || String(e));
+	}
+}
+
+/***
  * MARK: recordContinuityStageEntry
  * @description Entry hook for the self-deploy continuity plugin: when a
- *   command stage enters and it is a continuity deploy stage, records the
- *   per-attempt entry markers on the task (`deployBuildAtEntry`,
+ *   command stage enters and it is a continuity deploy stage, converges the
+ *   deploy source to the integration tip (best-effort pre-deploy sync) and
+ *   records the per-attempt entry markers on the task (`deployBuildAtEntry`,
  *   `deployAttemptId`, `deployOperationKey`) and contributes the attempt
  *   environment for the child. A re-dispatch of the same stage attempt
  *   reuses the recorded ids so the deploy script recognises its own
@@ -147,6 +233,11 @@ export async function recordContinuityStageEntry(
 		if (!isContinuityDeployStage(stage)) return null;
 		const task = store?.getTask?.(projectId, taskId);
 		if (!task) return null;
+		// Converge the deploy source to the integration tip BEFORE the
+		// deploy builds it (Runner merges land on the remote, never here).
+		// Best-effort and never throws: a refusal is audited and deploy.sh's
+		// tip guard parks loudly instead of shipping stale code.
+		await syncDeploySourceToTip(store, task, cwd);
 		const entryBuild = readDeployEntryBuild(store);
 		const recordedAttempt =
 			typeof task.deployAttemptId === "string" ? task.deployAttemptId.trim() : "";
@@ -593,6 +684,12 @@ export function noteDeployReconcileParked(store, task, cwd) {
  *
  *   Decision table (WP6 — no permanent `interrupted` parking for marked stages):
  *     - result fresh for THIS attempt + success → advance without re-running;
+ *     - result fresh + `deploying`, or a `deploying` checkpoint with a dead
+ *       pid → resume (the re-dispatched stage re-runs to a terminal result);
+ *       `deploying` only proves gates passed and NEVER advances the stage —
+ *       completing on it left prod behind main;
+ *     - `deploying` checkpoint with a live pid → wait (the surviving deploy
+ *       writes its own terminal result);
  *     - result fresh + failure → park/failback with evidence (landed merges
  *       keep `skipFailback`);
  *     - result rolled-back → failback with evidence, never resume;
@@ -730,6 +827,30 @@ export async function reconcileInterruptedDeploys(store) {
 					});
 					continue;
 				}
+				// A `deploying` marker with a LIVE pid: the deploy process
+				// survived the restart (systemd transient unit) and will
+				// write its own terminal result — wait for it exactly like a
+				// `running` checkpoint. A dead pid means the deploy died
+				// mid-restart: fall through to the resume path below (the
+				// re-dispatched stage re-runs to a terminal result).
+				// `deploying` NEVER completes the stage — it only proves
+				// gates passed, and completing on it left prod behind main.
+				// Freshness is deliberately NOT a wait signal here: the
+				// heartbeat ticker stops before the pre-restart marker is
+				// written, so its updatedAt is frozen at marker time and only
+				// a live pid proves survival.
+				if (
+					checkpoint &&
+					String(checkpoint.status || "").toLowerCase() === "deploying" &&
+					Number.isInteger(Number(checkpoint.pid)) &&
+					store?.deployManager?.isPidAlive?.(Number(checkpoint.pid)) === true
+				) {
+					noteDeployAttemptInFlight(store, task, project.cwd, {
+						attemptId,
+						pid: Number(checkpoint.pid),
+					});
+					continue;
+				}
 				// Operation-key backstop (C5): when the per-dispatch attempt
 				// id was lost (markers cleared, watchdog race) the
 				// re-dispatch minted a fresh id that addresses no checkpoint
@@ -745,11 +866,20 @@ export async function reconcileInterruptedDeploys(store) {
 						: "";
 				if (!checkpoint && operationKey) {
 					const opCheckpoint = findDeployCheckpointByOperationKey(store, operationKey);
+					// `running` waits on liveness or heartbeat freshness;
+					// `deploying` waits on a live pid only (its updatedAt is
+					// frozen at marker time — see above). Anything else keeps
+					// last-result attribution below.
+					const opStatus = String(opCheckpoint?.status || "").toLowerCase();
+					const opPid = Number(opCheckpoint?.pid);
 					if (
 						opCheckpoint &&
-						String(opCheckpoint.status || "").toLowerCase() === "running" &&
-						(isDeployAttemptInFlight(store, opCheckpoint) ||
-							isDeployCheckpointFresh(opCheckpoint))
+						((opStatus === "running" &&
+							(isDeployAttemptInFlight(store, opCheckpoint) ||
+								isDeployCheckpointFresh(opCheckpoint))) ||
+							(opStatus === "deploying" &&
+								Number.isInteger(opPid) &&
+								store?.deployManager?.isPidAlive?.(opPid) === true))
 					) {
 						noteDeployAttemptInFlight(store, task, project.cwd, {
 							attemptId:
@@ -762,8 +892,17 @@ export async function reconcileInterruptedDeploys(store) {
 
 				const fresh =
 					hasResult && isDeployResultNewerThanEntry({ task, lastResult });
-				if (fresh) {
-					if (lastResult.status === "success" || lastResult.status === "deploying") {
+				// A fresh `deploying` result is NOT success evidence — the
+				// pre-restart marker only proves gates passed. It skips the
+				// whole fresh-outcome handling below (never completes, never
+				// parks as failed) and falls through to the per-attempt
+				// checkpoint and then the resume path, so the stage re-runs
+				// to a terminal result. Completing on it left prod behind
+				// main.
+				const freshDeploying =
+					fresh && String(lastResult.status || "").toLowerCase() === "deploying";
+				if (fresh && !freshDeploying) {
+					if (lastResult.status === "success") {
 						completeDeployStage(
 							store,
 							project.id,
@@ -853,12 +992,15 @@ export async function reconcileInterruptedDeploys(store) {
 				}
 
 				// Remaining per-attempt checkpoint outcomes (the in-flight
-				// `running` case was handled above, BEFORE the host-wide
+				// `running` case — and a `deploying` marker with a live pid —
+				// were handled above, BEFORE the host-wide
 				// `last-result.json`): a terminal status means this attempt's
 				// deploy already ran — adopt its outcome without re-dispatching.
+				// `deploying` is NOT terminal and never completes here: with a
+				// dead pid it falls through to the resume path below.
 				if (checkpoint) {
 					const checkpointStatus = String(checkpoint.status || "").toLowerCase();
-					if (checkpointStatus === "success" || checkpointStatus === "deploying") {
+					if (checkpointStatus === "success") {
 						completeDeployStage(store, project.id, task.id, stage, stages, project.cwd, {
 							buildNumber:
 								checkpoint.buildNumber ??
@@ -903,9 +1045,10 @@ export async function reconcileInterruptedDeploys(store) {
 						reconciled.push({ projectId: project.id, taskId: task.id });
 						continue;
 					}
-					// `running` checkpoint with a dead pid AND a stale updatedAt:
-					// the deploy died before writing a result — fall through
-					// to the resume path.
+					// `running` checkpoint with a dead pid AND a stale updatedAt
+					// (or any `deploying` checkpoint that reached here, i.e.
+					// with a dead pid): the deploy died before writing a
+					// result — fall through to the resume path.
 				}
 
 				// Missing/stale result BUT rehydration markers prove which
