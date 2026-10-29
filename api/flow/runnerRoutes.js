@@ -624,6 +624,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				taskId: request.params.id,
 				runnerId: runner.runnerId,
 				executionId: request.body?.executionId ?? null,
+				reason: request.body?.reason ?? null,
 			});
 		} catch (err) {
 			return sendStoreError(reply, err);

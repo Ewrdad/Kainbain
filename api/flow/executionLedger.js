@@ -349,6 +349,7 @@ export class ExecutionLedger {
 		taskId,
 		runnerId,
 		executionId = null,
+		reason = null,
 	}) {
 		const hold = claimStore.describe(taskId);
 		if (
@@ -381,9 +382,11 @@ export class ExecutionLedger {
 			task.runnerInterruptStage = stageId;
 			task.runnerInterruptCount = interruptCount;
 			task.status = "interrupted";
+			const cleanReason =
+				typeof reason === "string" && reason.trim() ? reason.trim().slice(0, 500) : "";
 			task?.history?.push({
 				timestamp: new Date().toISOString(),
-				action: `Runner ${runnerId} interrupted execution ${executionId ?? hold?.executionId ?? "?"} — lease dropped, re-queues as interrupted.`,
+				action: `Runner ${runnerId} interrupted execution ${executionId ?? hold?.executionId ?? "?"} — lease dropped, re-queues as interrupted.${cleanReason ? ` Reason: ${cleanReason}` : ""}`,
 			});
 			if (escalated) {
 				this.counters.interruptEscalations += 1;
