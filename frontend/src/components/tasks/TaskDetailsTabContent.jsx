@@ -12,7 +12,6 @@ import { approvalCopy } from '../stageTypes';
 import { FailureMessage } from './FailureMessage';
 
 export function TaskDetailsTab({
-  activeProject,
   activeProjectId,
   approvalGuidance,
   completeTask,
