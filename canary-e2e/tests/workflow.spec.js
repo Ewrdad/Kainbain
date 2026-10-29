@@ -63,25 +63,22 @@ test.describe("Workflow E2E Tests", () => {
 		await expect(page.getByRole("button", { name: /Reject/i }).first()).toBeVisible();
 	});
 
-	test("Engine controls: Start engine, skip current stage, and Look Back in Now Playing Bar", async ({
+	test("Now Playing bar: runner boxes own play/skip, no global engine controls", async ({
 		page,
 	}) => {
-		// The engine toggle lives in the Now Playing bar
-		const engineBtn = page.getByRole("button", { name: /Start Engine|Stop Engine/i });
-		await expect(engineBtn).toBeVisible({ timeout: 15000 });
-
-		// 4 Transport controls (Critique #9)
-		const lookBackBtn = page.getByRole("button", { name: /Look Back/i });
-		await expect(lookBackBtn).toBeVisible();
-
-		const jumpActiveBtn = page.getByRole("button", { name: /Jump to Active/i });
-		await expect(jumpActiveBtn).toBeVisible();
-
-		const skipBtn = page.getByRole("button", { name: /Skip Current/i });
-		await expect(skipBtn).toBeVisible();
-
-		const lookForwardBtn = page.getByRole("button", { name: /Look Forward/i });
-		await expect(lookForwardBtn).toBeVisible();
+		// The global transport cluster was retired: no engine toggle, no
+		// Look Back / Jump to Active / Skip Current / Look Forward. Play
+		// and skip live on each runner box instead.
+		await expect(page.locator("footer.fixed")).toBeVisible({ timeout: 15000 });
+		await expect(
+			page.getByRole("button", { name: "Start Engine", exact: true }),
+		).toHaveCount(0);
+		await expect(
+			page.getByRole("button", { name: "Stop Engine", exact: true }),
+		).toHaveCount(0);
+		for (const name of ["Look Back", "Jump to Active", "Skip Current", "Look Forward"]) {
+			await expect(page.getByRole("button", { name, exact: true })).toHaveCount(0);
+		}
 
 		// Active task and honest live indicators are visible: elapsed timer +
 		// queue-depth chip. The fake percentage progressbar was removed (no

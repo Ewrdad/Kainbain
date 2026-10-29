@@ -31,7 +31,7 @@ test.describe("KainBain Functional E2E Tests", () => {
 		).toBeVisible();
 	});
 
-	test("now playing bar with engine controls", async ({ page }) => {
+	test("now playing bar with runner fleet boxes", async ({ page }) => {
 		await waitForAppReady(page);
 		// The Now Playing bar shows an active task label, the live elapsed timer
 		// and the live queue-depth chip. (The old fabricated "Progress"
@@ -45,13 +45,28 @@ test.describe("KainBain Functional E2E Tests", () => {
 		);
 		await expect(queueChip).toBeVisible();
 		await expect(page.locator("footer.fixed").getByText(/Stage \d+ of \d+/)).toHaveCount(0);
-		// Play/pause toggle (Start/Stop engine) is present
+		// No global transport cluster: play/skip live on the runner boxes now,
+		// so the old engine toggle and Look Back/Forward/Jump/Skip buttons
+		// must all be gone.
 		await expect(
-			page.getByRole("button", { name: /Start Engine|Stop Engine/i }),
+			page.getByRole("button", { name: "Start Engine", exact: true }),
+		).toHaveCount(0);
+		await expect(
+			page.getByRole("button", { name: "Stop Engine", exact: true }),
+		).toHaveCount(0);
+		for (const name of ["Look Back", "Look Forward", "Jump to Active", "Skip Current"]) {
+			await expect(
+				page.getByRole("button", { name, exact: true }),
+			).toHaveCount(0);
+		}
+		// Fleet roster: runner boxes when Runners are configured, else the
+		// idle hint — the bar never renders an empty state.
+		await expect(
+			page.getByTestId("now-playing-runner-boxes").or(page.getByTestId("now-playing-idle-hint")),
 		).toBeVisible();
 	});
 
-	test("right rail never overlaps the center transport controls at any supported width", async ({
+	test("right rail never overlaps the runner boxes at any supported width", async ({
 		page,
 	}) => {
 		/**
@@ -59,14 +74,16 @@ test.describe("KainBain Functional E2E Tests", () => {
 		 * @description Regression gate for a real layout defect: the redesigned
 		 *   right rail (queue chip / elapsed timer / health light) is fixed-width
 		 *   nowrap content in a flex box, and between 640 and ~1190px it used to
-		 *   overflow LEFTWARD on top of the center transport buttons — at the
+		 *   overflow LEFTWARD on top of the bar's center controls — at the
 		 *   1024px Tablet baseline the Look Forward button was half-buried behind
 		 *   the queue chip. The rail now hides its decorative extras (health
 		 *   light + dividers) below `xl` and clips overflow, so at every supported
-		 *   viewport no center transport button rect may intersect any right-rail
+		 *   viewport no runner-box control rect may intersect any right-rail
 		 *   child rect. 800px and 1024px are the exact widths from the defect
 		 *   report; 640/768 cover the sm/md edges; 1280 proves the full rail
-		 *   (health light shown) still fits once `xl` is reached.
+		 *   (health light shown) still fits once `xl` is reached. (The global
+		 *   transport cluster is gone — play/skip live on the runner boxes —
+		 *   so the gate measures the per-runner box buttons instead.)
 		 */
 		for (const width of [640, 768, 800, 900, 1024, 1280]) {
 			await page.setViewportSize({ width, height: 720 });
@@ -89,9 +106,13 @@ test.describe("KainBain Functional E2E Tests", () => {
 				};
 				const footer = document.querySelector("footer.fixed");
 				if (!footer) return { error: "footer.fixed not found" };
+				// The global transport cluster is gone — play/skip live on
+				// the runner boxes — so the gate measures the per-runner box
+				// buttons (empty when no Runners are configured, which is
+				// itself overlap-free).
 				const centerButtons = [
 					...footer.querySelectorAll(
-						'#main-play-btn, [aria-label="Look Back"], [aria-label="Jump to Active"], [aria-label="Skip Current"], [aria-label="Look Forward"]',
+						'[data-testid="now-playing-runner-boxes"] button',
 					),
 				].filter((el) => el.getBoundingClientRect().width > 0);
 				const rail = footer.querySelector("[data-testid='now-playing-right-rail']");
@@ -116,10 +137,9 @@ test.describe("KainBain Functional E2E Tests", () => {
 				};
 			});
 			expect(result.error, `at ${width}px: ${result.error}`).toBeUndefined();
-			expect(result.centerCount, `at ${width}px all 5 transport buttons should be rendered`).toBe(5);
 			expect(
 				result.overlaps,
-				`at ${width}px the center transport controls must not be covered by the right rail (measured ${result.centerCount} buttons vs ${result.railCount} rail children)`,
+				`at ${width}px the runner-box controls must not be covered by the right rail (measured ${result.centerCount} box buttons vs ${result.railCount} rail children)`,
 			).toEqual([]);
 
 			// The shrink path must never hide the honest live data — only the

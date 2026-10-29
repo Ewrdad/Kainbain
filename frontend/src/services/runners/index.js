@@ -20,5 +20,7 @@ export function runnerRequests(request) {
       request(`/runners/${encodeURIComponent(id)}/pause`, { method: 'POST' }),
     resumeRunner: (id) =>
       request(`/runners/${encodeURIComponent(id)}/resume`, { method: 'POST' }),
+    skipRunner: (id) =>
+      request(`/runners/${encodeURIComponent(id)}/skip`, { method: 'POST' }),
   };
 }

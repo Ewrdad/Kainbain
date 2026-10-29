@@ -15,7 +15,11 @@ import {
  * @description E2E pin for the single-pipeline contract: the Now Playing bar
  *   is ONE bar for ALL projects — switching the selected project must never
  *   change its named task, status badge, elapsed timer, or queue depth, and
- *   Skip must advance the engine owner even when another project is selected.
+ *   advancing the engine owner keeps the bar put even when another project
+ *   is selected. (The old global Skip Current transport is retired —
+ *   per-runner skip on the fleet boxes replaces it — so this spec advances
+ *   the embedded-engine owner through the task advance API, the same call
+ *   the inspector Approve button makes.)
  *   This is the exact user report ("switching project changes the now playing
  *   bar"): before the fix the bar resolved from the ACTIVE-project task list,
  *   so the engine owner vanished from the bar the moment Project B's list
@@ -299,7 +303,7 @@ test.describe("Now Playing bar is one pipeline for all projects", () => {
 		await expect(queueChip(page)).toHaveAttribute("aria-label", depthLabelOnA);
 	});
 
-	test("Skip Current advances the engine owner even when another project is selected", async ({
+	test("advancing the engine owner keeps the bar put even when another project is selected", async ({
 		page,
 		request,
 	}) => {
@@ -332,10 +336,15 @@ test.describe("Now Playing bar is one pipeline for all projects", () => {
 		await waitForAppReadyOnProject(page, "Project B");
 		await expect(ownerName(page)).toContainText(goal, { timeout: 10000 });
 
-		// Skip Current must advance the OWNER's task (in Project A), not the
-		// viewed pipeline's pointer. The transport asks for confirmation.
-		page.once("dialog", (dialog) => dialog.accept());
-		await page.getByRole("button", { name: "Skip Current" }).click();
+		// Advance the OWNER's task (in Project A), not the viewed pipeline's
+		// pointer: the global Skip Current transport is retired (per-runner
+		// skip on the fleet boxes replaces it), so this embedded-engine
+		// owner advances through the task advance API — the same call the
+		// inspector Approve button makes.
+		const advanceRes = await request.post(`${API_BASE}/tasks/${task.id}/advance`, {
+			data: { projectId: projectIdA },
+		});
+		expect(advanceRes.ok()).toBeTruthy();
 
 		// The skipped human gate is the workflow's LAST stage, so the owner
 		// completes — assert server-side truth in Project A while the UI sits

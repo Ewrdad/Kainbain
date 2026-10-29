@@ -93,10 +93,17 @@ test.describe("Mobile Responsive Layout", () => {
 	});
 
 	test("now playing bar is compact and controls are visible without clipping", async ({ page }) => {
-		// Now Playing bar footer
+		// Now Playing bar footer: no global engine toggle anymore — the
+		// runner boxes (or the idle hint when no Runners are configured)
+		// own play/skip per Runner.
 		const nowPlaying = page.locator("footer");
 		await expect(nowPlaying).toBeVisible();
-		await expect(page.getByRole("button", { name: /Start Engine|Stop Engine/i })).toBeVisible();
+		await expect(
+			page.getByRole("button", { name: /Start Engine|Stop Engine/i }),
+		).toHaveCount(0);
+		await expect(
+			page.getByTestId("now-playing-runner-boxes").or(page.getByTestId("now-playing-idle-hint")),
+		).toBeVisible();
 	});
 
 	/***

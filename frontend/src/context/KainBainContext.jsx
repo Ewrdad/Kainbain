@@ -1,5 +1,11 @@
-import React, { useContext } from 'react';
-import { createContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, {
+  createContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useContext,
+} from 'react';
 
 import { useLocation, useNavigate } from 'react-router';
 import { api } from '../services/api';
@@ -438,8 +444,9 @@ export function KainBainProvider({ children }) {
     },
     skipRunner: async (runnerId) => {
       try {
-        // Skip the current task for this runner
-        await api.post(`/runners/${encodeURIComponent(runnerId)}/skip`);
+        // Skip the current task for this runner (operator surface: advances
+        // the held task one stage and releases the lease).
+        await api.skipRunner(runnerId);
         return { success: true };
       } catch (error) {
         return { success: false, error: error.message };

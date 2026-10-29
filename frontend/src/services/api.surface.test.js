@@ -101,6 +101,7 @@ describe('api public surface', () => {
       'revokeRunner',
       'sessionHistory',
       'sessionStatus',
+      'skipRunner',
       'skipStage',
       'startWorkflow',
       'steer',
