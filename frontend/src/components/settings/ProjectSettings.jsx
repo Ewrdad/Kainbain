@@ -81,8 +81,11 @@ export function ProjectSettings() {
   const focusTabAt = (index) => {
     const count = PROJECT_SETTINGS_TABS.length;
     const wrapped = ((index % count) + count) % count;
-    tabButtonRefs.current[wrapped]?.focus();
-    handleSectionChange(PROJECT_SETTINGS_TABS[wrapped].id);
+    // `.at()` reads by index without the bracket-access pattern the
+    // security linter flags; the wrapped index is always in range.
+    tabButtonRefs.current.at(wrapped)?.focus();
+    const tab = PROJECT_SETTINGS_TABS.at(wrapped);
+    if (tab) handleSectionChange(tab.id);
   };
   // Arrow-key navigation between tabs (APG automatic activation: moving
   // focus also selects the tab). Wired per-button rather than on the tablist
@@ -197,6 +200,7 @@ export function ProjectSettings() {
             <button
               key={tab.id}
               ref={(el) => {
+                // eslint-disable-next-line security/detect-object-injection -- index is the map loop counter, always an integer within bounds
                 tabButtonRefs.current[index] = el;
               }}
               id={`project-settings-tab-${tab.id}`}

@@ -162,6 +162,7 @@ export function HarnessSection({
     (rows, currentPrefs, currentProbes) => {
       for (const harness of rows) {
         const id = harness?.id;
+        // eslint-disable-next-line security/detect-object-injection -- id is a harness slug from the API response, used as a lookup key
         if (!id || currentProbes[id]) continue;
         if (prefsForHarness(currentPrefs, id).autoDetect) {
           void probeHarness(id);
@@ -272,6 +273,7 @@ export function HarnessSection({
    ***/
   const handlePrefChange = (id, patch) => {
     updatePref(id, patch);
+    // eslint-disable-next-line security/detect-object-injection -- id is a harness slug from the rendered row, never user input
     if (patch?.autoDetect && !probes[id]) {
       void probeHarness(id);
     }
