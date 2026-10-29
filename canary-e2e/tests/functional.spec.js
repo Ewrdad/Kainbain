@@ -33,13 +33,15 @@ test.describe("KainBain Functional E2E Tests", () => {
 
 	test("now playing bar with runner fleet boxes", async ({ page }) => {
 		await waitForAppReady(page);
-		// The Now Playing bar shows an active task label, the live elapsed timer
-		// and the live queue-depth chip. (The old fabricated "Progress"
-		// percentage bar was removed — no percent-complete data exists in the
-		// stack — and so was the stale workflow-pointer stage label
-		// ("Stage 1 of 10 — Idea"), which never updated.)
+		// The Now Playing bar shows an active task label and the live
+		// queue-depth chip (the right rail is queue-only). (The old fabricated
+		// "Progress" percentage bar was removed — no percent-complete data
+		// exists in the stack — and so was the stale workflow-pointer stage
+		// label ("Stage 1 of 10 — Idea"), which never updated; the elapsed
+		// timer and subsystem health light were removed with the right-rail
+		// trim.)
 		await expect(page.getByText("Active Task", { exact: true })).toBeVisible();
-		await expect(page.locator("#elapsed-counter")).toBeVisible();
+		await expect(page.locator("#elapsed-counter")).toHaveCount(0);
 		const queueChip = page.getByLabel(
 			/Execution queue: \d+ open tasks? across all pipelines/,
 		);
@@ -71,19 +73,19 @@ test.describe("KainBain Functional E2E Tests", () => {
 	}) => {
 		/**
 		 * MARK: right-rail overlap gate
-		 * @description Regression gate for a real layout defect: the redesigned
-		 *   right rail (queue chip / elapsed timer / health light) is fixed-width
+		 * @description Regression gate for a real layout defect: the right rail
+		 *   used to hold queue chip / elapsed timer / health light as fixed-width
 		 *   nowrap content in a flex box, and between 640 and ~1190px it used to
 		 *   overflow LEFTWARD on top of the bar's center controls — at the
 		 *   1024px Tablet baseline the Look Forward button was half-buried behind
-		 *   the queue chip. The rail now hides its decorative extras (health
-		 *   light + dividers) below `xl` and clips overflow, so at every supported
-		 *   viewport no runner-box control rect may intersect any right-rail
-		 *   child rect. 800px and 1024px are the exact widths from the defect
-		 *   report; 640/768 cover the sm/md edges; 1280 proves the full rail
-		 *   (health light shown) still fits once `xl` is reached. (The global
-		 *   transport cluster is gone — play/skip live on the runner boxes —
-		 *   so the gate measures the per-runner box buttons instead.)
+		 *   the queue chip. The rail is now queue-only (single chip) and clips
+		 *   overflow, so at every supported viewport no runner-box control rect
+		 *   may intersect any right-rail child rect. 800px and 1024px are the
+		 *   exact widths from the defect report; 640/768 cover the sm/md edges;
+		 *   1280 proves the single-chip rail still fits once `xl` is reached.
+		 *   (The global transport cluster is gone — play/skip live on the
+		 *   runner boxes — so the gate measures the per-runner box buttons
+		 *   instead.)
 		 */
 		for (const width of [640, 768, 800, 900, 1024, 1280]) {
 			await page.setViewportSize({ width, height: 720 });
@@ -142,9 +144,9 @@ test.describe("KainBain Functional E2E Tests", () => {
 				`at ${width}px the runner-box controls must not be covered by the right rail (measured ${result.centerCount} box buttons vs ${result.railCount} rail children)`,
 			).toEqual([]);
 
-			// The shrink path must never hide the honest live data — only the
-			// decorative extras (health light below `lg`, dividers) may be dropped.
-			await expect(page.locator("#elapsed-counter")).toBeVisible();
+			// The queue-only rail keeps the honest live data visible at every
+			// width; the removed timer/health extras must stay gone.
+			await expect(page.locator("#elapsed-counter")).toHaveCount(0);
 			await expect(
 				page.getByLabel(/Execution queue: \d+ open tasks? across all pipelines/),
 			).toBeVisible();

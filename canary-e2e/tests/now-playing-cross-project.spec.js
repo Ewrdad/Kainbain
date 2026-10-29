@@ -14,7 +14,7 @@ import {
  * MARK: canary now-playing-cross-project.spec
  * @description E2E pin for the single-pipeline contract: the Now Playing bar
  *   is ONE bar for ALL projects — switching the selected project must never
- *   change its named task, status badge, elapsed timer, or queue depth, and
+ *   change its named task, status badge, or queue depth, and
  *   advancing the engine owner keeps the bar put even when another project
  *   is selected. (The old global Skip Current transport is retired —
  *   per-runner skip on the fleet boxes replaces it — so this spec advances
@@ -74,8 +74,6 @@ const ownerName = (page) => page.getByTestId("now-playing-task-name");
 const statusBadge = (page) =>
 	page.locator('span[aria-label^="Engine status is "]');
 const queueChip = (page) => page.locator('div[aria-label^="Execution queue:"]');
-const elapsedTimer = (page) =>
-	page.getByLabel("Elapsed time in current stage");
 
 /***
  * MARK: getEngineState
@@ -227,7 +225,8 @@ test.describe("Now Playing bar is one pipeline for all projects", () => {
 			"aria-label",
 			"Engine status is RUNNING",
 		);
-		await expect(elapsedTimer(page)).toHaveText(/^\d{2}:\d{2}:\d{2}$/);
+		// The right rail is queue-only: no elapsed timer element remains.
+		await expect(page.getByLabel("Elapsed time in current stage")).toHaveCount(0);
 		// Queue depth is GLOBAL (engine-carried, all projects): the owner plus
 		// the two seeded B tasks. Captured once; the project switch must not
 		// move it.
@@ -240,7 +239,7 @@ test.describe("Now Playing bar is one pipeline for all projects", () => {
 		// engine.
 		await waitForAppReadyOnProject(page, "Project B");
 
-		// The bar still names Project A's running owner — name, badge, timer
+		// The bar still names Project A's running owner — name, badge
 		// and queue depth all unchanged. Pre-fix it fell back to B's newest
 		// task (B's list replaced A's) and the depth dropped to B's count.
 		await expect(ownerName(page)).toContainText(goal, { timeout: 10000 });
@@ -248,7 +247,7 @@ test.describe("Now Playing bar is one pipeline for all projects", () => {
 			statusBadge(page),
 			"the status badge must not change when switching projects",
 		).toHaveAttribute("aria-label", "Engine status is RUNNING");
-		await expect(elapsedTimer(page)).toHaveText(/^\d{2}:\d{2}:\d{2}$/);
+		await expect(page.getByLabel("Elapsed time in current stage")).toHaveCount(0);
 		await expect(
 			queueChip(page),
 			"the global queue depth must not change when switching projects",
