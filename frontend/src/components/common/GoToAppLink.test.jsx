@@ -105,6 +105,19 @@ describe('GoToAppLink', () => {
     expect(screen.queryByRole('button', { name: /Check app health/i })).not.toBeInTheDocument();
   });
 
+  it('visually merges the link and refresh into one split button', () => {
+    const { container } = renderWithKainBain(
+      <GoToAppLink projectId="p1" appStatus={{ url: 'http://localhost:3000' }} />,
+    );
+    const group = container.firstChild;
+    expect(group).toHaveClass('overflow-hidden');
+    expect(group.className).toMatch(/border/);
+    const link = screen.getByRole('link', { name: /Open app/i });
+    expect(link.className).not.toMatch(/border-border-standard/);
+    const probe = screen.getByRole('button', { name: /Check app health now/i });
+    expect(probe.className).toMatch(/border-l/);
+  });
+
   it('probes on demand and reports the fresh link record', async () => {
     const fresh = { url: 'http://localhost:3000', isHealthy: true, lastHealthCheck: '2026-10-04T16:05:00.000Z' };
     api.checkAppHealth.mockResolvedValue({ healthy: true, appStatus: fresh });
