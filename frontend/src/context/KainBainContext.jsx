@@ -1,11 +1,5 @@
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-} from 'react';
+import React, { useContext } from 'react';
+import { createContext, useState, useEffect, useCallback, useRef } from 'react';
 
 import { useLocation, useNavigate } from 'react-router';
 import { api } from '../services/api';
@@ -425,6 +419,32 @@ export function KainBainProvider({ children }) {
     abortTask: tasks.abortTask,
     checkTaskStuck: tasks.checkTaskStuck,
     restoreSession,
+    // Runner control actions
+    pauseRunner: async (runnerId) => {
+      try {
+        await api.pauseRunner(runnerId);
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+    resumeRunner: async (runnerId) => {
+      try {
+        await api.resumeRunner(runnerId);
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+    skipRunner: async (runnerId) => {
+      try {
+        // Skip the current task for this runner
+        await api.post(`/runners/${encodeURIComponent(runnerId)}/skip`);
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
   };
 
   return <KainBainContext.Provider value={value}>{children}</KainBainContext.Provider>;

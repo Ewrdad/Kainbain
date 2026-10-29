@@ -76,12 +76,11 @@ const runnerBoxHealthLabel = (health) => {
 /***
  * MARK: resolveRunnerBoxes
  * @description Builds the per-runner box models for the Now Playing bar's
- *   left side. Returns null (legacy single-task display) unless there are
- *   1–4 distinct runners: zero means the fleet is idle and 5+ would crush
- *   the 72px bar, so both keep the existing display. Each box carries the
- *   runner name, its task's display name, the resolved stage name, and the
- *   heartbeat timestamp behind the colour dot.
- * @example resolveRunnerBoxes({ assignments: [], tasks: [], stages: [] }) => null
+ *   left side. Always returns an array of runner boxes (empty array when
+ *   no runners are active). Each box carries the runner name, its task's
+ *   display name, the resolved stage name, the heartbeat timestamp behind
+ *   the colour dot, and the runner's paused state.
+ * @example resolveRunnerBoxes({ assignments: [], tasks: [], stages: [] }) => []
  ***/
 export function resolveRunnerBoxes({ assignments, tasks, stages }) {
   const list = Array.isArray(assignments) ? assignments.filter((a) => a && a.runnerId) : [];
@@ -92,8 +91,9 @@ export function resolveRunnerBoxes({ assignments, tasks, stages }) {
     seen.add(key);
     return true;
   });
-  // Under-5 contract: boxes replace the left side only for 1–4 runners.
-  if (distinct.length === 0 || distinct.length >= 5) return null;
+  // Always return runner boxes (empty array when no runners are active)
+  // Limit to 5 runners to avoid crowding the 72px bar
+  if (distinct.length === 0 || distinct.length >= 5) return [];
   const taskById = new Map(
     (Array.isArray(tasks) ? tasks : [])
       .filter((t) => t && t.id != null)
@@ -128,6 +128,7 @@ export function resolveRunnerBoxes({ assignments, tasks, stages }) {
       stageName: stageNameFor(a.stageId, task),
       lastSeenAt: a.lastSeenAt ?? null,
       startedAt: a.startedAt ?? null,
+      paused: a.paused ?? false,
     };
   });
 }
@@ -236,11 +237,10 @@ export function NowPlayingBar() {
 
   // Runner boxes: with 1–4 distinct live runners the left side shows one
   // little box per runner (name, task, stage, health dot) instead of the
-  // single-task card. Zero runners (fleet idle) or 5+ (no room in 72px)
-  // keep the legacy display.
+  // Always show runner boxes (empty array when no runners are active)
   const runnerAssignments = useNowPlayingRunnerAssignments(runnerAssignmentsOverride);
   const runnerBoxes = resolveRunnerBoxes({ assignments: runnerAssignments, tasks, stages });
-  const showRunnerBoxes = runnerBoxes !== null;
+  const showRunnerBoxes = runnerBoxes.length > 0;
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     if (!showRunnerBoxes) return undefined;
@@ -465,92 +465,160 @@ export function NowPlayingBar() {
                 {runnerBoxes.map((box) => {
                   const health = runnerBoxHealth(box.lastSeenAt, nowMs);
                   return (
-                    <button
+                    <div
                       key={box.runnerId}
-                      type="button"
                       data-testid={`now-playing-runner-box-${box.runnerId}`}
-                      onClick={() => box.task && setSelectedTask?.(box.task)}
-                      disabled={!box.task}
-                      aria-label={`Runner ${box.runnerId} running ${box.taskName}, stage ${box.stageName}, ${runnerBoxHealthLabel(health)}`}
-                      title={`Runner ${box.runnerId} · ${box.taskName} · Stage: ${box.stageName}`}
-                      className="flex items-center gap-1.5 min-w-0 max-w-[220px] px-2 py-1 rounded bg-surface-container border border-border-standard text-left cursor-pointer hover:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-default shrink-0"
+                      role="group"
+                      aria-label={`Runner ${box.runnerId}: ${box.paused ? 'paused' : 'active'}, task: ${box.taskName}, stage: ${box.stageName}, health: ${runnerBoxHealthLabel(health)}`}
+                      className="flex items-center gap-1.5 min-w-0 max-w-[280px] px-2 py-1 rounded bg-surface-container border border-border-standard shrink-0"
                     >
+                      {/* Health indicator */}
                       <span
                         data-testid={`now-playing-runner-health-${box.runnerId}`}
                         data-health={health}
                         aria-hidden="true"
                         className={`w-2 h-2 rounded-full shrink-0 ${runnerBoxDotClass(health)}`}
                       />
-                      <span className="flex flex-col min-w-0 leading-tight">
+                      {/* Runner info - click to inspect task */}
+                      <button
+                        type="button"
+                        onClick={() => box.task && setSelectedTask?.(box.task)}
+                        disabled={!box.task}
+                        aria-label={`Inspect task for runner ${box.runnerId}`}
+                        className="flex flex-col min-w-0 leading-tight flex-1 text-left cursor-pointer hover:text-on-surface transition-colors disabled:cursor-default"
+                      >
                         <span className="font-mono text-[11px] font-semibold text-on-surface truncate">
                           {box.runnerId}
                         </span>
-                        <span className="text-[11px] text-text-muted truncate">
-                          {box.taskName}
-                        </span>
+                        <span className="text-[11px] text-text-muted truncate">{box.taskName}</span>
                         <span className="font-mono text-[10px] text-text-muted truncate">
                           {box.stageName}
                         </span>
-                      </span>
-                    </button>
+                      </button>
+                      {/* Runner controls: play/pause and skip */}
+                      <div className="flex items-center gap-1 ml-1">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            box.paused ? resumeRunner?.(box.runnerId) : pauseRunner?.(box.runnerId);
+                          }}
+                          aria-label={`${box.paused ? 'Resume' : 'Pause'} runner ${box.runnerId}`}
+                          title={`${box.paused ? 'Resume' : 'Pause'} runner ${box.runnerId}`}
+                          className="p-0.5 rounded hover:bg-surface-container-highest focus:outline-none focus:ring-1 focus:ring-primary"
+                        >
+                          {box.paused ? (
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <circle cx="12" cy="12" r="10" />
+                              <line x1="10" y1="8" x2="10" y2="16" />
+                              <line x1="14" y1="8" x2="14" y2="16" />
+                            </svg>
+                          ) : (
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                            >
+                              <circle cx="12" cy="12" r="10" />
+                            </svg>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            skipRunner?.(box.runnerId);
+                          }}
+                          aria-label={`Skip current task for runner ${box.runnerId}`}
+                          title={`Skip current task for runner ${box.runnerId}`}
+                          className="p-0.5 rounded hover:bg-surface-container-highest focus:outline-none focus:ring-1 focus:ring-primary text-error"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
             ) : (
-            <InfoTooltip
-              title="Inspect Active Task"
-              description="Click to open the Slide-Over Inspector for live logs, markdown goals, and reports."
-              behindTheScenes="Loads task details and disk-persisted reports from docs/tasks/<id>/"
-              position="top"
-            >
-              <button
-                type="button"
-                onClick={() => activeTask && setSelectedTask?.(activeTask)}
-                disabled={!activeTask}
-                aria-label={
-                  activeTask
-                    ? `Open active task ${activeTask.goal || activeTask.title || activeTask.id} in inspector`
-                    : 'No active task'
-                }
-                className="flex items-center gap-1.5 sm:gap-2 min-w-0 mt-0.5 text-left cursor-pointer hover:underline focus:outline-none focus:ring-1 focus:ring-primary rounded-xs group disabled:cursor-default disabled:no-underline"
+              <InfoTooltip
+                title="Inspect Active Task"
+                description="Click to open the Slide-Over Inspector for live logs, markdown goals, and reports."
+                behindTheScenes="Loads task details and disk-persisted reports from docs/tasks/<id>/"
+                position="top"
               >
-                {/* Task name clears while idle (no lingering last-task label);
+                <button
+                  type="button"
+                  onClick={() => activeTask && setSelectedTask?.(activeTask)}
+                  disabled={!activeTask}
+                  aria-label={
+                    activeTask
+                      ? `Open active task ${activeTask.goal || activeTask.title || activeTask.id} in inspector`
+                      : 'No active task'
+                  }
+                  className="flex items-center gap-1.5 sm:gap-2 min-w-0 mt-0.5 text-left cursor-pointer hover:underline focus:outline-none focus:ring-1 focus:ring-primary rounded-xs group disabled:cursor-default disabled:no-underline"
+                >
+                  {/* Task name clears while idle (no lingering last-task label);
                     the keyed wrapper remounts on every task/idle swap so the
                     entrance animation replays. The key chip only ever shows a
                     real task key — never a fabricated fallback. */}
-                <span
-                  key={activeTask?.id ?? 'idle'}
-                  data-testid={activeTask ? 'now-playing-task-name' : 'now-playing-idle-hint'}
-                  className={
-                    activeTask
-                      ? 'now-playing-task-enter font-headline-sm text-xs sm:text-headline-sm text-on-surface group-hover:text-primary transition-colors truncate'
-                      : 'font-headline-sm text-xs sm:text-headline-sm text-text-muted truncate'
-                  }
-                >
-                  {activeTask
-                    ? `${activeWorkflowLabel ? `${activeWorkflowLabel} | ` : ''}${
-                        formatTaskTitleFirstLine(activeTask, '') ||
-                        (isRunning
-                          ? 'Executing Orchestration...'
-                          : isStagePaused
-                            ? 'Stage Paused'
-                            : 'Idle')
-                      }`
-                    : 'No active task — engine idle'}
-                </span>
-                {/* Show active stage name when a task is running */}
-                {displayedStageName && (
-                  <span className="text-xs text-text-muted ml-2">
-                    {`Stage: ${displayedStageName}`}
+                  <span
+                    key={activeTask?.id ?? 'idle'}
+                    data-testid={activeTask ? 'now-playing-task-name' : 'now-playing-idle-hint'}
+                    className={
+                      activeTask
+                        ? 'now-playing-task-enter font-headline-sm text-xs sm:text-headline-sm text-on-surface group-hover:text-primary transition-colors truncate'
+                        : 'font-headline-sm text-xs sm:text-headline-sm text-text-muted truncate'
+                    }
+                  >
+                    {activeTask
+                      ? `${activeWorkflowLabel ? `${activeWorkflowLabel} | ` : ''}${
+                          formatTaskTitleFirstLine(activeTask, '') ||
+                          (isRunning
+                            ? 'Executing Orchestration...'
+                            : isStagePaused
+                              ? 'Stage Paused'
+                              : 'Idle')
+                        }`
+                      : 'No active task — engine idle'}
                   </span>
-                )}
-                {activeTask && (
-                  <span className="font-mono text-xs font-semibold text-text-muted group-hover:text-primary transition-colors shrink-0 hidden md:inline">
-                    {formatTaskKey(activeTask.id)}
-                  </span>
-                )}
-              </button>
-            </InfoTooltip>
+                  {/* Show active stage name when a task is running */}
+                  {displayedStageName && (
+                    <span className="text-xs text-text-muted ml-2">
+                      {`Stage: ${displayedStageName}`}
+                    </span>
+                  )}
+                  {activeTask && (
+                    <span className="font-mono text-xs font-semibold text-text-muted group-hover:text-primary transition-colors shrink-0 hidden md:inline">
+                      {formatTaskKey(activeTask.id)}
+                    </span>
+                  )}
+                </button>
+              </InfoTooltip>
             )}
           </div>
         </div>

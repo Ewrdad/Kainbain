@@ -779,8 +779,8 @@ test('runner box stage falls back to the task stage when the assignment carries 
   expect(screen.getByTestId('now-playing-runner-box-runner-a')).toHaveTextContent('Review');
 });
 
-test('runner boxes fall back to the legacy display for zero runners and for 5+', () => {
-  // Zero runners: fleet idle keeps the legacy idle hint.
+test('runner boxes always show (empty when no runners) and hide for 5+ runners', () => {
+  // Zero runners: show empty runner boxes container (no individual boxes)
   const { rerender } = renderWithKainBain(<NowPlayingBar />, {
     stages,
     currentStageId: '1',
@@ -788,6 +788,7 @@ test('runner boxes fall back to the legacy display for zero runners and for 5+',
     tasks: [{ id: 't1', currentStageId: '1', status: 'in_stage', title: 'Build the widget' }],
     runnerAssignments: [],
   });
+  // With 0 runners, the runner boxes container should not be visible
   expect(screen.queryByTestId('now-playing-runner-boxes')).not.toBeInTheDocument();
   expect(screen.getByTestId('now-playing-idle-hint')).toBeInTheDocument();
 
@@ -817,14 +818,15 @@ test('runner boxes fall back to the legacy display for zero runners and for 5+',
       }}
     />,
   );
+  // With 5+ runners, the runner boxes container should not be visible
   expect(screen.queryByTestId('now-playing-runner-boxes')).not.toBeInTheDocument();
   expect(screen.getByTestId('now-playing-task-name')).toBeInTheDocument();
 
-  // Unit-level: the under-5 threshold itself (deduped by runner id).
-  expect(resolveRunnerBoxes({ assignments: [], tasks: [], stages: [] })).toBeNull();
+  // Unit-level: always returns an array (empty when no runners)
+  expect(resolveRunnerBoxes({ assignments: [], tasks: [], stages: [] })).toEqual([]);
   expect(
     resolveRunnerBoxes({ assignments: many(5), tasks: manyTasks, stages }),
-  ).toBeNull();
+  ).toEqual([]);
   expect(
     resolveRunnerBoxes({ assignments: many(4), tasks: manyTasks, stages }),
   ).toHaveLength(4);

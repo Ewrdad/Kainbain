@@ -191,6 +191,33 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		}
 	});
 
+	app.post("/runners/:id/skip", async (request, reply) => {
+		// Skip the current task for this runner
+		try {
+			const runner = authedRunner(request);
+			const hold = claimStore.liveHoldFor(runner.runnerId);
+			if (!hold) {
+				return reply.status(404).send({ error: "Runner has no active task to skip" });
+			}
+			// Resolve the project
+			const projectId = resolveAndGuardProject(
+				request.body?.projectId || request.query?.projectId,
+				reply,
+			);
+			if (!projectId) return;
+			// Skip the current stage using the existing workflow skip logic
+			const execution = executionLedger.executionFor(hold.executionId);
+			if (!execution) {
+				return reply.status(404).send({ error: "No execution found for task" });
+			}
+			// Advance the stage with skip flag
+			executionLedger.advanceStage(hold.executionId, { skip: true });
+			return { success: true };
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
 	const guardedTask = (request, reply) => {
 		const projectId = resolveAndGuardProject(
 			request.body?.projectId || request.query?.projectId,
