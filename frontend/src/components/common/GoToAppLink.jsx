@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { resolveAppUrl } from '../../../../shared/appUrl.js';
 import { api } from '../../services/api';
 import { logger } from '../../services/logger';
@@ -44,12 +44,12 @@ const STATE_LABELS = {
 
 /***
  * MARK: GoToAppLink
- * @description The shared "Go to App" quick-link: an external link to the
- *   project's running app with a live status dot and an on-demand health
- *   probe, visually merged into one split button (single outer frame, link
- *   segment plus divider-separated refresh segment). Renders nothing when
- *   the project carries no safe link, so link-free projects keep their
- *   exact current layout. Two sizes: 'action' for the Files & Repo
+ * @description The shared "Go to App" quick-link: a unified button that combines
+ *   an external link to the project's running app with a live status dot and
+ *   an on-demand health probe. The component renders as a single button with
+ *   a dropdown menu containing the "Go to App" action and a "Refresh" option.
+ *   Renders nothing when the project carries no safe link, so link-free projects
+ *   keep their exact current layout. Two sizes: 'action' for the Files & Repo
  *   quick-action strip, 'header' for the compact top header (icon-only on
  *   narrow screens, like the Git remote link).
  * @example <GoToAppLink projectId="p1" appStatus={project.appStatus} variant="action" onHealthChange={merge} />
@@ -61,8 +61,8 @@ const STATE_LABELS = {
  ***/
 export function GoToAppLink({ projectId, appStatus, variant = 'action', onHealthChange }) {
   const [probing, setProbing] = useState(false);
-  const pageHost =
-    typeof window !== 'undefined' && window.location ? window.location.hostname : '';
+  const [menuOpen, setMenuOpen] = useState(false);
+  const pageHost = typeof window !== 'undefined' && window.location ? window.location.hostname : '';
   const href = resolveAppUrl(appStatus?.url, appStatus?.networkHost, pageHost);
   if (!href) return null;
   const state = appLinkState(appStatus);
@@ -72,6 +72,7 @@ export function GoToAppLink({ projectId, appStatus, variant = 'action', onHealth
     event?.stopPropagation?.();
     if (!projectId || probing) return;
     setProbing(true);
+    setMenuOpen(false);
     try {
       const result = await api.checkAppHealth(projectId);
       // Fail safe: only a record-shaped probe result reaches the project
@@ -99,7 +100,7 @@ export function GoToAppLink({ projectId, appStatus, variant = 'action', onHealth
   const isHeader = variant === 'header';
 
   return (
-    <span className="inline-flex shrink-0 items-stretch whitespace-nowrap rounded-sm border border-border-standard bg-surface-container overflow-hidden">
+    <div className="inline-flex shrink-0 relative">
       <a
         href={href}
         target="_blank"
@@ -108,8 +109,8 @@ export function GoToAppLink({ projectId, appStatus, variant = 'action', onHealth
         title={tooltip}
         className={
           isHeader
-            ? 'flex items-center gap-1.5 px-2.5 py-1.5 min-h-[44px] hover:bg-surface-container-high text-text-muted hover:text-on-surface transition-colors text-xs font-mono cursor-pointer'
-            : 'px-2.5 py-1 text-[10px] font-mono font-bold uppercase hover:bg-surface-container-high rounded-l-sm text-on-surface hover:text-primary transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap'
+            ? 'flex items-center gap-1.5 px-2.5 py-1.5 min-h-[44px] hover:bg-surface-container-high text-text-muted hover:text-on-surface transition-colors text-xs font-mono cursor-pointer rounded-l-sm border border-border-standard bg-surface-container'
+            : 'px-2.5 py-1 text-[10px] font-mono font-bold uppercase hover:bg-surface-container-high text-on-surface hover:text-primary transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap rounded-l-sm border border-border-standard bg-surface-container'
         }
       >
         <span
@@ -118,28 +119,51 @@ export function GoToAppLink({ projectId, appStatus, variant = 'action', onHealth
           className={`inline-block w-2 h-2 rounded-full shrink-0 ${DOT_STYLES[state] || DOT_STYLES.running}`}
         />
         <span aria-hidden="true">🚀</span>
-        <span className={isHeader ? 'font-label-caps text-[10px] uppercase tracking-wider hidden xl:inline' : undefined}>
+        <span
+          className={
+            isHeader
+              ? 'font-label-caps text-[10px] uppercase tracking-wider hidden xl:inline'
+              : undefined
+          }
+        >
           {isHeader ? 'Go to App' : 'Open App'}
         </span>
       </a>
       {projectId && (
-        <button
-          type="button"
-          onClick={probe}
-          disabled={probing}
-          aria-label={probing ? 'Checking app health…' : 'Check app health now'}
-          title={probing ? 'Checking app health…' : 'Check app health now'}
-          className={
-            isHeader
-              ? 'px-2 py-1.5 min-h-[44px] min-w-[44px] border-l border-border-standard hover:bg-surface-container-high text-text-muted hover:text-on-surface transition-colors text-xs cursor-pointer disabled:opacity-60 flex items-center justify-center'
-              : 'px-1.5 py-1 text-[10px] border-l border-border-standard hover:bg-surface-container-high rounded-r-sm text-text-muted hover:text-on-surface transition-colors cursor-pointer disabled:opacity-60 flex items-center justify-center'
-          }
-        >
-          <span aria-hidden="true" className={probing ? 'animate-spin inline-block' : undefined}>
-            {probing ? '⏳' : '🔄'}
-          </span>
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setMenuOpen(!menuOpen)}
+            disabled={probing}
+            aria-label={
+              probing ? 'Menu open, checking app health…' : 'Open menu with refresh option'
+            }
+            title={probing ? 'Checking app health…' : 'Refresh app status'}
+            className={
+              isHeader
+                ? 'px-2 py-1.5 min-h-[44px] min-w-[44px] border border-l-0 border-border-standard hover:bg-surface-container-high text-text-muted hover:text-on-surface transition-colors text-xs cursor-pointer disabled:opacity-60 flex items-center justify-center rounded-r-sm bg-surface-container'
+                : 'px-1.5 py-1 text-[10px] border border-l-0 border-border-standard hover:bg-surface-container-high text-text-muted hover:text-on-surface transition-colors cursor-pointer disabled:opacity-60 flex items-center justify-center rounded-r-sm bg-surface-container'
+            }
+          >
+            <span aria-hidden="true" className={probing ? 'animate-spin inline-block' : undefined}>
+              {probing ? '⏳' : '▼'}
+            </span>
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 mt-1 w-32 bg-surface-container border border-border-standard shadow-lg z-50 rounded-sm overflow-hidden">
+              <button
+                type="button"
+                onClick={probe}
+                disabled={probing}
+                className="w-full text-left px-3 py-2 text-[10px] font-mono uppercase tracking-wider text-on-surface hover:bg-surface-container-high transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-60"
+              >
+                <span aria-hidden="true">🔄</span>
+                <span>Refresh Status</span>
+              </button>
+            </div>
+          )}
+        </div>
       )}
-    </span>
+    </div>
   );
 }
