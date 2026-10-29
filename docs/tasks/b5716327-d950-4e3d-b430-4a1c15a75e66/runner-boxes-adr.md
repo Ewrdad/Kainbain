@@ -149,3 +149,22 @@ status word always renders as text and the dot is `aria-hidden`.
   clipped-away boxes whose unclipped rects extend under buttons —
   getBoundingClientRect ignores clipping; hit-testing confirmed nothing paints
   there. The check was corrected, full pass green.)
+
+- Review pass (2026-10-29): `RunnerBox` now treats a task-less entry as
+  idle on every channel — a hand-injected entry carrying a stale non-idle
+  `statusWord` beside a null task used to paint a coloured (e.g. red) dot
+  beside the visible word `idle` and a mismatched aria label; dot, word,
+  and label now all read idle/grey, and the label no longer cites task or
+  stage for a task-less box. A whitespace-only task title now falls back
+  to `Untitled Task` instead of rendering a blank line. Two new
+  `RunnerBox.test.jsx` cases pin both behaviours (observed failing before
+  the fix). Environment note: `api/flow/retryAfterRecovery.integration.test.js`
+  is flaky on this machine — the live app keeps spawning
+  `git -C /home/server/projects/kainbain` processes, and the fail-closed
+  stale-lock holder scan correctly refuses recovery while any git process
+  is alive (proven by probing `maybeRecoverStaleLock` directly: reason
+  `live-holder`, holder pid from the live app). It failed in an early
+  full run and passed in the final `npm run test:unit` run (351 api files
+  / 5817 tests + 284 frontend files / 3865 tests, exit 0) when its window
+  found no live holder. Not weakened: clearing that lock or killing the
+  holder would interfere with live operations.
