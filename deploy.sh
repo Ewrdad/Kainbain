@@ -718,8 +718,13 @@ newest_attempt_checkpoint_for_operation_key() {
 # Policy mirrors the same-id table: a recorded FAILURE is never adopted (the
 # caller re-runs as a genuine retry), and terminal SUCCESS is only adopted
 # for a known-base key (an unknown-base key cannot prove the tree is the same
-# code the checkpoint deployed). Kept as a function so the decision table is
-# testable in isolation (api/deploy.attemptCheckpoint.test.js).
+# code the checkpoint deployed). `running` and `deploying` are both
+# non-terminal: on a match this re-points at the recorded attempt and re-runs
+# the same-id table, which waits on a live pid or re-runs when the pid is
+# gone — a stale `deploying` marker is NEVER adopted as success (that turned
+# a re-dispatch into an exit-0 no-op and left prod behind main). Kept as a
+# function so the decision table is testable in isolation
+# (api/deploy.attemptCheckpoint.test.js).
 adopt_attempt_by_operation_key() {
 	if [ -z "${OPERATION_KEY:-}" ]; then
 		return 1
@@ -744,6 +749,8 @@ adopt_attempt_by_operation_key() {
 		esac
 		;;
 	running | deploying)
+		# Non-terminal: join the recorded attempt (re-point + re-run the
+		# same-id table, which waits on a live pid or re-runs when stale).
 		;;
 	*)
 		return 1
@@ -778,10 +785,14 @@ maybe_adopt_attempt_entry() {
 	'' | *[!0-9]*) wait_seconds=0 ;;
 	esac
 	case "$state" in
-	success | deploying)
+	success)
 		adopt_attempt_outcome "$state"
 		;;
-	running)
+	running | deploying)
+		# Both are non-terminal. `deploying` is only the pre-restart marker:
+		# adopting it as success turned a re-dispatch into an exit-0 no-op
+		# and left prod behind main, so it waits or re-runs exactly like
+		# `running` and is never adopted.
 		pid="$(attempt_checkpoint_field pid)"
 		if attempt_pid_alive "$pid"; then
 			log "⏳ Deploy attempt $ATTEMPT_ID is still in flight (pid $pid) — waiting up to ${wait_seconds}s for it to settle instead of starting a second deploy."
@@ -802,10 +813,13 @@ maybe_adopt_attempt_entry() {
 				waited=$((waited + 5))
 				state="$(attempt_checkpoint_status)"
 				case "$state" in
-				success | deploying | failed | rolled-back | rolled_back)
+				success | failed | rolled-back | rolled_back)
 					adopt_attempt_outcome "$state"
 					;;
 				esac
+				# `running`/`deploying` observed mid-wait: the deploy is still
+				# going — keep waiting. `deploying` in particular is never
+				# adopted (see above).
 				attempt_pid_alive "$pid" || break
 				if [ "$waited" -ge "$next_heartbeat" ]; then
 					log "⏳ Still waiting for deploy attempt $ATTEMPT_ID (pid $pid) — ${waited}s/${wait_seconds}s elapsed."
@@ -841,14 +855,18 @@ maybe_adopt_attempt_entry() {
 }
 
 # Adopts an already-executed attempt's recorded outcome: exits with it instead
-# of re-running gates. Called by `maybe_adopt_attempt_entry` for a
-# `success`/`deploying` checkpoint at entry and for any terminal status the
-# in-flight wait observes. Returns (no adoption) for any other status.
+# of re-running gates. Called by `maybe_adopt_attempt_entry` for a `success`
+# checkpoint at entry and for any terminal status the in-flight wait
+# observes. Returns (no adoption) for any other status — in particular
+# `deploying` is NEVER adopted: it is only the pre-restart marker, and
+# adopting it turned a re-dispatch into an exit-0 no-op that left prod behind
+# main. A `deploying` status returns so the caller waits on a live pid or
+# re-runs when the pid is gone.
 adopt_attempt_outcome() {
 	local status="$1"
 	case "$status" in
-	success | deploying)
-		log "⏭️  Deploy attempt $ATTEMPT_ID already executed (checkpoint status '$status') — adopting recorded outcome, not re-running gates."
+	success)
+		log "⏭️  Deploy attempt $ATTEMPT_ID already executed (checkpoint status 'success') — adopting recorded outcome, not re-running gates."
 		exit 0
 		;;
 	failed | rolled-back | rolled_back)
@@ -862,6 +880,75 @@ adopt_attempt_outcome() {
 		;;
 	esac
 	return 0
+}
+
+# Resolves the integration branch from the stable operation key
+# (`merge-deploy:<task8>:<branch>:<base>:<hash>`). Empty when no key is set
+# (manual runs) or the key is malformed. Branch names cannot contain colons,
+# so field 3 is exact. Kept as a function so the tip guard below is testable
+# in isolation (api/deploy.attemptCheckpoint.test.js).
+operation_key_branch() {
+	local key="${OPERATION_KEY:-}"
+	case "$key" in
+	merge-deploy:*:*:*:*)
+		echo "$key" | cut -d: -f3
+		;;
+	*)
+		echo ""
+		;;
+	esac
+	return 0
+}
+
+# Deploy-source freshness gate: refuses to build when the checkout is not
+# exactly the integration tip the merge landed. A Runner merge pushes to
+# origin but never touches this checkout, so without this the deploy
+# silently ships whatever the tree happens to hold (prod stayed behind main
+# even when the deploy itself ran). Fails LOUD (failed result + exit 1, so
+# the stage parks with evidence and a genuine retry re-runs after a sync)
+# instead of shipping stale code. Skips (returns 0) for manual runs (no
+# operation key), outside a git repository, when the branch has no remote
+# ref, or when the freshness fetch itself fails — infra problems must never
+# brick a deploy; only a PROVEN mismatch fails.
+require_deploy_tip_current() {
+	local branch
+	branch="$(operation_key_branch)"
+	if [ -z "$branch" ]; then
+		return 0
+	fi
+	case "$branch" in
+	-*)
+		return 0
+		;;
+	esac
+	if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+		return 0
+	fi
+	local tracking="origin/${branch}"
+	if ! git fetch origin "$branch" >/dev/null 2>&1; then
+		log "⚠️  Tip guard: could not fetch '${tracking}' — proceeding with the local tree (fail-open on infra)."
+		return 0
+	fi
+	local head_sha tip_sha
+	head_sha="$(git rev-parse HEAD 2>/dev/null || echo "")"
+	tip_sha="$(git rev-parse --verify "$tracking" 2>/dev/null || echo "")"
+	if [ -z "$head_sha" ] || [ -z "$tip_sha" ]; then
+		return 0
+	fi
+	if [ "$head_sha" = "$tip_sha" ]; then
+		log "✅ Deploy source is the integration tip (${tracking} $(git rev-parse --short HEAD 2>/dev/null || echo "$head_sha"))."
+		return 0
+	fi
+	local relation="diverged from"
+	if git merge-base --is-ancestor "$head_sha" "$tip_sha" 2>/dev/null; then
+		relation="behind"
+	elif git merge-base --is-ancestor "$tip_sha" "$head_sha" 2>/dev/null; then
+		relation="ahead of"
+	fi
+	local message="Deploy source is ${relation} the integration tip (${tracking}): HEAD $(echo "$head_sha" | cut -c1-7) vs tip $(echo "$tip_sha" | cut -c1-7). Refusing to ship unmerged/unpushed code — sync the deploy source to '${tracking}' (pre-deploy tip sync, or fetch + checkout/reset) and retry; a genuine retry re-runs the deploy."
+	log "❌ $message"
+	write_result "failed" "$message" "false" "1" "require_deploy_tip_current" "HEAD=$head_sha tip=$tip_sha"
+	exit 1
 }
 
 # --- Deploy heartbeat ticker -----------------------------------------------
@@ -1267,10 +1354,19 @@ if [ "$MODE" = "prod" ]; then
 	# that outcome instead of running the gates again — a re-dispatched
 	# "Merge and deploy" stage used to start a second full deploy and restart
 	# the service again, interrupting the stage again (the loop). A `running`
-	# checkpoint whose process is still alive is waited on, never duplicated;
-	# a recorded failure falls through as a genuine retry. Returns only when
-	# this invocation should actually deploy.
+	# or `deploying` checkpoint whose process is still alive is waited on,
+	# never duplicated; a stale one falls through as a genuine retry. Only a
+	# terminal `success` is ever adopted — `deploying` is the pre-restart
+	# marker, not proof the deploy finished. Returns only when this
+	# invocation should actually deploy.
 	maybe_adopt_attempt_entry
+
+	# DEPLOY-SOURCE FRESHNESS (prod-behind-main fix). The merge lands on the
+	# remote from a Runner worktree; this checkout is untouched by that push.
+	# Refuse to build when the tree is not exactly the integration tip the
+	# operation merged — fail loud (parks with evidence; a genuine retry
+	# re-runs after the pre-deploy sync) instead of shipping stale code.
+	require_deploy_tip_current
 
     # Record the attempt as in flight BEFORE any gate runs so a duplicate
     # invocation (or a post-restart reconcile) can see it.

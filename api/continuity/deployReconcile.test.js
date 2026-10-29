@@ -254,12 +254,19 @@ describe("reconcileInterruptedDeploys", () => {
 		expect(parked.deployAttemptInFlightNoted).toBe("deploy-t-1-1");
 	});
 
-	it("accepts a newer build even when started before stage entry", async () => {
+	it("resumes (never completes) a deploying last-result even when the build advanced", async () => {
+		// A `deploying` pre-restart marker proves gates passed, not that the
+		// deploy succeeded: completing the stage on it left prod behind main
+		// (a5228675). The stage must re-run to a terminal result instead.
 		const store = deployStore(
 			{ enteredStageAt: "2026-09-24T10:00:00.000Z", deployBuildAtEntry: 5 },
 			{ status: "deploying", startedAt: "2026-09-24T09:00:00.000Z", buildNumber: 6, finishedAt: "2026-09-24T09:01:00.000Z" },
 		);
 		await expect(reconcileInterruptedDeploys(store)).resolves.toHaveLength(1);
+		const resumed = store.getTask("p-1", "t-1");
+		expect(resumed.status).toBe("in_stage");
+		expect(store.advanceStage).not.toHaveBeenCalled();
+		expect(store.handleStageFailure).not.toHaveBeenCalled();
 	});
 
 	it("fails the stage when the deploy result failed", async () => {
@@ -393,7 +400,10 @@ describe("reconcileInterruptedDeploys", () => {
 		expect(store.advanceStage).toHaveBeenCalled();
 	});
 
-	it("reconciles a still-running_merge task left behind by the restart", async () => {
+	it("parks (never advances) a deploying last-result with no rehydration markers", async () => {
+		// Without markers the deploying marker cannot be attributed to this
+		// attempt: advancing on it was the a5228675 outage. Park explained;
+		// the operator resumes and the stage re-runs to a terminal result.
 		const mergeDeploy = { id: "s-m", name: "Merge and deploy", type: "merge", command: "./deploy.sh --prod" };
 		const store = makeStore({
 			projects: [{ id: "p-1", name: "P", cwd: "/repo", stages: [mergeDeploy] }],
@@ -414,10 +424,14 @@ describe("reconcileInterruptedDeploys", () => {
 				enteredStageAt: "2026-09-24T09:00:00.000Z",
 			}),
 		);
-		await expect(reconcileInterruptedDeploys(store)).resolves.toEqual([
-			{ projectId: "p-1", taskId: "t-1" },
-		]);
-		expect(store.advanceStage).toHaveBeenCalled();
+		await expect(reconcileInterruptedDeploys(store)).resolves.toEqual([]);
+		expect(store.advanceStage).not.toHaveBeenCalled();
+		expect(store.handleStageFailure).not.toHaveBeenCalled();
+		expect(
+			store
+				.getTask("p-1", "t-1")
+				.history.some((h) => String(h.action).includes("no rehydration markers")),
+		).toBe(true);
 	});
 
 	it("parks a merge-and-deploy task without failback when the deploy result failed", async () => {
@@ -735,6 +749,87 @@ describe("WP6 reconcile decision table", () => {
 			resumed.history.some((h) => String(h.action).includes("no fresh last-result.json")),
 		).toBe(true);
 		expect((resumed.timeline || []).some((e) => e.status === "Resumed")).toBe(true);
+	});
+
+	it("a deploying checkpoint with a live pid waits for the survivor instead of completing", async () => {
+		// The deploy process survived the restart (systemd transient unit):
+		// it will write its own terminal result, so reconcile waits exactly
+		// like a `running` checkpoint instead of completing on the marker.
+		const alive = vi.fn(() => true);
+		const store = markedDeployStore(
+			{
+				currentStageId: "s-d",
+				enteredStageAt: "2026-09-24T10:00:00.000Z",
+				deployAttemptId: "deploy-t-1-9",
+			},
+			null,
+			{
+				checkpoint: {
+					status: "deploying",
+					pid: 4242,
+					startedAt: "2026-09-24T10:00:00.000Z",
+					updatedAt: "2026-09-24T10:01:00.000Z",
+				},
+				pidAlive: alive,
+			},
+		);
+		await expect(reconcileInterruptedDeploys(store)).resolves.toEqual([]);
+		expect(store.advanceStage).not.toHaveBeenCalled();
+		expect(store.handleStageFailure).not.toHaveBeenCalled();
+		expect(store.getTask("p-1", "t-1").deployAttemptInFlightNoted).toBe("deploy-t-1-9");
+	});
+
+	it("a deploying checkpoint with a dead pid resumes instead of completing", async () => {
+		// The a5228675 outage: the deploy died mid-restart leaving a `deploying`
+		// marker. Completing on it skipped the deploy; resume re-runs the stage
+		// to a terminal result (deploy.sh retries the stale attempt).
+		const store = markedDeployStore(
+			{
+				currentStageId: "s-d",
+				enteredStageAt: "2026-09-24T10:00:00.000Z",
+				deployAttemptId: "deploy-t-1-9",
+			},
+			null,
+			{
+				checkpoint: {
+					status: "deploying",
+					pid: 2147483647,
+					startedAt: "2026-09-24T09:00:00.000Z",
+					updatedAt: "2026-09-24T09:00:01.000Z",
+				},
+				pidAlive: () => false,
+			},
+		);
+		await expect(reconcileInterruptedDeploys(store)).resolves.toEqual([
+			{ projectId: "p-1", taskId: "t-1" },
+		]);
+		const resumed = store.getTask("p-1", "t-1");
+		expect(resumed.status).toBe("in_stage");
+		expect(store.advanceStage).not.toHaveBeenCalled();
+		expect(store.handleStageFailure).not.toHaveBeenCalled();
+	});
+
+	it("a fresh deploying last-result resumes instead of completing the stage", async () => {
+		const store = markedDeployStore(
+			{
+				currentStageId: "s-d",
+				enteredStageAt: "2026-09-24T10:00:00.000Z",
+				deployAttemptId: "deploy-t-1-9",
+			},
+			{
+				status: "deploying",
+				startedAt: "2026-09-24T10:01:00.000Z",
+				buildNumber: 8,
+				finishedAt: "2026-09-24T10:02:00.000Z",
+			},
+		);
+		await expect(reconcileInterruptedDeploys(store)).resolves.toEqual([
+			{ projectId: "p-1", taskId: "t-1" },
+		]);
+		const resumed = store.getTask("p-1", "t-1");
+		expect(resumed.status).toBe("in_stage");
+		expect(store.advanceStage).not.toHaveBeenCalled();
+		expect(store.handleStageFailure).not.toHaveBeenCalled();
 	});
 
 	it("in-flight attempt checkpoint parks ONCE without resuming the merge/deploy stage", async () => {

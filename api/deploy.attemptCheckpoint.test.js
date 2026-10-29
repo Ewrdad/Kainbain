@@ -262,12 +262,24 @@ describeIfBashJq("adopt_attempt_outcome behaviour (real function bodies)", () =>
 		deployDir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-deploy-attempt-"));
 	});
 
-	it("exits 0 for success and deploying (no second deploy)", () => {
-		for (const status of ["success", "deploying"]) {
-			const probe = runHelperScript(deployDir, `adopt_attempt_outcome "${status}"`);
-			expect(probe.status).toBe(0);
-			expect(probe.stdout).toContain("adopting recorded outcome");
-		}
+	it("exits 0 for success (no second deploy)", () => {
+		const probe = runHelperScript(deployDir, `adopt_attempt_outcome "success"`);
+		expect(probe.status).toBe(0);
+		expect(probe.stdout).toContain("adopting recorded outcome");
+	});
+
+	it("never adopts a deploying checkpoint as success (in-flight, not terminal)", () => {
+		// Regression: a `deploying` pre-restart marker adopted as success
+		// turned a re-dispatch into an exit-0 no-op and left prod behind
+		// main. The outcome function must NOT exit here — the caller keeps
+		// waiting on a live pid or re-runs when the pid is gone.
+		const probe = runHelperScript(
+			deployDir,
+			`adopt_attempt_outcome "deploying"; echo CONTINUED`,
+		);
+		expect(probe.status).toBe(0);
+		expect(probe.stdout).toContain("CONTINUED");
+		expect(probe.stdout).not.toContain("adopting recorded outcome");
 	});
 
 	it("exits with the recorded code for a failed attempt", () => {
@@ -300,15 +312,37 @@ describeIfBashJq("maybe_adopt_attempt_entry decision table (real function body)"
 		);
 	}
 
-	it("adopts a terminal success/deploying checkpoint without deploying", () => {
-		for (const status of ["success", "deploying"]) {
-			writeCheckpoint({ status });
-			const probe = runHelperScript(deployDir, `maybe_adopt_attempt_entry; echo RAN`);
-			expect(probe.status).toBe(0);
-			expect(probe.stdout).toContain("adopting recorded outcome");
-			// `exit` in adopt means the trailing echo never runs.
-			expect(probe.stdout).not.toContain("RAN");
-		}
+	it("adopts a terminal success checkpoint without deploying", () => {
+		writeCheckpoint({ status: "success" });
+		const probe = runHelperScript(deployDir, `maybe_adopt_attempt_entry; echo RAN`);
+		expect(probe.status).toBe(0);
+		expect(probe.stdout).toContain("adopting recorded outcome");
+		// `exit` in adopt means the trailing echo never runs.
+		expect(probe.stdout).not.toContain("RAN");
+	});
+
+	it("re-runs a deploying checkpoint whose pid is gone (never adopts in-flight state)", () => {
+		// The a5228675 outage: a stale `deploying` marker was adopted as
+		// success and the deploy never ran. A dead pid must fall through as
+		// a genuine retry.
+		writeCheckpoint({ status: "deploying", pid: 2147483647 });
+		const probe = runHelperScript(deployDir, `maybe_adopt_attempt_entry; echo RAN`);
+		expect(probe.status).toBe(0);
+		expect(probe.stdout).toContain("RAN");
+		expect(probe.stdout).not.toContain("adopting recorded outcome");
+	});
+
+	it("waits instead of duplicating when a deploying checkpoint's pid is alive", () => {
+		writeCheckpoint({ status: "deploying", pid: process.pid });
+		const probe = runHelperScript(
+			deployDir,
+			`maybe_adopt_attempt_entry; echo RAN`,
+			ATTEMPT,
+			0,
+		);
+		expect(probe.status).toBe(75);
+		expect(probe.stdout).toContain("still in flight");
+		expect(probe.stdout).not.toContain("RAN");
 	});
 
 	it("re-runs (does not adopt) a recorded failure so a retry can succeed", () => {
@@ -416,6 +450,62 @@ describeIfBashJq("maybe_adopt_attempt_entry decision table (real function body)"
 		expect(probe.stdout).toContain(OP);
 		expect(probe.stdout).not.toContain("RAN");
 		// No second checkpoint file: exactly one deploy exists.
+		expect(fs.existsSync(path.join(deployDir, `attempt-${FRESH}.json`))).toBe(false);
+	});
+
+	it("waits on a deploying operation by key when the deploy lives (C5)", () => {
+		const OP = "merge-deploy:task-1:main:abc123:deadbeef";
+		const OLD = "deploy-t-1-11111";
+		fs.writeFileSync(
+			path.join(deployDir, `attempt-${OLD}.json`),
+			JSON.stringify({
+				attemptId: OLD,
+				status: "deploying",
+				pid: process.pid,
+				operationKey: OP,
+				startedAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			}),
+		);
+		const FRESH = "deploy-t-1-99999";
+		const probe = runHelperScript(
+			deployDir,
+			`export OPERATION_KEY=${JSON.stringify(OP)}; maybe_adopt_attempt_entry; echo RAN`,
+			FRESH,
+			0,
+		);
+		expect(probe.status).toBe(75);
+		expect(probe.stdout).toContain(`[DEPLOY] Adopted attempt ${OLD}`);
+		expect(probe.stdout).toContain("still in flight");
+		expect(probe.stdout).not.toContain("RAN");
+		expect(fs.existsSync(path.join(deployDir, `attempt-${FRESH}.json`))).toBe(false);
+	});
+
+	it("re-runs a stale deploying operation by key instead of adopting it (C5)", () => {
+		const OP = "merge-deploy:task-1:main:abc123:deadbeef";
+		const OLD = "deploy-t-1-11111";
+		fs.writeFileSync(
+			path.join(deployDir, `attempt-${OLD}.json`),
+			JSON.stringify({
+				attemptId: OLD,
+				status: "deploying",
+				pid: 2147483647,
+				operationKey: OP,
+				startedAt: "2026-09-24T09:00:00.000Z",
+				updatedAt: "2026-09-24T09:00:00.000Z",
+			}),
+		);
+		const FRESH = "deploy-t-1-99999";
+		const probe = runHelperScript(
+			deployDir,
+			`export OPERATION_KEY=${JSON.stringify(OP)}; maybe_adopt_attempt_entry; echo RAN`,
+			FRESH,
+			0,
+		);
+		expect(probe.status).toBe(0);
+		expect(probe.stdout).toContain("RAN");
+		expect(probe.stdout).not.toContain("adopting recorded outcome");
+		// Re-runs under the recorded attempt id: no second checkpoint file.
 		expect(fs.existsSync(path.join(deployDir, `attempt-${FRESH}.json`))).toBe(false);
 	});
 
@@ -549,5 +639,179 @@ describeIfBashJq("write_result mirrors the outcome into the checkpoint (real fun
 			fs.readFileSync(path.join(deployDir, "last-result.json"), "utf8"),
 		);
 		expect(result).not.toHaveProperty("headSha");
+	});
+});
+
+function hasGit() {
+	try {
+		const probe = spawnSync("git", ["--version"], { stdio: "ignore" });
+		return !probe.error;
+	} catch {
+		return false;
+	}
+}
+
+const describeIfBashJqGit = hasBash() && hasJq() && hasGit() ? describe : describe.skip;
+
+/**
+ * Builds a throwaway repo pair: a working checkout backed by a bare
+ * `origin`, both on `main`, pushed and in sync. Returns `{ dir, remote }`.
+ */
+function initSyncedRepoPair() {
+	const base = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-deploy-tip-"));
+	const remote = path.join(base, "origin.git");
+	const dir = path.join(base, "work");
+	const git = (...args) => {
+		const probe = spawnSync("git", args, { encoding: "utf8" });
+		if (probe.status !== 0) {
+			throw new Error(`git ${args.join(" ")} failed: ${probe.stderr}`);
+		}
+		return probe.stdout.trim();
+	};
+	git("init", "--bare", remote);
+	git("init", "-b", "main", dir);
+	git("-C", dir, "config", "user.email", "tip-guard@test");
+	git("-C", dir, "config", "user.name", "tip-guard");
+	fs.writeFileSync(path.join(dir, "file.txt"), "one\n");
+	git("-C", dir, "add", "file.txt");
+	git("-C", dir, "-c", "user.email=tip-guard@test", "-c", "user.name=tip-guard", "commit", "-m", "one");
+	git("-C", dir, "remote", "add", "origin", remote);
+	git("-C", dir, "push", "-u", "origin", "main");
+	return { base, dir, remote };
+}
+
+function gitIn(dir, ...args) {
+	const probe = spawnSync("git", ["-C", dir, ...args], { encoding: "utf8" });
+	if (probe.status !== 0) {
+		throw new Error(`git ${args.join(" ")} failed: ${probe.stderr}`);
+	}
+	return probe.stdout.trim();
+}
+
+const TIP_GUARD_HELPERS = [
+	"log",
+	"current_build",
+	"attempt_checkpoint_status",
+	"attempt_checkpoint_field",
+	"attempt_pid_alive",
+	"write_attempt_checkpoint",
+	"write_result",
+	"operation_key_branch",
+	"require_deploy_tip_current",
+];
+
+function runTipGuard({ repoDir, operationKey }) {
+	// Extracted inside the test so a missing function fails this test with
+	// "deploy.sh function not found" instead of breaking the whole file.
+	const deployDir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-deploy-tipguard-"));
+	const prelude = [
+		`export DEPLOY_DIR=${JSON.stringify(deployDir)}`,
+		`export LOG_FILE=${JSON.stringify(path.join(deployDir, "deploy.log"))}`,
+		`export RESULT_FILE=${JSON.stringify(path.join(deployDir, "last-result.json"))}`,
+		`export STATE_FILE=${JSON.stringify(path.join(deployDir, "state.json"))}`,
+		`export HISTORY_FILE=${JSON.stringify(path.join(deployDir, "history.jsonl"))}`,
+		`export BUILD_COUNTER=${JSON.stringify(path.join(deployDir, "build.txt"))}`,
+		`export MODE="prod"`,
+		`export STARTED_AT="2026-09-24T10:00:00.000Z"`,
+		`export OPERATION_KEY=${JSON.stringify(operationKey)}`,
+		extractFunctions(TIP_GUARD_HELPERS),
+	].join("\n");
+	const probe = spawnSync(
+		"bash",
+		["-c", `${prelude}\nrequire_deploy_tip_current`],
+		{ encoding: "utf8", timeout: 60000, cwd: repoDir },
+	);
+	return { probe, deployDir };
+}
+
+describeIfBashJqGit("require_deploy_tip_current (real function bodies)", () => {
+	const OP = "merge-deploy:task-1234:main:abc123:deadbeef";
+
+	it("resolves the integration branch from the operation key", () => {
+		const prelude = [
+			`export OPERATION_KEY=${JSON.stringify(OP)}`,
+			extractFunctions(["operation_key_branch"]),
+		].join("\n");
+		const probe = spawnSync("bash", ["-c", `${prelude}\noperation_key_branch`], {
+			encoding: "utf8",
+			timeout: 30000,
+		});
+		expect(probe.status).toBe(0);
+		expect(probe.stdout.trim()).toBe("main");
+	});
+
+	it("passes when the checkout is exactly the integration tip", () => {
+		const { dir } = initSyncedRepoPair();
+		const { probe, deployDir } = runTipGuard({ repoDir: dir, operationKey: OP });
+		expect(probe.status).toBe(0);
+		expect(probe.stdout).toContain("integration tip");
+		// No failure recorded: the deploy may proceed.
+		expect(fs.existsSync(path.join(deployDir, "last-result.json"))).toBe(false);
+	});
+
+	it("fails loudly when the checkout is behind the integration tip", () => {
+		const { dir } = initSyncedRepoPair();
+		// Advance the remote tip, then leave the checkout behind it.
+		fs.writeFileSync(path.join(dir, "file.txt"), "two\n");
+		gitIn(dir, "add", "file.txt");
+		gitIn(
+			dir,
+			"-c",
+			"user.email=tip-guard@test",
+			"-c",
+			"user.name=tip-guard",
+			"commit",
+			"-m",
+			"two",
+		);
+		gitIn(dir, "push", "origin", "main");
+		gitIn(dir, "reset", "--hard", "HEAD~1");
+		const { probe, deployDir } = runTipGuard({ repoDir: dir, operationKey: OP });
+		expect(probe.status).toBe(1);
+		const result = JSON.parse(
+			fs.readFileSync(path.join(deployDir, "last-result.json"), "utf8"),
+		);
+		expect(result.status).toBe("failed");
+		expect(String(result.message)).toContain("behind");
+	});
+
+	it("fails loudly on unpushed local commits that would ship unreviewed", () => {
+		const { dir } = initSyncedRepoPair();
+		fs.writeFileSync(path.join(dir, "local.txt"), "unpushed\n");
+		gitIn(dir, "add", "local.txt");
+		gitIn(
+			dir,
+			"-c",
+			"user.email=tip-guard@test",
+			"-c",
+			"user.name=tip-guard",
+			"commit",
+			"-m",
+			"unpushed",
+		);
+		const { probe, deployDir } = runTipGuard({ repoDir: dir, operationKey: OP });
+		expect(probe.status).toBe(1);
+		const result = JSON.parse(
+			fs.readFileSync(path.join(deployDir, "last-result.json"), "utf8"),
+		);
+		expect(result.status).toBe("failed");
+		expect(String(result.message)).toMatch(/ahead|diverged/);
+	});
+
+	it("skips manual runs without an operation key", () => {
+		const { dir } = initSyncedRepoPair();
+		const { probe, deployDir } = runTipGuard({ repoDir: dir, operationKey: "" });
+		expect(probe.status).toBe(0);
+		expect(fs.existsSync(path.join(deployDir, "last-result.json"))).toBe(false);
+	});
+
+	it("runs after the adopt table and before the first gate", () => {
+		const prodSection = deployScript.slice(deployScript.indexOf("# --- Production deploy"));
+		const guardAt = prodSection.indexOf("maybe_adopt_attempt_entry");
+		const tipGuardAt = prodSection.indexOf("require_deploy_tip_current");
+		const firstGateAt = prodSection.indexOf('run_gate "final-test-suite"');
+		expect(guardAt).toBeGreaterThan(-1);
+		expect(tipGuardAt).toBeGreaterThan(guardAt);
+		expect(firstGateAt).toBeGreaterThan(tipGuardAt);
 	});
 });
