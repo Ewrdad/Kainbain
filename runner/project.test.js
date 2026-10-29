@@ -9,6 +9,7 @@ import {
 	prepareWorkdir,
 	refreshMirror,
 	refreshWorktreeToRemote,
+	syncTaskDocs,
 } from "./project.js";
 
 function git(dir, args) {
@@ -25,6 +26,23 @@ function localRepo() {
 	git(dir, ["commit", "-qm", "init"]);
 	return dir;
 }
+
+describe("syncTaskDocs", () => {
+	it("mirrors idea files and assets into the worktree, keeps agent files, no-ops when absent", async () => {
+		const primary = fs.mkdtempSync(path.join(os.tmpdir(), "kb-primary-"));
+		const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-work-"));
+		fs.mkdirSync(path.join(primary, "docs", "tasks", "t1", "assets"), { recursive: true });
+		fs.writeFileSync(path.join(primary, "docs", "tasks", "t1", "idea-1.md"), "idea");
+		fs.writeFileSync(path.join(primary, "docs", "tasks", "t1", "assets", "image.png"), "png");
+		fs.mkdirSync(path.join(workdir, "docs", "tasks", "t1"), { recursive: true });
+		fs.writeFileSync(path.join(workdir, "docs", "tasks", "t1", "agent-notes.md"), "mine");
+		assert.equal(await syncTaskDocs({ primaryCwd: primary, workdir, taskId: "t1" }), 2);
+		assert.equal(fs.readFileSync(path.join(workdir, "docs", "tasks", "t1", "idea-1.md"), "utf8"), "idea");
+		assert.ok(fs.existsSync(path.join(workdir, "docs", "tasks", "t1", "assets", "image.png")));
+		assert.equal(fs.readFileSync(path.join(workdir, "docs", "tasks", "t1", "agent-notes.md"), "utf8"), "mine");
+		assert.equal(await syncTaskDocs({ primaryCwd: primary, workdir, taskId: "missing" }), 0);
+	});
+});
 
 describe("runner project prep", () => {
 	let tmp;

@@ -98,6 +98,61 @@ export async function refreshWorktreeToRemote(workdir, branch) {
 }
 
 /***
+ * MARK: syncTaskDocs
+ * @description Copies the task's docs folder (`docs/tasks/<id>`, including
+ *   `assets/` such as reference screenshots) from the primary checkout into
+ *   the per-task worktree. Prompt inputs (idea files, images) are written to
+ *   the live task folder — outside the task branch — so a fresh worktree
+ *   would otherwise hide them from the agent (9010e2e0 hit exactly this:
+ *   the brief's image was missing). Existing worktree files the agent
+ *   created are kept; incoming files overwrite by name.
+ * @example await syncTaskDocs({ primaryCwd: '/repo', workdir: '/w/kb-t', taskId: 't1' }) => 3
+ * @param {Object} opts - `{ primaryCwd, workdir, taskId }`.
+ * @returns {Promise<number>} Number of files copied (0 when nothing to copy).
+ ***/
+export async function syncTaskDocs({ primaryCwd, workdir, taskId } = {}) {
+	if (!primaryCwd || !workdir || !taskId) return 0;
+	const src = path.join(primaryCwd, "docs", "tasks", taskId);
+	const dest = path.join(workdir, "docs", "tasks", taskId);
+	let entries;
+	try {
+		entries = fs.readdirSync(src, { withFileTypes: true });
+	} catch {
+		return 0;
+	}
+	if (!entries.length) return 0;
+	fs.mkdirSync(dest, { recursive: true });
+	let copied = 0;
+	for (const entry of entries) {
+		const from = path.join(src, entry.name);
+		const to = path.join(dest, entry.name);
+		try {
+			const stat = fs.statSync(from);
+			if (stat.isDirectory()) {
+				fs.cpSync(from, to, { recursive: true });
+				for (const f of walkFiles(to)) copied += 1;
+			} else if (stat.isFile()) {
+				fs.copyFileSync(from, to);
+				copied += 1;
+			}
+		} catch {
+			// Best-effort: one unreadable asset must not block the stage.
+		}
+	}
+	return copied;
+}
+
+function walkFiles(dir) {
+	const out = [];
+	for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+		const full = path.join(dir, entry.name);
+		if (entry.isDirectory()) out.push(...walkFiles(full));
+		else if (entry.isFile()) out.push(full);
+	}
+	return out;
+}
+
+/***
  * MARK: prepareWorkdir
  * @description Project load per the transport matrix (MigrationPlan §4):
  *   remote-backed clones the origin into the Runner mirror dir and pulls,

@@ -1,7 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import { promisify } from "node:util";
-import { listOrphanWorkdirs, prepareWorkdir, runGit } from "./project.js";
+import { listOrphanWorkdirs, prepareWorkdir, runGit, syncTaskDocs } from "./project.js";
 import { runHarnessStage } from "./harness.js";
 import { commitAndPush } from "./gitOps.js";
 
@@ -551,6 +551,15 @@ async function executeAssignment({
 				taskId: taskId,
 			});
 			logger.log(`Workdir ${workdir} (${mode}${reused ? ", reused" : ""}).`);
+			// Task prompt inputs (idea files, reference images) land in the
+			// live task folder outside the task branch — mirror them into
+			// the worktree so the harness actually sees them.
+			try {
+				const synced = await syncTaskDocs({ primaryCwd: project.cwd || null, workdir, taskId });
+				if (synced > 0) logger.log(`Synced ${synced} task-doc file(s) into worktree.`);
+			} catch (err) {
+				logger.log(`Task-doc sync skipped: ${err?.message || err}`);
+			}
 
 			let seq = 0;
 			const sendLogs = async (bytes) => {
