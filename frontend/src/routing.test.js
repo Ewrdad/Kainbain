@@ -80,7 +80,7 @@ test('routeToView round-trips every viewToPath result', () => {
     ['explorer', {}],
     ['settings', {}],
     ['system-settings', {}],
-    ['system-settings', { section: 'harness' }],
+    ['system-settings', { section: 'runners' }],
     ['observability', {}],
     ['docs', {}],
     ['docs', { slug: 'install-run' }],

@@ -6,7 +6,85 @@ import { saveStateFile } from "./saveStateFile.js";
 import { normalizeCapabilities } from "./dispatch/normalizeCapabilities.js";
 import { runnerApiCompatible } from "./dispatch/runnerApiCompat.js";
 
-const RUNNER_STATE_VERSION = 1;
+const RUNNER_STATE_VERSION = 2;
+
+const JOB_TYPE_KEYS = ["runsCi", "runsMerges", "runsImpromptu"];
+
+/***
+ * MARK: defaultOperatorConfig
+ * @description Fresh operator-owned configuration for one Runner. Kept
+ *   separate from Runner-reported `facts`/`capabilities` so heartbeats
+ *   never wipe operator choices. `displayName` null falls back to the
+ *   Runner id; `availableTools` null means every advertised harness id;
+ *   `projectScope` null means the Runner serves every project. All job
+ *   switches default to true (current behaviour).
+ * @example defaultOperatorConfig() => { displayName: null, jobTypes: { runsCi: true, ... } }
+ * @returns {Object} Default operator configuration.
+ ***/
+const defaultOperatorConfig = () => {
+	return {
+		displayName: null,
+		availableTools: null,
+		jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
+		directories: { masterDir: "", worktreeDir: "" },
+		projectScope: null,
+	};
+};
+
+/***
+ * MARK: normalizeOperatorConfig
+ * @description Coerces a persisted operatorConfig (possibly from an older
+ *   state file that predates it) into the current shape. Unknown or
+ *   wrong-typed fields fall back to defaults rather than crashing load.
+ * @example normalizeOperatorConfig(null) => defaultOperatorConfig()
+ * @param {*} raw - Persisted value, if any.
+ * @returns {Object} Normalized operator configuration.
+ ***/
+const normalizeOperatorConfig = (raw) => {
+	const fresh = defaultOperatorConfig();
+	if (!raw || typeof raw !== "object") return fresh;
+	const jobTypes = { ...fresh.jobTypes };
+	if (raw.jobTypes && typeof raw.jobTypes === "object") {
+		for (const key of JOB_TYPE_KEYS) {
+			if (typeof raw.jobTypes[key] === "boolean") jobTypes[key] = raw.jobTypes[key];
+		}
+	}
+	const directories = { ...fresh.directories };
+	if (raw.directories && typeof raw.directories === "object") {
+		for (const key of ["masterDir", "worktreeDir"]) {
+			if (typeof raw.directories[key] === "string") directories[key] = raw.directories[key];
+		}
+	}
+	return {
+		displayName: typeof raw.displayName === "string" ? raw.displayName : null,
+		availableTools: Array.isArray(raw.availableTools)
+			? raw.availableTools.filter((t) => typeof t === "string")
+			: null,
+		jobTypes,
+		directories,
+		projectScope: Array.isArray(raw.projectScope)
+			? raw.projectScope.filter((p) => typeof p === "string")
+			: null,
+	};
+};
+
+/***
+ * MARK: advertisedToolIds
+ * @description Harness/tool ids this Runner advertised in its capabilities,
+ *   or null when unknown (no capabilities yet). Used to validate the
+ *   operator's available-tools subset.
+ * @example advertisedToolIds({ capabilities: { harnesses: [{ id: 'pi' }] } }) => ['pi']
+ * @param {Object} record - Runner record.
+ * @returns {string[]|null} Advertised ids, or null when unknown.
+ ***/
+const advertisedToolIds = (record) => {
+	const list = record?.capabilities?.harnesses;
+	if (!Array.isArray(list)) return null;
+	const ids = list
+		.map((h) => (typeof h === "string" ? h : h?.id))
+		.filter((id) => typeof id === "string" && id);
+	return ids.length > 0 ? ids : null;
+}
 
 /***
  * MARK: RunnerRegistry
@@ -97,6 +175,7 @@ export class RunnerRegistry {
 						? rec.originConflicts
 						: 0,
 				paused: rec.paused === true,
+				operatorConfig: normalizeOperatorConfig(rec.operatorConfig),
 				lastSeenAt: null,
 			};
 			this.runners.set(record.runnerId, record);
@@ -118,6 +197,7 @@ export class RunnerRegistry {
 				lastOrigin: record.lastOrigin || null,
 				originConflicts: record.originConflicts || 0,
 				paused: record.paused === true,
+				operatorConfig: normalizeOperatorConfig(record.operatorConfig),
 			})),
 		});
 	}
@@ -150,7 +230,218 @@ export class RunnerRegistry {
 			originConflicts: record.originConflicts || 0,
 			paused: record.paused === true,
 			projectScope: Array.isArray(record.projectScope) ? [...record.projectScope] : null,
+			operatorConfig: normalizeOperatorConfig(record.operatorConfig),
 		};
+	}
+
+	/***
+	 * MARK: getConfig
+	 * @description Returns the public Runner record including its
+	 *   operator-owned configuration (display name, tool filter, job-type
+	 *   switches, directories, project override). Backs
+	 *   `GET /runners/:id/config` for the System Settings Runner screen.
+	 * @example registry.getConfig('r1') => { runnerId: 'r1', operatorConfig: {...} }
+	 * @param {string} runnerId - Runner id.
+	 * @returns {Object} Public record with `operatorConfig`.
+	 ***/
+	getConfig(runnerId) {
+		return this._public(this._getOrThrow(runnerId));
+	}
+
+	/***
+	 * MARK: updateConfig
+	 * @description Applies an operator-owned configuration patch to one
+	 *   Runner and persists it. Heartbeat-reported `facts`/`capabilities`
+	 *   are never touched here, so Runner heartbeats cannot wipe operator
+	 *   choices. Any status (including `pending`) may be configured.
+	 * @example registry.updateConfig('r1', { jobTypes: { runsCi: false } }) => {...}
+	 * @param {string} runnerId - Runner id.
+	 * @param {Object} [patch={}] - Partial operator configuration.
+	 * @returns {Object} Public record with the updated `operatorConfig`.
+	 ***/
+	updateConfig(runnerId, patch = {}) {
+		const record = this._getOrThrow(runnerId);
+		if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
+			throw RunnerRegistry._fail(
+				400,
+				"INVALID_CONFIG_PATCH",
+				"Config patch must be an object.",
+			);
+		}
+		const allowed = new Set([
+			"displayName",
+			"availableTools",
+			"jobTypes",
+			"directories",
+			"projectScope",
+		]);
+		for (const key of Object.keys(patch)) {
+			if (!allowed.has(key)) {
+				throw RunnerRegistry._fail(
+					400,
+					"UNKNOWN_CONFIG_FIELD",
+					`Unknown config field '${key}'.`,
+				);
+			}
+		}
+		const current = normalizeOperatorConfig(record.operatorConfig);
+		const next = {
+			displayName: current.displayName,
+			availableTools: current.availableTools ? [...current.availableTools] : null,
+			jobTypes: { ...current.jobTypes },
+			directories: { ...current.directories },
+			projectScope: current.projectScope ? [...current.projectScope] : null,
+		};
+		if (Object.hasOwn(patch, "displayName")) {
+			const name = patch.displayName;
+			if (name !== null && typeof name !== "string") {
+				throw RunnerRegistry._fail(
+					400,
+					"INVALID_DISPLAY_NAME",
+					"displayName must be a string or null.",
+				);
+			}
+			const trimmed = typeof name === "string" ? name.trim() : "";
+			if (typeof name === "string" && !trimmed) {
+				throw RunnerRegistry._fail(
+					400,
+					"INVALID_DISPLAY_NAME",
+					"displayName must not be blank.",
+				);
+			}
+			if (trimmed.length > 128) {
+				throw RunnerRegistry._fail(
+					400,
+					"INVALID_DISPLAY_NAME",
+					"displayName must be at most 128 characters.",
+				);
+			}
+			next.displayName = typeof name === "string" ? trimmed : null;
+		}
+		if (Object.hasOwn(patch, "availableTools")) {
+			const tools = patch.availableTools;
+			if (tools !== null && !Array.isArray(tools)) {
+				throw RunnerRegistry._fail(
+					400,
+					"INVALID_AVAILABLE_TOOLS",
+					"availableTools must be an array of tool ids or null (all advertised).",
+				);
+			}
+			if (Array.isArray(tools)) {
+				for (const tool of tools) {
+					if (typeof tool !== "string" || !tool.trim()) {
+						throw RunnerRegistry._fail(
+							400,
+							"INVALID_AVAILABLE_TOOLS",
+							"availableTools must be an array of non-empty tool id strings.",
+						);
+					}
+				}
+				const advertised = advertisedToolIds(record);
+				if (advertised) {
+					const unknown = tools.filter((tool) => !advertised.includes(tool));
+					if (unknown.length > 0) {
+						throw RunnerRegistry._fail(
+							400,
+							"UNKNOWN_TOOL",
+							`Runner ${runnerId} does not advertise these tools: ${unknown.join(", ")}.`,
+						);
+					}
+				}
+				next.availableTools = [...new Set(tools)];
+			} else {
+				next.availableTools = null;
+			}
+		}
+		if (Object.hasOwn(patch, "jobTypes")) {
+			const jobTypes = patch.jobTypes;
+			if (!jobTypes || typeof jobTypes !== "object" || Array.isArray(jobTypes)) {
+				throw RunnerRegistry._fail(
+					400,
+					"INVALID_JOB_TYPES",
+					"jobTypes must be an object of boolean switches.",
+				);
+			}
+			for (const key of Object.keys(jobTypes)) {
+				if (!JOB_TYPE_KEYS.includes(key)) {
+					throw RunnerRegistry._fail(
+						400,
+						"UNKNOWN_JOB_TYPE",
+						`Unknown job type '${key}'.`,
+					);
+				}
+				if (typeof jobTypes[key] !== "boolean") {
+					throw RunnerRegistry._fail(
+						400,
+						"INVALID_JOB_TYPES",
+						`Job switch '${key}' must be a boolean.`,
+					);
+				}
+				next.jobTypes[key] = jobTypes[key];
+			}
+		}
+		if (Object.hasOwn(patch, "directories")) {
+			const directories = patch.directories;
+			if (!directories || typeof directories !== "object" || Array.isArray(directories)) {
+				throw RunnerRegistry._fail(
+					400,
+					"INVALID_DIRECTORIES",
+					"directories must be an object with masterDir/worktreeDir strings.",
+				);
+			}
+			for (const key of Object.keys(directories)) {
+				if (key !== "masterDir" && key !== "worktreeDir") {
+					throw RunnerRegistry._fail(
+						400,
+						"UNKNOWN_DIRECTORY_FIELD",
+						`Unknown directory field '${key}'.`,
+					);
+				}
+				const value = directories[key];
+				if (typeof value !== "string" || !value.trim()) {
+					throw RunnerRegistry._fail(
+						400,
+						"INVALID_DIRECTORIES",
+						`Directory '${key}' must be a non-empty string.`,
+					);
+				}
+				if (value.trim().length > 1024) {
+					throw RunnerRegistry._fail(
+						400,
+						"INVALID_DIRECTORIES",
+						`Directory '${key}' must be at most 1024 characters.`,
+					);
+				}
+				next.directories[key] = value.trim();
+			}
+		}
+		if (Object.hasOwn(patch, "projectScope")) {
+			const scope = patch.projectScope;
+			if (scope !== null && !Array.isArray(scope)) {
+				throw RunnerRegistry._fail(
+					400,
+					"INVALID_PROJECT_SCOPE",
+					"projectScope must be an array of project ids or null (all projects).",
+				);
+			}
+			if (Array.isArray(scope)) {
+				for (const id of scope) {
+					if (typeof id !== "string" || !id.trim()) {
+						throw RunnerRegistry._fail(
+							400,
+							"INVALID_PROJECT_SCOPE",
+							"projectScope must be an array of non-empty project id strings.",
+						);
+					}
+				}
+				next.projectScope = [...new Set(scope.map((id) => id.trim()))];
+			} else {
+				next.projectScope = null;
+			}
+		}
+		record.operatorConfig = next;
+		this._persist();
+		return this._public(record);
 	}
 
 	/***
@@ -239,6 +530,7 @@ export class RunnerRegistry {
 			credential: null,
 			credentialIssuedAt: null,
 			paused: false,
+			operatorConfig: defaultOperatorConfig(),
 			lastSeenAt: null,
 		};
 		this.runners.set(runnerId, record);

@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-// import { useKainBain } from '../../context/KainBainContext'; // unused after removing Harness settings
 import { Icon } from '../Icon';
 import { FALLBACK_MODELS } from '../stageTypes';
 import { useModelCatalog } from '../../hooks/useModelCatalog';
 import { useModelRefreshSetting } from '../../hooks/useModelRefreshSetting';
 
-import { RunnersSection } from './RunnersSection';
+import { RunnerConfigurationSection } from './RunnerConfigurationSection';
 import { StorageSection } from './StorageSection';
 import { PushNotificationsSection } from './PushNotificationsSection';
 import { PromptLayoutSection } from './PromptLayoutSection';
@@ -16,7 +15,6 @@ import { SETTINGS_TABS, isFooterResetVisible } from './settingsTabs';
 export const SYSTEM_SETTINGS_SECTIONS = SETTINGS_TABS.map(({ id, label }) => ({ id, label }));
 
 export const DEFAULT_SYSTEM_SETTINGS_DRAFT = {
-  defaultHarness: 'pi',
   stageTimeoutSecs: 600,
   allowPermissionBypass: false,
   defaultModel: '',
@@ -29,7 +27,7 @@ export const DEFAULT_SYSTEM_SETTINGS_DRAFT = {
 /***
  * MARK: SettingRow
  * @description Label + control row used by the System Settings wireframe.
- * @example <SettingRow label="Default harness" hint="..."><select /></SettingRow>
+ * @example <SettingRow label="Default model" hint="..."><input /></SettingRow>
  ***/
 export function SettingRow({ label, hint, children }) {
   return (
@@ -44,7 +42,7 @@ export function SettingRow({ label, hint, children }) {
 /***
  * MARK: SystemSettingsContent
  * @description Route- and shell-agnostic System Settings content component.
- * Renders header, tablist, all section panels (Harness, Models, Engine, Storage,
+ * Renders header, tablist, all section panels (Runners, Models, Engine, Storage,
  * Notifications, Prompt Layout, UI), and footer actions. Rendered by the
  * standalone SystemSettingsPage screen (`/system-settings`); it takes no
  * modal state and never renders a dialog shell.
@@ -64,8 +62,6 @@ export function SystemSettingsContent({
   backLabel = 'Back to Board',
   headingLevel = 'h2',
 }) {
-  // const { harnessPrefs, updateHarnessPref, resetHarnessPrefs } = useKainBain(); // Harness prefs removed in favor of Runner settings
-
   const [internalActiveSection, setInternalActiveSection] = useState('runners');
   const activeSection = controlledSection ?? internalActiveSection;
 
@@ -192,7 +188,7 @@ export function SystemSettingsContent({
 
         {effectiveSection === 'runners' && (
           <div role="tabpanel" aria-label="Runner settings">
-            <RunnersSection />
+            <RunnerConfigurationSection />
           </div>
         )}
 

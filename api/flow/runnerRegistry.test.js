@@ -374,3 +374,128 @@ describe("RunnerRegistry", () => {
 		expect(second.resume("r1").paused).toBe(false);
 	});
 });
+
+describe("RunnerRegistry operator config", () => {
+	test("registers with default operator config and exposes it in list", () => {
+		const { runners } = approved();
+		const [record] = runners.list();
+		expect(record.operatorConfig).toEqual({
+			displayName: null,
+			availableTools: null,
+			jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
+			directories: { masterDir: "", worktreeDir: "" },
+			projectScope: null,
+		});
+	});
+
+	test("getConfig returns the public record with operatorConfig", () => {
+		const { runners } = approved();
+		const config = runners.getConfig("r1");
+		expect(config.runnerId).toBe("r1");
+		expect(config.operatorConfig.jobTypes.runsCi).toBe(true);
+		expect(() => runners.getConfig("ghost")).toThrowError(/Unknown Runner/);
+	});
+
+	test("updateConfig persists directories and job toggles", () => {
+		const { runners } = approved();
+		const updated = runners.updateConfig("r1", {
+			jobTypes: { runsCi: false, runsImpromptu: false },
+			directories: { masterDir: "/srv/kainbain", worktreeDir: "/srv/kainbain-trees" },
+		});
+		expect(updated.operatorConfig.jobTypes).toEqual({
+			runsCi: false,
+			runsMerges: true,
+			runsImpromptu: false,
+		});
+		expect(updated.operatorConfig.directories).toEqual({
+			masterDir: "/srv/kainbain",
+			worktreeDir: "/srv/kainbain-trees",
+		});
+		// Partial patches merge: untouched fields keep their values.
+		const renamed = runners.updateConfig("r1", { displayName: "  Primary  " });
+		expect(renamed.operatorConfig.displayName).toBe("Primary");
+		expect(renamed.operatorConfig.jobTypes.runsCi).toBe(false);
+	});
+
+	test("updateConfig validates tool subset, directories, and unknown fields", () => {
+		const { runners } = approved();
+		// FACTS advertises only 'pi'.
+		expect(
+			runners.updateConfig("r1", { availableTools: ["pi"] }).operatorConfig.availableTools,
+		).toEqual(["pi"]);
+		expect(() => runners.updateConfig("r1", { availableTools: ["nope"] })).toThrowError(
+			/does not advertise/,
+		);
+		try {
+			runners.updateConfig("r1", { availableTools: ["nope"] });
+			expect.unreachable();
+		} catch (err) {
+			expect(err.statusCode).toBe(400);
+			expect(err.code).toBe("UNKNOWN_TOOL");
+		}
+		for (const bad of [
+			{ directories: { masterDir: "   " } },
+			{ directories: { bogus: "/x" } },
+			{ jobTypes: { runsCi: "yes" } },
+			{ jobTypes: { runsEverything: true } },
+			{ projectScope: "p1" },
+			{ displayName: "" },
+			{ nope: true },
+		]) {
+			try {
+				runners.updateConfig("r1", bad);
+				expect.unreachable();
+			} catch (err) {
+				expect(err.statusCode).toBe(400);
+			}
+		}
+	});
+
+	test("pending Runners can be configured", () => {
+		const runners = registry();
+		runners.register({ runnerId: "r1", joinToken: "join-secret", facts: FACTS });
+		const updated = runners.updateConfig("r1", { displayName: "New joiner" });
+		expect(updated.status).toBe("pending");
+		expect(updated.operatorConfig.displayName).toBe("New joiner");
+	});
+
+	test("heartbeats never wipe operator choices", () => {
+		const { runners, credential } = approved();
+		runners.updateConfig("r1", {
+			displayName: "Primary",
+			jobTypes: { runsMerges: false },
+			directories: { masterDir: "/srv/kb" },
+		});
+		runners.heartbeat({ runnerId: "r1", credential, facts: FACTS });
+		const config = runners.getConfig("r1");
+		expect(config.operatorConfig.displayName).toBe("Primary");
+		expect(config.operatorConfig.jobTypes.runsMerges).toBe(false);
+		expect(config.operatorConfig.directories.masterDir).toBe("/srv/kb");
+	});
+
+	test("persists operator config across restarts", () => {
+		const file = tmpRunnerState();
+		const first = new RunnerRegistry({
+			joinToken: "join-secret",
+			newCredential: () => "cred-1",
+			stateFile: file,
+		});
+		first.register({ runnerId: "r1", joinToken: "join-secret", facts: FACTS });
+		first.approve("r1");
+		first.updateConfig("r1", {
+			displayName: "Primary",
+			jobTypes: { runsCi: false },
+			directories: { masterDir: "/srv/kb", worktreeDir: "/srv/kb-trees" },
+			availableTools: ["pi"],
+			projectScope: ["p1"],
+		});
+		const second = new RunnerRegistry({ joinToken: "join-secret", stateFile: file });
+		expect(second.getConfig("r1").operatorConfig).toEqual({
+			displayName: "Primary",
+			availableTools: ["pi"],
+			jobTypes: { runsCi: false, runsMerges: true, runsImpromptu: true },
+			directories: { masterDir: "/srv/kb", worktreeDir: "/srv/kb-trees" },
+			projectScope: ["p1"],
+		});
+	});
+});

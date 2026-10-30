@@ -10,6 +10,13 @@ export function runnerRequests(request) {
   return {
     getRunners: () => request('/runners'),
     getRunnerMonitor: () => request('/runners/monitor'),
+    getRunnerConfig: (id) =>
+      request(`/runners/${encodeURIComponent(id)}/config`),
+    updateRunnerConfig: (id, patch) =>
+      request(`/runners/${encodeURIComponent(id)}/config`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch || {}),
+      }),
     approveRunner: (id) =>
       request(`/runners/${encodeURIComponent(id)}/approve`, { method: 'POST' }),
     denyRunner: (id) =>
