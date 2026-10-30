@@ -138,13 +138,27 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 	};
 
 	const ciPayloadFor = async (projectId, task, stage) => {
-		if (!stage) return {};
 		const project = projectStore.getProject(projectId);
 		const stages = resolveStagesForTask(project, task);
+		// A null/undefined stage (e.g. the single-assignment claim route) falls
+		// back to the task's current stage — dropping the payload here would
+		// silently strip kind/command/runOnBranch and the Runner would run the
+		// command in the task worktree regardless of the stage's branch mode.
 		const resolved = stage || stages.find((x) => String(x?.id) === String(task?.currentStageId)) || stages[0];
 		if (!resolved) return {};
 		const type = String(resolved.type || "").toLowerCase();
 		if (!["ci", "script", "deploy", "command"].includes(type)) return {};
+		// Branch mode rides every payload — including the error fallback — so a
+		// Runner can never silently degrade a 'primary'/'custom' stage back to
+		// the task worktree (which is exactly how publish stages used to fail:
+		// deploy.sh refuses to run from a kb/* worktree).
+		const runOnBranch = typeof resolved.runOnBranch === "string" ? resolved.runOnBranch : "task";
+		const branchPayload = {
+			runOnBranch,
+			...(runOnBranch === "custom" && typeof resolved.customBranch === "string" && resolved.customBranch.trim()
+				? { customBranch: resolved.customBranch.trim() }
+				: {}),
+		};
 		// Generic lifecycle seam (mirrors runCommandStage): every command
 		// stage announces entry the same way, whether a Runner or the
 		// backend executes it. Installed continuity plugins may record
@@ -173,10 +187,10 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				kind: "ci",
 				command: expandStageCommand(resolved.command || resolved.script || "echo 'CI stage completed'", ctx),
 				timeoutMs: resolveCiTimeoutMs(resolved, project),
-				runOnBranch: typeof resolved.runOnBranch === "string" ? resolved.runOnBranch : "task",
+				...branchPayload,
 				env: lifecycleEnv,
 			};
-		} catch { return { kind: "ci", command: resolved.command || resolved.script || "", timeoutMs: 600000, env: lifecycleEnv }; }
+		} catch { return { kind: "ci", command: resolved.command || resolved.script || "", timeoutMs: 600000, ...branchPayload, env: lifecycleEnv }; }
 	};
 
 	const authedRunner = (request) => {
