@@ -112,6 +112,32 @@ Model listing is a HARNESS CONTRACT capability: every harness exposes `listModel
 
 Per-project model lists (a different model set per harness instance) stay deferred; the per-harness cache slots above are what they would build on.
 
+### Runner model reporting (advertised vs required vs serving)
+
+Four different "models" meet in the Runner path — confusing them is what once
+rendered `default` on every card. The contract, locked by
+`runner/daemon.test.js`, `api/flow/runnerPosture.test.js`, and
+`PerRunnerTasksWidget.test.jsx`:
+
+- `config.model` / `config.models` is the Runner's **advertised capability**
+  (what it _can_ run, from `KAINBAIN_RUNNER_MODELS`). It is never a stage's
+  served model unless the stage happens to require that same model.
+- `requirements.model` is the dispatch answer's **required model**. The Runner
+  serves exactly that (falling back to the pinned default only for LLM stages
+  with no requirement); a Runner that did not advertise it refuses with
+  `NO_MODEL` and the task stays claimable for a capable Runner.
+- `serving.model` is the **observed serving state** (`prompted` progress event
+  → `executionLedger.stageServing` → `GET /runners/monitor`). CI / merge /
+  integrate stages serve no LLM and report `null` — never the Runner default,
+  never the literal `"default"` — so the UI hides the model pill.
+- The completion `posture` string is `tiers:harness` with `:model` appended
+  only when a real model was served; model-less stages omit the segment.
+
+One copy of the rules lives in `shared/servingModelFor.js` +
+`shared/formatPosture.js`, executed verbatim by both the Runner bundle and the
+backend (re-exported through `api/flow/runnerPosture.js`), so the two can
+never drift.
+
 ### Per-project harness selection
 
 The engine resolves the harness PER PROJECT through the harness registry (`api/agent/harnessRegistry.js`) — the layer harness-scoped model keys unblocked. Session creation resolves in this order:
