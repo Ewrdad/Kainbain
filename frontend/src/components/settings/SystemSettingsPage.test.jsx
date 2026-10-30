@@ -106,12 +106,12 @@ afterEach(() => {
 });
 
 describe('SystemSettingsPage', () => {
-  it('renders the full screen at /system-settings with an h1 and the default Harness tab', async () => {
+  it('renders the full screen at /system-settings with an h1 and the default Runners tab', async () => {
     renderAt('/system-settings');
     expect(screen.getByTestId('system-settings-page')).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1, name: 'System Settings' })).toBeInTheDocument();
     // Default section: no /:section segment means the first tab.
-    expect(screen.getByRole('tab', { name: 'Harness' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Runners' })).toHaveAttribute('aria-selected', 'true');
     for (const label of SETTINGS_TAB_LABELS) {
       expect(screen.getByRole('tab', { name: label })).toBeInTheDocument();
     }
@@ -122,7 +122,7 @@ describe('SystemSettingsPage', () => {
   it('deep-links the tab from the /:section path segment', async () => {
     renderAt('/system-settings/models');
     expect(screen.getByRole('tab', { name: 'Models' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tab', { name: 'Harness' })).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByRole('tab', { name: 'Runners' })).toHaveAttribute('aria-selected', 'false');
   });
 
   it('deep-links the tab from the ?section= query param', async () => {
@@ -133,7 +133,7 @@ describe('SystemSettingsPage', () => {
   it('falls back to the first tab for an unknown section without breaking the screen', async () => {
     renderAt('/system-settings/does-not-exist');
     expect(screen.getByTestId('system-settings-page')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Harness' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Runners' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('routes tab clicks into the URL so the tab is refresh-safe and shareable', async () => {

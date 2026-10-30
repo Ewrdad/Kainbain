@@ -24,7 +24,7 @@ import {
  *   `#/system-settings` (opened in a new window by default from the System
  *   Menu, with a same-tab fallback on narrow viewports or a blocked popout) —
  *   no longer a modal dialog. On mobile viewports the section tab bar
- *   (Harness / Models / Engine / Storage / Notifications / Prompt Layout / UI)
+ *   (Runners / Models / Engine / Storage / Notifications / Prompt Layout / UI)
  *   must render at full height and stay tappable — never clipped where the
  *   details panel begins. Root cause was flex-shrink: header/tablist/footer
  *   carried no shrink-0 while the content pane (flex-1 over a zero basis)
@@ -47,7 +47,7 @@ async function openSystemSettings(page) {
 	await page.goto(`${APP_URL}/#/system-settings`);
 	const screen = page.getByTestId("system-settings-page");
 	await expect(screen).toBeVisible({ timeout: 10000 });
-	// Settle: let the Harness tab's async registry load land, so boxes are
+	// Settle: let the Runners tab's async registry load land, so boxes are
 	// measured in the resting state.
 	await page.waitForTimeout(800);
 	return screen;
@@ -59,9 +59,9 @@ async function openSystemSettings(page) {
  *   is at least as tall as every tab it holds, each tab sits fully inside
  *   the tablist box, and the details scroll region starts below the tablist
  *   (no intersection). Header and footer controls stay visible throughout.
- * @example await expectSettingsChromeUnclipped(page, screen, 'harness')
+ * @example await expectSettingsChromeUnclipped(page, screen, 'runners')
  ***/
-async function expectSettingsChromeUnclipped(page, screen, activeSectionId = "harness") {
+async function expectSettingsChromeUnclipped(page, screen, activeSectionId = "runners") {
 	const tablist = screen.getByRole("tablist", {
 		name: "System settings sections",
 	});
@@ -107,8 +107,8 @@ async function expectSettingsChromeUnclipped(page, screen, activeSectionId = "ha
 	await expect(
 		screen.getByRole("button", { name: "Done", exact: true }),
 	).toBeVisible();
-	// Exact match: the Harness tab content also has a "Reset harness
-	// preferences" button — only the footer "Reset" proves the footer shows.
+	// Exact match: only the footer "Reset" proves the footer shows —
+	// the tab content has no same-named button.
 	// Tabs whose product metadata hides the footer Reset deliberately, so
 	// assert its absence there instead of failing.
 	if (!isFooterResetVisible(activeSectionId)) {
@@ -144,8 +144,8 @@ test.describe("System Settings screen tab bar (task 5ad55777)", () => {
 	}) => {
 		await page.setViewportSize(SHORT_MOBILE_VIEWPORT);
 		const screen = await openSystemSettings(page);
-		// Harness is the tallest tab — the worst squeeze case.
-		await expect(screen.getByRole("tab", { name: "Harness" })).toHaveAttribute(
+		// Runners is the tallest tab — the worst squeeze case.
+		await expect(screen.getByRole("tab", { name: "Runners" })).toHaveAttribute(
 			"aria-selected",
 			"true",
 		);
@@ -210,7 +210,7 @@ test.describe("System Settings screen tab bar (task 5ad55777)", () => {
 		// Unknown id: fail safe to the first tab, no blank screen.
 		await page.goto(`${APP_URL}/#/system-settings/not-a-section`);
 		await expect(screen).toBeVisible({ timeout: 10000 });
-		await expect(screen.getByRole("tab", { name: "Harness" })).toHaveAttribute(
+		await expect(screen.getByRole("tab", { name: "Runners" })).toHaveAttribute(
 			"aria-selected",
 			"true",
 		);

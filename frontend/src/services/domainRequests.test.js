@@ -39,8 +39,10 @@ describe('Business-owned request lists', () => {
     // survey page.
     // the 8 Runner operations (getRunners, getRunnerMonitor, approveRunner,
     // denyRunner, revokeRunner, pauseRunner, resumeRunner, skipRunner) for
-    // Settings › Harness › Runners and the per-runner Now Playing controls.
-    expect(names).toHaveLength(90);
+    // Settings › Runners and the per-runner Now Playing controls +
+    // the 2 Runner config operations (getRunnerConfig, updateRunnerConfig)
+    // for the System Settings › Runners detail form.
+    expect(names).toHaveLength(92);
     for (const name of names) expect(typeof api[name]).toBe('function');
   });
 

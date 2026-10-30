@@ -92,6 +92,25 @@ vi.mock('../services/api', async (importOriginal) => {
         ],
       }),
       getHarnessModels: vi.fn().mockResolvedValue({ models: [] }),
+      getRunners: vi.fn().mockResolvedValue([
+        {
+          runnerId: 'r1',
+          status: 'active',
+          facts: {},
+          capabilities: { harnesses: [{ id: 'pi' }] },
+          projectScope: null,
+          paused: false,
+          lastSeenAt: null,
+          operatorConfig: {
+            displayName: null,
+            availableTools: null,
+            jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
+            directories: { masterDir: '', worktreeDir: '' },
+            projectScope: null,
+          },
+        },
+      ]),
+      getRunnerMonitor: vi.fn().mockResolvedValue({ liveAssignments: [] }),
     },
     wsUrl: vi.fn(() => 'ws://localhost:3000/ws?projectId=proj-1'),
   };
@@ -273,7 +292,7 @@ test('skip link moves focus without touching the route', async () => {
   expect(screen.getByText('Orchestrator')).toBeInTheDocument();
 });
 
-test('keyboard shortcut S opens the System Settings screen with the Harness tab', async () => {
+test('keyboard shortcut S opens the System Settings screen with the Runners tab', async () => {
   window.location.hash = '';
   // Deterministic same-tab fallback: pretend the popout was blocked, so the
   // shortcut lands on the in-app screen we can assert against.
@@ -294,11 +313,11 @@ test('keyboard shortcut S opens the System Settings screen with the Harness tab'
     expect(
       screen.getByRole('heading', { level: 1, name: 'System Settings' }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Harness' })).toBeInTheDocument();
-    // The Harness tab is live: rows render from the registry, each with an
-    // Enabled toggle — this is the reachability proof for the feature.
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
-    expect(await screen.findByLabelText('Enable pi coding agent harness')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Runners' })).toBeInTheDocument();
+    // The Runners tab is live: the roster renders from the registry and the
+    // selected Runner shows its configuration form — the reachability proof.
+    expect(await screen.findByTestId('runner-row-r1')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
   } finally {
     openSpy.mockRestore();
     window.location.hash = '';
@@ -372,7 +391,7 @@ test('system menu System Settings falls back to same-tab when the popout is bloc
     await waitFor(() => {
       expect(screen.getByTestId('system-settings-page')).toBeInTheDocument();
     });
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
   } finally {
     openSpy.mockRestore();
     window.location.hash = '';

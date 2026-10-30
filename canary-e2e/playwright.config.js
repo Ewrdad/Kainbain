@@ -144,6 +144,12 @@ const scratchNotesRoot = path.join(scratchRunBase, "notes");
 // derives the same path from KB_CANARY_RUN_TAG, so keep the derivation in
 // sync (base + "engine/circuit.json").
 const scratchCircuitFile = path.join(scratchRunBase, "engine", "circuit.json");
+// Own Runner-registry file: the backend loads the durable Runner ledger from
+// ~/.kainbain/engine/runners.json by default, so without this the scratch
+// stack serves the host's live fleet (e.g. local-alpha/local-bravo) and the
+// Now Playing bar renders "Runners N" runner boxes instead of the "Active
+// Task" label the specs assert. Scratch stacks must never share it.
+const scratchRunnerStateFile = path.join(scratchRunBase, "engine", "runners.json");
 // Best-effort reclamation of stale runs: drop sibling run dirs older than a
 // day (never the current tag, never anything else under /tmp). A crashed run
 // otherwise leaves its projects on disk forever; concurrent live runs are
@@ -226,6 +232,10 @@ module.exports = {
 						// Isolate containment state (see scratchCircuitFile): a
 						// tripped scratch breaker must never reach prod's file.
 						KAINBAIN_CIRCUIT_STATE_FILE: scratchCircuitFile,
+						// Isolate the Runner registry (see scratchRunnerStateFile):
+						// the host's live fleet must never appear in the
+						// scratch Now Playing bar or runner assertions.
+						KAINBAIN_RUNNER_STATE_FILE: scratchRunnerStateFile,
 						// Run agent stages on the zero-credential mock harness:
 						// the suite asserts flow/UI behavior, never model
 						// output, and ambient model defaults rot (a dead

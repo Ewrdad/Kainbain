@@ -287,6 +287,26 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		}
 	});
 
+	app.get("/runners/:id/config", async (request, reply) => {
+		// Operator-owned Runner configuration for the System Settings
+		// Runner screen (display name, tool filter, job-type switches,
+		// directories, project override). No Runner credential needed:
+		// same operator surface as approve/deny/pause/resume.
+		try {
+			return runnerRegistry.getConfig(request.params.id);
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
+	app.patch("/runners/:id/config", async (request, reply) => {
+		try {
+			return runnerRegistry.updateConfig(request.params.id, request.body || {});
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
 	app.post("/runners/:id/skip", async (request, reply) => {
 		// Operator skip: advance the task this Runner currently holds past
 		// its stage and release the lease, so the in-flight Runner report

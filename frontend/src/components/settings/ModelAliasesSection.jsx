@@ -948,9 +948,9 @@ export function ModelAliasesSection({
     return () => {
       cancelled = true;
     };
-    // One-shot fetch on mount / project change (same pattern as
-    // HarnessSection's reliability fetch). No exhaustive-deps disable: the
-    // effect references only projectId.
+    // One-shot fetch on mount / project change (same mount-time fetch
+    // pattern used across the settings sections). No exhaustive-deps
+    // disable: the effect references only projectId.
   }, [projectId]);
 
   // Q2: a stored `::level` on a null-reasoning harness collapses to the
@@ -1004,7 +1004,7 @@ export function ModelAliasesSection({
   // `reliabilitySupported` mirrors the api guard in the fetch effect: when
   // the build has no alias reliability reader there is no pending fetch to
   // wait for, so gating on it prevents a perpetual "Loading reliability…"
-  // state (same contract as HarnessSection).
+  // state (same contract as the settings reliability fetch).
   const reliabilitySupported = typeof api.getAliasReliability === 'function';
   const reliabilityPending =
     reliabilitySupported && !reliabilityError && reliabilityByAlias === null;
