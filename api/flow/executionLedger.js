@@ -36,6 +36,7 @@ import { git } from "../git.js";
  * @example MAX_RUNNER_INTERRUPTS => 5
  ***/
 export const MAX_RUNNER_INTERRUPTS = 5;
+export { formatPosture, servingModelFor } from "./runnerPosture.js";
 
 /***
  * MARK: ExecutionLedger
@@ -131,10 +132,10 @@ export class ExecutionLedger {
 		}
 		// Serving harness/model (observability only): what the Runner
 		// actually runs this execution on. Same lifecycle as the prompt.
-		if (event === "prompted" && (harness || model)) {
+		if (event === "prompted" && ((typeof harness === "string" && harness.trim()) || (typeof model === "string" && model.trim()))) {
 			this.stageServing.set(executionId, {
-				harness: typeof harness === "string" ? harness : null,
-				model: typeof model === "string" ? model : null,
+				harness: typeof harness === "string" && harness.trim() ? harness.trim() : null,
+				model: typeof model === "string" && model.trim() ? model.trim() : null,
 			});
 		}
 		this.counters.progressRecorded += 1;

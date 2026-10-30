@@ -17,6 +17,8 @@ import {
 	startClaimRenewal,
 	RUNNER_API_VERSION,
 	ciWorkdirFor,
+	servingModelFor,
+	formatPosture,
 } from "./daemon.js";
 
 describe("ciWorkdirFor", () => {
@@ -963,5 +965,38 @@ describe("runCiCommand", () => {
 		assert.equal(ok.exitCode, 0); assert.match(ok.output, /hello-ci/);
 		const bad = await runCiCommand({ command: "exit 3", workdir: "/tmp" });
 		assert.equal(bad.exitCode, 3);
+	});
+});
+
+describe("servingModelFor", () => {
+	it("returns dispatch model for agent", () => {
+		assert.equal(servingModelFor({ kind: "agent", model: "kimi-k3:cloud", fallbackModel: "x" }), "kimi-k3:cloud");
+	});
+	it("falls back for agent without dispatch model", () => {
+		assert.equal(servingModelFor({ kind: "agent", model: "", fallbackModel: "fallback" }), "fallback");
+	});
+	it("returns null for agent with neither", () => {
+		assert.equal(servingModelFor({ kind: "agent", model: "", fallbackModel: "" }), null);
+	});
+	it("returns null for ci even if model present", () => {
+		assert.equal(servingModelFor({ kind: "ci", model: "anything", fallbackModel: "fb" }), null);
+	});
+	it("returns null for merge/integrate", () => {
+		assert.equal(servingModelFor({ kind: "merge", model: "m", fallbackModel: "fb" }), null);
+		assert.equal(servingModelFor({ kind: "integrate", model: "m", fallbackModel: "fb" }), null);
+	});
+	it("trims whitespace model", () => {
+		assert.equal(servingModelFor({ kind: "agent", model: "  m  ", fallbackModel: "fb" }), "m");
+		assert.equal(servingModelFor({ kind: "agent", model: "   ", fallbackModel: "   " }), null);
+	});
+});
+
+describe("formatPosture", () => {
+	it("includes model when real", () => {
+		assert.equal(formatPosture({ tiers: ["T0"], harness: "pi", model: "m" }), "T0:pi:m");
+	});
+	it("omits model segment when null", () => {
+		assert.equal(formatPosture({ tiers: ["T0"], harness: "pi", model: null }), "T0:pi");
+		assert.equal(formatPosture({ tiers: ["T0", "T1"], harness: "pi", model: "" }), "T0/T1:pi");
 	});
 });

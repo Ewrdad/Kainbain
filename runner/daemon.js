@@ -4,9 +4,11 @@ import { promisify } from "node:util";
 import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, removeIntegrationWorkdir, runGit, syncTaskDocs, touchWorkdir } from "./project.js";
 import { RunnerGitError } from "./project.js";
 import { runHarnessStage } from "./harness.js";
+import { servingModelFor, formatPosture } from "./servingModel.js";
 import { commitAndPush } from "./gitOps.js";
 
 export const RUNNER_VERSION = "0.1.0";
+export { servingModelFor, formatPosture } from "./servingModel.js";
 
 /***
  * MARK: RUNNER_API_VERSION
@@ -673,7 +675,7 @@ async function executeAssignment({
 					event: "prompted",
 					prompt,
 					harness: servingHarnessId,
-					model: config.model || "default",
+						model: servingModelFor({ kind, model, fallbackModel: config.model }),
 				});
 			} catch (err) {
 				logger.warn(`Prompt report failed: ${err?.message || err}`);
@@ -699,9 +701,9 @@ async function executeAssignment({
 					const failureReason = ci.timedOut
 						? `CI command timed out after ${ci.timeoutMs}ms`
 						: `CI command failed with exit code ${ci.exitCode}`;
-					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: `${config.tiers.join("/")}:${servingHarnessId}:${config.model || "default"}`, durationMs: Date.now() - runStartedAt });
+					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: null }), durationMs: Date.now() - runStartedAt });
 				}
-				return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: `${config.tiers.join("/")}:${servingHarnessId}:${config.model || "default"}`, durationMs: Date.now() - runStartedAt });
+				return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: null }), durationMs: Date.now() - runStartedAt });
 			}
 
 			// The backend project record's cwd points at the backend's own
@@ -756,7 +758,7 @@ async function executeAssignment({
 				epoch,
 				sha,
 				branch,
-				posture: `${config.tiers.join("/")}:${servingHarnessId}:${config.model || "default"}`,
+				posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servingModelFor({ kind, model, fallbackModel: config.model }) }),
 				outcome: "passed",
 				taskFiles: collectTaskFiles({ workdir, taskId }),
 				output: String(output || "").slice(0, 20000),
@@ -792,7 +794,7 @@ async function executeAssignment({
 					epoch,
 					outcome: "failed",
 					failureReason: err.failedOutcome,
-					posture: `${config.tiers.join("/")}:${servingHarnessId}:${config.model || "default"}`,
+					posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servingModelFor({ kind, model, fallbackModel: config.model }) }),
 					durationMs: Date.now() - runStartedAt,
 				});
 			}
@@ -845,7 +847,7 @@ async function executeIntegrationAssignment({
 	state.executionId = executionId;
 	state.epoch = epoch;
 	state.session = null;
-	const posture = `${(config.tiers || []).join("/")}:integration:${config.model || "default"}`;
+	const posture = formatPosture({ tiers: config.tiers, harness: "integration", model: null });
 	const stopRenewal = startClaimRenewal({ client, logger, taskId, projectId, executionId, epoch });
 	const integrationTimer = setInterval(() => {
 		client
@@ -925,8 +927,8 @@ async function executeIntegrationAssignment({
 					"push", `--force-with-lease=${targetBranch}:${expectedTargetSha}`,
 					"origin", `${mergeSha}:${targetBranch}`,
 				]);
-			} catch (pushErr) {
-				const detail = `Target '${targetBranch}' moved during integration (CAS push pinned at ${String(expectedTargetSha).slice(0, 7)} rejected) — retry re-bases with fresh SHAs`;
+			} catch {
+				const detail = `Target '${targetBranch}' moved during integration (CAS push pinned at ${String(expectedTargetSha).slice(0, 7)} rejected) — retry re-bases with fresh SHAs`;;
 				await sendLogs(`[integrate] stale-head: ${detail}`);
 				await client.integrationReport({
 					projectId, targetBranch, executionId: integrationExecutionId, epoch: integrationEpoch,
