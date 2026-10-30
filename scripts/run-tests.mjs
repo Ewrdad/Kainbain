@@ -37,8 +37,8 @@
  *   never blanks the output (see scripts/lib/run-parallel.mjs).
  *   `run-tests.sh` is a thin shim over this file so `deploy.sh --prod` and
  *   older docs keep working.
- * @example `npm test` => eleven PASS lines (ten fast branches + Canary Tests), exit 0
- * @example `npm test -- --no-canary` => ten PASS lines, exit 0
+ * @example `npm test` => twelve PASS lines (eleven fast branches + Canary Tests), exit 0
+ * @example `npm test -- --no-canary` => eleven PASS lines, exit 0
  ***/
 
 import { spawnSync } from "node:child_process";
@@ -324,12 +324,13 @@ export function resolveCanary({ argv = process.argv, env = process.env } = {}) {
 
 /***
  * MARK: buildBranches
- * @description Builds the eleven gate branches in canonical order (the ten
- *   fast branches plus the Canary Tests branch). Branch
+ * @description Builds the twelve gate branches in canonical order (the
+ *   eleven fast branches plus the Canary Tests branch). Branch
  *   names match the old shell gate byte-for-byte so output parsers keep
  *   working. The low-priority branches (lint, build, scans, depcheck, audit
  *   gate, self-tests, containers, canary) carry `lowPriority`, the helper's
- *   best-effort equivalent of the old gate's lowered scheduling priority. When `bash` is absent the
+ *   best-effort equivalent of the old gate's lowered scheduling priority. The
+ *   three unit suites (api, frontend, runner) run at normal priority. When `bash` is absent the
  *   Security Script Tests branch is returned in `skipped` (reported as
  *   SKIP, non-fatal) instead of `branches`; likewise Container Tests when
  *   no Docker daemon is reachable, and Dependency Check when the `depcheck`
@@ -375,6 +376,25 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 	const branches = [
 		{ name: "Unit Tests (api)", file: npmExec, args: ["run", "test:api"] },
 		{ name: "Unit Tests (frontend)", file: npmExec, args: ["run", "test:frontend"] },
+		{
+			name: "Unit Tests (runner)",
+			file: nodeExec,
+			// Explicit file list, never a bare directory or a glob: `node
+			// --test runner/` mis-resolves the positional directory on
+			// current Node, and a glob would need a shell (the gate never
+			// spawns through one). tests/run-tests.test.mjs pins that every
+			// runner/*.test.js on disk is named here, so a new suite file
+			// fails the gate instead of silently never running.
+			args: [
+				"--test",
+				"runner/daemon.test.js",
+				"runner/client.test.js",
+				"runner/config.test.js",
+				"runner/gitOps.test.js",
+				"runner/harness.test.js",
+				"runner/project.test.js",
+			],
+		},
 		{ name: "Linting (api)", file: npmExec, args: ["run", "lint:api"], lowPriority: true },
 		{ name: "Linting (frontend)", file: npmExec, args: ["run", "lint:frontend"], lowPriority: true },
 		{ name: "Frontend Build", file: npmExec, args: ["run", "build:frontend"], lowPriority: true },

@@ -110,5 +110,10 @@ Stage advancement stays engine-owned until the dispatch integration lands.
 - Boot surfaces orphaned workdirs (unpushed work) in the log; nothing is
   ever deleted by cleanup.
 - Log gaps are reported as data (`frames X–Y missing`), never papered over.
-- `node --test runner/` runs the daemon suite (no ports, real temp git
-  repos, mock harness).
+- `node --test runner/daemon.test.js runner/client.test.js runner/config.test.js runner/gitOps.test.js runner/harness.test.js runner/project.test.js`
+  runs the daemon suite (no ports, real temp git repos, mock harness).
+  Name each file: a bare `node --test runner/` directory arg mis-resolves
+  on current Node, and this same explicit list is what the `Unit Tests
+  (runner)` gate branch runs (`scripts/run-tests.mjs`, pinned by
+  `tests/run-tests.test.mjs` so a new suite file fails loudly instead of
+  silently never running).
