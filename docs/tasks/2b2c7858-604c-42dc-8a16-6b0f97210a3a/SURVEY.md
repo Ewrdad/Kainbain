@@ -12,7 +12,12 @@
       "id": "q1",
       "type": "single",
       "text": "What should watching the agent feel like in the UI?",
-      "options": ["Like watching it work live, step by step (Muse Code style)", "A simple timeline of what happened", "Just show key steps and errors", "Other (explain in Notes)"],
+      "options": [
+        "Like watching it work live, step by step (Muse Code style)",
+        "A simple timeline of what happened",
+        "Just show key steps and errors",
+        "Other (explain in Notes)"
+      ],
       "required": true,
       "showIf": null
     },
@@ -20,7 +25,13 @@
       "id": "q2",
       "type": "multiple",
       "text": "Which details must always be visible in the UI?",
-      "options": ["Short updates on what the agent is doing", "Actions taken (files read, files changed, commands run)", "Full results of commands and tool runs", "Errors and retries", "Timings (how long each step took)"],
+      "options": [
+        "Short updates on what the agent is doing",
+        "Actions taken (files read, files changed, commands run)",
+        "Full results of commands and tool runs",
+        "Errors and retries",
+        "Timings (how long each step took)"
+      ],
       "required": true,
       "showIf": null
     },
@@ -28,7 +39,11 @@
       "id": "q3",
       "type": "single",
       "text": "When do you need to see these logs?",
-      "options": ["Live while the task is running", "After it finishes, as history", "Both live and history"],
+      "options": [
+        "Live while the task is running",
+        "After it finishes, as history",
+        "Both live and history"
+      ],
       "required": true,
       "showIf": null
     },
@@ -36,7 +51,12 @@
       "id": "q4",
       "type": "single",
       "text": "How much old log history should the UI keep?",
-      "options": ["Just the current task", "Last few tasks", "Keep everything and make it searchable", "Not sure yet"],
+      "options": [
+        "Just the current task",
+        "Last few tasks",
+        "Keep everything and make it searchable",
+        "Not sure yet"
+      ],
       "required": false,
       "showIf": null
     },
@@ -44,11 +64,50 @@
       "id": "q5",
       "type": "single",
       "text": "Should private details (passwords, keys) be hidden in the logs?",
-      "options": ["Yes, hide secrets automatically", "No, show everything to task members", "Not sure, please advise"],
+      "options": [
+        "Yes, hide secrets automatically",
+        "No, show everything to task members",
+        "Not sure, please advise"
+      ],
       "required": false,
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Like watching it work live, step by step (Muse Code style)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Short updates on what the agent is doing",
+        "Actions taken (files read, files changed, commands run)",
+        "Full results of commands and tool runs",
+        "Errors and retries",
+        "Timings (how long each step took)"
+      ],
+      "notes": "Only use things that already exist, dont use ai to generate summaries"
+    },
+    "q3": {
+      "selected": [
+        "Both live and history"
+      ],
+      "notes": "Full transparency"
+    },
+    "q4": {
+      "selected": [
+        "Keep everything and make it searchable"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Yes, hide secrets automatically"
+      ],
+      "notes": "IDeally we hide secrets and PII especailly as I kinda like the idea of commiting these to the repo so it'd be nice to avoid sensitivities"
+    }
+  }
 }
 ```
