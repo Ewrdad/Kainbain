@@ -12,19 +12,19 @@
  ***/
 
 export const SETTINGS_TABS = [
-  { id: "harness", label: "Harness", showFooterReset: true },
-  { id: "models", label: "Models", showFooterReset: true },
-  { id: "engine", label: "Engine", showFooterReset: true },
-  { id: "storage", label: "Storage", showFooterReset: true },
-  { id: "notifications", label: "Notifications", showFooterReset: false },
-  { id: "prompt-layout", label: "Prompt Layout", showFooterReset: false },
-  { id: "ui", label: "UI", showFooterReset: false },
+  { id: 'runners', label: 'Runners', showFooterReset: true },
+  { id: 'models', label: 'Models', showFooterReset: true },
+  { id: 'engine', label: 'Engine', showFooterReset: true },
+  { id: 'storage', label: 'Storage', showFooterReset: true },
+  { id: 'notifications', label: 'Notifications', showFooterReset: false },
+  { id: 'prompt-layout', label: 'Prompt Layout', showFooterReset: false },
+  { id: 'ui', label: 'UI', showFooterReset: false },
 ];
 
 /***
  * MARK: SETTINGS_TAB_LABELS
  * @description Ordered tab labels derived from SETTINGS_TABS (render order).
- * @example SETTINGS_TAB_LABELS => ['Harness', 'Models', 'Engine', 'Storage', 'Notifications', 'UI']
+ * @example SETTINGS_TAB_LABELS => ['Runners', 'Models', 'Engine', 'Storage', 'Notifications', 'UI']
  ***/
 export const SETTINGS_TAB_LABELS = SETTINGS_TABS.map((tab) => tab.label);
 
@@ -38,7 +38,7 @@ export const SETTINGS_TAB_LABELS = SETTINGS_TABS.map((tab) => tab.label);
  * @returns {boolean} True when the footer Reset should render.
  ***/
 export function isFooterResetVisible(sectionId) {
-  if (typeof sectionId !== "string" || !sectionId) return true;
+  if (typeof sectionId !== 'string' || !sectionId) return true;
   const tab = SETTINGS_TABS.find((entry) => entry.id === sectionId);
   if (!tab) return true;
   return tab.showFooterReset !== false;

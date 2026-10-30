@@ -770,6 +770,72 @@ describe("Runner Routes Integration", () => {
 		expect(list2.find((r) => r.runnerId === "dispatch-scope-all").projectScope).toBeNull();
 	});
 
+	it("exposes default operatorConfig in GET /runners", async () => {
+		await onboard("config-defaults");
+		const list = JSON.parse((await app.inject({ method: "GET", url: "/runners" })).payload);
+		const runner = list.find((r) => r.runnerId === "config-defaults");
+		expect(runner.operatorConfig).toEqual({
+			displayName: null,
+			availableTools: null,
+			jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
+			directories: { masterDir: "", worktreeDir: "" },
+			projectScope: null,
+		});
+	});
+
+	it("GET /runners/:id/config returns the record; PATCH persists a patch", async () => {
+		await onboard("config-patch");
+		const before = await app.inject({ method: "GET", url: "/runners/config-patch/config" });
+		expect(before.statusCode).toBe(200);
+		expect(JSON.parse(before.payload).operatorConfig.jobTypes.runsCi).toBe(true);
+
+		const patched = await app.inject({
+			method: "PATCH",
+			url: "/runners/config-patch/config",
+			payload: {
+				displayName: "Primary",
+				jobTypes: { runsCi: false },
+				directories: { masterDir: "/srv/kb", worktreeDir: "/srv/kb-trees" },
+			},
+		});
+		expect(patched.statusCode).toBe(200);
+		const body = JSON.parse(patched.payload);
+		expect(body.operatorConfig.displayName).toBe("Primary");
+		expect(body.operatorConfig.jobTypes.runsCi).toBe(false);
+		expect(body.operatorConfig.directories).toEqual({
+			masterDir: "/srv/kb",
+			worktreeDir: "/srv/kb-trees",
+		});
+
+		const after = await app.inject({ method: "GET", url: "/runners/config-patch/config" });
+		expect(JSON.parse(after.payload).operatorConfig.displayName).toBe("Primary");
+	});
+
+	it("PATCH /runners/:id/config rejects invalid patches and unknown Runners", async () => {
+		await onboard("config-invalid");
+		for (const payload of [
+			{ directories: { masterDir: "" } },
+			{ jobTypes: { runsCi: "yes" } },
+			{ availableTools: ["no-such-tool"] },
+			{ bogus: true },
+		]) {
+			const res = await app.inject({
+				method: "PATCH",
+				url: "/runners/config-invalid/config",
+				payload,
+			});
+			expect(res.statusCode).toBe(400);
+		}
+		const missing = await app.inject({
+			method: "PATCH",
+			url: "/runners/ghost/config",
+			payload: { displayName: "Ghost" },
+		});
+		expect(missing.statusCode).toBe(404);
+		const missingGet = await app.inject({ method: "GET", url: "/runners/ghost/config" });
+		expect(missingGet.statusCode).toBe(404);
+	});
+
 	async function aliasProject(name, { targets, aliasName = "fast", withAliases = true }) {
 		const projRes = await app.inject({
 			method: "POST",

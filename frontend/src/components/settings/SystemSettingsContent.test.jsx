@@ -1,5 +1,5 @@
 import React from 'react';
-import { screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import '@testing-library/jest-dom';
 import { renderWithKainBain } from '../../testUtils';
@@ -9,7 +9,7 @@ import { SETTINGS_TAB_LABELS, SETTINGS_TABS } from './settingsTabs';
 /***
  * MARK: SystemSettingsContent tests
  * @description Covers the shell-agnostic System Settings content: the tablist
- *   from SETTINGS_TABS, the Harness / Models / Engine / Storage /
+ *   from SETTINGS_TABS, the Runners / Models / Engine / Storage /
  *   Notifications / Prompt Layout / UI panels, the footer Reset/Done contract,
  *   and the caller-driven chrome (onBack/onClose/headingLevel). The page shell
  *   (routing, deep links, popout) is covered by SystemSettingsPage.test.jsx;
@@ -17,38 +17,33 @@ import { SETTINGS_TAB_LABELS, SETTINGS_TABS } from './settingsTabs';
  * @example renderWithKainBain(<SystemSettingsContent onClose={close} />, contentOverrides())
  ***/
 
-const HARNESS_ROWS = vi.hoisted(() => [
+const RUNNER_ROWS = vi.hoisted(() => [
   {
-    id: 'pi',
-    name: 'pi coding agent',
-    description: 'pi-backed AgentHarness.',
-    capabilities: { createSession: true, listModels: true },
-    modelSelection: 'list',
-    modelFlag: null,
-    isDefault: true,
-    available: null,
-    detectionSource: 'unknown',
-  },
-  {
-    id: 'custom',
-    name: 'Custom command',
-    description: 'Runs a project-configured command line.',
-    capabilities: { createSession: true, listModels: false },
-    modelSelection: 'none',
-    modelFlag: null,
-    isDefault: false,
-    available: null,
-    detectionSource: 'unknown',
+    runnerId: 'r1',
+    status: 'active',
+    facts: { versions: { runner: '0.3.0', protocol: 'v1' } },
+    capabilities: { harnesses: [{ id: 'pi' }, { id: 'vibe' }] },
+    projectScope: null,
+    paused: false,
+    lastSeenAt: null,
+    operatorConfig: {
+      displayName: null,
+      availableTools: null,
+      jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
+      directories: { masterDir: '/srv/kb', worktreeDir: '/srv/kb-trees' },
+      projectScope: null,
+    },
   },
 ]);
 
-const getHarnesses = vi.hoisted(() => vi.fn());
-const getHarnessModels = vi.hoisted(() => vi.fn());
+const getRunners = vi.hoisted(() => vi.fn());
+const getRunnerMonitor = vi.hoisted(() => vi.fn());
+const listProjects = vi.hoisted(() => vi.fn());
 const getConfigSpec = vi.hoisted(() => vi.fn());
 const getModels = vi.hoisted(() => vi.fn());
 
 vi.mock('../../services/api', () => ({
-  api: { getHarnesses, getHarnessModels, getConfigSpec, getModels },
+  api: { getRunners, getRunnerMonitor, listProjects, getConfigSpec, getModels },
 }));
 
 const mockPushState = vi.hoisted(() => vi.fn());
@@ -198,12 +193,14 @@ function renderContent(props = {}, overrides = {}) {
 
 beforeEach(() => {
   window.localStorage.clear();
-  getHarnesses.mockReset();
-  getHarnessModels.mockReset();
+  getRunners.mockReset();
+  getRunnerMonitor.mockReset();
+  listProjects.mockReset();
   getConfigSpec.mockReset();
   getModels.mockReset();
-  getHarnesses.mockResolvedValue({ harnesses: HARNESS_ROWS });
-  getHarnessModels.mockResolvedValue({ models: [] });
+  getRunners.mockResolvedValue(structuredClone(RUNNER_ROWS));
+  getRunnerMonitor.mockResolvedValue({ liveAssignments: [] });
+  listProjects.mockResolvedValue([{ id: 'p1', name: 'Project One' }]);
   getConfigSpec.mockResolvedValue(CONFIG_SPEC_PAYLOAD);
   getModels.mockResolvedValue({
     models: [{ id: 'model-1', name: 'Model One', provider: 'ollama-cloud' }],
@@ -224,7 +221,7 @@ describe('SystemSettingsContent', () => {
     renderContent();
     // Flush the Harness tab's async registry load so its state updates land
     // inside act() rather than after the assertions below.
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
     expect(screen.getByText('System Settings')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Close system settings/i })).toBeInTheDocument();
     // Drift guard: the rendered tablist derives from SETTINGS_TABS, so a new
@@ -233,24 +230,24 @@ describe('SystemSettingsContent', () => {
       expect(screen.getByRole('tab', { name: tab })).toBeInTheDocument();
     }
     expect(screen.getAllByRole('tab')).toHaveLength(SETTINGS_TAB_LABELS.length);
-    expect(screen.getByRole('tab', { name: 'Harness' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Runners' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('renders an h1 when headingLevel is h1 (page chrome) and an h2 by default', async () => {
     const { unmount } = renderContent({ headingLevel: 'h1' });
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1, name: 'System Settings' })).toBeInTheDocument();
     unmount();
 
     renderContent();
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 2, name: 'System Settings' })).toBeInTheDocument();
   });
 
   it('renders the back affordance only when onBack is given, with a caller-supplied label', async () => {
     const onBack = vi.fn();
     renderContent({ onBack });
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
 
     const back = screen.getByRole('button', { name: 'Back to Board' });
     fireEvent.click(back);
@@ -260,7 +257,7 @@ describe('SystemSettingsContent', () => {
   it('uses the custom backLabel for the page popout ("Close window")', async () => {
     const onBack = vi.fn();
     renderContent({ onBack, backLabel: 'Close window' });
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
 
     expect(screen.getByRole('button', { name: 'Close window' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Back to Board' })).not.toBeInTheDocument();
@@ -268,7 +265,7 @@ describe('SystemSettingsContent', () => {
 
   it('renders neither back nor close control when the shell passes neither callback', async () => {
     renderWithKainBain(<SystemSettingsContent />, contentOverrides());
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Back to Board/i })).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /Close system settings/i }),
@@ -277,7 +274,7 @@ describe('SystemSettingsContent', () => {
 
   it('shows the footer Reset exactly on the tabs that declare it', async () => {
     renderContent();
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
     for (const tab of SETTINGS_TABS) {
       fireEvent.click(screen.getByRole('tab', { name: tab.label }));
       if (tab.showFooterReset) {
@@ -290,25 +287,25 @@ describe('SystemSettingsContent', () => {
     }
   });
 
-  it('lists one harness row per registry harness with toggles and refresh', async () => {
-    const updateHarnessPref = vi.fn();
-    renderContent({}, { updateHarnessPref });
+  it('lists one roster row per registered Runner with the detail form', async () => {
+    renderContent();
 
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
-    expect(screen.getByTestId('harness-row-custom')).toBeInTheDocument();
-    const enabled = screen.getByLabelText('Enable pi coding agent harness');
-    expect(enabled).toBeChecked();
-    fireEvent.click(enabled);
-    expect(updateHarnessPref).toHaveBeenCalledWith('pi', { enabled: false });
-    expect(screen.getByLabelText('Auto-detect pi coding agent harness')).toBeInTheDocument();
-    expect(screen.getByLabelText('Refresh pi coding agent availability')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
+    expect(screen.getByTestId('runner-row-r1')).toBeInTheDocument();
+    expect(screen.getByTestId('runner-status-r1')).toHaveTextContent('active');
+    // All five detail areas render for the selected Runner.
+    expect(screen.getByTestId('runner-name-r1')).toBeInTheDocument();
+    expect(screen.getByTestId('runner-unload-project-p1')).toBeInTheDocument();
+    expect(screen.getByTestId('runner-tool-r1-pi')).toBeInTheDocument();
+    expect(screen.getByTestId('runner-masterdir-r1')).toBeInTheDocument();
+    expect(screen.getByTestId('runner-job-r1-runsCi')).toBeInTheDocument();
   });
 
-  it('shows the draft-only note on non-harness tabs and closes via Done', async () => {
+  it('shows the draft-only note on non-runners tabs and closes via Done', async () => {
     const onClose = vi.fn();
     renderContent({ onClose });
-    // Flush the Harness tab's async registry load (see above).
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    // Flush the Runners tab's async registry load (see above).
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Models' }));
     expect(screen.getByText(/Wireframe — changes here are not saved yet/i)).toBeInTheDocument();
@@ -320,34 +317,32 @@ describe('SystemSettingsContent', () => {
   it('falls back to onBack for Done when no onClose is supplied', async () => {
     const onBack = vi.fn();
     renderContent({ onClose: undefined, onBack });
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  it('edits non-harness draft fields locally without touching prefs or persistence', async () => {
-    const updateHarnessPref = vi.fn();
+  it('edits draft fields locally without touching persistence', async () => {
     const onClose = vi.fn();
-    renderContent({ onClose }, { updateHarnessPref });
-    // Flush the Harness tab's async registry load (see above).
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    renderContent({ onClose });
+    // Flush the Runners tab's async registry load (see above).
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Models' }));
     const defaultModel = screen.getByLabelText('Default model');
     fireEvent.change(defaultModel, { target: { value: 'pi::ollama-cloud::glm-5' } });
     expect(defaultModel).toHaveValue('pi::ollama-cloud::glm-5');
 
-    // Draft-only: no harness-pref write and no close on change.
-    expect(updateHarnessPref).not.toHaveBeenCalled();
+    // Draft-only: no persistence write and no close on change.
     expect(onClose).not.toHaveBeenCalled();
   });
 
   it('Reset restores the draft defaults and the close button closes', async () => {
     const onClose = vi.fn();
     renderContent({ onClose });
-    // Flush the Harness tab's async registry load (see above).
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    // Flush the Runners tab's async registry load (see above).
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Engine' }));
     const maxConcurrent = screen.getByLabelText('Max concurrent tasks');
@@ -362,7 +357,7 @@ describe('SystemSettingsContent', () => {
 
   it('Storage tab renders live backend values with no wireframe note or fake paths', async () => {
     renderContent();
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Storage' }));
     expect(await screen.findByTestId('storage-section')).toBeInTheDocument();
@@ -376,7 +371,7 @@ describe('SystemSettingsContent', () => {
 
   it('Reset on the Storage tab reloads live values instead of draft constants', async () => {
     renderContent();
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Storage' }));
     expect(await screen.findByTestId('storage-section')).toBeInTheDocument();
@@ -395,8 +390,8 @@ describe('SystemSettingsContent', () => {
     // room, and only the details pane may shrink/scroll — the bars must hold
     // their full height so no tab label clips at the content edge.
     const { container } = renderContent();
-    // Flush the Harness tab's async registry load (see above).
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    // Flush the Runners tab's async registry load (see above).
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
 
     expect(container.querySelector('header')).toHaveClass('shrink-0');
     expect(screen.getByRole('tablist', { name: 'System settings sections' })).toHaveClass(
@@ -413,7 +408,7 @@ describe('SystemSettingsContent', () => {
 
   it('Models tab shows the live catalogue count and a Refresh action that bypasses both caches', async () => {
     renderContent();
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Models' }));
     expect(await screen.findByTestId('model-catalogue-count')).toHaveTextContent(
@@ -426,7 +421,7 @@ describe('SystemSettingsContent', () => {
   it('Models tab explains itself instead of offering Refresh when config disables it', async () => {
     getConfigSpec.mockResolvedValue(configSpecWithRefresh(false));
     renderContent();
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Models' }));
     const note = await screen.findByTestId('model-refresh-disabled-note');
@@ -434,42 +429,25 @@ describe('SystemSettingsContent', () => {
     expect(screen.queryByRole('button', { name: 'Refresh models' })).not.toBeInTheDocument();
   });
 
-  it('harness Refresh also refreshes the shared catalogue when enabled', async () => {
+  it('Runners tab selects the first Runner by default', async () => {
     renderContent();
-    const row = await screen.findByTestId('harness-row-pi');
-    getModels.mockClear();
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.getByTestId('runner-select-r1')).toHaveAttribute('aria-pressed', 'true');
+  });
 
-    fireEvent.click(within(row).getByLabelText('Refresh pi coding agent availability'));
+  it('Models Refresh bypasses both caches when config enables it', async () => {
+    renderContent();
+    await screen.findByTestId('runner-detail-r1');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Models' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh models' }));
 
     await waitFor(() => expect(getModels).toHaveBeenCalledWith(true));
   });
 
-  it('harness Refresh leaves the shared catalogue alone when config disables it', async () => {
-    getConfigSpec.mockResolvedValue(configSpecWithRefresh(false));
-    renderContent();
-    await screen.findByTestId('harness-row-pi');
-
-    // The Models-tab note is the visible proof the runtime config landed;
-    // waiting for it removes the race with the harness probe below.
-    fireEvent.click(screen.getByRole('tab', { name: 'Models' }));
-    await screen.findByTestId('model-refresh-disabled-note');
-    fireEvent.click(screen.getByRole('tab', { name: 'Harness' }));
-    const row = await screen.findByTestId('harness-row-pi');
-    getModels.mockClear();
-
-    fireEvent.click(within(row).getByLabelText('Refresh pi coding agent availability'));
-
-    await waitFor(() =>
-      expect(within(row).getByLabelText('Refresh pi coding agent availability')).toHaveTextContent(
-        'Refresh',
-      ),
-    );
-    expect(getModels).not.toHaveBeenCalledWith(true);
-  });
-
   it('Notifications tab renders the push section with permission status', async () => {
     renderContent();
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Notifications' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Notifications' }));
@@ -480,7 +458,7 @@ describe('SystemSettingsContent', () => {
 
   it('UI tab renders the app-wide preferences panel without the draft note', async () => {
     renderContent();
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'UI' }));
     expect(screen.getByRole('tab', { name: 'UI' })).toHaveAttribute('aria-selected', 'true');
@@ -498,7 +476,7 @@ describe('SystemSettingsContent', () => {
   it('UI tab closes via Done like every other section', async () => {
     const onClose = vi.fn();
     renderContent({ onClose });
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'UI' }));
     expect(screen.getByText('🎨 Appearance')).toBeInTheDocument();
@@ -510,7 +488,7 @@ describe('SystemSettingsContent', () => {
   it('Sound & Alerts tab links through to the Notifications section', async () => {
     const onSectionChange = vi.fn();
     renderContent({ onSectionChange });
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'UI' }));
     fireEvent.click(screen.getByText('🔔 Sound & Alerts'));
@@ -529,7 +507,7 @@ describe('SystemSettingsContent', () => {
 
   it('Reset is hidden on the auto-saving UI and Notifications tabs', async () => {
     renderContent();
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
 
     // Draft-backed tab: Reset is offered (it restores the in-memory draft).
     fireEvent.click(screen.getByRole('tab', { name: 'Engine' }));
@@ -563,7 +541,7 @@ describe('SystemSettingsContent', () => {
 
   it('unknown controlled section falls back to the first tab', async () => {
     renderContent({ activeSection: 'not-a-section' });
-    expect(await screen.findByTestId('harness-row-pi')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Harness' })).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Runners' })).toHaveAttribute('aria-selected', 'true');
   });
 });

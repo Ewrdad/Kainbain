@@ -16,7 +16,7 @@ import {
 describe("settingsTabs", () => {
 	it("exposes one entry per tab in render order", () => {
 		expect(SETTINGS_TAB_LABELS).toEqual([
-			"Harness",
+			"Runners",
 			"Models",
 			"Engine",
 			"Storage",
@@ -25,7 +25,7 @@ describe("settingsTabs", () => {
 			"UI",
 		]);
 		expect(SETTINGS_TABS.map((tab) => tab.id)).toEqual([
-			"harness",
+			"runners",
 			"models",
 			"engine",
 			"storage",

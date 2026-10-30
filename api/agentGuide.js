@@ -411,6 +411,26 @@ export const ENDPOINTS = [
 		body: null,
 	},
 	{
+		method: "GET",
+		path: "/runners/:id/config",
+		purpose:
+			"Operator-owned Runner configuration for the System Settings Runner screen (display name, tool filter, job-type switches, directories, project override). No Runner credential needed.",
+		body: null,
+	},
+	{
+		method: "PATCH",
+		path: "/runners/:id/config",
+		purpose:
+			"Update one Runner's operator-owned configuration (partial object: displayName, availableTools, jobTypes, directories, projectScope). Heartbeat facts are never touched. 400 on invalid fields, 404 on unknown Runner.",
+		body: {
+			displayName: "string (optional, null resets)",
+			jobTypes: "object (optional, boolean runsCi/runsMerges/runsImpromptu)",
+			directories: "object (optional, non-empty masterDir/worktreeDir)",
+			availableTools: "array (optional, subset of advertised ids, null resets)",
+			projectScope: "array (optional, project ids, null serves all)",
+		},
+	},
+	{
 		method: "POST",
 		path: "/tasks/:id/pause",
 		purpose: "Pause an in-progress or queued task.",

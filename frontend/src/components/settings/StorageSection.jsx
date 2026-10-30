@@ -234,7 +234,7 @@ export function StorageSection() {
   // Config-spec fetch is a fixed capability of the api module (mocked away
   // in some component tests): lazy initializers carry the unavailable-build
   // state so the mount effect below never needs a synchronous setState
-  // (react-hooks/set-state-in-effect) — same pattern as HarnessSection.
+  // (react-hooks/set-state-in-effect) — same pattern as the other settings sections.
   const [entries, setEntries] = useState(null);
   const [loading, setLoading] = useState(() => typeof api.getConfigSpec === 'function');
   const [loadError, setLoadError] = useState(() =>
@@ -278,7 +278,7 @@ export function StorageSection() {
     return () => {
       cancelled = true;
     };
-    // Mount-time fetch only (same pattern as HarnessSection).
+    // Mount-time fetch only (same pattern as the other settings sections).
   }, []);
 
   if (loading) {
