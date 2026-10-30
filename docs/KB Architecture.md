@@ -136,7 +136,10 @@ rendered `default` on every card. The contract, locked by
 One copy of the rules lives in `shared/servingModelFor.js` +
 `shared/formatPosture.js`, executed verbatim by both the Runner bundle and the
 backend (re-exported through `api/flow/runnerPosture.js`), so the two can
-never drift.
+never drift. The engine-wide `"default"` sentinel (blank pick =
+harness-managed, no pinned model) counts as no model at both layers, and the
+backend ingest maps a literal `"default"` from pre-fix Runners to null — a
+mixed fleet during rollout degrades to hidden pills, never fake ones.
 
 ### Per-project harness selection
 

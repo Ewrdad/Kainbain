@@ -67,9 +67,11 @@ Model reporting contract (`servingModelFor` / `formatPosture` in
 completion `posture` string carry the assignment's served model — the
 dispatch requirement, falling back to the Runner default only for LLM
 stages. CI / merge / integrate assignments serve no model and report
-none (never the Runner default, never the literal `"default"`): the
+none (never the Runner default, never the literal `"default"` — the
+engine-wide blank-pick sentinel counts as no model): the
 progress body omits the field and the posture string omits the trailing
-`:model` segment, so the UI hides the model pill.
+`:model` segment, so the UI hides the model pill. The backend ingest
+applies the same rule, so pre-fix Runners degrade gracefully mid-rollout.
 
 In dispatch mode no `PROJECT_ID`/`TASK_ID` is needed. After the same
 join + heartbeat prologue the daemon polls `POST /runners/dispatch`:

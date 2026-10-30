@@ -17,17 +17,23 @@
  *      mode or for a model-less task.
  *   4. Otherwise `null`.
  *
- *   The literal string `"default"` is NEVER returned: `null` means "no
- *   model to report" and downstream (client body builder, posture
- *   formatter, ledger, UI pills) treats it as "omit the field", whereas
- *   `"default"` used to render as a fake model on every CI stage.
- *   Blank/whitespace-only and non-string inputs count as absent, so a
- *   malformed dispatch answer degrades to "no model" instead of leaking
- *   `"  "` into the UI. Kind matching is case-insensitive and trimmed.
+ *   The `"default"` sentinel is NEVER returned: the rest of the engine
+ *   uses `"default"` to mean "harness-managed, no pinned model" (blank
+ *   stage pick), so reporting it would put the fake `default` pill back
+ *   in the UI — the exact regression this helper exists to fix. `null`
+ *   means "no model to report" and downstream (client body builder,
+ *   posture formatter, ledger, UI pills) treats it as "omit the field".
+ *   Blank/whitespace-only, non-string, and `"default"` inputs all count
+ *   as absent, so a malformed dispatch answer or an operator who sets
+ *   `KAINBAIN_RUNNER_MODEL=default` degrades to "no model" instead of
+ *   leaking `"  "` or `"default"` into the UI. Kind matching is
+ *   case-insensitive and trimmed.
  * @example servingModelFor({ kind: 'agent', model: 'kimi-k3:cloud', fallbackModel: 'x' }) => 'kimi-k3:cloud'
  * @example servingModelFor({ kind: 'agent', model: '', fallbackModel: 'runner-default' }) => 'runner-default'
  * @example servingModelFor({ kind: 'ci', model: 'anything', fallbackModel: 'x' }) => null
  * @example servingModelFor({ kind: 'agent', model: '   ', fallbackModel: '   ' }) => null
+ * @example servingModelFor({ kind: 'agent', model: 'default', fallbackModel: 'x' }) => 'x'
+ * @example servingModelFor({ kind: 'agent', model: 'default', fallbackModel: 'default' }) => null
  * @param {Object} [opts]
  * @param {string} [opts.kind] - Assignment kind (stage type, normalized by the backend: `ci` for ci/script/deploy/command, `merge`/`integrate` for merges).
  * @param {string} [opts.model] - Model required by the dispatched task (`requirements.model`).
@@ -51,8 +57,16 @@ export function servingModelFor({ kind, model, fallbackModel } = {}) {
 	]);
 	const k = String(kind ?? "").trim().toLowerCase();
 	if (nonLlmKinds.has(k)) return null;
-	const clean = (value) =>
-		typeof value === "string" && value.trim() ? value.trim() : null;
+	// A trimmed value counts as a served model unless it is blank, not a
+	// string, or the engine-wide "default" sentinel (blank stage pick =
+	// harness-managed, no pinned model). The sentinel check is
+	// case-insensitive so "Default" can never render as a fake pill.
+	const clean = (value) => {
+		if (typeof value !== "string") return null;
+		const trimmed = value.trim();
+		if (!trimmed || trimmed.toLowerCase() === "default") return null;
+		return trimmed;
+	};
 	const explicit = clean(model);
 	if (explicit) return explicit;
 	return clean(fallbackModel);

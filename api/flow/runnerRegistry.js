@@ -337,9 +337,14 @@ export class RunnerRegistry {
 						);
 					}
 				}
+				// Trim like projectScope below so " pi " and "pi" are the
+				// same tool id at match time (runnerMatches compares exact
+				// strings). Builds a new array: the patch object belongs to
+				// the caller (request body) and is never mutated in place.
+				const trimmed = tools.map((tool) => tool.trim());
 				const advertised = advertisedToolIds(record);
 				if (advertised) {
-					const unknown = tools.filter((tool) => !advertised.includes(tool));
+					const unknown = trimmed.filter((tool) => !advertised.includes(tool));
 					if (unknown.length > 0) {
 						throw RunnerRegistry._fail(
 							400,
@@ -348,7 +353,7 @@ export class RunnerRegistry {
 						);
 					}
 				}
-				next.availableTools = [...new Set(tools)];
+				next.availableTools = [...new Set(trimmed)];
 			} else {
 				next.availableTools = null;
 			}

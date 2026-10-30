@@ -44,6 +44,11 @@ describe("runnerPosture", () => {
     expect(servingModelFor({ kind: "agent", model: 42, fallbackModel: null })).toBeNull();
     expect(servingModelFor()).toBeNull();
     expect(servingModelFor({ kind: "agent", model: "m" })).toBe("m");
+    // The engine-wide "default" sentinel (blank stage pick = harness-managed)
+    // is never reported: explicit model falls back, sentinel fallback is blank.
+    expect(servingModelFor({ kind: "agent", model: "default", fallbackModel: "x" })).toBe("x");
+    expect(servingModelFor({ kind: "agent", model: "  Default  ", fallbackModel: "  default " })).toBeNull();
+    expect(servingModelFor({ kind: "agent", fallbackModel: "default" })).toBeNull();
   });
   it("re-exports from executionLedger", () => {
     expect(typeof fromLedger).toBe("function");

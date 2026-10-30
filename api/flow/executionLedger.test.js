@@ -145,6 +145,13 @@ describe("ExecutionLedger", () => {
 		// The monitor JSON keeps model null (not "default"/""), so the UI hides the pill.
 		ledger.recordProgress({ ...base, stageId: "s5", event: "prompted", harness: "pi", model: null });
 		expect(JSON.parse(JSON.stringify(ledger.servingFor(executionId))).model).toBeNull();
+		// Pre-fix Runners send the literal "default" sentinel: ingest drops
+		// it to null (harness pill stays) so old Runners degrade gracefully.
+		ledger.recordProgress({ ...base, stageId: "s6", event: "prompted", harness: "pi", model: "default" });
+		expect(ledger.servingFor(executionId)).toEqual({ harness: "pi", model: null });
+		// A sentinel-only report carries no information and overwrites nothing.
+		ledger.recordProgress({ ...base, stageId: "s7", event: "prompted", model: "  Default " });
+		expect(ledger.servingFor(executionId)).toEqual({ harness: "pi", model: null });
 	});
 
 	test("rejects progress on a stale epoch before touching state", () => {

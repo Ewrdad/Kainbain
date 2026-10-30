@@ -168,6 +168,20 @@ describe('RunnerConfigurationSection', () => {
     });
   });
 
+  it('offers approve on a denied Runner so it is never a dead end', async () => {
+    const denied = { ...PENDING_RUNNER, runnerId: 'r3', status: 'denied' };
+    runnersFixture([denied]);
+    approveRunner.mockResolvedValue({ status: 'active', credential: 'ONE-TIME-3' });
+    render(<RunnerConfigurationSection />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve runner r3' }));
+    await waitFor(() => {
+      expect(approveRunner).toHaveBeenCalledWith('r3');
+      expect(screen.getByTestId('runner-credential-once')).toBeTruthy();
+    });
+    // Deny is not offered for denied Runners: denying a denied Runner 409s.
+    expect(screen.queryByRole('button', { name: 'Deny runner r3' })).toBeNull();
+  });
+
   it('denies a pending Runner and revokes an active one', async () => {
     runnersFixture();
     denyRunner.mockResolvedValue({ status: 'denied' });
@@ -294,6 +308,25 @@ describe('RunnerConfigurationSection', () => {
     fireEvent.click(save);
     await waitFor(() => {
       expect(screen.getByTestId('runner-worktreedir-r1-error')).toBeTruthy();
+    });
+    expect(updateRunnerConfig).not.toHaveBeenCalled();
+  });
+
+  it('clears a directory error while the operator retypes', async () => {
+    runnersFixture([ACTIVE_RUNNER]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    fireEvent.change(screen.getByTestId('runner-worktreedir-r1'), { target: { value: '   ' } });
+    const save = screen.getByTestId('runner-worktreedir-r1-save');
+    fireEvent.click(save);
+    fireEvent.click(save);
+    await screen.findByTestId('runner-worktreedir-r1-error');
+    // Typing a new value clears the stale error before the next save attempt.
+    fireEvent.change(screen.getByTestId('runner-worktreedir-r1'), {
+      target: { value: '/srv/fixed-trees' },
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('runner-worktreedir-r1-error')).toBeNull();
     });
     expect(updateRunnerConfig).not.toHaveBeenCalled();
   });

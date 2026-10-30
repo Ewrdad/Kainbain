@@ -421,7 +421,7 @@ export const ENDPOINTS = [
 		method: "PATCH",
 		path: "/runners/:id/config",
 		purpose:
-			"Update one Runner's operator-owned configuration (partial object: displayName, availableTools, jobTypes, directories, projectScope). Heartbeat facts are never touched. 400 on invalid fields, 404 on unknown Runner.",
+			"Update one Runner's operator-owned configuration (partial object: displayName, availableTools, jobTypes, directories, projectScope). Heartbeat facts are never touched. 400 on invalid fields, 404 on unknown Runner. Dispatch enforces the tool filter, runsCi/runsMerges, and the project scope at claim time (TOOL_DISABLED / JOB_TYPE_DISABLED / PROJECT_SCOPE miss reasons); runsImpromptu is a recorded preference — live steers still ride the owning Runner's heartbeat.",
 		body: {
 			displayName: "string (optional, null resets)",
 			jobTypes: "object (optional, boolean runsCi/runsMerges/runsImpromptu)",
