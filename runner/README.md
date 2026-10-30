@@ -62,13 +62,14 @@ list; empty matches model-less tasks only). Each assignment serves
 exactly the dispatch answer's required model — never a substitution.
 
 Model reporting contract (`servingModelFor` / `formatPosture` in
-`runner/servingModel.js`, mirrored in `api/flow/`): the `prompted`
-progress event and the completion `posture` string carry the assignment's
-served model — the dispatch requirement, falling back to the Runner
-default only for LLM stages. CI / merge / integrate assignments serve
-no model and report none (never the Runner default, never the literal
-`"default"`): the progress body omits the field and the posture string
-omits the trailing `:model` segment, so the UI hides the model pill.
+`shared/` — one copy executed by both this Runner and the backend via
+`api/flow/runnerPosture.js`): the `prompted` progress event and the
+completion `posture` string carry the assignment's served model — the
+dispatch requirement, falling back to the Runner default only for LLM
+stages. CI / merge / integrate assignments serve no model and report
+none (never the Runner default, never the literal `"default"`): the
+progress body omits the field and the posture string omits the trailing
+`:model` segment, so the UI hides the model pill.
 
 In dispatch mode no `PROJECT_ID`/`TASK_ID` is needed. After the same
 join + heartbeat prologue the daemon polls `POST /runners/dispatch`:

@@ -17,9 +17,9 @@ import {
 	startClaimRenewal,
 	RUNNER_API_VERSION,
 	ciWorkdirFor,
-	servingModelFor,
-	formatPosture,
 } from "./daemon.js";
+import { servingModelFor } from "../shared/servingModelFor.js";
+import { formatPosture } from "../shared/formatPosture.js";
 
 describe("ciWorkdirFor", () => {
 	it("runs primary stages in the primary checkout, task stages in the worktree", () => {
@@ -277,6 +277,42 @@ describe("runSingleAssignment", () => {
 		assert.equal(completed[0].outcome, "failed");
 		assert.match(completed[0].failureReason, /harness blew up/);
 		assert.equal(interrupted.length, 0);
+	});
+
+	it("reports no model for a CI claim in single-assignment mode, even with a pinned default", async () => {
+		const repo = localRepo();
+		const config = baseConfig({ model: "m-pin" });
+		dirs.push(config.workRoot, repo);
+		const progressCalls = [];
+		let completed = null;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "run tests", currentStageId: "ci-1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1, kind: "ci", command: "echo ci-single" }),
+			progress: async (args) => {
+				progressCalls.push(args);
+				return { recorded: true };
+			},
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed = args;
+				return { accepted: true, shaState: "present" };
+			},
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const out = await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.accepted, true);
+		const prompted = progressCalls.find((c) => c.event === "prompted");
+		assert.equal(prompted.model, null);
+		assert.equal(completed.posture, "T0/T1:mock");
+		assert.ok(!completed.posture.includes("default"));
+		assert.ok(!completed.posture.includes("m-pin"));
 	});
 
 	it("asks for the pasted credential once the join is approved", async () => {
@@ -687,6 +723,74 @@ describe("runDispatchLoop", () => {
 		assert.equal(seenMeta?.model, "m-want");
 	});
 
+	it("reports the served model accurately: dispatch model on agent stages, none on CI stages", async () => {
+		// The regression this pins: every observable path used to write the
+		// Runner default (`config.model || "default"`), so the UI showed
+		// "default" constantly and a model on CI stages that never used one.
+		const repo = localRepo();
+		const config = loopConfig({ model: "m-pin", models: ["m-pin", "m-want"] });
+		dirs.push(config.workRoot, repo);
+		const progressCalls = [];
+		const completeCalls = [];
+		let polls = 0;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				polls += 1;
+				if (polls === 1) {
+					return {
+						assigned: true, projectId: "p1", taskId: "t1", executionId: "e-agent", epoch: 1,
+						requirements: { harness: "mock", model: "m-want" },
+					};
+				}
+				if (polls === 2) {
+					return {
+						assigned: true, projectId: "p1", taskId: "t1", executionId: "e-ci", epoch: 2,
+						kind: "ci", command: "echo ci-ok", requirements: { harness: "mock", model: "" },
+					};
+				}
+				return { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			progress: async (args) => {
+				progressCalls.push(args);
+				return { recorded: true };
+			},
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completeCalls.push(args);
+				return { accepted: true, shaState: "present" };
+			},
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.assignments, 2);
+		// Agent assignment: the prompted report and the completion posture
+		// carry the DISPATCHED model, never the Runner default.
+		const agentPrompted = progressCalls.find((c) => c.executionId === "e-agent" && c.event === "prompted");
+		assert.equal(agentPrompted.model, "m-want");
+		assert.equal(agentPrompted.harness, "mock");
+		const agentComplete = completeCalls.find((c) => c.executionId === "e-agent");
+		assert.equal(agentComplete.posture, "T0/T1:mock:m-want");
+		assert.ok(!agentComplete.posture.includes("default"));
+		assert.ok(!agentComplete.posture.includes("m-pin"));
+		// CI assignment: no model anywhere — progress reports null (omitted on
+		// the wire by client.progress) and the posture has no model segment.
+		const ciPrompted = progressCalls.find((c) => c.executionId === "e-ci" && c.event === "prompted");
+		assert.equal(ciPrompted.model, null);
+		assert.equal(ciPrompted.harness, "mock");
+		const ciComplete = completeCalls.find((c) => c.executionId === "e-ci");
+		assert.equal(ciComplete.posture, "T0/T1:mock");
+		assert.ok(!ciComplete.posture.includes("default"));
+		assert.ok(!ciComplete.posture.includes("m-pin"));
+	});
+
 	it("forwards the dispatch answer env to the CI command", async () => {
 		const repo = localRepo();
 		const config = loopConfig();
@@ -984,6 +1088,22 @@ describe("servingModelFor", () => {
 	it("returns null for merge/integrate", () => {
 		assert.equal(servingModelFor({ kind: "merge", model: "m", fallbackModel: "fb" }), null);
 		assert.equal(servingModelFor({ kind: "integrate", model: "m", fallbackModel: "fb" }), null);
+		assert.equal(servingModelFor({ kind: "integration", model: "m", fallbackModel: "fb" }), null);
+	});
+	it("returns null for every non-LLM stage kind, even with a model attached", () => {
+		for (const kind of ["ci", "script", "deploy", "command", "human"]) {
+			assert.equal(servingModelFor({ kind, model: "m", fallbackModel: "fb" }), null, kind);
+		}
+	});
+	it("matches kind case-insensitively and trimmed", () => {
+		assert.equal(servingModelFor({ kind: " CI ", model: "m", fallbackModel: "fb" }), null);
+		assert.equal(servingModelFor({ kind: "Agent", model: "m", fallbackModel: "fb" }), "m");
+	});
+	it("treats non-string model/fallback as absent, never the literal \"default\"", () => {
+		assert.equal(servingModelFor({ kind: "agent", model: 42, fallbackModel: null }), null);
+		assert.equal(servingModelFor({ kind: "agent", model: undefined, fallbackModel: "fb" }), "fb");
+		assert.equal(servingModelFor(), null);
+		assert.equal(servingModelFor({ kind: "agent" }), null);
 	});
 	it("trims whitespace model", () => {
 		assert.equal(servingModelFor({ kind: "agent", model: "  m  ", fallbackModel: "fb" }), "m");
@@ -994,9 +1114,22 @@ describe("servingModelFor", () => {
 describe("formatPosture", () => {
 	it("includes model when real", () => {
 		assert.equal(formatPosture({ tiers: ["T0"], harness: "pi", model: "m" }), "T0:pi:m");
+		assert.equal(formatPosture({ tiers: ["T0", "T1"], harness: "pi", model: "  m  " }), "T0/T1:pi:m");
 	});
-	it("omits model segment when null", () => {
+	it("omits model segment when null, blank, or non-string", () => {
 		assert.equal(formatPosture({ tiers: ["T0"], harness: "pi", model: null }), "T0:pi");
 		assert.equal(formatPosture({ tiers: ["T0", "T1"], harness: "pi", model: "" }), "T0/T1:pi");
+		assert.equal(formatPosture({ tiers: ["T0"], harness: "pi", model: "   " }), "T0:pi");
+		assert.equal(formatPosture({ tiers: ["T0"], harness: "pi", model: 42 }), "T0:pi");
+	});
+	it("never emits stray segments for missing tiers or harness", () => {
+		assert.equal(formatPosture({ tiers: ["T0"], harness: "", model: "m" }), "T0:m");
+		assert.equal(formatPosture({ harness: "pi", model: "m" }), "pi:m");
+		assert.equal(formatPosture({ model: "m" }), "m");
+		assert.equal(formatPosture({}), "");
+		assert.equal(formatPosture({ tiers: [], harness: "  ", model: null }), "");
+	});
+	it("accepts tiers as a plain string", () => {
+		assert.equal(formatPosture({ tiers: "T0/T1", harness: "pi", model: null }), "T0/T1:pi");
 	});
 });

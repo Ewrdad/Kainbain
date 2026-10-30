@@ -4,11 +4,14 @@ import { promisify } from "node:util";
 import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, removeIntegrationWorkdir, runGit, syncTaskDocs, touchWorkdir } from "./project.js";
 import { RunnerGitError } from "./project.js";
 import { runHarnessStage } from "./harness.js";
-import { servingModelFor, formatPosture } from "./servingModel.js";
+// The Runner bundle ships shared/ next to this folder (runner/{runner,api,shared}
+// in prod and in the distributable tarball), so ../shared resolves both in the
+// repo and in every deployed layout — the same copy the backend executes.
+import { servingModelFor } from "../shared/servingModelFor.js";
+import { formatPosture } from "../shared/formatPosture.js";
 import { commitAndPush } from "./gitOps.js";
 
 export const RUNNER_VERSION = "0.1.0";
-export { servingModelFor, formatPosture } from "./servingModel.js";
 
 /***
  * MARK: RUNNER_API_VERSION
@@ -675,7 +678,7 @@ async function executeAssignment({
 					event: "prompted",
 					prompt,
 					harness: servingHarnessId,
-						model: servingModelFor({ kind, model, fallbackModel: config.model }),
+					model: servingModelFor({ kind, model, fallbackModel: config.model }),
 				});
 			} catch (err) {
 				logger.warn(`Prompt report failed: ${err?.message || err}`);
