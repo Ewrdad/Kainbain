@@ -2,6 +2,8 @@
  * MARK: formatPosture
  * @description Formats a Runner `posture` string, appending `:model` only when
  *   a real model is served.
+ * @example formatPosture({ tiers: ["T0"], harness: "pi", model: "m" }) => "T0:pi:m"
+ * @example formatPosture({ tiers: ["T0"], harness: "pi", model: null }) => "T0:pi"
  ***/
 export function formatPosture({ tiers, harness, model } = {}) {
 	const tierPart = Array.isArray(tiers) ? tiers.join("/") : String(tiers ?? "");

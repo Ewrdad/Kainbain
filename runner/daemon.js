@@ -928,7 +928,7 @@ async function executeIntegrationAssignment({
 					"origin", `${mergeSha}:${targetBranch}`,
 				]);
 			} catch {
-				const detail = `Target '${targetBranch}' moved during integration (CAS push pinned at ${String(expectedTargetSha).slice(0, 7)} rejected) — retry re-bases with fresh SHAs`;;
+				const detail = `Target '${targetBranch}' moved during integration (CAS push pinned at ${String(expectedTargetSha).slice(0, 7)} rejected) — retry re-bases with fresh SHAs`;
 				await sendLogs(`[integrate] stale-head: ${detail}`);
 				await client.integrationReport({
 					projectId, targetBranch, executionId: integrationExecutionId, epoch: integrationEpoch,
