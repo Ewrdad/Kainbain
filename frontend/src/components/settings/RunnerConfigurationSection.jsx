@@ -256,11 +256,11 @@ export function RunnerConfigurationSection() {
   const advertised = selected ? advertisedToolIds(selected) : [];
   const enabledTools = selected ? effectiveTools(selected) : [];
   const nameDraft = selected
-    // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
+     
     ? (nameDrafts[selected.runnerId] ?? config.displayName ?? '')
     : '';
   const dirDraft = selected
-    // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
+     
     ? (dirDrafts[selected.runnerId] || config.directories)
     : { masterDir: '', worktreeDir: '' };
   const nameDirty =
@@ -279,7 +279,7 @@ export function RunnerConfigurationSection() {
         if (ok) {
           setNameDrafts((prev) => {
             const next = { ...prev };
-            // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
+             
             delete next[selected.runnerId];
             return next;
           });
@@ -298,9 +298,11 @@ export function RunnerConfigurationSection() {
     const { ok, errors } = validateDirectories(dirDraft);
     // eslint-disable-next-line security/detect-object-injection -- field is a fixed directory key
     if (!ok && errors[field]) {
+      // eslint-disable-next-line security/detect-object-injection -- field is a fixed directory key
       setDirErrors((prev) => ({ ...prev, [confirmKey]: errors[field] }));
       return;
     }
+    // eslint-disable-next-line security/detect-object-injection -- field is a fixed directory key
     const value = String(dirDraft[field] || '').trim();
     void saveConfig(
       selected.runnerId,
@@ -310,7 +312,7 @@ export function RunnerConfigurationSection() {
       if (saved) {
         setDirDrafts((prev) => {
           const next = { ...prev };
-          // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
+           
           delete next[selected.runnerId];
           return next;
         });
@@ -623,7 +625,7 @@ export function RunnerConfigurationSection() {
                 onChange={(e) =>
                   setNameDrafts((prev) => ({
                     ...prev,
-                    // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
+                     
                     [selected.runnerId]: e.target.value,
                   }))
                 }
@@ -765,13 +767,13 @@ export function RunnerConfigurationSection() {
                 // reads as if the new text already failed.
                 setDirErrors((prev) => {
                   const next = { ...prev };
-                  // eslint-disable-next-line security/detect-object-injection -- confirm key for this Runner/field
+                   
                   delete next[`${selected.runnerId}:masterDir`];
                   return next;
                 });
                 setDirDrafts((prev) => ({
                   ...prev,
-                  // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
+                   
                   [selected.runnerId]: {
                     masterDir: value,
                     worktreeDir: prev[selected.runnerId]?.worktreeDir ?? config.directories.worktreeDir,
@@ -794,13 +796,13 @@ export function RunnerConfigurationSection() {
                 // reads as if the new text already failed.
                 setDirErrors((prev) => {
                   const next = { ...prev };
-                  // eslint-disable-next-line security/detect-object-injection -- confirm key for this Runner/field
+                   
                   delete next[`${selected.runnerId}:worktreeDir`];
                   return next;
                 });
                 setDirDrafts((prev) => ({
                   ...prev,
-                  // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
+                   
                   [selected.runnerId]: {
                     masterDir: prev[selected.runnerId]?.masterDir ?? config.directories.masterDir,
                     worktreeDir: value,
@@ -829,7 +831,7 @@ export function RunnerConfigurationSection() {
                   <input
                     type="checkbox"
                     data-testid={`runner-job-${selected.runnerId}-${key}`}
-                    checked={config.jobTypes[key] === true}
+                    checked={config.jobTypes[key] === true /* eslint-disable-line security/detect-object-injection */}
                     onChange={(e) => handleJobToggle(key, e.target.checked)}
                     disabled={Boolean(busyKey)}
                     className="rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0 cursor-pointer"

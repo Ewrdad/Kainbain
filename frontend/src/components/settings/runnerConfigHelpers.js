@@ -143,7 +143,7 @@ export const partitionProjects = (allProjects = [], loadedIds = []) => {
   const available = [];
   for (const project of Array.isArray(allProjects) ? allProjects : []) {
     if (!project || typeof project.id !== 'string') continue;
-    // eslint-disable-next-line security/detect-object-injection -- id is a project id from the project list response
+     
     if (ids.has(project.id)) loaded.push(project);
     else available.push(project);
   }
