@@ -64,6 +64,26 @@ export const sanitizeStructuredEvent = (event, maxBytes = MAX_EVENT_BYTES) => {
 		}
 		if (sizeOf(truncated) <= cap) return truncated;
 	}
+	// Object-shaped payloads (e.g. result {content:[{text}]}) carry their
+	// bulk in nested strings: truncate every long string in place (the
+	// redacted clone is ours to mutate) before giving up on the event.
+	const seen = new Set();
+	const truncateDeep = (node) => {
+		if (!node || typeof node !== "object" || seen.has(node)) return;
+		seen.add(node);
+		for (const key of Object.keys(node)) {
+			// eslint-disable-next-line security/detect-object-injection -- key comes from Object.keys of the walked payload
+			const child = node[key];
+			if (typeof child === "string" && child.length > 1000) {
+				// eslint-disable-next-line security/detect-object-injection -- key comes from Object.keys of the walked payload
+				node[key] = `${child.slice(0, 1000)}…[truncated for transport]`;
+			} else {
+				truncateDeep(child);
+			}
+		}
+	};
+	truncateDeep(truncated);
+	if (sizeOf(truncated) <= cap) return truncated;
 	return null;
 };
 

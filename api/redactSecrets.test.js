@@ -142,4 +142,11 @@ describe("redactDeepStrings — structured payloads", () => {
 		circular.self = circular;
 		expect(() => redactDeepStrings(circular)).not.toThrow();
 	});
+	it("keeps shared (non-circular) references instead of marking them unserializable", () => {
+		const shared = { path: "src/index.js" };
+		expect(redactDeepStrings({ first: shared, second: shared })).toEqual({
+			first: { path: "src/index.js" },
+			second: { path: "src/index.js" },
+		});
+	});
 });

@@ -129,26 +129,32 @@ export const SECRET_KEY_PATTERN =
  * @returns {*} A redacted deep clone.
  ***/
 export const redactDeepStrings = (value) => {
-	const seen = new Map();
+	// Ancestor set only: a reference shared between siblings is cloned twice,
+	// while a true cycle (an object reachable from itself) degrades safely.
+	const ancestors = new Set();
 	const walk = (node) => {
 		if (typeof node === "string") return redactSecretsText(node);
 		if (!node || typeof node !== "object") return node;
-		if (seen.has(node)) return "[Unserializable]";
-		seen.set(node, true);
-		if (Array.isArray(node)) return node.map(walk);
-		const out = {};
-		for (const key of Object.keys(node)) {
-			// eslint-disable-next-line security/detect-object-injection -- key comes from Object.keys of the walked object
-			const child = node[key];
-			if (typeof child === "string" && SECRET_KEY_PATTERN.test(key)) {
+		if (ancestors.has(node)) return "[Unserializable]";
+		ancestors.add(node);
+		try {
+			if (Array.isArray(node)) return node.map(walk);
+			const out = {};
+			for (const key of Object.keys(node)) {
 				// eslint-disable-next-line security/detect-object-injection -- key comes from Object.keys of the walked object
-				out[key] = REDACTED.SECRET;
-			} else {
-				// eslint-disable-next-line security/detect-object-injection -- key comes from Object.keys of the walked object
-				out[key] = walk(child);
+				const child = node[key];
+				if (typeof child === "string" && SECRET_KEY_PATTERN.test(key)) {
+					// eslint-disable-next-line security/detect-object-injection -- key comes from Object.keys of the walked object
+					out[key] = REDACTED.SECRET;
+				} else {
+					// eslint-disable-next-line security/detect-object-injection -- key comes from Object.keys of the walked object
+					out[key] = walk(child);
+				}
 			}
+			return out;
+		} finally {
+			ancestors.delete(node);
 		}
-		return out;
 	};
 	return walk(value);
 };

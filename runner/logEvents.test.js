@@ -58,6 +58,20 @@ describe("sanitizeStructuredEvent", () => {
 		assert.ok(out);
 		assert.match(out.result, /truncated for transport/);
 	});
+
+	it("truncates oversized object-shaped results instead of dropping the event", () => {
+		const out = sanitizeStructuredEvent(
+			{
+				type: "tool_finished",
+				toolName: "bash",
+				result: { content: [{ text: `ok\n${"x".repeat(2000)}` }] },
+			},
+			1500,
+		);
+		assert.ok(out);
+		assert.equal(out.toolName, "bash");
+		assert.match(out.result.content[0].text, /truncated for transport/);
+	});
 });
 
 describe("textForStructuredEvent", () => {
