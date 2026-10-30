@@ -331,6 +331,34 @@ describe('RunnerConfigurationSection', () => {
     expect(updateRunnerConfig).not.toHaveBeenCalled();
   });
 
+  it('disables roster actions while a config save is in flight', async () => {
+    runnersFixture([ACTIVE_RUNNER, PENDING_RUNNER]);
+    // A save that never settles keeps the busy state observable.
+    updateRunnerConfig.mockImplementation(() => new Promise(() => {}));
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    fireEvent.click(screen.getByTestId('runner-job-r1-runsCi'));
+    // One write at a time: a roster action racing the save could overwrite
+    // the shared busy flag and reload the roster over the in-flight patch.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Pause runner r1' })).toBeDisabled();
+    });
+    expect(screen.getByRole('button', { name: 'Approve runner r2' })).toBeDisabled();
+  });
+
+  it('says plainly that a saved directory is not sent to the Runner yet', async () => {
+    runnersFixture([ACTIVE_RUNNER]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    fireEvent.change(screen.getByTestId('runner-masterdir-r1'), {
+      target: { value: '/srv/new-master' },
+    });
+    fireEvent.click(screen.getByTestId('runner-masterdir-r1-save'));
+    expect(screen.getByTestId('runner-masterdir-r1-confirm')).toHaveTextContent(
+      'not sent to the Runner yet',
+    );
+  });
+
   it('toggles job switches with the expected payload', async () => {
     runnersFixture([ACTIVE_RUNNER]);
     render(<RunnerConfigurationSection />);

@@ -102,6 +102,22 @@ export function useTaskGoalDraft({
     resetSaveBaseline(nextTitle);
   }
 
+  // Late server goal for the SAME task: the detail page can first resolve
+  // a record whose goal has not loaded yet, then the full record arrives
+  // under the same id. Adopt it only when the editor still shows the old
+  // server text untouched — a cached draft or a dirty edit always wins, so
+  // text is never yanked out from under the user.
+  const [prevServerGoal, setPrevServerGoal] = useState({ taskId, value: serverGoal });
+  if (taskId !== prevServerGoal.taskId) {
+    setPrevServerGoal({ taskId, value: serverGoal });
+  } else if (serverGoal !== prevServerGoal.value) {
+    setPrevServerGoal({ taskId, value: serverGoal });
+    if (!draftEntry && !goalIsDirty && title === prevServerGoal.value) {
+      setTitle(serverGoal);
+      resetSaveBaseline(serverGoal);
+    }
+  }
+
   // A cached draft means the backend has not confirmed the latest text yet.
   const hasUnsyncedGoalChanges = goalIsDirty || Boolean(draftEntry);
   const hasPendingEdits = hasUnsyncedGoalChanges;
