@@ -10,6 +10,11 @@
 #   ./deploy.sh --prod --fast   Production deploy WITHOUT tests/security scans
 #                           (rapid self-iteration; the health-check + rollback
 #                           gate below is the safety net).
+#   ./deploy.sh --prod --publish-only [--fast] [--sync-site]
+#                           CI stage 1 only: gates + publish images/dist via
+#                           publish.sh (per changed component), optionally
+#                           stage the ad-site/S3 release, then STOP — prod is
+#                           updated by stage 2: (cd ~/apps/kainbain && ./update.sh)
 #   ./deploy.sh --rollback  Restore the last known-good deployment (.prev) and
 #                           restart the service.
 #   ./deploy.sh             Build Docker images + runner distributable (no deploy).
@@ -379,10 +384,14 @@ APP_LINK_PROJECT="${KAINBAIN_APP_LINK_PROJECT:-}"
 # --- Arg parsing ----------------------------------------------------------
 MODE="build"
 FAST="false"
+PUBLISH_ONLY="false"
+SYNC_SITE="false"
 while [[ "$#" -gt 0 ]]; do
 	case $1 in
 	--dev) MODE="dev" ;;
 	--prod) MODE="prod" ;;
+	--publish-only) PUBLISH_ONLY="true" ;;
+	--sync-site) PUBLISH_ONLY="true"; SYNC_SITE="true" ;;
 	--fast) FAST="true" ;;
 	--rollback) MODE="rollback" ;;
 	--prod-dir) PROD_DIR="${2:?--prod-dir needs a path}"; shift ;;
@@ -1452,7 +1461,9 @@ if [ "$MODE" = "prod" ]; then
 	#    same fast branches plus the canary suite in one gate, so here the
 	#    fast branches run in this gate and the canary suite runs exactly
 	#    once, below, as its own named gate.
-	if [ "$FAST" != "true" ]; then
+	if [ "$PUBLISH_ONLY" = "true" ]; then
+		log "⏭️ Publish-only: skipping deploy-level test/canary/security gates — publish.sh runs the per-component gates for the changed components only (asymmetric)."
+	elif [ "$FAST" != "true" ]; then
 		run_gate "final-test-suite" "./run-tests.sh --no-canary" ./run-tests.sh --no-canary
 
 		# 1b. Canary E2E gate (blocking): the Playwright suite runs on its
@@ -1509,7 +1520,7 @@ if [ "$MODE" = "prod" ]; then
 	# An empty VITE_API_BASE/VITE_WS_URL means "same origin" (see api.js).
 	# (`env`, not inline assignments: assignments preceding a shell function
 	# persist after it returns — env keeps them scoped to the one command.)
-	run_gate "frontend-build" "npm run build --prefix frontend" env VITE_API_BASE= VITE_WS_URL= npm run build --prefix frontend
+	if [ "$PUBLISH_ONLY" = "true" ]; then log "⏭️ Publish-only: frontend build is publish.sh's gate — skipping deploy-level build."; else run_gate "frontend-build" "npm run build --prefix frontend" env VITE_API_BASE= VITE_WS_URL= npm run build --prefix frontend; fi
 
 	# 4. Prepare API.
 	# The API is a plain Node app with no build step. We deliberately install the
@@ -1518,7 +1529,7 @@ if [ "$MODE" = "prod" ]; then
 	# in-repo test suite and makes `npm run deploy` non-idempotent on the next run.
 	# `--include=dev` forces dev deps even when NODE_ENV=production is set (which
 	# would otherwise make npm skip them and break the deploy's own test suite).
-	run_gate "api-install" "npm install --prefix api --include=dev" npm install --prefix api --include=dev
+	if [ "$PUBLISH_ONLY" = "true" ]; then log "⏭️ Publish-only: skipping deploy-level api-install (image build installs its own deps)."; else run_gate "api-install" "npm install --prefix api --include=dev" npm install --prefix api --include=dev; fi
 
 	# 5. Publish everything from this checkout (replaces the per-minute cron
 	#    convergence job): push git refs with the dev box's ssh auth, then
@@ -1553,6 +1564,18 @@ if [ "$MODE" = "prod" ]; then
 		run_gate "registry-publish" "./publish.sh --detect --fast" ./publish.sh --detect --fast
 	else
 		run_gate "registry-publish" "./publish.sh --detect" ./publish.sh --detect
+	fi
+	# CI split (publish stage -> update stage): --publish-only stops here.
+	# Stage 1 publishes images + dist/ (asymmetrically, per changed component);
+	# stage 2 runs (cd ~/apps/kainbain && ./update.sh) to pull + restart only
+	# what changed. Nothing in $PROD_DIR is touched on this path.
+	if [ "$PUBLISH_ONLY" = "true" ]; then
+		if [ "$SYNC_SITE" = "true" ] || [ -n "${KAINBAIN_ADSITE_S3_BUCKET:-}" ]; then
+			bash scripts/sync-adsite.sh || log "⚠️ Ad-site sync failed (non-fatal) — release is published; re-run: bash scripts/sync-adsite.sh"
+		fi
+		log "✅ Publish-only complete — prod untouched. Next: (cd $PROD_DIR && ./update.sh)"
+		write_result "success" "Publish-only deploy (registry + dist) complete" "false" 0 "" ""
+		exit 0
 	fi
 
 	# 6. Stage the minimal Docker install for $PROD_DIR (compose + .env +

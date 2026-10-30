@@ -243,4 +243,7 @@ const line = JSON.stringify({ publishedAt: now, commit: manifest.commit, compone
 fs.appendFileSync("dist/release-history.jsonl", line + "\n");
 console.log("wrote dist/release-manifest.json");
 NODE
+# Retention: keep the newest 5 runner tarballs in dist/ (older ones are
+# reproducible from their commit and only bloat the ad-site/S3 sync).
+ls -t dist/kainbain-runner-*.tar.gz 2>/dev/null | tail -n +6 | while read -r old; do log "pruning old runner tarball: $old"; rm -f "$old"; done
 log "published:$PUBLISHED"
