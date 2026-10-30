@@ -51,7 +51,9 @@ const DirectoryField = ({
     </div>
     {confirmArmed && (
       <p className="text-[11px] text-warning" data-testid={`${testId}-confirm`}>
-        This changes where the Runner reads and writes. Click Save again to confirm.
+        Saved on the backend as this Runner&apos;s directory preference. It is
+        not sent to the Runner yet, so the Runner keeps using its own folders
+        until that wiring lands. Click Save again to confirm.
       </p>
     )}
     {error && (
@@ -432,7 +434,10 @@ export function RunnerConfigurationSection() {
         <ul className="mt-3 flex flex-col gap-2" data-testid="runner-roster">
           {runners.map((runner) => {
             const isSelected = runner.runnerId === selectedId;
-            const rowBusy = busyKey && busyKey.endsWith(`:${runner.runnerId}`);
+            // One write at a time across the whole screen: a roster action
+            // racing a config save would overwrite the shared busy flag and
+            // reload the roster over the in-flight patch.
+            const rowBusy = Boolean(busyKey);
             const assignment = assignments[runner.runnerId];
             return (
               <li
@@ -811,6 +816,11 @@ export function RunnerConfigurationSection() {
               }}
               onSave={() => handleDirectorySave('worktreeDir')}
             />
+            <p className="text-[11px] text-text-muted">
+              Directories are stored as this Runner&apos;s preference on the
+              backend. They are not sent to the Runner yet — it keeps using
+              its own folders until that wiring lands.
+            </p>
           </div>
 
           <div className="flex flex-col gap-1">
