@@ -117,6 +117,43 @@ describe("ExecutionLedger", () => {
 		expect(ledger.servingFor(executionId)).toBeNull();
 	});
 
+	test("prompted with harness but null model stores model: null (CI contract), never a fake model", () => {
+		const { executionId, epoch } = claimed(ctx);
+		const base = {
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+			stageId: "s1",
+		};
+		// CI stage: the Runner omits `model` on the wire, so it arrives undefined.
+		ledger.recordProgress({ ...base, stageId: "s1", event: "prompted", prompt: "npm test", harness: "pi" });
+		expect(ledger.servingFor(executionId)).toEqual({ harness: "pi", model: null });
+		// Blank/whitespace harness AND model: no serving entry at all (progress
+		// keys include stageId, so each call here is a distinct report).
+		ledger.recordProgress({ ...base, stageId: "s2", event: "prompted", harness: "  ", model: "   " });
+		expect(ledger.servingFor(executionId)).toEqual({ harness: "pi", model: null }); // unchanged: blank report did not overwrite
+		// Non-prompted events never set the serving entry, even with a model attached.
+		ledger.recordProgress({ ...base, stageId: "s3", event: "finished", harness: "pi", model: "m" });
+		expect(ledger.servingFor(executionId)).toEqual({ harness: "pi", model: null });
+		// A real agent-stage model is stored trimmed.
+		ledger.recordProgress({ ...base, stageId: "s4", event: "prompted", harness: "pi", model: "  kimi-k3:cloud  " });
+		expect(ledger.servingFor(executionId)).toEqual({ harness: "pi", model: "kimi-k3:cloud" });
+		// The monitor JSON keeps model null (not "default"/""), so the UI hides the pill.
+		ledger.recordProgress({ ...base, stageId: "s5", event: "prompted", harness: "pi", model: null });
+		expect(JSON.parse(JSON.stringify(ledger.servingFor(executionId))).model).toBeNull();
+		// Pre-fix Runners send the literal "default" sentinel: ingest drops
+		// it to null (harness pill stays) so old Runners degrade gracefully.
+		ledger.recordProgress({ ...base, stageId: "s6", event: "prompted", harness: "pi", model: "default" });
+		expect(ledger.servingFor(executionId)).toEqual({ harness: "pi", model: null });
+		// A sentinel-only report carries no information and overwrites nothing.
+		ledger.recordProgress({ ...base, stageId: "s7", event: "prompted", model: "  Default " });
+		expect(ledger.servingFor(executionId)).toEqual({ harness: "pi", model: null });
+	});
+
 	test("rejects progress on a stale epoch before touching state", () => {
 		claimed(ctx);
 		try {

@@ -256,11 +256,11 @@ export function RunnerConfigurationSection() {
   const advertised = selected ? advertisedToolIds(selected) : [];
   const enabledTools = selected ? effectiveTools(selected) : [];
   const nameDraft = selected
-    // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
+     
     ? (nameDrafts[selected.runnerId] ?? config.displayName ?? '')
     : '';
   const dirDraft = selected
-    // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
+     
     ? (dirDrafts[selected.runnerId] || config.directories)
     : { masterDir: '', worktreeDir: '' };
   const nameDirty =
@@ -279,7 +279,7 @@ export function RunnerConfigurationSection() {
         if (ok) {
           setNameDrafts((prev) => {
             const next = { ...prev };
-            // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
+             
             delete next[selected.runnerId];
             return next;
           });
@@ -298,9 +298,11 @@ export function RunnerConfigurationSection() {
     const { ok, errors } = validateDirectories(dirDraft);
     // eslint-disable-next-line security/detect-object-injection -- field is a fixed directory key
     if (!ok && errors[field]) {
+      // eslint-disable-next-line security/detect-object-injection -- field is a fixed directory key
       setDirErrors((prev) => ({ ...prev, [confirmKey]: errors[field] }));
       return;
     }
+    // eslint-disable-next-line security/detect-object-injection -- field is a fixed directory key
     const value = String(dirDraft[field] || '').trim();
     void saveConfig(
       selected.runnerId,
@@ -310,7 +312,7 @@ export function RunnerConfigurationSection() {
       if (saved) {
         setDirDrafts((prev) => {
           const next = { ...prev };
-          // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
+           
           delete next[selected.runnerId];
           return next;
         });
@@ -402,8 +404,9 @@ export function RunnerConfigurationSection() {
             <button
               type="button"
               onClick={async () => {
-                await copyToClipboard(freshCredential.credential);
-                setCopied(true);
+                // copyToClipboard never throws (false on failure), so the
+                // label only flips when the text is really in the clipboard.
+                setCopied(await copyToClipboard(freshCredential.credential));
               }}
               className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer"
             >
@@ -507,6 +510,31 @@ export function RunnerConfigurationSection() {
                       Deny
                     </button>
                   </>
+                ) : runner.status === 'denied' ? (
+                  // A denied join request is not a dead end: the operator can
+                  // still approve it (backend issues the credential) or park
+                  // it terminally with revoke. Deny is not offered here —
+                  // denying a denied Runner 409s, so the button would always fail.
+                  <>
+                    <button
+                      type="button"
+                      disabled={Boolean(rowBusy)}
+                      onClick={() => mutate(runner.runnerId, 'approve')}
+                      aria-label={`Approve runner ${runner.runnerId}`}
+                      className="ml-auto px-3 py-1.5 min-h-[44px] bg-primary hover:brightness-110 text-on-primary text-xs font-bold uppercase tracking-widest rounded-sm transition-all cursor-pointer disabled:opacity-60"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      disabled={Boolean(rowBusy)}
+                      onClick={() => mutate(runner.runnerId, 'revoke')}
+                      aria-label={`Revoke runner ${runner.runnerId}`}
+                      className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
+                    >
+                      Revoke
+                    </button>
+                  </>
                 ) : (
                   runner.status === 'active' && (
                     <>
@@ -592,11 +620,12 @@ export function RunnerConfigurationSection() {
                 type="text"
                 data-testid={`runner-name-${selected.runnerId}`}
                 value={nameDraft}
+                maxLength={128}
                 placeholder={selected.runnerId}
                 onChange={(e) =>
                   setNameDrafts((prev) => ({
                     ...prev,
-                    // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
+                     
                     [selected.runnerId]: e.target.value,
                   }))
                 }
@@ -733,9 +762,18 @@ export function RunnerConfigurationSection() {
               confirmArmed={dirConfirm === `${selected.runnerId}:masterDir`}
               onChange={(value) => {
                 setDirConfirm(null);
+                // Typing clears this field's error: the message describes the
+                // last save attempt, and keeping it while the text changes
+                // reads as if the new text already failed.
+                setDirErrors((prev) => {
+                  const next = { ...prev };
+                   
+                  delete next[`${selected.runnerId}:masterDir`];
+                  return next;
+                });
                 setDirDrafts((prev) => ({
                   ...prev,
-                  // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
+                   
                   [selected.runnerId]: {
                     masterDir: value,
                     worktreeDir: prev[selected.runnerId]?.worktreeDir ?? config.directories.worktreeDir,
@@ -753,9 +791,18 @@ export function RunnerConfigurationSection() {
               confirmArmed={dirConfirm === `${selected.runnerId}:worktreeDir`}
               onChange={(value) => {
                 setDirConfirm(null);
+                // Typing clears this field's error: the message describes the
+                // last save attempt, and keeping it while the text changes
+                // reads as if the new text already failed.
+                setDirErrors((prev) => {
+                  const next = { ...prev };
+                   
+                  delete next[`${selected.runnerId}:worktreeDir`];
+                  return next;
+                });
                 setDirDrafts((prev) => ({
                   ...prev,
-                  // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
+                   
                   [selected.runnerId]: {
                     masterDir: prev[selected.runnerId]?.masterDir ?? config.directories.masterDir,
                     worktreeDir: value,
@@ -784,7 +831,7 @@ export function RunnerConfigurationSection() {
                   <input
                     type="checkbox"
                     data-testid={`runner-job-${selected.runnerId}-${key}`}
-                    checked={config.jobTypes[key] === true}
+                    checked={config.jobTypes[key] === true /* eslint-disable-line security/detect-object-injection */}
                     onChange={(e) => handleJobToggle(key, e.target.checked)}
                     disabled={Boolean(busyKey)}
                     className="rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0 cursor-pointer"
@@ -793,6 +840,11 @@ export function RunnerConfigurationSection() {
                 </label>
               ))}
             </div>
+            <p className="text-[11px] text-text-muted">
+              CI, merge, tool, and project switches are enforced when Runners
+              claim work. Impromptu is recorded for now: live follow-up steers
+              still ride the owning Runner&apos;s heartbeat.
+            </p>
           </div>
         </div>
       )}

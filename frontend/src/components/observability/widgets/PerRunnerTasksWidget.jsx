@@ -214,6 +214,7 @@ export function PerRunnerTasksWidget({ tasks = [], stages = [], compact = false,
 }
 
 const PerRunnerCompactRow = ({ assignment: a, task, nowMs, stageName }) => {
+  const serving = a?.serving && typeof a.serving === 'object' ? a.serving : null;
   return (
     <details
       data-testid={`per-runner-row-${a.runnerId}`}
@@ -227,6 +228,23 @@ const PerRunnerCompactRow = ({ assignment: a, task, nowMs, stageName }) => {
         <strong className="text-slate-100">{a.runnerId}</strong>
         <span className="truncate">{String(a.taskId).slice(0, 8)}</span>
         <span className="text-slate-400 truncate">{stageName(a.stageId)}</span>
+        {serving?.harness && (
+          <span
+            data-testid={`per-runner-compact-harness-${a.runnerId}`}
+            className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700"
+          >
+            {serving.harness}
+          </span>
+        )}
+        {serving?.model && (
+          <span
+            data-testid={`per-runner-compact-model-${a.runnerId}`}
+            className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700 truncate"
+            title={serving.model}
+          >
+            {serving.model}
+          </span>
+        )}
         <span
           className="ml-auto text-emerald-300 shrink-0"
           data-testid={`per-runner-elapsed-${a.runnerId}`}

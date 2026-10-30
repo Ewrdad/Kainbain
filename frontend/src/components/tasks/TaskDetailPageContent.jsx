@@ -18,6 +18,7 @@ import { useTaskGoalDraft } from '../../hooks/useTaskGoalDraft';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { isTaskRunning } from './runningTask';
 import { useFullTask } from './useFullTask';
+import { useRouteTask } from './useRouteTask';
 import { ReportViewer } from '../reports/ReportViewer';
 import { copyToClipboard } from '../../services/clipboard';
 import { getTaskBranchName, buildCheckoutCommand } from './taskBranch';
@@ -95,15 +96,16 @@ export function TaskDetailPage({ task: propTask, onBack }) {
     }
   }
   const routeTaskId = paramTaskId ?? decodedPathId;
-  const resolvedTask = useMemo(() => {
-    if (propTask) return propTask;
-    if (ctxSelectedTask) return ctxSelectedTask;
-    if (routeTaskId) {
-      const found = tasks.find((t) => String(t.id) === String(routeTaskId));
-      if (found) return found;
-    }
-    return tasks[0] || null;
-  }, [propTask, ctxSelectedTask, routeTaskId, tasks]);
+  // A route id missing from the (possibly stale) board list is fetched
+  // directly; it never falls back to another task (see useRouteTask).
+  const { task: resolvedTask, loading: isResolvingRouteTask } = useRouteTask({
+    propTask,
+    ctxSelectedTask,
+    routeTaskId,
+    tasks,
+    activeProjectId,
+    getTask,
+  });
 
   const task = resolvedTask;
 
@@ -654,6 +656,19 @@ export function TaskDetailPage({ task: propTask, onBack }) {
     if (status === 'Fail' || status === 'FAIL' || status === 'Failed') return 'text-error';
     return 'text-secondary';
   };
+
+  if (!task && isResolvingRouteTask) {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        aria-label="Loading task"
+        className="flex-1 flex flex-col items-center justify-center p-8 bg-surface-deep text-center space-y-4"
+      >
+        <p className="text-sm text-text-muted">Loading task…</p>
+      </div>
+    );
+  }
 
   if (!task) {
     return (
