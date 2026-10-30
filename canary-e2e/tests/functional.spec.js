@@ -202,8 +202,8 @@ test.describe("KainBain Functional E2E Tests", () => {
 		await expect(
 			page.getByRole("button", { name: "Save Configuration" }),
 		).toBeVisible();
-		// Files & Links tab: paths, docs folders, git, app link.
-		await page.getByRole("tab", { name: /Files & Links/i }).click();
+		// Files & Repos tab: paths, docs folders, git, app link.
+		await page.getByRole("tab", { name: /Files & Repos/i }).click();
 		await expect(
 			page.getByText(/Working Directory/i),
 		).toBeVisible();
