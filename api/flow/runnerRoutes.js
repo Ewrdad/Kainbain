@@ -867,8 +867,13 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					alias: { name: resolved.aliasName, targetIndex: resolved.targetIndex },
 				};
 			}
+			// The candidate's project travels alongside the requirements so
+			// the operator project-scope check in `runnerMatches` can
+			// refuse out-of-scope projects loudly (PROJECT_SCOPE) instead
+			// of dispatching work the operator unloaded for this Runner.
 			const verdict = runnerMatches(runner, req, {
 				staleAfterMs: runnerRegistry.staleAfterMs,
+				projectId: cand.projectId,
 			});
 			if (!verdict.ok) {
 				misses[verdict.reason] = (misses[verdict.reason] || 0) + 1;

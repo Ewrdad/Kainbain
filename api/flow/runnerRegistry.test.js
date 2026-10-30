@@ -423,6 +423,10 @@ describe("RunnerRegistry operator config", () => {
 		expect(
 			runners.updateConfig("r1", { availableTools: ["pi"] }).operatorConfig.availableTools,
 		).toEqual(["pi"]);
+		// Tool ids trim like project ids so padded input matches exactly at match time.
+		expect(
+			runners.updateConfig("r1", { availableTools: ["  pi  "] }).operatorConfig.availableTools,
+		).toEqual(["pi"]);
 		expect(() => runners.updateConfig("r1", { availableTools: ["nope"] })).toThrowError(
 			/does not advertise/,
 		);

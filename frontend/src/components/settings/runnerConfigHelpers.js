@@ -14,8 +14,10 @@ export const JOB_TYPE_KEYS = ['runsCi', 'runsMerges', 'runsImpromptu'];
  * MARK: jobTypeLabels
  * @description Labels and hints for the three job-type switches on the
  *   Runner screen. Meanings are pinned by survey Q5: CI runs CI stages,
- *   merges runs merges plus host git actions, impromptu runs
- *   retrospective/non-task calls.
+ *   merges runs merges plus host git actions. Impromptu names
+ *   retrospective/non-task calls but stays a recorded preference —
+ *   dispatch does not filter live steers on it yet (withholding them
+ *   would strand steers with no embedded fallback).
  * @example jobTypeLabels() => [{ key: 'runsCi', label: 'Runs CI', hint: '…' }, …]
  ***/
 export const jobTypeLabels = () => [
@@ -24,7 +26,7 @@ export const jobTypeLabels = () => [
   {
     key: 'runsImpromptu',
     label: 'Runs Impromptu',
-    hint: 'Runs retrospective / non task calls',
+    hint: 'Recorded preference for retrospective / non-task calls — live follow-up steers still ride the owning Runner heartbeat',
   },
 ];
 
