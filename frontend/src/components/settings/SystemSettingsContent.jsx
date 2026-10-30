@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { useKainBain } from '../../context/KainBainContext';
+// import { useKainBain } from '../../context/KainBainContext'; // unused after removing Harness settings
 import { Icon } from '../Icon';
 import { FALLBACK_MODELS } from '../stageTypes';
 import { useModelCatalog } from '../../hooks/useModelCatalog';
 import { useModelRefreshSetting } from '../../hooks/useModelRefreshSetting';
-import { HarnessSection } from './HarnessSection';
+
 import { RunnersSection } from './RunnersSection';
 import { StorageSection } from './StorageSection';
 import { PushNotificationsSection } from './PushNotificationsSection';
@@ -64,9 +64,9 @@ export function SystemSettingsContent({
   backLabel = 'Back to Board',
   headingLevel = 'h2',
 }) {
-  const { harnessPrefs, updateHarnessPref, resetHarnessPrefs } = useKainBain();
+  // const { harnessPrefs, updateHarnessPref, resetHarnessPrefs } = useKainBain(); // Harness prefs removed in favor of Runner settings
 
-  const [internalActiveSection, setInternalActiveSection] = useState('harness');
+  const [internalActiveSection, setInternalActiveSection] = useState('runners');
   const activeSection = controlledSection ?? internalActiveSection;
 
   const setActiveSection = (sectionId) => {
@@ -78,8 +78,7 @@ export function SystemSettingsContent({
 
   // Live config gate and shared model catalogue hooks are enabled whenever this
   // content component is mounted.
-  const { runtimeValue: modelRefreshRuntimeValue, enabled: modelRefreshEnabled } =
-    useModelRefreshSetting(true);
+  const { enabled: modelRefreshEnabled } = useModelRefreshSetting(true);
   const {
     models,
     harnesses,
@@ -191,20 +190,8 @@ export function SystemSettingsContent({
           </p>
         )}
 
-        {effectiveSection === 'harness' && (
-          <div role="tabpanel" aria-label="Harness settings">
-            <HarnessSection
-              draft={draft}
-              update={update}
-              inputClass={inputClass}
-              toggleClass={toggleClass}
-              prefs={harnessPrefs}
-              updatePref={updateHarnessPref}
-              resetPrefs={resetHarnessPrefs}
-              onModelsRefresh={refreshModels}
-              modelsRefreshing={modelsRefreshing}
-              modelRefreshRuntimeValue={modelRefreshRuntimeValue}
-            />
+        {effectiveSection === 'runners' && (
+          <div role="tabpanel" aria-label="Runner settings">
             <RunnersSection />
           </div>
         )}
