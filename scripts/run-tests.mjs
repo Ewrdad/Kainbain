@@ -387,6 +387,7 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 			// fails the gate instead of silently never running.
 			args: [
 				"--test",
+				"runner/ciBranchWorkdir.test.js",
 				"runner/daemon.test.js",
 				"runner/client.test.js",
 				"runner/config.test.js",
