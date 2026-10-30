@@ -90,6 +90,47 @@ This survey makes sure the Runner reports model information accurately to the ba
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Only the actual model the Runner serves for that stage (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "No model / blank (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "The exact model required by the dispatched task (Recommended)"
+      ],
+      "notes": "Runners should advertise their availble harness +models and the task/stage should pick from them"
+    },
+    "q4": {
+      "selected": [
+        "Refuse the assignment and leave it for another Runner (Recommended)"
+      ],
+      "notes": "If it is an alais it should look to see if any others from that alias are availble"
+    },
+    "q5": {
+      "selected": [
+        "Runner dispatch matches available models",
+        "Runnable/auth status labels are accurate",
+        "Harness-specific model lists show correct models",
+        "Model picker in project settings is non-empty",
+        "Aliases resolve to real catalogue entries"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Yes, always while running (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
