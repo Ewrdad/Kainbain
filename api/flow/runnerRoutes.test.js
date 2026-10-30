@@ -378,6 +378,43 @@ describe("Runner Routes Integration", () => {
 		expect(monitor.progressRecorded).toBeGreaterThanOrEqual(1);
 		expect(monitor.progressDuplicates).toBeGreaterThanOrEqual(1);
 		expect(monitor.logGaps).toBeGreaterThanOrEqual(1);
+
+		// Structured transport on the same lease: a tool call ships as
+		// canonical entries the UI renders as history, with a WS broadcast.
+		const events = [
+			{ type: "tool_started", toolName: "bash", toolCallId: "c1", args: { command: "ls" } },
+			{ type: "tool_finished", toolName: "bash", toolCallId: "c1", result: "ok", durationMs: 212 },
+		];
+		const e1 = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/log-events`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id, executionId, epoch, seq: 0, events },
+		});
+		expect(JSON.parse(e1.payload)).toMatchObject({ accepted: true, duplicate: false, seq: 0 });
+		const eDup = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/log-events`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id, executionId, epoch, seq: 0, events },
+		});
+		expect(JSON.parse(eDup.payload)).toMatchObject({ accepted: true, duplicate: true });
+		const eBad = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/log-events`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id, executionId, epoch, seq: 1, events: [] },
+		});
+		expect(eBad.statusCode).toBe(400);
+		const task = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${target}?projectId=${project.id}` })).payload,
+		);
+		const kinds = (task.logEntries || []).map((e) => e.kind);
+		expect(kinds).toContain("tool");
+		const result = (task.logEntries || []).find((e) => String(e.text).startsWith("[RESULT]"));
+		expect(result).toBeDefined();
+		expect(result.text).toContain("(212ms)");
+		expect(result.meta).toMatchObject({ runnerId: "reporter-1", executionId, seq: 0 });
 		expect(monitor.scheduler).toMatchObject({
 			ticks: expect.any(Number),
 			dispatched: expect.any(Number),

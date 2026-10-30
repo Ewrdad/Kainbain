@@ -510,6 +510,61 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		}
 	});
 
+	app.post("/tasks/:id/log-events", async (request, reply) => {
+		let runner;
+		try {
+			runner = authedRunner(request);
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+		const ctx = guardedTask(request, reply);
+		if (!ctx) return;
+		try {
+			const receipt = executionLedger.ingestLogEvents({
+				claimStore,
+				taskStore,
+				projectId: ctx.projectId,
+				taskId: request.params.id,
+				runnerId: runner.runnerId,
+				executionId: request.body?.executionId,
+				epoch: request.body?.epoch,
+				seq: request.body?.seq,
+				events: request.body?.events,
+			});
+			// Live structured stream: fan the ingested entries out over the
+			// socket so the Logs tab renders tool calls, results, thinking,
+			// errors, and telemetry as they happen — the same records a
+			// later refetch persists. Only the entries appended by THIS
+			// batch ship (re-read from the stored tail, which the ledger
+			// just extended). Fire-and-forget; duplicates never emit.
+			if (!receipt.duplicate) {
+				const task = taskStore.getTask(ctx.projectId, request.params.id);
+				const stored = Array.isArray(task?.logEntries) ? task.logEntries : [];
+				const fresh = stored
+					.filter(
+						(entry) =>
+							entry?.meta?.executionId === request.body?.executionId &&
+							entry?.meta?.seq === request.body?.seq &&
+							entry?.meta?.source === "runner-structured",
+					)
+					.slice(-200);
+				eventBridge
+					?.emitProcessEvent(ctx.projectId, "process:log-entries", {
+						taskId: request.params.id,
+						projectId: ctx.projectId,
+						entries: fresh,
+						runnerId: runner.runnerId,
+						executionId: request.body?.executionId,
+						seq: request.body?.seq,
+					})
+					?.catch?.(() => {});
+			}
+			return receipt;
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
 	app.post("/tasks/:id/verify-sha", async (request, reply) => {
 		let runner;
 		try {

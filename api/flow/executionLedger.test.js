@@ -197,6 +197,251 @@ describe("ExecutionLedger", () => {
 		expect(snap.logDuplicates).toBe(1);
 	});
 
+	test("ingests structured event batches as canonical records", () => {
+		const { executionId, epoch } = claimed(ctx);
+		const base = {
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+		};
+		const receipt = ledger.ingestLogEvents({
+			...base,
+			seq: 0,
+			events: [
+				{ type: "tool_started", toolName: "bash", toolCallId: "c1", args: { command: "ls" } },
+				{ type: "tool_finished", toolName: "bash", toolCallId: "c1", result: "ok", durationMs: 212 },
+			],
+		});
+		expect(receipt).toMatchObject({ accepted: true, duplicate: false, seq: 0 });
+		expect(receipt.entryCount).toBeGreaterThan(0);
+		const entries = ctx.taskStore.getTask().logEntries;
+		const call = entries.find((e) => e.text.startsWith("[TOOL]"));
+		expect(call).toBeDefined();
+		expect(call.text).toContain("ls");
+		expect(call.tool.args).toEqual({ command: "ls" });
+		expect(call.meta).toMatchObject({
+			source: "runner-structured",
+			runnerId: "r1",
+			executionId,
+			seq: 0,
+		});
+		const result = entries.find((e) => e.text.startsWith("[RESULT]"));
+		expect(result).toBeDefined();
+		expect(result.text).toContain("(212ms)");
+		expect(result.meta.durationMs).toBe(212);
+		expect(ledger.snapshot().logEventBatches).toBe(1);
+	});
+
+	test("structured ingest dedupes retries and marks gaps like text frames", () => {
+		const { executionId, epoch } = claimed(ctx);
+		const base = {
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+		};
+		const batch = [{ type: "harness_log", text: "hello" }];
+		expect(ledger.ingestLogEvents({ ...base, seq: 0, events: batch })).toMatchObject({
+			accepted: true,
+			duplicate: false,
+		});
+		expect(ledger.ingestLogEvents({ ...base, seq: 0, events: batch })).toMatchObject({
+			accepted: true,
+			duplicate: true,
+		});
+		expect(ledger.ingestLogEvents({ ...base, seq: 2, events: batch })).toMatchObject({
+			accepted: true,
+			duplicate: false,
+		});
+		const snap = ledger.snapshot();
+		expect(snap.logEventBatches).toBe(2);
+		expect(snap.logEventGaps).toBe(1);
+		expect(snap.logEventDuplicates).toBe(1);
+		const entries = ctx.taskStore.getTask().logEntries;
+		expect(
+			entries.some((e) => e.text.includes("frames 1–1 missing")),
+		).toBe(true);
+	});
+
+	test("structured ingest rejects bad batches before touching state", () => {
+		const { executionId, epoch } = claimed(ctx);
+		const base = {
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+		};
+		for (const bad of [
+			{ seq: 0, events: [] },
+			{ seq: 0, events: new Array(201).fill({ type: "harness_log", text: "x" }) },
+			{ seq: -1, events: [{ type: "harness_log", text: "x" }] },
+			{ seq: 0, events: "nope" },
+			{ seq: 0, events: [{ nope: true }] },
+		]) {
+			try {
+				ledger.ingestLogEvents({ ...base, ...bad });
+				expect.unreachable();
+			} catch (err) {
+				expect(err.statusCode).toBe(400);
+				expect(err.code).toBe("INVALID_LOG_EVENTS_ARGS");
+			}
+		}
+		expect(ctx.taskStore.getTask().logEntries ?? []).toHaveLength(0);
+		try {
+			ledger.ingestLogEvents({
+				...base,
+				executionId: "wrong",
+				epoch: 99,
+				seq: 0,
+				events: [{ type: "harness_log", text: "x" }],
+			});
+			expect.unreachable();
+		} catch (err) {
+			expect(err.statusCode).toBe(409);
+		}
+	});
+
+	test("structured ingest never stores secrets or unserializable values", () => {
+		const { executionId, epoch } = claimed(ctx);
+		const base = {
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+		};
+		ledger.ingestLogEvents({
+			...base,
+			seq: 0,
+			events: [
+				{ type: "tool_started", toolName: "bash", toolCallId: "c9", args: { apiKey: "supersecretvalue" } },
+				{ type: "tool_finished", toolName: "bash", toolCallId: "c9", result: "email alice@example.com" },
+			],
+		});
+		const stored = JSON.stringify(ctx.taskStore.getTask().logEntries);
+		expect(stored).not.toContain("supersecretvalue");
+		expect(stored).not.toContain("alice@example.com");
+		// An unserializable batch member is dropped, the usable one lands.
+		const circular = { type: "harness_log", text: "loop" };
+		circular.self = circular;
+		const receipt = ledger.ingestLogEvents({
+			...base,
+			seq: 1,
+			events: [circular, { type: "harness_log", text: "kept" }],
+		});
+		expect(receipt).toMatchObject({ accepted: true, duplicate: false });
+		expect(ledger.snapshot().logEventsDropped).toBe(1);
+		const entries = ctx.taskStore.getTask().logEntries;
+		expect(entries.some((e) => e.text.includes("kept"))).toBe(true);
+	});
+
+	test("a full run ingested as batches reads back as complete history", async () => {
+		const { renderLogEntriesText } = await import("../watch/processLogs.js");
+		const { executionId, epoch } = claimed(ctx);
+		const base = {
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+		};
+		const batches = [
+			[{ type: "run_started" }],
+			[{ type: "message_started", message: { role: "assistant" } }],
+			[
+				{
+					type: "assistant_delta",
+					assistantMessageEvent: { type: "text_delta", delta: "working on it" },
+				},
+			],
+			[{ type: "assistant_delta", assistantMessageEvent: { type: "text_end" } }],
+			[{ type: "reasoning_delta", delta: "considering edge cases" }],
+			[
+				{
+					type: "tool_started",
+					toolName: "bash",
+					toolCallId: "c-full",
+					args: { command: "npm test" },
+				},
+			],
+			[
+				{
+					type: "tool_finished",
+					toolName: "bash",
+					toolCallId: "c-full",
+					result: "148 passed",
+					durationMs: 1250,
+				},
+			],
+			[{ type: "usage_updated", usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } }],
+			[{ type: "permission_requested", method: "bash", target: "npm test" }],
+			[{ type: "plan_updated", steps: [{ title: "run tests" }] }],
+			[{ type: "session_meta", model: "probe" }],
+			[{ type: "harness_log", text: "[PROBE] settle note" }],
+		];
+		let seq = 0;
+		for (const events of batches) {
+			const receipt = ledger.ingestLogEvents({ ...base, seq: seq++, events });
+			expect(receipt).toMatchObject({ accepted: true, duplicate: false });
+		}
+		const entries = ctx.taskStore.getTask().logEntries;
+		// History carries every survey-required detail class: status text,
+		// actions (tool call + args), full results, timings, usage, plans.
+		const text = renderLogEntriesText(entries);
+		expect(text).toContain("working on it");
+		expect(text).toContain("[TOOL]");
+		expect(text).toContain("npm test");
+		expect(text).toContain("[RESULT]");
+		expect(text).toContain("148 passed");
+		expect(text).toContain("(1.3s)");
+		// Telemetry lives on its own feed (never in the narrative render),
+		// selectable in the UI exactly like the embedded path.
+		expect(renderLogEntriesText(entries, { feed: "telemetry" })).toContain("[USAGE]");
+		expect(text).toContain("[PERM]");
+		expect(text).toContain("[PLAN]");
+		const kinds = new Set(entries.map((e) => e.kind));
+		for (const kind of ["assistant", "thinking", "tool", "telemetry", "permission", "plan", "system"]) {
+			expect(kinds, `history missing kind '${kind}'`).toContain(kind);
+		}
+		// Telemetry and raw lanes never leak into the narrative render.
+		expect(text).not.toContain("[RAW]");
+	});
+
+	test("structured processors are dropped on completion", async () => {
+		const { executionId, epoch } = claimed(ctx);
+		const base = {
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+		};
+		ledger.ingestLogEvents({ ...base, seq: 0, events: [{ type: "harness_log", text: "hi" }] });
+		expect(ledger.logProcessors.has(executionId)).toBe(true);
+		await ledger.completeExecution({
+			...base,
+			projectStore: ctx.projectStore,
+		});
+		expect(ledger.logProcessors.has(executionId)).toBe(false);
+		expect(ledger.logEventNextSeq.has(executionId)).toBe(false);
+	});
+
 	test("completes once, releases the lease, stays idempotent", async () => {
 		const { executionId, epoch } = claimed(ctx);
 		const base = {

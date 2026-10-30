@@ -526,7 +526,11 @@ export function filterLogRecords(records, state = {}) {
       if (!record.runnerId || !runners.has(record.runnerId)) return false;
     }
     if (needle) {
-      const hay = `${record.text || ''}\n${record.tag || ''}\n${record.title || ''}`.toLowerCase();
+      // Searchable history: summaries plus expandable detail (full tool
+      // output, usage JSON, raw evidence) and tool names — a `[RESULT]`
+      // row carries no tool name in its text, so the name fields join the
+      // haystack instead of forcing the user to guess the [TOOL] row.
+      const hay = `${record.text || ''}\n${record.tag || ''}\n${record.title || ''}\n${record.detail || ''}\n${record.meta?.toolName || ''}`.toLowerCase();
       if (!hay.includes(needle)) return false;
     }
     return true;

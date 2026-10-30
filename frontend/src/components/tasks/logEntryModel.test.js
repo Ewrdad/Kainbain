@@ -128,6 +128,36 @@ describe('logEntryModel — normalizeEntries', () => {
     expect(entries).toHaveLength(1);
     expect(entries[0].kind).toBe('system');
   });
+
+  it('passes structured live entries through untouched and drops them once stored', () => {
+    const toolEntry = {
+      id: 7,
+      ts: '2026-10-30T00:00:00.000Z',
+      feed: 'tools',
+      feeds: ['main', 'tools'],
+      kind: 'tool',
+      turn: 1,
+      text: '[TOOL] bash(ls)',
+      meta: { toolName: 'bash', toolCallId: 'c1', source: 'runner-structured' },
+      tool: { callId: 'c1', name: 'bash', args: { command: 'ls' } },
+    };
+    const live = [
+      { taskId: 't1', executionId: 'exec-1', seq: 0, runnerId: 'r1', entry: toolEntry },
+    ];
+    const before = normalizeEntries({ logEntries: [] }, live);
+    expect(before).toHaveLength(1);
+    expect(before[0]).toMatchObject({ kind: 'tool', text: '[TOOL] bash(ls)' });
+    expect(before[0].tool).toEqual({ callId: 'c1', name: 'bash', args: { command: 'ls' } });
+    expect(before[0].meta).toMatchObject({ executionId: 'exec-1', seq: 0, runnerId: 'r1' });
+    // After the refetch the same record arrives stored: the live copy drops.
+    const stored = {
+      ...toolEntry,
+      meta: { ...toolEntry.meta, runnerId: 'r1', executionId: 'exec-1', seq: 0 },
+    };
+    const after = normalizeEntries({ logEntries: [stored] }, live);
+    expect(after).toHaveLength(1);
+    expect(after[0].text).toBe('[TOOL] bash(ls)');
+  });
 });
 
 describe('logEntryModel — grouping', () => {

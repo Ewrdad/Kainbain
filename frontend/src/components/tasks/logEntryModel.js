@@ -125,6 +125,22 @@ export function normalizeEntries(task, wsProcessLines = []) {
     if (p.executionId != null && p.seq != null && storedKeys.has(`${p.executionId}:${p.seq}`)) {
       continue;
     }
+    // Structured live entries (`PROCESS_LOG_ENTRIES` frames): the backend
+    // record rides along untouched — same shape as stored history, so the
+    // viewer renders tool cards, timings, and expandable details live.
+    if (p.entry && typeof p.entry === 'object') {
+      live.push({
+        ...p.entry,
+        meta: {
+          ...(p.entry.meta || {}),
+          source: p.entry.meta?.source || 'ws-log-entries',
+          ...(p.executionId != null ? { executionId: p.executionId } : {}),
+          ...(p.seq != null ? { seq: p.seq } : {}),
+          ...(p.runnerId != null ? { runnerId: p.runnerId } : {}),
+        },
+      });
+      continue;
+    }
     // WS records carry a `[Project] ` prefix; strip one leading bracket
     // group so the tag grammar classifies the actual line kind.
     const line = p.raw || `${p.tag || '[INFO]'} ${p.text || ''}`;

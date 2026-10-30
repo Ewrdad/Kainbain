@@ -393,6 +393,7 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 				"runner/config.test.js",
 				"runner/gitOps.test.js",
 				"runner/harness.test.js",
+				"runner/logEvents.test.js",
 				"runner/project.test.js",
 			],
 		},

@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, touchWorkdir } from "./project.js";
 import { RunnerGitError } from "./project.js";
 import { runHarnessStage } from "./harness.js";
+import { createStructuredEventSender } from "./logEvents.js";
 // The Runner bundle ships shared/ next to this folder (runner/{runner,api,shared}
 // in prod and in the distributable tarball), so ../shared resolves both in the
 // repo and in every deployed layout — the same copy the backend executes.
@@ -657,6 +658,9 @@ async function executeAssignment({
 				if (state.workdir) touchWorkdir(state.workdir);
 			},
 		});
+		// Hoisted so the failure path below can flush the trailing
+		// structured batch before reporting the stage as failed.
+		let structuredSender = null;
 		try {
 			await client.progress({
 				taskId: taskId,
@@ -798,6 +802,22 @@ async function executeAssignment({
 			// writes land in the wrong repo and the commit/push ships
 			// nothing (wire-proof 2026-10-27: hello-wire.txt landed in the
 			// backend project dir instead of the worktree).
+			// Structured log transport: every normalized session event ships
+			// to POST /tasks/:id/log-events (batched, secret-redacted at the
+			// source). While the structured path is healthy the legacy text
+			// tap stays silent so the backend stores one copy; once it fails
+			// the sender flips and the text tap carries the coarse view again.
+			structuredSender = createStructuredEventSender({
+				client,
+				taskId: taskId,
+				projectId: projectId,
+				executionId,
+				epoch,
+				logger,
+				onTextFallback: (text) => {
+					sendLogs(text).catch(() => {});
+				},
+			});
 			const { output } = await runHarnessStage({
 				harness,
 				project: { ...project, cwd: workdir },
@@ -807,9 +827,13 @@ async function executeAssignment({
 				model: model || config.model,
 				prompt,
 				onLog: (text) => {
+					if (structuredSender.isStructured()) return;
 					sendLogs(text).catch((err) => {
 						logger.warn(`Log ingest failed: ${err?.message || err}`);
 					});
+				},
+				onEvent: (event) => {
+					structuredSender.queueEvent(event);
 				},
 				onSession: (session) => {
 					state.session = session;
@@ -817,6 +841,12 @@ async function executeAssignment({
 			});
 			state.session = null;
 			stopRenewal();
+			// Ship the trailing structured batch BEFORE the finished marker
+			// and the completion report, so the backend stores the tail
+			// before any reader can observe the stage as done.
+			await structuredSender.close().catch((err) => {
+				logger.warn(`Structured log flush failed: ${err?.message || err}`);
+			});
 			await client.progress({
 				taskId: taskId,
 				projectId: projectId,
@@ -873,6 +903,13 @@ async function executeAssignment({
 			if (err?.failedOutcome) {
 				// The harness ran and failed: report through the engine's
 				// failure routing (verdict/failback) instead of parking.
+				// Flush first so the error's tool trail is stored before
+				// the failure report renders it.
+				try {
+					await structuredSender?.close();
+				} catch {
+					// Flushing is best-effort: the failure report matters more.
+				}
 				return await client.complete({
 					taskId: taskId,
 					projectId: projectId,
