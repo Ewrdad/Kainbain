@@ -63,17 +63,34 @@ fi
 # no matter how this script is invoked.
 cd "$(dirname "$0")"
 
-# Host commands must never run inside a task worktree (branch kb/*): they
-# publish/deploy the primary checkout only (AsymmetricUpdatesPlan DA9).
+# Host commands must never run inside a task worktree: they publish/deploy
+# the primary checkout only (AsymmetricUpdatesPlan DA9). "Task worktree" means
+# a LINKED worktree on a kb/* branch — NOT merely a kb/* branch name: the
+# primary checkout legitimately sits on a kb/* branch while the harness
+# operates on a task there, and a runOnBranch=primary stage correctly runs
+# in the primary. Keying this guard on the branch name made deploy.sh exit 78
+# even when running in the primary checkout (publish stage of
+# e3b2624a-bc24-4698-9c78-86af7f6f3b5b, 2026-10-30). The default-branch guard
+# and the tip guard below still enforce what a deploy actually ships.
 if [ -n "${KAINBAIN_TASK_ID:-}" ]; then
+    _primary_wt="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')"
+    _here="$(pwd -P 2>/dev/null || echo "$PWD")"
     _kb_branch="$(git branch --show-current 2>/dev/null || true)"
     case "$_kb_branch" in
         kb/*)
-            echo "deploy.sh: refusing to run from a task worktree (branch kb/*) — deploy/publish stages must run on the primary checkout" >&2
-            exit 78
+            if [ -n "$_primary_wt" ] && [ "$_here" != "$_primary_wt" ]; then
+                echo "deploy.sh: refusing to run from a task worktree (branch $_kb_branch at $_here) — deploy/publish stages must run on the primary checkout ($_primary_wt)" >&2
+                exit 78
+            fi
+            if [ -n "$_primary_wt" ]; then
+                echo "deploy.sh: primary checkout is on task branch '$_kb_branch' (not a task worktree) — continuing in the primary checkout; the default-branch guard still applies" >&2
+            else
+                echo "deploy.sh: refusing to run from a task worktree (branch $_kb_branch) — could not identify the primary worktree" >&2
+                exit 78
+            fi
             ;;
     esac
-    unset _kb_branch
+    unset _kb_branch _primary_wt _here
 fi
 
 # systemd --user tooling (systemd-run below, systemctl --user in restart_service)
