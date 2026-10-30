@@ -58,6 +58,32 @@ describe("runnerMatches", () => {
 		expect(runnerMatches(record(), { hostCommand: true, harness: "pi", tier: "T0" }, { now: at }).ok).toBe(true);
 	});
 
+	test("Q4: a runner that did not advertise the required model refuses (NO_MODEL), leaving it for another runner", () => {
+		const kimiOnly = record({
+			capabilities: {
+				harnesses: [{ id: "pi", version: "1.2.3" }],
+				models: ["kimi-k3:cloud"],
+				tiers: ["T0", "T1"],
+				runnable: true,
+				diskHeadroomMb: 512,
+				versions: { protocol: "v1" },
+			},
+		});
+		const req = { harness: "pi", model: "gpt-oss:120b-cloud", tier: "T0" };
+		expect(runnerMatches(kimiOnly, req, { now: at }).reason).toBe("NO_MODEL");
+		const gptOnly = record({
+			capabilities: {
+				harnesses: [{ id: "pi", version: "1.2.3" }],
+				models: ["gpt-oss:120b-cloud"],
+				tiers: ["T0", "T1"],
+				runnable: true,
+				diskHeadroomMb: 512,
+				versions: { protocol: "v1" },
+			},
+		});
+		expect(runnerMatches(gptOnly, req, { now: at })).toEqual({ ok: true, reason: "MATCH" });
+	});
+
 	test("a resolved alias object matches on its concrete harness/model", () => {
 		expect(
 			runnerMatches(

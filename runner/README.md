@@ -61,6 +61,18 @@ matches against (csv; singular `KAINBAIN_RUNNER_MODEL` seeds a 1-element
 list; empty matches model-less tasks only). Each assignment serves
 exactly the dispatch answer's required model — never a substitution.
 
+Model reporting contract (`servingModelFor` / `formatPosture` in
+`shared/` — one copy executed by both this Runner and the backend via
+`api/flow/runnerPosture.js`): the `prompted` progress event and the
+completion `posture` string carry the assignment's served model — the
+dispatch requirement, falling back to the Runner default only for LLM
+stages. CI / merge / integrate assignments serve no model and report
+none (never the Runner default, never the literal `"default"` — the
+engine-wide blank-pick sentinel counts as no model): the
+progress body omits the field and the posture string omits the trailing
+`:model` segment, so the UI hides the model pill. The backend ingest
+applies the same rule, so pre-fix Runners degrade gracefully mid-rollout.
+
 In dispatch mode no `PROJECT_ID`/`TASK_ID` is needed. After the same
 join + heartbeat prologue the daemon polls `POST /runners/dispatch`:
 the backend scans claimable tasks, matches them against this Runner's
@@ -100,5 +112,10 @@ Stage advancement stays engine-owned until the dispatch integration lands.
 - Boot surfaces orphaned workdirs (unpushed work) in the log; nothing is
   ever deleted by cleanup.
 - Log gaps are reported as data (`frames X–Y missing`), never papered over.
-- `node --test runner/` runs the daemon suite (no ports, real temp git
-  repos, mock harness).
+- `node --test runner/daemon.test.js runner/client.test.js runner/config.test.js runner/gitOps.test.js runner/harness.test.js runner/project.test.js`
+  runs the daemon suite (no ports, real temp git repos, mock harness).
+  Name each file: a bare `node --test runner/` directory arg mis-resolves
+  on current Node, and this same explicit list is what the `Unit Tests
+  (runner)` gate branch runs (`scripts/run-tests.mjs`, pinned by
+  `tests/run-tests.test.mjs` so a new suite file fails loudly instead of
+  silently never running).
