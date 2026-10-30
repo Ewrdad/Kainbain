@@ -83,6 +83,47 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Remove it fully and show only the new runner screen from the sketch"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Runner name",
+        "Project picker (Available vs Loaded)",
+        "Available tools on that runner (e.g. muse, Vibe CLI, pi)",
+        "Folder paths (Master directory and Worktree directory)",
+        "Job-type switches (Runs CI, Runs merges, Runs Impromptu)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Show them in the runner list with approve / deny actions"
+      ],
+      "notes": "look at ./docs muse hackathon portability work for an idea."
+    },
+    "q4": {
+      "selected": [
+        "Yes – loading makes the project active for that runner"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Yes – keep all three with these meanings"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Editable text fields"
+      ],
+      "notes": "maybe with an are you sure before saving or a save button at the end of the lline to avoid accidents"
+    }
+  }
 }
 ```
