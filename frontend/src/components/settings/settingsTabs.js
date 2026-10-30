@@ -24,7 +24,7 @@ export const SETTINGS_TABS = [
 /***
  * MARK: SETTINGS_TAB_LABELS
  * @description Ordered tab labels derived from SETTINGS_TABS (render order).
- * @example SETTINGS_TAB_LABELS => ['Harness', 'Models', 'Engine', 'Storage', 'Notifications', 'UI']
+ * @example SETTINGS_TAB_LABELS => ['Runners', 'Models', 'Engine', 'Storage', 'Notifications', 'UI']
  ***/
 export const SETTINGS_TAB_LABELS = SETTINGS_TABS.map((tab) => tab.label);
 

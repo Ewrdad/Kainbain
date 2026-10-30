@@ -269,11 +269,12 @@ export function RunnerConfigurationSection() {
   const handleNameSave = () => {
     if (!selected || !nameDirty) return;
     const trimmed = String(nameDraft).trim();
-    if (!trimmed) {
-      setActionError('Runner name must not be blank.');
-      return;
-    }
-    void saveConfig(selected.runnerId, { displayName: trimmed }, 'Runner name saved.').then(
+    // Clearing the field resets the name: the backend treats
+    // `displayName: null` as "fall back to the Runner id", so a custom
+    // name is never a dead end with no way back to the default.
+    const patch = trimmed ? { displayName: trimmed } : { displayName: null };
+    const note = trimmed ? 'Runner name saved.' : 'Runner name reset to the Runner id.';
+    void saveConfig(selected.runnerId, patch, note).then(
       (ok) => {
         if (ok) {
           setNameDrafts((prev) => {
@@ -611,6 +612,9 @@ export function RunnerConfigurationSection() {
                 Save
               </button>
             </div>
+            <p className="text-[11px] text-text-muted">
+              Clear the name and Save to fall back to the Runner id.
+            </p>
           </div>
 
           <div className="flex flex-col gap-1">

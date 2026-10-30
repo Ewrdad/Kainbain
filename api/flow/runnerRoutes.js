@@ -386,7 +386,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 
 	app.get("/runners/monitor", async () => {
 		// Multi-Runner UI (WP-3.4): who runs what right now, so
-		// Settings › Harness › Runners can show live assignments.
+		// Settings › Runners can show live assignments.
 		// `scheduler` exposes the cutover deferral counters so a task
 		// sitting in_stage is diagnosable: a climbing `deferredDispatch`
 		// with no Runner pickup means the fleet is empty or mismatched.

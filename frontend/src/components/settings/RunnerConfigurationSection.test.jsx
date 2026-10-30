@@ -216,6 +216,27 @@ describe('RunnerConfigurationSection', () => {
     );
   });
 
+  it('clears the Runner name back to the Runner id default', async () => {
+    runnersFixture([
+      {
+        ...ACTIVE_RUNNER,
+        operatorConfig: { ...OPERATOR_CONFIG, displayName: 'Primary' },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    const input = screen.getByTestId('runner-name-r1');
+    expect(input).toHaveValue('Primary');
+    fireEvent.change(input, { target: { value: '   ' } });
+    fireEvent.click(screen.getByTestId('runner-name-save-r1'));
+    await waitFor(() => {
+      expect(updateRunnerConfig).toHaveBeenCalledWith('r1', { displayName: null });
+    });
+    expect(await screen.findByTestId('runner-config-notice')).toHaveTextContent(
+      'Runner name reset to the Runner id.',
+    );
+  });
+
   it('loads and unloads projects through the picker', async () => {
     runnersFixture([{ ...ACTIVE_RUNNER, operatorConfig: { ...OPERATOR_CONFIG } }]);
     render(<RunnerConfigurationSection />);

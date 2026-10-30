@@ -1,9 +1,12 @@
 // Domain: Runners — out-of-process task executors (Phase 2, ADR 0009).
 /***
  * MARK: runnerRequests
- * @description Runner identity endpoints for the minimal onboarding UI:
- *   list registrations, approve/deny join requests, revoke a Runner.
- *   Heartbeat and claim are Runner-side calls, not UI calls.
+ * @description Runner endpoints for the System Settings › Runners screen:
+ *   list registrations, approve/deny join requests, pause/resume/revoke,
+ *   live monitor assignments, and the operator-owned per-Runner
+ *   configuration (display name, project scope, tool filter, job-type
+ *   switches, directories). Heartbeat and claim are Runner-side calls,
+ *   not UI calls.
  * @example const requests = runnerRequests(request);
  */
 export function runnerRequests(request) {
