@@ -5,6 +5,7 @@ import { stageWantsReport } from "../../promptCuration.js";
 import { stageElapsedSeconds } from "../stagePolicy.js";
 import { resolveStagesForTask } from "../stageResolution.js";
 import { normalizeStageType } from "../../projectStore.js";
+import { ALIAS_HARNESS_ID } from "../../../shared/modelAliases.js";
 import { routeStageError } from "./routeStageError.js";
 import { parkTaskForSurvey } from "./parkTaskForSurvey.js";
 
@@ -32,6 +33,10 @@ import { parkTaskForSurvey } from "./parkTaskForSurvey.js";
  * @param {string} [args.outcome.summary] - Run summary.
  * @param {Array} [args.outcome.modifiedFiles] - Modified files.
  * @param {string} [args.outcome.harnessId] - Harness that ran.
+ * @param {string|null} [args.outcome.modelRef] - Served model the Runner
+ *   reported (already normalized: null for CI/merge/harness-managed).
+ *   Falls back to the dispatch-time `currentRunAttribution`, then to the
+ *   stage slot, so the persisted report names the model that actually ran.
  * @param {string} [args.outcome.failureKind] - Failure taxonomy kind.
  * @param {string} [args.outcome.failureReason] - Failure message.
  * @param {string} [args.outcome.duration] - Run duration seconds.
@@ -74,6 +79,32 @@ export async function applyRunnerReport({
 	const cwd = project?.cwd;
 	const via = outcome.runnerId ? `via Runner ${outcome.runnerId}` : "via Runner";
 	const duration = outcome.duration || "0.0";
+	// The served model for the persisted report: the Runner's explicit report
+	// wins, then the dispatch-time stamp (what the Runner was matched on),
+	// then the stage slot. Blank/"default" values are absent, never worded —
+	// scripted stages record no model at all.
+	const dispatchAttribution =
+		task.currentRunAttribution &&
+		String(task.currentRunAttribution.stageId) === String(task.currentStageId)
+			? task.currentRunAttribution
+			: null;
+	const cleanRef = (value) =>
+		typeof value === "string" && value.trim() && value.trim().toLowerCase() !== "default"
+			? value.trim()
+			: null;
+	// The stage slot is a last-resort fallback only: on an alias-harness
+	// stage `stage.model` is the ALIAS NAME, not a model, so it must never be
+	// recorded as the run's modelRef.
+	const stageHarnessIsAlias =
+		String(stage.harness ?? project?.harness ?? "") === ALIAS_HARNESS_ID;
+	const reportModelRef =
+		cleanRef(outcome.modelRef) ??
+		cleanRef(dispatchAttribution?.modelRef) ??
+		(stageHarnessIsAlias ? null : cleanRef(stage.model));
+	const reportAliasName = cleanRef(dispatchAttribution?.aliasName);
+	const reportTargetIndex = Number.isInteger(dispatchAttribution?.targetIndex)
+		? dispatchAttribution.targetIndex
+		: null;
 
 	if (outcome.status === "failed") {
 		const err = new Error(outcome.failureReason || "Stage failed on the Runner");
@@ -96,6 +127,11 @@ export async function applyRunnerReport({
 				projectCwd: cwd,
 				runOutcome: {
 					harnessId: outcome.harnessId,
+					// The served model/alias names the failed run on its
+					// timeline row too (blank for scripted stages).
+					modelRef: reportModelRef,
+					aliasName: reportAliasName,
+					targetIndex: reportTargetIndex,
 					failureKind: outcome.failureKind,
 				},
 				classifyAs: {
@@ -139,6 +175,12 @@ export async function applyRunnerReport({
 			projectCwd: cwd,
 			harnessId: outcome.harnessId,
 			failureKind: outcome.failureKind || "none",
+			// The served model/alias the run actually used (Runner-reported,
+			// else the dispatch stamp) — absent for scripted stages, so their
+			// reports and cards never name a model.
+			modelRef: reportModelRef,
+			aliasName: reportAliasName,
+			targetIndex: reportTargetIndex,
 		});
 	}
 
@@ -186,7 +228,9 @@ export async function applyRunnerReport({
 		output: redactedOutput,
 		summary: redactedSummary,
 		modifiedFiles: outcome.modifiedFiles || [],
-		model: stage.model || null,
+		// The served model that actually ran (Runner-reported > dispatch
+		// stamp > stage slot), not just the configured slot.
+		model: reportModelRef,
 		duration,
 	};
 }

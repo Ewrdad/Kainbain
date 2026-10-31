@@ -131,15 +131,28 @@ rendered `default` on every card. The contract, locked by
   integrate stages serve no LLM and report `null` — never the Runner default,
   never the literal `"default"` — so the UI hides the model pill.
 - The completion `posture` string is `tiers:harness` with `:model` appended
-  only when a real model was served; model-less stages omit the segment.
+  only when a real model was served; model-less stages omit the segment. The
+  completion body also carries an explicit `model` field with the same value —
+  the posture's model segment is NOT safely parseable (model ids may contain
+  single `:`), so the explicit field is the authoritative channel for the
+  backend to persist the served model into stage reports (`modelRef` in
+  `reportMetadata`, timeline attribution) and the finish response.
+- At claim/dispatch time the backend stamps the matched requirement onto the
+  task (`stampDispatchRunAttribution` in `api/flow/runnerRoutes.js` →
+  `task.currentRunAttribution` + the stage's own arrival row), mirroring the
+  embedded dispatch stamp, so runner-run rows attribute the model that was
+  actually matched. `applyRunnerReport` resolves the persisted model as
+  Runner-reported `model` → dispatch stamp → stage slot (never the alias name),
+  and forwards it to failure routing so failed runner runs name their model too.
 
 One copy of the rules lives in `shared/servingModelFor.js` +
 `shared/formatPosture.js`, executed verbatim by both the Runner bundle and the
 backend (re-exported through `api/flow/runnerPosture.js`), so the two can
 never drift. The engine-wide `"default"` sentinel (blank pick =
-harness-managed, no pinned model) counts as no model at both layers, and the
-backend ingest maps a literal `"default"` from pre-fix Runners to null — a
-mixed fleet during rollout degrades to hidden pills, never fake ones.
+harness-managed, no pinned model) counts as no model at every layer —
+`servingModelFor`, `formatPosture`, the ledger ingest, the completion route,
+and `formatModelRef` all map a literal `"default"` to absent, so a mixed
+fleet during rollout degrades to hidden pills, never fake ones.
 
 ### Per-project harness selection
 

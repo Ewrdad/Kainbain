@@ -40,7 +40,12 @@
  * @param {string} [opts.fallbackModel] - The Runner's configured default model (`config.model`).
  * @returns {string|null} The served model, or `null` when the assignment serves no LLM.
  ***/
-export function servingModelFor({ kind, model, fallbackModel } = {}) {
+export function servingModelFor(opts = {}) {
+	// Total on hostile input: a non-object argument (null, a bare string)
+	// reads as "nothing to serve" instead of throwing — this helper sits on
+	// the dispatch wire, so it must never crash a Runner or route.
+	const { kind, model, fallbackModel } =
+		opts && typeof opts === "object" ? opts : {};
 	// Stage kinds that never run an LLM. The backend normalizes
 	// ci/script/deploy/command to `ci` before dispatch, but the raw types
 	// are listed too so a hand-rolled or older dispatch answer still fails

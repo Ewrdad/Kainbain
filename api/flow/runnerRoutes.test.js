@@ -828,6 +828,100 @@ describe("Runner Routes Integration", () => {
 		expect(served.requirements).toMatchObject({ harness: "mock", model: "mock-model" });
 	});
 
+	it("dispatch stamps the matched harness/model as the task's run attribution", async () => {
+		const { project, taskId } = await mockProject("Dispatch Attribution");
+		const credential = await onboard("dispatch-attr");
+		await heartbeatAs(credential, "dispatch-attr");
+		const res = await dispatchAs(credential, { projectIds: [project.id] });
+		const out = JSON.parse(res.payload);
+		expect(out.assigned).toBe(true);
+		expect(out.requirements).toMatchObject({ harness: "mock", model: "mock-model" });
+		const task = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${taskId}?projectId=${project.id}` })).payload,
+		);
+		// The in-memory pending attribution drives the completion row…
+		expect(task.currentRunAttribution).toMatchObject({
+			harnessId: "mock",
+			modelRef: "mock-model",
+		});
+		// …and when an arrival row for the run's own stage exists, it carries
+		// the same stamp (a first-stage task has no arrival row — nothing to
+		// stamp, and no other stage's row may inherit the badge).
+		const stamped = (task.timeline || []).filter(
+			(row) => row && row.harnessId === "mock" && row.modelRef === "mock-model",
+		);
+		for (const row of stamped) {
+			expect(String(row.status)).toMatch(/^(advanced|moved|failed back)/i);
+		}
+	});
+
+	it("complete-execution reports the runner-served model, never the default sentinel", async () => {
+		const { project, taskId } = await mockProject("Complete Model");
+		const credential = await onboard("complete-model-1");
+		await heartbeatAs(credential, "complete-model-1");
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${taskId}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		const { executionId, epoch } = JSON.parse(claim.payload);
+		// A real served model rides the explicit field and lands on the finish.
+		const done = await app.inject({
+			method: "POST",
+			url: `/tasks/${taskId}/complete-execution`,
+			headers: { "x-runner-credential": credential },
+			payload: {
+				projectId: project.id,
+				executionId,
+				epoch,
+				outcome: "passed",
+				model: "served-x",
+				posture: "T0/T1:mock:served-x",
+				output: "ok",
+			},
+		});
+		expect(done.statusCode).toBe(200);
+		expect(JSON.parse(done.payload).model).toBe("served-x");
+
+		// A legacy/sentinel "default" model must normalize away: the finish
+		// falls back to the dispatch-stamped model, never to "default".
+		const task2 = JSON.parse(
+			(
+				await app.inject({
+					method: "POST",
+					url: "/tasks",
+					payload: { projectId: project.id, goal: "Sentinel model fixture" },
+				})
+			).payload,
+		);
+		const claim2 = await app.inject({
+			method: "POST",
+			url: `/tasks/${task2.id}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		const lease2 = JSON.parse(claim2.payload);
+		const done2 = await app.inject({
+			method: "POST",
+			url: `/tasks/${task2.id}/complete-execution`,
+			headers: { "x-runner-credential": credential },
+			payload: {
+				projectId: project.id,
+				executionId: lease2.executionId,
+				epoch: lease2.epoch,
+				outcome: "passed",
+				model: "default",
+				posture: "T0/T1:mock",
+				output: "ok",
+			},
+		});
+		expect(done2.statusCode).toBe(200);
+		const finishModel = JSON.parse(done2.payload).model;
+		expect(finishModel).not.toBe("default");
+		expect(finishModel).toBe("mock-model");
+	});
+
 	it("dispatch honors the Runner-enforced project allowlist", async () => {
 		const { project } = await mockProject("Dispatch Allowlist");
 		const credential = await onboard("dispatch-allow");
