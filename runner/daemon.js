@@ -1155,8 +1155,20 @@ export async function runSingleAssignment({
 	const orphans = listOrphanWorkdirs(config.workRoot, config.taskId);
 	if (orphans.length) {
 		logger.warn(`Orphaned workdirs (left alone, may hold unpushed work): ${orphans.join(", ")}`);
+		// Also surface this warning to the UI via the logs endpoint.
+		try {
+			await client.logs({
+				taskId: config.taskId,
+				projectId: config.projectId,
+				executionId: "",
+				epoch: 0,
+				seq: 0,
+				bytes: `WARN Orphaned workdirs: ${orphans.join(", ")}`.slice(0,4000),
+			});
+		} catch (e) {
+			logger.warn(`Failed to send orphan warning to UI logs: ${e?.message || e}`);
+		}
 	}
-
 	const state = { session: null, executionId: null, epoch: null };
 	const { harness, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger, state });
 	try {
