@@ -106,6 +106,56 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Full end-to-end Option A (CI, runner self-update, backend gating, UI matrix, docs and ADR)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "GitHub Releases only (matches the approved primary path) (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "minisign with one pinned public key embedded in the runner binary (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "A normal versioned archive (tar/zip) plus a Node runtime already present on the host"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Linux and macOS only (x64 and arm64), defer Windows (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Show an update-available badge but still dispatch"
+      ],
+      "notes": "If the api differs then block but if the api contract is the same allow dispatch and surface to the user to update. The backend can then tell the runner next time it requests a task to update. needs to e2e"
+    },
+    "q7": {
+      "selected": [
+        "Air-gapped/offline override URL (KAINBAIN_RUNNER_UPDATE_URL) (Recommended)",
+        "Rollback to the previous binary after a failed boot"
+      ],
+      "notes": ""
+    },
+    "q8": {
+      "selected": [
+        "Unit tests for verification and mocked update flows (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
