@@ -19,7 +19,7 @@
  * @description Matches a stage command that invokes a deploy/publish/redeploy script.
  * @example DEPLOY_COMMAND_PATTERN.test('./publish.sh') => true
  ***/
-export const DEPLOY_COMMAND_PATTERN = /(?:deploy|publish|redeploy)\.sh/;
+export const DEPLOY_COMMAND_PATTERN = /(?:deploy|publish|redeploy|update|install)\.sh/;
 
 /***
  * MARK: HOST_COMMAND_PATTERN

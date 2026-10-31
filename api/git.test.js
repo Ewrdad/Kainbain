@@ -1416,13 +1416,16 @@ describe("git barrel surface contract", () => {
 		"GitError",
 		"GitMergeConflictError",
 		"MERGE_STRATEGY",
+		"SQUASH_MERGE_STRATEGY",
 		"STALE_GIT_LOCK_AGE_MS",
 		"SWEEPABLE_BASENAME_PATTERNS",
 		"SWEEPABLE_DIR_PREFIXES",
 		"abortMerge",
+		"abortSquashMerge",
 		"assessDirtyTree",
 		"branchExists",
 		"buildGitConflictDiagnostics",
+		"buildSquashCommitMessage",
 		"checkoutBranch",
 		"commitAllIfNeeded",
 		"countBehindCommits",
@@ -1436,12 +1439,14 @@ describe("git barrel surface contract", () => {
 		"drainGitLockRecoveries",
 		"ensureBranchCheckedOut",
 		"ensureGitIdentity",
+		"findSquashCommit",
 		"formatDirtyTreeRecoveryNotice",
 		"formatGitLockRecoveryNotice",
 		"getWorkingTreeStatus",
 		"git",
 		"hasCommits",
 		"hasRemote",
+		"isBranchContentLanded",
 		"isBranchMergedInto",
 		"isGitRepository",
 		"isLiveTaskSnapshotPath",
@@ -1459,13 +1464,14 @@ describe("git barrel surface contract", () => {
 		"resolveConflictsWithIncoming",
 		"resolveSha",
 		"returnToDefaultBranch",
+		"squashMergeBranch",
 		"syncBranchWithUpstream",
 		"syncDefaultBranchToRemote",
 		"untrackLiveTaskSnapshots",
 		"withCheckedOutBranch",
 	];
 
-	it("exports exactly the 55 canonical public symbols", () => {
+	it("exports exactly the 61 canonical public symbols", () => {
 		expect(Object.keys(gitBarrel).sort()).toEqual(EXPECTED_EXPORTS);
 	});
 

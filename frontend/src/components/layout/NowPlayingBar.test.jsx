@@ -1,7 +1,7 @@
 // jsdom pin: this suite needs window.confirm stub (happy-dom differs); keep on jsdom.
 // @vitest-environment jsdom
 import { expect, test, vi } from 'vitest';
-import { screen, fireEvent, act } from '@testing-library/react';
+import { screen, fireEvent } from '@testing-library/react';
 import { renderWithKainBain } from '../../testUtils';
 import { NowPlayingBar, resolveRunnerBoxes, runnerBoxHealth } from './NowPlayingBar';
 import { KainBainContext } from '../../context/KainBainContext';
@@ -21,9 +21,10 @@ vi.mock('../../services/api', () => ({
  * @description Verifies the Now Playing bar: current task display, the
  * always-on runner boxes (fleet roster with per-runner play/pause + skip,
  * idle boxes included), global engine status badge
- * (IDLE, RUNNING, CHECKPOINT, PAUSED), the honest elapsed stage timer, the
- * live queue-depth chip, and the absence of any fabricated percentage bar,
- * stale stage-position label, or global transport cluster.
+ * (IDLE, RUNNING, CHECKPOINT, PAUSED), the live queue-depth chip (the only
+ * right-rail content), and the absence of any fabricated percentage bar,
+ * stale stage-position label, elapsed timer, subsystem health light, or
+ * global transport cluster.
  ***/
 const stages = [
   { id: '1', name: 'Idea', type: 'agent' },
@@ -31,7 +32,7 @@ const stages = [
   { id: '3', name: 'In Progress', type: 'agent' },
 ];
 
-test('renders elapsed timer and live queue chip with no stale stage label (no fake progress bar)', () => {
+test('renders live queue chip with no stale stage label (no fake progress bar, timer, or health light)', () => {
   renderWithKainBain(<NowPlayingBar />, {
     stages,
     currentStageId: '2',
@@ -49,16 +50,20 @@ test('renders elapsed timer and live queue chip with no stale stage label (no fa
   // return even though stages are loaded and a stage is focused.
   expect(screen.queryByText(/Stage \d+ of \d+/)).not.toBeInTheDocument();
   expect(screen.queryByText(/— Idea/)).not.toBeInTheDocument();
-  // Honest indicator #1: the live elapsed timer is present and starts at zero.
-  expect(screen.getByLabelText('Elapsed time in current stage')).toHaveTextContent('00:00:00');
-  // Honest indicator #2: the live queue-depth chip counts open tasks only —
-  // t1 and t2 are open, t3 is completed and excluded.
+  // The right rail is queue-only: the live queue-depth chip counts open tasks
+  // only — t1 and t2 are open, t3 is completed and excluded.
   expect(
     screen.getByRole('status', {
       name: 'Execution queue: 2 open tasks across all pipelines',
     }),
   ).toHaveTextContent('2');
-  // Honest indicator #3: no fabricated percentage bar. The stack has no
+  // The elapsed timer and the subsystem health light were removed with the
+  // right-rail trim: guard against either coming back.
+  expect(screen.queryByLabelText('Elapsed time in current stage')).not.toBeInTheDocument();
+  expect(screen.queryByText('Elapsed')).not.toBeInTheDocument();
+  expect(screen.queryByRole('status', { name: /Subsystem Health/i })).not.toBeInTheDocument();
+  expect(screen.queryByTestId('traffic-dot-litellm')).not.toBeInTheDocument();
+  // No fabricated percentage bar. The stack has no
   // percent-complete data, so a percentage would be stage position masquerading
   // as progress — guard against it ever coming back.
   expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -115,62 +120,20 @@ test('queue chip is live: count updates as tasks advance and drops to zero when 
   expect(chip()).toHaveTextContent('0');
 });
 
-test('elapsed timer ticks while the engine runs and resets when the active task changes (D2)', () => {
-  vi.useFakeTimers();
-  try {
-    const { rerender } = renderWithKainBain(<NowPlayingBar />, {
-      stages,
-      currentStageId: '1',
-      isAgentRunning: true,
-      engineState: { status: 'running', activeTaskId: 'task-1' },
-    });
-    const timer = screen.getByLabelText('Elapsed time in current stage');
-
-    // Ticks once per second while running.
-    act(() => {
-      vi.advanceTimersByTime(3000);
-    });
-    expect(timer).toHaveTextContent('00:00:03');
-
-    // Establish the overlay as the tree root so the following context change
-    // swaps the active task WITHOUT remounting the bar (instance state kept).
-    rerender(
-      <NowPlayingBarContextOverlay
-        value={{
-          stages,
-          currentStageId: '1',
-          isAgentRunning: true,
-          engineState: { status: 'running', activeTaskId: 'task-1' },
-        }}
-      />,
-    );
-    act(() => {
-      vi.advanceTimersByTime(2000);
-    });
-    expect(screen.getByLabelText('Elapsed time in current stage')).toHaveTextContent('00:00:02');
-
-    // A new active task resets the timer so it never leaks across task boundaries.
-    rerender(
-      <NowPlayingBarContextOverlay
-        value={{
-          stages,
-          currentStageId: '1',
-          isAgentRunning: true,
-          engineState: { status: 'running', activeTaskId: 'task-2' },
-        }}
-      />,
-    );
-    act(() => {
-      vi.advanceTimersByTime(1000);
-    });
-    expect(screen.getByLabelText('Elapsed time in current stage')).toHaveTextContent('00:00:00');
-    act(() => {
-      vi.advanceTimersByTime(1000);
-    });
-    expect(screen.getByLabelText('Elapsed time in current stage')).toHaveTextContent('00:00:01');
-  } finally {
-    vi.useRealTimers();
-  }
+test('no elapsed timer remains on the queue-only right rail', () => {
+  renderWithKainBain(<NowPlayingBar />, {
+    stages,
+    currentStageId: '1',
+    isAgentRunning: true,
+    engineState: { status: 'running', activeTaskId: 'task-1' },
+  });
+  // The right-rail trim removed the timer: the queue chip is the only
+  // right-rail content, and no timer element may return.
+  expect(screen.queryByLabelText('Elapsed time in current stage')).not.toBeInTheDocument();
+  expect(screen.queryByText('Elapsed')).not.toBeInTheDocument();
+  expect(
+    screen.getByRole('status', { name: /Execution queue: \d+ open tasks? across all pipelines/ }),
+  ).toBeInTheDocument();
 });
 
 test('no global transport cluster remains: play/skip live on the runner boxes', () => {
@@ -388,7 +351,7 @@ test('shows the active task title and active project name, and clicking title op
   expect(setSelectedTask).toHaveBeenCalledWith(sampleTask);
 });
 
-test('renders the health traffic light status on the now playing bar', () => {
+test('no subsystem health light remains on the now playing bar', () => {
   renderWithKainBain(<NowPlayingBar />, {
     stages,
     currentStageId: '1',
@@ -402,35 +365,35 @@ test('renders the health traffic light status on the now playing bar', () => {
     },
   });
 
-  expect(screen.getByRole('status', { name: /Subsystem Health/i })).toBeInTheDocument();
-  expect(screen.getByTestId('traffic-dot-litellm')).toBeInTheDocument();
-  expect(screen.getByTestId('traffic-dot-device')).toBeInTheDocument();
-  expect(screen.getByTestId('traffic-dot-ollama')).toBeInTheDocument();
+  // The right-rail trim removed the health traffic light: even with healthy
+  // subsystem state, the bar shows the queue chip only. (The light's own
+  // rendering contract lives in HealthTrafficLight.test.jsx.)
+  expect(screen.queryByRole('status', { name: /Subsystem Health/i })).not.toBeInTheDocument();
+  expect(screen.queryByTestId('traffic-dot-litellm')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('traffic-dot-device')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('traffic-dot-ollama')).not.toBeInTheDocument();
+  expect(
+    screen.getByRole('status', { name: /Execution queue: \d+ open tasks? across all pipelines/ }),
+  ).toBeInTheDocument();
 });
 
-test('right-rail shrink contract: decorative extras hidden below xl, rail clips overflow', () => {
-  // The health light and dividers are fixed-width nowrap content (~233px +
-  // gaps). They must not re-enter the rail before `xl` (1280px): measured at
-  // 1024px the rail's flex share is ~338px while chip + timer + health +
-  // dividers + gaps need ~428px, and flex items with min-width:auto overflow
-  // LEFTWARD over the center transport buttons instead of shrinking (the
-  // exact regression the canary overlap gate caught when these were hidden
-  // below `lg` only). overflow-hidden + min-w-0 on the rail box are the
-  // second layer of the contract (clip, never paint over the controls).
+test('right-rail queue-only contract: rail keeps the queue chip and clips overflow', () => {
+  // The right rail is now a single queue chip: no health slot, no dividers,
+  // no timer. overflow-hidden on the rail box stays as cheap insurance so it
+  // can never paint over the runner boxes (the canary overlap gate in
+  // functional.spec.js measures button-vs-rail rect intersections).
   renderWithKainBain(<NowPlayingBar />, { stages, currentStageId: '1' });
 
   const rail = screen.getByTestId('now-playing-right-rail');
-  expect(rail.className).toContain('min-w-0');
   expect(rail.className).toContain('overflow-hidden');
+  expect(
+    screen.getByRole('status', { name: /Execution queue: \d+ open tasks? across all pipelines/ }),
+  ).toBeInTheDocument();
 
   for (const testId of ['now-playing-health-slot', 'rail-divider-elapsed', 'rail-divider-health']) {
-    const el = screen.getByTestId(testId);
-    expect(el.className).toContain('hidden');
-    expect(el.className).toContain('xl:block');
-    // lg (1024px) is exactly where the measured overlap re-appears — the
-    // extras may never come back at that breakpoint.
-    expect(el.className).not.toContain('lg:block');
+    expect(screen.queryByTestId(testId)).not.toBeInTheDocument();
   }
+  expect(screen.queryByLabelText('Elapsed time in current stage')).not.toBeInTheDocument();
 });
 
 test('renders INTERRUPTED badge when active task was interrupted by shutdown', () => {
@@ -528,9 +491,9 @@ test('Now Playing is universal: switching pipelines never changes the named task
  * fetchTasks REPLACES the list with the other project's tasks while the
  * engine snapshot (now carrying the project-independent owner snapshot +
  * global queue depth) is untouched — and pins the bar: same named task,
- * same badge, same timer, same queue depth, same transport state.
+ * same badge, same queue depth, same transport state.
  ***/
-test('project switch keeps the whole bar put: owner named, badge/timer/queue/transport unchanged', () => {
+test('project switch keeps the whole bar put: owner named, badge/queue/transport unchanged', () => {
   const ownerA = {
     id: 't-a1',
     workflowId: 'wf-a',
@@ -585,7 +548,7 @@ test('project switch keeps the whole bar put: owner named, badge/timer/queue/tra
   const namedBefore = screen.getByTestId('now-playing-task-name').textContent;
   expect(namedBefore).toMatch(/Alpha session/);
   expect(screen.getByText('RUNNING')).toBeInTheDocument();
-  expect(screen.getByLabelText('Elapsed time in current stage')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Elapsed time in current stage')).not.toBeInTheDocument();
   const queueBefore = screen
     .getByRole('status', { name: /Execution queue:/ })
     .getAttribute('aria-label');
@@ -612,12 +575,12 @@ test('project switch keeps the whole bar put: owner named, badge/timer/queue/tra
     />,
   );
 
-  // Named task, badge, timer, and queue depth all stay put.
+  // Named task, badge, and queue depth all stay put (no timer on the bar).
   expect(screen.getByTestId('now-playing-task-name').textContent).toBe(namedBefore);
   expect(screen.queryByText(/Beta session/)).not.toBeInTheDocument();
   expect(screen.queryByText(/Beta follow-up/)).not.toBeInTheDocument();
   expect(screen.getByText('RUNNING')).toBeInTheDocument();
-  expect(screen.getByLabelText('Elapsed time in current stage')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Elapsed time in current stage')).not.toBeInTheDocument();
   expect(
     screen.getByRole('status', { name: /Execution queue:/ }).getAttribute('aria-label'),
   ).toBe(queueBefore);

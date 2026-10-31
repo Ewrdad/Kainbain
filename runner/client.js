@@ -120,8 +120,8 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 					...(typeof prompt === "string" && prompt
 						? { prompt: prompt.slice(0, 20000) }
 						: {}),
-					...(typeof harness === "string" && harness ? { harness } : {}),
-					...(typeof model === "string" && model ? { model } : {}),
+					...(typeof harness === "string" && harness.trim() ? { harness: harness.trim() } : {}),
+					...(typeof model === "string" && model.trim() ? { model: model.trim() } : {}),
 				},
 			});
 		},
