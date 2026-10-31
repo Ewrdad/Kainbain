@@ -46,10 +46,33 @@ function resolveTaskContext(deps, request, reply) {
 	);
 	if (!projectId) return null;
 	const project = projectStore.getProject(projectId);
+	if (!project) {
+		request.log?.warn?.(
+			{ projectId, reason: "unknown-project" },
+			"task image request for an unknown project",
+		);
+		reply.status(404).send({ error: "Project not found", reason: "unknown-project" });
+		return null;
+	}
+	// Repair-after-switch BEFORE the existence check: a branch checkout may
+	// have dropped the `<cwd>/docs` symlink, and without the repair the
+	// task folder below resolves into a shadow directory — task.md (and the
+	// assets beside it) looks missing and every image 404s until some later
+	// save happens to repair the link. Never throws: link verification must
+	// not fail an image read.
+	try {
+		taskStore?._repairDocsLinkAfterSwitch?.(projectId, project.cwd);
+	} catch {
+		// Ignore: serving falls back to whatever is on disk.
+	}
 	const taskId = String(request.params?.taskId || "").trim();
 	const assetsDir = taskAssetDir(project.cwd, taskId, project);
 	if (!assetsDir) {
-		reply.status(400).send({ error: "Invalid task id" });
+		request.log?.warn?.(
+			{ projectId, taskId, reason: "invalid-task-id" },
+			"task image request with an invalid task id",
+		);
+		reply.status(400).send({ error: "Invalid task id", reason: "invalid-task-id" });
 		return null;
 	}
 	// Server-authoritative task existence: the store is primary; task.md on
@@ -59,7 +82,11 @@ function resolveTaskContext(deps, request, reply) {
 		Boolean(taskStore?.getTask?.(projectId, taskId)) ||
 		fs.existsSync(path.join(taskFolder, "task.md"));
 	if (!taskExists) {
-		reply.status(404).send({ error: "Task not found" });
+		request.log?.warn?.(
+			{ projectId, taskId, reason: "task-not-found" },
+			"task image request for a task with no task.md",
+		);
+		reply.status(404).send({ error: "Task not found", reason: "task-not-found" });
 		return null;
 	}
 	return { project, taskId, projectCwd: project.cwd };
@@ -100,9 +127,18 @@ export default async function taskImagesRoutes(app, { deps }) {
 							size: { type: "number" },
 						},
 					},
-					400: { type: "object", properties: { error: { type: "string" } } },
-					404: { type: "object", properties: { error: { type: "string" } } },
-					413: { type: "object", properties: { error: { type: "string" } } },
+					400: {
+						type: "object",
+						properties: { error: { type: "string" }, reason: { type: "string" } },
+					},
+					404: {
+						type: "object",
+						properties: { error: { type: "string" }, reason: { type: "string" } },
+					},
+					413: {
+						type: "object",
+						properties: { error: { type: "string" }, reason: { type: "string" } },
+					},
 				},
 			},
 		},
@@ -225,7 +261,10 @@ export default async function taskImagesRoutes(app, { deps }) {
 							},
 						},
 					},
-					404: { type: "object", properties: { error: { type: "string" } } },
+					404: {
+						type: "object",
+						properties: { error: { type: "string" }, reason: { type: "string" } },
+					},
 				},
 			},
 		},
@@ -262,9 +301,18 @@ export default async function taskImagesRoutes(app, { deps }) {
 					},
 				},
 				response: {
-					400: { type: "object", properties: { error: { type: "string" } } },
-					403: { type: "object", properties: { error: { type: "string" } } },
-					404: { type: "object", properties: { error: { type: "string" } } },
+					400: {
+						type: "object",
+						properties: { error: { type: "string" }, reason: { type: "string" } },
+					},
+					403: {
+						type: "object",
+						properties: { error: { type: "string" }, reason: { type: "string" } },
+					},
+					404: {
+						type: "object",
+						properties: { error: { type: "string" }, reason: { type: "string" } },
+					},
 				},
 			},
 		},
@@ -278,18 +326,32 @@ export default async function taskImagesRoutes(app, { deps }) {
 
 			const requestedName = String(request.params?.name || "");
 			if (requestedName.includes("/") || requestedName.includes("\\")) {
+				request.log?.warn?.(
+					{ projectId: ctx.project?.id, taskId: ctx.taskId, reason: "path-traversal" },
+					"task image request with a path separator in the name",
+				);
 				return reply
 					.status(403)
-					.send({ error: "Forbidden: Path traversal detected" });
+					.send({ error: "Forbidden: Path traversal detected", reason: "path-traversal" });
 			}
 			const safeName = sanitizeImageName(requestedName);
 			if (!safeName || !isAllowedImageExt(safeName)) {
-				return reply.status(400).send({ error: "Invalid image name" });
+				request.log?.warn?.(
+					{ taskId: ctx.taskId, name: requestedName, reason: "invalid-image-name" },
+					"task image request with an invalid image name",
+				);
+				return reply
+					.status(400)
+					.send({ error: "Invalid image name", reason: "invalid-image-name" });
 			}
 			const targetFile = resolveTaskAssetFile(ctx.projectCwd, ctx.taskId, safeName, ctx.project);
 			/* eslint-disable security/detect-non-literal-fs-filename */
 			if (!targetFile || !fs.existsSync(targetFile)) {
-				return reply.status(404).send({ error: "Image not found" });
+				request.log?.warn?.(
+					{ taskId: ctx.taskId, name: safeName, reason: "image-not-found" },
+					"task image request for a missing asset file",
+				);
+				return reply.status(404).send({ error: "Image not found", reason: "image-not-found" });
 			}
 			try {
 				const buffer = fs.readFileSync(targetFile);
@@ -299,7 +361,11 @@ export default async function taskImagesRoutes(app, { deps }) {
 					.header("content-length", buffer.length)
 					.header("content-disposition", `inline; filename="${safeName}"`)
 					.header("x-content-type-options", "nosniff")
-					.header("cache-control", "private, max-age=60");
+					// Stored names are write-once (uploads dedupe instead of
+					// overwriting, deletes are explicit), so bytes are
+					// immutable: refreshes must not revalidate into a
+					// transient miss the way `max-age=60` did.
+					.header("cache-control", "private, max-age=31536000, immutable");
 				return reply.send(buffer);
 			} catch (err) {
 				return reply
@@ -331,8 +397,14 @@ export default async function taskImagesRoutes(app, { deps }) {
 						type: "object",
 						properties: { status: { type: "string" }, name: { type: "string" } },
 					},
-					400: { type: "object", properties: { error: { type: "string" } } },
-					404: { type: "object", properties: { error: { type: "string" } } },
+					400: {
+						type: "object",
+						properties: { error: { type: "string" }, reason: { type: "string" } },
+					},
+					404: {
+						type: "object",
+						properties: { error: { type: "string" }, reason: { type: "string" } },
+					},
 				},
 			},
 		},
@@ -345,11 +417,13 @@ export default async function taskImagesRoutes(app, { deps }) {
 			if (!ctx) return;
 			const safeName = sanitizeImageName(String(request.params?.name || ""));
 			if (!safeName) {
-				return reply.status(400).send({ error: "Invalid image name" });
+				return reply
+					.status(400)
+					.send({ error: "Invalid image name", reason: "invalid-image-name" });
 			}
 			const removed = deleteTaskImage(ctx.projectCwd, ctx.taskId, safeName, ctx.project);
 			if (!removed) {
-				return reply.status(404).send({ error: "Image not found" });
+				return reply.status(404).send({ error: "Image not found", reason: "image-not-found" });
 			}
 			return { status: "deleted", name: safeName };
 		},

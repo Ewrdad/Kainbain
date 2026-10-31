@@ -111,4 +111,19 @@ describe('FailureMessage image references', () => {
     );
     expect(screen.getAllByAltText('a')).toHaveLength(1);
   });
+
+  test('shows a retryable unavailable chip instead of hiding a failed thumbnail', () => {
+    const { container } = render(
+      <FailureMessage message={messageWithShot} projectId="p1" taskId="t1" />,
+    );
+    fireEvent.error(screen.getByAltText('shot.png'));
+    expect(screen.getByText(/shot.png \(image unavailable\)/)).toBeInTheDocument();
+    expect(
+      Array.from(container.querySelectorAll('img')).filter(
+        (node) => node.style.visibility === 'hidden',
+      ),
+    ).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+    expect(screen.getByAltText('shot.png')).toBeInTheDocument();
+  });
 });

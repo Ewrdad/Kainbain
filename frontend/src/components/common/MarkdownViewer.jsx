@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { API_BASE } from '../../services/apiBase';
 import { resolveTaskImageUrl } from '../../services/taskImages';
 
@@ -152,6 +152,32 @@ export function CodeBlock({ code, language = '', enableCopy = true }) {
  ***/
 export function MdImage({ src, alt = '' }) {
   const [failed, setFailed] = useState(false);
+  // Bumped to force a fresh load attempt for the same URL (manual or
+  // automatic retry); without a key change the <img> would never refetch.
+  const [retryKey, setRetryKey] = useState(0);
+  // A transient failure (slow/flaky load, cold cache) gets exactly one
+  // automatic re-attempt; anything beyond that is a real miss and latches.
+  const autoRetriedRef = useRef(false);
+
+  // A new `src` remounts instead (see the `key` at the creation site), so a
+  // transient 404/slow load can never latch the chip while the source moves
+  // on — fresh mount, fresh state, no reset effect needed. Fresh mounts also
+  // reset the ref, so each new source gets its own automatic attempt.
+  useEffect(() => {
+    if (!failed || autoRetriedRef.current) return undefined;
+    autoRetriedRef.current = true;
+    const timer = setTimeout(() => {
+      setFailed(false);
+      setRetryKey((key) => key + 1);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [failed]);
+
+  const retry = useCallback(() => {
+    autoRetriedRef.current = true;
+    setFailed(false);
+    setRetryKey((key) => key + 1);
+  }, []);
 
   if (!src || src === '#') {
     return (
@@ -174,18 +200,25 @@ export function MdImage({ src, alt = '' }) {
       }
     })();
     return (
-      <span
-        className="inline-flex items-center gap-1 font-mono text-[10px] text-text-muted bg-surface-container border border-border-standard rounded px-1.5 py-0.5 align-middle"
-        role="img"
-        aria-label={alt || name}
-      >
-        🖼️ {name} (image unavailable)
+      <span className="inline-flex items-center gap-1 font-mono text-[10px] text-text-muted bg-surface-container border border-border-standard rounded px-1.5 py-0.5 align-middle">
+        <span role="img" aria-label={alt || name}>
+          🖼️ {name} (image unavailable)
+        </span>
+        <button
+          type="button"
+          onClick={retry}
+          aria-label={`Retry loading ${name}`}
+          className="underline underline-offset-2 hover:text-on-surface transition-colors cursor-pointer"
+        >
+          Retry
+        </button>
       </span>
     );
   }
 
   return (
     <img
+      key={retryKey}
       src={src}
       alt={alt}
       loading="lazy"
@@ -225,9 +258,11 @@ export function parseInlineMarkdown(text, imageContext = {}) {
     if (fullMatch.startsWith('!') && match[2] !== undefined && match[3] !== undefined) {
       // Image: ![alt](url) — relative task-asset paths resolve to the raw
       // image endpoint; the sanitizer still blocks javascript:/data:/vbscript:.
+      // The src joins the key so a new source remounts with fresh load
+      // state instead of inheriting a latched failure from the old URL.
       const alt = match[2];
       const src = sanitizeUrl(resolveTaskImageUrl({ ...imageContext, src: match[3] }));
-      nodes.push(<MdImage key={key} src={src} alt={alt} />);
+      nodes.push(<MdImage key={`${key}:${src}`} src={src} alt={alt} />);
     } else if (match[2] !== undefined && match[3] !== undefined) {
       // Link: [label](url)
       const label = match[2];

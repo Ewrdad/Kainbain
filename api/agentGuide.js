@@ -786,7 +786,8 @@ export const ENDPOINTS = [
 	{
 		method: "GET",
 		path: "/projects/:id/tasks/:taskId/images/:name",
-		purpose: "Serve one image binary-safe (`inline`, `nosniff`).",
+		purpose:
+			"Serve one image binary-safe (`inline`, `nosniff`, immutable cache). Errors carry a `reason` code (`unknown-project`, `invalid-task-id`, `task-not-found`, `path-traversal`, `invalid-image-name`, `image-not-found`).",
 		body: null,
 	},
 	{

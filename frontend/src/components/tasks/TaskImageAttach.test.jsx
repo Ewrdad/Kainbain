@@ -363,6 +363,23 @@ describe('TaskImageAttach Component', () => {
     textareaRef.current.remove();
   });
 
+  it('shows a retryable unavailable chip instead of hiding a failed thumbnail', async () => {
+    api.listTaskImages.mockResolvedValue({
+      images: [{ name: 'a.png', path: 'assets/a.png', size: 12 }],
+    });
+    const { container } = renderAttach();
+    const img = await screen.findByAltText('a.png');
+    fireEvent.error(img);
+    // The failure surfaces with the filename intact — never an invisible hole.
+    expect(await screen.findByText(/a\.png \(image unavailable\)/)).toBeInTheDocument();
+    const hidden = container.querySelectorAll('img[alt="a.png"]');
+    expect(
+      Array.from(hidden).filter((node) => node.style.visibility === 'hidden'),
+    ).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+    await waitFor(() => expect(container.querySelector('img[alt="a.png"]')).not.toBeNull());
+  });
+
   it('reports onUploadingChange true then false around a batch (submit guard)', async () => {
     const onUploadingChange = vi.fn();
     api.uploadTaskImage.mockResolvedValue({ name: 'a.png', path: 'assets/a.png' });

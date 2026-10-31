@@ -363,4 +363,78 @@ describe("Task Images API", () => {
 			spy.mockRestore();
 		}
 	});
+
+	it("verifies the docs link before serving an image (no shadow-dir 404)", async () => {
+		const { TaskStore } = await import("../taskStore.js");
+		const spy = vi.spyOn(TaskStore.prototype, "_repairDocsLinkAfterSwitch");
+		try {
+			const res = await app.inject({
+				method: "GET",
+				url: `/projects/${testProjectId}/tasks/task-img-1/images/shot-one.png`,
+			});
+			expect(res.statusCode).toBe(200);
+			expect(spy).toHaveBeenCalledWith(testProjectId, tempProjectDir);
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it("serves an image for a task present only as task.md on disk (cold cache)", async () => {
+		const taskDir = path.join(tempProjectDir, "docs", "tasks", "task-cold-1");
+		fs.mkdirSync(path.join(taskDir, "assets"), { recursive: true });
+		fs.writeFileSync(
+			path.join(taskDir, "task.md"),
+			"---\nid: task-cold-1\n---\n# Goal\nHas ![18744.png](assets/18744.png).",
+			"utf8",
+		);
+		fs.writeFileSync(path.join(taskDir, "assets", "18744.png"), PNG_BYTES);
+		const res = await app.inject({
+			method: "GET",
+			url: `/projects/${testProjectId}/tasks/task-cold-1/images/18744.png`,
+		});
+		expect(res.statusCode).toBe(200);
+		expect(res.headers["content-type"]).toBe("image/png");
+		expect(Buffer.from(res.rawPayload).equals(PNG_BYTES)).toBe(true);
+	});
+
+	it("returns structured reason codes on image errors", async () => {
+		const missing = await app.inject({
+			method: "GET",
+			url: `/projects/${testProjectId}/tasks/task-img-1/images/ghost.png`,
+		});
+		expect(missing.statusCode).toBe(404);
+		expect(JSON.parse(missing.payload).reason).toBe("image-not-found");
+
+		const noTask = await app.inject({
+			method: "GET",
+			url: `/projects/${testProjectId}/tasks/no-such-task/images/ghost.png`,
+		});
+		expect(noTask.statusCode).toBe(404);
+		expect(JSON.parse(noTask.payload).reason).toBe("task-not-found");
+
+		const badExt = await app.inject({
+			method: "GET",
+			url: `/projects/${testProjectId}/tasks/task-img-1/images/task.md`,
+		});
+		expect(badExt.statusCode).toBe(400);
+		expect(JSON.parse(badExt.payload).reason).toBe("invalid-image-name");
+
+		const traversal = await app.inject({
+			method: "GET",
+			url: `/projects/${testProjectId}/tasks/task-img-1/images/..%2F..%2Ftask.md`,
+		});
+		expect([403, 400]).toContain(traversal.statusCode);
+		expect(JSON.parse(traversal.payload).reason).toMatch(
+			/^(path-traversal|invalid-image-name)$/,
+		);
+	});
+
+	it("serves image bytes as long-lived immutable private cache", async () => {
+		const res = await app.inject({
+			method: "GET",
+			url: `/projects/${testProjectId}/tasks/task-img-1/images/shot-one.png`,
+		});
+		expect(res.statusCode).toBe(200);
+		expect(res.headers["cache-control"]).toContain("immutable");
+	});
 });
