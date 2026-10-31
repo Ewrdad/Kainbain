@@ -74,6 +74,7 @@ export const MERGE_STRATEGY = "merge --no-edit (auto-abort on conflict)";
  *   buildSquashCommitMessage), so `git log` on the default branch reads as
  *   the project changelog — one line per landed task. Branch-internal syncs
  *   (syncBranchWithUpstream) still use MERGE_STRATEGY above.
+ * @example SQUASH_MERGE_STRATEGY => "merge --squash + task-details commit (auto-abort on conflict)"
  ***/
 export const SQUASH_MERGE_STRATEGY = "merge --squash + task-details commit (auto-abort on conflict)";
 
@@ -561,6 +562,11 @@ export async function squashMergeBranch(projectCwd, branch, opts = {}) {
 }
 
 
+/***
+ * MARK: mergeBranch
+ * @description Merges the given branch into the CURRENT branch. On conflict the merge is aborted (unless opts.abortOnConflict === false) and a GitError is thrown.
+ * @example await mergeBranch("/repo", "kb/task-1") => { stdout, stderr }
+ ***/
 export async function mergeBranch(projectCwd, branch, opts = {}) {
 	_assertValidBranchName(branch, "merge");
 	const abortOnConflict = opts.abortOnConflict !== false;

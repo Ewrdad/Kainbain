@@ -1,5 +1,7 @@
-import { _appendProcessLog } from "../watch/index.js";
+import { _appendLogEntries, _appendProcessLog } from "../watch/index.js";
+import { config } from "../config.js";
 import { git } from "../git.js";
+import { createLogProcessor } from "../agent/logStream/logProcessor.js";
 
 /***
  * MARK: ExecutionLedger
@@ -51,6 +53,8 @@ export class ExecutionLedger {
 	constructor() {
 		this.seenProgress = new Set();
 		this.logNextSeq = new Map();
+		this.logEventNextSeq = new Map();
+		this.logProcessors = new Map();
 		this.lastStage = new Map();
 		this.stagePrompt = new Map();
 		this.stageServing = new Map();
@@ -60,6 +64,10 @@ export class ExecutionLedger {
 			logFrames: 0,
 			logGaps: 0,
 			logDuplicates: 0,
+			logEventBatches: 0,
+			logEventGaps: 0,
+			logEventDuplicates: 0,
+			logEventsDropped: 0,
 			completions: 0,
 			completionDuplicates: 0,
 			staleRejected: 0,
@@ -201,6 +209,126 @@ export class ExecutionLedger {
 		return { accepted: true, duplicate: false, seq };
 	}
 
+	processorFor(executionId) {
+		let processor = this.logProcessors.get(executionId);
+		if (!processor) {
+			processor = createLogProcessor({
+				maxEntries: config.logEntriesMaxCount,
+				telemetryMaxCount: config.telemetryMaxCount,
+				rawMaxCount: config.rawMaxCount,
+				rawMaxBytes: config.rawMaxBytes,
+			});
+			this.logProcessors.set(executionId, processor);
+		}
+		return processor;
+	}
+
+	ingestLogEvents({
+		claimStore,
+		taskStore,
+		projectId,
+		taskId,
+		runnerId,
+		executionId,
+		epoch,
+		seq,
+		events,
+	}) {
+		this._holdOrThrow(claimStore, taskId, executionId, epoch);
+		if (
+			!Number.isInteger(seq) ||
+			seq < 0 ||
+			!Array.isArray(events) ||
+			events.length === 0 ||
+			events.length > 200
+		) {
+			const err = new Error(
+				"log-events requires an integer seq and 1–200 events.",
+			);
+			err.statusCode = 400;
+			err.code = "INVALID_LOG_EVENTS_ARGS";
+			throw err;
+		}
+		const next = this.logEventNextSeq.get(executionId) ?? 0;
+		if (seq < next) {
+			this.counters.logEventDuplicates += 1;
+			return { accepted: true, duplicate: true, seq };
+		}
+		// JSON-safe clone per event: functions and undefined die here so a
+		// hostile or hand-built runner payload can never poison the stored
+		// task (which serializes to markdown) with unserializable values.
+		// This runs BEFORE any task mutation: an invalid batch must be
+		// rejected without writing a spurious gap marker, and the seq
+		// cursor stays put so a corrected retry of the same seq is not
+		// mistaken for a gap.
+		const clean = [];
+		for (const event of events) {
+			if (!event || typeof event !== "object") continue;
+			try {
+				const roundTripped = JSON.parse(JSON.stringify(event));
+				if (
+					roundTripped &&
+					typeof roundTripped === "object" &&
+					typeof roundTripped.type === "string"
+				) {
+					clean.push(roundTripped);
+				}
+			} catch {
+				this.counters.logEventsDropped += 1;
+			}
+		}
+		if (clean.length === 0) {
+			const err = new Error("log-events carries no usable typed events.");
+			err.statusCode = 400;
+			err.code = "INVALID_LOG_EVENTS_ARGS";
+			throw err;
+		}
+		const task = taskStore.getTask(projectId, taskId);
+		this.counters.logEventBatches += 1;
+		if (seq > next) {
+			this.counters.logEventGaps += 1;
+			_appendProcessLog(
+				task,
+				`[runner ${runnerId}] event frames truncated — Runner disconnected (frames ${next}–${seq - 1} missing)`,
+				{ runnerId },
+			);
+		}
+		// The processor redacts every record (text + structured payloads) at
+		// creation, so secrets never reach task.logEntries from this path.
+		const processor = this.processorFor(executionId);
+		const appended = [];
+		for (const event of clean) {
+			try {
+				appended.push(...processor.handleEvent(event));
+			} catch {
+				this.counters.logEventsDropped += 1;
+			}
+		}
+		// Stamp runner identity for stored/live dedupe (the frontend drops a
+		// live entry once the same executionId:seq lands in a refetch) and
+		// for the per-runner log filter. Ids stay processor-assigned —
+		// identical to the embedded path's per-stage streamers.
+		for (const entry of appended) {
+			if (entry && typeof entry === "object") {
+				entry.meta = {
+					...(entry.meta || {}),
+					source: "runner-structured",
+					runnerId,
+					executionId,
+					seq,
+				};
+			}
+		}
+		_appendLogEntries(task, appended);
+		this.logEventNextSeq.set(executionId, seq + 1);
+		return {
+			accepted: true,
+			duplicate: false,
+			seq,
+			entryCount: appended.length,
+		};
+	}
+
 	async completeExecution({
 		claimStore,
 		taskStore,
@@ -293,6 +421,8 @@ export class ExecutionLedger {
 		}
 		this.lastStage.delete(executionId);
 		this.logNextSeq.delete(executionId);
+		this.logEventNextSeq.delete(executionId);
+		this.logProcessors.delete(executionId);
 		this.stagePrompt.delete(executionId);
 		this.stageServing.delete(executionId);
 		return { accepted: true, duplicate: false, shaState, reportedStage };
@@ -411,6 +541,8 @@ export class ExecutionLedger {
 			if (id) {
 				this.lastStage.delete(id);
 				this.logNextSeq.delete(id);
+				this.logEventNextSeq.delete(id);
+				this.logProcessors.delete(id);
 				this.stagePrompt.delete(id);
 				this.stageServing.delete(id);
 			}
