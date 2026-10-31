@@ -685,6 +685,35 @@ describe("Runner Routes Integration", () => {
 		expect(out.misses.TIER_CEILING).toBeGreaterThanOrEqual(1);
 	});
 
+	it("dispatch refuses a runner that did not advertise the required model, leaving the task for a capable runner", async () => {
+		// Q4: the fixture project requires mock-model on the mock harness.
+		// A runner serving mock but advertising only an unrelated model must
+		// be refused (NO_MODEL) without holding the task, so a capable
+		// runner picks up the very same task on the next dispatch.
+		const { project: modelProj } = await mockProject("Dispatch Model Refusal");
+		const otherFacts = { ...FACTS, models: ["some-other-model"] };
+		const regA = await app.inject({
+			method: "POST",
+			url: "/runners/register",
+			payload: { runnerId: "dispatch-model-a", joinToken: "test-join-token", facts: otherFacts },
+		});
+		expect(regA.statusCode).toBe(202);
+		const approvalA = await app.inject({ method: "POST", url: "/runners/dispatch-model-a/approve" });
+		expect(approvalA.statusCode).toBe(200);
+		const credA = JSON.parse(approvalA.payload).credential;
+		await heartbeatAs(credA, "dispatch-model-a", otherFacts);
+		const refused = JSON.parse((await dispatchAs(credA, { projectIds: [modelProj.id] })).payload);
+		expect(refused.assigned).toBe(false);
+		expect(refused.code).toBe("NO_CAPABLE_MATCH");
+		expect(refused.misses.NO_MODEL).toBeGreaterThanOrEqual(1);
+
+		const credB = await onboard("dispatch-model-b");
+		await heartbeatAs(credB, "dispatch-model-b");
+		const served = JSON.parse((await dispatchAs(credB, { projectIds: [modelProj.id] })).payload);
+		expect(served.assigned).toBe(true);
+		expect(served.requirements).toMatchObject({ harness: "mock", model: "mock-model" });
+	});
+
 	it("dispatch honors the Runner-enforced project allowlist", async () => {
 		const { project } = await mockProject("Dispatch Allowlist");
 		const credential = await onboard("dispatch-allow");
@@ -768,6 +797,146 @@ describe("Runner Routes Integration", () => {
 		await dispatchAs(credential2);
 		const list2 = JSON.parse((await app.inject({ method: "GET", url: "/runners" })).payload);
 		expect(list2.find((r) => r.runnerId === "dispatch-scope-all").projectScope).toBeNull();
+	});
+
+	it("exposes default operatorConfig in GET /runners", async () => {
+		await onboard("config-defaults");
+		const list = JSON.parse((await app.inject({ method: "GET", url: "/runners" })).payload);
+		const runner = list.find((r) => r.runnerId === "config-defaults");
+		expect(runner.operatorConfig).toEqual({
+			displayName: null,
+			availableTools: null,
+			jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
+			directories: { masterDir: "", worktreeDir: "" },
+			projectScope: null,
+		});
+	});
+
+	it("GET /runners/:id/config returns the record; PATCH persists a patch", async () => {
+		await onboard("config-patch");
+		const before = await app.inject({ method: "GET", url: "/runners/config-patch/config" });
+		expect(before.statusCode).toBe(200);
+		expect(JSON.parse(before.payload).operatorConfig.jobTypes.runsCi).toBe(true);
+
+		const patched = await app.inject({
+			method: "PATCH",
+			url: "/runners/config-patch/config",
+			payload: {
+				displayName: "Primary",
+				jobTypes: { runsCi: false },
+				directories: { masterDir: "/srv/kb", worktreeDir: "/srv/kb-trees" },
+			},
+		});
+		expect(patched.statusCode).toBe(200);
+		const body = JSON.parse(patched.payload);
+		expect(body.operatorConfig.displayName).toBe("Primary");
+		expect(body.operatorConfig.jobTypes.runsCi).toBe(false);
+		expect(body.operatorConfig.directories).toEqual({
+			masterDir: "/srv/kb",
+			worktreeDir: "/srv/kb-trees",
+		});
+
+		const after = await app.inject({ method: "GET", url: "/runners/config-patch/config" });
+		expect(JSON.parse(after.payload).operatorConfig.displayName).toBe("Primary");
+	});
+
+	it("PATCH /runners/:id/config rejects invalid patches and unknown Runners", async () => {
+		await onboard("config-invalid");
+		for (const payload of [
+			{ directories: { masterDir: "" } },
+			{ jobTypes: { runsCi: "yes" } },
+			{ availableTools: ["no-such-tool"] },
+			{ bogus: true },
+		]) {
+			const res = await app.inject({
+				method: "PATCH",
+				url: "/runners/config-invalid/config",
+				payload,
+			});
+			expect(res.statusCode).toBe(400);
+		}
+		const missing = await app.inject({
+			method: "PATCH",
+			url: "/runners/ghost/config",
+			payload: { displayName: "Ghost" },
+		});
+		expect(missing.statusCode).toBe(404);
+		const missingGet = await app.inject({ method: "GET", url: "/runners/ghost/config" });
+		expect(missingGet.statusCode).toBe(404);
+	});
+
+	it("direct claim refuses a project the operator unloaded, then claims when scope is cleared", async () => {
+		const credential = await onboard("claim-scope-gate");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Direct claim scope target" },
+		});
+		expect(taskRes.statusCode).toBe(200);
+		const target = JSON.parse(taskRes.payload).id;
+		const scoped = await app.inject({
+			method: "PATCH",
+			url: "/runners/claim-scope-gate/config",
+			payload: { projectScope: ["some-other-project"] },
+		});
+		expect(scoped.statusCode).toBe(200);
+		const refused = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		expect(refused.statusCode).toBe(409);
+		expect(JSON.parse(refused.payload).code).toBe("PROJECT_SCOPE");
+		// Clearing the scope back to serves-all restores claiming: the
+		// setting is a live preference, not a one-way lockout.
+		const cleared = await app.inject({
+			method: "PATCH",
+			url: "/runners/claim-scope-gate/config",
+			payload: { projectScope: null },
+		});
+		expect(cleared.statusCode).toBe(200);
+		const claimed = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		expect(claimed.statusCode).toBe(200);
+	});
+
+	it("integration acquire refuses when Runs merges is off and when paused", async () => {
+		const credential = await onboard("merge-gate");
+		const patched = await app.inject({
+			method: "PATCH",
+			url: "/runners/merge-gate/config",
+			payload: { jobTypes: { runsMerges: false } },
+		});
+		expect(patched.statusCode).toBe(200);
+		const refused = await app.inject({
+			method: "POST",
+			url: "/runners/integration/acquire",
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id, targetBranch: "main" },
+		});
+		expect(refused.statusCode).toBe(409);
+		expect(JSON.parse(refused.payload).code).toBe("JOB_TYPE_DISABLED");
+		const restored = await app.inject({
+			method: "PATCH",
+			url: "/runners/merge-gate/config",
+			payload: { jobTypes: { runsMerges: true } },
+		});
+		expect(restored.statusCode).toBe(200);
+		const paused = await app.inject({ method: "POST", url: "/runners/merge-gate/pause" });
+		expect(paused.statusCode).toBe(200);
+		const pausedRefused = await app.inject({
+			method: "POST",
+			url: "/runners/integration/acquire",
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id, targetBranch: "main" },
+		});
+		expect(pausedRefused.statusCode).toBe(409);
+		expect(JSON.parse(pausedRefused.payload).code).toBe("RUNNER_PAUSED");
 	});
 
 	async function aliasProject(name, { targets, aliasName = "fast", withAliases = true }) {

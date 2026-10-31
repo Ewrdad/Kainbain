@@ -85,6 +85,9 @@ describe("deploy.sh re-exec behaviour (fake systemd-run)", () => {
 					KAINBAIN_OUTSIDE_CGROUP: "",
 					KAINBAIN_DEPLOY_ATTEMPT_ID: attemptId || "",
 					KAINBAIN_ATTEMPT_WAIT_SECONDS: "",
+					// Scrub the task id: the kb/* worktree guard must not
+					// fire in hermetic fake-systemd tests.
+					KAINBAIN_TASK_ID: "",
 					HOME: tmp,
 					PATH: `${fakeBin}${path.delimiter}${process.env.PATH}`,
 					...(extraEnv || {}),
@@ -304,6 +307,9 @@ describe("deploy.sh re-exec argv (fake systemd-run, no --pipe)", () => {
 						KAINBAIN_OUTSIDE_CGROUP: "",
 						KAINBAIN_DEPLOY_ATTEMPT_ID: "",
 						KAINBAIN_ATTEMPT_WAIT_SECONDS: "",
+						// Scrub the task id: the kb/* worktree guard must not
+						// fire in hermetic fake-systemd tests.
+						KAINBAIN_TASK_ID: "",
 						HOME: tmp,
 						PATH: `${fakeBin}${path.delimiter}${process.env.PATH}`,
 					},
@@ -349,6 +355,9 @@ describe("deploy.sh engine heartbeat pump (foreground liveness)", () => {
 					KAINBAIN_OUTSIDE_CGROUP: "",
 					KAINBAIN_DEPLOY_ATTEMPT_ID: "",
 					KAINBAIN_ATTEMPT_WAIT_SECONDS: "",
+					// Scrub the task id: the kb/* worktree guard must not
+					// fire in hermetic fake-systemd tests.
+					KAINBAIN_TASK_ID: "",
 					// 1s cadence keeps the test fast; the clamp floor is 1.
 					KAINBAIN_ENGINE_HEARTBEAT_SECONDS: "1",
 					HOME: tmp,

@@ -36,6 +36,7 @@ import { git } from "../git.js";
  * @example MAX_RUNNER_INTERRUPTS => 5
  ***/
 export const MAX_RUNNER_INTERRUPTS = 5;
+export { formatPosture, servingModelFor } from "./runnerPosture.js";
 
 /***
  * MARK: ExecutionLedger
@@ -131,10 +132,20 @@ export class ExecutionLedger {
 		}
 		// Serving harness/model (observability only): what the Runner
 		// actually runs this execution on. Same lifecycle as the prompt.
-		if (event === "prompted" && (harness || model)) {
+		// The "default" sentinel counts as no model: Runners older than
+		// the servingModelFor fix report `config.model || "default"`, and
+		// the engine uses "default" to mean harness-managed (no pinned
+		// model). Storing it verbatim would render the fake `default`
+		// pill the fix removes, so ingest normalizes it to null and the
+		// UI hides the pill until every Runner has upgraded.
+		const servingModel =
+			typeof model === "string" && model.trim() && model.trim().toLowerCase() !== "default"
+				? model.trim()
+				: null;
+		if (event === "prompted" && ((typeof harness === "string" && harness.trim()) || servingModel)) {
 			this.stageServing.set(executionId, {
-				harness: typeof harness === "string" ? harness : null,
-				model: typeof model === "string" ? model : null,
+				harness: typeof harness === "string" && harness.trim() ? harness.trim() : null,
+				model: servingModel,
 			});
 		}
 		this.counters.progressRecorded += 1;

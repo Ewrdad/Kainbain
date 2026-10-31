@@ -1,7 +1,10 @@
 /***
  * MARK: harnessPrefs
- * @description Pure helpers for the Harness Integration settings (System
- *   Settings › Harness tab). Preferences are keyed `{ [harnessId]: { enabled,
+ * @description Pure helpers for the legacy harness integration preferences
+ *   (formerly edited in the removed System Settings › Harness tab, replaced
+ *   by per-Runner tool toggles in System Settings › Runners; saved prefs are
+ *   still honoured so an existing manual-off keeps applying). Preferences
+ *   are keyed `{ [harnessId]: { enabled,
  *   autoDetect } }` so a newly registered harness simply appears with safe
  *   defaults and a removed one leaves a harmless orphan entry: unknown ids
  *   are ignored at render time, missing ids default to
@@ -141,9 +144,11 @@ export function enabledHarnesses(harnesses, prefs) {
  * MARK: harnessDisabledReason
  * @description The disabled-with-reason string for the `ModelSelector`
  *   `isHarnessDisabled` contract: null when the harness stays selectable, a
- *   human reason when the user disabled it in System Settings › Harness.
+ *   human reason when a saved legacy harness preference disabled it (the
+ *   Harness tab that edited those prefs was replaced by System Settings ›
+ *   Runners, so the reason must not point operators at the removed tab).
  *   Never hides — the caller renders the option disabled with this text.
- * @example harnessDisabledReason({ pi: { enabled: false } }, { id: 'pi', label: 'pi' }) => 'Disabled in System Settings › Harness'
+ * @example harnessDisabledReason({ pi: { enabled: false } }, { id: 'pi', label: 'pi' }) => 'Disabled by a saved harness preference'
  * @example harnessDisabledReason({}, { id: 'pi' }) => null
  * @param {Object} [prefs] - Normalized prefs map.
  * @param {Object} harness - Harness entry (`{ id, label? }`).
@@ -151,7 +156,7 @@ export function enabledHarnesses(harnesses, prefs) {
  ***/
 export function harnessDisabledReason(prefs, harness) {
   if (!harness || isHarnessEnabled(prefs, harness.id)) return null;
-  return 'Disabled in System Settings › Harness';
+  return 'Disabled by a saved harness preference';
 }
 
 /***
