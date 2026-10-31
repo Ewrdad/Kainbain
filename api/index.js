@@ -32,6 +32,7 @@ import { ExecutionLedger } from "./flow/executionLedger.js";
 import { workflowRegistry } from "./workflowRegistry.js";
 import { createAgentRunner } from "./agentRunner.js";
 import { ORPHANED_RUNNING_STATUSES } from "./flow/taskScheduler.js";
+import { clearRetryState } from "../shared/taskRetryState.js";
 import { installKainbainSelfDeployContinuity } from "./continuity/kainbainSelfDeploy.js";
 import { DeployManager } from "./deployManager.js";
 import { healthChecker } from "./healthChecker.js";
@@ -299,6 +300,7 @@ export function setupGracefulShutdown(
 						if (ORPHANED_RUNNING_STATUSES.has(task.status)) {
 							task.status = "interrupted";
 							task.wasInterrupted = true;
+							clearRetryState(task);
 							taskStore._recordHistory?.(
 								task,
 								`Server received ${signal} - task state safely preserved`,

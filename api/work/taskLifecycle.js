@@ -20,6 +20,7 @@ import {
 } from "../docsPath.js";
 import { kainbainProjectFor } from "../kainbainDir.js";
 import { worktreesBaseFor } from "./taskWorkspace.js";
+import { clearRetryState } from "../../shared/taskRetryState.js";
 
 /***
  * MARK: scanTasks
@@ -608,6 +609,7 @@ export function cancelProjectExecutions(store, projectId) {
 			}
 			task.status = "interrupted";
 			task.wasInterrupted = true;
+			clearRetryState(task);
 			task.updatedAt = now;
 			try {
 				store._recordHistory?.(

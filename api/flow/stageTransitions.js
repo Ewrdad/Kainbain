@@ -8,6 +8,7 @@ import { isTerminalTaskStatus, resolveStageLabel, stageElapsedSeconds, clearResu
 import { resolveStagesForTask } from './taskScheduler.js';
 import { killTaskProcess } from './taskControl.js';
 import { buildTimelineAttribution } from './runAttribution.js';
+import { clearRetryState } from '../../shared/taskRetryState.js';
 
 /***
  * MARK: releaseEngineOwnership
@@ -113,6 +114,7 @@ export function moveToStage(
 	}
 	task.failureReason = null;
 	task.lastError = null;
+	clearRetryState(task);
 
 	task.enteredStageAt = new Date().toISOString();
 	task.updatedAt = task.enteredStageAt;
@@ -470,6 +472,7 @@ export function completeTask(store, projectId, taskId, projectCwd) {
 	task.status = "completed";
 	task.failureReason = null;
 	task.lastError = null;
+	clearRetryState(task);
 	task.updatedAt = new Date().toISOString();
 	task.history.push({
 		timestamp: task.updatedAt,
@@ -550,6 +553,7 @@ export function pauseTask(store, projectId, taskId, projectCwd) {
 	// status while the agent keeps running to completion behind it.
 	const wasOwner = interruptLiveRun(store, projectId, taskId);
 	task.status = "paused";
+	clearRetryState(task);
 	// A paused task sits out the queue entirely; any startup-recovery
 	// priority would be meaningless until an operator resumes it.
 	clearResumedMarker(task);

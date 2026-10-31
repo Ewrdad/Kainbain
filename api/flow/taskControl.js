@@ -2,6 +2,7 @@
 import { _appendProcessLog, AUTO_REPORT_MARKER } from '../watch/index.js';
 import { isBranchModeEnabled } from '../work/taskBranches.js';
 import { stageElapsedSeconds, clearResumedMarker, isEngineOwnerOf } from './stagePolicy.js';
+import { clearRetryState } from '../../shared/taskRetryState.js';
 import { buildHumanRejectionContent } from '../reviewCommentFormatter.js';
 import { killProcessTreeSync } from '../utils/processTree.js';
 
@@ -76,6 +77,7 @@ export function abortTask(store, projectId, taskId, projectCwd) {
 
 	task.status = "in_stage";
 	task.wasInterrupted = false;
+	clearRetryState(task);
 	// An abort parks the task: any startup-recovery priority is consumed so
 	// the scheduler does not instantly re-dispatch what the operator stopped.
 	clearResumedMarker(task);

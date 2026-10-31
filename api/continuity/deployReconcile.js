@@ -56,6 +56,7 @@ import { syncDefaultBranchToRemote } from "../git/remote.js";
  * @param {Object} [stage]
  * @returns {boolean}
  ***/
+import { clearRetryState } from "../../shared/taskRetryState.js";
 export function isContinuityDeployStage(stage) {
 	if (!stage || typeof stage !== "object") return false;
 	if (String(stage.type || "").trim().toLowerCase() === "deploy") return true;
@@ -1060,6 +1061,7 @@ export async function reconcileInterruptedDeploys(store) {
 					if (task.status === "running_deploy" || task.status === "running_merge") {
 						task.status = "interrupted";
 						task.wasInterrupted = true;
+						clearRetryState(task);
 						task.updatedAt = new Date().toISOString();
 					}
 					// Reaching here means no live deploy for this attempt (no
