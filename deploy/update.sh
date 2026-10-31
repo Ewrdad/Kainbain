@@ -90,8 +90,12 @@ for c in backend frontend runner; do
   [ "$ONLY" != "all" ] && [ "$ONLY" != "$c" ] && continue
   if [ "$c" = "runner" ]; then old="$(field ./release-manifest.json runner sha256 2>/dev/null)"; new="$(field "$NEW" runner sha256)"
   else old="$(field ./release-manifest.json "$c" tag 2>/dev/null)"; new="$(field "$NEW" "$c" tag)"; fi
+  # A component absent from the published manifest was not published in
+  # that release (e.g. a backend-only publish from a fresh checkout whose
+  # dist/ had no carried-forward manifest) — it is unchanged, never an
+  # update to nothing.
   if [ "$FORCE" = "1" ]; then [ -n "$new" ] && changed="$changed $c";
-  elif [ "$old" != "$new" ]; then changed="$changed $c"; fi
+  elif [ -n "$new" ] && [ "$old" != "$new" ]; then changed="$changed $c"; fi
 done
 # Trim leading space.
 changed="${changed# }"

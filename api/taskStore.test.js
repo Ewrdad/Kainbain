@@ -50,7 +50,16 @@ vi.mock("./git.js", async () => {
 		GitDirtyTreeError,
 		GitMergeConflictError,
 		buildGitConflictDiagnostics: actual.buildGitConflictDiagnostics,
+		buildSquashCommitMessage: actual.buildSquashCommitMessage,
 		MERGE_STRATEGY: actual.MERGE_STRATEGY,
+		SQUASH_MERGE_STRATEGY: actual.SQUASH_MERGE_STRATEGY,
+		squashMergeBranch: vi.fn(async () => ({ committed: true, hash: "c".repeat(40) })),
+		abortSquashMerge: vi.fn(async () => {}),
+		deleteBranch: vi.fn(async () => ({ deleted: true })),
+		findSquashCommit: vi.fn(async () => null),
+		isBranchContentLanded: vi.fn(async () => false),
+		isBranchMergedInto: vi.fn(async () => false),
+		syncDefaultBranchToRemote: vi.fn(async () => ({ synced: false, skipped: "no-remote" })),
 		partitionMergeConflicts: actual.partitionMergeConflicts,
 		abortMerge: vi.fn(async () => {}),
 		resolveConflictsWithIncoming: vi.fn(async () => []),
@@ -3271,6 +3280,7 @@ describe("TaskStore branch support & merge stage", () => {
 		gitHelpers.requireCleanWorkingTree.mockResolvedValue(undefined);
 		gitHelpers.commitAllIfNeeded.mockResolvedValue({ committed: false, hash: null });
 		gitHelpers.mergeBranch.mockResolvedValue({ stdout: "merged", stderr: "" });
+		gitHelpers.squashMergeBranch.mockResolvedValue({ committed: true, hash: "c".repeat(40) });
 		gitHelpers.hasRemote.mockResolvedValue(false);
 		gitHelpers.pushBranchIfRemote.mockResolvedValue({ pushed: false, skipped: "no-remote" });
 		gitHelpers.returnToDefaultBranch.mockResolvedValue({ switched: false, branch: "main" });
@@ -3405,7 +3415,7 @@ describe("TaskStore branch support & merge stage", () => {
 		expect(agentRan).toBe(false);
 		expect(result.status).toMatch(/failed|retrying/);
 		expect(task.failureReason).toContain("not clean");
-		expect(agentRunner && gitHelpers.mergeBranch).not.toHaveBeenCalled();
+		expect(agentRunner && gitHelpers.squashMergeBranch).not.toHaveBeenCalled();
 	});
 
 	it("merge stage merges the task branch into main and never runs a command", async () => {
@@ -3450,12 +3460,12 @@ describe("TaskStore branch support & merge stage", () => {
 		expect(gitHelpers.checkoutBranch).toHaveBeenCalledWith(tempCwd, "main", {
 			recovery: "off",
 		});
-		expect(gitHelpers.mergeBranch).toHaveBeenCalledWith(tempCwd, task.branch);
+		expect(gitHelpers.squashMergeBranch).toHaveBeenCalledWith(tempCwd, task.branch, { commitMessage: expect.stringContaining(`Kainbain-Task: ${task.id}`) });
 
 		// Audit: history + report + logs record the merge and the auto-commit.
 		const mergedActions = task.history
 			.map((h) => h.action)
-			.filter((a) => a.includes("Merged task branch"));
+			.filter((a) => a.includes("Squash-merged task branch"));
 		expect(mergedActions.length).toBeGreaterThan(0);
 		expect(logText(task)).toContain("[MERGE]");
 		expect(logText(task)).toContain("Auto-committed");
@@ -3482,7 +3492,7 @@ describe("TaskStore branch support & merge stage", () => {
 				failback: "dev",
 			},
 		];
-		gitHelpers.mergeBranch.mockRejectedValue(
+		gitHelpers.squashMergeBranch.mockRejectedValue(
 			new gitHelpers.GitMergeConflictError(
 				"Merge conflict: please resolve all merge conflicts with main",
 				{ conflictedFiles: ["src/app.js"] },
@@ -3541,7 +3551,7 @@ describe("TaskStore branch support & merge stage", () => {
 
 		await store.executeStage("p1", task.id, { stages, projectCwd: tempCwd, execRunner });
 
-		expect(gitHelpers.mergeBranch).not.toHaveBeenCalled();
+		expect(gitHelpers.squashMergeBranch).not.toHaveBeenCalled();
 		expect(executed).toEqual([]);
 		expect(task.currentStageId).toBe("dev");
 		expect(task.failureReason).toContain("not clean");
@@ -3592,9 +3602,10 @@ describe("TaskStore branch support & merge stage", () => {
 
 		expect(result.status).toBe("passed");
 		// The merge stage operates on the derived task branch even without the flag.
-		expect(gitHelpers.mergeBranch).toHaveBeenCalledWith(
+		expect(gitHelpers.squashMergeBranch).toHaveBeenCalledWith(
 			tempCwd,
 			`kb/${task.id}`,
+			{ commitMessage: expect.stringContaining(`Kainbain-Task: ${task.id}`) },
 		);
 		// Git-only merge: no command is ever dispatched.
 		expect(executed).toEqual([]);

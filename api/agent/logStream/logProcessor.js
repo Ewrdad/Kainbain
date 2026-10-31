@@ -33,6 +33,10 @@ import {
 	stripAnsiText,
 } from "./logRecord.js";
 import {
+	redactDeepStrings,
+	redactSecretsText,
+} from "../../../shared/redactSecrets.js";
+import {
 	summarizePermission,
 	summarizePlan,
 	summarizeRaw,
@@ -77,33 +81,42 @@ function excerptText(text, maxLength) {
  * MARK: extractToolResultText
  * @description Flattens a tool_finished result payload into plain text, using
  *   the same shapes the engine has always read: plain string, `{content}`
- *   string, `{content: [{text}]}` array, or a JSON fallback.
+ *   string, `{content: [{text}]}` array, or a JSON fallback. Redacted on the
+ *   way out: the flattened text is appended to the already-stored [TOOL]
+ *   entry (`meta.output`) AFTER its record passed the creation redactor, so
+ *   an unredacted extract would leak secrets into the store.
  ***/
 function extractToolResultText(event) {
-	if (typeof event.result === "string") return event.result;
-	if (typeof event.result?.content === "string") return event.result.content;
-	if (Array.isArray(event.result?.content)) {
-		return event.result.content
-			.map((c) => (typeof c === "string" ? c : c?.text || ""))
-			.join("");
-	}
-	if (event.result) {
-		try {
-			return JSON.stringify(event.result);
-		} catch {
-			return String(event.result);
+	const flatten = () => {
+		if (typeof event.result === "string") return event.result;
+		if (typeof event.result?.content === "string") return event.result.content;
+		if (Array.isArray(event.result?.content)) {
+			return event.result.content
+				.map((c) => (typeof c === "string" ? c : c?.text || ""))
+				.join("");
 		}
-	}
-	return "";
+		if (event.result) {
+			try {
+				return JSON.stringify(event.result);
+			} catch {
+				return String(event.result);
+			}
+		}
+		return "";
+	};
+	return redactSecretsText(flatten());
 }
 
 /***
  * MARK: readToolPartial
- * @description Reads the streamed partial output of a tool_updated event.
+ * @description Reads the streamed partial output of a tool_updated event,
+ *   redacted: partials accumulate on the stored [TOOL] entry after its
+ *   record passed the creation redactor.
  ***/
 function readToolPartial(event) {
-	if (typeof event.partialResult === "string") return event.partialResult;
-	if (typeof event.delta === "string") return event.delta;
+	if (typeof event.partialResult === "string")
+		return redactSecretsText(event.partialResult);
+	if (typeof event.delta === "string") return redactSecretsText(event.delta);
 	return "";
 }
 
@@ -162,6 +175,33 @@ export function createLogProcessor(options = {}) {
 	let messageRole = null;
 	/** The tool entry currently accumulating output (tool_started … tool_finished). */
 	let openToolEntry = null;
+	/** Wall-clock start per open tool entry (WeakMap so parallel calls keep
+	 *  their own start; never stored on the record itself). */
+	const toolStartMs = new WeakMap();
+	/** Steps faster than this render no measured timing suffix: same-tick
+	 *  unit pairs stay byte-identical while real tool calls (≥100ms) show
+	 *  how long each step took. Explicit event timings always render. */
+	const MEASURED_TIMING_FLOOR_MS = 100;
+
+	const firstFiniteMs = (...values) => {
+		for (const value of values) {
+			if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+				return value;
+			}
+		}
+		return null;
+	};
+
+	const explicitDurationMs = (event = {}) =>
+		firstFiniteMs(
+			event.durationMs,
+			event.duration_ms,
+			typeof event.duration_seconds === "number" ? event.duration_seconds * 1000 : null,
+			typeof event.durationSeconds === "number" ? event.durationSeconds * 1000 : null,
+		);
+
+	const formatDurationMs = (ms) =>
+		ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
 	/** Marker entry tracking evicted entries, so repeated eviction updates one line. */
 	let evictionMarker = null;
 	let evictedCount = 0;
@@ -188,8 +228,26 @@ export function createLogProcessor(options = {}) {
 		});
 		// ANSI escapes never reach stored text (they would leak into HTML
 		// rendering); the verbatim wire bytes stay available in evidence.
+		// Secrets/PII are redacted BEFORE the length cap so a truncated
+		// secret fragment can never survive beside a cut marker. Clean text
+		// passes through byte-identical.
 		if (typeof record.text === "string" && record.text) {
-			record.text = capText(stripAnsiText(record.text));
+			record.text = capText(redactSecretsText(stripAnsiText(record.text)));
+		}
+		// Structured payloads redact by position (secret-shaped keys) and by
+		// shape (tokens, emails, paths inside free text). Numbers/booleans
+		// pass through untouched, so usage counts and exit codes survive.
+		if (record.meta && typeof record.meta === "object") {
+			record.meta = redactDeepStrings(record.meta);
+		}
+		if (record.tool && typeof record.tool === "object") {
+			record.tool = redactDeepStrings(record.tool);
+		}
+		if (record.usage && typeof record.usage === "object") {
+			record.usage = redactDeepStrings(record.usage);
+		}
+		if (record.evidence && typeof record.evidence === "object") {
+			record.evidence = redactDeepStrings(record.evidence);
 		}
 		entries.push(record);
 		evictOverflow();
@@ -495,6 +553,7 @@ export function createLogProcessor(options = {}) {
 			blockId: `b${nextBlock++}`,
 		});
 		openToolEntry = entry;
+		toolStartMs.set(entry, Date.now());
 		return [...flushed, entry];
 	}
 
@@ -524,7 +583,22 @@ export function createLogProcessor(options = {}) {
 			event.isError || event.error || event.result?.isError || event.result?.error,
 		);
 		const resultText = extractToolResultText(event);
+		// Per-step timing: explicit harness timings win; otherwise the
+		// measured wall-clock between tool_started and tool_finished, but
+		// only for steps slow enough to matter (same-tick unit pairs stay
+		// byte-identical). Stored on meta/tool always; rendered on [RESULT].
+		const startedAt = openToolEntry ? toolStartMs.get(openToolEntry) : null;
+		const measuredMs =
+			typeof startedAt === "number" ? Date.now() - startedAt : null;
+		const durationMs =
+			explicitDurationMs(event) ??
+			(typeof measuredMs === "number" && measuredMs >= MEASURED_TIMING_FLOOR_MS
+				? measuredMs
+				: null);
+		const timingSuffix =
+			typeof durationMs === "number" ? ` (${formatDurationMs(durationMs)})` : "";
 		if (openToolEntry) {
+			toolStartMs.delete(openToolEntry);
 			openToolEntry.meta.isError = isError;
 			// Keep the full output record (streamed partials + final result) on
 			// the structured tools feed.
@@ -538,7 +612,11 @@ export function createLogProcessor(options = {}) {
 					...openToolEntry.tool,
 					result: resultText,
 					partials: openToolEntry.meta.output,
+					...(typeof durationMs === "number" ? { durationMs } : {}),
 				};
+			}
+			if (typeof durationMs === "number") {
+				openToolEntry.meta.durationMs = durationMs;
 			}
 		}
 		// The [RESULT] excerpt mirrors today's behavior: the tool's FINAL result;
@@ -553,8 +631,12 @@ export function createLogProcessor(options = {}) {
 				appendEntry({
 					kind: "error",
 					feeds: ["main"],
-					text: `[ERROR] Tool ${toolName} failed: ${typeof errDetail === "string" ? errDetail : JSON.stringify(errDetail)}`,
-					meta: { toolName, toolCallId },
+					text: `[ERROR] Tool ${toolName} failed: ${typeof errDetail === "string" ? errDetail : JSON.stringify(errDetail)}${timingSuffix}`,
+					meta: {
+						toolName,
+						toolCallId,
+						...(typeof durationMs === "number" ? { durationMs } : {}),
+					},
 				}),
 			);
 			return emitted;
@@ -567,9 +649,18 @@ export function createLogProcessor(options = {}) {
 				appendEntry({
 					kind: "tool",
 					feeds: ["tools"],
-					text: `[RESULT] ${excerpt}`,
-					meta: { toolName, toolCallId },
-					tool: { callId: toolCallId, name: toolName, result: resultText },
+					text: `[RESULT] ${excerpt}${timingSuffix}`,
+					meta: {
+						toolName,
+						toolCallId,
+						...(typeof durationMs === "number" ? { durationMs } : {}),
+					},
+					tool: {
+						callId: toolCallId,
+						name: toolName,
+						result: resultText,
+						...(typeof durationMs === "number" ? { durationMs } : {}),
+					},
 				}),
 			);
 		}

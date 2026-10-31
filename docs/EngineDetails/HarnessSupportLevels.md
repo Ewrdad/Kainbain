@@ -52,8 +52,9 @@ Tier definitions (from **HarnessSupportTeirs.md**):
 
 The tier is **derived server-side** and projected through `GET /harnesses`
 (`supportTier`, `supportTierLabel`, `supportTierSummary`, `testOnly`), so the
-System Settings › Harness tab renders whatever the registry declares and never
-keeps a per-harness tier map of its own. A harness registers its tier once, at
+the model catalogue renders whatever the registry declares and never
+keeps a per-harness tier map of its own (the old System Settings › Harness
+tab was replaced by System Settings › Runners). A harness registers its tier once, at
 `registerHarness(name, factory, { supportTier })` in
 `api/agent/harnessRegistry.js`; the canonical vocabulary lives in
 `api/agent/harnessSupportTiers.js`.

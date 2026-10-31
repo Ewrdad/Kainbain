@@ -1,5 +1,6 @@
 import { RUNNER_PROTOCOL } from "../runnerRegistry.js";
 import { runnerApiCompatible } from "./runnerApiCompat.js";
+import { operatorConfigVerdict } from "./operatorConfigVerdict.js";
 
 /***
  * MARK: runnerMatches
@@ -28,12 +29,6 @@ export function runnerMatches(record = {}, req = {}, opts = {}) {
 		typeof opts.minDiskHeadroomMb === "number" && opts.minDiskHeadroomMb >= 0
 			? opts.minDiskHeadroomMb
 			: 100;
-	const operatorConfig =
-		record && typeof record === "object" && record.operatorConfig &&
-		typeof record.operatorConfig === "object"
-			? record.operatorConfig
-			: null;
-
 	if (record.status !== "active") return { ok: false, reason: "NOT_ACTIVE" };
 	if (record.paused === true) return { ok: false, reason: "PAUSED" };
 	const seen = Date.parse(record.lastSeenAt || "");
@@ -79,51 +74,10 @@ export function runnerMatches(record = {}, req = {}, opts = {}) {
 	// otherwise-capable match without touching Runner-reported facts. It
 	// sits after every health/capability gate so those keep their stable
 	// reasons (a stale Runner still reports STALE_HEARTBEAT, never a scope
-	// miss). An unset/malformed config fails open to the legacy behaviour
-	// (serves everything), so older state files and unconfigured Runners
-	// keep working. Reads stay defensive (never throw on legacy shapes)
-	// because this runs on the hot dispatch path for every candidate.
-	if (operatorConfig) {
-		const scope = Array.isArray(operatorConfig.projectScope)
-			? operatorConfig.projectScope
-			: null;
-		if (scope) {
-			const projectId =
-				typeof opts.projectId === "string" && opts.projectId
-					? opts.projectId
-					: typeof req.projectId === "string" && req.projectId
-						? req.projectId
-						: null;
-			if (!projectId || !scope.includes(projectId)) {
-				return { ok: false, reason: "PROJECT_SCOPE" };
-			}
-		}
-		const jobTypes =
-			operatorConfig.jobTypes && typeof operatorConfig.jobTypes === "object"
-				? operatorConfig.jobTypes
-				: null;
-		if (jobTypes) {
-			const kind = typeof req.kind === "string" ? req.kind : null;
-			if (kind === "ci" && jobTypes.runsCi === false) {
-				return { ok: false, reason: "JOB_TYPE_DISABLED" };
-			}
-			if (kind === "merge" && jobTypes.runsMerges === false) {
-				return { ok: false, reason: "JOB_TYPE_DISABLED" };
-			}
-			// runsImpromptu is intentionally not matched here: impromptu
-			// work (live steers, ADR 0011) rides the heartbeat pull channel
-			// of the Runner already holding the lease, and withholding it
-			// would strand the steer with no embedded fallback. The switch
-			// is stored as a recorded preference until that fallback exists.
-		}
-		if (req.harness) {
-			const tools = Array.isArray(operatorConfig.availableTools)
-				? operatorConfig.availableTools
-				: null;
-			if (tools && !tools.includes(req.harness)) {
-				return { ok: false, reason: "TOOL_DISABLED" };
-			}
-		}
-	}
+	// miss). The verdict itself lives in `operatorConfigVerdict`, shared
+	// with the direct claim and integration lease routes so no claim path
+	// can bypass the operator's settings.
+	const operatorVerdict = operatorConfigVerdict(record, req, opts);
+	if (!operatorVerdict.ok) return operatorVerdict;
 	return { ok: true, reason: "MATCH" };
 }

@@ -351,6 +351,13 @@ export const ENDPOINTS = [
 	},
 	{
 		method: "POST",
+		path: "/tasks/:id/log-events",
+		purpose:
+			"Runner-only: ingest one sequenced batch of normalized agent events (tool calls/results, thinking, usage, permissions, plans, errors with timings) processed into the same canonical records as the embedded path. Requires the x-runner-credential header.",
+		body: { executionId: "string (required)", epoch: "number (required)", seq: "number (required)", events: "array[1..200] (required)" },
+	},
+	{
+		method: "POST",
 		path: "/tasks/:id/complete-execution",
 		purpose:
 			"Runner-only: idempotent execution completion with epoch fence and SHA presence check (records the report, releases the lease, applies the engine-owned finish: report, survey park, failure routing, advance). Requires the x-runner-credential header.",

@@ -55,5 +55,14 @@ echo tarball > "$CASE_DIR/dist/kainbain-runner-new.tar.gz"
 check "runner: exit 0" test "$rc" = 0
 check "runner: only runner redeployed" bash -c "grep -q 'redeploy --runner' '$SHIM_LOG' && ! grep -q 'redeploy --frontend' '$SHIM_LOG'"
 check "runner: tarball staged" test -f "$CASE_DIR/install/kainbain-runner-new.tar.gz"
+
+# 6. Component absent from the published manifest is unchanged, not an update.
+setup_case
+cat > "$CASE_DIR/dist/release-manifest.json" <<'JSON'
+{"commit":"new3","components":{"backend":{"tag":"1.0.0-new"}}}
+JSON
+(cd "$CASE_DIR/install" && ./update.sh --dist-dir "$CASE_DIR/dist" >/dev/null); rc=$?
+check "absent: exit 0" test "$rc" = 0
+check "absent: only backend redeployed" bash -c "grep -q 'redeploy --backend' '$SHIM_LOG' && ! grep -q 'redeploy --frontend' '$SHIM_LOG' && ! grep -q 'redeploy --runner' '$SHIM_LOG'"
 [ "$FAIL" = 0 ] && echo "update.test.sh: ALL PASS" || echo "update.test.sh: FAILURES"
 exit $FAIL

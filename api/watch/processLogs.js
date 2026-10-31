@@ -1,5 +1,6 @@
 // Domain: Watching the Work — task progress entries and their feeds.
 import { config } from "../config.js";
+import { redactSecretsText } from "../../shared/redactSecrets.js";
 /***
  * MARK: _logEntryKindFromText
  * @description Maps a rendered log chunk to its structured entry kind and
@@ -56,7 +57,10 @@ function _synthesizedLogEntry(chunk, meta = {}) {
 		feeds: [feed],
 		kind,
 		turn: null,
-		text: String(chunk),
+		// Redacted at synthesis so command output, git lines, and runner
+		// text frames can never store secrets or PII. Clean text passes
+		// through byte-identical.
+		text: redactSecretsText(String(chunk)),
 		meta: { source: "process-log", ...meta },
 	};
 }

@@ -3,7 +3,10 @@
  * @description Runs one stage through any HarnessSession-conforming harness
  *   (ADR 0009 step 3 execution). Subscribes first so no frame is missed,
  *   forwards text deltas (`assistant_delta.delta`, `harness_log.text`) to
- *   `onLog` in order, then returns the final assistant text. Disposes the
+ *   `onLog` in order, and EVERY normalized session event to `onEvent`
+ *   (structured transport: tool calls/results, thinking, usage, permissions,
+ *   plans, errors). The `onLog` derivation is byte-identical to the
+ *   pre-structured behavior so existing callers are unaffected. Disposes the
  *   session even when prompting throws.
  * @example await runHarnessStage({ harness, prompt: 'do X', onLog: () => {} }) => { output: '...' }
  * @param {Object} opts - Options.
@@ -15,6 +18,7 @@
  * @param {string} [opts.model] - Model pin (session meta).
  * @param {string} opts.prompt - Stage prompt text.
  * @param {Function} [opts.onLog] - Called with each log string, in order.
+ * @param {Function} [opts.onEvent] - Called with each normalized session event, in order.
  * @param {Function} [opts.onSession] - Called with the live session after creation (steering delivery, WP-3.4).
  * @returns {Promise<Object>} `{ output }` — the final assistant text.
  ***/
@@ -27,6 +31,7 @@ export async function runHarnessStage({
 	model = "",
 	prompt,
 	onLog = () => {},
+	onEvent = null,
 	onSession = null,
 }) {
 	if (!harness || typeof harness.createSession !== "function") {
@@ -51,6 +56,16 @@ export async function runHarnessStage({
 	const seen = new Set();
 	const unsubscribe = session.subscribe((event) => {
 		if (!event || typeof event !== "object") return;
+		// Structured transport first: every normalized event reaches onEvent
+		// in subscription order. A throwing observer must never break the
+		// run (same observer-only contract as onSession below).
+		if (typeof onEvent === "function") {
+			try {
+				onEvent(event);
+			} catch {
+				// Observer only: a throwing hook must never break the run.
+			}
+		}
 		if (event.type === "assistant_delta" && typeof event.delta === "string" && !seen.has(event)) {
 			seen.add(event);
 			onLog(event.delta);
