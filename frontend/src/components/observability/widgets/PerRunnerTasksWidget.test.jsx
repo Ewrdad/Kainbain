@@ -136,4 +136,65 @@ describe('PerRunnerTasksWidget', () => {
     });
     expect(screen.queryByTestId('per-runner-prompt-local-bravo')).not.toBeInTheDocument();
   });
+
+  test('compact row shows serving harness/model pills while running, hidden for CI (no serving)', async () => {
+    getRunnerMonitor.mockResolvedValue({
+      liveAssignments: [
+        {
+          runnerId: 'local-agent',
+          projectId: 'p1',
+          taskId: 'aaaa1111-2222',
+          executionId: 'exec-a',
+          epoch: 1,
+          startedAt: new Date().toISOString(),
+          stageId: 'build',
+          serving: { harness: 'pi', model: 'kimi-k3:cloud' },
+          lastSeenAt: new Date().toISOString(),
+        },
+        {
+          runnerId: 'local-ci',
+          projectId: 'p1',
+          taskId: 'bbbb3333-4444',
+          executionId: 'exec-c',
+          epoch: 1,
+          startedAt: new Date().toISOString(),
+          stageId: 'test',
+          serving: null,
+          lastSeenAt: new Date().toISOString(),
+        },
+      ],
+    });
+    render(<PerRunnerTasksWidget tasks={[]} compact />);
+    await waitFor(() => {
+      expect(screen.getByTestId('per-runner-row-local-agent')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('per-runner-compact-harness-local-agent')).toHaveTextContent('pi');
+    expect(screen.getByTestId('per-runner-compact-model-local-agent')).toHaveTextContent('kimi-k3:cloud');
+    expect(screen.queryByTestId('per-runner-compact-harness-local-ci')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('per-runner-compact-model-local-ci')).not.toBeInTheDocument();
+  });
+
+  test('full card hides the model pill for CI stages with no serving model', async () => {
+    getRunnerMonitor.mockResolvedValue({
+      liveAssignments: [
+        {
+          runnerId: 'local-ci',
+          projectId: 'p1',
+          taskId: 'cccc5555-6666',
+          executionId: 'exec-c2',
+          epoch: 1,
+          startedAt: new Date().toISOString(),
+          stageId: 'test',
+          prompt: null,
+          serving: { harness: 'pi', model: null },
+          lastSeenAt: new Date().toISOString(),
+        },
+      ],
+    });
+    render(<PerRunnerTasksWidget tasks={[]} />);
+    await waitFor(() => {
+      expect(screen.getByTestId('per-runner-card-local-ci')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('per-runner-card-local-ci')).not.toHaveTextContent('Model:');
+  });
 });

@@ -10,6 +10,11 @@
 #   ./deploy.sh --prod --fast   Production deploy WITHOUT tests/security scans
 #                           (rapid self-iteration; the health-check + rollback
 #                           gate below is the safety net).
+#   ./deploy.sh --prod --publish-only [--fast] [--sync-site]
+#                           CI stage 1 only: gates + publish images/dist via
+#                           publish.sh (per changed component), optionally
+#                           stage the ad-site/S3 release, then STOP — prod is
+#                           updated by stage 2: (cd ~/apps/kainbain && ./update.sh)
 #   ./deploy.sh --rollback  Restore the last known-good deployment (.prev) and
 #                           restart the service.
 #   ./deploy.sh             Build Docker images + runner distributable (no deploy).
@@ -63,17 +68,34 @@ fi
 # no matter how this script is invoked.
 cd "$(dirname "$0")"
 
-# Host commands must never run inside a task worktree (branch kb/*): they
-# publish/deploy the primary checkout only (AsymmetricUpdatesPlan DA9).
+# Host commands must never run inside a task worktree: they publish/deploy
+# the primary checkout only (AsymmetricUpdatesPlan DA9). "Task worktree" means
+# a LINKED worktree on a kb/* branch — NOT merely a kb/* branch name: the
+# primary checkout legitimately sits on a kb/* branch while the harness
+# operates on a task there, and a runOnBranch=primary stage correctly runs
+# in the primary. Keying this guard on the branch name made deploy.sh exit 78
+# even when running in the primary checkout (publish stage of
+# e3b2624a-bc24-4698-9c78-86af7f6f3b5b, 2026-10-30). The default-branch guard
+# and the tip guard below still enforce what a deploy actually ships.
 if [ -n "${KAINBAIN_TASK_ID:-}" ]; then
+    _primary_wt="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')"
+    _here="$(pwd -P 2>/dev/null || echo "$PWD")"
     _kb_branch="$(git branch --show-current 2>/dev/null || true)"
     case "$_kb_branch" in
         kb/*)
-            echo "deploy.sh: refusing to run from a task worktree (branch kb/*) — deploy/publish stages must run on the primary checkout" >&2
-            exit 78
+            if [ -n "$_primary_wt" ] && [ "$_here" != "$_primary_wt" ]; then
+                echo "deploy.sh: refusing to run from a task worktree (branch $_kb_branch at $_here) — deploy/publish stages must run on the primary checkout ($_primary_wt)" >&2
+                exit 78
+            fi
+            if [ -n "$_primary_wt" ]; then
+                echo "deploy.sh: primary checkout is on task branch '$_kb_branch' (not a task worktree) — continuing in the primary checkout; the default-branch guard still applies" >&2
+            else
+                echo "deploy.sh: refusing to run from a task worktree (branch $_kb_branch) — could not identify the primary worktree" >&2
+                exit 78
+            fi
             ;;
     esac
-    unset _kb_branch
+    unset _kb_branch _primary_wt _here
 fi
 
 # systemd --user tooling (systemd-run below, systemctl --user in restart_service)
@@ -362,10 +384,14 @@ APP_LINK_PROJECT="${KAINBAIN_APP_LINK_PROJECT:-}"
 # --- Arg parsing ----------------------------------------------------------
 MODE="build"
 FAST="false"
+PUBLISH_ONLY="false"
+SYNC_SITE="false"
 while [[ "$#" -gt 0 ]]; do
 	case $1 in
 	--dev) MODE="dev" ;;
 	--prod) MODE="prod" ;;
+	--publish-only) PUBLISH_ONLY="true" ;;
+	--sync-site) PUBLISH_ONLY="true"; SYNC_SITE="true" ;;
 	--fast) FAST="true" ;;
 	--rollback) MODE="rollback" ;;
 	--prod-dir) PROD_DIR="${2:?--prod-dir needs a path}"; shift ;;
@@ -1435,7 +1461,9 @@ if [ "$MODE" = "prod" ]; then
 	#    same fast branches plus the canary suite in one gate, so here the
 	#    fast branches run in this gate and the canary suite runs exactly
 	#    once, below, as its own named gate.
-	if [ "$FAST" != "true" ]; then
+	if [ "$PUBLISH_ONLY" = "true" ]; then
+		log "⏭️ Publish-only: skipping deploy-level test/canary/security gates — publish.sh runs the per-component gates for the changed components only (asymmetric)."
+	elif [ "$FAST" != "true" ]; then
 		run_gate "final-test-suite" "./run-tests.sh --no-canary" ./run-tests.sh --no-canary
 
 		# 1b. Canary E2E gate (blocking): the Playwright suite runs on its
@@ -1492,7 +1520,7 @@ if [ "$MODE" = "prod" ]; then
 	# An empty VITE_API_BASE/VITE_WS_URL means "same origin" (see api.js).
 	# (`env`, not inline assignments: assignments preceding a shell function
 	# persist after it returns — env keeps them scoped to the one command.)
-	run_gate "frontend-build" "npm run build --prefix frontend" env VITE_API_BASE= VITE_WS_URL= npm run build --prefix frontend
+	if [ "$PUBLISH_ONLY" = "true" ]; then log "⏭️ Publish-only: frontend build is publish.sh's gate — skipping deploy-level build."; else run_gate "frontend-build" "npm run build --prefix frontend" env VITE_API_BASE= VITE_WS_URL= npm run build --prefix frontend; fi
 
 	# 4. Prepare API.
 	# The API is a plain Node app with no build step. We deliberately install the
@@ -1501,7 +1529,7 @@ if [ "$MODE" = "prod" ]; then
 	# in-repo test suite and makes `npm run deploy` non-idempotent on the next run.
 	# `--include=dev` forces dev deps even when NODE_ENV=production is set (which
 	# would otherwise make npm skip them and break the deploy's own test suite).
-	run_gate "api-install" "npm install --prefix api --include=dev" npm install --prefix api --include=dev
+	if [ "$PUBLISH_ONLY" = "true" ]; then log "⏭️ Publish-only: skipping deploy-level api-install (image build installs its own deps)."; else run_gate "api-install" "npm install --prefix api --include=dev" npm install --prefix api --include=dev; fi
 
 	# 5. Publish everything from this checkout (replaces the per-minute cron
 	#    convergence job): push git refs with the dev box's ssh auth, then
@@ -1536,6 +1564,18 @@ if [ "$MODE" = "prod" ]; then
 		run_gate "registry-publish" "./publish.sh --detect --fast" ./publish.sh --detect --fast
 	else
 		run_gate "registry-publish" "./publish.sh --detect" ./publish.sh --detect
+	fi
+	# CI split (publish stage -> update stage): --publish-only stops here.
+	# Stage 1 publishes images + dist/ (asymmetrically, per changed component);
+	# stage 2 runs (cd ~/apps/kainbain && ./update.sh) to pull + restart only
+	# what changed. Nothing in $PROD_DIR is touched on this path.
+	if [ "$PUBLISH_ONLY" = "true" ]; then
+		if [ "$SYNC_SITE" = "true" ] || [ -n "${KAINBAIN_ADSITE_S3_BUCKET:-}" ]; then
+			bash scripts/sync-adsite.sh || log "⚠️ Ad-site sync failed (non-fatal) — release is published; re-run: bash scripts/sync-adsite.sh"
+		fi
+		log "✅ Publish-only complete — prod untouched. Next: (cd $PROD_DIR && ./update.sh)"
+		write_result "success" "Publish-only deploy (registry + dist) complete" "false" 0 "" ""
+		exit 0
 	fi
 
 	# 6. Stage the minimal Docker install for $PROD_DIR (compose + .env +

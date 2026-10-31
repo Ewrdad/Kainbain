@@ -71,4 +71,41 @@ describe("createRunnerClient", () => {
 		assert.equal(calls[0].url, "http://x:3100/tasks/t%201/claim");
 		assert.deepEqual(JSON.parse(calls[0].opts.body), { projectId: "p1" });
 	});
+
+	it("progress sends harness/model when real and omits model when null or blank (CI contract)", async () => {
+		const { fetchImpl, calls } = stubFetch(() => ok({}));
+		const client = createRunnerClient({ backendUrl: "http://x:3100", fetchImpl });
+		const base = { taskId: "t1", projectId: "p1", executionId: "e1", epoch: 1, stageId: "s1", event: "prompted" };
+		// Agent stage with a real served model: both fields sent, trimmed.
+		await client.progress({ ...base, prompt: "do it", harness: " pi ", model: " kimi-k3:cloud " });
+		let body = JSON.parse(calls[0].opts.body);
+		assert.equal(body.harness, "pi");
+		assert.equal(body.model, "kimi-k3:cloud");
+		assert.equal(body.prompt, "do it");
+		// CI stage: model null must be OMITTED from the wire body entirely —
+		// never sent as null/""/"default", or old UIs would render a fake model.
+		await client.progress({ ...base, harness: "pi", model: null });
+		body = JSON.parse(calls[1].opts.body);
+		assert.equal(body.harness, "pi");
+		assert.ok(!("model" in body));
+		// Blank/whitespace model is also omitted; non-string model never crashes.
+		await client.progress({ ...base, harness: "pi", model: "   " });
+		assert.ok(!("model" in JSON.parse(calls[2].opts.body)));
+		await client.progress({ ...base, harness: "pi", model: 42 });
+		assert.ok(!("model" in JSON.parse(calls[3].opts.body)));
+		// No harness and no model: both omitted (no serving entry backend-side).
+		await client.progress({ ...base, event: "started" });
+		body = JSON.parse(calls[4].opts.body);
+		assert.ok(!("model" in body) && !("harness" in body) && !("prompt" in body));
+		assert.equal(calls[4].url, "http://x:3100/tasks/t1/progress");
+	});
+
+	it("complete forwards posture verbatim, including model-less CI postures", async () => {
+		const { fetchImpl, calls } = stubFetch(() => ok({ accepted: true }));
+		const client = createRunnerClient({ backendUrl: "http://x:3100", fetchImpl });
+		await client.complete({ taskId: "t1", projectId: "p1", executionId: "e1", epoch: 1, outcome: "passed", posture: "T0:pi" });
+		assert.equal(JSON.parse(calls[0].opts.body).posture, "T0:pi");
+		await client.complete({ taskId: "t1", projectId: "p1", executionId: "e1", epoch: 1, outcome: "passed", posture: "T0:pi:kimi-k3:cloud" });
+		assert.equal(JSON.parse(calls[1].opts.body).posture, "T0:pi:kimi-k3:cloud");
+	});
 });

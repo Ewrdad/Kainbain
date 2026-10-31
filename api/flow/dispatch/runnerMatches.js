@@ -1,5 +1,6 @@
 import { RUNNER_PROTOCOL } from "../runnerRegistry.js";
 import { runnerApiCompatible } from "./runnerApiCompat.js";
+import { operatorConfigVerdict } from "./operatorConfigVerdict.js";
 
 /***
  * MARK: runnerMatches
@@ -13,9 +14,9 @@ import { runnerApiCompatible } from "./runnerApiCompat.js";
  *   cannot take this job"). Alias requirements always miss here; WP-3.2
  *   resolves them centrally first.
  * @example runnerMatches(record, { harness: 'pi', tier: 'T1' }) => { ok: true, reason: 'MATCH' }
- * @param {Object} record - Registry record (`status`, `facts`, `lastSeenAt`, `capabilities`).
+ * @param {Object} record - Registry record (`status`, `facts`, `lastSeenAt`, `capabilities`, plus the operator-owned `operatorConfig` the Runners settings screen persists).
  * @param {Object} req - Task requirements from `taskRequirements`.
- * @param {Object} [opts] - `{ now, staleAfterMs, minDiskHeadroomMb }`.
+ * @param {Object} [opts] - `{ now, staleAfterMs, minDiskHeadroomMb, projectId }` (`projectId` is the candidate's project, needed for the operator project-scope check; a scoped Runner with no project id on the candidate misses loudly instead of guessing).
  * @returns {Object} `{ ok, reason }`.
  ***/
 export function runnerMatches(record = {}, req = {}, opts = {}) {
@@ -28,7 +29,6 @@ export function runnerMatches(record = {}, req = {}, opts = {}) {
 		typeof opts.minDiskHeadroomMb === "number" && opts.minDiskHeadroomMb >= 0
 			? opts.minDiskHeadroomMb
 			: 100;
-
 	if (record.status !== "active") return { ok: false, reason: "NOT_ACTIVE" };
 	if (record.paused === true) return { ok: false, reason: "PAUSED" };
 	const seen = Date.parse(record.lastSeenAt || "");
@@ -70,5 +70,14 @@ export function runnerMatches(record = {}, req = {}, opts = {}) {
 	if (caps.diskHeadroomMb !== null && caps.diskHeadroomMb !== undefined) {
 		if (caps.diskHeadroomMb < minDisk) return { ok: false, reason: "DISK_LOW" };
 	}
+	// Operator-owned configuration (System Settings › Runners) refines an
+	// otherwise-capable match without touching Runner-reported facts. It
+	// sits after every health/capability gate so those keep their stable
+	// reasons (a stale Runner still reports STALE_HEARTBEAT, never a scope
+	// miss). The verdict itself lives in `operatorConfigVerdict`, shared
+	// with the direct claim and integration lease routes so no claim path
+	// can bypass the operator's settings.
+	const operatorVerdict = operatorConfigVerdict(record, req, opts);
+	if (!operatorVerdict.ok) return operatorVerdict;
 	return { ok: true, reason: "MATCH" };
 }

@@ -16,6 +16,13 @@ const gitMocks = vi.hoisted(() => ({
 	pushBranchIfRemote: vi.fn(),
 	checkoutBranch: vi.fn(),
 	mergeBranch: vi.fn(),
+	squashMergeBranch: vi.fn(async () => ({ committed: true, hash: "c".repeat(40) })),
+	abortSquashMerge: vi.fn(async () => undefined),
+	deleteBranch: vi.fn(async () => ({ deleted: true })),
+	findSquashCommit: vi.fn(async () => null),
+	isBranchContentLanded: vi.fn(async () => false),
+	isBranchMergedInto: vi.fn(async () => false),
+	syncDefaultBranchToRemote: vi.fn(async () => ({ synced: false, skipped: "no-remote" })),
 	syncBranchWithUpstream: vi.fn(async () => ({ synced: false, skipped: "no-remote" })),
 	currentBranch: vi.fn(),
 	defaultBranch: vi.fn(),
@@ -46,6 +53,15 @@ vi.mock("../git.js", async () => {
 		isGitRepository: gitMocks.isGitRepository,
 		checkoutBranch: gitMocks.checkoutBranch,
 		mergeBranch: gitMocks.mergeBranch,
+		squashMergeBranch: gitMocks.squashMergeBranch,
+		abortSquashMerge: gitMocks.abortSquashMerge,
+		deleteBranch: gitMocks.deleteBranch,
+		findSquashCommit: gitMocks.findSquashCommit,
+		isBranchContentLanded: gitMocks.isBranchContentLanded,
+		isBranchMergedInto: gitMocks.isBranchMergedInto,
+		syncDefaultBranchToRemote: gitMocks.syncDefaultBranchToRemote,
+		buildSquashCommitMessage: actual.buildSquashCommitMessage,
+		SQUASH_MERGE_STRATEGY: actual.SQUASH_MERGE_STRATEGY,
 		syncBranchWithUpstream: gitMocks.syncBranchWithUpstream,
 		pushBranchIfRemote: gitMocks.pushBranchIfRemote,
 		requireCleanWorkingTree: gitMocks.requireCleanWorkingTree,
@@ -124,6 +140,7 @@ function mergeDefaults() {
 	gitMocks.defaultBranch.mockResolvedValue("main");
 	gitMocks.checkoutBranch.mockResolvedValue({ switched: true });
 	gitMocks.mergeBranch.mockResolvedValue({ merged: true });
+	gitMocks.squashMergeBranch.mockResolvedValue({ committed: true, hash: "c".repeat(40) });
 	gitMocks.pushBranchIfRemote.mockResolvedValue({ pushed: false, skipped: "no-remote" });
 	gitMocks.countUniqueCommits.mockResolvedValue(2);
 	gitMocks.resolveSha.mockImplementation(async (cwd, ref) =>
@@ -280,7 +297,7 @@ describe("executeMergeStage review baseline hook", () => {
 
 	it("records no baseline when the merge fails", async () => {
 		const conflict = new MockGitMergeConflictError("Merge conflict", ["a.txt"]);
-		gitMocks.mergeBranch.mockRejectedValue(conflict);
+		gitMocks.squashMergeBranch.mockRejectedValue(conflict);
 		const { store, task, stage } = mergeSetup();
 		await executeMergeStage(store, {
 			projectId: "proj-1",
