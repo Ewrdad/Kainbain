@@ -344,7 +344,32 @@ export default async function taskImagesRoutes(app, { deps }) {
 					.status(400)
 					.send({ error: "Invalid image name", reason: "invalid-image-name" });
 			}
-			const targetFile = resolveTaskAssetFile(ctx.projectCwd, ctx.taskId, safeName, ctx.project);
+			let targetFile = resolveTaskAssetFile(ctx.projectCwd, ctx.taskId, safeName, ctx.project);
+			// Serve-side canonicalization for stale/unsanitized refs: a stored
+			// ref may carry a non-canonical name (wrong case, spaces, trailing
+			// title residue) that the backend flattened on upload. Resolve to
+			// an existing asset whose sanitized name matches instead of 404ing
+			// a file that is actually present under a nearby canonical name.
+			if (!targetFile || !fs.existsSync(targetFile)) {
+				const assetsDir = taskAssetDir(ctx.projectCwd, ctx.taskId, ctx.project);
+				if (assetsDir) {
+					try {
+						const match = fs
+							.readdirSync(assetsDir, { withFileTypes: true })
+							.find(
+								(entry) =>
+									entry.isFile() &&
+									isAllowedImageExt(entry.name) &&
+									sanitizeImageName(entry.name) === safeName,
+							);
+						if (match) {
+							targetFile = path.join(assetsDir, match.name);
+						}
+					} catch {
+						// Missing/unreadable directory: fall through to 404 below.
+					}
+				}
+			}
 			/* eslint-disable security/detect-non-literal-fs-filename */
 			if (!targetFile || !fs.existsSync(targetFile)) {
 				request.log?.warn?.(
@@ -353,13 +378,14 @@ export default async function taskImagesRoutes(app, { deps }) {
 				);
 				return reply.status(404).send({ error: "Image not found", reason: "image-not-found" });
 			}
+			const servedName = path.basename(targetFile);
 			try {
 				const buffer = fs.readFileSync(targetFile);
-				const mediaType = imageMediaType(safeName) || "application/octet-stream";
+				const mediaType = imageMediaType(servedName) || "application/octet-stream";
 				reply
 					.header("content-type", mediaType)
 					.header("content-length", buffer.length)
-					.header("content-disposition", `inline; filename="${safeName}"`)
+					.header("content-disposition", `inline; filename="${servedName}"`)
 					.header("x-content-type-options", "nosniff")
 					// Stored names are write-once (uploads dedupe instead of
 					// overwriting, deletes are explicit), so bytes are

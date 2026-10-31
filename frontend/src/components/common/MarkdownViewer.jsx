@@ -158,11 +158,19 @@ export function MdImage({ src, alt = '' }) {
   // A transient failure (slow/flaky load, cold cache) gets exactly one
   // automatic re-attempt; anything beyond that is a real miss and latches.
   const autoRetriedRef = useRef(false);
+  const prevSrcRef = useRef(src);
 
-  // A new `src` remounts instead (see the `key` at the creation site), so a
-  // transient 404/slow load can never latch the chip while the source moves
-  // on — fresh mount, fresh state, no reset effect needed. Fresh mounts also
-  // reset the ref, so each new source gets its own automatic attempt.
+  // Reset latched failure state whenever the source changes, including
+  // direct prop updates that do not remount the component. A fresh source
+  // must always start with a clean load attempt.
+  useEffect(() => {
+    if (prevSrcRef.current === src) return;
+    prevSrcRef.current = src;
+    setFailed(false);
+    setRetryKey(0);
+    autoRetriedRef.current = false;
+  }, [src]);
+
   useEffect(() => {
     if (!failed || autoRetriedRef.current) return undefined;
     autoRetriedRef.current = true;

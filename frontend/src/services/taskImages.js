@@ -29,7 +29,11 @@ export function resolveTaskImageUrl({ apiBase = '', projectId, taskId, src }) {
     return trimmed;
   }
   if (!projectId || !taskId) return trimmed;
-  const assetMatch = trimmed.match(/(?:^|\/)(assets\/[^/?#]+)$/);
+  // CommonMark image destinations may carry a trailing quoted title
+  // (`![a](assets/a.png "shot")`); resolve on the bare destination so the
+  // title never becomes part of the requested asset name.
+  const resolvedSrc = firstSrcToken(trimmed);
+  const assetMatch = resolvedSrc.match(/(?:^|\/)(assets\/[^/?#]+)$/);
   if (!assetMatch) return trimmed;
   const base = String(apiBase || '').replace(/\/+$/, '');
   return `${base}/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/images/${encodeURIComponent(assetMatch[1].slice('assets/'.length))}`;
