@@ -258,11 +258,11 @@ export function RunnerConfigurationSection() {
   const advertised = selected ? advertisedToolIds(selected) : [];
   const enabledTools = selected ? effectiveTools(selected) : [];
   const nameDraft = selected
-     
+
     ? (nameDrafts[selected.runnerId] ?? config.displayName ?? '')
     : '';
   const dirDraft = selected
-     
+
     ? (dirDrafts[selected.runnerId] || config.directories)
     : { masterDir: '', worktreeDir: '' };
   const nameDirty =
@@ -281,7 +281,7 @@ export function RunnerConfigurationSection() {
         if (ok) {
           setNameDrafts((prev) => {
             const next = { ...prev };
-             
+
             delete next[selected.runnerId];
             return next;
           });
@@ -314,7 +314,7 @@ export function RunnerConfigurationSection() {
       if (saved) {
         setDirDrafts((prev) => {
           const next = { ...prev };
-           
+
           delete next[selected.runnerId];
           return next;
         });
@@ -630,7 +630,7 @@ export function RunnerConfigurationSection() {
                 onChange={(e) =>
                   setNameDrafts((prev) => ({
                     ...prev,
-                     
+
                     [selected.runnerId]: e.target.value,
                   }))
                 }
@@ -772,13 +772,13 @@ export function RunnerConfigurationSection() {
                 // reads as if the new text already failed.
                 setDirErrors((prev) => {
                   const next = { ...prev };
-                   
+
                   delete next[`${selected.runnerId}:masterDir`];
                   return next;
                 });
                 setDirDrafts((prev) => ({
                   ...prev,
-                   
+
                   [selected.runnerId]: {
                     masterDir: value,
                     worktreeDir: prev[selected.runnerId]?.worktreeDir ?? config.directories.worktreeDir,
@@ -801,13 +801,13 @@ export function RunnerConfigurationSection() {
                 // reads as if the new text already failed.
                 setDirErrors((prev) => {
                   const next = { ...prev };
-                   
+
                   delete next[`${selected.runnerId}:worktreeDir`];
                   return next;
                 });
                 setDirDrafts((prev) => ({
                   ...prev,
-                   
+
                   [selected.runnerId]: {
                     masterDir: prev[selected.runnerId]?.masterDir ?? config.directories.masterDir,
                     worktreeDir: value,

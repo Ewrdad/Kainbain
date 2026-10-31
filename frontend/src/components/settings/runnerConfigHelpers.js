@@ -46,13 +46,15 @@ export const defaultRunnerConfig = (runner = {}) => {
   const jobTypes = { runsCi: true, runsMerges: true, runsImpromptu: true };
   if (source.jobTypes && typeof source.jobTypes === 'object') {
     for (const key of JOB_TYPE_KEYS) {
-      if (typeof source.jobTypes[key] === 'boolean') jobTypes[key] = source.jobTypes[key];
+      // Key comes from the fixed JOB_TYPE_KEYS allowlist, never operator input.
+      if (typeof source.jobTypes[key] === 'boolean') jobTypes[key] = source.jobTypes[key]; // eslint-disable-line security/detect-object-injection
     }
   }
   const directories = { masterDir: '', worktreeDir: '' };
   if (source.directories && typeof source.directories === 'object') {
     for (const key of ['masterDir', 'worktreeDir']) {
-      if (typeof source.directories[key] === 'string') directories[key] = source.directories[key];
+      // Key comes from a fixed literal pair, never operator input.
+      if (typeof source.directories[key] === 'string') directories[key] = source.directories[key]; // eslint-disable-line security/detect-object-injection
     }
   }
   return {
@@ -143,7 +145,7 @@ export const partitionProjects = (allProjects = [], loadedIds = []) => {
   const available = [];
   for (const project of Array.isArray(allProjects) ? allProjects : []) {
     if (!project || typeof project.id !== 'string') continue;
-     
+
     if (ids.has(project.id)) loaded.push(project);
     else available.push(project);
   }
@@ -207,7 +209,8 @@ export const scopePatchForLoaded = (loadedIds = [], allProjects = []) => {
 export const validateDirectories = (directories = {}) => {
   const errors = {};
   for (const key of ['masterDir', 'worktreeDir']) {
-    const value = directories?.[key];
+    // Key comes from a fixed literal pair, never operator input.
+    const value = directories?.[key]; // eslint-disable-line security/detect-object-injection
     if (typeof value !== 'string' || !value.trim()) {
       // eslint-disable-next-line security/detect-object-injection -- key is a fixed directory field name
       errors[key] = 'Enter a directory path.';
