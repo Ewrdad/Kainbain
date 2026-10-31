@@ -45,7 +45,9 @@ This is simply if there is no way to integrate with a harness at all.
 
 For the tier every registered harness offers on today's infrastructure —
 plus the theoretical maximum each could reach — see the companion table in
-[HarnessSupportLevels.md](HarnessSupportLevels.md). The System Settings ›
-Harness tab renders the same labels (backend-derived, per row); a superseded
+[HarnessSupportLevels.md](HarnessSupportLevels.md). The labels are
+backend-derived and served by `GET /harnesses` (the old System Settings ›
+Harness tab is gone; Runner tool availability now lives under System
+Settings › Runners); a superseded
 first cut of the table lives in
 [HarnessSupportTiersAdj.md](HarnessSupportTiersAdj.md).

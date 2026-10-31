@@ -158,6 +158,35 @@ describe('useTaskGoalDraft', () => {
     await act(async () => {});
   });
 
+  it('adopts the server goal when the same task record fills in after a goal-less first record', async () => {
+    // Live lists can carry a light record (id/status only) before the full
+    // record lands; the editor must not stay stuck on that empty goal.
+    const { result, rerender, props } = setup({ id: 'task-1', goal: '' });
+
+    expect(result.current.title).toBe('');
+
+    rerender({ ...props, task: { id: 'task-1', goal: 'Filled-in goal' } });
+
+    expect(result.current.title).toBe('Filled-in goal');
+    expect(result.current.hasPendingEdits).toBe(false);
+    // Settle any state chain inside act.
+    await act(async () => {});
+  });
+
+  it('never clobbers a local edit when the server goal changes underneath it', async () => {
+    const { result, rerender, props } = setup({ id: 'task-1', goal: 'Server goal' });
+
+    act(() => {
+      result.current.handleTitleChange('Local edit');
+    });
+    rerender({ ...props, task: { id: 'task-1', goal: 'Other server goal' } });
+
+    expect(result.current.title).toBe('Local edit');
+    expect(result.current.hasPendingEdits).toBe(true);
+    // Settle any pending save chain inside act.
+    await act(async () => {});
+  });
+
   it('registers its flush with the context and unregisters on unmount', () => {
     const { unmount, setPendingTaskSaveFlush } = setup({
       id: 'task-1',

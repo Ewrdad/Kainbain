@@ -1,4 +1,5 @@
 import { generateStageReportContent } from "../../watch/index.js";
+import { redactSecretsText } from "../../../shared/redactSecrets.js";
 import { recordReliabilitySample } from "../../watch/reliabilityShared.js";
 import { stageWantsReport } from "../../promptCuration.js";
 import { stageElapsedSeconds } from "../stagePolicy.js";
@@ -52,6 +53,12 @@ export async function applyRunnerReport({
 		throw err;
 	}
 	const project = projectStore?.getProject?.(projectId);
+	// The runner's completion payload (final assistant text, summaries) is
+	// committed to the repository via stage reports and task markdown — the
+	// same guarantee as the live log path: redact before persistence.
+	// Structured log entries ingested live are already redacted at creation.
+	const redactedOutput = redactSecretsText(outcome.output || "");
+	const redactedSummary = redactSecretsText(outcome.summary || "");
 	const stages = resolveStagesForTask(project, task);
 	const stage =
 		stages.find(
@@ -76,7 +83,7 @@ export async function applyRunnerReport({
 		// reason — thin "exit code 1" reports hid every branch result
 		// (task b5716327). handleStageFailure already renders error.stdout
 		// into the report, lastError, and timeline excerpt.
-		if (outcome.output) err.stdout = outcome.output;
+		if (redactedOutput) err.stdout = redactedOutput;
 		return routeStageError(
 			store,
 			projectId,
@@ -117,8 +124,8 @@ export async function applyRunnerReport({
 		const reportContent = generateStageReportContent({
 			task,
 			stage,
-			output: outcome.output || "",
-			summary: outcome.summary || "",
+			output: redactedOutput,
+			summary: redactedSummary,
 			modifiedFiles: outcome.modifiedFiles || [],
 			status: "PASSED",
 			duration,
@@ -151,9 +158,9 @@ export async function applyRunnerReport({
 		cwd,
 		bridge,
 		stageType,
-		finalOutput: outcome.output || "",
-		streamedOutput: outcome.output || "",
-		summary: outcome.summary || "",
+		finalOutput: redactedOutput,
+		streamedOutput: redactedOutput,
+		summary: redactedSummary,
 		modifiedFiles: outcome.modifiedFiles || [],
 		duration,
 		via,
@@ -176,8 +183,8 @@ export async function applyRunnerReport({
 		task,
 		stageType,
 		status: "passed",
-		output: outcome.output || "",
-		summary: outcome.summary || "",
+		output: redactedOutput,
+		summary: redactedSummary,
 		modifiedFiles: outcome.modifiedFiles || [],
 		model: stage.model || null,
 		duration,

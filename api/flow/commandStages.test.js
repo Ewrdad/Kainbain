@@ -17,6 +17,12 @@ const gitMocks = vi.hoisted(() => ({
 	pushBranchIfRemote: vi.fn(),
 	checkoutBranch: vi.fn(),
 	mergeBranch: vi.fn(),
+	squashMergeBranch: vi.fn(),
+	abortSquashMerge: vi.fn(),
+	deleteBranch: vi.fn(),
+	findSquashCommit: vi.fn(),
+	isBranchContentLanded: vi.fn(),
+	syncDefaultBranchToRemote: vi.fn(),
 	resolveConflictsWithIncoming: vi.fn(),
 	syncBranchWithUpstream: vi.fn(),
 	currentBranch: vi.fn(),
@@ -80,6 +86,14 @@ vi.mock("../git.js", async () => {
 		isValidBranchName: actual.isValidBranchName,
 		checkoutBranch: gitMocks.checkoutBranch,
 		mergeBranch: gitMocks.mergeBranch,
+		squashMergeBranch: gitMocks.squashMergeBranch,
+		abortSquashMerge: gitMocks.abortSquashMerge,
+		deleteBranch: gitMocks.deleteBranch,
+		findSquashCommit: gitMocks.findSquashCommit,
+		isBranchContentLanded: gitMocks.isBranchContentLanded,
+		syncDefaultBranchToRemote: gitMocks.syncDefaultBranchToRemote,
+		buildSquashCommitMessage: actual.buildSquashCommitMessage,
+		SQUASH_MERGE_STRATEGY: actual.SQUASH_MERGE_STRATEGY,
 		pushBranchIfRemote: gitMocks.pushBranchIfRemote,
 		requireCleanWorkingTree: gitMocks.requireCleanWorkingTree,
 		withCheckedOutBranch: gitMocks.withCheckedOutBranch,
@@ -305,6 +319,12 @@ describe("executeMergeStage publishing", () => {
 		gitMocks.defaultBranch.mockResolvedValue("main");
 		gitMocks.checkoutBranch.mockResolvedValue({ switched: true });
 		gitMocks.mergeBranch.mockResolvedValue({ merged: true });
+		gitMocks.squashMergeBranch.mockResolvedValue({ committed: true, hash: "c".repeat(40) });
+		gitMocks.findSquashCommit.mockResolvedValue(null);
+		gitMocks.isBranchContentLanded.mockResolvedValue(false);
+		gitMocks.deleteBranch.mockResolvedValue({ deleted: true });
+		gitMocks.syncDefaultBranchToRemote.mockResolvedValue({ synced: false, skipped: "no-remote" });
+		gitMocks.abortSquashMerge.mockResolvedValue(undefined);
 		gitMocks.pushBranchIfRemote.mockResolvedValue({ pushed: true, skipped: null });
 		gitMocks.countUniqueCommits.mockResolvedValue(2);
 		gitMocks.countBehindCommits.mockResolvedValue(0);
@@ -355,7 +375,7 @@ describe("executeMergeStage publishing", () => {
 		});
 
 		expect(result.status).toBe("passed");
-		expect(gitMocks.mergeBranch).toHaveBeenCalledWith("/repo", "kb/task-1");
+		expect(gitMocks.squashMergeBranch).toHaveBeenCalledWith("/repo", "kb/task-1", { commitMessage: expect.stringContaining("Kainbain-Task: task-1") });
 		expect(gitMocks.pushBranchIfRemote).toHaveBeenCalledWith("/repo", "main");
 		expect(store.handleStageFailure).not.toHaveBeenCalled();
 		expect(logText(task)).toContain("Pushed 'main' to remote after merge");
@@ -445,9 +465,9 @@ describe("executeMergeStage publishing", () => {
 		expect(logText(task)).toContain("skipped push of 'main' after merge");
 	});
 
-	it("still passes when the post-merge push fails (warning only)", async () => {
+	it("parks (blocking, no rewind) when the post-merge push still fails after convergence", async () => {
 		gitMocks.pushBranchIfRemote.mockRejectedValue(new Error("auth failed"));
-		const { store, task, stage } = mergeSetup();
+		const { store, stage } = mergeSetup();
 
 		const result = await executeMergeStage(store, {
 			projectId: "proj-1",
@@ -458,9 +478,11 @@ describe("executeMergeStage publishing", () => {
 			execRunner: okRunner,
 		});
 
-		expect(result.status).toBe("passed");
-		expect(store.handleStageFailure).not.toHaveBeenCalled();
-		expect(logText(task)).toContain("merge still passes");
+		expect(result.status).toBe("failed");
+		expect(store.handleStageFailure).toHaveBeenCalledTimes(1);
+		const failure = store.handleStageFailure.mock.calls[0][3];
+		expect(String(failure?.message || failure)).toContain("publishing it failed");
+		expect(store.handleStageFailure.mock.calls[0][4]).toMatchObject({ skipFailback: true });
 	});
 
 	it("refuses to merge a task branch with no work of its own", async () => {
@@ -479,7 +501,7 @@ describe("executeMergeStage publishing", () => {
 		expect(store.handleStageFailure).toHaveBeenCalledTimes(1);
 		const failure = store.handleStageFailure.mock.calls[0][3];
 		expect(String(failure?.message || failure)).toContain("no commits of its own");
-		expect(gitMocks.mergeBranch).not.toHaveBeenCalled();
+		expect(gitMocks.squashMergeBranch).not.toHaveBeenCalled();
 		expect(gitMocks.pushBranchIfRemote).not.toHaveBeenCalled();
 	});
 
@@ -521,7 +543,7 @@ describe("executeMergeStage publishing", () => {
 
 	it("keeps merge-conflict semantics: abort path fails back, main notes published", async () => {
 		const conflict = new MockGitMergeConflictError("Merge conflict", ["a.txt"]);
-		gitMocks.mergeBranch.mockRejectedValue(conflict);
+		gitMocks.squashMergeBranch.mockRejectedValue(conflict);
 		const { store, stage } = mergeSetup();
 
 		await executeMergeStage(store, {
@@ -569,7 +591,7 @@ describe("executeMergeStage publishing", () => {
 		// Fast path: neither the default-branch checkout nor the doomed
 		// merge is ever attempted.
 		expect(gitMocks.checkoutBranch).not.toHaveBeenCalled();
-		expect(gitMocks.mergeBranch).not.toHaveBeenCalled();
+		expect(gitMocks.squashMergeBranch).not.toHaveBeenCalled();
 		expect(gitMocks.pushBranchIfRemote).not.toHaveBeenCalled();
 		expect(String(failure?.message || failure)).toContain("no commits of its own");
 		expect(String(failure?.message || failure)).toContain("kb/task-1");
@@ -588,7 +610,7 @@ describe("executeMergeStage publishing", () => {
 		conflict.targetSha = "t".repeat(40);
 		conflict.baseSha = "b".repeat(40);
 		conflict.strategy = "merge --no-edit (auto-abort on conflict)";
-		gitMocks.mergeBranch.mockRejectedValue(conflict);
+		gitMocks.squashMergeBranch.mockRejectedValue(conflict);
 		const { store, stage } = mergeSetup();
 
 		await executeMergeStage(store, {
@@ -623,7 +645,7 @@ describe("executeMergeStage publishing", () => {
 		]);
 		// First (auto-aborting) merge fails; the heal retry keeps the
 		// conflicted state instead of aborting.
-		gitMocks.mergeBranch
+		gitMocks.squashMergeBranch
 			.mockRejectedValueOnce(conflict)
 			.mockRejectedValueOnce(
 				new MockGitMergeConflictError("Merge conflict", ["docs/tasks/task-1/task.md"]),
@@ -631,7 +653,7 @@ describe("executeMergeStage publishing", () => {
 		// Only the heal-finalize commit reports work; earlier stage
 		// bookkeeping commits stay empty as in the default fixture.
 		gitMocks.commitAllIfNeeded.mockImplementation(async (_cwd, message) =>
-			String(message).includes("auto-resolve regenerated snapshot conflicts")
+			String(message).includes("Kainbain-Task:")
 				? { committed: true, hash: "heal123" }
 				: { committed: false, hash: null },
 		);
@@ -649,8 +671,9 @@ describe("executeMergeStage publishing", () => {
 		expect(result.status).toBe("passed");
 		expect(store.handleStageFailure).not.toHaveBeenCalled();
 		// Retry ran without the auto-abort so resolution was possible.
-		expect(gitMocks.mergeBranch).toHaveBeenCalledWith("/repo", "kb/task-1", {
+		expect(gitMocks.squashMergeBranch).toHaveBeenCalledWith("/repo", "kb/task-1", {
 			abortOnConflict: false,
+			commitMessage: expect.any(String),
 		});
 		expect(gitMocks.resolveConflictsWithIncoming).toHaveBeenCalledWith("/repo", [
 			"docs/tasks/task-1/task.md",
@@ -666,7 +689,7 @@ describe("executeMergeStage publishing", () => {
 			"docs/tasks/task-1/task.md",
 			"src/real-code.js",
 		]);
-		gitMocks.mergeBranch.mockRejectedValue(conflict);
+		gitMocks.squashMergeBranch.mockRejectedValue(conflict);
 		const { store, stage } = mergeSetup();
 
 		await executeMergeStage(store, {
@@ -680,9 +703,9 @@ describe("executeMergeStage publishing", () => {
 
 		expect(store.handleStageFailure).toHaveBeenCalledTimes(1);
 		// No heal retry, no resolution, no finalize commit for the merge.
-		expect(gitMocks.mergeBranch).toHaveBeenCalledTimes(1);
+		expect(gitMocks.squashMergeBranch).toHaveBeenCalledTimes(1);
 		expect(gitMocks.resolveConflictsWithIncoming).not.toHaveBeenCalled();
-		expect(gitMocks.abortMerge).not.toHaveBeenCalled();
+		expect(gitMocks.abortSquashMerge).not.toHaveBeenCalled();
 		const failure = store.handleStageFailure.mock.calls[0][3];
 		expect(failure.conflictedFiles).toEqual([
 			"docs/tasks/task-1/task.md",
@@ -738,7 +761,7 @@ describe("executeMergeStage publishing", () => {
 		// no local actor can reconcile a diverged Runner ref).
 		expect(failureOpts?.skipFailback).toBe(true);
 		expect(failure?.gitDiagnostics?.kind).toBe("sync-blocked");
-		expect(gitMocks.mergeBranch).not.toHaveBeenCalled();
+		expect(gitMocks.squashMergeBranch).not.toHaveBeenCalled();
 	});
 
 	it("fails the merge when the upstream sync conflicts", async () => {
@@ -765,7 +788,7 @@ describe("executeMergeStage publishing", () => {
 		expect(store.handleStageFailure).toHaveBeenCalledTimes(1);
 		const syncFailureOpts = store.handleStageFailure.mock.calls[0][4];
 		expect(syncFailureOpts?.skipFailback).toBe(true);
-		expect(gitMocks.mergeBranch).not.toHaveBeenCalled();
+		expect(gitMocks.squashMergeBranch).not.toHaveBeenCalled();
 	});
 
 	it("publishes main bookkeeping before the merge attempt", async () => {
@@ -787,14 +810,14 @@ describe("executeMergeStage publishing", () => {
 			(call) => call[1] === "main",
 		);
 		expect(mainPushes.length).toBeGreaterThanOrEqual(2);
-		expect(gitMocks.mergeBranch.mock.invocationCallOrder[0]).toBeGreaterThan(
+		expect(gitMocks.squashMergeBranch.mock.invocationCallOrder[0]).toBeGreaterThan(
 			gitMocks.pushBranchIfRemote.mock.invocationCallOrder[0],
 		);
 	});
 
 	it("commits and publishes merge-attempt notes on main after a genuine conflict", async () => {
 		const conflict = new MockGitMergeConflictError("Merge conflict", ["src/real-code.js"]);
-		gitMocks.mergeBranch.mockRejectedValue(conflict);
+		gitMocks.squashMergeBranch.mockRejectedValue(conflict);
 		const { store, stage } = mergeSetup();
 
 		await executeMergeStage(store, {
@@ -898,6 +921,12 @@ describe("executeMergeStage landed-merge handling", () => {
 		gitMocks.defaultBranch.mockResolvedValue("main");
 		gitMocks.checkoutBranch.mockResolvedValue({ switched: true });
 		gitMocks.mergeBranch.mockResolvedValue({ merged: true });
+		gitMocks.squashMergeBranch.mockResolvedValue({ committed: true, hash: "c".repeat(40) });
+		gitMocks.findSquashCommit.mockResolvedValue(null);
+		gitMocks.isBranchContentLanded.mockResolvedValue(false);
+		gitMocks.deleteBranch.mockResolvedValue({ deleted: true });
+		gitMocks.syncDefaultBranchToRemote.mockResolvedValue({ synced: false, skipped: "no-remote" });
+		gitMocks.abortSquashMerge.mockResolvedValue(undefined);
 		gitMocks.pushBranchIfRemote.mockResolvedValue({ pushed: true, skipped: null });
 		gitMocks.countUniqueCommits.mockResolvedValue(2);
 		gitMocks.countBehindCommits.mockResolvedValue(0);
@@ -947,7 +976,7 @@ describe("executeMergeStage landed-merge handling", () => {
 		});
 
 		expect(result.status).toBe("passed");
-		expect(gitMocks.mergeBranch).not.toHaveBeenCalled();
+		expect(gitMocks.squashMergeBranch).not.toHaveBeenCalled();
 		expect(gitMocks.checkoutBranch).toHaveBeenCalledWith("/repo", "main", {
 			recovery: "off",
 		});
@@ -971,7 +1000,7 @@ describe("executeMergeStage landed-merge handling", () => {
 		});
 
 		expect(result.status).toBe("passed");
-		expect(gitMocks.mergeBranch).toHaveBeenCalledTimes(1);
+		expect(gitMocks.squashMergeBranch).toHaveBeenCalledTimes(1);
 		expect(store.handleStageFailure).not.toHaveBeenCalled();
 	});
 
@@ -993,7 +1022,7 @@ describe("executeMergeStage landed-merge handling", () => {
 			execRunner: okRunner,
 		});
 
-		expect(gitMocks.mergeBranch).not.toHaveBeenCalled();
+		expect(gitMocks.squashMergeBranch).not.toHaveBeenCalled();
 		expect(store.handleStageFailure).toHaveBeenCalledTimes(1);
 		const failureOpts = store.handleStageFailure.mock.calls[0][4];
 		expect(failureOpts?.skipFailback).not.toBe(true);
@@ -1016,7 +1045,7 @@ describe("executeMergeStage landed-merge handling", () => {
 		});
 
 		expect(result.status).toBe("passed");
-		expect(gitMocks.mergeBranch).not.toHaveBeenCalled();
+		expect(gitMocks.squashMergeBranch).not.toHaveBeenCalled();
 		expect(store.handleStageFailure).not.toHaveBeenCalled();
 		expect(store.advanceStage).toHaveBeenCalledTimes(1);
 		expect(logText(task)).toContain("already landed");
@@ -1040,7 +1069,7 @@ describe("executeMergeStage landed-merge handling", () => {
 		// integration exists on main, so only the publish step remains.
 		expect(store.ensureTaskBranch).not.toHaveBeenCalled();
 		expect(gitMocks.countUniqueCommits).not.toHaveBeenCalled();
-		expect(gitMocks.mergeBranch).not.toHaveBeenCalled();
+		expect(gitMocks.squashMergeBranch).not.toHaveBeenCalled();
 		expect(gitMocks.checkoutBranch).toHaveBeenCalledWith("/repo", "main", {
 			recovery: "off",
 		});
@@ -1069,7 +1098,7 @@ describe("executeMergeStage landed-merge handling", () => {
 		// the task must neither rewind (lost merge) nor pretend-pass (silent
 		// unmerged work). It parks failed with a clear reason.
 		expect(result.status).toBe("failed");
-		expect(gitMocks.mergeBranch).not.toHaveBeenCalled();
+		expect(gitMocks.squashMergeBranch).not.toHaveBeenCalled();
 		expect(task.currentStageId).toBe("merge-1");
 		const failureError = store.handleStageFailure.mock.calls[0][3];
 		expect(failureError.message).toContain("already landed on a previous run");
@@ -1123,7 +1152,7 @@ describe("executeMergeStage landed-merge handling", () => {
 		expect(store.handleStageFailure).toHaveBeenCalledTimes(1);
 		const failureOpts = store.handleStageFailure.mock.calls[0][4];
 		expect(failureOpts).toMatchObject({ skipFailback: true });
-		expect(gitMocks.mergeBranch).not.toHaveBeenCalled();
+		expect(gitMocks.squashMergeBranch).not.toHaveBeenCalled();
 	});
 
 	it("parks failed when checkout of the main branch fails during a landed re-entry", async () => {
@@ -1141,7 +1170,7 @@ describe("executeMergeStage landed-merge handling", () => {
 		});
 
 		expect(result.status).toBe("failed");
-		expect(gitMocks.mergeBranch).not.toHaveBeenCalled();
+		expect(gitMocks.squashMergeBranch).not.toHaveBeenCalled();
 		const failureOpts = store.handleStageFailure.mock.calls[0][4];
 		expect(failureOpts).toMatchObject({ skipFailback: true });
 	});
@@ -1168,7 +1197,7 @@ describe("executeMergeStage landed-merge handling", () => {
 
 		expect(gitMocks.isBranchMergedInto).toHaveBeenCalledWith("/repo", "main", "kb/task-1");
 		expect(result.status).toBe("passed");
-		expect(gitMocks.mergeBranch).not.toHaveBeenCalled();
+		expect(gitMocks.squashMergeBranch).not.toHaveBeenCalled();
 		expect(store.handleStageFailure).not.toHaveBeenCalled();
 		expect(store.advanceStage).toHaveBeenCalledTimes(1);
 		expect(logText(task)).toContain("already landed");
@@ -1198,7 +1227,7 @@ describe("executeMergeStage landed-merge handling", () => {
 		expect(String(failure?.message || failure)).toContain("no commits of its own");
 		const failureOpts = store.handleStageFailure.mock.calls[0][4];
 		expect(failureOpts?.skipFailback).not.toBe(true);
-		expect(gitMocks.mergeBranch).not.toHaveBeenCalled();
+		expect(gitMocks.squashMergeBranch).not.toHaveBeenCalled();
 	});
 
 	it("still refuses an empty branch when neither marker nor ancestry proves a landing", async () => {
@@ -1222,7 +1251,7 @@ describe("executeMergeStage landed-merge handling", () => {
 		expect(String(failure?.message || failure)).toContain("no commits of its own");
 		const failureOpts = store.handleStageFailure.mock.calls[0][4];
 		expect(failureOpts?.skipFailback).not.toBe(true);
-		expect(gitMocks.mergeBranch).not.toHaveBeenCalled();
+		expect(gitMocks.squashMergeBranch).not.toHaveBeenCalled();
 	});
 
 	it("saves a command-less Merge Stage Report and consumes merge markers on pass", async () => {
@@ -1254,7 +1283,7 @@ describe("executeMergeStage landed-merge handling", () => {
 		// The separation goal: a merge-stage failure names git operations
 		// only — never deploy evidence, gates, or post-merge commands.
 		const conflict = new MockGitMergeConflictError("Merge conflict", ["a.txt"]);
-		gitMocks.mergeBranch.mockRejectedValue(conflict);
+		gitMocks.squashMergeBranch.mockRejectedValue(conflict);
 		const { store, stage } = landedSetup();
 
 		await executeMergeStage(store, {

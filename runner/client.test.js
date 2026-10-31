@@ -100,6 +100,21 @@ describe("createRunnerClient", () => {
 		assert.equal(calls[4].url, "http://x:3100/tasks/t1/progress");
 	});
 
+	it("posts structured event batches to log-events with seq", async () => {
+		const { fetchImpl, calls } = stubFetch(() => ok({ accepted: true, seq: 0 }));
+		const client = createRunnerClient({ backendUrl: "http://x:3100", fetchImpl });
+		const events = [{ type: "tool_started", toolName: "bash" }];
+		await client.logEvents({ taskId: "t1", projectId: "p1", executionId: "e1", epoch: 1, seq: 0, events });
+		assert.equal(calls[0].url, "http://x:3100/tasks/t1/log-events");
+		assert.deepEqual(JSON.parse(calls[0].opts.body), {
+			projectId: "p1",
+			executionId: "e1",
+			epoch: 1,
+			seq: 0,
+			events,
+		});
+	});
+
 	it("complete forwards posture verbatim, including model-less CI postures", async () => {
 		const { fetchImpl, calls } = stubFetch(() => ok({ accepted: true }));
 		const client = createRunnerClient({ backendUrl: "http://x:3100", fetchImpl });

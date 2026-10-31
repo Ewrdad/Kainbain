@@ -73,10 +73,16 @@ export {
 
 export {
 	MERGE_STRATEGY,
+	SQUASH_MERGE_STRATEGY,
 	abortMerge,
+	abortSquashMerge,
 	buildGitConflictDiagnostics,
+	buildSquashCommitMessage,
+	findSquashCommit,
+	isBranchContentLanded,
 	isRegeneratedSnapshotPath,
 	mergeBranch,
+	squashMergeBranch,
 	isBranchMergedInto,
 	partitionMergeConflicts,
 	resolveConflictsWithIncoming,

@@ -67,6 +67,19 @@ export const MERGE_STRATEGY = "merge --no-edit (auto-abort on conflict)";
 
 
 /***
+ * MARK: SQUASH_MERGE_STRATEGY
+ * @description The landing invocation the merge stage uses: the task branch
+ *   is merged with --squash and committed as ONE commit on the default
+ *   branch whose message carries the task details (see
+ *   buildSquashCommitMessage), so `git log` on the default branch reads as
+ *   the project changelog — one line per landed task. Branch-internal syncs
+ *   (syncBranchWithUpstream) still use MERGE_STRATEGY above.
+ * @example SQUASH_MERGE_STRATEGY => "merge --squash + task-details commit (auto-abort on conflict)"
+ ***/
+export const SQUASH_MERGE_STRATEGY = "merge --squash + task-details commit (auto-abort on conflict)";
+
+
+/***
  * MARK: REGENERATED_SNAPSHOT_PATHS
  * @description Conflict paths the merge stage may resolve without a human:
  *   the engine's own live-state snapshots, which regenerate from store
@@ -338,6 +351,221 @@ export function buildGitConflictDiagnostics({
  * @param {boolean} [opts.abortOnConflict=true] - Roll back the conflicted merge.
  * @param {string} [opts.timeout=120000] - Merge command timeout in ms.
  * @returns {Promise<{stdout: string, stderr: string}>}
+ ***/
+/***
+ * MARK: buildSquashCommitMessage
+ * @description The commit message a squash landing writes on the default
+ *   branch: the task title as the subject (so `git log --oneline` is the
+ *   changelog), the goal as the body when it adds information, and
+ *   machine-readable trailers. The `Kainbain-Task:` trailer is how landed
+ *   detection finds the squash commit later (findSquashCommit) — ancestry
+ *   cannot, because a squash commit has only the default branch as parent.
+ *   Pure.
+ * @example buildSquashCommitMessage({ taskId: 'abc', title: 'Fix login', branch: 'kb/abc', mainBranch: 'main' }) => "Fix login\n\nKainbain-Task: abc\nKainbain-Branch: kb/abc"
+ * @param {Object} [args]
+ * @param {string} [args.taskId]
+ * @param {string} [args.title]
+ * @param {string} [args.goal]
+ * @param {string} [args.branch]
+ * @param {string} [args.mainBranch]
+ * @returns {string}
+ ***/
+export function buildSquashCommitMessage({ taskId = "", title = "", goal = "", branch = "", mainBranch = "" } = {}) {
+	const oneLine = (v) => String(v || "").replace(/\s+/g, " ").trim();
+	const subject = oneLine(title).slice(0, 200) || `Kainbain task ${oneLine(taskId) || "unknown"}`;
+	const lines = [subject, ""];
+	const goalLine = oneLine(goal);
+	if (goalLine && goalLine !== subject) lines.push(goalLine, "");
+	if (taskId) lines.push(`Kainbain-Task: ${oneLine(taskId)}`);
+	if (branch) lines.push(`Kainbain-Branch: ${oneLine(branch)}`);
+	if (mainBranch) lines.push(`Kainbain-Landed-On: ${oneLine(mainBranch)}`);
+	while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+	return lines.join("\n");
+}
+
+
+/***
+ * MARK: findSquashCommit
+ * @description Finds the squash-landing commit for a task on `base` by its
+ *   `Kainbain-Task:` trailer. Returns the commit sha, or null when the task
+ *   has not squash-landed (or git cannot say — fail-closed to null).
+ * @example await findSquashCommit('/repo', 'main', 'abc-123') => 'deadbeef…' | null
+ * @param {string} projectCwd
+ * @param {string} base - Branch to search (the default branch).
+ * @param {string} taskId
+ * @returns {Promise<string|null>}
+ ***/
+export async function findSquashCommit(projectCwd, base, taskId) {
+	if (!isValidBranchName(base)) return null;
+	const id = String(taskId || "").trim();
+	if (!id || /[\r\n]/.test(id)) return null;
+	try {
+		const { stdout } = await git(projectCwd, [
+			"log", "--format=%H", "-1", "--fixed-strings", `--grep=Kainbain-Task: ${id}`, base,
+		]);
+		return stdout.trim().split("\n")[0] || null;
+	} catch {
+		return null;
+	}
+}
+
+
+/***
+ * MARK: isBranchContentLanded
+ * @description Content-based landed evidence for squash merges: true when
+ *   merging `branch` into `base` would change nothing (the merge result
+ *   tree equals the base tree), i.e. every change on the branch is already
+ *   in the base — exactly the state a squash landing leaves. Ancestry
+ *   (isBranchMergedInto) also satisfies this, so older full merges keep
+ *   reading as landed. Any git failure or merge conflict fails closed
+ *   (false): without proof, work is treated as unlanded.
+ * @example await isBranchContentLanded('/repo', 'main', 'kb/123') => true
+ * @param {string} projectCwd
+ * @param {string} base - Integration branch (usually the default branch).
+ * @param {string} branch - Task branch to test.
+ * @returns {Promise<boolean>}
+ ***/
+export async function isBranchContentLanded(projectCwd, base, branch) {
+	if (!isValidBranchName(base) || !isValidBranchName(branch)) return false;
+	try {
+		const { stdout: baseTree } = await git(projectCwd, ["rev-parse", `${base}^{tree}`]);
+		const { stdout: mergedTree } = await git(projectCwd, ["merge-tree", "--write-tree", base, branch]);
+		const merged = mergedTree.trim().split("\n")[0];
+		return Boolean(merged) && merged === baseTree.trim();
+	} catch {
+		return false;
+	}
+}
+
+
+/***
+ * MARK: abortSquashMerge
+ * @description Aborts an in-progress squash merge. A squash merge sets no
+ *   MERGE_HEAD, so `git merge --abort` cannot see it; `git reset --merge`
+ *   restores the pre-merge tree and index. Falls back to merge --abort for
+ *   a regular merge state. Errors are swallowed when nothing is in
+ *   progress (idempotent cleanup), mirroring abortMerge.
+ * @example await abortSquashMerge('/repo')
+ * @param {string} projectCwd
+ * @returns {Promise<void>}
+ ***/
+export async function abortSquashMerge(projectCwd) {
+	try {
+		await git(projectCwd, ["reset", "--merge"]);
+		return;
+	} catch {
+		// Fall through to the regular-merge abort below.
+	}
+	try {
+		await git(projectCwd, ["merge", "--abort"]);
+	} catch {
+		if (await isMergeInProgress(projectCwd)) {
+			throw new GitError("Failed to abort in-progress squash merge (git reset --merge and git merge --abort both failed)");
+		}
+	}
+}
+
+
+/***
+ * MARK: squashMergeBranch
+ * @description Squash-lands the given branch into the CURRENT branch as a
+ *   single commit carrying `opts.commitMessage` (buildSquashCommitMessage:
+ *   task title as subject + Kainbain-Task trailer), so default-branch
+ *   history reads as a changelog. Conflict behaviour mirrors mergeBranch:
+ *   the attempt is rolled back (unless opts.abortOnConflict === false) and
+ *   a GitMergeConflictError is thrown with the same canonical message and
+ *   diagnostics (strategy SQUASH_MERGE_STRATEGY), so the snapshot-healing
+ *   and Tier 3 failback paths keep working unchanged. When the merge
+ *   shelves no changes (branch content already identical), resolves
+ *   `{ committed: false, empty: true }` instead of writing an empty commit.
+ * @example await squashMergeBranch('/repo', 'kb/task-1', { commitMessage }) => { committed: true, hash: '…' }
+ * @param {string} projectCwd
+ * @param {string} branch - Branch to squash INTO the current branch.
+ * @param {Object} [opts]
+ * @param {string} [opts.commitMessage] - Commit message for the squash commit.
+ * @param {boolean} [opts.abortOnConflict=true] - Roll back the conflicted merge.
+ * @param {number} [opts.timeout=120000] - Merge command timeout in ms.
+ * @returns {Promise<{committed: boolean, empty?: boolean, hash?: string, stdout: string, stderr: string}>}
+ ***/
+export async function squashMergeBranch(projectCwd, branch, opts = {}) {
+	_assertValidBranchName(branch, "merge");
+	const abortOnConflict = opts.abortOnConflict !== false;
+	if (await isMergeInProgress(projectCwd)) {
+		await abortMerge(projectCwd);
+	}
+	await ensureGitIdentity(projectCwd);
+	const readSha = async (args) => {
+		try {
+			const { stdout } = await git(projectCwd, args);
+			return stdout.trim() || null;
+		} catch {
+			return null;
+		}
+	};
+	const [sourceSha, targetSha, baseSha] = await Promise.all([
+		readSha(["rev-parse", "--verify", branch]),
+		readSha(["rev-parse", "--verify", "HEAD"]),
+		readSha(["merge-base", "HEAD", branch]),
+	]);
+	let result;
+	try {
+		result = await git(projectCwd, ["merge", "--squash", branch], {
+			timeout: opts.timeout || 120000,
+		});
+	} catch (e) {
+		const conflicted =
+			e instanceof GitMergeConflictError ||
+			/CONFLICT|(Automatic merge failed|merge failed because)|unmerged files/i.test(
+				`${e.message || ""}\n${e.stdout || ""}\n${e.stderr || ""}`,
+			);
+		let conflictedFiles = [];
+		try {
+			const { stdout } = await git(projectCwd, ["diff", "--name-only", "--diff-filter=U"]);
+			conflictedFiles = stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+		} catch {
+			// best effort
+		}
+		if (!conflicted && conflictedFiles.length === 0) throw e;
+		if (abortOnConflict) {
+			try {
+				await abortSquashMerge(projectCwd);
+			} catch {
+				// Re-surface via the conflict error below.
+			}
+		}
+		throw new GitMergeConflictError(
+			"Merge conflict: please resolve all merge conflicts with main",
+			{
+				conflictedFiles,
+				sourceSha,
+				targetSha,
+				baseSha,
+				strategy: SQUASH_MERGE_STRATEGY,
+				code: e.code,
+				args: e.args,
+				stdout: e.stdout,
+				stderr: e.stderr,
+			},
+		);
+	}
+	// Nothing staged: the branch adds no net change over the current tree.
+	try {
+		await git(projectCwd, ["diff", "--cached", "--quiet"]);
+		return { committed: false, empty: true, stdout: result.stdout, stderr: result.stderr };
+	} catch {
+		// Staged changes exist — commit them below.
+	}
+	const message = String(opts.commitMessage || "").trim() || `Squash merge of '${branch}'`;
+	await git(projectCwd, ["commit", "-m", message], { timeout: opts.timeout || 120000 });
+	const hash = await readSha(["rev-parse", "--verify", "HEAD"]);
+	return { committed: true, hash, stdout: result.stdout, stderr: result.stderr };
+}
+
+
+/***
+ * MARK: mergeBranch
+ * @description Merges the given branch into the CURRENT branch. On conflict the merge is aborted (unless opts.abortOnConflict === false) and a GitError is thrown.
+ * @example await mergeBranch("/repo", "kb/task-1") => { stdout, stderr }
  ***/
 export async function mergeBranch(projectCwd, branch, opts = {}) {
 	_assertValidBranchName(branch, "merge");

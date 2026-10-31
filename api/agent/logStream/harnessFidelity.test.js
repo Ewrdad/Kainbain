@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAgentLogStreamer } from "./agentLogStreamer.js";
+import { AGENT_EVENT_NAMES } from "../sessionEvents.js";
 import { translatePiEvent } from "../harnesses/pi/piSessionEvents.js";
 import { translateOpencodeEvent } from "../harnesses/opencode/opencodeSessionEvents.js";
 import { createVibeEventMapper } from "../harnesses/vibe/vibeEventMapper.js";
@@ -219,6 +220,150 @@ describe("harness fidelity gate — muse", () => {
 		expect(kinds(entries)).toContain("system");
 		expect(kinds(entries)).toContain("assistant");
 		expect(entries.filter((e) => e.kind === "raw")).toHaveLength(0);
+	});
+});
+
+describe("parity contract — every AGENT_EVENT_NAMES entry maps to a structured record", () => {
+	const MINIMAL_EVENT = {
+		run_started: { type: "run_started" },
+		assistant_delta: {
+			type: "assistant_delta",
+			assistantMessageEvent: { type: "text_delta", delta: "hi" },
+		},
+		message_started: { type: "message_started", message: { role: "assistant" } },
+		tool_started: {
+			type: "tool_started",
+			toolName: "bash",
+			toolCallId: "c-parity",
+			args: { command: "ls" },
+		},
+		tool_updated: {
+			type: "tool_updated",
+			toolName: "bash",
+			toolCallId: "c-parity",
+			partialResult: "partial",
+		},
+		tool_finished: {
+			type: "tool_finished",
+			toolName: "bash",
+			toolCallId: "c-parity",
+			result: "ok",
+			durationMs: 212,
+		},
+		run_finished: { type: "run_finished" },
+		run_error: { type: "run_error", error: { message: "boom" } },
+		usage_updated: {
+			type: "usage_updated",
+			usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+		},
+		session_meta: { type: "session_meta", model: "probe-model" },
+		permission_requested: {
+			type: "permission_requested",
+			method: "bash",
+			target: "ls",
+		},
+		permission_resolved: {
+			type: "permission_resolved",
+			method: "bash",
+			target: "ls",
+			decision: "allow",
+		},
+		plan_updated: { type: "plan_updated", steps: [{ title: "read" }] },
+		reasoning_delta: { type: "reasoning_delta", delta: "hmm" },
+		harness_log: { type: "harness_log", text: "[PROBE] hello" },
+	};
+
+	it("covers every name with no raw-lane leakage", () => {
+		// The plan doc says "17" — the actual vocabulary is 15 (8 original
+		// + 7 unified). This assertion pins the real count so a miscount
+		// in either direction fails loudly.
+		expect(AGENT_EVENT_NAMES).toHaveLength(15);
+		for (const name of AGENT_EVENT_NAMES) {
+			// eslint-disable-next-line security/detect-object-injection -- name comes from the frozen AGENT_EVENT_NAMES vocabulary
+			expect(MINIMAL_EVENT[name], `missing fixture for '${name}'`).toBeDefined();
+		}
+		const streamer = createAgentLogStreamer();
+		const emitted = [];
+		for (const name of AGENT_EVENT_NAMES) {
+			emitted.push(
+				...streamer.handleEvent({
+					// eslint-disable-next-line security/detect-object-injection -- name comes from the frozen AGENT_EVENT_NAMES vocabulary
+					...MINIMAL_EVENT[name],
+					// Track provenance per name without changing the payload
+					// shape the processor reads.
+					probeName: name,
+				}),
+			);
+		}
+		// Close the open text block ("hi") the way a run boundary would.
+		emitted.push(
+			...streamer.handleEvent({
+				type: "assistant_delta",
+				assistantMessageEvent: { type: "text_end" },
+			}),
+		);
+		// Assert on the persisted snapshot (what the backend stores and the
+		// UI renders as history), not just the per-call returns: the full
+		// thinking block lands on the thinking feed at snapshot time while
+		// the per-call return carries only its main-feed marker.
+		const stored = streamer.snapshot().entries;
+		const kinds = new Set(stored.map((e) => e.kind));
+		for (const kind of [
+			"assistant",
+			"thinking",
+			"tool",
+			"error",
+			"system",
+			"telemetry",
+			"permission",
+			"plan",
+		]) {
+			expect(kinds, `missing canonical kind '${kind}'`).toContain(kind);
+		}
+		expect(stored.filter((e) => e.kind === "raw")).toHaveLength(0);
+		const feeds = new Set(stored.flatMap((e) => e.feeds));
+		for (const feed of ["main", "thinking", "tools", "telemetry"]) {
+			expect(feeds, `missing feed '${feed}'`).toContain(feed);
+		}
+	});
+
+	it("carries tool args, full results, and per-step timings", () => {
+		const streamer = createAgentLogStreamer();
+		streamer.handleEvent(MINIMAL_EVENT.tool_started);
+		streamer.handleEvent(MINIMAL_EVENT.tool_updated);
+		const emitted = streamer.handleEvent(MINIMAL_EVENT.tool_finished);
+		const result = emitted.find((e) => e.text.startsWith("[RESULT]"));
+		expect(result).toBeDefined();
+		expect(result.text).toBe("[RESULT] ok (212ms)");
+		expect(result.meta.durationMs).toBe(212);
+		expect(result.tool).toMatchObject({ name: "bash", durationMs: 212 });
+		const snapshot = streamer.snapshot().entries;
+		const call = snapshot.find((e) => e.text.startsWith("[TOOL]"));
+		expect(call.text).toContain("ls");
+		expect(call.tool.args).toEqual({ command: "ls" });
+		expect(call.meta.output).toContain("ok");
+	});
+
+	it("redacts secrets in tool args and results before persistence", () => {
+		const streamer = createAgentLogStreamer();
+		streamer.handleEvent({
+			type: "tool_started",
+			toolName: "bash",
+			toolCallId: "c-redact",
+			args: { command: "curl", apiKey: "supersecretvalue" },
+		});
+		const emitted = streamer.handleEvent({
+			type: "tool_finished",
+			toolName: "bash",
+			toolCallId: "c-redact",
+			result: "token: hunter2hunter",
+		});
+		const snapshot = streamer.snapshot().entries;
+		const call = snapshot.find((e) => e.tool?.callId === "c-redact");
+		expect(call.tool.args).toEqual({ command: "curl", apiKey: "[REDACTED]" });
+		expect(call.meta.output).not.toContain("hunter2hunter");
+		const result = emitted.find((e) => e.text.startsWith("[RESULT]"));
+		expect(result.text).not.toContain("hunter2hunter");
 	});
 });
 

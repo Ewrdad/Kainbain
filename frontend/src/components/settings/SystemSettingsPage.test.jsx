@@ -130,6 +130,11 @@ describe('SystemSettingsPage', () => {
     expect(screen.getByRole('tab', { name: 'Storage' })).toHaveAttribute('aria-selected', 'true');
   });
 
+  it('lands legacy harness and runner deep links on the Runners tab', async () => {
+    renderAt('/system-settings/harness');
+    expect(screen.getByRole('tab', { name: 'Runners' })).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('falls back to the first tab for an unknown section without breaking the screen', async () => {
     renderAt('/system-settings/does-not-exist');
     expect(screen.getByTestId('system-settings-page')).toBeInTheDocument();
