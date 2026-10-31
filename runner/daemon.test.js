@@ -16,6 +16,7 @@ import {
 	applyBackendPrompt,
 	startClaimRenewal,
 	RUNNER_API_VERSION,
+	RUNNER_VERSION,
 	ciWorkdirFor,
 } from "./daemon.js";
 import { servingModelFor } from "../shared/servingModelFor.js";
@@ -34,6 +35,18 @@ describe("RUNNER_API_VERSION", () => {
 	it("equals runner/version.json apiVersion", () => {
 		const parsed = JSON.parse(fs.readFileSync(new URL("./version.json", import.meta.url), "utf8"));
 		assert.equal(RUNNER_API_VERSION, parsed.apiVersion);
+	});
+});
+
+describe("RUNNER_VERSION", () => {
+	it("equals runner/version.json runnerVersion (the update channel + fleet matrix compare this)", () => {
+		const parsed = JSON.parse(fs.readFileSync(new URL("./version.json", import.meta.url), "utf8"));
+		assert.equal(RUNNER_VERSION, parsed.runnerVersion);
+	});
+
+	it("is a semver product version independent of the api version", () => {
+		assert.match(String(RUNNER_VERSION), /^\d+\.\d+\.\d+/);
+		assert.equal(typeof RUNNER_VERSION, "string");
 	});
 });
 

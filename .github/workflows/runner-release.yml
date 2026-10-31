@@ -1,0 +1,111 @@
+name: Runner Release
+
+on:
+  push:
+    tags:
+      - "runner-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Runner version to release (semver, e.g. 1.2.3). Tag builds use the tag name."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+          - os: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+          - os: macos-14
+            platform: darwin
+            arch: arm64
+          - os: macos-15-intel
+            platform: darwin
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+      - name: Unit tests (runner update channel gate)
+        run: node --test runner/updates-platform.test.js runner/updates-manifest.test.js runner/updates-verify.test.js runner/updates-state.test.js runner/updates-check.test.js runner/updates-daemon.test.js runner/updates-fixture.test.js runner/config.test.js
+      - name: Package runner archive
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${INPUT_VERSION:-${TAG#runner-v}}"
+          VERSION="${VERSION%%-*}"
+          node scripts/package-runner.mjs --platform "${{ matrix.platform }}" --arch "${{ matrix.arch }}" --version "$VERSION" --out dist/
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runner-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/kainbain-runner-*.tar.gz
+          if-no-files-found: error
+
+  manifest-and-release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+      - name: Pinned-key consistency check
+        run: |
+          PUB_FILE="$(grep -v '^untrusted comment:' scripts/runner-pinned-key/runner-release.pub | tr -d '[:space:]')"
+          PUB_SRC="$(node -e "import('./runner/updates/verify.js').then((m) => console.log(m.PINNED_RELEASE_PUBLIC_KEY))")"
+          if [ "$PUB_FILE" != "$PUB_SRC" ]; then
+            echo "::error::Pinned release key mismatch: scripts/runner-pinned-key/runner-release.pub != PINNED_RELEASE_PUBLIC_KEY in runner/updates/verify.js. Regenerate with node scripts/runner-release-keygen.mjs."
+            exit 1
+          fi
+          echo "Pinned release key matches."
+      - name: Build and sign manifest
+        env:
+          RUNNER_RELEASE_SIGNING_KEY: ${{ secrets.RUNNER_RELEASE_SIGNING_KEY }}
+          RUNNER_RELEASE_SIGNING_KEYNUM: ${{ secrets.RUNNER_RELEASE_SIGNING_KEYNUM }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#runner-v}"
+          VERSION="${VERSION%%-*}"
+          node scripts/generate-runner-manifest.mjs --dir dist/ --version "$VERSION" --tag "$TAG"
+      - name: Version sanity check
+        run: |
+          node -e "
+            import('fs').then((fs) => {
+              const m = JSON.parse(fs.readFileSync('dist/manifest.json', 'utf8'));
+              if (m.schema !== 1 || m.component !== 'runner' || m.assets.length !== 4) throw new Error('manifest shape invalid');
+              for (const a of m.assets) { if (!fs.existsSync('dist/' + a.filename)) throw new Error('missing asset ' + a.filename); }
+              console.log('manifest ok:', m.version, m.assets.length + ' assets');
+            });
+          "
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [[ "$TAG" == *"-rc."* || "$TAG" == *"-beta"* || "$TAG" == *"-alpha"* ]]; then
+            PRERELEASE="--prerelease"
+          else
+            PRERELEASE=""
+          fi
+          # shellcheck disable=SC2086
+          gh release create "$TAG" dist/*.tar.gz dist/manifest.json dist/manifest.json.minisig \
+            --title "Runner $TAG" \
+            --notes "Runner release $TAG. Runners self-update on idle: manifest signature is verified against the pinned key, then each asset sha256. Rollback: delete this release (or mark the previous one latest) and lower KAINBAIN_RUNNER_RECOMMENDED_VERSION. See PORTABLE_DEPLOYMENT.md 'Runner updates'." \
+            $PRERELEASE

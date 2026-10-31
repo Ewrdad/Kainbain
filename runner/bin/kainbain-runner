@@ -1,0 +1,47 @@
+#!/bin/bash
+# kainbain-runner — supported entrypoint for a self-updating Runner install.
+#
+# Layout (see runner/updates/state.js):
+#   $RUNNER_INSTALL_ROOT/
+#     releases/<version>/unpacked/   versioned trees (current + previous kept)
+#     current -> releases/<v>/unpacked
+#     previous -> releases/<v-1>/unpacked
+#     update-state.json
+#
+# The wrapper resolves `current` on every (re)start, so an in-place update
+# that flips the symlink takes effect on the next boot. Exit code 0 means
+# "restart me" (the daemon exits 0 after staging an update); any non-zero
+# code stops the loop.
+set -u
+
+INSTALL_ROOT="${KAINBAIN_RUNNER_INSTALL_ROOT:-$HOME/.kainbain/runner-install}"
+ENTRY="runner/main.js"
+
+resolve_current() {
+	if [ -L "$INSTALL_ROOT/current" ]; then
+		readlink "$INSTALL_ROOT/current"
+	else
+		echo "$INSTALL_ROOT/current"
+	fi
+}
+
+RESTARTS=0
+while true; do
+	TARGET="$(resolve_current)"
+	if [ ! -f "$TARGET/$ENTRY" ]; then
+		echo "kainbain-runner: no runner tree at $TARGET/$ENTRY (run a release install first)" >&2
+		exit 1
+	fi
+	node "$TARGET/$ENTRY" "$@"
+	CODE=$?
+	if [ "$CODE" -ne 0 ]; then
+		exit "$CODE"
+	fi
+	RESTARTS=$((RESTARTS + 1))
+	if [ "$RESTARTS" -gt 50 ]; then
+		echo "kainbain-runner: too many fast restarts; stopping" >&2
+		exit 1
+	fi
+	echo "kainbain-runner: restarting from $(resolve_current) (restart #$RESTARTS)"
+	sleep 2
+done

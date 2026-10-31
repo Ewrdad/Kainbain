@@ -55,6 +55,21 @@ export function loadRunnerConfig(env = process.env) {
 		errors.push("KAINBAIN_RUNNER_TASK_ID is required (or set KAINBAIN_RUNNER_DISPATCH=1).");
 	}
 
+	// Self-update channel (Option A, ADR 0012): pull-based, idle-only, and
+	// signature-verified against the pinned key in runner/updates/verify.js.
+	// KAINBAIN_RUNNER_UPDATE_URL overrides the release pointer for
+	// air-gapped mirrors (full manifest.json URL or a base serving
+	// manifest.json + manifest.json.minisig + assets).
+	const updateUrl = str(
+		"KAINBAIN_RUNNER_UPDATE_URL",
+		"https://api.github.com/repos/Ewrdad/Kainbain/releases/latest",
+	);
+	const autoUpdate = str("KAINBAIN_RUNNER_AUTO_UPDATE", "1") !== "0";
+	const updateCheckIntervalMs = Number.parseInt(
+		str("KAINBAIN_RUNNER_UPDATE_CHECK_INTERVAL_MS", "3600000"),
+		10,
+	);
+
 	const heartbeatMs = Number.parseInt(str("KAINBAIN_RUNNER_HEARTBEAT_MS", "15000"), 10);
 	const approvalPollMs = Number.parseInt(str("KAINBAIN_RUNNER_APPROVAL_POLL_MS", "5000"), 10);
 	const approvalTimeoutMs = Number.parseInt(str("KAINBAIN_RUNNER_APPROVAL_TIMEOUT_MS", "300000"), 10);
@@ -63,6 +78,13 @@ export function loadRunnerConfig(env = process.env) {
 
 	return {
 		backendUrl,
+		installRoot: str("KAINBAIN_RUNNER_INSTALL_ROOT", ""),
+		updateUrl,
+		autoUpdate,
+		updateCheckIntervalMs:
+			Number.isFinite(updateCheckIntervalMs) && updateCheckIntervalMs >= 300000
+				? updateCheckIntervalMs
+				: 3600000,
 		joinToken: str("KAINBAIN_RUNNER_JOIN_TOKEN", ""),
 		credential: str("KAINBAIN_RUNNER_CREDENTIAL", ""),
 		runnerId,

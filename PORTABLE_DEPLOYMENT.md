@@ -403,6 +403,58 @@ Consequences for operators:
   lands with the Runner work. Existing local-only projects keep the
   loopback transport and are never offered to remote Runners.
 
+## Runner updates (external artifact channel, ADR 0012)
+
+External Runners self-update from versioned GitHub Releases — never from
+the backend (rejected Option B: backend-served code would maximise the R05
+blast radius and couple updates to backend uptime).
+
+- **Automatic, idle-only.** The dispatch loop checks
+  `https://api.github.com/repos/Ewrdad/Kainbain/releases/latest` on a
+  jittered hourly interval (`KAINBAIN_RUNNER_UPDATE_CHECK_INTERVAL_MS`,
+  min 5 min) when it holds no task, and when the backend refuses dispatch
+  with 409 `RUNNER_VERSION_BELOW_MINIMUM`. Set
+  `KAINBAIN_RUNNER_AUTO_UPDATE=0` to opt out.
+- **Verified, not trusted.** The manifest signature is checked against the
+  public key pinned in `runner/updates/verify.js` (never fetched from the
+  network), then the asset sha256 against the manifest. Any mismatch aborts,
+  keeps the old version running, and reports via heartbeat facts
+  (`updateStatus`) for the Settings › Runners "update failed" badge.
+- **Atomic with rollback.** The new tree stages under
+  `$KAINBAIN_RUNNER_INSTALL_ROOT/releases/<v>/unpacked`, then the
+  `current` symlink flips (previous kept as `previous`). The daemon exits 0
+  and `runner/bin/kainbain-runner` (the supported entrypoint) restarts it
+  into the new version. Three crashed boots in a row flip `current` back to
+  `previous` automatically. Direct `node runner/main.js` is dev-only after
+  the first update — it cannot restart itself.
+- **Backend coordination, no code transfer.** Runners report
+  `facts.versions.runner` on register/heartbeat. Settings › Runners shows
+  the fleet version matrix with an "update available" badge (below
+  `KAINBAIN_RUNNER_RECOMMENDED_VERSION`) and a "below minimum" flag.
+  Dispatch and direct claim refuse Runners below
+  `KAINBAIN_RUNNER_MIN_VERSION` with 409 (routine releases raise only the
+  recommended knob, so dispatch keeps flowing).
+- **Rollback a bad release.** Delete (or un-publish) the bad GitHub release
+  so `releases/latest` resolves to the prior tag, then lower
+  `KAINBAIN_RUNNER_RECOMMENDED_VERSION` to stop badge nagging. Runners pick
+  the prior release up on their next idle check. Re-tagging is never needed.
+- **Air-gapped/offline hosts.** Point `KAINBAIN_RUNNER_UPDATE_URL` at a
+  mirror serving `manifest.json` + `manifest.json.minisig` + the asset
+  tarballs at one base URL (or a full `manifest.json` URL). The same
+  signature + sha256 gates apply to mirrors.
+- **First-release key provisioning (operator, once).** Run
+  `node scripts/runner-release-keygen.mjs`, commit the printed public line
+  to `scripts/runner-pinned-key/runner-release.pub` **and** to
+  `PINNED_RELEASE_PUBLIC_KEY` in `runner/updates/verify.js` (CI fails the
+  release when they differ), and store the secret halves in the GitHub
+  Actions secrets `RUNNER_RELEASE_SIGNING_KEY` / `RUNNER_RELEASE_SIGNING_KEYNUM`.
+  Cutting a release is `git tag runner-vX.Y.Z && git push origin runner-vX.Y.Z`
+  (pre-release tags `*-rc.N`/`*-beta*`/`*-alpha*` publish as pre-release and
+  are skipped by v1 Runners). `minisign` CLI install is not required
+  anywhere — signing and verification are pure Node + Ed25519. Linux and
+  macOS (x64/arm64) ship; Windows is deferred.
+- **Linux/macOS only in v1** (x64 + arm64, four assets per release).
+
 ## Troubleshooting
 
 | Symptom | Fix |

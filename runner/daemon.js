@@ -6,6 +6,8 @@ import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTask
 import { RunnerGitError } from "./project.js";
 import { runHarnessStage } from "./harness.js";
 import { createStructuredEventSender } from "./logEvents.js";
+import { applyUpdate as defaultApplyUpdate, checkForUpdate as defaultCheckForUpdate } from "./updates/index.js";
+import { defaultInstallRoot, markUpdateSuccess, readUpdateState } from "./updates/state.js";
 // The Runner bundle ships shared/ next to this folder (runner/{runner,api,shared}
 // in prod and in the distributable tarball), so ../shared resolves both in the
 // repo and in every deployed layout — the same copy the backend executes.
@@ -13,7 +15,24 @@ import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { commitAndPush } from "./gitOps.js";
 
-export const RUNNER_VERSION = "0.1.0";
+/***
+ * MARK: RUNNER_VERSION
+ * @description Runner product version (the update channel + fleet matrix
+ *   compare this, not the API version). Loaded from runner/version.json
+ *   `runnerVersion` beside daemon.js; falls back to the pinned fallback
+ *   when the file is unreadable. The release packager stamps version.json
+ *   per release, so a self-updated Runner re-registers as the new version.
+ * @example RUNNER_VERSION => '0.1.0'
+ ***/
+export const RUNNER_VERSION = (() => {
+	try {
+		const file = new URL("./version.json", import.meta.url);
+		const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+		return typeof parsed?.runnerVersion === "string" && parsed.runnerVersion ? parsed.runnerVersion : "0.1.0";
+	} catch {
+		return "0.1.0";
+	}
+})();
 
 /***
  * MARK: RUNNER_API_VERSION
@@ -250,7 +269,7 @@ export async function defaultLoadHarness(harnessId) {
 	throw new Error(`Unknown harness ${harnessId} (supported: mock, pi, muse, antigravity, vibe).`);
 }
 
-function factsFor({ config, harnessVersions }) {
+function factsFor({ config, harnessVersions, updateStatus = null }) {
 	const versionFor = (id) =>
 		harnessVersions?.[id] ?? harnessVersionCache.get(id)?.[id] ?? "unknown";
 	return {
@@ -264,6 +283,7 @@ function factsFor({ config, harnessVersions }) {
 		tiers: config.tiers,
 		diskHeadroomMb: diskHeadroomMbFor(config.workRoot),
 		versions: { protocol: "v1", runner: RUNNER_VERSION, api: RUNNER_API_VERSION },
+		...(updateStatus ? { updateStatus } : {}),
 	};
 }
 
@@ -329,15 +349,29 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
 	for (const id of runnerHarnessIds(config)) {
 		Object.assign(harnessVersions, await probeHarnessVersions(id));
 	}
-	const facts = factsFor({ config, harnessVersions });
+	const facts = factsFor({ config, harnessVersions, updateStatus: state?.updateStatus ?? null });
 	const beat = await client.heartbeat({ runnerId: config.runnerId, facts });
 	if (beat.status !== "active") {
 		throw new Error(`Runner ${config.runnerId} is ${beat.status}; need an active registration.`);
 	}
+	// Self-update close-out (Option A, ADR 0012): a fresh boot that staged
+	// an update left state pending-boot; the first successful heartbeat on
+	// the NEW version proves the release boots, so mark success (this also
+	// re-registers the new RUNNER_VERSION in the backend fleet matrix).
+	// Never blocks boot: a missing/corrupt state file just skips.
+	try {
+		const installRoot = installRootFor(config);
+		if (readUpdateState(installRoot).status === "pending-boot") {
+			markUpdateSuccess({ installRoot, version: RUNNER_VERSION });
+			logger.log?.(`Runner update to ${RUNNER_VERSION} booted and heartbeated (marked success).`);
+		}
+	} catch {
+		// Best effort only.
+	}
 	const heartbeatTimer = setInterval(() => {
 		// Fresh facts every beat: disk headroom is re-measured (G4) while
 		// the harness CLI version resolves from the load-time probe cache.
-		deliverSteers({ config, client, logger, facts: factsFor({ config }), state }).catch((err) => {
+		deliverSteers({ config, client, logger, facts: factsFor({ config, updateStatus: state?.updateStatus ?? null }), state }).catch((err) => {
 			logger.warn(`Heartbeat failed: ${err?.message || err}`);
 		});
 	}, config.heartbeatMs);
@@ -1197,6 +1231,88 @@ export async function runSingleAssignment({
 }
 
 /***
+ * MARK: installRootFor
+ * @description Resolves the self-update install root (Option A, ADR 0012):
+ *   explicit KAINBAIN_RUNNER_INSTALL_ROOT wins, else a `runner-install`
+ *   sibling of the work root (state lives with the installation, not with
+ *   task worktrees).
+ * @example installRootFor({ installRoot: '/opt/r' }) => '/opt/r'
+ * @example installRootFor({ workRoot: 'runner-work' }) => '<abs>/runner-install'
+ * @param {Object} [config] - Normalized runner config.
+ * @returns {string} Install root path.
+ ***/
+export function installRootFor(config = {}) {
+	const explicit = String(config.installRoot || "").trim();
+	if (explicit) return explicit;
+	return defaultInstallRoot({ workRoot: config.workRoot });
+}
+
+/***
+ * MARK: maybeSelfUpdate
+ * @description Idle-time self-update check (Option A, ADR 0012). No-ops
+ *   unless auto-update is on AND the check interval has elapsed (jittered
+ *   ±20% so a fleet does not thunder the release pointer). On a newer
+ *   verified release, downloads, verifies, atomically stages it, and
+ *   returns `applied` — the caller then exits 0 so the wrapper restarts
+ *   into the new version. Any verification failure returns ok:false and
+ *   keeps the current installation untouched.
+ * @example await maybeSelfUpdate({ config, client }) => { checked: false, ... }
+ * @param {Object} opts - Options (config, client?, logger?, installRoot?, now?, updateState?, updateDeps?).
+ * @returns {Promise<Object>} `{ checked, ok, update?, applied?, reason? }`.
+ ***/
+export async function maybeSelfUpdate({
+	config,
+	client = null,
+	logger = console,
+	installRoot = installRootFor(config),
+	now = Date.now(),
+	updateState = null,
+	updateDeps = {},
+} = {}) {
+	if (!config?.autoUpdate) return { checked: false, reason: "auto-update disabled" };
+	const interval = Number(config.updateCheckIntervalMs) || 3600000;
+	const state = updateState || {};
+	const last = Number(state.lastUpdateCheckAt) || 0;
+	const jittered = interval * (0.8 + Math.random() * 0.4);
+	if (now - last < jittered) return { checked: false, reason: "interval" };
+	state.lastUpdateCheckAt = now;
+	const check = updateDeps.checkForUpdate || defaultCheckForUpdate;
+	const apply = updateDeps.applyUpdate || defaultApplyUpdate;
+	let result;
+	try {
+		result = await check({
+			currentVersion: RUNNER_VERSION,
+			updateUrl: config.updateUrl,
+			logger,
+		});
+	} catch (err) {
+		logger.warn?.(`Runner update check failed: ${err?.message || err}`);
+		return { checked: true, ok: false, reason: String(err?.message || err) };
+	}
+	// Facts-only alert path (plan §4.5): the next heartbeat carries
+	// updateStatus, which the backend stores on the runner record for the
+	// fleet UI. No dedicated endpoint in v1.
+	const note = (status) => {
+		if (updateState && typeof updateState === "object") updateState.updateStatus = status;
+	};
+	if (!result?.ok) {
+		logger.warn?.(`Runner update check failed: ${result?.reason || "unknown"}`);
+		note({ state: "failed", reason: String(result?.reason || "unknown").slice(0, 500), at: new Date(now).toISOString() });
+		return { checked: true, ok: false, reason: result?.reason || "check failed" };
+	}
+	if (!result.update) return { checked: true, ok: true, update: null, reason: result.reason || "up to date" };
+	logger.log?.(`Runner update available: ${result.update.version} (verified signature); staging install.`);
+	const applied = await apply({
+		update: result.update,
+		installRoot,
+		updateUrl: config.updateUrl,
+		logger,
+	});
+	note({ state: "staged", version: result.update.version, at: new Date(now).toISOString() });
+	return { checked: true, ok: true, update: result.update, applied };
+}
+
+/***
  * MARK: runDispatchLoop
  * @description Capability-aware dispatch loop (WP-3.1): joins and heartbeats
  *   exactly like a single assignment, then polls `POST /runners/dispatch`
@@ -1243,7 +1359,7 @@ export async function runDispatchLoop({
 				answer = await client.dispatchClaim({ projectIds: config.projectIds ?? null });
 			} catch (err) {
 				if (err?.code === "STALE_RUNNER") {
-					await client.heartbeat({ runnerId: config.runnerId, facts: factsFor({ config }) });
+					await client.heartbeat({ runnerId: config.runnerId, facts: factsFor({ config, updateStatus: state?.updateStatus ?? null }) });
 					answer = await client.dispatchClaim({ projectIds: config.projectIds ?? null });
 				} else if (err?.statusCode === 429) {
 					// D8 backpressure (ADR 0010): the fleet is at its
@@ -1261,6 +1377,18 @@ export async function runDispatchLoop({
 					// with no restart.
 					polls += 1;
 					logger.log(`Dispatch: Runner paused by operator; backing off.`);
+					await new Promise((r) => setTimeout(r, pollMs));
+					continue;
+				} else if (err?.code === "RUNNER_VERSION_BELOW_MINIMUM") {
+					// Backend refuses dispatch below the minimum compatible
+					// version (Option A, ADR 0012): self-update now (idle —
+					// no active task), then exit 0 so the wrapper restarts
+					// into the new version and re-registers. No update
+					// available means back off and poll again.
+					polls += 1;
+					logger.log(`Dispatch: below minimum version (${err?.message || "update required"}); updating.`);
+					const upd = await maybeSelfUpdate({ config, client, logger, installRoot: installRootFor(config), updateState: state });
+					if (upd?.applied) return { assignments, polls, updated: true, version: upd.update?.version };
 					await new Promise((r) => setTimeout(r, pollMs));
 					continue;
 				} else {
@@ -1283,6 +1411,16 @@ export async function runDispatchLoop({
 				logger.log(
 					`Dispatch: no work (${answer.code ?? "empty"}); idle ${idle}${idleLimit > 0 ? `/${idleLimit}` : "/∞ (persistent)"}.`,
 				);
+				// Self-update-on-idle (Option A, ADR 0012): the loop holds
+				// no task here, so a staged update cannot strand work. A
+				// staged update returns updated:true — the process exits 0
+				// and the wrapper restarts into the new version.
+				try {
+					const upd = await maybeSelfUpdate({ config, client, logger, installRoot: installRootFor(config), updateState: state });
+					if (upd?.applied) return { assignments, polls, idle, updated: true, version: upd.update?.version };
+				} catch (err) {
+					logger.warn?.(`Runner self-update failed (keeping current version): ${err?.message || err}`);
+				}
 				await new Promise((r) => setTimeout(r, pollMs));
 				continue;
 			}
