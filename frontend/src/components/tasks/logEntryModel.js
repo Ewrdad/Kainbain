@@ -107,22 +107,46 @@ export function parseLegacyProcessLogs(text) {
 export function normalizeEntries(task, wsProcessLines = []) {
   const structured = Array.isArray(task?.logEntries) ? task.logEntries.filter(Boolean) : [];
   const base = structured.length > 0 ? [...structured] : parseLegacyProcessLogs(task?.processLogs);
-  // Frames already persisted (keyed by execution+seq) must not reappear
-  // as live lines after a refetch: the socket pushes each frame the
-  // moment it is ingested, and the same frame lands in stored entries on
-  // the next task fetch. Frames without an identity (legacy CI lines)
-  // always pass through, as before.
+  // Frames already persisted (keyed by lane + execution + seq) must not
+  // reappear as live lines after a refetch: the socket pushes each frame
+  // the moment it is ingested, and the same frame lands in stored entries
+  // on the next task fetch. The lane prefix matters: the text lane
+  // (process:stdout) and the structured lane (PROCESS_LOG_ENTRIES) keep
+  // INDEPENDENT seq counters on the same execution, so a bare
+  // `executionId:seq` key could collide across lanes during the fallback
+  // transition and hide a frame that was never stored. Frames without an
+  // identity (legacy CI lines) always pass through, as before.
   const storedKeys = new Set();
   for (const entry of base) {
     const meta = entry?.meta;
     if (meta && meta.executionId != null && meta.seq != null) {
-      storedKeys.add(`${meta.executionId}:${meta.seq}`);
+      const lane = meta.source === 'runner-structured' ? 'structured' : 'text';
+      storedKeys.add(`${lane}:${meta.executionId}:${meta.seq}`);
     }
   }
   const live = [];
   for (const p of Array.isArray(wsProcessLines) ? wsProcessLines : []) {
     if (!p) continue;
-    if (p.executionId != null && p.seq != null && storedKeys.has(`${p.executionId}:${p.seq}`)) {
+    if (p.executionId != null && p.seq != null) {
+      const lane = p.entry && typeof p.entry === 'object' ? 'structured' : 'text';
+      if (storedKeys.has(`${lane}:${p.executionId}:${p.seq}`)) {
+        continue;
+      }
+    }
+    // Structured live entries (`PROCESS_LOG_ENTRIES` frames): the backend
+    // record rides along untouched — same shape as stored history, so the
+    // viewer renders tool cards, timings, and expandable details live.
+    if (p.entry && typeof p.entry === 'object') {
+      live.push({
+        ...p.entry,
+        meta: {
+          ...(p.entry.meta || {}),
+          source: p.entry.meta?.source || 'ws-log-entries',
+          ...(p.executionId != null ? { executionId: p.executionId } : {}),
+          ...(p.seq != null ? { seq: p.seq } : {}),
+          ...(p.runnerId != null ? { runnerId: p.runnerId } : {}),
+        },
+      });
       continue;
     }
     // WS records carry a `[Project] ` prefix; strip one leading bracket

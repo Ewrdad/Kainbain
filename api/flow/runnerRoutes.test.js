@@ -378,11 +378,125 @@ describe("Runner Routes Integration", () => {
 		expect(monitor.progressRecorded).toBeGreaterThanOrEqual(1);
 		expect(monitor.progressDuplicates).toBeGreaterThanOrEqual(1);
 		expect(monitor.logGaps).toBeGreaterThanOrEqual(1);
+
+		// Structured transport on the same lease: a tool call ships as
+		// canonical entries the UI renders as history, with a WS broadcast.
+		const events = [
+			{ type: "tool_started", toolName: "bash", toolCallId: "c1", args: { command: "ls" } },
+			{ type: "tool_finished", toolName: "bash", toolCallId: "c1", result: "ok", durationMs: 212 },
+		];
+		const e1 = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/log-events`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id, executionId, epoch, seq: 0, events },
+		});
+		expect(JSON.parse(e1.payload)).toMatchObject({ accepted: true, duplicate: false, seq: 0 });
+		const eDup = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/log-events`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id, executionId, epoch, seq: 0, events },
+		});
+		expect(JSON.parse(eDup.payload)).toMatchObject({ accepted: true, duplicate: true });
+		const eBad = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/log-events`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id, executionId, epoch, seq: 1, events: [] },
+		});
+		expect(eBad.statusCode).toBe(400);
+		const task = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${target}?projectId=${project.id}` })).payload,
+		);
+		const kinds = (task.logEntries || []).map((e) => e.kind);
+		expect(kinds).toContain("tool");
+		const result = (task.logEntries || []).find((e) => String(e.text).startsWith("[RESULT]"));
+		expect(result).toBeDefined();
+		expect(result.text).toContain("(212ms)");
+		expect(result.meta).toMatchObject({ runnerId: "reporter-1", executionId, seq: 0 });
 		expect(monitor.scheduler).toMatchObject({
 			ticks: expect.any(Number),
 			dispatched: expect.any(Number),
 			deferredDispatch: expect.any(Number),
 		});
+	});
+
+	it("live WS fan-out never carries secrets — text frames and structured batches alike", async () => {
+		const { eventBridge } = await import("../eventBridge.js");
+		const credential = await onboard("redaction-1");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Redaction fan-out fixture" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		const { executionId, epoch } = JSON.parse(claim.payload);
+
+		// Capture every global broadcast while the two ingests run.
+		const broadcasted = [];
+		const originalBroadcast = eventBridge.broadcastGlobal.bind(eventBridge);
+		eventBridge.broadcastGlobal = (type, payload) => {
+			broadcasted.push({ type, payload });
+		};
+		try {
+			// Legacy text frame carrying a secret (the fallback path ships
+			// raw text from older Runners — the socket must still be clean).
+			const text = await app.inject({
+				method: "POST",
+				url: `/tasks/${target}/logs`,
+				headers: { "x-runner-credential": credential },
+				payload: {
+					projectId: project.id,
+					executionId,
+					epoch,
+					seq: 0,
+					bytes: "deploying with Authorization: Bearer abcdefgh123456",
+				},
+			});
+			expect(text.statusCode).toBe(200);
+			// Structured batch whose tool result echoes a secret.
+			const events = await app.inject({
+				method: "POST",
+				url: `/tasks/${target}/log-events`,
+				headers: { "x-runner-credential": credential },
+				payload: {
+					projectId: project.id,
+					executionId,
+					epoch,
+					seq: 0,
+					events: [
+						{ type: "tool_started", toolName: "bash", toolCallId: "c1", args: { command: "deploy" } },
+						{ type: "tool_finished", toolName: "bash", toolCallId: "c1", result: "key sk-live-abcdefgh12345678 shipped" },
+					],
+				},
+			});
+			expect(events.statusCode).toBe(200);
+		} finally {
+			eventBridge.broadcastGlobal = originalBroadcast;
+		}
+
+		const stdoutFrame = broadcasted.find((b) => b.type === "PROCESS_STDOUT");
+		expect(stdoutFrame).toBeDefined();
+		expect(stdoutFrame.payload.chunk).toContain("[REDACTED]");
+		expect(stdoutFrame.payload.chunk).not.toContain("abcdefgh123456");
+		const entriesFrame = broadcasted.find((b) => b.type === "PROCESS_LOG_ENTRIES");
+		expect(entriesFrame).toBeDefined();
+		const frameJson = JSON.stringify(entriesFrame.payload.entries);
+		expect(frameJson).not.toContain("sk-live-abcdefgh12345678");
+		// And the stored copies are clean too.
+		const task = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${target}?projectId=${project.id}` })).payload,
+		);
+		const storedJson = JSON.stringify(task.logEntries || []);
+		expect(storedJson).not.toContain("abcdefgh123456");
+		expect(storedJson).not.toContain("sk-live-abcdefgh12345678");
 	});
 
 	it("R01 wire: partitioned Runner's late completion is stale, exactly one wins", async () => {

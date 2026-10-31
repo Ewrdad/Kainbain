@@ -18,6 +18,7 @@ import {
 	resolveStageTimeout,
 	runnerStageTimeoutStatus,
 } from "./stagePolicy.js";
+import { redactSecretsText } from "../../shared/redactSecrets.js";
 
 /***
  * MARK: resolveCiTimeoutMs
@@ -493,13 +494,72 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			// socket must never fail the ingest. Duplicates are suppressed
 			// once the stored entry arrives (client dedupes on
 			// executionId+seq), and duplicate/old frames are never emitted.
+			// The broadcast is redacted even though the stored copy already
+			// is: legacy text frames reach this route unredacted from older
+			// Runners (the fallback text path), and the live socket must
+			// never carry secrets even for one frame.
 			if (!receipt.duplicate) {
 				eventBridge
 					?.emitProcessEvent(ctx.projectId, "process:stdout", {
 						taskId: request.params.id,
 						projectId: ctx.projectId,
-						chunk: `[runner ${runner.runnerId}] ${request.body?.bytes ?? ""}`,
+						chunk: `[runner ${runner.runnerId}] ${redactSecretsText(String(request.body?.bytes ?? ""))}`,
 						tag: "[RUNNER]",
+						runnerId: runner.runnerId,
+						executionId: request.body?.executionId,
+						seq: request.body?.seq,
+					})
+					?.catch?.(() => {});
+			}
+			return receipt;
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
+	app.post("/tasks/:id/log-events", async (request, reply) => {
+		let runner;
+		try {
+			runner = authedRunner(request);
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+		const ctx = guardedTask(request, reply);
+		if (!ctx) return;
+		try {
+			const receipt = executionLedger.ingestLogEvents({
+				claimStore,
+				taskStore,
+				projectId: ctx.projectId,
+				taskId: request.params.id,
+				runnerId: runner.runnerId,
+				executionId: request.body?.executionId,
+				epoch: request.body?.epoch,
+				seq: request.body?.seq,
+				events: request.body?.events,
+			});
+			// Live structured stream: fan the ingested entries out over the
+			// socket so the Logs tab renders tool calls, results, thinking,
+			// errors, and telemetry as they happen — the same records a
+			// later refetch persists. Only the entries appended by THIS
+			// batch ship (re-read from the stored tail, which the ledger
+			// just extended). Fire-and-forget; duplicates never emit.
+			if (!receipt.duplicate) {
+				const task = taskStore.getTask(ctx.projectId, request.params.id);
+				const stored = Array.isArray(task?.logEntries) ? task.logEntries : [];
+				const fresh = stored
+					.filter(
+						(entry) =>
+							entry?.meta?.executionId === request.body?.executionId &&
+							entry?.meta?.seq === request.body?.seq &&
+							entry?.meta?.source === "runner-structured",
+					)
+					.slice(-200);
+				eventBridge
+					?.emitProcessEvent(ctx.projectId, "process:log-entries", {
+						taskId: request.params.id,
+						projectId: ctx.projectId,
+						entries: fresh,
 						runnerId: runner.runnerId,
 						executionId: request.body?.executionId,
 						seq: request.body?.seq,

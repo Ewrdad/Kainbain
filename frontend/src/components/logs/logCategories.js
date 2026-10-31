@@ -526,7 +526,22 @@ export function filterLogRecords(records, state = {}) {
       if (!record.runnerId || !runners.has(record.runnerId)) return false;
     }
     if (needle) {
-      const hay = `${record.text || ''}\n${record.tag || ''}\n${record.title || ''}`.toLowerCase();
+      // Searchable history: summaries plus expandable detail (full tool
+      // output, usage JSON, raw evidence), tool names and their arguments —
+      // a `[RESULT]` row carries no tool name/args in its text, so those
+      // fields join the haystack instead of forcing the user to guess the
+      // [TOOL] row. Tool arguments may contain the command name or path the
+      // user is looking for even when the summary truncated it.
+      let toolArgsText = '';
+      try {
+        const args = record.tool?.args ?? record.meta?.args ?? null;
+        if (args !== null && args !== undefined) {
+          toolArgsText = typeof args === 'string' ? args : JSON.stringify(args);
+        }
+      } catch {
+        toolArgsText = '';
+      }
+      const hay = `${record.text || ''}\n${record.tag || ''}\n${record.title || ''}\n${record.detail || ''}\n${record.meta?.toolName || ''}\n${record.tool?.name || ''}\n${record.meta?.toolCallId || ''}\n${toolArgsText || ''}`.toLowerCase();
       if (!hay.includes(needle)) return false;
     }
     return true;
