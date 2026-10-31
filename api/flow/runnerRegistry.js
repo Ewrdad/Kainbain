@@ -104,7 +104,7 @@ const advertisedToolIds = (record) => {
  * @param {Object} [opts] - Options.
  * @param {string} [opts.joinToken=""] - Operator join secret Runners present
  *   at register time. Empty disables registration (403 REGISTRATION_DISABLED).
- * @param {Function} [opts.newCredential] - Credential factory (tests inject
+ * @param {Function} [opts.newCredential] - Credential maker (tests inject
  *   a deterministic one; production uses UUIDs).
  ***/
 

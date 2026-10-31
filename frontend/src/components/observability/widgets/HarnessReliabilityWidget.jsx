@@ -8,7 +8,7 @@ import {
 /***
  * MARK: reliabilityRowTitles
  * @description Tooltip wording for one harness row's all-time rate line,
- *   matching the System Settings harness tab: what the rate counts and the
+ *   matching the Models tab reliability line: what the rate counts and the
  *   honest no-data wording. The widget owns its monitor prose; the shared
  *   `ReliabilityLine` only renders it.
  * @example reliabilityRowTitles({ runs: 10, successes: 9, infraFailures: 1 }) => { title: '…', emptyTitle: '…' }

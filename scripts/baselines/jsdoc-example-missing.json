@@ -441,11 +441,6 @@
   },
   {
     "file": "api/continuity/deployMarkers.js",
-    "exportName": "DEPLOY_COMMAND_PATTERN",
-    "kind": "const"
-  },
-  {
-    "file": "api/continuity/deployMarkers.js",
     "exportName": "isDeployAttemptInFlight",
     "kind": "function"
   },
@@ -830,11 +825,6 @@
     "kind": "class"
   },
   {
-    "file": "api/git/merge.js",
-    "exportName": "MERGE_STRATEGY",
-    "kind": "const"
-  },
-  {
     "file": "api/git/staleLock.js",
     "exportName": "_withLockCheckSuffix",
     "kind": "function"
@@ -930,18 +920,8 @@
     "kind": "const"
   },
   {
-    "file": "api/project/aliasRenames.js",
-    "exportName": "warnLegacyNoneHarnessModel",
-    "kind": "function"
-  },
-  {
     "file": "api/project/deployCommands.js",
     "exportName": "DEFAULT_DEPLOY_COMMAND",
-    "kind": "const"
-  },
-  {
-    "file": "api/project/deployCommands.js",
-    "exportName": "DEPLOY_COMMAND_PATTERN",
     "kind": "const"
   },
   {
@@ -1333,11 +1313,6 @@
     "file": "api/skills/skillsRegistry.js",
     "exportName": "MAX_SKILL_MARKDOWN_CHARS",
     "kind": "const"
-  },
-  {
-    "file": "api/skills/skillsRegistry.js",
-    "exportName": "mergeSkillSources",
-    "kind": "function"
   },
   {
     "file": "api/skills/skillsRegistry.js",
@@ -2465,19 +2440,9 @@
     "kind": "default"
   },
   {
-    "file": "frontend/src/components/settings/HarnessSection.jsx",
-    "exportName": "default",
-    "kind": "default"
-  },
-  {
     "file": "frontend/src/components/settings/ModelAliasesSection.jsx",
     "exportName": "default",
     "kind": "default"
-  },
-  {
-    "file": "frontend/src/components/settings/ProjectSettingsForm.jsx",
-    "exportName": "ProjectSettingsForm",
-    "kind": "function"
   },
   {
     "file": "frontend/src/components/settings/promptLayoutTokens.js",
@@ -2558,11 +2523,6 @@
     "file": "frontend/src/components/stageTypes.js",
     "exportName": "STAGE_TYPES",
     "kind": "const"
-  },
-  {
-    "file": "frontend/src/components/SystemGuideModal.jsx",
-    "exportName": "default",
-    "kind": "default"
   },
   {
     "file": "frontend/src/components/tasks/DiffStatBadge.jsx",
@@ -2782,11 +2742,6 @@
   {
     "file": "frontend/src/components/workflow/pipelineTransfer.js",
     "exportName": "serializePipelineJson",
-    "kind": "function"
-  },
-  {
-    "file": "frontend/src/components/workflow/searchQueryParser.js",
-    "exportName": "isTagToken",
     "kind": "function"
   },
   {

@@ -62,6 +62,7 @@ export async function abortMerge(projectCwd) {
  *   `ort`-strategy merge that is always rolled back on conflict (unless the
  *   caller opts out), so Tier 3 failback agents know exactly what produced
  *   the conflicted state they must resolve.
+ * @example MERGE_STRATEGY => "merge --no-edit (auto-abort on conflict)"
  ***/
 export const MERGE_STRATEGY = "merge --no-edit (auto-abort on conflict)";
 
@@ -74,6 +75,7 @@ export const MERGE_STRATEGY = "merge --no-edit (auto-abort on conflict)";
  *   buildSquashCommitMessage), so `git log` on the default branch reads as
  *   the project changelog — one line per landed task. Branch-internal syncs
  *   (syncBranchWithUpstream) still use MERGE_STRATEGY above.
+ * @example SQUASH_MERGE_STRATEGY => "merge --squash + task-details commit (auto-abort on conflict)"
  ***/
 export const SQUASH_MERGE_STRATEGY = "merge --squash + task-details commit (auto-abort on conflict)";
 
@@ -334,24 +336,6 @@ export function buildGitConflictDiagnostics({
 
 
 /***
- * MARK: mergeBranch
- * @description Merges the given branch into the CURRENT branch. On conflict the
- *   merge is aborted (unless opts.abortOnConflict === false) and a typed
- *   GitMergeConflictError is thrown with the canonical, human-facing message
- *   'Merge conflict: please resolve all merge conflicts with main' plus the
- *   conflicting file list AND the source/target/base SHAs and strategy
- *   detail (see buildGitConflictDiagnostics) so Tier 3 failback can resolve
- *   autonomously. Non-conflict failures (e.g. unknown branch) surface
- *   as plain GitError with git's own message.
- * @example const { stdout } = await mergeBranch('/repo', 'kb/task-1') // resolves on clean merge
- * @param {string} projectCwd
- * @param {string} branch - Branch to merge INTO the current branch.
- * @param {Object} [opts]
- * @param {boolean} [opts.abortOnConflict=true] - Roll back the conflicted merge.
- * @param {string} [opts.timeout=120000] - Merge command timeout in ms.
- * @returns {Promise<{stdout: string, stderr: string}>}
- ***/
-/***
  * MARK: buildSquashCommitMessage
  * @description The commit message a squash landing writes on the default
  *   branch: the task title as the subject (so `git log --oneline` is the
@@ -561,6 +545,24 @@ export async function squashMergeBranch(projectCwd, branch, opts = {}) {
 }
 
 
+/***
+ * MARK: mergeBranch
+ * @description Merges the given branch into the CURRENT branch. On conflict the
+ *   merge is aborted (unless opts.abortOnConflict === false) and a typed
+ *   GitMergeConflictError is thrown with the canonical, human-facing message
+ *   'Merge conflict: please resolve all merge conflicts with main' plus the
+ *   conflicting file list AND the source/target/base SHAs and strategy
+ *   detail (see buildGitConflictDiagnostics) so Tier 3 failback can resolve
+ *   autonomously. Non-conflict failures (e.g. unknown branch) surface
+ *   as plain GitError with git's own message.
+ * @example const { stdout } = await mergeBranch('/repo', 'kb/task-1') // resolves on clean merge
+ * @param {string} projectCwd
+ * @param {string} branch - Branch to merge INTO the current branch.
+ * @param {Object} [opts]
+ * @param {boolean} [opts.abortOnConflict=true] - Roll back the conflicted merge.
+ * @param {string} [opts.timeout=120000] - Merge command timeout in ms.
+ * @returns {Promise<{stdout: string, stderr: string}>}
+ ***/
 export async function mergeBranch(projectCwd, branch, opts = {}) {
 	_assertValidBranchName(branch, "merge");
 	const abortOnConflict = opts.abortOnConflict !== false;

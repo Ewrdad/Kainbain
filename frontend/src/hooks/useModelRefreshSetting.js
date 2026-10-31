@@ -34,7 +34,7 @@ export function useModelRefreshSetting(enabled = true) {
       })
       .catch(() => {
         // Keep the build-time default; a config-spec hiccup must never make
-        // the harness tabs unusable.
+        // the model catalogue unusable.
       });
     return () => {
       cancelled = true;
