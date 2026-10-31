@@ -225,7 +225,8 @@ export function KainBainProvider({ children }) {
   useAccentTheme({ projects });
 
   const uiPrefs = useUiPreferences();
-  // Harness integration prefs (System Settings › Harness): enabled +
+  // Legacy harness integration prefs (saved prefs still honoured; the
+  // Harness tab was replaced by System Settings › Runners): enabled +
   // autoDetect per harness id, persisted to localStorage — the single
   // instance shared by the settings panel and every ModelSelector's
   // isHarnessDisabled predicate, so toggles apply app-wide without remounts.
@@ -363,7 +364,7 @@ export function KainBainProvider({ children }) {
     setIsShortcutsModalOpen: uiPrefs.setIsShortcutsModalOpen,
     isSystemGuideOpen,
     setIsSystemGuideOpen,
-    // harness integration prefs (System Settings › Harness tab)
+    // legacy harness integration prefs (Harness tab replaced by Runners)
     harnessPrefs: harnessPrefsState.prefs,
     updateHarnessPref: harnessPrefsState.updatePref,
     resetHarnessPrefs: harnessPrefsState.resetPrefs,
