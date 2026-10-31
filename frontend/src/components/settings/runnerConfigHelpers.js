@@ -183,7 +183,13 @@ export const withProjectUnloaded = (loadedIds = [], projectId) =>
  * MARK: scopePatchForLoaded
  * @description Builds the `projectScope` patch for a loaded set: null when
  *   every known project is loaded (serves-all), otherwise the id list.
+ *   Loaded ids for deleted projects are dropped (matching
+ *   `partitionProjects`, which hides them from both columns), so a removed
+ *   project can neither block the serves-all null nor linger in the saved
+ *   patch. With no known projects there is nothing to filter against and
+ *   the loaded set passes through untouched.
  * @example scopePatchForLoaded(['a'], [{ id: 'a' }, { id: 'b' }]) => ['a']
+ * @example scopePatchForLoaded(['a', 'b', 'gone'], [{ id: 'a' }, { id: 'b' }]) => null
  * @param {string[]} [loadedIds=[]] - Loaded project ids.
  * @param {Object[]} [allProjects=[]] - All known projects (`{ id }`).
  * @returns {string[]|null} Patch value.
@@ -193,8 +199,12 @@ export const scopePatchForLoaded = (loadedIds = [], allProjects = []) => {
   const all = (Array.isArray(allProjects) ? allProjects : [])
     .map((p) => p?.id)
     .filter((id) => typeof id === 'string');
-  if (all.length > 0 && all.every((id) => loaded.has(id))) return null;
-  return [...loaded];
+  if (all.length === 0) return [...loaded];
+  // Fail safe: only ids the backend still knows can decide the patch, so a
+  // deleted project never pins a Runner to a stale scope.
+  const knownLoaded = [...loaded].filter((id) => all.includes(id));
+  if (all.every((id) => loaded.has(id))) return null;
+  return knownLoaded;
 };
 
 /***

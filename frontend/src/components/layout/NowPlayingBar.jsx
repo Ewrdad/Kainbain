@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { runnerBoxHealth } from './runnerBoxHealth.js';
 import { resolveRunnerBoxes } from './resolveRunnerBoxes.js';
 import { useNowPlayingRunnerDirectory } from './useNowPlayingRunnerDirectory.js';
@@ -8,7 +8,6 @@ import { formatTaskKey, formatTaskTitleFirstLine } from '../tasks/taskFormatters
 import { resolveDisplayedStage } from '../tasks/runningTask';
 import { resolveActiveTaskDisplay, resolveUniversalNowPlaying } from './activeTaskVisibility';
 import { InfoTooltip } from '../common/InfoTooltip';
-import { api } from '../../services/api';
 export { runnerBoxHealth } from './runnerBoxHealth.js';
 export { resolveRunnerBoxes } from './resolveRunnerBoxes.js';
 

@@ -48,8 +48,8 @@ export function resolveRunnerBoxes({ assignments, tasks, stages, runners }) {
       .map((s) => [String(s.id), s]),
   );
   const stageNameFor = (stageId, task) => {
-    const ids = [stageId, task?.currentStageId];
-    for (const id of ids) {
+    const candidateIds = [stageId, task?.currentStageId];
+    for (const id of candidateIds) {
       if (id == null || id === '') continue;
       const stage = stageById.get(String(id));
       const name = stage?.name || stage?.title;

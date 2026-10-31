@@ -108,6 +108,16 @@ describe('runnerConfigHelpers', () => {
     expect(scopePatchForLoaded([], all)).toEqual([]);
   });
 
+  it('drops deleted project ids from the scope patch', () => {
+    const all = [{ id: 'a' }, { id: 'b' }];
+    // A stale id neither blocks the serves-all null nor lingers in the patch.
+    expect(scopePatchForLoaded(['a', 'b', 'gone'], all)).toBeNull();
+    expect(scopePatchForLoaded(['a', 'gone'], all)).toEqual(['a']);
+    expect(scopePatchForLoaded(['gone'], all)).toEqual([]);
+    // With no known projects there is nothing to filter against.
+    expect(scopePatchForLoaded(['gone'], [])).toEqual(['gone']);
+  });
+
   it('requires both directory paths', () => {
     expect(validateDirectories({ masterDir: '/srv/kb', worktreeDir: '/srv/trees' }).ok).toBe(
       true,
