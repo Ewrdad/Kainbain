@@ -1,3 +1,4 @@
+import { isRetryingTask } from './taskRetryState';
 /***
  * MARK: stagePace
  * @description Pure helpers behind the task-card age readout and the
@@ -89,7 +90,7 @@ function isPaceExcluded(task) {
   if (!task) return false;
   // Auto-retry is active engine work, not a settled failure: it wins over the
   // failed status, matching the card's RETRYING label precedence.
-  const isRetrying = task.autoRetrying === true;
+  const isRetrying = isRetryingTask(task);
   if (task.status === 'failed' && !isRetrying) return true;
   if (Boolean(task.failureReason) && !isRetrying) return true;
   if (task.wasInterrupted === true || task.status === 'interrupted') return true;
@@ -114,7 +115,7 @@ function isPaceExcluded(task) {
  ***/
 export function shouldShowPace(task, { isRunning = false, isReview = false } = {}) {
   if (isPaceExcluded(task)) return false;
-  if (task?.autoRetrying === true) return true;
+  if (isRetryingTask(task)) return true;
   return Boolean(isRunning || isReview);
 }
 

@@ -32,6 +32,7 @@ import { isInteractiveTarget } from '../../hooks/useTapGuard';
 import { copyToClipboard } from '../../services/clipboard';
 import { getTaskBranchName, buildCheckoutCommand } from './taskBranch';
 import { isRejectedTask } from './failureReason';
+import { isRetryingTask } from './taskRetryState';
 
 /***
  * MARK: extractModelHarnessInfo
@@ -442,14 +443,14 @@ export function TaskCard({
     }
   };
 
-  const isRetrying = task.autoRetrying === true;
+  const isRetrying = isRetryingTask(task);
   // A deliberate rejection keeps its flag even while an auto-retry is
   // queued: the reason is about to be snapshotted into the next attempt's
   // prompt, so hiding it would hide the pending context.
   const isRejectedFailure = isRejectedTask(task);
   const isFailed =
     task.status === 'failed' ||
-    (Boolean(task.failureReason) && (!task.autoRetrying || isRejectedFailure));
+    (Boolean(task.failureReason) && (!isRetryingTask(task) || isRejectedFailure));
   const isRejected = isFailed && isRejectedFailure;
   const isInterrupted = task.wasInterrupted === true || task.status === 'interrupted' || isStale;
   const isPaused = task.status === 'paused';

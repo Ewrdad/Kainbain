@@ -103,7 +103,7 @@ describe('shouldShowPace', () => {
 
   test('treats auto-retrying tasks as running work', () => {
     expect(
-      shouldShowPace({ status: 'failed', autoRetrying: true }, { isRunning: false, isReview: false }),
+      shouldShowPace({ status: 'in_stage', autoRetrying: true }, { isRunning: false, isReview: false }),
     ).toBe(true);
   });
 

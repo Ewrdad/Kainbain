@@ -990,6 +990,7 @@ export const TASK_STATUSES = {
 	paused: "Paused by an operator or engine.",
 	interrupted: "Interrupted (e.g. server shutdown); may be resumed.",
 	failed: "The current stage failed; use retry or failback.",
+	retrying: "An automatic retry is scheduled or in flight (see retryState/nextRetryAt). Persisted task status stays in_stage; retryState annotates why.",
 	passed: "A CI or merge stage passed.",
 	completed: "Task finished through its pipeline.",
 };

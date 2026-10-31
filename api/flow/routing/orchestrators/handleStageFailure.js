@@ -40,6 +40,7 @@ import { deferForCircuitTrip } from './deferForCircuitTrip.js';
 import { shouldSuppressProjectBlockerAlert } from './shouldSuppressProjectBlockerAlert.js';
 import { parkedAlertStructuredFields } from './parkedAlertStructuredFields.js';
 import { handleTransientFailure } from './handleTransientFailure.js';
+import { clearRetryState, armRetry } from '../../../work/taskRetryState.js';
 
 /***
  * MARK: handleStageFailure
@@ -382,11 +383,7 @@ export function handleStageFailure(
 			`[AUTO] Stage '${stage?.name || stage?.id}' failed on task #${task.id?.slice(0, 4)}; auto-retrying at '${targetStage?.name || task.currentStageId}' (attempt ${task.autoIterationCount}/${autoIteration.maxAttempts}): ${errorMsg}`,
 			{ taskId, stageId: stage?.id, error: errorMsg },
 		);
-		if (taskStore.schedulerRunning) {
-			setTimeout(() => {
-				taskStore.scheduleTick().catch(() => {});
-			}, 2000);
-		}
+		armRetry(taskStore, task, 2000, { attempt: task.autoIterationCount, maxAttempts: autoIteration.maxAttempts, budgetSource: "auto" });
 		return {
 			task,
 			stageType,
@@ -403,6 +400,10 @@ export function handleStageFailure(
 	const parkedFrom = wasInterrupted ? "interrupted" : task.status;
 	if (!wasInterrupted) {
 		task.status = "failed";
+		clearRetryState(taskStore, projectId, taskId);
+		task.retryState = "exhausted";
+	} else {
+		clearRetryState(taskStore, projectId, taskId);
 	}
 	taskStore._saveTaskMarkdown(cwd, task);
 

@@ -12,7 +12,7 @@ import { getConfigSpec } from "../config/index.js";
  * @example readApiVersion() => '1.0.0'
  * @returns {string|null}
  ***/
-export function readApiVersion() {
+export const readApiVersion = () => {
 	try {
 		const file = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "version.json");
 		const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -34,7 +34,7 @@ const API_VERSION = readApiVersion();
  * @param {Object|null} build - deployManager build record.
  * @returns {Object}
  ***/
-export function withApiVersion(build) {
+export const withApiVersion = (build) => {
 	return { ...(build && typeof build === "object" ? build : {}), apiVersion: API_VERSION };
 }
 

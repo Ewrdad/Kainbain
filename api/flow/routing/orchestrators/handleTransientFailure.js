@@ -35,6 +35,7 @@ import {
 	resolveTransientBudget,
 } from '../resolvers/index.js';
 import { settleOperatorAbort } from './settleOperatorAbort.js';
+import { clearRetryState, setRetryScheduled, armRetry } from '../../../work/taskRetryState.js';
 import { deferForCircuitTrip } from './deferForCircuitTrip.js';
 import { handleStageFailure } from './handleStageFailure.js';
 import { recordTransientAttemptReport } from './recordTransientAttemptReport.js';
@@ -145,7 +146,7 @@ export function handleTransientFailure(
 			typeof error === "string" ? error : error?.message || "Transient infrastructure failure";
 		const interruptedCwd = taskStore._resolveProjectCwd(projectId, projectCwd);
 		task.failureReason = interruptedMsg;
-		task.lastError = {
+task.lastError = {
 			message: interruptedMsg,
 			stageId: stage?.id,
 			stageName: stage?.name || stage?.id,
@@ -153,7 +154,7 @@ export function handleTransientFailure(
 			classification: classificationMeta,
 			timestamp: new Date().toISOString(),
 		};
-		task.autoRetrying = false;
+clearRetryState(taskStore, projectId, taskId);
 		if (!Array.isArray(task.history)) {
 			task.history = [];
 		}
@@ -207,7 +208,8 @@ export function handleTransientFailure(
 			timestamp: new Date().toISOString(),
 		};
 		task.status = "failed";
-		task.autoRetrying = false;
+		clearRetryState(taskStore, projectId, taskId);
+		task.retryState = "exhausted";
 		if (!Array.isArray(task.history)) {
 			task.history = [];
 		}
@@ -332,8 +334,8 @@ export function handleTransientFailure(
 	});
 	task.failureReason = null;
 	task.lastError = null;
-	task.status = "in_stage";
-	task.autoRetrying = true;
+task.status = "in_stage";
+/* retry state recorded by armRetry below */
 	if (!Array.isArray(task.history)) {
 		task.history = [];
 	}
@@ -403,11 +405,7 @@ export function handleTransientFailure(
 		`[RETRY] Stage '${stageLabel}' hit a transient infrastructure error on task #${task.id?.slice(0, 4)}; retrying same stage (attempt ${attempt}/${maxAttempts}, ${budgetNote}, next delay ${nextDelayMs}ms, signal ${retrySignal}): ${errorMsg}`,
 		{ taskId, stageId: stage?.id, error: errorMsg, classification: classificationMeta, nextDelayMs, signal: retrySignal, budgetSource },
 	);
-	if (taskStore.schedulerRunning) {
-		setTimeout(() => {
-			taskStore.scheduleTick().catch(() => {});
-		}, nextDelayMs);
-	}
+	armRetry(taskStore, task, nextDelayMs, { attempt, maxAttempts, budgetSource });
 	return {
 		task,
 		stageType,

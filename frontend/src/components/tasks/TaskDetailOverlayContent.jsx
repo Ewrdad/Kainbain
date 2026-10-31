@@ -31,6 +31,7 @@ import { TaskReportsTab } from './TaskReportsTab';
 import { TaskHistoryTab } from './TaskHistoryTab';
 import { TaskDetailsTab } from './TaskDetailsTab';
 import { isRejectedTask } from './failureReason';
+import { isRetryingTask } from './taskRetryState';
 import { LogsPanel, useTaskLogs } from './LogsPanel';
 
 /***
@@ -332,7 +333,7 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
   const isWaitingHuman = resolveCheckpointState(task, taskStage).showCheckpoint;
   const isInterrupted = task?.wasInterrupted === true || task?.status === 'interrupted';
   const isPaused = task?.status === 'paused';
-  const isRetrying = task?.autoRetrying === true;
+  const isRetrying = isRetryingTask(task);
   // A deliberate rejection keeps its reason banner even while an auto-retry
   // is queued: the reason is about to be snapshotted into the next
   // attempt's prompt, so hiding it would hide the pending context.

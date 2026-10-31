@@ -45,7 +45,7 @@ import { api } from '../../services/api';
  *   timestamp stays grey (unknown) rather than alarming.
  * @example runnerBoxHealth(new Date().toISOString(), Date.now()) => 'live'
  ***/
-export function runnerBoxHealth(lastSeenAt, nowMs) {
+export const runnerBoxHealth = (lastSeenAt, nowMs) => {
   const seen = Date.parse(lastSeenAt || '');
   if (!Number.isFinite(seen)) return 'unknown';
   return nowMs - seen <= 60000 ? 'live' : 'stale';
@@ -89,7 +89,7 @@ export const MAX_VISIBLE_RUNNER_BOXES = 4;
  *   an array (empty only when no Runners are configured at all).
  * @example resolveRunnerBoxes({ assignments: [], tasks: [], stages: [], runners: [] }) => []
  ***/
-export function resolveRunnerBoxes({ assignments, tasks, stages, runners }) {
+export const resolveRunnerBoxes = ({ assignments, tasks, stages, runners }) => {
   const list = Array.isArray(assignments) ? assignments.filter((a) => a && a.runnerId) : [];
   const byRunner = new Map();
   for (const a of list) {
@@ -183,7 +183,7 @@ export function resolveRunnerBoxes({ assignments, tasks, stages, runners }) {
  *   boxes, a missed monitor to idle boxes, and both missed to the legacy
  *   single-task display.
  ***/
-function useNowPlayingRunnerDirectory(assignmentsOverride, runnersOverride) {
+const useNowPlayingRunnerDirectory = (assignmentsOverride, runnersOverride) => {
   const [monitor, setMonitor] = useState(null);
   const [registry, setRegistry] = useState(null);
   // No-op polls skip the state update entirely — compared via ref so idle

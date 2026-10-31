@@ -359,9 +359,11 @@ export async function executeStage(
 		const priorStderr = task.lastError?.stderr || null;
 		const priorStdout = task.lastError?.stdout || null;
 
+		const wasRetrying = task.autoRetrying === true;
 		task.failureReason = null;
 		task.lastError = null;
 		task.autoRetrying = false;
+		if (wasRetrying) task.retryState = "running";
 
 		store.setEngineState({
 			status: stageType === "human" ? "checkpoint" : "running",

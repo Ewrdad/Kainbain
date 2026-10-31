@@ -332,7 +332,7 @@ describe("The Flow: retry budget resolution (stage > project > global)", () => {
 			const budgeted = beginAutoIteration(task, undefined, "boom", {
 				maxAutoIterations: 1,
 			});
-			expect(budgeted).toEqual({ maxAttempts: 1 });
+			expect(budgeted).toEqual({ maxAttempts: 1, scheduled: true });
 			expect(task.autoIterationCount).toBe(1);
 			// Second failure exceeds the project budget of 1.
 			expect(beginAutoIteration(task, undefined, "boom", { maxAutoIterations: 1 })).toBeNull();

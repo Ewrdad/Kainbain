@@ -375,6 +375,7 @@ export async function finalizePassedCommandStage(
 	task.failureReason = null;
 	task.lastError = null;
 	task.infraRetryCount = 0;
+	task.autoRetrying = false;
 
 	// The rehydration marker is single-attempt. Consume it on pass so a
 	// later interruption at a DIFFERENT stage can never mistake this

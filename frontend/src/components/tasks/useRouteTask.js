@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from 'react';
  * @example const listTask = findTaskById({ tasks, taskId: 'task-101' });
  * @returns {Object|null} The matching task, or null.
  ***/
-export function findTaskById({ tasks, taskId } = {}) {
+export const findTaskById = ({ tasks, taskId } = {}) => {
   if (!taskId || !Array.isArray(tasks)) return null;
   return tasks.find((t) => String(t?.id) === String(taskId)) || null;
 }

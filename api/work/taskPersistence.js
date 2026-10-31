@@ -88,6 +88,11 @@ export function saveTaskMarkdown(taskStore, projectCwd, task) {
 			`reliabilitySamples: ${_formatFrontmatterValue(JSON.stringify(task.reliabilitySamples || []))}`,
 			`timelineMetadata: ${_formatFrontmatterValue(JSON.stringify(task.timeline || []))}`,
 			`autoIterationCount: ${Number(task.autoIterationCount) || 0}`,
+			`retryState: ${_formatFrontmatterValue(task.retryState || "none")}`,
+			`autoRetrying: ${task.autoRetrying === true}`,
+			`retryAttempt: ${Number(task.retryAttempt) || 0}`,
+			`retryMaxAttempts: ${Number(task.retryMaxAttempts) || 0}`,
+			`nextRetryAt: ${_formatFrontmatterValue(task.nextRetryAt || "")}`,
 			`failbackWarningsSent: ${_formatFrontmatterValue(JSON.stringify(sanitizeFailbackWarnings(task.failbackWarningsSent)))}`,
 			`outputReport: ${_formatFrontmatterValue(task.outputReport || "")}`,
 			`feedback: ${_formatFrontmatterValue(task.feedback || "")}`,
@@ -839,6 +844,11 @@ export function parseTaskMarkdown(taskStore, content, taskId, projectId) {
 
 	const autoIterationCount = Number(data.autoIterationCount) || 0;
 
+const parsedRetryState = data.retryState || (String(data.autoRetrying || "").toLowerCase() === "true" ? "scheduled" : "none");
+const parsedAutoRetrying = String(data.autoRetrying || "").toLowerCase() === "true";
+const parsedRetryAttempt = Number(data.retryAttempt) || 0;
+const parsedRetryMaxAttempts = Number(data.retryMaxAttempts) || 0;
+
 	let reviewBaseline;
 	if (typeof data.reviewBaseline === "string" && data.reviewBaseline.trim()) {
 		try {
@@ -880,6 +890,11 @@ export function parseTaskMarkdown(taskStore, content, taskId, projectId) {
 		surveyFile:
 			data.surveyFile ? normalizeSurveyFileName(data.surveyFile) : undefined,
 		autoIterationCount,
+		retryState: parsedRetryState,
+		autoRetrying: parsedAutoRetrying,
+		retryAttempt: parsedRetryAttempt,
+		retryMaxAttempts: parsedRetryMaxAttempts,
+		nextRetryAt: data.nextRetryAt || "",
 		failbackWarningsSent: sanitizeFailbackWarnings(data.failbackWarningsSent),
 		blockedBy: Array.isArray(blockedBy) ? blockedBy : [],
 		reports: parseStoredRecords(data.reportMetadata),

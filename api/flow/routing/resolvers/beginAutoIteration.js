@@ -29,6 +29,5 @@ export function beginAutoIteration(task, stage, error, project) {
 	if (maxAttempts <= 0) return null;
 	task.autoIterationCount = (task.autoIterationCount || 0) + 1;
 	if (task.autoIterationCount > maxAttempts) return null;
-	task.autoRetrying = true;
-	return { maxAttempts };
+	return { maxAttempts, scheduled: true };
 }

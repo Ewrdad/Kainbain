@@ -13,6 +13,7 @@ import {
 import {
 	isInfraLikeFailure,
 } from "../../circuitSensors.js";
+import { clearRetryState } from '../../../work/taskRetryState.js';
 
 /***
  * MARK: deferForCircuitTrip
@@ -80,7 +81,7 @@ export function deferForCircuitTrip(
 		task.status = "in_stage";
 		task.wasInterrupted = false;
 	}
-	task.autoRetrying = false;
+clearRetryState(taskStore, projectId, taskId);
 	if (!Array.isArray(task.history)) {
 		task.history = [];
 	}

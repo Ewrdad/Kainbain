@@ -32,3 +32,5 @@ export { summarizeDiffStat, parseNumstatStdout, defaultWorkingTreeDiff, computeS
 export { normalizeRepoKey, withRepoGitLock, getGitLockStats } from './gitLock.js';
 export { NO_VERDICT_REJECTION_DIAGNOSTIC, REPORT_MATCH_WINDOW_MS, isSpuriousNoVerdictFailure, sanitizeSpuriousNoVerdictRejections, remediateTaskMarkdown, remediateReportMarkdown } from './remediateNoVerdictRejections.js';
 export { DEFAULT_SURVEY_FILENAME, SURVEY_FILENAME, QUESTION_ME_SKILL_NAME, SURVEY_OUTPUT_FILE_KEYS, normalizeSurveyFileName, outputFileFromSkillAttachment, resolveQuestionMeOutputFile, resolveSurveyPath, surveyProjectFor, readSurvey, spliceRoundsIntoMarkdown, appendSurveyRound, saveSurveyAnswers, resolveSurveyGate, renderSurveyMarkdownFor } from './taskSurvey.js';
+
+export { readRetryState, setRetryScheduled, clearRetryState, armRetry, isRetryingTask, retryProgressLabel, isRetryStuck, TASK_RETRY_STATES } from './taskRetryState.js';

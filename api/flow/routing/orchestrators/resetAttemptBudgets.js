@@ -1,6 +1,7 @@
 import {
 	resetFailbackWarnings,
 } from "../../../observability/alerts.js";
+import { clearRetryState as clearSharedRetryState } from "../../../work/taskRetryState.js";
 
 /***
  * MARK: resetAttemptBudgets
@@ -21,5 +22,6 @@ export function resetAttemptBudgets(task) {
 	task.transientRetryLadder = [];
 	task.timeInStage = 0;
 	task.enteredStageAt = new Date().toISOString();
+	clearSharedRetryState(task);
 	resetFailbackWarnings(task);
 }

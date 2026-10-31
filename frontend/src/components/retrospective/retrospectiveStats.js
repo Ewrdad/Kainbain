@@ -7,6 +7,7 @@
  *   hours-aware formatter here.
  ***/
 import { isRejectedTask } from '../tasks/failureReason';
+import { isRetryingTask } from '../tasks/taskRetryState';
 
 /***
  * MARK: TERMINAL_TASK_STATUSES
@@ -96,7 +97,7 @@ export function formatTaskTotals(task, nowMs = Date.now()) {
 export function isRetrospectiveTaskFailed(task) {
   return (
     task?.status === 'failed' ||
-    (Boolean(task?.failureReason) && (!task?.autoRetrying || isRejectedTask(task)))
+    (Boolean(task?.failureReason) && (!isRetryingTask(task) || isRejectedTask(task)))
   );
 }
 

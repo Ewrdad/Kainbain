@@ -29,6 +29,7 @@ import { RunAttributionBadge } from './RunAttributionBadge';
 import { HistoryFailureReason } from './HistoryFailureReason';
 import { FailureMessage } from './FailureMessage';
 import { isRejectedTask } from './failureReason';
+import { isRetryingTask } from './taskRetryState';
 import { BlockedByEditor } from './BlockedByEditor';
 import { LogsPanel, useTaskLogs } from './LogsPanel';
 import { TaskDetailHistoryPane } from './TaskDetailHistoryPane';
@@ -285,7 +286,7 @@ export function TaskDetailPage({ task: propTask, onBack }) {
   };
   const isInterrupted = task?.wasInterrupted === true || task?.status === 'interrupted';
   const isPaused = task?.status === 'paused';
-  const isRetrying = task?.autoRetrying === true;
+  const isRetrying = isRetryingTask(task);
   // A deliberate rejection keeps its reason banner even while an auto-retry
   // is queued: the reason is about to be snapshotted into the next
   // attempt's prompt, so hiding it would hide the pending context.
