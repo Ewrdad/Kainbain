@@ -21,7 +21,8 @@ real-time streaming into a Kanban UI, and timestamped markdown reports per stage
   where it stands.
 - `Phase1/`, `Phase2/` — build attempts, plans, critiques (historical).
 - `EngineDetails/` — harness integrations (pi, codex, muse, vibe, T3, …).
-- `research/` — background research (swarms, compliance, harness2, …).
+- `research/` — background research (swarms, compliance, harness2,
+  elephant-goldfish, human-graded finetune data flywheel, …).
 - `adr/` — architecture decision records.
 - `docs/manual-testing/` — the human test playbook.
 - `TASK_DIRECTORY_HYGIENE.md` + `.gitignore` — why `tasks/` run history

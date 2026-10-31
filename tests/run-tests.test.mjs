@@ -9,7 +9,7 @@ const { buildBranches, depcheckAvailable, ensureWorkspaceDeps, pruneStaleTestDir
 /***
  * MARK: run-tests tests
  * @description Hermetic tests for the gate's branch assembly and canary
- *   resolution (scripts/run-tests.mjs): the eleven canonical branches in
+ *   resolution (scripts/run-tests.mjs): the twelve canonical branches in
  *   order with shell-free spawn shapes, the bash-less SKIP path for the
  *   bash-only security-scan branch, the docker-less SKIP path for the
  *   Container Tests branch, the depcheck-less SKIP path for the Dependency
@@ -24,6 +24,7 @@ const { buildBranches, depcheckAvailable, ensureWorkspaceDeps, pruneStaleTestDir
 const CANONICAL_NAMES = [
 	"Unit Tests (api)",
 	"Unit Tests (frontend)",
+	"Unit Tests (runner)",
 	"Linting (api)",
 	"Linting (frontend)",
 	"Frontend Build",
@@ -36,7 +37,7 @@ const CANONICAL_NAMES = [
 ];
 
 describe("buildBranches", () => {
-	it("builds the eleven canonical branches in order when bash and docker exist", () => {
+	it("builds the twelve canonical branches in order when bash and docker exist", () => {
 		const { branches, skipped } = buildBranches({ hasBash: true, hasDocker: true, hasDepcheck: true, nodeExec: "node", npmExec: "npm" });
 		assert.deepEqual(
 			branches.map((branch) => branch.name),
@@ -59,8 +60,35 @@ describe("buildBranches", () => {
 		const byName = Object.fromEntries(branches.map((branch) => [branch.name, branch]));
 		assert.equal(byName["Unit Tests (api)"].lowPriority, undefined);
 		assert.equal(byName["Unit Tests (frontend)"].lowPriority, undefined);
-		for (const name of CANONICAL_NAMES.slice(2)) {
+		assert.equal(byName["Unit Tests (runner)"].lowPriority, undefined);
+		for (const name of CANONICAL_NAMES.slice(3)) {
 			assert.equal(byName[name].lowPriority, true, `${name} should be low priority`);
+		}
+	});
+
+	it("runs the runner contract suites through node --test with every runner test file named", () => {
+		// The Runner owns the model-reporting contract (daemon progress +
+		// posture, client wire shape): if its suites ever stop running in
+		// the gate, a reporting regression goes green. A bare directory
+		// (`node --test runner/`) mis-resolves on current Node and a glob
+		// would need a shell, so the branch names each file — and this test
+		// fails when a file on disk is not named there.
+		const { branches } = buildBranches({ hasBash: true, hasDocker: true, hasDepcheck: true, nodeExec: "node", npmExec: "npm" });
+		const runnerTests = branches.find((branch) => branch.name === "Unit Tests (runner)");
+		assert.equal(runnerTests.file, "node");
+		assert.ok(runnerTests.args.includes("--test"));
+		assert.equal(runnerTests.shell, undefined, "must not use a shell");
+		/* eslint-disable security/detect-non-literal-fs-filename -- fixed repo-relative path under test */
+		const onDisk = fs.readdirSync(path.join(path.resolve(import.meta.dirname, ".."), "runner"))
+			.filter((name) => name.endsWith(".test.js"))
+			.sort();
+		/* eslint-enable security/detect-non-literal-fs-filename */
+		assert.ok(onDisk.length > 0, "expected runner test files on disk");
+		for (const name of onDisk) {
+			assert.ok(
+				runnerTests.args.includes(`runner/${name}`),
+				`runner/${name} is on disk but not in the gate branch — name it in scripts/run-tests.mjs`,
+			);
 		}
 	});
 

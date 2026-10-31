@@ -176,4 +176,71 @@ describe("syncDefaultBranchToRemote", () => {
 		expect(res.synced).toBe(false);
 		expect(res.skipped).toBe("fetch-failed");
 	});
+
+	it("converges a diverged main by merging the remote tip in and pushing, landing HEAD on the tip", async () => {
+		if (!gitAvailable) return;
+		const work = track(cloneRemote(remoteDirOf()));
+		// Local-only commit (ahead side — e.g. a landed merge whose push failed).
+		fs.writeFileSync(path.join(work, "local-only.txt"), "local work\n");
+		run(work, "add", "-A");
+		run(work, "commit", "-m", "local-only commit");
+		const localSha = run(work, "rev-parse", "main").trim();
+		// Remote moves on (behind side — e.g. the Runner pushed a task merge).
+		track(seedRemote(remoteDirOf(), "truth.txt", "remote truth v2\n"));
+		const res = await syncDefaultBranchToRemote(work);
+		expect(res.synced).toBe(true);
+		expect(res.skipped).toBe(null);
+		expect(res.ahead).toBe(1);
+		expect(res.behind).toBe(1);
+		expect(res.detail).toMatch(/diverged 'main' converged/);
+		// Local ref now equals the remote tip, and the remote branch holds
+		// the convergence merge (two parents: local + previous remote tip).
+		const tip = run(work, "rev-parse", "origin/main").trim();
+		expect(run(work, "rev-parse", "main").trim()).toBe(tip);
+		expect(run(remoteDirOf(), "rev-parse", "refs/heads/main").trim()).toBe(tip);
+		expect(tip).not.toBe(localSha);
+		const parentCount = run(work, "rev-list", "--parents", "-n", "1", "main").trim().split(/\s+/).length - 1;
+		expect(parentCount).toBe(2);
+		// Both sides' work survives the convergence.
+		expect(fs.existsSync(path.join(work, "local-only.txt"))).toBe(true);
+		expect(fs.readFileSync(path.join(work, "truth.txt"), "utf8")).toBe("remote truth v2\n");
+	});
+
+	it("skips loudly on a conflicting divergence and touches neither ref", async () => {
+		if (!gitAvailable) return;
+		const work = track(cloneRemote(remoteDirOf()));
+		fs.writeFileSync(path.join(work, "truth.txt"), "local conflicting edit\n");
+		run(work, "add", "-A");
+		run(work, "commit", "-m", "local edit");
+		const before = run(work, "rev-parse", "main").trim();
+		track(seedRemote(remoteDirOf(), "truth.txt", "remote truth v2\n"));
+		const remoteBefore = run(remoteDirOf(), "rev-parse", "refs/heads/main").trim();
+		const res = await syncDefaultBranchToRemote(work);
+		expect(res.synced).toBe(false);
+		expect(res.skipped).toBe("diverged-unmergeable");
+		expect(res.ahead).toBe(1);
+		expect(res.behind).toBe(1);
+		// Nothing was reset locally and nothing was pushed remotely.
+		expect(run(work, "rev-parse", "main").trim()).toBe(before);
+		expect(fs.readFileSync(path.join(work, "truth.txt"), "utf8")).toBe("local conflicting edit\n");
+		expect(run(remoteDirOf(), "rev-parse", "refs/heads/main").trim()).toBe(remoteBefore);
+	});
+
+	it("converges a diverged main while checked out on a task branch, leaving the task worktree alone", async () => {
+		if (!gitAvailable) return;
+		const work = track(cloneRemote(remoteDirOf()));
+		fs.writeFileSync(path.join(work, "local-only.txt"), "local work\n");
+		run(work, "add", "-A");
+		run(work, "commit", "-m", "local-only commit on main");
+		track(seedRemote(remoteDirOf(), "truth.txt", "remote truth v2\n"));
+		run(work, "checkout", "-b", "kb/task-1");
+		fs.writeFileSync(path.join(work, "task-work.txt"), "task work\n");
+		const res = await syncDefaultBranchToRemote(work);
+		expect(res.synced).toBe(true);
+		expect(res.behind).toBe(1);
+		const tip = run(work, "rev-parse", "origin/main").trim();
+		expect(run(work, "rev-parse", "main").trim()).toBe(tip);
+		expect(run(work, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("kb/task-1");
+		expect(fs.readFileSync(path.join(work, "task-work.txt"), "utf8")).toBe("task work\n");
+	});
 });

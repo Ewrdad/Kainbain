@@ -5,6 +5,7 @@ import { git } from "./exec.js";
 import { _assertValidBranchName, isValidBranchName } from "./validation.js";
 import { currentBranch, branchExists, hasCommits, isGitRepository } from "./status.js";
 import { requireCleanWorkingTree } from "./workingTreeRecovery.js";
+import { _resolveIgnorePaths } from "./workingTreeStatus.js";
 import { commitEngineSnapshots, isLiveTaskSnapshotPath } from "./commit.js";
 import { GitError } from "./errors.js";
 
@@ -67,7 +68,7 @@ export async function checkoutBranch(projectCwd, branch, opts = {}) {
 	// aside across the checkout and restore them after: without this, git's
 	// own untracked-overwrite safety blocks the switch even though the
 	// clean-tree guard (correctly) ignores these paths.
-	const aside = await moveAsideBlockingLiveSnapshots(projectCwd, branch, opts);
+	const aside = await _moveAsideBlockingLiveSnapshots(projectCwd, branch, opts);
 	try {
 		await git(projectCwd, ["checkout", branch]);
 	} finally {
@@ -77,27 +78,39 @@ export async function checkoutBranch(projectCwd, branch, opts = {}) {
 }
 
 /***
- * MARK: moveAsideBlockingLiveSnapshots
- * @description Finds live task snapshots (`docs/tasks/<id>/task.md`) that
- *   the TARGET branch still tracks while this checkout holds as untracked
- *   files — the exact shape that makes git refuse a checkout with
- *   "untracked working tree files would be overwritten". Moves those
- *   files to a temp backup dir and returns a restore handle (null when
- *   nothing blocks). Only untracked-here files move: paths the current
- *   index tracks are git's normal checkout business and are left alone.
- * @example await moveAsideBlockingLiveSnapshots('/repo', 'main') => { cwd: '/repo', backupDir: '/tmp/...', moved: [...] } | null
+ * MARK: _moveAsideBlockingLiveSnapshots
+ * @description Finds ENGINE-OWNED files (everything under the ignore prefixes
+ *   — `docs/tasks/<id>/…` snapshots AND stage reports/assets, the state dir
+ *   `.kainbain/…`) that the TARGET branch still tracks while this checkout
+ *   holds them as untracked files — the exact shape that makes git refuse a
+ *   checkout with "untracked working tree files would be overwritten". Moves
+ *   those files to a temp backup dir and returns a restore handle (null when
+ *   nothing blocks). Only untracked-here files move: paths the current index
+ *   tracks are git's normal checkout business and are left alone, and
+ *   non-ignored untracked files never move (real user files keep blocking the
+ *   checkout loudly). Widened beyond task.md snapshots because stage reports
+ *   and assets committed on main blocked the pre-deploy sync's return to main
+ *   the same way (publish of e3b2624a-bc24-4698-9c78-86af7f6f3b5b,
+ *   2026-10-30).
+ * @example await _moveAsideBlockingLiveSnapshots('/repo', 'main') => { cwd: '/repo', backupDir: '/tmp/...', moved: [...] } | null
  ***/
-async function moveAsideBlockingLiveSnapshots(projectCwd, targetBranch, opts = {}) {
+export async function _moveAsideBlockingLiveSnapshots(projectCwd, targetBranch, opts = {}) {
 	let tracked;
 	try {
 		({ stdout: tracked } = await git(projectCwd, ["ls-tree", "-r", "--name-only", targetBranch]));
 	} catch {
 		return null;
 	}
+	const ignorePrefixes = _resolveIgnorePaths(opts).map((p) =>
+		p.endsWith("/") ? p : `${p}/`,
+	);
+	const isEngineOwned = (f) =>
+		isLiveTaskSnapshotPath(f, opts) ||
+		ignorePrefixes.some((prefix) => f.startsWith(prefix));
 	const live = tracked
 		.split("\n")
 		.map((s) => s.trim())
-		.filter((f) => f && isLiveTaskSnapshotPath(f, opts));
+		.filter((f) => f && isEngineOwned(f));
 	if (live.length === 0) return null;
 	let indexed;
 	try {
@@ -136,7 +149,7 @@ async function moveAsideBlockingLiveSnapshots(projectCwd, targetBranch, opts = {
 
 /***
  * MARK: restoreMovedAsideSnapshots
- * @description Restores files moved aside by moveAsideBlockingLiveSnapshots,
+ * @description Restores files moved aside by _moveAsideBlockingLiveSnapshots,
  *   overwriting the target branch's stale tracked copy with the newer
  *   backend-regenerated content (the backend re-saves task.md on every
  *   event, so the aside copy is authoritative). Never throws: leftovers

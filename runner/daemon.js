@@ -1,9 +1,15 @@
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
-import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, removeIntegrationWorkdir, runGit, syncTaskDocs, touchWorkdir } from "./project.js";
+import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, touchWorkdir } from "./project.js";
 import { RunnerGitError } from "./project.js";
 import { runHarnessStage } from "./harness.js";
+// The Runner bundle ships shared/ next to this folder (runner/{runner,api,shared}
+// in prod and in the distributable tarball), so ../shared resolves both in the
+// repo and in every deployed layout — the same copy the backend executes.
+import { servingModelFor } from "../shared/servingModelFor.js";
+import { formatPosture } from "../shared/formatPosture.js";
 import { commitAndPush } from "./gitOps.js";
 
 export const RUNNER_VERSION = "0.1.0";
@@ -422,6 +428,52 @@ export function ciWorkdirFor({ runOnBranch, workdir, projectCwd } = {}) {
 }
 
 /***
+ * MARK: resolveCiWorkdir
+ * @description Resolves the working directory for a dispatched CI stage,
+ *   honouring the stage's runOnBranch mode end to end (the UI toggle must
+ *   never be silently dropped): 'task' (default) runs in the task worktree;
+ *   'primary' runs in the primary checkout (project.cwd on this host), where
+ *   host/publish commands such as deploy.sh expect to run; 'custom' runs in
+ *   a fresh ephemeral detached worktree at the named branch — never in the
+ *   shared primary checkout (nothing engine-owned can dirty it) and never in
+ *   the task worktree (a custom branch is not kb/*). The returned `cleanup`
+ *   removes the ephemeral worktree again (custom mode only; null otherwise).
+ * @example await resolveCiWorkdir({ runOnBranch: 'custom', customBranch: 'release/next', workdir: '/w/kb-t', projectCwd: '/repo', repoUrl: null, workRoot: '/w', taskId: 't' }) => { workdir: '/w/kb-ci-t', cleanup: [Function] }
+ * @param {Object} opts - `{ runOnBranch, customBranch, workdir, projectCwd, repoUrl, workRoot, taskId }`.
+ * @returns {Promise<{workdir: string, cleanup: (Function|null)}>}
+ * @throws {Error} Custom mode with a blank branch name, or a branch that does
+ *   not exist in the source repo (fails loud, mirroring the backend's
+ *   resolveCiBranchPlan — never silently fall back to the task worktree).
+ ***/
+export async function resolveCiWorkdir({ runOnBranch, customBranch, workdir, projectCwd, repoUrl = null, workRoot, taskId } = {}) {
+	const mode = typeof runOnBranch === "string" ? runOnBranch.trim().toLowerCase() : "task";
+	if (mode !== "custom") {
+		return { workdir: ciWorkdirFor({ runOnBranch, workdir, projectCwd }), cleanup: null };
+	}
+	const branch = typeof customBranch === "string" ? customBranch.trim() : "";
+	if (!branch) {
+		throw new Error("CI stage runOnBranch 'custom' needs a customBranch name (set it in the stage's Run-on branch settings)");
+	}
+	// Source repo: the refreshed mirror for remote projects, else the adopted
+	// local checkout (same repoDir prepareWorkdir used for the task worktree).
+	const repoDir = repoUrl
+		? path.join(workRoot, "mirrors", slugForRepo(repoUrl))
+		: projectCwd || workdir;
+	// Branch must exist locally (backend validates the same contract).
+	await runGit(repoDir, ["rev-parse", "--verify", `refs/heads/${branch}`]);
+	const dir = path.join(workRoot, `kb-ci-${taskId}`);
+	fs.rmSync(dir, { recursive: true, force: true });
+	// Detached at the branch tip: no branch lock, so a sibling checkout of the
+	// same branch elsewhere is never disturbed.
+	await runGit(repoDir, ["worktree", "add", "--detach", dir, branch]);
+	const cleanup = async () => {
+		try { await runGit(repoDir, ["worktree", "remove", "--force", dir]); } catch { /* already gone */ }
+		try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+	};
+	return { workdir: dir, cleanup };
+}
+
+/***
  * MARK: runCiCommand
  * @description Runs one backend-dispatched CI/command stage in the worktree:
  *   shell command (already keyword-expanded by the backend, backend cwd
@@ -555,6 +607,7 @@ async function executeAssignment({
 	model = null,
 	harnessId = null,
 	runOnBranch = "",
+	customBranch = "",
 	integration = null,
 }) {
 	const servingHarnessId = harnessId || config.harnessId || "unknown";
@@ -573,6 +626,7 @@ async function executeAssignment({
 		if (!ciCommand && typeof claim.command === "string") ciCommand = claim.command;
 		if (!ciTimeoutMs && Number(claim.timeoutMs)) ciTimeoutMs = Number(claim.timeoutMs);
 		if (!runOnBranch && typeof claim.runOnBranch === "string") runOnBranch = claim.runOnBranch;
+		if (!customBranch && typeof claim.customBranch === "string") customBranch = claim.customBranch;
 		if (ciEnv === null || ciEnv === undefined) ciEnv = claim.env;
 		if (integration === null || integration === undefined) integration = claim.integration ?? null;
 		// Leased integrations run their own procedure (Step 4): ephemeral
@@ -673,35 +727,69 @@ async function executeAssignment({
 					event: "prompted",
 					prompt,
 					harness: servingHarnessId,
-					model: config.model || "default",
+					model: servingModelFor({ kind, model, fallbackModel: config.model }),
 				});
 			} catch (err) {
 				logger.warn(`Prompt report failed: ${err?.message || err}`);
 			}
 
 			if (kind === "ci") {
-				const ciWorkdir = ciWorkdirFor({ runOnBranch, workdir, projectCwd: project.cwd });
-				const command = applyBackendPrompt({ prompt: ciCommand, backendCwd: project.cwd, workdir: ciWorkdir });
-				logger.log(`CI stage command: ${command} (cwd ${ciWorkdir})`);
-				// Backend-curated assignment env (continuity markers et al.)
-				// flows to the child under the daemon-owned identity keys,
-				// which always win so an assignment can never spoof them.
-				const ci = await runCiCommand({
-					command, workdir: ciWorkdir,
-					timeoutMs: ciTimeoutMs || 600000,
-					env: { ...sanitizeCiEnv(ciEnv), KAINBAIN_TASK_ID: taskId, KAINBAIN_TASK_DOCS: `${workdir}/docs/tasks/${taskId}` },
-					onLog: (text) => { sendLogs(text).catch(() => {}); },
-				});
-				state.session = null; stopRenewal();
-				await client.progress({ taskId, projectId, executionId, epoch, stageId, event: "finished" });
-				const sha = (await runGit(ciWorkdir, ["rev-parse", "HEAD"])).stdout.trim();
-				if (ci.exitCode !== 0) {
-					const failureReason = ci.timedOut
-						? `CI command timed out after ${ci.timeoutMs}ms`
-						: `CI command failed with exit code ${ci.exitCode}`;
-					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: `${config.tiers.join("/")}:${servingHarnessId}:${config.model || "default"}`, durationMs: Date.now() - runStartedAt });
+				// Honour the stage's runOnBranch mode: 'task' runs in the task
+				// worktree, 'primary' in the primary checkout, 'custom' in an
+				// ephemeral worktree at the named branch. A misconfigured mode
+				// fails the stage loudly instead of silently running in the
+				// task worktree (which is how publish stages used to break:
+				// deploy.sh refuses to run from a kb/* worktree).
+				// CI stages run no LLM, so the completion posture carries no
+				// model segment (formatPosture omits it for model: null) —
+				// never the Runner default.
+				let ciWorkdir;
+				let ciCleanup = null;
+				try {
+					({ workdir: ciWorkdir, cleanup: ciCleanup } = await resolveCiWorkdir({
+						runOnBranch, customBranch, workdir,
+						projectCwd: project.cwd || null,
+						repoUrl: project.gitUrl || project.repoUrl || null,
+						workRoot: config.workRoot,
+						taskId,
+					}));
+				} catch (err) {
+					state.session = null; stopRenewal();
+					await client.progress({ taskId, projectId, executionId, epoch, stageId, event: "finished" }).catch(() => {});
+					return await client.complete({
+						taskId, projectId, executionId, epoch, sha: null, branch,
+						outcome: "failed",
+						failureReason: `CI stage branch setup failed: ${err?.message || err}`,
+						taskFiles: collectTaskFiles({ workdir, taskId }), output: "",
+						posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: null }),
+						durationMs: Date.now() - runStartedAt,
+					});
 				}
-				return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: `${config.tiers.join("/")}:${servingHarnessId}:${config.model || "default"}`, durationMs: Date.now() - runStartedAt });
+				try {
+					const command = applyBackendPrompt({ prompt: ciCommand, backendCwd: project.cwd, workdir: ciWorkdir });
+					logger.log(`CI stage command: ${command} (cwd ${ciWorkdir})`);
+					// Backend-curated assignment env (continuity markers et al.)
+					// flows to the child under the daemon-owned identity keys,
+					// which always win so an assignment can never spoof them.
+					const ci = await runCiCommand({
+						command, workdir: ciWorkdir,
+						timeoutMs: ciTimeoutMs || 600000,
+						env: { ...sanitizeCiEnv(ciEnv), KAINBAIN_TASK_ID: taskId, KAINBAIN_TASK_DOCS: `${workdir}/docs/tasks/${taskId}` },
+						onLog: (text) => { sendLogs(text).catch(() => {}); },
+					});
+					state.session = null; stopRenewal();
+					await client.progress({ taskId, projectId, executionId, epoch, stageId, event: "finished" });
+					const sha = (await runGit(ciWorkdir, ["rev-parse", "HEAD"])).stdout.trim();
+					if (ci.exitCode !== 0) {
+						const failureReason = ci.timedOut
+							? `CI command timed out after ${ci.timeoutMs}ms`
+							: `CI command failed with exit code ${ci.exitCode}`;
+						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: null }), durationMs: Date.now() - runStartedAt });
+					}
+					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: null }), durationMs: Date.now() - runStartedAt });
+				} finally {
+					if (ciCleanup) await ciCleanup();
+				}
 			}
 
 			// The backend project record's cwd points at the backend's own
@@ -756,7 +844,7 @@ async function executeAssignment({
 				epoch,
 				sha,
 				branch,
-				posture: `${config.tiers.join("/")}:${servingHarnessId}:${config.model || "default"}`,
+				posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servingModelFor({ kind, model, fallbackModel: config.model }) }),
 				outcome: "passed",
 				taskFiles: collectTaskFiles({ workdir, taskId }),
 				output: String(output || "").slice(0, 20000),
@@ -792,7 +880,7 @@ async function executeAssignment({
 					epoch,
 					outcome: "failed",
 					failureReason: err.failedOutcome,
-					posture: `${config.tiers.join("/")}:${servingHarnessId}:${config.model || "default"}`,
+					posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servingModelFor({ kind, model, fallbackModel: config.model }) }),
 					durationMs: Date.now() - runStartedAt,
 				});
 			}
@@ -845,7 +933,7 @@ async function executeIntegrationAssignment({
 	state.executionId = executionId;
 	state.epoch = epoch;
 	state.session = null;
-	const posture = `${(config.tiers || []).join("/")}:integration:${config.model || "default"}`;
+	const posture = formatPosture({ tiers: config.tiers, harness: "integration", model: null });
 	const stopRenewal = startClaimRenewal({ client, logger, taskId, projectId, executionId, epoch });
 	const integrationTimer = setInterval(() => {
 		client
@@ -925,7 +1013,7 @@ async function executeIntegrationAssignment({
 					"push", `--force-with-lease=${targetBranch}:${expectedTargetSha}`,
 					"origin", `${mergeSha}:${targetBranch}`,
 				]);
-			} catch (pushErr) {
+			} catch {
 				const detail = `Target '${targetBranch}' moved during integration (CAS push pinned at ${String(expectedTargetSha).slice(0, 7)} rejected) — retry re-bases with fresh SHAs`;
 				await sendLogs(`[integrate] stale-head: ${detail}`);
 				await client.integrationReport({
@@ -1171,6 +1259,7 @@ export async function runDispatchLoop({
 				kind: answer.kind || "",
 				ciCommand: answer.command || "",
 				runOnBranch: answer.runOnBranch || "",
+				customBranch: answer.customBranch || "",
 				ciTimeoutMs: Number(answer.timeoutMs) || 0,
 				ciEnv: answer.env,
 				// The backend already matched this task against our

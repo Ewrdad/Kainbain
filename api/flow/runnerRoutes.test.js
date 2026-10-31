@@ -685,6 +685,35 @@ describe("Runner Routes Integration", () => {
 		expect(out.misses.TIER_CEILING).toBeGreaterThanOrEqual(1);
 	});
 
+	it("dispatch refuses a runner that did not advertise the required model, leaving the task for a capable runner", async () => {
+		// Q4: the fixture project requires mock-model on the mock harness.
+		// A runner serving mock but advertising only an unrelated model must
+		// be refused (NO_MODEL) without holding the task, so a capable
+		// runner picks up the very same task on the next dispatch.
+		const { project: modelProj } = await mockProject("Dispatch Model Refusal");
+		const otherFacts = { ...FACTS, models: ["some-other-model"] };
+		const regA = await app.inject({
+			method: "POST",
+			url: "/runners/register",
+			payload: { runnerId: "dispatch-model-a", joinToken: "test-join-token", facts: otherFacts },
+		});
+		expect(regA.statusCode).toBe(202);
+		const approvalA = await app.inject({ method: "POST", url: "/runners/dispatch-model-a/approve" });
+		expect(approvalA.statusCode).toBe(200);
+		const credA = JSON.parse(approvalA.payload).credential;
+		await heartbeatAs(credA, "dispatch-model-a", otherFacts);
+		const refused = JSON.parse((await dispatchAs(credA, { projectIds: [modelProj.id] })).payload);
+		expect(refused.assigned).toBe(false);
+		expect(refused.code).toBe("NO_CAPABLE_MATCH");
+		expect(refused.misses.NO_MODEL).toBeGreaterThanOrEqual(1);
+
+		const credB = await onboard("dispatch-model-b");
+		await heartbeatAs(credB, "dispatch-model-b");
+		const served = JSON.parse((await dispatchAs(credB, { projectIds: [modelProj.id] })).payload);
+		expect(served.assigned).toBe(true);
+		expect(served.requirements).toMatchObject({ harness: "mock", model: "mock-model" });
+	});
+
 	it("dispatch honors the Runner-enforced project allowlist", async () => {
 		const { project } = await mockProject("Dispatch Allowlist");
 		const credential = await onboard("dispatch-allow");
