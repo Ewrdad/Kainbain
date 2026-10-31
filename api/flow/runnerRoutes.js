@@ -7,6 +7,8 @@ import { circuitSnapshot, isTripped } from "./circuitBreaker.js";
 import { scanClaimableTasks } from "./dispatch/scanClaimableTasks.js";
 import { resolveAliasRequirement } from "./dispatch/resolveAliasRequirement.js";
 import { runnerMatches } from "./dispatch/runnerMatches.js";
+import { operatorConfigVerdict } from "./dispatch/operatorConfigVerdict.js";
+import { taskRequirements } from "./dispatch/taskRequirements.js";
 import { curateRunnerPrompt } from "./curateRunnerPrompt.js";
 import { materializeRunnerTaskDocs } from "./execution/materializeRunnerTaskDocs.js";
 import { buildCommandKeywordContext, expandStageCommand } from "./commandStages.js";
@@ -695,6 +697,23 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		if (!projectId) return;
 		const task = taskStore.getTask(projectId, request.params.id);
 		if (!task) return reply.status(404).send({ error: "Task not found" });
+		// Operator settings (System Settings › Runners) bind this direct
+		// claim exactly like the dispatch scan: a Runner whose project is
+		// unloaded, whose job-type switch is off, or whose tool subset
+		// excludes the stage harness must not claim the task by asking for
+		// it directly. Fail loud (409 + the verdict code) instead of
+		// silently honouring a claim the operator switched off.
+		const claimVerdict = operatorConfigVerdict(
+			runner,
+			taskRequirements(projectStore.getProject(projectId) || {}, task),
+			{ projectId },
+		);
+		if (!claimVerdict.ok) {
+			return reply.status(409).send({
+				error: `Runner ${runner.runnerId} settings refuse this task (${claimVerdict.reason}).`,
+				code: claimVerdict.reason,
+			});
+		}
 		try {
 			const { executionId, epoch } = claimStore.claim(
 				request.params.id,
@@ -1024,6 +1043,27 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		}
 		if (!integrationQueue) {
 			return reply.status(503).send({ error: "Integration queue unavailable.", code: "NO_INTEGRATION_QUEUE" });
+		}
+		// Paused Runners take no new work on any route (mirrors the claim
+		// and dispatch routes), and the operator's Runs-merges switch and
+		// project scope bind this direct lease exactly like a dispatched
+		// merge: acquiring a merge lease must not bypass Settings.
+		if (runner.paused === true) {
+			return reply.status(409).send({
+				error: `Runner ${runner.runnerId} is paused — resume it to take new tasks`,
+				code: "RUNNER_PAUSED",
+			});
+		}
+		const mergeVerdict = operatorConfigVerdict(
+			runner,
+			{ kind: "merge" },
+			{ projectId: request.body?.projectId },
+		);
+		if (!mergeVerdict.ok) {
+			return reply.status(409).send({
+				error: `Runner ${runner.runnerId} settings refuse merge work (${mergeVerdict.reason}).`,
+				code: mergeVerdict.reason,
+			});
 		}
 		try {
 			return integrationQueue.acquire({

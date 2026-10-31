@@ -158,6 +158,33 @@ describe('useTaskGoalDraft', () => {
     await act(async () => {});
   });
 
+  it('adopts the server goal when it arrives late for the same task', async () => {
+    // The detail page can first resolve a list record whose goal has not
+    // loaded yet, then the full record for the same id. The heading must
+    // follow the real goal, not stay on the empty first value.
+    const { result, rerender, props } = setup({ id: 'task-1', goal: '' });
+
+    expect(result.current.title).toBe('');
+
+    rerender({ ...props, task: { id: 'task-1', goal: 'Loaded goal' } });
+
+    expect(result.current.title).toBe('Loaded goal');
+    expect(result.current.hasPendingEdits).toBe(false);
+    await act(async () => {});
+  });
+
+  it('never overwrites a dirty edit when the server goal changes', async () => {
+    const { result, rerender, props } = setup({ id: 'task-1', goal: 'Server goal' });
+    act(() => {
+      result.current.handleTitleChange('My unsaved edit');
+    });
+
+    rerender({ ...props, task: { id: 'task-1', goal: 'Other server goal' } });
+
+    expect(result.current.title).toBe('My unsaved edit');
+    await act(async () => {});
+  });
+
   it('registers its flush with the context and unregisters on unmount', () => {
     const { unmount, setPendingTaskSaveFlush } = setup({
       id: 'task-1',

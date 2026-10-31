@@ -865,6 +865,80 @@ describe("Runner Routes Integration", () => {
 		expect(missingGet.statusCode).toBe(404);
 	});
 
+	it("direct claim refuses a project the operator unloaded, then claims when scope is cleared", async () => {
+		const credential = await onboard("claim-scope-gate");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Direct claim scope target" },
+		});
+		expect(taskRes.statusCode).toBe(200);
+		const target = JSON.parse(taskRes.payload).id;
+		const scoped = await app.inject({
+			method: "PATCH",
+			url: "/runners/claim-scope-gate/config",
+			payload: { projectScope: ["some-other-project"] },
+		});
+		expect(scoped.statusCode).toBe(200);
+		const refused = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		expect(refused.statusCode).toBe(409);
+		expect(JSON.parse(refused.payload).code).toBe("PROJECT_SCOPE");
+		// Clearing the scope back to serves-all restores claiming: the
+		// setting is a live preference, not a one-way lockout.
+		const cleared = await app.inject({
+			method: "PATCH",
+			url: "/runners/claim-scope-gate/config",
+			payload: { projectScope: null },
+		});
+		expect(cleared.statusCode).toBe(200);
+		const claimed = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		expect(claimed.statusCode).toBe(200);
+	});
+
+	it("integration acquire refuses when Runs merges is off and when paused", async () => {
+		const credential = await onboard("merge-gate");
+		const patched = await app.inject({
+			method: "PATCH",
+			url: "/runners/merge-gate/config",
+			payload: { jobTypes: { runsMerges: false } },
+		});
+		expect(patched.statusCode).toBe(200);
+		const refused = await app.inject({
+			method: "POST",
+			url: "/runners/integration/acquire",
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id, targetBranch: "main" },
+		});
+		expect(refused.statusCode).toBe(409);
+		expect(JSON.parse(refused.payload).code).toBe("JOB_TYPE_DISABLED");
+		const restored = await app.inject({
+			method: "PATCH",
+			url: "/runners/merge-gate/config",
+			payload: { jobTypes: { runsMerges: true } },
+		});
+		expect(restored.statusCode).toBe(200);
+		const paused = await app.inject({ method: "POST", url: "/runners/merge-gate/pause" });
+		expect(paused.statusCode).toBe(200);
+		const pausedRefused = await app.inject({
+			method: "POST",
+			url: "/runners/integration/acquire",
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id, targetBranch: "main" },
+		});
+		expect(pausedRefused.statusCode).toBe(409);
+		expect(JSON.parse(pausedRefused.payload).code).toBe("RUNNER_PAUSED");
+	});
+
 	async function aliasProject(name, { targets, aliasName = "fast", withAliases = true }) {
 		const projRes = await app.inject({
 			method: "POST",
