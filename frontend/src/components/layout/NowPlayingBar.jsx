@@ -69,14 +69,18 @@ const runnerBoxHealthLabel = (health) => {
 };
 
 /***
- * MARK: runnerBoxVisibilityCap
- * @description At most this many boxes render in the 72px bar; the header
- *   count stays honest about the whole fleet and a "+N more" chip names
- *   the overflow. The data layer never hides runners — only the render
- *   slices — so the count always matches the configured fleet.
- * @example MAX_VISIBLE_RUNNER_BOXES => 4
+ * MARK: runnerBoxStrip
+ * @description Every configured Runner renders a box — there is no render
+ *   cap. The strip is a single, fixed-height row that scrolls horizontally
+ *   (`overflow-x-auto`, `overflow-y-hidden`) so narrow/mobile viewports can
+ *   swipe to reach every box instead of clipping them at the bar's edge.
+ *   Boxes are `shrink-0`, so they keep their size and never squash. The
+ *   strip is itself a tab stop (axe `scrollable-region-focusable`) and
+ *   native Tab into each box's buttons scrolls the focused box into view.
+ *   No smooth-scroll animation is applied (prefers-reduced-motion safe).
+ * @example RUNNER_STRIP_SCROLL_HINT => 'Scroll horizontally to see every runner.'
  * ***/
-export const MAX_VISIBLE_RUNNER_BOXES = 4;
+export const RUNNER_STRIP_SCROLL_HINT = 'Scroll horizontally to see every runner.';
 
 /***
  * MARK: resolveRunnerBoxes
@@ -291,12 +295,6 @@ export function NowPlayingBar() {
     runners: runnerRegistryList,
   });
   const showRunnerBoxes = runnerBoxes.length > 0;
-  const visibleRunnerBoxes = showRunnerBoxes
-    ? runnerBoxes.slice(0, MAX_VISIBLE_RUNNER_BOXES)
-    : [];
-  const hiddenRunnerCount = showRunnerBoxes
-    ? runnerBoxes.length - visibleRunnerBoxes.length
-    : 0;
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     if (!showRunnerBoxes) return undefined;
@@ -459,9 +457,17 @@ export function NowPlayingBar() {
                 data-testid="now-playing-runner-boxes"
                 role="group"
                 aria-label={`${runnerBoxes.length} ${runnerBoxes.length === 1 ? 'runner' : 'runners'}`}
-                className="flex items-center gap-1.5 mt-0.5 min-w-0 max-w-full overflow-x-auto"
+                aria-describedby="now-playing-runner-strip-hint"
+                // Focusable scroll region so keyboard users can scroll the
+                // strip with arrow keys (axe scrollable-region-focusable).
+                // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- keyboard-scrollable runner strip (WCAG 2.1.1)
+                tabIndex={0}
+                className="now-playing-runner-strip flex items-center gap-1.5 mt-0.5 min-w-0 max-w-full overflow-x-auto overflow-y-hidden focus:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
               >
-                {visibleRunnerBoxes.map((box) => {
+                <span id="now-playing-runner-strip-hint" className="sr-only">
+                  {RUNNER_STRIP_SCROLL_HINT}
+                </span>
+                {runnerBoxes.map((box) => {
                   const health = runnerBoxHealth(box.lastSeenAt, nowMs);
                   const stateLabel = box.idle
                     ? 'idle, no task assigned'
@@ -541,18 +547,6 @@ export function NowPlayingBar() {
                     </div>
                   );
                 })}
-                {hiddenRunnerCount > 0 && (
-                  <span
-                    data-testid="now-playing-runner-overflow"
-                    title={`Also configured: ${runnerBoxes
-                      .slice(MAX_VISIBLE_RUNNER_BOXES)
-                      .map((box) => box.runnerId)
-                      .join(', ')}`}
-                    className="text-[11px] font-mono text-text-muted shrink-0 px-1"
-                  >
-                    +{hiddenRunnerCount} more
-                  </span>
-                )}
               </div>
             ) : (
               <InfoTooltip

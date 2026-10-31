@@ -3,7 +3,12 @@
 import { expect, test, vi } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
 import { renderWithKainBain } from '../../testUtils';
-import { NowPlayingBar, resolveRunnerBoxes, runnerBoxHealth } from './NowPlayingBar';
+import {
+  NowPlayingBar,
+  RUNNER_STRIP_SCROLL_HINT,
+  resolveRunnerBoxes,
+  runnerBoxHealth,
+} from './NowPlayingBar';
 import { KainBainContext } from '../../context/KainBainContext';
 import React from 'react';
 import '@testing-library/jest-dom';
@@ -810,19 +815,25 @@ test('runner boxes show idle runners; legacy display only with zero runners conf
   ]);
 });
 
-test('past the render cap the bar shows the first boxes plus a "+N more" chip', () => {
-  const runners = Array.from({ length: 6 }, (_, i) => ({
+// Mobile fix (task b15f4ec4): runner boxes used to be capped at 4 with a
+// "+N more" chip inside an overflow-hidden row, so narrow viewports clipped
+// boxes and the rest were unreachable on touch. Every box now renders in a
+// horizontally scrollable strip.
+const sixRunners = () =>
+  Array.from({ length: 6 }, (_, i) => ({
     runnerId: `runner-${i}`,
     status: 'active',
     paused: false,
     lastSeenAt: new Date().toISOString(),
   }));
+
+test('renders every runner box with no render cap or "+N more" chip', () => {
   renderWithKainBain(<NowPlayingBar />, {
     stages,
     currentStageId: '1',
     engineState: { status: 'idle' },
     tasks: [],
-    runners,
+    runners: sixRunners(),
     runnerAssignments: [],
   });
 
@@ -831,15 +842,71 @@ test('past the render cap the bar shows the first boxes plus a "+N more" chip', 
     'aria-label',
     '6 runners',
   );
-  for (let i = 0; i < 4; i += 1) {
+  expect(screen.getByText('Runners 6')).toBeInTheDocument();
+  for (let i = 0; i < 6; i += 1) {
     expect(screen.getByTestId(`now-playing-runner-box-runner-${i}`)).toBeInTheDocument();
   }
-  expect(screen.queryByTestId('now-playing-runner-box-runner-4')).not.toBeInTheDocument();
-  expect(screen.queryByTestId('now-playing-runner-box-runner-5')).not.toBeInTheDocument();
-  const overflow = screen.getByTestId('now-playing-runner-overflow');
-  expect(overflow).toHaveTextContent('+2 more');
-  expect(overflow).toHaveAttribute('title', expect.stringContaining('runner-4'));
-  expect(overflow).toHaveAttribute('title', expect.stringContaining('runner-5'));
+  expect(screen.queryByTestId('now-playing-runner-overflow')).not.toBeInTheDocument();
+  expect(screen.queryByText(/\+\d+ more/)).not.toBeInTheDocument();
+});
+
+test('runner strip is a horizontally scrollable, keyboard-focusable region', () => {
+  renderWithKainBain(<NowPlayingBar />, {
+    stages,
+    currentStageId: '1',
+    engineState: { status: 'idle' },
+    tasks: [],
+    runners: sixRunners(),
+    runnerAssignments: [],
+  });
+
+  const strip = screen.getByTestId('now-playing-runner-boxes');
+  // Scrolls sideways, never grows the fixed 72px bar vertically, never clips.
+  expect(strip).toHaveClass('overflow-x-auto', 'overflow-y-hidden', 'min-w-0', 'max-w-full');
+  expect(strip).not.toHaveClass('overflow-hidden');
+  expect(strip).not.toHaveClass('flex-wrap');
+  expect(strip).toHaveClass('now-playing-runner-strip');
+  // Keyboard users can focus the strip and arrow-scroll it.
+  expect(strip).toHaveAttribute('tabindex', '0');
+  // Screen readers hear how to reach the rest of the fleet.
+  expect(strip).toHaveAccessibleDescription(RUNNER_STRIP_SCROLL_HINT);
+  // Boxes keep their size instead of squashing to fit.
+  for (let i = 0; i < 6; i += 1) {
+    expect(screen.getByTestId(`now-playing-runner-box-runner-${i}`)).toHaveClass('shrink-0');
+  }
+});
+
+test('controls on a box past the old 4-box cap still fire', () => {
+  const pauseRunner = vi.fn();
+  const resumeRunner = vi.fn();
+  const skipRunner = vi.fn();
+  const setSelectedTask = vi.fn();
+  const runners = sixRunners();
+  runners[5] = { ...runners[5], paused: true };
+  const task = { id: 't5', currentStageId: '1', status: 'running_agent', title: 'Late runner task' };
+  renderWithKainBain(<NowPlayingBar />, {
+    stages,
+    currentStageId: '1',
+    engineState: { status: 'running' },
+    tasks: [task],
+    runners,
+    runnerAssignments: [
+      { runnerId: 'runner-4', taskId: 't5', stageId: '1', lastSeenAt: new Date().toISOString() },
+    ],
+    pauseRunner,
+    resumeRunner,
+    skipRunner,
+    setSelectedTask,
+  });
+
+  fireEvent.click(screen.getByLabelText('Pause runner runner-4'));
+  expect(pauseRunner).toHaveBeenCalledWith('runner-4');
+  fireEvent.click(screen.getByLabelText('Skip current task for runner runner-4'));
+  expect(skipRunner).toHaveBeenCalledWith('runner-4');
+  fireEvent.click(screen.getByLabelText('Inspect task for runner runner-4'));
+  expect(setSelectedTask).toHaveBeenCalledWith(expect.objectContaining({ id: 't5' }));
+  fireEvent.click(screen.getByLabelText('Resume runner runner-5'));
+  expect(resumeRunner).toHaveBeenCalledWith('runner-5');
 });
 
 // Helper to rerender NowPlayingBar with an overridden context.

@@ -95,6 +95,28 @@
   background: #8a8a8a;
 }
 
+/* Now Playing runner strip: horizontally scrollable row of runner boxes in
+   the fixed 72px bar. A thin scrollbar keeps the bar height intact; touch
+   swipes scroll natively and overscroll never chains into page navigation.
+   scroll-padding keeps a focused/scrolled-to box clear of the strip edge. */
+.now-playing-runner-strip {
+  scrollbar-width: thin;
+  scrollbar-color: #757575 transparent;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-padding-inline: 4px;
+}
+.now-playing-runner-strip::-webkit-scrollbar {
+  height: 3px;
+}
+.now-playing-runner-strip::-webkit-scrollbar-track {
+  background: transparent;
+}
+.now-playing-runner-strip::-webkit-scrollbar-thumb {
+  background: #757575;
+  border-radius: 9999px;
+}
+
 /* Glass panel effect for modals / overlays */
 .glass-panel {
   background: rgba(30, 30, 30, 0.85);
