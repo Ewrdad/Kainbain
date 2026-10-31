@@ -1,4 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { runnerBoxHealth } from './runnerBoxHealth.js';
+import { resolveRunnerBoxes } from './resolveRunnerBoxes.js';
+import { useNowPlayingRunnerDirectory } from './useNowPlayingRunnerDirectory.js';
 
 import { useKainBain } from '../../context/KainBainContext';
 import { formatTaskKey, formatTaskTitleFirstLine } from '../tasks/taskFormatters';
@@ -6,6 +9,8 @@ import { resolveDisplayedStage } from '../tasks/runningTask';
 import { resolveActiveTaskDisplay, resolveUniversalNowPlaying } from './activeTaskVisibility';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { api } from '../../services/api';
+export { runnerBoxHealth } from './runnerBoxHealth.js';
+export { resolveRunnerBoxes } from './resolveRunnerBoxes.js';
 
 /***
  * MARK: NowPlayingBar
@@ -37,19 +42,6 @@ import { api } from '../../services/api';
  * @example <NowPlayingBar />
  ***/
 
-/***
- * MARK: runnerBoxHealth
- * @description Heartbeat freshness behind each runner box's colour dot. A
- *   Runner heartbeats every 15s, so anything seen within 60s counts as live
- *   (green). Older than that is stale (amber); a missing/unparseable
- *   timestamp stays grey (unknown) rather than alarming.
- * @example runnerBoxHealth(new Date().toISOString(), Date.now()) => 'live'
- ***/
-export function runnerBoxHealth(lastSeenAt, nowMs) {
-  const seen = Date.parse(lastSeenAt || '');
-  if (!Number.isFinite(seen)) return 'unknown';
-  return nowMs - seen <= 60000 ? 'live' : 'stale';
-}
 
 /***
  * MARK: runnerBoxDotClass / runnerBoxHealthLabel
@@ -78,166 +70,7 @@ const runnerBoxHealthLabel = (health) => {
  * ***/
 export const MAX_VISIBLE_RUNNER_BOXES = 4;
 
-/***
- * MARK: resolveRunnerBoxes
- * @description Builds the per-runner box models for the Now Playing bar's
- *   left side. Boxes show for every configured (active) Runner — idle ones
- *   included — so the bar always reads as the fleet roster, never as an
- *   empty "nothing running" state. Live assignments overlay task, stage,
- *   and freshness; a Runner with no assignment renders an honest idle box
- *   (`idle: true`, task "Idle", stage "Waiting for work"). Always returns
- *   an array (empty only when no Runners are configured at all).
- * @example resolveRunnerBoxes({ assignments: [], tasks: [], stages: [], runners: [] }) => []
- ***/
-export function resolveRunnerBoxes({ assignments, tasks, stages, runners }) {
-  const list = Array.isArray(assignments) ? assignments.filter((a) => a && a.runnerId) : [];
-  const byRunner = new Map();
-  for (const a of list) {
-    const key = String(a.runnerId);
-    if (!byRunner.has(key)) byRunner.set(key, a);
-  }
-  // Union: every configured active Runner in registry order, then any
-  // assignment-only ids (registry unknown, e.g. list fetch missed) after.
-  const ids = [];
-  if (Array.isArray(runners)) {
-    for (const r of runners) {
-      if (!r || typeof r.runnerId !== 'string' || !r.runnerId) continue;
-      if (r.status !== 'active') continue;
-      if (!ids.includes(r.runnerId)) ids.push(r.runnerId);
-    }
-  }
-  for (const key of byRunner.keys()) {
-    if (!ids.includes(key)) ids.push(key);
-  }
-  if (ids.length === 0) return [];
-  const recordById = new Map(
-    (Array.isArray(runners) ? runners : [])
-      .filter((r) => r && typeof r.runnerId === 'string')
-      .map((r) => [r.runnerId, r]),
-  );
-  const taskById = new Map(
-    (Array.isArray(tasks) ? tasks : [])
-      .filter((t) => t && t.id != null)
-      .map((t) => [String(t.id), t]),
-  );
-  const stageById = new Map(
-    (Array.isArray(stages) ? stages : [])
-      .filter((s) => s && s.id != null)
-      .map((s) => [String(s.id), s]),
-  );
-  const stageNameFor = (stageId, task) => {
-    const ids = [stageId, task?.currentStageId];
-    for (const id of ids) {
-      if (id == null || id === '') continue;
-      const stage = stageById.get(String(id));
-      const name = stage?.name || stage?.title;
-      if (typeof name === 'string' && name.trim()) return name;
-      return String(id);
-    }
-    return '…';
-  };
-  const taskNameFor = (task, taskId) =>
-    formatTaskTitleFirstLine(task || '', '') ||
-    (typeof taskId === 'string' || typeof taskId === 'number' ? String(taskId).slice(0, 8) : '…');
-  return ids.map((runnerId) => {
-    const a = byRunner.get(runnerId) || null;
-    const record = recordById.get(runnerId) || null;
-    if (!a) {
-      // Configured but holding nothing: an honest idle box. The health dot
-      // reads the registry heartbeat (grey unknown when never seen).
-      return {
-        runnerId,
-        taskId: null,
-        task: null,
-        taskName: 'Idle',
-        stageName: 'Waiting for work',
-        lastSeenAt: record?.lastSeenAt ?? null,
-        startedAt: null,
-        paused: record?.paused ?? false,
-        idle: true,
-      };
-    }
-    const task = taskById.get(String(a.taskId)) || null;
-    return {
-      runnerId,
-      taskId: a.taskId,
-      task,
-      taskName: taskNameFor(task, a.taskId),
-      stageName: stageNameFor(a.stageId, task),
-      lastSeenAt: a.lastSeenAt ?? record?.lastSeenAt ?? null,
-      startedAt: a.startedAt ?? null,
-      paused: a.paused ?? record?.paused ?? false,
-      idle: false,
-    };
-  });
-}
 
-/***
- * MARK: useNowPlayingRunnerDirectory
- * @description Fleet roster behind the bar's runner boxes: the configured
- *   Runner list (GET /runners) plus live assignments (GET /runners/monitor)
- *   on the same 5s cadence as the observability widget. Tests (and any
- *   future context wiring) can inject per-piece `override` values to skip
- *   polling; each side polls only while its own override is undefined.
- *   Failures are best-effort: a missed list falls back to assignment-only
- *   boxes, a missed monitor to idle boxes, and both missed to the legacy
- *   single-task display.
- ***/
-function useNowPlayingRunnerDirectory(assignmentsOverride, runnersOverride) {
-  const [monitor, setMonitor] = useState(null);
-  const [registry, setRegistry] = useState(null);
-  // No-op polls skip the state update entirely — compared via ref so idle
-  // polling never schedules a render (nor an act() warning in tests) every
-  // 5s. The ref starts at the empty-roster key, so the first poll showing
-  // "no assignments, registry unknown" is already a no-op.
-  const keyRef = useRef(JSON.stringify([[], 'miss']));
-  const pollAssignments = assignmentsOverride === undefined;
-  const pollRunners = runnersOverride === undefined;
-  useEffect(() => {
-    if (!pollAssignments && !pollRunners) return undefined;
-    let mounted = true;
-    const load = async () => {
-      try {
-        const [m, list] = await Promise.all([
-          pollAssignments
-            ? api.getRunnerMonitor().catch(() => null)
-            : Promise.resolve(null),
-          pollRunners && typeof api.getRunners === 'function'
-            ? api.getRunners().catch(() => null)
-            : Promise.resolve(null),
-        ]);
-        if (!mounted) return;
-        const assignments = Array.isArray(m?.liveAssignments)
-          ? m.liveAssignments.filter((a) => a && a.runnerId)
-          : null;
-        const key = JSON.stringify([
-          assignments === null ? 'miss' : assignments.map((a) => a && a.runnerId),
-          Array.isArray(list) ? list.map((r) => r && r.runnerId) : 'miss',
-        ]);
-        if (key === keyRef.current) return;
-        keyRef.current = key;
-        if (assignments !== null) setMonitor(m);
-        if (Array.isArray(list)) setRegistry(list);
-      } catch {
-        // Best-effort: the last good roster stays until the next poll succeeds.
-      }
-    };
-    void load();
-    const timer = setInterval(() => void load(), 5000);
-    return () => {
-      mounted = false;
-      clearInterval(timer);
-    };
-  }, [pollAssignments, pollRunners]);
-  const assignments =
-    assignmentsOverride !== undefined
-      ? assignmentsOverride
-      : Array.isArray(monitor?.liveAssignments)
-        ? monitor.liveAssignments.filter((a) => a && a.runnerId)
-        : [];
-  const runners = runnersOverride !== undefined ? runnersOverride : registry;
-  return { assignments, runners };
-}
 
 /***
  * MARK: NowPlayingBar
