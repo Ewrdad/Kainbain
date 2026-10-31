@@ -31,8 +31,10 @@ describe('useHarnessPrefs', () => {
       result.current.updatePref('pi', { enabled: false });
     });
     expect(result.current.prefsFor('pi')).toEqual({ enabled: false, autoDetect: true });
+    // The Harness tab was replaced by System Settings › Runners, so the
+    // reason names the saved preference instead of the removed tab.
     expect(result.current.isHarnessDisabled({ id: 'pi', label: 'pi' })).toBe(
-      'Disabled in System Settings › Harness',
+      'Disabled by a saved harness preference',
     );
     // Other harnesses stay selectable.
     expect(result.current.isHarnessDisabled({ id: 'antigravity' })).toBeNull();

@@ -226,7 +226,7 @@ export async function runGit(cwd, args, opts = {}) {
 	}
 }
 
-function slugForRepo(repoUrl) {
+export function slugForRepo(repoUrl) {
 	const base = String(repoUrl).split("/").filter(Boolean).pop() || "repo";
 	return base.replace(/\.git$/, "").replace(/[^A-Za-z0-9._-]+/g, "-").slice(0, 64) || "repo";
 }

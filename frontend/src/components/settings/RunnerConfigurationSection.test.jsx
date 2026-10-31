@@ -168,6 +168,20 @@ describe('RunnerConfigurationSection', () => {
     });
   });
 
+  it('offers approve on a denied Runner so it is never a dead end', async () => {
+    const denied = { ...PENDING_RUNNER, runnerId: 'r3', status: 'denied' };
+    runnersFixture([denied]);
+    approveRunner.mockResolvedValue({ status: 'active', credential: 'ONE-TIME-3' });
+    render(<RunnerConfigurationSection />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve runner r3' }));
+    await waitFor(() => {
+      expect(approveRunner).toHaveBeenCalledWith('r3');
+      expect(screen.getByTestId('runner-credential-once')).toBeTruthy();
+    });
+    // Deny is not offered for denied Runners: denying a denied Runner 409s.
+    expect(screen.queryByRole('button', { name: 'Deny runner r3' })).toBeNull();
+  });
+
   it('denies a pending Runner and revokes an active one', async () => {
     runnersFixture();
     denyRunner.mockResolvedValue({ status: 'denied' });
@@ -213,6 +227,27 @@ describe('RunnerConfigurationSection', () => {
     });
     expect(await screen.findByTestId('runner-config-notice')).toHaveTextContent(
       'Runner name saved.',
+    );
+  });
+
+  it('clears the Runner name back to the Runner id default', async () => {
+    runnersFixture([
+      {
+        ...ACTIVE_RUNNER,
+        operatorConfig: { ...OPERATOR_CONFIG, displayName: 'Primary' },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    const input = screen.getByTestId('runner-name-r1');
+    expect(input).toHaveValue('Primary');
+    fireEvent.change(input, { target: { value: '   ' } });
+    fireEvent.click(screen.getByTestId('runner-name-save-r1'));
+    await waitFor(() => {
+      expect(updateRunnerConfig).toHaveBeenCalledWith('r1', { displayName: null });
+    });
+    expect(await screen.findByTestId('runner-config-notice')).toHaveTextContent(
+      'Runner name reset to the Runner id.',
     );
   });
 
@@ -275,6 +310,53 @@ describe('RunnerConfigurationSection', () => {
       expect(screen.getByTestId('runner-worktreedir-r1-error')).toBeTruthy();
     });
     expect(updateRunnerConfig).not.toHaveBeenCalled();
+  });
+
+  it('clears a directory error while the operator retypes', async () => {
+    runnersFixture([ACTIVE_RUNNER]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    fireEvent.change(screen.getByTestId('runner-worktreedir-r1'), { target: { value: '   ' } });
+    const save = screen.getByTestId('runner-worktreedir-r1-save');
+    fireEvent.click(save);
+    fireEvent.click(save);
+    await screen.findByTestId('runner-worktreedir-r1-error');
+    // Typing a new value clears the stale error before the next save attempt.
+    fireEvent.change(screen.getByTestId('runner-worktreedir-r1'), {
+      target: { value: '/srv/fixed-trees' },
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('runner-worktreedir-r1-error')).toBeNull();
+    });
+    expect(updateRunnerConfig).not.toHaveBeenCalled();
+  });
+
+  it('disables roster actions while a config save is in flight', async () => {
+    runnersFixture([ACTIVE_RUNNER, PENDING_RUNNER]);
+    // A save that never settles keeps the busy state observable.
+    updateRunnerConfig.mockImplementation(() => new Promise(() => {}));
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    fireEvent.click(screen.getByTestId('runner-job-r1-runsCi'));
+    // One write at a time: a roster action racing the save could overwrite
+    // the shared busy flag and reload the roster over the in-flight patch.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Pause runner r1' })).toBeDisabled();
+    });
+    expect(screen.getByRole('button', { name: 'Approve runner r2' })).toBeDisabled();
+  });
+
+  it('says plainly that a saved directory is not sent to the Runner yet', async () => {
+    runnersFixture([ACTIVE_RUNNER]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    fireEvent.change(screen.getByTestId('runner-masterdir-r1'), {
+      target: { value: '/srv/new-master' },
+    });
+    fireEvent.click(screen.getByTestId('runner-masterdir-r1-save'));
+    expect(screen.getByTestId('runner-masterdir-r1-confirm')).toHaveTextContent(
+      'not sent to the Runner yet',
+    );
   });
 
   it('toggles job switches with the expected payload', async () => {

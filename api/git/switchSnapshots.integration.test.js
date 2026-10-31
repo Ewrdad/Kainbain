@@ -15,7 +15,7 @@ try {
 	gitAvailable = false;
 }
 
-const { checkoutBranch } = await import("./branch.js");
+const { checkoutBranch, _moveAsideBlockingLiveSnapshots } = await import("./branch.js");
 const { commitEngineSnapshots } = await import("./commit.js");
 const { GitDirtyTreeError } = await import("./errors.js");
 
@@ -73,6 +73,35 @@ describe("commit-then-switch (real git)", () => {
 		expect(run(dir, "show", "kb/t:docs/tasks/t/report.md").trim()).toBe("report");
 		expect(() => run(dir, "show", "kb/t:docs/tasks/t/task.md")).toThrow();
 		expect(fs.readFileSync(path.join(dir, "docs", "tasks", "t", "task.md"), "utf8")).toBe("new snapshot\n");
+	});
+
+	it("moves aside every engine-owned untracked file the target tracks (not just task.md), leaving real files alone", async () => {
+		if (!gitAvailable) return;
+		// main tracks an engine-owned report AND a real source file; kb/t
+		// holds both as untracked live copies (the shape that blocked the
+		// pre-deploy sync's return to main on 2026-10-30 when the
+		// commit-then-switch backstop failed on a concurrent HEAD move).
+		run(dir, "checkout", "main");
+		fs.writeFileSync(path.join(dir, "docs", "tasks", "t", "report.md"), "main report\n");
+		fs.writeFileSync(path.join(dir, "real2.js"), "main real\n");
+		run(dir, "add", "-A");
+		run(dir, "commit", "-m", "main report + real2");
+		run(dir, "checkout", "kb/t");
+		fs.writeFileSync(path.join(dir, "docs", "tasks", "t", "report.md"), "live report\n");
+		fs.writeFileSync(path.join(dir, "real2.js"), "live real\n");
+
+		const aside = await _moveAsideBlockingLiveSnapshots(dir, "main");
+
+		// The engine-owned report moved aside; the real file did not.
+		expect(aside).not.toBeNull();
+		expect(aside.moved.map((m) => m.rel)).toEqual(["docs/tasks/t/report.md"]);
+		expect(fs.existsSync(path.join(dir, "docs", "tasks", "t", "report.md"))).toBe(false);
+		expect(fs.readFileSync(path.join(dir, "real2.js"), "utf8")).toBe("live real\n");
+		// The backup holds the live content for restore after checkout.
+		expect(fs.readFileSync(aside.moved[0].backup, "utf8")).toBe("live report\n");
+		// Cleanup.
+		fs.rmSync(aside.backupDir, { recursive: true, force: true });
+		fs.writeFileSync(path.join(dir, "docs", "tasks", "t", "report.md"), "live report\n");
 	});
 
 	it("still refuses real dirt without committing anything", async () => {

@@ -7,6 +7,8 @@ import { circuitSnapshot, isTripped } from "./circuitBreaker.js";
 import { scanClaimableTasks } from "./dispatch/scanClaimableTasks.js";
 import { resolveAliasRequirement } from "./dispatch/resolveAliasRequirement.js";
 import { runnerMatches } from "./dispatch/runnerMatches.js";
+import { operatorConfigVerdict } from "./dispatch/operatorConfigVerdict.js";
+import { taskRequirements } from "./dispatch/taskRequirements.js";
 import { curateRunnerPrompt } from "./curateRunnerPrompt.js";
 import { materializeRunnerTaskDocs } from "./execution/materializeRunnerTaskDocs.js";
 import { buildCommandKeywordContext, expandStageCommand } from "./commandStages.js";
@@ -138,13 +140,27 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 	};
 
 	const ciPayloadFor = async (projectId, task, stage) => {
-		if (!stage) return {};
 		const project = projectStore.getProject(projectId);
 		const stages = resolveStagesForTask(project, task);
+		// A null/undefined stage (e.g. the single-assignment claim route) falls
+		// back to the task's current stage — dropping the payload here would
+		// silently strip kind/command/runOnBranch and the Runner would run the
+		// command in the task worktree regardless of the stage's branch mode.
 		const resolved = stage || stages.find((x) => String(x?.id) === String(task?.currentStageId)) || stages[0];
 		if (!resolved) return {};
 		const type = String(resolved.type || "").toLowerCase();
 		if (!["ci", "script", "deploy", "command"].includes(type)) return {};
+		// Branch mode rides every payload — including the error fallback — so a
+		// Runner can never silently degrade a 'primary'/'custom' stage back to
+		// the task worktree (which is exactly how publish stages used to fail:
+		// deploy.sh refuses to run from a kb/* worktree).
+		const runOnBranch = typeof resolved.runOnBranch === "string" ? resolved.runOnBranch : "task";
+		const branchPayload = {
+			runOnBranch,
+			...(runOnBranch === "custom" && typeof resolved.customBranch === "string" && resolved.customBranch.trim()
+				? { customBranch: resolved.customBranch.trim() }
+				: {}),
+		};
 		// Generic lifecycle seam (mirrors runCommandStage): every command
 		// stage announces entry the same way, whether a Runner or the
 		// backend executes it. Installed continuity plugins may record
@@ -173,10 +189,10 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				kind: "ci",
 				command: expandStageCommand(resolved.command || resolved.script || "echo 'CI stage completed'", ctx),
 				timeoutMs: resolveCiTimeoutMs(resolved, project),
-				runOnBranch: typeof resolved.runOnBranch === "string" ? resolved.runOnBranch : "task",
+				...branchPayload,
 				env: lifecycleEnv,
 			};
-		} catch { return { kind: "ci", command: resolved.command || resolved.script || "", timeoutMs: 600000, env: lifecycleEnv }; }
+		} catch { return { kind: "ci", command: resolved.command || resolved.script || "", timeoutMs: 600000, ...branchPayload, env: lifecycleEnv }; }
 	};
 
 	const authedRunner = (request) => {
@@ -386,7 +402,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 
 	app.get("/runners/monitor", async () => {
 		// Multi-Runner UI (WP-3.4): who runs what right now, so
-		// Settings › Harness › Runners can show live assignments.
+		// Settings › Runners can show live assignments.
 		// `scheduler` exposes the cutover deferral counters so a task
 		// sitting in_stage is diagnosable: a climbing `deferredDispatch`
 		// with no Runner pickup means the fleet is empty or mismatched.
@@ -681,6 +697,23 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		if (!projectId) return;
 		const task = taskStore.getTask(projectId, request.params.id);
 		if (!task) return reply.status(404).send({ error: "Task not found" });
+		// Operator settings (System Settings › Runners) bind this direct
+		// claim exactly like the dispatch scan: a Runner whose project is
+		// unloaded, whose job-type switch is off, or whose tool subset
+		// excludes the stage harness must not claim the task by asking for
+		// it directly. Fail loud (409 + the verdict code) instead of
+		// silently honouring a claim the operator switched off.
+		const claimVerdict = operatorConfigVerdict(
+			runner,
+			taskRequirements(projectStore.getProject(projectId) || {}, task),
+			{ projectId },
+		);
+		if (!claimVerdict.ok) {
+			return reply.status(409).send({
+				error: `Runner ${runner.runnerId} settings refuse this task (${claimVerdict.reason}).`,
+				code: claimVerdict.reason,
+			});
+		}
 		try {
 			const { executionId, epoch } = claimStore.claim(
 				request.params.id,
@@ -867,8 +900,13 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					alias: { name: resolved.aliasName, targetIndex: resolved.targetIndex },
 				};
 			}
+			// The candidate's project travels alongside the requirements so
+			// the operator project-scope check in `runnerMatches` can
+			// refuse out-of-scope projects loudly (PROJECT_SCOPE) instead
+			// of dispatching work the operator unloaded for this Runner.
 			const verdict = runnerMatches(runner, req, {
 				staleAfterMs: runnerRegistry.staleAfterMs,
+				projectId: cand.projectId,
 			});
 			if (!verdict.ok) {
 				misses[verdict.reason] = (misses[verdict.reason] || 0) + 1;
@@ -1005,6 +1043,27 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		}
 		if (!integrationQueue) {
 			return reply.status(503).send({ error: "Integration queue unavailable.", code: "NO_INTEGRATION_QUEUE" });
+		}
+		// Paused Runners take no new work on any route (mirrors the claim
+		// and dispatch routes), and the operator's Runs-merges switch and
+		// project scope bind this direct lease exactly like a dispatched
+		// merge: acquiring a merge lease must not bypass Settings.
+		if (runner.paused === true) {
+			return reply.status(409).send({
+				error: `Runner ${runner.runnerId} is paused — resume it to take new tasks`,
+				code: "RUNNER_PAUSED",
+			});
+		}
+		const mergeVerdict = operatorConfigVerdict(
+			runner,
+			{ kind: "merge" },
+			{ projectId: request.body?.projectId },
+		);
+		if (!mergeVerdict.ok) {
+			return reply.status(409).send({
+				error: `Runner ${runner.runnerId} settings refuse merge work (${mergeVerdict.reason}).`,
+				code: mergeVerdict.reason,
+			});
 		}
 		try {
 			return integrationQueue.acquire({
