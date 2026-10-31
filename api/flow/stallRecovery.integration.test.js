@@ -261,8 +261,11 @@ describe.skipIf(!gitAvailable)("WP6 stall and resume recovery", () => {
 				execRunner: mergeRunner,
 			});
 			expect(result.status).toBe("passed");
-			// The merge itself ran: main now carries the task commit.
-			expect(runGit(repo, "log", "--oneline", "main")).toContain(marker);
+			// The merge itself ran: main now carries the work as one squash
+			// commit titled with the task, and the work file landed.
+			expect(runGit(repo, "log", "--oneline", "main")).toContain("Unlanded merge victim");
+			expect(runGit(repo, "log", "--format=%B", "main")).toContain("Kainbain-Task:");
+			expect(fs.readFileSync(path.join(repo, "work2.txt"), "utf8")).toContain("task work 2");
 		} finally {
 			bootTwo.stopScheduler();
 		}
