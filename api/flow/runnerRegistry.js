@@ -43,18 +43,33 @@ const defaultOperatorConfig = () => {
 const normalizeOperatorConfig = (raw) => {
 	const fresh = defaultOperatorConfig();
 	if (!raw || typeof raw !== "object") return fresh;
-	const jobTypes = { ...fresh.jobTypes };
-	if (raw.jobTypes && typeof raw.jobTypes === "object") {
-		for (const key of JOB_TYPE_KEYS) {
-			if (typeof raw.jobTypes[key] === "boolean") jobTypes[key] = raw.jobTypes[key];
-		}
-	}
-	const directories = { ...fresh.directories };
-	if (raw.directories && typeof raw.directories === "object") {
-		for (const key of ["masterDir", "worktreeDir"]) {
-			if (typeof raw.directories[key] === "string") directories[key] = raw.directories[key];
-		}
-	}
+	// Explicit reads keep each switch independent: one bad value can never
+	// blank or flip its siblings, and no computed key access is needed.
+	const rawJobTypes = raw.jobTypes && typeof raw.jobTypes === "object" ? raw.jobTypes : {};
+	const jobTypes = {
+		runsCi:
+			typeof rawJobTypes.runsCi === "boolean" ? rawJobTypes.runsCi : fresh.jobTypes.runsCi,
+		runsMerges:
+			typeof rawJobTypes.runsMerges === "boolean"
+				? rawJobTypes.runsMerges
+				: fresh.jobTypes.runsMerges,
+		runsImpromptu:
+			typeof rawJobTypes.runsImpromptu === "boolean"
+				? rawJobTypes.runsImpromptu
+				: fresh.jobTypes.runsImpromptu,
+	};
+	const rawDirectories =
+		raw.directories && typeof raw.directories === "object" ? raw.directories : {};
+	const directories = {
+		masterDir:
+			typeof rawDirectories.masterDir === "string"
+				? rawDirectories.masterDir
+				: fresh.directories.masterDir,
+		worktreeDir:
+			typeof rawDirectories.worktreeDir === "string"
+				? rawDirectories.worktreeDir
+				: fresh.directories.worktreeDir,
+	};
 	return {
 		displayName: typeof raw.displayName === "string" ? raw.displayName : null,
 		availableTools: Array.isArray(raw.availableTools)
@@ -207,6 +222,33 @@ export class RunnerRegistry {
 		err.statusCode = statusCode;
 		err.code = code;
 		return err;
+	}
+
+	/***
+	 * MARK: _cleanDirectoryField
+	 * @description Validates one operator-supplied directory field and
+	 *   returns its trimmed value. Values are stored only, never executed.
+	 * @example RunnerRegistry._cleanDirectoryField('masterDir', ' /srv/kb ') => '/srv/kb'
+	 * @param {string} field - 'masterDir' or 'worktreeDir' (naming the error).
+	 * @param {*} value - Supplied value.
+	 * @returns {string} Trimmed directory path.
+	 ***/
+	static _cleanDirectoryField(field, value) {
+		if (typeof value !== "string" || !value.trim()) {
+			throw RunnerRegistry._fail(
+				400,
+				"INVALID_DIRECTORIES",
+				`Directory '${field}' must be a non-empty string.`,
+			);
+		}
+		if (value.trim().length > 1024) {
+			throw RunnerRegistry._fail(
+				400,
+				"INVALID_DIRECTORIES",
+				`Directory '${field}' must be at most 1024 characters.`,
+			);
+		}
+		return value.trim();
 	}
 
 	static _requireRunnerId(runnerId) {
@@ -375,14 +417,39 @@ export class RunnerRegistry {
 						`Unknown job type '${key}'.`,
 					);
 				}
-				if (typeof jobTypes[key] !== "boolean") {
+			}
+			// Explicit reads keep each switch independent with no computed
+			// key access: a typo in a caller can never enable a Runner for
+			// work it should skip.
+			if (Object.hasOwn(jobTypes, "runsCi")) {
+				if (typeof jobTypes.runsCi !== "boolean") {
 					throw RunnerRegistry._fail(
 						400,
 						"INVALID_JOB_TYPES",
-						`Job switch '${key}' must be a boolean.`,
+						"Job switch 'runsCi' must be a boolean.",
 					);
 				}
-				next.jobTypes[key] = jobTypes[key];
+				next.jobTypes.runsCi = jobTypes.runsCi;
+			}
+			if (Object.hasOwn(jobTypes, "runsMerges")) {
+				if (typeof jobTypes.runsMerges !== "boolean") {
+					throw RunnerRegistry._fail(
+						400,
+						"INVALID_JOB_TYPES",
+						"Job switch 'runsMerges' must be a boolean.",
+					);
+				}
+				next.jobTypes.runsMerges = jobTypes.runsMerges;
+			}
+			if (Object.hasOwn(jobTypes, "runsImpromptu")) {
+				if (typeof jobTypes.runsImpromptu !== "boolean") {
+					throw RunnerRegistry._fail(
+						400,
+						"INVALID_JOB_TYPES",
+						"Job switch 'runsImpromptu' must be a boolean.",
+					);
+				}
+				next.jobTypes.runsImpromptu = jobTypes.runsImpromptu;
 			}
 		}
 		if (Object.hasOwn(patch, "directories")) {
@@ -402,22 +469,21 @@ export class RunnerRegistry {
 						`Unknown directory field '${key}'.`,
 					);
 				}
-				const value = directories[key];
-				if (typeof value !== "string" || !value.trim()) {
-					throw RunnerRegistry._fail(
-						400,
-						"INVALID_DIRECTORIES",
-						`Directory '${key}' must be a non-empty string.`,
-					);
-				}
-				if (value.trim().length > 1024) {
-					throw RunnerRegistry._fail(
-						400,
-						"INVALID_DIRECTORIES",
-						`Directory '${key}' must be at most 1024 characters.`,
-					);
-				}
-				next.directories[key] = value.trim();
+			}
+			// Explicit reads with no computed key access: each field is
+			// validated and stored on its own, so a bad sibling can never
+			// block or corrupt the field being saved.
+			if (Object.hasOwn(directories, "masterDir")) {
+				next.directories.masterDir = RunnerRegistry._cleanDirectoryField(
+					"masterDir",
+					directories.masterDir,
+				);
+			}
+			if (Object.hasOwn(directories, "worktreeDir")) {
+				next.directories.worktreeDir = RunnerRegistry._cleanDirectoryField(
+					"worktreeDir",
+					directories.worktreeDir,
+				);
 			}
 		}
 		if (Object.hasOwn(patch, "projectScope")) {

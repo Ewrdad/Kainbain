@@ -213,6 +213,21 @@ export const scopePatchForLoaded = (loadedIds = [], allProjects = []) => {
 };
 
 /***
+ * MARK: validateDirectoryField
+ * @description Validates one directory field value before save. Values are
+ *   never executed, only stored. Each field saves on its own, so one field
+ *   is checked without looking at its sibling.
+ * @example validateDirectoryField('  ') => 'Enter a directory path.'
+ * @example validateDirectoryField('/srv/kb') => null
+ * @param {*} value - Draft value for one directory field.
+ * @returns {string|null} Error message, or null when the value is usable.
+ ***/
+export const validateDirectoryField = (value) => {
+  if (typeof value !== 'string' || !value.trim()) return 'Enter a directory path.';
+  return null;
+};
+
+/***
  * MARK: validateDirectories
  * @description Validates the Master/Worktree directory edits before save.
  *   Both fields are required and must be non-empty; values are never
@@ -223,14 +238,10 @@ export const scopePatchForLoaded = (loadedIds = [], allProjects = []) => {
  ***/
 export const validateDirectories = (directories = {}) => {
   const errors = {};
-  const masterDir = directories?.masterDir;
-  const worktreeDir = directories?.worktreeDir;
-  if (typeof masterDir !== 'string' || !masterDir.trim()) {
-    errors.masterDir = 'Enter a directory path.';
-  }
-  if (typeof worktreeDir !== 'string' || !worktreeDir.trim()) {
-    errors.worktreeDir = 'Enter a directory path.';
-  }
+  const masterError = validateDirectoryField(directories?.masterDir);
+  if (masterError) errors.masterDir = masterError;
+  const worktreeError = validateDirectoryField(directories?.worktreeDir);
+  if (worktreeError) errors.worktreeDir = worktreeError;
   return { ok: Object.keys(errors).length === 0, errors };
 };
 

@@ -453,6 +453,33 @@ describe("RunnerRegistry operator config", () => {
 				expect(err.statusCode).toBe(400);
 			}
 		}
+		// Each rejection names its failure so the UI can report it plainly.
+		for (const [patch, code] of [
+			[{ jobTypes: { runsEverything: true } }, "UNKNOWN_JOB_TYPE"],
+			[{ jobTypes: { runsCi: "yes" } }, "INVALID_JOB_TYPES"],
+			[{ directories: { bogus: "/x" } }, "UNKNOWN_DIRECTORY_FIELD"],
+			[{ directories: { masterDir: "   " } }, "INVALID_DIRECTORIES"],
+		]) {
+			try {
+				runners.updateConfig("r1", patch);
+				expect.unreachable();
+			} catch (err) {
+				expect(err.code).toBe(code);
+			}
+		}
+		// One bad switch never flips its siblings: the surviving values persist.
+		runners.updateConfig("r1", { jobTypes: { runsCi: false } });
+		try {
+			runners.updateConfig("r1", { jobTypes: { runsMerges: "yes" } });
+			expect.unreachable();
+		} catch (err) {
+			expect(err.code).toBe("INVALID_JOB_TYPES");
+		}
+		expect(runners.getConfig("r1").operatorConfig.jobTypes).toEqual({
+			runsCi: false,
+			runsMerges: true,
+			runsImpromptu: true,
+		});
 	});
 
 	test("pending Runners can be configured", () => {

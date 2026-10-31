@@ -13,7 +13,7 @@ import {
   withProjectLoaded,
   withProjectUnloaded,
   scopePatchForLoaded,
-  validateDirectories,
+  validateDirectoryField,
   jobTypeLabels,
 } from './runnerConfigHelpers';
 
@@ -291,6 +291,40 @@ export function RunnerConfigurationSection() {
     );
   };
 
+  // One directory-change handler for both fields: typing clears the
+  // arming and this field's error (the message describes the last save
+  // attempt, and keeping it while the text changes reads as if the new
+  // text already failed), then stages the new value alongside the other
+  // field's last-known value.
+  const handleDirectoryChange = (field, value) => {
+    if (!selected) return;
+    // Fail closed: only the two directory fields this form renders may
+    // edit drafts. Any other value changes nothing and writes nothing.
+    if (field !== 'masterDir' && field !== 'worktreeDir') return;
+    const errorKey = `${selected.runnerId}:${field}`;
+    setDirConfirm(null);
+    setDirErrors((prev) => {
+      const next = { ...prev };
+      // eslint-disable-next-line security/detect-object-injection -- errorKey is `${runnerId}:${field}` for the two rendered fields
+      delete next[errorKey];
+      return next;
+    });
+    setDirDrafts((prev) => ({
+      ...prev,
+
+      [selected.runnerId]: {
+        masterDir:
+          field === 'masterDir'
+            ? value
+            : (prev[selected.runnerId]?.masterDir ?? config.directories.masterDir),
+        worktreeDir:
+          field === 'worktreeDir'
+            ? value
+            : (prev[selected.runnerId]?.worktreeDir ?? config.directories.worktreeDir),
+      },
+    }));
+  };
+
   const handleDirectorySave = (field) => {
     if (!selected) return;
     // Fail closed: only the two directory fields this form renders may
@@ -304,13 +338,14 @@ export function RunnerConfigurationSection() {
       setDirConfirm(confirmKey);
       return;
     }
-    const { ok, errors } = validateDirectories(dirDraft);
-    const fieldError = field === 'masterDir' ? errors.masterDir : errors.worktreeDir;
-    if (!ok && fieldError) {
+    const rawValue = field === 'masterDir' ? dirDraft.masterDir : dirDraft.worktreeDir;
+    // Per-field check: only the field being saved can block its own save,
+    // so a blank untouched sibling never traps the field being edited.
+    const fieldError = validateDirectoryField(rawValue);
+    if (fieldError) {
       setDirErrors((prev) => ({ ...prev, [confirmKey]: fieldError }));
       return;
     }
-    const rawValue = field === 'masterDir' ? dirDraft.masterDir : dirDraft.worktreeDir;
     const value = String(rawValue || '').trim();
     const directoryPatch = field === 'masterDir' ? { masterDir: value } : { worktreeDir: value };
     void saveConfig(
@@ -772,26 +807,7 @@ export function RunnerConfigurationSection() {
               error={dirErrors[`${selected.runnerId}:masterDir`]}
               busy={Boolean(busyKey)}
               confirmArmed={dirConfirm === `${selected.runnerId}:masterDir`}
-              onChange={(value) => {
-                setDirConfirm(null);
-                // Typing clears this field's error: the message describes the
-                // last save attempt, and keeping it while the text changes
-                // reads as if the new text already failed.
-                setDirErrors((prev) => {
-                  const next = { ...prev };
-
-                  delete next[`${selected.runnerId}:masterDir`];
-                  return next;
-                });
-                setDirDrafts((prev) => ({
-                  ...prev,
-
-                  [selected.runnerId]: {
-                    masterDir: value,
-                    worktreeDir: prev[selected.runnerId]?.worktreeDir ?? config.directories.worktreeDir,
-                  },
-                }));
-              }}
+              onChange={(value) => handleDirectoryChange('masterDir', value)}
               onSave={() => handleDirectorySave('masterDir')}
             />
             <DirectoryField
@@ -801,26 +817,7 @@ export function RunnerConfigurationSection() {
               error={dirErrors[`${selected.runnerId}:worktreeDir`]}
               busy={Boolean(busyKey)}
               confirmArmed={dirConfirm === `${selected.runnerId}:worktreeDir`}
-              onChange={(value) => {
-                setDirConfirm(null);
-                // Typing clears this field's error: the message describes the
-                // last save attempt, and keeping it while the text changes
-                // reads as if the new text already failed.
-                setDirErrors((prev) => {
-                  const next = { ...prev };
-
-                  delete next[`${selected.runnerId}:worktreeDir`];
-                  return next;
-                });
-                setDirDrafts((prev) => ({
-                  ...prev,
-
-                  [selected.runnerId]: {
-                    masterDir: prev[selected.runnerId]?.masterDir ?? config.directories.masterDir,
-                    worktreeDir: value,
-                  },
-                }));
-              }}
+              onChange={(value) => handleDirectoryChange('worktreeDir', value)}
               onSave={() => handleDirectorySave('worktreeDir')}
             />
             <p className="text-[11px] text-text-muted">

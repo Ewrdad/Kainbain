@@ -312,6 +312,25 @@ describe('RunnerConfigurationSection', () => {
     expect(updateRunnerConfig).not.toHaveBeenCalled();
   });
 
+  it('saves one directory while its sibling is still blank', async () => {
+    // A fresh Runner has both directories empty: filling only Master must
+    // still save, because each field validates on its own.
+    runnersFixture([PENDING_RUNNER]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r2');
+    fireEvent.change(screen.getByTestId('runner-masterdir-r2'), {
+      target: { value: '/srv/new-master' },
+    });
+    const save = screen.getByTestId('runner-masterdir-r2-save');
+    fireEvent.click(save);
+    fireEvent.click(save);
+    await waitFor(() => {
+      expect(updateRunnerConfig).toHaveBeenCalledWith('r2', {
+        directories: { masterDir: '/srv/new-master' },
+      });
+    });
+  });
+
   it('clears a directory error while the operator retypes', async () => {
     runnersFixture([ACTIVE_RUNNER]);
     render(<RunnerConfigurationSection />);

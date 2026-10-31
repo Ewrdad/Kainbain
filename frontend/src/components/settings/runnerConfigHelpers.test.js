@@ -12,6 +12,7 @@ import {
   withProjectLoaded,
   withProjectUnloaded,
   scopePatchForLoaded,
+  validateDirectoryField,
   validateDirectories,
 } from './runnerConfigHelpers';
 
@@ -137,5 +138,14 @@ describe('runnerConfigHelpers', () => {
     expect(bad.ok).toBe(false);
     expect(bad.errors.masterDir).toBeTruthy();
     expect(bad.errors.worktreeDir).toBeTruthy();
+  });
+
+  it('validates one directory field without looking at its sibling', () => {
+    expect(validateDirectoryField('/srv/kb')).toBeNull();
+    expect(validateDirectoryField('  ')).toBeTruthy();
+    expect(validateDirectoryField('')).toBeTruthy();
+    expect(validateDirectoryField(null)).toBeTruthy();
+    expect(validateDirectoryField(undefined)).toBeTruthy();
+    expect(validateDirectoryField(42)).toBeTruthy();
   });
 });
