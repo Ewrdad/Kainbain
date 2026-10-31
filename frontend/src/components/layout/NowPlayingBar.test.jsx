@@ -1,7 +1,7 @@
 // jsdom pin: this suite needs window.confirm stub (happy-dom differs); keep on jsdom.
 // @vitest-environment jsdom
-import { expect, test, vi } from 'vitest';
-import { screen, fireEvent } from '@testing-library/react';
+import { expect, test, vi, beforeEach } from 'vitest';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithKainBain } from '../../testUtils';
 import { NowPlayingBar, resolveRunnerBoxes, runnerBoxHealth } from './NowPlayingBar';
 import { KainBainContext } from '../../context/KainBainContext';
@@ -11,10 +11,27 @@ import '@testing-library/jest-dom';
 // The bar polls GET /runners/monitor for live assignments when the context
 // carries no `runnerAssignments` override. Pin that poll to empty here so
 // tests never depend on a real backend (a live fleet would otherwise flip
-// the legacy-display assertions to runner boxes mid-suite).
+// the legacy-display assertions to runner boxes mid-suite). The build-hash
+// trigger polls /status and /deploy/changelog the same way: default to an
+// unbaked build so existing tests see no trigger unless they opt in.
 vi.mock('../../services/api', () => ({
-  api: { getRunnerMonitor: vi.fn(async () => ({ liveAssignments: [] })) },
+  api: {
+    getRunnerMonitor: vi.fn(async () => ({ liveAssignments: [] })),
+    systemStatus: vi.fn(async () => ({ build: null })),
+    deployChangelog: vi.fn(async () => ({ changelog: null, reason: 'not-baked' })),
+  },
 }));
+
+import { api } from '../../services/api';
+
+// Default the polled backends to empty every test so the build-hash trigger
+// (unbaked build) and runner roster (no fleet) stay out of the way unless a
+// test opts in with its own mockResolvedValue.
+beforeEach(() => {
+  api.getRunnerMonitor.mockResolvedValue({ liveAssignments: [] });
+  api.systemStatus.mockResolvedValue({ build: null });
+  api.deployChangelog.mockResolvedValue({ changelog: null, reason: 'not-baked' });
+});
 
 /***
  * MARK: NowPlayingBar tests
@@ -377,8 +394,9 @@ test('no subsystem health light remains on the now playing bar', () => {
   ).toBeInTheDocument();
 });
 
-test('right-rail queue-only contract: rail keeps the queue chip and clips overflow', () => {
-  // The right rail is now a single queue chip: no health slot, no dividers,
+test('right-rail contract: rail keeps the queue chip and clips overflow', () => {
+  // The right rail holds the build-hash trigger (opt-in via /status in other
+  // tests; unbaked here) plus the queue chip: no health slot, no dividers,
   // no timer. overflow-hidden on the rail box stays as cheap insurance so it
   // can never paint over the runner boxes (the canary overlap gate in
   // functional.spec.js measures button-vs-rail rect intersections).
@@ -1110,4 +1128,65 @@ test('shows a stuck-queue chip only while the engine reads idle with a latched q
   expect(
     screen.queryByText('Queue stuck — recovering'),
   ).not.toBeInTheDocument();
+});
+
+/***
+ * MARK: build-hash trigger in the right rail
+ * @description The greyed-out `#B<build><·sha>` trigger sits in the right
+ *   rail immediately left of the queue-depth chip, opens the baked changelog
+ *   dialog on click, and renders nothing when no build is baked (dev and
+ *   pre-deploy builds never show a fabricated hash).
+ ***/
+test('build-hash trigger renders left of the queue chip and opens the changelog', async () => {
+  api.systemStatus.mockResolvedValue({ build: { buildNumber: 7, commit: 'deadbee' } });
+  api.deployChangelog.mockResolvedValue({
+    changelog: {
+      branch: 'main',
+      totalCount: 1,
+      truncated: false,
+      entries: [
+        {
+          sha: 'deadbee',
+          shortSha: 'deadbee',
+          subject: 'Human task work',
+          body: '',
+          bodyTruncated: false,
+          author: 'Dev',
+          authorEmail: 'dev@example.com',
+          date: '2026-10-30',
+        },
+      ],
+    },
+    reason: null,
+  });
+  renderWithKainBain(<NowPlayingBar />, { stages, currentStageId: '1' });
+
+  const trigger = await screen.findByTestId('build-badge');
+  expect(trigger).toHaveTextContent('#B7·deadbee');
+
+  // Placement: the trigger is a right-rail child ordered before the queue chip.
+  const rail = screen.getByTestId('now-playing-right-rail');
+  const queue = screen.getByRole('status', { name: /Execution queue:/ });
+  expect(rail.contains(trigger)).toBe(true);
+  expect(rail.contains(queue)).toBe(true);
+  expect(trigger.compareDocumentPosition(queue) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+  // Clicking opens the baked changelog dialog; the fetch happens on open only.
+  expect(api.deployChangelog).not.toHaveBeenCalled();
+  fireEvent.click(trigger);
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: 'Kainbain changelog' })).toBeInTheDocument();
+  });
+  expect(screen.getByText('Human task work')).toBeInTheDocument();
+});
+
+test('no build-hash trigger renders when no build is baked', async () => {
+  api.systemStatus.mockResolvedValue({ build: null });
+  renderWithKainBain(<NowPlayingBar />, { stages, currentStageId: '1' });
+  await waitFor(() => expect(api.systemStatus).toHaveBeenCalled());
+  expect(screen.queryByTestId('build-badge')).not.toBeInTheDocument();
+  // The queue chip still renders: only the trigger degrades, never the rail.
+  expect(
+    screen.getByRole('status', { name: /Execution queue:/ }),
+  ).toBeInTheDocument();
 });

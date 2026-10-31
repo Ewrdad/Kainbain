@@ -114,6 +114,42 @@ export function resolveDefaultBranch(cwd) {
 }
 
 /***
+ * MARK: admin commit taxonomy
+ * @description Bake-time filter so the shipped changelog shows task-merge
+ *   history only. Derived from a taxonomy pass over real history (Step 1):
+ *   `KainBain:` subjects are automation (auto-commit, converge, merge-latest
+ *   sync); `kb/<uuid>` subjects are runner stage-output commits; `Merge
+ *   remote-tracking branch` subjects are branch-sync noise. Everything else
+ *   (human task work, squash-merge subjects, real merges) is kept.
+ * @example isAdminCommitSubject('KainBain: auto-commit pending work') => true
+ * @example isAdminCommitSubject('Harden runner log transport') => false
+ * @param {string} subject - The commit subject line.
+ * @returns {boolean} True when the commit is admin/automation noise to drop.
+ ***/
+export function isAdminCommitSubject(subject) {
+	if (typeof subject !== "string") return true;
+	const line = subject.trim();
+	if (line.length === 0) return true;
+	if (line.startsWith("KainBain:")) return true;
+	if (/^kb\/[0-9a-f-]{8,}/i.test(line)) return true;
+	if (/^merge remote-tracking branch\b/i.test(line)) return true;
+	return false;
+}
+
+/***
+ * MARK: filterChangelogEntries
+ * @description Drops admin/automation entries (see `isAdminCommitSubject`)
+ *   from an already-parsed entry list, preserving newest-first order.
+ * @example filterChangelogEntries([{ subject: 'KainBain: sync' }]) => []
+ * @param {Array<Object>} entries - Parsed changelog entries, newest first.
+ * @returns {Array<Object>} The kept entries, newest first.
+ ***/
+export function filterChangelogEntries(entries) {
+	if (!Array.isArray(entries)) return [];
+	return entries.filter((entry) => !isAdminCommitSubject(entry?.subject));
+}
+
+/***
  * MARK: parseGitLog
  * @description Parses NUL/RS-delimited `git log` output into changelog entries,
  *   newest-first as emitted. Bodies are truncated to MAX_BODY_CHARS with a
@@ -154,17 +190,22 @@ export function parseGitLog(raw) {
 /***
  * MARK: generateChangelog
  * @description Builds the full changelog artifact for `ref` (resolved via
- *   `resolveDefaultBranch` when omitted): the latest `limit` entries plus
- *   bake metadata. `totalCount` is the commits visible at bake time;
- *   `truncated` is true when history extends beyond `entries`.
+ *   `resolveDefaultBranch` when omitted): the latest `limit` task-merge
+ *   entries plus bake metadata. Admin/automation noise is dropped at bake
+ *   time (see `isAdminCommitSubject`), so raw history is paged until `limit`
+ *   kept entries are collected or history is exhausted. `totalCount` is the
+ *   kept (task-merge) commits visible at bake time; `truncated` is true when
+ *   kept history extends beyond `entries`. Pass `filter: false` to bake the
+ *   unfiltered history (debugging only).
  * @example generateChangelog({ cwd: '/repo', limit: 5 }) => { branch: 'master', entries: [...] }
  * @param {Object} opts
  * @param {string} [opts.cwd] - Repository working directory (defaults to process.cwd()).
  * @param {string} [opts.ref] - Branch/ref to bake (defaults to resolved default branch).
  * @param {number} [opts.limit] - Max entries to bake (defaults to DEFAULT_LIMIT).
+ * @param {boolean} [opts.filter] - Drop admin commits (defaults to true).
  * @returns {Object} The changelog artifact.
  ***/
-export function generateChangelog({ cwd = process.cwd(), ref, limit = DEFAULT_LIMIT } = {}) {
+export function generateChangelog({ cwd = process.cwd(), ref, limit = DEFAULT_LIMIT, filter = true } = {}) {
 	const count = Number(limit);
 	if (!Number.isInteger(count) || count < 1) {
 		throw new Error(`generateChangelog requires a positive integer limit, got ${String(limit)}`);
@@ -173,12 +214,44 @@ export function generateChangelog({ cwd = process.cwd(), ref, limit = DEFAULT_LI
 	if (!isSafeRef(branch)) {
 		throw new Error(`Refusing to bake unsafe ref ${String(branch)}`);
 	}
-	const raw = runGit(cwd, ["log", branch, "-n", String(count), `--format=${LOG_FORMAT}`]);
-	const entries = parseGitLog(raw);
-	const totalRaw = runGit(cwd, ["rev-list", "--count", branch]).trim();
-	const totalCount = Number.parseInt(totalRaw, 10);
-	if (!Number.isInteger(totalCount) || totalCount < 0) {
-		throw new Error(`Unparseable rev-list count for '${branch}': ${totalRaw}`);
+	const keep = (entry) => !filter || !isAdminCommitSubject(entry?.subject);
+	// Page the raw log until `count` kept entries are collected: noise-heavy
+	// stretches would otherwise bake a short artifact. Each page advances
+	// `--skip` past already-seen raw commits; at most ten pages bound the
+	// deploy-time cost, and a short page ends history.
+	const kept = [];
+	let skip = 0;
+	for (let page = 0; page < 10 && kept.length < count; page += 1) {
+		const raw = runGit(cwd, [
+			"log",
+			branch,
+			"-n",
+			String(count),
+			"--skip",
+			String(skip),
+			`--format=${LOG_FORMAT}`,
+		]);
+		const parsed = parseGitLog(raw);
+		if (parsed.length === 0) break;
+		skip += parsed.length;
+		for (const entry of parsed) {
+			if (keep(entry)) kept.push(entry);
+			if (kept.length >= count) break;
+		}
+		if (parsed.length < count) break;
+	}
+	const entries = kept.slice(0, count);
+	let totalCount;
+	if (!filter) {
+		const totalRaw = runGit(cwd, ["rev-list", "--count", branch]).trim();
+		totalCount = Number.parseInt(totalRaw, 10);
+		if (!Number.isInteger(totalCount) || totalCount < 0) {
+			throw new Error(`Unparseable rev-list count for '${branch}': ${totalRaw}`);
+		}
+	} else {
+		// Honest kept-commit count: subjects only (no bodies), one pass.
+		const subjects = runGit(cwd, ["log", branch, "--format=%s"]).split("\n");
+		totalCount = subjects.filter((subject) => !isAdminCommitSubject(subject)).length;
 	}
 	const commit = runGit(cwd, ["rev-parse", branch]).trim();
 	return {
@@ -194,12 +267,13 @@ export function generateChangelog({ cwd = process.cwd(), ref, limit = DEFAULT_LI
 
 function printUsageAndExit(exitCode) {
 	const usage = [
-		"Usage: node scripts/generate-changelog.mjs [--ref <branch>] [--limit <n>] [--out <file>] [--cwd <dir>]",
+		"Usage: node scripts/generate-changelog.mjs [--ref <branch>] [--limit <n>] [--out <file>] [--cwd <dir>] [--no-filter]",
 		"",
 		"  --ref    Branch to bake (default: resolved default branch, master > main > origin/HEAD).",
 		`  --limit  Max entries to bake (default: ${DEFAULT_LIMIT}).`,
 		"  --out    Write JSON to <file> instead of stdout.",
 		"  --cwd    Repository directory (default: current directory).",
+		"  --no-filter  Bake unfiltered history (debugging only; default drops admin commits).",
 	].join("\n");
 	const stream = exitCode === 0 ? process.stdout : process.stderr;
 	stream.write(`${usage}\n`);
@@ -220,6 +294,7 @@ if (invokedAsScript) {
 	let limit = DEFAULT_LIMIT;
 	let out;
 	let cwd = process.cwd();
+	let filter = true;
 	try {
 		for (let i = 0; i < args.length; i += 1) {
 			const arg = args[i];
@@ -228,12 +303,13 @@ if (invokedAsScript) {
 			else if (arg === "--limit") limit = Number(args[(i += 1)]);
 			else if (arg === "--out") out = args[(i += 1)];
 			else if (arg === "--cwd") cwd = args[(i += 1)];
+			else if (arg === "--no-filter") filter = false;
 			else throw new Error(`Unknown argument: ${arg}`);
 		}
 		if (ref !== undefined && !isSafeRef(ref)) {
 			throw new Error(`Refusing to bake unsafe ref ${String(ref)}`);
 		}
-		const artifact = generateChangelog({ cwd, ref, limit });
+		const artifact = generateChangelog({ cwd, ref, limit, filter });
 		const json = `${JSON.stringify(artifact, null, 2)}\n`;
 		if (out) {
 			fs.writeFileSync(out, json, "utf8");
