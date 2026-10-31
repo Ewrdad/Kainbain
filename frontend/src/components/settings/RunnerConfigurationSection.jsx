@@ -4,6 +4,7 @@ import { copyToClipboard } from '../../services/clipboard';
 import { formatRunnerElapsed } from '../observability/widgets/PerRunnerTasksWidget';
 import {
   defaultRunnerConfig,
+  jobSwitchChecked,
   runnerDisplayName,
   advertisedToolIds,
   effectiveTools,
@@ -292,23 +293,29 @@ export function RunnerConfigurationSection() {
 
   const handleDirectorySave = (field) => {
     if (!selected) return;
+    // Fail closed: only the two directory fields this form renders may
+    // save. Any other value arms nothing and writes nothing.
+    if (field !== 'masterDir' && field !== 'worktreeDir') {
+      setActionError(`Cannot save Runner ${selected.runnerId} directory: unknown field.`);
+      return;
+    }
     const confirmKey = `${selected.runnerId}:${field}`;
     if (dirConfirm !== confirmKey) {
       setDirConfirm(confirmKey);
       return;
     }
     const { ok, errors } = validateDirectories(dirDraft);
-    // eslint-disable-next-line security/detect-object-injection -- field is a fixed directory key
-    if (!ok && errors[field]) {
-      // eslint-disable-next-line security/detect-object-injection -- field is a fixed directory key
-      setDirErrors((prev) => ({ ...prev, [confirmKey]: errors[field] }));
+    const fieldError = field === 'masterDir' ? errors.masterDir : errors.worktreeDir;
+    if (!ok && fieldError) {
+      setDirErrors((prev) => ({ ...prev, [confirmKey]: fieldError }));
       return;
     }
-    // eslint-disable-next-line security/detect-object-injection -- field is a fixed directory key
-    const value = String(dirDraft[field] || '').trim();
+    const rawValue = field === 'masterDir' ? dirDraft.masterDir : dirDraft.worktreeDir;
+    const value = String(rawValue || '').trim();
+    const directoryPatch = field === 'masterDir' ? { masterDir: value } : { worktreeDir: value };
     void saveConfig(
       selected.runnerId,
-      { directories: { [field]: value } },
+      { directories: directoryPatch },
       'Directory saved.',
     ).then((saved) => {
       if (saved) {
@@ -841,7 +848,7 @@ export function RunnerConfigurationSection() {
                   <input
                     type="checkbox"
                     data-testid={`runner-job-${selected.runnerId}-${key}`}
-                    checked={config.jobTypes[key] === true /* eslint-disable-line security/detect-object-injection */}
+                    checked={jobSwitchChecked(config, key)}
                     onChange={(e) => handleJobToggle(key, e.target.checked)}
                     disabled={Boolean(busyKey)}
                     className="rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0 cursor-pointer"

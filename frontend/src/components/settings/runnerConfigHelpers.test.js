@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   JOB_TYPE_KEYS,
+  jobSwitchChecked,
   jobTypeLabels,
   defaultRunnerConfig,
   runnerDisplayName,
@@ -116,6 +117,16 @@ describe('runnerConfigHelpers', () => {
     expect(scopePatchForLoaded(['gone'], all)).toEqual([]);
     // With no known projects there is nothing to filter against.
     expect(scopePatchForLoaded(['gone'], [])).toEqual(['gone']);
+  });
+
+  it('reads one job switch without computed access and fails closed', () => {
+    const config = defaultRunnerConfig({
+      operatorConfig: { jobTypes: { runsCi: false } },
+    });
+    expect(jobSwitchChecked(config, 'runsCi')).toBe(false);
+    expect(jobSwitchChecked(config, 'runsMerges')).toBe(true);
+    expect(jobSwitchChecked(config, 'nope')).toBe(false);
+    expect(jobSwitchChecked(null, 'runsCi')).toBe(false);
   });
 
   it('requires both directory paths', () => {

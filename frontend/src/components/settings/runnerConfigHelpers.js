@@ -43,20 +43,25 @@ export const jobTypeLabels = () => [
 export const defaultRunnerConfig = (runner = {}) => {
   const raw = runner && typeof runner === 'object' ? runner.operatorConfig : null;
   const source = raw && typeof raw === 'object' ? raw : {};
-  const jobTypes = { runsCi: true, runsMerges: true, runsImpromptu: true };
-  if (source.jobTypes && typeof source.jobTypes === 'object') {
-    for (const key of JOB_TYPE_KEYS) {
-      // Key comes from the fixed JOB_TYPE_KEYS allowlist, never operator input.
-      if (typeof source.jobTypes[key] === 'boolean') jobTypes[key] = source.jobTypes[key]; // eslint-disable-line security/detect-object-injection
-    }
-  }
-  const directories = { masterDir: '', worktreeDir: '' };
-  if (source.directories && typeof source.directories === 'object') {
-    for (const key of ['masterDir', 'worktreeDir']) {
-      // Key comes from a fixed literal pair, never operator input.
-      if (typeof source.directories[key] === 'string') directories[key] = source.directories[key]; // eslint-disable-line security/detect-object-injection
-    }
-  }
+  // Explicit reads keep each switch independent: one bad value can never
+  // blank or flip its siblings, and no computed key access is needed.
+  const sourceJobTypes =
+    source.jobTypes && typeof source.jobTypes === 'object' ? source.jobTypes : {};
+  const jobTypes = {
+    runsCi: typeof sourceJobTypes.runsCi === 'boolean' ? sourceJobTypes.runsCi : true,
+    runsMerges:
+      typeof sourceJobTypes.runsMerges === 'boolean' ? sourceJobTypes.runsMerges : true,
+    runsImpromptu:
+      typeof sourceJobTypes.runsImpromptu === 'boolean' ? sourceJobTypes.runsImpromptu : true,
+  };
+  const sourceDirectories =
+    source.directories && typeof source.directories === 'object' ? source.directories : {};
+  const directories = {
+    masterDir:
+      typeof sourceDirectories.masterDir === 'string' ? sourceDirectories.masterDir : '',
+    worktreeDir:
+      typeof sourceDirectories.worktreeDir === 'string' ? sourceDirectories.worktreeDir : '',
+  };
   return {
     displayName: typeof source.displayName === 'string' ? source.displayName : null,
     availableTools: Array.isArray(source.availableTools)
@@ -218,13 +223,32 @@ export const scopePatchForLoaded = (loadedIds = [], allProjects = []) => {
  ***/
 export const validateDirectories = (directories = {}) => {
   const errors = {};
-  for (const key of ['masterDir', 'worktreeDir']) {
-    // Key comes from a fixed literal pair, never operator input.
-    const value = directories?.[key]; // eslint-disable-line security/detect-object-injection
-    if (typeof value !== 'string' || !value.trim()) {
-      // eslint-disable-next-line security/detect-object-injection -- key is a fixed directory field name
-      errors[key] = 'Enter a directory path.';
-    }
+  const masterDir = directories?.masterDir;
+  const worktreeDir = directories?.worktreeDir;
+  if (typeof masterDir !== 'string' || !masterDir.trim()) {
+    errors.masterDir = 'Enter a directory path.';
+  }
+  if (typeof worktreeDir !== 'string' || !worktreeDir.trim()) {
+    errors.worktreeDir = 'Enter a directory path.';
   }
   return { ok: Object.keys(errors).length === 0, errors };
+};
+
+/***
+ * MARK: jobSwitchChecked
+ * @description Reads one job-type switch from a normalized config without
+ *   computed key access: unknown keys stay off rather than throwing, so a
+ *   typo in a caller can never enable a Runner for work it should skip.
+ * @example jobSwitchChecked({ jobTypes: { runsCi: false } }, 'runsCi') => false
+ * @param {Object} [config] - Normalized operator configuration.
+ * @param {string} [jobKey=''] - One of `JOB_TYPE_KEYS`.
+ * @returns {boolean} True only when that switch is explicitly on.
+ ***/
+export const jobSwitchChecked = (config, jobKey = '') => {
+  const jobTypes = config?.jobTypes;
+  if (!jobTypes || typeof jobTypes !== 'object') return false;
+  if (jobKey === 'runsCi') return jobTypes.runsCi === true;
+  if (jobKey === 'runsMerges') return jobTypes.runsMerges === true;
+  if (jobKey === 'runsImpromptu') return jobTypes.runsImpromptu === true;
+  return false;
 };
