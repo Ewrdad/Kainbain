@@ -148,6 +148,41 @@ export function useWebSocket({
     toolNamesRef.current = {};
   }, []);
 
+  /***
+   * MARK: addProcessLogEntries
+   * @description Appends structured log entries received live over the
+   *   socket (`PROCESS_LOG_ENTRIES`: tool calls/results, thinking markers,
+   *   errors, telemetry) as first-class entries. They carry the backend
+   *   identity (`executionId`/`seq`/`runnerId`) so `normalizeEntries` drops
+   *   each one once the same record lands in the task refetch — the same
+   *   stored/live dedupe as text frames, but without re-parsing text.
+   ***/
+  const addProcessLogEntries = useCallback((entries, meta = {}) => {
+    if (!Array.isArray(entries) || entries.length === 0) return;
+    const executionId = meta?.executionId ?? null;
+    const seq = Number.isInteger(meta?.seq) ? meta.seq : null;
+    const runnerId = meta?.runnerId ?? null;
+    setProcessLogs((prev) => [
+      ...prev.slice(-499), // Retain latest 500 lines
+      ...entries
+        .filter(Boolean)
+        .map((entry) => ({
+          id: entry.id != null ? `ws-entry-${entry.id}` : `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          timestamp: entry.ts ?? new Date().toLocaleTimeString(),
+          tag: null,
+          text: '',
+          raw: '',
+          projectId: meta?.projectId ?? null,
+          projectName: meta?.projectName ?? null,
+          taskId: meta?.taskId ?? null,
+          executionId,
+          seq,
+          runnerId,
+          entry,
+        })),
+    ]);
+  }, []);
+
   // ---- WebSocket event handlers ----
   const handleMsgStart = useCallback((payload) => {
     setMessages((prev) => [
@@ -360,6 +395,7 @@ export function useWebSocket({
             setIsAgentRunning,
             setEngineState,
             addProcessLog,
+            addProcessLogEntries,
             onNotificationRef,
             onTaskUpdatedRef,
             onTaskDeletedRef,
@@ -439,6 +475,7 @@ export function useWebSocket({
       handleAgentDone,
       fetchHistory,
       addProcessLog,
+      addProcessLogEntries,
     ],
   );
 
@@ -471,6 +508,7 @@ export function useWebSocket({
     processLogs,
     setProcessLogs,
     addProcessLog,
+    addProcessLogEntries,
     clearLogs,
     isAgentRunning,
     setIsAgentRunning,

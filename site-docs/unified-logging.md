@@ -42,6 +42,36 @@ optional and additive, and the exported `normalizeRecord` helper
 (`api/agent/logStream/logRecord.js`) can upgrade a legacy entry to the
 canonical shape at read time without rewriting storage.
 
+## Runner transport (agent log parity)
+
+Out-of-process Runners ship the same normalized events the embedded path
+processes in memory. The harness forwards every session event
+(`tool_started/updated/finished` with args and full results, `reasoning_delta`,
+`usage_updated`, `permission_*`, `plan_updated`, errors/retries with per-step
+timings) to `POST /tasks/:id/log-events` as sequenced batches; the backend
+runs each batch through the same log processor, appends the canonical
+records to `task.logEntries`, and broadcasts them live over the socket
+(`PROCESS_LOG_ENTRIES`). The Logs tab therefore shows the same records live
+and as history — what you watch mid-run is what a reload shows, searchable
+by text, tool name, and expandable detail.
+
+- Text frames (`POST /tasks/:id/logs`) stay as the backward-compatible
+  fallback: old Runners degrade to the coarse `[runner <id>]` view, and a new
+  Runner facing an old backend flips to text after the first failed batch.
+- Sequencing survives retries and disconnects: duplicate batches are
+  recorded no-ops, gaps land as visible "frames missing" markers — never
+  silently papered over.
+- Secrets and PII are redacted before display, persistence, and any commit:
+  every record passes the shared redactor (`shared/redactSecrets.js`) at
+  creation — bearer/basic credentials, API keys, vendor tokens, connection
+  strings, cloud credential JSON, private keys, emails, home directories,
+  phone/card shapes, plus secret-shaped values by key name. The live socket
+  is covered too: structured batches fan out from already-redacted stored
+  records, and legacy text frames are redacted at the broadcast point in
+  `POST /tasks/:id/logs` (older Runners ship raw text on the fallback path).
+  If a value that looks secret to you ever appears in a log, treat it as a
+  bug and report it: unknown shapes are the documented residual risk.
+
 ## Nothing is silently dropped
 
 Events a mapper cannot interpret land in the `RAW` feed as a
@@ -52,7 +82,12 @@ payload scrubbed and capped. Reasonable caps apply per lane.
 
 - Total entries per stage run are bounded by `logEntriesMaxCount`
   (default 500); overflow evicts oldest-first under one updating
-  `[INFO] (N earlier log entries evicted)` marker.
+  `[INFO] (N earlier log entries evicted)` marker. The in-memory window is
+  intentionally bounded while full history is kept elsewhere: every run's
+  records persist into the task's markdown (committed to the repository) and
+  the stage reports, so "keep everything" holds at the history layer and the
+  cap only bounds the live/loaded view. Client-side search runs over
+  everything retained.
 - Telemetry keeps a reserved budget (`telemetryMaxCount`, default 100) and
   raw evidence its own (`rawMaxCount`, default 50, `rawMaxBytes`, default
   8192 per record).

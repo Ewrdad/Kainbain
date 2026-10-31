@@ -131,6 +131,12 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 				body: { projectId, executionId, epoch, seq, bytes },
 			});
 		},
+		logEvents({ taskId, projectId, executionId, epoch, seq, events }) {
+			return call(`/tasks/${encodeURIComponent(taskId)}/log-events`, {
+				method: "POST",
+				body: { projectId, executionId, epoch, seq, events },
+			});
+		},
 		complete({
 			taskId,
 			projectId,

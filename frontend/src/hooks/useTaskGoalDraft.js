@@ -94,12 +94,24 @@ export function useTaskGoalDraft({
   // re-anchored to the new text so the previous task's baseline cannot mark
   // it dirty and schedule a spurious save of unchanged text.
   const [prevTaskId, setPrevTaskId] = useState(taskId);
+  const [prevServerGoal, setPrevServerGoal] = useState(serverGoal);
   if (taskId !== prevTaskId) {
     setPrevTaskId(taskId);
+    setPrevServerGoal(serverGoal);
     const stored = taskId ? readTaskDraft(taskId) : null;
     const nextTitle = stored?.value ?? serverGoal;
     setTitle(nextTitle);
     resetSaveBaseline(nextTitle);
+  } else if (serverGoal !== prevServerGoal) {
+    // Same task, fuller server record: live lists can first carry a light
+    // record (id/status only, empty goal) and only later the full goal.
+    // Follow the server while the editor still shows the previous server
+    // text; a local edit or cached draft always wins and is never clobbered.
+    setPrevServerGoal(serverGoal);
+    if (!draftEntry && title === prevServerGoal) {
+      setTitle(serverGoal);
+      resetSaveBaseline(serverGoal);
+    }
   }
 
   // Late server goal for the SAME task: the detail page can first resolve
