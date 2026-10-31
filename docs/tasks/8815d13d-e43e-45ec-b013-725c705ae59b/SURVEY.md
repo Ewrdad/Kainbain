@@ -77,3 +77,80 @@
   "answers": {}
 }
 ```
+
+## Round 2
+
+```survey-json
+{
+  "round": 2,
+  "generatedAt": "2026-10-31T03:04:53.000Z",
+  "stage": "stage-1792362077711",
+  "questions": [
+    {
+      "id": "q6",
+      "type": "single",
+      "text": "When an automatic retry is scheduled but has not started yet, what should the task status show?",
+      "options": [
+        "Retrying (scheduled)",
+        "Waiting (to retry)",
+        "Stay Active",
+        "Parked"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q7",
+      "type": "single",
+      "text": "Should the UI show retry progress details?",
+      "options": [
+        "Show attempt X of Y",
+        "Show only a 'retrying' label",
+        "Show countdown to the next attempt",
+        "No retry details"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q8",
+      "type": "multiple",
+      "text": "Which of these should count as active work on the task board?",
+      "options": [
+        "Running stage",
+        "Scheduled retry",
+        "Waiting for human input",
+        "Parked after failures"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q9",
+      "type": "single",
+      "text": "When retries are exhausted and the task is parked, should a manual retry keep its history?",
+      "options": [
+        "Yes, keep history",
+        "Yes, but reset the retry budget",
+        "No, start fresh",
+        "Not sure"
+      ],
+      "required": false,
+      "showIf": null
+    },
+    {
+      "id": "q10",
+      "type": "single",
+      "text": "Should automatic retries and operator-requested retries use different wording?",
+      "options": [
+        "Yes, distinguish them",
+        "No, use the same wording",
+        "Not sure"
+      ],
+      "required": false,
+      "showIf": null
+    }
+  ],
+  "answers": {}
+}
+```
