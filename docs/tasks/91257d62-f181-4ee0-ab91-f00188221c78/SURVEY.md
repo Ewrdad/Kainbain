@@ -100,6 +100,49 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "In the 'now playing' bar on the left side of the queue, greyed out and clickable (as suggested in the task)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "A simple pop-up/modal listing recent changes (commit messages) with dates"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Show only the task-merge messages (hide admin/automation commits)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Last 100+ changes with scrolling/pagination"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Standard build is fine — just bundle a generated history file at build time"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Visible to everyone — it's useful context for all users"
+      ],
+      "notes": ""
+    },
+    "q7": {
+      "selected": [
+        "The old design was fine — just bring it back in the new location"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
