@@ -39,17 +39,28 @@ run() {
 # A Runner executes publish.sh as an ordinary ci stage inside the per-task
 # worktree (branch kb/*). Publishing must ship merged main, so from a task
 # worktree we re-exec ourselves in the primary checkout (first worktree).
+# "Task worktree" is decided by PATH (linked worktree != primary), never by
+# branch name alone: the primary checkout legitimately sits on a kb/* branch
+# while the harness operates on a task there, and a runOnBranch=primary stage
+# correctly runs in the primary — refusing there (exit 78) blocked publishes
+# (e3b2624a-bc24-4698-9c78-86af7f6f3b5b, 2026-10-30). The default-branch
+# check below still enforces what a publish actually ships.
 _branch="$(git branch --show-current 2>/dev/null || true)"
 case "$_branch" in
   kb/*)
     _primary="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')"
-    if [ -n "$_primary" ] && [ "$_primary" != "$PWD" ]; then
-      echo "publish: running from task worktree (branch $_branch) — re-exec in primary checkout $_primary"
+    _here="$(pwd -P 2>/dev/null || echo "$PWD")"
+    if [ -n "$_primary" ] && [ "$_here" != "$_primary" ]; then
+      echo "publish: running from task worktree (branch $_branch at $_here) — re-exec in primary checkout $_primary"
       cd "$_primary"
       exec ./publish.sh "${ORIG_ARGS[@]}"
+    elif [ -n "$_primary" ]; then
+      log "primary checkout is on task branch '$_branch' (not a task worktree) — continuing here; the default-branch check below still applies"
+    else
+      echo "publish.sh: refusing to run from a task worktree (branch $_branch) — could not identify the primary worktree" >&2
+      exit 78
     fi
-    echo "publish.sh: refusing to run from a task worktree (branch kb/*) — deploy/publish stages must run on the primary checkout" >&2
-    exit 78 ;;
+    unset _primary _here ;;
 esac
 # Copied from deploy.sh require_default_branch_tree (do not source deploy.sh).
 require_default_branch_tree() {
@@ -232,4 +243,7 @@ const line = JSON.stringify({ publishedAt: now, commit: manifest.commit, compone
 fs.appendFileSync("dist/release-history.jsonl", line + "\n");
 console.log("wrote dist/release-manifest.json");
 NODE
+# Retention: keep the newest 5 runner tarballs in dist/ (older ones are
+# reproducible from their commit and only bloat the ad-site/S3 sync).
+ls -t dist/kainbain-runner-*.tar.gz 2>/dev/null | tail -n +6 | while read -r old; do log "pruning old runner tarball: $old"; rm -f "$old"; done
 log "published:$PUBLISHED"

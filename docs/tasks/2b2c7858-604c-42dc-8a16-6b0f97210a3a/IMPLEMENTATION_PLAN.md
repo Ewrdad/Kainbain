@@ -277,6 +277,62 @@ of the work comes before coding changes.
   so older runners degrade only to the current coarse text view rather than
   failure.
 
+## Phase 0 Findings (research gate — completed before behavior changes)
+
+- R1 Runner->backend contract: `runner/client.js::logs` posts `{seq, bytes}`;
+  structured transport added as `POST /tasks/:id/log-events` with
+  `{seq, events[1..200]}` (400 otherwise). Batches retry-safe via the same
+  seq gap/duplicate semantics as text frames.
+- R2 Backend->UI path: `process:stdout` WS -> `addProcessLog` ->
+  `wsProcessLogs` -> `normalizeEntries` (dedupes on `executionId:seq`) ->
+  `adaptTaskEntries` -> LogViewer. Structured batches ride a new
+  `process:log-entries`/`PROCESS_LOG_ENTRIES` frame into the same array as
+  attached `.entry` records, so stored/live dedupe is unchanged. After a
+  run the Logs tab refetches `task.logEntries` (identical records).
+- R3 Redaction home: new `shared/redactSecrets.js` (superset of the old
+  `scrubSecrets` raw-lane patterns) applied at record creation in
+  `logProcessor.appendRecord` (text + meta/tool/usage/evidence, plus
+  post-creation `meta.output`/partial appends redacted at extraction),
+  in `processLogs._synthesizedLogEntry`, in `executionLedger` ingest, in
+  the runner sender before upload, and on `applyRunnerReport` outputs.
+  `SECRET_NAME_PATTERN` stays the child-env seam; `SECRET_KEY_PATTERN`
+  extends it to structured payload keys.
+- R4 Retention: `logEntriesMaxCount` default 500 KEPT (not raised) — the
+  cap bounds the live/loaded view only; full history persists in committed
+  task markdown (`Log Entries`) and stage reports, with eviction markers
+  and client-side search over everything retained.
+- R5 UI wiring: no new viewer needed — `LogViewer` categories already cover
+  tool/thinking/error/permission(`human`)/plan(`stage`)/telemetry+raw(`raw`)/
+  runner lanes; search extended to detail + `meta.toolName`. Per-step
+  timings had no rendered home: the processor now stamps `durationMs`
+  (explicit event timing, else measured >=100ms) and renders it on
+  `[RESULT]`/`[ERROR]` lines.
+- Correction: the plan says "17 AGENT_EVENT_NAMES" — the actual vocabulary
+  is 15 (8 original + 7 unified). Pinned by the parity contract test.
+
+## Appendix — Final Event Coverage (runner boundary, all rows passing)
+
+| Event | Runner forwards | Backend persisted | Live UI category | Status |
+| --- | --- | --- | --- | --- |
+| run_started | yes | yes (turn tracking) | system (turn groups) | structured |
+| assistant_delta | yes (full text) | yes | output | structured |
+| message_started | yes | yes (flush boundary) | output | structured |
+| tool_started | yes (args) | yes | tools | structured |
+| tool_updated | yes (partials) | yes | tools | structured |
+| tool_finished | yes (result + timing) | yes | tools/result | structured |
+| run_finished | yes | yes | system | structured |
+| run_error | yes | yes | error | structured |
+| usage_updated | yes | yes | raw (telemetry chip) | structured |
+| session_meta | yes | yes | system | structured |
+| permission_requested/resolved | yes | yes | human | structured |
+| plan_updated | yes | yes | stage | structured |
+| reasoning_delta | yes | yes | thinking | structured |
+| harness_log | yes | yes | system/runner | structured |
+
+Non-goals honored: no AI summaries (only existing data rendered), no new
+transport (same HTTP+WS), no new formatter (shared `toolLogFormat` reused),
+no server-side search (client-side extended).
+
 ## Appendix — Confirmed Event Coverage Gap (runner boundary)
 
 | Event | Runner forwards | Backend persisted | Live UI category | Target |

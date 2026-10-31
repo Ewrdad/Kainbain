@@ -236,8 +236,11 @@ describe.skipIf(!gitAvailable)("task branch lifecycle end to end", () => {
 		expect(result.status).toBe("passed");
 		expect(await currentBranch(repo)).toBe("main");
 		const mainContent = run(repo, "log", "--oneline", "main");
-		expect(mainContent).toContain("auto-commit work after stage 'Build'");
-		expect(mainContent).not.toContain("auto-commit work after stage 'Review'");
+		// Squash landing: main's log is the changelog — one commit carrying
+		// the task title, never the task branch's own commit subjects.
+		expect(mainContent).toContain("Lifecycle work");
+		expect(mainContent).not.toContain("auto-commit work after stage 'Build'");
+		expect(run(repo, "log", "--format=%B", "-5", "main")).toContain("Kainbain-Task:");
 		expect(fs.readFileSync(path.join(repo, "agent.txt"), "utf8")).toContain(
 			"agent work",
 		);
@@ -246,7 +249,7 @@ describe.skipIf(!gitAvailable)("task branch lifecycle end to end", () => {
 		);
 		// The integrated default branch was published to the remote.
 		const remoteMain = run(remoteDir, "log", "--oneline", "refs/heads/main");
-		expect(remoteMain).toContain("auto-commit work after stage 'Build'");
+		expect(remoteMain).toContain("Lifecycle work");
 		expect(remoteMain).not.toContain("auto-commit work after stage 'Review'");
 		const updated = taskStore.getTask(projectId, task.id);
 		expect((updated.logEntries || []).map((e) => e.text).join("\n")).toContain(

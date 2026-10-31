@@ -6,6 +6,16 @@ import { SETTINGS_TABS } from './settingsTabs';
 import { SYSTEM_SETTINGS_POPOUT_NAME } from './openSystemSettings';
 
 const VALID_SECTION_IDS = new Set(SETTINGS_TABS.map((tab) => tab.id));
+
+// Bookmarks and deep links from before the Runner settings replaced the
+// legacy harness tab: the old `harness` section (and the singular
+// `runner`) lands on the Runners tab instead of silently falling back,
+// so a saved link keeps pointing at the screen it meant.
+const LEGACY_SECTION_ALIASES = new Map([
+  ['harness', 'runners'],
+  ['runner', 'runners'],
+]);
+
 export const DEFAULT_SYSTEM_SETTINGS_SECTION = SETTINGS_TABS[0].id;
 
 /***
@@ -29,9 +39,13 @@ export function SystemSettingsPage() {
   // fail safe to the first tab without rewriting the URL, so a typo'd deep
   // link still lands somewhere usable.
   const requestedSection = section || searchParams.get('section') || undefined;
+  const aliasedSection =
+    requestedSection && LEGACY_SECTION_ALIASES.has(requestedSection)
+      ? LEGACY_SECTION_ALIASES.get(requestedSection)
+      : requestedSection;
   const effectiveSection =
-    requestedSection && VALID_SECTION_IDS.has(requestedSection)
-      ? requestedSection
+    aliasedSection && VALID_SECTION_IDS.has(aliasedSection)
+      ? aliasedSection
       : DEFAULT_SYSTEM_SETTINGS_SECTION;
 
   const handleSectionChange = (sectionId) => {

@@ -12,7 +12,6 @@ import { emitStageLifecycle } from "./stageLifecycle.js";
 import {
 	GitError,
 	GitMergeConflictError,
-	abortMerge,
 	branchExists,
 	buildGitConflictDiagnostics,
 	commitAllIfNeeded,
@@ -25,13 +24,19 @@ import {
 	formatDirtyTreeRecoveryNotice,
 	formatGitLockRecoveryNotice,
 	hasCommits,
+	abortSquashMerge,
+	buildSquashCommitMessage,
+	deleteBranch,
+	findSquashCommit,
+	isBranchContentLanded,
 	isBranchMergedInto,
 	isGitRepository,
 	isValidBranchName,
 	checkoutBranch,
-	mergeBranch,
 	partitionMergeConflicts,
 	pushBranchIfRemote,
+	squashMergeBranch,
+	syncDefaultBranchToRemote,
 	requireCleanWorkingTree,
 	resolveConflictsWithIncoming,
 	withCheckedOutBranch,
@@ -1116,7 +1121,7 @@ function lookupProject(store, projectId) {
  *   `ancestryLanded: false`); branch-listing and marker failures propagate
  *   to the caller exactly as before.
  * @example await resolveMergeLandedEvidence(store, { task, stage, cwd, branch, mainBranch })
- *   => { landedMarker: false, ancestryLanded: true, landed: true, branchPrunedSinceMerge: false }
+ *   => { landedMarker: false, ancestryLanded: true, contentLanded: false, landed: true, branchPrunedSinceMerge: false }
  * @param {Object} _store - Reserved for signature stability (currently unused;
  *   the evidence is derived from the task markers and git only).
  * @param {Object} args
@@ -1145,6 +1150,7 @@ export async function resolveMergeLandedEvidence(
 		return {
 			landedMarker,
 			ancestryLanded: false,
+			contentLanded: false,
 			landed: true,
 			branchPrunedSinceMerge: true,
 		};
@@ -1165,10 +1171,26 @@ export async function resolveMergeLandedEvidence(
 			ancestryLanded = false;
 		}
 	}
+	// Content evidence (squash landings): a squash commit is not an
+	// ancestor, so ancestry stays false after a squash landing. The
+	// Kainbain-Task trailer on the default branch, or a merge that would
+	// change nothing (merge-tree equals the base tree), proves the same
+	// landed state. Failed reads fail closed, exactly like ancestry.
+	let contentLanded = false;
+	if (!landedMarker && !ancestryLanded) {
+		try {
+			contentLanded =
+				Boolean(await findSquashCommit(cwd, mainBranch, task?.id)) ||
+				(await isBranchContentLanded(cwd, mainBranch, branch));
+		} catch {
+			contentLanded = false;
+		}
+	}
 	return {
 		landedMarker,
 		ancestryLanded,
-		landed: landedMarker || ancestryLanded,
+		contentLanded,
+		landed: landedMarker || ancestryLanded || contentLanded,
 		branchPrunedSinceMerge: false,
 	};
 }
@@ -1216,7 +1238,7 @@ export function buildGhostTaskDiagnostic({ branch = null, mainBranch = null, tas
 		branch: branch || null,
 		mainBranch: mainBranch || null,
 		uniqueCommits: 0,
-		landedEvidence: "none (no reviewBaseline marker for this stage and branch is not an ancestor of main)",
+		landedEvidence: "none (no reviewBaseline marker for this stage, branch is not an ancestor of main, and no squash/content landing proof)",
 		lastWorkStageOutcome: outcome,
 	};
 	const message =
@@ -1277,23 +1299,24 @@ async function healSnapshotOnlyMergeConflict({
 	projectId,
 	taskId,
 	conflictedFiles,
+	commitMessage,
 }) {
 	const taskShortId = String(task.id).slice(0, 4).toUpperCase();
 	const initial = partitionMergeConflicts(conflictedFiles);
 	if (initial.snapshots.length === 0 || initial.blocking.length > 0) return false;
 
-	// Re-run without the auto-abort so the conflicted state stays available
-	// for resolution. A clean merge here (dirt moved between attempts) needs
-	// no healing at all.
+	// Re-run the squash without the auto-abort so the conflicted state stays
+	// available for resolution. A clean squash here (dirt moved between
+	// attempts) commits the task-details message itself — no healing needed.
 	try {
-		await mergeBranch(cwd, branch, { abortOnConflict: false });
+		await squashMergeBranch(cwd, branch, { abortOnConflict: false, commitMessage });
 		return true;
 	} catch (retryErr) {
 		if (!(retryErr instanceof GitMergeConflictError)) return false;
 		const retry = partitionMergeConflicts(retryErr.conflictedFiles);
 		if (retry.snapshots.length === 0 || retry.blocking.length > 0) {
 			try {
-				await abortMerge(cwd);
+				await abortSquashMerge(cwd);
 			} catch {
 				// Best effort: the failure path below reports the conflict.
 			}
@@ -1303,7 +1326,7 @@ async function healSnapshotOnlyMergeConflict({
 			await resolveConflictsWithIncoming(cwd, retry.snapshots);
 		} catch {
 			try {
-				await abortMerge(cwd);
+				await abortSquashMerge(cwd);
 			} catch {
 				// Best effort: the failure path below reports the conflict.
 			}
@@ -1315,12 +1338,12 @@ async function healSnapshotOnlyMergeConflict({
 	try {
 		healCommit = await commitAllIfNeeded(
 			cwd,
-			`KainBain (task ${task.id}): auto-resolve regenerated snapshot conflicts merging '${branch}'`,
+			commitMessage || `KainBain (task ${task.id}): auto-resolve regenerated snapshot conflicts merging '${branch}'`,
 			{ expectedBranch: mainBranch },
 		);
 	} catch {
 		try {
-			await abortMerge(cwd);
+			await abortSquashMerge(cwd);
 		} catch {
 			// Best effort: the failure path below reports the conflict.
 		}
@@ -1328,9 +1351,9 @@ async function healSnapshotOnlyMergeConflict({
 	}
 	if (!healCommit?.committed) {
 		// Nothing finalized — restore the pre-merge state, do not leave a
-		// half-resolved MERGE_HEAD for later stages to trip on.
+		// half-resolved squash state for later stages to trip on.
 		try {
-			await abortMerge(cwd);
+			await abortSquashMerge(cwd);
 		} catch {
 			// Best effort.
 		}
@@ -1447,7 +1470,7 @@ async function mergeTaskBranchIntoMain(
 		// to skipFailback. The skip-the-duplicate-merge decision itself
 		// (`landedReentry`) still waits for the commit count, so genuinely
 		// new work on top of an older landed merge fresh-merges normally.
-		const { landed, branchPrunedSinceMerge } = await resolveMergeLandedEvidence(store, {
+		const { landed, branchPrunedSinceMerge, contentLanded } = await resolveMergeLandedEvidence(store, {
 			task,
 			stage,
 			cwd,
@@ -1569,9 +1592,11 @@ async function mergeTaskBranchIntoMain(
 				ghostError.gitDiagnostics = ghost.diagnostics;
 				throw ghostError;
 			}
-			if (landed && uniqueCommits === 0) {
+			if (landed && (uniqueCommits === 0 || contentLanded)) {
 				// The duplicate merge is skipped; failure routing was
-				// already armed by `landedEvidence` upon entry.
+				// already armed by `landedEvidence` upon entry. A squash
+				// landing keeps the branch's commits "unique" by ancestry,
+				// so content evidence (contentLanded) skips it the same way.
 				landedReentry = true;
 			}
 		}
@@ -1652,7 +1677,7 @@ async function mergeTaskBranchIntoMain(
 				action: `Merge of task branch '${branch}' into '${mainBranch}' already landed — skipped duplicate merge${branchPrunedSinceMerge ? " (task branch pruned)" : ""}`,
 			});
 			store._saveTaskMarkdown(cwd, task);
-			return { mainBranch };
+			return { mainBranch, squashLanded: false };
 		}
 
 		recordStageHeartbeat(store, taskId, { stageId: stage.id, kind: "merge" });
@@ -1715,9 +1740,26 @@ async function mergeTaskBranchIntoMain(
 			);
 		}
 
+		// Squash landing: one commit on the default branch carrying the task
+		// details (title as subject, goal as body, Kainbain-Task trailer), so
+		// default-branch history reads as the changelog and landed detection
+		// can find this exact landing again (findSquashCommit).
+		const squashMessage = buildSquashCommitMessage({
+			taskId: task.id,
+			title: task.title,
+			goal: task.goal,
+			branch,
+			mainBranch,
+		});
 		try {
 			recordStageHeartbeat(store, taskId, { stageId: stage.id, kind: "merge" });
-			await mergeBranch(cwd, branch);
+			const squash = await squashMergeBranch(cwd, branch, { commitMessage: squashMessage });
+			if (squash?.empty) {
+				_appendProcessLog(
+					task,
+					`[MERGE] Squash of '${branch}' into '${mainBranch}' produced no net change — recording as landed without a commit`,
+				);
+			}
 		} catch (e) {
 			if (e instanceof GitMergeConflictError) {
 				// Self-healing first: conflicts confined to regenerated
@@ -1737,6 +1779,7 @@ async function mergeTaskBranchIntoMain(
 					projectId,
 					taskId,
 					conflictedFiles: e.conflictedFiles,
+					commitMessage: squashMessage,
 				});
 				if (!healed) {
 				// Commit-and-push before the attempt ends: the aborted merge
@@ -1828,7 +1871,7 @@ async function mergeTaskBranchIntoMain(
 
 		task.history.push({
 			timestamp: new Date().toISOString(),
-			action: `Merged task branch '${branch}' into '${mainBranch}'`,
+			action: `Squash-merged task branch '${branch}' into '${mainBranch}' as one task-details commit`,
 		});
 		store._saveTaskMarkdown(cwd, task);
 		// Freeze the SHAs behind this merge for PR-review preservation
@@ -1853,7 +1896,7 @@ async function mergeTaskBranchIntoMain(
 			`[GIT] Task #KB-${taskShortId}: merged '${branch}' into '${mainBranch}'`,
 			{ taskId },
 		);
-		return { mainBranch };
+		return { mainBranch, squashLanded: true };
 	} catch (e) {
 		const result = store.handleStageFailure(projectId, taskId, stage, e, {
 			stages,
@@ -1949,7 +1992,7 @@ export async function executeMergeStage(
 		branch,
 	});
 	if (mergePhase.handled) return mergePhase.result;
-	const { mainBranch } = mergePhase;
+	const { mainBranch, squashLanded } = mergePhase;
 
 	// Auto-commit any straggler output on the integrated default branch.
 	// Affinity-guarded: a concurrent task that moved the shared checkout
@@ -1972,8 +2015,13 @@ export async function executeMergeStage(
 		_appendProcessLog(task, `[WARN] ${detail}`);
 		store._saveTaskMarkdown(cwd, task);
 	}
-	// Publish the integrated default branch when a remote exists. A
-	// failed push stays a warning: the merge itself already passed.
+	// Publish the integrated default branch when a remote exists. This push
+	// is BLOCKING: a landed squash that never reaches the remote leaves the
+	// local default branch diverged, and every later publish stage then
+	// trips the tip guard. On a first failure we converge once with the
+	// remote (syncDefaultBranchToRemote merges a diverged remote tip in and
+	// pushes) and retry; a still-failing push parks the task on the merge
+	// stage (skipFailback — a landed merge is never rewound).
 	try {
 		const pushRes = await pushBranchIfRemote(cwd, mainBranch);
 		if (pushRes?.pushed) {
@@ -1996,13 +2044,50 @@ export async function executeMergeStage(
 		}
 		store._saveTaskMarkdown(cwd, task);
 	} catch (pushError) {
-		const detail = `Warning: push of '${mainBranch}' after merge failed (${pushError?.message || pushError}) — merge still passes`;
-		task.history.push({
-			timestamp: new Date().toISOString(),
-			action: detail,
-		});
-		_appendProcessLog(task, `[WARN] ${detail}`);
-		store._saveTaskMarkdown(cwd, task);
+		let converged = null;
+		try {
+			converged = await syncDefaultBranchToRemote(cwd);
+			const retry = await pushBranchIfRemote(cwd, mainBranch);
+			if (retry?.pushed) {
+				const detail = `Pushed '${mainBranch}' to remote after merge (after convergence: ${converged?.detail || converged?.skipped || "synced"})`;
+				task.history.push({ timestamp: new Date().toISOString(), action: detail });
+				_appendProcessLog(task, `[GIT] ${detail}`);
+				store._saveTaskMarkdown(cwd, task);
+			} else {
+				throw pushError;
+			}
+		} catch (retryError) {
+			const failure = new GitError(
+				`Merge of '${branch}' landed on '${mainBranch}' but publishing it failed (${retryError?.message || pushError?.message || retryError}) — the local branch is ahead of the remote and would diverge. Fix the push (auth/network/divergence) and retry the merge stage; the landed merge is not rewound.`,
+			);
+			return store.handleStageFailure(projectId, taskId, stage, failure, {
+				stages,
+				bridge,
+				projectCwd: cwd,
+				skipFailback: true,
+			});
+		}
+	}
+	// Squash cleanup: the task branch's commits are not ancestors of the
+	// default branch, so `git branch -d` would refuse forever. The landing
+	// is proven (squash commit + frozen baseline above), so delete with -D
+	// via deleteBranch. Warn-only: a branch checked out in a worktree
+	// refuses, and a surviving branch is housekeeping, not a failure.
+	try {
+		if (squashLanded && branch && branch !== mainBranch) {
+			const del = await deleteBranch(cwd, branch);
+			if (del?.deleted) {
+				const detail = `Deleted landed task branch '${branch}' after squash merge`;
+				task.history.push({ timestamp: new Date().toISOString(), action: detail });
+				_appendProcessLog(task, `[GIT] ${detail}`);
+				store._saveTaskMarkdown(cwd, task);
+			}
+		}
+	} catch (delError) {
+		_appendProcessLog(
+			task,
+			`[WARN] Deleting landed task branch '${branch}' skipped (${delError?.message || delError}) — it can be pruned manually`,
+		);
 	}
 
 	// The merge-stage report is command-less by design: branches, landed

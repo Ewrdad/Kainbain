@@ -133,6 +133,10 @@ describe('harnessDisabledReason (ModelSelector contract)', () => {
     );
     expect(typeof reason).toBe('string');
     expect(reason.length).toBeGreaterThan(0);
+    // The Harness tab that edited these prefs was replaced by the Runner
+    // tab: the reason must not direct operators to the removed tab.
+    expect(reason).toBe('Disabled by a saved harness preference');
+    expect(reason).not.toMatch(/System Settings › Harness/);
   });
 });
 
