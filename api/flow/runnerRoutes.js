@@ -16,6 +16,7 @@ import {
 	resolveStageTimeout,
 	runnerStageTimeoutStatus,
 } from "./stagePolicy.js";
+import { redactSecretsText } from "../../shared/redactSecrets.js";
 
 /***
  * MARK: resolveCiTimeoutMs
@@ -491,12 +492,16 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			// socket must never fail the ingest. Duplicates are suppressed
 			// once the stored entry arrives (client dedupes on
 			// executionId+seq), and duplicate/old frames are never emitted.
+			// The broadcast is redacted even though the stored copy already
+			// is: legacy text frames reach this route unredacted from older
+			// Runners (the fallback text path), and the live socket must
+			// never carry secrets even for one frame.
 			if (!receipt.duplicate) {
 				eventBridge
 					?.emitProcessEvent(ctx.projectId, "process:stdout", {
 						taskId: request.params.id,
 						projectId: ctx.projectId,
-						chunk: `[runner ${runner.runnerId}] ${request.body?.bytes ?? ""}`,
+						chunk: `[runner ${runner.runnerId}] ${redactSecretsText(String(request.body?.bytes ?? ""))}`,
 						tag: "[RUNNER]",
 						runnerId: runner.runnerId,
 						executionId: request.body?.executionId,

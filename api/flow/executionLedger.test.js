@@ -311,6 +311,42 @@ describe("ExecutionLedger", () => {
 		}
 	});
 
+	test("an invalid batch with a seq gap is rejected without writing a gap marker", () => {
+		const { executionId, epoch } = claimed(ctx);
+		const base = {
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+		};
+		// seq 3 arrives first: a gap exists, but the batch carries no usable
+		// events — the 400 must come before any task mutation (no spurious
+		// "frames missing" marker), and the seq cursor must stay at 0 so a
+		// corrected batch at seq 0 is not mistaken for a gap either.
+		try {
+			ledger.ingestLogEvents({ ...base, seq: 3, events: [{ nope: true }] });
+			expect.unreachable();
+		} catch (err) {
+			expect(err.statusCode).toBe(400);
+			expect(err.code).toBe("INVALID_LOG_EVENTS_ARGS");
+		}
+		expect(ctx.taskStore.getTask().logEntries ?? []).toHaveLength(0);
+		const snap = ledger.snapshot();
+		expect(snap.logEventBatches).toBe(0);
+		expect(snap.logEventGaps).toBe(0);
+		// A valid batch at seq 0 is still accepted cleanly afterwards.
+		expect(
+			ledger.ingestLogEvents({ ...base, seq: 0, events: [{ type: "harness_log", text: "ok" }] }),
+		).toMatchObject({ accepted: true, duplicate: false });
+		expect(ledger.snapshot().logEventGaps).toBe(0);
+		const entries = ctx.taskStore.getTask().logEntries;
+		expect(entries.some((e) => e.text.includes("missing"))).toBe(false);
+		expect(entries.some((e) => e.text.includes("ok"))).toBe(true);
+	});
+
 	test("structured ingest never stores secrets or unserializable values", () => {
 		const { executionId, epoch } = claimed(ctx);
 		const base = {

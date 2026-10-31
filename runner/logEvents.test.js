@@ -150,4 +150,73 @@ describe("createStructuredEventSender", () => {
 		await sender.close();
 		assert.equal(calls[0].events[0].args.password, "[REDACTED]");
 	});
+
+	it("close() drains events queued while a batch is in flight", async () => {
+		// A controllable client: the first batch stays in flight until we
+		// release it, so the tail event lands in `pending` mid-send.
+		const calls = [];
+		let releaseFirst;
+		const firstGate = new Promise((resolve) => {
+			releaseFirst = resolve;
+		});
+		let sends = 0;
+		const client = {
+			async logEvents(payload) {
+				sends += 1;
+				calls.push(payload);
+				if (sends === 1) await firstGate;
+				return { accepted: true, seq: payload.seq };
+			},
+		};
+		const sender = createStructuredEventSender({
+			client,
+			...ids,
+			batchSize: 2,
+			flushMs: 60000, // timer must not fire during the test
+		});
+		sender.queueEvent({ type: "assistant_delta", delta: "one" });
+		sender.queueEvent({ type: "assistant_delta", delta: "two" }); // batch 0 ships, in flight
+		sender.queueEvent({ type: "run_finished" }); // queued while batch 0 is in flight
+		const closed = sender.close();
+		// close() must not resolve while the tail event is still unsent.
+		let resolvedEarly = false;
+		closed.then(() => {
+			resolvedEarly = true;
+		});
+		await new Promise((r) => setTimeout(r, 25));
+		assert.equal(resolvedEarly, false);
+		assert.equal(calls.length, 1);
+		releaseFirst();
+		await closed;
+		// Both batches shipped before close() resolved, in order.
+		assert.equal(calls.length, 2);
+		assert.deepEqual(
+			calls.map((c) => c.seq),
+			[0, 1],
+		);
+		assert.deepEqual(
+			calls[1].events.map((e) => e.type),
+			["run_finished"],
+		);
+	});
+
+	it("fallback converts events queued during the failed batch too", async () => {
+		const { client } = stubClient({ failAfter: 0 });
+		const fallback = [];
+		const sender = createStructuredEventSender({
+			client,
+			...ids,
+			batchSize: 2,
+			flushMs: 60000,
+			onTextFallback: (text) => fallback.push(text),
+		});
+		sender.queueEvent({ type: "assistant_delta", delta: "one" });
+		sender.queueEvent({ type: "assistant_delta", delta: "two" }); // batch 0 ships and fails
+		sender.queueEvent({ type: "harness_log", text: "three" }); // still pending at failure
+		await sender.flush();
+		assert.equal(sender.isStructured(), false);
+		// Nothing that was queued may vanish during the transition: every
+		// convertible event — failed batch AND pending queue — reaches text.
+		assert.deepEqual(fallback, ["one", "two", "three"]);
+	});
 });

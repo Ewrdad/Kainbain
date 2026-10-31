@@ -114,10 +114,13 @@ export const textForStructuredEvent = (event) => {
  *   batches. Flushes on `batchSize`, on `flushMs` of quiet, on explicit
  *   `flush()`/`close()`, and immediately on run-closing events
  *   (`run_finished`, `run_error`) so the tail never waits for the timer.
- *   The first send failure flips to text-fallback permanently for this
- *   execution: the failed batch converts to text via `onTextFallback` and
- *   later events are left to the daemon's `onLog` path (`isStructured()`
- *   goes false).
+ *   `flush()`/`close()` DRAIN: they resolve only once every queued event
+ *   has been sent, including events that arrived while a batch was in
+ *   flight (the caller can rely on the tail landing before it reports the
+ *   stage complete). The first send failure flips to text-fallback
+ *   permanently for this execution: the failed batch AND everything still
+ *   queued convert to text via `onTextFallback`, and later events are left
+ *   to the daemon's `onLog` path (`isStructured()` goes false).
  * @example const sender = createStructuredEventSender({ client, taskId: 't', projectId: 'p', executionId: 'e', epoch: 1, onTextFallback: () => {} })
  * @param {Object} opts - Options.
  * @param {Object} opts.client - Runner backend client with `logEvents`.
@@ -186,11 +189,15 @@ export const createStructuredEventSender = ({
 	const fallBack = (failedBatch, err) => {
 		structured = false;
 		clearTimer();
+		// Convert everything not yet sent, not just the failed batch: events
+		// queued while that batch was in flight were never transported
+		// structured and must not vanish during the fallback transition.
+		const unsent = [...failedBatch, ...pending];
 		pending = [];
 		warn(
 			`Structured log transport failed (${err?.message || err}); falling back to text frames.`,
 		);
-		for (const event of failedBatch) {
+		for (const event of unsent) {
 			const text = textForStructuredEvent(event);
 			if (text) {
 				try {
@@ -203,27 +210,30 @@ export const createStructuredEventSender = ({
 	};
 
 	const flush = async () => {
-		if (!structured || pending.length === 0) return;
-		if (inFlight) {
-			await inFlight;
-			return;
-		}
-		const batch = pending;
-		pending = [];
-		clearTimer();
-		const batchSeq = seq;
-		seq += 1;
-		inFlight = sendBatch(batch, batchSeq).catch((err) => {
-			fallBack(batch, err);
-		});
-		try {
-			await inFlight;
-		} finally {
-			inFlight = null;
-		}
-		// Events queued while the batch was in flight ship next.
-		if (structured && pending.length > 0) {
-			await flush();
+		// Drain loop, not a single pass: events queued while a batch is in
+		// flight must ship too. close() relies on this — the trailing batch
+		// has to be sent before the caller reports the stage complete.
+		// Taking a batch (`pending` → local) is synchronous, so concurrent
+		// flushes can never send the same events twice.
+		for (;;) {
+			if (!structured || pending.length === 0) return;
+			if (inFlight) {
+				await inFlight;
+				continue;
+			}
+			const batch = pending;
+			pending = [];
+			clearTimer();
+			const batchSeq = seq;
+			seq += 1;
+			inFlight = sendBatch(batch, batchSeq).catch((err) => {
+				fallBack(batch, err);
+			});
+			try {
+				await inFlight;
+			} finally {
+				inFlight = null;
+			}
 		}
 	};
 

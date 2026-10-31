@@ -65,9 +65,12 @@ by text, tool name, and expandable detail.
   every record passes the shared redactor (`shared/redactSecrets.js`) at
   creation — bearer/basic credentials, API keys, vendor tokens, connection
   strings, cloud credential JSON, private keys, emails, home directories,
-  phone/card shapes, plus secret-shaped values by key name. If a value that
-  looks secret to you ever appears in a log, treat it as a bug and report it:
-  unknown shapes are the documented residual risk.
+  phone/card shapes, plus secret-shaped values by key name. The live socket
+  is covered too: structured batches fan out from already-redacted stored
+  records, and legacy text frames are redacted at the broadcast point in
+  `POST /tasks/:id/logs` (older Runners ship raw text on the fallback path).
+  If a value that looks secret to you ever appears in a log, treat it as a
+  bug and report it: unknown shapes are the documented residual risk.
 
 ## Nothing is silently dropped
 

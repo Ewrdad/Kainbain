@@ -158,6 +158,60 @@ describe('logEntryModel — normalizeEntries', () => {
     expect(after).toHaveLength(1);
     expect(after[0].text).toBe('[TOOL] bash(ls)');
   });
+
+  it('dedupes per lane: text and structured seqs never collide', () => {
+    // The text lane and the structured lane keep independent seq counters on
+    // the same execution (both start at 0). A stored structured batch at
+    // exec:0 must not hide a live TEXT frame at exec:0, and vice versa —
+    // that collision only matters during the structured→text fallback
+    // transition, but there a wrongly dropped frame is a lost log line.
+    const storedStructured = {
+      id: 1,
+      kind: 'tool',
+      feeds: ['tools'],
+      text: '[TOOL] bash(ls)',
+      meta: { source: 'runner-structured', executionId: 'exec-1', seq: 0, runnerId: 'r1' },
+    };
+    const task = { logEntries: [storedStructured] };
+    const liveTextFrame = {
+      tag: '[RUNNER]',
+      text: '[runner r1] plain text',
+      raw: '[runner r1] plain text',
+      taskId: 't1',
+      executionId: 'exec-1',
+      seq: 0, // same number, different lane — must survive
+      runnerId: 'r1',
+    };
+    const entries = normalizeEntries(task, [liveTextFrame]);
+    expect(entries).toHaveLength(2);
+    expect(entries[1].text).toBe('[runner r1] plain text');
+
+    // Mirror image: a stored TEXT frame at exec:0 must not hide a live
+    // structured entry at exec:0.
+    const storedText = {
+      id: 2,
+      kind: 'runner',
+      feeds: ['main'],
+      text: '[runner r1] stored text',
+      meta: { source: 'process-log', executionId: 'exec-1', seq: 0, runnerId: 'r1' },
+    };
+    const liveStructured = {
+      taskId: 't1',
+      executionId: 'exec-1',
+      seq: 0,
+      runnerId: 'r1',
+      entry: {
+        id: 9,
+        kind: 'tool',
+        feeds: ['tools'],
+        text: '[TOOL] bash(pwd)',
+        meta: { source: 'runner-structured' },
+      },
+    };
+    const entries2 = normalizeEntries({ logEntries: [storedText] }, [liveStructured]);
+    expect(entries2).toHaveLength(2);
+    expect(entries2[1].text).toBe('[TOOL] bash(pwd)');
+  });
 });
 
 describe('logEntryModel — grouping', () => {

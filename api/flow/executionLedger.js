@@ -254,21 +254,13 @@ export class ExecutionLedger {
 			this.counters.logEventDuplicates += 1;
 			return { accepted: true, duplicate: true, seq };
 		}
-		const task = taskStore.getTask(projectId, taskId);
-		if (seq > next) {
-			this.counters.logEventGaps += 1;
-			this.counters.logEventBatches += 1;
-			_appendProcessLog(
-				task,
-				`[runner ${runnerId}] event frames truncated — Runner disconnected (frames ${next}–${seq - 1} missing)`,
-				{ runnerId },
-			);
-		} else {
-			this.counters.logEventBatches += 1;
-		}
 		// JSON-safe clone per event: functions and undefined die here so a
 		// hostile or hand-built runner payload can never poison the stored
 		// task (which serializes to markdown) with unserializable values.
+		// This runs BEFORE any task mutation: an invalid batch must be
+		// rejected without writing a spurious gap marker, and the seq
+		// cursor stays put so a corrected retry of the same seq is not
+		// mistaken for a gap.
 		const clean = [];
 		for (const event of events) {
 			if (!event || typeof event !== "object") continue;
@@ -290,6 +282,16 @@ export class ExecutionLedger {
 			err.statusCode = 400;
 			err.code = "INVALID_LOG_EVENTS_ARGS";
 			throw err;
+		}
+		const task = taskStore.getTask(projectId, taskId);
+		this.counters.logEventBatches += 1;
+		if (seq > next) {
+			this.counters.logEventGaps += 1;
+			_appendProcessLog(
+				task,
+				`[runner ${runnerId}] event frames truncated — Runner disconnected (frames ${next}–${seq - 1} missing)`,
+				{ runnerId },
+			);
 		}
 		// The processor redacts every record (text + structured payloads) at
 		// creation, so secrets never reach task.logEntries from this path.

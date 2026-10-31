@@ -921,6 +921,14 @@ async function executeAssignment({
 					durationMs: Date.now() - runStartedAt,
 				});
 			}
+			// Flush the trailing structured batch before interrupting: the
+			// tool/error trail up to the failure point must be stored, not
+			// only whatever the text tap carried.
+			try {
+				await structuredSender?.close();
+			} catch {
+				// Flushing is best-effort: the interrupt matters more.
+			}
 			try {
 				await client.interrupt({
 					taskId: taskId,
