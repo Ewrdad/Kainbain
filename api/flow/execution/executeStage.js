@@ -64,6 +64,9 @@ import {
 	parkTaskForSurvey,
 } from './parkTaskForSurvey.js';
 import {
+	clearRetryState,
+} from '../../../shared/taskRetryState.js';
+import {
 	GitDirtyTreeError,
 	resolveSha,
 } from '../../git.js';
@@ -359,10 +362,11 @@ export async function executeStage(
 		const priorStderr = task.lastError?.stderr || null;
 		const priorStdout = task.lastError?.stdout || null;
 
-		const wasRetrying = task.autoRetrying === true;
+		const wasRetrying = task.autoRetrying === true || task.retryState === "scheduled";
 		task.failureReason = null;
 		task.lastError = null;
-		task.autoRetrying = false;
+		delete task.lastRetrySource;
+		clearRetryState(task);
 		if (wasRetrying) task.retryState = "running";
 
 		store.setEngineState({

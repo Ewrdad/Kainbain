@@ -801,7 +801,7 @@ describe('TaskDetailPage full-page route component', () => {
       projects: sampleProjects,
     });
 
-    expect(screen.getByText('RETRYING')).toBeInTheDocument();
+    expect(screen.getAllByText('RETRYING (scheduled)').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Stage Rejected/i)).toBeInTheDocument();
     expect(screen.getByText('Review found a gap')).toBeInTheDocument();
   });
@@ -819,7 +819,7 @@ describe('TaskDetailPage full-page route component', () => {
       projects: sampleProjects,
     });
 
-    expect(screen.getByText('RETRYING')).toBeInTheDocument();
+    expect(screen.getAllByText('RETRYING (scheduled)').length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText(/Stage Execution Failed/i)).not.toBeInTheDocument();
     expect(screen.queryByText('Socket hang up')).not.toBeInTheDocument();
   });

@@ -10,6 +10,7 @@ import { BlockedByEditor } from './BlockedByEditor';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { approvalCopy } from '../stageTypes';
 import { FailureMessage } from './FailureMessage';
+import { RetryStatusBlock } from './RetryStatusBlock';
 
 export function TaskDetailsTab({
   activeProjectId,
@@ -77,6 +78,8 @@ export function TaskDetailsTab({
   const isTerminallyFailed = task?.status === 'failed';
   return (
     <div className="space-y-5">
+      {/* Scheduled-retry status: attempt x/y plus the recorded ladder. */}
+      <RetryStatusBlock task={task} />
       {/* Stage Execution Failure Alert Banner */}
       {isFailed && (
         <div

@@ -32,7 +32,7 @@ import { isInteractiveTarget } from '../../hooks/useTapGuard';
 import { copyToClipboard } from '../../services/clipboard';
 import { getTaskBranchName, buildCheckoutCommand } from './taskBranch';
 import { isRejectedTask } from './failureReason';
-import { isRetryingTask } from './taskRetryState';
+import { isRetryingTask, retryProgressLabel, retryWaitLabel } from './taskRetryState';
 
 /***
  * MARK: extractModelHarnessInfo
@@ -455,24 +455,6 @@ export function TaskCard({
   const isInterrupted = task.wasInterrupted === true || task.status === 'interrupted' || isStale;
   const isPaused = task.status === 'paused';
 
-  const statusLabel = () => {
-    if (isRetrying) return 'RETRYING';
-    if (isRejected) return 'REJECTED';
-    if (isFailed) return 'FAILED';
-    if (isInterrupted) return 'INTERRUPTED';
-    if (isPaused) return 'PAUSED';
-    if (isRunnerHeld) return `RUNNING · ${task.claim.runnerId}`;
-    if (isRunning) return 'RUNNING';
-    if (isCompleted) return 'DONE';
-    if (isBlocked) return 'BLOCKED';
-    if (isSurveyWaiting) return 'AWAITING_SURVEY';
-    if (isCheckpointStage) return 'AWAITING_REVIEW';
-    if (role === 'agent') return 'AGENT_READY';
-    if (role === 'ci') return 'CI_READY';
-    if (role === 'merge') return 'MERGE_READY';
-    return 'PENDING';
-  };
-
   const statusColorClass = () => {
     if (isRetrying) return 'text-warning font-bold';
     if (isFailed) return 'text-error font-bold';
@@ -508,6 +490,30 @@ export function TaskCard({
   // wins so tests can freeze the clock.
   const sharedNowMs = useNow();
   const effectiveNowMs = nowMs ?? sharedNowMs;
+
+  const retryLabel = isRetrying ? retryProgressLabel(task) || 'RETRYING' : '';
+
+  const statusLabel = () => {
+    if (isRetrying) {
+      const wait = retryWaitLabel(task, effectiveNowMs);
+      return wait ? `${retryLabel} · ${wait}` : retryLabel;
+    }
+    if (isRejected) return 'REJECTED';
+    if (isFailed) return 'FAILED';
+    if (isInterrupted) return 'INTERRUPTED';
+    if (isPaused) return 'PAUSED';
+    if (isRunnerHeld) return `RUNNING · ${task.claim.runnerId}`;
+    if (isRunning) return 'RUNNING';
+    if (isCompleted) return 'DONE';
+    if (isBlocked) return 'BLOCKED';
+    if (isSurveyWaiting) return 'AWAITING_SURVEY';
+    if (isCheckpointStage) return 'AWAITING_REVIEW';
+    if (role === 'agent') return 'AGENT_READY';
+    if (role === 'ci') return 'CI_READY';
+    if (role === 'merge') return 'MERGE_READY';
+    return 'PENDING';
+  };
+
   const showPace = shouldShowPace(task, { isRunning, isReview: isCheckpointStage });
   const elapsedSec = elapsedStageSeconds(task, effectiveNowMs);
   const pace = showPace ? paceStatus(elapsedSec, avgDurationSeconds) : 'unknown';

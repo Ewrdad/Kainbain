@@ -2,6 +2,7 @@ import {
 	retryStateOf as sharedRetryStateOf,
 	isRetryingTask as sharedIsRetryingTask,
 	retryProgressLabel as sharedRetryProgressLabel,
+	retryWaitLabel as sharedRetryWaitLabel,
 	clearRetryState as sharedClearRetryState,
 	setRetryScheduled as sharedSetRetryScheduled,
 	isRetryStuck as sharedIsRetryStuck,
@@ -33,6 +34,11 @@ export const isRetryingTask = sharedIsRetryingTask;
  * @example retryProgressLabel({ retryState: "scheduled", autoRetrying: true, status: "in_stage" }) => "RETRYING (scheduled)"
  ***/
 export const retryProgressLabel = sharedRetryProgressLabel;
+
+/***
+ * @example retryWaitLabel({ retryState: "scheduled", status: "in_stage", nextRetryAt: "2020-01-01T00:00:00.000Z" }, 1e13) => "due now"
+ ***/
+export const retryWaitLabel = sharedRetryWaitLabel;
 
 /***
  * @example isRetryStuck({ retryState: "scheduled", nextRetryAt: "2020-01-01T00:00:00.000Z", status: "in_stage" }, 1e13) => true

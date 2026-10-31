@@ -88,6 +88,7 @@ import {
 	syncTaskBranchToRemoteBestEffort,
 } from "../work/taskBranches.js";
 import { resolveShell, buildStageEnv, isWindows } from "../utils/platform.js";
+import { clearRetryState } from "../../shared/taskRetryState.js";
 
 /***
  * MARK: recordReviewBaseline
@@ -375,7 +376,7 @@ export async function finalizePassedCommandStage(
 	task.failureReason = null;
 	task.lastError = null;
 	task.infraRetryCount = 0;
-	task.autoRetrying = false;
+	clearRetryState(task);
 
 	// The rehydration marker is single-attempt. Consume it on pass so a
 	// later interruption at a DIFFERENT stage can never mistake this

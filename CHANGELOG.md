@@ -19,6 +19,10 @@ source of truth. This file intentionally lists only high-impact changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- Task retry state is now first-class (`retryState`, `nextRetryAt`) so tasks no longer appear stuck in RETRYING: scheduled retries show attempt x/y with a countdown, exhausted retries park as FAILED, and orphaned retries recover on restart (task 8815d13d).
+
 ### Changed
 
 - Merged the ALL / FAILED / HUMAN ONLY board pills into the unified search bar as `!` system filters (e.g. `auth #Dev !failed`): same dropdown, chips, and Any/All toggle as `#` tags; unknown `!tokens` stay as text; future native filters register via `frontend/src/components/workflow/systemFilters/` (task c213d3a9).

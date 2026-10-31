@@ -174,6 +174,25 @@ export const retryProgressLabel = (task) => {
 }
 
 /***
+ * @example retryWaitLabel({ retryState: "scheduled", status: "in_stage", nextRetryAt: "2020-01-01T00:00:00.000Z" }, 1e13) => "due now"
+ * @example retryWaitLabel({ status: "in_stage" }) => ""
+ ***/
+export const retryWaitLabel = (task, nowMs = Date.now()) => {
+	const info = retryStateOf(task);
+	if (info.state !== TASK_RETRY_STATES.SCHEDULED || !info.nextRetryAt) return "";
+	const deadline = Date.parse(info.nextRetryAt);
+	if (!Number.isFinite(deadline)) return "";
+	const now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+	const diffMs = deadline - now;
+	if (diffMs <= 0) return "due now";
+	const totalSeconds = Math.round(diffMs / 1000);
+	if (totalSeconds < 60) return `in ${totalSeconds}s`;
+	const totalMinutes = Math.round(totalSeconds / 60);
+	if (totalMinutes < 60) return `in ${totalMinutes}m`;
+	return `in ${Math.round(totalMinutes / 60)}h`;
+}
+
+/***
  * @example clearRetryState({ status: "in_stage", autoRetrying: true }) => { autoRetrying: false, retryState: "none" }
  ***/
 export const clearRetryState = (task, opts = {}) => {
@@ -184,6 +203,7 @@ export const clearRetryState = (task, opts = {}) => {
 	task.retryAttempt = 0;
 	task.retryMaxAttempts = 0;
 	task.retryScheduledInStandby = false;
+	delete task.lastRetrySource;
 	if (opts && (opts.clearFailureReason === true)) {
 		delete task.failureReason;
 		delete task.lastError;

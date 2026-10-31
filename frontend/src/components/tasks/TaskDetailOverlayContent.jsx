@@ -31,7 +31,7 @@ import { TaskReportsTab } from './TaskReportsTab';
 import { TaskHistoryTab } from './TaskHistoryTab';
 import { TaskDetailsTab } from './TaskDetailsTab';
 import { isRejectedTask } from './failureReason';
-import { isRetryingTask } from './taskRetryState';
+import { isRetryingTask, retryProgressLabel, retryWaitLabel } from './taskRetryState';
 import { LogsPanel, useTaskLogs } from './LogsPanel';
 
 /***
@@ -347,9 +347,14 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
   const formattedKey = task?.id ? formatTaskKey(task.id) : '';
 
   // Header status badge (completed / failed / rejected / retrying / blocked / in-progress).
+  // A scheduled retry names itself ("RETRYING (scheduled) 2/5 · in 12s").
   const statusLabel = (() => {
     if (task?.status === 'completed') return 'COMPLETED';
-    if (isRetrying) return 'RETRYING';
+    if (isRetrying) {
+      const base = retryProgressLabel(task) || 'RETRYING';
+      const wait = retryWaitLabel(task, nowMs);
+      return wait ? `${base} · ${wait}` : base;
+    }
     if (isRejected) return 'REJECTED';
     if (isFailed) return 'FAILED';
     if (isBlockedByDependencies) return 'BLOCKED';

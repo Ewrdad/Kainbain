@@ -4,6 +4,7 @@ import { useKainBain } from '../../context/KainBainContext';
 import { formatTaskKey, formatTaskTitleFirstLine } from '../tasks/taskFormatters';
 import { resolveDisplayedStage } from '../tasks/runningTask';
 import { resolveActiveTaskDisplay, resolveUniversalNowPlaying } from './activeTaskVisibility';
+import { isRetryingTask, retryProgressLabel, retryWaitLabel } from '../tasks/taskRetryState';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { api } from '../../services/api';
 
@@ -263,14 +264,21 @@ export function NowPlayingBar() {
   // named task, badge flags, and idle gate all resolve from the task list +
   // engine state only — pipeline view state never influences what this bar
   // names.
-  const { activeTask, isFailed, isInterrupted, isStagePaused, isRunning, isCheckpoint } =
-    resolveActiveTaskDisplay({
-      tasks,
-      engineState,
-      currentStageId: null,
-      isAgentRunning,
-      currentStage: null,
-    });
+  const {
+    activeTask,
+    candidateTask,
+    isFailed,
+    isInterrupted,
+    isStagePaused,
+    isRunning,
+    isCheckpoint,
+  } = resolveActiveTaskDisplay({
+    tasks,
+    engineState,
+    currentStageId: null,
+    isAgentRunning,
+    currentStage: null,
+  });
   const universal = resolveUniversalNowPlaying({ tasks, engineState });
   // Resolved once per render: the stage the running task is actually in
   // (its pipeline stage, never a stranded engine snapshot — task 072e2cfa).
@@ -299,10 +307,10 @@ export function NowPlayingBar() {
     : 0;
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
-    if (!showRunnerBoxes) return undefined;
+    // The retry countdown below needs a live clock even in legacy display.
     const timer = setInterval(() => setNowMs(Date.now()), 15000);
     return () => clearInterval(timer);
-  }, [showRunnerBoxes]);
+  }, []);
 
   let statusBadge = 'IDLE';
   let badgeClasses = 'text-text-muted bg-surface-container border-border-standard';
@@ -353,6 +361,25 @@ export function NowPlayingBar() {
     statusDesc = 'Workflow paused at human quality gate awaiting review approval.';
     statusBehind =
       'Task dispatcher waiting for user to click Approve or Reject in Task Card / Inspector.';
+  }
+
+  // Scheduled retry while no run is active: the engine reads idle but a task
+  // is genuinely waiting on its next attempt — name it instead of showing a
+  // stale FAILED/IDLE mismatch. Fleet mode is untouched: runner boxes own
+  // that display.
+  const scheduledRetryTask =
+    !showRunnerBoxes && statusBadge === 'IDLE' && candidateTask && isRetryingTask(candidateTask)
+      ? candidateTask
+      : null;
+  if (scheduledRetryTask) {
+    const retryBase = retryProgressLabel(scheduledRetryTask) || 'RETRYING';
+    const retryWait = retryWaitLabel(scheduledRetryTask, nowMs);
+    statusBadge = retryWait ? `${retryBase} · ${retryWait}` : retryBase;
+    badgeClasses = 'text-warning bg-warning/20 border-warning/40 shadow-sm font-bold';
+    dotClasses = 'bg-warning shadow-[0_0_8px_rgba(234,179,8,0.6)]';
+    statusDesc = 'An automatic retry is scheduled and waiting for its next attempt.';
+    statusBehind =
+      'The engine picks the task up when the retry delay elapses — no action needed unless the deadline passes.';
   }
 
   // Owning-pipeline provenance chip. Named workflow objects expose
@@ -563,11 +590,14 @@ export function NowPlayingBar() {
               >
                 <button
                   type="button"
-                  onClick={() => activeTask && setSelectedTask?.(activeTask)}
-                  disabled={!activeTask}
+                  onClick={() =>
+                    (activeTask || scheduledRetryTask) &&
+                    setSelectedTask?.(activeTask || scheduledRetryTask)
+                  }
+                  disabled={!(activeTask || scheduledRetryTask)}
                   aria-label={
-                    activeTask
-                      ? `Open active task ${activeTask.goal || activeTask.title || activeTask.id} in inspector`
+                    activeTask || scheduledRetryTask
+                      ? `Open active task ${(activeTask || scheduledRetryTask).goal || (activeTask || scheduledRetryTask).title || (activeTask || scheduledRetryTask).id} in inspector`
                       : 'No active task'
                   }
                   className="flex items-center gap-1.5 sm:gap-2 min-w-0 mt-0.5 text-left cursor-pointer hover:underline focus:outline-none focus:ring-1 focus:ring-primary rounded-xs group disabled:cursor-default disabled:no-underline"
@@ -577,23 +607,29 @@ export function NowPlayingBar() {
                     entrance animation replays. The key chip only ever shows a
                     real task key — never a fabricated fallback. */}
                   <span
-                    key={activeTask?.id ?? 'idle'}
-                    data-testid={activeTask ? 'now-playing-task-name' : 'now-playing-idle-hint'}
+                    key={(activeTask || scheduledRetryTask)?.id ?? 'idle'}
+                    data-testid={
+                      activeTask || scheduledRetryTask
+                        ? 'now-playing-task-name'
+                        : 'now-playing-idle-hint'
+                    }
                     className={
-                      activeTask
+                      activeTask || scheduledRetryTask
                         ? 'now-playing-task-enter font-headline-sm text-xs sm:text-headline-sm text-on-surface group-hover:text-primary transition-colors truncate'
                         : 'font-headline-sm text-xs sm:text-headline-sm text-text-muted truncate'
                     }
                   >
-                    {activeTask
-                      ? `${activeWorkflowLabel ? `${activeWorkflowLabel} | ` : ''}${
-                          formatTaskTitleFirstLine(activeTask, '') ||
-                          (isRunning
-                            ? 'Executing Orchestration...'
-                            : isStagePaused
-                              ? 'Stage Paused'
-                              : 'Idle')
-                        }`
+                    {activeTask || scheduledRetryTask
+                      ? scheduledRetryTask && !activeTask
+                        ? `${activeWorkflowLabel ? `${activeWorkflowLabel} | ` : ''}${formatTaskTitleFirstLine(scheduledRetryTask, '') || 'Awaiting scheduled retry'}`
+                        : `${activeWorkflowLabel ? `${activeWorkflowLabel} | ` : ''}${
+                            formatTaskTitleFirstLine(activeTask, '') ||
+                            (isRunning
+                              ? 'Executing Orchestration...'
+                              : isStagePaused
+                                ? 'Stage Paused'
+                                : 'Idle')
+                          }`
                       : 'No active task — engine idle'}
                   </span>
                   {/* Show active stage name when a task is running */}
@@ -602,9 +638,9 @@ export function NowPlayingBar() {
                       {`Stage: ${displayedStageName}`}
                     </span>
                   )}
-                  {activeTask && (
+                  {(activeTask || scheduledRetryTask) && (
                     <span className="font-mono text-xs font-semibold text-text-muted group-hover:text-primary transition-colors shrink-0 hidden md:inline">
-                      {formatTaskKey(activeTask.id)}
+                      {formatTaskKey((activeTask || scheduledRetryTask).id)}
                     </span>
                   )}
                 </button>

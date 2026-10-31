@@ -35,7 +35,7 @@ import {
 	resolveTransientBudget,
 } from '../resolvers/index.js';
 import { settleOperatorAbort } from './settleOperatorAbort.js';
-import { clearRetryState, setRetryScheduled, armRetry } from '../../../work/taskRetryState.js';
+import { clearRetryState, armRetry } from '../../../work/taskRetryState.js';
 import { deferForCircuitTrip } from './deferForCircuitTrip.js';
 import { handleStageFailure } from './handleStageFailure.js';
 import { recordTransientAttemptReport } from './recordTransientAttemptReport.js';
@@ -146,7 +146,7 @@ export function handleTransientFailure(
 			typeof error === "string" ? error : error?.message || "Transient infrastructure failure";
 		const interruptedCwd = taskStore._resolveProjectCwd(projectId, projectCwd);
 		task.failureReason = interruptedMsg;
-task.lastError = {
+		task.lastError = {
 			message: interruptedMsg,
 			stageId: stage?.id,
 			stageName: stage?.name || stage?.id,
@@ -154,7 +154,7 @@ task.lastError = {
 			classification: classificationMeta,
 			timestamp: new Date().toISOString(),
 		};
-clearRetryState(taskStore, projectId, taskId);
+		clearRetryState(taskStore, projectId, taskId);
 		if (!Array.isArray(task.history)) {
 			task.history = [];
 		}
@@ -334,8 +334,8 @@ clearRetryState(taskStore, projectId, taskId);
 	});
 	task.failureReason = null;
 	task.lastError = null;
-task.status = "in_stage";
-/* retry state recorded by armRetry below */
+	task.status = "in_stage";
+	/* retry state recorded by armRetry below */
 	if (!Array.isArray(task.history)) {
 		task.history = [];
 	}

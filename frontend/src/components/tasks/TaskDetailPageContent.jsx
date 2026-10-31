@@ -12,6 +12,7 @@ import {
 import { approvalCopy, isTerminalHumanApproval, normalizeStageType } from '../stageTypes';
 import { resolveCheckpointState } from './checkpointState';
 import { SelectDropdown } from '../common/SelectDropdown';
+import { useNow } from '../../hooks/useNow';
 import { usePendingAction } from '../../hooks/usePendingAction';
 import { usePersistentState } from '../../hooks/usePersistentState';
 import { useTaskGoalDraft } from '../../hooks/useTaskGoalDraft';
@@ -29,7 +30,8 @@ import { RunAttributionBadge } from './RunAttributionBadge';
 import { HistoryFailureReason } from './HistoryFailureReason';
 import { FailureMessage } from './FailureMessage';
 import { isRejectedTask } from './failureReason';
-import { isRetryingTask } from './taskRetryState';
+import { isRetryingTask, retryProgressLabel, retryWaitLabel } from './taskRetryState';
+import { RetryStatusBlock } from './RetryStatusBlock';
 import { BlockedByEditor } from './BlockedByEditor';
 import { LogsPanel, useTaskLogs } from './LogsPanel';
 import { TaskDetailHistoryPane } from './TaskDetailHistoryPane';
@@ -315,9 +317,16 @@ export function TaskDetailPage({ task: propTask, onBack }) {
     : 'Blocked by dependencies';
 
   // Header status badge (completed / failed / rejected / retrying / blocked / in-progress).
+  // A scheduled retry names itself ("RETRYING (scheduled) 2/5 · in 12s") so
+  // the header never shows a bare RETRYING with no next step.
+  const headerNowMs = useNow();
+  const retryWait = isRetrying ? retryWaitLabel(task, headerNowMs) : '';
   const statusLabel = (() => {
     if (task?.status === 'completed') return 'COMPLETED';
-    if (isRetrying) return 'RETRYING';
+    if (isRetrying) {
+      const base = retryProgressLabel(task) || 'RETRYING';
+      return retryWait ? `${base} · ${retryWait}` : base;
+    }
     if (isRejected) return 'REJECTED';
     if (isFailed) return 'FAILED';
     if (isBlockedByDependencies) return 'BLOCKED';
@@ -842,6 +851,9 @@ export function TaskDetailPage({ task: propTask, onBack }) {
       >
         {activeTab === 'details' && (
           <div className="max-w-5xl mx-auto space-y-6">
+            {/* Scheduled-retry status: attempt x/y plus the recorded ladder
+                so a waiting retry reads as progress, not a stall. */}
+            <RetryStatusBlock task={task} />
             {/* Stage Execution Failure Alert Banner */}
             {isFailed && (
               <div

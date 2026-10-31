@@ -25,6 +25,10 @@ import {
 	validateAlertPayload,
 } from "../observability/alerts.js";
 import {
+	isRetryingTask,
+	retryProgressLabel,
+} from "../work/taskRetryState.js";
+import {
 	markStallHandled,
 	consumeStallHandled,
 } from "./stageHeartbeat.js";
@@ -387,6 +391,100 @@ describe("The Flow: attempt-budget reset", () => {
 		expect(task.infraRetryCount).toBe(0);
 		expect(task.timeInStage).toBe(0);
 		expect(Date.parse(task.enteredStageAt)).toBeGreaterThan(Date.parse("2026-01-01T00:00:00.000Z"));
+	});
+
+	it("resetAttemptBudgets clears the persisted retry schedule, not just the flag", () => {
+		const task = {
+			status: "in_stage",
+			autoIterationCount: 2,
+			autoRetrying: true,
+			retryState: "scheduled",
+			nextRetryAt: new Date(Date.now() + 60_000).toISOString(),
+			retryAttempt: 2,
+			retryMaxAttempts: 5,
+			infraRetryCount: 2,
+		};
+		resetAttemptBudgets(task);
+		expect(task.retryState).toBe("none");
+		expect(task.nextRetryAt).toBeNull();
+		expect(task.retryAttempt).toBe(0);
+		expect(task.retryMaxAttempts).toBe(0);
+		expect(isRetryingTask(task)).toBe(false);
+	});
+});
+
+describe("The Flow: stuck-retry characterization", () => {
+	it("a previously retrying task that exhausts its budget parks as failed, not RETRYING", () => {
+		const tempCwd = fs.mkdtempSync(path.join(os.tmpdir(), "kb-stuck-retry-test-"));
+		try {
+			const quietBridge = {
+				emitProcessEvent: () => {},
+				emitSystemLog: () => {},
+				emitNotification: () => {},
+			};
+			const store = new TaskStore({
+				eventBridge: quietBridge,
+				projectStore: { getProject: () => ({ stages, cwd: tempCwd }) },
+			});
+			const task = store.createTask("p1", { stageId: "impl", projectCwd: tempCwd });
+			// Budget of 1: the first transient failure arms a retry (scheduled),
+			// the second exhausts the budget and must park.
+			const failOpts = {
+				stages,
+				projectCwd: tempCwd,
+				project: { maxTransientRetries: 1 },
+			};
+			const first = store.handleTransientFailure("p1", task.id, stages[1], new Error("socket hang up"), failOpts);
+			expect(first.status).toBe("retrying");
+			expect(isRetryingTask(task)).toBe(true);
+			const parked = store.handleTransientFailure("p1", task.id, stages[1], new Error("socket hang up"), failOpts);
+			expect(parked.status).toBe("failed");
+			expect(task.status).toBe("failed");
+			expect(task.retryState).toBe("exhausted");
+			expect(isRetryingTask(task)).toBe(false);
+			expect(retryProgressLabel(task)).toBe("");
+		} finally {
+			fs.rmSync(tempCwd, { recursive: true, force: true });
+		}
+	});
+
+	it("an auto-iteration retry that exhausts on the next failure parks without a lingering flag", () => {
+		const tempCwd = fs.mkdtempSync(path.join(os.tmpdir(), "kb-stuck-retry-test-"));
+		const originalEnabled = config.autoIterationEnabled;
+		config.autoIterationEnabled = true;
+		try {
+			const quietBridge = {
+				emitProcessEvent: () => {},
+				emitSystemLog: () => {},
+				emitNotification: () => {},
+			};
+			const store = new TaskStore({
+				eventBridge: quietBridge,
+				projectStore: { getProject: () => ({ stages, cwd: tempCwd }) },
+			});
+			const task = store.createTask("p1", { stageId: "impl", projectCwd: tempCwd });
+			// Both stages automated: failback lands on an agent stage so the
+			// auto-iteration budget (not a human checkpoint) decides.
+			const agentStages = [
+				{ id: "build", name: "Build", type: "agent" },
+				{ id: "impl", name: "Implementation", type: "agent", fallbackStageId: "build" },
+			];
+			const failOpts = {
+				stages: agentStages,
+				projectCwd: tempCwd,
+				project: { maxAutoIterations: 1 },
+			};
+			const first = store.handleStageFailure("p1", task.id, agentStages[1], new Error("boom"), failOpts);
+			expect(first.status).toBe("retrying");
+			expect(isRetryingTask(task)).toBe(true);
+			const parked = store.handleStageFailure("p1", task.id, agentStages[1], new Error("boom"), failOpts);
+			expect(parked.status).toBe("failed");
+			expect(task.status).toBe("failed");
+			expect(isRetryingTask(task)).toBe(false);
+		} finally {
+			config.autoIterationEnabled = originalEnabled;
+			fs.rmSync(tempCwd, { recursive: true, force: true });
+		}
 	});
 });
 

@@ -34,6 +34,7 @@ export { ORPHANED_RUNNING_STATUSES } from './orphanedRunningStatuses.js';
 export { autoResumeTask } from './autoResumeTask.js';
 export { collectResumeEvidence } from './collectResumeEvidence.js';
 export { reconcileInterruptedRuns } from './reconcileInterruptedRuns.js';
+export { reconcileDueRetries } from './reconcileDueRetries.js';
 export { runScheduledTick } from './runScheduledTick.js';
 export { startScheduler } from './startScheduler.js';
 export { stopScheduler } from './stopScheduler.js';

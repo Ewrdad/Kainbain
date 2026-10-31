@@ -408,6 +408,33 @@ test('keeps the REJECTED tag while an auto-retry is queued', () => {
   expect(screen.queryByLabelText('Rejected execution')).not.toBeInTheDocument();
 });
 
+test('parked failed task with a lingering retry flag reads FAILED, not RETRYING', () => {
+  const stuckTask = {
+    ...task,
+    status: 'failed',
+    autoRetrying: true,
+    failureReason: 'Socket hang up',
+  };
+  render(<TaskCard task={stuckTask} stageName="Execution" role="agent" />);
+  expect(screen.getByLabelText('Failed execution')).toBeInTheDocument();
+  expect(screen.queryByText(/RETRYING/)).not.toBeInTheDocument();
+});
+
+test('scheduled retry names itself with attempt counts on the card', () => {
+  const scheduledTask = {
+    ...task,
+    status: 'in_stage',
+    retryState: 'scheduled',
+    autoRetrying: true,
+    retryAttempt: 1,
+    retryMaxAttempts: 3,
+    nextRetryAt: new Date(Date.now() + 12000).toISOString(),
+  };
+  render(<TaskCard task={scheduledTask} stageName="Execution" role="agent" />);
+  expect(screen.getByText(/RETRYING \(scheduled\) 1\/3/)).toBeInTheDocument();
+  expect(screen.queryByLabelText('Failed execution')).not.toBeInTheDocument();
+});
+
 /***
  * MARK: compact task-card density tests (task 7a411b12)
  * @description 'compact' is the product-default taskCardDensity: the card

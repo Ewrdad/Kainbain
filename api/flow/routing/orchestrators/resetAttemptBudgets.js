@@ -1,7 +1,7 @@
 import {
 	resetFailbackWarnings,
 } from "../../../observability/alerts.js";
-import { clearRetryState as clearSharedRetryState } from "../../../work/taskRetryState.js";
+import { clearRetryState } from "../../../../shared/taskRetryState.js";
 
 /***
  * MARK: resetAttemptBudgets
@@ -17,11 +17,10 @@ import { clearRetryState as clearSharedRetryState } from "../../../work/taskRetr
  ***/
 export function resetAttemptBudgets(task) {
 	task.autoIterationCount = 0;
-	task.autoRetrying = false;
 	task.infraRetryCount = 0;
 	task.transientRetryLadder = [];
 	task.timeInStage = 0;
 	task.enteredStageAt = new Date().toISOString();
-	clearSharedRetryState(task);
+	clearRetryState(task);
 	resetFailbackWarnings(task);
 }

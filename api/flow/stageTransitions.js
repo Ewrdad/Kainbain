@@ -663,6 +663,9 @@ export async function retryStage(
 	// to reinject the failure into the next attempt's prompt, then clears them.
 	// (Clearing here would blind the retried attempt to the failure that parked it.)
 	store._resetAutoIteration(task);
+	// Operator-initiated retry: the badge reads "RETRYING (manual)" while
+	// the attempt is pending. executeStage clears it when the run starts.
+	task.lastRetrySource = "operator";
 	task.status = "in_stage";
 	task.updatedAt = new Date().toISOString();
 	store._recordHistory(task, "Stage execution retried manually", task.updatedAt);

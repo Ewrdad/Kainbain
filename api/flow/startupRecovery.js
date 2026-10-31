@@ -4,6 +4,7 @@ import {
 	freshSchedulerStats,
 	isAutoResumableWithReason,
 	kickScheduler,
+	reconcileDueRetries,
 	reconcileInterruptedRuns,
 	resolveCandidateStage,
 	resolveStagesForTask,
@@ -151,6 +152,10 @@ export function countInterrupted(store) {
  *        continuity decision.
  *     3. `autoResumeInterrupted()` — eligible agent/ci/script interruptions
  *        flip back to `in_stage`, prioritised for the queue.
+ *     3b. `reconcileDueRetries()` — retries orphaned by a stop/crash whose
+ *        deadline is long past park as `failed`/`exhausted` instead of
+ *        rendering `RETRYING` forever; just-due retries stay `in_stage`
+ *        for the normal tick to pick up.
  *     4. `startScheduler()` + one `kickScheduler()` so pickup takes ~150 ms.
  *   Recovery only transitions state: dispatch happens through the normal
  *   `scheduleTick` under the busy gate, so the single-active invariant and
@@ -186,6 +191,7 @@ export async function performStartupRecovery(store, opts = {}) {
 	let deploys = [];
 	let interruptedFound = 0;
 	let autoResumed = [];
+	let dueRetriesParked = [];
 
 	// 1. Orphaned live runs collapse to `interrupted` (sync, idempotent).
 	try {
@@ -216,11 +222,19 @@ export async function performStartupRecovery(store, opts = {}) {
 			(store.schedulerStats.resumedInterrupted || 0) + autoResumed.length;
 	}
 
+	// 3b. Orphaned retry arms whose deadline is long past park as failed
+	// instead of retrying forever (sync, idempotent).
+	try {
+		dueRetriesParked = reconcileDueRetries(store) || [];
+	} catch {
+		dueRetriesParked = [];
+	}
+
 	// 4. Start ticking (honours `schedulerDisabled`), then shorten pickup to
 	// one debounce instead of one full interval.
 	startScheduler(store, opts);
 	kickScheduler(store, opts);
 
 	const summary = startupRecoverySummary({ interruptedFound, autoResumed });
-	return { runs, deploys, autoResumed, interruptedFound, summary };
+	return { runs, deploys, autoResumed, dueRetriesParked, interruptedFound, summary };
 }

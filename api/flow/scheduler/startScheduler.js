@@ -27,4 +27,18 @@ export function startScheduler(store, opts = {}) {
 	if (store.schedulerTimer?.unref) {
 		store.schedulerTimer.unref();
 	}
+	// Retries armed while the engine was stopped recorded their ids in
+	// `_dueRetryIds` (see armRetry): they stay `in_stage`, so the normal
+	// scan picks them up, but trigger one prompt tick so a due retry does
+	// not wait a full interval.
+	try {
+		if (store._dueRetryIds && store._dueRetryIds.size > 0) {
+			store._dueRetryIds.clear();
+			if (store.schedulerRunning) {
+				runScheduledTick(store).catch(() => {});
+			}
+		}
+	} catch {
+		// Prompt pickup is best-effort; the interval still covers it.
+	}
 }
