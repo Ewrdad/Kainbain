@@ -334,3 +334,64 @@ describe("generate-changelog CLI", () => {
 		expect(result.stderr).toContain("generate-changelog:");
 	});
 });
+
+describe("DeployManager.readChangelog source precedence (fail-safe)", () => {
+	if (!gitAvailable) {
+		it.skip("skipped: git is not available", () => {});
+		return;
+	}
+	let tmp;
+	let prodDir;
+	beforeEach(() => {
+		tmp = fs.mkdtempSync(path.join(os.tmpdir(), "changelog-precedence-"));
+		prodDir = fs.mkdtempSync(path.join(os.tmpdir(), "changelog-precedence-prod-"));
+	});
+	afterEach(() => {
+		fs.rmSync(tmp, { recursive: true, force: true });
+		fs.rmSync(prodDir, { recursive: true, force: true });
+	});
+
+	it("skips a corrupt baked file and serves the bundled artifact", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		fs.writeFileSync(path.join(prodDir, "changelog.json"), JSON.stringify({ halfWritten: true }));
+		fs.mkdirSync(path.join(tmp, "api"), { recursive: true });
+		const bundled = { branch: "main", totalCount: 1, entries: [{ sha: "b", subject: "Bundled fix" }] };
+		fs.writeFileSync(path.join(tmp, "api", "bundled-changelog.json"), JSON.stringify(bundled));
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		expect(manager.readChangelog()).toEqual(bundled);
+	});
+
+	it("keeps a generation-failed marker terminal instead of hiding it behind older history", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		const marker = { entries: [], error: "git log failed: boom" };
+		fs.writeFileSync(path.join(prodDir, "changelog.json"), JSON.stringify(marker));
+		fs.mkdirSync(path.join(tmp, "api"), { recursive: true });
+		const bundled = { branch: "main", totalCount: 1, entries: [{ sha: "b", subject: "Bundled fix" }] };
+		fs.writeFileSync(path.join(tmp, "api", "bundled-changelog.json"), JSON.stringify(bundled));
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		expect(manager.readChangelog()).toEqual(marker);
+	});
+
+	it("serves an honest empty artifact (not not-baked) when live history is only noise", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		initRepo(tmp, { initialBranch: "main" });
+		commitFile(tmp, "a.txt", "a", "KainBain: auto-commit pending work");
+		commitFile(tmp, "b.txt", "b", "kb/91257d62-f181-4ee0-ab91-f00188221c78 5: Runner stage output");
+		commitFile(tmp, "c.txt", "c", "Merge branch 'main' into kb/91257d62-f181-4ee0-ab91-f00188221c78");
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		const read = manager.readChangelog();
+		expect(read).not.toBeNull();
+		expect(read.branch).toBe("main");
+		expect(read.entries).toEqual([]);
+		expect(read.totalCount).toBe(0);
+	});
+
+	it("prefers master over main, matching the baker", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		initRepo(tmp, { initialBranch: "master" });
+		commitFile(tmp, "a.txt", "a", "Master fix");
+		run(tmp, "branch", "main");
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		expect(manager.readChangelog().branch).toBe("master");
+	});
+});

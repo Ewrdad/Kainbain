@@ -11,7 +11,8 @@
 #   - changelog.json: publish.sh bakes git history to
 #     api/bundled-changelog.json before `docker build`, so `COPY api/` below
 #     bundles it into the image and the API serves it (no .git in context).
-#     A manual `docker build` without that step reports `not-baked`.
+#     The production stage fails loudly when that file is missing instead of
+#     shipping an image whose changelog dialog reports "No changelog baked".
 
 # --- Build stage: install api + frontend deps, build the frontend ----------
 FROM node:24-alpine AS build
@@ -85,6 +86,12 @@ COPY site-docs/ ./site-docs/
 COPY skills/ ./skills/
 COPY --from=build /build/frontend/dist ./frontend/dist
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
+# Fail-safe: the backend serves its in-app changelog from this baked file
+# (publish.sh writes it with scripts/generate-changelog.mjs before building;
+# .git/ is excluded from the context so it cannot be regenerated here). A
+# missing file would silently ship an image whose changelog dialog reports
+# "No changelog baked into this build" — fail the build instead, with the fix.
+RUN test -f ./api/bundled-changelog.json || { echo "missing api/bundled-changelog.json: bake it first with 'node scripts/generate-changelog.mjs --limit 200 --out api/bundled-changelog.json' (publish.sh does this automatically)" >&2; exit 1; }
 RUN find ./api ./shared -not -path "*/node_modules/*" -name "*.test.js" -delete \
 	&& rm -rf ./api/docs ./api/coverage ./shared/coverage \
 	&& chmod +x ./docker-entrypoint.sh \

@@ -46,6 +46,16 @@ describe("publish.sh changelog bundling (Docker deployment)", () => {
 	});
 });
 
+describe("Dockerfile changelog fail-safe", () => {
+	const dockerfile = fs.readFileSync(path.join(repoRoot, "Dockerfile"), "utf8");
+	it("fails the image build when the baked bundle is missing", () => {
+		expect(dockerfile).toContain("test -f ./api/bundled-changelog.json");
+	});
+	it("names the exact rebake command in the failure message", () => {
+		expect(dockerfile).toContain("generate-changelog.mjs --limit 200 --out api/bundled-changelog.json");
+	});
+});
+
 describe("deploy.sh changelog packaging", () => {
 	it("generates the changelog with the generator script", () => {
 		expect(deployScript).toContain("generate-changelog");

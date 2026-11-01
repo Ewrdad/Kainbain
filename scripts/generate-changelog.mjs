@@ -17,18 +17,35 @@
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import {
+	DEFAULT_LIMIT,
+	FIELD_SEP,
+	MAX_BODY_CHARS,
+	RECORD_SEP,
+} from "../shared/changelogHistory/changelogLimits.js";
+import { isAdminCommitSubject } from "../shared/changelogHistory/isAdminCommitSubject.js";
+import { filterChangelogEntries } from "../shared/changelogHistory/filterChangelogEntries.js";
+import { parseGitLog } from "../shared/changelogHistory/parseGitLog.js";
 
 /***
- * MARK: changelog constants
- * @description Tunables for the baked artifact. DEFAULT_LIMIT bounds file size
- *   and dialog render cost; MAX_BODY_CHARS bounds per-entry bodies (KainBain
- *   auto-commit messages embed whole task prompts, averaging ~3KB — uncapped
- *   bodies push 200 entries to ~675KB, truncated to ~140KB).
+ * MARK: changelog shared bounds
+ * @description Size bounds and wire separators for the baked artifact (see
+ *   `shared/changelogHistory/changelogLimits.js` for why each value holds).
+ *   Imported here and re-exported so existing importers keep working; the
+ *   taxonomy and parser below come from the same shared home, so the baker
+ *   and the serve-time live fallback can never drift apart.
  ***/
-export const DEFAULT_LIMIT = 200;
-export const MAX_BODY_CHARS = 500;
-export const FIELD_SEP = "\x00";
-export const RECORD_SEP = "\x1e";
+// This script stays the thin CLI + git runner; `shared/changelogHistory/`
+// owns the bounds, taxonomy, and parser both sides read.
+export {
+	DEFAULT_LIMIT,
+	FIELD_SEP,
+	MAX_BODY_CHARS,
+	RECORD_SEP,
+	filterChangelogEntries,
+	isAdminCommitSubject,
+	parseGitLog,
+};
 
 // %H sha, %h short, %an author, %ae email, %aI iso date, %s subject, %b body.
 const LOG_FORMAT = ["%H", "%h", "%an", "%ae", "%aI", "%s", "%b"].join("%x00") + "%x1e";
@@ -111,80 +128,6 @@ export function resolveDefaultBranch(cwd) {
 	throw new Error(
 		"Cannot resolve default branch: no local 'master' or 'main' and no refs/remotes/origin/HEAD",
 	);
-}
-
-/***
- * MARK: admin commit taxonomy
- * @description Bake-time filter so the shipped changelog shows task-merge
- *   history only. Derived from a taxonomy pass over real history (Step 1):
- *   `KainBain:` subjects are automation (auto-commit, converge, merge-latest
- *   sync); `kb/<uuid>` subjects are runner stage-output commits; `Merge
- *   remote-tracking branch` subjects are branch-sync noise. Everything else
- *   (human task work, squash-merge subjects, real merges) is kept.
- * @example isAdminCommitSubject('KainBain: auto-commit pending work') => true
- * @example isAdminCommitSubject('Harden runner log transport') => false
- * @param {string} subject - The commit subject line.
- * @returns {boolean} True when the commit is admin/automation noise to drop.
- ***/
-export function isAdminCommitSubject(subject) {
-	if (typeof subject !== "string") return true;
-	const line = subject.trim();
-	if (line.length === 0) return true;
-	if (line.startsWith("KainBain:")) return true;
-	if (/^kb\/[0-9a-f-]{8,}/i.test(line)) return true;
-	if (/^merge remote-tracking branch\b/i.test(line)) return true;
-	return false;
-}
-
-/***
- * MARK: filterChangelogEntries
- * @description Drops admin/automation entries (see `isAdminCommitSubject`)
- *   from an already-parsed entry list, preserving newest-first order.
- * @example filterChangelogEntries([{ subject: 'KainBain: sync' }]) => []
- * @param {Array<Object>} entries - Parsed changelog entries, newest first.
- * @returns {Array<Object>} The kept entries, newest first.
- ***/
-export function filterChangelogEntries(entries) {
-	if (!Array.isArray(entries)) return [];
-	return entries.filter((entry) => !isAdminCommitSubject(entry?.subject));
-}
-
-/***
- * MARK: parseGitLog
- * @description Parses NUL/RS-delimited `git log` output into changelog entries,
- *   newest-first as emitted. Bodies are truncated to MAX_BODY_CHARS with a
- *   `bodyTruncated` flag; malformed records (short fields, empty SHA) are
- *   skipped rather than failing the whole bake.
- * @example parseGitLog(raw) => [{ sha, shortSha, subject, body, bodyTruncated, author, authorEmail, date }]
- * @param {string} raw - Raw stdout from the git log invocation.
- * @returns {Array<Object>} Parsed entries, newest first.
- ***/
-export function parseGitLog(raw) {
-	if (typeof raw !== "string" || raw.length === 0) return [];
-	const entries = [];
-	for (const record of raw.split(RECORD_SEP)) {
-		if (!record.trim()) continue;
-		const fields = record.split(FIELD_SEP);
-		if (fields.length < 7) continue;
-		const [sha, shortSha, author, authorEmail, date, subject, ...bodyParts] = fields;
-		if (!sha || !sha.trim()) continue;
-		// A body containing a literal NUL is near-impossible (git truncates
-		// messages at NUL), but rejoin defensively so extra separators never
-		// drop body text.
-		const body = bodyParts.join(FIELD_SEP).replace(/^\n/, "").replace(/\s+$/, "");
-		const bodyTruncated = body.length > MAX_BODY_CHARS;
-		entries.push({
-			sha: sha.trim(),
-			shortSha: (shortSha || "").trim(),
-			subject: (subject || "").trim(),
-			body: bodyTruncated ? body.slice(0, MAX_BODY_CHARS) : body,
-			bodyTruncated,
-			author: (author || "").trim(),
-			authorEmail: (authorEmail || "").trim(),
-			date: (date || "").trim(),
-		});
-	}
-	return entries;
 }
 
 /***
