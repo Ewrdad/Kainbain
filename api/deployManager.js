@@ -42,6 +42,8 @@ function defaultBashCheck() {
  * @example const manager = new DeployManager(); manager.triggerDeploy({ fast: true })
  ***/
 export class DeployManager {
+	#liveChangelog = null;
+
 	/***
 	 * MARK: constructor
 	 * @description Initializes the manager with the repo root and deploy state dir.
@@ -291,13 +293,86 @@ export class DeployManager {
 	 * @returns {Object|null}
 	 **/
 	readChangelog() {
+		const baked = this.#readChangelogFile(path.join(this.prodDir, "changelog.json"));
+		if (baked) return baked;
+		// Bundled at publish time (publish.sh generates api/bundled-changelog.json
+		// before the backend docker build, so it is inside the image at
+		// /app/api/bundled-changelog.json). The host $PROD_DIR file above is not
+		// mounted into the container, so without this the live UI always
+		// reported "not-baked" despite a successful bake.
+		for (const candidate of [
+			path.join(this.repoRoot, "api", "bundled-changelog.json"),
+			path.join(this.repoRoot, "changelog.json"),
+			path.join(this.repoRoot, "bundled-changelog.json"),
+		]) {
+			const bundled = this.#readChangelogFile(candidate);
+			if (bundled) return bundled;
+		}
+		// Host/dev runs from a real checkout: serve live git history so
+		// existing logs show without waiting for a redeploy bake.
+		return this.#readLiveGitChangelog();
+	}
+
+	#readChangelogFile(file) {
 		try {
-			/* eslint-disable security/detect-non-literal-fs-filename -- prodDir is derived from os.homedir(), not user input */
-			const raw = fs.readFileSync(path.join(this.prodDir, "changelog.json"), "utf8");
+			/* eslint-disable security/detect-non-literal-fs-filename -- path is derived from prodDir/repoRoot, not user input */
+			const raw = fs.readFileSync(file, "utf8");
 			/* eslint-enable security/detect-non-literal-fs-filename */
 			const parsed = JSON.parse(raw);
 			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
 			return parsed;
+		} catch {
+			return null;
+		}
+	}
+
+	#readLiveGitChangelog() {
+		try {
+			if (typeof spawnSync !== "function") return null;
+			/* eslint-disable security/detect-non-literal-fs-filename -- repoRoot is server-derived, not user input */
+			if (!fs.existsSync(path.join(this.repoRoot, ".git"))) return null;
+			/* eslint-enable security/detect-non-literal-fs-filename */
+			const now = Date.now();
+			if (this.#liveChangelog && now - this.#liveChangelog.at < 60000) return this.#liveChangelog.data;
+			const git = (args) => {
+				const r = spawnSync("git", args, { cwd: this.repoRoot, encoding: "utf8", maxBuffer: 8 * 1024 * 1024 });
+				if (r.error || r.status !== 0) throw new Error("git failed");
+				return String(r.stdout || "");
+			};
+			let branch = null;
+			for (const name of ["main", "master"]) {
+				const r = spawnSync("git", ["rev-parse", "--verify", "--quiet", `refs/heads/${name}`], { cwd: this.repoRoot, encoding: "utf8" });
+				if (!r.error && r.status === 0) { branch = name; break; }
+			}
+			if (!branch) return null;
+			// Keep in sync with isAdminCommitSubject in scripts/generate-changelog.mjs.
+			const isAdmin = (s) => !s || s.startsWith("KainBain:") || /^kb\/[0-9a-f-]{8,}/i.test(s) || /^merge remote-tracking branch\b/i.test(s);
+			const FORMAT = ["%H", "%h", "%an", "%ae", "%aI", "%s", "%b"].join("%x00") + "%x1e";
+			const raw = git(["log", branch, "-n", "2000", `--format=${FORMAT}`]);
+			const entries = [];
+			for (const record of raw.split("\x1e")) {
+				if (!record.trim()) continue;
+				const f = record.split("\x00");
+				if (f.length < 7 || !f[0].trim()) continue;
+				const subject = (f[5] || "").trim();
+				if (isAdmin(subject)) continue;
+				const body = f.slice(6).join("\x00").replace(/^\n/, "").replace(/\s+$/, "");
+				entries.push({
+					sha: f[0].trim(), shortSha: (f[1] || "").trim(), subject,
+					body: body.slice(0, 500), bodyTruncated: body.length > 500,
+					author: (f[2] || "").trim(), authorEmail: (f[3] || "").trim(), date: (f[4] || "").trim(),
+				});
+				if (entries.length >= 200) break;
+			}
+			if (entries.length === 0) return null;
+			const totalCount = git(["log", branch, "--format=%s"]).split("\n").filter((s) => !isAdmin(s.trim())).length;
+			const data = {
+				generatedAt: new Date().toISOString(), branch,
+				commit: git(["rev-parse", branch]).trim(),
+				totalCount, truncated: totalCount > entries.length, limit: 200, entries,
+			};
+			this.#liveChangelog = { at: now, data };
+			return data;
 		} catch {
 			return null;
 		}

@@ -34,6 +34,18 @@ describe("deploy.sh site-docs packaging", () => {
  *   carries the previous changelog automatically, matching rollback.
  * @example run `npm run test --prefix api`
  */
+describe("publish.sh changelog bundling (Docker deployment)", () => {
+	const publishScript = fs.readFileSync(path.join(repoRoot, "publish.sh"), "utf8");
+	it("generates the bundled changelog before the backend image build", () => {
+		expect(publishScript).toContain("generate-changelog.mjs --limit 200 --out api/bundled-changelog.json");
+		expect(publishScript.indexOf("bundled-changelog.json")).toBeLessThan(publishScript.indexOf("docker build -f Dockerfile"));
+	});
+	it("keeps the generated bundle out of git", () => {
+		const gitignore = fs.readFileSync(path.join(repoRoot, ".gitignore"), "utf8");
+		expect(gitignore).toContain("api/bundled-changelog.json");
+	});
+});
+
 describe("deploy.sh changelog packaging", () => {
 	it("generates the changelog with the generator script", () => {
 		expect(deployScript).toContain("generate-changelog");

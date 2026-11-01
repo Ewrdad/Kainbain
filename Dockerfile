@@ -8,8 +8,10 @@
 #     (deploy.sh omits it; the host prod path is untouched).
 #   - The root dependency tree (Playwright, test-only) is NOT installed;
 #     only the api + frontend trees the server needs at run time.
-#   - changelog.json is NOT baked (no .git in context); the API reports
-#     its handled `not-baked` state.
+#   - changelog.json: publish.sh bakes git history to
+#     api/bundled-changelog.json before `docker build`, so `COPY api/` below
+#     bundles it into the image and the API serves it (no .git in context).
+#     A manual `docker build` without that step reports `not-baked`.
 
 # --- Build stage: install api + frontend deps, build the frontend ----------
 FROM node:24-alpine AS build

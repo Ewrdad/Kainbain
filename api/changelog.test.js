@@ -233,6 +233,57 @@ describe("generateChangelog", () => {
 	});
 });
 
+describe("DeployManager.readChangelog fallbacks (no baked prod artifact)", () => {
+	if (!gitAvailable) {
+		it.skip("skipped: git is not available", () => {});
+		return;
+	}
+	let tmp;
+	let prodDir;
+	beforeEach(() => {
+		tmp = fs.mkdtempSync(path.join(os.tmpdir(), "changelog-fallback-"));
+		prodDir = fs.mkdtempSync(path.join(os.tmpdir(), "changelog-fallback-prod-"));
+	});
+	afterEach(() => {
+		fs.rmSync(tmp, { recursive: true, force: true });
+		fs.rmSync(prodDir, { recursive: true, force: true });
+	});
+
+	it("serves the bundled artifact bundled into the backend image", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		fs.mkdirSync(path.join(tmp, "api"), { recursive: true });
+		const bundled = { branch: "main", totalCount: 1, entries: [{ sha: "a", shortSha: "a", subject: "Bundled fix", body: "", author: "A", date: "2026-01-01" }] };
+		fs.writeFileSync(path.join(tmp, "api", "bundled-changelog.json"), JSON.stringify(bundled));
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		expect(manager.readChangelog()).toEqual(bundled);
+	});
+
+	it("serves live git history from a checkout, filtering admin commits", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		initRepo(tmp, { initialBranch: "main" });
+		commitFile(tmp, "a.txt", "a", "Real task fix");
+		commitFile(tmp, "b.txt", "b", "KainBain: auto-commit pending work");
+		commitFile(tmp, "c.txt", "c", "kb/91257d62-f181-4ee0-ab91-f00188221c78 5: Runner local-alpha stage output");
+		commitFile(tmp, "d.txt", "d", "Another real fix");
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		const read = manager.readChangelog();
+		expect(read).not.toBeNull();
+		expect(read.branch).toBe("main");
+		expect(read.entries.map((e) => e.subject)).toEqual(["Another real fix", "Real task fix"]);
+		expect(read.totalCount).toBe(2);
+	});
+
+	it("prefers the baked prod artifact over bundled and live history", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		initRepo(tmp, { initialBranch: "main" });
+		commitFile(tmp, "a.txt", "a", "Live fix");
+		const baked = { branch: "main", totalCount: 1, entries: [{ sha: "b", subject: "Baked fix" }] };
+		fs.writeFileSync(path.join(prodDir, "changelog.json"), JSON.stringify(baked));
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		expect(manager.readChangelog()).toEqual(baked);
+	});
+});
+
 describe("generate-changelog CLI", () => {
 	if (!gitAvailable) {
 		it.skip("skipped: git is not available", () => {});
