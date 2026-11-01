@@ -64,6 +64,16 @@ matches against (csv; singular `KAINBAIN_RUNNER_MODEL` seeds a 1-element
 list; empty matches model-less tasks only). Each assignment serves
 exactly the dispatch answer's required model — never a substitution.
 
+When no models are pinned, the daemon auto-discovers them: for the
+`muse` harness it asks the installed CLI over its own wire protocol
+(`muse serve` stdio `model/list`, box-local login — keys never leave
+the host) and advertises the returned ids (`muse::<provider>::<model>`).
+Discovery runs once at boot and refreshes every
+`KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS` (default 12h, `0`
+disables); failures keep the previous list and warn, never break
+heartbeats. A pinned list always wins over discovered ids. Other
+harnesses have no discovery yet and stay manual-only.
+
 Model reporting contract (`servingModelFor` / `formatPosture` in
 `shared/` — one copy executed by both this Runner and the backend via
 `api/flow/runnerPosture.js`): the `prompted` progress event and the

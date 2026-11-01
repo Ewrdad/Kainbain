@@ -192,4 +192,25 @@ describe("loadRunnerConfig", () => {
 		assert.equal(config.heartbeatMs, 15000);
 		assert.deepEqual(config.tiers, ["T0"]);
 	});
+
+	it("defaults model discovery to 12h, honours 0/off, clamps garbage", () => {
+		const env = {
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "mock",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+		};
+		assert.equal(loadRunnerConfig(env).modelDiscoveryIntervalMs, 43200000);
+		assert.equal(
+			loadRunnerConfig({ ...env, KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS: "0" }).modelDiscoveryIntervalMs,
+			0,
+		);
+		assert.equal(
+			loadRunnerConfig({ ...env, KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS: "3600000" }).modelDiscoveryIntervalMs,
+			3600000,
+		);
+		assert.equal(
+			loadRunnerConfig({ ...env, KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS: "soon" }).modelDiscoveryIntervalMs,
+			43200000,
+		);
+	});
 });

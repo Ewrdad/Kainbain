@@ -11,6 +11,7 @@ import { defaultInstallRoot, markUpdateSuccess, readUpdateState } from "./update
 // The Runner bundle ships shared/ next to this folder (runner/{runner,api,shared}
 // in prod and in the distributable tarball), so ../shared resolves both in the
 // repo and in every deployed layout — the same copy the backend executes.
+import { discoverClaudeModels, resolveAdvertisedModels } from "./modelDiscovery.js";
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { commitAndPush } from "./gitOps.js";
@@ -373,17 +374,63 @@ export async function defaultLoadHarness(harnessId) {
 	throw new Error(`Unknown harness ${harnessId} (supported: mock, pi, muse, antigravity, vibe).`);
 }
 
+/***
+ * MARK: discoveredModelsCache
+ * @description Last model auto-discovery result, shared by every factsFor
+ *   call until the next refresh. Seeded at boot, refreshed on the
+ *   modelDiscoveryIntervalMs cadence (default 12h). The operator's explicit
+ *   MODELS/MODEL list always wins (see resolveAdvertisedModels), so this
+ *   cache only matters when nothing is pinned.
+ ***/
+let discoveredModelsCache = [];
+
+/***
+ * MARK: clearDiscoveredModelsCache
+ * @description Test seam: resets the discovery cache between cases.
+ ***/
+export function clearDiscoveredModelsCache() {
+	discoveredModelsCache = [];
+}
+
+/***
+ * MARK: refreshDiscoveredModels
+ * @description One discovery round: when the operator pinned no models and
+ *   the `muse` harness is configured, asks the installed CLI for its model
+ *   menu (muse serve model/list, box-local login, no keys leave the host)
+ *   and caches the ids. Best-effort — failures keep the previous cache and
+ *   warn, never throw, so discovery can never break heartbeats.
+ * @example await refreshDiscoveredModels({ config }) => ['muse::meta::muse-spark-1.3']
+ * @param {Object} [opts]
+ * @param {Object} [opts.config] - Normalized runner config.
+ * @param {Object} [opts.logger] - Logger.
+ * @param {Function} [opts.discoverFn=discoverClaudeModels] - Test seam.
+ * @returns {Promise<string[]>} Current cache copy.
+ ***/
+export async function refreshDiscoveredModels({ config, logger, discoverFn = discoverClaudeModels } = {}) {
+	try {
+		if (Array.isArray(config?.models) && config.models.length > 0) return [...discoveredModelsCache];
+		if (typeof config?.model === "string" && config.model.trim()) return [...discoveredModelsCache];
+		if (!runnerHarnessIds(config).includes("muse")) return [...discoveredModelsCache];
+		for (const bin of HARNESS_VERSION_BINS.muse) {
+			const ids = await discoverFn({ bin });
+			if (ids.length > 0) {
+				discoveredModelsCache = ids;
+				logger?.log?.(`Model discovery: ${ids.length} model(s) from ${bin}; next refresh per modelDiscoveryIntervalMs.`);
+				break;
+			}
+		}
+	} catch (err) {
+		logger?.warn?.(`Model discovery failed, keeping previous list: ${err?.message || err}`);
+	}
+	return [...discoveredModelsCache];
+}
+
 function factsFor({ config, harnessVersions, updateStatus = null }) {
 	const versionFor = (id) =>
 		harnessVersions?.[id] ?? harnessVersionCache.get(id)?.[id] ?? "unknown";
 	return {
 		harnesses: runnerHarnessIds(config).map((id) => ({ id, version: versionFor(id) })),
-		models:
-			Array.isArray(config.models) && config.models.length > 0
-				? [...config.models]
-				: config.model
-					? [config.model]
-					: [],
+		models: resolveAdvertisedModels(config, discoveredModelsCache),
 		tiers: config.tiers,
 		diskHeadroomMb: diskHeadroomMbFor(config.workRoot),
 		versions: { protocol: "v1", runner: RUNNER_VERSION, api: RUNNER_API_VERSION },
@@ -472,6 +519,11 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
 	} catch {
 		// Best effort only.
 	}
+	// Model auto-discovery seed: one round at boot (after the version
+	// probes, before the first heartbeat) so early facts already carry
+	// discovered ids. Best-effort inside and bounded by the discovery
+	// timeout; failures keep the cache empty, never fail boot.
+	await refreshDiscoveredModels({ config, logger });
 	const heartbeatTimer = setInterval(() => {
 		// Fresh facts every beat: disk headroom is re-measured (G4) while
 		// the harness CLI version resolves from the load-time probe cache.
@@ -480,7 +532,27 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
 		});
 	}, config.heartbeatMs);
 	if (typeof heartbeatTimer.unref === "function") heartbeatTimer.unref();
-	return { harness, harnesses, facts, stop: () => clearInterval(heartbeatTimer) };
+	// Periodic discovery refresh (default 12h, 0 disables): model menus
+	// change slowly, so heartbeats reuse the cache between rounds.
+	const discoveryIntervalMs = config.modelDiscoveryIntervalMs ?? 43200000;
+	let discoveryTimer = null;
+	if (discoveryIntervalMs > 0) {
+		discoveryTimer = setInterval(() => {
+			refreshDiscoveredModels({ config, logger }).catch((err) => {
+				logger.warn(`Model discovery refresh failed: ${err?.message || err}`);
+			});
+		}, discoveryIntervalMs);
+		if (typeof discoveryTimer.unref === "function") discoveryTimer.unref();
+	}
+	return {
+		harness,
+		harnesses,
+		facts,
+		stop: () => {
+			clearInterval(heartbeatTimer);
+			if (discoveryTimer) clearInterval(discoveryTimer);
+		},
+	};
 }
 
 /***

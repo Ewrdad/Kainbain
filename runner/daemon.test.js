@@ -6,12 +6,14 @@ import os from "node:os";
 import path from "node:path";
 import {
 	AUTO_DETECTABLE_HARNESSES,
+	clearDiscoveredModelsCache,
 	clearHarnessVersionCache,
 	defaultLoadHarness,
 	detectAvailableHarnesses,
 	deliverSteers,
 	diskHeadroomMbFor,
 	probeHarnessVersions,
+	refreshDiscoveredModels,
 	resolveHarnessConfig,
 	runCiCommand,
 	runDispatchLoop,
@@ -487,6 +489,61 @@ describe("runner facts (G4/G5)", () => {
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("model auto-discovery refresh", () => {
+	const base = { harnessIds: ["muse"], models: [], model: "" };
+	it("caches discovered ids when nothing is pinned", async () => {
+		clearDiscoveredModelsCache();
+		let calls = 0;
+		const out = await refreshDiscoveredModels({
+			config: base,
+			discoverFn: async () => {
+				calls += 1;
+				return ["muse::meta::m"];
+			},
+		});
+		assert.deepEqual(out, ["muse::meta::m"]);
+		assert.equal(calls, 1);
+	});
+	it("skips discovery when the operator pinned models", async () => {
+		clearDiscoveredModelsCache();
+		let calls = 0;
+		const out = await refreshDiscoveredModels({
+			config: { ...base, models: ["pinned"] },
+			discoverFn: async () => {
+				calls += 1;
+				return ["muse::meta::m"];
+			},
+		});
+		assert.deepEqual(out, []);
+		assert.equal(calls, 0);
+	});
+	it("skips discovery without the muse harness", async () => {
+		clearDiscoveredModelsCache();
+		let calls = 0;
+		const out = await refreshDiscoveredModels({
+			config: { ...base, harnessIds: ["pi"] },
+			discoverFn: async () => {
+				calls += 1;
+				return ["muse::meta::m"];
+			},
+		});
+		assert.deepEqual(out, []);
+		assert.equal(calls, 0);
+	});
+	it("keeps the previous cache when a later round fails", async () => {
+		clearDiscoveredModelsCache();
+		const config = base;
+		await refreshDiscoveredModels({ config, discoverFn: async () => ["muse::meta::m"] });
+		const out = await refreshDiscoveredModels({
+			config,
+			discoverFn: async () => {
+				throw new Error("serve down");
+			},
+		});
+		assert.deepEqual(out, ["muse::meta::m"]);
 	});
 });
 

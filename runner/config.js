@@ -57,7 +57,10 @@ export function loadRunnerConfig(env = process.env) {
 	// dispatch answer carries the required model per assignment and the
 	// daemon serves exactly that). KAINBAIN_RUNNER_MODELS (csv) wins when
 	// set; otherwise the singular KAINBAIN_RUNNER_MODEL seeds a 1-element
-	// list; empty means unpinned (matches model-less tasks only).
+	// list; when both are empty, periodic model auto-discovery fills in
+	// (muse serve model/list every KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS,
+	// default 12h, 0 disables) — empty everywhere means unpinned
+	// (matches model-less tasks only).
 	// The "default" sentinel means harness-managed (no pinned model),
 	// never a model this host can serve, so it is never advertised:
 	// an operator who sets KAINBAIN_RUNNER_MODEL=default gets the
@@ -101,6 +104,13 @@ export function loadRunnerConfig(env = process.env) {
 		10,
 	);
 
+	// Model auto-discovery cadence (muse serve model/list), default 12h.
+	// 0 disables discovery; the operator's explicit MODELS/MODEL list
+	// always wins over discovered ids. Invalid values fall back to 12h.
+	const modelDiscoveryIntervalMs = Number.parseInt(
+		str("KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS", "43200000"),
+		10,
+	);
 	const heartbeatMs = Number.parseInt(str("KAINBAIN_RUNNER_HEARTBEAT_MS", "15000"), 10);
 	const approvalPollMs = Number.parseInt(str("KAINBAIN_RUNNER_APPROVAL_POLL_MS", "5000"), 10);
 	const approvalTimeoutMs = Number.parseInt(str("KAINBAIN_RUNNER_APPROVAL_TIMEOUT_MS", "300000"), 10);
@@ -140,6 +150,10 @@ export function loadRunnerConfig(env = process.env) {
 		dispatchIdleLimit:
 			Number.isFinite(dispatchIdleLimit) && dispatchIdleLimit >= 0 ? dispatchIdleLimit : 3,
 		heartbeatMs: Number.isFinite(heartbeatMs) && heartbeatMs > 0 ? heartbeatMs : 15000,
+		modelDiscoveryIntervalMs:
+			Number.isFinite(modelDiscoveryIntervalMs) && modelDiscoveryIntervalMs >= 0
+				? modelDiscoveryIntervalMs
+				: 43200000,
 		approvalPollMs: Number.isFinite(approvalPollMs) && approvalPollMs > 0 ? approvalPollMs : 5000,
 		approvalTimeoutMs:
 			Number.isFinite(approvalTimeoutMs) && approvalTimeoutMs > 0 ? approvalTimeoutMs : 300000,
