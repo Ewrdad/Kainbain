@@ -99,6 +99,32 @@ describe("loadRunnerConfig", () => {
 		assert.equal(single.harnessId, "mock");
 	});
 
+	it("defaults the update channel to the GitHub releases pointer with auto-update on", () => {
+		const config = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "mock",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+		});
+		assert.equal(config.errors.length, 0);
+		assert.equal(config.updateUrl, "https://api.github.com/repos/Ewrdad/Kainbain/releases/latest");
+		assert.equal(config.autoUpdate, true);
+		assert.equal(config.updateCheckIntervalMs, 3600000);
+	});
+
+	it("honours the air-gapped mirror override and update opt-out", () => {
+		const config = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "mock",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+			KAINBAIN_RUNNER_UPDATE_URL: "https://mirror.local/r/manifest.json",
+			KAINBAIN_RUNNER_AUTO_UPDATE: "0",
+			KAINBAIN_RUNNER_UPDATE_CHECK_INTERVAL_MS: "100",
+		});
+		assert.equal(config.updateUrl, "https://mirror.local/r/manifest.json");
+		assert.equal(config.autoUpdate, false);
+		assert.equal(config.updateCheckIntervalMs, 3600000);
+	});
+
 	it("falls back on invalid numbers and customizes tiers", () => {
 		const config = loadRunnerConfig({
 			KAINBAIN_RUNNER_ID: "r1",

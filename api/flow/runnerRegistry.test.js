@@ -502,4 +502,36 @@ describe("RunnerRegistry operator config", () => {
 			projectScope: ["p1"],
 		});
 	});
+
+	test("derives the fleet-matrix version fields from heartbeat facts", () => {
+		const { runners, credential } = approved();
+		const beat = runners.heartbeat({
+			runnerId: "r1",
+			credential,
+			facts: {
+				...FACTS,
+				versions: { protocol: RUNNER_PROTOCOL, runner: "0.1.0", api: "1.0.0" },
+				updateStatus: { state: "failed", reason: "sig", at: "2026-10-31T00:00:00.000Z" },
+			},
+		});
+		expect(beat.runnerVersion).toBe("0.1.0");
+		expect(beat.apiCompatible).toBe(true);
+		expect(beat.belowMinimum).toBe(false);
+		expect(beat.updateAvailable).toBe(false);
+		expect(beat.updateStatus).toEqual({ state: "failed", reason: "sig", at: "2026-10-31T00:00:00.000Z" });
+		expect(beat.update).toMatchObject({ belowMinimum: false, apiCompatible: true });
+		expect(beat.minimumVersion).toBe("0.1.0");
+	});
+
+	test("treats a version-less Runner as permissive in the public record", () => {
+		const { runners, credential } = approved();
+		const beat = runners.heartbeat({
+			runnerId: "r1",
+			credential,
+			facts: { ...FACTS, versions: { protocol: RUNNER_PROTOCOL } },
+		});
+		expect(beat.runnerVersion).toBeNull();
+		expect(beat.belowMinimum).toBe(false);
+		expect(beat.updateAvailable).toBe(false);
+	});
 });

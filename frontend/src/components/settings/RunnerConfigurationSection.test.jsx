@@ -463,4 +463,56 @@ describe('RunnerConfigurationSection', () => {
       expect(screen.getByTestId('runner-projects-error')).toBeTruthy();
     });
   });
+
+  it('badges update-available Runners with the recommended version', async () => {
+    runnersFixture([
+      {
+        ...ACTIVE_RUNNER,
+        runnerId: 'r9',
+        runnerVersion: '0.1.0',
+        updateAvailable: true,
+        belowMinimum: false,
+        recommendedVersion: '0.2.0',
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await waitFor(() => {
+      const badge = screen.getByTestId('runner-update-available-r9');
+      expect(badge.textContent).toContain('update available');
+      expect(badge.title).toContain('0.2.0');
+    });
+    expect(screen.getByTestId('runner-version-r9').textContent).toContain('0.1.0');
+    expect(screen.queryByTestId('runner-below-minimum-r9')).toBeNull();
+  });
+
+  it('flags below-minimum Runners and surfaces failed update attempts', async () => {
+    runnersFixture([
+      {
+        ...ACTIVE_RUNNER,
+        runnerId: 'r8',
+        runnerVersion: '0.0.1',
+        updateAvailable: true,
+        belowMinimum: true,
+        minimumVersion: '0.1.0',
+        updateStatus: { state: 'failed', reason: 'sig mismatch', at: '2026-10-31T00:00:00.000Z' },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-below-minimum-r8').textContent).toContain('below minimum');
+      const failed = screen.getByTestId('runner-update-failed-r8');
+      expect(failed.title).toContain('sig mismatch');
+    });
+  });
+
+  it('shows no badges for an up-to-date Runner without status', async () => {
+    runnersFixture([
+      { ...ACTIVE_RUNNER, runnerVersion: '0.2.0', updateAvailable: false, belowMinimum: false },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.queryByTestId('runner-update-available-r1')).toBeNull();
+    expect(screen.queryByTestId('runner-below-minimum-r1')).toBeNull();
+    expect(screen.queryByTestId('runner-update-failed-r1')).toBeNull();
+  });
 });

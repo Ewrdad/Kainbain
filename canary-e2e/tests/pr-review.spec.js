@@ -109,10 +109,17 @@ test.describe.serial("PR Review E2E", () => {
 		git(repoDir, ["add", "."]);
 		git(repoDir, ["commit", "-m", "initial commit"]);
 
+		// Publish target for the blocking merge stage: a local bare repo, so
+		// the publish push succeeds offline (no git.example.com).
+		const bareRepo = path.join(scratchRoot, "origin.git");
+		fs.mkdirSync(bareRepo, { recursive: true });
+		git(bareRepo, ["init", "--bare"]);
+
 		const res = await request.post(`${API_BASE}/projects`, {
 			data: {
 				name: `PR Review Canary ${Date.now()}`,
 				cwd: repoDir,
+				gitUrl: bareRepo,
 				notesPath: path.join(scratchRoot, "notes"),
 				useBranches: true,
 				// Explicit stage ids: creation does not mint them, and id-less

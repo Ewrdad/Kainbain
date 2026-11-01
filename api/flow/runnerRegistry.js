@@ -5,6 +5,7 @@ import { resolveStatePath } from "./resolveStatePath.js";
 import { saveStateFile } from "./saveStateFile.js";
 import { normalizeCapabilities } from "./dispatch/normalizeCapabilities.js";
 import { runnerApiCompatible } from "./dispatch/runnerApiCompat.js";
+import { updateInfoForRunner } from "./runnerVersionCompat.js";
 
 const RUNNER_STATE_VERSION = 2;
 
@@ -220,6 +221,15 @@ export class RunnerRegistry {
 	}
 
 	_public(record) {
+		// Fleet matrix (Option A, ADR 0012): the product version the Runner
+		// reported, whether it is below the dispatch floor or the badge
+		// target, and its API compatibility — all derived from heartbeat
+		// facts + operator knobs, never stored separately.
+		const apiCompat = runnerApiCompatible(record?.facts?.versions?.api);
+		const update = updateInfoForRunner(record?.facts, {
+			minVersion: config?.runnerMinVersion,
+			recommendedVersion: config?.runnerRecommendedVersion,
+		});
 		return {
 			runnerId: record.runnerId,
 			status: record.status,
@@ -231,6 +241,21 @@ export class RunnerRegistry {
 			paused: record.paused === true,
 			projectScope: Array.isArray(record.projectScope) ? [...record.projectScope] : null,
 			operatorConfig: normalizeOperatorConfig(record.operatorConfig),
+			runnerVersion: update.runnerVersion,
+			apiCompatible: apiCompat.ok,
+			apiRange: apiCompat.range,
+			updateAvailable: update.updateAvailable,
+			belowMinimum: update.belowMinimum,
+			minimumVersion: update.minimumVersion,
+			recommendedVersion: update.recommendedVersion,
+			updateStatus: update.updateStatus,
+			update: {
+				minimumVersion: update.minimumVersion,
+				recommendedVersion: update.recommendedVersion,
+				updateAvailable: update.updateAvailable,
+				belowMinimum: update.belowMinimum,
+				apiCompatible: apiCompat.ok,
+			},
 		};
 	}
 

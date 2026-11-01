@@ -486,12 +486,47 @@ export function RunnerConfigurationSection() {
                       : formatRunnerElapsed(assignment.startedAt, nowMs)}
                   </span>
                 )}
-                {runner.facts?.versions?.runner && (
+                {(runner.runnerVersion || runner.facts?.versions?.runner) && (
                   <span
                     className="text-[10px] font-mono text-text-muted"
                     data-testid={`runner-version-${runner.runnerId}`}
                   >
-                    v{runner.facts.versions.runner}
+                    v{runner.runnerVersion || runner.facts.versions.runner}
+                  </span>
+                )}
+                {runner.updateAvailable && (
+                  <span
+                    className="text-[10px] font-bold uppercase tracking-widest text-warning"
+                    data-testid={`runner-update-available-${runner.runnerId}`}
+                    title={
+                      runner.recommendedVersion
+                        ? `Runner ${runner.runnerId} can update to ${runner.recommendedVersion} (automatic on idle; verified by signature)`
+                        : `Runner ${runner.runnerId} has an update available (automatic on idle; verified by signature)`
+                    }
+                  >
+                    update available
+                  </span>
+                )}
+                {runner.belowMinimum && (
+                  <span
+                    className="text-[10px] font-bold uppercase tracking-widest text-error"
+                    data-testid={`runner-below-minimum-${runner.runnerId}`}
+                    title={
+                      runner.minimumVersion
+                        ? `Runner ${runner.runnerId} is below the minimum ${runner.minimumVersion}: dispatch is refused until it updates`
+                        : `Runner ${runner.runnerId} is below the minimum version: dispatch is refused until it updates`
+                    }
+                  >
+                    below minimum
+                  </span>
+                )}
+                {runner.updateStatus?.state === 'failed' && (
+                  <span
+                    className="text-[10px] font-bold uppercase tracking-widest text-error"
+                    data-testid={`runner-update-failed-${runner.runnerId}`}
+                    title={`Last self-update attempt failed: ${runner.updateStatus.reason || 'unknown reason'}`}
+                  >
+                    update failed
                   </span>
                 )}
                 {runner.status === 'pending' ? (
