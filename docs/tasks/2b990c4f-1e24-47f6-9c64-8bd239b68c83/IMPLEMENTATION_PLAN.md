@@ -56,7 +56,7 @@ Open question for the user: confirm q3–q5 assumptions; if images must be priva
 4. H1: render `MarkdownViewer` with a task image, force one failed load (offline/404 stub), then restore and assert the image recovers without remount. Expected now: stays broken (proves latch).
 5. H2: restart/rehydrate the server (or clear the task cache) with images on disk and GET the image URL cold; try immediately after project switch with a missing docs link. Record which guard 404s.
 6. H3: round-trip a goal containing `![18744.png](assets/18744.png)` through save → reload → compare markdown bytes; check for ref rewrites, drops, or case changes.
-7. H4/H5: round-trip upload → markdown ref → GET for names with uppercase, spaces, parens (`My Screenshot (1).PNG` → expect `my-screenshot-1-.png`), and deduped `foo-2.png`; assert each GET is 200 with the right `Content-Type`.
+7. H4/H5: round-trip upload → markdown ref → GET for names with uppercase, spaces, parens (`My Screenshot (1).PNG` → expect `my-screenshot-1.png`), and deduped `foo-2.png`; assert each GET is 200 with the right `Content-Type`.
 8. Pick the fix order from this evidence; drop disproven hypotheses in the plan update note.
 
 ### Phase 2 — Easy-change refactors (no behavior change, separate commits)

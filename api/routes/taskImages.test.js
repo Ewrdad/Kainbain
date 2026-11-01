@@ -437,4 +437,38 @@ describe("Task Images API", () => {
 		expect(res.statusCode).toBe(200);
 		expect(res.headers["cache-control"]).toContain("immutable");
 	});
+
+	it("round-trips a tricky filename (uppercase, spaces, parens) to a canonical served asset", async () => {
+		const up = await upload("My Screenshot (1).PNG", PNG_BYTES);
+		expect(up.statusCode).toBe(201);
+		const storedName = JSON.parse(up.payload).name;
+		expect(storedName).toBe("my-screenshot-1.png");
+		const res = await app.inject({
+			method: "GET",
+			url: `/projects/${testProjectId}/tasks/task-img-1/images/${storedName}`,
+		});
+		expect(res.statusCode).toBe(200);
+		expect(res.headers["content-type"]).toBe("image/png");
+		expect(Buffer.from(res.rawPayload).equals(PNG_BYTES)).toBe(true);
+	});
+
+	it("serves a deduped second upload under its own link", async () => {
+		const res = await app.inject({
+			method: "GET",
+			url: `/projects/${testProjectId}/tasks/task-img-1/images/shot-one-2.png`,
+		});
+		expect(res.statusCode).toBe(200);
+		expect(res.headers["content-type"]).toBe("image/png");
+		expect(Buffer.from(res.rawPayload).equals(PNG_BYTES)).toBe(true);
+	});
+
+	it("serves a stored asset for a non-canonical stale ref (case drift)", async () => {
+		const res = await app.inject({
+			method: "GET",
+			url: `/projects/${testProjectId}/tasks/task-img-1/images/SHOT-ONE.PNG`,
+		});
+		expect(res.statusCode).toBe(200);
+		expect(res.headers["content-type"]).toBe("image/png");
+		expect(Buffer.from(res.rawPayload).equals(PNG_BYTES)).toBe(true);
+	});
 });

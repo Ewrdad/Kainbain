@@ -54,7 +54,7 @@ export function imageMediaType(filename) {
  *   trimmed, and the result is lowercased and length-capped. Returns "" when nothing
  *   safe remains. Callers combine this with `isAllowedImageExt` before writing.
  * @example sanitizeImageName('../../etc/passwd.png') => 'passwd.png'
- * @example sanitizeImageName('My Screenshot (1).PNG') => 'my-screenshot-1-.png'
+ * @example sanitizeImageName('My Screenshot (1).PNG') => 'my-screenshot-1.png'
  * @example sanitizeImageName('..') => ''
  * @param {string} rawName
  * @returns {string}
