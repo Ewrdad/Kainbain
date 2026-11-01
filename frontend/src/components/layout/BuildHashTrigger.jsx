@@ -48,7 +48,7 @@ export function BuildHashTrigger() {
         >
           {/* Capped width with ellipsis on phones so a long build number can
               never crowd the idle hint / runner boxes out of the 72px bar;
-              the full hash stays in the DOM and the accessible name. */}
+              the untruncated label stays in the accessible name. */}
           <span className="truncate min-w-0">{label}</span>
         </button>
       </InfoTooltip>
