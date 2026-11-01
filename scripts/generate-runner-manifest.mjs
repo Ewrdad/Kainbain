@@ -64,7 +64,10 @@ export const minisignSign = ({ messageBytes, secretSeedHex, keynumHex }) => {
 
 export const buildManifest = ({ version, dir, tag }) => {
 	const clean = String(version || "").trim().replace(/^v/, "");
-	if (!/^\d+\.\d+\.\d+$/.test(clean)) {
+	// Full semver incl. canary pre-releases (`1.2.3-rc.1`): the manifest
+	// version always matches the release tag. Runners skip pre-release
+	// manifests after verifying them, so canaries stay test-only.
+	if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(clean)) {
 		throw new Error(`generate-runner-manifest: version must be semver (got '${version}').`);
 	}
 	const assets = [];

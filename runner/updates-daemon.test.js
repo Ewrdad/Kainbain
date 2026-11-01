@@ -96,6 +96,41 @@ describe("maybeSelfUpdate", () => {
 		assert.equal(state.updateStatus?.state, "failed");
 	});
 
+	it("contains an apply failure: no throw, old version keeps running, fleet is told", async () => {
+		const state = {};
+		const update = { version: "9.9.9", manifest: { version: "9.9.9" }, asset: { filename: "a.tar.gz" } };
+		const got = await maybeSelfUpdate({
+			config: baseConfig(),
+			logger: quiet,
+			now: 10_000_000,
+			updateState: state,
+			updateDeps: {
+				checkForUpdate: async () => ({ ok: true, update }),
+				applyUpdate: async () => { throw Object.assign(new Error("disk full"), { code: "DOWNLOAD_FAILED" }); },
+			},
+		});
+		assert.equal(got.checked, true);
+		assert.equal(got.ok, false);
+		assert.match(got.reason, /disk full/);
+		assert.equal(state.updateStatus?.state, "failed");
+	});
+
+	it("force bypasses the interval gate (the 409 path updates immediately)", async () => {
+		let calls = 0;
+		const got = await maybeSelfUpdate({
+			config: baseConfig({ updateCheckIntervalMs: 3600000 }),
+			logger: quiet,
+			now: 1000,
+			force: true,
+			updateState: { lastUpdateCheckAt: 500 },
+			updateDeps: {
+				checkForUpdate: async () => { calls += 1; return { ok: true, update: null }; },
+			},
+		});
+		assert.equal(got.checked, true);
+		assert.equal(calls, 1);
+	});
+
 	it("applies a verified update and marks it staged", async () => {
 		const state = {};
 		const update = { version: "9.9.9", manifest: { version: "9.9.9" }, asset: { filename: "a.tar.gz" } };

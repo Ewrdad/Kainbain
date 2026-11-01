@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { applyUpdate, checkForUpdate } from "./updates/index.js";
+import { fetchText } from "./updates/download.js";
 import { sha256HexOf, verifyManifestSignature } from "./updates/verify.js";
 import { fixtureManifest, signTestManifest, TEST_PUBLIC_KEY } from "./updates/testkey.js";
 
@@ -155,6 +157,27 @@ describe("checkForUpdate (GitHub pointer)", () => {
 		assert.match(got.reason, /pre-release/i);
 	});
 
+	it("fails closed on an empty update URL instead of throwing a TypeError", async () => {
+		const got = await checkForUpdate({
+			currentVersion: "0.1.0",
+			updateUrl: "   ",
+			fetchImpl: async () => { throw new Error("must not fetch"); },
+			platform: "linux",
+			arch: "x64",
+			logger: { warn: () => {}, log: () => {} },
+		});
+		assert.equal(got.ok, false);
+		assert.match(got.reason, /empty/i);
+	});
+
+	it("times out a hung mirror instead of wedging the idle loop", async () => {
+		const hangingFetch = () => new Promise(() => {});
+		await assert.rejects(
+			() => fetchText({ url: "http://mirror.local/r/manifest.json", fetchImpl: hangingFetch, timeoutMs: 50 }),
+			(err) => err?.code === "FETCH_FAILED" && /timed out/i.test(err?.message || ""),
+		);
+	});
+
 	it("fails closed when the release has no manifest assets", async () => {
 		const fetchImpl = async () => ({
 			ok: true,
@@ -202,6 +225,40 @@ describe("applyUpdate", () => {
 		);
 		assert.equal(fs.readlinkSync(path.join(root, "current")), current);
 		assert.equal(fs.existsSync(path.join(root, "releases", "0.2.0", "kainbain-runner-0.2.0-linux-x64.tar.gz")), false);
+		fs.rmSync(root, { recursive: true, force: true });
+	});
+
+	it("cleans the .part file when the streamed asset fails sha (no leftovers)", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "kb-apply-"));
+		const current = path.join(root, "releases", "0.1.0", "unpacked");
+		fs.mkdirSync(current, { recursive: true });
+		fs.symlinkSync(current, path.join(root, "current"));
+		const update = {
+			version: "0.2.0",
+			manifest: fixtureManifest({ version: "0.2.0" }),
+			asset: { filename: "kainbain-runner-0.2.0-linux-x64.tar.gz", sha256: "f".repeat(64) },
+		};
+		const streamedFetch = async () => ({
+			ok: true,
+			status: 200,
+			body: Readable.from([Buffer.from("tampered-stream-bytes")]),
+		});
+		await assert.rejects(
+			() => applyUpdate({
+				update,
+				installRoot: root,
+				updateUrl: "http://mirror.local/r",
+				fetchImpl: streamedFetch,
+				logger: { warn: () => {}, log: () => {} },
+			}),
+			(err) => err?.code === "ASSET_SHA_MISMATCH",
+		);
+		assert.equal(fs.readlinkSync(path.join(root, "current")), current);
+		assert.equal(
+			fs.readdirSync(path.join(root, "releases", "0.2.0")).filter((f) => f.endsWith(".part")).length,
+			0,
+			"no .part file survives a sha mismatch",
+		);
 		fs.rmSync(root, { recursive: true, force: true });
 	});
 

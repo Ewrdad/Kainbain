@@ -42,6 +42,9 @@ export const checkForUpdate = async ({
 		logger.warn?.(`Runner update: ${detected.reason} (${platform}/${arch}); skipping check.`);
 		return { ok: false, reason: detected.reason };
 	}
+	if (!String(updateUrl || "").trim()) {
+		return { ok: false, reason: "Update URL is empty; set KAINBAIN_RUNNER_UPDATE_URL or restore the default release pointer." };
+	}
 	let manifestText;
 	let signatureText;
 	let releaseMeta = null;

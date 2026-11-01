@@ -412,9 +412,12 @@ blast radius and couple updates to backend uptime).
 - **Automatic, idle-only.** The dispatch loop checks
   `https://api.github.com/repos/Ewrdad/Kainbain/releases/latest` on a
   jittered hourly interval (`KAINBAIN_RUNNER_UPDATE_CHECK_INTERVAL_MS`,
-  min 5 min) when it holds no task, and when the backend refuses dispatch
-  with 409 `RUNNER_VERSION_BELOW_MINIMUM`. Set
-  `KAINBAIN_RUNNER_AUTO_UPDATE=0` to opt out.
+  min 5 min) when it holds no task, and immediately (interval bypassed)
+  when the backend refuses dispatch with 409
+  `RUNNER_VERSION_BELOW_MINIMUM`. Set `KAINBAIN_RUNNER_AUTO_UPDATE=0` to
+  opt out. Pointer/manifest fetches time out after 30s, asset downloads
+  after 5 min — a hung mirror backs off and retries instead of wedging the
+  loop, and any failure keeps the old version running.
 - **Verified, not trusted.** The manifest signature is checked against the
   public key pinned in `runner/updates/verify.js` (never fetched from the
   network), then the asset sha256 against the manifest. Any mismatch aborts,
@@ -426,7 +429,11 @@ blast radius and couple updates to backend uptime).
   and `runner/bin/kainbain-runner` (the supported entrypoint) restarts it
   into the new version. Three crashed boots in a row flip `current` back to
   `previous` automatically. Direct `node runner/main.js` is dev-only after
-  the first update — it cannot restart itself.
+  the first update — it cannot restart itself. A stale `update.lock` from
+  a crashed updater heals itself (dead holder is detected and the lock
+  recycled, so one crash never bricks future updates), and the first
+  successful heartbeat on the new version prunes superseded releases while
+  always keeping `current` + `previous`.
 - **Backend coordination, no code transfer.** Runners report
   `facts.versions.runner` on register/heartbeat. Settings › Runners shows
   the fleet version matrix with an "update available" badge (below
@@ -450,7 +457,8 @@ blast radius and couple updates to backend uptime).
   Actions secrets `RUNNER_RELEASE_SIGNING_KEY` / `RUNNER_RELEASE_SIGNING_KEYNUM`.
   Cutting a release is `git tag runner-vX.Y.Z && git push origin runner-vX.Y.Z`
   (pre-release tags `*-rc.N`/`*-beta*`/`*-alpha*` publish as pre-release and
-  are skipped by v1 Runners). `minisign` CLI install is not required
+  are skipped by v1 Runners; the manifest keeps the full canary version,
+  never the stripped final it previews). `minisign` CLI install is not required
   anywhere — signing and verification are pure Node + Ed25519. Linux and
   macOS (x64/arm64) ship; Windows is deferred.
 - **Linux/macOS only in v1** (x64 + arm64, four assets per release).

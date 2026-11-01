@@ -1257,8 +1257,12 @@ export function installRootFor(config = {}) {
  *   into the new version. Any verification failure returns ok:false and
  *   keeps the current installation untouched.
  * @example await maybeSelfUpdate({ config, client }) => { checked: false, ... }
- * @param {Object} opts - Options (config, client?, logger?, installRoot?, now?, updateState?, updateDeps?).
- * @returns {Promise<Object>} `{ checked, ok, update?, applied?, reason? }`.
+ * @param {Object} opts - Options (config, client?, logger?, installRoot?, now?, updateState?, updateDeps?, force?).
+ *   `force` bypasses the interval gate for the 409 path, where the backend
+ *   explicitly ordered an update — the Runner checks immediately instead of
+ *   waiting out the jittered hour.
+ * @returns {Promise<Object>} `{ checked, ok, update?, applied?, reason? }`. Apply
+ *   failures are contained here (ok:false, failed status noted) and never throw.
  ***/
 export async function maybeSelfUpdate({
 	config,
@@ -1268,16 +1272,28 @@ export async function maybeSelfUpdate({
 	now = Date.now(),
 	updateState = null,
 	updateDeps = {},
+	force = false,
 } = {}) {
 	if (!config?.autoUpdate) return { checked: false, reason: "auto-update disabled" };
 	const interval = Number(config.updateCheckIntervalMs) || 3600000;
 	const state = updateState || {};
 	const last = Number(state.lastUpdateCheckAt) || 0;
 	const jittered = interval * (0.8 + Math.random() * 0.4);
-	if (now - last < jittered) return { checked: false, reason: "interval" };
+	if (!force && now - last < jittered) return { checked: false, reason: "interval" };
 	state.lastUpdateCheckAt = now;
 	const check = updateDeps.checkForUpdate || defaultCheckForUpdate;
 	const apply = updateDeps.applyUpdate || defaultApplyUpdate;
+	// Facts-only alert path (plan §4.5): the next heartbeat carries
+	// updateStatus, which the backend stores on the runner record for the
+	// fleet UI. No dedicated endpoint in v1.
+	const note = (status) => {
+		if (updateState && typeof updateState === "object") updateState.updateStatus = status;
+	};
+	const fail = (reason) => {
+		logger.warn?.(`Runner update check failed: ${reason}`);
+		note({ state: "failed", reason: String(reason || "unknown").slice(0, 500), at: new Date(now).toISOString() });
+		return { checked: true, ok: false, reason: String(reason || "check failed") };
+	};
 	let result;
 	try {
 		result = await check({
@@ -1286,28 +1302,25 @@ export async function maybeSelfUpdate({
 			logger,
 		});
 	} catch (err) {
-		logger.warn?.(`Runner update check failed: ${err?.message || err}`);
-		return { checked: true, ok: false, reason: String(err?.message || err) };
+		return fail(err?.message || err);
 	}
-	// Facts-only alert path (plan §4.5): the next heartbeat carries
-	// updateStatus, which the backend stores on the runner record for the
-	// fleet UI. No dedicated endpoint in v1.
-	const note = (status) => {
-		if (updateState && typeof updateState === "object") updateState.updateStatus = status;
-	};
-	if (!result?.ok) {
-		logger.warn?.(`Runner update check failed: ${result?.reason || "unknown"}`);
-		note({ state: "failed", reason: String(result?.reason || "unknown").slice(0, 500), at: new Date(now).toISOString() });
-		return { checked: true, ok: false, reason: result?.reason || "check failed" };
-	}
+	if (!result?.ok) return fail(result?.reason || "check failed");
 	if (!result.update) return { checked: true, ok: true, update: null, reason: result.reason || "up to date" };
 	logger.log?.(`Runner update available: ${result.update.version} (verified signature); staging install.`);
-	const applied = await apply({
-		update: result.update,
-		installRoot,
-		updateUrl: config.updateUrl,
-		logger,
-	});
+	// The install must stay untouched on ANY apply failure (network cut
+	// mid-download, lock held, tar missing): contain it here so neither
+	// the idle branch nor the 409 branch can crash the loop.
+	let applied;
+	try {
+		applied = await apply({
+			update: result.update,
+			installRoot,
+			updateUrl: config.updateUrl,
+			logger,
+		});
+	} catch (err) {
+		return fail(err?.message || err);
+	}
 	note({ state: "staged", version: result.update.version, at: new Date(now).toISOString() });
 	return { checked: true, ok: true, update: result.update, applied };
 }
@@ -1383,12 +1396,19 @@ export async function runDispatchLoop({
 					// Backend refuses dispatch below the minimum compatible
 					// version (Option A, ADR 0012): self-update now (idle —
 					// no active task), then exit 0 so the wrapper restarts
-					// into the new version and re-registers. No update
-					// available means back off and poll again.
+					// into the new version and re-registers. Forced: the
+					// backend explicitly ordered the update, so the
+					// interval gate is bypassed. No update available (or
+					// a failed stage) means back off and poll again — the
+					// loop never crashes on an update failure.
 					polls += 1;
 					logger.log(`Dispatch: below minimum version (${err?.message || "update required"}); updating.`);
-					const upd = await maybeSelfUpdate({ config, client, logger, installRoot: installRootFor(config), updateState: state });
-					if (upd?.applied) return { assignments, polls, updated: true, version: upd.update?.version };
+					try {
+						const upd = await maybeSelfUpdate({ config, client, logger, installRoot: installRootFor(config), updateState: state, force: true });
+						if (upd?.applied) return { assignments, polls, updated: true, version: upd.update?.version };
+					} catch (updateErr) {
+						logger.warn?.(`Runner self-update failed (keeping current version): ${updateErr?.message || updateErr}`);
+					}
 					await new Promise((r) => setTimeout(r, pollMs));
 					continue;
 				} else {

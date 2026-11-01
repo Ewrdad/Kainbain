@@ -84,7 +84,10 @@ export const packageRunner = ({ platform, arch, version, outDir, root = REPO_ROO
 		throw new Error(`package-runner: unsupported arch '${arch}' (v1: x64, arm64).`);
 	}
 	const clean = String(version || "").trim().replace(/^v/, "");
-	if (!/^\d+\.\d+\.\d+$/.test(clean)) {
+	// Full semver incl. canary pre-releases (`1.2.3-rc.1`): the release
+	// workflow keeps the tag's suffix so a canary manifest never claims to
+	// be the final version it previews.
+	if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(clean)) {
 		throw new Error(`package-runner: version must be semver (got '${version}').`);
 	}
 	const name = `kainbain-runner-${clean}-${platform}-${arch}`;

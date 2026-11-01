@@ -37,25 +37,69 @@ export const writeUpdateState = (installRoot, state) => {
 	fs.renameSync(tmp, path.join(installRoot, UPDATE_STATE_FILE));
 };
 
-// Lock so two updater invocations (heartbeat + idle) never overlap. Returns
-// a release function, or null when another updater holds the lock.
-export const acquireUpdateLock = (installRoot) => {
-	fs.mkdirSync(installRoot, { recursive: true });
-	const lockPath = path.join(installRoot, UPDATE_LOCK_FILE);
-	let fd = null;
+// A lock left behind by a crashed updater must not brick every future
+// update (the old O_EXCL file persisted forever). A contender is stale
+// when its pid is gone, or when its timestamp is older than this — either
+// way the new holder removes it and retries once.
+export const STALE_UPDATE_LOCK_MS = 2 * 60 * 60 * 1000;
+
+const readLockOwner = (lockPath, fsImpl = fs) => {
+	let raw = null;
 	try {
-		fd = fs.openSync(lockPath, "wx");
-		fs.writeFileSync(fd, String(process.pid));
+		raw = fsImpl.readFileSync(lockPath, "utf8");
 	} catch {
 		return null;
 	}
-	let released = false;
-	return () => {
-		if (released) return;
-		released = true;
-		try { fs.closeSync(fd); } catch { /* already closed */ }
-		try { fs.rmSync(lockPath, { force: true }); } catch { /* best effort */ }
-	};
+	try {
+		const parsed = JSON.parse(String(raw));
+		if (parsed && typeof parsed === "object") return { pid: Number(parsed.pid) || null, at: Number(parsed.at) || 0 };
+	} catch {
+		// Legacy format: the file held a bare pid string.
+	}
+	const pid = Number(String(raw || "").trim());
+	return { pid: Number.isFinite(pid) && pid > 0 ? pid : null, at: 0 };
+};
+
+const lockOwnerAlive = (pid) => {
+	if (!pid || !Number.isFinite(pid) || pid <= 0) return false;
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (err) {
+		// Only EPERM proves a live holder (exists, but not ours to
+		// signal). ESRCH, EINVAL, out-of-range pids — anything else —
+		// means the owner is gone, so the lock is stale and recyclable.
+		return err?.code === "EPERM";
+	}
+};
+
+// Lock so two updater invocations (heartbeat + idle) never overlap. Returns
+// a release function, or null when another updater holds the lock. A stale
+// lock (crashed holder) is removed and retried once, so one crash can
+// never brick the update channel — the worst case is a single skipped check.
+export const acquireUpdateLock = (installRoot, { now = Date.now(), fsImpl = fs } = {}) => {
+	fsImpl.mkdirSync(installRoot, { recursive: true });
+	const lockPath = path.join(installRoot, UPDATE_LOCK_FILE);
+	for (let attempt = 0; attempt < 2; attempt += 1) {
+		try {
+			const fd = fsImpl.openSync(lockPath, "wx");
+			fsImpl.writeFileSync(fd, JSON.stringify({ pid: process.pid, at: new Date(now).toISOString() }));
+			let released = false;
+			return () => {
+				if (released) return;
+				released = true;
+				try { fsImpl.closeSync(fd); } catch { /* already closed */ }
+				try { fsImpl.rmSync(lockPath, { force: true }); } catch { /* best effort */ }
+			};
+		} catch {
+			// Contended: only steal it when the holder is provably stale.
+			const owner = readLockOwner(lockPath, fsImpl);
+			const stale = !lockOwnerAlive(owner?.pid) || (owner?.at > 0 && now - owner.at > STALE_UPDATE_LOCK_MS);
+			if (!stale) return null;
+			try { fsImpl.rmSync(lockPath, { force: true }); } catch { return null; }
+		}
+	}
+	return null;
 };
 
 // Startup gate: called by main.js before the daemon boots. A fresh update
@@ -93,8 +137,52 @@ export const markUpdatePendingBoot = ({ installRoot, from, to }) => {
 	writeUpdateState(installRoot, { status: "pending-boot", from, to, bootAttempts: 0 });
 };
 
+// Drops every `releases/<v>` directory except the ones `current` and
+// `previous` point at, so routine monthly releases cannot grow the disk
+// without bound. Best-effort and never throws: pruning must never fail a
+// boot. Returns the kept version names.
+export const pruneOldReleases = ({ installRoot, fsImpl = fs } = {}) => {
+	const releasesDir = path.join(installRoot, "releases");
+	let entries = [];
+	try {
+		entries = fsImpl.readdirSync(releasesDir);
+	} catch {
+		return [];
+	}
+	const live = new Set();
+	for (const link of ["current", "previous"]) {
+		let target = null;
+		try {
+			target = fsImpl.readlinkSync(path.join(installRoot, link));
+		} catch {
+			continue;
+		}
+		const abs = path.resolve(installRoot, String(target));
+		const rel = path.relative(releasesDir, abs);
+		if (rel && !rel.startsWith("..") && !path.isAbsolute(rel)) live.add(rel.split(path.sep)[0]);
+	}
+	// Fail-safe: when neither link resolves inside releases/ (fresh
+	// install, dangling links, hand-made trees), keep everything rather
+	// than garbage-collecting the only copies on disk.
+	if (live.size === 0) return [...entries];
+	const kept = [];
+	for (const entry of entries) {
+		if (live.has(entry)) {
+			kept.push(entry);
+			continue;
+		}
+		try {
+			fsImpl.rmSync(path.join(releasesDir, entry), { recursive: true, force: true });
+		} catch {
+			// Best effort: a leftover dir is wasted disk, not a failed boot.
+		}
+	}
+	return kept;
+};
+
 // Called after the first successful heartbeat on the new version: the
 // release boots, so GC may drop everything except current + previous.
 export const markUpdateSuccess = ({ installRoot, version }) => {
 	writeUpdateState(installRoot, { status: "success", version, bootAttempts: 0 });
+	pruneOldReleases({ installRoot });
 };

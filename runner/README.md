@@ -150,7 +150,11 @@ itself. New knobs:
   `runner-install` sibling of the work root).
 
 A 409 `RUNNER_VERSION_BELOW_MINIMUM` from dispatch/claim means the backend
-floor moved past this Runner: it self-updates immediately (when idle) and
-retries. Tampered assets/manifests abort the update, keep the old version,
-and surface an "update failed" badge in Settings › Runners via the next
-heartbeat. Windows hosts are not supported in v1 (linux/darwin × x64/arm64).
+floor moved past this Runner: it self-updates immediately (when idle,
+bypassing the check interval) and retries. Tampered assets/manifests abort
+the update, keep the old version, and surface an "update failed" badge in
+Settings › Runners via the next heartbeat. Any apply failure (network cut
+mid-download, busy updater, missing `tar`) is contained the same way: the
+loop backs off and keeps serving the old version, never crashing. Hung
+mirrors time out (30s pointer/manifest, 5 min assets). Windows hosts are
+not supported in v1 (linux/darwin × x64/arm64).

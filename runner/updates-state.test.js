@@ -4,10 +4,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+	UPDATE_LOCK_FILE,
 	acquireUpdateLock,
 	bootstrapUpdateState,
 	markUpdatePendingBoot,
 	markUpdateSuccess,
+	pruneOldReleases,
 	readUpdateState,
 	writeUpdateState,
 } from "./updates/state.js";
@@ -34,6 +36,79 @@ describe("acquireUpdateLock", () => {
 		assert.equal(acquireUpdateLock(root), null, "second acquire loses");
 		release();
 		assert.ok(acquireUpdateLock(root), "re-acquire works after release")?.();
+		fs.rmSync(root, { recursive: true, force: true });
+	});
+
+	it("recovers a stale lock left by a dead process instead of bricking updates", () => {
+		const root = freshRoot();
+		// Dead pid (exceedingly unlikely to be alive) in the new format.
+		fs.writeFileSync(
+			path.join(root, UPDATE_LOCK_FILE),
+			JSON.stringify({ pid: 2147483647, at: new Date().toISOString() }),
+		);
+		const release = acquireUpdateLock(root);
+		assert.ok(release, "stale lock is stolen, not fatal");
+		release();
+		fs.rmSync(root, { recursive: true, force: true });
+	});
+
+	it("recovers the legacy bare-pid lock format when its holder is gone", () => {
+		const root = freshRoot();
+		fs.writeFileSync(path.join(root, UPDATE_LOCK_FILE), "2147483647");
+		const release = acquireUpdateLock(root);
+		assert.ok(release, "legacy stale lock is stolen, not fatal");
+		release();
+		fs.rmSync(root, { recursive: true, force: true });
+	});
+
+	it("keeps a live holder's lock (same-process contention still loses)", () => {
+		const root = freshRoot();
+		const release = acquireUpdateLock(root);
+		assert.ok(release);
+		// Our own pid is alive: a second overlapping updater must back off.
+		assert.equal(acquireUpdateLock(root), null, "live lock is not stolen");
+		release();
+		fs.rmSync(root, { recursive: true, force: true });
+	});
+});
+
+describe("pruneOldReleases", () => {
+	const releaseTree = (root, versions) => {
+		for (const version of versions) {
+			fs.mkdirSync(path.join(root, "releases", version, "unpacked"), { recursive: true });
+		}
+	};
+
+	it("keeps current + previous and drops older versions", () => {
+		const root = freshRoot();
+		releaseTree(root, ["0.1.0", "0.2.0", "0.3.0"]);
+		fs.symlinkSync(path.join(root, "releases", "0.3.0", "unpacked"), path.join(root, "current"));
+		fs.symlinkSync(path.join(root, "releases", "0.2.0", "unpacked"), path.join(root, "previous"));
+		const kept = pruneOldReleases({ installRoot: root });
+		assert.deepEqual([...kept].sort(), ["0.2.0", "0.3.0"]);
+		assert.ok(!fs.existsSync(path.join(root, "releases", "0.1.0")));
+		fs.rmSync(root, { recursive: true, force: true });
+	});
+
+	it("keeps everything when no link resolves inside releases/ (fail-safe)", () => {
+		const root = freshRoot();
+		releaseTree(root, ["0.1.0"]);
+		const kept = pruneOldReleases({ installRoot: root });
+		assert.deepEqual(kept, ["0.1.0"]);
+		assert.ok(fs.existsSync(path.join(root, "releases", "0.1.0")));
+		fs.rmSync(root, { recursive: true, force: true });
+	});
+
+	it("prunes superseded versions on markUpdateSuccess, keeps current + previous", () => {
+		const root = freshRoot();
+		releaseTree(root, ["0.0.9", "0.1.0", "0.2.0"]);
+		fs.symlinkSync(path.join(root, "releases", "0.2.0", "unpacked"), path.join(root, "current"));
+		fs.symlinkSync(path.join(root, "releases", "0.1.0", "unpacked"), path.join(root, "previous"));
+		markUpdateSuccess({ installRoot: root, version: "0.2.0" });
+		assert.equal(readUpdateState(root).status, "success");
+		assert.ok(!fs.existsSync(path.join(root, "releases", "0.0.9")), "superseded 0.0.9 is pruned");
+		assert.ok(fs.existsSync(path.join(root, "releases", "0.1.0")), "rollback target 0.1.0 is kept");
+		assert.ok(fs.existsSync(path.join(root, "releases", "0.2.0")), "current 0.2.0 is kept");
 		fs.rmSync(root, { recursive: true, force: true });
 	});
 });
