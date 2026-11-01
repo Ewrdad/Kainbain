@@ -24,12 +24,33 @@ export function loadRunnerConfig(env = process.env) {
 	// KAINBAIN_RUNNER_HARNESSES wins when set; otherwise the singular
 	// KAINBAIN_RUNNER_HARNESS seeds a 1-element list. The first entry
 	// stays the primary harness (single-assignment default, posture).
+	// Auto-detect is the default: an empty harness config or a literal
+	// "auto" token means the daemon probes PATH on boot (see
+	// detectAvailableHarnesses in daemon.js) and fail-fasts when nothing
+	// is found. Pass --manual --harness NAME at install time to pin.
+	const isAutoToken = (h) => String(h ?? "").trim().toLowerCase() === "auto";
+	let harnessAuto = false;
 	const harnessIds = str("KAINBAIN_RUNNER_HARNESSES", "")
 		.split(",")
 		.map((h) => h.trim())
-		.filter(Boolean);
+		.filter(Boolean)
+		.filter((h) => {
+			if (isAutoToken(h)) {
+				harnessAuto = true;
+				return false;
+			}
+			return true;
+		});
 	const singularHarness = str("KAINBAIN_RUNNER_HARNESS", "");
-	if (harnessIds.length === 0 && singularHarness) harnessIds.push(singularHarness);
+	if (isAutoToken(singularHarness)) {
+		harnessAuto = true;
+	} else if (harnessIds.length === 0 && singularHarness) {
+		harnessIds.push(singularHarness);
+	}
+	if (harnessIds.length === 0 && !singularHarness) {
+		// Default behaviour: auto-detect (no --manual flag given).
+		harnessAuto = true;
+	}
 	const harnessId = harnessIds[0] ?? "";
 	// Servable model advertisement (capability matching is backend-side, so
 	// the list is the operator's claim of what this host can run; the
@@ -46,7 +67,8 @@ export function loadRunnerConfig(env = process.env) {
 	const projectId = str("KAINBAIN_RUNNER_PROJECT_ID", "");
 	const taskId = str("KAINBAIN_RUNNER_TASK_ID", "");
 	if (!runnerId) errors.push("KAINBAIN_RUNNER_ID is required (stable per host).");
-	if (!harnessId) errors.push("KAINBAIN_RUNNER_HARNESS is required (e.g. pi, codex, mock).");
+	if (!harnessId && !harnessAuto)
+		errors.push("KAINBAIN_RUNNER_HARNESS is required (e.g. pi, codex, mock).");
 	const dispatch = str("KAINBAIN_RUNNER_DISPATCH", "") === "1";
 	if (!dispatch && !projectId) {
 		errors.push("KAINBAIN_RUNNER_PROJECT_ID is required (or set KAINBAIN_RUNNER_DISPATCH=1).");
@@ -90,6 +112,7 @@ export function loadRunnerConfig(env = process.env) {
 		runnerId,
 		harnessId,
 		harnessIds,
+		harnessAuto,
 		model,
 		models,
 		tiers: str("KAINBAIN_RUNNER_TIERS", "T0,T1")

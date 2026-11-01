@@ -60,7 +60,16 @@ export function runnerMatches(record = {}, req = {}, opts = {}) {
 		}
 	}
 	if (req.model) {
-		const models = Array.isArray(caps.models) ? caps.models : [];
+		// Operator-owned model allowlist wins when set (System Settings ›
+		// Runners › Models): it replaces the Runner-advertised list so an
+		// under-reporting Runner can still serve declared models. Null
+		// falls back to the advertised capabilities (legacy behaviour).
+		const override = record.operatorConfig?.availableModels;
+		const models = Array.isArray(override)
+			? override
+			: Array.isArray(caps.models)
+				? caps.models
+				: [];
 		if (!models.includes(req.model)) return { ok: false, reason: "NO_MODEL" };
 	}
 	if (req.tier) {

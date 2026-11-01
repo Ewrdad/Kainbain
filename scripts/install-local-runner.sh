@@ -11,8 +11,10 @@
 # re-run after every deploy (deploy.sh calls it in ensure mode).
 #
 # Usage:
-#   scripts/install-local-runner.sh [--id local-pi] [--harness pi]
+#   scripts/install-local-runner.sh [--id local-pi] [--manual --harness pi]
 #     [--backend http://localhost:3100] [--ensure] [--dry-run]
+# Harnesses auto-detect by default (pi, muse, antigravity, vibe on PATH);
+# pass --manual with --harness/--harnesses to pin instead.
 #
 # After install: approve the Runner once in Settings > Harness > Runners
 # (or POST /runners/:id/approve), paste the shown credential into
@@ -21,7 +23,7 @@
 set -euo pipefail
 
 ID="local-alpha"
-HARNESS="pi"
+HARNESS="auto"; HARNESSES=""; MANUAL=0; HARNESS_SET=0
 BACKEND="http://localhost:3100"
 ENSURE=0
 DRY_RUN=0
@@ -29,14 +31,50 @@ DRY_RUN=0
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--id) ID="${2:?--id needs a value}"; shift 2 ;;
-		--harness) HARNESS="${2:?--harness needs a value}"; shift 2 ;;
+		--harness) HARNESS="${2:?--harness needs a value}"; HARNESS_SET=1; shift 2 ;;
+		--harness=*) HARNESS="${1#--harness=}"; HARNESS_SET=1; shift ;;
+		--harnesses) HARNESSES="${2:?--harnesses needs a value}"; HARNESS_SET=1; shift 2 ;;
+		--harnesses=*) HARNESSES="${1#--harnesses=}"; HARNESS_SET=1; shift ;;
+		--manual) MANUAL=1; shift ;;
+		--auto) MANUAL=0; HARNESS="auto"; HARNESSES=""; HARNESS_SET=0; shift ;;
 		--backend) BACKEND="${2:?--backend needs a value}"; shift 2 ;;
+		--backend=*) BACKEND="${1#--backend=}"; shift ;;
 		--ensure) ENSURE=1; shift ;;
 		--dry-run) DRY_RUN=1; shift ;;
 		-h|--help) sed -n '1,20p' "$0"; exit 0 ;;
 		*) echo "Unknown arg: $1 (see --help)" >&2; exit 2 ;;
 	esac
 done
+detect_harnesses() {
+  local out=""
+  add_h() { if [ -z "$out" ]; then out="$1"; else out="$out,$1"; fi; }
+  if command -v pi >/dev/null 2>&1; then add_h "pi"; fi
+  if command -v muse >/dev/null 2>&1; then add_h "muse"; fi
+  if command -v agy >/dev/null 2>&1 || command -v antigravity >/dev/null 2>&1; then add_h "antigravity"; fi
+  if command -v vibe >/dev/null 2>&1; then add_h "vibe"; fi
+  printf '%s' "$out"
+}
+if [ "$HARNESS_SET" = "1" ] && [ "$MANUAL" = "0" ]; then
+  if [ -n "$HARNESSES" ]; then case "$HARNESSES" in *[aA][uU][tT][oO]*) ;; *) MANUAL=1;; esac
+  elif [ "$(printf '%s' "$HARNESS" | tr '[:upper:]' '[:lower:]')" != "auto" ]; then MANUAL=1; fi
+fi
+if [ "$MANUAL" = "1" ]; then
+  if [ -z "$HARNESSES" ]; then
+    if [ "$HARNESS_SET" = "0" ] || [ "$(printf '%s' "$HARNESS" | tr '[:upper:]' '[:lower:]')" = "auto" ]; then
+      echo "install-local-runner.sh: --manual requires --harness/--harnesses" >&2; exit 2
+    fi
+    HARNESSES="$HARNESS"
+  fi
+  case "$HARNESSES" in *[aA][uU][tT][oO]*) echo "install-local-runner.sh: --manual cannot be combined with auto" >&2; exit 2;; esac
+  HARNESS="$(printf '%s' "$HARNESSES" | cut -d, -f1 | tr -d ' ')"
+else
+  if [ -z "$HARNESSES" ]; then
+    HARNESSES="$(detect_harnesses)"
+    [ -n "$HARNESSES" ] || { echo "install-local-runner.sh: auto-detect found no harness CLIs (probed pi, muse, agy/antigravity, vibe); install one or re-run with --manual --harness NAME." >&2; exit 1; }
+    echo "Auto-detected harnesses: $HARNESSES"
+  fi
+  HARNESS="$(printf '%s' "$HARNESSES" | cut -d, -f1 | tr -d ' ')"
+fi
 
 SHORT="${ID#local-}"
 UNIT="kainbain-runner-local-${SHORT}.service"
@@ -70,6 +108,7 @@ if [ ! -f "$ENV_FILE" ]; then
 		echo "KAINBAIN_RUNNER_JOIN_TOKEN=$JOIN_TOKEN"
 		echo "KAINBAIN_RUNNER_ID=$ID"
 		echo "KAINBAIN_RUNNER_HARNESS=$HARNESS"
+		echo "KAINBAIN_RUNNER_HARNESSES=$HARNESSES"
 		echo "KAINBAIN_RUNNER_DISPATCH=1"
 		echo "KAINBAIN_RUNNER_DISPATCH_IDLE_LIMIT=0"
 		echo "KAINBAIN_RUNNER_DISPATCH_POLL_MS=5000"

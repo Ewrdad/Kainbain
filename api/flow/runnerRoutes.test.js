@@ -1014,6 +1014,7 @@ describe("Runner Routes Integration", () => {
 		expect(runner.operatorConfig).toEqual({
 			displayName: null,
 			availableTools: null,
+			availableModels: null,
 			jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
 			directories: { masterDir: "", worktreeDir: "" },
 			projectScope: null,
@@ -1033,12 +1034,14 @@ describe("Runner Routes Integration", () => {
 				displayName: "Primary",
 				jobTypes: { runsCi: false },
 				directories: { masterDir: "/srv/kb", worktreeDir: "/srv/kb-trees" },
+				availableModels: ["declared-model"],
 			},
 		});
 		expect(patched.statusCode).toBe(200);
 		const body = JSON.parse(patched.payload);
 		expect(body.operatorConfig.displayName).toBe("Primary");
 		expect(body.operatorConfig.jobTypes.runsCi).toBe(false);
+		expect(body.operatorConfig.availableModels).toEqual(["declared-model"]);
 		expect(body.operatorConfig.directories).toEqual({
 			masterDir: "/srv/kb",
 			worktreeDir: "/srv/kb-trees",
@@ -1054,6 +1057,7 @@ describe("Runner Routes Integration", () => {
 			{ directories: { masterDir: "" } },
 			{ jobTypes: { runsCi: "yes" } },
 			{ availableTools: ["no-such-tool"] },
+			{ availableModels: ["ok", "  "] },
 			{ bogus: true },
 		]) {
 			const res = await app.inject({

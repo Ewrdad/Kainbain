@@ -13,8 +13,11 @@ backend URL (e.g. `https://kainbain.home`). Every host ships one local
 Runner by default — install it with:
 
 ```sh
-scripts/install-local-runner.sh --id local-pi --harness pi
+scripts/install-local-runner.sh --id local-pi
 # remote host: add --backend https://kainbain.home
+# Harnesses auto-detect by default (pi, muse, antigravity, vibe probed on
+# PATH); pin with --manual --harness pi or --manual --harnesses pi,muse.
+# mock has no CLI, so it is manual-only.
 ```
 
 ## Onboard (human approval required, D4)

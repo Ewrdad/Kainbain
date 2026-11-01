@@ -5,7 +5,10 @@ import {
   defaultRunnerConfig,
   runnerDisplayName,
   advertisedToolIds,
+  advertisedModels,
   effectiveTools,
+  effectiveModels,
+  parseModelsInput,
   loadedProjectIds,
   partitionProjects,
   withProjectLoaded,
@@ -35,6 +38,7 @@ describe('runnerConfigHelpers', () => {
     expect(defaultRunnerConfig({})).toEqual({
       displayName: null,
       availableTools: null,
+      availableModels: null,
       jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
       directories: { masterDir: '', worktreeDir: '' },
       projectScope: null,
@@ -47,6 +51,7 @@ describe('runnerConfigHelpers', () => {
       operatorConfig: {
         displayName: 'Primary',
         availableTools: ['pi', 42],
+        availableModels: ['m1', null],
         jobTypes: { runsCi: false, runsMerges: 'yes' },
         directories: { masterDir: '/srv/kb' },
         projectScope: ['p1', null],
@@ -54,6 +59,7 @@ describe('runnerConfigHelpers', () => {
     });
     expect(config.displayName).toBe('Primary');
     expect(config.availableTools).toEqual(['pi']);
+    expect(config.availableModels).toEqual(['m1']);
     expect(config.jobTypes).toEqual({ runsCi: false, runsMerges: true, runsImpromptu: true });
     expect(config.directories).toEqual({ masterDir: '/srv/kb', worktreeDir: '' });
     expect(config.projectScope).toEqual(['p1']);
@@ -74,6 +80,25 @@ describe('runnerConfigHelpers', () => {
     expect(
       effectiveTools({ ...runner, operatorConfig: { availableTools: ['pi'] } }),
     ).toEqual(['pi']);
+  });
+
+  it('reads advertised models and prefers the operator allowlist', () => {
+    const runner = { capabilities: { models: ['m1', 42, ''] } };
+    expect(advertisedModels(runner)).toEqual(['m1']);
+    expect(advertisedModels({})).toEqual([]);
+    expect(effectiveModels(runner)).toEqual(['m1']);
+    expect(
+      effectiveModels({ ...runner, operatorConfig: { availableModels: ['m9'] } }),
+    ).toEqual(['m9']);
+    expect(
+      effectiveModels({ ...runner, operatorConfig: { availableModels: [] } }),
+    ).toEqual([]);
+  });
+
+  it('parses models editor text into trimmed deduped ids', () => {
+    expect(parseModelsInput('a, b,, a')).toEqual(['a', 'b']);
+    expect(parseModelsInput('  ')).toEqual([]);
+    expect(parseModelsInput()).toEqual([]);
   });
 
   it('resolves loaded projects from override, scope, or all', () => {

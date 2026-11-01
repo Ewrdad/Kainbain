@@ -26,6 +26,7 @@ const defaultOperatorConfig = () => {
 	return {
 		displayName: null,
 		availableTools: null,
+		availableModels: null,
 		jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
 		directories: { masterDir: "", worktreeDir: "" },
 		projectScope: null,
@@ -60,6 +61,9 @@ const normalizeOperatorConfig = (raw) => {
 		displayName: typeof raw.displayName === "string" ? raw.displayName : null,
 		availableTools: Array.isArray(raw.availableTools)
 			? raw.availableTools.filter((t) => typeof t === "string")
+			: null,
+		availableModels: Array.isArray(raw.availableModels)
+			? raw.availableModels.filter((m) => typeof m === "string")
 			: null,
 		jobTypes,
 		directories,
@@ -296,6 +300,7 @@ export class RunnerRegistry {
 		const allowed = new Set([
 			"displayName",
 			"availableTools",
+			"availableModels",
 			"jobTypes",
 			"directories",
 			"projectScope",
@@ -313,6 +318,7 @@ export class RunnerRegistry {
 		const next = {
 			displayName: current.displayName,
 			availableTools: current.availableTools ? [...current.availableTools] : null,
+			availableModels: current.availableModels ? [...current.availableModels] : null,
 			jobTypes: { ...current.jobTypes },
 			directories: { ...current.directories },
 			projectScope: current.projectScope ? [...current.projectScope] : null,
@@ -381,6 +387,36 @@ export class RunnerRegistry {
 				next.availableTools = [...new Set(trimmed)];
 			} else {
 				next.availableTools = null;
+			}
+		}
+		if (Object.hasOwn(patch, "availableModels")) {
+			const models = patch.availableModels;
+			if (models !== null && !Array.isArray(models)) {
+				throw RunnerRegistry._fail(
+					400,
+					"INVALID_AVAILABLE_MODELS",
+					"availableModels must be an array of model id strings or null (advertised).",
+				);
+			}
+			if (Array.isArray(models)) {
+				for (const model of models) {
+					if (typeof model !== "string" || !model.trim()) {
+						throw RunnerRegistry._fail(
+							400,
+							"INVALID_AVAILABLE_MODELS",
+							"availableModels must be an array of non-empty model id strings.",
+						);
+					}
+				}
+				// Deliberately NOT subset-validated against advertised
+				// models (unlike availableTools): the point is letting the
+				// operator declare what the box can serve when the Runner
+				// under-reports (or reports nothing). Same trust model as
+				// the KAINBAIN_RUNNER_MODELS env claim. Trim + dedupe so
+				// matching compares exact strings.
+				next.availableModels = [...new Set(models.map((model) => model.trim()))];
+			} else {
+				next.availableModels = null;
 			}
 		}
 		if (Object.hasOwn(patch, "jobTypes")) {

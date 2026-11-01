@@ -5,11 +5,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+	AUTO_DETECTABLE_HARNESSES,
 	clearHarnessVersionCache,
 	defaultLoadHarness,
+	detectAvailableHarnesses,
 	deliverSteers,
 	diskHeadroomMbFor,
 	probeHarnessVersions,
+	resolveHarnessConfig,
 	runCiCommand,
 	runDispatchLoop,
 	runSingleAssignment,
@@ -484,6 +487,51 @@ describe("runner facts (G4/G5)", () => {
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("harness auto-detect (default)", () => {
+	it("advertises only loadable harnesses in stable order", () => {
+		assert.deepEqual(AUTO_DETECTABLE_HARNESSES, ["pi", "muse", "antigravity", "vibe"]);
+	});
+
+	it("detects pi and antigravity via either binary name", () => {
+		const present = new Set(["pi", "agy"]);
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin:/bin",
+			pathDelimiter: ":",
+			isExecutable: (bin) => present.has(bin),
+		});
+		assert.deepEqual(got, ["pi", "antigravity"]);
+	});
+
+	it("returns empty when no CLI is on PATH", () => {
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin:/bin",
+			pathDelimiter: ":",
+			isExecutable: () => false,
+		});
+		assert.deepEqual(got, []);
+	});
+
+	it("leaves manual configs untouched", () => {
+		const config = { harnessIds: ["mock"], harnessId: "mock", harnessAuto: false };
+		assert.equal(resolveHarnessConfig(config), config);
+		assert.deepEqual(config.harnessIds, ["mock"]);
+	});
+
+	it("resolves auto configs from injected detection and drops the harness error", () => {
+		const config = { harnessIds: [], harnessId: "", harnessAuto: true, errors: ["KAINBAIN_RUNNER_HARNESS is required"] };
+		resolveHarnessConfig(config, { detected: ["muse", "pi"] });
+		assert.deepEqual(config.harnessIds, ["muse", "pi"]);
+		assert.equal(config.harnessId, "muse");
+		assert.equal(config.harnessAuto, false);
+		assert.deepEqual(config.errors, []);
+	});
+
+	it("fail-fasts when auto-detect finds nothing", () => {
+		const config = { harnessIds: [], harnessId: "", harnessAuto: true, errors: [] };
+		assert.throws(() => resolveHarnessConfig(config, { detected: [] }), /auto-detect found no harness/);
 	});
 });
 

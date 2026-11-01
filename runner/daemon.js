@@ -139,6 +139,110 @@ export function runnerHarnessIds(config = {}) {
 }
 
 /***
+ * MARK: AUTO_DETECTABLE_HARNESSES
+ * @description Harness ids auto-detect considers, in stable advertise
+ *   order. Only ids defaultLoadHarness can actually run; `mock` has no
+ *   CLI so it never auto-detects (pass it manually with --manual).
+ * @example AUTO_DETECTABLE_HARNESSES => ['pi', 'muse', 'antigravity', 'vibe']
+ ***/
+export const AUTO_DETECTABLE_HARNESSES = ["pi", "muse", "antigravity", "vibe"];
+
+/***
+ * MARK: detectAvailableHarnesses
+ * @description Scans PATH for harness CLIs (default behaviour; --manual
+ *   opts out). One entry per harness whose first binary resolves to an
+ *   executable file. Pure sync scan so boot can fail fast before join.
+ * @example detectAvailableHarnesses({ pathValue: '/usr/bin:/bin' }) => ['pi']
+ * @param {Object} [opts] - Options.
+ * @param {string} [opts.pathValue] - PATH to scan (defaults to process.env.PATH).
+ * @param {string} [opts.pathDelimiter] - PATH separator (defaults to path.delimiter).
+ * @param {Function} [opts.isExecutable] - (bin, dir) => boolean override (tests).
+ * @returns {string[]} Detected harness ids in AUTO_DETECTABLE_HARNESSES order.
+ ***/
+export function detectAvailableHarnesses({ pathValue, pathDelimiter, isExecutable } = {}) {
+	const pathStr = typeof pathValue === "string" ? pathValue : (process.env.PATH ?? "");
+	const delimiter = typeof pathDelimiter === "string" ? pathDelimiter : path.delimiter;
+	const dirs = String(pathStr)
+		.split(delimiter)
+		.map((d) => d.trim())
+		.filter(Boolean);
+	const check =
+		typeof isExecutable === "function"
+			? isExecutable
+			: (bin, dir) => {
+					try {
+						fs.accessSync(path.join(dir, bin), fs.constants.X_OK);
+						return true;
+					} catch {
+						return false;
+					}
+				};
+	const found = [];
+	for (const id of AUTO_DETECTABLE_HARNESSES) {
+		const bins = HARNESS_VERSION_BINS[id] ?? [];
+		let ok = false;
+		for (const bin of bins) {
+			for (const dir of dirs) {
+				try {
+					if (check(bin, dir)) {
+						ok = true;
+						break;
+					}
+				} catch {
+					// Keep scanning; one bad dir never fails detection.
+				}
+			}
+			if (ok) break;
+		}
+		if (ok) found.push(id);
+	}
+	return found;
+}
+
+/***
+ * MARK: resolveHarnessConfig
+ * @description Applies the auto-detect default to a loaded runner config.
+ *   Manual configs (explicit harness ids, harnessAuto falsy) pass through
+ *   untouched. Auto configs probe PATH, union any explicit non-auto pins,
+ *   and mutate the config in place (harnessIds/harnessId). Empty detection
+ *   throws fail-fast — the runner must never register a useless empty
+ *   capability set.
+ * @example resolveHarnessConfig({ harnessIds: [], harnessAuto: true }, { detected: ['pi'] }).harnessId => 'pi'
+ * @param {Object} config - Normalized runner config (mutated).
+ * @param {Object} [opts] - Options.
+ * @param {string[]} [opts.detected] - Detected ids override (tests/installers).
+ * @param {Object} [opts.detectOpts] - Forwarded to detectAvailableHarnesses.
+ * @returns {Object} The same config object, resolved.
+ ***/
+export function resolveHarnessConfig(config = {}, { detected, detectOpts } = {}) {
+	if (!config || !config.harnessAuto) return config;
+	const seen = new Set();
+	const out = [];
+	const push = (id) => {
+		const clean = String(id ?? "").trim();
+		if (!clean || seen.has(clean)) return;
+		seen.add(clean);
+		out.push(clean);
+	};
+	const autoList = Array.isArray(detected) ? detected : detectAvailableHarnesses(detectOpts);
+	for (const id of autoList) push(id);
+	for (const id of runnerHarnessIds(config)) push(id);
+	if (out.length === 0) {
+		throw new Error(
+			"Runner auto-detect found no harness CLIs (probed pi, muse, agy/antigravity, vibe on PATH); install one or re-run with --manual --harness NAME.",
+		);
+	}
+	config.harnessIds = out;
+	config.harnessId = out[0];
+	config.harnessAuto = false;
+	// Drop the stale missing-harness error so the boot check below passes.
+	if (Array.isArray(config.errors)) {
+		config.errors = config.errors.filter((e) => !/KAINBAIN_RUNNER_HARNESS/.test(String(e)));
+	}
+	return config;
+}
+
+/***
  * MARK: applyBackendPrompt
  * @description Retargets a backend-curated prompt to the prepared worktree:
  *   the backend curates with its own project cwd (it owns task/stage truth),
@@ -1193,6 +1297,7 @@ export async function runSingleAssignment({
 	loadHarness = defaultLoadHarness,
 	logger = console,
 }) {
+	resolveHarnessConfig(config);
 	if (config.errors?.length) {
 		throw new Error(`Invalid Runner config: ${config.errors.join(" ")}`);
 	}
@@ -1361,6 +1466,7 @@ export async function runDispatchLoop({
 	loadHarness = defaultLoadHarness,
 	logger = console,
 }) {
+	resolveHarnessConfig(config);
 	if (config.errors?.length) {
 		throw new Error(`Invalid Runner config: ${config.errors.join(" ")}`);
 	}

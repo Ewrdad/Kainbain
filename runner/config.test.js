@@ -17,11 +17,11 @@ describe("loadRunnerConfig", () => {
 		assert.equal(config.heartbeatMs, 15000);
 	});
 
-	it("lists every missing required key", () => {
+	it("lists every missing required key (harness defaults to auto-detect)", () => {
 		const config = loadRunnerConfig({});
-		assert.equal(config.errors.length, 4);
+		assert.equal(config.errors.length, 3);
 		assert.match(config.errors.join(" "), /KAINBAIN_RUNNER_ID/);
-		assert.match(config.errors.join(" "), /KAINBAIN_RUNNER_HARNESS/);
+		assert.equal(config.harnessAuto, true);
 	});
 
 	it("drops the explicit-assignment requirement in dispatch mode", () => {
@@ -123,6 +123,42 @@ describe("loadRunnerConfig", () => {
 		assert.equal(config.updateUrl, "https://mirror.local/r/manifest.json");
 		assert.equal(config.autoUpdate, false);
 		assert.equal(config.updateCheckIntervalMs, 3600000);
+	});
+
+	it("auto-detects by default and honours explicit manual pins", () => {
+		const empty = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+		});
+		assert.equal(empty.errors.length, 0);
+		assert.equal(empty.harnessAuto, true);
+		assert.deepEqual(empty.harnessIds, []);
+
+		const literal = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "auto",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+		});
+		assert.equal(literal.errors.length, 0);
+		assert.equal(literal.harnessAuto, true);
+
+		const mixed = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESSES: "auto,mock",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+		});
+		assert.equal(mixed.errors.length, 0);
+		assert.equal(mixed.harnessAuto, true);
+		assert.deepEqual(mixed.harnessIds, ["mock"]);
+
+		const manual = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "pi",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+		});
+		assert.equal(manual.errors.length, 0);
+		assert.equal(manual.harnessAuto, false);
+		assert.deepEqual(manual.harnessIds, ["pi"]);
 	});
 
 	it("falls back on invalid numbers and customizes tiers", () => {
