@@ -5,6 +5,7 @@ import { formatTaskKey, formatTaskTitleFirstLine } from '../tasks/taskFormatters
 import { resolveDisplayedStage } from '../tasks/runningTask';
 import { resolveActiveTaskDisplay, resolveUniversalNowPlaying } from './activeTaskVisibility';
 import { InfoTooltip } from '../common/InfoTooltip';
+import { BuildHashTrigger } from './BuildHashTrigger';
 import { api } from '../../services/api';
 
 /***
@@ -396,7 +397,8 @@ export function NowPlayingBar() {
       {/* Left: Global Status, Active Project & Context
           On mobile the bar shows only the runner boxes (or the task hint
           when no Runners are configured), so this side flexes to fill the
-          space freed by the hidden right rail. */}
+          space freed by the hidden queue chip (the build-hash trigger stays
+          visible in the right rail). */}
       <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <div
@@ -581,8 +583,8 @@ export function NowPlayingBar() {
                     data-testid={activeTask ? 'now-playing-task-name' : 'now-playing-idle-hint'}
                     className={
                       activeTask
-                        ? 'now-playing-task-enter font-headline-sm text-xs sm:text-headline-sm text-on-surface group-hover:text-primary transition-colors truncate'
-                        : 'font-headline-sm text-xs sm:text-headline-sm text-text-muted truncate'
+                        ? 'now-playing-task-enter font-headline-sm text-xs sm:text-headline-sm text-on-surface group-hover:text-primary transition-colors truncate min-w-0'
+                        : 'font-headline-sm text-xs sm:text-headline-sm text-text-muted truncate min-w-0'
                     }
                   >
                     {activeTask
@@ -614,47 +616,54 @@ export function NowPlayingBar() {
         </div>
       </div>
 
-      {/* Right: queue depth only. The elapsed timer and the subsystem
-          health traffic light were removed — the right rail is now just the
-          live queue-depth chip. Single child, so there is no overlap path
-          with the runner boxes; overflow-hidden stays as cheap insurance
-          (tooltips are portal-rendered to document.body, so they are not
-          clipped). A canary e2e gate checks button-vs-rail rect
-          intersections at 640/768/800/900/1024/1280px (functional.spec.js). */}
+      {/* Right: build hash + queue depth. The elapsed timer and the
+          subsystem health traffic light were removed — the right rail is the
+          greyed-out build-hash trigger (left of the queue, always visible so
+          the changelog is one click away on phones too) plus the live
+          queue-depth chip (sm and up; phones keep the runner boxes uncrowded).
+          Overflow-hidden stays as cheap insurance (tooltips are
+          portal-rendered to document.body, so they are not clipped). A canary
+          e2e gate checks button-vs-rail rect intersections at
+          640/768/800/900/1024/1280px (functional.spec.js). */}
       <div
         data-testid="now-playing-right-rail"
-        className="hidden sm:flex items-center justify-end flex-none min-w-0 overflow-hidden"
+        className="flex items-center justify-end gap-1 flex-none min-w-0 overflow-hidden"
       >
+        {/* Build-hash trigger: greyed monospace #B<build><·sha>, opens the
+            baked changelog dialog. Hidden when no build is baked. */}
+        <BuildHashTrigger />
         {/* Live queue-depth chip: universal queue depth across all pipelines.
             role="status" (aria-live polite) so screen readers hear the count
             change as tasks advance. No text animation — WCAG 1.4.3 contract. */}
-        <InfoTooltip
-          title="Execution Queue"
-          description="Live count of open tasks (not yet completed) across all pipelines."
-          behindTheScenes="Derived from the universal task list across all pipelines on every render — unlike the removed workflow-pointer stage label, which only changed on load or manual skip."
-          position="top-left"
-        >
-          <div
-            role="status"
-            aria-label={`Execution queue: ${queueDepth} open ${
-              queueDepth === 1 ? 'task' : 'tasks'
-            } across all pipelines`}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-surface-container/90 border border-border-standard/80 cursor-help select-none"
+        <div className="hidden sm:flex items-center">
+          <InfoTooltip
+            title="Execution Queue"
+            description="Live count of open tasks (not yet completed) across all pipelines."
+            behindTheScenes="Derived from the universal task list across all pipelines on every render — unlike the removed workflow-pointer stage label, which only changed on load or manual skip."
+            position="top-left"
           >
-            <span
-              className="material-symbols-outlined text-[14px] text-secondary"
-              aria-hidden="true"
+            <div
+              role="status"
+              aria-label={`Execution queue: ${queueDepth} open ${
+                queueDepth === 1 ? 'task' : 'tasks'
+              } across all pipelines`}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-surface-container/90 border border-border-standard/80 cursor-help select-none"
             >
-              format_list_numbered
-            </span>
-            <span className="font-label-caps text-[9px] text-on-surface-variant hidden lg:inline">
-              Queue
-            </span>
-            <span className="tabular-nums text-[12px] font-semibold text-on-surface">
-              {queueDepth}
-            </span>
-          </div>
-        </InfoTooltip>
+              <span
+                className="material-symbols-outlined text-[14px] text-secondary"
+                aria-hidden="true"
+              >
+                format_list_numbered
+              </span>
+              <span className="font-label-caps text-[9px] text-on-surface-variant hidden lg:inline">
+                Queue
+              </span>
+              <span className="tabular-nums text-[12px] font-semibold text-on-surface">
+                {queueDepth}
+              </span>
+            </div>
+          </InfoTooltip>
+        </div>
       </div>
     </footer>
   );
