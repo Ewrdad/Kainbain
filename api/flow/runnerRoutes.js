@@ -5,6 +5,7 @@ import { normalizeStageType } from "../projectStore.js";
 import { git, defaultBranch } from "../git.js";
 import { circuitSnapshot, isTripped } from "./circuitBreaker.js";
 import { scanClaimableTasks } from "./dispatch/scanClaimableTasks.js";
+import { buildFleetModelCatalog } from "./dispatch/fleetModelCatalog.js";
 import { resolveAliasRequirement } from "./dispatch/resolveAliasRequirement.js";
 import { runnerMatches } from "./dispatch/runnerMatches.js";
 import { operatorConfigVerdict } from "./dispatch/operatorConfigVerdict.js";
@@ -494,6 +495,17 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// stuck merge queue is visible before tasks pile up behind it.
 		const integration = integrationQueue ? integrationQueue.snapshot() : {};
 		return { ...executionLedger.snapshot(), liveAssignments, scheduler, integration };
+	});
+
+	app.get("/runners/models/catalogue", async () => {
+		// Fleet model catalogue: derived live from Runner registrations
+		// (never cached), so joins, leaves, heartbeat updates, and
+		// operator allowlist edits reflect on the next read. One entry
+		// per distinct model id served by at least one claim-eligible
+		// Runner (active, not paused), with the serving harness ids,
+		// tiers, and runner count/ids. Stage, default, and alias pickers
+		// read this for availability instead of credential health.
+		return buildFleetModelCatalog(runnerRegistry.list());
 	});
 
 	app.post("/tasks/:id/progress", async (request, reply) => {

@@ -11,7 +11,7 @@ import {
   resolveReasoningOptions,
   stripReasoningIfUnsupported,
 } from '../../services/api';
-import { modelBadgeNode } from '../../services/modelStatus';
+import { fleetCountBadgeNode, fleetInfoForModel, modelBadgeNode } from '../../services/modelStatus';
 import {
   availabilityBadge,
   availabilityFromEntry,
@@ -126,6 +126,8 @@ export function resolveStoredModelValidity(models, stored) {
  * @param {Function} [props.onRefresh] - Refresh action for the empty-catalogue state (re-runs discovery).
  * @param {boolean} [props.refreshing=false] - Refresh in flight (disables the Refresh action).
  * @param {Function} [props.isHarnessDisabled] - Optional predicate over a visible harness entry returning a disabled reason string (truthy = that harness option renders disabled with the reason shown), or a falsy value when the harness stays selectable. Omitted = every harness selectable. Callers disable only on an explicit negative signal (e.g. `supportsDiagnosis === false`) so entries from older backends that carry no flag keep working.
+ * @param {Object} [props.fleetCounts] - Fleet availability map (`fleetCountsById`): model badges show claim-eligible Runner counts ("2 runners" / "No runners") instead of credential health. Omitted = badge-free options (never mislead).
+ * @param {boolean} [props.healthBadges=false] - Render the backend-host credential-health badges instead. Only for pickers whose model call executes on the backend host itself (retrospective chat, stuck check) — fleet counts would mislead there. Ignored when `fleetCounts` is provided (fleet wins).
  ***/
 export function ModelSelector({
   models = [],
@@ -153,6 +155,8 @@ export function ModelSelector({
   onRefresh,
   refreshing = false,
   isHarnessDisabled,
+  fleetCounts,
+  healthBadges = false,
 }) {
   // Harness-first navigation: the model catalogue is scoped to the selected
   // harness. Older backends (or mocked test doubles) send no harnesses — wrap
@@ -301,18 +305,29 @@ export function ModelSelector({
 
   // Models grouped by provider: the group header carries the provider name,
   // so option labels are the plain model names (no "(provider)" suffix).
-  // Credential-status badges (frontend/src/services/modelStatus.js) attach to
-  // the options of models that carry enrichment info from /compute/models —
-  // a model without status info renders badge-free (never mislead).
+  // Fleet-availability badges attach the claim-eligible Runner count from
+  // /runners/models/catalogue ("2 runners" / "No runners") — availability
+  // is judged by the fleet, never by backend-host credential health. Without
+  // fleet data the options render badge-free (never mislead), unless the
+  // caller opts into backend-host credential-health badges (`healthBadges`:
+  // only for pickers whose model call executes on the backend host itself).
   const modelsByValue = new Map(
     modelsForHarness.map((m) => [m?.key || (m?.provider ? `${m.provider}::${m.id}` : m?.id), m]),
   );
+  const hasFleetCounts = fleetCounts && typeof fleetCounts === 'object';
   const modelOptions = [
     ...(allowEmpty ? [{ value: '', label: emptyLabel }] : []),
     ...groupModelsByProvider(modelsForHarness).map((option) => {
-      const model = modelsByValue.get(option.value);
-      const badge = model ? modelBadgeNode(model) : null;
-      return badge ? { ...option, badge } : option;
+      if (hasFleetCounts) {
+        const model = modelsByValue.get(option.value);
+        const info = fleetInfoForModel(fleetCounts, model, option.value);
+        return { ...option, badge: fleetCountBadgeNode(info) };
+      }
+      if (healthBadges) {
+        const badge = modelBadgeNode(modelsByValue.get(option.value));
+        if (badge) return { ...option, badge };
+      }
+      return option;
     }),
   ];
 

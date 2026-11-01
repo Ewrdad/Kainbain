@@ -22,6 +22,65 @@ const PI_MODELS = [
 ];
 
 describe('ModelSelector', () => {
+  it('badges model options with fleet runner counts when counts are passed', () => {
+    render(
+      <ModelSelector
+        models={MODELS}
+        ariaLabel="Default AI Model"
+        fleetCounts={{
+          'ollama-cloud::deepseek-v4-flash': { runnerCount: 2, runnerIds: ['a', 'b'] },
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('combobox', { name: 'Default AI Model' }));
+    expect(screen.getByRole('option', { name: /DeepSeek v4 Flash/ })).toHaveTextContent(
+      '2 runners',
+    );
+    // Unknown ids render an honest zero instead of a credential badge.
+    expect(screen.getByRole('option', { name: /Gemini 2.5 Pro/ })).toHaveTextContent('No runners');
+  });
+
+  it('renders model options badge-free without fleet counts', () => {
+    render(<ModelSelector models={MODELS} ariaLabel="Default AI Model" />);
+    fireEvent.click(screen.getByRole('combobox', { name: 'Default AI Model' }));
+    expect(screen.getByRole('option', { name: 'DeepSeek v4 Flash' })).not.toHaveTextContent(
+      'runners',
+    );
+  });
+
+  it('renders credential-health badges when healthBadges is set (backend-executed pickers)', () => {
+    const enriched = [
+      { ...MODELS[0], runnable: true, authConfigured: true, statusLabel: 'Ready' },
+      { ...MODELS[1], runnable: false, authConfigured: false, statusLabel: 'No credentials' },
+    ];
+    render(<ModelSelector models={enriched} ariaLabel="Chat model" healthBadges />);
+    fireEvent.click(screen.getByRole('combobox', { name: 'Chat model' }));
+    expect(screen.getByRole('option', { name: /DeepSeek v4 Flash/ })).toHaveTextContent('Ready');
+    expect(screen.getByRole('option', { name: /Gemini 2.5 Pro/ })).toHaveTextContent(
+      'No credentials',
+    );
+  });
+
+  it('prefers fleet counts over health badges when both are provided', () => {
+    const enriched = [
+      { ...MODELS[0], runnable: true, authConfigured: true, statusLabel: 'Ready' },
+    ];
+    render(
+      <ModelSelector
+        models={enriched}
+        ariaLabel="Chat model"
+        healthBadges
+        fleetCounts={{
+          'ollama-cloud::deepseek-v4-flash': { runnerCount: 2, runnerIds: ['a', 'b'] },
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('combobox', { name: 'Chat model' }));
+    const option = screen.getByRole('option', { name: /DeepSeek v4 Flash/ });
+    expect(option).toHaveTextContent('2 runners');
+    expect(option).not.toHaveTextContent('Ready');
+  });
+
   it('renders model options grouped by provider (plain labels, no suffix)', () => {
     render(<ModelSelector models={MODELS} ariaLabel="Default AI Model" />);
 

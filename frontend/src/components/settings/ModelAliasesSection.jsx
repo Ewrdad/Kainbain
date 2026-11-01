@@ -9,7 +9,7 @@ import {
   groupModelsByProvider,
   normalizeModelRef,
 } from '../../services/api';
-import { modelBadgeNode } from '../../services/modelStatus';
+import { fleetCountBadgeNode, fleetInfoForModel } from '../../services/modelStatus';
 import { ReliabilityLine } from './ReliabilityLine';
 import {
   ALIAS_HARNESS_ID,
@@ -456,6 +456,7 @@ function AliasTargetRow({
   targetCount,
   target,
   targetHarnesses,
+  fleetCounts,
   disabled,
   onTargetChange,
   onRemoveTarget,
@@ -482,10 +483,15 @@ function AliasTargetRow({
   const modelsByValue = new Map(
     modelsForHarness.map((m) => [m?.key || (m?.provider ? `${m.provider}::${m.id}` : m?.id), m]),
   );
+  // Fleet-availability badges (claim-eligible Runner counts) replace
+  // credential-health badges — availability is judged by the fleet. Without
+  // fleet data the options render badge-free (never mislead).
+  const hasFleetCounts = fleetCounts && typeof fleetCounts === 'object';
   const modelOptions = groupModelsByProvider(modelsForHarness).map((option) => {
+    if (!hasFleetCounts) return option;
     const model = modelsByValue.get(option.value);
-    const badge = model ? modelBadgeNode(model) : null;
-    return badge ? { ...option, badge } : option;
+    const info = fleetInfoForModel(fleetCounts, model, option.value);
+    return { ...option, badge: fleetCountBadgeNode(info) };
   });
   // First target keeps the historic labels so single-target rows read
   // exactly like the old one-harness-per-alias table.
@@ -886,6 +892,7 @@ export function ModelAliasesSection({
   aliases = [],
   onChange,
   harnesses = [],
+  fleetCounts,
   disabled = false,
   usagesForName,
   projectId,
@@ -1304,6 +1311,7 @@ export function ModelAliasesSection({
                             targetCount={targets.length}
                             target={target}
                             targetHarnesses={targetHarnesses}
+                            fleetCounts={fleetCounts}
                             disabled={disabled}
                             onTargetChange={(patch) =>
                               setTargets(

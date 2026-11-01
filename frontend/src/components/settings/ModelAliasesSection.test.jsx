@@ -1111,6 +1111,24 @@ describe('ModelAliasesSection reasoning level picker', () => {
     expect(saved[0].targets[0].model).toBe('pi::google::m1::high');
   });
 
+  it('badges alias model options with fleet runner counts instead of health', () => {
+    render(
+      <ModelAliasesSection
+        aliases={[{ name: 'fast', harness: 'pi', model: 'pi::google::m1::high' }]}
+        onChange={() => {}}
+        harnesses={REASON_HARNESSES}
+        fleetCounts={{
+          'pi::google::m1': { runnerCount: 2, runnerIds: ['box-a', 'box-b'] },
+        }}
+      />,
+    );
+    expandAllCards();
+    fireEvent.click(screen.getByLabelText('Alias 1 model'));
+    expect(screen.getByRole('option', { name: /M1/ })).toHaveTextContent('2 runners');
+    // Unknown ids render an honest zero, never a health badge.
+    expect(screen.getByRole('option', { name: /M2/ })).toHaveTextContent('No runners');
+  });
+
   it('strips a stored suffix on load for null-harness targets, keeps capable ones (Q2)', () => {
     const onChange = vi.fn();
     const stripped = render(
