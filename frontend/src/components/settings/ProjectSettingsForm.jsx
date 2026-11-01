@@ -437,7 +437,7 @@ export function ProjectSettingsForm({
     }
     // Alias table validation: refuse to save while a row is invalid (the
     // section shows the same per-row errors inline).
-    const aliasErrors = validateAliasList(modelAliases, harnesses);
+    const aliasErrors = validateAliasList(modelAliases, harnesses, fleetCounts);
     if (aliasErrors.length > 0) {
       setValidationError(`Model Aliases: ${aliasErrors[0].message}`);
       setSaveState('error');

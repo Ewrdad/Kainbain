@@ -12,6 +12,7 @@ import {
   stripReasoningIfUnsupported,
 } from '../../services/api';
 import { fleetCountBadgeNode, fleetInfoForModel, modelBadgeNode } from '../../services/modelStatus';
+import { withFleetModels, effectiveModelSelection } from '../../services/fleetModelOptions';
 import {
   availabilityBadge,
   availabilityFromEntry,
@@ -126,7 +127,7 @@ export function resolveStoredModelValidity(models, stored) {
  * @param {Function} [props.onRefresh] - Refresh action for the empty-catalogue state (re-runs discovery).
  * @param {boolean} [props.refreshing=false] - Refresh in flight (disables the Refresh action).
  * @param {Function} [props.isHarnessDisabled] - Optional predicate over a visible harness entry returning a disabled reason string (truthy = that harness option renders disabled with the reason shown), or a falsy value when the harness stays selectable. Omitted = every harness selectable. Callers disable only on an explicit negative signal (e.g. `supportsDiagnosis === false`) so entries from older backends that carry no flag keep working.
- * @param {Object} [props.fleetCounts] - Fleet availability map (`fleetCountsById`): model badges show claim-eligible Runner counts ("2 runners" / "No runners") instead of credential health. Omitted = badge-free options (never mislead).
+ * @param {Object} [props.fleetCounts] - Fleet availability map (`fleetCountsById`): fleet-served models missing from the backend section join the options as exact advertised ids (a fleet pick is a guaranteed dispatch match), a `none` harness the fleet serves behaves as `list`, and badges show claim-eligible Runner counts ("2 runners" / "No runners") instead of credential health. Omitted = backend catalogue only, badge-free options (never mislead).
  * @param {boolean} [props.healthBadges=false] - Render the backend-host credential-health badges instead. Only for pickers whose model call executes on the backend host itself (retrospective chat, stuck check) — fleet counts would mislead there. Ignored when `fleetCounts` is provided (fleet wins).
  ***/
 export function ModelSelector({
@@ -217,9 +218,18 @@ export function ModelSelector({
   const selectedHarness = visibleHarnesses.find((h) => h.id === effectiveHarnessId);
   // How the selected harness takes a model: list (dropdown over the
   // catalogue) or none (no model control). Entries from older backends carry
-  // no mode — they are catalogue harnesses.
-  const modelSelection = selectedHarness?.modelSelection || 'list';
-  const modelsForHarness = selectedHarness?.models ?? models;
+  // no mode — they are catalogue harnesses. Fleet-served models join the
+  // section's options as exact advertised ids (a fleet pick is a guaranteed
+  // dispatch match), and a `none` harness the fleet serves behaves as `list`
+  // here. Backend-executed pickers pass no fleet data and see the backend
+  // catalogue unchanged.
+  const backendSelection = selectedHarness?.modelSelection || 'list';
+  const modelsForHarness = withFleetModels(
+    selectedHarness?.models ?? models,
+    effectiveHarnessId,
+    fleetCounts,
+  );
+  const modelSelection = effectiveModelSelection(backendSelection, effectiveHarnessId, fleetCounts);
 
   // Resolve the stored reference (composite or legacy bare id) to the
   // composite option key the current list actually contains.

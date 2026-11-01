@@ -84,6 +84,26 @@ describe('validateAliasList', () => {
     expect(errors[0].message).toContain('manages its own model');
   });
 
+  it('accepts a fleet-served model on a none harness the fleet serves', () => {
+    const fleetCounts = {
+      'custom::prov::fleet-model': { runnerCount: 1, runnerIds: ['box-a'] },
+    };
+    expect(
+      validateAliasList(
+        [{ name: 'worker', harness: 'custom', model: 'custom::prov::fleet-model' }],
+        HARNESSES,
+        fleetCounts,
+      ),
+    ).toEqual([]);
+    expect(
+      targetValidity(
+        { harness: 'custom', model: 'custom::prov::fleet-model' },
+        HARNESSES,
+        fleetCounts,
+      ).status,
+    ).toBe('valid');
+  });
+
   it('refuses a none-harness model inside a weighted split', () => {
     const errors = validateAliasList(
       [

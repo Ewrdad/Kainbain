@@ -2,6 +2,7 @@ import path from "node:path";
 import { collectInvalidSkillReferences } from "../kbReferences.js";
 import {
 	defaultModelIdsFor,
+	fleetAwareValidationProbes,
 	validateAliasTargetModels,
 	validateDefaultModelCombination,
 } from "../aliasTargets.js";
@@ -38,11 +39,27 @@ import { normalizeStageType } from "../projectStore.js";
  * @param {Function} [opts.modelIdsFor] - Catalog probe override (tests inject; defaults to the registry probe).
  * @returns {Promise<{error: string|null, warnings: string[]}>} The hard error and soft warnings.
  ***/
-export async function validateModelAliasesPayload(value, { modelIdsFor } = {}) {
+/***
+ * MARK: saveValidationProbes
+ * @description Validation probes for project create/patch: an injected
+ *   `deps.modelIdsFor` (tests) keeps exact override semantics; otherwise
+ *   fleet-aware probes union backend-catalogue knowledge with live fleet
+ *   availability (fleet-only models validate, and a backend-`none`
+ *   harness the fleet serves behaves as `list`). Without a registry both
+ *   degrade exactly to the backend defaults.
+ ***/
+export function saveValidationProbes(deps = {}) {
+	if (deps.modelIdsFor) return { modelIdsFor: deps.modelIdsFor };
+	if (!deps.runnerRegistry) return {};
+	return fleetAwareValidationProbes(deps.runnerRegistry);
+}
+
+export async function validateModelAliasesPayload(value, { modelIdsFor, modelSelectionFor } = {}) {
 	if (!Array.isArray(value)) {
 		return { error: "modelAliases must be an array", warnings: [] };
 	}
 	const probe = modelIdsFor || defaultModelIdsFor;
+	const selectionProbe = modelSelectionFor ? { modelSelectionFor } : {};
 	const cache = new Map();
 	const memoizedProbe = async (harnessId) => {
 		if (!cache.has(harnessId)) cache.set(harnessId, probe(harnessId));
@@ -63,7 +80,7 @@ export async function validateModelAliasesPayload(value, { modelIdsFor } = {}) {
 		seen.add(name);
 		const { error, warnings: rowWarnings } = await validateAliasTargetModels(
 			value[i],
-			{ modelIdsFor: memoizedProbe },
+			{ modelIdsFor: memoizedProbe, ...selectionProbe },
 		);
 		warnings.push(...rowWarnings);
 		if (error) return { error: `modelAliases[${i}]: ${error}`, warnings };
@@ -227,10 +244,11 @@ export default async function projectsRoutes(app, { deps }) {
 				return reply.status(400).send({ error: "Project name is required" });
 			}
 			const saveWarnings = [];
-			const modelIdsFor = deps.modelIdsFor || defaultModelIdsFor;
+			const { modelIdsFor = defaultModelIdsFor, modelSelectionFor } = saveValidationProbes(deps);
+			const selectionProbe = modelSelectionFor ? { modelSelectionFor } : {};
 			if (modelAliases !== undefined) {
 				const { error: aliasesError, warnings } =
-					await validateModelAliasesPayload(modelAliases, { modelIdsFor });
+					await validateModelAliasesPayload(modelAliases, { modelIdsFor, ...selectionProbe });
 				if (aliasesError) {
 					return reply.status(400).send({ error: aliasesError });
 				}
@@ -249,6 +267,7 @@ export default async function projectsRoutes(app, { deps }) {
 						},
 						{
 							modelIdsFor,
+							...selectionProbe,
 							resolveAliasDefault: () =>
 								selectAliasTarget(
 									{ modelAliases: modelAliases || [], defaultModel },
@@ -447,11 +466,13 @@ export default async function projectsRoutes(app, { deps }) {
 			const expectedUpdatedAt =
 				request.headers["if-match"] || request.body?.expectedUpdatedAt;
 			const saveWarnings = [];
-			const modelIdsFor = deps.modelIdsFor || defaultModelIdsFor;
+			const { modelIdsFor = defaultModelIdsFor, modelSelectionFor } = saveValidationProbes(deps);
+			const selectionProbe = modelSelectionFor ? { modelSelectionFor } : {};
 			if (request.body?.modelAliases !== undefined) {
 				const { error: aliasesError, warnings } =
 					await validateModelAliasesPayload(request.body.modelAliases, {
 						modelIdsFor,
+						...selectionProbe,
 					});
 				if (aliasesError) {
 					return reply.status(400).send({ error: aliasesError });
@@ -491,6 +512,7 @@ export default async function projectsRoutes(app, { deps }) {
 						},
 						{
 							modelIdsFor,
+							...selectionProbe,
 							resolveAliasDefault: () =>
 								selectAliasTarget(
 									{

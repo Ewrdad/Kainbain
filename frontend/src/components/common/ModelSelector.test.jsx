@@ -81,6 +81,29 @@ describe('ModelSelector', () => {
     expect(option).not.toHaveTextContent('Ready');
   });
 
+  it('offers fleet-served models on a none harness with exact advertised values', () => {
+    const onChange = vi.fn();
+    render(
+      <ModelSelector
+        models={[]}
+        harnesses={[{ id: 'muse', label: 'muse', modelSelection: 'none', models: [] }]}
+        ariaLabel="Stage model"
+        onChange={onChange}
+        fleetCounts={{
+          'muse::meta::muse-spark-1.3': { runnerCount: 2, runnerIds: ['a', 'b'] },
+        }}
+      />,
+    );
+    // No self-managed note: the fleet serves this harness, so it behaves as list.
+    expect(screen.queryByTestId('model-none-note')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Stage model' }));
+    const option = screen.getByRole('option', { name: /muse-spark-1.3/ });
+    expect(option).toHaveTextContent('2 runners');
+    fireEvent.click(option);
+    // The stored value is the exact advertised id (a guaranteed dispatch match).
+    expect(onChange).toHaveBeenCalledWith('muse::meta::muse-spark-1.3', expect.anything());
+  });
+
   it('renders model options grouped by provider (plain labels, no suffix)', () => {
     render(<ModelSelector models={MODELS} ariaLabel="Default AI Model" />);
 
