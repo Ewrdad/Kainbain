@@ -68,15 +68,18 @@ fi
 # no matter how this script is invoked.
 cd "$(dirname "$0")"
 
-# Host commands must never run inside a task worktree: they publish/deploy
-# the primary checkout only (AsymmetricUpdatesPlan DA9). "Task worktree" means
-# a LINKED worktree on a kb/* branch — NOT merely a kb/* branch name: the
-# primary checkout legitimately sits on a kb/* branch while the harness
-# operates on a task there, and a runOnBranch=primary stage correctly runs
-# in the primary. Keying this guard on the branch name made deploy.sh exit 78
-# even when running in the primary checkout (publish stage of
-# e3b2624a-bc24-4698-9c78-86af7f6f3b5b, 2026-10-30). The default-branch guard
-# and the tip guard below still enforce what a deploy actually ships.
+# Host commands publish/deploy the integration tip, never a task branch —
+# but they ARE invoked from inside a task worktree legitimately: every
+# command stage now runs on a Runner, whose ci execution lands in the
+# per-task worktree (AsymmetricUpdatesPlan DA9's routing assumption no
+# longer holds). Refusing there (exit 78) failed every Runner-dispatched
+# Publish stage (e3b2624a-bc24-4698-9c78-86af7f6f3b5b, 2026-10-30, and its
+# retries). So, like publish.sh: re-run in the PRIMARY checkout (first
+# worktree), where the tip-worktree deploy below takes over. "Task
+# worktree" means a LINKED worktree on a kb/* branch — NOT merely a kb/*
+# branch name: the primary legitimately sits on a kb/* branch while the
+# harness operates on a task there, and there it continues in place. The
+# tip guard below still enforces what a deploy actually ships.
 if [ -n "${KAINBAIN_TASK_ID:-}" ]; then
     _primary_wt="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')"
     _here="$(pwd -P 2>/dev/null || echo "$PWD")"
@@ -84,8 +87,13 @@ if [ -n "${KAINBAIN_TASK_ID:-}" ]; then
     case "$_kb_branch" in
         kb/*)
             if [ -n "$_primary_wt" ] && [ "$_here" != "$_primary_wt" ]; then
-                echo "deploy.sh: refusing to run from a task worktree (branch $_kb_branch at $_here) — deploy/publish stages must run on the primary checkout ($_primary_wt)" >&2
-                exit 78
+                if [ "${KAINBAIN_DEPLOY_PRIMARY_REEXEC:-}" = "1" ]; then
+                    echo "deploy.sh: refusing to run from a task worktree (branch $_kb_branch at $_here) — primary re-run already attempted" >&2
+                    exit 78
+                fi
+                echo "deploy.sh: running from a task worktree (branch $_kb_branch at $_here) — re-running in the primary checkout ($_primary_wt)" >&2
+                cd "$_primary_wt" || exit 78
+                exec env KAINBAIN_DEPLOY_PRIMARY_REEXEC=1 "$_primary_wt/deploy.sh" "$@"
             fi
             if [ -n "$_primary_wt" ]; then
                 echo "deploy.sh: primary checkout is on task branch '$_kb_branch' (not a task worktree) — continuing in the primary checkout; the default-branch guard still applies" >&2
