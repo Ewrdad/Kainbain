@@ -12,7 +12,7 @@
 const KAINBAIN_PREFIX = "KainBain:";
 const RUNNER_OUTPUT_SUBJECT = /^kb\/[0-9a-f-]{8,}/i;
 const REMOTE_TRACKING_MERGE = /^merge remote-tracking branch\b/i;
-const LOCAL_BRANCH_MERGE = /^merge\s+branch\b/i;
+const LOCAL_BRANCH_MERGE = /^merge\s+branch\b.*\binto\s+kb\/[0-9a-f-]{8,}/i;
 const ORIGIN_MERGE = /^merge\s+origin\//i;
 const MERGE_INTO_TASK_BRANCH = /\binto\s+kb\/[0-9a-f-]{8,}/i;
 
