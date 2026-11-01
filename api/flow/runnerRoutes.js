@@ -20,7 +20,7 @@ import {
 	runnerStageTimeoutStatus,
 } from "./stagePolicy.js";
 import { redactSecretsText } from "../../shared/redactSecrets.js";
-import { belowMinimumRunnerVersion } from "./runnerVersionCompat.js";
+import { buildBelowMinimumRefusal } from "./runnerVersionCompat.js";
 import { servingModelFor } from "./runnerPosture.js";
 import {
 	buildTimelineAttribution,
@@ -820,16 +820,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// Runner self-update floor (Option A, ADR 0012): a known product
 		// version below KAINBAIN_RUNNER_MIN_VERSION is refused so it cannot
 		// mis-execute — the daemon self-updates on this code and retries.
-		// Runners reporting no version stay allowed (permissive) so the
-		// first floor rollout never locks the fleet out.
-		if (belowMinimumRunnerVersion(runner?.facts?.versions?.runner, config.runnerMinVersion)) {
-			return reply.status(409).send({
-				error: `Runner ${runner.runnerId} version ${runner?.facts?.versions?.runner} is below the minimum ${config.runnerMinVersion} — update, then ask again`,
-				code: "RUNNER_VERSION_BELOW_MINIMUM",
-				minimumVersion: config.runnerMinVersion,
-				runnerVersion: runner?.facts?.versions?.runner ?? null,
-			});
-		}
+		const belowMinimum = buildBelowMinimumRefusal({ runner, minVersion: config.runnerMinVersion });
+		if (belowMinimum) return reply.status(409).send(belowMinimum);
 		const projectId = resolveAndGuardProject(
 			request.body?.projectId || request.query?.projectId,
 			reply,
@@ -980,19 +972,10 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				code: "RUNNER_PAUSED",
 			});
 		}
-		// Runner self-update floor (Option A, ADR 0012): a known product
-		// version below KAINBAIN_RUNNER_MIN_VERSION is refused so it cannot
-		// mis-execute — the daemon self-updates on this code and retries.
-		// Runners reporting no version stay allowed (permissive) so the
-		// first floor rollout never locks the fleet out.
-		if (belowMinimumRunnerVersion(runner?.facts?.versions?.runner, config.runnerMinVersion)) {
-			return reply.status(409).send({
-				error: `Runner ${runner.runnerId} version ${runner?.facts?.versions?.runner} is below the minimum ${config.runnerMinVersion} — update, then ask again`,
-				code: "RUNNER_VERSION_BELOW_MINIMUM",
-				minimumVersion: config.runnerMinVersion,
-				runnerVersion: runner?.facts?.versions?.runner ?? null,
-			});
-		}
+		// Runner self-update floor (Option A, ADR 0012): same refusal as
+		// direct claim — shared helper so the two gates cannot drift.
+		const belowMinimum = buildBelowMinimumRefusal({ runner, minVersion: config.runnerMinVersion });
+		if (belowMinimum) return reply.status(409).send(belowMinimum);
 		if (isTripped(taskStore)) {
 			const circuit = circuitSnapshot(taskStore);
 			return reply.status(409).send({

@@ -178,6 +178,19 @@ describe("checkForUpdate (GitHub pointer)", () => {
 		);
 	});
 
+	it("fails closed (no throw) when the mirror is unreachable", async () => {
+		const got = await checkForUpdate({
+			currentVersion: "0.1.0",
+			updateUrl: "http://mirror.local/r",
+			fetchImpl: async () => { throw Object.assign(new Error("connect ECONNREFUSED"), { code: "FETCH_FAILED" }); },
+			platform: "linux",
+			arch: "x64",
+			logger: { warn: () => {}, log: () => {} },
+		});
+		assert.equal(got.ok, false);
+		assert.match(got.reason, /failed/i);
+	});
+
 	it("fails closed when the release has no manifest assets", async () => {
 		const fetchImpl = async () => ({
 			ok: true,

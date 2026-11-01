@@ -43,6 +43,17 @@ export const writeUpdateState = (installRoot, state) => {
 // way the new holder removes it and retries once.
 export const STALE_UPDATE_LOCK_MS = 2 * 60 * 60 * 1000;
 
+// Lock timestamps are epoch millis. Older writers stored an ISO string;
+// Date.parse keeps those locks time-recoverable too, and anything
+// unparseable degrades to pid-only recovery (never a brick).
+const readLockTime = (at) => {
+	if (typeof at === "number" && Number.isFinite(at)) return at;
+	const asNumber = Number(at);
+	if (Number.isFinite(asNumber) && asNumber > 0) return asNumber;
+	const asDate = Date.parse(String(at || ""));
+	return Number.isFinite(asDate) ? asDate : 0;
+};
+
 const readLockOwner = (lockPath, fsImpl = fs) => {
 	let raw = null;
 	try {
@@ -52,7 +63,7 @@ const readLockOwner = (lockPath, fsImpl = fs) => {
 	}
 	try {
 		const parsed = JSON.parse(String(raw));
-		if (parsed && typeof parsed === "object") return { pid: Number(parsed.pid) || null, at: Number(parsed.at) || 0 };
+		if (parsed && typeof parsed === "object") return { pid: Number(parsed.pid) || null, at: readLockTime(parsed.at) };
 	} catch {
 		// Legacy format: the file held a bare pid string.
 	}
@@ -83,7 +94,7 @@ export const acquireUpdateLock = (installRoot, { now = Date.now(), fsImpl = fs }
 	for (let attempt = 0; attempt < 2; attempt += 1) {
 		try {
 			const fd = fsImpl.openSync(lockPath, "wx");
-			fsImpl.writeFileSync(fd, JSON.stringify({ pid: process.pid, at: new Date(now).toISOString() }));
+			fsImpl.writeFileSync(fd, JSON.stringify({ pid: process.pid, at: now }));
 			let released = false;
 			return () => {
 				if (released) return;

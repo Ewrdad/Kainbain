@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+	STALE_UPDATE_LOCK_MS,
 	UPDATE_LOCK_FILE,
 	acquireUpdateLock,
 	bootstrapUpdateState,
@@ -35,7 +36,9 @@ describe("acquireUpdateLock", () => {
 		assert.ok(release, "first acquire wins");
 		assert.equal(acquireUpdateLock(root), null, "second acquire loses");
 		release();
-		assert.ok(acquireUpdateLock(root), "re-acquire works after release")?.();
+		const reacquired = acquireUpdateLock(root);
+		assert.ok(reacquired, "re-acquire works after release");
+		reacquired();
 		fs.rmSync(root, { recursive: true, force: true });
 	});
 
@@ -58,6 +61,28 @@ describe("acquireUpdateLock", () => {
 		const release = acquireUpdateLock(root);
 		assert.ok(release, "legacy stale lock is stolen, not fatal");
 		release();
+		fs.rmSync(root, { recursive: true, force: true });
+	});
+
+	it("recovers by timestamp when the holder pid is alive but the lock is ancient", () => {
+		const root = freshRoot();
+		// Our own pid is alive, so pid recovery cannot fire: only the
+		// epoch-millis timestamp marks this lock stale. Guards against a
+		// writer/reader timestamp-format mismatch silently disabling the
+		// time path (locks must carry epoch millis, not ISO strings).
+		fs.writeFileSync(
+			path.join(root, UPDATE_LOCK_FILE),
+			JSON.stringify({ pid: process.pid, at: Date.now() - STALE_UPDATE_LOCK_MS - 1000 }),
+		);
+		const release = acquireUpdateLock(root);
+		assert.ok(release, "ancient lock is stolen even with a live holder pid");
+		release();
+		// And a freshly written lock is in the same epoch format the
+		// reader recovers by: steal must NOT fire for a live fresh lock.
+		const fresh = acquireUpdateLock(root);
+		assert.ok(fresh, "fresh lock is granted");
+		assert.equal(acquireUpdateLock(root), null, "live fresh lock is not stolen");
+		fresh();
 		fs.rmSync(root, { recursive: true, force: true });
 	});
 

@@ -48,32 +48,40 @@ export const checkForUpdate = async ({
 	let manifestText;
 	let signatureText;
 	let releaseMeta = null;
-	if (isGithubReleasesPointer(updateUrl)) {
-		const pointerText = await fetchText({ url: updateUrl, fetchImpl, accept: "application/vnd.github+json" });
-		try {
-			releaseMeta = JSON.parse(pointerText);
-		} catch {
-			return { ok: false, reason: "Release pointer is not valid JSON." };
+	// Any fetch failure (backend down, mirror unreachable, hung socket
+	// past the timeout) is a failed check, never a throw: the caller keeps
+	// running the old version and retries on the next idle interval.
+	try {
+		if (isGithubReleasesPointer(updateUrl)) {
+			const pointerText = await fetchText({ url: updateUrl, fetchImpl, accept: "application/vnd.github+json" });
+			try {
+				releaseMeta = JSON.parse(pointerText);
+			} catch {
+				return { ok: false, reason: "Release pointer is not valid JSON." };
+			}
+			if (releaseMeta?.prerelease === true || isPrereleaseVersion(releaseMeta?.tag_name)) {
+				return { ok: true, update: null, reason: "Latest release is a pre-release; v1 runners skip it." };
+			}
+			const assets = Array.isArray(releaseMeta?.assets) ? releaseMeta.assets : [];
+			const manifestAsset = assets.find((a) => a?.name === "manifest.json");
+			const sigAsset = assets.find((a) => a?.name === "manifest.json.minisig");
+			if (!manifestAsset?.browser_download_url || !sigAsset?.browser_download_url) {
+				return { ok: false, reason: "Latest release has no manifest.json / manifest.json.minisig assets." };
+			}
+			[manifestText, signatureText] = await Promise.all([
+				fetchText({ url: manifestAsset.browser_download_url, fetchImpl, accept: "application/json" }),
+				fetchText({ url: sigAsset.browser_download_url, fetchImpl, accept: "text/plain" }),
+			]);
+		} else {
+			const urls = resolveUpdateUrls({ updateUrl });
+			if (!urls) return { ok: false, reason: "Update URL is empty; set KAINBAIN_RUNNER_UPDATE_URL or restore the default release pointer." };
+			[manifestText, signatureText] = await Promise.all([
+				fetchText({ url: urls.manifestUrl, fetchImpl, accept: "application/json" }),
+				fetchText({ url: urls.signatureUrl, fetchImpl, accept: "text/plain" }),
+			]);
 		}
-		if (releaseMeta?.prerelease === true || isPrereleaseVersion(releaseMeta?.tag_name)) {
-			return { ok: true, update: null, reason: "Latest release is a pre-release; v1 runners skip it." };
-		}
-		const assets = Array.isArray(releaseMeta?.assets) ? releaseMeta.assets : [];
-		const manifestAsset = assets.find((a) => a?.name === "manifest.json");
-		const sigAsset = assets.find((a) => a?.name === "manifest.json.minisig");
-		if (!manifestAsset?.browser_download_url || !sigAsset?.browser_download_url) {
-			return { ok: false, reason: "Latest release has no manifest.json / manifest.json.minisig assets." };
-		}
-		[manifestText, signatureText] = await Promise.all([
-			fetchText({ url: manifestAsset.browser_download_url, fetchImpl, accept: "application/json" }),
-			fetchText({ url: sigAsset.browser_download_url, fetchImpl, accept: "text/plain" }),
-		]);
-	} else {
-		const urls = resolveUpdateUrls({ updateUrl });
-		[manifestText, signatureText] = await Promise.all([
-			fetchText({ url: urls.manifestUrl, fetchImpl, accept: "application/json" }),
-			fetchText({ url: urls.signatureUrl, fetchImpl, accept: "text/plain" }),
-		]);
+	} catch (err) {
+		return { ok: false, reason: `Update check failed: ${err?.message || err}` };
 	}
 	const manifestBytes = Buffer.from(manifestText, "utf8");
 	const verified = verifyImpl({ manifestBytes, signatureText });

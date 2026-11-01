@@ -427,7 +427,10 @@ blast radius and couple updates to backend uptime).
   `$KAINBAIN_RUNNER_INSTALL_ROOT/releases/<v>/unpacked`, then the
   `current` symlink flips (previous kept as `previous`). The daemon exits 0
   and `runner/bin/kainbain-runner` (the supported entrypoint) restarts it
-  into the new version. Three crashed boots in a row flip `current` back to
+  into the new version — the wrapper only restarts when the `current`
+  target actually changed during the run, so a normal completion (single
+  assignment done, dispatch idle-out) stops instead of re-running finished
+  work. Three crashed boots in a row flip `current` back to
   `previous` automatically. Direct `node runner/main.js` is dev-only after
   the first update — it cannot restart itself. A stale `update.lock` from
   a crashed updater heals itself (dead holder is detected and the lock
@@ -443,8 +446,14 @@ blast radius and couple updates to backend uptime).
   recommended knob, so dispatch keeps flowing).
 - **Rollback a bad release.** Delete (or un-publish) the bad GitHub release
   so `releases/latest` resolves to the prior tag, then lower
-  `KAINBAIN_RUNNER_RECOMMENDED_VERSION` to stop badge nagging. Runners pick
-  the prior release up on their next idle check. Re-tagging is never needed.
+  `KAINBAIN_RUNNER_RECOMMENDED_VERSION` to stop badge nagging. Runners still
+  on older versions pick the prior release up on their next idle check.
+  Runners already on the bad release stay there until a newer release
+  supersedes it — the updater never downgrades — so cut a patch release to
+  move them forward. Two exceptions: a release that crashes on boot rolls
+  itself back to `previous` after 3 failed boots, and raising
+  `KAINBAIN_RUNNER_MIN_VERSION` above the bad version stops it dispatching
+  (409) while the patch is cut. Re-tagging is never needed.
 - **Air-gapped/offline hosts.** Point `KAINBAIN_RUNNER_UPDATE_URL` at a
   mirror serving `manifest.json` + `manifest.json.minisig` + the asset
   tarballs at one base URL (or a full `manifest.json` URL). The same

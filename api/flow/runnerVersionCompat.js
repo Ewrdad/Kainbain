@@ -62,6 +62,26 @@ export const belowMinimumRunnerVersion = (runnerVersion, minVersion) => {
 };
 
 /***
+ * MARK: buildBelowMinimumRefusal
+ * @description Builds the 409 refusal body for a Runner below the dispatch
+ *   floor, or null when it may take work (at/above the floor, or reporting
+ *   no version — unknown versions stay permissive so the first floor
+ *   rollout never locks the fleet out). Both refusal points (direct claim
+ *   and dispatch) share this so the code, message, and payload cannot drift.
+ * @example buildBelowMinimumRefusal({ runner: { runnerId: 'r1', facts: { versions: { runner: '0.0.1' } } }, minVersion: '0.1.0' }) => { error, code: 'RUNNER_VERSION_BELOW_MINIMUM', ... }
+ ***/
+export const buildBelowMinimumRefusal = ({ runner, minVersion } = {}) => {
+	const runnerVersion = runner?.facts?.versions?.runner ?? null;
+	if (!belowMinimumRunnerVersion(runnerVersion, minVersion)) return null;
+	return {
+		error: `Runner ${runner?.runnerId} version ${runnerVersion} is below the minimum ${minVersion} — update, then ask again`,
+		code: "RUNNER_VERSION_BELOW_MINIMUM",
+		minimumVersion: minVersion,
+		runnerVersion,
+	};
+};
+
+/***
  * MARK: updateAvailableForRunner
  * @description Badge condition for the fleet matrix: true only when both
  *   sides parse and the Runner trails the recommended version.

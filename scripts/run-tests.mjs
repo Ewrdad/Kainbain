@@ -402,6 +402,7 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 				"runner/updates-platform.test.js",
 				"runner/updates-state.test.js",
 				"runner/updates-verify.test.js",
+				"runner/updates-wrapper.test.js",
 			],
 		},
 		{ name: "Linting (api)", file: npmExec, args: ["run", "lint:api"], lowPriority: true },
