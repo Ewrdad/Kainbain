@@ -71,7 +71,7 @@ const normalizeOperatorConfig = (raw) => {
 				: fresh.directories.worktreeDir,
 	};
 	return {
-		displayName: typeof raw.displayName === "string" ? raw.displayName : null,
+		displayName: typeof raw.displayName === "string" && raw.displayName.trim() ? raw.displayName.trim() : null,
 		availableTools: Array.isArray(raw.availableTools)
 			? raw.availableTools.filter((t) => typeof t === "string")
 			: null,

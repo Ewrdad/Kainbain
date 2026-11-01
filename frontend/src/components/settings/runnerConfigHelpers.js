@@ -63,7 +63,9 @@ export const defaultRunnerConfig = (runner = {}) => {
       typeof sourceDirectories.worktreeDir === 'string' ? sourceDirectories.worktreeDir : '',
   };
   return {
-    displayName: typeof source.displayName === 'string' ? source.displayName : null,
+    displayName: typeof source.displayName === 'string' && source.displayName.trim()
+      ? source.displayName.trim()
+      : null,
     availableTools: Array.isArray(source.availableTools)
       ? source.availableTools.filter((t) => typeof t === 'string')
       : null,
@@ -224,6 +226,7 @@ export const scopePatchForLoaded = (loadedIds = [], allProjects = []) => {
  ***/
 export const validateDirectoryField = (value) => {
   if (typeof value !== 'string' || !value.trim()) return 'Enter a directory path.';
+  if (value.trim().length > 1024) return 'Directory path must be at most 1024 characters.';
   return null;
 };
 
