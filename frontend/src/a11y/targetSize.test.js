@@ -105,7 +105,6 @@ describe('target-size heuristic scan (WCAG 2.5.5 AAA / 2.5.8 AA — advisory)', 
       const summary = Array.from(byFile.entries()).map(
         ([file, hits]) => `${file}: ${hits.length} candidate(s)`,
       );
-      // eslint-disable-next-line no-console
       console.log(
         `[a11y target-size heuristic] ${byFile.size} file(s) with small interactive targets (advisory):\n` +
           summary.join('\n'),
