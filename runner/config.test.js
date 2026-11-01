@@ -78,6 +78,25 @@ describe("loadRunnerConfig", () => {
 		assert.equal(bare.model, "");
 	});
 
+	it("never advertises the default sentinel or duplicate models", () => {
+		const sentinel = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "pi",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+			KAINBAIN_RUNNER_MODEL: "default",
+		});
+		assert.deepEqual(sentinel.models, []);
+		assert.equal(sentinel.model, "");
+
+		const mixed = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "pi",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+			KAINBAIN_RUNNER_MODELS: "default, m1, m1, Default, m2",
+		});
+		assert.deepEqual(mixed.models, ["m1", "m2"]);
+	});
+
 	it("reads a csv HARNESSES list, singular HARNESS seeds it", () => {
 		const multi = loadRunnerConfig({
 			KAINBAIN_RUNNER_ID: "r1",

@@ -58,12 +58,21 @@ export function loadRunnerConfig(env = process.env) {
 	// daemon serves exactly that). KAINBAIN_RUNNER_MODELS (csv) wins when
 	// set; otherwise the singular KAINBAIN_RUNNER_MODEL seeds a 1-element
 	// list; empty means unpinned (matches model-less tasks only).
+	// The "default" sentinel means harness-managed (no pinned model),
+	// never a model this host can serve, so it is never advertised:
+	// an operator who sets KAINBAIN_RUNNER_MODEL=default gets the
+	// unpinned behaviour, not a fake capability the backend could
+	// match against. Duplicates carry no information either.
+	const isServableModelName = (name) =>
+		Boolean(name) && name.toLowerCase() !== "default";
 	const model = str("KAINBAIN_RUNNER_MODEL", "");
+	const cleanedSingularModel = isServableModelName(model) ? model : "";
 	const models = str("KAINBAIN_RUNNER_MODELS", "")
 		.split(",")
 		.map((m) => m.trim())
-		.filter(Boolean);
-	if (models.length === 0 && model) models.push(model);
+		.filter(isServableModelName)
+		.filter((m, index, all) => all.indexOf(m) === index);
+	if (models.length === 0 && cleanedSingularModel) models.push(cleanedSingularModel);
 	const projectId = str("KAINBAIN_RUNNER_PROJECT_ID", "");
 	const taskId = str("KAINBAIN_RUNNER_TASK_ID", "");
 	if (!runnerId) errors.push("KAINBAIN_RUNNER_ID is required (stable per host).");
@@ -113,7 +122,7 @@ export function loadRunnerConfig(env = process.env) {
 		harnessId,
 		harnessIds,
 		harnessAuto,
-		model,
+		model: cleanedSingularModel,
 		models,
 		tiers: str("KAINBAIN_RUNNER_TIERS", "T0,T1")
 			.split(",")

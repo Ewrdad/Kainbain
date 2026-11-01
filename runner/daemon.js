@@ -970,7 +970,13 @@ async function executeAssignment({
 				workdir,
 				taskId: taskId,
 				stageId,
-				model: model || config.model,
+				// Run on the SAME served model every observable reports
+				// (servedModel): the raw dispatch value can be the
+				// "default" sentinel or whitespace, which the harness
+				// would otherwise receive literally while the UI
+				// reports the fallback (or nothing) — a run/report
+				// divergence. Null means no pin: the harness default.
+				model: servedModel,
 				prompt,
 				onLog: (text) => {
 					if (structuredSender.isStructured()) return;
