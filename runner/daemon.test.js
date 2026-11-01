@@ -724,6 +724,63 @@ describe("runDispatchLoop", () => {
 		assert.equal(seenMeta?.model, "m-want");
 	});
 
+	it("runs the harness on the reported model when the dispatch model is the default sentinel", async () => {
+		// The harness must receive the SAME model every observable
+		// reports: the raw "default" sentinel would otherwise run
+		// literally while the UI reports the Runner fallback.
+		const repo = localRepo();
+		const config = loopConfig({ model: "m-pin", models: ["m-pin"] });
+		dirs.push(config.workRoot, repo);
+		let seenMeta = null;
+		let completed = null;
+		const capturingHarness = () => ({
+			async createSession(project, meta) {
+				seenMeta = meta;
+				return {
+					getLastAssistantText: () => "done",
+					subscribe: () => () => {},
+					prompt: async () => "done",
+					dispose: async () => {},
+				};
+			},
+		});
+		let polls = 0;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				polls += 1;
+				return polls === 1
+					? {
+							assigned: true,
+							projectId: "p1",
+							taskId: "t1",
+							executionId: "e1",
+							epoch: 1,
+							requirements: { harness: "mock", model: "default" },
+						}
+					: { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed = args;
+				return { accepted: true, shaState: "present" };
+			},
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => capturingHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.assignments, 1);
+		assert.equal(seenMeta?.model, "m-pin");
+		assert.equal(completed?.model, "m-pin");
+	});
+
 	it("reports the served model accurately: dispatch model on agent stages, none on CI stages", async () => {
 		// The regression this pins: every observable path used to write the
 		// Runner default (`config.model || "default"`), so the UI showed
