@@ -21,9 +21,18 @@ export function BuildHashTrigger() {
   // version-prefixed tag (`1.0.0-<sha>`): display at most the short 7-char
   // form so a long hash can never crowd the 72px bar at narrow widths. The
   // full value is never needed in the DOM — identity is build number + short.
-  const rawSha =
-    typeof commitSha === 'string' && commitSha.trim() !== '' ? commitSha.trim() : null;
-  const sha = rawSha ? rawSha.slice(rawSha.lastIndexOf('-') + 1, rawSha.lastIndexOf('-') + 8) || null : null;
+  // `unknown` / blank stamps (a deploy that could not resolve HEAD) are
+  // treated as "no hash" so we never fabricate an identity from garbage.
+  const rawSha = typeof commitSha === 'string' && commitSha.trim() !== '' ? commitSha.trim() : null;
+  const strippedSha = rawSha
+    ? rawSha.includes('-')
+      ? rawSha.slice(rawSha.lastIndexOf('-') + 1)
+      : rawSha
+    : null;
+  const sha =
+    strippedSha != null && strippedSha !== '' && strippedSha.toLowerCase() !== 'unknown'
+      ? strippedSha.slice(0, 7)
+      : null;
   const label = sha ? `#B${buildNumber}·${sha}` : `#B${buildNumber}`;
   const accessibleName =
     sha != null
