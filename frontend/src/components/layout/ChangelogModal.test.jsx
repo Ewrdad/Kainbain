@@ -87,6 +87,22 @@ describe('ChangelogModal', () => {
     expect(screen.getByText(/#B12/)).toHaveTextContent('branch master');
   });
 
+  test('shows the baked date so stale history reads honestly', async () => {
+    api.deployChangelog.mockResolvedValue(baked([entry()]));
+    render(<ChangelogModal buildNumber={12} onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByText('Fix the thing')).toBeInTheDocument());
+    expect(screen.getByText(/baked 2026-09-30/)).toBeInTheDocument();
+  });
+
+  test('omits the baked date when the artifact carries none', async () => {
+    const withoutDate = baked([entry()]);
+    delete withoutDate.changelog.generatedAt;
+    api.deployChangelog.mockResolvedValue(withoutDate);
+    render(<ChangelogModal buildNumber={12} onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByText('Fix the thing')).toBeInTheDocument());
+    expect(screen.queryByText(/baked /)).not.toBeInTheDocument();
+  });
+
   test('shows an explicit empty state when no changelog was baked', async () => {
     api.deployChangelog.mockResolvedValue({ changelog: null, reason: 'not-baked' });
     render(<ChangelogModal buildNumber={12} onClose={() => {}} />);
