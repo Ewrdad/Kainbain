@@ -109,10 +109,17 @@ test.describe.serial("PR Review E2E", () => {
 		git(repoDir, ["add", "."]);
 		git(repoDir, ["commit", "-m", "initial commit"]);
 
+		// Publish target for the blocking merge stage: a local bare repo, so
+		// the publish push succeeds offline (no git.example.com).
+		const bareRepo = path.join(scratchRoot, "origin.git");
+		fs.mkdirSync(bareRepo, { recursive: true });
+		git(bareRepo, ["init", "--bare"]);
+
 		const res = await request.post(`${API_BASE}/projects`, {
 			data: {
 				name: `PR Review Canary ${Date.now()}`,
 				cwd: repoDir,
+				gitUrl: bareRepo,
 				notesPath: path.join(scratchRoot, "notes"),
 				useBranches: true,
 				// Explicit stage ids: creation does not mint them, and id-less
@@ -128,19 +135,6 @@ test.describe.serial("PR Review E2E", () => {
 		expect(res.ok()).toBeTruthy();
 		project = await res.json();
 		expect(project.useBranches).toBe(true);
-		// The canary stack's KAINBAIN_GIT_REMOTE_TEMPLATE points at an
-		// unreachable host (git.example.com) so project creation satisfies
-		// D11 without network. The merge stage's publish push is BLOCKING,
-		// so repoint this fixture repo's origin at a local bare repo: the
-		// push then succeeds offline and the merge stage completes.
-		const bareRepo = path.join(scratchRoot, "origin.git");
-		fs.mkdirSync(bareRepo, { recursive: true });
-		git(bareRepo, ["init", "--bare"]);
-		try {
-			git(repoDir, ["remote", "set-url", "origin", bareRepo]);
-		} catch {
-			git(repoDir, ["remote", "add", "origin", bareRepo]);
-		}
 		// Project provisioning writes scaffolding into the repo cwd
 		// (`.kainbain/project.json`, `.gitignore`, `docs`). Commit it on main
 		// BEFORE any task branch exists: otherwise the test's later
