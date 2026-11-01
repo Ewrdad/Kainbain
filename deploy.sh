@@ -382,6 +382,9 @@ APP_LINK_HEALTH="${KAINBAIN_APP_LINK_HEALTH:-/status}"
 APP_LINK_PROJECT="${KAINBAIN_APP_LINK_PROJECT:-}"
 
 # --- Arg parsing ----------------------------------------------------------
+# Original args, kept verbatim so the tip-worktree re-exec (see
+# require_deploy_tip_current) can restart this deploy with identical flags.
+DEPLOY_ORIG_ARGS=("$@")
 MODE="build"
 FAST="false"
 PUBLISH_ONLY="false"
@@ -926,16 +929,93 @@ operation_key_branch() {
 	return 0
 }
 
-# Deploy-source freshness gate: refuses to build when the checkout is not
-# exactly the integration tip the merge landed. A Runner merge pushes to
-# origin but never touches this checkout, so without this the deploy
-# silently ships whatever the tree happens to hold (prod stayed behind main
-# even when the deploy itself ran). Fails LOUD (failed result + exit 1, so
-# the stage parks with evidence and a genuine retry re-runs after a sync)
-# instead of shipping stale code. Skips (returns 0) for manual runs (no
-# operation key), outside a git repository, when the branch has no remote
-# ref, or when the freshness fetch itself fails — infra problems must never
-# brick a deploy; only a PROVEN mismatch fails.
+# Dedicated deploy-source worktree: the pristine, detached checkout of the
+# integration tip that a deploy actually builds. It lives under DEPLOY_DIR
+# (never inside the primary checkout), so creating/resetting it can never
+# touch the primary tree, its branch, or its staged/untracked WIP.
+deploy_tip_worktree_path() {
+	echo "${KAINBAIN_DEPLOY_SOURCE_DIR:-$DEPLOY_DIR/source}"
+	return 0
+}
+
+# Materializes (or refreshes) the deploy-source worktree at exactly
+# $tip_sha on integration branch $branch. Reuses the existing worktree when
+# it is already ours: it is a dedicated scratch source, so resetting it to
+# the tip is its purpose (ignored files such as node_modules survive
+# `clean -fd`). Returns 1 without deleting anything when the path exists
+# but is not a git worktree of this repo — a user path is never removed.
+materialize_deploy_tip_worktree() {
+	local branch="$1" tip_sha="$2"
+	local src
+	src="$(deploy_tip_worktree_path)"
+	if [ -z "$src" ] || [ -z "$tip_sha" ]; then
+		return 1
+	fi
+	# Reuse only when $src is itself a worktree root — a plain subdir of
+	# the primary would resolve to the primary's git dir and must never be
+	# checked out from under the task sitting there.
+	if [ "$(git -C "$src" rev-parse --show-toplevel 2>/dev/null || echo "")" = "$src" ]; then
+		git -C "$src" fetch origin "$branch" >/dev/null 2>&1 || true
+		git -C "$src" checkout -q --detach "$tip_sha" >/dev/null 2>&1 || return 1
+		git -C "$src" reset --hard -q "$tip_sha" >/dev/null 2>&1 || return 1
+		git -C "$src" clean -fdq >/dev/null 2>&1 || true
+	elif [ -e "$src" ]; then
+		# Occupied by a non-worktree (file, plain dir, stale checkout):
+		# refuse rather than delete something that is not ours.
+		if [ -d "$src" ] && [ -z "$(ls -A "$src" 2>/dev/null)" ]; then
+			rmdir "$src" 2>/dev/null || return 1
+		else
+			return 1
+		fi
+		git worktree prune >/dev/null 2>&1 || true
+		mkdir -p "$(dirname "$src")" 2>/dev/null || return 1
+		git worktree add -q --detach "$src" "$tip_sha" >/dev/null 2>&1 || return 1
+	else
+		git worktree prune >/dev/null 2>&1 || true
+		mkdir -p "$(dirname "$src")" 2>/dev/null || return 1
+		git worktree add -q --detach "$src" "$tip_sha" >/dev/null 2>&1 || return 1
+	fi
+	[ "$(git -C "$src" rev-parse HEAD 2>/dev/null || echo "")" = "$tip_sha" ] || return 1
+	# Seed the carried-forward release manifest (publish.sh's change-detection
+	# base + component carry-forward live in the gitignored dist/, which a
+	# fresh worktree does not have). Only when the worktree has none yet —
+	# its own manifest from a previous deploy is fresher than the primary's.
+	local _primary_top
+	_primary_top="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+	if [ -n "$_primary_top" ] && [ "$_primary_top" != "$src" ] && [ -f "$_primary_top/dist/release-manifest.json" ] && [ ! -f "$src/dist/release-manifest.json" ]; then
+		mkdir -p "$src/dist" 2>/dev/null || true
+		cp "$_primary_top/dist/release-manifest.json" "$src/dist/release-manifest.json" 2>/dev/null || true
+	fi
+	return 0
+}
+
+# Restarts this deploy from the deploy-source worktree with the original
+# args. `exec` so no second deploy process lingers; the marker env tells
+# the re-run it already IS the tip tree (a mismatch there is a proven
+# failure, not another hop). The systemd cgroup re-exec at the top of the
+# script is not re-entered: this runs after it (KAINBAIN_OUTSIDE_CGROUP is
+# already pinned, or no cgroup match exists in the worktree run either).
+reexec_from_deploy_tip_worktree() {
+	local src="$1"
+	log "🚀 Re-running deploy from the integration-tip worktree: $src"
+	cd "$src" || exit 1
+	exec env KAINBAIN_DEPLOY_FROM_TIP_WORKTREE=1 "$src/deploy.sh" "${DEPLOY_ORIG_ARGS[@]}"
+}
+
+# Deploy-source freshness gate (asymmetric: tasks, merges, and deploys move
+# independently). The deploy must build exactly the integration tip the
+# merge landed on origin, but the primary checkout belongs to whichever
+# task sits on it — normally a kb/* branch, often diverged from origin/main
+# with staged WIP. Demanding HEAD == origin/<branch> IN THE PRIMARY used to
+# park every deploy in that normal state (HEAD 08f5c5e vs tip 6b0f7a4,
+# 2026-11-01). So: when the primary is not already the tip, materialize the
+# tip in the dedicated deploy-source worktree and re-exec there. The
+# primary is never switched, reset, stashed, or shipped; unmerged/unpushed
+# primary commits simply are not deployed. Only a PROVEN failure to
+# converge even the tip worktree fails loud (failed result + exit 1).
+# Skips (returns 0) for manual runs (no operation key), outside a git
+# repository, when the branch has no remote ref, or when the freshness
+# fetch itself fails — infra problems must never brick a deploy.
 require_deploy_tip_current() {
 	local branch
 	branch="$(operation_key_branch)"
@@ -971,7 +1051,21 @@ require_deploy_tip_current() {
 	elif git merge-base --is-ancestor "$tip_sha" "$head_sha" 2>/dev/null; then
 		relation="ahead of"
 	fi
-	local message="Deploy source is ${relation} the integration tip (${tracking}): HEAD $(echo "$head_sha" | cut -c1-7) vs tip $(echo "$tip_sha" | cut -c1-7). Refusing to ship unmerged/unpushed code — sync the deploy source to '${tracking}' (pre-deploy tip sync, or fetch + checkout/reset) and retry; a genuine retry re-runs the deploy."
+	if [ "${KAINBAIN_DEPLOY_FROM_TIP_WORKTREE:-}" != "1" ]; then
+		local src
+		src="$(deploy_tip_worktree_path)"
+		if materialize_deploy_tip_worktree "$branch" "$tip_sha"; then
+			log "↪️  Deploy source is ${relation} the integration tip (${tracking}: primary HEAD $(echo "$head_sha" | cut -c1-7) vs tip $(echo "$tip_sha" | cut -c1-7)) — deploying the merged tip from '$src' instead; the primary checkout (branch, HEAD, WIP) is left untouched and its unmerged work is not shipped."
+			reexec_from_deploy_tip_worktree "$src"
+			# exec never returns on success; reaching here means the
+			# hand-off completed in-process (tests) — do not fall through
+			# to the refusal for a deploy that was handed off.
+			return 0
+		else
+			log "⚠️  Tip guard: could not materialize the integration tip at '$src' — refusing rather than shipping the ${relation} primary tree."
+		fi
+	fi
+	local message="Deploy source is ${relation} the integration tip (${tracking}): HEAD $(echo "$head_sha" | cut -c1-7) vs tip $(echo "$tip_sha" | cut -c1-7), and the tip worktree could not be converged. Refusing to ship unmerged/unpushed code — free the deploy-source path ('$(deploy_tip_worktree_path)') or sync the checkout to '${tracking}' and retry; a genuine retry re-runs the deploy."
 	log "❌ $message"
 	write_result "failed" "$message" "false" "1" "require_deploy_tip_current" "HEAD=$head_sha tip=$tip_sha"
 	exit 1
