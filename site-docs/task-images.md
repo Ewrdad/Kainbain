@@ -77,6 +77,33 @@ and branch moves. The viewer rewrites `assets/<name>` to the binary-safe
 The same references work in task goals, stage reports, and review pages —
 anywhere markdown is rendered with the task in context.
 
+## Reliability: why images stay loaded across refreshes
+
+Images are stored once and never overwritten (a repeat upload dedupes to
+`name-2.png`), so the bytes behind a reference are immutable. Serving leans
+on that:
+
+- **Long-lived cache.** The serve endpoint answers
+  `Cache-Control: private, max-age=31536000, immutable`, so a page refresh
+  or a later revalidation never re-requests the image into a transient
+  miss — the browser keeps the copy it already has.
+- **Disk is the source of truth.** A task counts as existing when its
+  `task.md` is on disk, even if the server has not rehydrated the task into
+  its in-memory cache yet (fresh boot, project switch) — a cold cache can
+  no longer 404 a present image.
+- **Docs link self-heals before serving.** If a branch switch removed the
+  project's `docs` link, the serve path re-verifies and recreates it before
+  checking anything, so images do not 404 into a "shadow directory".
+- **Stale references canonicalize.** A reference whose name drifted from the
+  stored file's sanitized name (wrong case, spaces, parens) resolves to the
+  matching stored asset instead of 404ing.
+
+If an image still cannot be fetched (e.g. the file was deleted by hand), the
+viewer shows an inert `🖼️ <name> (image unavailable)` chip with a **Retry**
+button instead of a broken-image icon; after one transient failure the image
+also retries automatically once before settling on the chip. The upload
+thumbnails behave the same way.
+
 ## How agents see the images
 
 Prompts are **file-reference-first** (never base64-embedded — most

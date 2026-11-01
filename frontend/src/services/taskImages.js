@@ -29,10 +29,46 @@ export function resolveTaskImageUrl({ apiBase = '', projectId, taskId, src }) {
     return trimmed;
   }
   if (!projectId || !taskId) return trimmed;
-  const assetMatch = trimmed.match(/(?:^|\/)(assets\/[^/?#]+)$/);
+  // CommonMark image destinations may carry a trailing quoted title
+  // (`![a](assets/a.png "shot")`); resolve on the bare destination so the
+  // title never becomes part of the requested asset name.
+  const resolvedSrc = firstSrcToken(trimmed);
+  const assetMatch = resolvedSrc.match(/(?:^|\/)(assets\/[^/?#]+)$/);
   if (!assetMatch) return trimmed;
   const base = String(apiBase || '').replace(/\/+$/, '');
   return `${base}/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/images/${encodeURIComponent(assetMatch[1].slice('assets/'.length))}`;
+}
+
+/***
+ * MARK: taskContextFromFilePath
+ * @description Derives the task image context ({ projectId, taskId }) for a
+ *   project-relative file path that lives inside a task folder
+ *   (`<docsDirName>/tasks/<taskId>/...` — task.md, stage reports, …). Used by
+ *   the explorer's markdown preview so `assets/<name>` references resolve to
+ *   the task image endpoint there too, not just on task pages. Returns null
+ *   for paths outside any task folder or when the project is unknown.
+ * @example taskContextFromFilePath('docs/tasks/t-1/task.md', { id: 'p1' }) => { projectId: 'p1', taskId: 't-1' }
+ * @example taskContextFromFilePath('docs/tasks/t-1/stage-1.md', { id: 'p1', docsDirName: 'k-docs' }) => null
+ * @param {string} filePath - Project-relative file path (as listed by the explorer).
+ * @param {Object} [project] - Project record (carries `id` and optional `docsDirName`).
+ * @returns {{projectId: string, taskId: string}|null}
+ ***/
+export function taskContextFromFilePath(filePath, project) {
+  if (!filePath || typeof filePath !== 'string' || !project?.id) return null;
+  const custom = typeof project.docsDirName === 'string' ? project.docsDirName.trim() : '';
+  const docsName = custom || 'docs';
+  const normalized = filePath.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '');
+  const escaped = docsName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = normalized.match(new RegExp(`^${escaped}/tasks/([^/]+)(?:/|$)`));
+  if (!match) return null;
+  let taskId = match[1];
+  try {
+    taskId = decodeURIComponent(taskId);
+  } catch {
+    // Malformed percent-encoding: keep the raw segment.
+  }
+  if (!taskId || taskId === '.' || taskId === '..') return null;
+  return { projectId: project.id, taskId };
 }
 
 /***
