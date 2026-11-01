@@ -6,6 +6,7 @@ import { logger } from '../../services/logger';
 import { Icon } from '../Icon';
 import { BrandMark } from '../BrandMark';
 import { getRepoHostFileUrl } from '../../services/repoHost';
+import { taskContextFromFilePath } from '../../services/taskImages';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { ResponsiveLabel } from '../common/ResponsiveLabel';
 import { GoToAppLink } from '../common/GoToAppLink';
@@ -241,6 +242,11 @@ export function ProjectExplorer() {
     selectedFile && isVisualPreview
       ? (api.getFileRawUrl?.(activeProjectId, selectedFile.path) ?? null)
       : null;
+  // Task-folder files (task.md, stage reports) render markdown whose
+  // `assets/<name>` image refs only resolve with the task in context — derive
+  // it from the selected path so the explorer preview shows the same images
+  // as the task pages. Cheap pure derivation, no memo needed.
+  const taskImageContext = taskContextFromFilePath(selectedFile?.path, activeProject);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-surface-deep text-on-surface">
@@ -670,6 +676,8 @@ export function ProjectExplorer() {
                     previewMode={previewMode}
                     lines={lines}
                     rawUrl={rawPreviewUrl}
+                    projectId={taskImageContext?.projectId ?? null}
+                    taskId={taskImageContext?.taskId ?? null}
                   />
                 )}
               </div>

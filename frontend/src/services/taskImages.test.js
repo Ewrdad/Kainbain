@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   resolveTaskImageUrl,
   taskImageRequests,
+  taskContextFromFilePath,
   isImageFile,
   appendImageMarkdown,
   appendImagesMarkdown,
@@ -294,5 +295,48 @@ describe('isImageFile', () => {
     expect(isImageFile({ name: '' })).toBe(false);
     expect(isImageFile(null)).toBe(false);
     expect(isImageFile({})).toBe(false);
+  });
+});
+describe('taskContextFromFilePath', () => {
+  it('derives the task context from a task.md path with the default docs folder', () => {
+    expect(taskContextFromFilePath('docs/tasks/t-1/task.md', { id: 'p1' })).toEqual({
+      projectId: 'p1',
+      taskId: 't-1',
+    });
+  });
+
+  it('derives the context for any file inside the task folder (reports, assets)', () => {
+    expect(taskContextFromFilePath('docs/tasks/t-1/stage-1-report.md', { id: 'p1' })).toEqual({
+      projectId: 'p1',
+      taskId: 't-1',
+    });
+    expect(taskContextFromFilePath('docs/tasks/t-1/assets/a.png', { id: 'p1' })).toEqual({
+      projectId: 'p1',
+      taskId: 't-1',
+    });
+  });
+
+  it('honours a custom docsDirName and tolerates leading ./ or /', () => {
+    expect(
+      taskContextFromFilePath('./k-docs/tasks/t-9/task.md', { id: 'p1', docsDirName: 'k-docs' }),
+    ).toEqual({ projectId: 'p1', taskId: 't-9' });
+    // The default name no longer matches when a custom one is configured.
+    expect(taskContextFromFilePath('docs/tasks/t-9/task.md', { id: 'p1', docsDirName: 'k-docs' })).toBeNull();
+  });
+
+  it('returns null outside task folders, for task-listing paths, and without a project', () => {
+    expect(taskContextFromFilePath('README.md', { id: 'p1' })).toBeNull();
+    expect(taskContextFromFilePath('docs/tasks', { id: 'p1' })).toBeNull();
+    expect(taskContextFromFilePath('docs/tasks/t-1/task.md', null)).toBeNull();
+    expect(taskContextFromFilePath('', { id: 'p1' })).toBeNull();
+    expect(taskContextFromFilePath('docs/tasks/../task.md', { id: 'p1' })).toBeNull();
+  });
+
+  it('escapes regex metacharacters in a custom docs folder name', () => {
+    expect(
+      taskContextFromFilePath('k.docs/tasks/t-2/task.md', { id: 'p1', docsDirName: 'k.docs' }),
+    ).toEqual({ projectId: 'p1', taskId: 't-2' });
+    // A name that would be a regex wildcard must not match other folders.
+    expect(taskContextFromFilePath('kXdocs/tasks/t-2/task.md', { id: 'p1', docsDirName: 'k.docs' })).toBeNull();
   });
 });
