@@ -1825,11 +1825,6 @@
     "kind": "function"
   },
   {
-    "file": "frontend/src/components/layout/BuildBadge.jsx",
-    "exportName": "default",
-    "kind": "default"
-  },
-  {
     "file": "frontend/src/components/layout/ChangelogModal.jsx",
     "exportName": "CHANGELOG_FETCH_LIMIT",
     "kind": "const"

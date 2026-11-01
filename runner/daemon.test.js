@@ -311,6 +311,7 @@ describe("runSingleAssignment", () => {
 		const prompted = progressCalls.find((c) => c.event === "prompted");
 		assert.equal(prompted.model, null);
 		assert.equal(completed.posture, "T0/T1:mock");
+		assert.equal(completed.model, null);
 		assert.ok(!completed.posture.includes("default"));
 		assert.ok(!completed.posture.includes("m-pin"));
 	});
@@ -778,15 +779,17 @@ describe("runDispatchLoop", () => {
 		assert.equal(agentPrompted.harness, "mock");
 		const agentComplete = completeCalls.find((c) => c.executionId === "e-agent");
 		assert.equal(agentComplete.posture, "T0/T1:mock:m-want");
+		assert.equal(agentComplete.model, "m-want");
 		assert.ok(!agentComplete.posture.includes("default"));
 		assert.ok(!agentComplete.posture.includes("m-pin"));
 		// CI assignment: no model anywhere — progress reports null (omitted on
-		// the wire by client.progress) and the posture has no model segment.
+		// the wire by client.progress) and the posture/complete carry no model.
 		const ciPrompted = progressCalls.find((c) => c.executionId === "e-ci" && c.event === "prompted");
 		assert.equal(ciPrompted.model, null);
 		assert.equal(ciPrompted.harness, "mock");
 		const ciComplete = completeCalls.find((c) => c.executionId === "e-ci");
 		assert.equal(ciComplete.posture, "T0/T1:mock");
+		assert.equal(ciComplete.model, null);
 		assert.ok(!ciComplete.posture.includes("default"));
 		assert.ok(!ciComplete.posture.includes("m-pin"));
 	});
@@ -1116,11 +1119,13 @@ describe("formatPosture", () => {
 		assert.equal(formatPosture({ tiers: ["T0"], harness: "pi", model: "m" }), "T0:pi:m");
 		assert.equal(formatPosture({ tiers: ["T0", "T1"], harness: "pi", model: "  m  " }), "T0/T1:pi:m");
 	});
-	it("omits model segment when null, blank, or non-string", () => {
+	it("omits model segment when null, blank, non-string, or the default sentinel", () => {
 		assert.equal(formatPosture({ tiers: ["T0"], harness: "pi", model: null }), "T0:pi");
 		assert.equal(formatPosture({ tiers: ["T0", "T1"], harness: "pi", model: "" }), "T0/T1:pi");
 		assert.equal(formatPosture({ tiers: ["T0"], harness: "pi", model: "   " }), "T0:pi");
 		assert.equal(formatPosture({ tiers: ["T0"], harness: "pi", model: 42 }), "T0:pi");
+		assert.equal(formatPosture({ tiers: ["T0"], harness: "pi", model: "default" }), "T0:pi");
+		assert.equal(formatPosture({ tiers: ["T0"], harness: "pi", model: "  Default " }), "T0:pi");
 	});
 	it("never emits stray segments for missing tiers or harness", () => {
 		assert.equal(formatPosture({ tiers: ["T0"], harness: "", model: "m" }), "T0:m");

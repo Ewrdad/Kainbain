@@ -42,8 +42,7 @@ import {
 	deployFailureReasonText,
 	resolveDeployFailureContext,
 } from "./deployStageFailure.js";
-import { checkoutBranch, defaultBranch } from "../git/branch.js";
-import { syncDefaultBranchToRemote } from "../git/remote.js";
+import { defaultBranch } from "../git/branch.js";
 import { clearRetryState } from "../../shared/taskRetryState.js";
 
 /***
@@ -128,20 +127,22 @@ export function collectContinuityResumeEvidence(
 
 /***
  * MARK: syncDeploySourceToTip
- * @description Best-effort pre-deploy sync: converges the deploy source
- *   checkout to the integration tip BEFORE the deploy builds it. A Runner
- *   merge pushes the landed tip to origin but never touches this checkout,
- *   so without this the deploy ships whatever the tree happens to hold
- *   (prod stayed behind main even when the deploy itself ran). Ensures the
- *   working tree is on the default branch (safe checkout: refuses on
- *   genuinely dirty trees) and fast-forwards its ref to the remote tip.
- *   Never throws: every failure mode resolves to a skipped result with an
- *   audit line, and deploy.sh's tip guard parks loudly instead of shipping
- *   stale code when the sync cannot converge.
- * @example await syncDeploySourceToTip(store, task, '/repo') => { synced: true, ... }
- * @param {Object} store - Task store (audit helpers are best-effort).
- * @param {Object} task - The task entity (audit context).
- * @param {string} cwd - Deploy source checkout.
+ * @description Retained name, new asymmetric contract: stage entry must
+ *   NOT converge the primary checkout. That checkout belongs to whichever
+ *   task sits on it (normally a kb/* branch, often diverged from
+ *   origin/<default> with staged WIP); switching/resetting/stashing it to
+ *   reach the integration tip either refused (dirty tree) and parked every
+ *   deploy on deploy.sh's tip guard, or yanked the tree out from under a
+ *   live task. The deploy source is decoupled instead: deploy.sh fetches
+ *   origin itself and, when the primary is not already the tip,
+ *   materializes the tip in its dedicated deploy-source worktree and
+ *   re-execs there, leaving the primary byte-for-byte untouched. This
+ *   hook therefore only resolves the integration branch for the audit
+ *   line and reports `primary-untouched`. Never throws.
+ * @example await syncDeploySourceToTip(store, task, '/repo') => { synced: false, skipped: 'primary-untouched', mainBranch: 'main', ... }
+ * @param {Object} store - Task store (unused; kept for call-site compat).
+ * @param {Object} task - The task entity (unused; kept for call-site compat).
+ * @param {string} cwd - Primary checkout (read-only here).
  * @returns {Promise<Object>} `{ synced, skipped, mainBranch, before, after, detail }` (never throws).
  ***/
 export async function syncDeploySourceToTip(store, task, cwd) {
@@ -153,18 +154,6 @@ export async function syncDeploySourceToTip(store, task, cwd) {
 		after: null,
 		detail,
 	});
-	const note = (action) => {
-		try {
-			store?._recordHistory?.(task, action, new Date().toISOString());
-		} catch {
-			// Audit is best-effort; the sync result still applies.
-		}
-		try {
-			_appendProcessLog(task, `[DEPLOY] ${action}`);
-		} catch {
-			// Audit is best-effort; the sync result still applies.
-		}
-	};
 	try {
 		if (!cwd || typeof cwd !== "string" || !cwd.trim()) {
 			return skipped("no-cwd");
@@ -176,33 +165,13 @@ export async function syncDeploySourceToTip(store, task, cwd) {
 			return skipped("no-main", e?.message || String(e));
 		}
 		if (!branch) return skipped("no-main");
-		try {
-			await checkoutBranch(cwd, branch);
-		} catch (e) {
-			// Dirty tree / locked worktree: leave the source untouched and
-			// loud. deploy.sh's tip guard will park instead of shipping it.
-			const detail = e?.message || String(e);
-			note(`Pre-deploy tip sync: refusing to check out '${branch}' (${detail}) — deploy will park on its tip guard until the tree is clean`);
-			return skipped("checkout-refused", detail);
-		}
-		const res = await syncDefaultBranchToRemote(cwd, { mainBranch: branch });
-		if (res?.synced) {
-			const short = (sha) => (typeof sha === "string" && sha ? sha.slice(0, 7) : "unknown");
-			note(
-				`Pre-deploy tip sync: '${res.mainBranch || branch}' ${short(res.before)} → ${short(res.after)}${res.detail ? ` (${res.detail})` : ""}`,
-			);
-		} else if (res?.skipped && res.skipped !== "already-in-sync") {
-			note(
-				`Pre-deploy tip sync skipped (${res.skipped}${res.detail ? `: ${res.detail}` : ""}) — deploy will park on its tip guard unless the source already matches the tip`,
-			);
-		}
 		return {
-			synced: Boolean(res?.synced),
-			skipped: res?.skipped ?? null,
-			mainBranch: res?.mainBranch ?? branch,
-			before: res?.before ?? null,
-			after: res?.after ?? null,
-			detail: res?.detail ?? null,
+			synced: false,
+			skipped: "primary-untouched",
+			mainBranch: branch,
+			before: null,
+			after: null,
+			detail: `deploy.sh deploys origin/${branch} from its dedicated tip worktree; the primary checkout is not switched, reset, or shipped`,
 		};
 	} catch (e) {
 		return skipped("error", e?.message || String(e));

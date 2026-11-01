@@ -62,7 +62,56 @@ case "$_branch" in
     fi
     unset _primary _here ;;
 esac
-# Copied from deploy.sh require_default_branch_tree (do not source deploy.sh).
+# Publish-source worktree helpers (mirrors deploy.sh's tip worktree; do not
+# source deploy.sh). Publish ships the merged integration tip, not whatever
+# branch the primary checkout sits on: tasks, merges, and publishes move
+# independently (asymmetric), and the primary normally sits on a kb/* task
+# branch with WIP. When this checkout is not the tip, re-exec from a
+# pristine detached worktree at origin/<default> and leave the primary
+# (branch, HEAD, staged/untracked WIP) byte-for-byte untouched.
+publish_tip_worktree_path() {
+  echo "${KAINBAIN_DEPLOY_SOURCE_DIR:-$HOME/.kainbain/deploy/source}"
+}
+
+materialize_publish_tip_worktree() {
+  local branch="$1" tip_sha="$2" src
+  src="$(publish_tip_worktree_path)"
+  if [ -z "$src" ] || [ -z "$tip_sha" ]; then return 1; fi
+  if [ "$(git -C "$src" rev-parse --show-toplevel 2>/dev/null || echo "")" = "$src" ]; then
+    git -C "$src" fetch origin "$branch" >/dev/null 2>&1 || true
+    git -C "$src" checkout -q --detach "$tip_sha" >/dev/null 2>&1 || return 1
+    git -C "$src" reset --hard -q "$tip_sha" >/dev/null 2>&1 || return 1
+    git -C "$src" clean -fdq >/dev/null 2>&1 || true
+  elif [ -e "$src" ]; then
+    if [ -d "$src" ] && [ -z "$(ls -A "$src" 2>/dev/null)" ]; then
+      rmdir "$src" 2>/dev/null || return 1
+    else
+      return 1
+    fi
+    git worktree prune >/dev/null 2>&1 || true
+    mkdir -p "$(dirname "$src")" 2>/dev/null || return 1
+    git worktree add -q --detach "$src" "$tip_sha" >/dev/null 2>&1 || return 1
+  else
+    git worktree prune >/dev/null 2>&1 || true
+    mkdir -p "$(dirname "$src")" 2>/dev/null || return 1
+    git worktree add -q --detach "$src" "$tip_sha" >/dev/null 2>&1 || return 1
+  fi
+  [ "$(git -C "$src" rev-parse HEAD 2>/dev/null || echo "")" = "$tip_sha" ] || return 1
+  local primary_top
+  primary_top="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+  if [ -n "$primary_top" ] && [ "$primary_top" != "$src" ] && [ -f "$primary_top/dist/release-manifest.json" ] && [ ! -f "$src/dist/release-manifest.json" ]; then
+    mkdir -p "$src/dist" 2>/dev/null || true
+    cp "$primary_top/dist/release-manifest.json" "$src/dist/release-manifest.json" 2>/dev/null || true
+  fi
+  return 0
+}
+
+# Default-branch gate, asymmetric form: being on the default branch is not
+# the requirement — publishing the integration TIP is. A checkout already
+# on the default branch and not behind it proceeds in place (a purely
+# ahead local main is a just-landed merge whose push is pending). Anything
+# else (task branch, behind, diverged) re-execs from the tip worktree.
+# Only a proven failure to converge the tip refuses, as before.
 require_default_branch_tree() {
   if [ "${KAINBAIN_ALLOW_BRANCH_DEPLOY:-}" = "1" ]; then
     log "KAINBAIN_ALLOW_BRANCH_DEPLOY=1 — publishing from a non-default branch (emergency opt-out)."
@@ -79,11 +128,38 @@ require_default_branch_tree() {
     log "default-branch check skipped (current='$current') — proceeding."
     return 0
   fi
-  if [ "$current" != "$default_branch" ]; then
-    log "refusing to publish: checkout is on '$current', not the default branch '$default_branch'."
+  if [ "$current" = "$default_branch" ]; then
+    # On the default branch: proceed unless the remote has moved past us
+    # (behind/diverged would publish a stale tree under a fresh tag).
+    local head_sha tip_sha
+    head_sha="$(git rev-parse HEAD 2>/dev/null || echo "")"
+    if git fetch origin "$default_branch" >/dev/null 2>&1; then
+      tip_sha="$(git rev-parse --verify "origin/$default_branch" 2>/dev/null || echo "")"
+      if [ -z "$head_sha" ] || [ -z "$tip_sha" ] || [ "$head_sha" = "$tip_sha" ] || git merge-base --is-ancestor "$tip_sha" "$head_sha" 2>/dev/null; then
+        return 0
+      fi
+    else
+      return 0
+    fi
+  fi
+  if [ "${KAINBAIN_PUBLISH_FROM_TIP_WORKTREE:-}" = "1" ]; then
+    log "refusing to publish: checkout is on '$current', not the default branch '$default_branch', and the tip worktree did not converge."
     return 1
   fi
-  return 0
+  local tip_sha src
+  if ! git fetch origin "$default_branch" >/dev/null 2>&1; then
+    log "refusing to publish: checkout is on '$current' and 'origin/$default_branch' could not be fetched to build the tip source."
+    return 1
+  fi
+  tip_sha="$(git rev-parse --verify "origin/$default_branch" 2>/dev/null || echo "")"
+  src="$(publish_tip_worktree_path)"
+  if [ -n "$tip_sha" ] && materialize_publish_tip_worktree "$default_branch" "$tip_sha"; then
+    log "checkout is on '$current' — publishing the merged tip 'origin/$default_branch' ($(echo "$tip_sha" | cut -c1-7)) from '$src' instead; this checkout is left untouched."
+    cd "$src" || return 1
+    exec env KAINBAIN_PUBLISH_FROM_TIP_WORKTREE=1 "$src/publish.sh" "${ORIG_ARGS[@]}"
+  fi
+  log "refusing to publish: checkout is on '$current', not the default branch '$default_branch', and the tip worktree at '$src' could not be materialized."
+  return 1
 }
 require_default_branch_tree || exit 1
 

@@ -81,9 +81,11 @@ test.describe("KainBain Functional E2E Tests", () => {
 		 *   nowrap content in a flex box, and between 640 and ~1190px it used to
 		 *   overflow LEFTWARD on top of the bar's center controls — at the
 		 *   1024px Tablet baseline the Look Forward button was half-buried behind
-		 *   the queue chip. The rail is now queue-only (single chip) and clips
-		 *   overflow, so at every supported viewport no runner-box control rect
-		 *   may intersect any right-rail child rect. 800px and 1024px are the
+		 *   the queue chip. The rail now holds the build-hash trigger (left of
+		 *   the queue, width-capped with ellipsis on phones) plus the queue
+		 *   chip, and clips overflow, so at every supported viewport no
+		 *   runner-box control rect may intersect any right-rail child rect.
+		 *   800px and 1024px are the
 		 *   exact widths from the defect report; 640/768 cover the sm/md edges;
 		 *   1280 proves the single-chip rail still fits once `xl` is reached.
 		 *   (The global transport cluster is gone — play/skip live on the
@@ -147,8 +149,8 @@ test.describe("KainBain Functional E2E Tests", () => {
 				`at ${width}px the runner-box controls must not be covered by the right rail (measured ${result.centerCount} box buttons vs ${result.railCount} rail children)`,
 			).toEqual([]);
 
-			// The queue-only rail keeps the honest live data visible at every
-			// width; the removed timer/health extras must stay gone.
+			// The trigger-plus-queue rail keeps the honest live data visible at
+			// every width; the removed timer/health extras must stay gone.
 			await expect(page.locator("#elapsed-counter")).toHaveCount(0);
 			await expect(
 				page.getByLabel(/Execution queue: \d+ open tasks? across all pipelines/),

@@ -142,10 +142,13 @@ function ImagePreview({ fileName, fileSize, rawUrl }) {
  * MARK: FilePreview
  * @description Preview body for the explorer Document Viewer: dispatches on
  *   file kind to the image pane, the markdown pane (rendered/raw), the
- *   line-numbered code pane, or the binary download fallback.
- * @example <FilePreview fileContent={...} selectedFile={...} previewMode="rendered" lines={[...]} rawUrl="..." />
+ *   line-numbered code pane, or the binary download fallback. When the
+ *   previewed file lives inside a task folder, `projectId`/`taskId` are passed
+ *   through so relative `assets/<name>` image references in task markdown
+ *   (task.md, stage reports) resolve to the task image endpoint.
+ * @example <FilePreview fileContent={...} selectedFile={...} previewMode="rendered" lines={[...]} rawUrl="..." projectId="p1" taskId="t1" />
  ***/
-export function FilePreview({ fileContent, selectedFile, previewMode, lines, rawUrl }) {
+export function FilePreview({ fileContent, selectedFile, previewMode, lines, rawUrl, projectId = null, taskId = null }) {
   const kind = getFileKind(fileContent ?? selectedFile ?? {});
   const fileName = fileContent?.name || selectedFile?.name || 'file';
   const fileSize = fileContent?.size ?? selectedFile?.size ?? 0;
@@ -180,7 +183,7 @@ export function FilePreview({ fileContent, selectedFile, previewMode, lines, raw
     return (
       <div className="max-w-5xl mx-auto">
         <article className="prose prose-invert max-w-none text-xs font-sans leading-relaxed space-y-4 bg-surface p-6 rounded-sm border border-border-standard shadow-sm">
-          <MarkdownViewer content={fileContent.content} />
+          <MarkdownViewer content={fileContent.content} projectId={projectId} taskId={taskId} />
         </article>
       </div>
     );

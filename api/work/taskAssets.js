@@ -54,7 +54,7 @@ export function imageMediaType(filename) {
  *   trimmed, and the result is lowercased and length-capped. Returns "" when nothing
  *   safe remains. Callers combine this with `isAllowedImageExt` before writing.
  * @example sanitizeImageName('../../etc/passwd.png') => 'passwd.png'
- * @example sanitizeImageName('My Screenshot (1).PNG') => 'my-screenshot-1-.png'
+ * @example sanitizeImageName('My Screenshot (1).PNG') => 'my-screenshot-1.png'
  * @example sanitizeImageName('..') => ''
  * @param {string} rawName
  * @returns {string}
@@ -243,8 +243,11 @@ export function writeTaskImage(projectCwd, taskId, name, buffer, docsProject) {
 
 /***
  * MARK: deleteTaskImage
- * @description Removes one image asset from a task's assets directory. Returns whether a file was actually removed.
+ * @description Removes one image asset from a task's assets directory. Only
+ *   allowed image extensions are removed (anything else is outside this
+ *   endpoint's care and stays untouched). Returns whether a file was removed.
  * @example deleteTaskImage('/repo', 'task-1', 'a.png') => true
+ * @example deleteTaskImage('/repo', 'task-1', 'notes.txt') => false
  * @param {string} projectCwd
  * @param {string} taskId
  * @param {string} name
@@ -254,7 +257,7 @@ export function deleteTaskImage(projectCwd, taskId, name, docsProject) {
 	const assetsDir = taskAssetDir(projectCwd, taskId, docsProject);
 	if (!assetsDir || !name) return false;
 	const safeName = sanitizeImageName(name);
-	if (!safeName) return false;
+	if (!safeName || !isAllowedImageExt(safeName)) return false;
 	/* eslint-disable security/detect-non-literal-fs-filename */
 	try {
 		const target = path.join(assetsDir, safeName);

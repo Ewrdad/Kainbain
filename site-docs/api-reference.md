@@ -265,7 +265,11 @@ are rejected.
 Image assets live in `docs/tasks/<taskId>/assets/` and are referenced from
 task markdown with relative paths (`![alt](assets/<name>)`). Uploads are
 multipart with an extension allowlist, a per-file size cap and a per-task
-count cap; serving is binary-safe with an explicit Content-Type.
+count cap; serving is binary-safe with an explicit Content-Type and a
+long-lived `private, max-age=31536000, immutable` cache header (names are
+write-once, so bytes are immutable). Errors carry a structured `reason`
+(`unknown-project`, `task-not-found`, `invalid-task-id`, `path-traversal`,
+`invalid-image-name`, `image-not-found`).
 
 | Method | Path | Purpose |
 | ------ | ---- | ------- |

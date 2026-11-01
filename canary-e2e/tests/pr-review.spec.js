@@ -128,6 +128,20 @@ test.describe.serial("PR Review E2E", () => {
 		expect(res.ok()).toBeTruthy();
 		project = await res.json();
 		expect(project.useBranches).toBe(true);
+		// Point origin at a local bare repo: the merge stage's publish push
+		// is BLOCKING, while the suite-wide KAINBAIN_GIT_REMOTE_TEMPLATE is a
+		// fake unresolvable https://git.example.com URL by design ("specs
+		// never assert push behavior"). A local bare remote keeps the D11
+		// remote invariant while letting the push — and therefore the merge
+		// stage — land without network.
+		const bareDir = path.join(scratchRoot, "origin.git");
+		fs.mkdirSync(bareDir, { recursive: true });
+		git(bareDir, ["init", "--bare", "-b", "main"]);
+		try {
+			git(repoDir, ["remote", "set-url", "origin", bareDir]);
+		} catch {
+			git(repoDir, ["remote", "add", "origin", bareDir]);
+		}
 		// Project provisioning writes scaffolding into the repo cwd
 		// (`.kainbain/project.json`, `.gitignore`, `docs`). Commit it on main
 		// BEFORE any task branch exists: otherwise the test's later
