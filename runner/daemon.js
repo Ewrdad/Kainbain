@@ -630,6 +630,13 @@ async function executeAssignment({
 		if (!customBranch && typeof claim.customBranch === "string") customBranch = claim.customBranch;
 		if (ciEnv === null || ciEnv === undefined) ciEnv = claim.env;
 		if (integration === null || integration === undefined) integration = claim.integration ?? null;
+		// The ONE served-model answer for every observable this execution
+		// writes (prompted progress, completion posture, completion model
+		// field): the dispatched requirement wins, else the Runner's pinned
+		// default, else null — non-LLM kinds and the "default" sentinel
+		// always report null. Computed once so the wire can never disagree
+		// with the posture string.
+		const servedModel = servingModelFor({ kind, model, fallbackModel: config.model });
 		// Leased integrations run their own procedure (Step 4): ephemeral
 		// worktree, merge, CAS-push, verify — no harness, no task worktree.
 		if (kind === "integrate") {
@@ -731,7 +738,7 @@ async function executeAssignment({
 					event: "prompted",
 					prompt,
 					harness: servingHarnessId,
-					model: servingModelFor({ kind, model, fallbackModel: config.model }),
+					model: servedModel,
 				});
 			} catch (err) {
 				logger.warn(`Prompt report failed: ${err?.message || err}`);
@@ -765,7 +772,8 @@ async function executeAssignment({
 						outcome: "failed",
 						failureReason: `CI stage branch setup failed: ${err?.message || err}`,
 						taskFiles: collectTaskFiles({ workdir, taskId }), output: "",
-						posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: null }),
+						posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
+						model: servedModel,
 						durationMs: Date.now() - runStartedAt,
 					});
 				}
@@ -788,9 +796,9 @@ async function executeAssignment({
 						const failureReason = ci.timedOut
 							? `CI command timed out after ${ci.timeoutMs}ms`
 							: `CI command failed with exit code ${ci.exitCode}`;
-						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: null }), durationMs: Date.now() - runStartedAt });
+						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 					}
-					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: null }), durationMs: Date.now() - runStartedAt });
+					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 				} finally {
 					if (ciCleanup) await ciCleanup();
 				}
@@ -874,7 +882,8 @@ async function executeAssignment({
 				epoch,
 				sha,
 				branch,
-				posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servingModelFor({ kind, model, fallbackModel: config.model }) }),
+				posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
+				model: servedModel,
 				outcome: "passed",
 				taskFiles: collectTaskFiles({ workdir, taskId }),
 				output: String(output || "").slice(0, 20000),
@@ -917,7 +926,8 @@ async function executeAssignment({
 					epoch,
 					outcome: "failed",
 					failureReason: err.failedOutcome,
-					posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servingModelFor({ kind, model, fallbackModel: config.model }) }),
+					posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
+					model: servedModel,
 					durationMs: Date.now() - runStartedAt,
 				});
 			}
