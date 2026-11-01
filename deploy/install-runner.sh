@@ -29,7 +29,7 @@ Usage: install-runner.sh [options]
   --harnesses CSV       Pin a harness list (implies --manual, e.g. pi,muse)
   --manual              Pin harnesses instead of auto-detecting (requires --harness/--harnesses)
   --auto                Auto-detect harnesses on PATH (default)
-  --backend URL         Backend URL (default http://localhost:<port> from .env, else http://localhost:3100)
+  --backend URL         Backend URL; a bare host/IP gains http:// and :3100 (default http://localhost:<port> from .env, else http://localhost:3100)
   --release-url URL     Base URL hosting release-manifest.json + runner tarball
                         (default https://kainbain.ewrdad.uk)
   --manifest-url URL    Full URL of release-manifest.json (default <release-url>/release-manifest.json)
@@ -109,6 +109,19 @@ if [ -z "$BACKEND" ] && [ -f "$INSTALL_DIR/.env" ]; then
   [ -n "$_port" ] && BACKEND="http://localhost:$_port"
 fi
 BACKEND="${BACKEND:-http://localhost:3100}"
+# Normalize a bare backend value: a missing scheme defaults to http and a
+# missing port defaults to the local stack port (3100), so `--backend
+# 192.168.1.206` reaches `http://192.168.1.206:3100`. Full URLs (including
+# https and explicit ports) pass through unchanged.
+case "$BACKEND" in *"://"* ) ;; *) BACKEND="http://$BACKEND" ;; esac
+_scheme="${BACKEND%%://*}"; _rest="${BACKEND#*://}"
+_authority="${_rest%%/*}"; _suffix="${_rest#"$_authority"}"
+case "$_authority" in
+  "["*) case "$_authority" in *"]:"*) ;; *) _authority="$_authority:3100" ;; esac ;;
+  *":"*) ;;
+  *) _authority="$_authority:3100" ;;
+esac
+BACKEND="$_scheme://$_authority$_suffix"
 log "backend $BACKEND"
 
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
