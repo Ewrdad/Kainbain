@@ -99,6 +99,10 @@ describe("publish.sh", () => {
 		});
 		assert.equal(r.status, 0, r.stderr + r.stdout);
 		assert.match(r.stdout, /publishing the merged tip 'origin\/main'/);
+		// Clean-checkout bootstrap: the tip worktree has no node_modules, so
+		// the frontend build's deps must be installed before it can run
+		// (the 2026-11-01 publish failures: vite MODULE_NOT_FOUND).
+		assert.match(r.stdout, /would run: npm install --prefix frontend/);
 		assert.match(r.stdout, /would run: docker build -f frontend\/Dockerfile/);
 		// The publish ran in the tip worktree; the primary is untouched.
 		assert.equal(git(source, "rev-parse", "HEAD"), git(dir, "rev-parse", "origin/main"));

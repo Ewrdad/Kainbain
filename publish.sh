@@ -210,6 +210,38 @@ api_version_of() {
   node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).apiVersion)' "$1/version.json"
 }
 
+# --- Dependency bootstrap (clean-checkout safe) ----------------------------
+# Publish may run in a pristine tree — the deploy tip worktree, a fresh
+# clone, CI — where node_modules does not exist yet. The old assumption
+# "deps are installed because the primary checkout has them" broke every
+# publish from the tip worktree (2026-11-01, tasks 5c3497b5/e3b2624a:
+# frontend build died with `Cannot find module
+# '.../frontend/node_modules/vite/bin/vite.js'`). Install only what is
+# missing, per component being published; a warm tree is a no-op, and the
+# persistent tip worktree pays this once. Install failure is a gate
+# failure (exit 1, nothing published).
+ensure_deps_for() {
+  case "$1" in
+    backend|runner)
+      # Backend gates run the api suite; the runner bundle embeds api/.
+      if [ ! -d api/node_modules ]; then
+        log "installing api dependencies (clean checkout)..."
+        run npm install --prefix api --include=dev || return 1
+      fi
+      ;;
+    frontend)
+      if [ ! -d frontend/node_modules ]; then
+        log "installing frontend dependencies (clean checkout)..."
+        run npm install --prefix frontend --include=dev || return 1
+      fi
+      ;;
+  esac
+  return 0
+}
+for c in $COMPONENTS; do
+  ensure_deps_for "$c" || { echo "publish.sh: dependency install failed for $c — nothing published" >&2; exit 1; }
+done
+
 # --- Gates + builds for every flagged component first (atomicity, step 5) --
 gate_for() {
   case "$1" in

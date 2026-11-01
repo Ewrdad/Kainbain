@@ -1614,7 +1614,20 @@ if [ "$MODE" = "prod" ]; then
 	# An empty VITE_API_BASE/VITE_WS_URL means "same origin" (see api.js).
 	# (`env`, not inline assignments: assignments preceding a shell function
 	# persist after it returns — env keeps them scoped to the one command.)
-	if [ "$PUBLISH_ONLY" = "true" ]; then log "⏭️ Publish-only: frontend build is publish.sh's gate — skipping deploy-level build."; else run_gate "frontend-build" "npm run build --prefix frontend" env VITE_API_BASE= VITE_WS_URL= npm run build --prefix frontend; fi
+	# Clean-checkout bootstrap: in the pristine tip worktree (or a fresh
+	# clone) frontend/node_modules does not exist and the build dies with
+	# `Cannot find module '.../frontend/node_modules/vite/bin/vite.js'`
+	# (publish failures 2026-11-01, tasks 5c3497b5/e3b2624a). Install only
+	# when missing — a warm tree (incl. the persistent tip worktree after
+	# its first deploy) skips straight to the build.
+	if [ "$PUBLISH_ONLY" = "true" ]; then
+		log "⏭️ Publish-only: frontend build is publish.sh's gate — skipping deploy-level build."
+	else
+		if [ ! -d frontend/node_modules ]; then
+			run_gate "frontend-install" "npm install --prefix frontend --include=dev" npm install --prefix frontend --include=dev
+		fi
+		run_gate "frontend-build" "npm run build --prefix frontend" env VITE_API_BASE= VITE_WS_URL= npm run build --prefix frontend
+	fi
 
 	# 4. Prepare API.
 	# The API is a plain Node app with no build step. We deliberately install the

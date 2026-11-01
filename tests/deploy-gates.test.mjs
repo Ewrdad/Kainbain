@@ -82,6 +82,19 @@ describe("deploy.sh test gates (static contract)", () => {
 		);
 	});
 
+	it("installs frontend deps on a clean checkout before building (tip-worktree publish failures)", () => {
+		const body = readDeploySh();
+		assert.match(
+			body,
+			/run_gate "frontend-install" "npm install --prefix frontend --include=dev"/,
+			"deploy.sh must install frontend deps when frontend/node_modules is missing (pristine tip worktree has none; vite MODULE_NOT_FOUND killed publishes 2026-11-01)",
+		);
+		assert.ok(
+			body.indexOf('run_gate "frontend-install"') < body.indexOf('run_gate "frontend-build"'),
+			"frontend-install must run before frontend-build",
+		);
+	});
+
 	it("refuses to build from a non-default checkout (deploy-tree gate first)", () => {
 		const body = readDeploySh();
 		assert.match(
