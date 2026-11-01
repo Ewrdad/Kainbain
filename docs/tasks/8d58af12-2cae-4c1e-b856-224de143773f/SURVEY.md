@@ -94,6 +94,51 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Hide them completely from the Runners page"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Completely gone — no settings, no detail panel"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Yes — left side is the runner list, right side shows details for the one I clicked"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Active runners (currently running or ready to work)",
+        "Paused runners",
+        "New runners that have asked to join and need approval (\"Needs Setup\")"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "All the current settings: Runner Name, Projects (Available vs Loaded), Harnesses, Master/Worktree folders, and job toggles (Runs CI / Runs merges / Runs Impromptu) — plus Approve/Deny or Pause/Revoke buttons"
+      ],
+      "notes": "Only show approve/deny if the runner is needing settup/hasnt been authorised yet. Otherwise itd just be revoke or settings tweak.  "
+    },
+    "q6": {
+      "selected": [
+        "Show the existing empty message: 'No Runner registrations yet...'"
+      ],
+      "notes": "That screen is unlikely to be seen"
+    },
+    "q7": {
+      "selected": [
+        "No — just hide revoked runners and change to the side-panel layout from the sketch"
+      ],
+      "notes": "Factor in those changes later on but they arent needed right now"
+    }
+  }
 }
 ```
