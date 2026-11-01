@@ -117,6 +117,41 @@ describe("ExecutionLedger", () => {
 		expect(ledger.servingFor(executionId)).toBeNull();
 	});
 
+	test("cleans an old Runner's default posture segment before storing history", async () => {
+		const { executionId, epoch } = claimed(ctx);
+		const base = {
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectStore: ctx.projectStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+		};
+		await ledger.completeExecution({ ...base, posture: "T0:pi:default" });
+		const actions = ctx.taskStore.getTask().history.map((entry) => entry.action).join("\n");
+		expect(actions).toContain("posture T0:pi");
+		expect(actions).not.toContain(":default");
+	});
+
+	test("keeps a real model segment in the stored posture", async () => {
+		const { executionId, epoch } = claimed(ctx);
+		await ledger.completeExecution({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectStore: ctx.projectStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+			posture: "T0:pi:kimi-k3:cloud",
+		});
+		const actions = ctx.taskStore.getTask().history.map((entry) => entry.action).join("\n");
+		expect(actions).toContain("posture T0:pi:kimi-k3:cloud");
+	});
+
 	test("prompted with harness but null model stores model: null (CI contract), never a fake model", () => {
 		const { executionId, epoch } = claimed(ctx);
 		const base = {

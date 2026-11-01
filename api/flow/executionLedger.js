@@ -39,6 +39,7 @@ import { createLogProcessor } from "../agent/logStream/logProcessor.js";
  ***/
 export const MAX_RUNNER_INTERRUPTS = 5;
 export { formatPosture, servingModelFor } from "./runnerPosture.js";
+import { cleanReportedPosture } from "./runnerPosture.js";
 
 /***
  * MARK: ExecutionLedger
@@ -400,12 +401,17 @@ export class ExecutionLedger {
 			});
 		}
 
+		// Old Runners report `tiers:harness:default` on every stage
+		// (the regression this task fixes). Clean the wire value here,
+		// the last place before storage, so a mixed-version rollout
+		// never writes the fake model segment into the task history.
+		const cleanedPosture = cleanReportedPosture(posture);
 		const postureBits = [
 			runnerId && `runner ${runnerId}`,
 			`epoch ${epoch}`,
 			sha && `sha ${sha} (${shaState})`,
 			branch && `branch ${branch}`,
-			posture && `posture ${posture}`,
+			cleanedPosture && `posture ${cleanedPosture}`,
 		]
 			.filter(Boolean)
 			.join(", ");
