@@ -46,6 +46,42 @@ describe('BuildHashTrigger', () => {
     );
   });
 
+  test('caps its phone width so it can never crowd out the idle hint', async () => {
+    // Regression guard for the 375px canary layout: a long build number +
+    // SHA must ellipsis inside a capped button instead of squeezing the
+    // bar's left side to zero width. The full hash stays in the DOM.
+    api.systemStatus.mockResolvedValue({
+      build: { buildNumber: 1793500453054, commit: 'abc1234' },
+    });
+    render(<BuildHashTrigger />);
+    const badge = await screen.findByTestId('build-badge');
+    expect(badge.className).toContain('max-w-[36vw]');
+    expect(badge).toHaveTextContent('#B1793500453054·abc1234');
+    const label = badge.querySelector('span');
+    expect(label?.className ?? '').toContain('truncate');
+  });
+
+  test('shortens a full-length stamped SHA to seven chars', async () => {
+    // Older bakes stamp the full 40-char SHA (observed live on :3100): the
+    // bar must show the short form so a 350px label can never crowd the
+    // queue chip at narrow widths.
+    api.systemStatus.mockResolvedValue({
+      build: { buildNumber: 637, commit: '34cf6432acad0bc1407cda1884b6d643d15d430a' },
+    });
+    render(<BuildHashTrigger />);
+    await waitFor(() => {
+      expect(screen.getByTestId('build-badge')).toHaveTextContent('#B637·34cf643');
+    });
+  });
+
+  test('strips a version prefix before shortening the SHA', async () => {
+    api.systemStatus.mockResolvedValue({ build: { buildNumber: 9, commit: '1.0.0-28aac94' } });
+    render(<BuildHashTrigger />);
+    await waitFor(() => {
+      expect(screen.getByTestId('build-badge')).toHaveTextContent('#B9·28aac94');
+    });
+  });
+
   test('renders nothing when no build number is present', async () => {
     api.systemStatus.mockResolvedValue({ build: null });
     render(<BuildHashTrigger />);

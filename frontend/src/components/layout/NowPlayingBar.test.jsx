@@ -942,6 +942,9 @@ test('idle engine hides the active task name and key chip behind an idle placeho
   // Honest empty state inside the live region; the inspector button is parked.
   expect(screen.getByTestId('now-playing-idle-hint')).toHaveTextContent('No active task');
   expect(screen.getByRole('button', { name: 'No active task' })).toBeDisabled();
+  // The hint shrinks with an ellipsis on narrow phones (min-w-0) instead of
+  // collapsing to zero width next to the build-hash trigger (375px canary).
+  expect(screen.getByTestId('now-playing-idle-hint').className).toContain('min-w-0');
 });
 
 test('active task name enters with animation when the engine leaves idle, and clears on return to idle', () => {

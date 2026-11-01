@@ -583,8 +583,8 @@ export function NowPlayingBar() {
                     data-testid={activeTask ? 'now-playing-task-name' : 'now-playing-idle-hint'}
                     className={
                       activeTask
-                        ? 'now-playing-task-enter font-headline-sm text-xs sm:text-headline-sm text-on-surface group-hover:text-primary transition-colors truncate'
-                        : 'font-headline-sm text-xs sm:text-headline-sm text-text-muted truncate'
+                        ? 'now-playing-task-enter font-headline-sm text-xs sm:text-headline-sm text-on-surface group-hover:text-primary transition-colors truncate min-w-0'
+                        : 'font-headline-sm text-xs sm:text-headline-sm text-text-muted truncate min-w-0'
                     }
                   >
                     {activeTask
