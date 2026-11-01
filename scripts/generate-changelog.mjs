@@ -23,6 +23,7 @@ import {
 	MAX_BODY_CHARS,
 	RECORD_SEP,
 } from "../shared/changelogHistory/changelogLimits.js";
+import { buildChangelogGitFormat } from "../shared/changelogHistory/changelogGitFormat.js";
 import { isAdminCommitSubject } from "../shared/changelogHistory/isAdminCommitSubject.js";
 import { filterChangelogEntries } from "../shared/changelogHistory/filterChangelogEntries.js";
 import { parseGitLog } from "../shared/changelogHistory/parseGitLog.js";
@@ -42,13 +43,16 @@ export {
 	FIELD_SEP,
 	MAX_BODY_CHARS,
 	RECORD_SEP,
+	buildChangelogGitFormat,
 	filterChangelogEntries,
 	isAdminCommitSubject,
 	parseGitLog,
 };
 
-// %H sha, %h short, %an author, %ae email, %aI iso date, %s subject, %b body.
-const LOG_FORMAT = ["%H", "%h", "%an", "%ae", "%aI", "%s", "%b"].join("%x00") + "%x1e";
+// The exact `git log --format=` value (field order, separators) lives in
+// `shared/changelogHistory/changelogGitFormat.js` next to the parser that
+// reads it, so the baker and the serve-time live fallback cannot drift apart.
+const LOG_FORMAT = buildChangelogGitFormat();
 
 /***
  * MARK: isSafeRef
@@ -95,10 +99,15 @@ export function runGit(cwd, args) {
 /***
  * MARK: resolveDefaultBranch
  * @description Resolves which branch to bake: local `master` first, then local
- *   `main`, then the `origin/HEAD` symbolic target. Strict: throws when none
- *   resolves so the caller (deploy.sh) can record a `generation-failed` marker
- *   instead of baking the wrong history. (Deliberately stricter than the
- *   lenient `defaultBranch()` in `api/git.js`, which falls back silently.)
+ *   `main`, then the `origin/HEAD` symbolic target, then the remote-tracking
+ *   `origin/master` / `origin/main` refs directly. The remote-tracking probes
+ *   cover checkouts that never created a local default branch (linked
+ *   worktrees, partial clones): without them the bake throws
+ *   `generation-failed` even though the history is right there. Strict:
+ *   throws when none resolves so the caller (deploy.sh) can record a
+ *   `generation-failed` marker instead of baking the wrong history.
+ *   (Deliberately stricter than the lenient `defaultBranch()` in
+ *   `api/git.js`, which falls back silently.)
  * @example resolveDefaultBranch('/repo') => 'master'
  * @param {string} cwd - Repository working directory.
  * @returns {string} The resolved branch name.
@@ -125,8 +134,16 @@ export function resolveDefaultBranch(cwd) {
 			if (!verify.error && verify.status === 0) return branch;
 		}
 	}
+	for (const name of ["origin/master", "origin/main"]) {
+		if (!isSafeRef(name)) continue;
+		const probe = spawnSync("git", ["rev-parse", "--verify", "--quiet", `refs/remotes/${name}`], {
+			cwd,
+			encoding: "utf8",
+		});
+		if (!probe.error && probe.status === 0) return name;
+	}
 	throw new Error(
-		"Cannot resolve default branch: no local 'master' or 'main' and no refs/remotes/origin/HEAD",
+		"Cannot resolve default branch: no local 'master' or 'main', no refs/remotes/origin/HEAD, and no remote-tracking origin/master or origin/main",
 	);
 }
 

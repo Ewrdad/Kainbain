@@ -158,6 +158,21 @@ describe("resolveDefaultBranch", () => {
 		expect(resolveDefaultBranch(tmp)).toBe("master");
 	});
 
+	it("resolves origin/main when no local default branch exists", () => {
+		initRepo(tmp, { initialBranch: "trunk" });
+		commitFile(tmp, "a.txt", "a", "init");
+		run(tmp, "update-ref", "refs/remotes/origin/main", "HEAD");
+		expect(resolveDefaultBranch(tmp)).toBe("origin/main");
+	});
+
+	it("prefers a local main over the remote-tracking origin/main", () => {
+		initRepo(tmp, { initialBranch: "trunk" });
+		commitFile(tmp, "a.txt", "a", "init");
+		run(tmp, "update-ref", "refs/remotes/origin/main", "HEAD");
+		run(tmp, "branch", "main");
+		expect(resolveDefaultBranch(tmp)).toBe("main");
+	});
+
 	it("throws when neither master, main, nor origin/HEAD exists", () => {
 		initRepo(tmp, { initialBranch: "trunk" });
 		commitFile(tmp, "a.txt", "a", "init");
@@ -214,6 +229,20 @@ describe("generateChangelog", () => {
 
 	it("throws a clear error for a missing ref", () => {
 		expect(() => generateChangelog({ cwd: tmp, ref: "nope" })).toThrow("failed");
+	});
+
+	it("bakes from a remote-tracking ref when no local branch exists", () => {
+		const remote = fs.mkdtempSync(path.join(os.tmpdir(), "changelog-remote-"));
+		try {
+			initRepo(remote, { initialBranch: "trunk" });
+			commitFile(remote, "a.txt", "a", "Task work lands");
+			run(remote, "update-ref", "refs/remotes/origin/main", "HEAD");
+			const artifact = generateChangelog({ cwd: remote, limit: 10 });
+			expect(artifact.branch).toBe("origin/main");
+			expect(artifact.entries.map((e) => e.subject)).toEqual(["Task work lands"]);
+		} finally {
+			fs.rmSync(remote, { recursive: true, force: true });
+		}
 	});
 
 	it("round-trips through DeployManager.readChangelog shape validation", async () => {
@@ -281,6 +310,36 @@ describe("DeployManager.readChangelog fallbacks (no baked prod artifact)", () =>
 		fs.writeFileSync(path.join(prodDir, "changelog.json"), JSON.stringify(baked));
 		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
 		expect(manager.readChangelog()).toEqual(baked);
+	});
+
+	it("serves live history through the remote-tracking ref when no local branch exists", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		initRepo(tmp, { initialBranch: "trunk" });
+		commitFile(tmp, "a.txt", "a", "Remote-tracked work");
+		run(tmp, "update-ref", "refs/remotes/origin/main", "HEAD");
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		const read = manager.readChangelog();
+		expect(read).not.toBeNull();
+		expect(read.branch).toBe("origin/main");
+		expect(read.entries.map((e) => e.subject)).toEqual(["Remote-tracked work"]);
+	});
+
+	it("skips a corrupt baked artifact in favour of live history", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		initRepo(tmp, { initialBranch: "main" });
+		commitFile(tmp, "a.txt", "a", "Live fix survives a bad bake");
+		fs.writeFileSync(path.join(prodDir, "changelog.json"), JSON.stringify({ halfWritten: true }));
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		const read = manager.readChangelog();
+		expect(read).not.toBeNull();
+		expect(read.branch).toBe("main");
+		expect(read.entries.map((e) => e.subject)).toEqual(["Live fix survives a bad bake"]);
+	});
+
+	it("reports null when no baked file and no git history exist", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		expect(manager.readChangelog()).toBeNull();
 	});
 });
 

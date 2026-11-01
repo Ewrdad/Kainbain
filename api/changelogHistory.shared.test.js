@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { DEFAULT_LIMIT, MAX_BODY_CHARS } from "../shared/changelogHistory/changelogLimits.js";
+import { DEFAULT_LIMIT, MAX_BODY_CHARS, FIELD_SEP, RECORD_SEP } from "../shared/changelogHistory/changelogLimits.js";
+import { buildChangelogGitFormat } from "../shared/changelogHistory/changelogGitFormat.js";
 import { isAdminCommitSubject } from "../shared/changelogHistory/isAdminCommitSubject.js";
 import { filterChangelogEntries } from "../shared/changelogHistory/filterChangelogEntries.js";
 import { parseGitLog } from "../shared/changelogHistory/parseGitLog.js";
@@ -52,6 +53,38 @@ describe("filterChangelogEntries", () => {
 	it("reads a non-list as an empty changelog instead of throwing", () => {
 		expect(filterChangelogEntries(null)).toEqual([]);
 		expect(filterChangelogEntries(undefined)).toEqual([]);
+	});
+});
+
+describe("buildChangelogGitFormat", () => {
+	it("emits the seven parseGitLog fields in order with git escapes", () => {
+		expect(buildChangelogGitFormat()).toBe(
+			"%H%x00%h%x00%an%x00%ae%x00%aI%x00%s%x00%b%x1e",
+		);
+	});
+
+	it("carries no literal separator bytes (argv cannot hold NUL)", () => {
+		const format = buildChangelogGitFormat();
+		expect(format).not.toContain(FIELD_SEP);
+		expect(format).not.toContain(RECORD_SEP);
+	});
+
+	it("round-trips through parseGitLog the way git stdout does", () => {
+		// Git decodes the %x00/%x1e escapes back to FIELD_SEP/RECORD_SEP in
+		// its stdout; parsing that output must yield the fields in order.
+		const raw =
+			["aaa", "aaa", "Dev", "d@e.c", "2026-09-30", "Fix it", "body text"].join(FIELD_SEP) +
+			RECORD_SEP;
+		const [entry] = parseGitLog(raw);
+		expect(entry).toMatchObject({
+			sha: "aaa",
+			shortSha: "aaa",
+			subject: "Fix it",
+			body: "body text",
+			author: "Dev",
+			authorEmail: "d@e.c",
+			date: "2026-09-30",
+		});
 	});
 });
 

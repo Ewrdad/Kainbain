@@ -4,6 +4,7 @@ import os from "node:os";
 import { spawn, spawnSync } from "node:child_process";
 import { notifyDeployRollback } from "./observability/alerts.js";
 import { DEFAULT_LIMIT } from "../shared/changelogHistory/changelogLimits.js";
+import { buildChangelogGitFormat } from "../shared/changelogHistory/changelogGitFormat.js";
 import { isAdminCommitSubject } from "../shared/changelogHistory/isAdminCommitSubject.js";
 import { filterChangelogEntries } from "../shared/changelogHistory/filterChangelogEntries.js";
 import { parseGitLog } from "../shared/changelogHistory/parseGitLog.js";
@@ -379,9 +380,10 @@ export class DeployManager {
 				if (r.error || r.status !== 0) throw new Error("git failed");
 				return String(r.stdout || "");
 			};
-			// Same NUL/RS wire format the baker parses (see
-			// `shared/changelogHistory/changelogLimits.js`).
-			const logFormat = ["%H", "%h", "%an", "%ae", "%aI", "%s", "%b"].join("%x00") + "%x1e";
+			// Same NUL/RS wire format the baker parses: the exact value
+			// lives in `shared/changelogHistory/changelogGitFormat.js` so
+			// serve-time output can never drift from the parser.
+			const logFormat = buildChangelogGitFormat();
 			const raw = git(["log", branch, "-n", "2000", `--format=${logFormat}`]);
 			const entries = filterChangelogEntries(parseGitLog(raw)).slice(0, DEFAULT_LIMIT);
 			const subjects = git(["log", branch, "--format=%s"]).split("\n");
@@ -401,8 +403,11 @@ export class DeployManager {
 	/***
 	 * MARK: resolveChangelogBranch
 	 * @description Picks the history to serve live: local `master` first,
-	 *   then local `main`, then the `origin/HEAD` symbolic target — the same
-	 *   order the baker resolves. Candidate refs are verified with
+	 *   then local `main`, then the `origin/HEAD` symbolic target, then the
+	 *   remote-tracking `origin/master` / `origin/main` refs directly — the
+	 *   same order the baker (`scripts/generate-changelog.mjs`) resolves, so
+	 *   a checkout without a local default branch still serves the history it
+	 *   has instead of reporting "not-baked". Candidate refs are verified with
 	 *   `rev-parse --verify` (argv array, no shell) and the symbolic target
 	 *   is shape-checked before use, so an odd ref reads as null rather than
 	 *   running an unintended revision.
@@ -421,15 +426,24 @@ export class DeployManager {
 			cwd: this.repoRoot,
 			encoding: "utf8",
 		});
-		if (head.error || head.status !== 0) return null;
-		const branch = String(head.stdout || "").replace("refs/remotes/origin/", "").trim();
-		if (!branch || branch.startsWith("-") || branch.includes("..") || /\s/.test(branch)) return null;
-		const verify = spawnSync("git", ["rev-parse", "--verify", "--quiet", branch], {
-			cwd: this.repoRoot,
-			encoding: "utf8",
-		});
-		if (verify.error || verify.status !== 0) return null;
-		return branch;
+		if (!head.error && head.status === 0) {
+			const branch = String(head.stdout || "").replace("refs/remotes/origin/", "").trim();
+			if (branch && !branch.startsWith("-") && !branch.includes("..") && !/\s/.test(branch)) {
+				const verify = spawnSync("git", ["rev-parse", "--verify", "--quiet", branch], {
+					cwd: this.repoRoot,
+					encoding: "utf8",
+				});
+				if (!verify.error && verify.status === 0) return branch;
+			}
+		}
+		for (const name of ["origin/master", "origin/main"]) {
+			const probe = spawnSync("git", ["rev-parse", "--verify", "--quiet", `refs/remotes/${name}`], {
+				cwd: this.repoRoot,
+				encoding: "utf8",
+			});
+			if (!probe.error && probe.status === 0) return name;
+		}
+		return null;
 	}
 
 	/***
