@@ -317,6 +317,12 @@ export class DeployManager {
 			const bundled = this.#usableChangelogRecord(this.#readChangelogFile(candidate));
 			if (bundled) return bundled;
 		}
+		// Mounted deploy state (container installs expose only the `.kainbain`
+		// state volume) keeps every previous bake under `deploy/releases/`, so
+		// a build whose image lacks a bundled artifact can still serve the most
+		// recent real history instead of reporting "not-baked".
+		const released = this.#usableChangelogRecord(this.#readLatestReleaseChangelog());
+		if (released) return released;
 		return this.#readLiveGitChangelog();
 	}
 
@@ -395,6 +401,38 @@ export class DeployManager {
 			};
 			this.#liveChangelog = { at: now, data };
 			return data;
+		} catch {
+			return null;
+		}
+	}
+
+	/***
+	 * MARK: readLatestReleaseChangelog
+	 * @description Scans the deployDir releases build-* changelog.json files (the durable
+	 *   per-deploy artifacts written by self-deploys) and returns the newest
+	 *   usable record, so an install that only mounts the `.kainbain` state
+	 *   volume — no `.git`, no bundled artifact — can still serve real history.
+	 *   Numeric build directories are tried newest-first; only usable records
+	 *   count, so a corrupt or empty release never hides an older good one.
+	 * @returns {Object|null}
+	 **/
+	#readLatestReleaseChangelog() {
+		try {
+			/* eslint-disable security/detect-non-literal-fs-filename -- releasesDir is derived from deployDir, not user input */
+			const releasesDir = path.join(this.deployDir, "releases");
+			if (!fs.existsSync(releasesDir)) return null;
+			const builds = fs
+				.readdirSync(releasesDir, { withFileTypes: true })
+				.filter((entry) => entry.isDirectory() && /^build-\d+$/.test(entry.name))
+				.map((entry) => ({ name: entry.name, build: Number(entry.name.slice("build-".length)) }))
+				/* eslint-enable security/detect-non-literal-fs-filename */
+				.sort((a, b) => b.build - a.build || a.name.localeCompare(b.name));
+			for (const { name } of builds) {
+				const record = this.#readChangelogFile(path.join(releasesDir, name, "changelog.json"));
+				const usable = this.#usableChangelogRecord(record);
+				if (usable) return usable;
+			}
+			return null;
 		} catch {
 			return null;
 		}
