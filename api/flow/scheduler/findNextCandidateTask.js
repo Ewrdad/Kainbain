@@ -9,6 +9,7 @@ import {
 } from '../stageResolution.js';
 import { findResumedCandidate } from './findResumedCandidate.js';
 import { isSchedulerRunnable } from './isSchedulerRunnable.js';
+import { retryStateOf } from '../../../shared/taskRetryState.js';
 
 /***
  * MARK: findNextCandidateTask
@@ -48,6 +49,16 @@ export function findNextCandidateTask(store, { ignoreTrip = false } = {}) {
 		store.lastCompletedTask = null; // Clear so it only triggers once
 		const task = store.getTask(projectId, taskId);
 		if (task && task.status === "in_stage") {
+			const retryInfo = retryStateOf(task);
+			if (
+				retryInfo.state === "scheduled" &&
+				retryInfo.nextRetryAt &&
+				Date.parse(retryInfo.nextRetryAt) > Date.now()
+			) {
+				// Retry is armed for the future: do not dispatch it ahead of the
+				// scheduled deadline (the armed timer re-offers it when it fires).
+				return null;
+			}
 			const project = store.projectStore?.getProject?.(projectId);
 			const stages = resolveStagesForTask(project, task);
 			const stage =
@@ -89,6 +100,16 @@ export function findNextCandidateTask(store, { ignoreTrip = false } = {}) {
 		const tasks = store.listTasks(project.id, project.cwd);
 		for (const task of tasks) {
 			if (task.status !== "in_stage") continue;
+
+			const retryInfo = retryStateOf(task);
+			if (
+				retryInfo.state === "scheduled" &&
+				retryInfo.nextRetryAt &&
+				Date.parse(retryInfo.nextRetryAt) > Date.now()
+			) {
+				// Retry is armed for the future: skip it until the scheduled deadline.
+				continue;
+			}
 
 			const stages = resolveStagesForTask(project, task);
 			if (!Array.isArray(stages) || stages.length === 0) continue;

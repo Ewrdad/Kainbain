@@ -364,11 +364,19 @@ export async function executeStage(
 		const priorStdout = task.lastError?.stdout || null;
 
 		const wasRetrying = isRetryingTask(task);
+		// Preserve the retry attempt counters while a retry is in flight so the
+		// board can keep showing "attempt x of y" while the attempt runs.
+		const priorRetryAttempt = task.retryAttempt;
+		const priorRetryMaxAttempts = task.retryMaxAttempts;
 		task.failureReason = null;
 		task.lastError = null;
 		delete task.lastRetrySource;
 		clearRetryState(task);
-		if (wasRetrying) task.retryState = "running";
+		if (wasRetrying) {
+				task.retryState = "running";
+				task.retryAttempt = priorRetryAttempt;
+				task.retryMaxAttempts = priorRetryMaxAttempts;
+		}
 
 		store.setEngineState({
 			status: stageType === "human" ? "checkpoint" : "running",

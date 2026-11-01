@@ -197,6 +197,11 @@ export const retryWaitLabel = (task, nowMs = Date.now()) => {
  ***/
 export const clearRetryState = (task, opts = {}) => {
 	if (!isObject(task)) return task;
+	const clearFailure =
+		opts?.clearFailureReason === true ||
+		opts?.clearLastError === true ||
+		opts?.preserveFailureReason === false ||
+		opts?.keepFailureReason === false;
 	task.autoRetrying = false;
 	task.retryState = TASK_RETRY_STATES.NONE;
 	task.nextRetryAt = null;
@@ -208,12 +213,9 @@ export const clearRetryState = (task, opts = {}) => {
 	delete task.nextRetryDelayMs;
 	delete task.lastRetryDelayMs;
 	delete task.retryDelay;
-	if (opts && (opts.clearFailureReason === true)) {
+	if (clearFailure) {
 		delete task.failureReason;
 		delete task.lastError;
-	}
-	if (opts && opts.keepFailureReason !== true && opts.preserveFailureReason === false) {
-		// backwards-friendly: only clear if explicitly requested
 	}
 	return task;
 }
