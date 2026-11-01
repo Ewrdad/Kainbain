@@ -18,7 +18,8 @@ import {
 	sanitizeImageName,
 	dedupeImageName,
 	taskAssetDir,
-	resolveTaskAssetFile,
+	findStoredTaskImageFile,
+	describeStoredTaskImageFile,
 	listTaskImages,
 	writeTaskImage,
 	deleteTaskImage,
@@ -201,13 +202,9 @@ export default async function taskImagesRoutes(app, { deps }) {
 				});
 			}
 
-			// Repair-after-switch (see TaskStore._saveTaskMarkdown): asset
-			// writes mkdir the task dir directly and would cement a shadow
-			// directory when the docs link is missing.
-			taskStore._repairDocsLinkAfterSwitch?.(
-				request.params.id,
-				ctx.projectCwd,
-			);
+			// The docs link was already repaired inside resolveTaskContext,
+			// before the task-existence check — repairing again here would
+			// only repeat the same work on every upload.
 			const existing = listTaskImages(ctx.projectCwd, ctx.taskId, ctx.project);
 			if (existing.length >= appConfig.taskImageMaxPerTask) {
 				return reply.status(413).send({
@@ -219,7 +216,23 @@ export default async function taskImagesRoutes(app, { deps }) {
 				existing.map((image) => image.name),
 				safeName,
 			);
-			const relPath = writeTaskImage(ctx.projectCwd, ctx.taskId, finalName, buffer, ctx.project);
+			let relPath;
+			try {
+				relPath = writeTaskImage(ctx.projectCwd, ctx.taskId, finalName, buffer, ctx.project);
+			} catch (err) {
+				// The upload reached disk and failed (full disk, permissions,
+				// a hand-placed file where the assets folder should be). Say
+				// so with its own reason instead of a bare framework 500, and
+				// return no reference the UI could link to a missing file.
+				request.log?.error?.(
+					{ projectId: request.params.id, taskId: ctx.taskId, reason: "image-write-failed", err },
+					"task image could not be stored",
+				);
+				return reply.status(500).send({
+					error: `Image could not be stored: ${err?.message || "unknown error"}`,
+					reason: "image-write-failed",
+				});
+			}
 			return reply.status(201).send({
 				name: finalName,
 				path: relPath,
@@ -344,59 +357,72 @@ export default async function taskImagesRoutes(app, { deps }) {
 					.status(400)
 					.send({ error: "Invalid image name", reason: "invalid-image-name" });
 			}
-			let targetFile = resolveTaskAssetFile(ctx.projectCwd, ctx.taskId, safeName, ctx.project);
-			// Serve-side canonicalization for stale/unsanitized refs: a stored
-			// ref may carry a non-canonical name (wrong case, spaces, trailing
-			// title residue) that the backend flattened on upload. Resolve to
-			// an existing asset whose sanitized name matches instead of 404ing
-			// a file that is actually present under a nearby canonical name.
-			if (!targetFile || !fs.existsSync(targetFile)) {
-				const assetsDir = taskAssetDir(ctx.projectCwd, ctx.taskId, ctx.project);
-				if (assetsDir) {
-					try {
-						const match = fs
-							.readdirSync(assetsDir, { withFileTypes: true })
-							.find(
-								(entry) =>
-									entry.isFile() &&
-									isAllowedImageExt(entry.name) &&
-									sanitizeImageName(entry.name) === safeName,
-							);
-						if (match) {
-							targetFile = path.join(assetsDir, match.name);
-						}
-					} catch {
-						// Missing/unreadable directory: fall through to 404 below.
-					}
-				}
-			}
-			/* eslint-disable security/detect-non-literal-fs-filename */
-			if (!targetFile || !fs.existsSync(targetFile)) {
+			// One reusable lookup owns serving: exact file first, then a
+			// stored file whose sanitized name matches a drifted reference.
+			// It only ever returns a regular file inside the assets folder.
+			const storedImageFilePath = findStoredTaskImageFile({
+				projectCwd: ctx.projectCwd,
+				taskId: ctx.taskId,
+				requestedImageName: safeName,
+				project: ctx.project,
+			});
+			const storedImageDetails = storedImageFilePath
+				? describeStoredTaskImageFile({ filePath: storedImageFilePath })
+				: null;
+			if (!storedImageFilePath || !storedImageDetails) {
 				request.log?.warn?.(
 					{ taskId: ctx.taskId, name: safeName, reason: "image-not-found" },
 					"task image request for a missing asset file",
 				);
 				return reply.status(404).send({ error: "Image not found", reason: "image-not-found" });
 			}
-			const servedName = path.basename(targetFile);
+			const servedName = path.basename(storedImageFilePath);
+			// Caching: never serve stale bytes silently. The browser may keep
+			// a private copy but must revalidate before reusing it; an
+			// unchanged file answers a tiny 304, while a file replaced or
+			// deleted under the same name (hand restore, delete + re-upload)
+			// gets fresh bytes or an honest 404 instead of a year-old copy.
+			reply
+				.header("etag", storedImageDetails.cacheValidator)
+				.header("last-modified", new Date(storedImageDetails.lastChangedAt).toUTCString())
+				.header("cache-control", "private, no-cache");
+			const offeredValidators = String(request.headers?.["if-none-match"] || "")
+				.split(",")
+				.map((validator) => validator.trim());
+			if (
+				offeredValidators.includes(storedImageDetails.cacheValidator) ||
+				offeredValidators.includes("*")
+			) {
+				return reply.status(304).send();
+			}
+			/* eslint-disable security/detect-non-literal-fs-filename */
 			try {
-				const buffer = fs.readFileSync(targetFile);
+				const buffer = fs.readFileSync(storedImageFilePath);
 				const mediaType = imageMediaType(servedName) || "application/octet-stream";
 				reply
 					.header("content-type", mediaType)
 					.header("content-length", buffer.length)
 					.header("content-disposition", `inline; filename="${servedName}"`)
-					.header("x-content-type-options", "nosniff")
-					// Stored names are write-once (uploads dedupe instead of
-					// overwriting, deletes are explicit), so bytes are
-					// immutable: refreshes must not revalidate into a
-					// transient miss the way `max-age=60` did.
-					.header("cache-control", "private, max-age=31536000, immutable");
+					.header("x-content-type-options", "nosniff");
 				return reply.send(buffer);
 			} catch (err) {
-				return reply
-					.status(500)
-					.send({ error: `Failed to read image: ${err.message}` });
+				// A file removed between the check above and this read is a
+				// plain miss, not a server fault; anything else is reported
+				// with its own reason so operators can tell the two apart.
+				const fileVanished = err?.code === "ENOENT" || err?.code === "ENOTDIR";
+				if (fileVanished) {
+					return reply
+						.status(404)
+						.send({ error: "Image not found", reason: "image-not-found" });
+				}
+				request.log?.error?.(
+					{ taskId: ctx.taskId, name: safeName, reason: "image-read-failed", err },
+					"task image file could not be read",
+				);
+				return reply.status(500).send({
+					error: `Failed to read image: ${err.message}`,
+					reason: "image-read-failed",
+				});
 			}
 			/* eslint-enable security/detect-non-literal-fs-filename */
 		},

@@ -14,6 +14,8 @@ import {
 	collectTaskImageRefs,
 	writeTaskImage,
 	deleteTaskImage,
+	findStoredTaskImageFile,
+	describeStoredTaskImageFile,
 } from "./taskAssets.js";
 
 describe("taskAssets helpers", () => {
@@ -168,6 +170,62 @@ describe("taskAssets helpers", () => {
 			expect(listTaskImages(tempRoot, "task-rt").map((i) => i.name)).toEqual([
 				"b.png",
 			]);
+		});
+
+		it("finds stored files by canonical name, ignores directories, and fails closed", () => {
+			writeTaskImage(tempRoot, "task-find", "stored-shot.png", Buffer.from([9]));
+			// A directory that merely carries an image name is not a servable file.
+			fs.mkdirSync(path.join(taskAssetDir(tempRoot, "task-find"), "folder.png"));
+			expect(
+				findStoredTaskImageFile({
+					projectCwd: tempRoot,
+					taskId: "task-find",
+					requestedImageName: "STORED-SHOT.PNG",
+				}),
+			).toBe(path.join(taskAssetDir(tempRoot, "task-find"), "stored-shot.png"));
+			expect(
+				findStoredTaskImageFile({
+					projectCwd: tempRoot,
+					taskId: "task-find",
+					requestedImageName: "folder.png",
+				}),
+			).toBeNull();
+			expect(
+				findStoredTaskImageFile({
+					projectCwd: tempRoot,
+					taskId: "task-find",
+					requestedImageName: "missing.png",
+				}),
+			).toBeNull();
+			expect(
+				findStoredTaskImageFile({
+					projectCwd: tempRoot,
+					taskId: "task-find",
+					requestedImageName: "notes.txt",
+				}),
+			).toBeNull();
+			expect(
+				findStoredTaskImageFile({
+					projectCwd: tempRoot,
+					taskId: "../escape",
+					requestedImageName: "stored-shot.png",
+				}),
+			).toBeNull();
+		});
+
+		it("describes a stored file with a cache validator that changes with its bytes", () => {
+			const filePath = writeTaskImage(tempRoot, "task-describe", "a.png", Buffer.from([1]));
+			const absoluteFilePath = path.join(taskAssetDir(tempRoot, "task-describe"), "a.png");
+			expect(filePath).toBe("assets/a.png");
+			const firstDetails = describeStoredTaskImageFile({ filePath: absoluteFilePath });
+			expect(firstDetails.size).toBe(1);
+			expect(firstDetails.cacheValidator).toMatch(/^"1-\d+"$/);
+			fs.writeFileSync(absoluteFilePath, Buffer.from([1, 2, 3]));
+			expect(
+				describeStoredTaskImageFile({ filePath: absoluteFilePath }).cacheValidator,
+			).not.toBe(firstDetails.cacheValidator);
+			expect(describeStoredTaskImageFile({ filePath: path.join(tempRoot, "nope.png") })).toBeNull();
+			expect(describeStoredTaskImageFile({ filePath: taskAssetDir(tempRoot, "task-describe") })).toBeNull();
 		});
 
 		it("yields empty lists for tasks without an assets directory", () => {

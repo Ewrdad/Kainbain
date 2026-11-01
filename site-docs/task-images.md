@@ -79,14 +79,20 @@ anywhere markdown is rendered with the task in context.
 
 ## Reliability: why images stay loaded across refreshes
 
-Images are stored once and never overwritten (a repeat upload dedupes to
-`name-2.png`), so the bytes behind a reference are immutable. Serving leans
-on that:
+Uploads never overwrite an existing image (a repeat upload dedupes to
+`name-2.png`). Files can still change outside the app — a hand edit, a
+restore from backup, a delete followed by a re-upload under the same name —
+so serving never assumes the bytes behind a name are fixed:
 
-- **Long-lived cache.** The serve endpoint answers
-  `Cache-Control: private, max-age=31536000, immutable`, so a page refresh
-  or a later revalidation never re-requests the image into a transient
-  miss — the browser keeps the copy it already has.
+- **Revalidated cache, never silently stale.** The serve endpoint answers
+  `Cache-Control: private, no-cache` with an `ETag` built from the file's
+  size and last-change time. A refresh asks the server to check that tag:
+  an unchanged image answers a tiny `304` with no bytes, while a file that
+  was replaced or deleted under the same name (a hand restore, or a delete
+  followed by a re-upload) is served fresh — or reported missing — instead
+  of showing a cached copy of bytes that no longer exist. A transient
+  failure during that check is recovered by the viewer's automatic retry
+  (below), so revalidation cannot latch a broken image either.
 - **Disk is the source of truth.** A task counts as existing when its
   `task.md` is on disk, even if the server has not rehydrated the task into
   its in-memory cache yet (fresh boot, project switch) — a cold cache can
@@ -103,6 +109,29 @@ viewer shows an inert `🖼️ <name> (image unavailable)` chip with a **Retry**
 button instead of a broken-image icon; after one transient failure the image
 also retries automatically once before settling on the chip. The upload
 thumbnails behave the same way.
+
+## How serving can fail
+
+Every failure answers with a plain-language `error` plus a short `reason`
+code, and the server logs the same code — one log line says which guard
+fired:
+
+| Reason | HTTP status | What it means |
+| --- | --- | --- |
+| `unknown-project` | 404 | The project id is not known to this server. |
+| `invalid-task-id` | 400 | The task id would escape the tasks folder. |
+| `task-not-found` | 404 | No task in the store and no `task.md` on disk. |
+| `path-traversal` | 403 | The image name contains a path separator. |
+| `invalid-image-name` | 400 | The name is empty or not a png/jpg/jpeg/gif/webp image. |
+| `image-not-found` | 404 | The task exists but that image file does not (any more), or the name is a directory. |
+| `image-read-failed` | 500 | The file exists but could not be read — check permissions on the host. |
+| `image-write-failed` | 500 | An upload could not be stored — check disk space and permissions on the host. |
+
+Nothing fails silently: a failed upload adds no markdown reference (the
+file only becomes linked after the server confirms it was stored), a
+failed listing leaves the goal text untouched, and a failed load shows
+the filename chip with **Retry** rather than a broken-image icon or an
+invisible gap.
 
 ## How agents see the images
 

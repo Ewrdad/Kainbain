@@ -4,7 +4,13 @@ import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import '@testing-library/jest-dom';
-import { MarkdownViewer, sanitizeUrl, highlightCode, parseInlineMarkdown } from './MarkdownViewer';
+import {
+  MarkdownViewer,
+  MdImage,
+  sanitizeUrl,
+  highlightCode,
+  parseInlineMarkdown,
+} from './MarkdownViewer';
 
 describe('MarkdownViewer Component', () => {
   beforeEach(() => {
@@ -275,6 +281,18 @@ describe('MarkdownViewer task images', () => {
       vi.advanceTimersByTime(10000);
     });
     expect(container.querySelector('img[alt="flaky"]')).toBeNull();
+  });
+
+  it('gives a directly-rendered image a clean attempt when only its source changes', () => {
+    const { container, rerender } = render(<MdImage src="/images/gone.png" alt="direct" />);
+    fireEvent.error(container.querySelector('img[alt="direct"]'));
+    expect(screen.getByText(/gone.png \(image unavailable\)/)).toBeInTheDocument();
+    // No remount and no parent key change: the failure belongs to the old
+    // source only, so the new source must render as an image immediately.
+    rerender(<MdImage src="/images/back.png" alt="direct" />);
+    expect(container.querySelector('img[alt="direct"]')?.getAttribute('src')).toBe(
+      '/images/back.png',
+    );
   });
 
   it('resolves image references inside lists, tables, and headings', () => {

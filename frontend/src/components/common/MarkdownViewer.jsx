@@ -151,41 +151,33 @@ export function CodeBlock({ code, language = '', enableCopy = true }) {
  * @param {string} [props.alt] - The markdown alt text.
  ***/
 export function MdImage({ src, alt = '' }) {
-  const [failed, setFailed] = useState(false);
+  // Failure is remembered per source, not as a bare flag: a new source
+  // compares unequal and gets a clean load attempt on the very first render,
+  // with no reset effect that could run late or race the next failure.
+  const [failedSource, setFailedSource] = useState(null);
   // Bumped to force a fresh load attempt for the same URL (manual or
   // automatic retry); without a key change the <img> would never refetch.
   const [retryKey, setRetryKey] = useState(0);
   // A transient failure (slow/flaky load, cold cache) gets exactly one
-  // automatic re-attempt; anything beyond that is a real miss and latches.
-  const autoRetriedRef = useRef(false);
-  const prevSrcRef = useRef(src);
-
-  // Reset latched failure state whenever the source changes, including
-  // direct prop updates that do not remount the component. A fresh source
-  // must always start with a clean load attempt.
-  useEffect(() => {
-    if (prevSrcRef.current === src) return;
-    prevSrcRef.current = src;
-    setFailed(false);
-    setRetryKey(0);
-    autoRetriedRef.current = false;
-  }, [src]);
+  // automatic re-attempt per source; anything beyond that is a real miss.
+  const autoRetriedSourceRef = useRef(null);
+  const failed = failedSource !== null && failedSource === src;
 
   useEffect(() => {
-    if (!failed || autoRetriedRef.current) return undefined;
-    autoRetriedRef.current = true;
+    if (!failed || autoRetriedSourceRef.current === src) return undefined;
+    autoRetriedSourceRef.current = src;
     const timer = setTimeout(() => {
-      setFailed(false);
+      setFailedSource(null);
       setRetryKey((key) => key + 1);
     }, 1500);
     return () => clearTimeout(timer);
-  }, [failed]);
+  }, [failed, src]);
 
   const retry = useCallback(() => {
-    autoRetriedRef.current = true;
-    setFailed(false);
+    autoRetriedSourceRef.current = src;
+    setFailedSource(null);
     setRetryKey((key) => key + 1);
-  }, []);
+  }, [src]);
 
   if (!src || src === '#') {
     return (
@@ -230,7 +222,7 @@ export function MdImage({ src, alt = '' }) {
       src={src}
       alt={alt}
       loading="lazy"
-      onError={() => setFailed(true)}
+      onError={() => setFailedSource(src)}
       className="max-w-full h-auto rounded border border-border-standard my-2 inline-block"
     />
   );

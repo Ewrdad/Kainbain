@@ -429,13 +429,66 @@ describe("Task Images API", () => {
 		);
 	});
 
-	it("serves image bytes as long-lived immutable private cache", async () => {
+	it("serves images for revalidation so replaced or deleted bytes never go stale", async () => {
+		const taskDir = path.join(tempProjectDir, "docs", "tasks", "task-revalidate-1");
+		fs.mkdirSync(path.join(taskDir, "assets"), { recursive: true });
+		fs.writeFileSync(path.join(taskDir, "task.md"), "---\nid: task-revalidate-1\n---\n# Goal\nRevalidate.");
+		fs.writeFileSync(path.join(taskDir, "assets", "changing.png"), PNG_BYTES);
+		const url = `/projects/${testProjectId}/tasks/task-revalidate-1/images/changing.png`;
+		const first = await app.inject({ method: "GET", url });
+		expect(first.statusCode).toBe(200);
+		expect(first.headers["cache-control"]).toBe("private, no-cache");
+		expect(first.headers.etag).toMatch(/^"\d+-\d+"$/);
+
+		const unchanged = await app.inject({
+			method: "GET",
+			url,
+			headers: { "if-none-match": first.headers.etag },
+		});
+		expect(unchanged.statusCode).toBe(304);
+		expect(unchanged.rawPayload.length).toBe(0);
+
+		// Same name, different bytes (hand restore / delete + re-upload): the
+		// old validator must not produce a 304 for the new file.
+		const replacementBytes = Buffer.concat([PNG_BYTES, Buffer.from([9, 9, 9])]);
+		fs.writeFileSync(path.join(taskDir, "assets", "changing.png"), replacementBytes);
+		const replaced = await app.inject({
+			method: "GET",
+			url,
+			headers: { "if-none-match": first.headers.etag },
+		});
+		expect(replaced.statusCode).toBe(200);
+		expect(Buffer.from(replaced.rawPayload).equals(replacementBytes)).toBe(true);
+	});
+
+	it("returns image-not-found (not 500) when an asset name is a directory", async () => {
+		fs.mkdirSync(
+			path.join(tempProjectDir, "docs", "tasks", "task-img-1", "assets", "folder.png"),
+			{ recursive: true },
+		);
 		const res = await app.inject({
 			method: "GET",
-			url: `/projects/${testProjectId}/tasks/task-img-1/images/shot-one.png`,
+			url: `/projects/${testProjectId}/tasks/task-img-1/images/folder.png`,
 		});
-		expect(res.statusCode).toBe(200);
-		expect(res.headers["cache-control"]).toContain("immutable");
+		expect(res.statusCode).toBe(404);
+		expect(JSON.parse(res.payload).reason).toBe("image-not-found");
+	});
+
+	it("reports image-write-failed (not a bare 500) when the assets folder cannot be created", async () => {
+		const taskDir = path.join(tempProjectDir, "docs", "tasks", "task-write-fail");
+		fs.mkdirSync(taskDir, { recursive: true });
+		fs.writeFileSync(path.join(taskDir, "task.md"), "---\nid: task-write-fail\n---\n# Goal\nBlocked assets.");
+		// A regular file where the assets directory would have to be created.
+		fs.writeFileSync(path.join(taskDir, "assets"), "not a directory");
+		const { payload, headers } = multipartBody("blocked.png", PNG_BYTES);
+		const res = await app.inject({
+			method: "POST",
+			url: `/projects/${testProjectId}/tasks/task-write-fail/images`,
+			payload,
+			headers,
+		});
+		expect(res.statusCode).toBe(500);
+		expect(JSON.parse(res.payload).reason).toBe("image-write-failed");
 	});
 
 	it("round-trips a tricky filename (uppercase, spaces, parens) to a canonical served asset", async () => {

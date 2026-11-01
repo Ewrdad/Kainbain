@@ -153,6 +153,95 @@ export function resolveTaskAssetFile(projectCwd, taskId, name, docsProject) {
  * @param {string} name
  * @returns {string}
  ***/
+/***
+ * MARK: findStoredTaskImageFile
+ * @description Finds the regular file that should be served for one requested
+ *   image name. An exact stored file wins; otherwise a stored file whose name
+ *   sanitizes to the requested name is used, so a reference whose case or
+ *   punctuation drifted still reaches the image the user attached. Directories
+ *   carrying an image name, missing files, disallowed extensions, and task ids
+ *   that escape the tasks folder all return null — the caller reports one
+ *   plain "image not found" and no other file can be reached this way.
+ * @example findStoredTaskImageFile({ projectCwd: '/repo', taskId: 'task-1', requestedImageName: 'SHOT.PNG' }) => '/repo/docs/tasks/task-1/assets/shot.png'
+ * @param {Object} lookup - Where to look and which name was requested.
+ * @param {string} lookup.projectCwd - Absolute path of the project folder.
+ * @param {string} lookup.taskId - Task whose assets folder should be searched.
+ * @param {string} lookup.requestedImageName - Name carried by the request or reference.
+ * @param {Object|string} [lookup.project] - Project record (or bare folder name) carrying `docsDirName`.
+ * @returns {string|null} Absolute path of a regular image file, or null.
+ ***/
+export function findStoredTaskImageFile({
+	projectCwd,
+	taskId,
+	requestedImageName,
+	project,
+} = {}) {
+	const sanitizedRequestedImageName = sanitizeImageName(requestedImageName);
+	if (!sanitizedRequestedImageName || !isAllowedImageExt(sanitizedRequestedImageName)) {
+		return null;
+	}
+	const assetsDirectory = taskAssetDir(projectCwd, taskId, project);
+	if (!assetsDirectory) return null;
+	/* eslint-disable security/detect-non-literal-fs-filename */
+	const exactStoredFilePath = path.join(assetsDirectory, sanitizedRequestedImageName);
+	try {
+		if (fs.statSync(exactStoredFilePath).isFile()) return exactStoredFilePath;
+	} catch {
+		// No exact file: a stored name that sanitizes to the same name may exist.
+	}
+	try {
+		const matchingEntry = fs
+			.readdirSync(assetsDirectory, { withFileTypes: true })
+			.find(
+				(entry) =>
+					entry.isFile() &&
+					isAllowedImageExt(entry.name) &&
+					sanitizeImageName(entry.name) === sanitizedRequestedImageName,
+			);
+		return matchingEntry ? path.join(assetsDirectory, matchingEntry.name) : null;
+	} catch {
+		return null;
+	}
+	/* eslint-enable security/detect-non-literal-fs-filename */
+}
+
+/***
+ * MARK: describeStoredTaskImageFile
+ * @description Reads the serving facts for one stored image file: its byte
+ *   size, when it last changed, and a cache validator built from both. The
+ *   validator changes when a file is replaced — even under the same name —
+ *   so a browser revalidation can never be answered with "unchanged" for
+ *   different bytes. Missing paths and non-files (a directory named like an
+ *   image) return null instead of throwing.
+ * @example describeStoredTaskImageFile({ filePath: '/repo/docs/tasks/task-1/assets/shot.png' }) => { size: 512, lastChangedAt: '2026-01-01T00:00:00.000Z', cacheValidator: '"512-1767225600000"' }
+ * @param {Object} detailsRequest - The file to describe.
+ * @param {string} detailsRequest.filePath - Absolute path of the stored file.
+ * @returns {{size: number, lastChangedAt: string, cacheValidator: string}|null}
+ ***/
+export function describeStoredTaskImageFile({ filePath } = {}) {
+	if (!filePath || typeof filePath !== "string") return null;
+	/* eslint-disable security/detect-non-literal-fs-filename */
+	try {
+		const fileDetails = fs.statSync(filePath);
+		if (!fileDetails.isFile()) return null;
+		return {
+			size: fileDetails.size,
+			lastChangedAt: fileDetails.mtime.toISOString(),
+			cacheValidator: `"${fileDetails.size}-${Math.floor(fileDetails.mtimeMs)}"`,
+		};
+	} catch {
+		return null;
+	}
+	/* eslint-enable security/detect-non-literal-fs-filename */
+}
+
+/***
+ * MARK: taskAssetRelPath
+ * @description The markdown-reference form for an asset name (what `![alt](…)` carries).
+ * @example taskAssetRelPath('a.png') => 'assets/a.png'
+ * @param {string} name
+ * @returns {string}
+ ***/
 export function taskAssetRelPath(name) {
 	return `assets/${name}`;
 }
