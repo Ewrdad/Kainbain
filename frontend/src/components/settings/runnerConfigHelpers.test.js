@@ -13,7 +13,6 @@ import {
   withProjectUnloaded,
   scopePatchForLoaded,
   validateDirectoryField,
-  validateDirectories,
 } from './runnerConfigHelpers';
 
 /***
@@ -130,14 +129,10 @@ describe('runnerConfigHelpers', () => {
     expect(jobSwitchChecked(null, 'runsCi')).toBe(false);
   });
 
-  it('requires both directory paths', () => {
-    expect(validateDirectories({ masterDir: '/srv/kb', worktreeDir: '/srv/trees' }).ok).toBe(
-      true,
-    );
-    const bad = validateDirectories({ masterDir: '  ', worktreeDir: '' });
-    expect(bad.ok).toBe(false);
-    expect(bad.errors.masterDir).toBeTruthy();
-    expect(bad.errors.worktreeDir).toBeTruthy();
+  it('encodes unloading every project as an empty scope that refuses all work', () => {
+    // Unloading the last project is fail-closed: the patch is [] (not the
+    // serves-all null), so the Runner takes nothing until something loads.
+    expect(scopePatchForLoaded([], [{ id: 'a' }, { id: 'b' }])).toEqual([]);
   });
 
   it('validates one directory field without looking at its sibling', () => {

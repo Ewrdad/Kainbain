@@ -33,6 +33,14 @@ describe("operatorConfigVerdict", () => {
 		expect(operatorConfigVerdict(record, { projectId: "p1" }, {}).ok).toBe(true);
 	});
 
+	test("an empty projectScope refuses every project instead of serving all", () => {
+		// Settings saves [] when the operator unloads the last project:
+		// fail-closed (takes nothing), never the serves-all null.
+		const record = { operatorConfig: { projectScope: [] } };
+		expect(operatorConfigVerdict(record, {}, { projectId: "p1" }).reason).toBe("PROJECT_SCOPE");
+		expect(operatorConfigVerdict(record, {}, {}).reason).toBe("PROJECT_SCOPE");
+	});
+
 	test("refuses disabled job kinds but never impromptu work", () => {
 		const record = {
 			operatorConfig: { jobTypes: { runsCi: false, runsMerges: false, runsImpromptu: false } },

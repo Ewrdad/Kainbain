@@ -278,6 +278,23 @@ describe('RunnerConfigurationSection', () => {
     });
   });
 
+  it('unloading the last project saves an empty scope that refuses all work', async () => {
+    runnersFixture([
+      {
+        ...ACTIVE_RUNNER,
+        operatorConfig: { ...OPERATOR_CONFIG, projectScope: ['p1'] },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    // p2 sits Available while only p1 is Loaded: unloading p1 empties Loaded.
+    fireEvent.click(screen.getByTestId('runner-unload-project-p1'));
+    await waitFor(() => {
+      // [] is fail-closed (takes nothing), never the serves-all null.
+      expect(updateRunnerConfig).toHaveBeenCalledWith('r1', { projectScope: [] });
+    });
+  });
+
   it('requires confirmation before saving a directory', async () => {
     runnersFixture([ACTIVE_RUNNER]);
     render(<RunnerConfigurationSection />);

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { RunnerRegistry, RUNNER_PROTOCOL } from "./runnerRegistry.js";
+import { saveStateFile } from "./saveStateFile.js";
 
 const tmpRunnerState = () =>
 	path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kb-runner-test-")), "runners.json");
@@ -528,5 +529,50 @@ describe("RunnerRegistry operator config", () => {
 			directories: { masterDir: "/srv/kb", worktreeDir: "/srv/kb-trees" },
 			projectScope: ["p1"],
 		});
+	});
+
+	test("pre-upgrade state without operatorConfig loads with defaults and stays configurable", () => {
+		// Transfer of operations: a runners.json written before the Runner
+		// settings screen existed carries no operatorConfig. Loading it must
+		// fail open to the legacy behaviour (serves everything) instead of
+		// crashing or parking the fleet, and the operator can configure it.
+		const file = tmpRunnerState();
+		saveStateFile(file, {
+			version: 1,
+			runners: [
+				{
+					runnerId: "r1",
+					status: "active",
+					facts: FACTS,
+					capabilities: null,
+					credential: "cred-1",
+					credentialIssuedAt: new Date().toISOString(),
+					paused: false,
+				},
+			],
+		});
+		const runners = new RunnerRegistry({ joinToken: "join-secret", stateFile: file });
+		expect(runners.getConfig("r1").operatorConfig).toEqual({
+			displayName: null,
+			availableTools: null,
+			jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
+			directories: { masterDir: "", worktreeDir: "" },
+			projectScope: null,
+		});
+		const updated = runners.updateConfig("r1", { jobTypes: { runsCi: false } });
+		expect(updated.operatorConfig.jobTypes.runsCi).toBe(false);
+	});
+
+	test("an empty projectScope persists and refuses every project", () => {
+		// Unloading the last project in Settings saves [] (not the
+		// serves-all null): the Runner takes nothing until something loads.
+		const { runners } = approved();
+		const updated = runners.updateConfig("r1", { projectScope: [] });
+		expect(updated.operatorConfig.projectScope).toEqual([]);
+		const reloaded = new RunnerRegistry({
+			joinToken: "join-secret",
+			stateFile: runners.stateFile,
+		});
+		expect(reloaded.getConfig("r1").operatorConfig.projectScope).toEqual([]);
 	});
 });

@@ -219,7 +219,7 @@ beforeEach(() => {
 describe('SystemSettingsContent', () => {
   it('renders the title, close control, and one tab per SETTINGS_TABS entry', async () => {
     renderContent();
-    // Flush the Harness tab's async registry load so its state updates land
+    // Flush the Runners tab's async registry load so its state updates land
     // inside act() rather than after the assertions below.
     expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
     expect(screen.getByText('System Settings')).toBeInTheDocument();

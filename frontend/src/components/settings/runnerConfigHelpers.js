@@ -231,24 +231,6 @@ export const validateDirectoryField = (value) => {
 };
 
 /***
- * MARK: validateDirectories
- * @description Validates the Master/Worktree directory edits before save.
- *   Both fields are required and must be non-empty; values are never
- *   executed, only stored.
- * @example validateDirectories({ masterDir: '/srv/kb', worktreeDir: '' }) => { ok: false, errors: { worktreeDir: '…' } }
- * @param {Object} [directories={}] - Draft `{ masterDir, worktreeDir }`.
- * @returns {{ok: boolean, errors: Object}} Validation outcome.
- ***/
-export const validateDirectories = (directories = {}) => {
-  const errors = {};
-  const masterError = validateDirectoryField(directories?.masterDir);
-  if (masterError) errors.masterDir = masterError;
-  const worktreeError = validateDirectoryField(directories?.worktreeDir);
-  if (worktreeError) errors.worktreeDir = worktreeError;
-  return { ok: Object.keys(errors).length === 0, errors };
-};
-
-/***
  * MARK: jobSwitchChecked
  * @description Reads one job-type switch from a normalized config without
  *   computed key access: unknown keys stay off rather than throwing, so a
