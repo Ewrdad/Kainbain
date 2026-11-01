@@ -204,6 +204,10 @@ export const clearRetryState = (task, opts = {}) => {
 	task.retryMaxAttempts = 0;
 	task.retryScheduledInStandby = false;
 	delete task.lastRetrySource;
+	delete task.retryDelayMs;
+	delete task.nextRetryDelayMs;
+	delete task.lastRetryDelayMs;
+	delete task.retryDelay;
 	if (opts && (opts.clearFailureReason === true)) {
 		delete task.failureReason;
 		delete task.lastError;
@@ -224,6 +228,14 @@ export const setRetryScheduled = (task, meta = {}) => {
 	if (meta.attempt !== undefined) task.retryAttempt = Number(meta.attempt) || task.retryAttempt || 0;
 	if (meta.maxAttempts !== undefined) task.retryMaxAttempts = Number(meta.maxAttempts) || task.retryMaxAttempts || 0;
 	if (meta.nextRetryAt !== undefined) task.nextRetryAt = meta.nextRetryAt === null ? null : String(meta.nextRetryAt);
+	if (meta.delayMs !== undefined) {
+		const d = Number(meta.delayMs);
+		if (Number.isFinite(d) && d >= 0) {
+			task.retryDelayMs = d;
+			task.nextRetryDelayMs = d;
+			task.lastRetryDelayMs = d;
+		}
+	}
 	task.retryScheduledInStandby = false;
 	return task;
 }
@@ -237,7 +249,25 @@ export const isRetryStuck = (task, nowMs = Date.now()) => {
 	if (!info.nextRetryAt) return false;
 	const deadline = Date.parse(info.nextRetryAt);
 	if (!Number.isFinite(deadline)) return false;
-	const grace = 30 * 1000; // base handled by caller? plan: 2*delay+30s needs delay unknown
 	const now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
-	return now - deadline > grace; // older than grace
+	// Plan grace window: 2 * delay + 30s, where `delay` is the intended
+	// retry delay. Fall back to 30s when no delay is recorded, so tests and
+	// legacy tasks without delay metadata stay comparable to the older
+	// behaviour.
+	let delayMs = 0;
+	if (isObject(task)) {
+		delayMs = clampNumber(
+			task.retryDelayMs ??
+				task.nextRetryDelayMs ??
+				task.lastRetryDelayMs ??
+				task.retryDelay ??
+				0,
+			0,
+		);
+		if (delayMs === 0 && Array.isArray(task.transientRetryLadder) && task.transientRetryLadder.length > 0) {
+			delayMs = clampNumber(task.transientRetryLadder[task.transientRetryLadder.length - 1]?.delayMs, 0);
+		}
+	}
+	const grace = delayMs > 0 ? delayMs * 2 + 30_000 : 30_000;
+	return now - deadline > grace;
 }

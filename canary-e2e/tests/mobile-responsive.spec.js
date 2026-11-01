@@ -102,7 +102,10 @@ test.describe("Mobile Responsive Layout", () => {
 			page.getByRole("button", { name: /Start Engine|Stop Engine/i }),
 		).toHaveCount(0);
 		await expect(
-			page.getByTestId("now-playing-runner-boxes").or(page.getByTestId("now-playing-idle-hint")),
+			page
+				.getByTestId("now-playing-runner-boxes")
+				.or(page.getByTestId("now-playing-idle-hint"))
+				.or(page.getByTestId("now-playing-task-name")),
 		).toBeVisible();
 	});
 

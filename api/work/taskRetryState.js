@@ -75,6 +75,7 @@ export const armRetry = (taskStore, task, delayMs, meta = {}) => {
 		attempt: meta.attempt,
 		maxAttempts: meta.maxAttempts,
 		nextRetryAt,
+		delayMs: delay,
 	});
 	if (meta.budgetSource) task.retryBudgetSource = meta.budgetSource;
 

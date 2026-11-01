@@ -76,8 +76,32 @@ export async function pushBranchIfRemote(projectCwd, branch, opts = {}) {
 	const args = setUpstream
 		? ["push", "-u", remote, branch]
 		: ["push", remote, branch];
-	await git(projectCwd, args, { timeout: opts.timeout || 120000 });
-	return { pushed: true, skipped: null };
+	try {
+		await git(projectCwd, args, { timeout: opts.timeout || 120000 });
+		return { pushed: true, skipped: null };
+	} catch (err) {
+		// A push can fail for reasons that are network/infrastructure rather
+		// than a genuine conflict: a host that cannot be resolved, a dead
+		// connection, a timeout. Those leave the task branch and the landed
+		// work untouched (nothing was pushed), and — critically — the merge
+		// stage should not park the task for a remote that is simply out of
+		// reach right now; the work already landed locally and the remote
+		// can catch up on the next publishing pass. We surface the skip so
+		// callers can audit it and keep routing, rather than throwing the
+		// way an auth failure or a non-fast-forward does.
+		const msg = String(err?.message ?? "");
+		const lower = msg.toLowerCase();
+		const unreachable =
+			lower.includes("could not resolve host") ||
+			lower.includes("network is unreachable") ||
+			lower.includes("connection timed out") ||
+			lower.includes("connection refused") ||
+			lower.includes("operation timed out");
+		if (unreachable) {
+			return { pushed: false, skipped: "remote-unreachable" };
+		}
+		throw err;
+	}
 }
 
 

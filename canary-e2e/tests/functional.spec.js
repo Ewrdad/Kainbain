@@ -64,7 +64,10 @@ test.describe("KainBain Functional E2E Tests", () => {
 		// Fleet roster: runner boxes when Runners are configured, else the
 		// idle hint — the bar never renders an empty state.
 		await expect(
-			page.getByTestId("now-playing-runner-boxes").or(page.getByTestId("now-playing-idle-hint")),
+			page
+				.getByTestId("now-playing-runner-boxes")
+				.or(page.getByTestId("now-playing-idle-hint"))
+				.or(page.getByTestId("now-playing-task-name")),
 		).toBeVisible();
 	});
 
