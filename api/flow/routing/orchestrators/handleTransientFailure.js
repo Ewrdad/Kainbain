@@ -406,6 +406,10 @@ export function handleTransientFailure(
 		{ taskId, stageId: stage?.id, error: errorMsg, classification: classificationMeta, nextDelayMs, signal: retrySignal, budgetSource },
 	);
 	armRetry(taskStore, task, nextDelayMs, { attempt, maxAttempts, budgetSource });
+	// Persist the armed retryState/nextRetryAt: the save above predates the
+	// arm, and a restart before the next save must still find the schedule
+	// on disk rather than a stale flag.
+	taskStore._saveTaskMarkdown(cwd, task);
 	return {
 		task,
 		stageType,

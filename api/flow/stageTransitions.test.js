@@ -9,6 +9,10 @@ import {
 	resumeTask,
 	retryStage,
 } from "./stageTransitions.js";
+import {
+	isRetryingTask,
+	retryProgressLabel,
+} from "../../shared/taskRetryState.js";
 
 const STAGES = [
 	{ id: "s-1", name: "Build", type: "agent" },
@@ -696,6 +700,16 @@ describe("resumeTask / retryStage", () => {
 		store.seed("p-1", task({ status: "failed" }));
 		expect((await retryStage(store, "p-1", "t-1")).status).toBe("in_stage");
 		expect(store.executeStage).not.toHaveBeenCalled();
+	});
+
+	it("retryStage marks a pending manual retry while awaiting pickup", async () => {
+		const store = makeStore();
+		store.seed("p-1", task({ status: "failed", retryState: "exhausted" }));
+		const retried = await retryStage(store, "p-1", "t-1");
+		expect(retried.status).toBe("in_stage");
+		expect(retried.lastRetrySource).toBe("operator");
+		expect(isRetryingTask(retried)).toBe(true);
+		expect(retryProgressLabel(retried)).toBe("RETRYING (manual)");
 	});
 });
 

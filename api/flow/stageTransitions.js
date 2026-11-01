@@ -8,7 +8,7 @@ import { isTerminalTaskStatus, resolveStageLabel, stageElapsedSeconds, clearResu
 import { resolveStagesForTask } from './taskScheduler.js';
 import { killTaskProcess } from './taskControl.js';
 import { buildTimelineAttribution } from './runAttribution.js';
-import { clearRetryState } from '../../shared/taskRetryState.js';
+import { clearRetryState, setRetryScheduled } from '../../shared/taskRetryState.js';
 
 /***
  * MARK: releaseEngineOwnership
@@ -669,6 +669,10 @@ export async function retryStage(
 	store._resetAutoIteration(task);
 	// Operator-initiated retry: the badge reads "RETRYING (manual)" while
 	// the attempt is pending. executeStage clears it when the run starts.
+	// The scheduled marker (due immediately) is what makes isRetryingTask
+	// true during the pickup window — without it a manual retry on an idle
+	// engine would sit in_stage with no badge at all.
+	setRetryScheduled(task, { nextRetryAt: new Date().toISOString() });
 	task.lastRetrySource = "operator";
 	task.status = "in_stage";
 	task.updatedAt = new Date().toISOString();

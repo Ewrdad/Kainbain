@@ -989,10 +989,32 @@ export const TASK_STATUSES = {
 	blocked: "Blocked by unresolved dependencies (see blockedBy).",
 	paused: "Paused by an operator or engine.",
 	interrupted: "Interrupted (e.g. server shutdown); may be resumed.",
-	failed: "The current stage failed; use retry or failback.",
+	failed: "The current stage failed and is parked; use retry or failback.",
 	retrying: "An automatic retry is scheduled or in flight (see retryState/nextRetryAt). Persisted task status stays in_stage; retryState annotates why.",
 	passed: "A CI or merge stage passed.",
 	completed: "Task finished through its pipeline.",
+};
+
+/***
+ * MARK: TASK_RETRY_FIELDS
+ * @description The persisted retry annotation read alongside `status`: why an
+ *   `in_stage` task is waiting, when its next attempt runs, and how much
+ *   budget remains. A settled task (failed/paused/interrupted/completed)
+ *   never shows a retry; an exhausted budget parks as `failed` with
+ *   `retryState` "exhausted" instead of a dangling RETRYING badge.
+ * @example TASK_RETRY_FIELDS['retryState'] => 'none | scheduled | running | exhausted; ...'
+ ***/
+export const TASK_RETRY_FIELDS = {
+	retryState:
+		"none | scheduled | running | exhausted; why an in_stage task is waiting. scheduled = armed but not started; running = a retry attempt is executing; exhausted = budget spent and the task parked as failed.",
+	nextRetryAt:
+		"ISO timestamp of the next attempt; always written when a retry is armed (even while the engine is stopped) and cleared on every terminal/pause/interrupt/abort outcome.",
+	retryAttempt:
+		"Attempts spent from the current retry budget (autoIterationCount / infraRetryCount); shown as the x in attempt x of y.",
+	retryMaxAttempts:
+		"Budget size for the current retry source; 0/unknown renders no count rather than a guess.",
+	retryBudgetSource:
+		"Where the budget came from: auto (failback auto-iteration) or transient (infrastructure same-stage ladder).",
 };
 
 /***
@@ -1129,6 +1151,12 @@ export function renderMarkdownGuide({ withExamples = true } = {}) {
 		lines.push(`- \`${k}\` — ${v}`);
 	}
 	lines.push("");
+	lines.push("### Retry fields (read alongside status)");
+	lines.push("");
+	for (const [k, v] of Object.entries(TASK_RETRY_FIELDS)) {
+		lines.push(`- \`${k}\` — ${v}`);
+	}
+	lines.push("");
 	lines.push("## Endpoints");
 	lines.push("");
 	for (const ep of ENDPOINTS) {
@@ -1205,6 +1233,7 @@ export const AGENT_GUIDE = {
 			"Optional on most routes; omitted defaults to the currently active project.",
 	},
 	taskStatuses: TASK_STATUSES,
+	taskRetryFields: TASK_RETRY_FIELDS,
 	taskBlocking: TASK_BLOCKING,
 	stageTypes: STAGE_TYPES,
 	endpoints: ENDPOINTS,

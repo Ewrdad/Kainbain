@@ -44,6 +44,7 @@ import {
 } from "./deployStageFailure.js";
 import { checkoutBranch, defaultBranch } from "../git/branch.js";
 import { syncDefaultBranchToRemote } from "../git/remote.js";
+import { clearRetryState } from "../../shared/taskRetryState.js";
 
 /***
  * MARK: isContinuityDeployStage
@@ -56,7 +57,6 @@ import { syncDefaultBranchToRemote } from "../git/remote.js";
  * @param {Object} [stage]
  * @returns {boolean}
  ***/
-import { clearRetryState } from "../../shared/taskRetryState.js";
 export function isContinuityDeployStage(stage) {
 	if (!stage || typeof stage !== "object") return false;
 	if (String(stage.type || "").trim().toLowerCase() === "deploy") return true;

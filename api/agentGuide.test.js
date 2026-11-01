@@ -4,6 +4,7 @@ import {
 	BASE_PATH_PREFIX,
 	ENDPOINTS,
 	TASK_STATUSES,
+	TASK_RETRY_FIELDS,
 	STAGE_TYPES,
 	RECOMMENDED_WORKFLOW,
 	WS_EVENT_TYPES,
@@ -100,9 +101,23 @@ describe("agentGuide constants", () => {
 		}
 	});
 
+	it("TASK_RETRY_FIELDS documents the retry annotation", () => {
+		for (const key of [
+			"retryState",
+			"nextRetryAt",
+			"retryAttempt",
+			"retryMaxAttempts",
+			"retryBudgetSource",
+		]) {
+			// eslint-disable-next-line security/detect-object-injection -- test keys are literals from the field list above
+			expect(typeof TASK_RETRY_FIELDS[key]).toBe("string");
+		}
+	});
+
 	it("AGENT_GUIDE wires the catalogue into one structured object", () => {
 		expect(AGENT_GUIDE.endpoints).toBe(ENDPOINTS);
 		expect(AGENT_GUIDE.taskStatuses).toBe(TASK_STATUSES);
+		expect(AGENT_GUIDE.taskRetryFields).toBe(TASK_RETRY_FIELDS);
 		expect(AGENT_GUIDE.stageTypes).toBe(STAGE_TYPES);
 		expect(AGENT_GUIDE.taskBlocking).toBe(TASK_BLOCKING);
 		expect(AGENT_GUIDE.recommendedWorkflow).toBe(RECOMMENDED_WORKFLOW);
@@ -136,6 +151,9 @@ describe("renderMarkdownGuide", () => {
 			expect(md).toContain(`\`${key}\``);
 		}
 		for (const key of Object.keys(STAGE_TYPES)) {
+			expect(md).toContain(`\`${key}\``);
+		}
+		for (const key of Object.keys(TASK_RETRY_FIELDS)) {
 			expect(md).toContain(`\`${key}\``);
 		}
 	});

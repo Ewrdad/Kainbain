@@ -384,6 +384,10 @@ export function handleStageFailure(
 			{ taskId, stageId: stage?.id, error: errorMsg },
 		);
 		armRetry(taskStore, task, 2000, { attempt: task.autoIterationCount, maxAttempts: autoIteration.maxAttempts, budgetSource: "auto" });
+		// Persist the armed retryState/nextRetryAt: the save above predates
+		// the arm, and a restart before the next save must still find the
+		// schedule (or its absence) on disk rather than a stale flag.
+		taskStore._saveTaskMarkdown(cwd, task);
 		return {
 			task,
 			stageType,
