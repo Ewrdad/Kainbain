@@ -262,6 +262,15 @@ if [ "$FAST" = "1" ]; then
   case " $COMPONENTS " in *" frontend "*) run npm run build:frontend || exit 1 ;; esac
 fi
 
+# Bundle git history into the backend image: the container has no .git and
+# the host $PROD_DIR/changelog.json is not mounted into it, so the API serves
+# api/bundled-changelog.json (COPY api/ in the Dockerfile) as its changelog.
+case " $COMPONENTS " in
+  *" backend "*)
+    run node scripts/generate-changelog.mjs --limit 200 --out api/bundled-changelog.json || { echo "publish.sh: changelog bundling failed — nothing published" >&2; exit 1; }
+    ;;
+esac
+
 for c in $COMPONENTS; do
   case "$c" in
     backend)

@@ -688,4 +688,7 @@ expand its stages inline again.
   (Keep-a-Changelog) and is updated only at release time. The in-app **Changelog** dialog
   continues to read the baked commit history via `GET /deploy/changelog`
   (`scripts/generate-changelog.mjs`); the two channels are intentionally not wired
-  together.
+  together. Docker publishes bundle that history as
+  `api/bundled-changelog.json` inside the backend image (see `publish.sh`), and
+  host/dev runs from a checkout serve live `main` history as a fallback, so the
+  dialog shows existing logs without a `.git` directory in production.

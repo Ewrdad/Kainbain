@@ -1,5 +1,9 @@
 node_modules/
 dist/
+# Generated at publish time by scripts/generate-changelog.mjs and bundled
+# into the backend image (see publish.sh); never committed.
+api/bundled-changelog.json
+changelog.json
 .vite/
 .playwright/
 
