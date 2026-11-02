@@ -635,8 +635,10 @@ export function NowPlayingBar() {
             baked changelog dialog. Hidden when no build is baked. */}
         <BuildHashTrigger />
         {/* Live queue-depth chip: universal queue depth across all pipelines.
-            role="status" (aria-live polite) so screen readers hear the count
-            change as tasks advance. No text animation — WCAG 1.4.3 contract. */}
+            The button carries the single accessible name; the nested
+            role="status" live region (aria-live polite, no aria-label) lets
+            screen readers hear the count change as tasks advance without a
+            duplicate name. No text animation — WCAG 1.4.3 contract. */}
         <div className="hidden sm:flex items-center">
           <InfoTooltip
             title="Execution Queue"
@@ -653,7 +655,7 @@ export function NowPlayingBar() {
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-surface-container/90 border border-border-standard/80 cursor-pointer select-none focus:outline-none focus:ring-1 focus:ring-primary"
               data-testid="queue-chip-button"
             >
-              <span role="status" aria-live="polite" aria-label={`Execution queue: ${queueDepth} open ${queueDepth === 1 ? 'task' : 'tasks'} across all pipelines`} className="contents">
+              <span role="status" aria-live="polite" className="contents">
                 <span
                   className="material-symbols-outlined text-[14px] text-secondary"
                   aria-hidden="true"

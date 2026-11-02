@@ -73,7 +73,7 @@ const E2E_STAGES = [
 const ownerName = (page) => page.getByTestId("now-playing-task-name");
 const statusBadge = (page) =>
 	page.locator('span[aria-label^="Engine status is "]');
-const queueChip = (page) => page.locator('div[aria-label^="Execution queue:"]');
+const queueChip = (page) => page.locator('button[aria-label^="Execution queue:"]');
 
 /***
  * MARK: getEngineState

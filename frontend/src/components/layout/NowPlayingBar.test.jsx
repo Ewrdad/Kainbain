@@ -1,7 +1,7 @@
 // jsdom pin: this suite needs window.confirm stub (happy-dom differs); keep on jsdom.
 // @vitest-environment jsdom
 import { expect, test, vi, beforeEach } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { renderWithKainBain } from '../../testUtils';
 import { NowPlayingBar, resolveRunnerBoxes, runnerBoxHealth } from './NowPlayingBar';
 import { KainBainContext } from '../../context/KainBainContext';
@@ -73,7 +73,7 @@ test('renders live queue chip with no stale stage label (no fake progress bar, t
   // The right rail is queue-only: the live queue-depth chip counts open tasks
   // only — t1 and t2 are open, t3 is completed and excluded.
   expect(
-    screen.getByRole('status', {
+    screen.getByRole('button', {
       name: 'Execution queue: 2 open tasks across all pipelines',
     }),
   ).toHaveTextContent('2');
@@ -102,7 +102,7 @@ test('queue chip is live: count updates as tasks advance and drops to zero when 
     ],
   });
   const chip = () =>
-    screen.getByRole('status', {
+    screen.getByRole('button', {
       name: /Execution queue: \d+ open tasks? across all pipelines/,
     });
   expect(chip()).toHaveTextContent('3');
@@ -152,7 +152,7 @@ test('no elapsed timer remains on the queue-only right rail', () => {
   expect(screen.queryByLabelText('Elapsed time in current stage')).not.toBeInTheDocument();
   expect(screen.queryByText('Elapsed')).not.toBeInTheDocument();
   expect(
-    screen.getByRole('status', { name: /Execution queue: \d+ open tasks? across all pipelines/ }),
+    screen.getByRole('button', { name: /Execution queue: \d+ open tasks? across all pipelines/ }),
   ).toBeInTheDocument();
 });
 
@@ -393,7 +393,7 @@ test('no subsystem health light remains on the now playing bar', () => {
   expect(screen.queryByTestId('traffic-dot-device')).not.toBeInTheDocument();
   expect(screen.queryByTestId('traffic-dot-ollama')).not.toBeInTheDocument();
   expect(
-    screen.getByRole('status', { name: /Execution queue: \d+ open tasks? across all pipelines/ }),
+    screen.getByRole('button', { name: /Execution queue: \d+ open tasks? across all pipelines/ }),
   ).toBeInTheDocument();
 });
 
@@ -408,7 +408,7 @@ test('right-rail contract: rail keeps the queue chip and clips overflow', () => 
   const rail = screen.getByTestId('now-playing-right-rail');
   expect(rail.className).toContain('overflow-hidden');
   expect(
-    screen.getByRole('status', { name: /Execution queue: \d+ open tasks? across all pipelines/ }),
+    screen.getByRole('button', { name: /Execution queue: \d+ open tasks? across all pipelines/ }),
   ).toBeInTheDocument();
 
   for (const testId of ['now-playing-health-slot', 'rail-divider-elapsed', 'rail-divider-health']) {
@@ -479,7 +479,7 @@ test('Now Playing is universal: switching pipelines never changes the named task
   expect(namedBefore).toMatch(/Alpha session/);
   expect(screen.getByText('RUNNING')).toBeInTheDocument();
   const queueBefore = screen
-    .getByRole('status', { name: /Execution queue:/ })
+    .getByRole('button', { name: /Execution queue:/ })
     .getAttribute('aria-label');
 
   // Switch the selected pipeline to B — the board view changes, but the
@@ -501,7 +501,7 @@ test('Now Playing is universal: switching pipelines never changes the named task
   expect(screen.getByTestId('now-playing-task-name').textContent).toBe(namedBefore);
   expect(screen.getByText('RUNNING')).toBeInTheDocument();
   expect(
-    screen.getByRole('status', { name: /Execution queue:/ }).getAttribute('aria-label'),
+    screen.getByRole('button', { name: /Execution queue:/ }).getAttribute('aria-label'),
   ).toBe(queueBefore);
 });
 
@@ -571,7 +571,7 @@ test('project switch keeps the whole bar put: owner named, badge/queue/transport
   expect(screen.getByText('RUNNING')).toBeInTheDocument();
   expect(screen.queryByLabelText('Elapsed time in current stage')).not.toBeInTheDocument();
   const queueBefore = screen
-    .getByRole('status', { name: /Execution queue:/ })
+    .getByRole('button', { name: /Execution queue:/ })
     .getAttribute('aria-label');
   expect(queueBefore).toBe('Execution queue: 4 open tasks across all pipelines');
 
@@ -603,7 +603,7 @@ test('project switch keeps the whole bar put: owner named, badge/queue/transport
   expect(screen.getByText('RUNNING')).toBeInTheDocument();
   expect(screen.queryByLabelText('Elapsed time in current stage')).not.toBeInTheDocument();
   expect(
-    screen.getByRole('status', { name: /Execution queue:/ }).getAttribute('aria-label'),
+    screen.getByRole('button', { name: /Execution queue:/ }).getAttribute('aria-label'),
   ).toBe(queueBefore);
 });
 
@@ -1172,7 +1172,7 @@ test('build-hash trigger renders left of the queue chip and opens the changelog'
 
   // Placement: the trigger is a right-rail child ordered before the queue chip.
   const rail = screen.getByTestId('now-playing-right-rail');
-  const queue = screen.getByRole('status', { name: /Execution queue:/ });
+  const queue = screen.getByRole('button', { name: /Execution queue:/ });
   expect(rail.contains(trigger)).toBe(true);
   expect(rail.contains(queue)).toBe(true);
   expect(trigger.compareDocumentPosition(queue) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -1193,7 +1193,7 @@ test('no build-hash trigger renders when no build is baked', async () => {
   expect(screen.queryByTestId('build-badge')).not.toBeInTheDocument();
   // The queue chip still renders: only the trigger degrades, never the rail.
   expect(
-    screen.getByRole('status', { name: /Execution queue:/ }),
+    screen.getByRole('button', { name: /Execution queue:/ }),
   ).toBeInTheDocument();
 });
 
@@ -1222,10 +1222,13 @@ test('queue chip is a button: clicking opens the dispatch-order popup and the fe
   const chip = screen.getByRole('button', { name: 'Execution queue: 2 open tasks across all pipelines' });
   expect(chip.tagName).toBe('BUTTON');
   expect(chip).toHaveTextContent('2');
-  // The live-region count semantics survive inside the button.
-  expect(
-    screen.getByRole('status', { name: 'Execution queue: 2 open tasks across all pipelines' }),
-  ).toHaveTextContent('2');
+  // The live-region count semantics survive inside the button: one
+  // unlabeled polite status region carrying the count (the button owns the
+  // single accessible name, so label-based locators never match twice).
+  const liveRegion = within(chip).getByRole('status');
+  expect(liveRegion).toHaveTextContent('2');
+  expect(liveRegion).toHaveAttribute('aria-live', 'polite');
+  expect(liveRegion).not.toHaveAttribute('aria-label');
 
   expect(api.observabilityStatus).not.toHaveBeenCalled();
   fireEvent.click(chip);
