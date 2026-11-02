@@ -2,7 +2,13 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { appendSurveyRound, readSurvey } from "../work/taskSurvey.js";
+import {
+	appendSurveyRound,
+	readSurvey,
+	resolveSurveyPath,
+	saveSurveyAnswers,
+	withSurveyFileWriteLock,
+} from "../work/taskSurvey.js";
 import { listTaskImages } from "../work/taskAssets.js";
 import { MOCK_IMAGE_PNG_BASE64 } from "./providers.js";
 import {
@@ -235,6 +241,129 @@ describe("api/imageGen/surveyImages job", () => {
 		const [a, b] = await Promise.all([first, second]);
 		expect(a).toBe(b);
 		expect(a.generated).toBe(2);
+	});
+
+	it("holds image splices while another writer owns the survey file lock", async () => {
+		appendSurveyRound({ cwd, project: null, taskId, stage: "ask", questions: [img()] });
+		const lockPath = resolveSurveyPath(cwd, null, taskId);
+		let release;
+		const gate = new Promise((resolve) => {
+			release = resolve;
+		});
+		const holder = withSurveyFileWriteLock(lockPath, () => gate);
+		await new Promise((r) => setTimeout(r, 20));
+		const job = ensureSurveyImages({ cwd, project: null, taskId, stage: stageWith("mock") });
+		// The mock job splices within milliseconds when unlocked: nothing may
+		// have landed while the lock is held elsewhere.
+		await new Promise((r) => setTimeout(r, 150));
+		expect(imagesOf(cwd)).toEqual([]);
+		release();
+		const summary = await job;
+		await holder;
+		expect(summary).toMatchObject({ generated: 2, failed: 0 });
+		expect(imagesOf(cwd).map((e) => e.status)).toEqual(["ready", "ready"]);
+	});
+
+	it("persists the chosen picture behind the lock, idempotently", async () => {
+		appendSurveyRound({ cwd, project: null, taskId, stage: "ask", questions: [img()] });
+		await ensureSurveyImages({ cwd, project: null, taskId, stage: stageWith("mock") });
+		saveSurveyAnswers({
+			cwd,
+			project: null,
+			taskId,
+			patch: { qi: { selected: ["dark dashboard with teal charts"], notes: "" } },
+		});
+		const surveyPath = resolveSurveyPath(cwd, null, taskId);
+		let release;
+		const gate = new Promise((resolve) => {
+			release = resolve;
+		});
+		const holder = withSurveyFileWriteLock(surveyPath, () => gate);
+		await new Promise((r) => setTimeout(r, 20));
+		const pending = persistChosenSurveyImages({ cwd, project: null, taskId });
+		await new Promise((r) => setTimeout(r, 150));
+		expect(fs.readFileSync(surveyPath, "utf8")).not.toContain("## Chosen designs");
+		release();
+		const first = await pending;
+		await holder;
+		expect(first).toMatchObject({ sectionWritten: true, errors: [] });
+		expect(first.chosen).toHaveLength(1);
+		const doc = fs.readFileSync(surveyPath, "utf8");
+		expect(doc).toContain("## Chosen designs");
+		expect(doc).toContain("assets/survey-r1-qi-chosen.png");
+		const chosenBytes = fs.readFileSync(
+			path.join(cwd, "docs", "tasks", taskId, "assets", "survey-r1-qi-chosen.png"),
+		);
+		expect(chosenBytes.toString("base64")).toBe(MOCK_IMAGE_PNG_BASE64);
+		// Round JSON untouched by the merge: answers and images[] intact.
+		const { rounds } = readSurvey(cwd, null, taskId);
+		expect(rounds[0].answers.qi.selected).toEqual(["dark dashboard with teal charts"]);
+		expect(rounds[0].questions[0].images.map((e) => e.status)).toEqual(["ready", "ready"]);
+		// Idempotent re-submit: byte-identical file, a single section.
+		const second = await persistChosenSurveyImages({ cwd, project: null, taskId, rounds });
+		expect(second).toMatchObject({ sectionWritten: true });
+		const doc2 = fs.readFileSync(surveyPath, "utf8");
+		expect(doc2).toBe(doc);
+		expect(doc2.split("## Chosen designs")).toHaveLength(2);
+	});
+
+	it("loses no updates when a submit lands mid-generation", async () => {
+		appendSurveyRound({ cwd, project: null, taskId, stage: "ask", questions: [img()] });
+		process.env.KAINBAIN_IMAGE_GEN_MUSE_API_KEY = "sk-test";
+		let releaseGen;
+		const genGate = new Promise((resolve) => {
+			releaseGen = resolve;
+		});
+		const gatedFetch = async (...args) => {
+			await genGate;
+			return museFetch(...args);
+		};
+		const job = ensureSurveyImages({
+			cwd,
+			project: null,
+			taskId,
+			stage: stageWith("muse"),
+			fetchImpl: gatedFetch,
+		});
+		// Wait for pass 1 to publish pending entries: the job is now blocked
+		// inside generation, exactly when a submit may arrive.
+		for (let i = 0; i < 100 && imagesOf(cwd).length < 2; i += 1) {
+			await new Promise((r) => setTimeout(r, 25));
+		}
+		expect(imagesOf(cwd).map((e) => e.status)).toEqual(["pending", "pending"]);
+		saveSurveyAnswers({
+			cwd,
+			project: null,
+			taskId,
+			patch: { qi: { selected: ["light minimal dashboard"], notes: "n" } },
+		});
+		// Nothing ready yet: the early merge correctly records nothing.
+		const early = await persistChosenSurveyImages({ cwd, project: null, taskId });
+		expect(early.chosen).toEqual([]);
+		expect(early.sectionWritten).toBe(false);
+		// Hold the file lock while generation completes: the pass-2 splice
+		// must queue behind it instead of racing the submit's writes.
+		const lockPath = resolveSurveyPath(cwd, null, taskId);
+		let releaseLock;
+		const lockGate = new Promise((resolve) => {
+			releaseLock = resolve;
+		});
+		const holder = withSurveyFileWriteLock(lockPath, () => lockGate);
+		await new Promise((r) => setTimeout(r, 20));
+		releaseGen();
+		await new Promise((r) => setTimeout(r, 150));
+		expect(imagesOf(cwd).map((e) => e.status)).toEqual(["pending", "pending"]);
+		releaseLock();
+		const summary = await job;
+		await holder;
+		expect(summary).toMatchObject({ generated: 2, failed: 0 });
+		// Late merge after readiness: every concurrent update survives.
+		const late = await persistChosenSurveyImages({ cwd, project: null, taskId });
+		expect(late.chosen).toHaveLength(1);
+		const { rounds } = readSurvey(cwd, null, taskId);
+		expect(rounds[0].answers.qi).toEqual({ selected: ["light minimal dashboard"], notes: "n" });
+		expect(rounds[0].questions[0].images.map((e) => e.status)).toEqual(["ready", "ready"]);
+		expect(fs.readFileSync(lockPath, "utf8")).toContain("## Chosen designs");
 	});
 
 	it("honours a custom survey file and never throws on bad input", async () => {

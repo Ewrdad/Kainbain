@@ -8,7 +8,7 @@ import { _sanitizeTaskTitle } from "./taskIdentity.js";
 import { toTaskDurationSummary } from "../taskDurationSummary.js";
 import { resolveStage } from "../flow/index.js";
 import { resolveStagesForTask } from "../flow/taskScheduler.js";
-import { normalizeSurveyFileName, readSurvey, resolveQuestionMeOutputFile, saveSurveyAnswers } from "./taskSurvey.js";
+import { normalizeSurveyFileName, readSurvey, resolveQuestionMeOutputFile, resolveSurveyPath, saveSurveyAnswers, withSurveyFileWriteLock } from "./taskSurvey.js";
 import { stageHasQuestionMe, unansweredRequired } from "../../shared/survey.js";
 import { ensureSurveyImages, persistChosenSurveyImages, resolveImageGenProvider } from "../imageGen/surveyImages.js";
 
@@ -517,13 +517,19 @@ export async function registerTaskWorkRoutes(app, deps) {
 				return reply.status(400).send({ error: "answers must be an object keyed by question id" });
 			}
 			try {
-				const saved = saveSurveyAnswers({
-					cwd: project?.cwd,
-					project,
-					taskId: task.id,
-					outputFile,
-					patch,
-				});
+				// Serialized with the background image job's splices and the
+				// chosen-image merge below (which locks internally): one
+				// survey file, one writer at a time.
+				const surveyLockPath = resolveSurveyPath(project?.cwd, project, task.id, outputFile);
+				const saved = await withSurveyFileWriteLock(surveyLockPath, () =>
+					saveSurveyAnswers({
+						cwd: project?.cwd,
+						project,
+						taskId: task.id,
+						outputFile,
+						patch,
+					}),
+				);
 				survey = { ...readSurvey(project?.cwd, project, task.id, outputFile), status: saved.status, missing: saved.missing, unknownIds: saved.unknownIds };
 			} catch (err) {
 				return reply.status(err?.statusCode || 400).send({ error: err?.message || "Invalid survey answers" });

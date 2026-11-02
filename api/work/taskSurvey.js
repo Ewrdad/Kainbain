@@ -317,6 +317,48 @@ function _roundStageId(args) {
 	return roundStage;
 }
 
+// Per-survey-file write chains: each key holds the tail promise of that
+// file's writers, so concurrent async entry points (answer submits, the
+// background image job) serialize their read-modify-write cycles instead of
+// interleaving them. The chains only ever fulfill — a throwing writer still
+// releases its successor — so a failed write can never wedge later ones.
+const SURVEY_FILE_WRITE_CHAINS = new Map();
+
+/***
+ * MARK: withSurveyFileWriteLock
+ * @description Runs `fn` holding this process's write lock for one survey
+ *   file (keyed by resolved path, so every spelling of the same file shares
+ *   one chain). Concurrent holders queue FIFO; the lock is NOT reentrant, so
+ *   a holder must never acquire the same file again before returning. A
+ *   missing/empty path skips locking and just runs `fn`.
+ * @example await withSurveyFileWriteLock('/tmp/s.md', async () => 'ok') => 'ok'
+ * @param {string|null} [filePath] - Resolved survey file path (or null).
+ * @param {Function} fn - Async critical section; its value is returned.
+ * @returns {Promise<*>} Whatever `fn` returns (rejections propagate).
+ ***/
+export async function withSurveyFileWriteLock(filePath, fn) {
+	if (typeof fn !== "function") throw new Error("withSurveyFileWriteLock requires a function");
+	const key =
+		typeof filePath === "string" && filePath.trim() ? path.resolve(filePath) : "";
+	if (!key) return fn();
+	const prev = SURVEY_FILE_WRITE_CHAINS.get(key) || Promise.resolve();
+	let release = null;
+	const gate = new Promise((resolve) => {
+		release = resolve;
+	});
+	const chained = prev.then(() => gate);
+	SURVEY_FILE_WRITE_CHAINS.set(key, chained);
+	await prev;
+	try {
+		return await fn();
+	} finally {
+		release();
+		if (SURVEY_FILE_WRITE_CHAINS.get(key) === chained) {
+			SURVEY_FILE_WRITE_CHAINS.delete(key);
+		}
+	}
+}
+
 /***
  * MARK: appendSurveyRound
  * @description Appends one question round to the configured survey file,

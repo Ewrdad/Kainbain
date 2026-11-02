@@ -21,6 +21,7 @@ import {
 	spliceRoundsIntoMarkdown,
 	stageHasQuestionMe,
 	updateSurveyImages,
+	withSurveyFileWriteLock,
 	DEFAULT_SURVEY_FILENAME,
 } from "./taskSurvey.js";
 import { parseSurvey } from "../../shared/survey.js";
@@ -315,5 +316,73 @@ describe("stageHasQuestionMe / resolveSurveyGate", () => {
 		expect(resolveSurveyGate(stage, [{ round: 1, questions: [], answers: {} }])).toMatchObject({ park: false, status: "empty" });
 		expect(resolveSurveyGate(stage, [{ round: 1, questions: [q()], answers: {} }])).toMatchObject({ park: true, status: "pending" });
 		expect(resolveSurveyGate({ skills: [] }, [])).toMatchObject({ park: false });
+	});
+});
+
+describe("withSurveyFileWriteLock", () => {
+	it("serializes concurrent holders of the same file in FIFO order", async () => {
+		const file = path.join(cwd, "SURVEY.md");
+		const order = [];
+		const hold = async (name, gate) =>
+			withSurveyFileWriteLock(file, async () => {
+				order.push(`${name}:enter`);
+				await gate;
+				order.push(`${name}:exit`);
+				return name;
+			});
+		let releaseFirst;
+		const firstGate = new Promise((resolve) => {
+			releaseFirst = resolve;
+		});
+		const first = hold("a", firstGate);
+		// Let the first holder acquire before the second queues.
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		const second = hold("b", Promise.resolve());
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		// The second holder is queued: nothing of it has run yet.
+		expect(order).toEqual(["a:enter"]);
+		releaseFirst();
+		await expect(first).resolves.toBe("a");
+		await expect(second).resolves.toBe("b");
+		expect(order).toEqual(["a:enter", "a:exit", "b:enter", "b:exit"]);
+	});
+
+	it("lets different files proceed concurrently", async () => {
+		const order = [];
+		const hold = (file, name, gate) =>
+			withSurveyFileWriteLock(path.join(cwd, file), async () => {
+				order.push(`${name}:enter`);
+				await gate;
+				order.push(`${name}:exit`);
+			});
+		let release;
+		const gate = new Promise((resolve) => {
+			release = resolve;
+		});
+		const first = hold("A.md", "a", gate);
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		await hold("B.md", "b", Promise.resolve());
+		expect(order).toEqual(["a:enter", "b:enter", "b:exit"]);
+		release();
+		await first;
+	});
+
+	it("releases the next waiter when a holder throws, and propagates the error", async () => {
+		const file = path.join(cwd, "SURVEY.md");
+		const boom = new Error("boom");
+		const first = withSurveyFileWriteLock(file, async () => {
+			throw boom;
+		});
+		const second = withSurveyFileWriteLock(file, async () => "recovered");
+		await expect(first).rejects.toBe(boom);
+		await expect(second).resolves.toBe("recovered");
+	});
+
+	it("runs directly without locking on a missing path, and requires a function", async () => {
+		await expect(withSurveyFileWriteLock(null, async () => "ok")).resolves.toBe("ok");
+		await expect(withSurveyFileWriteLock("  ", () => "ok")).resolves.toBe("ok");
+		await expect(withSurveyFileWriteLock(path.join(cwd, "x.md"), null)).rejects.toThrow(
+			"requires a function",
+		);
 	});
 });

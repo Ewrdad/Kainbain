@@ -9,7 +9,12 @@
 import fs from "node:fs";
 import { _atomicWriteFileSync } from "../house/index.js";
 import { _appendProcessLog } from "../watch/index.js";
-import { readSurvey, resolveSurveyPath, updateSurveyImages } from "../work/taskSurvey.js";
+import {
+	readSurvey,
+	resolveSurveyPath,
+	updateSurveyImages,
+	withSurveyFileWriteLock,
+} from "../work/taskSurvey.js";
 import {
 	resolveTaskAssetFile,
 	sanitizeImageName,
@@ -152,6 +157,9 @@ const runSurveyImageJob = async (opts = {}) => {
 		summary.status = "invalid";
 		return summary;
 	}
+	// Lock key for this survey file (same resolution every writer uses, so a
+	// submit splicing answers and this job splicing images[] serialize).
+	const lockPath = resolveSurveyPath(cwd, project, taskId, surveyFile || undefined);
 	const requested =
 		typeof opts.providerId === "string" ? opts.providerId : imageGenRequestedBy(stage);
 	const providerId = resolveImageGenProvider(requested);
@@ -270,15 +278,17 @@ const runSurveyImageJob = async (opts = {}) => {
 		next.sort((a, b) => (a?.option || 0) - (b?.option || 0));
 		if (!sameEntries(current, next)) {
 			try {
-				updateSurveyImages({
-					cwd,
-					project,
-					taskId,
-					...(surveyFile ? { outputFile: surveyFile } : {}),
-					round,
-					questionId: question.id,
-					images: next,
-				});
+				await withSurveyFileWriteLock(lockPath, () =>
+					updateSurveyImages({
+						cwd,
+						project,
+						taskId,
+						...(surveyFile ? { outputFile: surveyFile } : {}),
+						round,
+						questionId: question.id,
+						images: next,
+					}),
+				);
 			} catch (err) {
 				summary.errors.push(`r${round}/${question.id}: ${shortError(err?.message)}`);
 				continue;
@@ -342,15 +352,17 @@ const runSurveyImageJob = async (opts = {}) => {
 		}
 		entries.sort((a, b) => (a?.option || 0) - (b?.option || 0));
 		try {
-			updateSurveyImages({
-				cwd,
-				project,
-				taskId,
-				...(surveyFile ? { outputFile: surveyFile } : {}),
-				round: item.round,
-				questionId: item.questionId,
-				images: entries,
-			});
+			await withSurveyFileWriteLock(lockPath, () =>
+				updateSurveyImages({
+					cwd,
+					project,
+					taskId,
+					...(surveyFile ? { outputFile: surveyFile } : {}),
+					round: item.round,
+					questionId: item.questionId,
+					images: entries,
+				}),
+			);
 		} catch (err) {
 			summary.errors.push(`r${item.round}/${item.questionId}: ${shortError(err?.message)}`);
 		}
@@ -646,22 +658,25 @@ export const persistChosenSurveyImages = async (opts = {}) => {
 		if (result.chosen.length === 0) return result;
 		const filePath = resolveSurveyPath(cwd, project, taskId, surveyFile || undefined);
 		if (!filePath) return result;
-		let before;
-		try {
-			/* eslint-disable-next-line security/detect-non-literal-fs-filename -- resolved through the survey path helper */
-			before = survey.markdown !== null && survey.markdown !== undefined
-				? survey.markdown
-				: fs.readFileSync(filePath, "utf8");
-		} catch {
-			return result;
-		}
-		const after = upsertChosenDesignsSection(before, result.chosen);
-		if (after !== before) {
-			_atomicWriteFileSync(filePath, after);
-			result.sectionWritten = true;
-		} else {
-			result.sectionWritten = true; // Idempotent re-submit: already recorded.
-		}
+		// Serialized with the job's splices and answer saves: the fresh read
+		// and the section write are one critical section, so a concurrent
+		// images[] update can neither be clobbered by, nor clobber, this one.
+		// The file is always re-read inside the lock (never the possibly
+		// stale planning read above) so the merge sees the latest state.
+		await withSurveyFileWriteLock(filePath, () => {
+			let before;
+			try {
+				/* eslint-disable-next-line security/detect-non-literal-fs-filename -- resolved through the survey path helper */
+				before = fs.readFileSync(filePath, "utf8");
+			} catch {
+				return;
+			}
+			const after = upsertChosenDesignsSection(before, result.chosen);
+			if (after !== before) {
+				_atomicWriteFileSync(filePath, after);
+			}
+			result.sectionWritten = true; // ...including idempotent re-submits.
+		});
 		return result;
 	} catch (err) {
 		result.errors.push(shortError(err?.message));
