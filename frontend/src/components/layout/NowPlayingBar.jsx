@@ -451,7 +451,7 @@ export function NowPlayingBar() {
                 data-testid="now-playing-runner-boxes"
                 role="group"
                 aria-label={`${runnerBoxes.length} ${runnerBoxes.length === 1 ? 'runner' : 'runners'}`}
-                className="flex items-center gap-1.5 mt-0.5 min-w-0 max-w-full flex-1 overflow-x-auto overflow-y-hidden overscroll-contain custom-scrollbar"
+                className="flex items-center gap-1.5 mt-0.5 min-w-0 max-w-full flex-1 overflow-x-auto overflow-y-hidden overscroll-contain custom-scrollbar whitespace-nowrap"
               >
                 {runnerBoxes.map((box) => {
                   const health = runnerBoxHealth(box.lastSeenAt, nowMs);
