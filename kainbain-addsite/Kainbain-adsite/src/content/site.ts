@@ -16,17 +16,37 @@ export const siteContent = {
   },
   installer: {
     title: "Get started",
-    tabs: ["Linux", "Coming soon"] as const,
-    baseCommand: "curl -fsSL https://kainbain.ewrdad.uk/install.sh | bash",
-    // Defaults must match deploy/install.sh: a field left at its default
-    // emits no flag, so these values ARE the installer's defaults.
-    defaults: {
-      backendPort: "3100",
-      frontendPort: "3100",
-      runners: "1",
-      installDir: "~/apps/kainbain",
-      harness: "pi",
-      namespace: "ewrdad",
+    tabs: ["Default", "Runner only"] as const,
+    modes: {
+      default: {
+        label: "Default",
+        baseCommand: "curl -fsSL https://kainbain.ewrdad.uk/install.sh | bash",
+        hint: "Full install: backend + frontend plus your first local runner.",
+        // Defaults must match deploy/install.sh: a field left at its
+        // default emits no flag, so these values ARE the defaults.
+        // Harness is autodetected and the image namespace is always
+        // ewrdad — both stay optional script flags, but neither is
+        // configurable on the site.
+        defaults: {
+          backendPort: "3100",
+          frontendPort: "3100",
+          runners: "1",
+          installDir: "~/apps/kainbain",
+        },
+      },
+      runner: {
+        label: "Runner only",
+        baseCommand:
+          "curl -fsSL https://kainbain.ewrdad.uk/install-runner.sh | bash",
+        hint: "Adds one runner to an existing install — approve it afterwards in Settings > Harness > Runners.",
+        // Defaults must match deploy/install-runner.sh (harness is
+        // autodetected, so it is not configurable on the site).
+        defaults: {
+          runnerId: "local-pi-2",
+          backend: "http://localhost:3100",
+          installDir: "~/apps/kainbain",
+        },
+      },
     },
   },
   features: [
