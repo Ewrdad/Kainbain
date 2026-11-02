@@ -703,7 +703,7 @@ function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGe
                 checked={checked}
                 aria-label={`${question.text}: ${text}`}
                 onChange={(e) => onSelect(question.id, text, e.target.checked, false)}
-                className="sr-only"
+                className=""
               />
               <img
                 src={src}
@@ -737,7 +737,7 @@ function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGe
                 checked={checked}
                 aria-label={`${question.text}: ${text}`}
                 onChange={(e) => onSelect(question.id, text, e.target.checked, false)}
-                className="sr-only"
+                className=""
               />
               <span
                 role="status"
