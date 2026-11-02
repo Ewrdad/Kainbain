@@ -14,7 +14,7 @@ import { resolveDisplayedStage } from '../tasks/runningTask';
  *   safe: unknown registry shapes count as no fleet (the pill stays
  *   visible — status is never hidden on bad input), and a malformed stage
  *   name falls back to the task-only chip instead of crashing the header.
- * @param {Object} [options] - Header inputs.
+ * @param {Object|null} [options] - Header inputs (null fails safe to the pill fallback).
  * @param {Array<Object>} [options.assignments] - Live fleet assignments (runnerId-bearing).
  * @param {Map|Array|number|null} [options.registry] - Runner registry (Map, list, or count).
  * @param {Object|null} [options.activeTask] - Resolved active task (title, goal, currentStageId).
@@ -22,14 +22,18 @@ import { resolveDisplayedStage } from '../tasks/runningTask';
  * @param {Object} [options.engineState] - Engine snapshot (status, activeStageName).
  * @returns {{showRunnerRows: boolean, showEnginePill: boolean, activeChip: {taskName: string, stageName: string|null, label: string}|null}} Header mode: fleet visibility, pill fallback, and the named chip (null when no task names it).
  * @example resolveMobileHeaderMode({ assignments: [{ runnerId: 'r1' }], activeTask: { title: 'Build auth' } }).showEnginePill // false
+ * @example resolveMobileHeaderMode(null).showEnginePill // true
  ***/
-export function resolveMobileHeaderMode({
-  assignments = [],
-  registry = null,
-  activeTask = null,
-  stages = [],
-  engineState = {},
-} = {}) {
+export function resolveMobileHeaderMode(options = {}) {
+  // A null options bag must fail safe like a missing one: destructuring
+  // `null` directly would throw and crash the header on bad input.
+  const {
+    assignments = [],
+    registry = null,
+    activeTask = null,
+    stages = [],
+    engineState = {},
+  } = options ?? {};
   const live = (Array.isArray(assignments) ? assignments : []).filter((a) => a && a.runnerId);
   let registryCount = 0;
   if (registry instanceof Map) {

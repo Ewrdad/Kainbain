@@ -128,6 +128,11 @@ describe('resolveMobileHeaderMode', () => {
       showEnginePill: true,
       activeChip: null,
     });
+    expect(resolveMobileHeaderMode(null)).toEqual({
+      showRunnerRows: false,
+      showEnginePill: true,
+      activeChip: null,
+    });
     const nulls = resolveMobileHeaderMode({
       assignments: null,
       registry: null,

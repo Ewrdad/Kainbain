@@ -1,7 +1,7 @@
 // Run in the lighter node environment: pure format function, no DOM needs.
 // @vitest-environment node
 import { expect, test, describe } from 'vitest';
-import { formatMobileMonitorTitle } from './MobileMonitorView';
+import { formatMobileMonitorTitle } from './mobileMonitorTitle';
 
 describe('formatMobileMonitorTitle', () => {
   test('prefers the task title when running', () => {

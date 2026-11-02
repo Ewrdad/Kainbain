@@ -2,7 +2,11 @@ import React from 'react';
 import { expect, test, vi, beforeEach } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
 import { renderWithKainBain } from '../../testUtils';
-import { MobileMonitorView } from './MobileMonitorView';
+import {
+  MobileMonitorView,
+  formatMobileMonitorTitle,
+  resolveMobileModelLine,
+} from './MobileMonitorView';
 import '@testing-library/jest-dom';
 
 beforeEach(() => {
@@ -339,6 +343,35 @@ test('null engine snapshot renders the idle fallback without crashing', () => {
   expect(screen.getByTestId('mobile-monitor-model-details')).toHaveTextContent(
     'Harness: Unknown',
   );
+});
+
+test('null list props render fallbacks without crashing', () => {
+  renderWithKainBain(
+    <MobileMonitorView
+      engineState={null}
+      activeTask={null}
+      stages={null}
+      runnerTasks={null}
+      runnerStages={null}
+      processLogs={null}
+      runnerAssignmentsOverride={[]}
+      runnerRegistryOverride={[]}
+      onExit={() => {}}
+    />,
+  );
+
+  expect(screen.getByTestId('mobile-engine-state')).toHaveTextContent('IDLE');
+  expect(screen.getByTestId('mobile-active-stage')).toHaveTextContent('No active stage');
+  expect(screen.getByTestId('mobile-monitor-model-details')).toHaveTextContent(
+    'Idle — no active model',
+  );
+  expect(screen.getByText(/Fleet idle/)).toBeInTheDocument();
+  expect(screen.getByText(/Waiting for process logs stream/i)).toBeInTheDocument();
+});
+
+test('header formatters stay importable from the view after the module split', () => {
+  expect(formatMobileMonitorTitle({ title: 'Build auth' }, {}, true)).toBe('Build auth');
+  expect(resolveMobileModelLine(null)).toBeNull();
 });
 
 test('no runners configured: pill fallback stays with the legacy task-only title', () => {

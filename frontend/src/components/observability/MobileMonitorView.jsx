@@ -1,85 +1,15 @@
 import { isMonitorRunning } from '../tasks/isMonitorRunning';
 import { PerRunnerTasksWidget, useRunnerMonitor } from './widgets/PerRunnerTasksWidget';
-import { formatTaskTitleFirstLine } from '../tasks/taskFormatters';
 import { EngineStatePill } from './EngineStatePill';
 import { resolveMobileModelDetails } from './mobileModelDetails';
 import { resolveMobileHeaderMode } from './mobileHeaderMode';
+import { formatMobileMonitorTitle } from './mobileMonitorTitle';
+import { resolveMobileModelLine } from './mobileModelLine';
 import { LiveConsoleWidget } from './widgets/LiveConsoleWidget';
 
-/***
- * MARK: formatMobileMonitorTitle
- * @description Pure formatter for the compact monitor header's right-side
- *   text when no Runner fleet is shown. The engine pill already shows the
- *   stage name when running, so this text shows the active task identity
- *   instead (title, falling back to the goal's first line with a leading
- *   markdown heading stripped — mirroring ActiveTaskPromptWidget). When a
- *   fleet is shown the view uses the header-mode chip (`<task> · <stage>`)
- *   instead, falling back to this title only when no task names the chip.
- *   When idle with no task the previous stage/empty text is kept so the
- *   header never blanks.
- * @param {Object|null} [activeTask] - Resolved active task (title, goal).
- * @param {Object} [engineState] - Engine snapshot (activeStageName).
- * @param {boolean} [isRunning] - Engine currently executing.
- * @returns {string} Header text for the right-side element.
- * @example formatMobileMonitorTitle({ title: 'Build auth' }, {}, true)
- ***/
-export function formatMobileMonitorTitle(activeTask = null, engineState = {}, isRunning = false) {
-  // First-line extraction shares the markdown-strip rule with every other
-  // title surface; the idle fallback chain below stays local to this header.
-  const taskName = formatTaskTitleFirstLine(activeTask?.title || activeTask?.goal || '', '').trim();
-  if (taskName) return taskName;
-  if (isRunning) return 'No active task';
-  return engineState?.activeStageName || 'No active stage';
-}
-
-/***
- * MARK: resolveMobileModelLine
- * @description Compresses the header's model details into one truncated
- *   line (`alias · Harness · Model · Provider/Source`, full text in the
- *   `title` tooltip) so the compact header stays at two rows on 360px
- *   viewports. Presentation only: the resolver semantics
- *   (`resolveMobileModelDetails`, mirroring ActiveTaskPromptWidget) are
- *   reused untouched. Null renders the idle fallback; scripted stages keep
- *   the `Automated — no model` wording. Fails safe: null details render
- *   the idle fallback, and any missing label renders as `Unknown` — a
- *   half-shaped payload can never crash the header or print `undefined`.
- * @param {Object|null} [details] - The resolved model details.
- * @returns {{line: string, title: string}|null} Single-line text plus tooltip, or null for the idle fallback.
- * @example resolveMobileModelLine(resolveMobileModelDetails({ model: 'pi::pi::qwen3:8b', harness: 'pi' }, {})).line // 'Harness: pi · Model: qwen3:8b · Provider: pi · Source: unknown'
- ***/
-export function resolveMobileModelLine(details = {}) {
-  if (details == null || details.isIdle) return null;
-  if (details.isScripted) return { line: 'Automated — no model', title: 'Automated — no model' };
-  const parts = [];
-  const titleParts = [];
-  if (details.showAlias) {
-    const aliasName =
-      details.aliasName ||
-      (details.aliasMissing ? `${details.aliasMissing} (unresolved)` : 'Unknown');
-    const alias = `alias: ${aliasName}`;
-    parts.push(alias);
-    titleParts.push(details.aliasTitle ? `${alias} (${details.aliasTitle})` : alias);
-  }
-  if (details.showHarness) {
-    const harness = `Harness: ${details.harness || 'Unknown'}`;
-    parts.push(harness);
-    titleParts.push(harness);
-  }
-  if (details.showModel) {
-    // The line truncates to the short label; the tooltip keeps the full ref
-    // so a long model identifier is never lost at 360px.
-    const modelLabel = details.model?.label || details.modelRef || 'Unknown';
-    parts.push(`Model: ${modelLabel}`);
-    titleParts.push(`Model: ${details.modelRef || modelLabel}`);
-  }
-  if (details.showProviderLine) {
-    const provider = `Provider: ${details.provider || 'Unknown'} · Source: ${details.source || 'unknown'}`;
-    parts.push(provider);
-    titleParts.push(provider);
-  }
-  const line = parts.join(' · ') || 'Idle — no active model';
-  return { line, title: titleParts.join(' · ') || line };
-}
+// Re-exported so older importers of the header formatters keep working after
+// the move to single-purpose modules next to this view.
+export { formatMobileMonitorTitle, resolveMobileModelLine };
 
 /***
  * MARK: MobileMonitorView
@@ -97,16 +27,16 @@ export function resolveMobileModelLine(details = {}) {
  *   stays within 360px with no horizontal scroll (truncation,
  *   min-width-zero flex children).
  * @param {Object} props
- * @param {Object} [props.engineState] - Engine snapshot (status, activeStageName).
+ * @param {Object|null} [props.engineState] - Engine snapshot (status, activeStageName); null renders the idle fallback.
  * @param {Object|null} [props.activeTask] - Resolved active task (title, goal, model, harness).
- * @param {Array<Object>} [props.stages] - Pipeline stages for the active task.
+ * @param {Array<Object>|null} [props.stages] - Pipeline stages for the active task; null resolves no stage name.
  * @param {boolean} [props.isAgentRunning] - Agent running flag (running fallback).
- * @param {Array<Object>} [props.runnerTasks] - Tasks for the per-runner rows (titles resolve by id).
- * @param {Array<Object>} [props.runnerStages] - Stages for the per-runner rows (stage names resolve by id).
+ * @param {Array<Object>|null} [props.runnerTasks] - Tasks for the per-runner rows (titles resolve by id); null shows "details unavailable".
+ * @param {Array<Object>|null} [props.runnerStages] - Stages for the per-runner rows (stage names resolve by id); null shows raw stage ids.
  * @param {Object} [props.stats] - Deprecated, ignored: kept so older callers passing task stats keep rendering.
  * @param {number} [props.queueCount] - Deprecated, ignored: kept so older callers passing queue length keep rendering.
  * @param {boolean} [props.schedulerRunning] - False renders STOPPED instead of IDLE.
- * @param {Array} [props.processLogs] - Log lines for the console.
+ * @param {Array|null} [props.processLogs] - Log lines for the console; null shows the waiting-for-stream empty state.
  * @param {Function} [props.onClearLogs] - Clears the console.
  * @param {Function} [props.onExit] - Leaves the monitor (Back button).
  * @param {Array<Object>} [props.runnerAssignmentsOverride] - Injected live fleet assignments (tests); skips polling while set.

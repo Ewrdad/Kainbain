@@ -1,7 +1,7 @@
 // Run in the lighter node environment: pure format function, no DOM needs.
 // @vitest-environment node
 import { expect, test, describe } from 'vitest';
-import { resolveMobileModelLine } from './MobileMonitorView';
+import { resolveMobileModelLine } from './mobileModelLine';
 import { resolveMobileModelDetails } from './mobileModelDetails';
 
 describe('resolveMobileModelLine', () => {
