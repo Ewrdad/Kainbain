@@ -62,6 +62,19 @@ describe("api/imageGen/surveyImages resolution", () => {
 		expect(resolveImageGenProvider("../x")).toBe("none");
 	});
 
+	it("coerces scalar overrides like the prompt keyword map and ignores objects", () => {
+		// Mirrors resolveSkillKeywordMap: strings pass, numbers/booleans
+		// stringify, objects/arrays are dropped (fail safe to the default)
+		// so the prompt and the generation job can never disagree.
+		expect(imageGenRequestedBy(stageWith(1))).toBe("1");
+		expect(imageGenRequestedBy(stageWith(true))).toBe("true");
+		expect(imageGenRequestedBy({ skills: [{ name: "question-me", config: { imageGen: { value: "muse" } } }] })).toBeNull();
+		expect(imageGenRequestedBy({ skills: [{ name: "question-me", config: { imageGen: ["muse"] } }] })).toBeNull();
+		expect(imageGenRequestedBy({ skills: [{ name: "question-me", config: "muse" }] })).toBeNull();
+		expect(imageGenRequestedBy({ skills: [{ name: "question-me", config: { imageGen: Number.NaN } }] })).toBeNull();
+		expect(resolveImageGenProvider(stageWith({ value: "muse" }))).toBe("none");
+	});
+
 	it("names sanitized deterministic asset files", () => {
 		expect(surveyImageFileName(1, "q1", 0)).toBe("survey-r1-q1-0.png");
 		expect(surveyImageFileName(2, "../../evil", 3)).toBe("survey-r2-evil-3.png");

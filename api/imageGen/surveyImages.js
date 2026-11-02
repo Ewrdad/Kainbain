@@ -51,8 +51,14 @@ const shortError = (message) =>
 /***
  * MARK: imageGenRequestedBy
  * @description Raw `imageGen` value from a stage's question-me attachment
- *   config (null when the stage carries no override).
+ *   config (null when the stage carries no usable override). Uses the same
+ *   tolerant scalar coercion as skill keyword resolution (skillInjection):
+ *   strings pass through, finite numbers/booleans stringify, and objects or
+ *   arrays (e.g. a wrapped `{ value: 'muse' }`) are ignored — so a malformed
+ *   override fails safe to the default instead of stringifying to
+ *   "[object Object]", keeping the prompt and the generation job in agreement.
  * @example imageGenRequestedBy({ skills: [{ name: 'question-me', config: { imageGen: 'muse' } }] }) => 'muse'
+ * @example imageGenRequestedBy({ skills: [{ name: 'question-me', config: { imageGen: { value: 'muse' } } }] }) => null
  * @param {Object} [stage] - Stage (or attachment) carrying question-me config.
  * @returns {string|null}
  ***/
@@ -62,9 +68,17 @@ export const imageGenRequestedBy = (stage) => {
 		const name = typeof entry === "string" ? entry : entry?.name;
 		return typeof name === "string" && name.trim().toLowerCase() === "question-me";
 	});
-	const raw = found && typeof found === "object" ? found.config?.imageGen : null;
+	if (!found || typeof found !== "object") return null;
+	const config = found.config && typeof found.config === "object" && !Array.isArray(found.config)
+		? found.config
+		: {};
+	const raw = config.imageGen;
 	if (raw === undefined || raw === null) return null;
-	return typeof raw === "string" ? raw : String(raw);
+	if (typeof raw === "string") return raw;
+	if ((typeof raw === "number" && Number.isFinite(raw)) || typeof raw === "boolean") {
+		return String(raw);
+	}
+	return null;
 };
 
 /***

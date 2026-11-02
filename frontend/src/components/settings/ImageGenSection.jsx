@@ -40,48 +40,48 @@ export function ImageGenSection({ client }) {
 
   const fetchProviders = useCallback(() => http.getImageGenProviders(), [http]);
 
-  const refresh = useCallback(async () => {
-    if (unavailable) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const data = await fetchProviders();
-      setProviders(Array.isArray(data?.providers) ? data.providers : []);
-    } catch (err) {
-      setLoadError(err?.message || 'Could not load image providers');
-      setProviders([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [unavailable, fetchProviders]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
+  // One load path for the initial mount and the error Retry button: the
+  // isCancelled probe keeps an unmounted component's late resolve from
+  // touching state, while a manual retry always applies.
+  const loadProviders = useCallback(
+    async (isCancelled = () => false) => {
       if (unavailable) {
         setLoading(false);
         return;
       }
+      setLoading(true);
+      setLoadError(null);
       try {
         const data = await fetchProviders();
-        if (!cancelled) setProviders(Array.isArray(data?.providers) ? data.providers : []);
+        if (isCancelled()) return;
+        setProviders(Array.isArray(data?.providers) ? data.providers : []);
       } catch (err) {
-        if (!cancelled) {
-          setLoadError(err?.message || 'Could not load image providers');
-          setProviders([]);
-        }
+        if (isCancelled()) return;
+        setLoadError(err?.message || 'Could not load image providers');
+        setProviders([]);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!isCancelled()) setLoading(false);
       }
+    },
+    [unavailable, fetchProviders],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    // Local async wrapper: loadProviders sets state before its first await,
+    // and the hooks lint only tolerates that behind an effect-local runner.
+    const run = async () => {
+      await loadProviders(() => cancelled);
     };
-    run();
+    void run();
     return () => {
       cancelled = true;
     };
-  }, [unavailable, fetchProviders]);
+  }, [loadProviders]);
+
+  const refresh = useCallback(() => {
+    void loadProviders();
+  }, [loadProviders]);
 
   const setBusyFor = (id, value) =>
     setBusy((prev) => (value ? { ...prev, [id]: value } : { ...prev, [id]: undefined }));
