@@ -363,4 +363,14 @@ NODE
 # Retention: keep the newest 5 runner tarballs in dist/ (older ones are
 # reproducible from their commit and only bloat the ad-site/S3 sync).
 ls -t dist/kainbain-runner-*.tar.gz 2>/dev/null | tail -n +6 | while read -r old; do log "pruning old runner tarball: $old"; rm -f "$old"; done
+# Tip-worktree dist sync-back: a publish that re-exec'd into the tip worktree
+# wrote dist/ THERE, while update.sh and manual runs read the PRIMARY
+# checkout's dist/. Without this, the release is stranded and update reports
+# "already current" (2026-11-02: tip published 674ae08, primary/apps stayed
+# 06e8949, Update went green having deployed nothing). Warn-only.
+if [ "${KAINBAIN_PUBLISH_FROM_TIP_WORKTREE:-}" = "1" ]; then
+  SYNC_PRIMARY_TOP="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')"
+  SYNC_PRIMARY_TOP="$SYNC_PRIMARY_TOP" SYNC_PUBLISHED="$PUBLISHED" SYNC_SHORTSHA="$SHORTSHA" \
+    node scripts/sync-tip-dist.mjs || log "warning: tip dist sync-back failed (non-fatal) — release is published in this checkout's dist/; copy it to the primary checkout's dist/ by hand."
+fi
 log "published:$PUBLISHED"
