@@ -42,7 +42,7 @@ export function formatMobileMonitorTitle(activeTask = null, engineState = {}, is
  *   half-shaped payload can never crash the header or print `undefined`.
  * @param {Object|null} [details] - The resolved model details.
  * @returns {{line: string, title: string}|null} Single-line text plus tooltip, or null for the idle fallback.
- * @example resolveMobileModelLine(resolveMobileModelDetails({ model: 'pi::pi::qwen3:8b', harness: 'pi' }, {})).line // 'Harness: pi · Model: qwen3:8b'
+ * @example resolveMobileModelLine(resolveMobileModelDetails({ model: 'pi::pi::qwen3:8b', harness: 'pi' }, {})).line // 'Harness: pi · Model: qwen3:8b · Provider: pi · Source: unknown'
  ***/
 export function resolveMobileModelLine(details = {}) {
   if (details == null || details.isIdle) return null;

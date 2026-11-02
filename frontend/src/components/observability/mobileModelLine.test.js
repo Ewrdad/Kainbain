@@ -25,6 +25,15 @@ describe('resolveMobileModelLine', () => {
     expect(line.title).toContain('alias: fast');
   });
 
+  test('matches the documented example output exactly', () => {
+    const line = resolveMobileModelLine(
+      resolveMobileModelDetails({ model: 'pi::pi::qwen3:8b', harness: 'pi' }, {}),
+    );
+    expect(line.line).toBe(
+      'Harness: pi · Model: qwen3:8b · Provider: pi · Source: unknown',
+    );
+  });
+
   test('scripted stages keep the automated wording', () => {
     const line = resolveMobileModelLine(
       resolveMobileModelDetails({ stageType: 'ci' }, {}),

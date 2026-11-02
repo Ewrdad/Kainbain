@@ -1,6 +1,11 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { PerRunnerTasksWidget, formatRunnerElapsed, runnerFreshness } from './PerRunnerTasksWidget';
+import {
+  PerRunnerTasksWidget,
+  formatRunnerElapsed,
+  formatShortRunnerTaskId,
+  runnerFreshness,
+} from './PerRunnerTasksWidget';
 
 const getRunners = vi.hoisted(() => vi.fn());
 const getRunnerMonitor = vi.hoisted(() => vi.fn());
@@ -27,6 +32,24 @@ describe('runnerFreshness', () => {
     expect(runnerFreshness(new Date(now - 10_000).toISOString(), now)).toBe('live');
     expect(runnerFreshness(new Date(now - 120_000).toISOString(), now)).toBe('stale');
     expect(runnerFreshness(null, now)).toBe('unknown');
+  });
+  test('an unusable clock reads unknown, never a stale alarm', () => {
+    const fresh = new Date(now - 10_000).toISOString();
+    expect(runnerFreshness(fresh, NaN)).toBe('unknown');
+    expect(runnerFreshness(fresh, undefined)).toBe('unknown');
+    expect(runnerFreshness(null, NaN)).toBe('unknown');
+  });
+});
+
+describe('formatShortRunnerTaskId', () => {
+  test('shortens to 8 characters and never prints undefined or null', () => {
+    expect(formatShortRunnerTaskId('abcdef12-3456')).toBe('abcdef12');
+    expect(formatShortRunnerTaskId('short')).toBe('short');
+    expect(formatShortRunnerTaskId(123456789)).toBe('12345678');
+    expect(formatShortRunnerTaskId(null)).toBe('…');
+    expect(formatShortRunnerTaskId(undefined)).toBe('…');
+    expect(formatShortRunnerTaskId('')).toBe('…');
+    expect(formatShortRunnerTaskId('   ')).toBe('…');
   });
 });
 
@@ -191,6 +214,54 @@ describe('PerRunnerTasksWidget', () => {
     });
     expect(getRunnerMonitor).not.toHaveBeenCalled();
     expect(getRunners).not.toHaveBeenCalled();
+  });
+
+  test('compact row shows an ellipsis for a missing task id, never undefine', async () => {
+    render(
+      <PerRunnerTasksWidget
+        tasks={[]}
+        stages={[{ id: 'build', name: 'Build' }]}
+        compact
+        assignmentsOverride={[{ runnerId: 'local-alpha', stageId: 'build' }]}
+        registryOverride={[{ runnerId: 'local-alpha' }]}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('per-runner-row-local-alpha')).toBeInTheDocument();
+    });
+    const row = screen.getByTestId('per-runner-row-local-alpha');
+    expect(row).toHaveTextContent('…');
+    expect(row).not.toHaveTextContent('undefine');
+    expect(row).not.toHaveTextContent('null');
+  });
+
+  test('full card shows an ellipsis for a missing task id, never undefine', async () => {
+    render(
+      <PerRunnerTasksWidget
+        tasks={[]}
+        compact={false}
+        assignmentsOverride={[{ runnerId: 'local-alpha', stageId: 'build' }]}
+        registryOverride={[{ runnerId: 'local-alpha' }]}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('per-runner-card-local-alpha')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('per-runner-task-local-alpha')).toHaveTextContent(/^…$/);
+  });
+
+  test('an unusable poll interval falls back to the default cadence, never a busy loop', async () => {
+    vi.useFakeTimers();
+    try {
+      const { unmount } = render(<PerRunnerTasksWidget tasks={[]} pollMs={0} />);
+      // Initial load plus default-cadence ticks only.
+      await vi.advanceTimersByTimeAsync(11_000);
+      unmount();
+      expect(getRunnerMonitor.mock.calls.length).toBe(3);
+      expect(getRunners.mock.calls.length).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('full card hides the model pill for CI stages with no serving model', async () => {

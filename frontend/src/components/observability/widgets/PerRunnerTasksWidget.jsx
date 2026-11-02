@@ -25,13 +25,30 @@ const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\
  * MARK: runnerFreshness
  * @description Heartbeat freshness for the status dot: a Runner heartbeats
  *   every 15s, so anything seen within 60s counts as live. Unknown stays
- *   unknown (grey) rather than alarming.
+ *   unknown (grey) rather than alarming — including when the clock reading
+ *   itself is unusable, which must never paint an amber stale dot.
  * @example runnerFreshness(new Date().toISOString(), Date.now()) => 'live'
+ * @example runnerFreshness(new Date().toISOString(), NaN) => 'unknown'
  ***/
 export const runnerFreshness = (lastSeenAt, nowMs) => {
   const seen = Date.parse(lastSeenAt || '');
-  if (!Number.isFinite(seen)) return 'unknown';
+  if (!Number.isFinite(seen) || !Number.isFinite(nowMs)) return 'unknown';
   return nowMs - seen <= 60000 ? 'live' : 'stale';
+};
+
+/***
+ * MARK: formatShortRunnerTaskId
+ * @description Short task identity for one Runner row or card: the first 8
+ *   characters of the task id. A missing or blank id renders as an ellipsis
+ *   so a half-shaped assignment can never print `undefine` or `null` into
+ *   the fleet view.
+ * @example formatShortRunnerTaskId('abcdef12-3456') => 'abcdef12'
+ * @example formatShortRunnerTaskId(null) => '…'
+ ***/
+export const formatShortRunnerTaskId = (taskId) => {
+  if (taskId == null) return '…';
+  const text = String(taskId).trim();
+  return text ? text.slice(0, 8) : '…';
 };
 
 const FRESHNESS_DOT = {
@@ -47,12 +64,18 @@ const FRESHNESS_DOT = {
  *   the desktop per-runner widget and the compact mobile rows so both show
  *   the same fleet picture. Pass `enabled: false` when the caller injects
  *   `assignmentsOverride`/`registryOverride` (the mobile header's single
- *   poller) so one tick issues exactly one fleet read.
+ *   poller) so one tick issues exactly one fleet read. An unusable `pollMs`
+ *   (zero, negative, or non-numeric) falls back to the 5s default so the
+ *   hook can never busy-loop the fleet endpoints.
  * @example const { assignments, registry } = useRunnerMonitor({ pollMs: 5000 });
  ***/
 export const useRunnerMonitor = ({ pollMs = 5000, enabled = true } = {}) => {
   const [monitor, setMonitor] = useState(null);
   const [runners, setRunners] = useState(null);
+  // A zero or non-numeric interval would busy-loop the fleet endpoints
+  // (`setInterval` treats NaN as 0), so unusable values fall back to the
+  // default cadence and the fleet keeps updating instead of hammering.
+  const safePollMs = Number.isFinite(pollMs) && pollMs > 0 ? pollMs : 5000;
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -72,12 +95,12 @@ export const useRunnerMonitor = ({ pollMs = 5000, enabled = true } = {}) => {
       }
     };
     void load();
-    timer = setInterval(() => void load(), pollMs);
+    timer = setInterval(() => void load(), safePollMs);
     return () => {
       mounted = false;
       if (timer) clearInterval(timer);
     };
-  }, [pollMs, enabled]);
+  }, [safePollMs, enabled]);
 
   return useMemo(() => {
     const assignments = Array.isArray(monitor?.liveAssignments)
@@ -209,9 +232,9 @@ export function PerRunnerTasksWidget({
         data-testid="per-runner-tasks"
         className="flex flex-col gap-1"
       >
-        {cards.map(({ assignment: a, task }) => (
+        {cards.map(({ assignment: a, task }, index) => (
           <PerRunnerCompactRow
-            key={`${a.runnerId}:${a.executionId || a.taskId}`}
+            key={`${a.runnerId}:${a.executionId || a.taskId || index}`}
             assignment={a}
             task={task}
             nowMs={nowMs}
@@ -228,9 +251,9 @@ export function PerRunnerTasksWidget({
       data-testid="per-runner-tasks"
       className="h-full flex flex-col gap-2 overflow-y-auto"
     >
-      {cards.map(({ assignment: a, task, record }) => (
+      {cards.map(({ assignment: a, task, record }, index) => (
         <PerRunnerCard
-          key={`${a.runnerId}:${a.executionId || a.taskId}`}
+          key={`${a.runnerId}:${a.executionId || a.taskId || index}`}
           assignment={a}
           task={task}
           record={record}
@@ -255,7 +278,7 @@ const PerRunnerCompactRow = ({ assignment: a, task, nowMs, stageName }) => {
           aria-hidden="true"
         />
         <strong className="text-slate-100">{a.runnerId}</strong>
-        <span className="truncate">{String(a.taskId).slice(0, 8)}</span>
+        <span className="truncate">{formatShortRunnerTaskId(a.taskId)}</span>
         <span className="text-slate-400 truncate">{stageName(a.stageId)}</span>
         {serving?.harness && (
           <span
@@ -306,7 +329,7 @@ const PerRunnerCard = ({ assignment: a, task, record, nowMs, stageName }) => {
         <strong className="text-slate-100 uppercase tracking-wider">Runner {a.runnerId}</strong>
         <span className="text-slate-400">· executing task</span>
         <span className="text-cyan-300" data-testid={`per-runner-task-${a.runnerId}`}>
-          {String(a.taskId).slice(0, 8)}
+          {formatShortRunnerTaskId(a.taskId)}
         </span>
         <span
           className="ml-auto text-emerald-300 font-bold"
