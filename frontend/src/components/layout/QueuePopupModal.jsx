@@ -112,7 +112,7 @@ export function QueuePopupModal({ onClose, counted, openQueueDepth, engineState 
         </span>
         {countsDiffer && (
           <span className="block mt-1">
-            Failed, waiting-human, and blocked tasks count toward the number but never dispatch.
+            Failed, cancelled, and waiting-human tasks count toward the number but never dispatch. Blocked and paused tasks list last with their reason.
           </span>
         )}
       </div>

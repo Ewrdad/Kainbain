@@ -383,7 +383,7 @@ export function NowPlayingBar() {
    *   list only when the snapshot carries no count, so project switches
    *   never move it. Clicking the chip opens the dispatch-order popup
    *   (`QueuePopupModal`); reconciliation rule: the count includes
-   *   failed/waiting-human tasks that never dispatch, so the popup footer
+   *   failed/cancelled/waiting-human tasks that never dispatch, so the popup footer
    *   labels any count-vs-list difference instead of hiding it.
    * @example queueDepth // => 3
    * @returns {number}
