@@ -1241,7 +1241,7 @@ export async function runSingleAssignment({
 			logger.warn(`Failed to send orphan warning to UI logs: ${e?.message || e}`);
 		}
 	}
-	const state = { session: null, executionId: null, epoch: null };
+	const state = { session: null, executionId: null, epoch: null, assignmentInFlight: false };
 	const { harness, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger, state });
 	try {
 		// Single-flight guard (same invariant as the dispatch loop): one
@@ -1439,7 +1439,7 @@ export async function runDispatchLoop({
 		logger.warn(`Orphaned workdirs (left alone, may hold unpushed work): ${orphans.join(", ")}`);
 	}
 
-	const state = { session: null, executionId: null, epoch: null };
+	const state = { session: null, executionId: null, epoch: null, assignmentInFlight: false };
 	const { harness, harnesses, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger, state });
 	const idleLimit = config.dispatchIdleLimit ?? 3;
 	const pollMs = config.dispatchPollMs ?? 5000;

@@ -27,16 +27,26 @@ export const formatRunnerElapsed = (startedAt, nowMs) => {
 const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /***
+ * MARK: RUNNER_FRESHNESS_MS
+ * @description How long after a Runner heartbeat the status dot still counts
+ *   as live: Runners heartbeat every 15s, so 60s tolerates a few missed
+ *   beats before flipping to stale. Unknown stays unknown (grey) rather
+ *   than alarming. Display-only — it never gates dispatch.
+ * @example RUNNER_FRESHNESS_MS => 60000
+ ***/
+export const RUNNER_FRESHNESS_MS = 60000;
+
+/***
  * MARK: runnerFreshness
  * @description Heartbeat freshness for the status dot: a Runner heartbeats
- *   every 15s, so anything seen within 60s counts as live. Unknown stays
- *   unknown (grey) rather than alarming.
+ *   every 15s, so anything seen within RUNNER_FRESHNESS_MS counts as live.
+ *   Unknown stays unknown (grey) rather than alarming.
  * @example runnerFreshness(new Date().toISOString(), Date.now()) => 'live'
  ***/
 export const runnerFreshness = (lastSeenAt, nowMs) => {
   const seen = Date.parse(lastSeenAt || '');
   if (!Number.isFinite(seen)) return 'unknown';
-  return nowMs - seen <= 60000 ? 'live' : 'stale';
+  return nowMs - seen <= RUNNER_FRESHNESS_MS ? 'live' : 'stale';
 };
 
 const FRESHNESS_DOT = {
@@ -199,10 +209,10 @@ export function PerRunnerTasksWidget({ tasks = [], stages = [], compact = false,
         data-testid="per-runner-tasks"
         className="flex flex-col gap-1"
       >
-        {cards.map(({ slot, assignment: a, task }) => (
+        {cards.map(({ slot, assignment, task }) => (
           <PerRunnerCompactRow
             key={slot.runnerId}
-            assignment={a}
+            assignment={assignment}
             slot={slot}
             task={task}
             nowMs={nowMs}
@@ -219,10 +229,10 @@ export function PerRunnerTasksWidget({ tasks = [], stages = [], compact = false,
       data-testid="per-runner-tasks"
       className="h-full flex flex-col gap-2 overflow-y-auto"
     >
-      {cards.map(({ slot, assignment: a, task, record }) => (
+      {cards.map(({ slot, assignment, task, record }) => (
         <PerRunnerCard
           key={slot.runnerId}
-          assignment={a}
+          assignment={assignment}
           slot={slot}
           task={task}
           record={record}
@@ -234,31 +244,32 @@ export function PerRunnerTasksWidget({ tasks = [], stages = [], compact = false,
   );
 }
 
-const PerRunnerCompactRow = ({ assignment: a, slot, task, nowMs, stageName }) => {
-  const serving = a?.serving && typeof a.serving === 'object' ? a.serving : null;
+const PerRunnerCompactRow = ({ assignment, slot, task, nowMs, stageName }) => {
+  const serving = assignment?.serving && typeof assignment.serving === 'object' ? assignment.serving : null;
   const extraCount = slot && slot.liveHoldCount > 1 ? slot.liveHoldCount - 1 : 0;
+  if (!assignment || typeof assignment.runnerId !== 'string') return null;
   return (
     <details
-      data-testid={`per-runner-row-${a.runnerId}`}
+      data-testid={`per-runner-row-${assignment.runnerId}`}
       className="px-2 py-1 bg-slate-800/60 border border-slate-700/60 rounded-sm text-[11px] font-mono text-slate-300"
     >
       <summary className="flex items-center gap-2 cursor-pointer list-none">
         <span
-          className={`inline-block w-2 h-2 rounded-full ${FRESHNESS_DOT[runnerFreshness(a.lastSeenAt, nowMs)]}`}
+          className={`inline-block w-2 h-2 rounded-full ${FRESHNESS_DOT[runnerFreshness(assignment.lastSeenAt, nowMs)]}`}
           aria-hidden="true"
         />
-        <strong className="text-slate-100">{a.runnerId}</strong>
+        <strong className="text-slate-100">{assignment.runnerId}</strong>
         <span
-          data-testid={`per-runner-state-${a.runnerId}`}
+          data-testid={`per-runner-state-${assignment.runnerId}`}
           className="px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-bold uppercase tracking-widest text-[10px]"
         >
           Busy
         </span>
-        <span className="truncate">{String(a.taskId).slice(0, 8)}</span>
-        <span className="text-slate-400 truncate">{stageName(a.stageId)}</span>
+        <span className="truncate">{String(assignment.taskId).slice(0, 8)}</span>
+        <span className="text-slate-400 truncate">{stageName(assignment.stageId)}</span>
         {serving?.harness && (
           <span
-            data-testid={`per-runner-compact-harness-${a.runnerId}`}
+            data-testid={`per-runner-compact-harness-${assignment.runnerId}`}
             className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700"
           >
             {serving.harness}
@@ -266,7 +277,7 @@ const PerRunnerCompactRow = ({ assignment: a, slot, task, nowMs, stageName }) =>
         )}
         {serving?.model && (
           <span
-            data-testid={`per-runner-compact-model-${a.runnerId}`}
+            data-testid={`per-runner-compact-model-${assignment.runnerId}`}
             className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700 truncate"
             title={serving.model}
           >
@@ -275,70 +286,71 @@ const PerRunnerCompactRow = ({ assignment: a, slot, task, nowMs, stageName }) =>
         )}
         <span
           className="ml-auto text-emerald-300 shrink-0"
-          data-testid={`per-runner-elapsed-${a.runnerId}`}
+          data-testid={`per-runner-elapsed-${assignment.runnerId}`}
         >
-          {formatRunnerElapsed(a.startedAt, nowMs)}
+          {formatRunnerElapsed(assignment.startedAt, nowMs)}
         </span>
       </summary>
       {extraCount > 0 && (
         <p
-          data-testid={`per-runner-extras-${a.runnerId}`}
+          data-testid={`per-runner-extras-${assignment.runnerId}`}
           className="mt-1 text-amber-300"
           role="alert"
         >
-          {`+${extraCount} more live hold${extraCount === 1 ? '' : 's'} for one Runner (fence converging) — only ${String(a.taskId).slice(0, 8)} is current.`}
+          {`+${extraCount} more live hold${extraCount === 1 ? '' : 's'} for one Runner (fence converging) — only ${String(assignment.taskId).slice(0, 8)} is current.`}
         </p>
       )}
-      <RunnerLogTail task={task} runnerId={a.runnerId} />
+      <RunnerLogTail task={task} runnerId={assignment.runnerId} />
     </details>
   );
 };
 
-const PerRunnerCard = ({ assignment: a, slot, task, record, nowMs, stageName }) => {
+const PerRunnerCard = ({ assignment, slot, task, record, nowMs, stageName }) => {
   const harnesses = Array.isArray(record?.capabilities?.harnesses)
-    ? record.capabilities.harnesses.map((h) => h?.id || h).filter(Boolean)
+    ? record.capabilities.harnesses.map((harness) => harness?.id || harness).filter(Boolean)
     : [];
-  const serving = a.serving && typeof a.serving === 'object' ? a.serving : null;
-  const tail = runnerLogTail(task, a.runnerId);
+  const serving = assignment?.serving && typeof assignment.serving === 'object' ? assignment.serving : null;
+  const tail = runnerLogTail(task, assignment?.runnerId);
   const memory = describeMemoryPressure(record?.facts);
   const extraCount = slot && slot.liveHoldCount > 1 ? slot.liveHoldCount - 1 : 0;
+  if (!assignment || typeof assignment.runnerId !== 'string') return null;
   return (
     <article
-      data-testid={`per-runner-card-${a.runnerId}`}
+      data-testid={`per-runner-card-${assignment.runnerId}`}
       className="px-3 py-2 bg-slate-800/60 border border-slate-700/60 rounded-sm"
     >
       <div className="flex items-center gap-2 text-xs font-mono">
         <span
-          className={`inline-block w-2 h-2 rounded-full ${FRESHNESS_DOT[runnerFreshness(a.lastSeenAt, nowMs)]}`}
-          title={a.lastSeenAt ? `Last heartbeat ${a.lastSeenAt}` : 'No heartbeat seen yet'}
+          className={`inline-block w-2 h-2 rounded-full ${FRESHNESS_DOT[runnerFreshness(assignment.lastSeenAt, nowMs)]}`}
+          title={assignment.lastSeenAt ? `Last heartbeat ${assignment.lastSeenAt}` : 'No heartbeat seen yet'}
           aria-hidden="true"
         />
-        <strong className="text-slate-100 uppercase tracking-wider">Runner {a.runnerId}</strong>
+        <strong className="text-slate-100 uppercase tracking-wider">Runner {assignment.runnerId}</strong>
         <span
-          data-testid={`per-runner-state-${a.runnerId}`}
+          data-testid={`per-runner-state-${assignment.runnerId}`}
           className="px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-bold uppercase tracking-widest text-[10px]"
         >
           Busy · 1 task
         </span>
         <span className="text-slate-400">· executing task</span>
-        <span className="text-cyan-300" data-testid={`per-runner-task-${a.runnerId}`}>
-          {String(a.taskId).slice(0, 8)}
+        <span className="text-cyan-300" data-testid={`per-runner-task-${assignment.runnerId}`}>
+          {String(assignment.taskId).slice(0, 8)}
         </span>
         <span
           className="ml-auto text-emerald-300 font-bold"
-          data-testid={`per-runner-elapsed-${a.runnerId}`}
-          title={a.startedAt ? `Claimed ${a.startedAt}` : 'Claim time unknown'}
+          data-testid={`per-runner-elapsed-${assignment.runnerId}`}
+          title={assignment.startedAt ? `Claimed ${assignment.startedAt}` : 'Claim time unknown'}
         >
-          {formatRunnerElapsed(a.startedAt, nowMs)}
+          {formatRunnerElapsed(assignment.startedAt, nowMs)}
         </span>
       </div>
       {extraCount > 0 && (
         <p
-          data-testid={`per-runner-extras-${a.runnerId}`}
+          data-testid={`per-runner-extras-${assignment.runnerId}`}
           className="mt-1 text-[11px] font-mono text-amber-300"
           role="alert"
         >
-          {`+${extraCount} more live hold${extraCount === 1 ? '' : 's'} for one Runner (fence converging) — only ${String(a.taskId).slice(0, 8)} is current.`}
+          {`+${extraCount} more live hold${extraCount === 1 ? '' : 's'} for one Runner (fence converging) — only ${String(assignment.taskId).slice(0, 8)} is current.`}
         </p>
       )}
       <p className="mt-1 text-xs text-slate-200 truncate" title={task?.goal || task?.title || ''}>
@@ -346,10 +358,10 @@ const PerRunnerCard = ({ assignment: a, slot, task, record, nowMs, stageName }) 
       </p>
       <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-slate-400">
         <span className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700">
-          Stage: <strong className="text-slate-200">{stageName(a.stageId)}</strong>
+          Stage: <strong className="text-slate-200">{stageName(assignment.stageId)}</strong>
         </span>
         <span className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700">
-          epoch {a.epoch ?? '?'}
+          epoch {assignment.epoch ?? '?'}
         </span>
         {serving?.harness && (
           <span className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700">
@@ -371,7 +383,7 @@ const PerRunnerCard = ({ assignment: a, slot, task, record, nowMs, stageName }) 
         )}
         {memory && (
           <span
-            data-testid={`per-runner-memory-${a.runnerId}`}
+            data-testid={`per-runner-memory-${assignment.runnerId}`}
             className={`truncate ${memory.low ? 'text-amber-300 font-bold' : ''}`}
             title={
               memory.low
@@ -384,14 +396,14 @@ const PerRunnerCard = ({ assignment: a, slot, task, record, nowMs, stageName }) 
           </span>
         )}
       </div>
-      <RunnerPromptPayload assignment={a} taskId={task?.id} />
+      <RunnerPromptPayload assignment={assignment} taskId={task?.id} />
       {tail.length > 0 && (
         <div className="mt-1.5 border-t border-slate-700/60 pt-1.5">
           <p className="text-[10px] font-mono uppercase tracking-widest text-slate-400 mb-1">
             Runner log tail
           </p>
           <pre
-            data-testid={`per-runner-tail-${a.runnerId}`}
+            data-testid={`per-runner-tail-${assignment.runnerId}`}
             className="font-mono text-[11px] text-slate-300 leading-relaxed whitespace-pre-wrap break-words max-h-40 overflow-y-auto select-text"
           >
             {tail.map((e) => e.text).join('\n')}

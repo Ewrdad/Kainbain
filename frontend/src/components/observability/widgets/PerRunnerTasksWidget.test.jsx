@@ -1,6 +1,6 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { PerRunnerTasksWidget, formatRunnerElapsed, runnerFreshness } from './PerRunnerTasksWidget';
+import { PerRunnerTasksWidget, formatRunnerElapsed, runnerFreshness, RUNNER_FRESHNESS_MS } from './PerRunnerTasksWidget';
 
 const getRunners = vi.hoisted(() => vi.fn());
 const getRunnerMonitor = vi.hoisted(() => vi.fn());
@@ -27,6 +27,11 @@ describe('runnerFreshness', () => {
     expect(runnerFreshness(new Date(now - 10_000).toISOString(), now)).toBe('live');
     expect(runnerFreshness(new Date(now - 120_000).toISOString(), now)).toBe('stale');
     expect(runnerFreshness(null, now)).toBe('unknown');
+  });
+  test('the live boundary is exactly RUNNER_FRESHNESS_MS', () => {
+    expect(RUNNER_FRESHNESS_MS).toBe(60_000);
+    expect(runnerFreshness(new Date(now - RUNNER_FRESHNESS_MS).toISOString(), now)).toBe('live');
+    expect(runnerFreshness(new Date(now - RUNNER_FRESHNESS_MS - 1).toISOString(), now)).toBe('stale');
   });
 });
 
