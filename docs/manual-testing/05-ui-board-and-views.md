@@ -148,3 +148,19 @@ reload ignoring cache) to prove the final state comes from the server.
   duplicate cards after the next reload.
 - Cleanup: delete the task via API; confirm the card disappears (live
   or after one reload — record which).
+
+## MT-UI-13 — Survey image cards + Images settings tab
+
+- **Priority:** P2. `SKIP` if no image-question survey task can be
+  produced (MT-TASK-13 setup with `imageGen:"mock"`).
+- Steps: open `#/tasks/<id>/survey` on the image-question task; watch
+  generating skeletons resolve into picture cards; pick one card, add
+  Notes, Submit & continue. Then open `#/system-settings/images`:
+  confirm the mock row offers Test only, run Test, and (scratch only)
+  save + clear a dummy Muse key.
+- Expected: ready pictures render as selectable cards (radio
+  semantics); failed/missing pictures degrade to descriptions with a
+  notice and never block answering; submit advances the task. The
+  Images tab shows per-provider status, never renders a saved key in
+  plain text, and Test reports ok/bytes/ms (mock) or an honest error.
+- Cleanup: delete the task; clear any dummy key you saved.
