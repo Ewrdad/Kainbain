@@ -1,5 +1,11 @@
 import { useCallback, useState } from 'react';
 
+/***
+ * MARK: FailureMessageImage
+ * @description Thumbnail for one image referenced by a failure message, with
+ * a labelled fallback chip and Retry when the URL fails to load.
+ * @example <FailureMessageImage url="/api/tasks/1/assets/shot.png" alt="shot" name="shot.png" />
+ ***/
 export function FailureMessageImage({ url, alt, name }) {
   const [failed, setFailed] = useState(false);
   const [retryKey, setRetryKey] = useState(0);

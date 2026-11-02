@@ -4,6 +4,12 @@ import { API_BASE } from '../../services/apiBase';
 import { extractImageRefs, resolveTaskImageUrl } from '../../services/taskImages';
 import { FailureMessageImage } from './FailureMessageImage';
 
+/***
+ * MARK: FailureMessage
+ * @description Renders a failure message with Show more/less truncation plus
+ * thumbnails for task-asset image references when project/task context is set.
+ * @example <FailureMessage message="boom" projectId="p1" taskId="t1" />
+ ***/
 export function FailureMessage({
   message,
   className = '',

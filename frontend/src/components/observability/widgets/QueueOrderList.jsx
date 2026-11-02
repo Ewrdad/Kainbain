@@ -71,8 +71,12 @@ export function QueueOrderList({
         ? queue
         : [];
 
-  const handleSelect = onSelectTask || onTaskClick || (() => {});
+  const handleSelect = onSelectTask || onTaskClick || null;
   const schedulerStopped = schedulerRunning === false;
+  // Rows are interactive only when a selection handler is wired (the queue
+  // popup opens the inspector); handler-less surfaces like the monitor keep
+  // the original plain-div rows — never focusable buttons that do nothing.
+  const interactive = typeof handleSelect === 'function';
 
   const handleRowKeyDown = (event, item) => {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -81,25 +85,23 @@ export function QueueOrderList({
     }
   };
 
-  if (resolvedItems.length === 0) {
-    return (
-      <div
-        className={`h-full flex flex-col items-center justify-center p-6 text-center text-slate-400 font-mono ${
-          compact ? 'text-[10px]' : 'text-xs'
-        }`}
-      >
-        <span className="text-3xl mb-2 opacity-50">✨</span>
-        <p className="font-bold text-slate-300">
-          {schedulerStopped ? 'Scheduler Stopped' : 'Queue is Clear'}
-        </p>
-        <p className="text-[11px] mt-1 text-slate-400">
-          {schedulerStopped
-            ? 'Autonomous execution is off. Start the scheduler to resume pickup.'
-            : 'Idle — waiting for work. New tasks dispatch automatically.'}
-        </p>
-      </div>
-    );
-  }
+  const emptyState = (
+    <div
+      className={`h-full flex flex-col items-center justify-center p-6 text-center text-slate-400 font-mono ${
+        compact ? 'text-[10px]' : 'text-xs'
+      }`}
+    >
+      <span className="text-3xl mb-2 opacity-50">✨</span>
+      <p className="font-bold text-slate-300">
+        {schedulerStopped ? 'Scheduler Stopped' : 'Queue is Clear'}
+      </p>
+      <p className="text-[11px] mt-1 text-slate-400">
+        {schedulerStopped
+          ? 'Autonomous execution is off. Start the scheduler to resume pickup.'
+          : 'Idle — waiting for work. New tasks dispatch automatically.'}
+      </p>
+    </div>
+  );
 
   return (
     <div
@@ -111,7 +113,9 @@ export function QueueOrderList({
         compact ? 'p-1.5 space-y-1.5' : ''
       }`}
     >
-      {resolvedItems.map((item, idx) => {
+      {resolvedItems.length === 0
+        ? emptyState
+        : resolvedItems.map((item, idx) => {
         const isItemActive =
           engineState?.status === 'running' &&
           engineState?.activeTaskId != null &&
@@ -129,11 +133,15 @@ export function QueueOrderList({
           <div
             key={item.id || idx}
             data-testid={`queue-item-${item.id}`}
-            role="button"
-            tabIndex={0}
-            onClick={() => handleSelect(item)}
-            onKeyDown={(event) => handleRowKeyDown(event, item)}
-            className={`p-2.5 rounded-md border backdrop relative overflow-hidden cursor-pointer ${itemCardClass(
+            {...(interactive
+              ? {
+                  role: 'button',
+                  tabIndex: 0,
+                  onClick: () => handleSelect(item),
+                  onKeyDown: (event) => handleRowKeyDown(event, item),
+                }
+              : {})}
+            className={`p-2.5 rounded-md border backdrop relative overflow-hidden ${interactive ? 'cursor-pointer ' : ''}${itemCardClass(
               isItemActive,
               isWaiting,
               isBlocked,

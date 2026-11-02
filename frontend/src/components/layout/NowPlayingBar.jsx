@@ -381,7 +381,10 @@ export function NowPlayingBar() {
    *   stage label in the right rail. Resolved from the engine snapshot's
    *   openQueueDepth (global, all projects), falling back to the loaded
    *   list only when the snapshot carries no count, so project switches
-   *   never move it.
+   *   never move it. Clicking the chip opens the dispatch-order popup
+   *   (`QueuePopupModal`); reconciliation rule: the count includes
+   *   failed/waiting-human tasks that never dispatch, so the popup footer
+   *   labels any count-vs-list difference instead of hiding it.
    * @example queueDepth // => 3
    * @returns {number}
    ***/
@@ -617,6 +620,9 @@ export function NowPlayingBar() {
           greyed-out build-hash trigger (left of the queue, always visible so
           the changelog is one click away on phones too) plus the live
           queue-depth chip (sm and up; phones keep the runner boxes uncrowded).
+          Popup entry is sm+ only by decision: no phone chip, because a phone
+          entry point would crowd the runner boxes and disturb the rail
+          geometry the canary overlap gate pins at 640px and up.
           Overflow-hidden stays as cheap insurance (tooltips are
           portal-rendered to document.body, so they are not clipped). A canary
           e2e gate checks button-vs-rail rect intersections at

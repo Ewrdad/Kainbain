@@ -7,11 +7,16 @@ import { logger } from '../services/logger';
 /***
  * MARK: useScheduledQueue
  * @description Shared frontend hook for the dispatch-ordered queue shown by the
- *   monitor and the Now Playing bar's queue popup. Fetches on enable only,
- *   refreshes on observability invalidations, and keeps a 15 s safety poll plus
- *   visibility/focus returns (mirroring ObservabilityDashboard). Returns the
- *   queue items under several convenience aliases so callers never fight over
- *   naming.
+ *   Now Playing bar's queue popup (and any future queue surface). Data source
+ *   is the global observability snapshot (`api.observabilityStatus(undefined)`
+ *   serves every project in dispatch order, so no new endpoint was needed).
+ *   Fetches on enable only, refreshes on observability invalidations, and
+ *   keeps a 15 s safety poll plus visibility/focus returns. The monitor
+ *   dashboard deliberately keeps its own inline fetch: it publishes metrics
+ *   and queue atomically from one response with monitor-only guards
+ *   (TASK_UPDATED active-task filter, hidden-tab gating, a staleness rule),
+ *   which this queue-only hook does not replicate. Returns the queue items
+ *   under several convenience aliases so callers never fight over naming.
  * @example const { items, loading, error, refresh } = useScheduledQueue({ projectScope: 'all', enabled: isOpen })
  * @param {Object} [opts]
  * @param {string} [opts.projectScope='all'] - 'all' or a project id.
@@ -52,6 +57,10 @@ export function useScheduledQueue({ projectScope = 'all', enabled = false } = {}
         return;
       }
       inFlightRef.current = true;
+      // This fetch absorbs all pending invalidations (mirrors the dashboard's
+      // `dirty = false` at load start): only refresh requests arriving
+      // mid-flight chain a follow-up in the finally block below.
+      dirtyRef.current = false;
       if (mountedRef.current) {
         setLoading(true);
       }

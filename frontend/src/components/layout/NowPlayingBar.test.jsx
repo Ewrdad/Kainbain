@@ -19,6 +19,7 @@ vi.mock('../../services/api', () => ({
     getRunnerMonitor: vi.fn(async () => ({ liveAssignments: [] })),
     systemStatus: vi.fn(async () => ({ build: null })),
     deployChangelog: vi.fn(async () => ({ changelog: null, reason: 'not-baked' })),
+    observabilityStatus: vi.fn(async () => ({ observability: { queue: [] } })),
   },
 }));
 
@@ -26,11 +27,13 @@ import { api } from '../../services/api';
 
 // Default the polled backends to empty every test so the build-hash trigger
 // (unbaked build) and runner roster (no fleet) stay out of the way unless a
-// test opts in with its own mockResolvedValue.
+// test opts in with its own mockResolvedValue. The queue popup fetches the
+// global dispatch queue on open only; default it to empty for the same reason.
 beforeEach(() => {
   api.getRunnerMonitor.mockResolvedValue({ liveAssignments: [] });
   api.systemStatus.mockResolvedValue({ build: null });
   api.deployChangelog.mockResolvedValue({ changelog: null, reason: 'not-baked' });
+  api.observabilityStatus.mockResolvedValue({ observability: { queue: [] } });
 });
 
 /***
@@ -1192,4 +1195,102 @@ test('no build-hash trigger renders when no build is baked', async () => {
   expect(
     screen.getByRole('status', { name: /Execution queue:/ }),
   ).toBeInTheDocument();
+});
+
+const popupQueueItems = [
+  { id: 'task-1', title: 'First task', projectName: 'Alpha', currentStageName: 'Work', queueOrder: 1, priorityReason: 'Queued' },
+  { id: 'task-2', title: 'Second task', projectName: 'Beta', currentStageName: 'Review', queueOrder: 2, priorityReason: 'Queued' },
+];
+
+function renderBarWithOpenTasks() {
+  renderWithKainBain(<NowPlayingBar />, {
+    stages,
+    currentStageId: '1',
+    workflows: [],
+    tasks: [
+      { id: 'task-1', title: 'First task', currentStageId: '1', status: 'in_stage' },
+      { id: 'task-2', title: 'Second task', currentStageId: '2', status: 'in_stage' },
+    ],
+    isAgentRunning: false,
+  });
+}
+
+test('queue chip is a button: clicking opens the dispatch-order popup and the fetch happens on open only', async () => {
+  api.observabilityStatus.mockResolvedValue({ observability: { queue: popupQueueItems } });
+  renderBarWithOpenTasks();
+
+  const chip = screen.getByRole('button', { name: 'Execution queue: 2 open tasks across all pipelines' });
+  expect(chip.tagName).toBe('BUTTON');
+  expect(chip).toHaveTextContent('2');
+  // The live-region count semantics survive inside the button.
+  expect(
+    screen.getByRole('status', { name: 'Execution queue: 2 open tasks across all pipelines' }),
+  ).toHaveTextContent('2');
+
+  expect(api.observabilityStatus).not.toHaveBeenCalled();
+  fireEvent.click(chip);
+
+  await waitFor(() => {
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+  expect(api.observabilityStatus).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('heading', { name: 'Queue — all projects' })).toBeInTheDocument();
+
+  // Rows render in dispatch order with position, name, project, and step.
+  const first = await screen.findByTestId('queue-item-task-1');
+  const second = screen.getByTestId('queue-item-task-2');
+  expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(first).toHaveTextContent('#1');
+  expect(first).toHaveTextContent('First task');
+  expect(first).toHaveTextContent('Alpha');
+  expect(first).toHaveTextContent('Work');
+  expect(second).toHaveTextContent('#2');
+  // The popup reconciles the chip count with the listed queue.
+  expect(screen.getByTestId('queue-reconciliation')).toHaveTextContent('2 open tasks counted · 2 shown');
+});
+
+test('queue chip is keyboard-activatable: it is a focusable native button', () => {
+  renderBarWithOpenTasks();
+  const chip = screen.getByRole('button', { name: /Execution queue:/ });
+  // Enter/Space activation is native button behaviour (no custom key
+  // handler), so assert the platform contract: a real focusable BUTTON.
+  expect(chip.tagName).toBe('BUTTON');
+  chip.focus();
+  expect(document.activeElement).toBe(chip);
+});
+
+test('queue popup closes on Escape and the chip count is unchanged', async () => {
+  api.observabilityStatus.mockResolvedValue({ observability: { queue: popupQueueItems } });
+  renderBarWithOpenTasks();
+
+  fireEvent.click(screen.getByRole('button', { name: /Execution queue:/ }));
+  await waitFor(() => {
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+  fireEvent.keyDown(document, { key: 'Escape' });
+  await waitFor(() => {
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  // The right rail is untouched: chip keeps its count text and live region.
+  const rail = screen.getByTestId('now-playing-right-rail');
+  const chip = screen.getByRole('button', { name: 'Execution queue: 2 open tasks across all pipelines' });
+  expect(rail.contains(chip)).toBe(true);
+  expect(chip).toHaveTextContent('2');
+});
+
+test('queue popup closes on backdrop click but not on panel click', async () => {
+  api.observabilityStatus.mockResolvedValue({ observability: { queue: popupQueueItems } });
+  renderBarWithOpenTasks();
+
+  fireEvent.click(screen.getByRole('button', { name: /Execution queue:/ }));
+  const dialog = await screen.findByRole('dialog');
+  // Panel clicks never close (the dialog stops propagation).
+  fireEvent.click(dialog);
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  // Backdrop clicks close.
+  fireEvent.click(dialog.parentElement);
+  await waitFor(() => {
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
 });
