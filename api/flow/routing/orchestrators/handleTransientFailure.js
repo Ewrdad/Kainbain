@@ -55,6 +55,7 @@ import { recordTransientAttemptReport } from './recordTransientAttemptReport.js'
  * @param {string} [opts.aliasName] - Model alias the failed attempt resolved through (per-alias reliability attribution).
  * @param {string} [opts.modelRef] - Concrete model the alias target dispatched.
  * @param {number} [opts.targetIndex] - Weighted-target index of the alias pick (informational).
+ * @param {string} [opts.runnerId] - Runner that ran the failed attempt (recorded on both the Retrying/exhausted timeline rows and the attempt report when present, so a struggling Runner can be spotted per stage or task type later; absent for embedded runs).
  * @param {Object} [opts.retryDelay] - Per-call delay overrides (`baseMs`, `capMs`, `jitterMs`, `strategy`; WP10 fault-injection seam).
  * @param {Function} [opts.retryRand] - Injectable uniform [0,1) source for jitter (deterministic tests; default `Math.random`).
  * @returns {Object} Retry or parked-failure result.
@@ -76,6 +77,7 @@ export function handleTransientFailure(
 		aliasName,
 		modelRef,
 		targetIndex,
+		runnerId,
 		retryDelay,
 		retryRand,
 	} = opts;
@@ -239,6 +241,7 @@ export function handleTransientFailure(
 					aliasName,
 					modelRef,
 					targetIndex,
+					runnerId,
 				}) || {}),
 			},
 			cwd,
@@ -253,7 +256,7 @@ export function handleTransientFailure(
 			cwd,
 			harnessId,
 			failureKind,
-			{ aliasName, modelRef, targetIndex },
+			{ aliasName, modelRef, targetIndex, runnerId },
 		);
 		taskStore._saveTaskMarkdown(cwd, task);
 		// Transient budget exhausted: the stage is parked and cannot
@@ -366,6 +369,7 @@ export function handleTransientFailure(
 				aliasName,
 				modelRef,
 				targetIndex,
+				runnerId,
 			}) || {}),
 		},
 		cwd,
@@ -380,7 +384,7 @@ export function handleTransientFailure(
 		cwd,
 		harnessId,
 		failureKind,
-		{ aliasName, modelRef, targetIndex },
+		{ aliasName, modelRef, targetIndex, runnerId },
 	);
 	taskStore._saveTaskMarkdown(cwd, task);
 	bridge?.emitProcessEvent?.(projectId, "stage:retry", {

@@ -60,15 +60,17 @@ export const resolveCiTimeoutMs = (resolved, project) => {
  *   was ACTUALLY matched, never a fallback. The requirement's harness/
  *   model name the run (model normalized through `servingModelFor`, so the
  *   "default" sentinel and non-LLM kinds never stamp); a resolved alias
- *   rides along with its name and target index. CI/merge requirements carry
- *   no harness/model, so nothing is stamped and their rows stay blank — a
- *   scripted stage must never show a model. Best-effort: a stamping failure
- *   never blocks the claim.
- * @example stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req: { harness: 'pi', model: 'm', kind: 'agent' } })
- * @param {Object} args - `{ taskStore, project, task, stage, stages, req }`.
+ *   rides along with its name and target index. The dispatching Runner's
+ *   `runnerId` rides along too, so a struggling Runner can be spotted per
+ *   stage or task type later — CI/merge requirements carry no
+ *   harness/model, but a Runner-run CI/merge row still stamps the Runner
+ *   itself (never a model: a scripted stage must never show one).
+ *   Best-effort: a stamping failure never blocks the claim.
+ * @example stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req: { harness: 'pi', model: 'm', kind: 'agent' }, runnerId: 'runner-alpha' })
+ * @param {Object} args - `{ taskStore, project, task, stage, stages, req, runnerId }`.
  * @returns {Object|null} The stamped attribution, or null when nothing ran behind the dispatch.
  ***/
-export function stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req }) {
+export function stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req, runnerId = null }) {
 	try {
 		if (!task || !req) return null;
 		const resolvedAlias =
@@ -80,6 +82,7 @@ export function stampDispatchRunAttribution({ taskStore, project, task, stage, s
 			modelRef: servingModelFor({ kind: req.kind, model: req.model }),
 			aliasName: resolvedAlias ? resolvedAlias.name : null,
 			targetIndex: resolvedAlias ? resolvedAlias.targetIndex : null,
+			runnerId,
 		});
 		if (!attribution) return null;
 		task.currentRunAttribution = {
@@ -878,7 +881,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			const stages = resolveStagesForTask(project, task);
 			const stage =
 				stages.find((s) => String(s?.id) === String(task.currentStageId)) || stages[0] || null;
-			stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req });
+			stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req, runnerId: runner.runnerId });
 			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...await ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project, task, stageId: task.currentStageId }) };
 		} catch (err) {
 			return sendStoreError(reply, err);
@@ -1182,6 +1185,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					stage: cand.stage,
 					stages: resolveStagesForTask(candProject, cand.task),
 					req,
+					runnerId: runner.runnerId,
 				});
 				return {
 					assigned: true,

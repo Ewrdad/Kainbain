@@ -132,6 +132,10 @@ export async function applyRunnerReport({
 					modelRef: reportModelRef,
 					aliasName: reportAliasName,
 					targetIndex: reportTargetIndex,
+					// The reporting Runner names the failed run on its
+					// timeline row and failure report, so a struggling
+					// Runner can be spotted per stage or task type later.
+					runnerId: outcome.runnerId,
 					failureKind: outcome.failureKind,
 				},
 				classifyAs: {
@@ -181,12 +185,19 @@ export async function applyRunnerReport({
 			modelRef: reportModelRef,
 			aliasName: reportAliasName,
 			targetIndex: reportTargetIndex,
+			runnerId: outcome.runnerId,
 		});
 	}
 
 	task.history.push({
 		timestamp: new Date().toISOString(),
 		action: `Agent stage completed: ${stage.name || stage.id} (${via})`,
+		// Structured Runner id alongside the `via Runner …` prose, so
+		// consumers need not parse the action string. Blank-safe: an
+		// absent Runner stays absent, never worded.
+		...(typeof outcome.runnerId === "string" && outcome.runnerId.trim()
+			? { runnerId: outcome.runnerId.trim() }
+			: {}),
 	});
 	store._saveTaskMarkdown(cwd, task);
 

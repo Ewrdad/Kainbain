@@ -305,6 +305,93 @@ describe("The Work: timeline run-attribution persistence", () => {
 		expect(String(content)).not.toContain("no model");
 		expect(String(content)).not.toContain("automated");
 	});
+
+	it("round-trips runnerId on timeline rows and report entries", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-runner-persist-"));
+		const store = stubStore({ cwd: dir });
+		const task = {
+			id: "task-runner-1",
+			projectId: "proj-1",
+			title: "Runner persistence task",
+			status: "in_stage",
+			createdAt: "2026-10-01T00:00:00.000Z",
+			updatedAt: "2026-10-01T00:00:00.000Z",
+			history: [],
+			reports: [
+				{
+					filename: "build-20261001.md",
+					stageName: "Build",
+					stageId: "a1",
+					duration: 12,
+					status: "PASSED",
+					createdAt: "2026-10-01T00:00:12.000Z",
+					harnessId: "pi",
+					modelRef: "glm",
+					runnerId: "runner-alpha",
+				},
+				{
+					// Pre-feature reports carry no Runner: the round trip
+					// must keep them absent, never placeholder them.
+					filename: "ci-20261001.md",
+					stageName: "CI",
+					stageId: "c1",
+					duration: 4,
+					status: "PASSED",
+					createdAt: "2026-10-01T00:00:16.000Z",
+				},
+			],
+			timeline: [
+				{
+					stage: "Build",
+					status: "Moved",
+					duration: "12s",
+					timestamp: "2026-10-01T00:00:12.000Z",
+					harnessId: "pi",
+					modelRef: "glm",
+					runnerId: "runner-alpha",
+				},
+				{
+					// Runner-run scripted rows attribute the Runner alone.
+					stage: "CI",
+					status: "Advanced",
+					duration: "4s",
+					timestamp: "2026-10-01T00:00:16.000Z",
+					runnerId: "runner-alpha",
+				},
+				{
+					// Embedded / legacy rows stay runner-less.
+					stage: "Review",
+					status: "Advanced",
+					duration: "2s",
+					timestamp: "2026-10-01T00:00:18.000Z",
+				},
+			],
+		};
+
+		saveTaskMarkdown(store, dir, task);
+		const content = fs.readFileSync(
+			path.join(dir, "docs", "tasks", "task-runner-1", "task.md"),
+			"utf8",
+		);
+
+		const rehydrated = parseTaskMarkdown(store, content, "task-runner-1", "proj-1");
+		expect(rehydrated.timeline).toHaveLength(3);
+		expect(rehydrated.timeline[0]).toMatchObject({
+			runnerId: "runner-alpha",
+			harnessId: "pi",
+		});
+		expect(rehydrated.timeline[1]).toMatchObject({
+			runnerId: "runner-alpha",
+		});
+		expect(rehydrated.timeline[1].harnessId).toBeUndefined();
+		expect(rehydrated.timeline[2].runnerId).toBeUndefined();
+		expect(rehydrated.reports).toHaveLength(2);
+		expect(rehydrated.reports[0]).toMatchObject({
+			runnerId: "runner-alpha",
+			harnessId: "pi",
+		});
+		expect(rehydrated.reports[1].runnerId).toBeUndefined();
+	});
 });
 
 describe("The Work: markdown log persistence (single storage path)", () => {

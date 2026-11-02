@@ -112,6 +112,10 @@ describe("applyIntegrationReport", () => {
 			taskStore.advanceStage = () => {
 				advanced = true;
 			};
+			const savedReports = [];
+			taskStore.saveStageReport = (projectId, taskId, opts) => {
+				savedReports.push(opts);
+			};
 			const out = await applyIntegrationReport({
 				store: taskStore,
 				projectStore,
@@ -136,6 +140,17 @@ describe("applyIntegrationReport", () => {
 				stageId: "merge-1",
 			});
 			expect(task.pendingPushVerification).toMatchObject({ sha: mergeSha, verified: true });
+			// The reporting Runner is attributed on the merge report and
+			// both audit entries it wrote.
+			expect(savedReports.at(-1)).toMatchObject({ runnerId: "r1" });
+			const baselineEntry = task.history.find((entry) =>
+				String(entry.action).startsWith("Recorded PR-review baseline"),
+			);
+			expect(baselineEntry).toMatchObject({ runnerId: "r1" });
+			const mergeEntry = task.history.find((entry) =>
+				String(entry.action).startsWith("Merge stage passed"),
+			);
+			expect(mergeEntry).toMatchObject({ runnerId: "r1" });
 		} finally {
 			for (const d of [origin, backend, work]) fs.rmSync(d, { recursive: true, force: true });
 		}
@@ -167,6 +182,7 @@ describe("applyIntegrationReport", () => {
 			});
 			expect(out.parked).toBe(true);
 			expect(parked.opts.skipFailback).toBe(true);
+			expect(parked.opts.runnerId).toBe("r1");
 			expect(parked.err.gitDiagnostics.kind).toBe("sync-blocked");
 		} finally {
 			for (const d of [origin, backend, work]) fs.rmSync(d, { recursive: true, force: true });

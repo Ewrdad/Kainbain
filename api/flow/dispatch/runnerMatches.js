@@ -4,27 +4,6 @@ import { operatorConfigVerdict } from "./operatorConfigVerdict.js";
 import { stageRunnerPolicyVerdict } from "../../../shared/stageRunnerPolicy.js";
 
 /***
- * MARK: runnerMatches
- * @description Decides whether one Runner registration can take a task with
- *   the given requirements: active status, not paused, fresh heartbeat
- *   (staleness expiry), v1 protocol, runnable flag, harness id, model
- *   offering, tier membership, and disk headroom floor. Returns
- *   `{ ok, reason }` — the
- *   reason code is loud by design (step-6 NO_CAPABLE_RUNNER diagnostics
- *   and the monitor surface distinguish "no runners" from "runners that
- *   cannot take this job"). Alias requirements always miss here; WP-3.2
- *   resolves them centrally first. The last two gates are owner settings:
- *   the Runner's own `operatorConfig` first, then the stage's
- *   `runnerPolicy` (`RUNNER_NOT_ALLOWED` / `RUNNER_BLOCKED`) — owner
- *   settings keep a stable order so combined refusals always report the
- *   same reason.
- * @example runnerMatches(record, { harness: 'pi', tier: 'T1' }) => { ok: true, reason: 'MATCH' }
- * @param {Object} record - Registry record (`status`, `facts`, `lastSeenAt`, `capabilities`, plus the operator-owned `operatorConfig` the Runners settings screen persists).
- * @param {Object} req - Task requirements from `taskRequirements`.
- * @param {Object} [opts] - `{ now, staleAfterMs, minDiskHeadroomMb, projectId }` (`projectId` is the candidate's project, needed for the operator project-scope check; a scoped Runner with no project id on the candidate misses loudly instead of guessing).
- * @returns {Object} `{ ok, reason }`.
- ***/
-/***
  * MARK: effectiveRunnerModels
  * @description The model ids one Runner may serve: the operator-owned
  *   `availableModels` allowlist when set (System Settings › Runners ›
@@ -58,6 +37,27 @@ export function claimEligibleRunner(record = {}) {
 	return record?.status === "active" && record?.paused !== true;
 }
 
+/***
+ * MARK: runnerMatches
+ * @description Decides whether one Runner registration can take a task with
+ *   the given requirements: active status, not paused, fresh heartbeat
+ *   (staleness expiry), v1 protocol, runnable flag, harness id, model
+ *   offering, tier membership, and disk headroom floor. Returns
+ *   `{ ok, reason }` — the
+ *   reason code is loud by design (step-6 NO_CAPABLE_RUNNER diagnostics
+ *   and the monitor surface distinguish "no runners" from "runners that
+ *   cannot take this job"). Alias requirements always miss here; WP-3.2
+ *   resolves them centrally first. The last two gates are owner settings:
+ *   the Runner's own `operatorConfig` first, then the stage's
+ *   `runnerPolicy` (`RUNNER_NOT_ALLOWED` / `RUNNER_BLOCKED`) — owner
+ *   settings keep a stable order so combined refusals always report the
+ *   same reason.
+ * @example runnerMatches(record, { harness: 'pi', tier: 'T1' }) => { ok: true, reason: 'MATCH' }
+ * @param {Object} record - Registry record (`status`, `facts`, `lastSeenAt`, `capabilities`, plus the operator-owned `operatorConfig` the Runners settings screen persists).
+ * @param {Object} req - Task requirements from `taskRequirements`.
+ * @param {Object} [opts] - `{ now, staleAfterMs, minDiskHeadroomMb, projectId }` (`projectId` is the candidate's project, needed for the operator project-scope check; a scoped Runner with no project id on the candidate misses loudly instead of guessing).
+ * @returns {Object} `{ ok, reason }`.
+ ***/
 export function runnerMatches(record = {}, req = {}, opts = {}) {
 	const now = typeof opts.now === "number" ? opts.now : Date.now();
 	const staleAfterMs =

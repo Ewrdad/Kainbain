@@ -141,9 +141,16 @@ rendered `default` on every card. The contract, locked by
   task (`stampDispatchRunAttribution` in `api/flow/runnerRoutes.js` →
   `task.currentRunAttribution` + the stage's own arrival row), mirroring the
   embedded dispatch stamp, so runner-run rows attribute the model that was
-  actually matched. `applyRunnerReport` resolves the persisted model as
-  Runner-reported `model` → dispatch stamp → stage slot (never the alias name),
-  and forwards it to failure routing so failed runner runs name their model too.
+  actually matched. The stamp also carries the dispatching Runner's `runnerId`
+  (from the authenticated Runner record, never the request body) onto the same
+  rows and `task.currentRunAttribution`, so the terminal `Completed` row and
+  every retry/exhausted row name their Runner too. `applyRunnerReport` resolves
+  the persisted model as Runner-reported `model` → dispatch stamp → stage slot
+  (never the alias name), and forwards it plus `runnerId` to failure routing so
+  failed runner runs name their model and Runner too. Embedded runs stamp no
+  Runner; pre-feature history stays runner-less with no migration. Struggling-
+  Runner detection is a follow-up consumer of these persisted fields, not part
+  of this change.
 
 One copy of the rules lives in `shared/servingModelFor.js` +
 `shared/formatPosture.js`, executed verbatim by both the Runner bundle and the
