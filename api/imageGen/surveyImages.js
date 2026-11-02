@@ -150,6 +150,7 @@ const runSurveyImageJob = async (opts = {}) => {
 		failed: 0,
 		capped: 0,
 		skipped: 0,
+		chosenPersisted: 0,
 		warnings: [],
 		errors: [],
 	};
@@ -291,6 +292,10 @@ const runSurveyImageJob = async (opts = {}) => {
 				);
 			} catch (err) {
 				summary.errors.push(`r${round}/${question.id}: ${shortError(err?.message)}`);
+				// Nothing was published and nothing below will generate for
+				// this question, so hand its budget back: later questions
+				// must not pay for this write failure with cap entries.
+				budget += toGenerate.length;
 				continue;
 			}
 		}
@@ -367,6 +372,26 @@ const runSurveyImageJob = async (opts = {}) => {
 			summary.errors.push(`r${item.round}/${item.questionId}: ${shortError(err?.message)}`);
 		}
 	}
+	// Late chosen-image merge: a submit that landed while pictures were
+	// still generating saved answers but no chosen picture (nothing was
+	// ready yet). Now that new pictures are ready, retry that merge so the
+	// task folder still gains the picked file + survey reference even
+	// though the submit already advanced. Reads the file fresh (never the
+	// planning read above) and never fails the job.
+	if (summary.generated > 0) {
+		try {
+			const late = await persistChosenSurveyImages({
+				cwd,
+				project,
+				taskId,
+				surveyFile,
+			});
+			summary.chosenPersisted = late.chosen.length;
+			for (const errLine of late.errors || []) summary.errors.push(errLine);
+		} catch (err) {
+			summary.errors.push(shortError(err?.message));
+		}
+	}
 	summary.status = "done";
 	return summary;
 };
@@ -378,7 +403,9 @@ const runSurveyImageJob = async (opts = {}) => {
  *   failed entries with a descriptions fallback). Concurrent calls for the
  *   same task+file share one run. Park sites pass `retryFailed: true` so a
  *   new round also heals earlier failures; survey reads leave it false so a
- *   broken provider cannot be hammered by polling.
+ *   broken provider cannot be hammered by polling. When new pictures land,
+ *   already-submitted answers get their chosen picture persisted, so a
+ *   submit that landed mid-generation still leaves a design reference.
  * @example await ensureSurveyImages({ cwd: '/repo', taskId: 't1', stage }) => ({ status: 'done', ... })
  * @param {Object} [opts]
  * @param {string} [opts.cwd] - Project working directory.
@@ -391,7 +418,7 @@ const runSurveyImageJob = async (opts = {}) => {
  * @param {string} [opts.imageGenDir] - Key store dir override (tests).
  * @param {Function} [opts.fetchImpl] - Fetch override (tests).
  * @param {boolean} [opts.retryFailed] - Also retry earlier `gen`/`cap` failures.
- * @returns {Promise<Object>} Summary (providerId, status, generated/failed/capped/skipped, warnings, errors).
+ * @returns {Promise<Object>} Summary (providerId, status, generated/failed/capped/skipped/chosenPersisted, warnings, errors).
  ***/
 export const ensureSurveyImages = (opts = {}) => {
 	const key = jobKeyFor(opts);
@@ -403,6 +430,7 @@ export const ensureSurveyImages = (opts = {}) => {
 			failed: 0,
 			capped: 0,
 			skipped: 0,
+		chosenPersisted: 0,
 			warnings: [],
 			errors: [],
 		});
@@ -417,6 +445,7 @@ export const ensureSurveyImages = (opts = {}) => {
 			failed: 0,
 			capped: 0,
 			skipped: 0,
+		chosenPersisted: 0,
 			warnings: [],
 			errors: [shortError(err?.message)],
 		}))
@@ -480,6 +509,11 @@ export const reportSurveyImagesToTask = ({ store, cwd, task, summary } = {}) => 
 		if (summary.failed > 0) parts.push(`${summary.failed} failed`);
 		if (summary.capped > 0) parts.push(`${summary.capped} over the survey limit`);
 		if (summary.skipped > 0) parts.push(`${summary.skipped} already ready`);
+		if (summary.chosenPersisted > 0) {
+			parts.push(
+				`${summary.chosenPersisted} chosen design${summary.chosenPersisted === 1 ? "" : "s"} saved`,
+			);
+		}
 		lines.push(
 			`[INFO] image-gen: provider '${summary.providerId}' — ${parts.length > 0 ? parts.join(", ") : "nothing to do"}`,
 		);
@@ -525,7 +559,9 @@ export const chosenSurveyImageFileName = (round, questionId) => {
 	return safe || `survey-r${round}-chosen.png`;
 };
 
-const CHOSEN_ENTRY_PATTERN = /^- \[r(\d+)\/([^\]]+)\]/;
+// Greedy up to `] ![` so a question id containing `]` still parses (a
+// `[^...]` class would stop at the id's own bracket and orphan the entry).
+const CHOSEN_ENTRY_PATTERN = /^- \[r(\d+)\/(.+)\] !\[/;
 
 const escapeMarkdownText = (value) =>
 	String(value || "").replace(/\s+/g, " ").trim().replace(/[\[\]]/g, "\\$&").slice(0, 200);

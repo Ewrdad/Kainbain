@@ -197,6 +197,15 @@ describe("api/imageGen/providers muse", () => {
 		});
 	});
 
+	it("rejects corrupt base64 instead of writing garbage bytes", async () => {
+		const fetchImpl = async () =>
+			jsonResponse({ payload: { data: [{ b64_json: "!!!not-base64!!!" }] } });
+		await expect(generateMuseImage({ prompt: "x", apiKey: "k", fetchImpl })).rejects.toMatchObject({
+			statusCode: 502,
+			code: "IMAGE_GEN_PROVIDER_ERROR",
+		});
+	});
+
 	it("times out a hung provider", async () => {
 		const fetchImpl = () => new Promise(() => {});
 		await expect(

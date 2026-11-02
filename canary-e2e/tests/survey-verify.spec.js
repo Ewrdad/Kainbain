@@ -407,7 +407,11 @@ test.describe("question-me survey verification", () => {
       await expect(firstArt).toHaveAttribute("src", /\/tasks\/.+\/images\/.+\.png/);
       await page.screenshot({ path: `${SHOTS}/image-question.png` });
 
-      await page.getByLabel(`Which landing design should we build?: ${darkOption}`).click();
+      // Click the picture card itself, as a user does: the radio is visually
+      // hidden inside its label, so Playwright cannot hit-test the input
+      // directly (the label intercepts pointer events).
+      await firstArt.click();
+      await expect(page.getByLabel(`Which landing design should we build?: ${darkOption}`)).toBeChecked();
       await page.getByRole("button", { name: /submit & continue/i }).click();
       await expect(page.getByText(/moved to its next stage/i)).toBeVisible({ timeout: 15000 });
       const moved = await (await request.get(`${API_BASE}/tasks/${task.id}?projectId=${imgProject.id}`)).json();

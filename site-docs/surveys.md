@@ -140,7 +140,9 @@ server — runners and the survey page never see them (a
 key). Generation runs in the background at park time and costs about $0.01 per
 picture (at most 12 per survey file); pictures that cannot be made — no key
 saved, an error, or the survey limit — degrade to their written descriptions,
-so answering never blocks.
+so answering never blocks. Pictures still generating stay selectable by
+description, and a submit that lands before they are ready still gains its
+chosen-picture reference once they arrive.
 
 ## When there is nothing to ask
 

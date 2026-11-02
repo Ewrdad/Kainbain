@@ -85,6 +85,18 @@ const assertValidPrompt = (prompt) => {
 	return prompt;
 };
 
+// Strictly decodes an inline base64 payload: `Buffer.from(x, "base64")`
+// silently skips invalid characters (never throws), so without this check a
+// corrupt provider response would be written to disk as garbage bytes
+// instead of failing the image with a descriptions fallback.
+const decodeBase64Image = (b64) => {
+	const compact = String(b64).replace(/\s+/g, "");
+	if (compact.length === 0 || compact.length % 4 !== 0) return null;
+	if (!/^[A-Za-z0-9+/]*={0,2}$/.test(compact)) return null;
+	const bytes = Buffer.from(compact, "base64");
+	return bytes.length > 0 ? bytes : null;
+};
+
 // Picks the first usable image payload out of an OpenAI-compatible response:
 // inline base64 first (no second request), then a fetchable https URL. The
 // `images[]` spellings cover Meta's documented `image_url` variant.
@@ -234,14 +246,14 @@ export const generateMuseImage = async ({
 		throw err;
 	}
 	if (ref.b64) {
-		try {
-			return Buffer.from(ref.b64, "base64");
-		} catch {
+		const bytes = decodeBase64Image(ref.b64);
+		if (!bytes) {
 			const err = new Error("Muse image response carried invalid base64");
 			err.statusCode = 502;
 			err.code = "IMAGE_GEN_PROVIDER_ERROR";
 			throw err;
 		}
+		return bytes;
 	}
 	const fileResponse = await fetchWithTimeout(fetchImpl, ref.url, { timeoutMs });
 	if (!fileResponse || fileResponse.ok !== true) {

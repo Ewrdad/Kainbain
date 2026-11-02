@@ -663,9 +663,9 @@ function QuestionField({ question, selected, notes, missing, onSelect, onNotes, 
  * MARK: ImageOptions
  * @description One image question's options: ready pictures render as
  *   selectable image cards (radio semantics — pick one favourite), pending
- *   pictures as generating skeletons, and failed or missing pictures as
- *   description rows with an honest notice — answering never blocks on
- *   generation.
+ *   pictures as selectable generating skeletons (pick by description while
+ *   the picture renders), and failed or missing pictures as description
+ *   rows with an honest notice — answering never blocks on generation.
  ***/
 function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGenProviderId }) {
   const entries = Array.isArray(question.images) ? question.images : [];
@@ -716,17 +716,37 @@ function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGe
           );
         }
         if (entry?.status === 'pending') {
+          // Selectable while generating: a slow provider must never block
+          // answering — the human picks by description and the ready picture
+          // (plus the chosen-design reference) lands afterwards.
           return (
-            <div
+            <label
               key={`${text}-${index}`}
-              role="status"
-              aria-label={`${text}: generating illustration`}
-              className="flex flex-col gap-1.5 p-2 rounded-sm border border-border-standard text-on-surface"
+              htmlFor={inputId}
+              className={`flex flex-col gap-1.5 p-2 rounded-sm border cursor-pointer text-sm transition-colors ${
+                checked
+                  ? 'border-secondary bg-human-fill/50 text-on-surface'
+                  : 'border-border-standard text-on-surface hover:border-secondary/60'
+              }`}
             >
-              <div className="w-full aspect-video rounded-sm bg-surface-deep motion-safe:animate-pulse" />
+              <input
+                id={inputId}
+                type="radio"
+                name={`survey-${question.id}`}
+                value={text}
+                checked={checked}
+                aria-label={`${question.text}: ${text}`}
+                onChange={(e) => onSelect(question.id, text, e.target.checked, false)}
+                className="sr-only"
+              />
+              <span
+                role="status"
+                aria-label={`${text}: generating illustration`}
+                className="block w-full aspect-video rounded-sm bg-surface-deep motion-safe:animate-pulse"
+              />
               <span className="text-[11px] font-mono text-text-muted">Generating illustration…</span>
               <span className="leading-snug text-xs">{text}</span>
-            </div>
+            </label>
           );
         }
         return (

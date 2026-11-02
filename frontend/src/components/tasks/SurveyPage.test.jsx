@@ -322,7 +322,12 @@ describe('SurveyPage image questions', () => {
     const first = screen.getByAltText('dark dashboard');
     expect(first.tagName).toBe('IMG');
     expect(first.getAttribute('src')).toContain('/projects/p1/tasks/t1/images/survey-r1-qi-0.png');
-    expect(screen.getByLabelText('Pick a design: dark dashboard')).toHaveAttribute('type', 'radio');
+    const radio = screen.getByLabelText('Pick a design: dark dashboard');
+    expect(radio).toHaveAttribute('type', 'radio');
+    // The picture lives inside its radio's label, so clicking the card (as
+    // the canary spec does, like a user) activates the hidden input natively.
+    expect(first.closest('label')).not.toBeNull();
+    expect(first.closest('label')).toContainElement(radio);
 
     fireEvent.click(screen.getByLabelText('Pick a design: light dashboard'));
     fireEvent.click(screen.getByRole('button', { name: /save answers/i }));
@@ -349,6 +354,10 @@ describe('SurveyPage image questions', () => {
     renderPage(client);
     await screen.findByText('Pick a design');
     expect(await screen.findAllByText('Generating illustration…')).toHaveLength(2);
+
+    // Pending options stay selectable: slow generation never blocks answering.
+    fireEvent.click(screen.getByLabelText('Pick a design: dark dashboard'));
+    expect(screen.getByLabelText('Pick a design: dark dashboard')).toBeChecked();
 
     // Draft an answer to another question, then let the poll deliver readiness.
     fireEvent.click(screen.getByLabelText('Primary concern?: Auth'));

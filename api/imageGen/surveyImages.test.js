@@ -366,6 +366,49 @@ describe("api/imageGen/surveyImages job", () => {
 		expect(fs.readFileSync(lockPath, "utf8")).toContain("## Chosen designs");
 	});
 
+	it("persists already-submitted answers once their pictures land (submit-before-ready)", async () => {
+		appendSurveyRound({ cwd, project: null, taskId, stage: "ask", questions: [img()] });
+		// The human answered from descriptions while generation was still running.
+		saveSurveyAnswers({
+			cwd,
+			project: null,
+			taskId,
+			patch: { qi: { selected: ["light minimal dashboard"], notes: "" } },
+		});
+		const summary = await ensureSurveyImages({ cwd, project: null, taskId, stage: stageWith("mock") });
+		expect(summary).toMatchObject({ generated: 2, chosenPersisted: 1 });
+		const surveyPath = resolveSurveyPath(cwd, null, taskId);
+		expect(fs.readFileSync(surveyPath, "utf8")).toContain("## Chosen designs");
+		expect(
+			fs.existsSync(path.join(cwd, "docs", "tasks", taskId, "assets", "survey-r1-qi-chosen.png")),
+		).toBe(true);
+	});
+
+	it("restores the cap budget when one question's first write fails", async () => {
+		// The file holds three full questions; the planning read is stale and
+		// names a removed fourth one first — its splice throws, and the
+		// remaining twelve options must still all generate (no cap entries).
+		const fileQuestions = [1, 2, 3].map((n) => img({ id: `q${n}`, options: ["a", "b", "c", "d"] }));
+		appendSurveyRound({ cwd, project: null, taskId, stage: "ask", questions: fileQuestions });
+		const { rounds } = readSurvey(cwd, null, taskId);
+		const staleRounds = [
+			{
+				...rounds[0],
+				questions: [img({ id: "q-gone", options: ["a", "b", "c", "d"] }), ...rounds[0].questions],
+			},
+		];
+		const summary = await ensureSurveyImages({
+			cwd,
+			project: null,
+			taskId,
+			stage: stageWith("mock"),
+			rounds: staleRounds,
+		});
+		expect(summary).toMatchObject({ generated: 12, capped: 0 });
+		expect(summary.errors.length).toBeGreaterThan(0);
+		expect(imagesOf(cwd, "q3").map((e) => e.status)).toEqual(["ready", "ready", "ready", "ready"]);
+	});
+
 	it("honours a custom survey file and never throws on bad input", async () => {
 		appendSurveyRound({
 			cwd,
@@ -393,6 +436,36 @@ describe("api/imageGen/surveyImages job", () => {
 	});
 });
 
+describe("api/imageGen/surveyImages chosen designs", () => {
+	it("names stable sanitized chosen files", () => {
+		expect(chosenSurveyImageFileName(1, "q1")).toBe("survey-r1-q1-chosen.png");
+		expect(chosenSurveyImageFileName(2, "../../evil")).toBe("survey-r2-evil-chosen.png");
+	});
+
+	it("merges re-submits in place instead of duplicating entries", () => {
+		const first = upsertChosenDesignsSection("# Survey\n", [
+			{ round: 1, questionId: "qi", text: "Pick", option: "dark", file: "assets/survey-r1-qi-chosen.png" },
+		]);
+		expect(first).toContain("## Chosen designs");
+		const second = upsertChosenDesignsSection(first, [
+			{ round: 1, questionId: "qi", text: "Pick", option: "light", file: "assets/survey-r1-qi-chosen.png" },
+		]);
+		expect(second.split("## Chosen designs")).toHaveLength(2);
+		expect(second.split("- [r1/qi]").length).toBe(2);
+		expect(second).toContain("Pick: light");
+	});
+
+	it("recognizes harvested entries whose question id contains a bracket", () => {
+		const existing =
+			"# Survey\n\n## Chosen designs\n\n- [r1/we]ird] ![Pick: dark](assets/survey-r1-weird-chosen.png)\n";
+		const merged = upsertChosenDesignsSection(existing, [
+			{ round: 1, questionId: "we]ird", text: "Pick", option: "light", file: "assets/survey-r1-weird-chosen.png" },
+		]);
+		expect(merged.split("![Pick:").length).toBe(2);
+		expect(merged).toContain("- [r1/we]ird] ![Pick: light]");
+	});
+});
+
 describe("api/imageGen/surveyImages reporting", () => {
 	it("reports the summary to the task log and stays silent when disabled", () => {
 		const saved = [];
@@ -409,12 +482,13 @@ describe("api/imageGen/surveyImages reporting", () => {
 				failed: 1,
 				capped: 0,
 				skipped: 0,
+				chosenPersisted: 2,
 				warnings: ["Unknown image provider 'x' — disabled."],
 				errors: ["r1/qi#0: timed out"],
 			},
 		});
 		expect(lines).toHaveLength(3);
-		expect(lines[0]).toMatch("provider 'muse' — 3 generated, 1 failed");
+		expect(lines[0]).toMatch("provider 'muse' — 3 generated, 1 failed, 2 chosen designs saved");
 		expect(saved).toHaveLength(1);
 
 		expect(
