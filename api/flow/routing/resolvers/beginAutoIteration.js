@@ -9,6 +9,14 @@ import { resolveMaxAutoIterations } from "./resolveMaxAutoIterations.js";
  *   when the task is eligible to be re-run automatically (auto-iteration enabled,
  *   the failback landed on an automated stage, and the budget is not exhausted).
  *   Returns null when the task should be parked for human intervention instead.
+ *
+ *   The retry flags distinguish the two re-run shapes: when the failback moved
+ *   the task to a DIFFERENT stage (`task.currentStageId !== stage.id`), the
+ *   re-run is a cross-stage auto iteration — `autoIterating = true` and
+ *   `autoRetrying = false`, because the task is no longer retrying the failed
+ *   stage, it is running the failback stage as normal work. When the failback
+ *   landed back on the SAME stage (e.g. first-stage failure), it is a genuine
+ *   in-place retry: `autoRetrying = true`, `autoIterating = false`.
  * @example beginAutoIteration(task, stage, error, project) => { maxAttempts: 3 }
  * @param {Object} task
  * @param {Object} [stage]
@@ -29,6 +37,15 @@ export function beginAutoIteration(task, stage, error, project) {
 	if (maxAttempts <= 0) return null;
 	task.autoIterationCount = (task.autoIterationCount || 0) + 1;
 	if (task.autoIterationCount > maxAttempts) return null;
-	task.autoRetrying = true;
+	// The failback has already run by the time this resolver is called, so
+	// `task.currentStageId` is the failback destination. Compare it with the
+	// failed stage to classify the re-run: moved = cross-stage auto iteration
+	// (not a "retry" of the failed stage); same = in-place retry.
+	const failedStageId = stage?.id != null ? String(stage.id) : null;
+	const movedStages =
+		failedStageId != null &&
+		String(task.currentStageId ?? "") !== failedStageId;
+	task.autoRetrying = !movedStages;
+	task.autoIterating = movedStages;
 	return { maxAttempts };
 }

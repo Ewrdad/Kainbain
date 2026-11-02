@@ -2,6 +2,7 @@ import React from 'react';
 import { DiffStatBadge } from './DiffStatBadge';
 import { RunAttributionBadge } from './RunAttributionBadge';
 import { HistoryFailureReason } from './HistoryFailureReason';
+import { formatTryCount } from './taskFormatters';
 
 /***
  * MARK: TaskDetailHistoryPane
@@ -46,6 +47,7 @@ export function TaskDetailHistoryPane({
               </div>
               <span className="text-xs font-mono text-text-muted">
                 {item.timestamp} • {item.duration || '0m'}
+                {formatTryCount(item) ? ` • ${formatTryCount(item)}` : ''}
                 <DiffStatBadge entry={item} />
                 <RunAttributionBadge entry={item} />
               </span>

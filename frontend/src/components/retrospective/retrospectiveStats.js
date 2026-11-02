@@ -7,6 +7,8 @@
  *   hours-aware formatter here.
  ***/
 import { isRejectedTask } from '../tasks/failureReason';
+import { isRetryInProgress } from '../tasks/taskRetryState';
+import { isAutoIterationInProgress } from '../tasks/taskFormatters';
 
 /***
  * MARK: TERMINAL_TASK_STATUSES
@@ -94,9 +96,10 @@ export function formatTaskTotals(task, nowMs = Date.now()) {
  * @returns {boolean} True when the task reads as failed.
  ***/
 export function isRetrospectiveTaskFailed(task) {
+  const isAutoRecovering = isRetryInProgress(task) || isAutoIterationInProgress(task);
   return (
     task?.status === 'failed' ||
-    (Boolean(task?.failureReason) && (!task?.autoRetrying || isRejectedTask(task)))
+    (Boolean(task?.failureReason) && (!isAutoRecovering || isRejectedTask(task)))
   );
 }
 

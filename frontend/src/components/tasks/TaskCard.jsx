@@ -7,6 +7,7 @@ import {
   isTerminalHumanApproval,
 } from '../stageTypes';
 import { resolveCheckpointState, resolveTaskStage } from './checkpointState';
+import { isRetryInProgress } from './taskRetryState';
 import { isEngineBusyWithOther, isStaleRunner, isTaskRunning } from './runningTask';
 import { KainBainContext } from '../../context/KainBainContext';
 import {
@@ -15,6 +16,7 @@ import {
   formatTaskTimestamp,
   formatTaskTitleFirstLine,
   getBlockedState,
+  isAutoIterationInProgress,
 } from './taskFormatters';
 import {
   describePace,
@@ -442,14 +444,18 @@ export function TaskCard({
     }
   };
 
-  const isRetrying = task.autoRetrying === true;
+  // RETRYING is reserved for a same-stage in-place retry: once a failback
+  // moved the task to another stage it is normal running work, not a retry
+  // (and not a failure either — the reason rides along for the next prompt).
+  const isRetrying = isRetryInProgress(task);
+  const isAutoIterating = isAutoIterationInProgress(task);
   // A deliberate rejection keeps its flag even while an auto-retry is
   // queued: the reason is about to be snapshotted into the next attempt's
   // prompt, so hiding it would hide the pending context.
   const isRejectedFailure = isRejectedTask(task);
   const isFailed =
     task.status === 'failed' ||
-    (Boolean(task.failureReason) && (!task.autoRetrying || isRejectedFailure));
+    (Boolean(task.failureReason) && (!(isRetrying || isAutoIterating) || isRejectedFailure));
   const isRejected = isFailed && isRejectedFailure;
   const isInterrupted = task.wasInterrupted === true || task.status === 'interrupted' || isStale;
   const isPaused = task.status === 'paused';

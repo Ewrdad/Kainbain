@@ -1,3 +1,6 @@
+import { isRetryInProgress } from './taskRetryState';
+import { isAutoIterationInProgress } from './taskFormatters';
+
 /***
  * MARK: stagePace
  * @description Pure helpers behind the task-card age readout and the
@@ -87,11 +90,12 @@ export function paceStatus(elapsedSec, avgSec) {
  ***/
 function isPaceExcluded(task) {
   if (!task) return false;
-  // Auto-retry is active engine work, not a settled failure: it wins over the
-  // failed status, matching the card's RETRYING label precedence.
-  const isRetrying = task.autoRetrying === true;
-  if (task.status === 'failed' && !isRetrying) return true;
-  if (Boolean(task.failureReason) && !isRetrying) return true;
+  // An automatic re-run (in-place retry OR cross-stage auto iteration) is
+  // active engine work, not a settled failure: it wins over the failed
+  // status, matching the card's RETRYING/FAILED label precedence.
+  const isAutoRecovering = isRetryInProgress(task) || isAutoIterationInProgress(task);
+  if (task.status === 'failed' && !isAutoRecovering) return true;
+  if (Boolean(task.failureReason) && !isAutoRecovering) return true;
   if (task.wasInterrupted === true || task.status === 'interrupted') return true;
   if (task.isBlocked === true) return true;
   if (task.status === 'paused') return true;
@@ -114,7 +118,7 @@ function isPaceExcluded(task) {
  ***/
 export function shouldShowPace(task, { isRunning = false, isReview = false } = {}) {
   if (isPaceExcluded(task)) return false;
-  if (task?.autoRetrying === true) return true;
+  if (isRetryInProgress(task) || isAutoIterationInProgress(task)) return true;
   return Boolean(isRunning || isReview);
 }
 

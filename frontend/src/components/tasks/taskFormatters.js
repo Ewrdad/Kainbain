@@ -1,4 +1,5 @@
 import { normalizeStageType } from '../stageTypes.js';
+import { isRetryInProgress } from './taskRetryState';
 
 /***
  * MARK: isTaskCompleted
@@ -14,6 +15,29 @@ import { normalizeStageType } from '../stageTypes.js';
  ***/
 export function isTaskCompleted(task) {
   return task?.status === 'completed' || task?.status === 'done';
+}
+
+/***
+ * MARK: isAutoIterationInProgress
+ * @description True when a task is in an automatic CROSS-STAGE re-run: the
+ *   failback moved it to a different stage and the engine re-queued it there.
+ *   Such a task is normal in-progress work in the new stage — it must not be
+ *   labelled RETRYING (that is `isRetryInProgress`, same stage only) and must
+ *   not be labelled FAILED either (the stored failureReason is deliberately
+ *   kept for the next attempt's prompt). New backend records flag this
+ *   explicitly with `autoIterating`; legacy records only carry
+ *   `autoRetrying`, so a moved task (current stage differs from the failed
+ *   stage) is detected through `isRetryInProgress` being false.
+ * @example isAutoIterationInProgress({ autoRetrying: true, autoIterating: true, currentStageId: '1', lastError: { stageId: '2' } }) => true
+ * @example isAutoIterationInProgress({ autoRetrying: true, currentStageId: '1', lastError: { stageId: '2' } }) => true
+ * @example isAutoIterationInProgress({ autoRetrying: true, currentStageId: '2', lastError: { stageId: '2' } }) => false
+ * @example isAutoIterationInProgress({ autoRetrying: false, autoIterating: true }) => true
+ * @param {Object} [task] - The task object (or null/undefined for safety).
+ * @returns {boolean} True when a cross-stage automatic re-run is in progress.
+ ***/
+export function isAutoIterationInProgress(task) {
+  if (task?.autoIterating === true) return true;
+  return task?.autoRetrying === true && !isRetryInProgress(task);
 }
 
 /***
@@ -333,6 +357,99 @@ export function selectDisplayTimeline(rawTimeline = [], stages = []) {
 }
 
 /***
+ * MARK: STAGE_RUN_TRY_COUNT_CAP
+ * @description Upper bound for the per-stage try count shown in history, so a
+ *   pathological task with hundreds of failback cycles still renders a sane
+ *   "Tried 99 times" instead of an unbounded number.
+ * @example STAGE_RUN_TRY_COUNT_CAP => 99
+ ***/
+export const STAGE_RUN_TRY_COUNT_CAP = 99;
+
+/***
+ * MARK: summarizeStageRuns
+ * @description Collapses the display timeline to ONE row per stage so repeated
+ *   failback/retry cycles stop spamming the same stage across many history
+ *   lines (survey Q3: "one line per step with a try count"). Entries are
+ *   grouped by their resolved stage label; each group keeps the position of
+ *   its first occurrence in the input array and renders the chronologically
+ *   LATEST entry of the group (latest status, reason, duration, and run
+ *   attribution), with `tryCount` set to the number of grouped rows (capped at
+ *   STAGE_RUN_TRY_COUNT_CAP). Try-count source decision: count the observed
+ *   timeline rows per stage (no schema migration needed; `autoIterationCount`
+ *   is global, not per stage). Rows with no stage label are never grouped.
+ *   Display-only projection: never mutates its input or the stored timeline.
+ * @example summarizeStageRuns([{ stage: 'Plan', status: 'Failed', timestamp: 't2', reason: 'x' }, { stage: 'Plan', status: 'Moved', timestamp: 't1' }, { stage: 'Idea', status: 'Advanced', timestamp: 't0' }]) => [{ stage: 'Plan', status: 'Failed', timestamp: 't2', reason: 'x', tryCount: 2 }, { stage: 'Idea', status: 'Advanced', timestamp: 't0' }]
+ * @example summarizeStageRuns([{ stage: 'Idea', timestamp: 't1' }, { stage: 'Plan', timestamp: 't2' }]) => [{ stage: 'Idea', timestamp: 't1' }, { stage: 'Plan', timestamp: 't2' }]
+ * @param {Array<Object>} [entries=[]] - Display timeline entries (any order; groups keep first-occurrence order).
+ * @param {Array<Object>} [stages=[]] - The current workflow stages, for legacy numeric label mapping.
+ * @returns {Array<Object>} One display row per stage, each carrying `tryCount` when its group had more than one row.
+ ***/
+export function summarizeStageRuns(entries = [], stages = []) {
+  const list = Array.isArray(entries) ? entries : [];
+  const groups = new Map();
+  const order = [];
+  for (const entry of list) {
+    const label = resolveTimelineStageLabel(entry?.stage, stages);
+    if (!label) {
+      // No stage label: never grouped, always kept as its own row.
+      order.push({ label: null, entry });
+      continue;
+    }
+    if (!groups.has(label)) {
+      groups.set(label, []);
+      order.push({ label, entry: null });
+    }
+    groups.get(label).push(entry);
+  }
+  const result = [];
+  for (const slot of order) {
+    if (slot.label === null) {
+      result.push(slot.entry);
+      continue;
+    }
+    const group = groups.get(slot.label);
+    // Representative: the chronologically latest row of the group (latest
+    // status/reason/attribution); ties and unparseable timestamps fall back
+    // to the first row encountered.
+    let latest = group[0];
+    let latestMs = Number.isNaN(Date.parse(latest?.timestamp)) ? -Infinity : Date.parse(latest?.timestamp);
+    for (let i = 1; i < group.length; i += 1) {
+      const raw = Date.parse(group[i]?.timestamp);
+      const ms = Number.isNaN(raw) ? -Infinity : raw;
+      // Strictly greater only: on ties (or unparseable timestamps) the first
+      // row encountered wins — in newest-first display order that IS the
+      // latest row.
+      if (ms > latestMs) {
+        latest = group[i];
+        latestMs = ms;
+      }
+    }
+    const row = { ...latest, stage: slot.label };
+    if (group.length > 1) {
+      row.tryCount = Math.min(group.length, STAGE_RUN_TRY_COUNT_CAP);
+    }
+    result.push(row);
+  }
+  return result;
+}
+
+/***
+ * MARK: formatTryCount
+ * @description Renders a collapsed history row's try count as
+ *   `Tried {n} times`, or null when the row ran only once (no badge needed).
+ * @example formatTryCount({ tryCount: 3 }) => 'Tried 3 times'
+ * @example formatTryCount({ tryCount: 1 }) => null
+ * @example formatTryCount({ stage: 'Plan' }) => null
+ * @param {Object} [entry] - A display timeline row (see summarizeStageRuns).
+ * @returns {string|null} The label, or null when the stage ran once.
+ ***/
+export function formatTryCount(entry) {
+  const count = Number(entry?.tryCount);
+  if (!Number.isFinite(count) || count <= 1) return null;
+  return `Tried ${count} times`;
+}
+
+/***
  * MARK: isArrivalTimelineStatus
  * @description True for stored timeline statuses that record an arrival into
  *   the row's stage (destination), as opposed to outcome rows (Failed,
@@ -404,8 +521,11 @@ function pickRunAttribution(entry) {
  *   suppressed, so failure reasons and past visits stay visible. When the
  *   live row supersedes the current visit's arrival row it inherits that
  *   row's run attribution (the stage's dispatch-stamped model choice).
- *   Completed tasks and the full-page view pass includeLiveRow false and see
- *   the full stored history.
+ *   The stored rows are then collapsed by `summarizeStageRuns` to one row per
+ *   stage carrying a `tryCount`, so repeated failback/retry cycles render one
+ *   history line per stage ("Tried N times") instead of spamming the same
+ *   stage. Completed tasks and the full-page view pass includeLiveRow false
+ *   and see the full stored history (collapsed per stage).
  * @example buildDisplayTimeline({ storedTimeline: [{ stage: 'Plan', status: 'Moved', duration: '9s', timestamp: 't2' }], stages: [{ id: '2', name: 'Plan' }], currentStageName: 'Plan', liveDurationLabel: '3s in stage', includeLiveRow: true }) => [{ stage: 'Plan', status: 'Active' }]
  * @example buildDisplayTimeline({ storedTimeline: [], currentStageName: 'In Progress', includeLiveRow: false }) => [{ stage: 'In Progress', status: 'Active' }]
  * @param {Object} [args] - Timeline display inputs.
@@ -447,7 +567,7 @@ export function buildDisplayTimeline({
         timestamp: settledLabel.charAt(0) + settledLabel.slice(1).toLowerCase(),
         status: settledLabel.charAt(0) + settledLabel.slice(1).toLowerCase(),
       };
-      return [settledRow, ...displayStored];
+      return [settledRow, ...summarizeStageRuns(displayStored, stages)];
     }
     const liveRow = {
       stage: fallbackStageName,
@@ -455,6 +575,11 @@ export function buildDisplayTimeline({
       timestamp: 'Active',
       status: 'Active',
     };
+    // The live-row suppression runs on the exact-deduped rows (one row per
+    // stored event); the per-stage collapsing happens afterwards, on the
+    // rows the live row did not supersede, so the current stage still renders
+    // exactly once (live Active row) while past visits of any stage —
+    // including the live one — collapse to one row with a try count.
     const arrivalIndex = displayStored.findIndex(
       (entry) => entry?.stage === liveRow.stage && isArrivalTimelineStatus(entry?.status),
     );
@@ -466,18 +591,21 @@ export function buildDisplayTimeline({
           (entry) =>
             entry?.stage === liveRow.stage && isFailedTimelineOutcome(entry?.status),
         );
-    if (!superseded) return [liveRow, ...displayStored];
+    if (!superseded) return [liveRow, ...summarizeStageRuns(displayStored, stages)];
     // The live row replaces the current visit's arrival row, so it inherits
     // that row's run attribution (stamped at the stage's dispatch): the
     // current agent run's badge stays visible while the stage is live, and a
     // human / CI stage's live row stays completely blank.
-    return [
-      { ...liveRow, ...pickRunAttribution(displayStored[arrivalIndex]) },
+    const rest = [
       ...displayStored.slice(0, arrivalIndex),
       ...displayStored.slice(arrivalIndex + 1),
     ];
+    return [
+      { ...liveRow, ...pickRunAttribution(displayStored[arrivalIndex]) },
+      ...summarizeStageRuns(rest, stages),
+    ];
   }
-  if (displayStored.length > 0) return displayStored;
+  if (displayStored.length > 0) return summarizeStageRuns(displayStored, stages);
   return [
     {
       stage: fallbackStageName,

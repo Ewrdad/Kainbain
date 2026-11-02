@@ -7,11 +7,13 @@ import {
   formatTaskKey,
   formatTaskTitleFirstLine,
   getBlockedState,
+  isAutoIterationInProgress,
   isTaskCompleted as isCompletedStatus,
   selectStagePresentation,
 } from './taskFormatters';
 import { isTerminalHumanApproval, normalizeStageType } from '../stageTypes';
 import { resolveCheckpointState } from './checkpointState';
+import { isRetryInProgress } from './taskRetryState';
 import { SelectDropdown } from '../common/SelectDropdown';
 import { useNow } from '../../hooks/useNow';
 import { usePendingAction } from '../../hooks/usePendingAction';
@@ -332,14 +334,17 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
   const isWaitingHuman = resolveCheckpointState(task, taskStage).showCheckpoint;
   const isInterrupted = task?.wasInterrupted === true || task?.status === 'interrupted';
   const isPaused = task?.status === 'paused';
-  const isRetrying = task?.autoRetrying === true;
+  // RETRYING is reserved for a same-stage in-place retry: a task whose
+  // failback moved it to another stage shows IN PROGRESS for the new stage.
+  const isRetrying = isRetryInProgress(task);
+  const isAutoIterating = isAutoIterationInProgress(task);
   // A deliberate rejection keeps its reason banner even while an auto-retry
   // is queued: the reason is about to be snapshotted into the next
   // attempt's prompt, so hiding it would hide the pending context.
   const isRejectedFailure = isRejectedTask(task);
   const isFailed =
     task?.status === 'failed' ||
-    (Boolean(task?.failureReason) && (!isRetrying || isRejectedFailure));
+    (Boolean(task?.failureReason) && (!(isRetrying || isAutoIterating) || isRejectedFailure));
   const isRejected = isFailed && isRejectedFailure;
   const failureMessage =
     task?.failureReason || task?.lastError?.message || 'Stage execution failed.';

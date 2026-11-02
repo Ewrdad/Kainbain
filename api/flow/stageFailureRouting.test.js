@@ -355,6 +355,7 @@ describe("The Flow: attempt-budget reset", () => {
 		const task = {
 			autoIterationCount: 8,
 			autoRetrying: true,
+			autoIterating: true,
 			infraRetryCount: 5,
 			enteredStageAt: stale,
 			timeInStage: 1234,
@@ -364,6 +365,7 @@ describe("The Flow: attempt-budget reset", () => {
 		resetAttemptBudgets(task);
 		expect(task.autoIterationCount).toBe(0);
 		expect(task.autoRetrying).toBe(false);
+		expect(task.autoIterating).toBe(false);
 		expect(task.infraRetryCount).toBe(0);
 		expect(task.timeInStage).toBe(0);
 		expect(Date.parse(task.enteredStageAt)).toBeGreaterThan(Date.parse(stale));
@@ -377,6 +379,7 @@ describe("The Flow: attempt-budget reset", () => {
 		const task = {
 			autoIterationCount: 4,
 			autoRetrying: true,
+			autoIterating: true,
 			infraRetryCount: 2,
 			enteredStageAt: "2026-01-01T00:00:00.000Z",
 			timeInStage: 99,
@@ -384,9 +387,99 @@ describe("The Flow: attempt-budget reset", () => {
 		resetAutoIteration(task);
 		expect(task.autoIterationCount).toBe(0);
 		expect(task.autoRetrying).toBe(false);
+		expect(task.autoIterating).toBe(false);
 		expect(task.infraRetryCount).toBe(0);
 		expect(task.timeInStage).toBe(0);
 		expect(Date.parse(task.enteredStageAt)).toBeGreaterThan(Date.parse("2026-01-01T00:00:00.000Z"));
+	});
+});
+
+describe("The Flow: retry-in-place vs cross-stage auto iteration", () => {
+	let tempCwd;
+
+	beforeEach(() => {
+		tempCwd = fs.mkdtempSync(path.join(os.tmpdir(), "kb-retry-flags-test-"));
+	});
+
+	afterEach(() => {
+		try {
+			fs.rmSync(tempCwd, { recursive: true, force: true });
+		} catch (e) {
+			// ignore cleanup errors
+		}
+	});
+
+	const agentStages = [
+		{ id: "one", name: "One", type: "agent", failback: "previous" },
+		{ id: "two", name: "Two", type: "agent", fallbackStageId: "one" },
+	];
+
+	function makeStore() {
+		const quietBridge = {
+			emitProcessEvent: () => {},
+			emitSystemLog: () => {},
+			emitNotification: () => {},
+		};
+		return new TaskStore({
+			eventBridge: quietBridge,
+			projectStore: { getProject: () => ({ stages: agentStages, cwd: tempCwd }) },
+		});
+	}
+
+	it("classifies a moved failback as auto iteration, not an in-place retry", () => {
+		const task = { status: "in_stage", currentStageId: "one", autoIterationCount: 0 };
+		const result = beginAutoIteration(
+			task,
+			{ id: "two", name: "Two" },
+			"boom",
+			{},
+		);
+		expect(result).toEqual({ maxAttempts: expect.any(Number) });
+		expect(task.autoRetrying).toBe(false);
+		expect(task.autoIterating).toBe(true);
+	});
+
+	it("classifies a same-stage failback as an in-place retry", () => {
+		const task = { status: "in_stage", currentStageId: "two", autoIterationCount: 0 };
+		beginAutoIteration(task, { id: "two", name: "Two" }, "boom", {});
+		expect(task.autoRetrying).toBe(true);
+		expect(task.autoIterating).toBe(false);
+	});
+
+	it("keeps the legacy in-place classification when the failed stage is unknown", () => {
+		const task = { status: "in_stage", autoIterationCount: 0 };
+		beginAutoIteration(task, undefined, "boom", {});
+		expect(task.autoRetrying).toBe(true);
+		expect(task.autoIterating).toBe(false);
+	});
+
+	it("marks a cross-stage failback re-run as autoIterating through handleStageFailure", () => {
+		const store = makeStore();
+		const task = store.createTask("p1", { stageId: "two", projectCwd: tempCwd });
+		const result = store.handleStageFailure("p1", task.id, agentStages[1], new Error("boom"), {
+			stages: agentStages,
+			projectCwd: tempCwd,
+		});
+		expect(result.status).toBe("retrying");
+		expect(task.currentStageId).toBe("one"); // moved by the failback
+		expect(task.status).toBe("in_stage");
+		expect(task.autoRetrying).toBe(false);
+		expect(task.autoIterating).toBe(true);
+		expect(task.autoIterationCount).toBe(1);
+	});
+
+	it("marks a first-stage failback (lands back on the same stage) as an in-place retry", () => {
+		const store = makeStore();
+		const task = store.createTask("p1", { stageId: "one", projectCwd: tempCwd });
+		const result = store.handleStageFailure("p1", task.id, agentStages[0], new Error("boom"), {
+			stages: agentStages,
+			projectCwd: tempCwd,
+		});
+		expect(result.status).toBe("retrying");
+		expect(task.currentStageId).toBe("one"); // "previous" on the first stage stays put
+		expect(task.autoRetrying).toBe(true);
+		expect(task.autoIterating).toBe(false);
+		expect(task.autoIterationCount).toBe(1);
 	});
 });
 
