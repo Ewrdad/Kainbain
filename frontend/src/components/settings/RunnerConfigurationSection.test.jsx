@@ -265,6 +265,20 @@ describe('RunnerConfigurationSection', () => {
     expect(screen.queryByTestId('runner-detail-r1')).toBeNull();
   });
 
+  it('labels left-list rows Running / Needs setup like the side-panel sketch', async () => {
+    runnersFixture([
+      ACTIVE_RUNNER,
+      PENDING_RUNNER,
+      { ...PENDING_RUNNER, runnerId: 'r3', status: 'denied' },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.getByTestId('runner-status-r1')).toHaveTextContent('Running');
+    expect(screen.getByTestId('runner-status-r2')).toHaveTextContent('Needs setup');
+    expect(screen.getByTestId('runner-status-r3')).toHaveTextContent('Denied');
+    expect(screen.getByTestId('runner-detail-status-r1')).toHaveTextContent('Running');
+  });
+
   it('denies a pending Runner and revokes an active one', async () => {
     runnersFixture();
     denyRunner.mockResolvedValue({ status: 'denied' });

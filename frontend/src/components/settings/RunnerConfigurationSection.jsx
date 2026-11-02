@@ -5,6 +5,7 @@ import { formatRunnerElapsed } from '../observability/widgets/PerRunnerTasksWidg
 import {
   defaultRunnerConfig,
   runnerDisplayName,
+  runnerStatusLabel,
   advertisedToolIds,
   effectiveTools,
   loadedProjectIds,
@@ -461,7 +462,7 @@ export function RunnerConfigurationSection() {
                     className="text-[10px] font-bold uppercase tracking-widest text-text-muted"
                     data-testid={`runner-status-${runner.runnerId}`}
                   >
-                    {runner.status}
+                    {runnerStatusLabel(runner)}
                   </span>
                   {runner.status === 'active' && runner.paused && (
                     <span
@@ -542,7 +543,7 @@ export function RunnerConfigurationSection() {
                   className="text-[10px] font-bold uppercase tracking-widest text-text-muted"
                   data-testid={`runner-detail-status-${selected.runnerId}`}
                 >
-                  {selected.status === 'pending' ? 'Needs setup' : selected.status}
+                  {runnerStatusLabel(selected)}
                 </span>
                 <div className="ml-auto flex items-center gap-2 flex-wrap">
                   {selected.status === 'pending' ? (

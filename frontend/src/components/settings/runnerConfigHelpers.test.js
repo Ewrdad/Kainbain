@@ -14,6 +14,7 @@ import {
   validateDirectories,
   visibleRunners,
   resolveSelectedId,
+  runnerStatusLabel,
   runRunnerAction,
   describeRunnerVersion,
 } from './runnerConfigHelpers';
@@ -170,6 +171,20 @@ describe('runnerConfigHelpers', () => {
     const visible = [{ runnerId: 'a' }, { runnerId: 'b' }];
     expect(resolveSelectedId(visible, 42)).toBe('a');
     expect(resolveSelectedId(visible, {})).toBe('a');
+  });
+
+  it('labels roster statuses the way the side-panel sketch reads', () => {
+    expect(runnerStatusLabel({ status: 'active' })).toBe('Running');
+    expect(runnerStatusLabel({ status: 'active', paused: true })).toBe('Running');
+    expect(runnerStatusLabel({ status: 'pending' })).toBe('Needs setup');
+    expect(runnerStatusLabel({ status: 'denied' })).toBe('Denied');
+  });
+
+  it('falls back to the raw status for unknown or missing statuses', () => {
+    expect(runnerStatusLabel({ status: 'expired' })).toBe('expired');
+    expect(runnerStatusLabel({})).toBe('');
+    expect(runnerStatusLabel(undefined)).toBe('');
+    expect(runnerStatusLabel({ status: 42 })).toBe('');
   });
 
   it('sends each lifecycle action to its own endpoint', () => {

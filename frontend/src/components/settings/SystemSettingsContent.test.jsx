@@ -292,7 +292,7 @@ describe('SystemSettingsContent', () => {
 
     expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
     expect(screen.getByTestId('runner-row-r1')).toBeInTheDocument();
-    expect(screen.getByTestId('runner-status-r1')).toHaveTextContent('active');
+    expect(screen.getByTestId('runner-status-r1')).toHaveTextContent('Running');
     // All five detail areas render for the selected Runner.
     expect(screen.getByTestId('runner-name-r1')).toBeInTheDocument();
     expect(screen.getByTestId('runner-unload-project-p1')).toBeInTheDocument();

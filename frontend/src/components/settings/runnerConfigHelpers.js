@@ -82,6 +82,25 @@ export const runnerDisplayName = (runner = {}) =>
   defaultRunnerConfig(runner).displayName || runner?.runnerId || '';
 
 /***
+ * MARK: runnerStatusLabel
+ * @description Operator-facing status badge text for the Runner roster and
+ *   detail header: `active` reads "Running", `pending` reads "Needs setup",
+ *   `denied` reads "Denied" (matching the side-panel sketch), and unknown
+ *   future statuses fall back to the raw status string so a new backend
+ *   status never renders blank. Wrong-typed or missing statuses read as ''.
+ * @example runnerStatusLabel({ status: 'active' }) => 'Running'
+ * @param {Object} [runner={}] - Runner record.
+ * @returns {string} Badge text.
+ ***/
+export const runnerStatusLabel = (runner = {}) => {
+  const status = runner?.status;
+  if (status === 'active') return 'Running';
+  if (status === 'pending') return 'Needs setup';
+  if (status === 'denied') return 'Denied';
+  return typeof status === 'string' ? status : '';
+};
+
+/***
  * MARK: visibleRunners
  * @description Roster rows shown on the System Settings › Runners screen:
  *   every registration except `revoked` ones, which are hidden completely
