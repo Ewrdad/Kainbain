@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
 	defaultModelIdsFor,
+	fleetAwareValidationProbes,
+	fleetModelIdsByHarness,
 	modelRefMatchesIds,
 	sanitizeAliasTargetModels,
 	stripUnsupportedReasoningLevel,
@@ -403,6 +405,86 @@ describe("defaultModelIdsFor", () => {
 	it("returns null for unknown harnesses", async () => {
 		expect(await defaultModelIdsFor("no-such-harness")).toBeNull();
 		expect(await defaultModelIdsFor("")).toBeNull();
+	});
+});
+
+describe("fleet-aware validation probes", () => {
+	const fleetRegistry = {
+		list: () => [
+			{
+				status: "active",
+				paused: false,
+				runnerId: "box-a",
+				capabilities: {
+					harnesses: [{ id: "muse" }],
+					models: ["muse::meta::fleet-model"],
+					tiers: ["T0"],
+				},
+			},
+			{
+				status: "active",
+				paused: true,
+				runnerId: "box-paused",
+				capabilities: {
+					harnesses: [{ id: "custom" }],
+					models: ["custom::paused-only"],
+					tiers: ["T0"],
+				},
+			},
+		],
+	};
+
+	it("groups exact advertised ids by harness, skipping ineligible runners", () => {
+		const byHarness = fleetModelIdsByHarness(fleetRegistry);
+		expect([...(byHarness.get("muse") || [])]).toEqual(["muse::meta::fleet-model"]);
+		expect(byHarness.has("custom")).toBe(false);
+		expect(fleetModelIdsByHarness(null).size).toBe(0);
+		expect(fleetModelIdsByHarness({ list: () => { throw new Error("down"); } }).size).toBe(0);
+	});
+
+	it("unions fleet ids into the catalog probe, preserving null-unknown", async () => {
+		const { modelIdsFor } = fleetAwareValidationProbes(fleetRegistry);
+		const mockIds = await modelIdsFor("mock");
+		expect(mockIds.has("mock::echo-v1")).toBe(true);
+		const museIds = await modelIdsFor("muse");
+		expect(museIds.has("muse::meta::fleet-model")).toBe(true);
+		expect(await modelIdsFor("no-such-harness")).toBeNull();
+		const degraded = fleetAwareValidationProbes(null);
+		expect(await degraded.modelIdsFor("mock")).toEqual(await defaultModelIdsFor("mock"));
+	});
+
+	it("reports list for a none harness the fleet serves, backend modes otherwise", () => {
+		const { modelSelectionFor } = fleetAwareValidationProbes(fleetRegistry);
+		expect(modelSelectionFor("mock")).toBe("list");
+		// custom is backend-none; the paused runner does not count as serving.
+		expect(modelSelectionFor("custom")).toBe("none");
+		const degraded = fleetAwareValidationProbes(null);
+		expect(degraded.modelSelectionFor("mock")).toBe("list");
+	});
+
+	it("accepts a fleet-only model on a fleet-served harness", async () => {
+		const serving = {
+			list: () => [
+				{
+					status: "active",
+					paused: false,
+					runnerId: "box-a",
+					capabilities: {
+						harnesses: [{ id: "custom" }],
+						models: ["custom::fleet-model"],
+						tiers: ["T0"],
+					},
+				},
+			],
+		};
+		const probes = fleetAwareValidationProbes(serving);
+		expect(probes.modelSelectionFor("custom")).toBe("list");
+		const { error, warnings } = await validateAliasTargetModels(
+			{ name: "w", targets: [{ harness: "custom", model: "custom::fleet-model", percent: 100 }] },
+			{ modelSelectionFor: probes.modelSelectionFor, modelIdsFor: probes.modelIdsFor },
+		);
+		expect(error).toBeNull();
+		expect(warnings).toEqual([]);
 	});
 });
 

@@ -25,16 +25,21 @@
 #   ./update.sh [--backend|--frontend|--runner|--all] [--check] [--force]
 #               [--dry-run] [--manifest-url URL] [--manifest FILE]
 #               [--dist-dir DIR] [--runner-url URL] [--dir DIR]
+#               [--expect-commit SHA]
 # Default --all = every component whose published tag/artifact differs
 # from the installed ./release-manifest.json. --check changes nothing:
 # exit 0 = already current, 3 = update available, 1 = error.
+# --expect-commit SHA (or $KAINBAIN_EXPECT_COMMIT) fails loudly when the
+# installed commit is not SHA afterwards: it catches a release stranded in
+# another dist/ (the pipe's Publish wrote the tip worktree's dist while this
+# script read the primary's) instead of reporting "already current".
 set -uo pipefail
 cd "$(dirname "$0")"
 DIR="$(pwd -P)"
 
 ONLY="all"; CHECK=0; FORCE=0; DRY_RUN=0
 MANIFEST_URL="${KAINBAIN_MANIFEST_URL:-}"; MANIFEST_FILE=""; RUNNER_URL="${KAINBAIN_RUNNER_URL:-}"
-DIST_DIR="${KAINBAIN_DIST_DIR:-}"
+DIST_DIR="${KAINBAIN_DIST_DIR:-}"; EXPECT="${KAINBAIN_EXPECT_COMMIT:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --backend) ONLY="backend" ;; --frontend) ONLY="frontend" ;;
@@ -50,6 +55,8 @@ while [ $# -gt 0 ]; do
     --dist-dir=*) DIST_DIR="${1#--dist-dir=}" ;;
     --dir) shift; DIR="${1:?--dir needs a path}" ;;
     --dir=*) DIR="${1#--dir=}" ;;
+    --expect-commit) shift; EXPECT="${1:?--expect-commit needs a SHA}" ;;
+    --expect-commit=*) EXPECT="${1#--expect-commit=}" ;;
     -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
     *) echo "update.sh: unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -66,6 +73,15 @@ field() { # manifest-file component field
   node -e 'try{const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const v=m?.components?.[process.argv[2]]?.[process.argv[3]];if(v!==undefined&&v!==null)console.log(v)}catch{}' "$1" "$2" "$3"
 }
 commit_of() { node -e 'try{const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(m.commit)console.log(m.commit)}catch{}' "$1"; }
+verify_expected() { # fail when $EXPECT names the published commit and we are not on it
+  [ -n "$EXPECT" ] || return 0
+  got="$(commit_of ./release-manifest.json)"
+  if [ "$got" != "$EXPECT" ]; then
+    echo "update.sh: installed commit ${got:-none} does not match expected published commit $EXPECT — the release is stranded in another dist/ (this run read $DIST_DIR); refusing to report current." >&2
+    return 1
+  fi
+  return 0
+}
 
 [ -x ./redeploy.sh ] || { echo "update.sh: no executable ./redeploy.sh in $DIR — install deploy/redeploy.sh beside this script first" >&2; exit 2; }
 
@@ -99,7 +115,11 @@ for c in backend frontend runner; do
 done
 # Trim leading space.
 changed="${changed# }"
-if [ -z "$changed" ]; then log "already current (commit $(commit_of "$NEW")) — nothing to do."; exit 0; fi
+if [ -z "$changed" ]; then
+  log "already current (commit $(commit_of "$NEW")) — nothing to do."
+  verify_expected || exit 1
+  exit 0
+fi
 log "changed:$changed (installed $(commit_of ./release-manifest.json 2>/dev/null || echo none) -> published $(commit_of "$NEW"))"
 if [ "$CHECK" = "1" ]; then log "UPDATE_AVAILABLE:$changed"; exit 3; fi
 
@@ -123,5 +143,6 @@ fi
 cp "$NEW" ./release-manifest.json
 rc=0
 for c in $changed; do ./redeploy.sh "--$c" || rc=1; done
+if [ "$rc" = "0" ]; then verify_expected || rc=1; fi
 [ "$rc" = "0" ] && log "updated:$changed" || echo "update.sh: one or more components failed (see redeploy output above)" >&2
 exit $rc

@@ -19,6 +19,10 @@ source of truth. This file intentionally lists only high-impact changes.
 
 ## [Unreleased]
 
+### Added
+
+- Per-stage Runner allow/block list at the bottom of stage settings (`Off` / `Only these runners` / `All except these runners`): dispatch, direct claims, and merge leases refuse ineligible Runners loudly while unrestricted stages behave exactly as before (task a3753643).
+
 ### Changed
 
 - Merged the ALL / FAILED / HUMAN ONLY board pills into the unified search bar as `!` system filters (e.g. `auth #Dev !failed`): same dropdown, chips, and Any/All toggle as `#` tags; unknown `!tokens` stay as text; future native filters register via `frontend/src/components/workflow/systemFilters/` (task c213d3a9).

@@ -14,7 +14,9 @@ describe('reviewDiff Integration Tests', () => {
         projectCwd = testRoot;
 
         spawnSync('git', ['init', '-b', 'main'], { cwd: projectCwd });
-        spawnSync('git', ['config', 'user.email', 'kainbain-test@example.com'], { cwd: projectCwd });
+        // Fixture identity is local so commits work on machines without a
+        // global git identity configured.
+        spawnSync('git', ['config', 'user.email', 'test@example.com'], { cwd: projectCwd });
         spawnSync('git', ['config', 'user.name', 'KainBain Test'], { cwd: projectCwd });
 
         fs.writeFileSync(path.join(projectCwd, 'file1.txt'), 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n');

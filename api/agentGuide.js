@@ -288,6 +288,12 @@ export const ENDPOINTS = [
 		body: null,
 	},
 	{
+		method: "GET",
+		path: "/runners/models/catalogue",
+		purpose: "Fleet model catalogue derived live from Runner registrations (never cached): one entry per distinct model id served by a claim-eligible Runner, with serving harness ids, tiers, and runner count/ids. Stage, default, and alias pickers read this for availability instead of credential health.",
+		body: null,
+	},
+	{
 		method: "POST",
 		path: "/runners/:id/rotate",
 		purpose:

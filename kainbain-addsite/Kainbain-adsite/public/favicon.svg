@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="KainBain Orchestrator">
+  <title>KainBain Orchestrator</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a1919"/>
+      <stop offset="1" stop-color="#0b0b0b"/>
+    </linearGradient>
+    <radialGradient id="core" cx="0.35" cy="0.3" r="0.9">
+      <stop offset="0" stop-color="#8ef29b"/>
+      <stop offset="0.55" stop-color="#7bdb85"/>
+      <stop offset="1" stop-color="#43a354"/>
+    </radialGradient>
+    <linearGradient id="tileEdge" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2e3a2f"/>
+      <stop offset="1" stop-color="#141414"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Tile -->
+  <rect x="1" y="1" width="126" height="126" rx="27" fill="url(#bg)"/>
+  <rect x="1" y="1" width="126" height="126" rx="27" fill="none" stroke="url(#tileEdge)" stroke-width="2"/>
+
+  <!-- Progress / orbit arc (subtle "live flow" gauge) -->
+  <g transform="rotate(-90 64 64)">
+    <circle cx="64" cy="64" r="40" fill="none" stroke="#3f4a42" stroke-width="3"/>
+    <circle
+      cx="64" cy="64" r="40" fill="none"
+      stroke="#7bdb85" stroke-width="3" stroke-linecap="round"
+      stroke-dasharray="56 195.33" opacity="0.9"
+    />
+  </g>
+
+  <!-- Connector lines from core to satellites -->
+  <g stroke="#4a5a4a" stroke-width="2" stroke-linecap="round">
+    <line x1="64" y1="64" x2="64" y2="24"/>
+    <line x1="64" y1="64" x2="98.64" y2="44"/>
+    <line x1="64" y1="64" x2="29.36" y2="44"/>
+  </g>
+
+  <!-- Central orchestration core -->
+  <circle cx="64" cy="64" r="24" fill="url(#core)"/>
+  <circle cx="64" cy="64" r="24" fill="none" stroke="#00320e" stroke-opacity="0.55" stroke-width="2.5"/>
+  <circle cx="56" cy="56" r="6" fill="#ffffff" fill-opacity="0.28"/>
+
+  <!-- Satellite stage nodes -->
+  <circle cx="64" cy="24" r="8" fill="#9acbff"/>
+  <circle cx="98.64" cy="44" r="8" fill="#ffb77f"/>
+  <circle cx="29.36" cy="44" r="8" fill="#ffb74d"/>
+</svg>

@@ -3,6 +3,7 @@ import { useKainBain } from '../../context/KainBainContext';
 import { readStoredShowCompleted } from '../../context/useTaskBoard';
 import { FALLBACK_MODELS } from '../stageTypes';
 import { useModelCatalog } from '../../hooks/useModelCatalog';
+import { useFleetModelCatalog } from '../../hooks/useFleetModelCatalog';
 import { useNow } from '../../hooks/useNow';
 
 import { AddStageMenu } from './AddStageMenu';
@@ -111,6 +112,13 @@ export function WorkflowCanvas() {
     refreshing: modelsRefreshing,
     refresh: refreshModels,
   } = useModelCatalog(FALLBACK_MODELS, { aliases: activeProject?.modelAliases });
+  // Fleet availability for the per-stage model pickers: claim-eligible
+  // Runner counts from /runners/models/catalogue replace credential-health
+  // badges on every stage model option. Gated on `loaded` (not merely
+  // finished loading) so a failed fetch renders badge-free options instead
+  // of a misleading "No runners".
+  const { counts: loadedFleetCounts, loaded: fleetLoaded } = useFleetModelCatalog();
+  const fleetCounts = fleetLoaded ? loadedFleetCounts : undefined;
   // Stages inherit the project's harness unless overridden: the per-stage
   // picker offers an explicit inherit choice naming the project harness, and
   // the model control stays scoped to the effective (stage or inherited)
@@ -377,6 +385,7 @@ export function WorkflowCanvas() {
         handleDrop={handleDrop}
         availableModels={availableModels}
         availableHarnesses={availableHarnesses}
+        fleetCounts={fleetCounts}
         modelsRefreshing={modelsRefreshing}
         refreshModels={refreshModels}
         projectHarnessId={projectHarnessId}

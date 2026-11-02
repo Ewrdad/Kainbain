@@ -12,8 +12,9 @@
 #                           gate below is the safety net).
 #   ./deploy.sh --prod --publish-only [--fast] [--sync-site]
 #                           CI stage 1 only: gates + publish images/dist via
-#                           publish.sh (per changed component), optionally
-#                           stage the ad-site/S3 release, then STOP — prod is
+#                           publish.sh (per changed component), then sync the
+#                           ad-site to S3 when it changed (skipped when
+#                           current; --sync-site forces), then STOP — prod is
 #                           updated by stage 2: (cd ~/apps/kainbain && ./update.sh)
 #   ./deploy.sh --rollback  Restore the last known-good deployment (.prev) and
 #                           restart the service.
@@ -277,6 +278,13 @@ PROD_DIR="${KAINBAIN_PROD_DIR:-$HOME/apps/kainbain}"
 PROD_API_PORT="${KAINBAIN_PROD_PORT:-3100}"
 SERVICE_NAME="kainbain.service"
 HEALTH_URL="${KAINBAIN_HEALTH_URL:-http://localhost:${PROD_API_PORT}/status}"
+# Public ad-site bucket (S3 static website for https://kainbain.ewrdad.uk).
+# Default on: scripts/sync-adsite.sh uploads only when the site, the install
+# scripts, or the release manifest actually changed (hash-compared, larger
+# assets synced separately with --size-only), and deploys treat a sync
+# failure as warn-only — so prod is never gated on S3. Export it empty to
+# disable the upload entirely (local staging only).
+if [ -z "${KAINBAIN_ADSITE_S3_BUCKET+x}" ]; then KAINBAIN_ADSITE_S3_BUCKET="s3://kainbain.ewrdad.uk"; export KAINBAIN_ADSITE_S3_BUCKET; fi
 DEPLOY_DIR="$HOME/.kainbain/deploy"
 LOCK_FILE="$DEPLOY_DIR/deploy.lock"
 LOG_FILE="$DEPLOY_DIR/deploy.log"
@@ -984,6 +992,10 @@ materialize_deploy_tip_worktree() {
 		git worktree add -q --detach "$src" "$tip_sha" >/dev/null 2>&1 || return 1
 	fi
 	[ "$(git -C "$src" rev-parse HEAD 2>/dev/null || echo "")" = "$tip_sha" ] || return 1
+	# Fast-forward the local default-branch ref when it is simply behind, so
+	# `git log main` stays truthful. Refused automatically when diverged or
+	# checked out — never forced, never fails this function.
+	git fetch origin "$branch:$branch" >/dev/null 2>&1 || true
 	# Seed the carried-forward release manifest (publish.sh's change-detection
 	# base + component carry-forward live in the gitignored dist/, which a
 	# fresh worktree does not have). Only when the worktree has none yet —
@@ -1685,7 +1697,12 @@ if [ "$MODE" = "prod" ]; then
 	# stage 2 runs (cd ~/apps/kainbain && ./update.sh) to pull + restart only
 	# what changed. Nothing in $PROD_DIR is touched on this path.
 	if [ "$PUBLISH_ONLY" = "true" ]; then
-		if [ "$SYNC_SITE" = "true" ] || [ -n "${KAINBAIN_ADSITE_S3_BUCKET:-}" ]; then
+		# The sync itself skips the build and the S3 upload when nothing
+		# ad-site-related changed (and --sync-site forces it); a failure is
+		# warn-only — the release is already published.
+		if [ "$SYNC_SITE" = "true" ]; then
+			bash scripts/sync-adsite.sh --force || log "⚠️ Ad-site sync failed (non-fatal) — release is published; re-run: bash scripts/sync-adsite.sh"
+		else
 			bash scripts/sync-adsite.sh || log "⚠️ Ad-site sync failed (non-fatal) — release is published; re-run: bash scripts/sync-adsite.sh"
 		fi
 		log "✅ Publish-only complete — prod untouched. Next: (cd $PROD_DIR && ./update.sh)"
@@ -1823,6 +1840,10 @@ exec 9>"$LOCK_FILE"
 		# fleet onto the new build. Warn-only: approval stays manual (D4).
 		if [ -x "$PROD_DIR/startRunner.sh" ]; then "$PROD_DIR/startRunner.sh" --ensure 2>/dev/null || true; else log "⚠️ startRunner.sh not found in $PROD_DIR — skipping Runner ensure."; fi
 		./scripts/ensure-native-bindings.sh "$PWD" >/dev/null 2>&1 || true
+		# Ad-site: upload the site + install scripts when they changed (the
+		# sync skips itself when current; warn-only so prod never depends
+		# on S3).
+		bash scripts/sync-adsite.sh || log "⚠️ Ad-site sync failed (non-fatal) — prod is healthy; re-run: bash scripts/sync-adsite.sh"
 		write_result "success" "Deployment complete and healthy" "false"
 		echo "--------------------------------------------------"
 		echo "✅ Production deployment complete!"
