@@ -55,10 +55,8 @@ describe('resolveMobileModelLine', () => {
 
   test('null or empty details never crash and never print undefined', () => {
     expect(resolveMobileModelLine(null)).toBeNull();
-    expect(resolveMobileModelLine(undefined)).toEqual({
-      line: 'Idle — no active model',
-      title: 'Idle — no active model',
-    });
+    expect(resolveMobileModelLine(undefined)).toBeNull();
+    expect(resolveMobileModelLine()).toBeNull();
     const empty = resolveMobileModelLine({});
     expect(empty.line).toBe('Idle — no active model');
     expect(empty.title).toBe('Idle — no active model');

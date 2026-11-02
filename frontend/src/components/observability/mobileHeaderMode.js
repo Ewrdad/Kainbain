@@ -14,13 +14,17 @@ import { resolveDisplayedStage } from '../tasks/runningTask';
  *   safe: unknown registry shapes count as no fleet (the pill stays
  *   visible — status is never hidden on bad input), and a malformed stage
  *   name falls back to the task-only chip instead of crashing the header.
+ *   The contract is deliberately two fields: whether the pill fallback
+ *   shows, and the named chip. Fleet presence is exactly the negation of
+ *   the pill, so it is kept as a local (not returned) — the view already
+ *   knows the fleet from its single poller.
  * @param {Object|null} [options] - Header inputs (null fails safe to the pill fallback).
  * @param {Array<Object>} [options.assignments] - Live fleet assignments (runnerId-bearing).
  * @param {Map|Array|number|null} [options.registry] - Runner registry (Map, list, or count).
  * @param {Object|null} [options.activeTask] - Resolved active task (title, goal, currentStageId).
  * @param {Array<Object>} [options.stages] - Pipeline stages for the active task.
  * @param {Object} [options.engineState] - Engine snapshot (status, activeStageName).
- * @returns {{showRunnerRows: boolean, showEnginePill: boolean, activeChip: {taskName: string, stageName: string|null, label: string}|null}} Header mode: fleet visibility, pill fallback, and the named chip (null when no task names it).
+ * @returns {{showEnginePill: boolean, activeChip: {taskName: string, stageName: string|null, label: string}|null}} Header mode: pill fallback, and the named chip (null when no task names it).
  * @example resolveMobileHeaderMode({ assignments: [{ runnerId: 'r1' }], activeTask: { title: 'Build auth' } }).showEnginePill // false
  * @example resolveMobileHeaderMode(null).showEnginePill // true
  ***/
@@ -34,19 +38,21 @@ export function resolveMobileHeaderMode(options = {}) {
     stages = [],
     engineState = {},
   } = options ?? {};
-  const live = (Array.isArray(assignments) ? assignments : []).filter((a) => a && a.runnerId);
+  const liveFleetAssignments = (Array.isArray(assignments) ? assignments : []).filter(
+    (assignment) => assignment && assignment.runnerId,
+  );
   let registryCount = 0;
   if (registry instanceof Map) {
     registryCount = registry.size;
   } else if (Array.isArray(registry)) {
-    registryCount = registry.filter((r) => r && r.runnerId).length;
+    registryCount = registry.filter((runner) => runner && runner.runnerId).length;
   } else if (typeof registry === 'number' && Number.isInteger(registry) && registry > 0) {
     // Only a positive whole count names a fleet: zero, negatives, and
     // fractions are malformed input, so the pill stays visible (fail-safe).
     registryCount = registry;
   }
-  const showRunnerRows = live.length > 0 || registryCount > 0;
-  const showEnginePill = !showRunnerRows;
+  const fleetPresent = liveFleetAssignments.length > 0 || registryCount > 0;
+  const showEnginePill = !fleetPresent;
   const taskName = formatTaskTitleFirstLine(
     activeTask?.title || activeTask?.goal || '',
     '',
@@ -68,7 +74,7 @@ export function resolveMobileHeaderMode(options = {}) {
   const activeChip = taskName
     ? { taskName, stageName: stageName || null, label: stageName ? `${taskName} · ${stageName}` : taskName }
     : null;
-  return { showRunnerRows, showEnginePill, activeChip };
+  return { showEnginePill, activeChip };
 }
 
 /***

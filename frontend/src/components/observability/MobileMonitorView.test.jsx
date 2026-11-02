@@ -325,6 +325,43 @@ test('fleet shown but task unnamed: pill stays hidden and the legacy label remai
   expect(screen.getByTestId('mobile-active-stage')).toHaveTextContent('No active task');
 });
 
+test('fleet registered but idle: pill hidden and the fleet-idle state shows', () => {
+  renderWithKainBain(
+    <MobileMonitorView
+      engineState={{ status: 'idle', activeStageName: 'Code Generation' }}
+      activeTask={{ id: 't1', title: 'Build user auth', currentStageId: '5' }}
+      stages={[{ id: '5', name: 'Catchup', type: 'agent' }]}
+      runnerAssignmentsOverride={[]}
+      runnerRegistryOverride={[{ runnerId: 'local-alpha' }]}
+      processLogs={[]}
+      onExit={() => {}}
+    />,
+  );
+
+  // A registered fleet owns the status signal even between assignments.
+  expect(screen.queryByTestId('mobile-engine-state')).not.toBeInTheDocument();
+  expect(screen.getByTestId('mobile-active-stage')).toHaveTextContent(
+    'Build user auth · Catchup',
+  );
+  expect(screen.getByText(/Fleet idle/)).toBeInTheDocument();
+});
+
+test('pill fallback keeps a single status announcer for screen readers', () => {
+  renderWithKainBain(
+    <MobileMonitorView
+      {...baseProps}
+      runnerAssignmentsOverride={[]}
+      runnerRegistryOverride={[]}
+      onExit={() => {}}
+    />,
+  );
+
+  // The pill announces; the task-only title stays silent so state changes
+  // are read once, not twice.
+  expect(screen.getByTestId('mobile-engine-state')).toHaveAttribute('role', 'status');
+  expect(screen.getByTestId('mobile-active-stage')).not.toHaveAttribute('role');
+});
+
 test('null engine snapshot renders the idle fallback without crashing', () => {
   renderWithKainBain(
     <MobileMonitorView

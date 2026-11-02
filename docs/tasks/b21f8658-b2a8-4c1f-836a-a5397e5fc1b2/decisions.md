@@ -70,3 +70,40 @@ right-side title path already avoids duplicating.
 - `EngineStatePill.jsx` and `resolveMobileModelDetails` stay semantically
   untouched (shared with desktop); all change is conditional rendering in
   `MobileMonitorView`.
+
+## Cleanup (2026-11-02, cleanup stage)
+
+- Simplified `resolveMobileHeaderMode` to `{ showEnginePill, activeChip }`:
+  the dropped `showRunnerRows` was consumed by no production code, was
+  always the exact negation of `showEnginePill`, and misnamed the
+  registry-only case (where the widget renders the `Fleet idle` empty
+  state, not rows). Fleet presence stays as the honest local
+  `fleetPresent`. Plan §Step 2 proposed the wider shape; this keeps the
+  smaller honest contract.
+- Unified `resolveMobileModelLine` nullish handling: omitted/undefined
+  details now return null like explicit null (the view renders the same
+  `Idle — no active model` fallback text either way), so the JSDoc
+  "nullish renders the idle fallback" holds for every nullish input.
+- Added two view-level tests: registry-only fleet (pill hidden, named
+  chip, `Fleet idle` state) and the single-announcer pin (pill-on mode:
+  the pill carries `role="status"`, the task-only title carries none).
+- Regression sweep vs `main`: `formatMobileMonitorTitle` moved verbatim
+  (import update only in its test); model-line fallbacks (`Unknown` /
+  `unknown`, alias unresolved wording, full-ref tooltip) match the old
+  chips; `EngineStatePill`, `resolveMobileModelDetails`, desktop cockpit,
+  and `NowPlayingBar` untouched; new props are optional with defaults.
+- Operations continuity: no API/backend change; the compact view still
+  runs exactly one fleet poller at the same 5s cadence (the rows reuse
+  the header's read via overrides instead of polling themselves); every
+  fleet/payload failure direction keeps the legacy pill visible
+  (fail-safe, never a hidden status); frontend-only change, no data
+  migration, safe to ship and to roll back.
+- Gates re-verified: frontend 3985 passed (293 files), api 6153 passed +
+  3 skipped (372 files), `lint:frontend` 0 errors (touched files
+  warning-free), `check-jsdoc-example` PASS, jsdoc grandfather test
+  14/14. Pre-existing, out of scope: `check-one-function-per-file`
+  fails on `api/flow/dispatch/runnerMatches.js`,
+  `frontend/src/hooks/useFleetModelCatalog.js`, and
+  `frontend/src/services/fleetModelOptions.js` — verified identical on
+  `main` (this branch's doc-only moves added no functions); left for its
+  owner task.

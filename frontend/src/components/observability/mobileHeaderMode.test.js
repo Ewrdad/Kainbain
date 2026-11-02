@@ -15,7 +15,6 @@ describe('resolveMobileHeaderMode', () => {
       stages: STAGES,
       engineState: { status: 'running', activeStageName: 'Build' },
     });
-    expect(mode.showRunnerRows).toBe(true);
     expect(mode.showEnginePill).toBe(false);
     expect(mode.activeChip).toEqual({
       taskName: 'Build user auth',
@@ -32,7 +31,6 @@ describe('resolveMobileHeaderMode', () => {
       stages: STAGES,
       engineState: { status: 'idle' },
     });
-    expect(mode.showRunnerRows).toBe(true);
     expect(mode.showEnginePill).toBe(false);
   });
 
@@ -44,7 +42,6 @@ describe('resolveMobileHeaderMode', () => {
       stages: STAGES,
       engineState: { status: 'running', activeStageName: 'Build' },
     });
-    expect(mode.showRunnerRows).toBe(false);
     expect(mode.showEnginePill).toBe(true);
     expect(mode.activeChip?.label).toBe('Build user auth · Catchup');
   });
@@ -70,7 +67,6 @@ describe('resolveMobileHeaderMode', () => {
       stages: [],
       engineState: {},
     });
-    expect(mode.showRunnerRows).toBe(false);
     expect(mode.showEnginePill).toBe(true);
     expect(mode.activeChip).toBeNull();
   });
@@ -118,18 +114,15 @@ describe('resolveMobileHeaderMode', () => {
       stages: STAGES,
       engineState: { status: 'running' },
     });
-    expect(mode.showRunnerRows).toBe(false);
     expect(mode.showEnginePill).toBe(true);
   });
 
   test('missing inputs fail safe to the pill fallback, never a crash', () => {
     expect(resolveMobileHeaderMode()).toEqual({
-      showRunnerRows: false,
       showEnginePill: true,
       activeChip: null,
     });
     expect(resolveMobileHeaderMode(null)).toEqual({
-      showRunnerRows: false,
       showEnginePill: true,
       activeChip: null,
     });
@@ -147,7 +140,6 @@ describe('resolveMobileHeaderMode', () => {
   test('unknown registry shapes and counts count as no fleet (pill stays visible)', () => {
     for (const registry of ['local-alpha', { size: 5 }, -1, 0.5, 2.5, NaN, Infinity]) {
       const mode = resolveMobileHeaderMode({ assignments: [], registry });
-      expect(mode.showRunnerRows).toBe(false);
       expect(mode.showEnginePill).toBe(true);
     }
   });
@@ -160,7 +152,6 @@ describe('resolveMobileHeaderMode', () => {
       stages: 'Catchup',
       engineState: { status: 'running' },
     });
-    expect(mode.showRunnerRows).toBe(false);
     expect(mode.showEnginePill).toBe(true);
     expect(mode.activeChip?.taskName).toBe('Build user auth');
   });
