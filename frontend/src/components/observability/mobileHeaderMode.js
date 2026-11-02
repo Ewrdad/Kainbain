@@ -54,4 +54,10 @@ export function resolveMobileHeaderMode({
   return { showRunnerRows, showEnginePill, activeChip };
 }
 
+/***
+ * MARK: default resolveMobileHeaderMode
+ * @description Default-export alias for `resolveMobileHeaderMode` so the
+ *   compact monitor can import the header-mode contract either way.
+ * @example resolveMobileHeaderMode({ assignments: [{ runnerId: 'r1' }] }).showEnginePill // false
+ ***/
 export default resolveMobileHeaderMode;

@@ -45,6 +45,24 @@ right-side title path already avoids duplicating.
   (the pinned contrast pair); `EngineStatePill` and
   `resolveMobileModelDetails` semantics untouched.
 
+## Follow-up (2026-11-02, implement stage continued)
+
+- The `tests/check-jsdoc-example.test.mjs` grandfather gate failed on 5
+  exports with no attached `@example`: the new `mobileHeaderMode.js`
+  `export default` (this task) plus 4 pre-existing detached blocks in
+  `api/aliasTargets.js`, `api/flow/dispatch/runnerMatches.js`, and
+  `api/routes/projects.js` (other tasks' code, doc blocks separated from
+  their exports). Fixed by attaching docs only — new `@example` JSDoc on
+  the default export, pure doc-block moves in the api files, one added
+  `@example` line on `saveValidationProbes`. No runtime code changed
+  (one function relocated verbatim); full api suite re-ran green after.
+- Re-verified gates: frontend 3966 passed, api 6155 passed (+1 skipped),
+  `npm run lint` 0 errors, `npm run docs:check` exit 0, jsdoc grandfather
+  test 14/14. The prior CI run's `runner/project.test.js` failure and
+  canary E2E failures did not reproduce here (project test 20/20 in
+  isolation; canary needs a live app URL + browsers and was not re-run —
+  this stage must not disturb live operations).
+
 ## Traceability
 
 - Steps 4–5 rework stays contained in the Step 2 resolver
