@@ -80,6 +80,40 @@ export const runnerDisplayName = (runner = {}) =>
   defaultRunnerConfig(runner).displayName || runner?.runnerId || '';
 
 /***
+ * MARK: visibleRunners
+ * @description Roster rows shown on the System Settings › Runners screen:
+ *   every registration except `revoked` ones, which are hidden completely
+ *   (no row, no detail panel, no selection). `denied` join requests stay
+ *   visible so the operator can still approve that recovery path; unknown
+ *   future statuses stay visible too (fail-open) so a new backend status
+ *   never silently vanishes from the UI. Frontend-only: `GET /runners`
+ *   keeps returning every record for audit/support.
+ * @example visibleRunners([{ runnerId: 'a', status: 'revoked' }, { runnerId: 'b', status: 'active' }]) => [{ runnerId: 'b', status: 'active' }]
+ * @param {Object[]} [runners=[]] - Raw Runner records from `GET /runners`.
+ * @returns {Object[]} Listable Runner records.
+ ***/
+export const visibleRunners = (runners = []) =>
+  (Array.isArray(runners) ? runners : []).filter((r) => r?.status !== 'revoked');
+
+/***
+ * MARK: resolveSelectedId
+ * @description Picks the selected Runner id after a roster load: keeps the
+ *   previous id when it is still visible, otherwise falls back to the
+ *   first visible Runner, otherwise null (empty roster). Applied on every
+ *   load so revoking the selected Runner moves selection instead of
+ *   leaving the detail panel pointed at a hidden record.
+ * @example resolveSelectedId([{ runnerId: 'b' }], 'a') => 'b'
+ * @param {Object[]} [visible=[]] - Visible Runner records.
+ * @param {string|null} [prevId=null] - Previously selected Runner id.
+ * @returns {string|null} Selected Runner id.
+ ***/
+export const resolveSelectedId = (visible = [], prevId = null) => {
+  const list = Array.isArray(visible) ? visible : [];
+  if (prevId && list.some((r) => r?.runnerId === prevId)) return prevId;
+  return list.length > 0 ? (list[0]?.runnerId ?? null) : null;
+};
+
+/***
  * MARK: advertisedToolIds
  * @description Harness/tool ids the Runner advertised in its capabilities.
  * @example advertisedToolIds({ capabilities: { harnesses: [{ id: 'pi' }] } }) => ['pi']
