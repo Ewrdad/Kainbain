@@ -4,6 +4,40 @@ import { operatorConfigVerdict } from "./operatorConfigVerdict.js";
 import { stageRunnerPolicyVerdict } from "../../../shared/stageRunnerPolicy.js";
 
 /***
+ * MARK: effectiveRunnerModels
+ * @description The model ids one Runner may serve: the operator-owned
+ *   `availableModels` allowlist when set (System Settings › Runners ›
+ *   Models — it replaces the advertised list so an under-reporting Runner
+ *   can serve declared models), otherwise the Runner-advertised
+ *   capabilities list. Single enforcement point shared by the dispatch
+ *   gate below and the fleet model catalogue, so the two can never drift.
+ * @example effectiveRunnerModels({ capabilities: { models: ['m1'] } }) => ['m1']
+ * @param {Object} [record={}] - Runner record.
+ * @returns {string[]} Effective model ids (possibly empty).
+ ***/
+export const effectiveRunnerModels = (record = {}) => {
+	const override = record?.operatorConfig?.availableModels;
+	if (Array.isArray(override)) return override;
+	const caps = record?.capabilities && typeof record.capabilities === "object" ? record.capabilities : {};
+	return Array.isArray(caps.models) ? caps.models : [];
+};
+
+/***
+ * MARK: claimEligibleRunner
+ * @description Whether one Runner registration can take ANY work right now:
+ *   active status and not paused — the same two gates `runnerMatches`
+ *   applies before per-task requirements. The fleet model catalogue counts
+ *   only eligible Runners, so "available on N runners" always names
+ *   Runners that could actually claim.
+ * @example claimEligibleRunner({ status: 'active', paused: false }) => true
+ * @param {Object} [record={}] - Runner record.
+ * @returns {boolean} Eligibility.
+ ***/
+export const claimEligibleRunner = (record = {}) => {
+	return record?.status === "active" && record?.paused !== true;
+};
+
+/***
  * MARK: runnerMatches
  * @description Decides whether one Runner registration can take a task with
  *   the given requirements: active status, not paused, fresh heartbeat
@@ -24,41 +58,7 @@ import { stageRunnerPolicyVerdict } from "../../../shared/stageRunnerPolicy.js";
  * @param {Object} [opts] - `{ now, staleAfterMs, minDiskHeadroomMb, projectId }` (`projectId` is the candidate's project, needed for the operator project-scope check; a scoped Runner with no project id on the candidate misses loudly instead of guessing).
  * @returns {Object} `{ ok, reason }`.
  ***/
-/***
- * MARK: effectiveRunnerModels
- * @description The model ids one Runner may serve: the operator-owned
- *   `availableModels` allowlist when set (System Settings › Runners ›
- *   Models — it replaces the advertised list so an under-reporting Runner
- *   can serve declared models), otherwise the Runner-advertised
- *   capabilities list. Single enforcement point shared by the dispatch
- *   gate below and the fleet model catalogue, so the two can never drift.
- * @example effectiveRunnerModels({ capabilities: { models: ['m1'] } }) => ['m1']
- * @param {Object} [record={}] - Runner record.
- * @returns {string[]} Effective model ids (possibly empty).
- ***/
-export function effectiveRunnerModels(record = {}) {
-	const override = record?.operatorConfig?.availableModels;
-	if (Array.isArray(override)) return override;
-	const caps = record?.capabilities && typeof record.capabilities === "object" ? record.capabilities : {};
-	return Array.isArray(caps.models) ? caps.models : [];
-}
-
-/***
- * MARK: claimEligibleRunner
- * @description Whether one Runner registration can take ANY work right now:
- *   active status and not paused — the same two gates `runnerMatches`
- *   applies before per-task requirements. The fleet model catalogue counts
- *   only eligible Runners, so "available on N runners" always names
- *   Runners that could actually claim.
- * @example claimEligibleRunner({ status: 'active', paused: false }) => true
- * @param {Object} [record={}] - Runner record.
- * @returns {boolean} Eligibility.
- ***/
-export function claimEligibleRunner(record = {}) {
-	return record?.status === "active" && record?.paused !== true;
-}
-
-export function runnerMatches(record = {}, req = {}, opts = {}) {
+export const runnerMatches = (record = {}, req = {}, opts = {}) => {
 	const now = typeof opts.now === "number" ? opts.now : Date.now();
 	const staleAfterMs =
 		typeof opts.staleAfterMs === "number" && opts.staleAfterMs > 0
@@ -125,4 +125,4 @@ export function runnerMatches(record = {}, req = {}, opts = {}) {
 	const policyVerdict = stageRunnerPolicyVerdict(req.runnerPolicy, record.runnerId);
 	if (!policyVerdict.ok) return policyVerdict;
 	return { ok: true, reason: "MATCH" };
-}
+};

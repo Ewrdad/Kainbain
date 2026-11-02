@@ -28,6 +28,8 @@ function pageTitleForView(view, taskKey) {
       return 'Docs';
     case 'retrospective':
       return 'Retrospective';
+    case 'accessibility':
+      return 'Accessibility';
     case 'task-review':
       return taskKey ? `Review ${taskKey}` : 'Task review';
     case 'task-survey':

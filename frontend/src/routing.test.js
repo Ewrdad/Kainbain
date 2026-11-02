@@ -25,6 +25,7 @@ test.each([
   ['task-review', undefined, '/'],
   ['task-survey', undefined, '/'],
   ['retrospective', undefined, '/retrospective'],
+  ['accessibility', undefined, '/accessibility'],
 ])('viewToPath(%s) => %s without params', (view, opts, expected) => {
   expect(viewToPath(view, opts)).toBe(expected);
 });
@@ -63,6 +64,7 @@ test.each([
   ['/tasks/t1/survey', { view: 'task-survey', taskId: 't1' }],
   ['/task/t1/survey', { view: 'task-survey', taskId: 't1' }],
   ['/retrospective', { view: 'retrospective' }],
+  ['/accessibility', { view: 'accessibility' }],
 ])('routeToView(%s) resolves', (pathname, expected) => {
   expect(routeToView(pathname)).toEqual(expected);
 });
@@ -88,6 +90,7 @@ test('routeToView round-trips every viewToPath result', () => {
     ['task-review', { taskId: 'abc-123' }],
     ['task-survey', { taskId: 'abc-123' }],
     ['retrospective', {}],
+    ['accessibility', {}],
   ];
   for (const [view, opts] of cases) {
     const resolved = routeToView(viewToPath(view, opts));
@@ -121,6 +124,8 @@ test.each([
   [{ hash: '', search: '', pathname: '/system-settings/models' }, '#/system-settings/models'],
   [{ hash: '', search: '', pathname: '/observability' }, '#/observability'],
   [{ hash: '', search: '', pathname: '/retrospective' }, '#/retrospective'],
+  [{ hash: '', search: '?view=accessibility', pathname: '/' }, '#/accessibility'],
+  [{ hash: '', search: '', pathname: '/accessibility' }, '#/accessibility'],
 ])('normalizeLegacyUrl(%j) => %s', (loc, expected) => {
   expect(normalizeLegacyUrl(loc)).toBe(expected);
 });

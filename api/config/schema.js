@@ -1768,6 +1768,36 @@ export const CONFIG_SCHEMA = [
 		group: "sessions",
 		doc: "Opt this implementation into KainBain's cross-restart self-deploy continuity (api/continuity/). Set to exactly 1 to enable; unset or any other value leaves the generic pipeline free of deploy-specific behaviour.",
 	},
+
+	// --- Accessibility statement -------------------------------------------------
+	{
+		key: "accessibilityContactEmail",
+		env: "KAINBAIN_ACCESSIBILITY_CONTACT_EMAIL",
+		aliases: [],
+		type: "string",
+		default: "",
+		group: "server",
+		doc: "Website team inbox shown on the accessibility statement and used as the report-form fallback address. Empty means unconfigured: the statement shows the on-site form only.",
+	},
+	{
+		key: "accessibilityFeedbackMaxChars",
+		env: "KAINBAIN_ACCESSIBILITY_FEEDBACK_MAX_CHARS",
+		aliases: [],
+		type: "int",
+		default: 4000,
+		min: 0,
+		group: "tasks",
+		doc: "Max characters for one accessibility report message.",
+	},
+	{
+		key: "accessibilityFeedbackFile",
+		env: "KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE",
+		aliases: [],
+		type: "path",
+		default: "",
+		group: "storage",
+		doc: "JSONL file accessibility reports are appended to (one report per line). Empty resolves to ~/.kainbain/accessibility-feedback.jsonl.",
+	},
 ];
 
 /***

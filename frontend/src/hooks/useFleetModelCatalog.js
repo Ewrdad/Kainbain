@@ -11,7 +11,7 @@ import { api } from '../services/api';
  * @param {Object} [payload] - `/runners/models/catalogue` response.
  * @returns {Object} Id-keyed availability map.
  ***/
-export function fleetCountsById(payload) {
+export const fleetCountsById = (payload) => {
   const map = {};
   const list = Array.isArray(payload?.models) ? payload.models : [];
   for (const entry of list) {
@@ -31,7 +31,7 @@ export function fleetCountsById(payload) {
     };
   }
   return map;
-}
+};
 
 /***
  * MARK: useFleetModelCatalog
@@ -46,7 +46,7 @@ export function fleetCountsById(payload) {
  * @param {boolean} [opts.enabled=true] - When false, no request until it flips true.
  * @returns {{counts: Object, loading: boolean, loaded: boolean, refresh: Function}}
  ***/
-export function useFleetModelCatalog({ enabled = true } = {}) {
+export const useFleetModelCatalog = ({ enabled = true } = {}) => {
   const [counts, setCounts] = useState({});
   // True only after a catalogue fetch succeeds: pickers gate badges on this
   // (not on `counts` being non-empty) so a failed fetch — or a backend
@@ -91,4 +91,4 @@ export function useFleetModelCatalog({ enabled = true } = {}) {
   }, []);
 
   return { counts, loading, loaded, refresh };
-}
+};
