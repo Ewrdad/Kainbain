@@ -60,6 +60,31 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Only when the same step runs again after a problem"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Show the new step name as In progress"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Show one line per step with a try count (for example Tried 3 times)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Only retry by itself when there is an error"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
