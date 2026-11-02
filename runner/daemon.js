@@ -1411,7 +1411,8 @@ export function leaveAssignment(state) {
  *   service mode). Every poll is server-side scan → match → claim-fence, so
  *   concurrent loops never double-dispatch: a lost race surfaces as
  *   `CLAIM_CONFLICT` inside the fence and the loop simply polls again. A
- *   `STALE_RUNNER` answer triggers one fresh heartbeat and a single retry;
+ *   `STALE_RUNNER` answer triggers one fresh heartbeat and a single retry
+ *   (a retry refused with backpressure backs off like a first attempt);
  *   `RUNNER_PAUSED` (operator-parked) backs off and re-polls until resumed;
  *   `RUNNER_BUSY` (we already hold a lease — a second process shares our
  *   identity, or a retried poll raced our own claim) backs off and re-polls
@@ -1452,7 +1453,23 @@ export async function runDispatchLoop({
 			} catch (err) {
 				if (err?.code === "STALE_RUNNER") {
 					await client.heartbeat({ runnerId: config.runnerId, facts: factsFor({ config, updateStatus: state?.updateStatus ?? null }) });
-					answer = await client.dispatchClaim({ projectIds: config.projectIds ?? null });
+					try {
+						answer = await client.dispatchClaim({ projectIds: config.projectIds ?? null });
+					} catch (retryErr) {
+						// The refresh landed but the retry was refused (a
+						// second process with our identity holds the lease, or
+						// the fleet capped out). Known retryable answers back
+						// off and re-poll WITHOUT consuming idle budget —
+						// exactly like the first-attempt path — never crash;
+						// anything else rethrows.
+						if (retryErr?.code === "RUNNER_BUSY" || retryErr?.statusCode === 429 || retryErr?.code === "RUNNER_PAUSED") {
+							polls += 1;
+							logger.log(`Dispatch: retry after refresh refused (${retryErr?.code ?? "capped"}); backing off.`);
+							await new Promise((r) => setTimeout(r, pollMs));
+							continue;
+						}
+						throw retryErr;
+					}
 				} else if (err?.code === "RUNNER_BUSY") {
 					// One-task-per-Runner fence: WE already hold a lease (a
 					// second process shares our identity, or a retried poll

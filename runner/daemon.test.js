@@ -1173,6 +1173,44 @@ describe("runDispatchLoop", () => {
 		assert.ok(beats >= 2);
 	});
 
+	it("backs off when the STALE_RUNNER retry is refused instead of crashing", async () => {
+		const repo = localRepo();
+		const config = loopConfig({ dispatchIdleLimit: 1 });
+		dirs.push(config.workRoot, repo);
+		let dispatches = 0;
+		const logs = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				dispatches += 1;
+				if (dispatches === 1) {
+					const err = new Error("stale");
+					err.code = "STALE_RUNNER";
+					throw err;
+				}
+				if (dispatches === 2) {
+					// Refresh done, but a second process with our identity
+					// holds the lease: the retry is refused loudly.
+					const err = new Error("Runner r1 is busy with task t9");
+					err.statusCode = 429;
+					err.code = "RUNNER_BUSY";
+					throw err;
+				}
+				return { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: (m) => logs.push(m), warn: () => {} },
+		});
+		assert.equal(out.idle, true);
+		assert.equal(out.assignments, 0);
+		assert.equal(dispatches, 3);
+		assert.ok(logs.some((m) => /RUNNER_BUSY/.test(m)));
+	});
+
 	it("never idles out with dispatchIdleLimit 0 (persistent service mode)", async () => {
 		const repo = localRepo();
 		const config = loopConfig({ dispatchIdleLimit: 0 });

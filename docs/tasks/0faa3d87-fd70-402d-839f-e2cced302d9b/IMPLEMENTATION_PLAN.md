@@ -289,7 +289,11 @@ Contract as shipped:
 - Runner daemon: explicit `RUNNER_BUSY` branch (code-first, any status)
   backs off without consuming idle budget; `tryEnterAssignment` /
   `leaveAssignment` single-flight guard wraps `executeAssignment` in both
-  the dispatch loop and the single-assignment path. No pid/lockfile: the
+  the dispatch loop and the single-assignment path. The `STALE_RUNNER`
+  heartbeat-then-retry path also backs off (no idle-budget burn, no crash)
+  when the retry itself is refused with `RUNNER_BUSY` / 429 / `RUNNER_PAUSED`
+  — e.g. a duplicate daemon sharing the identity — instead of letting the
+  refusal escape and kill the loop. No pid/lockfile: the
   backend fence is primary and sufficient, and stale locks would be a new
   failure mode on a crash-prone dev box.
 - `GET /runners/monitor` gains `runnerLoad` (one row per busy Runner:
@@ -320,7 +324,8 @@ Runner is busy with that task alone.
 Tests added/updated: `claimStore.test.js` (+4), new
 `runnerBusy.test.js` (4), `runnerDispatchCaps.test.js` (reworked to
 distinct Runners + busy/fleet precedence), `runnerRoutes.test.js`
-(second-dispatch 429), `daemon.test.js` (+4: busy backoff, guard ×2,
-memory), new `runnerSlots.test.js` (7), widget (+3), settings (+4),
+(second-dispatch 429), `daemon.test.js` (+5: busy backoff, stale-retry
+refusal backoff, guard ×2, memory), new `runnerSlots.test.js` (7),
+widget (+3), settings (+4),
 `NowPlayingBar.test.jsx` (+4 assertions), `RunnerBanner.test.jsx`
 (copy pins).
