@@ -80,6 +80,21 @@ describe("scripts/sync-tip-dist.mjs", () => {
 		});
 	});
 
+	it("syncs under deploy.sh's tip re-exec marker alone (pipeline Publish path)", () => {
+		const { tipTop, primaryTop, primary, pointer } = setup();
+		const r = run(tipTop, {
+			KAINBAIN_DEPLOY_FROM_TIP_WORKTREE: "1",
+			SYNC_PRIMARY_TOP: primaryTop,
+			SYNC_PUBLISHED: "backend frontend runner",
+			SYNC_SHORTSHA: "newsha",
+			KAINBAIN_LAST_PUBLISH_FILE: pointer,
+		});
+		assert.equal(r.status, 0, r.stderr + r.stdout);
+		assert.match(r.stdout, /synced to .*\/dist/);
+		assert.equal(JSON.parse(fs.readFileSync(path.join(primary, "release-manifest.json"), "utf8")).commit, "newsha");
+		assert.equal(JSON.parse(fs.readFileSync(pointer, "utf8")).commit, "newsha");
+	});
+
 	it("is idempotent: a second run appends no duplicate history", () => {
 		const { tipTop, primaryTop, primary, pointer } = setup();
 		const env = {
