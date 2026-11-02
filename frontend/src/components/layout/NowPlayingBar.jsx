@@ -6,6 +6,7 @@ import { resolveDisplayedStage } from '../tasks/runningTask';
 import { resolveActiveTaskDisplay, resolveUniversalNowPlaying } from './activeTaskVisibility';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { BuildHashTrigger } from './BuildHashTrigger';
+import { QueuePopupModal } from './QueuePopupModal';
 import { api } from '../../services/api';
 
 /***
@@ -385,6 +386,7 @@ export function NowPlayingBar() {
    * @returns {number}
    ***/
   const queueDepth = universal.queueDepth;
+  const [queuePopupOpen, setQueuePopupOpen] = useState(false);
 
   return (
     <footer className="fixed bottom-0 left-0 w-full h-[72px] z-50 bg-surface-container-highest border-t border-border-standard shadow-lg flex items-center justify-between px-3 sm:px-6 md:px-8 pb-[env(safe-area-inset-bottom,0px)]">
@@ -632,32 +634,39 @@ export function NowPlayingBar() {
         <div className="hidden sm:flex items-center">
           <InfoTooltip
             title="Execution Queue"
-            description="Live count of open tasks (not yet completed) across all pipelines."
-            behindTheScenes="Derived from the universal task list across all pipelines on every render — unlike the removed workflow-pointer stage label, which only changed on load or manual skip."
+            description="Live count of open tasks (not yet completed) across all pipelines. Click to view the queue in dispatch order."
+            behindTheScenes="Derived from the universal task list across all pipelines on every render — unlike the removed workflow-pointer stage label, which only changed on load or manual skip. Click opens a popup listing the dispatch-ordered queue."
             position="top-left"
           >
-            <div
-              role="status"
+            <button
+              type="button"
+              onClick={() => setQueuePopupOpen(true)}
               aria-label={`Execution queue: ${queueDepth} open ${
                 queueDepth === 1 ? 'task' : 'tasks'
               } across all pipelines`}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-surface-container/90 border border-border-standard/80 cursor-help select-none"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-surface-container/90 border border-border-standard/80 cursor-pointer select-none focus:outline-none focus:ring-1 focus:ring-primary"
+              data-testid="queue-chip-button"
             >
-              <span
-                className="material-symbols-outlined text-[14px] text-secondary"
-                aria-hidden="true"
-              >
-                format_list_numbered
+              <span role="status" aria-live="polite" aria-label={`Execution queue: ${queueDepth} open ${queueDepth === 1 ? 'task' : 'tasks'} across all pipelines`} className="contents">
+                <span
+                  className="material-symbols-outlined text-[14px] text-secondary"
+                  aria-hidden="true"
+                >
+                  format_list_numbered
+                </span>
+                <span className="font-label-caps text-[9px] text-on-surface-variant hidden lg:inline">
+                  Queue
+                </span>
+                <span className="tabular-nums text-[12px] font-semibold text-on-surface">
+                  {queueDepth}
+                </span>
               </span>
-              <span className="font-label-caps text-[9px] text-on-surface-variant hidden lg:inline">
-                Queue
-              </span>
-              <span className="tabular-nums text-[12px] font-semibold text-on-surface">
-                {queueDepth}
-              </span>
-            </div>
+            </button>
           </InfoTooltip>
         </div>
+        {queuePopupOpen && (
+          <QueuePopupModal counted={queueDepth} onClose={() => setQueuePopupOpen(false)} />
+        )}
       </div>
     </footer>
   );
