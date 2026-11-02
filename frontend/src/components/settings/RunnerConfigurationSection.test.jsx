@@ -182,15 +182,101 @@ describe('RunnerConfigurationSection', () => {
     expect(screen.queryByRole('button', { name: 'Deny runner r3' })).toBeNull();
   });
 
+  it('hides revoked Runners: no row, no detail, selection skips them', async () => {
+    const revoked = { ...ACTIVE_RUNNER, runnerId: 'rx', status: 'revoked' };
+    runnersFixture([revoked, ACTIVE_RUNNER, PENDING_RUNNER]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.queryByTestId('runner-row-rx')).toBeNull();
+    expect(screen.queryByTestId('runner-detail-rx')).toBeNull();
+    expect(screen.getByTestId('runner-row-r1')).toBeTruthy();
+    expect(screen.getByTestId('runner-row-r2')).toBeTruthy();
+    // Selection skipped the revoked first row and landed on r1.
+    expect(screen.getByTestId('runner-detail-r1')).toBeTruthy();
+  });
+
+  it('shows the empty message when every Runner is revoked', async () => {
+    runnersFixture([
+      { ...ACTIVE_RUNNER, runnerId: 'rx', status: 'revoked' },
+      { ...PENDING_RUNNER, runnerId: 'ry', status: 'revoked' },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-config-empty')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('runner-roster')).toBeNull();
+    expect(screen.queryByTestId('runner-detail-rx')).toBeNull();
+    expect(screen.queryByTestId('runner-detail-ry')).toBeNull();
+  });
+
+  it('revoking the selected Runner moves selection to the next visible one', async () => {
+    runnersFixture([ACTIVE_RUNNER, PENDING_RUNNER]);
+    revokeRunner.mockResolvedValue({ status: 'revoked' });
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    // The revoked record stays in the backend list; the screen filters it.
+    getRunners.mockResolvedValue([{ ...ACTIVE_RUNNER, status: 'revoked' }, { ...PENDING_RUNNER }]);
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke runner r1' }));
+    await waitFor(() => {
+      expect(revokeRunner).toHaveBeenCalledWith('r1');
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('runner-row-r1')).toBeNull();
+    });
+    expect(screen.queryByTestId('runner-detail-r1')).toBeNull();
+    expect(screen.getByTestId('runner-row-r2')).toBeTruthy();
+    expect(screen.getByTestId('runner-detail-r2')).toBeTruthy();
+  });
+
+  it('guides the operator when the selected Runner vanishes without a roster reload', async () => {
+    runnersFixture([ACTIVE_RUNNER, PENDING_RUNNER]);
+    render(<RunnerConfigurationSection />);
+    fireEvent.click(await screen.findByTestId('runner-select-r2'));
+    await screen.findByTestId('runner-detail-r2');
+    // Another operator revoked r2 mid-session: the reload merges the revoked
+    // record, the roster filter drops its row, and the stale selection must
+    // render guidance — never a revoked detail panel, never a blank column.
+    getRunnerConfig.mockResolvedValue({ ...PENDING_RUNNER, status: 'revoked' });
+    fireEvent.click(screen.getByTestId('runner-reload-r2'));
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-detail-empty')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('runner-row-r2')).toBeNull();
+    expect(screen.queryByTestId('runner-detail-r2')).toBeNull();
+    expect(screen.getByTestId('runner-row-r1')).toBeTruthy();
+    expect(screen.getByTestId('runner-detail-empty')).toHaveTextContent(
+      'Select a Runner on the left',
+    );
+  });
+
+  it('lays the roster and detail side by side with the detail on the right', async () => {
+    runnersFixture();
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    const layout = screen.getByTestId('runner-layout');
+    expect(layout.className).toContain('md:grid-cols-[240px_minmax(0,1fr)]');
+    expect(layout).toContainElement(screen.getByTestId('runner-roster'));
+    expect(layout).toContainElement(screen.getByTestId('runner-detail-r1'));
+    // Clicking a left row swaps the right panel.
+    fireEvent.click(screen.getByTestId('runner-select-r2'));
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-detail-r2')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('runner-detail-r1')).toBeNull();
+  });
+
   it('denies a pending Runner and revokes an active one', async () => {
     runnersFixture();
     denyRunner.mockResolvedValue({ status: 'denied' });
     revokeRunner.mockResolvedValue({ status: 'revoked' });
     render(<RunnerConfigurationSection />);
+    // Actions live in the selected Runner's detail panel: select r2 first.
+    fireEvent.click(await screen.findByTestId('runner-select-r2'));
     fireEvent.click(await screen.findByRole('button', { name: 'Deny runner r2' }));
     await waitFor(() => {
       expect(denyRunner).toHaveBeenCalledWith('r2');
     });
+    fireEvent.click(screen.getByTestId('runner-select-r1'));
     fireEvent.click(await screen.findByRole('button', { name: 'Revoke runner r1' }));
     await waitFor(() => {
       expect(revokeRunner).toHaveBeenCalledWith('r1');
@@ -331,19 +417,23 @@ describe('RunnerConfigurationSection', () => {
     expect(updateRunnerConfig).not.toHaveBeenCalled();
   });
 
-  it('disables roster actions while a config save is in flight', async () => {
+  it('disables detail actions while a config save is in flight', async () => {
     runnersFixture([ACTIVE_RUNNER, PENDING_RUNNER]);
     // A save that never settles keeps the busy state observable.
     updateRunnerConfig.mockImplementation(() => new Promise(() => {}));
     render(<RunnerConfigurationSection />);
     await screen.findByTestId('runner-detail-r1');
     fireEvent.click(screen.getByTestId('runner-job-r1-runsCi'));
-    // One write at a time: a roster action racing the save could overwrite
+    // One write at a time: an action racing the save could overwrite
     // the shared busy flag and reload the roster over the in-flight patch.
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Pause runner r1' })).toBeDisabled();
     });
-    expect(screen.getByRole('button', { name: 'Approve runner r2' })).toBeDisabled();
+    // The pending Runner's actions disable too once it is selected.
+    fireEvent.click(screen.getByTestId('runner-select-r2'));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Approve runner r2' })).toBeDisabled();
+    });
   });
 
   it('says plainly that a saved directory is not sent to the Runner yet', async () => {
@@ -436,7 +526,14 @@ describe('RunnerConfigurationSection', () => {
     runnersFixture([ACTIVE_RUNNER]);
     getRunnerMonitor.mockResolvedValue({
       liveAssignments: [],
-      scheduler: { ticks: 41, dispatched: 3, deferredDispatch: 12, deferredTripped: 0, lastOutcome: 'deferred-runner-dispatch', lastDispatchAt: null },
+      scheduler: {
+        ticks: 41,
+        dispatched: 3,
+        deferredDispatch: 12,
+        deferredTripped: 0,
+        lastOutcome: 'deferred-runner-dispatch',
+        lastDispatchAt: null,
+      },
     });
     render(<RunnerConfigurationSection />);
     await waitFor(() => {
@@ -447,9 +544,7 @@ describe('RunnerConfigurationSection', () => {
   });
 
   it('never renders credential values', async () => {
-    runnersFixture([
-      { ...ACTIVE_RUNNER, credential: 'SHOULD-NOT-RENDER' },
-    ]);
+    runnersFixture([{ ...ACTIVE_RUNNER, credential: 'SHOULD-NOT-RENDER' }]);
     const { container } = render(<RunnerConfigurationSection />);
     await screen.findByTestId('runner-detail-r1');
     expect(container.textContent).not.toContain('SHOULD-NOT-RENDER');
