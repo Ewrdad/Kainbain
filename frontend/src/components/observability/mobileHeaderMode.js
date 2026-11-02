@@ -36,7 +36,9 @@ export function resolveMobileHeaderMode({
     registryCount = registry.size;
   } else if (Array.isArray(registry)) {
     registryCount = registry.filter((r) => r && r.runnerId).length;
-  } else if (typeof registry === 'number' && Number.isFinite(registry)) {
+  } else if (typeof registry === 'number' && Number.isInteger(registry) && registry > 0) {
+    // Only a positive whole count names a fleet: zero, negatives, and
+    // fractions are malformed input, so the pill stays visible (fail-safe).
     registryCount = registry;
   }
   const showRunnerRows = live.length > 0 || registryCount > 0;

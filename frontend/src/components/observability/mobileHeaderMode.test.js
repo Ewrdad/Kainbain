@@ -140,7 +140,7 @@ describe('resolveMobileHeaderMode', () => {
   });
 
   test('unknown registry shapes and counts count as no fleet (pill stays visible)', () => {
-    for (const registry of ['local-alpha', { size: 5 }, -1, NaN, Infinity]) {
+    for (const registry of ['local-alpha', { size: 5 }, -1, 0.5, 2.5, NaN, Infinity]) {
       const mode = resolveMobileHeaderMode({ assignments: [], registry });
       expect(mode.showRunnerRows).toBe(false);
       expect(mode.showEnginePill).toBe(true);

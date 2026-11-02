@@ -9,11 +9,14 @@ import { LiveConsoleWidget } from './widgets/LiveConsoleWidget';
 /***
  * MARK: formatMobileMonitorTitle
  * @description Pure formatter for the compact monitor header's right-side
- *   text. The engine pill already shows the stage name when running, so
- *   this text shows the active task identity instead (title, falling back
- *   to the goal's first line with a leading markdown heading stripped —
- *   mirroring ActiveTaskPromptWidget). When idle with no task the previous
- *   stage/empty text is kept so the header never blanks.
+ *   text when no Runner fleet is shown. The engine pill already shows the
+ *   stage name when running, so this text shows the active task identity
+ *   instead (title, falling back to the goal's first line with a leading
+ *   markdown heading stripped — mirroring ActiveTaskPromptWidget). When a
+ *   fleet is shown the view uses the header-mode chip (`<task> · <stage>`)
+ *   instead, falling back to this title only when no task names the chip.
+ *   When idle with no task the previous stage/empty text is kept so the
+ *   header never blanks.
  * @param {Object|null} [activeTask] - Resolved active task (title, goal).
  * @param {Object} [engineState] - Engine snapshot (activeStageName).
  * @param {boolean} [isRunning] - Engine currently executing.
@@ -137,6 +140,9 @@ export function MobileMonitorView({
   const details = resolveMobileModelDetails(activeTask, engineState);
   // Single fleet poller for the header + the compact runner rows (the rows
   // reuse the same state via overrides so one tick issues one fleet read).
+  // Until the first read lands the fleet looks empty, so the pill renders
+  // and then drops away once fleet presence is known: status is never
+  // hidden on an unknown fleet, at the cost of one quick swap on load.
   const skipFleetPoll =
     runnerAssignmentsOverride !== undefined || runnerRegistryOverride !== undefined;
   const fleet = useRunnerMonitor({ enabled: !skipFleetPoll });

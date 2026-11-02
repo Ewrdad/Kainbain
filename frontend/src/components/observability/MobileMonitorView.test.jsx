@@ -293,6 +293,8 @@ test('fleet shown: legacy pill hides and the chip names task plus stage', () => 
 
   // The single-threaded-era global pill is gone; per-runner rows carry state.
   expect(screen.queryByTestId('mobile-engine-state')).not.toBeInTheDocument();
+  // Header and rows share the one injected fleet read: the row renders too.
+  expect(screen.getByTestId('per-runner-row-local-alpha')).toBeInTheDocument();
   const chip = screen.getByTestId('mobile-active-stage');
   expect(chip).toHaveTextContent('Build user auth · Catchup');
   expect(chip).toHaveAttribute('title', 'Build user auth · Catchup');
