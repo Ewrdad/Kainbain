@@ -32,22 +32,25 @@ Decisions from [SURVEY.md](./SURVEY.md) (binding for this plan):
 
 Make the change easy first, then make the change.
 
-The root problem is a single boolean with no stage scope: `task.autoRetrying`
-is set `true` by two backend paths —
-`api/flow/routing/orchestrators/handleTransientFailure.js` (same-stage retry,
-writes a "Retrying" timeline row per attempt) and
-`api/flow/routing/resolvers/beginAutoIteration.js` via
-`api/flow/routing/orchestrators/handleStageFailure.js` (failback retry, which
-may land on a *different* stage and writes no timeline row) — and cleared only
-in `api/flow/execution/executeStage.js` when the next attempt starts. The
-frontend (`frontend/src/components/tasks/TaskCard.jsx`,
-`TaskDetailOverlayContent.jsx`, `TaskDetailPageContent.jsx`) treats
-`task.autoRetrying === true` as "RETRYING wins over everything". So any
-failback to another stage still reads RETRYING until the next execution
-clears the flag, and every transient attempt appends another identical-stage
-"Retrying" timeline row (rendered by `buildDisplayTimeline` in
-`frontend/src/components/tasks/taskFormatters.js` plus `TaskHistoryTab.jsx` /
-`TaskDetailHistoryPane.jsx`).
+The root problem is a single boolean with no stage scope. Verified in this
+checkout:
+
+- `api/flow/routing/orchestrators/handleTransientFailure.js:336` sets
+  `task.autoRetrying = true` for a same-stage retry and records one timeline
+  row with status `"Retrying"` per attempt (line 352), plus one `history`
+  entry per attempt (line 340).
+- `api/flow/routing/resolvers/beginAutoIteration.js:32` sets
+  `task.autoRetrying = true` for failback auto-iteration with no stage stamp,
+  so a retry that lands on a *different* stage still reads as retrying.
+- `api/flow/execution/executeStage.js:364` clears `task.autoRetrying = false`
+  only when the next attempt starts, so the stale flag survives the stage
+  move and the UI shows RETRYING for a task that already moved on.
+- The frontend treats the bare flag as "RETRYING wins over everything":
+  `frontend/src/components/tasks/TaskCard.jsx:445`
+  (`task.autoRetrying === true`),
+  `TaskDetailOverlayContent.jsx:335`, `TaskDetailPageContent.jsx:288`
+  (same bare check). Timeline rendering goes through
+  `buildDisplayTimeline` in `frontend/src/components/tasks/taskFormatters.js`.
 
 The fix has two halves that must land together: (1) scope the retry signal to
 the stage it belongs to, and (2) collapse repeated same-stage rows at render
@@ -57,31 +60,36 @@ the stage it belongs to, and (2) collapse repeated same-stage rows at render
 
 ### Phase 0 — Characterization (make the change easy; no behavior change)
 
-1. Add failing-first reproduction fixtures before touching logic:
-   - Backend: task that transient-retries in stage A (two `handleTransientFailure`
-     calls), then a task that auto-iterates/fails back from stage B to stage A.
-     Assert current (buggy) observable: `autoRetrying === true` while
-     `currentStageId` differs from the retried stage; timeline contains N
-     same-stage "Retrying" rows.
-   - Frontend: extend `frontend/src/components/tasks/__fixtures__/duplicateInProgressTimeline.js`
-     (or a sibling fixture) with a same-stage retry sequence; assert current row
-     count. Keep the existing duplicate-arrival fixture green.
+Biggest unknown first: pin the buggy behavior with reproduction fixtures
+before touching logic.
+
+1. Add failing-first reproduction fixtures:
+   - Backend: task that transient-retries in stage A (two
+     `handleTransientFailure` calls), then a task that auto-iterates/fails
+     back from stage B to stage A. Assert current (buggy) observable:
+     `autoRetrying === true` while `currentStageId` differs from the retried
+     stage; timeline contains N same-stage "Retrying" rows.
+   - Frontend: extend `frontend/src/components/tasks/__fixtures__/`
+     with a same-stage retry sequence; assert current row count. Keep the
+     existing duplicate-arrival fixture green.
 2. Map every reader/writer of `autoRetrying` and every writer of the
-   `"Retrying"` timeline status (`grep autoRetrying`, `grep '"Retrying"'`):
-   writers are `handleTransientFailure.js`, `beginAutoIteration.js`,
-   `resetAttemptBudgets.js`, `deferForCircuitTrip.js`, `settleOperatorAbort.js`,
-   `executeStage.js`; readers are `TaskCard.jsx`, `TaskDetailOverlayContent.jsx`,
-   `TaskDetailPageContent.jsx`, `stagePace.js`, `retrospectiveStats.js`. Record
-   the inventory in the implementing PR description.
+   `"Retrying"` timeline status. Known so far: writers
+   `handleTransientFailure.js`, `beginAutoIteration.js`, `executeStage.js`
+   (clear), plus `resetAttemptBudgets.js`, `deferForCircuitTrip.js`,
+   `settleOperatorAbort.js`; readers `TaskCard.jsx`,
+   `TaskDetailOverlayContent.jsx`, `TaskDetailPageContent.jsx`,
+   `stagePace.js`, `retrospectiveStats.js`. Record the final inventory in
+   the implementing PR description.
 
 ### Phase 1 — Backend: scope the retry signal to the retried stage
 
 3. Stamp the retry with its stage: when setting `task.autoRetrying = true`,
    also record which stage is being retried and the attempt/budget
-   (for example `task.retryStageId` / `task.retryAttempt` / `task.retryMaxAttempts`;
-   reuse `transientRetryLadder` and `autoIterationCount` where they already exist).
-   Clear all three wherever `autoRetrying` is cleared today
-   (`executeStage.js`, `resetAttemptBudgets.js`, `settleOperatorAbort.js`,
+   (for example `task.retryStageId` / `task.retryAttempt` /
+   `task.retryMaxAttempts`; reuse `transientRetryLadder` and
+   `autoIterationCount` where they already exist). Clear all three wherever
+   `autoRetrying` is cleared today (`executeStage.js`,
+   `resetAttemptBudgets.js`, `settleOperatorAbort.js`,
    `deferForCircuitTrip.js`, exhaustion/parked paths).
 4. Stop the flag from leaking across stage moves: any transition that changes
    `task.currentStageId` to a different stage (failback, `moveToStage`,
@@ -103,15 +111,15 @@ the stage it belongs to, and (2) collapse repeated same-stage rows at render
 
 6. Replace the bare `task.autoRetrying === true` checks in `TaskCard.jsx`,
    `TaskDetailOverlayContent.jsx`, and `TaskDetailPageContent.jsx` with one
-   shared helper (put it next to `buildDisplayTimeline` in `taskFormatters.js`,
-   for example `isRetryingSameStage(task)`): true only when `autoRetrying` is
-   set AND the stamped retry stage matches the task's current stage AND the
-   task carries a failure/lastError for this visit. Otherwise fall through to
-   existing FAILED/IN PROGRESS logic, so a moved task shows the new stage name
-   as In progress per the survey.
+   shared helper (put it next to `buildDisplayTimeline` in
+   `taskFormatters.js`, for example `isRetryingSameStage(task)`): true only
+   when `autoRetrying` is set AND the stamped retry stage matches the task's
+   current stage AND the task carries a failure/lastError for this visit.
+   Otherwise fall through to existing FAILED/IN PROGRESS logic, so a moved
+   task shows the new stage name as In progress per the survey.
 7. Keep `stagePace.js` and `retrospectiveStats.js` semantics: auto-retrying
-   tasks still count as running work, but only while the scoped helper is true;
-   a moved task is normal in-progress work, not retry work.
+   tasks still count as running work, but only while the scoped helper is
+   true; a moved task is normal in-progress work, not retry work.
 
 ### Phase 3 — History/timeline: one line per step with a try count
 
@@ -154,6 +162,7 @@ the stage it belongs to, and (2) collapse repeated same-stage rows at render
 - Existing gates: `npm run test:api`, `npm run test:frontend`
   (together `npm run test:unit`), plus `npm run lint:api` /
   `npm run lint:frontend` for touched files.
+- Documentation check: `npm run docs:check` if stage-status docs are touched.
 - Manual check with the headless screenshot tool
   (`npm run capture:screenshot`): open a task mid-transient-retry (shows
   RETRYING, one timeline row with count) and a task just failed back to a new
@@ -173,8 +182,6 @@ the stage it belongs to, and (2) collapse repeated same-stage rows at render
   screenshots in the task (`18851.png`, `18852.png` under `assets/`, not
   present in this checkout) could not be inspected — the plan assumes the
   second shows the timeline spamming the same stage. If the implementing turn
-  finds the assets, confirm the spam shape (same-stage repeats vs.
-  arrival/live-row duplicate already covered by the `duplicateInProgressTimeline`
-  fixture) and adjust step 8 accordingly.
+  finds the assets, confirm the spam shape and adjust step 8 accordingly.
 - Non-goals: no new manual Retry button (survey: automatic retry on error
   only); no changes to retry budgets, delays, or backoff policy.
