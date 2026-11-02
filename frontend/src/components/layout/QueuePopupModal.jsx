@@ -1,4 +1,4 @@
-import React, { useId } from 'react';
+import { useId } from 'react';
 import { useKainBain } from '../../context/KainBainContext';
 import { Modal } from '../Modal';
 import { QueueOrderList } from '../observability/widgets/QueueOrderList';
@@ -126,7 +126,8 @@ export function QueuePopupModal({ onClose, counted, openQueueDepth, engineState 
         </span>
         {countsDiffer && (
           <span className="block mt-1">
-            Failed, cancelled, waiting-human, and human-stage tasks count toward the number but never dispatch. Blocked and paused tasks do list — sorted last with their reason.
+            Failed, cancelled, waiting-human, and human-stage tasks count toward the number but
+            never dispatch. Blocked and paused tasks do list — sorted last with their reason.
           </span>
         )}
       </div>
