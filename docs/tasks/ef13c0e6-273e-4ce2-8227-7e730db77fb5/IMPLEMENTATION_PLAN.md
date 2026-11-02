@@ -254,3 +254,10 @@ wrong and only the adapter (not the plumbing) changes.
 - Meta Model API base URL (`https://api.meta.ai/v1`), model id (`muse-image-1.0`), fal.ai availability and
   $0.01/image pricing appear only in discovery snippets so far — **unverified**, must be confirmed against
   primary docs in Phase 0 before the adapter is written.
+- **As-built (implementation stage):** the Muse adapter in `api/imageGen/providers.js` was written against
+  an assumed OpenAI-compatible contract (`POST {base}/images/generations` with `model`/`prompt`/`size`/`n`/
+  `response_format: b64_json`, `Bearer` auth, `b64_json`-or-`url` response) with a base-URL override
+  (`KAINBAIN_IMAGE_GEN_MUSE_BASE_URL`). This assumption is **still unverified against a live call** — no
+  real key was available in the build environment. Before relying on Muse generation in production, run
+  one live generation via `POST /settings/image-gen/providers/muse/test` (or the Images settings tab's
+  test button) and correct the adapter if Meta's actual schema differs; only that one file should change.
