@@ -14,6 +14,7 @@ import {
 	stripReasoning,
 	validateModelRefShape,
 } from "../shared/modelKeys.js";
+import { buildFleetModelCatalog } from "./flow/dispatch/fleetModelCatalog.js";
 
 /***
  * MARK: aliasTargets (harness-aware alias target rules)
@@ -42,6 +43,73 @@ import {
  * @param {string} harnessId - The harness id to probe.
  * @returns {Promise<Set<string>|null>} Matchable identities, or null when unknown.
  ***/
+/***
+ * MARK: fleetModelIdsByHarness
+ * @description Fleet-served model ids grouped by harness, derived live from
+ *   Runner registrations (the same source as GET /runners/models/catalogue).
+ *   Lets save-time validation accept fleet-only models — e.g. a runner's
+ *   auto-discovered `muse` menu the backend host itself cannot list. Never
+ *   throws: an unreadable registry yields an empty map (unknown fleet warns
+ *   about nothing, like an unreadable catalog).
+ * @example fleetModelIdsByHarness({ list: () => [] }) => Map {}
+ * @param {Object} [runnerRegistry] - Registry with `list()` (route deps).
+ * @returns {Map<string, Set<string>>} Harness id to exact advertised ids.
+ ***/
+export function fleetModelIdsByHarness(runnerRegistry) {
+	const byHarness = new Map();
+	try {
+		const runners = typeof runnerRegistry?.list === "function" ? runnerRegistry.list() : [];
+		for (const entry of buildFleetModelCatalog(runners).models) {
+			if (!entry || typeof entry.id !== "string" || !entry.id) continue;
+			for (const h of entry.harnesses || []) {
+				if (typeof h !== "string" || !h) continue;
+				if (!byHarness.has(h)) byHarness.set(h, new Set());
+				byHarness.get(h).add(entry.id);
+			}
+		}
+	} catch {
+		// Unknown fleet: callers degrade to backend-only probes.
+	}
+	return byHarness;
+}
+
+/***
+ * MARK: fleetAwareValidationProbes
+ * @description Save-time validation probes that union backend-catalogue
+ *   knowledge with fleet availability. `modelIdsFor` accepts fleet-served
+ *   ids (no catalog-miss noise for models runners actually serve);
+ *   `modelSelectionFor` reports `list` for a backend-`none` harness the
+ *   fleet serves (fleet-executed work CAN choose a model there). Without a
+ *   registry both degrade exactly to the backend defaults.
+ * @example fleetAwareValidationProbes(null).modelSelectionFor('muse')
+ * @param {Object} [runnerRegistry] - Registry with `list()` (route deps).
+ * @returns {{modelIdsFor: Function, modelSelectionFor: Function}} Probes.
+ ***/
+export function fleetAwareValidationProbes(runnerRegistry) {
+	const fleet = fleetModelIdsByHarness(runnerRegistry);
+	return {
+		modelIdsFor: async (harnessId) => {
+			let base = null;
+			try {
+				base = await defaultModelIdsFor(harnessId);
+			} catch {
+				base = null;
+			}
+			const extra = fleet.get(harnessId);
+			if ((!base || base.size === 0) && (!extra || extra.size === 0)) return base;
+			const out = new Set(base || []);
+			if (extra) for (const id of extra) out.add(id);
+			return out;
+		},
+		modelSelectionFor: (harnessId) => {
+			if (harnessModelSelection(harnessId) === "list") return "list";
+			const extra = fleet.get(harnessId);
+			if (extra && extra.size > 0) return "list";
+			return harnessModelSelection(harnessId);
+		},
+	};
+}
+
 export async function defaultModelIdsFor(harnessId) {
 	try {
 		if (!hasHarness(harnessId)) return null;
