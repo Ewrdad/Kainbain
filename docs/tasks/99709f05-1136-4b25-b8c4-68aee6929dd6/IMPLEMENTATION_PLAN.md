@@ -1,187 +1,221 @@
-## Goal
+# Implementation Plan: Stop Over-Reporting "Retrying"
 
-Fix the task "Retrying" status so it appears only when the same stage actually
-runs again after a problem, and fix the history/timeline so a stage that ran
-multiple times shows once with a try count instead of spamming one row per
-attempt.
+## Problem summary
 
-Decisions from [SURVEY.md](./SURVEY.md) (binding for this plan):
+Task cards and inspectors currently render `RETRYING` whenever `task.autoRetrying === true`.
+`autoRetrying` is set by both:
 
-- "Retrying" shows only when the same step runs again after a problem.
-- Normal forward movement shows the new step name as In progress.
-- History shows one line per step with a try count (for example "Tried 3 times").
-- Retries happen by themselves only when there is an error (no new manual
-  retry button; no removal of existing recovery controls either).
+1. **True in-place retries** – `handleTransientFailure` (same stage, infra blip) and transient
+   stall recovery. These *should* say "Retrying".
+2. **Cross-stage automatic re-runs** – `handleStageFailure` calls `failbackStage` (which moves
+   the task to another stage) and then `beginAutoIteration` sets `autoRetrying = true`. These
+   have moved stages and therefore should read as normal `IN PROGRESS` / the new stage, not as
+   "Retrying".
 
-## Success Criteria
+The user-facing result is that almost every recovering or advanced task looks like it is
+retrying, and its stage history repeats the same stage many times.
 
-- A task that fails back or advances to a different stage never shows
-  RETRYING; it shows the new stage as In progress (board card, inspector, and
-  detail page agree).
-- A task shows RETRYING only while the same stage is being re-executed after
-  a transient/infrastructure error or an auto-iteration of the same stage.
-- The stage timeline shows one row per stage visit with an attempt count
-  (for example "Retrying — attempt 2/5" collapsed into "Tried 3 times")
-  instead of one "Retrying" row per attempt.
-- The audit log keeps every attempt as evidence but groups or labels repeats
-  so the sequence reads as retries of one stage, not moves between stages.
-- Existing unit suites (`npm run test:unit`, at minimum the task/flow suites
-  below) stay green; new regression tests cover the changed behavior.
+Survey decisions (`SURVEY.md`, Round 1) that this plan follows:
 
-## Approach
+- Q1: "Retrying" appears only when the **same** step runs again after a problem.
+- Q2: when moving forward to the next step, show the **new step name as In progress**.
+- Q3: history shows **one line per step with a try count** (e.g. "Tried 3 times").
+- Q4: retry happens **automatically on error only**; no manual retry control.
 
-Make the change easy first, then make the change.
+## Non-goals / constraints
 
-The root problem is a single boolean with no stage scope. Verified in this
-checkout:
+- Do not change normal success advancement semantics (advance/move to next stage).
+- Do not remove manual retry *backend* entry points used for recovery in tests unless UI
+  controls are removed deliberately in Phase 4.
+- Preserve all run-attribution, diff-stat and timeline ordering invariants.
+- Keep the fix additive and testable (make the easy change first, then the behavior change).
 
-- `api/flow/routing/orchestrators/handleTransientFailure.js:336` sets
-  `task.autoRetrying = true` for a same-stage retry and records one timeline
-  row with status `"Retrying"` per attempt (line 352), plus one `history`
-  entry per attempt (line 340).
-- `api/flow/routing/resolvers/beginAutoIteration.js:32` sets
-  `task.autoRetrying = true` for failback auto-iteration with no stage stamp,
-  so a retry that lands on a *different* stage still reads as retrying.
-- `api/flow/execution/executeStage.js:364` clears `task.autoRetrying = false`
-  only when the next attempt starts, so the stale flag survives the stage
-  move and the UI shows RETRYING for a task that already moved on.
-- The frontend treats the bare flag as "RETRYING wins over everything":
-  `frontend/src/components/tasks/TaskCard.jsx:445`
-  (`task.autoRetrying === true`),
-  `TaskDetailOverlayContent.jsx:335`, `TaskDetailPageContent.jsx:288`
-  (same bare check). Timeline rendering goes through
-  `buildDisplayTimeline` in `frontend/src/components/tasks/taskFormatters.js`.
+## Root-cause touchpoints (verified)
 
-The fix has two halves that must land together: (1) scope the retry signal to
-the stage it belongs to, and (2) collapse repeated same-stage rows at render
-(and stop writing one stored row per attempt where cheap to do so).
+Backend:
+- `api/flow/routing/resolvers/beginAutoIteration.js` – sets `task.autoRetrying = true`
+  unconditionally after a cross-stage failback.
+- `api/flow/routing/orchestrators/handleStageFailure.js` – fails back first, then calls
+  `beginAutoIteration`; the failback has already moved `task.currentStageId`.
+- `api/flow/routing/orchestrators/handleTransientFailure.js` – the legitimate same-stage
+  retry path; already sets `autoRetrying` true on the in-place path and false when parked.
+- `api/flow/stageTransitions.js` (`moveToStage`, `failbackStage`, `advanceStage`) – stage
+  movement and history/timeline writes.
 
-## Steps
+Frontend:
+- `frontend/src/components/tasks/TaskCard.jsx` (`isRetrying = task.autoRetrying === true`)
+- `frontend/src/components/tasks/TaskDetailPageContent.jsx`
+- `frontend/src/components/tasks/TaskDetailOverlayContent.jsx`
+- `frontend/src/components/tasks/taskFormatters.js` (`selectDisplayTimeline`,
+  `buildDisplayTimeline`) – history de-duplication only removes *exact* duplicates, so a
+  stage that repeatedly fails and re-runs produces many near-identical rows.
 
-### Phase 0 — Characterization (make the change easy; no behavior change)
+## Phase plan (make the easy change first)
 
-Biggest unknown first: pin the buggy behavior with reproduction fixtures
-before touching logic.
+### Phase 0 – Characterization and fixtures (no production change)
 
-1. Add failing-first reproduction fixtures:
-   - Backend: task that transient-retries in stage A (two
-     `handleTransientFailure` calls), then a task that auto-iterates/fails
-     back from stage B to stage A. Assert current (buggy) observable:
-     `autoRetrying === true` while `currentStageId` differs from the retried
-     stage; timeline contains N same-stage "Retrying" rows.
-   - Frontend: extend `frontend/src/components/tasks/__fixtures__/`
-     with a same-stage retry sequence; assert current row count. Keep the
-     existing duplicate-arrival fixture green.
-2. Map every reader/writer of `autoRetrying` and every writer of the
-   `"Retrying"` timeline status. Known so far: writers
-   `handleTransientFailure.js`, `beginAutoIteration.js`, `executeStage.js`
-   (clear), plus `resetAttemptBudgets.js`, `deferForCircuitTrip.js`,
-   `settleOperatorAbort.js`; readers `TaskCard.jsx`,
-   `TaskDetailOverlayContent.jsx`, `TaskDetailPageContent.jsx`,
-   `stagePace.js`, `retrospectiveStats.js`. Record the final inventory in
-   the implementing PR description.
+1. Re-read existing tests:
+   - `api/flow/stageFailureRouting.test.js`
+   - `frontend/src/components/tasks/TaskCard.test.jsx`
+   - `frontend/src/components/tasks/TaskDetailPage.test.jsx`
+   - `frontend/src/components/tasks/taskFormatters.test.js`
+2. Add minimal debug logging only if needed; prefer unit tests.
+3. Confirm a reproducing timeline (task with >= 2 failback cycles) from stored fixtures.
 
-### Phase 1 — Backend: scope the retry signal to the retried stage
+Deliverable: failing/characterization tests that assert the desired semantics
+(passing only after later phases).
 
-3. Stamp the retry with its stage: when setting `task.autoRetrying = true`,
-   also record which stage is being retried and the attempt/budget
-   (for example `task.retryStageId` / `task.retryAttempt` /
-   `task.retryMaxAttempts`; reuse `transientRetryLadder` and
-   `autoIterationCount` where they already exist). Clear all three wherever
-   `autoRetrying` is cleared today (`executeStage.js`,
-   `resetAttemptBudgets.js`, `settleOperatorAbort.js`,
-   `deferForCircuitTrip.js`, exhaustion/parked paths).
-4. Stop the flag from leaking across stage moves: any transition that changes
-   `task.currentStageId` to a different stage (failback, `moveToStage`,
-   scheduler dispatch of another stage) clears `autoRetrying` unless the new
-   stage equals the stamped retry stage. The invariant: `autoRetrying === true`
-   implies "the task's current stage is the stage being retried".
-5. Distinguish the two retry kinds in the returned status/history:
-   - Same-stage transient retry keeps working as today but writes at most one
-     stored "Retrying" timeline row per stage visit (update attempt count on
-     the existing row instead of appending), OR keeps appending and leaves
-     collapsing to the frontend (decide in Phase 0 based on which writers
-     tests already pin; prefer single-row-update since the survey wants one
-     line per step).
-   - Failback auto-iteration that lands on a different stage must not produce
-     a "retrying" status at all — it is forward movement; record it as a
-     normal move/failback row.
+### Phase 1 – Extract a single classification helper (make change easy)
 
-### Phase 2 — Frontend: derive RETRYING from scoped state
+Create one shared predicate so UI and tests stop reading `autoRetrying` directly:
 
-6. Replace the bare `task.autoRetrying === true` checks in `TaskCard.jsx`,
-   `TaskDetailOverlayContent.jsx`, and `TaskDetailPageContent.jsx` with one
-   shared helper (put it next to `buildDisplayTimeline` in
-   `taskFormatters.js`, for example `isRetryingSameStage(task)`): true only
-   when `autoRetrying` is set AND the stamped retry stage matches the task's
-   current stage AND the task carries a failure/lastError for this visit.
-   Otherwise fall through to existing FAILED/IN PROGRESS logic, so a moved
-   task shows the new stage name as In progress per the survey.
-7. Keep `stagePace.js` and `retrospectiveStats.js` semantics: auto-retrying
-   tasks still count as running work, but only while the scoped helper is
-   true; a moved task is normal in-progress work, not retry work.
+- Frontend helper (recommended location: `frontend/src/components/tasks/stagePace.js` or
+  a new `taskRetryState.js`):
+  ```
+  isRetryInProgress(task) =>
+    task?.autoRetrying === true &&
+    (task.currentStageId === task.lastError?.stageId ||
+     !task.lastError?.stageId)
+  ```
+  Rationale: a true in-place retry is one where the task is still sitting in the failed
+  stage; once failback moves it elsewhere, the predicate becomes false.
 
-### Phase 3 — History/timeline: one line per step with a try count
+- Export matching backend expression in `beginAutoIteration` for future API consumers:
+  document whether the iteration moved stages.
 
-8. Collapse consecutive same-stage "Retrying" rows in `buildDisplayTimeline`
-   (so all three views — overlay, detail page, survey panel — inherit it):
-   one row per stage visit showing the attempt count (for example status text
-   "Retrying ×3" or duration/reason suffix "Tried 3 times"), preserving the
-   newest reason, timestamp, and run attribution. Never collapse across
-   different stages or across a Failed/Completed boundary.
-9. Group the audit log (`history` array rendering in `TaskHistoryTab.jsx` /
-   `TaskDetailHistoryPane.jsx`) the same way: keep every attempt entry in
-   stored data, but render repeats of the identical same-stage retry action as
-   one expandable/grouped line with a count. Exact-match dedupe already exists;
-   extend it to prefix-match the transient-retry action text.
+No behavior change yet; add unit tests for the helper.
 
-### Phase 4 — Docs and cleanup
+### Phase 2 – Backend: distinguish in-place retry from cross-stage auto iteration (the change)
 
-10. Update user-facing wording docs that describe RETRYING (inspector tab
-    description mentioning "retries", any stage-status docs under
-    `site-docs/` and `docs/`) to state the new rule: same-stage re-run only.
-11. Remove or correct stale comments that say "auto-retrying tasks count as
-    running work" where the scoping changed them; add a short comment at the
-    new helper stating the invariant from step 4.
+In `beginAutoIteration(task, stage, error, project)`:
 
-## Validation Plan
+1. Capture the failed stage id before failback logic (already available as `stage?.id`).
+2. After `failbackStage` has potentially moved `task.currentStageId`, compare:
+   - `moved = String(task.currentStageId) !== String(stage?.id)`.
+3. Set:
+   - `task.autoRetrying = !moved`
+   - `task.autoIterating = true` when moved (new field; keeps the concept alive for UI/counting).
+   - Increment `task.autoIterationCount` as before.
+4. Keep returning `{ maxAttempts }` unchanged.
 
-- New regression tests (written in Phase 0, green after Phases 1–3):
-  - `api/flow/transientRetryPolicy.test.js` (or `stageFailureRouting.test.js`):
-    transient retry in stage A then simulated move to stage B clears
-    `autoRetrying`; same-stage retry keeps it with the stage stamp.
-  - `api/flow/stageFailureRouting.test.js`: failback auto-iteration to a
-    different stage returns a non-"retrying" status and a move/failback
-    timeline row, not "Retrying".
-  - `frontend/src/components/tasks/taskFormatters.test.js`: N same-stage
-    "Retrying" stored rows render as one row with count 3; rows across
-    different stages are untouched.
-  - `TaskCard.test.jsx` / `TaskDetailPage.test.jsx`: task with
-    `autoRetrying: true` but `currentStageId` different from the retry stage
-    renders IN PROGRESS (new stage), not RETRYING; same-stage renders RETRYING.
-- Existing gates: `npm run test:api`, `npm run test:frontend`
-  (together `npm run test:unit`), plus `npm run lint:api` /
-  `npm run lint:frontend` for touched files.
-- Documentation check: `npm run docs:check` if stage-status docs are touched.
-- Manual check with the headless screenshot tool
-  (`npm run capture:screenshot`): open a task mid-transient-retry (shows
-  RETRYING, one timeline row with count) and a task just failed back to a new
-  stage (shows new stage In progress, no RETRYING). No long-lived servers.
+Also update `resetAttemptBudgets` and `resetAutoIteration` (if present) to clear both
+`autoRetrying` and `autoIterating`.
 
-## Risks / Open Questions
+Expected backend behavior:
+- Transient same-stage infra blip: `autoRetrying=true`, `autoIterating=false`.
+- Failback to another (or same via fallback policy) stage: if the destination equals the
+  failed stage, still `autoRetrying=true`; otherwise `autoRetrying=false`.
 
-- Risk: external consumers keying on `autoRetrying === true` (alerts, webhooks,
-  `stage:retry` process events). Mitigation: keep the boolean for
-  compatibility; the stage stamp is additive, and events keep firing.
-- Risk: collapsing stored timeline rows could destroy per-attempt forensics.
-  Mitigation: collapse at display time by default; if Phase 0 shows stored-row
-  update is risky, keep appending in storage and collapse only in
-  `buildDisplayTimeline` (attempt count derived from the run, ladder kept in
-  `transientRetryLadder`).
-- Open question (checked against the repo; no replay data available): the two
-  screenshots in the task (`18851.png`, `18852.png` under `assets/`, not
-  present in this checkout) could not be inspected — the plan assumes the
-  second shows the timeline spamming the same stage. If the implementing turn
-  finds the assets, confirm the spam shape and adjust step 8 accordingly.
-- Non-goals: no new manual Retry button (survey: automatic retry on error
-  only); no changes to retry budgets, delays, or backoff policy.
+Tests to update/add:
+- `backend`: extend `stageFailureRouting.test.js` assertions:
+  - cross-stage failback with `autoIterationEnabled` now expects `autoRetrying === false`
+    and `autoIterating === true`.
+  - same-stage fallback (first stage failure) expects `autoRetrying === true`.
+
+### Phase 3 – UI: render `RETRYING` only for in-place retries
+
+Replace direct reads in all three components:
+- `TaskCard.jsx`
+- `TaskDetailPageContent.jsx`
+- `TaskDetailOverlayContent.jsx`
+
+Use:
+```
+const isRetrying = isRetryInProgress(task);
+```
+
+For non-in-place auto iteration, the status label falls through to the normal branch:
+- Task card: `RUNNING`.
+- Detail pages: `IN PROGRESS`.
+
+This directly implements Q1/Q2: a moved task no longer says "Retrying"; it shows the new
+stage / in-progress state.
+
+Update tests:
+- `TaskCard.test.jsx`, `TaskDetailPage.test.jsx`: adjust fixtures where
+  `autoRetrying: true` is used to simulate cross-stage iteration; add `autoIterating` if
+  needed. Preserve cases that simulate a real in-place retry
+  (`currentStageId === lastError.stageId`).
+
+### Phase 4 – Remove manual retry as a primary UI affordance (survey Q4)
+
+If product decision remains "automatic only on error":
+
+1. Hide/remove manual "Retry Stage" controls in:
+   - `TaskDetailPageContent.jsx` (and related tab content)
+   - `TaskDetailOverlayContent.jsx`
+2. Keep backend manual retry endpoint for emergency operator usage (do not delete yet) but
+   deprecate in UI.
+3. Update a11y/keyboard tests and add a migration note in docs.
+
+Risk: High operator impact. Recommend doing this only after Phase 2/3 landed and verified.
+
+### Phase 5 – History: one line per stage with try count (survey Q3)
+
+Current behavior (`selectDisplayTimeline`) de-duplicates *exact* duplicates (`stage +
+timestamp + status + duration`), so repeated Fail/Failed-back/Moved rows all survive.
+
+Implement a new projection layer (display only, never mutate stored timeline):
+
+1. Add `summarizeStageRuns(entries, stages)` in `taskFormatters.js`:
+   - Group entries by resolved stage label.
+   - For repeated entries (same stage), collapse to **one row**.
+   - Add `tryCount` (number of attempts observed for that stage) and render text
+     `Tried {count} times` when `count > 1`.
+   - Keep the latest status/reason and latest run-attribution.
+2. `buildDisplayTimeline` calls the grouper before reversing, and preserves special rows:
+   - Live Active row logic stays unchanged.
+   - Failed outcome rows still show failure reasons but are counted as attempts.
+3. Keep exact-dedup first to avoid double collapse; then group.
+
+Try-count source options (choose one in implementation, document decision):
+- Count timeline rows per stage (simplest, no schema migration).
+- Or read `task.autoIterationCount` (global, not per stage; less precise).
+Recommend counting observed rows per stage, capped at a sensible maximum (e.g. 99).
+
+Tests to add:
+- `taskFormatters.test.js`: repeated same-stage rows collapse to one with `tryCount > 1`.
+- `TaskDetailPage.test.jsx`/overlay: history renders "Tried N times".
+
+### Phase 6 – Documentation, tests, and verification
+
+1. Update `README_IMPLEMENTATION.md` / stage docs if retry semantics are described.
+2. Update component JSDoc comments where `autoRetrying` is interpreted.
+3. Run:
+   - `npm run test:unit` (frontend + API).
+   - targeted:
+     - `npm test --prefix frontend -- src/components/tasks/...` (as repo supports)
+     - `node --test api/flow/stageFailureRouting.test.js`
+4. Manual checks:
+   - Trigger transient infra failure on same stage → card shows `RETRYING`.
+   - Trigger stage failure that failbacks to a different stage → card shows
+     `IN PROGRESS`/new stage, not `RETRYING`.
+   - History for 3 repeated stage attempts shows one line `Tried 3 times`.
+   - No status flicker from `RETRYING` to `IN PROGRESS` on normal advance.
+
+## Rollback strategy
+
+- Phase 1 (helper) and Phase 2 (backend flag split) are additive; to rollback, map
+  `autoIterating` back onto `autoRetrying` in the UI helper and restore original
+  `beginAutoIteration` behavior.
+- Phase 5 history grouping is display-only; rollback by removing the grouper.
+- Keep `autoRetrying` as the final API-facing retry flag to avoid breaking older clients.
+
+## Risk register
+
+- Misclassifying a same-stage auto iteration if fallback policy lands on the same stage:
+  handled by comparing destination to failed stage id.
+- Hidden tests may assert old `autoRetrying=true` on cross-stage failback; Phase 2 updates
+  those tests intentionally because the old behavior is the bug.
+- History grouping could hide distinct failure reasons; mitigated by counting + preserving
+  latest reason, and by not grouping `Failed` outcome details beyond display.
+- Manual retry removal in Phase 4 is user-visible; keep behind a feature flag initially if
+  uncertainty remains.
+
+## Acceptance criteria
+
+1. A task that moves stages after failure never displays status `RETRYING`.
+2. A task retrying in place still displays status `RETRYING`.
+3. Timeline shows one row per stage with a try count when repeated attempts occur.
+4. No manual retry affordance when Phase 4 is enabled (or it is explicitly deferred).
+5. Unit tests pass for affected files.
