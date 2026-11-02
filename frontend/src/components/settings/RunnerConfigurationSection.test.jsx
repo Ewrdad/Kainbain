@@ -215,10 +215,7 @@ describe('RunnerConfigurationSection', () => {
     render(<RunnerConfigurationSection />);
     await screen.findByTestId('runner-detail-r1');
     // The revoked record stays in the backend list; the screen filters it.
-    getRunners.mockResolvedValue([
-      { ...ACTIVE_RUNNER, status: 'revoked' },
-      { ...PENDING_RUNNER },
-    ]);
+    getRunners.mockResolvedValue([{ ...ACTIVE_RUNNER, status: 'revoked' }, { ...PENDING_RUNNER }]);
     fireEvent.click(screen.getByRole('button', { name: 'Revoke runner r1' }));
     await waitFor(() => {
       expect(revokeRunner).toHaveBeenCalledWith('r1');
@@ -229,6 +226,27 @@ describe('RunnerConfigurationSection', () => {
     expect(screen.queryByTestId('runner-detail-r1')).toBeNull();
     expect(screen.getByTestId('runner-row-r2')).toBeTruthy();
     expect(screen.getByTestId('runner-detail-r2')).toBeTruthy();
+  });
+
+  it('guides the operator when the selected Runner vanishes without a roster reload', async () => {
+    runnersFixture([ACTIVE_RUNNER, PENDING_RUNNER]);
+    render(<RunnerConfigurationSection />);
+    fireEvent.click(await screen.findByTestId('runner-select-r2'));
+    await screen.findByTestId('runner-detail-r2');
+    // Another operator revoked r2 mid-session: the reload merges the revoked
+    // record, the roster filter drops its row, and the stale selection must
+    // render guidance — never a revoked detail panel, never a blank column.
+    getRunnerConfig.mockResolvedValue({ ...PENDING_RUNNER, status: 'revoked' });
+    fireEvent.click(screen.getByTestId('runner-reload-r2'));
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-detail-empty')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('runner-row-r2')).toBeNull();
+    expect(screen.queryByTestId('runner-detail-r2')).toBeNull();
+    expect(screen.getByTestId('runner-row-r1')).toBeTruthy();
+    expect(screen.getByTestId('runner-detail-empty')).toHaveTextContent(
+      'Select a Runner on the left',
+    );
   });
 
   it('lays the roster and detail side by side with the detail on the right', async () => {
@@ -508,7 +526,14 @@ describe('RunnerConfigurationSection', () => {
     runnersFixture([ACTIVE_RUNNER]);
     getRunnerMonitor.mockResolvedValue({
       liveAssignments: [],
-      scheduler: { ticks: 41, dispatched: 3, deferredDispatch: 12, deferredTripped: 0, lastOutcome: 'deferred-runner-dispatch', lastDispatchAt: null },
+      scheduler: {
+        ticks: 41,
+        dispatched: 3,
+        deferredDispatch: 12,
+        deferredTripped: 0,
+        lastOutcome: 'deferred-runner-dispatch',
+        lastDispatchAt: null,
+      },
     });
     render(<RunnerConfigurationSection />);
     await waitFor(() => {
@@ -519,9 +544,7 @@ describe('RunnerConfigurationSection', () => {
   });
 
   it('never renders credential values', async () => {
-    runnersFixture([
-      { ...ACTIVE_RUNNER, credential: 'SHOULD-NOT-RENDER' },
-    ]);
+    runnersFixture([{ ...ACTIVE_RUNNER, credential: 'SHOULD-NOT-RENDER' }]);
     const { container } = render(<RunnerConfigurationSection />);
     await screen.findByTestId('runner-detail-r1');
     expect(container.textContent).not.toContain('SHOULD-NOT-RENDER');

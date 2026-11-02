@@ -14,6 +14,8 @@ import {
   validateDirectories,
   visibleRunners,
   resolveSelectedId,
+  runRunnerAction,
+  describeRunnerVersion,
 } from './runnerConfigHelpers';
 
 /***
@@ -63,9 +65,9 @@ describe('runnerConfigHelpers', () => {
 
   it('falls back to the Runner id for display', () => {
     expect(runnerDisplayName({ runnerId: 'r1' })).toBe('r1');
-    expect(
-      runnerDisplayName({ runnerId: 'r1', operatorConfig: { displayName: 'Primary' } }),
-    ).toBe('Primary');
+    expect(runnerDisplayName({ runnerId: 'r1', operatorConfig: { displayName: 'Primary' } })).toBe(
+      'Primary',
+    );
   });
 
   it('reads advertised tools and prefers the operator subset', () => {
@@ -73,9 +75,9 @@ describe('runnerConfigHelpers', () => {
     expect(advertisedToolIds(runner)).toEqual(['pi', 'vibe']);
     expect(advertisedToolIds({})).toEqual([]);
     expect(effectiveTools(runner)).toEqual(['pi', 'vibe']);
-    expect(
-      effectiveTools({ ...runner, operatorConfig: { availableTools: ['pi'] } }),
-    ).toEqual(['pi']);
+    expect(effectiveTools({ ...runner, operatorConfig: { availableTools: ['pi'] } })).toEqual([
+      'pi',
+    ]);
   });
 
   it('resolves loaded projects from override, scope, or all', () => {
@@ -157,10 +159,88 @@ describe('runnerConfigHelpers', () => {
     expect(resolveSelectedId(null, null)).toBeNull();
   });
 
+  it('skips roster records without a usable Runner id when resolving selection', () => {
+    const visible = [{ status: 'active' }, { runnerId: '' }, { runnerId: 'b' }];
+    expect(resolveSelectedId(visible, 'a')).toBe('b');
+    expect(resolveSelectedId(visible, null)).toBe('b');
+    expect(resolveSelectedId([{ status: 'active' }, null], 'a')).toBeNull();
+  });
+
+  it('ignores a non-string previous selection instead of matching it', () => {
+    const visible = [{ runnerId: 'a' }, { runnerId: 'b' }];
+    expect(resolveSelectedId(visible, 42)).toBe('a');
+    expect(resolveSelectedId(visible, {})).toBe('a');
+  });
+
+  it('sends each lifecycle action to its own endpoint', () => {
+    const calls = [];
+    const runnerApi = {
+      approveRunner: (id) => calls.push(['approve', id]),
+      denyRunner: (id) => calls.push(['deny', id]),
+      pauseRunner: (id) => calls.push(['pause', id]),
+      resumeRunner: (id) => calls.push(['resume', id]),
+      revokeRunner: (id) => calls.push(['revoke', id]),
+    };
+    for (const action of ['approve', 'deny', 'pause', 'resume', 'revoke']) {
+      runRunnerAction({ runnerApi, runnerId: 'r1', action });
+    }
+    expect(calls).toEqual([
+      ['approve', 'r1'],
+      ['deny', 'r1'],
+      ['pause', 'r1'],
+      ['resume', 'r1'],
+      ['revoke', 'r1'],
+    ]);
+  });
+
+  it('refuses unknown actions without calling any endpoint (never a revoke)', () => {
+    const runnerApi = {
+      approveRunner: () => {
+        throw new Error('must not approve');
+      },
+      denyRunner: () => {
+        throw new Error('must not deny');
+      },
+      pauseRunner: () => {
+        throw new Error('must not pause');
+      },
+      resumeRunner: () => {
+        throw new Error('must not resume');
+      },
+      revokeRunner: () => {
+        throw new Error('must not revoke');
+      },
+    };
+    for (const action of ['resum', 'APPROVE', '', null, undefined, 42]) {
+      expect(runRunnerAction({ runnerApi, runnerId: 'r1', action })).toBeNull();
+    }
+  });
+
+  it('prefers the top-level Runner version over the nested facts copy', () => {
+    expect(describeRunnerVersion({ runnerVersion: '0.3.0' })).toBe('0.3.0');
+    expect(
+      describeRunnerVersion({
+        runnerVersion: '0.3.0',
+        facts: { versions: { runner: '0.1.0' } },
+      }),
+    ).toBe('0.3.0');
+  });
+
+  it('falls back to the nested facts version when the top level is missing', () => {
+    expect(describeRunnerVersion({ facts: { versions: { runner: '0.1.0' } } })).toBe('0.1.0');
+  });
+
+  it('reports no version for missing or wrong-typed version fields', () => {
+    expect(describeRunnerVersion({})).toBeNull();
+    expect(describeRunnerVersion(undefined)).toBeNull();
+    expect(describeRunnerVersion({ runnerVersion: 42 })).toBeNull();
+    expect(describeRunnerVersion({ runnerVersion: '' })).toBeNull();
+    expect(describeRunnerVersion({ facts: { versions: { runner: 42 } } })).toBeNull();
+    expect(describeRunnerVersion({ facts: null })).toBeNull();
+  });
+
   it('requires both directory paths', () => {
-    expect(validateDirectories({ masterDir: '/srv/kb', worktreeDir: '/srv/trees' }).ok).toBe(
-      true,
-    );
+    expect(validateDirectories({ masterDir: '/srv/kb', worktreeDir: '/srv/trees' }).ok).toBe(true);
     const bad = validateDirectories({ masterDir: '  ', worktreeDir: '' });
     expect(bad.ok).toBe(false);
     expect(bad.errors.masterDir).toBeTruthy();
