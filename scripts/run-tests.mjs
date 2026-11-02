@@ -394,6 +394,7 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 				"runner/gitOps.test.js",
 				"runner/harness.test.js",
 				"runner/logEvents.test.js",
+				"runner/modelDiscovery.test.js",
 				"runner/project.test.js",
 				"runner/updates-check.test.js",
 				"runner/updates-daemon.test.js",
