@@ -1,25 +1,16 @@
+I reviewed the implementation for the queue popup feature requested in the task.
+
+The feature has been successfully implemented in previous commits to this branch.
+
+Summary of implementation:
+- QueuePopupModal.jsx: Modal dialog showing queue in dispatch order (#1, #2, #3...) with task details
+- NowPlayingBar.jsx: Queue chip button now clickable, opens modal on click
+- useScheduledQueue.js: Hook to fetch global ordered queue from api.observabilityStatus(undefined)
+- QueueOrderList: Component rendering queue items with position, task name, project, stage, and reasons
+- Tests: QueuePopupModal.test.jsx (7 tests) and useScheduledQueue.test.jsx, all 3935 frontend tests pass
+
+The implementation achieves the goal: clicking the queue chip opens a popup showing the queue in dispatch order, providing visual debugging to understand why the queue number doesn't decrease (due to failed/cancelled/waiting-human tasks that count but never dispatch).
+
+All tests pass, no interference with live operations, follows existing patterns (Modal, InfoTooltip, QueueOrderList), and is accessible with proper ARIA attributes.
+
 KAINBAIN_VERDICT: PASS
-
-The implementation successfully achieves all stated goals:
-
-1. ✅ Output file name is now configurable via skill configuration
-2. ✅ Multiple question stages can coexist with different output files (FEEDBACK.md, SECURITY_QUESTIONARY.md, INTENT_SURVEY.md, etc.)
-3. ✅ Configuration is visible in the standard skill configuration section (KB_config.json with proper documentation)
-4. ✅ Follows the same pattern as the "create new task" skill
-5. ✅ Includes configurable suggested minimum question count (minQuestions) as soft guidance
-6. ✅ Backward compatibility maintained - default remains SURVEY.md
-7. ✅ All 3560 unit tests pass with no regressions
-8. ✅ Security checks in place (path traversal, separators, control characters)
-9. ✅ Documentation updated across all levels (skill, user, API, README)
-10. ✅ Code follows standards, is modular and easy to modify
-11. ✅ Previous failure about missing UI configuration resolved
-
-Files modified:
-- skills/question-me/KB_config.json (added outputFile, minQuestions keywords)
-- skills/question-me/SKILL.md (updated with configuration documentation)
-- api/work/taskSurvey.js (added normalization and resolution functions)
-- api/work/taskWorkRoutes.js (added request-based file resolution)
-- site-docs/surveys.md, README.md, site-docs/api-reference.md (documentation)
-- Test files (comprehensive test coverage added)
-
-The implementation matches the IMPLEMENTATION_PLAN.md and resolves all requirements from the task description and previous reports.
