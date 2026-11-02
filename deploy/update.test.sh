@@ -64,5 +64,25 @@ JSON
 (cd "$CASE_DIR/install" && ./update.sh --dist-dir "$CASE_DIR/dist" >/dev/null); rc=$?
 check "absent: exit 0" test "$rc" = 0
 check "absent: only backend redeployed" bash -c "grep -q 'redeploy --backend' '$SHIM_LOG' && ! grep -q 'redeploy --frontend' '$SHIM_LOG' && ! grep -q 'redeploy --runner' '$SHIM_LOG'"
+# 7. --expect-commit matching the published commit passes.
+setup_case
+(cd "$CASE_DIR/install" && ./update.sh --expect-commit new --dist-dir "$CASE_DIR/dist" >/dev/null); rc=$?
+check "expect: match exit 0" test "$rc" = 0
+# 8. --expect-commit mismatch on the already-current path fails loudly.
+setup_case; cp "$CASE_DIR/dist/release-manifest.json" "$CASE_DIR/install/release-manifest.json"
+(cd "$CASE_DIR/install" && ./update.sh --expect-commit stranded --dist-dir "$CASE_DIR/dist" >/dev/null 2>&1); rc=$?
+check "expect: stranded exit 1" test "$rc" = 1
+# 9. --expect-commit mismatch after a real update still fails (installed != expected).
+setup_case
+(cd "$CASE_DIR/install" && ./update.sh --expect-commit wrong --dist-dir "$CASE_DIR/dist" >/dev/null 2>&1); rc=$?
+check "expect: wrong exit 1" test "$rc" = 1
+check "expect: installed the published commit anyway" grep -q '"commit":"new"' "$CASE_DIR/install/release-manifest.json"
+# 10. $KAINBAIN_EXPECT_COMMIT env form behaves like the flag.
+setup_case
+(cd "$CASE_DIR/install" && KAINBAIN_EXPECT_COMMIT=new ./update.sh --dist-dir "$CASE_DIR/dist" >/dev/null); rc=$?
+check "expect: env match exit 0" test "$rc" = 0
+setup_case; cp "$CASE_DIR/dist/release-manifest.json" "$CASE_DIR/install/release-manifest.json"
+(cd "$CASE_DIR/install" && KAINBAIN_EXPECT_COMMIT=stranded ./update.sh --dist-dir "$CASE_DIR/dist" >/dev/null 2>&1); rc=$?
+check "expect: env stranded exit 1" test "$rc" = 1
 [ "$FAIL" = 0 ] && echo "update.test.sh: ALL PASS" || echo "update.test.sh: FAILURES"
 exit $FAIL

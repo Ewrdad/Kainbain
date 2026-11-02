@@ -88,6 +88,22 @@ describe("normalizeStage", () => {
 		const legacy = { id: "s1", name: "Ship", type: "deploy" };
 		expect(normalizeStage(legacy)).toEqual({ id: "s1", name: "Ship", type: "ci" });
 	});
+
+	it("leaves stages without a runnerPolicy untouched (no key stamped)", () => {
+		expect("runnerPolicy" in normalizeStage({ id: "1", type: "agent" })).toBe(false);
+	});
+
+	it("preserves a valid runnerPolicy and cleans its runner list", () => {
+		expect(
+			normalizeStage({ id: "1", type: "ci", runnerPolicy: { mode: " Allow ", runners: ["  r1 ", "r1", "r2"] } }).runnerPolicy,
+		).toEqual({ mode: "allow", runners: ["r1", "r2"] });
+	});
+
+	it("drops an empty or malformed runnerPolicy (unrestricted) on save", () => {
+		expect("runnerPolicy" in normalizeStage({ id: "1", type: "agent", runnerPolicy: { mode: "allow", runners: [] } })).toBe(false);
+		expect("runnerPolicy" in normalizeStage({ id: "1", type: "agent", runnerPolicy: { mode: "only", runners: ["r1"] } })).toBe(false);
+		expect("runnerPolicy" in normalizeStage({ id: "1", type: "agent", runnerPolicy: "allow" })).toBe(false);
+	});
 });
 
 describe("migrateMergeDeployStages", () => {

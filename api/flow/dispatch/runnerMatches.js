@@ -1,6 +1,41 @@
 import { RUNNER_PROTOCOL } from "../runnerRegistry.js";
 import { runnerApiCompatible } from "./runnerApiCompat.js";
 import { operatorConfigVerdict } from "./operatorConfigVerdict.js";
+import { stageRunnerPolicyVerdict } from "../../../shared/stageRunnerPolicy.js";
+
+/***
+ * MARK: effectiveRunnerModels
+ * @description The model ids one Runner may serve: the operator-owned
+ *   `availableModels` allowlist when set (System Settings › Runners ›
+ *   Models — it replaces the advertised list so an under-reporting Runner
+ *   can serve declared models), otherwise the Runner-advertised
+ *   capabilities list. Single enforcement point shared by the dispatch
+ *   gate below and the fleet model catalogue, so the two can never drift.
+ * @example effectiveRunnerModels({ capabilities: { models: ['m1'] } }) => ['m1']
+ * @param {Object} [record={}] - Runner record.
+ * @returns {string[]} Effective model ids (possibly empty).
+ ***/
+export function effectiveRunnerModels(record = {}) {
+	const override = record?.operatorConfig?.availableModels;
+	if (Array.isArray(override)) return override;
+	const caps = record?.capabilities && typeof record.capabilities === "object" ? record.capabilities : {};
+	return Array.isArray(caps.models) ? caps.models : [];
+}
+
+/***
+ * MARK: claimEligibleRunner
+ * @description Whether one Runner registration can take ANY work right now:
+ *   active status and not paused — the same two gates `runnerMatches`
+ *   applies before per-task requirements. The fleet model catalogue counts
+ *   only eligible Runners, so "available on N runners" always names
+ *   Runners that could actually claim.
+ * @example claimEligibleRunner({ status: 'active', paused: false }) => true
+ * @param {Object} [record={}] - Runner record.
+ * @returns {boolean} Eligibility.
+ ***/
+export function claimEligibleRunner(record = {}) {
+	return record?.status === "active" && record?.paused !== true;
+}
 
 /***
  * MARK: runnerMatches
@@ -12,7 +47,11 @@ import { operatorConfigVerdict } from "./operatorConfigVerdict.js";
  *   reason code is loud by design (step-6 NO_CAPABLE_RUNNER diagnostics
  *   and the monitor surface distinguish "no runners" from "runners that
  *   cannot take this job"). Alias requirements always miss here; WP-3.2
- *   resolves them centrally first.
+ *   resolves them centrally first. The last two gates are owner settings:
+ *   the Runner's own `operatorConfig` first, then the stage's
+ *   `runnerPolicy` (`RUNNER_NOT_ALLOWED` / `RUNNER_BLOCKED`) — owner
+ *   settings keep a stable order so combined refusals always report the
+ *   same reason.
  * @example runnerMatches(record, { harness: 'pi', tier: 'T1' }) => { ok: true, reason: 'MATCH' }
  * @param {Object} record - Registry record (`status`, `facts`, `lastSeenAt`, `capabilities`, plus the operator-owned `operatorConfig` the Runners settings screen persists).
  * @param {Object} req - Task requirements from `taskRequirements`.
@@ -60,8 +99,8 @@ export function runnerMatches(record = {}, req = {}, opts = {}) {
 		}
 	}
 	if (req.model) {
-		const models = Array.isArray(caps.models) ? caps.models : [];
-		if (!models.includes(req.model)) return { ok: false, reason: "NO_MODEL" };
+		if (!effectiveRunnerModels(record).includes(req.model))
+			return { ok: false, reason: "NO_MODEL" };
 	}
 	if (req.tier) {
 		const tiers = Array.isArray(caps.tiers) ? caps.tiers : [];
@@ -79,5 +118,11 @@ export function runnerMatches(record = {}, req = {}, opts = {}) {
 	// can bypass the operator's settings.
 	const operatorVerdict = operatorConfigVerdict(record, req, opts);
 	if (!operatorVerdict.ok) return operatorVerdict;
+	// Stage runnerPolicy (the stage settings allow/block list) is the final
+	// gate: after the operator's own settings, so a Runner refused by both
+	// always reports the operator reason, and after every health/capability
+	// gate so those keep their stable reasons too.
+	const policyVerdict = stageRunnerPolicyVerdict(req.runnerPolicy, record.runnerId);
+	if (!policyVerdict.ok) return policyVerdict;
 	return { ok: true, reason: "MATCH" };
 }

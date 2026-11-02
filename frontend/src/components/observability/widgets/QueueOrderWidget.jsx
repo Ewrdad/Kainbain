@@ -7,7 +7,7 @@ import { QueueOrderList } from './QueueOrderList';
  * `schedulerRunning`) and maps it onto the presentational list's `items`.
  * The shared `QueueOrderList` is the single source for the queue rendering,
  * so this widget never forks its markup.
-@example <QueueOrderWidget scheduledQueue={queue} engineState={engineState} schedulerRunning={true} />
+ * @example <QueueOrderWidget scheduledQueue={queue} engineState={engineState} schedulerRunning={true} />
  ***/
 export function QueueOrderWidget(props) {
   const items = Array.isArray(props?.scheduledQueue) ? props.scheduledQueue : props?.items;

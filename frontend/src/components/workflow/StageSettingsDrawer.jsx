@@ -2,6 +2,7 @@ import { InfoTooltip } from '../common/InfoTooltip';
 import { SelectDropdown } from '../common/SelectDropdown';
 import { StageTypeConfig } from './StageTypeConfig';
 import { StageTagEditor } from './StageTagEditor';
+import { StageRunnerPolicyEditor } from './StageRunnerPolicyEditor';
 import { availableStageTags, normalizeStageTags } from '../../../../shared/stageTags.js';
 
 /***
@@ -213,6 +214,16 @@ export function StageSettingsDrawer({
                 />
               </div>
             </div>
+
+            {/* Runner allow/block list — which Runners may take this stage. */}
+            <StageRunnerPolicyEditor
+              value={stage.runnerPolicy}
+              stageName={stage.name}
+              stageType={stage.type}
+              onChange={(runnerPolicy) => {
+                onUpdateStage?.(stage.id, { runnerPolicy });
+              }}
+            />
           </div>
 
           {/* Full-Height Drawer Footer */}
