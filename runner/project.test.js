@@ -265,6 +265,10 @@ describe("runner project prep", () => {
 			// Publish the task branch, then simulate a dead run's leftovers:
 			// an unpushed commit plus a dirty file on top of the remote state.
 			git(first.workdir, ["push", "-q", "origin", "kb/t9"]);
+			// Fixture identity is local so the commit works on machines without a
+			// global git identity configured (clones do not inherit it).
+			git(first.workdir, ["config", "user.email", "t@t.t"]);
+			git(first.workdir, ["config", "user.name", "t"]);
 			fs.writeFileSync(path.join(first.workdir, "stale.txt"), "leftover");
 			git(first.workdir, ["add", "stale.txt"]);
 			git(first.workdir, ["commit", "-qm", "unpushed leftover"]);
