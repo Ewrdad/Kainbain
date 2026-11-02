@@ -992,6 +992,10 @@ materialize_deploy_tip_worktree() {
 		git worktree add -q --detach "$src" "$tip_sha" >/dev/null 2>&1 || return 1
 	fi
 	[ "$(git -C "$src" rev-parse HEAD 2>/dev/null || echo "")" = "$tip_sha" ] || return 1
+	# Fast-forward the local default-branch ref when it is simply behind, so
+	# `git log main` stays truthful. Refused automatically when diverged or
+	# checked out — never forced, never fails this function.
+	git fetch origin "$branch:$branch" >/dev/null 2>&1 || true
 	# Seed the carried-forward release manifest (publish.sh's change-detection
 	# base + component carry-forward live in the gitignored dist/, which a
 	# fresh worktree does not have). Only when the worktree has none yet —

@@ -97,6 +97,10 @@ materialize_publish_tip_worktree() {
     git worktree add -q --detach "$src" "$tip_sha" >/dev/null 2>&1 || return 1
   fi
   [ "$(git -C "$src" rev-parse HEAD 2>/dev/null || echo "")" = "$tip_sha" ] || return 1
+  # Fast-forward the local default-branch ref when it is simply behind, so
+  # `git log main` stays truthful. Refused automatically when diverged or
+  # checked out — never forced, never fails this function.
+  git fetch origin "$branch:$branch" >/dev/null 2>&1 || true
   local primary_top
   primary_top="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
   if [ -n "$primary_top" ] && [ "$primary_top" != "$src" ] && [ -f "$primary_top/dist/release-manifest.json" ] && [ ! -f "$src/dist/release-manifest.json" ]; then

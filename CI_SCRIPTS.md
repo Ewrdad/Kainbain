@@ -49,6 +49,11 @@ component mapping), `scripts/check-component-compat.mjs` (API-range gate),
   records the release in `~/.kainbain/deploy/last-publish.json`. Without
   this, `update.sh` reads the stale primary `dist/` and reports "already
   current" while prod sits behind.
+- While materializing the tip worktree, `publish.sh`/`deploy.sh` also
+  fast-forward the local default-branch ref when it is simply behind (`git
+  fetch origin <branch>:<branch>`, warn-only). Refused automatically when
+  diverged or checked out, so `git log main` stays truthful without ever
+  forcing history.
 - `deploy.sh --prod --publish-only` is the CI wrapper: it skips the
   deploy-level full test/canary/security/frontend-build/api-install gates
   (publish.sh's per-component gates replace them), runs the registry
