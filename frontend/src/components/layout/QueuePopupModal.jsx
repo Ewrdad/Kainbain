@@ -54,7 +54,12 @@ export function QueuePopupModal({ onClose, counted, openQueueDepth, engineState 
   };
 
   return (
-    <Modal onClose={onClose} labelledBy={titleId} describedBy={descId}>
+    <Modal
+      onClose={onClose}
+      labelledBy={titleId}
+      describedBy={descId}
+      dialogClassName="w-full max-w-2xl max-h-[80vh] flex flex-col bg-surface-container border border-border-standard rounded-md shadow-2xl overflow-hidden"
+    >
       <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-border-standard shrink-0">
         <div className="min-w-0">
           <h2 id={titleId} className="text-sm font-bold text-on-surface">

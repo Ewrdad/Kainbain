@@ -61,6 +61,17 @@ test('error state shows retry', async () => {
   await waitFor(() => expect(screen.getByText('Queue is Clear')).toBeInTheDocument());
 });
 
+test('dialog panel carries the shared modal surface (sized, surfaced, clipped)', async () => {
+  renderWithKainBain(<QueuePopupModal counted={2} onClose={() => {}} />, { engineState: { openQueueDepth: 2 } });
+  const dialog = await screen.findByRole('dialog');
+  // Same panel contract as ChangelogModal: bounded width/height, theme
+  // surface, rounded border, and overflow clipping — without it the rows
+  // float over the page with no panel at all.
+  expect(dialog).toHaveClass('max-w-2xl');
+  expect(dialog).toHaveClass('bg-surface-container');
+  expect(dialog).toHaveClass('overflow-hidden');
+});
+
 test('reconciliation note shows counts', async () => {
   renderWithKainBain(<QueuePopupModal counted={3} onClose={() => {}} />, { engineState: { openQueueDepth: 3 } });
   await waitFor(() => expect(screen.getByTestId('queue-reconciliation')).toBeInTheDocument());
