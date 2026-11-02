@@ -174,6 +174,25 @@ describe('PerRunnerTasksWidget', () => {
     expect(screen.queryByTestId('per-runner-compact-model-local-ci')).not.toBeInTheDocument();
   });
 
+  test('injected overrides render without polling the fleet endpoints', async () => {
+    // The mobile header's single poller: polling must stay off while set.
+    getRunnerMonitor.mockRejectedValue(new Error('must not poll'));
+    getRunners.mockRejectedValue(new Error('must not poll'));
+    render(
+      <PerRunnerTasksWidget
+        tasks={[]}
+        compact
+        assignmentsOverride={[{ runnerId: 'local-alpha', taskId: 't1', stageId: 'build' }]}
+        registryOverride={[{ runnerId: 'local-alpha' }]}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('per-runner-row-local-alpha')).toBeInTheDocument();
+    });
+    expect(getRunnerMonitor).not.toHaveBeenCalled();
+    expect(getRunners).not.toHaveBeenCalled();
+  });
+
   test('full card hides the model pill for CI stages with no serving model', async () => {
     getRunnerMonitor.mockResolvedValue({
       liveAssignments: [

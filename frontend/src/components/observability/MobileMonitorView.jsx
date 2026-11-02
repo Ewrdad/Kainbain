@@ -1,8 +1,9 @@
 import { isMonitorRunning } from '../tasks/isMonitorRunning';
-import { PerRunnerTasksWidget } from './widgets/PerRunnerTasksWidget';
+import { PerRunnerTasksWidget, useRunnerMonitor } from './widgets/PerRunnerTasksWidget';
 import { formatTaskTitleFirstLine } from '../tasks/taskFormatters';
 import { EngineStatePill } from './EngineStatePill';
 import { resolveMobileModelDetails } from './mobileModelDetails';
+import { resolveMobileHeaderMode } from './mobileHeaderMode';
 import { LiveConsoleWidget } from './widgets/LiveConsoleWidget';
 
 /***
@@ -29,16 +30,62 @@ export function formatMobileMonitorTitle(activeTask = null, engineState = {}, is
 }
 
 /***
+ * MARK: resolveMobileModelLine
+ * @description Compresses the header's model details into one truncated
+ *   line (`alias · Harness · Model · Provider/Source`, full text in the
+ *   `title` tooltip) so the compact header stays at two rows on 360px
+ *   viewports. Presentation only: the resolver semantics
+ *   (`resolveMobileModelDetails`, mirroring ActiveTaskPromptWidget) are
+ *   reused untouched. Null renders the idle fallback; scripted stages keep
+ *   the `Automated — no model` wording.
+ * @param {Object} [details] - The resolved model details.
+ * @returns {{line: string, title: string}|null} Single-line text plus tooltip, or null for the idle fallback.
+ * @example resolveMobileModelLine(resolveMobileModelDetails({ model: 'pi::pi::qwen3:8b', harness: 'pi' }, {})).line // 'Harness: pi · Model: qwen3:8b'
+ ***/
+export function resolveMobileModelLine(details = {}) {
+  if (details.isIdle) return null;
+  if (details.isScripted) return { line: 'Automated — no model', title: 'Automated — no model' };
+  const parts = [];
+  const titleParts = [];
+  if (details.showAlias) {
+    const alias = `alias: ${details.aliasName || `${details.aliasMissing} (unresolved)`}`;
+    parts.push(alias);
+    titleParts.push(details.aliasTitle ? `${alias} (${details.aliasTitle})` : alias);
+  }
+  if (details.showHarness) {
+    parts.push(`Harness: ${details.harness}`);
+    titleParts.push(`Harness: ${details.harness}`);
+  }
+  if (details.showModel) {
+    // The line truncates to the short label; the tooltip keeps the full ref
+    // so a long model identifier is never lost at 360px.
+    parts.push(`Model: ${details.model.label}`);
+    titleParts.push(`Model: ${details.modelRef || details.model.label}`);
+  }
+  if (details.showProviderLine) {
+    const provider = `Provider: ${details.provider || 'Unknown'} · Source: ${details.source || 'unknown'}`;
+    parts.push(provider);
+    titleParts.push(provider);
+  }
+  const line = parts.join(' · ') || 'Idle — no active model';
+  return { line, title: titleParts.join(' · ') || line };
+}
+
+/***
  * MARK: MobileMonitorView
- * @description Compact logs-only monitor: a slim status header (engine
- *   state, active task, model details) above the full live log console.
- *   Shown automatically on phone-narrow viewports and on desktop when the
- *   user explicitly requests it (right-click the header Monitor button).
- *   Reuses LiveConsoleWidget directly — no forked console implementation —
- *   and stays within 360px with no horizontal scroll (wrapping rows,
- *   truncation, min-width-zero flex children). The second header row shows
- *   the active run's harness/model (or `Automated — no model` on scripted
- *   stages), mirroring ActiveTaskPromptWidget on the main monitor view.
+ * @description Compact logs-only monitor: a two-row compressed status
+ *   header above the full live log console. Shown automatically on
+ *   phone-narrow viewports and on desktop when the user explicitly requests
+ *   it (right-click the header Monitor button). Row 1 carries Back, the
+ *   active chip, and — only when no Runner fleet is configured — the
+ *   legacy global engine pill; with runners shown the per-runner rows are
+ *   the status signal (mirroring `NowPlayingBar` fleet mode) and the chip
+ *   names the task plus its stage (`<task> · <stage>`). Row 2 is a single
+ *   truncated model-details line (full text in the tooltip), mirroring
+ *   ActiveTaskPromptWidget on the main monitor view. Reuses
+ *   LiveConsoleWidget directly — no forked console implementation — and
+ *   stays within 360px with no horizontal scroll (truncation,
+ *   min-width-zero flex children).
  * @param {Object} props
  * @param {Object} [props.engineState] - Engine snapshot (status, activeStageName).
  * @param {Object|null} [props.activeTask] - Resolved active task (title, goal, model, harness).
@@ -50,6 +97,8 @@ export function formatMobileMonitorTitle(activeTask = null, engineState = {}, is
  * @param {Array} [props.processLogs] - Log lines for the console.
  * @param {Function} [props.onClearLogs] - Clears the console.
  * @param {Function} [props.onExit] - Leaves the monitor (Back button).
+ * @param {Array<Object>} [props.runnerAssignmentsOverride] - Injected live fleet assignments (tests); skips polling while set.
+ * @param {Map|Array} [props.runnerRegistryOverride] - Injected Runner registry (tests); skips polling while set.
  * @example <MobileMonitorView engineState={engineState} activeTask={activeTask} processLogs={logs} onExit={...} />
  ***/
 export function MobileMonitorView({
@@ -67,6 +116,8 @@ export function MobileMonitorView({
   processLogs = [],
   onClearLogs,
   onExit = () => {},
+  runnerAssignmentsOverride,
+  runnerRegistryOverride,
 }) {
   void _stats;
   void _queueCount;
@@ -75,13 +126,37 @@ export function MobileMonitorView({
   const isCheckpoint = engineStatus === 'checkpoint' || engineStatus === 'waiting_human';
   const isPaused = engineStatus === 'paused';
   const details = resolveMobileModelDetails(activeTask, engineState);
+  // Single fleet poller for the header + the compact runner rows (the rows
+  // reuse the same state via overrides so one tick issues one fleet read).
+  const skipFleetPoll =
+    runnerAssignmentsOverride !== undefined || runnerRegistryOverride !== undefined;
+  const fleet = useRunnerMonitor({ enabled: !skipFleetPoll });
+  const fleetAssignments =
+    runnerAssignmentsOverride !== undefined ? runnerAssignmentsOverride : fleet.assignments;
+  const fleetRegistry =
+    runnerRegistryOverride !== undefined ? runnerRegistryOverride : fleet.registry;
+  const headerMode = resolveMobileHeaderMode({
+    assignments: fleetAssignments,
+    registry: fleetRegistry,
+    activeTask,
+    stages,
+    engineState,
+    isRunning,
+  });
+  // Pill-on (no fleet): legacy split — pill names the stage, title the task.
+  // Pill-off (fleet shown): one named chip, `<task> · <stage>`, so the stage
+  // still appears exactly once in the header.
+  const activeChipLabel = !headerMode.showEnginePill && headerMode.activeChip
+    ? headerMode.activeChip.label
+    : formatMobileMonitorTitle(activeTask, engineState, isRunning);
+  const modelLine = resolveMobileModelLine(details);
 
   return (
     <div
       data-testid="mobile-monitor-view"
       className="flex-1 flex flex-col min-h-0 h-full min-w-0 bg-[#0b0f17] text-slate-100 font-sans select-none overflow-hidden"
     >
-      {/* Slim status header: Back + engine pill + task + model details */}
+      {/* Compressed status header: Back + named chip (+ engine pill only with no fleet) + one model line */}
       <header className="px-2 py-1.5 bg-[#0f172a] border-b border-slate-800/80 shrink-0 shadow-md">
         <div className="flex items-center gap-2 min-w-0">
           <button
@@ -96,77 +171,50 @@ export function MobileMonitorView({
           <span className="text-base shrink-0" aria-hidden="true">
             📡
           </span>
-          <div className="min-w-0 shrink">
-            <EngineStatePill
-              engineState={engineState}
-              activeTask={activeTask}
-              stages={stages}
-              isRunning={isRunning}
-              isCheckpoint={isCheckpoint}
-              isPaused={isPaused}
-              schedulerRunning={schedulerRunning}
-              testId="mobile-engine-state"
-            />
-          </div>
+          {headerMode.showEnginePill && (
+            <div className="min-w-0 shrink">
+              <EngineStatePill
+                engineState={engineState}
+                activeTask={activeTask}
+                stages={stages}
+                isRunning={isRunning}
+                isCheckpoint={isCheckpoint}
+                isPaused={isPaused}
+                schedulerRunning={schedulerRunning}
+                testId="mobile-engine-state"
+              />
+            </div>
+          )}
           <p
             data-testid="mobile-active-stage"
-            title={formatMobileMonitorTitle(activeTask, engineState, isRunning)}
+            title={activeChipLabel}
             className="flex-1 min-w-0 truncate text-xs font-mono text-slate-300 text-right"
+            {...(headerMode.showEnginePill
+              ? {}
+              : { role: 'status', 'aria-live': 'polite' })}
           >
-            {formatMobileMonitorTitle(activeTask, engineState, isRunning)}
+            {activeChipLabel}
           </p>
         </div>
 
         <div
           data-testid="mobile-monitor-model-details"
-          className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-mono text-slate-300 max-w-full"
+          title={modelLine?.title}
+          className="mt-1 max-w-full truncate whitespace-nowrap text-[11px] font-mono text-slate-300"
         >
-          {details.isIdle ? (
-            <span className="text-[11px] font-mono text-slate-300">Idle — no active model</span>
-          ) : (
-            <>
-              {details.isScripted && (
-                <span className="px-2 py-0.5 rounded bg-slate-800/90 text-slate-300 border border-slate-700 whitespace-nowrap">
-                  <strong className="text-emerald-300">Automated — no model</strong>
-                </span>
-              )}
-              {details.showAlias && (
-                <span
-                  className="px-2 py-0.5 rounded bg-slate-800/90 text-slate-300 border border-slate-700 inline-block truncate max-w-[160px]"
-                  title={details.aliasTitle}
-                >
-                  alias:{' '}
-                  <strong className="text-amber-300">
-                    {details.aliasName || `${details.aliasMissing} (unresolved)`}
-                  </strong>
-                </span>
-              )}
-              {details.showHarness && (
-                <span className="px-2 py-0.5 rounded bg-slate-800/90 text-slate-300 border border-slate-700 inline-block truncate max-w-[160px]">
-                  Harness: <strong className="text-cyan-300">{details.harness}</strong>
-                </span>
-              )}
-              {details.showModel && (
-                <span
-                  className="px-2 py-0.5 rounded bg-slate-800/90 text-slate-300 border border-slate-700 inline-block truncate max-w-[200px]"
-                  title={details.modelRef || 'Model unavailable'}
-                >
-                  Model: <strong className="text-purple-300">{details.model.label}</strong>
-                </span>
-              )}
-              {details.showProviderLine && (
-                <span className="w-full text-[10px] font-mono text-slate-300 truncate">
-                  Provider: {details.provider || 'Unknown'} · Source: {details.source || 'unknown'}
-                </span>
-              )}
-            </>
-          )}
+          {modelLine ? modelLine.line : 'Idle — no active model'}
         </div>
       </header>
 
       {/* Per-runner compact rows: who runs what, for how long */}
       <div className="shrink-0 max-h-40 overflow-y-auto border-b border-slate-800/80 px-2 py-1">
-        <PerRunnerTasksWidget tasks={runnerTasks} stages={runnerStages} compact />
+        <PerRunnerTasksWidget
+          tasks={runnerTasks}
+          stages={runnerStages}
+          compact
+          assignmentsOverride={fleetAssignments}
+          registryOverride={fleetRegistry}
+        />
       </div>
 
       {/* Full-height live log console (filters, auto-scroll, clear intact) */}

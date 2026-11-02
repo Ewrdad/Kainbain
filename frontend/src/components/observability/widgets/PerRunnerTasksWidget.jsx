@@ -45,14 +45,17 @@ const FRESHNESS_DOT = {
  * @description Polls the Runner fleet monitor (`GET /runners/monitor`) plus
  *   the registry list (`GET /runners`) for harness capabilities. Shared by
  *   the desktop per-runner widget and the compact mobile rows so both show
- *   the same fleet picture.
+ *   the same fleet picture. Pass `enabled: false` when the caller injects
+ *   `assignmentsOverride`/`registryOverride` (the mobile header's single
+ *   poller) so one tick issues exactly one fleet read.
  * @example const { assignments, registry } = useRunnerMonitor({ pollMs: 5000 });
  ***/
-export const useRunnerMonitor = ({ pollMs = 5000 } = {}) => {
+export const useRunnerMonitor = ({ pollMs = 5000, enabled = true } = {}) => {
   const [monitor, setMonitor] = useState(null);
   const [runners, setRunners] = useState(null);
 
   useEffect(() => {
+    if (!enabled) return undefined;
     let mounted = true;
     let timer = null;
     const load = async () => {
@@ -74,7 +77,7 @@ export const useRunnerMonitor = ({ pollMs = 5000 } = {}) => {
       mounted = false;
       if (timer) clearInterval(timer);
     };
-  }, [pollMs]);
+  }, [pollMs, enabled]);
 
   return useMemo(() => {
     const assignments = Array.isArray(monitor?.liveAssignments)
@@ -113,11 +116,37 @@ const runnerLogTail = (task, runnerId, limit = 6) => {
  *   stage, and for how long. Full variant (desktop default) shows the task
  *   goal, stage/epoch pills, harness capabilities, freshness, and a runner
  *   log tail. Compact variant (crowded screens, mobile) collapses each
- *   Runner to one row with an expandable tail.
+ *   Runner to one row with an expandable tail. `assignmentsOverride` /
+ *   `registryOverride` inject already-polled fleet state (the mobile
+ *   header's single poller) and skip this widget's own poll while set —
+ *   mirroring `NowPlayingBar`'s override pattern — so existing callers keep
+ *   working with zero edits.
  * @example <PerRunnerTasksWidget tasks={tasks} compact={false} />
  ***/
-export function PerRunnerTasksWidget({ tasks = [], stages = [], compact = false, pollMs = 5000 }) {
-  const { assignments, registry } = useRunnerMonitor({ pollMs });
+export function PerRunnerTasksWidget({
+  tasks = [],
+  stages = [],
+  compact = false,
+  pollMs = 5000,
+  assignmentsOverride,
+  registryOverride,
+}) {
+  const skipPoll = assignmentsOverride !== undefined || registryOverride !== undefined;
+  const polled = useRunnerMonitor({ pollMs, enabled: !skipPoll });
+  const rawAssignments = Array.isArray(assignmentsOverride)
+    ? assignmentsOverride
+    : polled.assignments;
+  const assignments = (Array.isArray(rawAssignments) ? rawAssignments : []).filter(
+    (a) => a && a.runnerId,
+  );
+  const registry =
+    registryOverride instanceof Map
+      ? registryOverride
+      : Array.isArray(registryOverride)
+        ? new Map(
+            registryOverride.filter((r) => r && r.runnerId).map((r) => [r.runnerId, r]),
+          )
+        : polled.registry;
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {

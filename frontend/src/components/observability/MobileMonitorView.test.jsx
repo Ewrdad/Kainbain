@@ -159,7 +159,7 @@ test('idle view shows the no-active-model fallback instead of blanking', () => {
   expect(screen.queryByTestId('mobile-monitor-counts')).not.toBeInTheDocument();
 });
 
-test('long model names truncate with a full-ref tooltip', () => {
+test('long model names truncate on one line with a full-text tooltip', () => {
   const longModel =
     'pi::ollama-cloud::an-extremely-long-model-identifier-that-must-not-overflow-a-360px-viewport';
   renderWithKainBain(
@@ -176,12 +176,13 @@ test('long model names truncate with a full-ref tooltip', () => {
     />,
   );
 
+  // Row 2 is a single truncated line: no wrapping, full text in the tooltip.
   const details = screen.getByTestId('mobile-monitor-model-details');
-  const modelBadge = details.querySelector('[title]');
-  expect(modelBadge).not.toBeNull();
-  expect(modelBadge).toHaveAttribute('title', longModel);
-  expect(modelBadge).toHaveClass('truncate');
-  expect(details.className).toMatch(/flex-wrap/);
+  expect(details).toHaveClass('truncate');
+  expect(details.className).toMatch(/whitespace-nowrap/);
+  expect(details.className).not.toMatch(/flex-wrap/);
+  expect(details).toHaveAttribute('title', expect.stringContaining(longModel));
+  expect(details).toHaveTextContent(/Model:/);
 });
 
 test('renders only the log console: no other dashboard widgets', () => {
@@ -275,6 +276,72 @@ test('stage name appears exactly once in the header row while running', () => {
   const header = screen.getByTestId('mobile-monitor-view').querySelector('header');
   const occurrences = (header.textContent.match(/Code Generation/g) || []).length;
   expect(occurrences).toBe(1);
+});
+
+test('fleet shown: legacy pill hides and the chip names task plus stage', () => {
+  renderWithKainBain(
+    <MobileMonitorView
+      engineState={{ status: 'running', activeStageName: 'Code Generation' }}
+      activeTask={{ id: 't1', title: 'Build user auth', currentStageId: '5' }}
+      stages={[{ id: '5', name: 'Catchup', type: 'agent' }]}
+      runnerAssignmentsOverride={[{ runnerId: 'local-alpha', taskId: 't1' }]}
+      runnerRegistryOverride={[{ runnerId: 'local-alpha' }]}
+      processLogs={[]}
+      onExit={() => {}}
+    />,
+  );
+
+  // The single-threaded-era global pill is gone; per-runner rows carry state.
+  expect(screen.queryByTestId('mobile-engine-state')).not.toBeInTheDocument();
+  const chip = screen.getByTestId('mobile-active-stage');
+  expect(chip).toHaveTextContent('Build user auth · Catchup');
+  expect(chip).toHaveAttribute('title', 'Build user auth · Catchup');
+  expect(chip).toHaveAttribute('role', 'status');
+  // The stage still appears exactly once in the header — inside the chip.
+  const header = screen.getByTestId('mobile-monitor-view').querySelector('header');
+  const occurrences = (header.textContent.match(/Catchup/g) || []).length;
+  expect(occurrences).toBe(1);
+});
+
+test('fleet shown but task unnamed: pill stays hidden and the legacy label remains', () => {
+  renderWithKainBain(
+    <MobileMonitorView
+      engineState={{ status: 'running', activeStageName: 'Code Generation' }}
+      activeTask={null}
+      runnerAssignmentsOverride={[{ runnerId: 'local-alpha', taskId: 't9' }]}
+      runnerRegistryOverride={[{ runnerId: 'local-alpha' }]}
+      processLogs={[]}
+      onExit={() => {}}
+    />,
+  );
+
+  expect(screen.queryByTestId('mobile-engine-state')).not.toBeInTheDocument();
+  expect(screen.getByTestId('mobile-active-stage')).toHaveTextContent('No active task');
+});
+
+test('no runners configured: pill fallback stays with the legacy task-only title', () => {
+  renderWithKainBain(
+    <MobileMonitorView
+      {...baseProps}
+      runnerAssignmentsOverride={[]}
+      runnerRegistryOverride={[]}
+      onExit={() => {}}
+    />,
+  );
+
+  expect(screen.getByTestId('mobile-engine-state')).toHaveTextContent(
+    /ACTIVE: Code Generation/i,
+  );
+  const headerText = screen.getByTestId('mobile-active-stage');
+  expect(headerText).toHaveTextContent('Build user auth');
+  expect(headerText).not.toHaveTextContent('Code Generation');
+});
+
+test('compressed header is two rows: chip row plus one model line', () => {
+  renderWithKainBain(<MobileMonitorView {...baseProps} onExit={() => {}} />);
+
+  const header = screen.getByTestId('mobile-monitor-view').querySelector('header');
+  expect(header.querySelectorAll(':scope > div')).toHaveLength(2);
 });
 
 test('console wrappers keep min-w-0 so wide log rows cannot push the page sideways', () => {
