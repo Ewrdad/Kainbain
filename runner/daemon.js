@@ -425,16 +425,17 @@ export async function refreshDiscoveredModels({ config, logger, discoverFn = dis
 	return [...discoveredModelsCache];
 }
 
+export const SUPPORTED_RUNNER_COMMANDS = ["requestModelRediscovery", "requestUpdate"];
+
 export function effectiveDirectoriesFor(config = {}) {
 	const workRoot = typeof config.workRoot === "string" && config.workRoot ? path.resolve(config.workRoot) : null;
 	return {
-		masterDir: workRoot || "",
-		worktreeDir: workRoot ? path.join(workRoot, "worktrees") : "",
-		workRoot: workRoot || "",
+		masterDir: workRoot ? path.join(workRoot, "mirrors") : "",
+		worktreeDir: workRoot || "",
 	};
 }
 
-function factsFor({ config, harnessVersions, updateStatus = null }) {
+function factsFor({ config, harnessVersions, updateStatus = null, commandAck = null } = {}) {
 	const versionFor = (id) =>
 		harnessVersions?.[id] ?? harnessVersionCache.get(id)?.[id] ?? "unknown";
 	return {
@@ -444,8 +445,10 @@ function factsFor({ config, harnessVersions, updateStatus = null }) {
 		diskHeadroomMb: diskHeadroomMbFor(config.workRoot),
 		versions: { protocol: "v1", runner: RUNNER_VERSION, api: RUNNER_API_VERSION },
 		directories: effectiveDirectoriesFor(config),
+		commands: SUPPORTED_RUNNER_COMMANDS,
 		workRoot: typeof config.workRoot === "string" ? config.workRoot : null,
 		...(updateStatus ? { updateStatus } : {}),
+		...(commandAck ? { commandAck } : {}),
 	};
 }
 
@@ -479,7 +482,7 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
 			const reg = await client.register({
 				runnerId: config.runnerId,
 				joinToken: config.joinToken,
-				facts: factsFor({ config, harnessVersions: joinVersions }),
+				facts: factsFor({ config, harnessVersions: joinVersions, commandAck: state?.commandAck ?? (Array.isArray(state?.commandAcks) ? state.commandAcks[0] : undefined) }),
 			});
 			if (reg.status === "active") break;
 			if (Date.now() > deadline) {
@@ -511,7 +514,7 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
 	for (const id of runnerHarnessIds(config)) {
 		Object.assign(harnessVersions, await probeHarnessVersions(id));
 	}
-	const facts = factsFor({ config, harnessVersions, updateStatus: state?.updateStatus ?? null });
+	const facts = factsFor({ config, harnessVersions, updateStatus: state?.updateStatus ?? null, commandAck: state?.commandAck ?? (Array.isArray(state?.commandAcks) ? state.commandAcks[0] : undefined) });
 	const beat = await client.heartbeat({ runnerId: config.runnerId, facts });
 	if (beat.status !== "active") {
 		throw new Error(`Runner ${config.runnerId} is ${beat.status}; need an active registration.`);
@@ -536,7 +539,7 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
 	// timeout; failures keep the cache empty, never fail boot.
 	await refreshDiscoveredModels({ config, logger });
 	const heartbeatTimer = setInterval(() => {
-		deliverSteers({ config, client, logger, facts: factsFor({ config, updateStatus: state?.updateStatus ?? null }), state }).catch((err) => {
+		deliverSteers({ config, client, logger, facts: factsFor({ config, updateStatus: state?.updateStatus ?? null, commandAck: state?.commandAck ?? (Array.isArray(state?.commandAcks) ? state.commandAcks[0] : undefined) }), state }).catch((err) => {
 			logger.warn(`Heartbeat failed: ${err?.message || err}`);
 		});
 	}, config.heartbeatMs);
@@ -577,25 +580,46 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
  * @returns {Promise<number>} Steers delivered (acked) this cycle.
  ***/
 export async function handlePendingCommands({ config, client, logger, state, pendingCommands = [] }) {
+	if (!state) state = {};
+	if (!Array.isArray(state.commandAcks)) state.commandAcks = [];
 	for (const cmd of pendingCommands) {
 		if (cmd === "requestModelRediscovery") {
 			logger.log?.("Runner command: re-detecting models");
-			await refreshDiscoveredModels({ config, logger });
+			const pinned = (Array.isArray(config?.models) && config.models.length > 0) || (typeof config?.model === "string" && config.model.trim());
+			if (pinned) {
+				state.commandAcks.push({ command: cmd, ok: true, detail: "models pinned; discovery skipped" });
+				state.commandAck = state.commandAcks[state.commandAcks.length - 1];
+			} else {
+				const before = await refreshDiscoveredModels({ config, logger });
+				const count = Array.isArray(before) ? before.length : 0;
+				state.commandAcks.push({ command: cmd, ok: true, detail: `discovered ${count} model(s)` });
+				state.commandAck = state.commandAcks[state.commandAcks.length - 1];
+			}
 		}
 		if (cmd === "requestUpdate") {
-			// Idle-only: do not interrupt active work
+			// Idle-only: do not interrupt active work (D5)
 			if (state?.executionId) {
 				logger.log?.("Runner update queued — will apply when idle");
 				state.pendingUpdate = true;
+				state.updateRequested = true;
+				state.commandAcks.push({ command: cmd, ok: true, detail: "queued: update at next idle" });
+				state.commandAck = state.commandAcks[state.commandAcks.length - 1];
 			} else {
 				try {
 					const upd = await maybeSelfUpdate({ config, client, logger, installRoot: installRootFor(config), updateState: state, force: true });
 					if (upd?.applied) {
 						logger.log?.(`Runner updated to ${upd.update?.version}, restarting`);
+						state.commandAcks.push({ command: cmd, ok: true, detail: `updated to ${upd.update?.version}` });
+						state.commandAck = state.commandAcks[state.commandAcks.length - 1];
 						process.exit(0);
+					} else {
+						state.commandAcks.push({ command: cmd, ok: true, detail: upd?.reason || "no update available" });
+						state.commandAck = state.commandAcks[state.commandAcks.length - 1];
 					}
 				} catch (err) {
 					logger.warn?.(`Runner update failed: ${err?.message || err}`);
+					state.commandAcks.push({ command: cmd, ok: false, detail: String(err?.message || err).slice(0, 500) });
+					state.commandAck = state.commandAcks[state.commandAcks.length - 1];
 				}
 			}
 		}
@@ -603,7 +627,15 @@ export async function handlePendingCommands({ config, client, logger, state, pen
 }
 
 export async function deliverSteers({ config, client, logger, facts, state }) {
-	const beat = await client.heartbeat({ runnerId: config.runnerId, facts });
+	const pendingAck = state?.commandAck || (Array.isArray(state?.commandAcks) ? state.commandAcks[0] : undefined);
+	const factsWithAck = pendingAck ? { ...facts, commandAck: pendingAck } : facts;
+	const beat = await client.heartbeat({ runnerId: config.runnerId, facts: factsWithAck });
+	if (pendingAck && Array.isArray(state?.commandAcks)) {
+		state.commandAcks.shift();
+		state.commandAck = state.commandAcks[0];
+	} else if (pendingAck) {
+		state.commandAck = undefined;
+	}
 	if (Array.isArray(beat.pendingCommands) && beat.pendingCommands.length) {
 		await handlePendingCommands({ config, client, logger, state, pendingCommands: beat.pendingCommands });
 	}
@@ -1604,7 +1636,7 @@ export async function runDispatchLoop({
 				answer = await client.dispatchClaim({ projectIds: config.projectIds ?? null });
 			} catch (err) {
 				if (err?.code === "STALE_RUNNER") {
-					await client.heartbeat({ runnerId: config.runnerId, facts: factsFor({ config, updateStatus: state?.updateStatus ?? null }) });
+					await client.heartbeat({ runnerId: config.runnerId, facts: factsFor({ config, updateStatus: state?.updateStatus ?? null, commandAck: state?.commandAck ?? (Array.isArray(state?.commandAcks) ? state.commandAcks[0] : undefined) }) });
 					answer = await client.dispatchClaim({ projectIds: config.projectIds ?? null });
 				} else if (err?.statusCode === 429) {
 					// D8 backpressure (ADR 0010): the fleet is at its

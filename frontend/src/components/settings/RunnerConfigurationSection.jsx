@@ -28,10 +28,10 @@ import {
   stalenessLabel,
 } from './runnerConfigHelpers';
 
-const DirectoryField = ({ label, testId, value, hint, isDefault, error, busy, onChange, onSave }) => (
+const DirectoryField = ({ label, testId, value, hint, isDefault, isUnknown, error, busy, onChange, onSave }) => (
   <div className="flex flex-col gap-1">
     <label className="text-xs font-bold text-on-surface" htmlFor={`${testId}-input`}>
-      {label} {isDefault && <span className="font-normal text-text-muted">(Runner default)</span>}
+      {label} {isDefault && <span className="font-normal text-text-muted">(Runner default{isUnknown ? ' (unknown)' : ''})</span>}
     </label>
     <div className="flex items-center gap-2">
       <input
@@ -260,6 +260,8 @@ export function RunnerConfigurationSection() {
   const worktreeValue = dirDraft ? dirDraft.worktreeDir : (displayDirs?.worktreeDir.value || '');
   const masterIsDefault = displayDirs ? displayDirs.masterDir.isDefault : true;
   const worktreeIsDefault = displayDirs ? displayDirs.worktreeDir.isDefault : true;
+  const masterIsUnknown = displayDirs ? displayDirs.masterDir.isUnknown : false;
+  const worktreeIsUnknown = displayDirs ? displayDirs.worktreeDir.isUnknown : false;
   const nameDirty = selected && String(nameDraft).trim() !== String(config.displayName ?? '');
 
   const handleNameSave = () => {
@@ -684,8 +686,8 @@ export function RunnerConfigurationSection() {
               </div>
 
               <div className="flex flex-col gap-3">
-                <DirectoryField label="Master directory:" testId={`runner-masterdir-${selected.runnerId}`} value={masterValue} hint="/srv/kb" isDefault={masterIsDefault && !dirDraft} error={dirErrors[`${selected.runnerId}:masterDir`]} busy={Boolean(busyKey)} onChange={(value) => { setDirErrors((prev) => { const next = { ...prev }; delete next[`${selected.runnerId}:masterDir`]; return next; }); setDirDrafts((prev) => ({ ...prev, [selected.runnerId]: { masterDir: value, worktreeDir: dirDraft ? dirDraft.worktreeDir : displayDirs.worktreeDir.value } })); }} onSave={() => handleDirectorySave('masterDir')} />
-                <DirectoryField label="Worktree directory:" testId={`runner-worktreedir-${selected.runnerId}`} value={worktreeValue} hint="/srv/kb-trees" isDefault={worktreeIsDefault && !dirDraft} error={dirErrors[`${selected.runnerId}:worktreeDir`]} busy={Boolean(busyKey)} onChange={(value) => { setDirErrors((prev) => { const next = { ...prev }; delete next[`${selected.runnerId}:worktreeDir`]; return next; }); setDirDrafts((prev) => ({ ...prev, [selected.runnerId]: { masterDir: dirDraft ? dirDraft.masterDir : displayDirs.masterDir.value, worktreeDir: value } })); }} onSave={() => handleDirectorySave('worktreeDir')} />
+                <DirectoryField label="Master directory:" testId={`runner-masterdir-${selected.runnerId}`} value={masterValue} hint="/srv/kb" isDefault={masterIsDefault && !dirDraft} isUnknown={masterIsUnknown} error={dirErrors[`${selected.runnerId}:masterDir`]} busy={Boolean(busyKey)} onChange={(value) => { setDirErrors((prev) => { const next = { ...prev }; delete next[`${selected.runnerId}:masterDir`]; return next; }); setDirDrafts((prev) => ({ ...prev, [selected.runnerId]: { masterDir: value, worktreeDir: dirDraft ? dirDraft.worktreeDir : displayDirs.worktreeDir.value } })); }} onSave={() => handleDirectorySave('masterDir')} />
+                <DirectoryField label="Worktree directory:" testId={`runner-worktreedir-${selected.runnerId}`} value={worktreeValue} hint="/srv/kb-trees" isDefault={worktreeIsDefault && !dirDraft} isUnknown={worktreeIsUnknown} error={dirErrors[`${selected.runnerId}:worktreeDir`]} busy={Boolean(busyKey)} onChange={(value) => { setDirErrors((prev) => { const next = { ...prev }; delete next[`${selected.runnerId}:worktreeDir`]; return next; }); setDirDrafts((prev) => ({ ...prev, [selected.runnerId]: { masterDir: dirDraft ? dirDraft.masterDir : displayDirs.masterDir.value, worktreeDir: value } })); }} onSave={() => handleDirectorySave('worktreeDir')} />
                 <p className="text-[11px] text-text-muted">Directories are stored as this Runner's preference on the backend. When empty, the Runner's own folders are used.</p>
               </div>
 

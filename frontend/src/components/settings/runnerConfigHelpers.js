@@ -253,7 +253,7 @@ export const effectiveDirectories = (runner = {}) => {
   }
   const workRoot = runner?.facts?.workRoot;
   if (typeof workRoot === 'string' && workRoot) {
-    return { masterDir: workRoot, worktreeDir: `${workRoot}/kb-trees` };
+    return { masterDir: `${workRoot}/mirrors`, worktreeDir: workRoot };
   }
   return { masterDir: '', worktreeDir: '' };
 };
@@ -280,8 +280,8 @@ export const displayDirectories = (runner = {}) => {
   const cfg = defaultRunnerConfig(runner).directories;
   const eff = effectiveDirectories(runner);
   return {
-    masterDir: { value: cfg.masterDir || eff.masterDir, isDefault: !cfg.masterDir },
-    worktreeDir: { value: cfg.worktreeDir || eff.worktreeDir, isDefault: !cfg.worktreeDir },
+    masterDir: { value: cfg.masterDir || eff.masterDir, isDefault: !cfg.masterDir, isUnknown: !cfg.masterDir && !eff.masterDir },
+    worktreeDir: { value: cfg.worktreeDir || eff.worktreeDir, isDefault: !cfg.worktreeDir, isUnknown: !cfg.worktreeDir && !eff.worktreeDir },
   };
 };
 
@@ -311,11 +311,30 @@ export const modelTogglePatch = (runner = {}, nextIds = []) => {
 };
 
 /***
- * MARK: canRequestUpdate
- * @description Whether an "Update now" action is available.
- * @example canRequestUpdate({ updateAvailable: true }) => true
+ * MARK: runnerCommands
+ * @description Normalized `commands` block from a public Runner record,
+ *   with a safe fallback when an older backend omitted it.
+ * @example runnerCommands({ commands: { supported: ['requestUpdate'] } }) => ...
  ***/
-export const canRequestUpdate = (runner = {}) => Boolean(runner?.updateAvailable);
+export const runnerCommands = (runner = {}) => {
+  const block = runner?.commands;
+  if (block && typeof block === 'object') {
+    return {
+      pending: Array.isArray(block.pending) ? block.pending : [],
+      results: (block.results && typeof block.results === 'object' && !Array.isArray(block.results)) ? block.results : {},
+      supported: Array.isArray(block.supported) ? block.supported : [],
+    };
+  }
+  // Older backends: fall back to facts.commands when present.
+  const factsSupported = Array.isArray(runner?.facts?.commands) ? runner.facts.commands : [];
+  return { pending: [], results: {}, supported: factsSupported };
+};
+export const runnerSupportedCommands = (runner = {}) => runnerCommands(runner).supported;
+export const supportedRunnerCommands = runnerSupportedCommands;
+export const canRequestCommand = (runner = {}, command) => runnerSupportedCommands(runner).includes(command);
+export const canRequestRunnerCommand = canRequestCommand;
+export const canRequestUpdate = (runner = {}) => canRequestCommand(runner, 'requestUpdate') || Boolean(runner?.updateAvailable);
+
 
 /***
  * MARK: canRediscoverModels
