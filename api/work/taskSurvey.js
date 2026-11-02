@@ -396,6 +396,88 @@ export function saveSurveyAnswers(args) {
 	return { markdown, status: surveyStatus(next), missing: unansweredRequired(next), unknownIds };
 }
 
+/***
+ * MARK: updateSurveyImages
+ * @description Replaces one image question's backend-owned `images[]` array in
+ *   the configured survey file, preserving questions, answers, and surrounding
+ *   prose byte-for-byte. Follows the `saveSurveyAnswers` pattern: the file is
+ *   only rewritten after the merged rounds validate, so a rejected update
+ *   leaves the file untouched. Each call re-reads the file, so a generation
+ *   job splicing per question always merges against the latest answers.
+ * @param {Object} args - `{ cwd, project?, taskId|id, questionId, images,
+ *   round? }` plus an optional file selector (explicit file-name key or
+ *   stage object). Without `round`, the latest round containing the question
+ *   is updated.
+ * @returns {{ markdown: string, status: string, round: number }}
+ * @throws {Error} `SURVEY_NOT_FOUND` (404) when no file exists;
+ *   `SURVEY_INVALID` (400) when the round/question is missing, the question
+ *   is not an image question, or the merged round fails validation; plain
+ *   `Error` when the path cannot be resolved.
+ ***/
+export function updateSurveyImages(args) {
+	const a = args && typeof args === "object" ? args : {};
+	const cwd = a.cwd;
+	const project = a.project !== undefined ? a.project : null;
+	const taskId = a.taskId ?? a.id;
+	const questionId = a.questionId ?? a.qid;
+	const images = a.images;
+	const filePath = resolveSurveyPath(cwd, project, taskId, _fileInputForArgs(a));
+	if (!filePath) throw new Error("cannot resolve survey path: missing cwd or task id");
+	const notFound = () => Object.assign(new Error("no survey exists for this task yet"), { statusCode: 404, code: "SURVEY_NOT_FOUND" });
+	const invalid = (message) => Object.assign(new Error(message), { statusCode: 400, code: "SURVEY_INVALID" });
+	if (!fs.existsSync(filePath)) throw notFound();
+	if (typeof questionId !== "string" || !questionId) {
+		throw invalid("updateSurveyImages requires a questionId");
+	}
+	if (!Array.isArray(images)) throw invalid("updateSurveyImages requires an images array");
+	let before;
+	try {
+		before = fs.readFileSync(filePath, "utf8");
+	} catch (err) {
+		if (err?.code === "ENOENT") throw notFound();
+		throw new Error(`cannot read survey file: ${err.message}`);
+	}
+	const { rounds } = parseSurvey(before);
+	const wantedRound = a.round ?? a.roundNumber;
+	let targetIndex = -1;
+	if (wantedRound !== undefined && wantedRound !== null) {
+		targetIndex = rounds.findIndex((r) => r?.round === wantedRound);
+		if (targetIndex < 0) throw invalid(`survey has no round ${wantedRound}`);
+	} else {
+		for (let i = rounds.length - 1; i >= 0; i -= 1) {
+			if ((rounds[i]?.questions || []).some((qq) => qq?.id === questionId)) {
+				targetIndex = i;
+				break;
+			}
+		}
+		if (targetIndex < 0) throw invalid(`survey has no question '${questionId}'`);
+	}
+	const targetRound = rounds[targetIndex];
+	const questionIndex = (targetRound.questions || []).findIndex(
+		(qq) => qq?.id === questionId,
+	);
+	if (questionIndex < 0) throw invalid(`survey round ${targetRound.round} has no question '${questionId}'`);
+	/* eslint-disable-next-line security/detect-object-injection -- index comes from findIndex on the same array */
+	if (targetRound.questions[questionIndex]?.type !== "image") {
+		throw invalid(`survey question '${questionId}' is not an image question`);
+	}
+	const next = rounds.map((round, ri) => {
+		if (ri !== targetIndex) return round;
+		return {
+			...round,
+			questions: round.questions.map((qq, qi) =>
+				qi === questionIndex ? { ...qq, images: images.map((entry) => ({ ...entry })) } : qq,
+			),
+			answers: { ...(round.answers || {}) },
+		};
+	});
+	const { ok, errors } = validateSurvey(next);
+	if (!ok) throw invalid(`survey images invalid: ${errors[0]}`);
+	const markdown = spliceRoundsIntoMarkdown(before, next);
+	_atomicWriteFileSync(filePath, markdown);
+	return { markdown, status: surveyStatus(next), round: targetRound.round };
+}
+
 // Re-exported from the shared survey model (see shared/survey.js).
 export { stageHasQuestionMe };
 

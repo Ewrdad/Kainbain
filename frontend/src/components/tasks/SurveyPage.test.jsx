@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithKainBain } from '../../testUtils';
-import { SurveyPage } from './SurveyPage';
+import { SURVEY_IMAGE_POLL_MS, SurveyPage, surveyNeedsImagePoll } from './SurveyPage';
 import '@testing-library/jest-dom';
 
 /***
@@ -247,5 +247,153 @@ describe('SurveyPage task context split', () => {
     expect(await screen.findByText('Primary concern?')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Task context' })).toBeInTheDocument();
     expect(screen.getByText('Task details are unavailable.')).toBeInTheDocument();
+  });
+});
+
+describe('surveyNeedsImagePoll', () => {
+  const roundsWith = (images) => [
+    { round: 1, questions: [{ id: 'qi', type: 'image', text: 'Pick', options: ['a', 'b'], images }] },
+  ];
+
+  it('polls while pending, polls missing entries only with a provider, never when settled', () => {
+    expect(SURVEY_IMAGE_POLL_MS).toBe(4000);
+    expect(surveyNeedsImagePoll(roundsWith([{ option: 0, status: 'pending' }]), 'muse')).toBe(true);
+    expect(surveyNeedsImagePoll(roundsWith([{ option: 0, status: 'pending' }]), 'none')).toBe(true);
+    expect(surveyNeedsImagePoll(roundsWith([]), 'muse')).toBe(true);
+    expect(surveyNeedsImagePoll(roundsWith([]), 'none')).toBe(false);
+    expect(surveyNeedsImagePoll(roundsWith([]), undefined)).toBe(false);
+    const settled = [
+      { option: 0, file: 'assets/a.png', status: 'ready' },
+      { option: 1, status: 'failed', error: 'nope' },
+    ];
+    expect(surveyNeedsImagePoll(roundsWith(settled), 'muse')).toBe(false);
+    expect(surveyNeedsImagePoll([{ round: 1, questions: [{ id: 'q1', type: 'single', options: ['a'] }] }], 'muse')).toBe(false);
+  });
+});
+
+describe('SurveyPage image questions', () => {
+  const imageQuestion = (images) => ({
+    id: 'qi',
+    type: 'image',
+    text: 'Pick a design',
+    options: ['dark dashboard', 'light dashboard'],
+    required: true,
+    showIf: null,
+    images,
+  });
+
+  const imageSurvey = (images, providerId = 'mock') => ({
+    taskId: 't1',
+    exists: true,
+    status: 'pending',
+    imageGen: { providerId },
+    rounds: [
+      {
+        round: 1,
+        generatedAt: '2026-11-02T00:00:00.000Z',
+        stage: 'ask',
+        questions: [
+          {
+            id: 'q1',
+            type: 'single',
+            text: 'Primary concern?',
+            options: ['Auth', 'Data'],
+            required: false,
+            showIf: null,
+          },
+          imageQuestion(images),
+        ],
+        answers: {},
+      },
+    ],
+    errors: [],
+    missing: [{ round: 1, id: 'qi' }],
+  });
+
+  const readyImages = [
+    { option: 0, file: 'assets/survey-r1-qi-0.png', status: 'ready' },
+    { option: 1, file: 'assets/survey-r1-qi-1.png', status: 'ready' },
+  ];
+
+  it('renders ready pictures as selectable cards that submit the description', async () => {
+    const client = makeClient(imageSurvey(readyImages));
+    renderPage(client);
+    await screen.findByText('Pick a design');
+    const first = screen.getByAltText('dark dashboard');
+    expect(first.tagName).toBe('IMG');
+    expect(first.getAttribute('src')).toContain('/projects/p1/tasks/t1/images/survey-r1-qi-0.png');
+    expect(screen.getByLabelText('Pick a design: dark dashboard')).toHaveAttribute('type', 'radio');
+
+    fireEvent.click(screen.getByLabelText('Pick a design: light dashboard'));
+    fireEvent.click(screen.getByRole('button', { name: /save answers/i }));
+    await waitFor(() =>
+      expect(client.submitSurvey).toHaveBeenCalledWith(
+        'p1',
+        't1',
+        expect.objectContaining({
+          answers: expect.objectContaining({ qi: { selected: ['light dashboard'], notes: '' } }),
+        }),
+      ),
+    );
+  });
+
+  it('shows generating skeletons while pending and merges the poll without losing drafts', async () => {
+    const pending = imageSurvey([
+      { option: 0, file: 'assets/survey-r1-qi-0.png', status: 'pending' },
+      { option: 1, file: 'assets/survey-r1-qi-1.png', status: 'pending' },
+    ]);
+    const client = makeClient(pending);
+    client.getSurvey
+      .mockResolvedValueOnce(JSON.parse(JSON.stringify(pending)))
+      .mockResolvedValue(JSON.parse(JSON.stringify(imageSurvey(readyImages))));
+    renderPage(client);
+    await screen.findByText('Pick a design');
+    expect(await screen.findAllByText('Generating illustration…')).toHaveLength(2);
+
+    // Draft an answer to another question, then let the poll deliver readiness.
+    fireEvent.click(screen.getByLabelText('Primary concern?: Auth'));
+    await waitFor(() => expect(screen.getByAltText('dark dashboard')).toBeInTheDocument(), {
+      timeout: SURVEY_IMAGE_POLL_MS + 6000,
+    });
+    expect(client.getSurvey.mock.calls.length).toBeGreaterThan(1);
+    // The draft survived the poll-merge.
+    fireEvent.click(screen.getByRole('button', { name: /save answers/i }));
+    await waitFor(() =>
+      expect(client.submitSurvey).toHaveBeenCalledWith(
+        'p1',
+        't1',
+        expect.objectContaining({
+          answers: expect.objectContaining({ q1: { selected: ['Auth'], notes: '' } }),
+        }),
+      ),
+    );
+  });
+
+  it('degrades failed pictures to descriptions with the error notice', async () => {
+    const failed = imageSurvey([
+      { option: 0, file: 'assets/survey-r1-qi-0.png', status: 'ready' },
+      { option: 1, status: 'failed', code: 'no-key', error: 'No API key saved for Muse.' },
+    ]);
+    const client = makeClient(failed);
+    renderPage(client);
+    await screen.findByText('Pick a design');
+    expect(screen.getByAltText('dark dashboard')).toBeInTheDocument();
+    expect(screen.getByText(/Illustration unavailable: No API key saved/)).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Pick a design: light dashboard'));
+    expect(screen.getByLabelText('Pick a design: light dashboard')).toBeChecked();
+  });
+
+  it('explains missing pictures honestly when generation is off and never polls', async () => {
+    const client = makeClient(imageSurvey([], 'none'));
+    renderPage(client);
+    await screen.findByText('Pick a design');
+    expect(
+      await screen.findAllByText('Image generation is off for this survey — pick by description.'),
+    ).toHaveLength(2);
+    fireEvent.click(screen.getByLabelText('Pick a design: dark dashboard'));
+    expect(screen.getByLabelText('Pick a design: dark dashboard')).toBeChecked();
+    // No interval was scheduled: one read total, even past the poll cadence.
+    await new Promise((resolve) => setTimeout(resolve, SURVEY_IMAGE_POLL_MS + 1000));
+    expect(client.getSurvey).toHaveBeenCalledTimes(1);
   });
 });

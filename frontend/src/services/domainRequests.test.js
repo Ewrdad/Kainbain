@@ -36,13 +36,16 @@ describe('Business-owned request lists', () => {
     // the adopt-existing-project operation (registerProject) for the project
     // switcher's "+ Add Existing Project…" dialog +
     // the 2 survey operations (getSurvey, submitSurvey) for the question-me
-    // survey page.
+    // survey page +
+    // the 4 image-gen operations (getImageGenProviders, saveImageGenKey,
+    // clearImageGenKey, testImageGenProvider) for System Settings › Images
+    // and the question-me imageGen provider dropdown.
     // the 8 Runner operations (getRunners, getRunnerMonitor, approveRunner,
     // denyRunner, revokeRunner, pauseRunner, resumeRunner, skipRunner) for
     // Settings › Runners and the per-runner Now Playing controls +
     // the 2 Runner config operations (getRunnerConfig, updateRunnerConfig)
     // for the System Settings › Runners detail form.
-    expect(names).toHaveLength(92);
+    expect(names).toHaveLength(96);
     for (const name of names) expect(typeof api[name]).toBe('function');
   });
 
@@ -67,6 +70,11 @@ describe('Business-owned request lists', () => {
     [houseRequests, 'updateProject', ['p1', { name: 'A' }, { ifMatch: 't' }], '/projects/p1', { method: 'PATCH', body: '{"name":"A"}', headers: { 'If-Match': 't' } }],
     [houseRequests, 'updateAppStatus', ['p1', { url: 'http://localhost:3000' }], '/projects/p1/app-status', { method: 'PATCH', body: '{"url":"http://localhost:3000"}' }],
     [houseRequests, 'checkAppHealth', ['p1'], '/projects/p1/app-status/health', undefined],
+    [houseRequests, 'getImageGenProviders', [], '/settings/image-gen/providers', undefined],
+    [houseRequests, 'saveImageGenKey', ['muse', 'sk-x'], '/settings/image-gen/providers/muse/key', { method: 'PUT', body: '{"key":"sk-x"}' }],
+    [houseRequests, 'clearImageGenKey', ['muse'], '/settings/image-gen/providers/muse/key', { method: 'DELETE' }],
+    [houseRequests, 'testImageGenProvider', ['mock'], '/settings/image-gen/providers/mock/test', { method: 'POST', body: '{}' }],
+    [houseRequests, 'testImageGenProvider', ['muse', 'hi'], '/settings/image-gen/providers/muse/test', { method: 'POST', body: '{"prompt":"hi"}' }],
   ])('preserves %s / %s arguments and request result', (requests, name, args, url, options) => {
     const response = Promise.resolve({ ok: true });
     const request = vi.fn(() => response);

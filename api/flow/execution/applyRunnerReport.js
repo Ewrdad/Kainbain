@@ -8,6 +8,7 @@ import { normalizeStageType } from "../../projectStore.js";
 import { ALIAS_HARNESS_ID } from "../../../shared/modelAliases.js";
 import { routeStageError } from "./routeStageError.js";
 import { parkTaskForSurvey } from "./parkTaskForSurvey.js";
+import { kickSurveyImageJob } from "../../imageGen/surveyImages.js";
 
 /***
  * MARK: applyRunnerReport
@@ -207,7 +208,20 @@ export async function applyRunnerReport({
 		duration,
 		via,
 	});
-	if (surveyPark.parked) return { advanced: false, ...surveyPark.response };
+	if (surveyPark.parked) {
+		// Same eager background generation as the embedded path (see
+		// executeStage): a remote run illustrates its survey identically.
+		kickSurveyImageJob({
+			store,
+			cwd,
+			project,
+			taskId,
+			task,
+			surveyFile: task.surveyFile || null,
+			stage,
+		});
+		return { advanced: false, ...surveyPark.response };
+	}
 
 	task.surveyPending = false;
 	task.infraRetryCount = 0;

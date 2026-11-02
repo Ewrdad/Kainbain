@@ -20,6 +20,7 @@ import {
 	saveSurveyAnswers,
 	spliceRoundsIntoMarkdown,
 	stageHasQuestionMe,
+	updateSurveyImages,
 	DEFAULT_SURVEY_FILENAME,
 } from "./taskSurvey.js";
 import { parseSurvey } from "../../shared/survey.js";
@@ -224,6 +225,79 @@ describe("configurable survey files", () => {
 		expect(readSurvey(cwd, project, taskId, stage).status).toBe("pending");
 		saveSurveyAnswers({ cwd, project, taskId, stage, patch: { q1: { selected: ["b"] } } });
 		expect(readSurvey(cwd, project, taskId, stage).status).toBe("answered");
+	});
+});
+
+describe("updateSurveyImages", () => {
+	const img = (overrides = {}) => q({
+		id: "qi",
+		type: "image",
+		text: "Pick a design",
+		options: ["dark", "light"],
+		required: false,
+		...overrides,
+	});
+	const ready = (option) => ({ option, file: `assets/survey-r1-qi-${option}.png`, status: "ready" });
+
+	it("splices images into the image question, preserving answers and prose", () => {
+		appendSurveyRound({ cwd, project, taskId, stage: "s1", questions: [q({ id: "q1" }), img()] });
+		saveSurveyAnswers({ cwd, project, taskId, patch: { q1: { selected: ["a"], notes: "why" } } });
+		const updated = updateSurveyImages({ cwd, project, taskId, questionId: "qi", images: [ready(0), ready(1)] });
+		expect(updated.round).toBe(1);
+		expect(updated.status).toBe("answered");
+		const { rounds } = readSurvey(cwd, project, taskId);
+		expect(rounds[0].questions.find((entry) => entry.id === "qi").images).toEqual([ready(0), ready(1)]);
+		expect(rounds[0].answers.q1).toEqual({ selected: ["a"], notes: "why" });
+		expect(updated.markdown).toContain("## Round 1");
+	});
+
+	it("updates the latest round containing the question unless a round is given", () => {
+		appendSurveyRound({ cwd, project, taskId, stage: "s1", questions: [img()] });
+		appendSurveyRound({ cwd, project, taskId, stage: "s1", questions: [img({ id: "qi2" })] });
+		updateSurveyImages({ cwd, project, taskId, questionId: "qi2", images: [ready(0)] });
+		const first = updateSurveyImages({ cwd, project, taskId, round: 1, questionId: "qi", images: [ready(1)] });
+		expect(first.round).toBe(1);
+		const { rounds } = readSurvey(cwd, project, taskId);
+		expect(rounds[0].questions[0].images).toEqual([ready(1)]);
+		expect(rounds[1].questions[0].images).toEqual([ready(0)]);
+	});
+
+	it("rejects missing files, questions, rounds, and non-image questions untouched", () => {
+		expect(() =>
+			updateSurveyImages({ cwd, project, taskId, questionId: "qi", images: [] }),
+		).toThrow(expect.objectContaining({ statusCode: 404, code: "SURVEY_NOT_FOUND" }));
+		appendSurveyRound({ cwd, project, taskId, stage: "s1", questions: [q({ id: "q1" }), img()] });
+		const surveyPath = path.join(cwd, "docs", "tasks", taskId, "SURVEY.md");
+		const before = fs.readFileSync(surveyPath, "utf8");
+		expect(() => updateSurveyImages({ cwd, project, taskId, questionId: "ghost", images: [] })).toThrow(
+			expect.objectContaining({ statusCode: 400, code: "SURVEY_INVALID" }),
+		);
+		expect(() => updateSurveyImages({ cwd, project, taskId, round: 9, questionId: "qi", images: [] })).toThrow(
+			expect.objectContaining({ statusCode: 400, code: "SURVEY_INVALID" }),
+		);
+		expect(() => updateSurveyImages({ cwd, project, taskId, questionId: "q1", images: [] })).toThrow(
+			/not an image question/,
+		);
+		expect(() =>
+			updateSurveyImages({
+				cwd, project, taskId, questionId: "qi",
+				images: [{ option: 0, file: "assets/a.png", status: "baking" }],
+			}),
+		).toThrow(expect.objectContaining({ statusCode: 400, code: "SURVEY_INVALID" }));
+		expect(fs.readFileSync(surveyPath, "utf8")).toBe(before);
+	});
+
+	it("merges against the latest answers when splicing repeatedly", () => {
+		appendSurveyRound({ cwd, project, taskId, stage: "s1", questions: [img({ required: true })] });
+		updateSurveyImages({ cwd, project, taskId, questionId: "qi", images: [ready(0)] });
+		saveSurveyAnswers({ cwd, project, taskId, patch: { qi: { selected: ["dark"], notes: "" } } });
+		const updated = updateSurveyImages({
+			cwd, project, taskId, questionId: "qi", images: [ready(0), ready(1)],
+		});
+		expect(updated.status).toBe("answered");
+		const { rounds } = readSurvey(cwd, project, taskId);
+		expect(rounds[0].questions[0].images).toHaveLength(2);
+		expect(rounds[0].answers.qi).toEqual({ selected: ["dark"], notes: "" });
 	});
 });
 
