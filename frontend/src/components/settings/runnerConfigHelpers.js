@@ -238,6 +238,79 @@ export const parseModelsInput = (text = '') =>
       .filter(Boolean),
   )];
 
+export const effectiveDirectories = (runner = {}) => {
+  const f = runner?.facts?.directories;
+  if (f && typeof f === 'object') {
+    return {
+      masterDir: typeof f.masterDir === 'string' ? f.masterDir : '',
+      worktreeDir: typeof f.worktreeDir === 'string' ? f.worktreeDir : '',
+    };
+  }
+  const workRoot = runner?.facts?.workRoot;
+  if (typeof workRoot === 'string' && workRoot) {
+    return { masterDir: workRoot, worktreeDir: `${workRoot}/kb-trees` };
+  }
+  return { masterDir: '', worktreeDir: '' };
+};
+
+export const effectiveDirectoryValue = (runner = {}, field) => {
+  const cfg = defaultRunnerConfig(runner).directories[field];
+  if (cfg) return cfg;
+  const eff = effectiveDirectories(runner)[field];
+  return eff || '';
+};
+
+export const displayDirectories = (runner = {}) => {
+  const cfg = defaultRunnerConfig(runner).directories;
+  const eff = effectiveDirectories(runner);
+  return {
+    masterDir: { value: cfg.masterDir || eff.masterDir, isDefault: !cfg.masterDir },
+    worktreeDir: { value: cfg.worktreeDir || eff.worktreeDir, isDefault: !cfg.worktreeDir },
+  };
+};
+
+export const modelUnion = (runner = {}) => {
+  const adv = advertisedModels(runner);
+  const eff = effectiveModels(runner);
+  const set = new Set([...adv, ...eff]);
+  return [...set].sort();
+};
+
+export const modelTogglePatch = (runner = {}, nextIds = []) => {
+  const advertised = advertisedModels(runner);
+  const sortedNext = [...nextIds].sort();
+  const sortedAdv = [...advertised].sort();
+  const isAdvertised = sortedNext.length === sortedAdv.length && sortedNext.every((v, i) => v === sortedAdv[i]);
+  return isAdvertised ? null : [...nextIds];
+};
+
+export const canRequestUpdate = (runner = {}) => Boolean(runner?.updateAvailable);
+
+export const canRediscoverModels = (runner = {}) => {
+  if (!runner || typeof runner !== 'object') return false;
+  const ids = advertisedToolIds(runner);
+  return ids.includes('muse') || advertisedModels(runner).length > 0 || true;
+};
+
+export const stalenessLabel = (runner = {}, nowMs = Date.now()) => {
+  if (!runner?.lastSeenAt) return null;
+  const seen = Date.parse(runner.lastSeenAt);
+  if (!Number.isFinite(seen)) return null;
+  const age = nowMs - seen;
+  if (age < 60000) return 'just now';
+  const mins = Math.round(age / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  return `${hrs}h ago`;
+};
+
+export const runnerStatusLabel = (runner = {}) => {
+  if (runner.status === 'pending') return 'Needs setup';
+  if (runner.status === 'active' && runner.paused) return 'Paused';
+  if (runner.status === 'active' && runner.belowMinimum) return 'Needs update';
+  return runner.status || 'unknown';
+};
+
 /***
  * MARK: loadedProjectIds
  * @description Project ids in the Loaded column: the operator override when
@@ -345,4 +418,10 @@ export const validateDirectories = (directories = {}) => {
     }
   }
   return { ok: Object.keys(errors).length === 0, errors };
+};
+
+export const validateSingleDirectory = (value) => {
+  if (typeof value !== 'string' || !value.trim()) return 'Enter a directory path.';
+  if (value.trim().length > 1024) return 'Must be at most 1024 characters.';
+  return null;
 };

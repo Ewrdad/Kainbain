@@ -306,7 +306,18 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					});
 				}
 			}
-			return { ...result, pendingSteers };
+			const pendingCommands = runnerRegistry.consumeCommands(runner.runnerId);
+			return { ...result, pendingSteers, ...(pendingCommands.length ? { pendingCommands } : {}) };
+		} catch (err) {
+			return sendStoreError(reply, err);
+		}
+	});
+
+	app.post("/runners/:id/commands", async (request, reply) => {
+		try {
+			const command = request.body?.command;
+			const res = runnerRegistry.enqueueCommand(request.params.id, command);
+			return reply.status(202).send({ ...res, status: "queued" });
 		} catch (err) {
 			return sendStoreError(reply, err);
 		}

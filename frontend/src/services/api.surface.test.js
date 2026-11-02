@@ -94,6 +94,8 @@ describe('api public surface', () => {
       'previewTask',
       'registerProject',
       'rejectTaskWithFeedback',
+      'requestModelRediscovery',
+      'requestRunnerUpdate',
       'resetPromptLayout',
       'restoreSession',
       'resumeRunner',

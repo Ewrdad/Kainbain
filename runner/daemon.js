@@ -425,6 +425,15 @@ export async function refreshDiscoveredModels({ config, logger, discoverFn = dis
 	return [...discoveredModelsCache];
 }
 
+export function effectiveDirectoriesFor(config = {}) {
+	const workRoot = typeof config.workRoot === "string" && config.workRoot ? path.resolve(config.workRoot) : null;
+	return {
+		masterDir: workRoot || "",
+		worktreeDir: workRoot ? path.join(workRoot, "worktrees") : "",
+		workRoot: workRoot || "",
+	};
+}
+
 function factsFor({ config, harnessVersions, updateStatus = null }) {
 	const versionFor = (id) =>
 		harnessVersions?.[id] ?? harnessVersionCache.get(id)?.[id] ?? "unknown";
@@ -434,6 +443,8 @@ function factsFor({ config, harnessVersions, updateStatus = null }) {
 		tiers: config.tiers,
 		diskHeadroomMb: diskHeadroomMbFor(config.workRoot),
 		versions: { protocol: "v1", runner: RUNNER_VERSION, api: RUNNER_API_VERSION },
+		directories: effectiveDirectoriesFor(config),
+		workRoot: typeof config.workRoot === "string" ? config.workRoot : null,
 		...(updateStatus ? { updateStatus } : {}),
 	};
 }
@@ -525,8 +536,6 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
 	// timeout; failures keep the cache empty, never fail boot.
 	await refreshDiscoveredModels({ config, logger });
 	const heartbeatTimer = setInterval(() => {
-		// Fresh facts every beat: disk headroom is re-measured (G4) while
-		// the harness CLI version resolves from the load-time probe cache.
 		deliverSteers({ config, client, logger, facts: factsFor({ config, updateStatus: state?.updateStatus ?? null }), state }).catch((err) => {
 			logger.warn(`Heartbeat failed: ${err?.message || err}`);
 		});
@@ -567,8 +576,37 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
  * @param {Object} opts - Options (config, client, logger, facts, state).
  * @returns {Promise<number>} Steers delivered (acked) this cycle.
  ***/
+export async function handlePendingCommands({ config, client, logger, state, pendingCommands = [] }) {
+	for (const cmd of pendingCommands) {
+		if (cmd === "requestModelRediscovery") {
+			logger.log?.("Runner command: re-detecting models");
+			await refreshDiscoveredModels({ config, logger });
+		}
+		if (cmd === "requestUpdate") {
+			// Idle-only: do not interrupt active work
+			if (state?.executionId) {
+				logger.log?.("Runner update queued — will apply when idle");
+				state.pendingUpdate = true;
+			} else {
+				try {
+					const upd = await maybeSelfUpdate({ config, client, logger, installRoot: installRootFor(config), updateState: state, force: true });
+					if (upd?.applied) {
+						logger.log?.(`Runner updated to ${upd.update?.version}, restarting`);
+						process.exit(0);
+					}
+				} catch (err) {
+					logger.warn?.(`Runner update failed: ${err?.message || err}`);
+				}
+			}
+		}
+	}
+}
+
 export async function deliverSteers({ config, client, logger, facts, state }) {
 	const beat = await client.heartbeat({ runnerId: config.runnerId, facts });
+	if (Array.isArray(beat.pendingCommands) && beat.pendingCommands.length) {
+		await handlePendingCommands({ config, client, logger, state, pendingCommands: beat.pendingCommands });
+	}
 	const due = (beat.pendingSteers || []).filter((s) => s && s.executionId === state?.executionId);
 	let delivered = 0;
 	for (const steer of due) {
@@ -1688,6 +1726,13 @@ export async function runDispatchLoop({
 				taskId: answer.taskId,
 				workRoot: config.workRoot,
 			});
+			if (state.pendingUpdate) {
+				try {
+					const upd = await maybeSelfUpdate({ config, client, logger, installRoot: installRootFor(config), updateState: state, force: true });
+					if (upd?.applied) return { assignments, polls, updated: true, version: upd.update?.version };
+					state.pendingUpdate = false;
+				} catch {}
+			}
 		}
 	} finally {
 		stop();

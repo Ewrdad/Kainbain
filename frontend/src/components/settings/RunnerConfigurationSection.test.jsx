@@ -128,7 +128,7 @@ describe('RunnerConfigurationSection', () => {
     expect(screen.getByTestId('runner-name-r1')).toBeTruthy();
     expect(screen.getByText('Projects')).toBeTruthy();
     expect(screen.getByText('Harnesses Available')).toBeTruthy();
-    expect(screen.getByTestId('runner-models-r1')).toBeTruthy();
+    expect(screen.getByTestId('runner-redetect-models-r1')).toBeTruthy();
     expect(screen.getByTestId('runner-masterdir-r1')).toBeTruthy();
     expect(screen.getByTestId('runner-worktreedir-r1')).toBeTruthy();
     expect(screen.getByTestId('runner-job-r1-runsCi')).toBeTruthy();
@@ -220,6 +220,8 @@ describe('RunnerConfigurationSection', () => {
     // The revoked record stays in the backend list; the screen filters it.
     getRunners.mockResolvedValue([{ ...ACTIVE_RUNNER, status: 'revoked' }, { ...PENDING_RUNNER }]);
     fireEvent.click(screen.getByRole('button', { name: 'Revoke runner r1' }));
+    // Needs confirm step
+    fireEvent.click(await screen.findByTestId('runner-revoke-confirm-r1'));
     await waitFor(() => {
       expect(revokeRunner).toHaveBeenCalledWith('r1');
     });
@@ -268,7 +270,7 @@ describe('RunnerConfigurationSection', () => {
     expect(screen.queryByTestId('runner-detail-r1')).toBeNull();
   });
 
-  it('denies a pending Runner and revokes an active one', async () => {
+  it('denies a pending Runner and revokes an active one (with confirm)', async () => {
     runnersFixture();
     denyRunner.mockResolvedValue({ status: 'denied' });
     revokeRunner.mockResolvedValue({ status: 'revoked' });
@@ -281,23 +283,27 @@ describe('RunnerConfigurationSection', () => {
     });
     fireEvent.click(screen.getByTestId('runner-select-r1'));
     fireEvent.click(await screen.findByRole('button', { name: 'Revoke runner r1' }));
+    fireEvent.click(await screen.findByTestId('runner-revoke-confirm-r1'));
     await waitFor(() => {
       expect(revokeRunner).toHaveBeenCalledWith('r1');
     });
   });
 
   it('pauses an active Runner and resumes a paused one', async () => {
-    getRunners
-      .mockResolvedValueOnce(structuredClone([{ ...ACTIVE_RUNNER, paused: false }]))
-      .mockResolvedValueOnce(structuredClone([{ ...ACTIVE_RUNNER, paused: true }]))
-      .mockResolvedValue(structuredClone([{ ...ACTIVE_RUNNER, paused: false }]));
+    let call = 0;
+    getRunners.mockImplementation(async () => {
+      call += 1;
+      if (call === 1) return structuredClone([{ ...ACTIVE_RUNNER, paused: false }]);
+      if (call === 2) return structuredClone([{ ...ACTIVE_RUNNER, paused: true }]);
+      return structuredClone([{ ...ACTIVE_RUNNER, paused: false }]);
+    });
     pauseRunner.mockResolvedValue({ status: 'active', paused: true });
     render(<RunnerConfigurationSection />);
     fireEvent.click(await screen.findByRole('button', { name: 'Pause runner r1' }));
     await waitFor(() => {
       expect(pauseRunner).toHaveBeenCalledWith('r1');
     });
-    expect(screen.getByTestId('runner-paused-r1')).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId('runner-paused-r1')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: 'Resume runner r1' }));
     await waitFor(() => {
       expect(resumeRunner).toHaveBeenCalledWith('r1');
@@ -367,19 +373,13 @@ describe('RunnerConfigurationSection', () => {
     });
   });
 
-  it('requires confirmation before saving a directory', async () => {
+  it('saves a directory with a single click and trims', async () => {
     runnersFixture([ACTIVE_RUNNER]);
     render(<RunnerConfigurationSection />);
     await screen.findByTestId('runner-detail-r1');
     const input = screen.getByTestId('runner-masterdir-r1');
     fireEvent.change(input, { target: { value: ' /srv/new-master ' } });
-    const save = screen.getByTestId('runner-masterdir-r1-save');
-    // First click only arms the confirmation — no network call.
-    fireEvent.click(save);
-    expect(updateRunnerConfig).not.toHaveBeenCalled();
-    expect(screen.getByTestId('runner-masterdir-r1-confirm')).toBeTruthy();
-    // Second click confirms and trims.
-    fireEvent.click(save);
+    fireEvent.click(screen.getByTestId('runner-masterdir-r1-save'));
     await waitFor(() => {
       expect(updateRunnerConfig).toHaveBeenCalledWith('r1', {
         directories: { masterDir: '/srv/new-master' },
@@ -392,9 +392,7 @@ describe('RunnerConfigurationSection', () => {
     render(<RunnerConfigurationSection />);
     await screen.findByTestId('runner-detail-r1');
     fireEvent.change(screen.getByTestId('runner-worktreedir-r1'), { target: { value: '   ' } });
-    const save = screen.getByTestId('runner-worktreedir-r1-save');
-    fireEvent.click(save);
-    fireEvent.click(save);
+    fireEvent.click(screen.getByTestId('runner-worktreedir-r1-save'));
     await waitFor(() => {
       expect(screen.getByTestId('runner-worktreedir-r1-error')).toBeTruthy();
     });
@@ -406,9 +404,7 @@ describe('RunnerConfigurationSection', () => {
     render(<RunnerConfigurationSection />);
     await screen.findByTestId('runner-detail-r1');
     fireEvent.change(screen.getByTestId('runner-worktreedir-r1'), { target: { value: '   ' } });
-    const save = screen.getByTestId('runner-worktreedir-r1-save');
-    fireEvent.click(save);
-    fireEvent.click(save);
+    fireEvent.click(screen.getByTestId('runner-worktreedir-r1-save'));
     await screen.findByTestId('runner-worktreedir-r1-error');
     // Typing a new value clears the stale error before the next save attempt.
     fireEvent.change(screen.getByTestId('runner-worktreedir-r1'), {
@@ -439,17 +435,11 @@ describe('RunnerConfigurationSection', () => {
     });
   });
 
-  it('says plainly that a saved directory is not sent to the Runner yet', async () => {
-    runnersFixture([ACTIVE_RUNNER]);
+  it('shows Runner default hint when directory is empty', async () => {
+    runnersFixture([{ ...ACTIVE_RUNNER, operatorConfig: { ...OPERATOR_CONFIG, directories: { masterDir: '', worktreeDir: '' } }, facts: { directories: { masterDir: '/srv/default-master', worktreeDir: '/srv/default-trees' } } }]);
     render(<RunnerConfigurationSection />);
     await screen.findByTestId('runner-detail-r1');
-    fireEvent.change(screen.getByTestId('runner-masterdir-r1'), {
-      target: { value: '/srv/new-master' },
-    });
-    fireEvent.click(screen.getByTestId('runner-masterdir-r1-save'));
-    expect(screen.getByTestId('runner-masterdir-r1-confirm')).toHaveTextContent(
-      'not sent to the Runner yet',
-    );
+    expect(screen.getByTestId('runner-masterdir-r1')).toHaveValue('/srv/default-master');
   });
 
   it('toggles job switches with the expected payload', async () => {
@@ -480,26 +470,18 @@ describe('RunnerConfigurationSection', () => {
     });
   });
 
-  it('saves a models allowlist and resets it to advertised', async () => {
-    runnersFixture([ACTIVE_RUNNER]);
+  it('toggles models via checkboxes and adds a custom model', async () => {
+    runnersFixture([{ ...ACTIVE_RUNNER, capabilities: { harnesses: [{ id: 'pi' }], models: ['m1', 'm2'] } }]);
     render(<RunnerConfigurationSection />);
     await screen.findByTestId('runner-detail-r1');
-    // No advertised models: the editor starts empty with Save disabled.
-    expect(screen.getByTestId('runner-models-save-r1')).toBeDisabled();
-    fireEvent.change(screen.getByTestId('runner-models-r1'), {
-      target: { value: 'muse::meta::muse-spark-1.3, m9' },
-    });
-    fireEvent.click(screen.getByTestId('runner-models-save-r1'));
-    await waitFor(() => {
-      expect(updateRunnerConfig).toHaveBeenCalledWith('r1', {
-        availableModels: ['muse::meta::muse-spark-1.3', 'm9'],
-      });
-    });
-    // After save the override sticks and Reset returns to advertised (null).
-    fireEvent.click(await screen.findByTestId('runner-models-reset-r1'));
-    await waitFor(() => {
-      expect(updateRunnerConfig).toHaveBeenCalledWith('r1', { availableModels: null });
-    });
+    // m1 starts checked (advertised)
+    expect(screen.getByTestId('runner-model-r1-m1')).toBeChecked();
+    fireEvent.click(screen.getByTestId('runner-model-r1-m1'));
+    await waitFor(() => { expect(updateRunnerConfig).toHaveBeenCalledWith('r1', { availableModels: expect.any(Array) }); });
+    // Add custom
+    fireEvent.change(screen.getByTestId('runner-custom-model-r1'), { target: { value: 'custom-m9' } });
+    fireEvent.click(screen.getByTestId('runner-add-model-r1'));
+    await waitFor(() => { expect(updateRunnerConfig).toHaveBeenCalledWith('r1', expect.objectContaining({ availableModels: expect.arrayContaining(['custom-m9']) })); });
   });
 
   it('reloads the selected Runner through getRunnerConfig', async () => {

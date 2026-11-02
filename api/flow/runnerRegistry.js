@@ -153,6 +153,7 @@ export class RunnerRegistry {
 			typeof staleAfterMs === "number" && staleAfterMs > 0 ? staleAfterMs : 60000;
 		this.runners = new Map();
 		this.credentials = new Map();
+		this.pendingCommands = new Map();
 		this.stateFile = resolveRunnerStatePath(stateFile);
 		this._loadState();
 	}
@@ -234,6 +235,7 @@ export class RunnerRegistry {
 			minVersion: config?.runnerMinVersion,
 			recommendedVersion: config?.runnerRecommendedVersion,
 		});
+		const pending = this.pendingCommands.get(record.runnerId);
 		return {
 			runnerId: record.runnerId,
 			status: record.status,
@@ -260,6 +262,7 @@ export class RunnerRegistry {
 				belowMinimum: update.belowMinimum,
 				apiCompatible: apiCompat.ok,
 			},
+			pendingCommands: pending ? [...pending] : [],
 		};
 	}
 
@@ -755,6 +758,26 @@ export class RunnerRegistry {
 			);
 		}
 		return record;
+	}
+
+	enqueueCommand(runnerId, command) {
+		const record = this._getOrThrow(runnerId);
+		const allowed = new Set(["requestModelRediscovery", "requestUpdate"]);
+		if (!allowed.has(command)) {
+			throw RunnerRegistry._fail(400, "UNKNOWN_COMMAND", `Unknown runner command '${command}'.`);
+		}
+		const pending = this.pendingCommands.get(runnerId) || new Set();
+		pending.add(command);
+		this.pendingCommands.set(runnerId, pending);
+		return { runnerId, command, pending: [...pending] };
+	}
+
+	consumeCommands(runnerId) {
+		const pending = this.pendingCommands.get(runnerId);
+		if (!pending || pending.size === 0) return [];
+		const out = [...pending];
+		this.pendingCommands.delete(runnerId);
+		return out;
 	}
 
 	heartbeat({ runnerId, credential, facts = {}, origin = null } = {}) {

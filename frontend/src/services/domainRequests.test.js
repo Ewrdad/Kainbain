@@ -43,7 +43,7 @@ describe('Business-owned request lists', () => {
     // per-runner Now Playing controls, and the fleet model catalogue +
     // the 2 Runner config operations (getRunnerConfig, updateRunnerConfig)
     // for the System Settings › Runners detail form.
-    expect(names).toHaveLength(93);
+    expect(names).toHaveLength(95);
     for (const name of names) expect(typeof api[name]).toBe('function');
   });
 
