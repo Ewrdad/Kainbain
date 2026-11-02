@@ -170,6 +170,9 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		skillImportZipMaxEntries: 64,
 		skillImportZipMaxBytes: 512 * 1024,
 		chatSkillsMaxChars: 6000,
+		imageGenMuseApiKey: "",
+		imageGenDir: path.join(os.homedir(), ".kainbain", "image-gen"),
+		imageGenMuseBaseUrl: "",
 		// Tasks & Review
 		processLogMaxBytes: 32000,
 		logEntriesMaxCount: 500,

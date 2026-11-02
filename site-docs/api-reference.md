@@ -372,4 +372,17 @@ queueEmpty, unrecoverableStageError } }` patch. The settings object reserves a
 | POST | `/settings/prompt-layout/reset` | Reset prompt layout back to the factory default template and clear fallback counters. |
 | POST | `/settings/prompt-layout/dry-run` | Validate and test-render a candidate layout against sample or provided task/stage context (`{ layout?, taskId?, stageId? }` → `{ renderedMarkdown, warnings, autoReinjected, fallbackUsed }`) without persisting. |
 
+## Image generation keys (`api/routes/imageGen.js`)
+
+System-level image provider keys for survey image questions. Keys stay
+server-side: the catalogue reports per-provider `configured`/`source` flags
+only, and the key value is never returned by any endpoint.
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| GET | `/settings/image-gen/providers` | List image providers (`{ id, label, requiresKey }`) with configured/source flags. |
+| PUT | `/settings/image-gen/providers/:id/key` | Store a provider key (`{ key }`). Returns 400 for unknown providers or invalid keys. |
+| DELETE | `/settings/image-gen/providers/:id/key` | Clear the stored provider key (an env override keeps the provider configured). |
+| POST | `/settings/image-gen/providers/:id/test` | User-triggered dry-run generation (`{ prompt? }` → `{ ok, bytes?, ms?, error? }`). |
+
 

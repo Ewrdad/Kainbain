@@ -28,6 +28,11 @@ import {
 
 const TEST_PROMPT = "Connectivity test: a small plain grey square icon, flat, no text.";
 
+/***
+ * MARK: imageGenRoutes
+ * @description Registers the `/settings/image-gen` routes on the Fastify app.
+ * @example await app.register(imageGenRoutes, { deps: {} })
+ ***/
 export default async function imageGenRoutes(app, { deps } = {}) {
 	const dir = deps?.imageGenDir || resolveImageGenDir();
 	const fetchImpl = deps?.imageGenFetch;

@@ -408,6 +408,7 @@ export function saveSurveyAnswers(args) {
  *   round? }` plus an optional file selector (explicit file-name key or
  *   stage object). Without `round`, the latest round containing the question
  *   is updated.
+ * @example updateSurveyImages({ cwd: '/repo', taskId: 't1', questionId: 'q3', round: 1, images: [] })
  * @returns {{ markdown: string, status: string, round: number }}
  * @throws {Error} `SURVEY_NOT_FOUND` (404) when no file exists;
  *   `SURVEY_INVALID` (400) when the round/question is missing, the question

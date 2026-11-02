@@ -76,6 +76,9 @@ describe("Review API Integration", () => {
 		// createProject git-inits with the host's default branch name; pin the
 		// unborn HEAD to main so the fixture matches the engine's expectations.
 		git(["symbolic-ref", "HEAD", "refs/heads/main"]);
+		// Hermetic identity so commits work on machines without global git config.
+		git(["config", "user.email", "kainbain-test@example.com"]);
+		git(["config", "user.name", "KainBain Test"]);
 
 		// Initial commit on main
 		fs.writeFileSync(path.join(projectCwd, "README.md"), "# Fixture\n");

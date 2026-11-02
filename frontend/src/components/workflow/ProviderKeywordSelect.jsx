@@ -87,16 +87,15 @@ export function ProviderKeywordSelect({
 }) {
   const http = client || api;
   const [catalogue, setCatalogue] = useState(null);
+  // Render-time availability: when the client cannot load the catalogue the
+  // select simply keeps the static enum fallback (no effect needed).
+  const loaderAvailable = typeof http?.getImageGenProviders === 'function';
 
   useEffect(() => {
+    if (!loaderAvailable) return undefined;
     let cancelled = false;
-    const loader = http?.getImageGenProviders;
-    if (typeof loader !== 'function') {
-      setCatalogue([]);
-      return undefined;
-    }
-    loader
-      .call(http)
+    http
+      .getImageGenProviders()
       .then(
         (data) => {
           if (cancelled) return;
@@ -109,7 +108,7 @@ export function ProviderKeywordSelect({
     return () => {
       cancelled = true;
     };
-  }, [http]);
+  }, [http, loaderAvailable]);
 
   const base =
     catalogue && catalogue.length > 0
