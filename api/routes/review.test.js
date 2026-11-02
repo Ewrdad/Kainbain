@@ -76,9 +76,8 @@ describe("Review API Integration", () => {
 		// createProject git-inits with the host's default branch name; pin the
 		// unborn HEAD to main so the fixture matches the engine's expectations.
 		git(["symbolic-ref", "HEAD", "refs/heads/main"]);
-		// Fixture-local identity so commits work without a global git identity
-		// (covers both the fixture commits below and the route's own D2
-		// snapshot commit in this repo).
+		// Fixture identity is local so commits work on machines without a
+		// global git identity configured.
 		git(["config", "user.email", "kainbain-test@example.com"]);
 		git(["config", "user.name", "KainBain Test"]);
 

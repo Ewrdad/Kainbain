@@ -2,9 +2,11 @@ import { useCallback, useState } from 'react';
 
 /***
  * MARK: FailureMessageImage
- * @description Thumbnail for one image referenced by a failure message, with
- * a labelled fallback chip and Retry when the URL fails to load.
- * @example <FailureMessageImage url="/api/tasks/1/assets/shot.png" alt="shot" name="shot.png" />
+ * @description One linked failure thumbnail with the same graceful fallback
+ *   as the markdown renderer: a failed load surfaces the filename plus a
+ *   retry control instead of an invisible hole, and a new URL (or an
+ *   explicit retry) always gets a fresh load attempt.
+ * @example <FailureMessageImage url="/img/shot.png" alt="shot" name="shot.png" />
  ***/
 export function FailureMessageImage({ url, alt, name }) {
   const [failed, setFailed] = useState(false);
@@ -57,4 +59,3 @@ export function FailureMessageImage({ url, alt, name }) {
     </a>
   );
 }
-

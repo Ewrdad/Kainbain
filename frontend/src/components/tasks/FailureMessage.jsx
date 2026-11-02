@@ -1,15 +1,30 @@
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import { truncateFailureMessage } from './failureReason';
+import { FailureMessageImage } from './FailureMessageImage';
 import { API_BASE } from '../../services/apiBase';
 import { extractImageRefs, resolveTaskImageUrl } from '../../services/taskImages';
-import { FailureMessageImage } from './FailureMessageImage';
 
-/***
+/**
  * MARK: FailureMessage
- * @description Renders a failure message with Show more/less truncation plus
- * thumbnails for task-asset image references when project/task context is set.
- * @example <FailureMessage message="boom" projectId="p1" taskId="t1" />
- ***/
+ * @description Shows a task-view failure message capped to a short preview
+ * with an inline "Show more" toggle that reveals the full text (and "Show
+ * less" to collapse it again). Short messages render exactly as passed, with
+ * no toggle. Shared by the full-page task view and the overlay details tab
+ * so both Stage Execution Failed banners stay capped in the same way.
+ *
+ * When task context is provided, `assets/...` image references inside the
+ * message (e.g. screenshots attached to a rejection) also render as a
+ * thumbnail strip below the text, resolved through the binary-safe image
+ * endpoint. Without task context the text degrades to the readable
+ * `![name](assets/name)` reference, as before.
+ *
+ * @param {string} message - Full failure message, may be multi-line.
+ * @param {string} [className] - Box styling passed through from the banner.
+ * @param {string} [buttonClassName] - Styling for the Show more/less toggle.
+ * @param {string} [projectId] - Owning project id (enables image thumbnails).
+ * @param {string} [taskId] - Owning task id (enables image thumbnails).
+ * @example <FailureMessage message={task.failureReason} className="..." />
+ */
 export function FailureMessage({
   message,
   className = '',
