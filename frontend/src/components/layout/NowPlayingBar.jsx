@@ -70,12 +70,11 @@ const runnerBoxHealthLabel = (health) => {
 };
 
 /***
- * MARK: runnerBoxVisibilityCap
+ * MARK: runnerStripOwnsOverflow
  * @description Every configured Runner renders its own box in the 72px
  *   bar — no render cap, no "+N more" chip. The strip container owns
  *   overflow: it scrolls horizontally (touch swipe) only when the fleet
  *   overflows, so the full roster stays reachable on every viewport.
- * @example resolveRunnerBoxes({ assignments: [], tasks: [], stages: [], runners: [] }) => []
  * ***/
 
 /***

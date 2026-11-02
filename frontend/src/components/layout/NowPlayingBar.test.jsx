@@ -836,6 +836,7 @@ test('runner boxes show idle runners; legacy display only with zero runners conf
  *   working, and never chains vertical scroll into the page.
  ***/
 test('the runner strip renders every box inside a scrollable container with no overflow chip', () => {
+  const pauseRunner = vi.fn();
   const runners = Array.from({ length: 6 }, (_, i) => ({
     runnerId: `runner-${i}`,
     status: 'active',
@@ -849,6 +850,7 @@ test('the runner strip renders every box inside a scrollable container with no o
     tasks: [],
     runners,
     runnerAssignments: [],
+    pauseRunner,
   });
 
   // The header count stays honest about the whole fleet.
@@ -871,6 +873,26 @@ test('the runner strip renders every box inside a scrollable container with no o
   expect(screen.getByTestId('now-playing-runner-box-runner-5').className).toContain('shrink-0');
   expect(screen.getByLabelText('Pause runner runner-5')).not.toBeDisabled();
   expect(screen.getByLabelText('Skip current task for runner runner-5')).toBeDisabled();
+  // The last box (the one a phone user reaches by swiping) still fires its
+  // controls — scrolling must never park them.
+  fireEvent.click(screen.getByLabelText('Pause runner runner-5'));
+  expect(pauseRunner).toHaveBeenCalledWith('runner-5');
+});
+
+test('a single runner still renders inside the scrollable strip with a singular label', () => {
+  renderWithKainBain(<NowPlayingBar />, {
+    stages,
+    currentStageId: '1',
+    engineState: { status: 'idle' },
+    tasks: [],
+    runners: [{ runnerId: 'solo-runner', status: 'active', paused: false }],
+    runnerAssignments: [],
+  });
+  const strip = screen.getByTestId('now-playing-runner-boxes');
+  expect(strip).toHaveAttribute('aria-label', '1 runner');
+  expect(screen.getByTestId('now-playing-runner-box-solo-runner')).toBeInTheDocument();
+  expect(strip.className).toContain('overflow-x-auto');
+  expect(screen.queryByTestId('now-playing-runner-overflow')).not.toBeInTheDocument();
 });
 
 // Helper to rerender NowPlayingBar with an overridden context.
