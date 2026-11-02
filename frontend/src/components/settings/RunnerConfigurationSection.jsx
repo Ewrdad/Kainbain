@@ -14,6 +14,8 @@ import {
   scopePatchForLoaded,
   validateDirectories,
   jobTypeLabels,
+  visibleRunners,
+  resolveSelectedId,
 } from './runnerConfigHelpers';
 
 const DirectoryField = ({
@@ -66,14 +68,18 @@ const DirectoryField = ({
 
 /***
  * MARK: RunnerConfigurationSection
- * @description System Settings › Runners › detailed Runner configuration
- *   (replaces the legacy harness on/off list): a roster of Runner
- *   registrations with approve/deny for join requests and pause/resume/
- *   revoke for active Runners, plus a configuration form for the selected
- *   Runner — display name, Available/Loaded project picker, available-tool
- *   checkboxes, Master/Worktree directory editors with save confirmation,
- *   and Runs CI / Runs merges / Runs Impromptu switches. Operator choices
- *   persist per Runner via `PATCH /runners/:id/config` and heartbeats never
+ * @description System Settings › Runners › detailed Runner configuration:
+ *   a side-by-side panel with the visible Runner roster on the left and
+ *   the selected Runner's settings on the right. Revoked Runners are
+ *   hidden completely (no row, no detail panel, no selection); the left
+ *   list shows active (including paused), pending ("Needs setup"), and
+ *   denied registrations. The right panel carries the contextual actions
+ *   (approve/deny for join requests, pause/resume/revoke for active
+ *   Runners) plus a configuration form for the selected Runner — display
+ *   name, Available/Loaded project picker, available-tool checkboxes,
+ *   Master/Worktree directory editors with save confirmation, and Runs
+ *   CI / Runs merges / Runs Impromptu switches. Operator choices persist
+ *   per Runner via `PATCH /runners/:id/config` and heartbeats never
  *   overwrite them. Credential values are never rendered (the approve
  *   response carries the single one-time copy).
  * @example <RunnerConfigurationSection />
@@ -103,10 +109,10 @@ export function RunnerConfigurationSection() {
       const list = await api.getRunners();
       const rows = Array.isArray(list) ? list : [];
       setRunners(rows);
-      setSelectedId((prev) => {
-        if (prev && rows.some((r) => r.runnerId === prev)) return prev;
-        return rows.length > 0 ? rows[0].runnerId : null;
-      });
+      // Revoked registrations stay in state (the backend record is intact)
+      // but never render: selection resolves against the visible roster so
+      // a revoked Runner can neither auto-select nor linger selected.
+      setSelectedId((prev) => resolveSelectedId(visibleRunners(rows), prev));
       try {
         const monitor = await api.getRunnerMonitor();
         const byRunner = {};
@@ -250,8 +256,11 @@ export function RunnerConfigurationSection() {
     );
   }
 
-  const selected = runners.find((r) => r.runnerId === selectedId) || null;
-  const pending = runners.filter((r) => r.status === 'pending');
+  // Frontend-only filter: revoked Runners never render (no row, no detail
+  // panel, no selection) while the backend record stays intact for audit.
+  const visible = visibleRunners(runners);
+  const selected = visible.find((r) => r.runnerId === selectedId) || null;
+  const pending = visible.filter((r) => r.status === 'pending');
   const config = selected ? defaultRunnerConfig(selected) : null;
   const loadedIds = selected ? loadedProjectIds(selected, projects || []) : [];
   const { available, loaded } = partitionProjects(projects || [], loadedIds);
@@ -369,8 +378,8 @@ export function RunnerConfigurationSection() {
         a Runner). A Runner joins
         with the operator join token set as KAINBAIN_RUNNER_JOIN_TOKEN on the
         backend, waits here for approval, then heartbeats and claims tasks
-        with its own credential. Select a Runner below to configure its name,
-        projects, tools, directories, and job types.
+        with its own credential. Select a Runner on the left to configure its
+        name, projects, tools, directories, and job types.
       </p>
       {scheduler && (
         <p className="mt-1 text-[10px] font-mono text-text-muted" data-testid="runner-scheduler-deferrals">
@@ -425,20 +434,20 @@ export function RunnerConfigurationSection() {
           </div>
         </div>
       )}
-      {runners.length === 0 ? (
+      {visible.length === 0 ? (
         <p className="py-4 text-xs text-text-muted" data-testid="runner-config-empty">
           No Runner registrations yet. Boot a Runner pointed at this backend and
           its join request will appear here.
         </p>
       ) : (
-        <ul className="mt-3 flex flex-col gap-2" data-testid="runner-roster">
-          {runners.map((runner) => {
-            const isSelected = runner.runnerId === selectedId;
-            // One write at a time across the whole screen: a roster action
-            // racing a config save would overwrite the shared busy flag and
-            // reload the roster over the in-flight patch.
-            const rowBusy = Boolean(busyKey);
-            const assignment = assignments[runner.runnerId];
+        <div
+          className="mt-3 grid grid-cols-1 items-start gap-3 md:grid-cols-[240px_minmax(0,1fr)]"
+          data-testid="runner-layout"
+        >
+          <ul className="flex flex-col gap-2" data-testid="runner-roster">
+            {visible.map((runner) => {
+              const isSelected = runner.runnerId === selectedId;
+              const assignment = assignments[runner.runnerId];
             return (
               <li
                 key={runner.runnerId}
@@ -529,103 +538,15 @@ export function RunnerConfigurationSection() {
                     update failed
                   </span>
                 )}
-                {runner.status === 'pending' ? (
-                  <>
-                    <button
-                      type="button"
-                      disabled={Boolean(rowBusy)}
-                      onClick={() => mutate(runner.runnerId, 'approve')}
-                      aria-label={`Approve runner ${runner.runnerId}`}
-                      className="ml-auto px-3 py-1.5 min-h-[44px] bg-primary hover:brightness-110 text-on-primary text-xs font-bold uppercase tracking-widest rounded-sm transition-all cursor-pointer disabled:opacity-60"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      type="button"
-                      disabled={Boolean(rowBusy)}
-                      onClick={() => mutate(runner.runnerId, 'deny')}
-                      aria-label={`Deny runner ${runner.runnerId}`}
-                      className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
-                    >
-                      Deny
-                    </button>
-                  </>
-                ) : runner.status === 'denied' ? (
-                  // A denied join request is not a dead end: the operator can
-                  // still approve it (backend issues the credential) or park
-                  // it terminally with revoke. Deny is not offered here —
-                  // denying a denied Runner 409s, so the button would always fail.
-                  <>
-                    <button
-                      type="button"
-                      disabled={Boolean(rowBusy)}
-                      onClick={() => mutate(runner.runnerId, 'approve')}
-                      aria-label={`Approve runner ${runner.runnerId}`}
-                      className="ml-auto px-3 py-1.5 min-h-[44px] bg-primary hover:brightness-110 text-on-primary text-xs font-bold uppercase tracking-widest rounded-sm transition-all cursor-pointer disabled:opacity-60"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      type="button"
-                      disabled={Boolean(rowBusy)}
-                      onClick={() => mutate(runner.runnerId, 'revoke')}
-                      aria-label={`Revoke runner ${runner.runnerId}`}
-                      className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
-                    >
-                      Revoke
-                    </button>
-                  </>
-                ) : (
-                  runner.status === 'active' && (
-                    <>
-                      {runner.paused ? (
-                        <button
-                          type="button"
-                          disabled={Boolean(rowBusy)}
-                          onClick={() => mutate(runner.runnerId, 'resume')}
-                          aria-label={`Resume runner ${runner.runnerId}`}
-                          className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
-                        >
-                          Resume
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={Boolean(rowBusy)}
-                          onClick={() => mutate(runner.runnerId, 'pause')}
-                          aria-label={`Pause runner ${runner.runnerId}`}
-                          className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
-                        >
-                          Pause
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        disabled={Boolean(rowBusy)}
-                        onClick={() => mutate(runner.runnerId, 'revoke')}
-                        aria-label={`Revoke runner ${runner.runnerId}`}
-                        className="ml-auto px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
-                      >
-                        Revoke
-                      </button>
-                    </>
-                  )
-                )}
               </li>
             );
           })}
-        </ul>
-      )}
-      {pending.length > 0 && (
-        <p className="mt-2 text-xs text-text-muted" role="status">
-          {pending.length} pending join request{pending.length === 1 ? '' : 's'}.
-        </p>
-      )}
-      {selected && (
-        <div
-          className="mt-4 px-3 py-3 bg-surface-container border border-border-standard rounded-sm flex flex-col gap-4"
-          data-testid={`runner-detail-${selected.runnerId}`}
-        >
+          </ul>
+          {selected && (
+          <div
+            className="px-3 py-3 bg-surface-container border border-border-standard rounded-sm flex flex-col gap-4"
+            data-testid={`runner-detail-${selected.runnerId}`}
+          >
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-sm font-bold text-on-surface">
               {runnerDisplayName(selected)}
@@ -636,15 +557,99 @@ export function RunnerConfigurationSection() {
             >
               {selected.status === 'pending' ? 'Needs setup' : selected.status}
             </span>
-            <button
-              type="button"
-              onClick={reloadSelected}
-              disabled={busyKey === `reload:${selected.runnerId}`}
-              data-testid={`runner-reload-${selected.runnerId}`}
-              className="ml-auto px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
-            >
-              Reload
-            </button>
+            <div className="ml-auto flex items-center gap-2 flex-wrap">
+              {selected.status === 'pending' ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={Boolean(busyKey)}
+                    onClick={() => mutate(selected.runnerId, 'approve')}
+                    aria-label={`Approve runner ${selected.runnerId}`}
+                    className="px-3 py-1.5 min-h-[44px] bg-primary hover:brightness-110 text-on-primary text-xs font-bold uppercase tracking-widest rounded-sm transition-all cursor-pointer disabled:opacity-60"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    disabled={Boolean(busyKey)}
+                    onClick={() => mutate(selected.runnerId, 'deny')}
+                    aria-label={`Deny runner ${selected.runnerId}`}
+                    className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    Deny
+                  </button>
+                </>
+              ) : selected.status === 'denied' ? (
+                // A denied join request is not a dead end: the operator can
+                // still approve it (backend issues the credential) or park
+                // it terminally with revoke. Deny is not offered here —
+                // denying a denied Runner 409s, so the button would always fail.
+                <>
+                  <button
+                    type="button"
+                    disabled={Boolean(busyKey)}
+                    onClick={() => mutate(selected.runnerId, 'approve')}
+                    aria-label={`Approve runner ${selected.runnerId}`}
+                    className="px-3 py-1.5 min-h-[44px] bg-primary hover:brightness-110 text-on-primary text-xs font-bold uppercase tracking-widest rounded-sm transition-all cursor-pointer disabled:opacity-60"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    disabled={Boolean(busyKey)}
+                    onClick={() => mutate(selected.runnerId, 'revoke')}
+                    aria-label={`Revoke runner ${selected.runnerId}`}
+                    className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    Revoke
+                  </button>
+                </>
+              ) : (
+                selected.status === 'active' && (
+                  <>
+                    {selected.paused ? (
+                      <button
+                        type="button"
+                        disabled={Boolean(busyKey)}
+                        onClick={() => mutate(selected.runnerId, 'resume')}
+                        aria-label={`Resume runner ${selected.runnerId}`}
+                        className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
+                      >
+                        Resume
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={Boolean(busyKey)}
+                        onClick={() => mutate(selected.runnerId, 'pause')}
+                        aria-label={`Pause runner ${selected.runnerId}`}
+                        className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
+                      >
+                        Pause
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={Boolean(busyKey)}
+                      onClick={() => mutate(selected.runnerId, 'revoke')}
+                      aria-label={`Revoke runner ${selected.runnerId}`}
+                      className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
+                    >
+                      Revoke
+                    </button>
+                  </>
+                )
+              )}
+              <button
+                type="button"
+                onClick={reloadSelected}
+                disabled={busyKey === `reload:${selected.runnerId}`}
+                data-testid={`runner-reload-${selected.runnerId}`}
+                className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
+              >
+                Reload
+              </button>
+            </div>
           </div>
 
           <div className="flex flex-col gap-1">
@@ -891,7 +896,14 @@ export function RunnerConfigurationSection() {
               still ride the owning Runner&apos;s heartbeat.
             </p>
           </div>
+          </div>
+          )}
         </div>
+      )}
+      {pending.length > 0 && (
+        <p className="mt-2 text-xs text-text-muted" role="status">
+          {pending.length} pending join request{pending.length === 1 ? '' : 's'}.
+        </p>
       )}
     </section>
   );

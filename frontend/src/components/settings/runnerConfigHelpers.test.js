@@ -12,6 +12,8 @@ import {
   withProjectUnloaded,
   scopePatchForLoaded,
   validateDirectories,
+  visibleRunners,
+  resolveSelectedId,
 } from './runnerConfigHelpers';
 
 /***
@@ -106,6 +108,53 @@ describe('runnerConfigHelpers', () => {
     expect(scopePatchForLoaded(['a', 'b'], all)).toBeNull();
     expect(scopePatchForLoaded(['a'], all)).toEqual(['a']);
     expect(scopePatchForLoaded([], all)).toEqual([]);
+  });
+
+  it('hides revoked Runners but keeps active, paused, pending, and denied', () => {
+    const rows = [
+      { runnerId: 'revoked-1', status: 'revoked' },
+      { runnerId: 'active-1', status: 'active' },
+      { runnerId: 'paused-1', status: 'active', paused: true },
+      { runnerId: 'pending-1', status: 'pending' },
+      { runnerId: 'denied-1', status: 'denied' },
+    ];
+    expect(visibleRunners(rows).map((r) => r.runnerId)).toEqual([
+      'active-1',
+      'paused-1',
+      'pending-1',
+      'denied-1',
+    ]);
+  });
+
+  it('keeps unknown future statuses visible instead of dropping them', () => {
+    const rows = [{ runnerId: 'x1', status: 'expired' }, { runnerId: 'x2' }];
+    expect(visibleRunners(rows)).toEqual(rows);
+  });
+
+  it('maps an empty or missing roster to an empty visible list', () => {
+    expect(visibleRunners([])).toEqual([]);
+    expect(visibleRunners(undefined)).toEqual([]);
+    expect(visibleRunners(null)).toEqual([]);
+    expect(visibleRunners('nope')).toEqual([]);
+  });
+
+  it('keeps the previous selection while it is still visible', () => {
+    const visible = [{ runnerId: 'a' }, { runnerId: 'b' }];
+    expect(resolveSelectedId(visible, 'b')).toBe('b');
+  });
+
+  it('falls back to the first visible Runner when the selection is gone', () => {
+    const visible = [{ runnerId: 'b' }, { runnerId: 'c' }];
+    // Revoked or otherwise filtered out: the previous id is not visible.
+    expect(resolveSelectedId(visible, 'a')).toBe('b');
+    expect(resolveSelectedId(visible, null)).toBe('b');
+    expect(resolveSelectedId(visible, undefined)).toBe('b');
+  });
+
+  it('resolves an empty visible roster to a null selection', () => {
+    expect(resolveSelectedId([], 'a')).toBeNull();
+    expect(resolveSelectedId(undefined, 'a')).toBeNull();
+    expect(resolveSelectedId(null, null)).toBeNull();
   });
 
   it('requires both directory paths', () => {
