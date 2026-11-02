@@ -73,8 +73,16 @@ process.env.KAINBAIN_PROMPT_LAYOUT_DIR = tempPromptLayoutDir;
 // its logic with injected probes.
 process.env.KAINBAIN_CIRCUIT_MEM_ENABLED = "false";
 // Runner-only execution is the production default, but the standard suite
-// exercises the legacy embedded agent path (the rollback hatch): pin the
-// flag off for every suite so embedded-execution tests keep running the
-// code they cover. Suites that verify runner-only behavior opt back in
-// explicitly per test (see `flow/execution/executeStage.cutover.test.js`).
-process.env.KAINBAIN_RUNNER_EXECUTION_ONLY = "false";
+// exercises the legacy embedded agent path (the rollback hatch): the shell
+// env is set by api/package.json `test` script
+// (`KAINBAIN_RUNNER_EXECUTION_ONLY=false`), so config/index.js reads false
+// in workers. Reinforce host-sensitive vars that Vitest's `test.env` block
+// cannot reliably override (host KAINBAIN_AGY_BIN shadows the mock). Suites
+// that verify runner-only behaviour opt back in per test (see
+// executeStage.cutover.test.js).
+process.env.KAINBAIN_AGY_MODELS_TIMEOUT_MS = "60s";
+process.env.KAINBAIN_AGY_BIN = new URL(
+	"./agent/harnesses/antigravity/fixtures/mock-agy.mjs",
+	import.meta.url,
+).pathname;
+process.env.KAINBAIN_MUSE_MSP = "off";

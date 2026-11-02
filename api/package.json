@@ -8,9 +8,9 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "vitest run",
+    "test": "KAINBAIN_RUNNER_EXECUTION_ONLY=false vitest run",
     "lint": "eslint . --cache --cache-strategy content",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "KAINBAIN_RUNNER_EXECUTION_ONLY=false vitest run --coverage",
     "build": "echo 'Building API...'"
   },
   "dependencies": {

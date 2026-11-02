@@ -1,4 +1,5 @@
 import { classifyStageError } from "../../../work/index.js";
+import { didFailbackMoveStages } from "./didFailbackMoveStages.js";
 import { resolveAutoIterationEnabled } from "./resolveAutoIterationEnabled.js";
 import { resolveMaxAutoIterations } from "./resolveMaxAutoIterations.js";
 
@@ -37,14 +38,10 @@ export function beginAutoIteration(task, stage, error, project) {
 	if (maxAttempts <= 0) return null;
 	task.autoIterationCount = (task.autoIterationCount || 0) + 1;
 	if (task.autoIterationCount > maxAttempts) return null;
-	// The failback has already run by the time this resolver is called, so
-	// `task.currentStageId` is the failback destination. Compare it with the
-	// failed stage to classify the re-run: moved = cross-stage auto iteration
-	// (not a "retry" of the failed stage); same = in-place retry.
-	const failedStageId = stage?.id != null ? String(stage.id) : null;
-	const movedStages =
-		failedStageId != null &&
-		String(task.currentStageId ?? "") !== failedStageId;
+	// The failback has already run, so `task.currentStageId` is the
+	// destination. Delegate the comparison so the UI helper and this
+	// resolver can never drift.
+	const movedStages = didFailbackMoveStages(task, stage);
 	task.autoRetrying = !movedStages;
 	task.autoIterating = movedStages;
 	return { maxAttempts };
