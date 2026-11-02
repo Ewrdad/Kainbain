@@ -37,30 +37,37 @@ export function formatMobileMonitorTitle(activeTask = null, engineState = {}, is
  *   viewports. Presentation only: the resolver semantics
  *   (`resolveMobileModelDetails`, mirroring ActiveTaskPromptWidget) are
  *   reused untouched. Null renders the idle fallback; scripted stages keep
- *   the `Automated — no model` wording.
- * @param {Object} [details] - The resolved model details.
+ *   the `Automated — no model` wording. Fails safe: null details render
+ *   the idle fallback, and any missing label renders as `Unknown` — a
+ *   half-shaped payload can never crash the header or print `undefined`.
+ * @param {Object|null} [details] - The resolved model details.
  * @returns {{line: string, title: string}|null} Single-line text plus tooltip, or null for the idle fallback.
  * @example resolveMobileModelLine(resolveMobileModelDetails({ model: 'pi::pi::qwen3:8b', harness: 'pi' }, {})).line // 'Harness: pi · Model: qwen3:8b'
  ***/
 export function resolveMobileModelLine(details = {}) {
-  if (details.isIdle) return null;
+  if (details == null || details.isIdle) return null;
   if (details.isScripted) return { line: 'Automated — no model', title: 'Automated — no model' };
   const parts = [];
   const titleParts = [];
   if (details.showAlias) {
-    const alias = `alias: ${details.aliasName || `${details.aliasMissing} (unresolved)`}`;
+    const aliasName =
+      details.aliasName ||
+      (details.aliasMissing ? `${details.aliasMissing} (unresolved)` : 'Unknown');
+    const alias = `alias: ${aliasName}`;
     parts.push(alias);
     titleParts.push(details.aliasTitle ? `${alias} (${details.aliasTitle})` : alias);
   }
   if (details.showHarness) {
-    parts.push(`Harness: ${details.harness}`);
-    titleParts.push(`Harness: ${details.harness}`);
+    const harness = `Harness: ${details.harness || 'Unknown'}`;
+    parts.push(harness);
+    titleParts.push(harness);
   }
   if (details.showModel) {
     // The line truncates to the short label; the tooltip keeps the full ref
     // so a long model identifier is never lost at 360px.
-    parts.push(`Model: ${details.model.label}`);
-    titleParts.push(`Model: ${details.modelRef || details.model.label}`);
+    const modelLabel = details.model?.label || details.modelRef || 'Unknown';
+    parts.push(`Model: ${modelLabel}`);
+    titleParts.push(`Model: ${details.modelRef || modelLabel}`);
   }
   if (details.showProviderLine) {
     const provider = `Provider: ${details.provider || 'Unknown'} · Source: ${details.source || 'unknown'}`;
@@ -91,6 +98,8 @@ export function resolveMobileModelLine(details = {}) {
  * @param {Object|null} [props.activeTask] - Resolved active task (title, goal, model, harness).
  * @param {Array<Object>} [props.stages] - Pipeline stages for the active task.
  * @param {boolean} [props.isAgentRunning] - Agent running flag (running fallback).
+ * @param {Array<Object>} [props.runnerTasks] - Tasks for the per-runner rows (titles resolve by id).
+ * @param {Array<Object>} [props.runnerStages] - Stages for the per-runner rows (stage names resolve by id).
  * @param {Object} [props.stats] - Deprecated, ignored: kept so older callers passing task stats keep rendering.
  * @param {number} [props.queueCount] - Deprecated, ignored: kept so older callers passing queue length keep rendering.
  * @param {boolean} [props.schedulerRunning] - False renders STOPPED instead of IDLE.
@@ -141,7 +150,6 @@ export function MobileMonitorView({
     activeTask,
     stages,
     engineState,
-    isRunning,
   });
   // Pill-on (no fleet): legacy split — pill names the stage, title the task.
   // Pill-off (fleet shown): one named chip, `<task> · <stage>`, so the stage

@@ -14,7 +14,6 @@ describe('resolveMobileHeaderMode', () => {
       activeTask: TASK,
       stages: STAGES,
       engineState: { status: 'running', activeStageName: 'Build' },
-      isRunning: true,
     });
     expect(mode.showRunnerRows).toBe(true);
     expect(mode.showEnginePill).toBe(false);
@@ -32,7 +31,6 @@ describe('resolveMobileHeaderMode', () => {
       activeTask: TASK,
       stages: STAGES,
       engineState: { status: 'idle' },
-      isRunning: false,
     });
     expect(mode.showRunnerRows).toBe(true);
     expect(mode.showEnginePill).toBe(false);
@@ -45,7 +43,6 @@ describe('resolveMobileHeaderMode', () => {
       activeTask: TASK,
       stages: STAGES,
       engineState: { status: 'running', activeStageName: 'Build' },
-      isRunning: true,
     });
     expect(mode.showRunnerRows).toBe(false);
     expect(mode.showEnginePill).toBe(true);
@@ -60,7 +57,6 @@ describe('resolveMobileHeaderMode', () => {
         activeTask: TASK,
         stages: STAGES,
         engineState: { status },
-        isRunning: false,
       });
       expect(mode.showEnginePill).toBe(false);
     }
@@ -73,7 +69,6 @@ describe('resolveMobileHeaderMode', () => {
       activeTask: null,
       stages: [],
       engineState: {},
-      isRunning: false,
     });
     expect(mode.showRunnerRows).toBe(false);
     expect(mode.showEnginePill).toBe(true);
@@ -86,7 +81,6 @@ describe('resolveMobileHeaderMode', () => {
       activeTask: null,
       stages: [],
       engineState: { status: 'running', activeStageName: 'Build' },
-      isRunning: true,
     });
     expect(mode.activeChip).toBeNull();
     expect(mode.showEnginePill).toBe(false);
@@ -111,7 +105,6 @@ describe('resolveMobileHeaderMode', () => {
       activeTask: { id: 't2', goal: '# Ship the widget\nSecond line' },
       stages: [],
       engineState: {},
-      isRunning: true,
     });
     expect(mode.activeChip?.taskName).toBe('Ship the widget');
     expect(mode.activeChip?.label).toBe('Ship the widget');
@@ -124,9 +117,74 @@ describe('resolveMobileHeaderMode', () => {
       activeTask: TASK,
       stages: STAGES,
       engineState: { status: 'running' },
-      isRunning: true,
     });
     expect(mode.showRunnerRows).toBe(false);
     expect(mode.showEnginePill).toBe(true);
+  });
+
+  test('missing inputs fail safe to the pill fallback, never a crash', () => {
+    expect(resolveMobileHeaderMode()).toEqual({
+      showRunnerRows: false,
+      showEnginePill: true,
+      activeChip: null,
+    });
+    const nulls = resolveMobileHeaderMode({
+      assignments: null,
+      registry: null,
+      activeTask: null,
+      stages: null,
+      engineState: null,
+    });
+    expect(nulls.showEnginePill).toBe(true);
+    expect(nulls.activeChip).toBeNull();
+  });
+
+  test('unknown registry shapes and counts count as no fleet (pill stays visible)', () => {
+    for (const registry of ['local-alpha', { size: 5 }, -1, NaN, Infinity]) {
+      const mode = resolveMobileHeaderMode({ assignments: [], registry });
+      expect(mode.showRunnerRows).toBe(false);
+      expect(mode.showEnginePill).toBe(true);
+    }
+  });
+
+  test('non-array assignments and stages never crash the resolver', () => {
+    const mode = resolveMobileHeaderMode({
+      assignments: 'local-alpha',
+      registry: [],
+      activeTask: TASK,
+      stages: 'Catchup',
+      engineState: { status: 'running' },
+    });
+    expect(mode.showRunnerRows).toBe(false);
+    expect(mode.showEnginePill).toBe(true);
+    expect(mode.activeChip?.taskName).toBe('Build user auth');
+  });
+
+  test('a numeric stage name still renders, like the pill does', () => {
+    const mode = resolveMobileHeaderMode({
+      assignments: [{ runnerId: 'r1' }],
+      activeTask: TASK,
+      stages: [{ id: '5', name: 7, type: 'agent' }],
+      engineState: {},
+    });
+    expect(mode.activeChip).toEqual({
+      taskName: 'Build user auth',
+      stageName: '7',
+      label: 'Build user auth · 7',
+    });
+  });
+
+  test('a non-text stage name falls back to the task-only chip', () => {
+    const mode = resolveMobileHeaderMode({
+      assignments: [{ runnerId: 'r1' }],
+      activeTask: TASK,
+      stages: [{ id: '5', name: { text: 'Catchup' }, type: 'agent' }],
+      engineState: {},
+    });
+    expect(mode.activeChip).toEqual({
+      taskName: 'Build user auth',
+      stageName: null,
+      label: 'Build user auth',
+    });
   });
 });

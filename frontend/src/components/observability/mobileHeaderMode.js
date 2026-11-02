@@ -10,16 +10,18 @@ import { resolveDisplayedStage } from '../tasks/runningTask';
  *   Runner) is shown — the per-runner rows already name each Runner's live
  *   state, mirroring `NowPlayingBar` fleet mode. The active chip names the
  *   task plus the stage it is on (`<task> · <stage>`, task first) so the
- *   unnamed `ACTIVE: <stage>` pill never leaves the task anonymous.
+ *   unnamed `ACTIVE: <stage>` pill never leaves the task anonymous. Fails
+ *   safe: unknown registry shapes count as no fleet (the pill stays
+ *   visible — status is never hidden on bad input), and a malformed stage
+ *   name falls back to the task-only chip instead of crashing the header.
  * @param {Object} [options] - Header inputs.
  * @param {Array<Object>} [options.assignments] - Live fleet assignments (runnerId-bearing).
  * @param {Map|Array|number|null} [options.registry] - Runner registry (Map, list, or count).
  * @param {Object|null} [options.activeTask] - Resolved active task (title, goal, currentStageId).
  * @param {Array<Object>} [options.stages] - Pipeline stages for the active task.
  * @param {Object} [options.engineState] - Engine snapshot (status, activeStageName).
- * @param {boolean} [options.isRunning] - Engine currently executing.
  * @returns {{showRunnerRows: boolean, showEnginePill: boolean, activeChip: {taskName: string, stageName: string|null, label: string}|null}} Header mode: fleet visibility, pill fallback, and the named chip (null when no task names it).
- * @example resolveMobileHeaderMode({ assignments: [{ runnerId: 'r1' }], activeTask: { title: 'Build auth' }, stages: [], engineState: {}, isRunning: true }).showEnginePill // false
+ * @example resolveMobileHeaderMode({ assignments: [{ runnerId: 'r1' }], activeTask: { title: 'Build auth' } }).showEnginePill // false
  ***/
 export function resolveMobileHeaderMode({
   assignments = [],
@@ -27,9 +29,7 @@ export function resolveMobileHeaderMode({
   activeTask = null,
   stages = [],
   engineState = {},
-  isRunning = false,
 } = {}) {
-  void isRunning;
   const live = (Array.isArray(assignments) ? assignments : []).filter((a) => a && a.runnerId);
   let registryCount = 0;
   if (registry instanceof Map) {
@@ -45,9 +45,20 @@ export function resolveMobileHeaderMode({
     activeTask?.title || activeTask?.goal || '',
     '',
   ).trim();
+  // Stage names are display text, but a numeric id can leak through from a
+  // malformed payload — the pill renders those, so the chip does too. Only
+  // genuine non-text (objects, booleans) falls back to the task-only chip.
+  const rawStageName = resolveDisplayedStage(
+    activeTask,
+    Array.isArray(stages) ? stages : [],
+    engineState ?? {},
+  )?.name;
   const stageName =
-    resolveDisplayedStage(activeTask, Array.isArray(stages) ? stages : [], engineState)?.name?.trim() ||
-    '';
+    typeof rawStageName === 'string'
+      ? rawStageName.trim()
+      : typeof rawStageName === 'number' && Number.isFinite(rawStageName)
+        ? String(rawStageName)
+        : '';
   const activeChip = taskName
     ? { taskName, stageName: stageName || null, label: stageName ? `${taskName} · ${stageName}` : taskName }
     : null;

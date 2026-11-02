@@ -319,6 +319,26 @@ test('fleet shown but task unnamed: pill stays hidden and the legacy label remai
   expect(screen.getByTestId('mobile-active-stage')).toHaveTextContent('No active task');
 });
 
+test('null engine snapshot renders the idle fallback without crashing', () => {
+  renderWithKainBain(
+    <MobileMonitorView
+      engineState={null}
+      activeTask={{ id: 't1', title: 'Build user auth' }}
+      runnerAssignmentsOverride={[]}
+      runnerRegistryOverride={[]}
+      processLogs={[]}
+      onExit={() => {}}
+    />,
+  );
+
+  expect(screen.getByTestId('mobile-engine-state')).toHaveTextContent('IDLE');
+  expect(screen.getByTestId('mobile-active-stage')).toHaveTextContent('Build user auth');
+  // Fail-visible, not blank: the task names no model, so Unknown labels show.
+  expect(screen.getByTestId('mobile-monitor-model-details')).toHaveTextContent(
+    'Harness: Unknown',
+  );
+});
+
 test('no runners configured: pill fallback stays with the legacy task-only title', () => {
   renderWithKainBain(
     <MobileMonitorView

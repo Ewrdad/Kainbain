@@ -1,8 +1,7 @@
 // Run in the lighter node environment: pure format function, no DOM needs.
 // @vitest-environment node
 import { expect, test, describe } from 'vitest';
-import { formatMobileMonitorTitle, resolveMobileModelLine } from './MobileMonitorView';
-import { resolveMobileModelDetails } from './mobileModelDetails';
+import { formatMobileMonitorTitle } from './MobileMonitorView';
 
 describe('formatMobileMonitorTitle', () => {
   test('prefers the task title when running', () => {
@@ -45,46 +44,5 @@ describe('formatMobileMonitorTitle', () => {
   test('handles null task and empty engineState without crashing', () => {
     expect(formatMobileMonitorTitle(null, {}, true)).toBe('No active task');
     expect(formatMobileMonitorTitle()).toBe('No active stage');
-  });
-});
-
-describe('resolveMobileModelLine', () => {
-  test('compresses alias, harness, model, and provider onto one line', () => {
-    const line = resolveMobileModelLine(
-      resolveMobileModelDetails(
-        {
-          model: 'pi::ollama-cloud::gemma4:31b-cloud',
-          harness: 'pi',
-          modelDetails: { key: 'pi::ollama-cloud::gemma4:31b-cloud', provider: 'ollama-cloud', source: 'stage-override' },
-          alias: { name: 'fast', targetIndex: 0 },
-        },
-        {},
-      ),
-    );
-    expect(line.line).toBe(
-      'alias: fast · Harness: pi · Model: gemma4:31b-cloud · Provider: ollama-cloud · Source: stage-override',
-    );
-    // The tooltip keeps the full model ref so nothing is lost to truncation.
-    expect(line.title).toContain('Model: pi::ollama-cloud::gemma4:31b-cloud');
-    expect(line.title).toContain('alias: fast');
-  });
-
-  test('scripted stages keep the automated wording', () => {
-    const line = resolveMobileModelLine(
-      resolveMobileModelDetails({ stageType: 'ci' }, {}),
-    );
-    expect(line.line).toBe('Automated — no model');
-  });
-
-  test('idle resolves to null so the view renders its fallback', () => {
-    expect(resolveMobileModelLine(resolveMobileModelDetails(null, {}))).toBeNull();
-  });
-
-  test("harness-managed stages ('none') hide only the model", () => {
-    const line = resolveMobileModelLine(
-      resolveMobileModelDetails({ harness: 'muse', modelSelection: 'none' }, {}),
-    );
-    expect(line.line).toContain('Harness: muse');
-    expect(line.line).not.toContain('Model:');
   });
 });

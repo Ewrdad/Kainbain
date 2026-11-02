@@ -119,8 +119,8 @@ const runnerLogTail = (task, runnerId, limit = 6) => {
  *   Runner to one row with an expandable tail. `assignmentsOverride` /
  *   `registryOverride` inject already-polled fleet state (the mobile
  *   header's single poller) and skip this widget's own poll while set —
- *   mirroring `NowPlayingBar`'s override pattern — so existing callers keep
- *   working with zero edits.
+ *   the same override approach `NowPlayingBar` uses — so existing callers
+ *   keep working with zero edits.
  * @example <PerRunnerTasksWidget tasks={tasks} compact={false} />
  ***/
 export function PerRunnerTasksWidget({
