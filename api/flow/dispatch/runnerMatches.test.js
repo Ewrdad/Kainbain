@@ -142,6 +142,52 @@ describe("runnerMatches", () => {
 		);
 	});
 
+	test("stage runnerPolicy admits only listed runners in allow mode", () => {
+		const req = { harness: "pi", tier: "T1", runnerPolicy: { mode: "allow", runners: ["onsite-1"] } };
+		expect(runnerMatches({ ...record(), runnerId: "onsite-1" }, req, { now: at }).reason).toBe("MATCH");
+		expect(runnerMatches({ ...record(), runnerId: "cloud-2" }, req, { now: at }).reason).toBe(
+			"RUNNER_NOT_ALLOWED",
+		);
+	});
+
+	test("stage runnerPolicy refuses only listed runners in block mode", () => {
+		const req = { harness: "pi", tier: "T1", runnerPolicy: { mode: "block", runners: ["cloud-9"] } };
+		expect(runnerMatches({ ...record(), runnerId: "cloud-9" }, req, { now: at }).reason).toBe(
+			"RUNNER_BLOCKED",
+		);
+		expect(runnerMatches({ ...record(), runnerId: "onsite-1" }, req, { now: at }).reason).toBe("MATCH");
+	});
+
+	test("stage runnerPolicy is the last gate: health, capability, and operator reasons keep priority", () => {
+		const req = { harness: "pi", tier: "T1", runnerPolicy: { mode: "allow", runners: ["onsite-1"] } };
+		// A stale runner reports stale, never a policy miss.
+		expect(
+			runnerMatches(
+				record({ runnerId: "cloud-2", lastSeenAt: new Date(at - 61_000).toISOString() }),
+				req,
+				{ now: at },
+			).reason,
+		).toBe("STALE_HEARTBEAT");
+		// A capability miss reports the capability, never a policy miss.
+		expect(runnerMatches({ ...record(), runnerId: "cloud-2" }, { ...req, harness: "codex" }, { now: at }).reason).toBe(
+			"NO_HARNESS",
+		);
+		// Refused by both owner settings: the operator reason wins (stable order).
+		const both = record({
+			runnerId: "cloud-2",
+			operatorConfig: { projectScope: ["p1"] },
+		});
+		expect(runnerMatches(both, req, { now: at, projectId: "p2" }).reason).toBe("PROJECT_SCOPE");
+	});
+
+	test("a missing policy or missing runner id never blocks a capable runner", () => {
+		expect(runnerMatches({ ...record(), runnerId: "r1" }, { harness: "pi", tier: "T1" }, { now: at }).reason).toBe(
+			"MATCH",
+		);
+		const req = { harness: "pi", tier: "T1", runnerPolicy: { mode: "allow", runners: ["r1"] } };
+		expect(runnerMatches(record(), req, { now: at }).reason).toBe("MATCH");
+	});
+
 	test("operator project scope constrains by project id and fails open", () => {
 		const scoped = record({ operatorConfig: { projectScope: ["p1"] } });
 		expect(

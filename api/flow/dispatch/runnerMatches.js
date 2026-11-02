@@ -1,6 +1,7 @@
 import { RUNNER_PROTOCOL } from "../runnerRegistry.js";
 import { runnerApiCompatible } from "./runnerApiCompat.js";
 import { operatorConfigVerdict } from "./operatorConfigVerdict.js";
+import { stageRunnerPolicyVerdict } from "../../../shared/stageRunnerPolicy.js";
 
 /***
  * MARK: runnerMatches
@@ -12,7 +13,11 @@ import { operatorConfigVerdict } from "./operatorConfigVerdict.js";
  *   reason code is loud by design (step-6 NO_CAPABLE_RUNNER diagnostics
  *   and the monitor surface distinguish "no runners" from "runners that
  *   cannot take this job"). Alias requirements always miss here; WP-3.2
- *   resolves them centrally first.
+ *   resolves them centrally first. The last two gates are owner settings:
+ *   the Runner's own `operatorConfig` first, then the stage's
+ *   `runnerPolicy` (`RUNNER_NOT_ALLOWED` / `RUNNER_BLOCKED`) — owner
+ *   settings keep a stable order so combined refusals always report the
+ *   same reason.
  * @example runnerMatches(record, { harness: 'pi', tier: 'T1' }) => { ok: true, reason: 'MATCH' }
  * @param {Object} record - Registry record (`status`, `facts`, `lastSeenAt`, `capabilities`, plus the operator-owned `operatorConfig` the Runners settings screen persists).
  * @param {Object} req - Task requirements from `taskRequirements`.
@@ -79,5 +84,11 @@ export function runnerMatches(record = {}, req = {}, opts = {}) {
 	// can bypass the operator's settings.
 	const operatorVerdict = operatorConfigVerdict(record, req, opts);
 	if (!operatorVerdict.ok) return operatorVerdict;
+	// Stage runnerPolicy (the stage settings allow/block list) is the final
+	// gate: after the operator's own settings, so a Runner refused by both
+	// always reports the operator reason, and after every health/capability
+	// gate so those keep their stable reasons too.
+	const policyVerdict = stageRunnerPolicyVerdict(req.runnerPolicy, record.runnerId);
+	if (!policyVerdict.ok) return policyVerdict;
 	return { ok: true, reason: "MATCH" };
 }

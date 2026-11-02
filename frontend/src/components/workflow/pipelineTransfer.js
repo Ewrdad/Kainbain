@@ -14,6 +14,7 @@
  ***/
 
 import { normalizeStageTags } from '../../../../shared/stageTags.js';
+import { collectInvalidStageRunnerPolicies } from '../../../../shared/stageRunnerPolicy.js';
 
 export const PIPELINE_EXPORT_VERSION = 1;
 export const PIPELINE_FILE_SUFFIX = '.pipeline.json';
@@ -399,6 +400,24 @@ export function validatePipelineDoc(doc) {
       }
     }
   });
+  // Stage Runner allow/block lists ride the transfer verbatim (unknown keys
+  // are preserved); a mistyped mode fails here with a named problem rather
+  // than importing as silently-unrestricted.
+  for (const problem of collectInvalidStageRunnerPolicies(doc.stages)) {
+    const label = doc.stages[problem.index]?.name
+      ? `"${doc.stages[problem.index].name}"`
+      : `#${problem.index + 1}`;
+    const ref = `stages[${problem.index}] (${label})`;
+    if (problem.problem === 'UNKNOWN_MODE') {
+      errors.push(
+        `${ref}: "runnerPolicy".mode must be "allow" or "block", got ${JSON.stringify(problem.mode)}.`
+      );
+    } else if (problem.problem === 'RUNNERS_NOT_ARRAY') {
+      errors.push(`${ref}: "runnerPolicy".runners must be an array of Runner ids.`);
+    } else {
+      errors.push(`${ref}: "runnerPolicy" must be an object like { mode, runners }.`);
+    }
+  }
   return { ok: errors.length === 0, errors };
 }
 

@@ -20,6 +20,7 @@ import {
 } from "../../shared/modelAliases.js";
 import { computeAliasReliability } from "../watch/aliasReliability.js";
 import { normalizeStageType } from "../projectStore.js";
+import { collectInvalidStageRunnerPolicies } from "../../shared/stageRunnerPolicy.js";
 
 /***
  * MARK: validateModelAliasesPayload
@@ -225,6 +226,17 @@ export default async function projectsRoutes(app, { deps }) {
 			} = request.body || {};
 			if (!name || typeof name !== "string" || !name.trim()) {
 				return reply.status(400).send({ error: "Project name is required" });
+			}
+			// A mistyped runnerPolicy mode must fail loud, never save as
+			// silently-unrestricted (normalization alone would fail open).
+			if (stages !== undefined) {
+				const policyProblems = collectInvalidStageRunnerPolicies(stages);
+				if (policyProblems.length > 0) {
+					return reply.status(400).send({
+						error: "Invalid stage runnerPolicy entries",
+						details: policyProblems,
+					});
+				}
 			}
 			const saveWarnings = [];
 			const modelIdsFor = deps.modelIdsFor || defaultModelIdsFor;
@@ -581,6 +593,16 @@ export default async function projectsRoutes(app, { deps }) {
 			return reply.status(400).send({ error: "stages array is required" });
 		}
 
+		// A mistyped runnerPolicy mode must fail loud, never save as
+		// silently-unrestricted (normalization alone would fail open).
+		const policyProblems = collectInvalidStageRunnerPolicies(stages);
+		if (policyProblems.length > 0) {
+			return reply.status(400).send({
+				error: "Invalid stage runnerPolicy entries",
+				details: policyProblems,
+			});
+		}
+
 		// Save-time semantic validation of skill attachment configs: values of
 		// kbRef-declared keywords must resolve to a known project/workflow/stage.
 		// Fail-closed on invalid references; everything legacy/unknown stays
@@ -679,6 +701,18 @@ export default async function projectsRoutes(app, { deps }) {
 			return reply.status(400).send({ error: "Workflow name is required" });
 		}
 
+		// A mistyped runnerPolicy mode must fail loud, never save as
+		// silently-unrestricted (normalization alone would fail open).
+		if (stages !== undefined) {
+			const policyProblems = collectInvalidStageRunnerPolicies(stages);
+			if (policyProblems.length > 0) {
+				return reply.status(400).send({
+					error: "Invalid stage runnerPolicy entries",
+					details: policyProblems,
+				});
+			}
+		}
+
 		try {
 			const workflow = projectStore.createWorkflow(request.params.id, {
 				name,
@@ -717,6 +751,18 @@ export default async function projectsRoutes(app, { deps }) {
 	app.patch("/projects/:id/workflows/:workflowId", async (request, reply) => {
 		const project = projectStore.getProject(request.params.id);
 		if (!project) return reply.status(404).send({ error: "Project not found" });
+
+		// A mistyped runnerPolicy mode must fail loud, never save as
+		// silently-unrestricted (normalization alone would fail open).
+		if ((request.body || {}).stages !== undefined) {
+			const policyProblems = collectInvalidStageRunnerPolicies((request.body || {}).stages);
+			if (policyProblems.length > 0) {
+				return reply.status(400).send({
+					error: "Invalid stage runnerPolicy entries",
+					details: policyProblems,
+				});
+			}
+		}
 
 		const updated = projectStore.updateWorkflow(
 			request.params.id,
