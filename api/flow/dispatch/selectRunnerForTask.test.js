@@ -67,4 +67,17 @@ describe("selectRunnerForTask", () => {
 		expect(out.record).toBeNull();
 		expect(out.misses).toEqual({ r1: "PROJECT_SCOPE" });
 	});
+
+	test("stage runnerPolicy flows through: only eligible runners are picked", () => {
+		const req = { harness: "pi", tier: "T1", runnerPolicy: { mode: "allow", runners: ["r2"] } };
+		const out = selectRunnerForTask([rec("r1"), rec("r2")], req, { now: 1_000_000 });
+		expect(out.record.runnerId).toBe("r2");
+		const none = selectRunnerForTask(
+			[rec("r1")],
+			{ harness: "pi", tier: "T1", runnerPolicy: { mode: "block", runners: ["r1"] } },
+			{ now: 1_000_000 },
+		);
+		expect(none.record).toBeNull();
+		expect(none.misses).toEqual({ r1: "RUNNER_BLOCKED" });
+	});
 });

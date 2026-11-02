@@ -20,6 +20,7 @@ import {
 } from "../../shared/modelAliases.js";
 import { computeAliasReliability } from "../watch/aliasReliability.js";
 import { normalizeStageType } from "../projectStore.js";
+import { assertValidStageRunnerPolicies } from "../../shared/stageRunnerPolicy.js";
 
 /***
  * MARK: validateModelAliasesPayload
@@ -226,6 +227,8 @@ export default async function projectsRoutes(app, { deps }) {
 			if (!name || typeof name !== "string" || !name.trim()) {
 				return reply.status(400).send({ error: "Project name is required" });
 			}
+			const policyError = assertValidStageRunnerPolicies(stages);
+			if (policyError) return reply.status(400).send(policyError);
 			const saveWarnings = [];
 			const modelIdsFor = deps.modelIdsFor || defaultModelIdsFor;
 			if (modelAliases !== undefined) {
@@ -581,6 +584,9 @@ export default async function projectsRoutes(app, { deps }) {
 			return reply.status(400).send({ error: "stages array is required" });
 		}
 
+		const policyError = assertValidStageRunnerPolicies(stages);
+		if (policyError) return reply.status(400).send(policyError);
+
 		// Save-time semantic validation of skill attachment configs: values of
 		// kbRef-declared keywords must resolve to a known project/workflow/stage.
 		// Fail-closed on invalid references; everything legacy/unknown stays
@@ -679,6 +685,9 @@ export default async function projectsRoutes(app, { deps }) {
 			return reply.status(400).send({ error: "Workflow name is required" });
 		}
 
+		const policyError = assertValidStageRunnerPolicies(stages);
+		if (policyError) return reply.status(400).send(policyError);
+
 		try {
 			const workflow = projectStore.createWorkflow(request.params.id, {
 				name,
@@ -717,6 +726,9 @@ export default async function projectsRoutes(app, { deps }) {
 	app.patch("/projects/:id/workflows/:workflowId", async (request, reply) => {
 		const project = projectStore.getProject(request.params.id);
 		if (!project) return reply.status(404).send({ error: "Project not found" });
+
+		const policyError = assertValidStageRunnerPolicies((request.body || {}).stages);
+		if (policyError) return reply.status(400).send(policyError);
 
 		const updated = projectStore.updateWorkflow(
 			request.params.id,
