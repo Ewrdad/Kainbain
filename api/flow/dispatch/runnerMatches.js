@@ -58,6 +58,16 @@ export function claimEligibleRunner(record = {}) {
 	return record?.status === "active" && record?.paused !== true;
 }
 
+/***
+ * MARK: runnerMatches
+ * @description Decides whether one Runner registration can take a task with
+ *   the given requirements (see module docs).
+ * @example runnerMatches({ status: 'active', paused: false, lastSeenAt: new Date().toISOString(), capabilities: { harnesses: [{ id: 'pi' }], models: ['m1'] } }, { harness: 'pi', model: 'm1' }) => { ok: true, reason: 'MATCH' }
+ * @param {Object} record - Registry record.
+ * @param {Object} [req={}] - Task requirements.
+ * @param {Object} [opts={}] - Options.
+ * @returns {Object} `{ ok, reason }`.
+ ***/
 export function runnerMatches(record = {}, req = {}, opts = {}) {
 	const now = typeof opts.now === "number" ? opts.now : Date.now();
 	const staleAfterMs =

@@ -238,6 +238,11 @@ export const parseModelsInput = (text = '') =>
       .filter(Boolean),
   )];
 
+/***
+ * MARK: effectiveDirectories
+ * @description Effective master/worktree folders reported by a Runner.
+ * @example effectiveDirectories({ facts: { directories: { masterDir: '/m', worktreeDir: '/w' } } }) => { masterDir: '/m', worktreeDir: '/w' }
+ ***/
 export const effectiveDirectories = (runner = {}) => {
   const f = runner?.facts?.directories;
   if (f && typeof f === 'object') {
@@ -253,6 +258,12 @@ export const effectiveDirectories = (runner = {}) => {
   return { masterDir: '', worktreeDir: '' };
 };
 
+/***
+ * MARK: effectiveDirectoryValue
+ * @description Value shown for a directory field: operator override if set,
+ *   else the Runner's effective folder.
+ * @example effectiveDirectoryValue({ facts: { workRoot: '/srv' } }, 'masterDir') => '/srv'
+ ***/
 export const effectiveDirectoryValue = (runner = {}, field) => {
   const cfg = defaultRunnerConfig(runner).directories[field];
   if (cfg) return cfg;
@@ -260,6 +271,11 @@ export const effectiveDirectoryValue = (runner = {}, field) => {
   return eff || '';
 };
 
+/***
+ * MARK: displayDirectories
+ * @description Directory field display values plus default flags.
+ * @example displayDirectories({}) => { masterDir: { value: '', isDefault: true }, worktreeDir: { value: '', isDefault: true } }
+ ***/
 export const displayDirectories = (runner = {}) => {
   const cfg = defaultRunnerConfig(runner).directories;
   const eff = effectiveDirectories(runner);
@@ -269,6 +285,11 @@ export const displayDirectories = (runner = {}) => {
   };
 };
 
+/***
+ * MARK: modelUnion
+ * @description Union of advertised and effective model ids.
+ * @example modelUnion({ capabilities: { models: ['m1'] } }) => ['m1']
+ ***/
 export const modelUnion = (runner = {}) => {
   const adv = advertisedModels(runner);
   const eff = effectiveModels(runner);
@@ -276,6 +297,11 @@ export const modelUnion = (runner = {}) => {
   return [...set].sort();
 };
 
+/***
+ * MARK: modelTogglePatch
+ * @description Patch value for toggled model ids; `null` when matching advertised.
+ * @example modelTogglePatch({ capabilities: { models: ['m1'] } }, ['m1']) => null
+ ***/
 export const modelTogglePatch = (runner = {}, nextIds = []) => {
   const advertised = advertisedModels(runner);
   const sortedNext = [...nextIds].sort();
@@ -284,14 +310,29 @@ export const modelTogglePatch = (runner = {}, nextIds = []) => {
   return isAdvertised ? null : [...nextIds];
 };
 
+/***
+ * MARK: canRequestUpdate
+ * @description Whether an "Update now" action is available.
+ * @example canRequestUpdate({ updateAvailable: true }) => true
+ ***/
 export const canRequestUpdate = (runner = {}) => Boolean(runner?.updateAvailable);
 
+/***
+ * MARK: canRediscoverModels
+ * @description Whether model re-detection can be requested.
+ * @example canRediscoverModels({}) => true
+ ***/
 export const canRediscoverModels = (runner = {}) => {
   if (!runner || typeof runner !== 'object') return false;
   const ids = advertisedToolIds(runner);
   return ids.includes('muse') || advertisedModels(runner).length > 0 || true;
 };
 
+/***
+ * MARK: stalenessLabel
+ * @description Human-readable age label for a Runner's last heartbeat.
+ * @example stalenessLabel({ lastSeenAt: '2024-01-01T00:00:00Z' }, Date.parse('2024-01-01T00:01:30Z')) => '2m ago'
+ ***/
 export const stalenessLabel = (runner = {}, nowMs = Date.now()) => {
   if (!runner?.lastSeenAt) return null;
   const seen = Date.parse(runner.lastSeenAt);
@@ -304,6 +345,11 @@ export const stalenessLabel = (runner = {}, nowMs = Date.now()) => {
   return `${hrs}h ago`;
 };
 
+/***
+ * MARK: runnerStatusLabel
+ * @description Status label for a Runner row.
+ * @example runnerStatusLabel({ status: 'active', paused: false }) => 'active'
+ ***/
 export const runnerStatusLabel = (runner = {}) => {
   if (runner.status === 'pending') return 'Needs setup';
   if (runner.status === 'active' && runner.paused) return 'Paused';
@@ -420,6 +466,11 @@ export const validateDirectories = (directories = {}) => {
   return { ok: Object.keys(errors).length === 0, errors };
 };
 
+/***
+ * MARK: validateSingleDirectory
+ * @description Validates a single directory path value.
+ * @example validateSingleDirectory('') => 'Enter a directory path.'
+ ***/
 export const validateSingleDirectory = (value) => {
   if (typeof value !== 'string' || !value.trim()) return 'Enter a directory path.';
   if (value.trim().length > 1024) return 'Must be at most 1024 characters.';

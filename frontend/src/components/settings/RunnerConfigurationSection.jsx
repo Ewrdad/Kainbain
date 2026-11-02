@@ -64,6 +64,7 @@ const DirectoryField = ({ label, testId, value, hint, isDefault, error, busy, on
 /***
  * MARK: RunnerConfigurationSection
  * @description System Settings › Runners › detailed Runner configuration
+ * @example <RunnerConfigurationSection />
  ***/
 export function RunnerConfigurationSection() {
   const [runners, setRunners] = useState(null);
@@ -348,8 +349,15 @@ export function RunnerConfigurationSection() {
       const poll = async () => {
         tries += 1;
         try {
-          const rec = await api.getRunnerConfig(selected.runnerId);
-          setRunners((prev) => Array.isArray(prev) ? prev.map((r) => r.runnerId === selected.runnerId ? { ...r, ...rec, operatorConfig: rec.operatorConfig || defaultRunnerConfig(rec) } : r) : prev);
+          const list = await api.getRunners();
+          const rec = Array.isArray(list) ? list.find((r) => r.runnerId === selected.runnerId) : null;
+          if (rec) {
+            setRunners((prev) =>
+              Array.isArray(prev)
+                ? prev.map((r) => (r.runnerId === selected.runnerId ? { ...r, ...rec } : r))
+                : [rec],
+            );
+          }
           if (tries < 3) setTimeout(poll, 2000);
         } catch {}
       };
@@ -369,6 +377,27 @@ export function RunnerConfigurationSection() {
     try {
       await api.requestRunnerUpdate(selected.runnerId);
       setNotice('Update queued — Runner will update when idle.');
+      // Brief poll for progress/failure state from the runner.
+      let tries = 0;
+      const poll = async () => {
+        tries += 1;
+        try {
+          const list = await api.getRunners();
+          const rec = Array.isArray(list) ? list.find((r) => r.runnerId === selected.runnerId) : null;
+          if (rec) {
+            setRunners((prev) =>
+              Array.isArray(prev)
+                ? prev.map((r) => (r.runnerId === selected.runnerId ? { ...r, ...rec } : r))
+                : [rec],
+            );
+            if (rec.updateStatus?.state === 'failed') {
+              setActionError(rec.updateStatus.reason || 'Runner update failed.');
+            }
+          }
+          if (tries < 5) setTimeout(poll, 2000);
+        } catch {}
+      };
+      setTimeout(poll, 1500);
     } catch (err) {
       setActionError(err?.message || 'Could not queue update.');
     } finally {
@@ -453,7 +482,7 @@ export function RunnerConfigurationSection() {
                 const isSelected = runner.runnerId === selectedId;
                 const assignment = assignments[runner.runnerId];
                 const versionLabel = describeRunnerVersion(runner);
-                const stale = stalenessLabel(runner, nowMs || Date.now());
+                const stale = nowMs ? stalenessLabel(runner, nowMs) : null;
                 return (
                   <li
                     key={runner.runnerId}

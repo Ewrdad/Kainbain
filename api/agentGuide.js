@@ -302,6 +302,13 @@ export const ENDPOINTS = [
 	},
 	{
 		method: "POST",
+		path: "/runners/:id/commands",
+		purpose:
+			"Enqueue a backend-to-Runner command delivered through the next heartbeat pull channel (`requestModelRediscovery` re-runs model discovery; `requestUpdate` triggers the idle-only self-update). 202 on accept; 400 `UNKNOWN_COMMAND` on unrecognised commands; 404 on unknown Runner. Commands only run when the Runner is free (idle-only update invariant).",
+		body: { command: "requestModelRediscovery | requestUpdate" },
+	},
+	{
+		method: "POST",
 		path: "/runners/dispatch",
 		purpose:
 			"Runner-only (WP-3.1/3.2/3.3): backend-routed dispatch poll — scan claimable tasks (starvation guard past KAINBAIN_DISPATCH_MAX_WAIT_MS), resolve alias stages through the shared backend-central smooth-WRR rotation (D3; attribution stamped as requirements.alias), enforce D8 concurrency caps (429 fleet-wide, PROJECT_BUSY per project), match against this Runner's capabilities, and claim-fence the winner (200 assigned + lease, or 200 unassigned with NO_CLAIMABLE_TASKS / NO_CLAIMABLE_MATCH + miss histogram). Stale Runners get 409 STALE_RUNNER. Requires the x-runner-credential header.",

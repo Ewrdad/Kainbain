@@ -48,6 +48,7 @@ import { assertValidStageRunnerPolicies } from "../../shared/stageRunnerPolicy.j
  *   availability (fleet-only models validate, and a backend-`none`
  *   harness the fleet serves behaves as `list`). Without a registry both
  *   degrade exactly to the backend defaults.
+ * @example saveValidationProbes({ modelIdsFor: async () => new Set() }) => { modelIdsFor: [Function] }
  ***/
 export function saveValidationProbes(deps = {}) {
 	if (deps.modelIdsFor) return { modelIdsFor: deps.modelIdsFor };
@@ -55,6 +56,14 @@ export function saveValidationProbes(deps = {}) {
 	return fleetAwareValidationProbes(deps.runnerRegistry);
 }
 
+/***
+ * MARK: validateModelAliasesPayload
+ * @description Validates an incoming `modelAliases` list for project
+ *   create/patch in two tiers.
+ * @example await validateModelAliasesPayload([]) => { error: null, warnings: [] }
+ * @param {unknown} value - Incoming `modelAliases` value.
+ * @returns {Promise<{error: string|null, warnings: string[]}>} The hard error and soft warnings.
+ ***/
 export async function validateModelAliasesPayload(value, { modelIdsFor, modelSelectionFor } = {}) {
 	if (!Array.isArray(value)) {
 		return { error: "modelAliases must be an array", warnings: [] };
