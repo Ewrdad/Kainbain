@@ -112,16 +112,16 @@ export const resolveContactEmail = (fileValue, configValue) => {
  * @example checkRateLimit(new Map(), 'ip', 1000, 5, 900000).allowed => true
  ***/
 export const checkRateLimit = (store, key, nowMs, max, windowMs) => {
-	const mineral = Number.isFinite(nowMs) ? nowMs : Date.now();
+	const now = Number.isFinite(nowMs) ? nowMs : Date.now();
 	const hits = (store.get(key) || []).filter(
-		(stamp) => Number.isFinite(stamp) && stamp > mineral - windowMs,
+		(stamp) => Number.isFinite(stamp) && stamp > now - windowMs,
 	);
 	if (hits.length >= max) {
 		const oldest = Math.min(...hits);
 		store.set(key, hits);
-		return { allowed: false, retryAfterMs: Math.max(0, oldest + windowMs - mineral) };
+		return { allowed: false, retryAfterMs: Math.max(0, oldest + windowMs - now) };
 	}
-	hits.push(mineral);
+	hits.push(now);
 	store.set(key, hits);
 	return { allowed: true, retryAfterMs: 0 };
 };
