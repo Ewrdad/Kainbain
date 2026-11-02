@@ -1,5 +1,4 @@
-/* eslint-disable react-hooks/preserve-manual-memoization */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../services/api';
 import { subscribeObservability } from '../services/observabilityEvents';
 import { logger } from '../services/logger';
@@ -37,8 +36,8 @@ export function useScheduledQueue({ projectScope = 'all', enabled = false } = {}
   const [error, setError] = useState(null);
 
   const mountedRef = useRef(true);
-  const inFlightRef = useRef(false);
-  const dirtyRef = useRef(false);
+  const fetchInFlightRef = useRef(false);
+  const pendingRefreshRequestedRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -47,74 +46,64 @@ export function useScheduledQueue({ projectScope = 'all', enabled = false } = {}
     };
   }, []);
 
-  const fetchQueue = useCallback(
-    async (refresh = false) => {
-      if (!enabled) return;
-      if (inFlightRef.current) {
-        if (refresh) dirtyRef.current = true;
-        return;
+  const fetchQueue = async (refresh = false) => {
+    if (!enabled) return;
+    if (fetchInFlightRef.current) {
+      if (refresh) pendingRefreshRequestedRef.current = true;
+      return;
+    }
+    fetchInFlightRef.current = true;
+    pendingRefreshRequestedRef.current = false;
+    if (mountedRef.current) {
+      setLoading(true);
+    }
+    try {
+      const projectId = projectScope && projectScope !== 'all' ? projectScope : undefined;
+      if (typeof api?.observabilityStatus !== 'function') {
+        throw new Error('Queue endpoint is unavailable');
       }
-      inFlightRef.current = true;
-      // This fetch absorbs all pending invalidations (mirrors the dashboard's
-      // `dirty = false` at load start): only refresh requests arriving
-      // mid-flight chain a follow-up in the finally block below.
-      dirtyRef.current = false;
+      const response = await api.observabilityStatus(projectId, refresh);
+      if (!mountedRef.current) return;
+      const rawQueue =
+        response?.observability?.queue ??
+        response?.queue ??
+        (Array.isArray(response) ? response : null);
+      if (rawQueue != null && !Array.isArray(rawQueue)) {
+        logger.warn('Scheduled queue payload was not an array; treating as empty');
+        setItems([]);
+      } else {
+        setItems(rawQueue ?? []);
+      }
+      setError(null);
+    } catch (err) {
+      logger.error('Failed to fetch scheduled queue', err);
       if (mountedRef.current) {
-        setLoading(true);
+        setError(err?.message || 'Failed to load queue');
       }
-      try {
-        const projectId =
-          projectScope && projectScope !== 'all' ? projectScope : undefined;
-        if (typeof api?.observabilityStatus !== 'function') {
-          // Fail loud instead of as a silent empty queue: a missing API
-          // method is a wiring bug and "Queue is Clear" would be a lie.
-          throw new Error('Queue endpoint is unavailable');
-        }
-        const response = await api.observabilityStatus(projectId, refresh);
-        if (!mountedRef.current) return;
-        const rawQueue =
-          response?.observability?.queue ??
-          response?.queue ??
-          (Array.isArray(response) ? response : null);
-        if (rawQueue != null && !Array.isArray(rawQueue)) {
-          // Malformed payload: report it, then fail safe to an empty list so
-          // the UI renders the empty state instead of crashing.
-          logger.warn('Scheduled queue payload was not an array; treating as empty');
-          setItems([]);
-        } else {
-          setItems(rawQueue ?? []);
-        }
-        setError(null);
-      } catch (err) {
-        logger.error('Failed to fetch scheduled queue', err);
-        if (mountedRef.current) {
-          setError(err?.message || 'Failed to load queue');
-        }
-      } finally {
-        inFlightRef.current = false;
-        if (mountedRef.current) {
-          setLoading(false);
-        }
-        if (mountedRef.current && dirtyRef.current) {
-          dirtyRef.current = false;
-          void fetchQueue(true);
-        }
+    } finally {
+      fetchInFlightRef.current = false;
+      if (mountedRef.current) {
+        setLoading(false);
       }
-    },
-    [enabled, projectScope],
-  );
+      if (mountedRef.current && pendingRefreshRequestedRef.current) {
+        pendingRefreshRequestedRef.current = false;
+        void fetchQueue(true);
+      }
+    }
+  };
 
   useEffect(() => {
     if (!enabled) return undefined;
     void fetchQueue();
     return undefined;
-  }, [enabled, fetchQueue]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchQueue closes over enabled/projectScope which are already deps; its identity is intentionally unstable to let the compiler auto-memoize
+  }, [enabled, projectScope]);
 
   useEffect(() => {
     if (!enabled) return undefined;
     let debounceTimer = null;
     const scheduleRefresh = () => {
-      dirtyRef.current = true;
+      pendingRefreshRequestedRef.current = true;
       if (!debounceTimer) {
         debounceTimer = setTimeout(() => {
           debounceTimer = null;
@@ -148,11 +137,12 @@ export function useScheduledQueue({ projectScope = 'all', enabled = false } = {}
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('focus', onVisibility);
     };
-  }, [enabled, fetchQueue, projectScope]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchQueue closes over enabled/projectScope which are already deps; its identity is intentionally unstable to let the compiler auto-memoize
+  }, [enabled, projectScope]);
 
-  const refresh = useCallback(() => {
+  const refresh = () => {
     void fetchQueue(true);
-  }, [fetchQueue]);
+  };
 
   return { items, loading, error, refresh };
 }
