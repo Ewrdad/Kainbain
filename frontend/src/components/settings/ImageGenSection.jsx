@@ -38,6 +38,8 @@ export function ImageGenSection({ client }) {
 
   const unavailable = typeof http?.getImageGenProviders !== 'function';
 
+  const fetchProviders = useCallback(() => http.getImageGenProviders(), [http]);
+
   const refresh = useCallback(async () => {
     if (unavailable) {
       setLoading(false);
@@ -46,7 +48,7 @@ export function ImageGenSection({ client }) {
     setLoading(true);
     setLoadError(null);
     try {
-      const data = await http.getImageGenProviders();
+      const data = await fetchProviders();
       setProviders(Array.isArray(data?.providers) ? data.providers : []);
     } catch (err) {
       setLoadError(err?.message || 'Could not load image providers');
@@ -54,7 +56,7 @@ export function ImageGenSection({ client }) {
     } finally {
       setLoading(false);
     }
-  }, [http, unavailable]);
+  }, [unavailable, fetchProviders]);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,7 +66,7 @@ export function ImageGenSection({ client }) {
         return;
       }
       try {
-        const data = await http.getImageGenProviders();
+        const data = await fetchProviders();
         if (!cancelled) setProviders(Array.isArray(data?.providers) ? data.providers : []);
       } catch (err) {
         if (!cancelled) {
@@ -79,7 +81,7 @@ export function ImageGenSection({ client }) {
     return () => {
       cancelled = true;
     };
-  }, [http, unavailable]);
+  }, [unavailable, fetchProviders]);
 
   const setBusyFor = (id, value) =>
     setBusy((prev) => (value ? { ...prev, [id]: value } : { ...prev, [id]: undefined }));

@@ -689,7 +689,7 @@ function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGe
             <label
               key={`${text}-${index}`}
               htmlFor={inputId}
-              className={`relative flex flex-col gap-1.5 p-2 rounded-sm border cursor-pointer text-sm transition-colors ${
+              className={`flex flex-col gap-1.5 p-2 rounded-sm border cursor-pointer text-sm transition-colors ${
                 checked
                   ? 'border-secondary bg-human-fill/50 text-on-surface'
                   : 'border-border-standard text-on-surface hover:border-secondary/60'
@@ -703,7 +703,7 @@ function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGe
                 checked={checked}
                 aria-label={`${question.text}: ${text}`}
                 onChange={(e) => onSelect(question.id, text, e.target.checked, false)}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                className="sr-only"
               />
               <img
                 src={src}
