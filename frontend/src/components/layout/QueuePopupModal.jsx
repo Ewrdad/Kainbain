@@ -9,7 +9,9 @@ import { useScheduledQueue } from '../../hooks/useScheduledQueue';
  * @description Dialog listing the execution queue in its current dispatch order.
  * Backed by the shared `useScheduledQueue` hook (global scope) and the shared
  * `QueueOrderList` rendering, so it never forks the monitor's queue markup.
- * Loading, empty, and error + Retry states mirror `ChangelogModal`. Row click
+ * Loading, empty, and error + Retry states mirror `ChangelogModal`, except a
+ * failed refresh keeps the last known rows visible under the alert (a stale
+ * queue is more useful operationally than a blank panel). Row click
  * opens the task in the Slide-Over Inspector via the context's
  * `setSelectedTask`. Footer reconciles the chip's open-task count with the
  * dispatchable queue length so a silent mismatch never masquerades as a bug.
@@ -66,7 +68,10 @@ export function QueuePopupModal({ onClose, counted, openQueueDepth, engineState 
             Queue — all projects
           </h2>
           <p id={descId} className="text-[11px] font-mono text-text-muted">
-            #{countedDisplay >= 1 ? '1' : '—'} runs next · {countedDisplay} open
+            {/* "#1 runs next" tracks the listed queue, not the chip count:
+                when every counted task is failed/waiting-human the list is
+                empty and nothing runs next. */}
+            #{shown >= 1 ? '1' : '—'} runs next · {countedDisplay} open
             {countedDisplay === 1 ? ' task' : ' tasks'} counted
           </p>
         </div>
@@ -89,7 +94,8 @@ export function QueuePopupModal({ onClose, counted, openQueueDepth, engineState 
         {error && (
           <div className="space-y-2 px-4 py-4">
             <p role="alert" className="text-sm text-on-surface">
-              Could not load the queue.
+              Could not refresh the queue.
+              {items.length > 0 ? ' Showing the last known queue below.' : ''}
             </p>
             <p className="text-[11px] font-mono text-text-muted">{error}</p>
             <button
@@ -101,7 +107,10 @@ export function QueuePopupModal({ onClose, counted, openQueueDepth, engineState 
             </button>
           </div>
         )}
-        {(!loading || items.length > 0) && !error && (
+        {/* Fail-safe: a failed refresh never blanks a previously loaded
+            queue — rows stay visible under the alert until a fetch succeeds.
+            The empty state renders only after a clean load of zero items. */}
+        {(items.length > 0 || (!loading && !error)) && (
           <QueueOrderList
             items={items}
             engineState={stateForCount}
@@ -117,7 +126,7 @@ export function QueuePopupModal({ onClose, counted, openQueueDepth, engineState 
         </span>
         {countsDiffer && (
           <span className="block mt-1">
-            Failed, cancelled, and waiting-human tasks count toward the number but never dispatch. Blocked and paused tasks list last with their reason.
+            Failed, cancelled, waiting-human, and human-stage tasks count toward the number but never dispatch. Blocked and paused tasks do list — sorted last with their reason.
           </span>
         )}
       </div>

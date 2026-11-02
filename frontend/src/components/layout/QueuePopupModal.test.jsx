@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { expect, test, vi, beforeEach } from 'vitest';
-import { screen, fireEvent, waitFor, render } from '@testing-library/react';
+import { screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { QueuePopupModal } from './QueuePopupModal';
 import { renderWithKainBain } from '../../testUtils';
+import { invalidateObservability } from '../../services/observabilityEvents';
 import React from 'react';
 
 vi.mock('../../services/api', () => ({
@@ -76,4 +77,45 @@ test('reconciliation note shows counts', async () => {
   renderWithKainBain(<QueuePopupModal counted={3} onClose={() => {}} />, { engineState: { openQueueDepth: 3 } });
   await waitFor(() => expect(screen.getByTestId('queue-reconciliation')).toBeInTheDocument());
   expect(screen.getByTestId('queue-reconciliation')).toHaveTextContent('3 open tasks counted · 1 shown');
+});
+
+test('counted-but-empty queue says nothing runs next and explains the gap', async () => {
+  // All counted tasks are failed/waiting-human: the dispatch list is empty,
+  // so the header must not claim "#1 runs next".
+  api.observabilityStatus.mockResolvedValue({ observability: { queue: [] } });
+  renderWithKainBain(<QueuePopupModal counted={3} onClose={() => {}} />, { engineState: { openQueueDepth: 3 } });
+  await waitFor(() => expect(screen.getByText('Queue is Clear')).toBeInTheDocument());
+  expect(screen.getByText(/#— runs next/)).toBeInTheDocument();
+  expect(screen.queryByText(/#1 runs next/)).not.toBeInTheDocument();
+  const note = screen.getByTestId('queue-reconciliation');
+  expect(note).toHaveTextContent('3 open tasks counted · 0 shown');
+  expect(note.parentElement).toHaveTextContent(/human-stage tasks count toward the number but never dispatch/);
+});
+
+test('a failed refresh keeps the last known rows visible under the alert', async () => {
+  renderWithKainBain(<QueuePopupModal counted={1} onClose={() => {}} />, { engineState: { openQueueDepth: 1 } });
+  await waitFor(() => expect(screen.getByTestId('queue-item-task-1')).toBeInTheDocument());
+
+  // Push a failing refresh through the real observability event bus (the
+  // hook subscribes to it; the event debounce fires one refresh ~500ms later).
+  api.observabilityStatus.mockRejectedValueOnce(new Error('network down'));
+  act(() => {
+    invalidateObservability('tasks-changed', { taskId: 'task-1' });
+  });
+  await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument(), { timeout: 3000 });
+  // Fail-safe: the previously loaded row is still rendered under the alert.
+  expect(screen.getByTestId('queue-item-task-1')).toBeInTheDocument();
+  expect(screen.getByRole('alert')).toHaveTextContent('Showing the last known queue below');
+
+  // Retry recovers: the alert clears and the row is still there.
+  api.observabilityStatus.mockResolvedValueOnce({ observability: { queue: [{ id: 'task-1', title: 'First', projectName: 'P', currentStageName: 'Work', queueOrder: 1 }] } });
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+  expect(screen.getByTestId('queue-item-task-1')).toBeInTheDocument();
+});
+
+test('malformed queue payload renders the empty state instead of crashing', async () => {
+  api.observabilityStatus.mockResolvedValue({ observability: { queue: 'not-an-array' } });
+  renderWithKainBain(<QueuePopupModal counted={0} onClose={() => {}} />, { engineState: { openQueueDepth: 0 } });
+  await waitFor(() => expect(screen.getByText('Queue is Clear')).toBeInTheDocument());
 });

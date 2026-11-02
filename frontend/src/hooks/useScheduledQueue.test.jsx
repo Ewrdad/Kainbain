@@ -61,6 +61,43 @@ test('refreshes on observability events (debounced follow-up fetch)', async () =
   await waitFor(() => expect(api.observabilityStatus).toHaveBeenCalledTimes(2), { timeout: 3000 });
 });
 
+test('missing api method surfaces as an error, never as a silent empty queue', async () => {
+  const original = api.observabilityStatus;
+  api.observabilityStatus = undefined;
+  try {
+    const { result } = renderHook(() => useScheduledQueue({ projectScope: 'all', enabled: true }));
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+    expect(result.current.items).toEqual([]);
+    expect(result.current.loading).toBe(false);
+  } finally {
+    api.observabilityStatus = original;
+  }
+});
+
+test('malformed (non-array) queue payload fails safe to an empty list', async () => {
+  api.observabilityStatus.mockResolvedValue({ observability: { queue: { nope: true } } });
+  const { result } = renderHook(() => useScheduledQueue({ projectScope: 'all', enabled: true }));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(result.current.items).toEqual([]);
+  expect(result.current.error).toBeNull();
+});
+
+test('response without an observability envelope falls back to a bare array', async () => {
+  api.observabilityStatus.mockResolvedValue([{ id: 'bare' }]);
+  const { result } = renderHook(() => useScheduledQueue({ projectScope: 'all', enabled: true }));
+  await waitFor(() => expect(result.current.items).toHaveLength(1));
+  expect(result.current.items[0].id).toBe('bare');
+});
+
+test('unmounting mid-flight does not throw or warn', async () => {
+  let resolveFetch;
+  api.observabilityStatus.mockReturnValue(new Promise((resolve) => { resolveFetch = resolve; }));
+  const { unmount } = renderHook(() => useScheduledQueue({ projectScope: 'all', enabled: true }));
+  unmount();
+  expect(() => resolveFetch({ observability: { queue: [{ id: 'late' }] } })).not.toThrow();
+  await new Promise((r) => setTimeout(r, 20));
+});
+
 test('project-scoped hook ignores events for other projects', async () => {
   api.observabilityStatus.mockResolvedValue({ observability: { queue: [] } });
   const { result } = renderHook(() => useScheduledQueue({ projectScope: 'proj-1', enabled: true }));

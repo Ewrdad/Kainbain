@@ -15,22 +15,20 @@ import { logger } from '../services/logger';
  *   dashboard deliberately keeps its own inline fetch: it publishes metrics
  *   and queue atomically from one response with monitor-only guards
  *   (TASK_UPDATED active-task filter, hidden-tab gating, a staleness rule),
- *   which this queue-only hook does not replicate. Returns the queue items
- *   under several convenience aliases so callers never fight over naming.
+ *   which this queue-only hook does not replicate. The return contract is
+ *   exactly four fields (`items`, `loading`, `error`, `refresh`) — callers
+ *   destructure those, nothing else. A missing API method surfaces as
+ *   `error`, never as a silent empty queue; a malformed payload logs a
+ *   warning and fails safe to an empty list.
  * @example const { items, loading, error, refresh } = useScheduledQueue({ projectScope: 'all', enabled: isOpen })
  * @param {Object} [opts]
  * @param {string} [opts.projectScope='all'] - 'all' or a project id.
  * @param {boolean} [opts.enabled=false] - Fetching is off until this is true.
  * @returns {{
  *   items: Array<Object>,
- *   queue: Array<Object>,
- *   scheduledQueue: Array<Object>,
  *   loading: boolean,
- *   isLoading: boolean,
  *   error: string|null,
  *   refresh: () => void,
- *   reload: () => void,
- *   refetch: () => void,
  * }}
  ***/
 export function useScheduledQueue({ projectScope = 'all', enabled = false } = {}) {
@@ -67,16 +65,25 @@ export function useScheduledQueue({ projectScope = 'all', enabled = false } = {}
       try {
         const projectId =
           projectScope && projectScope !== 'all' ? projectScope : undefined;
-        const response =
-          typeof api?.observabilityStatus === 'function'
-            ? await api.observabilityStatus(projectId, refresh)
-            : null;
+        if (typeof api?.observabilityStatus !== 'function') {
+          // Fail loud instead of as a silent empty queue: a missing API
+          // method is a wiring bug and "Queue is Clear" would be a lie.
+          throw new Error('Queue endpoint is unavailable');
+        }
+        const response = await api.observabilityStatus(projectId, refresh);
         if (!mountedRef.current) return;
-        const queue =
+        const rawQueue =
           response?.observability?.queue ??
           response?.queue ??
-          (Array.isArray(response) ? response : []);
-        setItems(Array.isArray(queue) ? queue : []);
+          (Array.isArray(response) ? response : null);
+        if (rawQueue != null && !Array.isArray(rawQueue)) {
+          // Malformed payload: report it, then fail safe to an empty list so
+          // the UI renders the empty state instead of crashing.
+          logger.warn('Scheduled queue payload was not an array; treating as empty');
+          setItems([]);
+        } else {
+          setItems(rawQueue ?? []);
+        }
         setError(null);
       } catch (err) {
         logger.error('Failed to fetch scheduled queue', err);
@@ -147,18 +154,7 @@ export function useScheduledQueue({ projectScope = 'all', enabled = false } = {}
     void fetchQueue(true);
   }, [fetchQueue]);
 
-  return {
-    items,
-    queue: items,
-    scheduledQueue: items,
-    data: items,
-    loading,
-    isLoading: loading,
-    error,
-    refresh,
-    reload: refresh,
-    refetch: refresh,
-  };
+  return { items, loading, error, refresh };
 }
 
 /***

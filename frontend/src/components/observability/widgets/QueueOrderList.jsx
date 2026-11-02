@@ -38,40 +38,35 @@ const itemBadgeClass = (active, waiting, blocked) => {
  * @description Presentational queue list: renders the autonomous execution queue
  * in dispatch order (#1, #2, #3, ...) with stage progress, priority reasoning,
  * project tags, dependency warning indicators, and a blocked/waiting reason.
- * Pure presentation: data comes in via `items` (alias: `scheduledQueue`/`queue`);
- * row activation is surfaced through `onSelectTask(item)` (alias `onTaskClick`),
- * so callers can open an inspector or perform other actions. `schedulerRunning`
- * drives the empty-state wording; `compact` is reserved for dense surfaces.
+ * Pure presentation: data comes in via `items` (the monitor widget passes it
+ * as `scheduledQueue`); row activation is surfaced through
+ * `onSelectTask(item)`, so callers can open an inspector or perform other
+ * actions. `schedulerRunning` drives the empty-state wording; `compact` is
+ * reserved for dense surfaces.
  * @example <QueueOrderList items={queue} engineState={engineState} onSelectTask={openTask} />
  * @param {Array<Object>} [props.items] - Ordered queue items.
- * @param {Array<Object>} [props.scheduledQueue] - Alias for `items`.
- * @param {Array<Object>} [props.queue] - Alias for `items`.
+ * @param {Array<Object>} [props.scheduledQueue] - Alias for `items` (monitor widget's historical prop name).
  * @param {Object} [props.engineState] - Engine state (drives the single-active invariant).
  * @param {boolean} [props.schedulerRunning] - False shows a stopped empty state.
  * @param {Function} [props.onSelectTask] - Called with the clicked queue item.
- * @param {Function} [props.onTaskClick] - Alias for `onSelectTask`.
  * @param {boolean} [props.compact] - Density hint (currently cosmetic).
  * @returns {JSX.Element}
  ***/
 export function QueueOrderList({
   items,
   scheduledQueue,
-  queue,
   engineState = {},
   schedulerRunning,
   onSelectTask,
-  onTaskClick,
   compact = false,
 }) {
   const resolvedItems = Array.isArray(items)
     ? items
     : Array.isArray(scheduledQueue)
       ? scheduledQueue
-      : Array.isArray(queue)
-        ? queue
-        : [];
+      : [];
 
-  const handleSelect = onSelectTask || onTaskClick || null;
+  const handleSelect = typeof onSelectTask === 'function' ? onSelectTask : null;
   const schedulerStopped = schedulerRunning === false;
   // Rows are interactive only when a selection handler is wired (the queue
   // popup opens the inspector); handler-less surfaces like the monitor keep
