@@ -9,12 +9,15 @@ import {
 	defaultLoadHarness,
 	deliverSteers,
 	diskHeadroomMbFor,
+	memoryFreeMbFor,
 	probeHarnessVersions,
 	runCiCommand,
 	runDispatchLoop,
 	runSingleAssignment,
 	applyBackendPrompt,
 	startClaimRenewal,
+	tryEnterAssignment,
+	leaveAssignment,
 	RUNNER_API_VERSION,
 	RUNNER_VERSION,
 	ciWorkdirFor,
@@ -484,6 +487,33 @@ describe("runner facts (G4/G5)", () => {
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}
+	});
+
+	it("reports free system memory in megabytes (or null when unmeasurable)", () => {
+		const mb = memoryFreeMbFor();
+		assert.ok(mb === null || (Number.isInteger(mb) && mb >= 0));
+	});
+});
+
+describe("single-flight assignment guard", () => {
+	it("holds one slot: second enter fails until leave", () => {
+		const state = {};
+		assert.equal(tryEnterAssignment(state), true);
+		assert.equal(state.assignmentInFlight, true);
+		// A stale/retried answer arriving mid-run must not execute.
+		assert.equal(tryEnterAssignment(state), false);
+		leaveAssignment(state);
+		assert.equal(state.assignmentInFlight, false);
+		assert.equal(tryEnterAssignment(state), true);
+		leaveAssignment(state);
+	});
+
+	it("fails closed on a missing state", () => {
+		assert.equal(tryEnterAssignment(null), false);
+		assert.equal(tryEnterAssignment(undefined), false);
+		// Leaving a missing state never throws.
+		leaveAssignment(null);
+		leaveAssignment(undefined);
 	});
 });
 
@@ -1040,6 +1070,39 @@ describe("runDispatchLoop", () => {
 		assert.equal(out.idle, true);
 		assert.equal(out.assignments, 0);
 		assert.equal(dispatches, 3);
+	});
+
+	it("backs off on RUNNER_BUSY without consuming idle budget or crashing", async () => {
+		const repo = localRepo();
+		const config = loopConfig({ dispatchIdleLimit: 1 });
+		dirs.push(config.workRoot, repo);
+		let dispatches = 0;
+		const logs = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				dispatches += 1;
+				if (dispatches <= 2) {
+					// The backend answers 429, but the daemon branches on the
+					// code: both shapes must back off, never crash.
+					const err = new Error("Runner r1 is busy with task t9");
+					err.statusCode = dispatches === 1 ? 429 : 409;
+					err.code = "RUNNER_BUSY";
+					throw err;
+				}
+				return { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: (m) => logs.push(m), warn: () => {} },
+		});
+		assert.equal(out.idle, true);
+		assert.equal(out.assignments, 0);
+		assert.equal(dispatches, 3);
+		assert.ok(logs.some((m) => /RUNNER_BUSY/.test(m)));
 	});
 
 	it("backs off on RUNNER_PAUSED without consuming idle budget or crashing", async () => {

@@ -1,5 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, touchWorkdir } from "./project.js";
@@ -229,6 +230,26 @@ export function diskHeadroomMbFor(workRoot) {
 }
 
 /***
+ * MARK: memoryFreeMbFor
+ * @description Free system memory in megabytes (best-effort posture for the
+ *   fleet UI's memory-pressure note). Synchronous — one freemem call per
+ *   heartbeat. Returns null when unmeasurable so the UI shows nothing
+ *   rather than a fabricated number. Display-only: it never gates dispatch
+ *   (admission control stays the one-task-per-Runner fence).
+ * @example memoryFreeMbFor() => 12345
+ * @returns {number|null} Free megabytes, or null when unmeasurable.
+ ***/
+export function memoryFreeMbFor() {
+	try {
+		const bytes = os.freemem();
+		if (!Number.isFinite(bytes) || bytes < 0) return null;
+		return Math.floor(bytes / (1024 * 1024));
+	} catch {
+		return null;
+	}
+}
+
+/***
  * MARK: defaultLoadHarness
  * @description Resolves a harness implementation by id for loopback runs.
  *   Anything HarnessSession-conforming works; only the ids below are
@@ -282,6 +303,7 @@ function factsFor({ config, harnessVersions, updateStatus = null }) {
 					: [],
 		tiers: config.tiers,
 		diskHeadroomMb: diskHeadroomMbFor(config.workRoot),
+		memoryFreeMb: memoryFreeMbFor(),
 		versions: { protocol: "v1", runner: RUNNER_VERSION, api: RUNNER_API_VERSION },
 		...(updateStatus ? { updateStatus } : {}),
 	};
@@ -1222,25 +1244,35 @@ export async function runSingleAssignment({
 	const state = { session: null, executionId: null, epoch: null };
 	const { harness, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger, state });
 	try {
-		const result = await executeAssignment({
-			config,
-			client,
-			logger,
-			harness,
-			harnessId: config.harnessId,
-			state,
-			projectId: config.projectId,
-			taskId: config.taskId,
-		});
-		// Terminal tasks never run again: reclaim their workdir slot now
-		// instead of growing into the cap (best-effort, never throws).
-		await reapTaskWorkdirIfTerminal({
-			client,
-			projectId: config.projectId,
-			taskId: config.taskId,
-			workRoot: config.workRoot,
-		});
-		return result;
+		// Single-flight guard (same invariant as the dispatch loop): one
+		// assignment at a time per process. Trivially true here (one call),
+		// but explicit so a future second call-site cannot double-execute.
+		if (!tryEnterAssignment(state)) {
+			throw new Error("Runner is already executing an assignment (single-flight guard).");
+		}
+		try {
+			const result = await executeAssignment({
+				config,
+				client,
+				logger,
+				harness,
+				harnessId: config.harnessId,
+				state,
+				projectId: config.projectId,
+				taskId: config.taskId,
+			});
+			// Terminal tasks never run again: reclaim their workdir slot now
+			// instead of growing into the cap (best-effort, never throws).
+			await reapTaskWorkdirIfTerminal({
+				client,
+				projectId: config.projectId,
+				taskId: config.taskId,
+				workRoot: config.workRoot,
+			});
+			return result;
+		} finally {
+			leaveAssignment(state);
+		}
 	} finally {
 		stop();
 	}
@@ -1342,6 +1374,35 @@ export async function maybeSelfUpdate({
 }
 
 /***
+ * MARK: tryEnterAssignment
+ * @description Single-flight guard: one assignment executes at a time per
+ *   daemon process. Returns false when an assignment is already in flight
+ *   (a stale/retried dispatch answer arriving mid-run) so the caller backs
+ *   off instead of executing — the second execution would double the
+ *   memory footprint on a small box. Callers must pair a successful enter
+ *   with `leaveAssignment` in a `finally` (an exception mid-run must still
+ *   free the slot, or the loop wedges refusing all future work).
+ * @example tryEnterAssignment(state) => true
+ * @param {Object} [state] - Daemon loop state (owns the flag).
+ * @returns {boolean} True when the slot was free and is now held.
+ ***/
+export function tryEnterAssignment(state) {
+	if (!state || state.assignmentInFlight) return false;
+	state.assignmentInFlight = true;
+	return true;
+}
+
+/***
+ * MARK: leaveAssignment
+ * @description Frees the single-flight slot (see `tryEnterAssignment`).
+ * @example leaveAssignment(state)
+ * @param {Object} [state] - Daemon loop state.
+ ***/
+export function leaveAssignment(state) {
+	if (state) state.assignmentInFlight = false;
+}
+
+/***
  * MARK: runDispatchLoop
  * @description Capability-aware dispatch loop (WP-3.1): joins and heartbeats
  *   exactly like a single assignment, then polls `POST /runners/dispatch`
@@ -1352,7 +1413,9 @@ export async function maybeSelfUpdate({
  *   `CLAIM_CONFLICT` inside the fence and the loop simply polls again. A
  *   `STALE_RUNNER` answer triggers one fresh heartbeat and a single retry;
  *   `RUNNER_PAUSED` (operator-parked) backs off and re-polls until resumed;
- *   anything else throws loud.
+ *   `RUNNER_BUSY` (we already hold a lease — a second process shares our
+ *   identity, or a retried poll raced our own claim) backs off and re-polls
+ *   without consuming idle budget; anything else throws loud.
  * @example await runDispatchLoop({ config, client }) => { assignments: 2, polls: 5 }
  * @param {Object} opts - Options.
  * @param {Object} opts.config - Normalized runner config (dispatch mode).
@@ -1390,6 +1453,18 @@ export async function runDispatchLoop({
 				if (err?.code === "STALE_RUNNER") {
 					await client.heartbeat({ runnerId: config.runnerId, facts: factsFor({ config, updateStatus: state?.updateStatus ?? null }) });
 					answer = await client.dispatchClaim({ projectIds: config.projectIds ?? null });
+				} else if (err?.code === "RUNNER_BUSY") {
+					// One-task-per-Runner fence: WE already hold a lease (a
+					// second process shares our identity, or a retried poll
+					// raced our own claim). Back off and re-poll WITHOUT
+					// consuming idle budget — our assignment is still live,
+					// so idling out would be wrong. Code-first (not status):
+					// the backend answers 429, but a 409 of the same code
+					// must back off too, never crash.
+					polls += 1;
+					logger.log(`Dispatch: this Runner is busy with another task (RUNNER_BUSY); backing off.`);
+					await new Promise((r) => setTimeout(r, pollMs));
+					continue;
 				} else if (err?.statusCode === 429) {
 					// D8 backpressure (ADR 0010): the fleet is at its
 					// concurrency cap. Back off and re-poll WITHOUT
@@ -1461,55 +1536,68 @@ export async function runDispatchLoop({
 				continue;
 			}
 			idle = 0;
-			assignments += 1;
-			// Multi-harness service: the dispatch answer names the
-			// required harness (alias-resolved server-side) — serve with
-			// that one, not the primary. An unloaded name falls back to
-			// the primary with a warning: the lease is already fenced to
-			// us, so stranding it would wedge the task, and the posture
-			// line records what actually served.
-			const wanted = answer.requirements?.harness || null;
-			const servingId =
-				wanted && harnesses[wanted] ? wanted : config.harnessId;
-			if (wanted && !harnesses[wanted]) {
-				logger.warn(
-					`Requirements want harness '${wanted}' (not loaded); serving with primary '${servingId}'.`,
-				);
+			// Single-flight guard: never start a second assignment while
+			// one is in flight (a stale/retried dispatch answer arriving
+			// mid-run is a bug, not work). Back off and re-poll instead of
+			// executing — the refused answer is not counted.
+			if (!tryEnterAssignment(state)) {
+				logger.warn(`Dispatch: assignment already in flight; ignoring duplicate answer.`);
+				await new Promise((r) => setTimeout(r, pollMs));
+				continue;
 			}
-			await executeAssignment({
-				config,
-				client,
-				logger,
-				harness: harnesses[servingId] ?? harness,
-				harnessId: servingId,
-				state,
-				projectId: answer.projectId,
-				taskId: answer.taskId,
-				lease: { executionId: answer.executionId, epoch: answer.epoch },
-				backendPrompt: answer.prompt || "",
-				kind: answer.kind || "",
-				ciCommand: answer.command || "",
-				runOnBranch: answer.runOnBranch || "",
-				customBranch: answer.customBranch || "",
-				ciTimeoutMs: Number(answer.timeoutMs) || 0,
-				ciEnv: answer.env,
-				// The backend already matched this task against our
-				// advertised models: serve exactly its required model.
-				model: answer.requirements?.model || null,
-				// Leased integrations carry their target/task SHAs here;
-				// executeAssignment routes `integrate` to the merge
-				// procedure instead of a harness.
-				integration: answer.integration ?? null,
-			});
-			// Terminal tasks never run again: reclaim their workdir slot
-			// now instead of growing into the cap (best-effort, never
-			// throws).
-			await reapTaskWorkdirIfTerminal({
-				client,
-				projectId: answer.projectId,
-				taskId: answer.taskId,
-				workRoot: config.workRoot,
-			});
+			try {
+				assignments += 1;
+				// Multi-harness service: the dispatch answer names the
+				// required harness (alias-resolved server-side) — serve with
+				// that one, not the primary. An unloaded name falls back to
+				// the primary with a warning: the lease is already fenced to
+				// us, so stranding it would wedge the task, and the posture
+				// line records what actually served.
+				const wanted = answer.requirements?.harness || null;
+				const servingId =
+					wanted && harnesses[wanted] ? wanted : config.harnessId;
+				if (wanted && !harnesses[wanted]) {
+					logger.warn(
+						`Requirements want harness '${wanted}' (not loaded); serving with primary '${servingId}'.`,
+					);
+				}
+				await executeAssignment({
+					config,
+					client,
+					logger,
+					harness: harnesses[servingId] ?? harness,
+					harnessId: servingId,
+					state,
+					projectId: answer.projectId,
+					taskId: answer.taskId,
+					lease: { executionId: answer.executionId, epoch: answer.epoch },
+					backendPrompt: answer.prompt || "",
+					kind: answer.kind || "",
+					ciCommand: answer.command || "",
+					runOnBranch: answer.runOnBranch || "",
+					customBranch: answer.customBranch || "",
+					ciTimeoutMs: Number(answer.timeoutMs) || 0,
+					ciEnv: answer.env,
+					// The backend already matched this task against our
+					// advertised models: serve exactly its required model.
+					model: answer.requirements?.model || null,
+					// Leased integrations carry their target/task SHAs here;
+					// executeAssignment routes `integrate` to the merge
+					// procedure instead of a harness.
+					integration: answer.integration ?? null,
+				});
+				// Terminal tasks never run again: reclaim their workdir slot
+				// now instead of growing into the cap (best-effort, never
+				// throws).
+				await reapTaskWorkdirIfTerminal({
+					client,
+					projectId: answer.projectId,
+					taskId: answer.taskId,
+					workRoot: config.workRoot,
+				});
+			} finally {
+				leaveAssignment(state);
+			}
 		}
 	} finally {
 		stop();

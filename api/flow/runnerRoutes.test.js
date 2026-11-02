@@ -714,9 +714,11 @@ describe("Runner Routes Integration", () => {
 		expect(out.taskId).toBe(taskId);
 		expect(typeof out.executionId).toBe("string");
 		expect(out.requirements).toMatchObject({ harness: "mock", tier: "T1" });
-		// Leased now: a second dispatch finds no work for this runner.
-		const again = JSON.parse((await dispatchAs(credential)).payload);
-		expect(again.assigned).toBe(false);
+		// Leased now: a second dispatch is refused loudly — the Runner is
+		// busy with this task and must never be handed another one.
+		const again = await dispatchAs(credential);
+		expect(again.statusCode).toBe(429);
+		expect(JSON.parse(again.payload).code).toBe("RUNNER_BUSY");
 	});
 
 	it("dispatch rejects stale runners loudly", async () => {

@@ -514,6 +514,86 @@ describe('RunnerConfigurationSection', () => {
     expect(screen.getByTestId('runner-assignment-r1').textContent).toContain('build');
   });
 
+  it('shows Busy for a holding Runner and Free for an idle one, with the invariant note', async () => {
+    runnersFixture([
+      ACTIVE_RUNNER,
+      { ...ACTIVE_RUNNER, runnerId: 'r2', status: 'active' },
+    ]);
+    getRunnerMonitor.mockResolvedValue({
+      liveAssignments: [
+        {
+          runnerId: 'r1',
+          projectId: 'p1',
+          taskId: 'abcdef12-3456',
+          executionId: 'exec-1',
+          epoch: 1,
+          startedAt: new Date(Date.now() - 65_000).toISOString(),
+          stageId: 'build',
+        },
+      ],
+    });
+    render(<RunnerConfigurationSection />);
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-busystate-r1')).toHaveTextContent('Busy');
+    });
+    expect(screen.getByTestId('runner-busystate-r2')).toHaveTextContent('Free');
+    expect(screen.queryByTestId('runner-assignment-r2')).toBeNull();
+    expect(screen.getByTestId('runner-invariant-note')).toHaveTextContent(
+      'One task per Runner',
+    );
+  });
+
+  it('renders one current-task slot plus a warning when a Runner holds two leases', async () => {
+    runnersFixture([ACTIVE_RUNNER]);
+    getRunnerMonitor.mockResolvedValue({
+      liveAssignments: [
+        {
+          runnerId: 'r1',
+          projectId: 'p1',
+          taskId: 'aaaaaaaa-0000',
+          executionId: 'exec-1',
+          epoch: 1,
+          startedAt: new Date().toISOString(),
+          stageId: 'build',
+        },
+        {
+          runnerId: 'r1',
+          projectId: 'p1',
+          taskId: 'bbbbbbbb-1111',
+          executionId: 'exec-2',
+          epoch: 1,
+          startedAt: new Date().toISOString(),
+          stageId: 'test',
+        },
+      ],
+      runnerLoad: [{ runnerId: 'r1', liveHoldCount: 2, currentTaskId: 'aaaaaaaa-0000' }],
+    });
+    render(<RunnerConfigurationSection />);
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-assignment-r1').textContent).toContain('aaaaaaaa');
+    });
+    expect(screen.getAllByTestId('runner-assignment-r1')).toHaveLength(1);
+    expect(screen.getByTestId('runner-extras-r1')).toHaveTextContent('fence converging');
+  });
+
+  it('shows the memory posture and warns when free memory is low', async () => {
+    runnersFixture([
+      { ...ACTIVE_RUNNER, facts: { ...ACTIVE_RUNNER.facts, memoryFreeMb: 96 } },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-memory-r1')).toHaveTextContent('96 MB free');
+    });
+    expect(screen.getByTestId('runner-memory-r1')).toHaveTextContent('low');
+  });
+
+  it('hides the memory note for Runners without a memory fact', async () => {
+    runnersFixture([ACTIVE_RUNNER]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.queryByTestId('runner-memory-r1')).toBeNull();
+  });
+
   it('hides assignments but keeps the list when the monitor is down', async () => {
     runnersFixture([ACTIVE_RUNNER]);
     getRunnerMonitor.mockRejectedValueOnce(new Error('monitor down'));

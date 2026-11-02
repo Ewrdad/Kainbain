@@ -22,6 +22,11 @@ source of truth. This file intentionally lists only high-impact changes.
 ### Added
 
 - Per-stage Runner allow/block list at the bottom of stage settings (`Off` / `Only these runners` / `All except these runners`): dispatch, direct claims, and merge leases refuse ineligible Runners loudly while unrestricted stages behave exactly as before (task a3753643).
+- Busy/Free state plus a single current-task slot per Runner on every fleet surface (monitor widget, Settings › Runners, Now Playing bar), with a best-effort free-memory note from heartbeat posture (task 0faa3d87).
+
+### Fixed
+
+- A Runner can no longer hold two tasks at once: the backend refuses a second assignment loudly (`RUNNER_BUSY`) and the daemon backs off instead of double-executing, protecting memory-limited boxes (task 0faa3d87).
 
 ### Changed
 

@@ -174,6 +174,113 @@ describe('PerRunnerTasksWidget', () => {
     expect(screen.queryByTestId('per-runner-compact-model-local-ci')).not.toBeInTheDocument();
   });
 
+  test('two assignments for one Runner render one BUSY slot plus a converging warning', async () => {
+    getRunnerMonitor.mockResolvedValue({
+      liveAssignments: [
+        {
+          runnerId: 'local-alpha',
+          projectId: 'p1',
+          taskId: 'aaaaaaaa-0000',
+          executionId: 'exec-1',
+          epoch: 1,
+          startedAt: new Date().toISOString(),
+          stageId: 'build',
+          prompt: null,
+          lastSeenAt: new Date().toISOString(),
+        },
+        {
+          runnerId: 'local-alpha',
+          projectId: 'p1',
+          taskId: 'bbbbbbbb-1111',
+          executionId: 'exec-2',
+          epoch: 1,
+          startedAt: new Date().toISOString(),
+          stageId: 'test',
+          prompt: null,
+          lastSeenAt: new Date().toISOString(),
+        },
+      ],
+      runnerLoad: [
+        { runnerId: 'local-alpha', liveHoldCount: 2, currentTaskId: 'aaaaaaaa-0000' },
+      ],
+    });
+    getRunners.mockResolvedValue([{ runnerId: 'local-alpha', status: 'active' }]);
+    render(<PerRunnerTasksWidget tasks={[]} />);
+    await waitFor(() => {
+      expect(screen.getByTestId('per-runner-card-local-alpha')).toBeInTheDocument();
+    });
+    // Exactly one current-task slot…
+    expect(screen.getAllByTestId('per-runner-card-local-alpha')).toHaveLength(1);
+    expect(screen.getByTestId('per-runner-task-local-alpha')).toHaveTextContent('aaaaaaaa');
+    expect(screen.getByTestId('per-runner-state-local-alpha')).toHaveTextContent(/busy/i);
+    // …and the extra hold is flagged, never rendered as a second live card.
+    expect(screen.getByTestId('per-runner-extras-local-alpha')).toHaveTextContent(
+      /fence converging/,
+    );
+    expect(screen.queryByTestId('per-runner-card-local-alpha-2')).not.toBeInTheDocument();
+  });
+
+  test('compact rows group by Runner too: one row, one BUSY pill, extras flagged', async () => {
+    getRunnerMonitor.mockResolvedValue({
+      liveAssignments: [
+        {
+          runnerId: 'local-alpha',
+          projectId: 'p1',
+          taskId: 'aaaaaaaa-0000',
+          executionId: 'exec-1',
+          epoch: 1,
+          startedAt: new Date().toISOString(),
+          stageId: 'build',
+          lastSeenAt: new Date().toISOString(),
+        },
+        {
+          runnerId: 'local-alpha',
+          projectId: 'p1',
+          taskId: 'bbbbbbbb-1111',
+          executionId: 'exec-2',
+          epoch: 1,
+          startedAt: new Date().toISOString(),
+          stageId: 'test',
+          lastSeenAt: new Date().toISOString(),
+        },
+      ],
+    });
+    render(<PerRunnerTasksWidget tasks={[]} compact />);
+    await waitFor(() => {
+      expect(screen.getByTestId('per-runner-row-local-alpha')).toBeInTheDocument();
+    });
+    expect(screen.getAllByTestId('per-runner-row-local-alpha')).toHaveLength(1);
+    expect(screen.getByTestId('per-runner-state-local-alpha')).toHaveTextContent(/busy/i);
+    expect(screen.getByTestId('per-runner-extras-local-alpha')).toBeInTheDocument();
+  });
+
+  test('busy card shows the memory posture and warns when free memory is low', async () => {
+    getRunnerMonitor.mockResolvedValue({
+      liveAssignments: [
+        {
+          runnerId: 'local-alpha',
+          projectId: 'p1',
+          taskId: 'aaaaaaaa-0000',
+          executionId: 'exec-1',
+          epoch: 1,
+          startedAt: new Date().toISOString(),
+          stageId: 'build',
+          prompt: null,
+          lastSeenAt: new Date().toISOString(),
+        },
+      ],
+    });
+    getRunners.mockResolvedValue([
+      { runnerId: 'local-alpha', status: 'active', facts: { memoryFreeMb: 128 } },
+    ]);
+    render(<PerRunnerTasksWidget tasks={[]} />);
+    await waitFor(() => {
+      expect(screen.getByTestId('per-runner-card-local-alpha')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('per-runner-memory-local-alpha')).toHaveTextContent(/128 MB free/);
+    expect(screen.getByTestId('per-runner-memory-local-alpha')).toHaveTextContent(/low/);
+  });
+
   test('full card hides the model pill for CI stages with no serving model', async () => {
     getRunnerMonitor.mockResolvedValue({
       liveAssignments: [

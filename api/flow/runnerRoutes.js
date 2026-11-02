@@ -52,6 +52,31 @@ export const resolveCiTimeoutMs = (resolved, project) => {
 };
 
 /***
+ * MARK: runnerBusyRefusal
+ * @description 429 body for the one-task-per-Runner dispatch fence: names
+ *   the Runner's current task so the refusal is diagnosable. 429, not 409:
+ *   a busy Runner is transient backpressure (like the fleet cap), so old
+ *   Runners — which back off on any 429 — stay safe during rollout, and
+ *   the refused task stays claimable for a free Runner.
+ * @example runnerBusyRefusal('r1', { taskId: 't1', executionId: 'e', epoch: 1 }) => { code: 'RUNNER_BUSY', … }
+ * @param {string} runnerId - Busy Runner id.
+ * @param {Object} [current] - Its current live hold (`taskId`/`executionId`/`epoch`).
+ * @returns {Object} Response body (`error`, `code`, `holder`).
+ ***/
+export const runnerBusyRefusal = (runnerId, current) => {
+	return {
+		error: `Runner ${runnerId} is busy with task ${current?.taskId ?? "unknown"}; one task per Runner — backing off.`,
+		code: "RUNNER_BUSY",
+		holder: {
+			runnerId,
+			taskId: current?.taskId ?? null,
+			executionId: current?.executionId ?? null,
+			epoch: current?.epoch ?? null,
+		},
+	};
+};
+
+/***
  * MARK: stampDispatchRunAttribution
  * @description Stamps one dispatched run's resolved choice onto the task —
  *   the runner-side mirror of the embedded dispatch stamp in
@@ -466,7 +491,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// `scheduler` exposes the cutover deferral counters so a task
 		// sitting in_stage is diagnosable: a climbing `deferredDispatch`
 		// with no Runner pickup means the fleet is empty or mismatched.
-		const liveAssignments = claimStore.liveHolds().map((hold) => {
+		const holds = claimStore.liveHolds();
+		const liveAssignments = holds.map((hold) => {
 			const record = runnerRegistry.records().find((r) => r.runnerId === hold.runnerId) || null;
 			return {
 				runnerId: hold.runnerId,
@@ -479,6 +505,28 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				prompt: executionLedger.promptFor(hold.executionId),
 				serving: executionLedger.servingFor(hold.executionId),
 				lastSeenAt: record?.lastSeenAt ?? null,
+			};
+		});
+		// One-task-per-Runner source of truth for the UI: one row per Runner
+		// that holds a live lease, naming its single current task. The fence
+		// keeps `liveHoldCount` at 1; a higher count is a converging
+		// violation the UI must flag, never render as parallel live work.
+		const holdsByRunner = new Map();
+		for (const hold of holds) {
+			if (!hold || typeof hold.runnerId !== "string") continue;
+			const list = holdsByRunner.get(hold.runnerId) || [];
+			list.push(hold);
+			holdsByRunner.set(hold.runnerId, list);
+		}
+		const runnerLoad = [...holdsByRunner.entries()].map(([runnerId, owned]) => {
+			const current = owned[0];
+			return {
+				runnerId,
+				liveHoldCount: owned.length,
+				currentTaskId: current.taskId,
+				currentExecutionId: current.executionId,
+				currentStageId: executionLedger.stageFor(current.executionId),
+				startedAt: current.startedAt ?? null,
 			};
 		});
 		const sched = taskStore.schedulerStats || {};
@@ -494,7 +542,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// via GET /runners/integration; global lease counters here) so a
 		// stuck merge queue is visible before tasks pile up behind it.
 		const integration = integrationQueue ? integrationQueue.snapshot() : {};
-		return { ...executionLedger.snapshot(), liveAssignments, scheduler, integration };
+		return { ...executionLedger.snapshot(), liveAssignments, runnerLoad, scheduler, integration };
 	});
 
 	app.post("/tasks/:id/progress", async (request, reply) => {
@@ -1001,6 +1049,14 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			? request.body.projectIds
 			: undefined;
 		runnerRegistry.recordDispatchScope(runner.runnerId, projectIds);
+		// One-task-per-Runner fence (fast path; the store-level check in
+		// `claim` is the race-safe backstop): a Runner holding a live lease
+		// is refused before any scan, so it can never be handed a second
+		// assignment no matter how many tasks are waiting.
+		const owned = claimStore.liveHoldsByRunner(runner.runnerId);
+		if (owned.length > 0) {
+			return reply.status(429).send(runnerBusyRefusal(runner.runnerId, owned[0]));
+		}
 		// D8 burn control (ADR 0010): the fleet cap stops parallel burn
 		// before any scan; per-project caps skip that project's candidates
 		// below. 0 disables that cap (default: single-Runner behaviour).
@@ -1097,6 +1153,13 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					({ executionId, epoch } = claimStore.claim(cand.taskId, runner.runnerId, cand.projectId));
 				} catch (err) {
 					if (err?.code === "CLAIM_CONFLICT") continue;
+					if (err?.code === "RUNNER_BUSY") {
+						// Lost a same-identity race between the entry check
+						// and the fence (two polls, one Runner): nothing was
+						// claimed and nothing queued, so back off — later
+						// candidates would fail the same way.
+						return reply.status(429).send(runnerBusyRefusal(runner.runnerId, err.holder));
+					}
 					return sendStoreError(reply, err);
 				}
 				if (!integrationQueue) {
@@ -1185,6 +1248,11 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				};
 			} catch (err) {
 				if (err?.code === "CLAIM_CONFLICT") continue;
+				if (err?.code === "RUNNER_BUSY") {
+					// Same-identity race lost (see the merge path above):
+					// back off instead of failing later candidates too.
+					return reply.status(429).send(runnerBusyRefusal(runner.runnerId, err.holder));
+				}
 				return sendStoreError(reply, err);
 			}
 		}

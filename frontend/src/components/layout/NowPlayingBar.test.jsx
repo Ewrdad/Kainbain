@@ -637,6 +637,9 @@ test('runner boxes replace the left side for under 5 runners', () => {
   expect(screen.getByTestId('now-playing-runner-box-runner-b')).toHaveTextContent('runner-b');
   expect(screen.getByTestId('now-playing-runner-box-runner-b')).toHaveTextContent('Review the widget');
   expect(screen.getByTestId('now-playing-runner-box-runner-b')).toHaveTextContent('Review');
+  // Busy boxes carry an explicit Busy chip (one task per Runner).
+  expect(screen.getByTestId('now-playing-runner-state-runner-a')).toHaveTextContent('Busy');
+  expect(screen.getByTestId('now-playing-runner-state-runner-b')).toHaveTextContent('Busy');
   // The legacy single-task card is gone while boxes show.
   expect(screen.queryByTestId('now-playing-task-name')).not.toBeInTheDocument();
   expect(screen.queryByTestId('now-playing-idle-hint')).not.toBeInTheDocument();
@@ -770,6 +773,8 @@ test('runner boxes show idle runners; legacy display only with zero runners conf
     'Waiting for work',
   );
   expect(screen.getByTestId('now-playing-runner-box-runner-b')).toHaveTextContent('Idle');
+  expect(screen.getByTestId('now-playing-runner-state-runner-a')).toHaveTextContent('Free');
+  expect(screen.getByTestId('now-playing-runner-state-runner-b')).toHaveTextContent('Free');
   // The legacy single-task card is gone while boxes show — even idle.
   expect(screen.queryByTestId('now-playing-task-name')).not.toBeInTheDocument();
   expect(screen.queryByTestId('now-playing-idle-hint')).not.toBeInTheDocument();

@@ -88,6 +88,18 @@ answer triggers one fresh heartbeat and a single retry. Alias
 backend-central rotation before matching, so the daemon needs no alias
 configuration.
 
+One task per Runner: a Runner holding a live lease is refused any second
+assignment. Dispatch answers `429 RUNNER_BUSY` (transient backpressure, like
+the fleet cap — old Runners back off on any 429, so mixed versions stay
+safe); a direct claim of a second task answers `409 RUNNER_BUSY`. The daemon
+backs off and re-polls without consuming idle budget, and its single-flight
+guard never starts a second assignment while one is in flight. The refused
+task stays claimable, so a free Runner picks it up — queue + reroute, never
+silent double-execution. Every fleet surface (monitor widget, Settings ›
+Runners, Now Playing bar) shows one current-task slot plus a Busy/Free state
+per Runner; heartbeats also report free memory (`memoryFreeMb`) as a
+display-only pressure note.
+
 ## Steering (D5)
 
 The daemon pulls operator steers on every heartbeat and delivers each

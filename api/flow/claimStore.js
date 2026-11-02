@@ -10,7 +10,9 @@ const MAX_COMPLETED_KEPT = 10000;
 /***
  * MARK: ClaimStore
  * @description Backend-side mutual-exclusion ledger for task claims (D1,
- *   ADR 0009 lifecycle step 3). One task, one holder: `claim` issues a
+ *   ADR 0009 lifecycle step 3). One task, one holder — and one live hold
+ *   per Runner (`RUNNER_BUSY` refuses a second task while one is live):
+ *   `claim` issues a
  *   monotonically increasing backend-side fencing token (epoch — never
  *   wall-clock, so clock skew between hosts cannot reorder the lock) plus a
  *   stable execution ID. Completion and push acceptance check the epoch;
@@ -130,6 +132,21 @@ export class ClaimStore {
 		return err;
 	}
 
+	static _busy(taskId, current) {
+		const err = new Error(
+			`Runner ${current.runnerId} already holds task ${current.taskId} (epoch ${current.epoch}); one task per Runner — complete, release, or let it expire before taking ${taskId}.`,
+		);
+		err.statusCode = 409;
+		err.code = "RUNNER_BUSY";
+		err.holder = {
+			runnerId: current.runnerId,
+			taskId: current.taskId,
+			executionId: current.executionId,
+			epoch: current.epoch,
+		};
+		return err;
+	}
+
 	static _stale(taskId, why) {
 		const err = new Error(`Stale execution for task ${taskId}: ${why}.`);
 		err.statusCode = 409;
@@ -146,6 +163,14 @@ export class ClaimStore {
 		}
 		const hold = this._holding(taskId);
 		if (hold) throw ClaimStore._conflict(taskId, hold);
+		// One-task-per-Runner fence (memory safety on small boxes): a
+		// Runner holding a live lease takes no second task. This check is
+		// synchronous with the insert below, so two polls racing with one
+		// identity cannot both win — the entry check in the dispatch route
+		// is the fast path, this is the race-safe backstop. The refused
+		// task is untouched (still claimable by a free Runner).
+		const owned = this.liveHoldsByRunner(runnerId);
+		if (owned.length > 0) throw ClaimStore._busy(taskId, owned[0]);
 		const epoch = this._nextEpoch(taskId);
 		const executionId = uuidv4();
 		this.holds.set(taskId, {
@@ -247,6 +272,22 @@ export class ClaimStore {
 			});
 		}
 		return out;
+	}
+
+	/***
+	 * MARK: liveHoldsByRunner
+	 * @description Lists the unexpired holds owned by one Runner (the
+	 *   one-task-per-Runner fence + per-Runner monitor slots read this,
+	 *   never the raw map). Lazy expiry applies via `liveHolds`: a lapsed
+	 *   hold is swept, never listed — an expired hold never blocks the
+	 *   Runner from taking new work.
+	 * @example claims.liveHoldsByRunner('runner-a') => [{ taskId: 't1', … }]
+	 * @param {string} runnerId - Runner id to list holds for.
+	 * @returns {Array} Live hold rows for that Runner (empty when none).
+	 ***/
+	liveHoldsByRunner(runnerId) {
+		if (!runnerId || typeof runnerId !== "string") return [];
+		return this.liveHolds().filter((hold) => hold.runnerId === runnerId);
 	}
 
 	invalidate(taskId) {

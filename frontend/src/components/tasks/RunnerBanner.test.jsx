@@ -8,6 +8,10 @@ describe('RunnerBanner', () => {
     const banner = screen.getByTestId('runner-banner');
     expect(banner.textContent).toMatch(/local-pi/);
     expect(banner.textContent).toMatch(/Plan/);
+    // The copy states the Runner is busy with THIS task alone — it must
+    // never imply the Runner is otherwise free.
+    expect(banner.textContent).toMatch(/busy with this task alone/);
+    expect(banner.textContent).toMatch(/one task per Runner/i);
   });
 
   it('renders nothing without a claim', () => {

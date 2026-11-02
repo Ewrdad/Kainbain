@@ -3,6 +3,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../../services/api';
 import { MarkdownViewer } from '../../common/MarkdownViewer';
 import { formatTaskTitleFirstLine } from '../../tasks/taskFormatters';
+import {
+  describeMemoryPressure,
+  formatMemoryMb,
+  groupLiveAssignments,
+} from './runnerSlots';
 
 /***
  * MARK: formatRunnerElapsed
@@ -85,7 +90,12 @@ export const useRunnerMonitor = ({ pollMs = 5000 } = {}) => {
         .filter((r) => r && r.runnerId)
         .map((r) => [r.runnerId, r]),
     );
-    return { assignments, registry, scheduler: monitor?.scheduler || null };
+    return {
+      assignments,
+      registry,
+      runnerLoad: Array.isArray(monitor?.runnerLoad) ? monitor.runnerLoad : null,
+      scheduler: monitor?.scheduler || null,
+    };
   }, [monitor, runners]);
 };
 
@@ -108,16 +118,19 @@ const runnerLogTail = (task, runnerId, limit = 6) => {
 
 /***
  * MARK: PerRunnerTasksWidget
- * @description Replaces the single engine-owner active-task card with one
- *   card per live Runner assignment: which Runner runs which task, on what
- *   stage, and for how long. Full variant (desktop default) shows the task
- *   goal, stage/epoch pills, harness capabilities, freshness, and a runner
- *   log tail. Compact variant (crowded screens, mobile) collapses each
- *   Runner to one row with an expandable tail.
+ * @description One card per busy Runner (never one card per assignment):
+ *   which Runner runs which single task, on what stage, and for how long.
+ *   Assignments group through `groupLiveAssignments`, so a Runner holding
+ *   two leases (a converging backend violation the fence normally forbids)
+ *   renders one current-task slot plus a warning — never two live cards.
+ *   Full variant (desktop default) shows the task goal, stage/epoch pills,
+ *   harness capabilities, freshness, memory posture, and a runner log tail.
+ *   Compact variant (crowded screens, mobile) collapses each Runner to one
+ *   row with an expandable tail.
  * @example <PerRunnerTasksWidget tasks={tasks} compact={false} />
  ***/
 export function PerRunnerTasksWidget({ tasks = [], stages = [], compact = false, pollMs = 5000 }) {
-  const { assignments, registry } = useRunnerMonitor({ pollMs });
+  const { assignments, registry, runnerLoad } = useRunnerMonitor({ pollMs });
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
@@ -149,10 +162,16 @@ export function PerRunnerTasksWidget({ tasks = [], stages = [], compact = false,
     return (typeof name === 'string' && name.trim()) || String(stageId);
   };
 
-  const cards = assignments.map((a) => ({
-    assignment: a,
-    task: taskById.get(String(a.taskId)) || null,
-    record: registry.get(a.runnerId) || null,
+  const slots = useMemo(
+    () => groupLiveAssignments(assignments, runnerLoad),
+    [assignments, runnerLoad],
+  );
+
+  const cards = slots.map((slot) => ({
+    slot,
+    assignment: slot.current,
+    task: slot.current ? taskById.get(String(slot.current.taskId)) || null : null,
+    record: registry.get(slot.runnerId) || null,
   }));
 
   if (cards.length === 0) {
@@ -180,10 +199,11 @@ export function PerRunnerTasksWidget({ tasks = [], stages = [], compact = false,
         data-testid="per-runner-tasks"
         className="flex flex-col gap-1"
       >
-        {cards.map(({ assignment: a, task }) => (
+        {cards.map(({ slot, assignment: a, task }) => (
           <PerRunnerCompactRow
-            key={`${a.runnerId}:${a.executionId || a.taskId}`}
+            key={slot.runnerId}
             assignment={a}
+            slot={slot}
             task={task}
             nowMs={nowMs}
             stageName={stageName}
@@ -199,10 +219,11 @@ export function PerRunnerTasksWidget({ tasks = [], stages = [], compact = false,
       data-testid="per-runner-tasks"
       className="h-full flex flex-col gap-2 overflow-y-auto"
     >
-      {cards.map(({ assignment: a, task, record }) => (
+      {cards.map(({ slot, assignment: a, task, record }) => (
         <PerRunnerCard
-          key={`${a.runnerId}:${a.executionId || a.taskId}`}
+          key={slot.runnerId}
           assignment={a}
+          slot={slot}
           task={task}
           record={record}
           nowMs={nowMs}
@@ -213,8 +234,9 @@ export function PerRunnerTasksWidget({ tasks = [], stages = [], compact = false,
   );
 }
 
-const PerRunnerCompactRow = ({ assignment: a, task, nowMs, stageName }) => {
+const PerRunnerCompactRow = ({ assignment: a, slot, task, nowMs, stageName }) => {
   const serving = a?.serving && typeof a.serving === 'object' ? a.serving : null;
+  const extraCount = slot && slot.liveHoldCount > 1 ? slot.liveHoldCount - 1 : 0;
   return (
     <details
       data-testid={`per-runner-row-${a.runnerId}`}
@@ -226,6 +248,12 @@ const PerRunnerCompactRow = ({ assignment: a, task, nowMs, stageName }) => {
           aria-hidden="true"
         />
         <strong className="text-slate-100">{a.runnerId}</strong>
+        <span
+          data-testid={`per-runner-state-${a.runnerId}`}
+          className="px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-bold uppercase tracking-widest text-[10px]"
+        >
+          Busy
+        </span>
         <span className="truncate">{String(a.taskId).slice(0, 8)}</span>
         <span className="text-slate-400 truncate">{stageName(a.stageId)}</span>
         {serving?.harness && (
@@ -252,17 +280,28 @@ const PerRunnerCompactRow = ({ assignment: a, task, nowMs, stageName }) => {
           {formatRunnerElapsed(a.startedAt, nowMs)}
         </span>
       </summary>
+      {extraCount > 0 && (
+        <p
+          data-testid={`per-runner-extras-${a.runnerId}`}
+          className="mt-1 text-amber-300"
+          role="alert"
+        >
+          {`+${extraCount} more live hold${extraCount === 1 ? '' : 's'} for one Runner (fence converging) — only ${String(a.taskId).slice(0, 8)} is current.`}
+        </p>
+      )}
       <RunnerLogTail task={task} runnerId={a.runnerId} />
     </details>
   );
 };
 
-const PerRunnerCard = ({ assignment: a, task, record, nowMs, stageName }) => {
+const PerRunnerCard = ({ assignment: a, slot, task, record, nowMs, stageName }) => {
   const harnesses = Array.isArray(record?.capabilities?.harnesses)
     ? record.capabilities.harnesses.map((h) => h?.id || h).filter(Boolean)
     : [];
   const serving = a.serving && typeof a.serving === 'object' ? a.serving : null;
   const tail = runnerLogTail(task, a.runnerId);
+  const memory = describeMemoryPressure(record?.facts);
+  const extraCount = slot && slot.liveHoldCount > 1 ? slot.liveHoldCount - 1 : 0;
   return (
     <article
       data-testid={`per-runner-card-${a.runnerId}`}
@@ -275,6 +314,12 @@ const PerRunnerCard = ({ assignment: a, task, record, nowMs, stageName }) => {
           aria-hidden="true"
         />
         <strong className="text-slate-100 uppercase tracking-wider">Runner {a.runnerId}</strong>
+        <span
+          data-testid={`per-runner-state-${a.runnerId}`}
+          className="px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-bold uppercase tracking-widest text-[10px]"
+        >
+          Busy · 1 task
+        </span>
         <span className="text-slate-400">· executing task</span>
         <span className="text-cyan-300" data-testid={`per-runner-task-${a.runnerId}`}>
           {String(a.taskId).slice(0, 8)}
@@ -287,6 +332,15 @@ const PerRunnerCard = ({ assignment: a, task, record, nowMs, stageName }) => {
           {formatRunnerElapsed(a.startedAt, nowMs)}
         </span>
       </div>
+      {extraCount > 0 && (
+        <p
+          data-testid={`per-runner-extras-${a.runnerId}`}
+          className="mt-1 text-[11px] font-mono text-amber-300"
+          role="alert"
+        >
+          {`+${extraCount} more live hold${extraCount === 1 ? '' : 's'} for one Runner (fence converging) — only ${String(a.taskId).slice(0, 8)} is current.`}
+        </p>
+      )}
       <p className="mt-1 text-xs text-slate-200 truncate" title={task?.goal || task?.title || ''}>
         {task ? taskTitle(task) : 'Task details unavailable'}
       </p>
@@ -313,6 +367,20 @@ const PerRunnerCard = ({ assignment: a, task, record, nowMs, stageName }) => {
         {harnesses.length > 0 && (
           <span className="truncate" title="Harnesses this Runner can serve">
             {harnesses.join(' · ')}
+          </span>
+        )}
+        {memory && (
+          <span
+            data-testid={`per-runner-memory-${a.runnerId}`}
+            className={`truncate ${memory.low ? 'text-amber-300 font-bold' : ''}`}
+            title={
+              memory.low
+                ? 'Low free memory on this Runner (display-only — dispatch is fenced to one task per Runner)'
+                : 'Free memory on this Runner (best-effort heartbeat posture)'
+            }
+          >
+            Mem {formatMemoryMb(memory.freeMb)}
+            {memory.low ? ' — low' : ''}
           </span>
         )}
       </div>

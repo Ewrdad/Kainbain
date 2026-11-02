@@ -3,6 +3,11 @@ import { api } from '../../services/api';
 import { copyToClipboard } from '../../services/clipboard';
 import { formatRunnerElapsed } from '../observability/widgets/PerRunnerTasksWidget';
 import {
+  describeMemoryPressure,
+  formatMemoryMb,
+  groupLiveAssignments,
+} from '../observability/widgets/runnerSlots';
+import {
   defaultRunnerConfig,
   runnerDisplayName,
   advertisedToolIds,
@@ -111,9 +116,15 @@ export function RunnerConfigurationSection() {
       setSelectedId((prev) => resolveSelectedId(visibleRunners(rows), prev));
       try {
         const monitor = await api.getRunnerMonitor();
+        // One slot per Runner (shared grouping helper): a Runner holding
+        // two leases renders its single current task plus a warning, never
+        // two live rows.
         const byRunner = {};
-        for (const row of monitor?.liveAssignments || []) {
-          if (row && typeof row.runnerId === 'string') byRunner[row.runnerId] = row;
+        for (const slot of groupLiveAssignments(
+          monitor?.liveAssignments,
+          monitor?.runnerLoad,
+        )) {
+          byRunner[slot.runnerId] = slot;
         }
         setAssignments(byRunner);
         setScheduler(monitor?.scheduler || null);
@@ -362,6 +373,13 @@ export function RunnerConfigurationSection() {
         here for approval, then heartbeats and claims tasks with its own credential. Select a Runner
         on the left to configure its name, projects, tools, directories, and job types.
       </p>
+      <p
+        className="mt-1 text-[11px] font-mono text-text-muted"
+        data-testid="runner-invariant-note"
+      >
+        One task per Runner: a Busy Runner never takes a second task — waiting work goes to a
+        Free Runner instead.
+      </p>
       {scheduler && (
         <p
           className="mt-1 text-[10px] font-mono text-text-muted"
@@ -437,7 +455,11 @@ export function RunnerConfigurationSection() {
           <ul className="flex flex-col gap-2" data-testid="runner-roster">
             {visible.map((runner) => {
               const isSelected = runner.runnerId === selectedId;
-              const assignment = assignments[runner.runnerId];
+              const slot = assignments[runner.runnerId] || null;
+              const assignment = slot?.current || null;
+              const memory = describeMemoryPressure(runner.facts);
+              const extraHolds =
+                slot && slot.liveHoldCount > 1 ? slot.liveHoldCount - 1 : 0;
               const versionLabel = describeRunnerVersion(runner);
               return (
                 <li
@@ -472,6 +494,21 @@ export function RunnerConfigurationSection() {
                       paused
                     </span>
                   )}
+                  {runner.status === 'active' && (
+                    <span
+                      className={`text-[10px] font-bold uppercase tracking-widest ${
+                        assignment ? 'text-primary' : 'text-text-muted'
+                      }`}
+                      data-testid={`runner-busystate-${runner.runnerId}`}
+                      title={
+                        assignment
+                          ? 'Busy: this Runner is executing its one current task'
+                          : 'Free: this Runner holds no task and can pick up work'
+                      }
+                    >
+                      {assignment ? 'Busy' : 'Free'}
+                    </span>
+                  )}
                   {assignment && (
                     <span
                       className="text-[10px] font-mono text-text-muted"
@@ -482,6 +519,31 @@ export function RunnerConfigurationSection() {
                       {assignment.stageId || '…'}
                       {' · '}
                       {nowMs == null ? '…' : formatRunnerElapsed(assignment.startedAt, nowMs)}
+                    </span>
+                  )}
+                  {extraHolds > 0 && (
+                    <span
+                      className="text-[10px] font-mono text-warning"
+                      data-testid={`runner-extras-${runner.runnerId}`}
+                      role="alert"
+                    >
+                      {`+${extraHolds} extra live hold${extraHolds === 1 ? '' : 's'} (fence converging)`}
+                    </span>
+                  )}
+                  {memory && (
+                    <span
+                      className={`text-[10px] font-mono ${
+                        memory.low ? 'text-warning font-bold' : 'text-text-muted'
+                      }`}
+                      data-testid={`runner-memory-${runner.runnerId}`}
+                      title={
+                        memory.low
+                          ? 'Low free memory on this Runner (display-only — dispatch is fenced to one task per Runner)'
+                          : 'Free memory on this Runner (best-effort heartbeat posture)'
+                      }
+                    >
+                      Mem {formatMemoryMb(memory.freeMb)}
+                      {memory.low ? ' — low' : ''}
                     </span>
                   )}
                   {versionLabel && (

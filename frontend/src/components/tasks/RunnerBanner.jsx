@@ -30,8 +30,8 @@ export function RunnerBanner({ claim, stageName }) {
         </span>
       </div>
       <p className="text-xs text-on-surface leading-relaxed">
-        This task is claimed and executing off-process. It leaves this state when the
-        Runner reports back — no action needed.
+        This task is claimed and executing off-process — this Runner is busy with this
+        task alone (one task per Runner) until it reports back. No action needed.
       </p>
     </div>
   );

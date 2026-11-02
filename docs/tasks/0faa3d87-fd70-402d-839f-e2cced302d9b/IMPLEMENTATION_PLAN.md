@@ -4,6 +4,21 @@ Task: `0faa3d87-fd70-402d-839f-e2cced302d9b`
 ("UI seems to imply a runner is running multiple tasks at once")
 Author: planning stage, 2026-11-02. Status: plan only — no code changed.
 
+## Step 0 verdict (recorded by implementation stage, 2026-11-02)
+
+Screenshot `assets/18846.png` is still absent from this task folder (only
+`SURVEY.md` + this plan exist). Hypothesis **(a) real double-hold is PROVEN**:
+a throwaway probe (`/tmp/kb-step1-probe.mjs`, not committed) claimed task-A
+and task-B as one `runnerId` and both holds are live; the existing
+`api/flow/runnerDispatchCaps.test.js` flow shows the dispatch path doing the
+same (runner `caps-1` direct-claims task A, then dispatch assigns it task B).
+The suspect widget is `PerRunnerTasksWidget` (one card per assignment, no
+per-runner grouping), so two holds for one `runnerId` render as two live
+"Runner X" cards — the reported look. `TaskCard` likewise badges every held
+task `RUNNING · <runnerId>`. Hypothesis (b) stale `running_*` labels remains
+possible as a secondary contributor; the backend fence + grouped UI below fix
+(a) and display-harden (b).
+
 ## Goal
 
 Guarantee that one Runner executes at most one task at a time (protecting a
@@ -254,3 +269,58 @@ their seams and characterization tests exist:
 Highest-risk validation: Step 1's double-dispatch probe — if it shows the
 backend already refuses (hypothesis (a) wrong), Steps 5–6 shrink to hardening
 and the plan re-weights toward the Step 4/7 display fix.
+
+## Implementation notes (recorded by implementation stage, 2026-11-02)
+
+Contract as shipped:
+
+- `ClaimStore.claim()` fences one live hold per Runner (race-safe backstop;
+  synchronous with the insert). Same-task re-claim stays `CLAIM_CONFLICT`;
+  a second task answers `409 RUNNER_BUSY` with
+  `holder: { runnerId, taskId, executionId, epoch }`.
+- `POST /runners/dispatch` refuses a busy Runner with **`429 RUNNER_BUSY`**
+  (deviation from the plan's suggested 409: the daemon crashes on unknown
+  409 codes but backs off on any 429, so 429 is what keeps mixed-version
+  fleets safe per Step 10; it also matches the fleet-cap backpressure
+  family the daemon already handles). The in-loop claim sites map a raced
+  `RUNNER_BUSY` to the same 429 instead of continuing to later candidates.
+- `POST /tasks/:id/claim` answers `409 RUNNER_BUSY` via the store (conflict
+  family, mirrors `CLAIM_CONFLICT`).
+- Runner daemon: explicit `RUNNER_BUSY` branch (code-first, any status)
+  backs off without consuming idle budget; `tryEnterAssignment` /
+  `leaveAssignment` single-flight guard wraps `executeAssignment` in both
+  the dispatch loop and the single-assignment path. No pid/lockfile: the
+  backend fence is primary and sufficient, and stale locks would be a new
+  failure mode on a crash-prone dev box.
+- `GET /runners/monitor` gains `runnerLoad` (one row per busy Runner:
+  `runnerId`, `liveHoldCount`, `currentTaskId`, `currentExecutionId`,
+  `currentStageId`, `startedAt`). UI groups through the shared
+  `groupLiveAssignments` helper (`frontend/.../widgets/runnerSlots.js`),
+  falling back to grouping `liveAssignments` when `runnerLoad` is absent.
+- Heartbeat facts gain display-only `memoryFreeMb` (no backend change
+  needed: facts flow wholesale; `normalizeCapabilities` ignores it).
+- Queued-next: no per-Runner queue exists (any free Runner takes waiting
+  work); the fleet-level "N deferred to Runners" scheduler line already
+  covers the waiting-work signal, so no new queue count was added.
+- Merge-kind dispatch has no HTTP-level test fixture (needs real git
+  remotes); it shares the fenced dispatch entry + store claim, both
+  covered. Direct `/runners/integration/acquire` is lease-only (no task
+  claim) and out of fence scope.
+
+UI audit (Step 4): embedded-engine surfaces (`TaskCard`, dashboard,
+`TaskDetail*`, `StageColumn`, `EngineStatePill`, `MobileMonitorView`,
+`NowPlayingBar` legacy display) already derive running state from
+`runningTask.js` / engine-owner helpers — no change. Fleet surfaces:
+`PerRunnerTasksWidget` was the ungrouped surface (fixed);
+`RunnerConfigurationSection` and `NowPlayingBar` already deduped per
+Runner (kept, plus explicit Busy/Free); `TaskCard` `RUNNING · runner` and
+`RunnerBanner` stay per-task truthful, with banner copy now stating the
+Runner is busy with that task alone.
+
+Tests added/updated: `claimStore.test.js` (+4), new
+`runnerBusy.test.js` (4), `runnerDispatchCaps.test.js` (reworked to
+distinct Runners + busy/fleet precedence), `runnerRoutes.test.js`
+(second-dispatch 429), `daemon.test.js` (+4: busy backoff, guard ×2,
+memory), new `runnerSlots.test.js` (7), widget (+3), settings (+4),
+`NowPlayingBar.test.jsx` (+4 assertions), `RunnerBanner.test.jsx`
+(copy pins).

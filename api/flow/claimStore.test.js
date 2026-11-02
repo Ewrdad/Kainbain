@@ -93,6 +93,45 @@ describe("ClaimStore", () => {
 		}
 	});
 
+	test("refuses a second live task for a busy Runner with RUNNER_BUSY", () => {
+		const first = claims.claim("t1", "runner-a");
+		try {
+			claims.claim("t2", "runner-a");
+			expect.unreachable();
+		} catch (err) {
+			expect(err.statusCode).toBe(409);
+			expect(err.code).toBe("RUNNER_BUSY");
+			expect(err.holder).toMatchObject({
+				runnerId: "runner-a",
+				taskId: "t1",
+				executionId: first.executionId,
+				epoch: 1,
+			});
+		}
+		// The refused task stays claimable by anyone else.
+		const rerouted = claims.claim("t2", "runner-b");
+		expect(rerouted.epoch).toBe(1);
+	});
+
+	test("re-claiming the SAME task stays CLAIM_CONFLICT, not RUNNER_BUSY", () => {
+		claims.claim("t1", "runner-a");
+		try {
+			claims.claim("t1", "runner-a");
+			expect.unreachable();
+		} catch (err) {
+			expect(err.statusCode).toBe(409);
+			expect(err.code).toBe("CLAIM_CONFLICT");
+		}
+	});
+
+	test("an expired hold does not block the same Runner from new work", () => {
+		claims.claim("t1", "runner-a");
+		now += 60_001;
+		const next = claims.claim("t2", "runner-a");
+		expect(next.epoch).toBe(1);
+		expect(claims.liveHoldsByRunner("runner-a").map((h) => h.taskId)).toEqual(["t2"]);
+	});
+
 	test("accepts completion with the right epoch and rejects stale retries", () => {
 		const first = claims.claim("t1", "runner-a");
 		const done = claims.complete("t1", first.executionId, first.epoch);
@@ -161,6 +200,26 @@ describe("ClaimStore", () => {
 		expect(claims.describe("t1")).toBe(null);
 		const next = claims.claim("t1", "runner-b");
 		expect(next.epoch).toBe(2);
+	});
+
+	test("lists live holds by Runner, expiry-aware", () => {
+		claims.claim("t1", "runner-a", "p1");
+		claims.claim("t2", "runner-b", "p1");
+		claims.claim("t3", "runner-c", "p2");
+		expect(claims.liveHoldsByRunner("runner-a").map((h) => h.taskId)).toEqual(["t1"]);
+		expect(claims.liveHoldsByRunner("runner-b").map((h) => h.taskId)).toEqual(["t2"]);
+		expect(claims.liveHoldsByRunner("runner-b")[0]).toMatchObject({
+			taskId: "t2",
+			runnerId: "runner-b",
+			projectId: "p1",
+		});
+		expect(claims.liveHoldsByRunner("unknown-runner")).toEqual([]);
+		expect(claims.liveHoldsByRunner("")).toEqual([]);
+		expect(claims.liveHoldsByRunner(null)).toEqual([]);
+		// Lazy expiry: lapsed holds stop listing with no sweeper.
+		now += 60_001;
+		expect(claims.liveHoldsByRunner("runner-a")).toEqual([]);
+		expect(claims.liveHoldsByRunner("runner-b")).toEqual([]);
 	});
 
 	test("validates claim arguments", () => {

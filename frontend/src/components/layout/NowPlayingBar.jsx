@@ -490,8 +490,18 @@ export function NowPlayingBar() {
                         }
                         className="flex flex-col min-w-0 leading-tight flex-1 text-left cursor-pointer hover:text-on-surface transition-colors disabled:cursor-default disabled:no-underline"
                       >
-                        <span className="font-mono text-[11px] font-semibold text-on-surface truncate">
-                          {box.runnerId}
+                        <span className="flex items-center gap-1 min-w-0">
+                          <span className="font-mono text-[11px] font-semibold text-on-surface truncate">
+                            {box.runnerId}
+                          </span>
+                          <span
+                            data-testid={`now-playing-runner-state-${box.runnerId}`}
+                            className={`font-mono text-[9px] font-bold uppercase tracking-widest shrink-0 ${
+                              box.idle ? 'text-text-muted' : 'text-primary'
+                            }`}
+                          >
+                            {box.idle ? 'Free' : 'Busy'}
+                          </span>
                         </span>
                         <span className="text-[11px] text-text-muted truncate">{box.taskName}</span>
                         <span className="font-mono text-[10px] text-text-muted truncate">

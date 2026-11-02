@@ -34,7 +34,10 @@ const FACTS = {
  * @description Verifies ADR 0010 burn control at `POST /runners/dispatch`:
  *   a project at its concurrency cap is skipped loudly (`PROJECT_BUSY`)
  *   while other projects still dispatch, and a fleet at its cap answers
- *   429 so daemons back off instead of burning.
+ *   429 so daemons back off instead of burning. Holds come from distinct
+ *   Runners: the one-task-per-Runner fence forbids stacking both holds on
+ *   one identity, and a busy Runner is refused with `RUNNER_BUSY` (not the
+ *   fleet code) even when the fleet is full too.
  ***/
 describe("Dispatch D8 Caps Integration", () => {
 	let projA;
@@ -103,23 +106,25 @@ describe("Dispatch D8 Caps Integration", () => {
 	}
 
 	it("skips capped projects loudly, then 429s at the fleet cap", async () => {
-		const credential = await onboard("caps-1");
+		const credA = await onboard("caps-1");
+		const credB = await onboard("caps-2");
 		// One live hold on project A (direct claim carries the project).
 		const claim = await app.inject({
 			method: "POST",
 			url: `/tasks/${taskAheld}/claim`,
-			headers: { "x-runner-credential": credential },
+			headers: { "x-runner-credential": credA },
 			payload: { projectId: projA.id },
 		});
 		expect(claim.statusCode).toBe(200);
 
-		// Scoped to the capped project: no assignment, loud PROJECT_BUSY.
+		// Scoped to the capped project from a FREE Runner: no assignment,
+		// loud PROJECT_BUSY.
 		const busy = JSON.parse(
 			(
 				await app.inject({
 					method: "POST",
 					url: "/runners/dispatch",
-					headers: { "x-runner-credential": credential },
+					headers: { "x-runner-credential": credB },
 					payload: { projectIds: [projA.id] },
 				})
 			).payload,
@@ -133,7 +138,7 @@ describe("Dispatch D8 Caps Integration", () => {
 				await app.inject({
 					method: "POST",
 					url: "/runners/dispatch",
-					headers: { "x-runner-credential": credential },
+					headers: { "x-runner-credential": credB },
 					payload: {},
 				})
 			).payload,
@@ -141,14 +146,26 @@ describe("Dispatch D8 Caps Integration", () => {
 		expect(assigned.assigned).toBe(true);
 		expect(assigned.taskId).toBe(taskB);
 
-		// Fleet now holds 2/2: the next poll backs off with 429.
+		// Fleet now holds 2/2: a free Runner's poll backs off with 429.
+		const credC = await onboard("caps-3");
 		const capped = await app.inject({
 			method: "POST",
 			url: "/runners/dispatch",
-			headers: { "x-runner-credential": credential },
+			headers: { "x-runner-credential": credC },
 			payload: {},
 		});
 		expect(capped.statusCode).toBe(429);
 		expect(JSON.parse(capped.payload).code).toBe("FLEET_CONCURRENCY_EXHAUSTED");
+
+		// A busy Runner at the same full fleet hears RUNNER_BUSY, not the
+		// fleet code: the Runner-specific refusal wins over global caps.
+		const busyPoll = await app.inject({
+			method: "POST",
+			url: "/runners/dispatch",
+			headers: { "x-runner-credential": credA },
+			payload: {},
+		});
+		expect(busyPoll.statusCode).toBe(429);
+		expect(JSON.parse(busyPoll.payload).code).toBe("RUNNER_BUSY");
 	});
 });
