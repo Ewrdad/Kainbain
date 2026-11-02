@@ -1239,16 +1239,21 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			const headEntry = integrationQueue.peekHead({ projectId: acquireProjectId, targetBranch: acquireBranch });
 			if (headEntry?.taskId) {
 				const headTask = taskStore.getTask(acquireProjectId, headEntry.taskId);
-				const headStages = resolveStagesForTask(projectStore.getProject(acquireProjectId), headTask);
-				const headStage = (Array.isArray(headStages) ? headStages : []).find(
-					(s) => String(s?.id) === String(headTask?.currentStageId),
-				) || null;
-				const leaseVerdict = stageRunnerPolicyVerdict(headStage, runner.runnerId);
-				if (!leaseVerdict.ok) {
-					return reply.status(409).send({
-						error: `Runner ${runner.runnerId} is refused by this stage's Runner list (${leaseVerdict.reason}).`,
-						code: leaseVerdict.reason,
-					});
+				if (!headTask) {
+					// Task vanished (deleted while queued) — fall through to the
+					// queue acquire; it will handle stale entries.
+				} else {
+					const headStages = resolveStagesForTask(projectStore.getProject(acquireProjectId), headTask);
+					const headStage = (Array.isArray(headStages) ? headStages : []).find(
+						(s) => String(s?.id) === String(headTask?.currentStageId),
+					) || null;
+					const leaseVerdict = stageRunnerPolicyVerdict(headStage, runner.runnerId);
+					if (!leaseVerdict.ok) {
+						return reply.status(409).send({
+							error: `Runner ${runner.runnerId} is refused by this stage's Runner list (${leaseVerdict.reason}).`,
+							code: leaseVerdict.reason,
+						});
+					}
 				}
 			}
 		}

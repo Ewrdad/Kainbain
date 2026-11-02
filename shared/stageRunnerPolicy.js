@@ -93,6 +93,25 @@ export const stageRunnerPolicyVerdict = (stageOrPolicy, runnerId) => {
 };
 
 /***
+ * MARK: assertValidStageRunnerPolicies
+ * @description Save-boundary helper: returns a 400-shaped error payload
+ *   when any stage carries a malformed runnerPolicy, or null when every
+ *   policy can save cleanly. Wrapping the shared validator lets route
+ *   handlers stay one line (`if (err) return reply.status(400).send(err)`)
+ *   instead of repeating the same 4-line problem check.
+ * @example assertValidStageRunnerPolicies([{ runnerPolicy: { mode: 'only', runners: [] } }]) => { error: '...', details: [...] }
+ * @example assertValidStageRunnerPolicies(undefined) => null
+ * @param {Array|undefined} [stages] - Raw stages from a save payload (absent means no-op).
+ * @returns {Object|null} `{ error, details }` for a 400, or null when clean.
+ ***/
+export const assertValidStageRunnerPolicies = (stages) => {
+  if (stages === undefined || stages === null) return null;
+  const problems = collectInvalidStageRunnerPolicies(stages);
+  if (problems.length === 0) return null;
+  return { error: "Invalid stage runnerPolicy entries", details: problems };
+};
+
+/***
  * MARK: collectInvalidStageRunnerPolicies
  * @description Save-time validation for stage runnerPolicy shapes: returns
  *   one problem per stage whose policy is present but malformed — a

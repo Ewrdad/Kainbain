@@ -20,7 +20,7 @@ import {
 } from "../../shared/modelAliases.js";
 import { computeAliasReliability } from "../watch/aliasReliability.js";
 import { normalizeStageType } from "../projectStore.js";
-import { collectInvalidStageRunnerPolicies } from "../../shared/stageRunnerPolicy.js";
+import { assertValidStageRunnerPolicies } from "../../shared/stageRunnerPolicy.js";
 
 /***
  * MARK: validateModelAliasesPayload
@@ -227,17 +227,8 @@ export default async function projectsRoutes(app, { deps }) {
 			if (!name || typeof name !== "string" || !name.trim()) {
 				return reply.status(400).send({ error: "Project name is required" });
 			}
-			// A mistyped runnerPolicy mode must fail loud, never save as
-			// silently-unrestricted (normalization alone would fail open).
-			if (stages !== undefined) {
-				const policyProblems = collectInvalidStageRunnerPolicies(stages);
-				if (policyProblems.length > 0) {
-					return reply.status(400).send({
-						error: "Invalid stage runnerPolicy entries",
-						details: policyProblems,
-					});
-				}
-			}
+			const policyError = assertValidStageRunnerPolicies(stages);
+			if (policyError) return reply.status(400).send(policyError);
 			const saveWarnings = [];
 			const modelIdsFor = deps.modelIdsFor || defaultModelIdsFor;
 			if (modelAliases !== undefined) {
@@ -593,15 +584,8 @@ export default async function projectsRoutes(app, { deps }) {
 			return reply.status(400).send({ error: "stages array is required" });
 		}
 
-		// A mistyped runnerPolicy mode must fail loud, never save as
-		// silently-unrestricted (normalization alone would fail open).
-		const policyProblems = collectInvalidStageRunnerPolicies(stages);
-		if (policyProblems.length > 0) {
-			return reply.status(400).send({
-				error: "Invalid stage runnerPolicy entries",
-				details: policyProblems,
-			});
-		}
+		const policyError = assertValidStageRunnerPolicies(stages);
+		if (policyError) return reply.status(400).send(policyError);
 
 		// Save-time semantic validation of skill attachment configs: values of
 		// kbRef-declared keywords must resolve to a known project/workflow/stage.
@@ -701,17 +685,8 @@ export default async function projectsRoutes(app, { deps }) {
 			return reply.status(400).send({ error: "Workflow name is required" });
 		}
 
-		// A mistyped runnerPolicy mode must fail loud, never save as
-		// silently-unrestricted (normalization alone would fail open).
-		if (stages !== undefined) {
-			const policyProblems = collectInvalidStageRunnerPolicies(stages);
-			if (policyProblems.length > 0) {
-				return reply.status(400).send({
-					error: "Invalid stage runnerPolicy entries",
-					details: policyProblems,
-				});
-			}
-		}
+		const policyError = assertValidStageRunnerPolicies(stages);
+		if (policyError) return reply.status(400).send(policyError);
 
 		try {
 			const workflow = projectStore.createWorkflow(request.params.id, {
@@ -752,17 +727,8 @@ export default async function projectsRoutes(app, { deps }) {
 		const project = projectStore.getProject(request.params.id);
 		if (!project) return reply.status(404).send({ error: "Project not found" });
 
-		// A mistyped runnerPolicy mode must fail loud, never save as
-		// silently-unrestricted (normalization alone would fail open).
-		if ((request.body || {}).stages !== undefined) {
-			const policyProblems = collectInvalidStageRunnerPolicies((request.body || {}).stages);
-			if (policyProblems.length > 0) {
-				return reply.status(400).send({
-					error: "Invalid stage runnerPolicy entries",
-					details: policyProblems,
-				});
-			}
-		}
+		const policyError = assertValidStageRunnerPolicies((request.body || {}).stages);
+		if (policyError) return reply.status(400).send(policyError);
 
 		const updated = projectStore.updateWorkflow(
 			request.params.id,

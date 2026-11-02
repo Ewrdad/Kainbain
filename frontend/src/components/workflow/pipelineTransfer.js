@@ -13,8 +13,11 @@
  * @example serializePipeline({ name: 'Main' }, stages) => { kainbainPipeline: 1, ... }
  ***/
 
+import {
+  collectInvalidStageRunnerPolicies,
+  normalizeStageRunnerPolicy,
+} from '../../../../shared/stageRunnerPolicy.js';
 import { normalizeStageTags } from '../../../../shared/stageTags.js';
-import { collectInvalidStageRunnerPolicies } from '../../../../shared/stageRunnerPolicy.js';
 
 export const PIPELINE_EXPORT_VERSION = 1;
 export const PIPELINE_FILE_SUFFIX = '.pipeline.json';
@@ -117,6 +120,8 @@ const STAGE_KEY_ORDER = [
   'skills',
   'paused',
   'failback',
+  // per-stage Runner allow/block list (additive; absent stays absent so legacy exports are unchanged)
+  'runnerPolicy',
   // ci-only branch execution mode (see StageTypeConfig): 'task' | 'primary'
   // | 'custom', plus the branch name for 'custom'.
   'runOnBranch',
@@ -164,6 +169,9 @@ function toCanonicalStageDoc(source) {
       // arrays; an absent tags field stays absent (legacy round-trip).
       const normalizedTags = normalizeStageTags(input.tags);
       if (normalizedTags !== undefined) doc.tags = normalizedTags;
+    } else if (key === 'runnerPolicy') {
+      const normalizedPolicy = normalizeStageRunnerPolicy(input.runnerPolicy);
+      if (normalizedPolicy !== undefined) doc.runnerPolicy = normalizedPolicy;
     } else if (key in aliased) {
       doc[key] = aliased[key];
     } else if (input[key] !== undefined) {
@@ -400,9 +408,9 @@ export function validatePipelineDoc(doc) {
       }
     }
   });
-  // Stage Runner allow/block lists ride the transfer verbatim (unknown keys
-  // are preserved); a mistyped mode fails here with a named problem rather
-  // than importing as silently-unrestricted.
+  // Stage Runner allow/block lists are canonical pipeline fields (validated
+  // like known types, not as unknown keys); a mistyped mode fails here
+  // with a named problem rather than importing as silently-unrestricted.
   for (const problem of collectInvalidStageRunnerPolicies(doc.stages)) {
     const label = doc.stages[problem.index]?.name
       ? `"${doc.stages[problem.index].name}"`
