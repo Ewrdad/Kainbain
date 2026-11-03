@@ -223,5 +223,7 @@ export function _replaceLogEntries(task, startIndex, entries) {
  ***/
 export function _appendProcessLog(task, chunk, meta = {}) {
 	if (!task || !chunk) return;
-	_appendLogEntries(task, [_synthesizedLogEntry(String(chunk).trim(), meta)]);
+	const trimmed = String(chunk).trim();
+	if (!trimmed) return;
+	_appendLogEntries(task, [_synthesizedLogEntry(trimmed, meta)]);
 }
