@@ -27,6 +27,11 @@ source of truth. This file intentionally lists only high-impact changes.
 
 - Merged the ALL / FAILED / HUMAN ONLY board pills into the unified search bar as `!` system filters (e.g. `auth #Dev !failed`): same dropdown, chips, and Any/All toggle as `#` tags; unknown `!tokens` stay as text; future native filters register via `frontend/src/components/workflow/systemFilters/` (task c213d3a9).
 
+### Fixed
+
+- Bottom (now-playing) bar on mobile is horizontally scrollable, so all runners are reachable instead of only the first (task a654a254).
+- Pipeline releases published from the deploy tip worktree are synced back to the primary `dist/` and verified there; a stranded release now fails Publish loudly, and the Update stage verifies the installed commit against the last-publish pointer instead of reporting "already current" (task a654a254).
+
 ## [1.0.0] - 2026-10-23
 
 ### Added

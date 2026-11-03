@@ -70,14 +70,12 @@ const runnerBoxHealthLabel = (health) => {
 };
 
 /***
- * MARK: runnerBoxVisibilityCap
- * @description At most this many boxes render in the 72px bar; the header
- *   count stays honest about the whole fleet and a "+N more" chip names
- *   the overflow. The data layer never hides runners — only the render
- *   slices — so the count always matches the configured fleet.
- * @example MAX_VISIBLE_RUNNER_BOXES => 4
+ * MARK: runnerStripOwnsOverflow
+ * @description Every configured Runner renders its own box in the 72px
+ *   bar — no render cap, no "+N more" chip. The strip container owns
+ *   overflow: it scrolls horizontally (touch swipe) only when the fleet
+ *   overflows, so the full roster stays reachable on every viewport.
  * ***/
-export const MAX_VISIBLE_RUNNER_BOXES = 4;
 
 /***
  * MARK: resolveRunnerBoxes
@@ -290,8 +288,6 @@ export function NowPlayingBar() {
     runners: runnerRegistryList,
   });
   const showRunnerBoxes = runnerBoxes.length > 0;
-  const visibleRunnerBoxes = showRunnerBoxes ? runnerBoxes.slice(0, MAX_VISIBLE_RUNNER_BOXES) : [];
-  const hiddenRunnerCount = showRunnerBoxes ? runnerBoxes.length - visibleRunnerBoxes.length : 0;
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     if (!showRunnerBoxes) return undefined;
@@ -455,9 +451,9 @@ export function NowPlayingBar() {
                 data-testid="now-playing-runner-boxes"
                 role="group"
                 aria-label={`${runnerBoxes.length} ${runnerBoxes.length === 1 ? 'runner' : 'runners'}`}
-                className="flex items-center gap-1.5 mt-0.5 min-w-0 max-w-full overflow-hidden"
+                className="flex items-center gap-1.5 mt-0.5 min-w-0 max-w-full flex-1 overflow-x-auto overflow-y-hidden overscroll-contain custom-scrollbar whitespace-nowrap"
               >
-                {visibleRunnerBoxes.map((box) => {
+                {runnerBoxes.map((box) => {
                   const health = runnerBoxHealth(box.lastSeenAt, nowMs);
                   const stateLabel = box.idle
                     ? 'idle, no task assigned'
@@ -537,18 +533,6 @@ export function NowPlayingBar() {
                     </div>
                   );
                 })}
-                {hiddenRunnerCount > 0 && (
-                  <span
-                    data-testid="now-playing-runner-overflow"
-                    title={`Also configured: ${runnerBoxes
-                      .slice(MAX_VISIBLE_RUNNER_BOXES)
-                      .map((box) => box.runnerId)
-                      .join(', ')}`}
-                    className="text-[11px] font-mono text-text-muted shrink-0 px-1"
-                  >
-                    +{hiddenRunnerCount} more
-                  </span>
-                )}
               </div>
             ) : (
               <InfoTooltip

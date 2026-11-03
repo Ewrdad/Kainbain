@@ -88,6 +88,8 @@ export function saveTaskMarkdown(taskStore, projectCwd, task) {
 			`reliabilitySamples: ${_formatFrontmatterValue(JSON.stringify(task.reliabilitySamples || []))}`,
 			`timelineMetadata: ${_formatFrontmatterValue(JSON.stringify(task.timeline || []))}`,
 			`autoIterationCount: ${Number(task.autoIterationCount) || 0}`,
+			`autoRetrying: ${_formatFrontmatterValue(task.autoRetrying === true)}`,
+			`autoIterating: ${_formatFrontmatterValue(task.autoIterating === true)}`,
 			`failbackWarningsSent: ${_formatFrontmatterValue(JSON.stringify(sanitizeFailbackWarnings(task.failbackWarningsSent)))}`,
 			`outputReport: ${_formatFrontmatterValue(task.outputReport || "")}`,
 			`feedback: ${_formatFrontmatterValue(task.feedback || "")}`,
@@ -839,6 +841,22 @@ export function parseTaskMarkdown(taskStore, content, taskId, projectId) {
 
 	const autoIterationCount = Number(data.autoIterationCount) || 0;
 
+	const parsedAutoRetrying =
+		String(data.autoRetrying || "").toLowerCase() === "true";
+	const parsedAutoIterating =
+		String(data.autoIterating || "").toLowerCase() === "true";
+	// Fail-safe migration: retry/iteration flags only mean anything while the
+	// task is actively running. A parked, paused, completed or interrupted
+	// task that still carries a stale flag from an older build would otherwise
+	// read as retrying/iterating forever (the 99709f bug). Terminal statuses
+	// already clear these flags in every backend path; only a crash/restart
+	// could leave them stranded, so drop them here for any non-running task.
+	const activeExecutionStatus =
+		effectiveStatus === "in_stage" ||
+		String(effectiveStatus || "").toLowerCase().startsWith("running_");
+	const autoRetrying = activeExecutionStatus ? parsedAutoRetrying : false;
+	const autoIterating = activeExecutionStatus ? parsedAutoIterating : false;
+
 	let reviewBaseline;
 	if (typeof data.reviewBaseline === "string" && data.reviewBaseline.trim()) {
 		try {
@@ -880,6 +898,8 @@ export function parseTaskMarkdown(taskStore, content, taskId, projectId) {
 		surveyFile:
 			data.surveyFile ? normalizeSurveyFileName(data.surveyFile) : undefined,
 		autoIterationCount,
+		autoRetrying,
+		autoIterating,
 		failbackWarningsSent: sanitizeFailbackWarnings(data.failbackWarningsSent),
 		blockedBy: Array.isArray(blockedBy) ? blockedBy : [],
 		reports: parseStoredRecords(data.reportMetadata),

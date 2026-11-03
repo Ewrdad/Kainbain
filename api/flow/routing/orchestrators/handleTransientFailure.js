@@ -156,6 +156,7 @@ export function handleTransientFailure(
 			timestamp: new Date().toISOString(),
 		};
 		task.autoRetrying = false;
+		task.autoIterating = false;
 		if (!Array.isArray(task.history)) {
 			task.history = [];
 		}
@@ -210,6 +211,7 @@ export function handleTransientFailure(
 		};
 		task.status = "failed";
 		task.autoRetrying = false;
+		task.autoIterating = false;
 		if (!Array.isArray(task.history)) {
 			task.history = [];
 		}
@@ -337,6 +339,7 @@ export function handleTransientFailure(
 	task.lastError = null;
 	task.status = "in_stage";
 	task.autoRetrying = true;
+	task.autoIterating = false;
 	if (!Array.isArray(task.history)) {
 		task.history = [];
 	}

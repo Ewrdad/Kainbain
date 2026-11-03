@@ -170,7 +170,15 @@ const invokedAsScript =
 	typeof process.argv[1] === "string" && import.meta.url.endsWith(process.argv[1].split("/").pop());
 if (invokedAsScript) {
 	try {
-		if (process.env.KAINBAIN_PUBLISH_FROM_TIP_WORKTREE !== "1") {
+		// Either re-exec marker counts: publish.sh's own tip re-exec
+		// (KAINBAIN_PUBLISH_FROM_TIP_WORKTREE) or deploy.sh's tip re-exec
+		// (KAINBAIN_DEPLOY_FROM_TIP_WORKTREE, set before deploy.sh invokes
+		// publish.sh). Checking only the first stranded every pipeline
+		// release in the tip worktree (task a654a254, 2026-11-02).
+		if (
+			process.env.KAINBAIN_PUBLISH_FROM_TIP_WORKTREE !== "1" &&
+			process.env.KAINBAIN_DEPLOY_FROM_TIP_WORKTREE !== "1"
+		) {
 			console.log("sync-tip-dist: skipped (not a tip-worktree publish).");
 			process.exit(0);
 		}

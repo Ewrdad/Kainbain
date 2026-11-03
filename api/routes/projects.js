@@ -31,9 +31,9 @@ import { assertValidStageRunnerPolicies } from "../../shared/stageRunnerPolicy.j
  *   availability (fleet-only models validate, and a backend-`none`
  *   harness the fleet serves behaves as `list`). Without a registry both
  *   degrade exactly to the backend defaults.
- * @example saveValidationProbes({}) => {}
- * @param {Object} [deps] - Route deps (`modelIdsFor` override and/or `runnerRegistry`).
- * @returns {Object} Probe overrides for validation (possibly empty).
+ * @example saveValidationProbes({ modelIdsFor: async () => new Set(["pi::m"]) }).modelIdsFor("pi") => Set { "pi::m" }
+ * @param {Object} [deps] - `{ modelIdsFor?, runnerRegistry? }` overrides.
+ * @returns {Object} `{ modelIdsFor?, modelSelectionFor? }` probes.
  ***/
 export function saveValidationProbes(deps = {}) {
 	if (deps.modelIdsFor) return { modelIdsFor: deps.modelIdsFor };
