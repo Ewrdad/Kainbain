@@ -30,30 +30,33 @@ export function TaskDetailHistoryPane({
           Stage Transition Timeline
         </h2>
         <div className="flex flex-col gap-4 ml-3 border-l-2 border-border-standard pl-5">
-          {timelineData.map((item, i) => (
-            <div key={i} className="relative flex flex-col gap-1">
-              <div
-                className={`absolute -left-[27px] top-1 w-3 h-3 rounded-full ${timelineDotClass(
-                  item.status,
-                )}`}
-              />
-              <div className="flex justify-between items-center">
-                <span className="font-bold text-sm text-on-surface">{item.stage}</span>
-                <span
-                  className={`font-mono text-xs font-bold uppercase ${timelineTextClass(item.status)}`}
-                >
-                  {item.status}
+          {timelineData.map((item, i) => {
+            const tryLabel = formatTryCount(item);
+            return (
+              <div key={i} className="relative flex flex-col gap-1">
+                <div
+                  className={`absolute -left-[27px] top-1 w-3 h-3 rounded-full ${timelineDotClass(
+                    item.status,
+                  )}`}
+                />
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-sm text-on-surface">{item.stage}</span>
+                  <span
+                    className={`font-mono text-xs font-bold uppercase ${timelineTextClass(item.status)}`}
+                  >
+                    {item.status}
+                  </span>
+                </div>
+                <span className="text-xs font-mono text-text-muted">
+                  {item.timestamp} • {item.duration || '0m'}
+                  {tryLabel ? ` • ${tryLabel}` : ''}
+                  <DiffStatBadge entry={item} />
+                  <RunAttributionBadge entry={item} />
                 </span>
+                <HistoryFailureReason entry={item} />
               </div>
-              <span className="text-xs font-mono text-text-muted">
-                {item.timestamp} • {item.duration || '0m'}
-                {formatTryCount(item) ? ` • ${formatTryCount(item)}` : ''}
-                <DiffStatBadge entry={item} />
-                <RunAttributionBadge entry={item} />
-              </span>
-              <HistoryFailureReason entry={item} />
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 

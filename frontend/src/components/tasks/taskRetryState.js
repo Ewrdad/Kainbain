@@ -12,7 +12,11 @@
  *   left its stage, so the flag counts as an in-place retry. New backend
  *   records additionally set `autoIterating` (and clear `autoRetrying`) when
  *   the failback moved stages; this helper also honours that, so legacy and
- *   current payloads classify identically.
+ *   current payloads classify identically. The unknown-id rule here (an
+ *   unprovable move keeps the retry read) mirrors the backend
+ *   `didFailbackMoveStages` resolver (api/flow/routing/resolvers/): the two
+ *   classifiers agree on every input, so stored flags and displayed labels
+ *   can never disagree about whether the task moved.
  * @example isRetryInProgress({ autoRetrying: true, currentStageId: '2', lastError: { stageId: '2' } }) => true
  * @example isRetryInProgress({ autoRetrying: true, currentStageId: '1', lastError: { stageId: '2' } }) => false
  * @example isRetryInProgress({ autoRetrying: true, currentStageId: '2', lastError: null }) => true

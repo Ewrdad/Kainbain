@@ -437,16 +437,20 @@ export function summarizeStageRuns(entries = [], stages = []) {
  * MARK: formatTryCount
  * @description Renders a collapsed history row's try count as
  *   `Tried {n} times`, or null when the row ran only once (no badge needed).
+ *   Fails safe on unexpected input: fractional counts are floored and counts
+ *   above STAGE_RUN_TRY_COUNT_CAP are clamped, so no caller can render an
+ *   unbounded or fractional label even with a hand-built row.
  * @example formatTryCount({ tryCount: 3 }) => 'Tried 3 times'
  * @example formatTryCount({ tryCount: 1 }) => null
  * @example formatTryCount({ stage: 'Plan' }) => null
+ * @example formatTryCount({ tryCount: 500 }) => 'Tried 99 times'
  * @param {Object} [entry] - A display timeline row (see summarizeStageRuns).
  * @returns {string|null} The label, or null when the stage ran once.
  ***/
 export function formatTryCount(entry) {
   const count = Number(entry?.tryCount);
   if (!Number.isFinite(count) || count <= 1) return null;
-  return `Tried ${count} times`;
+  return `Tried ${Math.min(Math.floor(count), STAGE_RUN_TRY_COUNT_CAP)} times`;
 }
 
 /***

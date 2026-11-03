@@ -21,17 +21,25 @@ describe("didFailbackMoveStages", () => {
 		expect(didFailbackMoveStages({ currentStageId: "3" }, { id: 2 })).toBe(true);
 	});
 
+	it("treats a zero id as a known stage (falsy but not unknown)", () => {
+		expect(didFailbackMoveStages({ currentStageId: 0 }, { id: "0" })).toBe(false);
+		expect(didFailbackMoveStages({ currentStageId: "1" }, { id: 0 })).toBe(true);
+	});
+
 	it("is false when the failed stage is unknown (never claims a move)", () => {
 		expect(didFailbackMoveStages({ currentStageId: "1" }, null)).toBe(false);
 		expect(didFailbackMoveStages({ currentStageId: "1" }, undefined)).toBe(false);
 		expect(didFailbackMoveStages({ currentStageId: "1" }, {})).toBe(false);
 		expect(didFailbackMoveStages({ currentStageId: "1" }, { id: null })).toBe(false);
+		expect(didFailbackMoveStages({ currentStageId: "1" }, { id: "" })).toBe(false);
 	});
 
-	it("treats an empty currentStageId as moved (cannot prove same-stage)", () => {
-		expect(didFailbackMoveStages(null, { id: "2" })).toBe(true);
-		expect(didFailbackMoveStages(undefined, { id: "2" })).toBe(true);
-		expect(didFailbackMoveStages({}, { id: "2" })).toBe(true);
+	it("is false when the current stage is unknown (an unprovable move keeps the retry read)", () => {
+		expect(didFailbackMoveStages(null, { id: "2" })).toBe(false);
+		expect(didFailbackMoveStages(undefined, { id: "2" })).toBe(false);
+		expect(didFailbackMoveStages({}, { id: "2" })).toBe(false);
+		expect(didFailbackMoveStages({ currentStageId: "" }, { id: "2" })).toBe(false);
+		expect(didFailbackMoveStages({ currentStageId: null }, { id: "2" })).toBe(false);
 	});
 
 	it("is false when both sides are emptyish", () => {

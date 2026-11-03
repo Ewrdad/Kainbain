@@ -1152,6 +1152,13 @@ describe('taskFormatters', () => {
       expect(formatTryCount(null)).toBeNull();
       expect(formatTryCount({ tryCount: 'x' })).toBeNull();
     });
+
+    it('clamps oversized counts and floors fractional ones instead of rendering them raw', () => {
+      expect(formatTryCount({ tryCount: 500 })).toBe('Tried 99 times');
+      expect(formatTryCount({ tryCount: 99 })).toBe('Tried 99 times');
+      expect(formatTryCount({ tryCount: 2.9 })).toBe('Tried 2 times');
+      expect(formatTryCount({ tryCount: '4' })).toBe('Tried 4 times');
+    });
   });
 
   describe('selectStagePresentation', () => {
