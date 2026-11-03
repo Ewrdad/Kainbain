@@ -16,6 +16,7 @@ describe('api public surface', () => {
     expect(Object.keys(api).sort()).toEqual([
       'API_BASE',
       'abortTask',
+      'accessibilityResults',
       'activateProject',
       'addReviewComment',
       'addReviewCommentReply',
@@ -108,6 +109,7 @@ describe('api public surface', () => {
       'startWorkflow',
       'steer',
       'steerTask',
+      'submitAccessibilityFeedback',
       'submitSurvey',
       'submitTask',
       'switchProjectWorkflow',

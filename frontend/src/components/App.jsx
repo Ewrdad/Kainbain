@@ -96,6 +96,9 @@ function App() {
       } else if (e.key === '5' || e.key === 'd' || e.key === 'D') {
         e.preventDefault();
         setView('docs');
+      } else if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        setView('accessibility');
       } else if (e.key === 'r' || e.key === 'R') {
         e.preventDefault();
         setView('retrospective');
@@ -184,6 +187,7 @@ function App() {
  * @returns {string}
  ***/
 function boundaryNameForView(view) {
+  if (view === 'accessibility') return 'Accessibility';
   if (view === 'settings') return 'Settings';
   if (view === 'system-settings') return 'SystemSettings';
   if (view === 'explorer') return 'Explorer';

@@ -576,3 +576,70 @@ test('System Menu supports arrow-key navigation and Escape returns focus (WCAG 2
   expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   expect(document.activeElement).toBe(trigger);
 });
+
+test('getSystemMenuItems exposes an accessibility entry right after Compact Monitor', () => {
+  const setIsOpen = vi.fn();
+  const setView = vi.fn();
+  const items = getSystemMenuItems({ setIsOpen, setView });
+  const keys = items.map((item) => item.key);
+  expect(keys[1]).toBe('compact-monitor');
+  expect(keys[2]).toBe('accessibility');
+  const entry = items[2];
+  expect(entry.label).toBe('Accessibility');
+  expect(entry.shortcut).toBe('A');
+  entry.onClick();
+  expect(setIsOpen).toHaveBeenCalledWith(false);
+  expect(setView).toHaveBeenCalledWith('accessibility');
+});
+
+test('clicking Accessibility in the system menu switches to the statement view', () => {
+  const setView = vi.fn();
+  renderWithKainBain(<Header />, {
+    projects,
+    activeProjectId: 'proj-1',
+    setView,
+  });
+  fireEvent.click(screen.getByLabelText('System Menu'));
+  fireEvent.click(screen.getByRole('menuitem', { name: /Accessibility/i }));
+  expect(setView).toHaveBeenCalledWith('accessibility');
+});
+
+test('the accessibility statement is reachable by keyboard alone through the system menu', () => {
+  const setView = vi.fn();
+  renderWithKainBain(<Header />, {
+    projects,
+    activeProjectId: 'proj-1',
+    setView,
+  });
+  const trigger = screen.getByRole('button', { name: 'System Menu' });
+  trigger.focus();
+  // Button activation (keyboard Enter and pointer click converge on click).
+  fireEvent.click(trigger);
+  const items = screen.getAllByRole('menuitem');
+  expect(document.activeElement).toBe(items[0]);
+  fireEvent.keyDown(document.activeElement, { key: 'ArrowDown' });
+  fireEvent.keyDown(document.activeElement, { key: 'ArrowDown' });
+  expect(document.activeElement).toHaveTextContent('Accessibility');
+  fireEvent.click(document.activeElement);
+  expect(setView).toHaveBeenCalledWith('accessibility');
+});
+
+test('right-clicking the brand mark opens the accessibility statement', () => {
+  const setView = vi.fn();
+  renderWithKainBain(<Header />, {
+    projects,
+    activeProjectId: 'proj-1',
+    setView,
+  });
+  // The native menu is suppressed (the click is consumed as navigation).
+  const defaultAllowed = fireEvent.contextMenu(screen.getByText('KAINBAIN'));
+  expect(defaultAllowed).toBe(false);
+  expect(setView).toHaveBeenCalledWith('accessibility');
+});
+
+test('right-clicking the brand mark keeps the info tooltip intact', () => {
+  renderWithKainBain(<Header />, { projects, activeProjectId: 'proj-1' });
+  // The brand cluster still advertises the shortcut in its tooltip copy.
+  fireEvent.contextMenu(screen.getByText('KAINBAIN'));
+  expect(screen.getByText('KAINBAIN')).toBeInTheDocument();
+});

@@ -44,6 +44,9 @@ vi.mock('./components/tasks/SurveyPage', () => ({
 vi.mock('./components/retrospective/RetrospectivePage', () => ({
   RetrospectivePage: () => <div data-testid="view-retrospective" />,
 }));
+vi.mock('./components/accessibility/AccessibilityStatementPage', () => ({
+  AccessibilityStatementPage: () => <div data-testid="view-accessibility" />,
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -70,6 +73,7 @@ test.each([
   ['/tasks/t1/review', 'view-task-review'],
   ['/tasks/t1/survey', 'view-task-survey'],
   ['/retrospective', 'view-retrospective'],
+  ['/accessibility', 'view-accessibility'],
 ])('canonical path %s renders %s', (path, testId) => {
   renderAt(path);
   expect(screen.getByTestId(testId)).toBeInTheDocument();
