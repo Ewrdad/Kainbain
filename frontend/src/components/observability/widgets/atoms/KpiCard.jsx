@@ -105,12 +105,14 @@ export function KpiCard({
   footerBar = true,
   className = '',
   children,
+  onClick,
 }) {
   const styles = KPI_CARD_ACCENTS.get(accent) || KPI_CARD_ACCENTS.get('emerald');
   return (
     <div
       data-testid={testId}
       className={`${styles.card} ${className} rounded-lg px-2 py-1 shadow-md relative overflow-hidden flex flex-col justify-center`}
+      onClick={onClick}
     >
       <div className="flex items-center justify-between">
         <span className={`text-[9px] font-bold uppercase tracking-wider font-mono ${styles.label}`}>
