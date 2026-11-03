@@ -33,7 +33,8 @@ import {
  * is scanned — orchestrator, settings, stage tray, explorer (+ file preview
  * open), docs (root + deep slug), observability (full + compact mobile),
  * task detail (idle + waiting_human), task review, task survey,
- * system-settings (root + deep section), retrospective (+ chat panel).
+ * system-settings (root + deep section), retrospective (+ chat panel),
+ * accessibility (+ report form open, task 4bda7321).
  *
  * The suite drives a single live backend, so it runs serially (workers: 1).
  */
@@ -300,6 +301,26 @@ test.describe("Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness)", () => {
       await chatInput.focus();
     }
     await scanState(page, "retrospective / chat focused");
+  });
+
+  test("accessibility statement view has no axe violations", async ({ page }) => {
+    await page.goto(`${APP_URL}/#/accessibility`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("accessibility-page")).toBeVisible({ timeout: 15000 });
+    // The five need groups render once the results artifact (or the curated
+    // fallback) resolves — wait for the first group before scanning.
+    await expect(page.getByTestId("need-group-seeing")).toBeVisible({ timeout: 15000 });
+    await scanState(page, "accessibility");
+  });
+
+  test("accessibility statement with report form open has no axe violations", async ({ page }) => {
+    await page.goto(`${APP_URL}/#/accessibility`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("need-group-seeing")).toBeVisible({ timeout: 15000 });
+    await page
+      .getByRole("button", { name: "Report an accessibility problem" })
+      .first()
+      .click();
+    await expect(page.getByRole("dialog")).toBeVisible({ timeout: 10000 });
+    await scanState(page, "accessibility / report form open");
   });
 
   test("task survey view has no axe violations", async ({ page }) => {

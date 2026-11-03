@@ -11,6 +11,7 @@ import { TaskReviewPage } from './components/tasks/TaskReviewPage';
 import { SurveyPage } from './components/tasks/SurveyPage';
 import { RetrospectivePage } from './components/retrospective/RetrospectivePage';
 import { SystemSettingsPage } from './components/settings/SystemSettingsPage';
+import { AccessibilityStatementPage } from './components/accessibility/AccessibilityStatementPage';
 
 /***
  * MARK: AppRoutes
@@ -42,6 +43,7 @@ export function AppRoutes() {
       <Route path="/tasks/:id/review" element={<TaskReviewPage />} />
       <Route path="/tasks/:id/survey" element={<SurveyPage />} />
       <Route path="/retrospective" element={<RetrospectivePage />} />
+      <Route path="/accessibility" element={<AccessibilityStatementPage />} />
       {/* Legacy singular shape (`#/task/:id`) redirects to canonical. */}
       <Route path="/task/:id" element={<SingularTaskRedirect />} />
       <Route path="/task/:id/review" element={<SingularTaskRedirect />} />

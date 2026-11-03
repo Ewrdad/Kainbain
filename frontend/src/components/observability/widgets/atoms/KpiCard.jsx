@@ -92,6 +92,9 @@ const KPI_CARD_ACCENTS = new Map([
  * @param {boolean} [props.footerBar] - Whether to render the coloured footer bar.
  * @param {string} [props.className] - Extra classes (e.g. grid column span).
  * @param {ReactNode} [props.children] - Custom body replacing value/unit/sub.
+ * @param {Function} [props.onClick] - Optional activation (queue popup, etc.).
+ *   When provided the card renders as a keyboard-operable button; otherwise
+ *   it stays a non-interactive display block.
  * @returns {ReactElement} The card.
  ***/
 export function KpiCard({
@@ -105,12 +108,27 @@ export function KpiCard({
   footerBar = true,
   className = '',
   children,
+  onClick,
 }) {
   const styles = KPI_CARD_ACCENTS.get(accent) || KPI_CARD_ACCENTS.get('emerald');
+  const interactive = typeof onClick === 'function';
   return (
     <div
       data-testid={testId}
-      className={`${styles.card} ${className} rounded-lg px-2 py-1 shadow-md relative overflow-hidden flex flex-col justify-center`}
+      className={`${styles.card} ${className} rounded-lg px-2 py-1 shadow-md relative overflow-hidden flex flex-col justify-center${interactive ? ' cursor-pointer' : ''}`}
+      {...(interactive
+        ? {
+            onClick,
+            role: 'button',
+            tabIndex: 0,
+            onKeyDown: (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onClick(event);
+              }
+            },
+          }
+        : null)}
     >
       <div className="flex items-center justify-between">
         <span className={`text-[9px] font-bold uppercase tracking-wider font-mono ${styles.label}`}>

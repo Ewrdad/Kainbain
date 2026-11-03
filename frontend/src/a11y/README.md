@@ -89,3 +89,34 @@ title=…>` (as `RunAttributionBadge` does), so the expansion reaches
 - `npm run lint` — zero `jsx-a11y` errors on shipped source.
 - `canary-e2e/tests/accessibility.spec.js` — axe at `wcag22aaa` tags,
   runs on the auto-provisioned scratch stack, never live.
+
+## 7. The in-app accessibility statement (`/#/accessibility`)
+
+The statement view (`src/components/accessibility/`) is grouped by the five
+user needs (Seeing, Hearing, Getting around, Thinking and understanding,
+Helpful technology), with each group showing its WCAG 2.2 AAA status and its
+WCAG 3.0 draft-readiness side by side. It must pass the same AAA gates as
+every other view — it is covered by the canary axe + contrast scans,
+including the report-form-open state.
+
+- Content contract: `docs/tasks/4bda7321-3aef-4ca9-b746-42b8c6969630/a11y-mapping.md`
+  owns the criterion-to-group mapping, the plain-words copy, and the group
+  aggregation rule. Copy changes land there first, then in code.
+- Results pipeline: statuses derive at runtime from `GET
+  /accessibility/results` (served from the checked-in
+  `api/accessibility-results.json`), parsed leniently by
+  `shared/accessibilityStatement.js` (single source of truth for both
+  sides) via the `src/a11y/statementResults.js` seam. A curated fallback
+  renders only when no results can be loaded. Never hand-edit statuses
+  into the view.
+- Refresh cadence: re-stamp the artifact with `node
+  scripts/refresh-accessibility-results.mjs` after each re-audit or minor
+  release (it fails on any schema drift); re-check the mapping copy at the
+  same time, and whenever the WCAG 3.0 draft moves materially.
+- Extending coverage: add the criterion/outcome to the shared catalogue +
+  mapping doc, add its artifact entries, and extend the view tests — the
+  producer-side schema test (`api/routes/accessibility.test.js`) fails on
+  drift before the page can.
+- Reports: `POST /accessibility/feedback` accepts any issue (standard or
+  not) into the JSONL team inbox; the form always offers a `mailto:`
+  fallback when the inbox is configured, so reporting never dead-ends.

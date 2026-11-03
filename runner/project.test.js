@@ -265,9 +265,15 @@ describe("runner project prep", () => {
 			// Publish the task branch, then simulate a dead run's leftovers:
 			// an unpushed commit plus a dirty file on top of the remote state.
 			git(first.workdir, ["push", "-q", "origin", "kb/t9"]);
+<<<<<<< HEAD
 			// A fresh clone carries no identity: configure it like every
 			// other committing fixture, so the test passes on machines
 			// without a global git identity.
+=======
+			// The product-created clone carries no author identity: set repo-local
+			// config like every other fixture so the leftover commit never depends
+			// on ambient (global) git config.
+>>>>>>> origin/main
 			git(first.workdir, ["config", "user.email", "t@t.t"]);
 			git(first.workdir, ["config", "user.name", "t"]);
 			fs.writeFileSync(path.join(first.workdir, "stale.txt"), "leftover");

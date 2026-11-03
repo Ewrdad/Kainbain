@@ -295,6 +295,13 @@ write-once, so bytes are immutable). Errors carry a structured `reason`
 | ------ | ---- | ------- |
 | POST | `/retrospective/chat` | One stateless retrospective chat turn (`{ messages, taskIds?, harness?, model?, strictTaskIds?, turnId? }` → `{ reply, suggestions, harness, model, modelRequested, unknownTaskIds, contextTaskIds, contextTruncated, contextChars, output? }`, where `output` is the bounded (2000-char) tail of assistant text observed during the turn, also present on 502/504 bodies when anything streamed; when the client sends a `turnId`, streamed deltas are also broadcast live as `CHAT_PROGRESS` WebSocket frames (`{ turnId, tail }`, throttled) and the HTTP settle stays the done signal; input caps 50 messages / 8000 chars per message / 40000 transcript chars; 501 `unsupported_by_harness` when the harness cannot chat; 400 `chat_input_too_large` on oversized input; 404 `task_not_found` when all task ids are unknown (or any, with `strictTaskIds: true`); 502 `chat_prompt_failed` when the model errors; chat turns run with no timeout by default — they settle when the model answers or when the caller cancels (a 504 `chat_prompt_timeout` only occurs when an operator re-imposes an opt-in server ceiling via `KAINBAIN_CHAT_PROMPT_TIMEOUT_MS`, default `0` = disabled; keep `KAINBAIN_SERVER_REQUEST_TIMEOUT_MS`, default `0` = disabled, above any opt-in ceiling or long turns die with a bare 408; reverse proxies may still impose their own idle ceilings); never creates tasks). |
 
+## Accessibility (`api/routes/accessibility.js`)
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| GET | `/accessibility/results` | Serve the versioned accessibility check-results artifact the in-app statement renders from (`{ schemaVersion, generatedAt, appVersion, contactEmail, wcag22aaa, wcag30, knownIssues }`); 503 `results_unavailable` when the artifact file is missing or unparseable. |
+| POST | `/accessibility/feedback` | Accept one accessibility report (`{ message, needGroup?, contact?, pageUrl? }` → 201 `{ received, id, inbox }`); message required (max `KAINBAIN_ACCESSIBILITY_FEEDBACK_MAX_CHARS`, default 4000 chars), optional triage fields never gate submission; rate-limited to 5 reports per client per 15 minutes (429 `rate_limited` with `Retry-After`), 32 KB body cap, persisted to the JSONL inbox file (`KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE`, default `~/.kainbain/accessibility-feedback.jsonl`). |
+
 ## Deploy (`api/routes/deploy.js`)
 
 | Method | Path | Purpose |

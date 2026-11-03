@@ -18,9 +18,16 @@ export function countOpenTasksGlobal(store) {
 		task != null && task.status !== "completed" && task.status !== "done";
 	let depth = 0;
 	try {
-		for (const map of store.tasksByProject?.values?.() || []) {
-			for (const task of map?.values?.() || []) {
-				if (isOpen(task)) depth += 1;
+		const projectMaps = store.tasksByProject?.values?.() || [];
+		for (const map of projectMaps) {
+			// Isolate each project so one unreadable map cannot erase the counts
+			// already gathered from the others (fail safe, not fail closed).
+			try {
+				for (const task of map?.values?.() || []) {
+					if (isOpen(task)) depth += 1;
+				}
+			} catch {
+				// Skip the unreadable map; the depth reflects the rest.
 			}
 		}
 	} catch {

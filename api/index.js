@@ -60,6 +60,7 @@ import promptLayoutRoutes from "./routes/promptLayout.js";
 import agentRoutes from "./routes/agent.js";
 import reviewRoutes from "./routes/review.js";
 import retrospectiveRoutes from "./routes/retrospective.js";
+import accessibilityRoutes from "./routes/accessibility.js";
 import siteDocsRoutes from "./routes/docs.js";
 
 /***
@@ -251,6 +252,7 @@ app.register(agentRoutes, { deps });
 app.register(siteDocsRoutes);
 app.register(reviewRoutes, { deps });
 app.register(retrospectiveRoutes, { deps });
+app.register(accessibilityRoutes, { deps });
 app.register(skillsRoutes, { deps: { projectStore, skillsRegistry } });
 
 // Serve the built frontend (frontend/dist) from the same origin as the API so

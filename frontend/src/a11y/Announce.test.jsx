@@ -12,6 +12,7 @@ describe('routeAnnouncement (WCAG 4.1.3)', () => {
     expect(routeAnnouncement('task-detail', 'task-9')).toMatch(/task-9/);
     expect(routeAnnouncement('task-review', 'task-9')).toMatch(/task-9/);
     expect(routeAnnouncement('retrospective')).toMatch(/retrospective/i);
+    expect(routeAnnouncement('accessibility')).toMatch(/Accessibility statement loaded/);
   });
 
   it('falls back rather than announcing nothing', () => {
