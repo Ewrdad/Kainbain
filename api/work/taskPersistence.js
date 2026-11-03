@@ -88,6 +88,8 @@ export function saveTaskMarkdown(taskStore, projectCwd, task) {
 			`reliabilitySamples: ${_formatFrontmatterValue(JSON.stringify(task.reliabilitySamples || []))}`,
 			`timelineMetadata: ${_formatFrontmatterValue(JSON.stringify(task.timeline || []))}`,
 			`autoIterationCount: ${Number(task.autoIterationCount) || 0}`,
+			`autoRetrying: ${_formatFrontmatterValue(task.autoRetrying === true)}`,
+			`autoIterating: ${_formatFrontmatterValue(task.autoIterating === true)}`,
 			`failbackWarningsSent: ${_formatFrontmatterValue(JSON.stringify(sanitizeFailbackWarnings(task.failbackWarningsSent)))}`,
 			`outputReport: ${_formatFrontmatterValue(task.outputReport || "")}`,
 			`feedback: ${_formatFrontmatterValue(task.feedback || "")}`,
@@ -839,6 +841,9 @@ export function parseTaskMarkdown(taskStore, content, taskId, projectId) {
 
 	const autoIterationCount = Number(data.autoIterationCount) || 0;
 
+	const autoRetrying = String(data.autoRetrying || "").toLowerCase() === "true";
+	const autoIterating = String(data.autoIterating || "").toLowerCase() === "true";
+
 	let reviewBaseline;
 	if (typeof data.reviewBaseline === "string" && data.reviewBaseline.trim()) {
 		try {
@@ -880,6 +885,8 @@ export function parseTaskMarkdown(taskStore, content, taskId, projectId) {
 		surveyFile:
 			data.surveyFile ? normalizeSurveyFileName(data.surveyFile) : undefined,
 		autoIterationCount,
+		autoRetrying,
+		autoIterating,
 		failbackWarningsSent: sanitizeFailbackWarnings(data.failbackWarningsSent),
 		blockedBy: Array.isArray(blockedBy) ? blockedBy : [],
 		reports: parseStoredRecords(data.reportMetadata),
