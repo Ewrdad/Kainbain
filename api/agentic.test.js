@@ -210,7 +210,10 @@ describe("Agentic End-to-End Pipeline & Tool Execution", () => {
 		const failedTask = taskStore.getTask(testProject.id, task.id);
 		expect(failedTask.currentStageId).toBe("1");
 		expect(failedTask.status).toBe("in_stage");
-		expect(failedTask.autoRetrying).toBe(true);
+		// Failback moved the task from stage "2" to stage "1": a cross-stage
+		// auto iteration, so the retry-in-place flag stays clear.
+		expect(failedTask.autoRetrying).toBe(false);
+		expect(failedTask.autoIterating).toBe(true);
 		expect((failedTask.logEntries || []).map((e) => e.text).join("\n")).toContain(
 			"[ERROR]",
 		);
