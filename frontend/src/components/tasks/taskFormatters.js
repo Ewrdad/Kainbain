@@ -411,16 +411,16 @@ export function summarizeStageRuns(entries = [], stages = []) {
     // Representative: the chronologically latest row of the group (latest
     // status/reason/attribution); ties and unparseable timestamps fall back
     // to the first row encountered.
-    let latest = group[0];
-    let latestMs = Number.isNaN(Date.parse(latest?.timestamp)) ? -Infinity : Date.parse(latest?.timestamp);
-    for (let i = 1; i < group.length; i += 1) {
-      const raw = Date.parse(group[i]?.timestamp);
+    let latest = null;
+    let latestMs = -Infinity;
+    for (const candidate of group) {
+      const raw = Date.parse(candidate?.timestamp);
       const ms = Number.isNaN(raw) ? -Infinity : raw;
       // Strictly greater only: on ties (or unparseable timestamps) the first
       // row encountered wins — in newest-first display order that IS the
       // latest row.
-      if (ms > latestMs) {
-        latest = group[i];
+      if (latest === null || ms > latestMs) {
+        latest = candidate;
         latestMs = ms;
       }
     }

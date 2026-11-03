@@ -1,4 +1,5 @@
 import { classifyStageError } from "../../../work/index.js";
+import { isTerminalTaskStatus } from "../../stagePolicy.js";
 import { didFailbackMoveStages } from "./didFailbackMoveStages.js";
 import { resolveAutoIterationEnabled } from "./resolveAutoIterationEnabled.js";
 import { resolveMaxAutoIterations } from "./resolveMaxAutoIterations.js";
@@ -18,7 +19,15 @@ import { resolveMaxAutoIterations } from "./resolveMaxAutoIterations.js";
  *   stage, it is running the failback stage as normal work. When the failback
  *   landed back on the SAME stage (e.g. first-stage failure), it is a genuine
  *   in-place retry: `autoRetrying = true`, `autoIterating = false`.
+ *
+ *   Fail-safe: a task that already settled mid-flow never starts a re-run.
+ *   The abort failback policy parks the task as `failed` instead of moving
+ *   it; iterating from there would burn budget and set `autoRetrying` on a
+ *   task the scheduler never re-runs, labelling a parked failure RETRYING.
+ *   Such tasks return null (parked for human intervention) with both re-run
+ *   flags clear and the iteration counter untouched.
  * @example beginAutoIteration(task, stage, error, project) => { maxAttempts: 3 }
+ * @example beginAutoIteration({ status: 'failed' }, stage, error, project) => null
  * @param {Object} task
  * @param {Object} [stage]
  * @param {string|Error} [error]
@@ -40,6 +49,11 @@ export function beginAutoIteration(task, stage, error, project) {
 	if (classification.kind === "unrecoverable") return null;
 	// If the failback landed on a human checkpoint, stop: a human must act.
 	if (task.status === "waiting_human") return null;
+	// If the task already settled mid-flow (the abort failback policy parks
+	// it as failed instead of moving it), never start a re-run: iterating
+	// from a settled task would burn budget and label a parked failure
+	// RETRYING without the scheduler ever re-running it.
+	if (isTerminalTaskStatus(task.status)) return null;
 	const maxAttempts = resolveMaxAutoIterations(stage, project);
 	if (maxAttempts <= 0) return null;
 	task.autoIterationCount = (task.autoIterationCount || 0) + 1;

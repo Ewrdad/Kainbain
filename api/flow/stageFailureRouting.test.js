@@ -603,6 +603,45 @@ describe("The Flow: retry-in-place vs cross-stage auto iteration", () => {
 			config.autoIterationEnabled = originalEnabled;
 		}
 	});
+
+	it("beginAutoIteration refuses to start a re-run on an already-settled task", () => {
+		// The abort failback policy parks the task as failed mid-flow instead
+		// of moving it; starting an iteration there would burn budget and set
+		// autoRetrying on a task that never re-runs, labelling a parked
+		// failure RETRYING. A settled task must park with flags clear.
+		const failed = { status: "failed", currentStageId: "two", autoIterationCount: 0, autoRetrying: true, autoIterating: true };
+		expect(beginAutoIteration(failed, { id: "two" }, "boom", {})).toBeNull();
+		expect(failed.autoRetrying).toBe(false);
+		expect(failed.autoIterating).toBe(false);
+		expect(failed.autoIterationCount).toBe(0);
+	});
+
+	it("parks (never auto-iterates) when the abort failback policy already failed the task", () => {
+		const abortStages = [
+			{ id: "one", name: "One", type: "agent", failback: "previous" },
+			{ id: "two", name: "Two", type: "agent", failback: "abort" },
+		];
+		const quietBridge = {
+			emitProcessEvent: () => {},
+			emitSystemLog: () => {},
+			emitNotification: () => {},
+		};
+		const store = new TaskStore({
+			eventBridge: quietBridge,
+			projectStore: { getProject: () => ({ stages: abortStages, cwd: tempCwd }) },
+		});
+		const task = store.createTask("p1", { stageId: "two", projectCwd: tempCwd });
+		const result = store.handleStageFailure("p1", task.id, abortStages[1], new Error("boom"), {
+			stages: abortStages,
+			projectCwd: tempCwd,
+		});
+		expect(result.status).toBe("failed");
+		expect(task.status).toBe("failed");
+		expect(task.currentStageId).toBe("two"); // abort never moves
+		expect(task.autoRetrying).toBe(false);
+		expect(task.autoIterating).toBe(false);
+		expect(task.autoIterationCount).toBeUndefined(); // counter untouched: no budget burned without a re-run
+	});
 });
 
 describe("The Flow: head+tail log excerpts (excerptLog)", () => {
