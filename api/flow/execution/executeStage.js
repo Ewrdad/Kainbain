@@ -362,6 +362,7 @@ export async function executeStage(
 		task.failureReason = null;
 		task.lastError = null;
 		task.autoRetrying = false;
+		task.autoIterating = false;
 
 		store.setEngineState({
 			status: stageType === "human" ? "checkpoint" : "running",

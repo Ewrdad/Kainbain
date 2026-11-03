@@ -97,6 +97,13 @@ export function moveToStage(
 		? resolveStageLabel(fromStageId, projStages)
 		: null;
 	task.currentStageId = stageId;
+	// A stage change ends any automatic retry/iteration context that belonged
+	// to the previous stage: the task is now at a new stage, so it must not
+	// keep reading as "retrying" the failed stage (or carry stale auto-run
+	// flags forward). Iteration counters are deliberately preserved so retry
+	// budgets remain auditable across moves; only the live flags reset.
+	task.autoRetrying = false;
+	task.autoIterating = false;
 	// A stage change consumes any startup-recovery priority: the task is no
 	// longer sitting where the interruption left it, so it competes as
 	// normal work from here on.
@@ -470,6 +477,8 @@ export function completeTask(store, projectId, taskId, projectCwd) {
 	task.status = "completed";
 	task.failureReason = null;
 	task.lastError = null;
+	task.autoRetrying = false;
+	task.autoIterating = false;
 	task.updatedAt = new Date().toISOString();
 	task.history.push({
 		timestamp: task.updatedAt,
@@ -540,6 +549,11 @@ export function completeTask(store, projectId, taskId, projectCwd) {
 /***
  * MARK: pauseTask
  * @description Manually pauses a task's execution and updates engine state.
+ *   Pausing also clears any automatic re-run flags: the scheduler only
+ *   dispatches `in_stage` tasks, so a queued retry/iteration is definitionally
+ *   cancelled the moment the task parks — leaving the flags set would label a
+ *   paused task RETRYING. Iteration counters are deliberately preserved so
+ *   retry budgets remain auditable across the pause (resume resets them).
  ***/
 export function pauseTask(store, projectId, taskId, projectCwd) {
 	const task = store.getTask(projectId, taskId);
@@ -550,6 +564,8 @@ export function pauseTask(store, projectId, taskId, projectCwd) {
 	// status while the agent keeps running to completion behind it.
 	const wasOwner = interruptLiveRun(store, projectId, taskId);
 	task.status = "paused";
+	task.autoRetrying = false;
+	task.autoIterating = false;
 	// A paused task sits out the queue entirely; any startup-recovery
 	// priority would be meaningless until an operator resumes it.
 	clearResumedMarker(task);
