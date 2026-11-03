@@ -68,6 +68,29 @@ describe('PerRunnerTasksWidget', () => {
     expect(screen.getByText(/Fleet idle/)).toBeInTheDocument();
   });
 
+  test('fleet endpoint failures keep the idle state without crashing', async () => {
+    getRunnerMonitor.mockRejectedValue(new Error('fleet monitor down'));
+    getRunners.mockRejectedValue(new Error('registry down'));
+    render(<PerRunnerTasksWidget tasks={[]} compact />);
+    // The rejected reads must land quietly: idle state stays, nothing throws.
+    await waitFor(() => {
+      expect(getRunnerMonitor).toHaveBeenCalled();
+    });
+    expect(screen.getByText(/Fleet idle/)).toBeInTheDocument();
+  });
+
+  test('a synchronously throwing fleet client keeps the idle state without crashing', async () => {
+    getRunnerMonitor.mockImplementation(() => {
+      throw new Error('fleet client exploded');
+    });
+    getRunners.mockResolvedValue([]);
+    render(<PerRunnerTasksWidget tasks={[]} compact />);
+    await waitFor(() => {
+      expect(getRunnerMonitor).toHaveBeenCalled();
+    });
+    expect(screen.getByText(/Fleet idle/)).toBeInTheDocument();
+  });
+
   test('renders one full card per live assignment with elapsed and tail', async () => {
     const startedAt = new Date(Date.now() - 90_000).toISOString();
     getRunnerMonitor.mockResolvedValue({
@@ -195,6 +218,48 @@ describe('PerRunnerTasksWidget', () => {
     expect(screen.getByTestId('per-runner-compact-model-local-agent')).toHaveTextContent('kimi-k3:cloud');
     expect(screen.queryByTestId('per-runner-compact-harness-local-ci')).not.toBeInTheDocument();
     expect(screen.queryByTestId('per-runner-compact-model-local-ci')).not.toBeInTheDocument();
+  });
+
+  test('compact row truncates long runner, stage, harness, and model text on one line', async () => {
+    const longRunnerId = 'local-alpha-with-an-extremely-long-runner-name-that-must-truncate';
+    const longStageName = 'An extremely long stage name that must not push the row sideways';
+    const longHarness = 'an-extremely-long-harness-name';
+    const longModel = 'an-extremely-long-model-identifier-that-must-truncate';
+    render(
+      <PerRunnerTasksWidget
+        tasks={[]}
+        stages={[{ id: 'build', name: longStageName }]}
+        compact
+        assignmentsOverride={[
+          {
+            runnerId: longRunnerId,
+            taskId: 't1',
+            stageId: 'build',
+            serving: { harness: longHarness, model: longModel },
+            startedAt: new Date().toISOString(),
+            lastSeenAt: new Date().toISOString(),
+          },
+        ]}
+        registryOverride={[{ runnerId: longRunnerId }]}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId(`per-runner-row-${longRunnerId}`)).toBeInTheDocument();
+    });
+    const row = screen.getByTestId(`per-runner-row-${longRunnerId}`);
+    // Flex children need min-w-0 before truncate can bite; the freshness
+    // dot and the elapsed clock never shrink.
+    expect(row.querySelector('summary').className).toContain('min-w-0');
+    const runnerName = row.querySelector('strong');
+    expect(runnerName).toHaveClass('truncate');
+    expect(runnerName).toHaveAttribute('title', longRunnerId);
+    const harness = screen.getByTestId(`per-runner-compact-harness-${longRunnerId}`);
+    expect(harness).toHaveClass('truncate');
+    expect(harness).toHaveAttribute('title', longHarness);
+    const model = screen.getByTestId(`per-runner-compact-model-${longRunnerId}`);
+    expect(model).toHaveClass('truncate');
+    expect(model).toHaveAttribute('title', longModel);
+    expect(row).toHaveTextContent(longStageName);
   });
 
   test('injected overrides render without polling the fleet endpoints', async () => {

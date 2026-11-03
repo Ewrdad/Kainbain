@@ -7,10 +7,22 @@ import {
   formatMobileMonitorTitle,
   resolveMobileModelLine,
 } from './MobileMonitorView';
+
+const getRunners = vi.hoisted(() => vi.fn());
+const getRunnerMonitor = vi.hoisted(() => vi.fn());
+
+vi.mock('../../services/api', () => ({
+  api: { getRunners, getRunnerMonitor },
+}));
+
 import '@testing-library/jest-dom';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Empty fleet by default: no test touches the real network, and the legacy
+  // pill fallback renders unless a test injects fleet state.
+  getRunners.mockResolvedValue([]);
+  getRunnerMonitor.mockResolvedValue({ liveAssignments: [] });
 });
 
 const baseProps = {
@@ -427,6 +439,63 @@ test('no runners configured: pill fallback stays with the legacy task-only title
   const headerText = screen.getByTestId('mobile-active-stage');
   expect(headerText).toHaveTextContent('Build user auth');
   expect(headerText).not.toHaveTextContent('Code Generation');
+});
+
+test('malformed fleet overrides fail safe to the pill fallback, never a crash', () => {
+  renderWithKainBain(
+    <MobileMonitorView
+      {...baseProps}
+      runnerAssignmentsOverride="not-a-fleet"
+      runnerRegistryOverride="not-a-registry"
+      onExit={() => {}}
+    />,
+  );
+
+  // Unknown fleet shapes count as no fleet: the pill stays visible and the
+  // rows keep the idle state, so status is never hidden on bad input.
+  expect(screen.getByTestId('mobile-engine-state')).toHaveTextContent(
+    /ACTIVE: Code Generation/i,
+  );
+  expect(screen.getByTestId('mobile-active-stage')).toHaveTextContent('Build user auth');
+  expect(screen.getByText(/Fleet idle/)).toBeInTheDocument();
+  expect(getRunnerMonitor).not.toHaveBeenCalled();
+  expect(getRunners).not.toHaveBeenCalled();
+});
+
+test('header and rows share one fleet poller: one read per tick, never doubled', async () => {
+  vi.useFakeTimers();
+  try {
+    const now = new Date().toISOString();
+    getRunnerMonitor.mockResolvedValue({
+      liveAssignments: [
+        { runnerId: 'local-alpha', taskId: 't1', stageId: 'build', startedAt: now, lastSeenAt: now },
+      ],
+    });
+    getRunners.mockResolvedValue([{ runnerId: 'local-alpha' }]);
+    const { unmount } = renderWithKainBain(
+      <MobileMonitorView {...baseProps} onExit={() => {}} />,
+    );
+    await vi.advanceTimersByTimeAsync(100);
+
+    // The one shared read feeds both the header and the row: the legacy
+    // pill drops away and the live assignment renders.
+    expect(screen.queryByTestId('mobile-engine-state')).not.toBeInTheDocument();
+    expect(screen.getByTestId('per-runner-row-local-alpha')).toBeInTheDocument();
+    expect(screen.getByTestId('mobile-active-stage')).toHaveTextContent(
+      'Build user auth · Code Generation',
+    );
+    expect(getRunnerMonitor).toHaveBeenCalledTimes(1);
+    expect(getRunners).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    // Initial read plus one read per 5s tick — the rows reuse the header's
+    // read instead of polling themselves (6 calls would mean double polling).
+    expect(getRunnerMonitor).toHaveBeenCalledTimes(3);
+    expect(getRunners).toHaveBeenCalledTimes(3);
+    unmount();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test('compressed header is two rows: chip row plus one model line', () => {

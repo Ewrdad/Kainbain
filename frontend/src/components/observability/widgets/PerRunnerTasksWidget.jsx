@@ -66,7 +66,9 @@ const FRESHNESS_DOT = {
  *   `assignmentsOverride`/`registryOverride` (the mobile header's single
  *   poller) so one tick issues exactly one fleet read. An unusable `pollMs`
  *   (zero, negative, or non-numeric) falls back to the 5s default so the
- *   hook can never busy-loop the fleet endpoints.
+ *   hook can never busy-loop the fleet endpoints. Missing endpoint methods
+ *   and rejected reads both land as empty fleet state (never throw), so
+ *   hosts keep their legacy fallback signal on old backends and outages.
  * @example const { assignments, registry } = useRunnerMonitor({ pollMs: 5000 });
  ***/
 export const useRunnerMonitor = ({ pollMs = 5000, enabled = true } = {}) => {
@@ -83,10 +85,19 @@ export const useRunnerMonitor = ({ pollMs = 5000, enabled = true } = {}) => {
     let timer = null;
     const load = async () => {
       try {
-        const [m, list] = await Promise.all([
-          api.getRunnerMonitor().catch(() => null),
-          api.getRunners().catch(() => null),
-        ]);
+        // The fleet endpoints may not exist on older backends or in hosts
+        // that mock only part of the api surface: a missing method reads as
+        // empty instead of throwing, so the failure stays a quiet empty
+        // fleet (legacy fallback visible) rather than a thrown TypeError.
+        const monitorRead =
+          typeof api.getRunnerMonitor === 'function'
+            ? api.getRunnerMonitor().catch(() => null)
+            : Promise.resolve(null);
+        const registryRead =
+          typeof api.getRunners === 'function'
+            ? api.getRunners().catch(() => null)
+            : Promise.resolve(null);
+        const [m, list] = await Promise.all([monitorRead, registryRead]);
         if (!mounted) return;
         if (m) setMonitor(m);
         if (Array.isArray(list)) setRunners(list);
@@ -143,7 +154,9 @@ const runnerLogTail = (task, runnerId, limit = 6) => {
  *   `registryOverride` inject already-polled fleet state (the mobile
  *   header's single poller) and skip this widget's own poll while set —
  *   the same override approach `NowPlayingBar` uses — so existing callers
- *   keep working with zero edits.
+ *   keep working with zero edits. Compact rows truncate long runner, stage,
+ *   harness, and model text on one line (full text in tooltips) so crowded
+ *   phone screens never scroll sideways.
  * @example <PerRunnerTasksWidget tasks={tasks} compact={false} />
  ***/
 export function PerRunnerTasksWidget({
@@ -272,18 +285,23 @@ const PerRunnerCompactRow = ({ assignment: a, task, nowMs, stageName }) => {
       data-testid={`per-runner-row-${a.runnerId}`}
       className="px-2 py-1 bg-slate-800/60 border border-slate-700/60 rounded-sm text-[11px] font-mono text-slate-300"
     >
-      <summary className="flex items-center gap-2 cursor-pointer list-none">
+      <summary className="flex items-center gap-2 min-w-0 cursor-pointer list-none">
         <span
-          className={`inline-block w-2 h-2 rounded-full ${FRESHNESS_DOT[runnerFreshness(a.lastSeenAt, nowMs)]}`}
+          className={`inline-block w-2 h-2 rounded-full shrink-0 ${FRESHNESS_DOT[runnerFreshness(a.lastSeenAt, nowMs)]}`}
           aria-hidden="true"
         />
-        <strong className="text-slate-100">{a.runnerId}</strong>
-        <span className="truncate">{formatShortRunnerTaskId(a.taskId)}</span>
-        <span className="text-slate-400 truncate">{stageName(a.stageId)}</span>
+        <strong className="text-slate-100 truncate min-w-0" title={a.runnerId}>
+          {a.runnerId}
+        </strong>
+        <span className="truncate min-w-0">{formatShortRunnerTaskId(a.taskId)}</span>
+        <span className="text-slate-400 truncate min-w-0" title={stageName(a.stageId)}>
+          {stageName(a.stageId)}
+        </span>
         {serving?.harness && (
           <span
             data-testid={`per-runner-compact-harness-${a.runnerId}`}
-            className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700"
+            className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700 truncate min-w-0"
+            title={serving.harness}
           >
             {serving.harness}
           </span>
@@ -291,7 +309,7 @@ const PerRunnerCompactRow = ({ assignment: a, task, nowMs, stageName }) => {
         {serving?.model && (
           <span
             data-testid={`per-runner-compact-model-${a.runnerId}`}
-            className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700 truncate"
+            className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700 truncate min-w-0"
             title={serving.model}
           >
             {serving.model}

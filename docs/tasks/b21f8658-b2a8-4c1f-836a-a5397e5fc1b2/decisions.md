@@ -107,3 +107,50 @@ right-side title path already avoids duplicating.
   `frontend/src/services/fleetModelOptions.js` — verified identical on
   `main` (this branch's doc-only moves added no functions); left for its
   owner task.
+
+## Cleanup hardening (2026-11-03, cleanup stage continued)
+
+- `useRunnerMonitor` now guards missing fleet endpoint methods with
+  explicit `typeof` checks instead of relying on a swallowed TypeError:
+  old backends and partial api mocks read as empty fleet (legacy pill
+  stays visible), never throw. Failure contract added to the JSDoc.
+- Compact runner rows hardened for the 360px no-sideways-scroll
+  contract: `min-w-0` down the flex chain (without it `truncate` cannot
+  bite), `truncate` + full-text `title` tooltips on runner id, stage,
+  and harness pills, `shrink-0` on the freshness dot. Text content and
+  test ids unchanged — normal ids render pixel-identical.
+- `MobileMonitorView.test.jsx` now mocks the fleet api surface with an
+  empty-fleet default: no test touches the real network (removes the
+  happy-dom teardown `AbortError` noise) and the suite is deterministic.
+- Five new maintained tests: view-level malformed-override fail-safe
+  (pill visible + `Fleet idle`, no poll), one-fleet-read-per-tick pin
+  (initial + 5s ticks, 3 calls per 10s — a doubled poller would read
+  6), widget rejection fail-safe, widget sync-throw fail-safe, and
+  compact-row truncation pins.
+- Standards notes (deliberate, grandfathered): `formatMobileMonitorTitle`
+  keeps its positional signature (it was exported from the view on
+  `main`; the re-export exists for older importers, and a labelled
+  object would break them — new code `resolveMobileHeaderMode` already
+  uses the labelled options object); `runnerFreshness` keeps its
+  pre-existing verb-less name (shared, renaming risks regressions);
+  new modules stay flat siblings matching `mobileModelDetails.js`
+  (a `MobileMonitorView/` subfolder would churn imports for no
+  behavior gain). No design-pattern mentions in touched code; new
+  files declare one top-level function each (not flagged by
+  `check-one-function-per-file`).
+- Gates re-verified: frontend 3990 passed (293 files), api 6153 passed
+  + 3 skipped (372 files, counts identical to the prior stage), `npm
+  run lint` 0 errors (touched files warning-free), `npm run docs:check`
+  exit 0, harness `check-component-compat` + `detect-changed-components`
+  + `check-jsdoc-example` 26/26. `check-one-function-per-file` still
+  fails only on the same 3 pre-existing files (this stage added no
+  functions anywhere). Canary E2E not re-run (needs a live app URL +
+  browsers; this stage must not disturb live operations).
+- Operations continuity: frontend-only, no backend/API change, same 5s
+  cadence now pinned by test (exactly one fleet read per tick, rows
+  reuse the header's read); deprecated `stats`/`queueCount` props and
+  formatter re-exports retained (the dashboard still passes the legacy
+  props); every fleet failure direction keeps the legacy pill visible;
+  rollback is a plain revert with no migration. Known tradeoff stands:
+  on first load the pill shows until the first fleet read lands
+  (fail-visible by design, one quick swap).
