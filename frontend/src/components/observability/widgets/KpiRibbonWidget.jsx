@@ -20,6 +20,8 @@ import { KpiEngineCard } from './KpiEngineWidget';
  * @param {Array<Object>} [props.scheduledQueue] - Ordered scheduled candidates.
  * @param {Object} [props.engineState] - Live engine state snapshot.
  * @param {Object} [props.activeTask] - Resolved active task, if any.
+ * @param {Function} [props.onQueueClick] - Optional queue-card activation
+ *   (opens the task-queue popup). Other cards stay non-interactive.
  * @returns {ReactElement} The KPI ribbon.
  ***/
 export function KpiRibbonWidget({
@@ -27,12 +29,13 @@ export function KpiRibbonWidget({
   scheduledQueue = [],
   engineState = {},
   activeTask = {},
+  onQueueClick,
 }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-1.5 p-1.5 bg-[#080c16]">
       <KpiSuccessesCard stats={stats} />
       <KpiFailuresCard stats={stats} />
-      <KpiQueueDepthCard scheduledQueue={scheduledQueue} stats={stats} />
+      <KpiQueueDepthCard scheduledQueue={scheduledQueue} stats={stats} onClick={onQueueClick} />
       <KpiCheckpointsCard stats={stats} />
       <KpiEngineCard
         engineState={engineState}

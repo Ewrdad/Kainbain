@@ -9,9 +9,10 @@ import { KpiCard } from './atoms/KpiCard';
  * @param {Array<Object>} [props.scheduledQueue] - Ordered scheduled candidates.
  * @param {Object} [props.stats] - Dashboard stats snapshot.
  * @param {string} [props.className] - Extra classes (e.g. grid column span).
+ * @param {Function} [props.onClick] - Optional card activation (queue popup).
  * @returns {ReactElement} The card.
  ***/
-export function KpiQueueDepthCard({ scheduledQueue = [], stats = {}, className = '' }) {
+export function KpiQueueDepthCard({ scheduledQueue = [], stats = {}, className = '', onClick }) {
   return (
     <KpiCard
       testId="kpi-queue"
@@ -24,6 +25,7 @@ export function KpiQueueDepthCard({ scheduledQueue = [], stats = {}, className =
         (stats.blocked ?? 0) > 0 ? `${stats.blocked} blocked by deps` : 'Scheduled candidate order'
       }
       className={className}
+      onClick={onClick}
     />
   );
 }
@@ -36,12 +38,13 @@ export function KpiQueueDepthCard({ scheduledQueue = [], stats = {}, className =
  * @param {Object} [props] - Widget props.
  * @param {Array<Object>} [props.scheduledQueue] - Ordered scheduled candidates.
  * @param {Object} [props.stats] - Dashboard stats snapshot.
+ * @param {Function} [props.onClick] - Optional card activation (queue popup).
  * @returns {ReactElement} The single KPI card widget.
  ***/
-export function KpiQueueDepthWidget({ scheduledQueue = [], stats = {} }) {
+export function KpiQueueDepthWidget({ scheduledQueue = [], stats = {}, onClick }) {
   return (
     <div className="flex flex-col h-full p-1.5 bg-[#080c16]">
-      <KpiQueueDepthCard scheduledQueue={scheduledQueue} stats={stats} className="flex-1" />
+      <KpiQueueDepthCard scheduledQueue={scheduledQueue} stats={stats} className="flex-1" onClick={onClick} />
     </div>
   );
 }
