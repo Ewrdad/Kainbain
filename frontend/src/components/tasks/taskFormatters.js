@@ -1,5 +1,5 @@
 import { normalizeStageType } from '../stageTypes.js';
-import { isRetryInProgress } from './taskRetryState';
+import { isRetryInProgress, isTaskSettledStatus } from './taskRetryState';
 
 /***
  * MARK: isTaskCompleted
@@ -37,12 +37,10 @@ export function isTaskCompleted(task) {
  * @returns {boolean} True when a cross-stage automatic re-run is in progress.
  ***/
 export function isAutoIterationInProgress(task) {
-  const status = String(task?.status || '').toLowerCase();
-  const inactive = new Set([
-    'completed', 'done', 'failed', 'aborted', 'cancelled',
-    'paused', 'interrupted', 'waiting_human', 'blocked',
-  ]);
-  if (status && inactive.has(status)) return false;
+  // Settled tasks are never iterating; the settled-status vocabulary lives in
+  // exactly one place (isTaskSettledStatus) so this read and the RETRYING
+  // read can never disagree about whether the task is still live.
+  if (isTaskSettledStatus(task)) return false;
   if (task?.autoIterating === true) return true;
   return task?.autoRetrying === true && !isRetryInProgress(task);
 }
@@ -494,16 +492,27 @@ function isArrivalTimelineStatus(status) {
 }
 
 /***
- * MARK: isFailedTimelineOutcome
- * @description True for stored Failed rows: the outcome of a visit to the
- *   row's stage, carrying the failure reason. Never suppressed.
- * @example isFailedTimelineOutcome('Failed') => true
- * @example isFailedTimelineOutcome('Failed back') => false
+ * MARK: isVisitOutcomeTimelineStatus
+ * @description True for stored rows that record the OUTCOME of a visit to
+ *   the row's stage without the task leaving it: `Failed` (the visit failed),
+ *   `Retrying` (a same-stage transient retry fired), and `Resumed` (the task
+ *   was re-parked into the stage after a restart). The live-row suppression
+ *   guard accepts exactly these as "the current visit is still in this
+ *   stage", so a current visit carrying any of them still supersedes its own
+ *   arrival row (keeping the live row's run attribution and the try count
+ *   exact). Arrival rows, Completed rows, and unknown statuses are NOT
+ *   outcomes — they fail open and never trigger suppression.
+ * @example isVisitOutcomeTimelineStatus('Failed') => true
+ * @example isVisitOutcomeTimelineStatus('Retrying') => true
+ * @example isVisitOutcomeTimelineStatus('Resumed') => true
+ * @example isVisitOutcomeTimelineStatus('Failed back') => false
+ * @example isVisitOutcomeTimelineStatus('Completed') => false
  * @param {string} [status] - Stored timeline row status.
- * @returns {boolean} True for Failed outcome rows.
+ * @returns {boolean} True for same-stage visit outcome rows.
  ***/
-function isFailedTimelineOutcome(status) {
-  return typeof status === 'string' && status.trim().toLowerCase() === 'failed';
+function isVisitOutcomeTimelineStatus(status) {
+  const normalized = typeof status === 'string' ? status.trim().toLowerCase() : '';
+  return normalized === 'failed' || normalized === 'retrying' || normalized === 'resumed';
 }
 
 /***
@@ -533,8 +542,9 @@ function pickRunAttribution(entry) {
  *   stage = destination, so the newest arrival into the live stage would render
  *   the same stage twice (live Active row plus stored Moved/Advanced row with
  *   the previous stage's duration) — that row is suppressed, but only when
- *   every stored row newer than it is a same-stage Failed outcome (the live
- *   row supersedes exactly the current visit's arrival, never a past visit's).
+ *   every stored row newer than it is a same-stage visit outcome (Failed,
+ *   Retrying, or Resumed — the live row supersedes exactly the current
+ *   visit's arrival, never a past visit's).
  *   Failed, Completed, other-stage, and unknown-status rows are never
  *   suppressed, so failure reasons and past visits stay visible. When the
  *   live row supersedes the current visit's arrival row it inherits that
@@ -607,7 +617,8 @@ export function buildDisplayTimeline({
         .slice(0, arrivalIndex)
         .every(
           (entry) =>
-            entry?.stage === liveRow.stage && isFailedTimelineOutcome(entry?.status),
+            entry?.stage === liveRow.stage &&
+            isVisitOutcomeTimelineStatus(entry?.status),
         );
     if (!superseded) return [liveRow, ...summarizeStageRuns(displayStored, stages)];
     // The live row replaces the current visit's arrival row, so it inherits

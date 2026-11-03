@@ -852,6 +852,69 @@ describe('taskFormatters', () => {
       ]);
     });
 
+    it('suppresses the current arrival behind a same-stage Retrying row (transient retry in flight)', () => {
+      // A transient same-stage retry writes a Retrying outcome row after the
+      // visit's arrival; the live row must still supersede that arrival so the
+      // current stage renders once live plus its stored history — and the
+      // live row keeps the arrival's run attribution.
+      const display = buildDisplayTimeline({
+        storedTimeline: [
+          { stage: 'Plan', status: 'Moved', duration: '5s', timestamp: 't1' },
+          {
+            stage: 'Review',
+            status: 'Moved',
+            duration: '9s',
+            timestamp: 't2',
+            harnessId: 'pi',
+            modelRef: 'mistral::large',
+            aliasName: 'worker',
+            targetIndex: 0,
+          },
+          { stage: 'Review', status: 'Retrying', duration: '9s', timestamp: 't3', reason: 'socket hangup' },
+        ],
+        stages: [
+          { id: '1', name: 'Plan' },
+          { id: '2', name: 'Review' },
+        ],
+        currentStageName: 'Review',
+        liveDurationLabel: '3s in stage',
+        includeLiveRow: true,
+      });
+      expect(display.map((entry) => `${entry.stage} ${entry.status}`)).toEqual([
+        'Review Active',
+        'Review Retrying',
+        'Plan Moved',
+      ]);
+      // The live row inherited the suppressed arrival's attribution.
+      expect(display[0]).toMatchObject({ harnessId: 'pi', modelRef: 'mistral::large', aliasName: 'worker', targetIndex: 0 });
+      // The stored Review group is the Retrying row only (arrival suppressed),
+      // so no try count is shown for a single stored row.
+      expect(display[1].tryCount).toBeUndefined();
+      expect(display[1].reason).toBe('socket hangup');
+    });
+
+    it('suppresses the current arrival behind a same-stage Resumed row (post-restart continuation)', () => {
+      // After a restart the auto-resume writes a Resumed row into the stage
+      // the task is still sitting in; the live row must still supersede that
+      // visit's arrival instead of duplicating the stage.
+      const display = buildDisplayTimeline({
+        storedTimeline: [
+          { stage: 'Review', status: 'Moved', duration: '9s', timestamp: 't2', harnessId: 'pi' },
+          { stage: 'Review', status: 'Resumed', duration: '0m', timestamp: 't3', reason: 'Auto-resumed after server restart' },
+        ],
+        stages: [{ id: '2', name: 'Review' }],
+        currentStageName: 'Review',
+        liveDurationLabel: '3s in stage',
+        includeLiveRow: true,
+      });
+      expect(display.map((entry) => `${entry.stage} ${entry.status}`)).toEqual([
+        'Review Active',
+        'Review Resumed',
+      ]);
+      expect(display[0].harnessId).toBe('pi');
+      expect(display[1].tryCount).toBeUndefined();
+    });
+
     it('keeps a same-stage arrival when a different-stage row is newer (past visit stays visible)', () => {
       const display = buildDisplayTimeline({
         storedTimeline: [
@@ -1047,6 +1110,14 @@ describe('taskFormatters', () => {
       expect(isAutoIterationInProgress({ status: 'failed', failureReason: 'x' })).toBe(false);
       expect(isAutoIterationInProgress(null)).toBe(false);
       expect(isAutoIterationInProgress(undefined)).toBe(false);
+    });
+
+    it('is false for every settled status even with live re-run flags (shared settled-status vocabulary)', () => {
+      for (const status of ['completed', 'done', 'failed', 'aborted', 'cancelled', 'paused', 'interrupted', 'waiting_human', 'blocked']) {
+        expect(
+          isAutoIterationInProgress({ status, autoIterating: true, autoRetrying: true, currentStageId: '1', lastError: { stageId: '2' } }),
+        ).toBe(false);
+      }
     });
   });
 
