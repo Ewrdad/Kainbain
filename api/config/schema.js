@@ -389,10 +389,10 @@ export const CONFIG_SCHEMA = [
 		env: "KAINBAIN_DISPATCH_MAX_WAIT_MS",
 		aliases: [],
 		type: "int",
-		default: 1800000,
+		default: 0,
 		min: 0,
 		group: "tasks",
-		doc: "Starvation guard (WP-3.3): a dispatch candidate waiting past this (entered-stage age) jumps ahead oldest-first, bounding the worst-case wait under perpetual late-stage influx. 0 disables the boost (pure scheduler order). Default 30 min.",
+		doc: "Optional starvation guard (WP-3.3), OFF by default (0): dispatch order is highest stage index first (closest to completion), then oldest entered-stage first — the same order as the embedded scheduler. Set KAINBAIN_DISPATCH_MAX_WAIT_MS to a positive millisecond wait to opt in: candidates waiting past it jump ahead oldest-first, bounding worst-case wait under perpetual late-stage influx.",
 	},
 	{
 		key: "claimTtlMs",

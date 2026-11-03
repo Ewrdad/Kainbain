@@ -15,12 +15,12 @@ import { stageRunnerPolicyVerdict } from "../../../shared/stageRunnerPolicy.js";
  * @param {Object} [record={}] - Runner record.
  * @returns {string[]} Effective model ids (possibly empty).
  ***/
-export const effectiveRunnerModels = (record = {}) => {
+export function effectiveRunnerModels(record = {}) {
 	const override = record?.operatorConfig?.availableModels;
 	if (Array.isArray(override)) return override;
 	const caps = record?.capabilities && typeof record.capabilities === "object" ? record.capabilities : {};
 	return Array.isArray(caps.models) ? caps.models : [];
-};
+}
 
 /***
  * MARK: claimEligibleRunner
@@ -33,9 +33,9 @@ export const effectiveRunnerModels = (record = {}) => {
  * @param {Object} [record={}] - Runner record.
  * @returns {boolean} Eligibility.
  ***/
-export const claimEligibleRunner = (record = {}) => {
+export function claimEligibleRunner(record = {}) {
 	return record?.status === "active" && record?.paused !== true;
-};
+}
 
 /***
  * MARK: runnerMatches
@@ -58,7 +58,7 @@ export const claimEligibleRunner = (record = {}) => {
  * @param {Object} [opts] - `{ now, staleAfterMs, minDiskHeadroomMb, projectId }` (`projectId` is the candidate's project, needed for the operator project-scope check; a scoped Runner with no project id on the candidate misses loudly instead of guessing).
  * @returns {Object} `{ ok, reason }`.
  ***/
-export const runnerMatches = (record = {}, req = {}, opts = {}) => {
+export function runnerMatches(record = {}, req = {}, opts = {}) {
 	const now = typeof opts.now === "number" ? opts.now : Date.now();
 	const staleAfterMs =
 		typeof opts.staleAfterMs === "number" && opts.staleAfterMs > 0
@@ -125,4 +125,4 @@ export const runnerMatches = (record = {}, req = {}, opts = {}) => {
 	const policyVerdict = stageRunnerPolicyVerdict(req.runnerPolicy, record.runnerId);
 	if (!policyVerdict.ok) return policyVerdict;
 	return { ok: true, reason: "MATCH" };
-};
+}

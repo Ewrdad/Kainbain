@@ -30,7 +30,7 @@ import { parseModelKey } from './modelKeys.js';
  * @param {Object} [fleetCounts] - Fleet map from `fleetCountsById`.
  * @returns {Array<Object>} Synthesized model entries (possibly empty).
  ***/
-export const fleetModelsForHarness = (harnessId, fleetCounts) => {
+export function fleetModelsForHarness(harnessId, fleetCounts) {
   const hid = typeof harnessId === 'string' ? harnessId.trim() : '';
   if (!hid || !fleetCounts || typeof fleetCounts !== 'object') return [];
   const out = [];
@@ -70,7 +70,7 @@ export const fleetModelsForHarness = (harnessId, fleetCounts) => {
     }
   }
   return out;
-};
+}
 
 /***
  * MARK: fleetServesHarness
@@ -84,8 +84,9 @@ export const fleetModelsForHarness = (harnessId, fleetCounts) => {
  * @param {Object} [fleetCounts] - Fleet map from `fleetCountsById`.
  * @returns {boolean} True when at least one fleet id belongs in the section.
  ***/
-export const fleetServesHarness = (harnessId, fleetCounts) =>
-  fleetModelsForHarness(harnessId, fleetCounts).length > 0;
+export function fleetServesHarness(harnessId, fleetCounts) {
+  return fleetModelsForHarness(harnessId, fleetCounts).length > 0;
+}
 
 /***
  * MARK: withFleetModels
@@ -98,7 +99,7 @@ export const fleetServesHarness = (harnessId, fleetCounts) =>
  * @param {Object} [fleetCounts] - Fleet map from `fleetCountsById`.
  * @returns {Array<Object>} Merged model list.
  ***/
-export const withFleetModels = (modelsForHarness, harnessId, fleetCounts) => {
+export function withFleetModels(modelsForHarness, harnessId, fleetCounts) {
   const base = Array.isArray(modelsForHarness) ? modelsForHarness : [];
   if (!fleetCounts || typeof fleetCounts !== 'object') return base;
   const seen = new Set(
@@ -106,7 +107,7 @@ export const withFleetModels = (modelsForHarness, harnessId, fleetCounts) => {
   );
   const extra = fleetModelsForHarness(harnessId, fleetCounts).filter((m) => !seen.has(m.key));
   return extra.length > 0 ? [...base, ...extra] : base;
-};
+}
 
 /***
  * MARK: effectiveModelSelection
@@ -121,8 +122,8 @@ export const withFleetModels = (modelsForHarness, harnessId, fleetCounts) => {
  * @param {Object} [fleetCounts] - Fleet map from `fleetCountsById`.
  * @returns {string} Effective mode for the picker.
  ***/
-export const effectiveModelSelection = (backendSelection, harnessId, fleetCounts) => {
+export function effectiveModelSelection(backendSelection, harnessId, fleetCounts) {
   if (backendSelection === 'list') return 'list';
   if (backendSelection === 'none' && fleetServesHarness(harnessId, fleetCounts)) return 'list';
   return backendSelection || 'list';
-};
+}
