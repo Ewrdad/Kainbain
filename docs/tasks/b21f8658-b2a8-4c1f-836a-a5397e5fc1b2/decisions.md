@@ -204,3 +204,52 @@ right-side title path already avoids duplicating.
   `mobileModelDetails`, `ObservabilityDashboard`, and `NowPlayingBar` have
   no diff on this branch; desktop full monitor and the desktop explicit
   compact path render the same component with the same fallbacks.
+
+## Cleanup decontamination (2026-11-03, cleanup stage continued)
+
+- Found cross-task contamination in `646bf9f` (a runner stage-output
+  commit): a one-function-per-file split of the dispatch gate and the
+  fleet model catalogue — 7 new files (`claimEligibleRunner.js`,
+  `effectiveRunnerModels.js`, `fleetCountsById.js`,
+  `fleetModelsForHarness.js`, `fleetServesHarness.js`,
+  `withFleetModels.js`, `effectiveModelSelection.js`), gutted originals
+  (`runnerMatches.js`, `useFleetModelCatalog.js`, `fleetModelOptions.js`
+  reduced to re-exports), plus a `check-doc-links` allowlist line and a
+  weaker `saveValidationProbes` doc in `api/routes/projects.js`. None of
+  it is imported by the mobile header path; `main` does not have the
+  split; the re-export shim even says "Barrel", which the KB standards
+  forbid. Keeping it would have landed another task's dispatch-hot-path
+  refactor under this mobile-UI review.
+- Reverted by restoring the exact `main` versions of the 5 touched files
+  and deleting the 7 split files (working-tree edit, no history rewrite).
+  Only the split files themselves ever imported the new paths, so no
+  caller needed touching; `main`'s originals export every name the tests
+  and components import.
+- Branch-vs-base is now task-only: the 5 view/resolver/widget sources +
+  their tests, the `8b7fd3b` doc-only api moves (now byte-identical to
+  `main`, so merge-clean), task docs, and one committed jsonl noise file.
+- Gates re-verified after the revert: frontend 293 files / 3993 passed,
+  api 372 files / 6153 passed + 3 skipped, `npm run lint` 0 errors,
+  `npm run docs:check` exit 0 (the dropped `bundled-changelog`
+  allowlist is unneeded — no doc references it), harness
+  `check-jsdoc-example` + `check-component-compat` +
+  `detect-changed-components` 26/26, frontend build exit 0, 0 `act`
+  warnings in the two task view/widget suites.
+- `check:one-function` (manual gate, not in CI) now fails on exactly the
+  same 3 pre-existing files as `main` again (`runnerMatches.js`,
+  `useFleetModelCatalog.js`, `fleetModelOptions.js`) — the split had
+  fixed it as a side effect, but that fix belongs to its owner task.
+- No production change to the task code itself: a fresh-eyes re-read of
+  the view, both resolvers, the title formatter, and the widget found the
+  fail-safe contracts honest and the edge cases pinned (wrong-type
+  `activeTask`/registry/assignments, null engine snapshot, malformed
+  overrides, poller sharing, single screen-reader announcer, 360px
+  truncation chain). The number-registry path was traced end to end and
+  renders coherently (pill hidden + `Fleet idle` rows + named chip).
+- Operations continuity unchanged: frontend-only, no backend/API change,
+  same 5s single-poller cadence pinned by test, legacy pill fallback on
+  every failure direction, deprecated props and formatter re-exports
+  retained, plain-revert rollback with no migration. Canary E2E not re-run
+  (needs a live app URL + browsers; CI's 13 failures are `waitForAppReady`
+  timeouts in unrelated specs, failing before any mobile-monitor code
+  could run).
