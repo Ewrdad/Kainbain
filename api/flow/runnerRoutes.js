@@ -1147,15 +1147,21 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					misses.INTEGRATION_EMPTY = (misses.INTEGRATION_EMPTY || 0) + 1;
 					continue;
 				}
-				return {
-					assigned: true,
-					projectId: cand.projectId,
-					taskId: cand.taskId,
+				// Stamp the matched Runner onto the task so the merge stage's
+				// timeline/reports and terminal row attribute THIS run (mirrors
+				// the agent dispatch path). A Runner-run merge carries no
+				// harness/model, but the Runner itself is their attribution.
+				const mergeProject = projectStore.getProject(cand.projectId);
+				stampDispatchRunAttribution({
+					taskStore,
+					project: mergeProject,
+					task: cand.task,
+					stage: cand.stage,
+					stages: resolveStagesForTask(mergeProject, cand.task),
+					req,
 					runnerId: runner.runnerId,
-					executionId,
-					epoch,
-					stageId: cand.stage?.id ?? null,
-					kind: "integrate",
+				});
+				return {
 					integration: {
 						taskBranch: attempt.taskBranch,
 						expectedTaskSha: attempt.expectedTaskSha,

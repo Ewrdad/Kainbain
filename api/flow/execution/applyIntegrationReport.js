@@ -54,6 +54,16 @@ export async function applyIntegrationReport({
 	const bridge = store.eventBridge;
 	const taskShortId = String(task.id).slice(0, 4).toUpperCase();
 	const via = runnerId ? `via Runner ${runnerId}` : "via Runner";
+	// Carry the reporting Runner onto the pending attribution (mirrors the
+	// Runner-report path) so the terminal row attributes it. Best-effort.
+	if (typeof runnerId === "string" && runnerId.trim()) {
+		const rid = runnerId.trim();
+		if (!task.currentRunAttribution) {
+			task.currentRunAttribution = { stageId: stage?.id ?? task.currentStageId, runnerId: rid };
+		} else if (!task.currentRunAttribution.runnerId) {
+			task.currentRunAttribution.runnerId = rid;
+		}
+	}
 	const { mergeSha, targetBranch, taskBranch, expectedTaskSha, expectedTargetSha, mergeAttemptId } = integration || {};
 
 	const parkUnverifiable = (message, diagnostics) => {
