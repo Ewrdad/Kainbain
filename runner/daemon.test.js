@@ -25,9 +25,30 @@ import {
 	RUNNER_API_VERSION,
 	RUNNER_VERSION,
 	ciWorkdirFor,
+	integrationMergeSubject,
 } from "./daemon.js";
+import { isAdminCommitSubject } from "../shared/changelogHistory/isAdminCommitSubject.js";
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
+
+describe("integrationMergeSubject", () => {
+	it("carries the task title and survives the changelog admin filter", () => {
+		const subject = integrationMergeSubject({
+			taskBranch: "kb/a654a254-ba7c-4f38-bb5e-d767fc25b6ff",
+			targetBranch: "main",
+			task: { title: "fix horizontal scroll on bottom bar on mobile" },
+		});
+		assert.equal(subject, "Merge kb/a654a254-ba7c-4f38-bb5e-d767fc25b6ff into main: fix horizontal scroll on bottom bar on mobile");
+		assert.equal(isAdminCommitSubject(subject), false);
+	});
+	it("collapses multiline titles and falls back to the branch pair", () => {
+		assert.equal(
+			integrationMergeSubject({ taskBranch: "kb/x", targetBranch: "main", task: { title: "a\n  b" } }),
+			"Merge kb/x into main: a b",
+		);
+		assert.equal(integrationMergeSubject({ taskBranch: "kb/x", targetBranch: "main", task: {} }), "Merge kb/x into main");
+	});
+});
 
 describe("ciWorkdirFor", () => {
 	it("runs primary stages in the primary checkout, task stages in the worktree", () => {

@@ -2,6 +2,12 @@ import { RUNNER_PROTOCOL } from "../runnerRegistry.js";
 import { runnerApiCompatible } from "./runnerApiCompat.js";
 import { operatorConfigVerdict } from "./operatorConfigVerdict.js";
 import { stageRunnerPolicyVerdict } from "../../../shared/stageRunnerPolicy.js";
+import { effectiveRunnerModels } from "./runnerMatches/effectiveRunnerModels.js";
+
+// The two shared helpers stay reachable from this entry point so existing
+// callers (e.g. fleetModelCatalog) keep one obvious import site.
+export { effectiveRunnerModels } from "./runnerMatches/effectiveRunnerModels.js";
+export { claimEligibleRunner } from "./runnerMatches/claimEligibleRunner.js";
 
 /***
  * MARK: runnerMatches
@@ -22,50 +28,6 @@ import { stageRunnerPolicyVerdict } from "../../../shared/stageRunnerPolicy.js";
  * @param {Object} record - Registry record (`status`, `facts`, `lastSeenAt`, `capabilities`, plus the operator-owned `operatorConfig` the Runners settings screen persists).
  * @param {Object} req - Task requirements from `taskRequirements`.
  * @param {Object} [opts] - `{ now, staleAfterMs, minDiskHeadroomMb, projectId }` (`projectId` is the candidate's project, needed for the operator project-scope check; a scoped Runner with no project id on the candidate misses loudly instead of guessing).
- * @returns {Object} `{ ok, reason }`.
- ***/
-/***
- * MARK: effectiveRunnerModels
- * @description The model ids one Runner may serve: the operator-owned
- *   `availableModels` allowlist when set (System Settings › Runners ›
- *   Models — it replaces the advertised list so an under-reporting Runner
- *   can serve declared models), otherwise the Runner-advertised
- *   capabilities list. Single enforcement point shared by the dispatch
- *   gate below and the fleet model catalogue, so the two can never drift.
- * @example effectiveRunnerModels({ capabilities: { models: ['m1'] } }) => ['m1']
- * @param {Object} [record={}] - Runner record.
- * @returns {string[]} Effective model ids (possibly empty).
- ***/
-export function effectiveRunnerModels(record = {}) {
-	const override = record?.operatorConfig?.availableModels;
-	if (Array.isArray(override)) return override;
-	const caps = record?.capabilities && typeof record.capabilities === "object" ? record.capabilities : {};
-	return Array.isArray(caps.models) ? caps.models : [];
-}
-
-/***
- * MARK: claimEligibleRunner
- * @description Whether one Runner registration can take ANY work right now:
- *   active status and not paused — the same two gates `runnerMatches`
- *   applies before per-task requirements. The fleet model catalogue counts
- *   only eligible Runners, so "available on N runners" always names
- *   Runners that could actually claim.
- * @example claimEligibleRunner({ status: 'active', paused: false }) => true
- * @param {Object} [record={}] - Runner record.
- * @returns {boolean} Eligibility.
- ***/
-export function claimEligibleRunner(record = {}) {
-	return record?.status === "active" && record?.paused !== true;
-}
-
-/***
- * MARK: runnerMatches
- * @description Decides whether one Runner registration can take a task with
- *   the given requirements (see module docs).
- * @example runnerMatches({ status: 'active', paused: false, lastSeenAt: new Date().toISOString(), capabilities: { harnesses: [{ id: 'pi' }], models: ['m1'] } }, { harness: 'pi', model: 'm1' }) => { ok: true, reason: 'MATCH' }
- * @param {Object} record - Registry record.
- * @param {Object} [req={}] - Task requirements.
- * @param {Object} [opts={}] - Options.
  * @returns {Object} `{ ok, reason }`.
  ***/
 export function runnerMatches(record = {}, req = {}, opts = {}) {

@@ -135,5 +135,12 @@ describe("scanClaimableTasks", () => {
 			"starved-older",
 			"starved",
 		]);
+		// Default (guard not configured): same pure scheduler order, however
+		// long the early-stage tasks have waited — the guard is opt-in only.
+		expect(scanClaimableTasks(d).map((c) => c.taskId)).toEqual([
+			"fresh-far",
+			"starved-older",
+			"starved",
+		]);
 	});
 });

@@ -24,6 +24,24 @@ import { normalizeStageType } from "../projectStore.js";
 import { assertValidStageRunnerPolicies } from "../../shared/stageRunnerPolicy.js";
 
 /***
+ * MARK: saveValidationProbes
+ * @description Validation probes for project create/patch: an injected
+ *   `deps.modelIdsFor` (tests) keeps exact override semantics; otherwise
+ *   fleet-aware probes union backend-catalogue knowledge with live fleet
+ *   availability (fleet-only models validate, and a backend-`none`
+ *   harness the fleet serves behaves as `list`). Without a registry both
+ *   degrade exactly to the backend defaults.
+ * @example saveValidationProbes({ modelIdsFor: async () => new Set(["pi::m"]) }).modelIdsFor("pi") => Set { "pi::m" }
+ * @param {Object} [deps] - `{ modelIdsFor?, runnerRegistry? }` overrides.
+ * @returns {Object} `{ modelIdsFor?, modelSelectionFor? }` probes.
+ ***/
+export function saveValidationProbes(deps = {}) {
+	if (deps.modelIdsFor) return { modelIdsFor: deps.modelIdsFor };
+	if (!deps.runnerRegistry) return {};
+	return fleetAwareValidationProbes(deps.runnerRegistry);
+}
+
+/***
  * MARK: validateModelAliasesPayload
  * @description Validates an incoming `modelAliases` list for project
  *   create/patch in two tiers: must be an array of `{ name, harness, model }`
@@ -38,30 +56,6 @@ import { assertValidStageRunnerPolicies } from "../../shared/stageRunnerPolicy.j
  * @param {unknown} value - Incoming `modelAliases` value.
  * @param {Object} [opts]
  * @param {Function} [opts.modelIdsFor] - Catalog probe override (tests inject; defaults to the registry probe).
- * @returns {Promise<{error: string|null, warnings: string[]}>} The hard error and soft warnings.
- ***/
-/***
- * MARK: saveValidationProbes
- * @description Validation probes for project create/patch: an injected
- *   `deps.modelIdsFor` (tests) keeps exact override semantics; otherwise
- *   fleet-aware probes union backend-catalogue knowledge with live fleet
- *   availability (fleet-only models validate, and a backend-`none`
- *   harness the fleet serves behaves as `list`). Without a registry both
- *   degrade exactly to the backend defaults.
- * @example saveValidationProbes({ modelIdsFor: async () => new Set() }) => { modelIdsFor: [Function] }
- ***/
-export function saveValidationProbes(deps = {}) {
-	if (deps.modelIdsFor) return { modelIdsFor: deps.modelIdsFor };
-	if (!deps.runnerRegistry) return {};
-	return fleetAwareValidationProbes(deps.runnerRegistry);
-}
-
-/***
- * MARK: validateModelAliasesPayload
- * @description Validates an incoming `modelAliases` list for project
- *   create/patch in two tiers.
- * @example await validateModelAliasesPayload([]) => { error: null, warnings: [] }
- * @param {unknown} value - Incoming `modelAliases` value.
  * @returns {Promise<{error: string|null, warnings: string[]}>} The hard error and soft warnings.
  ***/
 export async function validateModelAliasesPayload(value, { modelIdsFor, modelSelectionFor } = {}) {

@@ -33,17 +33,6 @@ import { buildFleetModelCatalog } from "./flow/dispatch/fleetModelCatalog.js";
  ***/
 
 /***
- * MARK: defaultModelIdsFor
- * @description The default catalog probe for save-time validation: the set of
- *   matchable model identities (`key`, `provider::id`, `id`, `name`) for one
- *   harness, or null when the catalog cannot be read (unknown harness, no
- *   listModels, discovery failure — null means "unknown", which warns about
- *   NOTHING, so unhealthy harnesses never flap soft warnings onto saves).
- * @example await defaultModelIdsFor("mock") => Set { "mock::echo-v1", "echo-v1", … }
- * @param {string} harnessId - The harness id to probe.
- * @returns {Promise<Set<string>|null>} Matchable identities, or null when unknown.
- ***/
-/***
  * MARK: fleetModelIdsByHarness
  * @description Fleet-served model ids grouped by harness, derived live from
  *   Runner registrations (the same source as GET /runners/models/catalogue).
