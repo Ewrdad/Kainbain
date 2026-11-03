@@ -70,8 +70,13 @@ export const sanitizeStructuredEvent = (event, maxBytes = MAX_EVENT_BYTES) => {
 	const seen = new Set();
 	const truncateDeep = (node) => {
 		if (!node || typeof node !== "object" || seen.has(node)) return;
+		// Dates and regexes carry no bulk payload: leave them whole.
+		if (node instanceof Date || node instanceof RegExp) return;
 		seen.add(node);
 		for (const key of Object.keys(node)) {
+			// Never write __proto__: the redacted clone has none, and
+			// assigning it would change the prototype instead of storing.
+			if (key === "__proto__") continue;
 			// eslint-disable-next-line security/detect-object-injection -- key comes from Object.keys of the walked payload
 			const child = node[key];
 			if (typeof child === "string" && child.length > 1000) {

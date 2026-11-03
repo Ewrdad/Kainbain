@@ -123,11 +123,27 @@ export const SECRET_KEY_PATTERN =
  *   is redacted by position even when the value looks innocent; numbers,
  *   booleans, null, and undefined pass through untouched (so usage token
  *   counts survive); circular values degrade to "[Unserializable]" instead of
- *   throwing.
+ *   throwing. Dates keep their ISO text, Maps become plain objects, Sets
+ *   become arrays, binary bytes become "[Binary]", and "__proto__" fields
+ *   are dropped so the clone can never change its prototype.
  * @example redactDeepStrings({ a: 'Bearer abcdefgh1234' }) => { a: 'Bearer [REDACTED]' }
  * @param {*} value - Any JSON-ish value.
  * @returns {*} A redacted deep clone.
  ***/
+/***
+ * MARK: isBinaryValue
+ * @description Whether a value is raw binary bytes (an ArrayBuffer or a
+ *   view over one: Buffer, Uint8Array, DataView). Log payloads are
+ *   JSON-shaped, so binary never renders usefully — the deep redactor
+ *   drops it behind a marker instead of decoding bytes that may hold secrets.
+ * @example isBinaryValue(new Uint8Array([1])) => true
+ * @example isBinaryValue("text") => false
+ ***/
+export const isBinaryValue = (value) =>
+	typeof ArrayBuffer !== "undefined" &&
+	(value instanceof ArrayBuffer ||
+		(ArrayBuffer.isView?.(value) ?? false));
+
 export const redactDeepStrings = (value) => {
 	// Ancestor set only: a reference shared between siblings is cloned twice,
 	// while a true cycle (an object reachable from itself) degrades safely.
@@ -135,12 +151,57 @@ export const redactDeepStrings = (value) => {
 	const walk = (node) => {
 		if (typeof node === "string") return redactSecretsText(node);
 		if (!node || typeof node !== "object") return node;
+		// Dates carry no secrets and JSON-encode as ISO strings: keep the
+		// readable timestamp instead of degrading to {} via Object.keys.
+		if (node instanceof Date) {
+			const time = node.getTime();
+			return Number.isNaN(time) ? "[Invalid Date]" : node.toISOString();
+		}
+		if (node instanceof RegExp) return redactSecretsText(String(node));
+		// Binary buffers never render usefully in a log row and may hold
+		// secrets: drop them behind a marker instead of decoding bytes.
+		if (isBinaryValue(node)) return "[Binary]";
+		// Maps/Sets are not JSON log shapes: convert to plain data so the
+		// values still redact instead of degrading to {}.
+		if (node instanceof Map) {
+			if (ancestors.has(node)) return "[Unserializable]";
+			ancestors.add(node);
+			try {
+				const out = {};
+				for (const [mapKey, mapValue] of node) {
+					const key = typeof mapKey === "string" ? mapKey : String(mapKey);
+					if (key === "__proto__") continue;
+					if (typeof mapValue === "string" && SECRET_KEY_PATTERN.test(key)) {
+						// eslint-disable-next-line security/detect-object-injection -- key is a Map key guarded against proto above
+						out[key] = REDACTED.SECRET;
+					} else {
+						// eslint-disable-next-line security/detect-object-injection -- key is a Map key guarded against proto above
+						out[key] = walk(mapValue);
+					}
+				}
+				return out;
+			} finally {
+				ancestors.delete(node);
+			}
+		}
+		if (node instanceof Set) {
+			if (ancestors.has(node)) return "[Unserializable]";
+			ancestors.add(node);
+			try {
+				return [...node].map(walk);
+			} finally {
+				ancestors.delete(node);
+			}
+		}
 		if (ancestors.has(node)) return "[Unserializable]";
 		ancestors.add(node);
 		try {
 			if (Array.isArray(node)) return node.map(walk);
 			const out = {};
 			for (const key of Object.keys(node)) {
+				// Never copy __proto__: assigning it would change the clone's
+				// prototype instead of storing a field (prototype pollution).
+				if (key === "__proto__") continue;
 				// eslint-disable-next-line security/detect-object-injection -- key comes from Object.keys of the walked object
 				const child = node[key];
 				if (typeof child === "string" && SECRET_KEY_PATTERN.test(key)) {

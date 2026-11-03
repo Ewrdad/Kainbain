@@ -109,21 +109,41 @@ export function stripAnsiText(text) {
 /***
  * MARK: scrubSecrets
  * @description Scrubs obvious secret shapes from text bound for the raw
- *   evidence lane (bearer tokens, api keys, long hex runs). Secrets are
- *   already redacted at the child-env seam; this is defense in depth for
- *   wire payloads echoed back by vendors.
+ *   evidence lane (bearer tokens, api keys, private key blocks, connection strings, credential JSON, emails).
+ *   This lane
+ *   stays dependency-free on purpose (no shared imports), so the patterns are a
+ *   small local copy of the shared content choke point. The log processor re-redacts through that choke point afterwards, so this scrub is defense in depth
+ *   for direct readers of the bounded string.
  * @example scrubSecrets('Bearer abcdef1234567890') => 'Bearer [REDACTED]'
  ***/
 export function scrubSecrets(text) {
 	if (typeof text !== "string" || !text) return "";
 	return text
+		.replace(
+			/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g,
+			"[REDACTED PRIVATE KEY]",
+		)
 		.replace(/(bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, "$1[REDACTED]")
+		.replace(/(basic\s+)[A-Za-z0-9._~+/=]{8,}/gi, "$1[REDACTED]")
 		.replace(
 			/(api[_-]?key["'\s:=]+)[A-Za-z0-9._~+/=-]{8,}/gi,
 			"$1[REDACTED]",
 		)
 		.replace(/sk-(live|test)-[A-Za-z0-9]{8,}/g, "sk-[REDACTED]")
-		.replace(/xox[baprs]-[A-Za-z0-9-]{8,}/g, "xox-[REDACTED]");
+		.replace(/xox[baprs]-[A-Za-z0-9-]{8,}/g, "xox-[REDACTED]")
+		.replace(/\bgh[pousr]_[A-Za-z0-9]{8,}/g, "gh_[REDACTED]")
+		.replace(
+			/(postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis(?:s)?|amqp(?:s)?):\/\/[^\s"'`]+/gi,
+			"$1://[REDACTED]",
+		)
+		.replace(
+			/("(?:aws_secret|secret_access_key|session_token)"\s*:\s*")[^"]*(")/gi,
+			"$1[REDACTED]$2",
+		)
+		.replace(
+			/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
+			"[REDACTED EMAIL]",
+		);
 }
 
 /***

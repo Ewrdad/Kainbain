@@ -150,3 +150,33 @@ describe("redactDeepStrings — structured payloads", () => {
 		});
 	});
 });
+
+describe("redactDeepStrings — non-plain values stay safe", () => {
+	it("keeps dates as readable text", () => {
+		expect(
+			redactDeepStrings({ at: new Date("2026-01-01T00:00:00.000Z") }),
+		).toEqual({ at: "2026-01-01T00:00:00.000Z" });
+	});
+	it("converts maps and sets instead of dropping them", () => {
+		expect(
+			redactDeepStrings({
+				m: new Map([["token", "abcdefgh1234"]]),
+				s: new Set(["clean"]),
+			}),
+		).toEqual({ m: { token: "[REDACTED]" }, s: ["clean"] });
+	});
+	it("hides binary bytes behind a marker", () => {
+		expect(redactDeepStrings({ blob: new Uint8Array([1, 2, 3]) })).toEqual({
+			blob: "[Binary]",
+		});
+	});
+	it("never copies secret-shaped prototype fields", () => {
+		const hostile = JSON.parse('{"__proto__": {"polluted": true}, "ok": 1}');
+		const cleaned = redactDeepStrings(hostile);
+		expect(cleaned.ok).toBe(1);
+		expect(Object.prototype.hasOwnProperty.call(cleaned, "__proto__")).toBe(
+			false,
+		);
+		expect({}.polluted).toBe(undefined);
+	});
+});

@@ -154,6 +154,29 @@ describe("stripAnsiText / scrubSecrets / boundRawSource", () => {
 		expect(scrubSecrets("api_key=abcdef1234567890")).toBe("api_key=[REDACTED]");
 		expect(scrubSecrets("nothing secret here")).toBe("nothing secret here");
 		expect(scrubSecrets(null)).toBe("");
+	expect(scrubSecrets("basic dXNlcjpwYXNzd29yZA==")).toBe(
+		"basic [REDACTED]",
+	);
+	});
+
+	it("redacts private keys, connection strings, emails, and credential JSON", () => {
+		expect(
+			scrubSecrets(
+				"see -----BEGIN RSA PRIVATE KEY-----\nMIIB\n-----END RSA PRIVATE KEY----- end",
+			),
+		).toBe("see [REDACTED PRIVATE KEY] end");
+		expect(
+			scrubSecrets("connect postgres://bob:pw@db:5432/app"),
+		).toBe("connect postgres://[REDACTED]");
+		expect(scrubSecrets("contact alice@example.com now")).toBe(
+			"contact [REDACTED EMAIL] now",
+		);
+		expect(scrubSecrets('{"aws_secret": "wJalrXUtnFEMI"}')).toBe(
+			'{"aws_secret": "[REDACTED]"}',
+		);
+		expect(scrubSecrets("push ghp_abcdefgh12345678 done")).toBe(
+			"push gh_[REDACTED] done",
+		);
 	});
 
 	it("bounds raw sources with an ellipsis", () => {
