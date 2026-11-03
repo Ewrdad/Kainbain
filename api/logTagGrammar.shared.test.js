@@ -81,4 +81,16 @@ describe("classifyLogLineTag — stream wrappers and multi-line chunks", () => {
 			});
 		}
 	});
+	it("treats a value whose string conversion throws as narrative", () => {
+		const hostile = {
+			toString() {
+				throw new Error("conversion exploded");
+			},
+		};
+		expect(() => classifyLogLineTag(hostile)).not.toThrow();
+		expect(classifyLogLineTag(hostile)).toEqual({
+			kind: "assistant",
+			feed: "main",
+		});
+	});
 });

@@ -58,7 +58,15 @@ const LOG_LINE_TAG_RULES = Object.freeze([
  * @returns {{kind: string, feed: string}} The entry kind and feed.
  ***/
 export function classifyLogLineTag(line) {
-	const lines = String(line).split("\n");
+	// Total: even a value whose string conversion throws (a hostile
+	// toString) classifies as narrative instead of breaking the caller.
+	let text;
+	try {
+		text = String(line);
+	} catch {
+		return { kind: "assistant", feed: "main" };
+	}
+	const lines = text.split("\n");
 	const firstLine = lines[0] || "";
 	const checkLine =
 		/^\[STDOUT\]/i.test(firstLine) && lines.length > 1 ? lines[1] : firstLine;

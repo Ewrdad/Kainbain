@@ -401,6 +401,36 @@ describe("createStructuredEventSender", () => {
 		);
 	});
 
+	it("falls back to default tuning when batchSize or flushMs are not numbers", async () => {
+		const { client, calls } = stubClient();
+		const sender = createStructuredEventSender({
+			client,
+			...ids,
+			batchSize: NaN,
+			flushMs: NaN,
+		});
+		sender.queueEvent({ type: "assistant_delta", delta: "one" });
+		sender.queueEvent({ type: "assistant_delta", delta: "two" });
+		await sender.flush();
+		// Default tuning (25 per batch): both events ship together, not as
+		// an empty batch the server would refuse.
+		assert.equal(calls.length, 1);
+		assert.deepEqual(
+			calls[0].events.map((e) => e.delta),
+			["one", "two"],
+		);
+		assert.equal(sender.isStructured(), true);
+	});
+
+	it("degrades to text instead of throwing when built without options", async () => {
+		const sender = createStructuredEventSender();
+		sender.queueEvent({ type: "assistant_delta", delta: "tail" });
+		for (let i = 0; i < MAX_STRUCTURED_SEND_FAILURES; i += 1) {
+			await sender.flush();
+		}
+		assert.equal(sender.isStructured(), false);
+	});
+
 	it("falls back immediately on a refused batch, with a visible marker", async () => {
 		const { client, calls } = failingClient({ statusCode: 400 });
 		const fallback = [];

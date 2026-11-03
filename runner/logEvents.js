@@ -227,8 +227,8 @@ export const isPermanentSendFailure = (err) => {
  * @param {number} opts.epoch - Lease epoch.
  * @param {Function} [opts.onTextFallback] - Called with legacy text per convertible event after the fallback flip (plus one degradation marker for unexpected failures).
  * @param {Object} [opts.logger] - Logger for send warnings.
- * @param {number} [opts.batchSize=25] - Events queued per batch (clamped to 1–200).
- * @param {number} [opts.flushMs=500] - Quiet-ms before a partial batch ships (<=0 disables).
+ * @param {number} [opts.batchSize=25] - Events queued per batch (clamped to 1–200; non-numeric falls back to 25).
+ * @param {number} [opts.flushMs=500] - Quiet-ms before a partial batch ships (<=0 disables; non-numeric falls back to 500).
  * @returns {Object} Sender with `queueEvent`, `flush`, `close`, `isStructured`.
  ***/
 export const createStructuredEventSender = ({
@@ -241,18 +241,24 @@ export const createStructuredEventSender = ({
 	logger = null,
 	batchSize = 25,
 	flushMs = 500,
-}) => {
+} = {}) => {
 	let seq = 0;
 	let pending = [];
 	let structured = true;
 	let timer = null;
 	let inFlight = null;
 	let consecutiveSendFailures = 0;
+	// Rigid tuning: a non-numeric batch size or flush delay falls back to
+	// the defaults. Without this a NaN batch size chunks every flush into
+	// an empty batch (splice(0, NaN) takes nothing), which the server
+	// refuses (400) and flips the whole run to text for no reason.
+	const requestedBatchSize = Number.isNaN(batchSize) ? 25 : batchSize;
+	const quietMs = Number.isNaN(flushMs) ? 500 : flushMs;
 	// One batch never exceeds the server's per-batch cap, however large
 	// the caller sizes its batches: an oversized batch would be refused
 	// outright (400) and flip the whole run to text.
 	const eventsPerBatch = Math.min(
-		Math.max(1, batchSize),
+		Math.max(1, requestedBatchSize),
 		MAX_BATCH_EVENTS,
 	);
 
@@ -272,11 +278,11 @@ export const createStructuredEventSender = ({
 	};
 
 	const armTimer = () => {
-		if (timer || flushMs <= 0) return;
+		if (timer || quietMs <= 0) return;
 		timer = setTimeout(() => {
 			timer = null;
 			flush().catch(() => {});
-		}, flushMs);
+		}, quietMs);
 		if (typeof timer.unref === "function") timer.unref();
 	};
 
@@ -398,7 +404,7 @@ export const createStructuredEventSender = ({
 			return;
 		}
 		pending.push(sanitized);
-		if (closesRun || pending.length >= Math.max(1, batchSize)) {
+		if (closesRun || pending.length >= Math.max(1, requestedBatchSize)) {
 			flush().catch(() => {});
 			return;
 		}
