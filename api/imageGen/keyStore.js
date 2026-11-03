@@ -95,8 +95,8 @@ const storedKeyFor = (dir, providerId) => {
 	} catch {
 		return "";
 	}
-	const entry = keys[providerId];
 	/* eslint-disable-next-line security/detect-object-injection -- providerId is validated before every call */
+	const entry = keys[providerId];
 	const raw = typeof entry === "string" ? entry : entry?.key;
 	return typeof raw === "string" ? raw.trim() : "";
 };
