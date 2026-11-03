@@ -18,6 +18,7 @@ import {
 } from './widgetRegistry';
 import { WidgetContainer } from './WidgetContainer';
 import { WidgetManagerModal } from './WidgetManagerModal';
+import { QueuePopupModal } from '../layout/QueuePopupModal';
 import { EngineStatePill } from './EngineStatePill';
 import { MobileMonitorView } from './MobileMonitorView';
 import {
@@ -167,6 +168,7 @@ export function ObservabilityDashboard() {
   // are visible. Off by default so the default monitor view is clean and
   // distraction-free (the "one page" / no-scroll requirement).
   const [showConfigure, setShowConfigure] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
 
   // Telemetry & Kiosk controls
   const [metricsData, setMetricsData] = useState(null);
@@ -604,6 +606,7 @@ export function ObservabilityDashboard() {
             scheduledQueue={scheduledQueue}
             engineState={engineState}
             activeTask={activeTask}
+            onQueueClick={() => setQueuePopupOpen(true)}
           />
         );
       case 'kpi-successes':
@@ -611,7 +614,13 @@ export function ObservabilityDashboard() {
       case 'kpi-failures':
         return <KpiFailuresWidget stats={stats} />;
       case 'kpi-queue':
-      return <KpiQueueDepthWidget stats={stats} scheduledQueue={scheduledQueue} onClick={() => setQueuePopupOpen(true)} />;
+        return (
+          <KpiQueueDepthWidget
+            stats={stats}
+            scheduledQueue={scheduledQueue}
+            onClick={() => setQueuePopupOpen(true)}
+          />
+        );
       case 'kpi-checkpoints':
         return <KpiCheckpointsWidget stats={stats} />;
       case 'kpi-engine':
@@ -1044,21 +1053,25 @@ export function ObservabilityDashboard() {
         </div>
       </footer>
 
-
-      {/* Queue Popup Modal */}
+      {/* Queue popup: shared dispatch-order dialog (Escape/backdrop close,
+          focus restore, loading/empty/error states, and chip-vs-list
+          reconciliation copy all come from the shared modal). */}
       {queuePopupOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
-          <div className="bg-[#0b0f17] p-4 rounded-lg max-w-3xl w-full h-3/4 overflow-auto">
-            <div className="flex justify-between items-center mb-2">
-              <h2 className="text-lg font-bold text-slate-200">Task Queue</h2>
-              <button onClick={() => setQueuePopupOpen(false)} className="text-slate-300 hover:text-slate-100">✖ Close</button>
-            </div>
-            <QueueOrderWidget
-              scheduledQueue={scheduledQueue}
-              engineState={engineState}
-              schedulerRunning={metricsData?.schedulerRunning}
-            />
-          </div>
-        </div>
+        <QueuePopupModal
+          counted={scheduledQueue.length}
+          engineState={engineState}
+          onClose={() => setQueuePopupOpen(false)}
+        />
       )}
 
+      <WidgetManagerModal
+        isOpen={isManagerOpen}
+        onClose={() => setIsManagerOpen(false)}
+        layout={layout}
+        onUpdateLayout={setLayout}
+        onApplyPreset={handleApplyPreset}
+        onResetLayout={handleResetLayout}
+      />
+    </div>
+  );
+}

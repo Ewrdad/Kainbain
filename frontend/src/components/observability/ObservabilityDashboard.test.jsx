@@ -1048,3 +1048,33 @@ test('makes scrollable widget bodies keyboard-scrollable labelled groups', () =>
     expect((group.getAttribute('aria-label') || '').trim().length).toBeGreaterThan(0);
   }
 });
+
+/***
+ * MARK: ObservabilityDashboard queue popup
+ * @description The monitor's queue-depth KPI card opens the shared
+ *   dispatch-order queue popup (same dialog as the Now Playing bar chip),
+ *   and the popup closes again. Guards the wiring between the KPI cards,
+ *   the popup state, and the shared modal.
+ ***/
+test('clicking the queue-depth KPI card opens and closes the queue popup', async () => {
+  renderWithKainBain(<ObservabilityDashboard />);
+
+  const queueCard = await screen.findByTestId('kpi-queue');
+  expect(queueCard.tagName).toBe('BUTTON');
+
+  fireEvent.click(queueCard);
+
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: /Queue — all projects/i })).toBeInTheDocument();
+  });
+  // The popup lists the dispatch-ordered queue from the mocked snapshot.
+  expect(screen.getByTestId('queue-reconciliation')).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: /Close queue/i }));
+
+  await waitFor(() => {
+    expect(
+      screen.queryByRole('heading', { name: /Queue — all projects/i }),
+    ).not.toBeInTheDocument();
+  });
+});

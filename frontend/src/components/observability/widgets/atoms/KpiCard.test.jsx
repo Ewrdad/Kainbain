@@ -84,4 +84,14 @@ describe('KpiCard', () => {
     expect(sub.className).toContain('text-slate-300');
     expect(sub.className).not.toContain('text-slate-400');
   });
+
+  it('renders a plain div without onClick and a keyboard-native button with onClick', () => {
+    const { rerender } = render(<KpiCard label="Metric" value={1} testId="kpi-x" />);
+    expect(screen.getByTestId('kpi-x').tagName).toBe('DIV');
+
+    rerender(<KpiCard label="Metric" value={1} testId="kpi-x" onClick={() => {}} />);
+    const clickable = screen.getByTestId('kpi-x');
+    expect(clickable.tagName).toBe('BUTTON');
+    expect(clickable).toHaveAttribute('type', 'button');
+  });
 });

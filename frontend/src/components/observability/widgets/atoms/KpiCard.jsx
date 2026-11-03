@@ -92,6 +92,7 @@ const KPI_CARD_ACCENTS = new Map([
  * @param {boolean} [props.footerBar] - Whether to render the coloured footer bar.
  * @param {string} [props.className] - Extra classes (e.g. grid column span).
  * @param {ReactNode} [props.children] - Custom body replacing value/unit/sub.
+ * @param {Function} [props.onClick] - When present the card renders as a button.
  * @returns {ReactElement} The card.
  ***/
 export function KpiCard({
@@ -108,12 +109,9 @@ export function KpiCard({
   onClick,
 }) {
   const styles = KPI_CARD_ACCENTS.get(accent) || KPI_CARD_ACCENTS.get('emerald');
-  return (
-    <div
-      data-testid={testId}
-      className={`${styles.card} ${className} rounded-lg px-2 py-1 shadow-md relative overflow-hidden flex flex-col justify-center`}
-      onClick={onClick}
-    >
+  const cardClassName = `${styles.card} ${className} rounded-lg px-2 py-1 shadow-md relative overflow-hidden flex flex-col justify-center`;
+  const body = (
+    <>
       <div className="flex items-center justify-between">
         <span className={`text-[9px] font-bold uppercase tracking-wider font-mono ${styles.label}`}>
           {label}
@@ -134,6 +132,26 @@ export function KpiCard({
       )}
 
       {footerBar && <div className={`absolute bottom-0 left-0 right-0 h-0.5 ${styles.bar}`} />}
+    </>
+  );
+  // A clickable card is a native button: keyboard-focusable and
+  // Enter/Space-activatable with no extra a11y wiring. Non-clickable cards
+  // stay plain divs so every other KPI renders exactly as before.
+  if (typeof onClick === 'function') {
+    return (
+      <button
+        type="button"
+        data-testid={testId}
+        onClick={onClick}
+        className={`${cardClassName} cursor-pointer text-left w-full`}
+      >
+        {body}
+      </button>
+    );
+  }
+  return (
+    <div data-testid={testId} className={cardClassName}>
+      {body}
     </div>
   );
 }
