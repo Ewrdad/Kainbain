@@ -11,6 +11,8 @@ import {
 	KNOWN_RECORD_FEEDS,
 	KNOWN_RECORD_KINDS,
 } from "./logRecord.js";
+import { redactSecretsText } from "../../../shared/redactSecrets.js";
+import { stripAnsi } from "../../../shared/toolLogFormat/stripAnsi.js";
 
 /**
  * MARK: logRecord unit tests
@@ -191,6 +193,38 @@ describe("stripAnsiText / scrubSecrets / boundRawSource", () => {
 		circular.self = circular;
 		expect(() => boundRawSource(circular)).not.toThrow();
 		expect(() => boundRawSource(undefined)).not.toThrow();
+	});
+
+	it("scrubSecrets matches the shared redaction choke point on every shape", () => {
+		const fixtures = [
+			"Bearer [REDACTED]",
+			"basic dXNlcjpwYXNzd29yZA==",
+			"api_key=abcdef1234567890",
+			"password: hunter2hunter",
+			"OPENAI_API_KEY=[REDACTED]",
+			"see -----BEGIN RSA PRIVATE KEY-----\nMIIB\n-----END RSA PRIVATE KEY----- end",
+			"connect postgres://bob:pw@db:5432/app",
+			"contact alice@example.com now",
+			'{"aws_secret": "wJalrXUtnFEMI"}',
+			"push [REDACTED] done",
+			"nothing secret here",
+			"",
+		];
+		for (const fixture of fixtures) {
+			expect(scrubSecrets(fixture)).toBe(redactSecretsText(fixture));
+		}
+		expect(scrubSecrets(null)).toBe(redactSecretsText(null));
+		expect(scrubSecrets(undefined)).toBe(redactSecretsText(undefined));
+		expect(scrubSecrets(42)).toBe(redactSecretsText(42));
+	});
+
+	it("stripAnsiText matches the shared ANSI stripper", () => {
+		const fixtures = ["\u001b[32mok\u001b[0m", "\u001b[1;31mfail\u001b[0m", "plain", ""];
+		for (const fixture of fixtures) {
+			expect(stripAnsiText(fixture)).toBe(stripAnsi(fixture));
+		}
+		expect(stripAnsiText(null)).toBe(stripAnsi(null));
+		expect(stripAnsiText(42)).toBe(stripAnsi(42));
 	});
 });
 

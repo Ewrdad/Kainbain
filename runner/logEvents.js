@@ -70,8 +70,9 @@ export const sanitizeStructuredEvent = (event, maxBytes = MAX_EVENT_BYTES) => {
 	const seen = new Set();
 	const truncateDeep = (node) => {
 		if (!node || typeof node !== "object" || seen.has(node)) return;
-		// Dates and regexes carry no bulk payload: leave them whole.
-		if (node instanceof Date || node instanceof RegExp) return;
+		// Note: Dates and RegExps cannot reach this walker (the redacted
+		// clone converts them to strings), and they carry no enumerable
+		// keys anyway, so there is deliberately no special case for them.
 		seen.add(node);
 		for (const key of Object.keys(node)) {
 			// Never write __proto__: the redacted clone has none, and
@@ -200,7 +201,7 @@ export const createStructuredEventSender = ({
 		const unsent = [...failedBatch, ...pending];
 		pending = [];
 		warn(
-			`Structured log transport failed (${err?.message || err}); falling back to text frames.`,
+			`Structured log transport failed (${err?.message || err || "unknown error"}); falling back to text frames.`,
 		);
 		for (const event of unsent) {
 			const text = textForStructuredEvent(event);
@@ -244,14 +245,17 @@ export const createStructuredEventSender = ({
 
 	const queueEvent = (event) => {
 		if (!structured) return;
+		const closesRun = event?.type === "run_finished" || event?.type === "run_error";
 		const sanitized = sanitizeStructuredEvent(event);
-		if (!sanitized) return;
+		if (!sanitized) {
+			// A dropped closing event must still flush what is already
+			// queued: the tail must never wait for the timer just because
+			// the final envelope was oversized or unusable.
+			if (closesRun) flush().catch(() => {});
+			return;
+		}
 		pending.push(sanitized);
-		if (
-			event?.type === "run_finished" ||
-			event?.type === "run_error" ||
-			pending.length >= Math.max(1, batchSize)
-		) {
+		if (closesRun || pending.length >= Math.max(1, batchSize)) {
 			flush().catch(() => {});
 			return;
 		}

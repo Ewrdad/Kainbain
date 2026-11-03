@@ -180,3 +180,52 @@ describe("redactDeepStrings — non-plain values stay safe", () => {
 		expect({}.polluted).toBe(undefined);
 	});
 });
+
+describe("redactDeepStrings — never throws, never loses the log", () => {
+	it("degrades throwing values to a marker instead of throwing", () => {
+		const hostile = { ok: 1 };
+		Object.defineProperty(hostile, "boom", {
+			enumerable: true,
+			get() {
+				throw new Error("getter exploded");
+			},
+		});
+		expect(() => redactDeepStrings(hostile)).not.toThrow();
+		expect(redactDeepStrings(hostile)).toEqual({
+			ok: 1,
+			boom: "[Unserializable]",
+		});
+	});
+	it("degrades hostile map keys without losing sibling entries", () => {
+		const hostileKey = {
+			toString() {
+				throw new Error("key exploded");
+			},
+		};
+		const cleaned = redactDeepStrings(
+			new Map([
+				[hostileKey, "kept"],
+				["ok", "clean"],
+			]),
+		);
+		expect(cleaned).toEqual({ "[Unserializable]": "kept", ok: "clean" });
+	});
+	it("degrades unlistable objects to a marker instead of throwing", () => {
+		const opaque = new Proxy(
+			{ ok: 1 },
+			{
+				ownKeys() {
+					throw new Error("keys exploded");
+				},
+			},
+		);
+		expect(() => redactDeepStrings({ nested: opaque })).not.toThrow();
+		expect(redactDeepStrings({ nested: opaque })).toEqual({
+			nested: "[Unserializable]",
+		});
+	});
+	it("stringifies bigints so downstream JSON never throws", () => {
+		expect(redactDeepStrings({ count: 10n })).toEqual({ count: "10" });
+		expect(redactDeepStrings(10n)).toBe("10");
+	});
+});

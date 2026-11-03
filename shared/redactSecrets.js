@@ -115,22 +115,6 @@ export const SECRET_KEY_PATTERN =
 	/secret|token|password|passwd|pwd|credential|api[_-]?key|private[_-]?key|access[_-]?key|client[_-]?secret|auth/i;
 
 /***
- * MARK: redactDeepStrings
- * @description Deep-clones a JSON-ish value while redacting every string it
- *   contains. Used for structured payloads (tool args/results, permission
- *   targets, raw evidence) where a secret may sit in a nested field, not in
- *   rendered text. A string under a secret-shaped key (`SECRET_KEY_PATTERN`)
- *   is redacted by position even when the value looks innocent; numbers,
- *   booleans, null, and undefined pass through untouched (so usage token
- *   counts survive); circular values degrade to "[Unserializable]" instead of
- *   throwing. Dates keep their ISO text, Maps become plain objects, Sets
- *   become arrays, binary bytes become "[Binary]", and "__proto__" fields
- *   are dropped so the clone can never change its prototype.
- * @example redactDeepStrings({ a: 'Bearer abcdefgh1234' }) => { a: 'Bearer [REDACTED]' }
- * @param {*} value - Any JSON-ish value.
- * @returns {*} A redacted deep clone.
- ***/
-/***
  * MARK: isBinaryValue
  * @description Whether a value is raw binary bytes (an ArrayBuffer or a
  *   view over one: Buffer, Uint8Array, DataView). Log payloads are
@@ -144,12 +128,43 @@ export const isBinaryValue = (value) =>
 	(value instanceof ArrayBuffer ||
 		(ArrayBuffer.isView?.(value) ?? false));
 
+/***
+ * MARK: redactDeepStrings
+ * @description Deep-clones a JSON-ish value while redacting every string it
+ *   contains. Used for structured payloads (tool args/results, permission
+ *   targets, raw evidence) where a secret may sit in a nested field, not in
+ *   rendered text. A string under a secret-shaped key (`SECRET_KEY_PATTERN`)
+ *   is redacted by position even when the value looks innocent; numbers,
+ *   booleans, null, and undefined pass through untouched (so usage token
+ *   counts survive); circular values degrade to "[Unserializable]" instead of
+ *   throwing. Dates keep their ISO text, Maps become plain objects, Sets
+ *   become arrays, binary bytes become "[Binary]", bigints become their
+ *   decimal text (JSON.stringify would throw on them downstream), and
+ *   "__proto__" fields are dropped so the clone can never change its
+ *   prototype. Total: hostile values (throwing getters, unlistable proxies)
+ *   degrade to "[Unserializable]" at the closest level instead of throwing,
+ *   so redacting a log line can never break the run it describes.
+ * @example redactDeepStrings({ a: 'Bearer abcdefgh1234' }) => { a: 'Bearer [REDACTED]' }
+ * @param {*} value - Any JSON-ish value.
+ * @returns {*} A redacted deep clone.
+ ***/
 export const redactDeepStrings = (value) => {
 	// Ancestor set only: a reference shared between siblings is cloned twice,
 	// while a true cycle (an object reachable from itself) degrades safely.
 	const ancestors = new Set();
+	// Totality backstop: anything walkInner cannot handle (an unlistable
+	// proxy, a throwing iterator) degrades to a marker at this level. The
+	// inner finally blocks still run first, so the ancestor set stays exact.
 	const walk = (node) => {
+		try {
+			return walkInner(node);
+		} catch {
+			return "[Unserializable]";
+		}
+	};
+	const walkInner = (node) => {
 		if (typeof node === "string") return redactSecretsText(node);
+		if (typeof node === "bigint") return String(node);
 		if (!node || typeof node !== "object") return node;
 		// Dates carry no secrets and JSON-encode as ISO strings: keep the
 		// readable timestamp instead of degrading to {} via Object.keys.
@@ -169,7 +184,12 @@ export const redactDeepStrings = (value) => {
 			try {
 				const out = {};
 				for (const [mapKey, mapValue] of node) {
-					const key = typeof mapKey === "string" ? mapKey : String(mapKey);
+					let key;
+					try {
+						key = typeof mapKey === "string" ? mapKey : String(mapKey);
+					} catch {
+						key = "[Unserializable]";
+					}
 					if (key === "__proto__") continue;
 					if (typeof mapValue === "string" && SECRET_KEY_PATTERN.test(key)) {
 						// eslint-disable-next-line security/detect-object-injection -- key is a Map key guarded against proto above
@@ -202,8 +222,17 @@ export const redactDeepStrings = (value) => {
 				// Never copy __proto__: assigning it would change the clone's
 				// prototype instead of storing a field (prototype pollution).
 				if (key === "__proto__") continue;
-				// eslint-disable-next-line security/detect-object-injection -- key comes from Object.keys of the walked object
-				const child = node[key];
+				let child;
+				try {
+					// eslint-disable-next-line security/detect-object-injection -- key comes from Object.keys of the walked object
+					child = node[key];
+				} catch {
+					// A throwing getter degrades to a marker on its own field
+					// so sibling values still survive.
+					// eslint-disable-next-line security/detect-object-injection -- key comes from Object.keys of the walked object
+					out[key] = "[Unserializable]";
+					continue;
+				}
 				if (typeof child === "string" && SECRET_KEY_PATTERN.test(key)) {
 					// eslint-disable-next-line security/detect-object-injection -- key comes from Object.keys of the walked object
 					out[key] = REDACTED.SECRET;

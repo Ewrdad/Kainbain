@@ -7,10 +7,12 @@
  *   pipeline dropped (usage telemetry, permissions, plans, raw evidence,
  *   typed tool payloads).
  *
- *   Pure module: zero dependencies, no harness imports. The log processor
- *   (`logProcessor.js`) is the single producer; routes and the UI model
- *   upgrade stored entries at read time via `normalizeRecord` (storage is
- *   never rewritten).
+ *   Pure module: no harness imports and no side effects. Its only imports
+ *   are the zero-dependency shared leaf modules (secret redaction, ANSI
+ *   stripping), so the record helpers can never drift from the copies the
+ *   runner and the UI use. The log processor (`logProcessor.js`) is the
+ *   single producer; routes and the UI model upgrade stored entries at
+ *   read time via `normalizeRecord` (storage is never rewritten).
  *
  *   ```js
  *   {
@@ -35,6 +37,9 @@
  *   `telemetry | permission | plan | raw` (unified platform). Feeds:
  *   `main | thinking | tools` (original) plus `telemetry | raw`.
  */
+
+import { redactSecretsText } from "../../../shared/redactSecrets.js";
+import { stripAnsi } from "../../../shared/toolLogFormat.js";
 
 /***
  * MARK: RECORD_LIMITS
@@ -95,55 +100,28 @@ export const FIDELITY_SYNTHESIZED = "synthesized";
 /***
  * MARK: stripAnsiText
  * @description Removes terminal color/formatting escape sequences so stored
- *   record text reads clean. Non-strings become "". (Local copy so this
- *   module stays dependency-free; mirrors `shared/toolLogFormat.js`.)
+ *   record text reads clean. Delegates to the shared ANSI stripper (the
+ *   same pattern the tool-result summaries use) so the two can never drift;
+ *   non-strings become "".
  * @example stripAnsiText('\u001b[32mok\u001b[0m') => 'ok'
  ***/
 export function stripAnsiText(text) {
-	if (typeof text !== "string" || !text) return "";
-	// ESC is written as an explicit \u001b escape (never a literal control
-	// byte) so the pattern stays visible in diffs and editors.
-	return text.replace(/\u001b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "");
+	return stripAnsi(text);
 }
 
 /***
  * MARK: scrubSecrets
- * @description Scrubs obvious secret shapes from text bound for the raw
- *   evidence lane (bearer tokens, api keys, private key blocks, connection strings, credential JSON, emails).
- *   This lane
- *   stays dependency-free on purpose (no shared imports), so the patterns are a
- *   small local copy of the shared content choke point. The log processor re-redacts through that choke point afterwards, so this scrub is defense in depth
- *   for direct readers of the bounded string.
- * @example scrubSecrets('Bearer abcdef1234567890') => 'Bearer [REDACTED]'
+ * @description Scrubs secret and PII shapes from text bound for the raw
+ *   evidence lane. Delegates to the shared content choke point
+ *   (`redactSecretsText`) — the only secret-pattern list in the engine —
+ *   so the raw lane can never lag behind it. Non-strings become "".
+ *   (The log processor re-redacts the bounded string through the same
+ *   choke point afterwards, so this scrub is defense in depth for direct
+ *   readers of the evidence.)
+ * @example scrubSecrets('Bearer abcd1234efgh') => 'Bearer [REDACTED]'
  ***/
 export function scrubSecrets(text) {
-	if (typeof text !== "string" || !text) return "";
-	return text
-		.replace(
-			/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g,
-			"[REDACTED PRIVATE KEY]",
-		)
-		.replace(/(bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, "$1[REDACTED]")
-		.replace(/(basic\s+)[A-Za-z0-9._~+/=]{8,}/gi, "$1[REDACTED]")
-		.replace(
-			/(api[_-]?key["'\s:=]+)[A-Za-z0-9._~+/=-]{8,}/gi,
-			"$1[REDACTED]",
-		)
-		.replace(/sk-(live|test)-[A-Za-z0-9]{8,}/g, "sk-[REDACTED]")
-		.replace(/xox[baprs]-[A-Za-z0-9-]{8,}/g, "xox-[REDACTED]")
-		.replace(/\bgh[pousr]_[A-Za-z0-9]{8,}/g, "gh_[REDACTED]")
-		.replace(
-			/(postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis(?:s)?|amqp(?:s)?):\/\/[^\s"'`]+/gi,
-			"$1://[REDACTED]",
-		)
-		.replace(
-			/("(?:aws_secret|secret_access_key|session_token)"\s*:\s*")[^"]*(")/gi,
-			"$1[REDACTED]$2",
-		)
-		.replace(
-			/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
-			"[REDACTED EMAIL]",
-		);
+	return redactSecretsText(text);
 }
 
 /***
@@ -151,6 +129,7 @@ export function scrubSecrets(text) {
  * @description Bounds + scrubs a raw wire payload for the evidence lane:
  *   JSON-encoded (when possible), secrets scrubbed, capped at `rawMaxBytes`
  *   with an ellipsis. Never throws, never returns "" for a real payload.
+ * @example boundRawSource({ ok: true }, 100) => '{"ok":true}'
  ***/
 export function boundRawSource(sourceEvent, maxBytes = RECORD_LIMITS.rawMaxBytes) {
 	let text;
@@ -193,6 +172,7 @@ export function isKnownFidelity(value) {
  * @description Default fidelity for a legacy entry upgraded by
  *   `normalizeRecord`: verbatim text blocks are exact, summary/system lines
  *   are normalized/synthesized.
+ * @example fidelityForKind("assistant") => "exact"
  ***/
 export function fidelityForKind(kind) {
 	if (kind === "assistant" || kind === "thinking") return FIDELITY_EXACT;

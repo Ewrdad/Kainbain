@@ -45,11 +45,19 @@ let _logEntryIdCounter = 0;
  *   and system/GIT/CI lines alike).
  * @example _synthesizedLogEntry('[GIT] Switched to main') => { kind: 'system', text: '…', … }
  * @param {string} chunk
+ * @param {Object} [meta] - Extra entry metadata (e.g. `{ runnerId }`).
  * @returns {Object} A structured log entry.
  ***/
 function _synthesizedLogEntry(chunk, meta = {}) {
 	_logEntryIdCounter += 1;
 	const { kind, feed } = _logEntryKindFromText(chunk);
+	// Only a plain bag spreads into meta: exotic inputs (strings, Dates,
+	// arrays) degrade to {} instead of scattering characters into the entry.
+	const cleanedMeta = redactDeepStrings(meta || {});
+	const metaBag =
+		cleanedMeta && typeof cleanedMeta === "object" && !Array.isArray(cleanedMeta)
+			? cleanedMeta
+			: {};
 	return {
 		id: `log-${_logEntryIdCounter}`,
 		ts: new Date().toISOString(),
@@ -61,7 +69,7 @@ function _synthesizedLogEntry(chunk, meta = {}) {
 		// text frames can never store secrets or PII. Clean text passes
 		// through byte-identical.
 		text: redactSecretsText(String(chunk)),
-		meta: { source: "process-log", ...redactDeepStrings(meta || {}) },
+		meta: { source: "process-log", ...metaBag },
 	};
 }
 

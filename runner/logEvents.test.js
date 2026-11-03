@@ -200,6 +200,47 @@ describe("createStructuredEventSender", () => {
 		);
 	});
 
+	it("flushes pending events even when the closing event is too big to send", async () => {
+		const { client, calls } = stubClient();
+		const sender = createStructuredEventSender({ client, ...ids, flushMs: 60000 });
+		sender.queueEvent({ type: "assistant_delta", delta: "hi" });
+		assert.equal(calls.length, 0);
+		// 100 untruncatable-named fields stay over the cap after truncation,
+		// so the closing event itself is dropped — but the queued tail must
+		// still ship immediately, not wait for the timer.
+		const bulk = {};
+		for (let i = 0; i < 100; i += 1) bulk[`field${i}`] = "x".repeat(2000);
+		sender.queueEvent({ type: "run_finished", ...bulk });
+		await new Promise((r) => setTimeout(r, 25));
+		assert.equal(calls.length, 1);
+		assert.deepEqual(
+			calls[0].events.map((e) => e.type),
+			["assistant_delta"],
+		);
+	});
+
+	it("names an unknown send failure instead of logging undefined", async () => {
+		const warnings = [];
+		const client = {
+			async logEvents() {
+				throw undefined;
+			},
+		};
+		const sender = createStructuredEventSender({
+			client,
+			...ids,
+			flushMs: 0,
+			logger: { warn: (message) => warnings.push(message) },
+			onTextFallback: () => {},
+		});
+		sender.queueEvent({ type: "assistant_delta", delta: "hi" });
+		await sender.flush();
+		assert.equal(sender.isStructured(), false);
+		assert.equal(warnings.length, 1);
+		assert.match(warnings[0], /unknown error/);
+		assert.doesNotMatch(warnings[0], /undefined/);
+	});
+
 	it("fallback converts events queued during the failed batch too", async () => {
 		const { client } = stubClient({ failAfter: 0 });
 		const fallback = [];

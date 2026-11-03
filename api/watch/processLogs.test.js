@@ -89,6 +89,34 @@ describe("_appendProcessLog tag grammar", () => {
 		_appendProcessLog(task, "[INFO] x");
 		expect(task.logEntries).toHaveLength(1);
 	});
+
+	it("drops non-bag meta instead of scattering it into the entry", () => {
+		for (const badMeta of [
+			"not-an-object",
+			42,
+			["a", "b"],
+			new Date("2026-01-01T00:00:00.000Z"),
+		]) {
+			const task = { logEntries: [] };
+			_appendProcessLog(task, "[INFO] x", badMeta);
+			expect(task.logEntries[0].meta).toEqual({ source: "process-log" });
+		}
+	});
+
+	it("redacts secrets hiding in meta values", () => {
+		const task = { logEntries: [] };
+		_appendProcessLog(task, "[runner r1] hi", {
+			runnerId: "r1",
+			token: "abcdefgh1234",
+			note: "contact alice@example.com",
+		});
+		expect(task.logEntries[0].meta).toEqual({
+			source: "process-log",
+			runnerId: "r1",
+			token: "[REDACTED]",
+			note: "contact [REDACTED EMAIL]",
+		});
+	});
 });
 
 describe("_appendLogEntries", () => {
