@@ -224,4 +224,16 @@ describe("The Work: countOpenTasksGlobal", () => {
 			}),
 		).toBe(0);
 	});
+
+	it("keeps counts from readable maps when one project map is unreadable", () => {
+		const tasksByProject = new Map([
+			["p1", new Map([["a", { id: "a", status: "in_stage" }]])],
+			["p2", {
+				values: () => {
+					throw new Error("down");
+				},
+			}],
+		]);
+		expect(countOpenTasksGlobal({ tasksByProject })).toBe(1);
+	});
 });

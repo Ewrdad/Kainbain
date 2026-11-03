@@ -61,3 +61,20 @@ stale `lastDispatchAt` means the engine or queue believes work is still in
 flight; `ticks` frozen while `schedulerRunning` is true means the interval
 itself is dead.
 
+## Queue chip and popup (bottom bar)
+
+The bottom bar's queue chip counts every open task (anything not
+`completed`/`done`) across ALL projects — including `failed`, `cancelled`,
+`waiting_human`, `paused`, and blocked tasks. Clicking the chip opens a popup
+listing the dispatch-ordered queue (#1 runs next) with each row's position,
+task name, project, current step, and blocked/waiting reason; clicking a row
+opens that task in the inspector.
+
+The two can legitimately differ: `failed`, `cancelled`, `waiting_human`, and
+human-stage tasks count toward the chip but are never listed, while blocked
+and paused tasks do list — sorted last with their reason. The popup footer
+always states both numbers ("N open tasks counted · M shown") so the gap
+reads as information, not a second bug. If the chip number never goes down,
+the popup shows exactly which open tasks are sitting outside the dispatch
+queue and why.
+
