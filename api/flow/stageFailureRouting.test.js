@@ -481,6 +481,54 @@ describe("The Flow: retry-in-place vs cross-stage auto iteration", () => {
 		expect(task.autoIterating).toBe(false);
 		expect(task.autoIterationCount).toBe(1);
 	});
+
+	function makeCapturingStore(captured) {
+		const capturingBridge = {
+			emitProcessEvent: (projectId, eventName, payload) => {
+				captured.events.push({ eventName, payload });
+			},
+			emitSystemLog: (projectId, message) => {
+				captured.logs.push(String(message));
+			},
+			emitNotification: () => {},
+		};
+		return new TaskStore({
+			eventBridge: capturingBridge,
+			projectStore: { getProject: () => ({ stages: agentStages, cwd: tempCwd }) },
+		});
+	}
+
+	it("reports a cross-stage re-run as continuing (sameStage false), never retrying", () => {
+		const captured = { events: [], logs: [] };
+		const store = makeCapturingStore(captured);
+		const task = store.createTask("p1", { stageId: "two", projectCwd: tempCwd });
+		store.handleStageFailure("p1", task.id, agentStages[1], new Error("boom"), {
+			stages: agentStages,
+			projectCwd: tempCwd,
+		});
+		const autoRetry = captured.events.find((e) => e.eventName === "stage:auto_retry");
+		expect(autoRetry).toBeDefined();
+		expect(autoRetry.payload.sameStage).toBe(false);
+		expect(autoRetry.payload.targetStageId).toBe("one");
+		const autoLog = captured.logs.find((line) => line.includes("[AUTO]"));
+		expect(autoLog).toContain("continuing at");
+		expect(autoLog).not.toContain("retrying");
+	});
+
+	it("reports a same-stage re-run as retrying (sameStage true)", () => {
+		const captured = { events: [], logs: [] };
+		const store = makeCapturingStore(captured);
+		const task = store.createTask("p1", { stageId: "one", projectCwd: tempCwd });
+		store.handleStageFailure("p1", task.id, agentStages[0], new Error("boom"), {
+			stages: agentStages,
+			projectCwd: tempCwd,
+		});
+		const autoRetry = captured.events.find((e) => e.eventName === "stage:auto_retry");
+		expect(autoRetry).toBeDefined();
+		expect(autoRetry.payload.sameStage).toBe(true);
+		const autoLog = captured.logs.find((line) => line.includes("[AUTO]"));
+		expect(autoLog).toContain("retrying same stage");
+	});
 });
 
 describe("The Flow: head+tail log excerpts (excerptLog)", () => {

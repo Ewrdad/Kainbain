@@ -64,7 +64,13 @@ import { handleTransientFailure } from './handleTransientFailure.js';
  * @param {string} [opts.aliasName] - Model alias the failed run resolved through (per-alias reliability attribution).
  * @param {string} [opts.modelRef] - Concrete model the alias target dispatched.
  * @param {number} [opts.targetIndex] - Weighted-target index of the alias pick (informational).
- * @returns {Object} Failure result.
+ * @returns {Object} Failure routing result. When automatic recovery starts,
+ *   `status` is the internal routing signal `"retrying"` for BOTH re-run
+ *   shapes (kept stable for the scheduler and its tests) — user display must
+ *   derive from the task flags instead: `autoRetrying` (same-stage in-place
+ *   retry) vs `autoIterating` (cross-stage continuation). The `stage:auto_retry`
+ *   event carries `sameStage` with that same verdict, and the `[AUTO]` system
+ *   log says "retrying same stage" vs "continuing at" accordingly.
   * @example handleStageFailure(store, "p1", "t1", stage, err, {}) => { status: "parked", … }
  ***/
 export function handleStageFailure(
@@ -367,11 +373,19 @@ export function handleStageFailure(
 					String(s.name).toLowerCase() ===
 						String(task.currentStageId).toLowerCase()),
 		);
+		// The re-run shape was already settled on the task flags by
+		// beginAutoIteration (same-stage in-place retry vs cross-stage auto
+		// iteration): read it back here so the operator-visible event and log
+		// use the same verdict as every UI surface, instead of calling every
+		// automatic re-run a "retry". The event name stays `stage:auto_retry`
+		// (consumers filter on it); the `sameStage` field carries the shape.
+		const movedStages = task.autoIterating === true;
 		bridge?.emitProcessEvent?.(projectId, "stage:auto_retry", {
 			taskId,
 			fromStageId: stage?.id,
 			targetStageId: task.currentStageId,
 			targetStageName: targetStage?.name || task.currentStageId,
+			sameStage: !movedStages,
 			attempt: task.autoIterationCount,
 			maxAttempts: autoIteration.maxAttempts,
 			error: errorMsg,
@@ -379,7 +393,9 @@ export function handleStageFailure(
 		});
 		bridge?.emitSystemLog?.(
 			projectId,
-			`[AUTO] Stage '${stage?.name || stage?.id}' failed on task #${task.id?.slice(0, 4)}; auto-retrying at '${targetStage?.name || task.currentStageId}' (attempt ${task.autoIterationCount}/${autoIteration.maxAttempts}): ${errorMsg}`,
+			movedStages
+				? `[AUTO] Stage '${stage?.name || stage?.id}' failed on task #${task.id?.slice(0, 4)}; continuing at '${targetStage?.name || task.currentStageId}' (attempt ${task.autoIterationCount}/${autoIteration.maxAttempts}): ${errorMsg}`
+				: `[AUTO] Stage '${stage?.name || stage?.id}' failed on task #${task.id?.slice(0, 4)}; retrying same stage '${targetStage?.name || task.currentStageId}' (attempt ${task.autoIterationCount}/${autoIteration.maxAttempts}): ${errorMsg}`,
 			{ taskId, stageId: stage?.id, error: errorMsg },
 		);
 		if (taskStore.schedulerRunning) {
