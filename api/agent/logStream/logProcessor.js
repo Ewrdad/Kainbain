@@ -249,6 +249,13 @@ export function createLogProcessor(options = {}) {
 		if (record.evidence && typeof record.evidence === "object") {
 			record.evidence = redactDeepStrings(record.evidence);
 		}
+		// detail may carry full payloads: redact secret/PII shapes before
+		// persistence so nothing leaks through the expander.
+		if (typeof record.detail === "string" && record.detail) {
+			record.detail = redactSecretsText(record.detail);
+		} else if (record.detail && typeof record.detail === "object") {
+			record.detail = redactDeepStrings(record.detail);
+		}
 		entries.push(record);
 		evictOverflow();
 		return record;
@@ -544,12 +551,13 @@ export function createLogProcessor(options = {}) {
 		const toolName = event.toolName || event.name || "tool";
 		const toolCallId = event.toolCallId || event.id || null;
 		const args = event.args || event.arguments || {};
+		const safeArgs = redactDeepStrings(args);
 		const entry = appendEntry({
 			kind: "tool",
 			feeds: ["main", "tools"],
-			text: `[TOOL] ${toolName}(${summarizeToolStart(toolName, args, { maxLength: toolArgsMaxLength })})`,
-			meta: { toolName, toolCallId, args, output: "", isError: false },
-			tool: { callId: toolCallId, name: toolName, args },
+			text: `[TOOL] ${toolName}(${summarizeToolStart(toolName, safeArgs, { maxLength: toolArgsMaxLength })})`,
+			meta: { toolName, toolCallId, args: safeArgs, output: "", isError: false },
+			tool: { callId: toolCallId, name: toolName, args: safeArgs },
 			blockId: `b${nextBlock++}`,
 		});
 		openToolEntry = entry;
@@ -709,41 +717,44 @@ export function createLogProcessor(options = {}) {
 	}
 
 	function handlePermissionRequested(event) {
+		const safeEvent = redactDeepStrings(event || {});
 		return [
 			appendEntry({
 				kind: "permission",
 				feeds: ["main"],
-				text: summarizePermission(event),
+				text: summarizePermission(safeEvent),
 				meta: {
-					method: event.method ?? null,
-					target: event.target ?? null,
+					method: safeEvent.method ?? null,
+					target: safeEvent.target ?? null,
 				},
 			}),
 		];
 	}
 
 	function handlePermissionResolved(event) {
+		const safeEvent = redactDeepStrings(event || {});
 		return [
 			appendEntry({
 				kind: "permission",
 				feeds: ["main"],
-				text: summarizePermission(event),
+				text: summarizePermission(safeEvent),
 				meta: {
-					method: event.method ?? null,
-					target: event.target ?? null,
-					decision: event.decision ?? null,
+					method: safeEvent.method ?? null,
+					target: safeEvent.target ?? null,
+					decision: safeEvent.decision ?? null,
 				},
 			}),
 		];
 	}
 
 	function handlePlanUpdated(event) {
-		const steps = Array.isArray(event.steps) ? event.steps : [];
+		const steps = Array.isArray(event.steps) ? redactDeepStrings(event.steps) : [];
+		const safeEvent = redactDeepStrings({ ...event, steps });
 		return [
 			appendEntry({
 				kind: "plan",
 				feeds: ["main"],
-				text: summarizePlan(event),
+				text: summarizePlan(safeEvent),
 				meta: { steps },
 			}),
 		];

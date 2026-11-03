@@ -2,40 +2,8 @@ import { RUNNER_PROTOCOL } from "../runnerRegistry.js";
 import { runnerApiCompatible } from "./runnerApiCompat.js";
 import { operatorConfigVerdict } from "./operatorConfigVerdict.js";
 import { stageRunnerPolicyVerdict } from "../../../shared/stageRunnerPolicy.js";
-
-/***
- * MARK: effectiveRunnerModels
- * @description The model ids one Runner may serve: the operator-owned
- *   `availableModels` allowlist when set (System Settings › Runners ›
- *   Models — it replaces the advertised list so an under-reporting Runner
- *   can serve declared models), otherwise the Runner-advertised
- *   capabilities list. Single enforcement point shared by the dispatch
- *   gate below and the fleet model catalogue, so the two can never drift.
- * @example effectiveRunnerModels({ capabilities: { models: ['m1'] } }) => ['m1']
- * @param {Object} [record={}] - Runner record.
- * @returns {string[]} Effective model ids (possibly empty).
- ***/
-export function effectiveRunnerModels(record = {}) {
-	const override = record?.operatorConfig?.availableModels;
-	if (Array.isArray(override)) return override;
-	const caps = record?.capabilities && typeof record.capabilities === "object" ? record.capabilities : {};
-	return Array.isArray(caps.models) ? caps.models : [];
-}
-
-/***
- * MARK: claimEligibleRunner
- * @description Whether one Runner registration can take ANY work right now:
- *   active status and not paused — the same two gates `runnerMatches`
- *   applies before per-task requirements. The fleet model catalogue counts
- *   only eligible Runners, so "available on N runners" always names
- *   Runners that could actually claim.
- * @example claimEligibleRunner({ status: 'active', paused: false }) => true
- * @param {Object} [record={}] - Runner record.
- * @returns {boolean} Eligibility.
- ***/
-export function claimEligibleRunner(record = {}) {
-	return record?.status === "active" && record?.paused !== true;
-}
+import { effectiveRunnerModels } from "./effectiveRunnerModels.js";
+import { claimEligibleRunner } from "./claimEligibleRunner.js";
 
 /***
  * MARK: runnerMatches
@@ -85,10 +53,6 @@ export function runnerMatches(record = {}, req = {}, opts = {}) {
 	if (!runnerApiCompatible(runnerApi).ok) {
 		return { ok: false, reason: "PROTOCOL_SKEW" };
 	}
-	// Only the raw string marker (taskRequirements' `{ alias: name }`) is
-	// unservable here. A resolved alias object (`{ name, targetIndex }`,
-	// stamped by the route after central D3 resolution) carries the
-	// concrete harness/model below and matches like any direct requirement.
 	if (typeof req.alias === "string" && req.alias) {
 		return { ok: false, reason: "ALIAS_UNRESOLVED" };
 	}
@@ -109,20 +73,12 @@ export function runnerMatches(record = {}, req = {}, opts = {}) {
 	if (caps.diskHeadroomMb !== null && caps.diskHeadroomMb !== undefined) {
 		if (caps.diskHeadroomMb < minDisk) return { ok: false, reason: "DISK_LOW" };
 	}
-	// Operator-owned configuration (System Settings › Runners) refines an
-	// otherwise-capable match without touching Runner-reported facts. It
-	// sits after every health/capability gate so those keep their stable
-	// reasons (a stale Runner still reports STALE_HEARTBEAT, never a scope
-	// miss). The verdict itself lives in `operatorConfigVerdict`, shared
-	// with the direct claim and integration lease routes so no claim path
-	// can bypass the operator's settings.
 	const operatorVerdict = operatorConfigVerdict(record, req, opts);
 	if (!operatorVerdict.ok) return operatorVerdict;
-	// Stage runnerPolicy (the stage settings allow/block list) is the final
-	// gate: after the operator's own settings, so a Runner refused by both
-	// always reports the operator reason, and after every health/capability
-	// gate so those keep their stable reasons too.
 	const policyVerdict = stageRunnerPolicyVerdict(req.runnerPolicy, record.runnerId);
 	if (!policyVerdict.ok) return policyVerdict;
 	return { ok: true, reason: "MATCH" };
 }
+
+export { effectiveRunnerModels } from "./effectiveRunnerModels.js";
+export { claimEligibleRunner } from "./claimEligibleRunner.js";

@@ -21,7 +21,7 @@ import {
 	resolveStageTimeout,
 	runnerStageTimeoutStatus,
 } from "./stagePolicy.js";
-import { redactSecretsText } from "../../shared/redactSecrets.js";
+import { redactDeepStrings, redactSecretsText } from "../../shared/redactSecrets.js";
 import { buildBelowMinimumRefusal } from "./runnerVersionCompat.js";
 import { servingModelFor } from "./runnerPosture.js";
 import {
@@ -630,7 +630,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					?.emitProcessEvent(ctx.projectId, "process:log-entries", {
 						taskId: request.params.id,
 						projectId: ctx.projectId,
-						entries: fresh,
+						entries: fresh.map((entry) => redactDeepStrings(entry)),
 						runnerId: runner.runnerId,
 						executionId: request.body?.executionId,
 						seq: request.body?.seq,
