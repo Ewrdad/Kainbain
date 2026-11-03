@@ -28,6 +28,16 @@ export function isRetryInProgress(task) {
   if (task?.autoRetrying !== true) return false;
   // New backend records mark a cross-stage failback re-run explicitly.
   if (task?.autoIterating === true) return false;
+  // Fail-safe: a settled/non-active task can never be retrying; a stale
+  // persisted flag on a terminal task must not label it RETRYING (the
+  // 99709f "everything says retrying" bug). Unknown status is allowed
+  // through so in-memory payloads without a status still classify by flags.
+  const status = String(task?.status || '').toLowerCase();
+  const inactive = new Set([
+    'completed', 'done', 'failed', 'aborted', 'cancelled',
+    'paused', 'interrupted', 'waiting_human', 'blocked',
+  ]);
+  if (status && inactive.has(status)) return false;
   const failedStageId = task?.lastError?.stageId;
   // No recorded failed stage (transient blip clears lastError): the task
   // never left its stage, so this is an in-place retry.

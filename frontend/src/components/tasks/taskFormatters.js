@@ -37,6 +37,12 @@ export function isTaskCompleted(task) {
  * @returns {boolean} True when a cross-stage automatic re-run is in progress.
  ***/
 export function isAutoIterationInProgress(task) {
+  const status = String(task?.status || '').toLowerCase();
+  const inactive = new Set([
+    'completed', 'done', 'failed', 'aborted', 'cancelled',
+    'paused', 'interrupted', 'waiting_human', 'blocked',
+  ]);
+  if (status && inactive.has(status)) return false;
   if (task?.autoIterating === true) return true;
   return task?.autoRetrying === true && !isRetryInProgress(task);
 }
