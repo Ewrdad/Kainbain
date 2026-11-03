@@ -19,6 +19,7 @@
  * | Task review  | `/tasks/:id/review`   | (existing shape, now canonical)  |
  * | Task survey  | `/tasks/:id/survey`   | `#/task/:id/survey` (legacy)       |
  * | Retrospective| `/retrospective`      | (none — new view, no legacy)     |
+ * | Accessibility| `/accessibility`      | `?view=accessibility`            |
  *
  * Note: `/settings` is project-scoped (ProjectSettings); `/system-settings` is
  * application-level (SystemSettingsPage, a full screen — not a modal). The
@@ -52,6 +53,7 @@ export const ROUTES = {
   taskReview: '/tasks/:id/review',
   taskSurvey: '/tasks/:id/survey',
   retrospective: '/retrospective',
+  accessibility: '/accessibility',
 };
 
 /***
@@ -60,7 +62,7 @@ export const ROUTES = {
  *   navigates here, so every view entry writes exactly one history entry.
  * @param {string} view - View id (`orchestrator`, `explorer`, `settings`,
  *   `system-settings`, `observability`, `docs`, `task-detail`/`task`,
- *   `task-review`, `tasks`, `retrospective`).
+ *   `task-review`, `tasks`, `retrospective`, `accessibility`).
  * @param {Object} [opts]
  * @param {string} [opts.taskId] - Task id for task-detail/task-review paths.
  * @param {string} [opts.slug] - Docs slug for the docs article path.
@@ -93,6 +95,8 @@ export function viewToPath(view, opts = {}) {
       return taskId ? `/tasks/${encodeURIComponent(taskId)}/survey` : '/';
     case 'retrospective':
       return '/retrospective';
+    case 'accessibility':
+      return '/accessibility';
     default:
       return null;
   }
@@ -121,6 +125,7 @@ export function routeToView(pathname) {
   }
   if (path === '/observability') return { view: 'observability' };
   if (path === '/retrospective') return { view: 'retrospective' };
+  if (path === '/accessibility') return { view: 'accessibility' };
   if (path === '/docs') return { view: 'docs' };
   const docsMatch = path.match(/^\/docs\/([^/]+)$/);
   if (docsMatch) return { view: 'docs', slug: safeDecode(docsMatch[1]) };
@@ -150,6 +155,7 @@ const LEGACY_VIEW_PATHS = {
   'system-settings': '/system-settings',
   observability: '/observability',
   docs: '/docs',
+  accessibility: '/accessibility',
 };
 
 /***

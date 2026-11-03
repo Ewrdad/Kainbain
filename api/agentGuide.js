@@ -976,6 +976,18 @@ export const ENDPOINTS = [
 		purpose: "One stateless retrospective chat turn (`{ messages, taskIds?, harness?, model?, strictTaskIds?, turnId? }` \u2192 `{ reply, suggestions, harness, model, modelRequested, unknownTaskIds, contextTaskIds, contextTruncated, contextChars, output? }`, where `output` is the bounded (2000-char) tail of assistant text observed during the turn, also present on 502/504 bodies when anything streamed; when the client sends a `turnId`, streamed deltas are also broadcast live as `CHAT_PROGRESS` WebSocket frames (`{ turnId, tail }`, throttled) and the HTTP settle stays the done signal; input caps 50 messages / 8000 chars per message / 40000 transcript chars; 501 `unsupported_by_harness` when the harness cannot chat; 400 `chat_input_too_large` on oversized input; 404 `task_not_found` when all task ids are unknown (or any, with `strictTaskIds: true`); 502 `chat_prompt_failed` when the model errors; chat turns run with no timeout by default \u2014 they settle when the model answers or when the caller cancels (a 504 `chat_prompt_timeout` only occurs when an operator re-imposes an opt-in server ceiling via `KAINBAIN_CHAT_PROMPT_TIMEOUT_MS`, default `0` = disabled; keep `KAINBAIN_SERVER_REQUEST_TIMEOUT_MS`, default `0` = disabled, above any opt-in ceiling or long turns die with a bare 408; reverse proxies may still impose their own idle ceilings); when no `taskIds` are sent the model may use the generic task-listing path to inspect recent jobs itself (staying within current project scoping) and cites the task ids it touches; never creates tasks).",
 		body: null,
 	},
+	{
+		method: "GET",
+		path: "/accessibility/results",
+		purpose: "Serve the versioned accessibility check-results artifact the in-app statement renders from (503 `results_unavailable` when the artifact file is missing or unparseable).",
+		body: null,
+	},
+	{
+		method: "POST",
+		path: "/accessibility/feedback",
+		purpose: "Accept one accessibility report (`{ message, needGroup?, contact?, pageUrl? }` → 201 `{ received, id, inbox }`); rate-limited to 5 per client per 15 minutes; persisted to the JSONL inbox file.",
+		body: null,
+	},
 ];
 
 /***

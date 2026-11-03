@@ -239,6 +239,24 @@ test('keyboard shortcuts keep working while the global header is hidden', async 
   }
 });
 
+test('keyboard shortcut A opens the accessibility statement', async () => {
+  window.location.hash = '';
+  try {
+    render(<App />);
+    await screen.findByText('Orchestrator');
+    fireEvent.keyDown(window, { key: 'a' });
+    await waitFor(() => {
+      expect(screen.getByTestId('accessibility-page')).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Accessibility statement' }),
+    ).toBeInTheDocument();
+    expect(document.title).toMatch(/Accessibility/);
+  } finally {
+    window.location.hash = '';
+  }
+});
+
 test('renders full-page TaskDetailPage when URL hash contains task ID and navigates back to board', async () => {
   window.location.hash = '#/tasks/t1';
   render(<App />);

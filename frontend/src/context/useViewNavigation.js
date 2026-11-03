@@ -7,7 +7,7 @@ export function useViewNavigation({ tasksList, selectedSnapshot, setSelectedSnap
   // The initial view is always 'orchestrator'; the KainBainRouteBridge (which
   // lives inside the router) syncs it to the real route on mount, so boot,
   // refresh, and back/forward all derive from the router location.
-  const [view, setViewState] = useState('orchestrator'); // 'orchestrator' | 'tasks' | 'settings' | 'system-settings' | 'explorer' | 'observability' | 'docs' | 'task-detail' | 'task-review' | 'task-survey' | 'retrospective'
+  const [view, setViewState] = useState('orchestrator'); // 'orchestrator' | 'tasks' | 'settings' | 'system-settings' | 'explorer' | 'observability' | 'docs' | 'task-detail' | 'task-review' | 'task-survey' | 'retrospective' | 'accessibility'
   // Router binding filled in by KainBainRouteBridge. Stays empty when the
   // provider renders without a router (isolated unit tests): setView then
   // behaves as a plain state setter, exactly like before the migration.

@@ -27,6 +27,7 @@ describe('KeyboardShortcutsModal', () => {
       screen.getByText('Open UI Customization & Preferences modal'),
     ).toBeInTheDocument();
     expect(screen.getByText('Open System Settings')).toBeInTheDocument();
+    expect(screen.getByText('Open accessibility statement')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Close'));
     expect(setIsShortcutsModalOpen).toHaveBeenCalledWith(false);
