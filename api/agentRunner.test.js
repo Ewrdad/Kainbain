@@ -1151,6 +1151,47 @@ describe("createAgentRunner grouped log streaming", () => {
 		expect(chunks.join("\n")).toContain("[TOOL] fail_stage(");
 		expect(res.logEntries.some((e) => e.meta.toolName === "fail_stage")).toBe(true);
 	});
+
+	it("survives a circular tool result and namespaces entry ids per run", async () => {
+		const circular = { partial: "x" };
+		circular.self = circular;
+		let listener = null;
+		const session = {
+			subscribe: (cb) => {
+				listener = cb;
+				return () => {
+					listener = null;
+				};
+			},
+			prompt: vi.fn().mockImplementation(async () => {
+				listener?.({ type: "run_started" });
+				listener?.({ type: "tool_started", toolName: "bash", toolCallId: "c1", args: {} });
+				listener?.({
+					type: "tool_finished",
+					toolName: "bash",
+					toolCallId: "c1",
+					result: circular,
+					isError: true,
+				});
+				return "done";
+			}),
+			messages: [{ role: "assistant", content: "done" }],
+		};
+		const runner = createAgentRunner({ getOrCreateSession: vi.fn().mockResolvedValue(session) });
+
+		const res = await runner("do it", { projectId: "proj-1" });
+
+		expect(res.failed).toBe(false);
+		expect(res.output).toBe("done");
+		expect(res.logEntries.some((e) => e.text.startsWith("[ERROR] Tool bash failed:"))).toBe(true);
+		// Every entry id carries the run-unique prefix, so two stage runs'
+		// entries on one task can never share an id.
+		expect(res.logEntries.length).toBeGreaterThan(0);
+		for (const entry of res.logEntries) {
+			expect(typeof entry.id).toBe("string");
+			expect(entry.id).toContain(":");
+		}
+	});
 });
 
 describe("buildImageAttachments", () => {

@@ -153,10 +153,13 @@ export const textForStructuredEvent = (event) => {
  * MARK: describeSendError
  * @description One-line human reading of a transport failure for the runner
  *   log and the UI degradation marker: the HTTP status when the backend
- *   answered, then the message. Never renders "undefined" — a failure the
- *   sender cannot name is reported as an unknown error instead.
+ *   answered, then the message (a backend code like STALE_EPOCH when the
+ *   failure carries no message). Never renders "undefined" or
+ *   "[object Object]" — a failure the sender cannot name is reported as
+ *   an unknown error instead.
  * @example describeSendError(Object.assign(new Error('nope'), { statusCode: 500 })) => 'HTTP 500 nope'
  * @example describeSendError(undefined) => 'unknown error'
+ * @example describeSendError({ code: 'STALE_EPOCH' }) => 'STALE_EPOCH'
  * @param {*} err - Whatever the send threw.
  * @returns {string} The readable cause.
  ***/
@@ -165,7 +168,16 @@ export const describeSendError = (err) => {
 		err && typeof err === "object" && Number.isInteger(err.statusCode)
 			? `HTTP ${err.statusCode} `
 			: "";
-	const message = err?.message || err || "unknown error";
+	// Only strings render: an object without a message would otherwise
+	// interpolate as "[object Object]" in the UI marker.
+	let message = "unknown error";
+	if (typeof err?.message === "string" && err.message) {
+		message = err.message;
+	} else if (typeof err?.code === "string" && err.code) {
+		message = err.code;
+	} else if (typeof err === "string" && err) {
+		message = err;
+	}
 	return `${status}${message}`;
 };
 

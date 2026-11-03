@@ -72,6 +72,7 @@ export const DEFAULT_STREAMER_OPTIONS = Object.freeze({
 	harnessId: DEFAULT_PROCESSOR_OPTIONS.harnessId,
 	model: DEFAULT_PROCESSOR_OPTIONS.model,
 	runId: DEFAULT_PROCESSOR_OPTIONS.runId,
+	idPrefix: DEFAULT_PROCESSOR_OPTIONS.idPrefix,
 });
 
 const KNOWN_FEEDS = new Set(["main", "thinking", "tools", "telemetry", "raw"]);
@@ -100,6 +101,7 @@ const KNOWN_FEEDS = new Set(["main", "thinking", "tools", "telemetry", "raw"]);
  * @param {string} [options.harnessId] - Harness identity stamped on records.
  * @param {string} [options.model] - Model ref stamped on records.
  * @param {string} [options.runId] - Run/conversation id stamped on records.
+ * @param {string} [options.idPrefix] - Entry-id prefix forwarded to the processor (see createLogProcessor).
  * @returns {Object} Streamer with handleEvent/system/consumeFeed/snapshot/renderText/renderFeed.
  ***/
 export function createAgentLogStreamer(options = {}) {

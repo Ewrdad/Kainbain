@@ -24,6 +24,7 @@ import {
 	RUNNER_VERSION,
 	ciWorkdirFor,
 	integrationMergeSubject,
+	createOrderedLogSender,
 } from "./daemon.js";
 import { isAdminCommitSubject } from "../shared/changelogHistory/isAdminCommitSubject.js";
 import { servingModelFor } from "../shared/servingModelFor.js";
@@ -387,6 +388,109 @@ describe("runSingleAssignment", () => {
 			}),
 			/still pending/,
 		);
+	});
+
+	it("lands fallback text in order and drains it before a failed completion", async () => {
+		// Old backend (no structured route) + failing harness: the
+		// structured batch falls back to text, and the failure report must
+		// wait for every frame — frames still in flight when the lease
+		// releases are rejected as stale, losing the error's trail.
+		const repo = localRepo();
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo);
+		const settledSeqs = [];
+		let settled = 0;
+		let settledAtComplete = -1;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logEvents: async () => {
+				const err = new Error("Backend 404 on /tasks/t1/log-events");
+				err.statusCode = 404;
+				throw err;
+			},
+			logs: async (payload) => {
+				// The first frame hangs: without ordering, the later
+				// frames would settle first and completion would report
+				// while it is still in flight.
+				if (payload.seq === 0) await new Promise((r) => setTimeout(r, 50));
+				settledSeqs.push(payload.seq);
+				settled += 1;
+				return { accepted: true };
+			},
+			complete: async () => {
+				settledAtComplete = settled;
+				return { accepted: true, shaState: "present" };
+			},
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const failingHarness = () => ({
+			async createSession() {
+				return {
+					isStreaming: false,
+					messages: [],
+					getLastAssistantText: () => "",
+					subscribe: (handler) => {
+						handler({ type: "assistant_delta", delta: "line one" });
+						handler({ type: "assistant_delta", delta: "line two" });
+						handler({ type: "assistant_delta", delta: "line three" });
+						return () => {};
+					},
+					prompt: async () => {
+						throw new Error("harness exploded");
+					},
+					abort: () => {},
+					dispose: async () => {},
+				};
+			},
+		});
+		const out = await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => failingHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.accepted, true);
+		assert.ok(!client.calls.includes("interrupt"));
+		assert.deepEqual(settledSeqs, [0, 1, 2]);
+		assert.equal(settledAtComplete, 3);
+	});
+});
+
+describe("createOrderedLogSender", () => {
+	it("sends in call order even when an early send hangs", async () => {
+		const calls = [];
+		let releaseFirst;
+		const gate = new Promise((resolve) => {
+			releaseFirst = resolve;
+		});
+		const sender = createOrderedLogSender(async (bytes) => {
+			calls.push(bytes);
+			if (bytes === "first") await gate;
+		});
+		const first = sender.sendInOrder("first");
+		const second = sender.sendInOrder("second");
+		await new Promise((r) => setTimeout(r, 20));
+		assert.deepEqual(calls, ["first"]);
+		releaseFirst();
+		await Promise.all([first, second]);
+		assert.deepEqual(calls, ["first", "second"]);
+		await sender.drain();
+	});
+
+	it("a failed send rejects its caller but never breaks the chain", async () => {
+		const calls = [];
+		const sender = createOrderedLogSender(async (bytes) => {
+			calls.push(bytes);
+			if (bytes === "bad") throw new Error("boom");
+		});
+		await assert.rejects(sender.sendInOrder("bad"), /boom/);
+		await sender.sendInOrder("good");
+		assert.deepEqual(calls, ["bad", "good"]);
+		await sender.drain();
 	});
 });
 

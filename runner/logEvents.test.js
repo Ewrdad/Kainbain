@@ -544,5 +544,8 @@ describe("send failure classification", () => {
 		assert.equal(describeSendError(new Error("fetch failed")), "fetch failed");
 		assert.equal(describeSendError(undefined), "unknown error");
 		assert.equal(describeSendError(null), "unknown error");
+		assert.equal(describeSendError({ code: "STALE_EPOCH" }), "STALE_EPOCH");
+		assert.equal(describeSendError({}), "unknown error");
+		assert.equal(describeSendError("plain failure"), "plain failure");
 	});
 });

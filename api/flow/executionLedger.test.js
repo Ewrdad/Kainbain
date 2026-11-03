@@ -822,4 +822,41 @@ describe("ExecutionLedger", () => {
 			expect(err.code).toBe("NOTHING_TO_INTERRUPT");
 		}
 	});
+
+	test("namespaces ingested entry ids per execution", () => {
+		const { executionId, epoch } = claimed(ctx);
+		const base = {
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+		};
+		ledger.ingestLogEvents({
+			...base,
+			seq: 0,
+			events: [{ type: "tool_started", toolName: "bash", toolCallId: "c1", args: {} }],
+		});
+		const entries = ctx.taskStore.getTask().logEntries;
+		expect(entries.length).toBeGreaterThan(0);
+		for (const entry of entries) {
+			expect(entry.id).toBe(`${executionId}:1`);
+		}
+	});
+
+	test("two executions' entries never share an id on one task", () => {
+		const first = ledger.processorFor("exec-A");
+		const second = ledger.processorFor("exec-B");
+		// Same processor reused for the same execution (streaming state kept).
+		expect(ledger.processorFor("exec-A")).toBe(first);
+		first.handleEvent({ type: "run_started" });
+		second.handleEvent({ type: "run_started" });
+		first.handleEvent({ type: "harness_log", text: "a" });
+		second.handleEvent({ type: "harness_log", text: "b" });
+		const ids = [...first.entries, ...second.entries].map((e) => e.id);
+		expect(new Set(ids).size).toBe(ids.length);
+		expect(ids.every((id) => id.startsWith("exec-"))).toBe(true);
+	});
 });

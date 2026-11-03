@@ -51,6 +51,10 @@ import {
  *   streamer defaults (`maxEntryBytes` 0 = uncapped narrative text; task-log
  *   growth bounded by the structured-entry cap) plus the unified lane
  *   budgets (`telemetryMaxCount`, `rawMaxCount`, `rawMaxBytes`).
+ *   `idPrefix` stays empty by default (numeric entry ids, one sequence per
+ *   processor); callers that store several processors' entries on one task
+ *   pass a run-unique prefix so ids (and the thinking `fullTextId` links
+ *   between them) can never collide across stages or executions.
  ***/
 export const DEFAULT_PROCESSOR_OPTIONS = Object.freeze({
 	hideThinking: true,
@@ -64,6 +68,7 @@ export const DEFAULT_PROCESSOR_OPTIONS = Object.freeze({
 	harnessId: undefined,
 	model: undefined,
 	runId: undefined,
+	idPrefix: undefined,
 });
 
 /***
@@ -121,15 +126,57 @@ function readToolPartial(event) {
 }
 
 /***
+ * MARK: safeJsonText
+ * @description Renders any value as log-line text without ever throwing:
+ *   strings pass through, Error objects render as `Name: message` (their
+ *   JSON form `{}` carries nothing), other values JSON-encode, circular
+ *   values degrade to String(value), and a value whose string conversion
+ *   throws degrades to `[unserializable]`. Log rendering must never break
+ *   the run it describes — the embedded path calls the processor
+ *   synchronously inside the session emit loop with no guard around it.
+ * @example safeJsonText({ a: 1 }) => '{"a":1}'
+ * @example safeJsonText(new Error('boom')) => 'Error: boom'
+ ***/
+const safeJsonText = (value) => {
+	if (typeof value === "string") return value;
+	if (value instanceof Error) {
+		return value.message ? `${value.name || "Error"}: ${value.message}` : "Error";
+	}
+	try {
+		const text = JSON.stringify(value);
+		if (typeof text === "string") return text;
+	} catch {
+		// Circular: fall through to String(value) below.
+	}
+	try {
+		return String(value);
+	} catch {
+		return "[unserializable]";
+	}
+};
+
+/***
  * MARK: createLogProcessor
  * @description Creates the unified event→record processor for one agent
  *   stage run. Pure: no harness imports, no I/O — only the normalized
  *   agent-event vocabulary in, canonical records out.
  * @param {Object} [options] - See DEFAULT_PROCESSOR_OPTIONS.
+ * @param {string} [options.idPrefix] - Prefix for entry ids when several
+ *   processors' entries share one task (runner executions, embedded stage
+ *   runs): ids become `${idPrefix}${n}` so they — and the thinking
+ *   `fullTextId` links between them — stay unique. Empty by default
+ *   (numeric ids exactly as before).
  * @returns {Object} Processor with handleEvent/system/entries/snapshot helpers.
  ***/
 export function createLogProcessor(options = {}) {
 	const merged = { ...DEFAULT_PROCESSOR_OPTIONS, ...options };
+	// Namespaced entry ids: without a prefix every processor numbers from
+	// 1, so two stages' entries on one task share ids — the UI then
+	// resolves a thinking marker to the wrong block and React reuses rows.
+	// A run-unique prefix (execution id, run token) keeps every entry
+	// addressable; `fullTextId` links follow automatically because they
+	// copy the referenced entry's id.
+	const idPrefix = typeof merged.idPrefix === "string" ? merged.idPrefix : "";
 	const hideThinking = merged.hideThinking !== false;
 	const toolArgsMaxLength =
 		merged.toolArgsMaxLength ?? DEFAULT_PROCESSOR_OPTIONS.toolArgsMaxLength;
@@ -159,6 +206,7 @@ export function createLogProcessor(options = {}) {
 
 	/** Monotonic entry ids: never Date.now() so same-millisecond events cannot collide. */
 	let nextEntryId = 1;
+	const nextId = () => (idPrefix ? `${idPrefix}${nextEntryId++}` : nextEntryId++);
 	/** Monotonic record sequence numbers for the canonical record. */
 	let nextSeq = 1;
 	/** Semantic block counter: one blockId per text/thinking/tool block. */
@@ -222,7 +270,7 @@ export function createLogProcessor(options = {}) {
 			...contextFields,
 			turn: turnIndex || 1,
 			...partial,
-			id: nextEntryId++,
+			id: nextId(),
 			seq: nextSeq++,
 			ts: new Date().toISOString(),
 		});
@@ -290,7 +338,7 @@ export function createLogProcessor(options = {}) {
 		if (!evictionMarker) {
 			evictionMarker = makeLogRecord({
 				...contextFields,
-				id: nextEntryId++,
+				id: nextId(),
 				seq: nextSeq++,
 				ts: new Date().toISOString(),
 				feed: "main",
@@ -637,7 +685,7 @@ export function createLogProcessor(options = {}) {
 				appendEntry({
 					kind: "error",
 					feeds: ["main"],
-					text: `[ERROR] Tool ${toolName} failed: ${typeof errDetail === "string" ? errDetail : JSON.stringify(errDetail)}${timingSuffix}`,
+					text: `[ERROR] Tool ${toolName} failed: ${safeJsonText(errDetail)}${timingSuffix}`,
 					meta: {
 						toolName,
 						toolCallId,
@@ -688,10 +736,9 @@ export function createLogProcessor(options = {}) {
 
 	function handleRunError(event) {
 		const flushed = flushOpenBlocks();
-		const message =
-			event.error?.message ||
-			event.message ||
-			String(event.error || "Agent error");
+		const message = safeJsonText(
+			event.error?.message || event.message || event.error || "Agent error",
+		);
 		return [
 			...flushed,
 			appendEntry({
@@ -810,7 +857,7 @@ export function createLogProcessor(options = {}) {
 		if (!rawEvictionMarker || !entries.includes(rawEvictionMarker)) {
 			rawEvictionMarker = makeLogRecord({
 				...contextFields,
-				id: nextEntryId++,
+				id: nextId(),
 				seq: nextSeq++,
 				ts: new Date().toISOString(),
 				feed: "raw",

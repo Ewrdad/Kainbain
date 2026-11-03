@@ -618,6 +618,11 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			if (!receipt.duplicate) {
 				const task = taskStore.getTask(ctx.projectId, request.params.id);
 				const stored = Array.isArray(task?.logEntries) ? task.logEntries : [];
+				// One batch carries at most 200 events but can yield more
+				// entries (a thinking flush emits full block + marker): the
+				// tail bound keeps the socket frame small, the stored
+				// history stays complete, and the next refetch heals any
+				// live-only gap.
 				const fresh = stored
 					.filter(
 						(entry) =>

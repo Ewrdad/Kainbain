@@ -205,6 +205,13 @@ export class ExecutionLedger {
 				telemetryMaxCount: config.telemetryMaxCount,
 				rawMaxCount: config.rawMaxCount,
 				rawMaxBytes: config.rawMaxBytes,
+				// Every execution numbers entries from 1, but every
+				// execution's entries land on ONE task: without a prefix
+				// two stages share ids and the UI resolves thinking
+				// markers to the wrong block. The execution id is a uuid
+				// that is never reused, so it namespaces ids across
+				// stages, retries, and backend restarts alike.
+				idPrefix: `${executionId}:`,
 			});
 			this.logProcessors.set(executionId, processor);
 		}

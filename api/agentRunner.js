@@ -18,6 +18,7 @@ import {
 	imageMediaType,
 } from "./work/taskAssets.js";
 import fs from "node:fs";
+import { v4 as uuidv4 } from "uuid";
 import {
 	ALIAS_HARNESS_ID,
 	normalizeAliasName,
@@ -417,6 +418,12 @@ export function createAgentRunner(optsOrProjectId = {}, maybeOpts = {}) {
 			telemetryMaxCount: config.telemetryMaxCount,
 			rawMaxCount: config.rawMaxCount,
 			rawMaxBytes: config.rawMaxBytes,
+			// Every stage run numbers entries from 1, but every run's
+			// entries land on ONE task (and persist in task.md across
+			// restarts): a run-unique prefix keeps ids — and the thinking
+			// `fullTextId` links between them — unambiguous, the same
+			// namespacing the runner ingest applies per execution.
+			idPrefix: `${uuidv4()}:`,
 		});
 		const emitStageMessage = (message) => {
 			const entry = streamer.system(message);
@@ -898,7 +905,11 @@ export function createAgentRunner(optsOrProjectId = {}, maybeOpts = {}) {
 								.map((c) => (typeof c === "string" ? c : c?.text || ""))
 								.join("");
 						} else if (event.result) {
-							res = JSON.stringify(event.result);
+							try {
+								res = JSON.stringify(event.result);
+							} catch {
+								res = "";
+							}
 						}
 						const errDetail = event.error || res || "Tool execution error";
 						toolErrors.push(

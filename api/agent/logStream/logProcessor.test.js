@@ -289,3 +289,94 @@ describe("createLogProcessor — canonical record fields", () => {
 		expect(entry.meta).toEqual({ messageRole: "assistant" });
 	});
 });
+
+describe("createLogProcessor — namespaced entry ids", () => {
+	it("keeps numeric ids by default", () => {
+		const processor = createLogProcessor();
+		processor.handleEvent({ type: "run_started" });
+		processor.handleEvent(textDelta("x"));
+		const [entry] = processor.handleEvent(textEnd());
+		expect(entry.id).toBe(1);
+	});
+
+	it("prefixes ids and keeps thinking links inside the namespace", () => {
+		const processor = createLogProcessor({ idPrefix: "exec-A:" });
+		processor.handleEvent({ type: "run_started" });
+		processor.handleEvent({ type: "reasoning_delta", delta: "hmm" });
+		const [marker] = processor.handleEvent(textEnd());
+		expect(marker.meta.collapsed).toBe(true);
+		expect(marker.id).toBe("exec-A:2");
+		expect(marker.meta.fullTextId).toBe("exec-A:1");
+		const full = processor.entries.find((e) => e.id === marker.meta.fullTextId);
+		expect(full?.text).toBe("hmm");
+	});
+
+	it("keeps two processors' ids disjoint on one task", () => {
+		const first = createLogProcessor({ idPrefix: "A:" });
+		const second = createLogProcessor({ idPrefix: "B:" });
+		for (const processor of [first, second]) {
+			processor.handleEvent({ type: "run_started" });
+			processor.handleEvent(textDelta("x"));
+			processor.handleEvent(textEnd());
+		}
+		const ids = [...first.entries, ...second.entries].map((e) => e.id);
+		expect(new Set(ids).size).toBe(ids.length);
+	});
+});
+
+describe("createLogProcessor — unserializable errors", () => {
+	it("renders a circular tool error instead of throwing", () => {
+		const circular = { code: "E_FAIL" };
+		circular.self = circular;
+		const processor = createLogProcessor();
+		processor.handleEvent({ type: "run_started" });
+		processor.handleEvent({ type: "tool_started", toolName: "bash", toolCallId: "c1", args: {} });
+		const emitted = processor.handleEvent({
+			type: "tool_finished",
+			toolName: "bash",
+			toolCallId: "c1",
+			error: circular,
+		});
+		expect(emitted).toHaveLength(1);
+		expect(emitted[0].kind).toBe("error");
+		expect(emitted[0].text).toBe("[ERROR] Tool bash failed: [object Object]");
+	});
+
+	it("renders Error instances as Name: message", () => {
+		const processor = createLogProcessor();
+		processor.handleEvent({ type: "run_started" });
+		processor.handleEvent({ type: "tool_started", toolName: "bash", toolCallId: "c1", args: {} });
+		const emitted = processor.handleEvent({
+			type: "tool_finished",
+			toolName: "bash",
+			toolCallId: "c1",
+			error: new Error("disk full"),
+		});
+		expect(emitted[0].text).toBe("[ERROR] Tool bash failed: Error: disk full");
+	});
+
+	it("degrades a value that defeats both JSON and String", () => {
+		const nasty = { code: 1 };
+		nasty.self = nasty;
+		nasty.toString = () => {
+			throw new Error("bad toString");
+		};
+		const processor = createLogProcessor();
+		processor.handleEvent({ type: "run_started" });
+		processor.handleEvent({ type: "tool_started", toolName: "bash", toolCallId: "c1", args: {} });
+		const emitted = processor.handleEvent({
+			type: "tool_finished",
+			toolName: "bash",
+			toolCallId: "c1",
+			error: nasty,
+		});
+		expect(emitted[0].text).toBe("[ERROR] Tool bash failed: [unserializable]");
+	});
+
+	it("renders run_error objects as JSON without throwing", () => {
+		const processor = createLogProcessor();
+		const [entry] = processor.handleEvent({ type: "run_error", error: { code: 7 } });
+		expect(entry.kind).toBe("error");
+		expect(entry.text).toBe('[ERROR] {"code":7}');
+	});
+});

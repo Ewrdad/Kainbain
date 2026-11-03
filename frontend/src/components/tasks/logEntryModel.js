@@ -1,10 +1,12 @@
 /**
  * MARK: logEntryModel
- * @description Pure model for the task Logs tab. Turns a task's structured
- *   log entries (`task.logEntries`, produced by the agent log streamer) into
- *   grouped, filterable, renderable views — and falls back to parsing the
- *   legacy `task.processLogs` text (line-based tag grammar) so old tasks keep
- *   rendering exactly as before.
+ * @description Pure model for the task Logs tab: turns a task's stored
+ *   entries plus live socket lines into one renderable entry list
+ *   (`normalizeEntries`), falling back to parsing the legacy
+ *   `task.processLogs` text (line-based tag grammar) so old tasks keep
+ *   rendering exactly as before. Grouping, filtering, search, severity,
+ *   and detail expansion all live in the unified viewer
+ *   (`frontend/src/components/logs/`); this module only normalizes.
  *
  *   The tag grammar is the shared `classifyLogLineTag`
  *   (`shared/logTagGrammar.js`) — the same module the API-side synthesis
@@ -21,8 +23,6 @@
  */
 
 import { classifyLogLineTag } from '../../../../shared/logTagGrammar.js';
-
-export const LOG_FEEDS = ['ALL', 'ASSISTANT', 'TOOLS', 'THINKING', 'SYSTEM', 'TELEMETRY', 'RAW'];
 
 /***
  * MARK: legacyLogEntryId
@@ -139,6 +139,11 @@ export function normalizeEntries(task, wsProcessLines = []) {
     // group so the tag grammar classifies the actual line kind.
     const line = p.raw || `${p.tag || '[INFO]'} ${p.text || ''}`;
     const entry = entryFromLogLine(String(line).replace(/^\[[^\]\n]+\] (?=\[)/, ''));
+    // The socket line already carries a stable id (minted once when the
+    // line arrived): reuse it so live rows keep their React keys and
+    // expansion state across recomputes instead of remounting on every
+    // new line. Lines without one keep a synthetic id, as before.
+    if (p.id != null) entry.id = p.id;
     entry.meta = {
       ...(entry.meta || {}),
       source: 'ws-process-logs',
@@ -152,217 +157,6 @@ export function normalizeEntries(task, wsProcessLines = []) {
 }
 
 /***
- * MARK: groupByTurn
- * @description Groups entries into ordered turns for the grouped rendering.
- *   Entries without a turn (legacy parse) all land in one un-numbered group.
- * @example groupByTurn(entries) => [{ turn: 1, entries: [...] }, …]
- * @param {Array<Object>} entries
- * @returns {Array<{turn: number|null, entries: Array<Object>}>}
- ***/
-export function groupByTurn(entries) {
-  const groups = [];
-  for (const entry of entries) {
-    const turn = Number.isFinite(entry?.turn) ? entry.turn : null;
-    const last = groups.at(-1);
-    if (last && last.turn === turn) {
-      last.entries.push(entry);
-    } else {
-      groups.push({ turn, entries: [entry] });
-    }
-  }
-  return groups;
-}
-
-/***
- * MARK: feedMatchesEntry
- * @description Whether an entry belongs to a feed chip. ALL is the combined
- *   main terminal view (main + tools entries — full thinking blocks stay on
- *   the THINKING chip and telemetry/raw records stay on their own chips so
- *   they never leak into the narrative or copy). Errors surface under the
- *   SYSTEM chip (still color-highlighted).
- * @example feedMatchesEntry('SYSTEM', { kind: 'error' }) => true
- * @param {string} feed - One of LOG_FEEDS.
- * @param {Object} entry
- * @returns {boolean}
- ***/
-export function feedMatchesEntry(feed, entry) {
-  const entryFeeds = Array.isArray(entry.feeds) ? entry.feeds : [entry.feed];
-  if (!feed || feed === 'ALL') {
-    return entryFeeds.some((f) => f === 'main' || f === 'tools');
-  }
-  if (feed === 'ASSISTANT') return entry.kind === 'assistant';
-  if (feed === 'TOOLS') return entry.kind === 'tool';
-  // The dedicated thinking feed shows the full blocks, not the markers.
-  if (feed === 'THINKING') return entry.kind === 'thinking' && !entry.meta?.collapsed;
-  if (feed === 'SYSTEM')
-    return (
-      entry.kind === 'system' ||
-      entry.kind === 'error' ||
-      entry.kind === 'permission' ||
-      entry.kind === 'plan'
-    );
-  if (feed === 'TELEMETRY') return entry.kind === 'telemetry';
-  if (feed === 'RAW') return entry.kind === 'raw';
-  return true;
-}
-
-/***
- * MARK: filterEntries
- * @description Filters entries by feed chip and free-text search (case
- *   insensitive, against the rendered text plus the expandable detail, tool
- *   names/args/results, and entry metadata — so a tool name, command, or
- *   error string hidden in a payload still matches).
- * @example filterEntries(entries, { feed: 'TOOLS', search: 'bash' })
- * @param {Array<Object>} entries
- * @param {{feed?: string, search?: string}} [criteria]
- * @returns {Array<Object>} The matching entries.
- ***/
-export function filterEntries(entries, criteria = {}) {
-  const { feed = 'ALL', search = '' } = criteria;
-  const needle = String(search).trim().toLowerCase();
-  return (entries || []).filter((entry) => {
-    if (!feedMatchesEntry(feed, entry)) return false;
-    if (needle) {
-      let hay = '';
-      try {
-        const pieces = [
-          entry?.text,
-          entry?.title,
-          renderEntryDetail(entry)?.detail,
-          entry?.meta?.toolName,
-          entry?.meta?.toolCallId,
-          entry?.meta?.output,
-          entry?.meta?.error,
-          entry?.tool?.name,
-          entry?.tool?.callId,
-          entry?.tool?.args,
-          entry?.tool?.result,
-          entry?.tool?.partials,
-          entry?.meta,
-          entry?.tool,
-        ];
-        hay = pieces
-          .map((piece) =>
-            piece == null
-              ? ''
-              : typeof piece === 'string'
-                ? piece
-                : JSON.stringify(piece),
-          )
-          .join('\n')
-          .toLowerCase();
-      } catch {
-        hay = String(entry?.text || '').toLowerCase();
-      }
-      if (!hay.includes(needle)) return false;
-    }
-    return true;
-  });
-}
-
-/***
- * MARK: renderEntryText
- * @description The rendered text of an entry — the entry's own text, with
- *   collapsed thinking markers expandable to their full block.
- * @example renderEntryText(entry) => "[TOOL] bash(\"ls\")"
- * @param {Object} entry
- * @param {{expandThinking?: boolean, fullTextById?: Map}} [options]
- * @returns {string}
- ***/
-export function renderEntryText(entry, options = {}) {
-  if (!entry) return '';
-  const { expandThinking = false, fullTextById = null } = options;
-  if (
-    expandThinking &&
-    entry.meta?.collapsed &&
-    entry.meta?.fullTextId &&
-    fullTextById?.has(entry.meta.fullTextId)
-  ) {
-    return fullTextById.get(entry.meta.fullTextId).text;
-  }
-  return entry.text || '';
-}
-
-/***
- * MARK: severityClass
- * @description Tailwind text classes for a rendered log line, keyed by the
- *   legacy tag grammar (colors identical to today's Logs tab). Unified-lane
- *   tags ([USAGE]/[PERM]/[PLAN]/[RAW]) reuse the closest existing tones so
- *   no new palette is introduced before the visual refactor.
- * @example severityClass('[ERROR] boom') => 'text-[#ffb4ab] font-bold'
- * @param {string} line
- * @returns {string}
- ***/
-export function severityClass(line) {
-  if (/\[ERROR\]|\[FAIL\]/i.test(line)) return 'text-[#ffb4ab] font-bold';
-  if (/\[WARN\]/i.test(line)) return 'text-[#ffb77f] font-bold';
-  if (/\[TOOL\]/i.test(line)) return 'text-[#a6e3a1] font-semibold';
-  if (/\[RESULT\]/i.test(line)) return 'text-[#94e2d5]';
-  if (/\[HUMAN\]/i.test(line)) return 'text-[#9acbff] font-medium';
-  if (/\[INFO\]|\[SYSTEM\]|\[USAGE\]/i.test(line)) return 'text-[#c2c8ca]';
-  if (/\[PERM\]|\[PLAN\]/i.test(line)) return 'text-[#ffb77f] font-medium';
-  if (/\[RAW\]/i.test(line)) return 'text-[#c2c8ca]';
-  if (/\[AGENT\]/i.test(line)) return 'text-[#7bdb85] font-medium';
-  if (/\[CI\]|\[CI\/CMD\]/i.test(line)) return 'text-[#ffb77f]';
-  return 'text-on-surface';
-}
-
-/***
- * MARK: renderEntryDetail
- * @description Typed detail view for one entry: `{ summary, detail }`.
- *   `summary` is the inline line (the entry's own text); `detail` is the
- *   full payload for expand affordances — full tool output, usage JSON,
- *   permission/plan fields, or the bounded raw wire source. Entries without
- *   a typed payload return `{ summary: text, detail: null }` so panels can
- *   skip the expand affordance.
- * @example renderEntryDetail({ kind: 'telemetry', usage: {...} }) => { summary: '[USAGE] …', detail: '{…}' }
- * @param {Object} entry
- * @returns {{summary: string, detail: string|null}}
- ***/
-export function renderEntryDetail(entry) {
-  if (!entry) return { summary: '', detail: null };
-  const summary = entry.text || '';
-  const kind = entry.kind;
-  if (kind === 'tool') {
-    const output =
-      entry.tool?.result ||
-      entry.tool?.partials ||
-      entry.meta?.output ||
-      null;
-    return {
-      summary,
-      detail: typeof output === 'string' && output && output !== summary ? output : null,
-    };
-  }
-  if (kind === 'telemetry') {
-    if (entry.usage && typeof entry.usage === 'object') {
-      let detail = null;
-      try {
-        detail = JSON.stringify(entry.usage, null, 2);
-      } catch {
-        detail = null;
-      }
-      return { summary, detail };
-    }
-    return { summary, detail: null };
-  }
-  if (kind === 'permission' || kind === 'plan') {
-    return { summary, detail: null };
-  }
-  if (kind === 'raw') {
-    const source = entry.evidence?.sourceEvent;
-    return {
-      summary,
-      detail: typeof source === 'string' && source ? source : null,
-    };
-  }
-  if (kind === 'thinking' && entry.meta?.collapsed) {
-    return { summary, detail: null };
-  }
-  return { summary, detail: null };
-}
-
-/***
  * MARK: fullTextIndex
  * @description Indexes entries by id so collapsed thinking markers can look
  *   up their full thinking block.
@@ -372,16 +166,4 @@ export function renderEntryDetail(entry) {
  ***/
 export function fullTextIndex(entries) {
   return new Map((entries || []).map((entry) => [entry.id, entry]));
-}
-
-/***
- * MARK: isResultEntry
- * @description Whether an entry is a tool result line (rendered indented
- *   under its tool call).
- * @example isResultEntry({ text: '[RESULT] ok' }) => true
- * @param {Object} entry
- * @returns {boolean}
- ***/
-export function isResultEntry(entry) {
-  return String(entry?.text || '').startsWith('[RESULT]');
 }

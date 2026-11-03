@@ -801,6 +801,39 @@ export function collectTaskFiles({ workdir, taskId } = {}) {
 	return files;
 }
 
+/***
+ * MARK: createOrderedLogSender
+ * @description Serializes one execution's legacy text-frame sends so frames
+ *   land in call order. Concurrent `client.logs` POSTs can complete out of
+ *   order, and the backend drops a late frame as a duplicate (its seq is
+ *   below the cursor) after writing a spurious gap marker — so the
+ *   structured→text fallback would lose lines exactly when the backend is
+ *   struggling. Each send waits for the previous send's round trip; a
+ *   failed send still resolves the chain (its own caller sees the
+ *   rejection). `drain()` resolves once every queued send has settled, so
+ *   the caller can flush fallback text before reporting completion —
+ *   frames still in flight when the lease releases are rejected as stale.
+ *   The high-volume CI lane keeps concurrent sends (throughput over
+ *   strict order); only the agent lane (fallback + tail frames) orders.
+ * @example const ordered = createOrderedLogSender((bytes) => sendLogs(bytes))
+ * @param {Function} send - Async send of one bytes payload.
+ * @returns {{sendInOrder: Function, drain: Function}} Ordered sender: `sendInOrder(bytes)`
+ *   queues one send, `drain()` waits for the queue to settle.
+ ***/
+export function createOrderedLogSender(send) {
+	let tail = Promise.resolve();
+	const sendInOrder = (bytes) => {
+		const turn = tail.then(() => send(bytes));
+		tail = turn.then(
+			() => undefined,
+			() => undefined,
+		);
+		return turn;
+	};
+	const drain = () => tail;
+	return { sendInOrder, drain };
+}
+
 async function executeAssignment({
 	config,
 	client,
@@ -876,8 +909,10 @@ async function executeAssignment({
 			},
 		});
 		// Hoisted so the failure path below can flush the trailing
-		// structured batch before reporting the stage as failed.
+		// structured batch (and its ordered text fallback) before
+		// reporting the stage as failed.
 		let structuredSender = null;
+		let orderedTextLogs = null;
 		try {
 			await client.progress({
 				taskId: taskId,
@@ -1025,6 +1060,13 @@ async function executeAssignment({
 			// source). While the structured path is healthy the legacy text
 			// tap stays silent so the backend stores one copy; once it fails
 			// the sender flips and the text tap carries the coarse view again.
+			// Fallback and tail frames share one ordered sender: the fallback
+			// converts a whole batch in a tight loop, and concurrent POSTs
+			// could complete out of order — the backend would drop the late
+			// frames as duplicates. The final `stage output` send below
+			// awaits through this chain, so it also drains everything
+			// queued before it.
+			orderedTextLogs = createOrderedLogSender(sendLogs);
 			structuredSender = createStructuredEventSender({
 				client,
 				taskId: taskId,
@@ -1033,7 +1075,7 @@ async function executeAssignment({
 				epoch,
 				logger,
 				onTextFallback: (text) => {
-					sendLogs(text).catch(() => {});
+					orderedTextLogs.sendInOrder(text).catch(() => {});
 				},
 			});
 			const { output } = await runHarnessStage({
@@ -1052,7 +1094,7 @@ async function executeAssignment({
 				prompt,
 				onLog: (text) => {
 					if (structuredSender.isStructured()) return;
-					sendLogs(text).catch((err) => {
+					orderedTextLogs.sendInOrder(text).catch((err) => {
 						logger.warn(`Log ingest failed: ${err?.message || err}`);
 					});
 				},
@@ -1088,8 +1130,11 @@ async function executeAssignment({
 				author: `kainbain-runner/${config.runnerId}`,
 			});
 			logger.log(`Committed ${sha} (pushed: ${pushed}${pushSkipped ? `, ${pushSkipped}` : ""}${pushState && pushState !== "pushed" ? `, ${pushState}` : ""}${beforeSha && beforeSha !== sha ? `, base was ${beforeSha.slice(0, 7)}` : ""}).`);
+			// Drain first: with an empty final output there is no tail send
+			// to await through, but fallback frames may still be queued.
+			await orderedTextLogs.drain();
 			if (output) {
-				await sendLogs(`stage output: ${String(output).slice(0, 4000)}`);
+				await orderedTextLogs.sendInOrder(`stage output: ${String(output).slice(0, 4000)}`);
 			}
 			return await client.complete({
 				taskId: taskId,
@@ -1132,6 +1177,11 @@ async function executeAssignment({
 				// the failure report renders it.
 				try {
 					await structuredSender?.close();
+					// The fallback's text frames queue behind the same chain:
+					// drain them before completing, or the error's tool
+					// trail is still in flight when the lease releases and
+					// the backend rejects it as stale.
+					await orderedTextLogs?.drain();
 				} catch {
 					// Flushing is best-effort: the failure report matters more.
 				}
@@ -1152,6 +1202,10 @@ async function executeAssignment({
 			// only whatever the text tap carried.
 			try {
 				await structuredSender?.close();
+				// Drain the ordered text fallback too: frames still in
+				// flight when the lease drops are rejected as stale, and
+				// the trail up to the failure point must be stored.
+				await orderedTextLogs?.drain();
 			} catch {
 				// Flushing is best-effort: the interrupt matters more.
 			}

@@ -9,11 +9,11 @@
  *   entries (which carry `kind`) and raw live process-log lines (which carry
  *   only `tag`/`text`) resolve to the same category taxonomy.
  *
- *   Thinking discipline (mirrors `logEntryModel.feedMatchesEntry`): collapsed
- *   thinking markers carry primary `thinking` plus secondary `output`, so they
- *   stay visible in the default narrative view; full thinking blocks are
- *   primary-only `thinking`, so they never leak into the narrative or copy
- *   unless the user explicitly selects the thinking category.
+ *   Thinking discipline: collapsed thinking markers carry primary
+ *   `thinking` plus secondary `output`, so they stay visible in the default
+ *   narrative view; full thinking blocks are primary-only `thinking`, so
+ *   they never leak into the narrative or copy unless the user explicitly
+ *   selects the thinking category.
  */
 
 export const LOG_CATEGORIES = [
@@ -550,8 +550,9 @@ export function filterLogRecords(records, state = {}) {
 
 /***
  * MARK: groupLogRecords
- * @description Groups records for rendering. `turn` preserves adjacency like
- *   `logEntryModel.groupByTurn` (turnless runs share one unlabeled group);
+ * @description Groups records for rendering. `turn` preserves adjacency
+ *   (consecutive same-turn records share a group; turnless runs share one
+ *   unlabeled group);
  *   `source` groups by record source; `none` returns a single group.
  ***/
 export function groupLogRecords(records, { mode = 'none' } = {}) {

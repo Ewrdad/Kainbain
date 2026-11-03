@@ -135,9 +135,11 @@ auto-hidden.
 
 ## Compatibility facades
 
-- `tasks/logEntryModel.js` keeps its full API (`LOG_FEEDS`,
-  `feedMatchesEntry`, …): the task hook still computes legacy entries for the
-  marker-safe copy path, and existing unit tests pin the model.
+- `tasks/logEntryModel.js` is the normalization seam only
+  (`normalizeEntries`, `fullTextIndex`, plus the legacy text parse): the task
+  hook still computes legacy entries for the marker-safe copy path, and
+  existing unit tests pin the model. Grouping, filtering, search, severity,
+  and detail expansion live in the viewer (`logCategories`, `adapters`).
 - `workflow/nodeModel.js :: filterProcessLogs` is reimplemented over the new
   taxonomy (legacy tag → categories, `[TOOL]` mirrors dropped) but returns
   the ORIGINAL line objects, so copy formatting is byte-identical. It also
