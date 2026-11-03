@@ -418,6 +418,32 @@ describe("ExecutionLedger", () => {
 		expect(entries.some((e) => e.text.includes("kept"))).toBe(true);
 	});
 
+	test("untyped batch members count as dropped while usable ones land", () => {
+		const { executionId, epoch } = claimed(ctx);
+		const before = ledger.snapshot().logEventsDropped;
+		const receipt = ledger.ingestLogEvents({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+			seq: 0,
+			events: [
+				null,
+				"not-an-object",
+				{ nope: true },
+				{ type: "harness_log", text: "kept" },
+			],
+		});
+		expect(receipt).toMatchObject({ accepted: true, duplicate: false });
+		expect(ledger.snapshot().logEventsDropped).toBe(before + 3);
+		expect(
+			ctx.taskStore.getTask().logEntries.some((e) => e.text.includes("kept")),
+		).toBe(true);
+	});
+
 	test("a full run ingested as batches reads back as complete history", async () => {
 		const { renderLogEntriesText } = await import("../watch/processLogs.js");
 		const { executionId, epoch } = claimed(ctx);

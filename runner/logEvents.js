@@ -6,10 +6,24 @@ import { redactDeepStrings } from "../shared/redactSecrets.js";
  *   `POST /tasks/:id/log-events` endpoint (structured log transport). The
  *   sender redacts every event before it leaves the Runner (defense in depth
  *   for locally-read secrets), caps oversized payloads, and degrades to
- *   legacy text frames: the first failed batch flips the sender to
- *   text-fallback mode, converts that batch to text, and all later events
- *   flow through the daemon's `onLog` path instead — so an old backend
- *   degrades to today's coarse text view instead of losing logs.
+ *   legacy text frames when the backend cannot take structured batches.
+ *
+ *   Failure policy (fail safe, never lose the log silently):
+ *   - 404/405 (old backend without the route) and 400 (a batch the server
+ *     refuses — retrying the identical batch would loop) fall back to text
+ *     immediately: the failed batch AND everything still queued convert to
+ *     text via `onTextFallback`, and later events flow through the daemon's
+ *     `onLog` path instead (`isStructured()` goes false).
+ *   - Anything else (network errors, timeouts, 5xx, lease conflicts) is
+ *     transient: the failed batch is requeued at the FRONT with its SAME
+ *     sequence number (the server dedupes a retry of a batch that actually
+ *     landed; a fresh number would store the events twice) and a later
+ *     flush retries. After MAX_STRUCTURED_SEND_FAILURES consecutive
+ *     failures the sender gives up and falls back to text.
+ *   - Unexpected fallbacks leave a one-line marker in the text stream so
+ *     the UI reader knows the view is degraded; 404/405 (expected version
+ *     skew during a mixed-version rollout) degrade silently to the
+ *     long-standing coarse text view.
  *
  *   Pure batching over an injected client: no harness imports, no I/O of its
  *   own. The daemon owns the `onLog` gating via `isStructured()`.
@@ -23,6 +37,27 @@ import { redactDeepStrings } from "../shared/redactSecrets.js";
  * @example MAX_EVENT_BYTES => 65536
  ***/
 export const MAX_EVENT_BYTES = 65536;
+
+/***
+ * MARK: MAX_BATCH_EVENTS
+ * @description Most events in one transport batch. Mirrors the backend
+ *   contract (`executionLedger.ingestLogEvents` rejects batches over 200):
+ *   a flush with more queued sends several sequenced batches instead of
+ *   one the server would refuse (which would flip the whole run to text).
+ * @example MAX_BATCH_EVENTS => 200
+ ***/
+export const MAX_BATCH_EVENTS = 200;
+
+/***
+ * MARK: MAX_STRUCTURED_SEND_FAILURES
+ * @description Consecutive transient send failures tolerated before the
+ *   sender gives up on structured transport and falls back to text. One
+ *   failure is a backend blip (a deploy restart mid-run must not cost the
+ *   run its tool detail); this many in a row is an outage, and the text
+ *   path preserves the narrative.
+ * @example MAX_STRUCTURED_SEND_FAILURES => 5
+ ***/
+export const MAX_STRUCTURED_SEND_FAILURES = 5;
 
 /***
  * MARK: sanitizeStructuredEvent
@@ -115,18 +150,74 @@ export const textForStructuredEvent = (event) => {
 };
 
 /***
+ * MARK: describeSendError
+ * @description One-line human reading of a transport failure for the runner
+ *   log and the UI degradation marker: the HTTP status when the backend
+ *   answered, then the message. Never renders "undefined" — a failure the
+ *   sender cannot name is reported as an unknown error instead.
+ * @example describeSendError(Object.assign(new Error('nope'), { statusCode: 500 })) => 'HTTP 500 nope'
+ * @example describeSendError(undefined) => 'unknown error'
+ * @param {*} err - Whatever the send threw.
+ * @returns {string} The readable cause.
+ ***/
+export const describeSendError = (err) => {
+	const status =
+		err && typeof err === "object" && Number.isInteger(err.statusCode)
+			? `HTTP ${err.statusCode} `
+			: "";
+	const message = err?.message || err || "unknown error";
+	return `${status}${message}`;
+};
+
+/***
+ * MARK: isVersionSkewFailure
+ * @description Whether a send failure means the backend predates structured
+ *   transport (unknown route): the expected state during a mixed-version
+ *   rollout, so the sender degrades silently to the coarse text view.
+ * @example isVersionSkewFailure(Object.assign(new Error('x'), { statusCode: 404 })) => true
+ * @example isVersionSkewFailure(new Error('fetch failed')) => false
+ * @param {*} err - Whatever the send threw.
+ * @returns {boolean} True for 404/405 answers.
+ ***/
+export const isVersionSkewFailure = (err) => {
+	const status = err?.statusCode;
+	return status === 404 || status === 405;
+};
+
+/***
+ * MARK: isPermanentSendFailure
+ * @description Whether a send failure is unretryable: version skew (the
+ *   route does not exist there) or a refused batch (retrying the identical
+ *   bytes would fail the same way). Anything else is transient and worth
+ *   retrying with the same sequence number.
+ * @example isPermanentSendFailure(Object.assign(new Error('x'), { statusCode: 400 })) => true
+ * @example isPermanentSendFailure(Object.assign(new Error('x'), { statusCode: 500 })) => false
+ * @param {*} err - Whatever the send threw.
+ * @returns {boolean} True when retrying cannot help.
+ ***/
+export const isPermanentSendFailure = (err) => {
+	if (isVersionSkewFailure(err)) return true;
+	return err?.statusCode === 400;
+};
+
+/***
  * MARK: createStructuredEventSender
  * @description Buffers sanitized session events and ships them as sequenced
- *   batches. Flushes on `batchSize`, on `flushMs` of quiet, on explicit
- *   `flush()`/`close()`, and immediately on run-closing events
- *   (`run_finished`, `run_error`) so the tail never waits for the timer.
- *   `flush()`/`close()` DRAIN: they resolve only once every queued event
- *   has been sent, including events that arrived while a batch was in
- *   flight (the caller can rely on the tail landing before it reports the
- *   stage complete). The first send failure flips to text-fallback
- *   permanently for this execution: the failed batch AND everything still
- *   queued convert to text via `onTextFallback`, and later events are left
- *   to the daemon's `onLog` path (`isStructured()` goes false).
+ *   batches of at most `batchSize` events (never more than
+ *   MAX_BATCH_EVENTS, the server's per-batch cap). Flushes on `batchSize`
+ *   queued, on `flushMs` of quiet, on explicit `flush()`/`close()`, and
+ *   immediately on run-closing events (`run_finished`, `run_error`) so the
+ *   tail never waits for the timer. `flushMs <= 0` disables the quiet timer
+ *   (explicit flush/close only).
+ *
+ *   Delivery contract: `flush()` drains everything queued, INCLUDING events
+ *   that arrived while a batch was in flight — except that a TRANSIENT
+ *   send failure ends the pass with the failed batch requeued at the front
+ *   (same sequence number; a later flush retries it). `close()` keeps
+ *   flushing until the queue is empty, then — only if the backend stayed
+ *   unreachable — falls back, so the caller can rely on the tail landing
+ *   before it reports the stage complete. Permanent failures (404/405/400)
+ *   fall back immediately instead of retrying.
  * @example const sender = createStructuredEventSender({ client, taskId: 't', projectId: 'p', executionId: 'e', epoch: 1, onTextFallback: () => {} })
  * @param {Object} opts - Options.
  * @param {Object} opts.client - Runner backend client with `logEvents`.
@@ -134,10 +225,10 @@ export const textForStructuredEvent = (event) => {
  * @param {string} opts.projectId - Project id.
  * @param {string} opts.executionId - Lease execution id.
  * @param {number} opts.epoch - Lease epoch.
- * @param {Function} [opts.onTextFallback] - Called with legacy text per convertible event after the fallback flip.
+ * @param {Function} [opts.onTextFallback] - Called with legacy text per convertible event after the fallback flip (plus one degradation marker for unexpected failures).
  * @param {Object} [opts.logger] - Logger for send warnings.
- * @param {number} [opts.batchSize=25] - Events per batch.
- * @param {number} [opts.flushMs=500] - Quiet-ms before a partial batch ships.
+ * @param {number} [opts.batchSize=25] - Events queued per batch (clamped to 1–200).
+ * @param {number} [opts.flushMs=500] - Quiet-ms before a partial batch ships (<=0 disables).
  * @returns {Object} Sender with `queueEvent`, `flush`, `close`, `isStructured`.
  ***/
 export const createStructuredEventSender = ({
@@ -156,6 +247,14 @@ export const createStructuredEventSender = ({
 	let structured = true;
 	let timer = null;
 	let inFlight = null;
+	let consecutiveSendFailures = 0;
+	// One batch never exceeds the server's per-batch cap, however large
+	// the caller sizes its batches: an oversized batch would be refused
+	// outright (400) and flip the whole run to text.
+	const eventsPerBatch = Math.min(
+		Math.max(1, batchSize),
+		MAX_BATCH_EVENTS,
+	);
 
 	const warn = (message) => {
 		try {
@@ -200,9 +299,20 @@ export const createStructuredEventSender = ({
 		// structured and must not vanish during the fallback transition.
 		const unsent = [...failedBatch, ...pending];
 		pending = [];
-		warn(
-			`Structured log transport failed (${err?.message || err || "unknown error"}); falling back to text frames.`,
-		);
+		const cause = describeSendError(err);
+		warn(`Structured log transport failed (${cause}); falling back to text frames.`);
+		// Unexpected outages leave a visible marker so the UI reader knows
+		// the view is degraded; version skew (old backend) degrades
+		// silently to the long-standing coarse text view.
+		if (!isVersionSkewFailure(err)) {
+			try {
+				onTextFallback(
+					`[runner] structured log transport failed (${cause}); showing text only`,
+				);
+			} catch {
+				// A throwing fallback must never break the run.
+			}
+		}
 		for (const event of unsent) {
 			const text = textForStructuredEvent(event);
 			if (text) {
@@ -217,29 +327,62 @@ export const createStructuredEventSender = ({
 
 	const flush = async () => {
 		// Drain loop, not a single pass: events queued while a batch is in
-		// flight must ship too. close() relies on this — the trailing batch
-		// has to be sent before the caller reports the stage complete.
-		// Taking a batch (`pending` → local) is synchronous, so concurrent
-		// flushes can never send the same events twice.
+		// flight must ship too. Taking a batch (`pending` splice) is
+		// synchronous, so concurrent flushes can never send the same events
+		// twice. A flush waits for a batch another caller started even when
+		// the queue looks empty: that batch may fail and requeue, and the
+		// waiter must see the requeued events, not resolve early. A
+		// transient failure ends the pass with the batch requeued (same
+		// seq) instead of looping hot against a dead backend — the quiet
+		// timer or the next events retry it.
 		for (;;) {
-			if (!structured || pending.length === 0) return;
+			if (!structured) return;
 			if (inFlight) {
 				await inFlight;
 				continue;
 			}
-			const batch = pending;
-			pending = [];
+			if (pending.length === 0) return;
+			const batch = pending.splice(0, eventsPerBatch);
 			clearTimer();
 			const batchSeq = seq;
 			seq += 1;
-			inFlight = sendBatch(batch, batchSeq).catch((err) => {
-				fallBack(batch, err);
-			});
+			let outcome = null;
+			inFlight = sendBatch(batch, batchSeq).then(
+				() => {
+					outcome = { ok: true };
+				},
+				(err) => {
+					outcome = { ok: false, err };
+				},
+			);
 			try {
 				await inFlight;
 			} finally {
 				inFlight = null;
 			}
+			if (outcome.ok) {
+				consecutiveSendFailures = 0;
+				continue;
+			}
+			consecutiveSendFailures += 1;
+			if (
+				isPermanentSendFailure(outcome.err) ||
+				consecutiveSendFailures >= MAX_STRUCTURED_SEND_FAILURES
+			) {
+				fallBack(batch, outcome.err);
+				return;
+			}
+			// Transient: retry later with the SAME sequence number. The
+			// server dedupes a retry of a batch that actually landed (the
+			// response may have been lost, not the batch); a fresh number
+			// would store the events twice.
+			seq = batchSeq;
+			pending = [...batch, ...pending];
+			warn(
+				`Structured log transport failed (${describeSendError(outcome.err)}); will retry ${pending.length} queued event(s).`,
+			);
+			armTimer();
+			return;
 		}
 	};
 
@@ -264,7 +407,15 @@ export const createStructuredEventSender = ({
 
 	const close = async () => {
 		clearTimer();
-		await flush();
+		// Close is the last trigger, so it retries the drain itself: a
+		// transient failure leaves events queued for "a later flush" that
+		// would never come. Each failing pass counts toward the bound, so
+		// a dead backend still terminates — by falling back, which attempts
+		// the tail as text rather than dropping it silently.
+		for (;;) {
+			await flush();
+			if (!structured || pending.length === 0) return;
+		}
 	};
 
 	const isStructured = () => structured;

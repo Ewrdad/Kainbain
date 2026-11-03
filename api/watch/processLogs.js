@@ -1,37 +1,20 @@
 // Domain: Watching the Work — task progress entries and their feeds.
 import { config } from "../config.js";
 import { redactDeepStrings, redactSecretsText } from "../../shared/redactSecrets.js";
+import { classifyLogLineTag } from "../../shared/logTagGrammar.js";
 /***
  * MARK: _logEntryKindFromText
  * @description Maps a rendered log chunk to its structured entry kind and
- *   feed using the shared tag grammar. Untagged text is assistant narrative.
+ *   feed. Delegates to the shared tag grammar (`classifyLogLineTag`) — the
+ *   single source this file and the frontend legacy parse both read, so a
+ *   tag can never classify one way in stored history and another way live.
+ *   Untagged text is assistant narrative.
  * @example _logEntryKindFromText('[TOOL] bash(…)') => { kind: 'tool', feed: 'tools' }
  * @param {string} text
  * @returns {{kind: string, feed: string}}
  ***/
 function _logEntryKindFromText(text) {
-	const raw = String(text);
-	const lines = raw.split("\n");
-	const firstLine = lines[0] || "";
-	if (/^\[(ERROR|FAIL|STDERR)\]/i.test(firstLine))
-		return { kind: "error", feed: "main" };
-	const checkLine = /^\[STDOUT\]/i.test(firstLine) && lines.length > 1 ? lines[1] : firstLine;
-	if (/^\[(TOOL|RESULT)\]/.test(checkLine))
-		return { kind: "tool", feed: "tools" };
-	if (/^\[THINKING\]/.test(checkLine))
-		return { kind: "thinking", feed: "thinking" };
-	if (/^\[(ERROR|FAIL|STDERR)\]/.test(checkLine))
-		return { kind: "error", feed: "main" };
-	if (/^\[(INFO|SYSTEM|GIT|CI\/CMD|CI|HUMAN|WARN)\]/.test(checkLine)) {
-		return { kind: "system", feed: "main" };
-	}
-	if (/^\[AGENT\]/.test(checkLine)) return { kind: "assistant", feed: "main" };
-	// Runner frames carry an inline `[runner <id>]` prefix (ingested over
-	// the wire). They get their own kind so the log viewer can tag and
-	// filter them per runner instead of lumping them into assistant output.
-	if (/^\[runner[ \]]/i.test(checkLine)) return { kind: "runner", feed: "main" };
-	// Untagged text is assistant narrative (block text from the agent streamer).
-	return { kind: "assistant", feed: "main" };
+	return classifyLogLineTag(text);
 }
 
 /** Monotonic counter for synthesized log entry ids (never Date.now() so

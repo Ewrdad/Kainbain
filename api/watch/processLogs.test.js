@@ -45,6 +45,11 @@ describe("_appendProcessLog tag grammar", () => {
 		["[AGENT] reasoning", "assistant", "main"],
 		["[runner local-alpha] doing work", "runner", "main"],
 		["[RUNNER] legacy caps", "runner", "main"],
+		["[USAGE] tokens=1/2/3", "telemetry", "telemetry"],
+		["[RAW] message_end: unmapped", "raw", "raw"],
+		["[PERM] request bash", "permission", "main"],
+		["[PLAN] updated", "plan", "main"],
+		["[error] lowercase still errors", "error", "main"],
 		["plain narrative text", "assistant", "main"],
 	])("maps %j to kind=%s feed=%s", (chunk, kind, feed) => {
 		const task = { logEntries: [] };
@@ -57,6 +62,21 @@ describe("_appendProcessLog tag grammar", () => {
 	it("only the first line decides the kind", () => {
 		const task = { logEntries: [] };
 		_appendProcessLog(task, "[TOOL] run\n[THINKING] stray");
+		expect(task.logEntries[0]).toMatchObject({ kind: "tool", feed: "tools" });
+	});
+
+	it("keeps the STDERR stream marker even when line two has its own tag", () => {
+		// Only [STDOUT] unwraps to the content line; the [STDERR] marker is
+		// itself the classification (previously a first-line pre-check, now
+		// implied by the shared grammar's STDOUT-only unwrap).
+		const task = { logEntries: [] };
+		_appendProcessLog(task, "[STDERR]\n[TOOL] x");
+		expect(task.logEntries[0]).toMatchObject({ kind: "error", feed: "main" });
+	});
+
+	it("unwraps a lowercase [stdout] wrapper like the caps form", () => {
+		const task = { logEntries: [] };
+		_appendProcessLog(task, "[stdout]\n[TOOL] x");
 		expect(task.logEntries[0]).toMatchObject({ kind: "tool", feed: "tools" });
 	});
 

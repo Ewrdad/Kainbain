@@ -136,6 +136,22 @@ describe("runHarnessStage", () => {
 		assert.match(output, /do the thing/);
 	});
 
+	it("survives a throwing onLog observer", async () => {
+		const harness = createMockHarness({ models: [] });
+		const { output } = await runHarnessStage({
+			harness,
+			project: { id: "p1" },
+			workdir: "/tmp",
+			taskId: "t1",
+			stageId: "s1",
+			prompt: "do the thing",
+			onLog: () => {
+				throw new Error("observer boom");
+			},
+		});
+		assert.match(output, /do the thing/);
+	});
+
 	it("disposes the session even when prompting throws", async () => {
 		let disposed = false;
 		const harness = {

@@ -281,3 +281,40 @@ describe("redactDeepStrings — never throws, never loses the log", () => {
 		expect(redactDeepStrings(10n)).toBe("10");
 	});
 });
+
+describe("redactSecretsText — long secretless runs stay fast", () => {
+	// Two patterns (embedded-credential URLs, emails) open with a broad
+	// character class instead of a literal anchor, which is O(n^2) on long
+	// runs of word characters: ~850ms for 20KB of base64/hash-like output.
+	// Redaction runs on every log line (runner, processor, socket fan-out),
+	// so the patterns are guarded by cheap substring pre-checks. The bound
+	// below is generous (guarded runs take single-digit ms) — it only
+	// catches a quadratic regression, never a slow CI machine.
+	it("redacts a 60KB secretless blob byte-identical in well under a second", () => {
+		const blob = "x".repeat(60000);
+		const started = Date.now();
+		const cleaned = redactSecretsText(blob);
+		expect(cleaned).toBe(blob);
+		expect(Date.now() - started).toBeLessThan(2000);
+	});
+	it("stays fast on long digit and uppercase runs too", () => {
+		for (const blob of ["1".repeat(30000), "A".repeat(30000)]) {
+			const started = Date.now();
+			expect(redactSecretsText(blob)).toBe(blob);
+			expect(Date.now() - started).toBeLessThan(2000);
+		}
+	});
+	it("still redacts when the trigger characters are present", () => {
+		expect(redactSecretsText(`prefix ${"x".repeat(5000)} jane@example.com`)).toBe(
+			`prefix ${"x".repeat(5000)} [REDACTED EMAIL]`,
+		);
+		expect(
+			redactSecretsText(`https://deploy:${"k".repeat(40)}@registry:5000/v2/`),
+		).toBe("https://deploy:[REDACTED]@registry:5000/v2/");
+		// `@` alone (no email shape) and `://` alone (no credentials) stay.
+		expect(redactSecretsText("user @ host")).toBe("user @ host");
+		expect(redactSecretsText("see https://example.com/docs")).toBe(
+			"see https://example.com/docs",
+		);
+	});
+});

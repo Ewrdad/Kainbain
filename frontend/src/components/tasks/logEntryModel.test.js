@@ -34,6 +34,22 @@ describe('logEntryModel — legacy parsing', () => {
     });
     expect(entryFromLogLine('[INFO] boot')).toMatchObject({ kind: 'system', feed: 'main' });
     expect(entryFromLogLine('[GIT] main')).toMatchObject({ kind: 'system', feed: 'main' });
+    expect(entryFromLogLine('[USAGE] tokens=1/2/3')).toMatchObject({
+      kind: 'telemetry',
+      feed: 'telemetry',
+    });
+    expect(entryFromLogLine('[RAW] x: unmapped')).toMatchObject({ kind: 'raw', feed: 'raw' });
+    expect(entryFromLogLine('[PERM] request bash')).toMatchObject({
+      kind: 'permission',
+      feed: 'main',
+    });
+    expect(entryFromLogLine('[PLAN] updated')).toMatchObject({ kind: 'plan', feed: 'main' });
+    // Shared-grammar alignment: lowercase error tags and lowercase
+    // [stdout] wrappers classify like their caps forms (as they do in the
+    // backend synthesis and the category layer).
+    expect(entryFromLogLine('[error] boom')).toMatchObject({ kind: 'error', feed: 'main' });
+    expect(entryFromLogLine('[stdout]\n[TOOL] x')).toMatchObject({ kind: 'tool', feed: 'tools' });
+    expect(entryFromLogLine('[STDERR]\n[TOOL] x')).toMatchObject({ kind: 'error', feed: 'main' });
     expect(entryFromLogLine('plain narrative')).toMatchObject({
       kind: 'assistant',
       feed: 'main',

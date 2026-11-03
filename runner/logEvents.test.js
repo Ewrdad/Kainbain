@@ -2,6 +2,11 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
 	createStructuredEventSender,
+	describeSendError,
+	isPermanentSendFailure,
+	isVersionSkewFailure,
+	MAX_BATCH_EVENTS,
+	MAX_STRUCTURED_SEND_FAILURES,
 	sanitizeStructuredEvent,
 	textForStructuredEvent,
 } from "./logEvents.js";
@@ -23,6 +28,24 @@ function stubClient({ failAfter = Infinity } = {}) {
 	};
 	return { client, calls };
 }
+
+const failingClient = ({ statusCode = 500, message = "boom", failTimes = Infinity } = {}) => {
+	const calls = [];
+	let sends = 0;
+	const client = {
+		async logEvents(payload) {
+			sends += 1;
+			calls.push(payload);
+			if (sends <= failTimes) {
+				const err = new Error(message);
+				if (statusCode !== null) err.statusCode = statusCode;
+				throw err;
+			}
+			return { accepted: true, seq: payload.seq };
+		},
+	};
+	return { client, calls };
+};
 
 const ids = { taskId: "t1", projectId: "p1", executionId: "e1", epoch: 1 };
 
@@ -234,11 +257,15 @@ describe("createStructuredEventSender", () => {
 			onTextFallback: () => {},
 		});
 		sender.queueEvent({ type: "assistant_delta", delta: "hi" });
-		await sender.flush();
+		// A status-less throw is transient: the sender retries until the
+		// bound, then falls back.
+		for (let i = 0; i < MAX_STRUCTURED_SEND_FAILURES; i += 1) {
+			await sender.flush();
+		}
 		assert.equal(sender.isStructured(), false);
-		assert.equal(warnings.length, 1);
-		assert.match(warnings[0], /unknown error/);
-		assert.doesNotMatch(warnings[0], /undefined/);
+		assert.ok(warnings.length >= 1);
+		assert.match(warnings.at(-1), /unknown error/);
+		for (const warning of warnings) assert.doesNotMatch(warning, /undefined/);
 	});
 
 	it("fallback converts events queued during the failed batch too", async () => {
@@ -259,5 +286,233 @@ describe("createStructuredEventSender", () => {
 		// Nothing that was queued may vanish during the transition: every
 		// convertible event — failed batch AND pending queue — reaches text.
 		assert.deepEqual(fallback, ["one", "two", "three"]);
+	});
+
+	it("retries transient failures with the same seq and recovers in order", async () => {
+		const { client, calls } = failingClient({ statusCode: 500, failTimes: 2 });
+		const fallback = [];
+		const sender = createStructuredEventSender({
+			client,
+			...ids,
+			flushMs: 0,
+			onTextFallback: (text) => fallback.push(text),
+		});
+		sender.queueEvent({ type: "assistant_delta", delta: "one" });
+		sender.queueEvent({ type: "assistant_delta", delta: "two" });
+		await sender.flush(); // attempt 1: 500, requeued
+		assert.equal(sender.isStructured(), true);
+		assert.deepEqual(fallback, []);
+		await sender.flush(); // attempt 2: 500, requeued
+		assert.equal(sender.isStructured(), true);
+		await sender.flush(); // attempt 3: accepted
+		assert.equal(sender.isStructured(), true);
+		assert.deepEqual(fallback, []);
+		// All three attempts carried seq 0 (the server dedupes a retry of
+		// a batch that actually landed); the next batch moves to seq 1.
+		assert.deepEqual(
+			calls.map((c) => c.seq),
+			[0, 0, 0],
+		);
+		assert.deepEqual(
+			calls[2].events.map((e) => e.delta),
+			["one", "two"],
+		);
+		sender.queueEvent({ type: "run_finished" });
+		await sender.flush();
+		assert.equal(calls[3].seq, 1);
+	});
+
+	it("resets the failure count on success, so a later outage gets a fresh bound", async () => {
+		// Scripted backend: fail, fail, recover, then stay down. Without a
+		// reset the sender would flip on the 3rd post-recovery failure;
+		// with it, the fresh outage gets the full bound of 5.
+		const script = [false, false, true, false, false, false, false, false];
+		const calls = [];
+		let sends = 0;
+		const client = {
+			async logEvents(payload) {
+				calls.push(payload);
+				const ok = script[sends] ?? false;
+				sends += 1;
+				if (!ok) {
+					throw Object.assign(new Error("still down"), { statusCode: 503 });
+				}
+				return { accepted: true, seq: payload.seq };
+			},
+		};
+		const sender = createStructuredEventSender({ client, ...ids, flushMs: 0 });
+		sender.queueEvent({ type: "assistant_delta", delta: "one" });
+		await sender.flush(); // fail 1
+		await sender.flush(); // fail 2
+		await sender.flush(); // success — counter resets
+		assert.equal(sender.isStructured(), true);
+		sender.queueEvent({ type: "assistant_delta", delta: "two" });
+		for (let i = 0; i < MAX_STRUCTURED_SEND_FAILURES - 1; i += 1) {
+			await sender.flush();
+			assert.equal(sender.isStructured(), true);
+		}
+		await sender.flush();
+		assert.equal(sender.isStructured(), false);
+		assert.equal(calls.length, 3 + MAX_STRUCTURED_SEND_FAILURES);
+	});
+
+	it("chunks large queues to batchSize and never above the server cap", async () => {
+		const { client, calls } = stubClient();
+		const sender = createStructuredEventSender({
+			client,
+			...ids,
+			batchSize: 10,
+			flushMs: 0,
+		});
+		for (let i = 0; i < 25; i += 1) {
+			sender.queueEvent({ type: "assistant_delta", delta: `line${i}` });
+		}
+		await sender.close();
+		assert.deepEqual(
+			calls.map((c) => c.events.length),
+			[10, 10, 5],
+		);
+		assert.deepEqual(
+			calls.map((c) => c.seq),
+			[0, 1, 2],
+		);
+		assert.equal(
+			calls.flatMap((c) => c.events).map((e) => e.delta).join(","),
+			Array.from({ length: 25 }, (_, i) => `line${i}`).join(","),
+		);
+	});
+
+	it("clamps even a huge batchSize to the server's per-batch cap", async () => {
+		assert.equal(MAX_BATCH_EVENTS, 200);
+		const { client, calls } = stubClient();
+		const sender = createStructuredEventSender({
+			client,
+			...ids,
+			batchSize: 500,
+			flushMs: 60000,
+		});
+		for (let i = 0; i < 250; i += 1) {
+			sender.queueEvent({ type: "assistant_delta", delta: `line${i}` });
+		}
+		await sender.close();
+		assert.deepEqual(
+			calls.map((c) => c.events.length),
+			[200, 50],
+		);
+	});
+
+	it("falls back immediately on a refused batch, with a visible marker", async () => {
+		const { client, calls } = failingClient({ statusCode: 400 });
+		const fallback = [];
+		const sender = createStructuredEventSender({
+			client,
+			...ids,
+			flushMs: 0,
+			onTextFallback: (text) => fallback.push(text),
+		});
+		sender.queueEvent({ type: "assistant_delta", delta: "hello" });
+		await sender.flush();
+		assert.equal(sender.isStructured(), false);
+		assert.equal(calls.length, 1);
+		assert.equal(fallback.length, 2);
+		assert.match(fallback[0], /structured log transport failed/);
+		assert.match(fallback[0], /HTTP 400/);
+		assert.equal(fallback[1], "hello");
+	});
+
+	it("degrades silently on version skew but marks unexpected outages", async () => {
+		// 404 (old backend): the coarse text view IS the contract — no marker.
+		const skewed = stubClient({ failAfter: 0 });
+		const skewFallback = [];
+		const skewSender = createStructuredEventSender({
+			client: skewed.client,
+			...ids,
+			flushMs: 0,
+			onTextFallback: (text) => skewFallback.push(text),
+		});
+		skewSender.queueEvent({ type: "assistant_delta", delta: "hello" });
+		await skewSender.flush();
+		assert.deepEqual(skewFallback, ["hello"]);
+		// 500 past the bound: the reader must know the view is degraded.
+		const { client } = failingClient({ statusCode: 500 });
+		const outageFallback = [];
+		const outageSender = createStructuredEventSender({
+			client,
+			...ids,
+			flushMs: 0,
+			onTextFallback: (text) => outageFallback.push(text),
+		});
+		outageSender.queueEvent({ type: "assistant_delta", delta: "hello" });
+		await outageSender.close();
+		assert.equal(outageSender.isStructured(), false);
+		assert.match(outageFallback[0], /structured log transport failed/);
+		assert.match(outageFallback[0], /HTTP 500/);
+		assert.equal(outageFallback[1], "hello");
+	});
+
+	it("close() drains after a transient failure once the backend recovers", async () => {
+		const { client, calls } = failingClient({ statusCode: 502, failTimes: 1 });
+		const sender = createStructuredEventSender({ client, ...ids, flushMs: 0 });
+		sender.queueEvent({ type: "assistant_delta", delta: "one" });
+		sender.queueEvent({ type: "run_finished" });
+		await sender.close();
+		assert.equal(sender.isStructured(), true);
+		assert.equal(calls.length, 2);
+		assert.deepEqual(
+			calls.map((c) => c.seq),
+			[0, 0],
+		);
+		assert.deepEqual(
+			calls[1].events.map((e) => e.type),
+			["assistant_delta", "run_finished"],
+		);
+	});
+
+	it("close() terminates by falling back when the backend stays down", async () => {
+		const { client, calls } = failingClient({ statusCode: 500 });
+		const fallback = [];
+		const sender = createStructuredEventSender({
+			client,
+			...ids,
+			flushMs: 0,
+			onTextFallback: (text) => fallback.push(text),
+		});
+		sender.queueEvent({ type: "assistant_delta", delta: "tail" });
+		await sender.close();
+		assert.equal(sender.isStructured(), false);
+		assert.equal(calls.length, MAX_STRUCTURED_SEND_FAILURES);
+		// The tail attempts text delivery (marker first) instead of
+		// vanishing silently.
+		assert.match(fallback[0], /showing text only/);
+		assert.equal(fallback[1], "tail");
+	});
+});
+
+describe("send failure classification", () => {
+	it("names version skew, permanent, and transient failures", () => {
+		const skew = Object.assign(new Error("no route"), { statusCode: 404 });
+		assert.equal(isVersionSkewFailure(skew), true);
+		assert.equal(isVersionSkewFailure(new Error("fetch failed")), false);
+		assert.equal(
+			isPermanentSendFailure(Object.assign(new Error("bad"), { statusCode: 400 })),
+			true,
+		);
+		assert.equal(isPermanentSendFailure(skew), true);
+		assert.equal(
+			isPermanentSendFailure(Object.assign(new Error("bad"), { statusCode: 500 })),
+			false,
+		);
+		assert.equal(isPermanentSendFailure(new Error("fetch failed")), false);
+		assert.equal(isPermanentSendFailure(undefined), false);
+	});
+
+	it("describes failures with status and never renders undefined", () => {
+		assert.equal(
+			describeSendError(Object.assign(new Error("nope"), { statusCode: 500 })),
+			"HTTP 500 nope",
+		);
+		assert.equal(describeSendError(new Error("fetch failed")), "fetch failed");
+		assert.equal(describeSendError(undefined), "unknown error");
+		assert.equal(describeSendError(null), "unknown error");
 	});
 });

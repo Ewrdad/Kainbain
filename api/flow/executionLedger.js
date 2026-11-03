@@ -251,7 +251,14 @@ export class ExecutionLedger {
 		// mistaken for a gap.
 		const clean = [];
 		for (const event of events) {
-			if (!event || typeof event !== "object") continue;
+			// Every unusable member counts as dropped — nulls, non-objects,
+			// unserializable values, and objects without a typed envelope —
+			// so the monitor counter answers "how much log did we lose"
+			// completely, not just for circular payloads.
+			if (!event || typeof event !== "object") {
+				this.counters.logEventsDropped += 1;
+				continue;
+			}
 			try {
 				const roundTripped = JSON.parse(JSON.stringify(event));
 				if (
@@ -260,6 +267,8 @@ export class ExecutionLedger {
 					typeof roundTripped.type === "string"
 				) {
 					clean.push(roundTripped);
+				} else {
+					this.counters.logEventsDropped += 1;
 				}
 			} catch {
 				this.counters.logEventsDropped += 1;

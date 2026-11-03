@@ -6,35 +6,23 @@
  *   legacy `task.processLogs` text (line-based tag grammar) so old tasks keep
  *   rendering exactly as before.
  *
- *   The tag grammar mirrors the API-side synthesis in
- *   `api/taskStore.js` (_logEntryKindFromText):
- *     [TOOL] [RESULT]      -> kind "tool"      (tools feed)
- *     [THINKING]           -> kind "thinking"  (thinking feed)
- *     [ERROR] [FAIL]       -> kind "error"     (main feed)
- *     [AGENT]              -> kind "assistant" (main feed)
+ *   The tag grammar is the shared `classifyLogLineTag`
+ *   (`shared/logTagGrammar.js`) — the same module the API-side synthesis
+ *   reads, so stored history and this parse can never disagree:
+ *     [TOOL] [RESULT]      -> kind "tool"       (tools feed)
+ *     [THINKING]           -> kind "thinking"   (thinking feed)
+ *     [USAGE]              -> kind "telemetry"  (telemetry feed)
+ *     [RAW]                -> kind "raw"        (raw feed)
+ *     [PERM] [PLAN]        -> kind "permission"/"plan" (main feed)
+ *     [ERROR] [FAIL]       -> kind "error"      (main feed)
+ *     [AGENT]              -> kind "assistant"  (main feed)
  *     [INFO] [SYSTEM] [GIT] [CI] [CI/CMD] [HUMAN] [WARN] -> kind "system"
- *     untagged text        -> kind "assistant" (main feed)
+ *     untagged text        -> kind "assistant"  (main feed)
  */
 
-export const LOG_FEEDS = ['ALL', 'ASSISTANT', 'TOOLS', 'THINKING', 'SYSTEM', 'TELEMETRY', 'RAW'];
+import { classifyLogLineTag } from '../../../../shared/logTagGrammar.js';
 
-const TAG_KIND_RULES = [
-  { pattern: /^\[(TOOL|RESULT)\]/, kind: 'tool', feed: 'tools' },
-  { pattern: /^\[RUNNER\]/, kind: 'runner', feed: 'main' },
-  { pattern: /^\[runner[\] ]/i, kind: 'runner', feed: 'main' },
-  { pattern: /^\[THINKING\]/, kind: 'thinking', feed: 'thinking' },
-  { pattern: /^\[USAGE\]/, kind: 'telemetry', feed: 'telemetry' },
-  { pattern: /^\[RAW\]/, kind: 'raw', feed: 'raw' },
-  { pattern: /^\[PERM\]/, kind: 'permission', feed: 'main' },
-  { pattern: /^\[PLAN\]/, kind: 'plan', feed: 'main' },
-  { pattern: /^\[(ERROR|FAIL|STDERR)\]/, kind: 'error', feed: 'main' },
-  {
-    pattern: /^\[(INFO|SYSTEM|GIT|CI\/CMD|CI|HUMAN|WARN)\]/,
-    kind: 'system',
-    feed: 'main',
-  },
-  { pattern: /^\[AGENT\]/, kind: 'assistant', feed: 'main' },
-];
+export const LOG_FEEDS = ['ALL', 'ASSISTANT', 'TOOLS', 'THINKING', 'SYSTEM', 'TELEMETRY', 'RAW'];
 
 /***
  * MARK: legacyLogEntryId
@@ -49,18 +37,16 @@ const legacyLogEntryId = () => {
 /***
  * MARK: entryFromLogLine
  * @description Maps one rendered log line to a structured entry using the
- *   shared tag grammar. Untagged text is assistant narrative.
+ *   shared tag grammar (`classifyLogLineTag`) — the single source this
+ *   parse and the backend synthesis both read, so a tag can never
+ *   classify one way in stored history and another way live. Untagged
+ *   text is assistant narrative.
  * @example entryFromLogLine('[TOOL] bash("ls")') => { kind: 'tool', feed: 'tools', text: '…' }
  * @param {string} line
  * @returns {Object} A structured log entry.
  ***/
 export function entryFromLogLine(line) {
-  const lines = String(line).split('\n');
-  const firstLine = lines[0] || '';
-  const checkLine = /^\[STDOUT\]/.test(firstLine) && lines.length > 1 ? lines[1] : firstLine;
-  const rule = TAG_KIND_RULES.find((r) => r.pattern.test(checkLine));
-  const kind = rule ? rule.kind : 'assistant';
-  const feed = rule ? rule.feed : 'main';
+  const { kind, feed } = classifyLogLineTag(line);
   return {
     id: legacyLogEntryId(),
     ts: null,

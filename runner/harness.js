@@ -66,12 +66,23 @@ export async function runHarnessStage({
 				// Observer only: a throwing hook must never break the run.
 			}
 		}
+		// `onLog` is observer-only like `onEvent`/`onSession`: the daemon's
+		// tap never throws, but a throwing hook must not break the session's
+		// emit loop for any caller.
+		let logText = null;
 		if (event.type === "assistant_delta" && typeof event.delta === "string" && !seen.has(event)) {
 			seen.add(event);
-			onLog(event.delta);
+			logText = event.delta;
 		} else if (event.type === "harness_log" && typeof event.text === "string" && !seen.has(event)) {
 			seen.add(event);
-			onLog(event.text);
+			logText = event.text;
+		}
+		if (logText !== null) {
+			try {
+				onLog(logText);
+			} catch {
+				// Observer only: a throwing hook must never break the run.
+			}
 		}
 	});
 	try {

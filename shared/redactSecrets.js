@@ -66,7 +66,13 @@ export const redactSecretsText = (text) => {
 		/(postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis(?:s)?|amqp(?:s)?):\/\/[^\s"'`]+/gi,
 		`$1://${REDACTED.SECRET}`,
 	);
-	out = out.replace(/(\w+:\/\/[^/\s:]+:)[^@\s/]+@/g, `$1${REDACTED.SECRET}@`);
+	// Quadratic guard: this pattern opens with `\w+` (no literal anchor),
+	// so a long run of word characters (base64 blobs, hashes, minified
+	// tool output) costs O(n^2) — ~400ms for 20KB. Both `://` and `@` are
+	// necessary for a match, so skip the scan when either is absent.
+	if (out.includes("://") && out.includes("@")) {
+		out = out.replace(/(\w+:\/\/[^/\s:]+:)[^@\s/]+@/g, `$1${REDACTED.SECRET}@`);
+	}
 	// AWS-style secret access keys inside JSON credential blobs.
 	out = out.replace(
 		/("(?:aws_secret|secret_access_key|session_token)"\s*:\s*")[^"]*(")/gi,
@@ -88,10 +94,15 @@ export const redactSecretsText = (text) => {
 	);
 	// PII: emails, home directories (never /tmp or repo-relative paths),
 	// phone shapes, and spaced/dashed 16-digit card runs.
-	out = out.replace(
-		/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
-		REDACTED.EMAIL,
-	);
+	// Quadratic guard: the leading character class has no literal
+	// anchor, so a long run of word characters costs O(n^2) (~450ms for
+	// 20KB). `@` is necessary for a match, so skip the scan without it.
+	if (out.includes("@")) {
+		out = out.replace(
+			/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
+			REDACTED.EMAIL,
+		);
+	}
 	out = out.replace(/\/(home|Users)\/[^\s/"'`:\n]+/g, `/$1/${REDACTED.PATH}`);
 	out = out.replace(
 		/\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b/g,
