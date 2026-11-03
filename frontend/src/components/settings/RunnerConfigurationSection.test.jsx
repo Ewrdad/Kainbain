@@ -170,6 +170,42 @@ describe('RunnerConfigurationSection', () => {
     expect(screen.queryByTestId('runner-detail-r1')).toBeNull();
   });
 
+  it('selects a Runner by clicking anywhere on its roster row', async () => {
+    runnersFixture();
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    // Click the row container itself, not the name button: the whole box
+    // is the hit target.
+    fireEvent.click(screen.getByTestId('runner-row-r2'));
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-detail-r2')).toBeTruthy();
+    });
+    expect(screen.getByTestId('runner-row-r2')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('runner-row-r1')).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('selects a Runner from the roster with the keyboard', async () => {
+    runnersFixture();
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    const row = screen.getByTestId('runner-row-r2');
+    expect(screen.getByTestId('runner-roster')).toHaveAttribute('role', 'listbox');
+    expect(row).toHaveAttribute('role', 'option');
+    row.focus();
+    fireEvent.keyDown(row, { key: 'Enter' });
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-detail-r2')).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId('runner-row-r1'));
+    await screen.findByTestId('runner-detail-r1');
+    const row2 = screen.getByTestId('runner-row-r2');
+    row2.focus();
+    fireEvent.keyDown(row2, { key: ' ' });
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-detail-r2')).toBeTruthy();
+    });
+  });
+
   it('approves a pending Runner and shows the one-time credential once', async () => {
     runnersFixture([PENDING_RUNNER]);
     approveRunner.mockResolvedValue({ status: 'active', credential: 'ONE-TIME-1' });
