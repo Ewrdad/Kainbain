@@ -154,6 +154,7 @@ describe("Deploy Routes", () => {
 		["/deploy/changelog?limit=0", 3],
 		["/deploy/changelog?limit=-5", 3],
 		["/deploy/changelog?limit=bogus", 3],
+		["/deploy/changelog?limit=2abc", 2],
 		["/deploy/changelog", 3],
 	])("GET %s returns %i entries", async (url, count) => {
 		manager.readChangelog.mockReturnValue(bakedArtifact());

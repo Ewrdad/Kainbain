@@ -37,12 +37,13 @@ describe('Business-owned request lists', () => {
     // switcher's "+ Add Existing Project…" dialog +
     // the 2 survey operations (getSurvey, submitSurvey) for the question-me
     // survey page.
-    // the 8 Runner operations (getRunners, getRunnerMonitor, approveRunner,
-    // denyRunner, revokeRunner, pauseRunner, resumeRunner, skipRunner) for
-    // Settings › Runners and the per-runner Now Playing controls +
+    // the 9 Runner operations (getRunners, getRunnerMonitor,
+    // getFleetModelCatalog, approveRunner, denyRunner, revokeRunner,
+    // pauseRunner, resumeRunner, skipRunner) for Settings › Runners, the
+    // per-runner Now Playing controls, and the fleet model catalogue +
     // the 2 Runner config operations (getRunnerConfig, updateRunnerConfig)
     // for the System Settings › Runners detail form.
-    expect(names).toHaveLength(92);
+    expect(names).toHaveLength(93);
     for (const name of names) expect(typeof api[name]).toBe('function');
   });
 

@@ -109,10 +109,17 @@ test.describe.serial("PR Review E2E", () => {
 		git(repoDir, ["add", "."]);
 		git(repoDir, ["commit", "-m", "initial commit"]);
 
+		// Publish target for the blocking merge stage: a local bare repo, so
+		// the publish push succeeds offline (no git.example.com).
+		const bareRepo = path.join(scratchRoot, "origin.git");
+		fs.mkdirSync(bareRepo, { recursive: true });
+		git(bareRepo, ["init", "--bare"]);
+
 		const res = await request.post(`${API_BASE}/projects`, {
 			data: {
 				name: `PR Review Canary ${Date.now()}`,
 				cwd: repoDir,
+				gitUrl: bareRepo,
 				notesPath: path.join(scratchRoot, "notes"),
 				useBranches: true,
 				// Explicit stage ids: creation does not mint them, and id-less
@@ -323,6 +330,21 @@ test.describe.serial("PR Review E2E", () => {
 			.toBe(stages[stages.length - 1].id);
 
 		// ---- Merge stage integrates the branch into main (A8) ----
+		// Detach the fixture remote first: the scratch stack gives every
+		// canary project the KAINBAIN_GIT_REMOTE_TEMPLATE remote
+		// (https://git.example.com/..., see playwright.config.js), which
+		// exists only so D11 project creation succeeds — `git remote add`
+		// is local, but a push needs real network. The merge stage
+		// publishes when a remote exists and fails the stage on an
+		// unreachable one, while canary never asserts push behavior — so
+		// drop the unpushable fixture remote and let the merge take the
+		// contractual no-remote skip path. Tolerate absence (operator
+		// stacks without the template never add a remote).
+		try {
+			git(repoDir, ["remote", "remove", "origin"]);
+		} catch {
+			// No fixture remote to detach — nothing to do.
+		}
 		// Quiesce Project A's engine first: earlier specs' UI-created tasks
 		// auto-dispatch real agent runs that keep the global engine busy,
 		// and /execute 409s while another task owns it. Those runs retry for

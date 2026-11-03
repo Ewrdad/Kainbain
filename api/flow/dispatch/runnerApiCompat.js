@@ -10,7 +10,7 @@ import semver from "semver";
  * @example loadBackendRunnerRange() => '>=1.0.0 <2.0.0'
  * @returns {string|null}
  ***/
-export function loadBackendRunnerRange() {
+export const loadBackendRunnerRange = () => {
 	try {
 		const file = path.join(
 			path.dirname(fileURLToPath(import.meta.url)),
@@ -24,7 +24,7 @@ export function loadBackendRunnerRange() {
 	} catch {
 		return null;
 	}
-}
+};
 
 const BACKEND_RUNNER_RANGE = loadBackendRunnerRange();
 

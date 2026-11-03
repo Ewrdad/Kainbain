@@ -250,6 +250,22 @@ export class IntegrationQueue {
 		};
 	}
 
+	/***
+	 * MARK: peekHead
+	 * @description Returns a copy of the head queued entry for one scope
+	 *   without leasing it, so the direct-acquire route can resolve the head
+	 *   task's stage (and its runnerPolicy) before deciding the lease.
+	 *   Returns null when the scope has no queued entry. Lazy expiry applies
+	 *   before reading, like `describe`.
+	 * @example q.peekHead({ projectId: 'p', targetBranch: 'main' }) => { taskId: 't', ... }
+	 ***/
+	peekHead({ projectId, targetBranch } = {}) {
+		const { scope } = this._scope(projectId, targetBranch);
+		this._reapLease(scope);
+		const head = scope.queue[0] || null;
+		return head ? { ...head } : null;
+	}
+
 	snapshot() {
 		return { ...this.counters };
 	}

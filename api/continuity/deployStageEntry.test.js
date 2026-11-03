@@ -96,113 +96,51 @@ function deployTask() {
 const DEPLOY_STAGE = { id: "s-d", name: "Deploy", type: "ci", command: "./deploy.sh --prod" };
 
 describeIfGit("syncDeploySourceToTip (real git repos)", () => {
-	it("converges a behind checkout to the remote tip", async () => {
+	// Asymmetric contract: tasks, merges, and deploys move independently.
+	// The primary checkout belongs to whichever task sits on it (usually a
+	// kb/* branch with WIP); the deploy source does NOT. Stage entry must
+	// never switch, reset, stash, or discard the primary — deploy.sh
+	// materializes origin/<default> in its own tip worktree instead.
+	it("leaves a behind primary checkout exactly where it is", async () => {
 		const { dir } = initSyncedRepoPair();
 		commitFile(dir, "file.txt", "two\n", "two");
 		git(dir, "push", "origin", "main");
 		git(dir, "reset", "--hard", "HEAD~1");
-		const before = git(dir, "rev-parse", "main");
-		const tip = git(dir, "rev-parse", "origin/main");
-		expect(before).not.toBe(tip);
+		const before = git(dir, "rev-parse", "HEAD");
 
 		const task = deployTask();
 		const res = await syncDeploySourceToTip(fakeStore(task), task, dir);
 
-		expect(res.synced).toBe(true);
+		expect(res.synced).toBe(false);
+		expect(res.skipped).toBe("primary-untouched");
 		expect(res.mainBranch).toBe("main");
-		expect(git(dir, "rev-parse", "main")).toBe(tip);
-		expect(git(dir, "rev-parse", "HEAD")).toBe(tip);
+		expect(git(dir, "rev-parse", "HEAD")).toBe(before);
 	});
 
-	it("checks out the integration branch when the tree sits elsewhere", async () => {
+	it("does not hop branches when the primary sits on a task branch", async () => {
 		const { dir } = initSyncedRepoPair();
 		git(dir, "checkout", "-b", "kb/other");
 		const task = deployTask();
 		const res = await syncDeploySourceToTip(fakeStore(task), task, dir);
 
-		expect(res.skipped ?? null).not.toBe("checkout-refused");
-		expect(git(dir, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
-		expect(git(dir, "rev-parse", "HEAD")).toBe(git(dir, "rev-parse", "origin/main"));
-	});
-
-	it("discards tracked dirt on the tip loudly instead of shipping it", async () => {
-		// Same contract as the pickup/merge/finalize syncs: the remote is
-		// authoritative, prior state stays in the reflog, and the discard
-		// is journaled — the deploy then builds the pure tip.
-		const { dir } = initSyncedRepoPair();
-		fs.writeFileSync(path.join(dir, "file.txt"), "operator edits\n");
-		const task = deployTask();
-		const store = fakeStore(task);
-		const res = await syncDeploySourceToTip(store, task, dir);
-
-		expect(res.synced).toBe(true);
-		expect(git(dir, "rev-parse", "HEAD")).toBe(git(dir, "rev-parse", "origin/main"));
-		expect(fs.readFileSync(path.join(dir, "file.txt"), "utf8")).toBe("one\n");
-		expect(
-			task.history.some((h) => String(h.action).includes("discarded")),
-		).toBe(true);
-	});
-
-	it("stashes tracked dirt before hopping branches (work preserved, tip deployed)", async () => {
-		// The dirty-tree recovery ladder stashes tracked modifications
-		// instead of refusing: the deploy builds the tip and the work
-		// survives in the stash.
-		const { dir } = initSyncedRepoPair();
-		git(dir, "checkout", "-b", "kb/other");
-		fs.writeFileSync(path.join(dir, "file.txt"), "operator edits\n");
-		const task = deployTask();
-		const res = await syncDeploySourceToTip(fakeStore(task), task, dir);
-
-		expect(res.skipped ?? null).not.toBe("checkout-refused");
-		expect(git(dir, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
-		expect(git(dir, "rev-parse", "HEAD")).toBe(git(dir, "rev-parse", "origin/main"));
-		expect(git(dir, "stash", "list")).toContain("kainbain-task-auto");
-	});
-
-	it("refuses when untracked files block the hop (work untouched, tip guard parks)", async () => {
-		// An untracked file that the tip tracks with different content
-		// cannot be stashed or set aside: the checkout is refused, the
-		// source stays put, and deploy.sh's tip guard parks loudly.
-		// Setup: kb/other stops tracking conflict.txt, then an untracked
-		// file of the same name appears — hopping to main (which tracks it)
-		// would overwrite it, so git refuses.
-		const { dir } = initSyncedRepoPair();
-		commitFile(dir, "conflict.txt", "main side\n", "conflict");
-		git(dir, "push", "origin", "main");
-		git(dir, "checkout", "-b", "kb/other");
-		git(dir, "rm", "-q", "conflict.txt");
-		git(
-			dir,
-			"-c",
-			"user.email=stage-entry@test",
-			"-c",
-			"user.name=stage-entry",
-			"commit",
-			"-qm",
-			"untrack conflict",
-		);
-		fs.writeFileSync(path.join(dir, "conflict.txt"), "branch side\n");
-		const task = deployTask();
-		const res = await syncDeploySourceToTip(fakeStore(task), task, dir);
-
-		expect(res.synced).toBe(false);
-		expect(res.skipped).toBe("checkout-refused");
+		expect(res.skipped).toBe("primary-untouched");
 		expect(git(dir, "rev-parse", "--abbrev-ref", "HEAD")).toBe("kb/other");
-		expect(fs.readFileSync(path.join(dir, "conflict.txt"), "utf8")).toBe("branch side\n");
 	});
 
-	it("is a quiet no-op when already in sync", async () => {
+	it("preserves tracked dirt and creates no stash", async () => {
 		const { dir } = initSyncedRepoPair();
+		git(dir, "checkout", "-b", "kb/other");
+		fs.writeFileSync(path.join(dir, "file.txt"), "operator edits\n");
 		const task = deployTask();
-		const store = fakeStore(task);
-		const res = await syncDeploySourceToTip(store, task, dir);
+		const res = await syncDeploySourceToTip(fakeStore(task), task, dir);
 
-		expect(res.synced).toBe(false);
-		expect(res.skipped).toBe("already-in-sync");
-		expect(store._recordHistory).not.toHaveBeenCalled();
+		expect(res.skipped).toBe("primary-untouched");
+		expect(git(dir, "rev-parse", "--abbrev-ref", "HEAD")).toBe("kb/other");
+		expect(fs.readFileSync(path.join(dir, "file.txt"), "utf8")).toBe("operator edits\n");
+		expect(git(dir, "stash", "list")).toBe("");
 	});
 
-	it("never throws: no cwd, non-repo dir, and missing remote all skip", async () => {
+	it("never throws: no cwd and non-repo dir skip", async () => {
 		const task = deployTask();
 		const store = fakeStore(task);
 		await expect(syncDeploySourceToTip(store, task, "")).resolves.toMatchObject({
@@ -213,11 +151,6 @@ describeIfGit("syncDeploySourceToTip (real git repos)", () => {
 		await expect(syncDeploySourceToTip(store, task, plain)).resolves.toMatchObject({
 			synced: false,
 		});
-		const { dir } = initSyncedRepoPair();
-		git(dir, "remote", "remove", "origin");
-		const res = await syncDeploySourceToTip(store, task, dir);
-		expect(res.synced).toBe(false);
-		expect(res.skipped).toBe("no-remote");
 	});
 });
 
@@ -235,11 +168,12 @@ describeIfGit("recordContinuityStageEntry pre-deploy sync wiring", () => {
 		expect(store.updateTask).not.toHaveBeenCalled();
 	});
 
-	it("mints attempt env and converges the source before marking entry", async () => {
+	it("mints attempt env without moving the primary checkout", async () => {
 		const { dir } = initSyncedRepoPair();
 		commitFile(dir, "file.txt", "two\n", "two");
 		git(dir, "push", "origin", "main");
 		git(dir, "reset", "--hard", "HEAD~1");
+		const before = git(dir, "rev-parse", "HEAD");
 
 		const task = deployTask();
 		const store = fakeStore(task);
@@ -254,41 +188,8 @@ describeIfGit("recordContinuityStageEntry pre-deploy sync wiring", () => {
 		expect(out?.env?.KAINBAIN_DEPLOY_OPERATION_KEY).toMatch(/^merge-deploy:/);
 		expect(task.deployAttemptId).toBe(out.env.KAINBAIN_DEPLOY_ATTEMPT_ID);
 		expect(task.deployOperationKey).toBe(out.env.KAINBAIN_DEPLOY_OPERATION_KEY);
-		// The source now matches the landed tip: the deploy builds this.
-		expect(git(dir, "rev-parse", "HEAD")).toBe(git(dir, "rev-parse", "origin/main"));
-	});
-
-	it("still mints env when the sync refuses (deploy.sh tip guard then parks)", async () => {
-		// Untracked files blocking the hop: the checkout is refused, the
-		// source stays put, but entry markers are still stamped — the tip
-		// guard in deploy.sh parks loudly instead of shipping the wrong tree.
-		const { dir } = initSyncedRepoPair();
-		commitFile(dir, "conflict.txt", "main side\n", "conflict");
-		git(dir, "push", "origin", "main");
-		git(dir, "checkout", "-b", "kb/other");
-		git(dir, "rm", "-q", "conflict.txt");
-		git(
-			dir,
-			"-c",
-			"user.email=stage-entry@test",
-			"-c",
-			"user.name=stage-entry",
-			"commit",
-			"-qm",
-			"untrack conflict",
-		);
-		fs.writeFileSync(path.join(dir, "conflict.txt"), "branch side\n");
-		const task = deployTask();
-		const store = fakeStore(task);
-		const out = await recordContinuityStageEntry(store, {
-			projectId: "p-1",
-			taskId: "t-1",
-			stage: DEPLOY_STAGE,
-			cwd: dir,
-		});
-
-		expect(out?.env?.KAINBAIN_DEPLOY_ATTEMPT_ID).toBeTruthy();
-		expect(task.deployAttemptId).toBeTruthy();
-		expect(git(dir, "rev-parse", "--abbrev-ref", "HEAD")).toBe("kb/other");
+		// deploy.sh builds origin/main from its tip worktree; this checkout
+		// (behind, possibly mid-task) is not the deploy source any more.
+		expect(git(dir, "rev-parse", "HEAD")).toBe(before);
 	});
 });

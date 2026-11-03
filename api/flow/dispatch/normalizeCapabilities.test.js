@@ -44,6 +44,14 @@ describe("normalizeCapabilities", () => {
 		expect(out.errors.length).toBeGreaterThanOrEqual(4);
 	});
 
+	test("drops the default sentinel and duplicate models from the advertisement", () => {
+		const out = normalizeCapabilities({
+			models: ["default", " Default ", "m1", "m1", " m2 "],
+		});
+		expect(out.errors).toEqual([]);
+		expect(out.models).toEqual(["m1", "m2"]);
+	});
+
 	test("accepts runnable false and null disk headroom", () => {
 		const out = normalizeCapabilities({ runnable: false, diskHeadroomMb: null });
 		expect(out.errors).toEqual([]);

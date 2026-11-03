@@ -37,10 +37,10 @@ export const PUBLISH_COMMAND_PATTERN = /publish\.sh/;
  * @param {unknown} command - Stage `command` or `script` value.
  * @returns {boolean} True only for strings naming `deploy.sh`.
  ***/
-export function isDeployCommand(command) {
+export const isDeployCommand = (command) => {
 	if (typeof command !== "string" || command.length === 0) return false;
 	return DEPLOY_COMMAND_PATTERN.test(command);
-}
+};
 
 /***
  * MARK: isHostCommand
@@ -52,10 +52,10 @@ export function isDeployCommand(command) {
  * @param {unknown} command - Stage `command` or `script` value.
  * @returns {boolean}
  ***/
-export function isHostCommand(command) {
+export const isHostCommand = (command) => {
 	if (typeof command !== "string" || command.length === 0) return false;
 	return HOST_COMMAND_PATTERN.test(command);
-}
+};
 
 /***
  * MARK: isPublishCommand
@@ -66,10 +66,10 @@ export function isHostCommand(command) {
  * @param {unknown} command - Stage `command` or `script` value.
  * @returns {boolean}
  ***/
-export function isPublishCommand(command) {
+export const isPublishCommand = (command) => {
 	if (typeof command !== "string" || command.length === 0) return false;
 	return PUBLISH_COMMAND_PATTERN.test(command);
-}
+};
 
 /***
  * MARK: DEFAULT_DEPLOY_COMMAND

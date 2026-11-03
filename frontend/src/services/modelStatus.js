@@ -54,6 +54,72 @@ export function modelStatusBadge(model) {
 }
 
 /***
+ * MARK: fleetCountBadgeNode
+ * @description Renders fleet availability as a React node (dot + label)
+ *   suitable for SelectDropdown's existing `option.badge` slot: the number
+ *   of claim-eligible Runners serving the model id ("2 runners", "1
+ *   runner", "No runners"). This replaces credential-health badges in the
+ *   stage, default, and alias pickers — availability is judged by the
+ *   fleet, not by backend-host credentials. Unknown ids (not in the fleet
+ *   catalogue) render "No runners": honest, never blocking. The label text
+ *   itself announces the count (screen-reader friendly, no title needed).
+ * @example fleetCountBadgeNode({ runnerCount: 2, runnerIds: ['r1', 'r2'] })
+ * @param {Object|null} info - Fleet entry (`{ runnerCount, runnerIds }`).
+ * @returns {React.ReactNode} The badge node.
+ ***/
+export function fleetCountBadgeNode(info) {
+  const count =
+    info && typeof info.runnerCount === 'number' && info.runnerCount > 0
+      ? info.runnerCount
+      : 0;
+  const label = count === 0 ? 'No runners' : `${count} runner${count === 1 ? '' : 's'}`;
+  const dotClass = count === 0 ? 'bg-slate-400' : 'bg-emerald-400';
+  return React.createElement(
+    'span',
+    {
+      className: 'inline-flex items-center gap-1 text-slate-50',
+    },
+    React.createElement('span', {
+      className: `inline-block w-1.5 h-1.5 rounded-full ${dotClass}`,
+      'aria-hidden': 'true',
+    }),
+    label,
+  );
+}
+
+/***
+ * MARK: fleetInfoForModel
+ * @description Resolves one catalogue model to its fleet availability entry.
+ *   Tries the dropdown option value first (composite `harness::provider::id`
+ *   key), then the model's own key forms — runner-advertised ids use the
+ *   same key grammar, so exact matches dedupe across machines. Returns null
+ *   when the id is served by no Runner (pickers render "No runners").
+ * @example fleetInfoForModel({ 'pi::g::m': { runnerCount: 1 } }, { key: 'pi::g::m', provider: 'g', id: 'm' }, 'pi::g::m')
+ *   => { runnerCount: 1 }
+ * @param {Object} [counts={}] - Fleet map from `fleetCountsById`.
+ * @param {Object|null} [model] - Catalogue model (`key`/`provider`/`id`).
+ * @param {string} [optionValue] - Dropdown option value (composite key).
+ * @returns {Object|null} Fleet entry or null.
+ ***/
+export function fleetInfoForModel(counts, model, optionValue) {
+  if (!counts || typeof counts !== 'object') return null;
+  const candidates = [];
+  if (typeof optionValue === 'string' && optionValue) candidates.push(optionValue);
+  if (model && typeof model === 'object') {
+    if (typeof model.key === 'string' && model.key) candidates.push(model.key);
+    if (typeof model.provider === 'string' && typeof model.id === 'string' && model.provider && model.id) {
+      candidates.push(`${model.provider}::${model.id}`);
+    }
+    if (typeof model.id === 'string' && model.id) candidates.push(model.id);
+  }
+  for (const candidate of candidates) {
+    // eslint-disable-next-line security/detect-object-injection -- candidate is a catalogue model id
+    if (Object.hasOwn(counts, candidate)) return counts[candidate];
+  }
+  return null;
+}
+
+/***
  * MARK: modelBadgeNode
  * @description Renders the badge as a React node (dot + label) suitable for
  *   SelectDropdown's existing `option.badge` slot.

@@ -337,6 +337,9 @@ export function StuckCheckPanel({ state }) {
           }
           onRefresh={state.onRefresh}
           refreshing={state.refreshing}
+          // The diagnosis runs on the backend host itself: credential-health
+          // badges are the honest signal here, not fleet runner counts.
+          healthBadges
         />
         <button
           type="button"
