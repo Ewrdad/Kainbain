@@ -306,7 +306,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					});
 				}
 			}
-			const pendingCommands = runnerRegistry.consumeCommands(runner.runnerId);
+			const pendingCommands = runnerRegistry.peekCommands(runner.runnerId);
 			return { ...result, pendingSteers, ...(pendingCommands.length ? { pendingCommands } : {}) };
 		} catch (err) {
 			return sendStoreError(reply, err);

@@ -12,6 +12,8 @@ const resumeRunner = vi.hoisted(() => vi.fn());
 const listProjects = vi.hoisted(() => vi.fn());
 const getRunnerConfig = vi.hoisted(() => vi.fn());
 const updateRunnerConfig = vi.hoisted(() => vi.fn());
+const requestModelRediscovery = vi.hoisted(() => vi.fn());
+const requestRunnerUpdate = vi.hoisted(() => vi.fn());
 
 vi.mock('../../services/api', () => ({
   api: {
@@ -25,6 +27,8 @@ vi.mock('../../services/api', () => ({
     listProjects,
     getRunnerConfig,
     updateRunnerConfig,
+    requestModelRediscovery,
+    requestRunnerUpdate,
   },
 }));
 
@@ -71,6 +75,16 @@ const PROJECTS = [
   { id: 'p2', name: 'Project Two' },
 ];
 
+const SUPPORTED_RUNNER = {
+  ...ACTIVE_RUNNER,
+  facts: { ...ACTIVE_RUNNER.facts, commands: ['requestModelRediscovery', 'requestUpdate'] },
+  commands: {
+    pending: [],
+    results: {},
+    supported: ['requestModelRediscovery', 'requestUpdate'],
+  },
+};
+
 /***
  * MARK: RunnerConfigurationSection tests
  * @description Covers the Runner settings screen that replaces the legacy
@@ -89,6 +103,8 @@ describe('RunnerConfigurationSection', () => {
       runnerId: id,
       operatorConfig: { ...OPERATOR_CONFIG, ...patch },
     }));
+    requestModelRediscovery.mockResolvedValue({ command: 'requestModelRediscovery', status: 'queued' });
+    requestRunnerUpdate.mockResolvedValue({ command: 'requestUpdate', status: 'queued' });
   });
 
   function runnersFixture(rows = [ACTIVE_RUNNER, PENDING_RUNNER]) {
@@ -616,5 +632,107 @@ describe('RunnerConfigurationSection', () => {
     expect(screen.queryByTestId('runner-update-available-r1')).toBeNull();
     expect(screen.queryByTestId('runner-below-minimum-r1')).toBeNull();
     expect(screen.queryByTestId('runner-update-failed-r1')).toBeNull();
+  });
+
+  it('queues model re-detection through the API and shows the queued notice', async () => {
+    runnersFixture([SUPPORTED_RUNNER]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    const button = screen.getByTestId('runner-redetect-models-r1');
+    expect(button).not.toBeDisabled();
+    fireEvent.click(button);
+    await waitFor(() => {
+      expect(requestModelRediscovery).toHaveBeenCalledWith('r1');
+    });
+    expect(await screen.findByTestId('runner-config-notice')).toHaveTextContent(
+      'Re-detection queued',
+    );
+  });
+
+  it('disables re-detection with guidance for runners that predate commands', async () => {
+    runnersFixture([ACTIVE_RUNNER]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.getByTestId('runner-redetect-models-r1')).toBeDisabled();
+    expect(screen.getByTestId('runner-redetect-status-r1')).toHaveTextContent('too old');
+    expect(requestModelRediscovery).not.toHaveBeenCalled();
+  });
+
+  it('disables re-detection for runners that never heartbeat (pending)', async () => {
+    runnersFixture([PENDING_RUNNER]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r2');
+    expect(screen.getByTestId('runner-redetect-models-r2')).toBeDisabled();
+    expect(screen.getByTestId('runner-redetect-status-r2')).toHaveTextContent(
+      'Needs an active Runner',
+    );
+  });
+
+  it('shows Update now exactly when an update is available and queues on click', async () => {
+    runnersFixture([{ ...SUPPORTED_RUNNER, updateAvailable: true, recommendedVersion: '0.2.0' }]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    const button = screen.getByTestId('runner-update-now-r1');
+    expect(button).not.toBeDisabled();
+    expect(button.title).toContain('0.2.0');
+    fireEvent.click(button);
+    await waitFor(() => {
+      expect(requestRunnerUpdate).toHaveBeenCalledWith('r1');
+    });
+    expect(await screen.findByTestId('runner-config-notice')).toHaveTextContent('Update queued');
+    expect(screen.getByTestId('runner-update-status-r1')).toHaveTextContent('idle');
+  });
+
+  it('hides Update now when no update is available', async () => {
+    runnersFixture([{ ...SUPPORTED_RUNNER, updateAvailable: false }]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.queryByTestId('runner-update-now-r1')).toBeNull();
+    expect(screen.queryByTestId('runner-update-status-r1')).toBeNull();
+  });
+
+  it('disables Update now with manual guidance for old runners with an update available', async () => {
+    runnersFixture([{ ...ACTIVE_RUNNER, updateAvailable: true, recommendedVersion: '0.2.0' }]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.getByTestId('runner-update-now-r1')).toBeDisabled();
+    expect(screen.getByTestId('runner-update-status-r1')).toHaveTextContent('update it manually');
+    expect(requestRunnerUpdate).not.toHaveBeenCalled();
+  });
+
+  it('surfaces queued and failed command states without a reload', async () => {
+    runnersFixture([
+      {
+        ...SUPPORTED_RUNNER,
+        updateAvailable: true,
+        commands: {
+          pending: [{ command: 'requestModelRediscovery', requestedAt: new Date().toISOString() }],
+          results: { requestUpdate: { ok: false, detail: 'disk full', at: new Date().toISOString() } },
+          supported: ['requestModelRediscovery', 'requestUpdate'],
+        },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.getByTestId('runner-redetect-status-r1')).toHaveTextContent('Re-detection queued');
+    const failed = screen.getByTestId('runner-update-status-r1');
+    expect(failed).toHaveTextContent('Update failed: disk full');
+    expect(failed).toHaveAttribute('role', 'alert');
+  });
+
+  it('names the models reset distinctly from the footer Reset', async () => {
+    runnersFixture([
+      {
+        ...SUPPORTED_RUNNER,
+        capabilities: { harnesses: [{ id: 'pi' }], models: ['m1', 'm2'] },
+        operatorConfig: { ...OPERATOR_CONFIG, availableModels: ['m1'] },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    // The footer Reset collision (an exact 'Reset' name) broke the settings
+    // tabs test: the models reset keeps its distinct accessible name.
+    expect(screen.getByTestId('runner-models-reset-r1')).toHaveTextContent('Reset models');
+    expect(screen.queryByRole('button', { name: 'Reset', exact: true })).toBeNull();
   });
 });

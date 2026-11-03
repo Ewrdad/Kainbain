@@ -303,9 +303,12 @@ describe('runnerConfigHelpers', () => {
     expect(canRequestCommand({}, 'requestUpdate')).toBe(false);
   });
 
-  it('allows update-now when supported or already available', () => {
+  it('allows update-now only when the runner supports it (badge alone is not enough)', () => {
     expect(canRequestUpdate({ commands: { supported: ['requestUpdate'] } })).toBe(true);
-    expect(canRequestUpdate({ updateAvailable: true })).toBe(true);
+    expect(canRequestUpdate({ commands: { supported: ['requestModelRediscovery'] } })).toBe(false);
+    // An update-available badge on an old Runner needs a manual update —
+    // offering the button would queue a command nothing acts on (R1).
+    expect(canRequestUpdate({ updateAvailable: true })).toBe(false);
     expect(canRequestUpdate({})).toBe(false);
   });
 

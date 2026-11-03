@@ -347,11 +347,14 @@ export const canRequestCommand = (runner = {}, command) => supportedRunnerComman
 
 /***
  * MARK: canRequestUpdate
- * @description Whether an idle-only update can be requested: the Runner
- *   advertises `requestUpdate` support or already reports an update available.
- * @example canRequestUpdate({ updateAvailable: true }) => true
+ * @description Whether an idle-only update can be requested from this page:
+ *   the Runner advertises `requestUpdate` support, so the queued command
+ *   will actually run. An update-available badge alone is not enough — an
+ *   old Runner that cannot act on the command needs a manual update, and
+ *   the UI says so instead of offering a dead button (R1).
+ * @example canRequestUpdate({ commands: { supported: ['requestUpdate'] } }) => true
  ***/
-export const canRequestUpdate = (runner = {}) => canRequestCommand(runner, 'requestUpdate') || Boolean(runner?.updateAvailable);
+export const canRequestUpdate = (runner = {}) => canRequestCommand(runner, 'requestUpdate');
 
 /***
  * MARK: canRequestRediscovery
@@ -361,17 +364,6 @@ export const canRequestUpdate = (runner = {}) => canRequestCommand(runner, 'requ
  ***/
 export const canRequestRediscovery = (runner = {}) => canRequestCommand(runner, 'requestModelRediscovery');
 
-
-/***
- * MARK: canRediscoverModels
- * @description Whether model re-detection can be requested.
- * @example canRediscoverModels({}) => true
- ***/
-export const canRediscoverModels = (runner = {}) => {
-  if (!runner || typeof runner !== 'object') return false;
-  const ids = advertisedToolIds(runner);
-  return ids.includes('muse') || advertisedModels(runner).length > 0 || true;
-};
 
 /***
  * MARK: stalenessLabel

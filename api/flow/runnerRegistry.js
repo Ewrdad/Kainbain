@@ -891,17 +891,25 @@ export class RunnerRegistry {
 		return { runnerId, command, status: "queued", requestedAt, pending: pending.map((e) => e.command) };
 	}
 
-	consumeCommands(runnerId) {
+	/***
+	 * MARK: peekCommands
+	 * @description Delivery read for the heartbeat pull channel: the queued,
+	 *   unexpired command names for one Runner, WITHOUT clearing them.
+	 *   Entries clear only on Runner ack (`heartbeat()` consumes
+	 *   `facts.commandAck`) or TTL expiry, so a Runner that crashes between
+	 *   delivery and action still collects the command on its next
+	 *   heartbeat (at-least-once; the daemon dedups in-flight repeats and
+	 *   skips commands it already staged an ack for).
+	 * @example registry.peekCommands('r1') => ['requestUpdate']
+	 * @param {string} runnerId - Runner id.
+	 * @returns {string[]} Queued command names.
+	 ***/
+	peekCommands(runnerId) {
 		const record = this.runners.get(runnerId);
 		if (!record) return [];
 		this._expireStale(record);
 		const entries = Array.isArray(record.pendingCommands) ? record.pendingCommands : [];
-		const out = entries.map((e) => e.command);
-		if (entries.length > 0) {
-			record.pendingCommands = [];
-			this._persist();
-		}
-		return out;
+		return entries.map((e) => e.command);
 	}
 
 	heartbeat({ runnerId, credential, facts = {}, origin = null } = {}) {

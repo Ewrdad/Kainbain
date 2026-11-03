@@ -26,6 +26,9 @@ import {
   describeRunnerVersion,
   runnerStatusLabel,
   stalenessLabel,
+  runnerCommands,
+  canRequestUpdate,
+  canRequestRediscovery,
 } from './runnerConfigHelpers';
 
 const DirectoryField = ({ label, testId, value, hint, isDefault, isUnknown, error, busy, onChange, onSave }) => (
@@ -263,6 +266,50 @@ export function RunnerConfigurationSection() {
   const masterIsUnknown = displayDirs ? displayDirs.masterDir.isUnknown : false;
   const worktreeIsUnknown = displayDirs ? displayDirs.worktreeDir.isUnknown : false;
   const nameDirty = selected && String(nameDraft).trim() !== String(config.displayName ?? '');
+  const selectedCommands = selected ? runnerCommands(selected) : { pending: [], results: {}, supported: [] };
+  const pendingName = (entry) => (typeof entry === 'string' ? entry : entry?.command);
+  const redetectPending = selectedCommands.pending.some((p) => pendingName(p) === 'requestModelRediscovery');
+  const redetectResult = selectedCommands.results.requestModelRediscovery || null;
+  const updatePending = selectedCommands.pending.some((p) => pendingName(p) === 'requestUpdate');
+  const updateResult = selectedCommands.results.requestUpdate || null;
+  const selectedBusy = selected ? Boolean(assignments[selected.runnerId]) : false;
+  // R1: the buttons queue backend-to-Runner commands, so they work only on
+  // active Runners that advertise support — anything else gets a disabled
+  // button plus visible guidance, never a dead control.
+  const redetectReady = selected ? selected.status === 'active' && canRequestRediscovery(selected) : false;
+  const updateReady = selected ? selected.status === 'active' && canRequestUpdate(selected) : false;
+  const commandDisabledReason = (supported) => {
+    if (!selected) return '';
+    if (selected.status !== 'active') return `Needs an active Runner (this one is ${selected.status || 'unknown'}).`;
+    if (!supported) return 'This Runner is too old for on-request commands — update the Runner to enable this.';
+    return '';
+  };
+  const updateTitle = !updateReady
+    ? `Update now is unavailable: ${commandDisabledReason(canRequestUpdate(selected))}`
+    : selectedBusy
+      ? 'Runner is busy — the update queues and applies when idle.'
+      : (selected.recommendedVersion ? `Update to ${selected.recommendedVersion} (applies when idle)` : 'Update now (applies when idle)');
+  const redetectTitle = redetectReady
+    ? 'Ask the Runner to scan for models again'
+    : `Re-detection is unavailable: ${commandDisabledReason(canRequestRediscovery(selected))}`;
+  const redetectStatusLine = redetectPending
+    ? 'Re-detection queued — the Runner refreshes on its next heartbeat.'
+    : redetectResult
+      ? (redetectResult.ok
+        ? `Last re-detection: ${redetectResult.detail || 'done'}`
+        : `Re-detection failed: ${redetectResult.detail || 'unknown error'}`)
+      : (!redetectReady ? redetectTitle : null);
+  const updateStatusLine = updatePending
+    ? 'Update queued — applies when the Runner is idle.'
+    : updateResult
+      ? (updateResult.ok
+        ? `Last update: ${updateResult.detail || 'done'}`
+        : `Update failed: ${updateResult.detail || 'unknown error'}`)
+      : (!updateReady
+        ? (selected && selected.status !== 'active'
+          ? updateTitle
+          : 'This Runner is too old to update on request — update it manually.')
+        : 'Updates apply when the Runner is idle — running work is never interrupted.');
 
   const handleNameSave = () => {
     if (!selected || !nameDirty) return;
@@ -590,13 +637,22 @@ export function RunnerConfigurationSection() {
                     )
                   )}
                   {selected.updateAvailable && (
-                    <button type="button" data-testid={`runner-update-now-${selected.runnerId}`} onClick={handleUpdateNow} disabled={busyKey === `update:${selected.runnerId}`} title={selected.recommendedVersion ? `Update to ${selected.recommendedVersion} (applies when idle)` : 'Update now (applies when idle)'} className="px-3 py-1.5 min-h-[44px] bg-warning hover:brightness-110 text-on-primary text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">
+                    <button type="button" data-testid={`runner-update-now-${selected.runnerId}`} onClick={handleUpdateNow} disabled={busyKey === `update:${selected.runnerId}` || !updateReady} title={updateTitle} className="px-3 py-1.5 min-h-[44px] bg-warning hover:brightness-110 text-on-primary text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">
                       {busyKey === `update:${selected.runnerId}` ? 'Updating…' : 'Update now'}
                     </button>
                   )}
                   <button type="button" onClick={reloadSelected} disabled={busyKey === `reload:${selected.runnerId}`} data-testid={`runner-reload-${selected.runnerId}`} className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">Reload</button>
                 </div>
               </div>
+              {selected.updateAvailable && (
+                <p
+                  className={`text-[11px] ${updateResult && !updateResult.ok ? 'text-error' : 'text-text-muted'}`}
+                  role={updateResult && !updateResult.ok ? 'alert' : 'status'}
+                  data-testid={`runner-update-status-${selected.runnerId}`}
+                >
+                  {updateStatusLine}
+                </p>
+              )}
 
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-on-surface" htmlFor={`runner-name-${selected.runnerId}`}>Runner Name:</label>
@@ -657,10 +713,19 @@ export function RunnerConfigurationSection() {
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <label className="text-xs font-bold text-on-surface" htmlFor={`runner-custom-model-${selected.runnerId}`}>Models {modelsOverridden ? '(operator override)' : '(advertised)'}</label>
-                  <button type="button" data-testid={`runner-redetect-models-${selected.runnerId}`} onClick={handleRediscover} disabled={busyKey === `rediscover:${selected.runnerId}`} className="ml-auto px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-[11px] font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">
+                  <button type="button" data-testid={`runner-redetect-models-${selected.runnerId}`} onClick={handleRediscover} disabled={busyKey === `rediscover:${selected.runnerId}` || !redetectReady} title={redetectTitle} className="ml-auto px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-[11px] font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">
                     {busyKey === `rediscover:${selected.runnerId}` ? 'Queued…' : 'Re-detect models'}
                   </button>
                 </div>
+                {redetectStatusLine && (
+                  <p
+                    className={`text-[11px] ${redetectResult && !redetectResult.ok ? 'text-error' : 'text-text-muted'}`}
+                    role={redetectResult && !redetectResult.ok ? 'alert' : 'status'}
+                    data-testid={`runner-redetect-status-${selected.runnerId}`}
+                  >
+                    {redetectStatusLine}
+                  </p>
+                )}
                 {allModelIds.length === 0 ? (
                   <p className="text-[11px] text-text-muted" data-testid={`runner-models-empty-${selected.runnerId}`}>No models advertised. Use Re-detect or add a custom id below.</p>
                 ) : (

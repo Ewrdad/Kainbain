@@ -1521,6 +1521,107 @@ describe("Runner Routes Integration", () => {
 		});
 		expect(approval.statusCode).toBe(404);
 	});
+
+	describe("operator command channel (POST /runners/:id/commands)", () => {
+		it("round-trips enqueue -> heartbeat delivery -> facts ack -> recorded result", async () => {
+			const credential = await onboard("command-1");
+			const queued = await app.inject({
+				method: "POST",
+				url: "/runners/command-1/commands",
+				payload: { command: "requestModelRediscovery" },
+			});
+			expect(queued.statusCode).toBe(202);
+			expect(JSON.parse(queued.payload)).toMatchObject({
+				command: "requestModelRediscovery",
+				status: "queued",
+			});
+
+			// First heartbeat delivers the command (and repeats it until acked).
+			const beatFacts = {
+				...FACTS,
+				commands: ["requestModelRediscovery", "requestUpdate"],
+			};
+			const first = await app.inject({
+				method: "POST",
+				url: "/runners/heartbeat",
+				headers: { "x-runner-credential": credential },
+				payload: { runnerId: "command-1", facts: beatFacts },
+			});
+			expect(first.statusCode).toBe(200);
+			expect(JSON.parse(first.payload).pendingCommands).toEqual(["requestModelRediscovery"]);
+
+			// The Runner acts, then acks through facts on its next heartbeat.
+			const second = await app.inject({
+				method: "POST",
+				url: "/runners/heartbeat",
+				headers: { "x-runner-credential": credential },
+				payload: {
+					runnerId: "command-1",
+					facts: {
+						...beatFacts,
+						commandAck: {
+							command: "requestModelRediscovery",
+							ok: true,
+							detail: "discovered 2 model(s)",
+						},
+					},
+				},
+			});
+			expect(second.statusCode).toBe(200);
+			expect(JSON.parse(second.payload).pendingCommands ?? []).toEqual([]);
+
+			const list = await app.inject({ method: "GET", url: "/runners" });
+			const record = JSON.parse(list.payload).find((r) => r.runnerId === "command-1");
+			expect(record.commands.pending).toEqual([]);
+			expect(record.commands.results.requestModelRediscovery).toMatchObject({
+				ok: true,
+				detail: "discovered 2 model(s)",
+			});
+			expect(record.commands.supported).toEqual(["requestModelRediscovery", "requestUpdate"]);
+		});
+
+		it("400s unknown commands fail-closed with UNKNOWN_COMMAND", async () => {
+			await onboard("command-2");
+			for (const command of ["requestRestart", "", null]) {
+				const res = await app.inject({
+					method: "POST",
+					url: "/runners/command-2/commands",
+					payload: { command },
+				});
+				expect(res.statusCode).toBe(400);
+				expect(JSON.parse(res.payload).code).toBe("UNKNOWN_COMMAND");
+			}
+			const beat = await app.inject({ method: "GET", url: "/runners" });
+			const record = JSON.parse(beat.payload).find((r) => r.runnerId === "command-2");
+			expect(record.commands.pending).toEqual([]);
+		});
+
+		it("409s commands for Runners that never heartbeat (pending)", async () => {
+			const reg = await app.inject({
+				method: "POST",
+				url: "/runners/register",
+				payload: { runnerId: "command-pending", joinToken: "test-join-token", facts: FACTS },
+			});
+			expect(reg.statusCode).toBe(202);
+			const res = await app.inject({
+				method: "POST",
+				url: "/runners/command-pending/commands",
+				payload: { command: "requestUpdate" },
+			});
+			expect(res.statusCode).toBe(409);
+			expect(JSON.parse(res.payload).code).toBe("COMMAND_INVALID_STATE");
+		});
+
+		it("404s commands for unknown Runners", async () => {
+			const res = await app.inject({
+				method: "POST",
+				url: "/runners/ghost-runner/commands",
+				payload: { command: "requestUpdate" },
+			});
+			expect(res.statusCode).toBe(404);
+			expect(JSON.parse(res.payload).code).toBe("UNKNOWN_RUNNER");
+		});
+	});
 });
 
 describe("Runner version floor (Option A, ADR 0012)", () => {
