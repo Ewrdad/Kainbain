@@ -420,6 +420,14 @@ export function handleStageFailure(
 	if (!wasInterrupted) {
 		task.status = "failed";
 	}
+	// A parked task is never a retry: when the failback was skipped
+	// (unrecoverable/ interrupted) moveToStage never ran, so a stale
+	// autoRetrying flag from an earlier transient retry could otherwise
+	// linger here and make a FAILED task read as RETRYING. Clear both
+	// re-run flags on every park so the label can only mean an in-place
+	// retry that is actually about to happen.
+	task.autoRetrying = false;
+	task.autoIterating = false;
 	taskStore._saveTaskMarkdown(cwd, task);
 
 	// Human-intervention push: the task is parked and auto-recovery cannot

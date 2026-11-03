@@ -529,6 +529,80 @@ describe("The Flow: retry-in-place vs cross-stage auto iteration", () => {
 		const autoLog = captured.logs.find((line) => line.includes("[AUTO]"));
 		expect(autoLog).toContain("retrying same stage");
 	});
+
+	it("clears stale re-run flags when a skip-failback failure parks the task", () => {
+		// A transient retry earlier set autoRetrying; the follow-up failure is
+		// unrecoverable, so failback never runs and moveToStage never clears
+		// the flags. The parked task must still not read as RETRYING.
+		const store = makeStore();
+		const task = store.createTask("p1", { stageId: "two", projectCwd: tempCwd });
+		task.autoRetrying = true;
+		task.autoIterating = true;
+		const result = store.handleStageFailure("p1", task.id, agentStages[1], new Error("auth expired"), {
+			stages: agentStages,
+			projectCwd: tempCwd,
+			skipFailback: true,
+		});
+		expect(result.status).toBe("failed");
+		expect(task.status).toBe("failed");
+		expect(task.autoRetrying).toBe(false);
+		expect(task.autoIterating).toBe(false);
+	});
+
+	it("clears re-run flags when the auto-iteration budget is exhausted and the task parks", () => {
+		const originalMax = config.maxAutoIterations;
+		const originalEnabled = config.autoIterationEnabled;
+		config.maxAutoIterations = 1;
+		config.autoIterationEnabled = true;
+		try {
+			const store = makeStore();
+			const task = store.createTask("p1", { stageId: "two", projectCwd: tempCwd });
+			// First failure: failback to "one" + auto iteration starts.
+			store.handleStageFailure("p1", task.id, agentStages[1], new Error("boom"), {
+				stages: agentStages,
+				projectCwd: tempCwd,
+			});
+			expect(task.autoIterating).toBe(true);
+			// Move back to "two" and fail again: budget (1) is now exhausted.
+			task.currentStageId = "two";
+			const result = store.handleStageFailure("p1", task.id, agentStages[1], new Error("boom again"), {
+				stages: agentStages,
+				projectCwd: tempCwd,
+			});
+			expect(result.status).toBe("failed");
+			expect(task.autoRetrying).toBe(false);
+			expect(task.autoIterating).toBe(false);
+		} finally {
+			config.maxAutoIterations = originalMax;
+			config.autoIterationEnabled = originalEnabled;
+		}
+	});
+
+	it("beginAutoIteration clears the re-run flags on every no-re-run path", () => {
+		const originalMax = config.maxAutoIterations;
+		const originalEnabled = config.autoIterationEnabled;
+		config.maxAutoIterations = 1;
+		config.autoIterationEnabled = true;
+		try {
+			// Disabled: flags cleared, counter untouched.
+			const disabled = { status: "in_stage", currentStageId: "one", autoIterationCount: 0, autoRetrying: true, autoIterating: true };
+			expect(beginAutoIteration(disabled, { id: "two" }, "boom", { autoIterationEnabled: false })).toBeNull();
+			expect(disabled.autoRetrying).toBe(false);
+			expect(disabled.autoIterating).toBe(false);
+			expect(disabled.autoIterationCount).toBe(0);
+
+			// Budget exhausted on the second call: flags cleared again.
+			const task = { status: "in_stage", currentStageId: "one", autoIterationCount: 0, autoRetrying: true, autoIterating: true };
+			expect(beginAutoIteration(task, { id: "two" }, "boom", {})).toEqual({ maxAttempts: 1 });
+			expect(task.autoIterating).toBe(true);
+			expect(beginAutoIteration(task, { id: "two" }, "boom", {})).toBeNull();
+			expect(task.autoRetrying).toBe(false);
+			expect(task.autoIterating).toBe(false);
+		} finally {
+			config.maxAutoIterations = originalMax;
+			config.autoIterationEnabled = originalEnabled;
+		}
+	});
 });
 
 describe("The Flow: head+tail log excerpts (excerptLog)", () => {

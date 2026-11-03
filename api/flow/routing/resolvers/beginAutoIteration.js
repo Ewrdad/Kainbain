@@ -26,6 +26,12 @@ import { resolveMaxAutoIterations } from "./resolveMaxAutoIterations.js";
  * @returns {{ maxAttempts: number }|null}
  ***/
 export function beginAutoIteration(task, stage, error, project) {
+	// Every null return means "no re-run will happen", so the re-run flags
+	// must read false — clear them up front so a stale flag from an earlier
+	// transient retry can never survive a decision not to re-run. The flags
+	// are only set on the success path at the bottom.
+	task.autoRetrying = false;
+	task.autoIterating = false;
 	if (!resolveAutoIterationEnabled(project)) return null;
 	// Single taxonomy: operator aborts settle quietly and permanent halts
 	// (auth/quota/context-overflow/already-processing) never auto-retry.
