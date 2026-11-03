@@ -97,6 +97,13 @@ export function moveToStage(
 		? resolveStageLabel(fromStageId, projStages)
 		: null;
 	task.currentStageId = stageId;
+	// A stage change ends any automatic retry/iteration context that belonged
+	// to the previous stage: the task is now at a new stage, so it must not
+	// keep reading as "retrying" the failed stage (or carry stale auto-run
+	// flags forward). Iteration counters are deliberately preserved so retry
+	// budgets remain auditable across moves; only the live flags reset.
+	task.autoRetrying = false;
+	task.autoIterating = false;
 	// A stage change consumes any startup-recovery priority: the task is no
 	// longer sitting where the interruption left it, so it competes as
 	// normal work from here on.
@@ -470,6 +477,8 @@ export function completeTask(store, projectId, taskId, projectCwd) {
 	task.status = "completed";
 	task.failureReason = null;
 	task.lastError = null;
+	task.autoRetrying = false;
+	task.autoIterating = false;
 	task.updatedAt = new Date().toISOString();
 	task.history.push({
 		timestamp: task.updatedAt,
