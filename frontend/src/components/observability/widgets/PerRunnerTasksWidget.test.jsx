@@ -1,5 +1,5 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import {
   PerRunnerTasksWidget,
   formatRunnerElapsed,
@@ -23,6 +23,10 @@ describe('formatRunnerElapsed', () => {
     );
     expect(formatRunnerElapsed(null, Date.now())).toBe('—');
     expect(formatRunnerElapsed('not-a-date', Date.now())).toBe('—');
+    // A start in the future (clock skew) never counts up from negative time.
+    expect(
+      formatRunnerElapsed('2026-10-27T12:05:00.000Z', Date.parse('2026-10-27T12:00:00.000Z')),
+    ).toBe('—');
   });
 });
 
@@ -319,8 +323,11 @@ describe('PerRunnerTasksWidget', () => {
     vi.useFakeTimers();
     try {
       const { unmount } = render(<PerRunnerTasksWidget tasks={[]} pollMs={0} />);
+      // Advance inside act so each poll's state update lands within act.
       // Initial load plus default-cadence ticks only.
-      await vi.advanceTimersByTimeAsync(11_000);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(11_000);
+      });
       unmount();
       expect(getRunnerMonitor.mock.calls.length).toBe(3);
       expect(getRunners.mock.calls.length).toBe(3);

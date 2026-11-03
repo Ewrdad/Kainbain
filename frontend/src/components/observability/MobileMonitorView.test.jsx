@@ -1,6 +1,6 @@
 import React from 'react';
 import { expect, test, vi, beforeEach } from 'vitest';
-import { screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent, act } from '@testing-library/react';
 import { renderWithKainBain } from '../../testUtils';
 import {
   MobileMonitorView,
@@ -25,6 +25,17 @@ beforeEach(() => {
   getRunnerMonitor.mockResolvedValue({ liveAssignments: [] });
 });
 
+// Renders the view, then flushes the header's single fleet poll inside act
+// so every assertion runs on the settled state and no state update lands
+// after the test body (the same flush pattern the dashboard's compact tests
+// use). Tests that inject fleet overrides skip polling, so the flush is a
+// no-op for them.
+const renderView = async (ui) => {
+  const result = renderWithKainBain(ui);
+  await act(async () => {});
+  return result;
+};
+
 const baseProps = {
   engineState: { status: 'running', activeStageName: 'Code Generation' },
   activeTask: {
@@ -40,8 +51,8 @@ const baseProps = {
   ],
 };
 
-test('slim header shows engine pill, active task, and model details instead of task counts', () => {
-  renderWithKainBain(<MobileMonitorView {...baseProps} onExit={() => {}} />);
+test('slim header shows engine pill, active task, and model details instead of task counts', async () => {
+  await renderView(<MobileMonitorView {...baseProps} onExit={() => {}} />);
 
   expect(screen.getByTestId('mobile-monitor-view')).toBeInTheDocument();
   const pill = screen.getByTestId('mobile-engine-state');
@@ -58,8 +69,8 @@ test('slim header shows engine pill, active task, and model details instead of t
   expect(details).toHaveTextContent('gemma4:31b-cloud');
 });
 
-test('engine pill names the active task stage over a stranded engine stage', () => {
-  renderWithKainBain(
+test('engine pill names the active task stage over a stranded engine stage', async () => {
+  await renderView(
     <MobileMonitorView
       engineState={{
         status: 'running',
@@ -78,8 +89,8 @@ test('engine pill names the active task stage over a stranded engine stage', () 
   expect(screen.getByTestId('mobile-engine-state')).not.toHaveTextContent('Merge and deploy');
 });
 
-test('legacy stats and queueCount props are ignored without crashing', () => {
-  renderWithKainBain(
+test('legacy stats and queueCount props are ignored without crashing', async () => {
+  await renderView(
     <MobileMonitorView
       {...baseProps}
       stats={{ completed: 7, failed: 1, waitingHuman: 2 }}
@@ -94,8 +105,8 @@ test('legacy stats and queueCount props are ignored without crashing', () => {
 
 test.each(['ci', 'deploy', 'merge'])(
   'scripted stage %s renders Automated — no model instead of pills',
-  (stageType) => {
-    renderWithKainBain(
+  async (stageType) => {
+    await renderView(
       <MobileMonitorView
         {...baseProps}
         activeTask={{
@@ -116,8 +127,8 @@ test.each(['ci', 'deploy', 'merge'])(
   },
 );
 
-test("harness-managed stage (modelSelection 'none') hides only the model pill", () => {
-  renderWithKainBain(
+test("harness-managed stage (modelSelection 'none') hides only the model pill", async () => {
+  await renderView(
     <MobileMonitorView
       {...baseProps}
       activeTask={{
@@ -138,8 +149,8 @@ test("harness-managed stage (modelSelection 'none') hides only the model pill", 
   expect(details).not.toHaveTextContent(/Provider:/);
 });
 
-test('provider and source render when the active task reports them', () => {
-  renderWithKainBain(
+test('provider and source render when the active task reports them', async () => {
+  await renderView(
     <MobileMonitorView
       {...baseProps}
       activeTask={{
@@ -164,8 +175,8 @@ test('provider and source render when the active task reports them', () => {
   expect(details).toHaveTextContent(/Source: stage-override/);
 });
 
-test('idle view shows the no-active-model fallback instead of blanking', () => {
-  renderWithKainBain(<MobileMonitorView engineState={{}} stats={{}} onExit={() => {}} />);
+test('idle view shows the no-active-model fallback instead of blanking', async () => {
+  await renderView(<MobileMonitorView engineState={{}} stats={{}} onExit={() => {}} />);
 
   expect(screen.getByTestId('mobile-engine-state')).toHaveTextContent('IDLE');
   expect(screen.getByTestId('mobile-active-stage')).toHaveTextContent('No active stage');
@@ -175,10 +186,10 @@ test('idle view shows the no-active-model fallback instead of blanking', () => {
   expect(screen.queryByTestId('mobile-monitor-counts')).not.toBeInTheDocument();
 });
 
-test('long model names truncate on one line with a full-text tooltip', () => {
+test('long model names truncate on one line with a full-text tooltip', async () => {
   const longModel =
     'pi::ollama-cloud::an-extremely-long-model-identifier-that-must-not-overflow-a-360px-viewport';
-  renderWithKainBain(
+  await renderView(
     <MobileMonitorView
       {...baseProps}
       activeTask={{
@@ -201,8 +212,8 @@ test('long model names truncate on one line with a full-text tooltip', () => {
   expect(details).toHaveTextContent(/Model:/);
 });
 
-test('renders only the log console: no other dashboard widgets', () => {
-  renderWithKainBain(<MobileMonitorView {...baseProps} onExit={() => {}} />);
+test('renders only the log console: no other dashboard widgets', async () => {
+  await renderView(<MobileMonitorView {...baseProps} onExit={() => {}} />);
 
   expect(screen.getByTestId('live-log-console')).toBeInTheDocument();
   expect(screen.queryByTestId('widget-kpis')).not.toBeInTheDocument();
@@ -212,19 +223,17 @@ test('renders only the log console: no other dashboard widgets', () => {
   expect(screen.queryByTestId('widget-outcomes')).not.toBeInTheDocument();
 });
 
-test('idle engine shows IDLE pill and logs empty-state without crashing', () => {
-  renderWithKainBain(<MobileMonitorView engineState={{}} stats={{}} onExit={() => {}} />);
+test('idle engine shows IDLE pill and logs empty-state without crashing', async () => {
+  await renderView(<MobileMonitorView engineState={{}} stats={{}} onExit={() => {}} />);
 
   expect(screen.getByTestId('mobile-engine-state')).toHaveTextContent('IDLE');
   expect(screen.getByTestId('mobile-active-stage')).toHaveTextContent('No active stage');
   expect(screen.getByText(/Waiting for process logs stream/i)).toBeInTheDocument();
 });
 
-test('filter chips and Clear still operate in the compact view', () => {
+test('filter chips and Clear still operate in the compact view', async () => {
   const onClearLogs = vi.fn();
-  renderWithKainBain(
-    <MobileMonitorView {...baseProps} onClearLogs={onClearLogs} onExit={() => {}} />,
-  );
+  await renderView(<MobileMonitorView {...baseProps} onClearLogs={onClearLogs} onExit={() => {}} />);
 
   // Filters are collapsed by default: reveal them first.
   fireEvent.click(screen.getByTestId('log-filter-toggle'));
@@ -237,16 +246,16 @@ test('filter chips and Clear still operate in the compact view', () => {
   expect(onClearLogs).toHaveBeenCalledTimes(1);
 });
 
-test('Back exits the monitor', () => {
+test('Back exits the monitor', async () => {
   const onExit = vi.fn();
-  renderWithKainBain(<MobileMonitorView {...baseProps} onExit={onExit} />);
+  await renderView(<MobileMonitorView {...baseProps} onExit={onExit} />);
 
   fireEvent.click(screen.getByRole('button', { name: 'Back to orchestrator' }));
   expect(onExit).toHaveBeenCalledTimes(1);
 });
 
-test('header falls back to the goal first line when the task has no title', () => {
-  renderWithKainBain(
+test('header falls back to the goal first line when the task has no title', async () => {
+  await renderView(
     <MobileMonitorView
       {...baseProps}
       activeTask={{ id: 't2', goal: '# Ship the widget\nSecond line' }}
@@ -257,10 +266,8 @@ test('header falls back to the goal first line when the task has no title', () =
   expect(screen.getByTestId('mobile-active-stage')).toHaveTextContent('Ship the widget');
 });
 
-test('running without a resolved task shows a no-task label, not the stage twice', () => {
-  renderWithKainBain(
-    <MobileMonitorView {...baseProps} activeTask={null} onExit={() => {}} />,
-  );
+test('running without a resolved task shows a no-task label, not the stage twice', async () => {
+  await renderView(<MobileMonitorView {...baseProps} activeTask={null} onExit={() => {}} />);
 
   expect(screen.getByTestId('mobile-engine-state')).toHaveTextContent(
     /ACTIVE: Code Generation/i,
@@ -270,9 +277,9 @@ test('running without a resolved task shows a no-task label, not the stage twice
   expect(headerText).not.toHaveTextContent('Code Generation');
 });
 
-test('long task titles truncate with a full-text tooltip', () => {
+test('long task titles truncate with a full-text tooltip', async () => {
   const longTitle = 'Implement the extremely long task title that must not overflow a 360px viewport';
-  renderWithKainBain(
+  await renderView(
     <MobileMonitorView
       {...baseProps}
       activeTask={{ id: 't3', title: longTitle }}
@@ -286,16 +293,16 @@ test('long task titles truncate with a full-text tooltip', () => {
   expect(headerText).toHaveAttribute('title', longTitle);
 });
 
-test('stage name appears exactly once in the header row while running', () => {
-  renderWithKainBain(<MobileMonitorView {...baseProps} onExit={() => {}} />);
+test('stage name appears exactly once in the header row while running', async () => {
+  await renderView(<MobileMonitorView {...baseProps} onExit={() => {}} />);
 
   const header = screen.getByTestId('mobile-monitor-view').querySelector('header');
   const occurrences = (header.textContent.match(/Code Generation/g) || []).length;
   expect(occurrences).toBe(1);
 });
 
-test('fleet shown: legacy pill hides and the chip names task plus stage', () => {
-  renderWithKainBain(
+test('fleet shown: legacy pill hides and the chip names task plus stage', async () => {
+  await renderView(
     <MobileMonitorView
       engineState={{ status: 'running', activeStageName: 'Code Generation' }}
       activeTask={{ id: 't1', title: 'Build user auth', currentStageId: '5' }}
@@ -321,8 +328,8 @@ test('fleet shown: legacy pill hides and the chip names task plus stage', () => 
   expect(occurrences).toBe(1);
 });
 
-test('fleet shown but task unnamed: pill stays hidden and the legacy label remains', () => {
-  renderWithKainBain(
+test('fleet shown but task unnamed: pill stays hidden and the legacy label remains', async () => {
+  await renderView(
     <MobileMonitorView
       engineState={{ status: 'running', activeStageName: 'Code Generation' }}
       activeTask={null}
@@ -337,8 +344,28 @@ test('fleet shown but task unnamed: pill stays hidden and the legacy label remai
   expect(screen.getByTestId('mobile-active-stage')).toHaveTextContent('No active task');
 });
 
-test('fleet registered but idle: pill hidden and the fleet-idle state shows', () => {
-  renderWithKainBain(
+test('fleet shown, task unnamed, and idle: chip falls back to the no-stage label, not blank', async () => {
+  await renderView(
+    <MobileMonitorView
+      engineState={{ status: 'idle' }}
+      activeTask={null}
+      runnerAssignmentsOverride={[{ runnerId: 'local-alpha', taskId: 't9' }]}
+      runnerRegistryOverride={[{ runnerId: 'local-alpha' }]}
+      processLogs={[]}
+      onExit={() => {}}
+    />,
+  );
+
+  // With a fleet shown the pill is gone, so the chip must still name
+  // something readable: the idle fallback, never an empty header.
+  expect(screen.queryByTestId('mobile-engine-state')).not.toBeInTheDocument();
+  const chip = screen.getByTestId('mobile-active-stage');
+  expect(chip).toHaveTextContent('No active stage');
+  expect(chip).toHaveAttribute('role', 'status');
+});
+
+test('fleet registered but idle: pill hidden and the fleet-idle state shows', async () => {
+  await renderView(
     <MobileMonitorView
       engineState={{ status: 'idle', activeStageName: 'Code Generation' }}
       activeTask={{ id: 't1', title: 'Build user auth', currentStageId: '5' }}
@@ -358,8 +385,8 @@ test('fleet registered but idle: pill hidden and the fleet-idle state shows', ()
   expect(screen.getByText(/Fleet idle/)).toBeInTheDocument();
 });
 
-test('pill fallback keeps a single status announcer for screen readers', () => {
-  renderWithKainBain(
+test('pill fallback keeps a single status announcer for screen readers', async () => {
+  await renderView(
     <MobileMonitorView
       {...baseProps}
       runnerAssignmentsOverride={[]}
@@ -374,8 +401,8 @@ test('pill fallback keeps a single status announcer for screen readers', () => {
   expect(screen.getByTestId('mobile-active-stage')).not.toHaveAttribute('role');
 });
 
-test('null engine snapshot renders the idle fallback without crashing', () => {
-  renderWithKainBain(
+test('null engine snapshot renders the idle fallback without crashing', async () => {
+  await renderView(
     <MobileMonitorView
       engineState={null}
       activeTask={{ id: 't1', title: 'Build user auth' }}
@@ -394,8 +421,8 @@ test('null engine snapshot renders the idle fallback without crashing', () => {
   );
 });
 
-test('null list props render fallbacks without crashing', () => {
-  renderWithKainBain(
+test('null list props render fallbacks without crashing', async () => {
+  await renderView(
     <MobileMonitorView
       engineState={null}
       activeTask={null}
@@ -423,8 +450,8 @@ test('header formatters stay importable from the view after the module split', (
   expect(resolveMobileModelLine(null)).toBeNull();
 });
 
-test('no runners configured: pill fallback stays with the legacy task-only title', () => {
-  renderWithKainBain(
+test('no runners configured: pill fallback stays with the legacy task-only title', async () => {
+  await renderView(
     <MobileMonitorView
       {...baseProps}
       runnerAssignmentsOverride={[]}
@@ -441,8 +468,8 @@ test('no runners configured: pill fallback stays with the legacy task-only title
   expect(headerText).not.toHaveTextContent('Code Generation');
 });
 
-test('assignments-only override keeps header and rows consistent with no polling', () => {
-  renderWithKainBain(
+test('assignments-only override keeps header and rows consistent with no polling', async () => {
+  await renderView(
     <MobileMonitorView
       {...baseProps}
       runnerAssignmentsOverride={[{ runnerId: 'local-alpha', taskId: 't1' }]}
@@ -458,8 +485,8 @@ test('assignments-only override keeps header and rows consistent with no polling
   expect(getRunners).not.toHaveBeenCalled();
 });
 
-test('malformed fleet overrides fail safe to the pill fallback, never a crash', () => {
-  renderWithKainBain(
+test('malformed fleet overrides fail safe to the pill fallback, never a crash', async () => {
+  await renderView(
     <MobileMonitorView
       {...baseProps}
       runnerAssignmentsOverride="not-a-fleet"
@@ -489,10 +516,12 @@ test('header and rows share one fleet poller: one read per tick, never doubled',
       ],
     });
     getRunners.mockResolvedValue([{ runnerId: 'local-alpha' }]);
-    const { unmount } = renderWithKainBain(
-      <MobileMonitorView {...baseProps} onExit={() => {}} />,
-    );
-    await vi.advanceTimersByTimeAsync(100);
+    const { unmount } = await renderView(<MobileMonitorView {...baseProps} onExit={() => {}} />);
+    // Advance inside act so the rows' 1s elapsed-clock interval updates
+    // land within act instead of warning.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
 
     // The one shared read feeds both the header and the row: the legacy
     // pill drops away and the live assignment renders.
@@ -504,7 +533,9 @@ test('header and rows share one fleet poller: one read per tick, never doubled',
     expect(getRunnerMonitor).toHaveBeenCalledTimes(1);
     expect(getRunners).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(10_000);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
     // Initial read plus one read per 5s tick — the rows reuse the header's
     // read instead of polling themselves (6 calls would mean double polling).
     expect(getRunnerMonitor).toHaveBeenCalledTimes(3);
@@ -515,15 +546,15 @@ test('header and rows share one fleet poller: one read per tick, never doubled',
   }
 });
 
-test('compressed header is two rows: chip row plus one model line', () => {
-  renderWithKainBain(<MobileMonitorView {...baseProps} onExit={() => {}} />);
+test('compressed header is two rows: chip row plus one model line', async () => {
+  await renderView(<MobileMonitorView {...baseProps} onExit={() => {}} />);
 
   const header = screen.getByTestId('mobile-monitor-view').querySelector('header');
   expect(header.querySelectorAll(':scope > div')).toHaveLength(2);
 });
 
-test('console wrappers keep min-w-0 so wide log rows cannot push the page sideways', () => {
-  renderWithKainBain(<MobileMonitorView {...baseProps} onExit={() => {}} />);
+test('console wrappers keep min-w-0 so wide log rows cannot push the page sideways', async () => {
+  await renderView(<MobileMonitorView {...baseProps} onExit={() => {}} />);
 
   const root = screen.getByTestId('mobile-monitor-view');
   expect(root).toHaveClass('min-w-0');

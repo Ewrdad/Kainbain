@@ -178,3 +178,29 @@ right-side title path already avoids duplicating.
 - Gates re-verified below before the verdict; canary E2E failures in CI
   are environmental (`net::ERR_INSUFFICIENT_RESOURCES` on page load, 26
   failed / 108 passed) and unrelated to this frontend-only change.
+
+## Cleanup hardening pass 2 (2026-11-03, test-rigidity sweep)
+
+- Test hygiene, no production change: `MobileMonitorView.test.jsx` now
+  renders through a `renderView` helper that flushes the header's single
+  fleet poll inside `act` (the same `await act(async () => {})` pattern the
+  dashboard compact tests use), so assertions run on the settled state.
+  The fake-timer "one shared poller" test advances its timers inside
+  `act` too, wrapping the runner rows' 1s elapsed-clock interval. Result:
+  0 `not wrapped in act` warnings across the file (previously warned on every polled render). The
+  `PerRunnerTasksWidget` fake-timer poll-cadence test got the same act
+  wrap (was the source of its file's 6 warnings; now 0).
+- One new edge-case pin at each level: view-level "fleet shown, task
+  unnamed, idle" (pill hidden, chip still reads `No active stage` with
+  `role="status"` — never a blank header) and widget-level future-start
+  elapsed formatting (`formatRunnerElapsed` with a start after now renders
+  `—`, never negative time).
+- Re-verified gates after the sweep: frontend 293 files / 3993 tests
+  passed, api 372 files / 6155 passed + 1 skipped, `lint:frontend` 0
+  errors (touched files warning-free; the 6 remaining observability
+  warnings are pre-existing in untouched `ObservabilityDashboard` files),
+  `check-jsdoc-example` PASS, `check-one-function-per-file` PASS.
+- Regression sweep vs `main` unchanged: `EngineStatePill`,
+  `mobileModelDetails`, `ObservabilityDashboard`, and `NowPlayingBar` have
+  no diff on this branch; desktop full monitor and the desktop explicit
+  compact path render the same component with the same fallbacks.
