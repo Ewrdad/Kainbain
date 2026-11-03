@@ -285,3 +285,30 @@ right-side title path already avoids duplicating.
   mixed-version safe in both directions; the single shared 5s poller is
   pinned by test (strictly fewer fleet requests than `main`'s separate
   widget poll).
+
+## Cleanup final audit (2026-11-03, cleanup stage continued)
+
+- Fresh-eyes audit, no production change: the view, both resolvers, the
+  title formatter, and the widget were re-read end to end and every
+  wrong-type primitive re-traced (`?.` plus `?? {}`/`Array.isArray` at
+  each step; property reads on strings/numbers cannot throw). The
+  legacy-pill-visible failure direction holds on every input, the
+  single-announcer a11y contract and the 360px truncation chain are
+  pinned, and a formatter-importer search shows only the view itself,
+  its re-export shim, and co-located tests — no external caller can
+  break from the module split.
+- One decontamination: deleted the committed runner session transcript
+  (`2026-11-03T03-03-00-663Z_*.jsonl`) at the repo root — 241 lines of
+  accidental commit noise, referenced by nothing. Branch-vs-base is now
+  task-only: the 5 view/resolver/widget sources + their tests, doc-only
+  api moves, and task docs.
+- `check:one-function` (manual, not CI) fails on exactly the same 3
+  files as `main` (`runnerMatches.js`, `useFleetModelCatalog.js`,
+  `fleetModelOptions.js`): verified the gate script and its allowlist
+  are byte-identical to `main`, the 3 files are unlisted there too, and
+  branch-vs-main top-level function counts match (3/8/3) — the api
+  diffs move doc blocks only. New modules declare one function each.
+  Splitting those files belongs to their owner task, not this
+  mobile-UI cleanup.
+- Gates re-verified below before the verdict (focused 105/105 first,
+  then the full unit gate once after the deletion).
