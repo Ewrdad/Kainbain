@@ -1183,6 +1183,30 @@ async function executeAssignment({
  *   removed in all outcomes.
  * @example await executeIntegrationAssignment({ config, client, logger, state, projectId: 'p', taskId: 't', claim, integration }) => { ... }
  ***/
+/***
+ * MARK: integrationMergeSubject
+ * @description Subject for the integration merge commit. Integration always
+ *   creates a real merge commit (--no-ff), even when the task branch could
+ *   fast-forward: task work otherwise lands on the target as a chain of
+ *   `kb/<id> … Runner stage output` commits, which the changelog filter
+ *   (shared/changelogHistory/isAdminCommitSubject.js) hides as automation
+ *   noise — so a merged, deployed feature never appeared in the in-app
+ *   changelog (task a654a254, 2026-11-02). This subject matches none of the
+ *   admin patterns, so the changelog shows one entry per merged task,
+ *   carrying the task's own title.
+ * @example integrationMergeSubject({ taskBranch: 'kb/abc', targetBranch: 'main', task: { title: 'Fix scroll' } }) => 'Merge kb/abc into main: Fix scroll'
+ * @param {Object} opts - `{ taskBranch, targetBranch, task }`.
+ * @returns {string} Single-line merge commit subject.
+ ***/
+export function integrationMergeSubject({ taskBranch, targetBranch, task } = {}) {
+	const title = String(task?.title || task?.goal || "")
+		.replace(/\s+/g, " ")
+		.trim()
+		.slice(0, 120);
+	const base = `Merge ${taskBranch} into ${targetBranch}`;
+	return title ? `${base}: ${title}` : base;
+}
+
 async function executeIntegrationAssignment({
 	config,
 	client,
@@ -1249,7 +1273,8 @@ async function executeIntegrationAssignment({
 				await runGit(workdir, [
 					"-c", "user.name=KainBain Integration",
 					"-c", "user.email=kainbain-runner@local",
-					"merge", "--no-edit", `origin/${taskBranch}`,
+					"merge", "--no-ff", "-m", integrationMergeSubject({ taskBranch, targetBranch, task }),
+					`origin/${taskBranch}`,
 				]);
 			} catch (mergeErr) {
 				let conflicted = [];

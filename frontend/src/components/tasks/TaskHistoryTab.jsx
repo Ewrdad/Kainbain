@@ -3,6 +3,7 @@ import { DiffStatBadge } from './DiffStatBadge';
 import { RunAttributionBadge } from './RunAttributionBadge';
 import { HistoryFailureReason } from './HistoryFailureReason';
 import { formatAvgDuration } from './stagePace';
+import { formatTryCount } from './taskFormatters';
 
 export function TaskHistoryTab({
   timelineData,
@@ -22,6 +23,7 @@ export function TaskHistoryTab({
         <div className="flex flex-col gap-4 ml-2 border-l border-border-standard pl-4">
           {timelineData.map((item, i) => {
             const stageAverage = avgSecondsByStage[String(item.stage || '').toLowerCase()];
+            const tryLabel = formatTryCount(item);
             return (
               <div key={i} className="relative flex flex-col gap-0.5">
                 <div
@@ -41,6 +43,7 @@ export function TaskHistoryTab({
                 </div>
                 <span className="text-[10px] font-mono text-text-muted">
                   {item.timestamp} • {item.duration || '0m'}
+                  {tryLabel ? ` • ${tryLabel}` : ''}
                   {stageAverage > 0 && (
                     <span
                       title={`Stage average across active-workflow tasks: ${formatAvgDuration(
