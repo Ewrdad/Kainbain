@@ -750,8 +750,8 @@ test('runner box stage falls back to the task stage when the assignment carries 
  * @description Runner boxes show even when nothing is running: every
  * configured Runner keeps its box (idle ones read "Idle / Waiting for
  * work"), so the count always matches the fleet. Only a fleet of zero
- * keeps the legacy single-task display. Past the render cap the data
- * layer still returns everyone and the bar shows a "+N more" chip.
+ * keeps the legacy single-task display. There is no render cap: every
+ * box renders inside a horizontally scrollable strip.
  ***/
 test('runner boxes show idle runners; legacy display only with zero runners configured', () => {
   // Nothing running, two Runners configured: both boxes show, idle.
@@ -833,7 +833,15 @@ test('runner boxes show idle runners; legacy display only with zero runners conf
   ]);
 });
 
-test('past the render cap the bar shows the first boxes plus a "+N more" chip', () => {
+/***
+ * MARK: runner strip scroll contract
+ * @description The runner-box strip renders the full fleet roster with no
+ *   render cap and no "+N more" chip: the container owns overflow via
+ *   horizontal scroll (touch swipe on phones), keeps per-box controls
+ *   working, and never chains vertical scroll into the page.
+ ***/
+test('the runner strip renders every box inside a scrollable container with no overflow chip', () => {
+  const pauseRunner = vi.fn();
   const runners = Array.from({ length: 6 }, (_, i) => ({
     runnerId: `runner-${i}`,
     status: 'active',
@@ -847,22 +855,49 @@ test('past the render cap the bar shows the first boxes plus a "+N more" chip', 
     tasks: [],
     runners,
     runnerAssignments: [],
+    pauseRunner,
   });
 
   // The header count stays honest about the whole fleet.
-  expect(screen.getByTestId('now-playing-runner-boxes')).toHaveAttribute(
-    'aria-label',
-    '6 runners',
-  );
-  for (let i = 0; i < 4; i += 1) {
+  const strip = screen.getByTestId('now-playing-runner-boxes');
+  expect(strip).toHaveAttribute('aria-label', '6 runners');
+  // Every box renders — none hidden behind a cap or clip.
+  for (let i = 0; i < 6; i += 1) {
     expect(screen.getByTestId(`now-playing-runner-box-runner-${i}`)).toBeInTheDocument();
   }
-  expect(screen.queryByTestId('now-playing-runner-box-runner-4')).not.toBeInTheDocument();
-  expect(screen.queryByTestId('now-playing-runner-box-runner-5')).not.toBeInTheDocument();
-  const overflow = screen.getByTestId('now-playing-runner-overflow');
-  expect(overflow).toHaveTextContent('+2 more');
-  expect(overflow).toHaveAttribute('title', expect.stringContaining('runner-4'));
-  expect(overflow).toHaveAttribute('title', expect.stringContaining('runner-5'));
+  expect(screen.queryByTestId('now-playing-runner-overflow')).not.toBeInTheDocument();
+  // The container scrolls horizontally (not clipped), never hijacks
+  // vertical scroll, and reuses the themed scrollbar.
+  expect(strip.className).toContain('overflow-x-auto');
+  expect(strip.className).not.toContain('overflow-hidden');
+  expect(strip.className).toContain('overflow-y-hidden');
+  expect(strip.className).toContain('overscroll-contain');
+  expect(strip.className).toContain('custom-scrollbar');
+  // Boxes keep shrink-0 so they overflow into the scroll axis instead of
+  // squeezing, and their controls stay usable.
+  expect(screen.getByTestId('now-playing-runner-box-runner-5').className).toContain('shrink-0');
+  expect(screen.getByLabelText('Pause runner runner-5')).not.toBeDisabled();
+  expect(screen.getByLabelText('Skip current task for runner runner-5')).toBeDisabled();
+  // The last box (the one a phone user reaches by swiping) still fires its
+  // controls — scrolling must never park them.
+  fireEvent.click(screen.getByLabelText('Pause runner runner-5'));
+  expect(pauseRunner).toHaveBeenCalledWith('runner-5');
+});
+
+test('a single runner still renders inside the scrollable strip with a singular label', () => {
+  renderWithKainBain(<NowPlayingBar />, {
+    stages,
+    currentStageId: '1',
+    engineState: { status: 'idle' },
+    tasks: [],
+    runners: [{ runnerId: 'solo-runner', status: 'active', paused: false }],
+    runnerAssignments: [],
+  });
+  const strip = screen.getByTestId('now-playing-runner-boxes');
+  expect(strip).toHaveAttribute('aria-label', '1 runner');
+  expect(screen.getByTestId('now-playing-runner-box-solo-runner')).toBeInTheDocument();
+  expect(strip.className).toContain('overflow-x-auto');
+  expect(screen.queryByTestId('now-playing-runner-overflow')).not.toBeInTheDocument();
 });
 
 // Helper to rerender NowPlayingBar with an overridden context.

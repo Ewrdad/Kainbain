@@ -43,6 +43,17 @@ component mapping), `scripts/check-component-compat.mjs` (API-range gate),
 - `dist/release-manifest.json` is carried forward per component and records
   image tags plus the runner tarball's sha256; `dist/release-history.jsonl`
   is the append-only audit trail.
+- A publish that re-exec'd into the tip worktree writes `dist/` THERE, so
+  `publish.sh` syncs the fresh manifest/history/tarballs back to the primary
+  checkout's `dist/` afterwards (`scripts/sync-tip-dist.mjs`, warn-only) and
+  records the release in `~/.kainbain/deploy/last-publish.json`. Without
+  this, `update.sh` reads the stale primary `dist/` and reports "already
+  current" while prod sits behind.
+- While materializing the tip worktree, `publish.sh`/`deploy.sh` also
+  fast-forward the local default-branch ref when it is simply behind (`git
+  fetch origin <branch>:<branch>`, warn-only). Refused automatically when
+  diverged or checked out, so `git log main` stays truthful without ever
+  forcing history.
 - `deploy.sh --prod --publish-only` is the CI wrapper: it skips the
   deploy-level full test/canary/security/frontend-build/api-install gates
   (publish.sh's per-component gates replace them), runs the registry
@@ -55,6 +66,7 @@ component mapping), `scripts/check-component-compat.mjs` (API-range gate),
 ```sh
 cd ~/apps/kainbain && ./update.sh [--backend|--frontend|--runner|--all] [--check] [--force] [--dry-run]
   [--manifest-url URL] [--manifest FILE] [--dist-dir DIR] [--runner-url URL] [--dir DIR]
+  [--expect-commit SHA]
 ```
 
 - Backend/frontend truth = the published release manifest + registry
@@ -67,6 +79,9 @@ cd ~/apps/kainbain && ./update.sh [--backend|--frontend|--runner|--all] [--check
 - Only changed components are handed to `redeploy.sh --<component>`
   (single-service `pull` + `up -d --no-deps`, health poll, auto-rollback).
 - `--check`: exit 0 current, 3 update available, changes nothing.
+- `--expect-commit SHA` (or `$KAINBAIN_EXPECT_COMMIT`): exit 1 when the
+  installed commit is not SHA afterwards, so a release stranded in another
+  `dist/` fails loudly instead of reporting "already current".
 
 ## Script 3 — install (new users)
 
@@ -98,9 +113,14 @@ tarball/manifest/`releases.json` are gitignored in the ad-site; the three
 
 ## CI workflow (`.kainbain/project.json`, Feature Pipeline)
 
-1. Merge stage (unchanged).
+1. Merge stage (unchanged): the task branch lands on `origin/main` first, so
+   `main` holds the prod-ready changes before anything publishes.
 2. **Publish**: `./deploy.sh --prod --fast --publish-only` (`runOnBranch: primary`).
-3. **Update**: `cd /home/server/apps/kainbain && ./update.sh` (`runOnBranch: primary`).
+   `publish.sh` ships the merged tip from the tip worktree when primary sits
+   on a task branch, then syncs `dist/` back (see above).
+3. **Update**: `cd /home/server/apps/kainbain && KAINBAIN_EXPECT_COMMIT="$(node -e ...last-publish.json...)" ./update.sh`
+   (`runOnBranch: primary`). Fails the stage when prod is not on the
+   just-published commit afterwards.
 4. Final review (unchanged).
 
 `api/project/deployCommands.js` and `api/continuity/deployMarkers.js`

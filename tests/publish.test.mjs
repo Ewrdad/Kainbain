@@ -110,4 +110,70 @@ describe("publish.sh", () => {
 		assert.equal(git(dir, "rev-parse", "HEAD"), primaryHead);
 		assert.match(git(dir, "status", "--porcelain"), /A {2}wip\.txt/);
 	});
+	it("fast-forwards a behind local main ref when publishing from a kb/* branch", () => {
+		// Same fixture shape, but origin/main advances past the local main
+		// ref (via a second clone, so no history is rewritten), and the
+		// primary sits on kb/task. A dry run must move the local main ref
+		// to the tip without touching the checkout or its WIP.
+		const base = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-publish-ff-"));
+		const remote = path.join(base, "origin.git");
+		const dir = path.join(base, "work");
+		const git = (cwd, ...args) => {
+			const r = spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
+			assert.equal(r.status, 0, `git ${args.join(" ")}: ${r.stderr}`);
+			return r.stdout.trim();
+		};
+		const bare = (...args) => {
+			const r = spawnSync("git", args, { encoding: "utf8" });
+			assert.equal(r.status, 0, `git ${args.join(" ")}: ${r.stderr}`);
+		};
+		bare("init", "--bare", remote);
+		bare("init", "-b", "main", dir);
+		git(dir, "config", "user.email", "publish-ff@test");
+		git(dir, "config", "user.name", "publish-ff");
+		fs.mkdirSync(path.join(dir, "scripts"), { recursive: true });
+		fs.mkdirSync(path.join(dir, "frontend"), { recursive: true });
+		fs.copyFileSync(path.join(ROOT, "publish.sh"), path.join(dir, "publish.sh"));
+		fs.chmodSync(path.join(dir, "publish.sh"), 0o755);
+		fs.writeFileSync(path.join(dir, "scripts", "check-component-compat.mjs"), "process.exit(0);\n");
+		fs.writeFileSync(
+			path.join(dir, "frontend", "version.json"),
+			JSON.stringify({ component: "frontend", apiVersion: "1.0.0", requires: { backendApi: ">=1.0.0 <2.0.0" } }),
+		);
+		fs.writeFileSync(path.join(dir, "file.txt"), "one\n");
+		git(dir, "add", "-A");
+		git(dir, "-c", "user.email=publish-ff@test", "-c", "user.name=publish-ff", "commit", "-qm", "one");
+		git(dir, "remote", "add", "origin", remote);
+		git(dir, "push", "-u", "origin", "main");
+		bare("--git-dir", remote, "symbolic-ref", "HEAD", "refs/heads/main");
+		// Advance origin/main from a second clone; local main stays behind.
+		const dir2 = path.join(base, "other");
+		bare("clone", "-q", remote, dir2);
+		git(dir2, "config", "user.email", "publish-ff@test");
+		git(dir2, "config", "user.name", "publish-ff");
+		fs.writeFileSync(path.join(dir2, "file.txt"), "merged elsewhere\n");
+		git(dir2, "add", "-A");
+		git(dir2, "-c", "user.email=publish-ff@test", "-c", "user.name=publish-ff", "commit", "-qm", "other merge");
+		git(dir2, "push", "-q", "origin", "main");
+		git(dir, "fetch", "-q", "origin");
+		git(dir, "checkout", "-qb", "kb/task");
+		fs.writeFileSync(path.join(dir, "wip.txt"), "wip\n");
+		git(dir, "add", "wip.txt");
+		const primaryHead = git(dir, "rev-parse", "HEAD");
+		assert.notEqual(git(dir, "rev-parse", "main"), git(dir, "rev-parse", "origin/main"));
+		const r = spawnSync("./publish.sh", ["--dry-run", "--frontend"], {
+			cwd: dir,
+			encoding: "utf8",
+			env: {
+				...process.env,
+				KAINBAIN_DOCKERHUB_NAMESPACE: "dryrun-probe",
+				KAINBAIN_DEPLOY_SOURCE_DIR: path.join(base, "source"),
+			},
+		});
+		assert.equal(r.status, 0, r.stderr + r.stdout);
+		assert.equal(git(dir, "rev-parse", "main"), git(dir, "rev-parse", "origin/main"));
+		assert.equal(git(dir, "rev-parse", "--abbrev-ref", "HEAD"), "kb/task");
+		assert.equal(git(dir, "rev-parse", "HEAD"), primaryHead);
+		assert.match(git(dir, "status", "--porcelain"), /A {2}wip\.txt/);
+	});
 });

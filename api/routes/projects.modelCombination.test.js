@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, afterAll, beforeAll } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -13,10 +13,42 @@ const tempNotesRoot = fs.mkdtempSync(
 );
 process.env.PROJECTS_ROOT = tempProjectsRoot;
 process.env.NOTES_SPACE_ROOT = tempNotesRoot;
+// The fleet-aware save gates read live Runner registrations, so these tests
+// seed a deterministic fleet runner (mirrors runnerRoutes.test.js). The id
+// is test-scoped and revoked in afterAll; ambient fleet runners can only
+// add availability, never remove what the seed serves.
+process.env.KAINBAIN_RUNNER_JOIN_TOKEN = "test-fleet-token";
 
 const { default: app } = await import("../index.js");
 
-afterAll(() => {
+const FLEET_FACTS = {
+	harnesses: [{ id: "muse", version: "test" }],
+	models: ["muse::meta::test-fleet-model"],
+	tiers: ["T0"],
+	diskHeadroomMb: 1024,
+	versions: { protocol: "v1", runner: "test" },
+};
+
+beforeAll(async () => {
+	// Clear a stale seed from an interrupted run; 404 when absent is fine.
+	await app.inject({ method: "POST", url: "/runners/test-fleet-muse/revoke" });
+	const reg = await app.inject({
+		method: "POST",
+		url: "/runners/register",
+		payload: { runnerId: "test-fleet-muse", joinToken: "test-fleet-token", facts: FLEET_FACTS },
+	});
+	// 202 fresh, 200 when re-registering the revoked stale seed.
+	expect([200, 202]).toContain(reg.statusCode);
+	const approval = await app.inject({ method: "POST", url: "/runners/test-fleet-muse/approve" });
+	expect(approval.statusCode).toBe(200);
+});
+
+afterAll(async () => {
+	try {
+		await app.inject({ method: "POST", url: "/runners/test-fleet-muse/revoke" });
+	} catch {
+		// ignore cleanup errors
+	}
 	try {
 		fs.rmSync(tempProjectsRoot, { recursive: true, force: true });
 		fs.rmSync(tempNotesRoot, { recursive: true, force: true });
@@ -128,7 +160,12 @@ describe("Project harness+model combination API", () => {
 		);
 	});
 
-	it("warns softly (never 400) when the harness manages its own model but a default is stored", async () => {
+	it("warns softly (never 400) for a catalog-miss default on a fleet-served harness", async () => {
+		// The old expectation warned "manages its own model" for any default
+		// on a backend-`none` harness. The fleet serves `muse` here (seeded
+		// runner), so the harness behaves as `list`: an unserved id warns as
+		// a catalog miss instead. The `custom` backend-`none` harness (never
+		// fleet-served) still warns the manages-own-model note.
 		const created = await createProject();
 		const res = await app.inject({
 			method: "PATCH",
@@ -136,6 +173,38 @@ describe("Project harness+model combination API", () => {
 			payload: {
 				harness: "muse",
 				defaultModel: "antigravity::google::gemini-x",
+			},
+		});
+		expect(res.statusCode).toBe(200);
+		expect(JSON.parse(res.payload).warnings).toEqual(
+			expect.arrayContaining([
+				expect.stringContaining("antigravity::google::gemini-x"),
+			]),
+		);
+	});
+
+	it("saves a fleet-served default on a fleet-served harness without warnings", async () => {
+		const created = await createProject();
+		const res = await app.inject({
+			method: "PATCH",
+			url: `/projects/${created.id}`,
+			payload: {
+				harness: "muse",
+				defaultModel: "muse::meta::test-fleet-model",
+			},
+		});
+		expect(res.statusCode).toBe(200);
+		expect(JSON.parse(res.payload).warnings ?? []).toEqual([]);
+	});
+
+	it("warns softly (never 400) when the harness manages its own model but a default is stored", async () => {
+		const created = await createProject();
+		const res = await app.inject({
+			method: "PATCH",
+			url: `/projects/${created.id}`,
+			payload: {
+				harness: "custom",
+				defaultModel: "custom::stored-model",
 			},
 		});
 		expect(res.statusCode).toBe(200);

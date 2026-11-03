@@ -119,6 +119,39 @@ describe("runnerMatches", () => {
 		);
 	});
 
+	test("operator model allowlist replaces the advertised list for matching", () => {
+		// Under-reporting runner: advertises nothing, operator declares m9.
+		const declared = record({
+			capabilities: {
+				harnesses: [{ id: "pi", version: "1.2.3" }],
+				models: [],
+				tiers: ["T0", "T1"],
+				runnable: true,
+				diskHeadroomMb: 512,
+				versions: { protocol: "v1" },
+			},
+			operatorConfig: { availableModels: ["m9"] },
+		});
+		expect(
+			runnerMatches(declared, { harness: "pi", model: "m9", tier: "T1" }, { now: at }),
+		).toEqual({ ok: true, reason: "MATCH" });
+		expect(
+			runnerMatches(declared, { harness: "pi", model: "m1", tier: "T1" }, { now: at }).reason,
+		).toBe("NO_MODEL");
+		// Model-less tasks still match an allowlisted runner.
+		expect(runnerMatches(declared, { harness: "pi", tier: "T0" }, { now: at }).ok).toBe(true);
+		// Null allowlist falls back to advertised capabilities.
+		const fallback = record({ operatorConfig: { availableModels: null } });
+		expect(
+			runnerMatches(fallback, { harness: "pi", model: "m1", tier: "T1" }, { now: at }),
+		).toEqual({ ok: true, reason: "MATCH" });
+		// Empty allowlist serves no model-pinned tasks.
+		const none = record({ operatorConfig: { availableModels: [] } });
+		expect(
+			runnerMatches(none, { harness: "pi", model: "m1", tier: "T1" }, { now: at }).reason,
+		).toBe("NO_MODEL");
+	});
+
 	test("operator job switches refuse their kinds and fail open when unset", () => {
 		const noCi = record({
 			operatorConfig: {

@@ -1016,9 +1016,57 @@ describe("Runner Routes Integration", () => {
 		expect(runner.operatorConfig).toEqual({
 			displayName: null,
 			availableTools: null,
+			availableModels: null,
 			jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
 			directories: { masterDir: "", worktreeDir: "" },
 			projectScope: null,
+		});
+	});
+
+	it("GET /runners/models/catalogue dedupes fleet models with runner counts", async () => {
+		const factsFor = (models) => ({ ...FACTS, models });
+		for (const [runnerId, models] of [
+			["fleet-a", ["shared-model", "a-only"]],
+			["fleet-b", ["shared-model"]],
+		]) {
+			const reg = await app.inject({
+				method: "POST",
+				url: "/runners/register",
+				payload: { runnerId, joinToken: "test-join-token", facts: factsFor(models) },
+			});
+			expect(reg.statusCode).toBe(202);
+			const approval = await app.inject({ method: "POST", url: `/runners/${runnerId}/approve` });
+			expect(approval.statusCode).toBe(200);
+		}
+		const first = JSON.parse(
+			(await app.inject({ method: "GET", url: "/runners/models/catalogue" })).payload,
+		);
+		expect(first.models).toContainEqual({
+			id: "shared-model",
+			harnesses: ["mock"],
+			tiers: ["T0", "T1"],
+			runnerCount: 2,
+			runnerIds: ["fleet-a", "fleet-b"],
+		});
+		expect(first.models).toContainEqual({
+			id: "a-only",
+			harnesses: ["mock"],
+			tiers: ["T0", "T1"],
+			runnerCount: 1,
+			runnerIds: ["fleet-a"],
+		});
+		// Graceful change: revoking a Runner drops it out of the catalogue.
+		const revoke = await app.inject({ method: "POST", url: "/runners/fleet-b/revoke" });
+		expect(revoke.statusCode).toBe(200);
+		const second = JSON.parse(
+			(await app.inject({ method: "GET", url: "/runners/models/catalogue" })).payload,
+		);
+		expect(second.models).toContainEqual({
+			id: "shared-model",
+			harnesses: ["mock"],
+			tiers: ["T0", "T1"],
+			runnerCount: 1,
+			runnerIds: ["fleet-a"],
 		});
 	});
 
@@ -1035,12 +1083,14 @@ describe("Runner Routes Integration", () => {
 				displayName: "Primary",
 				jobTypes: { runsCi: false },
 				directories: { masterDir: "/srv/kb", worktreeDir: "/srv/kb-trees" },
+				availableModels: ["declared-model"],
 			},
 		});
 		expect(patched.statusCode).toBe(200);
 		const body = JSON.parse(patched.payload);
 		expect(body.operatorConfig.displayName).toBe("Primary");
 		expect(body.operatorConfig.jobTypes.runsCi).toBe(false);
+		expect(body.operatorConfig.availableModels).toEqual(["declared-model"]);
 		expect(body.operatorConfig.directories).toEqual({
 			masterDir: "/srv/kb",
 			worktreeDir: "/srv/kb-trees",
@@ -1056,6 +1106,7 @@ describe("Runner Routes Integration", () => {
 			{ directories: { masterDir: "" } },
 			{ jobTypes: { runsCi: "yes" } },
 			{ availableTools: ["no-such-tool"] },
+			{ availableModels: ["ok", "  "] },
 			{ bogus: true },
 		]) {
 			const res = await app.inject({

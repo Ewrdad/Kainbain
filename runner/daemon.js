@@ -12,6 +12,7 @@ import { defaultInstallRoot, markUpdateSuccess, readUpdateState } from "./update
 // The Runner bundle ships shared/ next to this folder (runner/{runner,api,shared}
 // in prod and in the distributable tarball), so ../shared resolves both in the
 // repo and in every deployed layout — the same copy the backend executes.
+import { discoverClaudeModels, resolveAdvertisedModels } from "./modelDiscovery.js";
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { commitAndPush } from "./gitOps.js";
@@ -137,6 +138,110 @@ export function runnerHarnessIds(config = {}) {
 	if (ids.length > 0) return ids;
 	const primary = String(config.harnessId ?? "").trim();
 	return primary ? [primary] : [];
+}
+
+/***
+ * MARK: AUTO_DETECTABLE_HARNESSES
+ * @description Harness ids auto-detect considers, in stable advertise
+ *   order. Only ids defaultLoadHarness can actually run; `mock` has no
+ *   CLI so it never auto-detects (pass it manually with --manual).
+ * @example AUTO_DETECTABLE_HARNESSES => ['pi', 'muse', 'antigravity', 'vibe']
+ ***/
+export const AUTO_DETECTABLE_HARNESSES = ["pi", "muse", "antigravity", "vibe"];
+
+/***
+ * MARK: detectAvailableHarnesses
+ * @description Scans PATH for harness CLIs (default behaviour; --manual
+ *   opts out). One entry per harness whose first binary resolves to an
+ *   executable file. Pure sync scan so boot can fail fast before join.
+ * @example detectAvailableHarnesses({ pathValue: '/usr/bin:/bin' }) => ['pi']
+ * @param {Object} [opts] - Options.
+ * @param {string} [opts.pathValue] - PATH to scan (defaults to process.env.PATH).
+ * @param {string} [opts.pathDelimiter] - PATH separator (defaults to path.delimiter).
+ * @param {Function} [opts.isExecutable] - (bin, dir) => boolean override (tests).
+ * @returns {string[]} Detected harness ids in AUTO_DETECTABLE_HARNESSES order.
+ ***/
+export function detectAvailableHarnesses({ pathValue, pathDelimiter, isExecutable } = {}) {
+	const pathStr = typeof pathValue === "string" ? pathValue : (process.env.PATH ?? "");
+	const delimiter = typeof pathDelimiter === "string" ? pathDelimiter : path.delimiter;
+	const dirs = String(pathStr)
+		.split(delimiter)
+		.map((d) => d.trim())
+		.filter(Boolean);
+	const check =
+		typeof isExecutable === "function"
+			? isExecutable
+			: (bin, dir) => {
+					try {
+						fs.accessSync(path.join(dir, bin), fs.constants.X_OK);
+						return true;
+					} catch {
+						return false;
+					}
+				};
+	const found = [];
+	for (const id of AUTO_DETECTABLE_HARNESSES) {
+		const bins = HARNESS_VERSION_BINS[id] ?? [];
+		let ok = false;
+		for (const bin of bins) {
+			for (const dir of dirs) {
+				try {
+					if (check(bin, dir)) {
+						ok = true;
+						break;
+					}
+				} catch {
+					// Keep scanning; one bad dir never fails detection.
+				}
+			}
+			if (ok) break;
+		}
+		if (ok) found.push(id);
+	}
+	return found;
+}
+
+/***
+ * MARK: resolveHarnessConfig
+ * @description Applies the auto-detect default to a loaded runner config.
+ *   Manual configs (explicit harness ids, harnessAuto falsy) pass through
+ *   untouched. Auto configs probe PATH, union any explicit non-auto pins,
+ *   and mutate the config in place (harnessIds/harnessId). Empty detection
+ *   throws fail-fast — the runner must never register a useless empty
+ *   capability set.
+ * @example resolveHarnessConfig({ harnessIds: [], harnessAuto: true }, { detected: ['pi'] }).harnessId => 'pi'
+ * @param {Object} config - Normalized runner config (mutated).
+ * @param {Object} [opts] - Options.
+ * @param {string[]} [opts.detected] - Detected ids override (tests/installers).
+ * @param {Object} [opts.detectOpts] - Forwarded to detectAvailableHarnesses.
+ * @returns {Object} The same config object, resolved.
+ ***/
+export function resolveHarnessConfig(config = {}, { detected, detectOpts } = {}) {
+	if (!config || !config.harnessAuto) return config;
+	const seen = new Set();
+	const out = [];
+	const push = (id) => {
+		const clean = String(id ?? "").trim();
+		if (!clean || seen.has(clean)) return;
+		seen.add(clean);
+		out.push(clean);
+	};
+	const autoList = Array.isArray(detected) ? detected : detectAvailableHarnesses(detectOpts);
+	for (const id of autoList) push(id);
+	for (const id of runnerHarnessIds(config)) push(id);
+	if (out.length === 0) {
+		throw new Error(
+			"Runner auto-detect found no harness CLIs (probed pi, muse, agy/antigravity, vibe on PATH); install one or re-run with --manual --harness NAME.",
+		);
+	}
+	config.harnessIds = out;
+	config.harnessId = out[0];
+	config.harnessAuto = false;
+	// Drop the stale missing-harness error so the boot check below passes.
+	if (Array.isArray(config.errors)) {
+		config.errors = config.errors.filter((e) => !/KAINBAIN_RUNNER_HARNESS/.test(String(e)));
+	}
+	return config;
 }
 
 /***
@@ -290,17 +395,63 @@ export async function defaultLoadHarness(harnessId) {
 	throw new Error(`Unknown harness ${harnessId} (supported: mock, pi, muse, antigravity, vibe).`);
 }
 
+/***
+ * MARK: discoveredModelsCache
+ * @description Last model auto-discovery result, shared by every factsFor
+ *   call until the next refresh. Seeded at boot, refreshed on the
+ *   modelDiscoveryIntervalMs cadence (default 12h). The operator's explicit
+ *   MODELS/MODEL list always wins (see resolveAdvertisedModels), so this
+ *   cache only matters when nothing is pinned.
+ ***/
+let discoveredModelsCache = [];
+
+/***
+ * MARK: clearDiscoveredModelsCache
+ * @description Test seam: resets the discovery cache between cases.
+ ***/
+export function clearDiscoveredModelsCache() {
+	discoveredModelsCache = [];
+}
+
+/***
+ * MARK: refreshDiscoveredModels
+ * @description One discovery round: when the operator pinned no models and
+ *   the `muse` harness is configured, asks the installed CLI for its model
+ *   menu (muse serve model/list, box-local login, no keys leave the host)
+ *   and caches the ids. Best-effort — failures keep the previous cache and
+ *   warn, never throw, so discovery can never break heartbeats.
+ * @example await refreshDiscoveredModels({ config }) => ['muse::meta::muse-spark-1.3']
+ * @param {Object} [opts]
+ * @param {Object} [opts.config] - Normalized runner config.
+ * @param {Object} [opts.logger] - Logger.
+ * @param {Function} [opts.discoverFn=discoverClaudeModels] - Test seam.
+ * @returns {Promise<string[]>} Current cache copy.
+ ***/
+export async function refreshDiscoveredModels({ config, logger, discoverFn = discoverClaudeModels } = {}) {
+	try {
+		if (Array.isArray(config?.models) && config.models.length > 0) return [...discoveredModelsCache];
+		if (typeof config?.model === "string" && config.model.trim()) return [...discoveredModelsCache];
+		if (!runnerHarnessIds(config).includes("muse")) return [...discoveredModelsCache];
+		for (const bin of HARNESS_VERSION_BINS.muse) {
+			const ids = await discoverFn({ bin });
+			if (ids.length > 0) {
+				discoveredModelsCache = ids;
+				logger?.log?.(`Model discovery: ${ids.length} model(s) from ${bin}; next refresh per modelDiscoveryIntervalMs.`);
+				break;
+			}
+		}
+	} catch (err) {
+		logger?.warn?.(`Model discovery failed, keeping previous list: ${err?.message || err}`);
+	}
+	return [...discoveredModelsCache];
+}
+
 function factsFor({ config, harnessVersions, updateStatus = null }) {
 	const versionFor = (id) =>
 		harnessVersions?.[id] ?? harnessVersionCache.get(id)?.[id] ?? "unknown";
 	return {
 		harnesses: runnerHarnessIds(config).map((id) => ({ id, version: versionFor(id) })),
-		models:
-			Array.isArray(config.models) && config.models.length > 0
-				? [...config.models]
-				: config.model
-					? [config.model]
-					: [],
+		models: resolveAdvertisedModels(config, discoveredModelsCache),
 		tiers: config.tiers,
 		diskHeadroomMb: diskHeadroomMbFor(config.workRoot),
 		memoryFreeMb: memoryFreeMbFor(),
@@ -390,6 +541,11 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
 	} catch {
 		// Best effort only.
 	}
+	// Model auto-discovery seed: one round at boot (after the version
+	// probes, before the first heartbeat) so early facts already carry
+	// discovered ids. Best-effort inside and bounded by the discovery
+	// timeout; failures keep the cache empty, never fail boot.
+	await refreshDiscoveredModels({ config, logger });
 	const heartbeatTimer = setInterval(() => {
 		// Fresh facts every beat: disk headroom is re-measured (G4) while
 		// the harness CLI version resolves from the load-time probe cache.
@@ -398,7 +554,27 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
 		});
 	}, config.heartbeatMs);
 	if (typeof heartbeatTimer.unref === "function") heartbeatTimer.unref();
-	return { harness, harnesses, facts, stop: () => clearInterval(heartbeatTimer) };
+	// Periodic discovery refresh (default 12h, 0 disables): model menus
+	// change slowly, so heartbeats reuse the cache between rounds.
+	const discoveryIntervalMs = config.modelDiscoveryIntervalMs ?? 43200000;
+	let discoveryTimer = null;
+	if (discoveryIntervalMs > 0) {
+		discoveryTimer = setInterval(() => {
+			refreshDiscoveredModels({ config, logger }).catch((err) => {
+				logger.warn(`Model discovery refresh failed: ${err?.message || err}`);
+			});
+		}, discoveryIntervalMs);
+		if (typeof discoveryTimer.unref === "function") discoveryTimer.unref();
+	}
+	return {
+		harness,
+		harnesses,
+		facts,
+		stop: () => {
+			clearInterval(heartbeatTimer);
+			if (discoveryTimer) clearInterval(discoveryTimer);
+		},
+	};
 }
 
 /***
@@ -1029,6 +1205,30 @@ async function executeAssignment({
  *   removed in all outcomes.
  * @example await executeIntegrationAssignment({ config, client, logger, state, projectId: 'p', taskId: 't', claim, integration }) => { ... }
  ***/
+/***
+ * MARK: integrationMergeSubject
+ * @description Subject for the integration merge commit. Integration always
+ *   creates a real merge commit (--no-ff), even when the task branch could
+ *   fast-forward: task work otherwise lands on the target as a chain of
+ *   `kb/<id> … Runner stage output` commits, which the changelog filter
+ *   (shared/changelogHistory/isAdminCommitSubject.js) hides as automation
+ *   noise — so a merged, deployed feature never appeared in the in-app
+ *   changelog (task a654a254, 2026-11-02). This subject matches none of the
+ *   admin patterns, so the changelog shows one entry per merged task,
+ *   carrying the task's own title.
+ * @example integrationMergeSubject({ taskBranch: 'kb/abc', targetBranch: 'main', task: { title: 'Fix scroll' } }) => 'Merge kb/abc into main: Fix scroll'
+ * @param {Object} opts - `{ taskBranch, targetBranch, task }`.
+ * @returns {string} Single-line merge commit subject.
+ ***/
+export function integrationMergeSubject({ taskBranch, targetBranch, task } = {}) {
+	const title = String(task?.title || task?.goal || "")
+		.replace(/\s+/g, " ")
+		.trim()
+		.slice(0, 120);
+	const base = `Merge ${taskBranch} into ${targetBranch}`;
+	return title ? `${base}: ${title}` : base;
+}
+
 async function executeIntegrationAssignment({
 	config,
 	client,
@@ -1095,7 +1295,8 @@ async function executeIntegrationAssignment({
 				await runGit(workdir, [
 					"-c", "user.name=KainBain Integration",
 					"-c", "user.email=kainbain-runner@local",
-					"merge", "--no-edit", `origin/${taskBranch}`,
+					"merge", "--no-ff", "-m", integrationMergeSubject({ taskBranch, targetBranch, task }),
+					`origin/${taskBranch}`,
 				]);
 			} catch (mergeErr) {
 				let conflicted = [];
@@ -1221,6 +1422,7 @@ export async function runSingleAssignment({
 	loadHarness = defaultLoadHarness,
 	logger = console,
 }) {
+	resolveHarnessConfig(config);
 	if (config.errors?.length) {
 		throw new Error(`Invalid Runner config: ${config.errors.join(" ")}`);
 	}
@@ -1431,6 +1633,7 @@ export async function runDispatchLoop({
 	loadHarness = defaultLoadHarness,
 	logger = console,
 }) {
+	resolveHarnessConfig(config);
 	if (config.errors?.length) {
 		throw new Error(`Invalid Runner config: ${config.errors.join(" ")}`);
 	}

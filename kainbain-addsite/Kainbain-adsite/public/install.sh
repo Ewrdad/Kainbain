@@ -14,7 +14,7 @@ set -uo pipefail
 # --- Defaults (every one overridable from the command line) ------------------
 INSTALL_DIR="$HOME/apps/kainbain"
 PORT="3100"; FRONTEND_PORT=""; BACKEND_PORT="3100"
-RUNNERS=1; RUNNER_ID="local-pi"; HARNESS="pi"; NO_RUNNER=0
+RUNNERS=1; RUNNER_ID="local-pi"; HARNESS="auto"; HARNESSES=""; MANUAL=0; HARNESS_SET=0; NO_RUNNER=0
 NAMESPACE="${KAINBAIN_DOCKERHUB_NAMESPACE:-ewrdad}"
 BACKEND_TAG=""; FRONTEND_TAG=""; IMAGE_TAG=""
 RELEASE_URL="https://kainbain.ewrdad.uk"; MANIFEST_URL=""; MANIFEST_FILE=""
@@ -30,7 +30,10 @@ Usage: install.sh [options]
   --backend-port N      Backend container port (default 3100, internal only)
   --runners N           Number of local Runner units to create (default 1; 0 = none)
   --runner-id ID        First Runner id (default local-pi; extras get -2, -3…)
-  --harness NAME        Runner harness: pi|muse|opencode|codex|vibe|custom (default pi)
+  --harness NAME        Pin one harness (implies --manual)
+  --harnesses CSV       Pin a harness list (implies --manual)
+  --manual              Pin harnesses instead of auto-detecting
+  --auto                Auto-detect harnesses on PATH (default)
   --no-runner           Skip the Runner entirely
   --namespace NS        Docker Hub namespace for images (default ewrdad)
   --tag TAG             Pin both image tags (default: from the release manifest)
@@ -67,8 +70,11 @@ while [ $# -gt 0 ]; do
     --runners=*) RUNNERS="${1#--runners=}" ;;
     --runner-id) shift; RUNNER_ID="${1:?--runner-id needs a value}" ;;
     --runner-id=*) RUNNER_ID="${1#--runner-id=}" ;;
-    --harness) shift; HARNESS="${1:?--harness needs a value}" ;;
-    --harness=*) HARNESS="${1#--harness=}" ;;
+    --harness) shift; HARNESS="${1:?--harness needs a value}"; HARNESS_SET=1 ;;
+    --harness=*) HARNESS="${1#--harness=}"; HARNESS_SET=1 ;;
+    --harnesses) shift; HARNESSES="${1:?--harnesses needs a value}"; HARNESS_SET=1 ;;
+    --harnesses=*) HARNESSES="${1#--harnesses=}"; HARNESS_SET=1 ;;
+    --manual) MANUAL=1 ;; --auto) MANUAL=0; HARNESS="auto"; HARNESSES=""; HARNESS_SET=0 ;;
     --no-runner) NO_RUNNER=1 ;;
     --namespace) shift; NAMESPACE="${1:?--namespace needs a value}" ;;
     --namespace=*) NAMESPACE="${1#--namespace=}" ;;
@@ -103,6 +109,24 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$FRONTEND_PORT" ] && PORT="$FRONTEND_PORT"
 [ "$NO_RUNNER" = "1" ] && RUNNERS=0
+if [ "$HARNESS_SET" = "1" ] && [ "$MANUAL" = "0" ]; then
+  if [ -n "$HARNESSES" ]; then case "$HARNESSES" in *[aA][uU][tT][oO]*) ;; *) MANUAL=1;; esac
+  elif [ "$(printf '%s' "$HARNESS" | tr '[:upper:]' '[:lower:]')" != "auto" ]; then MANUAL=1; fi
+fi
+if [ "$MANUAL" = "1" ]; then
+  if [ -z "$HARNESSES" ]; then
+    if [ "$HARNESS_SET" = "0" ] || [ "$(printf '%s' "$HARNESS" | tr '[:upper:]' '[:lower:]')" = "auto" ]; then
+      echo "install.sh: --manual requires --harness NAME or --harnesses CSV" >&2; exit 2
+    fi
+    HARNESSES="$HARNESS"
+  fi
+  case "$HARNESSES" in *[aA][uU][tT][oO]*) echo "install.sh: --manual cannot be combined with auto" >&2; exit 2;; esac
+  HARNESS_DESC="$HARNESSES (manual)"
+else
+  HARNESS_DESC="auto-detect"
+fi
+STARTER_HARNESS_ARGS=()
+if [ "$MANUAL" = "1" ]; then STARTER_HARNESS_ARGS=(--manual --harnesses "$HARNESSES"); fi
 case "$RUNNERS" in *[!0-9]*|'') echo "install.sh: --runners must be a non-negative integer" >&2; exit 2 ;; esac
 [ -z "$MANIFEST_URL" ] && MANIFEST_URL="${RELEASE_URL%/}/release-manifest.json"
 PROJECTS_DIR="${PROJECTS_DIR:-$INSTALL_DIR/projects}"; STATE_DIR="${STATE_DIR:-$INSTALL_DIR/data}"; NOTES_DIR="${NOTES_DIR:-$INSTALL_DIR/notes}"
@@ -114,7 +138,7 @@ field() { node -e 'try{const m=JSON.parse(require("fs").readFileSync(process.arg
 # --- Prerequisites ------------------------------------------------------------
 for t in docker curl node; do command -v "$t" >/dev/null 2>&1 || { echo "install.sh: required tool '$t' not found — install it first (Docker Engine + compose plugin, curl, Node 20+)" >&2; exit 2; }; done
 docker compose version >/dev/null 2>&1 || { echo "install.sh: 'docker compose' plugin not found" >&2; exit 2; }
-log "installing to $INSTALL_DIR (UI port $PORT, runners: $RUNNERS x $HARNESS, namespace $NAMESPACE)"
+log "installing to $INSTALL_DIR (UI port $PORT, runners: $RUNNERS x $HARNESS_DESC, namespace $NAMESPACE)"
 
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 MANIFEST="$WORK/release-manifest.json"
@@ -206,7 +230,7 @@ if [ "$RUNNERS" -gt 0 ]; then
     rm -rf "$INSTALL_DIR/runner"; mv "$tmp/runner" "$INSTALL_DIR/runner"; cp "$tmp/startRunner.sh" "$INSTALL_DIR/startRunner.sh"; chmod +x "$INSTALL_DIR/startRunner.sh"; rm -rf "$tmp"
     i=1; while [ "$i" -le "$RUNNERS" ]; do
       id="$RUNNER_ID"; [ "$i" -gt 1 ] && id="$RUNNER_ID-$i"
-      (cd "$INSTALL_DIR" && ./startRunner.sh --id "$id" --harness "$HARNESS" --backend "http://localhost:$PORT") || echo "install.sh: WARN runner $id did not start (see output above)" >&2
+      (cd "$INSTALL_DIR" && ./startRunner.sh --id "$id" "${STARTER_HARNESS_ARGS[@]}" --backend "http://localhost:$PORT") || echo "install.sh: WARN runner $id did not start (see output above)" >&2
       i=$((i+1))
     done
   fi
