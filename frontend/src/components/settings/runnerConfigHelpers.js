@@ -329,11 +329,37 @@ export const runnerCommands = (runner = {}) => {
   const factsSupported = Array.isArray(runner?.facts?.commands) ? runner.facts.commands : [];
   return { pending: [], results: {}, supported: factsSupported };
 };
-export const runnerSupportedCommands = (runner = {}) => runnerCommands(runner).supported;
-export const supportedRunnerCommands = runnerSupportedCommands;
-export const canRequestCommand = (runner = {}, command) => runnerSupportedCommands(runner).includes(command);
-export const canRequestRunnerCommand = canRequestCommand;
+/***
+ * MARK: supportedRunnerCommands
+ * @description Supported backend-to-Runner command ids for one public Runner
+ *   record (convenience over `runnerCommands`).
+ * @example supportedRunnerCommands({ commands: { supported: ['requestUpdate'] } }) => ['requestUpdate']
+ ***/
+export const supportedRunnerCommands = (runner = {}) => runnerCommands(runner).supported;
+
+/***
+ * MARK: canRequestCommand
+ * @description Whether a named backend-to-Runner command can be requested
+ *   for one public Runner record.
+ * @example canRequestCommand({ commands: { supported: ['requestUpdate'] } }, 'requestUpdate') => true
+ ***/
+export const canRequestCommand = (runner = {}, command) => supportedRunnerCommands(runner).includes(command);
+
+/***
+ * MARK: canRequestUpdate
+ * @description Whether an idle-only update can be requested: the Runner
+ *   advertises `requestUpdate` support or already reports an update available.
+ * @example canRequestUpdate({ updateAvailable: true }) => true
+ ***/
 export const canRequestUpdate = (runner = {}) => canRequestCommand(runner, 'requestUpdate') || Boolean(runner?.updateAvailable);
+
+/***
+ * MARK: canRequestRediscovery
+ * @description Whether model re-detection can be requested: the Runner
+ *   advertises `requestModelRediscovery` support.
+ * @example canRequestRediscovery({ commands: { supported: ['requestModelRediscovery'] } }) => true
+ ***/
+export const canRequestRediscovery = (runner = {}) => canRequestCommand(runner, 'requestModelRediscovery');
 
 
 /***

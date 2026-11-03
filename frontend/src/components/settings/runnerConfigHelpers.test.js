@@ -19,6 +19,11 @@ import {
   resolveSelectedId,
   runRunnerAction,
   describeRunnerVersion,
+  runnerCommands,
+  supportedRunnerCommands,
+  canRequestCommand,
+  canRequestUpdate,
+  canRequestRediscovery,
 } from './runnerConfigHelpers';
 
 /***
@@ -270,5 +275,43 @@ describe('runnerConfigHelpers', () => {
     expect(bad.ok).toBe(false);
     expect(bad.errors.masterDir).toBeTruthy();
     expect(bad.errors.worktreeDir).toBeTruthy();
+  });
+
+  it('normalizes the commands block and falls back for older backends', () => {
+    expect(
+      runnerCommands({ commands: { supported: ['requestUpdate'], pending: ['requestUpdate'], results: { requestUpdate: { state: 'acked' } } } }),
+    ).toEqual({
+      supported: ['requestUpdate'],
+      pending: ['requestUpdate'],
+      results: { requestUpdate: { state: 'acked' } },
+    });
+    expect(runnerCommands({})).toEqual({ pending: [], results: {}, supported: [] });
+    expect(runnerCommands({ commands: null })).toEqual({ pending: [], results: {}, supported: [] });
+    expect(runnerCommands({ facts: { commands: ['requestModelRediscovery'] } })).toEqual({
+      pending: [],
+      results: {},
+      supported: ['requestModelRediscovery'],
+    });
+  });
+
+  it('reads supported commands and gates each request on them', () => {
+    const runner = { commands: { supported: ['requestModelRediscovery', 'requestUpdate'] } };
+    expect(supportedRunnerCommands(runner)).toEqual(['requestModelRediscovery', 'requestUpdate']);
+    expect(supportedRunnerCommands({})).toEqual([]);
+    expect(canRequestCommand(runner, 'requestUpdate')).toBe(true);
+    expect(canRequestCommand(runner, 'requestRestart')).toBe(false);
+    expect(canRequestCommand({}, 'requestUpdate')).toBe(false);
+  });
+
+  it('allows update-now when supported or already available', () => {
+    expect(canRequestUpdate({ commands: { supported: ['requestUpdate'] } })).toBe(true);
+    expect(canRequestUpdate({ updateAvailable: true })).toBe(true);
+    expect(canRequestUpdate({})).toBe(false);
+  });
+
+  it('allows re-detection only when the runner supports it', () => {
+    expect(canRequestRediscovery({ commands: { supported: ['requestModelRediscovery'] } })).toBe(true);
+    expect(canRequestRediscovery({ commands: { supported: ['requestUpdate'] } })).toBe(false);
+    expect(canRequestRediscovery({})).toBe(false);
   });
 });

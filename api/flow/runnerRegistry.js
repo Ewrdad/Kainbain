@@ -166,7 +166,20 @@ const advertisedToolIds = (record) => {
 
 export const RUNNER_PROTOCOL = "v1";
 const MIN_RUNNER_PROTOCOL = "v1";
+/***
+ * MARK: RUNNER_COMMANDS
+ * @description Backend-to-Runner command ids the registry accepts, delivers
+ *   on the heartbeat pull channel, and the Runner daemon consumes at next
+ *   idle (never interrupting live work).
+ * @example RUNNER_COMMANDS.includes('requestUpdate') => true
+ ***/
 export const RUNNER_COMMANDS = ["requestModelRediscovery", "requestUpdate"];
+/***
+ * MARK: RUNNER_COMMAND_TTL_MS
+ * @description How long an undelivered Runner command waits for the next
+ *   heartbeat before it expires (one day).
+ * @example RUNNER_COMMAND_TTL_MS => 86400000
+ ***/
 export const RUNNER_COMMAND_TTL_MS = 24 * 60 * 60 * 1000;
 /***
  * MARK: resolveRunnerStatePath
