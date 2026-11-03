@@ -481,9 +481,13 @@ test.describe.serial("PR Review E2E", () => {
 			page.getByTestId("review-comment-thread").getByText("Please clarify error handling on this step"),
 		).toBeVisible({ timeout: 10000 });
 
-		// Take screenshot to document the feature working
-		const screenshotPath = "/home/server/projects/kainbain/docs/tasks/bafc4c11-f74f-48af-8e6e-c149d9392f35/assets/screenshot-reports-review-live.png";
-		await page.screenshot({ path: screenshotPath, fullPage: true });
+		// Take screenshot to document the feature working. Scratch dir only:
+		// the suite must never write into a live checkout's docs (an absolute
+		// docs path breaks on any machine that isn't that checkout — ENOENT
+		// on runner workdirs — and pollutes live operations when it exists).
+		const SHOTS = "/tmp/kb-pr-review-shots";
+		fs.mkdirSync(SHOTS, { recursive: true });
+		await page.screenshot({ path: `${SHOTS}/screenshot-reports-review-live.png`, fullPage: true });
 
 		// Pass the stage and verify review comment is carried into the human approval report
 		await page.getByLabel("Pass this stage").click();

@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { APP_URL } from "./urls";
 import {
   API_BASE,
+  APP_READY_TIMEOUT_MS,
   activeProjectId,
   createTaskViaApi,
   resetProject,
@@ -51,8 +52,17 @@ async function waitForAppShell(page) {
   await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
   await expect(page).toHaveTitle(/Kainbain/);
   // The app shell must be rendered: brand heading + primary navigation.
-  await expect(page.locator("h1")).toContainText("KAINBAIN");
-  await expect(page.getByRole("button", { name: /Orchestrator/i })).toBeVisible();
+  // Same readiness budget as the shared waitForAppReady: after
+  // `domcontentloaded`, React first-paint can take well over the 5 s
+  // default expect timeout on a loaded gate host (cold vite transform,
+  // sustained suite load), which blank-pages this gate with
+  // "element(s) not found" on the h1.
+  await expect(page.locator("h1")).toContainText("KAINBAIN", {
+    timeout: APP_READY_TIMEOUT_MS,
+  });
+  await expect(page.getByRole("button", { name: /Orchestrator/i })).toBeVisible({
+    timeout: APP_READY_TIMEOUT_MS,
+  });
 }
 
 test.describe("Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness)", () => {
@@ -228,7 +238,10 @@ test.describe("Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness)", () => {
     await page.request.patch(`${API_BASE}/tasks/${created.id}`, {
       data: { projectId, status: "waiting_human" },
     });
-    await page.reload({ waitUntil: "domcontentloaded" });
+    // No reload here: waitForAppShell navigates fresh via goto, and a
+    // reload immediately followed by goto floods the renderer with
+    // aborted + re-requested module loads (ERR_INSUFFICIENT_RESOURCES),
+    // blanking the page deterministically on the gate host.
     await waitForAppShell(page);
 
     // Open the inspector via the NowPlaying "Open active task" button.
@@ -254,7 +267,10 @@ test.describe("Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness)", () => {
     const goal = `Idle naming a11y ${Date.now()}`;
     await createTaskViaApi(page.request, projectId, goal, { stageId: "1" });
     await page.request.post(`${API_BASE}/compute/stop`, { data: { projectId } });
-    await page.reload({ waitUntil: "domcontentloaded" });
+    // No reload here: waitForAppShell navigates fresh via goto, and a
+    // reload immediately followed by goto floods the renderer with
+    // aborted + re-requested module loads (ERR_INSUFFICIENT_RESOURCES),
+    // blanking the page deterministically on the gate host.
     await waitForAppShell(page);
 
     await expect(page.getByText("No active task — engine idle")).toBeVisible({
