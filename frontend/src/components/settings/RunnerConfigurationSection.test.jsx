@@ -212,6 +212,41 @@ describe('RunnerConfigurationSection', () => {
     expect(screen.queryByTestId('runner-detail-ry')).toBeNull();
   });
 
+  it('renders only well-formed rows: malformed records and duplicate ids are dropped', async () => {
+    const revoked = { ...ACTIVE_RUNNER, runnerId: 'rx', status: 'revoked' };
+    runnersFixture([
+      null,
+      { status: 'active' },
+      revoked,
+      { ...ACTIVE_RUNNER, runnerId: 'r1' },
+      {
+        ...ACTIVE_RUNNER,
+        runnerId: 'r1',
+        operatorConfig: { ...OPERATOR_CONFIG, displayName: 'Dupe' },
+      },
+      PENDING_RUNNER,
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    // Exactly one row per Runner id: the duplicate r1 renders once and the
+    // first occurrence wins (no display name, so the id is the label).
+    expect(screen.getAllByTestId('runner-row-r1')).toHaveLength(1);
+    expect(screen.getByTestId('runner-select-r1').textContent).toBe('r1');
+    expect(screen.queryByTestId('runner-row-rx')).toBeNull();
+    expect(screen.getByTestId('runner-row-r2')).toBeTruthy();
+    expect(screen.queryByTestId('runner-row-undefined')).toBeNull();
+  });
+
+  it('shows the empty message when every record is revoked or malformed', async () => {
+    runnersFixture([null, { status: 'revoked' }, { runnerId: 'rx', status: 'revoked' }]);
+    render(<RunnerConfigurationSection />);
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-config-empty')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('runner-roster')).toBeNull();
+    expect(screen.queryByTestId('runner-detail-rx')).toBeNull();
+  });
+
   it('revoking the selected Runner moves selection to the next visible one', async () => {
     runnersFixture([ACTIVE_RUNNER, PENDING_RUNNER]);
     revokeRunner.mockResolvedValue({ status: 'revoked' });

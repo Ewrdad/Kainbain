@@ -143,6 +143,8 @@ export function RunnerConfigurationSection() {
   }, []);
 
   useEffect(() => {
+    // Deferred a microtask so the effect body itself never calls setState
+    // synchronously (react-hooks/set-state-in-effect).
     void Promise.resolve().then(() => loadRunners());
   }, [loadRunners]);
 
@@ -279,7 +281,6 @@ export function RunnerConfigurationSection() {
   const enabledTools = selected ? effectiveTools(selected) : [];
   const nameDraft = selected ? (nameDrafts[selected.runnerId] ?? config.displayName ?? '') : '';
   const modelDraftText = selected
-    // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
     ? (modelDrafts[selected.runnerId] ?? effectiveModelIds.join(', '))
     : '';
   const modelsDirty =
@@ -369,7 +370,6 @@ export function RunnerConfigurationSection() {
       if (saved) {
         setModelDrafts((prev) => {
           const nextDrafts = { ...prev };
-          // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
           delete nextDrafts[selected.runnerId];
           return nextDrafts;
         });
@@ -387,7 +387,6 @@ export function RunnerConfigurationSection() {
       if (saved) {
         setModelDrafts((prev) => {
           const nextDrafts = { ...prev };
-          // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
           delete nextDrafts[selected.runnerId];
           return nextDrafts;
         });
@@ -874,7 +873,6 @@ export function RunnerConfigurationSection() {
                 onChange={(e) =>
                   setModelDrafts((prev) => ({
                     ...prev,
-                    // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
                     [selected.runnerId]: e.target.value,
                   }))
                 }

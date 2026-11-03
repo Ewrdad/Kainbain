@@ -166,6 +166,43 @@ describe('runnerConfigHelpers', () => {
     expect(visibleRunners('nope')).toEqual([]);
   });
 
+  it('drops malformed records that cannot be a roster row (no usable Runner id)', () => {
+    const rows = [
+      null,
+      'runner',
+      42,
+      {},
+      { status: 'active' },
+      { runnerId: '' },
+      { runnerId: 42 },
+      { runnerId: 'ok', status: 'active' },
+    ];
+    expect(visibleRunners(rows).map((r) => r.runnerId)).toEqual(['ok']);
+  });
+
+  it('keeps only the first record when Runner ids are duplicated', () => {
+    const rows = [
+      { runnerId: 'a', status: 'active', displayName: 'first' },
+      { runnerId: 'a', status: 'active', displayName: 'dupe' },
+      { runnerId: 'b', status: 'pending' },
+    ];
+    expect(visibleRunners(rows).map((r) => r.runnerId)).toEqual(['a', 'b']);
+    expect(visibleRunners(rows)[0].displayName).toBe('first');
+  });
+
+  it('drops malformed records and revoked ones in the same pass', () => {
+    const rows = [
+      { runnerId: 'rx', status: 'revoked' },
+      null,
+      { status: 'active' },
+      { runnerId: 'ok', status: 'revoked' },
+      { runnerId: 'ok', status: 'active' },
+    ];
+    // The revoked 'ok' is filtered before the dedupe sees it, so the active
+    // record with the same id is NOT hidden by the revoked twin.
+    expect(visibleRunners(rows).map((r) => r.runnerId)).toEqual(['ok']);
+  });
+
   it('keeps the previous selection while it is still visible', () => {
     const visible = [{ runnerId: 'a' }, { runnerId: 'b' }];
     expect(resolveSelectedId(visible, 'b')).toBe('b');

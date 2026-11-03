@@ -48,12 +48,14 @@ export const defaultRunnerConfig = (runner = {}) => {
   const jobTypes = { runsCi: true, runsMerges: true, runsImpromptu: true };
   if (source.jobTypes && typeof source.jobTypes === 'object') {
     for (const key of JOB_TYPE_KEYS) {
+      // eslint-disable-next-line security/detect-object-injection -- key comes from the fixed JOB_TYPE_KEYS list
       if (typeof source.jobTypes[key] === 'boolean') jobTypes[key] = source.jobTypes[key];
     }
   }
   const directories = { masterDir: '', worktreeDir: '' };
   if (source.directories && typeof source.directories === 'object') {
     for (const key of ['masterDir', 'worktreeDir']) {
+      // eslint-disable-next-line security/detect-object-injection -- key comes from a fixed two-item list
       if (typeof source.directories[key] === 'string') directories[key] = source.directories[key];
     }
   }
@@ -106,8 +108,12 @@ export const runnerStatusLabel = (runner = {}) => {
 /***
  * MARK: visibleRunners
  * @description Roster rows shown on the System Settings › Runners screen:
- *   every registration except `revoked` ones, which are hidden completely
- *   (no row, no detail panel, no selection). `denied` join requests stay
+ *   every well-formed registration except `revoked` ones, which are hidden
+ *   completely (no row, no detail panel, no selection). A roster row is a
+ *   selector for the detail panel and React keys rows off the Runner id,
+ *   so malformed records (null, non-object, or no usable string id) are
+ *   dropped instead of rendering a broken row, and duplicate ids keep only
+ *   the first occurrence so keys never collide. `denied` join requests stay
  *   visible so the operator can still approve that recovery path; unknown
  *   future statuses stay visible too (fail-open) so a new backend status
  *   never silently vanishes from the UI. Frontend-only: `GET /runners`
@@ -116,8 +122,20 @@ export const runnerStatusLabel = (runner = {}) => {
  * @param {Object[]} [runners=[]] - Raw Runner records from `GET /runners`.
  * @returns {Object[]} Listable Runner records.
  ***/
-export const visibleRunners = (runners = []) =>
-  (Array.isArray(runners) ? runners : []).filter((r) => r?.status !== 'revoked');
+export const visibleRunners = (runners = []) => {
+  const list = Array.isArray(runners) ? runners : [];
+  const seenIds = new Set();
+  const visible = [];
+  for (const runner of list) {
+    if (!runner || typeof runner !== 'object') continue;
+    if (typeof runner.runnerId !== 'string' || !runner.runnerId) continue;
+    if (runner.status === 'revoked') continue;
+    if (seenIds.has(runner.runnerId)) continue;
+    seenIds.add(runner.runnerId);
+    visible.push(runner);
+  }
+  return visible;
+};
 
 /***
  * MARK: resolveSelectedId
@@ -357,6 +375,7 @@ export const scopePatchForLoaded = (loadedIds = [], allProjects = []) => {
 export const validateDirectories = (directories = {}) => {
   const errors = {};
   for (const key of ['masterDir', 'worktreeDir']) {
+    // eslint-disable-next-line security/detect-object-injection -- key comes from a fixed two-item list
     const value = directories?.[key];
     if (typeof value !== 'string' || !value.trim()) {
       // eslint-disable-next-line security/detect-object-injection -- key is a fixed directory field name
