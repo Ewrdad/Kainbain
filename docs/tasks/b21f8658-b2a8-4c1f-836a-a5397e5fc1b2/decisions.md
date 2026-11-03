@@ -253,3 +253,35 @@ right-side title path already avoids duplicating.
   (needs a live app URL + browsers; CI's 13 failures are `waitForAppReady`
   timeouts in unrelated specs, failing before any mobile-monitor code
   could run).
+
+## Cleanup verification (2026-11-03, cleanup stage continued)
+
+- Fresh-eyes re-audit, no production change: every wrong-type primitive
+  through the view, both resolvers, the title formatter, and the widget
+  was traced (`?.` guards plus `?? {}`/`Array.isArray` at each step) and
+  the failure direction stays legacy-pill-visible on every input. Two
+  genuine coverage gaps pinned (test-only): widget-level
+  missing-endpoint-methods (mixed-version rollout — an old backend
+  exposes no fleet endpoints, so the hook reads empty fleet and never
+  calls what is not there) and view-level wrong-type props (engine
+  snapshot, task, and lists arriving as text render the IDLE pill + `No
+  active stage` + `Harness: Unknown` + `Fleet idle`, never a crash).
+- Merge safety vs `main`: the 3 branch api files are byte-identical to
+  the `main` tip (the same doc moves landed there — merge-clean), and
+  `main` has since touched only files this branch never touches
+  (`NowPlayingBar`, backend/ops) — no conflicts expected. Model-line
+  wording re-verified line by line against `main`'s chips; the title
+  formatter logic is verbatim; desktop full cards render identically for
+  well-shaped data.
+- Gates: frontend 293 files / 3995 passed, api suite green (exit 0),
+  `npm run lint` 0 errors (touched files warning-free), `npm run
+  docs:check` exit 0, frontend build exit 0, jsdoc grandfather 14/14, 0
+  `act` warnings in the task suites. `check:one-function` (manual, not
+  CI) still fails only on the same 3 pre-existing files as `main`; new
+  modules declare one function each. Canary E2E not re-run (needs a live
+  app + browsers; CI's failures are `waitForAppReady` timeouts in
+  unrelated specs).
+- Operations: frontend-only, no migration, plain-revert rollback;
+  mixed-version safe in both directions; the single shared 5s poller is
+  pinned by test (strictly fewer fleet requests than `main`'s separate
+  widget poll).

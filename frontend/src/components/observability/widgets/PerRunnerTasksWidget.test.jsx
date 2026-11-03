@@ -14,6 +14,7 @@ vi.mock('../../../services/api', () => ({
   api: { getRunners, getRunnerMonitor },
 }));
 
+import { api } from '../../../services/api';
 import '@testing-library/jest-dom';
 
 describe('formatRunnerElapsed', () => {
@@ -93,6 +94,27 @@ describe('PerRunnerTasksWidget', () => {
       expect(getRunnerMonitor).toHaveBeenCalled();
     });
     expect(screen.getByText(/Fleet idle/)).toBeInTheDocument();
+  });
+
+  test('missing fleet endpoint methods read as empty fleet without crashing', async () => {
+    // Old backends expose no fleet endpoints (mixed-version rollout): the
+    // hook reads that as empty fleet — legacy fallback stays visible — and
+    // never calls what is not there.
+    const originalMonitor = api.getRunnerMonitor;
+    const originalRunners = api.getRunners;
+    api.getRunnerMonitor = undefined;
+    api.getRunners = undefined;
+    try {
+      render(<PerRunnerTasksWidget tasks={[]} compact />);
+      await waitFor(() => {
+        expect(screen.getByText(/Fleet idle/)).toBeInTheDocument();
+      });
+      expect(getRunnerMonitor).not.toHaveBeenCalled();
+      expect(getRunners).not.toHaveBeenCalled();
+    } finally {
+      api.getRunnerMonitor = originalMonitor;
+      api.getRunners = originalRunners;
+    }
   });
 
   test('renders one full card per live assignment with elapsed and tail', async () => {

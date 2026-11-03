@@ -445,6 +445,31 @@ test('null list props render fallbacks without crashing', async () => {
   expect(screen.getByText(/Waiting for process logs stream/i)).toBeInTheDocument();
 });
 
+test('wrong-type props fail safe to the pill fallback, never a crash', async () => {
+  // Version-skew payloads (a field arriving as text instead of its shaped
+  // object) keep the legacy status visible instead of blanking the monitor.
+  await renderView(
+    <MobileMonitorView
+      engineState="not-a-snapshot"
+      activeTask="not-a-task"
+      stages="not-a-list"
+      runnerTasks="not-a-list"
+      runnerStages="not-a-list"
+      runnerAssignmentsOverride={[]}
+      runnerRegistryOverride={[]}
+      processLogs={[]}
+      onExit={() => {}}
+    />,
+  );
+
+  expect(screen.getByTestId('mobile-engine-state')).toHaveTextContent('IDLE');
+  expect(screen.getByTestId('mobile-active-stage')).toHaveTextContent('No active stage');
+  expect(screen.getByTestId('mobile-monitor-model-details')).toHaveTextContent(
+    'Harness: Unknown',
+  );
+  expect(screen.getByText(/Fleet idle/)).toBeInTheDocument();
+});
+
 test('header formatters stay importable from the view after the module split', () => {
   expect(formatMobileMonitorTitle({ title: 'Build auth' }, {}, true)).toBe('Build auth');
   expect(resolveMobileModelLine(null)).toBeNull();
