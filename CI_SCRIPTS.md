@@ -127,6 +127,19 @@ tarball/manifest/`releases.json` are gitignored in the ad-site; the three
 recognise `deploy|publish|redeploy|update|install.sh` as deploy-family
 commands (pattern sources pinned identical by test).
 
+## Canary serialization (2026-11-03)
+
+Every task's CI gate runs the canary suite, and every suite start reclaims
+the fixed scratch ports (`:3399`/`:5299`) by killing verified scratch
+occupants. Overlapping suites therefore killed each other's live stacks and
+no task passed CI for a day. `canary-e2e/canary-lock.js` is now a host-wide
+mutex: the suite acquires it at Playwright config load (main process only)
+and releases it in `global-teardown.js`, so suites queue instead of
+destroying each other. Wait budget 30 min, suite ceiling 25 min, CI test
+stages 90 min. Crashed holders are detected by PID liveness.
+`KAINBAIN_CANARY_LOCK_DIR` overrides the lock dir (default `~/.kainbain`).
+Emergency opt-out is unchanged: `KAINBAIN_SKIP_CANARY=1` / `--no-canary`.
+
 ## Verified 2026-10-30
 
 - `bash deploy/update.test.sh`, `deploy/install.test.sh`,

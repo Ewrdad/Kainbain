@@ -186,9 +186,9 @@ describe("buildBranches", () => {
 		assert.equal(canary.lowPriority, true);
 		assert.equal(canary.shell, undefined, "must not use a shell");
 		// The canary branch is minutes long and quiet mid-run: it carries its
-		// own honest hung-branch ceiling (15 min, exit 124 on breach) instead
+		// own honest hung-branch ceiling (25 min, exit 124 on breach) instead
 		// of leaving a wedged suite bounded only by silence thresholds.
-		assert.equal(canary.timeoutMs, 15 * 60 * 1000);
+		assert.equal(canary.timeoutMs, 25 * 60 * 1000);
 	});
 });
 
@@ -484,12 +484,18 @@ describe("pruneStaleTestDirectories", () => {
 			const staleTestDirectory = path.join(temporaryDirectory, "kainbain-test-projects-old");
 			const youngTestDirectory = path.join(temporaryDirectory, "kainbain-test-projects-new");
 			const staleKbDirectory = path.join(temporaryDirectory, "kb-review-route-old");
+			const staleDeployDirectory = path.join(temporaryDirectory, "kainbain-deploy-attempt-old");
+			const staleCacheDirectory = path.join(temporaryDirectory, "kainbain-compile-cache-old");
+			const liveCanaryRootsDirectory = path.join(temporaryDirectory, "kb-canary-e2e");
 			const staleUnrelatedDirectory = path.join(temporaryDirectory, "unrelated-cache-old");
 			const staleMatchingFile = path.join(temporaryDirectory, "kainbain-test-file.txt");
 
 			fs.mkdirSync(staleTestDirectory);
 			fs.mkdirSync(youngTestDirectory);
 			fs.mkdirSync(staleKbDirectory);
+			fs.mkdirSync(staleDeployDirectory);
+			fs.mkdirSync(staleCacheDirectory);
+			fs.mkdirSync(liveCanaryRootsDirectory);
 			fs.mkdirSync(staleUnrelatedDirectory);
 			fs.writeFileSync(staleMatchingFile, "sample content");
 
@@ -499,6 +505,9 @@ describe("pruneStaleTestDirectories", () => {
 			// Backdate stale entries to one hour ago
 			fs.utimesSync(staleTestDirectory, oneHourAgoInSeconds, oneHourAgoInSeconds);
 			fs.utimesSync(staleKbDirectory, oneHourAgoInSeconds, oneHourAgoInSeconds);
+			fs.utimesSync(staleDeployDirectory, oneHourAgoInSeconds, oneHourAgoInSeconds);
+			fs.utimesSync(staleCacheDirectory, oneHourAgoInSeconds, oneHourAgoInSeconds);
+			fs.utimesSync(liveCanaryRootsDirectory, oneHourAgoInSeconds, oneHourAgoInSeconds);
 			fs.utimesSync(staleUnrelatedDirectory, oneHourAgoInSeconds, oneHourAgoInSeconds);
 			fs.utimesSync(staleMatchingFile, oneHourAgoInSeconds, oneHourAgoInSeconds);
 
@@ -507,9 +516,12 @@ describe("pruneStaleTestDirectories", () => {
 				maximumAgeInMilliseconds: 30 * 60 * 1000,
 			});
 
-			assert.equal(prunedCount, 2);
+			assert.equal(prunedCount, 3);
 			assert.equal(fs.existsSync(staleTestDirectory), false);
 			assert.equal(fs.existsSync(staleKbDirectory), false);
+			assert.equal(fs.existsSync(staleDeployDirectory), false);
+			assert.equal(fs.existsSync(staleCacheDirectory), true);
+			assert.equal(fs.existsSync(liveCanaryRootsDirectory), true);
 			assert.equal(fs.existsSync(youngTestDirectory), true);
 			assert.equal(fs.existsSync(staleUnrelatedDirectory), true);
 			assert.equal(fs.existsSync(staleMatchingFile), true);
