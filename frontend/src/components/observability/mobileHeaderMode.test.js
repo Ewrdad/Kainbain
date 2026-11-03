@@ -144,6 +144,18 @@ describe('resolveMobileHeaderMode', () => {
     }
   });
 
+  test('a wrong-type active task never crashes the resolver and names no chip', () => {
+    const mode = resolveMobileHeaderMode({
+      assignments: [{ runnerId: 'r1' }],
+      registry: [],
+      activeTask: 'not-a-task',
+      stages: STAGES,
+      engineState: { status: 'running', activeStageName: 'Build' },
+    });
+    expect(mode.activeChip).toBeNull();
+    expect(mode.showEnginePill).toBe(false);
+  });
+
   test('non-array assignments and stages never crash the resolver', () => {
     const mode = resolveMobileHeaderMode({
       assignments: 'local-alpha',

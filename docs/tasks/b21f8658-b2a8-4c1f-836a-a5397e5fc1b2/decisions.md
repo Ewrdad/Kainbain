@@ -154,3 +154,27 @@ right-side title path already avoids duplicating.
   rollback is a plain revert with no migration. Known tradeoff stands:
   on first load the pill shows until the first fleet read lands
   (fail-visible by design, one quick swap).
+
+## Final cleanup (2026-11-03, cleanup stage continued)
+
+- No production change: two prior cleanup passes left the view, the two
+  new resolver modules, and the widget hardened and fully pinned, and a
+  fresh-eyes re-read found no remaining defect worth churning tested
+  code for. Every wrong-type primitive through the new paths was traced
+  (`?.` guards plus `?? {}`/`Array.isArray` at each step; property reads
+  on strings/numbers cannot throw) and the legacy-fallback direction
+  holds on every failure input.
+- Two regression pins added (test-only): a view-level assignments-only
+  half-override test (one override still skips the poll; header and rows
+  agree) and a resolver-level wrong-type `activeTask` test (no crash,
+  chip null, pill follows fleet presence). Both cover documented
+  contracts (`optional props`, fail-safe on bad input) that had no pin.
+- Deliberately unchanged: checkpoint/paused with an idle-but-registered
+  fleet keeps the pill hidden per the adopted survey q2 direction
+  (per-runner state is the signal; rework stays contained in
+  `resolveMobileHeaderMode` if the user answers otherwise); positional
+  signatures, re-export shims, and the 3 pre-existing
+  `check-one-function-per-file` flags stay as documented above.
+- Gates re-verified below before the verdict; canary E2E failures in CI
+  are environmental (`net::ERR_INSUFFICIENT_RESOURCES` on page load, 26
+  failed / 108 passed) and unrelated to this frontend-only change.

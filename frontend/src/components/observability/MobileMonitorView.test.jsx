@@ -441,6 +441,23 @@ test('no runners configured: pill fallback stays with the legacy task-only title
   expect(headerText).not.toHaveTextContent('Code Generation');
 });
 
+test('assignments-only override keeps header and rows consistent with no polling', () => {
+  renderWithKainBain(
+    <MobileMonitorView
+      {...baseProps}
+      runnerAssignmentsOverride={[{ runnerId: 'local-alpha', taskId: 't1' }]}
+      onExit={() => {}}
+    />,
+  );
+
+  // One override still skips the fleet poll; the live assignment alone is
+  // fleet presence, so the pill hides and the row renders.
+  expect(screen.queryByTestId('mobile-engine-state')).not.toBeInTheDocument();
+  expect(screen.getByTestId('per-runner-row-local-alpha')).toBeInTheDocument();
+  expect(getRunnerMonitor).not.toHaveBeenCalled();
+  expect(getRunners).not.toHaveBeenCalled();
+});
+
 test('malformed fleet overrides fail safe to the pill fallback, never a crash', () => {
   renderWithKainBain(
     <MobileMonitorView
