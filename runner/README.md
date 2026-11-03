@@ -13,8 +13,11 @@ backend URL (e.g. `https://kainbain.home`). Every host ships one local
 Runner by default — install it with:
 
 ```sh
-scripts/install-local-runner.sh --id local-pi --harness pi
+scripts/install-local-runner.sh --id local-pi
 # remote host: add --backend https://kainbain.home
+# Harnesses auto-detect by default (pi, muse, antigravity, vibe probed on
+# PATH); pin with --manual --harness pi or --manual --harnesses pi,muse.
+# mock has no CLI, so it is manual-only.
 ```
 
 ## Onboard (human approval required, D4)
@@ -60,6 +63,16 @@ node runner/main.js
 matches against (csv; singular `KAINBAIN_RUNNER_MODEL` seeds a 1-element
 list; empty matches model-less tasks only). Each assignment serves
 exactly the dispatch answer's required model — never a substitution.
+
+When no models are pinned, the daemon auto-discovers them: for the
+`muse` harness it asks the installed CLI over its own wire protocol
+(`muse serve` stdio `model/list`, box-local login — keys never leave
+the host) and advertises the returned ids (`muse::<provider>::<model>`).
+Discovery runs once at boot and refreshes every
+`KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS` (default 12h, `0`
+disables); failures keep the previous list and warn, never break
+heartbeats. A pinned list always wins over discovered ids. Other
+harnesses have no discovery yet and stay manual-only.
 
 Model reporting contract (`servingModelFor` / `formatPosture` in
 `shared/` — one copy executed by both this Runner and the backend via
@@ -112,10 +125,49 @@ Stage advancement stays engine-owned until the dispatch integration lands.
 - Boot surfaces orphaned workdirs (unpushed work) in the log; nothing is
   ever deleted by cleanup.
 - Log gaps are reported as data (`frames X–Y missing`), never papered over.
-- `node --test runner/daemon.test.js runner/client.test.js runner/config.test.js runner/gitOps.test.js runner/harness.test.js runner/project.test.js`
+- `node --test runner/daemon.test.js runner/client.test.js runner/config.test.js runner/gitOps.test.js runner/harness.test.js runner/project.test.js runner/updates-platform.test.js runner/updates-manifest.test.js runner/updates-verify.test.js runner/updates-state.test.js runner/updates-check.test.js runner/updates-daemon.test.js runner/updates-fixture.test.js`
   runs the daemon suite (no ports, real temp git repos, mock harness).
   Name each file: a bare `node --test runner/` directory arg mis-resolves
   on current Node, and this same explicit list is what the `Unit Tests
   (runner)` gate branch runs (`scripts/run-tests.mjs`, pinned by
   `tests/run-tests.test.mjs` so a new suite file fails loudly instead of
   silently never running).
+
+## Self-update (Option A, ADR 0012)
+
+External Runners update themselves from versioned GitHub Releases — the
+backend never ships runner code. The supported entrypoint is the restart
+wrapper:
+
+```
+KAINBAIN_RUNNER_INSTALL_ROOT=$HOME/.kainbain/runner-install \
+  runner/bin/kainbain-runner
+```
+
+On idle (no active task) the dispatch loop checks the release pointer on a
+jittered hourly interval, verifies the manifest signature against the
+pinned key in `runner/updates/verify.js`, verifies the asset sha256,
+atomically flips `current` to the new tree (keeping `previous` for
+rollback), and exits 0 so the wrapper restarts it. Direct
+`node runner/main.js` is dev-only: it stages updates but cannot restart
+itself. New knobs:
+
+- `KAINBAIN_RUNNER_UPDATE_URL` — release pointer override for air-gapped
+  mirrors (a base serving `manifest.json` + `.minisig` + assets, or a full
+  `manifest.json` URL). Default is the GitHub `releases/latest` API.
+- `KAINBAIN_RUNNER_AUTO_UPDATE=0` — opt out of self-update checks.
+- `KAINBAIN_RUNNER_UPDATE_CHECK_INTERVAL_MS` — poll base in ms (default
+  3600000, min 300000; ±20% jitter).
+- `KAINBAIN_RUNNER_INSTALL_ROOT` — install root holding
+  `releases/`, `current`, `previous`, `update-state.json` (default:
+  `runner-install` sibling of the work root).
+
+A 409 `RUNNER_VERSION_BELOW_MINIMUM` from dispatch/claim means the backend
+floor moved past this Runner: it self-updates immediately (when idle,
+bypassing the check interval) and retries. Tampered assets/manifests abort
+the update, keep the old version, and surface an "update failed" badge in
+Settings › Runners via the next heartbeat. Any apply failure (network cut
+mid-download, busy updater, missing `tar`) is contained the same way: the
+loop backs off and keeps serving the old version, never crashing. Hung
+mirrors time out (30s pointer/manifest, 5 min assets). Windows hosts are
+not supported in v1 (linux/darwin × x64/arm64).

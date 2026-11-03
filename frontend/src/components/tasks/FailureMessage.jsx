@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { truncateFailureMessage } from './failureReason';
+import { FailureMessageImage } from './FailureMessageImage';
 import { API_BASE } from '../../services/apiBase';
 import { extractImageRefs, resolveTaskImageUrl } from '../../services/taskImages';
 
@@ -78,24 +79,7 @@ export function FailureMessage({
             });
             const name = ref.src.split('/').pop() || ref.alt || 'image';
             return (
-              <a
-                key={ref.src}
-                href={url}
-                target="_blank"
-                rel="noreferrer"
-                title={name}
-                className="inline-block border border-border-standard rounded-sm overflow-hidden hover:brightness-110 transition-all"
-              >
-                <img
-                  src={url}
-                  alt={ref.alt || name}
-                  loading="lazy"
-                  className="w-16 h-16 object-cover block"
-                  onError={(e) => {
-                    e.currentTarget.style.visibility = 'hidden';
-                  }}
-                />
-              </a>
+              <FailureMessageImage key={url} url={url} alt={ref.alt || name} name={name} />
             );
           })}
         </div>

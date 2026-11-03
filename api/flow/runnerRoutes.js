@@ -5,9 +5,11 @@ import { normalizeStageType } from "../projectStore.js";
 import { git, defaultBranch } from "../git.js";
 import { circuitSnapshot, isTripped } from "./circuitBreaker.js";
 import { scanClaimableTasks } from "./dispatch/scanClaimableTasks.js";
+import { buildFleetModelCatalog } from "./dispatch/fleetModelCatalog.js";
 import { resolveAliasRequirement } from "./dispatch/resolveAliasRequirement.js";
 import { runnerMatches } from "./dispatch/runnerMatches.js";
 import { operatorConfigVerdict } from "./dispatch/operatorConfigVerdict.js";
+import { stageRunnerPolicyVerdict } from "../../shared/stageRunnerPolicy.js";
 import { taskRequirements } from "./dispatch/taskRequirements.js";
 import { curateRunnerPrompt } from "./curateRunnerPrompt.js";
 import { materializeRunnerTaskDocs } from "./execution/materializeRunnerTaskDocs.js";
@@ -15,10 +17,17 @@ import { buildCommandKeywordContext, expandStageCommand } from "./commandStages.
 import { resolveStagesForTask } from "./stageResolution.js";
 import { emitStageLifecycle } from "./stageLifecycle.js";
 import {
+	resolveStageLabel,
 	resolveStageTimeout,
 	runnerStageTimeoutStatus,
 } from "./stagePolicy.js";
 import { redactSecretsText } from "../../shared/redactSecrets.js";
+import { buildBelowMinimumRefusal } from "./runnerVersionCompat.js";
+import { servingModelFor } from "./runnerPosture.js";
+import {
+	buildTimelineAttribution,
+	stampArrivalRowAttribution,
+} from "./runAttribution.js";
 
 /***
  * MARK: resolveCiTimeoutMs
@@ -42,6 +51,57 @@ export const resolveCiTimeoutMs = (resolved, project) => {
 		600000
 	);
 };
+
+/***
+ * MARK: stampDispatchRunAttribution
+ * @description Stamps one dispatched run's resolved choice onto the task —
+ *   the runner-side mirror of the embedded dispatch stamp in
+ *   `executeStage`, so timeline rows and reports attribute the model that
+ *   was ACTUALLY matched, never a fallback. The requirement's harness/
+ *   model name the run (model normalized through `servingModelFor`, so the
+ *   "default" sentinel and non-LLM kinds never stamp); a resolved alias
+ *   rides along with its name and target index. CI/merge requirements carry
+ *   no harness/model, so nothing is stamped and their rows stay blank — a
+ *   scripted stage must never show a model. Best-effort: a stamping failure
+ *   never blocks the claim.
+ * @example stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req: { harness: 'pi', model: 'm', kind: 'agent' } })
+ * @param {Object} args - `{ taskStore, project, task, stage, stages, req }`.
+ * @returns {Object|null} The stamped attribution, or null when nothing ran behind the dispatch.
+ ***/
+export function stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req }) {
+	try {
+		if (!task || !req) return null;
+		const resolvedAlias =
+			req.alias && typeof req.alias === "object" && typeof req.alias.name === "string"
+				? req.alias
+				: null;
+		const attribution = buildTimelineAttribution({
+			harnessId: typeof req.harness === "string" && req.harness.trim() ? req.harness.trim() : null,
+			modelRef: servingModelFor({ kind: req.kind, model: req.model }),
+			aliasName: resolvedAlias ? resolvedAlias.name : null,
+			targetIndex: resolvedAlias ? resolvedAlias.targetIndex : null,
+		});
+		if (!attribution) return null;
+		task.currentRunAttribution = {
+			stageId: stage?.id ?? task.currentStageId ?? null,
+			...attribution,
+		};
+		const arrivalLabel =
+			stage?.name || resolveStageLabel(stage?.id ?? task.currentStageId, stages || []);
+		const stampedRow = stampArrivalRowAttribution(task, arrivalLabel, attribution);
+		if (stampedRow) {
+			try {
+				taskStore?._saveTaskMarkdown?.(project?.cwd, task);
+			} catch {
+				// Persisting the stamp is best-effort; the in-memory
+				// attribution already drives the completion row.
+			}
+		}
+		return attribution;
+	} catch {
+		return null;
+	}
+}
 
 /***
  * MARK: prepareIntegrationAttempt
@@ -438,6 +498,17 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		return { ...executionLedger.snapshot(), liveAssignments, scheduler, integration };
 	});
 
+	app.get("/runners/models/catalogue", async () => {
+		// Fleet model catalogue: derived live from Runner registrations
+		// (never cached), so joins, leaves, heartbeat updates, and
+		// operator allowlist edits reflect on the next read. One entry
+		// per distinct model id served by at least one claim-eligible
+		// Runner (active, not paused), with the serving harness ids,
+		// tiers, and runner count/ids. Stage, default, and alias pickers
+		// read this for availability instead of credential health.
+		return buildFleetModelCatalog(runnerRegistry.list());
+	});
+
 	app.post("/tasks/:id/progress", async (request, reply) => {
 		let runner;
 		try {
@@ -678,6 +749,14 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				});
 				return { ...receipt, ...finish };
 			}
+			// The Runner's explicit served-model field (new runners); normalized
+			// through servingModelFor with the stage's kind so CI stages and the
+			// "default" sentinel can never land in the report. Old runners omit
+			// the field and applyRunnerReport falls back to the dispatch stamp.
+			const reportedModelRef = servingModelFor({
+				kind: normalizeStageType(currentStage.type),
+				model: request.body?.model ?? null,
+			});
 			const finish = await applyRunnerReport({
 				store: taskStore,
 				projectStore,
@@ -689,6 +768,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					summary: request.body?.summary ?? "",
 					modifiedFiles: request.body?.modifiedFiles ?? [],
 					harnessId,
+					modelRef: reportedModelRef,
 					failureKind: request.body?.failureKind ?? null,
 					failureReason: request.body?.failureReason ?? null,
 					duration: request.body?.durationMs
@@ -750,6 +830,11 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				code: "RUNNER_PAUSED",
 			});
 		}
+		// Runner self-update floor (Option A, ADR 0012): a known product
+		// version below KAINBAIN_RUNNER_MIN_VERSION is refused so it cannot
+		// mis-execute — the daemon self-updates on this code and retries.
+		const belowMinimum = buildBelowMinimumRefusal({ runner, minVersion: config.runnerMinVersion });
+		if (belowMinimum) return reply.status(409).send(belowMinimum);
 		const projectId = resolveAndGuardProject(
 			request.body?.projectId || request.query?.projectId,
 			reply,
@@ -763,15 +848,22 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// excludes the stage harness must not claim the task by asking for
 		// it directly. Fail loud (409 + the verdict code) instead of
 		// silently honouring a claim the operator switched off.
-		const claimVerdict = operatorConfigVerdict(
-			runner,
-			taskRequirements(projectStore.getProject(projectId) || {}, task),
-			{ projectId },
-		);
+		const req = taskRequirements(projectStore.getProject(projectId) || {}, task);
+		const claimVerdict = operatorConfigVerdict(runner, req, { projectId });
 		if (!claimVerdict.ok) {
 			return reply.status(409).send({
 				error: `Runner ${runner.runnerId} settings refuse this task (${claimVerdict.reason}).`,
 				code: claimVerdict.reason,
+			});
+		}
+		// Stage runnerPolicy (stage settings allow/block list) binds this
+		// direct claim exactly like the dispatch scan: claiming by task id
+		// must not bypass a stage the Runner is not allowed on.
+		const claimPolicyVerdict = stageRunnerPolicyVerdict(req.runnerPolicy, runner.runnerId);
+		if (!claimPolicyVerdict.ok) {
+			return reply.status(409).send({
+				error: `Runner ${runner.runnerId} is refused by this stage's Runner list (${claimPolicyVerdict.reason}).`,
+				code: claimPolicyVerdict.reason,
 			});
 		}
 		try {
@@ -780,7 +872,14 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				runner.runnerId,
 				projectId,
 			);
-			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...await ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project: projectStore.getProject(projectId), task, stageId: task.currentStageId }) };
+			// Same run attribution as the dispatch path: the requirement's
+			// resolved harness/model names this run on the timeline/reports.
+			const project = projectStore.getProject(projectId);
+			const stages = resolveStagesForTask(project, task);
+			const stage =
+				stages.find((s) => String(s?.id) === String(task.currentStageId)) || stages[0] || null;
+			stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req });
+			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...await ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project, task, stageId: task.currentStageId }) };
 		} catch (err) {
 			return sendStoreError(reply, err);
 		}
@@ -896,6 +995,10 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				code: "RUNNER_PAUSED",
 			});
 		}
+		// Runner self-update floor (Option A, ADR 0012): same refusal as
+		// direct claim — shared helper so the two gates cannot drift.
+		const belowMinimum = buildBelowMinimumRefusal({ runner, minVersion: config.runnerMinVersion });
+		if (belowMinimum) return reply.status(409).send(belowMinimum);
 		if (isTripped(taskStore)) {
 			const circuit = circuitSnapshot(taskStore);
 			return reply.status(409).send({
@@ -1068,6 +1171,18 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					runner.runnerId,
 					cand.projectId,
 				);
+				// Stamp the matched harness/model/alias onto the task so the
+				// timeline and reports attribute THIS run (mirrors the
+				// embedded dispatch stamp); CI/merge stamp nothing.
+				const candProject = projectStore.getProject(cand.projectId);
+				stampDispatchRunAttribution({
+					taskStore,
+					project: candProject,
+					task: cand.task,
+					stage: cand.stage,
+					stages: resolveStagesForTask(candProject, cand.task),
+					req,
+				});
 				return {
 					assigned: true,
 					projectId: cand.projectId,
@@ -1076,7 +1191,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					executionId,
 					epoch,
 					stageId: cand.stage?.id ?? null,
-					prompt: curateRunnerPrompt({ project: projectStore.getProject(cand.projectId), task: cand.task, stageId: cand.stage?.id }),
+					prompt: curateRunnerPrompt({ project: candProject, task: cand.task, stageId: cand.stage?.id }),
 					...await ciPayloadFor(cand.projectId, cand.task, cand.stage),
 					requirements: req,
 				};
@@ -1124,6 +1239,35 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				error: `Runner ${runner.runnerId} settings refuse merge work (${mergeVerdict.reason}).`,
 				code: mergeVerdict.reason,
 			});
+		}
+		// Stage runnerPolicy binds the direct merge lease exactly like a
+		// dispatched merge: peek the head queued entry (the lease about to
+		// be granted), resolve its task's stage, and refuse Runners the
+		// stage does not allow. Anything unresolvable fails open to the
+		// legacy lease — an empty queue still reports leased:false below.
+		const acquireProjectId = request.body?.projectId;
+		const acquireBranch = request.body?.targetBranch;
+		if (acquireProjectId && acquireBranch) {
+			const headEntry = integrationQueue.peekHead({ projectId: acquireProjectId, targetBranch: acquireBranch });
+			if (headEntry?.taskId) {
+				const headTask = taskStore.getTask(acquireProjectId, headEntry.taskId);
+				if (!headTask) {
+					// Task vanished (deleted while queued) — fall through to the
+					// queue acquire; it will handle stale entries.
+				} else {
+					const headStages = resolveStagesForTask(projectStore.getProject(acquireProjectId), headTask);
+					const headStage = (Array.isArray(headStages) ? headStages : []).find(
+						(s) => String(s?.id) === String(headTask?.currentStageId),
+					) || null;
+					const leaseVerdict = stageRunnerPolicyVerdict(headStage, runner.runnerId);
+					if (!leaseVerdict.ok) {
+						return reply.status(409).send({
+							error: `Runner ${runner.runnerId} is refused by this stage's Runner list (${leaseVerdict.reason}).`,
+							code: leaseVerdict.reason,
+						});
+					}
+				}
+			}
 		}
 		try {
 			return integrationQueue.acquire({

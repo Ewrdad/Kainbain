@@ -131,6 +131,7 @@ export function StageTypeConfig({
   activeProjectId,
   availableModels,
   availableHarnesses,
+  fleetCounts,
   modelsRefreshing,
   refreshModels,
   projectHarnessId,
@@ -217,6 +218,7 @@ export function StageTypeConfig({
               harnessAllowEmpty
               harnessEmptyLabel={`Inherit project default (${projectHarnessLabel})`}
               fallbackHarnessId={projectHarnessId}
+              fleetCounts={fleetCounts}
               onRefresh={refreshModels}
               refreshing={modelsRefreshing}
               isHarnessDisabled={isHarnessDisabled}

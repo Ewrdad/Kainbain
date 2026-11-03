@@ -697,13 +697,23 @@ const TIP_GUARD_HELPERS = [
 	"write_attempt_checkpoint",
 	"write_result",
 	"operation_key_branch",
+	"deploy_tip_worktree_path",
+	"materialize_deploy_tip_worktree",
+	"reexec_from_deploy_tip_worktree",
 	"require_deploy_tip_current",
 ];
 
-function runTipGuard({ repoDir, operationKey }) {
+function runTipGuard({ repoDir, operationKey, fromTipWorktree = false, sourceDir = null }) {
 	// Extracted inside the test so a missing function fails this test with
 	// "deploy.sh function not found" instead of breaking the whole file.
 	const deployDir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-deploy-tipguard-"));
+	const src = sourceDir || path.join(deployDir, "source");
+	// Stub ONLY the final exec: it records the worktree it was handed and
+	// reports that worktree's HEAD, so tests prove the deploy would restart
+	// from the pristine tip tree without running a real deploy.
+	const reexecStub = [
+		`reexec_from_deploy_tip_worktree() { echo "REEXEC:$1"; git -C "$1" rev-parse HEAD; }`,
+	].join("\n");
 	const prelude = [
 		`export DEPLOY_DIR=${JSON.stringify(deployDir)}`,
 		`export LOG_FILE=${JSON.stringify(path.join(deployDir, "deploy.log"))}`,
@@ -714,14 +724,17 @@ function runTipGuard({ repoDir, operationKey }) {
 		`export MODE="prod"`,
 		`export STARTED_AT="2026-09-24T10:00:00.000Z"`,
 		`export OPERATION_KEY=${JSON.stringify(operationKey)}`,
+		`export KAINBAIN_DEPLOY_SOURCE_DIR=${JSON.stringify(src)}`,
+		`export KAINBAIN_DEPLOY_FROM_TIP_WORKTREE=${fromTipWorktree ? "1" : ""}`,
 		extractFunctions(TIP_GUARD_HELPERS),
+		reexecStub,
 	].join("\n");
 	const probe = spawnSync(
 		"bash",
 		["-c", `${prelude}\nrequire_deploy_tip_current`],
 		{ encoding: "utf8", timeout: 60000, cwd: repoDir },
 	);
-	return { probe, deployDir };
+	return { probe, deployDir, sourceDir: src };
 }
 
 describeIfBashJqGit("require_deploy_tip_current (real function bodies)", () => {
@@ -749,7 +762,7 @@ describeIfBashJqGit("require_deploy_tip_current (real function bodies)", () => {
 		expect(fs.existsSync(path.join(deployDir, "last-result.json"))).toBe(false);
 	});
 
-	it("fails loudly when the checkout is behind the integration tip", () => {
+	it("re-execs from a pristine tip worktree when the checkout is behind (primary untouched)", () => {
 		const { dir } = initSyncedRepoPair();
 		// Advance the remote tip, then leave the checkout behind it.
 		fs.writeFileSync(path.join(dir, "file.txt"), "two\n");
@@ -766,16 +779,20 @@ describeIfBashJqGit("require_deploy_tip_current (real function bodies)", () => {
 		);
 		gitIn(dir, "push", "origin", "main");
 		gitIn(dir, "reset", "--hard", "HEAD~1");
-		const { probe, deployDir } = runTipGuard({ repoDir: dir, operationKey: OP });
-		expect(probe.status).toBe(1);
-		const result = JSON.parse(
-			fs.readFileSync(path.join(deployDir, "last-result.json"), "utf8"),
-		);
-		expect(result.status).toBe("failed");
-		expect(String(result.message)).toContain("behind");
+		const behind = gitIn(dir, "rev-parse", "HEAD");
+		const tip = gitIn(dir, "rev-parse", "origin/main");
+		const { probe, deployDir, sourceDir } = runTipGuard({ repoDir: dir, operationKey: OP });
+		expect(probe.status).toBe(0);
+		expect(probe.stdout).toContain(`REEXEC:${sourceDir}`);
+		expect(probe.stdout).toContain(tip);
+		// The deploy restarts from the tip tree; the primary checkout is
+		// NOT moved, reset, or switched to get there.
+		expect(gitIn(sourceDir, "rev-parse", "HEAD")).toBe(tip);
+		expect(gitIn(dir, "rev-parse", "HEAD")).toBe(behind);
+		expect(fs.existsSync(path.join(deployDir, "last-result.json"))).toBe(false);
 	});
 
-	it("fails loudly on unpushed local commits that would ship unreviewed", () => {
+	it("deploys the merged tip, not unpushed local commits (they stay put, unshipped)", () => {
 		const { dir } = initSyncedRepoPair();
 		fs.writeFileSync(path.join(dir, "local.txt"), "unpushed\n");
 		gitIn(dir, "add", "local.txt");
@@ -789,13 +806,76 @@ describeIfBashJqGit("require_deploy_tip_current (real function bodies)", () => {
 			"-m",
 			"unpushed",
 		);
+		const tip = gitIn(dir, "rev-parse", "origin/main");
+		const { probe, sourceDir } = runTipGuard({ repoDir: dir, operationKey: OP });
+		expect(probe.status).toBe(0);
+		expect(gitIn(sourceDir, "rev-parse", "HEAD")).toBe(tip);
+		expect(fs.existsSync(path.join(sourceDir, "local.txt"))).toBe(false);
+		// Unpushed work is preserved on the primary, just not shipped.
+		expect(gitIn(dir, "log", "--oneline", "-1")).toContain("unpushed");
+	});
+
+	it("reproduces the reported incident: diverged kb/* primary with staged WIP deploys the tip instead of erroring", () => {
+		const { dir } = initSyncedRepoPair();
+		// Task branch forks, then origin/main advances via another merge.
+		gitIn(dir, "checkout", "-b", "kb/task-1");
+		fs.writeFileSync(path.join(dir, "task.txt"), "task work\n");
+		gitIn(dir, "add", "task.txt");
+		gitIn(dir, "-c", "user.email=tip-guard@test", "-c", "user.name=tip-guard", "commit", "-m", "task work");
+		gitIn(dir, "checkout", "main");
+		fs.writeFileSync(path.join(dir, "file.txt"), "merged elsewhere\n");
+		gitIn(dir, "add", "file.txt");
+		gitIn(dir, "-c", "user.email=tip-guard@test", "-c", "user.name=tip-guard", "commit", "-m", "other merge");
+		gitIn(dir, "push", "origin", "main");
+		gitIn(dir, "checkout", "kb/task-1");
+		// Staged, uncommitted WIP — the normal harness state on a task branch.
+		fs.writeFileSync(path.join(dir, "wip.txt"), "wip\n");
+		gitIn(dir, "add", "wip.txt");
+		const primaryHead = gitIn(dir, "rev-parse", "HEAD");
+		const tip = gitIn(dir, "rev-parse", "origin/main");
 		const { probe, deployDir } = runTipGuard({ repoDir: dir, operationKey: OP });
+		expect(probe.status).toBe(0);
+		expect(probe.stdout).toContain("REEXEC:");
+		expect(probe.stdout).toContain(tip);
+		expect(fs.existsSync(path.join(deployDir, "last-result.json"))).toBe(false);
+		// Primary branch, HEAD, and staged WIP are exactly as they were.
+		expect(gitIn(dir, "rev-parse", "--abbrev-ref", "HEAD")).toBe("kb/task-1");
+		expect(gitIn(dir, "rev-parse", "HEAD")).toBe(primaryHead);
+		expect(gitIn(dir, "status", "--porcelain")).toContain("A  wip.txt");
+	});
+
+	it("fails loudly only when even the tip worktree cannot converge (already re-exec'd, still mismatched)", () => {
+		const { dir } = initSyncedRepoPair();
+		fs.writeFileSync(path.join(dir, "file.txt"), "two\n");
+		gitIn(dir, "add", "file.txt");
+		gitIn(dir, "-c", "user.email=tip-guard@test", "-c", "user.name=tip-guard", "commit", "-m", "two");
+		gitIn(dir, "push", "origin", "main");
+		gitIn(dir, "reset", "--hard", "HEAD~1");
+		const { probe, deployDir } = runTipGuard({ repoDir: dir, operationKey: OP, fromTipWorktree: true });
 		expect(probe.status).toBe(1);
 		const result = JSON.parse(
 			fs.readFileSync(path.join(deployDir, "last-result.json"), "utf8"),
 		);
 		expect(result.status).toBe("failed");
-		expect(String(result.message)).toMatch(/ahead|diverged/);
+		expect(String(result.message)).toContain("behind");
+	});
+
+	it("fails loudly when the deploy-source path is occupied by a non-worktree (never deletes it)", () => {
+		const { dir } = initSyncedRepoPair();
+		fs.writeFileSync(path.join(dir, "file.txt"), "two\n");
+		gitIn(dir, "add", "file.txt");
+		gitIn(dir, "-c", "user.email=tip-guard@test", "-c", "user.name=tip-guard", "commit", "-m", "two");
+		gitIn(dir, "push", "origin", "main");
+		gitIn(dir, "reset", "--hard", "HEAD~1");
+		const occupied = path.join(dir, "occupied");
+		fs.writeFileSync(occupied, "user file\n");
+		const { probe, deployDir } = runTipGuard({ repoDir: dir, operationKey: OP, sourceDir: occupied });
+		expect(probe.status).toBe(1);
+		expect(fs.readFileSync(occupied, "utf8")).toBe("user file\n");
+		const result = JSON.parse(
+			fs.readFileSync(path.join(deployDir, "last-result.json"), "utf8"),
+		);
+		expect(result.status).toBe("failed");
 	});
 
 	it("skips manual runs without an operation key", () => {

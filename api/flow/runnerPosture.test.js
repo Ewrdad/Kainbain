@@ -26,7 +26,11 @@ describe("runnerPosture", () => {
     expect(formatPosture({ model: "m" })).toBe("m");
     expect(formatPosture({})).toBe("");
     expect(formatPosture({ tiers: [], harness: "  ", model: "   " })).toBe("");
-    expect(formatPosture({ tiers: ["T0"], harness: "pi", model: "default" })).toBe("T0:pi:default"); // only if a model is literally named that
+    // The engine-wide "default" sentinel counts as absent, exactly like
+    // servingModelFor / the ledger ingest / formatModelRef — the fake
+    // `default` segment can never leak into a posture line.
+    expect(formatPosture({ tiers: ["T0"], harness: "pi", model: "default" })).toBe("T0:pi");
+    expect(formatPosture({ tiers: ["T0"], harness: "pi", model: "  Default  " })).toBe("T0:pi");
     expect(formatPosture({ tiers: ["T0"], harness: "pi", model: 42 })).toBe("T0:pi");
   });
   it("servingModelFor blanks non-LLM kinds", () => {

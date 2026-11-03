@@ -234,13 +234,40 @@ export function filterEntries(entries, criteria = {}) {
   const needle = String(search).trim().toLowerCase();
   return (entries || []).filter((entry) => {
     if (!feedMatchesEntry(feed, entry)) return false;
-    if (
-      needle &&
-      !String(entry.text || '')
-        .toLowerCase()
-        .includes(needle)
-    )
-      return false;
+    if (needle) {
+      let hay = '';
+      try {
+        const pieces = [
+          entry?.text,
+          entry?.title,
+          renderEntryDetail(entry)?.detail,
+          entry?.meta?.toolName,
+          entry?.meta?.toolCallId,
+          entry?.meta?.output,
+          entry?.meta?.error,
+          entry?.tool?.name,
+          entry?.tool?.callId,
+          entry?.tool?.args,
+          entry?.tool?.result,
+          entry?.tool?.partials,
+          entry?.meta,
+          entry?.tool,
+        ];
+        hay = pieces
+          .map((piece) =>
+            piece == null
+              ? ''
+              : typeof piece === 'string'
+                ? piece
+                : JSON.stringify(piece),
+          )
+          .join('\n')
+          .toLowerCase();
+      } catch {
+        hay = String(entry?.text || '').toLowerCase();
+      }
+      if (!hay.includes(needle)) return false;
+    }
     return true;
   });
 }

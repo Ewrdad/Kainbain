@@ -25,6 +25,53 @@ const RELEASE_MACHINERY = new Set([
 	"scripts/check-component-compat.mjs",
 ]);
 
+// Paths served on the public ad-site (https://kainbain.ewrdad.uk) rather than
+// baked into backend/frontend/runner images. Changing one never requires an
+// image republish — it only needs `bash scripts/sync-adsite.sh` (the ad-site
+// sync stages these files into the site's public/ folder and S3). They are
+// carved out of componentsForPath below (which would otherwise flag them via
+// the deploy/ prefix or the fail-safe catch-all) so an ad-site-only change
+// publishes nothing and the site sync handles it on its own.
+const ADSITE_ONLY = new Set([
+	"deploy/install.sh",
+	"deploy/install-runner.sh",
+	"deploy/update.sh",
+	"deploy/redeploy.sh",
+	"scripts/sync-adsite.sh",
+]);
+
+/***
+ * MARK: adsiteForPath
+ * @description Whether a repo-relative path is served on the public ad-site
+ *   and therefore needs `bash scripts/sync-adsite.sh` (S3 upload) rather
+ *   than a backend/frontend/runner republish.
+ * @param {string} p - Repo-relative changed path.
+ * @returns {boolean} True when the path feeds the ad-site sync.
+ ***/
+export function adsiteForPath(p) {
+	const file = String(p || "").replace(/\\/g, "/").replace(/^\.\//, "");
+	if (!file) return false;
+	if (file === "kainbain-addsite/Kainbain-adsite" || file.startsWith("kainbain-addsite/")) return true;
+	if (ADSITE_ONLY.has(file)) return true;
+	return false;
+}
+
+/***
+ * MARK: detectAdsiteSync
+ * @description Pure detection for the ad-site sync over a path list.
+ * @param {Array<string>} files - Changed paths.
+ * @returns {Object} `{ sync, reasons }` (reasons is the matching path list).
+ ***/
+export function detectAdsiteSync(files) {
+	const reasons = [];
+	for (const file of files) {
+		const clean = String(file || "").trim();
+		if (!clean) continue;
+		if (adsiteForPath(clean)) reasons.push(clean);
+	}
+	return { sync: reasons.length > 0, reasons };
+}
+
 /***
  * MARK: componentsForPath
  * @description First matching row wins (paths are repo-relative, forward
@@ -36,6 +83,10 @@ const RELEASE_MACHINERY = new Set([
 export function componentsForPath(p) {
 	const file = String(p || "").replace(/\\/g, "/").replace(/^\.\//, "");
 	if (!file) return [];
+	// Ad-site-only paths (site bundle + install scripts served on S3) never
+	// need an image republish — the ad-site sync ships them on its own.
+	if (ADSITE_ONLY.has(file)) return [];
+	if (file === "kainbain-addsite/Kainbain-adsite" || file.startsWith("kainbain-addsite/")) return [];
 	if (file.startsWith("shared/")) return [...ALL];
 	if (file.startsWith("api/agent/")) return ["backend", "runner"];
 	if (file === "api/version.json") return ["backend"];

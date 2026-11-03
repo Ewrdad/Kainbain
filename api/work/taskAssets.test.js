@@ -159,6 +159,12 @@ describe("taskAssets helpers", () => {
 			expect(deleteTaskImage(tempRoot, "task-rt", "a.png")).toBe(true);
 			expect(deleteTaskImage(tempRoot, "task-rt", "a.png")).toBe(false);
 			expect(deleteTaskImage(tempRoot, "task-rt", "../../etc/passwd")).toBe(false);
+			// Non-image files are outside the image endpoint's care: refusing
+			// them keeps a hand-placed notes.txt deletable only by other means.
+			expect(deleteTaskImage(tempRoot, "task-rt", "notes.txt")).toBe(false);
+			expect(
+				fs.existsSync(path.join(taskAssetDir(tempRoot, "task-rt"), "notes.txt")),
+			).toBe(true);
 			expect(listTaskImages(tempRoot, "task-rt").map((i) => i.name)).toEqual([
 				"b.png",
 			]);

@@ -288,6 +288,12 @@ export const ENDPOINTS = [
 		body: null,
 	},
 	{
+		method: "GET",
+		path: "/runners/models/catalogue",
+		purpose: "Fleet model catalogue derived live from Runner registrations (never cached): one entry per distinct model id served by a claim-eligible Runner, with serving harness ids, tiers, and runner count/ids. Stage, default, and alias pickers read this for availability instead of credential health.",
+		body: null,
+	},
+	{
 		method: "POST",
 		path: "/runners/:id/rotate",
 		purpose:
@@ -298,7 +304,7 @@ export const ENDPOINTS = [
 		method: "POST",
 		path: "/runners/dispatch",
 		purpose:
-			"Runner-only (WP-3.1/3.2/3.3): backend-routed dispatch poll — scan claimable tasks (starvation guard past KAINBAIN_DISPATCH_MAX_WAIT_MS), resolve alias stages through the shared backend-central smooth-WRR rotation (D3; attribution stamped as requirements.alias), enforce D8 concurrency caps (429 fleet-wide, PROJECT_BUSY per project), match against this Runner's capabilities, and claim-fence the winner (200 assigned + lease, or 200 unassigned with NO_CLAIMABLE_TASKS / NO_CLAIMABLE_MATCH + miss histogram). Stale Runners get 409 STALE_RUNNER. Requires the x-runner-credential header.",
+			"Runner-only (WP-3.1/3.2/3.3): backend-routed dispatch poll — scan claimable tasks (highest stage index, then oldest; optional starvation guard past KAINBAIN_DISPATCH_MAX_WAIT_MS only when configured — default off), resolve alias stages through the shared backend-central smooth-WRR rotation (D3; attribution stamped as requirements.alias), enforce D8 concurrency caps (429 fleet-wide, PROJECT_BUSY per project), match against this Runner's capabilities, and claim-fence the winner (200 assigned + lease, or 200 unassigned with NO_CLAIMABLE_TASKS / NO_CLAIMABLE_MATCH + miss histogram). Stale Runners get 409 STALE_RUNNER. Requires the x-runner-credential header.",
 		body: { projectIds: "string[] (optional allowlist)" },
 	},
 	{
@@ -786,7 +792,8 @@ export const ENDPOINTS = [
 	{
 		method: "GET",
 		path: "/projects/:id/tasks/:taskId/images/:name",
-		purpose: "Serve one image binary-safe (`inline`, `nosniff`).",
+		purpose:
+			"Serve one image binary-safe (`inline`, `nosniff`, immutable cache). Errors carry a `reason` code (`unknown-project`, `invalid-task-id`, `task-not-found`, `path-traversal`, `invalid-image-name`, `image-not-found`).",
 		body: null,
 	},
 	{

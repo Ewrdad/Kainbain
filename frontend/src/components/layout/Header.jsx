@@ -3,7 +3,6 @@ import { useKainBain } from '../../context/KainBainContext';
 import { Icon } from '../Icon';
 import { BrandMark } from '../BrandMark';
 import { Modal } from '../Modal';
-import { BuildBadge } from './BuildBadge';
 import { VersionMismatchBanner } from './VersionMismatchBanner';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { GoToAppLink } from '../common/GoToAppLink';
@@ -620,12 +619,9 @@ export function Header() {
         {/* Right Header Controls — pinned: always fully visible, never
             shrunk. Sits on Row A beside brand + project on mobile. */}
         <div className="order-2 sm:order-3 ml-auto sm:ml-0 flex items-center gap-1 sm:gap-2 shrink-0">
-          {/* Live build number badge (passive indicator #23) — wide-desktop
-              furniture only. With an app link present it waits for 2xl: the
-              full row needs ~1333px (task 66ad153f guard). */}
-          <div className={hasAppLink ? 'hidden 2xl:block' : 'hidden xl:block'}>
-            <BuildBadge />
-          </div>
+          {/* The build-hash trigger now lives in the Now Playing bar's right
+              rail (left of the queue chip) — single affordance, no header
+              duplication. */}
 
           {/* Open Observability Display on Second Monitor (Popout #12).
               Desktop: popout on left-click, compact logs-only monitor on

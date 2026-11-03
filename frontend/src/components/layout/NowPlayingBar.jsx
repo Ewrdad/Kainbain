@@ -1,10 +1,11 @@
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 import { useKainBain } from '../../context/KainBainContext';
 import { formatTaskKey, formatTaskTitleFirstLine } from '../tasks/taskFormatters';
 import { resolveDisplayedStage } from '../tasks/runningTask';
 import { resolveActiveTaskDisplay, resolveUniversalNowPlaying } from './activeTaskVisibility';
 import { InfoTooltip } from '../common/InfoTooltip';
+import { BuildHashTrigger } from './BuildHashTrigger';
 import { api } from '../../services/api';
 
 /***
@@ -45,11 +46,11 @@ import { api } from '../../services/api';
  *   timestamp stays grey (unknown) rather than alarming.
  * @example runnerBoxHealth(new Date().toISOString(), Date.now()) => 'live'
  ***/
-export function runnerBoxHealth(lastSeenAt, nowMs) {
+export const runnerBoxHealth = (lastSeenAt, nowMs) => {
   const seen = Date.parse(lastSeenAt || '');
   if (!Number.isFinite(seen)) return 'unknown';
   return nowMs - seen <= 60000 ? 'live' : 'stale';
-}
+};
 
 /***
  * MARK: runnerBoxDotClass / runnerBoxHealthLabel
@@ -83,6 +84,14 @@ const runnerBoxHealthLabel = (health) => {
 export const RUNNER_STRIP_SCROLL_HINT = 'Scroll horizontally to see every runner.';
 
 /***
+ * MARK: runnerStripOwnsOverflow
+ * @description Every configured Runner renders its own box in the 72px
+ *   bar — no render cap, no "+N more" chip. The strip container owns
+ *   overflow: it scrolls horizontally (touch swipe) only when the fleet
+ *   overflows, so the full roster stays reachable on every viewport.
+ * ***/
+
+/***
  * MARK: resolveRunnerBoxes
  * @description Builds the per-runner box models for the Now Playing bar's
  *   left side. Boxes show for every configured (active) Runner — idle ones
@@ -93,7 +102,7 @@ export const RUNNER_STRIP_SCROLL_HINT = 'Scroll horizontally to see every runner
  *   an array (empty only when no Runners are configured at all).
  * @example resolveRunnerBoxes({ assignments: [], tasks: [], stages: [], runners: [] }) => []
  ***/
-export function resolveRunnerBoxes({ assignments, tasks, stages, runners }) {
+export const resolveRunnerBoxes = ({ assignments, tasks, stages, runners }) => {
   const list = Array.isArray(assignments) ? assignments.filter((a) => a && a.runnerId) : [];
   const byRunner = new Map();
   for (const a of list) {
@@ -174,7 +183,7 @@ export function resolveRunnerBoxes({ assignments, tasks, stages, runners }) {
       idle: false,
     };
   });
-}
+};
 
 /***
  * MARK: useNowPlayingRunnerDirectory
@@ -187,7 +196,7 @@ export function resolveRunnerBoxes({ assignments, tasks, stages, runners }) {
  *   boxes, a missed monitor to idle boxes, and both missed to the legacy
  *   single-task display.
  ***/
-function useNowPlayingRunnerDirectory(assignmentsOverride, runnersOverride) {
+const useNowPlayingRunnerDirectory = (assignmentsOverride, runnersOverride) => {
   const [monitor, setMonitor] = useState(null);
   const [registry, setRegistry] = useState(null);
   // No-op polls skip the state update entirely — compared via ref so idle
@@ -203,9 +212,7 @@ function useNowPlayingRunnerDirectory(assignmentsOverride, runnersOverride) {
     const load = async () => {
       try {
         const [m, list] = await Promise.all([
-          pollAssignments
-            ? api.getRunnerMonitor().catch(() => null)
-            : Promise.resolve(null),
+          pollAssignments ? api.getRunnerMonitor().catch(() => null) : Promise.resolve(null),
           pollRunners && typeof api.getRunners === 'function'
             ? api.getRunners().catch(() => null)
             : Promise.resolve(null),
@@ -241,7 +248,7 @@ function useNowPlayingRunnerDirectory(assignmentsOverride, runnersOverride) {
         : [];
   const runners = runnersOverride !== undefined ? runnersOverride : registry;
   return { assignments, runners };
-}
+};
 
 /***
  * MARK: NowPlayingBar
@@ -394,7 +401,8 @@ export function NowPlayingBar() {
       {/* Left: Global Status, Active Project & Context
           On mobile the bar shows only the runner boxes (or the task hint
           when no Runners are configured), so this side flexes to fill the
-          space freed by the hidden right rail. */}
+          space freed by the hidden queue chip (the build-hash trigger stays
+          visible in the right rail). */}
       <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <div
@@ -462,7 +470,7 @@ export function NowPlayingBar() {
                 // strip with arrow keys (axe scrollable-region-focusable).
                 // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- keyboard-scrollable runner strip (WCAG 2.1.1)
                 tabIndex={0}
-                className="now-playing-runner-strip flex items-center gap-1.5 mt-0.5 min-w-0 max-w-full overflow-x-auto overflow-y-hidden focus:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
+                className="now-playing-runner-strip flex items-center gap-1.5 mt-0.5 min-w-0 max-w-full flex-1 overflow-x-auto overflow-y-hidden overscroll-contain custom-scrollbar whitespace-nowrap focus:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
               >
                 <span id="now-playing-runner-strip-hint" className="sr-only">
                   {RUNNER_STRIP_SCROLL_HINT}
@@ -575,8 +583,8 @@ export function NowPlayingBar() {
                     data-testid={activeTask ? 'now-playing-task-name' : 'now-playing-idle-hint'}
                     className={
                       activeTask
-                        ? 'now-playing-task-enter font-headline-sm text-xs sm:text-headline-sm text-on-surface group-hover:text-primary transition-colors truncate'
-                        : 'font-headline-sm text-xs sm:text-headline-sm text-text-muted truncate'
+                        ? 'now-playing-task-enter font-headline-sm text-xs sm:text-headline-sm text-on-surface group-hover:text-primary transition-colors truncate min-w-0'
+                        : 'font-headline-sm text-xs sm:text-headline-sm text-text-muted truncate min-w-0'
                     }
                   >
                     {activeTask
@@ -608,47 +616,54 @@ export function NowPlayingBar() {
         </div>
       </div>
 
-      {/* Right: queue depth only. The elapsed timer and the subsystem
-          health traffic light were removed — the right rail is now just the
-          live queue-depth chip. Single child, so there is no overlap path
-          with the runner boxes; overflow-hidden stays as cheap insurance
-          (tooltips are portal-rendered to document.body, so they are not
-          clipped). A canary e2e gate checks button-vs-rail rect
-          intersections at 640/768/800/900/1024/1280px (functional.spec.js). */}
+      {/* Right: build hash + queue depth. The elapsed timer and the
+          subsystem health traffic light were removed — the right rail is the
+          greyed-out build-hash trigger (left of the queue, always visible so
+          the changelog is one click away on phones too) plus the live
+          queue-depth chip (sm and up; phones keep the runner boxes uncrowded).
+          Overflow-hidden stays as cheap insurance (tooltips are
+          portal-rendered to document.body, so they are not clipped). A canary
+          e2e gate checks button-vs-rail rect intersections at
+          640/768/800/900/1024/1280px (functional.spec.js). */}
       <div
         data-testid="now-playing-right-rail"
-        className="hidden sm:flex items-center justify-end flex-none min-w-0 overflow-hidden"
+        className="flex items-center justify-end gap-1 flex-none min-w-0 overflow-hidden"
       >
+        {/* Build-hash trigger: greyed monospace #B<build><·sha>, opens the
+            baked changelog dialog. Hidden when no build is baked. */}
+        <BuildHashTrigger />
         {/* Live queue-depth chip: universal queue depth across all pipelines.
             role="status" (aria-live polite) so screen readers hear the count
             change as tasks advance. No text animation — WCAG 1.4.3 contract. */}
-        <InfoTooltip
-          title="Execution Queue"
-          description="Live count of open tasks (not yet completed) across all pipelines."
-          behindTheScenes="Derived from the universal task list across all pipelines on every render — unlike the removed workflow-pointer stage label, which only changed on load or manual skip."
-          position="top-left"
-        >
-          <div
-            role="status"
-            aria-label={`Execution queue: ${queueDepth} open ${
-              queueDepth === 1 ? 'task' : 'tasks'
-            } across all pipelines`}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-surface-container/90 border border-border-standard/80 cursor-help select-none"
+        <div className="hidden sm:flex items-center">
+          <InfoTooltip
+            title="Execution Queue"
+            description="Live count of open tasks (not yet completed) across all pipelines."
+            behindTheScenes="Derived from the universal task list across all pipelines on every render — unlike the removed workflow-pointer stage label, which only changed on load or manual skip."
+            position="top-left"
           >
-            <span
-              className="material-symbols-outlined text-[14px] text-secondary"
-              aria-hidden="true"
+            <div
+              role="status"
+              aria-label={`Execution queue: ${queueDepth} open ${
+                queueDepth === 1 ? 'task' : 'tasks'
+              } across all pipelines`}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-surface-container/90 border border-border-standard/80 cursor-help select-none"
             >
-              format_list_numbered
-            </span>
-            <span className="font-label-caps text-[9px] text-on-surface-variant hidden lg:inline">
-              Queue
-            </span>
-            <span className="tabular-nums text-[12px] font-semibold text-on-surface">
-              {queueDepth}
-            </span>
-          </div>
-        </InfoTooltip>
+              <span
+                className="material-symbols-outlined text-[14px] text-secondary"
+                aria-hidden="true"
+              >
+                format_list_numbered
+              </span>
+              <span className="font-label-caps text-[9px] text-on-surface-variant hidden lg:inline">
+                Queue
+              </span>
+              <span className="tabular-nums text-[12px] font-semibold text-on-surface">
+                {queueDepth}
+              </span>
+            </div>
+          </InfoTooltip>
+        </div>
       </div>
     </footer>
   );

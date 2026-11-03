@@ -111,4 +111,21 @@ describe("IntegrationQueue", () => {
 		expect(other.leased).toBe(false);
 		expect(q.acquire({ projectId: "p1", targetBranch: "main", runnerId: "r1" }).leased).toBe(true);
 	});
+
+	it("peekHead returns a copy of the head entry without leasing it", () => {
+		const q = new IntegrationQueue();
+		expect(q.peekHead({ projectId: "p1", targetBranch: "main" })).toBeNull();
+		q.enqueue(entry());
+		q.enqueue(entry({ taskId: "t2", taskBranch: "kb/t2", mergeAttemptId: "m2" }));
+		const head = q.peekHead({ projectId: "p1", targetBranch: "main" });
+		expect(head.taskId).toBe("t1");
+		expect(head.mergeAttemptId).toBe("m1");
+		// Peeking leases nothing: depth is unchanged and the next acquire
+		// still gets the head entry.
+		expect(q.describe({ projectId: "p1", targetBranch: "main" }).depth).toBe(2);
+		expect(q.acquire({ projectId: "p1", targetBranch: "main", runnerId: "r1" }).entry.taskId).toBe("t1");
+		// Mutating the peeked copy never corrupts the queued entry.
+		head.taskId = "mutated";
+		expect(q.peekHead({ projectId: "p1", targetBranch: "main" }).taskId).toBe("t2");
+	});
 });
