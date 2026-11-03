@@ -158,6 +158,21 @@ describe("resolveDefaultBranch", () => {
 		expect(resolveDefaultBranch(tmp)).toBe("master");
 	});
 
+	it("resolves origin/main when no local default branch exists", () => {
+		initRepo(tmp, { initialBranch: "trunk" });
+		commitFile(tmp, "a.txt", "a", "init");
+		run(tmp, "update-ref", "refs/remotes/origin/main", "HEAD");
+		expect(resolveDefaultBranch(tmp)).toBe("origin/main");
+	});
+
+	it("prefers a local main over the remote-tracking origin/main", () => {
+		initRepo(tmp, { initialBranch: "trunk" });
+		commitFile(tmp, "a.txt", "a", "init");
+		run(tmp, "update-ref", "refs/remotes/origin/main", "HEAD");
+		run(tmp, "branch", "main");
+		expect(resolveDefaultBranch(tmp)).toBe("main");
+	});
+
 	it("throws when neither master, main, nor origin/HEAD exists", () => {
 		initRepo(tmp, { initialBranch: "trunk" });
 		commitFile(tmp, "a.txt", "a", "init");
@@ -216,6 +231,20 @@ describe("generateChangelog", () => {
 		expect(() => generateChangelog({ cwd: tmp, ref: "nope" })).toThrow("failed");
 	});
 
+	it("bakes from a remote-tracking ref when no local branch exists", () => {
+		const remote = fs.mkdtempSync(path.join(os.tmpdir(), "changelog-remote-"));
+		try {
+			initRepo(remote, { initialBranch: "trunk" });
+			commitFile(remote, "a.txt", "a", "Task work lands");
+			run(remote, "update-ref", "refs/remotes/origin/main", "HEAD");
+			const artifact = generateChangelog({ cwd: remote, limit: 10 });
+			expect(artifact.branch).toBe("origin/main");
+			expect(artifact.entries.map((e) => e.subject)).toEqual(["Task work lands"]);
+		} finally {
+			fs.rmSync(remote, { recursive: true, force: true });
+		}
+	});
+
 	it("round-trips through DeployManager.readChangelog shape validation", async () => {
 		const { DeployManager } = await import("./deployManager.js");
 		const prodDir = fs.mkdtempSync(path.join(os.tmpdir(), "changelog-prod-"));
@@ -230,6 +259,87 @@ describe("generateChangelog", () => {
 		} finally {
 			fs.rmSync(prodDir, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("DeployManager.readChangelog fallbacks (no baked prod artifact)", () => {
+	if (!gitAvailable) {
+		it.skip("skipped: git is not available", () => {});
+		return;
+	}
+	let tmp;
+	let prodDir;
+	beforeEach(() => {
+		tmp = fs.mkdtempSync(path.join(os.tmpdir(), "changelog-fallback-"));
+		prodDir = fs.mkdtempSync(path.join(os.tmpdir(), "changelog-fallback-prod-"));
+	});
+	afterEach(() => {
+		fs.rmSync(tmp, { recursive: true, force: true });
+		fs.rmSync(prodDir, { recursive: true, force: true });
+	});
+
+	it("serves the bundled artifact bundled into the backend image", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		fs.mkdirSync(path.join(tmp, "api"), { recursive: true });
+		const bundled = { branch: "main", totalCount: 1, entries: [{ sha: "a", shortSha: "a", subject: "Bundled fix", body: "", author: "A", date: "2026-01-01" }] };
+		fs.writeFileSync(path.join(tmp, "api", "bundled-changelog.json"), JSON.stringify(bundled));
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		expect(manager.readChangelog()).toEqual(bundled);
+	});
+
+	it("serves live git history from a checkout, filtering admin commits", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		initRepo(tmp, { initialBranch: "main" });
+		commitFile(tmp, "a.txt", "a", "Real task fix");
+		commitFile(tmp, "b.txt", "b", "KainBain: auto-commit pending work");
+		commitFile(tmp, "c.txt", "c", "kb/91257d62-f181-4ee0-ab91-f00188221c78 5: Runner local-alpha stage output");
+		commitFile(tmp, "d.txt", "d", "Another real fix");
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		const read = manager.readChangelog();
+		expect(read).not.toBeNull();
+		expect(read.branch).toBe("main");
+		expect(read.entries.map((e) => e.subject)).toEqual(["Another real fix", "Real task fix"]);
+		expect(read.totalCount).toBe(2);
+	});
+
+	it("prefers the baked prod artifact over bundled and live history", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		initRepo(tmp, { initialBranch: "main" });
+		commitFile(tmp, "a.txt", "a", "Live fix");
+		const baked = { branch: "main", totalCount: 1, entries: [{ sha: "b", subject: "Baked fix" }] };
+		fs.writeFileSync(path.join(prodDir, "changelog.json"), JSON.stringify(baked));
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		expect(manager.readChangelog()).toEqual(baked);
+	});
+
+	it("serves live history through the remote-tracking ref when no local branch exists", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		initRepo(tmp, { initialBranch: "trunk" });
+		commitFile(tmp, "a.txt", "a", "Remote-tracked work");
+		run(tmp, "update-ref", "refs/remotes/origin/main", "HEAD");
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		const read = manager.readChangelog();
+		expect(read).not.toBeNull();
+		expect(read.branch).toBe("origin/main");
+		expect(read.entries.map((e) => e.subject)).toEqual(["Remote-tracked work"]);
+	});
+
+	it("skips a corrupt baked artifact in favour of live history", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		initRepo(tmp, { initialBranch: "main" });
+		commitFile(tmp, "a.txt", "a", "Live fix survives a bad bake");
+		fs.writeFileSync(path.join(prodDir, "changelog.json"), JSON.stringify({ halfWritten: true }));
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		const read = manager.readChangelog();
+		expect(read).not.toBeNull();
+		expect(read.branch).toBe("main");
+		expect(read.entries.map((e) => e.subject)).toEqual(["Live fix survives a bad bake"]);
+	});
+
+	it("reports null when no baked file and no git history exist", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		expect(manager.readChangelog()).toBeNull();
 	});
 });
 
@@ -281,5 +391,66 @@ describe("generate-changelog CLI", () => {
 		);
 		expect(result.status).not.toBe(0);
 		expect(result.stderr).toContain("generate-changelog:");
+	});
+});
+
+describe("DeployManager.readChangelog source precedence (fail-safe)", () => {
+	if (!gitAvailable) {
+		it.skip("skipped: git is not available", () => {});
+		return;
+	}
+	let tmp;
+	let prodDir;
+	beforeEach(() => {
+		tmp = fs.mkdtempSync(path.join(os.tmpdir(), "changelog-precedence-"));
+		prodDir = fs.mkdtempSync(path.join(os.tmpdir(), "changelog-precedence-prod-"));
+	});
+	afterEach(() => {
+		fs.rmSync(tmp, { recursive: true, force: true });
+		fs.rmSync(prodDir, { recursive: true, force: true });
+	});
+
+	it("skips a corrupt baked file and serves the bundled artifact", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		fs.writeFileSync(path.join(prodDir, "changelog.json"), JSON.stringify({ halfWritten: true }));
+		fs.mkdirSync(path.join(tmp, "api"), { recursive: true });
+		const bundled = { branch: "main", totalCount: 1, entries: [{ sha: "b", subject: "Bundled fix" }] };
+		fs.writeFileSync(path.join(tmp, "api", "bundled-changelog.json"), JSON.stringify(bundled));
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		expect(manager.readChangelog()).toEqual(bundled);
+	});
+
+	it("keeps a generation-failed marker terminal instead of hiding it behind older history", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		const marker = { entries: [], error: "git log failed: boom" };
+		fs.writeFileSync(path.join(prodDir, "changelog.json"), JSON.stringify(marker));
+		fs.mkdirSync(path.join(tmp, "api"), { recursive: true });
+		const bundled = { branch: "main", totalCount: 1, entries: [{ sha: "b", subject: "Bundled fix" }] };
+		fs.writeFileSync(path.join(tmp, "api", "bundled-changelog.json"), JSON.stringify(bundled));
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		expect(manager.readChangelog()).toEqual(marker);
+	});
+
+	it("serves an honest empty artifact (not not-baked) when live history is only noise", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		initRepo(tmp, { initialBranch: "main" });
+		commitFile(tmp, "a.txt", "a", "KainBain: auto-commit pending work");
+		commitFile(tmp, "b.txt", "b", "kb/91257d62-f181-4ee0-ab91-f00188221c78 5: Runner stage output");
+		commitFile(tmp, "c.txt", "c", "Merge branch 'main' into kb/91257d62-f181-4ee0-ab91-f00188221c78");
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		const read = manager.readChangelog();
+		expect(read).not.toBeNull();
+		expect(read.branch).toBe("main");
+		expect(read.entries).toEqual([]);
+		expect(read.totalCount).toBe(0);
+	});
+
+	it("prefers master over main, matching the baker", async () => {
+		const { DeployManager } = await import("./deployManager.js");
+		initRepo(tmp, { initialBranch: "master" });
+		commitFile(tmp, "a.txt", "a", "Master fix");
+		run(tmp, "branch", "main");
+		const manager = new DeployManager({ repoRoot: tmp, deployDir: tmp, prodDir });
+		expect(manager.readChangelog().branch).toBe("master");
 	});
 });

@@ -9,15 +9,18 @@ import { taskRequirements } from "./taskRequirements.js";
  *   in_stage, resolvable stages, on-stage index, runnable, unblocked, and
  *   — crucially — not already lease-held (the claim fence stays the
  *   single arbiter; the scan only avoids wasted attempts). Sorted like the
- *   scheduler (closest-to-completion, then oldest) so backend-routed and
- *   embedded dispatch prioritize identically — plus the WP-3.3 starvation
- *   guard: candidates waiting past `maxWaitMs` jump ahead oldest-first,
- *   bounding the worst-case wait under perpetual late-stage influx (R13).
+ *   scheduler (closest-to-completion — highest stage index — then oldest
+ *   entered-stage) so backend-routed and embedded dispatch prioritize
+ *   identically. The WP-3.3 starvation guard is opt-in only: it applies
+ *   solely when `maxWaitMs` is explicitly configured positive (config
+ *   `dispatchMaxWaitMs`, default 0 = off); then candidates waiting past
+ *   `maxWaitMs` jump ahead oldest-first, bounding the worst-case wait
+ *   under perpetual late-stage influx (R13).
  *   Human/non-model stages are excluded here (their requirements mark
  *   `runnableType: false`).
  * @example scanClaimableTasks({ projectStore, taskStore, claimStore }) => [{ projectId, taskId, task, req }]
  * @param {Object} deps - Stores (`projectStore`, `taskStore`, `claimStore`).
- * @param {Object} [opts] - `{ projectIds }` (Runner-enforced allowlist), `{ maxWaitMs, now }` (starvation boost; 0 disables).
+ * @param {Object} [opts] - `{ projectIds }` (Runner-enforced allowlist), `{ maxWaitMs, now }` (opt-in starvation boost; 0 or omitted = off, the default).
  * @returns {Array} Claimable tasks with requirements, in dispatch order.
  ***/
 export function scanClaimableTasks(deps = {}, opts = {}) {
@@ -77,6 +80,9 @@ export function scanClaimableTasks(deps = {}, opts = {}) {
 			});
 		}
 	}
+	// Default order: highest stage index first, then oldest entered-stage.
+	// The overdue block below runs only under an explicitly configured
+	// positive maxWaitMs (starvation guard opt-in; default off).
 	out.sort((a, b) => {
 		if (maxWaitMs > 0) {
 			const aOverdue = now - a.enteredStageAt > maxWaitMs;

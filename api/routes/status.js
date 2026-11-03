@@ -22,7 +22,7 @@ export const readApiVersion = () => {
 	} catch {
 		return null;
 	}
-}
+};
 
 const API_VERSION = readApiVersion();
 
@@ -36,7 +36,7 @@ const API_VERSION = readApiVersion();
  ***/
 export const withApiVersion = (build) => {
 	return { ...(build && typeof build === "object" ? build : {}), apiVersion: API_VERSION };
-}
+};
 
 /***
  * MARK: statusRoutes

@@ -155,6 +155,8 @@ export function handleTransientFailure(
 			timestamp: new Date().toISOString(),
 		};
 		clearRetryState(taskStore, projectId, taskId);
+		task.autoRetrying = false;
+		task.autoIterating = false;
 		if (!Array.isArray(task.history)) {
 			task.history = [];
 		}
@@ -210,6 +212,8 @@ export function handleTransientFailure(
 		task.status = "failed";
 		clearRetryState(taskStore, projectId, taskId);
 		task.retryState = "exhausted";
+		task.autoRetrying = false;
+		task.autoIterating = false;
 		if (!Array.isArray(task.history)) {
 			task.history = [];
 		}
@@ -336,6 +340,8 @@ export function handleTransientFailure(
 	task.lastError = null;
 	task.status = "in_stage";
 	/* retry state recorded by armRetry below */
+	task.autoRetrying = true;
+	task.autoIterating = false;
 	if (!Array.isArray(task.history)) {
 		task.history = [];
 	}

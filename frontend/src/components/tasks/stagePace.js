@@ -1,4 +1,5 @@
-import { isRetryingTask } from './taskRetryState';
+import { hasLiveRerunFlag } from './taskRetryState';
+
 /***
  * MARK: stagePace
  * @description Pure helpers behind the task-card age readout and the
@@ -88,11 +89,15 @@ export function paceStatus(elapsedSec, avgSec) {
  ***/
 function isPaceExcluded(task) {
   if (!task) return false;
-  // Auto-retry is active engine work, not a settled failure: it wins over the
-  // failed status, matching the card's RETRYING label precedence.
-  const isRetrying = isRetryingTask(task);
-  if (task.status === 'failed' && !isRetrying) return true;
-  if (Boolean(task.failureReason) && !isRetrying) return true;
+  // An automatic re-run (in-place retry OR cross-stage auto iteration) is
+  // active engine work, not a settled failure: it wins over the failed
+  // status, matching the card's RETRYING/FAILED label precedence. This is a
+  // liveness read, so it uses the raw flags (hasLiveRerunFlag) — the
+  // settled-status guard in isRetryInProgress exists for the RETRYING
+  // label, not for "is work happening right now".
+  const isAutoRecovering = hasLiveRerunFlag(task);
+  if (task.status === 'failed' && !isAutoRecovering) return true;
+  if (Boolean(task.failureReason) && !isAutoRecovering) return true;
   if (task.wasInterrupted === true || task.status === 'interrupted') return true;
   if (task.isBlocked === true) return true;
   if (task.status === 'paused') return true;
@@ -115,7 +120,7 @@ function isPaceExcluded(task) {
  ***/
 export function shouldShowPace(task, { isRunning = false, isReview = false } = {}) {
   if (isPaceExcluded(task)) return false;
-  if (isRetryingTask(task)) return true;
+  if (hasLiveRerunFlag(task)) return true;
   return Boolean(isRunning || isReview);
 }
 

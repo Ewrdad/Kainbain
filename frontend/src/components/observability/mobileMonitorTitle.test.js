@@ -1,7 +1,7 @@
 // Run in the lighter node environment: pure format function, no DOM needs.
 // @vitest-environment node
 import { expect, test, describe } from 'vitest';
-import { formatMobileMonitorTitle } from './MobileMonitorView';
+import { formatMobileMonitorTitle } from './mobileMonitorTitle';
 
 describe('formatMobileMonitorTitle', () => {
   test('prefers the task title when running', () => {
@@ -44,5 +44,12 @@ describe('formatMobileMonitorTitle', () => {
   test('handles null task and empty engineState without crashing', () => {
     expect(formatMobileMonitorTitle(null, {}, true)).toBe('No active task');
     expect(formatMobileMonitorTitle()).toBe('No active stage');
+  });
+
+  test('a non-text stranded stage name renders as text, never a crash', () => {
+    // A numeric id can leak through from a malformed payload; the header
+    // renders it as text so the documented string return always holds.
+    expect(formatMobileMonitorTitle(null, { activeStageName: 7 }, false)).toBe('7');
+    expect(typeof formatMobileMonitorTitle(null, { activeStageName: 7 }, false)).toBe('string');
   });
 });

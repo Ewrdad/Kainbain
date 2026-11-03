@@ -8,10 +8,12 @@ import {
   formatTaskTitleFirstLine,
   getBlockedState,
   isTaskCompleted as isCompletedStatus,
+  isTaskFailed,
   selectStagePresentation,
 } from './taskFormatters';
 import { isTerminalHumanApproval, normalizeStageType } from '../stageTypes';
 import { resolveCheckpointState } from './checkpointState';
+import { isRetryInProgress, retryProgressLabel, retryWaitLabel } from './taskRetryState';
 import { SelectDropdown } from '../common/SelectDropdown';
 import { useNow } from '../../hooks/useNow';
 import { usePendingAction } from '../../hooks/usePendingAction';
@@ -31,7 +33,6 @@ import { TaskReportsTab } from './TaskReportsTab';
 import { TaskHistoryTab } from './TaskHistoryTab';
 import { TaskDetailsTab } from './TaskDetailsTab';
 import { isRejectedTask } from './failureReason';
-import { isRetryingTask, retryProgressLabel, retryWaitLabel } from './taskRetryState';
 import { LogsPanel, useTaskLogs } from './LogsPanel';
 
 /***
@@ -286,8 +287,9 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
 
   // Orchestration history timeline deduplication (#18)
   const isTaskCompleted = isCompletedStatus(task);
-  // Settled-but-open tasks (failed/interrupted/blocked) render a static
-  // PARKED row — never a live ACTIVE row with a growing timer.
+  // Settled-but-open tasks (failed/interrupted/blocked/paused/...) render
+  // a static PARKED/PAUSED row — never a live ACTIVE row with a growing
+  // timer (see selectStagePresentation).
   const stagePresentation = selectStagePresentation(task);
   const timelineData = useMemo(
     () =>
@@ -333,14 +335,13 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
   const isWaitingHuman = resolveCheckpointState(task, taskStage).showCheckpoint;
   const isInterrupted = task?.wasInterrupted === true || task?.status === 'interrupted';
   const isPaused = task?.status === 'paused';
-  const isRetrying = isRetryingTask(task);
-  // A deliberate rejection keeps its reason banner even while an auto-retry
-  // is queued: the reason is about to be snapshotted into the next
-  // attempt's prompt, so hiding it would hide the pending context.
+  // RETRYING is reserved for a same-stage in-place retry: a task whose
+  // failback moved it to another stage shows IN PROGRESS for the new stage.
+  // The FAILED read itself lives in one place (`isTaskFailed`) so the
+  // inspector can never disagree with the card about the same task.
+  const isRetrying = isRetryInProgress(task);
   const isRejectedFailure = isRejectedTask(task);
-  const isFailed =
-    task?.status === 'failed' ||
-    (Boolean(task?.failureReason) && (!isRetrying || isRejectedFailure));
+  const isFailed = isTaskFailed(task);
   const isRejected = isFailed && isRejectedFailure;
   const failureMessage =
     task?.failureReason || task?.lastError?.message || 'Stage execution failed.';

@@ -605,6 +605,26 @@ describe("pauseTask", () => {
 		expect(paused.resumedAfterInterruption).toBe(false);
 		expect(paused.interruptedAt).toBeNull();
 	});
+
+	it("pauseTask clears stale automatic re-run flags (a paused task is never retrying)", () => {
+		const store = makeStore();
+		store.seed(
+			"p-1",
+			task({
+				autoRetrying: true,
+				autoIterating: true,
+				autoIterationCount: 2,
+				infraRetryCount: 1,
+			}),
+		);
+		const paused = pauseTask(store, "p-1", "t-1");
+		expect(paused.status).toBe("paused");
+		expect(paused.autoRetrying).toBe(false);
+		expect(paused.autoIterating).toBe(false);
+		// Budgets stay auditable across the pause; resume resets them.
+		expect(paused.autoIterationCount).toBe(2);
+		expect(paused.infraRetryCount).toBe(1);
+	});
 });
 
 describe("resumeTask / retryStage", () => {

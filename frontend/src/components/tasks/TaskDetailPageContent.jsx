@@ -8,9 +8,11 @@ import {
   formatTaskKey,
   formatTaskTitleFirstLine,
   getBlockedState,
+  isTaskFailed,
 } from './taskFormatters';
 import { approvalCopy, isTerminalHumanApproval, normalizeStageType } from '../stageTypes';
 import { resolveCheckpointState } from './checkpointState';
+import { isRetryInProgress, retryProgressLabel, retryWaitLabel } from './taskRetryState';
 import { SelectDropdown } from '../common/SelectDropdown';
 import { useNow } from '../../hooks/useNow';
 import { usePendingAction } from '../../hooks/usePendingAction';
@@ -30,7 +32,6 @@ import { RunAttributionBadge } from './RunAttributionBadge';
 import { HistoryFailureReason } from './HistoryFailureReason';
 import { FailureMessage } from './FailureMessage';
 import { isRejectedTask } from './failureReason';
-import { isRetryingTask, retryProgressLabel, retryWaitLabel } from './taskRetryState';
 import { RetryStatusBlock } from './RetryStatusBlock';
 import { BlockedByEditor } from './BlockedByEditor';
 import { LogsPanel, useTaskLogs } from './LogsPanel';
@@ -288,14 +289,13 @@ export function TaskDetailPage({ task: propTask, onBack }) {
   };
   const isInterrupted = task?.wasInterrupted === true || task?.status === 'interrupted';
   const isPaused = task?.status === 'paused';
-  const isRetrying = isRetryingTask(task);
-  // A deliberate rejection keeps its reason banner even while an auto-retry
-  // is queued: the reason is about to be snapshotted into the next
-  // attempt's prompt, so hiding it would hide the pending context.
+  // RETRYING is reserved for a same-stage in-place retry: a task whose
+  // failback moved it to another stage shows IN PROGRESS for the new stage.
+  // The FAILED read itself lives in one place (`isTaskFailed`) so the page
+  // can never disagree with the card about the same task.
+  const isRetrying = isRetryInProgress(task);
   const isRejectedFailure = isRejectedTask(task);
-  const isFailed =
-    task?.status === 'failed' ||
-    (Boolean(task?.failureReason) && (!isRetrying || isRejectedFailure));
+  const isFailed = isTaskFailed(task);
   const isRejected = isFailed && isRejectedFailure;
   const failureMessage =
     task?.failureReason || task?.lastError?.message || 'Stage execution failed.';

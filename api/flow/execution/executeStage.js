@@ -377,6 +377,8 @@ export async function executeStage(
 				task.retryAttempt = priorRetryAttempt;
 				task.retryMaxAttempts = priorRetryMaxAttempts;
 		}
+		task.autoRetrying = false;
+		task.autoIterating = false;
 
 		store.setEngineState({
 			status: stageType === "human" ? "checkpoint" : "running",

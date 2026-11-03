@@ -190,7 +190,9 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		runnerStaleAfterMs: 60000,
 		runnerMaxConcurrentPerProject: 0,
 		runnerMaxConcurrentFleet: 0,
-		dispatchMaxWaitMs: 1800000,
+		runnerMinVersion: "0.1.0",
+		runnerRecommendedVersion: "0.1.0",
+		dispatchMaxWaitMs: 0,
 		// Sessions & Workflows
 		schedulerIntervalMs: 3000,
 		schedulerDisabled: false,

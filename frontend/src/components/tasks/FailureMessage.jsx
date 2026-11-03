@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { truncateFailureMessage } from './failureReason';
+import { FailureMessageImage } from './FailureMessageImage';
 import { API_BASE } from '../../services/apiBase';
 import { extractImageRefs, resolveTaskImageUrl } from '../../services/taskImages';
-import { FailureMessageImage } from './FailureMessageImage';
 
 /**
  * MARK: FailureMessage

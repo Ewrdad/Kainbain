@@ -435,6 +435,53 @@ test('scheduled retry names itself with attempt counts on the card', () => {
   expect(screen.queryByLabelText('Failed execution')).not.toBeInTheDocument();
 });
 
+test('shows RETRYING for a same-stage in-place retry', () => {
+  const inPlaceRetry = {
+    ...task,
+    status: 'in_stage',
+    currentStageId: 'exec',
+    autoRetrying: true,
+    lastError: { message: 'boom', stageId: 'exec' },
+  };
+  render(<TaskCard task={inPlaceRetry} stageName="Execution" role="agent" />);
+  // The badge may carry the schedule/countdown suffix from retryProgressLabel;
+  // what matters here is that the same-stage retry reads as RETRYING.
+  expect(screen.getByText(/RETRYING/)).toBeInTheDocument();
+});
+
+test('never shows RETRYING when the failback moved the task to another stage', () => {
+  // New backend shape: cross-stage auto iteration flags autoIterating and
+  // clears autoRetrying.
+  const movedTask = {
+    ...task,
+    status: 'in_stage',
+    currentStageId: 'design',
+    autoRetrying: false,
+    autoIterating: true,
+    failureReason: 'boom',
+    lastError: { message: 'boom', stageId: 'exec' },
+  };
+  render(<TaskCard task={movedTask} stageName="Design" role="agent" />);
+  expect(screen.queryByText('RETRYING')).not.toBeInTheDocument();
+  // It is not a failure either — the reason rides along for the next attempt.
+  expect(screen.queryByLabelText('Failed execution')).not.toBeInTheDocument();
+
+  cleanup();
+  // Older backend payload: autoRetrying true, but the failed stage differs
+  // from the current stage.
+  const legacyMovedTask = {
+    ...task,
+    status: 'in_stage',
+    currentStageId: 'design',
+    autoRetrying: true,
+    failureReason: 'boom',
+    lastError: { message: 'boom', stageId: 'exec' },
+  };
+  render(<TaskCard task={legacyMovedTask} stageName="Design" role="agent" />);
+  expect(screen.queryByText('RETRYING')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Failed execution')).not.toBeInTheDocument();
+});
+
 /***
  * MARK: compact task-card density tests (task 7a411b12)
  * @description 'compact' is the product-default taskCardDensity: the card

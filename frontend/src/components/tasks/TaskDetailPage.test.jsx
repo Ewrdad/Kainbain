@@ -783,9 +783,12 @@ describe('TaskDetailPage full-page route component', () => {
   });
 
   test('keeps the rejection banner while an auto-retry is queued', () => {
+    // In-place retry: the task still sits in the stage that failed (s2), so
+    // RETRYING is the honest label.
     const retryingRejection = {
       ...sampleTask,
       status: 'in_stage',
+      currentStageId: 's2',
       autoRetrying: true,
       failureReason: 'Review found a gap',
       lastError: {
@@ -804,6 +807,49 @@ describe('TaskDetailPage full-page route component', () => {
     expect(screen.getAllByText('RETRYING (scheduled)').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Stage Rejected/i)).toBeInTheDocument();
     expect(screen.getByText('Review found a gap')).toBeInTheDocument();
+  });
+
+  test('shows IN PROGRESS, not RETRYING, when the failback moved the task to another stage', () => {
+    // Cross-stage auto iteration: the failed stage (s2) is behind us, the
+    // task now sits in s1 — normal running work, never a "retry" label.
+    const movedTask = {
+      ...sampleTask,
+      status: 'in_stage',
+      currentStageId: 's1',
+      autoRetrying: true,
+      autoIterating: true,
+      failureReason: 'Socket hang up',
+      lastError: { message: 'Socket hang up', stageId: 's2', stageName: 'Review' },
+    };
+
+    renderWithKainBain(<TaskDetailPage task={movedTask} />, {
+      stages: sampleStages,
+      projects: sampleProjects,
+    });
+
+    expect(screen.queryByText('RETRYING')).not.toBeInTheDocument();
+    expect(screen.getByText('IN PROGRESS')).toBeInTheDocument();
+  });
+
+  test('shows IN PROGRESS for an older-backend moved task (autoRetrying without autoIterating)', () => {
+    // Older backend payload: autoRetrying true but lastError.stageId points
+    // at a stage the task no longer sits in — classified as moved, not retry.
+    const legacyMovedTask = {
+      ...sampleTask,
+      status: 'in_stage',
+      currentStageId: 's1',
+      autoRetrying: true,
+      failureReason: 'Socket hang up',
+      lastError: { message: 'Socket hang up', stageId: 's2', stageName: 'Review' },
+    };
+
+    renderWithKainBain(<TaskDetailPage task={legacyMovedTask} />, {
+      stages: sampleStages,
+      projects: sampleProjects,
+    });
+
+    expect(screen.queryByText('RETRYING')).not.toBeInTheDocument();
+    expect(screen.getByText('IN PROGRESS')).toBeInTheDocument();
   });
 
   test('still hides an ordinary failure banner while an auto-retry is queued', () => {

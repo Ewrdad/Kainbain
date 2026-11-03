@@ -13,7 +13,7 @@ import { useEffect, useRef, useState } from 'react';
 export const findTaskById = ({ tasks, taskId } = {}) => {
   if (!taskId || !Array.isArray(tasks)) return null;
   return tasks.find((t) => String(t?.id) === String(taskId)) || null;
-}
+};
 
 /***
  * MARK: useRouteTask

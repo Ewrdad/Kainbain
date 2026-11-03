@@ -47,6 +47,18 @@ How it behaves at run time:
 - Task-branch finalize (commit + push of task work) is **skipped** for `primary`/`custom` runs: a verification or deploy run must never commit or push onto the primary or custom branch. Keep CI commands on these modes read-only (tests, lint, builds) and gitignore their artifacts — a command that dirties the tree will make the restore refuse and fail the stage loudly.
 - The stage report records the resolved branch and its tip SHA (`**Branch:** main (primary) @ <sha>`) so a failed run is auditable.
 
+## Stage Runner access
+
+Every stage has an optional **Runner access** list at the bottom of its settings. It restricts which Runners may take that stage — without blocking a whole category of work:
+
+- **Off (every Runner)** *(default)* — no restriction; any capable Runner takes the stage.
+- **Only these runners** — an allow list: e.g. only the one Runner that can publish to remote takes the `Publish` stage.
+- **All except these runners** — a block list: e.g. a legal-compliance scan runs only on onsite Runners by blocking the cloud ones.
+
+The list names Runners by their Runner id (shown with display names where set). An empty selection means unrestricted, and a save with an unknown mode is refused with a 400 naming the stage — a typo can never silently save as unrestricted. Runner ids that no longer register stay in the list with an "unknown" badge instead of being pruned, so renaming a Runner never silently opens the gate; removing them is explicit.
+
+Enforcement covers every claim path: Runner dispatch, direct task claims, and merge leases all refuse ineligible Runners (dispatch reports `RUNNER_NOT_ALLOWED` / `RUNNER_BLOCKED` in its miss histogram; claims and leases answer 409). A restricted stage with no eligible Runner waits — it never fails or reroutes. This stage-side list applies **in addition to** each Runner's own operator settings (System Settings › Runners: project scope, job-type switches, tool filter) — both gates must pass. Human stages run no Runner work, so the list does not affect them.
+
 ## Stage change badges
 
 Each history row's `+N -M` badge measures that stage's own commit range (stage start → stage end on the task branch), not the whole task branch. An editing stage keeps its real counts; a testing stage that changes nothing shows `+0 -0`. When a stage fails, its partial work is committed with a `... (failed)` message first, so the failed attempt owns its own diff and a retry measures only the retry. Rows recorded before this scheme (no range data) render exactly as before.
@@ -111,7 +123,7 @@ Minimal example:
 }
 ```
 
-Rules for hand-edited files: `"kainbainPipeline"` must be `1`; `"name"` must be a non-empty string; `"stages"` must be a non-empty array (max 200); each stage needs a `"name"` and a known `"type"` (`agent`, `human`, `ci`, `merge` — legacy `review`, `script`, `deploy`, `custom` are also accepted; `deploy` normalizes to `ci`). Optional per-stage fields: `description`, `prompt`, `model`, `harness`, `command`, `timeout` (milliseconds), `skills` (array), `paused` (boolean), `failback` (string), `runOnBranch` (`ci` only: `"task"` | `"primary"` | `"custom"`), `customBranch` (string, `ci` with `runOnBranch: "custom"` only). Files over ~1 MB are rejected. Invalid files are refused with a message naming every problem, and nothing is written.
+Rules for hand-edited files: `"kainbainPipeline"` must be `1`; `"name"` must be a non-empty string; `"stages"` must be a non-empty array (max 200); each stage needs a `"name"` and a known `"type"` (`agent`, `human`, `ci`, `merge` — legacy `review`, `script`, `deploy`, `custom` are also accepted; `deploy` normalizes to `ci`). Optional per-stage fields: `description`, `prompt`, `model`, `harness`, `command`, `timeout` (milliseconds), `skills` (array), `paused` (boolean), `failback` (string), `runOnBranch` (`ci` only: `"task"` | `"primary"` | `"custom"`), `customBranch` (string, `ci` with `runOnBranch: "custom"` only), `runnerPolicy` (`{ mode: "allow" | "block", runners: [...] }`). Files over ~1 MB are rejected. Invalid files are refused with a message naming every problem, and nothing is written.
 
 ## Who is "running", and in which stage
 

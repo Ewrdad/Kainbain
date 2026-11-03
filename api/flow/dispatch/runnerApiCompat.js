@@ -24,7 +24,7 @@ export const loadBackendRunnerRange = () => {
 	} catch {
 		return null;
 	}
-}
+};
 
 const BACKEND_RUNNER_RANGE = loadBackendRunnerRange();
 

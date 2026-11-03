@@ -9,9 +9,11 @@ import '@testing-library/jest-dom';
 /**
  * MARK: enriched models fixture
  * @description Mirrors the /compute/models credential-aware enrichment
- *   (runnable/authConfigured/statusLabel) so the badge UI can be asserted
- *   deterministically without the live backend. Declared with vi.hoisted so
- *   the hoisted vi.mock factory can reference it.
+ *   (runnable/authConfigured/statusLabel) so the picker UI can be asserted
+ *   deterministically without the live backend. Option badges come from the
+ *   mocked fleet catalogue (see getFleetModelCatalog), not from these
+ *   credential fields. Declared with vi.hoisted so the hoisted vi.mock
+ *   factory can reference it.
  ***/
 const ENRICHED_MODELS = vi.hoisted(() => [
   {
@@ -80,6 +82,10 @@ vi.mock('../../services/api', async (importOriginal) => {
           },
         ],
       }),
+      // Fleet catalogue unreachable by default: pickers render badge-free
+      // (never a misleading "No runners"). The runner-count badge test
+      // below resolves this per-test.
+      getFleetModelCatalog: vi.fn().mockRejectedValue(new Error('fleet down')),
     },
   };
 });
@@ -113,6 +119,10 @@ const projects = [
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Fleet catalogue unreachable unless a test resolves it: pickers render
+  // badge-free, and per-test mockResolvedValue calls cannot leak into later
+  // tests (clearAllMocks drops calls, not implementations).
+  api.getFleetModelCatalog.mockRejectedValue(new Error('fleet down'));
 });
 
 test('renders configuration sections across tabs and verifies environment variables is removed', () => {
@@ -1239,7 +1249,31 @@ test('harness row offers the default harness plus the Alias entry (alias-free em
   expect(screen.queryByRole('option', { name: /Claude 3\.7 Sonnet \(/ })).not.toBeInTheDocument();
 });
 
-test('default-model dropdown options carry credential-status badges', async () => {
+test('default-model dropdown options carry fleet runner-count badges', async () => {
+  // Fleet catalogue serves claude + deepseek, nothing else: claude shows its
+  // claim-eligible Runner count, every other model shows "No runners".
+  api.getFleetModelCatalog.mockResolvedValue({
+    generatedAt: '2026-11-01T00:00:00.000Z',
+    totalModels: 2,
+    eligibleRunners: 3,
+    models: [
+      {
+        id: 'anthropic::claude-3-7-sonnet',
+        harnesses: ['pi'],
+        tiers: ['T0'],
+        runnerCount: 3,
+        runnerIds: ['box-a', 'box-b', 'box-c'],
+      },
+      {
+        id: 'ollama-cloud::deepseek-v4-flash:0731-cloud',
+        harnesses: ['pi'],
+        tiers: ['T0'],
+        runnerCount: 1,
+        runnerIds: ['box-a'],
+      },
+    ],
+  });
+
   renderWithKainBain(<ProjectSettings />, {
     projects,
     activeProjectId: 'p1',
@@ -1251,17 +1285,25 @@ test('default-model dropdown options carry credential-status badges', async () =
   });
   fireEvent.click(screen.getByRole('combobox', { name: 'Default AI Model' }));
 
-  // Ready badge on the credentialed model.
+  // The fleet catalogue resolves asynchronously; wait for its badges.
+  await waitFor(() => {
+    expect(screen.getByText('3 runners')).toBeInTheDocument();
+  });
+
+  // Count badge on each fleet-served model.
   const claudeOption = screen.getByRole('option', { name: /Claude 3\.7 Sonnet/i });
-  expect(within(claudeOption).getByText('Ready')).toBeInTheDocument();
+  expect(within(claudeOption).getByText('3 runners')).toBeInTheDocument();
 
-  // No-credentials badge on the uncredentialed model.
+  const deepseekOption = screen.getByRole('option', { name: /DeepSeek v4 Flash/i });
+  expect(within(deepseekOption).getByText('1 runner')).toBeInTheDocument();
+
+  // "No runners" on the model the fleet does not serve, including one the
+  // fleet catalogue never mentions (unknown id, catalogue loaded).
   const geminiOption = screen.getByRole('option', { name: /Gemini 2\.5 Pro/i });
-  expect(within(geminiOption).getByText('No credentials')).toBeInTheDocument();
+  expect(within(geminiOption).getByText('No runners')).toBeInTheDocument();
 
-  // Unavailable badge on the configured-but-unavailable model.
   const glmOption = screen.getByRole('option', { name: /GLM 5\.3 Flash/i });
-  expect(within(glmOption).getByText('Unavailable')).toBeInTheDocument();
+  expect(within(glmOption).getByText('No runners')).toBeInTheDocument();
 });
 
 test('failed model discovery shows the Alias empty state (no stale providers)', async () => {

@@ -14,6 +14,19 @@ import { APP_URL, API_URL } from "./urls";
 
 export const API_BASE = API_URL;
 
+/***
+ * MARK: APP_READY_TIMEOUT_MS
+ * @description Budget for the app-readiness gate: first paint plus the
+ *   API-backed project fetch on a loaded gate host (cold vite compile,
+ *   a sibling gate suite on shared CPUs, swap pressure). The 15s value
+ *   this replaces dated from an idle dev box and reds the whole canary
+ *   phase overnight on the 4-core homelab runners. Must stay within the
+ *   suite's per-test timeout (see `timeout` in playwright.config.js) so a
+ *   genuinely hung app still fails its test instead of stalling the gate.
+ * @example await expect(btn).toBeVisible({ timeout: APP_READY_TIMEOUT_MS })
+ ***/
+export const APP_READY_TIMEOUT_MS = 60000;
+
 export const MOBILE_VIEWPORT = { width: 375, height: 667 };
 export const SHORT_MOBILE_VIEWPORT = { width: 375, height: 568 };
 export const DESKTOP_VIEWPORT = { width: 1280, height: 720 };
@@ -32,7 +45,7 @@ export async function waitForAppReady(page) {
 	await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
 	await expect(page).toHaveTitle(/Kainbain/);
 	await expect(page.getByRole("button", { name: /Project/i }).first()).toBeVisible({
-		timeout: 15000,
+		timeout: APP_READY_TIMEOUT_MS,
 	});
 }
 

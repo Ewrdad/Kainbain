@@ -17,6 +17,8 @@ import { clearRetryState } from "../../../../shared/taskRetryState.js";
  ***/
 export function resetAttemptBudgets(task) {
 	task.autoIterationCount = 0;
+	task.autoRetrying = false;
+	task.autoIterating = false;
 	task.infraRetryCount = 0;
 	task.transientRetryLadder = [];
 	task.timeInStage = 0;

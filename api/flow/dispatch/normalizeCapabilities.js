@@ -40,7 +40,15 @@ export function normalizeCapabilities(facts = {}) {
 			errors.push("models must be an array");
 		} else {
 			for (const m of src.models) {
-				if (typeof m === "string" && m.trim()) models.push(m.trim());
+				if (typeof m !== "string" || !m.trim()) continue;
+				const cleanedModel = m.trim();
+				// The "default" sentinel is harness-managed, not a model
+				// a Runner can serve: an old or hand-configured Runner
+				// advertising it would match nothing real (no task ever
+				// requires "default"), so drop it instead of letting it
+				// pose as a capability. Duplicates carry no information.
+				if (cleanedModel.toLowerCase() === "default") continue;
+				if (!models.includes(cleanedModel)) models.push(cleanedModel);
 			}
 		}
 	}

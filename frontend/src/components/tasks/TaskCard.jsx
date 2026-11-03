@@ -7,6 +7,7 @@ import {
   isTerminalHumanApproval,
 } from '../stageTypes';
 import { resolveCheckpointState, resolveTaskStage } from './checkpointState';
+import { isRetryInProgress, retryProgressLabel, retryWaitLabel } from './taskRetryState';
 import { isEngineBusyWithOther, isStaleRunner, isTaskRunning } from './runningTask';
 import { KainBainContext } from '../../context/KainBainContext';
 import {
@@ -15,6 +16,7 @@ import {
   formatTaskTimestamp,
   formatTaskTitleFirstLine,
   getBlockedState,
+  isTaskFailed,
 } from './taskFormatters';
 import {
   describePace,
@@ -32,7 +34,6 @@ import { isInteractiveTarget } from '../../hooks/useTapGuard';
 import { copyToClipboard } from '../../services/clipboard';
 import { getTaskBranchName, buildCheckoutCommand } from './taskBranch';
 import { isRejectedTask } from './failureReason';
-import { isRetryingTask, retryProgressLabel, retryWaitLabel } from './taskRetryState';
 
 /***
  * MARK: extractModelHarnessInfo
@@ -443,14 +444,14 @@ export function TaskCard({
     }
   };
 
-  const isRetrying = isRetryingTask(task);
-  // A deliberate rejection keeps its flag even while an auto-retry is
-  // queued: the reason is about to be snapshotted into the next attempt's
-  // prompt, so hiding it would hide the pending context.
+  // RETRYING is reserved for a same-stage in-place retry: once a failback
+  // moved the task to another stage it is normal running work, not a retry
+  // (and not a failure either — the reason rides along for the next prompt).
+  // The FAILED read itself lives in one place (`isTaskFailed`) so the card
+  // can never disagree with the inspector about the same task.
+  const isRetrying = isRetryInProgress(task);
   const isRejectedFailure = isRejectedTask(task);
-  const isFailed =
-    task.status === 'failed' ||
-    (Boolean(task.failureReason) && (!isRetryingTask(task) || isRejectedFailure));
+  const isFailed = isTaskFailed(task);
   const isRejected = isFailed && isRejectedFailure;
   const isInterrupted = task.wasInterrupted === true || task.status === 'interrupted' || isStale;
   const isPaused = task.status === 'paused';

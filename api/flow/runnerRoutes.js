@@ -5,9 +5,11 @@ import { normalizeStageType } from "../projectStore.js";
 import { git, defaultBranch } from "../git.js";
 import { circuitSnapshot, isTripped } from "./circuitBreaker.js";
 import { scanClaimableTasks } from "./dispatch/scanClaimableTasks.js";
+import { buildFleetModelCatalog } from "./dispatch/fleetModelCatalog.js";
 import { resolveAliasRequirement } from "./dispatch/resolveAliasRequirement.js";
 import { runnerMatches } from "./dispatch/runnerMatches.js";
 import { operatorConfigVerdict } from "./dispatch/operatorConfigVerdict.js";
+import { stageRunnerPolicyVerdict } from "../../shared/stageRunnerPolicy.js";
 import { taskRequirements } from "./dispatch/taskRequirements.js";
 import { curateRunnerPrompt } from "./curateRunnerPrompt.js";
 import { materializeRunnerTaskDocs } from "./execution/materializeRunnerTaskDocs.js";
@@ -20,6 +22,7 @@ import {
 	runnerStageTimeoutStatus,
 } from "./stagePolicy.js";
 import { redactSecretsText } from "../../shared/redactSecrets.js";
+import { buildBelowMinimumRefusal } from "./runnerVersionCompat.js";
 import { servingModelFor } from "./runnerPosture.js";
 import {
 	buildTimelineAttribution,
@@ -495,6 +498,17 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		return { ...executionLedger.snapshot(), liveAssignments, scheduler, integration };
 	});
 
+	app.get("/runners/models/catalogue", async () => {
+		// Fleet model catalogue: derived live from Runner registrations
+		// (never cached), so joins, leaves, heartbeat updates, and
+		// operator allowlist edits reflect on the next read. One entry
+		// per distinct model id served by at least one claim-eligible
+		// Runner (active, not paused), with the serving harness ids,
+		// tiers, and runner count/ids. Stage, default, and alias pickers
+		// read this for availability instead of credential health.
+		return buildFleetModelCatalog(runnerRegistry.list());
+	});
+
 	app.post("/tasks/:id/progress", async (request, reply) => {
 		let runner;
 		try {
@@ -816,6 +830,11 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				code: "RUNNER_PAUSED",
 			});
 		}
+		// Runner self-update floor (Option A, ADR 0012): a known product
+		// version below KAINBAIN_RUNNER_MIN_VERSION is refused so it cannot
+		// mis-execute — the daemon self-updates on this code and retries.
+		const belowMinimum = buildBelowMinimumRefusal({ runner, minVersion: config.runnerMinVersion });
+		if (belowMinimum) return reply.status(409).send(belowMinimum);
 		const projectId = resolveAndGuardProject(
 			request.body?.projectId || request.query?.projectId,
 			reply,
@@ -835,6 +854,16 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			return reply.status(409).send({
 				error: `Runner ${runner.runnerId} settings refuse this task (${claimVerdict.reason}).`,
 				code: claimVerdict.reason,
+			});
+		}
+		// Stage runnerPolicy (stage settings allow/block list) binds this
+		// direct claim exactly like the dispatch scan: claiming by task id
+		// must not bypass a stage the Runner is not allowed on.
+		const claimPolicyVerdict = stageRunnerPolicyVerdict(req.runnerPolicy, runner.runnerId);
+		if (!claimPolicyVerdict.ok) {
+			return reply.status(409).send({
+				error: `Runner ${runner.runnerId} is refused by this stage's Runner list (${claimPolicyVerdict.reason}).`,
+				code: claimPolicyVerdict.reason,
 			});
 		}
 		try {
@@ -966,6 +995,10 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				code: "RUNNER_PAUSED",
 			});
 		}
+		// Runner self-update floor (Option A, ADR 0012): same refusal as
+		// direct claim — shared helper so the two gates cannot drift.
+		const belowMinimum = buildBelowMinimumRefusal({ runner, minVersion: config.runnerMinVersion });
+		if (belowMinimum) return reply.status(409).send(belowMinimum);
 		if (isTripped(taskStore)) {
 			const circuit = circuitSnapshot(taskStore);
 			return reply.status(409).send({
@@ -1206,6 +1239,35 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				error: `Runner ${runner.runnerId} settings refuse merge work (${mergeVerdict.reason}).`,
 				code: mergeVerdict.reason,
 			});
+		}
+		// Stage runnerPolicy binds the direct merge lease exactly like a
+		// dispatched merge: peek the head queued entry (the lease about to
+		// be granted), resolve its task's stage, and refuse Runners the
+		// stage does not allow. Anything unresolvable fails open to the
+		// legacy lease — an empty queue still reports leased:false below.
+		const acquireProjectId = request.body?.projectId;
+		const acquireBranch = request.body?.targetBranch;
+		if (acquireProjectId && acquireBranch) {
+			const headEntry = integrationQueue.peekHead({ projectId: acquireProjectId, targetBranch: acquireBranch });
+			if (headEntry?.taskId) {
+				const headTask = taskStore.getTask(acquireProjectId, headEntry.taskId);
+				if (!headTask) {
+					// Task vanished (deleted while queued) — fall through to the
+					// queue acquire; it will handle stale entries.
+				} else {
+					const headStages = resolveStagesForTask(projectStore.getProject(acquireProjectId), headTask);
+					const headStage = (Array.isArray(headStages) ? headStages : []).find(
+						(s) => String(s?.id) === String(headTask?.currentStageId),
+					) || null;
+					const leaseVerdict = stageRunnerPolicyVerdict(headStage, runner.runnerId);
+					if (!leaseVerdict.ok) {
+						return reply.status(409).send({
+							error: `Runner ${runner.runnerId} is refused by this stage's Runner list (${leaseVerdict.reason}).`,
+							code: leaseVerdict.reason,
+						});
+					}
+				}
+			}
 		}
 		try {
 			return integrationQueue.acquire({

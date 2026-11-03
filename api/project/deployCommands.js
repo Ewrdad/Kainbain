@@ -40,7 +40,7 @@ export const PUBLISH_COMMAND_PATTERN = /publish\.sh/;
 export const isDeployCommand = (command) => {
 	if (typeof command !== "string" || command.length === 0) return false;
 	return DEPLOY_COMMAND_PATTERN.test(command);
-}
+};
 
 /***
  * MARK: isHostCommand
@@ -55,7 +55,7 @@ export const isDeployCommand = (command) => {
 export const isHostCommand = (command) => {
 	if (typeof command !== "string" || command.length === 0) return false;
 	return HOST_COMMAND_PATTERN.test(command);
-}
+};
 
 /***
  * MARK: isPublishCommand
@@ -69,7 +69,7 @@ export const isHostCommand = (command) => {
 export const isPublishCommand = (command) => {
 	if (typeof command !== "string" || command.length === 0) return false;
 	return PUBLISH_COMMAND_PATTERN.test(command);
-}
+};
 
 /***
  * MARK: DEFAULT_DEPLOY_COMMAND

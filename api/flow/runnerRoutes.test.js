@@ -1014,9 +1014,57 @@ describe("Runner Routes Integration", () => {
 		expect(runner.operatorConfig).toEqual({
 			displayName: null,
 			availableTools: null,
+			availableModels: null,
 			jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
 			directories: { masterDir: "", worktreeDir: "" },
 			projectScope: null,
+		});
+	});
+
+	it("GET /runners/models/catalogue dedupes fleet models with runner counts", async () => {
+		const factsFor = (models) => ({ ...FACTS, models });
+		for (const [runnerId, models] of [
+			["fleet-a", ["shared-model", "a-only"]],
+			["fleet-b", ["shared-model"]],
+		]) {
+			const reg = await app.inject({
+				method: "POST",
+				url: "/runners/register",
+				payload: { runnerId, joinToken: "test-join-token", facts: factsFor(models) },
+			});
+			expect(reg.statusCode).toBe(202);
+			const approval = await app.inject({ method: "POST", url: `/runners/${runnerId}/approve` });
+			expect(approval.statusCode).toBe(200);
+		}
+		const first = JSON.parse(
+			(await app.inject({ method: "GET", url: "/runners/models/catalogue" })).payload,
+		);
+		expect(first.models).toContainEqual({
+			id: "shared-model",
+			harnesses: ["mock"],
+			tiers: ["T0", "T1"],
+			runnerCount: 2,
+			runnerIds: ["fleet-a", "fleet-b"],
+		});
+		expect(first.models).toContainEqual({
+			id: "a-only",
+			harnesses: ["mock"],
+			tiers: ["T0", "T1"],
+			runnerCount: 1,
+			runnerIds: ["fleet-a"],
+		});
+		// Graceful change: revoking a Runner drops it out of the catalogue.
+		const revoke = await app.inject({ method: "POST", url: "/runners/fleet-b/revoke" });
+		expect(revoke.statusCode).toBe(200);
+		const second = JSON.parse(
+			(await app.inject({ method: "GET", url: "/runners/models/catalogue" })).payload,
+		);
+		expect(second.models).toContainEqual({
+			id: "shared-model",
+			harnesses: ["mock"],
+			tiers: ["T0", "T1"],
+			runnerCount: 1,
+			runnerIds: ["fleet-a"],
 		});
 	});
 
@@ -1033,12 +1081,14 @@ describe("Runner Routes Integration", () => {
 				displayName: "Primary",
 				jobTypes: { runsCi: false },
 				directories: { masterDir: "/srv/kb", worktreeDir: "/srv/kb-trees" },
+				availableModels: ["declared-model"],
 			},
 		});
 		expect(patched.statusCode).toBe(200);
 		const body = JSON.parse(patched.payload);
 		expect(body.operatorConfig.displayName).toBe("Primary");
 		expect(body.operatorConfig.jobTypes.runsCi).toBe(false);
+		expect(body.operatorConfig.availableModels).toEqual(["declared-model"]);
 		expect(body.operatorConfig.directories).toEqual({
 			masterDir: "/srv/kb",
 			worktreeDir: "/srv/kb-trees",
@@ -1054,6 +1104,7 @@ describe("Runner Routes Integration", () => {
 			{ directories: { masterDir: "" } },
 			{ jobTypes: { runsCi: "yes" } },
 			{ availableTools: ["no-such-tool"] },
+			{ availableModels: ["ok", "  "] },
 			{ bogus: true },
 		]) {
 			const res = await app.inject({
@@ -1469,6 +1520,127 @@ describe("Runner Routes Integration", () => {
 			url: "/runners/ghost-runner/approve",
 		});
 		expect(approval.statusCode).toBe(404);
+	});
+});
+
+describe("Runner version floor (Option A, ADR 0012)", () => {
+	const versionedFacts = (runner) => ({
+		harnesses: [{ id: "mock", version: "0.0.0" }],
+		models: ["mock-model"],
+		tiers: ["T0", "T1"],
+		diskHeadroomMb: 1024,
+		versions: { protocol: "v1", runner, api: "1.0.0" },
+	});
+
+	async function onboardVersioned(runnerId, runnerVersion) {
+		const reg = await app.inject({
+			method: "POST",
+			url: "/runners/register",
+			payload: { runnerId, joinToken: "test-join-token", facts: versionedFacts(runnerVersion) },
+		});
+		expect([200, 202]).toContain(reg.statusCode);
+		const approval = await app.inject({ method: "POST", url: `/runners/${runnerId}/approve` });
+		expect(approval.statusCode).toBe(200);
+		const credential = JSON.parse(approval.payload).credential;
+		const beat = await app.inject({
+			method: "POST",
+			url: "/runners/heartbeat",
+			headers: { "x-runner-credential": credential },
+			payload: { runnerId, facts: versionedFacts(runnerVersion) },
+		});
+		expect(beat.statusCode).toBe(200);
+		return credential;
+	}
+
+	it("heartbeat surfaces the fleet-matrix update block", async () => {
+		const credential = await onboardVersioned("version-beat-1", "0.1.0");
+		const beat = await app.inject({
+			method: "POST",
+			url: "/runners/heartbeat",
+			headers: { "x-runner-credential": credential },
+			payload: { runnerId: "version-beat-1", facts: versionedFacts("0.1.0") },
+		});
+		const body = JSON.parse(beat.payload);
+		expect(body.runnerVersion).toBe("0.1.0");
+		expect(body.update).toMatchObject({ updateAvailable: expect.any(Boolean), belowMinimum: false });
+		expect(body.apiCompatible).toBe(true);
+	});
+
+	it("refuses dispatch below the minimum version with 409", async () => {
+		// Default floor is 0.1.0: 0.0.1 is below it.
+		const credential = await onboardVersioned("version-floor-1", "0.0.1");
+		const res = await app.inject({
+			method: "POST",
+			url: "/runners/dispatch",
+			headers: { "x-runner-credential": credential },
+			payload: {},
+		});
+		expect(res.statusCode).toBe(409);
+		expect(JSON.parse(res.payload).code).toBe("RUNNER_VERSION_BELOW_MINIMUM");
+	});
+
+	it("refuses direct claim below the minimum version, resumes after the Runner updates", async () => {
+		const credential = await onboardVersioned("version-floor-2", "0.0.1");
+		const projRes = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: { name: "Version Floor Fixture", gitUrl: "https://git.example.com/team/version-floor.git" },
+		});
+		expect(projRes.statusCode).toBe(201);
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: JSON.parse(projRes.payload).id, goal: "Version floor claim fixture" },
+		});
+		expect(taskRes.statusCode).toBe(200);
+		const projectId = JSON.parse(projRes.payload).id;
+		const taskId = JSON.parse(taskRes.payload).id;
+		const blocked = await app.inject({
+			method: "POST",
+			url: `/tasks/${taskId}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId, runnerId: "version-floor-2" },
+		});
+		expect(blocked.statusCode).toBe(409);
+		expect(JSON.parse(blocked.payload).code).toBe("RUNNER_VERSION_BELOW_MINIMUM");
+		// The Runner self-updates, re-heartbeats as 0.1.0, and claims fine.
+		const rebeat = await app.inject({
+			method: "POST",
+			url: "/runners/heartbeat",
+			headers: { "x-runner-credential": credential },
+			payload: { runnerId: "version-floor-2", facts: versionedFacts("0.1.0") },
+		});
+		expect(rebeat.statusCode).toBe(200);
+		expect(JSON.parse(rebeat.payload).runnerVersion).toBe("0.1.0");
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${taskId}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId, runnerId: "version-floor-2" },
+		});
+		expect(claim.statusCode).toBe(200);
+	});
+
+	it("still dispatches (badge-only) when merely below recommended", async () => {
+		const credential = await onboardVersioned("version-badge-1", "0.1.0");
+		const res = await app.inject({
+			method: "POST",
+			url: "/runners/dispatch",
+			headers: { "x-runner-credential": credential },
+			payload: {},
+		});
+		expect(res.statusCode).toBe(200);
+		expect(JSON.parse(res.payload).code).not.toBe("RUNNER_VERSION_BELOW_MINIMUM");
+	});
+
+	it("lets version-less old Runners through (permissive, no lockout)", async () => {
+		const reg = await app.inject({
+			method: "POST",
+			url: "/runners/register",
+			payload: { runnerId: "version-legacy-1", joinToken: "test-join-token", facts: FACTS },
+		});
+		expect([200, 202]).toContain(reg.statusCode);
+		await app.inject({ method: "POST", url: "/runners/version-legacy-1/approve" });
 	});
 });
 

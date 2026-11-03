@@ -82,6 +82,8 @@ export function deferForCircuitTrip(
 		task.wasInterrupted = false;
 	}
 clearRetryState(taskStore, projectId, taskId);
+	task.autoRetrying = false;
+	task.autoIterating = false;
 	if (!Array.isArray(task.history)) {
 		task.history = [];
 	}

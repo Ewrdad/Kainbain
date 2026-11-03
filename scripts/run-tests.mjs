@@ -57,11 +57,16 @@ const NPM = npmExecutable();
 
 /***
  * MARK: pruneStaleTestDirectories
- * @description Removes abandoned test directories from the temporary folder if
- *   they are older than maximumAgeInMilliseconds (default: 30 minutes). Vitest
- *   test setup files mint isolated temporary roots for each worker process; on
- *   long-running servers with memory-backed tmpfs, accumulated test roots will
- *   otherwise exhaust all available inodes and cause ENOSPC failures during CI.
+ * @description Removes abandoned kainbain scratch directories from the
+ *   temporary folder if they are older than maximumAgeInMilliseconds
+ *   (default: 30 minutes). Vitest setups mint isolated roots per worker and
+ *   agents mint per-attempt deploy/stage/survey/recon dirs; on long-running
+ *   servers with memory-backed tmpfs, the tens of thousands of accumulated
+ *   roots otherwise exhaust inodes and eat gigabytes of RAM during CI
+ *   (2026-11-03: 49k entries, 4.1G/7.6G of tmpfs). One broad `kainbain-`
+ *   stem covers scratch families invented tomorrow; the keep-list below
+ *   protects the few names that must survive (compile caches, the canary
+ *   suite's live scratch roots).
  * @example pruneStaleTestDirectories({ temporaryDirectoryPath: "/tmp", maximumAgeInMilliseconds: 1800000 })
  * @param {Object} [options]
  * @param {string} [options.temporaryDirectoryPath] - path to inspect, defaults to os.tmpdir().
@@ -76,19 +81,24 @@ export function pruneStaleTestDirectories({
 	try {
 		const directoryEntries = fs.readdirSync(temporaryDirectoryPath, { withFileTypes: true });
 		const currentTimestamp = Date.now();
-		const testDirectoryPrefixes = [
-			"kainbain-test-",
-			"kb-",
-			"survey-",
-			"sitedocs-",
-		];
+		const scratchDirectoryPrefixes = ["kainbain-", "kb-", "survey-", "sitedocs-"];
+		// Never prune these: compile caches are big, shared, and harmless,
+		// and kb-canary-e2e holds a possibly LIVE canary scratch stack from
+		// a concurrent task (it reclaims itself after 24h in
+		// canary-e2e/playwright.config.js).
+		const keepDirectoryNames = new Set(["kb-canary-e2e"]);
 
 		for (const entry of directoryEntries) {
 			if (!entry.isDirectory()) {
 				continue;
 			}
-			const matchesTestPrefix = testDirectoryPrefixes.some((prefix) => entry.name.startsWith(prefix));
-			if (!matchesTestPrefix) {
+			const matchesScratchPrefix = scratchDirectoryPrefixes.some((prefix) =>
+				entry.name.startsWith(prefix),
+			);
+			if (!matchesScratchPrefix) {
+				continue;
+			}
+			if (keepDirectoryNames.has(entry.name) || entry.name.includes("cache")) {
 				continue;
 			}
 			const entryFullPath = path.join(temporaryDirectoryPath, entry.name);
@@ -113,12 +123,14 @@ export function pruneStaleTestDirectories({
  * MARK: ensureCompileCache
  * @description Defaults `NODE_COMPILE_CACHE` (persisted V8 compilation output
  *   the many vitest workers share) and creates the directory, matching the
- *   old shell gate. Children inherit it through `spawn` env.
+ *   old shell gate. Children inherit it through `spawn` env. The default is
+ *   disk-backed (`~/.cache`): /tmp is tmpfs (RAM) on the gate host and the
+ *   cache grows to ~1G, which directly eats memory and swap (2026-11-03).
  * @example ensureCompileCache() => process.env.NODE_COMPILE_CACHE is set
  ***/
 function ensureCompileCache() {
 	if (!process.env.NODE_COMPILE_CACHE) {
-		process.env.NODE_COMPILE_CACHE = path.join(os.tmpdir(), "kainbain-compile-cache");
+		process.env.NODE_COMPILE_CACHE = path.join(os.homedir(), ".cache", "kainbain-compile-cache");
 	}
 	fs.mkdirSync(process.env.NODE_COMPILE_CACHE, { recursive: true });
 }
@@ -394,7 +406,16 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 				"runner/gitOps.test.js",
 				"runner/harness.test.js",
 				"runner/logEvents.test.js",
+				"runner/modelDiscovery.test.js",
 				"runner/project.test.js",
+				"runner/updates-check.test.js",
+				"runner/updates-daemon.test.js",
+				"runner/updates-fixture.test.js",
+				"runner/updates-manifest.test.js",
+				"runner/updates-platform.test.js",
+				"runner/updates-state.test.js",
+				"runner/updates-verify.test.js",
+				"runner/updates-wrapper.test.js",
 			],
 		},
 		{ name: "Linting (api)", file: npmExec, args: ["run", "lint:api"], lowPriority: true },
@@ -443,6 +464,8 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 				"tests/free-port.test.mjs",
 				"tests/generate-changelog.test.mjs",
 				"tests/canary-preflight.test.mjs",
+				"tests/canary-lock.test.mjs",
+				"tests/canary-readiness.test.mjs",
 				"tests/deploy-gates.test.mjs",
 				"tests/run-supervised.test.mjs",
 				"tests/run-tests.test.mjs",
@@ -458,6 +481,8 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 				"tests/check-component-compat.test.mjs",
 				"tests/detect-changed-components.test.mjs",
 				"tests/publish.test.mjs",
+				"tests/sync-tip-dist.test.mjs",
+				"tests/runner-release-manifest.test.mjs",
 				"tests/redeploy.test.mjs",
 			],
 			lowPriority: true,
@@ -482,12 +507,16 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 			file: npmExec,
 			args: ["run", "test:canary"],
 			lowPriority: true,
-			// Honest hung-branch ceiling (15 min): the canary branch is
+			// Honest hung-branch ceiling (25 min): the canary branch is
 			// minutes long and its output goes quiet mid-run, so the gate's
 			// silence guards must never be its only bound — a wedged Playwright
 			// run is killed by THIS budget with exit 124, long before the
-			// engine's stage timeout.
-			timeoutMs: 15 * 60 * 1000,
+			// engine's stage timeout. Healthy runs take ~14 min; the headroom
+			// absorbs loaded-host jitter plus a possible wait on the host-wide
+			// canary mutex (canary-e2e/canary-lock.js), which serializes suites
+			// across tasks so overlapping runs stop killing each other's
+			// scratch stacks (2026-11-03: every task failing CI).
+			timeoutMs: 25 * 60 * 1000,
 		});
 	}
 	return { branches, skipped };

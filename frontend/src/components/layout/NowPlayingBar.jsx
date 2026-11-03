@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 import { useKainBain } from '../../context/KainBainContext';
 import { formatTaskKey, formatTaskTitleFirstLine } from '../tasks/taskFormatters';
@@ -51,7 +51,7 @@ export const runnerBoxHealth = (lastSeenAt, nowMs) => {
   const seen = Date.parse(lastSeenAt || '');
   if (!Number.isFinite(seen)) return 'unknown';
   return nowMs - seen <= 60000 ? 'live' : 'stale';
-}
+};
 
 /***
  * MARK: runnerBoxDotClass / runnerBoxHealthLabel
@@ -71,14 +71,12 @@ const runnerBoxHealthLabel = (health) => {
 };
 
 /***
- * MARK: runnerBoxVisibilityCap
- * @description At most this many boxes render in the 72px bar; the header
- *   count stays honest about the whole fleet and a "+N more" chip names
- *   the overflow. The data layer never hides runners — only the render
- *   slices — so the count always matches the configured fleet.
- * @example MAX_VISIBLE_RUNNER_BOXES => 4
+ * MARK: runnerStripOwnsOverflow
+ * @description Every configured Runner renders its own box in the 72px
+ *   bar — no render cap, no "+N more" chip. The strip container owns
+ *   overflow: it scrolls horizontally (touch swipe) only when the fleet
+ *   overflows, so the full roster stays reachable on every viewport.
  * ***/
-export const MAX_VISIBLE_RUNNER_BOXES = 4;
 
 /***
  * MARK: resolveRunnerBoxes
@@ -172,7 +170,7 @@ export const resolveRunnerBoxes = ({ assignments, tasks, stages, runners }) => {
       idle: false,
     };
   });
-}
+};
 
 /***
  * MARK: useNowPlayingRunnerDirectory
@@ -201,9 +199,7 @@ const useNowPlayingRunnerDirectory = (assignmentsOverride, runnersOverride) => {
     const load = async () => {
       try {
         const [m, list] = await Promise.all([
-          pollAssignments
-            ? api.getRunnerMonitor().catch(() => null)
-            : Promise.resolve(null),
+          pollAssignments ? api.getRunnerMonitor().catch(() => null) : Promise.resolve(null),
           pollRunners && typeof api.getRunners === 'function'
             ? api.getRunners().catch(() => null)
             : Promise.resolve(null),
@@ -239,7 +235,7 @@ const useNowPlayingRunnerDirectory = (assignmentsOverride, runnersOverride) => {
         : [];
   const runners = runnersOverride !== undefined ? runnersOverride : registry;
   return { assignments, runners };
-}
+};
 
 /***
  * MARK: NowPlayingBar
@@ -300,12 +296,6 @@ export function NowPlayingBar() {
     runners: runnerRegistryList,
   });
   const showRunnerBoxes = runnerBoxes.length > 0;
-  const visibleRunnerBoxes = showRunnerBoxes
-    ? runnerBoxes.slice(0, MAX_VISIBLE_RUNNER_BOXES)
-    : [];
-  const hiddenRunnerCount = showRunnerBoxes
-    ? runnerBoxes.length - visibleRunnerBoxes.length
-    : 0;
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     // The retry countdown below needs a live clock even in legacy display.
@@ -488,9 +478,9 @@ export function NowPlayingBar() {
                 data-testid="now-playing-runner-boxes"
                 role="group"
                 aria-label={`${runnerBoxes.length} ${runnerBoxes.length === 1 ? 'runner' : 'runners'}`}
-                className="flex items-center gap-1.5 mt-0.5 min-w-0 max-w-full overflow-hidden"
+                className="flex items-center gap-1.5 mt-0.5 min-w-0 max-w-full flex-1 overflow-x-auto overflow-y-hidden overscroll-contain custom-scrollbar whitespace-nowrap"
               >
-                {visibleRunnerBoxes.map((box) => {
+                {runnerBoxes.map((box) => {
                   const health = runnerBoxHealth(box.lastSeenAt, nowMs);
                   const stateLabel = box.idle
                     ? 'idle, no task assigned'
@@ -570,18 +560,6 @@ export function NowPlayingBar() {
                     </div>
                   );
                 })}
-                {hiddenRunnerCount > 0 && (
-                  <span
-                    data-testid="now-playing-runner-overflow"
-                    title={`Also configured: ${runnerBoxes
-                      .slice(MAX_VISIBLE_RUNNER_BOXES)
-                      .map((box) => box.runnerId)
-                      .join(', ')}`}
-                    className="text-[11px] font-mono text-text-muted shrink-0 px-1"
-                  >
-                    +{hiddenRunnerCount} more
-                  </span>
-                )}
               </div>
             ) : (
               <InfoTooltip

@@ -149,6 +149,45 @@ describe("deploy.sh re-exec behaviour (fake systemd-run)", () => {
 	});
 });
 
+describe("deploy.sh task-worktree invocation (Runner-dispatched Publish)", () => {
+	it("re-runs in the primary checkout instead of exit 78 (e3b2624a publish failure)", () => {
+		// Every command stage now runs on a Runner in the task worktree, so
+		// deploy.sh IS invoked there legitimately. Refusing (exit 78) fails
+		// every Runner-dispatched Publish; re-running in the primary (like
+		// publish.sh) is the asymmetric fix. Fixture: a primary checkout
+		// plus a linked kb/* worktree, both holding this deploy.sh.
+		const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "kb-deploy-primary-reexec-"));
+		try {
+			const primary = path.join(tmp, "primary");
+			const worktree = path.join(tmp, "worktree");
+			const git = (cwd, ...args) => {
+				const r = spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
+				assert.equal(r.status, 0, `git ${args.join(" ")}: ${r.stderr}`);
+				return r.stdout.trim();
+			};
+			spawnSync("git", ["init", "-b", "main", primary], { encoding: "utf8" });
+			git(primary, "config", "user.email", "reexec@test");
+			git(primary, "config", "user.name", "reexec");
+			fs.copyFileSync(path.join(REPO_ROOT, "deploy.sh"), path.join(primary, "deploy.sh"));
+			git(primary, "add", "deploy.sh");
+			git(primary, "-c", "user.email=reexec@test", "-c", "user.name=reexec", "commit", "-qm", "deploy");
+			git(primary, "worktree", "add", "-b", "kb/task-1", worktree);
+			// --bogus: the primary copy must reject it with exit 1 at arg
+			// parsing, proving execution reached the primary (exit 78 would
+			// mean the worktree guard refused, as e3b2624a hit).
+			const child = spawnSync("bash", [path.join(worktree, "deploy.sh"), "--bogus"], {
+				cwd: worktree,
+				env: { ...process.env, KAINBAIN_TASK_ID: "e3b2624a-test", HOME: tmp },
+				encoding: "utf8",
+			});
+			assert.match(child.stderr, /re-running in the primary checkout/, child.stderr);
+			assert.equal(child.status, 1, `expected primary arg-parse exit 1, got ${child.status}: ${child.stderr}`);
+		} finally {
+			fs.rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+});
+
 describe("deploy.sh fail-safe contracts (static)", () => {
 	function sectionBetween(body, startMarker, endMarker) {
 		const start = body.indexOf(startMarker);
