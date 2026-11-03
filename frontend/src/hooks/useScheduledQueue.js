@@ -38,6 +38,11 @@ export function useScheduledQueue({ projectScope = 'all', enabled = false } = {}
   const mountedRef = useRef(true);
   const fetchInFlightRef = useRef(false);
   const pendingRefreshRequestedRef = useRef(false);
+  // Refs keep the latest scope/enabled for interval and visibility callbacks
+  // that outlive the render that created them — avoids stale closure reads
+  // when the popup closes while a timer is pending.
+  const enabledRef = useRef(enabled);
+  const projectScopeRef = useRef(projectScope);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -46,8 +51,13 @@ export function useScheduledQueue({ projectScope = 'all', enabled = false } = {}
     };
   }, []);
 
+  useEffect(() => {
+    enabledRef.current = enabled;
+    projectScopeRef.current = projectScope;
+  }, [enabled, projectScope]);
+
   const fetchQueue = async (refresh = false) => {
-    if (!enabled) return;
+    if (!enabledRef.current) return;
     if (fetchInFlightRef.current) {
       if (refresh) pendingRefreshRequestedRef.current = true;
       return;
@@ -58,7 +68,8 @@ export function useScheduledQueue({ projectScope = 'all', enabled = false } = {}
       setLoading(true);
     }
     try {
-      const projectId = projectScope && projectScope !== 'all' ? projectScope : undefined;
+      const scope = projectScopeRef.current;
+      const projectId = scope && scope !== 'all' ? scope : undefined;
       if (typeof api?.observabilityStatus !== 'function') {
         throw new Error('Queue endpoint is unavailable');
       }
