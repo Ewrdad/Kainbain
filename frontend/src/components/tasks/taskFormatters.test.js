@@ -1022,7 +1022,7 @@ describe('taskFormatters', () => {
       ).toBe(true);
     });
 
-    it('is true for a legacy moved task (autoRetrying but current stage differs from the failed stage)', () => {
+    it('is true for an older-backend moved task (autoRetrying but current stage differs from the failed stage)', () => {
       expect(
         isAutoIterationInProgress({
           autoRetrying: true,
@@ -1123,6 +1123,23 @@ describe('taskFormatters', () => {
       expect(result[0].tryCount).toBe(STAGE_RUN_TRY_COUNT_CAP);
     });
 
+    it('groups the same stage name regardless of letter case', () => {
+      // Stage-name matching is case-insensitive everywhere else (backend
+      // findStageByIdOrName), so history must not split one stage into two
+      // rows over a capital letter.
+      const entries = [
+        { stage: 'Design', status: 'Failed', timestamp: '2026-01-03T00:00:00.000Z', reason: 'latest' },
+        { stage: 'design', status: 'Moved', timestamp: '2026-01-02T00:00:00.000Z' },
+        { stage: 'DESIGN', status: 'Advanced', timestamp: '2026-01-01T00:00:00.000Z' },
+      ];
+      const result = summarizeStageRuns(entries, []);
+      expect(result).toHaveLength(1);
+      expect(result[0].stage).toBe('Design');
+      expect(result[0].status).toBe('Failed');
+      expect(result[0].reason).toBe('latest');
+      expect(result[0].tryCount).toBe(3);
+    });
+
     it('never groups rows without a stage label and never mutates its input', () => {
       const entries = [
         { status: 'Failed', timestamp: 't1' },
@@ -1134,6 +1151,11 @@ describe('taskFormatters', () => {
       expect(result).toHaveLength(3);
       expect(result.filter((row) => row.stage === undefined)).toHaveLength(2);
       expect(entries).toEqual(snapshot);
+      // Display rows are copies: rendering must not be able to mutate the
+      // stored timeline through the returned array.
+      for (const row of result) {
+        expect(entries.includes(row)).toBe(false);
+      }
     });
 
     it('handles empty and non-array input safely', () => {

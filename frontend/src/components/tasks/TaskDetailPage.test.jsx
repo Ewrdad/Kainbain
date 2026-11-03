@@ -831,8 +831,8 @@ describe('TaskDetailPage full-page route component', () => {
     expect(screen.getByText('IN PROGRESS')).toBeInTheDocument();
   });
 
-  test('shows IN PROGRESS for a legacy moved task (autoRetrying without autoIterating)', () => {
-    // Legacy persisted record: autoRetrying true but lastError.stageId points
+  test('shows IN PROGRESS for an older-backend moved task (autoRetrying without autoIterating)', () => {
+    // Older backend payload: autoRetrying true but lastError.stageId points
     // at a stage the task no longer sits in — classified as moved, not retry.
     const legacyMovedTask = {
       ...sampleTask,

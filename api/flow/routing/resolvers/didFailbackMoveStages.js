@@ -11,7 +11,8 @@
  *   returns false and the re-run keeps the in-place retry read instead of
  *   hiding a live retry. This mirrors the task view predicate
  *   `isRetryInProgress` (frontend/src/components/tasks/taskRetryState.js),
- *   which applies the same rule to legacy records — the two classifiers
+ *   which applies the same rule to payloads from an older backend — the two
+ *   classifiers
  *   agree on every input, so the stored flags and the displayed label can
  *   never disagree about whether the task moved.
  * @example didFailbackMoveStages({ currentStageId: '1' }, { id: '2' }) => true

@@ -22,12 +22,13 @@ export function isTaskCompleted(task) {
  * @description True when a task is in an automatic CROSS-STAGE re-run: the
  *   failback moved it to a different stage and the engine re-queued it there.
  *   Such a task is normal in-progress work in the new stage — it must not be
- *   labelled RETRYING (that is `isRetryInProgress`, same stage only) and must
- *   not be labelled FAILED either (the stored failureReason is deliberately
- *   kept for the next attempt's prompt). New backend records flag this
- *   explicitly with `autoIterating`; legacy records only carry
- *   `autoRetrying`, so a moved task (current stage differs from the failed
- *   stage) is detected through `isRetryInProgress` being false.
+ *   labelled RETRYING (that is `isRetryInProgress` in ./taskRetryState.js,
+ *   same stage only) and must not be labelled FAILED either (the stored
+ *   failureReason is deliberately kept for the next attempt's prompt). New
+ *   backend records flag this explicitly with `autoIterating`; payloads from
+ *   an older backend only carry `autoRetrying`, so a moved task (current
+ *   stage differs from the failed stage) is detected through
+ *   `isRetryInProgress` being false.
  * @example isAutoIterationInProgress({ autoRetrying: true, autoIterating: true, currentStageId: '1', lastError: { stageId: '2' } }) => true
  * @example isAutoIterationInProgress({ autoRetrying: true, currentStageId: '1', lastError: { stageId: '2' } }) => true
  * @example isAutoIterationInProgress({ autoRetrying: true, currentStageId: '2', lastError: { stageId: '2' } }) => false
@@ -380,7 +381,8 @@ export const STAGE_RUN_TRY_COUNT_CAP = 99;
  *   Display-only projection: never mutates its input or the stored timeline.
  * @example summarizeStageRuns([{ stage: 'Plan', status: 'Failed', timestamp: 't2', reason: 'x' }, { stage: 'Plan', status: 'Moved', timestamp: 't1' }, { stage: 'Idea', status: 'Advanced', timestamp: 't0' }]) => [{ stage: 'Plan', status: 'Failed', timestamp: 't2', reason: 'x', tryCount: 2 }, { stage: 'Idea', status: 'Advanced', timestamp: 't0' }]
  * @example summarizeStageRuns([{ stage: 'Idea', timestamp: 't1' }, { stage: 'Plan', timestamp: 't2' }]) => [{ stage: 'Idea', timestamp: 't1' }, { stage: 'Plan', timestamp: 't2' }]
- * @param {Array<Object>} [entries=[]] - Display timeline entries (any order; groups keep first-occurrence order).
+ * @param {Array<Object>} [entries=[]] - Display timeline entries, newest first
+ *   (as returned by selectDisplayTimeline); groups keep first-occurrence order.
  * @param {Array<Object>} [stages=[]] - The current workflow stages, for legacy numeric label mapping.
  * @returns {Array<Object>} One display row per stage, each carrying `tryCount` when its group had more than one row.
  ***/
@@ -395,19 +397,25 @@ export function summarizeStageRuns(entries = [], stages = []) {
       order.push({ label: null, entry });
       continue;
     }
-    if (!groups.has(label)) {
-      groups.set(label, []);
-      order.push({ label, entry: null });
+    // Stage-name matching is case-insensitive everywhere else (the backend
+    // matches names case-insensitively), so grouping is too: 'Design' and
+    // 'design' are one stage, rendered under the first-seen spelling.
+    const groupKey = label.toLowerCase();
+    if (!groups.has(groupKey)) {
+      groups.set(groupKey, { label, rows: [] });
+      order.push({ label: groupKey, entry: null });
     }
-    groups.get(label).push(entry);
+    groups.get(groupKey).rows.push(entry);
   }
   const result = [];
   for (const slot of order) {
     if (slot.label === null) {
-      result.push(slot.entry);
+      // A copy, like every other display row: rendering must never be able
+      // to mutate the stored timeline through this array.
+      result.push({ ...slot.entry });
       continue;
     }
-    const group = groups.get(slot.label);
+    const { label: displayLabel, rows: group } = groups.get(slot.label);
     // Representative: the chronologically latest row of the group (latest
     // status/reason/attribution); ties and unparseable timestamps fall back
     // to the first row encountered.
@@ -424,7 +432,7 @@ export function summarizeStageRuns(entries = [], stages = []) {
         latestMs = ms;
       }
     }
-    const row = { ...latest, stage: slot.label };
+    const row = { ...latest, stage: displayLabel };
     if (group.length > 1) {
       row.tryCount = Math.min(group.length, STAGE_RUN_TRY_COUNT_CAP);
     }

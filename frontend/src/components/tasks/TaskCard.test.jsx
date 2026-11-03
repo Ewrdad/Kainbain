@@ -438,7 +438,7 @@ test('never shows RETRYING when the failback moved the task to another stage', (
   expect(screen.queryByLabelText('Failed execution')).not.toBeInTheDocument();
 
   cleanup();
-  // Legacy persisted shape: autoRetrying true, but the failed stage differs
+  // Older backend payload: autoRetrying true, but the failed stage differs
   // from the current stage.
   const legacyMovedTask = {
     ...task,

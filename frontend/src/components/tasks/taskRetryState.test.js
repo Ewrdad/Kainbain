@@ -7,8 +7,8 @@ import { isRetryInProgress } from './taskRetryState';
  * MARK: taskRetryState unit tests
  * @description "Retrying" must mean a same-stage in-place retry: a task whose
  *   failback moved it to another stage is normal in-progress work, not a
- *   retry. Covers legacy payloads (autoRetrying only) and new payloads that
- *   also carry autoIterating.
+ *   retry. Covers older-backend payloads (autoRetrying only) and current
+ *   payloads that also carry autoIterating.
  ***/
 describe('isRetryInProgress', () => {
   it('is true for a same-stage in-place retry (current stage equals the failed stage)', () => {

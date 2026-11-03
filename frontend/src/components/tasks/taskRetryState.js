@@ -3,16 +3,16 @@
  * @description Single source of truth for whether a task is genuinely
  *   RETRYING IN PLACE. `autoRetrying` alone is not enough: the backend sets
  *   it both for a same-stage transient retry (a real in-place retry that
- *   should read RETRYING) and — on older records — after a cross-stage
- *   failback re-run, where the task has already MOVED to another stage and
- *   must read as normal in-progress work instead. A true in-place retry is
- *   one where the task still sits in the stage that failed:
+ *   should read RETRYING) and — in payloads from an older backend — after a
+ *   cross-stage failback re-run, where the task has already MOVED to another
+ *   stage and must read as normal in-progress work instead. A true in-place
+ *   retry is one where the task still sits in the stage that failed:
  *   `currentStageId === lastError.stageId`. When there is no recorded failed
  *   stage id (e.g. a transient infra blip clears `lastError`), the task never
  *   left its stage, so the flag counts as an in-place retry. New backend
  *   records additionally set `autoIterating` (and clear `autoRetrying`) when
- *   the failback moved stages; this helper also honours that, so legacy and
- *   current payloads classify identically. The unknown-id rule here (an
+ *   the failback moved stages; this helper also honours that, so older-backend
+ *   and current payloads classify identically. The unknown-id rule here (an
  *   unprovable move keeps the retry read) mirrors the backend
  *   `didFailbackMoveStages` resolver (api/flow/routing/resolvers/): the two
  *   classifiers agree on every input, so stored flags and displayed labels
