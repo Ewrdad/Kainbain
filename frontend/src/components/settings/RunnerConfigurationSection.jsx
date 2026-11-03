@@ -7,7 +7,10 @@ import {
   runnerDisplayName,
   runnerStatusLabel,
   advertisedToolIds,
+  advertisedModels,
   effectiveTools,
+  effectiveModels,
+  parseModelsInput,
   loadedProjectIds,
   partitionProjects,
   withProjectLoaded,
@@ -71,6 +74,7 @@ const DirectoryField = ({ label, testId, value, error, busy, confirmArmed, onCha
  *   (approve/deny for join requests, pause/resume/revoke for active
  *   Runners) plus a configuration form for the selected Runner — display
  *   name, Available/Loaded project picker, available-tool checkboxes,
+ *   Models editor (operator allowlist replacing the advertised list),
  *   Master/Worktree directory editors with save confirmation, and Runs
  *   CI / Runs merges / Runs Impromptu switches. Operator choices persist
  *   per Runner via `PATCH /runners/:id/config` and heartbeats never
@@ -95,6 +99,7 @@ export function RunnerConfigurationSection() {
   const [freshCredential, setFreshCredential] = useState(null);
   const [copied, setCopied] = useState(false);
   const [nameDrafts, setNameDrafts] = useState({});
+  const [modelDrafts, setModelDrafts] = useState({});
   const [dirDrafts, setDirDrafts] = useState({});
   const [dirConfirm, setDirConfirm] = useState(null);
   const [dirErrors, setDirErrors] = useState({});
@@ -219,6 +224,12 @@ export function RunnerConfigurationSection() {
         delete next[selectedId];
         return next;
       });
+      setModelDrafts((prev) => {
+        const next = { ...prev };
+        // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
+        delete next[selectedId];
+        return next;
+      });
       setDirConfirm(null);
       setNotice('Reloaded Runner settings from the backend.');
     } catch (err) {
@@ -257,11 +268,24 @@ export function RunnerConfigurationSection() {
   const selected = visible.find((r) => r.runnerId === selectedId) || null;
   const pending = visible.filter((r) => r.status === 'pending');
   const config = selected ? defaultRunnerConfig(selected) : null;
+  const advertisedModelIds = selected ? advertisedModels(selected) : [];
+  const effectiveModelIds = selected ? effectiveModels(selected) : [];
+  const modelsOverridden = selected
+    ? Array.isArray(config.availableModels)
+    : false;
   const loadedIds = selected ? loadedProjectIds(selected, projects || []) : [];
   const { available, loaded } = partitionProjects(projects || [], loadedIds);
   const advertised = selected ? advertisedToolIds(selected) : [];
   const enabledTools = selected ? effectiveTools(selected) : [];
   const nameDraft = selected ? (nameDrafts[selected.runnerId] ?? config.displayName ?? '') : '';
+  const modelDraftText = selected
+    // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
+    ? (modelDrafts[selected.runnerId] ?? effectiveModelIds.join(', '))
+    : '';
+  const modelsDirty =
+    selected &&
+    [...parseModelsInput(modelDraftText)].sort().join(',') !==
+      [...effectiveModelIds].sort().join(',');
   const dirDraft = selected
     ? dirDrafts[selected.runnerId] || config.directories
     : { masterDir: '', worktreeDir: '' };
@@ -334,6 +358,43 @@ export function RunnerConfigurationSection() {
     void saveConfig(selected.runnerId, { availableTools: next }, 'Available tools saved.');
   };
 
+  const handleModelsSave = () => {
+    if (!selected) return;
+    const next = parseModelsInput(modelDraftText);
+    void saveConfig(
+      selected.runnerId,
+      { availableModels: next },
+      'Models saved — this Runner now matches these model ids.',
+    ).then((saved) => {
+      if (saved) {
+        setModelDrafts((prev) => {
+          const nextDrafts = { ...prev };
+          // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
+          delete nextDrafts[selected.runnerId];
+          return nextDrafts;
+        });
+      }
+    });
+  };
+
+  const handleModelsReset = () => {
+    if (!selected) return;
+    void saveConfig(
+      selected.runnerId,
+      { availableModels: null },
+      'Models reset — this Runner matches its advertised models again.',
+    ).then((saved) => {
+      if (saved) {
+        setModelDrafts((prev) => {
+          const nextDrafts = { ...prev };
+          // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
+          delete nextDrafts[selected.runnerId];
+          return nextDrafts;
+        });
+      }
+    });
+  };
+
   const handleJobToggle = (jobKey, checked) => {
     if (!selected) return;
     void saveConfig(selected.runnerId, { jobTypes: { [jobKey]: checked } }, 'Job type saved.');
@@ -361,7 +422,7 @@ export function RunnerConfigurationSection() {
         Out-of-process task executors (runner-only: every agent stage runs on a Runner). A Runner
         joins with the operator join token set as KAINBAIN_RUNNER_JOIN_TOKEN on the backend, waits
         here for approval, then heartbeats and claims tasks with its own credential. Select a Runner
-        on the left to configure its name, projects, tools, directories, and job types.
+        on the left to configure its name, projects, tools, models, directories, and job types.
       </p>
       {scheduler && (
         <p
@@ -790,6 +851,65 @@ export function RunnerConfigurationSection() {
                   </div>
                 )}
               </div>
+
+          <div className="flex flex-col gap-1">
+            <label
+              className="text-xs font-bold text-on-surface"
+              htmlFor={`runner-models-${selected.runnerId}`}
+            >
+              Models
+              {modelsOverridden ? ' (operator override)' : ' (advertised)'}
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                id={`runner-models-${selected.runnerId}`}
+                type="text"
+                data-testid={`runner-models-${selected.runnerId}`}
+                value={modelDraftText}
+                placeholder={
+                  advertisedModelIds.length > 0
+                    ? advertisedModelIds.join(', ')
+                    : 'model-id-1, model-id-2'
+                }
+                onChange={(e) =>
+                  setModelDrafts((prev) => ({
+                    ...prev,
+                    // eslint-disable-next-line security/detect-object-injection -- key is the selected Runner id
+                    [selected.runnerId]: e.target.value,
+                  }))
+                }
+                className="flex-1 min-w-0 p-2 bg-surface-deep border border-border-standard rounded-sm text-sm font-mono text-on-surface outline-none focus:border-primary transition-colors"
+              />
+              <button
+                type="button"
+                data-testid={`runner-models-save-${selected.runnerId}`}
+                onClick={handleModelsSave}
+                disabled={!modelsDirty || Boolean(busyKey)}
+                className="px-3 py-2 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60 shrink-0"
+              >
+                Save
+              </button>
+              {modelsOverridden && (
+                <button
+                  type="button"
+                  data-testid={`runner-models-reset-${selected.runnerId}`}
+                  onClick={handleModelsReset}
+                  disabled={Boolean(busyKey)}
+                  className="px-3 py-2 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60 shrink-0"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-text-muted" data-testid={`runner-models-effective-${selected.runnerId}`}>
+              {effectiveModelIds.length === 0
+                ? 'No models: this Runner matches model-less tasks only.'
+                : `Effective: ${effectiveModelIds.join(', ')}`}
+              {' '}Comma-separated model ids. Saving replaces the advertised
+              list for matching, so an under-reporting Runner can serve
+              declared models. Reset returns to advertised.
+            </p>
+          </div>
 
               <div className="flex flex-col gap-3">
                 <DirectoryField

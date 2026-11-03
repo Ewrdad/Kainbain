@@ -62,6 +62,9 @@ export const defaultRunnerConfig = (runner = {}) => {
     availableTools: Array.isArray(source.availableTools)
       ? source.availableTools.filter((t) => typeof t === 'string')
       : null,
+    availableModels: Array.isArray(source.availableModels)
+      ? source.availableModels.filter((m) => typeof m === 'string')
+      : null,
     jobTypes,
     directories,
     projectScope: Array.isArray(source.projectScope)
@@ -210,6 +213,49 @@ export const effectiveTools = (runner = {}) => {
   const configured = defaultRunnerConfig(runner).availableTools;
   return Array.isArray(configured) ? configured : advertisedToolIds(runner);
 };
+
+/***
+ * MARK: advertisedModels
+ * @description Model ids the Runner advertised in its capabilities.
+ * @example advertisedModels({ capabilities: { models: ['m1'] } }) => ['m1']
+ * @param {Object} [runner={}] - Runner record.
+ * @returns {string[]} Advertised ids (empty when unknown).
+ ***/
+export const advertisedModels = (runner = {}) => {
+  const list = runner?.capabilities?.models;
+  if (!Array.isArray(list)) return [];
+  return list.filter((id) => typeof id === 'string' && id);
+};
+
+/***
+ * MARK: effectiveModels
+ * @description Model ids enabled for the Runner: the operator allowlist
+ *   when set (it replaces the advertised list so an under-reporting
+ *   Runner can serve declared models), otherwise every advertised id.
+ * @example effectiveModels({ capabilities: { models: ['m1'] } }) => ['m1']
+ * @param {Object} [runner={}] - Runner record.
+ * @returns {string[]} Effective model ids.
+ ***/
+export const effectiveModels = (runner = {}) => {
+  const configured = defaultRunnerConfig(runner).availableModels;
+  return Array.isArray(configured) ? configured : advertisedModels(runner);
+};
+
+/***
+ * MARK: parseModelsInput
+ * @description Parses the Models editor text into a patch value:
+ *   comma-separated ids, trimmed, deduped, blanks dropped.
+ * @example parseModelsInput('a, b,, a') => ['a', 'b']
+ * @param {string} [text=''] - Raw editor text.
+ * @returns {string[]} Model ids.
+ ***/
+export const parseModelsInput = (text = '') =>
+  [...new Set(
+    String(text ?? '')
+      .split(',')
+      .map((m) => m.trim())
+      .filter(Boolean),
+  )];
 
 /***
  * MARK: loadedProjectIds

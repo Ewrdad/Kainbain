@@ -253,6 +253,23 @@ describe('validatePipelineDoc', () => {
     expect(payload.stages.map((s) => s.type)).toEqual(['human', 'ci', 'agent']);
   });
 
+  test('carries runnerPolicy verbatim and rejects a mistyped mode', () => {
+    const doc = validDoc();
+    doc.stages = [
+      { name: 'Publish', type: 'ci', runnerPolicy: { mode: 'allow', runners: ['onsite-1'] } },
+    ];
+    expect(validatePipelineDoc(doc).ok).toBe(true);
+    const payload = buildImportPayload(doc, { timestamp: 7 });
+    expect(payload.stages[0].runnerPolicy).toEqual({ mode: 'allow', runners: ['onsite-1'] });
+    const bad = validDoc();
+    bad.stages = [
+      { name: 'Publish', type: 'ci', runnerPolicy: { mode: 'only', runners: ['onsite-1'] } },
+    ];
+    const result = validatePipelineDoc(bad);
+    expect(result.ok).toBe(false);
+    expect(result.errors.join(' ')).toMatch(/runnerPolicy.*mode.*allow.*block/);
+  });
+
   test('rejects empty stages', () => {
     const doc = { ...validDoc(), stages: [] };
     const result = validatePipelineDoc(doc);

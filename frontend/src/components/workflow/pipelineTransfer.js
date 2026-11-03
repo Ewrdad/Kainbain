@@ -13,6 +13,10 @@
  * @example serializePipeline({ name: 'Main' }, stages) => { kainbainPipeline: 1, ... }
  ***/
 
+import {
+  collectInvalidStageRunnerPolicies,
+  normalizeStageRunnerPolicy,
+} from '../../../../shared/stageRunnerPolicy.js';
 import { normalizeStageTags } from '../../../../shared/stageTags.js';
 
 export const PIPELINE_EXPORT_VERSION = 1;
@@ -116,6 +120,8 @@ const STAGE_KEY_ORDER = [
   'skills',
   'paused',
   'failback',
+  // per-stage Runner allow/block list (additive; absent stays absent so legacy exports are unchanged)
+  'runnerPolicy',
   // ci-only branch execution mode (see StageTypeConfig): 'task' | 'primary'
   // | 'custom', plus the branch name for 'custom'.
   'runOnBranch',
@@ -163,6 +169,9 @@ function toCanonicalStageDoc(source) {
       // arrays; an absent tags field stays absent (legacy round-trip).
       const normalizedTags = normalizeStageTags(input.tags);
       if (normalizedTags !== undefined) doc.tags = normalizedTags;
+    } else if (key === 'runnerPolicy') {
+      const normalizedPolicy = normalizeStageRunnerPolicy(input.runnerPolicy);
+      if (normalizedPolicy !== undefined) doc.runnerPolicy = normalizedPolicy;
     } else if (key in aliased) {
       doc[key] = aliased[key];
     } else if (input[key] !== undefined) {
@@ -399,6 +408,24 @@ export function validatePipelineDoc(doc) {
       }
     }
   });
+  // Stage Runner allow/block lists are canonical pipeline fields (validated
+  // like known types, not as unknown keys); a mistyped mode fails here
+  // with a named problem rather than importing as silently-unrestricted.
+  for (const problem of collectInvalidStageRunnerPolicies(doc.stages)) {
+    const label = doc.stages[problem.index]?.name
+      ? `"${doc.stages[problem.index].name}"`
+      : `#${problem.index + 1}`;
+    const ref = `stages[${problem.index}] (${label})`;
+    if (problem.problem === 'UNKNOWN_MODE') {
+      errors.push(
+        `${ref}: "runnerPolicy".mode must be "allow" or "block", got ${JSON.stringify(problem.mode)}.`
+      );
+    } else if (problem.problem === 'RUNNERS_NOT_ARRAY') {
+      errors.push(`${ref}: "runnerPolicy".runners must be an array of Runner ids.`);
+    } else {
+      errors.push(`${ref}: "runnerPolicy" must be an object like { mode, runners }.`);
+    }
+  }
   return { ok: errors.length === 0, errors };
 }
 

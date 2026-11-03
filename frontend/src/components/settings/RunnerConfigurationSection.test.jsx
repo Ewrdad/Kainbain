@@ -31,6 +31,7 @@ vi.mock('../../services/api', () => ({
 const OPERATOR_CONFIG = {
   displayName: null,
   availableTools: null,
+  availableModels: null,
   jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
   directories: { masterDir: '/srv/kb', worktreeDir: '/srv/kb-trees' },
   projectScope: null,
@@ -58,6 +59,7 @@ const PENDING_RUNNER = {
   operatorConfig: {
     displayName: null,
     availableTools: null,
+    availableModels: null,
     jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
     directories: { masterDir: '', worktreeDir: '' },
     projectScope: null,
@@ -75,8 +77,8 @@ const PROJECTS = [
  *   harness list: roster loading/error/empty states, pending approve/deny,
  *   active pause/resume/revoke, the one-time credential, runner selection,
  *   and the detail form — name, Available/Loaded projects, tool toggles,
- *   directory save-with-confirm, job switches, and reload. Credentials
- *   never render.
+ *   models allowlist save/reset, directory save-with-confirm, job switches,
+ *   and reload. Credentials never render.
  ***/
 describe('RunnerConfigurationSection', () => {
   beforeEach(() => {
@@ -116,16 +118,17 @@ describe('RunnerConfigurationSection', () => {
     });
   });
 
-  it('selects the first Runner and shows all five detail areas', async () => {
+  it('selects the first Runner and shows all six detail areas', async () => {
     runnersFixture([ACTIVE_RUNNER]);
     render(<RunnerConfigurationSection />);
     await waitFor(() => {
       expect(screen.getByTestId('runner-detail-r1')).toBeTruthy();
     });
-    // 1. Runner name, 2. projects, 3. tools, 4. directories, 5. job switches.
+    // 1. Runner name, 2. projects, 3. tools, 4. models, 5. directories, 6. job switches.
     expect(screen.getByTestId('runner-name-r1')).toBeTruthy();
     expect(screen.getByText('Projects')).toBeTruthy();
     expect(screen.getByText('Harnesses Available')).toBeTruthy();
+    expect(screen.getByTestId('runner-models-r1')).toBeTruthy();
     expect(screen.getByTestId('runner-masterdir-r1')).toBeTruthy();
     expect(screen.getByTestId('runner-worktreedir-r1')).toBeTruthy();
     expect(screen.getByTestId('runner-job-r1-runsCi')).toBeTruthy();
@@ -488,6 +491,28 @@ describe('RunnerConfigurationSection', () => {
     fireEvent.click(screen.getByTestId('runner-tool-r1-vibe'));
     await waitFor(() => {
       expect(updateRunnerConfig).toHaveBeenCalledWith('r1', { availableTools: ['pi'] });
+    });
+  });
+
+  it('saves a models allowlist and resets it to advertised', async () => {
+    runnersFixture([ACTIVE_RUNNER]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    // No advertised models: the editor starts empty with Save disabled.
+    expect(screen.getByTestId('runner-models-save-r1')).toBeDisabled();
+    fireEvent.change(screen.getByTestId('runner-models-r1'), {
+      target: { value: 'muse::meta::muse-spark-1.3, m9' },
+    });
+    fireEvent.click(screen.getByTestId('runner-models-save-r1'));
+    await waitFor(() => {
+      expect(updateRunnerConfig).toHaveBeenCalledWith('r1', {
+        availableModels: ['muse::meta::muse-spark-1.3', 'm9'],
+      });
+    });
+    // After save the override sticks and Reset returns to advertised (null).
+    fireEvent.click(await screen.findByTestId('runner-models-reset-r1'));
+    await waitFor(() => {
+      expect(updateRunnerConfig).toHaveBeenCalledWith('r1', { availableModels: null });
     });
   });
 

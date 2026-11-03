@@ -8,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { BrandIcon } from "@/components/BrandIcon"
 import { InstallerCard } from "@/components/InstallerCard"
 import { siteContent } from "@/content/site"
 
@@ -39,9 +40,12 @@ export function App() {
                 </a>
               </Button>
             </div>
-            <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-              {siteContent.hero.title}
-            </h1>
+            <div className="flex items-center gap-3">
+              <BrandIcon className="size-12 shrink-0 sm:size-14" />
+              <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
+                {siteContent.hero.title}
+              </h1>
+            </div>
             <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
               {siteContent.hero.tagline}
             </p>
