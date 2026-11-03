@@ -17,11 +17,11 @@ describe("loadRunnerConfig", () => {
 		assert.equal(config.heartbeatMs, 15000);
 	});
 
-	it("lists every missing required key", () => {
+	it("lists every missing required key (harness defaults to auto-detect)", () => {
 		const config = loadRunnerConfig({});
-		assert.equal(config.errors.length, 4);
+		assert.equal(config.errors.length, 3);
 		assert.match(config.errors.join(" "), /KAINBAIN_RUNNER_ID/);
-		assert.match(config.errors.join(" "), /KAINBAIN_RUNNER_HARNESS/);
+		assert.equal(config.harnessAuto, true);
 	});
 
 	it("drops the explicit-assignment requirement in dispatch mode", () => {
@@ -78,6 +78,25 @@ describe("loadRunnerConfig", () => {
 		assert.equal(bare.model, "");
 	});
 
+	it("never advertises the default sentinel or duplicate models", () => {
+		const sentinel = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "pi",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+			KAINBAIN_RUNNER_MODEL: "default",
+		});
+		assert.deepEqual(sentinel.models, []);
+		assert.equal(sentinel.model, "");
+
+		const mixed = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "pi",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+			KAINBAIN_RUNNER_MODELS: "default, m1, m1, Default, m2",
+		});
+		assert.deepEqual(mixed.models, ["m1", "m2"]);
+	});
+
 	it("reads a csv HARNESSES list, singular HARNESS seeds it", () => {
 		const multi = loadRunnerConfig({
 			KAINBAIN_RUNNER_ID: "r1",
@@ -99,6 +118,68 @@ describe("loadRunnerConfig", () => {
 		assert.equal(single.harnessId, "mock");
 	});
 
+	it("defaults the update channel to the GitHub releases pointer with auto-update on", () => {
+		const config = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "mock",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+		});
+		assert.equal(config.errors.length, 0);
+		assert.equal(config.updateUrl, "https://api.github.com/repos/Ewrdad/Kainbain/releases/latest");
+		assert.equal(config.autoUpdate, true);
+		assert.equal(config.updateCheckIntervalMs, 3600000);
+	});
+
+	it("honours the air-gapped mirror override and update opt-out", () => {
+		const config = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "mock",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+			KAINBAIN_RUNNER_UPDATE_URL: "https://mirror.local/r/manifest.json",
+			KAINBAIN_RUNNER_AUTO_UPDATE: "0",
+			KAINBAIN_RUNNER_UPDATE_CHECK_INTERVAL_MS: "100",
+		});
+		assert.equal(config.updateUrl, "https://mirror.local/r/manifest.json");
+		assert.equal(config.autoUpdate, false);
+		assert.equal(config.updateCheckIntervalMs, 3600000);
+	});
+
+	it("auto-detects by default and honours explicit manual pins", () => {
+		const empty = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+		});
+		assert.equal(empty.errors.length, 0);
+		assert.equal(empty.harnessAuto, true);
+		assert.deepEqual(empty.harnessIds, []);
+
+		const literal = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "auto",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+		});
+		assert.equal(literal.errors.length, 0);
+		assert.equal(literal.harnessAuto, true);
+
+		const mixed = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESSES: "auto,mock",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+		});
+		assert.equal(mixed.errors.length, 0);
+		assert.equal(mixed.harnessAuto, true);
+		assert.deepEqual(mixed.harnessIds, ["mock"]);
+
+		const manual = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "pi",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+		});
+		assert.equal(manual.errors.length, 0);
+		assert.equal(manual.harnessAuto, false);
+		assert.deepEqual(manual.harnessIds, ["pi"]);
+	});
+
 	it("falls back on invalid numbers and customizes tiers", () => {
 		const config = loadRunnerConfig({
 			KAINBAIN_RUNNER_ID: "r1",
@@ -110,5 +191,26 @@ describe("loadRunnerConfig", () => {
 		});
 		assert.equal(config.heartbeatMs, 15000);
 		assert.deepEqual(config.tiers, ["T0"]);
+	});
+
+	it("defaults model discovery to 12h, honours 0/off, clamps garbage", () => {
+		const env = {
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "mock",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+		};
+		assert.equal(loadRunnerConfig(env).modelDiscoveryIntervalMs, 43200000);
+		assert.equal(
+			loadRunnerConfig({ ...env, KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS: "0" }).modelDiscoveryIntervalMs,
+			0,
+		);
+		assert.equal(
+			loadRunnerConfig({ ...env, KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS: "3600000" }).modelDiscoveryIntervalMs,
+			3600000,
+		);
+		assert.equal(
+			loadRunnerConfig({ ...env, KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS: "soon" }).modelDiscoveryIntervalMs,
+			43200000,
+		);
 	});
 });

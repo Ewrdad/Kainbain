@@ -100,6 +100,21 @@ describe("createRunnerClient", () => {
 		assert.equal(calls[4].url, "http://x:3100/tasks/t1/progress");
 	});
 
+	it("posts structured event batches to log-events with seq", async () => {
+		const { fetchImpl, calls } = stubFetch(() => ok({ accepted: true, seq: 0 }));
+		const client = createRunnerClient({ backendUrl: "http://x:3100", fetchImpl });
+		const events = [{ type: "tool_started", toolName: "bash" }];
+		await client.logEvents({ taskId: "t1", projectId: "p1", executionId: "e1", epoch: 1, seq: 0, events });
+		assert.equal(calls[0].url, "http://x:3100/tasks/t1/log-events");
+		assert.deepEqual(JSON.parse(calls[0].opts.body), {
+			projectId: "p1",
+			executionId: "e1",
+			epoch: 1,
+			seq: 0,
+			events,
+		});
+	});
+
 	it("complete forwards posture verbatim, including model-less CI postures", async () => {
 		const { fetchImpl, calls } = stubFetch(() => ok({ accepted: true }));
 		const client = createRunnerClient({ backendUrl: "http://x:3100", fetchImpl });
@@ -107,5 +122,30 @@ describe("createRunnerClient", () => {
 		assert.equal(JSON.parse(calls[0].opts.body).posture, "T0:pi");
 		await client.complete({ taskId: "t1", projectId: "p1", executionId: "e1", epoch: 1, outcome: "passed", posture: "T0:pi:kimi-k3:cloud" });
 		assert.equal(JSON.parse(calls[1].opts.body).posture, "T0:pi:kimi-k3:cloud");
+	});
+
+	it("complete sends the served model when real and omits it when null or blank", async () => {
+		const { fetchImpl, calls } = stubFetch(() => ok({ accepted: true }));
+		const client = createRunnerClient({ backendUrl: "http://x:3100", fetchImpl });
+		const base = { taskId: "t1", projectId: "p1", executionId: "e1", epoch: 1, outcome: "passed" };
+		// Agent stage: the explicit model field rides alongside the posture
+		// (the posture's model segment is not safely parseable — ids may
+		// contain single `:` — so this field is the authoritative channel).
+		await client.complete({ ...base, posture: "T0:pi:kimi-k3:cloud", model: " kimi-k3:cloud " });
+		let body = JSON.parse(calls[0].opts.body);
+		assert.equal(body.model, "kimi-k3:cloud");
+		assert.equal(body.posture, "T0:pi:kimi-k3:cloud");
+		// CI stage: model null must be OMITTED from the wire body entirely.
+		await client.complete({ ...base, posture: "T0:pi", model: null });
+		body = JSON.parse(calls[1].opts.body);
+		assert.ok(!("model" in body));
+		// Blank/whitespace and non-string models are omitted too.
+		await client.complete({ ...base, model: "   " });
+		assert.ok(!("model" in JSON.parse(calls[2].opts.body)));
+		await client.complete({ ...base, model: 42 });
+		assert.ok(!("model" in JSON.parse(calls[3].opts.body)));
+		// No model argument at all (old call sites): field omitted.
+		await client.complete({ ...base });
+		assert.ok(!("model" in JSON.parse(calls[4].opts.body)));
 	});
 });

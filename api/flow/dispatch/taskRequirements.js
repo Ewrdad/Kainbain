@@ -1,4 +1,5 @@
 import { ALIAS_HARNESS_ID } from "../../../shared/modelAliases.js";
+import { normalizeStageRunnerPolicy } from "../../../shared/stageRunnerPolicy.js";
 import { resolveHarnessName } from "../../agent/harnessRegistry.js";
 
 /***
@@ -12,12 +13,15 @@ import { resolveHarnessName } from "../../agent/harnessRegistry.js";
  *   WP-3.2 (D3 central counters via `resolveAliasRequirement`, sharing the
  *   embedded smooth-WRR rotation) and are marked `{ alias }` so
  *   unresolvable aliases miss loudly instead of guessing. Only
- *   agent/review stages are Runner-runnable;
- *   human, command, and ci stages stay embedded.
+ *   agent/review stages are Runner-runnable; command, ci, and merge
+ *   stages are Runner-runnable too (the backend never executes stage
+ *   commands) — only human stages stay embedded. The stage's normalized
+ *   runnerPolicy rides along (present only when the stage restricts
+ *   Runners) so every claim path enforces the same policy.
  * @example taskRequirements({ harness: 'pi' }, { currentStageId: 's1', stages: [{ id: 's1', type: 'agent' }] }) => { harness: 'pi', ... }
  * @param {Object} project - Project entity.
  * @param {Object} task - Task entity.
- * @returns {Object} `{ harness, model, tier, alias, runnableType }`.
+ * @returns {Object} `{ harness, model, tier, alias, runnableType, hostCommand, kind, stageId, runnerPolicy? }`.
  ***/
 export function taskRequirements(project = {}, task = {}) {
 	const stages = Array.isArray(task.stages)
@@ -78,5 +82,8 @@ export function taskRequirements(project = {}, task = {}) {
 				: "T0";
 
 	const runnerless = kind === "ci" || kind === "merge";
-	return { harness: runnerless ? null : harness, model: runnerless ? "" : model, tier: runnerless && !explicitTier ? "T0" : tier, alias: runnerless ? null : alias, runnableType, hostCommand, kind, stageId: stage.id ?? null };
+	// Stage runnerPolicy (present only when the stage restricts Runners, so
+	// unrestricted requirements keep their exact legacy shape).
+	const runnerPolicy = normalizeStageRunnerPolicy(stage.runnerPolicy);
+	return { harness: runnerless ? null : harness, model: runnerless ? "" : model, tier: runnerless && !explicitTier ? "T0" : tier, alias: runnerless ? null : alias, runnableType, hostCommand, kind, stageId: stage.id ?? null, ...(runnerPolicy ? { runnerPolicy } : {}) };
 }

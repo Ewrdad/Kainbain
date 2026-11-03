@@ -9,6 +9,8 @@ import {
   modelBadgeNode,
   modelOptionWithBadge,
   groupModelsByStatus,
+  fleetCountBadgeNode,
+  fleetInfoForModel,
 } from './modelStatus';
 
 /***
@@ -69,6 +71,63 @@ describe('modelBadgeNode', () => {
     const [dot, label] = node.props.children;
     expect(dot.props.className).toContain('bg-emerald-400');
     expect(label).toBe('Ready');
+  });
+});
+
+describe('fleetCountBadgeNode', () => {
+  it('renders the runner count with an emerald dot', () => {
+    const node = fleetCountBadgeNode({ runnerCount: 2, runnerIds: ['a', 'b'] });
+    expect(node.props.className).toContain('inline-flex');
+    const [dot, label] = node.props.children;
+    expect(dot.props.className).toContain('bg-emerald-400');
+    expect(dot.props['aria-hidden']).toBe('true');
+    expect(label).toBe('2 runners');
+  });
+
+  it('renders one runner singular and zero as slate No runners', () => {
+    expect(fleetCountBadgeNode({ runnerCount: 1 }).props.children[1]).toBe('1 runner');
+    const zero = fleetCountBadgeNode(null);
+    expect(zero.props.children[1]).toBe('No runners');
+    expect(zero.props.children[0].props.className).toContain('bg-slate-400');
+    const malformed = fleetCountBadgeNode({ runnerCount: -3 });
+    expect(malformed.props.children[1]).toBe('No runners');
+  });
+});
+
+describe('fleetInfoForModel', () => {
+  const counts = {
+    'pi::g::m': { runnerCount: 1, runnerIds: ['r1'] },
+    'ollama-cloud::deepseek-v4-flash': { runnerCount: 2, runnerIds: ['a', 'b'] },
+  };
+
+  it('prefers the option value, then key forms', () => {
+    expect(
+      fleetInfoForModel(counts, { key: 'other', provider: 'g', id: 'm' }, 'pi::g::m'),
+    ).toEqual({ runnerCount: 1, runnerIds: ['r1'] });
+    expect(fleetInfoForModel(counts, { key: 'pi::g::m' })).toEqual({
+      runnerCount: 1,
+      runnerIds: ['r1'],
+    });
+    expect(
+      fleetInfoForModel(counts, { provider: 'ollama-cloud', id: 'deepseek-v4-flash' }),
+    ).toEqual({ runnerCount: 2, runnerIds: ['a', 'b'] });
+    expect(fleetInfoForModel(counts, { id: 'pi::g::m' })).toEqual({
+      runnerCount: 1,
+      runnerIds: ['r1'],
+    });
+  });
+
+  it('returns null for unknown ids and malformed inputs', () => {
+    expect(fleetInfoForModel(counts, { key: 'nope' }, 'nope')).toBeNull();
+    expect(fleetInfoForModel(null, { key: 'pi::g::m' })).toBeNull();
+    expect(fleetInfoForModel(counts, null, null)).toBeNull();
+  });
+
+  it('falls through to key forms when the option value misses', () => {
+    expect(fleetInfoForModel(counts, { key: 'pi::g::m' }, 'stale-value')).toEqual({
+      runnerCount: 1,
+      runnerIds: ['r1'],
+    });
   });
 });
 

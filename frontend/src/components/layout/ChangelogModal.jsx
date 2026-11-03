@@ -68,6 +68,13 @@ export function ChangelogModal({ buildNumber, onClose }) {
   const visible = entries.slice(0, visibleCount);
   const remaining = entries.length - visible.length;
 
+  // The baked date tells operators how fresh the history is: a bundled file
+  // baked months ago still lists real commits, but the date keeps it honest
+  // instead of reading as the current tip.
+  const bakedDay =
+    typeof changelog?.generatedAt === 'string' && changelog.generatedAt.length >= 10
+      ? changelog.generatedAt.slice(0, 10)
+      : null;
   const subtitle =
     changelog == null
       ? null
@@ -78,6 +85,7 @@ export function ChangelogModal({ buildNumber, onClose }) {
             ? `${changelog.totalCount} commit${changelog.totalCount === 1 ? '' : 's'} total`
             : null,
           changelog.truncated ? `${entries.length} baked` : null,
+          bakedDay ? `baked ${bakedDay}` : null,
         ]
           .filter(Boolean)
           .join(' · ');

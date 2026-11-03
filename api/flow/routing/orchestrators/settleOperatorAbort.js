@@ -66,6 +66,7 @@ export function settleOperatorAbort(
 		`[INFO] Stage run aborted by operator in '${stageLabel}' — awaiting resume/retry`,
 	);
 	task.autoRetrying = false;
+	task.autoIterating = false;
 	// Scheduled intervention, not a failure: no failureReason/lastError to
 	// poison the next attempt's prompt, and no budget consumed (infraRetryCount
 	// and autoIterationCount are deliberately left untouched).

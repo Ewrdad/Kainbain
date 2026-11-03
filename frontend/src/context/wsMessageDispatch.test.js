@@ -91,6 +91,30 @@ describe('dispatchWsMessage', () => {
     );
   });
 
+  it('routes structured log batches to addProcessLogEntries', () => {
+    const { ctx } = setup();
+    ctx.addProcessLogEntries = vi.fn();
+    const entries = [{ id: 1, kind: 'tool', text: '[TOOL] bash(ls)' }];
+    dispatchWsMessage(
+      'PROCESS_LOG_ENTRIES',
+      { entries, taskId: 't1', executionId: 'e1', seq: 0, runnerId: 'r1' },
+      ctx,
+    );
+    expect(ctx.addProcessLogEntries).toHaveBeenCalledWith(
+      entries,
+      expect.objectContaining({ taskId: 't1', executionId: 'e1', seq: 0 }),
+    );
+    expect(ctx.setIsAgentRunning).toHaveBeenCalledWith(true);
+  });
+
+  it('ignores structured log batches without an appender', () => {
+    const { ctx } = setup();
+    expect(() =>
+      dispatchWsMessage('PROCESS_LOG_ENTRIES', { entries: [] }, ctx),
+    ).not.toThrow();
+    expect(ctx.addProcessLog).not.toHaveBeenCalled();
+  });
+
   it('PROCESS_EXIT notifies success vs failure', () => {
     const { ctx, refs } = setup();
     dispatchWsMessage('PROCESS_EXIT', { exitCode: 0, command: 'ci' }, ctx);

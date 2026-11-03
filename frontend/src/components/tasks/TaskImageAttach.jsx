@@ -35,6 +35,79 @@ function buildSkippedMessage(skipped) {
 }
 
 /***
+ * MARK: TaskImageThumb
+ * @description One listed image asset: a lazy thumbnail plus name and remove
+ *   control. A load failure surfaces the same unavailable chip + retry used
+ *   by the markdown renderer (never an invisible hole), keeping the filename
+ *   visible so the gap is actionable instead of silently empty.
+ * @example <TaskImageThumb projectId="p1" taskId="t1" image={{ name: 'a.png' }} onRemove={remove} />
+ * @param {Object} props
+ * @param {string} props.projectId - Owning project id.
+ * @param {string} props.taskId - Owning task id.
+ * @param {Object} props.image - Listed asset (`{ name }`).
+ * @param {Function} [props.onRemove] - Called with the image name.
+ ***/
+export function TaskImageThumb({ projectId, taskId, image, onRemove }) {
+  const [failed, setFailed] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
+
+  // Fresh mounts carry fresh state (the parent keys by project/task/name),
+  // so a transient miss can never latch the chip while the asset changes;
+  // an explicit retry bumps the key below for the same URL.
+  const retry = useCallback(() => {
+    setFailed(false);
+    setRetryKey((key) => key + 1);
+  }, []);
+
+  return (
+    <span className="inline-flex items-center gap-1 border border-border-standard rounded bg-surface-deep px-1 py-0.5">
+      {failed ? (
+        <span className="inline-flex items-center gap-1 font-mono text-[9px] text-text-muted">
+          <span role="img" aria-label={image.name}>
+            🖼️ {image.name} (image unavailable)
+          </span>
+          <button
+            type="button"
+            onClick={retry}
+            aria-label={`Retry loading ${image.name}`}
+            className="underline underline-offset-2 hover:text-on-surface transition-colors cursor-pointer"
+          >
+            Retry
+          </button>
+        </span>
+      ) : (
+        <img
+          key={retryKey}
+          src={resolveTaskImageUrl({
+            apiBase: API_BASE,
+            projectId,
+            taskId,
+            src: `assets/${image.name}`,
+          })}
+          alt={image.name}
+          loading="lazy"
+          className="w-8 h-8 object-cover rounded-sm border border-border-standard/60"
+          onError={() => setFailed(true)}
+        />
+      )}
+      <span className="font-mono text-[9px] text-text-muted max-w-[110px] truncate">
+        {image.name}
+      </span>
+      <button
+        type="button"
+        aria-label={`Remove image ${image.name}`}
+        data-testid={`task-image-remove-${image.name}`}
+        onClick={() => onRemove?.(image.name)}
+        className="text-[9px] font-mono text-text-muted hover:text-error cursor-pointer px-0.5"
+        title="Delete this image asset"
+      >
+        ✕
+      </button>
+    </span>
+  );
+}
+
+/***
  * MARK: TaskImageAttach
  * @description The task-image upload affordance: a file picker (plus paste-to-upload
  *   on the goal textarea), the task's existing image assets as removable thumbnails,
@@ -268,38 +341,13 @@ export function TaskImageAttach({
       {images.length > 0 && (
         <div className="flex flex-wrap gap-1.5" data-testid="task-image-thumbnails">
           {images.map((image) => (
-            <span
-              key={image.name}
-              className="inline-flex items-center gap-1 border border-border-standard rounded bg-surface-deep px-1 py-0.5"
-            >
-              <img
-                src={resolveTaskImageUrl({
-                  apiBase: API_BASE,
-                  projectId,
-                  taskId,
-                  src: `assets/${image.name}`,
-                })}
-                alt={image.name}
-                loading="lazy"
-                className="w-8 h-8 object-cover rounded-sm border border-border-standard/60"
-                onError={(e) => {
-                  e.currentTarget.style.visibility = 'hidden';
-                }}
-              />
-              <span className="font-mono text-[9px] text-text-muted max-w-[110px] truncate">
-                {image.name}
-              </span>
-              <button
-                type="button"
-                aria-label={`Remove image ${image.name}`}
-                data-testid={`task-image-remove-${image.name}`}
-                onClick={() => handleRemove(image.name)}
-                className="text-[9px] font-mono text-text-muted hover:text-error cursor-pointer px-0.5"
-                title="Delete this image asset"
-              >
-                ✕
-              </button>
-            </span>
+            <TaskImageThumb
+              key={`${projectId}:${taskId}:${image.name}`}
+              projectId={projectId}
+              taskId={taskId}
+              image={image}
+              onRemove={handleRemove}
+            />
           ))}
         </div>
       )}

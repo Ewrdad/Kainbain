@@ -22,6 +22,7 @@ export function dispatchWsMessage(type, payload, ctx) {
     setIsAgentRunning,
     setEngineState,
     addProcessLog,
+    addProcessLogEntries,
     onNotificationRef,
     onTaskUpdatedRef,
     onTaskDeletedRef,
@@ -100,6 +101,18 @@ export function dispatchWsMessage(type, payload, ctx) {
     case 'PROCESS_STDERR':
       addProcessLog('[ERROR]', payload.chunk || '', payload);
       break;
+    case 'PROCESS_LOG_ENTRIES': {
+      // Structured runner log batches: first-class entries (tool calls,
+      // results, thinking, errors, telemetry) appended live. Older clients
+      // without the appender ignore the frame; history arrives via refetch.
+      if (typeof addProcessLogEntries === 'function') {
+        addProcessLogEntries(payload.entries, payload);
+        if (Array.isArray(payload.entries) && payload.entries.length > 0) {
+          setIsAgentRunning(true);
+        }
+      }
+      break;
+    }
     case 'PROCESS_EXIT':
       addProcessLog(
         payload.exitCode === 0 ? '[CI/CMD]' : '[ERROR]',

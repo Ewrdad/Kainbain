@@ -135,6 +135,34 @@ describe('FilePreview Component', () => {
     expect(screen.getByText('Hello')).toBeInTheDocument();
   });
 
+  it('resolves task-asset image references when task context is provided', () => {
+    renderWithKainBain(
+      <FilePreview
+        fileContent={{
+          name: 'task.md',
+          path: 'docs/tasks/t-1/task.md',
+          content: '# Goal\n\n![18744.png](assets/18744.png)',
+          size: 40,
+          extension: '.md',
+        }}
+        selectedFile={{ name: 'task.md', path: 'docs/tasks/t-1/task.md', isDirectory: false, size: 40, extension: '.md' }}
+        previewMode="rendered"
+        lines={['# Goal', '', '![18744.png](assets/18744.png)']}
+        rawUrl={null}
+        projectId="proj-1"
+        taskId="t-1"
+      />,
+      { projects: [], activeProjectId: 'proj-1' },
+    );
+
+    const img = screen.getByRole('img', { name: '18744.png' });
+    // API base resolves from frontend/.env in tests (dev: http://localhost:3100).
+    expect(img).toHaveAttribute(
+      'src',
+      'http://localhost:3100/projects/proj-1/tasks/t-1/images/18744.png',
+    );
+  });
+
   it('keeps code rendering with line numbers unchanged', () => {
     renderWithKainBain(
       <FilePreview

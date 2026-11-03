@@ -174,6 +174,14 @@ describe('MarkdownViewer Component', () => {
 });
 
 describe('MarkdownViewer task images', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('renders task-asset image references as resolved <img> elements', () => {
     render(
       <MarkdownViewer content="![the shot](assets/shot.png)" projectId="proj-1" taskId="task-1" />,
@@ -225,6 +233,48 @@ describe('MarkdownViewer task images', () => {
     fireEvent.error(img);
     expect(container.querySelector('img[alt="broken"]')).toBeNull();
     expect(screen.getByText(/gone.png \(image unavailable\)/)).toBeInTheDocument();
+  });
+
+  it('recovers the image when the source changes after a failure (no latched broken state)', () => {
+    const { container, rerender } = render(
+      <MarkdownViewer content="![broken](assets/gone.png)" projectId="proj-1" taskId="task-1" />,
+    );
+    fireEvent.error(container.querySelector('img[alt="broken"]'));
+    expect(screen.getByText(/gone.png \(image unavailable\)/)).toBeInTheDocument();
+    rerender(
+      <MarkdownViewer content="![fixed](assets/back.png)" projectId="proj-1" taskId="task-1" />,
+    );
+    expect(container.querySelector('img[alt="fixed"]')).not.toBeNull();
+  });
+
+  it('offers a retry control that reloads the image after a failure', () => {
+    const { container } = render(
+      <MarkdownViewer content="![broken](assets/gone.png)" projectId="proj-1" taskId="task-1" />,
+    );
+    fireEvent.error(container.querySelector('img[alt="broken"]'));
+    expect(screen.getByText(/gone.png \(image unavailable\)/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+    expect(container.querySelector('img[alt="broken"]')).not.toBeNull();
+  });
+
+  it('automatically retries once after a transient failure, then latches', () => {
+    const { container } = render(
+      <MarkdownViewer content="![flaky](assets/flaky.png)" projectId="proj-1" taskId="task-1" />,
+    );
+    fireEvent.error(container.querySelector('img[alt="flaky"]'));
+    expect(screen.getByText(/flaky.png \(image unavailable\)/)).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    const retried = container.querySelector('img[alt="flaky"]');
+    expect(retried).not.toBeNull();
+    // A second failure is real, not transient: no endless retry loop.
+    fireEvent.error(retried);
+    expect(screen.getByText(/flaky.png \(image unavailable\)/)).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(10000);
+    });
+    expect(container.querySelector('img[alt="flaky"]')).toBeNull();
   });
 
   it('resolves image references inside lists, tables, and headings', () => {

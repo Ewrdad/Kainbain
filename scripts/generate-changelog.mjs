@@ -17,21 +17,42 @@
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import {
+	DEFAULT_LIMIT,
+	FIELD_SEP,
+	MAX_BODY_CHARS,
+	RECORD_SEP,
+} from "../shared/changelogHistory/changelogLimits.js";
+import { buildChangelogGitFormat } from "../shared/changelogHistory/changelogGitFormat.js";
+import { isAdminCommitSubject } from "../shared/changelogHistory/isAdminCommitSubject.js";
+import { filterChangelogEntries } from "../shared/changelogHistory/filterChangelogEntries.js";
+import { parseGitLog } from "../shared/changelogHistory/parseGitLog.js";
 
 /***
- * MARK: changelog constants
- * @description Tunables for the baked artifact. DEFAULT_LIMIT bounds file size
- *   and dialog render cost; MAX_BODY_CHARS bounds per-entry bodies (KainBain
- *   auto-commit messages embed whole task prompts, averaging ~3KB — uncapped
- *   bodies push 200 entries to ~675KB, truncated to ~140KB).
+ * MARK: changelog shared bounds
+ * @description Size bounds and wire separators for the baked artifact (see
+ *   `shared/changelogHistory/changelogLimits.js` for why each value holds).
+ *   Imported here and re-exported so existing importers keep working; the
+ *   taxonomy and parser below come from the same shared home, so the baker
+ *   and the serve-time live fallback can never drift apart.
  ***/
-export const DEFAULT_LIMIT = 200;
-export const MAX_BODY_CHARS = 500;
-export const FIELD_SEP = "\x00";
-export const RECORD_SEP = "\x1e";
+// This script stays the thin CLI + git runner; `shared/changelogHistory/`
+// owns the bounds, taxonomy, and parser both sides read.
+export {
+	DEFAULT_LIMIT,
+	FIELD_SEP,
+	MAX_BODY_CHARS,
+	RECORD_SEP,
+	buildChangelogGitFormat,
+	filterChangelogEntries,
+	isAdminCommitSubject,
+	parseGitLog,
+};
 
-// %H sha, %h short, %an author, %ae email, %aI iso date, %s subject, %b body.
-const LOG_FORMAT = ["%H", "%h", "%an", "%ae", "%aI", "%s", "%b"].join("%x00") + "%x1e";
+// The exact `git log --format=` value (field order, separators) lives in
+// `shared/changelogHistory/changelogGitFormat.js` next to the parser that
+// reads it, so the baker and the serve-time live fallback cannot drift apart.
+const LOG_FORMAT = buildChangelogGitFormat();
 
 /***
  * MARK: isSafeRef
@@ -78,10 +99,15 @@ export function runGit(cwd, args) {
 /***
  * MARK: resolveDefaultBranch
  * @description Resolves which branch to bake: local `master` first, then local
- *   `main`, then the `origin/HEAD` symbolic target. Strict: throws when none
- *   resolves so the caller (deploy.sh) can record a `generation-failed` marker
- *   instead of baking the wrong history. (Deliberately stricter than the
- *   lenient `defaultBranch()` in `api/git.js`, which falls back silently.)
+ *   `main`, then the `origin/HEAD` symbolic target, then the remote-tracking
+ *   `origin/master` / `origin/main` refs directly. The remote-tracking probes
+ *   cover checkouts that never created a local default branch (linked
+ *   worktrees, partial clones): without them the bake throws
+ *   `generation-failed` even though the history is right there. Strict:
+ *   throws when none resolves so the caller (deploy.sh) can record a
+ *   `generation-failed` marker instead of baking the wrong history.
+ *   (Deliberately stricter than the lenient `defaultBranch()` in
+ *   `api/git.js`, which falls back silently.)
  * @example resolveDefaultBranch('/repo') => 'master'
  * @param {string} cwd - Repository working directory.
  * @returns {string} The resolved branch name.
@@ -108,63 +134,38 @@ export function resolveDefaultBranch(cwd) {
 			if (!verify.error && verify.status === 0) return branch;
 		}
 	}
-	throw new Error(
-		"Cannot resolve default branch: no local 'master' or 'main' and no refs/remotes/origin/HEAD",
-	);
-}
-
-/***
- * MARK: parseGitLog
- * @description Parses NUL/RS-delimited `git log` output into changelog entries,
- *   newest-first as emitted. Bodies are truncated to MAX_BODY_CHARS with a
- *   `bodyTruncated` flag; malformed records (short fields, empty SHA) are
- *   skipped rather than failing the whole bake.
- * @example parseGitLog(raw) => [{ sha, shortSha, subject, body, bodyTruncated, author, authorEmail, date }]
- * @param {string} raw - Raw stdout from the git log invocation.
- * @returns {Array<Object>} Parsed entries, newest first.
- ***/
-export function parseGitLog(raw) {
-	if (typeof raw !== "string" || raw.length === 0) return [];
-	const entries = [];
-	for (const record of raw.split(RECORD_SEP)) {
-		if (!record.trim()) continue;
-		const fields = record.split(FIELD_SEP);
-		if (fields.length < 7) continue;
-		const [sha, shortSha, author, authorEmail, date, subject, ...bodyParts] = fields;
-		if (!sha || !sha.trim()) continue;
-		// A body containing a literal NUL is near-impossible (git truncates
-		// messages at NUL), but rejoin defensively so extra separators never
-		// drop body text.
-		const body = bodyParts.join(FIELD_SEP).replace(/^\n/, "").replace(/\s+$/, "");
-		const bodyTruncated = body.length > MAX_BODY_CHARS;
-		entries.push({
-			sha: sha.trim(),
-			shortSha: (shortSha || "").trim(),
-			subject: (subject || "").trim(),
-			body: bodyTruncated ? body.slice(0, MAX_BODY_CHARS) : body,
-			bodyTruncated,
-			author: (author || "").trim(),
-			authorEmail: (authorEmail || "").trim(),
-			date: (date || "").trim(),
+	for (const name of ["origin/master", "origin/main"]) {
+		if (!isSafeRef(name)) continue;
+		const probe = spawnSync("git", ["rev-parse", "--verify", "--quiet", `refs/remotes/${name}`], {
+			cwd,
+			encoding: "utf8",
 		});
+		if (!probe.error && probe.status === 0) return name;
 	}
-	return entries;
+	throw new Error(
+		"Cannot resolve default branch: no local 'master' or 'main', no refs/remotes/origin/HEAD, and no remote-tracking origin/master or origin/main",
+	);
 }
 
 /***
  * MARK: generateChangelog
  * @description Builds the full changelog artifact for `ref` (resolved via
- *   `resolveDefaultBranch` when omitted): the latest `limit` entries plus
- *   bake metadata. `totalCount` is the commits visible at bake time;
- *   `truncated` is true when history extends beyond `entries`.
+ *   `resolveDefaultBranch` when omitted): the latest `limit` task-merge
+ *   entries plus bake metadata. Admin/automation noise is dropped at bake
+ *   time (see `isAdminCommitSubject`), so raw history is paged until `limit`
+ *   kept entries are collected or history is exhausted. `totalCount` is the
+ *   kept (task-merge) commits visible at bake time; `truncated` is true when
+ *   kept history extends beyond `entries`. Pass `filter: false` to bake the
+ *   unfiltered history (debugging only).
  * @example generateChangelog({ cwd: '/repo', limit: 5 }) => { branch: 'master', entries: [...] }
  * @param {Object} opts
  * @param {string} [opts.cwd] - Repository working directory (defaults to process.cwd()).
  * @param {string} [opts.ref] - Branch/ref to bake (defaults to resolved default branch).
  * @param {number} [opts.limit] - Max entries to bake (defaults to DEFAULT_LIMIT).
+ * @param {boolean} [opts.filter] - Drop admin commits (defaults to true).
  * @returns {Object} The changelog artifact.
  ***/
-export function generateChangelog({ cwd = process.cwd(), ref, limit = DEFAULT_LIMIT } = {}) {
+export function generateChangelog({ cwd = process.cwd(), ref, limit = DEFAULT_LIMIT, filter = true } = {}) {
 	const count = Number(limit);
 	if (!Number.isInteger(count) || count < 1) {
 		throw new Error(`generateChangelog requires a positive integer limit, got ${String(limit)}`);
@@ -173,12 +174,44 @@ export function generateChangelog({ cwd = process.cwd(), ref, limit = DEFAULT_LI
 	if (!isSafeRef(branch)) {
 		throw new Error(`Refusing to bake unsafe ref ${String(branch)}`);
 	}
-	const raw = runGit(cwd, ["log", branch, "-n", String(count), `--format=${LOG_FORMAT}`]);
-	const entries = parseGitLog(raw);
-	const totalRaw = runGit(cwd, ["rev-list", "--count", branch]).trim();
-	const totalCount = Number.parseInt(totalRaw, 10);
-	if (!Number.isInteger(totalCount) || totalCount < 0) {
-		throw new Error(`Unparseable rev-list count for '${branch}': ${totalRaw}`);
+	const keep = (entry) => !filter || !isAdminCommitSubject(entry?.subject);
+	// Page the raw log until `count` kept entries are collected: noise-heavy
+	// stretches would otherwise bake a short artifact. Each page advances
+	// `--skip` past already-seen raw commits; at most ten pages bound the
+	// deploy-time cost, and a short page ends history.
+	const kept = [];
+	let skip = 0;
+	for (let page = 0; page < 10 && kept.length < count; page += 1) {
+		const raw = runGit(cwd, [
+			"log",
+			branch,
+			"-n",
+			String(count),
+			"--skip",
+			String(skip),
+			`--format=${LOG_FORMAT}`,
+		]);
+		const parsed = parseGitLog(raw);
+		if (parsed.length === 0) break;
+		skip += parsed.length;
+		for (const entry of parsed) {
+			if (keep(entry)) kept.push(entry);
+			if (kept.length >= count) break;
+		}
+		if (parsed.length < count) break;
+	}
+	const entries = kept.slice(0, count);
+	let totalCount;
+	if (!filter) {
+		const totalRaw = runGit(cwd, ["rev-list", "--count", branch]).trim();
+		totalCount = Number.parseInt(totalRaw, 10);
+		if (!Number.isInteger(totalCount) || totalCount < 0) {
+			throw new Error(`Unparseable rev-list count for '${branch}': ${totalRaw}`);
+		}
+	} else {
+		// Honest kept-commit count: subjects only (no bodies), one pass.
+		const subjects = runGit(cwd, ["log", branch, "--format=%s"]).split("\n");
+		totalCount = subjects.filter((subject) => !isAdminCommitSubject(subject)).length;
 	}
 	const commit = runGit(cwd, ["rev-parse", branch]).trim();
 	return {
@@ -194,12 +227,13 @@ export function generateChangelog({ cwd = process.cwd(), ref, limit = DEFAULT_LI
 
 function printUsageAndExit(exitCode) {
 	const usage = [
-		"Usage: node scripts/generate-changelog.mjs [--ref <branch>] [--limit <n>] [--out <file>] [--cwd <dir>]",
+		"Usage: node scripts/generate-changelog.mjs [--ref <branch>] [--limit <n>] [--out <file>] [--cwd <dir>] [--no-filter]",
 		"",
 		"  --ref    Branch to bake (default: resolved default branch, master > main > origin/HEAD).",
 		`  --limit  Max entries to bake (default: ${DEFAULT_LIMIT}).`,
 		"  --out    Write JSON to <file> instead of stdout.",
 		"  --cwd    Repository directory (default: current directory).",
+		"  --no-filter  Bake unfiltered history (debugging only; default drops admin commits).",
 	].join("\n");
 	const stream = exitCode === 0 ? process.stdout : process.stderr;
 	stream.write(`${usage}\n`);
@@ -220,6 +254,7 @@ if (invokedAsScript) {
 	let limit = DEFAULT_LIMIT;
 	let out;
 	let cwd = process.cwd();
+	let filter = true;
 	try {
 		for (let i = 0; i < args.length; i += 1) {
 			const arg = args[i];
@@ -228,12 +263,13 @@ if (invokedAsScript) {
 			else if (arg === "--limit") limit = Number(args[(i += 1)]);
 			else if (arg === "--out") out = args[(i += 1)];
 			else if (arg === "--cwd") cwd = args[(i += 1)];
+			else if (arg === "--no-filter") filter = false;
 			else throw new Error(`Unknown argument: ${arg}`);
 		}
 		if (ref !== undefined && !isSafeRef(ref)) {
 			throw new Error(`Refusing to bake unsafe ref ${String(ref)}`);
 		}
-		const artifact = generateChangelog({ cwd, ref, limit });
+		const artifact = generateChangelog({ cwd, ref, limit, filter });
 		const json = `${JSON.stringify(artifact, null, 2)}\n`;
 		if (out) {
 			fs.writeFileSync(out, json, "utf8");

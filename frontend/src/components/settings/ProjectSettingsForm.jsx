@@ -3,6 +3,7 @@ import { useKainBain } from '../../context/KainBainContext';
 import { api } from '../../services/api';
 import { logger } from '../../services/logger';
 import { useModelCatalog } from '../../hooks/useModelCatalog';
+import { useFleetModelCatalog } from '../../hooks/useFleetModelCatalog';
 import { FALLBACK_MODELS } from '../stageTypes';
 import { resolveStoredModelValidity } from '../common/ModelSelector';
 import { ModelAliasesSection, validateAliasList } from './ModelAliasesSection';
@@ -192,6 +193,13 @@ export function ProjectSettingsForm({
     // previews exactly what saving will offer.
     aliases: modelAliases,
   });
+  // Fleet availability for every model picker on this page (project default
+  // + alias targets): claim-eligible Runner counts from
+  // /runners/models/catalogue replace credential-health badges. Gated on
+  // `loaded` (not merely finished loading) so a failed fetch renders
+  // badge-free options instead of a misleading "No runners".
+  const { counts: loadedFleetCounts, loaded: fleetLoaded } = useFleetModelCatalog();
+  const fleetCounts = fleetLoaded ? loadedFleetCounts : undefined;
   const [saveState, setSaveState] = useState('idle');
   const [validationError, setValidationError] = useState('');
   // Soft combination warnings returned by the last save (the save succeeded;
@@ -429,7 +437,7 @@ export function ProjectSettingsForm({
     }
     // Alias table validation: refuse to save while a row is invalid (the
     // section shows the same per-row errors inline).
-    const aliasErrors = validateAliasList(modelAliases, harnesses);
+    const aliasErrors = validateAliasList(modelAliases, harnesses, fleetCounts);
     if (aliasErrors.length > 0) {
       setValidationError(`Model Aliases: ${aliasErrors[0].message}`);
       setSaveState('error');
@@ -565,6 +573,7 @@ export function ProjectSettingsForm({
             setProjectName={touch(setProjectName)}
             models={models}
             labeledHarnesses={labeledHarnesses}
+            fleetCounts={fleetCounts}
             defaultModel={defaultModel}
             onDefaultModelChange={(val) => {
               defaultModelTouchedRef.current = true;
@@ -634,6 +643,7 @@ export function ProjectSettingsForm({
               setValidationError('');
             }}
             harnesses={harnesses}
+            fleetCounts={fleetCounts}
             usagesForName={(name) => findAliasUsages({ ...project, modelAliases }, name)}
             projectId={projectId}
           />
