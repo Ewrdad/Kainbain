@@ -119,6 +119,19 @@ describe('resolveMobileHeaderMode', () => {
     expect(mode.showEnginePill).toBe(true);
   });
 
+  test('a numeric runnerId counts as fleet presence, like a text one', () => {
+    // The Runner-id gate is text-or-numeric: a numeric id still names a
+    // live Runner, so the legacy pill hides for it too.
+    const mode = resolveMobileHeaderMode({
+      assignments: [{ runnerId: 7, taskId: 't1' }],
+      registry: [],
+      activeTask: TASK,
+      stages: STAGES,
+      engineState: { status: 'running' },
+    });
+    expect(mode.showEnginePill).toBe(false);
+  });
+
   test('assignments without a runnerId never count as fleet presence', () => {
     const mode = resolveMobileHeaderMode({
       assignments: [{ taskId: 't1' }, null],

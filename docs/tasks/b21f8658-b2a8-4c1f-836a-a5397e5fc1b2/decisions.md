@@ -514,3 +514,44 @@ right-side title path already avoids duplicating.
   mixed-version safe in both directions (missing endpoint methods read as
   empty fleet). Known tradeoff stands: on first load the pill shows until
   the first fleet read lands (fail-visible by design, one quick swap).
+
+## Cleanup audit (2026-11-03, cleanup stage continued)
+
+- Independent re-audit from the merge-base diff: branch-side change is
+  task-only (5 view/resolver/widget sources + co-located tests, task docs).
+  `api/flow/curateRunnerPrompt.js` + test appear in the three-dot stat only
+  via an older main merge — both files are byte-identical to the main tip,
+  so no contamination and no conflict. `EngineStatePill`,
+  `mobileModelDetails`, `ObservabilityDashboard`, and `NowPlayingBar` have
+  no branch-side diff.
+- Main has since merged one other task (`99709f05`, retry classification)
+  that this branch lacks; it touches only files this branch never touches
+  (no main-side diff under `frontend/src/components/observability/`), so
+  the merge stays clean and no main merge-back was pulled in (scoped-out
+  churn for a frontend-only task).
+- Regression proofs re-run, not trusted: log-prefix producers
+  (`executionLedger.js`, `runnerRoutes.js`) emit exactly `[runner <id>]`
+  single-spaced, so the RegExp-to-prefix-match swap in `runnerLogTail` is
+  behavior-preserving on every real input (meta-match fast path
+  unchanged); `LiveConsoleWidget`'s adapter maps null and `[]` to the same
+  empty state, so the view's `Array.isArray` coercion only removes the
+  wrong-type crash; `RunnerPromptPayload`'s hoist is base-identical JSX.
+  Canary specs assert nothing about the pill/chip (axe scans only), so no
+  E2E contract can break on the header swap.
+- One genuine coverage gap pinned (test-only, no production change): the
+  documented text-or-numeric Runner-id gate pinned only the reject
+  direction (object/bool/array ids). Added the accept direction — a
+  resolver test (numeric id hides the pill) and a widget test (numeric id
+  renders its compact row). Both pass on the unchanged production code.
+- No other defect found: fail-safe traces re-verified against the shared
+  helpers' own guards, single-announcer a11y and 360px truncation pins
+  hold, touched files stay eslint-clean at `--max-warnings 0`, no banned
+  pattern words, new modules declare one function each.
+- Gates observed this pass below before the verdict; canary E2E not re-run
+  (needs a live app URL + browsers; every CI report on this branch shows
+  all fast gates PASS and fails only on canary `waitForAppReady` timeouts
+  / `ERR_INSUFFICIENT_RESOURCES` in unrelated specs).
+- Operations continuity unchanged: frontend-only, no backend/API change,
+  no migration, plain-revert rollback; single shared 5s poller; legacy
+  pill fallback on every failure direction; deprecated props and formatter
+  re-exports retained; mixed-version safe both directions.

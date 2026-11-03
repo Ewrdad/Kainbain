@@ -386,6 +386,24 @@ describe('PerRunnerTasksWidget', () => {
     expect(screen.getByText(/Fleet idle/)).toBeInTheDocument();
   });
 
+  test('a numeric runnerId renders its row without crashing', async () => {
+    // The text-or-numeric gate accepts numeric ids end to end: the row
+    // renders under its numeric hook id instead of falling back to idle.
+    render(
+      <PerRunnerTasksWidget
+        tasks={[]}
+        stages={[{ id: 'build', name: 'Build' }]}
+        compact
+        assignmentsOverride={[{ runnerId: 7, taskId: 't1', stageId: 'build' }]}
+        registryOverride={[{ runnerId: 7 }]}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('per-runner-row-7')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('per-runner-row-7')).toHaveTextContent('Build');
+  });
+
   test('object-typed serving and epoch fields render without crashing', async () => {
     // Serving data crosses the fleet API boundary untyped: a malformed
     // object renders as text instead of crashing the row or the card.
