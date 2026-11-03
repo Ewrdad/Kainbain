@@ -40,7 +40,7 @@ export { formatMobileMonitorTitle, resolveMobileModelLine };
  * @param {Function} [props.onClearLogs] - Clears the console.
  * @param {Function} [props.onExit] - Leaves the monitor (Back button).
  * @param {Array<Object>} [props.runnerAssignmentsOverride] - Injected live fleet assignments (tests); skips polling while set.
- * @param {Map|Array} [props.runnerRegistryOverride] - Injected Runner registry (tests); skips polling while set.
+ * @param {Map|Array|number} [props.runnerRegistryOverride] - Injected Runner registry (tests): a Map, a runner list, or a positive whole count; skips polling while set.
  * @example <MobileMonitorView engineState={engineState} activeTask={activeTask} processLogs={logs} onExit={...} />
  ***/
 export function MobileMonitorView({

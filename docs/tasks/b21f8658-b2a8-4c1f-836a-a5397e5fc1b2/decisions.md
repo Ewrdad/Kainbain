@@ -361,3 +361,48 @@ right-side title path already avoids duplicating.
   test (strictly fewer fleet requests than the base's separate widget
   poll); deprecated props and formatter re-exports retained; mixed-version
   safe in both directions (missing endpoint methods read as empty fleet).
+
+## Cleanup final review (2026-11-03, cleanup stage continued)
+
+- Independent re-audit from the merge-base diff, not from prior notes:
+  branch-vs-base is task-only (5 view/resolver/widget sources +
+  co-located tests, doc-only api moves, task docs). The 3 api diffs are
+  pure JSDoc block moves plus one added `@example` line — zero runtime
+  change. `EngineStatePill`, `mobileModelDetails`, `ObservabilityDashboard`,
+  and `NowPlayingBar` have no diff; desktop full monitor and the desktop
+  explicit-compact path render the same component with the same fallbacks.
+- One doc-accuracy fix (only source edit this pass): the view's
+  `runnerRegistryOverride` JSDoc now reads `{Map|Array|number}`, matching
+  the resolver contract it feeds. No behavior change.
+- Regression checks closed by reading, not assumed: `runnerFreshness`
+  has no callers outside its module (the NaN-clock fix cannot regress
+  anyone); the `mobile-monitor-model-details` test id is consumed only by
+  the view, its tests, and the dashboard compact tests (all green); the
+  dashboard compact suite mocks a partial api surface with no fleet
+  methods, so its pill assertions pin the missing-endpoint fail-safe at
+  integration level; formatter-importer search shows only the view, its
+  re-export shim, and co-located tests.
+- Failure-direction traces re-verified against the shared helpers' own
+  guards (`formatTaskTitleFirstLine` typeof-guarded, `resolveDisplayedStage`
+  `?.`/`Array.isArray`/`String()`, `isMonitorRunning` `?.`, model details
+  all-`?.` with `Unknown` fallbacks): every wrong-type input lands on the
+  legacy pill plus idle/unknown wording, never a crash or a blank header.
+  Base-vs-branch wording compared line by line; the two intentional
+  improvements over base (no `undefined (unresolved)` alias print, no
+  `undefine` task-id slice) are pinned by tests.
+- Gates observed this pass: focused 130/130, frontend 293 files / 3995
+  passed, api 372 files / 6153 passed + 3 skipped, `npm run lint` 0
+  errors (touched files warning-free), `npm run docs:check` exit 0,
+  frontend build exit 0, `check-jsdoc-example` PASS (687 missing vs 695
+  grandfathered), 0 `act` warnings in the task suites.
+  `check:one-function` (manual, not CI) fails only on the same 3
+  pre-existing files (branch diff to one of them is doc-only; the other
+  two untouched) — belongs to its owner task. Canary E2E not re-run
+  (needs a live app URL + browsers; every CI failure report on this
+  branch shows all fast gates PASS and fails only on canary
+  `waitForAppReady` timeouts / `ERR_INSUFFICIENT_RESOURCES` in unrelated
+  specs, failing before any mobile-monitor code could run).
+- Operations continuity unchanged: frontend-only, no backend/API change,
+  no migration, plain-revert rollback; single shared 5s poller pinned by
+  test; legacy pill fallback on every failure direction; deprecated props
+  and formatter re-exports retained; mixed-version safe both directions.
