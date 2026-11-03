@@ -371,10 +371,26 @@ ls -t dist/kainbain-runner-*.tar.gz 2>/dev/null | tail -n +6 | while read -r old
 # wrote dist/ THERE, while update.sh and manual runs read the PRIMARY
 # checkout's dist/. Without this, the release is stranded and update reports
 # "already current" (2026-11-02: tip published 674ae08, primary/apps stayed
-# 06e8949, Update went green having deployed nothing). Warn-only.
-if [ "${KAINBAIN_PUBLISH_FROM_TIP_WORKTREE:-}" = "1" ]; then
+# 06e8949, Update went green having deployed nothing).
+# Two re-exec paths land here: publish.sh's own tip re-exec above
+# (KAINBAIN_PUBLISH_FROM_TIP_WORKTREE=1) and deploy.sh's tip re-exec
+# (KAINBAIN_DEPLOY_FROM_TIP_WORKTREE=1, set before deploy.sh invokes
+# publish.sh). The second path was missed: publish.sh saw a detached HEAD,
+# skipped its own re-exec, and never synced back — every Merge→Publish→
+# Update pipeline release was stranded in the tip worktree while Update
+# reported "already current" (2026-11-02, task a654a254: tip published
+# d29401e, primary/apps stayed 6a2647b, Final review reached undeployed).
+# After syncing, verify the primary manifest names this commit; a stranded
+# release fails the stage loudly instead of letting Update no-op green.
+if [ "${KAINBAIN_PUBLISH_FROM_TIP_WORKTREE:-}" = "1" ] || [ "${KAINBAIN_DEPLOY_FROM_TIP_WORKTREE:-}" = "1" ]; then
   SYNC_PRIMARY_TOP="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')"
   SYNC_PRIMARY_TOP="$SYNC_PRIMARY_TOP" SYNC_PUBLISHED="$PUBLISHED" SYNC_SHORTSHA="$SHORTSHA" \
-    node scripts/sync-tip-dist.mjs || log "warning: tip dist sync-back failed (non-fatal) — release is published in this checkout's dist/; copy it to the primary checkout's dist/ by hand."
+    node scripts/sync-tip-dist.mjs || log "warning: tip dist sync-back failed — verifying primary dist before reporting success."
+  _primary_commit="$(node -e 'try{console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).commit||"")}catch{console.log("")}' "$SYNC_PRIMARY_TOP/dist/release-manifest.json" 2>/dev/null)"
+  if [ -n "$SYNC_PRIMARY_TOP" ] && [ "$_primary_commit" != "$FULLSHA" ]; then
+    echo "publish.sh: release $FULLSHA is stranded in the tip worktree — primary dist at $SYNC_PRIMARY_TOP/dist names '${_primary_commit:-none}'. Refusing to report success; Update would deploy nothing. Re-run the publish or copy dist/release-manifest.json + dist/release-history.jsonl + the runner tarball to the primary dist by hand." >&2
+    exit 1
+  fi
+  unset _primary_commit
 fi
 log "published:$PUBLISHED"
