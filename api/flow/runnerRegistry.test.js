@@ -382,6 +382,7 @@ describe("RunnerRegistry operator config", () => {
 		expect(record.operatorConfig).toEqual({
 			displayName: null,
 			availableTools: null,
+			availableModels: null,
 			jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
 			directories: { masterDir: "", worktreeDir: "" },
 			projectScope: null,
@@ -444,6 +445,8 @@ describe("RunnerRegistry operator config", () => {
 			{ jobTypes: { runsEverything: true } },
 			{ projectScope: "p1" },
 			{ displayName: "" },
+			{ availableModels: "m1" },
+			{ availableModels: ["ok", "  ", 7] },
 			{ nope: true },
 		]) {
 			try {
@@ -453,6 +456,27 @@ describe("RunnerRegistry operator config", () => {
 				expect(err.statusCode).toBe(400);
 			}
 		}
+	});
+
+	test("updateConfig accepts an operator model allowlist without subset validation", () => {
+		const { runners } = approved();
+		// FACTS advertises only 'test-model': the operator may still
+		// declare anything the box can serve (same trust as the env claim).
+		expect(
+			runners.updateConfig("r1", { availableModels: ["  custom-model  ", "test-model", "custom-model"] })
+				.operatorConfig.availableModels,
+		).toEqual(["custom-model", "test-model"]);
+		expect(
+			runners.updateConfig("r1", { availableModels: [] }).operatorConfig.availableModels,
+		).toEqual([]);
+		expect(
+			runners.updateConfig("r1", { availableModels: null }).operatorConfig.availableModels,
+		).toBe(null);
+		// Unadvertised ids are accepted (operator claim, not a subset).
+		expect(
+			runners.updateConfig("r1", { availableModels: ["never-advertised"] })
+				.operatorConfig.availableModels,
+		).toEqual(["never-advertised"]);
 	});
 
 	test("pending Runners can be configured", () => {
@@ -491,12 +515,14 @@ describe("RunnerRegistry operator config", () => {
 			jobTypes: { runsCi: false },
 			directories: { masterDir: "/srv/kb", worktreeDir: "/srv/kb-trees" },
 			availableTools: ["pi"],
+			availableModels: ["test-model"],
 			projectScope: ["p1"],
 		});
 		const second = new RunnerRegistry({ joinToken: "join-secret", stateFile: file });
 		expect(second.getConfig("r1").operatorConfig).toEqual({
 			displayName: "Primary",
 			availableTools: ["pi"],
+			availableModels: ["test-model"],
 			jobTypes: { runsCi: false, runsMerges: true, runsImpromptu: true },
 			directories: { masterDir: "/srv/kb", worktreeDir: "/srv/kb-trees" },
 			projectScope: ["p1"],

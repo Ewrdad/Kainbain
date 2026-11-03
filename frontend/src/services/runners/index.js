@@ -13,6 +13,7 @@ export function runnerRequests(request) {
   return {
     getRunners: () => request('/runners'),
     getRunnerMonitor: () => request('/runners/monitor'),
+    getFleetModelCatalog: () => request('/runners/models/catalogue'),
     getRunnerConfig: (id) =>
       request(`/runners/${encodeURIComponent(id)}/config`),
     updateRunnerConfig: (id, patch) =>
