@@ -343,7 +343,11 @@ test.describe("question-me survey verification", () => {
       expect(ask?.skills?.[0]).toMatchObject({ name: "question-me", config: { imageGen: "mock" } });
 
       const made = await request.post(`${API_BASE}/tasks`, {
-        data: { projectId: imgProject.id, title: `survey images ${STAMP}`, goal: `survey images ${STAMP}`, stageId: "ask" },
+        // Task title must not resemble the project name: selectProject matches
+        // buttons case-insensitively, and the Now Playing bar's active-task
+        // button carries the task title — a colliding title is a strict-mode
+        // violation (two matching buttons) instead of a project switch.
+        data: { projectId: imgProject.id, title: `design pick ${STAMP}`, goal: `design pick ${STAMP}`, stageId: "ask" },
       });
       expect(made.ok()).toBeTruthy();
       const task = await made.json();

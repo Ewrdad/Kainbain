@@ -481,8 +481,10 @@ test.describe.serial("PR Review E2E", () => {
 			page.getByTestId("review-comment-thread").getByText("Please clarify error handling on this step"),
 		).toBeVisible({ timeout: 10000 });
 
-		// Take screenshot to document the feature working
-		const screenshotPath = "/home/server/projects/kainbain/docs/tasks/bafc4c11-f74f-48af-8e6e-c149d9392f35/assets/screenshot-reports-review-live.png";
+		// Take screenshot to document the feature working. It lands in this
+		// test's own output dir (attached to the report) — never a hardcoded
+		// live-checkout path, which cannot exist in CI workdirs (ENOENT).
+		const screenshotPath = test.info().outputPath("screenshot-reports-review-live.png");
 		await page.screenshot({ path: screenshotPath, fullPage: true });
 
 		// Pass the stage and verify review comment is carried into the human approval report
