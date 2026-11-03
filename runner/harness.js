@@ -50,23 +50,23 @@ export async function runHarnessStage({
 		try {
 			onSession(session);
 		} catch {
-			// Observer only: a throwing hook must never break the run.
+			// Hooks only watch: a throwing hook must never break the run.
 		}
 	}
 	const seen = new Set();
 	const unsubscribe = session.subscribe((event) => {
 		if (!event || typeof event !== "object") return;
 		// Structured transport first: every normalized event reaches onEvent
-		// in subscription order. A throwing observer must never break the
-		// run (same observer-only contract as onSession below).
+		// in subscription order. A throwing hook must never break the run
+		// (hooks only watch — same promise as onSession above).
 		if (typeof onEvent === "function") {
 			try {
 				onEvent(event);
 			} catch {
-				// Observer only: a throwing hook must never break the run.
+				// Hooks only watch: a throwing hook must never break the run.
 			}
 		}
-		// `onLog` is observer-only like `onEvent`/`onSession`: the daemon's
+		// `onLog` only watches like `onEvent`/`onSession`: the daemon's
 		// tap never throws, but a throwing hook must not break the session's
 		// emit loop for any caller.
 		let logText = null;
@@ -81,7 +81,7 @@ export async function runHarnessStage({
 			try {
 				onLog(logText);
 			} catch {
-				// Observer only: a throwing hook must never break the run.
+				// Hooks only watch: a throwing hook must never break the run.
 			}
 		}
 	});

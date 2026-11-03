@@ -249,13 +249,11 @@ export function createLogProcessor(options = {}) {
 		if (record.evidence && typeof record.evidence === "object") {
 			record.evidence = redactDeepStrings(record.evidence);
 		}
-		// detail may carry full payloads: redact secret/PII shapes before
-		// persistence so nothing leaks through the expander.
-		if (typeof record.detail === "string" && record.detail) {
-			record.detail = redactSecretsText(record.detail);
-		} else if (record.detail && typeof record.detail === "object") {
-			record.detail = redactDeepStrings(record.detail);
-		}
+		// No `detail` branch: records never carry one — `makeLogRecord`
+		// only copies its declared fields, and the UI builds expandable
+		// detail at read time from tool/usage/evidence (see
+		// `renderEntryDetail`). Every redacted field above is one the
+		// record shape actually has.
 		entries.push(record);
 		evictOverflow();
 		return record;

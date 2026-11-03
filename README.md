@@ -635,7 +635,9 @@ choke point and its fixtures in `api/redactSecrets.shared.test.js`.
 
 How it can fail, and what you see: a dropped connection leaves a
 `logs truncated — Runner disconnected (frames N–M missing)` marker where the
-gap is; an older Runner or backend that does not speak structured events
+gap is (`event frames truncated — …` for structured batches, `logs
+truncated — …` for text frames); an older Runner or backend that does not
+speak structured events
 degrades to the coarse `[runner <id>]` text view rather than losing logs; a
 batch that carries no usable typed event is rejected (400) without writing a
 gap marker, so a corrected retry of the same batch is not mistaken for a gap.

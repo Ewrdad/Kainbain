@@ -120,7 +120,7 @@ describe("runHarnessStage", () => {
 		assert.ok(tapped.seen.every((e) => e && typeof e.type === "string"));
 	});
 
-	it("survives a throwing onEvent observer", async () => {
+	it("survives a throwing onEvent hook", async () => {
 		const harness = createMockHarness({ models: [] });
 		const { output } = await runHarnessStage({
 			harness,
@@ -130,13 +130,13 @@ describe("runHarnessStage", () => {
 			stageId: "s1",
 			prompt: "do the thing",
 			onEvent: () => {
-				throw new Error("observer boom");
+				throw new Error("hook boom");
 			},
 		});
 		assert.match(output, /do the thing/);
 	});
 
-	it("survives a throwing onLog observer", async () => {
+	it("survives a throwing onLog hook", async () => {
 		const harness = createMockHarness({ models: [] });
 		const { output } = await runHarnessStage({
 			harness,
@@ -146,7 +146,7 @@ describe("runHarnessStage", () => {
 			stageId: "s1",
 			prompt: "do the thing",
 			onLog: () => {
-				throw new Error("observer boom");
+				throw new Error("hook boom");
 			},
 		});
 		assert.match(output, /do the thing/);

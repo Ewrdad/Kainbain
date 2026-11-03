@@ -137,6 +137,26 @@ describe("_appendProcessLog tag grammar", () => {
 			note: "contact [REDACTED EMAIL]",
 		});
 	});
+
+	it("keeps source process-log even when meta carries its own source", () => {
+		// The live view trusts `source` to tell the text lane from the
+		// structured lane when hiding already-stored frames: a text frame
+		// stamped "runner-structured" could hide a structured frame that
+		// was never stored. Synthesis owns this stamp, not the caller.
+		const task = { logEntries: [] };
+		_appendProcessLog(task, "[runner r1] hi", {
+			runnerId: "r1",
+			executionId: "e1",
+			seq: 0,
+			source: "runner-structured",
+		});
+		expect(task.logEntries[0].meta).toEqual({
+			runnerId: "r1",
+			executionId: "e1",
+			seq: 0,
+			source: "process-log",
+		});
+	});
 });
 
 describe("_appendLogEntries", () => {

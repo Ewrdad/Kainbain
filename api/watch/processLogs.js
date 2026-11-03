@@ -28,7 +28,8 @@ let _logEntryIdCounter = 0;
  *   and system/GIT/CI lines alike).
  * @example _synthesizedLogEntry('[GIT] Switched to main') => { kind: 'system', text: '…', … }
  * @param {string} chunk
- * @param {Object} [meta] - Extra entry metadata (e.g. `{ runnerId }`).
+ * @param {Object} [meta] - Extra entry metadata (e.g. `{ runnerId }`). A
+ *   caller `source` is ignored: synthesis owns that stamp (see below).
  * @returns {Object} A structured log entry.
  ***/
 function _synthesizedLogEntry(chunk, meta = {}) {
@@ -52,7 +53,12 @@ function _synthesizedLogEntry(chunk, meta = {}) {
 		// text frames can never store secrets or PII. Clean text passes
 		// through byte-identical.
 		text: redactSecretsText(String(chunk)),
-		meta: { source: "process-log", ...metaBag },
+		// The source stamp is forced AFTER the spread: the live view
+		// trusts `source` to tell the text lane from the structured lane
+		// when hiding already-stored frames, so a caller must never be
+		// able to stamp a text frame as structured (which could hide a
+		// structured frame that was never stored). No caller sets it.
+		meta: { ...metaBag, source: "process-log" },
 	};
 }
 
