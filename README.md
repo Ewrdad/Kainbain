@@ -608,6 +608,38 @@ The dashboard's widget catalog includes a **Harness Reliability** widget (off by
 
 While the monitor is open and a task is running, KainBain holds a Screen Wake Lock so the screen does not dim or sleep on desktop or mobile — like a video player. It is on by default and can be turned off in UI Customization › Workspace ("Keep screen awake while monitoring", `keepScreenAwakeOnMonitor` in `kainbain_ui_preferences`). The lock needs a supporting browser and a secure context, so on plain-`http://` LAN installs the feature silently does nothing (the settings row says so); leaving the monitor, idling, or hiding the tab releases the lock immediately.
 
+## Agent logs
+
+The task Logs tab shows the same structured entries live and as history:
+assistant narrative, thinking traces (short markers in the narrative, full
+blocks behind the Thinking filter), tool calls with arguments, tool results
+with per-step timings, errors and retries, permission prompts, plan updates,
+usage telemetry, and raw wire evidence. Live entries arrive over the socket as
+they are ingested; history is the same records re-read from the task, so a
+reload shows exactly what streamed. Search is case-insensitive across the
+rendered text, expandable details, tool names/arguments/results, and metadata.
+
+Retention is bounded: at most `KAINBAIN_LOG_ENTRIES_MAX_COUNT` entries (default
+500) are kept per task, with telemetry (default 100) and raw-evidence (default
+50) sub-budgets inside it. Evicted entries leave an `[INFO] (N earlier log
+entries evicted)` marker instead of vanishing silently; the retained entries
+are committed to the repo inside the task's `task.md` (`# Log Entries`
+section), and stage reports keep the final output and summary beyond the cap.
+
+Secrets and PII (tokens, keys, passwords, bearer/basic credentials, connection
+strings, private keys, emails, home directories, phone/card shapes) are
+redacted before entries are stored, streamed, or committed — the single choke
+point is `shared/redactSecrets.js`, and clean text passes through byte-identical.
+Shapes outside that list pass through: if you spot one in a log, extend the
+choke point and its fixtures in `api/redactSecrets.shared.test.js`.
+
+How it can fail, and what you see: a dropped connection leaves a
+`logs truncated — Runner disconnected (frames N–M missing)` marker where the
+gap is; an older Runner or backend that does not speak structured events
+degrades to the coarse `[runner <id>]` text view rather than losing logs; a
+batch that carries no usable typed event is rejected (400) without writing a
+gap marker, so a corrected retry of the same batch is not mistaken for a gap.
+
 ## Top header bar
 
 On phone widths (below 640px) the header stacks into two rows: brand, project

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
 	redactSecretsText,
 	redactDeepStrings,
+	SECRET_KEY_PATTERN,
 } from "../shared/redactSecrets.js";
 
 /**
@@ -148,6 +149,57 @@ describe("redactDeepStrings — structured payloads", () => {
 			first: { path: "src/index.js" },
 			second: { path: "src/index.js" },
 		});
+	});
+	it("keeps author names while redacting auth credentials by position", () => {
+		expect(
+			redactDeepStrings({
+				author: "Alice",
+				authors: ["Alice", "Bob"],
+				authorName: "Alice",
+				coauthor: "Bob",
+				auth: "s3cr3t-value",
+				authToken: "s3cr3t-value",
+				authorization: "Bearer s3cr3t-value",
+				authentication: "s3cr3t-value",
+			}),
+		).toEqual({
+			author: "Alice",
+			authors: ["Alice", "Bob"],
+			authorName: "Alice",
+			coauthor: "Bob",
+			auth: "[REDACTED]",
+			authToken: "[REDACTED]",
+			authorization: "[REDACTED]",
+			authentication: "[REDACTED]",
+		});
+	});
+	it("matches auth spellings but never author spellings", () => {
+		for (const key of [
+			"auth",
+			"auths",
+			"authToken",
+			"auth_token",
+			"authKey",
+			"authorization",
+			"Authorization",
+			"authorize",
+			"authentication",
+			"basicAuth",
+		]) {
+			expect(SECRET_KEY_PATTERN.test(key)).toBe(true);
+		}
+		for (const key of [
+			"author",
+			"Author",
+			"AUTHOR",
+			"authors",
+			"authorName",
+			"authored",
+			"coauthor",
+			"model",
+		]) {
+			expect(SECRET_KEY_PATTERN.test(key)).toBe(false);
+		}
 	});
 });
 

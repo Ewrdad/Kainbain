@@ -223,7 +223,9 @@ export function feedMatchesEntry(feed, entry) {
 /***
  * MARK: filterEntries
  * @description Filters entries by feed chip and free-text search (case
- *   insensitive, against the rendered text).
+ *   insensitive, against the rendered text plus the expandable detail, tool
+ *   names/args/results, and entry metadata — so a tool name, command, or
+ *   error string hidden in a payload still matches).
  * @example filterEntries(entries, { feed: 'TOOLS', search: 'bash' })
  * @param {Array<Object>} entries
  * @param {{feed?: string, search?: string}} [criteria]

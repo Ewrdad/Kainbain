@@ -53,6 +53,10 @@ export function runnerMatches(record = {}, req = {}, opts = {}) {
 	if (!runnerApiCompatible(runnerApi).ok) {
 		return { ok: false, reason: "PROTOCOL_SKEW" };
 	}
+	// Only the raw string marker (taskRequirements' `{ alias: name }`) is
+	// unservable here. A resolved alias object (`{ name, targetIndex }`,
+	// stamped by the route after central D3 resolution) carries the
+	// concrete harness/model below and matches like any direct requirement.
 	if (typeof req.alias === "string" && req.alias) {
 		return { ok: false, reason: "ALIAS_UNRESOLVED" };
 	}
@@ -73,8 +77,19 @@ export function runnerMatches(record = {}, req = {}, opts = {}) {
 	if (caps.diskHeadroomMb !== null && caps.diskHeadroomMb !== undefined) {
 		if (caps.diskHeadroomMb < minDisk) return { ok: false, reason: "DISK_LOW" };
 	}
+	// Operator-owned configuration (System Settings › Runners) refines an
+	// otherwise-capable match without touching Runner-reported facts. It
+	// sits after every health/capability gate so those keep their stable
+	// reasons (a stale Runner still reports STALE_HEARTBEAT, never a scope
+	// miss). The verdict itself lives in `operatorConfigVerdict`, shared
+	// with the direct claim and integration lease routes so no claim path
+	// can bypass the operator's settings.
 	const operatorVerdict = operatorConfigVerdict(record, req, opts);
 	if (!operatorVerdict.ok) return operatorVerdict;
+	// Stage runnerPolicy (the stage settings allow/block list) is the final
+	// gate: after the operator's own settings, so a Runner refused by both
+	// always reports the operator reason, and after every health/capability
+	// gate so those keep their stable reasons too.
 	const policyVerdict = stageRunnerPolicyVerdict(req.runnerPolicy, record.runnerId);
 	if (!policyVerdict.ok) return policyVerdict;
 	return { ok: true, reason: "MATCH" };

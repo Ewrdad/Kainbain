@@ -1,14 +1,16 @@
 import { fleetModelsForHarness } from './fleetModelsForHarness.js';
 
-/**
+/***
  * MARK: withFleetModels
  * @description Merges synthesized fleet entries into one harness section's
- *   backend model list.
- * @param {Array<Object>} modelsForHarness
- * @param {string} harnessId
- * @param {Object} [fleetCounts]
- * @returns {Array<Object>}
- */
+ *   backend model list, skipping ids already present by option value so
+ *   backend entries (with their richer labels) always win ties.
+ * @example withFleetModels([{ key: 'a', id: 'a' }], 'h', { b: {} })
+ * @param {Array<Object>} modelsForHarness - Backend catalogue models.
+ * @param {string} harnessId - Catalogue harness section being rendered.
+ * @param {Object} [fleetCounts] - Fleet map from `fleetCountsById`.
+ * @returns {Array<Object>} Merged model list.
+ ***/
 export function withFleetModels(modelsForHarness, harnessId, fleetCounts) {
   const base = Array.isArray(modelsForHarness) ? modelsForHarness : [];
   if (!fleetCounts || typeof fleetCounts !== 'object') return base;

@@ -108,11 +108,16 @@ export const redactSecretsText = (text) => {
  *   spellings like `apiKey`/`client_secret`). A string value under one of
  *   these keys is a secret by position even when the value itself carries no
  *   recognizable shape — the same rule the child-env seam already enforces.
+ *   The `auth` alternative excludes `author`/`authors` (git authors, message
+ *   authors) while still matching `authorization`/`authorize`: an author name
+ *   is debugging context, never a credential.
  * @example SECRET_KEY_PATTERN.test("apiKey") => true
  * @example SECRET_KEY_PATTERN.test("model") => false
+ * @example SECRET_KEY_PATTERN.test("author") => false
+ * @example SECRET_KEY_PATTERN.test("authorization") => true
  ***/
 export const SECRET_KEY_PATTERN =
-	/secret|token|password|passwd|pwd|credential|api[_-]?key|private[_-]?key|access[_-]?key|client[_-]?secret|auth/i;
+	/secret|token|password|passwd|pwd|credential|api[_-]?key|private[_-]?key|access[_-]?key|client[_-]?secret|auth(?!or(?!iz))/i;
 
 /***
  * MARK: isBinaryValue
