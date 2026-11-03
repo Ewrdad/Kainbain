@@ -15,6 +15,7 @@ import {
   getBlockedState,
   isAutoIterationInProgress,
   isTaskCompleted,
+  isTaskFailed,
   resolveTimelineStageLabel,
   selectDisplayTimeline,
   selectStagePresentation,
@@ -1049,6 +1050,21 @@ describe('taskFormatters', () => {
       expect(display[0].timestamp).not.toBe('Active');
     });
 
+    it('renders a static PAUSED row (frozen text, never a live timer) for paused tasks', () => {
+      const display = buildDisplayTimeline({
+        storedTimeline: [],
+        stages: duplicateTimelineStages,
+        currentStageName: 'Merge and deploy',
+        liveDurationLabel: '36m in stage',
+        includeLiveRow: true,
+        presentation: selectStagePresentation({ status: 'paused' }),
+      });
+      expect(display[0]).toMatchObject({ stage: 'Merge and deploy', status: 'Paused' });
+      expect(display[0].duration).not.toMatch(/in stage/);
+      expect(display[0].duration).toBe('Paused');
+      expect(display[0].timestamp).not.toBe('Active');
+    });
+
     it('keeps the live ACTIVE row for executing tasks', () => {
       const display = buildDisplayTimeline({
         storedTimeline: [],
@@ -1118,6 +1134,70 @@ describe('taskFormatters', () => {
           isAutoIterationInProgress({ status, autoIterating: true, autoRetrying: true, currentStageId: '1', lastError: { stageId: '2' } }),
         ).toBe(false);
       }
+    });
+  });
+
+  describe('isTaskFailed', () => {
+    it('reads an explicit failed status as failed even without a reason', () => {
+      expect(isTaskFailed({ status: 'failed' })).toBe(true);
+    });
+
+    it('never reads a task without failure evidence as failed', () => {
+      expect(isTaskFailed(null)).toBe(false);
+      expect(isTaskFailed(undefined)).toBe(false);
+      expect(isTaskFailed({})).toBe(false);
+      expect(isTaskFailed({ status: 'in_stage' })).toBe(false);
+      expect(isTaskFailed({ status: 'completed' })).toBe(false);
+    });
+
+    it('reads a parked failure (reason, no re-run flags) as failed', () => {
+      expect(isTaskFailed({ status: 'failed', failureReason: 'boom' })).toBe(true);
+      expect(isTaskFailed({ status: 'in_stage', failureReason: 'boom' })).toBe(true);
+    });
+
+    it('does not read a same-stage in-place retry as failed (it reads RETRYING instead)', () => {
+      expect(
+        isTaskFailed({
+          status: 'in_stage',
+          failureReason: 'socket hangup',
+          autoRetrying: true,
+          currentStageId: '2',
+          lastError: { stageId: '2' },
+        }),
+      ).toBe(false);
+    });
+
+    it('does not read a cross-stage continuation as failed', () => {
+      expect(
+        isTaskFailed({
+          status: 'in_stage',
+          failureReason: 'old reason rides along',
+          autoIterating: true,
+          currentStageId: '1',
+          lastError: { stageId: '2' },
+        }),
+      ).toBe(false);
+      expect(
+        isTaskFailed({
+          status: 'in_stage',
+          failureReason: 'old reason rides along',
+          autoRetrying: true,
+          currentStageId: '1',
+          lastError: { stageId: '2' },
+        }),
+      ).toBe(false);
+    });
+
+    it('still reads a deliberate rejection as failed while its retry is queued', () => {
+      expect(
+        isTaskFailed({
+          status: 'in_stage',
+          failureReason: 'reviewer said no',
+          autoRetrying: true,
+          currentStageId: '2',
+          lastError: { stageId: '2', failureKind: 'rejected' },
+        }),
+      ).toBe(true);
     });
   });
 
@@ -1257,6 +1337,24 @@ describe('taskFormatters', () => {
   describe('selectStagePresentation', () => {
     it('parks settled failures instead of reporting them active', () => {
       for (const status of ['failed', 'interrupted', 'blocked']) {
+        expect(selectStagePresentation({ status })).toEqual({
+          label: 'PARKED',
+          tone: 'parked',
+          ticking: false,
+        });
+      }
+    });
+
+    it('parks paused tasks with their own frozen label (never a ticking ACTIVE row)', () => {
+      expect(selectStagePresentation({ status: 'paused' })).toEqual({
+        label: 'PAUSED',
+        tone: 'parked',
+        ticking: false,
+      });
+    });
+
+    it('parks terminal cancelled/aborted tasks instead of reporting them active', () => {
+      for (const status of ['cancelled', 'aborted']) {
         expect(selectStagePresentation({ status })).toEqual({
           label: 'PARKED',
           tone: 'parked',

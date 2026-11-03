@@ -1,4 +1,5 @@
 import { normalizeStageType } from '../stageTypes.js';
+import { isRejectedTask } from './failureReason';
 import { isRetryInProgress, isTaskSettledStatus } from './taskRetryState';
 
 /***
@@ -46,14 +47,46 @@ export function isAutoIterationInProgress(task) {
 }
 
 /***
+ * MARK: isTaskFailed
+ * @description Single source of truth for whether a task reads as FAILED in
+ *   the UI (card, inspector, full page, retrospective). An explicit `failed`
+ *   status always reads as failed. Otherwise the stored `failureReason` only
+ *   reads as failed when no automatic re-run is about to clear it: a
+ *   same-stage in-place retry (`isRetryInProgress`) or a cross-stage
+ *   continuation (`isAutoIterationInProgress`) keeps the label honest while
+ *   the engine recovers on its own. A deliberate rejection is the exception:
+ *   it keeps its FAILED/REJECTED banner even while its retry is queued,
+ *   because the rejection reason is about to be snapshotted into the next
+ *   attempt and hiding it would hide pending context. Fails safe on
+ *   missing input: null, undefined, and reason-less tasks never read failed.
+ * @example isTaskFailed({ status: 'failed' }) => true
+ * @example isTaskFailed({ status: 'in_stage', failureReason: 'boom', autoRetrying: true, currentStageId: '2', lastError: { stageId: '2' } }) => false
+ * @example isTaskFailed({ status: 'in_stage', failureReason: 'rejected', lastError: { failureKind: 'rejected' } }) => true
+ * @example isTaskFailed(null) => false
+ * @param {Object} [task] - The task object (or null/undefined for safety).
+ * @returns {boolean} True when the task reads as failed.
+ ***/
+export function isTaskFailed(task) {
+  if (task?.status === 'failed') return true;
+  if (!task?.failureReason) return false;
+  if (isRejectedTask(task)) return true;
+  return !isRetryInProgress(task) && !isAutoIterationInProgress(task);
+}
+
+/***
  * MARK: selectStagePresentation
  * @description Single source of truth for how the current-stage row presents:
- *   settled tasks (completed/failed/interrupted/blocked) never render a live
- *   ticking row — a parked failure shows a static PARKED label — while only
- *   genuinely executing tasks tick. A settled `failed` merge task is parked
- *   (needs operator retry), not active: rendering it ACTIVE with a growing
- *   "Nm in stage" timer is what made parked merge failures look stuck.
+ *   settled tasks never render a live ticking row — a parked failure shows a
+ *   static PARKED label — while only genuinely executing tasks tick. A
+ *   settled `failed` merge task is parked (needs operator retry), not
+ *   active: rendering it ACTIVE with a growing "Nm in stage" timer is what
+ *   made parked merge failures look stuck. The settled verdicts share one
+ *   vocabulary (`isTaskSettledStatus`) with the RETRYING read, so a status
+ *   can never be "live" for one and "settled" for the other. Unknown or
+ *   missing statuses read ACTIVE (fail open: a task that cannot be proven
+ *   settled must never look parked).
  * @example selectStagePresentation({ status: 'failed' }) => { label: 'PARKED', tone: 'parked', ticking: false }
+ * @example selectStagePresentation({ status: 'paused' }) => { label: 'PAUSED', tone: 'parked', ticking: false }
  * @example selectStagePresentation({ status: 'in_stage' }) => { label: 'ACTIVE', tone: 'active', ticking: true }
  * @param {Object} [task] - The task object (or null/undefined for safety).
  * @returns {{ label: string, tone: string, ticking: boolean }} Presentation verdict.
@@ -63,11 +96,17 @@ export function selectStagePresentation(task) {
   if (status === 'completed' || status === 'done') {
     return { label: 'DONE', tone: 'done', ticking: false };
   }
-  if (status === 'failed' || status === 'interrupted' || status === 'blocked') {
-    return { label: 'PARKED', tone: 'parked', ticking: false };
-  }
   if (status === 'waiting_human' || status === 'waiting-human' || status === 'waiting') {
     return { label: 'WAITING', tone: 'waiting', ticking: false };
+  }
+  if (isTaskSettledStatus(task)) {
+    // Paused keeps its own label so the row names the operator action that
+    // parked it; every other settled status (failed, interrupted, blocked,
+    // cancelled, aborted) parks generically. None of them tick.
+    if (status === 'paused') {
+      return { label: 'PAUSED', tone: 'parked', ticking: false };
+    }
+    return { label: 'PARKED', tone: 'parked', ticking: false };
   }
   return { label: 'ACTIVE', tone: 'active', ticking: true };
 }
@@ -554,6 +593,9 @@ function pickRunAttribution(entry) {
  *   history line per stage ("Tried N times") instead of spamming the same
  *   stage. Completed tasks and the full-page view pass includeLiveRow false
  *   and see the full stored history (collapsed per stage).
+ *   A non-ticking verdict (PARKED/PAUSED/WAITING/DONE — see
+ *   `selectStagePresentation`) renders a static settled row, never a live
+ *   ACTIVE row with a growing timer.
  * @example buildDisplayTimeline({ storedTimeline: [{ stage: 'Plan', status: 'Moved', duration: '9s', timestamp: 't2' }], stages: [{ id: '2', name: 'Plan' }], currentStageName: 'Plan', liveDurationLabel: '3s in stage', includeLiveRow: true }) => [{ stage: 'Plan', status: 'Active' }]
  * @example buildDisplayTimeline({ storedTimeline: [], currentStageName: 'In Progress', includeLiveRow: false }) => [{ stage: 'In Progress', status: 'Active' }]
  * @param {Object} [args] - Timeline display inputs.
@@ -587,13 +629,26 @@ export function buildDisplayTimeline({
       presentation && presentation.ticking === false && typeof presentation.label === 'string'
         ? presentation.label.trim().toUpperCase()
         : '';
-    const isSettledRow = settledLabel === 'PARKED' || settledLabel === 'WAITING' || settledLabel === 'DONE';
+    const isSettledRow =
+      settledLabel === 'PARKED' ||
+      settledLabel === 'PAUSED' ||
+      settledLabel === 'WAITING' ||
+      settledLabel === 'DONE';
     if (isSettledRow) {
+      // Frozen text per verdict: the growing "Nm in stage" label would keep
+      // moving for a task the engine will never pick up again.
+      const settledDuration =
+        settledLabel === 'PARKED'
+          ? 'Parked — awaiting retry'
+          : settledLabel === 'PAUSED'
+            ? 'Paused'
+            : liveDurationLabel || 'Settled';
+      const settledName = settledLabel.charAt(0) + settledLabel.slice(1).toLowerCase();
       const settledRow = {
         stage: fallbackStageName,
-        duration: settledLabel === 'PARKED' ? 'Parked — awaiting retry' : liveDurationLabel || 'Settled',
-        timestamp: settledLabel.charAt(0) + settledLabel.slice(1).toLowerCase(),
-        status: settledLabel.charAt(0) + settledLabel.slice(1).toLowerCase(),
+        duration: settledDuration,
+        timestamp: settledName,
+        status: settledName,
       };
       return [settledRow, ...summarizeStageRuns(displayStored, stages)];
     }

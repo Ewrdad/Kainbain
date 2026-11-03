@@ -16,7 +16,7 @@ import {
   formatTaskTimestamp,
   formatTaskTitleFirstLine,
   getBlockedState,
-  isAutoIterationInProgress,
+  isTaskFailed,
 } from './taskFormatters';
 import {
   describePace,
@@ -447,15 +447,11 @@ export function TaskCard({
   // RETRYING is reserved for a same-stage in-place retry: once a failback
   // moved the task to another stage it is normal running work, not a retry
   // (and not a failure either — the reason rides along for the next prompt).
+  // The FAILED read itself lives in one place (`isTaskFailed`) so the card
+  // can never disagree with the inspector about the same task.
   const isRetrying = isRetryInProgress(task);
-  const isAutoIterating = isAutoIterationInProgress(task);
-  // A deliberate rejection keeps its flag even while an auto-retry is
-  // queued: the reason is about to be snapshotted into the next attempt's
-  // prompt, so hiding it would hide the pending context.
   const isRejectedFailure = isRejectedTask(task);
-  const isFailed =
-    task.status === 'failed' ||
-    (Boolean(task.failureReason) && (!(isRetrying || isAutoIterating) || isRejectedFailure));
+  const isFailed = isTaskFailed(task);
   const isRejected = isFailed && isRejectedFailure;
   const isInterrupted = task.wasInterrupted === true || task.status === 'interrupted' || isStale;
   const isPaused = task.status === 'paused';

@@ -8,7 +8,7 @@ import {
   formatTaskKey,
   formatTaskTitleFirstLine,
   getBlockedState,
-  isAutoIterationInProgress,
+  isTaskFailed,
 } from './taskFormatters';
 import { approvalCopy, isTerminalHumanApproval, normalizeStageType } from '../stageTypes';
 import { resolveCheckpointState } from './checkpointState';
@@ -289,15 +289,11 @@ export function TaskDetailPage({ task: propTask, onBack }) {
   const isPaused = task?.status === 'paused';
   // RETRYING is reserved for a same-stage in-place retry: a task whose
   // failback moved it to another stage shows IN PROGRESS for the new stage.
+  // The FAILED read itself lives in one place (`isTaskFailed`) so the page
+  // can never disagree with the card about the same task.
   const isRetrying = isRetryInProgress(task);
-  const isAutoIterating = isAutoIterationInProgress(task);
-  // A deliberate rejection keeps its reason banner even while an auto-retry
-  // is queued: the reason is about to be snapshotted into the next
-  // attempt's prompt, so hiding it would hide the pending context.
   const isRejectedFailure = isRejectedTask(task);
-  const isFailed =
-    task?.status === 'failed' ||
-    (Boolean(task?.failureReason) && (!(isRetrying || isAutoIterating) || isRejectedFailure));
+  const isFailed = isTaskFailed(task);
   const isRejected = isFailed && isRejectedFailure;
   const failureMessage =
     task?.failureReason || task?.lastError?.message || 'Stage execution failed.';

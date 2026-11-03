@@ -1,13 +1,32 @@
 /***
+ * MARK: settledTaskStatuses
+ * @description The task statuses that count as settled (not live work):
+ *   finished, parked on a failure, held by an operator action, or waiting
+ *   at a human checkpoint. One shared list (not a copy per reader) so the
+ *   RETRYING label, the pace tint, and the history rows can never disagree
+ *   about whether a task is still live. Unknown or missing statuses are
+ *   NOT settled here, so tasks without a status still classify by flags.
+ * @example settledTaskStatuses.has('failed') => true
+ */
+const settledTaskStatuses = new Set([
+  'completed',
+  'done',
+  'failed',
+  'aborted',
+  'cancelled',
+  'paused',
+  'interrupted',
+  'waiting_human',
+  'blocked',
+]);
+
+/***
  * MARK: isTaskSettledStatus
- * @description Single source of truth for the task statuses that count as
- *   settled (not live work): completed, failed, aborted, cancelled, paused,
- *   interrupted, waiting at a human checkpoint, or blocked. Every retry /
- *   iteration readout must treat these as "not in progress" — a stale
- *   persisted flag on a settled task must never label it RETRYING (the
- *   99709f "everything says retrying" bug). Unknown or missing statuses are
- *   NOT settled here, so in-memory payloads without a status still classify
- *   by their flags.
+ * @description True when a task's status counts as settled (not live work).
+ *   Every retry / iteration readout must treat these as "not in progress" —
+ *   a stale saved flag on a settled task must never label it RETRYING.
+ *   Unknown or missing statuses are NOT settled here, so tasks without a
+ *   status still classify by their flags.
  * @example isTaskSettledStatus({ status: 'failed' }) => true
  * @example isTaskSettledStatus({ status: 'in_stage' }) => false
  * @example isTaskSettledStatus({}) => false
@@ -17,8 +36,5 @@
 export function isTaskSettledStatus(task) {
   const status = String(task?.status || '').toLowerCase();
   if (!status) return false;
-  return new Set([
-    'completed', 'done', 'failed', 'aborted', 'cancelled',
-    'paused', 'interrupted', 'waiting_human', 'blocked',
-  ]).has(status);
+  return settledTaskStatuses.has(status);
 }

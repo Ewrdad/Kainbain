@@ -6,9 +6,7 @@
  *   `formatDuration` (stageAnalytics); wall-clock spans use the compact
  *   hours-aware formatter here.
  ***/
-import { isRejectedTask } from '../tasks/failureReason';
-import { isRetryInProgress } from '../tasks/taskRetryState';
-import { isAutoIterationInProgress } from '../tasks/taskFormatters';
+import { isTaskFailed } from '../tasks/taskFormatters';
 
 /***
  * MARK: TERMINAL_TASK_STATUSES
@@ -88,19 +86,15 @@ export function formatTaskTotals(task, nowMs = Date.now()) {
 
 /***
  * MARK: isRetrospectiveTaskFailed
- * @description Failure verdict mirroring `TaskCard.jsx`: explicit `failed`
- *   status, or failure evidence on a non-retrying task. A deliberate
- *   rejection still reads as failed while its auto-retry is queued.
+ * @description Failure verdict for the retrospective panel: the same
+ *   `isTaskFailed` read the card, inspector, and full page use, so the
+ *   panel can never disagree with them about one task.
  * @example isRetrospectiveTaskFailed({ status: 'failed' }) => true
  * @param {Object} [task]
  * @returns {boolean} True when the task reads as failed.
  ***/
 export function isRetrospectiveTaskFailed(task) {
-  const isAutoRecovering = isRetryInProgress(task) || isAutoIterationInProgress(task);
-  return (
-    task?.status === 'failed' ||
-    (Boolean(task?.failureReason) && (!isAutoRecovering || isRejectedTask(task)))
-  );
+  return isTaskFailed(task);
 }
 
 /***
