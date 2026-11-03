@@ -312,3 +312,52 @@ right-side title path already avoids duplicating.
   mobile-UI cleanup.
 - Gates re-verified below before the verdict (focused 105/105 first,
   then the full unit gate once after the deletion).
+
+## Cleanup re-verification (2026-11-03, cleanup stage continued)
+
+- Fresh-eyes re-audit, no production change: every prior pass's claim was
+  re-checked against the code rather than trusted. The view, both
+  resolvers, the title formatter, and the widget were re-read; wrong-type
+  traces re-verified against the shared helpers' own guards
+  (`formatTaskTitleFirstLine` is fully `typeof`-guarded with a fallback,
+  `resolveDisplayedStage` uses `?.`/`Array.isArray`/`String()`,
+  `isMonitorRunning` reads `engineState?.status` — property reads on
+  strings/numbers/booleans cannot throw). The legacy-pill-visible failure
+  direction holds on every input, including the Map-typed assignments
+  override (header and rows both read empty — coherent, no crash) and
+  string/number `details` through the model line (reads land falsy, idle
+  wording renders). No defect found worth churning tested code for.
+- Merge audit: branch-vs-base (`141aa1b...HEAD`) is task-only (5
+  view/resolver/widget sources + co-located tests, doc-only api moves,
+  task docs) and deletes nothing. The 3 api files are merge-clean vs the
+  `main` tip (two-dot `main HEAD -- api/` shows only main-side files the
+  branch never touched). The 4 root `*.jsonl` diffs vs `main` are
+  main-side additions after divergence (absent at merge-base), not branch
+  deletions; the 100+ tracked transcripts pre-date this task.
+- `check:one-function` (manual, not CI) proven pre-existing: ran the gate
+  in a detached worktree of the `main` tip — identical 3 files, identical
+  counts (runnerMatches 3, useFleetModelCatalog 2, fleetModelOptions 4).
+  This corrects the older `(3/8/3)` counts noted above (main has since
+  reshaped those files); the branch adds no new failure. New task modules
+  declare one function each and are not flagged.
+- Standards sweep on the 5 touched sources: no design-pattern mentions
+  ("factory"/"barrel"/etc.), every new export carries `MARK:` + runnable
+  `@example`, tests co-located, labelled-options object on the new
+  resolver, verbs on new function names. The 📡 header mark is unchanged
+  context from the base (pre-existing UI, left alone). Touched files are
+  eslint-clean (0 warnings, 0 errors).
+- Gates observed this pass: focused 124/124, frontend 293 files / 3995
+  passed, api 372 files / 6153 passed + 3 skipped (exit 0), `npm run
+  lint` 0 errors, `npm run docs:check` exit 0 (PASS, 687 missing vs 695
+  grandfathered), frontend build exit 0, jsdoc grandfather 14/14,
+  one-function gate self-test 17/17, harness compat/changed 12/12, 0
+  `act` warnings in the task suites. All 9 failure reports present in
+  this checkout fail only on Canary (environmental
+  `ERR_INSUFFICIENT_RESOURCES` / `waitForAppReady` timeouts in unrelated
+  specs; every fast gate PASS) — canary needs a live app URL + browsers
+  and was not re-run, per the live-operations constraint.
+- Operations continuity unchanged: frontend-only, no backend/API change,
+  no migration, plain-revert rollback; one shared 5s poller pinned by
+  test (strictly fewer fleet requests than the base's separate widget
+  poll); deprecated props and formatter re-exports retained; mixed-version
+  safe in both directions (missing endpoint methods read as empty fleet).
