@@ -131,6 +131,12 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 				body: { projectId, executionId, epoch, seq, bytes },
 			});
 		},
+		logEvents({ taskId, projectId, executionId, epoch, seq, events }) {
+			return call(`/tasks/${encodeURIComponent(taskId)}/log-events`, {
+				method: "POST",
+				body: { projectId, executionId, epoch, seq, events },
+			});
+		},
 		complete({
 			taskId,
 			projectId,
@@ -139,6 +145,7 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 			sha,
 			branch,
 			posture,
+			model = null,
 			outcome,
 			output,
 			summary,
@@ -158,6 +165,13 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 					...(sha ? { sha } : {}),
 					...(branch ? { branch } : {}),
 					...(posture ? { posture } : {}),
+					// Explicit served-model field (observability): the posture
+					// string also carries the model as its last segment, but
+					// model ids may contain single `:` so the segment is not
+					// safely parseable — this field is. Omitted entirely when
+					// null/blank (CI, merge, harness-managed) so the backend
+					// never has to guess.
+					...(typeof model === "string" && model.trim() ? { model: model.trim() } : {}),
 					...(outcome ? { outcome } : {}),
 					...(output ? { output } : {}),
 					...(summary ? { summary } : {}),

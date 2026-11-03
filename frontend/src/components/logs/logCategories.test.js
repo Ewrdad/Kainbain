@@ -210,6 +210,21 @@ describe('filterLogRecords composition', () => {
     ).toHaveLength(1);
   });
 
+  test('search matches expandable detail and tool names, not just summaries', () => {
+    const tool = normalizeLogRecord({
+      id: 't',
+      kind: 'tool',
+      text: '[RESULT] ok',
+      meta: { toolName: 'bash', output: 'ok\nsecret-output-line' },
+    });
+    const all = { categories: new Set(['tools']), search: 'secret-output-line' };
+    expect(filterLogRecords([tool], all).map((r) => r.id)).toEqual(['t']);
+    const byName = { categories: new Set(['tools']), search: 'bash' };
+    expect(filterLogRecords([tool], byName).map((r) => r.id)).toEqual(['t']);
+    const miss = { categories: new Set(['tools']), search: 'nope-not-there' };
+    expect(filterLogRecords([tool], miss)).toHaveLength(0);
+  });
+
   test('runner allowlist selects one runner; runner frames ride the narrative', () => {
     const a = normalizeLogRecord({ id: 'a', kind: 'runner', text: '[runner local-alpha] x' });
     const b = normalizeLogRecord({ id: 'b', kind: 'runner', text: '[runner local-bravo] y' });

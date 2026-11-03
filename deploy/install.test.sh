@@ -42,7 +42,7 @@ check "dry-run: no install dir created" test ! -e "$CASE_DIR/app/docker-compose.
 check "dry-run: plan mentions runners" grep -q "runners: 4" "$CASE_DIR/out.txt"
 # 2. Help lists the site-installer flags.
 bash deploy/install.sh --help > "$CASE_DIR/help.txt" 2>&1
-for f in --install-dir --port --frontend-port --backend-port --runners --harness --namespace --tag --release-url --manifest-url --projects-dir --no-runner --dry-run --force; do
+for f in --install-dir --port --frontend-port --backend-port --runners --harness --harnesses --manual --auto --namespace --tag --release-url --manifest-url --projects-dir --no-runner --dry-run --force; do
   check "help: $f documented" grep -q -- "$f" "$CASE_DIR/help.txt"
 done
 # 3. Unknown arg exits 2.

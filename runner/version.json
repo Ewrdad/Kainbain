@@ -1,2 +1,2 @@
-{ "component": "runner", "apiVersion": "1.0.0",
+{ "component": "runner", "apiVersion": "1.0.0", "runnerVersion": "0.1.0",
   "requires": { "backendApi": ">=1.0.0 <2.0.0" } }

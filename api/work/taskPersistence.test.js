@@ -207,6 +207,39 @@ describe("The Work: reliability-sample persistence", () => {
 	});
 });
 
+describe("The Work: task goal image references survive save/load", () => {
+	it("preserves task image markdown references through a save/parse round-trip", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-goal-images-"));
+		const store = stubStore({ cwd: dir });
+		const goal =
+			"Fix the login bug.\n\n![18744.png](assets/18744.png)\n\nSee ![shot](assets/shot-one-2.png) for detail.";
+		const task = {
+			id: "task-images-1",
+			projectId: "proj-1",
+			title: "Image refs task",
+			goal,
+			status: "in_stage",
+			createdAt: "2026-10-01T00:00:00.000Z",
+			updatedAt: "2026-10-01T00:00:00.000Z",
+			history: [],
+			reports: [],
+		};
+
+		saveTaskMarkdown(store, dir, task);
+		const content = fs.readFileSync(
+			path.join(dir, "docs", "tasks", "task-images-1", "task.md"),
+			"utf8",
+		);
+
+		// The stored bytes keep every reference verbatim (save never rewrites refs).
+		expect(content).toContain("![18744.png](assets/18744.png)");
+		expect(content).toContain("![shot](assets/shot-one-2.png)");
+
+		const rehydrated = parseTaskMarkdown(store, content, "task-images-1", "proj-1");
+		expect(rehydrated.goal).toBe(goal);
+	});
+});
+
 describe("The Work: timeline run-attribution persistence", () => {
 	it("round-trips attributed timeline rows through task.md frontmatter", () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-attribution-persist-"));

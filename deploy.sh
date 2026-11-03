@@ -12,8 +12,9 @@
 #                           gate below is the safety net).
 #   ./deploy.sh --prod --publish-only [--fast] [--sync-site]
 #                           CI stage 1 only: gates + publish images/dist via
-#                           publish.sh (per changed component), optionally
-#                           stage the ad-site/S3 release, then STOP — prod is
+#                           publish.sh (per changed component), then sync the
+#                           ad-site to S3 when it changed (skipped when
+#                           current; --sync-site forces), then STOP — prod is
 #                           updated by stage 2: (cd ~/apps/kainbain && ./update.sh)
 #   ./deploy.sh --rollback  Restore the last known-good deployment (.prev) and
 #                           restart the service.
@@ -68,15 +69,18 @@ fi
 # no matter how this script is invoked.
 cd "$(dirname "$0")"
 
-# Host commands must never run inside a task worktree: they publish/deploy
-# the primary checkout only (AsymmetricUpdatesPlan DA9). "Task worktree" means
-# a LINKED worktree on a kb/* branch — NOT merely a kb/* branch name: the
-# primary checkout legitimately sits on a kb/* branch while the harness
-# operates on a task there, and a runOnBranch=primary stage correctly runs
-# in the primary. Keying this guard on the branch name made deploy.sh exit 78
-# even when running in the primary checkout (publish stage of
-# e3b2624a-bc24-4698-9c78-86af7f6f3b5b, 2026-10-30). The default-branch guard
-# and the tip guard below still enforce what a deploy actually ships.
+# Host commands publish/deploy the integration tip, never a task branch —
+# but they ARE invoked from inside a task worktree legitimately: every
+# command stage now runs on a Runner, whose ci execution lands in the
+# per-task worktree (AsymmetricUpdatesPlan DA9's routing assumption no
+# longer holds). Refusing there (exit 78) failed every Runner-dispatched
+# Publish stage (e3b2624a-bc24-4698-9c78-86af7f6f3b5b, 2026-10-30, and its
+# retries). So, like publish.sh: re-run in the PRIMARY checkout (first
+# worktree), where the tip-worktree deploy below takes over. "Task
+# worktree" means a LINKED worktree on a kb/* branch — NOT merely a kb/*
+# branch name: the primary legitimately sits on a kb/* branch while the
+# harness operates on a task there, and there it continues in place. The
+# tip guard below still enforces what a deploy actually ships.
 if [ -n "${KAINBAIN_TASK_ID:-}" ]; then
     _primary_wt="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')"
     _here="$(pwd -P 2>/dev/null || echo "$PWD")"
@@ -84,8 +88,13 @@ if [ -n "${KAINBAIN_TASK_ID:-}" ]; then
     case "$_kb_branch" in
         kb/*)
             if [ -n "$_primary_wt" ] && [ "$_here" != "$_primary_wt" ]; then
-                echo "deploy.sh: refusing to run from a task worktree (branch $_kb_branch at $_here) — deploy/publish stages must run on the primary checkout ($_primary_wt)" >&2
-                exit 78
+                if [ "${KAINBAIN_DEPLOY_PRIMARY_REEXEC:-}" = "1" ]; then
+                    echo "deploy.sh: refusing to run from a task worktree (branch $_kb_branch at $_here) — primary re-run already attempted" >&2
+                    exit 78
+                fi
+                echo "deploy.sh: running from a task worktree (branch $_kb_branch at $_here) — re-running in the primary checkout ($_primary_wt)" >&2
+                cd "$_primary_wt" || exit 78
+                exec env KAINBAIN_DEPLOY_PRIMARY_REEXEC=1 "$_primary_wt/deploy.sh" "$@"
             fi
             if [ -n "$_primary_wt" ]; then
                 echo "deploy.sh: primary checkout is on task branch '$_kb_branch' (not a task worktree) — continuing in the primary checkout; the default-branch guard still applies" >&2
@@ -269,6 +278,13 @@ PROD_DIR="${KAINBAIN_PROD_DIR:-$HOME/apps/kainbain}"
 PROD_API_PORT="${KAINBAIN_PROD_PORT:-3100}"
 SERVICE_NAME="kainbain.service"
 HEALTH_URL="${KAINBAIN_HEALTH_URL:-http://localhost:${PROD_API_PORT}/status}"
+# Public ad-site bucket (S3 static website for https://kainbain.ewrdad.uk).
+# Default on: scripts/sync-adsite.sh uploads only when the site, the install
+# scripts, or the release manifest actually changed (hash-compared, larger
+# assets synced separately with --size-only), and deploys treat a sync
+# failure as warn-only — so prod is never gated on S3. Export it empty to
+# disable the upload entirely (local staging only).
+if [ -z "${KAINBAIN_ADSITE_S3_BUCKET+x}" ]; then KAINBAIN_ADSITE_S3_BUCKET="s3://kainbain.ewrdad.uk"; export KAINBAIN_ADSITE_S3_BUCKET; fi
 DEPLOY_DIR="$HOME/.kainbain/deploy"
 LOCK_FILE="$DEPLOY_DIR/deploy.lock"
 LOG_FILE="$DEPLOY_DIR/deploy.log"
@@ -382,6 +398,9 @@ APP_LINK_HEALTH="${KAINBAIN_APP_LINK_HEALTH:-/status}"
 APP_LINK_PROJECT="${KAINBAIN_APP_LINK_PROJECT:-}"
 
 # --- Arg parsing ----------------------------------------------------------
+# Original args, kept verbatim so the tip-worktree re-exec (see
+# require_deploy_tip_current) can restart this deploy with identical flags.
+DEPLOY_ORIG_ARGS=("$@")
 MODE="build"
 FAST="false"
 PUBLISH_ONLY="false"
@@ -926,16 +945,97 @@ operation_key_branch() {
 	return 0
 }
 
-# Deploy-source freshness gate: refuses to build when the checkout is not
-# exactly the integration tip the merge landed. A Runner merge pushes to
-# origin but never touches this checkout, so without this the deploy
-# silently ships whatever the tree happens to hold (prod stayed behind main
-# even when the deploy itself ran). Fails LOUD (failed result + exit 1, so
-# the stage parks with evidence and a genuine retry re-runs after a sync)
-# instead of shipping stale code. Skips (returns 0) for manual runs (no
-# operation key), outside a git repository, when the branch has no remote
-# ref, or when the freshness fetch itself fails — infra problems must never
-# brick a deploy; only a PROVEN mismatch fails.
+# Dedicated deploy-source worktree: the pristine, detached checkout of the
+# integration tip that a deploy actually builds. It lives under DEPLOY_DIR
+# (never inside the primary checkout), so creating/resetting it can never
+# touch the primary tree, its branch, or its staged/untracked WIP.
+deploy_tip_worktree_path() {
+	echo "${KAINBAIN_DEPLOY_SOURCE_DIR:-$DEPLOY_DIR/source}"
+	return 0
+}
+
+# Materializes (or refreshes) the deploy-source worktree at exactly
+# $tip_sha on integration branch $branch. Reuses the existing worktree when
+# it is already ours: it is a dedicated scratch source, so resetting it to
+# the tip is its purpose (ignored files such as node_modules survive
+# `clean -fd`). Returns 1 without deleting anything when the path exists
+# but is not a git worktree of this repo — a user path is never removed.
+materialize_deploy_tip_worktree() {
+	local branch="$1" tip_sha="$2"
+	local src
+	src="$(deploy_tip_worktree_path)"
+	if [ -z "$src" ] || [ -z "$tip_sha" ]; then
+		return 1
+	fi
+	# Reuse only when $src is itself a worktree root — a plain subdir of
+	# the primary would resolve to the primary's git dir and must never be
+	# checked out from under the task sitting there.
+	if [ "$(git -C "$src" rev-parse --show-toplevel 2>/dev/null || echo "")" = "$src" ]; then
+		git -C "$src" fetch origin "$branch" >/dev/null 2>&1 || true
+		git -C "$src" checkout -q --detach "$tip_sha" >/dev/null 2>&1 || return 1
+		git -C "$src" reset --hard -q "$tip_sha" >/dev/null 2>&1 || return 1
+		git -C "$src" clean -fdq >/dev/null 2>&1 || true
+	elif [ -e "$src" ]; then
+		# Occupied by a non-worktree (file, plain dir, stale checkout):
+		# refuse rather than delete something that is not ours.
+		if [ -d "$src" ] && [ -z "$(ls -A "$src" 2>/dev/null)" ]; then
+			rmdir "$src" 2>/dev/null || return 1
+		else
+			return 1
+		fi
+		git worktree prune >/dev/null 2>&1 || true
+		mkdir -p "$(dirname "$src")" 2>/dev/null || return 1
+		git worktree add -q --detach "$src" "$tip_sha" >/dev/null 2>&1 || return 1
+	else
+		git worktree prune >/dev/null 2>&1 || true
+		mkdir -p "$(dirname "$src")" 2>/dev/null || return 1
+		git worktree add -q --detach "$src" "$tip_sha" >/dev/null 2>&1 || return 1
+	fi
+	[ "$(git -C "$src" rev-parse HEAD 2>/dev/null || echo "")" = "$tip_sha" ] || return 1
+	# Fast-forward the local default-branch ref when it is simply behind, so
+	# `git log main` stays truthful. Refused automatically when diverged or
+	# checked out — never forced, never fails this function.
+	git fetch origin "$branch:$branch" >/dev/null 2>&1 || true
+	# Seed the carried-forward release manifest (publish.sh's change-detection
+	# base + component carry-forward live in the gitignored dist/, which a
+	# fresh worktree does not have). Only when the worktree has none yet —
+	# its own manifest from a previous deploy is fresher than the primary's.
+	local _primary_top
+	_primary_top="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+	if [ -n "$_primary_top" ] && [ "$_primary_top" != "$src" ] && [ -f "$_primary_top/dist/release-manifest.json" ] && [ ! -f "$src/dist/release-manifest.json" ]; then
+		mkdir -p "$src/dist" 2>/dev/null || true
+		cp "$_primary_top/dist/release-manifest.json" "$src/dist/release-manifest.json" 2>/dev/null || true
+	fi
+	return 0
+}
+
+# Restarts this deploy from the deploy-source worktree with the original
+# args. `exec` so no second deploy process lingers; the marker env tells
+# the re-run it already IS the tip tree (a mismatch there is a proven
+# failure, not another hop). The systemd cgroup re-exec at the top of the
+# script is not re-entered: this runs after it (KAINBAIN_OUTSIDE_CGROUP is
+# already pinned, or no cgroup match exists in the worktree run either).
+reexec_from_deploy_tip_worktree() {
+	local src="$1"
+	log "🚀 Re-running deploy from the integration-tip worktree: $src"
+	cd "$src" || exit 1
+	exec env KAINBAIN_DEPLOY_FROM_TIP_WORKTREE=1 "$src/deploy.sh" "${DEPLOY_ORIG_ARGS[@]}"
+}
+
+# Deploy-source freshness gate (asymmetric: tasks, merges, and deploys move
+# independently). The deploy must build exactly the integration tip the
+# merge landed on origin, but the primary checkout belongs to whichever
+# task sits on it — normally a kb/* branch, often diverged from origin/main
+# with staged WIP. Demanding HEAD == origin/<branch> IN THE PRIMARY used to
+# park every deploy in that normal state (HEAD 08f5c5e vs tip 6b0f7a4,
+# 2026-11-01). So: when the primary is not already the tip, materialize the
+# tip in the dedicated deploy-source worktree and re-exec there. The
+# primary is never switched, reset, stashed, or shipped; unmerged/unpushed
+# primary commits simply are not deployed. Only a PROVEN failure to
+# converge even the tip worktree fails loud (failed result + exit 1).
+# Skips (returns 0) for manual runs (no operation key), outside a git
+# repository, when the branch has no remote ref, or when the freshness
+# fetch itself fails — infra problems must never brick a deploy.
 require_deploy_tip_current() {
 	local branch
 	branch="$(operation_key_branch)"
@@ -971,7 +1071,21 @@ require_deploy_tip_current() {
 	elif git merge-base --is-ancestor "$tip_sha" "$head_sha" 2>/dev/null; then
 		relation="ahead of"
 	fi
-	local message="Deploy source is ${relation} the integration tip (${tracking}): HEAD $(echo "$head_sha" | cut -c1-7) vs tip $(echo "$tip_sha" | cut -c1-7). Refusing to ship unmerged/unpushed code — sync the deploy source to '${tracking}' (pre-deploy tip sync, or fetch + checkout/reset) and retry; a genuine retry re-runs the deploy."
+	if [ "${KAINBAIN_DEPLOY_FROM_TIP_WORKTREE:-}" != "1" ]; then
+		local src
+		src="$(deploy_tip_worktree_path)"
+		if materialize_deploy_tip_worktree "$branch" "$tip_sha"; then
+			log "↪️  Deploy source is ${relation} the integration tip (${tracking}: primary HEAD $(echo "$head_sha" | cut -c1-7) vs tip $(echo "$tip_sha" | cut -c1-7)) — deploying the merged tip from '$src' instead; the primary checkout (branch, HEAD, WIP) is left untouched and its unmerged work is not shipped."
+			reexec_from_deploy_tip_worktree "$src"
+			# exec never returns on success; reaching here means the
+			# hand-off completed in-process (tests) — do not fall through
+			# to the refusal for a deploy that was handed off.
+			return 0
+		else
+			log "⚠️  Tip guard: could not materialize the integration tip at '$src' — refusing rather than shipping the ${relation} primary tree."
+		fi
+	fi
+	local message="Deploy source is ${relation} the integration tip (${tracking}): HEAD $(echo "$head_sha" | cut -c1-7) vs tip $(echo "$tip_sha" | cut -c1-7), and the tip worktree could not be converged. Refusing to ship unmerged/unpushed code — free the deploy-source path ('$(deploy_tip_worktree_path)') or sync the checkout to '${tracking}' and retry; a genuine retry re-runs the deploy."
 	log "❌ $message"
 	write_result "failed" "$message" "false" "1" "require_deploy_tip_current" "HEAD=$head_sha tip=$tip_sha"
 	exit 1
@@ -1520,7 +1634,20 @@ if [ "$MODE" = "prod" ]; then
 	# An empty VITE_API_BASE/VITE_WS_URL means "same origin" (see api.js).
 	# (`env`, not inline assignments: assignments preceding a shell function
 	# persist after it returns — env keeps them scoped to the one command.)
-	if [ "$PUBLISH_ONLY" = "true" ]; then log "⏭️ Publish-only: frontend build is publish.sh's gate — skipping deploy-level build."; else run_gate "frontend-build" "npm run build --prefix frontend" env VITE_API_BASE= VITE_WS_URL= npm run build --prefix frontend; fi
+	# Clean-checkout bootstrap: in the pristine tip worktree (or a fresh
+	# clone) frontend/node_modules does not exist and the build dies with
+	# `Cannot find module '.../frontend/node_modules/vite/bin/vite.js'`
+	# (publish failures 2026-11-01, tasks 5c3497b5/e3b2624a). Install only
+	# when missing — a warm tree (incl. the persistent tip worktree after
+	# its first deploy) skips straight to the build.
+	if [ "$PUBLISH_ONLY" = "true" ]; then
+		log "⏭️ Publish-only: frontend build is publish.sh's gate — skipping deploy-level build."
+	else
+		if [ ! -d frontend/node_modules ]; then
+			run_gate "frontend-install" "npm install --prefix frontend --include=dev" npm install --prefix frontend --include=dev
+		fi
+		run_gate "frontend-build" "npm run build --prefix frontend" env VITE_API_BASE= VITE_WS_URL= npm run build --prefix frontend
+	fi
 
 	# 4. Prepare API.
 	# The API is a plain Node app with no build step. We deliberately install the
@@ -1570,7 +1697,12 @@ if [ "$MODE" = "prod" ]; then
 	# stage 2 runs (cd ~/apps/kainbain && ./update.sh) to pull + restart only
 	# what changed. Nothing in $PROD_DIR is touched on this path.
 	if [ "$PUBLISH_ONLY" = "true" ]; then
-		if [ "$SYNC_SITE" = "true" ] || [ -n "${KAINBAIN_ADSITE_S3_BUCKET:-}" ]; then
+		# The sync itself skips the build and the S3 upload when nothing
+		# ad-site-related changed (and --sync-site forces it); a failure is
+		# warn-only — the release is already published.
+		if [ "$SYNC_SITE" = "true" ]; then
+			bash scripts/sync-adsite.sh --force || log "⚠️ Ad-site sync failed (non-fatal) — release is published; re-run: bash scripts/sync-adsite.sh"
+		else
 			bash scripts/sync-adsite.sh || log "⚠️ Ad-site sync failed (non-fatal) — release is published; re-run: bash scripts/sync-adsite.sh"
 		fi
 		log "✅ Publish-only complete — prod untouched. Next: (cd $PROD_DIR && ./update.sh)"
@@ -1708,6 +1840,10 @@ exec 9>"$LOCK_FILE"
 		# fleet onto the new build. Warn-only: approval stays manual (D4).
 		if [ -x "$PROD_DIR/startRunner.sh" ]; then "$PROD_DIR/startRunner.sh" --ensure 2>/dev/null || true; else log "⚠️ startRunner.sh not found in $PROD_DIR — skipping Runner ensure."; fi
 		./scripts/ensure-native-bindings.sh "$PWD" >/dev/null 2>&1 || true
+		# Ad-site: upload the site + install scripts when they changed (the
+		# sync skips itself when current; warn-only so prod never depends
+		# on S3).
+		bash scripts/sync-adsite.sh || log "⚠️ Ad-site sync failed (non-fatal) — prod is healthy; re-run: bash scripts/sync-adsite.sh"
 		write_result "success" "Deployment complete and healthy" "false"
 		echo "--------------------------------------------------"
 		echo "✅ Production deployment complete!"

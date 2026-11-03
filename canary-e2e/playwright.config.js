@@ -48,6 +48,19 @@ if (!usesOperatorStack && (operatorBaseURL || operatorApiURL)) {
 const baseURL = usesOperatorStack ? operatorBaseURL : "http://localhost:5299";
 const apiURL = usesOperatorStack ? operatorApiURL : "http://localhost:3399";
 
+// Host-wide canary mutex (canary-lock.js): exactly one suite may own the
+// fixed scratch ports at a time, or overlapping suites kill each other's
+// servers at drain time and every task fails CI (2026-11-03). Acquired
+// BEFORE drainScratchPorts so a reclaimed occupant is definitionally stale.
+// Main process only: workers load this config too, but the main process
+// already holds the lock (workers would see a foreign holder PID and wait).
+// Released in global-teardown.js; a crashed holder is detected by PID
+// liveness on the next acquire. Operator stacks use no scratch ports, so
+// they skip the lock entirely.
+if (process.env.TEST_WORKER_INDEX === undefined && !usesOperatorStack) {
+	require("./canary-lock").acquireCanaryLock();
+}
+
 /***
  * MARK: portOf
  * @description Extracts the port from an absolute URL with a fail-fast,
@@ -179,6 +192,10 @@ module.exports = {
 	testDir: "./tests",
 	workers: 1,
 	globalSetup: "./global-setup.js",
+	// Releases the host-wide canary mutex (see above). Runs even when the
+	// suite fails; a SIGKILLed run skips it and the next acquirer detects
+	// the dead holder PID instead.
+	globalTeardown: "./global-teardown.js",
 	// Per-test (and per-hook) budget. The default 30s is too tight for the
 	// shared 4-core gate host: the visual suite's beforeAll-heavy states
 	// (project reset + full app ready + fonts) measured 35s under the

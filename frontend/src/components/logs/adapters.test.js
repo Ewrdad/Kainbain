@@ -74,6 +74,70 @@ describe('adaptProcessLogLine', () => {
     expect(record.category).toBe('ci');
   });
 
+  test('renders a structured live entry (PROCESS_LOG_ENTRIES) as its real record, not a blank line', () => {
+    const line = {
+      id: 'ws-entry-7',
+      timestamp: '10:00:03',
+      tag: null,
+      text: '',
+      raw: '',
+      taskId: 'task-1',
+      projectId: 'p1',
+      executionId: 'exec-1',
+      seq: 0,
+      runnerId: 'local-alpha',
+      entry: {
+        id: 7,
+        ts: '2026-10-30T00:00:00.000Z',
+        feed: 'tools',
+        feeds: ['main', 'tools'],
+        kind: 'tool',
+        turn: 1,
+        text: '[TOOL] bash(ls) (230ms)',
+        meta: { toolName: 'bash', toolCallId: 'c1', source: 'runner-structured', runnerId: 'local-alpha' },
+        tool: {
+          callId: 'c1',
+          name: 'bash',
+          args: { command: 'ls' },
+          durationMs: 230,
+          result: 'file-a\nfile-b',
+        },
+      },
+    };
+    const record = adaptProcessLogLine(line);
+    expect(record.text).toBe('[TOOL] bash(ls) (230ms)');
+    expect(record.category).toBe('tools');
+    expect(record.tag).toBe('[TOOL]');
+    expect(record.turn).toBe(1);
+    expect(record.runnerId).toBe('local-alpha');
+    expect(record.taskId).toBe('task-1');
+    expect(record.source).toBe('process-live');
+    // Typed payload survives for expand affordances; rawLine keeps the wire item.
+    expect(record.detail).toBe('file-a\nfile-b');
+    expect(record.meta.rawLine).toBe(line);
+    expect(record.meta.toolName).toBe('bash');
+  });
+
+  test('structured live entries keep thinking/error kinds classified', () => {
+    const thinkingLine = {
+      id: 'ws-entry-8',
+      timestamp: '10:00:04',
+      taskId: 'task-1',
+      entry: { id: 8, kind: 'thinking', feeds: ['main'], text: '[THINKING] (12 chars)', meta: { collapsed: true, fullTextId: 7 } },
+    };
+    const thinking = adaptProcessLogLine(thinkingLine);
+    expect(thinking.category).toBe('thinking');
+    expect(thinking.collapsedThinking).toBe(true);
+    expect(thinking.fullTextId).toBe(7);
+    const errorLine = {
+      id: 'ws-entry-9',
+      timestamp: '10:00:05',
+      taskId: 'task-1',
+      entry: { id: 9, kind: 'error', feeds: ['main'], text: '[ERROR] Tool bash failed: exit code 1' },
+    };
+    expect(adaptProcessLogLine(errorLine).category).toBe('error');
+  });
+
   test('classifies [STDERR]-wrapped lines as error interventions', () => {
     const record = adaptProcessLogLine({
       id: 'ws-err',

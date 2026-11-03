@@ -5,14 +5,35 @@ import { promisify } from "node:util";
 import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, touchWorkdir } from "./project.js";
 import { RunnerGitError } from "./project.js";
 import { runHarnessStage } from "./harness.js";
+import { createStructuredEventSender } from "./logEvents.js";
+import { applyUpdate as defaultApplyUpdate, checkForUpdate as defaultCheckForUpdate } from "./updates/index.js";
+import { defaultInstallRoot, markUpdateSuccess, readUpdateState } from "./updates/state.js";
 // The Runner bundle ships shared/ next to this folder (runner/{runner,api,shared}
 // in prod and in the distributable tarball), so ../shared resolves both in the
 // repo and in every deployed layout — the same copy the backend executes.
+import { discoverClaudeModels, resolveAdvertisedModels } from "./modelDiscovery.js";
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { commitAndPush } from "./gitOps.js";
 
-export const RUNNER_VERSION = "0.1.0";
+/***
+ * MARK: RUNNER_VERSION
+ * @description Runner product version (the update channel + fleet matrix
+ *   compare this, not the API version). Loaded from runner/version.json
+ *   `runnerVersion` beside daemon.js; falls back to the pinned fallback
+ *   when the file is unreadable. The release packager stamps version.json
+ *   per release, so a self-updated Runner re-registers as the new version.
+ * @example RUNNER_VERSION => '0.1.0'
+ ***/
+export const RUNNER_VERSION = (() => {
+	try {
+		const file = new URL("./version.json", import.meta.url);
+		const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+		return typeof parsed?.runnerVersion === "string" && parsed.runnerVersion ? parsed.runnerVersion : "0.1.0";
+	} catch {
+		return "0.1.0";
+	}
+})();
 
 /***
  * MARK: RUNNER_API_VERSION
@@ -116,6 +137,110 @@ export function runnerHarnessIds(config = {}) {
 	if (ids.length > 0) return ids;
 	const primary = String(config.harnessId ?? "").trim();
 	return primary ? [primary] : [];
+}
+
+/***
+ * MARK: AUTO_DETECTABLE_HARNESSES
+ * @description Harness ids auto-detect considers, in stable advertise
+ *   order. Only ids defaultLoadHarness can actually run; `mock` has no
+ *   CLI so it never auto-detects (pass it manually with --manual).
+ * @example AUTO_DETECTABLE_HARNESSES => ['pi', 'muse', 'antigravity', 'vibe']
+ ***/
+export const AUTO_DETECTABLE_HARNESSES = ["pi", "muse", "antigravity", "vibe"];
+
+/***
+ * MARK: detectAvailableHarnesses
+ * @description Scans PATH for harness CLIs (default behaviour; --manual
+ *   opts out). One entry per harness whose first binary resolves to an
+ *   executable file. Pure sync scan so boot can fail fast before join.
+ * @example detectAvailableHarnesses({ pathValue: '/usr/bin:/bin' }) => ['pi']
+ * @param {Object} [opts] - Options.
+ * @param {string} [opts.pathValue] - PATH to scan (defaults to process.env.PATH).
+ * @param {string} [opts.pathDelimiter] - PATH separator (defaults to path.delimiter).
+ * @param {Function} [opts.isExecutable] - (bin, dir) => boolean override (tests).
+ * @returns {string[]} Detected harness ids in AUTO_DETECTABLE_HARNESSES order.
+ ***/
+export function detectAvailableHarnesses({ pathValue, pathDelimiter, isExecutable } = {}) {
+	const pathStr = typeof pathValue === "string" ? pathValue : (process.env.PATH ?? "");
+	const delimiter = typeof pathDelimiter === "string" ? pathDelimiter : path.delimiter;
+	const dirs = String(pathStr)
+		.split(delimiter)
+		.map((d) => d.trim())
+		.filter(Boolean);
+	const check =
+		typeof isExecutable === "function"
+			? isExecutable
+			: (bin, dir) => {
+					try {
+						fs.accessSync(path.join(dir, bin), fs.constants.X_OK);
+						return true;
+					} catch {
+						return false;
+					}
+				};
+	const found = [];
+	for (const id of AUTO_DETECTABLE_HARNESSES) {
+		const bins = HARNESS_VERSION_BINS[id] ?? [];
+		let ok = false;
+		for (const bin of bins) {
+			for (const dir of dirs) {
+				try {
+					if (check(bin, dir)) {
+						ok = true;
+						break;
+					}
+				} catch {
+					// Keep scanning; one bad dir never fails detection.
+				}
+			}
+			if (ok) break;
+		}
+		if (ok) found.push(id);
+	}
+	return found;
+}
+
+/***
+ * MARK: resolveHarnessConfig
+ * @description Applies the auto-detect default to a loaded runner config.
+ *   Manual configs (explicit harness ids, harnessAuto falsy) pass through
+ *   untouched. Auto configs probe PATH, union any explicit non-auto pins,
+ *   and mutate the config in place (harnessIds/harnessId). Empty detection
+ *   throws fail-fast — the runner must never register a useless empty
+ *   capability set.
+ * @example resolveHarnessConfig({ harnessIds: [], harnessAuto: true }, { detected: ['pi'] }).harnessId => 'pi'
+ * @param {Object} config - Normalized runner config (mutated).
+ * @param {Object} [opts] - Options.
+ * @param {string[]} [opts.detected] - Detected ids override (tests/installers).
+ * @param {Object} [opts.detectOpts] - Forwarded to detectAvailableHarnesses.
+ * @returns {Object} The same config object, resolved.
+ ***/
+export function resolveHarnessConfig(config = {}, { detected, detectOpts } = {}) {
+	if (!config || !config.harnessAuto) return config;
+	const seen = new Set();
+	const out = [];
+	const push = (id) => {
+		const clean = String(id ?? "").trim();
+		if (!clean || seen.has(clean)) return;
+		seen.add(clean);
+		out.push(clean);
+	};
+	const autoList = Array.isArray(detected) ? detected : detectAvailableHarnesses(detectOpts);
+	for (const id of autoList) push(id);
+	for (const id of runnerHarnessIds(config)) push(id);
+	if (out.length === 0) {
+		throw new Error(
+			"Runner auto-detect found no harness CLIs (probed pi, muse, agy/antigravity, vibe on PATH); install one or re-run with --manual --harness NAME.",
+		);
+	}
+	config.harnessIds = out;
+	config.harnessId = out[0];
+	config.harnessAuto = false;
+	// Drop the stale missing-harness error so the boot check below passes.
+	if (Array.isArray(config.errors)) {
+		config.errors = config.errors.filter((e) => !/KAINBAIN_RUNNER_HARNESS/.test(String(e)));
+	}
+	return config;
 }
 
 /***
@@ -249,20 +374,67 @@ export async function defaultLoadHarness(harnessId) {
 	throw new Error(`Unknown harness ${harnessId} (supported: mock, pi, muse, antigravity, vibe).`);
 }
 
-function factsFor({ config, harnessVersions }) {
+/***
+ * MARK: discoveredModelsCache
+ * @description Last model auto-discovery result, shared by every factsFor
+ *   call until the next refresh. Seeded at boot, refreshed on the
+ *   modelDiscoveryIntervalMs cadence (default 12h). The operator's explicit
+ *   MODELS/MODEL list always wins (see resolveAdvertisedModels), so this
+ *   cache only matters when nothing is pinned.
+ ***/
+let discoveredModelsCache = [];
+
+/***
+ * MARK: clearDiscoveredModelsCache
+ * @description Test seam: resets the discovery cache between cases.
+ ***/
+export function clearDiscoveredModelsCache() {
+	discoveredModelsCache = [];
+}
+
+/***
+ * MARK: refreshDiscoveredModels
+ * @description One discovery round: when the operator pinned no models and
+ *   the `muse` harness is configured, asks the installed CLI for its model
+ *   menu (muse serve model/list, box-local login, no keys leave the host)
+ *   and caches the ids. Best-effort — failures keep the previous cache and
+ *   warn, never throw, so discovery can never break heartbeats.
+ * @example await refreshDiscoveredModels({ config }) => ['muse::meta::muse-spark-1.3']
+ * @param {Object} [opts]
+ * @param {Object} [opts.config] - Normalized runner config.
+ * @param {Object} [opts.logger] - Logger.
+ * @param {Function} [opts.discoverFn=discoverClaudeModels] - Test seam.
+ * @returns {Promise<string[]>} Current cache copy.
+ ***/
+export async function refreshDiscoveredModels({ config, logger, discoverFn = discoverClaudeModels } = {}) {
+	try {
+		if (Array.isArray(config?.models) && config.models.length > 0) return [...discoveredModelsCache];
+		if (typeof config?.model === "string" && config.model.trim()) return [...discoveredModelsCache];
+		if (!runnerHarnessIds(config).includes("muse")) return [...discoveredModelsCache];
+		for (const bin of HARNESS_VERSION_BINS.muse) {
+			const ids = await discoverFn({ bin });
+			if (ids.length > 0) {
+				discoveredModelsCache = ids;
+				logger?.log?.(`Model discovery: ${ids.length} model(s) from ${bin}; next refresh per modelDiscoveryIntervalMs.`);
+				break;
+			}
+		}
+	} catch (err) {
+		logger?.warn?.(`Model discovery failed, keeping previous list: ${err?.message || err}`);
+	}
+	return [...discoveredModelsCache];
+}
+
+function factsFor({ config, harnessVersions, updateStatus = null }) {
 	const versionFor = (id) =>
 		harnessVersions?.[id] ?? harnessVersionCache.get(id)?.[id] ?? "unknown";
 	return {
 		harnesses: runnerHarnessIds(config).map((id) => ({ id, version: versionFor(id) })),
-		models:
-			Array.isArray(config.models) && config.models.length > 0
-				? [...config.models]
-				: config.model
-					? [config.model]
-					: [],
+		models: resolveAdvertisedModels(config, discoveredModelsCache),
 		tiers: config.tiers,
 		diskHeadroomMb: diskHeadroomMbFor(config.workRoot),
 		versions: { protocol: "v1", runner: RUNNER_VERSION, api: RUNNER_API_VERSION },
+		...(updateStatus ? { updateStatus } : {}),
 	};
 }
 
@@ -328,20 +500,59 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
 	for (const id of runnerHarnessIds(config)) {
 		Object.assign(harnessVersions, await probeHarnessVersions(id));
 	}
-	const facts = factsFor({ config, harnessVersions });
+	const facts = factsFor({ config, harnessVersions, updateStatus: state?.updateStatus ?? null });
 	const beat = await client.heartbeat({ runnerId: config.runnerId, facts });
 	if (beat.status !== "active") {
 		throw new Error(`Runner ${config.runnerId} is ${beat.status}; need an active registration.`);
 	}
+	// Self-update close-out (Option A, ADR 0012): a fresh boot that staged
+	// an update left state pending-boot; the first successful heartbeat on
+	// the NEW version proves the release boots, so mark success (this also
+	// re-registers the new RUNNER_VERSION in the backend fleet matrix).
+	// Never blocks boot: a missing/corrupt state file just skips.
+	try {
+		const installRoot = installRootFor(config);
+		if (readUpdateState(installRoot).status === "pending-boot") {
+			markUpdateSuccess({ installRoot, version: RUNNER_VERSION });
+			logger.log?.(`Runner update to ${RUNNER_VERSION} booted and heartbeated (marked success).`);
+		}
+	} catch {
+		// Best effort only.
+	}
+	// Model auto-discovery seed: one round at boot (after the version
+	// probes, before the first heartbeat) so early facts already carry
+	// discovered ids. Best-effort inside and bounded by the discovery
+	// timeout; failures keep the cache empty, never fail boot.
+	await refreshDiscoveredModels({ config, logger });
 	const heartbeatTimer = setInterval(() => {
 		// Fresh facts every beat: disk headroom is re-measured (G4) while
 		// the harness CLI version resolves from the load-time probe cache.
-		deliverSteers({ config, client, logger, facts: factsFor({ config }), state }).catch((err) => {
+		deliverSteers({ config, client, logger, facts: factsFor({ config, updateStatus: state?.updateStatus ?? null }), state }).catch((err) => {
 			logger.warn(`Heartbeat failed: ${err?.message || err}`);
 		});
 	}, config.heartbeatMs);
 	if (typeof heartbeatTimer.unref === "function") heartbeatTimer.unref();
-	return { harness, harnesses, facts, stop: () => clearInterval(heartbeatTimer) };
+	// Periodic discovery refresh (default 12h, 0 disables): model menus
+	// change slowly, so heartbeats reuse the cache between rounds.
+	const discoveryIntervalMs = config.modelDiscoveryIntervalMs ?? 43200000;
+	let discoveryTimer = null;
+	if (discoveryIntervalMs > 0) {
+		discoveryTimer = setInterval(() => {
+			refreshDiscoveredModels({ config, logger }).catch((err) => {
+				logger.warn(`Model discovery refresh failed: ${err?.message || err}`);
+			});
+		}, discoveryIntervalMs);
+		if (typeof discoveryTimer.unref === "function") discoveryTimer.unref();
+	}
+	return {
+		harness,
+		harnesses,
+		facts,
+		stop: () => {
+			clearInterval(heartbeatTimer);
+			if (discoveryTimer) clearInterval(discoveryTimer);
+		},
+	};
 }
 
 /***
@@ -629,6 +840,13 @@ async function executeAssignment({
 		if (!customBranch && typeof claim.customBranch === "string") customBranch = claim.customBranch;
 		if (ciEnv === null || ciEnv === undefined) ciEnv = claim.env;
 		if (integration === null || integration === undefined) integration = claim.integration ?? null;
+		// The ONE served-model answer for every observable this execution
+		// writes (prompted progress, completion posture, completion model
+		// field): the dispatched requirement wins, else the Runner's pinned
+		// default, else null — non-LLM kinds and the "default" sentinel
+		// always report null. Computed once so the wire can never disagree
+		// with the posture string.
+		const servedModel = servingModelFor({ kind, model, fallbackModel: config.model });
 		// Leased integrations run their own procedure (Step 4): ephemeral
 		// worktree, merge, CAS-push, verify — no harness, no task worktree.
 		if (kind === "integrate") {
@@ -657,6 +875,9 @@ async function executeAssignment({
 				if (state.workdir) touchWorkdir(state.workdir);
 			},
 		});
+		// Hoisted so the failure path below can flush the trailing
+		// structured batch before reporting the stage as failed.
+		let structuredSender = null;
 		try {
 			await client.progress({
 				taskId: taskId,
@@ -727,7 +948,7 @@ async function executeAssignment({
 					event: "prompted",
 					prompt,
 					harness: servingHarnessId,
-					model: servingModelFor({ kind, model, fallbackModel: config.model }),
+					model: servedModel,
 				});
 			} catch (err) {
 				logger.warn(`Prompt report failed: ${err?.message || err}`);
@@ -761,7 +982,8 @@ async function executeAssignment({
 						outcome: "failed",
 						failureReason: `CI stage branch setup failed: ${err?.message || err}`,
 						taskFiles: collectTaskFiles({ workdir, taskId }), output: "",
-						posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: null }),
+						posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
+						model: servedModel,
 						durationMs: Date.now() - runStartedAt,
 					});
 				}
@@ -784,9 +1006,9 @@ async function executeAssignment({
 						const failureReason = ci.timedOut
 							? `CI command timed out after ${ci.timeoutMs}ms`
 							: `CI command failed with exit code ${ci.exitCode}`;
-						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: null }), durationMs: Date.now() - runStartedAt });
+						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 					}
-					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: null }), durationMs: Date.now() - runStartedAt });
+					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 				} finally {
 					if (ciCleanup) await ciCleanup();
 				}
@@ -798,18 +1020,44 @@ async function executeAssignment({
 			// writes land in the wrong repo and the commit/push ships
 			// nothing (wire-proof 2026-10-27: hello-wire.txt landed in the
 			// backend project dir instead of the worktree).
+			// Structured log transport: every normalized session event ships
+			// to POST /tasks/:id/log-events (batched, secret-redacted at the
+			// source). While the structured path is healthy the legacy text
+			// tap stays silent so the backend stores one copy; once it fails
+			// the sender flips and the text tap carries the coarse view again.
+			structuredSender = createStructuredEventSender({
+				client,
+				taskId: taskId,
+				projectId: projectId,
+				executionId,
+				epoch,
+				logger,
+				onTextFallback: (text) => {
+					sendLogs(text).catch(() => {});
+				},
+			});
 			const { output } = await runHarnessStage({
 				harness,
 				project: { ...project, cwd: workdir },
 				workdir,
 				taskId: taskId,
 				stageId,
-				model: model || config.model,
+				// Run on the SAME served model every observable reports
+				// (servedModel): the raw dispatch value can be the
+				// "default" sentinel or whitespace, which the harness
+				// would otherwise receive literally while the UI
+				// reports the fallback (or nothing) — a run/report
+				// divergence. Null means no pin: the harness default.
+				model: servedModel,
 				prompt,
 				onLog: (text) => {
+					if (structuredSender.isStructured()) return;
 					sendLogs(text).catch((err) => {
 						logger.warn(`Log ingest failed: ${err?.message || err}`);
 					});
+				},
+				onEvent: (event) => {
+					structuredSender.queueEvent(event);
 				},
 				onSession: (session) => {
 					state.session = session;
@@ -817,6 +1065,12 @@ async function executeAssignment({
 			});
 			state.session = null;
 			stopRenewal();
+			// Ship the trailing structured batch BEFORE the finished marker
+			// and the completion report, so the backend stores the tail
+			// before any reader can observe the stage as done.
+			await structuredSender.close().catch((err) => {
+				logger.warn(`Structured log flush failed: ${err?.message || err}`);
+			});
 			await client.progress({
 				taskId: taskId,
 				projectId: projectId,
@@ -844,7 +1098,8 @@ async function executeAssignment({
 				epoch,
 				sha,
 				branch,
-				posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servingModelFor({ kind, model, fallbackModel: config.model }) }),
+				posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
+				model: servedModel,
 				outcome: "passed",
 				taskFiles: collectTaskFiles({ workdir, taskId }),
 				output: String(output || "").slice(0, 20000),
@@ -873,6 +1128,13 @@ async function executeAssignment({
 			if (err?.failedOutcome) {
 				// The harness ran and failed: report through the engine's
 				// failure routing (verdict/failback) instead of parking.
+				// Flush first so the error's tool trail is stored before
+				// the failure report renders it.
+				try {
+					await structuredSender?.close();
+				} catch {
+					// Flushing is best-effort: the failure report matters more.
+				}
 				return await client.complete({
 					taskId: taskId,
 					projectId: projectId,
@@ -880,9 +1142,18 @@ async function executeAssignment({
 					epoch,
 					outcome: "failed",
 					failureReason: err.failedOutcome,
-					posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servingModelFor({ kind, model, fallbackModel: config.model }) }),
+					posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
+					model: servedModel,
 					durationMs: Date.now() - runStartedAt,
 				});
+			}
+			// Flush the trailing structured batch before interrupting: the
+			// tool/error trail up to the failure point must be stored, not
+			// only whatever the text tap carried.
+			try {
+				await structuredSender?.close();
+			} catch {
+				// Flushing is best-effort: the interrupt matters more.
 			}
 			try {
 				await client.interrupt({
@@ -912,6 +1183,30 @@ async function executeAssignment({
  *   removed in all outcomes.
  * @example await executeIntegrationAssignment({ config, client, logger, state, projectId: 'p', taskId: 't', claim, integration }) => { ... }
  ***/
+/***
+ * MARK: integrationMergeSubject
+ * @description Subject for the integration merge commit. Integration always
+ *   creates a real merge commit (--no-ff), even when the task branch could
+ *   fast-forward: task work otherwise lands on the target as a chain of
+ *   `kb/<id> … Runner stage output` commits, which the changelog filter
+ *   (shared/changelogHistory/isAdminCommitSubject.js) hides as automation
+ *   noise — so a merged, deployed feature never appeared in the in-app
+ *   changelog (task a654a254, 2026-11-02). This subject matches none of the
+ *   admin patterns, so the changelog shows one entry per merged task,
+ *   carrying the task's own title.
+ * @example integrationMergeSubject({ taskBranch: 'kb/abc', targetBranch: 'main', task: { title: 'Fix scroll' } }) => 'Merge kb/abc into main: Fix scroll'
+ * @param {Object} opts - `{ taskBranch, targetBranch, task }`.
+ * @returns {string} Single-line merge commit subject.
+ ***/
+export function integrationMergeSubject({ taskBranch, targetBranch, task } = {}) {
+	const title = String(task?.title || task?.goal || "")
+		.replace(/\s+/g, " ")
+		.trim()
+		.slice(0, 120);
+	const base = `Merge ${taskBranch} into ${targetBranch}`;
+	return title ? `${base}: ${title}` : base;
+}
+
 async function executeIntegrationAssignment({
 	config,
 	client,
@@ -978,7 +1273,8 @@ async function executeIntegrationAssignment({
 				await runGit(workdir, [
 					"-c", "user.name=KainBain Integration",
 					"-c", "user.email=kainbain-runner@local",
-					"merge", "--no-edit", `origin/${taskBranch}`,
+					"merge", "--no-ff", "-m", integrationMergeSubject({ taskBranch, targetBranch, task }),
+					`origin/${taskBranch}`,
 				]);
 			} catch (mergeErr) {
 				let conflicted = [];
@@ -1104,14 +1400,27 @@ export async function runSingleAssignment({
 	loadHarness = defaultLoadHarness,
 	logger = console,
 }) {
+	resolveHarnessConfig(config);
 	if (config.errors?.length) {
 		throw new Error(`Invalid Runner config: ${config.errors.join(" ")}`);
 	}
 	const orphans = listOrphanWorkdirs(config.workRoot, config.taskId);
 	if (orphans.length) {
 		logger.warn(`Orphaned workdirs (left alone, may hold unpushed work): ${orphans.join(", ")}`);
+		// Also surface this warning to the UI via the logs endpoint.
+		try {
+			await client.logs({
+				taskId: config.taskId,
+				projectId: config.projectId,
+				executionId: "",
+				epoch: 0,
+				seq: 0,
+				bytes: `WARN Orphaned workdirs: ${orphans.join(", ")}`.slice(0,4000),
+			});
+		} catch (e) {
+			logger.warn(`Failed to send orphan warning to UI logs: ${e?.message || e}`);
+		}
 	}
-
 	const state = { session: null, executionId: null, epoch: null };
 	const { harness, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger, state });
 	try {
@@ -1140,6 +1449,101 @@ export async function runSingleAssignment({
 }
 
 /***
+ * MARK: installRootFor
+ * @description Resolves the self-update install root (Option A, ADR 0012):
+ *   explicit KAINBAIN_RUNNER_INSTALL_ROOT wins, else a `runner-install`
+ *   sibling of the work root (state lives with the installation, not with
+ *   task worktrees).
+ * @example installRootFor({ installRoot: '/opt/r' }) => '/opt/r'
+ * @example installRootFor({ workRoot: 'runner-work' }) => '<abs>/runner-install'
+ * @param {Object} [config] - Normalized runner config.
+ * @returns {string} Install root path.
+ ***/
+export function installRootFor(config = {}) {
+	const explicit = String(config.installRoot || "").trim();
+	if (explicit) return explicit;
+	return defaultInstallRoot({ workRoot: config.workRoot });
+}
+
+/***
+ * MARK: maybeSelfUpdate
+ * @description Idle-time self-update check (Option A, ADR 0012). No-ops
+ *   unless auto-update is on AND the check interval has elapsed (jittered
+ *   ±20% so a fleet does not thunder the release pointer). On a newer
+ *   verified release, downloads, verifies, atomically stages it, and
+ *   returns `applied` — the caller then exits 0 so the wrapper restarts
+ *   into the new version. Any verification failure returns ok:false and
+ *   keeps the current installation untouched.
+ * @example await maybeSelfUpdate({ config, client }) => { checked: false, ... }
+ * @param {Object} opts - Options (config, client?, logger?, installRoot?, now?, updateState?, updateDeps?, force?).
+ *   `force` bypasses the interval gate for the 409 path, where the backend
+ *   explicitly ordered an update — the Runner checks immediately instead of
+ *   waiting out the jittered hour.
+ * @returns {Promise<Object>} `{ checked, ok, update?, applied?, reason? }`. Apply
+ *   failures are contained here (ok:false, failed status noted) and never throw.
+ ***/
+export async function maybeSelfUpdate({
+	config,
+	client = null,
+	logger = console,
+	installRoot = installRootFor(config),
+	now = Date.now(),
+	updateState = null,
+	updateDeps = {},
+	force = false,
+} = {}) {
+	if (!config?.autoUpdate) return { checked: false, reason: "auto-update disabled" };
+	const interval = Number(config.updateCheckIntervalMs) || 3600000;
+	const state = updateState || {};
+	const last = Number(state.lastUpdateCheckAt) || 0;
+	const jittered = interval * (0.8 + Math.random() * 0.4);
+	if (!force && now - last < jittered) return { checked: false, reason: "interval" };
+	state.lastUpdateCheckAt = now;
+	const check = updateDeps.checkForUpdate || defaultCheckForUpdate;
+	const apply = updateDeps.applyUpdate || defaultApplyUpdate;
+	// Facts-only alert path (plan §4.5): the next heartbeat carries
+	// updateStatus, which the backend stores on the runner record for the
+	// fleet UI. No dedicated endpoint in v1.
+	const note = (status) => {
+		if (updateState && typeof updateState === "object") updateState.updateStatus = status;
+	};
+	const fail = (reason) => {
+		logger.warn?.(`Runner update check failed: ${reason}`);
+		note({ state: "failed", reason: String(reason || "unknown").slice(0, 500), at: new Date(now).toISOString() });
+		return { checked: true, ok: false, reason: String(reason || "check failed") };
+	};
+	let result;
+	try {
+		result = await check({
+			currentVersion: RUNNER_VERSION,
+			updateUrl: config.updateUrl,
+			logger,
+		});
+	} catch (err) {
+		return fail(err?.message || err);
+	}
+	if (!result?.ok) return fail(result?.reason || "check failed");
+	if (!result.update) return { checked: true, ok: true, update: null, reason: result.reason || "up to date" };
+	logger.log?.(`Runner update available: ${result.update.version} (verified signature); staging install.`);
+	// The install must stay untouched on ANY apply failure (network cut
+	// mid-download, lock held, tar missing): contain it here so neither
+	// the idle branch nor the 409 branch can crash the loop.
+	let applied;
+	try {
+		applied = await apply({
+			update: result.update,
+			installRoot,
+			updateUrl: config.updateUrl,
+			logger,
+		});
+	} catch (err) {
+		return fail(err?.message || err);
+	}
+	note({ state: "staged", version: result.update.version, at: new Date(now).toISOString() });
+	return { checked: true, ok: true, update: result.update, applied };
+}
+
+/***
  * MARK: runDispatchLoop
  * @description Capability-aware dispatch loop (WP-3.1): joins and heartbeats
  *   exactly like a single assignment, then polls `POST /runners/dispatch`
@@ -1165,6 +1569,7 @@ export async function runDispatchLoop({
 	loadHarness = defaultLoadHarness,
 	logger = console,
 }) {
+	resolveHarnessConfig(config);
 	if (config.errors?.length) {
 		throw new Error(`Invalid Runner config: ${config.errors.join(" ")}`);
 	}
@@ -1186,7 +1591,7 @@ export async function runDispatchLoop({
 				answer = await client.dispatchClaim({ projectIds: config.projectIds ?? null });
 			} catch (err) {
 				if (err?.code === "STALE_RUNNER") {
-					await client.heartbeat({ runnerId: config.runnerId, facts: factsFor({ config }) });
+					await client.heartbeat({ runnerId: config.runnerId, facts: factsFor({ config, updateStatus: state?.updateStatus ?? null }) });
 					answer = await client.dispatchClaim({ projectIds: config.projectIds ?? null });
 				} else if (err?.statusCode === 429) {
 					// D8 backpressure (ADR 0010): the fleet is at its
@@ -1204,6 +1609,25 @@ export async function runDispatchLoop({
 					// with no restart.
 					polls += 1;
 					logger.log(`Dispatch: Runner paused by operator; backing off.`);
+					await new Promise((r) => setTimeout(r, pollMs));
+					continue;
+				} else if (err?.code === "RUNNER_VERSION_BELOW_MINIMUM") {
+					// Backend refuses dispatch below the minimum compatible
+					// version (Option A, ADR 0012): self-update now (idle —
+					// no active task), then exit 0 so the wrapper restarts
+					// into the new version and re-registers. Forced: the
+					// backend explicitly ordered the update, so the
+					// interval gate is bypassed. No update available (or
+					// a failed stage) means back off and poll again — the
+					// loop never crashes on an update failure.
+					polls += 1;
+					logger.log(`Dispatch: below minimum version (${err?.message || "update required"}); updating.`);
+					try {
+						const upd = await maybeSelfUpdate({ config, client, logger, installRoot: installRootFor(config), updateState: state, force: true });
+						if (upd?.applied) return { assignments, polls, updated: true, version: upd.update?.version };
+					} catch (updateErr) {
+						logger.warn?.(`Runner self-update failed (keeping current version): ${updateErr?.message || updateErr}`);
+					}
 					await new Promise((r) => setTimeout(r, pollMs));
 					continue;
 				} else {
@@ -1226,6 +1650,16 @@ export async function runDispatchLoop({
 				logger.log(
 					`Dispatch: no work (${answer.code ?? "empty"}); idle ${idle}${idleLimit > 0 ? `/${idleLimit}` : "/∞ (persistent)"}.`,
 				);
+				// Self-update-on-idle (Option A, ADR 0012): the loop holds
+				// no task here, so a staged update cannot strand work. A
+				// staged update returns updated:true — the process exits 0
+				// and the wrapper restarts into the new version.
+				try {
+					const upd = await maybeSelfUpdate({ config, client, logger, installRoot: installRootFor(config), updateState: state });
+					if (upd?.applied) return { assignments, polls, idle, updated: true, version: upd.update?.version };
+				} catch (err) {
+					logger.warn?.(`Runner self-update failed (keeping current version): ${err?.message || err}`);
+				}
 				await new Promise((r) => setTimeout(r, pollMs));
 				continue;
 			}

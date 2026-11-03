@@ -54,20 +54,33 @@ export function adaptTaskEntry(entry = {}) {
  ***/
 export function adaptProcessLogLine(line = {}) {
   const safe = line || {};
-  const text = safe.text ?? safe.raw ?? '';
+  // Structured live entries (PROCESS_LOG_ENTRIES frames) carry the backend's
+  // record on `entry` with an empty text/raw on the line itself: adapt the
+  // entry's real text/kind/payload so monitor surfaces render the tool call,
+  // result, or thinking line instead of a blank row.
+  const entry = safe.entry && typeof safe.entry === 'object' ? safe.entry : null;
+  const text = entry ? entry.text ?? '' : safe.text ?? safe.raw ?? '';
   return normalizeLogRecord(
     {
       id: safe.id,
-      ts: safe.timestamp,
-      tag: safe.tag,
+      ts: entry ? entry.ts ?? safe.timestamp : safe.timestamp,
+      kind: entry ? entry.kind ?? null : null,
+      tag: entry ? null : safe.tag,
       text,
-      raw: safe.raw,
+      raw: entry ? '' : safe.raw,
+      tool: entry ? entry.tool : undefined,
+      usage: entry ? entry.usage : undefined,
+      evidence: entry ? entry.evidence : undefined,
+      turn: entry ? entry.turn ?? null : null,
+      collapsedThinking: entry ? Boolean(entry.meta?.collapsed) : false,
+      fullTextId: entry ? entry.meta?.fullTextId ?? null : null,
       projectId: safe.projectId,
       projectName: safe.projectName,
       taskId: safe.taskId,
+      runnerId: safe.runnerId ?? null,
       source: 'process-live',
       meta: {
-        ...(safe.meta || {}),
+        ...(entry ? entry.meta || {} : safe.meta || {}),
         // Original line by reference (never mutated downstream) so copy
         // formatters and facades can recover the exact legacy shape.
         rawLine: safe,

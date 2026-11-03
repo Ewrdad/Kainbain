@@ -11,11 +11,16 @@ import {
   formatTaskKey,
   formatTaskTimestamp,
   formatTaskTitleFirstLine,
+  formatTryCount,
   getBlockedState,
+  isAutoIterationInProgress,
   isTaskCompleted,
+  isTaskFailed,
   resolveTimelineStageLabel,
   selectDisplayTimeline,
   selectStagePresentation,
+  STAGE_RUN_TRY_COUNT_CAP,
+  summarizeStageRuns,
 } from './taskFormatters';
 import {
   duplicateStoredTimeline,
@@ -623,27 +628,35 @@ describe('taskFormatters', () => {
       });
     });
 
-    it('keeps the failure reason row below the live row in screenshot order', () => {
+    it('keeps the failure reason row below the live row, one line per stage with a try count', () => {
       const display = buildDisplayTimeline(liveArgs);
       expect(display.map((entry) => `${entry.stage} ${entry.status}`)).toEqual([
         'In Progress Active',
         'Deep Review Failed',
-        'Deep Review Advanced',
         'Quick review Advanced',
       ]);
       expect(display[1].reason).toContain('[Agent Review Rejection]');
+      // The two stored Deep Review rows (arrival + failure) collapse into one
+      // row carrying the try count.
+      expect(display[1].tryCount).toBe(2);
+      expect(display[2].tryCount).toBeUndefined();
     });
 
-    it('shows the full stored history without a live row (detail page variant)', () => {
+    it('shows the full stored history without a live row (detail page variant), collapsed per stage', () => {
       const display = buildDisplayTimeline({
         storedTimeline: duplicateStoredTimeline,
         stages: duplicateTimelineStages,
         includeLiveRow: false,
       });
-      expect(display).toEqual(
-        selectDisplayTimeline(duplicateStoredTimeline, duplicateTimelineStages),
-      );
-      expect(display).toHaveLength(4);
+      // selectDisplayTimeline stays the raw exact-dedup projection (4 rows);
+      // buildDisplayTimeline collapses to one row per stage (3 rows).
+      expect(selectDisplayTimeline(duplicateStoredTimeline, duplicateTimelineStages)).toHaveLength(4);
+      expect(display.map((entry) => `${entry.stage} ${entry.status}`)).toEqual([
+        'In Progress Moved',
+        'Deep Review Failed',
+        'Quick review Advanced',
+      ]);
+      expect(display[1].tryCount).toBe(2);
     });
 
     it('keeps completed-task history intact, including the final Completed row', () => {
@@ -665,7 +678,9 @@ describe('taskFormatters', () => {
         includeLiveRow: false,
       });
       expect(display[0]).toMatchObject({ stage: 'In Progress', status: 'Completed' });
-      expect(display).toHaveLength(5);
+      // The In Progress arrival + Completed rows collapse into one row.
+      expect(display[0].tryCount).toBe(2);
+      expect(display).toHaveLength(3);
     });
 
     it('suppresses Advanced arrivals as well as Moved arrivals', () => {
@@ -838,6 +853,69 @@ describe('taskFormatters', () => {
       ]);
     });
 
+    it('suppresses the current arrival behind a same-stage Retrying row (transient retry in flight)', () => {
+      // A transient same-stage retry writes a Retrying outcome row after the
+      // visit's arrival; the live row must still supersede that arrival so the
+      // current stage renders once live plus its stored history — and the
+      // live row keeps the arrival's run attribution.
+      const display = buildDisplayTimeline({
+        storedTimeline: [
+          { stage: 'Plan', status: 'Moved', duration: '5s', timestamp: 't1' },
+          {
+            stage: 'Review',
+            status: 'Moved',
+            duration: '9s',
+            timestamp: 't2',
+            harnessId: 'pi',
+            modelRef: 'mistral::large',
+            aliasName: 'worker',
+            targetIndex: 0,
+          },
+          { stage: 'Review', status: 'Retrying', duration: '9s', timestamp: 't3', reason: 'socket hangup' },
+        ],
+        stages: [
+          { id: '1', name: 'Plan' },
+          { id: '2', name: 'Review' },
+        ],
+        currentStageName: 'Review',
+        liveDurationLabel: '3s in stage',
+        includeLiveRow: true,
+      });
+      expect(display.map((entry) => `${entry.stage} ${entry.status}`)).toEqual([
+        'Review Active',
+        'Review Retrying',
+        'Plan Moved',
+      ]);
+      // The live row inherited the suppressed arrival's attribution.
+      expect(display[0]).toMatchObject({ harnessId: 'pi', modelRef: 'mistral::large', aliasName: 'worker', targetIndex: 0 });
+      // The stored Review group is the Retrying row only (arrival suppressed),
+      // so no try count is shown for a single stored row.
+      expect(display[1].tryCount).toBeUndefined();
+      expect(display[1].reason).toBe('socket hangup');
+    });
+
+    it('suppresses the current arrival behind a same-stage Resumed row (post-restart continuation)', () => {
+      // After a restart the auto-resume writes a Resumed row into the stage
+      // the task is still sitting in; the live row must still supersede that
+      // visit's arrival instead of duplicating the stage.
+      const display = buildDisplayTimeline({
+        storedTimeline: [
+          { stage: 'Review', status: 'Moved', duration: '9s', timestamp: 't2', harnessId: 'pi' },
+          { stage: 'Review', status: 'Resumed', duration: '0m', timestamp: 't3', reason: 'Auto-resumed after server restart' },
+        ],
+        stages: [{ id: '2', name: 'Review' }],
+        currentStageName: 'Review',
+        liveDurationLabel: '3s in stage',
+        includeLiveRow: true,
+      });
+      expect(display.map((entry) => `${entry.stage} ${entry.status}`)).toEqual([
+        'Review Active',
+        'Review Resumed',
+      ]);
+      expect(display[0].harnessId).toBe('pi');
+      expect(display[1].tryCount).toBeUndefined();
+    });
+
     it('keeps a same-stage arrival when a different-stage row is newer (past visit stays visible)', () => {
       const display = buildDisplayTimeline({
         storedTimeline: [
@@ -859,7 +937,7 @@ describe('taskFormatters', () => {
       ]);
     });
 
-    it('keeps a same-stage arrival when a Completed row is newer (fail-open)', () => {
+    it('keeps a same-stage arrival when a Completed row is newer (fail-open), collapsed to one stored row', () => {
       const display = buildDisplayTimeline({
         storedTimeline: [
           { stage: 'Plan', status: 'Moved', duration: '5s', timestamp: 't1' },
@@ -873,11 +951,14 @@ describe('taskFormatters', () => {
         liveDurationLabel: '3s in stage',
         includeLiveRow: true,
       });
+      // The Completed row is not an arrival, so the Moved arrival is not
+      // suppressed by the live-row logic; both stored Plan rows then collapse
+      // into the single newest (Completed) row with a try count.
       expect(display.map((entry) => `${entry.stage} ${entry.status}`)).toEqual([
         'Plan Active',
         'Plan Completed',
-        'Plan Moved',
       ]);
+      expect(display[1].tryCount).toBe(2);
     });
 
     it('never suppresses rows with unknown statuses (fail-open)', () => {
@@ -897,15 +978,15 @@ describe('taskFormatters', () => {
     it('keeps overlay and page views consistent on the screenshot fixture (parity)', () => {
       const overlay = buildDisplayTimeline({ ...liveArgs, includeLiveRow: true });
       const page = buildDisplayTimeline({ ...liveArgs, includeLiveRow: false });
-      // The page has no live row, so it shows the full stored history.
+      // The page has no live row, so it shows the full stored history
+      // collapsed to one row per stage.
       expect(page.map((entry) => `${entry.stage} ${entry.status}`)).toEqual([
         'In Progress Moved',
         'Deep Review Failed',
-        'Deep Review Advanced',
         'Quick review Advanced',
       ]);
-      // The overlay is the live row plus that same history minus the arrival
-      // the live row supersedes.
+      // The overlay is the live row plus that same collapsed history minus
+      // the arrival the live row supersedes.
       expect(overlay[0]).toMatchObject({ stage: 'In Progress', status: 'Active' });
       expect(overlay.slice(1)).toEqual(page.slice(1));
     });
@@ -969,6 +1050,21 @@ describe('taskFormatters', () => {
       expect(display[0].timestamp).not.toBe('Active');
     });
 
+    it('renders a static PAUSED row (frozen text, never a live timer) for paused tasks', () => {
+      const display = buildDisplayTimeline({
+        storedTimeline: [],
+        stages: duplicateTimelineStages,
+        currentStageName: 'Merge and deploy',
+        liveDurationLabel: '36m in stage',
+        includeLiveRow: true,
+        presentation: selectStagePresentation({ status: 'paused' }),
+      });
+      expect(display[0]).toMatchObject({ stage: 'Merge and deploy', status: 'Paused' });
+      expect(display[0].duration).not.toMatch(/in stage/);
+      expect(display[0].duration).toBe('Paused');
+      expect(display[0].timestamp).not.toBe('Active');
+    });
+
     it('keeps the live ACTIVE row for executing tasks', () => {
       const display = buildDisplayTimeline({
         storedTimeline: [],
@@ -993,9 +1089,272 @@ describe('taskFormatters', () => {
     });
   });
 
+  describe('isAutoIterationInProgress', () => {
+    it('is true for a cross-stage re-run flagged by the new backend field', () => {
+      expect(
+        isAutoIterationInProgress({
+          autoRetrying: false,
+          autoIterating: true,
+          currentStageId: '1',
+          lastError: { stageId: '2' },
+        }),
+      ).toBe(true);
+    });
+
+    it('is true for an older-backend moved task (autoRetrying but current stage differs from the failed stage)', () => {
+      expect(
+        isAutoIterationInProgress({
+          autoRetrying: true,
+          currentStageId: '1',
+          lastError: { stageId: '2' },
+        }),
+      ).toBe(true);
+    });
+
+    it('is false for a same-stage in-place retry', () => {
+      expect(
+        isAutoIterationInProgress({
+          autoRetrying: true,
+          currentStageId: '2',
+          lastError: { stageId: '2' },
+        }),
+      ).toBe(false);
+      expect(isAutoIterationInProgress({ autoRetrying: true, currentStageId: '2' })).toBe(false);
+    });
+
+    it('is false when nothing is auto-recovering', () => {
+      expect(isAutoIterationInProgress({ status: 'failed', failureReason: 'x' })).toBe(false);
+      expect(isAutoIterationInProgress(null)).toBe(false);
+      expect(isAutoIterationInProgress(undefined)).toBe(false);
+    });
+
+    it('is false for every settled status even with live re-run flags (shared settled-status vocabulary)', () => {
+      for (const status of ['completed', 'done', 'failed', 'aborted', 'cancelled', 'paused', 'interrupted', 'waiting_human', 'blocked']) {
+        expect(
+          isAutoIterationInProgress({ status, autoIterating: true, autoRetrying: true, currentStageId: '1', lastError: { stageId: '2' } }),
+        ).toBe(false);
+      }
+    });
+  });
+
+  describe('isTaskFailed', () => {
+    it('reads an explicit failed status as failed even without a reason', () => {
+      expect(isTaskFailed({ status: 'failed' })).toBe(true);
+    });
+
+    it('never reads a task without failure evidence as failed', () => {
+      expect(isTaskFailed(null)).toBe(false);
+      expect(isTaskFailed(undefined)).toBe(false);
+      expect(isTaskFailed({})).toBe(false);
+      expect(isTaskFailed({ status: 'in_stage' })).toBe(false);
+      expect(isTaskFailed({ status: 'completed' })).toBe(false);
+    });
+
+    it('reads a parked failure (reason, no re-run flags) as failed', () => {
+      expect(isTaskFailed({ status: 'failed', failureReason: 'boom' })).toBe(true);
+      expect(isTaskFailed({ status: 'in_stage', failureReason: 'boom' })).toBe(true);
+    });
+
+    it('does not read a same-stage in-place retry as failed (it reads RETRYING instead)', () => {
+      expect(
+        isTaskFailed({
+          status: 'in_stage',
+          failureReason: 'socket hangup',
+          autoRetrying: true,
+          currentStageId: '2',
+          lastError: { stageId: '2' },
+        }),
+      ).toBe(false);
+    });
+
+    it('does not read a cross-stage continuation as failed', () => {
+      expect(
+        isTaskFailed({
+          status: 'in_stage',
+          failureReason: 'old reason rides along',
+          autoIterating: true,
+          currentStageId: '1',
+          lastError: { stageId: '2' },
+        }),
+      ).toBe(false);
+      expect(
+        isTaskFailed({
+          status: 'in_stage',
+          failureReason: 'old reason rides along',
+          autoRetrying: true,
+          currentStageId: '1',
+          lastError: { stageId: '2' },
+        }),
+      ).toBe(false);
+    });
+
+    it('still reads a deliberate rejection as failed while its retry is queued', () => {
+      expect(
+        isTaskFailed({
+          status: 'in_stage',
+          failureReason: 'reviewer said no',
+          autoRetrying: true,
+          currentStageId: '2',
+          lastError: { stageId: '2', failureKind: 'rejected' },
+        }),
+      ).toBe(true);
+    });
+  });
+
+  describe('summarizeStageRuns', () => {
+    it('collapses repeated same-stage rows into one row with a try count, keeping the latest entry', () => {
+      const entries = [
+        { stage: 'Design', status: 'Failed', timestamp: 't3', reason: 'latest boom' },
+        { stage: 'Design', status: 'Failed back', timestamp: 't2', duration: '9s' },
+        { stage: 'Implementation', status: 'Moved', timestamp: 't4', duration: '3s' },
+        { stage: 'Design', status: 'Advanced', timestamp: 't1', duration: '5s' },
+      ];
+      const result = summarizeStageRuns(entries, []);
+      expect(result.map((row) => `${row.stage} ${row.status}`)).toEqual([
+        'Design Failed',
+        'Implementation Moved',
+      ]);
+      expect(result[0].tryCount).toBe(3);
+      expect(result[0].reason).toBe('latest boom');
+      expect(result[1].tryCount).toBeUndefined();
+    });
+
+    it('collapses a failback spam cycle to one line per stage', () => {
+      // Two failback cycles Design -> Implementation -> Design leave four
+      // Design rows and two Implementation rows in storage order.
+      const stored = [
+        { stage: 'Design', status: 'Advanced', timestamp: 't1' },
+        { stage: 'Implementation', status: 'Moved', timestamp: 't2' },
+        { stage: 'Implementation', status: 'Failed', timestamp: 't3', reason: 'r1' },
+        { stage: 'Design', status: 'Failed back', timestamp: 't4' },
+        { stage: 'Design', status: 'Failed', timestamp: 't5', reason: 'r2' },
+        { stage: 'Implementation', status: 'Failed back', timestamp: 't6' },
+        { stage: 'Implementation', status: 'Failed', timestamp: 't7', reason: 'r3' },
+        { stage: 'Design', status: 'Failed back', timestamp: 't8' },
+      ];
+      const display = buildDisplayTimeline({
+        storedTimeline: stored,
+        stages: [
+          { id: 'd', name: 'Design' },
+          { id: 'i', name: 'Implementation' },
+        ],
+        currentStageName: 'Design',
+        includeLiveRow: false,
+      });
+      expect(display.map((row) => `${row.stage} ${row.status} tryCount=${row.tryCount}`)).toEqual([
+        'Design Failed back tryCount=4',
+        'Implementation Failed tryCount=4',
+      ]);
+      expect(formatTryCount(display[0])).toBe('Tried 4 times');
+      // The latest reason survives on the collapsed row.
+      expect(display[1].reason).toBe('r3');
+    });
+
+    it('groups legacy numeric labels onto their stage name', () => {
+      const entries = [
+        { stage: '1', status: 'Advanced', timestamp: '2026-01-01T00:00:00.000Z' },
+        { stage: '1', status: 'Failed', timestamp: '2026-01-02T00:00:00.000Z', reason: 'boom' },
+      ];
+      const result = summarizeStageRuns(entries, [{ id: '1', name: 'Idea' }]);
+      expect(result).toHaveLength(1);
+      expect(result[0].stage).toBe('Idea');
+      expect(result[0].status).toBe('Failed');
+      expect(result[0].reason).toBe('boom');
+      expect(result[0].tryCount).toBe(2);
+    });
+
+    it('caps the try count at STAGE_RUN_TRY_COUNT_CAP', () => {
+      const entries = Array.from({ length: STAGE_RUN_TRY_COUNT_CAP + 10 }, (_, i) => ({
+        stage: 'Plan',
+        status: 'Failed',
+        timestamp: `t${i}`,
+      }));
+      const result = summarizeStageRuns(entries, []);
+      expect(result).toHaveLength(1);
+      expect(result[0].tryCount).toBe(STAGE_RUN_TRY_COUNT_CAP);
+    });
+
+    it('groups the same stage name regardless of letter case', () => {
+      // Stage-name matching is case-insensitive everywhere else (backend
+      // findStageByIdOrName), so history must not split one stage into two
+      // rows over a capital letter.
+      const entries = [
+        { stage: 'Design', status: 'Failed', timestamp: '2026-01-03T00:00:00.000Z', reason: 'latest' },
+        { stage: 'design', status: 'Moved', timestamp: '2026-01-02T00:00:00.000Z' },
+        { stage: 'DESIGN', status: 'Advanced', timestamp: '2026-01-01T00:00:00.000Z' },
+      ];
+      const result = summarizeStageRuns(entries, []);
+      expect(result).toHaveLength(1);
+      expect(result[0].stage).toBe('Design');
+      expect(result[0].status).toBe('Failed');
+      expect(result[0].reason).toBe('latest');
+      expect(result[0].tryCount).toBe(3);
+    });
+
+    it('never groups rows without a stage label and never mutates its input', () => {
+      const entries = [
+        { status: 'Failed', timestamp: 't1' },
+        { status: 'Moved', timestamp: 't2' },
+        { stage: 'Plan', status: 'Moved', timestamp: 't3' },
+      ];
+      const snapshot = entries.map((entry) => ({ ...entry }));
+      const result = summarizeStageRuns(entries, []);
+      expect(result).toHaveLength(3);
+      expect(result.filter((row) => row.stage === undefined)).toHaveLength(2);
+      expect(entries).toEqual(snapshot);
+      // Display rows are copies: rendering must not be able to mutate the
+      // stored timeline through the returned array.
+      for (const row of result) {
+        expect(entries.includes(row)).toBe(false);
+      }
+    });
+
+    it('handles empty and non-array input safely', () => {
+      expect(summarizeStageRuns([], [])).toEqual([]);
+      expect(summarizeStageRuns(undefined, [])).toEqual([]);
+      expect(summarizeStageRuns(null)).toEqual([]);
+    });
+  });
+
+  describe('formatTryCount', () => {
+    it('renders "Tried N times" only when the stage ran more than once', () => {
+      expect(formatTryCount({ tryCount: 3 })).toBe('Tried 3 times');
+      expect(formatTryCount({ tryCount: 2 })).toBe('Tried 2 times');
+      expect(formatTryCount({ tryCount: 1 })).toBeNull();
+      expect(formatTryCount({ stage: 'Plan' })).toBeNull();
+      expect(formatTryCount(null)).toBeNull();
+      expect(formatTryCount({ tryCount: 'x' })).toBeNull();
+    });
+
+    it('clamps oversized counts and floors fractional ones instead of rendering them raw', () => {
+      expect(formatTryCount({ tryCount: 500 })).toBe('Tried 99 times');
+      expect(formatTryCount({ tryCount: 99 })).toBe('Tried 99 times');
+      expect(formatTryCount({ tryCount: 2.9 })).toBe('Tried 2 times');
+      expect(formatTryCount({ tryCount: '4' })).toBe('Tried 4 times');
+    });
+  });
+
   describe('selectStagePresentation', () => {
     it('parks settled failures instead of reporting them active', () => {
       for (const status of ['failed', 'interrupted', 'blocked']) {
+        expect(selectStagePresentation({ status })).toEqual({
+          label: 'PARKED',
+          tone: 'parked',
+          ticking: false,
+        });
+      }
+    });
+
+    it('parks paused tasks with their own frozen label (never a ticking ACTIVE row)', () => {
+      expect(selectStagePresentation({ status: 'paused' })).toEqual({
+        label: 'PAUSED',
+        tone: 'parked',
+        ticking: false,
+      });
+    });
+
+    it('parks terminal cancelled/aborted tasks instead of reporting them active', () => {
+      for (const status of ['cancelled', 'aborted']) {
         expect(selectStagePresentation({ status })).toEqual({
           label: 'PARKED',
           tone: 'parked',

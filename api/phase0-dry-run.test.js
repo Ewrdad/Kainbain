@@ -22,7 +22,11 @@ describe('Phase 0: Git Branch Foundation Dry-Run', () => {
         projectCwd = testRoot;
         
         spawnSync('git', ['init', '-b', 'main'], { cwd: projectCwd });
-        
+        // Fixture identity is local so commits work on machines without a
+        // global git identity configured.
+        spawnSync('git', ['config', 'user.email', 'test@example.com'], { cwd: projectCwd });
+        spawnSync('git', ['config', 'user.name', 'KainBain Test'], { cwd: projectCwd });
+
         // IMPORTANT: ignore docs/tasks/ in the git repo so they don't block checkouts
         fs.writeFileSync(path.join(projectCwd, '.gitignore'), 'docs/tasks/\n.kainbain/');
         
