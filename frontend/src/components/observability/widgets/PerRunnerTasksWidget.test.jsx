@@ -358,6 +358,77 @@ describe('PerRunnerTasksWidget', () => {
     }
   });
 
+  test('assignments with a non-text runnerId read as idle, never a crashed row', async () => {
+    // An object id would crash the row that renders it (React cannot render
+    // an object child), so malformed assignments are ignored on both the
+    // override path and the polled path.
+    render(
+      <PerRunnerTasksWidget
+        tasks={[]}
+        compact
+        assignmentsOverride={[{ runnerId: { id: 'r1' } }, { runnerId: true }]}
+        registryOverride={[]}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/Fleet idle/)).toBeInTheDocument();
+    });
+  });
+
+  test('polled assignments with a non-text runnerId read as idle', async () => {
+    getRunnerMonitor.mockResolvedValue({
+      liveAssignments: [{ runnerId: { id: 'r1' }, taskId: 't1' }],
+    });
+    render(<PerRunnerTasksWidget tasks={[]} compact />);
+    await waitFor(() => {
+      expect(getRunnerMonitor).toHaveBeenCalled();
+    });
+    expect(screen.getByText(/Fleet idle/)).toBeInTheDocument();
+  });
+
+  test('object-typed serving and epoch fields render without crashing', async () => {
+    // Serving data crosses the fleet API boundary untyped: a malformed
+    // object renders as text instead of crashing the row or the card.
+    const assignment = {
+      runnerId: 'local-alpha',
+      taskId: 't1',
+      stageId: 'build',
+      epoch: { n: 1 },
+      serving: { harness: { id: 'pi' }, model: ['m'] },
+      startedAt: new Date().toISOString(),
+      lastSeenAt: new Date().toISOString(),
+    };
+    const { unmount } = render(
+      <PerRunnerTasksWidget
+        tasks={[]}
+        stages={[{ id: 'build', name: 'Build' }]}
+        compact
+        assignmentsOverride={[assignment]}
+        registryOverride={[{ runnerId: 'local-alpha' }]}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('per-runner-row-local-alpha')).toBeInTheDocument();
+    });
+    expect(
+      screen.getByTestId('per-runner-compact-harness-local-alpha'),
+    ).toBeInTheDocument();
+    unmount();
+
+    render(
+      <PerRunnerTasksWidget
+        tasks={[]}
+        stages={[{ id: 'build', name: 'Build' }]}
+        compact={false}
+        assignmentsOverride={[assignment]}
+        registryOverride={[{ runnerId: 'local-alpha' }]}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('per-runner-card-local-alpha')).toBeInTheDocument();
+    });
+  });
+
   test('full card hides the model pill for CI stages with no serving model', async () => {
     getRunnerMonitor.mockResolvedValue({
       liveAssignments: [

@@ -106,6 +106,19 @@ describe('resolveMobileHeaderMode', () => {
     expect(mode.activeChip?.label).toBe('Ship the widget');
   });
 
+  test('assignments with a non-text runnerId never count as fleet presence', () => {
+    // An object id would crash the rows that render it, so malformed
+    // assignments read as no fleet: the pill stays visible.
+    const mode = resolveMobileHeaderMode({
+      assignments: [{ runnerId: { id: 'r1' } }, { runnerId: true }, { runnerId: ['r1'] }],
+      registry: [],
+      activeTask: TASK,
+      stages: STAGES,
+      engineState: { status: 'running' },
+    });
+    expect(mode.showEnginePill).toBe(true);
+  });
+
   test('assignments without a runnerId never count as fleet presence', () => {
     const mode = resolveMobileHeaderMode({
       assignments: [{ taskId: 't1' }, null],

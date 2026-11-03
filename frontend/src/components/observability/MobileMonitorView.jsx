@@ -40,7 +40,7 @@ export { formatMobileMonitorTitle, resolveMobileModelLine };
  * @param {Function} [props.onClearLogs] - Clears the console.
  * @param {Function} [props.onExit] - Leaves the monitor (Back button).
  * @param {Array<Object>} [props.runnerAssignmentsOverride] - Injected live fleet assignments (tests); skips polling while set.
- * @param {Map|Array|number} [props.runnerRegistryOverride] - Injected Runner registry (tests): a Map, a runner list, or a positive whole count; skips polling while set.
+ * @param {Map|Array|number} [props.runnerRegistryOverride] - Injected Runner registry (tests): a Map, a runner list, or a positive whole count; skips polling while set. A count carries no runner records, so the rows render the fleet-idle state while the header reads it as fleet presence.
  * @example <MobileMonitorView engineState={engineState} activeTask={activeTask} processLogs={logs} onExit={...} />
  ***/
 export function MobileMonitorView({
@@ -163,7 +163,12 @@ export function MobileMonitorView({
 
       {/* Full-height live log console (filters, auto-scroll, clear intact) */}
       <div className="flex-1 flex flex-col min-h-0 min-w-0 w-full">
-        <LiveConsoleWidget processLogs={processLogs} onClearLogs={onClearLogs} />
+        {/* The console adapter only reads lists: a wrong-type log payload
+            renders the waiting-for-stream empty state, never a crash. */}
+        <LiveConsoleWidget
+          processLogs={Array.isArray(processLogs) ? processLogs : []}
+          onClearLogs={onClearLogs}
+        />
       </div>
     </div>
   );

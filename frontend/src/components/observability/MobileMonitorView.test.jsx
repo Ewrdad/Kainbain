@@ -385,6 +385,30 @@ test('fleet registered but idle: pill hidden and the fleet-idle state shows', as
   expect(screen.getByText(/Fleet idle/)).toBeInTheDocument();
 });
 
+test('count-only registry hides the pill while the rows stay fleet-idle', async () => {
+  await renderView(
+    <MobileMonitorView
+      engineState={{ status: 'running', activeStageName: 'Code Generation' }}
+      activeTask={{ id: 't1', title: 'Build user auth', currentStageId: '5' }}
+      stages={[{ id: '5', name: 'Catchup', type: 'agent' }]}
+      runnerAssignmentsOverride={[]}
+      runnerRegistryOverride={2}
+      processLogs={[]}
+      onExit={() => {}}
+    />,
+  );
+
+  // A count carries no runner records: the header reads fleet presence (pill
+  // hidden, named chip) while the rows keep the idle state — coherent.
+  expect(screen.queryByTestId('mobile-engine-state')).not.toBeInTheDocument();
+  expect(screen.getByTestId('mobile-active-stage')).toHaveTextContent(
+    'Build user auth · Catchup',
+  );
+  expect(screen.getByText(/Fleet idle/)).toBeInTheDocument();
+  expect(getRunnerMonitor).not.toHaveBeenCalled();
+  expect(getRunners).not.toHaveBeenCalled();
+});
+
 test('pill fallback keeps a single status announcer for screen readers', async () => {
   await renderView(
     <MobileMonitorView
@@ -457,7 +481,7 @@ test('wrong-type props fail safe to the pill fallback, never a crash', async () 
       runnerStages="not-a-list"
       runnerAssignmentsOverride={[]}
       runnerRegistryOverride={[]}
-      processLogs={[]}
+      processLogs="not-a-list"
       onExit={() => {}}
     />,
   );
@@ -468,6 +492,7 @@ test('wrong-type props fail safe to the pill fallback, never a crash', async () 
     'Harness: Unknown',
   );
   expect(screen.getByText(/Fleet idle/)).toBeInTheDocument();
+  expect(screen.getByText(/Waiting for process logs stream/i)).toBeInTheDocument();
 });
 
 test('header formatters stay importable from the view after the module split', () => {

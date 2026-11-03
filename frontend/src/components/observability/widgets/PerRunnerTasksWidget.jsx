@@ -67,8 +67,10 @@ const FRESHNESS_DOT = {
  *   poller) so one tick issues exactly one fleet read. An unusable `pollMs`
  *   (zero, negative, or non-numeric) falls back to the 5s default so the
  *   hook can never busy-loop the fleet endpoints. Missing endpoint methods
- *   and rejected reads both land as empty fleet state (never throw), so
- *   hosts keep their legacy fallback signal on old backends and outages.
+ *   and rejected reads never throw: before the first successful read they
+ *   land as empty fleet state (hosts keep their legacy fallback signal on
+ *   old backends and outages), and afterwards the last-known fleet picture
+ *   stays until the next poll succeeds instead of flapping to empty.
  * @example const { assignments, registry } = useRunnerMonitor({ pollMs: 5000 });
  ***/
 export const useRunnerMonitor = ({ pollMs = 5000, enabled = true } = {}) => {
@@ -114,8 +116,12 @@ export const useRunnerMonitor = ({ pollMs = 5000, enabled = true } = {}) => {
   }, [safePollMs, enabled]);
 
   return useMemo(() => {
+    // Text-or-numeric Runner ids only: an object id would crash the row that
+    // renders it, so malformed assignments are ignored (fail-safe) instead.
     const assignments = Array.isArray(monitor?.liveAssignments)
-      ? monitor.liveAssignments.filter((a) => a && a.runnerId)
+      ? monitor.liveAssignments.filter(
+          (a) => a && a.runnerId && (typeof a.runnerId === 'string' || typeof a.runnerId === 'number'),
+        )
       : [];
     const registry = new Map(
       (Array.isArray(runners) ? runners : [])
@@ -154,9 +160,11 @@ const runnerLogTail = (task, runnerId, limit = 6) => {
  *   `registryOverride` inject already-polled fleet state (the mobile
  *   header's single poller) and skip this widget's own poll while set —
  *   the same override approach `NowPlayingBar` uses — so existing callers
- *   keep working with zero edits. Compact rows truncate long runner, stage,
- *   harness, and model text on one line (full text in tooltips) so crowded
- *   phone screens never scroll sideways.
+ *   keep working with zero edits. Assignments without a text-or-numeric
+ *   Runner id are ignored, so a half-shaped fleet payload can never crash
+ *   a row. Compact rows truncate long runner, stage, harness, and model
+ *   text on one line (full text in tooltips) so crowded phone screens
+ *   never scroll sideways.
  * @example <PerRunnerTasksWidget tasks={tasks} compact={false} />
  ***/
 export function PerRunnerTasksWidget({
@@ -172,8 +180,10 @@ export function PerRunnerTasksWidget({
   const rawAssignments = Array.isArray(assignmentsOverride)
     ? assignmentsOverride
     : polled.assignments;
+  // Same text-or-numeric Runner-id gate as the hook above: overrides are
+  // caller-built, so a malformed id is ignored (fail-safe) here as well.
   const assignments = (Array.isArray(rawAssignments) ? rawAssignments : []).filter(
-    (a) => a && a.runnerId,
+    (a) => a && a.runnerId && (typeof a.runnerId === 'string' || typeof a.runnerId === 'number'),
   );
   const registry =
     registryOverride instanceof Map
@@ -297,22 +307,25 @@ const PerRunnerCompactRow = ({ assignment: a, task, nowMs, stageName }) => {
         <span className="text-slate-400 truncate min-w-0" title={stageName(a.stageId)}>
           {stageName(a.stageId)}
         </span>
+        {/* Serving fields cross the fleet API boundary untyped: String()
+            keeps a malformed object from crashing the row (React cannot
+            render an object child). */}
         {serving?.harness && (
           <span
             data-testid={`per-runner-compact-harness-${a.runnerId}`}
             className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700 truncate min-w-0"
-            title={serving.harness}
+            title={String(serving.harness)}
           >
-            {serving.harness}
+            {String(serving.harness)}
           </span>
         )}
         {serving?.model && (
           <span
             data-testid={`per-runner-compact-model-${a.runnerId}`}
             className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700 truncate min-w-0"
-            title={serving.model}
+            title={String(serving.model)}
           >
-            {serving.model}
+            {String(serving.model)}
           </span>
         )}
         <span
@@ -364,20 +377,22 @@ const PerRunnerCard = ({ assignment: a, task, record, nowMs, stageName }) => {
         <span className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700">
           Stage: <strong className="text-slate-200">{stageName(a.stageId)}</strong>
         </span>
+        {/* Epoch and serving fields cross the fleet API boundary untyped:
+            String() keeps a malformed object from crashing the card. */}
         <span className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700">
-          epoch {a.epoch ?? '?'}
+          epoch {String(a.epoch ?? '?')}
         </span>
         {serving?.harness && (
           <span className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700">
-            Harness: <strong className="text-slate-200">{serving.harness}</strong>
+            Harness: <strong className="text-slate-200">{String(serving.harness)}</strong>
           </span>
         )}
         {serving?.model && (
           <span
             className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700 truncate"
-            title={serving.model}
+            title={String(serving.model)}
           >
-            Model: <strong className="text-slate-200">{serving.model}</strong>
+            Model: <strong className="text-slate-200">{String(serving.model)}</strong>
           </span>
         )}
         {harnesses.length > 0 && (

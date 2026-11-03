@@ -24,7 +24,11 @@ export function formatMobileMonitorTitle(activeTask = null, engineState = {}, is
   const taskName = formatTaskTitleFirstLine(activeTask?.title || activeTask?.goal || '', '').trim();
   if (taskName) return taskName;
   if (isRunning) return 'No active task';
-  return engineState?.activeStageName || 'No active stage';
+  // The stranded stage name is display text, but a numeric id (or worse, an
+  // object) can leak through from a malformed payload — coerce so the
+  // documented string return always holds and the header never crashes.
+  const strandedStageName = engineState?.activeStageName;
+  return strandedStageName ? String(strandedStageName) : 'No active stage';
 }
 
 /***

@@ -406,3 +406,54 @@ right-side title path already avoids duplicating.
   no migration, plain-revert rollback; single shared 5s poller pinned by
   test; legacy pill fallback on every failure direction; deprecated props
   and formatter re-exports retained; mixed-version safe both directions.
+
+## Cleanup hardening pass 3 (2026-11-03, fail-safe sweep on fleet data)
+
+- Found genuine crash directions the prior wrong-type traces missed: they
+  covered wrong-type *props* but not wrong-type *nested fleet fields*.
+  An object-typed `runnerId` crashed the rows/cards that render it
+  (`Objects are not valid as a React child`, proven by failing-first
+  tests), and likewise for object `serving.harness`/`serving.model`,
+  `epoch`, a wrong-type `processLogs` (the console adapter calls
+  `.filter`), and an object `activeStageName` through the title
+  formatter. All are backend/version-skew shapes, unlikely but App
+  boundary-level if hit (the whole view falls back, status hidden).
+- Fixes, all fail-visible: the three assignment filters (hook, widget
+  overrides, header resolver) now require a text-or-numeric Runner id —
+  malformed assignments read as no fleet (pill stays visible, rows stay
+  idle); `String()` coercions on epoch/serving renders (row + desktop
+  card); the title formatter coerces the stranded stage name so its
+  documented string return always holds; the view passes non-list log
+  payloads to the console as `[]` (same waiting-for-stream empty state
+  null already rendered — behavior-preserving for in-contract inputs).
+  Well-shaped rendering is byte-identical: strings/numbers pass the new
+  gates and `String()` renders exactly as before.
+- Doc accuracy: `useRunnerMonitor` JSDoc now states the real failure
+  contract (pre-first-read failures land empty; later failures keep the
+  last-known picture instead of flapping), the widget documents the
+  Runner-id gate, and the view documents the count-registry split (idle
+  rows + fleet presence). No new functions, no new tokens, no
+  design-pattern mentions; new-test code follows the co-located suites.
+- Six new pins (tests-first, all failed authentically pre-fix): resolver
+  non-text id, title numeric stage, widget override + polled non-text
+  ids, widget object serving/epoch (row + card), view count-registry
+  coherence, and wrong-type `processLogs` folded into the existing
+  wrong-type view test. Per the KB repetition standard the one-line id
+  gate stays embedded at its 3 sites rather than abstracted.
+- Gates observed this pass: focused 8 files / 124 passed, frontend 293
+  files / 4001 passed, api 372 files / 6153 passed + 3 skipped, `npm run
+  lint` 0 errors (touched files warning-free via `--max-warnings 0`),
+  `npm run docs:check` exit 0 (687 missing vs 695 grandfathered),
+  frontend build exit 0, jsdoc grandfather 14/14, 0 `act` warnings in
+  the task suites. `check:one-function` (manual, not CI) flags exactly
+  the same 3 pre-existing files with the same counts as the main tip
+  (3/2/4) — this pass adds no functions. Branch api files remain
+  byte-identical to the main tip (two-dot diff empty); `EngineStatePill`,
+  `mobileModelDetails`, `ObservabilityDashboard`, and `NowPlayingBar`
+  have no branch-side diff. Canary E2E not re-run (needs a live app URL
+  + browsers; CI failures are `waitForAppReady` timeouts in unrelated
+  specs, failing before any mobile-monitor code runs).
+- Operations continuity unchanged: frontend-only, no backend/API change,
+  no migration, plain-revert rollback; single shared 5s poller still
+  pinned; every newly covered malformed input lands on the legacy pill
+  plus idle/unknown wording, never a crash or a blank header.

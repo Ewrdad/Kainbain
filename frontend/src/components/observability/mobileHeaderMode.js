@@ -12,8 +12,10 @@ import { resolveDisplayedStage } from '../tasks/runningTask';
  *   task plus the stage it is on (`<task> · <stage>`, task first) so the
  *   unnamed `ACTIVE: <stage>` pill never leaves the task anonymous. Fails
  *   safe: unknown registry shapes count as no fleet (the pill stays
- *   visible — status is never hidden on bad input), and a malformed stage
- *   name falls back to the task-only chip instead of crashing the header.
+ *   visible — status is never hidden on bad input), assignments without a
+ *   text-or-numeric Runner id are ignored (an object id would crash the
+ *   rows that render it), and a malformed stage name falls back to the
+ *   task-only chip instead of crashing the header.
  *   The contract is deliberately two fields: whether the pill fallback
  *   shows, and the named chip. Fleet presence is exactly the negation of
  *   the pill, so it is kept as a local (not returned) — the view already
@@ -38,8 +40,14 @@ export function resolveMobileHeaderMode(options = {}) {
     stages = [],
     engineState = {},
   } = options ?? {};
+  // Text-or-numeric Runner ids only: an object id would crash the rows
+  // that render it, so malformed assignments read as no fleet (the pill
+  // stays visible) instead of hiding status on bad input.
   const liveFleetAssignments = (Array.isArray(assignments) ? assignments : []).filter(
-    (assignment) => assignment && assignment.runnerId,
+    (assignment) =>
+      assignment &&
+      assignment.runnerId &&
+      (typeof assignment.runnerId === 'string' || typeof assignment.runnerId === 'number'),
   );
   let registryCount = 0;
   if (registry instanceof Map) {

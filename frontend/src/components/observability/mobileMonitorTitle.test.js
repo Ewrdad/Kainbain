@@ -45,4 +45,11 @@ describe('formatMobileMonitorTitle', () => {
     expect(formatMobileMonitorTitle(null, {}, true)).toBe('No active task');
     expect(formatMobileMonitorTitle()).toBe('No active stage');
   });
+
+  test('a non-text stranded stage name renders as text, never a crash', () => {
+    // A numeric id can leak through from a malformed payload; the header
+    // renders it as text so the documented string return always holds.
+    expect(formatMobileMonitorTitle(null, { activeStageName: 7 }, false)).toBe('7');
+    expect(typeof formatMobileMonitorTitle(null, { activeStageName: 7 }, false)).toBe('string');
+  });
 });
