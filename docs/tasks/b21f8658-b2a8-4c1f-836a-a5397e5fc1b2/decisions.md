@@ -457,3 +457,60 @@ right-side title path already avoids duplicating.
   no migration, plain-revert rollback; single shared 5s poller still
   pinned; every newly covered malformed input lands on the legacy pill
   plus idle/unknown wording, never a crash or a blank header.
+
+## Cleanup independent audit (2026-11-03, cleanup stage continued)
+
+- Fresh-eyes audit from the code, not from prior notes: no production or
+  test change. The view, both resolvers, the title formatter, and the
+  widget were re-read end to end; every wrong-type direction was re-traced
+  through the new code and the shared helpers' own guards
+  (`formatTaskTitleFirstLine` typeof-guarded, `resolveDisplayedStage`
+  `?.`/`Array.isArray`/`String()`, `isMonitorRunning` `?.`,
+  `formatModelRef` typeof-guarded, `resolveMobileModelDetails` all-`?.`).
+  Template-literal renders cannot throw for JSON-representable types (only
+  Symbol throws, and Symbols cannot cross the API boundary), so the
+  legacy-pill-visible failure direction holds on every reachable input.
+  No defect found worth churning tested code for.
+- Regression proofs re-run, not trusted: focused 9 files / 130 passed;
+  full `test:unit` exit 0 (api 372 files / 6153 passed + 3 skipped,
+  frontend 293 files / 4001 passed); `lint` 0 errors with the 10 touched
+  files at `--max-warnings 0`; `check-jsdoc-example` PASS (687 missing vs
+  695 grandfathered); grandfather test 14/14; frontend build exit 0;
+  `check-component-compat` + `detect-changed-components` exit 0; no
+  banned pattern words in the 5 touched sources; new modules declare one
+  function each (not flagged). Dashboard-suite PerRunner `act` warnings
+  re-proven pre-existing by running that suite in a detached merge-base
+  worktree: identical 14 warnings on base and branch (untouched suite,
+  left for its owner; task suites themselves emit 0).
+- Base-vs-branch re-verified: task-only (5 view/resolver/widget sources +
+  co-located tests, doc-only api moves, task docs). Title formatter move
+  confirmed verbatim except the pinned `String()` hardening (base returned
+  a raw object stage name, which would crash React). Formatter-importer
+  search shows only the view, its re-export shim, and co-located tests.
+  The dashboard still passes the deprecated `stats`/`queueCount` props
+  (`ObservabilityDashboard.jsx:697-698`), so their retention is
+  load-bearing, not dead weight. The 3 api files remain byte-identical to
+  the main tip; all three new modules are absent on main (no divergent
+  evolution); main-side changes touch only files this branch never
+  touches. `check:one-function` (manual, not CI) flags exactly the same 3
+  pre-existing files with the same counts as the main tip (3/2/4).
+- New finding, pre-existing and out of scope: `npm run docs:check` exits 1
+  on `check-doc-links` — `README.md:692` references
+  `api/bundled-changelog.json`, a gitignored publish-time artifact
+  (`publish.sh` generates it; absent in fresh checkouts). README and the
+  checker are byte-identical across merge-base, branch, and main tip, so
+  the failure exists on main too and is environmental, not task-caused
+  (checkouts that ran a publish step carry the file and pass). The
+  task-relevant docs gates pass standalone (api docs tests 7 files / 37,
+  `check-jsdoc-example` PASS). Left untouched: fixing it means
+  shared-harness churn outside this task, and it is not in CI's gate list.
+  Canary E2E not re-run (needs a live app URL + browsers; every failure
+  report on this branch shows all fast gates PASS and fails only on canary
+  `waitForAppReady` timeouts / `ERR_INSUFFICIENT_RESOURCES` in unrelated
+  specs).
+- Operations continuity unchanged: frontend-only, no backend/API change,
+  no migration, plain-revert rollback; one shared 5s poller pinned by test
+  (strictly fewer fleet requests than the base's separate widget poll);
+  mixed-version safe in both directions (missing endpoint methods read as
+  empty fleet). Known tradeoff stands: on first load the pill shows until
+  the first fleet read lands (fail-visible by design, one quick swap).
