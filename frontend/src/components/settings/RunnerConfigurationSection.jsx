@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../services/api';
 import { copyToClipboard } from '../../services/clipboard';
 import { formatRunnerElapsed } from '../observability/widgets/PerRunnerTasksWidget';
@@ -6,10 +6,8 @@ import {
   defaultRunnerConfig,
   runnerDisplayName,
   advertisedToolIds,
-  advertisedModels,
   effectiveTools,
   effectiveModels,
-  effectiveDirectoryValue,
   displayDirectories,
   modelUnion,
   modelTogglePatch,
@@ -29,6 +27,11 @@ import {
   runnerCommands,
   canRequestUpdate,
   canRequestRediscovery,
+  mergeRunnerRecord,
+  dropDraftFor,
+  buildDirectoryDraft,
+  normalizeModelId,
+  filterVisibleRunners,
 } from './runnerConfigHelpers';
 
 const DirectoryField = ({ label, testId, value, hint, isDefault, isUnknown, error, busy, onChange, onSave }) => (
@@ -89,16 +92,33 @@ export function RunnerConfigurationSection() {
   const [filter, setFilter] = useState('');
   const [customModel, setCustomModel] = useState('');
   const [revokeConfirm, setRevokeConfirm] = useState(null);
+  // Tracks follow-up refresh timers (post-command polls) and whether the
+  // screen is still mounted: timers are cleared on unmount and every state
+  // write behind them re-checks, so a slow poll can never write into an
+  // unmounted screen or a runner row the operator already left.
+  const refreshTimers = useRef([]);
+  const isLive = useRef(true);
+
+  useEffect(() => {
+    isLive.current = true;
+    return () => {
+      isLive.current = false;
+      for (const timer of refreshTimers.current) clearTimeout(timer);
+      refreshTimers.current = [];
+    };
+  }, []);
 
   const loadRunners = useCallback(async () => {
     setLoadError(null);
     try {
       const list = await api.getRunners();
+      if (!isLive.current) return;
       const rows = Array.isArray(list) ? list : [];
       setRunners(rows);
       setSelectedId((prev) => resolveSelectedId(visibleRunners(rows), prev));
       try {
         const monitor = await api.getRunnerMonitor();
+        if (!isLive.current) return;
         const byRunner = {};
         for (const row of monitor?.liveAssignments || []) {
           if (row && typeof row.runnerId === 'string') byRunner[row.runnerId] = row;
@@ -107,18 +127,22 @@ export function RunnerConfigurationSection() {
         setScheduler(monitor?.scheduler || null);
         setNowMs(Date.now());
       } catch {
+        if (!isLive.current) return;
         setAssignments({});
         setScheduler(null);
       }
       try {
         const fetched = await api.listProjects();
+        if (!isLive.current) return;
         setProjects(Array.isArray(fetched) ? fetched : fetched?.projects || []);
         setProjectsError(null);
       } catch {
+        if (!isLive.current) return;
         setProjects([]);
         setProjectsError('Could not load projects — the picker is unavailable.');
       }
     } catch (err) {
+      if (!isLive.current) return;
       setRunners(null);
       setLoadError(err?.message || 'Could not load Runner registrations.');
     }
@@ -127,6 +151,53 @@ export function RunnerConfigurationSection() {
   useEffect(() => {
     void Promise.resolve().then(() => loadRunners());
   }, [loadRunners]);
+
+  // The custom-model box and the revoke confirm belong to one Runner.
+  // Cleared WITHOUT an effect (react-hooks/set-state-in-effect): adjust
+  // state during render when the selected row moves — the documented React
+  // alternative to sync-effects (same pattern as ProjectSettings). Moving
+  // rows starts both empty so text typed for r1 can never be added to —
+  // or revoke — r2; re-clicking the selected row keeps drafts.
+  const [clearedRunnerId, setClearedRunnerId] = useState(selectedId);
+  if (selectedId !== clearedRunnerId) {
+    setClearedRunnerId(selectedId);
+    setCustomModel('');
+    setRevokeConfirm(null);
+  }
+
+  /***
+   * MARK: queueRunnerRefresh
+   * @description Re-reads one Runner row a few times after a queued
+   *   backend-to-Runner command, so queued/failed states appear without a
+   *   manual reload. Stops early on unmount or on the first failed-update
+   *   report; malformed rows are ignored, never written into the roster.
+   ***/
+  const queueRunnerRefresh = useCallback(({ runnerId, rounds, onFailedUpdate } = {}) => {
+    if (typeof runnerId !== 'string' || !runnerId || !Number.isFinite(rounds) || rounds <= 0) return;
+    let tries = 0;
+    const poll = async () => {
+      tries += 1;
+      try {
+        const list = await api.getRunners();
+        if (!isLive.current) return;
+        const record = Array.isArray(list) ? list.find((r) => r?.runnerId === runnerId) : null;
+        if (record) {
+          setRunners((prev) => mergeRunnerRecord({ previousRunners: prev, incomingRecord: record }));
+          if (record.updateStatus?.state === 'failed' && typeof onFailedUpdate === 'function') {
+            onFailedUpdate(record.updateStatus.reason || 'Runner update failed.');
+            return;
+          }
+        }
+      } catch {
+        // A failed poll is best-effort only: the next round retries, and
+        // the screen keeps its last good roster either way.
+      }
+      if (isLive.current && tries < rounds) {
+        refreshTimers.current.push(setTimeout(poll, 2000));
+      }
+    };
+    refreshTimers.current.push(setTimeout(poll, 1500));
+  }, []);
 
   const mutate = useCallback(
     async (runnerId, action) => {
@@ -147,10 +218,12 @@ export function RunnerConfigurationSection() {
         }
         await loadRunners();
       } catch (err) {
-        setActionError(err?.message || `Could not ${action} Runner ${runnerId}.`);
+        if (isLive.current) setActionError(err?.message || `Could not ${action} Runner ${runnerId}.`);
       } finally {
-        setBusyKey(null);
-        setRevokeConfirm(null);
+        if (isLive.current) {
+          setBusyKey(null);
+          setRevokeConfirm(null);
+        }
       }
     },
     [loadRunners],
@@ -168,13 +241,13 @@ export function RunnerConfigurationSection() {
           ? prev.map((r) => (r.runnerId === runnerId ? { ...r, operatorConfig: nextConfig } : r))
           : prev,
       );
-      if (successNote) setNotice(successNote);
+      if (successNote && isLive.current) setNotice(successNote);
       return true;
     } catch (err) {
-      setActionError(err?.message || `Could not save Runner ${runnerId} settings.`);
+      if (isLive.current) setActionError(err?.message || `Could not save Runner ${runnerId} settings.`);
       return false;
     } finally {
-      setBusyKey(null);
+      if (isLive.current) setBusyKey(null);
     }
   }, []);
 
@@ -184,29 +257,22 @@ export function RunnerConfigurationSection() {
     setActionError(null);
     try {
       const record = await api.getRunnerConfig(selectedId);
+      if (!isLive.current) return;
       const nextConfig = record?.operatorConfig || defaultRunnerConfig(record || {});
       setRunners((prev) =>
-        Array.isArray(prev)
-          ? prev.map((r) =>
-              r.runnerId === selectedId ? { ...r, ...record, operatorConfig: nextConfig } : r,
-            )
-          : prev,
+        mergeRunnerRecord({
+          previousRunners: prev,
+          incomingRecord: { ...record, operatorConfig: nextConfig },
+        }),
       );
-      setNameDrafts((prev) => {
-        const next = { ...prev };
-        delete next[selectedId];
-        return next;
-      });
-      setDirDrafts((prev) => {
-        const next = { ...prev };
-        delete next[selectedId];
-        return next;
-      });
+      setNameDrafts((prev) => dropDraftFor({ drafts: prev, runnerId: selectedId }));
+      setDirDrafts((prev) => dropDraftFor({ drafts: prev, runnerId: selectedId }));
       setNotice('Reloaded Runner settings from the backend.');
     } catch (err) {
+      if (!isLive.current) return;
       setActionError(err?.message || `Could not reload Runner ${selectedId}.`);
     } finally {
-      setBusyKey(null);
+      if (isLive.current) setBusyKey(null);
     }
   }, [selectedId]);
 
@@ -234,16 +300,7 @@ export function RunnerConfigurationSection() {
   }
 
   const visible = visibleRunners(runners);
-  const filtered = filter.trim()
-    ? visible.filter((r) => {
-        const q = filter.trim().toLowerCase();
-        return (
-          String(r.runnerId || '').toLowerCase().includes(q) ||
-          String(runnerDisplayName(r) || '').toLowerCase().includes(q) ||
-          String(r.status || '').toLowerCase().includes(q)
-        );
-      })
-    : visible;
+  const filtered = filterVisibleRunners({ runners: visible, query: filter });
   const selected = visible.find((r) => r.runnerId === selectedId) || null;
   const pending = visible.filter((r) => r.status === 'pending');
   const config = selected ? defaultRunnerConfig(selected) : null;
@@ -311,24 +368,32 @@ export function RunnerConfigurationSection() {
           : 'This Runner is too old to update on request — update it manually.')
         : 'Updates apply when the Runner is idle — running work is never interrupted.');
 
+  /***
+   * MARK: handleNameSave
+   * @description Saves the Runner display-name draft; a blank draft clears
+   *   the name back to the Runner id. Drafts survive failed saves so the
+   *   operator never loses typed text to a network error.
+   ***/
   const handleNameSave = () => {
     if (!selected || !nameDirty) return;
     const trimmed = String(nameDraft).trim();
     const patch = trimmed ? { displayName: trimmed } : { displayName: null };
     const note = trimmed ? 'Runner name saved.' : 'Runner name reset to the Runner id.';
     void saveConfig(selected.runnerId, patch, note).then((ok) => {
-      if (ok) {
-        setNameDrafts((prev) => {
-          const next = { ...prev };
-          delete next[selected.runnerId];
-          return next;
-        });
+      if (ok && isLive.current) {
+        setNameDrafts((prev) => dropDraftFor({ drafts: prev, runnerId: selected.runnerId }));
       }
     });
   };
 
+  /***
+   * MARK: handleDirectorySave
+   * @description Validates then saves one directory field. Inline errors
+   *   block the network call; drafts survive failed saves.
+   ***/
   const handleDirectorySave = (field) => {
     if (!selected) return;
+    if (field !== 'masterDir' && field !== 'worktreeDir') return;
     const value = String(field === 'masterDir' ? masterValue : worktreeValue).trim();
     const errMsg = validateSingleDirectory(value);
     const confirmKey = `${selected.runnerId}:${field}`;
@@ -337,12 +402,8 @@ export function RunnerConfigurationSection() {
       return;
     }
     void saveConfig(selected.runnerId, { directories: { [field]: value } }, 'Directory saved.').then((saved) => {
-      if (saved) {
-        setDirDrafts((prev) => {
-          const next = { ...prev };
-          delete next[selected.runnerId];
-          return next;
-        });
+      if (saved && isLive.current) {
+        setDirDrafts((prev) => dropDraftFor({ drafts: prev, runnerId: selected.runnerId }));
         setDirErrors((prev) => {
           const next = { ...prev };
           delete next[confirmKey];
@@ -350,6 +411,36 @@ export function RunnerConfigurationSection() {
         });
       }
     });
+  };
+
+  /***
+   * MARK: handleDirectoryType
+   * @description Merges one directory keystroke over the live draft, so a
+   *   fast Master-then-Worktree edit keeps both fields. Also clears that
+   *   field's inline error while the operator retypes.
+   ***/
+  const handleDirectoryType = (field, value) => {
+    if (!selected || (field !== 'masterDir' && field !== 'worktreeDir')) return;
+    const confirmKey = `${selected.runnerId}:${field}`;
+    setDirErrors((prev) => {
+      if (!(confirmKey in prev)) return prev;
+      const next = { ...prev };
+      delete next[confirmKey];
+      return next;
+    });
+    const fallbackDirs = {
+      masterDir: displayDirs?.masterDir.value || '',
+      worktreeDir: displayDirs?.worktreeDir.value || '',
+    };
+    setDirDrafts((prev) => ({
+      ...prev,
+      [selected.runnerId]: buildDirectoryDraft({
+        previousDraft: prev[selected.runnerId] || null,
+        fallbackDirs,
+        field,
+        value,
+      }),
+    }));
   };
 
   const handleToolToggle = (toolId, checked) => {
@@ -368,15 +459,21 @@ export function RunnerConfigurationSection() {
     void saveConfig(selected.runnerId, { availableModels: patchVal }, patchVal === null ? 'Models reset to advertised.' : 'Models saved.').then(() => {});
   };
 
+  /***
+   * MARK: handleCustomModelAdd
+   * @description Adds one hand-typed model id to the allowlist. Blank or
+   *   over-long ids are ignored with no network call.
+   ***/
   const handleCustomModelAdd = () => {
-    const v = customModel.trim();
-    if (!v || !selected) return;
+    if (!selected) return;
+    const cleaned = normalizeModelId({ value: customModel });
+    if (!cleaned) return;
     const set = new Set(effectiveModelIds);
-    set.add(v);
+    set.add(cleaned);
     const next = [...set];
     const patchVal = modelTogglePatch(selected, next);
     void saveConfig(selected.runnerId, { availableModels: patchVal }, 'Models saved.').then((ok) => {
-      if (ok) setCustomModel('');
+      if (ok && isLive.current) setCustomModel('');
     });
   };
 
@@ -385,6 +482,11 @@ export function RunnerConfigurationSection() {
     void saveConfig(selected.runnerId, { availableModels: null }, 'Models reset — this Runner matches its advertised models again.').then(() => {});
   };
 
+  /***
+   * MARK: handleRediscover
+   * @description Queues model re-detection on the Runner, then refreshes
+   *   the row a few times so new models appear without a manual reload.
+   ***/
   const handleRediscover = async () => {
     if (!selected) return;
     const key = `rediscover:${selected.runnerId}`;
@@ -392,32 +494,22 @@ export function RunnerConfigurationSection() {
     setActionError(null);
     try {
       await api.requestModelRediscovery(selected.runnerId);
+      if (!isLive.current) return;
       setNotice('Re-detection queued — Runner will refresh on next heartbeat.');
-      // Brief poll for updated models
-      let tries = 0;
-      const poll = async () => {
-        tries += 1;
-        try {
-          const list = await api.getRunners();
-          const rec = Array.isArray(list) ? list.find((r) => r.runnerId === selected.runnerId) : null;
-          if (rec) {
-            setRunners((prev) =>
-              Array.isArray(prev)
-                ? prev.map((r) => (r.runnerId === selected.runnerId ? { ...r, ...rec } : r))
-                : [rec],
-            );
-          }
-          if (tries < 3) setTimeout(poll, 2000);
-        } catch {}
-      };
-      setTimeout(poll, 1500);
+      queueRunnerRefresh({ runnerId: selected.runnerId, rounds: 3 });
     } catch (err) {
+      if (!isLive.current) return;
       setActionError(err?.message || 'Could not queue re-detection.');
     } finally {
-      setBusyKey(null);
+      if (isLive.current) setBusyKey(null);
     }
   };
 
+  /***
+   * MARK: handleUpdateNow
+   * @description Queues an idle-only Runner update, then watches the row
+   *   for progress: a failed update surfaces its reason and stops polling.
+   ***/
   const handleUpdateNow = async () => {
     if (!selected) return;
     const key = `update:${selected.runnerId}`;
@@ -425,32 +517,20 @@ export function RunnerConfigurationSection() {
     setActionError(null);
     try {
       await api.requestRunnerUpdate(selected.runnerId);
+      if (!isLive.current) return;
       setNotice('Update queued — Runner will update when idle.');
-      // Brief poll for progress/failure state from the runner.
-      let tries = 0;
-      const poll = async () => {
-        tries += 1;
-        try {
-          const list = await api.getRunners();
-          const rec = Array.isArray(list) ? list.find((r) => r.runnerId === selected.runnerId) : null;
-          if (rec) {
-            setRunners((prev) =>
-              Array.isArray(prev)
-                ? prev.map((r) => (r.runnerId === selected.runnerId ? { ...r, ...rec } : r))
-                : [rec],
-            );
-            if (rec.updateStatus?.state === 'failed') {
-              setActionError(rec.updateStatus.reason || 'Runner update failed.');
-            }
-          }
-          if (tries < 5) setTimeout(poll, 2000);
-        } catch {}
-      };
-      setTimeout(poll, 1500);
+      queueRunnerRefresh({
+        runnerId: selected.runnerId,
+        rounds: 5,
+        onFailedUpdate: (reason) => {
+          if (isLive.current) setActionError(reason);
+        },
+      });
     } catch (err) {
+      if (!isLive.current) return;
       setActionError(err?.message || 'Could not queue update.');
     } finally {
-      setBusyKey(null);
+      if (isLive.current) setBusyKey(null);
     }
   };
 
@@ -751,8 +831,8 @@ export function RunnerConfigurationSection() {
               </div>
 
               <div className="flex flex-col gap-3">
-                <DirectoryField label="Master directory:" testId={`runner-masterdir-${selected.runnerId}`} value={masterValue} hint="/srv/kb" isDefault={masterIsDefault && !dirDraft} isUnknown={masterIsUnknown} error={dirErrors[`${selected.runnerId}:masterDir`]} busy={Boolean(busyKey)} onChange={(value) => { setDirErrors((prev) => { const next = { ...prev }; delete next[`${selected.runnerId}:masterDir`]; return next; }); setDirDrafts((prev) => ({ ...prev, [selected.runnerId]: { masterDir: value, worktreeDir: dirDraft ? dirDraft.worktreeDir : displayDirs.worktreeDir.value } })); }} onSave={() => handleDirectorySave('masterDir')} />
-                <DirectoryField label="Worktree directory:" testId={`runner-worktreedir-${selected.runnerId}`} value={worktreeValue} hint="/srv/kb-trees" isDefault={worktreeIsDefault && !dirDraft} isUnknown={worktreeIsUnknown} error={dirErrors[`${selected.runnerId}:worktreeDir`]} busy={Boolean(busyKey)} onChange={(value) => { setDirErrors((prev) => { const next = { ...prev }; delete next[`${selected.runnerId}:worktreeDir`]; return next; }); setDirDrafts((prev) => ({ ...prev, [selected.runnerId]: { masterDir: dirDraft ? dirDraft.masterDir : displayDirs.masterDir.value, worktreeDir: value } })); }} onSave={() => handleDirectorySave('worktreeDir')} />
+                <DirectoryField label="Master directory:" testId={`runner-masterdir-${selected.runnerId}`} value={masterValue} hint="/srv/kb" isDefault={masterIsDefault && !dirDraft} isUnknown={masterIsUnknown} error={dirErrors[`${selected.runnerId}:masterDir`]} busy={Boolean(busyKey)} onChange={(value) => handleDirectoryType('masterDir', value)} onSave={() => handleDirectorySave('masterDir')} />
+                <DirectoryField label="Worktree directory:" testId={`runner-worktreedir-${selected.runnerId}`} value={worktreeValue} hint="/srv/kb-trees" isDefault={worktreeIsDefault && !dirDraft} isUnknown={worktreeIsUnknown} error={dirErrors[`${selected.runnerId}:worktreeDir`]} busy={Boolean(busyKey)} onChange={(value) => handleDirectoryType('worktreeDir', value)} onSave={() => handleDirectorySave('worktreeDir')} />
                 <p className="text-[11px] text-text-muted">Directories are stored as this Runner's preference on the backend. When empty, the Runner's own folders are used.</p>
               </div>
 

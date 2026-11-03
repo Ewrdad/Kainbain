@@ -513,3 +513,123 @@ export const validateSingleDirectory = (value) => {
   if (value.trim().length > 1024) return 'Must be at most 1024 characters.';
   return null;
 };
+
+/***
+ * MARK: mergeRunnerRecord
+ * @description Merges one refreshed Runner record into the roster kept in
+ *   state. Records without a usable Runner id are ignored (the roster is
+ *   returned unchanged) so a malformed refresh can never wipe the screen.
+ *   A non-array roster falls back to a single-row roster when the incoming
+ *   record is usable, otherwise it is returned as-is.
+ * @example mergeRunnerRecord({ previousRunners: [{ runnerId: 'a' }], incomingRecord: { runnerId: 'a', status: 'active' } }) => [{ runnerId: 'a', status: 'active' }]
+ * @param {Object} options - Labelled inputs.
+ * @param {Object[]} [options.previousRunners=[]] - Current roster rows.
+ * @param {Object} [options.incomingRecord=null] - Refreshed Runner record.
+ * @returns {Object[]|*} Next roster, or the previous value when there is nothing safe to merge.
+ ***/
+export const mergeRunnerRecord = ({ previousRunners = [], incomingRecord = null } = {}) => {
+  if (!incomingRecord || typeof incomingRecord.runnerId !== 'string' || !incomingRecord.runnerId) {
+    return previousRunners;
+  }
+  if (!Array.isArray(previousRunners)) {
+    return [incomingRecord];
+  }
+  let matched = false;
+  const next = previousRunners.map((row) => {
+    if (row && row.runnerId === incomingRecord.runnerId) {
+      matched = true;
+      return { ...row, ...incomingRecord };
+    }
+    return row;
+  });
+  return matched ? next : [...next, incomingRecord];
+};
+
+/***
+ * MARK: dropDraftFor
+ * @description Removes one Runner's draft entry (name or directory edits)
+ *   after a successful save or a reload. Unknown ids and non-object draft
+ *   maps are returned unchanged (or as an empty map) so a typo can never
+ *   clear another Runner's edits.
+ * @example dropDraftFor({ drafts: { a: 'x' }, runnerId: 'a' }) => ({})
+ * @param {Object} options - Labelled inputs.
+ * @param {Object} [options.drafts={}] - Current draft map.
+ * @param {string} [options.runnerId=''] - Runner id whose draft is done.
+ * @returns {Object} Next draft map.
+ ***/
+export const dropDraftFor = ({ drafts = {}, runnerId = '' } = {}) => {
+  const source = drafts && typeof drafts === 'object' && !Array.isArray(drafts) ? drafts : {};
+  if (typeof runnerId !== 'string' || !runnerId || !(runnerId in source)) return { ...source };
+  const next = { ...source };
+  delete next[runnerId];
+  return next;
+};
+
+/***
+ * MARK: buildDirectoryDraft
+ * @description Merges one directory field edit over the in-progress draft
+ *   (or the displayed fallback values for the first keystroke), so typing
+ *   in Master then Worktree quickly can never clobber the other field.
+ *   Unknown field names return the previous draft unchanged.
+ * @example buildDirectoryDraft({ previousDraft: null, fallbackDirs: { masterDir: '/m', worktreeDir: '/w' }, field: 'masterDir', value: '/n' }) => ({ masterDir: '/n', worktreeDir: '/w' })
+ * @param {Object} options - Labelled inputs.
+ * @param {Object|null} [options.previousDraft=null] - Current draft for this Runner, if any.
+ * @param {Object} [options.fallbackDirs={}] - Displayed values used for the first keystroke.
+ * @param {string} options.field - Directory field being edited (`masterDir` or `worktreeDir`).
+ * @param {string} [options.value=''] - New field value.
+ * @returns {Object} Next draft for this Runner.
+ ***/
+export const buildDirectoryDraft = ({ previousDraft = null, fallbackDirs = {}, field, value = '' } = {}) => {
+  const base =
+    previousDraft && typeof previousDraft === 'object'
+      ? previousDraft
+      : {
+          masterDir: typeof fallbackDirs?.masterDir === 'string' ? fallbackDirs.masterDir : '',
+          worktreeDir: typeof fallbackDirs?.worktreeDir === 'string' ? fallbackDirs.worktreeDir : '',
+        };
+  if (field !== 'masterDir' && field !== 'worktreeDir') return { ...base };
+  return { ...base, [field]: typeof value === 'string' ? value : '' };
+};
+
+/***
+ * MARK: normalizeModelId
+ * @description Cleans one hand-typed model id for the allowlist: trims it
+ *   and rejects blanks, non-strings, and ids over 256 characters. Returns
+ *   null when there is nothing safe to add, so callers can skip the
+ *   network call entirely.
+ * @example normalizeModelId({ value: '  m1  ' }) => 'm1'
+ * @param {Object} options - Labelled inputs.
+ * @param {*} [options.value=''] - Raw typed value.
+ * @returns {string|null} Clean model id, or null when unusable.
+ ***/
+export const normalizeModelId = ({ value = '' } = {}) => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 256) return null;
+  return trimmed;
+};
+
+/***
+ * MARK: filterVisibleRunners
+ * @description Narrows the visible roster by a free-text query matching
+ *   the Runner id, display name, or status (case-insensitive). A blank
+ *   query returns the visible list unchanged.
+ * @example filterVisibleRunners({ runners: [{ runnerId: 'a' }], query: 'A' }) => [{ runnerId: 'a' }]
+ * @param {Object} options - Labelled inputs.
+ * @param {Object[]} [options.runners=[]] - Visible Runner records.
+ * @param {string} [options.query=''] - Raw filter text.
+ * @returns {Object[]} Matching Runner records.
+ ***/
+export const filterVisibleRunners = ({ runners = [], query = '' } = {}) => {
+  const list = Array.isArray(runners) ? runners : [];
+  const q = typeof query === 'string' ? query.trim().toLowerCase() : '';
+  if (!q) return list;
+  return list.filter((runner) => {
+    if (!runner || typeof runner !== 'object') return false;
+    return (
+      String(runner.runnerId || '').toLowerCase().includes(q) ||
+      String(runnerDisplayName(runner) || '').toLowerCase().includes(q) ||
+      String(runner.status || '').toLowerCase().includes(q)
+    );
+  });
+};

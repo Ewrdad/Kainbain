@@ -756,6 +756,76 @@ describe('RunnerConfigurationSection', () => {
     expect(failed).toHaveAttribute('role', 'alert');
   });
 
+  it('ignores an over-long custom model id with no network call', async () => {
+    runnersFixture([{ ...ACTIVE_RUNNER, capabilities: { harnesses: [{ id: 'pi' }], models: ['m1'] } }]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    updateRunnerConfig.mockClear();
+    fireEvent.change(screen.getByTestId('runner-custom-model-r1'), { target: { value: `  ${'x'.repeat(300)}  ` } });
+    fireEvent.click(screen.getByTestId('runner-add-model-r1'));
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-models-list-r1')).toBeTruthy();
+    });
+    expect(updateRunnerConfig).not.toHaveBeenCalled();
+  });
+
+  it('ignores a blank custom model id with no network call', async () => {
+    runnersFixture([{ ...ACTIVE_RUNNER, capabilities: { harnesses: [{ id: 'pi' }], models: ['m1'] } }]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    updateRunnerConfig.mockClear();
+    fireEvent.change(screen.getByTestId('runner-custom-model-r1'), { target: { value: '   ' } });
+    // The Add button stays disabled for blank input.
+    expect(screen.getByTestId('runner-add-model-r1')).toBeDisabled();
+    expect(updateRunnerConfig).not.toHaveBeenCalled();
+  });
+
+  it('filters the roster by Runner name', async () => {
+    const named = (id, name) => ({
+      ...ACTIVE_RUNNER,
+      runnerId: id,
+      operatorConfig: { ...OPERATOR_CONFIG, displayName: name },
+    });
+    runnersFixture([
+      named('r1', 'Primary'),
+      named('r2', 'Secondary'),
+      named('r3', 'Tertiary'),
+      named('r4', 'Fourth'),
+      named('r5', 'Fifth'),
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    fireEvent.change(screen.getByTestId('runner-filter'), { target: { value: 'secondary' } });
+    await waitFor(() => {
+      expect(screen.queryByTestId('runner-row-r1')).toBeNull();
+    });
+    expect(screen.getByTestId('runner-row-r2')).toBeTruthy();
+  });
+
+  it('clears the custom-model box when the operator moves to another Runner', async () => {
+    runnersFixture();
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    fireEvent.change(screen.getByTestId('runner-custom-model-r1'), { target: { value: 'typed-for-r1' } });
+    fireEvent.click(screen.getByTestId('runner-select-r2'));
+    await screen.findByTestId('runner-detail-r2');
+    expect(screen.getByTestId('runner-custom-model-r2')).toHaveValue('');
+  });
+
+  it('keeps both directory edits when the operator types in both fields fast', async () => {
+    runnersFixture([ACTIVE_RUNNER]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    fireEvent.change(screen.getByTestId('runner-masterdir-r1'), { target: { value: '/srv/new-master' } });
+    fireEvent.change(screen.getByTestId('runner-worktreedir-r1'), { target: { value: '/srv/new-trees' } });
+    fireEvent.click(screen.getByTestId('runner-masterdir-r1-save'));
+    await waitFor(() => {
+      expect(updateRunnerConfig).toHaveBeenCalledWith('r1', {
+        directories: { masterDir: '/srv/new-master' },
+      });
+    });
+  });
+
   it('names the models reset distinctly from the footer Reset', async () => {
     runnersFixture([
       {
