@@ -5,6 +5,7 @@
  ***/
 
 export { beginAutoIteration } from './beginAutoIteration.js';
+export { didFailbackMoveStages } from './didFailbackMoveStages.js';
 export { classificationMetaOf } from './classificationMetaOf.js';
 export { collectRetryableText } from './collectRetryableText.js';
 export { computeRetryDelay } from './computeRetryDelay.js';
