@@ -194,6 +194,9 @@ export function RetrospectiveChat({ tasks = [] }) {
           onRefresh={refresh}
           refreshing={refreshing}
           isHarnessDisabled={isHarnessDisabled}
+          // This chat executes on the backend host itself: credential-health
+          // badges are the honest signal here, not fleet runner counts.
+          healthBadges
         />
         {modelNotice && (
           <p

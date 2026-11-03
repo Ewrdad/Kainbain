@@ -1,4 +1,5 @@
 import { normalizeStageTags } from "../../shared/stageTags.js";
+import { normalizeStageRunnerPolicy } from "../../shared/stageRunnerPolicy.js";
 import { DEFAULT_DEPLOY_COMMAND, isDeployCommand } from "./deployCommands.js";
 
 /***
@@ -137,6 +138,10 @@ export function normalizeStageSkills(skills) {
  *   `customBranch` name (trimmed; blank clears it). Legacy spellings
  *   `executionBranch`/`customExecutionBranch` are migrated to the canonical
  *   names and dropped so storage converges on the first save.
+ *   Any stage may carry an optional `runnerPolicy`
+ *   (`{ mode: 'allow' | 'block', runners: [...] }`) naming which Runners may
+ *   take it; absent or empty means every Runner may (see
+ *   normalizeStageRunnerPolicy).
  * @example normalizeStage({ id: '1', name: 'Test', type: 'script' }) => { id: '1', name: 'Test', type: 'ci' }
  * @example normalizeStage({ id: '1', harness: '  custom  ' }).harness => 'custom'
  * @param {Object} stage
@@ -166,6 +171,16 @@ export function normalizeStage(stage) {
 		const tags = normalizeStageTags(stage.tags);
 		if (tags !== undefined) normalized.tags = tags;
 		else delete normalized.tags;
+	}
+	// Optional per-stage Runner allow/block list (additive): normalise only
+	// when present so legacy stage objects round-trip byte-identically. An
+	// empty or malformed policy drops the key (unrestricted) so stored
+	// stages stay clean; unknown modes are refused with 400 at the save
+	// boundary before they ever reach here.
+	if (stage.runnerPolicy !== undefined) {
+		const runnerPolicy = normalizeStageRunnerPolicy(stage.runnerPolicy);
+		if (runnerPolicy !== undefined) normalized.runnerPolicy = runnerPolicy;
+		else delete normalized.runnerPolicy;
 	}
 	// Optional per-stage harness override (additive): same explicit-choice-only
 	// rule as project.harness — blank clears it (undefined).

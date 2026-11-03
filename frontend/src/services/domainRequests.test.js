@@ -39,13 +39,14 @@ describe('Business-owned request lists', () => {
     // survey page +
     // the 4 image-gen operations (getImageGenProviders, saveImageGenKey,
     // clearImageGenKey, testImageGenProvider) for System Settings › Images
-    // and the question-me imageGen provider dropdown.
-    // the 8 Runner operations (getRunners, getRunnerMonitor, approveRunner,
-    // denyRunner, revokeRunner, pauseRunner, resumeRunner, skipRunner) for
-    // Settings › Runners and the per-runner Now Playing controls +
+    // and the question-me imageGen provider dropdown +
+    // the 9 Runner operations (getRunners, getRunnerMonitor,
+    // getFleetModelCatalog, approveRunner, denyRunner, revokeRunner,
+    // pauseRunner, resumeRunner, skipRunner) for Settings › Runners, the
+    // per-runner Now Playing controls, and the fleet model catalogue +
     // the 2 Runner config operations (getRunnerConfig, updateRunnerConfig)
     // for the System Settings › Runners detail form.
-    expect(names).toHaveLength(96);
+    expect(names).toHaveLength(97);
     for (const name of names) expect(typeof api[name]).toBe('function');
   });
 

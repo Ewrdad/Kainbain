@@ -6,7 +6,7 @@ import { useCallback, useState } from 'react';
  *   as the markdown renderer: a failed load surfaces the filename plus a
  *   retry control instead of an invisible hole, and a new URL (or an
  *   explicit retry) always gets a fresh load attempt.
- * @example <FailureMessageImage url="https://x/a.png" alt="shot" name="a.png" />
+ * @example <FailureMessageImage url="/img/shot.png" alt="shot" name="shot.png" />
  * @param {Object} props
  * @param {string} props.url - Resolved thumbnail URL.
  * @param {string} [props.alt] - Accessible label.

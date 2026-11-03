@@ -1570,7 +1570,11 @@ describe("TaskStore", () => {
 		expect(result.error).toContain("missing tests");
 		expect(task.currentStageId).toBe("design"); // routed to fallbackStageId
 		expect(task.status).toBe("in_stage"); // left for automatic re-execution
-		expect(task.autoRetrying).toBe(true);
+		// The failback MOVED the task to another stage, so this is a cross-stage
+		// auto iteration, not an in-place retry: autoRetrying stays false (the UI
+		// must not label it RETRYING) and autoIterating marks the moved re-run.
+		expect(task.autoRetrying).toBe(false);
+		expect(task.autoIterating).toBe(true);
 		expect(task.autoIterationCount).toBe(1);
 
 		// Verify failure report generated on disk
@@ -1745,7 +1749,9 @@ describe("TaskStore", () => {
 				agentRunner: transientRunner,
 			});
 			expect(task.infraRetryCount).toBe(1);
+			// Same-stage transient retry: a genuine in-place retry.
 			expect(task.autoRetrying).toBe(true);
+			expect(task.autoIterating).toBe(false);
 			expect(task.status).toBe("in_stage");
 			expect(task.timeInStage).toBe(0);
 			expect(Date.parse(task.enteredStageAt)).toBeGreaterThan(
@@ -2179,7 +2185,10 @@ describe("TaskStore", () => {
 		const updatedTask = store.getTask("p1", task.id);
 		expect(updatedTask.currentStageId).toBe("1");
 		expect(updatedTask.status).toBe("in_stage");
-		expect(updatedTask.autoRetrying).toBe(true);
+		// Failback moved the task from stage "3" to stage "1": a cross-stage
+		// auto iteration, not an in-place retry.
+		expect(updatedTask.autoRetrying).toBe(false);
+		expect(updatedTask.autoIterating).toBe(true);
 
 		// Stage report was saved
 		const reports = store.getTaskReports("p1", task.id);
@@ -2956,7 +2965,9 @@ describe("TaskStore", () => {
 			// The stage pointer must not move: no failback to 'In Progress'.
 			expect(updated.currentStageId).toBe("6");
 			expect(updated.status).toBe("in_stage");
+			// Same-stage transient retry: a genuine in-place retry.
 			expect(updated.autoRetrying).toBe(true);
+			expect(updated.autoIterating).toBe(false);
 			expect(updated.infraRetryCount).toBe(1);
 			// The blip is not injected as failure feedback for the next attempt.
 			expect(updated.failureReason).toBeNull();

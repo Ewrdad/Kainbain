@@ -59,6 +59,7 @@ describe('api public surface', () => {
       'getConfigSpec',
       'getFileContent',
       'getFileRawUrl',
+      'getFleetModelCatalog',
       'getHarnessModels',
       'getHarnessReliability',
       'getHarnesses',

@@ -564,6 +564,98 @@ describe("Project & Workflow API Integration", () => {
 		});
 	});
 
+	it("round-trips stage.runnerPolicy through PUT /projects/:id/workflow", async () => {
+		const projRes = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: { name: "Runner Policy App", gitUrl: "https://git.example.com/team/fixture.git" },
+		});
+		const project = JSON.parse(projRes.payload);
+		const { stages } = JSON.parse(
+			(await app.inject({ method: "GET", url: `/projects/${project.id}/workflow` })).payload,
+		);
+		const restricted = stages.map((s, i) =>
+			i === 0 ? { ...s, runnerPolicy: { mode: "allow", runners: ["onsite-1"] } } : s,
+		);
+		const putRes = await app.inject({
+			method: "PUT",
+			url: `/projects/${project.id}/workflow`,
+			payload: { stages: restricted },
+		});
+		expect(putRes.statusCode).toBe(200);
+		expect(JSON.parse(putRes.payload).stages[0].runnerPolicy).toEqual({
+			mode: "allow",
+			runners: ["onsite-1"],
+		});
+		const reGet = await app.inject({
+			method: "GET",
+			url: `/projects/${project.id}/workflow`,
+		});
+		expect(JSON.parse(reGet.payload).stages[0].runnerPolicy).toEqual({
+			mode: "allow",
+			runners: ["onsite-1"],
+		});
+	});
+
+	it("refuses stage saves with an unknown runnerPolicy mode (400, never silently unrestricted)", async () => {
+		const projRes = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: { name: "Runner Policy Guard", gitUrl: "https://git.example.com/team/fixture.git" },
+		});
+		const project = JSON.parse(projRes.payload);
+		const { stages } = JSON.parse(
+			(await app.inject({ method: "GET", url: `/projects/${project.id}/workflow` })).payload,
+		);
+		const bad = stages.map((s, i) =>
+			i === 0 ? { ...s, runnerPolicy: { mode: "only", runners: ["r1"] } } : s,
+		);
+
+		const putRes = await app.inject({
+			method: "PUT",
+			url: `/projects/${project.id}/workflow`,
+			payload: { stages: bad },
+		});
+		expect(putRes.statusCode).toBe(400);
+		expect(JSON.parse(putRes.payload).details).toEqual([
+			{ index: 0, stageId: stages[0].id, problem: "UNKNOWN_MODE", mode: "only" },
+		]);
+		// Nothing was saved.
+		const reGet = await app.inject({
+			method: "GET",
+			url: `/projects/${project.id}/workflow`,
+		});
+		expect("runnerPolicy" in JSON.parse(reGet.payload).stages[0]).toBe(false);
+
+		const createRes = await app.inject({
+			method: "POST",
+			url: `/projects/${project.id}/workflows`,
+			payload: { name: "Bad Policy", stages: bad },
+		});
+		expect(createRes.statusCode).toBe(400);
+
+		const workflows = JSON.parse(
+			(await app.inject({ method: "GET", url: `/projects/${project.id}/workflows` })).payload,
+		).workflows;
+		const patchRes = await app.inject({
+			method: "PATCH",
+			url: `/projects/${project.id}/workflows/${workflows[0].id}`,
+			payload: { stages: bad },
+		});
+		expect(patchRes.statusCode).toBe(400);
+
+		const projectRes = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: {
+				name: "Bad Policy Project",
+				gitUrl: "https://git.example.com/team/fixture.git",
+				stages: [{ id: "s1", name: "Build", type: "agent", runnerPolicy: { mode: "only", runners: ["r1"] } }],
+			},
+		});
+		expect(projectRes.statusCode).toBe(400);
+	});
+
 	it("should manage named workflows via /projects/:id/workflows endpoints", async () => {
 		const projRes = await app.inject({
 			method: "POST",

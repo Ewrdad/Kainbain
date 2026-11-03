@@ -1,4 +1,6 @@
 import { normalizeStageType } from '../stageTypes.js';
+import { isRejectedTask } from './failureReason';
+import { isRetryInProgress, isTaskSettledStatus } from './taskRetryState';
 
 /***
  * MARK: isTaskCompleted
@@ -17,14 +19,74 @@ export function isTaskCompleted(task) {
 }
 
 /***
+ * MARK: isAutoIterationInProgress
+ * @description True when a task is in an automatic CROSS-STAGE re-run: the
+ *   failback moved it to a different stage and the engine re-queued it there.
+ *   Such a task is normal in-progress work in the new stage — it must not be
+ *   labelled RETRYING (that is `isRetryInProgress` in ./taskRetryState.js,
+ *   same stage only) and must not be labelled FAILED either (the stored
+ *   failureReason is deliberately kept for the next attempt's prompt). New
+ *   backend records flag this explicitly with `autoIterating`; payloads from
+ *   an older backend only carry `autoRetrying`, so a moved task (current
+ *   stage differs from the failed stage) is detected through
+ *   `isRetryInProgress` being false.
+ * @example isAutoIterationInProgress({ autoRetrying: true, autoIterating: true, currentStageId: '1', lastError: { stageId: '2' } }) => true
+ * @example isAutoIterationInProgress({ autoRetrying: true, currentStageId: '1', lastError: { stageId: '2' } }) => true
+ * @example isAutoIterationInProgress({ autoRetrying: true, currentStageId: '2', lastError: { stageId: '2' } }) => false
+ * @example isAutoIterationInProgress({ autoRetrying: false, autoIterating: true }) => true
+ * @param {Object} [task] - The task object (or null/undefined for safety).
+ * @returns {boolean} True when a cross-stage automatic re-run is in progress.
+ ***/
+export function isAutoIterationInProgress(task) {
+  // Settled tasks are never iterating; the settled-status vocabulary lives in
+  // exactly one place (isTaskSettledStatus) so this read and the RETRYING
+  // read can never disagree about whether the task is still live.
+  if (isTaskSettledStatus(task)) return false;
+  if (task?.autoIterating === true) return true;
+  return task?.autoRetrying === true && !isRetryInProgress(task);
+}
+
+/***
+ * MARK: isTaskFailed
+ * @description Single source of truth for whether a task reads as FAILED in
+ *   the UI (card, inspector, full page, retrospective). An explicit `failed`
+ *   status always reads as failed. Otherwise the stored `failureReason` only
+ *   reads as failed when no automatic re-run is about to clear it: a
+ *   same-stage in-place retry (`isRetryInProgress`) or a cross-stage
+ *   continuation (`isAutoIterationInProgress`) keeps the label honest while
+ *   the engine recovers on its own. A deliberate rejection is the exception:
+ *   it keeps its FAILED/REJECTED banner even while its retry is queued,
+ *   because the rejection reason is about to be snapshotted into the next
+ *   attempt and hiding it would hide pending context. Fails safe on
+ *   missing input: null, undefined, and reason-less tasks never read failed.
+ * @example isTaskFailed({ status: 'failed' }) => true
+ * @example isTaskFailed({ status: 'in_stage', failureReason: 'boom', autoRetrying: true, currentStageId: '2', lastError: { stageId: '2' } }) => false
+ * @example isTaskFailed({ status: 'in_stage', failureReason: 'rejected', lastError: { failureKind: 'rejected' } }) => true
+ * @example isTaskFailed(null) => false
+ * @param {Object} [task] - The task object (or null/undefined for safety).
+ * @returns {boolean} True when the task reads as failed.
+ ***/
+export function isTaskFailed(task) {
+  if (task?.status === 'failed') return true;
+  if (!task?.failureReason) return false;
+  if (isRejectedTask(task)) return true;
+  return !isRetryInProgress(task) && !isAutoIterationInProgress(task);
+}
+
+/***
  * MARK: selectStagePresentation
  * @description Single source of truth for how the current-stage row presents:
- *   settled tasks (completed/failed/interrupted/blocked) never render a live
- *   ticking row — a parked failure shows a static PARKED label — while only
- *   genuinely executing tasks tick. A settled `failed` merge task is parked
- *   (needs operator retry), not active: rendering it ACTIVE with a growing
- *   "Nm in stage" timer is what made parked merge failures look stuck.
+ *   settled tasks never render a live ticking row — a parked failure shows a
+ *   static PARKED label — while only genuinely executing tasks tick. A
+ *   settled `failed` merge task is parked (needs operator retry), not
+ *   active: rendering it ACTIVE with a growing "Nm in stage" timer is what
+ *   made parked merge failures look stuck. The settled verdicts share one
+ *   vocabulary (`isTaskSettledStatus`) with the RETRYING read, so a status
+ *   can never be "live" for one and "settled" for the other. Unknown or
+ *   missing statuses read ACTIVE (fail open: a task that cannot be proven
+ *   settled must never look parked).
  * @example selectStagePresentation({ status: 'failed' }) => { label: 'PARKED', tone: 'parked', ticking: false }
+ * @example selectStagePresentation({ status: 'paused' }) => { label: 'PAUSED', tone: 'parked', ticking: false }
  * @example selectStagePresentation({ status: 'in_stage' }) => { label: 'ACTIVE', tone: 'active', ticking: true }
  * @param {Object} [task] - The task object (or null/undefined for safety).
  * @returns {{ label: string, tone: string, ticking: boolean }} Presentation verdict.
@@ -34,11 +96,17 @@ export function selectStagePresentation(task) {
   if (status === 'completed' || status === 'done') {
     return { label: 'DONE', tone: 'done', ticking: false };
   }
-  if (status === 'failed' || status === 'interrupted' || status === 'blocked') {
-    return { label: 'PARKED', tone: 'parked', ticking: false };
-  }
   if (status === 'waiting_human' || status === 'waiting-human' || status === 'waiting') {
     return { label: 'WAITING', tone: 'waiting', ticking: false };
+  }
+  if (isTaskSettledStatus(task)) {
+    // Paused keeps its own label so the row names the operator action that
+    // parked it; every other settled status (failed, interrupted, blocked,
+    // cancelled, aborted) parks generically. None of them tick.
+    if (status === 'paused') {
+      return { label: 'PAUSED', tone: 'parked', ticking: false };
+    }
+    return { label: 'PARKED', tone: 'parked', ticking: false };
   }
   return { label: 'ACTIVE', tone: 'active', ticking: true };
 }
@@ -333,6 +401,110 @@ export function selectDisplayTimeline(rawTimeline = [], stages = []) {
 }
 
 /***
+ * MARK: STAGE_RUN_TRY_COUNT_CAP
+ * @description Upper bound for the per-stage try count shown in history, so a
+ *   pathological task with hundreds of failback cycles still renders a sane
+ *   "Tried 99 times" instead of an unbounded number.
+ * @example STAGE_RUN_TRY_COUNT_CAP => 99
+ ***/
+export const STAGE_RUN_TRY_COUNT_CAP = 99;
+
+/***
+ * MARK: summarizeStageRuns
+ * @description Collapses the display timeline to ONE row per stage so repeated
+ *   failback/retry cycles stop spamming the same stage across many history
+ *   lines (survey Q3: "one line per step with a try count"). Entries are
+ *   grouped by their resolved stage label; each group keeps the position of
+ *   its first occurrence in the input array and renders the chronologically
+ *   LATEST entry of the group (latest status, reason, duration, and run
+ *   attribution), with `tryCount` set to the number of grouped rows (capped at
+ *   STAGE_RUN_TRY_COUNT_CAP). Try-count source decision: count the observed
+ *   timeline rows per stage (no schema migration needed; `autoIterationCount`
+ *   is global, not per stage). Rows with no stage label are never grouped.
+ *   Display-only projection: never mutates its input or the stored timeline.
+ * @example summarizeStageRuns([{ stage: 'Plan', status: 'Failed', timestamp: 't2', reason: 'x' }, { stage: 'Plan', status: 'Moved', timestamp: 't1' }, { stage: 'Idea', status: 'Advanced', timestamp: 't0' }]) => [{ stage: 'Plan', status: 'Failed', timestamp: 't2', reason: 'x', tryCount: 2 }, { stage: 'Idea', status: 'Advanced', timestamp: 't0' }]
+ * @example summarizeStageRuns([{ stage: 'Idea', timestamp: 't1' }, { stage: 'Plan', timestamp: 't2' }]) => [{ stage: 'Idea', timestamp: 't1' }, { stage: 'Plan', timestamp: 't2' }]
+ * @param {Array<Object>} [entries=[]] - Display timeline entries, newest first
+ *   (as returned by selectDisplayTimeline); groups keep first-occurrence order.
+ * @param {Array<Object>} [stages=[]] - The current workflow stages, for legacy numeric label mapping.
+ * @returns {Array<Object>} One display row per stage, each carrying `tryCount` when its group had more than one row.
+ ***/
+export function summarizeStageRuns(entries = [], stages = []) {
+  const list = Array.isArray(entries) ? entries : [];
+  const groups = new Map();
+  const order = [];
+  for (const entry of list) {
+    const label = resolveTimelineStageLabel(entry?.stage, stages);
+    if (!label) {
+      // No stage label: never grouped, always kept as its own row.
+      order.push({ label: null, entry });
+      continue;
+    }
+    // Stage-name matching is case-insensitive everywhere else (the backend
+    // matches names case-insensitively), so grouping is too: 'Design' and
+    // 'design' are one stage, rendered under the first-seen spelling.
+    const groupKey = label.toLowerCase();
+    if (!groups.has(groupKey)) {
+      groups.set(groupKey, { label, rows: [] });
+      order.push({ label: groupKey, entry: null });
+    }
+    groups.get(groupKey).rows.push(entry);
+  }
+  const result = [];
+  for (const slot of order) {
+    if (slot.label === null) {
+      // A copy, like every other display row: rendering must never be able
+      // to mutate the stored timeline through this array.
+      result.push({ ...slot.entry });
+      continue;
+    }
+    const { label: displayLabel, rows: group } = groups.get(slot.label);
+    // Representative: the chronologically latest row of the group (latest
+    // status/reason/attribution); ties and unparseable timestamps fall back
+    // to the first row encountered.
+    let latest = null;
+    let latestMs = -Infinity;
+    for (const candidate of group) {
+      const raw = Date.parse(candidate?.timestamp);
+      const ms = Number.isNaN(raw) ? -Infinity : raw;
+      // Strictly greater only: on ties (or unparseable timestamps) the first
+      // row encountered wins — in newest-first display order that IS the
+      // latest row.
+      if (latest === null || ms > latestMs) {
+        latest = candidate;
+        latestMs = ms;
+      }
+    }
+    const row = { ...latest, stage: displayLabel };
+    if (group.length > 1) {
+      row.tryCount = Math.min(group.length, STAGE_RUN_TRY_COUNT_CAP);
+    }
+    result.push(row);
+  }
+  return result;
+}
+
+/***
+ * MARK: formatTryCount
+ * @description Renders a collapsed history row's try count as
+ *   `Tried {n} times`, or null when the row ran only once (no badge needed).
+ *   Fails safe on unexpected input: fractional counts are floored and counts
+ *   above STAGE_RUN_TRY_COUNT_CAP are clamped, so no caller can render an
+ *   unbounded or fractional label even with a hand-built row.
+ * @example formatTryCount({ tryCount: 3 }) => 'Tried 3 times'
+ * @example formatTryCount({ tryCount: 1 }) => null
+ * @example formatTryCount({ stage: 'Plan' }) => null
+ * @example formatTryCount({ tryCount: 500 }) => 'Tried 99 times'
+ * @param {Object} [entry] - A display timeline row (see summarizeStageRuns).
+ * @returns {string|null} The label, or null when the stage ran once.
+ ***/
+export function formatTryCount(entry) {
+  const count = Number(entry?.tryCount);
+  if (!Number.isFinite(count) || count <= 1) return null;
+  return `Tried ${Math.min(Math.floor(count), STAGE_RUN_TRY_COUNT_CAP)} times`;
+}
+
+/***
  * MARK: isArrivalTimelineStatus
  * @description True for stored timeline statuses that record an arrival into
  *   the row's stage (destination), as opposed to outcome rows (Failed,
@@ -359,16 +531,27 @@ function isArrivalTimelineStatus(status) {
 }
 
 /***
- * MARK: isFailedTimelineOutcome
- * @description True for stored Failed rows: the outcome of a visit to the
- *   row's stage, carrying the failure reason. Never suppressed.
- * @example isFailedTimelineOutcome('Failed') => true
- * @example isFailedTimelineOutcome('Failed back') => false
+ * MARK: isVisitOutcomeTimelineStatus
+ * @description True for stored rows that record the OUTCOME of a visit to
+ *   the row's stage without the task leaving it: `Failed` (the visit failed),
+ *   `Retrying` (a same-stage transient retry fired), and `Resumed` (the task
+ *   was re-parked into the stage after a restart). The live-row suppression
+ *   guard accepts exactly these as "the current visit is still in this
+ *   stage", so a current visit carrying any of them still supersedes its own
+ *   arrival row (keeping the live row's run attribution and the try count
+ *   exact). Arrival rows, Completed rows, and unknown statuses are NOT
+ *   outcomes — they fail open and never trigger suppression.
+ * @example isVisitOutcomeTimelineStatus('Failed') => true
+ * @example isVisitOutcomeTimelineStatus('Retrying') => true
+ * @example isVisitOutcomeTimelineStatus('Resumed') => true
+ * @example isVisitOutcomeTimelineStatus('Failed back') => false
+ * @example isVisitOutcomeTimelineStatus('Completed') => false
  * @param {string} [status] - Stored timeline row status.
- * @returns {boolean} True for Failed outcome rows.
+ * @returns {boolean} True for same-stage visit outcome rows.
  ***/
-function isFailedTimelineOutcome(status) {
-  return typeof status === 'string' && status.trim().toLowerCase() === 'failed';
+function isVisitOutcomeTimelineStatus(status) {
+  const normalized = typeof status === 'string' ? status.trim().toLowerCase() : '';
+  return normalized === 'failed' || normalized === 'retrying' || normalized === 'resumed';
 }
 
 /***
@@ -398,14 +581,21 @@ function pickRunAttribution(entry) {
  *   stage = destination, so the newest arrival into the live stage would render
  *   the same stage twice (live Active row plus stored Moved/Advanced row with
  *   the previous stage's duration) — that row is suppressed, but only when
- *   every stored row newer than it is a same-stage Failed outcome (the live
- *   row supersedes exactly the current visit's arrival, never a past visit's).
+ *   every stored row newer than it is a same-stage visit outcome (Failed,
+ *   Retrying, or Resumed — the live row supersedes exactly the current
+ *   visit's arrival, never a past visit's).
  *   Failed, Completed, other-stage, and unknown-status rows are never
  *   suppressed, so failure reasons and past visits stay visible. When the
  *   live row supersedes the current visit's arrival row it inherits that
  *   row's run attribution (the stage's dispatch-stamped model choice).
- *   Completed tasks and the full-page view pass includeLiveRow false and see
- *   the full stored history.
+ *   The stored rows are then collapsed by `summarizeStageRuns` to one row per
+ *   stage carrying a `tryCount`, so repeated failback/retry cycles render one
+ *   history line per stage ("Tried N times") instead of spamming the same
+ *   stage. Completed tasks and the full-page view pass includeLiveRow false
+ *   and see the full stored history (collapsed per stage).
+ *   A non-ticking verdict (PARKED/PAUSED/WAITING/DONE — see
+ *   `selectStagePresentation`) renders a static settled row, never a live
+ *   ACTIVE row with a growing timer.
  * @example buildDisplayTimeline({ storedTimeline: [{ stage: 'Plan', status: 'Moved', duration: '9s', timestamp: 't2' }], stages: [{ id: '2', name: 'Plan' }], currentStageName: 'Plan', liveDurationLabel: '3s in stage', includeLiveRow: true }) => [{ stage: 'Plan', status: 'Active' }]
  * @example buildDisplayTimeline({ storedTimeline: [], currentStageName: 'In Progress', includeLiveRow: false }) => [{ stage: 'In Progress', status: 'Active' }]
  * @param {Object} [args] - Timeline display inputs.
@@ -439,15 +629,28 @@ export function buildDisplayTimeline({
       presentation && presentation.ticking === false && typeof presentation.label === 'string'
         ? presentation.label.trim().toUpperCase()
         : '';
-    const isSettledRow = settledLabel === 'PARKED' || settledLabel === 'WAITING' || settledLabel === 'DONE';
+    const isSettledRow =
+      settledLabel === 'PARKED' ||
+      settledLabel === 'PAUSED' ||
+      settledLabel === 'WAITING' ||
+      settledLabel === 'DONE';
     if (isSettledRow) {
+      // Frozen text per verdict: the growing "Nm in stage" label would keep
+      // moving for a task the engine will never pick up again.
+      const settledDuration =
+        settledLabel === 'PARKED'
+          ? 'Parked — awaiting retry'
+          : settledLabel === 'PAUSED'
+            ? 'Paused'
+            : liveDurationLabel || 'Settled';
+      const settledName = settledLabel.charAt(0) + settledLabel.slice(1).toLowerCase();
       const settledRow = {
         stage: fallbackStageName,
-        duration: settledLabel === 'PARKED' ? 'Parked — awaiting retry' : liveDurationLabel || 'Settled',
-        timestamp: settledLabel.charAt(0) + settledLabel.slice(1).toLowerCase(),
-        status: settledLabel.charAt(0) + settledLabel.slice(1).toLowerCase(),
+        duration: settledDuration,
+        timestamp: settledName,
+        status: settledName,
       };
-      return [settledRow, ...displayStored];
+      return [settledRow, ...summarizeStageRuns(displayStored, stages)];
     }
     const liveRow = {
       stage: fallbackStageName,
@@ -455,6 +658,11 @@ export function buildDisplayTimeline({
       timestamp: 'Active',
       status: 'Active',
     };
+    // The live-row suppression runs on the exact-deduped rows (one row per
+    // stored event); the per-stage collapsing happens afterwards, on the
+    // rows the live row did not supersede, so the current stage still renders
+    // exactly once (live Active row) while past visits of any stage —
+    // including the live one — collapse to one row with a try count.
     const arrivalIndex = displayStored.findIndex(
       (entry) => entry?.stage === liveRow.stage && isArrivalTimelineStatus(entry?.status),
     );
@@ -464,20 +672,24 @@ export function buildDisplayTimeline({
         .slice(0, arrivalIndex)
         .every(
           (entry) =>
-            entry?.stage === liveRow.stage && isFailedTimelineOutcome(entry?.status),
+            entry?.stage === liveRow.stage &&
+            isVisitOutcomeTimelineStatus(entry?.status),
         );
-    if (!superseded) return [liveRow, ...displayStored];
+    if (!superseded) return [liveRow, ...summarizeStageRuns(displayStored, stages)];
     // The live row replaces the current visit's arrival row, so it inherits
     // that row's run attribution (stamped at the stage's dispatch): the
     // current agent run's badge stays visible while the stage is live, and a
     // human / CI stage's live row stays completely blank.
-    return [
-      { ...liveRow, ...pickRunAttribution(displayStored[arrivalIndex]) },
+    const rest = [
       ...displayStored.slice(0, arrivalIndex),
       ...displayStored.slice(arrivalIndex + 1),
     ];
+    return [
+      { ...liveRow, ...pickRunAttribution(displayStored[arrivalIndex]) },
+      ...summarizeStageRuns(rest, stages),
+    ];
   }
-  if (displayStored.length > 0) return displayStored;
+  if (displayStored.length > 0) return summarizeStageRuns(displayStored, stages);
   return [
     {
       stage: fallbackStageName,

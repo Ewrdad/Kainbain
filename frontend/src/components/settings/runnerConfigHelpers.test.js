@@ -5,13 +5,20 @@ import {
   defaultRunnerConfig,
   runnerDisplayName,
   advertisedToolIds,
+  advertisedModels,
   effectiveTools,
+  effectiveModels,
+  parseModelsInput,
   loadedProjectIds,
   partitionProjects,
   withProjectLoaded,
   withProjectUnloaded,
   scopePatchForLoaded,
   validateDirectories,
+  visibleRunners,
+  resolveSelectedId,
+  runRunnerAction,
+  describeRunnerVersion,
 } from './runnerConfigHelpers';
 
 /***
@@ -35,6 +42,7 @@ describe('runnerConfigHelpers', () => {
     expect(defaultRunnerConfig({})).toEqual({
       displayName: null,
       availableTools: null,
+      availableModels: null,
       jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
       directories: { masterDir: '', worktreeDir: '' },
       projectScope: null,
@@ -47,6 +55,7 @@ describe('runnerConfigHelpers', () => {
       operatorConfig: {
         displayName: 'Primary',
         availableTools: ['pi', 42],
+        availableModels: ['m1', null],
         jobTypes: { runsCi: false, runsMerges: 'yes' },
         directories: { masterDir: '/srv/kb' },
         projectScope: ['p1', null],
@@ -54,6 +63,7 @@ describe('runnerConfigHelpers', () => {
     });
     expect(config.displayName).toBe('Primary');
     expect(config.availableTools).toEqual(['pi']);
+    expect(config.availableModels).toEqual(['m1']);
     expect(config.jobTypes).toEqual({ runsCi: false, runsMerges: true, runsImpromptu: true });
     expect(config.directories).toEqual({ masterDir: '/srv/kb', worktreeDir: '' });
     expect(config.projectScope).toEqual(['p1']);
@@ -61,9 +71,9 @@ describe('runnerConfigHelpers', () => {
 
   it('falls back to the Runner id for display', () => {
     expect(runnerDisplayName({ runnerId: 'r1' })).toBe('r1');
-    expect(
-      runnerDisplayName({ runnerId: 'r1', operatorConfig: { displayName: 'Primary' } }),
-    ).toBe('Primary');
+    expect(runnerDisplayName({ runnerId: 'r1', operatorConfig: { displayName: 'Primary' } })).toBe(
+      'Primary',
+    );
   });
 
   it('reads advertised tools and prefers the operator subset', () => {
@@ -71,9 +81,28 @@ describe('runnerConfigHelpers', () => {
     expect(advertisedToolIds(runner)).toEqual(['pi', 'vibe']);
     expect(advertisedToolIds({})).toEqual([]);
     expect(effectiveTools(runner)).toEqual(['pi', 'vibe']);
+    expect(effectiveTools({ ...runner, operatorConfig: { availableTools: ['pi'] } })).toEqual([
+      'pi',
+    ]);
+  });
+
+  it('reads advertised models and prefers the operator allowlist', () => {
+    const runner = { capabilities: { models: ['m1', 42, ''] } };
+    expect(advertisedModels(runner)).toEqual(['m1']);
+    expect(advertisedModels({})).toEqual([]);
+    expect(effectiveModels(runner)).toEqual(['m1']);
     expect(
-      effectiveTools({ ...runner, operatorConfig: { availableTools: ['pi'] } }),
-    ).toEqual(['pi']);
+      effectiveModels({ ...runner, operatorConfig: { availableModels: ['m9'] } }),
+    ).toEqual(['m9']);
+    expect(
+      effectiveModels({ ...runner, operatorConfig: { availableModels: [] } }),
+    ).toEqual([]);
+  });
+
+  it('parses models editor text into trimmed deduped ids', () => {
+    expect(parseModelsInput('a, b,, a')).toEqual(['a', 'b']);
+    expect(parseModelsInput('  ')).toEqual([]);
+    expect(parseModelsInput()).toEqual([]);
   });
 
   it('resolves loaded projects from override, scope, or all', () => {
@@ -108,10 +137,135 @@ describe('runnerConfigHelpers', () => {
     expect(scopePatchForLoaded([], all)).toEqual([]);
   });
 
+  it('hides revoked Runners but keeps active, paused, pending, and denied', () => {
+    const rows = [
+      { runnerId: 'revoked-1', status: 'revoked' },
+      { runnerId: 'active-1', status: 'active' },
+      { runnerId: 'paused-1', status: 'active', paused: true },
+      { runnerId: 'pending-1', status: 'pending' },
+      { runnerId: 'denied-1', status: 'denied' },
+    ];
+    expect(visibleRunners(rows).map((r) => r.runnerId)).toEqual([
+      'active-1',
+      'paused-1',
+      'pending-1',
+      'denied-1',
+    ]);
+  });
+
+  it('keeps unknown future statuses visible instead of dropping them', () => {
+    const rows = [{ runnerId: 'x1', status: 'expired' }, { runnerId: 'x2' }];
+    expect(visibleRunners(rows)).toEqual(rows);
+  });
+
+  it('maps an empty or missing roster to an empty visible list', () => {
+    expect(visibleRunners([])).toEqual([]);
+    expect(visibleRunners(undefined)).toEqual([]);
+    expect(visibleRunners(null)).toEqual([]);
+    expect(visibleRunners('nope')).toEqual([]);
+  });
+
+  it('keeps the previous selection while it is still visible', () => {
+    const visible = [{ runnerId: 'a' }, { runnerId: 'b' }];
+    expect(resolveSelectedId(visible, 'b')).toBe('b');
+  });
+
+  it('falls back to the first visible Runner when the selection is gone', () => {
+    const visible = [{ runnerId: 'b' }, { runnerId: 'c' }];
+    // Revoked or otherwise filtered out: the previous id is not visible.
+    expect(resolveSelectedId(visible, 'a')).toBe('b');
+    expect(resolveSelectedId(visible, null)).toBe('b');
+    expect(resolveSelectedId(visible, undefined)).toBe('b');
+  });
+
+  it('resolves an empty visible roster to a null selection', () => {
+    expect(resolveSelectedId([], 'a')).toBeNull();
+    expect(resolveSelectedId(undefined, 'a')).toBeNull();
+    expect(resolveSelectedId(null, null)).toBeNull();
+  });
+
+  it('skips roster records without a usable Runner id when resolving selection', () => {
+    const visible = [{ status: 'active' }, { runnerId: '' }, { runnerId: 'b' }];
+    expect(resolveSelectedId(visible, 'a')).toBe('b');
+    expect(resolveSelectedId(visible, null)).toBe('b');
+    expect(resolveSelectedId([{ status: 'active' }, null], 'a')).toBeNull();
+  });
+
+  it('ignores a non-string previous selection instead of matching it', () => {
+    const visible = [{ runnerId: 'a' }, { runnerId: 'b' }];
+    expect(resolveSelectedId(visible, 42)).toBe('a');
+    expect(resolveSelectedId(visible, {})).toBe('a');
+  });
+
+  it('sends each lifecycle action to its own endpoint', () => {
+    const calls = [];
+    const runnerApi = {
+      approveRunner: (id) => calls.push(['approve', id]),
+      denyRunner: (id) => calls.push(['deny', id]),
+      pauseRunner: (id) => calls.push(['pause', id]),
+      resumeRunner: (id) => calls.push(['resume', id]),
+      revokeRunner: (id) => calls.push(['revoke', id]),
+    };
+    for (const action of ['approve', 'deny', 'pause', 'resume', 'revoke']) {
+      runRunnerAction({ runnerApi, runnerId: 'r1', action });
+    }
+    expect(calls).toEqual([
+      ['approve', 'r1'],
+      ['deny', 'r1'],
+      ['pause', 'r1'],
+      ['resume', 'r1'],
+      ['revoke', 'r1'],
+    ]);
+  });
+
+  it('refuses unknown actions without calling any endpoint (never a revoke)', () => {
+    const runnerApi = {
+      approveRunner: () => {
+        throw new Error('must not approve');
+      },
+      denyRunner: () => {
+        throw new Error('must not deny');
+      },
+      pauseRunner: () => {
+        throw new Error('must not pause');
+      },
+      resumeRunner: () => {
+        throw new Error('must not resume');
+      },
+      revokeRunner: () => {
+        throw new Error('must not revoke');
+      },
+    };
+    for (const action of ['resum', 'APPROVE', '', null, undefined, 42]) {
+      expect(runRunnerAction({ runnerApi, runnerId: 'r1', action })).toBeNull();
+    }
+  });
+
+  it('prefers the top-level Runner version over the nested facts copy', () => {
+    expect(describeRunnerVersion({ runnerVersion: '0.3.0' })).toBe('0.3.0');
+    expect(
+      describeRunnerVersion({
+        runnerVersion: '0.3.0',
+        facts: { versions: { runner: '0.1.0' } },
+      }),
+    ).toBe('0.3.0');
+  });
+
+  it('falls back to the nested facts version when the top level is missing', () => {
+    expect(describeRunnerVersion({ facts: { versions: { runner: '0.1.0' } } })).toBe('0.1.0');
+  });
+
+  it('reports no version for missing or wrong-typed version fields', () => {
+    expect(describeRunnerVersion({})).toBeNull();
+    expect(describeRunnerVersion(undefined)).toBeNull();
+    expect(describeRunnerVersion({ runnerVersion: 42 })).toBeNull();
+    expect(describeRunnerVersion({ runnerVersion: '' })).toBeNull();
+    expect(describeRunnerVersion({ facts: { versions: { runner: 42 } } })).toBeNull();
+    expect(describeRunnerVersion({ facts: null })).toBeNull();
+  });
+
   it('requires both directory paths', () => {
-    expect(validateDirectories({ masterDir: '/srv/kb', worktreeDir: '/srv/trees' }).ok).toBe(
-      true,
-    );
+    expect(validateDirectories({ masterDir: '/srv/kb', worktreeDir: '/srv/trees' }).ok).toBe(true);
     const bad = validateDirectories({ masterDir: '  ', worktreeDir: '' });
     expect(bad.ok).toBe(false);
     expect(bad.errors.masterDir).toBeTruthy();

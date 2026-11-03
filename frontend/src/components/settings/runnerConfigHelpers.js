@@ -3,8 +3,10 @@
  * @description Pure helpers for the System Settings Runner configuration
  *   screen: normalizing the operator-owned config embedded in each Runner
  *   record, splitting projects into Available/Loaded columns, validating
- *   directory edits, and labelling the job-type switches. No network, no
- *   React — fully unit-testable.
+ *   directory edits, labelling the job-type switches, dispatching lifecycle
+ *   actions by name, and reading display fields off raw records. No React;
+ *   only `runRunnerAction` touches the network (through the injected Runner
+ *   api object) — everything else is fully unit-testable without mocks.
  * @example partitionProjects([{id:'a'}], ['a']) => { available: [], loaded: [{id:'a'}] }
  ***/
 
@@ -60,6 +62,9 @@ export const defaultRunnerConfig = (runner = {}) => {
     availableTools: Array.isArray(source.availableTools)
       ? source.availableTools.filter((t) => typeof t === 'string')
       : null,
+    availableModels: Array.isArray(source.availableModels)
+      ? source.availableModels.filter((m) => typeof m === 'string')
+      : null,
     jobTypes,
     directories,
     projectScope: Array.isArray(source.projectScope)
@@ -78,6 +83,89 @@ export const defaultRunnerConfig = (runner = {}) => {
  ***/
 export const runnerDisplayName = (runner = {}) =>
   defaultRunnerConfig(runner).displayName || runner?.runnerId || '';
+
+/***
+ * MARK: visibleRunners
+ * @description Roster rows shown on the System Settings › Runners screen:
+ *   every registration except `revoked` ones, which are hidden completely
+ *   (no row, no detail panel, no selection). `denied` join requests stay
+ *   visible so the operator can still approve that recovery path; unknown
+ *   future statuses stay visible too (fail-open) so a new backend status
+ *   never silently vanishes from the UI. Frontend-only: `GET /runners`
+ *   keeps returning every record for audit/support.
+ * @example visibleRunners([{ runnerId: 'a', status: 'revoked' }, { runnerId: 'b', status: 'active' }]) => [{ runnerId: 'b', status: 'active' }]
+ * @param {Object[]} [runners=[]] - Raw Runner records from `GET /runners`.
+ * @returns {Object[]} Listable Runner records.
+ ***/
+export const visibleRunners = (runners = []) =>
+  (Array.isArray(runners) ? runners : []).filter((r) => r?.status !== 'revoked');
+
+/***
+ * MARK: resolveSelectedId
+ * @description Picks the selected Runner id after a roster load: keeps the
+ *   previous id when it is a string still present in the visible roster,
+ *   otherwise falls back to the first visible record carrying a usable
+ *   Runner id, otherwise null (empty roster, or a roster of malformed
+ *   records). Applied on every load so revoking the selected Runner moves
+ *   selection instead of leaving the detail panel pointed at a hidden
+ *   record. Records without an id are skipped rather than selected: an
+ *   id-less record can render no detail panel, so selecting it would only
+ *   strand the screen on a blank right column.
+ * @example resolveSelectedId([{ runnerId: 'b' }], 'a') => 'b'
+ * @param {Object[]} [visible=[]] - Visible Runner records.
+ * @param {string|null} [prevId=null] - Previously selected Runner id.
+ * @returns {string|null} Selected Runner id.
+ ***/
+export const resolveSelectedId = (visible = [], prevId = null) => {
+  const list = Array.isArray(visible) ? visible : [];
+  if (typeof prevId === 'string' && prevId && list.some((r) => r?.runnerId === prevId)) {
+    return prevId;
+  }
+  const fallback = list.find((r) => typeof r?.runnerId === 'string' && r.runnerId);
+  return fallback?.runnerId ?? null;
+};
+
+/***
+ * MARK: runRunnerAction
+ * @description Sends one named lifecycle action to its own Runner endpoint
+ *   (`approve`, `deny`, `pause`, `resume`, `revoke`). Unknown action names
+ *   return null and call nothing — in particular they never fall through
+ *   to revoke, so a typo or a stale caller cannot destroy a Runner by
+ *   accident. The caller treats a null return as "nothing was changed"
+ *   and shows that plainly instead of reloading the roster.
+ * @example runRunnerAction({ runnerApi: api, runnerId: 'r1', action: 'pause' }) => Promise
+ * @param {Object} options - Labelled inputs.
+ * @param {Object} options.runnerApi - Runner endpoints (`approveRunner`, …).
+ * @param {string} options.runnerId - Target Runner id.
+ * @param {string} options.action - Action name.
+ * @returns {Promise|null} The in-flight endpoint call, or null when refused.
+ ***/
+export const runRunnerAction = ({ runnerApi, runnerId, action } = {}) => {
+  if (action === 'approve') return runnerApi.approveRunner(runnerId);
+  if (action === 'deny') return runnerApi.denyRunner(runnerId);
+  if (action === 'pause') return runnerApi.pauseRunner(runnerId);
+  if (action === 'resume') return runnerApi.resumeRunner(runnerId);
+  if (action === 'revoke') return runnerApi.revokeRunner(runnerId);
+  return null;
+};
+
+/***
+ * MARK: describeRunnerVersion
+ * @description Version text for one roster row: the top-level `runnerVersion`
+ *   when present, else the nested `facts.versions.runner` copy older
+ *   backends embed, else null (no badge). Wrong-typed values read as
+ *   missing rather than rendering "v42" or crashing on a null `facts`.
+ * @example describeRunnerVersion({ runnerVersion: '0.3.0' }) => '0.3.0'
+ * @param {Object} [runner={}] - Runner record.
+ * @returns {string|null} Version label, or null when unknown.
+ ***/
+export const describeRunnerVersion = (runner = {}) => {
+  if (typeof runner?.runnerVersion === 'string' && runner.runnerVersion) {
+    return runner.runnerVersion;
+  }
+  const nested = runner?.facts?.versions?.runner;
+  return typeof nested === 'string' && nested ? nested : null;
+};
 
 /***
  * MARK: advertisedToolIds
@@ -106,6 +194,49 @@ export const effectiveTools = (runner = {}) => {
   const configured = defaultRunnerConfig(runner).availableTools;
   return Array.isArray(configured) ? configured : advertisedToolIds(runner);
 };
+
+/***
+ * MARK: advertisedModels
+ * @description Model ids the Runner advertised in its capabilities.
+ * @example advertisedModels({ capabilities: { models: ['m1'] } }) => ['m1']
+ * @param {Object} [runner={}] - Runner record.
+ * @returns {string[]} Advertised ids (empty when unknown).
+ ***/
+export const advertisedModels = (runner = {}) => {
+  const list = runner?.capabilities?.models;
+  if (!Array.isArray(list)) return [];
+  return list.filter((id) => typeof id === 'string' && id);
+};
+
+/***
+ * MARK: effectiveModels
+ * @description Model ids enabled for the Runner: the operator allowlist
+ *   when set (it replaces the advertised list so an under-reporting
+ *   Runner can serve declared models), otherwise every advertised id.
+ * @example effectiveModels({ capabilities: { models: ['m1'] } }) => ['m1']
+ * @param {Object} [runner={}] - Runner record.
+ * @returns {string[]} Effective model ids.
+ ***/
+export const effectiveModels = (runner = {}) => {
+  const configured = defaultRunnerConfig(runner).availableModels;
+  return Array.isArray(configured) ? configured : advertisedModels(runner);
+};
+
+/***
+ * MARK: parseModelsInput
+ * @description Parses the Models editor text into a patch value:
+ *   comma-separated ids, trimmed, deduped, blanks dropped.
+ * @example parseModelsInput('a, b,, a') => ['a', 'b']
+ * @param {string} [text=''] - Raw editor text.
+ * @returns {string[]} Model ids.
+ ***/
+export const parseModelsInput = (text = '') =>
+  [...new Set(
+    String(text ?? '')
+      .split(',')
+      .map((m) => m.trim())
+      .filter(Boolean),
+  )];
 
 /***
  * MARK: loadedProjectIds
@@ -143,7 +274,7 @@ export const partitionProjects = (allProjects = [], loadedIds = []) => {
   const available = [];
   for (const project of Array.isArray(allProjects) ? allProjects : []) {
     if (!project || typeof project.id !== 'string') continue;
-     
+
     if (ids.has(project.id)) loaded.push(project);
     else available.push(project);
   }

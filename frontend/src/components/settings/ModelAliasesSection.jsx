@@ -9,7 +9,8 @@ import {
   groupModelsByProvider,
   normalizeModelRef,
 } from '../../services/api';
-import { modelBadgeNode } from '../../services/modelStatus';
+import { fleetCountBadgeNode, fleetInfoForModel } from '../../services/modelStatus';
+import { withFleetModels, effectiveModelSelection } from '../../services/fleetModelOptions';
 import { ReliabilityLine } from './ReliabilityLine';
 import {
   ALIAS_HARNESS_ID,
@@ -125,9 +126,10 @@ function reasoningOptionsForTarget(target, catalogue) {
  * @example targetValidity({ harness: 'pi', model: 'google::m1' }, HARNESSES) => { status: 'valid', message: null }
  * @param {Object} target - One target sub-row (`{ harness, model }`).
  * @param {Array<Object>} harnesses - Catalogue harness view.
+ * @param {Object} [fleetCounts] - Fleet map: a `none` harness the fleet serves behaves as `list`, and fleet-served ids count as known models. Omitted = backend catalogue only.
  * @returns {{status: string, message: string|null}} The validity + human-readable note.
  ***/
-export function targetValidity(target, harnesses) {
+export function targetValidity(target, harnesses, fleetCounts) {
   const harnessId = typeof target?.harness === 'string' ? target.harness.trim() : '';
   const model = typeof target?.model === 'string' ? target.model.trim() : '';
   const catalogue = Array.isArray(harnesses) ? harnesses : [];
@@ -139,7 +141,7 @@ export function targetValidity(target, harnesses) {
       message: `Unknown harness "${harnessId}" — pick a registered harness`,
     };
   }
-  if ((entry.modelSelection || 'list') === 'none') {
+  if (effectiveModelSelection(entry.modelSelection || 'list', harnessId, fleetCounts) === 'none') {
     if (model) {
       return {
         status: 'invalid',
@@ -149,7 +151,11 @@ export function targetValidity(target, harnesses) {
     return { status: 'valid', message: null };
   }
   if (!model) return { status: 'blank', message: null };
-  const modelsForHarness = Array.isArray(entry?.models) ? entry.models : [];
+  const modelsForHarness = withFleetModels(
+    Array.isArray(entry?.models) ? entry.models : [],
+    harnessId,
+    fleetCounts,
+  );
   const { reasoning } = splitReasoning(model);
   if (reasoning) {
     const levelProblem = checkReasoningLevelText({ level: reasoning });
@@ -201,9 +207,10 @@ export function targetValidity(target, harnesses) {
  *   => [{ index: 0, message: '…' }]
  * @param {Array<Object>} aliases - Draft alias rows.
  * @param {Array<Object>} harnesses - Catalogue harness view (for modelSelection lookup).
+ * @param {Object} [fleetCounts] - Fleet map: a `none` harness the fleet serves behaves as `list`. Omitted = backend catalogue only.
  * @returns {Array<{index: number, message: string}>} Row errors (empty when valid).
  ***/
-export function validateAliasList(aliases, harnesses) {
+export function validateAliasList(aliases, harnesses, fleetCounts) {
   const list = Array.isArray(aliases) ? aliases : [];
   const errors = [];
   const seenNames = new Set();
@@ -233,8 +240,8 @@ export function validateAliasList(aliases, harnesses) {
         });
         return;
       }
-      const selection = entry?.modelSelection || 'list';
-      const validity = targetValidity(target, catalogue);
+      const selection = effectiveModelSelection(entry?.modelSelection || 'list', harnessId, fleetCounts);
+      const validity = targetValidity(target, catalogue, fleetCounts);
       // The validity gate adds the reasoning-level hard errors. A model on a
       // self-managed (`none`) harness keeps its historic alias-named message
       // from the checks below, so that path is excluded here.
@@ -456,6 +463,7 @@ function AliasTargetRow({
   targetCount,
   target,
   targetHarnesses,
+  fleetCounts,
   disabled,
   onTargetChange,
   onRemoveTarget,
@@ -470,22 +478,35 @@ function AliasTargetRow({
   // already judge nothing on an empty catalogue.
   const catalogue = Array.isArray(targetHarnesses) ? targetHarnesses : [];
   const entry = catalogue.find((h) => h.id === harnessId);
-  const selection = entry?.modelSelection || 'list';
+  // Fleet-served models join the row's options as exact advertised ids (a
+  // fleet pick is a guaranteed dispatch match); a `none` harness the fleet
+  // serves behaves as `list` here. Without fleet data the row shows the
+  // backend catalogue unchanged.
+  const selection = effectiveModelSelection(entry?.modelSelection || 'list', harnessId, fleetCounts);
   // Fail-safe: a malformed catalogue entry (models not an array) must never
   // crash the whole section — treat it as an empty model list so the row
   // still renders its harness/percent controls. `targetValidity` guards the
   // same way, so the row and its status badge stay consistent.
-  const modelsForHarness = Array.isArray(entry?.models) ? entry.models : [];
+  const modelsForHarness = withFleetModels(
+    Array.isArray(entry?.models) ? entry.models : [],
+    harnessId,
+    fleetCounts,
+  );
   const resolvedModel = modelKeyForValue(modelsForHarness, target?.model || '');
   const { options: reasoningOptions } = reasoningOptionsForTarget(target, catalogue);
   const { reasoning: draftReasoning } = splitReasoning(target?.model || '');
   const modelsByValue = new Map(
     modelsForHarness.map((m) => [m?.key || (m?.provider ? `${m.provider}::${m.id}` : m?.id), m]),
   );
+  // Fleet-availability badges (claim-eligible Runner counts) replace
+  // credential-health badges — availability is judged by the fleet. Without
+  // fleet data the options render badge-free (never mislead).
+  const hasFleetCounts = fleetCounts && typeof fleetCounts === 'object';
   const modelOptions = groupModelsByProvider(modelsForHarness).map((option) => {
+    if (!hasFleetCounts) return option;
     const model = modelsByValue.get(option.value);
-    const badge = model ? modelBadgeNode(model) : null;
-    return badge ? { ...option, badge } : option;
+    const info = fleetInfoForModel(fleetCounts, model, option.value);
+    return { ...option, badge: fleetCountBadgeNode(info) };
   });
   // First target keeps the historic labels so single-target rows read
   // exactly like the old one-harness-per-alias table.
@@ -502,7 +523,7 @@ function AliasTargetRow({
   const managedNoteTestId = single
     ? `model-alias-managed-note-${aliasIndex}`
     : `model-alias-target-managed-note-${aliasIndex}-${targetIndex}`;
-  const validity = targetValidity(target, catalogue);
+  const validity = targetValidity(target, catalogue, fleetCounts);
   const validityTestId = `model-alias-target-validity-${aliasIndex}-${targetIndex}`;
   // The card's accessible name: which alias and which target (plus harness)
   // the grouped controls belong to.
@@ -886,6 +907,7 @@ export function ModelAliasesSection({
   aliases = [],
   onChange,
   harnesses = [],
+  fleetCounts,
   disabled = false,
   usagesForName,
   projectId,
@@ -1013,7 +1035,7 @@ export function ModelAliasesSection({
   const targetHarnesses = (Array.isArray(harnesses) ? harnesses : []).filter(
     (h) => h?.id && h.id !== ALIAS_HARNESS_ID,
   );
-  const errors = validateAliasList(rows, harnesses);
+  const errors = validateAliasList(rows, harnesses, fleetCounts);
   const errorFor = (index) => errors.find((e) => e.index === index)?.message || '';
 
   const updateRow = (index, name, targets) => {
@@ -1304,6 +1326,7 @@ export function ModelAliasesSection({
                             targetCount={targets.length}
                             target={target}
                             targetHarnesses={targetHarnesses}
+                            fleetCounts={fleetCounts}
                             disabled={disabled}
                             onTargetChange={(patch) =>
                               setTargets(
