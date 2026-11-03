@@ -90,9 +90,10 @@ export function MobileMonitorView({
   // Pill-on (no fleet): legacy split — pill names the stage, title the task.
   // Pill-off (fleet shown): one named chip, `<task> · <stage>`, so the stage
   // still appears exactly once in the header.
-  const activeChipLabel = !headerMode.showEnginePill && headerMode.activeChip
-    ? headerMode.activeChip.label
-    : formatMobileMonitorTitle(activeTask, engineState, isRunning);
+  const activeChipLabel =
+    !headerMode.showEnginePill && headerMode.activeChip
+      ? headerMode.activeChip.label
+      : formatMobileMonitorTitle(activeTask, engineState, isRunning);
   const modelLine = resolveMobileModelLine(details);
 
   return (
@@ -133,9 +134,8 @@ export function MobileMonitorView({
             data-testid="mobile-active-stage"
             title={activeChipLabel}
             className="flex-1 min-w-0 truncate text-xs font-mono text-slate-300 text-right"
-            {...(headerMode.showEnginePill
-              ? {}
-              : { role: 'status', 'aria-live': 'polite' })}
+            role={headerMode.showEnginePill ? undefined : 'status'}
+            aria-live={headerMode.showEnginePill ? undefined : 'polite'}
           >
             {activeChipLabel}
           </p>
@@ -163,7 +163,7 @@ export function MobileMonitorView({
 
       {/* Full-height live log console (filters, auto-scroll, clear intact) */}
       <div className="flex-1 flex flex-col min-h-0 min-w-0 w-full">
-        {/* The console adapter only reads lists: a wrong-type log payload
+        {/* The log console only reads lists: a wrong-type log payload
             renders the waiting-for-stream empty state, never a crash. */}
         <LiveConsoleWidget
           processLogs={Array.isArray(processLogs) ? processLogs : []}

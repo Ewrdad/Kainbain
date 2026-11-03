@@ -19,8 +19,6 @@ export const formatRunnerElapsed = (startedAt, nowMs) => {
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 };
 
-const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 /***
  * MARK: runnerFreshness
  * @description Heartbeat freshness for the status dot: a Runner heartbeats
@@ -143,8 +141,10 @@ const runnerLogTail = (task, runnerId, limit = 6) => {
     if (!e) return false;
     if (e.meta?.runnerId) return e.meta.runnerId === runnerId;
     if (typeof e.text !== 'string') return false;
-    // eslint-disable-next-line security/detect-non-literal-regexp -- runnerId is escapeRegExp-quoted above
-    return new RegExp(`^\\[runner\\s+${escapeRegExp(runnerId)}\\]`, 'i').test(e.text);
+    // Prefix match (case-insensitive) replaces dynamic RegExp to avoid
+    // ReDoS; the id is taken only as a literal prefix token here.
+    const needle = `[runner ${runnerId}]`.toLowerCase();
+    return e.text.toLowerCase().startsWith(needle);
   });
   return mine.slice(-limit);
 };
@@ -185,14 +185,14 @@ export function PerRunnerTasksWidget({
   const assignments = (Array.isArray(rawAssignments) ? rawAssignments : []).filter(
     (a) => a && a.runnerId && (typeof a.runnerId === 'string' || typeof a.runnerId === 'number'),
   );
-  const registry =
-    registryOverride instanceof Map
-      ? registryOverride
-      : Array.isArray(registryOverride)
-        ? new Map(
-            registryOverride.filter((r) => r && r.runnerId).map((r) => [r.runnerId, r]),
-          )
-        : polled.registry;
+  let registry = polled.registry;
+  if (registryOverride instanceof Map) {
+    registry = registryOverride;
+  } else if (Array.isArray(registryOverride)) {
+    registry = new Map(
+      registryOverride.filter((r) => r && r.runnerId).map((r) => [r.runnerId, r]),
+    );
+  }
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
@@ -440,6 +440,40 @@ export const RunnerPromptPayload = ({ assignment, taskId }) => {
     }
   };
 
+  let promptBody = null;
+  if (!prompt) {
+    promptBody = (
+      <p
+        className="text-[11px] font-mono text-slate-400"
+        data-testid={`per-runner-prompt-empty-${assignment?.runnerId}`}
+      >
+        Prompt not reported yet — appears once the Runner starts the stage.
+      </p>
+    );
+  } else if (viewMode === 'raw') {
+    promptBody = (
+      <pre
+        data-testid={`per-runner-prompt-${assignment?.runnerId}`}
+        className="font-mono text-[11px] text-slate-300 leading-relaxed whitespace-pre-wrap break-words max-h-60 overflow-y-auto select-text"
+      >
+        {prompt}
+      </pre>
+    );
+  } else {
+    promptBody = (
+      <div
+        className="prose prose-invert prose-sm max-w-none select-text"
+        data-testid={`per-runner-prompt-${assignment?.runnerId}`}
+      >
+        <MarkdownViewer
+          content={prompt}
+          projectId={assignment?.projectId || null}
+          taskId={taskId || null}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="mt-1.5 border-t border-slate-700/60 pt-1.5">
       <div
@@ -478,32 +512,7 @@ export const RunnerPromptPayload = ({ assignment, taskId }) => {
           </>
         )}
       </div>
-      {!prompt ? (
-        <p
-          className="text-[11px] font-mono text-slate-400"
-          data-testid={`per-runner-prompt-empty-${assignment?.runnerId}`}
-        >
-          Prompt not reported yet — appears once the Runner starts the stage.
-        </p>
-      ) : viewMode === 'raw' ? (
-        <pre
-          data-testid={`per-runner-prompt-${assignment?.runnerId}`}
-          className="font-mono text-[11px] text-slate-300 leading-relaxed whitespace-pre-wrap break-words max-h-60 overflow-y-auto select-text"
-        >
-          {prompt}
-        </pre>
-      ) : (
-        <div
-          className="prose prose-invert prose-sm max-w-none select-text"
-          data-testid={`per-runner-prompt-${assignment?.runnerId}`}
-        >
-          <MarkdownViewer
-            content={prompt}
-            projectId={assignment?.projectId || null}
-            taskId={taskId || null}
-          />
-        </div>
-      )}
+      {promptBody}
     </div>
   );
 };

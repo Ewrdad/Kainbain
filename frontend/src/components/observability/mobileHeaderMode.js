@@ -73,15 +73,20 @@ export function resolveMobileHeaderMode(options = {}) {
     Array.isArray(stages) ? stages : [],
     engineState ?? {},
   )?.name;
-  const stageName =
-    typeof rawStageName === 'string'
-      ? rawStageName.trim()
-      : typeof rawStageName === 'number' && Number.isFinite(rawStageName)
-        ? String(rawStageName)
-        : '';
-  const activeChip = taskName
-    ? { taskName, stageName: stageName || null, label: stageName ? `${taskName} · ${stageName}` : taskName }
-    : null;
+  let stageName = '';
+  if (typeof rawStageName === 'string') {
+    stageName = rawStageName.trim();
+  } else if (typeof rawStageName === 'number' && Number.isFinite(rawStageName)) {
+    stageName = String(rawStageName);
+  }
+  let activeChip = null;
+  if (taskName) {
+    activeChip = {
+      taskName,
+      stageName: stageName || null,
+      label: stageName ? `${taskName} · ${stageName}` : taskName,
+    };
+  }
   return { showEnginePill, activeChip };
 }
 
