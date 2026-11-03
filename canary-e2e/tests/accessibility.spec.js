@@ -41,21 +41,49 @@ import {
 // Local readiness (NOT the shared waitForAppReady): the axe scans gate on the
 // rendered app shell — brand heading + primary navigation — rather than the
 // project selector, so the scan target is fully painted before measuring.
-async function waitForAppShell(page) {
-  // Resilience: wait for commit/DOM instead of the full `load` event. The
-  // `load` gate hangs when slow subresources (Google Fonts CDN, build-badge
-  // fetch, model-discovery warnings) stall under sustained suite load — the
-  // tail tests timed out here after minutes of green runs. Readiness is still
-  // gated explicitly below (title + h1 + Orchestrator button), and scan()
-  // additionally waits for fonts + build badge before measuring.
-  await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
-  await expect(page).toHaveTitle(/Kainbain/);
+async function waitForAppShellOnce(page) {
+  // Most calls land here straight after a reload of this same URL (or with
+  // the page already on it from beforeEach): re-navigating would abort the
+  // just-issued module burst and fire a second one, doubling vite/browser
+  // pressure for an identical load. Only navigate when we are elsewhere
+  // (fresh about:blank page, or a deep link another step left behind).
+  if (!page.url().startsWith(APP_URL)) {
+    // Resilience: wait for commit/DOM instead of the full `load` event. The
+    // `load` gate hangs when slow subresources (Google Fonts CDN, build-badge
+    // fetch, model-discovery warnings) stall under sustained suite load — the
+    // tail tests timed out here after minutes of green runs. Readiness is still
+    // gated explicitly below (title + h1 + Orchestrator button), and scan()
+    // additionally waits for fonts + build badge before measuring.
+    await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
+  }
+  await expect(page).toHaveTitle(/Kainbain/, { timeout: 15000 });
   // The app shell must be rendered: brand heading + primary navigation.
-  await expect(page.locator("h1")).toContainText("KAINBAIN");
-  await expect(page.getByRole("button", { name: /Orchestrator/i })).toBeVisible();
+  await expect(page.locator("h1")).toContainText("KAINBAIN", { timeout: 15000 });
+  await expect(page.getByRole("button", { name: /Orchestrator/i })).toBeVisible({
+    timeout: 15000,
+  });
+}
+
+async function waitForAppShell(page) {
+  try {
+    await waitForAppShellOnce(page);
+  } catch (err) {
+    // Mid-suite resource-exhaustion windows (net::ERR_INSUFFICIENT_RESOURCES
+    // across the module burst, root never mounts) leave a blank shell that a
+    // longer wait cannot heal — the failed loads must be re-issued. One
+    // bounded reload+retry; a genuinely broken shell fails twice and stays
+    // red. The file-wide 120 s timeout below gives the retry room to land.
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await waitForAppShellOnce(page);
+  }
 }
 
 test.describe("Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness)", () => {
+  // File-wide budget (previously only the three tail tests carried it):
+  // axe+contrast scans already run ~19 s of the 30 s default, leaving no
+  // room for the shell gate's one reload+retry when a transient resource
+  // window hits. Genuine hangs still fail, just with tail-test patience.
+  test.describe.configure({ timeout: 120000 });
   test.beforeEach(async ({ page }) => {
     await waitForAppShell(page);
     // The task inspector test creates a task in "Project A", so select it to
