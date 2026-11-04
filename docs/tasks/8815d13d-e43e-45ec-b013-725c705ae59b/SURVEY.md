@@ -154,3 +154,55 @@
   "answers": {}
 }
 ```
+
+## Round 3
+
+```survey-json
+{
+  "round": 3,
+  "generatedAt": "2026-11-04T01:42:41.000Z",
+  "stage": "stage-1792362077711",
+  "questions": [
+    {
+      "id": "q11",
+      "type": "single",
+      "text": "What is the main goal of this task?",
+      "options": [
+        "Just fix tasks looking stuck on retry",
+        "Fix stuck on retry plus tidy up the other active states",
+        "Full review of all task states",
+        "Not sure - investigate first"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q12",
+      "type": "single",
+      "text": "When a task is no longer really retrying, what should it show instead?",
+      "options": [
+        "The true state, like waiting or failed",
+        "Keep showing retry but only while it is really retrying",
+        "Show extra detail, like which try it is on",
+        "Not sure"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q13",
+      "type": "single",
+      "text": "How big a change is okay for this fix?",
+      "options": [
+        "Small fix only",
+        "Medium tidy-up of the main states",
+        "Bigger rethink of how states work",
+        "Not sure"
+      ],
+      "required": false,
+      "showIf": null
+    }
+  ],
+  "answers": {}
+}
+```
