@@ -9,6 +9,13 @@
     "minQuestions": {
       "value": "0",
       "description": "Suggested minimum number of questions for the round (soft guidance only; 0 disables). Surfaced as {{minQuestions}} in the skill body."
+    },
+    "imageGen": {
+      "value": "none",
+      "description": "Image generation provider for image questions. 'none' (default) removes the image-question section from the agent prompt entirely; otherwise the agent may write type: image questions whose descriptions the backend renders into pictures.",
+      "ui": "provider-select",
+      "providerApi": "/settings/image-gen/providers",
+      "enum": ["none", "muse", "mock"]
     }
   },
   "context": "Question rounds are written as append-only JSON blocks to {{outputFile}} in the current task's docs/tasks/<taskId>/ folder. Re-read that file before appending so earlier rounds and answers are preserved. Suggested minimum number of questions for this round: {{minQuestions}} (0 = no minimum). Use a distinct outputFile per question stage when a task needs multiple surveys (e.g. FEEDBACK.md, SECURITY_QUESTIONARY.md, INTENT_SURVEY.md).",

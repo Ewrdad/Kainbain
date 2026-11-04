@@ -155,6 +155,35 @@ describe("question-me engine gate", () => {
 		expect(fs.existsSync(path.join(dir, "docs", "tasks", task.id, "SURVEY.md"))).toBe(false);
 	});
 
+	it("generates image-question pictures in the background after parking", async () => {
+		const { store, dir } = makeStore();
+		const illustrated = [
+			{ id: "ask", name: "Ask", type: "agent", prompt: "Ask me things", skills: [{ name: "question-me", config: { imageGen: "mock" } }] },
+			{ id: "plan", name: "Plan", type: "agent", prompt: "Make a plan" },
+		];
+		const task = store.createTask("p1", { goal: "illustrated survey", stageId: "ask", projectCwd: dir });
+		const result = await store.executeStage("p1", task.id, {
+			stages: illustrated,
+			projectCwd: dir,
+			agentRunner: writerAgent([
+				{ id: "qi", type: "image", text: "Pick a design", options: ["dark dashboard", "light dashboard"], required: true, showIf: null },
+			]),
+		});
+		expect(result.status).toBe("waiting_human");
+		// The park itself never waits on generation: poll the survey file
+		// until the background job splices the ready entries.
+		const surveyPath = path.join(dir, "docs", "tasks", task.id, "SURVEY.md");
+		let images = [];
+		for (let attempt = 0; attempt < 100 && images.filter((e) => e?.status === "ready").length < 2; attempt += 1) {
+			await new Promise((resolve) => setTimeout(resolve, 50));
+			const { parseSurvey } = await import("../../shared/survey.js");
+			images = parseSurvey(fs.readFileSync(surveyPath, "utf8")).rounds[0]?.questions[0]?.images || [];
+		}
+		expect(images.map((e) => e.status)).toEqual(["ready", "ready"]);
+		expect(fs.existsSync(path.join(dir, "docs", "tasks", task.id, "assets", "survey-r1-qi-0.png"))).toBe(true);
+		expect(fs.existsSync(path.join(dir, "docs", "tasks", task.id, "assets", "survey-r1-qi-1.png"))).toBe(true);
+	}, 30000);
+
 	it("ignores the gate entirely without the skill", async () => {
 		const { store, dir } = makeStore();
 		const plain = [

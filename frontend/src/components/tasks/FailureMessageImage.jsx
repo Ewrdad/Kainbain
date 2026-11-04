@@ -7,6 +7,10 @@ import { useCallback, useState } from 'react';
  *   retry control instead of an invisible hole, and a new URL (or an
  *   explicit retry) always gets a fresh load attempt.
  * @example <FailureMessageImage url="/img/shot.png" alt="shot" name="shot.png" />
+ * @param {Object} props
+ * @param {string} props.url - Resolved thumbnail URL.
+ * @param {string} [props.alt] - Accessible label.
+ * @param {string} [props.name] - File name shown on fallback.
  ***/
 export function FailureMessageImage({ url, alt, name }) {
   const [failed, setFailed] = useState(false);

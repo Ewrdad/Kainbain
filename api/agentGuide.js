@@ -714,6 +714,30 @@ export const ENDPOINTS = [
 	},
 	{
 		method: "GET",
+		path: "/settings/image-gen/providers",
+		purpose: "List image providers with configured/source flags (keys are never returned).",
+		body: null,
+	},
+	{
+		method: "PUT",
+		path: "/settings/image-gen/providers/:id/key",
+		purpose: "Store an image provider key (`{ key }`).",
+		body: null,
+	},
+	{
+		method: "DELETE",
+		path: "/settings/image-gen/providers/:id/key",
+		purpose: "Clear the stored image provider key.",
+		body: null,
+	},
+	{
+		method: "POST",
+		path: "/settings/image-gen/providers/:id/test",
+		purpose: "Dry-run one image generation (`{ prompt? }` \u2192 `{ ok, bytes?, ms?, error? }`).",
+		body: null,
+	},
+	{
+		method: "GET",
 		path: "/agent",
 		purpose: "Agent status for the project session.",
 		body: null,

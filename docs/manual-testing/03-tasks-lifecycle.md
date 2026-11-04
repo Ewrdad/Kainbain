@@ -150,3 +150,21 @@ moves it. That is what makes these assertions deterministic.
   `skip` clears the pending survey without losing the task.
 - Cleanup: delete both tasks; verify `surveyPending:false` on any
   surviving task you touched.
+
+## MT-TASK-13 — Survey image questions (mock provider, API)
+
+- **Priority:** P2. Needs a scratch project whose asking stage sets the
+  question-me skill config `{"imageGen":"mock"}` (offline fixture
+  pictures — no key, no cost).
+- Steps: create a task in the asking stage; write a `SURVEY.md` round
+  with one `type:"image"` question (2 descriptions, `required:true`);
+  `POST $BASE/tasks/$TID/execute {"projectId":"$PID"}`; poll
+  `GET $BASE/tasks/$TID/survey?projectId=$PID` until both `images[]`
+  entries are `ready`; `POST $BASE/tasks/$TID/survey` a complete
+  answer selecting the first description.
+- Expected: GET reports `imageGen:{"providerId":"mock"}`; each ready
+  entry's `assets/…png` file exists under the task folder and serves
+  via `GET /projects/$PID/tasks/$TID/images/<name>`; the complete
+  POST advances the task and writes `assets/survey-r1-<qid>-chosen.png`
+  plus a `## Chosen designs` reference section in the survey file.
+- Cleanup: delete the task and the scratch project.

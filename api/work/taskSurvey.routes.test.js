@@ -108,6 +108,32 @@ describe("GET /tasks/:id/survey", () => {
 		expect(out.missing).toEqual([{ round: 1, id: "q1" }]);
 		expect(out.rounds).toHaveLength(1);
 	});
+
+	it("kicks background image generation for image questions (crash recovery)", async () => {
+		const illustrated = [
+			{ id: "s-1", name: "Ask", type: "agent", skills: [{ name: "question-me", config: { imageGen: "mock" } }] },
+			{ id: "s-2", name: "Plan", type: "agent" },
+		];
+		const { call } = await setup(illustrated);
+		appendSurveyRound({
+			cwd: tmp,
+			project: null,
+			taskId: "t-1",
+			questions: [q({ id: "qi", type: "image", text: "Pick a design", options: ["dark", "light"] })],
+		});
+		const { out } = await call("GET", "/tasks/:id/survey", { params: { id: "t-1" } });
+		expect(out).toMatchObject({ exists: true, status: "pending" });
+		// The read itself returns immediately; the recovery job fills the
+		// images behind it.
+		let images = [];
+		for (let attempt = 0; attempt < 100 && images.filter((e) => e?.status === "ready").length < 2; attempt += 1) {
+			await new Promise((resolve) => setTimeout(resolve, 50));
+			const again = await call("GET", "/tasks/:id/survey", { params: { id: "t-1" } });
+			images = again.out.rounds[0]?.questions[0]?.images || [];
+		}
+		expect(images.map((e) => e.status)).toEqual(["ready", "ready"]);
+		expect(fs.existsSync(path.join(tmp, "docs", "tasks", "t-1", "assets", "survey-r1-qi-0.png"))).toBe(true);
+	}, 30000);
 });
 
 describe("POST /tasks/:id/survey", () => {

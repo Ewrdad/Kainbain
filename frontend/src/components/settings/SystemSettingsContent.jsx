@@ -5,6 +5,7 @@ import { useModelCatalog } from '../../hooks/useModelCatalog';
 import { useModelRefreshSetting } from '../../hooks/useModelRefreshSetting';
 
 import { RunnerConfigurationSection } from './RunnerConfigurationSection';
+import { ImageGenSection } from './ImageGenSection';
 import { StorageSection } from './StorageSection';
 import { PushNotificationsSection } from './PushNotificationsSection';
 import { PromptLayoutSection } from './PromptLayoutSection';
@@ -43,7 +44,7 @@ export function SettingRow({ label, hint, children }) {
  * MARK: SystemSettingsContent
  * @description Route- and shell-agnostic System Settings content component.
  * Renders header, tablist, all section panels (Runners, Models, Engine, Storage,
- * Notifications, Prompt Layout, UI), and footer actions. Rendered by the
+ * Notifications, Prompt Layout, Images, UI), and footer actions. Rendered by the
  * standalone SystemSettingsPage screen (`/system-settings`); it takes no
  * modal state and never renders a dialog shell.
  * @param {Object} props
@@ -303,6 +304,12 @@ export function SystemSettingsContent({
         {effectiveSection === 'prompt-layout' && (
           <div role="tabpanel" aria-label="Prompt Layout settings">
             <PromptLayoutSection />
+          </div>
+        )}
+
+        {effectiveSection === 'images' && (
+          <div role="tabpanel" aria-label="Image generation settings">
+            <ImageGenSection />
           </div>
         )}
 
