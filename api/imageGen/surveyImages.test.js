@@ -85,13 +85,18 @@ describe("api/imageGen/surveyImages job", () => {
 	let cwd;
 	let savedKey;
 	let savedImageGenDir;
+	let isolatedImageGenDir;
 
 	beforeEach(() => {
 		cwd = fs.mkdtempSync(path.join(os.tmpdir(), "kb-survey-images-test-"));
 		savedKey = process.env.KAINBAIN_IMAGE_GEN_MUSE_API_KEY;
 		delete process.env.KAINBAIN_IMAGE_GEN_MUSE_API_KEY;
+		// Isolate the server-owned key store: without this the job reads the
+		// real ~/.kainbain/image-gen (or a deploy override), so a stored key
+		// on the host turns the no-key tests below into live generations.
 		savedImageGenDir = process.env.KAINBAIN_IMAGE_GEN_DIR;
-		process.env.KAINBAIN_IMAGE_GEN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "kb-image-gen-"));
+		isolatedImageGenDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-image-gen-test-"));
+		process.env.KAINBAIN_IMAGE_GEN_DIR = isolatedImageGenDir;
 	});
 
 	afterEach(() => {
@@ -104,6 +109,12 @@ describe("api/imageGen/surveyImages job", () => {
 		} catch {
 			// ignore cleanup errors
 		}
+		try {
+			fs.rmSync(isolatedImageGenDir, { recursive: true, force: true });
+		} catch {
+			// ignore cleanup errors
+		}
+		isolatedImageGenDir = undefined;
 	});
 
 	it("generates assets and ready entries through the mock provider", async () => {

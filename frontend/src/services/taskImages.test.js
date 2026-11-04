@@ -88,6 +88,22 @@ describe('resolveTaskImageUrl', () => {
       }),
     ).toBe('/projects/p/tasks/t/images/my%20image%20(1).png');
   });
+
+  it('resolves the reported numeric-attachment shapes to the image endpoint', () => {
+    // Field refs from the "images randomly not loading" report: purely
+    // numeric names must resolve exactly like descriptive ones.
+    for (const name of ['18744.png', '18741.png', '18850.png', 'image-2.png']) {
+      expect(
+        resolveTaskImageUrl({ projectId: 'p', taskId: 't', src: `assets/${name}` }),
+      ).toBe(`/projects/p/tasks/t/images/${name}`);
+    }
+  });
+
+  it('strips a trailing quoted title before resolving', () => {
+    expect(
+      resolveTaskImageUrl({ projectId: 'p', taskId: 't', src: 'assets/a.png "the shot"' }),
+    ).toBe('/projects/p/tasks/t/images/a.png');
+  });
 });
 
 describe('taskImageRequests', () => {

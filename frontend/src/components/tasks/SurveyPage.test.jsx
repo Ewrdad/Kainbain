@@ -435,6 +435,22 @@ describe('SurveyPage image questions', () => {
     );
   });
 
+  it('falls back to a retryable block when a ready picture fails to load', async () => {
+    const client = makeClient(imageSurvey(readyImages));
+    renderPage(client);
+    await screen.findByText('Pick a design');
+    fireEvent.error(screen.getByAltText('dark dashboard'));
+    expect(screen.getByText('🖼️ illustration unavailable')).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: /retry loading illustration for dark dashboard/i }),
+    );
+    const img = screen.getByAltText('dark dashboard');
+    expect(img.tagName).toBe('IMG');
+    expect(img.getAttribute('src')).toContain(
+      '/projects/p1/tasks/t1/images/survey-r1-qi-0.png',
+    );
+  });
+
   it('shows generating skeletons while pending and merges the poll without losing drafts', async () => {
     const pending = imageSurvey([
       { option: 0, file: 'assets/survey-r1-qi-0.png', status: 'pending' },
