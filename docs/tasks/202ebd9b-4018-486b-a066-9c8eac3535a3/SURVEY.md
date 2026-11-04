@@ -195,3 +195,27 @@
   "answers": {}
 }
 ```
+
+## Round 5
+
+```survey-json
+{
+  "round": 5,
+  "generatedAt": "2026-11-04T14:30:00.000Z",
+  "stage": "stage-1792362077711",
+  "questions": [
+    {
+      "id": "q11",
+      "type": "single",
+      "text": "I think this is simple enough to not require questions. Do you agree?",
+      "options": [
+        "Yes, move ahead with what is already asked above",
+        "No, I still have something to add (describe in Notes)"
+      ],
+      "required": true,
+      "showIf": null
+    }
+  ],
+  "answers": {}
+}
+```
