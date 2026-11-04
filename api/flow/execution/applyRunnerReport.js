@@ -8,6 +8,7 @@ import { normalizeStageType } from "../../projectStore.js";
 import { ALIAS_HARNESS_ID } from "../../../shared/modelAliases.js";
 import { routeStageError } from "./routeStageError.js";
 import { parkTaskForSurvey } from "./parkTaskForSurvey.js";
+import { decideAgentStageVerdict } from "../../../shared/stageVerdict.js";
 
 /***
  * MARK: applyRunnerReport
@@ -21,6 +22,13 @@ import { parkTaskForSurvey } from "./parkTaskForSurvey.js";
  *   the human survey), failure routing via routeStageError, and
  *   advanceStage plus the scheduler follow-on kick. Call only after the
  *   lease fence accepted the execution (complete-execution does that).
+ *   Defense in depth: a `passed` report for an agent stage is re-checked
+ *   against the shared verdict decision, so an old Runner that never
+ *   learned failure detection still cannot advance a stage whose output
+ *   carries a well-formed FAIL block. Only the text block is re-checkable
+ *   here — the Runner owns the session events, so a `fail_stage` tool call
+ *   an old Runner swallowed is invisible to this check (new Runners report
+ *   it themselves).
  * @example await applyRunnerReport({ store, projectStore, projectId: 'p', taskId: 't', outcome: { status: 'passed', output: '...' } }) => { advanced: true, ... }
  * @param {Object} args - Context.
  * @param {Object} args.store - Task store.
@@ -123,10 +131,40 @@ export async function applyRunnerReport({
 		? dispatchAttribution.targetIndex
 		: null;
 
+	// Defense in depth (old-Runner protection): a `passed` report whose
+	// output carries a well-formed FAIL block is rewritten to
+	// failed/rejected and flows into the existing routeStageError branch
+	// below — no new failure plumbing. Already-`failed` outcomes pass
+	// through untouched, and the shared decision keeps this fail-open
+	// (reasonless FAIL still advances) and agent-only (human/CI stages
+	// never re-parse). Only the text block is re-checkable here: the
+	// Runner owns the session events, so failStageRequest is always null.
+	// Known limit: the Runner caps the reported output at 20k leading
+	// characters, so a FAIL block past that cut is invisible to this
+	// re-check (new Runners parse the full text before capping, so only
+	// huge outputs on old Runners are affected — and old Runners phase
+	// out through self-update).
+	if (outcome.status === "passed") {
+		const verdictDecision = decideAgentStageVerdict({
+			stage,
+			output: redactedOutput,
+			failStageRequest: null,
+		});
+		if (verdictDecision.failed) {
+			outcome = {
+				...outcome,
+				status: "failed",
+				failureKind: "rejected",
+				failureReason: verdictDecision.failureReason,
+			};
+		}
+	}
+
 	if (outcome.status === "failed") {
 		const err = new Error(outcome.failureReason || "Stage failed on the Runner");
-		// The runner's completion payload carries the tail of the run output
-		// (runner/daemon.js caps it). Keep it on the error so the failure
+		// The runner's completion payload carries the leading slice of the
+		// run output (runner/daemon.js caps it at 20k characters). Keep it
+		// on the error so the failure
 		// report renders the actual failing output instead of only the
 		// reason — thin "exit code 1" reports hid every branch result
 		// (task b5716327). handleStageFailure already renders error.stdout

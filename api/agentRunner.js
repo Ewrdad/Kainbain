@@ -27,10 +27,10 @@ import { selectAliasTarget } from "./aliasSelector.js";
 import { stripUnsupportedReasoningLevel } from "./aliasTargets.js";
 import {
 	checkToolLoopGuard,
+	decideAgentStageVerdict,
 	formatLoopDiagnostic,
 	parseStageVerdict,
 	resolveToolLoopStrikes,
-	stageExpectsAgentVerdict,
 } from "./agent/verdictContract.js";
 
 // Re-exported for contract tests and external importers: the verdict parser
@@ -1040,7 +1040,15 @@ export function createAgentRunner(optsOrProjectId = {}, maybeOpts = {}) {
 		// the agent already asked to fail the stage): the agent actively decided
 		// the stage should fail, so this is review feedback, not a blip.
 		if (stageFailureRequested) {
-			const rejectionReason = `[Agent Review Rejection] ${stageFailureRequested?.reason || "Stage rejected by agent review"}`;
+			// The reason string comes from the shared verdict decision (its
+			// fail_stage branch wins unconditionally, as here); the Runner
+			// daemon and the backend double-check decide through the same
+			// helper so the paths cannot drift.
+			const { failureReason: rejectionReason } = decideAgentStageVerdict({
+				stage,
+				output: "",
+				failStageRequest: stageFailureRequested,
+			});
 			const rejectionOutput =
 				typeof promptRes === "string" && promptRes.trim()
 					? promptRes
@@ -1135,36 +1143,36 @@ export function createAgentRunner(optsOrProjectId = {}, maybeOpts = {}) {
 		// KainBain never fails a stage without guidance to fix; the run
 		// passes and the verdict stays visible for human review. The verdict
 		// contract is agent-only: human/ci/deploy/merge stages never render
-		// or are failed by a verdict, so their output is never parsed.
-		const textVerdict = stageExpectsAgentVerdict(stage)
-			? parseStageVerdict(finalText)
-			: { verdict: null, reason: "", fix: "" };
-		if (textVerdict.verdict === "FAIL") {
-			if (textVerdict.reason && textVerdict.fix) {
-				const rejectionReason = `[Agent Review Rejection] ${textVerdict.reason} Fix guidance: ${textVerdict.fix}`;
-				return {
-					output: finalText,
-					content: finalText,
-					summary: rejectionReason,
-					modifiedFiles: Array.from(modifiedFiles),
-					failed: true,
-					failureReason: rejectionReason,
-					failureKind: "rejected",
-					harnessId: runHarnessId,
-					fallbackStageId: null,
-					logEntries: streamer.snapshot().entries,
-				};
-			}
-			eventBridge.emitSystemLog?.(
-				resolvedProjectId,
-				`[WARN] Stage verdict FAIL ignored (fail-open): the verdict block has no usable reason/fix guidance, so the stage passes. A failure without guidance is never recorded — see the stage report for the full output.`,
-				{
-					projectId: resolvedProjectId,
-					taskId,
-					tag: "[WARN]",
-					level: "warn",
-				},
-			);
+		// or are failed by a verdict, so their output is never parsed. The
+		// decision itself lives in the shared helper (same call the Runner
+		// daemon and the backend double-check make).
+		const verdictDecision = decideAgentStageVerdict({
+			stage,
+			output: finalText,
+			failStageRequest: null,
+		});
+		if (verdictDecision.failed) {
+			const rejectionReason = verdictDecision.failureReason;
+			return {
+				output: finalText,
+				content: finalText,
+				summary: rejectionReason,
+				modifiedFiles: Array.from(modifiedFiles),
+				failed: true,
+				failureReason: rejectionReason,
+				failureKind: "rejected",
+				harnessId: runHarnessId,
+				fallbackStageId: null,
+				logEntries: streamer.snapshot().entries,
+			};
+		}
+		if (verdictDecision.failOpenWarning) {
+			eventBridge.emitSystemLog?.(resolvedProjectId, verdictDecision.failOpenWarning, {
+				projectId: resolvedProjectId,
+				taskId,
+				tag: "[WARN]",
+				level: "warn",
+			});
 		}
 
 		// No verdict rendered (or a malformed block the parser ignored):
