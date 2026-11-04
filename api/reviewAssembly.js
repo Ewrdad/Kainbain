@@ -31,6 +31,8 @@ import {
 	isReviewDiffPreserved,
 	isValidReviewBaseline,
 } from "./work/taskBranches.js";
+import { docsTasksIgnorePath } from "./docsPath.js";
+import { isTaskFilePath } from "./work/isTaskFilePath.js";
 
 /***
  * MARK: emptyReview
@@ -136,6 +138,13 @@ async function loadDiffSection(projectCwd, base, head) {
  *   branch itself is gone — the frozen baseline still renders, which is the
  *   point of preserving it.
  ***/
+function filterTaskFiles(files, prefix) {
+	if (!Array.isArray(files) || !prefix) return files || [];
+	return files.filter(
+		(f) => !isTaskFilePath(f.path, prefix) && !isTaskFilePath(f.oldPath, prefix),
+	);
+}
+
 async function buildPreservedReview({
 	deps,
 	projectId,
@@ -148,6 +157,7 @@ async function buildPreservedReview({
 	live,
 	uncommittedChanges,
 	snapshotCommitted,
+	project,
 }) {
 	let frozen = null;
 	try {
@@ -164,10 +174,13 @@ async function buildPreservedReview({
 		});
 	}
 
+	const prefix = docsTasksIgnorePath(project);
 	if (!frozen) {
 		// Baseline SHAs unresolvable — fall back to the live diff with a
 		// reason note so the review never hard-fails.
 		if (live) {
+			const filteredLiveFiles = filterTaskFiles(live.files, prefix);
+			const filteredCount = (live.files?.length || 0) - filteredLiveFiles.length;
 			return {
 				task,
 				branch: taskBranch,
@@ -180,7 +193,8 @@ async function buildPreservedReview({
 				branchSupported: true,
 				reason: null,
 				commits: live.commits,
-				files: live.files,
+				files: filteredLiveFiles,
+				filteredTaskFilesCount: filteredCount,
 				comments: [], // Filled by the route from the sidecar store
 				preserved: false,
 				preserveNote:
@@ -194,8 +208,19 @@ async function buildPreservedReview({
 		});
 	}
 
+	const filteredFrozenFiles = filterTaskFiles(frozen.files, prefix);
+	const frozenFilteredCount = (frozen.files?.length || 0) - filteredFrozenFiles.length;
+	const filteredLive = live
+		? {
+				...live,
+				files: filterTaskFiles(live.files, prefix),
+			}
+		: null;
+	const liveFilteredCount = live
+		? (live.files?.length || 0) - (filteredLive.files?.length || 0)
+		: 0;
 	const hasNew =
-		live && (live.files.length > 0 || live.commits.length > 0);
+		filteredLive && (filteredLive.files.length > 0 || filteredLive.commits.length > 0);
 	return {
 		task,
 		branch: taskBranch,
@@ -208,16 +233,17 @@ async function buildPreservedReview({
 		branchSupported: true,
 		reason: null,
 		commits: frozen.commits,
-		files: frozen.files,
+		files: filteredFrozenFiles,
+		filteredTaskFilesCount: frozenFilteredCount + liveFilteredCount,
 		comments: [], // Filled by the route from the sidecar store
 		preserved: true,
 		reviewBaseline: { ...baseline },
 		newSinceMerge: hasNew
 			? {
-					files: live.files,
-					commits: live.commits,
-					behindBy: live.behindBy,
-					aheadBy: live.aheadBy,
+					files: filteredLive.files,
+					commits: filteredLive.commits,
+					behindBy: filteredLive.behindBy,
+					aheadBy: filteredLive.aheadBy,
 				}
 			: null,
 	};
@@ -413,6 +439,7 @@ export async function buildTaskReview(deps, projectCwd, projectId, taskId) {
 			live,
 			uncommittedChanges,
 			snapshotCommitted,
+			project,
 		});
 	}
 
@@ -424,6 +451,9 @@ export async function buildTaskReview(deps, projectCwd, projectId, taskId) {
 		});
 	}
 
+	const prefix = docsTasksIgnorePath(project);
+	const filtered = filterTaskFiles(live.files, prefix);
+	const filteredCount = (live.files?.length || 0) - filtered.length;
 	return {
 		task,
 		branch: taskBranch,
@@ -436,7 +466,8 @@ export async function buildTaskReview(deps, projectCwd, projectId, taskId) {
 		branchSupported: true,
 		reason: null,
 		commits: live.commits,
-		files: live.files,
+		files: filtered,
+		filteredTaskFilesCount: filteredCount,
 		comments: [], // Filled by the route from the sidecar store
 	};
 }

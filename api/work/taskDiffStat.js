@@ -2,6 +2,16 @@
 import { diffRangeNumstat, git, defaultBranch } from "../git.js";
 import { diffFiles } from "../reviewDiff.js";
 import { resolveTaskBranch } from "./taskBranches.js";
+import { isTaskFilePath } from "./isTaskFilePath.js";
+
+function withoutTaskFiles(files, docsTasksPrefix) {
+	if (!Array.isArray(files)) return files;
+	const prefixes = ["docs/tasks/"];
+	if (typeof docsTasksPrefix === "string" && docsTasksPrefix && !prefixes.includes(docsTasksPrefix)) {
+		prefixes.push(docsTasksPrefix);
+	}
+	return files.filter((f) => !prefixes.some((p) => isTaskFilePath(f.path, p) || isTaskFilePath(f.oldPath, p)));
+}
 
 /***
  * MARK: summarizeDiffStat
@@ -152,6 +162,7 @@ export async function getTaskDiffStat(
 		diffFilesFn = diffFiles,
 		defaultBranchFn = defaultBranch,
 		workingTreeDiffFn = defaultWorkingTreeDiff,
+		docsTasksPrefix,
 	} = {},
 ) {
 	try {
@@ -165,7 +176,7 @@ export async function getTaskDiffStat(
 		} else {
 			files = await workingTreeDiffFn(cwd);
 		}
-		return summarizeDiffStat(files);
+		return summarizeDiffStat(withoutTaskFiles(files, docsTasksPrefix));
 	} catch {
 		return null;
 	}
@@ -223,7 +234,7 @@ export async function getCommitRangeDiffStat(cwd, baseSha, headSha, opts = {}) {
 	try {
 		if (typeof opts.rangeFilesFn === "function") {
 			return filesToRangeStat(
-				await opts.rangeFilesFn(cwd, baseSha.trim(), headSha.trim()),
+				withoutTaskFiles(await opts.rangeFilesFn(cwd, baseSha.trim(), headSha.trim()), opts.docsTasksPrefix),
 			);
 		}
 		const runRangeDiff =
@@ -239,7 +250,7 @@ export async function getCommitRangeDiffStat(cwd, baseSha, headSha, opts = {}) {
 		if (!String(stdout || "").trim()) {
 			return { additions: 0, deletions: 0 };
 		}
-		return summarizeDiffStat(parseNumstatStdout(stdout));
+		return summarizeDiffStat(withoutTaskFiles(parseNumstatStdout(stdout), opts.docsTasksPrefix));
 	} catch {
 		return null;
 	}
