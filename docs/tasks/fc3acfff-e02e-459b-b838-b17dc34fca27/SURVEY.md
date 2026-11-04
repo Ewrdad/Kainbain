@@ -89,6 +89,51 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Balanced: welcome file plus a few standard files (change history, work rules)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Delete them"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Move them into the docs folder"
+      ],
+      "notes": "as long as they dont require being in the main repo to be relevant such as agents.md or readme.md or the map files"
+    },
+    "q4": {
+      "selected": [
+        "Delete them"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Website help pages (the user guide section)",
+        "Small readme files inside code folders",
+        "Skill instruction files"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Yes, fix links to moved files"
+      ],
+      "notes": ""
+    },
+    "q7": {
+      "selected": [
+        "Keep it safe in the docs folder"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
