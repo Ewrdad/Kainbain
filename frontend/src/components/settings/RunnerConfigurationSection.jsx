@@ -34,6 +34,25 @@ import {
   filterVisibleRunners,
 } from './runnerConfigHelpers';
 
+/**
+ * MARK: DirectoryField
+ * @description Reusable input component for editing directory paths with save action.
+ *   Shows the current value, allows editing, and provides a save button. Displays
+ *   a label indicating if the value is using the Runner's default.
+ *
+ * @param {Object} props - Component props
+ * @param {string} props.label - Field label text
+ * @param {string} props.testId - Test ID for the input field
+ * @param {string} props.value - Current directory value
+ * @param {string} props.hint - Placeholder/hint text showing effective value
+ * @param {boolean} props.isDefault - Whether value is using Runner default
+ * @param {boolean} props.isUnknown - Whether effective value is unknown
+ * @param {string|null} props.error - Error message to display
+ * @param {boolean} props.busy - Whether save action is in progress
+ * @param {Function} props.onChange - Change handler for input
+ * @param {Function} props.onSave - Save handler for button click
+ * @returns {JSX.Element} Directory input field component
+ */
 const DirectoryField = ({ label, testId, value, hint, isDefault, isUnknown, error, busy, onChange, onSave }) => (
   <div className="flex flex-col gap-1">
     <label className="text-xs font-bold text-on-surface" htmlFor={`${testId}-input`}>
@@ -69,7 +88,16 @@ const DirectoryField = ({ label, testId, value, hint, isDefault, isUnknown, erro
 
 /***
  * MARK: RunnerConfigurationSection
- * @description System Settings › Runners › detailed Runner configuration
+ * @description System Settings › Runners › detailed Runner configuration screen
+ *   that allows operators to view and edit Runner settings including display name,
+ *   project scope, available tools, model selection, directory preferences, and
+ *   job type toggles. Also provides lifecycle controls (approve/deny/pause/resume/revoke),
+ *   update/reload actions, and model re-detection.
+ * 
+ *   The screen shows a two-panel layout: a left roster of visible Runners and a
+ *   right detail panel for the selected Runner. The entire Runner row is clickable
+ *   to select it for configuration.
+ *
  * @example <RunnerConfigurationSection />
  ***/
 export function RunnerConfigurationSection() {
@@ -229,6 +257,18 @@ export function RunnerConfigurationSection() {
     [loadRunners],
   );
 
+  /**
+   * MARK: saveConfig
+   * @description Saves configuration changes for a specific Runner.
+   *   Updates the Runner's operatorConfig on the backend and refreshes the
+   *   local state to reflect the changes. Shows a success notification if
+   *   provided and handles errors appropriately.
+   *
+   * @param {string} runnerId - The Runner identifier to update
+   * @param {Object} patch - Configuration changes to apply (e.g., { displayName: 'New Name' })
+   * @param {string} successNote - Optional success message to display after saving
+   * @returns {Promise<boolean>} True if save succeeded, false if it failed
+   */
   const saveConfig = useCallback(async (runnerId, patch, successNote) => {
     const key = `config:${runnerId}:${Object.keys(patch).join('+')}`;
     setBusyKey(key);
@@ -443,12 +483,31 @@ export function RunnerConfigurationSection() {
     }));
   };
 
+  /**
+   * MARK: handleToolToggle
+   * @description Toggles a harness/tool availability for the selected Runner.
+   *   When checked, adds the tool to the Runner's available tools list;
+   *   when unchecked, removes it. Changes are saved to the backend immediately.
+   *
+   * @param {string} toolId - The harness/tool identifier to toggle
+   * @param {boolean} checked - Whether the tool should be enabled
+   */
   const handleToolToggle = (toolId, checked) => {
     if (!selected) return;
     const next = checked ? [...new Set([...enabledTools, toolId])] : enabledTools.filter((t) => t !== toolId);
     void saveConfig(selected.runnerId, { availableTools: next }, 'Available tools saved.');
   };
 
+  /**
+   * MARK: handleModelToggle
+   * @description Toggles a model's availability for the selected Runner.
+   *   When checked, adds the model to the Runner's effective model list;
+   *   when unchecked, removes it. If all advertised models are selected,
+   *   the configuration is reset to null to use advertised models.
+   *
+   * @param {string} modelId - The model identifier to toggle
+   * @param {boolean} checked - Whether the model should be enabled
+   */
   const handleModelToggle = (modelId, checked) => {
     if (!selected) return;
     const set = new Set(effectiveModelIds);
@@ -459,11 +518,12 @@ export function RunnerConfigurationSection() {
     void saveConfig(selected.runnerId, { availableModels: patchVal }, patchVal === null ? 'Models reset to advertised.' : 'Models saved.').then(() => {});
   };
 
-  /***
+  /**
    * MARK: handleCustomModelAdd
-   * @description Adds one hand-typed model id to the allowlist. Blank or
-   *   over-long ids are ignored with no network call.
-   ***/
+   * @description Adds one hand-typed model id to the Runner's model allowlist.
+   *   Normalizes the input (trims, validates format), ignores blank or invalid
+   *   ids, and saves the updated model list. Clears the input field on success.
+   */
   const handleCustomModelAdd = () => {
     if (!selected) return;
     const cleaned = normalizeModelId({ value: customModel });
@@ -477,16 +537,24 @@ export function RunnerConfigurationSection() {
     });
   };
 
+  /**
+   * MARK: handleModelsReset
+   * @description Resets the Runner's model configuration to use only the
+   *   models auto-detected by the Runner itself. Clears any operator overrides
+   *   and allows the Runner to match tasks based on its advertised capabilities.
+   */
   const handleModelsReset = () => {
     if (!selected) return;
     void saveConfig(selected.runnerId, { availableModels: null }, 'Models reset — this Runner matches its advertised models again.').then(() => {});
   };
 
-  /***
+  /**
    * MARK: handleRediscover
-   * @description Queues model re-detection on the Runner, then refreshes
-   *   the row a few times so new models appear without a manual reload.
-   ***/
+   * @description Triggers model re-detection on the selected Runner's backend.
+   *   Queues the request and then polls the Runner status multiple times to
+   *   refresh the model list without requiring a manual page reload.
+   *   Shows status messages indicating queuing or any errors that occur.
+   */
   const handleRediscover = async () => {
     if (!selected) return;
     const key = `rediscover:${selected.runnerId}`;
@@ -505,11 +573,16 @@ export function RunnerConfigurationSection() {
     }
   };
 
-  /***
+  /**
    * MARK: handleUpdateNow
-   * @description Queues an idle-only Runner update, then watches the row
-   *   for progress: a failed update surfaces its reason and stops polling.
-   ***/
+   * @description Initiates an immediate update of the selected Runner to its
+   *   recommended version (if available). The update is queued on the backend
+   *   and only applies when the Runner is idle (not executing tasks). Polls the
+   *   Runner status to show progress and surface any errors that occur during
+   *   the update process.
+   *
+   * @returns {Promise<void>} Resolves when complete
+   */
   const handleUpdateNow = async () => {
     if (!selected) return;
     const key = `update:${selected.runnerId}`;
@@ -619,6 +692,7 @@ export function RunnerConfigurationSection() {
                     role="option"
                     aria-selected={isSelected}
                     tabIndex={0}
+                    title={`Click to configure ${runnerDisplayName(runner)}`}
                     onClick={() => setSelectedId(runner.runnerId)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
@@ -628,21 +702,9 @@ export function RunnerConfigurationSection() {
                     }}
                     className={`flex flex-wrap items-center gap-2 px-3 py-2 bg-surface-container border rounded-sm cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${isSelected ? 'border-primary' : 'border-border-standard'} hover:border-primary/50 transition-colors`}
                   >
-                    <span className="text-xs font-mono text-on-surface underline decoration-dotted underline-offset-4">
+                    <span className="text-xs font-mono text-on-surface underline decoration-dotted underline-offset-4 hover:decoration-solid">
                       {runnerDisplayName(runner)}
                     </span>
-                    {/* Hidden accessible button keeps existing test id */}
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setSelectedId(runner.runnerId); }}
-                      aria-label={`Configure runner ${runner.runnerId}`}
-                      aria-pressed={isSelected}
-                      data-testid={`runner-select-${runner.runnerId}`}
-                      tabIndex={-1}
-                      className="sr-only"
-                    >
-                      Select
-                    </button>
                     <span className="text-[10px] font-bold uppercase tracking-widest text-text-muted" data-testid={`runner-status-${runner.runnerId}`}>
                       {runnerStatusLabel(runner)}
                     </span>
@@ -718,10 +780,10 @@ export function RunnerConfigurationSection() {
                   )}
                   {selected.updateAvailable && (
                     <button type="button" data-testid={`runner-update-now-${selected.runnerId}`} onClick={handleUpdateNow} disabled={busyKey === `update:${selected.runnerId}` || !updateReady} title={updateTitle} className="px-3 py-1.5 min-h-[44px] bg-warning hover:brightness-110 text-on-primary text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">
-                      {busyKey === `update:${selected.runnerId}` ? 'Updating…' : 'Update now'}
+                      {busyKey === `update:${selected.runnerId}` ? 'Updating…' : 'Update Runner'}
                     </button>
                   )}
-                  <button type="button" onClick={reloadSelected} disabled={busyKey === `reload:${selected.runnerId}`} data-testid={`runner-reload-${selected.runnerId}`} className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">Reload</button>
+                  <button type="button" onClick={reloadSelected} disabled={busyKey === `reload:${selected.runnerId}`} data-testid={`runner-reload-${selected.runnerId}`} className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60" title="Reload configuration from backend">Reload</button>
                 </div>
               </div>
               {selected.updateAvailable && (
@@ -792,7 +854,8 @@ export function RunnerConfigurationSection() {
 
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <label className="text-xs font-bold text-on-surface" htmlFor={`runner-custom-model-${selected.runnerId}`}>Models {modelsOverridden ? '(operator override)' : '(advertised)'}</label>
+                  <span className="text-xs font-bold text-on-surface">Models</span>
+                  {modelsOverridden ? <span className="text-[11px] text-text-muted">(operator override)</span> : <span className="text-[11px] text-text-muted">(auto-detected from Runner)</span>}
                   <button type="button" data-testid={`runner-redetect-models-${selected.runnerId}`} onClick={handleRediscover} disabled={busyKey === `rediscover:${selected.runnerId}` || !redetectReady} title={redetectTitle} className="ml-auto px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-[11px] font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">
                     {busyKey === `rediscover:${selected.runnerId}` ? 'Queued…' : 'Re-detect models'}
                   </button>
@@ -807,7 +870,7 @@ export function RunnerConfigurationSection() {
                   </p>
                 )}
                 {allModelIds.length === 0 ? (
-                  <p className="text-[11px] text-text-muted" data-testid={`runner-models-empty-${selected.runnerId}`}>No models advertised. Use Re-detect or add a custom id below.</p>
+                  <p className="text-[11px] text-text-muted" data-testid={`runner-models-empty-${selected.runnerId}`}>No models auto-detected. Use Re-detect to scan for models or add a custom model id below.</p>
                 ) : (
                   <div className="flex flex-col gap-1" role="group" aria-label="Models" data-testid={`runner-models-list-${selected.runnerId}`}>
                     {allModelIds.map((mid) => (
@@ -819,20 +882,21 @@ export function RunnerConfigurationSection() {
                   </div>
                 )}
                 <div className="flex items-center gap-2">
-                  <input id={`runner-custom-model-${selected.runnerId}`} type="text" data-testid={`runner-custom-model-${selected.runnerId}`} value={customModel} placeholder="Add custom model id" onChange={(e) => setCustomModel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCustomModelAdd(); }}} className="flex-1 min-w-0 p-2 bg-surface-deep border border-border-standard rounded-sm text-sm font-mono text-on-surface outline-none focus:border-primary transition-colors" />
+                  <label htmlFor={`runner-custom-model-${selected.runnerId}`} className="text-xs font-bold text-on-surface">Add custom model:</label>
+                  <input id={`runner-custom-model-${selected.runnerId}`} type="text" data-testid={`runner-custom-model-${selected.runnerId}`} value={customModel} placeholder="model-id" onChange={(e) => setCustomModel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCustomModelAdd(); }}} className="flex-1 min-w-0 p-2 bg-surface-deep border border-border-standard rounded-sm text-sm font-mono text-on-surface outline-none focus:border-primary transition-colors" />
                   <button type="button" data-testid={`runner-add-model-${selected.runnerId}`} onClick={handleCustomModelAdd} disabled={!customModel.trim() || Boolean(busyKey)} className="px-3 py-2 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60 shrink-0">Add</button>
                   {modelsOverridden && (
-                    <button type="button" data-testid={`runner-models-reset-${selected.runnerId}`} onClick={handleModelsReset} disabled={Boolean(busyKey)} className="px-3 py-2 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60 shrink-0">Reset models</button>
+                    <button type="button" data-testid={`runner-models-reset-${selected.runnerId}`} onClick={handleModelsReset} disabled={Boolean(busyKey)} className="px-3 py-2 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60 shrink-0">Reset to auto-detected</button>
                   )}
                 </div>
                 <p className="text-[11px] text-text-muted" data-testid={`runner-models-effective-${selected.runnerId}`}>
-                  {effectiveModelIds.length === 0 ? 'No models: this Runner matches model-less tasks only.' : `Effective: ${effectiveModelIds.join(', ')}`}
+                  {effectiveModelIds.length === 0 ? 'No models selected: this Runner will only match tasks that do not require specific models.' : `Selected models: ${effectiveModelIds.join(', ')}`}
                 </p>
               </div>
 
               <div className="flex flex-col gap-3">
-                <DirectoryField label="Master directory:" testId={`runner-masterdir-${selected.runnerId}`} value={masterValue} hint="/srv/kb" isDefault={masterIsDefault && !dirDraft} isUnknown={masterIsUnknown} error={dirErrors[`${selected.runnerId}:masterDir`]} busy={Boolean(busyKey)} onChange={(value) => handleDirectoryType('masterDir', value)} onSave={() => handleDirectorySave('masterDir')} />
-                <DirectoryField label="Worktree directory:" testId={`runner-worktreedir-${selected.runnerId}`} value={worktreeValue} hint="/srv/kb-trees" isDefault={worktreeIsDefault && !dirDraft} isUnknown={worktreeIsUnknown} error={dirErrors[`${selected.runnerId}:worktreeDir`]} busy={Boolean(busyKey)} onChange={(value) => handleDirectoryType('worktreeDir', value)} onSave={() => handleDirectorySave('worktreeDir')} />
+                <DirectoryField label="Master directory:" testId={`runner-masterdir-${selected.runnerId}`} value={masterValue} hint={displayDirs?.masterDir.value || '/srv/kb'} isDefault={masterIsDefault && !dirDraft} isUnknown={masterIsUnknown} error={dirErrors[`${selected.runnerId}:masterDir`]} busy={Boolean(busyKey)} onChange={(value) => handleDirectoryType('masterDir', value)} onSave={() => handleDirectorySave('masterDir')} />
+                <DirectoryField label="Worktree directory:" testId={`runner-worktreedir-${selected.runnerId}`} value={worktreeValue} hint={displayDirs?.worktreeDir.value || '/srv/kb-trees'} isDefault={worktreeIsDefault && !dirDraft} isUnknown={worktreeIsUnknown} error={dirErrors[`${selected.runnerId}:worktreeDir`]} busy={Boolean(busyKey)} onChange={(value) => handleDirectoryType('worktreeDir', value)} onSave={() => handleDirectorySave('worktreeDir')} />
                 <p className="text-[11px] text-text-muted">Directories are stored as this Runner's preference on the backend. When empty, the Runner's own folders are used.</p>
               </div>
 
