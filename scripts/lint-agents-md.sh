@@ -8,7 +8,7 @@
 #   3. Every relative .md link in agents.md resolves to a repo file, except the
 #      two allowlisted forward links created by later tickets:
 #        AGENTS-MAP.md              (R1 — repo map for agents)
-#        agent-docs/GitGuidance.md  (R10 — git guidance for agents)
+#        docs/agent-docs/GitGuidance.md  (R10 — git guidance for agents)
 #      The allowlist means "expected missing", not "must be missing": once R1/R10
 #      land, the links resolve normally and keep passing.
 #   4. The test/lint/build command strings are listed and their targets exist
@@ -18,7 +18,7 @@
 #
 # Intentionally does NOT depend on the SilverBullet notes store (unreachable on
 # a fresh checkout): verbatim-vendor fidelity is a one-time diff at vendor time,
-# not a lint here. See agent-docs/*.md provenance headers.
+# not a lint here. See docs/agent-docs/*.md provenance headers.
 #
 # Usage: bash scripts/lint-agents-md.sh   (exit 0 = pass, 1 = fail)
 
@@ -27,7 +27,7 @@ cd "$(dirname "$0")/.." || exit 1
 
 AGENTS=agents.md
 FORWARD_R1="AGENTS-MAP.md"
-FORWARD_R10="agent-docs/GitGuidance.md"
+FORWARD_R10="docs/agent-docs/GitGuidance.md"
 total=0
 fails=0
 
@@ -60,7 +60,7 @@ else
 fi
 
 # --- 2. vendored KB pages exist in-repo and are linked ------------------------
-for vendored in agent-docs/KB-Architecture.md agent-docs/KB-Code-Standards.md; do
+for vendored in docs/agent-docs/KB-Architecture.md docs/agent-docs/KB-Code-Standards.md; do
 	expect "vendored KB page exists: $vendored" test -f "$vendored"
 	expect "agents.md links $vendored" grep -qF "($vendored)" "$AGENTS"
 done

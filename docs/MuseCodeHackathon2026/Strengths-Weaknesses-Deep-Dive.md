@@ -99,7 +99,7 @@ No numbers yet — see W6.
 
 ### S8 — Portability groundwork is genuinely done
 `docker compose up -d` → `:3100` with no credentials (mock/degraded honestly),
-`PORTABLE_DEPLOYMENT.md`, ADR 0001–0004 all attack "only runs on the author's homelab."
+`docs/PORTABLE_DEPLOYMENT.md`, ADR 0001–0004 all attack "only runs on the author's homelab."
 A fresh-clone judge can run it. Protect this — it is Deliverable #2 and it is testable live.
 
 ---

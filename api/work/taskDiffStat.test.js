@@ -411,3 +411,52 @@ describe("The Work: task diff stat", () => {
 		);
 	});
 });
+
+describe("task diff stat task-file filtering (badge/list agreement)", () => {
+	it("getTaskDiffStat drops default task files in branch mode", async () => {
+		const stat = await getTaskDiffStat("/repo", { id: "t1", branch: "kb/t1" }, {
+			useBranches: true,
+			defaultBranchFn: async () => "main",
+			diffFilesFn: async () => [
+				{ path: "docs/tasks/t1/task.md", additions: 9, deletions: 0, binary: false },
+				{ path: "src/app.js", additions: 3, deletions: 1, binary: false },
+			],
+		});
+		expect(stat).toEqual({ additions: 3, deletions: 1 });
+	});
+
+	it("getTaskDiffStat honours a custom docs prefix and skips the default", async () => {
+		const stat = await getTaskDiffStat("/repo", { id: "t1", branch: "kb/t1" }, {
+			useBranches: true,
+			defaultBranchFn: async () => "main",
+			diffFilesFn: async () => [
+				{ path: "docs/tasks/not-a-task/legacy.md", additions: 5, deletions: 0, binary: false },
+				{ path: "k-docs/tasks/t1/plan.md", additions: 7, deletions: 0, binary: false },
+			],
+			docsTasksPrefix: "k-docs/tasks/",
+		});
+		expect(stat).toEqual({ additions: 5, deletions: 0 });
+	});
+
+	it("getCommitRangeDiffStat drops task files with the supplied prefix", async () => {
+		const stat = await getCommitRangeDiffStat("/repo", "base", "head", {
+			rangeFilesFn: async () => [
+				{ path: "docs/tasks/t1/task.md", additions: 9, deletions: 0, binary: false },
+				{ path: "src/app.js", additions: 2, deletions: 2, binary: false },
+			],
+			docsTasksPrefix: "docs/tasks/",
+		});
+		expect(stat).toEqual({ additions: 2, deletions: 2 });
+	});
+
+	it("reports an empty measured range after filtering all task files", async () => {
+		const stat = await getCommitRangeDiffStat("/repo", "base", "head", {
+			rangeFilesFn: async () => [
+				{ path: "docs/tasks/t1/task.md", additions: 9, deletions: 0, binary: false },
+			],
+			docsTasksPrefix: "docs/tasks/",
+		});
+		// filesToRangeStat([]) => {additions:0,deletions:0}, not null
+		expect(stat).toEqual({ additions: 0, deletions: 0 });
+	});
+});

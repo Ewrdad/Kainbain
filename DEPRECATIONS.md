@@ -190,7 +190,7 @@ README "Multiple projects & custom state folders" section:
   configured value; Docker already refuses to boot via its entrypoint. When
   moving to a fresh machine, set `PROJECTS_ROOT` (and optionally
   `PROJECTS_ROOTS`, path-list separated) explicitly — see
-  `PORTABLE_DEPLOYMENT.md` scenario D.
+  `docs/PORTABLE_DEPLOYMENT.md` scenario D.
 
 ## Dated exceptions (all carry reason + expiry in the allowlist)
 

@@ -45,6 +45,9 @@
     "depcheck": "^1.4.7"
   },
   "overrides": {
-    "js-yaml": "^3.15.2"
+    "js-yaml": "^3.15.2",
+    "depcheck": {
+      "minimatch": "^3.1.2"
+    }
   }
 }

@@ -78,6 +78,7 @@ import { resolveRunHarnessFallback } from './resolveRunHarnessFallback.js';
 import { peekStageDisplayTarget } from './peekStageDisplayTarget.js';
 import { displayModelForInit } from './displayModelForInit.js';
 import { routeStageError } from './routeStageError.js';
+import { docsTasksIgnorePath } from '../../docsPath.js';
 import { buildRetryFailureDetails } from './buildRetryFailureDetails.js';
 import { resolveCommandStageRuntime } from './resolveCommandStageRuntime.js';
 import { isDispatchServable } from '../dispatch/isDispatchServable.js';
@@ -1017,6 +1018,11 @@ export async function executeStage(
 									cwd,
 									boundaryStart,
 									boundaryEnd,
+									{
+										docsTasksPrefix: docsTasksIgnorePath(
+											store.projectStore?.getProject?.(projectId),
+										),
+									},
 								);
 								if (stat) {
 									targetRow.additions = stat.additions;

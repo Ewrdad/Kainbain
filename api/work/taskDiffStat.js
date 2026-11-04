@@ -2,6 +2,34 @@
 import { diffRangeNumstat, git, defaultBranch } from "../git.js";
 import { diffFiles } from "../reviewDiff.js";
 import { resolveTaskBranch } from "./taskBranches.js";
+import { isTaskFilePath } from "./isTaskFilePath.js";
+
+/***
+ * MARK: withoutTaskFiles
+ * @description Drops task-bookkeeping rows (paths inside the project's
+ *   docs/tasks/ prefix) from a per-file diff list so history badges agree
+ *   with the filtered Files Changed review view. Pure view concern: never
+ *   mutates the input array, and rename rows match on either side.
+ * @example withoutTaskFiles([{ path: 'docs/tasks/t1/task.md' }, { path: 'src/a.js' }], 'docs/tasks/') => [{ path: 'src/a.js' }]
+ * @param {Array<Object>} [files] - Per-file diff rows.
+ * @param {string} [docsTasksPrefix] - Project task-dir prefix (e.g. 'docs/tasks/').
+ * @returns {Array<Object>} Filtered rows.
+ ***/
+function withoutTaskFiles(files, docsTasksPrefix) {
+	if (!Array.isArray(files)) return files;
+	// When the caller does not supply a project-specific prefix (e.g. a
+	// custom `docsDirName`), fall back to the default docs location so the
+	// badge never silently retains task bookkeeping rows.
+	const prefix =
+		typeof docsTasksPrefix === "string" && docsTasksPrefix
+			? docsTasksPrefix
+			: "docs/tasks/";
+	return files.filter(
+		(f) =>
+			!isTaskFilePath(f?.path, prefix) &&
+			!isTaskFilePath(f?.oldPath, prefix),
+	);
+}
 
 /***
  * MARK: summarizeDiffStat
@@ -152,6 +180,7 @@ export async function getTaskDiffStat(
 		diffFilesFn = diffFiles,
 		defaultBranchFn = defaultBranch,
 		workingTreeDiffFn = defaultWorkingTreeDiff,
+		docsTasksPrefix,
 	} = {},
 ) {
 	try {
@@ -165,7 +194,7 @@ export async function getTaskDiffStat(
 		} else {
 			files = await workingTreeDiffFn(cwd);
 		}
-		return summarizeDiffStat(files);
+		return summarizeDiffStat(withoutTaskFiles(files, docsTasksPrefix));
 	} catch {
 		return null;
 	}
@@ -223,7 +252,7 @@ export async function getCommitRangeDiffStat(cwd, baseSha, headSha, opts = {}) {
 	try {
 		if (typeof opts.rangeFilesFn === "function") {
 			return filesToRangeStat(
-				await opts.rangeFilesFn(cwd, baseSha.trim(), headSha.trim()),
+				withoutTaskFiles(await opts.rangeFilesFn(cwd, baseSha.trim(), headSha.trim()), opts.docsTasksPrefix),
 			);
 		}
 		const runRangeDiff =
@@ -239,7 +268,7 @@ export async function getCommitRangeDiffStat(cwd, baseSha, headSha, opts = {}) {
 		if (!String(stdout || "").trim()) {
 			return { additions: 0, deletions: 0 };
 		}
-		return summarizeDiffStat(parseNumstatStdout(stdout));
+		return summarizeDiffStat(withoutTaskFiles(parseNumstatStdout(stdout), opts.docsTasksPrefix));
 	} catch {
 		return null;
 	}

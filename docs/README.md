@@ -25,6 +25,9 @@ real-time streaming into a Kanban UI, and timestamped markdown reports per stage
   elephant-goldfish, human-graded finetune data flywheel, …).
 - `adr/` — architecture decision records.
 - `docs/manual-testing/` — the human test playbook.
+- `CI_SCRIPTS.md` — CI/release script reference (moved from repo root).
+- `PORTABLE_DEPLOYMENT.md` — deployment scenarios A–D, runner updates (moved from repo root).
+- `agent-docs/` — vendored KB pages (architecture, code standards, git guidance).
 - `TASK_DIRECTORY_HYGIENE.md` + `.gitignore` — why `tasks/` run history
   (259+ run dirs, full agent transcripts) is never committed.
 

@@ -7,12 +7,12 @@ An AI orchestrator designed around being anything but a chat up. Inspired from C
 
 Built for the Meta AI Developer hackathon 2026
 
-## Usefull links
+## Useful links
 
-- [The whistle stop tour/Quick demo](aa)
-- [Full walkthrough of Kainbain, its story and how to use it](aa)
-- [Written blogpost announcing kainbain]()
-- [Kainbain promotional site/install wizard]()
+- [The whistle stop tour/Quick demo](https://youtu.be/_K_ANTUADPk)
+- [Full walkthrough of Kainbain, its story and how to use it](https://youtu.be/aUao7rw4qGo)
+- [Written blogpost announcing kainbain](https://ewrdad.substack.com/p/kainbain-how-im-taking-vibe-coding?r=2mgyhl&utm_campaign=post&utm_medium=web&showWelcomeOnShare=true)
+- [Kainbain promotional site/install wizard](https://kainbain.ewrdad.uk/)
 
 ## Core Values
 

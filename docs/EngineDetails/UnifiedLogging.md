@@ -83,7 +83,7 @@ frontend `logEntryModel`) already tolerate missing `feeds`/`fidelity`, so
 wiring it in would change API response shapes for zero reader benefit. The
 upcoming visual refactor is the consumer that should adopt it.
 
-Code rule (kept here, not in `agent-docs/KB-Code-Standards.md`, because that
+Code rule (kept here, not in `docs/agent-docs/KB-Code-Standards.md`, because that
 file is a byte-identical vendored copy whose header forbids in-repo edits):
 extend `shared/toolLogFormat.js` for new render summaries, never fork a
 parallel renderer; route unmapped data to the bounded raw lane, never a silent

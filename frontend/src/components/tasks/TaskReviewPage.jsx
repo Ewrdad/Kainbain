@@ -393,8 +393,15 @@ export function TaskReviewPage({ task: propTask, onBack }) {
         </div>
       ) : !hasReviewFiles && !hasReports ? (
         <div className="flex-1 flex items-center justify-center p-6">
-          <div className="max-w-md p-6 bg-surface-container border border-border-standard rounded-sm text-xs font-mono text-text-muted">
-            {data.reason || 'Nothing to review yet — the agent has not modified any files.'}
+          <div className="max-w-md p-6 bg-surface-container border border-border-standard rounded-sm text-xs font-mono text-text-muted space-y-2">
+            <p data-testid={data.filteredTaskFilesCount > 0 ? 'filtered-task-files-hint' : undefined}>{data.filteredTaskFilesCount > 0
+              ? 'No reviewable code changes; task files are shown in Reports.'
+              : (data.reason || 'Nothing to review yet — the agent has not modified any files.')}</p>
+            {data.filteredTaskFilesCount > 0 && (
+              <p className="text-[11px]">
+                {data.filteredTaskFilesCount} task file(s) hidden from this view.
+              </p>
+            )}
           </div>
         </div>
       ) : (
@@ -421,8 +428,15 @@ export function TaskReviewPage({ task: propTask, onBack }) {
               !hasReviewFiles ? (
                 <div className="p-6 text-xs font-mono text-text-muted space-y-2">
                   <p>
-                    {data.reason || 'Nothing to review yet — the agent has not modified any files.'}
+                    {data.filteredTaskFilesCount > 0
+                      ? 'No reviewable code changes; task files are shown in Reports.'
+                      : data.reason || 'Nothing to review yet — the agent has not modified any files.'}
                   </p>
+                  {data.filteredTaskFilesCount > 0 && hasReports && (
+                    <p className="text-[11px]" data-testid="filtered-task-files-hint">
+                      {data.filteredTaskFilesCount} task file(s) hidden — see the Reports tab.
+                    </p>
+                  )}
                   {hasReports && (
                     <button
                       type="button"
