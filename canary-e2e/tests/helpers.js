@@ -42,7 +42,21 @@ export const DESKTOP_VIEWPORT = { width: 1280, height: 720 };
  * @param {import("@playwright/test").Page} page
  ***/
 export async function waitForAppReady(page) {
-	await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
+	try {
+		await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
+	} catch (err) {
+		// One bounded re-issue for transient gate-host resource windows
+		// (net::ERR_INSUFFICIENT_RESOURCES across the module burst, or a
+		// renderer that died under parallel-suite load): the failed load
+		// must be re-issued — waiting longer cannot heal it. Any other
+		// navigation error (dead backend, bad URL) throws immediately, and
+		// a genuinely broken shell fails the retry and stays red. The
+		// one-second backoff lets the resource window pass — an immediate
+		// re-issue was observed landing inside the same window.
+		if (!/ERR_INSUFFICIENT_RESOURCES|has been closed|Target closed|Page crashed|Target crashed/.test(err?.message || "")) throw err;
+		await new Promise((r) => setTimeout(r, 1000));
+		await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
+	}
 	await expect(page).toHaveTitle(/Kainbain/);
 	await expect(page.getByRole("button", { name: /Project/i }).first()).toBeVisible({
 		timeout: APP_READY_TIMEOUT_MS,

@@ -162,6 +162,11 @@ export class ExecutionLedger {
 		task?.history?.push({
 			timestamp: new Date().toISOString(),
 			action: `Runner ${runnerId} stage ${stageId}: ${event}`,
+			// Structured Runner id alongside the prose, so consumers
+			// need not parse the action string.
+			...(typeof runnerId === "string" && runnerId.trim()
+				? { runnerId: runnerId.trim() }
+				: {}),
 		});
 		return { recorded: true, duplicate: false };
 	}

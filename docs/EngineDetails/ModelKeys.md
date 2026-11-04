@@ -13,7 +13,7 @@ How a model is referenced, stored, and resolved — and why stored references ke
 
 Model ids may contain single `:` (`glm-5.3-flash:cloud`, `deepseek-v4-flash:0731-cloud`) but never `::`. Provider ids are config keys. Harness ids are lowercase `[a-z0-9][a-z0-9_-]*` (URL-safe).
 
-Task-history timeline rows record the *resolved* run choice (`harnessId`, `modelRef`, `aliasName`, `targetIndex`) using this same `harness::provider::id` vocabulary, on the row of the stage that ran it — see `api/flow/runAttribution.js` and `api/flow/stageExecution.js`.
+Task-history timeline rows record the *resolved* run choice (`harnessId`, `modelRef`, `aliasName`, `targetIndex`) using this same `harness::provider::id` vocabulary, on the row of the stage that ran it — see `api/flow/runAttribution.js` and `api/flow/stageExecution.js`. Runner-dispatched runs additionally stamp the Runner itself (`runnerId`, the operator-facing Runner id from the authenticated Runner record) on the timeline row, the stage report metadata, and the audit entry, so a struggling Runner can be spotted per stage or task type later; embedded runs leave it absent, and pre-feature history stays runner-less with no migration.
 
 ## The parsing rule (the one rule to remember)
 

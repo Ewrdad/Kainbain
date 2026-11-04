@@ -8,6 +8,7 @@ import { normalizeStageType } from "../../projectStore.js";
 import { ALIAS_HARNESS_ID } from "../../../shared/modelAliases.js";
 import { routeStageError } from "./routeStageError.js";
 import { parkTaskForSurvey } from "./parkTaskForSurvey.js";
+import { decideAgentStageVerdict } from "../../../shared/stageVerdict.js";
 
 /***
  * MARK: applyRunnerReport
@@ -21,6 +22,13 @@ import { parkTaskForSurvey } from "./parkTaskForSurvey.js";
  *   the human survey), failure routing via routeStageError, and
  *   advanceStage plus the scheduler follow-on kick. Call only after the
  *   lease fence accepted the execution (complete-execution does that).
+ *   Defense in depth: a `passed` report for an agent stage is re-checked
+ *   against the shared verdict decision, so an old Runner that never
+ *   learned failure detection still cannot advance a stage whose output
+ *   carries a well-formed FAIL block. Only the text block is re-checkable
+ *   here — the Runner owns the session events, so a `fail_stage` tool call
+ *   an old Runner swallowed is invisible to this check (new Runners report
+ *   it themselves).
  * @example await applyRunnerReport({ store, projectStore, projectId: 'p', taskId: 't', outcome: { status: 'passed', output: '...' } }) => { advanced: true, ... }
  * @param {Object} args - Context.
  * @param {Object} args.store - Task store.
@@ -79,6 +87,23 @@ export async function applyRunnerReport({
 	const cwd = project?.cwd;
 	const via = outcome.runnerId ? `via Runner ${outcome.runnerId}` : "via Runner";
 	const duration = outcome.duration || "0.0";
+	// Carry the reporting Runner onto the in-memory pending attribution so
+	// the terminal / Completed row (and any later run consuming it) attributes
+	// the Runner that actually ran, even for tagged-on runs where dispatch did
+	// not leave a stamp. Best-effort, embedded-style runs still leave it
+	// absent.
+	if (typeof outcome.runnerId === "string" && outcome.runnerId.trim()) {
+		const rid = outcome.runnerId.trim();
+		if (!task.currentRunAttribution) {
+			task.currentRunAttribution = { stageId: task.currentStageId, runnerId: rid };
+		} else if (
+			String(task.currentRunAttribution.stageId ?? "") ===
+				String(task.currentStageId) &&
+			!task.currentRunAttribution.runnerId
+		) {
+			task.currentRunAttribution.runnerId = rid;
+		}
+	}
 	// The served model for the persisted report: the Runner's explicit report
 	// wins, then the dispatch-time stamp (what the Runner was matched on),
 	// then the stage slot. Blank/"default" values are absent, never worded —
@@ -106,10 +131,40 @@ export async function applyRunnerReport({
 		? dispatchAttribution.targetIndex
 		: null;
 
+	// Defense in depth (old-Runner protection): a `passed` report whose
+	// output carries a well-formed FAIL block is rewritten to
+	// failed/rejected and flows into the existing routeStageError branch
+	// below — no new failure plumbing. Already-`failed` outcomes pass
+	// through untouched, and the shared decision keeps this fail-open
+	// (reasonless FAIL still advances) and agent-only (human/CI stages
+	// never re-parse). Only the text block is re-checkable here: the
+	// Runner owns the session events, so failStageRequest is always null.
+	// Known limit: the Runner caps the reported output at 20k leading
+	// characters, so a FAIL block past that cut is invisible to this
+	// re-check (new Runners parse the full text before capping, so only
+	// huge outputs on old Runners are affected — and old Runners phase
+	// out through self-update).
+	if (outcome.status === "passed") {
+		const verdictDecision = decideAgentStageVerdict({
+			stage,
+			output: redactedOutput,
+			failStageRequest: null,
+		});
+		if (verdictDecision.failed) {
+			outcome = {
+				...outcome,
+				status: "failed",
+				failureKind: "rejected",
+				failureReason: verdictDecision.failureReason,
+			};
+		}
+	}
+
 	if (outcome.status === "failed") {
 		const err = new Error(outcome.failureReason || "Stage failed on the Runner");
-		// The runner's completion payload carries the tail of the run output
-		// (runner/daemon.js caps it). Keep it on the error so the failure
+		// The runner's completion payload carries the leading slice of the
+		// run output (runner/daemon.js caps it at 20k characters). Keep it
+		// on the error so the failure
 		// report renders the actual failing output instead of only the
 		// reason — thin "exit code 1" reports hid every branch result
 		// (task b5716327). handleStageFailure already renders error.stdout
@@ -132,6 +187,10 @@ export async function applyRunnerReport({
 					modelRef: reportModelRef,
 					aliasName: reportAliasName,
 					targetIndex: reportTargetIndex,
+					// The reporting Runner names the failed run on its
+					// timeline row and failure report, so a struggling
+					// Runner can be spotted per stage or task type later.
+					runnerId: outcome.runnerId,
 					failureKind: outcome.failureKind,
 				},
 				classifyAs: {
@@ -181,12 +240,19 @@ export async function applyRunnerReport({
 			modelRef: reportModelRef,
 			aliasName: reportAliasName,
 			targetIndex: reportTargetIndex,
+			runnerId: outcome.runnerId,
 		});
 	}
 
 	task.history.push({
 		timestamp: new Date().toISOString(),
 		action: `Agent stage completed: ${stage.name || stage.id} (${via})`,
+		// Structured Runner id alongside the `via Runner …` prose, so
+		// consumers need not parse the action string. Blank-safe: an
+		// absent Runner stays absent, never worded.
+		...(typeof outcome.runnerId === "string" && outcome.runnerId.trim()
+			? { runnerId: outcome.runnerId.trim() }
+			: {}),
 	});
 	store._saveTaskMarkdown(cwd, task);
 

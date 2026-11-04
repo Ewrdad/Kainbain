@@ -11,6 +11,12 @@ describe('The Work: stored records', () => {
 		expect(parseStoredRecords('')).toEqual([]);
 	});
 
+	it('passes attribution keys (incl. runnerId) through untouched', () => {
+		expect(
+			parseStoredRecords('[{"stage":"Build","status":"Moved","runnerId":"runner-alpha"}]'),
+		).toEqual([{ stage: "Build", status: "Moved", runnerId: "runner-alpha" }]);
+	});
+
 	it('keeps string-array parsing defensive', () => {
 		expect(safeParseJsonArray('["a","b"]')).toEqual(['a', 'b']);
 		expect(safeParseJsonArray('broken')).toEqual([]);

@@ -40,7 +40,7 @@ describe("The Flow: buildTimelineAttribution", () => {
 		).toEqual({ modelRef: "mistral::large" });
 	});
 
-	it("returns null when neither harness nor model names anything", () => {
+	it("returns null when neither harness, model, nor Runner names anything", () => {
 		expect(buildTimelineAttribution({})).toBeNull();
 		expect(buildTimelineAttribution()).toBeNull();
 		expect(
@@ -49,6 +49,38 @@ describe("The Flow: buildTimelineAttribution", () => {
 		expect(
 			buildTimelineAttribution({ aliasName: "  ", targetIndex: -1 }),
 		).toBeNull();
+	});
+
+	it("attributes a Runner-run row by runnerId alone (Runner-run CI/merge rows carry no model)", () => {
+		expect(buildTimelineAttribution({ runnerId: "runner-alpha" })).toEqual({
+			runnerId: "runner-alpha",
+		});
+	});
+
+	it("rides runnerId alongside the resolved harness/model/alias choice", () => {
+		expect(
+			buildTimelineAttribution({
+				harnessId: "pi",
+				modelRef: "glm",
+				aliasName: "worker",
+				targetIndex: 1,
+				runnerId: "runner-alpha",
+			}),
+		).toEqual({
+			harnessId: "pi",
+			modelRef: "glm",
+			aliasName: "worker",
+			targetIndex: 1,
+			runnerId: "runner-alpha",
+		});
+	});
+
+	it("drops a blank runnerId instead of wording it", () => {
+		expect(
+			buildTimelineAttribution({ harnessId: "pi", runnerId: "   " }),
+		).toEqual({ harnessId: "pi" });
+		expect(buildTimelineAttribution({ runnerId: "" })).toBeNull();
+		expect(buildTimelineAttribution({ runnerId: null })).toBeNull();
 	});
 
 	it("never passes unknown fields (the in-memory stageId matcher) through", () => {
@@ -149,6 +181,29 @@ describe("The Flow: stampArrivalRowAttribution", () => {
 		expect(stampArrivalRowAttribution(null, "Build", RUN)).toBeNull();
 		expect(stampArrivalRowAttribution("junk", "Build", RUN)).toBeNull();
 		expect(stampArrivalRowAttribution({ timeline: "nope" }, "Build", RUN)).toBeNull();
+	});
+
+	it("stamps a runnerId-only run onto the arrival row", () => {
+		const arrival = { stage: "Build", status: "Moved" };
+		const stamped = stampArrivalRowAttribution(taskWithTimeline([arrival]), "Build", {
+			runnerId: "runner-alpha",
+		});
+		expect(stamped).toBe(arrival);
+		expect(arrival).toEqual({
+			stage: "Build",
+			status: "Moved",
+			runnerId: "runner-alpha",
+		});
+	});
+
+	it("stamps nothing for a blank runnerId alone", () => {
+		const arrival = { stage: "Build", status: "Moved" };
+		expect(
+			stampArrivalRowAttribution(taskWithTimeline([arrival]), "Build", {
+				runnerId: "  ",
+			}),
+		).toBeNull();
+		expect(arrival.runnerId).toBeUndefined();
 	});
 
 	it("drops the in-memory stageId matcher and blank fields when stamping", () => {

@@ -14,6 +14,7 @@ import { defaultInstallRoot, markUpdateSuccess, readUpdateState } from "./update
 import { discoverClaudeModels, resolveAdvertisedModels } from "./modelDiscovery.js";
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
+import { decideAgentStageVerdict } from "../shared/stageVerdict.js";
 import { commitAndPush } from "./gitOps.js";
 
 /***
@@ -425,7 +426,34 @@ export async function refreshDiscoveredModels({ config, logger, discoverFn = dis
 	return [...discoveredModelsCache];
 }
 
-function factsFor({ config, harnessVersions, updateStatus = null }) {
+/***
+ * MARK: SUPPORTED_RUNNER_COMMANDS
+ * @description Backend-to-Runner command ids this daemon consumes from the
+ *   heartbeat pull channel (ADR 0013), advertised to the backend through
+ *   `facts.commands` so Settings can tell "too old" from "failed" (R1).
+ * @example SUPPORTED_RUNNER_COMMANDS.includes('requestUpdate') => true
+ ***/
+export const SUPPORTED_RUNNER_COMMANDS = ["requestModelRediscovery", "requestUpdate"];
+
+/***
+ * MARK: effectiveDirectoriesFor
+ * @description Effective directory defaults for one Runner config: the
+ *   absolute work root (parent of per-task `kb-*` worktrees) and its
+ *   `mirrors` child (master repo copies in clone mode). Reported in
+ *   heartbeat facts so Settings shows real defaults instead of blanks.
+ * @example effectiveDirectoriesFor({ workRoot: '/srv/w' }) => { masterDir: '/srv/w/mirrors', worktreeDir: '/srv/w' }
+ * @param {Object} [config={}] - Normalized runner config.
+ * @returns {{masterDir: string, worktreeDir: string}} Effective folders ('' when unknown).
+ ***/
+export function effectiveDirectoriesFor(config = {}) {
+	const workRoot = typeof config.workRoot === "string" && config.workRoot ? path.resolve(config.workRoot) : null;
+	return {
+		masterDir: workRoot ? path.join(workRoot, "mirrors") : "",
+		worktreeDir: workRoot || "",
+	};
+}
+
+function factsFor({ config, harnessVersions, updateStatus = null, commandAck = null } = {}) {
 	const versionFor = (id) =>
 		harnessVersions?.[id] ?? harnessVersionCache.get(id)?.[id] ?? "unknown";
 	return {
@@ -434,7 +462,11 @@ function factsFor({ config, harnessVersions, updateStatus = null }) {
 		tiers: config.tiers,
 		diskHeadroomMb: diskHeadroomMbFor(config.workRoot),
 		versions: { protocol: "v1", runner: RUNNER_VERSION, api: RUNNER_API_VERSION },
+		directories: effectiveDirectoriesFor(config),
+		commands: SUPPORTED_RUNNER_COMMANDS,
+		workRoot: typeof config.workRoot === "string" ? config.workRoot : null,
 		...(updateStatus ? { updateStatus } : {}),
+		...(commandAck ? { commandAck } : {}),
 	};
 }
 
@@ -452,7 +484,7 @@ function factsFor({ config, harnessVersions, updateStatus = null }) {
  * @param {Object} opts.state - Live-execution ref (`{ session, executionId, epoch }`), read by the steer pull cycle.
  * @returns {Promise<Object>} Primary `harness`, full `harnesses` map, plus `stop()` for the timer.
  ***/
-async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) {
+export async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) {
 	if (!config.credential) {
 		if (!config.joinToken) {
 			throw new Error("No credential and no KAINBAIN_RUNNER_JOIN_TOKEN: cannot join.");
@@ -468,7 +500,7 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
 			const reg = await client.register({
 				runnerId: config.runnerId,
 				joinToken: config.joinToken,
-				facts: factsFor({ config, harnessVersions: joinVersions }),
+				facts: factsFor({ config, harnessVersions: joinVersions, commandAck: stagedCommandAck(state) }),
 			});
 			if (reg.status === "active") break;
 			if (Date.now() > deadline) {
@@ -500,10 +532,17 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
 	for (const id of runnerHarnessIds(config)) {
 		Object.assign(harnessVersions, await probeHarnessVersions(id));
 	}
-	const facts = factsFor({ config, harnessVersions, updateStatus: state?.updateStatus ?? null });
+	const facts = factsFor({ config, harnessVersions, updateStatus: state?.updateStatus ?? null, commandAck: stagedCommandAck(state) });
 	const beat = await client.heartbeat({ runnerId: config.runnerId, facts });
 	if (beat.status !== "active") {
 		throw new Error(`Runner ${config.runnerId} is ${beat.status}; need an active registration.`);
+	}
+	// Boot-time commands: anything queued while the Runner was down is
+	// delivered on this first heartbeat (peek-until-ack) — act on it now
+	// instead of dropping it. The Runner is idle here (no execution yet),
+	// so an update applies immediately.
+	if (Array.isArray(beat.pendingCommands) && beat.pendingCommands.length) {
+		await handlePendingCommands({ config, client, logger, state, pendingCommands: beat.pendingCommands });
 	}
 	// Self-update close-out (Option A, ADR 0012): a fresh boot that staged
 	// an update left state pending-boot; the first successful heartbeat on
@@ -525,9 +564,7 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
 	// timeout; failures keep the cache empty, never fail boot.
 	await refreshDiscoveredModels({ config, logger });
 	const heartbeatTimer = setInterval(() => {
-		// Fresh facts every beat: disk headroom is re-measured (G4) while
-		// the harness CLI version resolves from the load-time probe cache.
-		deliverSteers({ config, client, logger, facts: factsFor({ config, updateStatus: state?.updateStatus ?? null }), state }).catch((err) => {
+		deliverSteers({ config, client, logger, facts: factsFor({ config, updateStatus: state?.updateStatus ?? null, commandAck: stagedCommandAck(state) }), state }).catch((err) => {
 			logger.warn(`Heartbeat failed: ${err?.message || err}`);
 		});
 	}, config.heartbeatMs);
@@ -556,6 +593,122 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
 }
 
 /***
+ * MARK: stagedCommandAck
+ * @description Oldest unconfirmed command ack staged on the loop state
+ *   (FIFO over `state.commandAcks`), or undefined when none is staged.
+ *   Single source of truth for every heartbeat facts builder.
+ * @example stagedCommandAck({ commandAcks: [{ command: 'requestUpdate', ok: true, detail: '' }] }) => { command: 'requestUpdate', ok: true, detail: '' }
+ * @param {Object} [state] - Live-execution ref.
+ * @returns {Object|undefined} The oldest staged ack.
+ ***/
+function stagedCommandAck(state) {
+	return Array.isArray(state?.commandAcks) ? state.commandAcks[0] : undefined;
+}
+
+/***
+ * MARK: stageCommandAck
+ * @description Stages one command ack for delivery on the next heartbeat
+ *   facts (FIFO; consumed by `deliverSteers` after the round-trip).
+ * @example stageCommandAck({}, { command: 'requestUpdate', ok: true, detail: '' })
+ * @param {Object} state - Live-execution ref.
+ * @param {Object} ack - `{ command, ok, detail }`.
+ ***/
+function stageCommandAck(state, ack) {
+	if (!Array.isArray(state.commandAcks)) state.commandAcks = [];
+	state.commandAcks.push(ack);
+}
+
+/***
+ * MARK: handlePendingCommands
+ * @description Acts on backend-to-Runner commands delivered through the
+ *   heartbeat pull channel (ADR 0013): `requestModelRediscovery` re-runs
+ *   model discovery promptly (fresh probe, not the 12h cache cadence;
+ *   skipped with a success ack when the operator pinned models, since
+ *   pins always win); `requestUpdate` runs the existing idle-only
+ *   self-update at once when idle, or parks `state.pendingUpdate` for
+ *   the next idle point when an execution is live (never interrupts
+ *   work, D5). Every handled command stages exactly one ack on
+ *   `state.commandAcks` for the next heartbeat facts; unknown commands
+ *   are ignored (the backend never sends them — enqueue is fail-closed).
+ *   Commands already staged or in flight are skipped, so the backend's
+ *   at-least-once redelivery never double-applies.
+ * @example await handlePendingCommands({ config, client, logger, state, pendingCommands: ['requestModelRediscovery'] })
+ * @param {Object} opts - Options (config, client, logger, state, pendingCommands, updateDeps?, discoverFn?).
+ * @returns {Promise<void>} Resolves once every command acted (or the process exits 0 into a staged update).
+ ***/
+export async function handlePendingCommands({ config, client, logger, state, pendingCommands = [], updateDeps, discoverFn } = {}) {
+	if (!state) state = {};
+	if (!Array.isArray(state.commandAcks)) state.commandAcks = [];
+	if (!(state.commandFlight instanceof Set)) state.commandFlight = new Set();
+	const alreadyStaged = (cmd) => state.commandAcks.some((a) => a && a.command === cmd);
+	for (const cmd of pendingCommands) {
+		if (cmd !== "requestModelRediscovery" && cmd !== "requestUpdate") continue;
+		if (alreadyStaged(cmd) || state.commandFlight.has(cmd)) continue;
+		state.commandFlight.add(cmd);
+		try {
+			if (cmd === "requestModelRediscovery") {
+				logger.log?.("Runner command: re-detecting models");
+				const pinned = (Array.isArray(config?.models) && config.models.length > 0) || (typeof config?.model === "string" && config.model.trim());
+				if (pinned) {
+					stageCommandAck(state, { command: cmd, ok: true, detail: "models pinned; discovery skipped" });
+				} else {
+					const ids = await refreshDiscoveredModels({ config, logger, discoverFn });
+					const count = Array.isArray(ids) ? ids.length : 0;
+					stageCommandAck(state, { command: cmd, ok: true, detail: `discovered ${count} model(s)` });
+				}
+			}
+			if (cmd === "requestUpdate") {
+				// Idle-only: do not interrupt active work (D5)
+				if (state?.executionId) {
+					logger.log?.("Runner update queued — will apply when idle");
+					state.pendingUpdate = true;
+					stageCommandAck(state, { command: cmd, ok: true, detail: "queued: update at next idle" });
+				} else {
+					let upd = null;
+					let updateError = null;
+					try {
+						upd = await maybeSelfUpdate({ config, client, logger, installRoot: installRootFor(config), updateState: state, updateDeps, force: true });
+					} catch (err) {
+						updateError = err;
+					}
+					if (updateError) {
+						logger.warn?.(`Runner update failed: ${updateError?.message || updateError}`);
+						stageCommandAck(state, { command: cmd, ok: false, detail: String(updateError?.message || updateError).slice(0, 500) });
+					} else if (upd && upd.ok === false) {
+						// maybeSelfUpdate contains check/apply failures as
+						// ok:false (never throws): surface them as a failed
+						// ack so the operator sees the reason in Settings.
+						stageCommandAck(state, { command: cmd, ok: false, detail: String(upd.reason || "update check failed").slice(0, 500) });
+					} else if (upd?.applied) {
+						const ack = { command: cmd, ok: true, detail: `updated to ${upd.update?.version}` };
+						stageCommandAck(state, ack);
+						// The process exits into the staged update below:
+						// confirm the ack with a final heartbeat first, or
+						// the backend would redeliver the command to the
+						// rebooted Runner (peek-until-ack) and record a
+						// misleading "no update available" result for work
+						// already done.
+						try {
+							if (typeof client?.heartbeat === "function") {
+								await client.heartbeat({ runnerId: config.runnerId, facts: factsFor({ config, commandAck: ack }) });
+							}
+						} catch (err) {
+							logger.warn?.(`Update ack heartbeat failed (update still staged): ${err?.message || err}`);
+						}
+						logger.log?.(`Runner updated to ${upd.update?.version}, restarting`);
+						process.exit(0);
+					} else {
+						stageCommandAck(state, { command: cmd, ok: true, detail: upd?.reason || "no update available" });
+					}
+				}
+			}
+		} finally {
+			state.commandFlight.delete(cmd);
+		}
+	}
+}
+
+/***
  * MARK: deliverSteers
  * @description One D5 pull cycle (ADR 0011): heartbeat, deliver each
  *   pending steer for the CURRENT execution to the live session
@@ -564,11 +717,19 @@ async function joinAndHeartbeat({ config, client, loadHarness, logger, state }) 
  *   A session without either method NACKs UNSUPPORTED_HARNESS — loud,
  *   never silently dropped.
  * @example await deliverSteers({ config, client, logger, facts, state })
- * @param {Object} opts - Options (config, client, logger, facts, state).
+ * @param {Object} opts - Options (config, client, logger, facts, state, updateDeps?, discoverFn?).
  * @returns {Promise<number>} Steers delivered (acked) this cycle.
  ***/
-export async function deliverSteers({ config, client, logger, facts, state }) {
-	const beat = await client.heartbeat({ runnerId: config.runnerId, facts });
+export async function deliverSteers({ config, client, logger, facts, state, updateDeps, discoverFn }) {
+	const pendingAck = stagedCommandAck(state);
+	const factsWithAck = pendingAck ? { ...facts, commandAck: pendingAck } : facts;
+	const beat = await client.heartbeat({ runnerId: config.runnerId, facts: factsWithAck });
+	if (pendingAck && Array.isArray(state?.commandAcks)) {
+		state.commandAcks.shift();
+	}
+	if (Array.isArray(beat.pendingCommands) && beat.pendingCommands.length) {
+		await handlePendingCommands({ config, client, logger, state, pendingCommands: beat.pendingCommands, updateDeps, discoverFn });
+	}
 	const due = (beat.pendingSteers || []).filter((s) => s && s.executionId === state?.executionId);
 	let delivered = 0;
 	for (const steer of due) {
@@ -878,6 +1039,10 @@ async function executeAssignment({
 		// Hoisted so the failure path below can flush the trailing
 		// structured batch before reporting the stage as failed.
 		let structuredSender = null;
+		// Latched by the verdict watcher in the runHarnessStage onEvent
+		// callback below when the agent calls the fail_stage tool (mirrors
+		// the embedded path's stageFailureRequested in api/agentRunner.js).
+		let failStageRequest = null;
 		try {
 			await client.progress({
 				taskId: taskId,
@@ -1057,6 +1222,24 @@ async function executeAssignment({
 					});
 				},
 				onEvent: (event) => {
+					// Verdict watcher, FIRST: an explicit fail_stage call fails
+					// the stage even when the final text says PASS, exactly as
+					// the embedded path latches stageFailureRequested. This
+					// runs before the log transport below on purpose — the
+					// latch is the safety-critical side (a missed latch
+					// wrongly passes the stage), while a dropped log event
+					// only degrades the transcript (the text tap still
+					// carries the coarse view). runHarnessStage already
+					// guards this callback, so neither half can break the run.
+					if (event?.type === "tool_started") {
+						const toolName = event.toolName || event.name || "tool";
+						if (toolName === "fail_stage" || toolName === "Fail_stage_skill") {
+							const args = event.args || event.arguments || {};
+							failStageRequest = {
+								reason: args.reason || args.message || "Stage failure reported by agent review",
+							};
+						}
+					}
 					structuredSender.queueEvent(event);
 				},
 				onSession: (session) => {
@@ -1090,6 +1273,44 @@ async function executeAssignment({
 			logger.log(`Committed ${sha} (pushed: ${pushed}${pushSkipped ? `, ${pushSkipped}` : ""}${pushState && pushState !== "pushed" ? `, ${pushState}` : ""}${beforeSha && beforeSha !== sha ? `, base was ${beforeSha.slice(0, 7)}` : ""}).`);
 			if (output) {
 				await sendLogs(`stage output: ${String(output).slice(0, 4000)}`);
+			}
+			// Agent-failure detection (shared verdict contract — the same
+			// decision the embedded path makes): a latched fail_stage tool
+			// call, or a well-formed FAIL block with reason AND fix guidance,
+			// reports failed/rejected so the backend routes through
+			// routeStageError (failback per stage config) instead of
+			// advancing. A reasonless FAIL still passes open with a warning.
+			// Position is the primary agent-only guard: `integrate` returns
+			// early above and `ci` takes the CI branch, so only agent work
+			// reaches this check. The synthesized stage is belt-and-braces —
+			// TRAP: normalizeStageType("integrate") falls through to
+			// "agent", so the guard would misfire if `integrate` ever
+			// reached here; it cannot due to that early return.
+			const verdictDecision = decideAgentStageVerdict({
+				stage: { type: kind || "agent" },
+				output: String(output || ""),
+				failStageRequest,
+			});
+			if (verdictDecision.failed) {
+				return await client.complete({
+					taskId: taskId,
+					projectId: projectId,
+					executionId,
+					epoch,
+					sha,
+					branch,
+					posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
+					model: servedModel,
+					outcome: "failed",
+					failureKind: "rejected",
+					failureReason: verdictDecision.failureReason,
+					taskFiles: collectTaskFiles({ workdir, taskId }),
+					output: String(output || "").slice(0, 20000),
+					durationMs: Date.now() - runStartedAt,
+				});
+			}
+			if (verdictDecision.failOpenWarning) {
+				logger.warn(verdictDecision.failOpenWarning);
 			}
 			return await client.complete({
 				taskId: taskId,
@@ -1134,6 +1355,32 @@ async function executeAssignment({
 					await structuredSender?.close();
 				} catch {
 					// Flushing is best-effort: the failure report matters more.
+				}
+				// A latched fail_stage decision wins over the harness exception,
+				// exactly as the embedded path prefers stageFailureRequested
+				// over promptException (api/agentRunner.js): the agent actively
+				// decided the stage should fail, so this is review feedback
+				// ("rejected", failback routing), not an infrastructure blip.
+				if (failStageRequest) {
+					const latchedDecision = decideAgentStageVerdict({
+						stage: { type: kind || "agent" },
+						output: "",
+						failStageRequest,
+					});
+					if (latchedDecision.failed) {
+						return await client.complete({
+							taskId: taskId,
+							projectId: projectId,
+							executionId,
+							epoch,
+							outcome: "failed",
+							failureKind: "rejected",
+							failureReason: latchedDecision.failureReason,
+							posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
+							model: servedModel,
+							durationMs: Date.now() - runStartedAt,
+						});
+					}
 				}
 				return await client.complete({
 					taskId: taskId,
@@ -1442,6 +1689,20 @@ export async function runSingleAssignment({
 			taskId: config.taskId,
 			workRoot: config.workRoot,
 		});
+		// Idle-only update close-out: a requestUpdate that arrived
+		// mid-assignment parked state.pendingUpdate — this is the
+		// single-assignment idle point, so honor it exactly like the
+		// dispatch loop does (an applied update returns updated:true and
+		// the process exits 0 into the new version via main()).
+		if (state.pendingUpdate) {
+			try {
+				const upd = await maybeSelfUpdate({ config, client, logger, installRoot: installRootFor(config), updateState: state, force: true });
+				if (upd?.applied) return { ...result, updated: true, version: upd.update?.version };
+				state.pendingUpdate = false;
+			} catch (err) {
+				logger.warn?.(`Runner self-update failed (keeping current version): ${err?.message || err}`);
+			}
+		}
 		return result;
 	} finally {
 		stop();
@@ -1591,7 +1852,7 @@ export async function runDispatchLoop({
 				answer = await client.dispatchClaim({ projectIds: config.projectIds ?? null });
 			} catch (err) {
 				if (err?.code === "STALE_RUNNER") {
-					await client.heartbeat({ runnerId: config.runnerId, facts: factsFor({ config, updateStatus: state?.updateStatus ?? null }) });
+					await client.heartbeat({ runnerId: config.runnerId, facts: factsFor({ config, updateStatus: state?.updateStatus ?? null, commandAck: stagedCommandAck(state) }) });
 					answer = await client.dispatchClaim({ projectIds: config.projectIds ?? null });
 				} else if (err?.statusCode === 429) {
 					// D8 backpressure (ADR 0010): the fleet is at its
@@ -1713,6 +1974,13 @@ export async function runDispatchLoop({
 				taskId: answer.taskId,
 				workRoot: config.workRoot,
 			});
+			if (state.pendingUpdate) {
+				try {
+					const upd = await maybeSelfUpdate({ config, client, logger, installRoot: installRootFor(config), updateState: state, force: true });
+					if (upd?.applied) return { assignments, polls, updated: true, version: upd.update?.version };
+					state.pendingUpdate = false;
+				} catch {}
+			}
 		}
 	} finally {
 		stop();

@@ -22,7 +22,7 @@ import {
  * @param {string} cwd - Project working directory for the report file.
  * @param {string} [harnessId] - Harness that ran the failed attempt.
  * @param {string} [failureKind] - Runner outcome kind (must be "infrastructure").
- * @param {Object} [attribution] - Alias attribution (`{ aliasName, modelRef, targetIndex }`) recorded alongside the attempt.
+ * @param {Object} [attribution] - Run attribution (`{ aliasName, modelRef, targetIndex, runnerId }`) recorded alongside the attempt.
  ***/
 export function recordTransientAttemptReport(
 	taskStore,

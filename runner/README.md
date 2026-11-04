@@ -119,13 +119,32 @@ commit and push → complete with the SHA. Any failure after the claim
 interrupts the task so it re-queues as interrupted, never failed/complete.
 Stage advancement stays engine-owned until the dispatch integration lands.
 
+Agent-failure detection: when the agent calls the `fail_stage` tool or ends
+with a well-formed `KAINBAIN_VERDICT: FAIL` block (reason AND fix guidance),
+the daemon completes with `outcome: "failed"`, `failureKind: "rejected"`,
+and the `[Agent Review Rejection] …` reason — the same shared verdict
+decision (`shared/stageVerdict.js`) the embedded path makes — so the backend
+fails the stage back instead of advancing it. A reasonless FAIL still passes
+open with a warning, and CI/integration work never consults a verdict.
+A latched `fail_stage` call also wins over a later harness exception,
+exactly as the embedded path prefers it over a prompt failure.
+
+Rollout across a mixed fleet is safe in both directions: a new Runner
+reporting `failed`/`rejected` lands on the backend's long-standing failed
+path (no new backend needed), and a new backend re-checks a `passed`
+report's output for a well-formed FAIL block, so an old Runner that never
+learned detection still cannot advance a rejected agent stage. The only
+gap during rollout is a `fail_stage` tool call alone (no verdict block) on
+an old Runner — its session events never leave the host, so the backend
+cannot see them until that Runner self-updates.
+
 ## Safety rails
 
 - Worktree cap ~5 per work root; over-cap runs refuse and name the orphans.
 - Boot surfaces orphaned workdirs (unpushed work) in the log; nothing is
   ever deleted by cleanup.
 - Log gaps are reported as data (`frames X–Y missing`), never papered over.
-- `node --test runner/daemon.test.js runner/client.test.js runner/config.test.js runner/gitOps.test.js runner/harness.test.js runner/project.test.js runner/updates-platform.test.js runner/updates-manifest.test.js runner/updates-verify.test.js runner/updates-state.test.js runner/updates-check.test.js runner/updates-daemon.test.js runner/updates-fixture.test.js`
+- `node --test runner/ciBranchWorkdir.test.js runner/daemon.test.js runner/client.test.js runner/config.test.js runner/gitOps.test.js runner/harness.test.js runner/logEvents.test.js runner/modelDiscovery.test.js runner/project.test.js runner/updates-check.test.js runner/updates-daemon.test.js runner/updates-fixture.test.js runner/updates-manifest.test.js runner/updates-platform.test.js runner/updates-state.test.js runner/updates-verify.test.js runner/updates-wrapper.test.js`
   runs the daemon suite (no ports, real temp git repos, mock harness).
   Name each file: a bare `node --test runner/` directory arg mis-resolves
   on current Node, and this same explicit list is what the `Unit Tests
@@ -171,3 +190,15 @@ mid-download, busy updater, missing `tar`) is contained the same way: the
 loop backs off and keeps serving the old version, never crashing. Hung
 mirrors time out (30s pointer/manifest, 5 min assets). Windows hosts are
 not supported in v1 (linux/darwin × x64/arm64).
+
+## On-request commands (ADR 0013)
+
+Settings › Runners can nudge this daemon through the heartbeat pull channel:
+Re-detect models re-runs model discovery promptly (bypassing the 12h gate
+once; skipped with a "models pinned" ack when the operator pinned models)
+and Update now queues an idle-only self-update. Both ride
+`pendingCommands` on the heartbeat response and ack via `facts.commandAck`;
+a queued command waits for the next heartbeat, and Update now never
+interrupts live work — it applies at the next idle point. Older daemons
+that predate `facts.commands` ignore the channel; Settings shows manual
+guidance instead of a dead button.

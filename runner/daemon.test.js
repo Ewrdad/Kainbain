@@ -12,6 +12,8 @@ import {
 	detectAvailableHarnesses,
 	deliverSteers,
 	diskHeadroomMbFor,
+	handlePendingCommands,
+	joinAndHeartbeat,
 	probeHarnessVersions,
 	refreshDiscoveredModels,
 	resolveHarnessConfig,
@@ -387,6 +389,164 @@ describe("runSingleAssignment", () => {
 			}),
 			/still pending/,
 		);
+	});
+});
+
+describe("runSingleAssignment agent verdict detection", () => {
+	let dirs;
+	beforeEach(() => {
+		dirs = [];
+	});
+	afterEach(() => {
+		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+	});
+
+	const FAIL_BLOCK = "KAINBAIN_VERDICT: FAIL\nKAINBAIN_REASON: canary test red\nKAINBAIN_FIX: pause the stage in spec setup";
+
+	function verdictHarness({ reply = "done", events = [], promptThrows = null } = {}) {
+		return {
+			async createSession() {
+				return {
+					getLastAssistantText: () => reply,
+					subscribe: (handler) => {
+						for (const event of events) handler(event);
+						return () => {};
+					},
+					prompt: async () => {
+						if (promptThrows) throw promptThrows;
+						return reply;
+					},
+					dispose: async () => {},
+				};
+			},
+		};
+	}
+
+	async function runVerdictAssignment({ reply, events, promptThrows = null, claimExtra = {} }) {
+		const repo = localRepo();
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo);
+		const completed = [];
+		const warnings = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1, ...claimExtra }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed.push(args);
+				return { accepted: true, shaState: "present" };
+			},
+			interrupt: async () => ({ interrupted: true }),
+		});
+		await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => verdictHarness({ reply, events, promptThrows }),
+			logger: { log: () => {}, warn: (m) => warnings.push(String(m)) },
+		});
+		assert.equal(completed.length, 1);
+		return { completed: completed[0], warnings };
+	}
+
+	it("R1: a fail_stage tool call alone (no verdict block) fails with rejected", async () => {
+		const { completed } = await runVerdictAssignment({
+			reply: "all done, nothing to report",
+			events: [{ type: "tool_started", toolName: "fail_stage", args: { reason: "tests red on main" } }],
+		});
+		assert.equal(completed.outcome, "failed");
+		assert.equal(completed.failureKind, "rejected");
+		assert.match(completed.failureReason, /\[Agent Review Rejection\] tests red on main/);
+		// The failed report carries the same run context as a pass.
+		assert.match(completed.posture, /mock/);
+		assert.equal(typeof completed.durationMs, "number");
+		assert.match(completed.output, /all done/);
+	});
+
+	it("R2: a FAIL block with reason and fix fails with the Fix guidance: reason", async () => {
+		const { completed } = await runVerdictAssignment({
+			reply: `Deep review complete.\n${FAIL_BLOCK}`,
+		});
+		assert.equal(completed.outcome, "failed");
+		assert.equal(completed.failureKind, "rejected");
+		assert.equal(
+			completed.failureReason,
+			"[Agent Review Rejection] canary test red Fix guidance: pause the stage in spec setup",
+		);
+	});
+
+	it("R3: a reasonless FAIL still passes open with a warning", async () => {
+		const { completed, warnings } = await runVerdictAssignment({
+			reply: "Something is wrong.\nKAINBAIN_VERDICT: FAIL",
+		});
+		assert.equal(completed.outcome, "passed");
+		assert.ok(!("failureKind" in completed), "no failureKind on a pass");
+		assert.ok(warnings.some((w) => w.includes("Stage verdict FAIL ignored (fail-open)")));
+	});
+
+	it("R4: malformed blocks and prose verdicts pass silently", async () => {
+		for (const reply of [
+			"KAINBAIN_VERDICT: MAYBE",
+			"Verdict: STAGE FAILED — rework required (prose, no block)",
+			"```text\nKAINBAIN_VERDICT: FAIL\n```",
+		]) {
+			const { completed, warnings } = await runVerdictAssignment({ reply });
+			assert.equal(completed.outcome, "passed", reply);
+			assert.ok(
+				!warnings.some((w) => w.includes("Stage verdict FAIL ignored")),
+				`no fail-open warning for ${JSON.stringify(reply)}`,
+			);
+		}
+	});
+
+	it("R5: the CI branch never consults a verdict block in command output", async () => {
+		const { completed } = await runVerdictAssignment({
+			reply: "unused on the CI branch",
+			claimExtra: {
+				kind: "ci",
+				command: "printf 'KAINBAIN_VERDICT: FAIL\\nKAINBAIN_REASON: x\\nKAINBAIN_FIX: y\\n'",
+			},
+		});
+		assert.equal(completed.outcome, "passed");
+		assert.match(completed.output, /KAINBAIN_VERDICT: FAIL/);
+	});
+
+	it("R6: a fail_stage call wins over a PASS text block (Skill name + message fallback)", async () => {
+		const { completed } = await runVerdictAssignment({
+			reply: "all good\nKAINBAIN_VERDICT: PASS",
+			events: [{ type: "tool_started", toolName: "Fail_stage_skill", args: { message: "human review found a blocker" } }],
+		});
+		assert.equal(completed.outcome, "failed");
+		assert.equal(completed.failureKind, "rejected");
+		assert.equal(completed.failureReason, "[Agent Review Rejection] human review found a blocker");
+	});
+
+	it("R7: a latched fail_stage call wins over a later prompt exception", async () => {
+		// Mirrors the embedded path (api/agentRunner.js prefers
+		// stageFailureRequested over promptException): the agent's deliberate
+		// rejection reports as rejected, not as the harness error.
+		const { completed } = await runVerdictAssignment({
+			reply: "unused — prompt throws",
+			events: [{ type: "tool_started", toolName: "fail_stage", args: { reason: "tests red on main" } }],
+			promptThrows: new Error("harness connection reset"),
+		});
+		assert.equal(completed.outcome, "failed");
+		assert.equal(completed.failureKind, "rejected");
+		assert.equal(completed.failureReason, "[Agent Review Rejection] tests red on main");
+	});
+
+	it("R8: the watcher reads the same event fallbacks as the embedded path", async () => {
+		// Embedded parity (api/agentRunner.js): event.name and
+		// event.arguments are read when toolName/args are absent.
+		const { completed } = await runVerdictAssignment({
+			reply: "all done, nothing to report",
+			events: [{ type: "tool_started", name: "fail_stage", arguments: { reason: "fallback field shapes" } }],
+		});
+		assert.equal(completed.outcome, "failed");
+		assert.equal(completed.failureKind, "rejected");
+		assert.equal(completed.failureReason, "[Agent Review Rejection] fallback field shapes");
 	});
 });
 
@@ -1332,5 +1492,263 @@ describe("formatPosture", () => {
 	});
 	it("accepts tiers as a plain string", () => {
 		assert.equal(formatPosture({ tiers: "T0/T1", harness: "pi", model: null }), "T0/T1:pi");
+	});
+});
+
+describe("handlePendingCommands", () => {
+	const quiet = { log: () => {}, warn: () => {} };
+	const claudeConfig = (overrides = {}) => baseConfig({ harnessIds: ["mock", "muse"], ...overrides });
+
+	beforeEach(() => {
+		clearDiscoveredModelsCache();
+	});
+	afterEach(() => {
+		clearDiscoveredModelsCache();
+	});
+
+	it("re-runs discovery promptly and stages a success ack", async () => {
+		let probes = 0;
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig(),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => { probes += 1; return ["m1", "m2"]; },
+		});
+		assert.equal(probes, 1);
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 2 model(s)" },
+		]);
+	});
+
+	it("skips discovery with a success ack when models are pinned", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig({ models: ["pinned-model"] }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => { throw new Error("must not probe when pinned"); },
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "models pinned; discovery skipped" },
+		]);
+	});
+
+	it("parks requestUpdate while an execution is live (never interrupts)", async () => {
+		const state = { executionId: "e1", epoch: 1 };
+		await handlePendingCommands({
+			config: claudeConfig({ autoUpdate: true }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestUpdate"],
+			updateDeps: {
+				checkForUpdate: async () => { throw new Error("must not check while busy"); },
+			},
+		});
+		assert.equal(state.pendingUpdate, true);
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestUpdate", ok: true, detail: "queued: update at next idle" },
+		]);
+	});
+
+	it("runs requestUpdate immediately when idle and acks the outcome", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig({ autoUpdate: true }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestUpdate"],
+			updateDeps: {
+				checkForUpdate: async () => ({ ok: true, update: null, reason: "up to date" }),
+				applyUpdate: async () => { throw new Error("must not apply"); },
+			},
+		});
+		assert.equal(state.pendingUpdate, undefined);
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestUpdate", ok: true, detail: "up to date" },
+		]);
+	});
+
+	it("acks update failures without throwing", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig({ autoUpdate: true }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestUpdate"],
+			updateDeps: {
+				checkForUpdate: async () => { throw new Error("mirror down"); },
+			},
+		});
+		assert.equal(state.commandAcks.length, 1);
+		assert.equal(state.commandAcks[0].command, "requestUpdate");
+		assert.equal(state.commandAcks[0].ok, false);
+		assert.match(state.commandAcks[0].detail, /mirror down/);
+	});
+
+	it("confirms the ack over a final heartbeat before exiting into a staged update", async () => {
+		const heartbeats = [];
+		const state = {};
+		const realExit = process.exit;
+		let exitCode = null;
+		process.exit = (code) => { exitCode = code; throw new Error(`process.exit(${code})`); };
+		try {
+			await assert.rejects(
+				handlePendingCommands({
+					config: claudeConfig({ autoUpdate: true }),
+					client: { heartbeat: async (args) => { heartbeats.push(args); return { status: "active" }; } },
+					logger: quiet,
+					state,
+					pendingCommands: ["requestUpdate"],
+					updateDeps: {
+						checkForUpdate: async () => ({ ok: true, update: { version: "9.9.9" } }),
+						applyUpdate: async () => ({ ok: true }),
+					},
+				}),
+				/process\.exit\(0\)/,
+			);
+		} finally {
+			process.exit = realExit;
+		}
+		assert.equal(exitCode, 0);
+		assert.equal(heartbeats.length, 1);
+		assert.deepEqual(heartbeats[0].facts.commandAck, {
+			command: "requestUpdate",
+			ok: true,
+			detail: "updated to 9.9.9",
+		});
+	});
+
+	it("ignores unknown commands", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig(),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestRestart", null, undefined],
+		});
+		assert.deepEqual(state.commandAcks, []);
+	});
+
+	it("skips repeats already staged or in flight (at-least-once redelivery)", async () => {
+		let probes = 0;
+		let release;
+		const gate = new Promise((r) => { release = r; });
+		const state = {};
+		const opts = {
+			config: claudeConfig(),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => { probes += 1; await gate; return ["m1"]; },
+		};
+		const first = handlePendingCommands(opts);
+		// Second overlapping delivery while the first probe is in flight.
+		const second = handlePendingCommands(opts);
+		release();
+		await Promise.all([first, second]);
+		assert.equal(probes, 1);
+		assert.equal(state.commandAcks.length, 1);
+		// A later redelivery after the ack staged still acts only once.
+		await handlePendingCommands({ ...opts, discoverFn: async () => { probes += 1; return ["m1"]; } });
+		assert.equal(probes, 1);
+		assert.equal(state.commandAcks.length, 1);
+	});
+
+	it("stages both acks FIFO when two commands arrive together", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig({ autoUpdate: true }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery", "requestUpdate"],
+			discoverFn: async () => ["m1"],
+			updateDeps: {
+				checkForUpdate: async () => ({ ok: true, update: null, reason: "up to date" }),
+			},
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 1 model(s)" },
+			{ command: "requestUpdate", ok: true, detail: "up to date" },
+		]);
+	});
+});
+
+describe("deliverSteers command channel", () => {
+	const quiet = { log: () => {}, warn: () => {} };
+
+	it("acts on delivered commands and sends the staged ack on the next heartbeat", async () => {
+		clearDiscoveredModelsCache();
+		const heartbeats = [];
+		const client = {
+			heartbeat: async (args) => {
+				heartbeats.push(args);
+				return heartbeats.length === 1
+					? { status: "active", pendingCommands: ["requestModelRediscovery"] }
+					: { status: "active" };
+			},
+		};
+		const config = baseConfig({ harnessIds: ["mock", "muse"] });
+		const state = {};
+		try {
+			await deliverSteers({
+				config,
+				client,
+				logger: quiet,
+				facts: {},
+				state,
+				discoverFn: async () => ["m1"],
+			});
+			assert.equal(heartbeats[0].facts.commandAck, undefined);
+			assert.equal(state.commandAcks.length, 1);
+			await deliverSteers({ config, client, logger: quiet, facts: {}, state });
+			assert.deepEqual(heartbeats[1].facts.commandAck, {
+				command: "requestModelRediscovery",
+				ok: true,
+				detail: "discovered 1 model(s)",
+			});
+			assert.deepEqual(state.commandAcks, []);
+		} finally {
+			clearDiscoveredModelsCache();
+			fs.rmSync(config.workRoot, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("joinAndHeartbeat command channel", () => {
+	const quiet = { log: () => {}, warn: () => {} };
+
+	it("acts on commands queued while the runner was down (boot delivery)", async () => {
+		const config = baseConfig({ harnessIds: ["mock"], autoUpdate: false });
+		const client = {
+			setCredential: () => {},
+			heartbeat: async () => ({ status: "active", pendingCommands: ["requestUpdate"] }),
+		};
+		const state = {};
+		const { stop } = await joinAndHeartbeat({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: quiet,
+			state,
+		});
+		try {
+			assert.equal(state.commandAcks.length, 1);
+			assert.equal(state.commandAcks[0].command, "requestUpdate");
+			assert.equal(state.commandAcks[0].ok, true);
+		} finally {
+			stop();
+			fs.rmSync(config.workRoot, { recursive: true, force: true });
+		}
 	});
 });

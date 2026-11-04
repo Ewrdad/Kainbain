@@ -78,6 +78,58 @@ describe("stampDispatchRunAttribution", () => {
 		}
 	});
 
+	it("stamps the dispatching Runner on the task and its arrival row", () => {
+		const task = makeTask();
+		const attribution = stampDispatchRunAttribution({
+			taskStore: { _saveTaskMarkdown: () => {} },
+			project: { id: "p1" },
+			task,
+			stage,
+			stages: [stage],
+			req: { harness: "mock", model: "mock-model", kind: "agent" },
+			runnerId: "runner-alpha",
+		});
+		expect(attribution).toEqual({
+			harnessId: "mock",
+			modelRef: "mock-model",
+			runnerId: "runner-alpha",
+		});
+		expect(task.currentRunAttribution).toEqual({
+			stageId: "s1",
+			harnessId: "mock",
+			modelRef: "mock-model",
+			runnerId: "runner-alpha",
+		});
+		expect(task.timeline[0]).toMatchObject({
+			harnessId: "mock",
+			modelRef: "mock-model",
+			runnerId: "runner-alpha",
+		});
+	});
+
+	it("stamps the Runner alone for CI/merge kinds — never a model", () => {
+		for (const kind of ["ci", "merge"]) {
+			const task = makeTask();
+			const attribution = stampDispatchRunAttribution({
+				taskStore: { _saveTaskMarkdown: () => {} },
+				project: { id: "p1" },
+				task,
+				stage: { id: "s1", name: "Build", type: kind },
+				stages: [{ id: "s1", name: "Build", type: kind }],
+				req: { harness: null, model: "", kind },
+				runnerId: "runner-alpha",
+			});
+			expect(attribution).toEqual({ runnerId: "runner-alpha" });
+			expect(task.currentRunAttribution).toEqual({
+				stageId: "s1",
+				runnerId: "runner-alpha",
+			});
+			expect(task.timeline[0]).toMatchObject({ runnerId: "runner-alpha" });
+			expect(task.timeline[0]).not.toHaveProperty("modelRef");
+			expect(task.timeline[0]).not.toHaveProperty("harnessId");
+		}
+	});
+
 	it("normalizes the default sentinel out of the requirement model", () => {
 		const task = makeTask();
 		const attribution = stampDispatchRunAttribution({

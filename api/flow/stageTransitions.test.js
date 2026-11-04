@@ -809,6 +809,36 @@ describe("timeline run attribution", () => {
 		expect(done.currentRunAttribution).toBeNull();
 	});
 
+	it("stamps the Completed row with the pending run's Runner", () => {
+		const store = makeStore();
+		store.seed(
+			"p-1",
+			task({ currentRunAttribution: { ...ATTRIBUTION, runnerId: "runner-alpha" } }),
+		);
+		const done = completeTask(store, "p-1", "t-1");
+		const entry = lastTimelineEntry(store);
+		expect(entry.status).toBe("Completed");
+		expect(entry).toMatchObject({
+			harnessId: "pi",
+			runnerId: "runner-alpha",
+		});
+		expect(done.currentRunAttribution).toBeNull();
+	});
+
+	it("stamps the Completed row with a runnerId-only pending run", () => {
+		const store = makeStore();
+		store.seed(
+			"p-1",
+			task({ currentRunAttribution: { stageId: "s-1", runnerId: "runner-alpha" } }),
+		);
+		const done = completeTask(store, "p-1", "t-1");
+		const entry = lastTimelineEntry(store);
+		expect(entry.status).toBe("Completed");
+		expect(entry.runnerId).toBe("runner-alpha");
+		expect(entry.harnessId).toBeUndefined();
+		expect(done.currentRunAttribution).toBeNull();
+	});
+
 	it("keeps the Completed row blank without a matching pending run", () => {
 		const store = makeStore();
 		store.seed(
