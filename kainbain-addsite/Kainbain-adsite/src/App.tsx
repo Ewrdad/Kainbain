@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { BrandIcon } from "@/components/BrandIcon"
+import { BuildInfoCard } from "@/components/BuildInfoCard"
 import { InstallerCard } from "@/components/InstallerCard"
 import { siteContent } from "@/content/site"
 
@@ -54,10 +55,11 @@ export function App() {
           <InstallerCard />
         </section>
 
-        <section
-          aria-label="Features"
-          className="grid gap-4 md:grid-cols-3"
-        >
+        <p className="rounded-lg border border-dashed px-4 py-3 text-center text-xs leading-relaxed text-muted-foreground">
+          {siteContent.installer.warning}
+        </p>
+
+        <section aria-label="Features" className="grid gap-4 md:grid-cols-3">
           {siteContent.features.map((feature) => (
             <Card key={feature.title}>
               <CardHeader>
@@ -81,24 +83,7 @@ export function App() {
         </section>
 
         <section className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
-          <Card>
-            <div className="grid gap-6 p-6 sm:grid-cols-[1fr_auto] sm:items-center">
-              <div className="flex flex-col gap-3">
-                <h2 className="font-semibold">{siteContent.about.title}</h2>
-                <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
-                  {siteContent.about.roles.map((role) => (
-                    <li key={role}>- {role}</li>
-                  ))}
-                </ul>
-              </div>
-              <div
-                aria-label={siteContent.about.photoLabel}
-                className="flex h-36 w-full items-center justify-center rounded-lg border border-dashed bg-muted text-sm text-muted-foreground sm:w-56"
-              >
-                {siteContent.about.photoLabel}
-              </div>
-            </div>
-          </Card>
+          <BuildInfoCard />
 
           <Card>
             <CardHeader>
@@ -128,11 +113,7 @@ export function App() {
                 {siteContent.compatibility.alsoSupports.map((item) =>
                   "href" in item && item.href ? (
                     <Badge key={item.label} variant="secondary" asChild>
-                      <a
-                        href={item.href}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
+                      <a href={item.href} target="_blank" rel="noreferrer">
                         {item.label}
                       </a>
                     </Badge>
@@ -143,6 +124,79 @@ export function App() {
                   )
                 )}
               </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        <section
+          aria-label="Security, support and timeline"
+          className="grid gap-4 lg:grid-cols-3"
+        >
+          <Card>
+            <CardHeader>
+              <CardTitle>{siteContent.security.title}</CardTitle>
+              <CardDescription>{siteContent.security.intro}</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <ul className="flex flex-col gap-2 text-sm leading-relaxed">
+                {siteContent.security.points.map((point) => (
+                  <li key={point} className="flex gap-2">
+                    <span
+                      aria-hidden="true"
+                      className="mt-2 size-1 shrink-0 rounded-full bg-primary"
+                    />
+                    <span>{point}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="border-t pt-3">
+                <p className="text-sm font-medium">
+                  {siteContent.security.plannedTitle}
+                </p>
+                <ul className="mt-1 flex flex-col gap-1 text-sm text-muted-foreground">
+                  {siteContent.security.planned.map((item) => (
+                    <li key={item}>- {item}</li>
+                  ))}
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{siteContent.support.title}</CardTitle>
+              <CardDescription>{siteContent.support.intro}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="flex flex-col gap-2 text-sm leading-relaxed">
+                {siteContent.support.points.map((point) => (
+                  <li key={point} className="flex gap-2">
+                    <span
+                      aria-hidden="true"
+                      className="mt-2 size-1 shrink-0 rounded-full bg-primary"
+                    />
+                    <span>{point}</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{siteContent.timeline.title}</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {siteContent.timeline.periods.map((period) => (
+                <div key={period.title}>
+                  <p className="text-sm font-medium">{period.title}</p>
+                  <ul className="mt-1 flex flex-col gap-1 text-sm text-muted-foreground">
+                    {period.points.map((point) => (
+                      <li key={point}>- {point}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </CardContent>
           </Card>
         </section>
