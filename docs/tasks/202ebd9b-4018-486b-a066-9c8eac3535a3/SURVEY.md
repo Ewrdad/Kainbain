@@ -103,33 +103,21 @@
         {
           "option": 0,
           "file": "assets/survey-r1-q7-0.png",
-          "status": "pending"
+          "status": "ready"
         },
         {
           "option": 1,
           "file": "assets/survey-r1-q7-1.png",
-          "status": "pending"
+          "status": "ready"
         },
         {
           "option": 2,
           "file": "assets/survey-r1-q7-2.png",
-          "status": "pending"
+          "status": "ready"
         }
       ]
     }
   ],
-  "answers": {}
-}
-```
-
-## Round 2
-
-```survey-json
-{
-  "round": 2,
-  "generatedAt": "2026-11-04T00:00:00.000Z",
-  "stage": "stage-1792362077711",
-  "questions": [],
   "answers": {}
 }
 ```
