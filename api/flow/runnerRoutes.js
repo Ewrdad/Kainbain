@@ -1149,7 +1149,13 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				} catch (err) {
 					claimStore.invalidate(cand.taskId);
 					if (err?.code === "INTEGRATION_BUSY") {
-						return { assigned: false, code: "INTEGRATION_BUSY" };
+						// A busy merge must not starve the fleet: the merge
+						// request stays queued for its holder while dispatch
+						// tries the next candidate. The miss is recorded so
+						// a poll whose ONLY work is a busy merge still backs
+						// off below.
+						misses.INTEGRATION_BUSY = (misses.INTEGRATION_BUSY || 0) + 1;
+						continue;
 					}
 					return sendStoreError(reply, err);
 				}
@@ -1220,6 +1226,12 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				if (err?.code === "CLAIM_CONFLICT") continue;
 				return sendStoreError(reply, err);
 			}
+		}
+		// A poll whose only matchable work is a busy merge keeps the
+		// backoff signal (no idle budget burned) instead of degrading to
+		// a capability miss.
+		if (misses.INTEGRATION_BUSY && Object.keys(misses).length === 1) {
+			return { assigned: false, code: "INTEGRATION_BUSY" };
 		}
 		return { assigned: false, code: "NO_CAPABLE_MATCH", misses };
 	});
