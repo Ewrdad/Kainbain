@@ -139,6 +139,11 @@ export async function applyRunnerReport({
 	// (reasonless FAIL still advances) and agent-only (human/CI stages
 	// never re-parse). Only the text block is re-checkable here: the
 	// Runner owns the session events, so failStageRequest is always null.
+	// Known limit: the Runner caps the reported output at 20k leading
+	// characters, so a FAIL block past that cut is invisible to this
+	// re-check (new Runners parse the full text before capping, so only
+	// huge outputs on old Runners are affected — and old Runners phase
+	// out through self-update).
 	if (outcome.status === "passed") {
 		const verdictDecision = decideAgentStageVerdict({
 			stage,
@@ -157,8 +162,9 @@ export async function applyRunnerReport({
 
 	if (outcome.status === "failed") {
 		const err = new Error(outcome.failureReason || "Stage failed on the Runner");
-		// The runner's completion payload carries the tail of the run output
-		// (runner/daemon.js caps it). Keep it on the error so the failure
+		// The runner's completion payload carries the leading slice of the
+		// run output (runner/daemon.js caps it at 20k characters). Keep it
+		// on the error so the failure
 		// report renders the actual failing output instead of only the
 		// reason — thin "exit code 1" reports hid every branch result
 		// (task b5716327). handleStageFailure already renders error.stdout

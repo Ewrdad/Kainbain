@@ -17,9 +17,11 @@ import { stageExpectsAgentVerdict } from "./stageExpectsAgentVerdict.js";
  *   parse their output. The `failStageRequest` signal wins unconditionally,
  *   exactly as the embedded path latches it — callers only capture that
  *   event on agent paths. Reason strings are byte-identical to the embedded
- *   path so failure reports, timeline rows, and push-suppression
- *   (`failureKind: "rejected"`, which callers set alongside) behave
- *   identically everywhere.
+ *   path (including the shared fallback below) so failure reports,
+ *   timeline rows, and push-suppression (`failureKind: "rejected"`, which
+ *   callers set alongside) behave identically everywhere. A whitespace-only
+ *   reason is no reason: it falls back to the shared default rather than
+ *   printing a blank rejection.
  * @example decideAgentStageVerdict({ stage: { type: "agent" }, output: "ok", failStageRequest: { reason: "red" } }).failed => true
  * @example decideAgentStageVerdict({ stage: { type: "agent" }, output: "KAINBAIN_VERDICT: FAIL\nKAINBAIN_REASON: red\nKAINBAIN_FIX: blue" }).failureReason => "[Agent Review Rejection] red Fix guidance: blue"
  * @example decideAgentStageVerdict({ stage: { type: "agent" }, output: "KAINBAIN_VERDICT: FAIL" }).failed => false
@@ -37,13 +39,19 @@ export function decideAgentStageVerdict({ stage, output, failStageRequest } = {}
 	// verdict — even a PASS block: the agent actively decided the stage
 	// should fail, so this is review feedback, not a blip.
 	if (failStageRequest) {
-		const reason =
+		const rawReason =
 			typeof failStageRequest === "string"
 				? failStageRequest
 				: failStageRequest?.reason;
+		const reasonText =
+			typeof rawReason === "string" ? rawReason.trim() : rawReason;
+		// The fallback is the embedded path's long-standing default
+		// (api/agentRunner.js latches the same string), so a reasonless
+		// tool call reads identically wherever the stage ran.
+		const reason = reasonText || "Stage failure reported by agent review";
 		return {
 			failed: true,
-			failureReason: `[Agent Review Rejection] ${reason || "Stage rejected by agent review"}`,
+			failureReason: `[Agent Review Rejection] ${reason}`,
 			failOpenWarning: null,
 		};
 	}

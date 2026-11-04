@@ -1222,11 +1222,15 @@ async function executeAssignment({
 					});
 				},
 				onEvent: (event) => {
-					structuredSender.queueEvent(event);
-					// Verdict watcher (observer-only — runHarnessStage already
-					// guards this callback): an explicit fail_stage call fails
+					// Verdict watcher, FIRST: an explicit fail_stage call fails
 					// the stage even when the final text says PASS, exactly as
-					// the embedded path latches stageFailureRequested.
+					// the embedded path latches stageFailureRequested. This
+					// runs before the log transport below on purpose — the
+					// latch is the safety-critical side (a missed latch
+					// wrongly passes the stage), while a dropped log event
+					// only degrades the transcript (the text tap still
+					// carries the coarse view). runHarnessStage already
+					// guards this callback, so neither half can break the run.
 					if (event?.type === "tool_started") {
 						const toolName = event.toolName || event.name || "tool";
 						if (toolName === "fail_stage" || toolName === "Fail_stage_skill") {
@@ -1236,6 +1240,7 @@ async function executeAssignment({
 							};
 						}
 					}
+					structuredSender.queueEvent(event);
 				},
 				onSession: (session) => {
 					state.session = session;
@@ -1350,6 +1355,32 @@ async function executeAssignment({
 					await structuredSender?.close();
 				} catch {
 					// Flushing is best-effort: the failure report matters more.
+				}
+				// A latched fail_stage decision wins over the harness exception,
+				// exactly as the embedded path prefers stageFailureRequested
+				// over promptException (api/agentRunner.js): the agent actively
+				// decided the stage should fail, so this is review feedback
+				// ("rejected", failback routing), not an infrastructure blip.
+				if (failStageRequest) {
+					const latchedDecision = decideAgentStageVerdict({
+						stage: { type: kind || "agent" },
+						output: "",
+						failStageRequest,
+					});
+					if (latchedDecision.failed) {
+						return await client.complete({
+							taskId: taskId,
+							projectId: projectId,
+							executionId,
+							epoch,
+							outcome: "failed",
+							failureKind: "rejected",
+							failureReason: latchedDecision.failureReason,
+							posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
+							model: servedModel,
+							durationMs: Date.now() - runStartedAt,
+						});
+					}
 				}
 				return await client.complete({
 					taskId: taskId,

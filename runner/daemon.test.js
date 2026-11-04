@@ -403,7 +403,7 @@ describe("runSingleAssignment agent verdict detection", () => {
 
 	const FAIL_BLOCK = "KAINBAIN_VERDICT: FAIL\nKAINBAIN_REASON: canary test red\nKAINBAIN_FIX: pause the stage in spec setup";
 
-	function verdictHarness({ reply = "done", events = [] } = {}) {
+	function verdictHarness({ reply = "done", events = [], promptThrows = null } = {}) {
 		return {
 			async createSession() {
 				return {
@@ -412,14 +412,17 @@ describe("runSingleAssignment agent verdict detection", () => {
 						for (const event of events) handler(event);
 						return () => {};
 					},
-					prompt: async () => reply,
+					prompt: async () => {
+						if (promptThrows) throw promptThrows;
+						return reply;
+					},
 					dispose: async () => {},
 				};
 			},
 		};
 	}
 
-	async function runVerdictAssignment({ reply, events, claimExtra = {} }) {
+	async function runVerdictAssignment({ reply, events, promptThrows = null, claimExtra = {} }) {
 		const repo = localRepo();
 		const config = baseConfig();
 		dirs.push(config.workRoot, repo);
@@ -441,7 +444,7 @@ describe("runSingleAssignment agent verdict detection", () => {
 		await runSingleAssignment({
 			config,
 			client,
-			loadHarness: async () => verdictHarness({ reply, events }),
+			loadHarness: async () => verdictHarness({ reply, events, promptThrows }),
 			logger: { log: () => {}, warn: (m) => warnings.push(String(m)) },
 		});
 		assert.equal(completed.length, 1);
@@ -518,6 +521,32 @@ describe("runSingleAssignment agent verdict detection", () => {
 		assert.equal(completed.outcome, "failed");
 		assert.equal(completed.failureKind, "rejected");
 		assert.equal(completed.failureReason, "[Agent Review Rejection] human review found a blocker");
+	});
+
+	it("R7: a latched fail_stage call wins over a later prompt exception", async () => {
+		// Mirrors the embedded path (api/agentRunner.js prefers
+		// stageFailureRequested over promptException): the agent's deliberate
+		// rejection reports as rejected, not as the harness error.
+		const { completed } = await runVerdictAssignment({
+			reply: "unused — prompt throws",
+			events: [{ type: "tool_started", toolName: "fail_stage", args: { reason: "tests red on main" } }],
+			promptThrows: new Error("harness connection reset"),
+		});
+		assert.equal(completed.outcome, "failed");
+		assert.equal(completed.failureKind, "rejected");
+		assert.equal(completed.failureReason, "[Agent Review Rejection] tests red on main");
+	});
+
+	it("R8: the watcher reads the same event fallbacks as the embedded path", async () => {
+		// Embedded parity (api/agentRunner.js): event.name and
+		// event.arguments are read when toolName/args are absent.
+		const { completed } = await runVerdictAssignment({
+			reply: "all done, nothing to report",
+			events: [{ type: "tool_started", name: "fail_stage", arguments: { reason: "fallback field shapes" } }],
+		});
+		assert.equal(completed.outcome, "failed");
+		assert.equal(completed.failureKind, "rejected");
+		assert.equal(completed.failureReason, "[Agent Review Rejection] fallback field shapes");
 	});
 });
 

@@ -112,15 +112,67 @@ describe("stageVerdict — decision precedence matrix (S2)", () => {
 	});
 
 	it("a fail_stage call with no reason still fails with the default reason", () => {
-		for (const failStageRequest of [{}, { reason: "" }, { reason: null }]) {
+		// The default is the embedded path's long-standing string
+		// (api/agentRunner.js latches the same), so a reasonless tool call
+		// reads identically wherever the stage ran.
+		const expected =
+			"[Agent Review Rejection] Stage failure reported by agent review";
+		for (const failStageRequest of [
+			{},
+			{ reason: "" },
+			{ reason: null },
+			{ reason: "   " },
+			{ reason: "\n\t " },
+			"   ",
+		]) {
 			const decision = decideAgentStageVerdict({
 				stage: { type: "agent" },
 				output: "done",
 				failStageRequest,
 			});
-			expect(decision.failed).toBe(true);
+			expect(decision.failed, JSON.stringify(failStageRequest)).toBe(true);
+			expect(decision.failureReason, JSON.stringify(failStageRequest)).toBe(
+				expected,
+			);
+			expect(decision.failOpenWarning).toBeNull();
+		}
+	});
+
+	it("a bare-string fail_stage latch is trimmed and honoured", () => {
+		const decision = decideAgentStageVerdict({
+			stage: { type: "agent" },
+			output: "done",
+			failStageRequest: "  padded reason  ",
+		});
+		expect(decision.failed).toBe(true);
+		expect(decision.failureReason).toBe(
+			"[Agent Review Rejection] padded reason",
+		);
+		expect(decision.failOpenWarning).toBeNull();
+	});
+
+	it("the fail_stage latch wins for any stage shape (embedded parity)", () => {
+		// The latch is unconditional, exactly as the embedded path checks
+		// stageFailureRequested before anything else: callers only capture
+		// the tool event on agent paths (the backend double-check always
+		// passes null), so the helper never narrows it. Human/CI stages
+		// have no session to call the tool from — the loop below pins that
+		// narrowing is the caller's job, not the helper's.
+		for (const stage of [
+			{ type: "agent" },
+			{},
+			undefined,
+			{ type: "human" },
+			{ type: "ci" },
+		]) {
+			const decision = decideAgentStageVerdict({
+				stage,
+				output: "all good\nKAINBAIN_VERDICT: PASS",
+				failStageRequest: { reason: "human review found a blocker" },
+			});
+			expect(decision.failed, JSON.stringify(stage)).toBe(true);
 			expect(decision.failureReason).toBe(
-				"[Agent Review Rejection] Stage rejected by agent review",
+				"[Agent Review Rejection] human review found a blocker",
 			);
 		}
 	});

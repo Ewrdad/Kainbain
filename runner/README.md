@@ -126,6 +126,17 @@ and the `[Agent Review Rejection] …` reason — the same shared verdict
 decision (`shared/stageVerdict.js`) the embedded path makes — so the backend
 fails the stage back instead of advancing it. A reasonless FAIL still passes
 open with a warning, and CI/integration work never consults a verdict.
+A latched `fail_stage` call also wins over a later harness exception,
+exactly as the embedded path prefers it over a prompt failure.
+
+Rollout across a mixed fleet is safe in both directions: a new Runner
+reporting `failed`/`rejected` lands on the backend's long-standing failed
+path (no new backend needed), and a new backend re-checks a `passed`
+report's output for a well-formed FAIL block, so an old Runner that never
+learned detection still cannot advance a rejected agent stage. The only
+gap during rollout is a `fail_stage` tool call alone (no verdict block) on
+an old Runner — its session events never leave the host, so the backend
+cannot see them until that Runner self-updates.
 
 ## Safety rails
 
@@ -133,7 +144,7 @@ open with a warning, and CI/integration work never consults a verdict.
 - Boot surfaces orphaned workdirs (unpushed work) in the log; nothing is
   ever deleted by cleanup.
 - Log gaps are reported as data (`frames X–Y missing`), never papered over.
-- `node --test runner/daemon.test.js runner/client.test.js runner/config.test.js runner/gitOps.test.js runner/harness.test.js runner/project.test.js runner/updates-platform.test.js runner/updates-manifest.test.js runner/updates-verify.test.js runner/updates-state.test.js runner/updates-check.test.js runner/updates-daemon.test.js runner/updates-fixture.test.js`
+- `node --test runner/ciBranchWorkdir.test.js runner/daemon.test.js runner/client.test.js runner/config.test.js runner/gitOps.test.js runner/harness.test.js runner/logEvents.test.js runner/modelDiscovery.test.js runner/project.test.js runner/updates-check.test.js runner/updates-daemon.test.js runner/updates-fixture.test.js runner/updates-manifest.test.js runner/updates-platform.test.js runner/updates-state.test.js runner/updates-verify.test.js runner/updates-wrapper.test.js`
   runs the daemon suite (no ports, real temp git repos, mock harness).
   Name each file: a bare `node --test runner/` directory arg mis-resolves
   on current Node, and this same explicit list is what the `Unit Tests
