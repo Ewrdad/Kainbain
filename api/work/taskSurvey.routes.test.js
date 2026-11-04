@@ -49,7 +49,7 @@ async function setup(customStages) {
 		post: (routePath, a, b) => routes.set(`POST ${routePath}`, b || a),
 		patch: (routePath, handler) => routes.set(`PATCH ${routePath}`, handler),
 		delete: (routePath, handler) => routes.set(`DELETE ${routePath}`, handler),
-		log: { error: vi.fn() },
+		log: { error: vi.fn(), warn: vi.fn() },
 	};
 	const task = stored();
 	const taskStore = {
@@ -231,6 +231,28 @@ describe("POST /tasks/:id/survey", () => {
 		});
 		expect(res.statusCode).toBe(400);
 		expect(fs.readFileSync(filePath, "utf8")).toBe(before);
+	});
+
+	it("save rejects carry a machine-readable code naming the failure", async () => {
+		const { call } = await setup();
+		appendSurveyRound({ cwd: tmp, project: null, taskId: "t-1", questions: [q()] });
+		const invalid = await call("POST", "/tasks/:id/survey", {
+			params: { id: "t-1" },
+			body: { projectId: "p-1", answers: { q1: { selected: ["zzz"] } } },
+		});
+		expect(invalid.res.statusCode).toBe(400);
+		expect(invalid.res.body.code).toBe("SURVEY_INVALID");
+		expect(invalid.res.body.error).toMatch("unknown option");
+	});
+
+	it("saving with no survey file 404s with SURVEY_NOT_FOUND", async () => {
+		const { call } = await setup();
+		const { res } = await call("POST", "/tasks/:id/survey", {
+			params: { id: "t-1" },
+			body: { projectId: "p-1", answers: { q1: { selected: ["a"] } } },
+		});
+		expect(res.statusCode).toBe(404);
+		expect(res.body.code).toBe("SURVEY_NOT_FOUND");
 	});
 });
 

@@ -107,3 +107,24 @@ survey page offers a plain Continue. If the agent wrote no file at all, the
 task still parks so a human confirms there is nothing to ask (the survey page
 offers the same Continue / Skip path, which only works while nothing requires
 answering).
+
+## Troubleshooting: answers not saving
+
+Answers live in the task folder's configured `outputFile` (default
+`SURVEY.md`); Save parks the task, Submit advances it once every visible
+required question is answered. When a survey looks blank after answering:
+
+- **Check the failing save first.** A rejected save keeps your selections on
+  the page and shows the backend message plus a machine-readable `code`:
+  `SURVEY_INVALID` means a selected value is not one of the question's
+  options (re-open the survey to pick up the latest questions);
+  `SURVEY_NOT_FOUND` means the survey file is missing for that task.
+- **Answer wipes from later Runner stages are merged, not lost.** A Runner
+  worktree can lag behind answers you already saved; when its files land,
+  new rounds are added but your saved answers are kept. If a survey still
+  shows stale content, reload the page — the file on disk is authoritative.
+- **Custom file names must match.** The agent is told the exact resolved
+  file (aliases honored, bare names gain `.md`). If questions land in a
+  different file than the survey page reads, check the stage's
+  `question-me` config for alias keys (`surveyFile`, `file`, …) and prefer
+  the canonical `outputFile`.

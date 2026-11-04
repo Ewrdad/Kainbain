@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveTasksDir } from "../../docsPath.js";
+import { SURVEY_FENCE, mergeSurveyDocuments, parseSurvey } from "../../../shared/survey.js";
 
 const MAX_FILE_BYTES = 256 * 1024;
 const MAX_TOTAL_BYTES = 1024 * 1024;
@@ -12,32 +13,59 @@ const MAX_TOTAL_BYTES = 1024 * 1024;
  *   task folder, so backend-run stages (CI `cat {{taskDocs}}/PLAN.md`,
  *   previous-reports lists) can see them. The backend never touches git
  *   remotes for Runner work (D2), so files arrive in the completion payload.
- *   Safety: bare filenames only (no traversal), `task.md` is backend-owned
- *   and never overwritten, per-file and total size caps, text only.
- * @example materializeRunnerTaskDocs({ project, taskId: 't1', files: [{ name: 'IMPLEMENTATION_PLAN.md', content: 'x' }] }) => { written: ['IMPLEMENTATION_PLAN.md'] }
+ *   Survey files merge instead of overwrite: a Runner copy can lag behind
+ *   answers the human already saved (a remote Runner never sees them), so the
+ *   backend answers are backfilled into the incoming rounds and backend-only
+ *   rounds are re-appended — the shipment can add questions but never wipe
+ *   answers. Safety: bare filenames only (no traversal), `task.md` is
+ *   backend-owned and never overwritten, per-file and total size caps, text
+ *   only.
+ * @example materializeRunnerTaskDocs({ project, taskId: 't1', files: [{ name: 'IMPLEMENTATION_PLAN.md', content: 'x' }] }) => { written: ['IMPLEMENTATION_PLAN.md'], merged: [] }
  * @param {Object} opts - `{ project, taskId, files }`.
- * @returns {Object} `{ written: string[] }`.
+ * @returns {Object} `{ written: string[], merged: string[] }` — `merged`
+ *   names the survey files whose backend answers or rounds survived the merge.
  ***/
 export function materializeRunnerTaskDocs({ project, taskId, files } = {}) {
 	const written = [];
-	if (!project?.cwd || !taskId || !Array.isArray(files)) return { written };
+	const merged = [];
+	if (!project?.cwd || !taskId || !Array.isArray(files)) return { written, merged };
 	const dir = resolveTasksDir(project.cwd, project);
-	if (!dir) return { written };
+	if (!dir) return { written, merged };
 	const taskDir = path.join(dir, String(taskId));
 	let total = 0;
 	for (const file of files) {
 		const name = typeof file?.name === "string" ? path.basename(file.name) : "";
 		if (!name || name === "task.md" || typeof file?.content !== "string") continue;
-		const bytes = Buffer.byteLength(file.content, "utf8");
+		let content = file.content;
+		// A stale Runner survey must not wipe backend answers: merge when both
+		// sides hold survey rounds, otherwise fall through to a plain write.
+		// (Inline by design: this file keeps one top-level function.)
+		if (content.includes(`\`\`\`${SURVEY_FENCE}`)) {
+			try {
+				const dest = path.join(taskDir, name);
+				if (fs.existsSync(dest)) {
+					const backendContent = fs.readFileSync(dest, "utf8");
+					if (parseSurvey(backendContent).rounds.length > 0) {
+						const result = mergeSurveyDocuments(backendContent, content);
+						if (result.merged) merged.push(name);
+						if (result.markdown === backendContent) continue;
+						content = result.markdown;
+					}
+				}
+			} catch {
+				// Unreadable backend copy: fall through to the plain write below.
+			}
+		}
+		const bytes = Buffer.byteLength(content, "utf8");
 		if (bytes > MAX_FILE_BYTES || total + bytes > MAX_TOTAL_BYTES) continue;
 		try {
 			fs.mkdirSync(taskDir, { recursive: true });
-			fs.writeFileSync(path.join(taskDir, name), file.content, "utf8");
+			fs.writeFileSync(path.join(taskDir, name), content, "utf8");
 			written.push(name);
 			total += bytes;
 		} catch {
 			// Best-effort: a failed write must never fail the completion.
 		}
 	}
-	return { written };
+	return { written, merged };
 }

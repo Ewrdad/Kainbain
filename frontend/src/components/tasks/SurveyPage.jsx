@@ -219,11 +219,24 @@ export function SurveyPage({
 
   const refreshFrom = useCallback(
     (data) => {
-      setSurvey(data);
+      setSurvey((prev) => {
+        if (!data) return prev;
+        // A save response without rounds (older backend, stripped proxy body)
+        // must never blank the answered questions: keep rendering the last
+        // rounds while still picking up the fresh status and missing list.
+        if (!Array.isArray(data.rounds) && prev) {
+          return { ...data, rounds: prev.rounds || [], errors: data.errors || prev.errors || [] };
+        }
+        return data;
+      });
+      const savedAt =
+        data?.advanced || typeof window === 'undefined'
+          ? ''
+          : ` at ${new Date().toLocaleTimeString()}`;
       setNotice(
         data?.advanced
           ? 'Survey complete — the task moved to its next stage.'
-          : 'Answers saved. Required questions still open are listed below.',
+          : `Answers saved${savedAt}. Required questions still open are listed below.`,
       );
       if (data?.advanced) {
         setAdvanced(true);

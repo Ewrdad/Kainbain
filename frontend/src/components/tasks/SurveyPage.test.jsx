@@ -138,6 +138,78 @@ describe('SurveyPage', () => {
     expect(await screen.findByText(/moved to its next stage/i)).toBeInTheDocument();
   });
 
+  it('keeps selections and notes visible after save', async () => {
+    const client = makeClient();
+    const answeredRounds = JSON.parse(JSON.stringify(pendingSurvey.rounds));
+    answeredRounds[0].answers = { q1: { selected: ['Auth'], notes: 'why auth' } };
+    client.submitSurvey.mockResolvedValue({
+      taskId: 't1',
+      outputFile: 'SURVEY.md',
+      surveyFile: 'SURVEY.md',
+      status: 'answered',
+      advanced: false,
+      missing: [],
+      unknownIds: [],
+      rounds: answeredRounds,
+      errors: [],
+    });
+    renderPage(client);
+    await screen.findByText('Primary concern?');
+    fireEvent.click(screen.getByLabelText('Primary concern?: Auth'));
+    fireEvent.change(screen.getByLabelText('Notes for: Primary concern?'), {
+      target: { value: 'why auth' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save answers/i }));
+    expect(await screen.findByText(/answers saved/i)).toBeInTheDocument();
+    // The form still shows the just-saved values — never a blank reset.
+    expect(screen.getByLabelText('Primary concern?: Auth')).toBeChecked();
+    expect(screen.getByLabelText('Notes for: Primary concern?')).toHaveValue('why auth');
+    expect(screen.getByText('Primary concern?')).toBeInTheDocument();
+  });
+
+  it('keeps questions when a save response omits rounds', async () => {
+    const client = makeClient();
+    client.submitSurvey.mockResolvedValue({ status: 'pending', advanced: false, missing: [{ round: 1, id: 'q1' }] });
+    renderPage(client);
+    await screen.findByText('Primary concern?');
+    fireEvent.click(screen.getByLabelText('Primary concern?: Auth'));
+    fireEvent.click(screen.getByRole('button', { name: /save answers/i }));
+    expect(await screen.findByText(/answers saved/i)).toBeInTheDocument();
+    expect(screen.getByText('Primary concern?')).toBeInTheDocument();
+    expect(screen.getByLabelText('Primary concern?: Auth')).toBeChecked();
+  });
+
+  it('keeps selections and shows the backend message when saving fails', async () => {
+    const client = makeClient();
+    client.submitSurvey.mockRejectedValue(
+      new Error('API 400 on /tasks/t1/survey: {"error":"survey answers invalid: answer \'q1\' selects unknown option(s): zzz","code":"SURVEY_INVALID"}'),
+    );
+    renderPage(client);
+    await screen.findByText('Primary concern?');
+    fireEvent.click(screen.getByLabelText('Primary concern?: Auth'));
+    fireEvent.change(screen.getByLabelText('Notes for: Primary concern?'), {
+      target: { value: 'keep me' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save answers/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/unknown option/);
+    expect(screen.getByLabelText('Primary concern?: Auth')).toBeChecked();
+    expect(screen.getByLabelText('Notes for: Primary concern?')).toHaveValue('keep me');
+  });
+
+  it('hydrates previously saved answers on load', async () => {
+    const saved = JSON.parse(JSON.stringify(pendingSurvey));
+    saved.rounds[0].answers = { q1: { selected: ['Data'], notes: 'earlier' } };
+    saved.status = 'pending';
+    saved.missing = [];
+    const client = makeClient(saved);
+    renderPage(client);
+    await screen.findByText('Primary concern?');
+    expect(screen.getByLabelText('Primary concern?: Data')).toBeChecked();
+    expect(screen.getByLabelText('Notes for: Primary concern?')).toHaveValue('earlier');
+    // The conditional follow-up reveals from the hydrated answer.
+    expect(await screen.findByText('Frameworks?')).toBeInTheDocument();
+  });
+
   it('shows the continue path when the agent asked nothing', async () => {
     const client = makeClient({
       taskId: 't1',

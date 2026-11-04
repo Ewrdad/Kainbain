@@ -500,7 +500,9 @@ export async function registerTaskWorkRoutes(app, deps) {
 				});
 				survey = { ...readSurvey(project?.cwd, project, task.id, outputFile), status: saved.status, missing: saved.missing, unknownIds: saved.unknownIds };
 			} catch (err) {
-				return reply.status(err?.statusCode || 400).send({ error: err?.message || "Invalid survey answers" });
+				const code = err?.code || "SURVEY_SAVE_FAILED";
+				app.log.warn({ taskId: task.id, code, error: err?.message }, "Survey save rejected");
+				return reply.status(err?.statusCode || 400).send({ error: err?.message || "Invalid survey answers", code });
 			}
 		}
 

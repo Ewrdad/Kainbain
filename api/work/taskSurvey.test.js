@@ -109,6 +109,65 @@ describe("saveSurveyAnswers", () => {
 	});
 });
 
+describe("UI-shaped save payloads", () => {
+	it("round-trips the survey page payload through the answers key", () => {
+		appendSurveyRound({
+			cwd,
+			project,
+			taskId,
+			questions: [
+				q({ id: "q1" }),
+				{ id: "q2", type: "multiple", text: "Pick many", options: ["x", "y"], required: false, showIf: null },
+			],
+		});
+		// Exactly what SurveyPage sends: every touched question carries
+		// `{ selected, notes }`, untouched questions are omitted.
+		const saved = saveSurveyAnswers({
+			cwd,
+			project,
+			taskId,
+			answers: {
+				q1: { selected: ["a"], notes: "because" },
+				q2: { selected: ["x", "y"], notes: "" },
+			},
+		});
+		expect(saved.status).toBe("answered");
+		const { rounds } = readSurvey(cwd, project, taskId);
+		expect(rounds[0].answers.q1).toEqual({ selected: ["a"], notes: "because" });
+		expect(rounds[0].answers.q2).toEqual({ selected: ["x", "y"], notes: "" });
+	});
+
+	it("accepts notes-only answers with an empty selection", () => {
+		appendSurveyRound({ cwd, project, taskId, questions: [q({ id: "q1", required: false })] });
+		const saved = saveSurveyAnswers({ cwd, project, taskId, answers: { q1: { selected: [], notes: "just a note" } } });
+		expect(saved.status).toBe("answered");
+		expect(readSurvey(cwd, project, taskId).rounds[0].answers.q1).toEqual({ selected: [], notes: "just a note" });
+	});
+
+	it("reports unknown question ids without losing the known answers", () => {
+		appendSurveyRound({ cwd, project, taskId, questions: [q({ id: "q1" })] });
+		const saved = saveSurveyAnswers({
+			cwd,
+			project,
+			taskId,
+			answers: { q1: { selected: ["b"], notes: "" }, ghost: { selected: ["a"], notes: "" } },
+		});
+		expect(saved.unknownIds).toEqual(["ghost"]);
+		expect(saved.status).toBe("answered");
+		expect(readSurvey(cwd, project, taskId).rounds[0].answers.q1).toEqual({ selected: ["b"], notes: "" });
+	});
+
+	it("saves into CRLF files without disturbing the line endings", () => {
+		appendSurveyRound({ cwd, project, taskId, questions: [q({ id: "q1" })] });
+		const filePath = resolveSurveyPath(cwd, project, taskId);
+		fs.writeFileSync(filePath, fs.readFileSync(filePath, "utf8").replace(/\n/g, "\r\n"), "utf8");
+		const saved = saveSurveyAnswers({ cwd, project, taskId, answers: { q1: { selected: ["a"], notes: "" } } });
+		expect(saved.status).toBe("answered");
+		const { rounds } = readSurvey(cwd, project, taskId);
+		expect(rounds[0].answers.q1).toEqual({ selected: ["a"], notes: "" });
+	});
+});
+
 describe("single vs multiple answer persistence", () => {
 	it("stores multi-select answers across both options", () => {
 		appendSurveyRound({

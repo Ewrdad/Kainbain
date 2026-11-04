@@ -12,6 +12,7 @@ import {
 	combinedAnswers,
 	extractFenceBlocks,
 	isQuestionVisible,
+	mergeSurveyDocuments,
 	parseSurvey,
 	renderSurveyMarkdown,
 	serializeRound,
@@ -234,5 +235,100 @@ describe("applyAnswers", () => {
 		expect(next[0].answers.q1).toBeUndefined();
 		expect(unknownIds).toEqual(["ghost"]);
 		expect(rounds).toEqual(frozen);
+	});
+});
+
+describe("mergeSurveyDocuments", () => {
+	const answered = (base, patch) => {
+		const { rounds } = applyAnswers(parseSurvey(base).rounds, patch);
+		return renderSurveyMarkdown(rounds);
+	};
+
+	it("keeps backend answers when the incoming copy is a stale blank (wipe guard)", () => {
+		const incoming = renderSurveyMarkdown([round({ questions: [q({ id: "q1" }), q({ id: "q2" })] })]);
+		const backend = answered(incoming, { q1: { selected: ["a"], notes: "human" } });
+		const { markdown, merged } = mergeSurveyDocuments(backend, incoming);
+		expect(merged).toBe(true);
+		const { rounds, errors } = parseSurvey(markdown);
+		expect(errors).toEqual([]);
+		expect(rounds).toHaveLength(1);
+		expect(rounds[0].answers.q1).toEqual({ selected: ["a"], notes: "human" });
+		expect(validateSurvey(rounds).ok).toBe(true);
+	});
+
+	it("backfills stale early rounds while keeping the incoming new round", () => {
+		const round1 = round({ questions: [q({ id: "q1" })] });
+		const backend = answered(renderSurveyMarkdown([round1]), { q1: { selected: ["b"], notes: "" } });
+		const incoming = renderSurveyMarkdown([round1, round({ round: 2, questions: [q({ id: "q2" })] })]);
+		const { markdown, merged } = mergeSurveyDocuments(backend, incoming);
+		expect(merged).toBe(true);
+		const { rounds } = parseSurvey(markdown);
+		expect(rounds).toHaveLength(2);
+		expect(rounds[0].answers.q1).toEqual({ selected: ["b"], notes: "" });
+		expect(rounds[1].questions.map((item) => item.id)).toEqual(["q2"]);
+		expect(validateSurvey(rounds).ok).toBe(true);
+	});
+
+	it("re-appends backend-only rounds the incoming copy never saw", () => {
+		const backend = answered(
+			renderSurveyMarkdown([round({ questions: [q({ id: "q1" })] }), round({ round: 2, questions: [q({ id: "q2" })] })]),
+			{ q1: { selected: ["a"], notes: "" }, q2: { selected: ["b"], notes: "r2" } },
+		);
+		const incoming = renderSurveyMarkdown([round({ questions: [q({ id: "q1" })] })]);
+		const { markdown, merged } = mergeSurveyDocuments(backend, incoming);
+		expect(merged).toBe(true);
+		const { rounds } = parseSurvey(markdown);
+		expect(rounds.map((item) => item.round)).toEqual([1, 2]);
+		expect(rounds[0].answers.q1).toEqual({ selected: ["a"], notes: "" });
+		expect(rounds[1].answers.q2).toEqual({ selected: ["b"], notes: "r2" });
+		expect(validateSurvey(rounds).ok).toBe(true);
+	});
+
+	it("passes incoming through when the backend holds no survey content", () => {
+		const incoming = renderSurveyMarkdown([round({ questions: [q({ id: "q1" })] })]);
+		expect(mergeSurveyDocuments("", incoming)).toEqual({ markdown: incoming, merged: false });
+		expect(mergeSurveyDocuments("# notes\n\nno fences\n", incoming)).toEqual({ markdown: incoming, merged: false });
+	});
+
+	it("passes backend through when the incoming copy holds no survey content", () => {
+		const backend = answered(renderSurveyMarkdown([round({ questions: [q({ id: "q1" })] })]), {
+			q1: { selected: ["a"], notes: "" },
+		});
+		expect(mergeSurveyDocuments(backend, "# prose\n\nno fences\n")).toEqual({ markdown: backend, merged: false });
+	});
+
+	it("keeps incoming-only answers such as agent pre-fills", () => {
+		const incoming = renderSurveyMarkdown([
+			round({ questions: [q({ id: "q1" })], answers: { q1: { selected: ["a"], notes: "prefill" } } }),
+		]);
+		const backend = renderSurveyMarkdown([round({ questions: [q({ id: "q1" })] })]);
+		const { markdown, merged } = mergeSurveyDocuments(backend, incoming);
+		expect(merged).toBe(false);
+		expect(parseSurvey(markdown).rounds[0].answers.q1).toEqual({ selected: ["a"], notes: "prefill" });
+	});
+
+	it("unions questions and answers when one round number carries different questions", () => {
+		const backend = answered(renderSurveyMarkdown([round({ questions: [q({ id: "q1" })] })]), {
+			q1: { selected: ["a"], notes: "" },
+		});
+		const incoming = renderSurveyMarkdown([round({ questions: [q({ id: "q1" }), q({ id: "q9", text: "New?", options: ["x"] })] })]);
+		const { markdown } = mergeSurveyDocuments(backend, incoming);
+		const { rounds } = parseSurvey(markdown);
+		expect(rounds).toHaveLength(1);
+		expect(rounds[0].questions.map((item) => item.id).sort()).toEqual(["q1", "q9"]);
+		expect(rounds[0].answers.q1).toEqual({ selected: ["a"], notes: "" });
+		expect(validateSurvey(rounds).ok).toBe(true);
+	});
+
+	it("keeps the backend copy when the merge would be invalid", () => {
+		const backend = answered(renderSurveyMarkdown([round({ questions: [q({ id: "q1" })] })]), {
+			q1: { selected: ["a"], notes: "" },
+		});
+		// Incoming reuses q1 in a second round: merging would duplicate the id.
+		const incoming = renderSurveyMarkdown([
+			round({ questions: [q({ id: "q1" })] }),
+			round({ round: 2, questions: [q({ id: "q1", text: "Again?" })] }),
+		]);
+		expect(mergeSurveyDocuments(backend, incoming)).toEqual({ markdown: backend, merged: false });
 	});
 });
