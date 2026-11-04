@@ -171,3 +171,27 @@
   "answers": {}
 }
 ```
+
+## Round 4
+
+```survey-json
+{
+  "round": 4,
+  "generatedAt": "2026-11-04T18:31:17.000Z",
+  "stage": "stage-1792362077711",
+  "questions": [
+    {
+      "id": "q10",
+      "type": "single",
+      "text": "I think these questions are enough to move forward with a plan. Do you agree?",
+      "options": [
+        "Yes, I have everything I need to answer above and we can go ahead",
+        "No, I want to add or change something (describe in Notes)"
+      ],
+      "required": true,
+      "showIf": null
+    }
+  ],
+  "answers": {}
+}
+```
