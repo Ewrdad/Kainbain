@@ -68,6 +68,13 @@ export const ENDPOINTS = [
 		purpose: "Alias of /status/config (same payload).",
 		body: null,
 	},
+	{
+		method: "GET",
+		path: "/onboarding",
+		purpose:
+			"First-run onboarding summary: Runner bootstrap story, project/task counts, unadopted checkouts, and the precomputed guided checklist. The empty state and checklist UIs read this alone.",
+		body: null,
+	},
 	// ---- Projects -----------------------------------------------------------
 	{
 		method: "GET",
@@ -86,6 +93,13 @@ export const ENDPOINTS = [
 		path: "/projects",
 		purpose: "Create a project. Requires a name; stages/model optional.",
 		body: { name: "string (required)", cwd: "string", stages: "object[]" },
+	},
+	{
+		method: "GET",
+		path: "/projects/discover",
+		purpose:
+			"List git checkouts in the scan roots that are not projects yet, for first-run one-click adoption. Read-only; adoption itself stays an explicit POST /projects/register.",
+		body: null,
 	},
 	{
 		method: "PATCH",
@@ -279,6 +293,13 @@ export const ENDPOINTS = [
 		method: "GET",
 		path: "/runners",
 		purpose: "List Runner registrations for the approval UI.",
+		body: null,
+	},
+	{
+		method: "GET",
+		path: "/runners/bootstrap",
+		purpose:
+			"First-run Runner bootstrap summary: registration/health counts plus the expected local Runner id hint, so the onboarding UI can distinguish 'waiting to check in' from 'none installed'.",
 		body: null,
 	},
 	{

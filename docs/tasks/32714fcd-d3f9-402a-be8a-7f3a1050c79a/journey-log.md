@@ -84,3 +84,42 @@ conflict with the plan's assumptions; the D11 decision (option a,
 remote field in the dialog) matches survey option q3c ("Let me type or
 paste the link into the app screen") and is recorded in
 `decisions.md`.
+
+## After this change (2026-11-04, same session, no scratch VM)
+
+Each verification below ran against the real code with isolated state
+(temp `$HOME`/ports/roots; no host installs, no live ports touched):
+
+- Runner autodetect/configure: `install.sh` mints the join token into
+  `.env` + `~/.kainbain/runner-join.token` (proven by
+  `deploy/install.test.sh` cases 6-9); approval hands the credential to
+  the same-session runner poll via join-nonce (unit: `runnerRegistry`
+  + `runnerRoutes` handover suites); `GET /runners/bootstrap` reports
+  the expected-runner wait state. Live runner rehearsal (real daemon
+  join → approve → collect) remains manual: no harness CLIs or scratch
+  VM in this session.
+- Loadable projects: `GET /projects/discover` lists unadopted checkouts
+  (unit: `projectStore.discover.test.js`, `routes/projects.discover`);
+  the empty state offers one-click adoption (unit:
+  `OnboardingEmptyState`, `WorkflowCanvas.onboarding`; live: adopted
+  `/tmp/kb-shot/projects/demo-repo` via `POST /projects/register` and
+  the board flipped to the checklist — see `shot-checklist.png`).
+- Creatable projects: dialog posts `gitUrl` with inline D11 errors
+  (unit: `Header.test.jsx`; live: `shot-create-dialog.png` opened from
+  the empty-state CTA through the window event).
+- Empty projects dir: `--adopt-from` (unit: `install.test.sh` cases
+  11-14) and `KAINBAIN_SEED_DEMO=1` boot seed (unit: `seedDemo.test.js`;
+  live: fresh root booted a "Welcome Tour" project, checklist
+  `project: done`); zero-project board renders the onboarding empty
+  state (live: `shot-empty-state.png`, desktop + `shot-checklist-360.png`
+  at 360px with no sideways scroll).
+- Uninstall: `deploy/uninstall.sh` (`--dry-run`, state-preserving
+  default, `--purge --yes`, `--images`, `--all-runners`) with
+  `deploy/uninstall.test.sh` (dry-run/install/uninstall round-trip +
+  `startRunner.sh` parity); served via `sync-adsite.sh`; linked from
+  the install output, README, and `#/docs/install-run`.
+- Docs: `README.md` (first-run next steps + uninstall),
+  `site-docs/install-run.md` (Docker-install detail),
+  `site-docs/first-time-setup.md` (remote field, install.sh pointer),
+  `site-docs/api-reference.md` + `api/agentGuide.js` (three new routes,
+  pinned by the coverage suites that failed CI before this fix).

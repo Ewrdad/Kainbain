@@ -236,9 +236,9 @@ else
     [ "$RUNNERS" -gt 0 ] && echo "KAINBAIN_EXPECTED_RUNNER_ID=$RUNNER_ID"; } > "$INSTALL_DIR/.env"
   chmod 600 "$INSTALL_DIR/.env"; log "wrote $INSTALL_DIR/.env"
 fi
-if [ "$DRY_RUN" = "1" ]; then echo "would copy: release-manifest.json into $INSTALL_DIR; would download update.sh + redeploy.sh from ${RELEASE_URL%/}/";
+if [ "$DRY_RUN" = "1" ]; then echo "would copy: release-manifest.json into $INSTALL_DIR; would download update.sh + redeploy.sh + uninstall.sh from ${RELEASE_URL%/}/";
 else cp "$MANIFEST" "$INSTALL_DIR/release-manifest.json"; log "wrote release-manifest.json"
-  for h in update.sh redeploy.sh; do curl -fsSL "${RELEASE_URL%/}/$h" -o "$INSTALL_DIR/$h" && chmod +x "$INSTALL_DIR/$h" && log "installed $h" || echo "install.sh: WARN could not fetch $h from ${RELEASE_URL%/}/ (upgrade later with update.sh once it is in place)" >&2; done; fi
+  for h in update.sh redeploy.sh uninstall.sh; do curl -fsSL "${RELEASE_URL%/}/$h" -o "$INSTALL_DIR/$h" && chmod +x "$INSTALL_DIR/$h" && log "installed $h" || echo "install.sh: WARN could not fetch $h from ${RELEASE_URL%/}/ (upgrade later with update.sh once it is in place)" >&2; done; fi
 
 # --- Pull + start the stack ----------------------------------------------------
 if [ "$DRY_RUN" = "1" ]; then [ "$SKIP_PULL" != "1" ] && echo "would run: (cd $INSTALL_DIR && docker compose pull)"; [ "$NO_START" != "1" ] && echo "would run: (cd $INSTALL_DIR && docker compose up -d)";
@@ -324,3 +324,4 @@ if [ "$RUNNERS" -gt 0 ]; then
 fi
 log "done. Open http://localhost:$PORT — then approve the Runner in Settings > Harness > Runners (one click: it collects its own credential, no paste needed)."
 log "Upgrades later: (cd $INSTALL_DIR && ./update.sh)  — get update.sh/redeploy.sh from ${RELEASE_URL%/}/update.sh if they are not beside this script."
+log "Start over: (cd $INSTALL_DIR && ./uninstall.sh --dry-run) previews removal; see ./uninstall.sh --help (state-preserving by default, --purge --yes deletes everything)."

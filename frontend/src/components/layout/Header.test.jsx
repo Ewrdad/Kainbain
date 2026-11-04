@@ -703,3 +703,21 @@ test('right-clicking the brand mark keeps the info tooltip intact', () => {
   fireEvent.contextMenu(screen.getByText('KAINBAIN'));
   expect(screen.getByText('KAINBAIN')).toBeInTheDocument();
 });
+
+test('shows "No project" instead of a phantom name when nothing is active', () => {
+  renderWithKainBain(<Header />, { projects: [], activeProjectId: null });
+  expect(screen.getByText('No project')).toBeInTheDocument();
+  expect(screen.queryByText('Project Alpha')).not.toBeInTheDocument();
+});
+
+test('onboarding empty-state events open the create and adopt dialogs', () => {
+  renderWithKainBain(<Header />, { projects, activeProjectId: 'proj-1' });
+  expect(screen.queryByText('Create New Project')).not.toBeInTheDocument();
+  expect(screen.queryByText('Add Existing Project')).not.toBeInTheDocument();
+
+  fireEvent(window, new window.CustomEvent('kainbain:open-create-project'));
+  expect(screen.getByText('Create New Project')).toBeInTheDocument();
+
+  fireEvent(window, new window.CustomEvent('kainbain:open-adopt-project'));
+  expect(screen.getByText('Add Existing Project')).toBeInTheDocument();
+});

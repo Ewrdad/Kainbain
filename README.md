@@ -49,6 +49,17 @@ pass in flags like:
 curl -fsSL https://kainbain.ewrdad.uk/install.sh | bash -s -- --backend-port 3001 --frontend-port 3002 --runners 2 --install-dir ~/kainbain
 ```
 
+After install, open the printed URL (default http://localhost:3100):
+- Approve the Runner in Settings > Harness > Runners — one click; it collects its own credential, no paste needed.
+- The board greets you with a setup checklist: connect the Runner, create or adopt a project, run your first task.
+- New projects need a fetchable git remote — paste it into the creation dialog, or adopt an existing checkout instead (no remote needed).
+- Installs seed a Welcome Tour project unless you pass `--no-seed`; pass `--adopt-from DIR` to adopt existing checkouts at install time.
+
+Start over / remove a broken install (state-preserving by default; `--purge --yes` deletes everything):
+```bash
+curl -fsSL https://kainbain.ewrdad.uk/uninstall.sh | bash -s -- --install-dir ~/apps/kainbain --dry-run
+```
+
 ## Security
 
 Despite best efforts this is is a BETA project and should not be exsposed on general internet. Best efforts have been made to ensure that good security practices are implmented such as:

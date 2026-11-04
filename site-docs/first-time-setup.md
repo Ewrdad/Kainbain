@@ -87,6 +87,11 @@ Workflow (`#/docs/first-project`): one agent stage plus a human review is
 enough to start. The Files & Repo tab browses the project's sandboxed
 filesystem.
 
+New projects need a fetchable git remote: paste it into the creation
+dialog's Git Remote URL field (or set a server-side default remote
+template). No remote yet — for example a local-only checkout? Adopt it
+instead (below): adoption never needs a remote.
+
 ### Already have a repo?
 
 If you want KainBain to work on an existing repository, adopt it instead of
@@ -109,6 +114,21 @@ guidance panel offering a one-click **mock harness** opt-in — synthetic
 `Mock reply: …` output for evaluation/CI, never silently substituted for a
 real harness. Installing a CLI into `~/.local/bin` (or anywhere on `PATH`)
 is picked up on restart with no config edits.
+
+## Installed via install.sh?
+
+The contributor steps above also apply to Docker installs, with these
+differences (detail reference: Install & Run, `#/docs/install-run`):
+
+- Approve the Runner in Settings › Harness › Runners — one click; it
+  collects its own credential, no paste needed. If no Runner ever
+  appears, the install output tells you how to check the Runner process.
+- The board shows a setup checklist (Runner connected → first project →
+  first task run) until all three hold; it dismisses and never blocks.
+  A seeded install also starts with a Welcome Tour project.
+- To remove the install, run `./uninstall.sh --dry-run` from the install
+  dir first to preview (state-preserving by default), then without
+  `--dry-run` — or with `--purge --yes` to delete user state too.
 
 ## Troubleshooting
 

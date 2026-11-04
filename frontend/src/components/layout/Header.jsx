@@ -10,6 +10,10 @@ import { TabNavigator } from './TabNavigator';
 import { ProjectMenu } from './ProjectMenu';
 import { MonitorPopoutButton } from './MonitorPopoutButton';
 import { MOBILE_TOOLBAR_COLLAPSE_EVENT } from '../workflow/hooks/useMobileToolbarCollapse';
+import {
+  OPEN_ADOPT_PROJECT_EVENT,
+  OPEN_CREATE_PROJECT_EVENT,
+} from '../onboarding/onboardingEvents';
 import { requestCompactMonitorView } from '../observability/monitorCompact';
 import { openSystemSettings } from '../settings/openSystemSettings';
 import { getRepoHostFileUrl } from '../../services/repoHost';
@@ -339,6 +343,19 @@ export function Header() {
   }, []);
   const handleHeaderFocusExpand = () => setIsToolbarCollapsed(false);
 
+  // Onboarding empty state (canvas tree) opens these dialogs by event —
+  // the dialog state lives here, outside the canvas tree.
+  useEffect(() => {
+    const openCreate = () => setIsCreatingProject(true);
+    const openAdopt = () => setIsRegisteringProject(true);
+    window.addEventListener(OPEN_CREATE_PROJECT_EVENT, openCreate);
+    window.addEventListener(OPEN_ADOPT_PROJECT_EVENT, openAdopt);
+    return () => {
+      window.removeEventListener(OPEN_CREATE_PROJECT_EVENT, openCreate);
+      window.removeEventListener(OPEN_ADOPT_PROJECT_EVENT, openAdopt);
+    };
+  }, []);
+
   useEffect(() => {
     if (!isProjectDropdownOpen) return;
     const onKeyDown = (e) => {
@@ -552,7 +569,7 @@ export function Header() {
               aria-haspopup="dialog"
               aria-expanded={isProjectDropdownOpen}
               aria-controls="project-menu"
-              aria-label={`Project: ${activeProject?.name || 'Project Alpha'}`}
+              aria-label={`Project: ${activeProject?.name || 'No project'}`}
               className="flex items-center gap-1 sm:gap-2 bg-surface-container-highest px-1.5 sm:px-3 py-1.5 min-h-[44px] rounded cursor-pointer border border-border-standard hover:border-primary transition-colors text-left"
             >
               <span
@@ -567,7 +584,7 @@ export function Header() {
                   hasAppLink ? 'xl:max-w-[96px] 2xl:max-w-[160px]' : 'lg:max-w-[160px]'
                 }`}
               >
-                {activeProject?.name || 'Project Alpha'}
+                {activeProject?.name || 'No project'}
               </span>
               <span
                 className={`material-symbols-outlined text-on-surface text-base transition-transform ${

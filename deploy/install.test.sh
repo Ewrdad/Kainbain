@@ -33,6 +33,8 @@ check "no-start: compose written" test -f "$CASE_DIR/app/docker-compose.yml"
 check "no-start: env has port" grep -q "^KAINBAIN_PORT=8080$" "$CASE_DIR/app/.env"
 check "no-start: env has backend tag" grep -q "^KAINBAIN_BACKEND_TAG=1.0.0-abc$" "$CASE_DIR/app/.env"
 check "no-start: manifest copied" grep -q '"commit":"abc"' "$CASE_DIR/app/release-manifest.json"
+check "no-start: uninstall helper fetched" test -f "$CASE_DIR/app/uninstall.sh"
+check "no-start: output links uninstall" grep -q "uninstall.sh" "$CASE_DIR/out.txt"
 check "no-start: compose up never called" bash -c "! grep -q 'compose up' '$SHIM_LOG'"
 check "no-start: env is 600" bash -c "[ \"\$(stat -c %a '$CASE_DIR/app/.env')\" = 600 ]"
 # 5. Re-run without --force leaves .env untouched.
