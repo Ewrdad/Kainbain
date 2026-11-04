@@ -314,7 +314,19 @@ if [ "$DRY_RUN" = "1" ]; then
 fi
 
 # --- Push only now that every flagged component is green --------------------
+# digest_of_image resolves the registry digest (sha256 of the image manifest)
+# of a just-pushed image: buildx imagetools first, RepoDigests as fallback.
+# Empty when docker or the registry cannot answer — the ad-site build section
+# then falls back to the tag alone.
+digest_of_image() {
+  local img="$1" d=""
+  d="$(docker buildx imagetools inspect "$img" --format '{{.Digest}}' 2>/dev/null | tr -d '[:space:]' || true)"
+  case "$d" in sha256:*) echo "$d"; return 0 ;; esac
+  d="$(docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$img" 2>/dev/null | grep -o 'sha256:[a-f0-9]\{64\}' | head -1 || true)"
+  echo "$d"
+}
 PUBLISHED=""
+DIGEST_backend=""; DIGEST_frontend=""
 for c in $COMPONENTS; do
   case "$c" in
     backend|frontend)
@@ -325,6 +337,9 @@ for c in $COMPONENTS; do
         && docker push "docker.io/$KAINBAIN_DOCKERHUB_NAMESPACE/kainbain-$c:latest" || exit 1
       echo "pushed: $IMAGE"
       echo "pushed: docker.io/$KAINBAIN_DOCKERHUB_NAMESPACE/kainbain-$c:latest"
+      D="$(digest_of_image "$IMAGE")"
+      [ -n "$D" ] && echo "digest: $c $D"
+      case "$c" in backend) DIGEST_backend="$D" ;; frontend) DIGEST_frontend="$D" ;; esac
       PUBLISHED="$PUBLISHED $c"
       ;;
     runner) PUBLISHED="$PUBLISHED runner" ;;
@@ -333,7 +348,8 @@ done
 
 # --- Release manifest (carried forward) + history ---------------------------
 mkdir -p dist
-PUBLISHED="$PUBLISHED" SHORTSHA="$SHORTSHA" FULLSHA="$FULLSHA" NS="${KAINBAIN_DOCKERHUB_NAMESPACE:-}" node <<'NODE'
+PUBLISHED="$PUBLISHED" SHORTSHA="$SHORTSHA" FULLSHA="$FULLSHA" NS="${KAINBAIN_DOCKERHUB_NAMESPACE:-}" \
+DIGEST_backend="$DIGEST_backend" DIGEST_frontend="$DIGEST_frontend" node <<'NODE'
 const fs = require("fs");
 const published = process.env.PUBLISHED.trim().split(/\s+/).filter(Boolean);
 let manifest = { components: {} };
@@ -345,10 +361,10 @@ const short = process.env.SHORTSHA, ns = process.env.NS;
 for (const c of published) {
   if (c === "backend") {
     const v = ver("api/version.json");
-    manifest.components.backend = { apiVersion: v.apiVersion, image: `docker.io/${ns}/kainbain-backend:${v.apiVersion}-${short}`, tag: `${v.apiVersion}-${short}` };
+    manifest.components.backend = { apiVersion: v.apiVersion, image: `docker.io/${ns}/kainbain-backend:${v.apiVersion}-${short}`, tag: `${v.apiVersion}-${short}`, digest: process.env.DIGEST_backend || null };
   } else if (c === "frontend") {
     const v = ver("frontend/version.json");
-    manifest.components.frontend = { apiVersion: v.apiVersion, image: `docker.io/${ns}/kainbain-frontend:${v.apiVersion}-${short}`, tag: `${v.apiVersion}-${short}`, requiresBackendApi: v.requires.backendApi };
+    manifest.components.frontend = { apiVersion: v.apiVersion, image: `docker.io/${ns}/kainbain-frontend:${v.apiVersion}-${short}`, tag: `${v.apiVersion}-${short}`, digest: process.env.DIGEST_frontend || null, requiresBackendApi: v.requires.backendApi };
   } else if (c === "runner") {
     const v = ver("runner/version.json");
     const artifact = `kainbain-runner-${short}.tar.gz`;
@@ -364,6 +380,13 @@ const line = JSON.stringify({ publishedAt: now, commit: manifest.commit, compone
 fs.appendFileSync("dist/release-history.jsonl", line + "\n");
 console.log("wrote dist/release-manifest.json");
 NODE
+# --- Ad-site build info (best effort, never fails the publish) --------------
+# dist/build-info.json feeds the ad-site's "latest build" section (image
+# digests, build number, commit, trivy summary); sync-adsite.sh stages it onto
+# the site on the same publish.
+if ! node scripts/generate-build-info.mjs; then
+  log "warning: generate-build-info.mjs failed — ad-site build section keeps the previous build-info.json"
+fi
 # Retention: keep the newest 5 runner tarballs in dist/ (older ones are
 # reproducible from their commit and only bloat the ad-site/S3 sync).
 ls -t dist/kainbain-runner-*.tar.gz 2>/dev/null | tail -n +6 | while read -r old; do log "pruning old runner tarball: $old"; rm -f "$old"; done
