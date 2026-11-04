@@ -772,4 +772,61 @@ describe("Review API Integration", () => {
 		expect(types).toContain("comment_deleted");
 		spy.mockRestore();
 	});
+
+	it("rejects new comments on filtered task-dir paths but keeps legacy threads editable", async () => {
+		const project = await makeProject();
+		const task = await makeTask(project.id);
+		const branch = `kb/${task.id}`;
+		seedFixtureRepo(project.cwd, task.id, branch);
+		await app.inject({ method: "PATCH", url: `/tasks/${task.id}`, payload: { projectId: project.id, branch } });
+		const base = `/projects/${project.id}/tasks/${task.id}`;
+		const url = `${base}/review/comments?projectId=${project.id}`;
+
+		// Sanity: the review carries real diff files, so anchor validation
+		// is active (filtered task-dir paths are not in that set).
+		const review = JSON.parse(
+			(await app.inject({ method: "GET", url: `${base}/review?projectId=${project.id}` })).payload,
+		);
+		expect(review.files.length).toBeGreaterThan(0);
+
+		// A fresh comment anchored to a filtered task-dir path is rejected.
+		const rejected = await app.inject({
+			method: "POST",
+			url,
+			payload: { scope: "file", filePath: `docs/tasks/${task.id}/task.md`, body: "stale anchor" },
+		});
+		expect(rejected.statusCode).toBe(400);
+		expect(JSON.parse(rejected.payload).error).toContain("Unknown filePath");
+
+		// A pre-existing thread on a task-dir path (seeded before the filter
+		// landed, bypassing HTTP validation) stays editable and deletable.
+		const { ReviewStore } = await import("../reviewStore.js");
+		const store = new ReviewStore(project.cwd, project);
+		const legacy = await store.addComment(task.id, {
+			scope: "file",
+			filePath: `docs/tasks/${task.id}/plan.md`,
+			body: "legacy thread",
+		});
+
+		const patched = await app.inject({
+			method: "PATCH",
+			url: `${base}/review/comments/${legacy.id}?projectId=${project.id}`,
+			payload: { body: "revised", resolved: true },
+		});
+		expect(patched.statusCode).toBe(200);
+		expect(JSON.parse(patched.payload).body).toBe("revised");
+
+		const reply = await app.inject({
+			method: "POST",
+			url: `${base}/review/comments/${legacy.id}/replies?projectId=${project.id}`,
+			payload: { body: "ack" },
+		});
+		expect(reply.statusCode).toBe(200);
+
+		const del = await app.inject({
+			method: "DELETE",
+			url: `${base}/review/comments/${legacy.id}?projectId=${project.id}`,
+		});
+		expect(del.statusCode).toBe(200);
+	});
 });

@@ -335,6 +335,7 @@ export async function buildTaskReview(deps, projectCwd, projectId, taskId) {
 				live: null,
 				uncommittedChanges,
 				snapshotCommitted: false,
+				project,
 			});
 		}
 		return emptyReview(task, {

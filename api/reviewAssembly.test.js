@@ -387,6 +387,34 @@ describe("buildTaskReview task-file filtering", () => {
 			).toBe(true);
 		}
 	});
+
+	it("filters task files in the deleted-branch preserved path with a custom docsDirName", async () => {
+		gitState.branchExists = false;
+		diffState.files = [
+			{ path: "k-docs/tasks/t1/task.md", oldPath: null, status: "modified", additions: 4, deletions: 1, binary: false },
+			{ path: "src/app.js", oldPath: null, status: "modified", additions: 3, deletions: 1, binary: false },
+		];
+		const task = {
+			id: "task-1",
+			branch: "kb/task-1",
+			history: [],
+			reviewBaseline: {
+				baseSha: "aaa111",
+				headSha: "bbb222",
+				mainSha: "aaa111",
+				mergedAt: "2026-09-24T00:00:00.000Z",
+				stageId: "merge-1",
+			},
+		};
+		const deps = depsWith({
+			project: { useBranches: true, preserveReviewDiffAfterMerge: true, docsDirName: "k-docs" },
+			task,
+		});
+		const review = await buildTaskReview(deps, "/cwd", "proj-1", "task-1");
+		expect(review.preserved).toBe(true);
+		expect(review.files.map((f) => f.path)).toEqual(["src/app.js"]);
+		expect(review.filteredTaskFilesCount).toBe(1);
+	});
 });
 
 describe("buildTaskReview happy path", () => {

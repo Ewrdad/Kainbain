@@ -385,4 +385,34 @@ describe("reviewAssembly task-file filtering after merge", () => {
 		expect(review.files).toEqual([]);
 		expect(review.filteredTaskFilesCount).toBeGreaterThan(0);
 	});
+
+	it("filters a custom docsDirName prefix when the task branch was deleted post-merge", async () => {
+		project.docsDirName = "k-docs";
+		const preMergeMain = rev(dir, "main");
+		commitFile(dir, "kb/task-1", "feature.txt", "new stuff\n", "add feature");
+		fs.mkdirSync(path.join(dir, "k-docs", "tasks", "task-1"), { recursive: true });
+		fs.writeFileSync(path.join(dir, "k-docs", "tasks", "task-1", "task.md"), "# task\n");
+		git(dir, "add", "-A");
+		git(dir, "commit", "--amend", "--no-edit");
+		const headSha = rev(dir, "kb/task-1");
+		git(dir, "checkout", "main");
+		git(dir, "merge", "--no-ff", "kb/task-1", "-m", "merge feature");
+		git(dir, "branch", "-D", "kb/task-1");
+
+		task.reviewBaseline = {
+			baseSha: preMergeMain,
+			headSha,
+			mainSha: preMergeMain,
+			mergedAt: new Date().toISOString(),
+			stageId: "merge-1",
+		};
+
+		const review = await buildTaskReview(makeDeps(project, task), dir, "proj-1", "task-1");
+		expect(review.preserved).toBe(true);
+		expect(review.files.map((f) => f.path)).toContain("feature.txt");
+		expect(
+			review.files.some((f) => String(f.path).startsWith("k-docs/tasks/")),
+		).toBe(false);
+		expect(review.filteredTaskFilesCount).toBeGreaterThan(0);
+	});
 });
