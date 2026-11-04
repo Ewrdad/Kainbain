@@ -23,6 +23,7 @@ export function getFileRawUrl(apiBase, projectId, filePath) {
 export function houseRequests(request) {
   return {
     listProjects: () => request('/projects'),
+    getOnboarding: () => request('/onboarding'),
     createProject: (payload) =>
     request('/projects', { method: 'POST', body: JSON.stringify(payload) }),
     registerProject: (payload) =>

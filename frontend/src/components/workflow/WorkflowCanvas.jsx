@@ -5,6 +5,10 @@ import { FALLBACK_MODELS } from '../stageTypes';
 import { useModelCatalog } from '../../hooks/useModelCatalog';
 import { useFleetModelCatalog } from '../../hooks/useFleetModelCatalog';
 import { useNow } from '../../hooks/useNow';
+import { useOnboarding } from '../../hooks/useOnboarding';
+import { OnboardingEmptyState } from '../onboarding/OnboardingEmptyState';
+import { OnboardingChecklist } from '../onboarding/OnboardingChecklist';
+import { openAdoptProjectDialog, openCreateProjectDialog } from '../onboarding/onboardingEvents';
 
 import { AddStageMenu } from './AddStageMenu';
 import { CanvasToolbar } from './CanvasToolbar';
@@ -52,6 +56,7 @@ export { AddStageButton } from './AddStageButton';
 export function WorkflowCanvas() {
   const {
     activeProject = null,
+    projects = [],
     stages = [],
     workflowLoading = false,
     workflowSwitching = false,
@@ -96,6 +101,7 @@ export function WorkflowCanvas() {
     updateUiPreference,
     setView,
     isHarnessDisabled,
+    registerProject,
   } = useKainBain();
 
   const activeWorkflow =
@@ -298,6 +304,41 @@ export function WorkflowCanvas() {
     isAgentRunning,
   });
 
+  // First-run onboarding (empty state + guided checklist): one summary
+  // fetch drives both. The empty state needs the SERVER's project count —
+  // local `projects` starts empty on every boot, so gating on it alone
+  // would flash onboarding over a healthy board on each load. When the
+  // summary fetch fails, the empty state still renders with static CTAs
+  // (the board must never be blank for a projectless user).
+  const onboarding = useOnboarding();
+  const noLocalProject =
+    projects.length === 0 &&
+    !activeProjectId &&
+    stages.length === 0 &&
+    !hasActivity &&
+    !workflowSwitching;
+  const showOnboardingEmpty =
+    noLocalProject &&
+    !workflowLoading &&
+    !onboarding.loading &&
+    (onboarding.summary?.projectCount === 0 || !onboarding.loaded);
+  const showOnboardingLoading = noLocalProject && !workflowLoading && onboarding.loading;
+  const showOnboardingChecklist =
+    !showOnboardingEmpty &&
+    !showOnboardingLoading &&
+    onboarding.loaded &&
+    !onboarding.summary?.complete &&
+    (projects.length > 0 || (onboarding.summary?.projectCount || 0) > 0);
+
+  // One-click adoption from the empty state: register, then refresh the
+  // summary so the board flips to the checklist without a reload. Throws
+  // to the empty state, which renders the failure inline.
+  const handleAdoptCheckout = async (path) => {
+    await registerProject?.({ path });
+    await onboarding.refresh();
+  };
+  const handleLearnMore = () => setView?.('docs');
+
   // Board-level subscription to the shared tick (see useNow): every card
   // age re-renders from one 60s interval, passed down so columns and cards
   // stay in sync.
@@ -404,6 +445,13 @@ export function WorkflowCanvas() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-surface-deep relative">
+      {showOnboardingChecklist && (
+        <OnboardingChecklist summary={onboarding.summary} onLearnMore={handleLearnMore} />
+      )}
+      {/* The zero-project board is onboarding-only: search, pipeline
+          switching, and stage creation are all meaningless without a
+          project, so the toolbar hides until one exists. */}
+      {!showOnboardingEmpty && (
       <CanvasToolbar
         projectWorkflows={projectWorkflows}
         activeWorkflow={activeWorkflow}
@@ -440,6 +488,7 @@ export function WorkflowCanvas() {
         isToolbarCollapsed={isToolbarCollapsed}
         onExpandToolbar={expandToolbar}
       />
+      )}
 
       {/* Horizontal Pipeline Board: scrollable region is keyboard-focusable so
           keyboard users can scroll it with arrows (WCAG 2.1.1). On mobile
@@ -463,7 +512,7 @@ export function WorkflowCanvas() {
             <p className="text-sm font-mono uppercase tracking-widest">Loading pipeline…</p>
           </div>
         )}
-        {stages.length === 0 && !hasActivity && !workflowLoading && (
+        {stages.length === 0 && !hasActivity && !workflowLoading && !noLocalProject && (
           <div className="flex-1 h-full flex flex-col items-center justify-center text-text-muted space-y-4">
             <div className="text-5xl grayscale">📋</div>
             <p className="text-sm font-mono uppercase tracking-widest">
@@ -479,6 +528,25 @@ export function WorkflowCanvas() {
               + Add First Stage
             </button>
           </div>
+        )}
+        {showOnboardingLoading && (
+          <div
+            className="flex-1 h-full flex flex-col items-center justify-center text-text-muted space-y-4"
+            role="status"
+            aria-label="Loading pipeline"
+          >
+            <div className="text-5xl grayscale">⏳</div>
+            <p className="text-sm font-mono uppercase tracking-widest">Loading pipeline…</p>
+          </div>
+        )}
+        {showOnboardingEmpty && (
+          <OnboardingEmptyState
+            summary={onboarding.summary}
+            onCreate={openCreateProjectDialog}
+            onAdopt={openAdoptProjectDialog}
+            onAdoptPath={handleAdoptCheckout}
+            onLearnMore={handleLearnMore}
+          />
         )}
 
         {/* Pipeline-switch gate (task 8a056fc4): while the switch is in

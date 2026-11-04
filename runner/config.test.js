@@ -1,6 +1,15 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { loadRunnerConfig } from "./config.js";
+import {
+	credentialFilePathFor,
+	loadRunnerCredential,
+	saveRunnerCredential,
+	shortRunnerId,
+} from "./credentialFile.js";
 
 describe("loadRunnerConfig", () => {
 	it("fills defaults and reports no errors when complete", () => {
@@ -212,5 +221,59 @@ describe("loadRunnerConfig", () => {
 			loadRunnerConfig({ ...env, KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS: "soon" }).modelDiscoveryIntervalMs,
 			43200000,
 		);
+	});
+});
+
+describe("runner credential file (one-click approval)", () => {
+	it("names the file like startRunner.sh names the env file (local- stripped)", () => {
+		assert.equal(shortRunnerId("local-pi"), "pi");
+		assert.equal(shortRunnerId("remote-1"), "remote-1");
+		assert.equal(
+			credentialFilePathFor("local-pi", "/home/u"),
+			path.join("/home/u", ".kainbain", "runner-pi.credential"),
+		);
+		assert.equal(credentialFilePathFor("", "/home/u"), null);
+		assert.equal(credentialFilePathFor("r1", ""), null);
+	});
+
+	it("round-trips a credential at mode 0600", () => {
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "kb-cred-"));
+		try {
+			const file = saveRunnerCredential("local-pi", "cred-abc", home);
+			assert.equal(loadRunnerCredential("local-pi", home), "cred-abc");
+			assert.equal((fs.statSync(file).mode & 0o777).toString(8), "600");
+		} finally {
+			fs.rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("reads nothing when no file was stored", () => {
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "kb-cred-"));
+		try {
+			assert.equal(loadRunnerCredential("local-pi", home), "");
+		} finally {
+			fs.rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("prefers the env credential, falls back to the stored file", () => {
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "kb-cred-"));
+		try {
+			saveRunnerCredential("local-pi", "stored-cred", home);
+			const base = {
+				HOME: home,
+				KAINBAIN_RUNNER_ID: "local-pi",
+				KAINBAIN_RUNNER_HARNESS: "mock",
+				KAINBAIN_RUNNER_DISPATCH: "1",
+			};
+			assert.equal(loadRunnerConfig(base).credential, "stored-cred");
+			assert.equal(
+				loadRunnerConfig({ ...base, KAINBAIN_RUNNER_CREDENTIAL: "env-cred" }).credential,
+				"env-cred",
+			);
+			assert.equal(loadRunnerConfig({ ...base, HOME: "" }).credential, "");
+		} finally {
+			fs.rmSync(home, { recursive: true, force: true });
+		}
 	});
 });

@@ -142,7 +142,9 @@ beforeEach(() => {
 
 test('renders the KainBain orchestrator dashboard', async () => {
   render(<App />);
-  expect(screen.getByText(/KAINBAIN/i)).toBeInTheDocument();
+  // Brand mark (h1): the zero-project boot also renders the onboarding
+  // "Welcome to KainBain" (h2), so match the heading level, not the text.
+  expect(screen.getByRole('heading', { level: 1, name: 'KAINBAIN' })).toBeInTheDocument();
   // Tab navigation is present
   expect(screen.getByText('Orchestrator')).toBeInTheDocument();
   expect(screen.getByText('Settings')).toBeInTheDocument();

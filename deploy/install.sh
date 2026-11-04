@@ -20,6 +20,7 @@ BACKEND_TAG=""; FRONTEND_TAG=""; IMAGE_TAG=""
 RELEASE_URL="https://kainbain.ewrdad.uk"; MANIFEST_URL=""; MANIFEST_FILE=""
 PROJECTS_DIR=""; STATE_DIR=""; NOTES_DIR=""
 JOIN_TOKEN="${KAINBAIN_RUNNER_JOIN_TOKEN:-}"; CREDENTIAL=""
+ADOPT_FROM=""; SEED_DEMO=1
 DRY_RUN=0; FORCE=0; NO_START=0; SKIP_PULL=0
 
 usage() { sed -n '2,12p' "$0" 2>/dev/null; cat <<'EOF'
@@ -46,6 +47,12 @@ Usage: install.sh [options]
   --projects-dir DIR    Host folder mapped to your projects (default <install>/projects)
   --state-dir DIR       Host folder for KainBain state (default <install>/data)
   --notes-dir DIR       Host folder for notes (default <install>/notes)
+  --adopt-from DIR      After the stack is up, adopt git checkouts found one
+                        level under DIR (cap 20) as projects. DIR must live
+                        under --projects-dir so the backend can see it.
+  --seed-demo           Seed a starter project when the store is empty
+                        (default; disable with --no-seed)
+  --no-seed             Do not seed a starter project
   --join-token TOKEN    Runner join token (default: read ~/.kainbain/runner-join.token, else generated note)
   --credential TOKEN    Runner credential if you already approved one (written to the runner env)
   --no-start            Write files and pull images, but do not start anything
@@ -96,6 +103,10 @@ while [ $# -gt 0 ]; do
     --state-dir=*) STATE_DIR="${1#--state-dir=}" ;;
     --notes-dir) shift; NOTES_DIR="${1:?--notes-dir needs a value}" ;;
     --notes-dir=*) NOTES_DIR="${1#--notes-dir=}" ;;
+    --adopt-from) shift; ADOPT_FROM="${1:?--adopt-from needs a value}" ;;
+    --adopt-from=*) ADOPT_FROM="${1#--adopt-from=}" ;;
+    --seed-demo) SEED_DEMO=1 ;;
+    --no-seed) SEED_DEMO=0 ;;
     --join-token) shift; JOIN_TOKEN="${1:?--join-token needs a value}" ;;
     --join-token=*) JOIN_TOKEN="${1#--join-token=}" ;;
     --credential) shift; CREDENTIAL="${1:?--credential needs a value}" ;;
@@ -192,18 +203,42 @@ YAML
 fi
 if [ -f "$INSTALL_DIR/.env" ] && [ "$FORCE" != "1" ] && [ "$DRY_RUN" != "1" ]; then
   log ".env already exists — leaving it untouched"
-elif [ "$DRY_RUN" = "1" ]; then echo "would write: $INSTALL_DIR/.env (mode 600, no secrets printed)";
+elif [ "$DRY_RUN" = "1" ]; then
+  echo "would write: $INSTALL_DIR/.env (mode 600, no secrets printed)"
+  if [ -z "$JOIN_TOKEN" ] && [ ! -f "$HOME/.kainbain/runner-join.token" ]; then
+    echo "would generate: a runner join token into $HOME/.kainbain/runner-join.token (mode 600) so the Runner self-registers"
+  fi
+  [ "$RUNNERS" -gt 0 ] && echo "would write: KAINBAIN_EXPECTED_RUNNER_ID=$RUNNER_ID into $INSTALL_DIR/.env so first-run UI waits for it by name"
 else
   [ -z "$JOIN_TOKEN" ] && [ -f "$HOME/.kainbain/runner-join.token" ] && JOIN_TOKEN="$(cat "$HOME/.kainbain/runner-join.token")"
+  if [ -z "$JOIN_TOKEN" ]; then
+    # Fresh box, no token anywhere: mint one and persist it where both
+    # sides read it — .env for the backend, the token file for
+    # startRunner.sh — so the Runner registers as pending with zero
+    # manual steps (never printed: it is a secret).
+    JOIN_TOKEN="$(node -e 'console.log(require("crypto").randomBytes(24).toString("hex"))')"
+    mkdir -p "$HOME/.kainbain"; printf '%s' "$JOIN_TOKEN" > "$HOME/.kainbain/runner-join.token"; chmod 600 "$HOME/.kainbain/runner-join.token"
+    log "generated a runner join token into $HOME/.kainbain/runner-join.token (mode 600)"
+  elif [ ! -f "$HOME/.kainbain/runner-join.token" ]; then
+    # Explicit --join-token (or env): share it with startRunner.sh via
+    # the token file so both sides agree (never overwrite an existing
+    # file — warn instead, below).
+    mkdir -p "$HOME/.kainbain"; printf '%s' "$JOIN_TOKEN" > "$HOME/.kainbain/runner-join.token"; chmod 600 "$HOME/.kainbain/runner-join.token"
+    log "shared the provided join token with $HOME/.kainbain/runner-join.token (mode 600)"
+  elif [ "$(cat "$HOME/.kainbain/runner-join.token")" != "$JOIN_TOKEN" ]; then
+    echo "install.sh: WARN --join-token differs from $HOME/.kainbain/runner-join.token (backend uses --join-token; the Runner reads the file) — align them or the Runner cannot register" >&2
+  fi
   { echo "KAINBAIN_PORT=$PORT"; echo "KAINBAIN_BACKEND_IMAGE=$BREPO"; echo "KAINBAIN_BACKEND_TAG=$BTAG"
     echo "KAINBAIN_FRONTEND_IMAGE=$FREPO"; echo "KAINBAIN_FRONTEND_TAG=$FTAG"
     echo "KAINBAIN_PROJECTS_HOST=$PROJECTS_DIR"; echo "KAINBAIN_STATE_HOST=$STATE_DIR"; echo "KAINBAIN_NOTES_HOST=$NOTES_DIR"
-    [ -n "$JOIN_TOKEN" ] && echo "KAINBAIN_RUNNER_JOIN_TOKEN=$JOIN_TOKEN"; } > "$INSTALL_DIR/.env"
+    echo "KAINBAIN_SEED_DEMO=$SEED_DEMO"
+    [ -n "$JOIN_TOKEN" ] && echo "KAINBAIN_RUNNER_JOIN_TOKEN=$JOIN_TOKEN"
+    [ "$RUNNERS" -gt 0 ] && echo "KAINBAIN_EXPECTED_RUNNER_ID=$RUNNER_ID"; } > "$INSTALL_DIR/.env"
   chmod 600 "$INSTALL_DIR/.env"; log "wrote $INSTALL_DIR/.env"
 fi
-if [ "$DRY_RUN" = "1" ]; then echo "would copy: release-manifest.json into $INSTALL_DIR; would download update.sh + redeploy.sh from ${RELEASE_URL%/}/";
+if [ "$DRY_RUN" = "1" ]; then echo "would copy: release-manifest.json into $INSTALL_DIR; would download update.sh + redeploy.sh + uninstall.sh from ${RELEASE_URL%/}/";
 else cp "$MANIFEST" "$INSTALL_DIR/release-manifest.json"; log "wrote release-manifest.json"
-  for h in update.sh redeploy.sh; do curl -fsSL "${RELEASE_URL%/}/$h" -o "$INSTALL_DIR/$h" && chmod +x "$INSTALL_DIR/$h" && log "installed $h" || echo "install.sh: WARN could not fetch $h from ${RELEASE_URL%/}/ (upgrade later with update.sh once it is in place)" >&2; done; fi
+  for h in update.sh redeploy.sh uninstall.sh; do curl -fsSL "${RELEASE_URL%/}/$h" -o "$INSTALL_DIR/$h" && chmod +x "$INSTALL_DIR/$h" && log "installed $h" || echo "install.sh: WARN could not fetch $h from ${RELEASE_URL%/}/ (upgrade later with update.sh once it is in place)" >&2; done; fi
 
 # --- Pull + start the stack ----------------------------------------------------
 if [ "$DRY_RUN" = "1" ]; then [ "$SKIP_PULL" != "1" ] && echo "would run: (cd $INSTALL_DIR && docker compose pull)"; [ "$NO_START" != "1" ] && echo "would run: (cd $INSTALL_DIR && docker compose up -d)";
@@ -215,6 +250,61 @@ else (cd "$INSTALL_DIR" && run docker compose up -d) || { echo "install.sh: dock
     ok=0; for _ in $(seq 1 30); do curl -sf "http://localhost:$PORT/status" >/dev/null 2>&1 && { ok=1; break; }; sleep 2; done
     [ "$ok" = "1" ] && log "healthy: http://localhost:$PORT/status" || { echo "install.sh: stack started but /status did not answer on port $PORT within 60s — check: (cd $INSTALL_DIR && docker compose logs)" >&2; exit 1; }
   fi
+fi
+
+# --- Adopt existing checkouts (--adopt-from) -------------------------------------
+adopt_checkouts() {
+  # Scans $ADOPT_FROM one level deep for .git children (cap 20) and
+  # registers each with the fresh backend. Best-effort: a failed
+  # adoption warns but never fails the install (the UI offers the same
+  # repos via one-click adoption). $1 = 1 for dry-run (plan only).
+  local dry="$1" found=0 adopted=0 skipped=0
+  local abs_adopt abs_projects
+  # Container-side mount point of $PROJECTS_DIR — same default the compose
+  # template uses, overridable through the environment exactly like compose.
+  local container_projects_base="${KAINBAIN_PROJECTS_CONTAINER_PATH:-/workspace/projects}"
+  abs_adopt="$(cd "$ADOPT_FROM" 2>/dev/null && pwd)" || { echo "install.sh: WARN --adopt-from $ADOPT_FROM is not a directory — skipping adoption" >&2; return 0; }
+  abs_projects="$(cd "$PROJECTS_DIR" 2>/dev/null && pwd || printf '%s' "$PROJECTS_DIR")"
+  case "$abs_adopt/" in
+    "$abs_projects/"*)
+      for child in "$abs_adopt"/*/; do
+        [ -d "$child" ] || continue
+        [ -e "${child}.git" ] || continue
+        found=$((found+1))
+        [ "$found" -gt 20 ] && { echo "install.sh: --adopt-from capped at 20 checkouts (skipping the rest)" >&2; break; }
+        # The backend sees host $PROJECTS_DIR mounted at the compose
+        # container path (default /workspace/projects); translate so the
+        # registered path resolves inside the container.
+        rel="${child#$abs_adopt/}"; rel="${rel%/}"
+        middle="${abs_adopt#$abs_projects}"; middle="${middle#/}"
+        [ -n "$middle" ] && middle="$middle/"
+        cpath="$container_projects_base/$middle$rel"
+        if [ "$dry" = "1" ]; then
+          echo "would adopt: $child (as $cpath)"
+          adopted=$((adopted+1))
+        else
+          payload="$(node -e 'console.log(JSON.stringify({path: process.argv[1]}))' "$cpath")"
+          if curl -fsS -X POST "http://localhost:$PORT/projects/register" -H 'Content-Type: application/json' --data "$payload" >/dev/null 2>&1; then
+            log "adopted $child"; adopted=$((adopted+1))
+          else
+            echo "install.sh: WARN could not adopt $child (backend refused it) — adopt it later from the UI" >&2; skipped=$((skipped+1))
+          fi
+        fi
+      done
+      ;;
+    *)
+      echo "install.sh: WARN --adopt-from $ADOPT_FROM is outside --projects-dir $PROJECTS_DIR, so the backend cannot see it — skipping adoption (point --projects-dir at it, or adopt from the UI later)" >&2
+      return 0
+      ;;
+  esac
+  [ "$found" = "0" ] && { [ "$dry" = "1" ] && echo "would adopt: nothing (no git checkouts under $ADOPT_FROM)"; return 0; }
+  [ "$dry" = "1" ] && echo "would adopt: $adopted checkout(s) under $ADOPT_FROM via POST /projects/register"
+  return 0
+}
+if [ -n "$ADOPT_FROM" ]; then
+  if [ "$DRY_RUN" = "1" ]; then adopt_checkouts 1
+  elif [ "$NO_START" = "1" ]; then log "--adopt-from skipped with --no-start (adopt from the UI once the stack is up)"
+  else adopt_checkouts 0; fi
 fi
 
 # --- Runner(s): download the tarball, verify sha256, hand to startRunner.sh ---
@@ -235,5 +325,6 @@ if [ "$RUNNERS" -gt 0 ]; then
     done
   fi
 fi
-log "done. Open http://localhost:$PORT — then approve the Runner in Settings > Harness > Runners and paste its credential as KAINBAIN_RUNNER_CREDENTIAL (see startRunner.sh output)."
+log "done. Open http://localhost:$PORT — then approve the Runner in Settings > Harness > Runners (one click: it collects its own credential, no paste needed)."
 log "Upgrades later: (cd $INSTALL_DIR && ./update.sh)  — get update.sh/redeploy.sh from ${RELEASE_URL%/}/update.sh if they are not beside this script."
+log "Start over: (cd $INSTALL_DIR && ./uninstall.sh --dry-run) previews removal; see ./uninstall.sh --help (state-preserving by default, --purge --yes deletes everything)."

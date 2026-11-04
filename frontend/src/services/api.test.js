@@ -238,6 +238,14 @@ describe('api client endpoints', () => {
     expect(requests[0].opts.method).toBeUndefined(); // plain GET
   });
 
+  it('getOnboarding fetches the first-run summary the onboarding empty state consumes', async () => {
+    const { api } = await import('./api');
+    await api.getOnboarding();
+    expect(requests.length).toBe(1);
+    expect(requests[0].url.endsWith('/onboarding')).toBe(true);
+    expect(requests[0].opts.method).toBeUndefined(); // plain GET
+  });
+
   it('getConfigSpec fetches the live config-spec the Storage settings tab renders', async () => {
     const { api } = await import('./api');
     await api.getConfigSpec();
