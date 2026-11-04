@@ -93,18 +93,30 @@ describe("api/imageGen/surveyImages resolution", () => {
 describe("api/imageGen/surveyImages job", () => {
 	let cwd;
 	let savedKey;
+	let savedDir;
+	let imageGenDir;
 
 	beforeEach(() => {
 		cwd = fs.mkdtempSync(path.join(os.tmpdir(), "kb-survey-images-test-"));
+		imageGenDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-image-gen-dir-"));
 		savedKey = process.env.KAINBAIN_IMAGE_GEN_MUSE_API_KEY;
+		savedDir = process.env.KAINBAIN_IMAGE_GEN_DIR;
 		delete process.env.KAINBAIN_IMAGE_GEN_MUSE_API_KEY;
+		process.env.KAINBAIN_IMAGE_GEN_DIR = imageGenDir;
 	});
 
 	afterEach(() => {
 		if (savedKey === undefined) delete process.env.KAINBAIN_IMAGE_GEN_MUSE_API_KEY;
 		else process.env.KAINBAIN_IMAGE_GEN_MUSE_API_KEY = savedKey;
+		if (savedDir === undefined) delete process.env.KAINBAIN_IMAGE_GEN_DIR;
+		else process.env.KAINBAIN_IMAGE_GEN_DIR = savedDir;
 		try {
 			fs.rmSync(cwd, { recursive: true, force: true });
+		} catch {
+			// ignore cleanup errors
+		}
+		try {
+			fs.rmSync(imageGenDir, { recursive: true, force: true });
 		} catch {
 			// ignore cleanup errors
 		}
