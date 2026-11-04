@@ -19,6 +19,7 @@ import { disposeAllOpencodeServers } from "./agent/harnesses/opencode/OpencodeSe
 import { PromptCurationEngine } from "./promptCuration.js";
 import { config } from "./config.js";
 import { ProjectStore } from "./projectStore.js";
+import { seedDemoProject } from "./project/seedDemo.js";
 import { isAllowedCorsOrigin } from "./cors.js";
 import { createProjectResolvers } from "./projectResolution.js";
 import { createSessionHelpers } from "./sessionResolution.js";
@@ -49,6 +50,7 @@ import sessionsRoutes from "./routes/sessions.js";
 import tasksRoutes from "./routes/tasks.js";
 import { registerRunnerRoutes } from "./flow/runnerRoutes.js";
 import workflowsRoutes from "./routes/workflows.js";
+import onboardingRoutes from "./routes/onboarding.js";
 import filesRoutes from "./routes/files.js";
 import taskImagesRoutes from "./routes/taskImages.js";
 import skillsRoutes from "./routes/skills.js";
@@ -82,6 +84,13 @@ if (projectsRootWarning) {
 const projectStore = new ProjectStore();
 taskStore.setProjectStore(projectStore);
 prepareProjects(projectStore, taskStore);
+// Install-time demo seed (KAINBAIN_SEED_DEMO, off by default): one
+// local-only starter project when the store is empty, so a fresh
+// install opens on a live board. Never throws (seedDemoProject yields
+// null on any failure), and contributor boots leave the flag off.
+if (config.seedDemo === true) {
+	seedDemoProject(projectStore);
+}
 
 const { resolveProjectId, requireProject, resolveAndGuardProject } = createProjectResolvers(projectStore);
 const { getOrCreateSession, disposeSession, isAgentRunning } = createSessionHelpers({
@@ -244,6 +253,7 @@ app.register(sessionsRoutes, { deps });
 app.register(tasksRoutes, { deps });
 app.register(registerRunnerRoutes, { deps });
 app.register(workflowsRoutes, { deps });
+app.register(onboardingRoutes, { deps });
 app.register(filesRoutes, { deps });
 app.register(taskImagesRoutes, { deps });
 app.register(wsRoutes, { deps });

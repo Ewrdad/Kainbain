@@ -168,14 +168,22 @@ export function useProjects({ onSelectProject, onNotification } = {}) {
   /***
    * MARK: createProject
    * @description Creates a new project, adds it to the project list, and activates it.
-   * @example await createProject('New Project')
+   *   The optional git remote URL satisfies the backend D11 rule (new projects
+   *   require a fetchable remote); without it creation fails unless the server
+   *   configured `KAINBAIN_GIT_REMOTE_TEMPLATE`. Failures rethrow (like
+   *   registerProject) so the creation dialog can render the server message
+   *   inline instead of closing silently.
+   * @example await createProject('New Project', { gitUrl: 'git@github.com:me/repo.git' })
    * @param {string} name
-   * @returns {Promise<Object|null>}
+   * @param {Object} [opts]
+   * @param {string} [opts.gitUrl] - Git remote URL for the new project.
+   * @returns {Promise<Object>}
    ***/
   const createProject = useCallback(
-    async (name) => {
+    async (name, { gitUrl } = {}) => {
       try {
-        const project = await api.createProject({ name });
+        const remote = typeof gitUrl === 'string' ? gitUrl.trim() : '';
+        const project = await api.createProject(remote ? { name, gitUrl: remote } : { name });
         setProjects((prev) => [...prev, project]);
         await selectProject(project.id);
         onNotificationRef.current?.({
@@ -186,7 +194,7 @@ export function useProjects({ onSelectProject, onNotification } = {}) {
         return project;
       } catch (e) {
         logger.error('Failed to create project', e);
-        return null;
+        throw e;
       }
     },
     [selectProject],

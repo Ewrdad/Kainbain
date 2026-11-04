@@ -301,6 +301,8 @@ export function Header() {
   const projectTriggerRef = useRef(null);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjName, setNewProjName] = useState('');
+  const [newProjGitUrl, setNewProjGitUrl] = useState('');
+  const [createError, setCreateError] = useState('');
   const [isRegisteringProject, setIsRegisteringProject] = useState(false);
   const [adoptPath, setAdoptPath] = useState('');
   const [adoptName, setAdoptName] = useState('');
@@ -356,18 +358,48 @@ export function Header() {
   }, [isProjectDropdownOpen, setIsProjectDropdownOpen]);
 
   /***
+   * MARK: closeCreateProjectModal
+   * @description Closes the "Create New Project" dialog and clears its error.
+   * @example closeCreateProjectModal()
+   ***/
+  const closeCreateProjectModal = () => {
+    setIsCreatingProject(false);
+    setCreateError('');
+  };
+
+  /***
+   * MARK: switchToAdoptProjectModal
+   * @description Swaps the creation dialog for the adoption dialog (the
+   *   local-only path for users with no git remote yet).
+   * @example switchToAdoptProjectModal()
+   ***/
+  const switchToAdoptProjectModal = () => {
+    setIsCreatingProject(false);
+    setCreateError('');
+    setIsRegisteringProject(true);
+  };
+
+  /***
    * MARK: handleCreateProjectSubmit
-   * @description Handles form submission for creating a new project.
+   * @description Handles form submission for creating a new project,
+   *   forwarding the optional git remote URL (D11). A rejected creation
+   *   surfaces the server message inline and keeps the dialog open.
    * @example handleCreateProjectSubmit(event)
    * @param {React.FormEvent} e
    ***/
   const handleCreateProjectSubmit = async (e) => {
     e.preventDefault();
     if (!newProjName.trim()) return;
-    await createProject(newProjName.trim());
-    setNewProjName('');
-    setIsCreatingProject(false);
-    setIsProjectDropdownOpen(false);
+    setCreateError('');
+    try {
+      await createProject(newProjName.trim(), { gitUrl: newProjGitUrl.trim() || undefined });
+      setNewProjName('');
+      setNewProjGitUrl('');
+      setIsCreatingProject(false);
+      setIsProjectDropdownOpen(false);
+    } catch (err) {
+      setCreateError(err?.message || 'Failed to create the project.');
+    }
   };
 
   /***
@@ -664,7 +696,7 @@ export function Header() {
       {/* New Project Modal */}
       {isCreatingProject && (
         <Modal
-          onClose={() => setIsCreatingProject(false)}
+          onClose={closeCreateProjectModal}
           labelledBy="new-project-title"
           dialogClassName="w-full max-w-md bg-surface border border-border-standard rounded-md shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200"
         >
@@ -677,7 +709,7 @@ export function Header() {
             </h2>
             <button
               type="button"
-              onClick={() => setIsCreatingProject(false)}
+              onClick={closeCreateProjectModal}
               className="p-1 min-w-[44px] min-h-[44px] hover:bg-surface-container-high rounded text-text-muted hover:text-on-surface cursor-pointer"
               aria-label="Close modal"
             >
@@ -705,10 +737,43 @@ export function Header() {
               />
             </div>
 
+            <div>
+              <label
+                htmlFor="new-project-remote-input"
+                className="text-[10px] font-bold uppercase tracking-widest text-text-muted block mb-2"
+              >
+                Git Remote URL
+              </label>
+              <input
+                id="new-project-remote-input"
+                type="text"
+                value={newProjGitUrl}
+                onChange={(e) => setNewProjGitUrl(e.target.value)}
+                placeholder="e.g. git@github.com:me/my-repo.git"
+                className="w-full p-2.5 bg-surface-deep border border-border-standard rounded-sm text-sm text-on-surface outline-none focus:border-primary transition-colors font-mono"
+              />
+              <p className="mt-1 text-[11px] text-text-muted">
+                New projects need a fetchable git remote (unless the server configured one).{' '}
+                <button
+                  type="button"
+                  onClick={switchToAdoptProjectModal}
+                  className="underline hover:text-on-surface cursor-pointer"
+                >
+                  No remote yet — adopt a local repo instead
+                </button>
+              </p>
+            </div>
+
+            {createError && (
+              <p className="text-xs text-error" role="alert" data-testid="create-project-error">
+                {createError}
+              </p>
+            )}
+
             <div className="flex justify-end gap-3 pt-4 border-t border-border-standard">
               <button
                 type="button"
-                onClick={() => setIsCreatingProject(false)}
+                onClick={closeCreateProjectModal}
                 className="px-4 py-2 bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer"
               >
                 Cancel

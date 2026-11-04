@@ -376,7 +376,7 @@ test('project menu list region is bounded and footer stays pinned', () => {
 });
 
 test('opens create project modal and creates project on submit', () => {
-  const createProject = vi.fn();
+  const createProject = vi.fn().mockResolvedValue({ id: 'proj-9', name: 'New Test Project' });
   renderWithKainBain(<Header />, {
     projects,
     activeProjectId: 'proj-1',
@@ -391,7 +391,67 @@ test('opens create project modal and creates project on submit', () => {
   fireEvent.change(nameInput, { target: { value: 'New Test Project' } });
   fireEvent.submit(nameInput.closest('form'));
 
-  expect(createProject).toHaveBeenCalledWith('New Test Project');
+  expect(createProject).toHaveBeenCalledWith('New Test Project', { gitUrl: undefined });
+});
+
+test('create project modal forwards the git remote URL', () => {
+  const createProject = vi.fn().mockResolvedValue({ id: 'proj-9', name: 'New Test Project' });
+  renderWithKainBain(<Header />, {
+    projects,
+    activeProjectId: 'proj-1',
+    createProject,
+    isProjectDropdownOpen: true,
+    setIsProjectDropdownOpen: vi.fn(),
+  });
+  fireEvent.click(screen.getByText('+ New Project'));
+
+  fireEvent.change(screen.getByLabelText('Project Name'), { target: { value: 'New Test Project' } });
+  fireEvent.change(screen.getByLabelText('Git Remote URL'), {
+    target: { value: 'git@github.com:me/repo.git' },
+  });
+  fireEvent.submit(screen.getByLabelText('Project Name').closest('form'));
+
+  expect(createProject).toHaveBeenCalledWith('New Test Project', {
+    gitUrl: 'git@github.com:me/repo.git',
+  });
+});
+
+test('create project modal shows the server error inline and stays open', async () => {
+  const createProject = vi.fn().mockRejectedValue(new Error('New projects require a fetchable git remote (D11)'));
+  renderWithKainBain(<Header />, {
+    projects,
+    activeProjectId: 'proj-1',
+    createProject,
+    isProjectDropdownOpen: true,
+    setIsProjectDropdownOpen: vi.fn(),
+  });
+  fireEvent.click(screen.getByText('+ New Project'));
+
+  fireEvent.change(screen.getByLabelText('Project Name'), { target: { value: 'Remote-less' } });
+  fireEvent.submit(screen.getByLabelText('Project Name').closest('form'));
+
+  expect(await screen.findByTestId('create-project-error')).toHaveTextContent(
+    'fetchable git remote',
+  );
+  expect(screen.getByText('Create New Project')).toBeInTheDocument();
+});
+
+test('create project modal links to the adopt dialog for remote-less repos', () => {
+  const createProject = vi.fn().mockResolvedValue({ id: 'proj-9', name: 'X' });
+  renderWithKainBain(<Header />, {
+    projects,
+    activeProjectId: 'proj-1',
+    createProject,
+    registerProject: vi.fn(),
+    isProjectDropdownOpen: true,
+    setIsProjectDropdownOpen: vi.fn(),
+  });
+  fireEvent.click(screen.getByText('+ New Project'));
+  fireEvent.click(screen.getByText('No remote yet — adopt a local repo instead'));
+
+  expect(screen.queryByText('Create New Project')).not.toBeInTheDocument();
+  expect(screen.getByText('Add Existing Project')).toBeInTheDocument();
+  expect(createProject).not.toHaveBeenCalled();
 });
 
 test('opens adopt project modal and registers the directory on submit', async () => {

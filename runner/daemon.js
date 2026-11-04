@@ -1,4 +1,5 @@
 import { execFile, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -16,6 +17,7 @@ import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { decideAgentStageVerdict } from "../shared/stageVerdict.js";
 import { commitAndPush } from "./gitOps.js";
+import { saveRunnerCredential } from "./credentialFile.js";
 
 /***
  * MARK: RUNNER_VERSION
@@ -473,8 +475,11 @@ function factsFor({ config, harnessVersions, updateStatus = null, commandAck = n
 /***
  * MARK: joinAndHeartbeat
  * @description Shared join prologue: poll a pending join until the human
- *   approves (then exit asking for the pasted credential), load the
- *   harness, heartbeat once, and start the background heartbeat timer.
+ *   approves (collecting the handed-over credential with this boot's
+ *   join nonce and storing it, so no paste or restart is needed — the
+ *   paste instruction is now only the fallback when the handover cannot
+ *   complete), load the harness, heartbeat once, and start the
+ *   background heartbeat timer.
  * @example const { harness, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger, state })
  * @param {Object} opts - Options.
  * @param {Object} opts.config - Normalized runner config.
@@ -490,28 +495,52 @@ export async function joinAndHeartbeat({ config, client, loadHarness, logger, st
 			throw new Error("No credential and no KAINBAIN_RUNNER_JOIN_TOKEN: cannot join.");
 		}
 		const deadline = Date.now() + config.approvalTimeoutMs;
+		// Per-boot join secret (one-click approval, D2): repeated on every
+		// join poll so the backend hands this boot — and only this boot —
+		// the credential after approval. Never logged.
+		const joinNonce = randomUUID();
 		// Probe before the first register so even a pending join advertises
 		// the real harness CLI versions (G5).
 		const joinVersions = {};
 		for (const id of runnerHarnessIds(config)) {
 			Object.assign(joinVersions, await probeHarnessVersions(id));
 		}
+		let collectedCredential = "";
 		for (;;) {
 			const reg = await client.register({
 				runnerId: config.runnerId,
 				joinToken: config.joinToken,
 				facts: factsFor({ config, harnessVersions: joinVersions, commandAck: stagedCommandAck(state) }),
+				joinNonce,
 			});
-			if (reg.status === "active") break;
+			if (reg.status === "active") {
+				if (typeof reg?.credential === "string" && reg.credential.trim()) {
+					collectedCredential = reg.credential.trim();
+				}
+				break;
+			}
 			if (Date.now() > deadline) {
 				throw new Error(`Join for ${config.runnerId} still ${reg.status} after timeout.`);
 			}
 			logger.log(`Join ${reg.status}; waiting for human approval in Settings › Harness › Runners…`);
 			await new Promise((r) => setTimeout(r, config.approvalPollMs));
 		}
-		throw new Error(
-			`Join for ${config.runnerId} approved. Paste the one-time credential shown in Settings › Harness › Runners into KAINBAIN_RUNNER_CREDENTIAL and restart.`,
-		);
+		if (!collectedCredential) {
+			throw new Error(
+				`Join for ${config.runnerId} approved, but this boot cannot collect its credential by itself (the join session was lost across a restart, or the backend predates one-click approval). Paste the one-time credential shown in Settings › Harness › Runners into KAINBAIN_RUNNER_CREDENTIAL and restart.`,
+			);
+		}
+		try {
+			saveRunnerCredential(config.runnerId, collectedCredential, config.home || undefined);
+			logger.log(`Join approved; credential stored for ${config.runnerId} — no paste needed.`);
+		} catch (err) {
+			// Degraded but functional: this boot runs on the in-memory
+			// credential; the operator pastes before the next restart.
+			logger.warn?.(
+				`Join approved but the credential could not be stored (${err?.message || err}); continuing with it in memory — set KAINBAIN_RUNNER_CREDENTIAL before the next restart.`,
+			);
+		}
+		config.credential = collectedCredential;
 	}
 	client.setCredential(config.credential);
 

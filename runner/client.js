@@ -43,10 +43,10 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 		setCredential(next) {
 			credential = next;
 		},
-		register({ runnerId, joinToken, facts }) {
+		register({ runnerId, joinToken, facts, joinNonce }) {
 			return call("/runners/register", {
 				method: "POST",
-				body: { runnerId, joinToken, facts },
+				body: { runnerId, joinToken, facts, joinNonce },
 			});
 		},
 		heartbeat({ runnerId, facts }) {
