@@ -32,6 +32,7 @@ All commands are verbatim root `package.json` scripts, run from the repo root.
 
 ## Agent Guidelines
 
+- **Never edit `README.md`.** It is owner-maintained, audience-facing copy (currently the hackathon landing page). Agents must not rewrite, reformat, restructure, or "fix" it, and must not fold other docs' updates into it. If a README change seems needed, raise it with the operator instead; agent-facing documentation goes in `docs/`, `site-docs/`, `agents.md`, or `AGENTS-MAP.md`.
 - History badges (`+N -M`) are per-stage commit ranges: keep generated test artifacts (`coverage/`, `test-results/`, and friends — see root `.gitignore`) gitignored so a testing stage that writes reports still shows `+0 -0`. A failed stage's partial work auto-commits with `... (failed)` and stays on that stage's badge.
 - Follow the standards defined in [`agent-docs/KB-Code-Standards.md`](agent-docs/KB-Code-Standards.md).
 - Refer to [`agent-docs/KB-Architecture.md`](agent-docs/KB-Architecture.md) for high-level design.
