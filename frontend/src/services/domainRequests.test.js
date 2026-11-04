@@ -45,8 +45,11 @@ describe('Business-owned request lists', () => {
     // pauseRunner, resumeRunner, skipRunner) for Settings › Runners, the
     // per-runner Now Playing controls, and the fleet model catalogue +
     // the 2 Runner config operations (getRunnerConfig, updateRunnerConfig)
-    // for the System Settings › Runners detail form.
-    expect(names).toHaveLength(95);
+    // for the System Settings › Runners detail form +
+    // the 2 Runner command operations (requestModelRediscovery,
+    // requestRunnerUpdate) for the on-request model re-detection and
+    // self-update buttons.
+    expect(names).toHaveLength(97);
     for (const name of names) expect(typeof api[name]).toBe('function');
   });
 

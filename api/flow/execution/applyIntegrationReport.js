@@ -54,6 +54,16 @@ export async function applyIntegrationReport({
 	const bridge = store.eventBridge;
 	const taskShortId = String(task.id).slice(0, 4).toUpperCase();
 	const via = runnerId ? `via Runner ${runnerId}` : "via Runner";
+	// Carry the reporting Runner onto the pending attribution (mirrors the
+	// Runner-report path) so the terminal row attributes it. Best-effort.
+	if (typeof runnerId === "string" && runnerId.trim()) {
+		const rid = runnerId.trim();
+		if (!task.currentRunAttribution) {
+			task.currentRunAttribution = { stageId: stage?.id ?? task.currentStageId, runnerId: rid };
+		} else if (!task.currentRunAttribution.runnerId) {
+			task.currentRunAttribution.runnerId = rid;
+		}
+	}
 	const { mergeSha, targetBranch, taskBranch, expectedTaskSha, expectedTargetSha, mergeAttemptId } = integration || {};
 
 	const parkUnverifiable = (message, diagnostics) => {
@@ -70,6 +80,9 @@ export async function applyIntegrationReport({
 			bridge,
 			projectCwd: cwd,
 			skipFailback: true,
+			// The reporting Runner names the parked failure row and
+			// report, like every other Runner-run failure.
+			runnerId,
 		});
 	};
 
@@ -130,6 +143,9 @@ export async function applyIntegrationReport({
 		task.history.push({
 			timestamp: mergedAt,
 			action: `Recorded PR-review baseline for '${taskBranch}' at Runner-run merge into '${targetBranch}' (${String(mergeSha).slice(0, 7)})`,
+			...(typeof runnerId === "string" && runnerId.trim()
+				? { runnerId: runnerId.trim() }
+				: {}),
 		});
 		if (typeof store.updateTask === "function" && task.id) {
 			store.updateTask(projectId, taskId, { reviewBaseline: baseline }, cwd);
@@ -177,6 +193,7 @@ export async function applyIntegrationReport({
 		label: "Merge",
 		reportContent,
 		historyAction: `Merge stage passed: '${taskBranch}' integrated into '${targetBranch}' by ${via}`,
+		runnerId,
 	});
 	_appendProcessLog(task, `[MERGE] Verified Runner-run merge ${String(mergeSha).slice(0, 7)} on 'origin/${targetBranch}' and advanced`);
 	try {

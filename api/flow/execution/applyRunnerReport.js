@@ -79,6 +79,23 @@ export async function applyRunnerReport({
 	const cwd = project?.cwd;
 	const via = outcome.runnerId ? `via Runner ${outcome.runnerId}` : "via Runner";
 	const duration = outcome.duration || "0.0";
+	// Carry the reporting Runner onto the in-memory pending attribution so
+	// the terminal / Completed row (and any later run consuming it) attributes
+	// the Runner that actually ran, even for tagged-on runs where dispatch did
+	// not leave a stamp. Best-effort, embedded-style runs still leave it
+	// absent.
+	if (typeof outcome.runnerId === "string" && outcome.runnerId.trim()) {
+		const rid = outcome.runnerId.trim();
+		if (!task.currentRunAttribution) {
+			task.currentRunAttribution = { stageId: task.currentStageId, runnerId: rid };
+		} else if (
+			String(task.currentRunAttribution.stageId ?? "") ===
+				String(task.currentStageId) &&
+			!task.currentRunAttribution.runnerId
+		) {
+			task.currentRunAttribution.runnerId = rid;
+		}
+	}
 	// The served model for the persisted report: the Runner's explicit report
 	// wins, then the dispatch-time stamp (what the Runner was matched on),
 	// then the stage slot. Blank/"default" values are absent, never worded —
@@ -132,6 +149,10 @@ export async function applyRunnerReport({
 					modelRef: reportModelRef,
 					aliasName: reportAliasName,
 					targetIndex: reportTargetIndex,
+					// The reporting Runner names the failed run on its
+					// timeline row and failure report, so a struggling
+					// Runner can be spotted per stage or task type later.
+					runnerId: outcome.runnerId,
 					failureKind: outcome.failureKind,
 				},
 				classifyAs: {
@@ -181,12 +202,19 @@ export async function applyRunnerReport({
 			modelRef: reportModelRef,
 			aliasName: reportAliasName,
 			targetIndex: reportTargetIndex,
+			runnerId: outcome.runnerId,
 		});
 	}
 
 	task.history.push({
 		timestamp: new Date().toISOString(),
 		action: `Agent stage completed: ${stage.name || stage.id} (${via})`,
+		// Structured Runner id alongside the `via Runner …` prose, so
+		// consumers need not parse the action string. Blank-safe: an
+		// absent Runner stays absent, never worded.
+		...(typeof outcome.runnerId === "string" && outcome.runnerId.trim()
+			? { runnerId: outcome.runnerId.trim() }
+			: {}),
 	});
 	store._saveTaskMarkdown(cwd, task);
 

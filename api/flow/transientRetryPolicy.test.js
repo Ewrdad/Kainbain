@@ -277,6 +277,64 @@ describe("WP3: retry timeline logging and budget surfacing", () => {
 		expect(String(retryEntry.reason)).toContain("attempt 1/");
 	});
 
+	it("records the Runner on the Retrying row and the attempt report", () => {
+		const { store } = makeStore();
+		const task = makeTask(store);
+		const result = store.handleTransientFailure("p1", task.id, stages[1], new Error("socket hang up"), {
+			projectCwd: tempCwd,
+			harnessId: "pi",
+			failureKind: "infrastructure",
+			runnerId: "runner-alpha",
+			retryDelay: NO_DELAY,
+			retryRand: HALF,
+		});
+		expect(result.status).toBe("retrying");
+		const retryEntry = task.timeline.find((entry) => entry.status === "Retrying");
+		expect(retryEntry).toMatchObject({
+			harnessId: "pi",
+			runnerId: "runner-alpha",
+		});
+		expect(task.reports.at(-1)).toMatchObject({
+			status: "FAILED",
+			harnessId: "pi",
+			runnerId: "runner-alpha",
+		});
+	});
+
+	it("carries the same Runner on every retry row through exhaustion", () => {
+		const wasEnabled = config.circuitBreakerEnabled;
+		config.circuitBreakerEnabled = false;
+		try {
+			const { store } = makeStore();
+			const task = makeTask(store);
+			const outage = new Error("socket hang up");
+			const opts = {
+				projectCwd: tempCwd,
+				harnessId: "pi",
+				failureKind: "infrastructure",
+				runnerId: "runner-alpha",
+				retryDelay: NO_DELAY,
+				retryRand: HALF,
+			};
+			for (let n = 1; n <= config.maxTransientRetries; n++) {
+				const result = store.handleTransientFailure("p1", task.id, stages[1], outage, opts);
+				expect(result.status).toBe("retrying");
+			}
+			const parked = store.handleTransientFailure("p1", task.id, stages[1], outage, opts);
+			expect(parked.status).toBe("failed");
+			const retryRows = task.timeline.filter((entry) => entry.status === "Retrying");
+			expect(retryRows.length).toBeGreaterThan(0);
+			for (const row of retryRows) {
+				expect(row.runnerId).toBe("runner-alpha");
+			}
+			const exhaustedRow = task.timeline.find((entry) => entry.status === "Failed");
+			expect(exhaustedRow).toMatchObject({ runnerId: "runner-alpha" });
+			expect(task.reports.at(-1)).toMatchObject({ runnerId: "runner-alpha" });
+		} finally {
+			config.circuitBreakerEnabled = wasEnabled;
+		}
+	});
+
 	it("surfaces a per-stage budget override in the retry report line", () => {
 		const { store } = makeStore();
 		const task = makeTask(store);
