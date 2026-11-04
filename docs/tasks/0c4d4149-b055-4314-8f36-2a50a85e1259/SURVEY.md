@@ -87,6 +87,44 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Task state file (docs/tasks/<id>/task.md)",
+        "Everything under docs/tasks/<id>/ (recommended)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Hide them completely from Files Changed (recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Only in the existing Reports tab (recommended)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Always exclude them from Files Changed (recommended)"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "The merged change disappears or becomes empty"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Automated tests plus a manual canary review after merge (recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
