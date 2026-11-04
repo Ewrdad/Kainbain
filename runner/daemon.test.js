@@ -1594,3 +1594,23 @@ describe("joinAndHeartbeat command channel", () => {
 		}
 	});
 });
+
+describe("collectTaskFiles docsDirName", () => {
+	it("reads files from a custom docs folder", async () => {
+		const fs = (await import("node:fs")).default;
+		const os = (await import("node:os")).default;
+		const path = (await import("node:path")).default;
+		const { collectTaskFiles } = await import("./daemon.js");
+		const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-wt-"));
+		try {
+			fs.mkdirSync(path.join(workdir, "kdocs", "tasks", "t1"), { recursive: true });
+			fs.writeFileSync(path.join(workdir, "kdocs", "tasks", "t1", "SURVEY.md"), "x");
+			const files = collectTaskFiles({ workdir, taskId: "t1", docsDirName: "kdocs" });
+			assert.deepEqual(files, [{ name: "SURVEY.md", content: "x" }]);
+			const invalid = collectTaskFiles({ workdir, taskId: "t1", docsDirName: "../escape" });
+			assert.deepEqual(invalid, []);
+		} finally {
+			fs.rmSync(workdir, { recursive: true, force: true });
+		}
+	});
+});

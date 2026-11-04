@@ -569,3 +569,22 @@ describe("runner project prep", () => {
 		}
 	});
 });
+
+describe("syncTaskDocs custom docsDirName", () => {
+	it("mirrors from and into a custom docs folder, falls back to docs otherwise", async () => {
+		const primary = fs.mkdtempSync(path.join(os.tmpdir(), "kb-primary-custom-"));
+		const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-work-custom-"));
+		try {
+			fs.mkdirSync(path.join(primary, "kdocs", "tasks", "t1"), { recursive: true });
+			fs.writeFileSync(path.join(primary, "kdocs", "tasks", "t1", "idea-1.md"), "idea");
+			assert.equal(await syncTaskDocs({ primaryCwd: primary, workdir, taskId: "t1", docsDirName: "kdocs" }), 1);
+			assert.equal(fs.readFileSync(path.join(workdir, "kdocs", "tasks", "t1", "idea-1.md"), "utf8"), "idea");
+			assert.equal(await syncTaskDocs({ primaryCwd: primary, workdir, taskId: "missing", docsDirName: "kdocs" }), 0);
+			// An invalid custom name degrades to `docs` and does not read the custom folder.
+			assert.equal(await syncTaskDocs({ primaryCwd: primary, workdir, taskId: "t1", docsDirName: "../escape" }), 0);
+		} finally {
+			fs.rmSync(primary, { recursive: true, force: true });
+			fs.rmSync(workdir, { recursive: true, force: true });
+		}
+	});
+});

@@ -2,7 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, touchWorkdir } from "./project.js";
+import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, resolveRunnerDocsDirName, touchWorkdir } from "./project.js";
 import { RunnerGitError } from "./project.js";
 import { runHarnessStage } from "./harness.js";
 import { createStructuredEventSender } from "./logEvents.js";
@@ -942,15 +942,18 @@ export function sanitizeCiEnv(value) {
 		return {};
 	}
 }
-export function collectTaskFiles({ workdir, taskId } = {}) {
-	const dir = `${workdir}/docs/tasks/${taskId}`;
+export function collectTaskFiles({ workdir, taskId, docsDirName = null, project = null } = {}) {
+	const resolved = resolveRunnerDocsDirName(
+		docsDirName ?? (typeof project === "object" && project !== null ? project : null),
+	);
+	const dir = path.join(workdir, resolved, "tasks", taskId);
 	const files = [];
 	let total = 0;
 	try {
 		for (const name of fs.readdirSync(dir)) {
 			if (name === "task.md") continue;
 			try {
-				const content = fs.readFileSync(`${dir}/${name}`, "utf8");
+				const content = fs.readFileSync(path.join(dir, name), "utf8");
 				const bytes = Buffer.byteLength(content, "utf8");
 				if (bytes > 256 * 1024 || total + bytes > 1024 * 1024) continue;
 				files.push({ name, content });
@@ -1059,7 +1062,7 @@ async function executeAssignment({
 			// live task folder outside the task branch — mirror them into
 			// the worktree so the harness actually sees them.
 			try {
-				const synced = await syncTaskDocs({ primaryCwd: project.cwd || null, workdir, taskId });
+				const synced = await syncTaskDocs({ primaryCwd: project.cwd || null, workdir, taskId, docsDirName: project?.docsDirName });
 				if (synced > 0) logger.log(`Synced ${synced} task-doc file(s) into worktree.`);
 			} catch (err) {
 				logger.log(`Task-doc sync skipped: ${err?.message || err}`);
@@ -1141,7 +1144,7 @@ async function executeAssignment({
 						taskId, projectId, executionId, epoch, sha: null, branch,
 						outcome: "failed",
 						failureReason: `CI stage branch setup failed: ${err?.message || err}`,
-						taskFiles: collectTaskFiles({ workdir, taskId }), output: "",
+						taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: "",
 						posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
 						model: servedModel,
 						durationMs: Date.now() - runStartedAt,
@@ -1166,9 +1169,9 @@ async function executeAssignment({
 						const failureReason = ci.timedOut
 							? `CI command timed out after ${ci.timeoutMs}ms`
 							: `CI command failed with exit code ${ci.exitCode}`;
-						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
+						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 					}
-					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
+					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 				} finally {
 					if (ciCleanup) await ciCleanup();
 				}
@@ -1261,7 +1264,7 @@ async function executeAssignment({
 				posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
 				model: servedModel,
 				outcome: "passed",
-				taskFiles: collectTaskFiles({ workdir, taskId }),
+				taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }),
 				output: String(output || "").slice(0, 20000),
 				durationMs: Date.now() - runStartedAt,
 			});
@@ -1461,7 +1464,7 @@ async function executeIntegrationAssignment({
 				}).catch(() => {});
 				state.session = null; stopRenewal(); clearInterval(integrationTimer);
 				await finishProgress();
-				return await failTask(detail, { taskFiles: collectTaskFiles({ workdir, taskId }) });
+				return await failTask(detail, { taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }) });
 			}
 			const mergeSha = (await runGit(workdir, ["rev-parse", "HEAD"])).stdout.trim();
 			try {

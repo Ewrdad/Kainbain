@@ -592,6 +592,30 @@ export async function refreshWorktreeToRemote(workdir, branch) {
 	return { recoveredTo };
 }
 
+
+/***
+ * MARK: resolveRunnerDocsDirName
+ * @description The effective docs folder name for Runner-side transfer
+ *   helpers: a valid custom name wins, anything else degrades to `docs`.
+ *   Mirrors the backend's resolveDocsDirName without importing backend code
+ *   (the Runner ships without the backend tree).
+ * @param {*} value - String, project record, or `{ docsDirName }` object.
+ * @returns {string} Safe bare folder name.
+ ***/
+export function resolveRunnerDocsDirName(value) {
+	let raw = value;
+	if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+		raw = raw.docsDirName ?? raw.docsDir ?? null;
+	}
+	if (typeof raw !== "string") return "docs";
+	const name = raw.trim();
+	if (name.length === 0 || name.length > 64) return "docs";
+	if (!/^[A-Za-z0-9._-]+$/.test(name)) return "docs";
+	const lowered = name.toLowerCase();
+	if (lowered === "." || lowered === ".." || lowered === ".kainbain" || lowered === ".git" || lowered === "node_modules") return "docs";
+	return name;
+}
+
 /***
  * MARK: syncTaskDocs
  * @description Copies the task's docs folder (`docs/tasks/<id>`, including
@@ -609,10 +633,11 @@ export async function refreshWorktreeToRemote(workdir, branch) {
  * @param {Object} opts - `{ primaryCwd, workdir, taskId }`.
  * @returns {Promise<number>} Number of files copied (0 when nothing to copy).
  ***/
-export async function syncTaskDocs({ primaryCwd, workdir, taskId } = {}) {
+export async function syncTaskDocs({ primaryCwd, workdir, taskId, docsDirName = null, project = null } = {}) {
 	if (!primaryCwd || !workdir || !taskId) return 0;
-	const src = path.join(primaryCwd, "docs", "tasks", taskId);
-	const dest = path.join(workdir, "docs", "tasks", taskId);
+	const resolvedDocsDirName = resolveRunnerDocsDirName(docsDirName ?? project);
+	const src = path.join(primaryCwd, resolvedDocsDirName, "tasks", taskId);
+	const dest = path.join(workdir, resolvedDocsDirName, "tasks", taskId);
 	let entries;
 	try {
 		entries = fs.readdirSync(src, { withFileTypes: true });
