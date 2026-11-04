@@ -166,6 +166,54 @@ describe("api/imageGen/providers muse", () => {
 		});
 	});
 
+	it("rejects oversize inline payloads before allocating the decode", async () => {
+		const big = Buffer.alloc(32, 7).toString("base64");
+		const fetchImpl = async () => jsonResponse({
+			payload: { data: [{ b64_json: big }] },
+		});
+		await expect(
+			generateMuseImage({ prompt: "x", apiKey: "k", fetchImpl, maxBytes: 10 }),
+		).rejects.toMatchObject({ statusCode: 502, code: "IMAGE_GEN_PROVIDER_ERROR" });
+	});
+
+	it("rejects oversize downloads on the declared length without reading the body", async () => {
+		let bodyRead = false;
+		const fetchImpl = async (url) => {
+			if (String(url).endsWith("/images/generations")) {
+				return jsonResponse({
+					payload: { data: [{ url: "https://cdn.meta.ai/out/big.png" }] },
+				});
+			}
+			return {
+				ok: true,
+				status: 200,
+				headers: { get: (name) => (String(name).toLowerCase() === "content-length" ? "999999" : null) },
+				arrayBuffer: async () => {
+					bodyRead = true;
+					return Buffer.alloc(1);
+				},
+			};
+		};
+		await expect(
+			generateMuseImage({ prompt: "x", apiKey: "k", fetchImpl, maxBytes: 10 }),
+		).rejects.toMatchObject({ statusCode: 502, code: "IMAGE_GEN_PROVIDER_ERROR" });
+		expect(bodyRead).toBe(false);
+	});
+
+	it("rejects oversize downloads even when the header lies", async () => {
+		const fetchImpl = async (url) => {
+			if (String(url).endsWith("/images/generations")) {
+				return jsonResponse({
+					payload: { data: [{ url: "https://cdn.meta.ai/out/big.png" }] },
+				});
+			}
+			return bytesResponse(Buffer.alloc(32, 7));
+		};
+		await expect(
+			generateMuseImage({ prompt: "x", apiKey: "k", fetchImpl, maxBytes: 10 }),
+		).rejects.toMatchObject({ statusCode: 502, code: "IMAGE_GEN_PROVIDER_ERROR" });
+	});
+
 	it("maps provider failures to 502 without leaking the key", async () => {
 		const fetchImpl = async () => ({
 			ok: false,

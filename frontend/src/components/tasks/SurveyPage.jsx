@@ -683,8 +683,21 @@ function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGe
         const checked = selected.includes(text);
         const inputId = `survey-${question.id}-img-${index}`;
         const entry = byOption.get(index);
-        if (entry?.status === 'ready' && typeof entry.file === 'string' && entry.file) {
-          const src = resolveTaskImageUrl({ apiBase: API_BASE, projectId, taskId, src: entry.file });
+        // Ready means "bytes on our disk" — but `file` is agent-authored
+        // round JSON, so only relative task-asset paths render as pictures.
+        // An absolute URL (or any scheme) falls through to the description
+        // row below: the backend never writes such entries, and rendering
+        // them would let survey JSON pull foreign content into the page.
+        const rawFile = typeof entry?.file === 'string' ? entry.file.trim() : '';
+        const lowerFile = rawFile.toLowerCase();
+        const isRelativeAsset =
+          rawFile !== '' &&
+          !lowerFile.startsWith('http://') &&
+          !lowerFile.startsWith('https://') &&
+          !rawFile.startsWith('//') &&
+          !/^[a-z][a-z0-9+.-]*:/i.test(rawFile);
+        if (entry?.status === 'ready' && isRelativeAsset) {
+          const src = resolveTaskImageUrl({ apiBase: API_BASE, projectId, taskId, src: rawFile });
           return (
             <label
               key={`${text}-${index}`}

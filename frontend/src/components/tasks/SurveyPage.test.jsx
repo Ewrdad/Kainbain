@@ -392,6 +392,23 @@ describe('SurveyPage image questions', () => {
     expect(screen.getByLabelText('Pick a design: light dashboard')).toBeChecked();
   });
 
+  it('never renders foreign image files, falling back to the description', async () => {
+    // `images[].file` is agent-authored JSON: a ready entry pointing at an
+    // absolute URL must not pull foreign content into the page — it renders
+    // as a plain selectable description instead.
+    const foreign = imageSurvey([
+      { option: 0, file: 'https://cdn.evil.example/tracker.png', status: 'ready' },
+      { option: 1, file: 'assets/survey-r1-qi-1.png', status: 'ready' },
+    ]);
+    const client = makeClient(foreign);
+    renderPage(client);
+    await screen.findByText('Pick a design');
+    expect(screen.queryByAltText('dark dashboard')).not.toBeInTheDocument();
+    expect(screen.getByAltText('light dashboard').tagName).toBe('IMG');
+    fireEvent.click(screen.getByLabelText('Pick a design: dark dashboard'));
+    expect(screen.getByLabelText('Pick a design: dark dashboard')).toBeChecked();
+  });
+
   it('explains missing pictures honestly when generation is off and never polls', async () => {
     const client = makeClient(imageSurvey([], 'none'));
     renderPage(client);

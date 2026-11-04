@@ -55,6 +55,16 @@ export const MOCK_IMAGE_PNG_BASE64 =
 export const IMAGE_GEN_PROMPT_MAX_LENGTH = 4000;
 
 /***
+ * MARK: IMAGE_GEN_MAX_BYTES
+ * @description Largest image accepted from a provider, inline or downloaded.
+ *   Oversize responses fail the image with a clear provider error (and a
+ *   descriptions fallback downstream) instead of pressuring memory or the
+ *   task folder's disk.
+ * @example IMAGE_GEN_MAX_BYTES => 26214400
+ ***/
+export const IMAGE_GEN_MAX_BYTES = 25 * 1024 * 1024;
+
+/***
  * MARK: resolveMuseApiBaseUrl
  * @description Effective Muse API base: explicit deploy override first, then
  *   the ecosystem `META_MODEL_API_BASE_URL`, then the Meta default.
@@ -176,6 +186,9 @@ export const generateMockImage = async ({ prompt } = {}) => {
  * @param {string} [opts.apiKey] - Meta Model API key (secret — never logged).
  * @param {Function} [opts.fetchImpl] - Fetch override (tests).
  * @param {number} [opts.timeoutMs] - Per-request timeout (defaults to IMAGE_GEN_TIMEOUT_MS).
+ * @param {number} [opts.maxBytes] - Largest accepted image in bytes (defaults
+ *   to IMAGE_GEN_MAX_BYTES; oversize responses fail with a clear provider
+ *   error instead of pressuring memory or disk).
  * @returns {Promise<Buffer>} Image bytes.
  ***/
 export const generateMuseImage = async ({
@@ -184,7 +197,17 @@ export const generateMuseImage = async ({
 	apiKey,
 	fetchImpl,
 	timeoutMs = IMAGE_GEN_TIMEOUT_MS,
+	maxBytes = IMAGE_GEN_MAX_BYTES,
 } = {}) => {
+	const byteCap = Number.isFinite(maxBytes) && maxBytes > 0 ? Math.floor(maxBytes) : IMAGE_GEN_MAX_BYTES;
+	const oversizeError = (detail) => {
+		const err = new Error(
+			`Muse image response exceeded the ${byteCap}-byte limit (${detail})`,
+		);
+		err.statusCode = 502;
+		err.code = "IMAGE_GEN_PROVIDER_ERROR";
+		return err;
+	};
 	assertValidPrompt(prompt);
 	if (typeof apiKey !== "string" || !apiKey.trim()) {
 		const err = new Error("Muse image provider has no API key saved");
@@ -246,6 +269,11 @@ export const generateMuseImage = async ({
 		throw err;
 	}
 	if (ref.b64) {
+		// Pre-check the encoded length so a giant payload fails before the
+		// decode allocates (base64 inflates bytes by 4/3, plus padding).
+		if (ref.b64.length > Math.ceil((byteCap * 4) / 3) + 8) {
+			throw oversizeError("inline payload too large");
+		}
 		const bytes = decodeBase64Image(ref.b64);
 		if (!bytes) {
 			const err = new Error("Muse image response carried invalid base64");
@@ -253,6 +281,7 @@ export const generateMuseImage = async ({
 			err.code = "IMAGE_GEN_PROVIDER_ERROR";
 			throw err;
 		}
+		if (bytes.length > byteCap) throw oversizeError("inline image too large");
 		return bytes;
 	}
 	const fileResponse = await fetchWithTimeout(fetchImpl, ref.url, { timeoutMs });
@@ -264,7 +293,15 @@ export const generateMuseImage = async ({
 		err.code = "IMAGE_GEN_PROVIDER_ERROR";
 		throw err;
 	}
+	// Pre-check the declared length so an announced-giant file fails before
+	// the download lands in memory; the post-check below still guards a
+	// missing or lying header.
+	const declaredLength = Number(fileResponse.headers?.get?.("content-length"));
+	if (Number.isFinite(declaredLength) && declaredLength > byteCap) {
+		throw oversizeError("declared download too large");
+	}
 	const arrayBuffer = await fileResponse.arrayBuffer();
+	if (arrayBuffer?.byteLength > byteCap) throw oversizeError("downloaded image too large");
 	return Buffer.from(arrayBuffer);
 };
 
