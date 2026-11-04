@@ -103,5 +103,20 @@ export function houseRequests(request) {
         method: 'POST',
         body: JSON.stringify(payload),
       }),
+    getImageGenProviders: () => request('/settings/image-gen/providers'),
+    saveImageGenKey: (providerId, key) =>
+      request(`/settings/image-gen/providers/${encodeURIComponent(providerId)}/key`, {
+        method: 'PUT',
+        body: JSON.stringify({ key }),
+      }),
+    clearImageGenKey: (providerId) =>
+      request(`/settings/image-gen/providers/${encodeURIComponent(providerId)}/key`, {
+        method: 'DELETE',
+      }),
+    testImageGenProvider: (providerId, prompt) =>
+      request(`/settings/image-gen/providers/${encodeURIComponent(providerId)}/test`, {
+        method: 'POST',
+        body: JSON.stringify(prompt ? { prompt } : {}),
+      }),
   };
 }

@@ -1179,6 +1179,14 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					runnerId: runner.runnerId,
 				});
 				return {
+					assigned: true,
+					projectId: cand.projectId,
+					taskId: cand.taskId,
+					runnerId: runner.runnerId,
+					executionId,
+					epoch,
+					stageId: cand.stage?.id ?? null,
+					kind: "integrate",
 					integration: {
 						taskBranch: attempt.taskBranch,
 						expectedTaskSha: attempt.expectedTaskSha,

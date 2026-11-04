@@ -23,6 +23,7 @@
 
 import path from "node:path";
 import { QUESTION_ME_SKILL_NAME, resolveQuestionMeOutputFile } from "../../shared/survey.js";
+import { renderSkillConditionals } from "../../shared/skillConditionals.js";
 import { normalizeSkillMode, skillPathForName } from "./skillsRegistry.js";
 
 /***
@@ -79,9 +80,11 @@ export function resolveSkillKeywordMap(skillKeywords = {}, stageConfig = {}, ski
 
 /***
  * MARK: applySkillKeywords
- * @description Applies the layered keyword map to skill text. Custom keys are
- *   substituted first (so they win over built-ins), then the built-in interpolation
- *   runs for the rest, leaving unknown `{{...}}` patterns untouched.
+ * @description Applies the layered keyword map to skill text. `{{#if key}}`
+ *   conditional blocks resolve first (falsy sections are dropped whole), then
+ *   custom keys are substituted (so they win over built-ins), then the
+ *   built-in interpolation runs for the rest, leaving unknown `{{...}}`
+ *   patterns untouched.
  * @example applySkillKeywords('Target: {{targetStage}} for {{project}}', { targetStage: 'Intake' }, ctx)
  * @param {string} text
  * @param {Object} keywordMap - Raw custom keyword values (may themselves contain {{built-ins}}).
@@ -94,6 +97,11 @@ export function applySkillKeywords(
 	interpolationContext = {},
 ) {
 	if (typeof text !== "string" || text === "") return "";
+	// Conditional sections resolve first so a falsy block (and any
+	// placeholders inside it) never reaches substitution. Texts without a
+	// conditional opener pass through byte-identical (see skillConditionals).
+	text = renderSkillConditionals(text, keywordMap);
+	if (text === "") return "";
 	const keys = Object.keys(keywordMap);
 	let result = text;
 	if (keys.length > 0) {

@@ -599,3 +599,89 @@ describe("buildSkillsPromptSections (creating-new-tickets-shaped attachments)", 
 		expect(block).toBe("## demo-skill\nGo to Stage {{stillUnknown}} now.");
 	});
 });
+
+describe("applySkillKeywords (conditional sections)", () => {
+	const ctx = { project: { name: "KainBain" } };
+
+	it("renders the block for a truthy keyword and still substitutes inside it", () => {
+		const out = applySkillKeywords(
+			"Base.{{#if imageGen}} Images via {{imageGen}}.{{/if}}",
+			{ imageGen: "muse" },
+			ctx,
+		);
+		expect(out).toBe("Base. Images via muse.");
+	});
+
+	it("drops the block whole for none/empty/missing (placeholders inside never leak)", () => {
+		const text = "Base.{{#if imageGen}} Images via {{imageGen}} into {{outputFile}}.{{/if}}";
+		expect(applySkillKeywords(text, { imageGen: "none" }, ctx)).toBe("Base.");
+		expect(applySkillKeywords(text, { imageGen: "" }, ctx)).toBe("Base.");
+		expect(applySkillKeywords(text, {}, ctx)).toBe("Base.");
+	});
+
+	it("keeps unknown placeholders outside a dropped block", () => {
+		const out = applySkillKeywords(
+			"Keep {{mystery}}.{{#if imageGen}}gone{{/if}}",
+			{ imageGen: "none" },
+			ctx,
+		);
+		expect(out).toBe("Keep {{mystery}}.");
+	});
+
+	it("preserves malformed conditional markers verbatim", () => {
+		const text = "Keep {{#if imageGen}}unclosed and {{mystery}}.";
+		expect(applySkillKeywords(text, { imageGen: "muse" }, ctx)).toBe(text);
+	});
+});
+
+describe("buildSkillsPromptSections (conditional sections)", () => {
+	const interpolationContext = { project: { name: "KainBain" } };
+	const bodyWithSection =
+		"Ask questions.{{#if imageGen}} Image questions use {{imageGen}}.{{/if}}";
+
+	it("omits the section from the injected prompt when the keyword is none", () => {
+		const result = buildSkillsPromptSections({
+			skills: [{ name: "demo-skill", config: { imageGen: "none" } }],
+			interpolationContext,
+			loadSkill: () =>
+				makeSkill({
+					body: bodyWithSection,
+					keywords: { imageGen: "none" },
+				}),
+		});
+		expect(result.sections).toHaveLength(1);
+		expect(result.sections[0]).toBe("# Stage Skills\n## demo-skill\nAsk questions.");
+	});
+
+	it("stage config overrides the KB_config default for the condition", () => {
+		const result = buildSkillsPromptSections({
+			skills: [{ name: "demo-skill", config: { imageGen: "muse" } }],
+			interpolationContext,
+			loadSkill: () =>
+				makeSkill({
+					body: bodyWithSection,
+					keywords: { imageGen: "none" },
+				}),
+		});
+		expect(result.sections[0]).toContain("Image questions use muse.");
+	});
+
+	it("a dropped section frees injection budget (size-cap accounting)", () => {
+		const loadSkill = () =>
+			makeSkill({ body: bodyWithSection, keywords: { imageGen: "none" } });
+		const withSection = buildSkillsPromptSections({
+			skills: [{ name: "demo-skill", config: { imageGen: "muse" } }],
+			interpolationContext,
+			maxChars: 40,
+			loadSkill,
+		});
+		const withoutSection = buildSkillsPromptSections({
+			skills: [{ name: "demo-skill", config: { imageGen: "none" } }],
+			interpolationContext,
+			maxChars: 40,
+			loadSkill,
+		});
+		expect(withSection.injected).toHaveLength(0);
+		expect(withoutSection.injected).toHaveLength(1);
+	});
+});

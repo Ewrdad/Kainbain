@@ -64,6 +64,9 @@ import {
 	parkTaskForSurvey,
 } from './parkTaskForSurvey.js';
 import {
+	kickSurveyImageJob,
+} from '../../imageGen/surveyImages.js';
+import {
 	GitDirtyTreeError,
 	resolveSha,
 } from '../../git.js';
@@ -1094,7 +1097,21 @@ export async function executeStage(
 					modifiedFiles,
 					duration,
 				});
-				if (surveyPark.parked) return surveyPark.response;
+				if (surveyPark.parked) {
+					// Eager background generation: image questions are ready
+					// (or honestly failed) before the human opens the survey.
+					// Fire-and-forget — the park itself never waits on it.
+					kickSurveyImageJob({
+						store,
+						cwd,
+						project: projectObj,
+						taskId,
+						task,
+						surveyFile: task.surveyFile || null,
+						stage,
+					});
+					return surveyPark.response;
+				}
 
 				task.surveyPending = false;
 				task.infraRetryCount = 0;

@@ -8,8 +8,9 @@ import { _sanitizeTaskTitle } from "./taskIdentity.js";
 import { toTaskDurationSummary } from "../taskDurationSummary.js";
 import { resolveStage } from "../flow/index.js";
 import { resolveStagesForTask } from "../flow/taskScheduler.js";
-import { normalizeSurveyFileName, readSurvey, resolveQuestionMeOutputFile, saveSurveyAnswers } from "./taskSurvey.js";
+import { normalizeSurveyFileName, readSurvey, resolveQuestionMeOutputFile, resolveSurveyPath, saveSurveyAnswers, withSurveyFileWriteLock } from "./taskSurvey.js";
 import { stageHasQuestionMe, unansweredRequired } from "../../shared/survey.js";
+import { ensureSurveyImages, persistChosenSurveyImages, resolveImageGenProvider } from "../imageGen/surveyImages.js";
 
 /***
  * MARK: surveyOutputFileForRequest
@@ -461,6 +462,30 @@ export async function registerTaskWorkRoutes(app, deps) {
 
 		const outputFile = surveyOutputFileForRequest(task, project, request);
 		const survey = readSurvey(project?.cwd, project, task.id, outputFile);
+		const stages = (typeof resolveStagesForTask === "function")
+			? (resolveStagesForTask(project, task) || [])
+			: [];
+		const stage = Array.isArray(stages)
+			? (stages.find((entry) => stageHasQuestionMe(entry) && resolveQuestionMeOutputFile(entry) === outputFile)
+				|| stages.find(stageHasQuestionMe)
+				|| null)
+			: null;
+		if (survey.exists) {
+			// Crash recovery for image questions: a park-time job killed by a
+			// restart leaves pending entries behind, and a key saved after the
+			// park heals no-key failures. Fire-and-forget — the read itself
+			// never waits; the job no-ops when there is nothing to do, never
+			// retries terminal generation failures, and dedupes concurrent
+			// runs, so polling cannot hammer the provider.
+			void ensureSurveyImages({
+				cwd: project?.cwd,
+				project,
+				taskId: task.id,
+				surveyFile: outputFile,
+				stage,
+				rounds: survey.rounds,
+			}).catch(() => {});
+		}
 		return {
 			taskId: task.id,
 			outputFile,
@@ -471,6 +496,7 @@ export async function registerTaskWorkRoutes(app, deps) {
 			errors: survey.errors,
 			missing: unansweredRequired(survey.rounds),
 			markdown: survey.markdown,
+			imageGen: { providerId: resolveImageGenProvider(stage) },
 		};
 	});
 
@@ -505,19 +531,35 @@ export async function registerTaskWorkRoutes(app, deps) {
 				return reply.status(400).send({ error: "answers must be an object keyed by question id", code: "SURVEY_INVALID" });
 			}
 			try {
-				const saved = saveSurveyAnswers({
-					cwd: project?.cwd,
-					project,
-					taskId: task.id,
-					outputFile,
-					patch,
-				});
+				// Serialized with the background image job's splices and the
+				// chosen-image merge below (which locks internally): one
+				// survey file, one writer at a time.
+				const surveyLockPath = resolveSurveyPath(project?.cwd, project, task.id, outputFile);
+				const saved = await withSurveyFileWriteLock(surveyLockPath, () =>
+					saveSurveyAnswers({
+						cwd: project?.cwd,
+						project,
+						taskId: task.id,
+						outputFile,
+						patch,
+					}),
+				);
 				survey = { ...readSurvey(project?.cwd, project, task.id, outputFile), status: saved.status, missing: saved.missing, unknownIds: saved.unknownIds };
 			} catch (err) {
 				const code = err?.code || "SURVEY_SAVE_FAILED";
 				app.log?.warn?.({ taskId: task.id, code, error: err?.message }, "Survey save rejected");
 				return reply.status(err?.statusCode || 400).send({ error: err?.message || "Invalid survey answers", code });
 			}
+			// Chosen image-question pictures land in assets/ with a survey
+			// file reference (markdown only — rounds already re-read above
+			// are unaffected). Awaited local disk IO; never fails the submit.
+			await persistChosenSurveyImages({
+				cwd: project?.cwd,
+				project,
+				taskId: task.id,
+				surveyFile: outputFile,
+				rounds: survey.rounds,
+			});
 		}
 
 		const missing = unansweredRequired(survey.rounds || []);

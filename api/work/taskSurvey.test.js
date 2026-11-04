@@ -20,6 +20,8 @@ import {
 	saveSurveyAnswers,
 	spliceRoundsIntoMarkdown,
 	stageHasQuestionMe,
+	updateSurveyImages,
+	withSurveyFileWriteLock,
 	DEFAULT_SURVEY_FILENAME,
 } from "./taskSurvey.js";
 import { parseSurvey } from "../../shared/survey.js";
@@ -286,6 +288,79 @@ describe("configurable survey files", () => {
 	});
 });
 
+describe("updateSurveyImages", () => {
+	const img = (overrides = {}) => q({
+		id: "qi",
+		type: "image",
+		text: "Pick a design",
+		options: ["dark", "light"],
+		required: false,
+		...overrides,
+	});
+	const ready = (option) => ({ option, file: `assets/survey-r1-qi-${option}.png`, status: "ready" });
+
+	it("splices images into the image question, preserving answers and prose", () => {
+		appendSurveyRound({ cwd, project, taskId, stage: "s1", questions: [q({ id: "q1" }), img()] });
+		saveSurveyAnswers({ cwd, project, taskId, patch: { q1: { selected: ["a"], notes: "why" } } });
+		const updated = updateSurveyImages({ cwd, project, taskId, questionId: "qi", images: [ready(0), ready(1)] });
+		expect(updated.round).toBe(1);
+		expect(updated.status).toBe("answered");
+		const { rounds } = readSurvey(cwd, project, taskId);
+		expect(rounds[0].questions.find((entry) => entry.id === "qi").images).toEqual([ready(0), ready(1)]);
+		expect(rounds[0].answers.q1).toEqual({ selected: ["a"], notes: "why" });
+		expect(updated.markdown).toContain("## Round 1");
+	});
+
+	it("updates the latest round containing the question unless a round is given", () => {
+		appendSurveyRound({ cwd, project, taskId, stage: "s1", questions: [img()] });
+		appendSurveyRound({ cwd, project, taskId, stage: "s1", questions: [img({ id: "qi2" })] });
+		updateSurveyImages({ cwd, project, taskId, questionId: "qi2", images: [ready(0)] });
+		const first = updateSurveyImages({ cwd, project, taskId, round: 1, questionId: "qi", images: [ready(1)] });
+		expect(first.round).toBe(1);
+		const { rounds } = readSurvey(cwd, project, taskId);
+		expect(rounds[0].questions[0].images).toEqual([ready(1)]);
+		expect(rounds[1].questions[0].images).toEqual([ready(0)]);
+	});
+
+	it("rejects missing files, questions, rounds, and non-image questions untouched", () => {
+		expect(() =>
+			updateSurveyImages({ cwd, project, taskId, questionId: "qi", images: [] }),
+		).toThrow(expect.objectContaining({ statusCode: 404, code: "SURVEY_NOT_FOUND" }));
+		appendSurveyRound({ cwd, project, taskId, stage: "s1", questions: [q({ id: "q1" }), img()] });
+		const surveyPath = path.join(cwd, "docs", "tasks", taskId, "SURVEY.md");
+		const before = fs.readFileSync(surveyPath, "utf8");
+		expect(() => updateSurveyImages({ cwd, project, taskId, questionId: "ghost", images: [] })).toThrow(
+			expect.objectContaining({ statusCode: 400, code: "SURVEY_INVALID" }),
+		);
+		expect(() => updateSurveyImages({ cwd, project, taskId, round: 9, questionId: "qi", images: [] })).toThrow(
+			expect.objectContaining({ statusCode: 400, code: "SURVEY_INVALID" }),
+		);
+		expect(() => updateSurveyImages({ cwd, project, taskId, questionId: "q1", images: [] })).toThrow(
+			/not an image question/,
+		);
+		expect(() =>
+			updateSurveyImages({
+				cwd, project, taskId, questionId: "qi",
+				images: [{ option: 0, file: "assets/a.png", status: "baking" }],
+			}),
+		).toThrow(expect.objectContaining({ statusCode: 400, code: "SURVEY_INVALID" }));
+		expect(fs.readFileSync(surveyPath, "utf8")).toBe(before);
+	});
+
+	it("merges against the latest answers when splicing repeatedly", () => {
+		appendSurveyRound({ cwd, project, taskId, stage: "s1", questions: [img({ required: true })] });
+		updateSurveyImages({ cwd, project, taskId, questionId: "qi", images: [ready(0)] });
+		saveSurveyAnswers({ cwd, project, taskId, patch: { qi: { selected: ["dark"], notes: "" } } });
+		const updated = updateSurveyImages({
+			cwd, project, taskId, questionId: "qi", images: [ready(0), ready(1)],
+		});
+		expect(updated.status).toBe("answered");
+		const { rounds } = readSurvey(cwd, project, taskId);
+		expect(rounds[0].questions[0].images).toHaveLength(2);
+		expect(rounds[0].answers.qi).toEqual({ selected: ["dark"], notes: "" });
+	});
+});
+
 describe("stageHasQuestionMe / resolveSurveyGate", () => {
 	it("detects the skill case-insensitively and tolerates string entries", () => {
 		expect(stageHasQuestionMe({ skills: [{ name: "Question-Me" }] })).toBe(true);
@@ -300,5 +375,73 @@ describe("stageHasQuestionMe / resolveSurveyGate", () => {
 		expect(resolveSurveyGate(stage, [{ round: 1, questions: [], answers: {} }])).toMatchObject({ park: false, status: "empty" });
 		expect(resolveSurveyGate(stage, [{ round: 1, questions: [q()], answers: {} }])).toMatchObject({ park: true, status: "pending" });
 		expect(resolveSurveyGate({ skills: [] }, [])).toMatchObject({ park: false });
+	});
+});
+
+describe("withSurveyFileWriteLock", () => {
+	it("serializes concurrent holders of the same file in FIFO order", async () => {
+		const file = path.join(cwd, "SURVEY.md");
+		const order = [];
+		const hold = async (name, gate) =>
+			withSurveyFileWriteLock(file, async () => {
+				order.push(`${name}:enter`);
+				await gate;
+				order.push(`${name}:exit`);
+				return name;
+			});
+		let releaseFirst;
+		const firstGate = new Promise((resolve) => {
+			releaseFirst = resolve;
+		});
+		const first = hold("a", firstGate);
+		// Let the first holder acquire before the second queues.
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		const second = hold("b", Promise.resolve());
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		// The second holder is queued: nothing of it has run yet.
+		expect(order).toEqual(["a:enter"]);
+		releaseFirst();
+		await expect(first).resolves.toBe("a");
+		await expect(second).resolves.toBe("b");
+		expect(order).toEqual(["a:enter", "a:exit", "b:enter", "b:exit"]);
+	});
+
+	it("lets different files proceed concurrently", async () => {
+		const order = [];
+		const hold = (file, name, gate) =>
+			withSurveyFileWriteLock(path.join(cwd, file), async () => {
+				order.push(`${name}:enter`);
+				await gate;
+				order.push(`${name}:exit`);
+			});
+		let release;
+		const gate = new Promise((resolve) => {
+			release = resolve;
+		});
+		const first = hold("A.md", "a", gate);
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		await hold("B.md", "b", Promise.resolve());
+		expect(order).toEqual(["a:enter", "b:enter", "b:exit"]);
+		release();
+		await first;
+	});
+
+	it("releases the next waiter when a holder throws, and propagates the error", async () => {
+		const file = path.join(cwd, "SURVEY.md");
+		const boom = new Error("boom");
+		const first = withSurveyFileWriteLock(file, async () => {
+			throw boom;
+		});
+		const second = withSurveyFileWriteLock(file, async () => "recovered");
+		await expect(first).rejects.toBe(boom);
+		await expect(second).resolves.toBe("recovered");
+	});
+
+	it("runs directly without locking on a missing path, and requires a function", async () => {
+		await expect(withSurveyFileWriteLock(null, async () => "ok")).resolves.toBe("ok");
+		await expect(withSurveyFileWriteLock("  ", () => "ok")).resolves.toBe("ok");
+		await expect(withSurveyFileWriteLock(path.join(cwd, "x.md"), null)).rejects.toThrow(
+			"requires a function",
+		);
 	});
 });

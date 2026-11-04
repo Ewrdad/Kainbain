@@ -7,12 +7,17 @@
 import { describe, it, expect } from "vitest";
 
 import {
+	IMAGE_ENTRY_STATUSES,
+	IMAGE_QUESTION_MAX_OPTIONS,
+	QUESTION_TYPES,
 	appendRound,
 	applyAnswers,
 	combinedAnswers,
 	extractFenceBlocks,
 	isQuestionVisible,
 	mergeSurveyDocuments,
+	normalizeQuestion,
+
 	parseSurvey,
 	renderSurveyMarkdown,
 	serializeRound,
@@ -220,6 +225,125 @@ describe("combinedAnswers / unansweredRequired / surveyStatus", () => {
 		expect(surveyStatus([round()])).toBe("pending");
 		const { rounds } = applyAnswers([round()], { q1: { selected: ["a"] } });
 		expect(surveyStatus(rounds)).toBe("answered");
+	});
+});
+
+describe("image questions", () => {
+	const img = (overrides = {}) =>
+		q({
+			id: "qi",
+			type: "image",
+			text: "Pick a design",
+			options: ["dark dashboard", "light dashboard"],
+			...overrides,
+		});
+
+	it("registers the image type with a 4-option cap and a pending/ready/failed lifecycle", () => {
+		expect(QUESTION_TYPES).toContain("image");
+		expect(IMAGE_QUESTION_MAX_OPTIONS).toBe(4);
+		expect(IMAGE_ENTRY_STATUSES).toEqual(["pending", "ready", "failed"]);
+	});
+
+	it("normalizes the image type and preserves backend-owned images", () => {
+		const question = normalizeQuestion(
+			img({ images: [{ option: 0, file: "assets/a.png", status: "ready" }] }),
+		);
+		expect(question.type).toBe("image");
+		expect(question.images).toEqual([{ option: 0, file: "assets/a.png", status: "ready" }]);
+		expect(normalizeQuestion(img()).images).toEqual([]);
+		// Unknown types still degrade to single (existing guarantee).
+		expect(normalizeQuestion({ ...img(), type: "stars" }).type).toBe("single");
+	});
+
+	it("validates a full ready/pending/failed lifecycle round-trip", () => {
+		const rounds = [
+			round({
+				questions: [
+					img({
+						images: [
+							{ option: 0, file: "assets/survey-r1-qi-0.png", status: "ready" },
+							{ option: 1, file: "assets/survey-r1-qi-1.png", status: "pending" },
+						],
+					}),
+					img({ id: "qj", options: ["logo A", "logo B"], images: [{ option: 0, file: "assets/x.png", status: "failed", error: "no-key" }] }),
+				],
+			}),
+		];
+		expect(validateSurvey(rounds)).toEqual({ ok: true, errors: [] });
+		const serialized = serializeRound(rounds[0]);
+		expect(JSON.parse(serialized).questions[0].images).toHaveLength(2);
+		expect(JSON.parse(serialized).questions[1].images[0].error).toBe("no-key");
+		// And the serialized form re-parses valid.
+		expect(validateSurvey(parseSurvey(`\`\`\`survey-json\n${serialized}\n\`\`\``).rounds).ok).toBe(true);
+	});
+
+	it("serializes byte-identical when no question carries images", () => {
+		const before = serializeRound(round({ questions: [q({ id: "q1" }), img()] }));
+		expect(before).not.toContain('"images"');
+		const parsed = JSON.parse(before);
+		expect(parsed.questions.map((entry) => entry.type)).toEqual(["single", "image"]);
+	});
+
+	it("rejects over-long option lists, malformed images, and multi-pick answers", () => {
+		const { ok, errors } = validateSurvey([
+			round({
+				questions: [
+					img({ id: "too-many", options: ["a", "b", "c", "d", "e"] }),
+					img({
+						id: "bad-images",
+						images: [
+							{ option: 7, file: "assets/a.png", status: "ready" },
+							{ option: 0, file: "", status: "ready" },
+							{ option: 0, file: "assets/a.png", status: "baking" },
+							"not-an-object",
+						],
+					}),
+					img({ id: "not-an-array", images: "nope" }),
+				],
+				answers: { "too-many": { selected: ["a", "b"], notes: "" } },
+			}),
+		]);
+		expect(ok).toBe(false);
+		const joined = errors.join("\n");
+		expect(joined).toMatch("at most 4 options");
+		expect(joined).toMatch(/images\[0\].*option must be an option index/);
+		expect(joined).toMatch(/images\[1\].*file is required/);
+		expect(joined).toMatch(/images\[2\].*unknown status 'baking'/);
+		expect(joined).toMatch(/images\[3\].*must be an object/);
+		expect(joined).toMatch("images must be an array");
+		expect(joined).toMatch("single-choice answer 'too-many' selects more than one option");
+	});
+
+	it("lets failed entries omit the file (no artifact exists) with a failure code", () => {
+		const { ok, errors } = validateSurvey([
+			round({
+				questions: [
+					q({
+						id: "qi",
+						type: "image",
+						text: "Pick a design",
+						options: ["dark dashboard", "light dashboard"],
+						images: [
+							{ option: 0, file: "assets/a.png", status: "ready" },
+							{ option: 1, status: "failed", code: "no-key", error: "No API key saved." },
+						],
+					}),
+				],
+			}),
+		]);
+		expect(errors).toEqual([]);
+		expect(ok).toBe(true);
+	});
+
+	it("treats image questions as single-pick for completion and self-reference rules", () => {
+		const rounds = [round({ questions: [img({ required: true })] })];
+		expect(surveyStatus(rounds)).toBe("pending");
+		const { rounds: answered } = applyAnswers(rounds, { qi: { selected: ["dark dashboard"] } });
+		expect(surveyStatus(answered)).toBe("answered");
+		const { errors } = validateSurvey([
+			round({ questions: [img({ showIf: { questionId: "qi", value: "dark dashboard" } })] }),
+		]);
+		expect(errors.join("\n")).toMatch("must not reference its own question");
 	});
 });
 

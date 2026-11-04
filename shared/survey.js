@@ -9,6 +9,14 @@
  *   `{ round, generatedAt, stage, questions: [{ id, type, text, options,
  *   required, showIf }], answers: { [qid]: { selected: string[], notes } } }`
  *
+ *   Image questions (`type: "image"`) behave like `single` (one favourite out
+ *   of ≤4) but render generated pictures: the agent writes description
+ *   `options`, the backend fills the `images[]` array
+ *   (`{ option, file, status, error? }`), and answers still select by
+ *   description string — so every validation/completion path below keeps
+ *   working, and a question whose images are missing or failed simply renders
+ *   its descriptions instead.
+ *
  *   Conditional questions use a deliberately small `showIf` grammar so agents
  *   cannot get confused: `{ questionId, value }` (visible when the referenced
  *   answer selected `value`) or `{ questionId, values: [...] }` (visible when
@@ -28,7 +36,34 @@
 
 export const SURVEY_FENCE = "survey-json";
 
-export const QUESTION_TYPES = ["single", "multiple"];
+export const QUESTION_TYPES = ["single", "multiple", "image"];
+
+/***
+ * MARK: IMAGE_QUESTION_MAX_OPTIONS
+ * @description Most descriptions one image question may carry (one generated
+ *   picture per description; the human picks a single favourite).
+ * @example IMAGE_QUESTION_MAX_OPTIONS => 4
+ ***/
+export const IMAGE_QUESTION_MAX_OPTIONS = 4;
+
+/***
+ * MARK: IMAGE_ENTRY_STATUSES
+ * @description Lifecycle of one generated survey image: `pending` (queued or
+ *   generating), `ready` (bytes on disk under `file`), `failed` (see
+ *   `error` — the UI falls back to the written description).
+ * @example IMAGE_ENTRY_STATUSES.includes('ready') => true
+ ***/
+export const IMAGE_ENTRY_STATUSES = ["pending", "ready", "failed"];
+
+/***
+ * MARK: IMAGE_ENTRY_FAILURE_CODES
+ * @description Machine-readable `code` carried by failed image entries
+ *   (informational — validation ignores it): `no-key` (no API key saved when
+ *   the job ran — retried once a key exists), `cap` (per-survey image budget
+ *   spent), `gen` (the provider call itself failed).
+ * @example IMAGE_ENTRY_FAILURE_CODES.includes('no-key') => true
+ ***/
+export const IMAGE_ENTRY_FAILURE_CODES = ["no-key", "cap", "gen"];
 
 /***
  * MARK: extractFenceBlocks
@@ -84,8 +119,9 @@ export function normalizeRound(value, index = 0) {
 /***
  * MARK: normalizeQuestion
  * @description Coerces one question descriptor into canonical shape.
- *   Returns null for non-objects; `showIf` is passed through untouched so
- *   `validateSurvey` (not the reader) decides whether it is well-formed.
+ *   Returns null for non-objects; `showIf` and `images` are passed through
+ *   untouched so `validateSurvey` (not the reader) decides whether they are
+ *   well-formed.
  * @example normalizeQuestion({ id: 'q1', text: 'T?', options: ['a'] }).type => 'single'
  * @param {*} value
  * @returns {Object|null}
@@ -99,12 +135,18 @@ export function normalizeQuestion(value) {
 		: [];
 	return {
 		id,
-		type: value.type === "multiple" ? "multiple" : "single",
+		type:
+			value.type === "multiple"
+				? "multiple"
+				: value.type === "image"
+					? "image"
+					: "single",
 		text,
 		options,
 		required: value.required === true,
 		showIf:
 			value.showIf === undefined || value.showIf === null ? null : value.showIf,
+		images: Array.isArray(value.images) ? value.images : [],
 	};
 }
 
@@ -143,7 +185,9 @@ export function parseSurvey(markdown) {
  * MARK: serializeRound
  * @description Serializes one round to indented JSON for embedding in a
  *   `survey-json` fence. Key order is fixed (round, generatedAt, stage,
- *   questions, answers) so diffs stay readable.
+ *   questions, answers) so diffs stay readable; a question's `images` array
+ *   is emitted only when non-empty, so surveys without generated pictures
+ *   serialize byte-identical to before image questions existed.
  * @example serializeRound({ round: 1, questions: [], answers: {} }) => '{\n  "round": 1, ...'
  * @param {Object} round
  * @returns {string}
@@ -160,6 +204,7 @@ export function serializeRound(round) {
 			options: q.options || [],
 			required: q.required === true,
 			showIf: q.showIf === undefined ? null : q.showIf,
+			...(Array.isArray(q.images) && q.images.length > 0 ? { images: q.images } : {}),
 		})),
 		answers: round.answers || {},
 	};
@@ -290,9 +335,50 @@ export function validateSurvey(rounds) {
 				errors.push(`${qlabel}: at least one option is required`);
 			} else if (q.options.some((option) => !String(option).trim())) {
 				errors.push(`${qlabel}: options must not be empty`);
+			} else if (
+				q.type === "image" &&
+				q.options.length > IMAGE_QUESTION_MAX_OPTIONS
+			) {
+				errors.push(
+					`${qlabel}: image questions allow at most ${IMAGE_QUESTION_MAX_OPTIONS} options`,
+				);
 			}
-			if (q.type !== "single" && q.type !== "multiple") {
+			if (q.type !== "single" && q.type !== "multiple" && q.type !== "image") {
 				errors.push(`${qlabel}: unknown type '${q.type}'`);
+			}
+			if (q.images !== undefined && q.images !== null) {
+				if (!Array.isArray(q.images)) {
+					errors.push(`${qlabel}: images must be an array`);
+				} else {
+					q.images.forEach((entry, index) => {
+						const elabel = `${qlabel} images[${index}]`;
+						if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+							errors.push(`${elabel}: must be an object`);
+							return;
+						}
+						if (
+							!Number.isInteger(entry.option) ||
+							entry.option < 0 ||
+							entry.option >= (q.options?.length || 0)
+						) {
+							errors.push(`${elabel}: option must be an option index`);
+						}
+						if (!IMAGE_ENTRY_STATUSES.includes(entry.status)) {
+							errors.push(`${elabel}: unknown status '${entry.status}'`);
+						}
+						// Ready and pending entries name their artifact; a failed
+						// entry has no artifact, so `file` is optional there.
+						if (
+							entry.status !== "failed" &&
+							(typeof entry.file !== "string" || !entry.file.trim())
+						) {
+							errors.push(`${elabel}: file is required`);
+						}
+						if (entry.error !== undefined && typeof entry.error !== "string") {
+							errors.push(`${elabel}: error must be a string`);
+						}
+					});
+				}
 			}
 			const showIfError = validateShowIf(q.showIf);
 			if (showIfError) {
@@ -306,7 +392,11 @@ export function validateSurvey(rounds) {
 				const laterInRound = round.questions.some((other) => other?.id === q.showIf.questionId);
 				if (!laterInRound) errors.push(`${qlabel}: showIf references unknown question '${q.showIf.questionId}'`);
 			}
-			if (q.type === "single" && q.showIf && q.showIf.questionId === q.id) {
+			if (
+				(q.type === "single" || q.type === "image") &&
+				q.showIf &&
+				q.showIf.questionId === q.id
+			) {
 				errors.push(`${qlabel}: showIf must not reference its own question`);
 			}
 		}
@@ -328,7 +418,10 @@ export function validateSurvey(rounds) {
 			}
 			const unknown = selected.filter((s) => !question.options.includes(s));
 			if (unknown.length > 0) errors.push(`${label}: answer '${qid}' selects unknown option(s): ${unknown.join(", ")}`);
-			if (question.type === "single" && selected.length > 1) {
+			if (
+				(question.type === "single" || question.type === "image") &&
+				selected.length > 1
+			) {
 				errors.push(`${label}: single-choice answer '${qid}' selects more than one option`);
 			}
 			if (answer?.notes !== undefined && typeof answer.notes !== "string") {

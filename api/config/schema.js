@@ -1558,6 +1558,35 @@ export const CONFIG_SCHEMA = [
 		group: "skills",
 		doc: "Cap on injected skill text (chars) in one chat turn.",
 	},
+	{
+		key: "imageGenMuseApiKey",
+		env: "KAINBAIN_IMAGE_GEN_MUSE_API_KEY",
+		aliases: [],
+		type: "string",
+		default: "",
+		secret: true,
+		group: "skills",
+		doc: "Meta Model API key for Muse Image survey illustrations. Overrides any key saved in System Settings › Images; empty (default) uses the stored key.",
+	},
+	{
+		key: "imageGenDir",
+		env: "KAINBAIN_IMAGE_GEN_DIR",
+		aliases: [],
+		type: "path",
+		default: () => path.join(os.homedir(), ".kainbain", "image-gen"),
+		defaultDoc: "~/.kainbain/image-gen",
+		group: "skills",
+		doc: "Directory holding the server-owned image-gen key file (0600).",
+	},
+	{
+		key: "imageGenMuseBaseUrl",
+		env: "KAINBAIN_IMAGE_GEN_MUSE_BASE_URL",
+		aliases: [],
+		type: "url",
+		default: "",
+		group: "skills",
+		doc: "Meta Model API base URL override for Muse Image. Empty (default) uses https://api.meta.ai/v1.",
+	},
 
 	// --- Tasks & Review -----------------------------------------------------
 	{
