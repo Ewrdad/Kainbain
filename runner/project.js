@@ -601,6 +601,7 @@ export async function refreshWorktreeToRemote(workdir, branch) {
  *   (the Runner ships without the backend tree).
  * @param {*} value - String, project record, or `{ docsDirName }` object.
  * @returns {string} Safe bare folder name.
+ * @example resolveRunnerDocsDirName({ docsDirName: 'notes' }) => 'notes'
  ***/
 export function resolveRunnerDocsDirName(value) {
 	let raw = value;
@@ -630,7 +631,7 @@ export function resolveRunnerDocsDirName(value) {
  *   failures (a5228675) — the Runner commits it on the task branch while the
  *   backend holds an untracked copy on main.
  * @example await syncTaskDocs({ primaryCwd: '/repo', workdir: '/w/kb-t', taskId: 't1' }) => 3
- * @param {Object} opts - `{ primaryCwd, workdir, taskId }`.
+ * @param {Object} opts - `{ primaryCwd, workdir, taskId, docsDirName, project }` (last two optional; a valid custom docs folder name wins).
  * @returns {Promise<number>} Number of files copied (0 when nothing to copy).
  ***/
 export async function syncTaskDocs({ primaryCwd, workdir, taskId, docsDirName = null, project = null } = {}) {
