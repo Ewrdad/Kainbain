@@ -810,6 +810,10 @@ export class RunnerRegistry {
 		if (record.credential) this.credentials.delete(record.credential);
 		record.credential = null;
 		record.status = "revoked";
+		// The join nonce deliberately stays: it is immutable once set, so
+		// a same-boot Runner can still collect a re-issued credential via
+		// the one-time handover; a restarted Runner (new nonce) safely
+		// falls back to the manual paste.
 		this._persist();
 		return this._public(record);
 	}

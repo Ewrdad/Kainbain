@@ -142,6 +142,73 @@ describe("RunnerRegistry credential handover", () => {
 		expect(collect.credential).toBe("cred-2");
 	});
 
+	test("a re-issued credential after revoke+approve is collectible by the same boot nonce", () => {
+		const runners = registry();
+		runners.register({
+			runnerId: "r1",
+			joinToken: "join-secret",
+			facts: FACTS,
+			joinNonce: "nonce-1",
+		});
+		runners.approve("r1");
+		runners.revoke("r1");
+		// Re-approval issues a fresh credential; the nonce is immutable
+		// once set, so the still-running boot collects the new one.
+		const { credential } = runners.approve("r1");
+		expect(credential).toBe("cred-2");
+		const collect = runners.register({
+			runnerId: "r1",
+			joinToken: "join-secret",
+			facts: FACTS,
+			joinNonce: "nonce-1",
+		});
+		expect(collect.credential).toBe("cred-2");
+		// A restarted boot (different nonce) still gets nothing.
+		const restarted = runners.register({
+			runnerId: "r1",
+			joinToken: "join-secret",
+			facts: FACTS,
+			joinNonce: "nonce-2",
+		});
+		expect(restarted.credential).toBeNull();
+	});
+
+	test("public payloads never expose the credential, nonce, or exposure flag", () => {
+		const runners = registry();
+		runners.register({
+			runnerId: "r1",
+			joinToken: "join-secret",
+			facts: FACTS,
+			joinNonce: "nonce-1",
+		});
+		runners.approve("r1");
+		// The one-time handover response carries the credential; nothing else does.
+		const collect = runners.register({
+			runnerId: "r1",
+			joinToken: "join-secret",
+			facts: FACTS,
+			joinNonce: "nonce-1",
+		});
+		expect(collect.credential).toBe("cred-1");
+		for (const key of ["joinNonce", "credentialExposed"]) {
+			expect(collect).not.toHaveProperty(key);
+		}
+		for (const row of runners.list()) {
+			expect(row).not.toHaveProperty("credential");
+			expect(row).not.toHaveProperty("joinNonce");
+			expect(row).not.toHaveProperty("credentialExposed");
+		}
+		// Repeated polls after the handover carry no credential either.
+		const again = runners.register({
+			runnerId: "r1",
+			joinToken: "join-secret",
+			facts: FACTS,
+			joinNonce: "nonce-1",
+		});
+		expect(again.credential).toBeNull();
+		expect(again).not.toHaveProperty("joinNonce");
+	});
+
 	test("the handover flag survives a restart (no double issue)", () => {
 		const stateFile = tmpRunnerState();
 		let n = 0;

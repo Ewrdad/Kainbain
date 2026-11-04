@@ -65,4 +65,28 @@ describe("seedDemoProject", () => {
 		expect(seedDemoProject(null)).toBeNull();
 		expect(seedDemoProject({})).toBeNull();
 	});
+
+	it("writes the marker on success and skips seeding once it exists", () => {
+		const store = emptyStore();
+		const markerFile = path.join(tempProjectsDir, "engine", "seed-demo.json");
+		const project = seedDemoProject(store, { markerFile });
+		expect(project).not.toBeNull();
+		expect(fs.existsSync(markerFile)).toBe(true);
+		expect((fs.statSync(markerFile).mode & 0o777).toString(8)).toBe("600");
+		expect(JSON.parse(fs.readFileSync(markerFile, "utf8")).name).toBe(DEMO_SEED_PROJECT_NAME);
+
+		// A later boot whose store is empty again (user deleted every
+		// project) must NOT resurrect the demo: the marker suppresses it.
+		const freshStore = emptyStore();
+		expect(seedDemoProject(freshStore, { markerFile })).toBeNull();
+		expect(freshStore.listProjects()).toHaveLength(0);
+	});
+
+	it("treats any existing marker path (even a directory) as already seeded", () => {
+		const store = emptyStore();
+		const markerFile = path.join(tempProjectsDir, "engine-marker-dir");
+		fs.mkdirSync(markerFile, { recursive: true });
+		expect(seedDemoProject(store, { markerFile })).toBeNull();
+		expect(store.listProjects()).toHaveLength(0);
+	});
 });

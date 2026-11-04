@@ -64,7 +64,23 @@ remove_dir() { if [ "$DRY_RUN" = "1" ]; then echo "would remove: $1/"; else echo
 
 # --- Guards (before anything destructive) --------------------------------------
 [ -n "$INSTALL_DIR" ] || { echo "uninstall.sh: --install-dir must not be empty" >&2; exit 2; }
-case "$INSTALL_DIR" in "/"|"$HOME") echo "uninstall.sh: refusing to uninstall $INSTALL_DIR itself" >&2; exit 2 ;; esac
+# Normalize to a real absolute path (trailing slashes stripped, symlinks
+# resolved) when the directory exists, so the guards below compare real
+# paths, not spellings — `--install-dir ~/` must not slip past them.
+INSTALL_DIR="${INSTALL_DIR%/}"
+if [ -d "$INSTALL_DIR" ]; then
+  if ! INSTALL_DIR="$(cd "$INSTALL_DIR" 2>/dev/null && pwd -P)"; then
+    echo "uninstall.sh: cannot resolve --install-dir (permission denied?)" >&2; exit 2
+  fi
+fi
+case "$INSTALL_DIR" in
+  "/"|"$HOME") echo "uninstall.sh: refusing to uninstall $INSTALL_DIR itself" >&2; exit 2 ;;
+esac
+# Refuse any ancestor of the home directory (e.g. --install-dir /home):
+# purge would rm -rf a directory that contains everything the user owns.
+case "$HOME/" in
+  "$INSTALL_DIR/"*) echo "uninstall.sh: refusing --install-dir $INSTALL_DIR (it contains the home directory $HOME)" >&2; exit 2 ;;
+esac
 if [ "$PURGE" = "1" ] && [ "$YES" != "1" ]; then
   if [ "$DRY_RUN" = "1" ]; then
     echo "would ask: type PURGE to confirm deleting user state under $INSTALL_DIR"
@@ -78,8 +94,12 @@ if [ "$PURGE" = "1" ] && [ "$YES" != "1" ]; then
   fi
 fi
 if [ "$PURGE" = "1" ] && [ "$DRY_RUN" != "1" ]; then
-  if [ ! -f "$INSTALL_DIR/docker-compose.yml" ] && [ ! -f "$INSTALL_DIR/.env" ] && [ ! -f "$INSTALL_DIR/release-manifest.json" ]; then
-    echo "uninstall.sh: $INSTALL_DIR has no docker-compose.yml, .env, or release-manifest.json — refusing --purge there (wrong --install-dir?)" >&2
+  # install.sh always writes docker-compose.yml together with .env and
+  # release-manifest.json, so require the compose file PLUS one more marker:
+  # a directory that merely happens to hold one of them (a source checkout
+  # has docker-compose.yml but no .env/manifest) is never purged.
+  if [ ! -f "$INSTALL_DIR/docker-compose.yml" ] || { [ ! -f "$INSTALL_DIR/.env" ] && [ ! -f "$INSTALL_DIR/release-manifest.json" ]; }; then
+    echo "uninstall.sh: $INSTALL_DIR is not a KainBain install (needs docker-compose.yml plus .env or release-manifest.json) — refusing --purge there (wrong --install-dir?)" >&2
     exit 1
   fi
 fi

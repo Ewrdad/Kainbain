@@ -260,6 +260,9 @@ adopt_checkouts() {
   # repos via one-click adoption). $1 = 1 for dry-run (plan only).
   local dry="$1" found=0 adopted=0 skipped=0
   local abs_adopt abs_projects
+  # Container-side mount point of $PROJECTS_DIR — same default the compose
+  # template uses, overridable through the environment exactly like compose.
+  local container_projects_base="${KAINBAIN_PROJECTS_CONTAINER_PATH:-/workspace/projects}"
   abs_adopt="$(cd "$ADOPT_FROM" 2>/dev/null && pwd)" || { echo "install.sh: WARN --adopt-from $ADOPT_FROM is not a directory — skipping adoption" >&2; return 0; }
   abs_projects="$(cd "$PROJECTS_DIR" 2>/dev/null && pwd || printf '%s' "$PROJECTS_DIR")"
   case "$abs_adopt/" in
@@ -269,13 +272,13 @@ adopt_checkouts() {
         [ -e "${child}.git" ] || continue
         found=$((found+1))
         [ "$found" -gt 20 ] && { echo "install.sh: --adopt-from capped at 20 checkouts (skipping the rest)" >&2; break; }
-        # The backend sees host $PROJECTS_DIR at /workspace/projects
-        # (compose default); translate so the registered path resolves
-        # inside the container.
+        # The backend sees host $PROJECTS_DIR mounted at the compose
+        # container path (default /workspace/projects); translate so the
+        # registered path resolves inside the container.
         rel="${child#$abs_adopt/}"; rel="${rel%/}"
         middle="${abs_adopt#$abs_projects}"; middle="${middle#/}"
         [ -n "$middle" ] && middle="$middle/"
-        cpath="/workspace/projects/$middle$rel"
+        cpath="$container_projects_base/$middle$rel"
         if [ "$dry" = "1" ]; then
           echo "would adopt: $child (as $cpath)"
           adopted=$((adopted+1))

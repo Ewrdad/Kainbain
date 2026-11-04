@@ -100,4 +100,10 @@ setup_case
 mkdir -p "$CASE_DIR/repos/repo-a/.git"
 bash deploy/install.sh --no-start --skip-pull --runners 0 --install-dir "$CASE_DIR/app" --projects-dir "$CASE_DIR/repos" --adopt-from "$CASE_DIR/repos" --manifest "$CASE_DIR/manifest.json" > "$CASE_DIR/out.txt" 2>&1
 check "adopt no-start: defers" grep -q "adopt-from skipped with --no-start" "$CASE_DIR/out.txt"
+# 15. A custom KAINBAIN_PROJECTS_CONTAINER_PATH is honored in the planned
+# container paths (same override the compose template reads).
+setup_case
+mkdir -p "$CASE_DIR/repos/repo-a/.git"
+KAINBAIN_PROJECTS_CONTAINER_PATH=/data/projects bash deploy/install.sh --dry-run --install-dir "$CASE_DIR/app" --projects-dir "$CASE_DIR/repos" --adopt-from "$CASE_DIR/repos" --manifest "$CASE_DIR/manifest.json" > "$CASE_DIR/out.txt" 2>&1
+check "adopt container-path override" grep -q "(as /data/projects/repo-a)" "$CASE_DIR/out.txt"
 kb_finish "install.test.sh"

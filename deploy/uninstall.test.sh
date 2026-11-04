@@ -136,6 +136,41 @@ bash deploy/uninstall.sh --purge --yes --install-dir "$CASE_DIR/not-an-install" 
 check "purge-guard: exit non-zero" test "$rc" != 0
 check "purge-guard: dir untouched" test -f "$CASE_DIR/not-an-install/file.txt"
 
+# 7b. --purge refuses a directory holding only ONE marker (e.g. a source
+# checkout with just docker-compose.yml) — compose plus .env/manifest required.
+setup_install
+mkdir -p "$CASE_DIR/half-install" && touch "$CASE_DIR/half-install/docker-compose.yml" && echo precious > "$CASE_DIR/half-install/file.txt"
+bash deploy/uninstall.sh --purge --yes --install-dir "$CASE_DIR/half-install" > "$CASE_DIR/out.txt" 2>&1; rc=$?
+check "purge-guard: single marker not enough" test "$rc" != 0
+check "purge-guard: half-install untouched" test -f "$CASE_DIR/half-install/file.txt"
+
+# 7c. Fail-safe path guards: home itself, a trailing-slash spelling of it,
+# and any ancestor of home are refused before anything destructive runs.
+setup_install
+bash deploy/uninstall.sh --install-dir "$HOME" >/dev/null 2>&1; check "guard: \$HOME refused exit 2" test "$?" = 2
+bash deploy/uninstall.sh --purge --yes --install-dir "$HOME/" > "$CASE_DIR/out.txt" 2>&1; rc=$?
+check "guard: trailing-slash \$HOME/ refused exit 2" test "$rc" = 2
+check "guard: \$HOME/ message" grep -q "refusing to uninstall" "$CASE_DIR/out.txt"
+check "guard: home contents intact" test -f "$HOME/.kainbain/runner-join.token"
+mkdir -p "$CASE_DIR/precious" && echo precious > "$CASE_DIR/precious/file.txt"
+bash deploy/uninstall.sh --purge --yes --install-dir "$CASE_DIR" > "$CASE_DIR/out.txt" 2>&1; rc=$?
+check "guard: ancestor of \$HOME refused exit 2" test "$rc" = 2
+check "guard: ancestor message" grep -q "contains the home directory" "$CASE_DIR/out.txt"
+check "guard: ancestor dir intact" test -f "$CASE_DIR/precious/file.txt"
+# A symlink to home is resolved before the guard fires.
+ln -s "$HOME" "$CASE_DIR/home-link"
+bash deploy/uninstall.sh --purge --yes --install-dir "$CASE_DIR/home-link" >/dev/null 2>&1; rc=$?
+check "guard: symlink to \$HOME refused" test "$rc" = 2
+check "guard: symlink target intact" test -f "$HOME/.kainbain/runner-join.token"
+
+# 7d. A trailing slash on a normal install dir is normalized, not a bypass.
+setup_install
+bash deploy/uninstall.sh --dry-run --install-dir "$APP/" > "$CASE_DIR/out.txt" 2>&1; rc=$?
+APP_REAL="$(cd "$APP" && pwd -P)"
+check "normalize: trailing slash dry-run exit 0" test "$rc" = 0
+check "normalize: plans the real path" grep -q "would remove: $APP_REAL/docker-compose.yml" "$CASE_DIR/out.txt"
+check "normalize: still nothing deleted" test -f "$APP/docker-compose.yml"
+
 # 8. --all-runners also removes foreign units and orphaned env/credential files.
 setup_install
 echo orphan > "$HOME/.kainbain/runner-ghost.env"

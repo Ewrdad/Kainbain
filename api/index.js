@@ -20,6 +20,7 @@ import { PromptCurationEngine } from "./promptCuration.js";
 import { config } from "./config.js";
 import { ProjectStore } from "./projectStore.js";
 import { seedDemoProject } from "./project/seedDemo.js";
+import { resolveStatePath } from "./flow/resolveStatePath.js";
 import { isAllowedCorsOrigin } from "./cors.js";
 import { createProjectResolvers } from "./projectResolution.js";
 import { createSessionHelpers } from "./sessionResolution.js";
@@ -88,8 +89,13 @@ prepareProjects(projectStore, taskStore);
 // local-only starter project when the store is empty, so a fresh
 // install opens on a live board. Never throws (seedDemoProject yields
 // null on any failure), and contributor boots leave the flag off.
+// The marker file lives in the engine state dir (~/.kainbain/engine in
+// the container, i.e. the host state dir via compose), so the seed is
+// one-time per install and uninstall --purge resets it.
 if (config.seedDemo === true) {
-	seedDemoProject(projectStore);
+	seedDemoProject(projectStore, {
+		markerFile: resolveStatePath(null, null, "seed-demo.json"),
+	});
 }
 
 const { resolveProjectId, requireProject, resolveAndGuardProject } = createProjectResolvers(projectStore);
