@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -31,10 +31,8 @@ function originWithMergeTask(taskBranch) {
 	execFileSync("git", ["init", "-q", "--bare"], { cwd: origin, stdio: "ignore" });
 	const backend = fs.mkdtempSync(path.join(os.tmpdir(), "kb-intbusy-backend-"));
 	execFileSync("git", ["clone", "-q", origin, backend], { stdio: "ignore" });
-	for (const dir of [backend]) {
-		execFileSync("git", ["config", "user.email", "t@t.t"], { cwd: dir, stdio: "ignore" });
-		execFileSync("git", ["config", "user.name", "t"], { cwd: dir, stdio: "ignore" });
-	}
+	execFileSync("git", ["config", "user.email", "t@t.t"], { cwd: backend, stdio: "ignore" });
+	execFileSync("git", ["config", "user.name", "t"], { cwd: backend, stdio: "ignore" });
 	fs.writeFileSync(path.join(backend, "base.txt"), "base");
 	execFileSync("git", ["add", "."], { cwd: backend, stdio: "ignore" });
 	execFileSync("git", ["commit", "-qm", "init"], { cwd: backend, stdio: "ignore" });
@@ -49,45 +47,13 @@ function originWithMergeTask(taskBranch) {
 	return { origin, backend };
 }
 
-/***
- * MARK: Busy Merge Falls Through Dispatch
- * @description A merge candidate whose integration slot is leased must not
- *   starve the fleet: `POST /runners/dispatch` skips the busy merge (its
- *   request stays queued) and assigns the next matchable candidate. When
- *   the busy merge is the only candidate, the route still answers
- *   `INTEGRATION_BUSY` so Runners back off without burning idle budget.
- *   Minimal Fastify app over the real route, registry, claim store, and
- *   queue; tasks and projects are stubs, git is a throwaway origin.
- ***/
-describe("Busy merge falls through dispatch", () => {
-	let app;
-	let registry;
-	let claims;
-	let queue;
-	let project;
-	let listed;
-	const dirs = [];
+const stages = [
+	{ id: "agent-1", name: "Implement", type: "agent", harness: "mock" },
+	{ id: "merge-1", name: "Merge", type: "merge" },
+];
 
-	const credentialFor = (runnerId) => {
-		registry.register({ runnerId, joinToken: "join-secret", facts: FACTS });
-		const { credential } = registry.approve(runnerId);
-		registry.heartbeat({ runnerId, credential, facts: FACTS });
-		return credential;
-	};
-
-	const dispatchAs = (credential) =>
-		app.inject({
-			method: "POST",
-			url: "/runners/dispatch",
-			headers: { "x-runner-credential": credential },
-			payload: {},
-		});
-
-	const stages = [
-		{ id: "agent-1", name: "Implement", type: "agent", harness: "mock" },
-		{ id: "merge-1", name: "Merge", type: "merge" },
-	];
-	const taskMerge = {
+const makeTasks = () => [
+	{
 		id: "tm",
 		branch: "kb/tm",
 		status: "in_stage",
@@ -95,74 +61,143 @@ describe("Busy merge falls through dispatch", () => {
 		enteredStageAt: "2026-11-04T08:00:00.000Z",
 		stages,
 		reports: [],
-	};
-	const taskAgent = {
+	},
+	{
 		id: "ta",
 		status: "in_stage",
 		currentStageId: "agent-1",
 		enteredStageAt: "2026-11-04T07:00:00.000Z",
 		stages,
 		reports: [],
-	};
+	},
+];
 
-	beforeAll(async () => {
-		const { origin, backend } = originWithMergeTask("kb/tm");
-		dirs.push(origin, backend);
-		project = { id: "p1", cwd: backend, stages };
-		listed = [taskMerge, taskAgent];
-		registry = new RunnerRegistry({ joinToken: "join-secret", stateFile: tmpFile("runners.json") });
-		claims = new ClaimStore({ stateFile: tmpFile("claims.json") });
-		queue = new IntegrationQueue();
-		const taskStore = {
-			listTasks: () => listed,
-			getTask: (projectId, taskId) => listed.find((t) => t.id === taskId) || null,
-			isTaskBlocked: () => ({ blocked: false }),
-			resolveTaskBranch: (t) => t.branch || `kb/${t.id}`,
-			updateTask: (projectId, taskId, updates) => {
-				Object.assign(listed.find((t) => t.id === taskId) || {}, updates);
-			},
-		};
-		const projectStore = {
-			listProjects: () => [project],
-			getProject: () => project,
-		};
-		app = Fastify();
-		await app.register(registerRunnerRoutes, {
-			deps: {
-				runnerRegistry: registry,
-				integrationQueue: queue,
-				taskStore,
-				projectStore,
-				claimStore: claims,
-				steerStore: {},
-				executionLedger: {},
-				eventBridge: null,
-				resolveAndGuardProject: (id) => id,
-			},
+async function buildApp(backend) {
+	const project = { id: "p1", cwd: backend, stages };
+	const listed = makeTasks();
+	const registry = new RunnerRegistry({ joinToken: "join-secret", stateFile: tmpFile("runners.json") });
+	const claims = new ClaimStore({ stateFile: tmpFile("claims.json") });
+	const queue = new IntegrationQueue();
+	const taskStore = {
+		listTasks: () => listed,
+		getTask: (projectId, taskId) => listed.find((t) => t.id === taskId) || null,
+		isTaskBlocked: () => ({ blocked: false }),
+		resolveTaskBranch: (t) => t.branch || `kb/${t.id}`,
+		updateTask: (projectId, taskId, updates) => {
+			Object.assign(listed.find((t) => t.id === taskId) || {}, updates);
+		},
+	};
+	const projectStore = {
+		listProjects: () => [project],
+		getProject: () => project,
+	};
+	const app = Fastify();
+	await app.register(registerRunnerRoutes, {
+		deps: {
+			runnerRegistry: registry,
+			integrationQueue: queue,
+			taskStore,
+			projectStore,
+			claimStore: claims,
+			steerStore: {},
+			executionLedger: {},
+			eventBridge: null,
+			resolveAndGuardProject: (id) => id,
+		},
+	});
+	await app.ready();
+	const credentialFor = (runnerId) => {
+		registry.register({ runnerId, joinToken: "join-secret", facts: FACTS });
+		const { credential } = registry.approve(runnerId);
+		registry.heartbeat({ runnerId, credential, facts: FACTS });
+		return credential;
+	};
+	const dispatchAs = (credential) =>
+		app.inject({
+			method: "POST",
+			url: "/runners/dispatch",
+			headers: { "x-runner-credential": credential },
+			payload: {},
 		});
-		await app.ready();
-		// The merge slot is leased to another Runner: every merge dispatch
-		// from here on meets a busy slot.
+	return { app, registry, claims, queue, project, listed, credentialFor, dispatchAs, backend };
+}
+
+/***
+ * MARK: Merge Dispatch Answer Shape
+ * @description The merge-dispatch answer must be a complete assignment: a
+ *   free slot returns `assigned: true` with the claim fencing
+ *   (`executionId`/`epoch`), `kind: "integrate"`, and the lease payload —
+ *   anything less reads as "no work" to the Runner while the claim and
+ *   lease it minted lapse unseen (fleet-wide idle merge churn). A busy
+ *   slot instead falls through to the next candidate without stranding
+ *   the merge request, and still answers `INTEGRATION_BUSY` when the busy
+ *   merge is the only candidate. Minimal Fastify app over the real route,
+ *   registry, claim store, and queue; tasks and projects are stubs, git is
+ *   a throwaway origin.
+ ***/
+describe("Merge dispatch answer shape", () => {
+	const dirs = [];
+	const track = ({ origin, backend }) => dirs.push(origin, backend);
+
+	it("assigns a free merge slot as a complete integrate job", async () => {
+		const { origin, backend } = originWithMergeTask("kb/tm");
+		track({ origin, backend });
+		const { claims, queue, credentialFor, dispatchAs } = await buildApp(backend);
+		const worker = credentialFor("merge-worker");
+		const res = await dispatchAs(worker);
+		expect(res.statusCode).toBe(200);
+		const answer = JSON.parse(res.payload);
+		expect(answer.assigned).toBe(true);
+		expect(answer).toMatchObject({
+			projectId: "p1",
+			taskId: "tm",
+			runnerId: "merge-worker",
+			kind: "integrate",
+			stageId: "merge-1",
+		});
+		expect(typeof answer.executionId).toBe("string");
+		expect(typeof answer.epoch).toBe("number");
+		expect(answer.integration).toMatchObject({
+			taskBranch: "kb/tm",
+			targetBranch: "main",
+			expectedTaskSha: git(backend, ["rev-parse", "origin/kb/tm"]),
+			expectedTargetSha: git(backend, ["rev-parse", "origin/main"]),
+		});
+		expect(typeof answer.integration.mergeAttemptId).toBe("string");
+		expect(typeof answer.integration.integrationExecutionId).toBe("string");
+		expect(typeof answer.integration.integrationEpoch).toBe("number");
+		// Claim and lease fence the same execution the answer names.
+		expect(claims.describe("tm")).toMatchObject({
+			runnerId: "merge-worker",
+			executionId: answer.executionId,
+			epoch: answer.epoch,
+		});
+		const scope = queue.describe({ projectId: "p1", targetBranch: "main" });
+		expect(scope.lease).toMatchObject({
+			taskId: "tm",
+			runnerId: "merge-worker",
+			executionId: answer.integration.integrationExecutionId,
+			epoch: answer.integration.integrationEpoch,
+		});
+		for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+	});
+
+	it("assigns the next candidate instead of wedging on a busy merge", async () => {
+		const { origin, backend } = originWithMergeTask("kb/tm");
+		track({ origin, backend });
+		const { claims, queue, credentialFor, dispatchAs } = await buildApp(backend);
 		const holder = credentialFor("merge-holder");
+		expect(holder).toBeTruthy();
 		queue.enqueue({
 			projectId: "p1",
 			targetBranch: "main",
 			taskId: "tm",
 			taskBranch: "kb/tm",
-			expectedTaskSha: git(backend, ["rev-parse", "origin/kb/tm"]),
-			expectedTargetSha: git(backend, ["rev-parse", "origin/main"]),
+			expectedTaskSha: "a".repeat(40),
+			expectedTargetSha: "b".repeat(40),
 			mergeAttemptId: "m-tm",
 		});
-		const leased = queue.acquire({ projectId: "p1", targetBranch: "main", runnerId: "merge-holder" });
-		expect(leased.leased).toBe(true);
-		expect(holder).toBeTruthy();
-	});
-
-	afterAll(() => {
-		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
-	});
-
-	it("assigns the next candidate instead of wedging on a busy merge", async () => {
+		expect(queue.acquire({ projectId: "p1", targetBranch: "main", runnerId: "merge-holder" }).leased).toBe(true);
 		const worker = credentialFor("merge-worker");
 		const res = await dispatchAs(worker);
 		expect(res.statusCode).toBe(200);
@@ -174,20 +209,32 @@ describe("Busy merge falls through dispatch", () => {
 		expect(queue.describe({ projectId: "p1", targetBranch: "main" }).depth).toBe(1);
 		expect(claims.describe("tm")).toBeNull();
 		expect(claims.describe("ta")).toMatchObject({ runnerId: "merge-worker" });
+		for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 	});
 
 	it("still answers INTEGRATION_BUSY when the busy merge is the only candidate", async () => {
-		listed.splice(0, listed.length, taskMerge);
-		try {
-			const worker = credentialFor("merge-worker-2");
-			const res = await dispatchAs(worker);
-			expect(res.statusCode).toBe(200);
-			expect(JSON.parse(res.payload)).toMatchObject({
-				assigned: false,
-				code: "INTEGRATION_BUSY",
-			});
-		} finally {
-			listed.splice(0, listed.length, taskMerge, taskAgent);
-		}
+		const { origin, backend } = originWithMergeTask("kb/tm");
+		track({ origin, backend });
+		const ctx = await buildApp(backend);
+		ctx.listed.splice(0, ctx.listed.length, ctx.listed[0]);
+		ctx.credentialFor("merge-holder-2");
+		ctx.queue.enqueue({
+			projectId: "p1",
+			targetBranch: "main",
+			taskId: "tm",
+			taskBranch: "kb/tm",
+			expectedTaskSha: "a".repeat(40),
+			expectedTargetSha: "b".repeat(40),
+			mergeAttemptId: "m-tm-2",
+		});
+		expect(ctx.queue.acquire({ projectId: "p1", targetBranch: "main", runnerId: "merge-holder-2" }).leased).toBe(true);
+		const worker = ctx.credentialFor("merge-worker-2");
+		const res = await ctx.dispatchAs(worker);
+		expect(res.statusCode).toBe(200);
+		expect(JSON.parse(res.payload)).toMatchObject({
+			assigned: false,
+			code: "INTEGRATION_BUSY",
+		});
+		for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 	});
 });
