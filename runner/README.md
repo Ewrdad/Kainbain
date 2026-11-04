@@ -171,3 +171,15 @@ mid-download, busy updater, missing `tar`) is contained the same way: the
 loop backs off and keeps serving the old version, never crashing. Hung
 mirrors time out (30s pointer/manifest, 5 min assets). Windows hosts are
 not supported in v1 (linux/darwin × x64/arm64).
+
+## On-request commands (ADR 0013)
+
+Settings › Runners can nudge this daemon through the heartbeat pull channel:
+Re-detect models re-runs model discovery promptly (bypassing the 12h gate
+once; skipped with a "models pinned" ack when the operator pinned models)
+and Update now queues an idle-only self-update. Both ride
+`pendingCommands` on the heartbeat response and ack via `facts.commandAck`;
+a queued command waits for the next heartbeat, and Update now never
+interrupts live work — it applies at the next idle point. Older daemons
+that predate `facts.commands` ignore the channel; Settings shows manual
+guidance instead of a dead button.

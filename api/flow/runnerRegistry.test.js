@@ -2,7 +2,7 @@ import { expect, test, describe, beforeEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { RunnerRegistry, RUNNER_PROTOCOL } from "./runnerRegistry.js";
+import { RunnerRegistry, RUNNER_COMMAND_TTL_MS, RUNNER_PROTOCOL } from "./runnerRegistry.js";
 
 const tmpRunnerState = () =>
 	path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kb-runner-test-")), "runners.json");
@@ -559,5 +559,198 @@ describe("RunnerRegistry operator config", () => {
 		expect(beat.runnerVersion).toBeNull();
 		expect(beat.belowMinimum).toBe(false);
 		expect(beat.updateAvailable).toBe(false);
+	});
+});
+
+/***
+ * MARK: RunnerRegistry command channel tests
+ * @description Covers the backend-to-Runner command channel (D1): operator
+ *   intent queued via `enqueueCommand`, delivered on the heartbeat pull
+ *   channel via `peekCommands`, acked through `facts.commandAck`, expired
+ *   past the TTL, and advertised per Runner through `facts.commands`.
+ ***/
+describe("RunnerRegistry backend-to-Runner commands", () => {
+	const COMMAND_FACTS = {
+		...FACTS,
+		commands: ["requestModelRediscovery", "requestUpdate"],
+	};
+
+	function approvedWithCommands() {
+		const runners = registry();
+		runners.register({ runnerId: "r1", joinToken: "join-secret", facts: COMMAND_FACTS });
+		const { credential } = runners.approve("r1");
+		return { runners, credential };
+	}
+
+	test("enqueueCommand queues one entry visible in the public record", () => {
+		const { runners } = approvedWithCommands();
+		const res = runners.enqueueCommand("r1", "requestUpdate");
+		expect(res).toMatchObject({ runnerId: "r1", command: "requestUpdate", status: "queued" });
+		expect(typeof res.requestedAt).toBe("string");
+		const record = runners.getConfig("r1");
+		expect(record.commands.pending).toEqual([
+			{ command: "requestUpdate", requestedAt: res.requestedAt },
+		]);
+		expect(record.pendingCommands).toEqual(["requestUpdate"]);
+	});
+
+	test("re-enqueueing the same command refreshes it instead of duplicating", () => {
+		const { runners } = approvedWithCommands();
+		const first = runners.enqueueCommand("r1", "requestUpdate");
+		const second = runners.enqueueCommand("r1", "requestUpdate");
+		expect(second.requestedAt >= first.requestedAt).toBe(true);
+		expect(runners.getConfig("r1").commands.pending).toHaveLength(1);
+	});
+
+	test("refuses unknown commands fail-closed (400 UNKNOWN_COMMAND)", () => {
+		const { runners } = approvedWithCommands();
+		for (const command of ["requestRestart", "", null, undefined, 42]) {
+			try {
+				runners.enqueueCommand("r1", command);
+				expect.unreachable(`accepted ${String(command)}`);
+			} catch (err) {
+				expect(err.statusCode).toBe(400);
+				expect(err.code).toBe("UNKNOWN_COMMAND");
+			}
+		}
+		expect(runners.peekCommands("r1")).toEqual([]);
+	});
+
+	test("refuses commands for non-active Runners (409 COMMAND_INVALID_STATE)", () => {
+		const runners = registry();
+		runners.register({ runnerId: "r1", joinToken: "join-secret", facts: COMMAND_FACTS });
+		try {
+			runners.enqueueCommand("r1", "requestUpdate");
+			expect.unreachable();
+		} catch (err) {
+			expect(err.statusCode).toBe(409);
+			expect(err.code).toBe("COMMAND_INVALID_STATE");
+		}
+	});
+
+	test("refuses commands for unknown Runners (404 UNKNOWN_RUNNER)", () => {
+		const { runners } = approvedWithCommands();
+		try {
+			runners.enqueueCommand("nope", "requestUpdate");
+			expect.unreachable();
+		} catch (err) {
+			expect(err.statusCode).toBe(404);
+			expect(err.code).toBe("UNKNOWN_RUNNER");
+		}
+		expect(runners.peekCommands("nope")).toEqual([]);
+	});
+
+	test("peekCommands delivers without clearing (at-least-once)", () => {
+		const { runners } = approvedWithCommands();
+		runners.enqueueCommand("r1", "requestModelRediscovery");
+		expect(runners.peekCommands("r1")).toEqual(["requestModelRediscovery"]);
+		// A second delivery (crash between delivery and action, or a
+		// discarded heartbeat response) repeats the command.
+		expect(runners.peekCommands("r1")).toEqual(["requestModelRediscovery"]);
+		expect(runners.getConfig("r1").commands.pending).toHaveLength(1);
+	});
+
+	test("a facts commandAck clears the queue and records the result", () => {
+		const { runners, credential } = approvedWithCommands();
+		runners.enqueueCommand("r1", "requestUpdate");
+		const beat = runners.heartbeat({
+			runnerId: "r1",
+			credential,
+			facts: {
+				...COMMAND_FACTS,
+				commandAck: { command: "requestUpdate", ok: true, detail: "updated to 1.2.3" },
+			},
+		});
+		expect(beat.commands.pending).toEqual([]);
+		expect(beat.commands.results.requestUpdate).toMatchObject({
+			ok: true,
+			detail: "updated to 1.2.3",
+		});
+		expect(typeof beat.commands.results.requestUpdate.at).toBe("string");
+		expect(runners.peekCommands("r1")).toEqual([]);
+	});
+
+	test("records failed acks without throwing", () => {
+		const { runners, credential } = approvedWithCommands();
+		runners.enqueueCommand("r1", "requestUpdate");
+		const beat = runners.heartbeat({
+			runnerId: "r1",
+			credential,
+			facts: {
+				...COMMAND_FACTS,
+				commandAck: { command: "requestUpdate", ok: false, detail: "disk full" },
+			},
+		});
+		expect(beat.commands.pending).toEqual([]);
+		expect(beat.commands.results.requestUpdate).toMatchObject({ ok: false, detail: "disk full" });
+	});
+
+	test("ignores acks for unknown commands", () => {
+		const { runners, credential } = approvedWithCommands();
+		const beat = runners.heartbeat({
+			runnerId: "r1",
+			credential,
+			facts: {
+				...COMMAND_FACTS,
+				commandAck: { command: "requestRestart", ok: true, detail: "nope" },
+			},
+		});
+		expect(beat.commands.results).toEqual({});
+	});
+
+	test("expires undelivered commands past the TTL with a recorded result", () => {
+		const { runners } = approvedWithCommands();
+		runners.enqueueCommand("r1", "requestUpdate");
+		runners.runners.get("r1").pendingCommands[0].requestedAt = new Date(
+			Date.now() - RUNNER_COMMAND_TTL_MS - 1000,
+		).toISOString();
+		const record = runners.getConfig("r1");
+		expect(record.commands.pending).toEqual([]);
+		expect(record.commands.results.requestUpdate).toMatchObject({ ok: false });
+		expect(record.commands.results.requestUpdate.detail).toMatch(/expired/);
+		expect(runners.peekCommands("r1")).toEqual([]);
+	});
+
+	test("supported intersects backend commands with runner-advertised facts.commands", () => {
+		const runners = registry();
+		runners.register({ runnerId: "new", joinToken: "join-secret", facts: COMMAND_FACTS });
+		runners.register({
+			runnerId: "partial",
+			joinToken: "join-secret",
+			facts: { ...FACTS, commands: ["requestUpdate", "requestRestart"] },
+		});
+		runners.register({ runnerId: "old", joinToken: "join-secret", facts: FACTS });
+		expect(runners.getConfig("new").commands.supported).toEqual([
+			"requestModelRediscovery",
+			"requestUpdate",
+		]);
+		expect(runners.getConfig("partial").commands.supported).toEqual(["requestUpdate"]);
+		expect(runners.getConfig("old").commands.supported).toEqual([]);
+	});
+
+	test("pending commands and results survive a registry reload", () => {
+		const file = tmpRunnerState();
+		const first = new RunnerRegistry({
+			joinToken: "join-secret",
+			newCredential: () => "cred-1",
+			stateFile: file,
+		});
+		first.register({ runnerId: "r1", joinToken: "join-secret", facts: COMMAND_FACTS });
+		first.approve("r1");
+		first.enqueueCommand("r1", "requestUpdate");
+		first.heartbeat({
+			runnerId: "r1",
+			credential: "cred-1",
+			facts: {
+				...COMMAND_FACTS,
+				commandAck: { command: "requestModelRediscovery", ok: true, detail: "discovered 2 model(s)" },
+			},
+		});
+		const second = new RunnerRegistry({ joinToken: "join-secret", stateFile: file });
+		expect(second.peekCommands("r1")).toEqual(["requestUpdate"]);
+		expect(second.getConfig("r1").commands.results.requestModelRediscovery).toMatchObject({
+			ok: true,
+			detail: "discovered 2 model(s)",
+		});
 	});
 });
