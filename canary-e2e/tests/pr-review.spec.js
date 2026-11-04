@@ -481,11 +481,15 @@ test.describe.serial("PR Review E2E", () => {
 			page.getByTestId("review-comment-thread").getByText("Please clarify error handling on this step"),
 		).toBeVisible({ timeout: 10000 });
 
-		// Take screenshot to document the feature working. It lands in this
-		// test's own output dir (attached to the report) — never a hardcoded
-		// live-checkout path, which cannot exist in CI workdirs (ENOENT).
-		const screenshotPath = test.info().outputPath("screenshot-reports-review-live.png");
-		await page.screenshot({ path: screenshotPath, fullPage: true });
+		// Take screenshot to document the feature working. Written under /tmp
+		// (same convention as the other screenshot specs) so the test never
+		// depends on a checkout-specific absolute path existing.
+		const shotsDir = "/tmp/kb-pr-review-shots";
+		fs.mkdirSync(shotsDir, { recursive: true });
+		await page.screenshot({
+			path: path.join(shotsDir, "screenshot-reports-review-live.png"),
+			fullPage: true,
+		});
 
 		// Pass the stage and verify review comment is carried into the human approval report
 		await page.getByLabel("Pass this stage").click();

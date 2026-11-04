@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 import { KpiCard } from './KpiCard';
@@ -83,5 +83,27 @@ describe('KpiCard', () => {
     const sub = screen.getByText('Secondary');
     expect(sub.className).toContain('text-slate-300');
     expect(sub.className).not.toContain('text-slate-400');
+  });
+
+  it('stays non-interactive without onClick', () => {
+    render(<KpiCard label="Metric" value={1} testId="kpi-x" />);
+    const card = screen.getByTestId('kpi-x');
+    expect(card).not.toHaveAttribute('role', 'button');
+    expect(card).not.toHaveAttribute('tabindex');
+  });
+
+  it('activates onClick via click and keyboard when provided', () => {
+    const onClick = vi.fn();
+    render(<KpiCard label="Metric" value={1} testId="kpi-x" onClick={onClick} />);
+    const card = screen.getByTestId('kpi-x');
+    expect(card).toHaveAttribute('role', 'button');
+    expect(card).toHaveAttribute('tabindex', '0');
+
+    fireEvent.click(card);
+    expect(onClick).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(card, { key: 'Enter' });
+    expect(onClick).toHaveBeenCalledTimes(2);
+    fireEvent.keyDown(card, { key: ' ' });
+    expect(onClick).toHaveBeenCalledTimes(3);
   });
 });

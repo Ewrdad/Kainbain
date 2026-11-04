@@ -11,12 +11,13 @@ import { crewRequests } from './crew/index.js';
 import { watchRequests } from './watch/index.js';
 import { houseRequests } from './house/index.js';
 import { runnerRequests } from './runners/index.js';
+import { accessibilityRequests } from './accessibility/index.js';
 import { api } from './api.js';
 
 describe('Business-owned request lists', () => {
   it('has no duplicate operations and exposes every domain operation through the old client', () => {
     const request = vi.fn();
-    const clients = [workRequests(request, () => true), flowRequests(request), crewRequests(request), watchRequests(request), houseRequests(request), runnerRequests(request)];
+    const clients = [workRequests(request, () => true), flowRequests(request), crewRequests(request), watchRequests(request), houseRequests(request), runnerRequests(request), accessibilityRequests(request)];
     const names = clients.flatMap(Object.keys);
     expect(new Set(names).size).toBe(names.length);
     // 60 legacy operations + the 3 task-image operations (uploadTaskImage,
@@ -40,13 +41,18 @@ describe('Business-owned request lists', () => {
     // the 4 image-gen operations (getImageGenProviders, saveImageGenKey,
     // clearImageGenKey, testImageGenProvider) for System Settings › Images
     // and the question-me imageGen provider dropdown +
+    // the 2 accessibility operations (accessibilityResults,
+    // submitAccessibilityFeedback) for the accessibility statement view +
     // the 9 Runner operations (getRunners, getRunnerMonitor,
     // getFleetModelCatalog, approveRunner, denyRunner, revokeRunner,
     // pauseRunner, resumeRunner, skipRunner) for Settings › Runners, the
     // per-runner Now Playing controls, and the fleet model catalogue +
     // the 2 Runner config operations (getRunnerConfig, updateRunnerConfig)
-    // for the System Settings › Runners detail form.
-    expect(names).toHaveLength(97);
+    // for the System Settings › Runners detail form +
+    // the 2 Runner command operations (requestModelRediscovery,
+    // requestRunnerUpdate) for the on-request model re-detection and
+    // self-update buttons.
+    expect(names).toHaveLength(101);
     for (const name of names) expect(typeof api[name]).toBe('function');
   });
 
@@ -76,6 +82,8 @@ describe('Business-owned request lists', () => {
     [houseRequests, 'clearImageGenKey', ['muse'], '/settings/image-gen/providers/muse/key', { method: 'DELETE' }],
     [houseRequests, 'testImageGenProvider', ['mock'], '/settings/image-gen/providers/mock/test', { method: 'POST', body: '{}' }],
     [houseRequests, 'testImageGenProvider', ['muse', 'hi'], '/settings/image-gen/providers/muse/test', { method: 'POST', body: '{"prompt":"hi"}' }],
+    [accessibilityRequests, 'accessibilityResults', [], '/accessibility/results', undefined],
+    [accessibilityRequests, 'submitAccessibilityFeedback', [{ message: 'Focus is lost', needGroup: 'seeing', contact: null, pageUrl: null }], '/accessibility/feedback', { method: 'POST', body: '{"message":"Focus is lost","needGroup":"seeing","contact":null,"pageUrl":null}' }],
   ])('preserves %s / %s arguments and request result', (requests, name, args, url, options) => {
     const response = Promise.resolve({ ok: true });
     const request = vi.fn(() => response);

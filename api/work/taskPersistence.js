@@ -84,7 +84,7 @@ export function saveTaskMarkdown(taskStore, projectCwd, task) {
 			`updatedAt: ${_formatFrontmatterValue(task.updatedAt)}`,
 			`enteredStageAt: ${_formatFrontmatterValue(task.enteredStageAt || "")}`,
 			`timeInStage: ${Number(task.timeInStage) || 0}`,
-			`reportMetadata: ${_formatFrontmatterValue(JSON.stringify((task.reports || []).map(({ filename, stageName, stageId, duration, status, createdAt, durationStartedAt, harnessId, failureKind, aliasName, modelRef, targetIndex }) => ({ filename, stageName, stageId, duration, status, createdAt, durationStartedAt, harnessId, failureKind, aliasName, modelRef, targetIndex }))))}`,
+			`reportMetadata: ${_formatFrontmatterValue(JSON.stringify((task.reports || []).map(({ filename, stageName, stageId, duration, status, createdAt, durationStartedAt, harnessId, failureKind, aliasName, modelRef, targetIndex, runnerId }) => ({ filename, stageName, stageId, duration, status, createdAt, durationStartedAt, harnessId, failureKind, aliasName, modelRef, targetIndex, runnerId }))))}`,
 			`reliabilitySamples: ${_formatFrontmatterValue(JSON.stringify(task.reliabilitySamples || []))}`,
 			`timelineMetadata: ${_formatFrontmatterValue(JSON.stringify(task.timeline || []))}`,
 			`autoIterationCount: ${Number(task.autoIterationCount) || 0}`,

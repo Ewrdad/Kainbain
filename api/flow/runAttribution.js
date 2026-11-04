@@ -2,11 +2,14 @@
  * MARK: Timeline run attribution
  * @description The one shared shape for the resolved harness/model/alias
  *   choice stamped on task timeline rows (task history), so a troublesome
- *   model can be identified per stage or task. Field names are IDENTICAL to
+ *   model can be identified per stage or task, plus the Runner that ran a
+ *   remotely dispatched run (`runnerId`), so a struggling Runner can be
+ *   spotted per stage or task type later. Field names are IDENTICAL to
  *   `reportMetadata` (one concept = one name): `harnessId`, `modelRef`,
- *   `aliasName`, `targetIndex`. Absent values are dropped, never worded —
- *   CI / merge / deploy / human rows simply carry no fields and the UI
- *   renders nothing for them (no "no model" / "automated" placeholders).
+ *   `aliasName`, `targetIndex`, `runnerId`. Absent values are dropped, never
+ *   worded — embedded CI / merge / deploy / human rows simply carry no
+ *   fields and the UI renders nothing for them (no "no model" / "automated"
+ *   placeholders); only Runner-dispatched runs stamp `runnerId`.
  *
  * Failure contract: total on untrusted input (never throws, never invents
  *   sentinel strings for absence).
@@ -18,14 +21,18 @@
  *   timeline-attribution shape. Blank/undefined string fields are dropped
  *   (absent, not blank-worded); `targetIndex` survives only as a genuine
  *   integer; unknown fields (e.g. the in-memory `stageId` matcher) are never
- *   passed through. Returns null when neither `harnessId` nor `modelRef`
- *   names anything — the caller then spreads nothing, so a row with no
- *   agent run behind it stays completely blank.
+ *   passed through. Returns null when neither `harnessId`, `modelRef`, nor
+ *   `runnerId` names anything — the caller then spreads nothing, so a row
+ *   with no run behind it stays completely blank. A `runnerId` alone DOES
+ *   attribute (unlike an alias name or index alone): Runner-run CI/merge
+ *   rows carry no harness/model, and the Runner itself is their only
+ *   attribution.
  * @example buildTimelineAttribution({ harnessId: 'pi', modelRef: 'glm', aliasName: 'w', targetIndex: 0 }) => { harnessId: 'pi', modelRef: 'glm', aliasName: 'w', targetIndex: 0 }
  * @example buildTimelineAttribution({ aliasName: 'w' }) => null
  * @example buildTimelineAttribution({}) => null
- * @param {Object} [attribution] - Raw attribution fields (`harnessId`, `modelRef`, `aliasName`, `targetIndex`).
- * @returns {{ harnessId: string, modelRef: string, aliasName?: string, targetIndex?: number }|null} The clean shape, or null when nothing meaningful remains.
+ * @example buildTimelineAttribution({ runnerId: 'runner-alpha' }) => { runnerId: 'runner-alpha' }
+ * @param {Object} [attribution] - Raw attribution fields (`harnessId`, `modelRef`, `aliasName`, `targetIndex`, `runnerId`).
+ * @returns {{ harnessId?: string, modelRef?: string, aliasName?: string, targetIndex?: number, runnerId?: string }|null} The clean shape, or null when nothing meaningful remains.
  ***/
 export function buildTimelineAttribution(attribution = {}) {
 	try {
@@ -35,18 +42,20 @@ export function buildTimelineAttribution(attribution = {}) {
 		const harnessId = cleanString(raw.harnessId);
 		const modelRef = cleanString(raw.modelRef);
 		const aliasName = cleanString(raw.aliasName);
+		const runnerId = cleanString(raw.runnerId);
 		const targetIndex =
 			Number.isInteger(raw.targetIndex) && raw.targetIndex >= 0
 				? raw.targetIndex
 				: null;
-		// A row is attributable only when a harness or a model actually ran;
-		// an alias name or index alone never stamps a row.
-		if (!harnessId && !modelRef) return null;
+		// A row is attributable only when a harness, a model, or a Runner
+		// actually ran; an alias name or index alone never stamps a row.
+		if (!harnessId && !modelRef && !runnerId) return null;
 		return {
 			...(harnessId ? { harnessId } : {}),
 			...(modelRef ? { modelRef } : {}),
 			...(aliasName ? { aliasName } : {}),
 			...(targetIndex !== null ? { targetIndex } : {}),
+			...(runnerId ? { runnerId } : {}),
 		};
 	} catch {
 		return null;
@@ -92,7 +101,7 @@ function isArrivalTimelineRowStatus(status) {
  * @example stampArrivalRowAttribution(task, 'Build', {}) => null
  * @param {Object} [task] - Task object (timeline array walked newest-first).
  * @param {string} [arrivalLabel] - Stage label of the arrival row to stamp (the run's own stage).
- * @param {Object} [attribution] - Raw attribution fields (`harnessId`, `modelRef`, `aliasName`, `targetIndex`).
+ * @param {Object} [attribution] - Raw attribution fields (`harnessId`, `modelRef`, `aliasName`, `targetIndex`, `runnerId`).
  * @returns {Object|null} The stamped timeline row, or null when nothing was stamped.
  ***/
 export function stampArrivalRowAttribution(

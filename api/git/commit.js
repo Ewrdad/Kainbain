@@ -77,6 +77,10 @@ export async function ensureGitIdentity(projectCwd) {
  *   branch that is currently checked out. Without this a merge would silently
  *   merge nothing. Respects .gitignore; a failure to commit is only treated as
  *   fatal when the tree is still dirty afterwards.
+ *   Live task snapshots (`docs/tasks/<id>/task.md`) are never staged:
+ *   snapshot-only dirt is a no-op, and any staged snapshots are reset before
+ *   the commit (Step 5 — recording a snapshot deletion is how a merge once
+ *   dropped tasks from the board).
  *   When `opts.body` is a non-empty string the commit is written body-safe as
  *   `git commit --cleanup=verbatim -m <subject> -m <body>`: the subject stays
  *   scannable in `git log --oneline` while the body (e.g. a whole curated
@@ -118,12 +122,39 @@ export async function commitAllIfNeeded(projectCwd, message, opts = {}) {
 		}
 	}
 
-	const { clean } = await getWorkingTreeStatus(projectCwd, { ignorePaths: [] });
-	if (clean) return { committed: false, hash: null };
+	const status = await getWorkingTreeStatus(projectCwd, { ignorePaths: [] });
+	if (status.clean) return { committed: false, hash: null };
+	const normalizeSnapshotPath = (raw) => String(raw).replace(/\\/g, "/").replace(/["']/g, "");
+	// Live task snapshots are backend store state, never branch content
+	// (Step 5): a tree holding ONLY snapshot dirt has no stage work to
+	// commit — the snapshot path owns it. Committing here is exactly how
+	// recorded snapshot deletions reached main and dropped tasks from the
+	// board (2026-11-03: 10 tasks lost through a merge).
+	const onlySnapshots = (status.dirtyPaths || []).every((raw) =>
+		isLiveTaskSnapshotPath(normalizeSnapshotPath(raw), opts),
+	);
+	if (onlySnapshots) return { committed: false, hash: null };
 	// Fresh machines have no git identity: provision a repo-local fallback
 	// before committing so the engine commit below cannot fail for that.
 	await ensureGitIdentity(projectCwd);
 	await git(projectCwd, ["add", "-A"]);
+	// Unstage any live snapshots `add -A` just swept in: their
+	// modifications — and especially worktree deletions — must never land
+	// in an engine commit. The worktree files are left alone; the engine
+	// regenerates and owns them.
+	try {
+		const { stdout } = await git(projectCwd, ["diff", "--cached", "--name-only", "-z"]);
+		const stagedSnapshots = String(stdout || "")
+			.split("\0")
+			.map((entry) => entry.trim())
+			.filter((entry) => entry && isLiveTaskSnapshotPath(normalizeSnapshotPath(entry), opts));
+		if (stagedSnapshots.length > 0) {
+			await git(projectCwd, ["reset", "-q", "--", ...stagedSnapshots]);
+		}
+	} catch {
+		// Best-effort: the commit below owns real failures. If the unstage
+		// failed the snapshots stay staged — no worse than before this guard.
+	}
 	const subject = message || "KainBain: commit task work before merge";
 	const body =
 		opts && typeof opts.body === "string" && opts.body.length > 0

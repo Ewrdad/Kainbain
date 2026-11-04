@@ -66,6 +66,17 @@ export function getSystemMenuItems({
       },
     },
     {
+      key: 'accessibility',
+      icon: '♿',
+      label: 'Accessibility',
+      desc: 'Our accessibility statement — and report a problem',
+      shortcut: 'A',
+      onClick: () => {
+        close();
+        setView?.('accessibility');
+      },
+    },
+    {
       key: 'guide',
       icon: '📖',
       label: 'System Guide',
@@ -189,8 +200,8 @@ function SystemMenu() {
     <div className="relative" ref={menuRef}>
       <InfoTooltip
         title="System Menu"
-        description="Guide, docs, compact monitor, UI customization, system settings, and keyboard shortcuts in one place."
-        shortcut="G • D • C • S • ?"
+        description="Guide, docs, compact monitor, accessibility statement, UI customization, system settings, and keyboard shortcuts in one place."
+        shortcut="G • D • C • S • A • ?"
         position="bottom-left"
       >
         <button
@@ -445,6 +456,15 @@ export function Header() {
     setView?.('observability');
   };
 
+  // Right-click shortcut to the accessibility statement (same-tab
+  // navigation, mirroring the MonitorPopoutButton precedent). This is a
+  // shortcut only: the System-menu entry above is the keyboard-operable
+  // primary path, since a context menu is not keyboard-reachable here.
+  const openAccessibilityStatement = (event) => {
+    event.preventDefault();
+    setView?.('accessibility');
+  };
+
   return (
     <>
       {/***
@@ -470,12 +490,15 @@ export function Header() {
           {/* Brand Logo & Title (#22) */}
           <InfoTooltip
             title="KainBain Orchestrator"
-            description="Autonomous multi-stage AI task pipeline orchestrator with human quality gates."
+            description="Autonomous multi-stage AI task pipeline orchestrator with human quality gates. Right-click for the accessibility statement."
             behindTheScenes="Runs on Fastify backend (:3100) with PI Agent SDK and per-project isolated SQLite/JSON persistence in ~/.kainbain/"
             shortcut="1 (Canvas) • G (Guide)"
             position="bottom-right"
           >
-            <div className="flex items-center gap-2 shrink-0 cursor-pointer">
+            <div
+              className="flex items-center gap-2 shrink-0 cursor-pointer"
+              onContextMenu={openAccessibilityStatement}
+            >
               <BrandMark className="w-7 h-7 shrink-0" />
               {/* Wordmark hidden on mobile to free header space — the brand mark
                   alone identifies the app; the KAINBAIN wordmark appears once

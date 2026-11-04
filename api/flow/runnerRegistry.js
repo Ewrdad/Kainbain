@@ -7,7 +7,7 @@ import { normalizeCapabilities } from "./dispatch/normalizeCapabilities.js";
 import { runnerApiCompatible } from "./dispatch/runnerApiCompat.js";
 import { updateInfoForRunner } from "./runnerVersionCompat.js";
 
-const RUNNER_STATE_VERSION = 2;
+const RUNNER_STATE_VERSION = 3;
 
 const JOB_TYPE_KEYS = ["runsCi", "runsMerges", "runsImpromptu"];
 
@@ -74,6 +74,57 @@ const normalizeOperatorConfig = (raw) => {
 };
 
 /***
+ * MARK: normalizePendingCommands
+ * @description Coerces a persisted pendingCommands list into the canonical
+ *   `{ command, requestedAt }` entries, deduplicating by command and
+ *   dropping unknown commands / malformed rows so older state files load.
+ * @example normalizePendingCommands([{ command: 'requestUpdate', requestedAt: '2020-01-01T00:00:00.000Z' }]) => [...]
+ * @param {*} raw - Persisted value, if any.
+ * @returns {Array<{command:string,requestedAt:string}>} Normalized entries.
+ ***/
+const normalizePendingCommands = (raw) => {
+	if (!Array.isArray(raw)) return [];
+	const byCommand = new Map();
+	for (const entry of raw) {
+		if (!entry || typeof entry !== "object") continue;
+		const command = entry.command;
+		if (typeof command !== "string" || !RUNNER_COMMANDS.includes(command)) continue;
+		const requestedAt =
+			typeof entry.requestedAt === "string" && entry.requestedAt
+				? entry.requestedAt
+				: new Date().toISOString();
+		const prev = byCommand.get(command);
+		if (!prev || Date.parse(requestedAt) >= Date.parse(prev.requestedAt)) {
+			byCommand.set(command, { command, requestedAt });
+		}
+	}
+	return [...byCommand.values()];
+};
+
+/***
+ * MARK: normalizeCommandResults
+ * @description Coerces a persisted commandResults map into the canonical
+ *   `{ command: { ok, detail, at } }` shape, dropping unknown/invalid.
+ * @example normalizeCommandResults({ requestUpdate: { ok: true, detail: 'done', at: '2020-01-01T00:00:00.000Z' } }) => {...}
+ * @param {*} raw - Persisted value, if any.
+ * @returns {Object} Normalized results map.
+ ***/
+const normalizeCommandResults = (raw) => {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+	const out = {};
+	for (const [command, result] of Object.entries(raw)) {
+		if (typeof command !== "string" || !RUNNER_COMMANDS.includes(command)) continue;
+		if (!result || typeof result !== "object" || Array.isArray(result)) continue;
+		out[command] = {
+			ok: result.ok === true,
+			detail: typeof result.detail === "string" ? result.detail : "",
+			at: typeof result.at === "string" ? result.at : "",
+		};
+	}
+	return out;
+};
+
+/***
  * MARK: advertisedToolIds
  * @description Harness/tool ids this Runner advertised in its capabilities,
  *   or null when unknown (no capabilities yet). Used to validate the
@@ -116,6 +167,21 @@ const advertisedToolIds = (record) => {
 export const RUNNER_PROTOCOL = "v1";
 const MIN_RUNNER_PROTOCOL = "v1";
 /***
+ * MARK: RUNNER_COMMANDS
+ * @description Backend-to-Runner command ids the registry accepts, delivers
+ *   on the heartbeat pull channel, and the Runner daemon consumes at next
+ *   idle (never interrupting live work).
+ * @example RUNNER_COMMANDS.includes('requestUpdate') => true
+ ***/
+export const RUNNER_COMMANDS = ["requestModelRediscovery", "requestUpdate"];
+/***
+ * MARK: RUNNER_COMMAND_TTL_MS
+ * @description How long an undelivered Runner command waits for the next
+ *   heartbeat before it expires (one day).
+ * @example RUNNER_COMMAND_TTL_MS => 86400000
+ ***/
+export const RUNNER_COMMAND_TTL_MS = 24 * 60 * 60 * 1000;
+/***
  * MARK: resolveRunnerStatePath
  * @description Resolves the durable registry file: explicit wins, then the
  *   schema path (env `KAINBAIN_RUNNER_STATE_FILE`), then the conventional
@@ -153,6 +219,7 @@ export class RunnerRegistry {
 			typeof staleAfterMs === "number" && staleAfterMs > 0 ? staleAfterMs : 60000;
 		this.runners = new Map();
 		this.credentials = new Map();
+		this.pendingCommands = new Map();
 		this.stateFile = resolveRunnerStatePath(stateFile);
 		this._loadState();
 	}
@@ -181,6 +248,8 @@ export class RunnerRegistry {
 						: 0,
 				paused: rec.paused === true,
 				operatorConfig: normalizeOperatorConfig(rec.operatorConfig),
+				pendingCommands: normalizePendingCommands(rec.pendingCommands),
+				commandResults: normalizeCommandResults(rec.commandResults),
 				lastSeenAt: null,
 			};
 			this.runners.set(record.runnerId, record);
@@ -203,6 +272,12 @@ export class RunnerRegistry {
 				originConflicts: record.originConflicts || 0,
 				paused: record.paused === true,
 				operatorConfig: normalizeOperatorConfig(record.operatorConfig),
+				pendingCommands: Array.isArray(record.pendingCommands)
+					? record.pendingCommands.map((e) => ({ command: e.command, requestedAt: e.requestedAt }))
+					: [],
+				commandResults: record.commandResults && typeof record.commandResults === "object" && !Array.isArray(record.commandResults)
+					? { ...record.commandResults }
+					: {},
 			})),
 		});
 	}
@@ -234,6 +309,11 @@ export class RunnerRegistry {
 			minVersion: config?.runnerMinVersion,
 			recommendedVersion: config?.runnerRecommendedVersion,
 		});
+		this._expireStale(record);
+		const pendingEntries = Array.isArray(record.pendingCommands) ? record.pendingCommands : [];
+		const supported = RUNNER_COMMANDS.filter(
+			(command) => Array.isArray(record?.facts?.commands) && record.facts.commands.includes(command),
+		);
 		return {
 			runnerId: record.runnerId,
 			status: record.status,
@@ -259,6 +339,14 @@ export class RunnerRegistry {
 				updateAvailable: update.updateAvailable,
 				belowMinimum: update.belowMinimum,
 				apiCompatible: apiCompat.ok,
+			},
+			pendingCommands: pendingEntries.map((e) => e.command),
+			commands: {
+				pending: pendingEntries.map((e) => ({ command: e.command, requestedAt: e.requestedAt })),
+				results: record.commandResults && typeof record.commandResults === "object" && !Array.isArray(record.commandResults)
+					? { ...record.commandResults }
+					: {},
+				supported,
 			},
 		};
 	}
@@ -597,6 +685,8 @@ export class RunnerRegistry {
 			credentialIssuedAt: null,
 			paused: false,
 			operatorConfig: defaultOperatorConfig(),
+			pendingCommands: [],
+			commandResults: {},
 			lastSeenAt: null,
 		};
 		this.runners.set(runnerId, record);
@@ -757,6 +847,71 @@ export class RunnerRegistry {
 		return record;
 	}
 
+	_expireStale(record, now = Date.now()) {
+		if (!record || !Array.isArray(record.pendingCommands)) return false;
+		const kept = [];
+		let changed = false;
+		for (const entry of record.pendingCommands) {
+			const age = now - Date.parse(entry?.requestedAt || "");
+			if (Number.isFinite(age) && age > RUNNER_COMMAND_TTL_MS) {
+				changed = true;
+				if (!record.commandResults || typeof record.commandResults !== "object") record.commandResults = {};
+				record.commandResults[entry.command] = {
+					ok: false,
+					detail: "expired: runner did not collect the command in time",
+					at: new Date(now).toISOString(),
+				};
+			} else {
+				kept.push(entry);
+			}
+		}
+		record.pendingCommands = kept;
+		if (changed) this._persist();
+		return changed;
+	}
+
+	enqueueCommand(runnerId, command) {
+		const record = this._getOrThrow(runnerId);
+		if (record.status !== "active") {
+			throw RunnerRegistry._fail(
+				409,
+				"COMMAND_INVALID_STATE",
+				`Runner ${runnerId} is ${record.status}; commands require an active Runner.`,
+			);
+		}
+		if (typeof command !== "string" || !RUNNER_COMMANDS.includes(command)) {
+			throw RunnerRegistry._fail(400, "UNKNOWN_COMMAND", `Unknown runner command '${command}'.`);
+		}
+		this._expireStale(record);
+		const pending = (Array.isArray(record.pendingCommands) ? record.pendingCommands : []).filter((e) => e.command !== command);
+		const requestedAt = new Date().toISOString();
+		pending.push({ command, requestedAt });
+		record.pendingCommands = pending;
+		this._persist();
+		return { runnerId, command, status: "queued", requestedAt, pending: pending.map((e) => e.command) };
+	}
+
+	/***
+	 * MARK: peekCommands
+	 * @description Delivery read for the heartbeat pull channel: the queued,
+	 *   unexpired command names for one Runner, WITHOUT clearing them.
+	 *   Entries clear only on Runner ack (`heartbeat()` consumes
+	 *   `facts.commandAck`) or TTL expiry, so a Runner that crashes between
+	 *   delivery and action still collects the command on its next
+	 *   heartbeat (at-least-once; the daemon dedups in-flight repeats and
+	 *   skips commands it already staged an ack for).
+	 * @example registry.peekCommands('r1') => ['requestUpdate']
+	 * @param {string} runnerId - Runner id.
+	 * @returns {string[]} Queued command names.
+	 ***/
+	peekCommands(runnerId) {
+		const record = this.runners.get(runnerId);
+		if (!record) return [];
+		this._expireStale(record);
+		const entries = Array.isArray(record.pendingCommands) ? record.pendingCommands : [];
+		return entries.map((e) => e.command);
+	}
+
 	heartbeat({ runnerId, credential, facts = {}, origin = null } = {}) {
 		const record = this.authenticate(credential);
 		if (record.runnerId !== runnerId) {
@@ -795,9 +950,29 @@ export class RunnerRegistry {
 			}
 			record.lastOrigin = seenOrigin;
 		}
+		const ack = facts?.commandAck;
+		let changedByAck = false;
+		if (ack && typeof ack === "object" && typeof ack.command === "string" && RUNNER_COMMANDS.includes(ack.command)) {
+			if (!record.commandResults || typeof record.commandResults !== "object" || Array.isArray(record.commandResults)) {
+				record.commandResults = {};
+			}
+			record.commandResults[ack.command] = {
+				ok: typeof ack.ok === "boolean" ? ack.ok : Boolean(ack.ok),
+				detail: typeof ack.detail === "string" ? ack.detail : "",
+				at: new Date().toISOString(),
+			};
+			if (Array.isArray(record.pendingCommands)) {
+				const before = record.pendingCommands.length;
+				record.pendingCommands = record.pendingCommands.filter((e) => e.command !== ack.command);
+				if (record.pendingCommands.length !== before) changedByAck = true;
+			}
+			changedByAck = true;
+		}
 		record.facts = facts;
 		record.capabilities = capabilities;
 		record.lastSeenAt = new Date().toISOString();
+		this._expireStale(record);
+		if (changedByAck) this._persist();
 		return this._public(record);
 	}
 

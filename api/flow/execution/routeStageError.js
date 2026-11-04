@@ -35,7 +35,7 @@ import { withCompactionHint } from './withCompactionHint.js';
  * @param {Array<Object>} [opts.stages]
  * @param {Object} [opts.bridge]
  * @param {string} [opts.projectCwd]
- * @param {Object} [opts.runOutcome] - Runner attribution (`harnessId`, `failureKind`, alias fields) forwarded to failure routing.
+ * @param {Object} [opts.runOutcome] - Runner attribution (`harnessId`, `failureKind`, alias fields, `runnerId`) forwarded to failure routing.
  * @param {Error|string|Object} [opts.classifyAs] - Classification source when
  *   it differs from the routed error (the agent-failure path classifies the
  *   full runner result — carrying `failureKind` — but routes the derived

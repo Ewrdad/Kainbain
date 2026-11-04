@@ -204,6 +204,10 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		workflowRunTtlMs: 24 * 60 * 60 * 1000,
 		workflowSweepMs: 60 * 60 * 1000,
 		selfDeployContinuity: "",
+		// Accessibility statement
+		accessibilityContactEmail: "",
+		accessibilityFeedbackMaxChars: 4000,
+		accessibilityFeedbackFile: "",
 	};
 
 	it("covers every schema key in the defaults table", () => {

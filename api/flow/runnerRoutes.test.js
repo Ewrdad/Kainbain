@@ -1,6 +1,7 @@
 import { tempProjectsRoot, tempNotesRoot } from "../isolatedTestRoots.js";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
+import path from "node:path";
 
 // Isolation: temp roots are installed by ../isolatedTestRoots.js, which MUST
 // stay the first import. The Runner join token is set before the app (and
@@ -12,6 +13,10 @@ process.env.KAINBAIN_CLAIM_TTL_MS = "1000";
 
 const { default: app } = await import("../index.js");
 const { resolveCiTimeoutMs } = await import("./runnerRoutes.js");
+// Dynamic like the app import above: taskPersistence statically pulls the
+// flow graph, so a hoisted static import would construct singletons before
+// the join-token env assignment above runs and disable registration.
+const { parseTaskMarkdown } = await import("../work/taskPersistence.js");
 const {
 	registerStageLifecyclePlugin,
 	clearStageLifecyclePlugins,
@@ -33,6 +38,30 @@ const FACTS = {
 	diskHeadroomMb: 1024,
 	versions: { protocol: "v1", runner: "test" },
 };
+
+/***
+ * MARK: findTaskMarkdown
+ * @description Locates one fixture task's persisted `task.md` under the
+ *   isolated projects root (whatever project directory the fixture run
+ *   created), so route tests can prove disk round-trips.
+ * @example findTaskMarkdown(tempProjectsRoot, "t1") => "/tmp/.../docs/tasks/t1/task.md"
+ * @param {string} root - Directory to search.
+ * @param {string} taskId - Task whose `docs/tasks/<id>/task.md` to find.
+ * @returns {string} Absolute path of the task file.
+ ***/
+function findTaskMarkdown(root, taskId) {
+	/* eslint-disable security/detect-non-literal-fs-filename */
+	const entries = fs.readdirSync(root, { withFileTypes: true });
+	for (const entry of entries) {
+		if (!entry.isDirectory()) continue;
+		const direct = path.join(root, entry.name, "docs", "tasks", taskId, "task.md");
+		if (fs.existsSync(direct)) return direct;
+		const nested = findTaskMarkdown(path.join(root, entry.name), taskId);
+		if (nested) return nested;
+	}
+	/* eslint-enable security/detect-non-literal-fs-filename */
+	return null;
+}
 
 /***
  * MARK: Runner Routes Integration
@@ -617,6 +646,71 @@ describe("Runner Routes Integration", () => {
 		expect(after.lastError.stdout).toMatch(/synthetic failing detail/);
 	});
 
+	it("claim then failed completion attributes the Runner on history, surviving reload", async () => {
+		const credential = await onboard("history-runner-1");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Runner history fixture" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		expect(claim.statusCode).toBe(200);
+		const { executionId, epoch } = JSON.parse(claim.payload);
+		// The claim stamps the Runner as the pending run attribution…
+		const claimed = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${target}?projectId=${project.id}` })).payload,
+		);
+		expect(claimed.currentRunAttribution).toMatchObject({ runnerId: "history-runner-1" });
+		const done = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/complete-execution`,
+			headers: { "x-runner-credential": credential },
+			payload: {
+				projectId: project.id,
+				executionId,
+				epoch,
+				outcome: "failed",
+				failureKind: "error",
+				failureReason: "synthetic runner failure for history",
+				output: "synthetic failing detail",
+			},
+		});
+		expect(done.statusCode).toBe(200);
+		// …and the failed finish names the Runner on its timeline row and report.
+		const after = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${target}?projectId=${project.id}` })).payload,
+		);
+		const failedRow = (after.timeline || []).find((row) => row.status === "Failed");
+		expect(failedRow).toMatchObject({ runnerId: "history-runner-1" });
+		expect((after.reports || []).at(-1)).toMatchObject({
+			status: "FAILED",
+			runnerId: "history-runner-1",
+		});
+		// Reload from disk: the structured Runner attribution survives a restart.
+		const taskMdPath = findTaskMarkdown(tempProjectsRoot, target);
+		/* eslint-disable security/detect-non-literal-fs-filename */
+		const taskMdContent = fs.readFileSync(taskMdPath, "utf8");
+		/* eslint-enable security/detect-non-literal-fs-filename */
+		const rehydrated = parseTaskMarkdown(
+			{ _resolveProjectCwd: () => null },
+			taskMdContent,
+			target,
+			project.id,
+		);
+		const reloadedRow = (rehydrated.timeline || []).find((row) => row.status === "Failed");
+		expect(reloadedRow).toMatchObject({ runnerId: "history-runner-1" });
+		expect((rehydrated.reports || []).at(-1)).toMatchObject({
+			status: "FAILED",
+			runnerId: "history-runner-1",
+		});
+	});
+
 	it("embedded execute refuses Runner-held tasks (no double dispatch)", async () => {
 		const credential = await onboard("guard-exec-1");
 		const taskRes = await app.inject({
@@ -843,6 +937,7 @@ describe("Runner Routes Integration", () => {
 		expect(task.currentRunAttribution).toMatchObject({
 			harnessId: "mock",
 			modelRef: "mock-model",
+			runnerId: "dispatch-attr",
 		});
 		// …and when an arrival row for the run's own stage exists, it carries
 		// the same stamp (a first-stage task has no arrival row — nothing to
@@ -1520,6 +1615,107 @@ describe("Runner Routes Integration", () => {
 			url: "/runners/ghost-runner/approve",
 		});
 		expect(approval.statusCode).toBe(404);
+	});
+
+	describe("operator command channel (POST /runners/:id/commands)", () => {
+		it("round-trips enqueue -> heartbeat delivery -> facts ack -> recorded result", async () => {
+			const credential = await onboard("command-1");
+			const queued = await app.inject({
+				method: "POST",
+				url: "/runners/command-1/commands",
+				payload: { command: "requestModelRediscovery" },
+			});
+			expect(queued.statusCode).toBe(202);
+			expect(JSON.parse(queued.payload)).toMatchObject({
+				command: "requestModelRediscovery",
+				status: "queued",
+			});
+
+			// First heartbeat delivers the command (and repeats it until acked).
+			const beatFacts = {
+				...FACTS,
+				commands: ["requestModelRediscovery", "requestUpdate"],
+			};
+			const first = await app.inject({
+				method: "POST",
+				url: "/runners/heartbeat",
+				headers: { "x-runner-credential": credential },
+				payload: { runnerId: "command-1", facts: beatFacts },
+			});
+			expect(first.statusCode).toBe(200);
+			expect(JSON.parse(first.payload).pendingCommands).toEqual(["requestModelRediscovery"]);
+
+			// The Runner acts, then acks through facts on its next heartbeat.
+			const second = await app.inject({
+				method: "POST",
+				url: "/runners/heartbeat",
+				headers: { "x-runner-credential": credential },
+				payload: {
+					runnerId: "command-1",
+					facts: {
+						...beatFacts,
+						commandAck: {
+							command: "requestModelRediscovery",
+							ok: true,
+							detail: "discovered 2 model(s)",
+						},
+					},
+				},
+			});
+			expect(second.statusCode).toBe(200);
+			expect(JSON.parse(second.payload).pendingCommands ?? []).toEqual([]);
+
+			const list = await app.inject({ method: "GET", url: "/runners" });
+			const record = JSON.parse(list.payload).find((r) => r.runnerId === "command-1");
+			expect(record.commands.pending).toEqual([]);
+			expect(record.commands.results.requestModelRediscovery).toMatchObject({
+				ok: true,
+				detail: "discovered 2 model(s)",
+			});
+			expect(record.commands.supported).toEqual(["requestModelRediscovery", "requestUpdate"]);
+		});
+
+		it("400s unknown commands fail-closed with UNKNOWN_COMMAND", async () => {
+			await onboard("command-2");
+			for (const command of ["requestRestart", "", null]) {
+				const res = await app.inject({
+					method: "POST",
+					url: "/runners/command-2/commands",
+					payload: { command },
+				});
+				expect(res.statusCode).toBe(400);
+				expect(JSON.parse(res.payload).code).toBe("UNKNOWN_COMMAND");
+			}
+			const beat = await app.inject({ method: "GET", url: "/runners" });
+			const record = JSON.parse(beat.payload).find((r) => r.runnerId === "command-2");
+			expect(record.commands.pending).toEqual([]);
+		});
+
+		it("409s commands for Runners that never heartbeat (pending)", async () => {
+			const reg = await app.inject({
+				method: "POST",
+				url: "/runners/register",
+				payload: { runnerId: "command-pending", joinToken: "test-join-token", facts: FACTS },
+			});
+			expect(reg.statusCode).toBe(202);
+			const res = await app.inject({
+				method: "POST",
+				url: "/runners/command-pending/commands",
+				payload: { command: "requestUpdate" },
+			});
+			expect(res.statusCode).toBe(409);
+			expect(JSON.parse(res.payload).code).toBe("COMMAND_INVALID_STATE");
+		});
+
+		it("404s commands for unknown Runners", async () => {
+			const res = await app.inject({
+				method: "POST",
+				url: "/runners/ghost-runner/commands",
+				payload: { command: "requestUpdate" },
+			});
+			expect(res.statusCode).toBe(404);
+			expect(JSON.parse(res.payload).code).toBe("UNKNOWN_RUNNER");
+		});
 	});
 });
 

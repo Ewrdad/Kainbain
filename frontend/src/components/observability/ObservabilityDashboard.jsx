@@ -162,6 +162,7 @@ export function ObservabilityDashboard() {
   // Widget layout & customization state
   const [layout, setLayout] = useState(loadSavedLayout);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [queuePopupOpen, setQueuePopupOpen] = useState(false);
   const [isManagerOpen, setIsManagerOpen] = useState(false);
   // Whether the configuration controls (project select, presets, edit, customize)
   // are visible. Off by default so the default monitor view is clean and
@@ -604,6 +605,7 @@ export function ObservabilityDashboard() {
             scheduledQueue={scheduledQueue}
             engineState={engineState}
             activeTask={activeTask}
+            onQueueClick={() => setQueuePopupOpen(true)}
           />
         );
       case 'kpi-successes':
@@ -611,7 +613,7 @@ export function ObservabilityDashboard() {
       case 'kpi-failures':
         return <KpiFailuresWidget stats={stats} />;
       case 'kpi-queue':
-        return <KpiQueueDepthWidget stats={stats} scheduledQueue={scheduledQueue} />;
+        return <KpiQueueDepthWidget stats={stats} scheduledQueue={scheduledQueue} onClick={() => setQueuePopupOpen(true)} />;
       case 'kpi-checkpoints':
         return <KpiCheckpointsWidget stats={stats} />;
       case 'kpi-engine':
@@ -1044,6 +1046,24 @@ export function ObservabilityDashboard() {
         </div>
       </footer>
 
+
+      {/* Queue Popup Modal */}
+      {queuePopupOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+          <div className="bg-[#0b0f17] p-4 rounded-lg max-w-3xl w-full h-3/4 overflow-auto">
+            <div className="flex justify-between items-center mb-2">
+              <h2 className="text-lg font-bold text-slate-200">Task Queue</h2>
+              <button onClick={() => setQueuePopupOpen(false)} className="text-slate-300 hover:text-slate-100">✖ Close</button>
+            </div>
+            <QueueOrderWidget
+              scheduledQueue={scheduledQueue}
+              engineState={engineState}
+              schedulerRunning={metricsData?.schedulerRunning}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Widget Customizer Modal */}
       <WidgetManagerModal
         isOpen={isManagerOpen}
@@ -1058,3 +1078,4 @@ export function ObservabilityDashboard() {
 }
 
 export default ObservabilityDashboard;
+

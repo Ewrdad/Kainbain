@@ -8,6 +8,10 @@ import {
   advertisedModels,
   effectiveTools,
   effectiveModels,
+  effectiveDirectoryValue,
+  displayDirectories,
+  modelUnion,
+  modelTogglePatch,
   parseModelsInput,
   loadedProjectIds,
   partitionProjects,
@@ -15,10 +19,23 @@ import {
   withProjectUnloaded,
   scopePatchForLoaded,
   validateDirectories,
+  validateSingleDirectory,
   visibleRunners,
   resolveSelectedId,
   runRunnerAction,
   describeRunnerVersion,
+  runnerStatusLabel,
+  stalenessLabel,
+  runnerCommands,
+  supportedRunnerCommands,
+  canRequestCommand,
+  canRequestUpdate,
+  canRequestRediscovery,
+  mergeRunnerRecord,
+  dropDraftFor,
+  buildDirectoryDraft,
+  normalizeModelId,
+  filterVisibleRunners,
 } from './runnerConfigHelpers';
 
 /***
@@ -270,5 +287,172 @@ describe('runnerConfigHelpers', () => {
     expect(bad.ok).toBe(false);
     expect(bad.errors.masterDir).toBeTruthy();
     expect(bad.errors.worktreeDir).toBeTruthy();
+  });
+
+  it('normalizes the commands block and falls back for older backends', () => {
+    expect(
+      runnerCommands({ commands: { supported: ['requestUpdate'], pending: ['requestUpdate'], results: { requestUpdate: { state: 'acked' } } } }),
+    ).toEqual({
+      supported: ['requestUpdate'],
+      pending: ['requestUpdate'],
+      results: { requestUpdate: { state: 'acked' } },
+    });
+    expect(runnerCommands({})).toEqual({ pending: [], results: {}, supported: [] });
+    expect(runnerCommands({ commands: null })).toEqual({ pending: [], results: {}, supported: [] });
+    expect(runnerCommands({ facts: { commands: ['requestModelRediscovery'] } })).toEqual({
+      pending: [],
+      results: {},
+      supported: ['requestModelRediscovery'],
+    });
+  });
+
+  it('reads supported commands and gates each request on them', () => {
+    const runner = { commands: { supported: ['requestModelRediscovery', 'requestUpdate'] } };
+    expect(supportedRunnerCommands(runner)).toEqual(['requestModelRediscovery', 'requestUpdate']);
+    expect(supportedRunnerCommands({})).toEqual([]);
+    expect(canRequestCommand(runner, 'requestUpdate')).toBe(true);
+    expect(canRequestCommand(runner, 'requestRestart')).toBe(false);
+    expect(canRequestCommand({}, 'requestUpdate')).toBe(false);
+  });
+
+  it('allows update-now only when the runner supports it (badge alone is not enough)', () => {
+    expect(canRequestUpdate({ commands: { supported: ['requestUpdate'] } })).toBe(true);
+    expect(canRequestUpdate({ commands: { supported: ['requestModelRediscovery'] } })).toBe(false);
+    // An update-available badge on an old Runner needs a manual update —
+    // offering the button would queue a command nothing acts on (R1).
+    expect(canRequestUpdate({ updateAvailable: true })).toBe(false);
+    expect(canRequestUpdate({})).toBe(false);
+  });
+
+  it('allows re-detection only when the runner supports it', () => {
+    expect(canRequestRediscovery({ commands: { supported: ['requestModelRediscovery'] } })).toBe(true);
+    expect(canRequestRediscovery({ commands: { supported: ['requestUpdate'] } })).toBe(false);
+    expect(canRequestRediscovery({})).toBe(false);
+  });
+
+  it('unions advertised and effective models in sorted order', () => {
+    const runner = {
+      capabilities: { models: ['m2', 'm1'] },
+      operatorConfig: { availableModels: ['m3', 'm1'] },
+    };
+    expect(modelUnion(runner)).toEqual(['m1', 'm2', 'm3']);
+    expect(modelUnion({})).toEqual([]);
+  });
+
+  it('resets the model patch to null when the selection matches advertised', () => {
+    const runner = { capabilities: { models: ['m1', 'm2'] } };
+    expect(modelTogglePatch(runner, ['m2', 'm1'])).toBeNull();
+    expect(modelTogglePatch(runner, ['m1'])).toEqual(['m1']);
+    expect(modelTogglePatch(runner, [])).toEqual([]);
+  });
+
+  it('prefers the operator directory override over the Runner folders', () => {
+    const runner = {
+      facts: { directories: { masterDir: '/runner-master', worktreeDir: '/runner-trees' } },
+      operatorConfig: { directories: { masterDir: '/op-master', worktreeDir: '' } },
+    };
+    expect(effectiveDirectoryValue(runner, 'masterDir')).toBe('/op-master');
+    expect(effectiveDirectoryValue(runner, 'worktreeDir')).toBe('/runner-trees');
+    expect(effectiveDirectoryValue({}, 'masterDir')).toBe('');
+  });
+
+  it('marks directory fields as defaults while nothing is overridden', () => {
+    const shown = displayDirectories({
+      facts: { directories: { masterDir: '/m', worktreeDir: '/w' } },
+    });
+    expect(shown.masterDir).toEqual({ value: '/m', isDefault: true, isUnknown: false });
+    expect(shown.worktreeDir).toEqual({ value: '/w', isDefault: true, isUnknown: false });
+    const unknown = displayDirectories({});
+    expect(unknown.masterDir.isUnknown).toBe(true);
+    expect(unknown.worktreeDir.isUnknown).toBe(true);
+    const overridden = displayDirectories({
+      facts: { directories: { masterDir: '/m', worktreeDir: '/w' } },
+      operatorConfig: { directories: { masterDir: '/op', worktreeDir: '' } },
+    });
+    expect(overridden.masterDir).toEqual({ value: '/op', isDefault: false, isUnknown: false });
+  });
+
+  it('labels Runner status rows without crashing on odd records', () => {
+    expect(runnerStatusLabel({ status: 'pending' })).toBe('Needs setup');
+    expect(runnerStatusLabel({ status: 'active', paused: true })).toBe('Paused');
+    expect(runnerStatusLabel({ status: 'active', belowMinimum: true })).toBe('Needs update');
+    expect(runnerStatusLabel({ status: 'active' })).toBe('active');
+    expect(runnerStatusLabel({})).toBe('unknown');
+    expect(runnerStatusLabel(undefined)).toBe('unknown');
+  });
+
+  it('labels heartbeat age and treats missing dates as unknown', () => {
+    const seen = Date.parse('2024-01-01T00:00:00Z');
+    expect(stalenessLabel({ lastSeenAt: '2024-01-01T00:00:00Z' }, seen + 10_000)).toBe('just now');
+    expect(stalenessLabel({ lastSeenAt: '2024-01-01T00:00:00Z' }, seen + 140_000)).toBe('2m ago');
+    expect(stalenessLabel({ lastSeenAt: '2024-01-01T00:00:00Z' }, seen + 7_200_000)).toBe('2h ago');
+    expect(stalenessLabel({}, seen)).toBeNull();
+    expect(stalenessLabel({ lastSeenAt: 'not-a-date' }, seen)).toBeNull();
+  });
+
+  it('rejects blank and over-long single directory values', () => {
+    expect(validateSingleDirectory('  ')).toBeTruthy();
+    expect(validateSingleDirectory('x'.repeat(1025))).toBeTruthy();
+    expect(validateSingleDirectory('/srv/kb')).toBeNull();
+  });
+
+  it('merges one refreshed record without touching other rows', () => {
+    const previous = [{ runnerId: 'a', status: 'pending' }, { runnerId: 'b', status: 'active' }];
+    const next = mergeRunnerRecord({
+      previousRunners: previous,
+      incomingRecord: { runnerId: 'a', status: 'active' },
+    });
+    expect(next).toEqual([
+      { runnerId: 'a', status: 'active' },
+      { runnerId: 'b', status: 'active' },
+    ]);
+    // A brand-new record is appended rather than dropped.
+    expect(
+      mergeRunnerRecord({ previousRunners: previous, incomingRecord: { runnerId: 'c' } }),
+    ).toEqual([...previous, { runnerId: 'c' }]);
+    // Malformed refreshes never wipe the roster.
+    expect(mergeRunnerRecord({ previousRunners: previous, incomingRecord: null })).toBe(previous);
+    expect(mergeRunnerRecord({ previousRunners: previous, incomingRecord: {} })).toBe(previous);
+  });
+
+  it('drops one Runner draft without touching the others', () => {
+    expect(dropDraftFor({ drafts: { a: 'x', b: 'y' }, runnerId: 'a' })).toEqual({ b: 'y' });
+    expect(dropDraftFor({ drafts: { a: 'x' }, runnerId: 'zzz' })).toEqual({ a: 'x' });
+    expect(dropDraftFor({ drafts: null, runnerId: 'a' })).toEqual({});
+  });
+
+  it('keeps the untouched directory field while the operator types', () => {
+    const fallback = { masterDir: '/m', worktreeDir: '/w' };
+    const first = buildDirectoryDraft({ previousDraft: null, fallbackDirs: fallback, field: 'masterDir', value: '/n' });
+    expect(first).toEqual({ masterDir: '/n', worktreeDir: '/w' });
+    expect(
+      buildDirectoryDraft({ previousDraft: first, fallbackDirs: fallback, field: 'worktreeDir', value: '/t' }),
+    ).toEqual({ masterDir: '/n', worktreeDir: '/t' });
+    // Unknown fields leave the draft alone instead of adding junk keys.
+    expect(
+      buildDirectoryDraft({ previousDraft: first, fallbackDirs: fallback, field: 'other', value: 'x' }),
+    ).toEqual(first);
+  });
+
+  it('cleans hand-typed model ids and rejects unusable ones', () => {
+    expect(normalizeModelId({ value: '  m1  ' })).toBe('m1');
+    expect(normalizeModelId({ value: '   ' })).toBeNull();
+    expect(normalizeModelId({ value: 'x'.repeat(257) })).toBeNull();
+    expect(normalizeModelId({ value: 42 })).toBeNull();
+    expect(normalizeModelId()).toBeNull();
+  });
+
+  it('filters the roster by id, name, or status and ignores junk rows', () => {
+    const runners = [
+      { runnerId: 'alpha', status: 'active', operatorConfig: { displayName: 'Primary' } },
+      { runnerId: 'beta', status: 'pending' },
+      null,
+    ];
+    expect(filterVisibleRunners({ runners, query: '  ' })).toEqual(runners);
+    expect(filterVisibleRunners({ runners, query: 'ALP' })).toHaveLength(1);
+    expect(filterVisibleRunners({ runners, query: 'primary' })).toHaveLength(1);
+    expect(filterVisibleRunners({ runners, query: 'pending' })).toHaveLength(1);
+    expect(filterVisibleRunners({ runners, query: 'zzz' })).toEqual([]);
+    expect(filterVisibleRunners({ runners: null, query: 'a' })).toEqual([]);
   });
 });

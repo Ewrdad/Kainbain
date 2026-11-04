@@ -67,6 +67,8 @@ export function routeAnnouncement(view, taskKey) {
       return 'Documentation loaded.';
     case 'retrospective':
       return 'Cross-task retrospective loaded.';
+    case 'accessibility':
+      return 'Accessibility statement loaded.';
     case 'task-review':
       return taskKey ? `Reviewing task ${taskKey}.` : 'Task review loaded.';
     case 'task-survey':

@@ -108,6 +108,44 @@ describe("The Flow: failed-stage timeline reason", () => {
 		});
 	});
 
+	it("records the Runner on the Failed row and failure report", () => {
+		const store = makeStore();
+		const task = store.createTask("p1", { stageId: "impl", projectCwd: tempCwd });
+
+		store.handleStageFailure("p1", task.id, stages[1], new Error("runner blew up"), {
+			stages,
+			projectCwd: tempCwd,
+			skipFailback: true,
+			runnerId: "runner-alpha",
+		});
+
+		const entry = task.timeline.at(-1);
+		expect(entry).toMatchObject({
+			status: "Failed",
+			runnerId: "runner-alpha",
+		});
+		expect(task.reports.at(-1)).toMatchObject({
+			status: "FAILED",
+			runnerId: "runner-alpha",
+		});
+	});
+
+	it("leaves runnerId absent on embedded failures (no placeholder Runner)", () => {
+		const store = makeStore();
+		const task = store.createTask("p1", { stageId: "impl", projectCwd: tempCwd });
+
+		store.handleStageFailure("p1", task.id, stages[1], new Error("boom"), {
+			stages,
+			projectCwd: tempCwd,
+			skipFailback: true,
+		});
+
+		const entry = task.timeline.at(-1);
+		expect(entry).toMatchObject({ status: "Failed" });
+		expect(entry.runnerId).toBeUndefined();
+		expect(task.reports.at(-1).runnerId).toBeUndefined();
+	});
+
 	it("keeps the history action string byte-identical", () => {
 		const store = makeStore();
 		const task = store.createTask("p1", { stageId: "impl", projectCwd: tempCwd });

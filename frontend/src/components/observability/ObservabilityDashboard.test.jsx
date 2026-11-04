@@ -214,6 +214,19 @@ test('opens Widget Manager modal to customize widgets and apply presets', async 
   expect(screen.queryByText(/Customize Observability Widgets & Layout/i)).not.toBeInTheDocument();
 });
 
+test('clicking the queue KPI card opens the task-queue popup and Close dismisses it', async () => {
+  renderWithKainBain(<ObservabilityDashboard />);
+  await act(async () => {});
+
+  expect(screen.queryByRole('heading', { name: /Task Queue/i })).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByTestId('kpi-queue'));
+  expect(screen.getByRole('heading', { name: /Task Queue/i })).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: /Close/i }));
+  expect(screen.queryByRole('heading', { name: /Task Queue/i })).not.toBeInTheDocument();
+});
+
 test('displays active task full prompt in viewer', async () => {
   seedActiveTaskLayout();
   renderWithKainBain(<ObservabilityDashboard />, {
