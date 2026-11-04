@@ -25,6 +25,7 @@ source of truth. This file intentionally lists only high-impact changes.
 
 ### Changed
 
+- Consolidated root-level markdown files into `docs/`: moved `CI_SCRIPTS.md`, `PORTABLE_DEPLOYMENT.md`, `agent-docs/`, and `research/phase0-branch-dry-run.md`; deleted 13 obsolete one-off summaries and superseded phase-2 plans (task fc3acfff).
 - Merged the ALL / FAILED / HUMAN ONLY board pills into the unified search bar as `!` system filters (e.g. `auth #Dev !failed`): same dropdown, chips, and Any/All toggle as `#` tags; unknown `!tokens` stay as text; future native filters register via `frontend/src/components/workflow/systemFilters/` (task c213d3a9).
 
 ### Fixed

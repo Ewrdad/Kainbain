@@ -21,7 +21,7 @@
 
 ### P1 — Local-only repositories — Accepted
 
-Verified: `api/git/remote.js:50-57` (`pushBranchIfRemote` → `{ pushed: false, skipped: 'no-remote' }`) and `PORTABLE_DEPLOYMENT.md` Scenario D (bring your existing repositories). The reviewer is right that clone→push→verify-SHA has no answer for a repo with no remote, and the plan pre-committed "git clone to Runner projects folder" without naming the clone source.
+Verified: `api/git/remote.js:50-57` (`pushBranchIfRemote` → `{ pushed: false, skipped: 'no-remote' }`) and `docs/PORTABLE_DEPLOYMENT.md` Scenario D (bring your existing repositories). The reviewer is right that clone→push→verify-SHA has no answer for a repo with no remote, and the plan pre-committed "git clone to Runner projects folder" without naming the clone source.
 
 Fixed in the plan: Phase 0 D2/D10 now decides a 3-way transport matrix — (a) remote-backed (clone-from-origin, push, verify reachable SHA), (b) local-only on a loopback Runner (adopt/share path, completion verified by branch+SHA presence in the backend-visible repo), (c) local-only offered to a remote Runner (not dispatchable without a fetchable transport). Phase 2 parity now requires a local-only fixture repo, and the pageable metric is rescoped to "unverifiable SHA" covering both variants. Declaring remotes mandatory (the reviewer's option b) was rejected: it would change behaviour for existing local-only installs and violate the plan Goal.
 
