@@ -161,7 +161,17 @@ describe("api/imageGen/surveyImages job", () => {
 
 	it("marks no-key failures (terminal, descriptions fallback) when unconfigured", async () => {
 		appendSurveyRound({ cwd, project: null, taskId, stage: "ask", questions: [img()] });
-		const summary = await ensureSurveyImages({ cwd, project: null, taskId, stage: stageWith("muse") });
+		const mustNotFetch = async () => {
+			throw new Error("must not fetch when no API key is configured (no-key entries are terminal)");
+		};
+		const summary = await ensureSurveyImages({
+			cwd,
+			project: null,
+			taskId,
+			stage: stageWith("muse"),
+			imageGenDir,
+			fetchImpl: mustNotFetch,
+		});
 		expect(summary).toMatchObject({ providerId: "muse", status: "done", generated: 0, failed: 2 });
 		const entries = imagesOf(cwd);
 		expect(entries).toHaveLength(2);
@@ -173,7 +183,17 @@ describe("api/imageGen/surveyImages job", () => {
 
 	it("heals no-key failures once a key exists", async () => {
 		appendSurveyRound({ cwd, project: null, taskId, stage: "ask", questions: [img()] });
-		await ensureSurveyImages({ cwd, project: null, taskId, stage: stageWith("muse") });
+		const mustNotFetch = async () => {
+			throw new Error("must not fetch when no API key is configured (no-key entries are terminal)");
+		};
+		await ensureSurveyImages({
+			cwd,
+			project: null,
+			taskId,
+			stage: stageWith("muse"),
+			imageGenDir,
+			fetchImpl: mustNotFetch,
+		});
 		expect(imagesOf(cwd)[0].code).toBe("no-key");
 		process.env.KAINBAIN_IMAGE_GEN_MUSE_API_KEY = "sk-test";
 		const summary = await ensureSurveyImages({
