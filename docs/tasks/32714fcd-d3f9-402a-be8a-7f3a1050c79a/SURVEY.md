@@ -88,6 +88,46 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Helper tool (local runner) is not found and set up automatically",
+        "The projects screen is empty and confusing",
+        "I cannot make a new project without a special link (git address)",
+        "I cannot open my existing work (projects will not load)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Set everything up for me automatically in the background"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Let me type or paste the link into the app screen"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "A ready-made sample project to try out"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Keep my work but reset the settings"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Do it all quietly in the background"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
