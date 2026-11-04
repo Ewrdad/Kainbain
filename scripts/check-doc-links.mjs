@@ -51,8 +51,8 @@ const ALLOWLISTED_PATTERNS = [
 	/::/,
 	/:[0-9]+/,
 	/frontend\/\.env$/,
-	/api\/logs\/?$/,
 	/api\/bundled-changelog\.json$/,
+	/api\/logs\/?$/,
 ];
 
 const missing = [];

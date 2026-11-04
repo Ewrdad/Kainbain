@@ -1,15 +1,66 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams } from 'react-router';
 import { useKainBain } from '../../context/KainBainContext';
-import { api } from '../../services/api';
+import { API_BASE, api } from '../../services/api';
+import { resolveTaskImageUrl } from '../../services/taskImages.js';
 import { isQuestionVisible, combinedAnswers, selectedValues } from '../../../../shared/survey.js';
 import { SurveyTaskPanel } from './SurveyTaskPanel';
+
+/***
+ * MARK: SURVEY_IMAGE_POLL_MS
+ * @description How often the survey page re-reads while image questions are
+ *   still generating: the read doubles as the recovery kick, so a restarted
+ *   server resumes illustration without any user action. Polling stops as
+ *   soon as every option is ready or terminally failed.
+ * @example SURVEY_IMAGE_POLL_MS => 4000
+ ***/
+export const SURVEY_IMAGE_POLL_MS = 4000;
+
+/***
+ * MARK: surveyNeedsImagePoll
+ * @description Whether any image question still awaits generation: a pending
+ *   entry always polls (it is unambiguous), while a missing entry polls only
+ *   when the survey's stage enables a provider — with image generation off,
+ *   missing entries are terminal descriptions, never a loading state.
+ * @example surveyNeedsImagePoll([{ questions: [{ type: 'image', options: ['a'], images: [] }] }], 'muse') => true
+ * @param {Array<Object>} [rounds] - Survey rounds.
+ * @param {string} [providerId] - Effective imageGen provider (`none` disables).
+ * @returns {boolean}
+ ***/
+export function surveyNeedsImagePoll(rounds, providerId) {
+  const enabled = typeof providerId === 'string' && providerId !== '' && providerId !== 'none';
+  for (const round of Array.isArray(rounds) ? rounds : []) {
+    for (const question of round?.questions || []) {
+      if (question?.type !== 'image') continue;
+      const entries = Array.isArray(question.images) ? question.images : [];
+      const byOption = new Map();
+      for (const entry of entries) {
+        if (entry && Number.isInteger(entry.option) && !byOption.has(entry.option)) {
+          byOption.set(entry.option, entry);
+        }
+      }
+      for (let index = 0; index < (question.options || []).length; index += 1) {
+        const entry = byOption.get(index);
+        if (!entry) {
+          if (enabled) return true;
+        } else if (entry.status === 'pending') {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
 
 /***
  * MARK: SurveyPage
  * @description Human survey page for the `question-me` skill: renders every
  *   round of `SURVEY.md` as multiple-choice questions (radio group for
- *   `single`, checkboxes for `multiple`), each with a free-form Notes field.
+ *   `single`, checkboxes for `multiple`, generated image cards with radio
+ *   semantics for `image`), each with a free-form Notes field. While image
+ *   questions are still generating, the page re-reads until every picture is
+ *   ready or terminally failed; failed or missing pictures degrade to their
+ *   written descriptions so answering never blocks.
  *   Conditional questions (`showIf`) hide until their condition is met —
  *   hidden required questions never block. Answers save without advancing
  *   (`Save answers`); `Submit & continue` advances the task once everything
@@ -172,6 +223,31 @@ export function SurveyPage({
 
   const loadingFresh = loadedTaskId !== taskId;
   const rounds = useMemo(() => (loadingFresh ? [] : survey?.rounds || []), [loadingFresh, survey]);
+  const imageGenProviderId = survey?.imageGen?.providerId;
+
+  // Generation progress: while image questions are still illustrating, the
+  // page re-reads on an interval. Only the server rounds refresh — local
+  // answer drafts are separate state and are never clobbered by a poll.
+  const needsImagePoll = useMemo(
+    () => (loadingFresh ? false : surveyNeedsImagePoll(rounds, imageGenProviderId)),
+    [loadingFresh, rounds, imageGenProviderId],
+  );
+  useEffect(() => {
+    if (!needsImagePoll || !taskId) return undefined;
+    let cancelled = false;
+    const timer = setInterval(() => {
+      http.getSurvey(projectId, taskId).then(
+        (data) => {
+          if (!cancelled) setSurvey(data);
+        },
+        () => {},
+      );
+    }, SURVEY_IMAGE_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [needsImagePoll, http, projectId, taskId]);
   const knownIds = useMemo(() => {
     const ids = new Set();
     for (const round of rounds) for (const q of round?.questions || []) if (q?.id) ids.add(q.id);
@@ -446,6 +522,9 @@ export function SurveyPage({
                     missing={missingSet.has(q.id)}
                     onSelect={setSelected}
                     onNotes={setNotes}
+                    projectId={projectId}
+                    taskId={taskId}
+                    imageGenProviderId={imageGenProviderId}
                   />
                 ))}
               </section>
@@ -501,10 +580,11 @@ function surveyStatusLine(survey, totalQuestions) {
 
 /***
  * MARK: QuestionField
- * @description One multiple-choice question: native radio/checkbox options
- *   (full-width 44px touch targets) plus an always-present Notes textarea.
+ * @description One survey question: native radio/checkbox options (full-width
+ *   44px touch targets) for `single`/`multiple`, generated image cards with
+ *   radio semantics for `image`, plus an always-present Notes textarea.
  ***/
-function QuestionField({ question, selected, notes, missing, onSelect, onNotes }) {
+function QuestionField({ question, selected, notes, missing, onSelect, onNotes, projectId, taskId, imageGenProviderId }) {
   const multi = question.type === 'multiple';
   const inputType = multi ? 'checkbox' : 'radio';
   return (
@@ -515,35 +595,46 @@ function QuestionField({ question, selected, notes, missing, onSelect, onNotes }
           <span className="ml-1.5 text-[10px] font-mono uppercase text-secondary">required</span>
         )}
       </legend>
-      <div className="flex flex-col gap-1.5">
-        {(question.options || []).map((option) => {
-          const checked = selected.includes(String(option));
-          const inputId = `survey-${question.id}-${encodeURIComponent(String(option))}`;
-          return (
-            <label
-              key={option}
-              htmlFor={inputId}
-              className={`flex items-center gap-3 w-full min-h-[44px] px-3 py-2 rounded-sm border cursor-pointer text-sm transition-colors ${
-                checked
-                  ? 'border-secondary bg-human-fill/50 text-on-surface'
-                  : 'border-border-standard text-on-surface hover:border-secondary/60'
-              }`}
-            >
-              <input
-                id={inputId}
-                type={inputType}
-                name={`survey-${question.id}`}
-                value={String(option)}
-                checked={checked}
-                aria-label={`${question.text}: ${option}`}
-                onChange={(e) => onSelect(question.id, String(option), e.target.checked, multi)}
-                className="w-4 h-4 shrink-0 accent-secondary"
-              />
-              <span className="leading-snug">{option}</span>
-            </label>
-          );
-        })}
-      </div>
+      {question.type === 'image' ? (
+        <ImageOptions
+          question={question}
+          selected={selected}
+          onSelect={onSelect}
+          projectId={projectId}
+          taskId={taskId}
+          imageGenProviderId={imageGenProviderId}
+        />
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {(question.options || []).map((option) => {
+            const checked = selected.includes(String(option));
+            const inputId = `survey-${question.id}-${encodeURIComponent(String(option))}`;
+            return (
+              <label
+                key={option}
+                htmlFor={inputId}
+                className={`flex items-center gap-3 w-full min-h-[44px] px-3 py-2 rounded-sm border cursor-pointer text-sm transition-colors ${
+                  checked
+                    ? 'border-secondary bg-human-fill/50 text-on-surface'
+                    : 'border-border-standard text-on-surface hover:border-secondary/60'
+                }`}
+              >
+                <input
+                  id={inputId}
+                  type={inputType}
+                  name={`survey-${question.id}`}
+                  value={String(option)}
+                  checked={checked}
+                  aria-label={`${question.text}: ${option}`}
+                  onChange={(e) => onSelect(question.id, String(option), e.target.checked, multi)}
+                  className="w-4 h-4 shrink-0 accent-secondary"
+                />
+                <span className="leading-snug">{option}</span>
+              </label>
+            );
+          })}
+        </div>
+      )}
       <div className="space-y-1">
         <label
           htmlFor={`survey-notes-${question.id}`}
@@ -565,6 +656,154 @@ function QuestionField({ question, selected, notes, missing, onSelect, onNotes }
         <p className="text-[11px] font-mono text-error">This question still needs an answer.</p>
       )}
     </fieldset>
+  );
+}
+
+/***
+ * MARK: ImageOptions
+ * @description One image question's options: ready pictures render as
+ *   selectable image cards (radio semantics — pick one favourite), pending
+ *   pictures as selectable generating skeletons (pick by description while
+ *   the picture renders), and failed or missing pictures as description
+ *   rows with an honest notice — answering never blocks on generation.
+ ***/
+function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGenProviderId }) {
+  const entries = Array.isArray(question.images) ? question.images : [];
+  const byOption = new Map();
+  for (const entry of entries) {
+    if (entry && Number.isInteger(entry.option) && !byOption.has(entry.option)) {
+      byOption.set(entry.option, entry);
+    }
+  }
+  const generationOff = imageGenProviderId === 'none' || imageGenProviderId === '';
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label={question.text}>
+      {(question.options || []).map((option, index) => {
+        const text = String(option);
+        const checked = selected.includes(text);
+        const inputId = `survey-${question.id}-img-${index}`;
+        const entry = byOption.get(index);
+        // Ready means "bytes on our disk" — but `file` is agent-authored
+        // round JSON, so only relative task-asset paths render as pictures.
+        // An absolute URL (or any scheme) falls through to the description
+        // row below: the backend never writes such entries, and rendering
+        // them would let survey JSON pull foreign content into the page.
+        const rawFile = typeof entry?.file === 'string' ? entry.file.trim() : '';
+        const lowerFile = rawFile.toLowerCase();
+        const isRelativeAsset =
+          rawFile !== '' &&
+          !lowerFile.startsWith('http://') &&
+          !lowerFile.startsWith('https://') &&
+          !rawFile.startsWith('//') &&
+          !/^[a-z][a-z0-9+.-]*:/i.test(rawFile);
+        if (entry?.status === 'ready' && isRelativeAsset) {
+          const src = resolveTaskImageUrl({ apiBase: API_BASE, projectId, taskId, src: rawFile });
+          return (
+            <label
+              key={`${text}-${index}`}
+              htmlFor={inputId}
+              className={`flex flex-col gap-1.5 p-2 rounded-sm border cursor-pointer text-sm transition-colors ${
+                checked
+                  ? 'border-secondary bg-human-fill/50 text-on-surface'
+                  : 'border-border-standard text-on-surface hover:border-secondary/60'
+              }`}
+            >
+              <input
+                id={inputId}
+                type="radio"
+                name={`survey-${question.id}`}
+                value={text}
+                checked={checked}
+                aria-label={`${question.text}: ${text}`}
+                onChange={(e) => onSelect(question.id, text, e.target.checked, false)}
+                className=""
+              />
+              <img
+                src={src}
+                alt={text}
+                loading="lazy"
+                className="w-full aspect-video object-cover rounded-sm bg-surface-deep"
+              />
+              <span className="leading-snug text-xs">{text}</span>
+            </label>
+          );
+        }
+        if (entry?.status === 'pending') {
+          // Selectable while generating: a slow provider must never block
+          // answering — the human picks by description and the ready picture
+          // (plus the chosen-design reference) lands afterwards.
+          return (
+            <label
+              key={`${text}-${index}`}
+              htmlFor={inputId}
+              className={`flex flex-col gap-1.5 p-2 rounded-sm border cursor-pointer text-sm transition-colors ${
+                checked
+                  ? 'border-secondary bg-human-fill/50 text-on-surface'
+                  : 'border-border-standard text-on-surface hover:border-secondary/60'
+              }`}
+            >
+              <input
+                id={inputId}
+                type="radio"
+                name={`survey-${question.id}`}
+                value={text}
+                checked={checked}
+                aria-label={`${question.text}: ${text}`}
+                onChange={(e) => onSelect(question.id, text, e.target.checked, false)}
+                className=""
+              />
+              <span
+                role="status"
+                aria-label={`${text}: generating illustration`}
+                className="block w-full aspect-video rounded-sm bg-surface-deep motion-safe:animate-pulse"
+              />
+              <span className="text-[11px] font-mono text-text-muted">Generating illustration…</span>
+              <span className="leading-snug text-xs">{text}</span>
+            </label>
+          );
+        }
+        return (
+          <label
+            key={`${text}-${index}`}
+            htmlFor={inputId}
+            className={`flex items-start gap-3 w-full min-h-[44px] px-3 py-2 rounded-sm border cursor-pointer text-sm transition-colors sm:col-span-2 ${
+              checked
+                ? 'border-secondary bg-human-fill/50 text-on-surface'
+                : 'border-border-standard text-on-surface hover:border-secondary/60'
+            }`}
+          >
+            <input
+              id={inputId}
+              type="radio"
+              name={`survey-${question.id}`}
+              value={text}
+              checked={checked}
+              aria-label={`${question.text}: ${text}`}
+              onChange={(e) => onSelect(question.id, text, e.target.checked, false)}
+              className="w-4 h-4 shrink-0 mt-1 accent-secondary"
+            />
+            <span className="leading-snug">
+              {text}
+              {entry?.status === 'failed' && entry?.error && (
+                <span className="block text-[11px] text-text-muted mt-0.5">
+                  Illustration unavailable: {entry.error}
+                </span>
+              )}
+              {!entry && !generationOff && (
+                <span className="block text-[11px] font-mono text-text-muted mt-0.5">
+                  Illustration on its way…
+                </span>
+              )}
+              {!entry && generationOff && (
+                <span className="block text-[11px] font-mono text-text-muted mt-0.5">
+                  Image generation is off for this survey — pick by description.
+                </span>
+              )}
+            </span>
+          </label>
+        );
+      })}
+    </div>
   );
 }
 

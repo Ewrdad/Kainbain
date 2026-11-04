@@ -3,7 +3,9 @@ import { Modal } from '../Modal';
 import { MarkdownViewer } from '../common/MarkdownViewer';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { useKbReferenceData, resolveReference } from '../../hooks/useKbReferenceData';
+import { renderSkillConditionals } from '../../../../shared/skillConditionals.js';
 import { KBReferenceSelect } from './KBReferenceSelect';
+import { ProviderKeywordSelect } from './ProviderKeywordSelect';
 
 /***
  * MARK: STAGE_SKILLS_MAX_CHARS
@@ -309,6 +311,7 @@ export function StageSkillsPanel({
   activeProjectId,
   onChange,
   maxChars = STAGE_SKILLS_MAX_CHARS,
+  providersClient,
 }) {
   const [search, setSearch] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -546,7 +549,10 @@ export function StageSkillsPanel({
     const overrides = attachment?.config || {};
     const merged = { ...keywordMap, ...overrides };
     const context = previewConfig.context || '';
+    // Conditional sections first (mirrors the engine's applySkillKeywords):
+    // a falsy block never reaches substitution.
     let text = context ? `${context}\n\n${previewMarkdown}` : previewMarkdown;
+    text = renderSkillConditionals(text, merged);
     for (const [key, value] of Object.entries(merged)) {
       text = text.split(`{{${key}}}`).join(String(value));
     }
@@ -776,6 +782,31 @@ export function StageSkillsPanel({
                   )}
                   {keywordEntries.map(([key, entry]) => {
                     const kbRef = entry && typeof entry === 'object' ? entry.kbRef : undefined;
+                    const uiKind = entry && typeof entry === 'object' ? entry.ui : undefined;
+                    if (uiKind === 'provider-select') {
+                      // Metadata-declared image-gen provider: render the
+                      // registry-backed dropdown instead of the free-text
+                      // input. Values are stored as canonical provider ids
+                      // via setSkillConfigValue.
+                      return (
+                        <div key={key} className="flex items-center gap-1">
+                          <span
+                            className="text-[8px] font-mono text-text-muted whitespace-nowrap"
+                            title={entry?.description || key}
+                          >
+                            {key}
+                          </span>
+                          <ProviderKeywordSelect
+                            value={typeof attachment.config?.[key] === 'string' ? attachment.config[key] : ''}
+                            defaultValue={keywordDefaultValue(entry)}
+                            onChange={(next) => setSkillConfigValue(attachment.name, key, next)}
+                            ariaLabel={`Keyword ${key} for ${attachment.name}`}
+                            fallbackEnum={Array.isArray(entry.enum) ? entry.enum : []}
+                            client={providersClient}
+                          />
+                        </div>
+                      );
+                    }
                     if (kbRef === 'project' || kbRef === 'workflow' || kbRef === 'stage') {
                       // Metadata-declared entity reference: render the cascading
                       // KB selector instead of the free-text input. Values are

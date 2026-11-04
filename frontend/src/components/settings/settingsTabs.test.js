@@ -22,6 +22,7 @@ describe("settingsTabs", () => {
 			"Storage",
 			"Notifications",
 			"Prompt Layout",
+			"Images",
 			"UI",
 		]);
 		expect(SETTINGS_TABS.map((tab) => tab.id)).toEqual([
@@ -31,6 +32,7 @@ describe("settingsTabs", () => {
 			"storage",
 			"notifications",
 			"prompt-layout",
+			"images",
 			"ui",
 		]);
 	});
@@ -40,6 +42,7 @@ describe("settingsTabs", () => {
 			if (
 				tab.id === "notifications" ||
 				tab.id === "prompt-layout" ||
+				tab.id === "images" ||
 				tab.id === "ui"
 			) {
 				expect(tab.showFooterReset).toBe(false);

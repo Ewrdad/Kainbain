@@ -72,7 +72,12 @@ describe("git() per-repository serialization gate", () => {
 	// fire under full-gate CPU starvation (the worker is starved for tens of
 	// seconds while 250+ parallel suites run), turning a load spike into a
 	// false GitError. Raise the ceiling so the test observes only overlap.
-	const opts = { timeout: 600000 };
+	// The ceiling sits just under the `it` budget below: a genuine hang still
+	// surfaces (as the `it` timeout), while a real serialization regression
+	// keeps failing fast on the `expect(spawnMock)` overlap assertions, never
+	// on this timer. Observed 2026-11-04: the full gate stalled a worker past
+	// 600s, so 600s was not enough headroom.
+	const opts = { timeout: 840000 };
 
 	it("never runs two git processes on the same repo at once", { timeout: STARVATION_BUDGET_MS }, async () => {
 		spawnMock.mockReset();

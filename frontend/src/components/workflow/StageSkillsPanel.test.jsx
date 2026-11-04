@@ -201,6 +201,64 @@ test('question-me keywords render from the library descriptor with no detail fet
   });
 });
 
+test('provider-select keywords render a registry dropdown that stores canonical ids', async () => {
+  const onChange = vi.fn();
+  const withImageGen = [
+    {
+      name: 'question-me',
+      description: 'Generate survey questions.',
+      source: 'global',
+      path: '/skills/question-me/SKILL.md',
+      hasConfig: true,
+      config: {
+        keywords: {
+          outputFile: { value: 'SURVEY.md', description: 'Survey file.' },
+          imageGen: {
+            value: 'none',
+            description: 'Image provider.',
+            ui: 'provider-select',
+            providerApi: '/settings/image-gen/providers',
+            enum: ['none', 'muse', 'mock'],
+          },
+        },
+      },
+      markdownChars: 900,
+    },
+  ];
+  const stageWithSkill = {
+    ...stage,
+    skills: [{ name: 'question-me', mode: 'direct', config: {} }],
+  };
+  renderPanel({
+    skills: withImageGen,
+    stage: stageWithSkill,
+    onChange,
+    getSkillByName: () => null,
+    providersClient: {
+      getImageGenProviders: async () => ({
+        providers: [
+          { id: 'muse', label: 'Muse Image (Meta)', requiresKey: true, configured: true },
+          { id: 'mock', label: 'Mock (offline tests)', requiresKey: false, configured: true },
+        ],
+      }),
+    },
+  });
+
+  fireEvent.click(screen.getByRole('button', { name: /Toggle config editor for question-me/i }));
+
+  const select = await screen.findByLabelText('Keyword imageGen for question-me');
+  expect(select.tagName).toBe('SELECT');
+  await waitFor(() => expect(select.options.length).toBe(3));
+  expect(select).toHaveValue('none');
+  // Plain keywords beside it still render as free-text inputs.
+  expect(screen.getByLabelText('Keyword outputFile for question-me').tagName).toBe('INPUT');
+
+  fireEvent.change(select, { target: { value: 'muse' } });
+  expect(onChange).toHaveBeenCalledWith({
+    skills: [{ name: 'question-me', mode: 'direct', config: { imageGen: 'muse' } }],
+  });
+});
+
 test('raw JSON escape hatch applies valid objects and rejects invalid JSON', async () => {
   const onChange = vi.fn();
   const stageWithSkill = {
