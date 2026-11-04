@@ -733,11 +733,21 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			// Runner-authored task files (plan/survey) land in the backend
 			// task folder BEFORE the finish advances the task, so a following
 			// backend-run CI stage reading {{taskDocs}} can see them.
-			materializeRunnerTaskDocs({
+			const { merged: mergedSurveyFiles } = materializeRunnerTaskDocs({
 				project: projectStore.getProject(ctx.projectId),
 				taskId: request.params.id,
 				files: request.body?.taskFiles,
 			});
+			// A merged survey means a stale Runner shipment met already-saved
+			// answers and the backend answers were kept: one log line so
+			// operators can see the wipe guard working. Optional chaining
+			// keeps route fakes without a logger working.
+			if (mergedSurveyFiles.length > 0) {
+				request.log?.info?.(
+					{ taskId: request.params.id, files: mergedSurveyFiles },
+					"Runner task files merged into backend survey (answers kept)",
+				);
+			}
 			const harnessId =
 				runner.facts?.harnesses?.[0]?.id || request.body?.harnessId || "unknown";
 			// Runner-run integration: the merge already landed via the

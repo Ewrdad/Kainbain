@@ -47,6 +47,10 @@ export function materializeRunnerTaskDocs({ project, taskId, files } = {}) {
 			if (fs.existsSync(dest)) {
 				const backendContent = fs.readFileSync(dest, "utf8");
 				if (parseSurvey(backendContent).rounds.length > 0) {
+					// Order: backend copy first (answers to keep), Runner
+					// shipment second. The merge never throws — it keeps the
+					// backend copy on any unexpected shape — so this catch
+					// only covers an unreadable backend file.
 					const result = mergeSurveyDocuments(backendContent, content);
 					if (result.merged) merged.push(name);
 					if (result.markdown === backendContent) continue;

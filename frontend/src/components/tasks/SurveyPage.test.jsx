@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithKainBain } from '../../testUtils';
-import { SURVEY_IMAGE_POLL_MS, SurveyPage, surveyNeedsImagePoll } from './SurveyPage';
+import { SURVEY_IMAGE_POLL_MS, SurveyPage, readableSurveySaveError, surveyNeedsImagePoll, describeUnknownAnswers } from './SurveyPage';
 import '@testing-library/jest-dom';
 
 /***
@@ -212,9 +212,70 @@ describe('SurveyPage', () => {
       target: { value: 'keep me' },
     });
     fireEvent.click(screen.getByRole('button', { name: /save answers/i }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/unknown option/);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/unknown option/);
+    // The transport wrapping is stripped: the reader sees the backend reason
+    // and its machine-readable code, not the `API 400 on ...` plumbing.
+    expect(alert).toHaveTextContent(/SURVEY_INVALID/);
+    expect(alert.textContent).not.toContain('API 400');
     expect(screen.getByLabelText('Primary concern?: Auth')).toBeChecked();
     expect(screen.getByLabelText('Notes for: Primary concern?')).toHaveValue('keep me');
+  });
+
+  it('shows the backend message and code from the structured error body', async () => {
+    const client = makeClient();
+    const failure = new Error('API 404 on /tasks/t1/survey: {"error":"no survey exists for this task yet","code":"SURVEY_NOT_FOUND"}');
+    failure.status = 404;
+    failure.body = '{"error":"no survey exists for this task yet","code":"SURVEY_NOT_FOUND"}';
+    client.submitSurvey.mockRejectedValue(failure);
+    renderPage(client);
+    await screen.findByText('Primary concern?');
+    fireEvent.click(screen.getByRole('button', { name: /save answers/i }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('no survey exists for this task yet (SURVEY_NOT_FOUND)');
+    expect(alert.textContent).not.toContain('API 404');
+  });
+
+  it('falls back to the raw message when the failure carries no backend body', async () => {
+    const client = makeClient();
+    client.submitSurvey.mockRejectedValue(new Error('network down'));
+    renderPage(client);
+    await screen.findByText('Primary concern?');
+    fireEvent.click(screen.getByRole('button', { name: /save answers/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('network down');
+  });
+
+  it('names ignored answers when the backend reports unknown question ids', async () => {
+    const client = makeClient();
+    client.submitSurvey.mockResolvedValue({
+      status: 'pending',
+      advanced: false,
+      missing: [{ round: 1, id: 'q1' }],
+      unknownIds: ['qOld'],
+      rounds: JSON.parse(JSON.stringify(pendingSurvey.rounds)),
+      errors: [],
+    });
+    renderPage(client);
+    await screen.findByText('Primary concern?');
+    fireEvent.click(screen.getByLabelText('Primary concern?: Auth'));
+    fireEvent.click(screen.getByRole('button', { name: /save answers/i }));
+    const notice = await screen.findByRole('status');
+    expect(notice).toHaveTextContent(/answers saved/i);
+    expect(notice).toHaveTextContent(/no longer asked \(qOld\)/);
+  });
+
+  it('says so honestly when a save returns no answer at all', async () => {
+    const client = makeClient();
+    client.submitSurvey.mockResolvedValue(null);
+    renderPage(client);
+    await screen.findByText('Primary concern?');
+    fireEvent.click(screen.getByLabelText('Primary concern?: Auth'));
+    fireEvent.click(screen.getByRole('button', { name: /save answers/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/returned no answer/);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    // Drafts and questions survive the non-answer.
+    expect(screen.getByText('Primary concern?')).toBeInTheDocument();
+    expect(screen.getByLabelText('Primary concern?: Auth')).toBeChecked();
   });
 
   it('hydrates previously saved answers on load', async () => {
@@ -361,6 +422,48 @@ describe('surveyNeedsImagePoll', () => {
     ];
     expect(surveyNeedsImagePoll(roundsWith(settled), 'muse')).toBe(false);
     expect(surveyNeedsImagePoll([{ round: 1, questions: [{ id: 'q1', type: 'single', options: ['a'] }] }], 'muse')).toBe(false);
+  });
+});
+
+describe('readableSurveySaveError', () => {
+  it('prefers the structured body over the wrapped message', () => {
+    const err = new Error('API 400 on /tasks/t1/survey: {"error":"stale","code":"OLD"}');
+    err.body = '{"error":"fresh reason","code":"SURVEY_INVALID"}';
+    expect(readableSurveySaveError(err)).toBe('fresh reason (SURVEY_INVALID)');
+  });
+
+  it('recovers backend JSON from a body-less wrapped message', () => {
+    const err = new Error('API 400 on /x: {"error":"bad pick","code":"SURVEY_INVALID"}');
+    expect(readableSurveySaveError(err)).toBe('bad pick (SURVEY_INVALID)');
+  });
+
+  it('returns the message alone when no code travels with it', () => {
+    const err = new Error('boom');
+    err.body = '{"error":"just words"}';
+    expect(readableSurveySaveError(err)).toBe('just words');
+  });
+
+  it('falls back to the raw message, then to the caller fallback', () => {
+    expect(readableSurveySaveError(new Error('network down'))).toBe('network down');
+    expect(readableSurveySaveError(new Error('network down'), 'Nope')).toBe('network down');
+    expect(readableSurveySaveError(null, 'Nope')).toBe('Nope');
+    expect(readableSurveySaveError({})).toBe('Could not save answers');
+    const garbage = new Error('API 500 on /x: <html>oops</html>');
+    garbage.body = '<html>oops</html>';
+    expect(readableSurveySaveError(garbage)).toBe('API 500 on /x: <html>oops</html>');
+  });
+});
+
+describe('describeUnknownAnswers', () => {
+  it('stays silent without ignored answers and caps long lists', () => {
+    expect(describeUnknownAnswers([])).toBe('');
+    expect(describeUnknownAnswers(null)).toBe('');
+    expect(describeUnknownAnswers(['q9'])).toBe(
+      ' One answer was for a question that is no longer asked (q9) and was ignored.',
+    );
+    expect(describeUnknownAnswers(['a', 'b'])).toContain('2 answers were for questions');
+    expect(describeUnknownAnswers(['1', '2', '3', '4', '5', '6', '7'])).toContain('and 2 more');
+    expect(describeUnknownAnswers(['ok', 42, null])).toContain('(ok)');
   });
 });
 

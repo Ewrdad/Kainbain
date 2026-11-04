@@ -13,6 +13,7 @@ import {
 	refreshMirror,
 	refreshWorktreeToRemote,
 	removeIntegrationWorkdir,
+	resolveRunnerDocsDirName,
 	runGit,
 	syncTaskDocs,
 } from "./project.js";
@@ -567,6 +568,33 @@ describe("runner project prep", () => {
 		} finally {
 			fs.rmSync(origin, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("resolveRunnerDocsDirName", () => {
+	// Parity matrix with the backend's resolveDocsDirName (api/docsPath.js):
+	// the two cannot share code (the Runner ships without the backend tree),
+	// so both sides pin the same rule — a valid custom name wins, anything
+	// else degrades to `docs`, never throws.
+	it("accepts simple custom names from strings, records, and wrappers", () => {
+		assert.equal(resolveRunnerDocsDirName("kdocs"), "kdocs");
+		assert.equal(resolveRunnerDocsDirName("  k-docs  "), "k-docs");
+		assert.equal(resolveRunnerDocsDirName({ docsDirName: "notes" }), "notes");
+		assert.equal(resolveRunnerDocsDirName({ docsDir: "legacy" }), "legacy");
+	});
+
+	it("degrades reserved names to docs, case-insensitively", () => {
+		for (const name of [".", "..", ".kainbain", ".KAINBAIN", ".git", ".GIT", "node_modules", "NODE_MODULES"]) {
+			assert.equal(resolveRunnerDocsDirName(name), "docs");
+			assert.equal(resolveRunnerDocsDirName({ docsDirName: name }), "docs");
+		}
+	});
+
+	it("degrades separators, blanks, garbage, and overlong names to docs", () => {
+		for (const value of ["", "   ", "../escape", "a/b", "a\\b", "has space", "x".repeat(65), null, undefined, 42, true, ["docs"], { nope: 1 }]) {
+			assert.equal(resolveRunnerDocsDirName(value), "docs");
+		}
+		assert.equal(resolveRunnerDocsDirName("x".repeat(64)), "x".repeat(64));
 	});
 });
 

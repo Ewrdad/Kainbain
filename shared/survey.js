@@ -623,9 +623,19 @@ export function spliceRoundsIntoMarkdown(markdown, rounds) {
  *   backend copy passes through untouched (nothing new to add). When the merge
  *   itself would produce an invalid survey (concurrent same-number rounds),
  *   the backend copy wins untouched so answers are never traded for questions.
+ *   A backend answer for a question neither side asks anymore is dropped —
+ *   keeping it would fail validation and reject the whole merge.
+ *   Fail-safe: this function never throws and never returns a document that
+ *   loses backend answers. Any unexpected shape (unparseable fences, fence
+ *   count drift, non-string input) degrades to returning the backend copy
+ *   untouched with `merged: false`.
+ *   Argument order matters: the FIRST argument is always the backend copy
+ *   (the answers to keep), the SECOND is the Runner shipment. Swapping them
+ *   silently inverts the merge — call sites keep the `backend*` / `incoming*`
+ *   naming so the order reads plainly.
  * @example mergeSurveyDocuments(backendDoc, staleRunnerDoc).merged => true
- * @param {string} backendMarkdown
- * @param {string} incomingMarkdown
+ * @param {string} backendMarkdown - Backend copy (answers to keep).
+ * @param {string} incomingMarkdown - Runner shipment (questions to land).
  * @returns {{ markdown: string, merged: boolean }} `merged` is true only when
  *   backend content (answers, questions, or rounds) survived inside the result.
  ***/
@@ -680,13 +690,22 @@ export function mergeSurveyDocuments(backendMarkdown, incomingMarkdown) {
 
 	if (!contributed && appended.length === 0) return { markdown: incomingText, merged: false };
 
-	let markdown = spliceRoundsIntoMarkdown(incomingText, mergedRounds);
-	for (const extra of appended) {
-		markdown = `${markdown.replace(/\s+$/, "")}\n\n## Round ${extra.round}\n\n\`\`\`survey-json\n${serializeRound(extra)}\n\`\`\`\n`;
+	// The splice below can throw when the incoming copy carries fence blocks
+	// the parser skipped (invalid JSON) — its fence count then exceeds the
+	// merged round count. That must degrade to keeping the backend copy, the
+	// same as an invalid merge: throwing here would let the caller fall back
+	// to a plain overwrite and wipe the very answers the merge protects.
+	try {
+		let markdown = spliceRoundsIntoMarkdown(incomingText, mergedRounds);
+		for (const extra of appended) {
+			markdown = `${markdown.replace(/\s+$/, "")}\n\n## Round ${extra.round}\n\n\`\`\`survey-json\n${serializeRound(extra)}\n\`\`\`\n`;
+		}
+		const merged = parseSurvey(markdown);
+		if (!validateSurvey(merged.rounds).ok) return { markdown: backendText, merged: false };
+		return { markdown, merged: true };
+	} catch {
+		return { markdown: backendText, merged: false };
 	}
-	const merged = parseSurvey(markdown);
-	if (!validateSurvey(merged.rounds).ok) return { markdown: backendText, merged: false };
-	return { markdown, merged: true };
 }
 
 function sameAnswer(before, normalized) {

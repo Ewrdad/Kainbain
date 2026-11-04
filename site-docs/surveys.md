@@ -25,6 +25,13 @@ Use distinct names such as `FEEDBACK.md`, `SECURITY_QUESTIONARY.md`, or
 `INTENT_SURVEY.md` when a task has multiple question stages; plain names
 without an extension gain `.md`. Path-unsafe values fall back to `SURVEY.md`.
 
+Set the file inside the `question-me` skill attachment's `config` as shown
+above. A file key placed at the stage top level (next to `skills`) is still
+read by the backend for backwards compatibility, but the agent prompt only
+reflects attachment-level config — a stage-level key can leave the agent
+writing one file while the survey page reads another, so prefer the canonical
+attachment `outputFile` and avoid stage-level keys.
+
 The suggested minimum question count is configurable as `minQuestions` (soft
 prompt guidance only; `0` disables it).
 

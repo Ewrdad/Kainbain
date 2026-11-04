@@ -455,4 +455,52 @@ describe("mergeSurveyDocuments", () => {
 		]);
 		expect(mergeSurveyDocuments(backend, incoming)).toEqual({ markdown: backend, merged: false });
 	});
+
+	it("keeps the backend copy when the incoming copy carries a corrupt fence block", () => {
+		const backend = answered(renderSurveyMarkdown([round({ questions: [q({ id: "q1" })] })]), {
+			q1: { selected: ["a"], notes: "human" },
+		});
+		// A valid round plus an unparseable fence: the parser skips the bad
+		// block, so splicing the merged rounds back would throw on the fence
+		// count drift. The merge must degrade to the backend copy instead —
+		// never throw, never wipe.
+		const incoming = `${renderSurveyMarkdown([round({ questions: [q({ id: "q1" })] })])}\n## Round 2\n\n\`\`\`survey-json\nnot json\n\`\`\`\n`;
+		let result;
+		expect(() => {
+			result = mergeSurveyDocuments(backend, incoming);
+		}).not.toThrow();
+		expect(result).toEqual({ markdown: backend, merged: false });
+	});
+
+	it("degrades to the backend copy for non-string input instead of throwing", () => {
+		const backend = answered(renderSurveyMarkdown([round({ questions: [q({ id: "q1" })] })]), {
+			q1: { selected: ["a"], notes: "" },
+		});
+		let result;
+		expect(() => {
+			result = mergeSurveyDocuments(backend, null);
+		}).not.toThrow();
+		expect(result).toEqual({ markdown: backend, merged: false });
+		expect(mergeSurveyDocuments(null, null)).toEqual({ markdown: "", merged: false });
+	});
+
+	it("drops a backend answer for a question neither side asks anymore", () => {
+		// The backend file holds an answer for a withdrawn question: keeping
+		// it would fail validation and reject the whole merge, so it is
+		// dropped while the live answers survive.
+		const backendRounds = [
+			round({
+				questions: [q({ id: "q1" })],
+				answers: { q1: { selected: ["a"], notes: "" }, qOld: { selected: ["a"], notes: "stale" } },
+			}),
+		];
+		const backend = renderSurveyMarkdown(backendRounds);
+		const incoming = renderSurveyMarkdown([round({ questions: [q({ id: "q1" })] })]);
+		const { markdown, merged } = mergeSurveyDocuments(backend, incoming);
+		expect(merged).toBe(true);
+		const { rounds } = parseSurvey(markdown);
+		expect(rounds[0].answers.q1).toEqual({ selected: ["a"], notes: "" });
+		expect(rounds[0].answers.qOld).toBeUndefined();
+		expect(validateSurvey(rounds).ok).toBe(true);
+	});
 });
