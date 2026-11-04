@@ -37,7 +37,9 @@ silent. The endpoint contract lives in `#/docs/api-reference` under Skills.
 
 Attach an imported skill in any stage's Skills panel: `direct` injects the body
 into the curated prompt, `option` lists it in the `# Available Skills` manifest
-for the agent to self-read.
+for the agent to self-read. For the step-by-step walkthrough (one worked
+example from idea to verified skill), see Custom Skills
+(`#/docs/custom-skills`).
 
 ## Default prompt layout editor
 

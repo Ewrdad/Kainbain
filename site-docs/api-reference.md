@@ -219,7 +219,7 @@ name is allowed but flagged (`shadows a KainBain default skill`).
 
 | Method | Path | Purpose |
 | ------ | ---- | ------- |
-| GET | `/harnesses` | Harness roster (pi, antigravity, opencode). |
+| GET | `/harnesses` | Harness roster (pi, antigravity, opencode, muse, codex, vibe, custom, mock). |
 | GET | `/harnesses/:id/models` | Models available on one harness. |
 | GET | `/harnesses/reliability` | Per-harness success rates (infra failures count; deliberate agent stage-fails excluded). |
 
