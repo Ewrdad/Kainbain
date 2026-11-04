@@ -98,7 +98,24 @@
         "Square 600x600 smart glasses UI mockup, dark navy dashboard theme, top shows compact task list of 4 rows each with status dot and short name with the selected row highlighted, middle shows mini progress dots for 8 steps, bottom shows a single Details button, condensed but still large text, monospace accents, calm professional monitoring-app style"
       ],
       "required": true,
-      "showIf": null
+      "showIf": null,
+      "images": [
+        {
+          "option": 0,
+          "file": "assets/survey-r1-q7-0.png",
+          "status": "pending"
+        },
+        {
+          "option": 1,
+          "file": "assets/survey-r1-q7-1.png",
+          "status": "pending"
+        },
+        {
+          "option": 2,
+          "file": "assets/survey-r1-q7-2.png",
+          "status": "pending"
+        }
+      ]
     }
   ],
   "answers": {}
