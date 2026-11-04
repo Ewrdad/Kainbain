@@ -1,6 +1,6 @@
 import React from 'react';
-import { describe, expect, it } from 'vitest';
-import { screen, fireEvent } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { screen, fireEvent, act } from '@testing-library/react';
 import { renderWithKainBain } from '../../testUtils';
 import { FilePreview } from './FilePreview';
 import '@testing-library/jest-dom';
@@ -85,6 +85,39 @@ describe('FilePreview Component', () => {
     expect(screen.getByText(/Could not load this image/)).toBeInTheDocument();
     const download = screen.getByRole('link', { name: /Download logo.png/i });
     expect(download).toHaveAttribute('href', rawUrl);
+  });
+
+  it('auto-recovers a failed image, then offers a manual retry once latched', () => {
+    vi.useFakeTimers();
+    try {
+      renderWithKainBain(
+        <FilePreview
+          fileContent={{ name: 'logo.png', path: 'logo.png', content: null, size: 512, extension: '.png', kind: 'image' }}
+          selectedFile={{ name: 'logo.png', path: 'logo.png', isDirectory: false, size: 512, extension: '.png' }}
+          previewMode="rendered"
+          lines={[]}
+          rawUrl={rawUrl}
+        />,
+        { projects: [], activeProjectId: 'proj-1' },
+      );
+
+      fireEvent.error(screen.getByAltText('logo.png'));
+      expect(screen.getByText(/Could not load this image/)).toBeInTheDocument();
+      // Bounded automatic attempts (1.5s, 3s, 6s): each refetches on its own.
+      for (const delay of [1500, 3000, 6000]) {
+        act(() => {
+          vi.advanceTimersByTime(delay);
+        });
+        expect(screen.getByAltText('logo.png')).toBeInTheDocument();
+        fireEvent.error(screen.getByAltText('logo.png'));
+      }
+      // Budget spent: latched with a manual Retry that restarts the budget.
+      expect(screen.getByText(/Could not load this image/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /retry loading logo.png/i }));
+      expect(screen.getByAltText('logo.png')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows a download state instead of fetching oversize images', () => {

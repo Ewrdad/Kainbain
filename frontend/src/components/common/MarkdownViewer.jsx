@@ -1,6 +1,7 @@
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { API_BASE } from '../../services/apiBase';
 import { resolveTaskImageUrl } from '../../services/taskImages';
+import { useImageRetry } from '../../services/imageRetry';
 
 /***
  * MARK: sanitizeUrl
@@ -145,47 +146,20 @@ export function CodeBlock({ code, language = '', enableCopy = true }) {
  *   http(s) sources render as lazy-loaded images; a broken/unavailable image falls
  *   back to an inert filename chip instead of a broken-image icon; URLs the
  *   sanitizer neutralized (javascript:/data:/vbscript: → '#') render as inert text.
+ *   Transient misses self-recover through the shared retry seam (bounded
+ *   backoff + tab-visible/online revalidation) instead of latching.
  * @example <MdImage src="/projects/p/tasks/t/images/a.png" alt="screenshot" />
  * @param {Object} props
  * @param {string} props.src - The resolved, sanitized image URL.
  * @param {string} [props.alt] - The markdown alt text.
+ * @param {boolean} [props.hasTaskContext] - Whether task context resolved (failure classification).
  ***/
-export function MdImage({ src, alt = '' }) {
-  const [failed, setFailed] = useState(false);
-  // Bumped to force a fresh load attempt for the same URL (manual or
-  // automatic retry); without a key change the <img> would never refetch.
-  const [retryKey, setRetryKey] = useState(0);
-  // A transient failure (slow/flaky load, cold cache) gets exactly one
-  // automatic re-attempt; anything beyond that is a real miss and latches.
-  const autoRetriedRef = useRef(false);
-  const prevSrcRef = useRef(src);
-
-  // Reset latched failure state whenever the source changes, including
-  // direct prop updates that do not remount the component. A fresh source
-  // must always start with a clean load attempt.
-  useEffect(() => {
-    if (prevSrcRef.current === src) return;
-    prevSrcRef.current = src;
-    setFailed(false);
-    setRetryKey(0);
-    autoRetriedRef.current = false;
-  }, [src]);
-
-  useEffect(() => {
-    if (!failed || autoRetriedRef.current) return undefined;
-    autoRetriedRef.current = true;
-    const timer = setTimeout(() => {
-      setFailed(false);
-      setRetryKey((key) => key + 1);
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [failed]);
-
-  const retry = useCallback(() => {
-    autoRetriedRef.current = true;
-    setFailed(false);
-    setRetryKey((key) => key + 1);
-  }, []);
+export function MdImage({ src, alt = '', hasTaskContext = false }) {
+  const { failed, retryKey, markFailed, retry } = useImageRetry({
+    src,
+    component: 'md-image',
+    hasTaskContext,
+  });
 
   if (!src || src === '#') {
     return (
@@ -208,7 +182,10 @@ export function MdImage({ src, alt = '' }) {
       }
     })();
     return (
-      <span className="inline-flex items-center gap-1 font-mono text-[10px] text-text-muted bg-surface-container border border-border-standard rounded px-1.5 py-0.5 align-middle">
+      <span
+        data-task-image-state="unavailable"
+        className="inline-flex items-center gap-1 font-mono text-[10px] text-text-muted bg-surface-container border border-border-standard rounded px-1.5 py-0.5 align-middle"
+      >
         <span role="img" aria-label={alt || name}>
           🖼️ {name} (image unavailable)
         </span>
@@ -230,7 +207,7 @@ export function MdImage({ src, alt = '' }) {
       src={src}
       alt={alt}
       loading="lazy"
-      onError={() => setFailed(true)}
+      onError={markFailed}
       className="max-w-full h-auto rounded border border-border-standard my-2 inline-block"
     />
   );
@@ -270,7 +247,10 @@ export function parseInlineMarkdown(text, imageContext = {}) {
       // state instead of inheriting a latched failure from the old URL.
       const alt = match[2];
       const src = sanitizeUrl(resolveTaskImageUrl({ ...imageContext, src: match[3] }));
-      nodes.push(<MdImage key={`${key}:${src}`} src={src} alt={alt} />);
+      const hasTaskContext = Boolean(imageContext?.projectId && imageContext?.taskId);
+      nodes.push(
+        <MdImage key={`${key}:${src}`} src={src} alt={alt} hasTaskContext={hasTaskContext} />,
+      );
     } else if (match[2] !== undefined && match[3] !== undefined) {
       // Link: [label](url)
       const label = match[2];

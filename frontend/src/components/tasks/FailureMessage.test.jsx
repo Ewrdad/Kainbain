@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, expect, test, vi } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { FailureMessage } from './FailureMessage';
 import { FAILURE_MESSAGE_PREVIEW_MAX, truncateFailureMessage } from './failureReason';
 import '@testing-library/jest-dom';
@@ -125,5 +125,21 @@ describe('FailureMessage image references', () => {
     ).toHaveLength(0);
     fireEvent.click(screen.getByRole('button', { name: /retry/i }));
     expect(screen.getByAltText('shot.png')).toBeInTheDocument();
+  });
+
+  test('auto-recovers a failed thumbnail without user action', () => {
+    vi.useFakeTimers();
+    try {
+      render(<FailureMessage message={messageWithShot} projectId="p1" taskId="t1" />);
+      fireEvent.error(screen.getByAltText('shot.png'));
+      expect(screen.getByText(/shot.png \(image unavailable\)/)).toBeInTheDocument();
+      // First automatic retry (1.5s backoff) refetches on its own.
+      act(() => {
+        vi.advanceTimersByTime(1500);
+      });
+      expect(screen.getByAltText('shot.png')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
