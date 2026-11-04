@@ -104,3 +104,15 @@
   "answers": {}
 }
 ```
+
+## Round 2
+
+```survey-json
+{
+  "round": 2,
+  "generatedAt": "2026-11-04T00:00:00.000Z",
+  "stage": "stage-1792362077711",
+  "questions": [],
+  "answers": {}
+}
+```
