@@ -3,6 +3,7 @@ import { useParams } from 'react-router';
 import { useKainBain } from '../../context/KainBainContext';
 import { API_BASE, api } from '../../services/api';
 import { resolveTaskImageUrl } from '../../services/taskImages.js';
+import { useImageRetry } from '../../services/imageRetry';
 import { isQuestionVisible, combinedAnswers, selectedValues } from '../../../../shared/survey.js';
 import { SurveyTaskPanel } from './SurveyTaskPanel';
 
@@ -667,6 +668,58 @@ function QuestionField({ question, selected, notes, missing, onSelect, onNotes, 
  *   the picture renders), and failed or missing pictures as description
  *   rows with an honest notice — answering never blocks on generation.
  ***/
+/***
+ * MARK: SurveyIllustration
+ * @description One ready survey picture: the illustration on success, a
+ *   same-sized fallback block with the description and a Retry control on
+ *   failure (never a broken-image icon). Transient misses self-recover
+ *   through the shared retry seam; answering never blocks on generation or
+ *   on a failed load either way.
+ * @example <SurveyIllustration src="/projects/p/tasks/t/images/a.png" text="dark dashboard" hasTaskContext={true} />
+ ***/
+function SurveyIllustration({ src, text, hasTaskContext }) {
+  const { failed, retryKey, markFailed, retry } = useImageRetry({
+    src,
+    component: 'survey-illustration',
+    hasTaskContext,
+  });
+  if (failed) {
+    return (
+      <span
+        data-task-image-state="unavailable"
+        className="flex w-full aspect-video flex-col items-center justify-center gap-1.5 rounded-sm bg-surface-deep px-3 py-4 text-center"
+      >
+        <span role="img" aria-label={text} className="font-mono text-[11px] text-text-muted">
+          🖼️ illustration unavailable
+        </span>
+        <button
+          type="button"
+          // Inside the option's <label>: preventDefault keeps the click from
+          // toggling the radio — retrying a load is not answering.
+          onClick={(e) => {
+            e.preventDefault();
+            retry();
+          }}
+          aria-label={`Retry loading illustration for ${text}`}
+          className="px-2 py-0.5 rounded border border-border-standard bg-surface-container text-[10px] font-mono text-text-muted hover:text-on-surface transition-colors cursor-pointer"
+        >
+          Retry
+        </button>
+      </span>
+    );
+  }
+  return (
+    <img
+      key={retryKey}
+      src={src}
+      alt={text}
+      loading="lazy"
+      onError={markFailed}
+      className="w-full aspect-video object-cover rounded-sm bg-surface-deep"
+    />
+  );
+}
+
 function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGenProviderId }) {
   const entries = Array.isArray(question.images) ? question.images : [];
   const byOption = new Map();
@@ -675,10 +728,6 @@ function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGe
       byOption.set(entry.option, entry);
     }
   }
-  // Ready files the browser failed to decode (a MIME mismatch, a deleted
-  // asset): those cards degrade to selectable descriptions below instead of
-  // showing a broken-image icon that looks unanswerable.
-  const [brokenFiles, setBrokenFiles] = useState(() => new Set());
   const generationOff = imageGenProviderId === 'none' || imageGenProviderId === '';
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label={question.text}>
@@ -700,8 +749,7 @@ function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGe
           !lowerFile.startsWith('https://') &&
           !rawFile.startsWith('//') &&
           !/^[a-z][a-z0-9+.-]*:/i.test(rawFile);
-        const loadBroken = brokenFiles.has(rawFile);
-        if (entry?.status === 'ready' && isRelativeAsset && !loadBroken) {
+        if (entry?.status === 'ready' && isRelativeAsset) {
           const src = resolveTaskImageUrl({ apiBase: API_BASE, projectId, taskId, src: rawFile });
           return (
             <label
@@ -723,12 +771,10 @@ function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGe
                 onChange={(e) => onSelect(question.id, text, e.target.checked, false)}
                 className=""
               />
-              <img
+              <SurveyIllustration
                 src={src}
-                alt={text}
-                loading="lazy"
-                onError={() => setBrokenFiles((prev) => new Set(prev).add(rawFile))}
-                className="w-full aspect-video object-cover rounded-sm bg-surface-deep"
+                text={text}
+                hasTaskContext={Boolean(projectId && taskId)}
               />
               <span className="leading-snug text-xs">{text}</span>
             </label>
@@ -793,11 +839,6 @@ function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGe
               {entry?.status === 'failed' && entry?.error && (
                 <span className="block text-[11px] text-text-muted mt-0.5">
                   Illustration unavailable: {entry.error}
-                </span>
-              )}
-              {loadBroken && (
-                <span className="block text-[11px] font-mono text-text-muted mt-0.5">
-                  Illustration couldn&apos;t be displayed — pick by description.
                 </span>
               )}
               {!entry && !generationOff && (

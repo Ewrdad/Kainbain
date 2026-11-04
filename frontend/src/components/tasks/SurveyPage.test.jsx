@@ -342,6 +342,22 @@ describe('SurveyPage image questions', () => {
     );
   });
 
+  it('falls back to a retryable block when a ready picture fails to load', async () => {
+    const client = makeClient(imageSurvey(readyImages));
+    renderPage(client);
+    await screen.findByText('Pick a design');
+    fireEvent.error(screen.getByAltText('dark dashboard'));
+    expect(screen.getByText('🖼️ illustration unavailable')).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: /retry loading illustration for dark dashboard/i }),
+    );
+    const img = screen.getByAltText('dark dashboard');
+    expect(img.tagName).toBe('IMG');
+    expect(img.getAttribute('src')).toContain(
+      '/projects/p1/tasks/t1/images/survey-r1-qi-0.png',
+    );
+  });
+
   it('shows generating skeletons while pending and merges the poll without losing drafts', async () => {
     const pending = imageSurvey([
       { option: 0, file: 'assets/survey-r1-qi-0.png', status: 'pending' },
@@ -390,22 +406,6 @@ describe('SurveyPage image questions', () => {
     expect(screen.getByText(/Illustration unavailable: No API key saved/)).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('Pick a design: light dashboard'));
     expect(screen.getByLabelText('Pick a design: light dashboard')).toBeChecked();
-  });
-
-  it('falls back to the description when a ready picture fails to load', async () => {
-    // A ready entry whose bytes the browser cannot render (e.g. webp bytes
-    // stored under a .png name) must degrade to a selectable description,
-    // never a broken-image icon that blocks answering.
-    const client = makeClient(imageSurvey(readyImages));
-    renderPage(client);
-    await screen.findByText('Pick a design');
-    expect(screen.getByAltText('dark dashboard').tagName).toBe('IMG');
-    fireEvent.error(screen.getByAltText('dark dashboard'));
-    expect(await screen.findByText(/couldn't be displayed — pick by description/)).toBeInTheDocument();
-    expect(screen.queryByAltText('dark dashboard')).not.toBeInTheDocument();
-    expect(screen.getByAltText('light dashboard').tagName).toBe('IMG');
-    fireEvent.click(screen.getByLabelText('Pick a design: dark dashboard'));
-    expect(screen.getByLabelText('Pick a design: dark dashboard')).toBeChecked();
   });
 
   it('never renders foreign image files, falling back to the description', async () => {

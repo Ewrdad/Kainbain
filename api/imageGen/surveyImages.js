@@ -233,6 +233,23 @@ const runSurveyImageJob = async (opts = {}) => {
 	}
 	if (providerId === IMAGE_GEN_DISABLED) {
 		summary.status = "disabled";
+		// An agent can still write `type: image` questions while the stage
+		// disables generation (stale prompt, raw SKILL.md read, or a provider
+		// removed after the round was written). That survey renders
+		// descriptions-only with no other trace, so name the miss here — the
+		// park hook reports warnings to the task log, and setting a provider
+		// on the question-me skill heals the survey on its next read.
+		const disabledRounds = Array.isArray(providedRounds)
+			? providedRounds
+			: readSurvey(cwd, project, taskId, surveyFile || undefined).rounds;
+		const disabledImageCount = collectImageQuestions(
+			Array.isArray(disabledRounds) ? disabledRounds : [],
+		).length;
+		if (disabledImageCount > 0) {
+			summary.warnings.push(
+				`Survey has ${disabledImageCount} image question(s) but imageGen is 'none' — set an image provider on the question-me skill to generate pictures.`,
+			);
+		}
 		return summary;
 	}
 	const provider = getImageGenProvider(providerId);

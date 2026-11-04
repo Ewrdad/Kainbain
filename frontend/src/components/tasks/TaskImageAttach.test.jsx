@@ -1,6 +1,8 @@
 import React from 'react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
+import { KainBainContext } from '../../context/KainBainContext';
 import { renderWithKainBain } from '../../testUtils';
 import { TaskImageAttach } from './TaskImageAttach';
 import '@testing-library/jest-dom';
@@ -378,6 +380,92 @@ describe('TaskImageAttach Component', () => {
     ).toHaveLength(0);
     fireEvent.click(screen.getByRole('button', { name: /retry/i }));
     await waitFor(() => expect(container.querySelector('img[alt="a.png"]')).not.toBeNull());
+  });
+
+  it('never lands an upload batch in another task after a mid-upload switch', async () => {
+    // Upload on task-1, switch to task-2 before it completes: bytes still
+    // land in task-1, but no reference may be appended to task-2s draft
+    // (refs without bytes there, orphan bytes in task-1) and the task-2
+    // strip must not be clobbered by a task-1 refresh.
+    let resolveUpload;
+    api.uploadTaskImage.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveUpload = () => resolve({ name: 'a.png', path: 'assets/a.png' });
+        }),
+    );
+    api.listTaskImages.mockImplementation(async (projectId, taskId) =>
+      taskId === 'task-2'
+        ? { images: [{ name: 'b.png', path: 'assets/b.png', size: 7 }] }
+        : { images: [] },
+    );
+    const onUploaded = vi.fn();
+    const onUploadedBatch = vi.fn();
+    const rendered = renderAttach({ onUploaded, onUploadedBatch, taskId: 'task-1' });
+    const input = rendered.container.querySelector('[data-testid="task-image-input"]');
+    fireEvent.change(input, {
+      target: { files: [new File([new Uint8Array([1])], 'a.png', { type: 'image/png' })] },
+    });
+    await waitFor(() => expect(api.uploadTaskImage).toHaveBeenCalledTimes(1));
+
+    // Switch tasks while the upload is in flight (same provider tree so the
+    // attach instance updates its props instead of remounting).
+    rendered.rerender(
+      <MemoryRouter initialEntries={['/']}>
+        <KainBainContext.Provider value={rendered.value}>
+          <TaskImageAttach
+            projectId="proj-1"
+            taskId="task-2"
+            onUploaded={onUploaded}
+            onUploadedBatch={onUploadedBatch}
+          />
+        </KainBainContext.Provider>
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(api.listTaskImages).toHaveBeenCalledWith('proj-1', 'task-2'),
+    );
+
+    await act(async () => {
+      resolveUpload();
+    });
+
+    // Bytes went to the origin task; nothing was reported to the new draft.
+    expect(api.uploadTaskImage).toHaveBeenCalledWith(
+      'proj-1',
+      'task-1',
+      expect.any(File),
+    );
+    expect(onUploaded).not.toHaveBeenCalled();
+    expect(onUploadedBatch).not.toHaveBeenCalled();
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/switching tasks/i);
+    expect(alert.textContent).toContain('task-1');
+    // The task-2 strip stands (no task-1 refresh clobber).
+    await waitFor(() => expect(screen.getByText('b.png')).toBeInTheDocument());
+    expect(screen.queryByText('a.png')).toBeNull();
+  });
+
+  it('auto-recovers a failed thumbnail without user action', async () => {
+    api.listTaskImages.mockResolvedValue({
+      images: [{ name: 'a.png', path: 'assets/a.png', size: 12 }],
+    });
+    const { container } = renderAttach();
+    const img = await screen.findByAltText('a.png');
+    // Fake timers only after the async listing settles (findBy/waitFor need
+    // real timers); the retry schedule itself is timer-driven.
+    vi.useFakeTimers();
+    try {
+      fireEvent.error(img);
+      expect(screen.getByText(/a\.png \(image unavailable\)/)).toBeInTheDocument();
+      // First automatic retry (1.5s backoff) refetches on its own.
+      act(() => {
+        vi.advanceTimersByTime(1500);
+      });
+      expect(container.querySelector('img[alt="a.png"]')).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('reports onUploadingChange true then false around a batch (submit guard)', async () => {

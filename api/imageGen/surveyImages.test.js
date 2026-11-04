@@ -102,6 +102,9 @@ describe("api/imageGen/surveyImages job", () => {
 		savedKey = process.env.KAINBAIN_IMAGE_GEN_MUSE_API_KEY;
 		savedDir = process.env.KAINBAIN_IMAGE_GEN_DIR;
 		delete process.env.KAINBAIN_IMAGE_GEN_MUSE_API_KEY;
+		// Isolate the server-owned key store: without this the job reads the
+		// real ~/.kainbain/image-gen (or a deploy override), so a stored key
+		// on the host turns the no-key tests below into live generations.
 		process.env.KAINBAIN_IMAGE_GEN_DIR = imageGenDir;
 	});
 
@@ -149,6 +152,13 @@ describe("api/imageGen/surveyImages job", () => {
 		expect(summary).toMatchObject({ providerId: "none", status: "disabled", generated: 0 });
 		expect(readSurvey(cwd, null, taskId).markdown).toBe(before);
 		expect(listTaskImages(cwd, taskId)).toEqual([]);
+	});
+
+	it("warns when image questions exist but imageGen is none so the miss is diagnosable", async () => {
+		appendSurveyRound({ cwd, project: null, taskId, stage: "ask", questions: [img()] });
+		const summary = await ensureSurveyImages({ cwd, project: null, taskId, stage: stageWith("none") });
+		expect(summary.providerId).toBe("none");
+		expect(summary.warnings.join("\n")).toMatch("imageGen is 'none'");
 	});
 
 	it("warns and disables on an unknown provider", async () => {
