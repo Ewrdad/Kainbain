@@ -289,3 +289,100 @@ describe("reviewAssembly preserved diff after merge", () => {
 		await expect(resolveReviewBase(dir, "main")).resolves.not.toBe("main");
 	});
 });
+
+describe("reviewAssembly task-file filtering after merge", () => {
+	let dir;
+	let project;
+	let task;
+
+	beforeEach(() => {
+		dir = initRepo();
+		git(dir, "checkout", "-b", "kb/task-1");
+		project = { id: "proj-1", useBranches: true, preserveReviewDiffAfterMerge: true };
+		task = makeTask("kb/task-1");
+	});
+
+	it("keeps the merged code change visible while dropping task files", async () => {
+		const preMergeMain = rev(dir, "main");
+		commitFile(dir, "kb/task-1", "feature.txt", "new stuff\n", "add feature");
+		fs.mkdirSync(path.join(dir, "docs", "tasks", "task-1"), { recursive: true });
+		fs.writeFileSync(path.join(dir, "docs", "tasks", "task-1", "task.md"), "# task\n");
+		git(dir, "add", "-A");
+		git(dir, "commit", "--amend", "--no-edit");
+		const headSha = rev(dir, "kb/task-1");
+		git(dir, "checkout", "main");
+		git(dir, "merge", "--no-ff", "kb/task-1", "-m", "merge feature");
+
+		task.reviewBaseline = {
+			baseSha: preMergeMain,
+			headSha,
+			mainSha: preMergeMain,
+			mergedAt: new Date().toISOString(),
+			stageId: "merge-1",
+		};
+
+		const review = await buildTaskReview(makeDeps(project, task), dir, "proj-1", "task-1");
+		expect(review.preserved).toBe(true);
+		expect(review.files.map((f) => f.path)).toContain("feature.txt");
+		expect(review.files.map((f) => f.path)).not.toContain("docs/tasks/task-1/task.md");
+		expect(review.files.length).toBeGreaterThan(0);
+		expect(review.filteredTaskFilesCount).toBeGreaterThan(0);
+	});
+
+	it("agrees with a manually filtered git diff", async () => {
+		const preMergeMain = rev(dir, "main");
+		commitFile(dir, "kb/task-1", "feature.txt", "new stuff\n", "add feature");
+		fs.mkdirSync(path.join(dir, "docs", "tasks", "task-1"), { recursive: true });
+		fs.writeFileSync(path.join(dir, "docs", "tasks", "task-1", "task.md"), "# task\n");
+		git(dir, "add", "-A");
+		git(dir, "commit", "--amend", "--no-edit");
+		const headSha = rev(dir, "kb/task-1");
+		git(dir, "checkout", "main");
+		git(dir, "merge", "--no-ff", "kb/task-1", "-m", "merge feature");
+
+		task.reviewBaseline = {
+			baseSha: preMergeMain,
+			headSha,
+			mainSha: preMergeMain,
+			mergedAt: new Date().toISOString(),
+			stageId: "merge-1",
+		};
+
+		const raw = execFileSync("git", ["diff", "--name-only", `${preMergeMain}...${headSha}`], {
+			cwd: dir,
+			stdio: ["ignore", "pipe", "pipe"],
+		})
+			.toString()
+			.trim()
+			.split("\n")
+			.filter(Boolean);
+		const expected = raw.filter((p) => !p.startsWith("docs/tasks/"));
+
+		const review = await buildTaskReview(makeDeps(project, task), dir, "proj-1", "task-1");
+		expect(review.files.map((f) => f.path).sort()).toEqual(expected.sort());
+	});
+
+	it("is not emptied when a branch carries only task-file churn (post-merge still reports)", async () => {
+		const preMergeMain = rev(dir, "main");
+		fs.mkdirSync(path.join(dir, "docs", "tasks", "task-1"), { recursive: true });
+		fs.writeFileSync(path.join(dir, "docs", "tasks", "task-1", "task.md"), "# task\n");
+		git(dir, "add", "-A");
+		git(dir, "commit", "-m", "task bookkeeping");
+		const headSha = rev(dir, "kb/task-1");
+		git(dir, "checkout", "main");
+		git(dir, "merge", "--no-ff", "kb/task-1", "-m", "merge feature");
+
+		task.reviewBaseline = {
+			baseSha: preMergeMain,
+			headSha,
+			mainSha: preMergeMain,
+			mergedAt: new Date().toISOString(),
+			stageId: "merge-1",
+		};
+
+		const review = await buildTaskReview(makeDeps(project, task), dir, "proj-1", "task-1");
+		expect(review.preserved).toBe(true);
+		expect(review.files).toEqual([]);
+		expect(review.filteredTaskFilesCount).toBeGreaterThan(0);
+	});
+});

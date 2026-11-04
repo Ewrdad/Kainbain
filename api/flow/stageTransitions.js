@@ -2,6 +2,7 @@
 import { _appendProcessLog, AUTO_REPORT_MARKER } from '../watch/index.js';
 import { emitAlert } from '../observability/alerts.js';
 import { isBranchModeEnabled } from '../work/taskBranches.js';
+import { docsTasksIgnorePath } from "../docsPath.js";
 import { normalizeStageType } from '../projectStore.js';
 import { buildHumanApprovalContent } from '../reviewCommentFormatter.js';
 import { isTerminalTaskStatus, resolveStageLabel, stageElapsedSeconds, clearResumedMarker, findStageByIdOrName, findStageIndexByIdOrName, isEngineOwnerOf } from './stagePolicy.js';
@@ -145,7 +146,12 @@ export function moveToStage(
 			timestamp: task.updatedAt,
 		},
 		projectCwd,
-		{ useBranches: isBranchModeEnabled(store.projectStore, projectId) },
+		{
+			useBranches: isBranchModeEnabled(store.projectStore, projectId),
+			docsTasksPrefix: docsTasksIgnorePath(
+				store.projectStore?.getProject?.(projectId),
+			),
+		},
 	);
 	// The run that produced this row's duration is over: drop its pending
 	// choice so a later transition (e.g. the Completed row) can never
@@ -538,7 +544,12 @@ export function completeTask(store, projectId, taskId, projectCwd) {
 				: {}),
 		},
 		projectCwd,
-		{ useBranches: isBranchModeEnabled(store.projectStore, projectId) },
+		{
+			useBranches: isBranchModeEnabled(store.projectStore, projectId),
+			docsTasksPrefix: docsTasksIgnorePath(
+				store.projectStore?.getProject?.(projectId),
+			),
+		},
 	);
 	task.currentRunAttribution = null;
 	store._saveTaskMarkdown(projectCwd, task);

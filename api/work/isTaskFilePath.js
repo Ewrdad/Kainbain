@@ -15,14 +15,18 @@
 export function isTaskFilePath(repoRelativePath, docsTasksPrefix) {
 	if (typeof repoRelativePath !== "string" || !repoRelativePath) return false;
 	if (typeof docsTasksPrefix !== "string" || !docsTasksPrefix) return false;
-	let p = repoRelativePath.trim();
+	// Normalise report-style paths (`./`, backslashes on Windows) to the
+	// same repo-relative posix form git emits before comparing. Keeping this
+	// tolerant costs nothing and guards against a future path-style change.
+	let p = String(repoRelativePath).trim().replace(/\\/g, "/");
 	if (!p) return false;
-	// Strip leading ./ (git never emits it, but report paths may)
 	while (p.startsWith("./")) p = p.slice(2);
-	// Normalise prefix to without trailing slash for exact-dir match, then check
+	// Strip a redundant `./` left after trailing slash handling is a no-op.
 	const prefix = docsTasksPrefix.endsWith("/")
 		? docsTasksPrefix
 		: `${docsTasksPrefix}/`;
-	if (p === prefix.slice(0, -1)) return true;
-	return p.startsWith(prefix);
+	const normalizedPrefix = prefix.replace(/\\/g, "/");
+	const parent = normalizedPrefix.slice(0, -1);
+	if (p === parent) return true;
+	return p.startsWith(normalizedPrefix);
 }

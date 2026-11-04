@@ -6,11 +6,18 @@ import { isTaskFilePath } from "./isTaskFilePath.js";
 
 function withoutTaskFiles(files, docsTasksPrefix) {
 	if (!Array.isArray(files)) return files;
-	const prefixes = ["docs/tasks/"];
-	if (typeof docsTasksPrefix === "string" && docsTasksPrefix && !prefixes.includes(docsTasksPrefix)) {
-		prefixes.push(docsTasksPrefix);
-	}
-	return files.filter((f) => !prefixes.some((p) => isTaskFilePath(f.path, p) || isTaskFilePath(f.oldPath, p)));
+	// When the caller does not supply a project-specific prefix (e.g. a
+	// custom `docsDirName`), fall back to the default docs location so the
+	// badge never silently retains task bookkeeping rows.
+	const prefix =
+		typeof docsTasksPrefix === "string" && docsTasksPrefix
+			? docsTasksPrefix
+			: "docs/tasks/";
+	return files.filter(
+		(f) =>
+			!isTaskFilePath(f?.path, prefix) &&
+			!isTaskFilePath(f?.oldPath, prefix),
+	);
 }
 
 /***

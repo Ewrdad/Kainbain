@@ -138,6 +138,17 @@ async function loadDiffSection(projectCwd, base, head) {
  *   branch itself is gone — the frozen baseline still renders, which is the
  *   point of preserving it.
  ***/
+/***
+ * MARK: filterTaskFiles
+ * @description Removes task-bookkeeping rows (paths inside the project's
+ *   docs/tasks/ prefix) from a diff file list. Counts and commits are left
+ *   untouched: a commit that only touched task files still counts, so the
+ *   filter is purely a view concern. Never mutates the input array.
+ * @example filterTaskFiles([{ path: 'docs/tasks/t1/task.md' }, { path: 'src/a.js' }], 'docs/tasks/') => [{ path: 'src/a.js' }]
+ * @param {Array<Object>} [files] - Per-file diff rows.
+ * @param {string} prefix - Project task-dir prefix (e.g. 'docs/tasks/').
+ * @returns {Array<Object>} Filtered rows.
+ ***/
 function filterTaskFiles(files, prefix) {
 	if (!Array.isArray(files) || !prefix) return files || [];
 	return files.filter(
