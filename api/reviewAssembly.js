@@ -128,17 +128,6 @@ async function loadDiffSection(projectCwd, base, head) {
 }
 
 /***
- * MARK: buildPreservedReview
- * @description Assembles the preserved-diff review payload: the frozen
- *   `baseSha...headSha` baseline diff as the primary payload, plus a
- *   separate live `newSinceMerge` section when post-merge fix-up work exists
- *   (never a silently merged union). When the baseline SHAs no longer
- *   resolve (shallow clone/GC), falls back to the live diff with a
- *   `preserveNote` instead of hard-failing. `live` is null when the task
- *   branch itself is gone — the frozen baseline still renders, which is the
- *   point of preserving it.
- ***/
-/***
  * MARK: filterTaskFiles
  * @description Removes task-bookkeeping rows (paths inside the project's
  *   docs/tasks/ prefix) from a diff file list. Counts and commits are left
@@ -156,6 +145,17 @@ function filterTaskFiles(files, prefix) {
 	);
 }
 
+/***
+ * MARK: buildPreservedReview
+ * @description Assembles the preserved-diff review payload: the frozen
+ *   `baseSha...headSha` baseline diff as the primary payload, plus a
+ *   separate live `newSinceMerge` section when post-merge fix-up work exists
+ *   (never a silently merged union). When the baseline SHAs no longer
+ *   resolve (shallow clone/GC), falls back to the live diff with a
+ *   `preserveNote` instead of hard-failing. `live` is null when the task
+ *   branch itself is gone — the frozen baseline still renders, which is the
+ *   point of preserving it.
+ ***/
 async function buildPreservedReview({
 	deps,
 	projectId,

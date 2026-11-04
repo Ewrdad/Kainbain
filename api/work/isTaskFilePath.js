@@ -21,7 +21,8 @@ export function isTaskFilePath(repoRelativePath, docsTasksPrefix) {
 	let p = String(repoRelativePath).trim().replace(/\\/g, "/");
 	if (!p) return false;
 	while (p.startsWith("./")) p = p.slice(2);
-	// Strip a redundant `./` left after trailing slash handling is a no-op.
+	// Accept the prefix with or without its trailing slash so callers can
+	// pass either `docsTasksIgnorePath()` output or a bare dir name.
 	const prefix = docsTasksPrefix.endsWith("/")
 		? docsTasksPrefix
 		: `${docsTasksPrefix}/`;

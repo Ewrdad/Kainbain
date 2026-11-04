@@ -399,7 +399,7 @@ export function TaskReviewPage({ task: propTask, onBack }) {
               : (data.reason || 'Nothing to review yet — the agent has not modified any files.')}</p>
             {data.filteredTaskFilesCount > 0 && (
               <p className="text-[11px]">
-                {data.filteredTaskFilesCount} task file(s) hidden — see the Reports tab.
+                {data.filteredTaskFilesCount} task file(s) hidden from this view.
               </p>
             )}
           </div>
