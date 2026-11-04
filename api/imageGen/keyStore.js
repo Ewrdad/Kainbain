@@ -115,10 +115,12 @@ const storedKeyFor = (dir, providerId) => {
 export const getImageGenKey = ({ providerId, dir } = {}) => {
 	if (!isValidImageGenProviderId(providerId)) return "";
 	const envName = envKeyNameForProvider(providerId);
+	/* eslint-disable security/detect-object-injection -- envName is derived from a validated provider id */
 	const fromEnv =
 		envName && typeof process.env[envName] === "string"
 			? process.env[envName].trim()
 			: "";
+	/* eslint-enable security/detect-object-injection */
 	if (fromEnv) return fromEnv;
 	const home = dir || resolveImageGenDir();
 	if (!home || typeof home !== "string") return "";
@@ -141,10 +143,12 @@ export const describeImageGenKey = ({ providerId, dir } = {}) => {
 		return { configured: false, source: null };
 	}
 	const envName = envKeyNameForProvider(providerId);
+	/* eslint-disable security/detect-object-injection -- envName is derived from a validated provider id */
 	const fromEnv =
 		envName && typeof process.env[envName] === "string"
 			? process.env[envName].trim()
 			: "";
+	/* eslint-enable security/detect-object-injection */
 	if (fromEnv) return { configured: true, source: "env" };
 	const home = dir || resolveImageGenDir();
 	if (!home || typeof home !== "string") return { configured: false, source: null };

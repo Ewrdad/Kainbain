@@ -123,6 +123,7 @@ const safeQuestionStem = (questionId) =>
 
 const sameEntries = (a, b) => {
 	if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+	/* eslint-disable-next-line security/detect-object-injection -- i is the array iteration index */
 	return a.every((entry, i) => JSON.stringify(entry) === JSON.stringify(b[i]));
 };
 
@@ -265,6 +266,7 @@ const runSurveyImageJob = async (opts = {}) => {
 		const next = [...current];
 		const setEntry = (entry) => {
 			const at = next.findIndex((e) => e?.option === entry.option);
+			/* eslint-disable-next-line security/detect-object-injection -- at comes from findIndex on the same array */
 			if (at >= 0) next[at] = entry;
 			else next.push(entry);
 		};
@@ -288,6 +290,7 @@ const runSurveyImageJob = async (opts = {}) => {
 			budget -= 1;
 			const fileName = surveyImageFileName(round, question.id, i);
 			setEntry({ option: i, file: `assets/${fileName}`, status: "pending" });
+			/* eslint-disable-next-line security/detect-object-injection -- i is the options loop index */
 			toGenerate.push({ index: i, prompt: options[i], fileName });
 		}
 		next.sort((a, b) => (a?.option || 0) - (b?.option || 0));
@@ -322,6 +325,7 @@ const runSurveyImageJob = async (opts = {}) => {
 		const entries = item.entries.map((e) => ({ ...e }));
 		const setEntry = (entry) => {
 			const at = entries.findIndex((e) => e?.option === entry.option);
+			/* eslint-disable-next-line security/detect-object-injection -- at comes from findIndex on the same array */
 			if (at >= 0) entries[at] = entry;
 			else entries.push(entry);
 		};
@@ -615,12 +619,16 @@ export const upsertChosenDesignsSection = (markdown, entries) => {
 	if (headerAt >= 0) {
 		sectionEnd = lines.length;
 		for (let i = headerAt + 1; i < lines.length; i += 1) {
+			/* eslint-disable-next-line security/detect-object-injection -- i is the lines loop index */
 			if (/^##\s+\S/.test(lines[i])) {
 				sectionEnd = i;
 				break;
 			}
 		}
-		for (let i = headerAt + 1; i < sectionEnd; i += 1) harvest(lines[i]);
+		for (let i = headerAt + 1; i < sectionEnd; i += 1) {
+			/* eslint-disable-next-line security/detect-object-injection -- i is the lines loop index */
+			harvest(lines[i]);
+		}
 	}
 	for (const entry of picks) {
 		merged.set(`r${entry.round}/${entry.questionId}`, renderEntry(entry));
