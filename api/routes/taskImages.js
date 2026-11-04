@@ -26,6 +26,23 @@ import {
 import { config as appConfig } from "../config.js";
 
 /***
+ * MARK: sendImageError
+ * @description Sends a task-image error response that must never be cached:
+ *   missing bytes are often transient (branch checkout flapping tracked
+ *   assets, mid-upload reads), and a cached 4xx/5xx would pin a "randomly
+ *   broken" image long after the bytes return. Successes stay long-lived
+ *   immutable; every error here is `no-store`.
+ * @example sendImageError(reply, 404, { error: "Image not found", reason: "image-not-found" })
+ * @param {Object} reply - Fastify reply.
+ * @param {number} status - HTTP status code.
+ * @param {Object} body - Error payload.
+ * @returns {Object} The Fastify reply.
+ ***/
+function sendImageError(reply, status, body) {
+	return reply.header("cache-control", "no-store").status(status).send(body);
+}
+
+/***
  * MARK: resolveTaskContext
  * @description Guards + resolves the on-disk task folder for a task-scoped image
  *   request: the project must exist, the taskId must resolve inside `docs/tasks/`,
@@ -40,6 +57,11 @@ import { config as appConfig } from "../config.js";
  ***/
 function resolveTaskContext(deps, request, reply) {
 	const { resolveAndGuardProject, projectStore, taskStore } = deps;
+	// Pre-set before any guard can send: the shared project resolver may
+	// answer 404 itself (unknown project id), and that error must also be
+	// no-store. Success paths overwrite this (serve) or keep it (dynamic
+	// JSON, which must never cache anyway).
+	reply.header("cache-control", "no-store");
 	const projectId = resolveAndGuardProject(
 		request.params?.id || request.query?.projectId,
 		reply,
@@ -51,7 +73,7 @@ function resolveTaskContext(deps, request, reply) {
 			{ projectId, reason: "unknown-project" },
 			"task image request for an unknown project",
 		);
-		reply.status(404).send({ error: "Project not found", reason: "unknown-project" });
+		sendImageError(reply, 404, { error: "Project not found", reason: "unknown-project" });
 		return null;
 	}
 	// Repair-after-switch BEFORE the existence check: a branch checkout may
@@ -72,7 +94,7 @@ function resolveTaskContext(deps, request, reply) {
 			{ projectId, taskId, reason: "invalid-task-id" },
 			"task image request with an invalid task id",
 		);
-		reply.status(400).send({ error: "Invalid task id", reason: "invalid-task-id" });
+		sendImageError(reply, 400, { error: "Invalid task id", reason: "invalid-task-id" });
 		return null;
 	}
 	// Server-authoritative task existence: the store is primary; task.md on
@@ -86,7 +108,7 @@ function resolveTaskContext(deps, request, reply) {
 			{ projectId, taskId, reason: "task-not-found" },
 			"task image request for a task with no task.md",
 		);
-		reply.status(404).send({ error: "Task not found", reason: "task-not-found" });
+		sendImageError(reply, 404, { error: "Task not found", reason: "task-not-found" });
 		return null;
 	}
 	return { project, taskId, projectCwd: project.cwd };
@@ -151,7 +173,7 @@ export default async function taskImagesRoutes(app, { deps }) {
 			if (!ctx) return;
 
 			if (!request.isMultipart()) {
-				return reply.status(400).send({
+				return sendImageError(reply, 400, {
 					error: "multipart/form-data request with an 'image' file is required",
 				});
 			}
@@ -161,28 +183,26 @@ export default async function taskImagesRoutes(app, { deps }) {
 				file = await request.file();
 			} catch (err) {
 				const tooLarge = err?.statusCode === 413 || err?.code === "FST_REQ_FILE_TOO_LARGE";
-				return reply.status(tooLarge ? 413 : 400).send({
+				return sendImageError(reply, tooLarge ? 413 : 400, {
 					error: tooLarge
 						? `Image exceeds the ${appConfig.taskImageMaxBytes} byte limit`
 						: `Invalid multipart payload: ${err?.message || "unknown error"}`,
 				});
 			}
 			if (!file || file.type !== "file") {
-				return reply
-					.status(400)
-					.send({ error: "An 'image' file field is required" });
+				return sendImageError(reply, 400, { error: "An 'image' file field is required" });
 			}
 
 			const declaredType = String(file.mimetype || "").toLowerCase();
 			if (declaredType && !declaredType.startsWith("image/")) {
-				return reply
-					.status(400)
-					.send({ error: `Unsupported upload type: ${declaredType}` });
+				return sendImageError(reply, 400, {
+					error: `Unsupported upload type: ${declaredType}`,
+				});
 			}
 
 			const safeName = sanitizeImageName(file.filename);
 			if (!safeName || !isAllowedImageExt(safeName)) {
-				return reply.status(400).send({
+				return sendImageError(reply, 400, {
 					error:
 						"Only png, jpg, jpeg, gif and webp images are supported (filename was sanitized to nothing usable)",
 				});
@@ -194,7 +214,7 @@ export default async function taskImagesRoutes(app, { deps }) {
 			} catch (err) {
 				const tooLarge =
 					err?.code === "FST_REQ_FILE_TOO_LARGE" || err?.statusCode === 413;
-				return reply.status(tooLarge ? 413 : 400).send({
+				return sendImageError(reply, tooLarge ? 413 : 400, {
 					error: tooLarge
 						? `Image exceeds the ${appConfig.taskImageMaxBytes} byte limit`
 						: `Upload could not be read: ${err?.message || "unknown error"}`,
@@ -210,7 +230,7 @@ export default async function taskImagesRoutes(app, { deps }) {
 			);
 			const existing = listTaskImages(ctx.projectCwd, ctx.taskId, ctx.project);
 			if (existing.length >= appConfig.taskImageMaxPerTask) {
-				return reply.status(413).send({
+				return sendImageError(reply, 413, {
 					error: `Task image limit reached (${appConfig.taskImageMaxPerTask} per task)`,
 				});
 			}
@@ -330,9 +350,10 @@ export default async function taskImagesRoutes(app, { deps }) {
 					{ projectId: ctx.project?.id, taskId: ctx.taskId, reason: "path-traversal" },
 					"task image request with a path separator in the name",
 				);
-				return reply
-					.status(403)
-					.send({ error: "Forbidden: Path traversal detected", reason: "path-traversal" });
+				return sendImageError(reply, 403, {
+					error: "Forbidden: Path traversal detected",
+					reason: "path-traversal",
+				});
 			}
 			const safeName = sanitizeImageName(requestedName);
 			if (!safeName || !isAllowedImageExt(safeName)) {
@@ -340,9 +361,10 @@ export default async function taskImagesRoutes(app, { deps }) {
 					{ taskId: ctx.taskId, name: requestedName, reason: "invalid-image-name" },
 					"task image request with an invalid image name",
 				);
-				return reply
-					.status(400)
-					.send({ error: "Invalid image name", reason: "invalid-image-name" });
+				return sendImageError(reply, 400, {
+					error: "Invalid image name",
+					reason: "invalid-image-name",
+				});
 			}
 			let targetFile = resolveTaskAssetFile(ctx.projectCwd, ctx.taskId, safeName, ctx.project);
 			// Serve-side canonicalization for stale/unsanitized refs: a stored
@@ -376,7 +398,7 @@ export default async function taskImagesRoutes(app, { deps }) {
 					{ taskId: ctx.taskId, name: safeName, reason: "image-not-found" },
 					"task image request for a missing asset file",
 				);
-				return reply.status(404).send({ error: "Image not found", reason: "image-not-found" });
+				return sendImageError(reply, 404, { error: "Image not found", reason: "image-not-found" });
 			}
 			const servedName = path.basename(targetFile);
 			try {
@@ -394,9 +416,7 @@ export default async function taskImagesRoutes(app, { deps }) {
 					.header("cache-control", "private, max-age=31536000, immutable");
 				return reply.send(buffer);
 			} catch (err) {
-				return reply
-					.status(500)
-					.send({ error: `Failed to read image: ${err.message}` });
+				return sendImageError(reply, 500, { error: `Failed to read image: ${err.message}` });
 			}
 			/* eslint-enable security/detect-non-literal-fs-filename */
 		},
@@ -443,13 +463,14 @@ export default async function taskImagesRoutes(app, { deps }) {
 			if (!ctx) return;
 			const safeName = sanitizeImageName(String(request.params?.name || ""));
 			if (!safeName) {
-				return reply
-					.status(400)
-					.send({ error: "Invalid image name", reason: "invalid-image-name" });
+				return sendImageError(reply, 400, {
+					error: "Invalid image name",
+					reason: "invalid-image-name",
+				});
 			}
 			const removed = deleteTaskImage(ctx.projectCwd, ctx.taskId, safeName, ctx.project);
 			if (!removed) {
-				return reply.status(404).send({ error: "Image not found", reason: "image-not-found" });
+				return sendImageError(reply, 404, { error: "Image not found", reason: "image-not-found" });
 			}
 			return { status: "deleted", name: safeName };
 		},

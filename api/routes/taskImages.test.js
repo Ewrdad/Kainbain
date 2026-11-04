@@ -471,4 +471,32 @@ describe("Task Images API", () => {
 		expect(res.headers["content-type"]).toBe("image/png");
 		expect(Buffer.from(res.rawPayload).equals(PNG_BYTES)).toBe(true);
 	});
+
+	it("marks every image error no-store so a transient miss is never cached", async () => {
+		const cases = [
+			// Missing bytes for a live task (the branch-flap / dangling-ref shape).
+			`/projects/${testProjectId}/tasks/task-img-1/images/ghost.png`,
+			// Rejected names.
+			`/projects/${testProjectId}/tasks/task-img-1/images/task.md`,
+			`/projects/${testProjectId}/tasks/task-img-1/images/..%2F..%2Ftask.md`,
+			// Unknown task / unknown project (context-guard errors).
+			`/projects/${testProjectId}/tasks/no-such-task/images/ghost.png`,
+			`/projects/nope/tasks/task-img-1/images/ghost.png`,
+		];
+		for (const url of cases) {
+			const res = await app.inject({ method: "GET", url });
+			expect(res.statusCode).toBeGreaterThanOrEqual(400);
+			expect(res.headers["cache-control"]).toBe("no-store");
+		}
+		// Upload validation errors are equally transient (retryable payloads).
+		const { payload, headers } = multipartBody("evil.sh", Buffer.from("#!/bin/sh"));
+		const badUpload = await app.inject({
+			method: "POST",
+			url: `/projects/${testProjectId}/tasks/task-img-1/images`,
+			payload,
+			headers,
+		});
+		expect(badUpload.statusCode).toBe(400);
+		expect(badUpload.headers["cache-control"]).toBe("no-store");
+	});
 });

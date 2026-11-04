@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { MarkdownViewer } from '../common/MarkdownViewer';
 import { IMAGE_PREVIEW_MAX_BYTES, formatFileSize, getFileKind } from './fileKind';
+import { useImageRetry } from '../../services/imageRetry';
 
 /***
  * MARK: checkerboardBackdrop
@@ -38,10 +39,11 @@ function DownloadFileLink({ rawUrl, fileName }) {
  * MARK: UnavailablePreview
  * @description Fallback pane when a file cannot render inline (unsupported
  *   binary type or over the preview cap): states the reason, the size, and
- *   offers the raw bytes as a download.
+ *   offers the raw bytes as a download. Image load failures additionally get
+ *   a Retry control (transient misses must not strand the pane).
  * @example <UnavailablePreview title="..." message="..." fileSize={12} rawUrl="..." fileName="a.zip" />
  ***/
-function UnavailablePreview({ icon, title, message, fileSize, rawUrl, fileName }) {
+function UnavailablePreview({ icon, title, message, fileSize, rawUrl, fileName, onRetry }) {
   return (
     <div className="max-w-5xl mx-auto">
       <div className="bg-surface rounded-sm border border-border-standard shadow-sm p-4 flex flex-col items-center text-center gap-2 w-full">
@@ -51,7 +53,19 @@ function UnavailablePreview({ icon, title, message, fileSize, rawUrl, fileName }
         <h4 className="text-xs font-bold text-on-surface font-mono">{title}</h4>
         <p className="text-[11px] font-mono text-text-muted max-w-full">{message}</p>
         <p className="text-[10px] font-mono text-text-muted">{formatFileSize(fileSize)}</p>
-        {rawUrl && <DownloadFileLink rawUrl={rawUrl} fileName={fileName} />}
+        <div className="flex items-center gap-2">
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              aria-label={`Retry loading ${fileName}`}
+              className="px-2.5 py-1 bg-surface-container-high hover:bg-surface-container-highest border border-border-standard rounded-sm text-[10px] font-mono text-on-surface transition-colors cursor-pointer"
+            >
+              Retry
+            </button>
+          )}
+          {rawUrl && <DownloadFileLink rawUrl={rawUrl} fileName={fileName} />}
+        </div>
       </div>
     </div>
   );
@@ -62,12 +76,18 @@ function UnavailablePreview({ icon, title, message, fileSize, rawUrl, fileName }
  * @description Renders one image file from the raw-bytes endpoint with a
  *   loading state, a broken-image state, a natural-dimension readout, and a
  *   download fallback. Oversized images never fetch: they show the download
- *   state directly.
+ *   state directly. Load failures auto-recover through the shared retry seam
+ *   and offer a manual Retry once the budget is spent.
  * @example <ImagePreview fileName="logo.png" fileSize={512} rawUrl="..." />
  ***/
 function ImagePreview({ fileName, fileSize, rawUrl }) {
   // Loading state resets per file: the parent keys this component by rawUrl.
   const [view, setView] = useState({ status: 'loading', width: 0, height: 0 });
+  const { failed, retryKey, markFailed, retry } = useImageRetry({
+    src: rawUrl || '',
+    component: 'file-preview',
+    hasTaskContext: false,
+  });
 
   const tooLarge = typeof fileSize === 'number' && fileSize > IMAGE_PREVIEW_MAX_BYTES;
   if (tooLarge) {
@@ -83,18 +103,28 @@ function ImagePreview({ fileName, fileSize, rawUrl }) {
     );
   }
 
+  const handleError = () => {
+    setView({ status: 'error', width: 0, height: 0 });
+    markFailed();
+  };
+
   const dimensions = view.status === 'loaded' ? `${view.width}×${view.height}` : '…';
 
-  if (view.status === 'error' || !rawUrl) {
+  // The hook owns the failed flag (auto-retries flip it back while the view
+  // still reads 'error', which is exactly what re-renders the <img> below).
+  if ((view.status === 'error' && failed) || !rawUrl) {
     return (
-      <UnavailablePreview
-        icon="🖼️"
-        title="Could not load this image"
-        message="It may have been moved or use an encoding the browser cannot decode. Download it to open it locally."
-        fileSize={fileSize}
-        rawUrl={rawUrl}
-        fileName={fileName}
-      />
+      <div data-task-image-state="unavailable">
+        <UnavailablePreview
+          icon="🖼️"
+          title="Could not load this image"
+          message="It may have been moved or use an encoding the browser cannot decode. Download it to open it locally."
+          fileSize={fileSize}
+          rawUrl={rawUrl}
+          fileName={fileName}
+          onRetry={rawUrl ? retry : undefined}
+        />
+      </div>
     );
   }
 
@@ -119,6 +149,7 @@ function ImagePreview({ fileName, fileSize, rawUrl }) {
             </div>
           )}
           <img
+            key={retryKey}
             src={rawUrl}
             alt={fileName}
             onLoad={(e) =>
@@ -128,7 +159,7 @@ function ImagePreview({ fileName, fileSize, rawUrl }) {
                 height: e.currentTarget.naturalHeight,
               })
             }
-            onError={() => setView({ status: 'error', width: 0, height: 0 })}
+            onError={handleError}
             className="max-w-full object-contain rounded-sm"
             style={{ maxHeight: '70vh', display: view.status === 'loading' ? 'none' : undefined }}
           />
