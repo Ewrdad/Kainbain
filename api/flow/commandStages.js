@@ -991,7 +991,11 @@ export async function runCommandStage(
 					targetRow.boundaryStartSha = boundaryStart;
 					targetRow.boundaryEndSha = boundaryEnd;
 					try {
-						const stat = await getCommitRangeDiffStat(cwd, boundaryStart, boundaryEnd);
+						const stat = await getCommitRangeDiffStat(cwd, boundaryStart, boundaryEnd, {
+							docsTasksPrefix: docsTasksIgnorePath(
+								store.projectStore?.getProject?.(projectId),
+							),
+						});
 						if (stat) {
 							targetRow.additions = stat.additions;
 							targetRow.deletions = stat.deletions;

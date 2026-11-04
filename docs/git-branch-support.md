@@ -147,6 +147,10 @@ the merge stage — never rewound, never silently skipped):
 
 Post-merge commands (like production deployments) can be long-running. The default merge timeout is 1800s (30 minutes). If your deployment exceeds this, set a custom **Timeout** override on the merge stage in the Workflow Canvas.
 
+### PR review after merge
+
+Files Changed excludes `<docsDirName>/tasks/` (shown in Reports) and respects per-project `docsDirName`; the frozen merge diff stays visible after the merge, with post-merge fix-ups in a separate "New since merge" section.
+
 ## Safety Invariants
 
 - **No Shell Strings:** All git operations use `spawn` with argument arrays to prevent injection.
