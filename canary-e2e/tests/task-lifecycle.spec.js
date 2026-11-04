@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { APP_URL } from "./urls";
 import {
 	API_BASE,
 	activeProjectId,
@@ -105,9 +106,46 @@ test.describe("Task Lifecycle E2E", () => {
 		await expect(targetColumn).toBeVisible();
 	});
 
-	test("human stage renders Approve/Reject checkpoint controls", async ({ page }) => {
+	test("human stage renders Approve/Reject checkpoint controls", async ({ page: fixturePage, context, browser }) => {
 		test.setTimeout(180000);
+		// The page target can die mid-test on a loaded gate host (renderer
+		// OOM: "Target page, context or browser has been closed" / "Page
+		// crashed", observed 2026-11-03). A dead target cannot be reloaded —
+		// mint a fresh page on the same context (falling back to a fresh
+		// context) so the bounded reload loop below always has a live
+		// target. All API calls use absolute URLs and every assertion below
+		// stays exactly as strict.
+		let page = fixturePage;
+		const TARGET_DEAD_RE = /has been closed|Target closed|Page crashed|Target crashed|Not attached to an active page/;
+		const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+		const ensureLivePage = async (force = false) => {
+			let dead = force;
+			if (!dead) {
+				try {
+					dead = page.isClosed();
+				} catch {
+					dead = true;
+				}
+			}
+			if (!dead) return;
+			console.log("page target dead — reviving a fresh page");
+			if (force) {
+				try {
+					await page.close();
+				} catch {
+					// Already gone; the fresh page below is what matters.
+				}
+			}
+			try {
+				page = await context.newPage();
+				return;
+			} catch (err) {
+				console.log("context.newPage failed, trying a fresh context:", err.message);
+			}
+			page = await (await browser.newContext()).newPage();
+		};
 		console.log("TEST START: human stage renders Approve/Reject checkpoint controls");
+		await ensureLivePage();
 		const projectId = await activeProjectId(page.request);
 		console.log("projectId:", projectId);
 		const stages = await projectStages(page.request, projectId);
@@ -139,12 +177,36 @@ test.describe("Task Lifecycle E2E", () => {
 		for (let attempt = 0; attempt < 5; attempt++) {
 			console.log(`Reload attempt ${attempt} starting...`);
 			try {
-				await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
+				await ensureLivePage();
+			} catch (err) {
+				console.log(`page revive failed on attempt ${attempt}:`, err.message);
+				if (attempt === 4) throw new Error("app did not boot after 5 reloads");
+				await sleepMs(250);
+				continue;
+			}
+			try {
+				if (page.url() === "about:blank") {
+					// Freshly revived page: nothing to reload, boot directly.
+					await page.goto(APP_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
+				} else {
+					await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
+				}
 				console.log(`page.reload finished on attempt ${attempt}`);
 			} catch (err) {
 				console.log(`page.reload threw on attempt ${attempt}:`, err.message);
 				if (attempt === 4) throw new Error("app did not boot after 5 reloads");
-				await page.waitForTimeout(250);
+				if (TARGET_DEAD_RE.test(err?.message || "")) {
+					// A crashed-but-open target reports isClosed() === false,
+					// so force a revive now instead of burning attempts on it.
+					try {
+						await ensureLivePage(true);
+					} catch (reviveErr) {
+						console.log(`page revive failed on attempt ${attempt}:`, reviveErr.message);
+					}
+				}
+				// Plain sleep, not page.waitForTimeout: the backoff must not
+				// depend on the (possibly dead) page target.
+				await sleepMs(250);
 				continue;
 			}
 			try {

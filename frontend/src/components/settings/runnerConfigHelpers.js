@@ -239,6 +239,162 @@ export const parseModelsInput = (text = '') =>
   )];
 
 /***
+ * MARK: effectiveDirectories
+ * @description Effective master/worktree folders reported by a Runner.
+ * @example effectiveDirectories({ facts: { directories: { masterDir: '/m', worktreeDir: '/w' } } }) => { masterDir: '/m', worktreeDir: '/w' }
+ ***/
+export const effectiveDirectories = (runner = {}) => {
+  const f = runner?.facts?.directories;
+  if (f && typeof f === 'object') {
+    return {
+      masterDir: typeof f.masterDir === 'string' ? f.masterDir : '',
+      worktreeDir: typeof f.worktreeDir === 'string' ? f.worktreeDir : '',
+    };
+  }
+  const workRoot = runner?.facts?.workRoot;
+  if (typeof workRoot === 'string' && workRoot) {
+    return { masterDir: `${workRoot}/mirrors`, worktreeDir: workRoot };
+  }
+  return { masterDir: '', worktreeDir: '' };
+};
+
+/***
+ * MARK: effectiveDirectoryValue
+ * @description Value shown for a directory field: operator override if set,
+ *   else the Runner's effective folder.
+ * @example effectiveDirectoryValue({ facts: { workRoot: '/srv' } }, 'masterDir') => '/srv'
+ ***/
+export const effectiveDirectoryValue = (runner = {}, field) => {
+  const cfg = defaultRunnerConfig(runner).directories[field];
+  if (cfg) return cfg;
+  const eff = effectiveDirectories(runner)[field];
+  return eff || '';
+};
+
+/***
+ * MARK: displayDirectories
+ * @description Directory field display values plus default flags.
+ * @example displayDirectories({}) => { masterDir: { value: '', isDefault: true }, worktreeDir: { value: '', isDefault: true } }
+ ***/
+export const displayDirectories = (runner = {}) => {
+  const cfg = defaultRunnerConfig(runner).directories;
+  const eff = effectiveDirectories(runner);
+  return {
+    masterDir: { value: cfg.masterDir || eff.masterDir, isDefault: !cfg.masterDir, isUnknown: !cfg.masterDir && !eff.masterDir },
+    worktreeDir: { value: cfg.worktreeDir || eff.worktreeDir, isDefault: !cfg.worktreeDir, isUnknown: !cfg.worktreeDir && !eff.worktreeDir },
+  };
+};
+
+/***
+ * MARK: modelUnion
+ * @description Union of advertised and effective model ids.
+ * @example modelUnion({ capabilities: { models: ['m1'] } }) => ['m1']
+ ***/
+export const modelUnion = (runner = {}) => {
+  const adv = advertisedModels(runner);
+  const eff = effectiveModels(runner);
+  const set = new Set([...adv, ...eff]);
+  return [...set].sort();
+};
+
+/***
+ * MARK: modelTogglePatch
+ * @description Patch value for toggled model ids; `null` when matching advertised.
+ * @example modelTogglePatch({ capabilities: { models: ['m1'] } }, ['m1']) => null
+ ***/
+export const modelTogglePatch = (runner = {}, nextIds = []) => {
+  const advertised = advertisedModels(runner);
+  const sortedNext = [...nextIds].sort();
+  const sortedAdv = [...advertised].sort();
+  const isAdvertised = sortedNext.length === sortedAdv.length && sortedNext.every((v, i) => v === sortedAdv[i]);
+  return isAdvertised ? null : [...nextIds];
+};
+
+/***
+ * MARK: runnerCommands
+ * @description Normalized `commands` block from a public Runner record,
+ *   with a safe fallback when an older backend omitted it.
+ * @example runnerCommands({ commands: { supported: ['requestUpdate'] } }) => ...
+ ***/
+export const runnerCommands = (runner = {}) => {
+  const block = runner?.commands;
+  if (block && typeof block === 'object') {
+    return {
+      pending: Array.isArray(block.pending) ? block.pending : [],
+      results: (block.results && typeof block.results === 'object' && !Array.isArray(block.results)) ? block.results : {},
+      supported: Array.isArray(block.supported) ? block.supported : [],
+    };
+  }
+  // Older backends: fall back to facts.commands when present.
+  const factsSupported = Array.isArray(runner?.facts?.commands) ? runner.facts.commands : [];
+  return { pending: [], results: {}, supported: factsSupported };
+};
+/***
+ * MARK: supportedRunnerCommands
+ * @description Supported backend-to-Runner command ids for one public Runner
+ *   record (convenience over `runnerCommands`).
+ * @example supportedRunnerCommands({ commands: { supported: ['requestUpdate'] } }) => ['requestUpdate']
+ ***/
+export const supportedRunnerCommands = (runner = {}) => runnerCommands(runner).supported;
+
+/***
+ * MARK: canRequestCommand
+ * @description Whether a named backend-to-Runner command can be requested
+ *   for one public Runner record.
+ * @example canRequestCommand({ commands: { supported: ['requestUpdate'] } }, 'requestUpdate') => true
+ ***/
+export const canRequestCommand = (runner = {}, command) => supportedRunnerCommands(runner).includes(command);
+
+/***
+ * MARK: canRequestUpdate
+ * @description Whether an idle-only update can be requested from this page:
+ *   the Runner advertises `requestUpdate` support, so the queued command
+ *   will actually run. An update-available badge alone is not enough — an
+ *   old Runner that cannot act on the command needs a manual update, and
+ *   the UI says so instead of offering a dead button (R1).
+ * @example canRequestUpdate({ commands: { supported: ['requestUpdate'] } }) => true
+ ***/
+export const canRequestUpdate = (runner = {}) => canRequestCommand(runner, 'requestUpdate');
+
+/***
+ * MARK: canRequestRediscovery
+ * @description Whether model re-detection can be requested: the Runner
+ *   advertises `requestModelRediscovery` support.
+ * @example canRequestRediscovery({ commands: { supported: ['requestModelRediscovery'] } }) => true
+ ***/
+export const canRequestRediscovery = (runner = {}) => canRequestCommand(runner, 'requestModelRediscovery');
+
+
+/***
+ * MARK: stalenessLabel
+ * @description Human-readable age label for a Runner's last heartbeat.
+ * @example stalenessLabel({ lastSeenAt: '2024-01-01T00:00:00Z' }, Date.parse('2024-01-01T00:01:30Z')) => '2m ago'
+ ***/
+export const stalenessLabel = (runner = {}, nowMs = Date.now()) => {
+  if (!runner?.lastSeenAt) return null;
+  const seen = Date.parse(runner.lastSeenAt);
+  if (!Number.isFinite(seen)) return null;
+  const age = nowMs - seen;
+  if (age < 60000) return 'just now';
+  const mins = Math.round(age / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  return `${hrs}h ago`;
+};
+
+/***
+ * MARK: runnerStatusLabel
+ * @description Status label for a Runner row.
+ * @example runnerStatusLabel({ status: 'active', paused: false }) => 'active'
+ ***/
+export const runnerStatusLabel = (runner = {}) => {
+  if (runner.status === 'pending') return 'Needs setup';
+  if (runner.status === 'active' && runner.paused) return 'Paused';
+  if (runner.status === 'active' && runner.belowMinimum) return 'Needs update';
+  return runner.status || 'unknown';
+};
+
+/***
  * MARK: loadedProjectIds
  * @description Project ids in the Loaded column: the operator override when
  *   set, else the Runner-reported scope, else every known project (a null
@@ -345,4 +501,135 @@ export const validateDirectories = (directories = {}) => {
     }
   }
   return { ok: Object.keys(errors).length === 0, errors };
+};
+
+/***
+ * MARK: validateSingleDirectory
+ * @description Validates a single directory path value.
+ * @example validateSingleDirectory('') => 'Enter a directory path.'
+ ***/
+export const validateSingleDirectory = (value) => {
+  if (typeof value !== 'string' || !value.trim()) return 'Enter a directory path.';
+  if (value.trim().length > 1024) return 'Must be at most 1024 characters.';
+  return null;
+};
+
+/***
+ * MARK: mergeRunnerRecord
+ * @description Merges one refreshed Runner record into the roster kept in
+ *   state. Records without a usable Runner id are ignored (the roster is
+ *   returned unchanged) so a malformed refresh can never wipe the screen.
+ *   A non-array roster falls back to a single-row roster when the incoming
+ *   record is usable, otherwise it is returned as-is.
+ * @example mergeRunnerRecord({ previousRunners: [{ runnerId: 'a' }], incomingRecord: { runnerId: 'a', status: 'active' } }) => [{ runnerId: 'a', status: 'active' }]
+ * @param {Object} options - Labelled inputs.
+ * @param {Object[]} [options.previousRunners=[]] - Current roster rows.
+ * @param {Object} [options.incomingRecord=null] - Refreshed Runner record.
+ * @returns {Object[]|*} Next roster, or the previous value when there is nothing safe to merge.
+ ***/
+export const mergeRunnerRecord = ({ previousRunners = [], incomingRecord = null } = {}) => {
+  if (!incomingRecord || typeof incomingRecord.runnerId !== 'string' || !incomingRecord.runnerId) {
+    return previousRunners;
+  }
+  if (!Array.isArray(previousRunners)) {
+    return [incomingRecord];
+  }
+  let matched = false;
+  const next = previousRunners.map((row) => {
+    if (row && row.runnerId === incomingRecord.runnerId) {
+      matched = true;
+      return { ...row, ...incomingRecord };
+    }
+    return row;
+  });
+  return matched ? next : [...next, incomingRecord];
+};
+
+/***
+ * MARK: dropDraftFor
+ * @description Removes one Runner's draft entry (name or directory edits)
+ *   after a successful save or a reload. Unknown ids and non-object draft
+ *   maps are returned unchanged (or as an empty map) so a typo can never
+ *   clear another Runner's edits.
+ * @example dropDraftFor({ drafts: { a: 'x' }, runnerId: 'a' }) => ({})
+ * @param {Object} options - Labelled inputs.
+ * @param {Object} [options.drafts={}] - Current draft map.
+ * @param {string} [options.runnerId=''] - Runner id whose draft is done.
+ * @returns {Object} Next draft map.
+ ***/
+export const dropDraftFor = ({ drafts = {}, runnerId = '' } = {}) => {
+  const source = drafts && typeof drafts === 'object' && !Array.isArray(drafts) ? drafts : {};
+  if (typeof runnerId !== 'string' || !runnerId || !(runnerId in source)) return { ...source };
+  const next = { ...source };
+  delete next[runnerId];
+  return next;
+};
+
+/***
+ * MARK: buildDirectoryDraft
+ * @description Merges one directory field edit over the in-progress draft
+ *   (or the displayed fallback values for the first keystroke), so typing
+ *   in Master then Worktree quickly can never clobber the other field.
+ *   Unknown field names return the previous draft unchanged.
+ * @example buildDirectoryDraft({ previousDraft: null, fallbackDirs: { masterDir: '/m', worktreeDir: '/w' }, field: 'masterDir', value: '/n' }) => ({ masterDir: '/n', worktreeDir: '/w' })
+ * @param {Object} options - Labelled inputs.
+ * @param {Object|null} [options.previousDraft=null] - Current draft for this Runner, if any.
+ * @param {Object} [options.fallbackDirs={}] - Displayed values used for the first keystroke.
+ * @param {string} options.field - Directory field being edited (`masterDir` or `worktreeDir`).
+ * @param {string} [options.value=''] - New field value.
+ * @returns {Object} Next draft for this Runner.
+ ***/
+export const buildDirectoryDraft = ({ previousDraft = null, fallbackDirs = {}, field, value = '' } = {}) => {
+  const base =
+    previousDraft && typeof previousDraft === 'object'
+      ? previousDraft
+      : {
+          masterDir: typeof fallbackDirs?.masterDir === 'string' ? fallbackDirs.masterDir : '',
+          worktreeDir: typeof fallbackDirs?.worktreeDir === 'string' ? fallbackDirs.worktreeDir : '',
+        };
+  if (field !== 'masterDir' && field !== 'worktreeDir') return { ...base };
+  return { ...base, [field]: typeof value === 'string' ? value : '' };
+};
+
+/***
+ * MARK: normalizeModelId
+ * @description Cleans one hand-typed model id for the allowlist: trims it
+ *   and rejects blanks, non-strings, and ids over 256 characters. Returns
+ *   null when there is nothing safe to add, so callers can skip the
+ *   network call entirely.
+ * @example normalizeModelId({ value: '  m1  ' }) => 'm1'
+ * @param {Object} options - Labelled inputs.
+ * @param {*} [options.value=''] - Raw typed value.
+ * @returns {string|null} Clean model id, or null when unusable.
+ ***/
+export const normalizeModelId = ({ value = '' } = {}) => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 256) return null;
+  return trimmed;
+};
+
+/***
+ * MARK: filterVisibleRunners
+ * @description Narrows the visible roster by a free-text query matching
+ *   the Runner id, display name, or status (case-insensitive). A blank
+ *   query returns the visible list unchanged.
+ * @example filterVisibleRunners({ runners: [{ runnerId: 'a' }], query: 'A' }) => [{ runnerId: 'a' }]
+ * @param {Object} options - Labelled inputs.
+ * @param {Object[]} [options.runners=[]] - Visible Runner records.
+ * @param {string} [options.query=''] - Raw filter text.
+ * @returns {Object[]} Matching Runner records.
+ ***/
+export const filterVisibleRunners = ({ runners = [], query = '' } = {}) => {
+  const list = Array.isArray(runners) ? runners : [];
+  const q = typeof query === 'string' ? query.trim().toLowerCase() : '';
+  if (!q) return list;
+  return list.filter((runner) => {
+    if (!runner || typeof runner !== 'object') return false;
+    return (
+      String(runner.runnerId || '').toLowerCase().includes(q) ||
+      String(runnerDisplayName(runner) || '').toLowerCase().includes(q) ||
+      String(runner.status || '').toLowerCase().includes(q)
+    );
+  });
 };

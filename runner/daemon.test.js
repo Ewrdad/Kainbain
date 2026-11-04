@@ -12,6 +12,8 @@ import {
 	detectAvailableHarnesses,
 	deliverSteers,
 	diskHeadroomMbFor,
+	handlePendingCommands,
+	joinAndHeartbeat,
 	probeHarnessVersions,
 	refreshDiscoveredModels,
 	resolveHarnessConfig,
@@ -1332,5 +1334,263 @@ describe("formatPosture", () => {
 	});
 	it("accepts tiers as a plain string", () => {
 		assert.equal(formatPosture({ tiers: "T0/T1", harness: "pi", model: null }), "T0/T1:pi");
+	});
+});
+
+describe("handlePendingCommands", () => {
+	const quiet = { log: () => {}, warn: () => {} };
+	const claudeConfig = (overrides = {}) => baseConfig({ harnessIds: ["mock", "muse"], ...overrides });
+
+	beforeEach(() => {
+		clearDiscoveredModelsCache();
+	});
+	afterEach(() => {
+		clearDiscoveredModelsCache();
+	});
+
+	it("re-runs discovery promptly and stages a success ack", async () => {
+		let probes = 0;
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig(),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => { probes += 1; return ["m1", "m2"]; },
+		});
+		assert.equal(probes, 1);
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 2 model(s)" },
+		]);
+	});
+
+	it("skips discovery with a success ack when models are pinned", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig({ models: ["pinned-model"] }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => { throw new Error("must not probe when pinned"); },
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "models pinned; discovery skipped" },
+		]);
+	});
+
+	it("parks requestUpdate while an execution is live (never interrupts)", async () => {
+		const state = { executionId: "e1", epoch: 1 };
+		await handlePendingCommands({
+			config: claudeConfig({ autoUpdate: true }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestUpdate"],
+			updateDeps: {
+				checkForUpdate: async () => { throw new Error("must not check while busy"); },
+			},
+		});
+		assert.equal(state.pendingUpdate, true);
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestUpdate", ok: true, detail: "queued: update at next idle" },
+		]);
+	});
+
+	it("runs requestUpdate immediately when idle and acks the outcome", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig({ autoUpdate: true }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestUpdate"],
+			updateDeps: {
+				checkForUpdate: async () => ({ ok: true, update: null, reason: "up to date" }),
+				applyUpdate: async () => { throw new Error("must not apply"); },
+			},
+		});
+		assert.equal(state.pendingUpdate, undefined);
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestUpdate", ok: true, detail: "up to date" },
+		]);
+	});
+
+	it("acks update failures without throwing", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig({ autoUpdate: true }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestUpdate"],
+			updateDeps: {
+				checkForUpdate: async () => { throw new Error("mirror down"); },
+			},
+		});
+		assert.equal(state.commandAcks.length, 1);
+		assert.equal(state.commandAcks[0].command, "requestUpdate");
+		assert.equal(state.commandAcks[0].ok, false);
+		assert.match(state.commandAcks[0].detail, /mirror down/);
+	});
+
+	it("confirms the ack over a final heartbeat before exiting into a staged update", async () => {
+		const heartbeats = [];
+		const state = {};
+		const realExit = process.exit;
+		let exitCode = null;
+		process.exit = (code) => { exitCode = code; throw new Error(`process.exit(${code})`); };
+		try {
+			await assert.rejects(
+				handlePendingCommands({
+					config: claudeConfig({ autoUpdate: true }),
+					client: { heartbeat: async (args) => { heartbeats.push(args); return { status: "active" }; } },
+					logger: quiet,
+					state,
+					pendingCommands: ["requestUpdate"],
+					updateDeps: {
+						checkForUpdate: async () => ({ ok: true, update: { version: "9.9.9" } }),
+						applyUpdate: async () => ({ ok: true }),
+					},
+				}),
+				/process\.exit\(0\)/,
+			);
+		} finally {
+			process.exit = realExit;
+		}
+		assert.equal(exitCode, 0);
+		assert.equal(heartbeats.length, 1);
+		assert.deepEqual(heartbeats[0].facts.commandAck, {
+			command: "requestUpdate",
+			ok: true,
+			detail: "updated to 9.9.9",
+		});
+	});
+
+	it("ignores unknown commands", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig(),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestRestart", null, undefined],
+		});
+		assert.deepEqual(state.commandAcks, []);
+	});
+
+	it("skips repeats already staged or in flight (at-least-once redelivery)", async () => {
+		let probes = 0;
+		let release;
+		const gate = new Promise((r) => { release = r; });
+		const state = {};
+		const opts = {
+			config: claudeConfig(),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => { probes += 1; await gate; return ["m1"]; },
+		};
+		const first = handlePendingCommands(opts);
+		// Second overlapping delivery while the first probe is in flight.
+		const second = handlePendingCommands(opts);
+		release();
+		await Promise.all([first, second]);
+		assert.equal(probes, 1);
+		assert.equal(state.commandAcks.length, 1);
+		// A later redelivery after the ack staged still acts only once.
+		await handlePendingCommands({ ...opts, discoverFn: async () => { probes += 1; return ["m1"]; } });
+		assert.equal(probes, 1);
+		assert.equal(state.commandAcks.length, 1);
+	});
+
+	it("stages both acks FIFO when two commands arrive together", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig({ autoUpdate: true }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery", "requestUpdate"],
+			discoverFn: async () => ["m1"],
+			updateDeps: {
+				checkForUpdate: async () => ({ ok: true, update: null, reason: "up to date" }),
+			},
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 1 model(s)" },
+			{ command: "requestUpdate", ok: true, detail: "up to date" },
+		]);
+	});
+});
+
+describe("deliverSteers command channel", () => {
+	const quiet = { log: () => {}, warn: () => {} };
+
+	it("acts on delivered commands and sends the staged ack on the next heartbeat", async () => {
+		clearDiscoveredModelsCache();
+		const heartbeats = [];
+		const client = {
+			heartbeat: async (args) => {
+				heartbeats.push(args);
+				return heartbeats.length === 1
+					? { status: "active", pendingCommands: ["requestModelRediscovery"] }
+					: { status: "active" };
+			},
+		};
+		const config = baseConfig({ harnessIds: ["mock", "muse"] });
+		const state = {};
+		try {
+			await deliverSteers({
+				config,
+				client,
+				logger: quiet,
+				facts: {},
+				state,
+				discoverFn: async () => ["m1"],
+			});
+			assert.equal(heartbeats[0].facts.commandAck, undefined);
+			assert.equal(state.commandAcks.length, 1);
+			await deliverSteers({ config, client, logger: quiet, facts: {}, state });
+			assert.deepEqual(heartbeats[1].facts.commandAck, {
+				command: "requestModelRediscovery",
+				ok: true,
+				detail: "discovered 1 model(s)",
+			});
+			assert.deepEqual(state.commandAcks, []);
+		} finally {
+			clearDiscoveredModelsCache();
+			fs.rmSync(config.workRoot, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("joinAndHeartbeat command channel", () => {
+	const quiet = { log: () => {}, warn: () => {} };
+
+	it("acts on commands queued while the runner was down (boot delivery)", async () => {
+		const config = baseConfig({ harnessIds: ["mock"], autoUpdate: false });
+		const client = {
+			setCredential: () => {},
+			heartbeat: async () => ({ status: "active", pendingCommands: ["requestUpdate"] }),
+		};
+		const state = {};
+		const { stop } = await joinAndHeartbeat({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: quiet,
+			state,
+		});
+		try {
+			assert.equal(state.commandAcks.length, 1);
+			assert.equal(state.commandAcks[0].command, "requestUpdate");
+			assert.equal(state.commandAcks[0].ok, true);
+		} finally {
+			stop();
+			fs.rmSync(config.workRoot, { recursive: true, force: true });
+		}
 	});
 });
