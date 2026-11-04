@@ -157,9 +157,18 @@ export const useImageRetry = ({ src, component = 'image', hasTaskContext = false
   }, [clearTimer]);
 
   // Revalidate a latched image when the tab becomes visible or the browser
-  // comes back online — no-ops while healthy or unmounted.
+  // comes back online — no-ops while healthy or unmounted. Both globals are
+  // guarded (never assumed together) so server rendering or an incomplete
+  // browser shim fails safe to no revalidation instead of throwing.
   useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
+    if (
+      typeof window === 'undefined' ||
+      typeof window.addEventListener !== 'function' ||
+      typeof window.removeEventListener !== 'function' ||
+      typeof document === 'undefined' ||
+      typeof document.addEventListener !== 'function' ||
+      typeof document.removeEventListener !== 'function'
+    ) {
       return undefined;
     }
     const revalidate = () => {
