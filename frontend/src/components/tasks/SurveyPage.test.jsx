@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithKainBain } from '../../testUtils';
-import { SURVEY_IMAGE_POLL_MS, SurveyPage, readableSurveySaveError, surveyNeedsImagePoll, describeUnknownAnswers } from './SurveyPage';
+import { SURVEY_IMAGE_POLL_MS, SurveyPage, describeSurveySaveError, surveyNeedsImagePoll, describeUnknownAnswers } from './SurveyPage';
 import '@testing-library/jest-dom';
 
 /***
@@ -425,32 +425,32 @@ describe('surveyNeedsImagePoll', () => {
   });
 });
 
-describe('readableSurveySaveError', () => {
+describe('describeSurveySaveError', () => {
   it('prefers the structured body over the wrapped message', () => {
     const err = new Error('API 400 on /tasks/t1/survey: {"error":"stale","code":"OLD"}');
     err.body = '{"error":"fresh reason","code":"SURVEY_INVALID"}';
-    expect(readableSurveySaveError(err)).toBe('fresh reason (SURVEY_INVALID)');
+    expect(describeSurveySaveError(err)).toBe('fresh reason (SURVEY_INVALID)');
   });
 
   it('recovers backend JSON from a body-less wrapped message', () => {
     const err = new Error('API 400 on /x: {"error":"bad pick","code":"SURVEY_INVALID"}');
-    expect(readableSurveySaveError(err)).toBe('bad pick (SURVEY_INVALID)');
+    expect(describeSurveySaveError(err)).toBe('bad pick (SURVEY_INVALID)');
   });
 
   it('returns the message alone when no code travels with it', () => {
     const err = new Error('boom');
     err.body = '{"error":"just words"}';
-    expect(readableSurveySaveError(err)).toBe('just words');
+    expect(describeSurveySaveError(err)).toBe('just words');
   });
 
   it('falls back to the raw message, then to the caller fallback', () => {
-    expect(readableSurveySaveError(new Error('network down'))).toBe('network down');
-    expect(readableSurveySaveError(new Error('network down'), 'Nope')).toBe('network down');
-    expect(readableSurveySaveError(null, 'Nope')).toBe('Nope');
-    expect(readableSurveySaveError({})).toBe('Could not save answers');
+    expect(describeSurveySaveError(new Error('network down'))).toBe('network down');
+    expect(describeSurveySaveError(new Error('network down'), 'Nope')).toBe('network down');
+    expect(describeSurveySaveError(null, 'Nope')).toBe('Nope');
+    expect(describeSurveySaveError({})).toBe('Could not save answers');
     const garbage = new Error('API 500 on /x: <html>oops</html>');
     garbage.body = '<html>oops</html>';
-    expect(readableSurveySaveError(garbage)).toBe('API 500 on /x: <html>oops</html>');
+    expect(describeSurveySaveError(garbage)).toBe('API 500 on /x: <html>oops</html>');
   });
 });
 

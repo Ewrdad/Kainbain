@@ -629,17 +629,18 @@ export function spliceRoundsIntoMarkdown(markdown, rounds) {
  *   loses backend answers. Any unexpected shape (unparseable fences, fence
  *   count drift, non-string input) degrades to returning the backend copy
  *   untouched with `merged: false`.
- *   Argument order matters: the FIRST argument is always the backend copy
- *   (the answers to keep), the SECOND is the Runner shipment. Swapping them
- *   silently inverts the merge — call sites keep the `backend*` / `incoming*`
- *   naming so the order reads plainly.
- * @example mergeSurveyDocuments(backendDoc, staleRunnerDoc).merged => true
- * @param {string} backendMarkdown - Backend copy (answers to keep).
- * @param {string} incomingMarkdown - Runner shipment (questions to land).
+ *   Inputs are labelled (`{ backendMarkdown, incomingMarkdown }`), so argument
+ *   order can never silently invert the merge: `backendMarkdown` is always the
+ *   backend copy (the answers to keep) and `incomingMarkdown` is always the
+ *   Runner shipment (the questions to land).
+ * @example mergeSurveyDocuments({ backendMarkdown: backendDoc, incomingMarkdown: staleRunnerDoc }).merged => true
+ * @param {Object} [labelled={}] - Labelled inputs (order-free).
+ * @param {string} [labelled.backendMarkdown] - Backend copy (answers to keep).
+ * @param {string} [labelled.incomingMarkdown] - Runner shipment (questions to land).
  * @returns {{ markdown: string, merged: boolean }} `merged` is true only when
  *   backend content (answers, questions, or rounds) survived inside the result.
  ***/
-export function mergeSurveyDocuments(backendMarkdown, incomingMarkdown) {
+export function mergeSurveyDocuments({ backendMarkdown, incomingMarkdown } = {}) {
 	const backendText = typeof backendMarkdown === "string" ? backendMarkdown : "";
 	const incomingText = typeof incomingMarkdown === "string" ? incomingMarkdown : "";
 	const backend = parseSurvey(backendText);
@@ -670,7 +671,7 @@ export function mergeSurveyDocuments(backendMarkdown, incomingMarkdown) {
 		for (const [qid, entry] of Object.entries(backendAnswers)) {
 			if (!known.has(qid)) continue;
 			const normalized = { selected: selectedFromAnswer(entry), notes: notesFromAnswer(entry) };
-			if (!sameAnswer(answers[qid], normalized)) {
+			if (!checkAnswersMatch({ existingAnswer: answers[qid], backendAnswer: normalized })) {
 				answers[qid] = normalized;
 				contributed = true;
 			}
@@ -708,12 +709,24 @@ export function mergeSurveyDocuments(backendMarkdown, incomingMarkdown) {
 	}
 }
 
-function sameAnswer(before, normalized) {
-	if (!before || typeof before !== "object") return false;
-	const selected = selectedFromAnswer(before);
-	if (selected.length !== normalized.selected.length) return false;
-	if (selected.some((value, index) => value !== normalized.selected[index])) return false;
-	return notesFromAnswer(before) === normalized.notes;
+/***
+ * MARK: checkAnswersMatch
+ * @description Whether the answer already kept in a merged round matches the
+ *   backend's normalized answer (same selected options in order, same notes),
+ *   so the survey merge can skip no-op overwrites and only flag real
+ *   contributions. A missing kept answer never matches.
+ * @example checkAnswersMatch({ existingAnswer: { selected: ['a'], notes: '' }, backendAnswer: { selected: ['a'], notes: '' } }) => true
+ * @param {Object} [labelled={}] - Labelled answers to compare.
+ * @param {*} [labelled.existingAnswer] - Answer already kept in the merged round.
+ * @param {Object} [labelled.backendAnswer] - Normalized backend answer (`{ selected, notes }`).
+ * @returns {boolean}
+ ***/
+function checkAnswersMatch({ existingAnswer, backendAnswer } = {}) {
+	if (!existingAnswer || typeof existingAnswer !== "object") return false;
+	const selected = selectedFromAnswer(existingAnswer);
+	if (selected.length !== backendAnswer.selected.length) return false;
+	if (selected.some((value, index) => value !== backendAnswer.selected[index])) return false;
+	return notesFromAnswer(existingAnswer) === backendAnswer.notes;
 }
 
 export const QUESTION_ME_SKILL_NAME = "question-me";

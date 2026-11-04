@@ -54,18 +54,18 @@ export function surveyNeedsImagePoll(rounds, providerId) {
 }
 
 /***
- * MARK: readableSurveySaveError
+ * MARK: describeSurveySaveError
  * @description Turns a failed survey save into plain words for the page. The
  *   backend answers `{ error, code }`, but the transport wraps it as
  *   `API <status> on <path>: <body>` — showing that raw string would bury the
  *   reason in plumbing. Prefers the backend message plus its machine-readable
  *   code, and falls back to the raw message when no backend body is readable.
- * @example readableSurveySaveError(Object.assign(new Error('API 400 on /s: {"error":"bad","code":"SURVEY_INVALID"}'), { body: '{"error":"bad","code":"SURVEY_INVALID"}' })) => 'bad (SURVEY_INVALID)'
+ * @example describeSurveySaveError(Object.assign(new Error('API 400 on /s: {"error":"bad","code":"SURVEY_INVALID"}'), { body: '{"error":"bad","code":"SURVEY_INVALID"}' })) => 'bad (SURVEY_INVALID)'
  * @param {*} err - Rejection from the survey client.
  * @param {string} [fallback] - Last-resort text when nothing readable remains.
  * @returns {string}
  ***/
-export function readableSurveySaveError(err, fallback = 'Could not save answers') {
+export function describeSurveySaveError(err, fallback = 'Could not save answers') {
   const candidates = [];
   if (typeof err?.body === 'string' && err.body.trim()) candidates.push(err.body.trim());
   // Body-less rejections (older clients, hand-built errors) still carry the
@@ -397,7 +397,7 @@ export function SurveyPage({
       const data = await http.submitSurvey(projectId, taskId, { answers: answerPayload });
       refreshFrom(data);
     } catch (err) {
-      setSaveError(readableSurveySaveError(err, 'Could not save answers'));
+      setSaveError(describeSurveySaveError(err, 'Could not save answers'));
     } finally {
       setSaving(false);
     }
@@ -438,7 +438,7 @@ export function SurveyPage({
         refreshFrom(data);
       }
     } catch (err) {
-      setSaveError(readableSurveySaveError(err, 'Could not submit the survey'));
+      setSaveError(describeSurveySaveError(err, 'Could not submit the survey'));
     } finally {
       setSubmitting(false);
     }
@@ -452,7 +452,7 @@ export function SurveyPage({
       const data = await http.submitSurvey(projectId, taskId, { action: 'skip' });
       refreshFrom(data);
     } catch (err) {
-      setSaveError(readableSurveySaveError(err, 'Could not skip the survey'));
+      setSaveError(describeSurveySaveError(err, 'Could not skip the survey'));
     } finally {
       setSubmitting(false);
     }
