@@ -84,16 +84,21 @@ describe("api/imageGen/surveyImages resolution", () => {
 describe("api/imageGen/surveyImages job", () => {
 	let cwd;
 	let savedKey;
+	let savedImageGenDir;
 
 	beforeEach(() => {
 		cwd = fs.mkdtempSync(path.join(os.tmpdir(), "kb-survey-images-test-"));
 		savedKey = process.env.KAINBAIN_IMAGE_GEN_MUSE_API_KEY;
 		delete process.env.KAINBAIN_IMAGE_GEN_MUSE_API_KEY;
+		savedImageGenDir = process.env.KAINBAIN_IMAGE_GEN_DIR;
+		process.env.KAINBAIN_IMAGE_GEN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "kb-image-gen-"));
 	});
 
 	afterEach(() => {
 		if (savedKey === undefined) delete process.env.KAINBAIN_IMAGE_GEN_MUSE_API_KEY;
 		else process.env.KAINBAIN_IMAGE_GEN_MUSE_API_KEY = savedKey;
+		if (savedImageGenDir === undefined) delete process.env.KAINBAIN_IMAGE_GEN_DIR;
+		else process.env.KAINBAIN_IMAGE_GEN_DIR = savedImageGenDir;
 		try {
 			fs.rmSync(cwd, { recursive: true, force: true });
 		} catch {
