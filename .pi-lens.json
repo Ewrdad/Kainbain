@@ -6,7 +6,7 @@
     "**/test-results/**",
     "**/playwright-report/**",
     "**/agents.md",
-    "agent-docs/**"
+    "docs/agent-docs/**"
   ],
   "maxProjectFiles": 3000
 }

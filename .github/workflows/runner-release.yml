@@ -138,5 +138,5 @@ jobs:
           # shellcheck disable=SC2086
           gh release create "$TAG" dist/*.tar.gz dist/manifest.json dist/manifest.json.minisig \
             --title "Runner $TAG" \
-            --notes "Runner release $TAG. Runners self-update on idle: manifest signature is verified against the pinned key, then each asset sha256. Rollback: delete this release (or mark the previous one latest) and lower KAINBAIN_RUNNER_RECOMMENDED_VERSION. See PORTABLE_DEPLOYMENT.md 'Runner updates'." \
+            --notes "Runner release $TAG. Runners self-update on idle: manifest signature is verified against the pinned key, then each asset sha256. Rollback: delete this release (or mark the previous one latest) and lower KAINBAIN_RUNNER_RECOMMENDED_VERSION. See docs/PORTABLE_DEPLOYMENT.md 'Runner updates'." \
             $PRERELEASE
