@@ -488,7 +488,7 @@ export async function registerTaskWorkRoutes(app, deps) {
 		if (action !== "skip") {
 			const patch = request.body?.answers;
 			if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
-				return reply.status(400).send({ error: "answers must be an object keyed by question id" });
+				return reply.status(400).send({ error: "answers must be an object keyed by question id", code: "SURVEY_INVALID" });
 			}
 			try {
 				const saved = saveSurveyAnswers({
@@ -501,7 +501,7 @@ export async function registerTaskWorkRoutes(app, deps) {
 				survey = { ...readSurvey(project?.cwd, project, task.id, outputFile), status: saved.status, missing: saved.missing, unknownIds: saved.unknownIds };
 			} catch (err) {
 				const code = err?.code || "SURVEY_SAVE_FAILED";
-				app.log.warn({ taskId: task.id, code, error: err?.message }, "Survey save rejected");
+				app.log?.warn?.({ taskId: task.id, code, error: err?.message }, "Survey save rejected");
 				return reply.status(err?.statusCode || 400).send({ error: err?.message || "Invalid survey answers", code });
 			}
 		}

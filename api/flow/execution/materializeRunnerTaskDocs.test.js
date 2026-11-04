@@ -82,4 +82,15 @@ describe("materializeRunnerTaskDocs", () => {
 		expect(out.merged).toEqual([]);
 		expect(fs.readFileSync(path.join(cwd, "docs/tasks/t1/SURVEY.md"), "utf8")).toBe(incoming);
 	});
+
+	it("keeps a backend survey when the incoming copy carries no survey content", () => {
+		const backendFile = path.join(cwd, "docs/tasks/t1/SURVEY.md");
+		fs.mkdirSync(path.dirname(backendFile), { recursive: true });
+		const backend = withAnswers(renderSurveyMarkdown([surveyRound()]), { q1: { selected: ["a"], notes: "human" } });
+		fs.writeFileSync(backendFile, backend, "utf8");
+		const out = materializeRunnerTaskDocs({ project: { cwd }, taskId: "t1", files: [{ name: "SURVEY.md", content: "# notes\n\nno fences here\n" }] });
+		expect(out.written).toEqual([]);
+		expect(out.merged).toEqual([]);
+		expect(fs.readFileSync(backendFile, "utf8")).toBe(backend);
+	});
 });

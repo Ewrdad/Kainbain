@@ -77,7 +77,7 @@ async function setup(customStages) {
 		const out = await handler({ params, query, body }, reply);
 		return { out: out === undefined ? res.body : out, res };
 	};
-	return { call, taskStore };
+	return { call, taskStore, fakeApp };
 }
 
 const q = (overrides = {}) => ({
@@ -117,6 +117,7 @@ describe("POST /tasks/:id/survey", () => {
 		expect(badAction.res.statusCode).toBe(400);
 		const badBody = await call("POST", "/tasks/:id/survey", { params: { id: "t-1" }, body: { projectId: "p-1", answers: ["q1"] } });
 		expect(badBody.res.statusCode).toBe(400);
+		expect(badBody.res.body.code).toBe("SURVEY_INVALID");
 	});
 
 	it("partial saves stay parked and complete saves advance", async () => {
@@ -253,6 +254,18 @@ describe("POST /tasks/:id/survey", () => {
 		});
 		expect(res.statusCode).toBe(404);
 		expect(res.body.code).toBe("SURVEY_NOT_FOUND");
+	});
+
+	it("still 400s with a code when the app logger has no warn method", async () => {
+		const { call, fakeApp } = await setup();
+		appendSurveyRound({ cwd: tmp, project: null, taskId: "t-1", questions: [q()] });
+		delete fakeApp.log.warn;
+		const { res } = await call("POST", "/tasks/:id/survey", {
+			params: { id: "t-1" },
+			body: { projectId: "p-1", answers: { q1: { selected: ["zzz"] } } },
+		});
+		expect(res.statusCode).toBe(400);
+		expect(res.body.code).toBe("SURVEY_INVALID");
 	});
 });
 

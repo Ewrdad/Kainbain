@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveTasksDir } from "../../docsPath.js";
-import { SURVEY_FENCE, mergeSurveyDocuments, parseSurvey } from "../../../shared/survey.js";
+import { mergeSurveyDocuments, parseSurvey } from "../../../shared/survey.js";
 
 const MAX_FILE_BYTES = 256 * 1024;
 const MAX_TOTAL_BYTES = 1024 * 1024;
@@ -37,24 +37,24 @@ export function materializeRunnerTaskDocs({ project, taskId, files } = {}) {
 		const name = typeof file?.name === "string" ? path.basename(file.name) : "";
 		if (!name || name === "task.md" || typeof file?.content !== "string") continue;
 		let content = file.content;
-		// A stale Runner survey must not wipe backend answers: merge when both
-		// sides hold survey rounds, otherwise fall through to a plain write.
+		// A stale Runner shipment must never wipe a backend survey: whenever
+		// the backend file already holds survey rounds, merge instead of
+		// overwriting — even when the incoming copy carries no survey
+		// content at all (the merge then keeps the backend copy).
 		// (Inline by design: this file keeps one top-level function.)
-		if (content.includes(`\`\`\`${SURVEY_FENCE}`)) {
-			try {
-				const dest = path.join(taskDir, name);
-				if (fs.existsSync(dest)) {
-					const backendContent = fs.readFileSync(dest, "utf8");
-					if (parseSurvey(backendContent).rounds.length > 0) {
-						const result = mergeSurveyDocuments(backendContent, content);
-						if (result.merged) merged.push(name);
-						if (result.markdown === backendContent) continue;
-						content = result.markdown;
-					}
+		try {
+			const dest = path.join(taskDir, name);
+			if (fs.existsSync(dest)) {
+				const backendContent = fs.readFileSync(dest, "utf8");
+				if (parseSurvey(backendContent).rounds.length > 0) {
+					const result = mergeSurveyDocuments(backendContent, content);
+					if (result.merged) merged.push(name);
+					if (result.markdown === backendContent) continue;
+					content = result.markdown;
 				}
-			} catch {
-				// Unreadable backend copy: fall through to the plain write below.
 			}
+		} catch {
+			// Unreadable backend copy: fall through to the plain write below.
 		}
 		const bytes = Buffer.byteLength(content, "utf8");
 		if (bytes > MAX_FILE_BYTES || total + bytes > MAX_TOTAL_BYTES) continue;
