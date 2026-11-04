@@ -392,6 +392,22 @@ describe('SurveyPage image questions', () => {
     expect(screen.getByLabelText('Pick a design: light dashboard')).toBeChecked();
   });
 
+  it('falls back to the description when a ready picture fails to load', async () => {
+    // A ready entry whose bytes the browser cannot render (e.g. webp bytes
+    // stored under a .png name) must degrade to a selectable description,
+    // never a broken-image icon that blocks answering.
+    const client = makeClient(imageSurvey(readyImages));
+    renderPage(client);
+    await screen.findByText('Pick a design');
+    expect(screen.getByAltText('dark dashboard').tagName).toBe('IMG');
+    fireEvent.error(screen.getByAltText('dark dashboard'));
+    expect(await screen.findByText(/couldn't be displayed — pick by description/)).toBeInTheDocument();
+    expect(screen.queryByAltText('dark dashboard')).not.toBeInTheDocument();
+    expect(screen.getByAltText('light dashboard').tagName).toBe('IMG');
+    fireEvent.click(screen.getByLabelText('Pick a design: dark dashboard'));
+    expect(screen.getByLabelText('Pick a design: dark dashboard')).toBeChecked();
+  });
+
   it('never renders foreign image files, falling back to the description', async () => {
     // `images[].file` is agent-authored JSON: a ready entry pointing at an
     // absolute URL must not pull foreign content into the page — it renders

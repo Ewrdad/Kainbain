@@ -127,9 +127,10 @@ detailed enough to render: layout, palette, key elements, style). Agents never
 write the `images` field — the backend owns it (per-picture generation
 status). Answers work like `single`: the selected description is stored in
 `answers`, and on submit the chosen picture is copied to a stable
-`assets/survey-r<round>-<qid>-chosen.png` file and referenced from a
-`## Chosen designs` section in the survey file, so downstream stages can work
-from the picked design.
+`assets/survey-r<round>-<qid>-chosen.<ext>` file (the extension always matches
+the stored bytes — usually `png`) and referenced from a `## Chosen designs`
+section in the survey file, so downstream stages can work from the picked
+design.
 
 Image questions are enabled per survey stage with the question-me skill's
 `imageGen` setting (`none` by default, which removes the image-question

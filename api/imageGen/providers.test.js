@@ -4,6 +4,7 @@ import {
 	MOCK_IMAGE_PNG_BASE64,
 	MUSE_IMAGE_API_BASE_URL,
 	MUSE_IMAGE_MODEL,
+	detectImageExtension,
 	generateImage,
 	generateMockImage,
 	generateMuseImage,
@@ -137,6 +138,16 @@ describe("api/imageGen/providers muse", () => {
 		});
 	});
 
+	it("requests png output so bytes match the .png asset names (Muse defaults to webp)", async () => {
+		const calls = [];
+		const fetchImpl = async (url, init) => {
+			calls.push({ url, init });
+			return jsonResponse({ payload: { data: [{ b64_json: MOCK_IMAGE_PNG_BASE64 }] } });
+		};
+		await generateMuseImage({ prompt: "x", apiKey: "k", fetchImpl });
+		expect(JSON.parse(calls[0].init.body)).toMatchObject({ output_format: "png" });
+	});
+
 	it("accepts Meta's images[]/image_url spelling via a follow-up download", async () => {
 		const imageBytes = Buffer.from("fake-image-bytes");
 		const urls = [];
@@ -259,5 +270,30 @@ describe("api/imageGen/providers muse", () => {
 		await expect(
 			generateMuseImage({ prompt: "x", apiKey: "k", fetchImpl, timeoutMs: 20 }),
 		).rejects.toMatchObject({ statusCode: 504, code: "IMAGE_GEN_TIMEOUT" });
+	});
+});
+
+describe("api/imageGen/providers detectImageExtension", () => {
+	const webp = () => Buffer.concat([
+		Buffer.from("RIFF"),
+		Buffer.from([0x10, 0x00, 0x00, 0x00]),
+		Buffer.from("WEBP"),
+		Buffer.from("VP8 "),
+	]);
+
+	it("sniffs png, jpeg, gif, and webp magic bytes", () => {
+		expect(detectImageExtension(Buffer.from(MOCK_IMAGE_PNG_BASE64, "base64"))).toBe("png");
+		expect(detectImageExtension(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]))).toBe("jpg");
+		expect(detectImageExtension(Buffer.from("GIF89a....", "latin1"))).toBe("gif");
+		expect(detectImageExtension(Buffer.from("GIF87a....", "latin1"))).toBe("gif");
+		expect(detectImageExtension(webp())).toBe("webp");
+	});
+
+	it("returns null for unknown, truncated, or non-buffer input", () => {
+		expect(detectImageExtension(Buffer.from("fake-image-bytes"))).toBeNull();
+		expect(detectImageExtension(Buffer.from("RIFF"))).toBeNull();
+		expect(detectImageExtension(Buffer.alloc(0))).toBeNull();
+		expect(detectImageExtension("not-a-buffer")).toBeNull();
+		expect(detectImageExtension(null)).toBeNull();
 	});
 });

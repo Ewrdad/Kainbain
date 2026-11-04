@@ -675,6 +675,10 @@ function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGe
       byOption.set(entry.option, entry);
     }
   }
+  // Ready files the browser failed to decode (a MIME mismatch, a deleted
+  // asset): those cards degrade to selectable descriptions below instead of
+  // showing a broken-image icon that looks unanswerable.
+  const [brokenFiles, setBrokenFiles] = useState(() => new Set());
   const generationOff = imageGenProviderId === 'none' || imageGenProviderId === '';
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label={question.text}>
@@ -696,7 +700,8 @@ function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGe
           !lowerFile.startsWith('https://') &&
           !rawFile.startsWith('//') &&
           !/^[a-z][a-z0-9+.-]*:/i.test(rawFile);
-        if (entry?.status === 'ready' && isRelativeAsset) {
+        const loadBroken = brokenFiles.has(rawFile);
+        if (entry?.status === 'ready' && isRelativeAsset && !loadBroken) {
           const src = resolveTaskImageUrl({ apiBase: API_BASE, projectId, taskId, src: rawFile });
           return (
             <label
@@ -722,6 +727,7 @@ function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGe
                 src={src}
                 alt={text}
                 loading="lazy"
+                onError={() => setBrokenFiles((prev) => new Set(prev).add(rawFile))}
                 className="w-full aspect-video object-cover rounded-sm bg-surface-deep"
               />
               <span className="leading-snug text-xs">{text}</span>
@@ -787,6 +793,11 @@ function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGe
               {entry?.status === 'failed' && entry?.error && (
                 <span className="block text-[11px] text-text-muted mt-0.5">
                   Illustration unavailable: {entry.error}
+                </span>
+              )}
+              {loadBroken && (
+                <span className="block text-[11px] font-mono text-text-muted mt-0.5">
+                  Illustration couldn&apos;t be displayed — pick by description.
                 </span>
               )}
               {!entry && !generationOff && (

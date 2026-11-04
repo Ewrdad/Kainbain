@@ -9,8 +9,17 @@ import {
 	saveSurveyAnswers,
 	withSurveyFileWriteLock,
 } from "../work/taskSurvey.js";
-import { listTaskImages } from "../work/taskAssets.js";
+import { listTaskImages, writeTaskImage } from "../work/taskAssets.js";
 import { MOCK_IMAGE_PNG_BASE64 } from "./providers.js";
+
+// Minimal RIFF/WEBP container: enough magic bytes for format sniffing.
+const WEBP_BYTES = Buffer.concat([
+	Buffer.from("RIFF"),
+	Buffer.from([0x10, 0x00, 0x00, 0x00]),
+	Buffer.from("WEBP"),
+	Buffer.from("VP8 "),
+	Buffer.alloc(8),
+]);
 import {
 	SURVEY_IMAGE_CAP,
 	chosenSurveyImageFileName,
@@ -187,6 +196,91 @@ describe("api/imageGen/surveyImages job", () => {
 		expect(second).toMatchObject({ generated: 0, skipped: 2 });
 	});
 
+	it("saves non-png bytes under a matching extension so the served Content-Type matches", async () => {
+		appendSurveyRound({ cwd, project: null, taskId, stage: "ask", questions: [img()] });
+		process.env.KAINBAIN_IMAGE_GEN_MUSE_API_KEY = "sk-test";
+		const webpFetch = async () => ({
+			ok: true,
+			status: 200,
+			json: async () => ({ data: [{ b64_json: WEBP_BYTES.toString("base64") }] }),
+		});
+		const summary = await ensureSurveyImages({
+			cwd,
+			project: null,
+			taskId,
+			stage: stageWith("muse"),
+			fetchImpl: webpFetch,
+		});
+		expect(summary).toMatchObject({ generated: 2, failed: 0 });
+		expect(imagesOf(cwd)).toEqual([
+			{ option: 0, file: "assets/survey-r1-qi-0.webp", status: "ready" },
+			{ option: 1, file: "assets/survey-r1-qi-1.webp", status: "ready" },
+		]);
+		const assets = listTaskImages(cwd, taskId);
+		expect(assets.map((a) => a.name).sort()).toEqual([
+			"survey-r1-qi-0.webp",
+			"survey-r1-qi-1.webp",
+		]);
+	});
+
+	it("repairs ready entries whose bytes mismatch their extension without regenerating", async () => {
+		appendSurveyRound({ cwd, project: null, taskId, stage: "ask", questions: [img()] });
+		const { updateSurveyImages } = await import("../work/taskSurvey.js");
+		// Early Muse runs stored webp bytes under .png names: browsers refuse
+		// to render those (wrong Content-Type + nosniff), so the human saw no
+		// image. The repair renames (free) instead of regenerating (paid).
+		writeTaskImage(cwd, taskId, "survey-r1-qi-0.png", WEBP_BYTES);
+		writeTaskImage(cwd, taskId, "survey-r1-qi-1.png", WEBP_BYTES);
+		updateSurveyImages({
+			cwd,
+			project: null,
+			taskId,
+			questionId: "qi",
+			images: [
+				{ option: 0, file: "assets/survey-r1-qi-0.png", status: "ready" },
+				{ option: 1, file: "assets/survey-r1-qi-1.png", status: "ready" },
+			],
+		});
+		const explodingFetch = async () => {
+			throw new Error("must not regenerate during repair");
+		};
+		const summary = await ensureSurveyImages({
+			cwd,
+			project: null,
+			taskId,
+			stage: stageWith("mock"),
+			fetchImpl: explodingFetch,
+		});
+		expect(summary).toMatchObject({ generated: 0, failed: 0, repaired: 2, skipped: 2 });
+		expect(imagesOf(cwd)).toEqual([
+			{ option: 0, file: "assets/survey-r1-qi-0.webp", status: "ready" },
+			{ option: 1, file: "assets/survey-r1-qi-1.webp", status: "ready" },
+		]);
+		expect(listTaskImages(cwd, taskId).map((a) => a.name).sort()).toEqual([
+			"survey-r1-qi-0.webp",
+			"survey-r1-qi-1.webp",
+		]);
+	});
+
+	it("regenerates ready entries whose asset file went missing", async () => {
+		appendSurveyRound({ cwd, project: null, taskId, stage: "ask", questions: [img()] });
+		const { updateSurveyImages } = await import("../work/taskSurvey.js");
+		updateSurveyImages({
+			cwd,
+			project: null,
+			taskId,
+			questionId: "qi",
+			images: [
+				{ option: 0, file: "assets/survey-r1-qi-0.png", status: "ready" },
+				{ option: 1, file: "assets/survey-r1-qi-1.png", status: "ready" },
+			],
+		});
+		const summary = await ensureSurveyImages({ cwd, project: null, taskId, stage: stageWith("mock") });
+		expect(summary).toMatchObject({ generated: 2, failed: 0 });
+		expect(imagesOf(cwd).map((e) => e.status)).toEqual(["ready", "ready"]);
+		expect(listTaskImages(cwd, taskId)).toHaveLength(2);
+	});
+
 	it("retries gen failures only when retryFailed is set (park behaviour)", async () => {
 		appendSurveyRound({ cwd, project: null, taskId, stage: "ask", questions: [img()] });
 		process.env.KAINBAIN_IMAGE_GEN_MUSE_API_KEY = "sk-test";
@@ -318,6 +412,38 @@ describe("api/imageGen/surveyImages job", () => {
 		const doc2 = fs.readFileSync(surveyPath, "utf8");
 		expect(doc2).toBe(doc);
 		expect(doc2.split("## Chosen designs")).toHaveLength(2);
+	});
+
+	it("persists the chosen picture with a matching extension for non-png bytes", async () => {
+		appendSurveyRound({ cwd, project: null, taskId, stage: "ask", questions: [img()] });
+		const { updateSurveyImages } = await import("../work/taskSurvey.js");
+		writeTaskImage(cwd, taskId, "survey-r1-qi-0.webp", WEBP_BYTES);
+		writeTaskImage(cwd, taskId, "survey-r1-qi-1.webp", WEBP_BYTES);
+		updateSurveyImages({
+			cwd,
+			project: null,
+			taskId,
+			questionId: "qi",
+			images: [
+				{ option: 0, file: "assets/survey-r1-qi-0.webp", status: "ready" },
+				{ option: 1, file: "assets/survey-r1-qi-1.webp", status: "ready" },
+			],
+		});
+		saveSurveyAnswers({
+			cwd,
+			project: null,
+			taskId,
+			patch: { qi: { selected: ["dark dashboard with teal charts"], notes: "" } },
+		});
+		const result = await persistChosenSurveyImages({ cwd, project: null, taskId });
+		expect(result).toMatchObject({ sectionWritten: true, errors: [] });
+		expect(result.chosen).toHaveLength(1);
+		expect(result.chosen[0].file).toBe("assets/survey-r1-qi-chosen.webp");
+		const surveyPath = resolveSurveyPath(cwd, null, taskId);
+		expect(fs.readFileSync(surveyPath, "utf8")).toContain("assets/survey-r1-qi-chosen.webp");
+		expect(
+			fs.existsSync(path.join(cwd, "docs", "tasks", taskId, "assets", "survey-r1-qi-chosen.webp")),
+		).toBe(true);
 	});
 
 	it("loses no updates when a submit lands mid-generation", async () => {

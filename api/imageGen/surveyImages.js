@@ -16,6 +16,7 @@ import {
 	withSurveyFileWriteLock,
 } from "../work/taskSurvey.js";
 import {
+	deleteTaskImage,
 	resolveTaskAssetFile,
 	sanitizeImageName,
 	taskAssetRelPath,
@@ -24,6 +25,7 @@ import {
 import { getImageGenKey } from "./keyStore.js";
 import {
 	IMAGE_GEN_DEFAULT_SIZE,
+	detectImageExtension,
 	generateImage,
 	getImageGenProvider,
 } from "./providers.js";
@@ -102,17 +104,26 @@ export const resolveImageGenProvider = (stageOrValue) => {
 /***
  * MARK: surveyImageFileName
  * @description Deterministic asset name for one generated survey image
- *   (`survey-r<round>-<qid>-<i>.png`, sanitized — agent-authored question ids
- *   can carry unsafe characters).
+ *   (`survey-r<round>-<qid>-<i>.<ext>`, sanitized — agent-authored question
+ *   ids can carry unsafe characters). The extension always matches the
+ *   stored bytes (sniffed at save time): the task image endpoint serves
+ *   Content-Type from the extension with `nosniff`, so a mismatch renders
+ *   as a broken image instead of a picture.
  * @example surveyImageFileName(1, 'q1', 0) => 'survey-r1-q1-0.png'
+ * @example surveyImageFileName(1, 'q1', 0, 'webp') => 'survey-r1-q1-0.webp'
  * @param {number} round - Round number.
  * @param {string} questionId - Question id.
  * @param {number} index - Option index.
+ * @param {string} [ext] - Asset extension (defaults to `png`; anything
+ *   outside the task-asset allowlist falls back to `png`).
  * @returns {string}
  ***/
-export const surveyImageFileName = (round, questionId, index) => {
-	const safe = sanitizeImageName(`survey-r${round}-${safeQuestionStem(questionId)}-${index}.png`);
-	return safe || `survey-r${round}-image-${index}.png`;
+export const surveyImageFileName = (round, questionId, index, ext) => {
+	const useExt = ["png", "jpg", "jpeg", "gif", "webp"].includes(String(ext || "").toLowerCase())
+		? String(ext).toLowerCase()
+		: "png";
+	const safe = sanitizeImageName(`survey-r${round}-${safeQuestionStem(questionId)}-${index}.${useExt}`);
+	return safe || `survey-r${round}-image-${index}.${useExt}`;
 };
 
 // The stem is sanitized BEFORE composing: sanitizing the composed name
@@ -135,6 +146,36 @@ const byOptionIndex = (entries) => {
 		}
 	}
 	return map;
+};
+
+const collectImageQuestions = (rounds) => {
+	const found = [];
+	for (const round of Array.isArray(rounds) ? rounds : []) {
+		for (const question of round?.questions || []) {
+			if (question?.type === "image") found.push({ round: round.round, question });
+		}
+	}
+	return found;
+};
+
+// One ready entry's stored bytes (null when the asset file is gone or
+// unreadable — never throws, so repair can never break the job).
+const readReadyEntryBytes = ({ cwd, project, taskId, entry }) => {
+	const name = typeof entry?.file === "string" ? entry.file.split("/").pop() : "";
+	if (!name) return null;
+	const resolved = resolveTaskAssetFile(cwd, taskId, name, project);
+	if (!resolved) return null;
+	try {
+		/* eslint-disable-next-line security/detect-non-literal-fs-filename -- resolved through the traversal-safe asset helper */
+		return fs.readFileSync(resolved);
+	} catch {
+		return null;
+	}
+};
+
+const extensionOf = (file) => {
+	const name = String(file || "").split("/").pop() || "";
+	return name.includes(".") ? name.split(".").pop().toLowerCase() : "";
 };
 
 // In-flight jobs by task+file so a park-time kick and concurrent survey reads
@@ -165,6 +206,7 @@ const runSurveyImageJob = async (opts = {}) => {
 		failed: 0,
 		capped: 0,
 		skipped: 0,
+		repaired: 0,
 		chosenPersisted: 0,
 		warnings: [],
 		errors: [],
@@ -201,15 +243,68 @@ const runSurveyImageJob = async (opts = {}) => {
 		summary.status = "no-survey";
 		return summary;
 	}
-	const imageQuestions = [];
-	for (const round of survey.rounds) {
-		for (const question of round?.questions || []) {
-			if (question?.type === "image") imageQuestions.push({ round: round.round, question });
-		}
-	}
+	let imageQuestions = collectImageQuestions(survey.rounds);
 	if (imageQuestions.length === 0) {
 		summary.status = "no-image-questions";
 		return summary;
+	}
+	// Repair pass: a `ready` entry is trusted only when its bytes exist and
+	// match the extension. Early Muse runs stored webp bytes under `.png`
+	// names, which browsers refuse to render (wrong Content-Type +
+	// `nosniff`) — the survey showed structure but no picture. Mismatched
+	// entries are renamed (free); entries whose asset file is gone are
+	// demoted to `pending` so the planning pass below regenerates them.
+	// Entries with unrecognized bytes are left alone: regenerating those
+	// could burn paid generations in a loop against a misbehaving
+	// provider, and the survey UI falls back to their descriptions.
+	let repairedFile = false;
+	for (const { round, question } of imageQuestions) {
+		const current = Array.isArray(question.images) ? question.images : [];
+		if (!current.some((e) => e?.status === "ready")) continue;
+		const next = current.map((entry) => {
+			if (entry?.status !== "ready") return entry;
+			const bytes = readReadyEntryBytes({ cwd, project, taskId, entry });
+			if (!bytes) return { option: entry.option, file: entry.file, status: "pending" };
+			const sniffed = detectImageExtension(bytes);
+			if (sniffed && sniffed !== extensionOf(entry.file)) {
+				const renamed = surveyImageFileName(round, question.id, entry.option, sniffed);
+				try {
+					writeTaskImage(cwd, taskId, renamed, bytes, project);
+					deleteTaskImage(cwd, taskId, String(entry.file || "").split("/").pop(), project);
+				} catch {
+					return entry; // Keep serving the old name over breaking the entry.
+				}
+				summary.repaired += 1;
+				return { option: entry.option, file: `assets/${renamed}`, status: "ready" };
+			}
+			return entry;
+		});
+		if (!sameEntries(current, next)) {
+			try {
+				await withSurveyFileWriteLock(lockPath, () =>
+					updateSurveyImages({
+						cwd,
+						project,
+						taskId,
+						...(surveyFile ? { outputFile: surveyFile } : {}),
+						round,
+						questionId: question.id,
+						images: next,
+					}),
+				);
+				repairedFile = true;
+			} catch (err) {
+				summary.errors.push(`r${round}/${question.id}: ${shortError(err?.message)}`);
+			}
+		}
+	}
+	if (repairedFile) {
+		// Planning must see the repaired state, not the (possibly provided)
+		// pre-repair rounds — re-read the file the splices just wrote.
+		const fresh = readSurvey(cwd, project, taskId, surveyFile || undefined);
+		if (fresh.exists && Array.isArray(fresh.rounds)) {
+			imageQuestions = collectImageQuestions(fresh.rounds);
+		}
 	}
 	const apiKey = provider.requiresKey ? getImageGenKey({ providerId, dir: imageGenDir }) : "";
 	const keyMissing = provider.requiresKey && !apiKey;
@@ -347,9 +442,18 @@ const runSurveyImageJob = async (opts = {}) => {
 				}
 			}
 			if (bytes && bytes.length > 0) {
+				// The stored extension matches the bytes, not the provisional
+				// pass-1 name: providers may ignore the requested output
+				// format, and follow-up URL downloads arrive in any format.
+				const fileName = surveyImageFileName(
+					item.round,
+					item.questionId,
+					target.index,
+					detectImageExtension(bytes) || "png",
+				);
 				try {
-					writeTaskImage(cwd, taskId, target.fileName, bytes, project);
-					setEntry({ option: target.index, file: `assets/${target.fileName}`, status: "ready" });
+					writeTaskImage(cwd, taskId, fileName, bytes, project);
+					setEntry({ option: target.index, file: `assets/${fileName}`, status: "ready" });
 					summary.generated += 1;
 				} catch (err) {
 					setEntry({
@@ -436,7 +540,7 @@ const runSurveyImageJob = async (opts = {}) => {
  * @param {string} [opts.imageGenDir] - Key store dir override (tests).
  * @param {Function} [opts.fetchImpl] - Fetch override (tests).
  * @param {boolean} [opts.retryFailed] - Also retry earlier `gen`/`cap` failures.
- * @returns {Promise<Object>} Summary (providerId, status, generated/failed/capped/skipped/chosenPersisted, warnings, errors).
+ * @returns {Promise<Object>} Summary (providerId, status, generated/failed/capped/skipped/repaired/chosenPersisted, warnings, errors).
  ***/
 export const ensureSurveyImages = (opts = {}) => {
 	const key = jobKeyFor(opts);
@@ -448,6 +552,7 @@ export const ensureSurveyImages = (opts = {}) => {
 			failed: 0,
 			capped: 0,
 			skipped: 0,
+			repaired: 0,
 		chosenPersisted: 0,
 			warnings: [],
 			errors: [],
@@ -463,6 +568,7 @@ export const ensureSurveyImages = (opts = {}) => {
 			failed: 0,
 			capped: 0,
 			skipped: 0,
+			repaired: 0,
 		chosenPersisted: 0,
 			warnings: [],
 			errors: [shortError(err?.message)],
@@ -527,6 +633,7 @@ export const reportSurveyImagesToTask = ({ store, cwd, task, summary } = {}) => 
 		if (summary.failed > 0) parts.push(`${summary.failed} failed`);
 		if (summary.capped > 0) parts.push(`${summary.capped} over the survey limit`);
 		if (summary.skipped > 0) parts.push(`${summary.skipped} already ready`);
+		if (summary.repaired > 0) parts.push(`${summary.repaired} repaired`);
 		if (summary.chosenPersisted > 0) {
 			parts.push(
 				`${summary.chosenPersisted} chosen design${summary.chosenPersisted === 1 ? "" : "s"} saved`,
@@ -565,16 +672,24 @@ export const CHOSEN_DESIGNS_HEADING = "## Chosen designs";
 /***
  * MARK: chosenSurveyImageFileName
  * @description Stable asset name for a human's picked survey image
- *   (`survey-r<round>-<qid>-chosen.png`, sanitized): re-submits overwrite
- *   the same file, so downstream stages can rely on the path.
+ *   (`survey-r<round>-<qid>-chosen.<ext>`, sanitized): re-submits overwrite
+ *   the same file, so downstream stages can rely on the path. The extension
+ *   matches the copied bytes (same bytes/extension agreement as survey
+ *   images — the endpoint serves Content-Type from the extension).
  * @example chosenSurveyImageFileName(1, 'q1') => 'survey-r1-q1-chosen.png'
+ * @example chosenSurveyImageFileName(1, 'q1', 'webp') => 'survey-r1-q1-chosen.webp'
  * @param {number} round - Round number.
  * @param {string} questionId - Question id.
+ * @param {string} [ext] - Asset extension (defaults to `png`; anything
+ *   outside the task-asset allowlist falls back to `png`).
  * @returns {string}
  ***/
-export const chosenSurveyImageFileName = (round, questionId) => {
-	const safe = sanitizeImageName(`survey-r${round}-${safeQuestionStem(questionId)}-chosen.png`);
-	return safe || `survey-r${round}-chosen.png`;
+export const chosenSurveyImageFileName = (round, questionId, ext) => {
+	const useExt = ["png", "jpg", "jpeg", "gif", "webp"].includes(String(ext || "").toLowerCase())
+		? String(ext).toLowerCase()
+		: "png";
+	const safe = sanitizeImageName(`survey-r${round}-${safeQuestionStem(questionId)}-chosen.${useExt}`);
+	return safe || `survey-r${round}-chosen.${useExt}`;
 };
 
 // Greedy up to `] ![` so a question id containing `]` still parses (a
@@ -697,7 +812,11 @@ export const persistChosenSurveyImages = async (opts = {}) => {
 				} catch {
 					continue; // Artifact gone (deleted by hand): skip, keep the survey valid.
 				}
-				const chosenName = chosenSurveyImageFileName(round.round, question.id);
+				const chosenName = chosenSurveyImageFileName(
+					round.round,
+					question.id,
+					detectImageExtension(bytes) || "png",
+				);
 				try {
 					writeTaskImage(cwd, taskId, chosenName, bytes, project);
 				} catch (err) {
