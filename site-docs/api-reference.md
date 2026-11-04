@@ -176,7 +176,7 @@ across restarts at `KAINBAIN_CIRCUIT_STATE_FILE` (default
 | GET | `/tasks/:id/reports` | Stage reports for the task. |
 | POST | `/tasks/:id/report` | Submit a stage report. |
 | GET | `/tasks/:id/survey` | Read the task's question-me survey (`SURVEY.md` by default, or the configured `outputFile`) rounds, file status, missing required questions. Query `?projectId=` and optional `?file=` (safe basename, normalized). Response includes `outputFile`. |
-| POST | `/tasks/:id/survey` | Save survey answers (merge-only: `{ projectId, answers }`) or skip (`{ projectId, action: 'skip' }`). Partial saves stay parked; a complete submit advances the task. Optional `file`/`outputFile` override and response include `outputFile`. Save rejects carry a machine-readable `code` (`SURVEY_INVALID`, `SURVEY_NOT_FOUND`). |
+| POST | `/tasks/:id/survey` | Save survey answers (merge-only: `{ projectId, answers }`) or skip (`{ projectId, action: 'skip' }`). Partial saves stay parked; a complete submit advances the task. Optional `file`/`outputFile` override and response include `outputFile`. Save rejects carry a machine-readable `code` (`SURVEY_INVALID`, `SURVEY_NOT_FOUND`, `SURVEY_INCOMPLETE` for a skip while required questions are still open). |
 
 ## Sessions (`api/routes/sessions.js`)
 

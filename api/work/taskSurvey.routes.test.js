@@ -189,6 +189,7 @@ describe("POST /tasks/:id/survey", () => {
 		});
 		expect(res.statusCode).toBe(400);
 		expect(res.body.missing).toEqual([{ round: 1, id: "q1" }]);
+		expect(res.body.code).toBe("SURVEY_INCOMPLETE");
 	});
 
 	it("refuses to advance a non-survey wait even when answers are complete", async () => {
@@ -316,6 +317,18 @@ describe("surveyOutputFileForRequest", () => {
 		expect(surveyOutputFileForRequest(task, project, { query: { file: "INTENT_SURVEY.md" } })).toBe("INTENT_SURVEY.md");
 		expect(surveyOutputFileForRequest(task, project, {})).toBe("FEEDBACK.md");
 		expect(surveyOutputFileForRequest(task, { stages: [] }, {})).toBe("SURVEY.md");
+	});
+
+	it("honors every alias key in query and body, legacy file first", () => {
+		expect(surveyOutputFileForRequest(task, project, { query: { outputFile: "ALIASED.md" } })).toBe("ALIASED.md");
+		expect(surveyOutputFileForRequest(task, project, { body: { surveyFile: "ALIASED.md" } })).toBe("ALIASED.md");
+		expect(surveyOutputFileForRequest(task, project, { body: { targetFile: "ALIASED.md" } })).toBe("ALIASED.md");
+		// Query wins over body, and legacy file wins over outputFile.
+		expect(surveyOutputFileForRequest(task, project, { query: { file: "QUERY.md" }, body: { file: "BODY.md" } })).toBe("QUERY.md");
+		expect(surveyOutputFileForRequest(task, project, { query: { file: "LEGACY.md", outputFile: "CANON.md" } })).toBe("LEGACY.md");
+		// Unsafe values in any alias still fail safe to the default.
+		expect(surveyOutputFileForRequest(task, { stages: [] }, { query: { outputFile: "../evil.md" } })).toBe("SURVEY.md");
+		expect(surveyOutputFileForRequest(task, { stages: [] }, { body: { surveyFile: "../evil.md" } })).toBe("SURVEY.md");
 	});
 
 	it("prefers the persisted file only when no later question-me stage exists", () => {

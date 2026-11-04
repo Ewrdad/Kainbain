@@ -24,11 +24,25 @@ import { stageHasQuestionMe, unansweredRequired } from "../../shared/survey.js";
 export function surveyOutputFileForRequest(task, project, request) {
 	const query = request?.query || {};
 	const body = request?.body || {};
-	const explicitRaw =
-		query.file ?? query.outputFile ?? query.surveyFile ?? query.surveyFileName ??
-		query.fileName ?? query.targetFile ??
-		body.file ?? body.outputFile ?? body.surveyFile ?? body.surveyFileName ??
-		body.fileName ?? body.targetFile;
+	// One ordered pass over both request sources (query first, then body) so
+	// a newly accepted alias key can never drift between the two lists.
+	// Order matches the long-standing precedence: legacy `file` first, then
+	// the canonical `outputFile` and its aliases.
+	const requestFileKeys = ["file", "outputFile", "surveyFile", "surveyFileName", "fileName", "targetFile"];
+	let explicitRaw;
+	/* eslint-disable security/detect-object-injection -- keys come from the fixed list above */
+	for (const source of [query, body]) {
+		if (!source || typeof source !== "object") continue;
+		for (const key of requestFileKeys) {
+			const value = source[key];
+			if (value !== undefined && value !== null) {
+				explicitRaw = value;
+				break;
+			}
+		}
+		if (explicitRaw !== undefined) break;
+	}
+	/* eslint-enable security/detect-object-injection */
 	if (explicitRaw !== undefined && explicitRaw !== null &&
 		!(typeof explicitRaw === "string" && explicitRaw.trim() === "")) {
 		return normalizeSurveyFileName(explicitRaw);
@@ -517,6 +531,7 @@ export async function registerTaskWorkRoutes(app, deps) {
 			if (action === "skip") {
 				return reply.status(400).send({
 					error: "Survey has unanswered required questions",
+					code: "SURVEY_INCOMPLETE",
 					missing,
 					status: survey.status,
 				});

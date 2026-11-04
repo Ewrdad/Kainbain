@@ -118,7 +118,9 @@ required question is answered. When a survey looks blank after answering:
   the page and shows the backend message plus a machine-readable `code`:
   `SURVEY_INVALID` means a selected value is not one of the question's
   options (re-open the survey to pick up the latest questions);
-  `SURVEY_NOT_FOUND` means the survey file is missing for that task.
+  `SURVEY_NOT_FOUND` means the survey file is missing for that task;
+  `SURVEY_INCOMPLETE` means a skip was refused because required questions
+  are still open (answer them or save first).
 - **Answer wipes from later Runner stages are merged, not lost.** A Runner
   worktree can lag behind answers you already saved; when its files land,
   new rounds are added but your saved answers are kept. If a survey still

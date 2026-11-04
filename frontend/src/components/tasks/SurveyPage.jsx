@@ -273,12 +273,17 @@ export function SurveyPage({
             ? `Still waiting on required questions: ${open}`
             : 'Not complete yet — answer the required questions above.',
         );
+        // The save response carries the persisted rounds: render them so the
+        // questions shown always match the file on disk. Local answer drafts
+        // stay untouched — only the read-only survey state refreshes here.
         setSurvey((prev) =>
           prev
             ? {
                 ...prev,
                 missing: data?.missing || prev.missing,
                 status: data?.status || prev.status,
+                rounds: Array.isArray(data?.rounds) ? data.rounds : prev.rounds,
+                errors: Array.isArray(data?.errors) ? data.errors : prev.errors,
               }
             : prev,
         );

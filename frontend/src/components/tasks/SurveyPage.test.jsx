@@ -179,6 +179,27 @@ describe('SurveyPage', () => {
     expect(screen.getByLabelText('Primary concern?: Auth')).toBeChecked();
   });
 
+  it('refreshes questions from a partial submit response without dropping drafts', async () => {
+    const client = makeClient();
+    const updatedRounds = JSON.parse(JSON.stringify(pendingSurvey.rounds));
+    updatedRounds[0].questions[0].text = 'Primary concern? (updated)';
+    updatedRounds[0].answers = { q1: { selected: ['Auth'], notes: '' } };
+    client.submitSurvey.mockResolvedValue({
+      status: 'pending',
+      advanced: false,
+      missing: [{ round: 1, id: 'q1' }],
+      rounds: updatedRounds,
+      errors: [],
+    });
+    renderPage(client);
+    await screen.findByText('Primary concern?');
+    fireEvent.click(screen.getByLabelText('Primary concern?: Auth'));
+    fireEvent.click(screen.getByRole('button', { name: /submit & continue/i }));
+    // The persisted wording renders, while the just-picked draft stays checked.
+    expect(await screen.findByText('Primary concern? (updated)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Primary concern? (updated): Auth')).toBeChecked();
+  });
+
   it('keeps selections and shows the backend message when saving fails', async () => {
     const client = makeClient();
     client.submitSurvey.mockRejectedValue(
