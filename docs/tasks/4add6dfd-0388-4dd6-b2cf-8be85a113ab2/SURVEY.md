@@ -12,7 +12,11 @@
       "id": "q1",
       "type": "single",
       "text": "How deep should the docs refresh go?",
-      "options": ["Light tidy-up: fix only things that are clearly wrong or out of date", "Full rewrite: make every listed guide detailed, step-by-step and easy to follow", "Full rewrite plus short videos or pictures where they help"],
+      "options": [
+        "Light tidy-up: fix only things that are clearly wrong or out of date",
+        "Full rewrite: make every listed guide detailed, step-by-step and easy to follow",
+        "Full rewrite plus short videos or pictures where they help"
+      ],
       "required": true,
       "showIf": null
     },
@@ -20,7 +24,13 @@
       "id": "q2",
       "type": "multiple",
       "text": "Which helpers (harnesses) need their own 'how to link it' guide? A harness is the AI helper your runner talks to.",
-      "options": ["Muse", "Pi", "Opencode", "Antigravity", "I am not sure - please check the system and cover whatever exists"],
+      "options": [
+        "Muse",
+        "Pi",
+        "Opencode",
+        "Antigravity",
+        "I am not sure - please check the system and cover whatever exists"
+      ],
       "required": true,
       "showIf": null
     },
@@ -28,7 +38,11 @@
       "id": "q3",
       "type": "single",
       "text": "Who is the main reader of these guides?",
-      "options": ["Total beginners - assume no background, explain every term", "Mixed - simple steps for beginners with extra detail for advanced users", "Experienced users - keep it short and technical"],
+      "options": [
+        "Total beginners - assume no background, explain every term",
+        "Mixed - simple steps for beginners with extra detail for advanced users",
+        "Experienced users - keep it short and technical"
+      ],
       "required": true,
       "showIf": null
     },
@@ -36,7 +50,11 @@
       "id": "q4",
       "type": "single",
       "text": "What should 'up to date' mean for this task?",
-      "options": ["Match the current product: install steps, screens and buttons all verified by trying them", "Just fix text that is clearly wrong, no need to re-try every step", "Verify steps plus delete or redirect old pages that confuse readers"],
+      "options": [
+        "Match the current product: install steps, screens and buttons all verified by trying them",
+        "Just fix text that is clearly wrong, no need to re-try every step",
+        "Verify steps plus delete or redirect old pages that confuse readers"
+      ],
       "required": true,
       "showIf": null
     },
@@ -44,7 +62,11 @@
       "id": "q5",
       "type": "single",
       "text": "For the custom skills guide (extra abilities you can give your agents), how detailed should it be?",
-      "options": ["Simple: what a skill is plus one worked example", "Detailed: full walkthrough from idea to working skill with common mistakes", "Both: quick example plus a deeper reference section"],
+      "options": [
+        "Simple: what a skill is plus one worked example",
+        "Detailed: full walkthrough from idea to working skill with common mistakes",
+        "Both: quick example plus a deeper reference section"
+      ],
       "required": true,
       "showIf": null
     },
@@ -52,11 +74,53 @@
       "id": "q6",
       "type": "single",
       "text": "I think this is simple enough to not require more questions. Do you agree?",
-      "options": ["Yes - proceed with my answers above", "No - I have more to add (use the notes box below)"],
+      "options": [
+        "Yes - proceed with my answers above",
+        "No - I have more to add (use the notes box below)"
+      ],
       "required": false,
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Full rewrite plus short videos or pictures where they help"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Muse",
+        "Pi",
+        "Opencode"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Total beginners - assume no background, explain every term"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Match the current product: install steps, screens and buttons all verified by trying them"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Simple: what a skill is plus one worked example"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Yes - proceed with my answers above"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
