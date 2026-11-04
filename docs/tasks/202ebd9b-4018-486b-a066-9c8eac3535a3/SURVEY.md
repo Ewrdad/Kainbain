@@ -133,3 +133,65 @@
   "answers": {}
 }
 ```
+
+## Round 3
+
+```survey-json
+{
+  "round": 3,
+  "generatedAt": "2026-11-04T18:23:14.000Z",
+  "stage": "stage-1792362077711",
+  "questions": [
+    {
+      "id": "q8",
+      "type": "single",
+      "text": "How fresh should the information on the glasses screen be?",
+      "options": [
+        "Update by itself every few seconds",
+        "Only update when I tap a refresh button",
+        "Update by itself, plus a refresh button as backup"
+      ],
+      "required": false,
+      "showIf": null
+    },
+    {
+      "id": "q9",
+      "type": "single",
+      "text": "When something goes wrong or needs your approval, how should the glasses screen get your attention?",
+      "options": [
+        "A big red or amber banner at the top",
+        "Just change the status colour quietly",
+        "Banner plus keep it visible until I act",
+        "Not sure — pick the simplest clear way"
+      ],
+      "required": false,
+      "showIf": null
+    }
+  ],
+  "answers": {}
+}
+```
+
+## Round 4
+
+```survey-json
+{
+  "round": 4,
+  "generatedAt": "2026-11-04T18:31:17.000Z",
+  "stage": "stage-1792362077711",
+  "questions": [
+    {
+      "id": "q10",
+      "type": "single",
+      "text": "I think these questions are enough to move forward with a plan. Do you agree?",
+      "options": [
+        "Yes, I have everything I need to answer above and we can go ahead",
+        "No, I want to add or change something (describe in Notes)"
+      ],
+      "required": true,
+      "showIf": null
+    }
+  ],
+  "answers": {}
+}
+```
