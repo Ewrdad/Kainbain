@@ -8,6 +8,7 @@ import { normalizeStageType } from "../../projectStore.js";
 import { ALIAS_HARNESS_ID } from "../../../shared/modelAliases.js";
 import { routeStageError } from "./routeStageError.js";
 import { parkTaskForSurvey } from "./parkTaskForSurvey.js";
+import { decideAgentStageVerdict } from "../../../shared/stageVerdict.js";
 
 /***
  * MARK: applyRunnerReport
@@ -21,6 +22,13 @@ import { parkTaskForSurvey } from "./parkTaskForSurvey.js";
  *   the human survey), failure routing via routeStageError, and
  *   advanceStage plus the scheduler follow-on kick. Call only after the
  *   lease fence accepted the execution (complete-execution does that).
+ *   Defense in depth: a `passed` report for an agent stage is re-checked
+ *   against the shared verdict decision, so an old Runner that never
+ *   learned failure detection still cannot advance a stage whose output
+ *   carries a well-formed FAIL block. Only the text block is re-checkable
+ *   here — the Runner owns the session events, so a `fail_stage` tool call
+ *   an old Runner swallowed is invisible to this check (new Runners report
+ *   it themselves).
  * @example await applyRunnerReport({ store, projectStore, projectId: 'p', taskId: 't', outcome: { status: 'passed', output: '...' } }) => { advanced: true, ... }
  * @param {Object} args - Context.
  * @param {Object} args.store - Task store.
@@ -122,6 +130,30 @@ export async function applyRunnerReport({
 	const reportTargetIndex = Number.isInteger(dispatchAttribution?.targetIndex)
 		? dispatchAttribution.targetIndex
 		: null;
+
+	// Defense in depth (old-Runner protection): a `passed` report whose
+	// output carries a well-formed FAIL block is rewritten to
+	// failed/rejected and flows into the existing routeStageError branch
+	// below — no new failure plumbing. Already-`failed` outcomes pass
+	// through untouched, and the shared decision keeps this fail-open
+	// (reasonless FAIL still advances) and agent-only (human/CI stages
+	// never re-parse). Only the text block is re-checkable here: the
+	// Runner owns the session events, so failStageRequest is always null.
+	if (outcome.status === "passed") {
+		const verdictDecision = decideAgentStageVerdict({
+			stage,
+			output: redactedOutput,
+			failStageRequest: null,
+		});
+		if (verdictDecision.failed) {
+			outcome = {
+				...outcome,
+				status: "failed",
+				failureKind: "rejected",
+				failureReason: verdictDecision.failureReason,
+			};
+		}
+	}
 
 	if (outcome.status === "failed") {
 		const err = new Error(outcome.failureReason || "Stage failed on the Runner");

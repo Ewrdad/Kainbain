@@ -14,6 +14,7 @@ import { defaultInstallRoot, markUpdateSuccess, readUpdateState } from "./update
 import { discoverClaudeModels, resolveAdvertisedModels } from "./modelDiscovery.js";
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
+import { decideAgentStageVerdict } from "../shared/stageVerdict.js";
 import { commitAndPush } from "./gitOps.js";
 
 /***
@@ -1038,6 +1039,10 @@ async function executeAssignment({
 		// Hoisted so the failure path below can flush the trailing
 		// structured batch before reporting the stage as failed.
 		let structuredSender = null;
+		// Latched by the verdict watcher in the runHarnessStage onEvent
+		// callback below when the agent calls the fail_stage tool (mirrors
+		// the embedded path's stageFailureRequested in api/agentRunner.js).
+		let failStageRequest = null;
 		try {
 			await client.progress({
 				taskId: taskId,
@@ -1218,6 +1223,19 @@ async function executeAssignment({
 				},
 				onEvent: (event) => {
 					structuredSender.queueEvent(event);
+					// Verdict watcher (observer-only — runHarnessStage already
+					// guards this callback): an explicit fail_stage call fails
+					// the stage even when the final text says PASS, exactly as
+					// the embedded path latches stageFailureRequested.
+					if (event?.type === "tool_started") {
+						const toolName = event.toolName || event.name || "tool";
+						if (toolName === "fail_stage" || toolName === "Fail_stage_skill") {
+							const args = event.args || event.arguments || {};
+							failStageRequest = {
+								reason: args.reason || args.message || "Stage failure reported by agent review",
+							};
+						}
+					}
 				},
 				onSession: (session) => {
 					state.session = session;
@@ -1250,6 +1268,44 @@ async function executeAssignment({
 			logger.log(`Committed ${sha} (pushed: ${pushed}${pushSkipped ? `, ${pushSkipped}` : ""}${pushState && pushState !== "pushed" ? `, ${pushState}` : ""}${beforeSha && beforeSha !== sha ? `, base was ${beforeSha.slice(0, 7)}` : ""}).`);
 			if (output) {
 				await sendLogs(`stage output: ${String(output).slice(0, 4000)}`);
+			}
+			// Agent-failure detection (shared verdict contract — the same
+			// decision the embedded path makes): a latched fail_stage tool
+			// call, or a well-formed FAIL block with reason AND fix guidance,
+			// reports failed/rejected so the backend routes through
+			// routeStageError (failback per stage config) instead of
+			// advancing. A reasonless FAIL still passes open with a warning.
+			// Position is the primary agent-only guard: `integrate` returns
+			// early above and `ci` takes the CI branch, so only agent work
+			// reaches this check. The synthesized stage is belt-and-braces —
+			// TRAP: normalizeStageType("integrate") falls through to
+			// "agent", so the guard would misfire if `integrate` ever
+			// reached here; it cannot due to that early return.
+			const verdictDecision = decideAgentStageVerdict({
+				stage: { type: kind || "agent" },
+				output: String(output || ""),
+				failStageRequest,
+			});
+			if (verdictDecision.failed) {
+				return await client.complete({
+					taskId: taskId,
+					projectId: projectId,
+					executionId,
+					epoch,
+					sha,
+					branch,
+					posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
+					model: servedModel,
+					outcome: "failed",
+					failureKind: "rejected",
+					failureReason: verdictDecision.failureReason,
+					taskFiles: collectTaskFiles({ workdir, taskId }),
+					output: String(output || "").slice(0, 20000),
+					durationMs: Date.now() - runStartedAt,
+				});
+			}
+			if (verdictDecision.failOpenWarning) {
+				logger.warn(verdictDecision.failOpenWarning);
 			}
 			return await client.complete({
 				taskId: taskId,

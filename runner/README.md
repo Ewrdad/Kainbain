@@ -119,6 +119,14 @@ commit and push → complete with the SHA. Any failure after the claim
 interrupts the task so it re-queues as interrupted, never failed/complete.
 Stage advancement stays engine-owned until the dispatch integration lands.
 
+Agent-failure detection: when the agent calls the `fail_stage` tool or ends
+with a well-formed `KAINBAIN_VERDICT: FAIL` block (reason AND fix guidance),
+the daemon completes with `outcome: "failed"`, `failureKind: "rejected"`,
+and the `[Agent Review Rejection] …` reason — the same shared verdict
+decision (`shared/stageVerdict.js`) the embedded path makes — so the backend
+fails the stage back instead of advancing it. A reasonless FAIL still passes
+open with a warning, and CI/integration work never consults a verdict.
+
 ## Safety rails
 
 - Worktree cap ~5 per work root; over-cap runs refuse and name the orphans.

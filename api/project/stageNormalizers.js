@@ -65,27 +65,12 @@ export const DEFAULT_STAGES = [
 	},
 ];
 
-/***
- * MARK: normalizeStageType
- * @description Normalizes stage types to the authoritative types ('agent', 'human', 'ci', 'merge').
- * Legacy types are mapped: 'review' -> 'human', 'script' -> 'ci',
- * 'deploy' -> 'ci' (the deploy pipeline stage type was removed — a stage
- * whose command runs the deploy script is an ordinary ci stage with no
- * special runtime), 'custom'/other -> 'agent'.
- * @example normalizeStageType('review') => 'human'
- * @example normalizeStageType('deploy') => 'ci'
- * @param {string} [type]
- * @returns {'agent'|'human'|'ci'|'merge'}
- ***/
-export function normalizeStageType(type) {
-	if (!type || typeof type !== "string") return "agent";
-	const lower = type.trim().toLowerCase();
-	if (lower === "human" || lower === "review") return "human";
-	if (lower === "ci" || lower === "script" || lower === "deploy") return "ci";
-	if (lower === "merge") return "merge";
-	if (lower === "agent") return "agent";
-	return "agent";
-}
+// `normalizeStageType` lives in shared/stageVerdict/ (the Runner imports it
+// from there, and shared/ can never import from api/); re-exported here so
+// every existing api/ import keeps working byte-identically.
+import { normalizeStageType } from "../../shared/stageVerdict.js";
+
+export { normalizeStageType };
 
 /***
  * MARK: normalizeStageSkills

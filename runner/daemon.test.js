@@ -392,6 +392,135 @@ describe("runSingleAssignment", () => {
 	});
 });
 
+describe("runSingleAssignment agent verdict detection", () => {
+	let dirs;
+	beforeEach(() => {
+		dirs = [];
+	});
+	afterEach(() => {
+		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+	});
+
+	const FAIL_BLOCK = "KAINBAIN_VERDICT: FAIL\nKAINBAIN_REASON: canary test red\nKAINBAIN_FIX: pause the stage in spec setup";
+
+	function verdictHarness({ reply = "done", events = [] } = {}) {
+		return {
+			async createSession() {
+				return {
+					getLastAssistantText: () => reply,
+					subscribe: (handler) => {
+						for (const event of events) handler(event);
+						return () => {};
+					},
+					prompt: async () => reply,
+					dispose: async () => {},
+				};
+			},
+		};
+	}
+
+	async function runVerdictAssignment({ reply, events, claimExtra = {} }) {
+		const repo = localRepo();
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo);
+		const completed = [];
+		const warnings = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1, ...claimExtra }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed.push(args);
+				return { accepted: true, shaState: "present" };
+			},
+			interrupt: async () => ({ interrupted: true }),
+		});
+		await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => verdictHarness({ reply, events }),
+			logger: { log: () => {}, warn: (m) => warnings.push(String(m)) },
+		});
+		assert.equal(completed.length, 1);
+		return { completed: completed[0], warnings };
+	}
+
+	it("R1: a fail_stage tool call alone (no verdict block) fails with rejected", async () => {
+		const { completed } = await runVerdictAssignment({
+			reply: "all done, nothing to report",
+			events: [{ type: "tool_started", toolName: "fail_stage", args: { reason: "tests red on main" } }],
+		});
+		assert.equal(completed.outcome, "failed");
+		assert.equal(completed.failureKind, "rejected");
+		assert.match(completed.failureReason, /\[Agent Review Rejection\] tests red on main/);
+		// The failed report carries the same run context as a pass.
+		assert.match(completed.posture, /mock/);
+		assert.equal(typeof completed.durationMs, "number");
+		assert.match(completed.output, /all done/);
+	});
+
+	it("R2: a FAIL block with reason and fix fails with the Fix guidance: reason", async () => {
+		const { completed } = await runVerdictAssignment({
+			reply: `Deep review complete.\n${FAIL_BLOCK}`,
+		});
+		assert.equal(completed.outcome, "failed");
+		assert.equal(completed.failureKind, "rejected");
+		assert.equal(
+			completed.failureReason,
+			"[Agent Review Rejection] canary test red Fix guidance: pause the stage in spec setup",
+		);
+	});
+
+	it("R3: a reasonless FAIL still passes open with a warning", async () => {
+		const { completed, warnings } = await runVerdictAssignment({
+			reply: "Something is wrong.\nKAINBAIN_VERDICT: FAIL",
+		});
+		assert.equal(completed.outcome, "passed");
+		assert.ok(!("failureKind" in completed), "no failureKind on a pass");
+		assert.ok(warnings.some((w) => w.includes("Stage verdict FAIL ignored (fail-open)")));
+	});
+
+	it("R4: malformed blocks and prose verdicts pass silently", async () => {
+		for (const reply of [
+			"KAINBAIN_VERDICT: MAYBE",
+			"Verdict: STAGE FAILED — rework required (prose, no block)",
+			"```text\nKAINBAIN_VERDICT: FAIL\n```",
+		]) {
+			const { completed, warnings } = await runVerdictAssignment({ reply });
+			assert.equal(completed.outcome, "passed", reply);
+			assert.ok(
+				!warnings.some((w) => w.includes("Stage verdict FAIL ignored")),
+				`no fail-open warning for ${JSON.stringify(reply)}`,
+			);
+		}
+	});
+
+	it("R5: the CI branch never consults a verdict block in command output", async () => {
+		const { completed } = await runVerdictAssignment({
+			reply: "unused on the CI branch",
+			claimExtra: {
+				kind: "ci",
+				command: "printf 'KAINBAIN_VERDICT: FAIL\\nKAINBAIN_REASON: x\\nKAINBAIN_FIX: y\\n'",
+			},
+		});
+		assert.equal(completed.outcome, "passed");
+		assert.match(completed.output, /KAINBAIN_VERDICT: FAIL/);
+	});
+
+	it("R6: a fail_stage call wins over a PASS text block (Skill name + message fallback)", async () => {
+		const { completed } = await runVerdictAssignment({
+			reply: "all good\nKAINBAIN_VERDICT: PASS",
+			events: [{ type: "tool_started", toolName: "Fail_stage_skill", args: { message: "human review found a blocker" } }],
+		});
+		assert.equal(completed.outcome, "failed");
+		assert.equal(completed.failureKind, "rejected");
+		assert.equal(completed.failureReason, "[Agent Review Rejection] human review found a blocker");
+	});
+});
+
 describe("startClaimRenewal", () => {
 	it("renews on a cadence with the lease ids and stops on demand", async () => {
 		const seen = [];
