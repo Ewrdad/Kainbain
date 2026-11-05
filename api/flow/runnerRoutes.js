@@ -24,6 +24,7 @@ import {
 import { redactSecretsText } from "../../shared/redactSecrets.js";
 import { buildBelowMinimumRefusal } from "./runnerVersionCompat.js";
 import { servingModelFor } from "./runnerPosture.js";
+import { resolveRunnerBootstrap } from "./runnerBootstrap.js";
 import {
 	buildTimelineAttribution,
 	stampArrivalRowAttribution,
@@ -272,6 +273,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				runnerId: request.body?.runnerId,
 				joinToken: request.body?.joinToken,
 				facts: request.body?.facts || {},
+				joinNonce: request.body?.joinNonce,
 			});
 			return reply.status(result.status === "pending" ? 202 : 200).send(result);
 		} catch (err) {
@@ -328,6 +330,15 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 
 	app.get("/runners", async () => {
 		return runnerRegistry.list();
+	});
+
+	app.get("/runners/bootstrap", async () => {
+		// First-run onboarding read: the fleet's bootstrap story (counts +
+		// the one honest next action) without changing the list shape above.
+		return resolveRunnerBootstrap(runnerRegistry.list(), {
+			staleAfterMs: runnerRegistry.staleAfterMs,
+			expectedRunnerId: config.expectedRunnerId || null,
+		});
 	});
 
 	app.post("/runners/:id/approve", async (request, reply) => {

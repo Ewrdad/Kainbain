@@ -69,14 +69,33 @@ describe('useProjects', () => {
     expect(result.current.activeProjectId).toBe('p3');
   });
 
-  it('createProject returns null on failure', async () => {
+  it('createProject rethrows on failure so the dialog can render it inline', async () => {
     api.createProject.mockRejectedValue(new Error('boom'));
     const { result } = renderHook(() => useProjects({}));
-    let created;
     await act(async () => {
-      created = await result.current.createProject('C');
+      await expect(result.current.createProject('C')).rejects.toThrow('boom');
     });
-    expect(created).toBeNull();
+  });
+
+  it('createProject forwards the git remote URL and trims it', async () => {
+    api.createProject.mockResolvedValue({ id: 'p3', name: 'C' });
+    const { result } = renderHook(() => useProjects({}));
+    await act(async () => {
+      await result.current.createProject('C', { gitUrl: '  git@github.com:me/repo.git  ' });
+    });
+    expect(api.createProject).toHaveBeenCalledWith({
+      name: 'C',
+      gitUrl: 'git@github.com:me/repo.git',
+    });
+  });
+
+  it('createProject omits a blank git remote URL', async () => {
+    api.createProject.mockResolvedValue({ id: 'p3', name: 'C' });
+    const { result } = renderHook(() => useProjects({}));
+    await act(async () => {
+      await result.current.createProject('C', { gitUrl: '   ' });
+    });
+    expect(api.createProject).toHaveBeenCalledWith({ name: 'C' });
   });
 
   it('registerProject adopts the project and selects it', async () => {

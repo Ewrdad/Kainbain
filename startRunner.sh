@@ -94,7 +94,7 @@ if [ ! -f "$ENV_FILE" ]; then
     echo "KAINBAIN_RUNNER_ID=$ID"; echo "KAINBAIN_RUNNER_HARNESS=$HARNESS"; echo "KAINBAIN_RUNNER_HARNESSES=$HARNESSES"
     echo "KAINBAIN_RUNNER_DISPATCH=1"; echo "KAINBAIN_RUNNER_DISPATCH_IDLE_LIMIT=0"
     echo "KAINBAIN_RUNNER_WORK_ROOT=$HOME/.kainbain/runner-work"; } > "$ENV_FILE"; chmod 600 "$ENV_FILE"
-  echo "Wrote $ENV_FILE (harnesses $HARNESSES) — approve in Settings > Harness > Runners, paste credential as KAINBAIN_RUNNER_CREDENTIAL, re-run."
+  echo "Wrote $ENV_FILE (harnesses $HARNESSES) — approve in Settings > Harness > Runners; the Runner collects its own credential (paste KAINBAIN_RUNNER_CREDENTIAL only if it asks for it)."
 fi
 cat > "$UNIT" <<EOF
 [Unit]
