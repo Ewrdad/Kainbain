@@ -1,40 +1,10 @@
 import React, { useState } from 'react';
+import { readOnboardingDismissed } from './readOnboardingDismissed.js';
+import { writeOnboardingDismissed } from './writeOnboardingDismissed.js';
 
-/***
- * MARK: readOnboardingDismissed
- * @description Whether the user dismissed the onboarding checklist banner
- *   in a past session (`localStorage`, first-visit default false).
- *   Storage failures fall back to visible — a banner must never vanish
- *   from a storage error.
- * @example readOnboardingDismissed() => false
- * @returns {boolean} True when the banner stays hidden.
- ***/
-export function readOnboardingDismissed() {
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      return window.localStorage.getItem('kainbain:onboardingDismissed') === 'true';
-    }
-  } catch {
-    // Storage unavailable; the banner stays visible.
-  }
-  return false;
-}
-
-/***
- * MARK: writeOnboardingDismissed
- * @description Persists the checklist-banner dismissal. Failures are
- *   swallowed — dismissal is a preference, never load-bearing.
- * @example writeOnboardingDismissed()
- ***/
-export function writeOnboardingDismissed() {
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      window.localStorage.setItem('kainbain:onboardingDismissed', 'true');
-    }
-  } catch {
-    // Storage unavailable; the banner simply reappears next visit.
-  }
-}
+// Re-exported so existing importers of the dismissal helpers keep working
+// after the move to single-purpose modules next to this component.
+export { readOnboardingDismissed, writeOnboardingDismissed };
 
 /***
  * MARK: OnboardingChecklist
