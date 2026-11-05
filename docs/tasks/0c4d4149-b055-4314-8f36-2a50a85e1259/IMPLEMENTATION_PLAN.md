@@ -173,9 +173,12 @@ No code change required here — the validation automatically tightens with the 
 
 No filter change in the frontend: it renders whatever the API returns. That is the point — the filtering is authoritative on the server, so the UI cannot desync.
 
-Optional polish (only if trivial): when the filtered result is `files.length === 0` but the unfiltered git diff was non-empty, the existing empty-state message "Nothing to review yet — the agent has not modified any files." is misleading. A small backend-provided hint — `filteredTaskFilesCount` or a `filterNote` string — would let the UI say "No reviewable code changes; task files are shown in Reports." The plan recommends **adding a lightweight hint field** to the review payload (e.g. `filteredTaskFilesCount: number`) so the existing empty-state branch can render a more honest message. This is one field, no toggle, consistent with survey Q2's "hide completely". Keep the frontend change to one conditional if the hint is present.
-
-If that hint is deferred, the fallback is the current empty-state copy — still better than showing task noise, so it is not a blocker.
+The empty state is **not** optional polish: the review payload carries
+`filteredTaskFilesCount`, and when it is greater than zero while no reviewable
+files remain, the UI renders the reserved-space copy
+"No reviewable code changes; task files are shown in Reports." together with a
+`data-testid="filtered-task-files-hint"` marker. This is a mandatory pass
+criterion (risk register: unexplained empty board remediation).
 
 ### 4.4 What is deliberately *not* changed
 
@@ -399,7 +402,11 @@ Big research (R1–R2) comes before any wiring, per the stage instructions. Step
 
 ## 10. Open (intentionally undecided) items
 
-1. **Badge totals scope** — whether `api/work/taskDiffStat.js:getTaskDiffStat` and `api/work/taskDiffStat.js:getCommitRangeDiffStat` should also exclude task-dir rows. Deferred this pass (see §3 E0.1); defaults to "leave as is" unless the canary exposes a confusing badge/File Changed mismatch, in which case the predicate reuse makes the follow-up one-line.
+1. **Badge totals scope** — resolved this pass: both `getTaskDiffStat` and
+   `getCommitRangeDiffStat` now exclude the same `docsTasksPrefix` via
+   `isTaskFilePath`, threaded from the project record through
+   `stageTransitions.js`, `commandStages.js` and `executeStage.js`. Where the
+   project cannot be resolved, the default `docs/tasks/` prefix is used.
 
 2. **`filteredTaskFilesCount` hint in the review payload** — low-risk polish (one integer + one conditional in the empty state). Recommended but not required for stage pass. If time is tight, skip and keep the current empty-state copy.
 
