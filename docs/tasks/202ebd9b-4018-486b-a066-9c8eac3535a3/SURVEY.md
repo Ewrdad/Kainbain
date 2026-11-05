@@ -219,3 +219,41 @@
   "answers": {}
 }
 ```
+
+## Round 6
+
+```survey-json
+{
+  "round": 6,
+  "generatedAt": "2026-11-05T00:00:00.000Z",
+  "stage": "stage-1792362077711",
+  "questions": [
+    {
+      "id": "q12",
+      "type": "single",
+      "text": "Which screens should get the small glasses-friendly view? Desktop and phone stay exactly the same.",
+      "options": [
+        "Only the review screen where I check and approve work",
+        "Task list plus review screen (see all tasks, then check one)",
+        "One simple summary screen for everything",
+        "Not sure - pick the smallest safe starting point"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q13",
+      "type": "image",
+      "text": "Which quick-review layout should we build for the 600 by 600 glasses screen? Pick your favourite picture.",
+      "options": [
+        "Square 600x600 smart glasses quick-review UI mockup, dark high-contrast theme for outdoor readability, top shows wide amber banner reading Review needed in very large bold text, centre shows one task card with big white task name and Step 4 of 6 thick teal progress bar plus two lines of large summary text, bottom shows two extra-large side-by-side buttons Approve in green and Details as outline, huge touch targets, minimal clutter, modern wearable app style",
+        "Square 600x600 smart glasses observer UI mockup, dark navy theme, top shows large status headline with big green running dot and task name, centre shows a large circular progress ring for Step 4 of 6 with current step name underneath in big text, one short alert line below in amber, bottom shows a single extra-large View details button, very large readable fonts, calm monitoring-app style with generous spacing",
+        "Square 600x600 smart glasses summary UI mockup, light clean theme with white background, top shows small title My tasks with a count badge, centre shows two large stacked cards each with a coloured status edge green and amber plus big task names and one-line progress text, bottom shows one wide dark Review button, extra-large text, friendly rounded widget style with generous whitespace"
+      ],
+      "required": true,
+      "showIf": null
+    }
+  ],
+  "answers": {}
+}
+```
