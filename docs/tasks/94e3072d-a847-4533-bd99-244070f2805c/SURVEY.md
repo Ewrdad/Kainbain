@@ -81,7 +81,13 @@
         "Support both"
       ],
       "required": false,
-      "showIf": { "questionId": "q5", "values": ["Support both direct user roles and group-based roles (Recommended)", "Only roles attached to groups"] }
+      "showIf": {
+        "questionId": "q5",
+        "values": [
+          "Support both direct user roles and group-based roles (Recommended)",
+          "Only roles attached to groups"
+        ]
+      }
     },
     {
       "id": "q7",
@@ -189,6 +195,92 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Shared built-in admin account with no login screen (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "One organisation per installation (Recommended for small/medium companies)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Generic OpenID Connect provider (Recommended)",
+        "LDAP or Active Directory"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Yes, create the account automatically (Recommended)"
+      ],
+      "notes": "We want tohave to do the bare min in support so ideally we allow the user to bring an account and if we can avoid it avoid having a \"local acount\" for kainbain just process their jwt tokens"
+    },
+    "q5": {
+      "selected": [
+        "Support both direct user roles and group-based roles (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Map groups from the identity provider (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q7": {
+      "selected": [
+        "Admin - full control of settings and users"
+      ],
+      "notes": ""
+    },
+    "q8": {
+      "selected": [
+        "Project-level roles as well"
+      ],
+      "notes": ""
+    },
+    "q9": {
+      "selected": [
+        "Let the implementation choose"
+      ],
+      "notes": "follow standards"
+    },
+    "q10": {
+      "selected": [
+        "Settings page in the app, with environment variables as overrides (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q11": {
+      "selected": [
+        "Settings and user administration"
+      ],
+      "notes": ""
+    },
+    "q12": {
+      "selected": [
+        "Keep it configurable"
+      ],
+      "notes": ""
+    },
+    "q13": {
+      "selected": [
+        "Yes, include tests (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q14": {
+      "selected": [
+        "Full guide with setup examples and troubleshooting"
+      ],
+      "notes": "dont touch readme"
+    }
+  }
 }
 ```
