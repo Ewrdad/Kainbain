@@ -95,7 +95,7 @@ value immediately), `--runners 0`/`--no-runner` skips the local Runner,
 `--join-token` reuses an existing Runner token instead of generating one.
 
 After install, open the printed URL (default `http://localhost:3100`):
-approve the Runner in Settings › Harness › Runners (one click — it
+approve the Runner in System Settings › Runners (one click — it
 collects its own credential, no paste needed), then follow the setup
 checklist on the board: connect the Runner, create or adopt a project,
 run your first task. New projects need a fetchable git remote — paste it

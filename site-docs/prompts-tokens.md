@@ -28,7 +28,7 @@ plus a markdown body — with an optional tolerant `KB_config.json` for keyword
 defaults. Slugs match `/^[a-z0-9][a-z0-9-]*$/`.
 
 Authors ship skills two ways: drop the folder into the global library or the
-project's `skills/` overlay directly, or import through **Settings › Skills** —
+project's `skills/` overlay directly, or import through **Project Settings → Skills** —
 a `.md` file, or a `.zip` holding `SKILL.md` at its root (or inside exactly one
 top-level folder) with an optional sibling `KB_config.json`. Imports land in the
 project overlay only; missing frontmatter is normalized (name from the filename,

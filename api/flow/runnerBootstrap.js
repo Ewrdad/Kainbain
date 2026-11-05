@@ -60,7 +60,7 @@ export const resolveRunnerBootstrap = (
 	} else if (hasPendingRunner) {
 		nextAction = "approve-runner";
 		nextActionDetail =
-			"A Runner is waiting for approval. Approve it in Settings › Harness › Runners — it collects its credential by itself, no paste needed.";
+			"A Runner is waiting for approval. Approve it in System Settings › Runners — it collects its credential by itself, no paste needed.";
 	} else if (hasApprovedRunner) {
 		nextAction = "start-runner";
 		nextActionDetail =

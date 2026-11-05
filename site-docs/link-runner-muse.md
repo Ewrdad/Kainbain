@@ -47,7 +47,7 @@ and refreshes every
 disables), advertising the returned `muse::<provider>::<model>` ids.
 A pinned `KAINBAIN_RUNNER_MODELS` list always wins over discovered
 ids. Discovery failures keep the previous list and warn — they never
-break heartbeats. From Settings › Runners, Re-detect models re-runs
+break heartbeats. From System Settings › Runners, Re-detect models re-runs
 discovery promptly (skipped with a "models pinned" ack when pinned).
 
 ## Verify

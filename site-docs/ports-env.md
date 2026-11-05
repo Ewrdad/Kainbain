@@ -111,6 +111,15 @@ The tab always keeps every row above visible: if the running backend's config
 spec does not report a location (schema drift / older backend), it renders as
 `(not set)` with its variable name instead of disappearing.
 
+## First-run onboarding knobs
+
+Set by `deploy/install.sh` (contributor `npm run dev` setups leave both off):
+
+| Variable | Default | Effect |
+| -------- | ------- | ------ |
+| `KAINBAIN_SEED_DEMO` | `false` | Seed one local-only "Welcome Tour" demo project (one agent stage plus a human review) on boot when the store holds zero projects, so a fresh install opens on a live board. The seed runs once (marker file) and never overwrites real projects |
+| `KAINBAIN_EXPECTED_RUNNER_ID` | _(unset)_ | Runner id the installer created (`--runner-id`). When set, `GET /runners/bootstrap` and `GET /onboarding` report whether that Runner has checked in yet, so the first-run UI waits for it by name instead of showing a bare empty fleet |
+
 ## Harness controls
 
 | Variable | Default | Effect |

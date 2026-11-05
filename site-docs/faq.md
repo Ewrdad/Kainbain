@@ -8,7 +8,7 @@ slug: faq
 # Triage FAQ
 
 **The board is empty.**
-No project is active, or the project has no tasks yet. Create/select a project (Your First Project & Workflow (`#/docs/first-project`)), then press `N` for the Orchestrator view and submit a goal.
+No project is active, or the project has no tasks yet. Create/select a project (Your First Project & Workflow (`#/docs/first-project`)), then press `N` to focus the new-task input and submit a goal.
 
 **A task sits in `waiting_human` / `checkpoint`.**
 That is a review gate asking for you — open the review page from the card and approve, reject, or re-route. It will not move on its own. See Review Gates (`#/docs/review-gates`).
@@ -48,3 +48,9 @@ Environment is read at boot: restart the process that reads the variable (backen
 
 **Where do I start?**
 Getting Started (`#/docs/getting-started`) maps the whole journey; First-Time Setup (`#/docs/first-time-setup`) is the ordered path.
+
+**I installed via install.sh — what now?**
+Open the printed URL, approve the Runner in System Settings › Runners (one click — it collects its own credential, no paste needed), then follow the setup checklist on the board: connect the Runner, create or adopt a project, run your first task. The checklist dismisses and never blocks. See First-Time Setup (`#/docs/first-time-setup`).
+
+**What is the Welcome Tour project?**
+The starter project seeded installs begin with (one agent stage plus a human review) so a fresh board demonstrates value immediately. It only seeds when the store holds zero projects, runs once, and never overwrites real work — delete it whenever you like. Installer flag `--no-seed` skips it; contributor `npm run dev` setups never seed.

@@ -14,8 +14,8 @@ Project & Workflow (`#/docs/first-project`).
 
 ## Prerequisites
 
-- Node.js (the live host runs v26.x; `deploy.sh` pins no minimum — use a
-  recent LTS or newer).
+- Node.js `^20.19.0` or `>=22.12.0` plus npm `>=10` (the `engines` field
+  in `package.json` — a recent LTS works).
 - Model access for the harness you will use: LiteLLM or Ollama Cloud. Both
   are optional — the app boots without them (their `GET /status` probes
   report `disabled`, never an error), and project settings will guide you to
@@ -27,11 +27,12 @@ Project & Workflow (`#/docs/first-project`).
 From the repo root:
 
 ```bash
-npm install            # root (playwright)
-npm install --prefix api
-npm install --prefix frontend
-npm install --prefix canary-e2e
+npm run setup          # once per clone: all deps + Playwright Chromium
 ```
+
+(That is the whole install. The per-piece commands live in Install & Run
+(`#/docs/install-run`) — this page stays the ordered path, that page stays
+the detail reference.)
 
 ## Configure
 
@@ -48,24 +49,14 @@ at your API origin. Vite inlines `VITE_*` vars at dev-server start and at
 
 ## Run
 
-All-in-one:
-
 ```bash
-npm run setup          # once per clone: all deps + Playwright Chromium
 npm run dev            # start API + frontend dev servers (any OS)
 ```
 
 This binds the API to `:3100` (`PORT` overrides) and the frontend to `:5173`
 (`VITE_PORT` overrides), clearing whatever already occupies those ports.
 (`./deploy.sh --dev` still works — it delegates to the same runner.) For
-manual control instead:
-
-```bash
-# API on :3100
-(cd api && npm install && PORT=3100 node index.js)
-# Frontend dev server on :5173 (reads frontend/.env)
-(cd frontend && npm install && npm run dev)
-```
+manual per-piece control, see Install & Run (`#/docs/install-run`).
 
 ## Verify
 
@@ -101,7 +92,7 @@ state folder (`<repo>/.kainbain`) and, when the repo sits outside every
 configured project root, remembers it in `~/.kainbain/projects.json` so it is
 re-discovered after a restart. To scan several directories of repos at once,
 set `PROJECTS_ROOT` (primary) and `PROJECTS_ROOTS` (extra, path-list separated).
-See Your First Project & Workflow (`#/docs/first-project`) for the API form and
+See Load Existing Projects (`#/docs/existing-projects`) for the API form and
 the custom state-folder option (`.kb`).
 
 ## Cold start with nothing installed
@@ -120,7 +111,7 @@ is picked up on restart with no config edits.
 The contributor steps above also apply to Docker installs, with these
 differences (detail reference: Install & Run, `#/docs/install-run`):
 
-- Approve the Runner in Settings › Harness › Runners — one click; it
+- Approve the Runner in System Settings › Runners — one click; it
   collects its own credential, no paste needed. If no Runner ever
   appears, the install output tells you how to check the Runner process.
 - The board shows a setup checklist (Runner connected → first project →

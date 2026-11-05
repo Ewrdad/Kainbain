@@ -22,7 +22,7 @@ Press `?` anywhere for the in-app cheat sheet. Single-key shortcuts are ignored 
 | `G` | System transparency & architecture guide |
 | `S` | System settings |
 | `P` | Start / pause the compute engine |
-| `N` | Orchestrator view (home of the new-task input) |
+| `N` | Focus the new-task input in the submission panel |
 | `Esc` | Close any overlay or modal |
 
 Shortcuts can be disabled entirely from UI preferences if they ever fight with assistive tech or browser bindings.
