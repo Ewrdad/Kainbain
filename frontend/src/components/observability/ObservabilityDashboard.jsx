@@ -473,7 +473,8 @@ export function ObservabilityDashboard() {
     [filteredTasks, engineState, isAgentRunning],
   );
   const glassesRefresh = useCallback(() => {
-    if (activeProjectId) refreshTasks(activeProjectId);
+    if (activeProjectId) return refreshTasks(activeProjectId);
+    return undefined;
   }, [activeProjectId, refreshTasks]);
 
   // Resolved Active Task details: the engine owner, or nothing.

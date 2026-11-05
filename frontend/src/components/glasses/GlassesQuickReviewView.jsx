@@ -39,7 +39,11 @@ export function GlassesQuickReviewView({
 }) {
   const [confirming, setConfirming] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
-  useGlassesRefreshTick(onRefresh, { paused: confirming || showDetails });
+  // Pause the live refresh while busy (so a busy mutation is never chased
+  // by a background read), while the approval confirm is open, or while
+  // details is showing — and treat refresh errors honestly (no crash;
+  // the next tick still runs).
+  useGlassesRefreshTick(onRefresh, { paused: isBusy || confirming || showDetails });
 
   const bannerText = canApprove ? 'Review needed' : 'Not ready to review';
   const lines = Array.isArray(summaryLines) ? summaryLines.slice(0, 2) : [];

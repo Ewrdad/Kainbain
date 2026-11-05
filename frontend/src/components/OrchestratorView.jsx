@@ -1,4 +1,3 @@
-import React from 'react';
 import { useKainBain } from '../context/KainBainContext';
 import { WorkflowCanvas } from './workflow/WorkflowCanvas';
 import { NowPlayingBar } from './layout/NowPlayingBar';
@@ -45,7 +44,8 @@ export function OrchestratorView() {
     setView('task-review', { taskId: task.id });
   };
   const refreshGlassesTasks = () => {
-    if (activeProjectId) refreshTasks(activeProjectId);
+    if (activeProjectId) return refreshTasks(activeProjectId);
+    return undefined;
   };
 
   return (
