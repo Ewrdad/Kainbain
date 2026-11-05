@@ -118,7 +118,54 @@
       ]
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Which task is running and its overall status"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Task name",
+        "Current step name",
+        "Buttons to approve or continue"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Approve or continue when asked",
+        "Just look — no buttons needed",
+        "Open a bit more detail"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "On its own when the screen is small (about 600 by 600)"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Big text, only a few items — easiest to read"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Ask 'are you sure?' before approving"
+      ],
+      "notes": ""
+    },
+    "q7": {
+      "selected": [
+        "Square 600x600 smart glasses UI mockup, light clean theme with white background and dark text, top shows small task title, centre shows three large stacked status cards (Running, Waiting for review, Failed) each with a coloured left edge and a big number, bottom shows one wide View button, generous whitespace, extra-large text, simple friendly rounded style like a phone widget"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
 
@@ -168,7 +215,20 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q8": {
+      "selected": [
+        "Update by itself every few seconds"
+      ],
+      "notes": ""
+    },
+    "q9": {
+      "selected": [
+        "Just change the status colour quietly"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
 
@@ -192,7 +252,14 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q10": {
+      "selected": [
+        "Yes, I have everything I need to answer above and we can go ahead"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
 
@@ -216,7 +283,14 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q11": {
+      "selected": [
+        "Yes, move ahead with what is already asked above"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
 
@@ -251,9 +325,46 @@
         "Square 600x600 smart glasses summary UI mockup, light clean theme with white background, top shows small title My tasks with a count badge, centre shows two large stacked cards each with a coloured status edge green and amber plus big task names and one-line progress text, bottom shows one wide dark Review button, extra-large text, friendly rounded widget style with generous whitespace"
       ],
       "required": true,
-      "showIf": null
+      "showIf": null,
+      "images": [
+        {
+          "option": 0,
+          "file": "assets/survey-r6-q13-0.png",
+          "status": "ready"
+        },
+        {
+          "option": 1,
+          "file": "assets/survey-r6-q13-1.png",
+          "status": "ready"
+        },
+        {
+          "option": 2,
+          "file": "assets/survey-r6-q13-2.png",
+          "status": "ready"
+        }
+      ]
     }
   ],
-  "answers": {}
+  "answers": {
+    "q12": {
+      "selected": [
+        "Task list plus review screen (see all tasks, then check one)"
+      ],
+      "notes": ""
+    },
+    "q13": {
+      "selected": [
+        "Square 600x600 smart glasses quick-review UI mockup, dark high-contrast theme for outdoor readability, top shows wide amber banner reading Review needed in very large bold text, centre shows one task card with big white task name and Step 4 of 6 thick teal progress bar plus two lines of large summary text, bottom shows two extra-large side-by-side buttons Approve in green and Details as outline, huge touch targets, minimal clutter, modern wearable app style"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
+
+## Chosen designs
+
+Image-question selections, saved automatically when the survey is submitted (re-submitting updates this list).
+
+- [r1/q7] ![Which look should we build for the glasses screen? Pick your favourite picture.: Square 600x600 smart glasses UI mockup, light clean theme with white background and dark text, top shows small task tit](assets/survey-r1-q7-chosen.png)
+- [r6/q13] ![Which quick-review layout should we build for the 600 by 600 glasses screen? Pick your favourite picture.: Square 600x600 smart glasses quick-review UI mockup, dark high-contrast theme for outdoor rea](assets/survey-r6-q13-chosen.png)
