@@ -51,8 +51,10 @@ describe('Business-owned request lists', () => {
     // for the System Settings › Runners detail form +
     // the 2 Runner command operations (requestModelRediscovery,
     // requestRunnerUpdate) for the on-request model re-detection and
-    // self-update buttons.
-    expect(names).toHaveLength(101);
+    // self-update buttons +
+    // the first-run onboarding summary (getOnboarding) for the empty
+    // state and guided-checklist UIs.
+    expect(names).toHaveLength(102);
     for (const name of names) expect(typeof api[name]).toBe('function');
   });
 
@@ -67,6 +69,7 @@ describe('Business-owned request lists', () => {
     [crewRequests, 'restoreSession', ['project'], '/session/restore', { method: 'POST', body: '{"projectId":"project"}' }],
     [crewRequests, 'getHarnessReliability', [], '/harnesses/reliability', undefined],
     [houseRequests, 'getAliasReliability', ['p1'], '/projects/p1/aliases/reliability', undefined],
+    [houseRequests, 'getOnboarding', [], '/onboarding', undefined],
     [watchRequests, 'checkTaskStuck', ['project', 'task'], '/tasks/task/stuck-check', { method: 'POST', body: '{"projectId":"project"}' }],
     [houseRequests, 'getSkill', ['a/b', 'a b'], '/skills/a%2Fb?projectId=a%20b', undefined],
     [houseRequests, 'triggerDeploy', [], '/deploy', { method: 'POST', body: '{"fast":false}' }],

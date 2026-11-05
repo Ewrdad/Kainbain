@@ -1,8 +1,9 @@
 import { execFile, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, touchWorkdir } from "./project.js";
+import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, resolveRunnerDocsDirName, touchWorkdir } from "./project.js";
 import { RunnerGitError } from "./project.js";
 import { runHarnessStage } from "./harness.js";
 import { createStructuredEventSender } from "./logEvents.js";
@@ -16,6 +17,7 @@ import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { decideAgentStageVerdict } from "../shared/stageVerdict.js";
 import { commitAndPush } from "./gitOps.js";
+import { saveRunnerCredential } from "./credentialFile.js";
 
 /***
  * MARK: RUNNER_VERSION
@@ -473,8 +475,11 @@ function factsFor({ config, harnessVersions, updateStatus = null, commandAck = n
 /***
  * MARK: joinAndHeartbeat
  * @description Shared join prologue: poll a pending join until the human
- *   approves (then exit asking for the pasted credential), load the
- *   harness, heartbeat once, and start the background heartbeat timer.
+ *   approves (collecting the handed-over credential with this boot's
+ *   join nonce and storing it, so no paste or restart is needed — the
+ *   paste instruction is now only the fallback when the handover cannot
+ *   complete), load the harness, heartbeat once, and start the
+ *   background heartbeat timer.
  * @example const { harness, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger, state })
  * @param {Object} opts - Options.
  * @param {Object} opts.config - Normalized runner config.
@@ -490,28 +495,52 @@ export async function joinAndHeartbeat({ config, client, loadHarness, logger, st
 			throw new Error("No credential and no KAINBAIN_RUNNER_JOIN_TOKEN: cannot join.");
 		}
 		const deadline = Date.now() + config.approvalTimeoutMs;
+		// Per-boot join secret (one-click approval, D2): repeated on every
+		// join poll so the backend hands this boot — and only this boot —
+		// the credential after approval. Never logged.
+		const joinNonce = randomUUID();
 		// Probe before the first register so even a pending join advertises
 		// the real harness CLI versions (G5).
 		const joinVersions = {};
 		for (const id of runnerHarnessIds(config)) {
 			Object.assign(joinVersions, await probeHarnessVersions(id));
 		}
+		let collectedCredential = "";
 		for (;;) {
 			const reg = await client.register({
 				runnerId: config.runnerId,
 				joinToken: config.joinToken,
 				facts: factsFor({ config, harnessVersions: joinVersions, commandAck: stagedCommandAck(state) }),
+				joinNonce,
 			});
-			if (reg.status === "active") break;
+			if (reg.status === "active") {
+				if (typeof reg?.credential === "string" && reg.credential.trim()) {
+					collectedCredential = reg.credential.trim();
+				}
+				break;
+			}
 			if (Date.now() > deadline) {
 				throw new Error(`Join for ${config.runnerId} still ${reg.status} after timeout.`);
 			}
 			logger.log(`Join ${reg.status}; waiting for human approval in Settings › Harness › Runners…`);
 			await new Promise((r) => setTimeout(r, config.approvalPollMs));
 		}
-		throw new Error(
-			`Join for ${config.runnerId} approved. Paste the one-time credential shown in Settings › Harness › Runners into KAINBAIN_RUNNER_CREDENTIAL and restart.`,
-		);
+		if (!collectedCredential) {
+			throw new Error(
+				`Join for ${config.runnerId} approved, but this boot cannot collect its credential by itself (the join session was lost across a restart, or the backend predates one-click approval). Paste the one-time credential shown in Settings › Harness › Runners into KAINBAIN_RUNNER_CREDENTIAL and restart.`,
+			);
+		}
+		try {
+			saveRunnerCredential(config.runnerId, collectedCredential, config.home || undefined);
+			logger.log(`Join approved; credential stored for ${config.runnerId} — no paste needed.`);
+		} catch (err) {
+			// Degraded but functional: this boot runs on the in-memory
+			// credential; the operator pastes before the next restart.
+			logger.warn?.(
+				`Join approved but the credential could not be stored (${err?.message || err}); continuing with it in memory — set KAINBAIN_RUNNER_CREDENTIAL before the next restart.`,
+			);
+		}
+		config.credential = collectedCredential;
 	}
 	client.setCredential(config.credential);
 
@@ -943,15 +972,18 @@ export function sanitizeCiEnv(value) {
 		return {};
 	}
 }
-export function collectTaskFiles({ workdir, taskId } = {}) {
-	const dir = `${workdir}/docs/tasks/${taskId}`;
+export function collectTaskFiles({ workdir, taskId, docsDirName = null, project = null } = {}) {
+	const resolved = resolveRunnerDocsDirName(
+		docsDirName ?? (typeof project === "object" && project !== null ? project : null),
+	);
+	const dir = path.join(workdir, resolved, "tasks", taskId);
 	const files = [];
 	let total = 0;
 	try {
 		for (const name of fs.readdirSync(dir)) {
 			if (name === "task.md") continue;
 			try {
-				const content = fs.readFileSync(`${dir}/${name}`, "utf8");
+				const content = fs.readFileSync(path.join(dir, name), "utf8");
 				const bytes = Buffer.byteLength(content, "utf8");
 				if (bytes > 256 * 1024 || total + bytes > 1024 * 1024) continue;
 				files.push({ name, content });
@@ -1064,7 +1096,7 @@ async function executeAssignment({
 			// live task folder outside the task branch — mirror them into
 			// the worktree so the harness actually sees them.
 			try {
-				const synced = await syncTaskDocs({ primaryCwd: project.cwd || null, workdir, taskId });
+				const synced = await syncTaskDocs({ primaryCwd: project.cwd || null, workdir, taskId, docsDirName: project?.docsDirName });
 				if (synced > 0) logger.log(`Synced ${synced} task-doc file(s) into worktree.`);
 			} catch (err) {
 				logger.log(`Task-doc sync skipped: ${err?.message || err}`);
@@ -1146,7 +1178,7 @@ async function executeAssignment({
 						taskId, projectId, executionId, epoch, sha: null, branch,
 						outcome: "failed",
 						failureReason: `CI stage branch setup failed: ${err?.message || err}`,
-						taskFiles: collectTaskFiles({ workdir, taskId }), output: "",
+						taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: "",
 						posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
 						model: servedModel,
 						durationMs: Date.now() - runStartedAt,
@@ -1171,9 +1203,9 @@ async function executeAssignment({
 						const failureReason = ci.timedOut
 							? `CI command timed out after ${ci.timeoutMs}ms`
 							: `CI command failed with exit code ${ci.exitCode}`;
-						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
+						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 					}
-					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
+					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 				} finally {
 					if (ciCleanup) await ciCleanup();
 				}
@@ -1322,7 +1354,7 @@ async function executeAssignment({
 				posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
 				model: servedModel,
 				outcome: "passed",
-				taskFiles: collectTaskFiles({ workdir, taskId }),
+				taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }),
 				output: String(output || "").slice(0, 20000),
 				durationMs: Date.now() - runStartedAt,
 			});
@@ -1548,7 +1580,7 @@ async function executeIntegrationAssignment({
 				}).catch(() => {});
 				state.session = null; stopRenewal(); clearInterval(integrationTimer);
 				await finishProgress();
-				return await failTask(detail, { taskFiles: collectTaskFiles({ workdir, taskId }) });
+				return await failTask(detail, { taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }) });
 			}
 			const mergeSha = (await runGit(workdir, ["rev-parse", "HEAD"])).stdout.trim();
 			try {

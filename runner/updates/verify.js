@@ -27,8 +27,8 @@ import fs from "node:fs";
 // initial placeholder: replace it before cutting the first real release,
 // otherwise runners will reject that release's manifest signature.
 export const PINNED_RELEASE_PUBLIC_KEY =
-	"RWR8CRkuyEfBxwUaaAnqo8ZXL7XgO8G2H8ZhAe6YoOr7+EfDVsoWznZG";
-export const PINNED_RELEASE_KEYNUM = "7c09192ec847c1c7";
+	"RWSQEBHai7CRR5kCeIbhz4AuZxyghDr69fY2wF1ETbjkiwCYdIrWkypA";
+export const PINNED_RELEASE_KEYNUM = "901011da8bb09147";
 
 const MINISIGN_SIG_ALG = "Ed";
 

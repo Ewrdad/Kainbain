@@ -1,6 +1,6 @@
 # Project Agents
 
-Normative agent guidance for this repo. Architecture: [`agent-docs/KB-Architecture.md`](agent-docs/KB-Architecture.md) · Code standards: [`agent-docs/KB-Code-Standards.md`](agent-docs/KB-Code-Standards.md) — in-repo vendored copies of the knowledge-base (KB) pages; the external notes store is unreachable on a fresh checkout, so treat the in-repo copies as the source of truth (upstream edits must be re-vendored there).
+Normative agent guidance for this repo. Architecture: [`docs/agent-docs/KB-Architecture.md`](docs/agent-docs/KB-Architecture.md) · Code standards: [`docs/agent-docs/KB-Code-Standards.md`](docs/agent-docs/KB-Code-Standards.md) — in-repo vendored copies of the knowledge-base (KB) pages; the external notes store is unreachable on a fresh checkout, so treat the in-repo copies as the source of truth (upstream edits must be re-vendored there).
 
 **Read first:** [`AGENTS-MAP.md`](AGENTS-MAP.md) — one-page repo map (directory ownership, god-file entry points, test commands, log-feed endpoint).
 
@@ -8,9 +8,9 @@ Normative agent guidance for this repo. Architecture: [`agent-docs/KB-Architectu
 
 1. This file (`agents.md`).
 2. [`AGENTS-MAP.md`](AGENTS-MAP.md) — repo map: directory ownership, god-file warnings, entry points (R1).
-3. [`agent-docs/`](agent-docs) — vendored KB architecture & code standards.
+3. [`docs/agent-docs/`](docs/agent-docs) — vendored KB architecture & code standards.
 4. [`site-docs/README.md`](site-docs/README.md) — Docs-tab authoring rules.
-5. [`agent-docs/GitGuidance.md`](agent-docs/GitGuidance.md) — branch discipline for agents: stay on the current task branch, the engine owns the branch lifecycle.
+5. [`docs/agent-docs/GitGuidance.md`](docs/agent-docs/GitGuidance.md) — branch discipline for agents: stay on the current task branch, the engine owns the branch lifecycle.
 
 ## Commands
 
@@ -32,9 +32,10 @@ All commands are verbatim root `package.json` scripts, run from the repo root.
 
 ## Agent Guidelines
 
+- **Never edit `README.md`.** It is owner-maintained, audience-facing copy (currently the hackathon landing page). Agents must not rewrite, reformat, restructure, or "fix" it, and must not fold other docs' updates into it. If a README change seems needed, raise it with the operator instead; agent-facing documentation goes in `docs/`, `site-docs/`, `agents.md`, or `AGENTS-MAP.md`.
 - History badges (`+N -M`) are per-stage commit ranges: keep generated test artifacts (`coverage/`, `test-results/`, and friends — see root `.gitignore`) gitignored so a testing stage that writes reports still shows `+0 -0`. A failed stage's partial work auto-commits with `... (failed)` and stays on that stage's badge.
-- Follow the standards defined in [`agent-docs/KB-Code-Standards.md`](agent-docs/KB-Code-Standards.md).
-- Refer to [`agent-docs/KB-Architecture.md`](agent-docs/KB-Architecture.md) for high-level design.
+- Follow the standards defined in [`docs/agent-docs/KB-Code-Standards.md`](docs/agent-docs/KB-Code-Standards.md).
+- Refer to [`docs/agent-docs/KB-Architecture.md`](docs/agent-docs/KB-Architecture.md) for high-level design.
 - Use the defined testing scripts to verify changes.
 - Task logs are structured entries (`task.logEntries`), the only stored log representation. When an agent needs to read its own stage stream, use the feed endpoint (`GET /tasks/:id/logs?feed=main|thinking|tools&format=entries|text`) instead of reading verbose log text — `format=text` is a derived view over the entries, and the old rendered `processLogs` text is no longer stored.
 - Model references in stages/projects may use any of three forms — canonical `harness::provider::id`, legacy `provider::id`, or a bare model id/name — and all resolve correctly (see `docs/EngineDetails/ModelKeys.md`). Write `harness::provider::id` for NEW references (the pi harness is `pi`); the `"default"` sentinel still means "no model switch".

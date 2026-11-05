@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithKainBain } from '../../testUtils';
-import { SURVEY_IMAGE_POLL_MS, SurveyPage, surveyNeedsImagePoll } from './SurveyPage';
+import { SURVEY_IMAGE_POLL_MS, SurveyPage, describeSurveySaveError, surveyNeedsImagePoll, describeUnknownAnswers } from './SurveyPage';
 import '@testing-library/jest-dom';
 
 /***
@@ -138,6 +138,160 @@ describe('SurveyPage', () => {
     expect(await screen.findByText(/moved to its next stage/i)).toBeInTheDocument();
   });
 
+  it('keeps selections and notes visible after save', async () => {
+    const client = makeClient();
+    const answeredRounds = JSON.parse(JSON.stringify(pendingSurvey.rounds));
+    answeredRounds[0].answers = { q1: { selected: ['Auth'], notes: 'why auth' } };
+    client.submitSurvey.mockResolvedValue({
+      taskId: 't1',
+      outputFile: 'SURVEY.md',
+      surveyFile: 'SURVEY.md',
+      status: 'answered',
+      advanced: false,
+      missing: [],
+      unknownIds: [],
+      rounds: answeredRounds,
+      errors: [],
+    });
+    renderPage(client);
+    await screen.findByText('Primary concern?');
+    fireEvent.click(screen.getByLabelText('Primary concern?: Auth'));
+    fireEvent.change(screen.getByLabelText('Notes for: Primary concern?'), {
+      target: { value: 'why auth' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save answers/i }));
+    expect(await screen.findByText(/answers saved/i)).toBeInTheDocument();
+    // The form still shows the just-saved values — never a blank reset.
+    expect(screen.getByLabelText('Primary concern?: Auth')).toBeChecked();
+    expect(screen.getByLabelText('Notes for: Primary concern?')).toHaveValue('why auth');
+    expect(screen.getByText('Primary concern?')).toBeInTheDocument();
+  });
+
+  it('keeps questions when a save response omits rounds', async () => {
+    const client = makeClient();
+    client.submitSurvey.mockResolvedValue({ status: 'pending', advanced: false, missing: [{ round: 1, id: 'q1' }] });
+    renderPage(client);
+    await screen.findByText('Primary concern?');
+    fireEvent.click(screen.getByLabelText('Primary concern?: Auth'));
+    fireEvent.click(screen.getByRole('button', { name: /save answers/i }));
+    expect(await screen.findByText(/answers saved/i)).toBeInTheDocument();
+    expect(screen.getByText('Primary concern?')).toBeInTheDocument();
+    expect(screen.getByLabelText('Primary concern?: Auth')).toBeChecked();
+  });
+
+  it('refreshes questions from a partial submit response without dropping drafts', async () => {
+    const client = makeClient();
+    const updatedRounds = JSON.parse(JSON.stringify(pendingSurvey.rounds));
+    updatedRounds[0].questions[0].text = 'Primary concern? (updated)';
+    updatedRounds[0].answers = { q1: { selected: ['Auth'], notes: '' } };
+    client.submitSurvey.mockResolvedValue({
+      status: 'pending',
+      advanced: false,
+      missing: [{ round: 1, id: 'q1' }],
+      rounds: updatedRounds,
+      errors: [],
+    });
+    renderPage(client);
+    await screen.findByText('Primary concern?');
+    fireEvent.click(screen.getByLabelText('Primary concern?: Auth'));
+    fireEvent.click(screen.getByRole('button', { name: /submit & continue/i }));
+    // The persisted wording renders, while the just-picked draft stays checked.
+    expect(await screen.findByText('Primary concern? (updated)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Primary concern? (updated): Auth')).toBeChecked();
+  });
+
+  it('keeps selections and shows the backend message when saving fails', async () => {
+    const client = makeClient();
+    client.submitSurvey.mockRejectedValue(
+      new Error('API 400 on /tasks/t1/survey: {"error":"survey answers invalid: answer \'q1\' selects unknown option(s): zzz","code":"SURVEY_INVALID"}'),
+    );
+    renderPage(client);
+    await screen.findByText('Primary concern?');
+    fireEvent.click(screen.getByLabelText('Primary concern?: Auth'));
+    fireEvent.change(screen.getByLabelText('Notes for: Primary concern?'), {
+      target: { value: 'keep me' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save answers/i }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/unknown option/);
+    // The transport wrapping is stripped: the reader sees the backend reason
+    // and its machine-readable code, not the `API 400 on ...` plumbing.
+    expect(alert).toHaveTextContent(/SURVEY_INVALID/);
+    expect(alert.textContent).not.toContain('API 400');
+    expect(screen.getByLabelText('Primary concern?: Auth')).toBeChecked();
+    expect(screen.getByLabelText('Notes for: Primary concern?')).toHaveValue('keep me');
+  });
+
+  it('shows the backend message and code from the structured error body', async () => {
+    const client = makeClient();
+    const failure = new Error('API 404 on /tasks/t1/survey: {"error":"no survey exists for this task yet","code":"SURVEY_NOT_FOUND"}');
+    failure.status = 404;
+    failure.body = '{"error":"no survey exists for this task yet","code":"SURVEY_NOT_FOUND"}';
+    client.submitSurvey.mockRejectedValue(failure);
+    renderPage(client);
+    await screen.findByText('Primary concern?');
+    fireEvent.click(screen.getByRole('button', { name: /save answers/i }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('no survey exists for this task yet (SURVEY_NOT_FOUND)');
+    expect(alert.textContent).not.toContain('API 404');
+  });
+
+  it('falls back to the raw message when the failure carries no backend body', async () => {
+    const client = makeClient();
+    client.submitSurvey.mockRejectedValue(new Error('network down'));
+    renderPage(client);
+    await screen.findByText('Primary concern?');
+    fireEvent.click(screen.getByRole('button', { name: /save answers/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('network down');
+  });
+
+  it('names ignored answers when the backend reports unknown question ids', async () => {
+    const client = makeClient();
+    client.submitSurvey.mockResolvedValue({
+      status: 'pending',
+      advanced: false,
+      missing: [{ round: 1, id: 'q1' }],
+      unknownIds: ['qOld'],
+      rounds: JSON.parse(JSON.stringify(pendingSurvey.rounds)),
+      errors: [],
+    });
+    renderPage(client);
+    await screen.findByText('Primary concern?');
+    fireEvent.click(screen.getByLabelText('Primary concern?: Auth'));
+    fireEvent.click(screen.getByRole('button', { name: /save answers/i }));
+    const notice = await screen.findByRole('status');
+    expect(notice).toHaveTextContent(/answers saved/i);
+    expect(notice).toHaveTextContent(/no longer asked \(qOld\)/);
+  });
+
+  it('says so honestly when a save returns no answer at all', async () => {
+    const client = makeClient();
+    client.submitSurvey.mockResolvedValue(null);
+    renderPage(client);
+    await screen.findByText('Primary concern?');
+    fireEvent.click(screen.getByLabelText('Primary concern?: Auth'));
+    fireEvent.click(screen.getByRole('button', { name: /save answers/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/returned no answer/);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    // Drafts and questions survive the non-answer.
+    expect(screen.getByText('Primary concern?')).toBeInTheDocument();
+    expect(screen.getByLabelText('Primary concern?: Auth')).toBeChecked();
+  });
+
+  it('hydrates previously saved answers on load', async () => {
+    const saved = JSON.parse(JSON.stringify(pendingSurvey));
+    saved.rounds[0].answers = { q1: { selected: ['Data'], notes: 'earlier' } };
+    saved.status = 'pending';
+    saved.missing = [];
+    const client = makeClient(saved);
+    renderPage(client);
+    await screen.findByText('Primary concern?');
+    expect(screen.getByLabelText('Primary concern?: Data')).toBeChecked();
+    expect(screen.getByLabelText('Notes for: Primary concern?')).toHaveValue('earlier');
+    // The conditional follow-up reveals from the hydrated answer.
+    expect(await screen.findByText('Frameworks?')).toBeInTheDocument();
+  });
+
   it('shows the continue path when the agent asked nothing', async () => {
     const client = makeClient({
       taskId: 't1',
@@ -271,6 +425,48 @@ describe('surveyNeedsImagePoll', () => {
   });
 });
 
+describe('describeSurveySaveError', () => {
+  it('prefers the structured body over the wrapped message', () => {
+    const err = new Error('API 400 on /tasks/t1/survey: {"error":"stale","code":"OLD"}');
+    err.body = '{"error":"fresh reason","code":"SURVEY_INVALID"}';
+    expect(describeSurveySaveError(err)).toBe('fresh reason (SURVEY_INVALID)');
+  });
+
+  it('recovers backend JSON from a body-less wrapped message', () => {
+    const err = new Error('API 400 on /x: {"error":"bad pick","code":"SURVEY_INVALID"}');
+    expect(describeSurveySaveError(err)).toBe('bad pick (SURVEY_INVALID)');
+  });
+
+  it('returns the message alone when no code travels with it', () => {
+    const err = new Error('boom');
+    err.body = '{"error":"just words"}';
+    expect(describeSurveySaveError(err)).toBe('just words');
+  });
+
+  it('falls back to the raw message, then to the caller fallback', () => {
+    expect(describeSurveySaveError(new Error('network down'))).toBe('network down');
+    expect(describeSurveySaveError(new Error('network down'), 'Nope')).toBe('network down');
+    expect(describeSurveySaveError(null, 'Nope')).toBe('Nope');
+    expect(describeSurveySaveError({})).toBe('Could not save answers');
+    const garbage = new Error('API 500 on /x: <html>oops</html>');
+    garbage.body = '<html>oops</html>';
+    expect(describeSurveySaveError(garbage)).toBe('API 500 on /x: <html>oops</html>');
+  });
+});
+
+describe('describeUnknownAnswers', () => {
+  it('stays silent without ignored answers and caps long lists', () => {
+    expect(describeUnknownAnswers([])).toBe('');
+    expect(describeUnknownAnswers(null)).toBe('');
+    expect(describeUnknownAnswers(['q9'])).toBe(
+      ' One answer was for a question that is no longer asked (q9) and was ignored.',
+    );
+    expect(describeUnknownAnswers(['a', 'b'])).toContain('2 answers were for questions');
+    expect(describeUnknownAnswers(['1', '2', '3', '4', '5', '6', '7'])).toContain('and 2 more');
+    expect(describeUnknownAnswers(['ok', 42, null])).toContain('(ok)');
+  });
+});
+
 describe('SurveyPage image questions', () => {
   const imageQuestion = (images) => ({
     id: 'qi',
@@ -339,6 +535,22 @@ describe('SurveyPage image questions', () => {
           answers: expect.objectContaining({ qi: { selected: ['light dashboard'], notes: '' } }),
         }),
       ),
+    );
+  });
+
+  it('falls back to a retryable block when a ready picture fails to load', async () => {
+    const client = makeClient(imageSurvey(readyImages));
+    renderPage(client);
+    await screen.findByText('Pick a design');
+    fireEvent.error(screen.getByAltText('dark dashboard'));
+    expect(screen.getByText('🖼️ illustration unavailable')).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: /retry loading illustration for dark dashboard/i }),
+    );
+    const img = screen.getByAltText('dark dashboard');
+    expect(img.tagName).toBe('IMG');
+    expect(img.getAttribute('src')).toContain(
+      '/projects/p1/tasks/t1/images/survey-r1-qi-0.png',
     );
   });
 

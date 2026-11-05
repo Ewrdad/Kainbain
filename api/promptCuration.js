@@ -234,7 +234,7 @@ export function resolveStageCustomKeywords(stage, projectCwd, loadSkill = null) 
 		if (!skill || skill.invalid) continue;
 		Object.assign(
 			keywordMap,
-			resolveSkillKeywordMap(skill.keywords, attachment.config || {}),
+			resolveSkillKeywordMap(skill.keywords, attachment.config || {}, name),
 		);
 	}
 	return Object.keys(keywordMap).length > 0 ? keywordMap : null;

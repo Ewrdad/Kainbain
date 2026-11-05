@@ -96,6 +96,20 @@ describe("resolveStageCustomKeywords", () => {
 		});
 	});
 
+	it("resolves the question-me output file exactly like the backend reader", () => {
+		const loadSkill = () => ({
+			keywords: { outputFile: "SURVEY.md", minQuestions: "0" },
+		});
+		const stage = {
+			skills: [{ name: "question-me", config: { surveyFile: "REVIEW.md" } }],
+		};
+		expect(resolveStageCustomKeywords(stage, "/repo", loadSkill)).toEqual({
+			outputFile: "REVIEW.md",
+			minQuestions: "0",
+			surveyFile: "REVIEW.md",
+		});
+	});
+
 	it("skips missing, invalid, and nameless attachments", () => {
 		const loadSkill = (name) =>
 			name === "good"

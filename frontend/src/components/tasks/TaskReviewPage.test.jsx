@@ -1245,3 +1245,59 @@ describe('TaskReviewPage terminal-failed tasks', () => {
     expect(screen.getByText(/use Retry Stage instead of passing/)).toBeTruthy();
   });
 });
+
+describe('TaskReviewPage filtered task files hint', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.localStorage.clear();
+    api.listTaskImages.mockResolvedValue({ images: [] });
+  });
+
+  it('shows the reserved empty-state copy when only task files changed', async () => {
+    api.getTaskReview.mockResolvedValue({
+      ...baseReview,
+      files: [],
+      filteredTaskFilesCount: 3,
+      hasReports: undefined,
+    });
+    const context = {
+      selectedTask: { id: 'task-101', title: 'Fix auth race', goal: 'Fix the auth race.', status: 'waiting_human', currentStageId: 'st-2' },
+      setView: vi.fn(),
+      activeProjectId: 'proj-1',
+      projects: [{ id: 'proj-1', name: 'KainBain', useBranches: true, stages: [{ id: 'st-2', name: 'Code Review', type: 'human' }] }],
+      lastReviewEvent: null,
+      advanceTask: vi.fn().mockResolvedValue(undefined),
+      rejectTaskWithFeedback: vi.fn().mockResolvedValue(undefined),
+    };
+    render(
+      <KainBainContext.Provider value={context}>
+        <TaskReviewPage />
+      </KainBainContext.Provider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/No reviewable code changes; task files are shown in Reports\./)).toBeTruthy(),
+    );
+    expect(screen.getByTestId('filtered-task-files-hint')).toBeTruthy();
+  });
+
+  it('keeps the generic empty copy when no task files were filtered', async () => {
+    api.getTaskReview.mockResolvedValue({ ...baseReview, files: [] });
+    const context = {
+      selectedTask: { id: 'task-101', title: 'Fix auth race', goal: 'Fix the auth race.', status: 'waiting_human', currentStageId: 'st-2' },
+      setView: vi.fn(),
+      activeProjectId: 'proj-1',
+      projects: [{ id: 'proj-1', name: 'KainBain', useBranches: true, stages: [{ id: 'st-2', name: 'Code Review', type: 'human' }] }],
+      lastReviewEvent: null,
+      advanceTask: vi.fn().mockResolvedValue(undefined),
+      rejectTaskWithFeedback: vi.fn().mockResolvedValue(undefined),
+    };
+    render(
+      <KainBainContext.Provider value={context}>
+        <TaskReviewPage />
+      </KainBainContext.Provider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/Nothing to review yet/)).toBeTruthy(),
+    );
+  });
+});

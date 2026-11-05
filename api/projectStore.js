@@ -533,6 +533,71 @@ export class ProjectStore {
 	}
 
 	/***
+	 * MARK: discoverAdoptable
+	 * @description Lists git checkouts sitting in the scan roots that are
+	 *   NOT projects yet (no config file, not adopted): one level deep,
+	 *   capped, sorted by name. Backs first-run one-click adoption
+	 *   (`GET /projects/discover`) so a pre-filled projects directory never
+	 *   renders as a silently empty board. Read-only: nothing is created.
+	 * @example projectStore.discoverAdoptable() => [{ path: '/roots/my-repo', name: 'my-repo' }]
+	 * @param {Object} [opts]
+	 * @param {number} [opts.cap=50] - Maximum entries (positive int).
+	 * @returns {Array<{path:string,name:string}>} Adoptable directories.
+	 ***/
+	discoverAdoptable({ cap = 50 } = {}) {
+		/* eslint-disable security/detect-non-literal-fs-filename */
+		const limit = Number.isInteger(cap) && cap > 0 ? cap : 50;
+		const knownCwds = new Set();
+		for (const project of this.projects.values()) {
+			try {
+				if (project?.cwd) knownCwds.add(path.resolve(String(project.cwd)));
+			} catch {
+				// A malformed cwd never blocks discovery of the rest.
+			}
+		}
+		const found = [];
+		for (const root of this._scanRoots()) {
+			if (!fs.existsSync(root)) continue;
+			let entries = [];
+			try {
+				entries = fs.readdirSync(root, { withFileTypes: true });
+			} catch {
+				continue;
+			}
+			for (const entry of entries) {
+				if (found.length >= limit) break;
+				if (
+					!entry.isDirectory() ||
+					entry.name.startsWith(".") ||
+					entry.name === "node_modules"
+				) {
+					continue;
+				}
+				const dir = path.join(root, entry.name);
+				let resolved = "";
+				try {
+					resolved = path.resolve(dir);
+				} catch {
+					continue;
+				}
+				if (knownCwds.has(resolved)) continue;
+				if (this._loadProjectFile(resolved)) continue;
+				let gitMarker = null;
+				try {
+					gitMarker = fs.statSync(path.join(resolved, ".git"));
+				} catch {
+					gitMarker = null;
+				}
+				if (!gitMarker) continue;
+				found.push({ path: resolved, name: entry.name });
+			}
+			if (found.length >= limit) break;
+		}
+		/* eslint-enable security/detect-non-literal-fs-filename */
+		return found.sort((a, b) => a.name.localeCompare(b.name));
+	}
+
+	/***
 	 * MARK: _buildScannedProject
 	 * @description Builds the in-memory project record for one scanned
 	 *   directory from its saved config file. Returns null when the

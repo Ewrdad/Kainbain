@@ -25,11 +25,25 @@ import { ensureSurveyImages, persistChosenSurveyImages, resolveImageGenProvider 
 export function surveyOutputFileForRequest(task, project, request) {
 	const query = request?.query || {};
 	const body = request?.body || {};
-	const explicitRaw =
-		query.file ?? query.outputFile ?? query.surveyFile ?? query.surveyFileName ??
-		query.fileName ?? query.targetFile ??
-		body.file ?? body.outputFile ?? body.surveyFile ?? body.surveyFileName ??
-		body.fileName ?? body.targetFile;
+	// One ordered pass over both request sources (query first, then body) so
+	// a newly accepted alias key can never drift between the two lists.
+	// Order matches the long-standing precedence: legacy `file` first, then
+	// the canonical `outputFile` and its aliases.
+	const requestFileKeys = ["file", "outputFile", "surveyFile", "surveyFileName", "fileName", "targetFile"];
+	let explicitRaw;
+	/* eslint-disable security/detect-object-injection -- keys come from the fixed list above */
+	for (const source of [query, body]) {
+		if (!source || typeof source !== "object") continue;
+		for (const key of requestFileKeys) {
+			const value = source[key];
+			if (value !== undefined && value !== null) {
+				explicitRaw = value;
+				break;
+			}
+		}
+		if (explicitRaw !== undefined) break;
+	}
+	/* eslint-enable security/detect-object-injection */
 	if (explicitRaw !== undefined && explicitRaw !== null &&
 		!(typeof explicitRaw === "string" && explicitRaw.trim() === "")) {
 		return normalizeSurveyFileName(explicitRaw);
@@ -514,7 +528,7 @@ export async function registerTaskWorkRoutes(app, deps) {
 		if (action !== "skip") {
 			const patch = request.body?.answers;
 			if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
-				return reply.status(400).send({ error: "answers must be an object keyed by question id" });
+				return reply.status(400).send({ error: "answers must be an object keyed by question id", code: "SURVEY_INVALID" });
 			}
 			try {
 				// Serialized with the background image job's splices and the
@@ -532,7 +546,9 @@ export async function registerTaskWorkRoutes(app, deps) {
 				);
 				survey = { ...readSurvey(project?.cwd, project, task.id, outputFile), status: saved.status, missing: saved.missing, unknownIds: saved.unknownIds };
 			} catch (err) {
-				return reply.status(err?.statusCode || 400).send({ error: err?.message || "Invalid survey answers" });
+				const code = err?.code || "SURVEY_SAVE_FAILED";
+				app.log?.warn?.({ taskId: task.id, code, error: err?.message }, "Survey save rejected");
+				return reply.status(err?.statusCode || 400).send({ error: err?.message || "Invalid survey answers", code });
 			}
 			// Chosen image-question pictures land in assets/ with a survey
 			// file reference (markdown only — rounds already re-read above
@@ -557,6 +573,7 @@ export async function registerTaskWorkRoutes(app, deps) {
 			if (action === "skip") {
 				return reply.status(400).send({
 					error: "Survey has unanswered required questions",
+					code: "SURVEY_INCOMPLETE",
 					missing,
 					status: survey.status,
 				});

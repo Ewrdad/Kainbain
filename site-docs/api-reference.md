@@ -72,6 +72,7 @@ step); live-session values are actuals.
 | GET | `/projects` | List projects. |
 | POST | `/projects` | Create a project. |
 | POST | `/projects/register` | Register/adopt an existing project directory (`{ path, name?, kainbainDirName? }`). Idempotent. |
+| GET | `/projects/discover` | List git checkouts in the scan roots that are not projects yet (`{ roots, adoptable }`), for first-run one-click adoption. Read-only. |
 | GET | `/projects/:id` | Get one project. |
 | PATCH | `/projects/:id` | Update project fields, including the Retry & Timeouts overrides (`maxAutoIterations`, `maxTransientRetries`, `autoIterationEnabled`, `agentTimeoutMs`, `ciTimeoutMs`, `mergeTimeoutMs`; `null` clears one back to the global default). A persisted `deployTimeoutMs` still loads but is ignored — a deploy command follows `ciTimeoutMs`. |
 | DELETE | `/projects/:id` | Delete a project. |
@@ -90,6 +91,15 @@ step); live-session values are actuals.
 | GET | `/projects/:id/aliases/reliability` | Per-alias model+harness target success rates for the project (infra failures count; deliberate agent stage-fails excluded). |
 
 `modelAliases` on create/patch must satisfy the shared alias grammar (unique names, percents summing to 100) and must not pair a self-managed `none` harness (`muse`, `custom`) with a model — such rows are refused with a 400 naming the alias and harness. Blank models on `none` harnesses are the valid shape.
+
+## Onboarding (`api/routes/onboarding.js`)
+
+First-run summary for the empty state and guided-checklist UIs: one read-only
+join across the Runner registry, project store, and task store.
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| GET | `/onboarding` | Runner bootstrap summary, project/task counts, unadopted checkouts (`adoptable`, capped at 10), and the precomputed guided checklist (`steps`, `complete`). |
 
 ## Tasks (`api/work/taskWorkRoutes.js`, `api/flow/taskFlowRoutes.js`, `api/watch/taskWatchRoutes.js`)
 
@@ -132,6 +142,7 @@ approval, then heartbeat and claim with the issued per-Runner credential.
 | POST | `/runners/register` | Join request (`runnerId`, `joinToken`, `facts`); 202 + `pending`. |
 | POST | `/runners/heartbeat` | Capability/version refresh (`x-runner-credential` header). |
 | GET | `/runners` | List registrations for the approval UI. |
+| GET | `/runners/bootstrap` | First-run Runner bootstrap summary: registration/health counts plus the expected local Runner id hint. |
 | POST | `/runners/:id/approve` | Approve; issues the per-Runner credential. |
 | POST | `/runners/:id/deny` | Deny a pending join request. |
 | POST | `/runners/:id/revoke` | Revoke; the credential stops working immediately. |
@@ -176,7 +187,7 @@ across restarts at `KAINBAIN_CIRCUIT_STATE_FILE` (default
 | GET | `/tasks/:id/reports` | Stage reports for the task. |
 | POST | `/tasks/:id/report` | Submit a stage report. |
 | GET | `/tasks/:id/survey` | Read the task's question-me survey (`SURVEY.md` by default, or the configured `outputFile`) rounds, file status, missing required questions. Query `?projectId=` and optional `?file=` (safe basename, normalized). Response includes `outputFile`. |
-| POST | `/tasks/:id/survey` | Save survey answers (merge-only: `{ projectId, answers }`) or skip (`{ projectId, action: 'skip' }`). Partial saves stay parked; a complete submit advances the task. Optional `file`/`outputFile` override and response include `outputFile`. |
+| POST | `/tasks/:id/survey` | Save survey answers (merge-only: `{ projectId, answers }`) or skip (`{ projectId, action: 'skip' }`). Partial saves stay parked; a complete submit advances the task. Optional `file`/`outputFile` override and response include `outputFile`. Save rejects carry a machine-readable `code` (`SURVEY_INVALID`, `SURVEY_NOT_FOUND`, `SURVEY_INCOMPLETE` for a skip while required questions are still open). |
 
 ## Sessions (`api/routes/sessions.js`)
 
@@ -219,7 +230,7 @@ name is allowed but flagged (`shadows a KainBain default skill`).
 
 | Method | Path | Purpose |
 | ------ | ---- | ------- |
-| GET | `/harnesses` | Harness roster (pi, antigravity, opencode). |
+| GET | `/harnesses` | Harness roster (pi, antigravity, opencode, muse, codex, vibe, custom, mock). |
 | GET | `/harnesses/:id/models` | Models available on one harness. |
 | GET | `/harnesses/reliability` | Per-harness success rates (infra failures count; deliberate agent stage-fails excluded). |
 

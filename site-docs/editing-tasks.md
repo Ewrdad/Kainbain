@@ -1,7 +1,7 @@
 ---
 title: Editing Tasks & Unsynced Drafts
 section: working-with
-order: 68
+order: 67
 slug: editing-tasks
 ---
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api, API_BASE } from '../../services/api';
 import { isImageFile, resolveTaskImageUrl } from '../../services/taskImages';
+import { useImageRetry } from '../../services/imageRetry';
 
 /***
  * MARK: fetchTaskImages
@@ -39,7 +40,8 @@ function buildSkippedMessage(skipped) {
  * @description One listed image asset: a lazy thumbnail plus name and remove
  *   control. A load failure surfaces the same unavailable chip + retry used
  *   by the markdown renderer (never an invisible hole), keeping the filename
- *   visible so the gap is actionable instead of silently empty.
+ *   visible so the gap is actionable instead of silently empty. Transient
+ *   misses self-recover through the shared retry seam.
  * @example <TaskImageThumb projectId="p1" taskId="t1" image={{ name: 'a.png' }} onRemove={remove} />
  * @param {Object} props
  * @param {string} props.projectId - Owning project id.
@@ -48,21 +50,25 @@ function buildSkippedMessage(skipped) {
  * @param {Function} [props.onRemove] - Called with the image name.
  ***/
 export function TaskImageThumb({ projectId, taskId, image, onRemove }) {
-  const [failed, setFailed] = useState(false);
-  const [retryKey, setRetryKey] = useState(0);
-
-  // Fresh mounts carry fresh state (the parent keys by project/task/name),
-  // so a transient miss can never latch the chip while the asset changes;
-  // an explicit retry bumps the key below for the same URL.
-  const retry = useCallback(() => {
-    setFailed(false);
-    setRetryKey((key) => key + 1);
-  }, []);
+  const src = resolveTaskImageUrl({
+    apiBase: API_BASE,
+    projectId,
+    taskId,
+    src: `assets/${image.name}`,
+  });
+  const { failed, retryKey, markFailed, retry } = useImageRetry({
+    src,
+    component: 'task-image-thumb',
+    hasTaskContext: Boolean(projectId && taskId),
+  });
 
   return (
     <span className="inline-flex items-center gap-1 border border-border-standard rounded bg-surface-deep px-1 py-0.5">
       {failed ? (
-        <span className="inline-flex items-center gap-1 font-mono text-[9px] text-text-muted">
+        <span
+          data-task-image-state="unavailable"
+          className="inline-flex items-center gap-1 font-mono text-[9px] text-text-muted"
+        >
           <span role="img" aria-label={image.name}>
             🖼️ {image.name} (image unavailable)
           </span>
@@ -78,16 +84,11 @@ export function TaskImageThumb({ projectId, taskId, image, onRemove }) {
       ) : (
         <img
           key={retryKey}
-          src={resolveTaskImageUrl({
-            apiBase: API_BASE,
-            projectId,
-            taskId,
-            src: `assets/${image.name}`,
-          })}
+          src={src}
           alt={image.name}
           loading="lazy"
           className="w-8 h-8 object-cover rounded-sm border border-border-standard/60"
-          onError={() => setFailed(true)}
+          onError={markFailed}
         />
       )}
       <span className="font-mono text-[9px] text-text-muted max-w-[110px] truncate">
@@ -128,7 +129,8 @@ export function TaskImageThumb({ projectId, taskId, image, onRemove }) {
  *   folding per-file `onUploaded` calls, which can lose all but the last
  *   reference when the parent closes over a stale draft value. A listener
  *   that throws is logged and ignored; the picker still resets and later
- *   uploads still proceed.
+ *   uploads still proceed. Skipped (with an inline notice) when the task
+ *   changed mid-upload, so a batch started on task A never lands in B's draft.
  * @param {Function} [props.onRemoved] - Called with the removed image name.
  * @param {Function} [props.onUploadingChange] - Called with `true`/`false` as uploads start/finish (lets modal parents disable submit mid-upload).
  * @example <TaskImageAttach projectId="p1" taskId="t1" textareaRef={ref} onUploaded={insertImageMarkdown} onUploadedBatch={insertImagesMarkdown} />
@@ -146,6 +148,15 @@ export function TaskImageAttach({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
+
+  // Live task scope: an upload batch lands seconds after its gesture, and the
+  // user may switch tasks meanwhile. Completions compare against this ref so
+  // a batch started on task A can never append its references to task B's
+  // draft (refs without bytes in B, orphan bytes in A).
+  const scopeRef = useRef({ projectId, taskId });
+  useEffect(() => {
+    scopeRef.current = { projectId, taskId };
+  }, [projectId, taskId]);
 
   // Initial asset listing: subscribe-on-mount pattern — setState happens in
   // the fetch callbacks (never synchronously in the effect body).
@@ -202,6 +213,13 @@ export function TaskImageAttach({
       setUploading(true);
       onUploadingChange?.(true);
       setError(null);
+      // The task this gesture belongs to: every completion below re-checks it
+      // against the live scope, so a task switch mid-upload keeps the bytes
+      // (they still land in the origin task) without poisoning the new draft.
+      const batchScope = { projectId, taskId };
+      const scopeChanged = () =>
+        scopeRef.current.projectId !== batchScope.projectId ||
+        scopeRef.current.taskId !== batchScope.taskId;
       try {
         // Per-file try/catch: one oversized/rejected file must not drop the
         // rest of the batch — successes stay linked and listed.
@@ -210,13 +228,14 @@ export function TaskImageAttach({
         for (const file of files) {
           let stored;
           try {
-            stored = await api.uploadTaskImage(projectId, taskId, file);
+            stored = await api.uploadTaskImage(batchScope.projectId, batchScope.taskId, file);
           } catch (err) {
             failures.push(`${file?.name || 'image'}: ${err?.message || 'upload failed'}`);
             continue;
           }
           const asset = { name: stored?.name, path: stored?.path };
           storedBatch.push(asset);
+          if (scopeChanged()) continue;
           // Legacy per-file report, isolated: a parent listener that throws
           // must not reclassify an upload that already succeeded as failed.
           try {
@@ -225,11 +244,19 @@ export function TaskImageAttach({
             console.error('[TaskImageAttach] onUploaded listener failed', err);
           }
         }
-        if (storedBatch.length > 0) {
+        const notices = [];
+        if (storedBatch.length > 0 && scopeChanged()) {
+          // Switched tasks mid-upload: the bytes are safe in the origin
+          // task's folder (visible in its strip on return), but no reference
+          // is appended anywhere — the current draft belongs to another task.
+          notices.push(
+            `Upload finished after switching tasks — ${storedBatch.length} image(s) stored in task ${batchScope.taskId}; no reference was added to the current task.`,
+          );
+        } else if (storedBatch.length > 0) {
           // Refresh before notifying: a throwing parent batch listener must
           // not skip the thumbnail update for uploads that already succeeded.
           try {
-            setImages(await fetchTaskImages(projectId, taskId));
+            setImages(await fetchTaskImages(batchScope.projectId, batchScope.taskId));
           } catch (err) {
             console.error('[TaskImageAttach] listing task images failed', err);
           }
@@ -239,7 +266,6 @@ export function TaskImageAttach({
             console.error('[TaskImageAttach] onUploadedBatch listener failed', err);
           }
         }
-        const notices = [];
         if (skipped.length > 0) notices.push(buildSkippedMessage(skipped));
         if (failures.length > 0)
           notices.push(`Failed to upload ${failures.length} image(s): ${failures.join('; ')}`);

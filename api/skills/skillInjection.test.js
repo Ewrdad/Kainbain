@@ -69,6 +69,41 @@ describe("resolveSkillKeywordMap (layering)", () => {
 	});
 });
 
+describe("resolveSkillKeywordMap (question-me output file)", () => {
+	const kbDefaults = { outputFile: "SURVEY.md", minQuestions: "0" };
+
+	it("tells the agent the backend-resolved file when an alias key is configured", () => {
+		const map = resolveSkillKeywordMap(kbDefaults, { file: "FEEDBACK.md" }, "question-me");
+		expect(map.outputFile).toBe("FEEDBACK.md");
+	});
+
+	it("normalizes extension-less and wrapped values exactly like the backend", () => {
+		expect(resolveSkillKeywordMap(kbDefaults, { outputFile: "FEEDBACK" }, "question-me").outputFile).toBe("FEEDBACK.md");
+		expect(resolveSkillKeywordMap(kbDefaults, { surveyFile: { value: "R.md" } }, "question-me").outputFile).toBe("R.md");
+	});
+
+	it("keeps the canonical key winning over aliases", () => {
+		const map = resolveSkillKeywordMap(kbDefaults, { outputFile: "A.md", file: "B.md" }, "question-me");
+		expect(map.outputFile).toBe("A.md");
+	});
+
+	it("fails safe to the default on unsafe or non-string values", () => {
+		expect(resolveSkillKeywordMap(kbDefaults, { outputFile: "../evil.md" }, "question-me").outputFile).toBe("SURVEY.md");
+		expect(resolveSkillKeywordMap(kbDefaults, { outputFile: 42 }, "question-me").outputFile).toBe("SURVEY.md");
+	});
+
+	it("defaults to the backend file when nothing is configured", () => {
+		expect(resolveSkillKeywordMap(kbDefaults, {}, "question-me").outputFile).toBe("SURVEY.md");
+		expect(resolveSkillKeywordMap({}, {}, "question-me").outputFile).toBe("SURVEY.md");
+	});
+
+	it("matches the skill name case-insensitively and leaves other skills alone", () => {
+		expect(resolveSkillKeywordMap(kbDefaults, { file: "FEEDBACK.md" }, "Question-Me").outputFile).toBe("FEEDBACK.md");
+		expect(resolveSkillKeywordMap(kbDefaults, { file: "FEEDBACK.md" }, "deploy").outputFile).toBe("SURVEY.md");
+		expect(resolveSkillKeywordMap(kbDefaults, { file: "FEEDBACK.md" }).outputFile).toBe("SURVEY.md");
+	});
+});
+
 describe("applySkillKeywords", () => {
 	const ctx = {
 		task: { goal: "G" },
@@ -118,6 +153,19 @@ describe("buildDirectSkillBlock", () => {
 		});
 		expect(block).toContain("at Intake.");
 		expect(block).not.toContain("KB Default");
+	});
+
+	it("tells question-me the backend-resolved file even for alias keys", () => {
+		const block = buildDirectSkillBlock({
+			skill: makeSkill({
+				name: "question-me",
+				body: "Write the survey to {{outputFile}}.",
+				keywords: { outputFile: "SURVEY.md", minQuestions: "0" },
+			}),
+			stageSkill: { name: "question-me", config: { file: "FEEDBACK.md" } },
+			interpolationContext: { project: { name: "KainBain" } },
+		});
+		expect(block).toContain("Write the survey to FEEDBACK.md.");
 	});
 });
 

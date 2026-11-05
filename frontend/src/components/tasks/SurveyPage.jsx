@@ -3,6 +3,7 @@ import { useParams } from 'react-router';
 import { useKainBain } from '../../context/KainBainContext';
 import { API_BASE, api } from '../../services/api';
 import { resolveTaskImageUrl } from '../../services/taskImages.js';
+import { useImageRetry } from '../../services/imageRetry';
 import { isQuestionVisible, combinedAnswers, selectedValues } from '../../../../shared/survey.js';
 import { SurveyTaskPanel } from './SurveyTaskPanel';
 
@@ -50,6 +51,66 @@ export function surveyNeedsImagePoll(rounds, providerId) {
     }
   }
   return false;
+}
+
+/***
+ * MARK: describeSurveySaveError
+ * @description Turns a failed survey save into plain words for the page. The
+ *   backend answers `{ error, code }`, but the transport wraps it as
+ *   `API <status> on <path>: <body>` — showing that raw string would bury the
+ *   reason in plumbing. Prefers the backend message plus its machine-readable
+ *   code, and falls back to the raw message when no backend body is readable.
+ * @example describeSurveySaveError(Object.assign(new Error('API 400 on /s: {"error":"bad","code":"SURVEY_INVALID"}'), { body: '{"error":"bad","code":"SURVEY_INVALID"}' })) => 'bad (SURVEY_INVALID)'
+ * @param {*} err - Rejection from the survey client.
+ * @param {string} [fallback] - Last-resort text when nothing readable remains.
+ * @returns {string}
+ ***/
+export function describeSurveySaveError(err, fallback = 'Could not save answers') {
+  const candidates = [];
+  if (typeof err?.body === 'string' && err.body.trim()) candidates.push(err.body.trim());
+  // Body-less rejections (older clients, hand-built errors) still carry the
+  // wrapped `API <status> on <path>: <body>` message — the trailing JSON is
+  // recoverable when the body itself was JSON.
+  const message = typeof err?.message === 'string' ? err.message : '';
+  const tailMarker = ': {';
+  const tailStart = message.indexOf(tailMarker);
+  if (tailStart >= 0) candidates.push(message.slice(tailStart + 1).trim());
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      const backendMessage =
+        typeof parsed?.error === 'string' && parsed.error.trim() ? parsed.error.trim() : '';
+      const code =
+        typeof parsed?.code === 'string' && parsed.code.trim() ? parsed.code.trim() : '';
+      if (backendMessage && code) return `${backendMessage} (${code})`;
+      if (backendMessage) return backendMessage;
+    } catch {
+      // Not backend JSON — try the next candidate, then the raw message.
+    }
+  }
+  return message || fallback;
+}
+
+/***
+ * MARK: describeUnknownAnswers
+ * @description One sentence naming saved answers the backend ignored because
+ *   their questions are no longer asked (a question withdrawn between page
+ *   load and save). Empty when nothing was ignored. The id list is capped so
+ *   a pathological patch can never flood the notice.
+ * @example describeUnknownAnswers(['q9']) => ' One answer was for a question that is no longer asked (q9) and was ignored.'
+ * @param {*} unknownIds - Backend `unknownIds` list (question ids).
+ * @returns {string}
+ ***/
+export function describeUnknownAnswers(unknownIds) {
+  const ids = (Array.isArray(unknownIds) ? unknownIds : []).filter(
+    (id) => typeof id === 'string' && id,
+  );
+  if (ids.length === 0) return '';
+  const shown =
+    ids.length > 5 ? `${ids.slice(0, 5).join(', ')} and ${ids.length - 5} more` : ids.join(', ');
+  return ids.length === 1
+    ? ` One answer was for a question that is no longer asked (${shown}) and was ignored.`
+    : ` ${ids.length} answers were for questions that are no longer asked (${shown}) and were ignored.`;
 }
 
 /***
@@ -295,11 +356,30 @@ export function SurveyPage({
 
   const refreshFrom = useCallback(
     (data) => {
-      setSurvey(data);
+      // A nullish save response (dropped body, mock client) must never read
+      // as a success: say so honestly and leave every draft untouched.
+      if (!data) {
+        setSaveError('The save returned no answer — your selections are unchanged. Try again.');
+        return;
+      }
+      setSurvey((prev) => {
+        // A save response without rounds (older backend, stripped proxy body)
+        // must never blank the answered questions: keep rendering the last
+        // rounds while still picking up the fresh status and missing list.
+        if (!Array.isArray(data.rounds) && prev) {
+          return { ...data, rounds: prev.rounds || [], errors: data.errors || prev.errors || [] };
+        }
+        return data;
+      });
+      const savedAt =
+        data?.advanced || typeof window === 'undefined'
+          ? ''
+          : ` at ${new Date().toLocaleTimeString()}`;
+      const ignored = describeUnknownAnswers(data?.unknownIds);
       setNotice(
         data?.advanced
-          ? 'Survey complete — the task moved to its next stage.'
-          : 'Answers saved. Required questions still open are listed below.',
+          ? `Survey complete — the task moved to its next stage.${ignored}`
+          : `Answers saved${savedAt}. Required questions still open are listed below.${ignored}`,
       );
       if (data?.advanced) {
         setAdvanced(true);
@@ -317,7 +397,7 @@ export function SurveyPage({
       const data = await http.submitSurvey(projectId, taskId, { answers: answerPayload });
       refreshFrom(data);
     } catch (err) {
-      setSaveError(err?.message || 'Could not save answers');
+      setSaveError(describeSurveySaveError(err, 'Could not save answers'));
     } finally {
       setSaving(false);
     }
@@ -329,19 +409,28 @@ export function SurveyPage({
     setNotice(null);
     try {
       const data = await http.submitSurvey(projectId, taskId, { answers: answerPayload });
+      if (!data) {
+        setSaveError('The submit returned no answer — your selections are unchanged. Try again.');
+        return;
+      }
       if (!data?.advanced) {
         const open = (data?.missing || []).map((m) => m.id).join(', ');
         setSaveError(
           open
-            ? `Still waiting on required questions: ${open}`
-            : 'Not complete yet — answer the required questions above.',
+            ? `Still waiting on required questions: ${open}${describeUnknownAnswers(data?.unknownIds)}`
+            : `Not complete yet — answer the required questions above.${describeUnknownAnswers(data?.unknownIds)}`,
         );
+        // The save response carries the persisted rounds: render them so the
+        // questions shown always match the file on disk. Local answer drafts
+        // stay untouched — only the read-only survey state refreshes here.
         setSurvey((prev) =>
           prev
             ? {
                 ...prev,
                 missing: data?.missing || prev.missing,
                 status: data?.status || prev.status,
+                rounds: Array.isArray(data?.rounds) ? data.rounds : prev.rounds,
+                errors: Array.isArray(data?.errors) ? data.errors : prev.errors,
               }
             : prev,
         );
@@ -349,7 +438,7 @@ export function SurveyPage({
         refreshFrom(data);
       }
     } catch (err) {
-      setSaveError(err?.message || 'Could not submit the survey');
+      setSaveError(describeSurveySaveError(err, 'Could not submit the survey'));
     } finally {
       setSubmitting(false);
     }
@@ -363,7 +452,7 @@ export function SurveyPage({
       const data = await http.submitSurvey(projectId, taskId, { action: 'skip' });
       refreshFrom(data);
     } catch (err) {
-      setSaveError(err?.message || 'Could not skip the survey');
+      setSaveError(describeSurveySaveError(err, 'Could not skip the survey'));
     } finally {
       setSubmitting(false);
     }
@@ -667,6 +756,58 @@ function QuestionField({ question, selected, notes, missing, onSelect, onNotes, 
  *   the picture renders), and failed or missing pictures as description
  *   rows with an honest notice — answering never blocks on generation.
  ***/
+/***
+ * MARK: SurveyIllustration
+ * @description One ready survey picture: the illustration on success, a
+ *   same-sized fallback block with the description and a Retry control on
+ *   failure (never a broken-image icon). Transient misses self-recover
+ *   through the shared retry seam; answering never blocks on generation or
+ *   on a failed load either way.
+ * @example <SurveyIllustration src="/projects/p/tasks/t/images/a.png" text="dark dashboard" hasTaskContext={true} />
+ ***/
+function SurveyIllustration({ src, text, hasTaskContext }) {
+  const { failed, retryKey, markFailed, retry } = useImageRetry({
+    src,
+    component: 'survey-illustration',
+    hasTaskContext,
+  });
+  if (failed) {
+    return (
+      <span
+        data-task-image-state="unavailable"
+        className="flex w-full aspect-video flex-col items-center justify-center gap-1.5 rounded-sm bg-surface-deep px-3 py-4 text-center"
+      >
+        <span role="img" aria-label={text} className="font-mono text-[11px] text-text-muted">
+          🖼️ illustration unavailable
+        </span>
+        <button
+          type="button"
+          // Inside the option's <label>: preventDefault keeps the click from
+          // toggling the radio — retrying a load is not answering.
+          onClick={(e) => {
+            e.preventDefault();
+            retry();
+          }}
+          aria-label={`Retry loading illustration for ${text}`}
+          className="px-2 py-0.5 rounded border border-border-standard bg-surface-container text-[10px] font-mono text-text-muted hover:text-on-surface transition-colors cursor-pointer"
+        >
+          Retry
+        </button>
+      </span>
+    );
+  }
+  return (
+    <img
+      key={retryKey}
+      src={src}
+      alt={text}
+      loading="lazy"
+      onError={markFailed}
+      className="w-full aspect-video object-cover rounded-sm bg-surface-deep"
+    />
+  );
+}
+
 function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGenProviderId }) {
   const entries = Array.isArray(question.images) ? question.images : [];
   const byOption = new Map();
@@ -718,11 +859,10 @@ function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGe
                 onChange={(e) => onSelect(question.id, text, e.target.checked, false)}
                 className=""
               />
-              <img
+              <SurveyIllustration
                 src={src}
-                alt={text}
-                loading="lazy"
-                className="w-full aspect-video object-cover rounded-sm bg-surface-deep"
+                text={text}
+                hasTaskContext={Boolean(projectId && taskId)}
               />
               <span className="leading-snug text-xs">{text}</span>
             </label>

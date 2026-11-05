@@ -1752,3 +1752,140 @@ describe("joinAndHeartbeat command channel", () => {
 		}
 	});
 });
+
+describe("collectTaskFiles docsDirName", () => {
+	it("reads files from a custom docs folder", async () => {
+		const fs = (await import("node:fs")).default;
+		const os = (await import("node:os")).default;
+		const path = (await import("node:path")).default;
+		const { collectTaskFiles } = await import("./daemon.js");
+		const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-wt-"));
+		try {
+			fs.mkdirSync(path.join(workdir, "kdocs", "tasks", "t1"), { recursive: true });
+			fs.writeFileSync(path.join(workdir, "kdocs", "tasks", "t1", "SURVEY.md"), "x");
+			const files = collectTaskFiles({ workdir, taskId: "t1", docsDirName: "kdocs" });
+			assert.deepEqual(files, [{ name: "SURVEY.md", content: "x" }]);
+			const invalid = collectTaskFiles({ workdir, taskId: "t1", docsDirName: "../escape" });
+			assert.deepEqual(invalid, []);
+		} finally {
+			fs.rmSync(workdir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("joinAndHeartbeat one-click credential handover", () => {
+	const quiet = { log: () => {}, warn: () => {} };
+
+	it("collects the handed-over credential, stores it, and keeps booting", async () => {
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "kb-join-"));
+		const config = baseConfig({
+			credential: "",
+			joinToken: "jt",
+			home,
+			harnessIds: ["mock"],
+			autoUpdate: false,
+		});
+		const registers = [];
+		const client = {
+			register: async (args) => {
+				registers.push(args);
+				return registers.length === 1
+					? { status: "pending", credential: null }
+					: { status: "active", credential: "cred-handed-over" };
+			},
+			setCredential: (next) => {
+				client.credential = next;
+			},
+			heartbeat: async () => ({ status: "active" }),
+		};
+		const { stop } = await joinAndHeartbeat({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: quiet,
+			state: {},
+		});
+		try {
+			assert.equal(config.credential, "cred-handed-over");
+			assert.equal(client.credential, "cred-handed-over");
+			const stored = fs.readFileSync(
+				path.join(home, ".kainbain", "runner-r1.credential"),
+				"utf8",
+			);
+			assert.equal(stored.trim(), "cred-handed-over");
+			assert.equal(registers.length, 2);
+			assert.ok(registers[0].joinNonce);
+			assert.equal(registers[0].joinNonce, registers[1].joinNonce);
+		} finally {
+			stop();
+			fs.rmSync(config.workRoot, { recursive: true, force: true });
+			fs.rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("falls back to the paste instruction when no credential is handed over", async () => {
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "kb-join-"));
+		const config = baseConfig({
+			credential: "",
+			joinToken: "jt",
+			home,
+			harnessIds: ["mock"],
+			autoUpdate: false,
+		});
+		const client = {
+			register: async () => ({ status: "active", credential: null }),
+			setCredential: () => {},
+			heartbeat: async () => ({ status: "active" }),
+		};
+		await assert.rejects(
+			joinAndHeartbeat({
+				config,
+				client,
+				loadHarness: async () => fakeHarness(),
+				logger: quiet,
+				state: {},
+			}),
+			/Paste the one-time credential/,
+		);
+		assert.ok(!fs.existsSync(path.join(home, ".kainbain")));
+		fs.rmSync(config.workRoot, { recursive: true, force: true });
+		fs.rmSync(home, { recursive: true, force: true });
+	});
+
+	it("never logs the join nonce", async () => {
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "kb-join-"));
+		const lines = [];
+		const loud = { log: (m) => lines.push(String(m)), warn: (m) => lines.push(String(m)) };
+		const config = baseConfig({
+			credential: "",
+			joinToken: "jt",
+			home,
+			harnessIds: ["mock"],
+			autoUpdate: false,
+		});
+		let seenNonce = "";
+		const client = {
+			register: async (args) => {
+				seenNonce = args.joinNonce;
+				return { status: "pending", credential: null };
+			},
+			setCredential: () => {},
+			heartbeat: async () => ({ status: "active" }),
+		};
+		// approvalTimeoutMs is 100ms in baseConfig: the join times out while pending.
+		await assert.rejects(
+			joinAndHeartbeat({
+				config: { ...config, approvalTimeoutMs: 30, approvalPollMs: 5 },
+				client,
+				loadHarness: async () => fakeHarness(),
+				logger: loud,
+				state: {},
+			}),
+			/still pending after timeout/,
+		);
+		assert.ok(seenNonce);
+		assert.ok(!lines.some((line) => seenNonce && line.includes(seenNonce)));
+		fs.rmSync(config.workRoot, { recursive: true, force: true });
+		fs.rmSync(home, { recursive: true, force: true });
+	});
+});

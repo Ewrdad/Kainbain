@@ -9,7 +9,7 @@ slug: submit-track-task
 
 ## Submit
 
-Type a goal in the Orchestrator submission panel and confirm the **review prompt** preview — the prompt is curated fresh at dispatch, and the modal is read-only. Keyboard `N` jumps to the input. Or via API:
+Type a goal in the Orchestrator submission panel and confirm the **review prompt** preview — the prompt is curated fresh at dispatch, and the modal is read-only. Keyboard `N` opens the Orchestrator view (home of the submission input). Or via API:
 
 ```bash
 # Preview what the agent WOULD receive, without creating anything:

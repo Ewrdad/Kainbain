@@ -1,6 +1,6 @@
 # Migration Plan Review — `MigrationPlan.md` (Portability)
 
-> **Scope:** Review of [MigrationPlan.md](MigrationPlan.md) (2026-10-26) against [RiskAssessment.md](RiskAssessment.md), [NewArchitecture.md](NewArchitecture.md), [HandNotesOnParallelism.md](../HandNotesOnParallelism.md), [Deliverables.md](../Deliverables.md), ADR 0006 (`adr/0006-git-workspace-isolation.md`), `PORTABLE_DEPLOYMENT.md`, and the cited code under `api/`.
+> **Scope:** Review of [MigrationPlan.md](MigrationPlan.md) (2026-10-26) against [RiskAssessment.md](RiskAssessment.md), [NewArchitecture.md](NewArchitecture.md), [HandNotesOnParallelism.md](../HandNotesOnParallelism.md), [Deliverables.md](../Deliverables.md), ADR 0006 (`adr/0006-git-workspace-isolation.md`), `docs/PORTABLE_DEPLOYMENT.md`, and the cited code under `api/`.
 > **Status:** Review complete; findings open for the plan author.
 > **Date:** 2026-10-26
 
@@ -17,7 +17,7 @@ The issues found are mostly **internal-consistency gaps between the plan and its
 - `api/aliasSelector.js`: smooth weighted round-robin, in-memory counters keyed `projectId:aliasName`; the header itself notes per-process counters are "statically correct, not exact across instances — acceptable for quota balancing". Relevant to P4.
 - ADR 0006 (`adr/0006-git-workspace-isolation.md`): quarantine default, `workspaceIsolation: 'worktree'` opt-in per project, `withRepoGitLock` serialisation — matches the normalisation in `api/projectStore.js:299-303` (default `quarantine`).
 - `docker-compose.yml`: single `kainbain:latest` service with `./projects:/workspace/projects` bind mount, as stated.
-- `PORTABLE_DEPLOYMENT.md` Scenarios A/B/C exist (plus a Scenario D the plan does not mention — see P1). `scripts/storage-sanity.mjs`, `npm run test:unit`, `npm run test:canary`, `api/agent/harnessContract.js`, `api/agent/sessionContract.test.js`, and `api/agent/logStream/` all exist as cited.
+- `docs/PORTABLE_DEPLOYMENT.md` Scenarios A/B/C exist (plus a Scenario D the plan does not mention — see P1). `scripts/storage-sanity.mjs`, `npm run test:unit`, `npm run test:canary`, `api/agent/harnessContract.js`, `api/agent/sessionContract.test.js`, and `api/agent/logStream/` all exist as cited.
 - HandNotes p.2 ("1 Runner … ^ current") and p.5 (priority-ordered alias flow: P1 → P2 → "Runner can't take job") match the plan's citations, including the doc-vs-hand-notes disagreement on alias semantics.
 
 ## Significant issues

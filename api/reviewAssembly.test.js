@@ -320,6 +320,103 @@ describe("buildTaskReview D2 snapshot rule", () => {
 	});
 });
 
+
+describe("buildTaskReview task-file filtering", () => {
+	it("drops task-dir rows from a live review and reports the count", async () => {
+		diffState.files = [
+			{ path: "docs/tasks/t1/task.md", oldPath: null, status: "modified", additions: 4, deletions: 1, binary: false },
+			{ path: "src/app.js", oldPath: null, status: "modified", additions: 3, deletions: 1, binary: false },
+		];
+		const deps = depsWith({ project: { useBranches: true, docsDirName: "docs" } });
+		const review = await buildTaskReview(deps, "/cwd", "proj-1", "task-1");
+		expect(review.files.map((f) => f.path)).toEqual(["src/app.js"]);
+		expect(review.filteredTaskFilesCount).toBe(1);
+	});
+
+	it("keeps a custom-prefixed task path filtered and a same-named docs path unfiltered", async () => {
+		diffState.files = [
+			{ path: "k-docs/tasks/t1/plan.md", oldPath: null, status: "modified", additions: 2, deletions: 0, binary: false },
+			{ path: "docs/tasks/not-a-task/legacy.md", oldPath: null, status: "modified", additions: 1, deletions: 0, binary: false },
+		];
+		const deps = depsWith({ project: { useBranches: true, docsDirName: "k-docs" } });
+		const review = await buildTaskReview(deps, "/cwd", "proj-1", "task-1");
+		expect(review.files.map((f) => f.path)).toEqual([
+			"docs/tasks/not-a-task/legacy.md",
+		]);
+		expect(review.filteredTaskFilesCount).toBe(1);
+	});
+
+	it("handles a branch whose every change is a task file", async () => {
+		diffState.files = [
+			{ path: "docs/tasks/t1/task.md", oldPath: null, status: "modified", additions: 4, deletions: 1, binary: false },
+		];
+		const review = await buildTaskReview(depsWith(), "/cwd", "proj-1", "task-1");
+		expect(review.files).toEqual([]);
+		expect(review.filteredTaskFilesCount).toBe(1);
+		expect(review.commits).toHaveLength(1);
+	});
+
+	it("filters the preserved primary payload, not the task rows", async () => {
+		gitState.clean = true;
+		diffState.files = [
+			{ path: "docs/tasks/t1/task.md", oldPath: null, status: "modified", additions: 4, deletions: 1, binary: false },
+			{ path: "src/app.js", oldPath: null, status: "modified", additions: 3, deletions: 1, binary: false },
+		];
+		const task = {
+			id: "task-1",
+			branch: "kb/task-1",
+			history: [],
+			reviewBaseline: {
+				baseSha: "aaa111",
+				headSha: "bbb222",
+				mainSha: "aaa111",
+				mergedAt: "2026-09-24T00:00:00.000Z",
+				stageId: "merge-1",
+			},
+		};
+		const deps = depsWith({
+			project: { useBranches: true, preserveReviewDiffAfterMerge: true },
+			task,
+		});
+		const review = await buildTaskReview(deps, "/cwd", "proj-1", "task-1");
+		expect(review.preserved).toBe(true);
+		expect(review.files.map((f) => f.path)).toEqual(["src/app.js"]);
+		if (review.newSinceMerge) {
+			expect(
+				review.newSinceMerge.files.every((f) => !String(f.path).startsWith("docs/tasks/")),
+			).toBe(true);
+		}
+	});
+
+	it("filters task files in the deleted-branch preserved path with a custom docsDirName", async () => {
+		gitState.branchExists = false;
+		diffState.files = [
+			{ path: "k-docs/tasks/t1/task.md", oldPath: null, status: "modified", additions: 4, deletions: 1, binary: false },
+			{ path: "src/app.js", oldPath: null, status: "modified", additions: 3, deletions: 1, binary: false },
+		];
+		const task = {
+			id: "task-1",
+			branch: "kb/task-1",
+			history: [],
+			reviewBaseline: {
+				baseSha: "aaa111",
+				headSha: "bbb222",
+				mainSha: "aaa111",
+				mergedAt: "2026-09-24T00:00:00.000Z",
+				stageId: "merge-1",
+			},
+		};
+		const deps = depsWith({
+			project: { useBranches: true, preserveReviewDiffAfterMerge: true, docsDirName: "k-docs" },
+			task,
+		});
+		const review = await buildTaskReview(deps, "/cwd", "proj-1", "task-1");
+		expect(review.preserved).toBe(true);
+		expect(review.files.map((f) => f.path)).toEqual(["src/app.js"]);
+		expect(review.filteredTaskFilesCount).toBe(1);
+	});
+});
+
 describe("buildTaskReview happy path", () => {
 	it("wires diff files, patches, commits, and ahead/behind counts", async () => {
 		const review = await buildTaskReview(depsWith(), "/cwd", "proj-1", "task-1");

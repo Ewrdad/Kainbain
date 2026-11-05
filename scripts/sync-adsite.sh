@@ -89,10 +89,11 @@ if [ "$CHECK" = "1" ]; then
     const remote=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
     const manifest=JSON.parse(fs.readFileSync("dist/release-manifest.json","utf8"));
     const out={commit:manifest.commit,siteSrcHash:process.env.SRC_HASH,files:{}};
-    for(const f of ["install.sh","install-runner.sh","update.sh","redeploy.sh"]){
+    for(const f of ["install.sh","install-runner.sh","update.sh","redeploy.sh","uninstall.sh"]){
       if(fs.existsSync("deploy/"+f)) out.files[f]=sha("deploy/"+f);
     }
     out.files["release-manifest.json"]=sha("dist/release-manifest.json");
+    if(fs.existsSync("dist/build-info.json")) out.files["build-info.json"]=sha("dist/build-info.json");
     const art=manifest&&manifest.components&&manifest.components.runner&&manifest.components.runner.artifact;
     if(art&&fs.existsSync("dist/"+art)) out.files[art]=sha("dist/"+art);
     const rf=remote.files||{};
@@ -111,11 +112,14 @@ fi
 
 # --- 1. Stage release files into public/ (local, cheap — always runs) --------
 run mkdir -p "$ADSITE/public"
-for f in install.sh install-runner.sh update.sh redeploy.sh; do
+for f in install.sh install-runner.sh update.sh redeploy.sh uninstall.sh; do
   [ -f "deploy/$f" ] || continue
   run cp "deploy/$f" "$ADSITE/public/$f"
 done
 run cp dist/release-manifest.json "$ADSITE/public/release-manifest.json"
+# build-info.json drives the ad-site's "latest build" section; publish.sh
+# regenerates it on every publish. Missing only on pre-feature dist/.
+if [ -f dist/build-info.json ]; then run cp dist/build-info.json "$ADSITE/public/build-info.json"; else log "note: dist/build-info.json missing (older publish?) — the build section will show its fallback"; fi
 if [ -n "$ARTIFACT" ] && [ -f "dist/$ARTIFACT" ]; then run cp "dist/$ARTIFACT" "$ADSITE/public/$ARTIFACT"; fi
 # Keep public/ lean: only the current runner tarball ships (older ones stay
 # reproducible in dist/ up to its own retention, and S3 is pruned to match).
@@ -135,7 +139,7 @@ if [ "$DRY_RUN" != "1" ]; then
 const fs=require("fs"),crypto=require("crypto"),path=require("path");
 const pub=path.join(process.env.ADSITE,"public");
 const manifest=JSON.parse(fs.readFileSync("dist/release-manifest.json","utf8"));
-const files=["release-manifest.json","install.sh","install-runner.sh","update.sh","redeploy.sh",process.env.ARTIFACT].filter(Boolean);
+const files=["release-manifest.json","build-info.json","install.sh","install-runner.sh","update.sh","redeploy.sh","uninstall.sh",process.env.ARTIFACT].filter(Boolean);
 const hashes={}; for(const f of files){const p=path.join(pub,f); if(fs.existsSync(p)) hashes[f]=crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex");}
 fs.writeFileSync(path.join(pub,"releases.json"), JSON.stringify({publishedAt:manifest.publishedAt,commit:manifest.commit,siteSrcHash:process.env.SRC_HASH,components:manifest.components,files:hashes},null,2)+"\n");
 console.log("sync-adsite: wrote releases.json ("+Object.keys(hashes).join(", ")+")");
@@ -149,7 +153,7 @@ fi
 command -v aws >/dev/null 2>&1 || { echo "sync-adsite.sh: aws CLI is not installed — staged locally only" >&2; exit 1; }
 if [ -n "$BASE" ]; then
   log "changes since $BASE (informational):"
-  git diff --name-only "$BASE"...HEAD -- kainbain-addsite deploy/install.sh deploy/install-runner.sh deploy/update.sh deploy/redeploy.sh scripts/sync-adsite.sh 2>/dev/null | sed 's/^/  /' || true
+  git diff --name-only "$BASE"...HEAD -- kainbain-addsite deploy/install.sh deploy/install-runner.sh deploy/update.sh deploy/redeploy.sh deploy/uninstall.sh scripts/sync-adsite.sh 2>/dev/null | sed 's/^/  /' || true
 fi
 
 # --- 2. Build only when the web src changed (else copy staged files over) ---
@@ -158,7 +162,7 @@ if [ "$FORCE" = "1" ] || [ ! -f "$ADSITE/dist/index.html" ]; then NEEDS_BUILD=1
 elif ! src_hash_matches "$ADSITE"; then NEEDS_BUILD=1; fi
 if [ "$DRY_RUN" = "1" ]; then
   if [ "$NEEDS_BUILD" = "1" ]; then echo "would run: (cd $ADSITE && npm run build)  [web src changed]"
-  else echo "would run: cp $ADSITE/public/{releases.json,release-manifest.json,install*.sh,update.sh,redeploy.sh,$ARTIFACT} $ADSITE/dist/  [no rebuild: site unchanged]"; fi
+  else echo "would run: cp $ADSITE/public/{releases.json,release-manifest.json,build-info.json,install*.sh,update.sh,redeploy.sh,uninstall.sh,$ARTIFACT} $ADSITE/dist/  [no rebuild: site unchanged]"; fi
 elif [ "$NEEDS_BUILD" = "1" ]; then
   log "web src changed — rebuilding the site"
   if [ ! -d "$ADSITE/node_modules" ]; then log "installing site dependencies (clean checkout)..."; (cd "$ADSITE" && npm install --include=dev) || exit 1; fi
@@ -167,7 +171,7 @@ elif [ "$NEEDS_BUILD" = "1" ]; then
   log "recorded site src hash in dist/.adsite-src-hash"
 else
   log "site unchanged — skipping vite rebuild (copying staged files into dist/)"
-  for f in releases.json release-manifest.json install.sh install-runner.sh update.sh redeploy.sh "$ARTIFACT"; do
+  for f in releases.json release-manifest.json build-info.json install.sh install-runner.sh update.sh redeploy.sh uninstall.sh "$ARTIFACT"; do
     [ -n "$f" ] && [ -f "$ADSITE/public/$f" ] && cp "$ADSITE/public/$f" "$ADSITE/dist/$f"
   done
 fi
@@ -218,11 +222,11 @@ if [ "$DRY_RUN" != "1" ]; then
 fi
 # --- 4d. Entry-point metadata: correct types, never cached --------------------
 # (a handful of tiny PUTs, only on runs that already decided to upload)
-for f in install.sh install-runner.sh update.sh redeploy.sh; do
+for f in install.sh install-runner.sh update.sh redeploy.sh uninstall.sh; do
   [ -f "$ADSITE/dist/$f" ] || continue
   run aws $(aws_args) s3 cp "$ADSITE/dist/$f" "$BUCKET/$f" --content-type "text/x-shellscript" --cache-control "no-cache" --metadata-directive REPLACE
 done
-for f in releases.json release-manifest.json; do
+for f in releases.json release-manifest.json build-info.json; do
   [ -f "$ADSITE/dist/$f" ] || continue
   run aws $(aws_args) s3 cp "$ADSITE/dist/$f" "$BUCKET/$f" --content-type "application/json" --cache-control "no-cache" --metadata-directive REPLACE
 done

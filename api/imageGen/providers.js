@@ -29,6 +29,18 @@ export const MUSE_IMAGE_API_BASE_URL = "https://api.meta.ai/v1";
 export const IMAGE_GEN_DEFAULT_SIZE = "1024x1024";
 
 /***
+ * MARK: MUSE_IMAGE_OUTPUT_FORMAT
+ * @description File type requested from Muse Image. The Meta Model API
+ *   defaults to `webp` when `output_format` is omitted — and webp bytes
+ *   stored under the job's `.png` names are served as `image/png` with
+ *   `nosniff`, which browsers refuse to render. Requesting `png` keeps
+ *   bytes and names in agreement (verified against the images schemas at
+ *   https://dev.meta.ai/docs/api-reference/images/schemas).
+ * @example MUSE_IMAGE_OUTPUT_FORMAT => 'png'
+ ***/
+export const MUSE_IMAGE_OUTPUT_FORMAT = "png";
+
+/***
  * MARK: IMAGE_GEN_TIMEOUT_MS
  * @description Per-request timeout for provider calls. Muse Image is agentic
  *   (it plans and revises before returning), so this is generous — generation
@@ -160,6 +172,65 @@ const fetchWithTimeout = async (fetchImpl, url, { timeoutMs, ...init }) => {
 };
 
 /***
+ * MARK: detectImageExtension
+ * @description Sniffs image bytes for the matching task-asset extension
+ *   (`png`/`jpg`/`gif`/`webp`) via magic numbers, or null when the bytes
+ *   are unrecognized. Guards the bytes/extension agreement the task image
+ *   endpoint relies on: serving sets Content-Type from the extension with
+ *   `nosniff`, so a mismatch renders as a broken image instead of a
+ *   picture. Providers that ignore the requested output format (or
+ *   follow-up URL downloads of any format) are saved under the sniffed
+ *   extension instead of the provisional `.png` name.
+ * @example detectImageExtension(Buffer.from(MOCK_IMAGE_PNG_BASE64, 'base64')) => 'png'
+ * @param {Buffer} bytes - Image bytes.
+ * @returns {string|null}
+ ***/
+export const detectImageExtension = (bytes) => {
+	if (!Buffer.isBuffer(bytes) || bytes.length < 3) return null;
+	if (
+		bytes.length >= 8 &&
+		bytes[0] === 0x89 &&
+		bytes[1] === 0x50 &&
+		bytes[2] === 0x4e &&
+		bytes[3] === 0x47 &&
+		bytes[4] === 0x0d &&
+		bytes[5] === 0x0a &&
+		bytes[6] === 0x1a &&
+		bytes[7] === 0x0a
+	) {
+		return "png";
+	}
+	if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+		return "jpg";
+	}
+	if (
+		bytes.length >= 6 &&
+		bytes[0] === 0x47 && // G
+		bytes[1] === 0x49 && // I
+		bytes[2] === 0x46 && // F
+		bytes[3] === 0x38 && // 8
+		(bytes[4] === 0x37 || bytes[4] === 0x39) && // 7 or 9
+		bytes[5] === 0x61 // a
+	) {
+		return "gif";
+	}
+	if (
+		bytes.length >= 12 &&
+		bytes[0] === 0x52 && // R
+		bytes[1] === 0x49 && // I
+		bytes[2] === 0x46 && // F
+		bytes[3] === 0x46 && // F
+		bytes[8] === 0x57 && // W
+		bytes[9] === 0x45 && // E
+		bytes[10] === 0x42 && // B
+		bytes[11] === 0x50 // P
+	) {
+		return "webp";
+	}
+	return null;
+};
+
+/***
  * MARK: generateMockImage
  * @description Deterministic offline generation: validates the prompt and
  *   returns the fixture PNG. No network, no key, no cost.
@@ -231,6 +302,7 @@ export const generateMuseImage = async ({
 				size: size || IMAGE_GEN_DEFAULT_SIZE,
 				n: 1,
 				response_format: "b64_json",
+				output_format: MUSE_IMAGE_OUTPUT_FORMAT,
 			}),
 		});
 	} catch (err) {
