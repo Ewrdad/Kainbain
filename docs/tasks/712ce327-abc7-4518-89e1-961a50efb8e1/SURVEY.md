@@ -72,6 +72,39 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Questions about past tasks (what happened, why it failed, how long it took)",
+        "Questions about the task's files and reports (show me the error details, the plan, the logs)",
+        "Questions across many tasks (trends, failure patterns, which stages are slowest)"
+      ],
+      "notes": "it sshould generally be read only queries"
+    },
+    "q2": {
+      "selected": [
+        "Run the quick job automatically and show the answer"
+      ],
+      "notes": "should be seperate to main queue"
+    },
+    "q3": {
+      "selected": [
+        "Look only – answer questions, never change files or tasks"
+      ],
+      "notes": "file searches and such are fine, just not tests"
+    },
+    "q4": {
+      "selected": [
+        "Any available runner – fastest option"
+      ],
+      "notes": "allow and advanced overide if needed"
+    },
+    "q5": {
+      "selected": [
+        "It errors or fails to reply"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
