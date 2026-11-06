@@ -23,6 +23,9 @@ function clampToRange(value, min, max) {
   return Math.min(max, Math.max(min, Math.round(numeric)));
 }
 
+/**
+ * @example getTaskInspectorDynamicMax() => 1920
+ */
 export function getTaskInspectorDynamicMax() {
   if (typeof window === 'undefined') return TASK_INSPECTOR_WIDTH_MAX;
   const viewportWidth = window.innerWidth || TASK_INSPECTOR_WIDTH_MIN + VIEWPORT_MARGIN;
@@ -32,6 +35,9 @@ export function getTaskInspectorDynamicMax() {
   );
 }
 
+/**
+ * @example const resize = useTaskInspectorResize({ uiPreferences, updateUiPreference });
+ */
 export function useTaskInspectorResize({ uiPreferences, updateUiPreference } = {}) {
   const requestedWidth = uiPreferences?.taskInspectorWidth;
   const safeRequested =
@@ -135,7 +141,13 @@ export function useTaskInspectorResize({ uiPreferences, updateUiPreference } = {
       if (!moveEvent?.touches || moveEvent.touches.length === 0) return;
       const deltaX = dragStartXRef.current - moveEvent.touches[0].clientX;
       const nextWidth = dragStartWidthRef.current + deltaX;
-      commitWidth(nextWidth);
+      const touchMax = Math.max(
+        TASK_INSPECTOR_WIDTH_MIN,
+        Math.min(getTaskInspectorDynamicMax(), (typeof window !== 'undefined' ? window.innerHeight : TASK_INSPECTOR_WIDTH_MAX) * 0.9),
+      );
+      const clamped = clampToRange(nextWidth, TASK_INSPECTOR_WIDTH_MIN, touchMax);
+      setPanelWidth(clamped);
+      updateUiPreference?.('taskInspectorWidth', clamped);
     };
 
     const handleTouchEnd = () => {
@@ -200,6 +212,9 @@ export function useTaskInspectorResize({ uiPreferences, updateUiPreference } = {
   };
 }
 
+/**
+ * @example export default useTaskInspectorResize;
+ */
 export default useTaskInspectorResize;
 
 export {

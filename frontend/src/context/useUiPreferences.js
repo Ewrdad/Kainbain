@@ -69,7 +69,13 @@ const CONSOLE_HEIGHT_MAX = 600;
 
 // Resizable Task Inspector panel width bounds (px); out-of-range stored
 // values fall back to the default instead of breaking layout.
+/**
+ * @example TASK_INSPECTOR_WIDTH_MIN // 320
+ */
 export const TASK_INSPECTOR_WIDTH_MIN = 320;
+/**
+ * @example TASK_INSPECTOR_WIDTH_MAX // 2000
+ */
 export const TASK_INSPECTOR_WIDTH_MAX = 2000;
 
 const PREVIEW_LINES_NUMERIC = [1, 2, 3];
