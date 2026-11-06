@@ -4,6 +4,8 @@ import {
   useUiPreferences,
   DEFAULT_UI_PREFERENCES,
   STORAGE_KEY,
+  TASK_INSPECTOR_WIDTH_MIN,
+  TASK_INSPECTOR_WIDTH_MAX,
   applyPreferencesToDom,
   sanitizePreferences,
   isValidPreferenceValue,
@@ -329,5 +331,70 @@ describe('sanitizePreferences', () => {
       expect(dropped).toEqual([]);
       expect(preferences).toEqual(DEFAULT_UI_PREFERENCES);
     }
+  });
+});
+
+describe('taskInspectorWidth preference', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  test('defaults to the desktop 560px width with 320–2000px bounds', () => {
+    expect(DEFAULT_UI_PREFERENCES.taskInspectorWidth).toBe(560);
+    expect(TASK_INSPECTOR_WIDTH_MIN).toBe(320);
+    expect(TASK_INSPECTOR_WIDTH_MAX).toBe(2000);
+  });
+
+  test('accepts finite numbers inside the bounds, edges included', () => {
+    expect(isValidPreferenceValue('taskInspectorWidth', 320)).toBe(true);
+    expect(isValidPreferenceValue('taskInspectorWidth', 560)).toBe(true);
+    expect(isValidPreferenceValue('taskInspectorWidth', 2000)).toBe(true);
+  });
+
+  test('rejects NaN, strings, booleans, and out-of-range numbers', () => {
+    expect(isValidPreferenceValue('taskInspectorWidth', NaN)).toBe(false);
+    expect(isValidPreferenceValue('taskInspectorWidth', '560')).toBe(false);
+    expect(isValidPreferenceValue('taskInspectorWidth', true)).toBe(false);
+    expect(isValidPreferenceValue('taskInspectorWidth', 319)).toBe(false);
+    expect(isValidPreferenceValue('taskInspectorWidth', 2001)).toBe(false);
+    expect(isValidPreferenceValue('taskInspectorWidth', undefined)).toBe(false);
+  });
+
+  test('sanitizer drops invalid widths and keeps the current value', () => {
+    const { preferences, dropped } = sanitizePreferences(
+      { taskInspectorWidth: 'wide' },
+      { ...DEFAULT_UI_PREFERENCES, taskInspectorWidth: 700 },
+    );
+    expect(dropped).toEqual(['taskInspectorWidth']);
+    expect(preferences.taskInspectorWidth).toBe(700);
+  });
+
+  test('poisoned stored JSON falls back to the default width', () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ taskInspectorWidth: 99999 }),
+    );
+
+    const { result } = renderHook(() => useUiPreferences());
+    expect(result.current.preferences.taskInspectorWidth).toBe(
+      DEFAULT_UI_PREFERENCES.taskInspectorWidth,
+    );
+  });
+
+  test('updatePreference persists a valid width and ignores an invalid one', () => {
+    const { result } = renderHook(() => useUiPreferences());
+
+    act(() => {
+      result.current.updatePreference('taskInspectorWidth', 700);
+    });
+    expect(result.current.preferences.taskInspectorWidth).toBe(700);
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)).taskInspectorWidth).toBe(
+      700,
+    );
+
+    act(() => {
+      result.current.updatePreference('taskInspectorWidth', 5);
+    });
+    expect(result.current.preferences.taskInspectorWidth).toBe(700);
   });
 });

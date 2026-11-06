@@ -65,3 +65,41 @@ test('clamps to min/max', () => {
   });
   expect(result.current.panelWidth).toBe(320);
 });
+
+test('touch drag updates width with leftward movement and persists', () => {
+  const updateUiPreference = vi.fn();
+  const { result } = renderHook(() =>
+    useTaskInspectorResize({ uiPreferences: { taskInspectorWidth: 560 }, updateUiPreference }),
+  );
+
+  act(() => {
+    result.current.handleResizeTouchStart({
+      touches: [{ clientX: 100 }],
+      preventDefault: vi.fn(),
+    });
+    const move = new Event('touchmove');
+    move.touches = [{ clientX: 60 }];
+    window.dispatchEvent(move);
+  });
+  // startWidth 560 + (100-60) = 600
+  expect(result.current.panelWidth).toBe(600);
+  expect(updateUiPreference).toHaveBeenLastCalledWith('taskInspectorWidth', 600);
+
+  act(() => {
+    window.dispatchEvent(new Event('touchend'));
+  });
+  expect(result.current.isDraggingInspector).toBe(false);
+});
+
+test('touch start without touches is ignored', () => {
+  const updateUiPreference = vi.fn();
+  const { result } = renderHook(() =>
+    useTaskInspectorResize({ uiPreferences: { taskInspectorWidth: 560 }, updateUiPreference }),
+  );
+
+  act(() => {
+    result.current.handleResizeTouchStart({ touches: [], preventDefault: vi.fn() });
+  });
+  expect(result.current.isDraggingInspector).toBe(false);
+  expect(updateUiPreference).not.toHaveBeenCalled();
+});

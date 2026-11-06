@@ -1264,3 +1264,119 @@ test('hides the checkpoint approve banner on terminal-failed tasks and keeps Ret
   expect(screen.queryByRole('button', { name: /Approve task #KB-T1/i })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: /Retry failed stage on task #KB-T1/i })).toBeInTheDocument();
 });
+
+/***
+ * MARK: adjustable inspector width tests
+ * @description The task inspector is a user-resizable side panel: a
+ *   left-edge separator exposes the persisted width to pointer, touch,
+ *   and keyboard input, stays full-width on mobile, and never removes the
+ *   existing close behavior.
+ ***/
+test('inspector exposes an accessible resize separator with the persisted width', () => {
+  const updateUiPreference = vi.fn();
+  renderWithKainBain(<TaskDetailOverlay task={task} onClose={() => {}} />, {
+    stages,
+    uiPreferences: { taskInspectorWidth: 700 },
+    updateUiPreference,
+  });
+
+  const aside = screen.getByRole('complementary', { name: 'Task Inspector' });
+  // Desktop inline width reflects the persisted preference (jsdom has no
+  // matchMedia, which the component treats as desktop).
+  expect(aside.style.width).toBe('700px');
+  // Fixed responsive widths are gone; mobile still gets full width.
+  expect(aside.className).toContain('w-full');
+  expect(aside.className).not.toContain('md:w-[480px]');
+  expect(aside.className).not.toContain('lg:w-[560px]');
+  expect(aside.className).not.toContain('xl:w-[620px]');
+
+  const separator = screen.getByRole('separator', { name: 'Resize Task Inspector' });
+  expect(separator).toHaveAttribute('aria-orientation', 'vertical');
+  expect(separator).toHaveAttribute('aria-valuemin', '320');
+  expect(separator).toHaveAttribute('aria-valuemax', '2000');
+  expect(separator).toHaveAttribute('aria-valuenow', '700');
+  // Desktop-only handle; hidden below the md breakpoint.
+  expect(separator.className).toContain('hidden');
+  expect(separator.className).toContain('md:flex');
+});
+
+test('inspector drag on the left edge widens the panel and persists the width', () => {
+  const updateUiPreference = vi.fn();
+  renderWithKainBain(<TaskDetailOverlay task={task} onClose={() => {}} />, {
+    stages,
+    uiPreferences: { taskInspectorWidth: 700 },
+    updateUiPreference,
+  });
+
+  const separator = screen.getByRole('separator', { name: 'Resize Task Inspector' });
+  fireEvent.mouseDown(separator, { clientX: 600, button: 0 });
+  act(() => {
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 480 }));
+  });
+  // Moving the pointer left grows the panel: 700 + (600 - 480) = 820.
+  expect(updateUiPreference).toHaveBeenLastCalledWith('taskInspectorWidth', 820);
+  expect(screen.getByRole('complementary', { name: 'Task Inspector' }).style.width).toBe(
+    '820px',
+  );
+  expect(separator).toHaveAttribute('aria-valuenow', '820');
+
+  act(() => {
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 480 }));
+  });
+  expect(
+    screen.getByRole('complementary', { name: 'Task Inspector' }).className,
+  ).not.toContain('select-none');
+});
+
+test('inspector separator supports keyboard nudging and double-click reset', () => {
+  const updateUiPreference = vi.fn();
+  renderWithKainBain(<TaskDetailOverlay task={task} onClose={() => {}} />, {
+    stages,
+    uiPreferences: { taskInspectorWidth: 560 },
+    updateUiPreference,
+  });
+
+  const separator = screen.getByRole('separator', { name: 'Resize Task Inspector' });
+  fireEvent.keyDown(separator, { key: 'ArrowLeft' });
+  expect(updateUiPreference).toHaveBeenLastCalledWith('taskInspectorWidth', 580);
+
+  fireEvent.keyDown(separator, { key: 'ArrowRight' });
+  expect(updateUiPreference).toHaveBeenLastCalledWith('taskInspectorWidth', 560);
+
+  fireEvent.doubleClick(separator);
+  expect(updateUiPreference).toHaveBeenLastCalledWith('taskInspectorWidth', 560);
+});
+
+test('inspector stays full-width on mobile with no inline width override', () => {
+  const originalMatchMedia = window.matchMedia;
+  Object.defineProperty(window, 'matchMedia', {
+    value: () => ({
+      matches: false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+    configurable: true,
+    writable: true,
+  });
+  try {
+    renderWithKainBain(<TaskDetailOverlay task={task} onClose={() => {}} />, {
+      stages,
+      uiPreferences: { taskInspectorWidth: 700 },
+      updateUiPreference: vi.fn(),
+    });
+
+    const aside = screen.getByRole('complementary', { name: 'Task Inspector' });
+    expect(aside.style.width).toBe('');
+    expect(aside.className).toContain('w-full');
+    // The close control remains available on mobile.
+    expect(
+      screen.getByRole('button', { name: 'Close Task Inspector' }),
+    ).toBeInTheDocument();
+  } finally {
+    if (originalMatchMedia === undefined) {
+      delete window.matchMedia;
+    } else {
+      window.matchMedia = originalMatchMedia;
+    }
+  }
+});

@@ -741,11 +741,16 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
       // Configure drawer so the footer never covers the panel and the panel
       // never covers the footer.
       style={{ width: isDesktopInspector ? `${panelWidth}px` : undefined }}
+      // No duration-*/transition-* classes here on purpose: transition-property
+      // defaults to `all`, so any duration would animate width changes over
+      // that window — the panel would lag behind the drag pointer and
+      // measurements taken right after a drag would race the transition.
+      // Width must track the persisted preference synchronously.
       className={`relative fixed inset-0 z-50 md:relative md:inset-auto md:z-50 w-full md:w-auto md:shrink-0 md:max-w-none flex-shrink-0 ${
         isDraggingInspector ? 'select-none' : ''
       } ${
         footerReserved ? 'bottom-[72px] h-[calc(100%-72px)]' : 'h-full'
-      } border-l border-border-standard bg-surface flex flex-col overflow-hidden shadow-2xl animate-in slide-in-from-right duration-300`}
+      } border-l border-border-standard bg-surface flex flex-col overflow-hidden shadow-2xl animate-in slide-in-from-right`}
     >
       {/* Horizontal resize handle on the left edge (desktop only) */}
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- pointer handlers mirror keyboard control below (WCAG 2.1.1) */}
