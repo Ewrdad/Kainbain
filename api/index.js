@@ -29,6 +29,11 @@ import { sessionStore } from "./sessionStore.js";
 import { ClaimStore } from "./flow/claimStore.js";
 import { IntegrationQueue } from "./flow/integrationQueue.js";
 import { SteerStore } from "./flow/steerStore.js";
+import {
+	ImpromptuStore,
+	createChatProgressForwarder,
+	createImpromptuDispatcher,
+} from "./flow/impromptuStore.js";
 import { RunnerRegistry } from "./flow/runnerRegistry.js";
 import { ExecutionLedger } from "./flow/executionLedger.js";
 import { workflowRegistry } from "./workflowRegistry.js";
@@ -50,6 +55,7 @@ import harnessesRoutes from "./routes/harnesses.js";
 import sessionsRoutes from "./routes/sessions.js";
 import tasksRoutes from "./routes/tasks.js";
 import { registerRunnerRoutes } from "./flow/runnerRoutes.js";
+import { registerImpromptuRoutes } from "./flow/impromptuRoutes.js";
 import workflowsRoutes from "./routes/workflows.js";
 import onboardingRoutes from "./routes/onboarding.js";
 import filesRoutes from "./routes/files.js";
@@ -182,6 +188,22 @@ const runnerRegistry = new RunnerRegistry({
 });
 const claimStore = new ClaimStore({ ttlMs: config.claimTtlMs });
 const steerStore = new SteerStore({});
+// Impromptu T0 channel (ADR 0014): read-only Runner jobs off the main task
+// queue (retrospective chat turns). Runner progress deltas fan out as the
+// existing CHAT_PROGRESS frames through the store's sink.
+const impromptuStore = new ImpromptuStore({
+	queueMax: config.impromptuQueueMax,
+	jobTtlMs: config.impromptuJobTtlMs,
+	claimTtlMs: config.impromptuClaimTtlMs,
+	onProgress: createChatProgressForwarder({ eventBridge }),
+});
+const impromptuDispatcher = createImpromptuDispatcher({
+	impromptuStore,
+	runnerRegistry,
+	claimStore,
+	enabled: config.impromptuEnabled,
+	staleAfterMs: config.runnerStaleAfterMs,
+});
 const executionLedger = new ExecutionLedger();
 // Serialized integration leases for Runner-run merges (Step 3): one
 // project + target branch, one leased integration at a time. In-memory
@@ -216,6 +238,8 @@ const deps = {
 	runnerRegistry,
 	claimStore,
 	steerStore,
+	impromptuStore,
+	impromptuDispatcher,
 	executionLedger,
 	integrationQueue,
 };
@@ -258,6 +282,7 @@ app.register(harnessesRoutes, { deps });
 app.register(sessionsRoutes, { deps });
 app.register(tasksRoutes, { deps });
 app.register(registerRunnerRoutes, { deps });
+app.register(registerImpromptuRoutes, { deps });
 app.register(workflowsRoutes, { deps });
 app.register(onboardingRoutes, { deps });
 app.register(filesRoutes, { deps });
