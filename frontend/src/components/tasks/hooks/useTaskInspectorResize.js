@@ -46,19 +46,30 @@ export function useTaskInspectorResize({ uiPreferences, updateUiPreference } = {
       : DEFAULT_TASK_INSPECTOR_WIDTH;
 
   const [isDraggingInspector, setIsDraggingInspector] = useState(false);
-  const [panelWidth, setPanelWidth] = useState(() =>
-    clampToRange(safeRequested, TASK_INSPECTOR_WIDTH_MIN, TASK_INSPECTOR_WIDTH_MAX),
+  const initialPanelWidth = clampToRange(
+    safeRequested,
+    TASK_INSPECTOR_WIDTH_MIN,
+    Math.min(TASK_INSPECTOR_WIDTH_MAX, getTaskInspectorDynamicMax()),
   );
+  const [panelWidth, setPanelWidth] = useState(() => initialPanelWidth);
 
   const isDraggingRef = useRef(false);
   const dragStartXRef = useRef(0);
   const dragStartWidthRef = useRef(panelWidth);
+  const activeMouseHandlersRef = useRef(null);
+  const activeTouchHandlersRef = useRef(null);
 
   // Keep local state in sync with the persisted preference when it changes
   // out-of-band (e.g. another tab), but never fight an in-progress drag.
   useEffect(() => {
     if (isDraggingRef.current) return;
-    setPanelWidth(clampToRange(safeRequested, TASK_INSPECTOR_WIDTH_MIN, TASK_INSPECTOR_WIDTH_MAX));
+    setPanelWidth(
+      clampToRange(
+        safeRequested,
+        TASK_INSPECTOR_WIDTH_MIN,
+        Math.min(TASK_INSPECTOR_WIDTH_MAX, getTaskInspectorDynamicMax()),
+      ),
+    );
   }, [safeRequested]);
 
   // Clamp the live width to the viewport on window resize without persisting
@@ -77,6 +88,29 @@ export function useTaskInspectorResize({ uiPreferences, updateUiPreference } = {
       return () => window.removeEventListener('resize', handleResize);
     }
     return undefined;
+  }, []);
+
+  // Clean up any in-flight drag listeners when the component unmounts so a
+  // resize that is interrupted (unmount, route change, parent removal) cannot
+  // leak window handlers or call state on an unmounted instance.
+  useEffect(() => {
+    return () => {
+      if (typeof window === 'undefined') return;
+      const mouseHandlers = activeMouseHandlersRef.current;
+      if (mouseHandlers) {
+        window.removeEventListener('mousemove', mouseHandlers.move);
+        window.removeEventListener('mouseup', mouseHandlers.up);
+        activeMouseHandlersRef.current = null;
+      }
+      const touchHandlers = activeTouchHandlersRef.current;
+      if (touchHandlers) {
+        window.removeEventListener('touchmove', touchHandlers.move);
+        window.removeEventListener('touchend', touchHandlers.end);
+        window.removeEventListener('touchcancel', touchHandlers.end);
+        activeTouchHandlersRef.current = null;
+      }
+      isDraggingRef.current = false;
+    };
   }, []);
 
   const commitWidth = (nextWidth) => {
@@ -115,9 +149,13 @@ export function useTaskInspectorResize({ uiPreferences, updateUiPreference } = {
         window.removeEventListener('mousemove', handleMouseMove);
         window.removeEventListener('mouseup', handleMouseUp);
       }
+      if (activeMouseHandlersRef.current) {
+        activeMouseHandlersRef.current = null;
+      }
     };
 
     if (typeof window !== 'undefined') {
+      activeMouseHandlersRef.current = { move: handleMouseMove, up: handleMouseUp };
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
     }
@@ -141,13 +179,7 @@ export function useTaskInspectorResize({ uiPreferences, updateUiPreference } = {
       if (!moveEvent?.touches || moveEvent.touches.length === 0) return;
       const deltaX = dragStartXRef.current - moveEvent.touches[0].clientX;
       const nextWidth = dragStartWidthRef.current + deltaX;
-      const touchMax = Math.max(
-        TASK_INSPECTOR_WIDTH_MIN,
-        Math.min(getTaskInspectorDynamicMax(), (typeof window !== 'undefined' ? window.innerHeight : TASK_INSPECTOR_WIDTH_MAX) * 0.9),
-      );
-      const clamped = clampToRange(nextWidth, TASK_INSPECTOR_WIDTH_MIN, touchMax);
-      setPanelWidth(clamped);
-      updateUiPreference?.('taskInspectorWidth', clamped);
+      commitWidth(nextWidth);
     };
 
     const handleTouchEnd = () => {
@@ -158,9 +190,13 @@ export function useTaskInspectorResize({ uiPreferences, updateUiPreference } = {
         window.removeEventListener('touchend', handleTouchEnd);
         window.removeEventListener('touchcancel', handleTouchEnd);
       }
+      if (activeTouchHandlersRef.current) {
+        activeTouchHandlersRef.current = null;
+      }
     };
 
     if (typeof window !== 'undefined') {
+      activeTouchHandlersRef.current = { move: handleTouchMove, end: handleTouchEnd };
       window.addEventListener('touchmove', handleTouchMove, { passive: true });
       window.addEventListener('touchend', handleTouchEnd);
       window.addEventListener('touchcancel', handleTouchEnd);
@@ -177,20 +213,10 @@ export function useTaskInspectorResize({ uiPreferences, updateUiPreference } = {
   const handleResizeKeyDown = (e) => {
     if (e?.key === 'ArrowLeft') {
       e.preventDefault?.();
-      const next = Math.min(
-        TASK_INSPECTOR_WIDTH_MAX,
-        Math.max(TASK_INSPECTOR_WIDTH_MIN, panelWidth + KEYBOARD_STEP),
-      );
-      setPanelWidth(next);
-      updateUiPreference?.('taskInspectorWidth', next);
+      commitWidth(panelWidth + KEYBOARD_STEP);
     } else if (e?.key === 'ArrowRight') {
       e.preventDefault?.();
-      const next = Math.min(
-        TASK_INSPECTOR_WIDTH_MAX,
-        Math.max(TASK_INSPECTOR_WIDTH_MIN, panelWidth - KEYBOARD_STEP),
-      );
-      setPanelWidth(next);
-      updateUiPreference?.('taskInspectorWidth', next);
+      commitWidth(panelWidth - KEYBOARD_STEP);
     }
   };
 
