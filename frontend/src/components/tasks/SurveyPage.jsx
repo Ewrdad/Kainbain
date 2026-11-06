@@ -80,8 +80,7 @@ export function describeSurveySaveError(err, fallback = 'Could not save answers'
       const parsed = JSON.parse(candidate);
       const backendMessage =
         typeof parsed?.error === 'string' && parsed.error.trim() ? parsed.error.trim() : '';
-      const code =
-        typeof parsed?.code === 'string' && parsed.code.trim() ? parsed.code.trim() : '';
+      const code = typeof parsed?.code === 'string' && parsed.code.trim() ? parsed.code.trim() : '';
       if (backendMessage && code) return `${backendMessage} (${code})`;
       if (backendMessage) return backendMessage;
     } catch {
@@ -524,7 +523,7 @@ export function SurveyPage({
       <div
         role="region"
         aria-label="Task survey"
-        className="w-full md:w-1/2 flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-6"
+        className="w-full md:flex-[0.6] flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-6"
       >
         <div className="w-full max-w-2xl mx-auto space-y-4">
           <div className="flex items-center gap-3">
@@ -637,7 +636,10 @@ export function SurveyPage({
           keep the single-column survey: `hidden md:flex` never renders below
           the `md` (768px) breakpoint. Each column scrolls independently so
           answering never displaces the task description or reports. */}
-      <div className="hidden md:flex md:w-1/2 border-l border-border-standard bg-surface overflow-hidden">
+      <div
+        className="hidden md:flex md:flex-[0.4] border-l border-border-standard bg-surface overflow-hidden resize-x"
+        style={{ minWidth: '250px', maxWidth: '80%' }}
+      >
         <SurveyTaskPanel
           key={taskId || 'no-task'}
           task={task}
@@ -673,7 +675,17 @@ function surveyStatusLine(survey, totalQuestions) {
  *   44px touch targets) for `single`/`multiple`, generated image cards with
  *   radio semantics for `image`, plus an always-present Notes textarea.
  ***/
-function QuestionField({ question, selected, notes, missing, onSelect, onNotes, projectId, taskId, imageGenProviderId }) {
+function QuestionField({
+  question,
+  selected,
+  notes,
+  missing,
+  onSelect,
+  onNotes,
+  projectId,
+  taskId,
+  imageGenProviderId,
+}) {
   const multi = question.type === 'multiple';
   const inputType = multi ? 'checkbox' : 'radio';
   return (
@@ -818,7 +830,11 @@ function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGe
   }
   const generationOff = imageGenProviderId === 'none' || imageGenProviderId === '';
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label={question.text}>
+    <div
+      className="grid grid-cols-1 sm:grid-cols-2 gap-2"
+      role="radiogroup"
+      aria-label={question.text}
+    >
       {(question.options || []).map((option, index) => {
         const text = String(option);
         const checked = selected.includes(text);
@@ -897,7 +913,9 @@ function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGe
                 aria-label={`${text}: generating illustration`}
                 className="block w-full aspect-video rounded-sm bg-surface-deep motion-safe:animate-pulse"
               />
-              <span className="text-[11px] font-mono text-text-muted">Generating illustration…</span>
+              <span className="text-[11px] font-mono text-text-muted">
+                Generating illustration…
+              </span>
               <span className="leading-snug text-xs">{text}</span>
             </label>
           );
