@@ -12,7 +12,11 @@
       "id": "q1",
       "type": "single",
       "text": "The tick-box at the bottom of the list says 'Show completed (0)' even when there are completed items. Should we simply remove the number so it always says 'Show completed' with no number at all?",
-      "options": ["Yes, just show the words with no number", "No, keep a number but fix it to show the real count", "Other (explain in Notes)"],
+      "options": [
+        "Yes, just show the words with no number",
+        "No, keep a number but fix it to show the real count",
+        "Other (explain in Notes)"
+      ],
       "required": true,
       "showIf": null
     },
@@ -20,11 +24,28 @@
       "id": "q2",
       "type": "single",
       "text": "Should we leave everything else on that list exactly as it is and only change this one tick-box?",
-      "options": ["Yes, only change this tick-box", "No, change other counts too (explain in Notes)", "Not sure"],
+      "options": [
+        "Yes, only change this tick-box",
+        "No, change other counts too (explain in Notes)",
+        "Not sure"
+      ],
       "required": true,
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Yes, just show the words with no number"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Yes, only change this tick-box"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
