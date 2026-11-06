@@ -84,6 +84,14 @@ test.describe("Mobile Responsive Layout", () => {
 		const inspector = page.getByRole("complementary", { name: "Task Inspector" });
 		await expect(inspector).toBeVisible({ timeout: 10000 });
 
+		// Fixed-overlay contract: below the md breakpoint the drawer must
+		// keep `position: fixed` so it overlays the board — a stray
+		// `relative` class would silently break the slide-over on mobile.
+		const drawerPosition = await inspector.evaluate(
+			(el) => getComputedStyle(el).position,
+		);
+		expect(drawerPosition).toBe("fixed");
+
 		// Close inspector button has minimum 44px touch target
 		const closeBtn = page.getByRole("button", { name: "Close Task Inspector" });
 		await expect(closeBtn).toBeVisible();

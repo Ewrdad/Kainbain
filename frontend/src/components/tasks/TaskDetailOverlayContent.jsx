@@ -601,12 +601,12 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
     // Board summaries cap task.reports at the recent few: prefer the full
     // separately-fetched report list when it has loaded so old plan paths
     // still resolve, falling back to the summary's recent entries.
-    let tokenReports = [];
-    if (Array.isArray(reportsData) && reportsData.length > 0) {
-      tokenReports = reportsData;
-    } else if (Array.isArray(task?.reports)) {
-      tokenReports = task.reports;
-    }
+    const tokenReports =
+      Array.isArray(reportsData) && reportsData.length > 0
+        ? reportsData
+        : Array.isArray(task?.reports)
+          ? task.reports
+          : [];
     const priorPaths = tokenReports
       .map((r) => {
         if (typeof r === 'string') return r;
@@ -746,7 +746,7 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
       // that window — the panel would lag behind the drag pointer and
       // measurements taken right after a drag would race the transition.
       // Width must track the persisted preference synchronously.
-      className={`relative fixed inset-0 z-50 md:relative md:inset-auto md:z-50 w-full md:w-auto md:shrink-0 md:max-w-none flex-shrink-0 ${
+      className={`fixed inset-0 z-50 md:relative md:inset-auto md:z-50 w-full md:w-auto md:shrink-0 md:max-w-none flex-shrink-0 ${
         isDraggingInspector ? 'select-none' : ''
       } ${
         footerReserved ? 'bottom-[72px] h-[calc(100%-72px)]' : 'h-full'

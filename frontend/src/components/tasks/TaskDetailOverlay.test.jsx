@@ -1163,6 +1163,27 @@ test('inspector reserves the Now Playing footer height by default (footer-overla
   expect(aside.className).not.toContain('h-full');
 });
 
+/***
+ * MARK: mobile drawer positioning tests
+ * @description Below the md breakpoint the inspector is a slide-over drawer
+ *   and must keep `position: fixed` so it overlays the board. A stray bare
+ *   `relative` class would win over `fixed` in the cascade (Tailwind emits
+ *   `.relative` after `.fixed`) and silently break the mobile overlay.
+ *   `md:relative` is fine — it only applies on desktop.
+ * @example
+ *   expect(tokens).toContain('fixed');
+ *   expect(tokens).not.toContain('relative');
+ ***/
+test('inspector keeps fixed overlay positioning on mobile (no stray relative class)', () => {
+  renderWithKainBain(<TaskDetailOverlay task={task} onClose={() => {}} />, { stages });
+
+  const aside = screen.getByRole('complementary', { name: 'Task Inspector' });
+  const tokens = aside.className.split(/\s+/);
+  expect(tokens).toContain('fixed');
+  expect(tokens).not.toContain('relative');
+  expect(tokens).toContain('md:relative');
+});
+
 test('inspector fills the full height when the Now Playing footer is hidden', () => {
   renderWithKainBain(
     <TaskDetailOverlay task={task} onClose={() => {}} footerReserved={false} />,
