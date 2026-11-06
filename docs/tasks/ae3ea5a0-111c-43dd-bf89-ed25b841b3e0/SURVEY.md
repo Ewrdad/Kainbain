@@ -71,6 +71,37 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Readable document with headings and lists, comment option appears when you hover (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Keep faint line numbers next to the readable text and comment on a line number"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Only the part under the mouse is gently highlighted, the rest stays plain (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Compact reading view: empty lines collapse, small even spacing, no divider lines or boxes (Recommended)"
+      ],
+      "notes": "unless explicity specified in the markdown.  "
+    },
+    "q5": {
+      "selected": [
+        "No, readable view only to keep it simple"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
