@@ -70,6 +70,37 @@ Right now the task panel has a fixed size. This survey makes sure we make it adj
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "The task details view (the main page you see when you open a task)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Drag the edge between the panel and the main area (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Yes — keep my size next time I open it (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "No — resizing is enough"
+      ],
+      "notes": "Existing close options can be used"
+    },
+    "q5": {
+      "selected": [
+        "Let me make it almost full-screen if I want"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
