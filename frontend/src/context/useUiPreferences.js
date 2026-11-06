@@ -16,6 +16,7 @@ export const DEFAULT_UI_PREFERENCES = {
   showNowPlayingBar: true,
   activityDrawerDefaultOpen: false,
   consoleHeight: 256, // 120px to 600px resizable Activity Console height
+  taskInspectorWidth: 560, // 320px to 2000px resizable Task Inspector panel width
   keepScreenAwakeOnMonitor: true, // hold a screen wake lock while the monitor is open and running
 
   // Task Cards & Display
@@ -66,6 +67,11 @@ const BOOLEAN_PREFERENCE_KEYS = [
 const CONSOLE_HEIGHT_MIN = 120;
 const CONSOLE_HEIGHT_MAX = 600;
 
+// Resizable Task Inspector panel width bounds (px); out-of-range stored
+// values fall back to the default instead of breaking layout.
+export const TASK_INSPECTOR_WIDTH_MIN = 320;
+export const TASK_INSPECTOR_WIDTH_MAX = 2000;
+
 const PREVIEW_LINES_NUMERIC = [1, 2, 3];
 
 /**
@@ -94,6 +100,14 @@ export function isValidPreferenceValue(key, value) {
       Number.isFinite(value) &&
       value >= CONSOLE_HEIGHT_MIN &&
       value <= CONSOLE_HEIGHT_MAX
+    );
+  }
+  if (key === 'taskInspectorWidth') {
+    return (
+      typeof value === 'number' &&
+      Number.isFinite(value) &&
+      value >= TASK_INSPECTOR_WIDTH_MIN &&
+      value <= TASK_INSPECTOR_WIDTH_MAX
     );
   }
   if (key === 'cardPreviewLines') {

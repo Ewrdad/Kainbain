@@ -34,6 +34,8 @@ import { TaskHistoryTab } from './TaskHistoryTab';
 import { TaskDetailsTab } from './TaskDetailsTab';
 import { isRejectedTask } from './failureReason';
 import { LogsPanel, useTaskLogs } from './LogsPanel';
+import { useTaskInspectorResize } from './hooks/useTaskInspectorResize';
+import { TASK_INSPECTOR_WIDTH_MIN, TASK_INSPECTOR_WIDTH_MAX } from '../../context/useUiPreferences';
 
 /***
  * MARK: TaskDetailOverlay
@@ -81,6 +83,8 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
     tasks: siblingTasks = [],
     projectWorkflows = [],
     activeWorkflowId,
+    uiPreferences,
+    updateUiPreference,
   } = useKainBain();
 
   // Single-active invariant: executing means owning the running engine,
@@ -114,6 +118,34 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
   // without depending on the live task object (whose auto-save updates would
   // otherwise re-trigger focus management and steal focus).
   const hasTaskRef = useRef(Boolean(task?.id));
+
+  // Persisted, user-adjustable width for the inspector side panel.
+  const {
+    panelWidth,
+    isDraggingInspector,
+    handleResizeMouseDown,
+    handleResizeTouchStart,
+    handleResizeKeyDown,
+    handleResizeDoubleClick,
+  } = useTaskInspectorResize({ uiPreferences, updateUiPreference });
+
+  const [isDesktopInspector, setIsDesktopInspector] = useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return true;
+    }
+    try {
+      return window.matchMedia('(min-width: 768px)').matches;
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const mql = window.matchMedia('(min-width: 768px)');
+    const handler = (e) => setIsDesktopInspector(Boolean(e?.matches));
+    mql.addEventListener?.('change', handler);
+    return () => mql.removeEventListener?.('change', handler);
+  }, []);
 
   // Keep the latest onClose in a ref so the focus-trap effect below can be
   // mounted once (deps []) without re-running — and without stealing focus —
@@ -569,12 +601,12 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
     // Board summaries cap task.reports at the recent few: prefer the full
     // separately-fetched report list when it has loaded so old plan paths
     // still resolve, falling back to the summary's recent entries.
-    const tokenReports =
-      Array.isArray(reportsData) && reportsData.length > 0
-        ? reportsData
-        : Array.isArray(task?.reports)
-          ? task.reports
-          : [];
+    let tokenReports = [];
+    if (Array.isArray(reportsData) && reportsData.length > 0) {
+      tokenReports = reportsData;
+    } else if (Array.isArray(task?.reports)) {
+      tokenReports = task.reports;
+    }
     const priorPaths = tokenReports
       .map((r) => {
         if (typeof r === 'string') return r;
@@ -708,10 +740,33 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
       // (md:inset-auto resets the mobile bottom offset). This mirrors the
       // Configure drawer so the footer never covers the panel and the panel
       // never covers the footer.
-      className={`fixed inset-0 z-50 md:relative md:inset-auto md:z-50 w-full md:w-[480px] lg:w-[560px] xl:w-[620px] flex-shrink-0 ${
+      style={{ width: isDesktopInspector ? `${panelWidth}px` : undefined }}
+      className={`relative fixed inset-0 z-50 md:relative md:inset-auto md:z-50 w-full md:w-auto md:shrink-0 md:max-w-none flex-shrink-0 ${
+        isDraggingInspector ? 'select-none' : ''
+      } ${
         footerReserved ? 'bottom-[72px] h-[calc(100%-72px)]' : 'h-full'
       } border-l border-border-standard bg-surface flex flex-col overflow-hidden shadow-2xl animate-in slide-in-from-right duration-300`}
     >
+      {/* Horizontal resize handle on the left edge (desktop only) */}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- pointer handlers mirror keyboard control below (WCAG 2.1.1) */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-valuenow={panelWidth}
+        aria-valuemin={TASK_INSPECTOR_WIDTH_MIN}
+        aria-valuemax={TASK_INSPECTOR_WIDTH_MAX}
+        aria-label="Resize Task Inspector"
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- focusable separator with keyboard control
+        tabIndex={0}
+        onMouseDown={handleResizeMouseDown}
+        onTouchStart={handleResizeTouchStart}
+        onKeyDown={handleResizeKeyDown}
+        onDoubleClick={handleResizeDoubleClick}
+        className="hidden md:flex absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-10 items-center justify-center select-none"
+      >
+        <div className="w-1 h-10 rounded-full bg-text-muted/40" />
+      </div>
+
       {/* Inspector Header */}
       <header className="p-4 border-b border-border-standard bg-surface-container flex flex-col gap-3 shrink-0">
         <div className="flex items-start justify-between gap-3">
