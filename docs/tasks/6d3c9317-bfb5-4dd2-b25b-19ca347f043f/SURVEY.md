@@ -53,6 +53,31 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Yes – only count tasks waiting to be picked up"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Hide them – the popup should only list waiting tasks (matches the number)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "No – don't count them, they can't be picked up right now"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Yes – remove them, a runner can't pick them up"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
