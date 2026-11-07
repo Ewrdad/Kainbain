@@ -59,6 +59,31 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "The real details from the other pipeline: which job and step it is working on (recommended)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Yes — always show all runners and what each is doing, on every pipeline page (recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Jump to that job in the other pipeline so I can see it (recommended)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Live progress: the current job and step name, updating as the work moves along (recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
