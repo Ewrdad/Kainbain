@@ -558,7 +558,7 @@ export function MarkdownViewer({
   return (
     <div
       data-testid="markdown-viewer"
-      className={`markdown-viewer space-y-2.5 text-xs text-on-surface leading-relaxed min-w-0 max-w-full break-words overflow-x-clip ${className}`}
+      className={`markdown-viewer space-y-1.5 text-xs text-on-surface leading-relaxed min-w-0 max-w-full break-words overflow-x-clip ${className}`}
     >
       {blocks.map((block, idx) => {
         let rendered;
@@ -567,7 +567,7 @@ export function MarkdownViewer({
             rendered = (
               <h1
                 key={idx}
-                className="font-display-lg text-xl font-bold text-on-surface mt-4 mb-2 tracking-tight break-words min-w-0 max-w-full"
+                className="font-display-lg text-xl font-bold text-on-surface mt-3 mb-1.5 tracking-tight break-words min-w-0 max-w-full"
               >
                 {parseInlineMarkdown(block.text, imageContext)}
               </h1>
@@ -577,7 +577,7 @@ export function MarkdownViewer({
             rendered = (
               <h2
                 key={idx}
-                className="font-headline-md text-base font-bold text-on-surface mt-3.5 mb-1.5 border-b border-border-standard/60 pb-1 break-words min-w-0 max-w-full"
+                className="font-headline-md text-base font-bold text-on-surface mt-2.5 mb-1 border-b border-border-standard/60 pb-0.5 break-words min-w-0 max-w-full"
               >
                 {parseInlineMarkdown(block.text, imageContext)}
               </h2>
@@ -587,7 +587,7 @@ export function MarkdownViewer({
             rendered = (
               <h3
                 key={idx}
-                className="font-headline-sm text-sm font-semibold text-primary mt-3 mb-1 break-words min-w-0 max-w-full"
+                className="font-headline-sm text-sm font-semibold text-primary mt-2 mb-0.5 break-words min-w-0 max-w-full"
               >
                 {parseInlineMarkdown(block.text, imageContext)}
               </h3>
@@ -597,7 +597,7 @@ export function MarkdownViewer({
             rendered = (
               <h4
                 key={idx}
-                className="text-xs font-semibold text-secondary mt-2 mb-0.5 uppercase tracking-wide font-mono"
+                className="text-sm font-semibold text-secondary mt-1.5 mb-0.5 uppercase tracking-wide"
               >
                 {parseInlineMarkdown(block.text, imageContext)}
               </h4>
@@ -607,7 +607,7 @@ export function MarkdownViewer({
             rendered = (
               <h5
                 key={idx}
-                className="text-[11px] font-semibold text-ochre mt-1.5 mb-0.5 uppercase tracking-wider font-mono"
+                className="text-xs font-semibold text-ochre mt-1 mb-0.25 uppercase tracking-wider"
               >
                 {parseInlineMarkdown(block.text, imageContext)}
               </h5>
@@ -617,7 +617,7 @@ export function MarkdownViewer({
             rendered = (
               <h6
                 key={idx}
-                className="text-[10px] font-bold text-text-muted mt-1 mb-0.5 uppercase tracking-widest font-mono"
+                className="text-[11px] font-bold text-text-muted mt-0.5 mb-0 uppercase tracking-widest"
               >
                 {parseInlineMarkdown(block.text, imageContext)}
               </h6>
@@ -627,7 +627,7 @@ export function MarkdownViewer({
             rendered = (
               <p
                 key={idx}
-                className="text-xs font-body-md text-on-surface leading-relaxed break-words min-w-0 max-w-full"
+                className="text-sm text-on-surface leading-relaxed break-words min-w-0 max-w-full"
               >
                 {parseInlineMarkdown(block.text, imageContext)}
               </p>
@@ -645,9 +645,9 @@ export function MarkdownViewer({
             break;
           case 'ul':
             rendered = (
-              <ul key={idx} className="space-y-1 my-2 pl-2">
+              <ul key={idx} className="space-y-1 pl-4">
                 {block.items.map((item, itemIdx) => (
-                  <li key={itemIdx} className="flex items-start gap-2 text-xs">
+                  <li key={itemIdx} className="flex items-start gap-2 text-sm">
                     <span className="text-primary select-none mt-0.5">•</span>
                     <span className="flex-1">{parseInlineMarkdown(item, imageContext)}</span>
                   </li>
@@ -657,10 +657,10 @@ export function MarkdownViewer({
             break;
           case 'ol':
             rendered = (
-              <ol key={idx} className="space-y-1 my-2 pl-2">
+              <ol key={idx} className="space-y-1 pl-4">
                 {block.items.map((item, itemIdx) => (
-                  <li key={itemIdx} className="flex items-start gap-2 text-xs">
-                    <span className="font-mono text-[10px] font-bold text-secondary select-none mt-0.5">
+                  <li key={itemIdx} className="flex items-start gap-2 text-sm">
+                    <span className="text-[10px] font-bold text-secondary select-none mt-0.5">
                       {itemIdx + 1}.
                     </span>
                     <span className="flex-1">{parseInlineMarkdown(item, imageContext)}</span>
@@ -673,29 +673,29 @@ export function MarkdownViewer({
             rendered = (
               <blockquote
                 key={idx}
-                className="border-l-2 border-primary/70 pl-3 py-1.5 my-2 italic text-text-muted bg-surface-container/30 rounded-r text-xs leading-relaxed"
+                className="border-l-2 border-primary/70 pl-3 py-1 my-1.5 italic text-text-muted bg-surface-container/30 rounded-r text-sm leading-relaxed"
               >
                 {parseInlineMarkdown(block.text, imageContext)}
               </blockquote>
             );
             break;
           case 'hr':
-            rendered = <hr key={idx} className="border-border-standard my-3" />;
+            rendered = <hr key={idx} className="border-border-standard my-2" />;
             break;
           case 'table':
             rendered = (
               <div
                 key={idx}
-                className="overflow-x-auto my-3 border border-border-standard rounded-sm"
+                className="overflow-x-auto my-2 border border-border-standard rounded-sm"
               >
-                <table className="zebra-table w-full border-collapse text-xs font-mono text-left">
+                <table className="zebra-table w-full border-collapse text-sm text-left">
                   {block.headers && block.headers.length > 0 && (
                     <thead className="bg-surface-container border-b border-border-standard">
                       <tr>
                         {block.headers.map((h, hIdx) => (
                           <th
                             key={hIdx}
-                            className="p-2 font-bold uppercase text-[10px] tracking-wider text-text-muted border-r border-border-standard last:border-r-0"
+                            className="p-2 font-bold uppercase text-xs tracking-wider text-text-muted border-r border-border-standard last:border-r-0"
                           >
                             {parseInlineMarkdown(h, imageContext)}
                           </th>

@@ -95,7 +95,7 @@ export function ReportReadableView({
             {fileThreads}
           </div>
         )}
-        <div className="px-3 py-4 text-xs font-mono text-text-muted">
+        <div className="px-3 py-4 text-sm text-text-muted">
           This report has no content to review.
         </div>
         {unplaced.length > 0 && (
@@ -118,7 +118,7 @@ export function ReportReadableView({
           {fileThreads}
         </div>
       )}
-      <div className="px-1.5 sm:px-2.5 py-2 min-w-0 max-w-full">
+      <div className="px-1.5 sm:px-2.5 py-1.5 min-w-0 max-w-full">
         <MarkdownViewer
           content={reportContent}
           projectId={activeProject?.id || null}
@@ -147,7 +147,7 @@ export function ReportReadableView({
                     <span
                       aria-hidden="true"
                       title={`Source ${lineRef}`}
-                      className="select-none rounded border border-border-standard/60 bg-surface px-1 py-px font-mono text-[10px] text-text-muted"
+                      className="select-none rounded border border-border-standard/60 bg-surface px-1 py-px text-[10px] text-text-muted font-mono"
                     >
                       {blockLineLabel(block)}
                     </span>
