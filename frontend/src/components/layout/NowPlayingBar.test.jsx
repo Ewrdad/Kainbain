@@ -140,6 +140,32 @@ test('queue chip is live: count updates as tasks advance and drops to zero when 
   expect(chip()).toHaveTextContent('0');
 });
 
+test('queue chip counts only waiting tasks: running, blocked, paused, and parked tasks excluded', () => {
+  renderWithKainBain(<NowPlayingBar />, {
+    stages,
+    currentStageId: '1',
+    workflows: [],
+    tasks: [
+      { id: 't1', currentStageId: '1', status: 'in_stage' },
+      { id: 't2', currentStageId: '1', status: 'in_stage' },
+      { id: 't3', currentStageId: '1', status: 'running_agent' },
+      { id: 't4', currentStageId: '1', status: 'in_stage', blockedBy: ['t1'] },
+      { id: 't5', currentStageId: '1', status: 'paused' },
+      { id: 't6', currentStageId: '1', status: 'failed' },
+      { id: 't7', currentStageId: '2', status: 'waiting_human' },
+      { id: 't8', currentStageId: '1', status: 'cancelled' },
+    ],
+    isAgentRunning: false,
+  });
+  // Only t1 and t2 wait for pickup — everything else is running, blocked,
+  // or parked and must not inflate the chip.
+  expect(
+    screen.getByRole('button', {
+      name: 'Execution queue: 2 open tasks across all pipelines',
+    }),
+  ).toHaveTextContent('2');
+});
+
 test('no elapsed timer remains on the queue-only right rail', () => {
   renderWithKainBain(<NowPlayingBar />, {
     stages,

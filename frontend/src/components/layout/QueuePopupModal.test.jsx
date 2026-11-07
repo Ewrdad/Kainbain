@@ -73,23 +73,29 @@ test('dialog panel carries the shared modal surface (sized, surfaced, clipped)',
   expect(dialog).toHaveClass('overflow-hidden');
 });
 
-test('reconciliation note shows counts', async () => {
+test('reconciliation note shows counts and labels a mismatch as stale', async () => {
   renderWithKainBain(<QueuePopupModal counted={3} onClose={() => {}} />, { engineState: { openQueueDepth: 3 } });
   await waitFor(() => expect(screen.getByTestId('queue-reconciliation')).toBeInTheDocument());
   expect(screen.getByTestId('queue-reconciliation')).toHaveTextContent('3 open tasks counted · 1 shown');
+  // Both views describe the same waiting set, so a mismatch is transient
+  // refresh timing — the footer says so instead of inventing a bug class.
+  expect(screen.getByTestId('queue-reconciliation').parentElement).toHaveTextContent(
+    /one is stale and settles on refresh/,
+  );
 });
 
-test('counted-but-empty queue says nothing runs next and explains the gap', async () => {
-  // All counted tasks are failed/waiting-human: the dispatch list is empty,
-  // so the header must not claim "#1 runs next".
+test('empty queue with nothing waiting says nothing runs next and both counts are zero', async () => {
+  // Nothing waits for pickup: the dispatch list is empty and the chip
+  // agrees, so the header must not claim "#1 runs next" and no stale
+  // note may appear.
   api.observabilityStatus.mockResolvedValue({ observability: { queue: [] } });
-  renderWithKainBain(<QueuePopupModal counted={3} onClose={() => {}} />, { engineState: { openQueueDepth: 3 } });
+  renderWithKainBain(<QueuePopupModal counted={0} onClose={() => {}} />, { engineState: { openQueueDepth: 0 } });
   await waitFor(() => expect(screen.getByText('Queue is Clear')).toBeInTheDocument());
   expect(screen.getByText(/#— runs next/)).toBeInTheDocument();
   expect(screen.queryByText(/#1 runs next/)).not.toBeInTheDocument();
   const note = screen.getByTestId('queue-reconciliation');
-  expect(note).toHaveTextContent('3 open tasks counted · 0 shown');
-  expect(note.parentElement).toHaveTextContent(/human-stage tasks count toward the number but never dispatch/);
+  expect(note).toHaveTextContent('0 open tasks counted · 0 shown');
+  expect(note.parentElement).not.toHaveTextContent(/one is stale/);
 });
 
 test('a failed refresh keeps the last known rows visible under the alert', async () => {

@@ -1,4 +1,4 @@
-import { isTaskCompleted } from '../tasks/taskFormatters';
+import { isTaskCompleted, isWaitingForPickupTask } from '../tasks/taskFormatters';
 
 /***
  * MARK: resolveCandidateTask
@@ -52,11 +52,14 @@ export function resolveCandidateTask(tasks, engineState, currentStageId) {
  * while running) always wins; otherwise the fallback is the most recently
  * updated open task (updatedAt, then enteredStageAt/createdAt, then stable id
  * order), which is pipeline-independent: switching the selected pipeline can
- * never move it. Queue depth and hasNextTask count all open (not
- * completed/done) tasks across pipelines. When the running owner is not in
- * the loaded list, ownerTask is null (single-active invariant: name nothing
- * rather than a second task) while the ungated candidateTask keeps the
- * fallback for queue derivations.
+ * never move it. Queue depth and hasNextTask count tasks WAITING to be
+ * picked up across pipelines (never tasks already running, blocked, or
+ * parked): the engine snapshot's `openQueueDepth` is authoritative, and
+ * the loaded-list fallback filters with `isWaitingForPickupTask`. When
+ * the running owner is not in the loaded list, ownerTask is null
+ * (single-active invariant: name nothing rather than a second task)
+ * while the ungated candidateTask keeps the fallback for queue
+ * derivations.
  * @example resolveUniversalNowPlaying({ tasks, engineState: { status: 'running', activeTaskId: 't1' } }).ownerTask => { id: 't1', ... }
  * @param {Object} args - Named inputs.
  * @param {Array<Object>} [args.tasks] - The loaded task list (all pipelines).
@@ -93,6 +96,12 @@ export function resolveOwnerTask(taskList, engineState) {
 export function resolveUniversalNowPlaying({ tasks, engineState }) {
   const taskList = Array.isArray(tasks) ? tasks : [];
   const openTasks = taskList.filter((task) => !isTaskCompleted(task));
+  // Waiting-set fallback for the depth derivations below: mirrors the
+  // backend `isWaitingForPickup` verdict as far as the loaded list allows
+  // (status-level only, no stage/block resolution). The candidate fallback
+  // above intentionally stays on the wider open set — naming must keep
+  // working for parked tasks that need attention.
+  const waitingTasks = taskList.filter((task) => isWaitingForPickupTask(task));
   const ownerTask = resolveOwnerTask(taskList, engineState);
   const fallbackTask =
     [...openTasks].sort((a, b) => {
@@ -102,19 +111,20 @@ export function resolveUniversalNowPlaying({ tasks, engineState }) {
       return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
     })[0] || null;
   const candidateTask = ownerTask || fallbackTask;
-  // Global queue depth: the engine snapshot carries the open-task count
-  // across ALL projects (no N-project fan-out). The loaded list is only the
-  // active project's slice, so the engine number wins whenever present; the
-  // list-derived count is the honest fallback (tests, offline snapshots).
+  // Global queue depth: the engine snapshot carries the waiting-task
+  // count across ALL projects (no N-project fan-out). The loaded list is
+  // only the active project's slice, so the engine number wins whenever
+  // present; the list-derived waiting count is the honest fallback
+  // (tests, offline snapshots).
   const globalDepth =
     typeof engineState?.openQueueDepth === 'number' ? engineState.openQueueDepth : null;
-  const queueDepth = globalDepth ?? openTasks.length;
+  const queueDepth = globalDepth ?? waitingTasks.length;
   const hasNextTask =
     globalDepth != null
       ? globalDepth > (candidateTask ? 1 : 0)
       : candidateTask
-        ? openTasks.some((task) => task.id !== candidateTask.id)
-        : openTasks.length > 0;
+        ? waitingTasks.some((task) => task.id !== candidateTask.id)
+        : waitingTasks.length > 0;
   return {
     ownerTask,
     candidateTask,

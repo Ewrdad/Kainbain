@@ -265,7 +265,7 @@ describe("Task blocking (blockedBy)", () => {
 		expect(store.getEngineState().status).not.toBe("running");
 	});
 
-	it("ranks blocked tasks at the bottom of the queue with a reason", () => {
+	it("excludes blocked tasks from the queue until their blocker frees them", () => {
 		const store = makeStore();
 		const blocker = store.createTask("p1", {
 			title: "Blocker",
@@ -280,14 +280,17 @@ describe("Task blocking (blockedBy)", () => {
 			blockedBy: [blocker.id],
 			projectCwd: tempCwd,
 		});
+		// The queue lists only tasks waiting for pickup: the blocked task
+		// cannot be picked up yet, so it is absent — not sorted last.
 		const queue = store.getScheduledQueue("p1");
-		const entry = queue.find((q) => q.id === blocked.id);
-		expect(entry.isBlocked).toBe(true);
-		expect(entry.blockers).toEqual([blocker.id]);
-		expect(entry.priorityRank).toBe(5);
-		expect(entry.priorityReason).toContain(blocker.id);
-		const blockerEntry = queue.find((q) => q.id === blocker.id);
-		expect(blockerEntry.priorityRank).toBeLessThan(5);
+		expect(queue.map((q) => q.id)).toEqual([blocker.id]);
+
+		// Completing the blocker frees the task into the queue.
+		store.completeTask("p1", blocker.id, tempCwd);
+		expect(store.isTaskBlocked("p1", blocked.id).blocked).toBe(false);
+		expect(store.getScheduledQueue("p1").map((q) => q.id)).toEqual([
+			blocked.id,
+		]);
 	});
 
 	it("rejects a self-block on update", () => {
@@ -407,22 +410,29 @@ describe("Task blocking (blockedBy)", () => {
 			projectCwd: tempCwd,
 		});
 
-		// While A runs, B and C are skipped and sit at the bottom of the queue.
+		// While A is unblocked, only A waits for pickup: B and C are
+		// skipped and absent from the queue (not sorted last).
 		expect(store.findNextCandidateTask()?.taskId).toBe(taskA.id);
-		const queuedIds = store.getScheduledQueue("p1").map((q) => q.id);
-		expect(queuedIds[queuedIds.length - 2]).toBe(taskB.id);
-		expect(queuedIds[queuedIds.length - 1]).toBe(taskC.id);
+		expect(store.getScheduledQueue("p1").map((q) => q.id)).toEqual([
+			taskA.id,
+		]);
 
 		// Completing A frees B with no manual intervention; C stays blocked.
 		store.completeTask("p1", taskA.id, tempCwd);
 		expect(store.isTaskBlocked("p1", taskB.id).blocked).toBe(false);
 		expect(store.isTaskBlocked("p1", taskC.id).blocked).toBe(true);
 		expect(store.findNextCandidateTask()?.taskId).toBe(taskB.id);
+		expect(store.getScheduledQueue("p1").map((q) => q.id)).toEqual([
+			taskB.id,
+		]);
 
 		// Completing B frees C.
 		store.completeTask("p1", taskB.id, tempCwd);
 		expect(store.isTaskBlocked("p1", taskC.id).blocked).toBe(false);
 		expect(store.findNextCandidateTask()?.taskId).toBe(taskC.id);
+		expect(store.getScheduledQueue("p1").map((q) => q.id)).toEqual([
+			taskC.id,
+		]);
 		expect(
 			store.getScheduledQueue("p1").some((q) => q.isBlocked),
 		).toBe(false);
