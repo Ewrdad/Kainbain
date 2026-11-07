@@ -76,7 +76,7 @@ test('dialog panel carries the shared modal surface (sized, surfaced, clipped)',
 test('reconciliation note shows counts and labels a mismatch as stale', async () => {
   renderWithKainBain(<QueuePopupModal counted={3} onClose={() => {}} />, { engineState: { openQueueDepth: 3 } });
   await waitFor(() => expect(screen.getByTestId('queue-reconciliation')).toBeInTheDocument());
-  expect(screen.getByTestId('queue-reconciliation')).toHaveTextContent('3 open tasks counted · 1 shown');
+  expect(screen.getByTestId('queue-reconciliation')).toHaveTextContent('3 waiting to be picked up · 1 shown');
   // Both views describe the same waiting set, so a mismatch is transient
   // refresh timing — the footer says so instead of inventing a bug class.
   expect(screen.getByTestId('queue-reconciliation').parentElement).toHaveTextContent(
@@ -94,7 +94,7 @@ test('empty queue with nothing waiting says nothing runs next and both counts ar
   expect(screen.getByText(/#— runs next/)).toBeInTheDocument();
   expect(screen.queryByText(/#1 runs next/)).not.toBeInTheDocument();
   const note = screen.getByTestId('queue-reconciliation');
-  expect(note).toHaveTextContent('0 open tasks counted · 0 shown');
+  expect(note).toHaveTextContent('0 waiting to be picked up · 0 shown');
   expect(note.parentElement).not.toHaveTextContent(/one is stale/);
 });
 

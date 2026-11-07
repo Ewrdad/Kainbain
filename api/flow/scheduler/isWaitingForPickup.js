@@ -4,6 +4,14 @@ import {
 } from "../stageResolution.js";
 import { isSchedulerRunnable } from "./isSchedulerRunnable.js";
 
+// Re-entrancy guard for the engine-snapshot fallback below.
+// `store.getEngineState()` derives `openQueueDepth` through
+// `countOpenTasksGlobal` -> this predicate, so calling it from inside that
+// derivation without a guard would recurse until the stack overflows. While
+// any fallback call is in flight, nested calls must rely on the raw field
+// (or on nothing) and never call back into `getEngineState()`.
+let resolvingEngineSnapshot = false;
+
 /***
  * MARK: isWaitingForPickup
  * @description Single shared predicate for "this task is waiting for a
@@ -23,9 +31,10 @@ import { isSchedulerRunnable } from "./isSchedulerRunnable.js";
  *   missing store, unresolvable project/stage, throwing checker — resolves
  *   that task to false instead of throwing. The engine snapshot is read
  *   from the raw `store.engineState` field first: `store.getEngineState()`
- *   derives its depth through this predicate, so calling it here would
- *   recurse forever; it is only a last-resort fallback when the raw field
- *   is absent.
+ *   derives its depth through this predicate, so calling it here unguarded
+ *   would recurse; it is only a last-resort fallback when the raw field is
+ *   absent, and a module-level re-entrancy guard makes that fallback safe
+ *   (nested calls inside the derivation never call back into it).
  * @example isWaitingForPickup({ status: "in_stage", ... }, { store, stage: { type: "agent" } }) => true
  * @example isWaitingForPickup({ status: "completed" }, { store }) => false
  * @param {Object} task - The task record.
@@ -143,19 +152,25 @@ export function isWaitingForPickup(task, context = {}) {
 
 		// The active engine owner is being worked on, not waiting — but only
 		// while the engine actively runs it; a stale owner id on an idle
-		// engine must not hide a waiting task.
+		// engine must not hide a waiting task. The raw `store.engineState`
+		// field is the only safe in-derivation source: `getEngineState()`
+		// derives its depth through this very predicate, so it is called only
+		// as a last-resort fallback, and never re-entrantly (guard above).
 		let engineState = ctx.engineState ?? null;
-		if (!engineState && store) {
+		if (!engineState && store && !resolvingEngineSnapshot) {
 			try {
 				engineState = store.engineState ?? null;
 			} catch {
 				engineState = null;
 			}
 			if (!engineState && typeof store.getEngineState === "function") {
+				resolvingEngineSnapshot = true;
 				try {
 					engineState = store.getEngineState() || null;
 				} catch {
 					engineState = null;
+				} finally {
+					resolvingEngineSnapshot = false;
 				}
 			}
 		}

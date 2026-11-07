@@ -22,51 +22,6 @@ export function resolveCandidateTask(tasks, engineState, currentStageId) {
 }
 
 /***
- * MARK: resolveActiveTaskDisplay
- * @description Decides which task the NowPlayingBar may name, and whether any
- * task name may be shown at all. The name appears only when the engine is
- * visibly busy (running, checkpoint/waiting-human, paused, failed,
- * interrupted) — the exact union of states that lights the status badge — so
- * the name and the badge can never disagree. While idle there is no running
- * task, so the stale fallback (usually tasks[0]) is cleared to null instead
- * of lingering in the bar. While the engine runs an owned task, only the
- * owner is named — the fallback chain is skipped so a stale runner elsewhere
- * in the list can never appear as a second running task. The ungated
- * `candidateTask` is still returned for queue-depth style derivations that
- * must keep working while idle.
- * @example resolveActiveTaskDisplay({ tasks, engineState: { status: 'idle' }, ... }).activeTask => null
- * @param {Object} args - Named inputs mirroring the bar's context.
- * @param {Array<Object>} [args.tasks] - The live task list.
- * @param {Object} [args.engineState] - The engine snapshot.
- * @param {string} [args.currentStageId] - The focused pipeline stage id.
- * @param {boolean} [args.isAgentRunning] - True while the agent loop runs.
- * @param {Object} [args.currentStage] - The focused stage (carries paused).
- * @returns {Object} activeTask (gated), candidateTask (ungated), hasActiveDisplay, and the badge flags.
- ***/
-/***
- * MARK: resolveUniversalNowPlaying
- * @description Workflow-free selector behind the Now Playing bar. The engine
- * owns a single global queue fed by every pipeline, so this resolves purely
- * from the loaded task list + engine state — never from a workflowId,
- * currentStageId, or stages pointer. The engine owner (engineState.activeTaskId
- * while running) always wins; otherwise the fallback is the most recently
- * updated open task (updatedAt, then enteredStageAt/createdAt, then stable id
- * order), which is pipeline-independent: switching the selected pipeline can
- * never move it. Queue depth and hasNextTask count tasks WAITING to be
- * picked up across pipelines (never tasks already running, blocked, or
- * parked): the engine snapshot's `openQueueDepth` is authoritative, and
- * the loaded-list fallback filters with `isWaitingForPickupTask`. When
- * the running owner is not in the loaded list, ownerTask is null
- * (single-active invariant: name nothing rather than a second task)
- * while the ungated candidateTask keeps the fallback for queue
- * derivations.
- * @example resolveUniversalNowPlaying({ tasks, engineState: { status: 'running', activeTaskId: 't1' } }).ownerTask => { id: 't1', ... }
- * @param {Object} args - Named inputs.
- * @param {Array<Object>} [args.tasks] - The loaded task list (all pipelines).
- * @param {Object} [args.engineState] - The engine snapshot (carries activeTaskId/status).
- * @returns {Object} ownerTask, candidateTask (ungated), queueDepth, hasNextTask, ownerWorkflowId.
- ***/
-/***
  * MARK: resolveOwnerTask
  * @description Resolves the engine owner from the loaded list, falling back
  * to the project-independent `engineState.activeTask` snapshot the backend
@@ -93,6 +48,29 @@ export function resolveOwnerTask(taskList, engineState) {
   return null;
 }
 
+/***
+ * MARK: resolveUniversalNowPlaying
+ * @description Workflow-free selector behind the Now Playing bar. The engine
+ * owns a single global queue fed by every pipeline, so this resolves purely
+ * from the loaded task list + engine state — never from a workflowId,
+ * currentStageId, or stages pointer. The engine owner (engineState.activeTaskId
+ * while running) always wins; otherwise the fallback is the most recently
+ * updated open task (updatedAt, then enteredStageAt/createdAt, then stable id
+ * order), which is pipeline-independent: switching the selected pipeline can
+ * never move it. Queue depth and hasNextTask count tasks WAITING to be
+ * picked up across pipelines (never tasks already running, blocked, or
+ * parked): the engine snapshot's `openQueueDepth` is authoritative, and
+ * the loaded-list fallback filters with `isWaitingForPickupTask`. When
+ * the running owner is not in the loaded list, ownerTask is null
+ * (single-active invariant: name nothing rather than a second task)
+ * while the ungated candidateTask keeps the fallback for queue
+ * derivations.
+ * @example resolveUniversalNowPlaying({ tasks, engineState: { status: 'running', activeTaskId: 't1' } }).ownerTask => { id: 't1', ... }
+ * @param {Object} args - Named inputs.
+ * @param {Array<Object>} [args.tasks] - The loaded task list (all pipelines).
+ * @param {Object} [args.engineState] - The engine snapshot (carries activeTaskId/status).
+ * @returns {Object} ownerTask, candidateTask (ungated), queueDepth, hasNextTask, ownerWorkflowId.
+ ***/
 export function resolveUniversalNowPlaying({ tasks, engineState }) {
   const taskList = Array.isArray(tasks) ? tasks : [];
   const openTasks = taskList.filter((task) => !isTaskCompleted(task));
@@ -135,6 +113,28 @@ export function resolveUniversalNowPlaying({ tasks, engineState }) {
   };
 }
 
+/***
+ * MARK: resolveActiveTaskDisplay
+ * @description Decides which task the NowPlayingBar may name, and whether any
+ * task name may be shown at all. The name appears only when the engine is
+ * visibly busy (running, checkpoint/waiting-human, paused, failed,
+ * interrupted) — the exact union of states that lights the status badge — so
+ * the name and the badge can never disagree. While idle there is no running
+ * task, so the stale fallback (usually tasks[0]) is cleared to null instead
+ * of lingering in the bar. While the engine runs an owned task, only the
+ * owner is named — the fallback chain is skipped so a stale runner elsewhere
+ * in the list can never appear as a second running task. The ungated
+ * `candidateTask` is still returned for queue-depth style derivations that
+ * must keep working while idle.
+ * @example resolveActiveTaskDisplay({ tasks, engineState: { status: 'idle' }, ... }).activeTask => null
+ * @param {Object} args - Named inputs mirroring the bar's context.
+ * @param {Array<Object>} [args.tasks] - The live task list.
+ * @param {Object} [args.engineState] - The engine snapshot.
+ * @param {string} [args.currentStageId] - The focused pipeline stage id.
+ * @param {boolean} [args.isAgentRunning] - True while the agent loop runs.
+ * @param {Object} [args.currentStage] - The focused stage (carries paused).
+ * @returns {Object} activeTask (gated), candidateTask (ungated), hasActiveDisplay, and the badge flags.
+ ***/
 export function resolveActiveTaskDisplay({
   tasks,
   engineState,

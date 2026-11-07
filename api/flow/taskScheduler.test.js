@@ -71,8 +71,13 @@ function makeStore({ projects = [{ id: "p-1", name: "P", cwd: "/repo", stages: S
 		defaultPromptEngine: null,
 		defaultSchedulerInterval: 3000,
 		blockedIds: new Set(),
+		claimedIds: new Set(),
 		tasksByProject: maps,
 		getTask: (pid, tid) => maps.get(pid)?.get(tid),
+		claimStore: {
+			describe: (tid) =>
+				store.claimedIds.has(String(tid)) ? { runnerId: "r-1" } : null,
+		},
 		seed: (pid, task) => {
 			if (!maps.has(pid)) maps.set(pid, new Map());
 			maps.get(pid).set(task.id, task);
@@ -1145,6 +1150,39 @@ describe("queue chip and popup agreement", () => {
 		const queue = getScheduledQueue(store);
 		expect(queue.map((i) => i.id)).toEqual(["w2"]);
 		expect(countOpenTasksGlobal(store)).toBe(1);
+	});
+
+	it("excludes a task claimed by a live runner lease from both views (transfer)", () => {
+		// A task handed to a Runner box is being worked on out-of-process, so
+		// it must leave the chip and the popup until the lease lapses or the
+		// Runner reports back.
+		const store = makeStore();
+		store.seed("p-1", task({ id: "w1" }));
+		store.seed("p-1", task({ id: "transferred" }));
+		store.claimedIds.add("transferred");
+		const queue = getScheduledQueue(store);
+		expect(queue.map((i) => i.id)).toEqual(["w1"]);
+		expect(countOpenTasksGlobal(store)).toBe(queue.length);
+		expect(countOpenTasksGlobal(store)).toBe(1);
+	});
+
+	it("agrees across projects: the global chip equals the global popup length", () => {
+		const store = makeStore({
+			projects: [
+				{ id: "p-1", name: "A", cwd: "/a", stages: STAGES },
+				{ id: "p-2", name: "B", cwd: "/b", stages: STAGES },
+			],
+		});
+		store.seed("p-1", task({ id: "a1", projectId: "p-1" }));
+		store.seed("p-1", task({ id: "a2", projectId: "p-1", status: "failed" }));
+		store.seed("p-2", task({ id: "b1", projectId: "p-2", currentStageId: "s-3" }));
+		store.seed("p-2", task({ id: "b2", projectId: "p-2", status: "interrupted", currentStageId: "s-2" }));
+		const queue = getScheduledQueue(store);
+		expect(queue.map((i) => i.id).sort()).toEqual(["a1", "b1"]);
+		expect(countOpenTasksGlobal(store)).toBe(queue.length);
+		expect(countOpenTasksGlobal(store)).toBe(2);
+		// Per-project filtering still agrees with its own slice of the chip.
+		expect(getScheduledQueue(store, "p-2").map((i) => i.id)).toEqual(["b1"]);
 	});
 });
 

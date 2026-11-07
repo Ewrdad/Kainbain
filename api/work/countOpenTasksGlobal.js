@@ -62,7 +62,9 @@ export function countOpenTasksGlobal(store) {
 			}
 		}
 	} catch {
-		// Best-effort derivation; the caller omits the depth on failure.
+		// Total failure still returns 0: a fully unreadable store reads as an
+		// empty queue rather than breaking the whole state read. The UI only
+		// falls back to its loaded list when the snapshot is absent entirely.
 	}
 	return depth;
 }

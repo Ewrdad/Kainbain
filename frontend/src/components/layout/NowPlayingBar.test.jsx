@@ -70,8 +70,8 @@ test('renders live queue chip with no stale stage label (no fake progress bar, t
   // return even though stages are loaded and a stage is focused.
   expect(screen.queryByText(/Stage \d+ of \d+/)).not.toBeInTheDocument();
   expect(screen.queryByText(/— Idea/)).not.toBeInTheDocument();
-  // The right rail is queue-only: the live queue-depth chip counts open tasks
-  // only — t1 and t2 are open, t3 is completed and excluded.
+  // The right rail is queue-only: the live queue-depth chip counts tasks
+  // waiting for pickup only — t1 and t2 wait, t3 is completed and excluded.
   expect(
     screen.getByRole('button', {
       name: 'Execution queue: 2 open tasks across all pipelines',
@@ -1310,7 +1310,7 @@ test('queue chip is a button: clicking opens the dispatch-order popup and the fe
   expect(first).toHaveTextContent('Work');
   expect(second).toHaveTextContent('#2');
   // The popup reconciles the chip count with the listed queue.
-  expect(screen.getByTestId('queue-reconciliation')).toHaveTextContent('2 open tasks counted · 2 shown');
+  expect(screen.getByTestId('queue-reconciliation')).toHaveTextContent('2 waiting to be picked up · 2 shown');
 });
 
 test('queue chip is keyboard-activatable: it is a focusable native button', () => {

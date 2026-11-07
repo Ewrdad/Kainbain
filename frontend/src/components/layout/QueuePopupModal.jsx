@@ -71,8 +71,8 @@ export function QueuePopupModal({ onClose, counted, openQueueDepth, engineState 
           <p id={descId} className="text-[11px] font-mono text-text-muted">
             {/* "#1 runs next" tracks the listed queue: only tasks waiting to
                 be picked up are listed, so an empty list means nothing waits. */}
-            #{shown >= 1 ? '1' : '—'} runs next · {countedDisplay} open
-            {countedDisplay === 1 ? ' task' : ' tasks'} counted
+            #{shown >= 1 ? '1' : '—'} runs next · {countedDisplay} waiting
+            {countedDisplay === 1 ? ' task' : ' tasks'}
           </p>
         </div>
         <button
@@ -122,7 +122,7 @@ export function QueuePopupModal({ onClose, counted, openQueueDepth, engineState 
 
       <div className="px-4 py-2 border-t border-border-standard text-[10px] font-mono text-text-muted">
         <span data-testid="queue-reconciliation">
-          {countedDisplay} open tasks counted · {shown} shown in the dispatch queue
+          {countedDisplay} waiting to be picked up · {shown} shown in the dispatch queue
         </span>
         {countsDiffer && (
           <span className="block mt-1">

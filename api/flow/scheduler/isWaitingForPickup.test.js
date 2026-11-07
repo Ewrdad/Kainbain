@@ -273,6 +273,23 @@ describe("isWaitingForPickup eligibility", () => {
 		expect(isWaitingForPickup(task(), { store })).toBe(false);
 	});
 
+	it("never recurses when getEngineState derives through this predicate and no raw field exists", () => {
+		// Simulates resolveEngineState -> countOpenTasksGlobal -> this
+		// predicate: without the re-entrancy guard the fallback would call
+		// back into getEngineState until the stack overflows.
+		const store = makeStore();
+		delete store.engineState;
+		let fallbackCalls = 0;
+		store.getEngineState = () => {
+			fallbackCalls += 1;
+			isWaitingForPickup(task(), { store });
+			return { status: "running", activeTaskId: "t-1" };
+		};
+		expect(isWaitingForPickup(task(), { store })).toBe(false);
+		// Exactly one fallback call: the nested call must not call back in.
+		expect(fallbackCalls).toBe(1);
+	});
+
 	it("supports a resolveStagesForTask injection seam", () => {
 		const store = makeStore();
 		const resolveStagesForTask = vi.fn(() => STAGES);

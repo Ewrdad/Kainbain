@@ -628,8 +628,8 @@ export function NowPlayingBar() {
         <div className="hidden sm:flex items-center">
           <InfoTooltip
             title="Execution Queue"
-            description="Live count of open tasks (not yet completed) across all pipelines. Click to view the queue in dispatch order."
-            behindTheScenes="Derived from the universal task list across all pipelines on every render — unlike the removed workflow-pointer stage label, which only changed on load or manual skip. Click opens a popup listing the dispatch-ordered queue."
+            description="Live count of tasks waiting to be picked up across all pipelines — tasks already running, blocked, paused, or parked are not counted. Click to view the queue in dispatch order."
+            behindTheScenes="Derived from the engine snapshot's waiting-task count across all pipelines on every render (the loaded list's waiting set is the fallback) — unlike the removed workflow-pointer stage label, which only changed on load or manual skip. Click opens a popup listing exactly that same waiting set in dispatch order."
             position="top-left"
           >
             <button
