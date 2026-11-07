@@ -29,12 +29,20 @@ export async function runImpromptuJob({ config, client, logger, harnesses, job }
 
 	const sessionDir = path.join(config.workRoot ?? "runner-work", `impromptu-${job.jobId}`);
 	let seq = 0;
-	const onChunk = async (delta) => {
+	let chunkUsed = false;
+	let subscribedUsed = false;
+	const streamDelta = (delta, source) => {
 		if (typeof delta !== "string" || !delta) return;
+		if (source === "chunk" && subscribedUsed) return;
+		if (source === "subscribed" && chunkUsed) return;
+		if (source === "chunk") chunkUsed = true;
+		if (source === "subscribed") subscribedUsed = true;
+		const thisSeq = seq++;
 		try {
-			await client.impromptuProgress({ jobId: job.jobId, seq: seq++, delta });
+			client.impromptuProgress({ jobId: job.jobId, seq: thisSeq, delta }).catch(() => {});
 		} catch { /* best-effort */ }
 	};
+	const onChunk = (delta) => { streamDelta(delta, "chunk"); };
 
 	try {
 		const session = await harness.createSession(projectForSession, {
@@ -49,7 +57,7 @@ export async function runImpromptuJob({ config, client, logger, harnesses, job }
 				try {
 					const unsub = session.subscribe((event) => {
 						if (event?.type === "assistant_delta" && typeof event.delta === "string" && event.delta) {
-							client.impromptuProgress({ jobId: job.jobId, seq: seq++, delta: event.delta }).catch(() => {});
+							streamDelta(event.delta, "subscribed");
 						}
 					});
 					// keep unsub for cleanup after prompt

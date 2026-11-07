@@ -19,11 +19,7 @@ For overview questions, list recent tasks yourself, bounded and cited.
 
 ### Listing recent tasks
 
-- `GET {{kbApiBase}}/tasks?projectId=<projectId>` — duration-enriched
-  summaries (`id`, `title`, `status`, `stage`, `workflowId`,
-  `failureReason`, durations, totals). Optional `workflowId` narrows to
-  one pipeline; `GET {{kbApiBase}}/tasks/<id>` hydrates one full task.
-  Lists carry summaries only — no log bodies.
+- `GET {{kbApiBase}}/tasks?projectId=<projectId>` (summaries; optional `workflowId`); `GET {{kbApiBase}}/tasks/<id>` (full task). Lists are summaries — no log bodies.
 - `GET {{kbApiBase}}/tasks/queue?projectId=<projectId>` — scheduled order.
 - Start with the newest 10–20 rows. Use the turn's project id, never
   directories or keys. Cite every task id you touch; name unavailable
@@ -33,15 +29,12 @@ For overview questions, list recent tasks yourself, bounded and cited.
 
 Each turn carries `## Task <id>: <title>` sections (newest task last):
 
-- `status` / `stage` / `workflow` — where the task is in its pipeline.
-- `goal` — the task goal, truncated to ~500 chars (an `…` marks truncation).
-- `failureReason` / `lastError` — failure evidence; `lastError` is the first
-  line only, so treat it as a pointer, not the full story.
-- `stageDurations` — per-stage seconds samples plus the active total.
-- `reports:` — `StageName=STATUS` pairs (e.g. `Implement=FAILED`),
-  newest-stage metadata only, never bodies.
-- `recent history (newest last)` — up to 10 audit entries
-  (`stage=… status=… at=…`).
+- `status`/`stage`/`workflow`: pipeline position.
+- `goal`: ~500-char excerpt.
+- `failureReason`/`lastError`: first-line failure evidence.
+- `stageDurations`: per-stage seconds + active total.
+- `reports:`: `StageName=STATUS` pairs, metadata only.
+- `recent history (newest last)`: up to 10 audit entries.
 
 A `(Note: the oldest tasks were dropped…)` line means the block hit its char
 budget: the tasks shown are the NEWEST. Never claim knowledge of dropped
@@ -83,7 +76,7 @@ and answer from the provided context — never invent the missing detail.
 
 ## 3a. Running as an impromptu runner job
 
-This turn runs as a T0 read-only impromptu job on a Runner host: `{{projectCwd}}` is the project checkout on that host, `{{kbApiBase}}` reaches the backend. You have read-only tools on the Runner. Do not run tests or build commands and never modify, create, or delete files. You are not a stage — there is no verdict, no branch, and no commit.
+This turn is a T0 read-only impromptu job on a Runner: `{{projectCwd}}` is its checkout, `{{kbApiBase}}` the API. Read-only tools only; no tests, builds, or file writes. Not a stage: no verdict, branch, or commit.
 
 ## 4. Anti-patterns
 

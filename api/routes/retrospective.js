@@ -12,8 +12,8 @@
  *
  *   Degradation policy: a session lacking the `prompt` member gets the
  *   standard `501 { code: "unsupported_by_harness" }` via
- *   `guardSessionCapability` (see api/crew/sessionCapabilities.js); unknown
- *   task ids surface as `404 { code: "task_not_found" }`.
+ *   Unknown task ids surface as `404 { code: "task_not_found" }`;
+ *   missing Runner capacity surfaces as `503 { code: "no_runner_available" }`.
  * @example app.register(retrospectiveRoutes, { deps })
  ***/
 
@@ -528,7 +528,7 @@ export default async function retrospectiveRoutes(app, { deps }) {
 					`Unknown model alias "${chatTarget.aliasMissing}" for project ${projectId}; running the chat turn on the project default instead.`,
 				);
 			}
-			const { name: harnessName } = resolveHarness(project, {
+			const { name: harnessName, harness } = resolveHarness(project, {
 				harnessName: chatTarget.harnessName || requestedHarness,
 			});
 			const handoffModel =
@@ -667,10 +667,6 @@ export default async function retrospectiveRoutes(app, { deps }) {
 					contextChars,
 					...(responseOutput ? { output: responseOutput } : {}),
 				};
-			} catch (err) {
-				reply.status(err?.statusCode || 500).send({ error: err?.message || "Chat failed", code: err?.code });
-				return;
-			}
 		},
 	);
 }
