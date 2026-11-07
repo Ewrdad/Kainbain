@@ -321,15 +321,20 @@ export function parseInlineMarkdown(text, imageContext = {}) {
 
 /***
  * MARK: parseMarkdownBlocks
- * @description Parses multiline markdown content into structured AST blocks (headings, code blocks, lists, tables, quotes, hr, paragraphs).
+ * @description Parses multiline markdown content into structured AST blocks (headings, code blocks, lists, tables, quotes, hr, paragraphs). Every block carries 1-based `startLine`/`endLine` source spans (CRLF-normalized) so review UIs can anchor integer-line comments to rendered blocks; lists also expose per-item `itemLines`, tables expose `headerLine`/`rowLines`.
  * @param {string} markdown - The markdown raw string.
  * @returns {Array<Object>} List of parsed block objects.
- * @example parseMarkdownBlocks('# Title\n\nContent') => [{ type: 'h1', text: 'Title' }, { type: 'p', text: 'Content' }]
+ * @example parseMarkdownBlocks('# Title\n\nContent') => [{ type: 'h1', text: 'Title', startLine: 1, endLine: 1 }, { type: 'p', text: 'Content', startLine: 3, endLine: 3 }]
  ***/
 export function parseMarkdownBlocks(markdown) {
   if (!markdown || typeof markdown !== 'string') return [];
 
-  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
+  // CRLF (and lone CR) normalize to LF first so 1-based source line numbers
+  // stay aligned with viewers that split on /\r?\n/.
+  const lines = markdown
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n');
   const blocks = [];
   let i = 0;
 
@@ -338,6 +343,7 @@ export function parseMarkdownBlocks(markdown) {
 
     // 1. Fenced Code Block: ```lang
     if (line.trim().startsWith('```')) {
+      const startLine = i + 1;
       const language = line.trim().replace(/^```/, '').trim();
       const codeLines = [];
       i += 1;
@@ -349,6 +355,9 @@ export function parseMarkdownBlocks(markdown) {
         type: 'code',
         language,
         code: codeLines.join('\n'),
+        startLine,
+        // Closing fence when present, else the last content line.
+        endLine: Math.min(i + 1, lines.length),
       });
       i += 1;
       continue;
@@ -356,7 +365,7 @@ export function parseMarkdownBlocks(markdown) {
 
     // 2. Horizontal Rule: --- or *** or ___
     if (/^(\s*[-*_]\s*){3,}$/.test(line)) {
-      blocks.push({ type: 'hr' });
+      blocks.push({ type: 'hr', startLine: i + 1, endLine: i + 1 });
       i += 1;
       continue;
     }
@@ -368,6 +377,8 @@ export function parseMarkdownBlocks(markdown) {
       blocks.push({
         type: `h${level}`,
         text: headingMatch[2].trim(),
+        startLine: i + 1,
+        endLine: i + 1,
       });
       i += 1;
       continue;
@@ -375,6 +386,7 @@ export function parseMarkdownBlocks(markdown) {
 
     // 4. Blockquotes: > quote
     if (line.trim().startsWith('>')) {
+      const startLine = i + 1;
       const quoteLines = [];
       while (i < lines.length && lines[i].trim().startsWith('>')) {
         quoteLines.push(lines[i].replace(/^>\s?/, ''));
@@ -383,15 +395,20 @@ export function parseMarkdownBlocks(markdown) {
       blocks.push({
         type: 'blockquote',
         text: quoteLines.join('\n'),
+        startLine,
+        endLine: i,
       });
       continue;
     }
 
     // 5. Table: lines starting and ending with |
     if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
+      const startLine = i + 1;
       const tableLines = [];
+      const tableLineNumbers = [];
       while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
         tableLines.push(lines[i].trim());
+        tableLineNumbers.push(i + 1);
         i += 1;
       }
       if (tableLines.length >= 2) {
@@ -400,19 +417,26 @@ export function parseMarkdownBlocks(markdown) {
           .slice(1, -1)
           .map((c) => c.trim());
         // line 1 is often separator |---|---|
-        const dataRows = tableLines
-          .slice(1)
-          .filter((l) => !/^\|(\s*[-:]+\s*\|)+$/.test(l))
-          .map((row) =>
-            row
+        const dataRows = [];
+        const rowLines = [];
+        tableLines.slice(1).forEach((l, tableIdx) => {
+          if (/^\|(\s*[-:]+\s*\|)+$/.test(l)) return;
+          dataRows.push(
+            l
               .split('|')
               .slice(1, -1)
               .map((c) => c.trim()),
           );
+          rowLines.push(tableLineNumbers[tableIdx + 1]);
+        });
         blocks.push({
           type: 'table',
           headers: headerRow,
           rows: dataRows,
+          startLine,
+          endLine: i,
+          headerLine: tableLineNumbers[0],
+          rowLines,
         });
         continue;
       }
@@ -420,28 +444,40 @@ export function parseMarkdownBlocks(markdown) {
 
     // 6. Unordered List: - item, * item, + item
     if (/^\s*[-*+]\s+/.test(line)) {
+      const startLine = i + 1;
       const items = [];
+      const itemLines = [];
       while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) {
         items.push(lines[i].replace(/^\s*[-*+]\s+/, ''));
+        itemLines.push(i + 1);
         i += 1;
       }
       blocks.push({
         type: 'ul',
         items,
+        startLine,
+        endLine: i,
+        itemLines,
       });
       continue;
     }
 
     // 7. Ordered List: 1. item
     if (/^\s*\d+\.\s+/.test(line)) {
+      const startLine = i + 1;
       const items = [];
+      const itemLines = [];
       while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
         items.push(lines[i].replace(/^\s*\d+\.\s+/, ''));
+        itemLines.push(i + 1);
         i += 1;
       }
       blocks.push({
         type: 'ol',
         items,
+        startLine,
+        endLine: i,
+        itemLines,
       });
       continue;
     }
@@ -453,6 +489,7 @@ export function parseMarkdownBlocks(markdown) {
     }
 
     // 9. Paragraph
+    const paraStart = i + 1;
     const paragraphLines = [];
     while (
       i < lines.length &&
@@ -473,6 +510,8 @@ export function parseMarkdownBlocks(markdown) {
       blocks.push({
         type: 'p',
         text: paragraphLines.join(' '),
+        startLine: paraStart,
+        endLine: i,
       });
     }
   }
@@ -491,6 +530,7 @@ export function parseMarkdownBlocks(markdown) {
  * @param {boolean} [props.enableCopy=true] - Whether code blocks have copy buttons.
  * @param {string} [props.projectId] - Task context so relative `assets/...` image references resolve to the raw image endpoint.
  * @param {string} [props.taskId] - Task context for image resolution (see resolveTaskImageUrl).
+ * @param {Function|null} [props.renderBlockWrapper] - Optional `(block, rendered, index) => ReactNode` seam for review UIs: wraps each parsed block (which carries `startLine`/`endLine`) with hover affordances. `null` renders byte-identical default output.
  * @example <MarkdownViewer content="# Overview\n\nTask details here." />
  ***/
 export function MarkdownViewer({
@@ -499,6 +539,7 @@ export function MarkdownViewer({
   enableCopy = true,
   projectId = null,
   taskId = null,
+  renderBlockWrapper = null,
 }) {
   // Relative task-asset images resolve against the task's image endpoint;
   // without task context, sources render as-is (legacy behavior).
@@ -520,9 +561,10 @@ export function MarkdownViewer({
       className={`markdown-viewer space-y-2.5 text-xs text-on-surface leading-relaxed min-w-0 max-w-full break-words overflow-x-clip ${className}`}
     >
       {blocks.map((block, idx) => {
+        let rendered;
         switch (block.type) {
           case 'h1':
-            return (
+            rendered = (
               <h1
                 key={idx}
                 className="font-display-lg text-xl font-bold text-on-surface mt-4 mb-2 tracking-tight break-words min-w-0 max-w-full"
@@ -530,8 +572,9 @@ export function MarkdownViewer({
                 {parseInlineMarkdown(block.text, imageContext)}
               </h1>
             );
+            break;
           case 'h2':
-            return (
+            rendered = (
               <h2
                 key={idx}
                 className="font-headline-md text-base font-bold text-on-surface mt-3.5 mb-1.5 border-b border-border-standard/60 pb-1 break-words min-w-0 max-w-full"
@@ -539,8 +582,9 @@ export function MarkdownViewer({
                 {parseInlineMarkdown(block.text, imageContext)}
               </h2>
             );
+            break;
           case 'h3':
-            return (
+            rendered = (
               <h3
                 key={idx}
                 className="font-headline-sm text-sm font-semibold text-primary mt-3 mb-1 break-words min-w-0 max-w-full"
@@ -548,8 +592,9 @@ export function MarkdownViewer({
                 {parseInlineMarkdown(block.text, imageContext)}
               </h3>
             );
+            break;
           case 'h4':
-            return (
+            rendered = (
               <h4
                 key={idx}
                 className="text-xs font-semibold text-secondary mt-2 mb-0.5 uppercase tracking-wide font-mono"
@@ -557,8 +602,9 @@ export function MarkdownViewer({
                 {parseInlineMarkdown(block.text, imageContext)}
               </h4>
             );
+            break;
           case 'h5':
-            return (
+            rendered = (
               <h5
                 key={idx}
                 className="text-[11px] font-semibold text-ochre mt-1.5 mb-0.5 uppercase tracking-wider font-mono"
@@ -566,8 +612,9 @@ export function MarkdownViewer({
                 {parseInlineMarkdown(block.text, imageContext)}
               </h5>
             );
+            break;
           case 'h6':
-            return (
+            rendered = (
               <h6
                 key={idx}
                 className="text-[10px] font-bold text-text-muted mt-1 mb-0.5 uppercase tracking-widest font-mono"
@@ -575,8 +622,9 @@ export function MarkdownViewer({
                 {parseInlineMarkdown(block.text, imageContext)}
               </h6>
             );
+            break;
           case 'p':
-            return (
+            rendered = (
               <p
                 key={idx}
                 className="text-xs font-body-md text-on-surface leading-relaxed break-words min-w-0 max-w-full"
@@ -584,8 +632,9 @@ export function MarkdownViewer({
                 {parseInlineMarkdown(block.text, imageContext)}
               </p>
             );
+            break;
           case 'code':
-            return (
+            rendered = (
               <CodeBlock
                 key={idx}
                 code={block.code}
@@ -593,8 +642,9 @@ export function MarkdownViewer({
                 enableCopy={enableCopy}
               />
             );
+            break;
           case 'ul':
-            return (
+            rendered = (
               <ul key={idx} className="space-y-1 my-2 pl-2">
                 {block.items.map((item, itemIdx) => (
                   <li key={itemIdx} className="flex items-start gap-2 text-xs">
@@ -604,8 +654,9 @@ export function MarkdownViewer({
                 ))}
               </ul>
             );
+            break;
           case 'ol':
-            return (
+            rendered = (
               <ol key={idx} className="space-y-1 my-2 pl-2">
                 {block.items.map((item, itemIdx) => (
                   <li key={itemIdx} className="flex items-start gap-2 text-xs">
@@ -617,8 +668,9 @@ export function MarkdownViewer({
                 ))}
               </ol>
             );
+            break;
           case 'blockquote':
-            return (
+            rendered = (
               <blockquote
                 key={idx}
                 className="border-l-2 border-primary/70 pl-3 py-1.5 my-2 italic text-text-muted bg-surface-container/30 rounded-r text-xs leading-relaxed"
@@ -626,10 +678,12 @@ export function MarkdownViewer({
                 {parseInlineMarkdown(block.text, imageContext)}
               </blockquote>
             );
+            break;
           case 'hr':
-            return <hr key={idx} className="border-border-standard my-3" />;
+            rendered = <hr key={idx} className="border-border-standard my-3" />;
+            break;
           case 'table':
-            return (
+            rendered = (
               <div
                 key={idx}
                 className="overflow-x-auto my-3 border border-border-standard rounded-sm"
@@ -669,9 +723,13 @@ export function MarkdownViewer({
                 </table>
               </div>
             );
+            break;
           default:
-            return null;
+            rendered = null;
+            break;
         }
+        if (renderBlockWrapper) return renderBlockWrapper(block, rendered, idx);
+        return rendered;
       })}
     </div>
   );
