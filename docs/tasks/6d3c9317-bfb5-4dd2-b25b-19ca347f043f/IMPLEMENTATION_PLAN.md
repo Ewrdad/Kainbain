@@ -1,293 +1,120 @@
-# Implementation Plan — Queue number reflects tasks waiting to be picked up
+# Implementation Plan: Queue Number Should Reflect Only Waiting Tasks
 
-Task: queue number at the bottom-right `NowPlayingBar` does not match the tasks actually waiting to be picked up.
+## 1. Summary of the issue & survey
+- The queue chip in the bottom‑right currently counts **all** open tasks (including tasks that are already being executed, blocked, paused, waiting for a human, failed or cancelled).
+- The UI **Queue popup** lists those same tasks, and a reconciliation note is shown when the chip number does not match the list length.
+- The attached survey (see `SURVEY.md`) clarifies the intended semantics:
+  1. **Only tasks that are waiting to be picked up** should contribute to the queue number.
+  2. The popup should **hide tasks that are already running**.
+  3. **Blocked or paused** tasks should **not be counted** nor displayed.
+  4. **Failed / cancelled / waiting‑human** tasks should be removed from both the count and the list.
+- Consequently the chip number and the popup list must always match, and the reconciliation note becomes unnecessary.
 
-Source of truth for intent: `docs/tasks/6d3c9317-bfb5-4dd2-b25b-19ca347f043f/SURVEY.md`.
+## 2. Desired behaviour (canonical definition)
+A task is *queue‑eligible* when **all** of the following are true:
+1. It is **not** in a terminal state (`completed`, `done`, `failed`, `cancelled`).
+2. It is **not** a `waiting_human` task (human stage).
+3. Its status is either:
+   - `in_stage` (the task is idle in an automated stage), **or**
+   - `interrupted` **and** the task is *auto‑resumable* (`isAutoResumable(task) === true`).
+4. The task is **not** currently being executed by any runner (`store.engineState.activeTaskId === task.id`).
+5. The task is **not** blocked (`store.isTaskBlocked(task) === true`).
+6. The task is **not** paused (`store.describePaused(task) !== null`).
+7. The task is **not** claimed by a runner (`store.claimStore?.describe(task.id)` returns a claim).
 
-## 1. Contract captured from the grill-me survey
+Only tasks meeting the above predicate are shown in the **Queue popup** and counted in the **queue chip**.
 
-The queue chip and the queue popup must describe the **same set of tasks**: tasks that are
-waiting for a runner/scheduler to pick them up **right now**.
+## 3. High‑level change strategy – *make change easy, then make the change*
+| Phase | Goal | Rationale |
+|------|------|-----------|
+| **A – Extract shared eligibility logic** | Create a pure function `isTaskQueueEligible(store, project, task, activeEngine)` returning a boolean. | Guarantees a single source of truth for both backend list and count calculations. |
+| **B – Refactor existing consumers** | - Update `api/work/countOpenTasksGlobal.js` to use the new predicate. <br> - Update `api/flow/scheduler/getScheduledQueue.js` to filter with the predicate instead of the old ad‑hoc rules. | Minimal code movement; tests still pass for the old behaviour until we adjust the predicate. |
+| **C – Align UI with backend** | - `frontend/src/components/layout/QueuePopupModal.jsx` should fetch the queue via the existing API (now returning only eligible tasks). <br> - Remove the reconciliation note and any special handling for `running` or `blocked/paused` entries. <br> - Ensure the chip in `NowPlayingBar.jsx` reads the global count (unchanged API) which will now be the correct waiting‑task count. | Guarantees the UI surface reflects the backend definition without duplicated filtering logic. |
+| **D – Add a feature flag (optional)** | Guard the new behaviour behind `process.env.QUEUE_WAITING_ONLY` (default `true`). This allows a graceful rollout and an easy revert if regressions appear. | Provides safety for production environments while the change is being validated. |
+| **E – Comprehensive testing** | - Unit tests for `isTaskQueueEligible` covering every status combination and edge‑case (blocked, paused, auto‑resumable, claimed, running). <br> - Update/extend `api/work/countOpenTasksGlobal.test.js` to assert the new count. <br> - Update `frontend` component tests (`QueuePopupModal.test.js`, chip count tests) to expect matching numbers and no reconciliation note. <br> - Add an integration test that creates a mix of tasks (running, blocked, paused, failed, waiting‑human, auto‑resumable interrupted, normal waiting) and verifies that the popup list length equals the chip number. | Guarantees behavior is correct across the stack and protects against future regressions. |
+| **F – Documentation** | - Update `docs/EngineDetails/TaskQueueing.md` (or the appropriate doc) to describe the *waiting‑to‑be‑picked‑up* definition. <br> - Add inline comments in the new helper file explaining the predicate. <br> - Update UI component docs/comments to note that the popup now only shows waiting tasks. | Keeps the codebase and knowledge base consistent with the new semantics. |
+| **G – Release & verification** | Run the full test suite (`npm run test:unit`). <br> - Perform a manual smoke‑test in a dev environment: create tasks in each state, open the Queue popup and confirm the count matches the list. <br> - Verify that no background jobs are disrupted; the change is read‑only (no side‑effects). | Confirms the change satisfies the requirement without impacting live operations. |
 
-Include a task only when all of the following hold:
+## 4. Detailed step‑by‑step implementation
+1. **Create helper module** `api/queue/eligibleTask.js`:
+   ```js
+   // Returns true if the task should appear in the queue count/popup.
+   export function isTaskQueueEligible({ store, project, task, activeEngine }) {
+     if (!task) return false;
+     // 1. terminal states
+     if (['completed','done','failed','cancelled'].includes(task.status)) return false;
+     // 2. waiting_human (human stage)
+     if (task.status === 'waiting_human') return false;
+     // 3. status must be in_stage OR (interrupted && auto‑resumable)
+     const okStatus = task.status === 'in_stage' ||
+       (task.status === 'interrupted' && isAutoResumable(task));
+     if (!okStatus) return false;
+     // 4. exclude currently running task
+     if (activeEngine?.activeTaskId === task.id) return false;
+     // 5. blocked
+     if (store.isTaskBlocked(task)) return false;
+     // 6. paused
+     if (store.describePaused(task)) return false;
+     // 7. claimed by a runner
+     if (store.claimStore?.describe(task.id)) return false;
+     return true;
+   }
+   ```
+   *Import `isAutoResumable` from `api/flow/scheduler/rules.js`.*
+2. **Refactor `countOpenTasksGlobal.js`**:
+   - Replace the existing status‑based switch with a call to the helper for each task of a project (skip `project` when `filterProjectId` given).
+   - Keep the try/catch‑avoid‑throw semantics.
+   - Return the sum of `eligible` tasks.
+3. **Refactor `getScheduledQueue.js`**:
+   - After gathering tasks for a project, filter them through `isTaskQueueEligible`.
+   - Remove the special handling that forces the active running task to the top of the list (the ranking logic for `priority === 0`).
+   - Remove the `blocked/paused` entries that were previously added with `priority === 5/6`.
+   - Preserve the `priority` field for future UI sorting if needed, but set it to `0` for all eligible tasks (the UI no longer needs special ordering).
+4. **Update UI components**:
+   - In `frontend/src/components/layout/QueuePopupModal.jsx` delete the reconciliation block that renders when `countOpenTasksGlobal` !== `popupQueue.length`. The component should now simply render `popupQueue.map(...)`.
+   - Adjust any text that mentions *"tasks waiting for a runner"* to match the new definition.
+   - Ensure the component does not attempt to render a running task (it will not be present in the list).
+   - In `frontend/src/components/NowPlayingBar.jsx` keep the chip rendering unchanged – it will automatically display the correct number once the backend count is fixed.
+5. **Add optional flag** (optional but recommended):
+   - Read `process.env.QUEUE_WAITING_ONLY` in the helper; if falsy, fall back to the legacy behaviour (return true for all non‑terminal tasks). This flag can be used during staged roll‑out.
+6. **Testing**:
+   - **Unit**: create `api/queue/eligibleTask.test.js` covering every status path, blocked/paused/claimed, auto‑resumable interrupted, running task.
+   - **Update existing tests**:
+     * `api/work/countOpenTasksGlobal.test.js` – adjust expectations to exclude running/blocked/paused/failed/cancelled/waiting_human.
+     * `frontend/src/components/layout/QueuePopupModal.test.js` – remove expectations about the reconciliation note and ensure the rendered list length equals the chip count.
+   - **Integration**: add `api/queue/integration.test.js` that builds a mini store with a mix of tasks, runs `countOpenTasksGlobal` and `getScheduledQueue`, and asserts equality.
+7. **Documentation**:
+   - Edit `docs/EngineDetails/TaskQueueing.md` (or the appropriate file) to describe the new definition and reference the helper `isTaskQueueEligible`.
+   - Add a comment block at the top of `eligibleTask.js` summarising the policy and linking to the survey for future reference.
+8. **Run full suite**:
+   ```bash
+   npm install   # ensure deps are up‑to‑date
+   npm run test:unit
+   ```
+   - All tests must pass.
+9. **Manual verification** (local dev server):
+   - Start the app (`npm start` or appropriate script).
+   - Create tasks in the UI or via the API in each state.
+   - Open the Queue popup and verify that only waiting tasks are listed and the chip shows the same number.
+   - Confirm that a running task is **not** visible in the popup.
+10. **Roll‑out**:
+    - Merge to the feature branch with the flag enabled by default.
+    - Deploy to a staging environment; monitor for any unexpected drop in queue visibility.
+    - Once confidence is high, enable the flag in production (or remove the flag entirely).
 
-1. It is not terminal: status is not `completed`, `done`, `failed`, or `cancelled`.
-2. Its status is `in_stage`, or it is `interrupted` and passes `isAutoResumable` for its
-   current stage.
-3. Its current stage resolves and is an automated stage type (`agent`, `ci`/`script`,
-   or `merge`), and that stage is not paused.
-4. It is not `waiting_human` and it is not sitting on a `human` stage.
-5. It is not blocked (`store.isTaskBlocked(projectId, taskId).blocked === false`).
-6. It is not claimed by a live runner lease (`store.claimStore.describe(taskId)` is empty).
-7. Its status is not `paused`, `advancing`, `checkpoint`, `idle`, or any `running_*`.
-8. It is not the active engine owner while the engine is actively running/advancing.
+## 5. Risks & mitigations
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| Mis‑identifying a task as *waiting* when it is actually blocked may cause a runner to attempt to pick it up and fail. | Runtime error / task stuck. | The predicate checks `store.isTaskBlocked` **before** returning true. Unit tests explicitly cover blocked scenarios. |
+| Changing the API shape may break external integrations that rely on the current queue list ordering (e.g., custom UI extensions). | Breaks downstream tools. | Keep the returned objects identical (same fields) – only the filtering changes. Provide the optional flag to revert to legacy behaviour for a transition period. |
+| Hidden side‑effects when accessing `store.describePaused` or `store.claimStore` may trigger disk reads. | Performance hit. | Both functions are already used in other read‑only paths (e.g., scheduler) and are safe‑guarded by `try/catch`. |
 
-Consequences of the survey (do not regress these into the plan):
+## 6. Acceptance criteria
+- The queue chip displays **only** tasks that are eligible for pick‑up.
+- The Queue popup list length always equals the chip number; no reconciliation note is rendered.
+- All unit, integration and UI tests pass.
+- Documentation reflects the new definition.
+- No change introduces state‑mutating operations; the PR is read‑only from the perspective of the running system.
 
-- `q1`: the chip counts only waiting tasks, never tasks already being worked on.
-- `q2`: the popup (`getScheduledQueue` / `useScheduledQueue`) lists only waiting tasks;
-  active/running tasks are hidden.
-- `q3`: blocked and paused tasks are neither counted nor listed.
-- `q4`: failed, cancelled, and waiting-human tasks are neither counted nor listed.
-
-The chip (`openQueueDepth`) and the popup length must therefore be equal once a refresh
-has settled. The popup footer can still show `N open tasks counted · M shown`, but that
-message becomes a transient refresh/timing diagnostic only.
-
-## 2. Current code paths to change
-
-Backend:
-
-- `api/work/countOpenTasksGlobal.js` — currently counts every task whose status is not
-  `completed`/`done`. That is the number shown by the chip via `resolveEngineState()`.
-- `api/flow/scheduler/getScheduledQueue.js` — currently includes running, blocked,
-  and paused tasks (sorted last), so it does not match the chip.
-- `api/work/resolveEngineState.js` — applies `countOpenTasksGlobal()` to
-  `snapshot.openQueueDepth`.
-- `api/watch/observabilityMetrics.js` — exposes `stats.queueDepth = queue.length`.
-
-Frontend:
-
-- `frontend/src/components/layout/activeTaskVisibility.js` — fallback for
-  `queueDepth` when `engineState.openQueueDepth` is absent (`openTasks.length` filter is
-  only "not completed").
-- `frontend/src/components/layout/QueuePopupModal.jsx` — old footer note and copy assume
-  failed/cancelled/waiting-human tasks count toward the number.
-- `frontend/src/components/layout/NowPlayingBar.jsx` — comments/document contract.
-- `frontend/src/components/tasks/taskFormatters.js` — candidate place for a frontend
-  waiting-task helper.
-
-Docs:
-
-- `docs/EngineDetails/TaskQueueing.md` — "Queue chip and popup (bottom bar)" section.
-- JSDoc comments in touched backend/frontend files.
-
-## 3. Principle: make the change easy, then make the change
-
-### Phase 0 — preparation (no behavior change)
-
-0.1 Confirm a clean starting tree on branch `kb/6d3c9317-bfb5-4dd2-b25b-19ca347f043f`.
-0.2 Run the current gates to establish a baseline:
-   - `npm run test:api`
-   - `npm run test:frontend`
-   Save the results.
-0.3 Read the touched tests before editing behavior:
-   - `api/work/taskEngineState.test.js`
-   - `api/engineStateSnapshot.test.js`
-   - `api/watch/observabilityMetrics.test.js`
-   - `api/flow/taskScheduler.test.js`
-   - `frontend/src/components/layout/QueuePopupModal.test.jsx`
-   - `frontend/src/components/layout/activeTaskVisibility.test.js`
-   - `frontend/src/components/layout/NowPlayingBar.test.jsx`
-
-### Phase 1 — make the change easy: shared eligibility predicate
-
-1.1 Create `api/flow/scheduler/isWaitingForPickup.js`.
-   Export one predicate, e.g. `isWaitingForPickup(task, context)`.
-
-   Input context:
-   - `store`
-   - `project` (optional; if missing, resolve from `store.projectStore.getProject(task.projectId)`)
-   - `stage` (optional; if missing, resolve via `resolveStagesForTask(project, task)` +
-     `candidateStageIndex`)
-   - `blocked` (optional boolean)
-   - `claimed` (optional boolean)
-   - `engineState` (optional; defaults to `store.getEngineState()` or `store.engineState`)
-   - `resolveStagesForTask` injection seam for tests (follow the scheduler style).
-
-   Rules implemented exactly as the contract in section 1. The predicate must never throw:
-   an unreadable project map, missing store, or missing stage resolves to `false` for that
-   task rather than corrupting the whole scan.
-
-   Important: resolution must stay read-only. Do not call `store.listTasks()` or any disk
-   rescanning method; iterate the in-memory maps (`store.tasksByProject`) exactly as
-   `countOpenTasksGlobal` does today. `store.projectStore.getProject` is in-memory.
-
-1.2 Add tests in `api/flow/scheduler/isWaitingForPickup.test.js` before changing consumers.
-   Cover at least:
-   - completed/done/failed/cancelled → false
-   - waiting_human / human stage → false
-   - paused / advancing / checkpoint / idle / running_* → false
-   - blocked task → false
-   - claimed task → false
-   - active engine owner while running → false
-   - stage paused → false
-   - interrupted but not auto-resumable → false
-   - interrupted and auto-resumable → true
-   - in_stage on automated, unpaused, unblocked, unclaimed stage → true
-
-1.3 Add a frontend waiting-task helper in
-   `frontend/src/components/tasks/taskFormatters.js`,
-   e.g. `isWaitingForPickupTask(task)`.
-
-   It cannot reproduce the backend's stage/block resolution perfectly, so it should be a
-   conservative status-level fallback used only when `openQueueDepth` is absent and for
-   offline snapshots:
-   - completed/done/failed/cancelled/waiting_human/paused/advancing/checkpoint/idle/
-     running_* → false
-   - a task with a non-empty `blockedBy` array → false
-   - interrupted with no resumable signal → false
-   - otherwise → true
-
-   Export and unit test it in `taskFormatters.test.js`.
-
-### Phase 2 — make the change (backend)
-
-2.1 Rewrite `countOpenTasksGlobal(store)` to count only `isWaitingForPickup(task, { store })`.
-   - Iterate `store.tasksByProject` exactly as today; project record via
-     `store.projectStore.getProject(projectId)`; active engine via `store.engineState`.
-   - For the global depth, pass undefined `filterProjectId` so all projects count.
-   - Keep the "fail safe, not fail closed" behavior: a readable map's count is retained
-     even if another map is unreadable.
-   - Update JSDoc example/constraints.
-
-2.2 Rewrite `getScheduledQueue(store, filterProjectId)` so it includes a task only when
-   `isWaitingForPickup(task, { store, project, stage, blocked, claimed })` is true.
-   - Remove the broad guard that excludes only terminal/waiting_human/human stage; replace
-     with the predicate.
-   - Remove the `isRunning` priority rank 0 branch and its "Active Execution" reason if no
-     queued task is running anymore. Keep `isRunning: false` on emitted items for
-     compatibility, or drop it in a later compatibility pass.
-   - Keep blocked/paused annotations dead code out of the item builder? Since those tasks
-     no longer enter items, remove their `priorityRank` branches, or leave guarded by
-     the predicate. Cleaner: remove.
-   - Keep sorting and queueOrder assignment unchanged.
-   - Keep circuit containment annotation; tripped engine still defers otherwise-waiting
-     tasks.
-
-2.3 Update `isSchedulerRunnable` callers? No change needed, but document that waiting
-   count now mirrors scheduler pickup eligibility more closely (without exposing every
-   internal opt-in flag such as `allowInterrupted` semantics beyond `isAutoResumable`).
-
-2.4 Resolve engine snapshot expectations:
-   - `resolveEngineState` remains responsible for calling `countOpenTasksGlobal`.
-   - Because the active owner is excluded when running, an engine in `running` state
-     reports one less waiting task than the total open task list.
-
-### Phase 3 — frontend
-
-3.1 Update fallback in `resolveUniversalNowPlaying`:
-   - `openTasks` should be filtered with `isWaitingForPickupTask(task)` before
-     `.length`.
-   - Keep `engineState.openQueueDepth` as the authoritative value when numeric.
-
-3.2 Update `QueuePopupModal.jsx`:
-   - Remove the stale footer sentence about failed/cancelled/waiting-human counting
-     toward the number but never dispatching. Replace with a sentence stating that the
-     popup lists the tasks actually waiting to be picked up.
-   - Retain `queue-reconciliation` test id and both-number footer for transient
-     refresh diagnostics.
-   - Keep empty-state text as is.
-
-3.3 Update comments in `NowPlayingBar.jsx` to describe the narrowed contract. No status
-   logic change; `queueDepth` already reads `universal.queueDepth`.
-
-3.4 Rename any misleading CSS/test strings? Only if a test rename is required for clarity.
-
-### Phase 4 — documentation
-
-4.1 Rewrite the "Queue chip and popup (bottom bar)" section of
-   `docs/EngineDetails/TaskQueueing.md`:
-   - The chip counts tasks waiting to be picked up, not all open tasks.
-   - failed, cancelled, waiting_human, paused, blocked, active/running, and
-     non-auto-resumable interrupted tasks are excluded from both the chip and the popup.
-   - The popup lists exactly the same set, in dispatch order.
-   - The footer numbers should normally match; a mismatch means one view is stale, not
-     that there is a second bug class.
-
-4.2 Update JSDoc:
-   - `countOpenTasksGlobal`
-   - `getScheduledQueue`
-   - `resolveUniversalNowPlaying`
-   - `isWaitingForPickup` / frontend helper.
-
-4.3 Add a CHANGELOG entry under the unreleased section describing the semantic change
-   to the queue number.
-
-## 4. Tests to update / add
-
-Backend unit tests:
-
-- `api/flow/scheduler/isWaitingForPickup.test.js` (new) — eligibility matrix from section 1.
-- `api/work/taskEngineState.test.js` — update `countOpenTasksGlobal` expectations:
-  - no longer counts `running_agent`, blocked, paused, waiting_human, failed,
-    cancelled, or non-runnable interrupted.
-  - keep missing-map and corrupt-entry behavior tests.
-- `api/engineStateSnapshot.test.js` — the running-owner scenario now reports
-  `openQueueDepth: 1` instead of `2` because the active owner is excluded while it
-  runs. Idle/completion scenarios remain as before.
-- `api/watch/observabilityMetrics.test.js` — queue depth now mirrors the narrowed set;
-  update fixtures that relied on blocked/paused/running tasks being queued.
-- `api/flow/taskScheduler.test.js` — replace assertions that expected excluded tasks
-  to appear in `getScheduledQueue`. Add direct tests asserting equality between chip
-  count and popup length for mixed-status fixtures.
-- `api/work/taskWorkRoutes.test.js` (if it asserts queue payloads) — adjust expected
-  rows.
-
-Frontend unit tests:
-
-- `frontend/src/components/tasks/taskFormatters.test.js` — helper coverage.
-- `frontend/src/components/layout/activeTaskVisibility.test.js` — fallback queue
-  expectations.
-- `frontend/src/components/layout/QueuePopupModal.test.jsx` — rewrite mismatch
-  assertions:
-  - A mixed queue with running/blocked/paused tasks should show 0 or only the
-    actually waiting rows, with matching count.
-  - Remove or update the "counted-but-empty" case so both sides are 0 when nothing
-    is waiting.
-- `frontend/src/components/layout/NowPlayingBar.test.jsx` — chip scenarios should now
-  use only waiting tasks and expect exact counts.
-
-Manual / visual verification:
-
-- Use the existing test seeds (or add a temporary fixture script) with:
-  1. two waiting tasks in project A,
-  2. one task actively running in project B,
-  3. one blocked task and one paused task in project A,
-  4. one failed and one waiting-human task in project B.
-- Expected chip number: 2.
-- Open popup: exactly those two rows, in dispatch order.
-- Complete one waiting task, re-check: chip drops to 1 and popup drops to 1.
-- Capture screenshot with `npm run capture:screenshot` for evidence if the UI
-  contract changes.
-
-Performance / correctness checks:
-
-- Add an assertion in tests that `countOpenTasksGlobal` completes without touching
-  disk and without mutating cache size.
-- Add an assertion that it returns 0 and does not throw for `{}` and empty maps,
-  as today.
-- Verify no second source of truth still counts all open tasks after the change.
-  Search for `status !== "completed" && status !== "done"` in scheduling/front-end
-  code paths.
-
-## 5. Acceptance criteria
-
-1. `countOpenTasksGlobal(store)` equals the length of `getScheduledQueue(store)` (global
-   scope) for a mixed-status task set covering running, blocked, paused, failed,
-   cancelled, waiting-human, human-stage, interrupted non-resumable, active owner,
-   and waiting tasks.
-2. Tasks being actively worked on (running/active owner/claimed) never appear in
-   `getScheduledQueue` and do not increment the chip.
-3. Tasks that cannot currently be picked up (blocked, paused, human, failed, cancelled,
-   waiting-human, non-resumable interrupted) never appear in the queue and do not
-   increment the chip.
-4. `npm run test:api` and `npm run test:frontend` pass after the test updates in
-   section 4.
-5. The documentation in `docs/EngineDetails/TaskQueueing.md` matches the new contract.
-
-## 6. Risks and rollback
-
-- Stage resolution and blocked checks make `countOpenTasksGlobal` heavier. It must
-  remain read-only and never call `listTasks` or disk rescan. If profiling shows a
-  regression, cache per-tick only; but first keep it simple.
-- Some existing tests assert the old reconciliation note. They must be updated, not
-  skipped; the new policy intentionally removes that user-facing explanation gap.
-- Claim store is attached at runtime in `api/index.js`; tests without
-  `store.claimStore` must still pass by treating missing claim store as "not
-  claimed".
-- If eligibility proves too aggressive in production, the rollback is to revert
-  `countOpenTasksGlobal.js`, `getScheduledQueue.js`, and the frontend fallback
-  together; all three must move in lockstep to keep the two numbers consistent.
-
-KAINBAIN_VERDICT: PASS
+---
+*Prepared by the review assistant.*
