@@ -544,54 +544,54 @@ export default async function retrospectiveRoutes(app, { deps }) {
 				return;
 			}
 			// Resolve switch target for response metadata (no session switch — runner handles model)
-				const switchTarget = chatTarget.aliasMissing
-					? chatTarget.modelRef || null
-					: (chatTarget.modelRef ?? requestedModel);
-				let modelRequested = true;
-				if (switchTarget && harnessModelSelection(harness) === "none") {
-					modelRequested = false;
+			const switchTarget = chatTarget.aliasMissing
+				? chatTarget.modelRef || null
+				: chatTarget.modelRef ?? requestedModel;
+			let modelRequested = true;
+			if (switchTarget && harnessModelSelection(harness) === "none") {
+				modelRequested = false;
+			}
+			void handoffModel;
+			void guardSessionCapability;
+
+			// Resolve stage skill injection (Phase 4)
+			let skillSections = [];
+			let skillChars = 0;
+			try {
+				const loadSkillFn =
+					typeof loadSkillOverride === "function"
+						? loadSkillOverride
+						: skillsRegistry
+							? (name) => skillsRegistry.getSkill(name, { projectCwd: project.cwd })
+							: null;
+
+				if (loadSkillFn) {
+					// Per-turn override for the skill's self-referential
+					// KB_config `projectCwd` keyword: without this the
+					// `{{projectCwd}}` lookup paths reach the model
+					// unresolved (custom keywords win over built-ins and no
+					// `projectCwd` built-in exists).
+					const chatSkillConfig = {
+						projectCwd:
+							typeof project?.cwd === "string" && project.cwd.trim()
+								? project.cwd
+								: "./",
+					};
+					const { sections, usedChars } = buildSkillsPromptSections({
+						skills: [
+							{
+								name: "retrospective-task-lookup",
+								mode: "direct",
+								config: chatSkillConfig,
+							},
+						],
+						interpolationContext: { project, taskIds: tasks.map((t) => t.id) },
+						maxChars: appConfig.chatSkillsMaxChars || 6000,
+						loadSkill: loadSkillFn,
+					});
+					skillSections = sections;
+					skillChars = usedChars || 0;
 				}
-				void handoffModel;
-				void guardSessionCapability;
-
-				// Resolve stage skill injection (Phase 4)
-				let skillSections = [];
-				let skillChars = 0;
-				try {
-					const loadSkillFn =
-						typeof loadSkillOverride === "function"
-							? loadSkillOverride
-							: skillsRegistry
-								? (name) => skillsRegistry.getSkill(name, { projectCwd: project.cwd })
-								: null;
-
-					if (loadSkillFn) {
-						// Per-turn override for the skill's self-referential
-						// KB_config `projectCwd` keyword: without this the
-						// `{{projectCwd}}` lookup paths reach the model
-						// unresolved (custom keywords win over built-ins and no
-						// `projectCwd` built-in exists).
-						const chatSkillConfig = {
-							projectCwd:
-								typeof project?.cwd === "string" && project.cwd.trim()
-									? project.cwd
-									: "./",
-						};
-						const { sections, usedChars } = buildSkillsPromptSections({
-							skills: [
-								{
-									name: "retrospective-task-lookup",
-									mode: "direct",
-									config: chatSkillConfig,
-								},
-							],
-							interpolationContext: { project, taskIds: tasks.map((t) => t.id) },
-							maxChars: appConfig.chatSkillsMaxChars || 6000,
-							loadSkill: loadSkillFn,
-						});
-						skillSections = sections;
-						skillChars = usedChars || 0;
-					}
 				} catch (err) {
 					if (request.log?.warn) {
 						request.log.warn(`Retrospective chat skill injection failed: ${err?.message}`);
