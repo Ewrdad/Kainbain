@@ -3,17 +3,17 @@
  * @description Cross-task retrospective chat API: a stateless single-turn
  *   endpoint (`POST /retrospective/chat`) that folds the frontend-held
  *   transcript plus selected-task context into ONE prompt text and runs it
- *   through an ephemeral harness session (registry-resolved, never a task's
- *   live session, never persisted into task logs). Ticket suggestions come
- *   back as structured drafts — the endpoint NEVER creates tasks; the user's
- *   Confirm click calls `POST /tasks`. A bounded `output` tail of the
- *   assistant text observed during the turn rides along on success and on
- *   504/502 failures (when non-empty) so the UI can show partial progress.
+ *   to a Runner as a read-only impromptu (T0) job — never a task's live
+ *   session, never persisted into task logs. Ticket suggestions come back as
+ *   structured drafts — the endpoint NEVER creates tasks; the user's Confirm
+ *   click calls `POST /tasks`. A bounded `output` tail of the assistant text
+ *   observed during the turn rides along on success and on 504/502 failures
+ *   (when non-empty) so the UI can show partial progress.
  *
- *   Degradation policy: a session lacking the `prompt` member gets the
- *   standard `501 { code: "unsupported_by_harness" }` via
- *   Unknown task ids surface as `404 { code: "task_not_found" }`;
- *   missing Runner capacity surfaces as `503 { code: "no_runner_available" }`.
+ *   Degradation policy: unknown task ids surface as
+ *   `404 { code: "task_not_found" }`; missing Runner capacity surfaces as
+ *   `503 { code: "no_runner_available" }` (or `runner_unavailable` for a
+ *   pinned override that cannot serve); a full queue is `429`.
  * @example app.register(retrospectiveRoutes, { deps })
  ***/
 
@@ -24,8 +24,6 @@ import {
 import { resolveStageTarget } from "../agentRunner.js";
 import { toTaskSummary } from "../work/taskIdentity.js";
 import { taskStageDurationSamples } from "../taskDurationSummary.js";
-import { truncateOutputTail } from "./retrospectiveChat.js";
-void truncateOutputTail;
 import { config as appConfig } from "../config.js";
 import { buildSkillsPromptSections } from "../skills/skillInjection.js";
 
@@ -34,9 +32,10 @@ export const CHAT_PROGRESS_BROADCAST_MIN_INTERVAL_MS = 500;
 
 /***
  * MARK: RETROSPECTIVE_SESSION_META
- * @description Marker ids forcing a FRESH ephemeral session: without
- *   taskId/stageId the pi harness would RESUME the latest persisted (live)
- *   session from disk. These markers keep chat turns off live history.
+ * @description Legacy marker ids from the pre-runner chat path (kept for
+ *   tests): chat turns no longer open a backend harness session at all —
+ *   they dispatch to a Runner as read-only impromptu jobs. New code must use
+ *   the impromptu dispatcher, never a local session.
  ***/
 export const RETROSPECTIVE_SESSION_META = Object.freeze({
 	taskId: "retrospective",
@@ -290,28 +289,10 @@ export function buildChatPrompt({
 	return parts.join("\n");
 }
 
-/***
- * MARK: resolveChatReplyText
- * @description Normalizes the harness `prompt()` result to reply text: a
- *   string result wins, otherwise the session's last assistant text, else an
- *   empty string (the turn still reports success with no suggestions).
- * @example resolveChatReplyText(session, 'hi') => 'hi'
- * @param {Object} session - The ephemeral harness session.
- * @param {unknown} result - The `prompt()` resolution value.
- * @returns {Promise<string>} The reply text.
- ***/
-export async function resolveChatReplyText(session, result) {
-	if (typeof result === "string") return result;
-	try {
-		if (session && typeof session.getLastAssistantText === "function") {
-			const text = await session.getLastAssistantText();
-			if (typeof text === "string" && text) return text;
-		}
-	} catch {
-		// Fall through to the empty reply.
-	}
-	return "";
-}
+// Settle rule for harness prompt results (defined on the chat helper so the
+// Runner reuses it without importing this route): re-exported here so
+// existing importers keep working.
+export { resolveChatReplyText } from "./retrospectiveChat.js";
 
 const chatBodySchema = {
 	type: "object",
@@ -370,12 +351,10 @@ export default async function retrospectiveRoutes(app, { deps }) {
 		taskStore,
 		workflowRegistry,
 		resolveAndGuardProject,
-		guardSessionCapability,
 		resolveHarness = registryResolveHarness,
 		skillsRegistry,
 		loadSkill: loadSkillOverride,
 		promptTimeoutMs: promptTimeoutMsOverride,
-		_eventBridge: eventBridge,
 	} = deps;
 
 	function resolveStagesForTask(project, task) {
@@ -392,14 +371,15 @@ export default async function retrospectiveRoutes(app, { deps }) {
 
 	/***
 	 * MARK: Post Retrospective Chat
-	 * @description Runs one stateless retrospective chat turn through an
-	 *   ephemeral harness session. Request
-	 *   `{ projectId?, messages: [{role, content}], taskIds?, harness?, model?, strictTaskIds?, turnId? }`;
-	 *   response `{ reply, suggestions: [{title, goal}], harness, model, modelRequested, unknownTaskIds, contextTaskIds, contextTruncated, contextChars }`.
-	 *   When the client sends a `turnId`, the turn's streamed assistant
-	 *   deltas are also broadcast live as `CHAT_PROGRESS` WebSocket frames
+	 * @description Dispatches one stateless retrospective chat turn to a
+	 *   Runner as a read-only impromptu job. Request
+	 *   `{ projectId?, messages: [{role, content}], taskIds?, harness?, model?, strictTaskIds?, turnId?, runnerId? }`;
+	 *   response `{ reply, suggestions: [{title, goal}], harness, model, modelRequested, unknownTaskIds, contextTaskIds, contextTruncated, contextChars, output? }`.
+	 *   When the client sends a `turnId`, the Runner's streamed deltas are
+	 *   also broadcast live as `CHAT_PROGRESS` WebSocket frames
 	 *   (`{ turnId, tail }`, throttled) so the chat's working card can scroll
 	 *   real output; the HTTP settle stays the done signal (no CHAT_DONE).
+	 *   `runnerId` pins the turn to one Runner (advanced override).
 	 * @example POST /retrospective/chat { messages: [{ role: 'user', content: 'Any trends?' }] }
 	 ***/
 	app.post(
@@ -531,12 +511,6 @@ export default async function retrospectiveRoutes(app, { deps }) {
 			const { name: harnessName, harness } = resolveHarness(project, {
 				harnessName: chatTarget.harnessName || requestedHarness,
 			});
-			const handoffModel =
-				!chatTarget.aliasMissing &&
-				chatTarget.modelRef &&
-				chatTarget.modelRef !== "default"
-					? chatTarget.modelRef
-					: null;
 			// Impromptu dispatch: the only path — no local harness session.
 			const impromptuDispatcher = deps.impromptuDispatcher;
 			if (!impromptuDispatcher) {
@@ -551,8 +525,6 @@ export default async function retrospectiveRoutes(app, { deps }) {
 			if (switchTarget && harnessModelSelection(harness) === "none") {
 				modelRequested = false;
 			}
-			void handoffModel;
-			void guardSessionCapability;
 
 			// Resolve stage skill injection (Phase 4)
 			let skillSections = [];
@@ -592,81 +564,81 @@ export default async function retrospectiveRoutes(app, { deps }) {
 					skillSections = sections;
 					skillChars = usedChars || 0;
 				}
-				} catch (err) {
-					if (request.log?.warn) {
-						request.log.warn(`Retrospective chat skill injection failed: ${err?.message}`);
-					}
+			} catch (err) {
+				if (request.log?.warn) {
+					request.log.warn(`Retrospective chat skill injection failed: ${err?.message}`);
 				}
+			}
 
-				const { block, truncated, contextTaskIds, chars: contextChars } =
-					contextMetaForTasks(tasks, {
-						resolveStages: (task) => resolveStagesForTask(project, task),
-					});
-
-				const promptText = buildChatPrompt({
-					messages: cleanMessages,
-					contextBlock: block,
-					contextTruncated: truncated,
-					skillSections,
-					projectId,
+			const { block, truncated, contextTaskIds, chars: contextChars } =
+				contextMetaForTasks(tasks, {
+					resolveStages: (task) => resolveStagesForTask(project, task),
 				});
 
-				if (request.log?.debug) {
-					// Attribution line for slow/hung turns: the built prompt size
-					// plus the resolved model pin down whether a turn outlived an
-					// outer timeout because the prompt was pathological or the
-					// model leg was slow (Fastify's own request log already
-					// carries the turn duration via responseTime).
-					request.log.debug({
-						skillChars,
-						contextChars,
-						transcriptChars: transcriptCharCount,
-						promptChars: promptText.length,
-						model: switchTarget || null,
-					});
-				}
+			const promptText = buildChatPrompt({
+				messages: cleanMessages,
+				contextBlock: block,
+				contextTruncated: truncated,
+				skillSections,
+				projectId,
+			});
 
-				const promptTimeoutMs =
-					promptTimeoutMsOverride !== undefined
-						? promptTimeoutMsOverride
-						: (appConfig.chatPromptTimeoutMs ?? 0);
-				const turnId =
-					typeof body.turnId === "string" && body.turnId.trim()
-						? body.turnId.trim().slice(0, 128)
-						: null;
-				const runnerId = typeof body.runnerId === "string" && body.runnerId.trim() ? body.runnerId.trim() : undefined;
-				let dispatchResult;
-				try {
-					dispatchResult = await impromptuDispatcher({
-						projectId,
-						prompt: promptText,
-						harness: harnessName,
-						model: switchTarget,
-						turnId,
-						runnerId,
-						timeoutMs: promptTimeoutMs,
-					});
-				} catch (dispatchErr) {
-					const code = dispatchErr?.code;
-					const status = dispatchErr?.statusCode || 500;
-					const partialOutput = typeof dispatchErr?.partialOutput === "string" && dispatchErr.partialOutput ? { output: dispatchErr.partialOutput } : {};
-					reply.status(status).send({ error: dispatchErr?.message || "Chat failed", code, ...partialOutput });
-					return;
-				}
-				const responseReply = dispatchResult.reply || "";
-				const responseOutput = dispatchResult.output || "";
-				return {
-					reply: responseReply,
-					suggestions: parseTicketSuggestions(responseReply),
-					harness: harnessName,
-					model: dispatchResult.model || switchTarget || null,
-					modelRequested,
-					unknownTaskIds,
-					contextTaskIds,
-					contextTruncated: truncated,
+			if (request.log?.debug) {
+				// Attribution line for slow/hung turns: the built prompt size
+				// plus the resolved model pin down whether a turn outlived an
+				// outer timeout because the prompt was pathological or the
+				// model leg was slow (Fastify's own request log already
+				// carries the turn duration via responseTime).
+				request.log.debug({
+					skillChars,
 					contextChars,
-					...(responseOutput ? { output: responseOutput } : {}),
-				};
+					transcriptChars: transcriptCharCount,
+					promptChars: promptText.length,
+					model: switchTarget || null,
+				});
+			}
+
+			const promptTimeoutMs =
+				promptTimeoutMsOverride !== undefined
+					? promptTimeoutMsOverride
+					: (appConfig.chatPromptTimeoutMs ?? 0);
+			const turnId =
+				typeof body.turnId === "string" && body.turnId.trim()
+					? body.turnId.trim().slice(0, 128)
+					: null;
+			const runnerId = typeof body.runnerId === "string" && body.runnerId.trim() ? body.runnerId.trim() : undefined;
+			let dispatchResult;
+			try {
+				dispatchResult = await impromptuDispatcher({
+					projectId,
+					prompt: promptText,
+					harness: harnessName,
+					model: switchTarget,
+					turnId,
+					runnerId,
+					timeoutMs: promptTimeoutMs,
+				});
+			} catch (dispatchErr) {
+				const code = dispatchErr?.code;
+				const status = dispatchErr?.statusCode || 500;
+				const partialOutput = typeof dispatchErr?.partialOutput === "string" && dispatchErr.partialOutput ? { output: dispatchErr.partialOutput } : {};
+				reply.status(status).send({ error: dispatchErr?.message || "Chat failed", code, ...partialOutput });
+				return;
+			}
+			const responseReply = dispatchResult.reply || "";
+			const responseOutput = dispatchResult.output || "";
+			return {
+				reply: responseReply,
+				suggestions: parseTicketSuggestions(responseReply),
+				harness: harnessName,
+				model: dispatchResult.model || switchTarget || null,
+				modelRequested,
+				unknownTaskIds,
+				contextTaskIds,
+				contextTruncated: truncated,
+				contextChars,
+				...(responseOutput ? { output: responseOutput } : {}),
+			};
 		},
 	);
 }

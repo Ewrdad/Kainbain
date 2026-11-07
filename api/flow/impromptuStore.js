@@ -1,21 +1,31 @@
 import { v4 as uuidv4 } from "uuid";
 import { selectRunnerForImpromptu } from "./dispatch/selectRunnerForImpromptu.js";
+// Single source for the chat tail helpers: the route helper owns them (the
+// store consumes them for progress tails and partial output). Re-exported
+// here so queue consumers keep one import site and the caps cannot drift.
+import {
+	CHAT_OUTPUT_TAIL_MAX_CHARS as CHAT_TAIL_MAX,
+	CHAT_OUTPUT_TRUNCATED_MARKER as CHAT_TAIL_MARKER,
+	normalizeTimeoutMs as normalizeChatTimeoutMs,
+	truncateOutputTail as truncateChatTail,
+} from "../routes/retrospectiveChat.js";
 
 /***
  * MARK: CHAT_OUTPUT_TAIL_MAX_CHARS
  * @description Character ceiling for one impromptu job's captured
  *   assistant-output tail (progress broadcasts, partial output on failure).
+ *   Re-exported from the route helper so both sides share one cap.
  * @example CHAT_OUTPUT_TAIL_MAX_CHARS => 2000
  ***/
-export const CHAT_OUTPUT_TAIL_MAX_CHARS = 2000;
+export const CHAT_OUTPUT_TAIL_MAX_CHARS = CHAT_TAIL_MAX;
 
 /***
  * MARK: CHAT_OUTPUT_TRUNCATED_MARKER
  * @description Front-truncation marker for the output tail (same idiom as
- *   task-context truncation).
+ *   task-context truncation). Re-exported from the route helper.
  * @example CHAT_OUTPUT_TRUNCATED_MARKER => '[…truncated…]'
  ***/
-export const CHAT_OUTPUT_TRUNCATED_MARKER = "[…truncated…]";
+export const CHAT_OUTPUT_TRUNCATED_MARKER = CHAT_TAIL_MARKER;
 
 /***
  * MARK: CHAT_PROGRESS_BROADCAST_MIN_INTERVAL_MS
@@ -36,47 +46,28 @@ export const IMPROMPTU_SETTLED_KEPT = 500;
 
 /***
  * MARK: normalizeTimeoutMs
- * @description Reduces any `timeoutMs` input to an armable ceiling or `0`
- *   (disabled): only a finite number `> 0` arms the server timer. Every
- *   other input — `0`/nullish (the documented opt-out), `NaN`, negative,
- *   `Infinity`, or a non-number — degrades to disabled so a malformed
- *   ceiling can never false-fire an instant `chat_prompt_timeout`; the turn
- *   runs until the Runner settles it instead (fail-safe). Mirrors
- *   `normalizeTimeoutMs` in `frontend/src/services/client/request.js` — the
- *   two packages cannot import each other, so the timeout tests on both
- *   sides pin the shared rule.
+ * @description Same fail-safe ceiling rule as the route helper (re-exported
+ *   so the queue and the route can never disagree on what `0`, `NaN`, or a
+ *   negative ceiling means). Only a finite number `> 0` arms the timer.
  * @example normalizeTimeoutMs(1000) => 1000
  * @example normalizeTimeoutMs(0) => 0
  * @example normalizeTimeoutMs(NaN) => 0
  * @param {unknown} timeoutMs - The raw ceiling input.
  * @returns {number} The armable ceiling, or `0` for disabled.
  ***/
-export const normalizeTimeoutMs = (timeoutMs) => {
-	if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs)) return 0;
-	if (timeoutMs <= 0) return 0;
-	return timeoutMs;
-};
+export const normalizeTimeoutMs = normalizeChatTimeoutMs;
 
 /***
  * MARK: truncateOutputTail
- * @description Bounds captured assistant output to a readable tail: text at
- *   or under the cap passes through; longer text keeps its most recent
- *   `maxChars` worth behind the front-truncation marker.
+ * @description Same bounded-tail rule as the route helper (re-exported so
+ *   progress tails and partial output match the route's `output` shape).
  * @example truncateOutputTail("short") => "short"
  * @example truncateOutputTail("a".repeat(100), 20) => "[…truncated…]\naaaaaa" (marker + tail)
  * @param {string} text - The captured output.
  * @param {number} [maxChars=CHAT_OUTPUT_TAIL_MAX_CHARS] - Total ceiling incl. marker.
- * @returns {string} The bounded tail ("" for non-string input; never longer
- *   than maxChars — when the cap leaves no room for the marker, the raw tail
- *   wins over the marker).
+ * @returns {string} The bounded tail ("" for non-string input).
  ***/
-export const truncateOutputTail = (text, maxChars = CHAT_OUTPUT_TAIL_MAX_CHARS) => {
-	if (typeof text !== "string" || !text) return "";
-	if (text.length <= maxChars) return text;
-	const tailLen = maxChars - CHAT_OUTPUT_TRUNCATED_MARKER.length - 1;
-	if (tailLen <= 0) return text.slice(-maxChars);
-	return `${CHAT_OUTPUT_TRUNCATED_MARKER}\n${text.slice(-tailLen)}`;
-};
+export const truncateOutputTail = truncateChatTail;
 
 /***
  * MARK: createChatProgressForwarder
@@ -532,6 +523,36 @@ export class ImpromptuStore {
 			else if (job.status === "claimed") claimed += 1;
 		}
 		return { queued, claimed, completed: this.completedTotal, failed: this.failedTotal };
+	}
+
+	/***
+	 * MARK: shutdown
+	 * @description Fails every parked waiter loudly and drops the queue:
+	 *   the graceful-shutdown hook calls this so a backend restart never
+	 *   leaves a chat turn hanging on a queue that will not survive (the
+	 *   store is in-memory by design — see the class note). Retried Runner
+	 *   completions afterwards land as recorded no-ops, never 409s.
+	 * @example jobs.shutdown("restarting") => { failed: 2 }
+	 * @param {string} [reason] - Human reason included in the failure text.
+	 * @returns {Object} `{ failed }` count of waiters failed.
+	 ***/
+	shutdown(reason = "the backend is shutting down") {
+		let failed = 0;
+		for (const job of [...this.jobs.values()]) {
+			if (job.status !== "queued" && job.status !== "claimed") continue;
+			const err = new Error(
+				`Impromptu job ${job.jobId} did not finish: ${reason}; retry the turn.`,
+			);
+			err.code = "chat_prompt_failed";
+			err.statusCode = 502;
+			err.partialOutput = this._jobTail(job);
+			this.jobs.delete(job.jobId);
+			this._rememberSettled(job.jobId, "shutdown");
+			this.failedTotal += 1;
+			failed += 1;
+			this._failWaiter(job, err);
+		}
+		return { failed };
 	}
 }
 

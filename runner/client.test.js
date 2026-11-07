@@ -149,3 +149,35 @@ describe("createRunnerClient", () => {
 		assert.ok(!("model" in JSON.parse(calls[4].opts.body)));
 	});
 });
+
+describe("impromptu channel", () => {
+	it("polls with an empty body and returns the assignment", async () => {
+		const job = { jobId: "job-1", prompt: "hi" };
+		const { fetchImpl, calls } = stubFetch(() => ok({ assigned: true, job }));
+		const client = createRunnerClient({ backendUrl: "http://x:3100/", fetchImpl });
+		client.setCredential("cred-1");
+		const res = await client.impromptuPoll();
+		assert.deepEqual(res, { assigned: true, job });
+		assert.equal(calls[0].url, "http://x:3100/runners/impromptu/poll");
+		assert.equal(calls[0].opts.headers["x-runner-credential"], "cred-1");
+	});
+
+	it("streams progress seqs and settles completions on the job URLs", async () => {
+		const { fetchImpl, calls } = stubFetch(() => ok({ ok: true }));
+		const client = createRunnerClient({ backendUrl: "http://x:3100", fetchImpl });
+		await client.impromptuProgress({ jobId: "job-1", seq: 0, delta: "hel" });
+		await client.impromptuComplete({ jobId: "job-1", outcome: "completed", output: "hello" });
+		assert.equal(calls[0].url, "http://x:3100/runners/impromptu/job-1/progress");
+		assert.deepEqual(JSON.parse(calls[0].opts.body), { seq: 0, delta: "hel" });
+		assert.equal(calls[1].url, "http://x:3100/runners/impromptu/job-1/complete");
+		assert.deepEqual(JSON.parse(calls[1].opts.body), { outcome: "completed", output: "hello" });
+	});
+
+	it("omits unset completion fields and encodes job ids", async () => {
+		const { fetchImpl, calls } = stubFetch(() => ok({ ok: true }));
+		const client = createRunnerClient({ backendUrl: "http://x:3100", fetchImpl });
+		await client.impromptuComplete({ jobId: "job a/b", outcome: "failed", error: "boom" });
+		assert.equal(calls[0].url, "http://x:3100/runners/impromptu/job%20a%2Fb/complete");
+		assert.deepEqual(JSON.parse(calls[0].opts.body), { outcome: "failed", error: "boom" });
+	});
+});

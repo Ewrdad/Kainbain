@@ -322,17 +322,21 @@ if (fs.existsSync(distDir)) {
  * @description Registers SIGTERM / SIGINT listeners to safely persist running task states,
  * stop cleanup timers, notify connected WebSocket clients, and close Fastify cleanly.
  * @param {Object} server - The Fastify server instance.
- * @param {Object} stores - References to taskStore, sessionStore, workflowRegistry, eventBridge.
+ * @param {Object} stores - References to taskStore, sessionStore, workflowRegistry, eventBridge, impromptuStore.
  ***/
 export function setupGracefulShutdown(
 	server,
-	{ taskStore, sessionStore, workflowRegistry, eventBridge },
+	{ taskStore, sessionStore, workflowRegistry, eventBridge, impromptuStore },
 ) {
 	const handleSignal = async (signal) => {
 		try {
 			taskStore?.stopScheduler?.();
 			sessionStore?.stopCleanup?.();
 			workflowRegistry?.stopCleanup?.();
+			// The impromptu queue is in-memory by design (ADR 0014): a
+			// restart drops it, so parked chat turns must fail loudly here
+			// instead of hanging on a queue that will not survive.
+			impromptuStore?.shutdown?.(`the backend is shutting down (${signal})`);
 
 			// Persist any active running tasks safely. The covered set is
 			// shared with the scheduler's orphan reconciliation
@@ -416,6 +420,7 @@ const start = async () => {
 			sessionStore,
 			workflowRegistry,
 			eventBridge,
+			impromptuStore,
 		});
 		// Establish the initial queue before the scheduler ticks: orphaned
 		// runs collapse to `interrupted`, installed continuity plugins

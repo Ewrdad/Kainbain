@@ -1940,15 +1940,27 @@ export async function runDispatchLoop({
 				}
 				// Impromptu T0 jobs (ADR 0014): idle iterations also poll for read-only chat turns when enabled. Task dispatch keeps priority — this only runs when dispatch had no work.
 				if (config.impromptu !== false) {
+					let imp = null;
 					try {
-						const imp = await client.impromptuPoll();
-						if (imp?.assigned && imp.job) {
-							await runImpromptuJob({ config, client, logger, harnesses, job: imp.job });
-							idle = 0;
-							continue;
-						}
+						imp = await client.impromptuPoll();
 					} catch (err) {
 						if (err?.statusCode !== 409) logger.warn(`Impromptu poll failed: ${err?.message || err}`);
+					}
+					if (imp?.assigned && imp.job) {
+						let result = null;
+						try {
+							result = await runImpromptuJob({ config, client, logger, harnesses, job: imp.job });
+						} catch (err) {
+							// Transport failure mid-job (a job's own model/session
+							// failures are already reported as failed completions
+							// and return an outcome, never throw).
+							logger.warn(`Impromptu job ${imp.job?.jobId} transport failed: ${err?.message || err}`);
+						}
+						if (result?.outcome === "failed") {
+							logger.warn(`Impromptu job ${imp.job?.jobId} failed; continuing with dispatch.`);
+						}
+						idle = 0;
+						continue;
 					}
 				}
 				idle += 1;

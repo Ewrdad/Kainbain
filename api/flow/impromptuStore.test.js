@@ -552,3 +552,36 @@ describe("truncateOutputTail", () => {
 		expect(CHAT_OUTPUT_TAIL_MAX_CHARS).toBe(2000);
 	});
 });
+
+describe("ImpromptuStore shutdown", () => {
+	it("fails parked waiters loudly and drops the queue for restarts", async () => {
+		const { store } = makeStore();
+		const first = store.enqueue({ projectId: "p1", prompt: "one" });
+		const second = store.enqueue({ projectId: "p1", prompt: "two" });
+		const firstFailure = store.waitFor(first.jobId).catch((err) => err);
+		const secondFailure = store.waitFor(second.jobId).catch((err) => err);
+		store.pollForRunner({ runnerId: "r1", matchJob: () => true });
+		store.progress({ jobId: first.jobId, runnerId: "r1", seq: 0, delta: "partial…" });
+		expect(store.shutdown("restarting")).toEqual({ failed: 2 });
+		const firstErr = await firstFailure;
+		const secondErr = await secondFailure;
+		for (const err of [firstErr, secondErr]) {
+			expect(err.code).toBe("chat_prompt_failed");
+			expect(err.statusCode).toBe(502);
+			expect(err.message).toContain("restarting");
+		}
+		expect(firstErr.partialOutput).toBe("partial…");
+		expect(secondErr.partialOutput).toBe("");
+		expect(store.get(first.jobId)).toBe(null);
+		expect(store.snapshot()).toMatchObject({ queued: 0, claimed: 0, failed: 2 });
+		// A retried Runner completion after the drop is a recorded no-op.
+		expect(
+			store.complete({ jobId: first.jobId, runnerId: "r1", outcome: "completed", output: "late" }),
+		).toEqual({ duplicate: true });
+	});
+
+	it("is a no-op on an empty queue", () => {
+		const { store } = makeStore();
+		expect(store.shutdown()).toEqual({ failed: 0 });
+	});
+});
