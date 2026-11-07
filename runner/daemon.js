@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, resolveRunnerDocsDirName, touchWorkdir } from "./project.js";
 import { RunnerGitError } from "./project.js";
 import { runHarnessStage } from "./harness.js";
+import { runImpromptuJob } from "./impromptu.js";
 import { createStructuredEventSender } from "./logEvents.js";
 import { applyUpdate as defaultApplyUpdate, checkForUpdate as defaultCheckForUpdate } from "./updates/index.js";
 import { defaultInstallRoot, markUpdateSuccess, readUpdateState } from "./updates/state.js";
@@ -1936,6 +1937,19 @@ export async function runDispatchLoop({
 					logger.log(`Dispatch: integration slot busy; backing off.`);
 					await new Promise((r) => setTimeout(r, pollMs));
 					continue;
+				}
+				// Impromptu T0 jobs (ADR 0014): idle iterations also poll for read-only chat turns when enabled. Task dispatch keeps priority — this only runs when dispatch had no work.
+				if (config.impromptu !== false) {
+					try {
+						const imp = await client.impromptuPoll();
+						if (imp?.assigned && imp.job) {
+							await runImpromptuJob({ config, client, logger, harnesses, job: imp.job });
+							idle = 0;
+							continue;
+						}
+					} catch (err) {
+						if (err?.statusCode !== 409) logger.warn(`Impromptu poll failed: ${err?.message || err}`);
+					}
 				}
 				idle += 1;
 				// idleLimit 0 means a persistent service loop: never idle out.

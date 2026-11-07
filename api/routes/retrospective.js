@@ -24,11 +24,8 @@ import {
 import { resolveStageTarget } from "../agentRunner.js";
 import { toTaskSummary } from "../work/taskIdentity.js";
 import { taskStageDurationSamples } from "../taskDurationSummary.js";
-import {
-	runChatTurn,
-	truncateOutputTail,
-	CHAT_OUTPUT_TAIL_MAX_CHARS,
-} from "./retrospectiveChat.js";
+import { truncateOutputTail } from "./retrospectiveChat.js";
+void truncateOutputTail;
 import { config as appConfig } from "../config.js";
 import { buildSkillsPromptSections } from "../skills/skillInjection.js";
 
@@ -281,7 +278,14 @@ export function buildChatPrompt({
 		parts.push("", ...validSkillSections);
 	}
 
-	parts.push("", contextSection, "", "Conversation:", transcript);
+	parts.push(
+		"This turn runs as a T0 read-only job on a Runner: you may read files under the project and query the KainBain API. Do not run tests or build commands, and never modify, create, or delete files. Answer from evidence and cite task ids.",
+		"",
+		contextSection,
+		"",
+		"Conversation:",
+		transcript,
+	);
 
 	return parts.join("\n");
 }
@@ -331,6 +335,7 @@ const chatBodySchema = {
 		model: { type: "string" },
 		strictTaskIds: { type: "boolean" },
 		turnId: { type: "string" },
+		runnerId: { type: "string" },
 	},
 };
 
@@ -370,7 +375,7 @@ export default async function retrospectiveRoutes(app, { deps }) {
 		skillsRegistry,
 		loadSkill: loadSkillOverride,
 		promptTimeoutMs: promptTimeoutMsOverride,
-		eventBridge,
+		_eventBridge: eventBridge,
 	} = deps;
 
 	function resolveStagesForTask(project, task) {
@@ -523,93 +528,31 @@ export default async function retrospectiveRoutes(app, { deps }) {
 					`Unknown model alias "${chatTarget.aliasMissing}" for project ${projectId}; running the chat turn on the project default instead.`,
 				);
 			}
-			const { name: harnessName, harness } = resolveHarness(project, {
+			const { name: harnessName } = resolveHarness(project, {
 				harnessName: chatTarget.harnessName || requestedHarness,
 			});
-			// The resolved model rides to session creation (target hand-off);
-			// alias-miss fallbacks pass nothing so the project-default path
-			// behaves as before (the fallback switch below still applies it).
 			const handoffModel =
 				!chatTarget.aliasMissing &&
 				chatTarget.modelRef &&
 				chatTarget.modelRef !== "default"
 					? chatTarget.modelRef
 					: null;
-			const session = await harness.createSession(project, {
-				...RETROSPECTIVE_SESSION_META,
-				...(handoffModel ? { model: handoffModel } : {}),
-			});
-
-			try {
-				if (!guardSessionCapability(reply, session, "prompt", "Retrospective chat")) {
-					return;
-				}
-				// The switch target is the RESOLVED ref (an alias name never
-				// reaches the switch): the project-default fallback on alias
-				// misses, the dispatch-resolved ref otherwise (which equals
-				// the requested model for non-alias turns). A creation-pinned
-				// session skips the redundant re-pin.
+			// Impromptu dispatch: the only path — no local harness session.
+			const impromptuDispatcher = deps.impromptuDispatcher;
+			if (!impromptuDispatcher) {
+				reply.status(503).send({ error: "Impromptu channel not configured", code: "no_runner_available" });
+				return;
+			}
+			// Resolve switch target for response metadata (no session switch — runner handles model)
 				const switchTarget = chatTarget.aliasMissing
 					? chatTarget.modelRef || null
 					: (chatTarget.modelRef ?? requestedModel);
-				const switchPinned =
-					Boolean(handoffModel) &&
-					typeof session.getActiveModel === "function" &&
-					(await session
-						.getActiveModel()
-						.then(
-							(active) =>
-								active &&
-								typeof active === "object" &&
-								typeof switchTarget === "string" &&
-								(active.id === switchTarget ||
-									active.key === switchTarget ||
-									(active.provider &&
-										`${active.provider}::${active.id}` === switchTarget)),
-						)
-						.catch(() => false));
 				let modelRequested = true;
-				if (switchTarget && !switchPinned) {
-					const switchRef = switchTarget;
-					if (harnessModelSelection(harness) === "none") {
-						// A harness that manages its own model never takes a
-						// switch: the requested model is ignored (never
-						// resolved, never switched to) and the turn runs on
-						// the harness default.
-						modelRequested = false;
-						if (request.log?.info) {
-							request.log.info(
-								`Requested model ${switchRef} ignored (harness '${harnessName}' manages its own model); continuing with harness default`,
-							);
-						}
-					} else if (typeof session.switchModel === "function") {
-						try {
-							let target = switchRef;
-							if (typeof harness.resolveModelRef === "function") {
-								target =
-									(await harness.resolveModelRef(switchRef)) || switchRef;
-							}
-							await session.switchModel(target);
-						} catch {
-							modelRequested = false;
-							if (request.log?.warn) {
-								request.log.warn(
-									`Failed to switch model to ${switchRef}; continuing with session default`,
-								);
-							}
-						}
-					} else {
-						// A requested model the session cannot switch to is a
-						// rejected switch, not a silent success: report it so
-						// the UI can name the fallback model.
-						modelRequested = false;
-						if (request.log?.warn) {
-							request.log.warn(
-								`Requested model ${switchRef} unavailable (no switchModel); continuing with session default`,
-							);
-						}
-					}
+				if (switchTarget && harnessModelSelection(harness) === "none") {
+					modelRequested = false;
 				}
+				void handoffModel;
+				void guardSessionCapability;
 
 				// Resolve stage skill injection (Phase 4)
 				let skillSections = [];
@@ -683,110 +626,40 @@ export default async function retrospectiveRoutes(app, { deps }) {
 					});
 				}
 
-				// No-timeout default: a disabled `chatPromptTimeoutMs` (0) must
-				// pass through as 0 so runChatTurn skips its race — `||`
-				// would wrongly resurrect the old 30 min ceiling here.
 				const promptTimeoutMs =
 					promptTimeoutMsOverride !== undefined
 						? promptTimeoutMsOverride
 						: (appConfig.chatPromptTimeoutMs ?? 0);
-
-				// Live progress: the client's turnId keys CHAT_PROGRESS broadcasts
-				// carrying the same bounded tail the 200 body will (the winner of
-				// the onChunk/subscribe pair, never both concatenated — the same
-				// rule runChatTurn's own finalizer keeps, so progress and the
-				// final `output` tail can never disagree). Throttled so a chatty
-				// model doesn't flood the socket; a broadcast sink must never
-				// fail the turn. Turns without a turnId (old clients) skip this.
 				const turnId =
 					typeof body.turnId === "string" && body.turnId.trim()
 						? body.turnId.trim().slice(0, 128)
 						: null;
-				const canBroadcastProgress =
-					Boolean(turnId) && Boolean(eventBridge && typeof eventBridge.broadcast === "function");
-				let progressChunkText = "";
-				let progressSubscribedText = "";
-				let lastProgressBroadcastAt = 0;
-				const broadcastChatProgress = () => {
-					const now = Date.now();
-					if (now - lastProgressBroadcastAt < CHAT_PROGRESS_BROADCAST_MIN_INTERVAL_MS) return;
-					lastProgressBroadcastAt = now;
-					try {
-						eventBridge.broadcast(projectId, "CHAT_PROGRESS", {
-							turnId,
-							tail: truncateOutputTail(progressChunkText || progressSubscribedText),
-							projectId,
-						});
-					} catch {
-						// Broadcast is best-effort; the unary settle stays truthful.
-					}
-				};
-
-				let responseReply = "";
-				let responseOutput = "";
+				const runnerId = typeof body.runnerId === "string" && body.runnerId.trim() ? body.runnerId.trim() : undefined;
+				let dispatchResult;
 				try {
-					const turnResult = await runChatTurn({
-						session,
-						promptText,
+					dispatchResult = await impromptuDispatcher({
+						projectId,
+						prompt: promptText,
+						harness: harnessName,
+						model: switchTarget,
+						turnId,
+						runnerId,
 						timeoutMs: promptTimeoutMs,
-						onProgress: canBroadcastProgress
-							? (delta, source) => {
-									if (source === "subscribed") {
-										progressSubscribedText = `${progressSubscribedText}${delta}`.slice(
-											-CHAT_OUTPUT_TAIL_MAX_CHARS,
-										);
-									} else {
-										progressChunkText = `${progressChunkText}${delta}`.slice(
-											-CHAT_OUTPUT_TAIL_MAX_CHARS,
-										);
-									}
-									broadcastChatProgress();
-								}
-							: undefined,
 					});
-					responseReply = turnResult.replyText;
-					responseOutput = turnResult.output || "";
-				} catch (turnErr) {
-					// Additive partial output: whatever the model streamed before
-					// the timeout/failure, so the UI can show it instead of a bare
-					// error. Old clients ignore the unknown field.
-					const partialOutput =
-						typeof turnErr?.partialOutput === "string" && turnErr.partialOutput
-							? { output: turnErr.partialOutput }
-							: {};
-					if (turnErr?.code === "chat_prompt_timeout") {
-						reply.status(504).send({
-							error: turnErr.message,
-							code: "chat_prompt_timeout",
-							...partialOutput,
-						});
-						return;
-					}
-					reply.status(502).send({
-						error: turnErr?.message || "Chat prompt failed",
-						code: "chat_prompt_failed",
-						...partialOutput,
-					});
+				} catch (dispatchErr) {
+					const code = dispatchErr?.code;
+					const status = dispatchErr?.statusCode || 500;
+					const partialOutput = typeof dispatchErr?.partialOutput === "string" && dispatchErr.partialOutput ? { output: dispatchErr.partialOutput } : {};
+					reply.status(status).send({ error: dispatchErr?.message || "Chat failed", code, ...partialOutput });
 					return;
 				}
-
-				let activeModel = null;
-				try {
-					if (typeof session.getActiveModel === "function") {
-						activeModel = await session.getActiveModel();
-					}
-				} catch {
-					activeModel = null;
-				}
-
+				const responseReply = dispatchResult.reply || "";
+				const responseOutput = dispatchResult.output || "";
 				return {
 					reply: responseReply,
 					suggestions: parseTicketSuggestions(responseReply),
 					harness: harnessName,
-					// The resolved ref (never a raw alias name) when the
-					// session reports no active model.
-					model:
-						activeModel?.id || activeModel?.key || switchTarget || null,
+					model: dispatchResult.model || switchTarget || null,
 					modelRequested,
 					unknownTaskIds,
 					contextTaskIds,
@@ -794,12 +667,9 @@ export default async function retrospectiveRoutes(app, { deps }) {
 					contextChars,
 					...(responseOutput ? { output: responseOutput } : {}),
 				};
-			} finally {
-				try {
-					await session.dispose();
-				} catch {
-					// Dispose is best-effort on the ephemeral session.
-				}
+			} catch (err) {
+				reply.status(err?.statusCode || 500).send({ error: err?.message || "Chat failed", code: err?.code });
+				return;
 			}
 		},
 	);

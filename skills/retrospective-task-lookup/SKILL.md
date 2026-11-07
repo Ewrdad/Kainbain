@@ -81,6 +81,10 @@ and answer from the provided context — never invent the missing detail.
   when you genuinely propose new work; the user confirms. Never claim to
   have created, filed, or run anything.
 
+## 3a. Running as an impromptu runner job
+
+This turn runs as a T0 read-only impromptu job on a Runner host: `{{projectCwd}}` is the project checkout on that host, `{{kbApiBase}}` reaches the backend. You have read-only tools on the Runner. Do not run tests or build commands and never modify, create, or delete files. You are not a stage — there is no verdict, no branch, and no commit.
+
 ## 4. Anti-patterns
 
 - Don't invent task ids or report contents.
