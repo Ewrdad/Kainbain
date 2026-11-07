@@ -49,7 +49,17 @@ export function ReportReadableView({
   activeProject,
   taskId,
 }) {
-  const blocks = useMemo(() => parseMarkdownBlocks(reportContent), [reportContent]);
+  // Fail-safe: if the markdown is so large or malformed that the
+  // parser throws (e.g. pathological regex input), show a fallback
+  // instead of crashing the entire review pane. The raw-lines mode
+  // in the parent still works because it splits on newlines only.
+  const { blocks, parseError } = useMemo(() => {
+    try {
+      return { blocks: parseMarkdownBlocks(reportContent), parseError: null };
+    } catch (err) {
+      return { blocks: [], parseError: err?.message || 'Failed to parse markdown' };
+    }
+  }, [reportContent]);
   const { byIndex, unplaced } = useMemo(
     () => groupThreadsByBlock(blocks, threadsByLine),
     [blocks, threadsByLine],
@@ -86,6 +96,30 @@ export function ReportReadableView({
       </button>
     </div>
   );
+
+  if (parseError) {
+    return (
+      <div data-testid="report-readable-pane" className="w-full min-w-0 max-w-full">
+        {(fileLevel.length > 0 || composer === 'file') && (
+          <div className="w-full min-w-0 max-w-full overflow-hidden px-2 sm:px-3 py-2 space-y-2 border-l-2 border-secondary/40">
+            {fileThreads}
+          </div>
+        )}
+        <div className="px-3 py-4 text-xs font-mono text-text-muted">
+          Unable to render this report as markdown ({parseError}). Switch to Raw lines to review it.
+        </div>
+        {unplaced.length > 0 && (
+          <div className="px-2 sm:px-3 py-2 space-y-1.5">
+            <div className="text-[10px] font-mono uppercase tracking-wider text-text-muted">
+              Earlier line comments
+            </div>
+            {unplaced.map(renderThread)}
+          </div>
+        )}
+        {reportCommentAffordance}
+      </div>
+    );
+  }
 
   if (!reportContent || reportContent.length === 0) {
     return (

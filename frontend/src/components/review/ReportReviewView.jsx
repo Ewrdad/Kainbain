@@ -1,10 +1,17 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { ReviewCommentThread } from './ReviewCommentThread';
 import { ReviewCommentComposer } from './ReviewCommentComposer';
 import { ReportLineRow } from './ReportLineRow';
 import { ReportReadableView } from './ReportReadableView';
 import { copyToClipboard } from '../../services/clipboard';
 import { normalizeReportPath } from './reportPaths';
+
+/**
+ * MARK: COPY_FEEDBACK_MS
+ * @description How long the "Copied ✓" feedback shows before resetting.
+ *   Kept as a constant so both copy actions share the same timing.
+ */
+const COPY_FEEDBACK_MS = 2000;
 
 // Backwards-compatible re-export: report identity lives in `reportPaths.js`
 // (shared with ReportNavigator and TaskReviewPage), but existing importers may
@@ -55,6 +62,8 @@ export function ReportReviewView({
   const [composer, setComposer] = useState(null); // { line, lineText } | 'file' | null
   const [copiedPath, setCopiedPath] = useState(false);
   const [copiedMarkdown, setCopiedMarkdown] = useState(false);
+  const copyPathTimerRef = useRef(null);
+  const copyMarkdownTimerRef = useRef(null);
 
   const reportPath =
     report?.path ||
@@ -115,23 +124,36 @@ export function ReportReviewView({
     setComposer(null);
   };
 
-  const handleCopyPath = async () => {
+  // Timers are tracked via refs so an unmount (e.g. navigating away
+  // mid-feedback) clears them instead of calling setState on an
+  // unmounted component.
+  useEffect(
+    () => () => {
+      clearTimeout(copyPathTimerRef.current);
+      clearTimeout(copyMarkdownTimerRef.current);
+    },
+    [],
+  );
+
+  const handleCopyPath = useCallback(async () => {
     if (!reportPath) return;
     const ok = await copyToClipboard(reportPath);
     if (ok) {
       setCopiedPath(true);
-      setTimeout(() => setCopiedPath(false), 2000);
+      clearTimeout(copyPathTimerRef.current);
+      copyPathTimerRef.current = setTimeout(() => setCopiedPath(false), COPY_FEEDBACK_MS);
     }
-  };
+  }, [reportPath]);
 
-  const handleCopyMarkdown = async () => {
+  const handleCopyMarkdown = useCallback(async () => {
     if (!reportContent) return;
     const ok = await copyToClipboard(reportContent);
     if (ok) {
       setCopiedMarkdown(true);
-      setTimeout(() => setCopiedMarkdown(false), 2000);
+      clearTimeout(copyMarkdownTimerRef.current);
+      copyMarkdownTimerRef.current = setTimeout(() => setCopiedMarkdown(false), COPY_FEEDBACK_MS);
     }
-  };
+  }, [reportContent]);
 
   const renderThread = (comment) => (
     <ReviewCommentThread
