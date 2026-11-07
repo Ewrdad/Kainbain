@@ -28,7 +28,6 @@ export function CanvasToolbar({
   setSearchQuery,
   showCompleted,
   setShowCompleted,
-  completedCount,
   stages,
   filteredTasks,
   tasks,
@@ -295,7 +294,7 @@ export function CanvasToolbar({
                 onChange={(e) => setShowCompleted(e.target.checked)}
                 className="rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0"
               />
-              <span>Show Completed ({completedCount})</span>
+              <span>Show Completed</span>
             </label>
           </InfoTooltip>
         </div>

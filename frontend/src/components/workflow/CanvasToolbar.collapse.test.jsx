@@ -34,7 +34,6 @@ function baseProps(overrides = {}) {
     setSearchQuery: vi.fn(),
     showCompleted: false,
     setShowCompleted: vi.fn(),
-    completedCount: 3,
     stages,
     filteredTasks: [],
     tasks: [],
