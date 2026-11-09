@@ -200,6 +200,21 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 		getTask(projectId, taskId) {
 			return call(`/tasks/${encodeURIComponent(taskId)}?projectId=${encodeURIComponent(projectId)}`);
 		},
+		impromptuPoll() {
+			return call("/runners/impromptu/poll", { method: "POST", body: {} });
+		},
+		impromptuProgress({ jobId, seq, delta }) {
+			return call(`/runners/impromptu/${encodeURIComponent(jobId)}/progress`, {
+				method: "POST",
+				body: { seq, delta },
+			});
+		},
+		impromptuComplete({ jobId, outcome, output, error }) {
+			return call(`/runners/impromptu/${encodeURIComponent(jobId)}/complete`, {
+				method: "POST",
+				body: { outcome, ...(output !== undefined ? { output } : {}), ...(error !== undefined ? { error } : {}) },
+			});
+		},
 		getWorkflow(projectId) {
 			return call(`/projects/${encodeURIComponent(projectId)}/workflow`);
 		},

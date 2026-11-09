@@ -109,6 +109,36 @@ acking exactly once. A session with neither method NACKs
 `UNSUPPORTED_HARNESS` — loud, never silently dropped. Steers queued
 while no execution is live for this Runner are ignored (never ours).
 
+## Impromptu read-only jobs (ADR 0014)
+
+Separate from the task queue, idle daemons also poll the backend's impromptu
+T0 channel — today that is the retrospective chat ("quiz a task" turns).
+Task dispatch keeps priority: the impromptu poll only runs on a dispatch
+iteration that found no claimable task, so chat work never preempts a task,
+and a Runner holding a live task lease is never assigned impromptu work
+(enforced server-side too). Set `KAINBAIN_RUNNER_IMPROMPTU=0` to opt the
+daemon out entirely; the operator-side `jobTypes.runsImpromptu` switch in
+Settings › Runners is enforced as well (off = the backend never assigns).
+
+The wire contract (all `x-runner-credential` authed, same gates as dispatch):
+
+- `POST /runners/impromptu/poll` → `{ assigned: false, code: "NO_IMPROMPTU_WORK" }`
+  or `{ assigned: true, job: { jobId, projectId, kind, prompt, harness, model, timeoutMs, turnId } }`.
+  A job is claimed with a TTL; a dead Runner's stale claim requeues for
+  another idle Runner.
+- `POST /runners/impromptu/:jobId/progress` `{ seq, delta }` — streamed deltas;
+  the backend fans them out as `CHAT_PROGRESS` WebSocket frames for the UI.
+- `POST /runners/impromptu/:jobId/complete` `{ outcome: "completed" | "failed", output?, error? }`
+  — settles the waiting HTTP chat turn (retried completes are idempotent).
+
+Execution is strictly read-only: `runImpromptuJob` (`runner/impromptu.js`)
+creates the harness session with `readOnly: true` and NO worktree, NO git
+branch, NO claim — the project checkout is opened in place and the per-job
+scratch dir is removed afterwards. The compiled prompt repeats the rule
+(read files / query the API; never run tests, never modify files). The job
+never appears in `GET /tasks`, never creates a report or verdict, and never
+touches the main queue.
+
 ## What one assignment does
 
 register → heartbeat → claim → load the project (remote-backed: clone the
@@ -144,7 +174,7 @@ cannot see them until that Runner self-updates.
 - Boot surfaces orphaned workdirs (unpushed work) in the log; nothing is
   ever deleted by cleanup.
 - Log gaps are reported as data (`frames X–Y missing`), never papered over.
-- `node --test runner/ciBranchWorkdir.test.js runner/daemon.test.js runner/client.test.js runner/config.test.js runner/gitOps.test.js runner/harness.test.js runner/logEvents.test.js runner/modelDiscovery.test.js runner/project.test.js runner/updates-check.test.js runner/updates-daemon.test.js runner/updates-fixture.test.js runner/updates-manifest.test.js runner/updates-platform.test.js runner/updates-state.test.js runner/updates-verify.test.js runner/updates-wrapper.test.js`
+- `node --test runner/ciBranchWorkdir.test.js runner/daemon.test.js runner/client.test.js runner/impromptu.test.js runner/config.test.js runner/gitOps.test.js runner/harness.test.js runner/logEvents.test.js runner/modelDiscovery.test.js runner/project.test.js runner/updates-check.test.js runner/updates-daemon.test.js runner/updates-fixture.test.js runner/updates-manifest.test.js runner/updates-platform.test.js runner/updates-state.test.js runner/updates-verify.test.js runner/updates-wrapper.test.js`
   runs the daemon suite (no ports, real temp git repos, mock harness).
   Name each file: a bare `node --test runner/` directory arg mis-resolves
   on current Node, and this same explicit list is what the `Unit Tests

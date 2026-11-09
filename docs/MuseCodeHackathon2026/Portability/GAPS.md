@@ -109,11 +109,9 @@ Phase 3's "remote onboarding enabled only now (explicit opt-in; backend loopback
 
 **Action:** only if/when a second host is wanted — add the authenticated opt-in, then re-run the R04 auth suite against a non-loopback Runner.
 
-### G9 — Impromptu read-only requests exist only as steering · Severity: low
+### G9 — Impromptu read-only requests exist only as steering · Severity: low · RESOLVED
 
-C2's impromptu T0 channel (e.g. retrospective page comments) is implemented solely as steers to a *live* execution (ADR 0011). There is no standalone read-only impromptu request to an idle Runner.
-
-**Action:** only if the retrospectives use-case is still wanted — add a T0-only impromptu endpoint; write-capable impromptu stays out of scope per plan.
+**RESOLVED:** the standalone T0 impromptu channel now exists (ADR 0014, `docs/adr/0014-impromptu-t0-channel.md`): idle Runners poll `POST /runners/impromptu/poll`, stream `…/:jobId/progress`, and settle `…/:jobId/complete`; the retrospective chat dispatches each turn there as a read-only job off the main task queue (`api/flow/impromptuStore.js`, `api/flow/impromptuRoutes.js`, `runner/impromptu.js`). Steers to a *live* execution (ADR 0011) remain for mid-run guidance; the two channels are complementary. Write-capable impromptu stays out of scope per plan.
 
 ### G10 — Chaos suite and rollback rehearsals are documents, not evidence · Severity: medium
 

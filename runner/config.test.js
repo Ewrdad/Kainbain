@@ -202,6 +202,19 @@ describe("loadRunnerConfig", () => {
 		assert.deepEqual(config.tiers, ["T0"]);
 	});
 
+	it("polls impromptu jobs by default, =0 opts out", () => {
+		const env = {
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "mock",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+		};
+		assert.equal(loadRunnerConfig(env).impromptu, true);
+		assert.equal(
+			loadRunnerConfig({ ...env, KAINBAIN_RUNNER_IMPROMPTU: "0" }).impromptu,
+			false,
+		);
+	});
+
 	it("defaults model discovery to 12h, honours 0/off, clamps garbage", () => {
 		const env = {
 			KAINBAIN_RUNNER_ID: "r1",
