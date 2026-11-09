@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../services/api';
 import { copyToClipboard } from '../../services/clipboard';
+import { RunnerDirectoryField } from './RunnerDirectoryField';
 import { formatRunnerElapsed } from '../observability/widgets/PerRunnerTasksWidget';
 import {
   defaultRunnerConfig,
@@ -17,6 +18,7 @@ import {
   withProjectUnloaded,
   scopePatchForLoaded,
   validateSingleDirectory,
+  JOB_TYPE_KEYS,
   jobTypeLabels,
   visibleRunners,
   resolveSelectedId,
@@ -33,58 +35,6 @@ import {
   normalizeModelId,
   filterVisibleRunners,
 } from './runnerConfigHelpers';
-
-/**
- * MARK: DirectoryField
- * @description Reusable input component for editing directory paths with save action.
- *   Shows the current value, allows editing, and provides a save button. Displays
- *   a label indicating if the value is using the Runner's default.
- *
- * @param {Object} props - Component props
- * @param {string} props.label - Field label text
- * @param {string} props.testId - Test ID for the input field
- * @param {string} props.value - Current directory value
- * @param {string} props.hint - Placeholder/hint text showing effective value
- * @param {boolean} props.isDefault - Whether value is using Runner default
- * @param {boolean} props.isUnknown - Whether effective value is unknown
- * @param {string|null} props.error - Error message to display
- * @param {boolean} props.busy - Whether save action is in progress
- * @param {Function} props.onChange - Change handler for input
- * @param {Function} props.onSave - Save handler for button click
- * @returns {JSX.Element} Directory input field component
- */
-const DirectoryField = ({ label, testId, value, hint, isDefault, isUnknown, error, busy, onChange, onSave }) => (
-  <div className="flex flex-col gap-1">
-    <label className="text-xs font-bold text-on-surface" htmlFor={`${testId}-input`}>
-      {label} {isDefault && <span className="font-normal text-text-muted">(Runner default{isUnknown ? ' (unknown)' : ''})</span>}
-    </label>
-    <div className="flex items-center gap-2">
-      <input
-        id={`${testId}-input`}
-        type="text"
-        data-testid={testId}
-        value={value}
-        placeholder={hint || ''}
-        onChange={(e) => onChange(e.target.value)}
-        className="flex-1 min-w-0 p-2 bg-surface-deep border border-border-standard rounded-sm text-sm text-on-surface outline-none focus:border-primary transition-colors"
-      />
-      <button
-        type="button"
-        data-testid={`${testId}-save`}
-        onClick={onSave}
-        disabled={busy}
-        className="px-3 py-2 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60 shrink-0"
-      >
-        Save
-      </button>
-    </div>
-    {error && (
-      <p className="text-[11px] text-error" role="alert" data-testid={`${testId}-error`}>
-        {error}
-      </p>
-    )}
-  </div>
-);
 
 /***
  * MARK: RunnerConfigurationSection
@@ -199,9 +149,22 @@ export function RunnerConfigurationSection() {
    *   backend-to-Runner command, so queued/failed states appear without a
    *   manual reload. Stops early on unmount or on the first failed-update
    *   report; malformed rows are ignored, never written into the roster.
+   *   Fired timers remove themselves from the roster so repeated commands
+   *   can never grow the timer list without bound; unmount clears the rest.
+   * @example queueRunnerRefresh({ runnerId: 'r1', rounds: 3 })
    ***/
   const queueRunnerRefresh = useCallback(({ runnerId, rounds, onFailedUpdate } = {}) => {
     if (typeof runnerId !== 'string' || !runnerId || !Number.isFinite(rounds) || rounds <= 0) return;
+    // Schedules one poll while keeping the timer roster exact: the id
+    // leaves the roster the moment it fires, so only pending polls are
+    // ever listed (unmount clears those).
+    const schedulePoll = (poll, delayMs) => {
+      const timerId = setTimeout(() => {
+        refreshTimers.current = refreshTimers.current.filter((pending) => pending !== timerId);
+        void poll();
+      }, delayMs);
+      refreshTimers.current.push(timerId);
+    };
     let tries = 0;
     const poll = async () => {
       tries += 1;
@@ -221,10 +184,10 @@ export function RunnerConfigurationSection() {
         // the screen keeps its last good roster either way.
       }
       if (isLive.current && tries < rounds) {
-        refreshTimers.current.push(setTimeout(poll, 2000));
+        schedulePoll(poll, 2000);
       }
     };
-    refreshTimers.current.push(setTimeout(poll, 1500));
+    schedulePoll(poll, 1500);
   }, []);
 
   const mutate = useCallback(
@@ -257,19 +220,23 @@ export function RunnerConfigurationSection() {
     [loadRunners],
   );
 
-  /**
+  /***
    * MARK: saveConfig
-   * @description Saves configuration changes for a specific Runner.
-   *   Updates the Runner's operatorConfig on the backend and refreshes the
-   *   local state to reflect the changes. Shows a success notification if
-   *   provided and handles errors appropriately.
-   *
+   * @description Saves one operator-owned patch for a Runner and mirrors
+   *   the backend's answer into the roster. A malformed patch never reaches
+   *   the network: it reports plainly and keeps the operator's drafts, so
+   *   a programming slip can never wipe the roster or strand the busy flag.
+   * @example await saveConfig('r1', { displayName: 'Primary' }, 'Runner name saved.')
    * @param {string} runnerId - The Runner identifier to update
    * @param {Object} patch - Configuration changes to apply (e.g., { displayName: 'New Name' })
    * @param {string} successNote - Optional success message to display after saving
    * @returns {Promise<boolean>} True if save succeeded, false if it failed
-   */
+   ***/
   const saveConfig = useCallback(async (runnerId, patch, successNote) => {
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+      if (isLive.current) setActionError(`Could not save Runner ${runnerId} settings.`);
+      return false;
+    }
     const key = `config:${runnerId}:${Object.keys(patch).join('+')}`;
     setBusyKey(key);
     setActionError(null);
@@ -483,31 +450,31 @@ export function RunnerConfigurationSection() {
     }));
   };
 
-  /**
+  /***
    * MARK: handleToolToggle
    * @description Toggles a harness/tool availability for the selected Runner.
    *   When checked, adds the tool to the Runner's available tools list;
    *   when unchecked, removes it. Changes are saved to the backend immediately.
-   *
+   * @example handleToolToggle('pi', false)
    * @param {string} toolId - The harness/tool identifier to toggle
    * @param {boolean} checked - Whether the tool should be enabled
-   */
+   ***/
   const handleToolToggle = (toolId, checked) => {
     if (!selected) return;
     const next = checked ? [...new Set([...enabledTools, toolId])] : enabledTools.filter((t) => t !== toolId);
     void saveConfig(selected.runnerId, { availableTools: next }, 'Available tools saved.');
   };
 
-  /**
+  /***
    * MARK: handleModelToggle
    * @description Toggles a model's availability for the selected Runner.
    *   When checked, adds the model to the Runner's effective model list;
    *   when unchecked, removes it. If all advertised models are selected,
    *   the configuration is reset to null to use advertised models.
-   *
+   * @example handleModelToggle('m1', false)
    * @param {string} modelId - The model identifier to toggle
    * @param {boolean} checked - Whether the model should be enabled
-   */
+   ***/
   const handleModelToggle = (modelId, checked) => {
     if (!selected) return;
     const set = new Set(effectiveModelIds);
@@ -518,12 +485,13 @@ export function RunnerConfigurationSection() {
     void saveConfig(selected.runnerId, { availableModels: patchVal }, patchVal === null ? 'Models reset to advertised.' : 'Models saved.').then(() => {});
   };
 
-  /**
+  /***
    * MARK: handleCustomModelAdd
    * @description Adds one hand-typed model id to the Runner's model allowlist.
    *   Normalizes the input (trims, validates format), ignores blank or invalid
    *   ids, and saves the updated model list. Clears the input field on success.
-   */
+   * @example handleCustomModelAdd()
+   ***/
   const handleCustomModelAdd = () => {
     if (!selected) return;
     const cleaned = normalizeModelId({ value: customModel });
@@ -537,24 +505,26 @@ export function RunnerConfigurationSection() {
     });
   };
 
-  /**
+  /***
    * MARK: handleModelsReset
    * @description Resets the Runner's model configuration to use only the
    *   models auto-detected by the Runner itself. Clears any operator overrides
    *   and allows the Runner to match tasks based on its advertised capabilities.
-   */
+   * @example handleModelsReset()
+   ***/
   const handleModelsReset = () => {
     if (!selected) return;
     void saveConfig(selected.runnerId, { availableModels: null }, 'Models reset — this Runner matches its advertised models again.').then(() => {});
   };
 
-  /**
+  /***
    * MARK: handleRediscover
    * @description Triggers model re-detection on the selected Runner's backend.
    *   Queues the request and then polls the Runner status multiple times to
    *   refresh the model list without requiring a manual page reload.
    *   Shows status messages indicating queuing or any errors that occur.
-   */
+   * @example handleRediscover()
+   ***/
   const handleRediscover = async () => {
     if (!selected) return;
     const key = `rediscover:${selected.runnerId}`;
@@ -573,16 +543,16 @@ export function RunnerConfigurationSection() {
     }
   };
 
-  /**
+  /***
    * MARK: handleUpdateNow
    * @description Initiates an immediate update of the selected Runner to its
    *   recommended version (if available). The update is queued on the backend
    *   and only applies when the Runner is idle (not executing tasks). Polls the
    *   Runner status to show progress and surface any errors that occur during
    *   the update process.
-   *
+   * @example handleUpdateNow()
    * @returns {Promise<void>} Resolves when complete
-   */
+   ***/
   const handleUpdateNow = async () => {
     if (!selected) return;
     const key = `update:${selected.runnerId}`;
@@ -607,11 +577,25 @@ export function RunnerConfigurationSection() {
     }
   };
 
+  /***
+   * MARK: handleJobToggle
+   * @description Flips one job-type switch for the selected Runner and
+   *   saves it at once; a failed save keeps the previous switch, so the
+   *   checkbox never shows a state the backend rejected.
+   * @example handleJobToggle('runsCi', false)
+   ***/
   const handleJobToggle = (jobKey, checked) => {
     if (!selected) return;
+    if (!JOB_TYPE_KEYS.includes(jobKey)) return;
     void saveConfig(selected.runnerId, { jobTypes: { [jobKey]: checked } }, 'Job type saved.');
   };
 
+  /***
+   * MARK: handleProjectMove
+   * @description Loads or unloads one project for the selected Runner;
+   *   loading the last Available project stores the serves-all null scope.
+   * @example handleProjectMove('p1', 'load')
+   ***/
   const handleProjectMove = (projectId, direction) => {
     if (!selected) return;
     const next = direction === 'load' ? withProjectLoaded(loadedIds, projectId) : withProjectUnloaded(loadedIds, projectId);
@@ -895,8 +879,8 @@ export function RunnerConfigurationSection() {
               </div>
 
               <div className="flex flex-col gap-3">
-                <DirectoryField label="Master directory:" testId={`runner-masterdir-${selected.runnerId}`} value={masterValue} hint={displayDirs?.masterDir.value || '/srv/kb'} isDefault={masterIsDefault && !dirDraft} isUnknown={masterIsUnknown} error={dirErrors[`${selected.runnerId}:masterDir`]} busy={Boolean(busyKey)} onChange={(value) => handleDirectoryType('masterDir', value)} onSave={() => handleDirectorySave('masterDir')} />
-                <DirectoryField label="Worktree directory:" testId={`runner-worktreedir-${selected.runnerId}`} value={worktreeValue} hint={displayDirs?.worktreeDir.value || '/srv/kb-trees'} isDefault={worktreeIsDefault && !dirDraft} isUnknown={worktreeIsUnknown} error={dirErrors[`${selected.runnerId}:worktreeDir`]} busy={Boolean(busyKey)} onChange={(value) => handleDirectoryType('worktreeDir', value)} onSave={() => handleDirectorySave('worktreeDir')} />
+                <RunnerDirectoryField label="Master directory:" testId={`runner-masterdir-${selected.runnerId}`} value={masterValue} hint={displayDirs?.masterDir.value || '/srv/kb'} isDefault={masterIsDefault && !dirDraft} isUnknown={masterIsUnknown} error={dirErrors[`${selected.runnerId}:masterDir`]} busy={Boolean(busyKey)} onChange={(value) => handleDirectoryType('masterDir', value)} onSave={() => handleDirectorySave('masterDir')} />
+                <RunnerDirectoryField label="Worktree directory:" testId={`runner-worktreedir-${selected.runnerId}`} value={worktreeValue} hint={displayDirs?.worktreeDir.value || '/srv/kb-trees'} isDefault={worktreeIsDefault && !dirDraft} isUnknown={worktreeIsUnknown} error={dirErrors[`${selected.runnerId}:worktreeDir`]} busy={Boolean(busyKey)} onChange={(value) => handleDirectoryType('worktreeDir', value)} onSave={() => handleDirectorySave('worktreeDir')} />
                 <p className="text-[11px] text-text-muted">Directories are stored as this Runner's preference on the backend. When empty, the Runner's own folders are used.</p>
               </div>
 

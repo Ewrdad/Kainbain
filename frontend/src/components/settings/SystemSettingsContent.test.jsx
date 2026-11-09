@@ -432,7 +432,9 @@ describe('SystemSettingsContent', () => {
   it('Runners tab selects the first Runner by default', async () => {
     renderContent();
     await screen.findByTestId('runner-detail-r1');
-    expect(screen.getByTestId('runner-select-r1')).toHaveAttribute('aria-pressed', 'true');
+    // The whole roster row is the selection control: the selected row
+    // carries aria-selected in the listbox.
+    expect(screen.getByTestId('runner-row-r1')).toHaveAttribute('aria-selected', 'true');
   });
 
   it('Models Refresh bypasses both caches when config enables it', async () => {

@@ -162,7 +162,7 @@ describe('RunnerConfigurationSection', () => {
     runnersFixture();
     render(<RunnerConfigurationSection />);
     await screen.findByTestId('runner-detail-r1');
-    fireEvent.click(screen.getByTestId('runner-select-r2'));
+    fireEvent.click(screen.getByTestId('runner-row-r2'));
     await waitFor(() => {
       expect(screen.getByTestId('runner-detail-r2')).toBeTruthy();
     });
@@ -288,7 +288,7 @@ describe('RunnerConfigurationSection', () => {
   it('guides the operator when the selected Runner vanishes without a roster reload', async () => {
     runnersFixture([ACTIVE_RUNNER, PENDING_RUNNER]);
     render(<RunnerConfigurationSection />);
-    fireEvent.click(await screen.findByTestId('runner-select-r2'));
+    fireEvent.click(await screen.findByTestId('runner-row-r2'));
     await screen.findByTestId('runner-detail-r2');
     // Another operator revoked r2 mid-session: the reload merges the revoked
     // record, the roster filter drops its row, and the stale selection must
@@ -315,7 +315,7 @@ describe('RunnerConfigurationSection', () => {
     expect(layout).toContainElement(screen.getByTestId('runner-roster'));
     expect(layout).toContainElement(screen.getByTestId('runner-detail-r1'));
     // Clicking a left row swaps the right panel.
-    fireEvent.click(screen.getByTestId('runner-select-r2'));
+    fireEvent.click(screen.getByTestId('runner-row-r2'));
     await waitFor(() => {
       expect(screen.getByTestId('runner-detail-r2')).toBeTruthy();
     });
@@ -328,12 +328,12 @@ describe('RunnerConfigurationSection', () => {
     revokeRunner.mockResolvedValue({ status: 'revoked' });
     render(<RunnerConfigurationSection />);
     // Actions live in the selected Runner's detail panel: select r2 first.
-    fireEvent.click(await screen.findByTestId('runner-select-r2'));
+    fireEvent.click(await screen.findByTestId('runner-row-r2'));
     fireEvent.click(await screen.findByRole('button', { name: 'Deny runner r2' }));
     await waitFor(() => {
       expect(denyRunner).toHaveBeenCalledWith('r2');
     });
-    fireEvent.click(screen.getByTestId('runner-select-r1'));
+    fireEvent.click(screen.getByTestId('runner-row-r1'));
     fireEvent.click(await screen.findByRole('button', { name: 'Revoke runner r1' }));
     fireEvent.click(await screen.findByTestId('runner-revoke-confirm-r1'));
     await waitFor(() => {
@@ -481,7 +481,7 @@ describe('RunnerConfigurationSection', () => {
       expect(screen.getByRole('button', { name: 'Pause runner r1' })).toBeDisabled();
     });
     // The pending Runner's actions disable too once it is selected.
-    fireEvent.click(screen.getByTestId('runner-select-r2'));
+    fireEvent.click(screen.getByTestId('runner-row-r2'));
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Approve runner r2' })).toBeDisabled();
     });
@@ -685,6 +685,32 @@ describe('RunnerConfigurationSection', () => {
     );
   });
 
+  it('refreshes the models toggles after queuing re-detection without a manual reload', async () => {
+    runnersFixture([SUPPORTED_RUNNER]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    // No queued state yet: the status line only renders once the backend
+    // reports the pending command.
+    expect(screen.queryByTestId('runner-redetect-status-r1')).toBeNull();
+    fireEvent.click(screen.getByTestId('runner-redetect-models-r1'));
+    await waitFor(() => {
+      expect(requestModelRediscovery).toHaveBeenCalledWith('r1');
+    });
+    // The backend picked up the command: the follow-up poll returns the
+    // pending entry and the status line appears with no reload.
+    getRunners.mockResolvedValue(structuredClone([{
+      ...SUPPORTED_RUNNER,
+      commands: {
+        pending: [{ command: 'requestModelRediscovery', requestedAt: new Date().toISOString() }],
+        results: {},
+        supported: ['requestModelRediscovery', 'requestUpdate'],
+      },
+    }]));
+    expect(await screen.findByTestId('runner-redetect-status-r1', undefined, { timeout: 8000 })).toHaveTextContent(
+      'Re-detection queued',
+    );
+  }, 15000);
+
   it('disables re-detection with guidance for runners that predate commands', async () => {
     runnersFixture([ACTIVE_RUNNER]);
     render(<RunnerConfigurationSection />);
@@ -718,6 +744,27 @@ describe('RunnerConfigurationSection', () => {
     expect(await screen.findByTestId('runner-config-notice')).toHaveTextContent('Update queued');
     expect(screen.getByTestId('runner-update-status-r1')).toHaveTextContent('idle');
   });
+
+  it('surfaces a failed update from the post-queue refresh without a manual reload', async () => {
+    runnersFixture([{ ...SUPPORTED_RUNNER, updateAvailable: true }]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.queryByTestId('runner-update-failed-r1')).toBeNull();
+    fireEvent.click(screen.getByTestId('runner-update-now-r1'));
+    await waitFor(() => {
+      expect(requestRunnerUpdate).toHaveBeenCalledWith('r1');
+    });
+    // The Runner tried and failed: the follow-up poll merges the failed
+    // updateStatus, the roster badge appears, and the reason is reported
+    // with no reload.
+    getRunners.mockResolvedValue(structuredClone([{
+      ...SUPPORTED_RUNNER,
+      updateAvailable: true,
+      updateStatus: { state: 'failed', reason: 'sig mismatch' },
+    }]));
+    expect(await screen.findByTestId('runner-update-failed-r1', undefined, { timeout: 8000 })).toBeTruthy();
+    expect(screen.getByText('sig mismatch')).toBeTruthy();
+  }, 15000);
 
   it('hides Update now when no update is available', async () => {
     runnersFixture([{ ...SUPPORTED_RUNNER, updateAvailable: false }]);
@@ -807,7 +854,7 @@ describe('RunnerConfigurationSection', () => {
     render(<RunnerConfigurationSection />);
     await screen.findByTestId('runner-detail-r1');
     fireEvent.change(screen.getByTestId('runner-custom-model-r1'), { target: { value: 'typed-for-r1' } });
-    fireEvent.click(screen.getByTestId('runner-select-r2'));
+    fireEvent.click(screen.getByTestId('runner-row-r2'));
     await screen.findByTestId('runner-detail-r2');
     expect(screen.getByTestId('runner-custom-model-r2')).toHaveValue('');
   });
@@ -838,7 +885,7 @@ describe('RunnerConfigurationSection', () => {
     await screen.findByTestId('runner-detail-r1');
     // The footer Reset collision (an exact 'Reset' name) broke the settings
     // tabs test: the models reset keeps its distinct accessible name.
-    expect(screen.getByTestId('runner-models-reset-r1')).toHaveTextContent('Reset models');
+    expect(screen.getByTestId('runner-models-reset-r1')).toHaveTextContent('Reset to auto-detected');
     expect(screen.queryByRole('button', { name: 'Reset', exact: true })).toBeNull();
   });
 });
