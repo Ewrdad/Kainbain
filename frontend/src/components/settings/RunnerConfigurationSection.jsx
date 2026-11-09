@@ -43,7 +43,7 @@ import {
  *   project scope, available tools, model selection, directory preferences, and
  *   job type toggles. Also provides lifecycle controls (approve/deny/pause/resume/revoke),
  *   update/reload actions, and model re-detection.
- * 
+ *
  *   The screen shows a two-panel layout: a left roster of visible Runners and a
  *   right detail panel for the selected Runner. The entire Runner row is clickable
  *   to select it for configuration.
@@ -154,7 +154,8 @@ export function RunnerConfigurationSection() {
    * @example queueRunnerRefresh({ runnerId: 'r1', rounds: 3 })
    ***/
   const queueRunnerRefresh = useCallback(({ runnerId, rounds, onFailedUpdate } = {}) => {
-    if (typeof runnerId !== 'string' || !runnerId || !Number.isFinite(rounds) || rounds <= 0) return;
+    if (typeof runnerId !== 'string' || !runnerId || !Number.isFinite(rounds) || rounds <= 0)
+      return;
     // Schedules one poll while keeping the timer roster exact: the id
     // leaves the roster the moment it fires, so only pending polls are
     // ever listed (unmount clears those).
@@ -173,7 +174,9 @@ export function RunnerConfigurationSection() {
         if (!isLive.current) return;
         const record = Array.isArray(list) ? list.find((r) => r?.runnerId === runnerId) : null;
         if (record) {
-          setRunners((prev) => mergeRunnerRecord({ previousRunners: prev, incomingRecord: record }));
+          setRunners((prev) =>
+            mergeRunnerRecord({ previousRunners: prev, incomingRecord: record }),
+          );
           if (record.updateStatus?.state === 'failed' && typeof onFailedUpdate === 'function') {
             onFailedUpdate(record.updateStatus.reason || 'Runner update failed.');
             return;
@@ -209,7 +212,8 @@ export function RunnerConfigurationSection() {
         }
         await loadRunners();
       } catch (err) {
-        if (isLive.current) setActionError(err?.message || `Could not ${action} Runner ${runnerId}.`);
+        if (isLive.current)
+          setActionError(err?.message || `Could not ${action} Runner ${runnerId}.`);
       } finally {
         if (isLive.current) {
           setBusyKey(null);
@@ -251,7 +255,8 @@ export function RunnerConfigurationSection() {
       if (successNote && isLive.current) setNotice(successNote);
       return true;
     } catch (err) {
-      if (isLive.current) setActionError(err?.message || `Could not save Runner ${runnerId} settings.`);
+      if (isLive.current)
+        setActionError(err?.message || `Could not save Runner ${runnerId} settings.`);
       return false;
     } finally {
       if (isLive.current) setBusyKey(null);
@@ -319,20 +324,22 @@ export function RunnerConfigurationSection() {
   const advertised = selected ? advertisedToolIds(selected) : [];
   const enabledTools = selected ? effectiveTools(selected) : [];
   const nameDraft = selected ? (nameDrafts[selected.runnerId] ?? config.displayName ?? '') : '';
-  const dirDraft = selected
-    ? dirDrafts[selected.runnerId] || null
-    : null;
+  const dirDraft = selected ? dirDrafts[selected.runnerId] || null : null;
   const displayDirs = selected ? displayDirectories(selected) : null;
-  const masterValue = dirDraft ? dirDraft.masterDir : (displayDirs?.masterDir.value || '');
-  const worktreeValue = dirDraft ? dirDraft.worktreeDir : (displayDirs?.worktreeDir.value || '');
+  const masterValue = dirDraft ? dirDraft.masterDir : displayDirs?.masterDir.value || '';
+  const worktreeValue = dirDraft ? dirDraft.worktreeDir : displayDirs?.worktreeDir.value || '';
   const masterIsDefault = displayDirs ? displayDirs.masterDir.isDefault : true;
   const worktreeIsDefault = displayDirs ? displayDirs.worktreeDir.isDefault : true;
   const masterIsUnknown = displayDirs ? displayDirs.masterDir.isUnknown : false;
   const worktreeIsUnknown = displayDirs ? displayDirs.worktreeDir.isUnknown : false;
   const nameDirty = selected && String(nameDraft).trim() !== String(config.displayName ?? '');
-  const selectedCommands = selected ? runnerCommands(selected) : { pending: [], results: {}, supported: [] };
+  const selectedCommands = selected
+    ? runnerCommands(selected)
+    : { pending: [], results: {}, supported: [] };
   const pendingName = (entry) => (typeof entry === 'string' ? entry : entry?.command);
-  const redetectPending = selectedCommands.pending.some((p) => pendingName(p) === 'requestModelRediscovery');
+  const redetectPending = selectedCommands.pending.some(
+    (p) => pendingName(p) === 'requestModelRediscovery',
+  );
   const redetectResult = selectedCommands.results.requestModelRediscovery || null;
   const updatePending = selectedCommands.pending.some((p) => pendingName(p) === 'requestUpdate');
   const updateResult = selectedCommands.results.requestUpdate || null;
@@ -340,40 +347,48 @@ export function RunnerConfigurationSection() {
   // R1: the buttons queue backend-to-Runner commands, so they work only on
   // active Runners that advertise support — anything else gets a disabled
   // button plus visible guidance, never a dead control.
-  const redetectReady = selected ? selected.status === 'active' && canRequestRediscovery(selected) : false;
+  const redetectReady = selected
+    ? selected.status === 'active' && canRequestRediscovery(selected)
+    : false;
   const updateReady = selected ? selected.status === 'active' && canRequestUpdate(selected) : false;
   const commandDisabledReason = (supported) => {
     if (!selected) return '';
-    if (selected.status !== 'active') return `Needs an active Runner (this one is ${selected.status || 'unknown'}).`;
-    if (!supported) return 'This Runner is too old for on-request commands — update the Runner to enable this.';
+    if (selected.status !== 'active')
+      return `Needs an active Runner (this one is ${selected.status || 'unknown'}).`;
+    if (!supported)
+      return 'This Runner is too old for on-request commands — update the Runner to enable this.';
     return '';
   };
   const updateTitle = !updateReady
     ? `Update now is unavailable: ${commandDisabledReason(canRequestUpdate(selected))}`
     : selectedBusy
       ? 'Runner is busy — the update queues and applies when idle.'
-      : (selected.recommendedVersion ? `Update to ${selected.recommendedVersion} (applies when idle)` : 'Update now (applies when idle)');
+      : selected.recommendedVersion
+        ? `Update to ${selected.recommendedVersion} (applies when idle)`
+        : 'Update now (applies when idle)';
   const redetectTitle = redetectReady
     ? 'Ask the Runner to scan for models again'
     : `Re-detection is unavailable: ${commandDisabledReason(canRequestRediscovery(selected))}`;
   const redetectStatusLine = redetectPending
     ? 'Re-detection queued — the Runner refreshes on its next heartbeat.'
     : redetectResult
-      ? (redetectResult.ok
+      ? redetectResult.ok
         ? `Last re-detection: ${redetectResult.detail || 'done'}`
-        : `Re-detection failed: ${redetectResult.detail || 'unknown error'}`)
-      : (!redetectReady ? redetectTitle : null);
+        : `Re-detection failed: ${redetectResult.detail || 'unknown error'}`
+      : !redetectReady
+        ? redetectTitle
+        : null;
   const updateStatusLine = updatePending
     ? 'Update queued — applies when the Runner is idle.'
     : updateResult
-      ? (updateResult.ok
+      ? updateResult.ok
         ? `Last update: ${updateResult.detail || 'done'}`
-        : `Update failed: ${updateResult.detail || 'unknown error'}`)
-      : (!updateReady
-        ? (selected && selected.status !== 'active'
+        : `Update failed: ${updateResult.detail || 'unknown error'}`
+      : !updateReady
+        ? selected && selected.status !== 'active'
           ? updateTitle
-          : 'This Runner is too old to update on request — update it manually.')
-        : 'Updates apply when the Runner is idle — running work is never interrupted.');
+          : 'This Runner is too old to update on request — update it manually.'
+        : 'Updates apply when the Runner is idle — running work is never interrupted.';
 
   /***
    * MARK: handleNameSave
@@ -408,7 +423,11 @@ export function RunnerConfigurationSection() {
       setDirErrors((prev) => ({ ...prev, [confirmKey]: errMsg }));
       return;
     }
-    void saveConfig(selected.runnerId, { directories: { [field]: value } }, 'Directory saved.').then((saved) => {
+    void saveConfig(
+      selected.runnerId,
+      { directories: { [field]: value } },
+      'Directory saved.',
+    ).then((saved) => {
       if (saved && isLive.current) {
         setDirDrafts((prev) => dropDraftFor({ drafts: prev, runnerId: selected.runnerId }));
         setDirErrors((prev) => {
@@ -461,7 +480,9 @@ export function RunnerConfigurationSection() {
    ***/
   const handleToolToggle = (toolId, checked) => {
     if (!selected) return;
-    const next = checked ? [...new Set([...enabledTools, toolId])] : enabledTools.filter((t) => t !== toolId);
+    const next = checked
+      ? [...new Set([...enabledTools, toolId])]
+      : enabledTools.filter((t) => t !== toolId);
     void saveConfig(selected.runnerId, { availableTools: next }, 'Available tools saved.');
   };
 
@@ -482,7 +503,11 @@ export function RunnerConfigurationSection() {
     else set.delete(modelId);
     const next = [...set];
     const patchVal = modelTogglePatch(selected, next);
-    void saveConfig(selected.runnerId, { availableModels: patchVal }, patchVal === null ? 'Models reset to advertised.' : 'Models saved.').then(() => {});
+    void saveConfig(
+      selected.runnerId,
+      { availableModels: patchVal },
+      patchVal === null ? 'Models reset to advertised.' : 'Models saved.',
+    ).then(() => {});
   };
 
   /***
@@ -500,9 +525,11 @@ export function RunnerConfigurationSection() {
     set.add(cleaned);
     const next = [...set];
     const patchVal = modelTogglePatch(selected, next);
-    void saveConfig(selected.runnerId, { availableModels: patchVal }, 'Models saved.').then((ok) => {
-      if (ok && isLive.current) setCustomModel('');
-    });
+    void saveConfig(selected.runnerId, { availableModels: patchVal }, 'Models saved.').then(
+      (ok) => {
+        if (ok && isLive.current) setCustomModel('');
+      },
+    );
   };
 
   /***
@@ -514,7 +541,11 @@ export function RunnerConfigurationSection() {
    ***/
   const handleModelsReset = () => {
     if (!selected) return;
-    void saveConfig(selected.runnerId, { availableModels: null }, 'Models reset — this Runner matches its advertised models again.').then(() => {});
+    void saveConfig(
+      selected.runnerId,
+      { availableModels: null },
+      'Models reset — this Runner matches its advertised models again.',
+    ).then(() => {});
   };
 
   /***
@@ -598,8 +629,15 @@ export function RunnerConfigurationSection() {
    ***/
   const handleProjectMove = (projectId, direction) => {
     if (!selected) return;
-    const next = direction === 'load' ? withProjectLoaded(loadedIds, projectId) : withProjectUnloaded(loadedIds, projectId);
-    void saveConfig(selected.runnerId, { projectScope: scopePatchForLoaded(next, projects || []) }, direction === 'load' ? 'Project loaded.' : 'Project unloaded.');
+    const next =
+      direction === 'load'
+        ? withProjectLoaded(loadedIds, projectId)
+        : withProjectUnloaded(loadedIds, projectId);
+    void saveConfig(
+      selected.runnerId,
+      { projectScope: scopePatchForLoaded(next, projects || []) },
+      direction === 'load' ? 'Project loaded.' : 'Project unloaded.',
+    );
   };
 
   return (
@@ -613,8 +651,12 @@ export function RunnerConfigurationSection() {
         here for approval, then heartbeats and claims tasks with its own credential.
       </p>
       {scheduler && (
-        <p className="mt-1 text-[10px] font-mono text-text-muted" data-testid="runner-scheduler-deferrals">
-          Scheduler: {scheduler.dispatched ?? 0} embedded dispatches, {scheduler.deferredDispatch ?? 0} deferred to Runners
+        <p
+          className="mt-1 text-[10px] font-mono text-text-muted"
+          data-testid="runner-scheduler-deferrals"
+        >
+          Scheduler: {scheduler.dispatched ?? 0} embedded dispatches,{' '}
+          {scheduler.deferredDispatch ?? 0} deferred to Runners
           {scheduler.lastOutcome ? ` (last: ${scheduler.lastOutcome})` : ''}.
         </p>
       )}
@@ -624,23 +666,43 @@ export function RunnerConfigurationSection() {
         </p>
       )}
       {notice && (
-        <p className="mt-2 text-xs text-text-muted" role="status" data-testid="runner-config-notice">
+        <p
+          className="mt-2 text-xs text-text-muted"
+          role="status"
+          data-testid="runner-config-notice"
+        >
           {notice}
         </p>
       )}
       {freshCredential && (
-        <div className="mt-3 px-3 py-2 bg-surface-container border border-border-standard rounded-sm" data-testid="runner-credential-once">
+        <div
+          className="mt-3 px-3 py-2 bg-surface-container border border-border-standard rounded-sm"
+          data-testid="runner-credential-once"
+        >
           <p className="text-xs text-on-surface">
-            Runner {freshCredential.runnerId} approved. Paste this one-time credential into its environment as KAINBAIN_RUNNER_CREDENTIAL and restart it — it is never shown again.
+            Runner {freshCredential.runnerId} approved. Paste this one-time credential into its
+            environment as KAINBAIN_RUNNER_CREDENTIAL and restart it — it is never shown again.
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-mono text-on-surface break-all" data-testid="runner-credential-value">
+            <span
+              className="text-xs font-mono text-on-surface break-all"
+              data-testid="runner-credential-value"
+            >
               {freshCredential.credential}
             </span>
-            <button type="button" onClick={async () => setCopied(await copyToClipboard(freshCredential.credential))} className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer">
+            <button
+              type="button"
+              onClick={async () => setCopied(await copyToClipboard(freshCredential.credential))}
+              className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer"
+            >
               {copied ? 'Copied' : 'Copy'}
             </button>
-            <button type="button" onClick={() => setFreshCredential(null)} aria-label="Dismiss credential" className="px-3 py-1.5 min-h-[44px] text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer">
+            <button
+              type="button"
+              onClick={() => setFreshCredential(null)}
+              aria-label="Dismiss credential"
+              className="px-3 py-1.5 min-h-[44px] text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer"
+            >
               Dismiss
             </button>
           </div>
@@ -648,10 +710,14 @@ export function RunnerConfigurationSection() {
       )}
       {visible.length === 0 ? (
         <p className="py-4 text-xs text-text-muted" data-testid="runner-config-empty">
-          No Runner registrations yet. Boot a Runner pointed at this backend and its join request will appear here.
+          No Runner registrations yet. Boot a Runner pointed at this backend and its join request
+          will appear here.
         </p>
       ) : (
-        <div className="mt-3 grid grid-cols-1 items-start gap-3 md:grid-cols-[240px_minmax(0,1fr)]" data-testid="runner-layout">
+        <div
+          className="mt-3 grid grid-cols-1 items-start gap-3 md:grid-cols-[240px_minmax(0,1fr)]"
+          data-testid="runner-layout"
+        >
           <div className="flex flex-col gap-2">
             {visible.length > 4 && (
               <input
@@ -663,7 +729,12 @@ export function RunnerConfigurationSection() {
                 className="px-2 py-1.5 bg-surface-deep border border-border-standard rounded-sm text-xs text-on-surface outline-none focus:border-primary"
               />
             )}
-            <ul className="flex flex-col gap-2" data-testid="runner-roster" role="listbox" aria-label="Runners">
+            <ul
+              className="flex flex-col gap-2"
+              data-testid="runner-roster"
+              role="listbox"
+              aria-label="Runners"
+            >
               {filtered.map((runner) => {
                 const isSelected = runner.runnerId === selectedId;
                 const assignment = assignments[runner.runnerId];
@@ -684,38 +755,86 @@ export function RunnerConfigurationSection() {
                         setSelectedId(runner.runnerId);
                       }
                     }}
-                    className={`flex flex-wrap items-center gap-2 px-3 py-2 bg-surface-container border rounded-sm cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${isSelected ? 'border-primary' : 'border-border-standard'} hover:border-primary/50 transition-colors`}
+                    className={`flex flex-wrap items-center gap-2 px-3 py-2 bg-surface-container border rounded-sm cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${isSelected ? 'border-primary ring-1 ring-primary' : 'border-border-standard hover:bg-surface-container-highest hover:border-primary/50'} transition-colors`}
                   >
                     <span className="text-xs font-mono text-on-surface underline decoration-dotted underline-offset-4 hover:decoration-solid">
                       {runnerDisplayName(runner)}
                     </span>
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-text-muted" data-testid={`runner-status-${runner.runnerId}`}>
+                    <span
+                      className="text-[10px] font-bold uppercase tracking-widest text-text-muted"
+                      data-testid={`runner-status-${runner.runnerId}`}
+                    >
                       {runnerStatusLabel(runner)}
                     </span>
                     {runner.status === 'active' && runner.paused && (
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-warning" data-testid={`runner-paused-${runner.runnerId}`} title="Paused: this Runner finishes in-flight work but takes no new tasks">paused</span>
+                      <span
+                        className="text-[10px] font-bold uppercase tracking-widest text-warning"
+                        data-testid={`runner-paused-${runner.runnerId}`}
+                        title="Paused: this Runner finishes in-flight work but takes no new tasks"
+                      >
+                        paused
+                      </span>
                     )}
                     {stale && runner.status === 'active' && (
-                      <span className="text-[10px] font-mono text-text-muted" title={`Last seen ${runner.lastSeenAt}`}>
+                      <span
+                        className="text-[10px] font-mono text-text-muted"
+                        title={`Last seen ${runner.lastSeenAt}`}
+                      >
                         {stale}
                       </span>
                     )}
                     {assignment && (
-                      <span className="text-[10px] font-mono text-text-muted" data-testid={`runner-assignment-${runner.runnerId}`}>
-                        Running task {String(assignment.taskId).slice(0, 8)} · {assignment.stageId || '…'} · {nowMs == null ? '…' : formatRunnerElapsed(assignment.startedAt, nowMs)}
+                      <span
+                        className="text-[10px] font-mono text-text-muted"
+                        data-testid={`runner-assignment-${runner.runnerId}`}
+                      >
+                        Running task {String(assignment.taskId).slice(0, 8)} ·{' '}
+                        {assignment.stageId || '…'} ·{' '}
+                        {nowMs == null ? '…' : formatRunnerElapsed(assignment.startedAt, nowMs)}
                       </span>
                     )}
                     {versionLabel && (
-                      <span className="text-[10px] font-mono text-text-muted" data-testid={`runner-version-${runner.runnerId}`}>v{versionLabel}</span>
+                      <span
+                        className="text-[10px] font-mono text-text-muted"
+                        data-testid={`runner-version-${runner.runnerId}`}
+                      >
+                        v{versionLabel}
+                      </span>
                     )}
                     {runner.updateAvailable && (
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-warning" data-testid={`runner-update-available-${runner.runnerId}`} title={runner.recommendedVersion ? `Runner ${runner.runnerId} can update to ${runner.recommendedVersion}` : `Runner ${runner.runnerId} has an update available`}>update available</span>
+                      <span
+                        className="text-[10px] font-bold uppercase tracking-widest text-warning"
+                        data-testid={`runner-update-available-${runner.runnerId}`}
+                        title={
+                          runner.recommendedVersion
+                            ? `Runner ${runner.runnerId} can update to ${runner.recommendedVersion}`
+                            : `Runner ${runner.runnerId} has an update available`
+                        }
+                      >
+                        update available
+                      </span>
                     )}
                     {runner.belowMinimum && (
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-error" data-testid={`runner-below-minimum-${runner.runnerId}`} title={runner.minimumVersion ? `Runner ${runner.runnerId} is below minimum ${runner.minimumVersion}` : `Below minimum version`}>below minimum</span>
+                      <span
+                        className="text-[10px] font-bold uppercase tracking-widest text-error"
+                        data-testid={`runner-below-minimum-${runner.runnerId}`}
+                        title={
+                          runner.minimumVersion
+                            ? `Runner ${runner.runnerId} is below minimum ${runner.minimumVersion}`
+                            : `Below minimum version`
+                        }
+                      >
+                        below minimum
+                      </span>
                     )}
                     {runner.updateStatus?.state === 'failed' && (
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-error" data-testid={`runner-update-failed-${runner.runnerId}`} title={`Last self-update failed: ${runner.updateStatus.reason || 'unknown'}`}>update failed</span>
+                      <span
+                        className="text-[10px] font-bold uppercase tracking-widest text-error"
+                        data-testid={`runner-update-failed-${runner.runnerId}`}
+                        title={`Last self-update failed: ${runner.updateStatus.reason || 'unknown'}`}
+                      >
+                        update failed
+                      </span>
                     )}
                   </li>
                 );
@@ -726,48 +845,140 @@ export function RunnerConfigurationSection() {
             </ul>
           </div>
           {selected ? (
-            <div className="px-3 py-3 bg-surface-container border border-border-standard rounded-sm flex flex-col gap-4" data-testid={`runner-detail-${selected.runnerId}`}>
+            <div
+              className="px-3 py-3 bg-surface-container border border-border-standard rounded-sm flex flex-col gap-4"
+              data-testid={`runner-detail-${selected.runnerId}`}
+            >
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-sm font-bold text-on-surface">{runnerDisplayName(selected)}</h3>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-text-muted" data-testid={`runner-detail-status-${selected.runnerId}`}>
+                <span
+                  className="text-[10px] font-bold uppercase tracking-widest text-text-muted"
+                  data-testid={`runner-detail-status-${selected.runnerId}`}
+                >
                   {runnerStatusLabel(selected)}
                 </span>
                 <div className="ml-auto flex items-center gap-2 flex-wrap">
                   {selected.status === 'pending' ? (
                     <>
-                      <button type="button" disabled={Boolean(busyKey)} onClick={() => mutate(selected.runnerId, 'approve')} aria-label={`Approve runner ${selected.runnerId}`} className="px-3 py-1.5 min-h-[44px] bg-primary hover:brightness-110 text-on-primary text-xs font-bold uppercase tracking-widest rounded-sm transition-all cursor-pointer disabled:opacity-60">Approve</button>
-                      <button type="button" disabled={Boolean(busyKey)} onClick={() => mutate(selected.runnerId, 'deny')} aria-label={`Deny runner ${selected.runnerId}`} className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">Deny</button>
+                      <button
+                        type="button"
+                        disabled={Boolean(busyKey)}
+                        onClick={() => mutate(selected.runnerId, 'approve')}
+                        aria-label={`Approve runner ${selected.runnerId}`}
+                        className="px-3 py-1.5 min-h-[44px] bg-primary hover:brightness-110 text-on-primary text-xs font-bold uppercase tracking-widest rounded-sm transition-all cursor-pointer disabled:opacity-60"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        disabled={Boolean(busyKey)}
+                        onClick={() => mutate(selected.runnerId, 'deny')}
+                        aria-label={`Deny runner ${selected.runnerId}`}
+                        className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
+                      >
+                        Deny
+                      </button>
                     </>
                   ) : selected.status === 'denied' ? (
                     <>
-                      <button type="button" disabled={Boolean(busyKey)} onClick={() => mutate(selected.runnerId, 'approve')} aria-label={`Approve runner ${selected.runnerId}`} className="px-3 py-1.5 min-h-[44px] bg-primary hover:brightness-110 text-on-primary text-xs font-bold uppercase tracking-widest rounded-sm transition-all cursor-pointer disabled:opacity-60">Approve</button>
-                      <button type="button" disabled={Boolean(busyKey)} onClick={() => mutate(selected.runnerId, 'revoke')} aria-label={`Revoke runner ${selected.runnerId}`} className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">Revoke</button>
+                      <button
+                        type="button"
+                        disabled={Boolean(busyKey)}
+                        onClick={() => mutate(selected.runnerId, 'approve')}
+                        aria-label={`Approve runner ${selected.runnerId}`}
+                        className="px-3 py-1.5 min-h-[44px] bg-primary hover:brightness-110 text-on-primary text-xs font-bold uppercase tracking-widest rounded-sm transition-all cursor-pointer disabled:opacity-60"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        disabled={Boolean(busyKey)}
+                        onClick={() => mutate(selected.runnerId, 'revoke')}
+                        aria-label={`Revoke runner ${selected.runnerId}`}
+                        className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
+                      >
+                        Revoke
+                      </button>
                     </>
                   ) : (
                     selected.status === 'active' && (
                       <>
                         {selected.paused ? (
-                          <button type="button" disabled={Boolean(busyKey)} onClick={() => mutate(selected.runnerId, 'resume')} aria-label={`Resume runner ${selected.runnerId}`} className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">Resume</button>
+                          <button
+                            type="button"
+                            disabled={Boolean(busyKey)}
+                            onClick={() => mutate(selected.runnerId, 'resume')}
+                            aria-label={`Resume runner ${selected.runnerId}`}
+                            className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
+                          >
+                            Resume
+                          </button>
                         ) : (
-                          <button type="button" disabled={Boolean(busyKey)} onClick={() => mutate(selected.runnerId, 'pause')} aria-label={`Pause runner ${selected.runnerId}`} className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">Pause</button>
+                          <button
+                            type="button"
+                            disabled={Boolean(busyKey)}
+                            onClick={() => mutate(selected.runnerId, 'pause')}
+                            aria-label={`Pause runner ${selected.runnerId}`}
+                            className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
+                          >
+                            Pause
+                          </button>
                         )}
                         {revokeConfirm === selected.runnerId ? (
                           <span className="flex items-center gap-1">
-                            <button type="button" data-testid={`runner-revoke-confirm-${selected.runnerId}`} onClick={() => mutate(selected.runnerId, 'revoke')} disabled={Boolean(busyKey)} className="px-3 py-1.5 min-h-[44px] bg-error text-on-primary text-xs font-bold uppercase tracking-widest rounded-sm cursor-pointer">Confirm revoke</button>
-                            <button type="button" onClick={() => setRevokeConfirm(null)} className="px-2 py-1.5 text-xs text-text-muted cursor-pointer">Cancel</button>
+                            <button
+                              type="button"
+                              data-testid={`runner-revoke-confirm-${selected.runnerId}`}
+                              onClick={() => mutate(selected.runnerId, 'revoke')}
+                              disabled={Boolean(busyKey)}
+                              className="px-3 py-1.5 min-h-[44px] bg-error text-on-primary text-xs font-bold uppercase tracking-widest rounded-sm cursor-pointer"
+                            >
+                              Confirm revoke
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRevokeConfirm(null)}
+                              className="px-2 py-1.5 text-xs text-text-muted cursor-pointer"
+                            >
+                              Cancel
+                            </button>
                           </span>
                         ) : (
-                          <button type="button" disabled={Boolean(busyKey)} onClick={() => setRevokeConfirm(selected.runnerId)} aria-label={`Revoke runner ${selected.runnerId}`} className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">Revoke</button>
+                          <button
+                            type="button"
+                            disabled={Boolean(busyKey)}
+                            onClick={() => setRevokeConfirm(selected.runnerId)}
+                            aria-label={`Revoke runner ${selected.runnerId}`}
+                            className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
+                          >
+                            Revoke
+                          </button>
                         )}
                       </>
                     )
                   )}
                   {selected.updateAvailable && (
-                    <button type="button" data-testid={`runner-update-now-${selected.runnerId}`} onClick={handleUpdateNow} disabled={busyKey === `update:${selected.runnerId}` || !updateReady} title={updateTitle} className="px-3 py-1.5 min-h-[44px] bg-warning hover:brightness-110 text-on-primary text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">
+                    <button
+                      type="button"
+                      data-testid={`runner-update-now-${selected.runnerId}`}
+                      onClick={handleUpdateNow}
+                      disabled={busyKey === `update:${selected.runnerId}` || !updateReady}
+                      title={updateTitle}
+                      className="px-3 py-1.5 min-h-[44px] bg-warning hover:brightness-110 text-on-primary text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
+                    >
                       {busyKey === `update:${selected.runnerId}` ? 'Updating…' : 'Update Runner'}
                     </button>
                   )}
-                  <button type="button" onClick={reloadSelected} disabled={busyKey === `reload:${selected.runnerId}`} data-testid={`runner-reload-${selected.runnerId}`} className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60" title="Reload configuration from backend">Reload</button>
+                  <button
+                    type="button"
+                    onClick={reloadSelected}
+                    disabled={busyKey === `reload:${selected.runnerId}`}
+                    data-testid={`runner-reload-${selected.runnerId}`}
+                    className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
+                    title="Reload configuration from backend"
+                  >
+                    Reload
+                  </button>
                 </div>
               </div>
               {selected.updateAvailable && (
@@ -781,54 +992,145 @@ export function RunnerConfigurationSection() {
               )}
 
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-on-surface" htmlFor={`runner-name-${selected.runnerId}`}>Runner Name:</label>
+                <label
+                  className="text-xs font-bold text-on-surface"
+                  htmlFor={`runner-name-${selected.runnerId}`}
+                >
+                  Runner Name:
+                </label>
                 <div className="flex items-center gap-2">
-                  <input id={`runner-name-${selected.runnerId}`} type="text" data-testid={`runner-name-${selected.runnerId}`} value={nameDraft} maxLength={128} placeholder={selected.runnerId} onChange={(e) => setNameDrafts((prev) => ({ ...prev, [selected.runnerId]: e.target.value }))} className="flex-1 min-w-0 max-w-sm p-2 bg-surface-deep border border-border-standard rounded-sm text-sm text-on-surface outline-none focus:border-primary transition-colors" />
-                  <button type="button" data-testid={`runner-name-save-${selected.runnerId}`} onClick={handleNameSave} disabled={!nameDirty || Boolean(busyKey)} className="px-3 py-2 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60 shrink-0">Save</button>
+                  <input
+                    id={`runner-name-${selected.runnerId}`}
+                    type="text"
+                    data-testid={`runner-name-${selected.runnerId}`}
+                    value={nameDraft}
+                    maxLength={128}
+                    placeholder={selected.runnerId}
+                    onChange={(e) =>
+                      setNameDrafts((prev) => ({ ...prev, [selected.runnerId]: e.target.value }))
+                    }
+                    className="flex-1 min-w-0 max-w-sm p-2 bg-surface-deep border border-border-standard rounded-sm text-sm text-on-surface outline-none focus:border-primary transition-colors"
+                  />
+                  <button
+                    type="button"
+                    data-testid={`runner-name-save-${selected.runnerId}`}
+                    onClick={handleNameSave}
+                    disabled={!nameDirty || Boolean(busyKey)}
+                    className="px-3 py-2 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60 shrink-0"
+                  >
+                    Save
+                  </button>
                 </div>
-                <p className="text-[11px] text-text-muted">Clear the name and Save to fall back to the Runner id.</p>
+                <p className="text-[11px] text-text-muted">
+                  Clear the name and Save to fall back to the Runner id.
+                </p>
               </div>
 
               <div className="flex flex-col gap-1">
-                <span className="text-xs font-bold text-on-surface" id={`projects-label-${selected.runnerId}`}>Projects</span>
+                <span
+                  className="text-xs font-bold text-on-surface"
+                  id={`projects-label-${selected.runnerId}`}
+                >
+                  Projects
+                </span>
                 {projectsError ? (
-                  <p className="text-[11px] text-text-muted" data-testid="runner-projects-error">{projectsError}</p>
+                  <p className="text-[11px] text-text-muted" data-testid="runner-projects-error">
+                    {projectsError}
+                  </p>
                 ) : (
-                  <div className="grid grid-cols-2 gap-2" role="group" aria-labelledby={`projects-label-${selected.runnerId}`}>
+                  <div
+                    className="grid grid-cols-2 gap-2"
+                    role="group"
+                    aria-labelledby={`projects-label-${selected.runnerId}`}
+                  >
                     <div className="flex flex-col gap-1 px-2 py-2 bg-surface-deep border border-border-standard rounded-sm">
-                      <span className="text-[11px] font-bold uppercase tracking-widest text-text-muted">Available</span>
-                      {available.length === 0 && <span className="text-[11px] text-text-muted">None</span>}
+                      <span className="text-[11px] font-bold uppercase tracking-widest text-text-muted">
+                        Available
+                      </span>
+                      {available.length === 0 && (
+                        <span className="text-[11px] text-text-muted">None</span>
+                      )}
                       {available.map((project) => (
                         <div key={project.id} className="flex items-center gap-2">
-                          <span className="text-xs text-on-surface truncate">{project.name || project.id}</span>
-                          <button type="button" data-testid={`runner-load-project-${project.id}`} aria-label={`Load project ${project.name || project.id}`} onClick={() => handleProjectMove(project.id, 'load')} disabled={Boolean(busyKey)} className="ml-auto text-xs text-primary underline underline-offset-2 cursor-pointer disabled:opacity-60">Load →</button>
+                          <span className="text-xs text-on-surface truncate">
+                            {project.name || project.id}
+                          </span>
+                          <button
+                            type="button"
+                            data-testid={`runner-load-project-${project.id}`}
+                            aria-label={`Load project ${project.name || project.id}`}
+                            onClick={() => handleProjectMove(project.id, 'load')}
+                            disabled={Boolean(busyKey)}
+                            className="ml-auto text-xs text-primary underline underline-offset-2 cursor-pointer disabled:opacity-60"
+                          >
+                            Load →
+                          </button>
                         </div>
                       ))}
                     </div>
                     <div className="flex flex-col gap-1 px-2 py-2 bg-surface-deep border border-border-standard rounded-sm">
-                      <span className="text-[11px] font-bold uppercase tracking-widest text-text-muted">Loaded</span>
-                      {loaded.length === 0 && <span className="text-[11px] text-text-muted">None</span>}
+                      <span className="text-[11px] font-bold uppercase tracking-widest text-text-muted">
+                        Loaded
+                      </span>
+                      {loaded.length === 0 && (
+                        <span className="text-[11px] text-text-muted">None</span>
+                      )}
                       {loaded.map((project) => (
                         <div key={project.id} className="flex items-center gap-2">
-                          <button type="button" data-testid={`runner-unload-project-${project.id}`} aria-label={`Unload project ${project.name || project.id}`} onClick={() => handleProjectMove(project.id, 'unload')} disabled={Boolean(busyKey)} className="text-xs text-primary underline underline-offset-2 cursor-pointer disabled:opacity-60">← Unload</button>
-                          <span className="text-xs text-on-surface truncate">{project.name || project.id}</span>
+                          <button
+                            type="button"
+                            data-testid={`runner-unload-project-${project.id}`}
+                            aria-label={`Unload project ${project.name || project.id}`}
+                            onClick={() => handleProjectMove(project.id, 'unload')}
+                            disabled={Boolean(busyKey)}
+                            className="text-xs text-primary underline underline-offset-2 cursor-pointer disabled:opacity-60"
+                          >
+                            ← Unload
+                          </button>
+                          <span className="text-xs text-on-surface truncate">
+                            {project.name || project.id}
+                          </span>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
-                <p className="text-[11px] text-text-muted">Loading makes the project active for this Runner. Unloading parks it back to Available.</p>
+                <p className="text-[11px] text-text-muted">
+                  Loading makes the project active for this Runner. Unloading parks it back to
+                  Available.
+                </p>
               </div>
 
               <div className="flex flex-col gap-1">
-                <span className="text-xs font-bold text-on-surface" id={`tools-label-${selected.runnerId}`}>Harnesses Available</span>
+                <span
+                  className="text-xs font-bold text-on-surface"
+                  id={`tools-label-${selected.runnerId}`}
+                >
+                  Harnesses Available
+                </span>
                 {advertised.length === 0 ? (
-                  <p className="text-[11px] text-text-muted" data-testid="runner-tools-empty">This Runner has not advertised any tools yet.</p>
+                  <p className="text-[11px] text-text-muted" data-testid="runner-tools-empty">
+                    This Runner has not advertised any tools yet.
+                  </p>
                 ) : (
-                  <div className="flex items-center gap-4 flex-wrap" role="group" aria-labelledby={`tools-label-${selected.runnerId}`}>
+                  <div
+                    className="flex items-center gap-4 flex-wrap"
+                    role="group"
+                    aria-labelledby={`tools-label-${selected.runnerId}`}
+                  >
                     {advertised.map((toolId) => (
-                      <label key={toolId} className="flex items-center gap-2 cursor-pointer select-none text-xs text-on-surface">
-                        <input type="checkbox" data-testid={`runner-tool-${selected.runnerId}-${toolId}`} checked={enabledTools.includes(toolId)} onChange={(e) => handleToolToggle(toolId, e.target.checked)} disabled={Boolean(busyKey)} className="rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0 cursor-pointer" />
+                      <label
+                        key={toolId}
+                        className="flex items-center gap-2 cursor-pointer select-none text-xs text-on-surface"
+                      >
+                        <input
+                          type="checkbox"
+                          data-testid={`runner-tool-${selected.runnerId}-${toolId}`}
+                          checked={enabledTools.includes(toolId)}
+                          onChange={(e) => handleToolToggle(toolId, e.target.checked)}
+                          disabled={Boolean(busyKey)}
+                          className="rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0 cursor-pointer"
+                        />
                         <span>{toolId}</span>
                       </label>
                     ))}
@@ -839,8 +1141,19 @@ export function RunnerConfigurationSection() {
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-bold text-on-surface">Models</span>
-                  {modelsOverridden ? <span className="text-[11px] text-text-muted">(operator override)</span> : <span className="text-[11px] text-text-muted">(auto-detected from Runner)</span>}
-                  <button type="button" data-testid={`runner-redetect-models-${selected.runnerId}`} onClick={handleRediscover} disabled={busyKey === `rediscover:${selected.runnerId}` || !redetectReady} title={redetectTitle} className="ml-auto px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-[11px] font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">
+                  {modelsOverridden ? (
+                    <span className="text-[11px] text-text-muted">(operator override)</span>
+                  ) : (
+                    <span className="text-[11px] text-text-muted">(auto-detected from Runner)</span>
+                  )}
+                  <button
+                    type="button"
+                    data-testid={`runner-redetect-models-${selected.runnerId}`}
+                    onClick={handleRediscover}
+                    disabled={busyKey === `rediscover:${selected.runnerId}` || !redetectReady}
+                    title={redetectTitle}
+                    className="ml-auto px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-[11px] font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
+                  >
                     {busyKey === `rediscover:${selected.runnerId}` ? 'Queued…' : 'Re-detect models'}
                   </button>
                 </div>
@@ -854,56 +1167,168 @@ export function RunnerConfigurationSection() {
                   </p>
                 )}
                 {allModelIds.length === 0 ? (
-                  <p className="text-[11px] text-text-muted" data-testid={`runner-models-empty-${selected.runnerId}`}>No models auto-detected. Use Re-detect to scan for models or add a custom model id below.</p>
+                  <p
+                    className="text-[11px] text-text-muted"
+                    data-testid={`runner-models-empty-${selected.runnerId}`}
+                  >
+                    No models auto-detected. Use Re-detect to scan for models or add a custom model
+                    id below.
+                  </p>
                 ) : (
-                  <div className="flex flex-col gap-1" role="group" aria-label="Models" data-testid={`runner-models-list-${selected.runnerId}`}>
+                  <div
+                    className="flex flex-col gap-1"
+                    role="group"
+                    aria-label="Models"
+                    data-testid={`runner-models-list-${selected.runnerId}`}
+                  >
                     {allModelIds.map((mid) => (
-                      <label key={mid} className="flex items-center gap-2 cursor-pointer select-none text-xs text-on-surface">
-                        <input type="checkbox" data-testid={`runner-model-${selected.runnerId}-${mid}`} checked={effectiveModelIds.includes(mid)} onChange={(e) => handleModelToggle(mid, e.target.checked)} disabled={Boolean(busyKey)} className="rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0 cursor-pointer" />
+                      <label
+                        key={mid}
+                        className="flex items-center gap-2 cursor-pointer select-none text-xs text-on-surface"
+                      >
+                        <input
+                          type="checkbox"
+                          data-testid={`runner-model-${selected.runnerId}-${mid}`}
+                          checked={effectiveModelIds.includes(mid)}
+                          onChange={(e) => handleModelToggle(mid, e.target.checked)}
+                          disabled={Boolean(busyKey)}
+                          className="rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0 cursor-pointer"
+                        />
                         <span className="font-mono text-[11px] break-all">{mid}</span>
                       </label>
                     ))}
                   </div>
                 )}
                 <div className="flex items-center gap-2">
-                  <label htmlFor={`runner-custom-model-${selected.runnerId}`} className="text-xs font-bold text-on-surface">Add custom model:</label>
-                  <input id={`runner-custom-model-${selected.runnerId}`} type="text" data-testid={`runner-custom-model-${selected.runnerId}`} value={customModel} placeholder="model-id" onChange={(e) => setCustomModel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCustomModelAdd(); }}} className="flex-1 min-w-0 p-2 bg-surface-deep border border-border-standard rounded-sm text-sm font-mono text-on-surface outline-none focus:border-primary transition-colors" />
-                  <button type="button" data-testid={`runner-add-model-${selected.runnerId}`} onClick={handleCustomModelAdd} disabled={!customModel.trim() || Boolean(busyKey)} className="px-3 py-2 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60 shrink-0">Add</button>
+                  <label
+                    htmlFor={`runner-custom-model-${selected.runnerId}`}
+                    className="text-xs font-bold text-on-surface"
+                  >
+                    Add custom model:
+                  </label>
+                  <input
+                    id={`runner-custom-model-${selected.runnerId}`}
+                    type="text"
+                    data-testid={`runner-custom-model-${selected.runnerId}`}
+                    value={customModel}
+                    placeholder="model-id"
+                    onChange={(e) => setCustomModel(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleCustomModelAdd();
+                      }
+                    }}
+                    className="flex-1 min-w-0 p-2 bg-surface-deep border border-border-standard rounded-sm text-sm font-mono text-on-surface outline-none focus:border-primary transition-colors"
+                  />
+                  <button
+                    type="button"
+                    data-testid={`runner-add-model-${selected.runnerId}`}
+                    onClick={handleCustomModelAdd}
+                    disabled={!customModel.trim() || Boolean(busyKey)}
+                    className="px-3 py-2 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60 shrink-0"
+                  >
+                    Add
+                  </button>
                   {modelsOverridden && (
-                    <button type="button" data-testid={`runner-models-reset-${selected.runnerId}`} onClick={handleModelsReset} disabled={Boolean(busyKey)} className="px-3 py-2 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60 shrink-0">Reset to auto-detected</button>
+                    <button
+                      type="button"
+                      data-testid={`runner-models-reset-${selected.runnerId}`}
+                      onClick={handleModelsReset}
+                      disabled={Boolean(busyKey)}
+                      className="px-3 py-2 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60 shrink-0"
+                    >
+                      Reset to auto-detected
+                    </button>
                   )}
                 </div>
-                <p className="text-[11px] text-text-muted" data-testid={`runner-models-effective-${selected.runnerId}`}>
-                  {effectiveModelIds.length === 0 ? 'No models selected: this Runner will only match tasks that do not require specific models.' : `Selected models: ${effectiveModelIds.join(', ')}`}
+                <p
+                  className="text-[11px] text-text-muted"
+                  data-testid={`runner-models-effective-${selected.runnerId}`}
+                >
+                  {effectiveModelIds.length === 0
+                    ? 'No models selected: this Runner will only match tasks that do not require specific models.'
+                    : `Selected models: ${effectiveModelIds.join(', ')}`}
                 </p>
               </div>
 
               <div className="flex flex-col gap-3">
-                <RunnerDirectoryField label="Master directory:" testId={`runner-masterdir-${selected.runnerId}`} value={masterValue} hint={displayDirs?.masterDir.value || '/srv/kb'} isDefault={masterIsDefault && !dirDraft} isUnknown={masterIsUnknown} error={dirErrors[`${selected.runnerId}:masterDir`]} busy={Boolean(busyKey)} onChange={(value) => handleDirectoryType('masterDir', value)} onSave={() => handleDirectorySave('masterDir')} />
-                <RunnerDirectoryField label="Worktree directory:" testId={`runner-worktreedir-${selected.runnerId}`} value={worktreeValue} hint={displayDirs?.worktreeDir.value || '/srv/kb-trees'} isDefault={worktreeIsDefault && !dirDraft} isUnknown={worktreeIsUnknown} error={dirErrors[`${selected.runnerId}:worktreeDir`]} busy={Boolean(busyKey)} onChange={(value) => handleDirectoryType('worktreeDir', value)} onSave={() => handleDirectorySave('worktreeDir')} />
-                <p className="text-[11px] text-text-muted">Directories are stored as this Runner's preference on the backend. When empty, the Runner's own folders are used.</p>
+                <RunnerDirectoryField
+                  label="Master directory:"
+                  testId={`runner-masterdir-${selected.runnerId}`}
+                  value={masterValue}
+                  hint={displayDirs?.masterDir.value || '/srv/kb'}
+                  isDefault={masterIsDefault && !dirDraft}
+                  isUnknown={masterIsUnknown}
+                  error={dirErrors[`${selected.runnerId}:masterDir`]}
+                  busy={Boolean(busyKey)}
+                  onChange={(value) => handleDirectoryType('masterDir', value)}
+                  onSave={() => handleDirectorySave('masterDir')}
+                />
+                <RunnerDirectoryField
+                  label="Worktree directory:"
+                  testId={`runner-worktreedir-${selected.runnerId}`}
+                  value={worktreeValue}
+                  hint={displayDirs?.worktreeDir.value || '/srv/kb-trees'}
+                  isDefault={worktreeIsDefault && !dirDraft}
+                  isUnknown={worktreeIsUnknown}
+                  error={dirErrors[`${selected.runnerId}:worktreeDir`]}
+                  busy={Boolean(busyKey)}
+                  onChange={(value) => handleDirectoryType('worktreeDir', value)}
+                  onSave={() => handleDirectorySave('worktreeDir')}
+                />
+                <p className="text-[11px] text-text-muted">
+                  Directories are stored as this Runner's preference on the backend. When empty, the
+                  Runner's own folders are used.
+                </p>
               </div>
 
               <div className="flex flex-col gap-1">
-                <span className="text-xs font-bold text-on-surface" id={`jobs-label-${selected.runnerId}`}>Job types</span>
-                <div className="flex items-center gap-4 flex-wrap" role="group" aria-labelledby={`jobs-label-${selected.runnerId}`}>
+                <span
+                  className="text-xs font-bold text-on-surface"
+                  id={`jobs-label-${selected.runnerId}`}
+                >
+                  Job types
+                </span>
+                <div
+                  className="flex items-center gap-4 flex-wrap"
+                  role="group"
+                  aria-labelledby={`jobs-label-${selected.runnerId}`}
+                >
                   {jobTypeLabels().map(({ key, label, hint }) => (
-                    <label key={key} title={hint} className="flex items-center gap-2 cursor-pointer select-none text-xs text-on-surface">
-                      <input type="checkbox" data-testid={`runner-job-${selected.runnerId}-${key}`} checked={config.jobTypes[key] === true} onChange={(e) => handleJobToggle(key, e.target.checked)} disabled={Boolean(busyKey)} className="rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0 cursor-pointer" />
+                    <label
+                      key={key}
+                      title={hint}
+                      className="flex items-center gap-2 cursor-pointer select-none text-xs text-on-surface"
+                    >
+                      <input
+                        type="checkbox"
+                        data-testid={`runner-job-${selected.runnerId}-${key}`}
+                        checked={config.jobTypes[key] === true}
+                        onChange={(e) => handleJobToggle(key, e.target.checked)}
+                        disabled={Boolean(busyKey)}
+                        className="rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0 cursor-pointer"
+                      />
                       <span>{label}</span>
                     </label>
                   ))}
                 </div>
-                <p className="text-[11px] text-text-muted">CI, merge, tool, and project switches are enforced when Runners claim work.</p>
+                <p className="text-[11px] text-text-muted">
+                  CI, merge, tool, and project switches are enforced when Runners claim work.
+                </p>
               </div>
             </div>
           ) : (
-            <p className="px-3 py-6 text-xs text-text-muted" data-testid="runner-detail-empty">Select a Runner on the left to see its settings.</p>
+            <p className="px-3 py-6 text-xs text-text-muted" data-testid="runner-detail-empty">
+              Select a Runner on the left to see its settings.
+            </p>
           )}
         </div>
       )}
       {pending.length > 0 && (
-        <p className="mt-2 text-xs text-text-muted" role="status">{pending.length} pending join request{pending.length === 1 ? '' : 's'}.</p>
+        <p className="mt-2 text-xs text-text-muted" role="status">
+          {pending.length} pending join request{pending.length === 1 ? '' : 's'}.
+        </p>
       )}
     </section>
   );

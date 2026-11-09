@@ -21,18 +21,34 @@
  * @param {Function} props.onSave - Save handler for button click
  * @returns {JSX.Element} Directory input field component
  ***/
-export function RunnerDirectoryField({ label, testId, value, hint, isDefault, isUnknown, error, busy, onChange, onSave }) {
+export function RunnerDirectoryField({
+  label,
+  testId,
+  value,
+  hint,
+  isDefault,
+  isUnknown,
+  error,
+  busy,
+  onChange,
+  onSave,
+}) {
   return (
     <div className="flex flex-col gap-1">
       <label className="text-xs font-bold text-on-surface" htmlFor={`${testId}-input`}>
-        {label} {isDefault && <span className="font-normal text-text-muted">(Runner default{isUnknown ? ' (unknown)' : ''})</span>}
+        {label}{' '}
+        {isDefault && (
+          <span className="font-normal text-text-muted">
+            (Runner default{isUnknown ? ' (unknown)' : ''})
+          </span>
+        )}
       </label>
       <div className="flex items-center gap-2">
         <input
           id={`${testId}-input`}
           type="text"
           data-testid={testId}
-          value={value}
+          value={isDefault && value === hint ? hint : value}
           placeholder={hint || ''}
           onChange={(e) => onChange(e.target.value)}
           className="flex-1 min-w-0 p-2 bg-surface-deep border border-border-standard rounded-sm text-sm text-on-surface outline-none focus:border-primary transition-colors"
@@ -41,10 +57,10 @@ export function RunnerDirectoryField({ label, testId, value, hint, isDefault, is
           type="button"
           data-testid={`${testId}-save`}
           onClick={onSave}
-          disabled={busy}
+          disabled={busy || (isDefault && value === hint)}
           className="px-3 py-2 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60 shrink-0"
         >
-          Save
+          {isDefault && value === hint ? 'Saved' : 'Save'}
         </button>
       </div>
       {error && (
