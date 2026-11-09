@@ -67,8 +67,19 @@ test('completed toggle has no count and toggles', () => {
   renderToolbar({ setShowCompleted });
   expect(screen.getByText('Show Completed')).toBeInTheDocument();
   expect(screen.queryByText(/Show Completed \(/)).toBeNull();
+  expect(screen.getByRole('checkbox', { name: 'Show Completed' })).not.toBeChecked();
   fireEvent.click(screen.getByText('Show Completed'));
   expect(setShowCompleted).toHaveBeenCalledWith(true);
+});
+
+test('completed toggle shows no count once switched on', () => {
+  const setShowCompleted = vi.fn();
+  renderToolbar({ showCompleted: true, setShowCompleted });
+  expect(screen.getByText('Show Completed')).toBeInTheDocument();
+  expect(screen.queryByText(/Show Completed \(/)).toBeNull();
+  expect(screen.getByRole('checkbox', { name: 'Show Completed' })).toBeChecked();
+  fireEvent.click(screen.getByText('Show Completed'));
+  expect(setShowCompleted).toHaveBeenCalledWith(false);
 });
 
 test('mobile strip lists stages and trailing add-stage pill', () => {

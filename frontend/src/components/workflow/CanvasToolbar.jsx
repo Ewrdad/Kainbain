@@ -294,6 +294,10 @@ export function CanvasToolbar({
                 onChange={(e) => setShowCompleted(e.target.checked)}
                 className="rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0"
               />
+              {/* No number on this label on purpose (task 7b69d365):
+                  finished tasks stay on the server until this box is
+                  ticked, so any number counted from the loaded tasks
+                  would wrongly read 0 while unticked. Do not add one back. */}
               <span>Show Completed</span>
             </label>
           </InfoTooltip>
