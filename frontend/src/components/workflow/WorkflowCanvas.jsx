@@ -293,7 +293,7 @@ export function WorkflowCanvas() {
   } = useActivityConsole({ uiPreferences, updateUiPreference, processLogs, messages, toolCalls });
 
   // Analytics seam (extracted). See useCanvasAnalytics.
-  const { stageAnalytics, completedCount, hasActivity } = useCanvasAnalytics({
+  const { stageAnalytics, hasActivity } = useCanvasAnalytics({
     tasks,
     stages,
     activeWfId,
@@ -464,7 +464,6 @@ export function WorkflowCanvas() {
         setSearchQuery={setSearchQuery}
         showCompleted={showCompleted}
         setShowCompleted={setShowCompleted}
-        completedCount={completedCount}
         stages={stages}
         filteredTasks={filteredTasks}
         tasks={tasks}
