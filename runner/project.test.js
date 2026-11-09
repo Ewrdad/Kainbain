@@ -569,6 +569,94 @@ describe("runner project prep", () => {
 			fs.rmSync(origin, { recursive: true, force: true });
 		}
 	});
+
+	it("parks STAGED residue without checkout (dirty-index eviction regression)", async () => {
+		// 2026-11-09 outage: a workdir whose index had staged files made
+		// `git checkout <recovery branch>` fail with "you need to resolve
+		// your current index first", so eviction always failed and every
+		// claim hit WORKTREE_CAP_REACHED. Parking must commit on the
+		// current checkout instead.
+		const { preserveEvictedWorkdir } = await import("./project.js");
+		const { workdir, branch } = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "dirty-1" });
+		const tipBefore = execFileSync("git", ["rev-parse", "HEAD"], { cwd: workdir, encoding: "utf8" }).trim();
+		fs.writeFileSync(path.join(workdir, "staged.txt"), "precious\n");
+		git(workdir, ["add", "staged.txt"]); // staged, not committed — the exact prod shape
+		const recoveredTo = await preserveEvictedWorkdir(workdir);
+		assert.match(recoveredTo, /^kb-recovery\/dirty-1\//);
+		const kept = execFileSync("git", ["ls-tree", "-r", "--name-only", recoveredTo], { cwd: repo, encoding: "utf8" });
+		assert.ok(kept.split("\n").includes("staged.txt"), "recovery branch preserves the staged file");
+		const tipAfter = execFileSync("git", ["rev-parse", branch], { cwd: repo, encoding: "utf8" }).trim();
+		assert.equal(tipAfter, tipBefore, "task branch tip left unchanged");
+	});
+
+	it("evicts a dirty-index stale workdir instead of refusing (cap regression)", async () => {
+		const now = Date.now();
+		for (let i = 0; i < 5; i++) {
+			await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: `old-${i}` });
+		}
+		// LRU workdir carries a staged file — the shape that stranded eviction.
+		fs.writeFileSync(path.join(tmp, "kb-old-0", "staged.txt"), "precious\n");
+		git(path.join(tmp, "kb-old-0"), ["add", "staged.txt"]);
+		for (let i = 0; i < 5; i++) {
+			const at = new Date(now - (5 - i) * 3600_000);
+			fs.utimesSync(path.join(tmp, `kb-old-${i}`), at, at);
+		}
+		const made = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "new" });
+		assert.equal(made.reused, false);
+		assert.ok(!fs.existsSync(path.join(tmp, "kb-old-0")), "dirty LRU workdir evicted");
+		assert.ok(fs.existsSync(path.join(tmp, "kb-new")));
+		const branches = execFileSync("git", ["branch", "--list", "kb-recovery/old-0/*"], { cwd: repo, encoding: "utf8" }).trim();
+		assert.ok(branches.length > 0, "residue parked on a recovery branch");
+		const kept = execFileSync("git", ["ls-tree", "-r", "--name-only", branches.split("\n")[0].trim()], { cwd: repo, encoding: "utf8" });
+		assert.ok(kept.split("\n").includes("staged.txt"));
+	});
+
+	describe("reapTerminalOrphanWorkdirs", () => {
+		function sweepClient(tasksByProject) {
+			return {
+				listProjects: async () => Object.keys(tasksByProject).map((id) => ({ id })),
+				getTask: async (projectId, taskId) => {
+					const t = tasksByProject[projectId]?.[taskId];
+					if (!t) {
+						const err = new Error("Task not found");
+						err.statusCode = 404;
+						throw err;
+					}
+					return t;
+				},
+			};
+		}
+
+		it("reaps completed and gone tasks, keeps live ones", async () => {
+			const { reapTerminalOrphanWorkdirs } = await import("./project.js");
+			const done = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "done-1" });
+			const live = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "live-1" });
+			const gone = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "gone-1" });
+			const client = sweepClient({
+				p: { "done-1": { id: "done-1", status: "completed" }, "live-1": { id: "live-1", status: "in_stage" } },
+			});
+			const reaped = await reapTerminalOrphanWorkdirs({ client, workRoot: tmp });
+			assert.ok(!fs.existsSync(done.workdir), "completed task workdir reaped");
+			assert.ok(!fs.existsSync(gone.workdir), "task-gone workdir reaped");
+			assert.ok(fs.existsSync(live.workdir), "live task workdir kept");
+			assert.equal(reaped.length, 2);
+		});
+
+		it("deletes nothing when the backend is unreadable", async () => {
+			const { reapTerminalOrphanWorkdirs } = await import("./project.js");
+			const kept = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "safe-1" });
+			const down = new Error("connect ECONNREFUSED");
+			const reaped = await reapTerminalOrphanWorkdirs({
+				client: {
+					listProjects: async () => { throw down; },
+					getTask: async () => { throw down; },
+				},
+				workRoot: tmp,
+			});
+			assert.deepEqual(reaped, []);
+			assert.ok(fs.existsSync(kept.workdir), "outage never deletes work");
+		});
+	});
 });
 
 describe("resolveRunnerDocsDirName", () => {

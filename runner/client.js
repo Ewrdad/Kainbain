@@ -197,6 +197,9 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 		getProject(projectId) {
 			return call(`/projects/${encodeURIComponent(projectId)}`);
 		},
+		listProjects() {
+			return call("/projects");
+		},
 		getTask(projectId, taskId) {
 			return call(`/tasks/${encodeURIComponent(taskId)}?projectId=${encodeURIComponent(projectId)}`);
 		},
