@@ -30,7 +30,6 @@ function baseProps(overrides = {}) {
     setSearchQuery: vi.fn(),
     showCompleted: false,
     setShowCompleted: vi.fn(),
-    completedCount: 3,
     stages,
     filteredTasks: [],
     tasks: [],
@@ -63,12 +62,24 @@ test('status filter pills are removed (filters live in the search bar)', () => {
   expect(screen.queryByRole('button', { name: 'Human only' })).not.toBeInTheDocument();
 });
 
-test('completed toggle shows count and toggles', () => {
+test('completed toggle has no count and toggles', () => {
   const setShowCompleted = vi.fn();
-  renderToolbar({ setShowCompleted, completedCount: 7 });
-  expect(screen.getByText('Show Completed (7)')).toBeInTheDocument();
-  fireEvent.click(screen.getByText('Show Completed (7)'));
+  renderToolbar({ setShowCompleted });
+  expect(screen.getByText('Show Completed')).toBeInTheDocument();
+  expect(screen.queryByText(/Show Completed \(/)).toBeNull();
+  expect(screen.getByRole('checkbox', { name: 'Show Completed' })).not.toBeChecked();
+  fireEvent.click(screen.getByText('Show Completed'));
   expect(setShowCompleted).toHaveBeenCalledWith(true);
+});
+
+test('completed toggle shows no count once switched on', () => {
+  const setShowCompleted = vi.fn();
+  renderToolbar({ showCompleted: true, setShowCompleted });
+  expect(screen.getByText('Show Completed')).toBeInTheDocument();
+  expect(screen.queryByText(/Show Completed \(/)).toBeNull();
+  expect(screen.getByRole('checkbox', { name: 'Show Completed' })).toBeChecked();
+  fireEvent.click(screen.getByText('Show Completed'));
+  expect(setShowCompleted).toHaveBeenCalledWith(false);
 });
 
 test('mobile strip lists stages and trailing add-stage pill', () => {
