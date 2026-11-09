@@ -424,7 +424,7 @@ test.describe.serial("PR Review E2E", () => {
 		await expect(page.getByTestId("task-review-page")).toBeVisible({ timeout: 15000 });
 	});
 
-	test("reports tab enables line-by-line review of stage reports outside git diff", async ({
+	test("reports tab enables block-anchored review of stage reports outside git diff", async ({
 		page,
 		request,
 	}) => {
@@ -470,8 +470,8 @@ test.describe.serial("PR Review E2E", () => {
 		await expect(page.getByTestId("report-review-view")).toBeVisible();
 		await expect(page.getByText("Line 5 has crucial details for review.")).toBeVisible();
 
-		// Add a line comment on line 5
-		await page.getByLabel("Add comment on report line 5").click();
+		// Add a block-anchored comment covering line 5 (readable view is the default)
+		await page.getByLabel("Add comment on paragraph, lines 4 to 5").click();
 		const composer = page.getByTestId("review-comment-composer");
 		await composer.locator("textarea").fill("Please clarify error handling on this step");
 		await composer.getByText("Add comment").click();
@@ -602,14 +602,16 @@ test.describe.serial("PR Review E2E", () => {
 
 		await assertNoHorizontalOverflow();
 
-		// And the Rendered Preview path must not blow out either.
-		await page.getByRole("button", { name: "Rendered Preview" }).click();
-		await expect(page.getByTestId("report-preview-pane")).toBeVisible();
+		// And the Raw lines path must not blow out either.
+		await page.getByRole("button", { name: "Raw lines" }).click();
+		await expect(page.getByTestId("report-review-view")).toBeVisible();
+		await expect(page.getByLabel("Add comment on report line 5")).toBeVisible();
 		await assertNoHorizontalOverflow();
 
-		// Back to line review; the per-line affordance stays reachable (not
+		// Back to readable; the per-block affordance stays reachable (not
 		// hover-gated) on touch-sized viewports.
-		await page.getByRole("button", { name: "Line Review" }).click();
-		await expect(page.getByLabel("Add comment on report line 5")).toBeVisible();
+		await page.getByRole("button", { name: "Readable" }).click();
+		await expect(page.getByTestId("report-readable-pane")).toBeVisible();
+		await expect(page.getByLabel("Add comment on paragraph, lines 3 to 5")).toBeVisible();
 	});
 });

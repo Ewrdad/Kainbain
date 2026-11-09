@@ -11,10 +11,11 @@ import { copyToClipboard } from '../../services/clipboard';
 
 /***
  * MARK: ReportReviewView tests
- * @description Verifies the current-state report reviewer: line-numbered
- *   rendering, the per-line ⊕ composer wiring, report-level comments, inline
- *   threads matched across `./` path spellings, the Rendered Preview toggle,
- *   copy actions, and the read-only gate outside a human checkpoint.
+ * @description Verifies the report reviewer: Readable mode by default (rendered
+ *   blocks with hover-only highlights, no per-line dividers), the Raw-lines
+ *   escape hatch with numbered rows and overlay ⊕ buttons, per-block and
+ *   per-line composer payloads, report-level comments, inline threads matched
+ *   across `./` path spellings, copy actions, and the read-only gate.
  */
 const REPORT = {
   path: './docs/tasks/t-1/IMPLEMENTATION_PLAN.md',
@@ -50,8 +51,21 @@ describe('ReportReviewView', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the report header and one numbered row per content line', () => {
+  it('opens in Readable mode by default: rendered blocks, no line rows or dividers', () => {
+    const { container } = render(
+      <ReportReviewView report={REPORT} comments={[]} {...handlers()} />,
+    );
+    expect(screen.getByTestId('report-readable-pane')).toBeTruthy();
+    expect(screen.queryAllByTestId('report-line')).toHaveLength(0);
+    const blocks = screen.getAllByTestId('report-block');
+    expect(blocks.length).toBeGreaterThan(0);
+    // No always-on per-line dividers in the reading view.
+    expect(container.querySelector('.divide-y')).toBeNull();
+  });
+
+  it('renders the report header and one numbered row per content line in Raw mode', () => {
     render(<ReportReviewView report={REPORT} comments={[]} {...handlers()} />);
+    fireEvent.click(screen.getByText('Raw lines'));
     expect(screen.getByTestId('report-review-view').getAttribute('data-report-path')).toBe(
       './docs/tasks/t-1/IMPLEMENTATION_PLAN.md',
     );
@@ -64,11 +78,31 @@ describe('ReportReviewView', () => {
     expect(screen.getByText('Add retries')).toBeTruthy();
   });
 
-  it('opens the line composer from ⊕ and submits scope line with path, line, and text', async () => {
+  it('renders blank source lines as rows in Raw mode (characterization)', () => {
+    render(
+      <ReportReviewView
+        report={{ ...REPORT, content: '# Plan\n\nAdd retries\n\n' }}
+        comments={[]}
+        {...handlers()}
+      />,
+    );
+    fireEvent.click(screen.getByText('Raw lines'));
+    expect(screen.getAllByTestId('report-line')).toHaveLength(5);
+  });
+
+  it('keeps Raw ⊕ buttons out of layout flow so rows size to content', () => {
+    render(<ReportReviewView report={REPORT} comments={[]} {...handlers()} />);
+    fireEvent.click(screen.getByText('Raw lines'));
+    const addButton = screen.getByLabelText('Add comment on report line 3');
+    expect(addButton.className).toContain('absolute');
+  });
+
+  it('opens the line composer from ⊕ in Raw mode and submits scope line with path, line, and text', async () => {
     const h = handlers();
     const { container } = render(
       <ReportReviewView report={REPORT} comments={[]} headSha="sha-2" {...h} />,
     );
+    fireEvent.click(screen.getByText('Raw lines'));
     fireEvent.click(screen.getByLabelText('Add comment on report line 3'));
     const composer = container.querySelector('[data-testid="review-comment-composer"]');
     expect(composer).toBeTruthy();
@@ -91,11 +125,42 @@ describe('ReportReviewView', () => {
     });
   });
 
-  it('renders inline threads anchored to the matching report line', () => {
+  it('opens a block composer from the Readable ⊕ and submits the block start line', async () => {
+    const h = handlers();
+    const { container } = render(
+      <ReportReviewView report={REPORT} comments={[]} headSha="sha-2" {...h} />,
+    );
+    fireEvent.click(screen.getByLabelText('Add comment on heading, line 1'));
+    const composer = container.querySelector('[data-testid="review-comment-composer"]');
+    expect(composer).toBeTruthy();
+    fireEvent.change(composer.querySelector('textarea'), {
+      target: { value: 'Sharpen the title' },
+    });
+    fireEvent.click(screen.getByText('Add comment'));
+    await vi.waitFor(() => {
+      expect(h.addComment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scope: 'line',
+          filePath: './docs/tasks/t-1/IMPLEMENTATION_PLAN.md',
+          line: 1,
+          side: 'right',
+          headSha: 'sha-2',
+          lineText: '# Plan',
+          body: 'Sharpen the title',
+        }),
+      );
+    });
+  });
+
+  it('renders inline threads anchored to the matching block in Readable mode', () => {
     render(<ReportReviewView report={REPORT} comments={[lineComment()]} {...handlers()} />);
     const thread = screen.getByTestId('review-comment-thread');
     expect(thread.getAttribute('data-comment-id')).toBe('rc-line');
     expect(screen.getByText('Tighten the retry budget')).toBeTruthy();
+    // Thread on source line 2 sits under the block spanning lines 2–3.
+    const block = screen.getByText('Tighten the retry budget').closest('[data-testid="report-block"]');
+    expect(block.getAttribute('data-start-line')).toBe('2');
+    expect(block.getAttribute('data-end-line')).toBe('3');
   });
 
   it('matches threads across ./ and bare path spellings and ignores other files', () => {
@@ -141,17 +206,23 @@ describe('ReportReviewView', () => {
     });
   });
 
-  it('toggles to the Rendered Preview (no line rows) and back', () => {
+  it('toggles between Readable and Raw lines and back', () => {
     render(<ReportReviewView report={REPORT} comments={[]} {...handlers()} />);
-    expect(screen.getAllByTestId('report-line')).toHaveLength(3);
-    fireEvent.click(screen.getByText('Rendered Preview'));
+    expect(screen.getByTestId('report-readable-pane')).toBeTruthy();
     expect(screen.queryAllByTestId('report-line')).toHaveLength(0);
-    fireEvent.click(screen.getByText('Line Review'));
+    fireEvent.click(screen.getByText('Raw lines'));
     expect(screen.getAllByTestId('report-line')).toHaveLength(3);
+    expect(screen.queryByTestId('report-readable-pane')).toBeNull();
+    fireEvent.click(screen.getByText('Readable'));
+    expect(screen.getByTestId('report-readable-pane')).toBeTruthy();
+    expect(screen.queryAllByTestId('report-line')).toHaveLength(0);
   });
 
-  it('is read-only when canComment is false: no ⊕ or report comment affordance', () => {
+  it('is read-only when canComment is false: no ⊕ or report comment affordance in either mode', () => {
     render(<ReportReviewView report={REPORT} comments={[]} canComment={false} {...handlers()} />);
+    expect(screen.queryByLabelText(/Add comment on/)).toBeNull();
+    expect(screen.queryByLabelText(/Comment on report /)).toBeNull();
+    fireEvent.click(screen.getByText('Raw lines'));
     expect(screen.queryByLabelText(/Add comment on report line/)).toBeNull();
     expect(screen.queryByLabelText(/Comment on report /)).toBeNull();
   });
@@ -176,6 +247,7 @@ describe('ReportReviewView', () => {
         {...handlers()}
       />,
     );
+    fireEvent.click(screen.getByText('Raw lines'));
     const rows = screen.getAllByTestId('report-line');
     expect(rows).toHaveLength(3);
     expect(screen.getByText('Add retries')).toBeTruthy();
