@@ -617,3 +617,107 @@ describe('KainBainContext live board sync', () => {
     expect(ctxRef.current.selectedTask.history).toEqual([{ action: 'created' }]);
   });
 });
+
+/**
+ * MARK: KainBainContext openRunnerTask tests
+ * @description Verifies the cross-pipeline Runner jump: a same-pipeline
+ *   assignment opens without switching projects, a foreign assignment
+ *   switches projects first, and missing ids or a failed hydrate notify
+ *   instead of navigating anywhere half-open.
+ */
+describe('KainBainContext openRunnerTask', () => {
+  let ctxRef;
+
+  function CaptureContext() {
+    const ctx = useKainBain();
+    useEffect(() => {
+      ctxRef.current = ctx;
+    });
+    return null;
+  }
+
+  function renderOpenProvider() {
+    return render(
+      <MemoryRouter initialEntries={['/']}>
+        <KainBainProvider>
+          <CaptureContext />
+          <KainBainRouteBridge />
+        </KainBainProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    MockWebSocket.reset();
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.clear();
+    }
+    vi.stubGlobal('WebSocket', MockWebSocket);
+
+    ctxRef = { current: null };
+    api.getTask.mockReset().mockResolvedValue(null);
+    api.listTasks.mockReset().mockResolvedValue([]);
+    api.listProjects.mockResolvedValue([
+      { id: 'p1', name: 'A' },
+      { id: 'p2', name: 'B' },
+    ]);
+    api.getWorkflow.mockResolvedValue({ stages: [] });
+    api.getWorkflows.mockResolvedValue([]);
+    api.sessionHistory.mockResolvedValue({ messages: [] });
+    api.engineStatus.mockResolvedValue({});
+    api.healthStatus.mockResolvedValue({});
+    api.computeStatus.mockResolvedValue({ running: false });
+    api.activateProject.mockResolvedValue({});
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('opens a same-pipeline assignment without switching projects', async () => {
+    api.getTask.mockResolvedValue({ id: 't1', title: 'Job' });
+    renderOpenProvider();
+    await flushEffects();
+    await act(async () => ctxRef.current.selectProject('p1'));
+    const switches = api.activateProject.mock.calls.length;
+    await act(async () => {
+      await ctxRef.current.openRunnerTask({ projectId: 'p1', taskId: 't1', stageId: 'build' });
+    });
+    expect(api.activateProject.mock.calls.length).toBe(switches);
+    expect(api.getTask).toHaveBeenCalledWith('p1', 't1');
+    expect(ctxRef.current.selectedTask).toMatchObject({ id: 't1', title: 'Job' });
+    expect(ctxRef.current.view).toBe('task-detail');
+    expect(ctxRef.current.focusedStageId).toBe('build');
+  });
+
+  it('switches to the assignment project for cross-pipeline work', async () => {
+    api.getTask.mockResolvedValue({ id: 't9', title: 'Foreign job' });
+    renderOpenProvider();
+    await flushEffects();
+    await act(async () => ctxRef.current.selectProject('p1'));
+    await act(async () => {
+      await ctxRef.current.openRunnerTask({ projectId: 'p2', taskId: 't9' });
+    });
+    expect(api.activateProject).toHaveBeenLastCalledWith('p2');
+    expect(api.getTask).toHaveBeenCalledWith('p2', 't9');
+    expect(ctxRef.current.selectedTask).toMatchObject({ id: 't9' });
+    expect(ctxRef.current.view).toBe('task-detail');
+  });
+
+  it('notifies instead of navigating when ids are missing or the hydrate fails', async () => {
+    renderOpenProvider();
+    await flushEffects();
+    await act(async () => {
+      await ctxRef.current.openRunnerTask({ projectId: 'p1' });
+    });
+    expect(ctxRef.current.selectedTask).toBeNull();
+    expect(ctxRef.current.view).toBe('orchestrator');
+    await act(async () => {
+      await ctxRef.current.openRunnerTask({ projectId: 'p1', taskId: 'gone' });
+    });
+    expect(api.getTask).toHaveBeenCalledWith('p1', 'gone');
+    expect(ctxRef.current.selectedTask).toBeNull();
+    expect(ctxRef.current.view).toBe('orchestrator');
+  });
+});

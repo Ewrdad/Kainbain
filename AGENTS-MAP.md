@@ -82,6 +82,7 @@ area stands in as **Docs Steward**.
 | Harness / model discovery | `api/crew/` (`harnessRoster.js`, `modelDiscovery.js`, `sessionCapabilities.js`) |
 | Git command families (WP-4) | `api/git/*.js` (errors, validation, exec, staleLock, status, workingTreeStatus, workingTreeRecovery, branch, commit, merge, remote) |
 | Process logs / stage reports / reliability | `api/watch/` |
+| Runner fleet monitor (global, never pipeline-filtered) | `api/flow/runnerAssignmentSummary.js` (enrichment) + `PerRunnerTasksWidget.jsx` (`resolveAssignmentTask`, `resolveAssignmentStageName`, `onOpenTask`) |
 | Flow execution/routing/scheduler internals (WP-5) | `api/flow/execution/`, `api/flow/routing/` (tables/resolvers/orchestrators), `api/flow/scheduler/` |
 | Workflow canvas hooks | `frontend/src/components/workflow/hooks/` |
 | Task detail tabs | `frontend/src/components/tasks/` (`TaskDetailsTab.jsx`, `TaskReportsTab.jsx`, `TaskHistoryTab.jsx`, `TaskDetailsTabContent.jsx`) |
