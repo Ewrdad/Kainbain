@@ -40,6 +40,7 @@ While browsing **Repository & Files**, select any file and press **Create task f
 - `GET /tasks/:id?projectId=...` reads stage, status, and history; `GET /tasks/queue` shows dispatch priority.
 - The bottom bar's **Queue** chip counts open (not yet completed) tasks across **all** projects — click it (or focus it and press Enter/Space) to open the dispatch-order popup, where #1 runs next. The popup lists only dispatchable work, so failed or waiting-human tasks count toward the number but never appear in the list; the popup footer calls out the difference instead of hiding it.
 - While a task runs, **steer** it (`POST /tasks/:id/steer`) or send **follow-up** guidance without restarting the session.
+- To edit files yourself alongside a running task, pause it first — see `#/docs/develop-alongside`.
 
 ## Subscribe live
 
