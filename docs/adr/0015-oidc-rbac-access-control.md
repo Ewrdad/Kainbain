@@ -1,4 +1,4 @@
-# ADR 0014 — OIDC sign-in with role-based access control (togglable, single tenant)
+# ADR 0015 — OIDC sign-in with role-based access control (togglable, single tenant)
 
 **Status:** Accepted (proof of concept).
 **Date:** 2026-11-09.

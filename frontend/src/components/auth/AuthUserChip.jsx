@@ -63,4 +63,9 @@ export function AuthUserChip() {
   );
 }
 
+/***
+ * MARK: AuthUserChip default export
+ * @description Default entry point for the header user chip (same component).
+ * @example import AuthUserChip from './AuthUserChip';
+ ***/
 export default AuthUserChip;

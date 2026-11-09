@@ -80,4 +80,9 @@ export function LoginPage() {
   );
 }
 
+/***
+ * MARK: LoginPage default export
+ * @description Default entry point for the sign-in page (same component).
+ * @example import LoginPage from './LoginPage';
+ ***/
 export default LoginPage;

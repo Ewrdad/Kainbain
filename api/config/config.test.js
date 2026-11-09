@@ -214,6 +214,21 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		accessibilityContactEmail: "",
 		accessibilityFeedbackMaxChars: 4000,
 		accessibilityFeedbackFile: "",
+		// Access Control & Sign-in (off by default)
+		authEnabled: false,
+		authIssuerUrl: "",
+		authClientId: "",
+		authClientSecret: "",
+		authRedirectUri: "",
+		authScopes: "openid profile email groups",
+		authGroupsClaim: "groups",
+		authAdminGroup: "",
+		authBootstrapAdmins: [],
+		authSessionTtlMs: 12 * 60 * 60 * 1000,
+		authSessionIdleMs: 30 * 60 * 1000,
+		authCookieName: "kb_session",
+		authRoleManagerRoles: ["admin"],
+		authStatePath: "",
 	};
 
 	it("covers every schema key in the defaults table", () => {

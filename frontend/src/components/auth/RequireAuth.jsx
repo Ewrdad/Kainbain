@@ -47,4 +47,9 @@ export function RequireAuth({ children }) {
   return children;
 }
 
+/***
+ * MARK: RequireAuth default export
+ * @description Default entry point for the sign-in route guard (same component).
+ * @example import RequireAuth from './RequireAuth';
+ ***/
 export default RequireAuth;

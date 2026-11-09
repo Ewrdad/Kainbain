@@ -34,35 +34,40 @@ export function AccessControlSection() {
   const [denied, setDenied] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
 
-  const load = React.useCallback(async () => {
-    setNotice(null);
-    try {
-      const [view, mapView] = await Promise.all([getAuthSettings(), getGroupMappings()]);
-      setSettings(view);
-      setDraft({
-        authEnabled: view.enabled,
-        authIssuerUrl: view.issuerUrl || '',
-        authClientId: view.clientId || '',
-        authClientSecret: '',
-        authRedirectUri: view.redirectUri || '',
-        authScopes: view.scopes || '',
-        authGroupsClaim: view.groupsClaim || '',
-        authAdminGroup: view.adminGroup || '',
-        authBootstrapAdmins: (view.bootstrapAdmins || []).join(', '),
-        authSessionTtlMinutes: Math.round((view.sessionTtlMs || 0) / 60000),
-        authSessionIdleMinutes: Math.round((view.sessionIdleMs || 0) / 60000),
-        authRoleManagerRoles: (view.roleManagerRoles || []).join(', '),
-      });
-      setMappings(mapView.mappings || {});
-    } catch (error) {
-      if (error?.status === 401 || error?.status === 403) setDenied(true);
-      else setNotice({ kind: 'error', text: `Could not load access settings: ${error.message}` });
-    }
-  }, []);
-
+  // Mount fetch as a promise chain (never a sync effect call — the
+  // react-hooks/set-state-in-effect rule): state only settles in async
+  // continuations, and the cancelled flag drops late responses.
   React.useEffect(() => {
-    load();
-  }, [load]);
+    let cancelled = false;
+    Promise.all([getAuthSettings(), getGroupMappings()])
+      .then(([view, mapView]) => {
+        if (cancelled) return;
+        setSettings(view);
+        setDraft({
+          authEnabled: view.enabled,
+          authIssuerUrl: view.issuerUrl || '',
+          authClientId: view.clientId || '',
+          authClientSecret: '',
+          authRedirectUri: view.redirectUri || '',
+          authScopes: view.scopes || '',
+          authGroupsClaim: view.groupsClaim || '',
+          authAdminGroup: view.adminGroup || '',
+          authBootstrapAdmins: (view.bootstrapAdmins || []).join(', '),
+          authSessionTtlMinutes: Math.round((view.sessionTtlMs || 0) / 60000),
+          authSessionIdleMinutes: Math.round((view.sessionIdleMs || 0) / 60000),
+          authRoleManagerRoles: (view.roleManagerRoles || []).join(', '),
+        });
+        setMappings(mapView.mappings || {});
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        if (error?.status === 401 || error?.status === 403) setDenied(true);
+        else setNotice({ kind: 'error', text: `Could not load access settings: ${error.message}` });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (denied) {
     return (
@@ -386,4 +391,9 @@ export function AccessControlSection() {
   );
 }
 
+/***
+ * MARK: AccessControlSection default export
+ * @description Default entry point for the Access settings tab (same component).
+ * @example import AccessControlSection from './AccessControlSection';
+ ***/
 export default AccessControlSection;

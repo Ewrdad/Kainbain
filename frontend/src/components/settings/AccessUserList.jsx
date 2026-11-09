@@ -25,20 +25,26 @@ export function AccessUserList() {
   const [notice, setNotice] = React.useState(null);
   const [denied, setDenied] = React.useState(false);
 
-  const load = React.useCallback(async () => {
-    try {
-      const [userView, settingsView] = await Promise.all([listUsers(), getAuthSettings()]);
-      setUsers(userView.users || []);
-      setKnownRoles(settingsView.knownRoles || ['admin', 'member', 'viewer']);
-    } catch (error) {
-      if (error?.status === 401 || error?.status === 403) setDenied(true);
-      else setNotice(`Could not load users: ${error.message}`);
-    }
-  }, []);
-
+  // Mount fetch as a promise chain (never a sync effect call — the
+  // react-hooks/set-state-in-effect rule): state only settles in async
+  // continuations, and the cancelled flag drops late responses.
   React.useEffect(() => {
-    load();
-  }, [load]);
+    let cancelled = false;
+    Promise.all([listUsers(), getAuthSettings()])
+      .then(([userView, settingsView]) => {
+        if (cancelled) return;
+        setUsers(userView.users || []);
+        setKnownRoles(settingsView.knownRoles || ['admin', 'member', 'viewer']);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        if (error?.status === 401 || error?.status === 403) setDenied(true);
+        else setNotice(`Could not load users: ${error.message}`);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (denied) {
     return (
@@ -203,4 +209,9 @@ export function AccessUserList() {
   );
 }
 
+/***
+ * MARK: AccessUserList default export
+ * @description Default entry point for the Access users list (same component).
+ * @example import AccessUserList from './AccessUserList';
+ ***/
 export default AccessUserList;

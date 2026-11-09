@@ -1,3 +1,4 @@
+import { tempProjectsRoot, tempNotesRoot } from "../isolatedTestRoots.js";
 import { describe, it, expect, afterAll } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
@@ -24,6 +25,12 @@ await app.ready();
 afterAll(async () => {
 	await app.close();
 	fs.rmSync(stateDir, { recursive: true, force: true });
+	try {
+		fs.rmSync(tempProjectsRoot, { recursive: true, force: true });
+		fs.rmSync(tempNotesRoot, { recursive: true, force: true });
+	} catch {
+		// ignore cleanup errors
+	}
 });
 
 const sessionCookieFor = async (sub, roles = []) => {
