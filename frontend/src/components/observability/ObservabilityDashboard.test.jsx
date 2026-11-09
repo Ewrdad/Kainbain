@@ -1061,3 +1061,51 @@ test('makes scrollable widget bodies keyboard-scrollable labelled groups', () =>
     expect((group.getAttribute('aria-label') || '').trim().length).toBeGreaterThan(0);
   }
 });
+
+test('runner card shows another pipeline’s task title while viewing this pipeline', async () => {
+  localStorage.setItem(
+    'kainbain_observability_layout_v2',
+    JSON.stringify([
+      { instanceId: 'runnerTasks', id: 'runnerTasks', colSpan: 4, height: 'tall', enabled: true },
+    ]),
+  );
+  api.getRunnerMonitor.mockResolvedValue({
+    liveAssignments: [
+      {
+        runnerId: 'remote-1',
+        projectId: 'project-b',
+        projectName: 'Project B',
+        taskId: 'task-b-1',
+        taskTitle: 'Foreign pipeline job',
+        taskGoal: 'Work happening elsewhere',
+        executionId: 'exec-x',
+        epoch: 1,
+        startedAt: new Date().toISOString(),
+        stageId: 'verify',
+        stageName: 'Verify',
+        lastSeenAt: new Date().toISOString(),
+      },
+    ],
+  });
+  api.getRunners.mockResolvedValue([{ runnerId: 'remote-1' }]);
+  const onOpenTask = vi.fn();
+  renderWithKainBain(<ObservabilityDashboard />, {
+    tasks: [
+      { id: 'task-a-1', projectId: 'project-a', title: 'Local pipeline job', status: 'in_stage' },
+    ],
+    stages: [{ id: 'plan', name: 'Plan' }],
+    openRunnerTask: onOpenTask,
+  });
+  await waitFor(() => {
+    expect(screen.getByTestId('per-runner-card-remote-1')).toBeInTheDocument();
+  });
+  const card = screen.getByTestId('per-runner-card-remote-1');
+  expect(card).toHaveTextContent('Foreign pipeline job');
+  expect(card).toHaveTextContent('Verify');
+  expect(card).not.toHaveTextContent('Task details unavailable');
+  // The open-task affordance jumps to the job in its own pipeline.
+  screen.getByTestId('per-runner-open-remote-1').click();
+  expect(onOpenTask).toHaveBeenCalledWith(
+    expect.objectContaining({ projectId: 'project-b', taskId: 'task-b-1' }),
+  );
+});
