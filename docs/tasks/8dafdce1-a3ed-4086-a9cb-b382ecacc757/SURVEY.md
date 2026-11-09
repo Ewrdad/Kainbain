@@ -87,6 +87,46 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "I work on my own separate copy or branch, kainbain works on its own, then we combine the two"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Quick fixes (a small fix in a file kainbain also touches)",
+        "Bigger features built on a separate branch",
+        "Settings and setup changes (config files, project settings)",
+        "Adding or changing project docs"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Other (describe in Notes)"
+      ],
+      "notes": "needs a smart merge. fail a merge stage etc"
+    },
+    "q4": {
+      "selected": [
+        "A safe separate setup (own branch or folder) for hand-made edits"
+      ],
+      "notes": "maybe a create branch button or something"
+    },
+    "q5": {
+      "selected": [
+        "Both — simple steps first, technical detail after"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Detailed — full walkthrough with pictures or examples"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```

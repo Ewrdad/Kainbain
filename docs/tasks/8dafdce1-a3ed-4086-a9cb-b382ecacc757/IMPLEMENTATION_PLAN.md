@@ -51,10 +51,20 @@ building. If confirmed answers arrive later, they override this section.
 | Q5 — Audience | **Both — simple steps first, technical detail after.** | Matches "If you are a developer you may want to tweak things" while keeping the guide usable from the UI alone. |
 | Q6 — Length | **Medium — a few pages with examples.** One site-docs article plus short subsections; detailed walkthrough material goes in code-adjacent runbooks, not the article. | Site-docs rule: keep articles small and task-focused. |
 
+Survey confirmation (received during implementation, 2026-11-09 —
+`SURVEY.md` now carries answers): Q1 selects separate-branch as the primary
+flow (guide reordered: Flow A separate branch, Flow B pause-edit-resume);
+Q2 confirms all four change kinds; Q3 "smart merge / fail a merge stage" is
+satisfied by the existing auto-abort merge + `GitMergeConflictError`
+fail-the-stage behaviour, documented, no new machinery; Q4 "create branch
+button" recorded as a follow-up (covered by task-branch ownership + `Copy
+Checkout` + `workingLocation`); Q5/Q6 match the defaults.
+
 Implications carried through the rest of the plan:
-- The guide documents pause-first flows as primary; concurrent same-file
-  editing is documented as unsupported with a stated reason, not a supported
-  flow with merge magic.
+- The guide documents the separate-branch flow as primary (per confirmed
+  Q1) with pause-edit-resume second; concurrent same-file editing is
+  documented as unsupported with a stated reason, not a supported flow
+  with merge magic.
 - Product work is scoped to *enabling and de-risking* the documented flows,
   not to building concurrent-editing machinery (no merge UI, no file locking
   service, no new scheduler).

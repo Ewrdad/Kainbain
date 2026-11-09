@@ -331,6 +331,59 @@ describe("GET /tasks/:id", () => {
 		expect(result.claim).toBeNull();
 	});
 
+	it("reports where the task works for branch-less projects", async () => {
+		const s = await register(setup());
+		const result = await s.routes.get("GET /tasks/:id")(
+			{ params: { id: "t-1" }, query: { projectId: "p-1" } },
+			reply(),
+		);
+		// The fixture project opts out of per-task branches, so there is no
+		// task branch: the agent works on the primary checkout.
+		expect(result.workingLocation).toEqual({
+			branch: null,
+			workspaceIsolation: "quarantine",
+			worktreePath: null,
+		});
+	});
+
+	it("reports branch and worktree path for worktree-isolated projects", async () => {
+		const s = setup();
+		s.projectStore.getProject = vi.fn(() => ({
+			...s.project,
+			useBranches: true,
+			workspaceIsolation: "worktree",
+		}));
+		await register(s);
+		const result = await s.routes.get("GET /tasks/:id")(
+			{ params: { id: "t-1" }, query: { projectId: "p-1" } },
+			reply(),
+		);
+		expect(result.workingLocation).toEqual({
+			branch: "kb/t-1",
+			workspaceIsolation: "worktree",
+			worktreePath: "/repo/.kainbain/worktrees/t-1",
+		});
+	});
+
+	it("prefers the persisted task branch in the working location", async () => {
+		const s = setup();
+		s.projectStore.getProject = vi.fn(() => ({
+			...s.project,
+			useBranches: true,
+		}));
+		s.taskStore.getTask = vi.fn(() => ({
+			...s.stored,
+			branch: "kb/custom",
+		}));
+		await register(s);
+		const result = await s.routes.get("GET /tasks/:id")(
+			{ params: { id: "t-1" }, query: { projectId: "p-1" } },
+			reply(),
+		);
+		expect(result.workingLocation.branch).toBe("kb/custom");
+		expect(result.workingLocation.worktreePath).toBeNull();
+	});
+
 	it("returns 404 for unknown tasks and undefined without a project", async () => {
 		const s = await register(setup());
 		s.taskStore.getTask = vi.fn(() => undefined);

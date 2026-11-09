@@ -5,6 +5,7 @@
  ***/
 
 import { _sanitizeTaskTitle } from "./taskIdentity.js";
+import { resolveTaskWorkingLocation } from "./taskWorkingLocation.js";
 import { toTaskDurationSummary } from "../taskDurationSummary.js";
 import { resolveStage } from "../flow/index.js";
 import { resolveStagesForTask } from "../flow/taskScheduler.js";
@@ -364,7 +365,18 @@ export async function registerTaskWorkRoutes(app, deps) {
 
 		const task = taskStore.getTask(id, request.params.id);
 		if (!task) return reply.status(404).send({ error: "Task not found" });
-		return { ...task, claim: liveClaim(task.id) };
+		// workingLocation answers "where is this task working" (branch /
+		// isolation mode / worktree path) for developers editing alongside
+		// the engine. Additive only: older clients ignore the extra key.
+		const project = projectStore.getProject(id);
+		return {
+			...task,
+			claim: liveClaim(task.id),
+			workingLocation: resolveTaskWorkingLocation(task, {
+				project,
+				projectCwd: project?.cwd,
+			}),
+		};
 	});
 
 	/***
