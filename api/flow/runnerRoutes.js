@@ -15,6 +15,7 @@ import { curateRunnerPrompt } from "./curateRunnerPrompt.js";
 import { materializeRunnerTaskDocs } from "./execution/materializeRunnerTaskDocs.js";
 import { buildCommandKeywordContext, expandStageCommand } from "./commandStages.js";
 import { resolveStagesForTask } from "./stageResolution.js";
+import { buildRunnerAssignmentSummary } from "./runnerAssignmentSummary.js";
 import { emitStageLifecycle } from "./stageLifecycle.js";
 import {
 	resolveStageLabel,
@@ -188,6 +189,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		runnerRegistry,
 		claimStore,
 		steerStore,
+		impromptuStore,
 		executionLedger,
 		integrationQueue,
 		taskStore,
@@ -488,12 +490,20 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 
 	app.get("/runners/monitor", async () => {
 		// Multi-Runner UI (WP-3.4): who runs what right now, so
-		// Settings › Runners can show live assignments.
+		// Settings › Runners can show live assignments. This endpoint is
+		// intentionally project-agnostic (Runners are global): it always
+		// returns every live hold, and each assignment carries cross-pipeline
+		// identity (`projectName`, `taskTitle`, `stageName`, ...) resolved
+		// from the held task's own project/workflow — so the UI renders the
+		// real job even when the operator views another pipeline. Full task
+		// hydration (log entries, reports) stays on
+		// `GET /tasks/:id?projectId=...`, which already accepts `projectId`.
 		// `scheduler` exposes the cutover deferral counters so a task
 		// sitting in_stage is diagnosable: a climbing `deferredDispatch`
 		// with no Runner pickup means the fleet is empty or mismatched.
 		const liveAssignments = claimStore.liveHolds().map((hold) => {
 			const record = runnerRegistry.records().find((r) => r.runnerId === hold.runnerId) || null;
+			const stageId = executionLedger.stageFor(hold.executionId);
 			return {
 				runnerId: hold.runnerId,
 				projectId: hold.projectId,
@@ -501,10 +511,14 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				executionId: hold.executionId,
 				epoch: hold.epoch,
 				startedAt: hold.startedAt ?? null,
-				stageId: executionLedger.stageFor(hold.executionId),
+				stageId,
 				prompt: executionLedger.promptFor(hold.executionId),
 				serving: executionLedger.servingFor(hold.executionId),
 				lastSeenAt: record?.lastSeenAt ?? null,
+				// Global identity (additive; older UI ignores unknown keys):
+				// resolved from the held task's own project/workflow, never
+				// from whatever pipeline the viewer has selected.
+				...buildRunnerAssignmentSummary({ hold, projectStore, taskStore, stageId }),
 			};
 		});
 		const sched = taskStore.schedulerStats || {};
@@ -520,7 +534,13 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// via GET /runners/integration; global lease counters here) so a
 		// stuck merge queue is visible before tasks pile up behind it.
 		const integration = integrationQueue ? integrationQueue.snapshot() : {};
-		return { ...executionLedger.snapshot(), liveAssignments, scheduler, integration };
+		// Impromptu T0 channel (ADR 0014, O1): queue counters only, never
+		// task-like rows — the channel stays observable without pretending
+		// its jobs are tasks.
+		const impromptu = impromptuStore
+			? impromptuStore.snapshot()
+			: { queued: 0, claimed: 0, completed: 0, failed: 0 };
+		return { ...executionLedger.snapshot(), liveAssignments, scheduler, integration, impromptu };
 	});
 
 	app.get("/runners/models/catalogue", async () => {

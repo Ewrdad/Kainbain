@@ -13,11 +13,12 @@ import { useScheduledQueue } from '../../hooks/useScheduledQueue';
  * failed refresh keeps the last known rows visible under the alert (a stale
  * queue is more useful operationally than a blank panel). Row click
  * opens the task in the Slide-Over Inspector via the context's
- * `setSelectedTask`. Footer reconciles the chip's open-task count with the
- * dispatchable queue length so a silent mismatch never masquerades as a bug.
+ * `setSelectedTask`. Footer shows the chip's waiting-task count beside the
+ * listed length: both describe the same waiting set, so a mismatch only
+ * means one view is stale (transient refresh timing), never a second bug.
  * @example <QueuePopupModal counted={3} onClose={() => setOpen(false)} />
  * @param {Function} props.onClose - Called when the dialog should close.
- * @param {number} [props.counted] - Open-task count shown by the chip.
+ * @param {number} [props.counted] - Waiting-task count shown by the chip.
  * @param {number} [props.openQueueDepth] - Alias for `counted`.
  * @param {Object} [props.engineState] - Optional engine state carrying openQueueDepth.
  ***/
@@ -68,11 +69,10 @@ export function QueuePopupModal({ onClose, counted, openQueueDepth, engineState 
             Queue — all projects
           </h2>
           <p id={descId} className="text-[11px] font-mono text-text-muted">
-            {/* "#1 runs next" tracks the listed queue, not the chip count:
-                when every counted task is failed/waiting-human the list is
-                empty and nothing runs next. */}
-            #{shown >= 1 ? '1' : '—'} runs next · {countedDisplay} open
-            {countedDisplay === 1 ? ' task' : ' tasks'} counted
+            {/* "#1 runs next" tracks the listed queue: only tasks waiting to
+                be picked up are listed, so an empty list means nothing waits. */}
+            #{shown >= 1 ? '1' : '—'} runs next · {countedDisplay} waiting
+            {countedDisplay === 1 ? ' task' : ' tasks'}
           </p>
         </div>
         <button
@@ -122,12 +122,12 @@ export function QueuePopupModal({ onClose, counted, openQueueDepth, engineState 
 
       <div className="px-4 py-2 border-t border-border-standard text-[10px] font-mono text-text-muted">
         <span data-testid="queue-reconciliation">
-          {countedDisplay} open tasks counted · {shown} shown in the dispatch queue
+          {countedDisplay} waiting to be picked up · {shown} shown in the dispatch queue
         </span>
         {countsDiffer && (
           <span className="block mt-1">
-            Failed, cancelled, waiting-human, and human-stage tasks count toward the number but
-            never dispatch. Blocked and paused tasks do list — sorted last with their reason.
+            Both views list the same waiting tasks — a mismatch means one is stale and settles
+            on refresh.
           </span>
         )}
       </div>

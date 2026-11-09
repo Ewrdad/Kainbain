@@ -6,23 +6,26 @@ import {
 	resolveStagesForTask,
 } from '../stageResolution.js';
 import {
-	normalizeStageType,
-} from '../../projectStore.js';
-import {
 	RESUMED_PRIORITY_RANK,
 	RESUMED_QUEUE_REASON,
 } from '../routing/tables/index.js';
 import { isResumedAfterInterruption } from './isResumedAfterInterruption.js';
 import { isResumedStageRunnable } from './isResumedStageRunnable.js';
 import { isAutoResumable } from './isAutoResumable.js';
+import { isWaitingForPickup } from './isWaitingForPickup.js';
 
 /***
  * MARK: getScheduledQueue
  * @description Returns the ordered list of all tasks across projects (or filtered by projectId)
  * prioritized for execution according to KainBain's scheduling rules.
- * Alias items carry `alias: { name, targetIndex }` (the alias behind the
- * run plus the picked weighted-target index) while `harness` / `model`
- * describe the PICKED concrete target; unknown/deleted/blank aliases carry
+ * Lists ONLY tasks waiting to be picked up right now (the shared
+ * `isWaitingForPickup` verdict — the same set the bottom-bar queue chip
+ * counts): tasks already running, blocked, paused, failed, cancelled, or
+ * waiting-human never appear. Emitted items keep `isRunning: false` /
+ * `isBlocked: false` for shape compatibility. Alias items carry
+ * `alias: { name, targetIndex }` (the alias behind the run plus the
+ * picked weighted-target index) while `harness` / `model` describe the
+ * PICKED concrete target; unknown/deleted/blank aliases carry
  * `alias: null` plus `aliasMissing: "<name>"` with the fallback actually
  * shown. Picks are peek previews (display reads never consume a rotation
  * step). Non-alias items carry `alias: null` / `aliasMissing: null` with
@@ -49,37 +52,48 @@ export function getScheduledQueue(store, filterProjectId) {
 			continue;
 		}
 		for (const task of tasks) {
-			if (
-				task.status === "completed" ||
-				task.status === "done" ||
-				task.status === "failed" ||
-				task.status === "cancelled"
-			) {
-				continue;
-			}
 			const stages = resolveStagesForTask(project, task);
 			const stageIndex = candidateStageIndex(stages, task.currentStageId);
-			const stage = stageIndex !== -1 ? stages[stageIndex] : stages[0] || null;
+			// Strict: no stages[0] fallback — a task pointing at a deleted
+			// stage cannot be picked up, so it is not waiting either.
+			const stage = stageIndex !== -1 ? stages[stageIndex] : null;
 
-			// Exclude human-review tasks (waiting_human or at a human checkpoint stage) (#29)
-			if (
-				task.status === "waiting_human" ||
-				normalizeStageType(stage?.type) === "human"
-			) {
+			let blockCheck;
+			try {
+				blockCheck = store.isTaskBlocked(project.id, task.id);
+			} catch {
+				continue;
+			}
+			let claimed = false;
+			try {
+				claimed =
+					typeof store.claimStore?.describe === "function"
+						? store.claimStore.describe(task.id) != null
+						: false;
+			} catch {
 				continue;
 			}
 
-			const blockCheck = store.isTaskBlocked(project.id, task.id);
-			const isRunning =
-				activeEngine.activeTaskId === task.id && activeEngine.status === "running";
+			// The queue lists exactly the waiting set — the same verdict the
+			// bottom-bar chip counts — so running, blocked, paused, failed,
+			// cancelled, and waiting-human tasks never appear here.
+			if (
+				!isWaitingForPickup(task, {
+					store,
+					project,
+					stage,
+					blocked: blockCheck?.blocked === true,
+					claimed,
+					engineState: activeEngine,
+				})
+			) {
+				continue;
+			}
 
 			let priorityRank = 3;
 			let priorityReason = "Standard Queue";
 
-			if (isRunning) {
-				priorityRank = 0;
-				priorityReason = "Active Execution";
-			} else if (
+			if (
 				stageIndex !== -1 &&
 				stage &&
 				((task.status === "interrupted" &&
@@ -100,15 +114,6 @@ export function getScheduledQueue(store, filterProjectId) {
 			) {
 				priorityRank = 1;
 				priorityReason = "Follow-On Priority";
-			} else if (blockCheck.blocked) {
-				priorityRank = 5;
-				priorityReason = `Blocked by: ${blockCheck.blockers.join(", ")}`;
-			} else if (task.status === "paused") {
-				priorityRank = 6;
-				priorityReason = "Paused";
-			} else if (stage?.paused) {
-				priorityRank = 6;
-				priorityReason = "Stage Paused";
 			} else {
 				priorityRank = 2;
 				priorityReason = `Stage ${stageIndex + 1}/${stages.length || 1} (Priority Rule: Furthest Along)`;
@@ -160,9 +165,11 @@ export function getScheduledQueue(store, filterProjectId) {
 					project.harness ||
 					null,
 				status: task.status,
-				isRunning,
-				isBlocked: blockCheck.blocked,
-				blockers: blockCheck.blockers,
+				// Only waiting tasks are listed, so nothing here runs or
+				// blocks; the fields stay for shape compatibility.
+				isRunning: false,
+				isBlocked: false,
+				blockers: [],
 				stageIndex: stageIndex !== -1 ? stageIndex : 0,
 				totalStages: stages.length || 1,
 				enteredStageAt: task.enteredStageAt || task.updatedAt || task.createdAt,
@@ -182,8 +189,8 @@ export function getScheduledQueue(store, filterProjectId) {
 	for (const item of items) {
 		item.engineTripped = containment.tripped;
 		item.tripReason = containment.tripped ? containment.reason : null;
-		item.deferredByTrip = containment.tripped && !item.isRunning;
-		if (containment.tripped && !item.isRunning) {
+		item.deferredByTrip = containment.tripped;
+		if (containment.tripped) {
 			item.priorityReason = `Engine tripped — deferred (${containment.reason || "systemic failure"})`;
 		}
 	}

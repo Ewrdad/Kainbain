@@ -70,8 +70,8 @@ test('renders live queue chip with no stale stage label (no fake progress bar, t
   // return even though stages are loaded and a stage is focused.
   expect(screen.queryByText(/Stage \d+ of \d+/)).not.toBeInTheDocument();
   expect(screen.queryByText(/— Idea/)).not.toBeInTheDocument();
-  // The right rail is queue-only: the live queue-depth chip counts open tasks
-  // only — t1 and t2 are open, t3 is completed and excluded.
+  // The right rail is queue-only: the live queue-depth chip counts tasks
+  // waiting for pickup only — t1 and t2 wait, t3 is completed and excluded.
   expect(
     screen.getByRole('button', {
       name: 'Execution queue: 2 open tasks across all pipelines',
@@ -138,6 +138,32 @@ test('queue chip is live: count updates as tasks advance and drops to zero when 
   );
   expect(chip()).toHaveAttribute('aria-label', 'Execution queue: 0 open tasks across all pipelines');
   expect(chip()).toHaveTextContent('0');
+});
+
+test('queue chip counts only waiting tasks: running, blocked, paused, and parked tasks excluded', () => {
+  renderWithKainBain(<NowPlayingBar />, {
+    stages,
+    currentStageId: '1',
+    workflows: [],
+    tasks: [
+      { id: 't1', currentStageId: '1', status: 'in_stage' },
+      { id: 't2', currentStageId: '1', status: 'in_stage' },
+      { id: 't3', currentStageId: '1', status: 'running_agent' },
+      { id: 't4', currentStageId: '1', status: 'in_stage', blockedBy: ['t1'] },
+      { id: 't5', currentStageId: '1', status: 'paused' },
+      { id: 't6', currentStageId: '1', status: 'failed' },
+      { id: 't7', currentStageId: '2', status: 'waiting_human' },
+      { id: 't8', currentStageId: '1', status: 'cancelled' },
+    ],
+    isAgentRunning: false,
+  });
+  // Only t1 and t2 wait for pickup — everything else is running, blocked,
+  // or parked and must not inflate the chip.
+  expect(
+    screen.getByRole('button', {
+      name: 'Execution queue: 2 open tasks across all pipelines',
+    }),
+  ).toHaveTextContent('2');
 });
 
 test('no elapsed timer remains on the queue-only right rail', () => {
@@ -1284,7 +1310,7 @@ test('queue chip is a button: clicking opens the dispatch-order popup and the fe
   expect(first).toHaveTextContent('Work');
   expect(second).toHaveTextContent('#2');
   // The popup reconciles the chip count with the listed queue.
-  expect(screen.getByTestId('queue-reconciliation')).toHaveTextContent('2 open tasks counted · 2 shown');
+  expect(screen.getByTestId('queue-reconciliation')).toHaveTextContent('2 waiting to be picked up · 2 shown');
 });
 
 test('queue chip is keyboard-activatable: it is a focusable native button', () => {

@@ -19,6 +19,52 @@ export function isTaskCompleted(task) {
 }
 
 /***
+ * MARK: isWaitingForPickupTask
+ * @description Status-level fallback for "this task is waiting for a
+ * runner/scheduler to pick it up right now". Used only when the engine
+ * snapshot carries no authoritative `openQueueDepth` (offline snapshots,
+ * tests) — see `resolveUniversalNowPlaying`. Mirrors the backend
+ * `isWaitingForPickup` contract as far as the loaded list allows:
+ * terminal, waiting-human, paused, advancing, checkpoint, idle, and
+ * running_* tasks never wait; blocked tasks never wait; and interrupted
+ * tasks never wait here because auto-resumability needs backend stage
+ * resolution the list cannot reproduce. Fails open for anything else: an
+ * unknown status reads as waiting rather than hiding queued work.
+ * @example isWaitingForPickupTask({ status: 'in_stage' }) => true
+ * @example isWaitingForPickupTask({ status: 'failed' }) => false
+ * @example isWaitingForPickupTask({ status: 'in_stage', blockedBy: ['a'] }) => false
+ * @example isWaitingForPickupTask(null) => false
+ * @param {Object} [task] - The task object (or null/undefined for safety).
+ * @returns {boolean} True when the task reads as waiting for pickup.
+ ***/
+export function isWaitingForPickupTask(task) {
+  if (task == null || typeof task !== 'object') return false;
+  const status = typeof task.status === 'string' ? task.status : '';
+  if (
+    status === 'completed' ||
+    status === 'done' ||
+    status === 'failed' ||
+    status === 'cancelled' ||
+    status === 'waiting_human' ||
+    status === 'paused' ||
+    status === 'advancing' ||
+    status === 'checkpoint' ||
+    status === 'idle' ||
+    status === 'running' ||
+    status.startsWith('running_') ||
+    status === 'interrupted'
+  ) {
+    return false;
+  }
+  // The scheduler's own verdict wins when the payload carries it; otherwise
+  // any declared prerequisite reads as blocking (conservative: the list
+  // cannot tell a freed blocker from a live one).
+  if (task.isBlocked === true) return false;
+  if (Array.isArray(task.blockedBy) && task.blockedBy.length > 0) return false;
+  return true;
+}
+
+/***
  * MARK: isAutoIterationInProgress
  * @description True when a task is in an automatic CROSS-STAGE re-run: the
  *   failback moved it to a different stage and the engine re-queued it there.

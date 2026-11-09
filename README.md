@@ -60,6 +60,23 @@ Start over / remove a broken install (state-preserving by default; `--purge --ye
 curl -fsSL https://kainbain.ewrdad.uk/uninstall.sh | bash -s -- --install-dir ~/apps/kainbain --dry-run
 ```
 
+## Meta Ray-Ban display mode
+
+Open KainBain on a roughly square canvas around 600x600 pixels (for example a
+Meta Ray-Ban display) and the interface switches by itself to a wearable mode
+built for observability and quick reviews. No button, no setting: the shape of
+the screen is the switch, and desktop and phone views stay exactly the same.
+
+Wearable mode has two screens. The task list shows which task is running and
+its current step, big Running / Waiting for review / Failed counts, and a View
+button into review. The quick review shows one task at a time — name, Step N
+of M, a two-line summary — with extra-large Approve and Details buttons.
+Information refreshes by itself every few seconds, status changes arrive
+quietly through colour, and Approve always asks "Are you sure?" first.
+
+Details stays deliberately short on the glasses: for the full diff, files, and
+comment threads, open the same task on a larger screen.
+
 ## Security
 
 Despite best efforts this is is a BETA project and should not be exsposed on general internet. Best efforts have been made to ensure that good security practices are implmented such as:

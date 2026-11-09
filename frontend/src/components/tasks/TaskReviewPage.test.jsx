@@ -942,7 +942,7 @@ describe('TaskReviewPage reports tab', () => {
     window.localStorage.clear();
   });
 
-  it('shows a Reports (N) tab that renders the report list and line review', async () => {
+  it('shows a Reports (N) tab that renders the report list and readable review', async () => {
     withReports();
     renderPage();
     await waitFor(() => expect(screen.getByTestId('diff-view')).toBeTruthy());
@@ -950,8 +950,10 @@ describe('TaskReviewPage reports tab', () => {
     fireEvent.click(tab);
     expect(screen.getByTestId('report-review-list')).toBeTruthy();
     expect(screen.getByTestId('report-review-view')).toBeTruthy();
-    expect(screen.getAllByTestId('report-line')).toHaveLength(3);
-    expect(screen.getByText('Plan')).toBeTruthy();
+    expect(screen.getByTestId('report-readable-pane')).toBeTruthy();
+    expect(screen.getAllByTestId('report-block')).toHaveLength(2);
+    // Navigator entry plus the rendered report heading.
+    expect(screen.getAllByText('Plan').length).toBeGreaterThanOrEqual(2);
   });
 
   it('switches the reviewed report from the mobile picker', async () => {
@@ -1015,7 +1017,8 @@ describe('TaskReviewPage reports tab', () => {
     // No code files: the Files tab explains and links to the reports.
     await waitFor(() => expect(screen.getByText(/Review the stage reports instead/)).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: /Reports \(1\)/ }));
-    expect(screen.getAllByTestId('report-line')).toHaveLength(3);
+    expect(screen.getByTestId('report-readable-pane')).toBeTruthy();
+    expect(screen.getAllByTestId('report-block')).toHaveLength(2);
   });
 
   it('line-comments a report and carries it into the fail draft', async () => {
@@ -1034,7 +1037,7 @@ describe('TaskReviewPage reports tab', () => {
     renderPage();
     await waitFor(() => expect(screen.getByTestId('diff-view')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: /Reports \(1\)/ }));
-    fireEvent.click(screen.getByLabelText('Add comment on report line 2'));
+    fireEvent.click(screen.getByLabelText('Add comment on paragraph, lines 2 to 3'));
     const composer = screen.getByTestId('review-comment-composer');
     fireEvent.change(composer.querySelector('textarea'), {
       target: { value: 'Explain the retry cap' },

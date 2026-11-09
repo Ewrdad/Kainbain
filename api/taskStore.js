@@ -229,7 +229,9 @@ export class TaskStore {
 	 * Enriched with the project-independent owner source behind the Now
 	 * Playing bar: `activeTask` is the full owner-task snapshot (resolved
 	 * from the owning project, never the selected one) and `openQueueDepth`
-	 * is the global open-task count across all projects. Both derivations
+	 * is the global waiting-task count across all projects (tasks waiting
+	 * to be picked up — never tasks already running, blocked, or parked).
+	 * Both derivations
 	 * are read-only and best-effort — a lookup failure degrades to
 	 * `activeTask: null` / an absent depth (the bar falls back to its loaded
 	 * list) instead of ever breaking the state read.

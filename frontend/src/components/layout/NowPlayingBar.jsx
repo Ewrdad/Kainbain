@@ -20,7 +20,8 @@ import { api } from '../../services/api';
  * There is no global transport cluster: the Runner boxes own play/pause
  * (pause parks a Runner, resume re-arms it) and skip (advances that
  * Runner's held task one stage). The right rail shows honest, live data:
- * the open-task count across all pipelines (queue depth) only.
+ * the waiting-task count across all pipelines (queue depth) only — tasks
+ * waiting to be picked up, never tasks already running, blocked, or parked.
  *
  * Universal contract: the engine owns a single queue fed by every pipeline,
  * so this bar never follows the selected pipeline. The named task and badge
@@ -367,20 +368,21 @@ export function NowPlayingBar() {
     '';
 
   // Universal queue semantics (#28): the single engine queue spans every
-  // pipeline, so depth counts all open tasks across ALL projects via the
-  // engine snapshot's openQueueDepth (the loaded list is only the active
-  // project's slice).
+  // pipeline, so depth counts tasks WAITING to be picked up across ALL
+  // projects via the engine snapshot's openQueueDepth (the loaded list is
+  // only the active project's slice). Running, blocked, paused, failed,
+  // cancelled, and waiting-human tasks never count.
   /***
    * MARK: queueDepth
-   * @description Live count of open tasks (not completed/done) across all
+   * @description Live count of tasks waiting to be picked up across all
    *   pipelines — the honest replacement for the removed workflow-pointer
    *   stage label in the right rail. Resolved from the engine snapshot's
    *   openQueueDepth (global, all projects), falling back to the loaded
-   *   list only when the snapshot carries no count, so project switches
-   *   never move it. Clicking the chip opens the dispatch-order popup
-   *   (`QueuePopupModal`); reconciliation rule: the count includes
-   *   failed/cancelled/waiting-human tasks that never dispatch, so the popup footer
-   *   labels any count-vs-list difference instead of hiding it.
+   *   list's waiting set only when the snapshot carries no count, so
+   *   project switches never move it. Clicking the chip opens the
+   *   dispatch-order popup (`QueuePopupModal`), which lists exactly the
+   *   same waiting set; a count-vs-list difference only means one view is
+   *   stale and settles on refresh.
    * @example queueDepth // => 3
    * @returns {number}
    ***/
@@ -626,8 +628,8 @@ export function NowPlayingBar() {
         <div className="hidden sm:flex items-center">
           <InfoTooltip
             title="Execution Queue"
-            description="Live count of open tasks (not yet completed) across all pipelines. Click to view the queue in dispatch order."
-            behindTheScenes="Derived from the universal task list across all pipelines on every render — unlike the removed workflow-pointer stage label, which only changed on load or manual skip. Click opens a popup listing the dispatch-ordered queue."
+            description="Live count of tasks waiting to be picked up across all pipelines — tasks already running, blocked, paused, or parked are not counted. Click to view the queue in dispatch order."
+            behindTheScenes="Derived from the engine snapshot's waiting-task count across all pipelines on every render (the loaded list's waiting set is the fallback) — unlike the removed workflow-pointer stage label, which only changed on load or manual skip. Click opens a popup listing exactly that same waiting set in dispatch order."
             position="top-left"
           >
             <button

@@ -67,7 +67,10 @@ describe("observability active task", () => {
 	});
 
 	it("preserves legacy fields and adds normalized stage/harness/model details", async () => {
-		const { store, task } = fixture();
+		const { store, project, task } = fixture();
+		// The queue lists only waiting tasks, so the running owner needs a
+		// waiting sibling for the queue-row assertions below.
+		store.createTask(project.id, { title: "Queued", goal: "queued work", stageId: "build" });
 		const before = structuredClone(task);
 		const metrics = await store.getObservabilityMetrics();
 		expect(metrics.activeTask).toMatchObject({ ...before, reports: [{ stageName: "Plan" }], model: "custom::p::requested", harness: "custom", modelDetails: { source: "stage", provider: "p", id: "requested" }, stageName: "Build", stageType: "agent", stageId: "build" });
@@ -166,6 +169,7 @@ describe("observability active task", () => {
 			{ name: "small", harness: targetName, model: "google::char-model" },
 		];
 		store.sessionStore = new SessionStore({});
+		store.createTask(project.id, { title: "Queued", goal: "queued work", stageId: "build" });
 		const { activeTask, queue } = await store.getObservabilityMetrics();
 		expect(activeTask).toMatchObject({
 			harness: targetName,
@@ -203,6 +207,7 @@ describe("observability active task", () => {
 			},
 		];
 		store.sessionStore = new SessionStore({});
+		store.createTask(project.id, { title: "Queued", goal: "queued work", stageId: "build" });
 		// Fresh rotation: the peek preview is target 0 on both surfaces.
 		const before = await store.getObservabilityMetrics();
 		expect(before.activeTask.alias).toEqual({ name: "mix", targetIndex: 0 });
@@ -231,6 +236,7 @@ describe("observability active task", () => {
 			{ name: "small", harness: targetName, model: "google::m1" },
 		];
 		store.sessionStore = new SessionStore({});
+		store.createTask(project.id, { title: "Queued", goal: "queued work", stageId: "build" });
 		const { activeTask, queue } = await store.getObservabilityMetrics();
 		expect(activeTask).toMatchObject({
 			harness: targetName,
@@ -257,6 +263,7 @@ describe("observability active task", () => {
 			project.defaultModel = "google::base";
 			project.modelAliases = [];
 			store.sessionStore = new SessionStore({});
+			store.createTask(project.id, { title: "Queued", goal: "queued work", stageId: "build" });
 			const { activeTask, queue } = await store.getObservabilityMetrics();
 			expect(activeTask).toMatchObject({
 				harness: "pi",
@@ -291,6 +298,7 @@ describe("observability active task", () => {
 			project.defaultModel = "also-ghost";
 			project.modelAliases = [];
 			store.sessionStore = new SessionStore({});
+			store.createTask(project.id, { title: "Queued", goal: "queued work", stageId: "build" });
 			const { activeTask, queue } = await store.getObservabilityMetrics();
 			// Neither alias name may ever show as a model.
 			expect(activeTask).toMatchObject({
@@ -321,6 +329,7 @@ describe("observability active task", () => {
 		stage.model = "cli";
 		project.modelAliases = [{ name: "cli", harness: targetName, model: "" }];
 		store.sessionStore = new SessionStore({});
+		store.createTask(project.id, { title: "Queued", goal: "queued work", stageId: "build" });
 		const { activeTask, queue } = await store.getObservabilityMetrics();
 		expect(activeTask).toMatchObject({
 			harness: targetName,
@@ -404,6 +413,7 @@ describe("observability active task", () => {
 			{ name: "small", harness: targetName, model: "google::m1" },
 		];
 		store.sessionStore = new SessionStore({});
+		store.createTask(project.id, { title: "Queued", goal: "queued work", stageId: "build" });
 		const { activeTask, queue } = await store.getObservabilityMetrics();
 		expect(activeTask).toMatchObject({
 			harness: targetName,
