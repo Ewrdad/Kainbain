@@ -13,7 +13,8 @@ import { defaultInstallRoot, markUpdateSuccess, readUpdateState } from "./update
 // The Runner bundle ships shared/ next to this folder (runner/{runner,api,shared}
 // in prod and in the distributable tarball), so ../shared resolves both in the
 // repo and in every deployed layout — the same copy the backend executes.
-import { discoverClaudeModels, resolveAdvertisedModels } from "./modelDiscovery.js";
+import { resolveAdvertisedModels } from "./modelDiscovery.js";
+import { DISCOVERY_LEGS, discoveryCache as DISCOVERY_CACHE, clearDiscoveryCache, getDiscoveryStatus, runDiscoveryLeg, DISCOVER_LEG_TIMEOUT_DEFAULT_MS } from "./harnessModelDiscovery.js";
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { decideAgentStageVerdict } from "../shared/stageVerdict.js";
@@ -394,6 +395,7 @@ let discoveredModelsCache = [];
  ***/
 export function clearDiscoveredModelsCache() {
 	discoveredModelsCache = [];
+	clearDiscoveryCache();
 }
 
 /***
@@ -410,19 +412,59 @@ export function clearDiscoveredModelsCache() {
  * @param {Function} [opts.discoverFn=discoverClaudeModels] - Test seam.
  * @returns {Promise<string[]>} Current cache copy.
  ***/
-export async function refreshDiscoveredModels({ config, logger, discoverFn = discoverClaudeModels } = {}) {
+export async function refreshDiscoveredModels({ config, logger, discoverFn } = {}) {
 	try {
 		if (Array.isArray(config?.models) && config.models.length > 0) return [...discoveredModelsCache];
 		if (typeof config?.model === "string" && config.model.trim()) return [...discoveredModelsCache];
-		if (!runnerHarnessIds(config).includes("muse")) return [...discoveredModelsCache];
-		for (const bin of HARNESS_VERSION_BINS.muse) {
-			const ids = await discoverFn({ bin });
-			if (ids.length > 0) {
-				discoveredModelsCache = ids;
-				logger?.log?.(`Model discovery: ${ids.length} model(s) from ${bin}; next refresh per modelDiscoveryIntervalMs.`);
-				break;
+		const idsConfigured = runnerHarnessIds(config);
+		let combined = [];
+		let firstError = null;
+		let perHarness = {};
+		const pinned = false;
+		for (const id of idsConfigured) {
+			if (!Object.prototype.hasOwnProperty.call(DISCOVERY_LEGS, id)) continue;
+			let res;
+			try {
+				if (id === "muse" && typeof discoverFn === "function") {
+					// Back-compat seam: callers may override discovery. Support
+					// both no-arg and (harnessId) shapes.
+					let raw;
+					if (discoverFn.length >= 1) {
+						raw = await discoverFn(id);
+					} else {
+						raw = await discoverFn();
+					}
+					const incoming = Array.isArray(raw) ? raw : [];
+					const prev = DISCOVERY_CACHE[id]?.ids || [];
+					const ok = incoming.length > 0;
+					const ids = ok ? incoming : (prev.length ? prev : incoming);
+					DISCOVERY_CACHE[id] = { ids, atMs: Date.now(), error: ok ? null : (incoming.length === 0 && prev.length === 0 ? null : null) };
+					// Note: only hard failures carry an error code; empty success is silent.
+					res = { harnessId: id, ids: DISCOVERY_CACHE[id].ids, error: null };
+				} else {
+					res = await runDiscoveryLeg(id, { timeoutMs: DISCOVER_LEG_TIMEOUT_DEFAULT_MS });
+				}
+			} catch (err) {
+				res = { harnessId: id, ids: DISCOVERY_CACHE[id]?.ids ? [...DISCOVERY_CACHE[id].ids] : [], error: { code: `${id.toUpperCase()}_DISCOVERY_FAILED`, message: String(err?.message || err).slice(0, 500) } };
+				DISCOVERY_CACHE[id] = { ids: res.ids, atMs: Date.now(), error: res.error };
+			}
+			perHarness[id] = res;
+			if (res.error && !firstError) firstError = res.error;
+			for (const mid of res.ids || []) {
+				if (!combined.includes(mid)) combined.push(mid);
 			}
 		}
+		// Keep-old global: if combined empty, retain previous cache.
+		if (combined.length > 0) {
+			discoveredModelsCache = combined;
+		}
+		const count = discoveredModelsCache.length;
+		const countsStr = idsConfigured
+			.filter((id) => Object.prototype.hasOwnProperty.call(DISCOVERY_LEGS, id))
+			.map((id) => `${id}:${DISCOVERY_CACHE[id]?.ids?.length ?? 0}`)
+			.join(", ");
+		logger?.log?.(`Model discovery: ${count} model(s) (${countsStr}); next refresh per modelDiscoveryIntervalMs.`);
+		// Stash first error code on a module-level? Surface via DISCOVERY_CACHE.
 	} catch (err) {
 		logger?.warn?.(`Model discovery failed, keeping previous list: ${err?.message || err}`);
 	}
@@ -468,6 +510,7 @@ function factsFor({ config, harnessVersions, updateStatus = null, commandAck = n
 		directories: effectiveDirectoriesFor(config),
 		commands: SUPPORTED_RUNNER_COMMANDS,
 		workRoot: typeof config.workRoot === "string" ? config.workRoot : null,
+		discoveryStatus: typeof getDiscoveryStatus === "function" ? getDiscoveryStatus() : undefined,
 		...(updateStatus ? { updateStatus } : {}),
 		...(commandAck ? { commandAck } : {}),
 	};
@@ -684,7 +727,16 @@ export async function handlePendingCommands({ config, client, logger, state, pen
 				} else {
 					const ids = await refreshDiscoveredModels({ config, logger, discoverFn });
 					const count = Array.isArray(ids) ? ids.length : 0;
-					stageCommandAck(state, { command: cmd, ok: true, detail: `discovered ${count} model(s)` });
+					const countsStr = runnerHarnessIds(config)
+						.filter((id) => Object.prototype.hasOwnProperty.call(DISCOVERY_LEGS, id))
+						.map((id) => `${id}:${(DISCOVERY_CACHE[id]?.ids || []).length}`)
+						.join(", ");
+					const firstErr = runnerHarnessIds(config)
+						.map((id) => DISCOVERY_CACHE[id]?.error)
+						.find((e) => e && e.code);
+					let detail = `discovered ${count} model(s) (${countsStr})`;
+					if (firstErr?.code) detail += ` (${firstErr.code})`;
+					stageCommandAck(state, { command: cmd, ok: true, detail });
 				}
 			}
 			if (cmd === "requestUpdate") {

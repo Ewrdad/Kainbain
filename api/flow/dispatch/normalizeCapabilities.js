@@ -93,5 +93,16 @@ export function normalizeCapabilities(facts = {}) {
 	const versions =
 		src.versions && typeof src.versions === "object" ? src.versions : {};
 
-	return { harnesses, models, tiers, runnable, diskHeadroomMb, versions, errors };
+	let discoveryStatus;
+	if (src.discoveryStatus !== undefined) {
+		if (src.discoveryStatus === null) {
+			discoveryStatus = null;
+		} else if (typeof src.discoveryStatus === "object" && !Array.isArray(src.discoveryStatus)) {
+			discoveryStatus = src.discoveryStatus;
+		} else {
+			errors.push("discoveryStatus must be an object or null");
+		}
+	}
+
+	return { harnesses, models, tiers, runnable, diskHeadroomMb, versions, errors, ...(discoveryStatus !== undefined ? { discoveryStatus } : {}) };
 }

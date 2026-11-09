@@ -705,7 +705,7 @@ describe("model auto-discovery refresh", () => {
 		clearDiscoveredModelsCache();
 		let calls = 0;
 		const out = await refreshDiscoveredModels({
-			config: { ...base, harnessIds: ["pi"] },
+			config: { ...base, harnessIds: ["mock"] },
 			discoverFn: async () => {
 				calls += 1;
 				return ["muse::meta::m"];
@@ -1654,7 +1654,7 @@ describe("handlePendingCommands", () => {
 		});
 		assert.equal(probes, 1);
 		assert.deepEqual(state.commandAcks, [
-			{ command: "requestModelRediscovery", ok: true, detail: "discovered 2 model(s)" },
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 2 model(s) (muse:2)" },
 		]);
 	});
 
@@ -1813,7 +1813,7 @@ describe("handlePendingCommands", () => {
 			},
 		});
 		assert.deepEqual(state.commandAcks, [
-			{ command: "requestModelRediscovery", ok: true, detail: "discovered 1 model(s)" },
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 1 model(s) (muse:1)" },
 			{ command: "requestUpdate", ok: true, detail: "up to date" },
 		]);
 	});
@@ -1850,7 +1850,7 @@ describe("deliverSteers command channel", () => {
 			assert.deepEqual(heartbeats[1].facts.commandAck, {
 				command: "requestModelRediscovery",
 				ok: true,
-				detail: "discovered 1 model(s)",
+				detail: "discovered 1 model(s) (muse:1)",
 			});
 			assert.deepEqual(state.commandAcks, []);
 		} finally {
