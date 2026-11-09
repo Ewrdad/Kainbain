@@ -82,6 +82,48 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Pi",
+        "Muse (Muse Code)",
+        "Codex",
+        "Opencode",
+        "Vibe",
+        "Antigravity"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Only models ready to use right now (logged in and working) (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Ask the worker machine to scan again right away and update the list (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Auto-detect wins and replaces the typed-in list"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Keep the old list and show a small warning (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "As normal choices in the model picker, same as other models (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
