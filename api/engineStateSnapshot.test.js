@@ -95,15 +95,17 @@ describe("engine snapshot project independence", () => {
 		expect(snap.activeTask.goal || snap.activeTask.title).toContain(
 			"owner work in B",
 		);
-		// Global queue depth counts open tasks in BOTH projects.
-		expect(snap.openQueueDepth).toBe(2);
+		// Global queue depth counts tasks WAITING for pickup in BOTH
+		// projects: the running owner is being worked on, not waiting, so
+		// only the other task counts.
+		expect(snap.openQueueDepth).toBe(1);
 
 		// ENGINE_STATE broadcasts carry the same enrichment for live sockets.
 		const last = [...broadcasts]
 			.reverse()
 			.find((b) => b.type === "ENGINE_STATE");
 		expect(last?.payload?.activeTask?.id).toBe(owner.id);
-		expect(last?.payload?.openQueueDepth).toBe(2);
+		expect(last?.payload?.openQueueDepth).toBe(1);
 	});
 
 	it("counts queue depth globally and tracks completion", () => {

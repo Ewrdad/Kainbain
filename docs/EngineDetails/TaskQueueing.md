@@ -63,18 +63,19 @@ itself is dead.
 
 ## Queue chip and popup (bottom bar)
 
-The bottom bar's queue chip counts every open task (anything not
-`completed`/`done`) across ALL projects — including `failed`, `cancelled`,
-`waiting_human`, `paused`, and blocked tasks. Clicking the chip opens a popup
-listing the dispatch-ordered queue (#1 runs next) with each row's position,
-task name, project, current step, and blocked/waiting reason; clicking a row
-opens that task in the inspector.
+The bottom bar's queue chip counts tasks WAITING to be picked up by a
+runner/scheduler across ALL projects — never tasks already being worked on.
+`failed`, `cancelled`, `waiting_human`, `paused`, blocked, human-stage,
+active/running, and non-auto-resumable `interrupted` tasks are excluded from
+both the chip and the popup. Clicking the chip opens a popup listing exactly
+that same waiting set in dispatch order (#1 runs next) with each row's
+position, task name, project, and current step; clicking a row opens that
+task in the inspector.
 
-The two can legitimately differ: `failed`, `cancelled`, `waiting_human`, and
-human-stage tasks count toward the chip but are never listed, while blocked
-and paused tasks do list — sorted last with their reason. The popup footer
-always states both numbers ("N open tasks counted · M shown") so the gap
-reads as information, not a second bug. If the chip number never goes down,
-the popup shows exactly which open tasks are sitting outside the dispatch
-queue and why.
+Both numbers describe one set (the shared `isWaitingForPickup` verdict), so
+they normally match. The popup footer still states both numbers ("N open
+tasks counted · M shown") as a transient refresh/timing diagnostic: a
+mismatch means one view is stale, not that there is a second bug class. If
+the chip number never goes down, the waiting tasks are genuinely stuck
+outside pickup — check blocks, pauses, and stage states.
 

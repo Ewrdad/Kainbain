@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { SessionStore } from "../sessionStore.js";
+import { countOpenTasksGlobal } from "../work/countOpenTasksGlobal.js";
 import { registerHarness } from "../agent/harnessRegistry.js";
 import { DeployManager } from "../deployManager.js";
 import { MAX_RUNNER_INTERRUPTS } from "./executionLedger.js";
@@ -70,7 +71,13 @@ function makeStore({ projects = [{ id: "p-1", name: "P", cwd: "/repo", stages: S
 		defaultPromptEngine: null,
 		defaultSchedulerInterval: 3000,
 		blockedIds: new Set(),
+		claimedIds: new Set(),
+		tasksByProject: maps,
 		getTask: (pid, tid) => maps.get(pid)?.get(tid),
+		claimStore: {
+			describe: (tid) =>
+				store.claimedIds.has(String(tid)) ? { runnerId: "r-1" } : null,
+		},
 		seed: (pid, task) => {
 			if (!maps.has(pid)) maps.set(pid, new Map());
 			maps.get(pid).set(task.id, task);
@@ -385,7 +392,7 @@ describe("getScheduledQueue", () => {
 		expect(getScheduledQueue(full)).toEqual([]);
 	});
 
-	it("ranks active, follow-on, standard, blocked, and paused tasks", () => {
+	it("lists only waiting tasks: active, blocked, and paused tasks are excluded", () => {
 		const store = makeStore();
 		store.seed("p-1", task({ id: "std", currentStageId: "s-3" }));
 		store.seed("p-1", task({ id: "blocked", blockedBy: ["base"] }));
@@ -397,17 +404,18 @@ describe("getScheduledQueue", () => {
 		store.engineState.status = "running";
 		store.lastCompletedTask = { projectId: "p-1", taskId: "base" };
 		const queue = getScheduledQueue(store);
+		// Only the follow-on and the standard task wait for pickup; the
+		// running owner, the blocked task, and the paused task are absent.
+		expect(queue.map((i) => i.id)).toEqual(["base", "std"]);
 		const order = Object.fromEntries(queue.map((item) => [item.id, item.queueOrder]));
-		expect(order.active).toBe(1);
-		expect(order.base).toBe(2);
+		expect(order.base).toBe(1);
 		expect(queue.find((i) => i.id === "base").priorityReason).toBe("Follow-On Priority");
-		expect(queue.find((i) => i.id === "active").priorityReason).toBe("Active Execution");
-		expect(queue.find((i) => i.id === "blocked").priorityRank).toBe(5);
-		expect(queue.find((i) => i.id === "paused").priorityReason).toBe("Paused");
 		expect(queue.find((i) => i.id === "std").priorityRank).toBe(2);
+		expect(queue.every((i) => i.isRunning === false)).toBe(true);
+		expect(queue.every((i) => i.isBlocked === false)).toBe(true);
 	});
 
-	it("marks stage-paused tasks and excludes human checkpoints", () => {
+	it("excludes stage-paused, human-checkpoint, and unknown-stage tasks", () => {
 		const store = makeStore({
 			projects: [
 				{
@@ -417,6 +425,7 @@ describe("getScheduledQueue", () => {
 					stages: [
 						{ id: "s-1", name: "Build", type: "agent", paused: true },
 						{ id: "s-2", name: "Review", type: "human" },
+						{ id: "s-3", name: "Test", type: "agent" },
 					],
 				},
 			],
@@ -424,12 +433,10 @@ describe("getScheduledQueue", () => {
 		store.seed("p-1", task({ id: "sp", currentStageId: "s-1" }));
 		store.seed("p-1", task({ id: "human", currentStageId: "s-2", status: "waiting_human" }));
 		store.seed("p-1", task({ id: "at-human", status: "in_stage", currentStageId: "s-2" }));
-		const queue = getScheduledQueue(store);
-		expect(queue.map((i) => i.id)).toEqual(["sp"]);
-		expect(queue[0].priorityReason).toBe("Stage Paused");
-		// No stage match falls back to the first stage entry.
+		store.seed("p-1", task({ id: "waiting", currentStageId: "s-3" }));
+		// An unknown stage id cannot be picked up, so it never lists either.
 		store.seed("p-1", task({ id: "nomatch", currentStageId: "ghost" }));
-		expect(getScheduledQueue(store).find((i) => i.id === "nomatch").currentStageName).toBe("Build");
+		expect(getScheduledQueue(store).map((i) => i.id)).toEqual(["waiting"]);
 	});
 
 	it("filters by project and orders rank-2 by stage then age", () => {
@@ -1007,28 +1014,30 @@ describe("getScheduledQueue resume display", () => {
 		expect(getScheduledQueue(store).map((i) => i.id)).toEqual(["old", "new"]);
 	});
 
-	it("does not mark parked interruptions as resumed", () => {
+	it("excludes parked (non-resumable) interruptions from the queue", () => {
 		const store = makeStore();
 		store.seed(
 			"p-1",
 			task({ id: "human", status: "interrupted", currentStageId: "s-2" }),
 		);
-		// Human-checkpoint interruptions stay excluded from the queue entirely.
-		expect(getScheduledQueue(store).map((i) => i.id)).not.toContain("human");
-
 		store.seed(
 			"p-1",
 			task({ id: "merge", status: "interrupted", currentStageId: "s-3" }),
 		);
-		const merge = getScheduledQueue(store).find((i) => i.id === "merge");
-		expect(merge.priorityReason).not.toBe(RESUMED_QUEUE_REASON);
+		store.seed(
+			"p-1",
+			task({ id: "resumable", status: "interrupted", currentStageId: "s-1" }),
+		);
+		// Only the auto-resumable interruption waits for pickup; the
+		// human-checkpoint and markerless-merge interruptions stay parked.
+		const queue = getScheduledQueue(store);
+		expect(queue.map((i) => i.id)).toEqual(["resumable"]);
+		expect(queue[0].priorityReason).toBe(RESUMED_QUEUE_REASON);
 
 		const blocked = makeStore();
 		blocked.seed("p-1", task({ id: "b", status: "interrupted" }));
 		blocked.blockedIds.add("p-1:b");
-		const item = getScheduledQueue(blocked).find((i) => i.id === "b");
-		expect(item.priorityRank).toBe(5);
-		expect(item.priorityReason).not.toBe(RESUMED_QUEUE_REASON);
+		expect(getScheduledQueue(blocked)).toEqual([]);
 	});
 
 	it("keeps a startup-resumed task prioritised after the in_stage flip", () => {
@@ -1069,6 +1078,17 @@ describe("getScheduledQueue resume display", () => {
 		expect(order.base.queueOrder).toBe(3);
 	});
 
+	it("excludes claimed tasks from the queue", () => {
+		const store = makeStore();
+		store.seed("p-1", task({ id: "waiting" }));
+		store.seed("p-1", task({ id: "claimed" }));
+		store.claimStore = {
+			describe: (taskId) =>
+				taskId === "claimed" ? { runnerId: "r-1" } : null,
+		};
+		expect(getScheduledQueue(store).map((i) => i.id)).toEqual(["waiting"]);
+	});
+
 	it("drops the resumed rank once the marker is consumed", () => {
 		const store = makeStore();
 		const marked = store.seed(
@@ -1087,6 +1107,82 @@ describe("getScheduledQueue resume display", () => {
 		const item = getScheduledQueue(store).find((i) => i.id === "marked");
 		expect(item.priorityRank).toBe(2);
 		expect(item.priorityReason).not.toBe(RESUMED_QUEUE_REASON);
+	});
+});
+
+describe("queue chip and popup agreement", () => {
+	it("counts exactly the tasks it lists for a mixed-status fixture", () => {
+		const store = makeStore();
+		store.seed("p-1", task({ id: "w1", currentStageId: "s-1" }));
+		store.seed("p-1", task({ id: "w2", currentStageId: "s-3" }));
+		store.seed(
+			"p-1",
+			task({ id: "resumed", status: "interrupted", currentStageId: "s-1" }),
+		);
+		store.seed("p-1", task({ id: "running", status: "running_agent" }));
+		store.seed("p-1", task({ id: "blocked" }));
+		store.blockedIds.add("p-1:blocked");
+		store.seed("p-1", task({ id: "paused", status: "paused" }));
+		store.seed("p-1", task({ id: "wh", status: "waiting_human" }));
+		store.seed("p-1", task({ id: "failed", status: "failed" }));
+		store.seed("p-1", task({ id: "cancelled", status: "cancelled" }));
+		store.seed("p-1", task({ id: "human", currentStageId: "s-2" }));
+		store.seed(
+			"p-1",
+			task({ id: "merge-int", status: "interrupted", currentStageId: "s-3" }),
+		);
+		store.seed("p-1", task({ id: "done", status: "completed" }));
+
+		// The chip (count) and the popup (list) describe the same waiting
+		// set: the two plain tasks plus the resumable interruption.
+		const queue = getScheduledQueue(store);
+		expect(queue.map((i) => i.id).sort()).toEqual(["resumed", "w1", "w2"]);
+		expect(countOpenTasksGlobal(store)).toBe(queue.length);
+		expect(countOpenTasksGlobal(store)).toBe(3);
+	});
+
+	it("excludes the running owner from both the chip and the popup", () => {
+		const store = makeStore();
+		store.seed("p-1", task({ id: "w1" }));
+		store.seed("p-1", task({ id: "w2" }));
+		store.engineState.status = "running";
+		store.engineState.activeTaskId = "w1";
+		const queue = getScheduledQueue(store);
+		expect(queue.map((i) => i.id)).toEqual(["w2"]);
+		expect(countOpenTasksGlobal(store)).toBe(1);
+	});
+
+	it("excludes a task claimed by a live runner lease from both views (transfer)", () => {
+		// A task handed to a Runner box is being worked on out-of-process, so
+		// it must leave the chip and the popup until the lease lapses or the
+		// Runner reports back.
+		const store = makeStore();
+		store.seed("p-1", task({ id: "w1" }));
+		store.seed("p-1", task({ id: "transferred" }));
+		store.claimedIds.add("transferred");
+		const queue = getScheduledQueue(store);
+		expect(queue.map((i) => i.id)).toEqual(["w1"]);
+		expect(countOpenTasksGlobal(store)).toBe(queue.length);
+		expect(countOpenTasksGlobal(store)).toBe(1);
+	});
+
+	it("agrees across projects: the global chip equals the global popup length", () => {
+		const store = makeStore({
+			projects: [
+				{ id: "p-1", name: "A", cwd: "/a", stages: STAGES },
+				{ id: "p-2", name: "B", cwd: "/b", stages: STAGES },
+			],
+		});
+		store.seed("p-1", task({ id: "a1", projectId: "p-1" }));
+		store.seed("p-1", task({ id: "a2", projectId: "p-1", status: "failed" }));
+		store.seed("p-2", task({ id: "b1", projectId: "p-2", currentStageId: "s-3" }));
+		store.seed("p-2", task({ id: "b2", projectId: "p-2", status: "interrupted", currentStageId: "s-2" }));
+		const queue = getScheduledQueue(store);
+		expect(queue.map((i) => i.id).sort()).toEqual(["a1", "b1"]);
+		expect(countOpenTasksGlobal(store)).toBe(queue.length);
+		expect(countOpenTasksGlobal(store)).toBe(2);
+		// Per-project filtering still agrees with its own slice of the chip.
+		expect(getScheduledQueue(store, "p-2").map((i) => i.id)).toEqual(["b1"]);
 	});
 });
 

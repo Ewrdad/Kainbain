@@ -5,15 +5,40 @@ import {
 	countOpenTasksGlobal,
 } from "./taskEngineState.js";
 
-function makeStore({ engineState = {}, tasks = {}, projectStore = null } = {}) {
+const COUNT_STAGES = [{ id: "1", name: "Work", type: "agent" }];
+
+function countProjectStore(stages = COUNT_STAGES) {
+	return {
+		getProject: (id) => ({ id, name: `Project ${id}`, stages }),
+	};
+}
+
+function makeStore({
+	engineState = {},
+	tasks = {},
+	projectStore = null,
+	blockedIds = [],
+	claimedIds = [],
+} = {}) {
 	const tasksByProject = new Map();
 	for (const [projectId, list] of Object.entries(tasks)) {
 		tasksByProject.set(projectId, new Map(list.map((t) => [t.id, t])));
 	}
+	const blocked = new Set(blockedIds);
+	const claimed = new Set(claimedIds);
 	return {
 		engineState: { status: "idle", ...engineState },
 		tasksByProject,
 		projectStore,
+		isTaskBlocked: (projectId, taskId) => ({
+			blocked: blocked.has(`${projectId}:${taskId}`),
+			blockers: blocked.has(`${projectId}:${taskId}`) ? ["base"] : [],
+			hasCycle: false,
+		}),
+		claimStore: {
+			describe: (taskId) =>
+				claimed.has(String(taskId)) ? { runnerId: "r-1" } : null,
+		},
 		getTask(projectId, taskId) {
 			return tasksByProject.get(projectId)?.get(taskId) || null;
 		},
@@ -187,18 +212,93 @@ describe("The Work: resolveEngineOwnerSnapshot", () => {
 });
 
 describe("The Work: countOpenTasksGlobal", () => {
-	it("counts open tasks across projects, excluding completed and done", () => {
+	it("counts only tasks waiting for pickup across projects", () => {
 		const store = makeStore({
+			projectStore: countProjectStore(),
 			tasks: {
 				p1: [
-					{ id: "a", status: "in_stage" },
-					{ id: "b", status: "completed" },
-					{ id: "c", status: "done" },
+					{ id: "a", status: "in_stage", currentStageId: "1" },
+					{ id: "b", status: "completed", currentStageId: "1" },
+					{ id: "c", status: "done", currentStageId: "1" },
 				],
-				p2: [{ id: "d", status: "running_agent" }],
+				p2: [{ id: "d", status: "in_stage", currentStageId: "1" }],
 			},
 		});
 		expect(countOpenTasksGlobal(store)).toBe(2);
+	});
+
+	it.each([
+		"running_agent",
+		"running_ci",
+		"running_merge",
+		"advancing",
+		"paused",
+		"checkpoint",
+		"idle",
+		"waiting_human",
+		"failed",
+		"cancelled",
+	])("excludes non-waiting status %s from the depth", (status) => {
+		const store = makeStore({
+			projectStore: countProjectStore(),
+			tasks: {
+				p1: [
+					{ id: "waiting", status: "in_stage", currentStageId: "1" },
+					{ id: "other", status, currentStageId: "1" },
+				],
+			},
+		});
+		expect(countOpenTasksGlobal(store)).toBe(1);
+	});
+
+	it("excludes blocked, claimed, and human-stage tasks", () => {
+		const store = makeStore({
+			projectStore: countProjectStore([
+				{ id: "1", name: "Work", type: "agent" },
+				{ id: "2", name: "Gate", type: "human" },
+			]),
+			tasks: {
+				p1: [
+					{ id: "waiting", status: "in_stage", currentStageId: "1" },
+					{ id: "blocked", status: "in_stage", currentStageId: "1" },
+					{ id: "claimed", status: "in_stage", currentStageId: "1" },
+					{ id: "human", status: "in_stage", currentStageId: "2" },
+				],
+			},
+			blockedIds: ["p1:blocked"],
+			claimedIds: ["claimed"],
+		});
+		expect(countOpenTasksGlobal(store)).toBe(1);
+	});
+
+	it("excludes non-resumable interruptions but counts resumable ones", () => {
+		const store = makeStore({
+			projectStore: countProjectStore([
+				{ id: "1", name: "Work", type: "agent" },
+				{ id: "2", name: "Gate", type: "human" },
+			]),
+			tasks: {
+				p1: [
+					{ id: "resumable", status: "interrupted", currentStageId: "1" },
+					{ id: "parked", status: "interrupted", currentStageId: "2" },
+				],
+			},
+		});
+		expect(countOpenTasksGlobal(store)).toBe(1);
+	});
+
+	it("excludes the active engine owner while the engine runs it", () => {
+		const store = makeStore({
+			projectStore: countProjectStore(),
+			engineState: { status: "running", activeTaskId: "a" },
+			tasks: {
+				p1: [
+					{ id: "a", status: "in_stage", currentStageId: "1" },
+					{ id: "b", status: "in_stage", currentStageId: "1" },
+				],
+			},
+		});
+		expect(countOpenTasksGlobal(store)).toBe(1);
 	});
 
 	it("returns 0 for missing or empty maps", () => {
@@ -208,9 +308,14 @@ describe("The Work: countOpenTasksGlobal", () => {
 
 	it("ignores null or corrupt entries instead of inflating the depth", () => {
 		const tasksByProject = new Map([
-			["p1", new Map([["a", null], ["b", undefined], ["c", { id: "c", status: "in_stage" }]])],
+			["p1", new Map([["a", null], ["b", undefined], ["c", { id: "c", status: "in_stage", currentStageId: "1" }]])],
 		]);
-		expect(countOpenTasksGlobal({ tasksByProject })).toBe(1);
+		expect(
+			countOpenTasksGlobal({
+				tasksByProject,
+				projectStore: countProjectStore(),
+			}),
+		).toBe(1);
 	});
 
 	it("returns 0 rather than throwing when iteration fails", () => {
@@ -227,13 +332,40 @@ describe("The Work: countOpenTasksGlobal", () => {
 
 	it("keeps counts from readable maps when one project map is unreadable", () => {
 		const tasksByProject = new Map([
-			["p1", new Map([["a", { id: "a", status: "in_stage" }]])],
+			["p1", new Map([["a", { id: "a", status: "in_stage", currentStageId: "1" }]])],
 			["p2", {
 				values: () => {
 					throw new Error("down");
 				},
 			}],
 		]);
-		expect(countOpenTasksGlobal({ tasksByProject })).toBe(1);
+		expect(
+			countOpenTasksGlobal({
+				tasksByProject,
+				projectStore: countProjectStore(),
+			}),
+		).toBe(1);
+	});
+
+	it("stays a read-only in-memory scan: no disk rescan, no cache mutation", () => {
+		const store = makeStore({
+			projectStore: countProjectStore(),
+			tasks: {
+				p1: [{ id: "a", status: "in_stage", currentStageId: "1" }],
+			},
+		});
+		store.listTasks = () => {
+			throw new Error("must never trigger a disk rescan");
+		};
+		const sizesBefore = Array.from(store.tasksByProject.entries()).map(
+			([id, map]) => [id, map.size],
+		);
+		expect(countOpenTasksGlobal(store)).toBe(1);
+		expect(
+			Array.from(store.tasksByProject.entries()).map(([id, map]) => [
+				id,
+				map.size,
+			]),
+		).toEqual(sizesBefore);
 	});
 });
