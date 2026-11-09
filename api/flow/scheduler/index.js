@@ -25,6 +25,7 @@ export { hasRehydrationMarkers } from './hasRehydrationMarkers.js';
 export { isAutoResumableWithReason } from './isAutoResumableWithReason.js';
 export { isAutoResumable } from './isAutoResumable.js';
 export { isSchedulerRunnable } from './isSchedulerRunnable.js';
+export { isWaitingForPickup } from './isWaitingForPickup.js';
 export { countHumanPendingTasks } from './countHumanPendingTasks.js';
 export { describeQueueWedge } from './describeQueueWedge.js';
 export { resolveIdleWedge } from './resolveIdleWedge.js';

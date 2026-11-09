@@ -30,6 +30,7 @@ source of truth. This file intentionally lists only high-impact changes.
 
 ### Fixed
 
+- Bottom-bar queue number counts only tasks waiting to be picked up (never running, blocked, paused, failed, cancelled, or waiting-human tasks), and the queue popup lists exactly that same set in dispatch order (task 6d3c9317).
 - Survey answers survive later Runner stages: Runner task-file shipments merge into the backend survey (new rounds land, saved answers are kept) instead of overwriting them with stale worktree copies; the question-me prompt also names the exact backend-resolved file for alias/extension-less configs (task fbcaef1d).
 - Bottom (now-playing) bar on mobile is horizontally scrollable, so all runners are reachable instead of only the first (task a654a254).
 - Pipeline releases published from the deploy tip worktree are synced back to the primary `dist/` and verified there; a stranded release now fails Publish loudly, and the Update stage verifies the installed commit against the last-publish pointer instead of reporting "already current" (task a654a254).

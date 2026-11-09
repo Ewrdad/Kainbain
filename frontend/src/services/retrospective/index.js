@@ -19,7 +19,7 @@ export function retrospectiveRequests(request) {
   return {
     retrospectiveChat: (
       projectId,
-      { messages, taskIds, harness, model, strictTaskIds, turnId } = {},
+      { messages, taskIds, harness, model, strictTaskIds, turnId, runnerId } = {},
       { timeoutMs = NO_REQUEST_TIMEOUT, signal } = {},
     ) =>
       request(
@@ -34,6 +34,7 @@ export function retrospectiveRequests(request) {
             model,
             strictTaskIds,
             ...(turnId ? { turnId } : {}),
+            ...(runnerId ? { runnerId } : {}),
           }),
         },
         { timeoutMs, signal },

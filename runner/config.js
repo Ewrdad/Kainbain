@@ -120,6 +120,10 @@ export function loadRunnerConfig(env = process.env) {
 	const approvalTimeoutMs = Number.parseInt(str("KAINBAIN_RUNNER_APPROVAL_TIMEOUT_MS", "300000"), 10);
 	const dispatchPollMs = Number.parseInt(str("KAINBAIN_RUNNER_DISPATCH_POLL_MS", "5000"), 10);
 	const dispatchIdleLimit = Number.parseInt(str("KAINBAIN_RUNNER_DISPATCH_IDLE_LIMIT", "3"), 10);
+	// Impromptu T0 channel (ADR 0014): idle runners also poll for read-only
+	// jobs (retrospective chat turns) when a dispatch iteration yields no
+	// task work. `=0` opts out (task work only).
+	const impromptu = str("KAINBAIN_RUNNER_IMPROMPTU", "1") !== "0";
 
 	return {
 		backendUrl,
@@ -154,6 +158,7 @@ export function loadRunnerConfig(env = process.env) {
 		projectId,
 		taskId,
 		dispatch,
+		impromptu,
 		projectIds: str("KAINBAIN_RUNNER_PROJECTS", "")
 			.split(",")
 			.map((p) => p.trim())

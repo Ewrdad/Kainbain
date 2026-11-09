@@ -16,6 +16,7 @@ import {
   isAutoIterationInProgress,
   isTaskCompleted,
   isTaskFailed,
+  isWaitingForPickupTask,
   resolveTimelineStageLabel,
   selectDisplayTimeline,
   selectStagePresentation,
@@ -49,6 +50,47 @@ describe('taskFormatters', () => {
     it('handles null or undefined tasks safely', () => {
       expect(isTaskCompleted(null)).toBe(false);
       expect(isTaskCompleted(undefined)).toBe(false);
+    });
+  });
+
+  describe('isWaitingForPickupTask', () => {
+    it('treats a plain in_stage task as waiting', () => {
+      expect(isWaitingForPickupTask({ status: 'in_stage' })).toBe(true);
+      expect(isWaitingForPickupTask({ status: 'in_stage', blockedBy: [] })).toBe(true);
+    });
+
+    it.each([
+      'completed',
+      'done',
+      'failed',
+      'cancelled',
+      'waiting_human',
+      'paused',
+      'advancing',
+      'checkpoint',
+      'idle',
+      'running',
+      'running_agent',
+      'running_ci',
+      'running_merge',
+      'interrupted',
+    ])('excludes status %s from the waiting set', (status) => {
+      expect(isWaitingForPickupTask({ status })).toBe(false);
+    });
+
+    it('excludes tasks with declared prerequisites or a scheduler block verdict', () => {
+      expect(isWaitingForPickupTask({ status: 'in_stage', blockedBy: ['a'] })).toBe(false);
+      expect(isWaitingForPickupTask({ status: 'in_stage', isBlocked: true })).toBe(false);
+      expect(
+        isWaitingForPickupTask({ status: 'in_stage', isBlocked: false, blockedBy: [] }),
+      ).toBe(true);
+    });
+
+    it('fails open for unknown statuses but never for missing tasks', () => {
+      expect(isWaitingForPickupTask({ status: 'pending' })).toBe(true);
+      expect(isWaitingForPickupTask({})).toBe(true);
+      expect(isWaitingForPickupTask(null)).toBe(false);
+      expect(isWaitingForPickupTask(undefined)).toBe(false);
     });
   });
 

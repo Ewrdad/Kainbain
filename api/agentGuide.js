@@ -337,6 +337,27 @@ export const ENDPOINTS = [
 	},
 	{
 		method: "POST",
+		path: "/runners/impromptu/poll",
+		purpose:
+			"Runner-only (ADR 0014): idle Runners poll for the oldest queued T0 read-only impromptu job they match (retrospective chat turns). 200 { assigned: true, job } or { assigned: false, code: 'NO_IMPROMPTU_WORK' }. Requires the x-runner-credential header.",
+		body: {},
+	},
+	{
+		method: "POST",
+		path: "/runners/impromptu/:jobId/progress",
+		purpose:
+			"Runner-only (ADR 0014): stream an impromptu job delta (fanned out as CHAT_PROGRESS frames). Requires the x-runner-credential header.",
+		body: { seq: "number (required)", delta: "string (required)" },
+	},
+	{
+		method: "POST",
+		path: "/runners/impromptu/:jobId/complete",
+		purpose:
+			"Runner-only (ADR 0014): settle one impromptu job (outcome completed|failed). Requires the x-runner-credential header.",
+		body: { outcome: "string (required)", output: "string (optional)", error: "string (optional)" },
+	},
+	{
+		method: "POST",
 		path: "/runners/integration/acquire",
 		purpose:
 			"Runner-only: lease the head queued integration for a project + target branch (200 leased + executionId/epoch, 200 unassigned when the queue is empty, 409 INTEGRATION_BUSY when a live lease is held). Requires the x-runner-credential header.",
@@ -462,7 +483,7 @@ export const ENDPOINTS = [
 		method: "PATCH",
 		path: "/runners/:id/config",
 		purpose:
-			"Update one Runner's operator-owned configuration (partial object: displayName, availableTools, jobTypes, directories, projectScope). Heartbeat facts are never touched. 400 on invalid fields, 404 on unknown Runner. Dispatch enforces the tool filter, runsCi/runsMerges, and the project scope at claim time (TOOL_DISABLED / JOB_TYPE_DISABLED / PROJECT_SCOPE miss reasons); runsImpromptu is a recorded preference — live steers still ride the owning Runner's heartbeat.",
+			"Update one Runner's operator-owned configuration (partial object: displayName, availableTools, jobTypes, directories, projectScope). Heartbeat facts are never touched. 400 on invalid fields, 404 on unknown Runner. Dispatch enforces the tool filter, runsCi/runsMerges/runsImpromptu, and the project scope at claim time (TOOL_DISABLED / JOB_TYPE_DISABLED / PROJECT_SCOPE miss reasons); live steers still ride the owning Runner's heartbeat.",
 		body: {
 			displayName: "string (optional, null resets)",
 			jobTypes: "object (optional, boolean runsCi/runsMerges/runsImpromptu)",

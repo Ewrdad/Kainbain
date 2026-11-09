@@ -974,6 +974,141 @@ describe("runDispatchLoop", () => {
 		assert.ok(fs.existsSync(path.join(config.workRoot, "kb-t1")));
 	});
 
+	it("serves one impromptu job on an idle iteration, then idles out", async () => {
+		const repo = localRepo();
+		const config = loopConfig();
+		dirs.push(config.workRoot, repo);
+		let impromptuPolls = 0;
+		const completed = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => ({ assigned: false, code: "NO_CLAIMABLE_TASKS" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			impromptuPoll: async () => {
+				impromptuPolls += 1;
+				return impromptuPolls === 1
+					? {
+							assigned: true,
+							job: {
+								jobId: "imp-1",
+								projectId: "p1",
+								kind: "retrospective-chat",
+								prompt: "why did t1 fail?",
+								harness: "mock",
+								model: null,
+								timeoutMs: 60000,
+								turnId: "t1",
+							},
+						}
+					: { assigned: false, code: "NO_IMPROMPTU_WORK" };
+			},
+			impromptuProgress: async () => ({ ok: true }),
+			impromptuComplete: async (args) => {
+				completed.push(args);
+				return { ok: true };
+			},
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		// The idle iteration served impromptu work, never task dispatch.
+		assert.equal(out.assignments, 0);
+		assert.equal(out.idle, true);
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].outcome, "completed");
+		assert.equal(completed[0].output, "done");
+		assert.ok(!client.calls.includes("claim"), "impromptu work never claims a task");
+		assert.ok(!client.calls.includes("interrupt"));
+		// The per-job scratch dir is removed afterwards.
+		assert.equal(fs.existsSync(path.join(config.workRoot, "impromptu-imp-1")), false);
+	});
+
+	it("keeps polling dispatch when impromptu polling is refused or fails", async () => {
+		const repo = localRepo();
+		const config = loopConfig();
+		dirs.push(config.workRoot, repo);
+		const warnings = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => ({ assigned: false, code: "NO_CLAIMABLE_TASKS" }),
+			impromptuPoll: async () => {
+				const err = new Error("boom");
+				err.statusCode = 500;
+				throw err;
+			},
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: (message) => warnings.push(String(message)) },
+		});
+		assert.equal(out.idle, true);
+		assert.ok(
+			warnings.some((message) => message.includes("Impromptu poll failed")),
+			"transport failures are logged, never thrown",
+		);
+	});
+
+	it("logs a failed impromptu job and continues with dispatch", async () => {
+		const repo = localRepo();
+		const config = loopConfig();
+		dirs.push(config.workRoot, repo);
+		let impromptuPolls = 0;
+		const warnings = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => ({ assigned: false, code: "NO_CLAIMABLE_TASKS" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			impromptuPoll: async () => {
+				impromptuPolls += 1;
+				return impromptuPolls === 1
+					? {
+							assigned: true,
+							job: {
+								jobId: "imp-9",
+								projectId: "p1",
+								kind: "retrospective-chat",
+								prompt: "hi",
+								harness: "mock",
+								model: null,
+								timeoutMs: 60000,
+								turnId: null,
+							},
+						}
+					: { assigned: false, code: "NO_IMPROMPTU_WORK" };
+			},
+			impromptuProgress: async () => ({ ok: true }),
+			impromptuComplete: async () => ({ ok: true }),
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			// The harness fails every prompt: the job reports failed, the
+			// loop logs it and keeps polling dispatch instead of crashing.
+			loadHarness: async () => ({
+				async createSession() {
+					return {
+						subscribe: () => () => {},
+						prompt: async () => {
+							throw new Error("Model exploded");
+						},
+						dispose: async () => {},
+					};
+				},
+			}),
+			logger: { log: () => {}, warn: (message) => warnings.push(String(message)) },
+		});
+		assert.equal(out.idle, true);
+		assert.ok(
+			warnings.some((message) => message.includes("imp-9") && message.includes("failed")),
+			"job failure is logged with its job id",
+		);
+	});
+
 	it("serves the dispatch answer's required model, never a substitution", async () => {
 		const repo = localRepo();
 		const config = loopConfig({ model: "m-pin", models: ["m-pin", "m-want"] });

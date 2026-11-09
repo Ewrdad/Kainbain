@@ -322,6 +322,12 @@ export function workdirMtimeMs(dir) {
  *   branch before the workdir is removed: dirty files are committed (with a
  *   repo-local identity, like the reuse path) and unpushed commits already
  *   live on the branch, so `git worktree remove` afterwards loses nothing.
+ *   The residue is committed on the CURRENT checkout and the recovery branch
+ *   is pointed at that commit — never `git checkout` the recovery branch
+ *   first: a dirty index makes that fail with "you need to resolve your
+ *   current index first", which stranded the workdir, made every eviction
+ *   fail, and tripped WORKTREE_CAP_REACHED in a loop. The task branch is
+ *   reset back afterwards, so its tip is unchanged.
  *   Resolves to the recovery branch name, or null when the workdir was
  *   clean and fully pushed (nothing to preserve).
  * @example await preserveEvictedWorkdir('/w/kb-t1') => 'kb-recovery/t1/2026-…'
@@ -349,19 +355,24 @@ export async function preserveEvictedWorkdir(workdir) {
 	if (!dirty && ahead <= 0) return null;
 	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 	const recoveredTo = `kb-recovery/${slug}/${stamp}`;
-	if (branch && branch !== "HEAD") {
-		await runGit(workdir, ["branch", recoveredTo, branch]);
-	} else {
-		await runGit(workdir, ["branch", recoveredTo]);
+	if (!dirty) {
+		// Only unpushed commits to preserve: they already live on the branch,
+		// so just name a recovery ref at the current tip.
+		await runGit(workdir, ["branch", recoveredTo, branch || "HEAD"]);
+		return recoveredTo;
 	}
-	if (dirty) {
-		await runGit(workdir, ["checkout", recoveredTo]);
-		await runGit(workdir, ["add", "-A"]);
-		await runGit(workdir, [
-			"-c", "user.name=KainBain Runner",
-			"-c", "user.email=kainbain-runner@local",
-			"commit", "-m", `recovery: unpushed work parked before eviction (${path.basename(workdir)})`,
-		]);
+	const headBefore = (await runGit(workdir, ["rev-parse", "HEAD"])).stdout.trim();
+	await runGit(workdir, ["add", "-A"]);
+	await runGit(workdir, [
+		"-c", "user.name=KainBain Runner",
+		"-c", "user.email=kainbain-runner@local",
+		"commit", "-m", `recovery: unpushed work parked before eviction (${path.basename(workdir)})`,
+	]);
+	// Recovery branch captures the residue commit; then put the task branch
+	// back where it was (soft reset keeps the index/worktree untouched).
+	await runGit(workdir, ["branch", recoveredTo]);
+	if (branch && branch !== "HEAD" && headBefore) {
+		await runGit(workdir, ["reset", "--soft", headBefore]).catch(() => {});
 	}
 	return recoveredTo;
 }
@@ -522,6 +533,73 @@ export async function reapTaskWorkdirIfTerminal({ client, projectId, taskId, wor
 		return gone ? "reaped" : "skipped";
 	} catch {
 		return "skipped";
+	}
+}
+
+/***
+ * MARK: reapTerminalOrphanWorkdirs
+ * @description Fleet-wide sweep: reaps every orphan workdir whose task is
+ *   terminal (backend says `completed`) or gone entirely, so finished tasks
+ *   release their WORKTREE_CAP slots instead of wedging new claims for the
+ *   full staleness window. The per-assignment reap only covers the task the
+ *   Runner just ran; tasks finished by another Runner or across a restart
+ *   were never reaped, which is what refilled the cap and turned every new
+ *   claim into a WORKTREE_CAP_REACHED interrupt loop. Residue is parked on
+ *   `kb-recovery/*` first, exactly like eviction. Total: never throws — a
+ *   backend outage aborts the sweep and deletes nothing.
+ * @example await reapTerminalOrphanWorkdirs({ client, workRoot: '/w' }) => ['/w/kb-t1']
+ * @param {Object} opts
+ * @param {Object} opts.client - Runner backend client (`listProjects`, `getTask`).
+ * @param {string} opts.workRoot - Runner work root.
+ * @returns {Promise<string[]>} Reaped workdir paths.
+ ***/
+export async function reapTerminalOrphanWorkdirs({ client, workRoot } = {}) {
+	const reaped = [];
+	try {
+		const orphans = listOrphanWorkdirs(workRoot, null);
+		if (!orphans.length) return reaped;
+		let projects = [];
+		try {
+			projects = await client.listProjects();
+		} catch {
+			return reaped; // backend unreadable: an outage must never delete work
+		}
+		if (!Array.isArray(projects)) return reaped;
+		for (const dir of orphans) {
+			try {
+				const taskId = path.basename(dir).replace(/^kb-/, "");
+				let found = false;
+				let terminal = false;
+				for (const project of projects) {
+					try {
+						const task = await client.getTask(project.id, taskId);
+						if (task) {
+							found = true;
+							terminal = String(task?.status || "").toLowerCase() === "completed";
+							break;
+						}
+					} catch (err) {
+						if (err?.statusCode === 404) continue; // not in this project
+						return reaped; // partial read: stop, an outage deletes nothing
+					}
+				}
+				// Not found in any project = the task is gone: a true orphan.
+				if (!found || terminal) {
+					try {
+						await preserveEvictedWorkdir(dir);
+					} catch {
+						// Preservation is best-effort; removal still reclaims the slot.
+					}
+					const gone = await removeTaskWorkdir({ workRoot, dir });
+					if (gone) reaped.push(dir);
+				}
+			} catch {
+				// One bad workdir must not abort the sweep.
+			}
+		}
+		return reaped;
+	} catch {
+		return reaped;
 	}
 }
 
