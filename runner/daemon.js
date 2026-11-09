@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, resolveRunnerDocsDirName, touchWorkdir } from "./project.js";
+import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, reapTerminalOrphanWorkdirs, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, resolveRunnerDocsDirName, touchWorkdir } from "./project.js";
 import { RunnerGitError } from "./project.js";
 import { runHarnessStage } from "./harness.js";
 import { runImpromptuJob } from "./impromptu.js";
@@ -1878,6 +1878,27 @@ export async function runDispatchLoop({
 	const pollMs = config.dispatchPollMs ?? 5000;
 	let assignments = 0;
 	let polls = 0;
+	// Terminal-task workdir sweep: the per-assignment reap only covers the
+	// task this Runner just ran, so workdirs of tasks finished by another
+	// Runner (or across a restart) lingered until the 30-min staleness
+	// window and refilled WORKTREE_CAP — wedging every new claim into a
+	// WORKTREE_CAP_REACHED interrupt loop. Sweep at startup and then about
+	// once a minute (12 polls at the default 5s). Best-effort: never throws,
+	// and a backend outage reaps nothing.
+	const sweepEveryPolls = 12;
+	const sweepTerminalWorkdirs = async (why) => {
+		try {
+			const reaped = await reapTerminalOrphanWorkdirs({ client, workRoot: config.workRoot });
+			if (reaped.length) {
+				logger.log(
+					`Workdir sweep (${why}): reaped ${reaped.length} terminal workdir(s): ${reaped.map((d) => path.basename(d)).join(", ")}`,
+				);
+			}
+		} catch (err) {
+			logger.warn?.(`Workdir sweep (${why}) failed: ${err?.message || err}`);
+		}
+	};
+	await sweepTerminalWorkdirs("startup");
 	try {
 		for (let idle = 0; ;) {
 			let answer;
@@ -1929,6 +1950,7 @@ export async function runDispatchLoop({
 				}
 			}
 			polls += 1;
+			if (polls % sweepEveryPolls === 0) await sweepTerminalWorkdirs("periodic");
 			if (!answer.assigned) {
 				// A busy integration slot is work waiting, not idleness:
 				// back off WITHOUT consuming idle budget, like fleet
