@@ -20,7 +20,10 @@ import {
  *   - the Dynamic Context Tokens block shows in edit, hides in preview
  *     (task 20670b9c);
  *   - click-to-copy on the task key copies the full task id without
- *     breaking neighbouring click targets (task fa5f7234).
+ *     breaking neighbouring click targets (task fa5f7234);
+ *   - the inspector width is user-adjustable via the left-edge splitter,
+ *     keyboard nudging, and double-click reset, and persists to the
+ *     `taskInspectorWidth` UI preference.
  * The error-length cap + Show more guard lives in task-errors.spec.js
  * (it needs its own failing-CI fixture project).
  */
@@ -111,6 +114,77 @@ test.describe("Task inspector core behaviors", () => {
 		await expect(
 			page.getByRole("complementary", { name: "Task Inspector" }),
 		).toBeVisible();
+		await closeTaskInspector(page);
+	});
+
+	test("inspector width adjusts via the splitter, keyboard, and persists", async ({
+		page,
+		request,
+	}) => {
+		const projectId = await activeProjectId(request);
+		const goal = `Inspector resize ${Date.now()}`;
+		await createTaskViaApi(request, projectId, goal);
+		await page.reload();
+		await waitForAppReadyOnProject(page);
+		await waitForTaskVisible(page, goal);
+
+		const inspector = await openTaskInspector(page, goal);
+		const splitter = inspector.getByRole("separator", {
+			name: "Resize Task Inspector",
+		});
+		await expect(splitter).toBeVisible();
+
+		// Accessibility contract: vertical separator with live min/max/value.
+		await expect(splitter).toHaveAttribute("aria-orientation", "vertical");
+		await expect(splitter).toHaveAttribute("aria-valuemin", "320");
+		await expect(splitter).toHaveAttribute("aria-valuemax", "2000");
+
+		const widthOf = () =>
+			inspector.evaluate((el) => el.getBoundingClientRect().width);
+		const before = await widthOf();
+		expect(before).toBeGreaterThan(300);
+
+		// Drag the left-edge handle leftwards to widen the panel. Width
+		// tracks the drag synchronously: the panel carries no
+		// duration-*/transition-* classes (transition-property defaults to
+		// `all`, so any duration would lag the panel behind the pointer).
+		const box = await splitter.boundingBox();
+		const startX = box.x + box.width / 2;
+		const startY = box.y + box.height / 2;
+		await page.mouse.move(startX, startY);
+		await page.mouse.down();
+		await page.mouse.move(startX - 120, startY, { steps: 10 });
+		await page.mouse.up();
+
+		const widened = await widthOf();
+		expect(widened).toBeGreaterThan(before + 80);
+		// The inline style is the direct contract: layout follows it with no
+		// transition in between.
+		expect(await inspector.evaluate((el) => el.style.width)).toBe(
+			`${Math.round(widened)}px`,
+		);
+
+		// The new width persists to the UI preferences in localStorage.
+		const stored = await page.evaluate(() => {
+			try {
+				return JSON.parse(
+					window.localStorage.getItem("kainbain_ui_preferences") || "{}",
+				).taskInspectorWidth;
+			} catch {
+				return null;
+			}
+		});
+		expect(stored).toBeGreaterThan(before);
+		await expect(splitter).toHaveAttribute("aria-valuenow", String(stored));
+
+		// Keyboard nudging grows the panel; double-click resets to default.
+		await splitter.focus();
+		await page.keyboard.press("ArrowLeft");
+		expect(await widthOf()).toBeGreaterThan(widened);
+		await splitter.dblclick();
+		const reset = await widthOf();
+		expect(Math.abs(reset - 560)).toBeLessThanOrEqual(1);
+
 		await closeTaskInspector(page);
 	});
 });

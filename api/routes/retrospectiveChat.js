@@ -9,8 +9,6 @@
  * @example runChatTurn({ session, promptText, timeoutMs }) => { replyText, output }
  ***/
 
-import { resolveChatReplyText } from "./retrospective.js";
-
 /** Character ceiling for the captured assistant-output tail (see runChatTurn). */
 export const CHAT_OUTPUT_TAIL_MAX_CHARS = 2000;
 
@@ -38,6 +36,31 @@ export function normalizeTimeoutMs(timeoutMs) {
 	if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs)) return 0;
 	if (timeoutMs <= 0) return 0;
 	return timeoutMs;
+}
+
+/***
+ * MARK: resolveChatReplyText
+ * @description Normalizes the harness `prompt()` result to reply text: a
+ *   string result wins, otherwise the session's last assistant text, else an
+ *   empty string (the turn still reports success with no suggestions).
+ *   Lives here (not on the route) so the Runner reuses the exact same
+ *   settle rule as the backend helper without importing the route.
+ * @example resolveChatReplyText(session, 'hi') => 'hi'
+ * @param {Object} session - The ephemeral harness session.
+ * @param {unknown} result - The `prompt()` resolution value.
+ * @returns {Promise<string>} The reply text.
+ ***/
+export async function resolveChatReplyText(session, result) {
+	if (typeof result === "string") return result;
+	try {
+		if (session && typeof session.getLastAssistantText === "function") {
+			const text = await session.getLastAssistantText();
+			if (typeof text === "string" && text) return text;
+		}
+	} catch {
+		// Fall through to the empty reply.
+	}
+	return "";
 }
 
 /***

@@ -189,6 +189,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		runnerRegistry,
 		claimStore,
 		steerStore,
+		impromptuStore,
 		executionLedger,
 		integrationQueue,
 		taskStore,
@@ -533,7 +534,13 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// via GET /runners/integration; global lease counters here) so a
 		// stuck merge queue is visible before tasks pile up behind it.
 		const integration = integrationQueue ? integrationQueue.snapshot() : {};
-		return { ...executionLedger.snapshot(), liveAssignments, scheduler, integration };
+		// Impromptu T0 channel (ADR 0014, O1): queue counters only, never
+		// task-like rows — the channel stays observable without pretending
+		// its jobs are tasks.
+		const impromptu = impromptuStore
+			? impromptuStore.snapshot()
+			: { queued: 0, claimed: 0, completed: 0, failed: 0 };
+		return { ...executionLedger.snapshot(), liveAssignments, scheduler, integration, impromptu };
 	});
 
 	app.get("/runners/models/catalogue", async () => {

@@ -39,7 +39,9 @@ Disabled buttons name what they need in their tooltip.
 
 ## Chat
 
-Chat with an AI agent about the selected tasks. Click **Use selection (N)** to pin the current selection as chat context (remove chips individually to narrow it), pick a harness and model, and send. Each turn is stateless — the page holds the transcript and the server folds it plus the task context into one prompt.
+Chat with an AI agent about the selected tasks — this is how you quiz tasks: ask why a task failed, compare stages across tasks, or look for trends. Click **Use selection (N)** to pin the current selection as chat context (remove chips individually to narrow it), pick a harness and model, and send. Each turn is stateless — the page holds the transcript and the server folds it plus the task context into one prompt.
+
+Each turn is dispatched to an idle **Runner** as a read-only impromptu (T0) job on a queue separate from the main task queue (ADR 0014) — it never becomes a task, never touches git, and may only read files and query the API. While it runs, the working card streams the Runner's live output; the settled reply is the done signal. If no capable Runner is online you get a "no runner available" notice (check Settings › Runners); the API also accepts a `runnerId` field to pin a turn to one specific Runner.
 
 When the agent proposes follow-up work it returns ticket drafts as suggestion cards: **Confirm ticket** files the ticket on the board, **Edit** adjusts the title and goal first. Nothing is ever created without your Confirm click.
 
@@ -47,7 +49,7 @@ When the agent proposes follow-up work it returns ticket drafts as suggestion ca
 
 Quick actions remain disabled until at least one task is pinned, but the chat still works with no selection. The agent may list recent jobs itself (bounded to recent rows via the task API) and cite the task ids it inspects — so for a broad review, leave nothing selected and ask for general trends across recent jobs, e.g. "What are the general trends across recent jobs?"
 
-Some harnesses can't chat — if yours can't, you'll see a notice instead of a reply. Switch to a chat-capable harness; histories and quick actions keep working regardless.
+If the chosen harness/model has no capable Runner online, the turn fails fast with a "no runner available" notice instead of hanging — pick another harness/model or check Settings › Runners. Histories and quick actions keep working regardless.
 
 ## Chat reliability
 

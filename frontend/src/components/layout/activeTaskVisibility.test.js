@@ -250,6 +250,41 @@ test('universal single-task queue has depth one and no next task', () => {
   expect(hasNextTask).toBe(false);
 });
 
+test('fallback queue depth counts only tasks waiting for pickup', () => {
+  const { queueDepth, hasNextTask } = resolveUniversalNowPlaying({
+    tasks: [
+      { id: 'w1', status: 'in_stage', updatedAt: '2026-09-24T08:00:00.000Z' },
+      { id: 'w2', status: 'in_stage', updatedAt: '2026-09-24T09:00:00.000Z' },
+      { id: 'run', status: 'running_agent' },
+      { id: 'blocked', status: 'in_stage', blockedBy: ['w1'] },
+      { id: 'paused', status: 'paused' },
+      { id: 'failed', status: 'failed' },
+      { id: 'wh', status: 'waiting_human' },
+      { id: 'cancelled', status: 'cancelled' },
+      { id: 'int', status: 'interrupted' },
+      { id: 'done', status: 'completed' },
+    ],
+    engineState: { status: 'idle' },
+  });
+  expect(queueDepth).toBe(2);
+  expect(hasNextTask).toBe(true);
+});
+
+test('fallback depth is zero when nothing waits, even with open parked tasks', () => {
+  const { queueDepth, hasNextTask, candidateTask } = resolveUniversalNowPlaying({
+    tasks: [
+      { id: 'run', status: 'running_agent', updatedAt: '2026-09-24T09:00:00.000Z' },
+      { id: 'paused', status: 'paused', updatedAt: '2026-09-24T08:00:00.000Z' },
+    ],
+    engineState: { status: 'idle' },
+  });
+  expect(queueDepth).toBe(0);
+  expect(hasNextTask).toBe(false);
+  // Naming still falls back to the wider open set so parked work that needs
+  // attention keeps resolving a candidate.
+  expect(candidateTask?.id).toBe('run');
+});
+
 /***
  * MARK: project-independent owner tests
  * @description Pins the single-pipeline fix: the engine snapshot carries the
