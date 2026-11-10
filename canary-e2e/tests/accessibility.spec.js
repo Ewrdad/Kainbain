@@ -4,7 +4,6 @@ import {
   API_BASE,
   activeProjectId,
   createTaskViaApi,
-  reloadApp,
   resetProject,
   selectProject,
 } from "./helpers";
@@ -75,7 +74,7 @@ async function waitForAppShell(page) {
     // longer wait cannot heal — the failed loads must be re-issued. One
     // bounded reload+retry; a genuinely broken shell fails twice and stays
     // red. The file-wide 120 s timeout below gives the retry room to land.
-    await reloadApp(page, { waitUntil: "domcontentloaded" });
+    await page.reload({ waitUntil: "domcontentloaded" });
     await waitForAppShellOnce(page);
   }
 }
@@ -92,7 +91,7 @@ test.describe("Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness)", () => {
     // ensure the app's active project matches the API target.
     await selectProject(page, "Project A");
     await resetProject(page.request, await activeProjectId(page.request));
-    await reloadApp(page, { waitUntil: "domcontentloaded" });
+    await page.reload({ waitUntil: "domcontentloaded" });
     await waitForAppShell(page);
   });
 
@@ -258,7 +257,7 @@ test.describe("Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness)", () => {
     await page.request.patch(`${API_BASE}/tasks/${created.id}`, {
       data: { projectId, status: "waiting_human" },
     });
-    await reloadApp(page, { waitUntil: "domcontentloaded" });
+    await page.reload({ waitUntil: "domcontentloaded" });
     await waitForAppShell(page);
 
     // Open the inspector via the NowPlaying "Open active task" button.
@@ -284,7 +283,7 @@ test.describe("Accessibility (WCAG 2.2 AAA + WCAG 3.0 readiness)", () => {
     const goal = `Idle naming a11y ${Date.now()}`;
     await createTaskViaApi(page.request, projectId, goal, { stageId: "1" });
     await page.request.post(`${API_BASE}/compute/stop`, { data: { projectId } });
-    await reloadApp(page, { waitUntil: "domcontentloaded" });
+    await page.reload({ waitUntil: "domcontentloaded" });
     await waitForAppShell(page);
 
     await expect(page.getByText("No active task — engine idle")).toBeVisible({

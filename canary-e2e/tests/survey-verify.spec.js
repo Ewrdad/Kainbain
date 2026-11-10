@@ -12,9 +12,13 @@ import {
   waitForAppReady,
   selectProject,
   collectPageErrors,
+  collectConsoleErrors,
+  collectFailedRequests,
+  collectBadResponses,
+  localLoadFailures,
+  realConsoleErrors,
   DESKTOP_VIEWPORT,
   MOBILE_VIEWPORT,
-  reloadApp,
 } from "./helpers.js";
 
 const SHOTS = "/tmp/kb-survey-verify";
@@ -145,10 +149,9 @@ test.describe("question-me survey verification", () => {
 
   test("desktop: conditional reveal, notes, save, submit advances; file stays append-only", async ({ request, page }) => {
     const pageErrors = collectPageErrors(page);
-    const consoleErrors = [];
-    page.on("console", (msg) => {
-      if (msg.type() === "error") consoleErrors.push(msg.text());
-    });
+    const consoleErrors = collectConsoleErrors(page);
+    const failedRequests = collectFailedRequests(page);
+    const badResponses = collectBadResponses(page);
     const task = await makeTask(request, `survey full ${STAMP}`);
     // Agent-authored file present BEFORE the run (as if the agent wrote it).
     fs.mkdirSync(path.dirname(surveyPath(task.id)), { recursive: true });
@@ -231,7 +234,7 @@ test.describe("question-me survey verification", () => {
       data: { projectId: project.id, stageId: "ask", status: "waiting_human" },
     });
     // Same-URL goto is a no-op: reload so the page refetches the new round.
-    await reloadApp(page);
+    await page.reload();
     await expect(page.getByText("Encryption at rest?")).toBeVisible({ timeout: 15000 });
     await expect(page.getByText("Round 2")).toBeVisible();
     // Round 1 keeps its answers (radio still checked).
@@ -250,7 +253,10 @@ test.describe("question-me survey verification", () => {
     );
     expect(overflow).toBeLessThanOrEqual(1);
     expect(pageErrors).toEqual([]);
-    expect(consoleErrors).toEqual([]);
+    // Owned loads must succeed (with URLs on failure); console errors count
+    // only past generic resource-load noise (external font CDN blips).
+    expect(localLoadFailures({ failed: failedRequests, bad: badResponses })).toEqual([]);
+    expect(realConsoleErrors(consoleErrors)).toEqual([]);
   });
 
   test.describe("touch context", () => {
@@ -316,10 +322,9 @@ test.describe("question-me survey verification", () => {
 
   test("image questions: mock generation at park, pick one, chosen picture persisted", async ({ request, page }) => {
     const pageErrors = collectPageErrors(page);
-    const consoleErrors = [];
-    page.on("console", (msg) => {
-      if (msg.type() === "error") consoleErrors.push(msg.text());
-    });
+    const consoleErrors = collectConsoleErrors(page);
+    const failedRequests = collectFailedRequests(page);
+    const badResponses = collectBadResponses(page);
     // Own project: the shared fixture parks with image generation off (none).
     const imgCwd = fs.mkdtempSync(path.join(os.tmpdir(), "kb-survey-img-proj-"));
     const imgProjectName = `Survey Images ${STAMP}`;
@@ -429,7 +434,11 @@ test.describe("question-me survey verification", () => {
       expect(finalDoc).toContain("## Chosen designs");
       expect(finalDoc).toContain(`assets/${chosenName}`);
       expect(pageErrors).toEqual([]);
-      expect(consoleErrors).toEqual([]);
+      // Owned loads (including the survey pictures) must succeed, with URLs
+      // on failure; console errors count only past generic resource-load
+      // noise (external font CDN blips).
+      expect(localLoadFailures({ failed: failedRequests, bad: badResponses })).toEqual([]);
+      expect(realConsoleErrors(consoleErrors)).toEqual([]);
     } finally {
       await request.delete(`${API_BASE}/projects/${imgProject.id}`).catch(() => {});
       await request.post(`${API_BASE}/projects/${project.id}/activate`).catch(() => {});

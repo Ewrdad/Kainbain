@@ -5,7 +5,6 @@ import {
 	createTaskViaApi,
 	listTasks,
 	projectStages,
-	reloadApp,
 	resetProject,
 	stopEngine,
 	waitForAppReadyOnProject,
@@ -173,7 +172,7 @@ test.describe("Now Playing bar is one pipeline for all projects", () => {
 			`${API_BASE}/projects/${projectIdA}/workflows/${e2eWorkflowId}/switch`,
 		);
 		expect(switchRes.ok()).toBeTruthy();
-		await reloadApp(page);
+		await page.reload();
 		await waitForAppReadyOnProject(page, "Project A");
 		await expect(
 			page.getByRole("button", { name: "Select pipeline workflow" }),

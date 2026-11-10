@@ -2,7 +2,6 @@ import { test, expect } from "@playwright/test";
 import {
 	MOBILE_VIEWPORT,
 	SHORT_MOBILE_VIEWPORT,
-	reloadApp,
 	waitForAppReady,
 } from "./helpers";
 import { APP_URL } from "./urls";
@@ -202,7 +201,7 @@ test.describe("System Settings screen tab bar (task 5ad55777)", () => {
 			"aria-selected",
 			"true",
 		);
-		await reloadApp(page);
+		await page.reload();
 		await expect(screen).toBeVisible({ timeout: 10000 });
 		await expect(screen.getByRole("tab", { name: "Storage" })).toHaveAttribute(
 			"aria-selected",

@@ -3,7 +3,6 @@ import { API_URL } from "./urls";
 import {
 	activeProjectId,
 	boxesOverlap,
-	reloadApp,
 	waitForAppReadyOnProject,
 } from "./helpers";
 
@@ -87,7 +86,7 @@ test.describe("Footer overlap consistency", () => {
 			`${API_BASE}/projects/${projectId}/workflows/${e2eWorkflowId}/switch`,
 		);
 		expect(switchRes.ok()).toBeTruthy();
-		await reloadApp(page);
+		await page.reload();
 		await waitForAppReadyOnProject(page);
 		// The board must actually DISPLAY the throwaway workflow's pipeline —
 		// fail fast here (with a clear message) instead of timing out later on
@@ -202,7 +201,7 @@ test.describe("Footer overlap consistency", () => {
 				workflowId: e2eWorkflowId,
 			},
 		});
-		await reloadApp(page);
+		await page.reload();
 		await waitForAppReadyOnProject(page);
 
 		// Open the inspector by clicking the task card's goal text — the card's

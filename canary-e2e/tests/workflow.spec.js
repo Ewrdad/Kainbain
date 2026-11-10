@@ -3,7 +3,6 @@ import {
 	API_BASE,
 	activeProjectId,
 	projectStages,
-	reloadApp,
 	resetProject,
 	waitForAppReadyOnProject,
 } from "./helpers";
@@ -12,7 +11,7 @@ test.describe("Workflow E2E Tests", () => {
 	test.beforeEach(async ({ page }) => {
 		await waitForAppReadyOnProject(page);
 		await resetProject(page.request, await activeProjectId(page.request));
-		await reloadApp(page);
+		await page.reload();
 		await waitForAppReadyOnProject(page);
 	});
 
@@ -55,7 +54,7 @@ test.describe("Workflow E2E Tests", () => {
 		await page.request.post(`${API_BASE}/tasks`, {
 			data: { projectId, title: goal, goal, stageId: humanStage.id },
 		});
-		await reloadApp(page);
+		await page.reload();
 		await waitForAppReadyOnProject(page);
 
 		await expect(page.getByRole("button", { name: /Approve/i }).first()).toBeVisible({

@@ -6,7 +6,6 @@ import {
 	createTaskViaApi,
 	listTasks,
 	projectStages,
-	reloadApp,
 	resetProject,
 	waitForAppReadyOnProject,
 } from "./helpers";
@@ -28,7 +27,7 @@ async function latestTask(page, projectId) {
 async function submitGoal(page, goal) {
 	const projectId = await activeProjectId(page.request);
 	await createTaskViaApi(page.request, projectId, goal, { stageId: "1" });
-	await reloadApp(page, { waitUntil: "domcontentloaded" });
+	await page.reload({ waitUntil: "domcontentloaded" });
 	await waitForAppReadyOnProject(page);
 }
 
@@ -36,7 +35,7 @@ test.describe("Task Lifecycle E2E", () => {
 	test.beforeEach(async ({ page }) => {
 		await waitForAppReadyOnProject(page);
 		await resetProject(page.request, await activeProjectId(page.request));
-		await reloadApp(page, { waitUntil: "domcontentloaded" });
+		await page.reload({ waitUntil: "domcontentloaded" });
 		await waitForAppReadyOnProject(page);
 	});
 
@@ -190,7 +189,7 @@ test.describe("Task Lifecycle E2E", () => {
 					// Freshly revived page: nothing to reload, boot directly.
 					await page.goto(APP_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
 				} else {
-					await reloadApp(page, { waitUntil: "domcontentloaded", timeout: 30000 });
+					await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
 				}
 				console.log(`page.reload finished on attempt ${attempt}`);
 			} catch (err) {

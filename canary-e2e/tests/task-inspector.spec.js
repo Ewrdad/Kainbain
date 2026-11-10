@@ -5,7 +5,6 @@ import {
 	closeTaskInspector,
 	createTaskViaApi,
 	openTaskInspector,
-	reloadApp,
 	resetProject,
 	waitForAppReadyOnProject,
 	waitForTaskVisible,
@@ -39,7 +38,7 @@ test.describe("Task inspector core behaviors", () => {
 	test.beforeEach(async ({ page }) => {
 		await waitForAppReadyOnProject(page);
 		await resetProject(page.request, await activeProjectId(page.request));
-		await reloadApp(page);
+		await page.reload();
 		await waitForAppReadyOnProject(page);
 	});
 
@@ -50,7 +49,7 @@ test.describe("Task inspector core behaviors", () => {
 		const projectId = await activeProjectId(request);
 		const goal = `Inspector edit default ${Date.now()}`;
 		await createTaskViaApi(request, projectId, goal);
-		await reloadApp(page);
+		await page.reload();
 		await waitForAppReadyOnProject(page);
 		await waitForTaskVisible(page, goal);
 
@@ -69,7 +68,7 @@ test.describe("Task inspector core behaviors", () => {
 		const projectId = await activeProjectId(request);
 		const goal = `Inspector toggle ${Date.now()}`;
 		await createTaskViaApi(request, projectId, goal);
-		await reloadApp(page);
+		await page.reload();
 		await waitForAppReadyOnProject(page);
 		await waitForTaskVisible(page, goal);
 
@@ -99,7 +98,7 @@ test.describe("Task inspector core behaviors", () => {
 		const projectId = await activeProjectId(request);
 		const goal = `Inspector copy id ${Date.now()}`;
 		const created = await createTaskViaApi(request, projectId, goal);
-		await reloadApp(page);
+		await page.reload();
 		await waitForAppReadyOnProject(page);
 		await waitForTaskVisible(page, goal);
 
@@ -129,7 +128,7 @@ test.describe("Task inspector core behaviors", () => {
 		const projectId = await activeProjectId(request);
 		const goal = `Inspector resize ${Date.now()}`;
 		await createTaskViaApi(request, projectId, goal);
-		await reloadApp(page);
+		await page.reload();
 		await waitForAppReadyOnProject(page);
 		await waitForTaskVisible(page, goal);
 
@@ -205,7 +204,7 @@ test.describe("Task inspector core behaviors", () => {
 			const projectId = await activeProjectId(request);
 			const goal = `Inspector overlay ${Date.now()}`;
 			await createTaskViaApi(request, projectId, goal);
-			await reloadApp(page);
+			await page.reload();
 			await waitForAppReadyOnProject(page);
 			await waitForTaskVisible(page, goal);
 

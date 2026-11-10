@@ -2,7 +2,6 @@ import { test, expect } from "@playwright/test";
 import {
 	activeProjectId,
 	createTaskViaApi,
-	reloadApp,
 	resetProject,
 	waitForAppReadyOnProject,
 } from "../helpers";
@@ -38,7 +37,7 @@ async function resetState(page) {
 async function submitTask(page, goal) {
 	const projectId = await activeProjectId(page.request);
 	await createTaskViaApi(page.request, projectId, goal, { stageId: "1" });
-	await reloadApp(page);
+	await page.reload();
 	await waitForAppReadyOnProject(page);
 }
 
@@ -100,7 +99,7 @@ test.describe("Dashboard Visuals", () => {
 				for (const goal of ["Visual history task 1", "Visual history task 2"]) {
 					await createTaskViaApi(page.request, projectId, goal, { stageId: "1" });
 				}
-				await reloadApp(page);
+				await page.reload();
 				await waitForAppReadyOnProject(page);
 				// Wordmark gate: only asserted at `xl` up (`hidden xl:inline` in
 				// frontend/src/components/layout/Header.jsx).

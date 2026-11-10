@@ -3,7 +3,6 @@ import {
 	activeProjectId,
 	createTaskViaApi,
 	openTaskInspector,
-	reloadApp,
 	resetProject,
 	waitForAppReadyOnProject,
 	waitForTaskVisible,
@@ -28,7 +27,7 @@ test.describe("Task-view editing behaviors", () => {
 	test.beforeEach(async ({ page }) => {
 		await waitForAppReadyOnProject(page);
 		await resetProject(page.request, await activeProjectId(page.request));
-		await reloadApp(page);
+		await page.reload();
 		await waitForAppReadyOnProject(page);
 	});
 
@@ -40,7 +39,7 @@ test.describe("Task-view editing behaviors", () => {
 		const titleLine = `Image title ${Date.now()}`;
 		const goal = `${titleLine}\nBody line stays above the attachment.`;
 		await createTaskViaApi(request, projectId, goal);
-		await reloadApp(page);
+		await page.reload();
 		await waitForAppReadyOnProject(page);
 		await waitForTaskVisible(page, titleLine);
 
@@ -73,7 +72,7 @@ test.describe("Task-view editing behaviors", () => {
 		const projectId = await activeProjectId(request);
 		const goal = `Round trip ${Date.now()}`;
 		await createTaskViaApi(request, projectId, goal);
-		await reloadApp(page);
+		await page.reload();
 		await waitForAppReadyOnProject(page);
 		await waitForTaskVisible(page, goal);
 
