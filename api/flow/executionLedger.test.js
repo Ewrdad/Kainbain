@@ -137,6 +137,28 @@ describe("ExecutionLedger", () => {
 		expect(ledger.servingFor(executionId)).toBeNull();
 	});
 
+	test("carries the structured runnerId on the completion audit entry", async () => {
+		const { executionId, epoch } = claimed(ctx, "server2-alpha");
+		await ledger.completeExecution({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectStore: ctx.projectStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "server2-alpha",
+			executionId,
+			epoch,
+			posture: "T1:pi:model",
+		});
+		const completion = ctx.taskStore
+			.getTask()
+			.history.find((entry) => entry.action.includes("Runner completed execution"));
+		expect(completion).toMatchObject({
+			action: expect.stringContaining("runner server2-alpha"),
+			runnerId: "server2-alpha",
+		});
+	});
+
 	test("cleans an old Runner's default posture segment before storing history", async () => {
 		const { executionId, epoch } = claimed(ctx);
 		const base = {

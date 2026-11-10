@@ -423,6 +423,12 @@ export class ExecutionLedger {
 		task?.history?.push({
 			timestamp: new Date().toISOString(),
 			action: `Runner completed execution ${executionId} (${postureBits}). Lease released.`,
+			// Structured Runner id alongside the prose, same as the
+			// progress entries above, so consumers need not parse the
+			// action string.
+			...(typeof runnerId === "string" && runnerId.trim()
+				? { runnerId: runnerId.trim() }
+				: {}),
 		});
 		// G7: a finished stage breaks the death loop — the next stage (or
 		// a later retry of this one after real progress) counts from zero.
