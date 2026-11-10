@@ -12,6 +12,7 @@
  * @example await runDiscoveryRound({ harnessIds: ['pi', 'muse'] }) => { combinedIds: ['pi::mistral::x'], resultsByHarness: { pi: {...}, muse: {...} } }
  ***/
 import { harnessModelKey, parseModelKey } from "../shared/modelKeys.js";
+import { DISCOVERY_ENV_VARS, resolveBinary } from "../api/agent/harnessDiscovery.js";
 import { discoverClaudeModels as discoverMuseModelsRaw } from "./modelDiscovery.js";
 
 /***
@@ -349,19 +350,67 @@ async function loadPiHarness(ctx) {
 }
 
 /***
+ * MARK: describePiEmptyCatalogue
+ * @description Explains one empty pi catalogue for the status slot: the
+ *   offline auth summary (when the harness offers `modelAuthStatus`)
+ *   distinguishes "no provider login" from "logged in but nothing
+ *   yielded" from a failed availability refresh, so the operator sees
+ *   the fix instead of a bare zero. Never throws — an unreadable
+ *   summary degrades to the generic wording.
+ * @example describePiEmptyCatalogue({ error: null, providers: [] }).message => 'Pi reported no models ready to use (no provider login found).'
+ * @param {Object|null} [authSummary] - `modelAuthStatus()` result (or null when unknown).
+ * @returns {{code: string, message: string, hint: string}} Classified empty-catalogue failure.
+ ***/
+function describePiEmptyCatalogue(authSummary) {
+	const providers = Array.isArray(authSummary?.providers) ? authSummary.providers : null;
+	const configuredCount = providers ? providers.filter((entry) => entry && entry.configured).length : null;
+	const refreshError = typeof authSummary?.error === "string" && authSummary.error.trim()
+		? authSummary.error.trim().slice(-200)
+		: "";
+	let message = "Pi reported no models ready to use.";
+	if (configuredCount === 0) {
+		message = "Pi reported no models ready to use (no provider login found).";
+	} else if (typeof configuredCount === "number" && configuredCount > 0) {
+		message = `Pi reported no models ready to use (${configuredCount} provider(s) logged in, but none yielded models).`;
+	}
+	if (refreshError) message += ` Availability refresh failed: ${refreshError}.`;
+	return {
+		code: "PI_MODELS_EMPTY",
+		message,
+		hint: "Log in to a provider in pi (its ~/.pi/agent auth), then re-run model re-detection.",
+	};
+}
+
+/***
  * MARK: discoverPiModels
  * @description Lists the pi models ready to use right now via the pi
  *   SDK availability snapshot (only providers with valid credentials
  *   appear — survey q2): no CLI, no keys read, ids already canonical
- *   `pi::…` keys. Empty login lists nothing, honestly.
+ *   `pi::…` keys. An empty catalogue throws `PI_MODELS_EMPTY` (with the
+ *   login state in the message when the harness can report it) instead
+ *   of resolving a silent `[]` — a bare zero with `ok: true` reads as
+ *   healthy, while the truth is "nothing logged in", which the
+ *   operator must see as a warning.
  * @example await discoverPiModels({}) => ['pi::mistral::codestral-2508']
+ * @example await discoverPiModels({}) // throws PI_MODELS_EMPTY when no provider is logged in
  * @param {Object} [ctx] - Leg seams (`createHarness` test double).
- * @returns {Promise<string[]>} Canonical pi model ids (possibly empty).
+ * @returns {Promise<string[]>} Canonical pi model ids (never silently empty).
  ***/
 export async function discoverPiModels(ctx = {}) {
 	const harness = await loadPiHarness(ctx);
 	const models = await harness.listModels({ refresh: true });
-	return dedupeStrings((models || []).map((m) => (typeof m === "string" ? m : m?.key)));
+	const ids = dedupeStrings((models || []).map((m) => (typeof m === "string" ? m : m?.key)));
+	if (ids.length > 0) return ids;
+	let authSummary = null;
+	if (harness && typeof harness.modelAuthStatus === "function") {
+		try {
+			authSummary = await harness.modelAuthStatus();
+		} catch {
+			authSummary = null;
+		}
+	}
+	const empty = describePiEmptyCatalogue(authSummary);
+	throwLegError(empty.code, empty.message, empty.hint);
 }
 
 /***
@@ -462,28 +511,87 @@ export async function discoverVibeModels(ctx = {}) {
 }
 
 /***
+ * MARK: resolveMuseProbeBinary
+ * @description Resolves the `muse` binary the leg will spawn through the
+ *   backend's own resolver (explicit `ctx.bin` wins, then the
+ *   `KAINBAIN_MUSE_BIN` override, then the bare `muse` name across PATH
+ *   plus the standard install dirs). Resolving here — instead of
+ *   spawning the bare name — is what keeps the leg consistent with
+ *   harness auto-detect: a CLI that lives only in `~/.local/bin` (never
+ *   on a systemd unit's minimal PATH) is detected AND probed, never
+ *   detected-then-missed. Throws `MUSE_MSP_BIN_MISSING` when nothing
+ *   resolves, so the status slot names the install fix.
+ * @example resolveMuseProbeBinary({ bin: '/opt/muse' }) => '/opt/muse'
+ * @param {Object} [ctx] - Leg seams (`bin`, `env`, `platform`).
+ * @returns {string} Absolute spawn path, or the bare name when it resolves on PATH.
+ ***/
+function resolveMuseProbeBinary(ctx = {}) {
+	const envMap = ctx?.env ?? process.env;
+	const platformValue = ctx?.platform ?? process.platform;
+	const configured = typeof ctx?.bin === "string" && ctx.bin.trim()
+		? ctx.bin.trim()
+		: (typeof envMap?.[DISCOVERY_ENV_VARS.muse] === "string" && envMap[DISCOVERY_ENV_VARS.muse].trim()
+			? envMap[DISCOVERY_ENV_VARS.muse].trim()
+			: "muse");
+	const resolved = resolveBinary("muse", {
+		...(configured === "muse" ? {} : { envOverride: configured }),
+		env: envMap,
+		platform: platformValue,
+	});
+	if (!resolved.found) {
+		throwLegError(
+			"MUSE_MSP_BIN_MISSING",
+			`The muse CLI was not found ('${configured}' is not runnable).`,
+			"Install the Muse CLI and ensure it is on PATH or in ~/.local/bin, or set KAINBAIN_MUSE_BIN to its absolute path.",
+		);
+	}
+	return resolved.path;
+}
+
+/***
  * MARK: discoverMuseModels
  * @description Lists the models the installed `muse` CLI can serve via
  *   `muse serve` stdio `model/list` (box-local login, only ids come
- *   back). `ctx.discoverFn` overrides the probe (called with the leg
- *   ctx; a no-arg override works too) and `ctx.bin` / `ctx.spawnSyncFn`
- *   seam the spawn — the daemon's test seam rides through here so even
+ *   back). The probe runs strict: a missing binary throws
+ *   `MUSE_MSP_BIN_MISSING`, a failed round-trip throws the classified
+ *   spawn failure, and a CLI that answers with zero rows throws
+ *   `MUSE_MSP_MODELS_EMPTY` (the backend catalogue's own wording) —
+ *   a bare zero with `ok: true` used to read as healthy while hiding
+ *   "the CLI works but the catalogue is empty". `ctx.discoverFn`
+ *   overrides the probe (called with the leg ctx; a no-arg override
+ *   works too) and `ctx.spawnSyncFn` seams the spawn — when the spawn
+ *   is stubbed the binary pre-check is skipped so tests never touch
+ *   the real host. The daemon's test seam rides through here so even
  *   overridden ids pass grammar validation before advertisement.
  * @example await discoverMuseModels({}) => ['muse::meta::muse-spark-1.3']
- * @param {Object} [ctx] - Leg seams (`discoverFn`, `bin`, `timeoutMs`, `spawnSyncFn`).
- * @returns {Promise<string[]>} Canonical muse model ids (possibly empty).
+ * @example await discoverMuseModels({}) // throws MUSE_MSP_MODELS_EMPTY when the CLI answers with zero rows
+ * @param {Object} [ctx] - Leg seams (`discoverFn`, `bin`, `env`, `platform`, `timeoutMs`, `spawnSyncFn`).
+ * @returns {Promise<string[]>} Canonical muse model ids (never silently empty).
  ***/
 export async function discoverMuseModels(ctx = {}) {
 	if (ctx && typeof ctx.discoverFn === "function") {
 		const raw = await ctx.discoverFn(ctx);
 		return dedupeStrings(Array.isArray(raw) ? raw : []);
 	}
-	const opts = {};
-	if (ctx?.bin) opts.bin = ctx.bin;
+	const spawnStubbed = typeof ctx?.spawnSyncFn === "function";
+	const opts = { strict: true };
+	if (spawnStubbed) {
+		if (ctx?.bin) opts.bin = ctx.bin;
+		opts.spawnSyncFn = ctx.spawnSyncFn;
+	} else {
+		opts.bin = resolveMuseProbeBinary(ctx);
+	}
 	if (Number.isFinite(ctx?.timeoutMs)) opts.timeoutMs = ctx.timeoutMs;
-	if (typeof ctx?.spawnSyncFn === "function") opts.spawnSyncFn = ctx.spawnSyncFn;
 	const raw = await discoverMuseModelsRaw(opts);
-	return dedupeStrings(Array.isArray(raw) ? raw : []);
+	const ids = dedupeStrings(Array.isArray(raw) ? raw : []);
+	if (ids.length === 0) {
+		throwLegError(
+			"MUSE_MSP_MODELS_EMPTY",
+			"The muse serve host reported no models.",
+			"Check the provider configuration (KAINBAIN_MUSE_MSP / muse serve --provider) and retry.",
+		);
+	}
+	return ids;
 }
 
 /***

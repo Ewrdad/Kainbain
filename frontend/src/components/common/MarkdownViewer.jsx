@@ -1,7 +1,9 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useId } from 'react';
 import { API_BASE } from '../../services/apiBase';
 import { resolveTaskImageUrl } from '../../services/taskImages';
 import { useImageRetry } from '../../services/imageRetry';
+import { logger } from '../../services/logger';
+import { groupBlocksIntoSections } from './markdownSections';
 
 /***
  * MARK: sanitizeUrl
@@ -331,10 +333,7 @@ export function parseMarkdownBlocks(markdown) {
 
   // CRLF (and lone CR) normalize to LF first so 1-based source line numbers
   // stay aligned with viewers that split on /\r?\n/.
-  const lines = markdown
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .split('\n');
+  const lines = markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
   const blocks = [];
   let i = 0;
 
@@ -520,6 +519,197 @@ export function parseMarkdownBlocks(markdown) {
 }
 
 /***
+ * MARK: HEADING_STYLES
+ * @description The single home of the six markdown heading class strings, so
+ *   prominence tweaks touch one place instead of six switch branches. Every
+ *   level except `h2` keeps the exact classes the viewer has always rendered;
+ *   `h2` carries the docs-prominence treatment (larger, bolder, stronger rule
+ *   and spacing) shared by the flat and collapsible paths — do not "restore"
+ *   it to the old tokens thinking it drifted.
+ * @example HEADING_STYLES.h1 => 'font-display-lg text-xl font-bold ...'
+ ***/
+export const HEADING_STYLES = {
+  h1: 'font-display-lg text-xl font-bold text-on-surface mt-3 mb-1.5 tracking-tight break-words min-w-0 max-w-full',
+  h2: 'font-headline-md text-lg font-extrabold text-on-surface mt-4 mb-2 border-b-2 border-border-standard/70 pb-1 break-words min-w-0 max-w-full',
+  h3: 'font-headline-sm text-sm font-semibold text-primary mt-2 mb-0.5 break-words min-w-0 max-w-full',
+  h4: 'text-sm font-semibold text-secondary mt-1.5 mb-0.5 uppercase tracking-wide',
+  h5: 'text-xs font-semibold text-ochre mt-1 mb-0.25 uppercase tracking-wider',
+  h6: 'text-[11px] font-bold text-text-muted mt-0.5 mb-0 uppercase tracking-widest',
+};
+
+/***
+ * MARK: renderMarkdownBlock
+ * @description Renders one parsed markdown block (headings, lists, code,
+ *   tables, quotes, rules, paragraphs) to its React element. Shared by the
+ *   flat rendering path and the collapsible-section path so both paint
+ *   identical blocks. Inputs arrive as one labelled object (never positions),
+ *   so a new option later cannot silently shift the existing arguments.
+ * @param {Object} labelledInputs - The named inputs for this block.
+ * @param {Object} labelledInputs.block - One block from `parseMarkdownBlocks`.
+ * @param {string|number} labelledInputs.blockKey - React key for the rendered element.
+ * @param {Object} labelledInputs.imageContext - Task context for relative image resolution.
+ * @param {boolean} labelledInputs.enableCopy - Whether code blocks show copy buttons.
+ * @returns {React.ReactNode} The rendered block element.
+ * @example renderMarkdownBlock({ block: { type: 'h1', text: 'Hi' }, blockKey: 0, imageContext: {}, enableCopy: true }) => <h1>Hi</h1>
+ ***/
+function renderMarkdownBlock({ block, blockKey, imageContext, enableCopy }) {
+  // The parser never produces a malformed block, so this guard is pure
+  // defense in depth: one bad block renders nothing rather than crashing
+  // the whole article.
+  if (!block || typeof block.type !== 'string') return null;
+  let rendered;
+  switch (block.type) {
+    case 'h1':
+      rendered = (
+        <h1 key={blockKey} className={HEADING_STYLES.h1}>
+          {parseInlineMarkdown(block.text, imageContext)}
+        </h1>
+      );
+      break;
+    case 'h2':
+      rendered = (
+        <h2 key={blockKey} className={HEADING_STYLES.h2}>
+          {parseInlineMarkdown(block.text, imageContext)}
+        </h2>
+      );
+      break;
+    case 'h3':
+      rendered = (
+        <h3 key={blockKey} className={HEADING_STYLES.h3}>
+          {parseInlineMarkdown(block.text, imageContext)}
+        </h3>
+      );
+      break;
+    case 'h4':
+      rendered = (
+        <h4 key={blockKey} className={HEADING_STYLES.h4}>
+          {parseInlineMarkdown(block.text, imageContext)}
+        </h4>
+      );
+      break;
+    case 'h5':
+      rendered = (
+        <h5 key={blockKey} className={HEADING_STYLES.h5}>
+          {parseInlineMarkdown(block.text, imageContext)}
+        </h5>
+      );
+      break;
+    case 'h6':
+      rendered = (
+        <h6 key={blockKey} className={HEADING_STYLES.h6}>
+          {parseInlineMarkdown(block.text, imageContext)}
+        </h6>
+      );
+      break;
+    case 'p':
+      rendered = (
+        <p
+          key={blockKey}
+          className="text-sm text-on-surface leading-relaxed break-words min-w-0 max-w-full"
+        >
+          {parseInlineMarkdown(block.text, imageContext)}
+        </p>
+      );
+      break;
+    case 'code':
+      rendered = (
+        <CodeBlock
+          key={blockKey}
+          code={block.code}
+          language={block.language}
+          enableCopy={enableCopy}
+        />
+      );
+      break;
+    case 'ul':
+      rendered = (
+        <ul key={blockKey} className="space-y-1 pl-4">
+          {block.items.map((item, itemIdx) => (
+            <li key={itemIdx} className="flex items-start gap-2 text-sm">
+              <span className="text-primary select-none mt-0.5">•</span>
+              <span className="flex-1">{parseInlineMarkdown(item, imageContext)}</span>
+            </li>
+          ))}
+        </ul>
+      );
+      break;
+    case 'ol':
+      rendered = (
+        <ol key={blockKey} className="space-y-1 pl-4">
+          {block.items.map((item, itemIdx) => (
+            <li key={itemIdx} className="flex items-start gap-2 text-sm">
+              <span className="text-[10px] font-bold text-secondary select-none mt-0.5">
+                {itemIdx + 1}.
+              </span>
+              <span className="flex-1">{parseInlineMarkdown(item, imageContext)}</span>
+            </li>
+          ))}
+        </ol>
+      );
+      break;
+    case 'blockquote':
+      rendered = (
+        <blockquote
+          key={blockKey}
+          className="border-l-2 border-primary/70 pl-3 py-1 my-1.5 italic text-text-muted bg-surface-container/30 rounded-r text-sm leading-relaxed"
+        >
+          {parseInlineMarkdown(block.text, imageContext)}
+        </blockquote>
+      );
+      break;
+    case 'hr':
+      rendered = <hr key={blockKey} className="border-border-standard my-2" />;
+      break;
+    case 'table':
+      rendered = (
+        <div
+          key={blockKey}
+          className="overflow-x-auto my-2 border border-border-standard rounded-sm"
+        >
+          <table className="zebra-table w-full border-collapse text-sm text-left">
+            {block.headers && block.headers.length > 0 && (
+              <thead className="bg-surface-container border-b border-border-standard">
+                <tr>
+                  {block.headers.map((h, hIdx) => (
+                    <th
+                      key={hIdx}
+                      className="p-2 font-bold uppercase text-xs tracking-wider text-text-muted border-r border-border-standard last:border-r-0"
+                    >
+                      {parseInlineMarkdown(h, imageContext)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+            )}
+            <tbody>
+              {block.rows.map((row, rIdx) => (
+                <tr
+                  key={rIdx}
+                  className="zebra-row border-b border-border-standard/50 last:border-b-0 hover:bg-surface-container-high/30 transition-colors"
+                >
+                  {row.map((cell, cIdx) => (
+                    <td
+                      key={cIdx}
+                      className="p-2 border-r border-border-standard/50 last:border-r-0 text-on-surface"
+                    >
+                      {parseInlineMarkdown(cell, imageContext)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      break;
+    default:
+      rendered = null;
+      break;
+  }
+  return rendered;
+}
+
+/***
  * MARK: MarkdownViewer
  * @description Lightweight, secure Markdown renderer supporting headings (h1-h6),
  * bullet/numbered lists, bold/italic, inline code, syntax-highlighted code blocks,
@@ -531,7 +721,11 @@ export function parseMarkdownBlocks(markdown) {
  * @param {string} [props.projectId] - Task context so relative `assets/...` image references resolve to the raw image endpoint.
  * @param {string} [props.taskId] - Task context for image resolution (see resolveTaskImageUrl).
  * @param {Function|null} [props.renderBlockWrapper] - Optional `(block, rendered, index) => ReactNode` seam for review UIs: wraps each parsed block (which carries `startLine`/`endLine`) with hover affordances. `null` renders byte-identical default output.
+ * @param {boolean} [props.collapsibleSections=false] - Opt-in: each `h2` becomes a collapsible toggle with a chevron; the `h1` title and pre-`h2` content stay always visible. A blank `##` heading shows an "Untitled section" fallback so the toggle always keeps a name. `false` renders the flat path (identical blocks, no toggle chrome).
+ * @param {boolean} [props.defaultCollapsed=false] - Initial state when `collapsibleSections` is on: `false` starts every section open. Applies on mount and whenever the article changes; later prop flips alone do nothing.
+ * @param {{ action: 'expand-all'|'collapse-all', nonce: number }|null} [props.sectionVisibilitySignal=null] - One-shot request from the parent (e.g. Expand all / Collapse all buttons). Each `nonce` applies once, then is forgotten; an article change consumes any pending signal and resets to the default. Unknown actions are ignored and reported via the logger so a sender typo cannot hide.
  * @example <MarkdownViewer content="# Overview\n\nTask details here." />
+ * @example <MarkdownViewer content={article} collapsibleSections sectionVisibilitySignal={{ action: 'expand-all', nonce: 1 }} />
  ***/
 export function MarkdownViewer({
   content = '',
@@ -540,6 +734,9 @@ export function MarkdownViewer({
   projectId = null,
   taskId = null,
   renderBlockWrapper = null,
+  collapsibleSections = false,
+  defaultCollapsed = false,
+  sectionVisibilitySignal = null,
 }) {
   // Relative task-asset images resolve against the task's image endpoint;
   // without task context, sources render as-is (legacy behavior).
@@ -548,6 +745,82 @@ export function MarkdownViewer({
     [projectId, taskId],
   );
   const blocks = useMemo(() => parseMarkdownBlocks(content), [content]);
+  const { preamble, sections } = useMemo(() => groupBlocksIntoSections(blocks), [blocks]);
+  // Unique prefix for the collapsible body ids (`aria-controls` targets), so
+  // two viewers on one page can never share an id.
+  const sectionGroupId = useId();
+  // Collapsed section ids, carried with the content they belong to: section
+  // ids are positional, so opening another article drops the old set and
+  // starts from the default again. The parent's one-shot expand-all /
+  // collapse-all signal folds into the same state: each nonce applies exactly
+  // once, and a content change consumes any pending signal. Both adjust
+  // during render (never in an effect), so a re-render can never replay them.
+  const [collapsedState, setCollapsedState] = useState(() => ({
+    content,
+    appliedSignalNonce: null,
+    collapsedIds: new Set(defaultCollapsed ? sections.map((section) => section.id) : []),
+  }));
+  if (collapsedState.content !== content) {
+    setCollapsedState({
+      content,
+      appliedSignalNonce: sectionVisibilitySignal?.nonce ?? null,
+      collapsedIds: new Set(defaultCollapsed ? sections.map((section) => section.id) : []),
+    });
+  } else if (
+    sectionVisibilitySignal &&
+    sectionVisibilitySignal.nonce !== collapsedState.appliedSignalNonce
+  ) {
+    if (sectionVisibilitySignal.action === 'expand-all') {
+      setCollapsedState({
+        ...collapsedState,
+        appliedSignalNonce: sectionVisibilitySignal.nonce,
+        collapsedIds: new Set(),
+      });
+    } else if (sectionVisibilitySignal.action === 'collapse-all') {
+      setCollapsedState({
+        ...collapsedState,
+        appliedSignalNonce: sectionVisibilitySignal.nonce,
+        collapsedIds: new Set(sections.map((section) => section.id)),
+      });
+    } else {
+      // Fail safe and LOUD: an unknown action (a sender typo — the only
+      // caller is DocsView's Expand all / Collapse all) must never touch
+      // collapse state, but swallowing it silently would hide the bug, so
+      // the nonce is still consumed and the action is reported once.
+      logger.warn(
+        `MarkdownViewer ignoring unknown sectionVisibilitySignal action: ${String(
+          sectionVisibilitySignal.action,
+        )}`,
+      );
+      setCollapsedState({ ...collapsedState, appliedSignalNonce: sectionVisibilitySignal.nonce });
+    }
+  }
+
+  const toggleSectionCollapsed = useCallback((sectionId) => {
+    setCollapsedState((state) => {
+      const collapsedIds = new Set(state.collapsedIds);
+      if (collapsedIds.has(sectionId)) {
+        collapsedIds.delete(sectionId);
+      } else {
+        collapsedIds.add(sectionId);
+      }
+      return { ...state, collapsedIds };
+    });
+  }, []);
+
+  const renderWrappedBlock = useCallback(
+    (block, blockIndex) => {
+      const rendered = renderMarkdownBlock({
+        block,
+        blockKey: blockIndex,
+        imageContext,
+        enableCopy,
+      });
+      if (renderBlockWrapper) return renderBlockWrapper(block, rendered, blockIndex);
+      return rendered;
+    },
+    [imageContext, enableCopy, renderBlockWrapper],
+  );
 
   if (!content || blocks.length === 0) {
     return (
@@ -560,177 +833,65 @@ export function MarkdownViewer({
       data-testid="markdown-viewer"
       className={`markdown-viewer space-y-1.5 text-xs text-on-surface leading-relaxed min-w-0 max-w-full break-words overflow-x-clip ${className}`}
     >
-      {blocks.map((block, idx) => {
-        let rendered;
-        switch (block.type) {
-          case 'h1':
-            rendered = (
-              <h1
-                key={idx}
-                className="font-display-lg text-xl font-bold text-on-surface mt-3 mb-1.5 tracking-tight break-words min-w-0 max-w-full"
-              >
-                {parseInlineMarkdown(block.text, imageContext)}
-              </h1>
-            );
-            break;
-          case 'h2':
-            rendered = (
-              <h2
-                key={idx}
-                className="font-headline-md text-base font-bold text-on-surface mt-2.5 mb-1 border-b border-border-standard/60 pb-0.5 break-words min-w-0 max-w-full"
-              >
-                {parseInlineMarkdown(block.text, imageContext)}
+      {!collapsibleSections ? (
+        blocks.map((block, idx) => renderWrappedBlock(block, idx))
+      ) : (
+        <>
+          {/* The preamble is the untouched block-list prefix, so each of its
+              original indices is its position here. */}
+          {preamble.map((block, preambleIndex) => renderWrappedBlock(block, preambleIndex))}
+          {sections.map((section) => {
+            const isCollapsed = collapsedState.collapsedIds.has(section.id);
+            const bodyId = `${sectionGroupId}-${section.id}-body`;
+            // A blank `##` heading would leave the toggle with no name at
+            // all, and a nameless button fails accessibility checks — so it
+            // gets a visible fallback label. Visible and announced text stay
+            // the same string on purpose.
+            const rawHeadingText = section.headingBlock.text;
+            const hasHeadingText =
+              typeof rawHeadingText === 'string' && rawHeadingText.trim() !== '';
+            const header = (
+              <h2 className={HEADING_STYLES.h2}>
+                <button
+                  type="button"
+                  aria-expanded={!isCollapsed}
+                  // The collapsed body unmounts, so the reference only exists
+                  // while expanded — a dangling id helps nobody.
+                  aria-controls={isCollapsed ? undefined : bodyId}
+                  onClick={() => toggleSectionCollapsed(section.id)}
+                  className="flex w-full items-center gap-2 text-left cursor-pointer rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`text-primary select-none transition-transform motion-reduce:transition-none ${isCollapsed ? '-rotate-90' : ''}`}
+                  >
+                    ▾
+                  </span>
+                  <span className="flex-1">
+                    {hasHeadingText
+                      ? parseInlineMarkdown(rawHeadingText, imageContext)
+                      : 'Untitled section'}
+                  </span>
+                </button>
               </h2>
             );
-            break;
-          case 'h3':
-            rendered = (
-              <h3
-                key={idx}
-                className="font-headline-sm text-sm font-semibold text-primary mt-2 mb-0.5 break-words min-w-0 max-w-full"
-              >
-                {parseInlineMarkdown(block.text, imageContext)}
-              </h3>
-            );
-            break;
-          case 'h4':
-            rendered = (
-              <h4
-                key={idx}
-                className="text-sm font-semibold text-secondary mt-1.5 mb-0.5 uppercase tracking-wide"
-              >
-                {parseInlineMarkdown(block.text, imageContext)}
-              </h4>
-            );
-            break;
-          case 'h5':
-            rendered = (
-              <h5
-                key={idx}
-                className="text-xs font-semibold text-ochre mt-1 mb-0.25 uppercase tracking-wider"
-              >
-                {parseInlineMarkdown(block.text, imageContext)}
-              </h5>
-            );
-            break;
-          case 'h6':
-            rendered = (
-              <h6
-                key={idx}
-                className="text-[11px] font-bold text-text-muted mt-0.5 mb-0 uppercase tracking-widest"
-              >
-                {parseInlineMarkdown(block.text, imageContext)}
-              </h6>
-            );
-            break;
-          case 'p':
-            rendered = (
-              <p
-                key={idx}
-                className="text-sm text-on-surface leading-relaxed break-words min-w-0 max-w-full"
-              >
-                {parseInlineMarkdown(block.text, imageContext)}
-              </p>
-            );
-            break;
-          case 'code':
-            rendered = (
-              <CodeBlock
-                key={idx}
-                code={block.code}
-                language={block.language}
-                enableCopy={enableCopy}
-              />
-            );
-            break;
-          case 'ul':
-            rendered = (
-              <ul key={idx} className="space-y-1 pl-4">
-                {block.items.map((item, itemIdx) => (
-                  <li key={itemIdx} className="flex items-start gap-2 text-sm">
-                    <span className="text-primary select-none mt-0.5">•</span>
-                    <span className="flex-1">{parseInlineMarkdown(item, imageContext)}</span>
-                  </li>
-                ))}
-              </ul>
-            );
-            break;
-          case 'ol':
-            rendered = (
-              <ol key={idx} className="space-y-1 pl-4">
-                {block.items.map((item, itemIdx) => (
-                  <li key={itemIdx} className="flex items-start gap-2 text-sm">
-                    <span className="text-[10px] font-bold text-secondary select-none mt-0.5">
-                      {itemIdx + 1}.
-                    </span>
-                    <span className="flex-1">{parseInlineMarkdown(item, imageContext)}</span>
-                  </li>
-                ))}
-              </ol>
-            );
-            break;
-          case 'blockquote':
-            rendered = (
-              <blockquote
-                key={idx}
-                className="border-l-2 border-primary/70 pl-3 py-1 my-1.5 italic text-text-muted bg-surface-container/30 rounded-r text-sm leading-relaxed"
-              >
-                {parseInlineMarkdown(block.text, imageContext)}
-              </blockquote>
-            );
-            break;
-          case 'hr':
-            rendered = <hr key={idx} className="border-border-standard my-2" />;
-            break;
-          case 'table':
-            rendered = (
-              <div
-                key={idx}
-                className="overflow-x-auto my-2 border border-border-standard rounded-sm"
-              >
-                <table className="zebra-table w-full border-collapse text-sm text-left">
-                  {block.headers && block.headers.length > 0 && (
-                    <thead className="bg-surface-container border-b border-border-standard">
-                      <tr>
-                        {block.headers.map((h, hIdx) => (
-                          <th
-                            key={hIdx}
-                            className="p-2 font-bold uppercase text-xs tracking-wider text-text-muted border-r border-border-standard last:border-r-0"
-                          >
-                            {parseInlineMarkdown(h, imageContext)}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                  )}
-                  <tbody>
-                    {block.rows.map((row, rIdx) => (
-                      <tr
-                        key={rIdx}
-                        className="zebra-row border-b border-border-standard/50 last:border-b-0 hover:bg-surface-container-high/30 transition-colors"
-                      >
-                        {row.map((cell, cIdx) => (
-                          <td
-                            key={cIdx}
-                            className="p-2 border-r border-border-standard/50 last:border-r-0 text-on-surface"
-                          >
-                            {parseInlineMarkdown(cell, imageContext)}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            return (
+              <div key={section.id}>
+                {renderBlockWrapper
+                  ? renderBlockWrapper(section.headingBlock, header, section.headingIndex)
+                  : header}
+                {!isCollapsed && (
+                  <div id={bodyId} className="space-y-1.5">
+                    {section.blocks.map((block, bodyIndex) =>
+                      renderWrappedBlock(block, section.headingIndex + 1 + bodyIndex),
+                    )}
+                  </div>
+                )}
               </div>
             );
-            break;
-          default:
-            rendered = null;
-            break;
-        }
-        if (renderBlockWrapper) return renderBlockWrapper(block, rendered, idx);
-        return rendered;
-      })}
+          })}
+        </>
+      )}
     </div>
   );
 }

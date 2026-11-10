@@ -6,10 +6,17 @@
 #   ./startRunner.sh --id local-pi --manual --harnesses pi,muse [--backend http://localhost:3100]
 #   ./startRunner.sh --ensure    # (re)create units for existing ~/.kainbain/runner-*.env, restart them
 #   ./startRunner.sh --restart   # restart all kainbain-runner-* units onto the files in ./runner
-# Harness selection defaults to auto-detect: the installer probes PATH for
-# pi, muse, agy/antigravity and vibe and writes the concrete csv into the
-# env file (fail-fast when none is found). Pass --manual with --harness or
-# --harnesses to pin a list instead (mock has no CLI, so it is manual-only).
+# Harness selection defaults to auto-detect: the installer probes PATH plus
+# the standard install dirs (~/.local/bin, ~/bin), each harness's own
+# install dir (pi: ~/.pi/agent/bin, $PI_AGENT_DIR/bin), and the
+# KAINBAIN_*_BIN overrides — the same probe set the daemon uses
+# (runner/daemon.js detectAvailableHarnesses); a configured
+# ~/.pi/agent/models.json snapshot also counts for pi. The probe only
+# validates (fail-fast when nothing is found): the env file keeps
+# KAINBAIN_RUNNER_HARNESSES=auto so every boot re-detects and a harness
+# installed later is picked up on restart. Pass --manual with --harness or
+# --harnesses to pin a list instead (mock has no CLI, so it is manual-only;
+# use it to deliberately exclude an installed harness).
 set -euo pipefail
 cd "$(dirname "$0")"
 ID="" HARNESS="auto" HARNESSES="" MANUAL=0 HARNESS_SET=0 BACKEND="http://localhost:3100" MODE="create"
@@ -21,7 +28,7 @@ while [ $# -gt 0 ]; do case "$1" in
   --manual) MANUAL=1; shift;; --auto) MANUAL=0; HARNESS="auto"; HARNESSES=""; HARNESS_SET=0; shift;;
   --backend) BACKEND="${2:?}"; shift 2;; --backend=*) BACKEND="${1#--backend=}"; shift;;
   --ensure) MODE="ensure"; shift;;
-  --restart) MODE="restart"; shift;; -h|--help) sed -n '2,12p' "$0"; exit 0;;
+  --restart) MODE="restart"; shift;; -h|--help) sed -n '2,17p' "$0"; exit 0;;
   *) echo "Unknown arg: $1" >&2; exit 2;; esac; done
 NODE_BIN="$(command -v node || true)"; [ -n "$NODE_BIN" ] || { echo "node not found" >&2; exit 1; }
 RUNNER_MAIN="$PWD/runner/runner/main.js"
@@ -33,10 +40,51 @@ fi
 detect_harnesses() {
   local out=""
   add_h() { if [ -z "$out" ]; then out="$1"; else out="$out,$1"; fi; }
-  if command -v pi >/dev/null 2>&1; then add_h "pi"; fi
-  if command -v muse >/dev/null 2>&1; then add_h "muse"; fi
-  if command -v agy >/dev/null 2>&1 || command -v antigravity >/dev/null 2>&1; then add_h "antigravity"; fi
-  if command -v vibe >/dev/null 2>&1; then add_h "vibe"; fi
+  # Same probe set as the daemon (runner/daemon.js detectAvailableHarnesses):
+  # PATH, the standard install dirs, each harness's own install dir, and the
+  # KAINBAIN_*_BIN overrides. SDK-style pi installs under ~/.pi/agent are
+  # often not on the service PATH, so probe those dirs explicitly (and accept
+  # the models.json snapshot as proof of a configured pi stack, like the
+  # backend does). Detection names only the binary each harness spawns
+  # (antigravity: `agy`), so a detected harness can always run stages.
+  local dirs="$PATH:$HOME/.local/bin:$HOME/bin"
+  [ -n "${PI_AGENT_DIR:-}" ] && dirs="$dirs:$PI_AGENT_DIR/bin"
+  dirs="$dirs:$HOME/.pi/agent/bin"
+  # Colon-split without word-splitting the entries, so directories containing
+  # spaces still resolve (the old `for d in $(... | tr ':' ' ')` broke them).
+  find_bin() {
+    local rest="$dirs" d
+    while [ -n "$rest" ]; do
+      d="${rest%%:*}"
+      if [ "$rest" = "$d" ]; then rest=""; else rest="${rest#*:}"; fi
+      [ -n "$d" ] && [ -x "$d/$1" ] && return 0
+    done
+    return 1
+  }
+  # Env override (KAINBAIN_MUSE_BIN etc.): a value with a slash names the file
+  # directly; a bare name is searched like a PATH binary. Empty reads as unset.
+  override_hit() {
+    case "${1:-}" in
+      "") return 1;;
+      */*) [ -x "$1" ] && return 0 || return 1;;
+      *) find_bin "$1" && return 0 || return 1;;
+    esac
+  }
+  # One CLI harness: a set override replaces the default name (backend
+  # parity — a typo'd override reads as missing, never falls back).
+  detect_one() {
+    if [ -n "${1:-}" ]; then
+      override_hit "$1" && add_h "$3"
+    elif find_bin "$2"; then
+      add_h "$3"
+    fi
+  }
+  if find_bin pi; then add_h "pi"; else
+    [ -f "${PI_AGENT_DIR:-$HOME/.pi/agent}/models.json" ] && add_h "pi"
+  fi
+  detect_one "${KAINBAIN_MUSE_BIN:-}" muse muse
+  detect_one "${KAINBAIN_AGY_BIN:-}" agy antigravity
+  detect_one "${KAINBAIN_VIBE_BIN:-}" vibe vibe
   printf '%s' "$out"
 }
 is_auto_token() { [ "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" = "auto" ]; }
@@ -63,15 +111,21 @@ resolve_harness_selection() {
     [ -n "$HARNESS" ] || { echo "--manual requires a non-empty harness list" >&2; exit 2; }
   else
     if [ -z "$HARNESSES" ] || is_auto_token "$HARNESSES"; then
-      HARNESSES="$(detect_harnesses)"
-      if [ -z "$HARNESSES" ]; then
-        echo "Runner auto-detect found no harness CLIs (probed pi, muse, agy/antigravity, vibe on PATH); install one or re-run with --manual --harness NAME." >&2; exit 1
+      DETECTED="$(detect_harnesses)"
+      if [ -z "$DETECTED" ]; then
+        echo "Runner auto-detect found no harnesses (probed pi, muse, agy, vibe on PATH, ~/.local/bin, ~/bin, and pi via ~/.pi/agent); install one or re-run with --manual --harness NAME." >&2; exit 1
       fi
-      echo "Auto-detected harnesses: $HARNESSES"
+      # The probe only validates: the env file keeps `auto` so every boot
+      # re-detects and a harness installed later is picked up on restart —
+      # a frozen csv would hide it from discovery until edited by hand.
+      echo "Auto-detected harnesses: $DETECTED (recorded as auto: every boot re-detects)"
+      HARNESS="auto"; HARNESSES="auto"
     else
       MANUAL=1
     fi
-    HARNESS="$(printf '%s' "$HARNESSES" | cut -d, -f1 | tr -d ' ')"
+    if [ "$MANUAL" = "1" ]; then
+      HARNESS="$(printf '%s' "$HARNESSES" | cut -d, -f1 | tr -d ' ')"
+    fi
   fi
 }
 restart_units() { for u in "$HOME"/.config/systemd/user/kainbain-runner-*.service; do [ -e "$u" ] || continue; systemctl --user restart "$(basename "$u")" 2>/dev/null && echo "Restarted $(basename "$u")" || echo "WARN: restart failed: $u"; done; }

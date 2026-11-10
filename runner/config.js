@@ -29,9 +29,11 @@ export function loadRunnerConfig(env = process.env) {
 	// KAINBAIN_RUNNER_HARNESS seeds a 1-element list. The first entry
 	// stays the primary harness (single-assignment default, posture).
 	// Auto-detect is the default: an empty harness config or a literal
-	// "auto" token means the daemon probes PATH on boot (see
-	// detectAvailableHarnesses in daemon.js) and fail-fasts when nothing
-	// is found. Pass --manual --harness NAME at install time to pin.
+	// "auto" token means the daemon probes the host on boot (PATH, the
+	// standard install dirs, per-harness install dirs, KAINBAIN_*_BIN
+	// overrides, and the pi agent snapshot — see detectAvailableHarnesses
+	// in daemon.js) and fail-fasts when nothing is found. Pass --manual
+	// --harness NAME at install time to pin.
 	const isAutoToken = (h) => String(h ?? "").trim().toLowerCase() === "auto";
 	let harnessAuto = false;
 	const harnessIds = str("KAINBAIN_RUNNER_HARNESSES", "")

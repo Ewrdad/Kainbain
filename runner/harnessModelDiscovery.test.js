@@ -260,17 +260,69 @@ test("summarizeDiscoverySlices renders counts and the first leg error in order",
 	}
 });
 
-test("pi leg maps harness keys and honors empty login", async () => {
+test("pi leg maps harness keys and reports an empty catalogue as PI_MODELS_EMPTY", async () => {
 	const ids = await discoverPiModels({
 		createHarness: async () => ({
 			listModels: async () => [{ key: "pi::mistral::x" }, "pi::google::y"],
 		}),
 	});
 	assert.deepEqual(ids, ["pi::mistral::x", "pi::google::y"]);
-	const empty = await discoverPiModels({
-		createHarness: async () => ({ listModels: async () => [] }),
+	// No provider login: the status slot must name the cause, not a bare zero.
+	await assert.rejects(
+		discoverPiModels({
+			createHarness: async () => ({
+				listModels: async () => [],
+				modelAuthStatus: async () => ({ error: null, providers: [] }),
+			}),
+		}),
+		/no provider login/,
+	);
+	// A harness double without modelAuthStatus still throws the same code.
+	await assert.rejects(
+		discoverPiModels({
+			createHarness: async () => ({ listModels: async () => [] }),
+		}),
+		/PI_MODELS_EMPTY|no models ready/,
+	);
+	try {
+		await discoverPiModels({
+			createHarness: async () => ({ listModels: async () => [] }),
+		});
+		assert.fail("must throw");
+	} catch (err) {
+		assert.equal(err.code, "PI_MODELS_EMPTY");
+		assert.match(err.hint, /re-detection/);
+	}
+	// Logged-in providers that yield nothing are distinguished in the message.
+	try {
+		await discoverPiModels({
+			createHarness: async () => ({
+				listModels: async () => [],
+				modelAuthStatus: async () => ({
+					error: null,
+					providers: [{ provider: "mistral", configured: true }, { provider: "openai", configured: false }],
+				}),
+			}),
+		});
+		assert.fail("must throw");
+	} catch (err) {
+		assert.equal(err.code, "PI_MODELS_EMPTY");
+		assert.match(err.message, /1 provider\(s\) logged in/);
+	}
+});
+
+test("pi empty catalogue keeps the old slice with its code through the registry", async () => {
+	clearDiscoveryCache();
+	discoveryCache.pi = { ids: ["pi::mistral::old"], atMs: 1, error: null };
+	const out = await runDiscoveryLeg("pi", {
+		createHarness: async () => ({
+			listModels: async () => [],
+			modelAuthStatus: async () => ({ error: null, providers: [] }),
+		}),
 	});
-	assert.deepEqual(empty, []);
+	assert.deepEqual(out.ids, ["pi::mistral::old"]);
+	assert.equal(out.error.code, "PI_MODELS_EMPTY");
+	assert.match(out.error.message, /no provider login/);
 });
 
 test("antigravity leg maps keys and surfaces the retained classified error on empty", async () => {
@@ -358,6 +410,43 @@ test("muse leg honors the discoverFn seam and the spawn seam", async () => {
 	].join("\n");
 	const viaSpawn = await discoverMuseModels({ spawnSyncFn: () => ({ stdout: transcript }) });
 	assert.deepEqual(viaSpawn, ["muse::meta::m1"]);
+});
+
+test("muse leg throws MUSE_MSP_MODELS_EMPTY when the CLI answers with zero rows", async () => {
+	const emptyAnswer = JSON.stringify({ jsonrpc: "2.0", id: 2, result: { models: [] } });
+	try {
+		await discoverMuseModels({ spawnSyncFn: () => ({ stdout: `${emptyAnswer}\n` }) });
+		assert.fail("must throw");
+	} catch (err) {
+		assert.equal(err.code, "MUSE_MSP_MODELS_EMPTY");
+		assert.match(err.message, /reported no models/);
+		assert.match(err.hint, /serve --provider/);
+	}
+});
+
+test("muse leg surfaces strict probe failures (unparsable output, missing CLI)", async () => {
+	// Unparsable output with a stubbed spawn: strict classification, no host touch.
+	await assert.rejects(
+		discoverMuseModels({ spawnSyncFn: () => ({ stdout: "garbage\n" }) }),
+		/did not answer model\/list/,
+	);
+	// Missing CLI on a controlled env: the binary pre-check names the install fix.
+	try {
+		await discoverMuseModels({ env: { PATH: "/definitely/not/real", HOME: "/definitely/not/real" }, platform: "linux" });
+		assert.fail("must throw");
+	} catch (err) {
+		assert.equal(err.code, "MUSE_MSP_BIN_MISSING");
+		assert.match(err.hint, /KAINBAIN_MUSE_BIN/);
+	}
+});
+
+test("muse leg keeps the old slice with MUSE_MSP_MODELS_EMPTY through the registry", async () => {
+	clearDiscoveryCache();
+	discoveryCache.muse = { ids: ["muse::meta::old"], atMs: 1, error: null };
+	const emptyAnswer = JSON.stringify({ jsonrpc: "2.0", id: 2, result: { models: [] } });
+	const out = await runDiscoveryLeg("muse", { spawnSyncFn: () => ({ stdout: `${emptyAnswer}\n` }) });
+	assert.deepEqual(out.ids, ["muse::meta::old"]);
+	assert.equal(out.error.code, "MUSE_MSP_MODELS_EMPTY");
 });
 
 test("opencode leg maps server rows to harness-scoped keys and skips malformed rows", async () => {
