@@ -688,7 +688,7 @@ describe("model auto-discovery refresh", () => {
 		assert.deepEqual(out, ["muse::meta::m"]);
 		assert.equal(calls, 1);
 	});
-	it("skips discovery when the operator pinned models", async () => {
+	it("skips scanning when the operator pinned models (pin wins by default)", async () => {
 		clearDiscoveredModelsCache();
 		let calls = 0;
 		const out = await refreshDiscoveredModels({
@@ -701,11 +701,11 @@ describe("model auto-discovery refresh", () => {
 		assert.deepEqual(out, []);
 		assert.equal(calls, 0);
 	});
-	it("skips discovery without the muse harness", async () => {
+	it("skips scanning for a singular model pin too", async () => {
 		clearDiscoveredModelsCache();
 		let calls = 0;
 		const out = await refreshDiscoveredModels({
-			config: { ...base, harnessIds: ["pi"] },
+			config: { ...base, model: "pinned" },
 			discoverFn: async () => {
 				calls += 1;
 				return ["muse::meta::m"];
@@ -713,6 +713,58 @@ describe("model auto-discovery refresh", () => {
 		});
 		assert.deepEqual(out, []);
 		assert.equal(calls, 0);
+	});
+	it("scans despite the pin with the discovery-wins opt-in (survey q4)", async () => {
+		clearDiscoveredModelsCache();
+		let calls = 0;
+		const out = await refreshDiscoveredModels({
+			config: { ...base, models: ["pinned"], modelDiscoveryWins: true },
+			discoverFn: async () => {
+				calls += 1;
+				return ["muse::meta::m"];
+			},
+		});
+		assert.deepEqual(out, ["muse::meta::m"]);
+		assert.equal(calls, 1);
+	});
+	it("skips scanning when discovery is disabled (interval 0), keeping the cache for the pin fallback", async () => {
+		clearDiscoveredModelsCache();
+		let calls = 0;
+		const out = await refreshDiscoveredModels({
+			config: { ...base, models: ["pinned"], modelDiscoveryIntervalMs: 0 },
+			discoverFn: async () => {
+				calls += 1;
+				return ["muse::meta::m"];
+			},
+		});
+		assert.deepEqual(out, []);
+		assert.equal(calls, 0);
+	});
+	it("skips harnesses without a discovery leg", async () => {
+		clearDiscoveredModelsCache();
+		let calls = 0;
+		const out = await refreshDiscoveredModels({
+			config: { ...base, harnessIds: ["mock"] },
+			discoverFn: async () => {
+				calls += 1;
+				return ["muse::meta::m"];
+			},
+		});
+		assert.deepEqual(out, []);
+		assert.equal(calls, 0);
+	});
+	it("scans every configured harness leg and combines the ids", async () => {
+		clearDiscoveredModelsCache();
+		const out = await refreshDiscoveredModels({
+			config: { harnessIds: ["muse", "pi"], models: [], model: "" },
+			discoverFn: async () => ["muse::meta::m"],
+			discoveryCtx: {
+				createHarness: async () => ({
+					listModels: async () => [{ key: "pi::mistral::x" }, { key: "pi::mistral::y" }],
+				}),
+			},
+		});
+		assert.deepEqual(out, ["muse::meta::m", "pi::mistral::x", "pi::mistral::y"]);
 	});
 	it("keeps the previous cache when a later round fails", async () => {
 		clearDiscoveredModelsCache();
@@ -725,6 +777,30 @@ describe("model auto-discovery refresh", () => {
 			},
 		});
 		assert.deepEqual(out, ["muse::meta::m"]);
+	});
+	it("validates overridden ids before advertisement (garbage never ships)", async () => {
+		clearDiscoveredModelsCache();
+		const warnings = [];
+		const out = await refreshDiscoveredModels({
+			config: base,
+			logger: { log: () => {}, warn: (m) => warnings.push(m) },
+			discoverFn: async () => ["garbage", "muse::meta::m", "muse::meta::m"],
+		});
+		assert.deepEqual(out, ["muse::meta::m"]);
+	});
+	it("warns with the leg error code when a leg fails, keeping the old list", async () => {
+		clearDiscoveredModelsCache();
+		const warnings = [];
+		const logger = { log: () => {}, warn: (m) => warnings.push(m) };
+		await refreshDiscoveredModels({ config: base, logger, discoverFn: async () => ["muse::meta::m"] });
+		const out = await refreshDiscoveredModels({
+			config: base,
+			logger,
+			discoverFn: async () => { throw new Error("serve down"); },
+		});
+		assert.deepEqual(out, ["muse::meta::m"]);
+		assert.equal(warnings.length, 1);
+		assert.match(warnings[0], /MUSE_DISCOVERY_FAILED/);
 	});
 });
 
@@ -1650,15 +1726,15 @@ describe("handlePendingCommands", () => {
 			logger: quiet,
 			state,
 			pendingCommands: ["requestModelRediscovery"],
-			discoverFn: async () => { probes += 1; return ["m1", "m2"]; },
+			discoverFn: async () => { probes += 1; return ["muse::test::m1", "muse::test::m2"]; },
 		});
 		assert.equal(probes, 1);
 		assert.deepEqual(state.commandAcks, [
-			{ command: "requestModelRediscovery", ok: true, detail: "discovered 2 model(s)" },
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 2 model(s) (muse:2)" },
 		]);
 	});
 
-	it("skips discovery with a success ack when models are pinned", async () => {
+	it("acks pinned without scanning when models are pinned (pin wins by default)", async () => {
 		const state = {};
 		await handlePendingCommands({
 			config: claudeConfig({ models: ["pinned-model"] }),
@@ -1670,6 +1746,86 @@ describe("handlePendingCommands", () => {
 		});
 		assert.deepEqual(state.commandAcks, [
 			{ command: "requestModelRediscovery", ok: true, detail: "models pinned; discovery skipped" },
+		]);
+	});
+
+	it("re-detects despite the pin with the discovery-wins opt-in (survey q4)", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig({ models: ["pinned-model"], modelDiscoveryWins: true }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => ["muse::test::m1", "muse::test::m2"],
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 2 model(s) (muse:2)" },
+		]);
+	});
+
+	it("acks re-detection across legs with per-harness counts", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: baseConfig({ harnessIds: ["muse", "pi"], harnessId: "muse" }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => ["muse::meta::m"],
+			discoveryCtx: {
+				createHarness: async () => ({
+					listModels: async () => [{ key: "pi::mistral::x" }],
+				}),
+			},
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 2 model(s) (muse:1, pi:1)" },
+		]);
+	});
+
+	it("acks without scanning when discovery is disabled (interval 0)", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig({ models: ["pinned-model"], modelDiscoveryIntervalMs: 0 }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => { throw new Error("must not probe when disabled"); },
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "discovery disabled (interval 0); advertising pinned list" },
+		]);
+	});
+
+	it("acks plainly when no configured harness has a discovery leg", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: baseConfig({ harnessIds: ["mock"], harnessId: "mock" }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => { throw new Error("must not probe without a leg"); },
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 0 model(s) (no discovery legs configured)" },
+		]);
+	});
+
+	it("acks with the first leg error code when a leg fails, cache kept", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig(),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => { throw new Error("serve down"); },
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 0 model(s) (muse:0) (MUSE_DISCOVERY_FAILED)" },
 		]);
 	});
 
@@ -1784,7 +1940,7 @@ describe("handlePendingCommands", () => {
 			logger: quiet,
 			state,
 			pendingCommands: ["requestModelRediscovery"],
-			discoverFn: async () => { probes += 1; await gate; return ["m1"]; },
+			discoverFn: async () => { probes += 1; await gate; return ["muse::test::m1"]; },
 		};
 		const first = handlePendingCommands(opts);
 		// Second overlapping delivery while the first probe is in flight.
@@ -1794,7 +1950,7 @@ describe("handlePendingCommands", () => {
 		assert.equal(probes, 1);
 		assert.equal(state.commandAcks.length, 1);
 		// A later redelivery after the ack staged still acts only once.
-		await handlePendingCommands({ ...opts, discoverFn: async () => { probes += 1; return ["m1"]; } });
+		await handlePendingCommands({ ...opts, discoverFn: async () => { probes += 1; return ["muse::test::m1"]; } });
 		assert.equal(probes, 1);
 		assert.equal(state.commandAcks.length, 1);
 	});
@@ -1807,13 +1963,13 @@ describe("handlePendingCommands", () => {
 			logger: quiet,
 			state,
 			pendingCommands: ["requestModelRediscovery", "requestUpdate"],
-			discoverFn: async () => ["m1"],
+			discoverFn: async () => ["muse::test::m1"],
 			updateDeps: {
 				checkForUpdate: async () => ({ ok: true, update: null, reason: "up to date" }),
 			},
 		});
 		assert.deepEqual(state.commandAcks, [
-			{ command: "requestModelRediscovery", ok: true, detail: "discovered 1 model(s)" },
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 1 model(s) (muse:1)" },
 			{ command: "requestUpdate", ok: true, detail: "up to date" },
 		]);
 	});
@@ -1842,7 +1998,7 @@ describe("deliverSteers command channel", () => {
 				logger: quiet,
 				facts: {},
 				state,
-				discoverFn: async () => ["m1"],
+				discoverFn: async () => ["muse::test::m1"],
 			});
 			assert.equal(heartbeats[0].facts.commandAck, undefined);
 			assert.equal(state.commandAcks.length, 1);
@@ -1850,7 +2006,7 @@ describe("deliverSteers command channel", () => {
 			assert.deepEqual(heartbeats[1].facts.commandAck, {
 				command: "requestModelRediscovery",
 				ok: true,
-				detail: "discovered 1 model(s)",
+				detail: "discovered 1 model(s) (muse:1)",
 			});
 			assert.deepEqual(state.commandAcks, []);
 		} finally {
