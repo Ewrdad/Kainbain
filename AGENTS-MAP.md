@@ -84,6 +84,7 @@ area stands in as **Docs Steward**.
 | Git command families (WP-4) | `api/git/*.js` (errors, validation, exec, staleLock, status, workingTreeStatus, workingTreeRecovery, branch, commit, merge, remote) |
 | Process logs / stage reports / reliability | `api/watch/` |
 | Organisation sign-in / RBAC | `api/auth/` (HTTP surface in `api/routes/auth.js`); frontend client in `frontend/src/services/auth/`, guard + login page in `frontend/src/components/auth/` |
+| Runner fleet monitor (global, never pipeline-filtered) | `api/flow/runnerAssignmentSummary.js` (enrichment) + `PerRunnerTasksWidget.jsx` (`resolveAssignmentTask`, `resolveAssignmentStageName`, `onOpenTask`) |
 | Flow execution/routing/scheduler internals (WP-5) | `api/flow/execution/`, `api/flow/routing/` (tables/resolvers/orchestrators), `api/flow/scheduler/` |
 | Workflow canvas hooks | `frontend/src/components/workflow/hooks/` |
 | Task detail tabs | `frontend/src/components/tasks/` (`TaskDetailsTab.jsx`, `TaskReportsTab.jsx`, `TaskHistoryTab.jsx`, `TaskDetailsTabContent.jsx`) |
