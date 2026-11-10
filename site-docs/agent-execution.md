@@ -21,7 +21,7 @@ Harnesses expose an optional capability surface (steering, follow-up, compaction
 
 ## Safety rails
 
-- **Timeouts per stage kind**: agent and merge stages get the longest budget (30 min default), CI/script stages 10 min (the canonical `npm run test` gate includes the ~7-min canary E2E suite), deploy stages 5 min. Per-stage and per-project overrides still win.
+- **Timeouts per stage kind**: agent and merge stages get the longest budget (30 min default), CI/script stages 10 min (the canonical `npm run test` gate includes the ~7-min canary E2E suite). Deploy commands are ordinary `ci` stages and follow the CI budget — the old separate deploy timeout is deprecated and ignored. Per-stage and per-project overrides still win.
 - **Scheduler tick** (3 s default) dispatches queued work; overlapping runs are queued, not raced.
 - **Process log cap** bounds in-memory stage output so one chatty stage cannot exhaust the server.
 - Model references may be canonical (`harness::provider::id`), legacy (`provider::id`), or bare ids — all resolve; write the canonical form in new references.

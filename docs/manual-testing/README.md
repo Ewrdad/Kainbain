@@ -35,9 +35,9 @@ Goal: prove user-visible behaviour did not regress, without polluting live data.
 | [00-setup-and-teardown.md](00-setup-and-teardown.md) | Scratch stack lifecycle | MT-SETUP-01…03 | Scratch only |
 | [01-smoke-and-discovery.md](01-smoke-and-discovery.md) | Health, status, agent guide, OpenAPI | MT-SMOKE-01…06 | No (read-only) |
 | [02-projects-and-workflows.md](02-projects-and-workflows.md) | Projects, activation, workflows, stages | MT-PROJ-01…08 | Scratch |
-| [03-tasks-lifecycle.md](03-tasks-lifecycle.md) | Task CRUD, preview, move/advance/jump/complete, blockedBy | MT-TASK-01…12 | Scratch |
+| [03-tasks-lifecycle.md](03-tasks-lifecycle.md) | Task CRUD, preview, move/advance/jump/complete, blockedBy | MT-TASK-01…13 | Scratch |
 | [04-execution-engine-and-compute.md](04-execution-engine-and-compute.md) | Execute, human/CI stages, pause/resume/retry/abort, engine, circuit, sessions | MT-EXEC-01…11 | Scratch |
-| [05-ui-board-and-views.md](05-ui-board-and-views.md) | Kanban, detail, review, survey, explorer, observability, docs, routing | MT-UI-01…12 | Scratch UI |
+| [05-ui-board-and-views.md](05-ui-board-and-views.md) | Kanban, detail, review, survey, explorer, observability, docs, routing | MT-UI-01…13 | Scratch UI |
 | [06-files-docs-skills-review.md](06-files-docs-skills-review.md) | Files, docs, skills, review comments, reports, images | MT-DOC-01…10 | Scratch |
 | [07-settings-push-deploy-safety.md](07-settings-push-deploy-safety.md) | Config, prompt layout, push, harnesses/models, deploy (read-only) | MT-SET-01…09 | Scratch, mostly read-only |
 | [08-negative-security-and-recovery.md](08-negative-security-and-recovery.md) | Validation, traversal, 404/409, restart persistence, WebSocket | MT-NEG-01…10 | Scratch |

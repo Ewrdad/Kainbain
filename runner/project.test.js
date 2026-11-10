@@ -13,6 +13,7 @@ import {
 	refreshMirror,
 	refreshWorktreeToRemote,
 	removeIntegrationWorkdir,
+	resolveRunnerDocsDirName,
 	runGit,
 	syncTaskDocs,
 } from "./project.js";
@@ -265,6 +266,11 @@ describe("runner project prep", () => {
 			// Publish the task branch, then simulate a dead run's leftovers:
 			// an unpushed commit plus a dirty file on top of the remote state.
 			git(first.workdir, ["push", "-q", "origin", "kb/t9"]);
+			// The product-created clone carries no author identity: set repo-local
+			// config like every other fixture so the leftover commit never depends
+			// on ambient (global) git config.
+			git(first.workdir, ["config", "user.email", "t@t.t"]);
+			git(first.workdir, ["config", "user.name", "t"]);
 			fs.writeFileSync(path.join(first.workdir, "stale.txt"), "leftover");
 			git(first.workdir, ["add", "stale.txt"]);
 			git(first.workdir, ["commit", "-qm", "unpushed leftover"]);
@@ -561,6 +567,140 @@ describe("runner project prep", () => {
 			assert.ok(!fs.existsSync(path.join(second.workdir, "local-only.txt")));
 		} finally {
 			fs.rmSync(origin, { recursive: true, force: true });
+		}
+	});
+
+	it("parks STAGED residue without checkout (dirty-index eviction regression)", async () => {
+		// 2026-11-09 outage: a workdir whose index had staged files made
+		// `git checkout <recovery branch>` fail with "you need to resolve
+		// your current index first", so eviction always failed and every
+		// claim hit WORKTREE_CAP_REACHED. Parking must commit on the
+		// current checkout instead.
+		const { preserveEvictedWorkdir } = await import("./project.js");
+		const { workdir, branch } = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "dirty-1" });
+		const tipBefore = execFileSync("git", ["rev-parse", "HEAD"], { cwd: workdir, encoding: "utf8" }).trim();
+		fs.writeFileSync(path.join(workdir, "staged.txt"), "precious\n");
+		git(workdir, ["add", "staged.txt"]); // staged, not committed — the exact prod shape
+		const recoveredTo = await preserveEvictedWorkdir(workdir);
+		assert.match(recoveredTo, /^kb-recovery\/dirty-1\//);
+		const kept = execFileSync("git", ["ls-tree", "-r", "--name-only", recoveredTo], { cwd: repo, encoding: "utf8" });
+		assert.ok(kept.split("\n").includes("staged.txt"), "recovery branch preserves the staged file");
+		const tipAfter = execFileSync("git", ["rev-parse", branch], { cwd: repo, encoding: "utf8" }).trim();
+		assert.equal(tipAfter, tipBefore, "task branch tip left unchanged");
+	});
+
+	it("evicts a dirty-index stale workdir instead of refusing (cap regression)", async () => {
+		const now = Date.now();
+		for (let i = 0; i < 5; i++) {
+			await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: `old-${i}` });
+		}
+		// LRU workdir carries a staged file — the shape that stranded eviction.
+		fs.writeFileSync(path.join(tmp, "kb-old-0", "staged.txt"), "precious\n");
+		git(path.join(tmp, "kb-old-0"), ["add", "staged.txt"]);
+		for (let i = 0; i < 5; i++) {
+			const at = new Date(now - (5 - i) * 3600_000);
+			fs.utimesSync(path.join(tmp, `kb-old-${i}`), at, at);
+		}
+		const made = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "new" });
+		assert.equal(made.reused, false);
+		assert.ok(!fs.existsSync(path.join(tmp, "kb-old-0")), "dirty LRU workdir evicted");
+		assert.ok(fs.existsSync(path.join(tmp, "kb-new")));
+		const branches = execFileSync("git", ["branch", "--list", "kb-recovery/old-0/*"], { cwd: repo, encoding: "utf8" }).trim();
+		assert.ok(branches.length > 0, "residue parked on a recovery branch");
+		const kept = execFileSync("git", ["ls-tree", "-r", "--name-only", branches.split("\n")[0].trim()], { cwd: repo, encoding: "utf8" });
+		assert.ok(kept.split("\n").includes("staged.txt"));
+	});
+
+	describe("reapTerminalOrphanWorkdirs", () => {
+		function sweepClient(tasksByProject) {
+			return {
+				listProjects: async () => Object.keys(tasksByProject).map((id) => ({ id })),
+				getTask: async (projectId, taskId) => {
+					const t = tasksByProject[projectId]?.[taskId];
+					if (!t) {
+						const err = new Error("Task not found");
+						err.statusCode = 404;
+						throw err;
+					}
+					return t;
+				},
+			};
+		}
+
+		it("reaps completed and gone tasks, keeps live ones", async () => {
+			const { reapTerminalOrphanWorkdirs } = await import("./project.js");
+			const done = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "done-1" });
+			const live = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "live-1" });
+			const gone = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "gone-1" });
+			const client = sweepClient({
+				p: { "done-1": { id: "done-1", status: "completed" }, "live-1": { id: "live-1", status: "in_stage" } },
+			});
+			const reaped = await reapTerminalOrphanWorkdirs({ client, workRoot: tmp });
+			assert.ok(!fs.existsSync(done.workdir), "completed task workdir reaped");
+			assert.ok(!fs.existsSync(gone.workdir), "task-gone workdir reaped");
+			assert.ok(fs.existsSync(live.workdir), "live task workdir kept");
+			assert.equal(reaped.length, 2);
+		});
+
+		it("deletes nothing when the backend is unreadable", async () => {
+			const { reapTerminalOrphanWorkdirs } = await import("./project.js");
+			const kept = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "safe-1" });
+			const down = new Error("connect ECONNREFUSED");
+			const reaped = await reapTerminalOrphanWorkdirs({
+				client: {
+					listProjects: async () => { throw down; },
+					getTask: async () => { throw down; },
+				},
+				workRoot: tmp,
+			});
+			assert.deepEqual(reaped, []);
+			assert.ok(fs.existsSync(kept.workdir), "outage never deletes work");
+		});
+	});
+});
+
+describe("resolveRunnerDocsDirName", () => {
+	// Parity matrix with the backend's resolveDocsDirName (api/docsPath.js):
+	// the two cannot share code (the Runner ships without the backend tree),
+	// so both sides pin the same rule — a valid custom name wins, anything
+	// else degrades to `docs`, never throws.
+	it("accepts simple custom names from strings, records, and wrappers", () => {
+		assert.equal(resolveRunnerDocsDirName("kdocs"), "kdocs");
+		assert.equal(resolveRunnerDocsDirName("  k-docs  "), "k-docs");
+		assert.equal(resolveRunnerDocsDirName({ docsDirName: "notes" }), "notes");
+		assert.equal(resolveRunnerDocsDirName({ docsDir: "legacy" }), "legacy");
+	});
+
+	it("degrades reserved names to docs, case-insensitively", () => {
+		for (const name of [".", "..", ".kainbain", ".KAINBAIN", ".git", ".GIT", "node_modules", "NODE_MODULES"]) {
+			assert.equal(resolveRunnerDocsDirName(name), "docs");
+			assert.equal(resolveRunnerDocsDirName({ docsDirName: name }), "docs");
+		}
+	});
+
+	it("degrades separators, blanks, garbage, and overlong names to docs", () => {
+		for (const value of ["", "   ", "../escape", "a/b", "a\\b", "has space", "x".repeat(65), null, undefined, 42, true, ["docs"], { nope: 1 }]) {
+			assert.equal(resolveRunnerDocsDirName(value), "docs");
+		}
+		assert.equal(resolveRunnerDocsDirName("x".repeat(64)), "x".repeat(64));
+	});
+});
+
+describe("syncTaskDocs custom docsDirName", () => {
+	it("mirrors from and into a custom docs folder, falls back to docs otherwise", async () => {
+		const primary = fs.mkdtempSync(path.join(os.tmpdir(), "kb-primary-custom-"));
+		const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-work-custom-"));
+		try {
+			fs.mkdirSync(path.join(primary, "kdocs", "tasks", "t1"), { recursive: true });
+			fs.writeFileSync(path.join(primary, "kdocs", "tasks", "t1", "idea-1.md"), "idea");
+			assert.equal(await syncTaskDocs({ primaryCwd: primary, workdir, taskId: "t1", docsDirName: "kdocs" }), 1);
+			assert.equal(fs.readFileSync(path.join(workdir, "kdocs", "tasks", "t1", "idea-1.md"), "utf8"), "idea");
+			assert.equal(await syncTaskDocs({ primaryCwd: primary, workdir, taskId: "missing", docsDirName: "kdocs" }), 0);
+			// An invalid custom name degrades to `docs` and does not read the custom folder.
+			assert.equal(await syncTaskDocs({ primaryCwd: primary, workdir, taskId: "t1", docsDirName: "../escape" }), 0);
+		} finally {
+			fs.rmSync(primary, { recursive: true, force: true });
+			fs.rmSync(workdir, { recursive: true, force: true });
 		}
 	});
 });

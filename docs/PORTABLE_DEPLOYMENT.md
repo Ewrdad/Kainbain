@@ -20,9 +20,9 @@ missing storage link silently degraded into a one-task shadow directory and the
 UI showed 1 of 134 tasks. A future storage regression must fail the checklist,
 never present an empty board.
 
-> **Clone URL.** The canonical remote today is the author's Forgejo at
-> `https://forgejo.local/ewrdad/KainBain.git` (homelab network). If you are reading
-> this in a public mirror, substitute that mirror's URL in the `git clone`
+> **Clone URL.** The canonical remote is GitHub at
+> `https://github.com/Ewrdad/Kainbain.git`. If you are reading
+> this in a private mirror, substitute that mirror's URL in the `git clone`
 > line — everything after the clone is identical.
 
 ## Scenario A — 5-minute Docker
@@ -31,21 +31,27 @@ Production-shaped, self-contained, no credentials needed (harness calls
 degrade honestly until you provide keys).
 
 ```bash
-git clone https://forgejo.local/ewrdad/KainBain.git
+git clone https://github.com/Ewrdad/Kainbain.git
 cd KainBain
 docker compose up -d
 curl http://localhost:3100/status
 ```
 
-Open **http://localhost:3100** — the API serves the built UI from the same
-port, so there is only one URL.
+Open **http://localhost:3100** — the frontend serves the built UI and proxies
+the API from the same port, so there is only one URL.
 
-What just happened: the image builds (`Dockerfile`: api + frontend trees,
-frontend compiled with same-origin API URLs), the entrypoint verifies the
-task-storage mounts *refuse-to-boot* style (an unreachable or unwritable
-projects root exits 1 rather than serving an empty list), and compose mounts
-`./projects` (your tasks, on the host, survive rebuilds) plus a named volume
-for container state.
+What just happened: compose builds **two images from this checkout in one
+`docker compose up --build`** (`backend` from `Dockerfile`, `frontend` from
+`frontend/Dockerfile`, frontend compiled with same-origin API URLs). They
+are independently versioned by API contract (see
+`api/version.json`, `frontend/version.json`, `runner/version.json`): a
+frontend may run against any backend inside its declared API range, and an
+out-of-range pair shows an explicit UI banner naming both versions instead
+of failing obscurely. The backend entrypoint verifies the task-storage mounts
+*refuse-to-boot* style (an unreachable or unwritable projects root exits 1
+rather than serving an empty list), and compose mounts `./projects` (your
+tasks, on the host, survive rebuilds) plus a named volume for container
+state. See [State ownership across the container boundary](#state-ownership-across-the-container-boundary) for which side writes what.
 
 Useful follow-ups (all optional):
 
@@ -62,6 +68,23 @@ To enable real agent runs, set `KAINBAIN_DEFAULT_HARNESS=mock` in `.env`
 for zero-credential evaluation, or add provider keys / a LiteLLM URL
 (see [Scenario C](#scenario-c-workcorporate-laptop)) and recreate
 (`docker compose up -d` again).
+
+Publishing and deploying are separate steps. `./publish.sh` (repo root)
+builds and pushes the changed components' images to Docker Hub and writes
+`dist/release-manifest.json`; it never restarts anything.
+`~/apps/kainbain/redeploy.sh` then pulls and restarts per component
+(`--backend`, `--frontend`, `--runner`, `--all`; `--tag <tag>` pins a
+previous tag for rollback). Set `KAINBAIN_DOCKERHUB_NAMESPACE` wherever
+publish runs. The pipeline's Publish stage runs `./publish.sh --detect`
+and publishes only — deployment stays a human, local act. The old
+`./deploy.sh --prod` path is retired (it prints the pointer above).
+
+If this instance runs its own KainBain pipeline and deploys itself (a `ci`
+stage whose command runs `./publish.sh --detect`, a host command that only
+ever runs on the backend in the primary checkout), set `KAINBAIN_SELF_DEPLOY_CONTINUITY=1` in `.env`.
+That implementation-specific flag enables the cross-restart continuity
+plugin (`api/continuity/`) so the app survives its own redeploy; it is off
+by default and generic projects never load that code.
 
 Then run the [storage-sanity checklist](#storage-sanity-checklist).
 
@@ -90,7 +113,7 @@ canary trees, then Playwright Chromium — Linux additionally tries the
 browser system deps and falls back with a warning without root):
 
 ```bash
-git clone https://forgejo.local/ewrdad/KainBain.git
+git clone https://github.com/Ewrdad/Kainbain.git
 cd KainBain
 npm run setup
 ```
@@ -210,6 +233,63 @@ unset means "not configured", honestly reported in health.)
 
 Then run the [storage-sanity checklist](#storage-sanity-checklist).
 
+## Scenario D — bring your existing repositories (multi-project)
+
+Start from Scenario A (Docker) or B (native). This scenario points KainBain at
+repositories you already have, across one or more directories, and optionally
+gives a project its own state-folder name.
+
+**1. Point at the roots that hold your repos.** `PROJECTS_ROOT` is the primary
+root (one project per direct child directory); `PROJECTS_ROOTS` adds more.
+Projects must be direct children of a root, or adopted explicitly (step 3).
+
+```bash
+# Linux/macOS (os path-list separator is ':'):
+export PROJECTS_ROOT="$HOME/projects"
+export PROJECTS_ROOTS="$HOME/work:/mnt/nas/repos"
+# Windows (separator is ';'):
+# set PROJECTS_ROOTS=%USERPROFILE%\work;D:\repos
+```
+
+Restart the API. Every direct child carrying a KainBain config file
+(`<dir>/.kainbain/project.json`, or the project's custom state folder) appears
+on the board. Stray directories are ignored, never turned into projects.
+
+**2. Adopt a repo that lives outside every root.** Use the UI (**Project menu →
+“+ Add Existing Project…”**) or the API:
+
+```bash
+curl -X POST http://localhost:3100/projects/register \
+  -H 'Content-Type: application/json' \
+  -d '{"path":"/home/me/repos/one-off","name":"One Off","kainbainDirName":".kb"}'
+```
+
+Adopted directories outside every root are recorded in
+`~/.kainbain/projects.json` (`KAINBAIN_PROJECTS_REGISTRY_FILE`) and re-discovered
+after a restart. The call is idempotent. Repos inside a configured root need no
+registry entry.
+
+**3. Custom state folder (optional).** A project whose repo already owns
+`.kainbain`, or that wants `.kb`, sets its state-folder name in **Project
+Settings → KainBain Folder Name** (or `kainbainDirName` on the register/create
+payload). Existing state is never moved automatically. Preferred flow: stop
+the API, rename the folder, restart — the config is self-describing, so the
+project re-scans from the new name with its state intact:
+
+```bash
+# stop the API first
+cd /home/me/repos/one-off
+mv .kainbain .kb   # only if you already had state under .kainbain
+# start the API again
+```
+
+Changing the setting in the UI writes the new config and removes the superseded
+one (a restart can never revert the setting or split state across two folders),
+but `sessions/`, `worktrees/`, and `quarantine/` stay in the old folder — move
+them across by hand.
+
+Then run the [storage-sanity checklist](#storage-sanity-checklist).
+
 ## Storage-sanity checklist
 
 Run this after every scenario, and again after any restore, migration, or
@@ -276,6 +356,122 @@ the same warning on the deploy path):
 The `shadowed` log line quotes the merge procedure verbatim — follow it,
 then re-run this checklist.
 
+**5. A fresh boot has no junk projects.** On a clean machine the board starts
+empty: sample projects (`Project A`–`Project D`) are **not** seeded unless you
+set `KAINBAIN_SEED_SAMPLE_PROJECTS=1`. If you see them, the flag is on or they
+are genuinely on disk from an older run — remove the directories under
+`PROJECTS_ROOT`, or hide them with the project switcher’s *Hide* action.
+
+**6. Every configured root is discovered.** Adopt a repo outside every root
+(`POST /projects/register`), restart, and confirm it is still on the board:
+
+```bash
+curl -s http://localhost:3100/projects \
+  | node -e "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>{
+      const p=JSON.parse(s).map(x=>x.cwd).sort();console.log(p.join('\\n'));})"
+```
+
+Want: every root’s projects plus the adopted path. A missing adopted project
+means the registry file (`~/.kainbain/projects.json`) is unreadable — check
+permissions and re-run the register call.
+
+## State ownership across the container boundary
+
+The one place that says which side writes what (D10, MigrationPlan Phase 1
+WP-1.2). The invariant underneath is unchanged: the repo/filesystem is the
+source of truth for projects and tasks; nothing here adds a database.
+
+| Mount | Held by | Contents | Writers |
+|---|---|---|---|
+| `./projects` → `/workspace/projects` | backend | Master project copies — repo-as-truth (project configs, `docs/tasks/` run state) | **Backend only.** The only writer of project/task files. |
+| `kainbain-data` → `/home/node/.kainbain` | backend | Container state: notes space, sessions, caches, `build.json` stamp | **Backend only** (entrypoint verifies writability at boot; an unreachable mount is a fatal boot error, never a silent empty board). |
+| (none) | frontend | Nothing at runtime — static UI + proxy config, `VITE_*` baked at build | No writes possible. A stale frontend can only disagree by version, which the mismatch banner names. |
+| Runner working dirs (Phase 2+) | each Runner (native, outside compose) | Git-operation copies: per-task worktrees | Runners mutate **only** their own worktree and push their branch; they converge via push + completion report. No second writable store for task truth exists — adding one is the programme kill criterion. |
+
+Consequences for operators:
+
+- General config (schema-driven settings plus `.env` secrets) is read by the
+  backend from its mounted folder; the frontend takes configuration only as
+  build-time `VITE_*` args. A frontend container never needs a volume.
+- `docker compose down` loses nothing: tasks live in `./projects` on the
+  host, state in the named volume. `docker compose down -v` discards the
+  named volume (sessions, caches) but never `./projects`.
+- Rollback to the single-service topology is `git show
+  HEAD~:docker-compose.yml` (or any pre-split commit): the backend image
+  still ships `frontend/dist` and serves it when reached directly.
+- New projects will require a fetchable remote (decided, D11); enforcement
+  lands with the Runner work. Existing local-only projects keep the
+  loopback transport and are never offered to remote Runners.
+
+## Runner updates (external artifact channel, ADR 0012)
+
+External Runners self-update from versioned GitHub Releases — never from
+the backend (rejected Option B: backend-served code would maximise the R05
+blast radius and couple updates to backend uptime).
+
+- **Automatic, idle-only.** The dispatch loop checks
+  `https://api.github.com/repos/Ewrdad/Kainbain/releases/latest` on a
+  jittered hourly interval (`KAINBAIN_RUNNER_UPDATE_CHECK_INTERVAL_MS`,
+  min 5 min) when it holds no task, and immediately (interval bypassed)
+  when the backend refuses dispatch with 409
+  `RUNNER_VERSION_BELOW_MINIMUM`. Set `KAINBAIN_RUNNER_AUTO_UPDATE=0` to
+  opt out. Pointer/manifest fetches time out after 30s, asset downloads
+  after 5 min — a hung mirror backs off and retries instead of wedging the
+  loop, and any failure keeps the old version running.
+- **Verified, not trusted.** The manifest signature is checked against the
+  public key pinned in `runner/updates/verify.js` (never fetched from the
+  network), then the asset sha256 against the manifest. Any mismatch aborts,
+  keeps the old version running, and reports via heartbeat facts
+  (`updateStatus`) for the Settings › Runners "update failed" badge.
+- **Atomic with rollback.** The new tree stages under
+  `$KAINBAIN_RUNNER_INSTALL_ROOT/releases/<v>/unpacked`, then the
+  `current` symlink flips (previous kept as `previous`). The daemon exits 0
+  and `runner/bin/kainbain-runner` (the supported entrypoint) restarts it
+  into the new version — the wrapper only restarts when the `current`
+  target actually changed during the run, so a normal completion (single
+  assignment done, dispatch idle-out) stops instead of re-running finished
+  work. Three crashed boots in a row flip `current` back to
+  `previous` automatically. Direct `node runner/main.js` is dev-only after
+  the first update — it cannot restart itself. A stale `update.lock` from
+  a crashed updater heals itself (dead holder is detected and the lock
+  recycled, so one crash never bricks future updates), and the first
+  successful heartbeat on the new version prunes superseded releases while
+  always keeping `current` + `previous`.
+- **Backend coordination, no code transfer.** Runners report
+  `facts.versions.runner` on register/heartbeat. Settings › Runners shows
+  the fleet version matrix with an "update available" badge (below
+  `KAINBAIN_RUNNER_RECOMMENDED_VERSION`) and a "below minimum" flag.
+  Dispatch and direct claim refuse Runners below
+  `KAINBAIN_RUNNER_MIN_VERSION` with 409 (routine releases raise only the
+  recommended knob, so dispatch keeps flowing).
+- **Rollback a bad release.** Delete (or un-publish) the bad GitHub release
+  so `releases/latest` resolves to the prior tag, then lower
+  `KAINBAIN_RUNNER_RECOMMENDED_VERSION` to stop badge nagging. Runners still
+  on older versions pick the prior release up on their next idle check.
+  Runners already on the bad release stay there until a newer release
+  supersedes it — the updater never downgrades — so cut a patch release to
+  move them forward. Two exceptions: a release that crashes on boot rolls
+  itself back to `previous` after 3 failed boots, and raising
+  `KAINBAIN_RUNNER_MIN_VERSION` above the bad version stops it dispatching
+  (409) while the patch is cut. Re-tagging is never needed.
+- **Air-gapped/offline hosts.** Point `KAINBAIN_RUNNER_UPDATE_URL` at a
+  mirror serving `manifest.json` + `manifest.json.minisig` + the asset
+  tarballs at one base URL (or a full `manifest.json` URL). The same
+  signature + sha256 gates apply to mirrors.
+- **First-release key provisioning (operator, once).** Run
+  `node scripts/runner-release-keygen.mjs`, commit the printed public line
+  to `scripts/runner-pinned-key/runner-release.pub` **and** to
+  `PINNED_RELEASE_PUBLIC_KEY` in `runner/updates/verify.js` (CI fails the
+  release when they differ), and store the secret halves in the GitHub
+  Actions secrets `RUNNER_RELEASE_SIGNING_KEY` / `RUNNER_RELEASE_SIGNING_KEYNUM`.
+  Cutting a release is `git tag runner-vX.Y.Z && git push origin runner-vX.Y.Z`
+  (pre-release tags `*-rc.N`/`*-beta*`/`*-alpha*` publish as pre-release and
+  are skipped by v1 Runners; the manifest keeps the full canary version,
+  never the stripped final it previews). `minisign` CLI install is not required
+  anywhere — signing and verification are pure Node + Ed25519. Linux and
+  macOS (x64/arm64) ship; Windows is deferred.
+- **Linux/macOS only in v1** (x64 + arm64, four assets per release).
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -291,6 +487,6 @@ then re-run this checklist.
 ## What this guide does not cover
 
 The author's homelab production deployment (systemd user unit, nginx,
-`https://kainbain.local`) is documented in the root `README.md` under
+`https://kainbain.home`) is documented in the root `README.md` under
 "Author's homelab production setup" — it is one specific production
 instance, not a procedure. Everything above stands without it.

@@ -1,12 +1,16 @@
+import { loadRunnerCredential } from "./credentialFile.js";
+
 /***
  * MARK: loadRunnerConfig
  * @description Reads Runner daemon configuration from the environment.
- *   The credential is operator-pasted after human approval (D4): when it
- *   is absent the daemon registers, polls until the join is approved, then
- *   exits with instructions instead of running unapproved. Assignment is
- *   explicit (project + task ids) by default; set KAINBAIN_RUNNER_DISPATCH=1
- *   for the capability-aware dispatch loop (WP-3.1), optionally scoped with
- *   KAINBAIN_RUNNER_PROJECTS.
+ *   The credential is collected by itself after human approval (one-click
+ *   onboarding, D4): when it is absent the daemon registers, polls until
+ *   the join is approved, stores the handed-over credential, and keeps
+ *   booting. Only when the handover cannot complete (e.g. a restart lost
+ *   the join nonce) does it exit asking for the pasted credential.
+ *   Assignment is explicit (project + task ids) by default; set
+ *   KAINBAIN_RUNNER_DISPATCH=1 for the capability-aware dispatch loop
+ *   (WP-3.1), optionally scoped with KAINBAIN_RUNNER_PROJECTS.
  * @example loadRunnerConfig({ KAINBAIN_RUNNER_ID: 'r1' }) => { runnerId: 'r1', ... }
  * @param {Object} [env] - Environment mapping (defaults to process.env).
  * @returns {Object} Normalized config.
@@ -116,9 +120,14 @@ export function loadRunnerConfig(env = process.env) {
 	const approvalTimeoutMs = Number.parseInt(str("KAINBAIN_RUNNER_APPROVAL_TIMEOUT_MS", "300000"), 10);
 	const dispatchPollMs = Number.parseInt(str("KAINBAIN_RUNNER_DISPATCH_POLL_MS", "5000"), 10);
 	const dispatchIdleLimit = Number.parseInt(str("KAINBAIN_RUNNER_DISPATCH_IDLE_LIMIT", "3"), 10);
+	// Impromptu T0 channel (ADR 0014): idle runners also poll for read-only
+	// jobs (retrospective chat turns) when a dispatch iteration yields no
+	// task work. `=0` opts out (task work only).
+	const impromptu = str("KAINBAIN_RUNNER_IMPROMPTU", "1") !== "0";
 
 	return {
 		backendUrl,
+		home: str("HOME", ""),
 		installRoot: str("KAINBAIN_RUNNER_INSTALL_ROOT", ""),
 		updateUrl,
 		autoUpdate,
@@ -127,7 +136,14 @@ export function loadRunnerConfig(env = process.env) {
 				? updateCheckIntervalMs
 				: 3600000,
 		joinToken: str("KAINBAIN_RUNNER_JOIN_TOKEN", ""),
-		credential: str("KAINBAIN_RUNNER_CREDENTIAL", ""),
+		// Credential precedence: explicit env wins; otherwise the
+		// previously collected credential file (one-click approval writes
+		// it); otherwise empty, which routes the daemon into the join
+		// flow. HOME comes from the env mapping only (startRunner.sh
+		// always sets it), so tests with fake envs never touch disk.
+		credential:
+			str("KAINBAIN_RUNNER_CREDENTIAL", "") ||
+			(str("HOME", "") ? loadRunnerCredential(runnerId, str("HOME", "")) : ""),
 		runnerId,
 		harnessId,
 		harnessIds,
@@ -142,6 +158,7 @@ export function loadRunnerConfig(env = process.env) {
 		projectId,
 		taskId,
 		dispatch,
+		impromptu,
 		projectIds: str("KAINBAIN_RUNNER_PROJECTS", "")
 			.split(",")
 			.map((p) => p.trim())

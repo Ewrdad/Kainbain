@@ -19,6 +19,8 @@ import { disposeAllOpencodeServers } from "./agent/harnesses/opencode/OpencodeSe
 import { PromptCurationEngine } from "./promptCuration.js";
 import { config } from "./config.js";
 import { ProjectStore } from "./projectStore.js";
+import { seedDemoProject } from "./project/seedDemo.js";
+import { resolveStatePath } from "./flow/resolveStatePath.js";
 import { isAllowedCorsOrigin } from "./cors.js";
 import { createProjectResolvers } from "./projectResolution.js";
 import { createSessionHelpers } from "./sessionResolution.js";
@@ -27,6 +29,11 @@ import { sessionStore } from "./sessionStore.js";
 import { ClaimStore } from "./flow/claimStore.js";
 import { IntegrationQueue } from "./flow/integrationQueue.js";
 import { SteerStore } from "./flow/steerStore.js";
+import {
+	ImpromptuStore,
+	createChatProgressForwarder,
+	createImpromptuDispatcher,
+} from "./flow/impromptuStore.js";
 import { RunnerRegistry } from "./flow/runnerRegistry.js";
 import { ExecutionLedger } from "./flow/executionLedger.js";
 import { workflowRegistry } from "./workflowRegistry.js";
@@ -48,7 +55,9 @@ import harnessesRoutes from "./routes/harnesses.js";
 import sessionsRoutes from "./routes/sessions.js";
 import tasksRoutes from "./routes/tasks.js";
 import { registerRunnerRoutes } from "./flow/runnerRoutes.js";
+import { registerImpromptuRoutes } from "./flow/impromptuRoutes.js";
 import workflowsRoutes from "./routes/workflows.js";
+import onboardingRoutes from "./routes/onboarding.js";
 import filesRoutes from "./routes/files.js";
 import taskImagesRoutes from "./routes/taskImages.js";
 import skillsRoutes from "./routes/skills.js";
@@ -57,9 +66,11 @@ import wsRoutes from "./routes/ws.js";
 import pushRoutes from "./routes/push.js";
 import { setPushServiceLogger } from "./push/index.js";
 import promptLayoutRoutes from "./routes/promptLayout.js";
+import imageGenRoutes from "./routes/imageGen.js";
 import agentRoutes from "./routes/agent.js";
 import reviewRoutes from "./routes/review.js";
 import retrospectiveRoutes from "./routes/retrospective.js";
+import accessibilityRoutes from "./routes/accessibility.js";
 import siteDocsRoutes from "./routes/docs.js";
 
 /***
@@ -80,6 +91,18 @@ if (projectsRootWarning) {
 const projectStore = new ProjectStore();
 taskStore.setProjectStore(projectStore);
 prepareProjects(projectStore, taskStore);
+// Install-time demo seed (KAINBAIN_SEED_DEMO, off by default): one
+// local-only starter project when the store is empty, so a fresh
+// install opens on a live board. Never throws (seedDemoProject yields
+// null on any failure), and contributor boots leave the flag off.
+// The marker file lives in the engine state dir (~/.kainbain/engine in
+// the container, i.e. the host state dir via compose), so the seed is
+// one-time per install and uninstall --purge resets it.
+if (config.seedDemo === true) {
+	seedDemoProject(projectStore, {
+		markerFile: resolveStatePath(null, null, "seed-demo.json"),
+	});
+}
 
 const { resolveProjectId, requireProject, resolveAndGuardProject } = createProjectResolvers(projectStore);
 const { getOrCreateSession, disposeSession, isAgentRunning } = createSessionHelpers({
@@ -165,6 +188,22 @@ const runnerRegistry = new RunnerRegistry({
 });
 const claimStore = new ClaimStore({ ttlMs: config.claimTtlMs });
 const steerStore = new SteerStore({});
+// Impromptu T0 channel (ADR 0014): read-only Runner jobs off the main task
+// queue (retrospective chat turns). Runner progress deltas fan out as the
+// existing CHAT_PROGRESS frames through the store's sink.
+const impromptuStore = new ImpromptuStore({
+	queueMax: config.impromptuQueueMax,
+	jobTtlMs: config.impromptuJobTtlMs,
+	claimTtlMs: config.impromptuClaimTtlMs,
+	onProgress: createChatProgressForwarder({ eventBridge }),
+});
+const impromptuDispatcher = createImpromptuDispatcher({
+	impromptuStore,
+	runnerRegistry,
+	claimStore,
+	enabled: config.impromptuEnabled,
+	staleAfterMs: config.runnerStaleAfterMs,
+});
 const executionLedger = new ExecutionLedger();
 // Serialized integration leases for Runner-run merges (Step 3): one
 // project + target branch, one leased integration at a time. In-memory
@@ -199,6 +238,8 @@ const deps = {
 	runnerRegistry,
 	claimStore,
 	steerStore,
+	impromptuStore,
+	impromptuDispatcher,
 	executionLedger,
 	integrationQueue,
 };
@@ -241,16 +282,20 @@ app.register(harnessesRoutes, { deps });
 app.register(sessionsRoutes, { deps });
 app.register(tasksRoutes, { deps });
 app.register(registerRunnerRoutes, { deps });
+app.register(registerImpromptuRoutes, { deps });
 app.register(workflowsRoutes, { deps });
+app.register(onboardingRoutes, { deps });
 app.register(filesRoutes, { deps });
 app.register(taskImagesRoutes, { deps });
 app.register(wsRoutes, { deps });
 app.register(pushRoutes, { deps });
 app.register(promptLayoutRoutes, { deps });
+app.register(imageGenRoutes, { deps });
 app.register(agentRoutes, { deps });
 app.register(siteDocsRoutes);
 app.register(reviewRoutes, { deps });
 app.register(retrospectiveRoutes, { deps });
+app.register(accessibilityRoutes, { deps });
 app.register(skillsRoutes, { deps: { projectStore, skillsRegistry } });
 
 // Serve the built frontend (frontend/dist) from the same origin as the API so
@@ -277,17 +322,21 @@ if (fs.existsSync(distDir)) {
  * @description Registers SIGTERM / SIGINT listeners to safely persist running task states,
  * stop cleanup timers, notify connected WebSocket clients, and close Fastify cleanly.
  * @param {Object} server - The Fastify server instance.
- * @param {Object} stores - References to taskStore, sessionStore, workflowRegistry, eventBridge.
+ * @param {Object} stores - References to taskStore, sessionStore, workflowRegistry, eventBridge, impromptuStore.
  ***/
 export function setupGracefulShutdown(
 	server,
-	{ taskStore, sessionStore, workflowRegistry, eventBridge },
+	{ taskStore, sessionStore, workflowRegistry, eventBridge, impromptuStore },
 ) {
 	const handleSignal = async (signal) => {
 		try {
 			taskStore?.stopScheduler?.();
 			sessionStore?.stopCleanup?.();
 			workflowRegistry?.stopCleanup?.();
+			// The impromptu queue is in-memory by design (ADR 0014): a
+			// restart drops it, so parked chat turns must fail loudly here
+			// instead of hanging on a queue that will not survive.
+			impromptuStore?.shutdown?.(`the backend is shutting down (${signal})`);
 
 			// Persist any active running tasks safely. The covered set is
 			// shared with the scheduler's orphan reconciliation
@@ -371,6 +420,7 @@ const start = async () => {
 			sessionStore,
 			workflowRegistry,
 			eventBridge,
+			impromptuStore,
 		});
 		// Establish the initial queue before the scheduler ticks: orphaned
 		// runs collapse to `interrupted`, installed continuity plugins

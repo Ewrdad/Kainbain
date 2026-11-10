@@ -80,6 +80,33 @@ describe("scripts/sync-tip-dist.mjs", () => {
 		});
 	});
 
+	it("syncs build-info.json alongside a moved manifest commit", () => {
+		const { tip, tipTop, primaryTop, primary, pointer } = setup();
+		fs.writeFileSync(path.join(tip, "build-info.json"), JSON.stringify({ buildNumber: 9, commit: "newsha" }) + "\n");
+		const r = run(tipTop, {
+			KAINBAIN_PUBLISH_FROM_TIP_WORKTREE: "1",
+			SYNC_PRIMARY_TOP: primaryTop,
+			KAINBAIN_LAST_PUBLISH_FILE: pointer,
+		});
+		assert.equal(r.status, 0, r.stderr + r.stdout);
+		assert.match(r.stdout, /buildInfo=true/);
+		assert.equal(JSON.parse(fs.readFileSync(path.join(primary, "build-info.json"), "utf8")).buildNumber, 9);
+	});
+
+	it("leaves build-info.json alone when the primary manifest is already current", () => {
+		const { tip, tipTop, primaryTop, primary, pointer } = setup();
+		fs.writeFileSync(path.join(tip, "build-info.json"), JSON.stringify({ buildNumber: 9, commit: "newsha" }) + "\n");
+		fs.writeFileSync(path.join(primary, "release-manifest.json"), JSON.stringify(manifest("newsha")) + "\n");
+		fs.writeFileSync(path.join(primary, "build-info.json"), JSON.stringify({ buildNumber: 8, commit: "newsha" }) + "\n");
+		const r = run(tipTop, {
+			KAINBAIN_PUBLISH_FROM_TIP_WORKTREE: "1",
+			SYNC_PRIMARY_TOP: primaryTop,
+			KAINBAIN_LAST_PUBLISH_FILE: pointer,
+		});
+		assert.equal(r.status, 0, r.stderr + r.stdout);
+		assert.equal(JSON.parse(fs.readFileSync(path.join(primary, "build-info.json"), "utf8")).buildNumber, 8);
+	});
+
 	it("syncs under deploy.sh's tip re-exec marker alone (pipeline Publish path)", () => {
 		const { tipTop, primaryTop, primary, pointer } = setup();
 		const r = run(tipTop, {

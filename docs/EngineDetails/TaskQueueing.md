@@ -61,3 +61,21 @@ stale `lastDispatchAt` means the engine or queue believes work is still in
 flight; `ticks` frozen while `schedulerRunning` is true means the interval
 itself is dead.
 
+## Queue chip and popup (bottom bar)
+
+The bottom bar's queue chip counts tasks WAITING to be picked up by a
+runner/scheduler across ALL projects — never tasks already being worked on.
+`failed`, `cancelled`, `waiting_human`, `paused`, blocked, human-stage,
+active/running, and non-auto-resumable `interrupted` tasks are excluded from
+both the chip and the popup. Clicking the chip opens a popup listing exactly
+that same waiting set in dispatch order (#1 runs next) with each row's
+position, task name, project, and current step; clicking a row opens that
+task in the inspector.
+
+Both numbers describe one set (the shared `isWaitingForPickup` verdict), so
+they normally match. The popup footer still states both numbers ("N open
+tasks counted · M shown") as a transient refresh/timing diagnostic: a
+mismatch means one view is stale, not that there is a second bug class. If
+the chip number never goes down, the waiting tasks are genuinely stuck
+outside pickup — check blocks, pauses, and stage states.
+

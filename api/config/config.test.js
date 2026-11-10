@@ -170,6 +170,9 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		skillImportZipMaxEntries: 64,
 		skillImportZipMaxBytes: 512 * 1024,
 		chatSkillsMaxChars: 6000,
+		imageGenMuseApiKey: "",
+		imageGenDir: path.join(os.homedir(), ".kainbain", "image-gen"),
+		imageGenMuseBaseUrl: "",
 		// Tasks & Review
 		processLogMaxBytes: 32000,
 		logEntriesMaxCount: 500,
@@ -184,8 +187,14 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		reviewDiffMaxBytes: 256 * 1024,
 		reviewMaxCommentChars: 4000,
 		claimTtlMs: 300000,
+		impromptuEnabled: true,
+		impromptuQueueMax: 50,
+		impromptuJobTtlMs: 600000,
+		impromptuClaimTtlMs: 300000,
 		pushNotificationsEnabled: true,
 		runnerJoinToken: "",
+		expectedRunnerId: "",
+		seedDemo: false,
 		runnerExecutionOnly: true,
 		runnerStaleAfterMs: 60000,
 		runnerMaxConcurrentPerProject: 0,
@@ -201,6 +210,10 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		workflowRunTtlMs: 24 * 60 * 60 * 1000,
 		workflowSweepMs: 60 * 60 * 1000,
 		selfDeployContinuity: "",
+		// Accessibility statement
+		accessibilityContactEmail: "",
+		accessibilityFeedbackMaxChars: 4000,
+		accessibilityFeedbackFile: "",
 	};
 
 	it("covers every schema key in the defaults table", () => {

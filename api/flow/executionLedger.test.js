@@ -77,6 +77,26 @@ describe("ExecutionLedger", () => {
 		expect(ledger.stageFor("unknown-exec")).toBeNull();
 	});
 
+	test("carries the structured runnerId on the progress audit entry", () => {
+		const { executionId, epoch } = claimed(ctx);
+		ledger.recordProgress({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+			stageId: "s1",
+			event: "started",
+		});
+		expect(ctx.taskStore.getTask().history).toHaveLength(1);
+		expect(ctx.taskStore.getTask().history[0]).toMatchObject({
+			action: "Runner r1 stage s1: started",
+			runnerId: "r1",
+		});
+	});
+
 	test("stores the reported stage prompt and drops it on completion", async () => {
 		const ctx = stores();
 		const ledger = new ExecutionLedger();

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../services/api';
 import { copyToClipboard } from '../../services/clipboard';
 import { RunnerDirectoryField } from './RunnerDirectoryField';
+import { RunnerHarnessPanel } from './RunnerHarnessPanel';
 import { formatRunnerElapsed } from '../observability/widgets/PerRunnerTasksWidget';
 import {
   defaultRunnerConfig,
@@ -650,6 +651,7 @@ export function RunnerConfigurationSection() {
         joins with the operator join token set as KAINBAIN_RUNNER_JOIN_TOKEN on the backend, waits
         here for approval, then heartbeats and claims tasks with its own credential.
       </p>
+      <RunnerHarnessPanel runners={runners || []} />
       {scheduler && (
         <p
           className="mt-1 text-[10px] font-mono text-text-muted"
@@ -680,8 +682,7 @@ export function RunnerConfigurationSection() {
           data-testid="runner-credential-once"
         >
           <p className="text-xs text-on-surface">
-            Runner {freshCredential.runnerId} approved. Paste this one-time credential into its
-            environment as KAINBAIN_RUNNER_CREDENTIAL and restart it — it is never shown again.
+            Runner {freshCredential.runnerId} approved — it collects this one-time credential by itself within a minute, no paste needed. If it asks for a paste instead, copy this value into KAINBAIN_RUNNER_CREDENTIAL — it is never shown again.
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <span

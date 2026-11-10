@@ -241,6 +241,9 @@ export class RunnerRegistry {
 				credential: typeof rec.credential === "string" ? rec.credential : null,
 				credentialIssuedAt:
 					typeof rec.credentialIssuedAt === "string" ? rec.credentialIssuedAt : null,
+				joinNonce:
+					typeof rec.joinNonce === "string" && rec.joinNonce ? rec.joinNonce : null,
+				credentialExposed: rec.credentialExposed === true,
 				lastOrigin: typeof rec.lastOrigin === "string" ? rec.lastOrigin : null,
 				originConflicts:
 					Number.isInteger(rec.originConflicts) && rec.originConflicts > 0
@@ -268,6 +271,11 @@ export class RunnerRegistry {
 				capabilities: record.capabilities || null,
 				credential: record.credential || null,
 				credentialIssuedAt: record.credentialIssuedAt || null,
+				joinNonce:
+					typeof record.joinNonce === "string" && record.joinNonce
+						? record.joinNonce
+						: null,
+				credentialExposed: record.credentialExposed === true,
 				lastOrigin: record.lastOrigin || null,
 				originConflicts: record.originConflicts || 0,
 				paused: record.paused === true,
@@ -636,8 +644,17 @@ export class RunnerRegistry {
 		return [...this.runners.values()];
 	}
 
-	register({ runnerId, joinToken, facts = {} } = {}) {
+	register({ runnerId, joinToken, facts = {}, joinNonce } = {}) {
 		RunnerRegistry._requireRunnerId(runnerId);
+		// Join nonce (one-click approval, D2): the Runner mints a random
+		// secret per boot and repeats it on every join poll. Only the
+		// poller presenting the stored nonce collects the credential after
+		// approval — the shared join token alone never impersonates an
+		// approved Runner. Capped in length; anything else is ignored.
+		const nonce =
+			typeof joinNonce === "string" && joinNonce && joinNonce.length <= 256
+				? joinNonce
+				: null;
 		if (!this.joinToken) {
 			throw RunnerRegistry._fail(
 				403,
@@ -673,6 +690,26 @@ export class RunnerRegistry {
 		if (existing) {
 			existing.facts = facts;
 			existing.capabilities = capabilities;
+			// Adopt a nonce only while no credential exists to steal
+			// (pre-feature records joined without one); once a credential
+			// is issued the stored nonce is immutable.
+			if (!existing.credential && !existing.joinNonce && nonce) {
+				existing.joinNonce = nonce;
+			}
+			// One-time handover: the approved Runner collecting its own
+			// credential with the nonce it joined with. Every other poller
+			// still gets `credential: null` (see the handover tests).
+			if (
+				existing.status === "active" &&
+				existing.credential &&
+				existing.credentialExposed !== true &&
+				nonce &&
+				nonce === existing.joinNonce
+			) {
+				existing.credentialExposed = true;
+				this._persist();
+				return { ...this._public(existing), credential: existing.credential };
+			}
 			this._persist();
 			return { ...this._public(existing), credential: null };
 		}
@@ -683,6 +720,8 @@ export class RunnerRegistry {
 			capabilities,
 			credential: null,
 			credentialIssuedAt: null,
+			joinNonce: nonce,
+			credentialExposed: false,
 			paused: false,
 			operatorConfig: defaultOperatorConfig(),
 			pendingCommands: [],
@@ -711,6 +750,9 @@ export class RunnerRegistry {
 		record.credential = this.newCredential();
 		record.credentialIssuedAt = new Date().toISOString();
 		record.status = "active";
+		// A fresh credential is collectible once by the join-nonce holder
+		// (one-click approval); the flag flips on first handover.
+		record.credentialExposed = false;
 		this.credentials.set(record.credential, record.runnerId);
 		this._persist();
 		return { ...this._public(record), credential: record.credential };
@@ -768,6 +810,10 @@ export class RunnerRegistry {
 		if (record.credential) this.credentials.delete(record.credential);
 		record.credential = null;
 		record.status = "revoked";
+		// The join nonce deliberately stays: it is immutable once set, so
+		// a same-boot Runner can still collect a re-issued credential via
+		// the one-time handover; a restarted Runner (new nonce) safely
+		// falls back to the manual paste.
 		this._persist();
 		return this._public(record);
 	}
@@ -870,6 +916,20 @@ export class RunnerRegistry {
 		return changed;
 	}
 
+	/***
+	 * MARK: enqueueCommand
+	 * @description Queues one operator command for delivery on the Runner's
+	 *   next heartbeat (202-style accept; the Runner acts at next idle and
+	 *   acks through facts). Re-enqueueing refreshes the request instead of
+	 *   duplicating it. Fails loud and changes nothing when the Runner is
+	 *   unknown (404), not active (409), the command is unrecognised (400),
+	 *   or the Runner never advertised support for it (409 — an old Runner
+	 *   would otherwise sit on the command until the TTL expires).
+	 * @example registry.enqueueCommand('r1', 'requestUpdate') => { runnerId: 'r1', command: 'requestUpdate', status: 'queued', ... }
+	 * @param {string} runnerId - Runner id.
+	 * @param {string} command - Command id (`RUNNER_COMMANDS`).
+	 * @returns {Object} Accept receipt with the pending queue.
+	 ***/
 	enqueueCommand(runnerId, command) {
 		const record = this._getOrThrow(runnerId);
 		if (record.status !== "active") {
@@ -881,6 +941,18 @@ export class RunnerRegistry {
 		}
 		if (typeof command !== "string" || !RUNNER_COMMANDS.includes(command)) {
 			throw RunnerRegistry._fail(400, "UNKNOWN_COMMAND", `Unknown runner command '${command}'.`);
+		}
+		// Support gate (R1): a Runner that never advertised this command
+		// cannot act on it — queueing anyway would expire silently 24h
+		// later. The Settings screen gates its buttons on the same
+		// predicate, so this only trips direct API callers.
+		const supported = Array.isArray(record?.facts?.commands) ? record.facts.commands : [];
+		if (!supported.includes(command)) {
+			throw RunnerRegistry._fail(
+				409,
+				"COMMAND_UNSUPPORTED",
+				`Runner ${runnerId} does not support command '${command}' (it predates on-request commands — update the Runner manually).`,
+			);
 		}
 		this._expireStale(record);
 		const pending = (Array.isArray(record.pendingCommands) ? record.pendingCommands : []).filter((e) => e.command !== command);

@@ -10,11 +10,11 @@ function Titled({ title }) {
 describe('titleForView (WCAG 2.4.2)', () => {
   it('titles every in-scope view distinctly', () => {
     const titles = new Set(
-      ['orchestrator', 'explorer', 'settings', 'observability', 'docs', 'retrospective'].map(
+      ['orchestrator', 'explorer', 'settings', 'observability', 'docs', 'retrospective', 'accessibility'].map(
         (v) => titleForView(v, { projectName: 'MyProject' }),
       ),
     );
-    expect(titles.size).toBe(6);
+    expect(titles.size).toBe(7);
     for (const t of titles) {
       expect(t).toMatch(/Kainbain/);
     }
@@ -26,6 +26,12 @@ describe('titleForView (WCAG 2.4.2)', () => {
     ).toBe('[Running] Kainbain - MyProject - Orchestrator');
     expect(titleForView('explorer', { computeRunning: false, projectName: 'MyProject' })).toBe(
       '[Paused] Kainbain - MyProject - Files & Repo',
+    );
+  });
+
+  it('titles the accessibility statement distinctly', () => {
+    expect(titleForView('accessibility', { projectName: 'MyProject' })).toBe(
+      '[Paused] Kainbain - MyProject - Accessibility',
     );
   });
 

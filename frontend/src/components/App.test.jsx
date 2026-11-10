@@ -142,7 +142,9 @@ beforeEach(() => {
 
 test('renders the KainBain orchestrator dashboard', async () => {
   render(<App />);
-  expect(screen.getByText(/KAINBAIN/i)).toBeInTheDocument();
+  // Brand mark (h1): the zero-project boot also renders the onboarding
+  // "Welcome to KainBain" (h2), so match the heading level, not the text.
+  expect(screen.getByRole('heading', { level: 1, name: 'KAINBAIN' })).toBeInTheDocument();
   // Tab navigation is present
   expect(screen.getByText('Orchestrator')).toBeInTheDocument();
   expect(screen.getByText('Settings')).toBeInTheDocument();
@@ -234,6 +236,24 @@ test('keyboard shortcuts keep working while the global header is hidden', async 
       expect(screen.getByText('KAINBAIN')).toBeInTheDocument();
     });
     expect(screen.getByText('Orchestrator')).toBeInTheDocument();
+  } finally {
+    window.location.hash = '';
+  }
+});
+
+test('keyboard shortcut A opens the accessibility statement', async () => {
+  window.location.hash = '';
+  try {
+    render(<App />);
+    await screen.findByText('Orchestrator');
+    fireEvent.keyDown(window, { key: 'a' });
+    await waitFor(() => {
+      expect(screen.getByTestId('accessibility-page')).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Accessibility statement' }),
+    ).toBeInTheDocument();
+    expect(document.title).toMatch(/Accessibility/);
   } finally {
     window.location.hash = '';
   }

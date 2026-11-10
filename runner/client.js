@@ -43,10 +43,10 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 		setCredential(next) {
 			credential = next;
 		},
-		register({ runnerId, joinToken, facts }) {
+		register({ runnerId, joinToken, facts, joinNonce }) {
 			return call("/runners/register", {
 				method: "POST",
-				body: { runnerId, joinToken, facts },
+				body: { runnerId, joinToken, facts, joinNonce },
 			});
 		},
 		heartbeat({ runnerId, facts }) {
@@ -197,8 +197,26 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 		getProject(projectId) {
 			return call(`/projects/${encodeURIComponent(projectId)}`);
 		},
+		listProjects() {
+			return call("/projects");
+		},
 		getTask(projectId, taskId) {
 			return call(`/tasks/${encodeURIComponent(taskId)}?projectId=${encodeURIComponent(projectId)}`);
+		},
+		impromptuPoll() {
+			return call("/runners/impromptu/poll", { method: "POST", body: {} });
+		},
+		impromptuProgress({ jobId, seq, delta }) {
+			return call(`/runners/impromptu/${encodeURIComponent(jobId)}/progress`, {
+				method: "POST",
+				body: { seq, delta },
+			});
+		},
+		impromptuComplete({ jobId, outcome, output, error }) {
+			return call(`/runners/impromptu/${encodeURIComponent(jobId)}/complete`, {
+				method: "POST",
+				body: { outcome, ...(output !== undefined ? { output } : {}), ...(error !== undefined ? { error } : {}) },
+			});
 		},
 		getWorkflow(projectId) {
 			return call(`/projects/${encodeURIComponent(projectId)}/workflow`);

@@ -64,6 +64,9 @@ import {
 	parkTaskForSurvey,
 } from './parkTaskForSurvey.js';
 import {
+	kickSurveyImageJob,
+} from '../../imageGen/surveyImages.js';
+import {
 	GitDirtyTreeError,
 	resolveSha,
 } from '../../git.js';
@@ -75,6 +78,7 @@ import { resolveRunHarnessFallback } from './resolveRunHarnessFallback.js';
 import { peekStageDisplayTarget } from './peekStageDisplayTarget.js';
 import { displayModelForInit } from './displayModelForInit.js';
 import { routeStageError } from './routeStageError.js';
+import { docsTasksIgnorePath } from '../../docsPath.js';
 import { buildRetryFailureDetails } from './buildRetryFailureDetails.js';
 import { resolveCommandStageRuntime } from './resolveCommandStageRuntime.js';
 import { isDispatchServable } from '../dispatch/isDispatchServable.js';
@@ -1014,6 +1018,11 @@ export async function executeStage(
 									cwd,
 									boundaryStart,
 									boundaryEnd,
+									{
+										docsTasksPrefix: docsTasksIgnorePath(
+											store.projectStore?.getProject?.(projectId),
+										),
+									},
 								);
 								if (stat) {
 									targetRow.additions = stat.additions;
@@ -1094,7 +1103,21 @@ export async function executeStage(
 					modifiedFiles,
 					duration,
 				});
-				if (surveyPark.parked) return surveyPark.response;
+				if (surveyPark.parked) {
+					// Eager background generation: image questions are ready
+					// (or honestly failed) before the human opens the survey.
+					// Fire-and-forget — the park itself never waits on it.
+					kickSurveyImageJob({
+						store,
+						cwd,
+						project: projectObj,
+						taskId,
+						task,
+						surveyFile: task.surveyFile || null,
+						stage,
+					});
+					return surveyPark.response;
+				}
 
 				task.surveyPending = false;
 				task.infraRetryCount = 0;

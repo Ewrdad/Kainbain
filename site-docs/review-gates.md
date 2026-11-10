@@ -7,7 +7,7 @@ slug: review-gates
 
 # Review Gates
 
-`human` stages and checkpoints park a task in `waiting_human` until you decide. Nothing advances past you silently.
+`human` stages and checkpoints park a task in `waiting_human` until you decide. Nothing advances past you silently. For hand-editing files outside a review comment, see `#/docs/develop-alongside`.
 
 ## Your three moves
 
@@ -59,7 +59,7 @@ and pre-fill the feedback draft (without duplicating text already there).
 Normally the PR review diff goes empty once the task branch is merged: there
 is nothing left unmerged to show. For rapid iteration (merge, deploy, then
 review what actually shipped), two per-project settings in Project Settings
-(Files & Links tab) change that:
+(Files & Repos tab) change that:
 
 - **Preserve PR Review Diff After Merge** (default off) — the final review
   keeps showing the merged change, frozen at the merge commit, instead of an

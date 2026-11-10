@@ -21,7 +21,10 @@ flows Runner→backend except steers, which ride the heartbeat response
   refreshes it; idempotent). Unknown commands 400 `UNKNOWN_COMMAND`
   (fail-closed); unknown Runners 404; non-`active` Runners 409
   `COMMAND_INVALID_STATE` (a Runner that never heartbeats can never
-  collect the nudge, so nothing is queued for it).
+  collect the nudge, so nothing is queued for it); `active` Runners that
+  never advertised the command 409 `COMMAND_UNSUPPORTED` (fail fast with
+  manual-update guidance instead of queueing a nudge that would expire
+  silently at the TTL).
 - **Delivery on the heartbeat pull channel, peek-until-ack.** The
   heartbeat response carries `pendingCommands: [names…]` until the
   Runner confirms. Entries clear only on ack or TTL expiry (24h, recorded
@@ -40,7 +43,9 @@ flows Runner→backend except steers, which ride the heartbeat response
   send `facts.commands`; the backend intersects that with its closed set
   and exposes `supported` per record. The UI disables the buttons with
   visible guidance (manual update) when the Runner predates commands,
-  instead of offering a dead control.
+  instead of offering a dead control — and the enqueue endpoint enforces
+  the same predicate server-side, so direct API callers get the same
+  fail-fast answer the buttons would have shown.
 - **Idle-only update invariant (D5, ADR 0012).** `requestUpdate` means
   "update at next idle", never "interrupt a task": a live execution
   parks the request for the next idle point (dispatch loop and

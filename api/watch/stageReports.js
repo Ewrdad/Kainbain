@@ -152,6 +152,7 @@ export function generateStageReportContent({
  * @param {string} [opts.aliasName] - Model alias this run resolved through (per-alias reliability attribution; stored only when a non-blank string). Unresolvable aliases record nothing so the fallback run is never credited to the named alias.
  * @param {string} [opts.modelRef] - Concrete model the alias target dispatched (stored only when a non-blank string; blank means the harness manages its own model).
  * @param {number} [opts.targetIndex] - Weighted-target index of the alias pick (informational rotation debugging; stored only for a non-negative integer).
+ * @param {string} [opts.runnerId] - Runner that ran the stage (stored only when a non-blank string; absent for embedded runs and pre-feature history, so a struggling Runner can be spotted per stage or task type later).
  * @param {boolean} [opts.failure] - When true, the report filename gains a `-failure-` infix (`<stageSlug>-failure-<datetime>.md`) so failure traces are distinguishable from opt-in success reports in the docs folder.
  * @returns {Object|null} Report metadata.
  ***/
@@ -172,6 +173,7 @@ export function saveStageReport(
 		aliasName,
 		modelRef,
 		targetIndex,
+		runnerId,
 		failure = false,
 	} = {},
 ) {
@@ -224,6 +226,9 @@ export function saveStageReport(
 			: {}),
 		...(Number.isInteger(targetIndex) && targetIndex >= 0
 			? { targetIndex }
+			: {}),
+		...(typeof runnerId === "string" && runnerId.trim()
+			? { runnerId: runnerId.trim() }
 			: {}),
 		...(stageId === task.currentStageId &&
 		Number.isFinite(Date.parse(task.enteredStageAt))

@@ -1,9 +1,17 @@
-import { useMemo, useState } from 'react';
-import { MarkdownViewer } from '../common/MarkdownViewer';
+import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { ReviewCommentThread } from './ReviewCommentThread';
 import { ReviewCommentComposer } from './ReviewCommentComposer';
+import { ReportLineRow } from './ReportLineRow';
+import { ReportReadableView } from './ReportReadableView';
 import { copyToClipboard } from '../../services/clipboard';
 import { normalizeReportPath } from './reportPaths';
+
+/**
+ * MARK: COPY_FEEDBACK_MS
+ * @description How long the "Copied ✓" feedback shows before resetting.
+ *   Kept as a constant so both copy actions share the same timing.
+ */
+const COPY_FEEDBACK_MS = 2000;
 
 // Backwards-compatible re-export: report identity lives in `reportPaths.js`
 // (shared with ReportNavigator and TaskReviewPage), but existing importers may
@@ -12,14 +20,19 @@ export { normalizeReportPath } from './reportPaths';
 
 /***
  * MARK: ReportReviewView
- * @description Current-state review pane for a stage report (markdown) that
- *   lives outside the task's git diff (centralised docs). Instead of a diff,
- *   it shows the report exactly as written with one row per line, a hover `⊕`
- *   gutter button to open a line comment, and inline comment threads — plus a
- *   Rendered Preview toggle. Report-level comments (scope `file`) render at
- *   the top. Comment anchors carry the report path, so the same sidecar store
- *   used for code review keeps them without touching git.
- *
+ * @description Review pane for a stage report (markdown) that lives outside
+ *   the task's git diff (centralised docs). It opens in a Readable mode that
+ *   renders the report as a compact markdown document — no per-line
+ *   dividers, no gutter numbers, hover/focus-only block highlights — with a
+ *   hover `⊕` comment button per block (line-chip `Lx–Ly` for traceability).
+ *   Raw lines mode keeps the one-row-per-line view with per-line `⊕`
+ *   buttons as the escape hatch. Block comments reuse the line-comment
+ *   payload (`scope: 'line'`, integer `line` = block start line,
+ *   `side: 'right'`, `lineText`); report-level comments (scope `file`)
+ *   render at the top. Comment anchors carry the report path, so the same
+ *   sidecar store used for code review keeps them without touching git.
+ *   In both modes the `⊕` buttons are absolutely-positioned overlays, so
+ *   rows size to their content instead of the 44px touch target.
  * @param {Object} props
  * @param {Object} props.report - { path, filename, name, stageName, content, auto, timestamp }
  * @param {Array} [props.comments] - All review comments (filtered to this report).
@@ -45,10 +58,12 @@ export function ReportReviewView({
   activeProject,
   taskId,
 }) {
-  const [mode, setMode] = useState('lines'); // 'lines' | 'preview'
+  const [mode, setMode] = useState('readable'); // 'readable' | 'raw'
   const [composer, setComposer] = useState(null); // { line, lineText } | 'file' | null
   const [copiedPath, setCopiedPath] = useState(false);
   const [copiedMarkdown, setCopiedMarkdown] = useState(false);
+  const copyPathTimerRef = useRef(null);
+  const copyMarkdownTimerRef = useRef(null);
 
   const reportPath =
     report?.path ||
@@ -85,23 +100,60 @@ export function ReportReviewView({
     return { fileLevel: fileComments, byLine: lineComments };
   }, [reportComments]);
 
-  const handleCopyPath = async () => {
+  // Shared submit builders: both modes send identical payload shapes.
+  const submitLineComment = async (line, lineText, body) => {
+    await addComment?.({
+      scope: 'line',
+      filePath: reportPath,
+      line,
+      side: 'right',
+      headSha,
+      lineText,
+      body,
+    });
+    setComposer(null);
+  };
+
+  const submitFileComment = async (body) => {
+    await addComment?.({
+      scope: 'file',
+      filePath: reportPath,
+      headSha,
+      body,
+    });
+    setComposer(null);
+  };
+
+  // Timers are tracked via refs so an unmount (e.g. navigating away
+  // mid-feedback) clears them instead of calling setState on an
+  // unmounted component.
+  useEffect(
+    () => () => {
+      clearTimeout(copyPathTimerRef.current);
+      clearTimeout(copyMarkdownTimerRef.current);
+    },
+    [],
+  );
+
+  const handleCopyPath = useCallback(async () => {
     if (!reportPath) return;
     const ok = await copyToClipboard(reportPath);
     if (ok) {
       setCopiedPath(true);
-      setTimeout(() => setCopiedPath(false), 2000);
+      clearTimeout(copyPathTimerRef.current);
+      copyPathTimerRef.current = setTimeout(() => setCopiedPath(false), COPY_FEEDBACK_MS);
     }
-  };
+  }, [reportPath]);
 
-  const handleCopyMarkdown = async () => {
+  const handleCopyMarkdown = useCallback(async () => {
     if (!reportContent) return;
     const ok = await copyToClipboard(reportContent);
     if (ok) {
       setCopiedMarkdown(true);
-      setTimeout(() => setCopiedMarkdown(false), 2000);
+      clearTimeout(copyMarkdownTimerRef.current);
+      copyMarkdownTimerRef.current = setTimeout(() => setCopiedMarkdown(false), COPY_FEEDBACK_MS);
     }
-  };
+  }, [reportContent]);
 
   const renderThread = (comment) => (
     <ReviewCommentThread
@@ -156,23 +208,23 @@ export function ReportReviewView({
           >
             <button
               type="button"
-              aria-pressed={mode === 'lines'}
-              onClick={() => setMode('lines')}
+              aria-pressed={mode === 'readable'}
+              onClick={() => setMode('readable')}
               className={`px-2.5 py-1.5 min-h-[44px] inline-flex items-center justify-center text-[10px] font-mono uppercase cursor-pointer ${
-                mode === 'lines' ? 'bg-primary/20 text-primary' : 'bg-surface text-text-muted'
+                mode === 'readable' ? 'bg-primary/20 text-primary' : 'bg-surface text-text-muted'
               }`}
             >
-              Line Review
+              Readable
             </button>
             <button
               type="button"
-              aria-pressed={mode === 'preview'}
-              onClick={() => setMode('preview')}
+              aria-pressed={mode === 'raw'}
+              onClick={() => setMode('raw')}
               className={`px-2.5 py-1.5 min-h-[44px] inline-flex items-center justify-center text-[10px] font-mono uppercase cursor-pointer ${
-                mode === 'preview' ? 'bg-primary/20 text-primary' : 'bg-surface text-text-muted'
+                mode === 'raw' ? 'bg-primary/20 text-primary' : 'bg-surface text-text-muted'
               }`}
             >
-              Rendered Preview
+              Raw lines
             </button>
           </div>
           {reportPath && (
@@ -198,20 +250,24 @@ export function ReportReviewView({
         </div>
       </div>
 
-      {mode === 'preview' ? (
-        <div
-          className="p-2.5 sm:p-4 min-w-0 max-w-full overflow-x-hidden"
-          data-testid="report-preview-pane"
-        >
-          <MarkdownViewer
-            content={reportContent || '*(No report content available)*'}
-            projectId={activeProject?.id || null}
-            taskId={taskId || null}
-            className="min-w-0 max-w-full break-words"
-          />
-        </div>
+      {mode === 'readable' ? (
+        <ReportReadableView
+          reportContent={reportContent}
+          reportPath={reportPath}
+          lines={lines}
+          threadsByLine={byLine}
+          fileLevel={fileLevel}
+          composer={composer}
+          setComposer={setComposer}
+          onSubmitLineComment={submitLineComment}
+          onSubmitFileComment={submitFileComment}
+          renderThread={renderThread}
+          canComment={canComment}
+          activeProject={activeProject}
+          taskId={taskId}
+        />
       ) : (
-        <div className="divide-y divide-border-standard/30 w-full min-w-0 max-w-full overflow-x-hidden">
+        <div className="w-full min-w-0 max-w-full overflow-x-hidden">
           {/* Report-level threads + composer */}
           {(fileLevel.length > 0 || composer === 'file') && (
             <div className="w-full min-w-0 max-w-full overflow-hidden px-2 sm:px-3 py-2 space-y-2 border-l-2 border-secondary/40">
@@ -222,13 +278,7 @@ export function ReportReviewView({
                   autoFocus
                   label={`Comment on report ${reportPath}`}
                   onSubmit={async (body) => {
-                    await addComment?.({
-                      scope: 'file',
-                      filePath: reportPath,
-                      headSha,
-                      body,
-                    });
-                    setComposer(null);
+                    await submitFileComment(body);
                   }}
                   onCancel={() => setComposer(null)}
                 />
@@ -244,58 +294,38 @@ export function ReportReviewView({
             lines.map((line, index) => {
               const lineNumber = index + 1;
               const threads = byLine.get(lineNumber) || [];
+              const composerOpen =
+                composer && composer !== 'file' && composer.line === lineNumber;
               return (
-                <div key={lineNumber} className="w-full min-w-0 max-w-full">
-                  <div
-                    data-testid="report-line"
-                    data-line={lineNumber}
-                    className="group flex items-start w-full min-w-0 max-w-full overflow-hidden hover:bg-surface-deep/60"
-                  >
-                    <span className="w-9 sm:w-12 shrink-0 select-none text-right pr-2 py-0.5 text-[9px] sm:text-[10px] font-mono text-text-muted bg-surface-deep border-r border-border-standard/40">
-                      {lineNumber}
-                    </span>
-                    <code className="flex-1 min-w-0 max-w-full px-2 py-0.5 text-[11px] font-mono text-on-surface whitespace-pre-wrap break-all [overflow-wrap:anywhere]">
-                      {line || '\u00A0'}
-                    </code>
-                    {canComment && (
-                      <button
-                        type="button"
-                        onClick={() => setComposer({ line: lineNumber, lineText: line })}
-                        aria-label={`Add comment on report line ${lineNumber}`}
-                        className="shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100 focus:opacity-100 px-2 py-0.5 min-h-[44px] min-w-[44px] text-primary cursor-pointer text-xs"
-                      >
-                        ⊕
-                      </button>
-                    )}
-                  </div>
-                  {threads.length > 0 && (
-                    <div className="w-full min-w-0 max-w-full overflow-hidden px-2 sm:px-3 py-1 space-y-1.5 border-l-2 border-secondary/40">
-                      {threads.map(renderThread)}
-                    </div>
-                  )}
-                  {composer && composer !== 'file' && composer.line === lineNumber && (
-                    <div className="w-full min-w-0 max-w-full overflow-hidden px-2 sm:px-3 py-1">
+                <ReportLineRow
+                  key={lineNumber}
+                  lineNumber={lineNumber}
+                  lineText={line}
+                  threads={threads}
+                  composerOpen={composerOpen}
+                  canComment={canComment}
+                  onOpenComposer={(lineNo, lineText) =>
+                    setComposer({ line: lineNo, lineText })
+                  }
+                  renderThread={renderThread}
+                  composer={
+                    composerOpen && (
                       <ReviewCommentComposer
                         // eslint-disable-next-line jsx-a11y/no-autofocus -- custom initial-focus prop (programmatic .focus() on user-opened composer), not a DOM autofocus attribute
                         autoFocus
                         label={`Comment on report line ${lineNumber}`}
                         onSubmit={async (body) => {
-                          await addComment?.({
-                            scope: 'line',
-                            filePath: reportPath,
-                            line: lineNumber,
-                            side: 'right',
-                            headSha,
-                            lineText: composer.lineText,
+                          await submitLineComment(
+                            lineNumber,
+                            composer.lineText,
                             body,
-                          });
-                          setComposer(null);
+                          );
                         }}
                         onCancel={() => setComposer(null)}
                       />
-                    </div>
-                  )}
-                </div>
+                    )
+                  }
+                />
               );
             })
           )}

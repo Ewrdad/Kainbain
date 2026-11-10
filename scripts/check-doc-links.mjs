@@ -41,6 +41,8 @@ for (const rootDoc of ["README.md", "AGENTS-MAP.md", "CHANGELOG.md", "DEPRECATIO
 // Allowlisted patterns/references:
 // - Wildcards, brace expansion, or line-number anchors
 // - Gitignored local files created from templates (frontend/.env)
+// - Publish-time generated files that never exist in a checkout
+//   (api/bundled-changelog.json is written by publish.sh into the image)
 // - Deliberately recorded removed/deprecated files in DEPRECATIONS.md
 const ALLOWLISTED_PATTERNS = [
 	/\*/,
@@ -49,6 +51,7 @@ const ALLOWLISTED_PATTERNS = [
 	/::/,
 	/:[0-9]+/,
 	/frontend\/\.env$/,
+	/api\/bundled-changelog\.json$/,
 	/api\/logs\/?$/,
 ];
 

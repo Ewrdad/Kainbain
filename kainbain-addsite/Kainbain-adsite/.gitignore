@@ -28,3 +28,4 @@ dist-ssr
 public/*.tar.gz
 public/release-manifest.json
 public/releases.json
+public/build-info.json

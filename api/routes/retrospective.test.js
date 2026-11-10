@@ -1,7 +1,6 @@
-import { describe, it, expect, beforeAll, vi } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import Fastify from "fastify";
 import retrospectiveRoutes, {
-	RETROSPECTIVE_SESSION_META,
 	MAX_CHAT_TASK_IDS,
 	MAX_CHAT_MESSAGES,
 	MAX_CHAT_MESSAGE_CHARS,
@@ -12,24 +11,24 @@ import retrospectiveRoutes, {
 	buildChatPrompt,
 	resolveChatReplyText,
 } from "./retrospective.js";
-import { createMockHarness, createReferenceMockSession } from "../agent/harnesses/mock/mockHarness.js";
+import { createReferenceMockSession } from "../agent/harnesses/mock/mockHarness.js";
 import {
 	registerHarness,
 	resolveHarnessForProject,
 } from "../agent/harnessRegistry.js";
-import { guardSessionCapability } from "../crew/sessionCapabilities.js";
 import { SkillsRegistry } from "../skills/skillsRegistry.js";
 import path from "node:path";
 
 /**
  * MARK: Retrospective chat API tests
  * @description Verifies POST /retrospective/chat against a scoped Fastify
- *   instance (never the shared app singleton): the stateless turn shape,
- *   ephemeral-session discipline (marker meta, disposed), task-context
- *   injection, 501 harness degradation, validation/404 paths, defensive
- *   suggestion parsing, and the registry wiring through a test-registered
- *   mock harness. The endpoint creates nothing — ticket creation stays a
- *   frontend `POST /tasks` the user confirms.
+ *   instance (never the shared app singleton): the dispatcher contract (one
+ *   impromptu turn per request — no local harness session is ever created),
+ *   prompt assembly (transcript + task context + skill), validation/404
+ *   paths, dispatcher error mappings (503/429/502/504 with partial output),
+ *   defensive suggestion parsing, and registry wiring through a
+ *   test-registered mock harness. The endpoint creates nothing — ticket
+ *   creation stays a frontend `POST /tasks` the user confirms.
  */
 
 const WIRING_HARNESS_NAME = "retrospective-test-mock";
@@ -77,6 +76,11 @@ function sampleTask(overrides = {}) {
 
 async function buildApp({ project, tasksById, harness, harnessName = "mock", extraDeps = {} }) {
 	const app = Fastify();
+	// The fake Runner: answers turns through the harness's mock session so
+	// prompt assembly stays observable, while recording the dispatcher args
+	// the route actually sent. Production never creates a local session —
+	// `createSession` here only serves the fake, and tests assert the route
+	// path through `dispatcherCalls`, never through session lifecycle.
 	const createSession = vi.fn(async (receivedProject, meta) => {
 		const session = harness.createSession
 			? await harness.createSession(receivedProject, meta)
@@ -84,33 +88,66 @@ async function buildApp({ project, tasksById, harness, harnessName = "mock", ext
 		return session;
 	});
 	const resolveHarness = vi.fn(() => ({ name: harnessName, harness: { ...harness, createSession: async (p, m) => createSession(p, m) } }));
+	const dispatcherCalls = [];
+	const defaultDispatcher = async (args) => {
+		dispatcherCalls.push(args);
+		if (extraDeps.dispatcherFail) throw extraDeps.dispatcherFail;
+		const session = await createSession(project, { taskId: "impromptu", stageId: "fake" });
+		const prompt = args?.prompt;
+		let reply = "";
+		if (session && typeof session.prompt === "function") {
+			const result = await session.prompt(prompt);
+			if (typeof result === "string") reply = result;
+			else if (session && typeof session.getLastAssistantText === "function") {
+				const t = await session.getLastAssistantText();
+				if (typeof t === "string") reply = t;
+			}
+		}
+		if (typeof session?.dispose === "function") await session.dispose();
+		return {
+			reply,
+			output: reply || "",
+			harness: harnessName,
+			model: args?.model || null,
+		};
+	};
+	const hasOverride = Object.prototype.hasOwnProperty.call(extraDeps || {}, "impromptuDispatcher");
+	const impromptuDispatcher = hasOverride ? extraDeps.impromptuDispatcher : defaultDispatcher;
+	const routeExtraDeps = { ...(extraDeps || {}) };
+	delete routeExtraDeps.dispatcherFail;
 	await app.register(retrospectiveRoutes, {
 		deps: {
 			projectStore: makeProjectStore(project),
 			taskStore: makeTaskStore(tasksById),
 			workflowRegistry: { list: () => [] },
 			resolveAndGuardProject,
-			guardSessionCapability,
 			resolveHarness,
-			...extraDeps,
+			impromptuDispatcher,
+			...routeExtraDeps,
 		},
 	});
 	await app.ready();
-	return { app, createSession, resolveHarness };
+	return { app, createSession, resolveHarness, impromptuDispatcher, dispatcherCalls };
+}
+
+function dispatcherError({ message, code, statusCode, partialOutput }) {
+	const err = new Error(message);
+	err.code = code;
+	err.statusCode = statusCode;
+	if (typeof partialOutput === "string" && partialOutput) err.partialOutput = partialOutput;
+	return err;
 }
 
 const project = { id: "proj-1", name: "Fixture", cwd: "/tmp/kb-retro-fixture" };
 
 describe("POST /retrospective/chat", () => {
-	it("runs a stateless turn and parses fenced ticket suggestions", async () => {
+	it("dispatches one impromptu turn and parses fenced ticket suggestions", async () => {
 		const session = createReferenceMockSession();
-		const promptSpy = vi.spyOn(session, "prompt");
-		const disposeSpy = vi.spyOn(session, "dispose");
 		const harness = {
 			createSession: async () => session,
 			resolveModelRef: async () => null,
 		};
-		const { app, createSession } = await buildApp({
+		const { app, dispatcherCalls } = await buildApp({
 			project,
 			tasksById: { "proj-1:task-1": sampleTask() },
 			harness,
@@ -131,16 +168,98 @@ describe("POST /retrospective/chat", () => {
 		expect(body.reply).toContain("Mock reply:");
 		expect(body.harness).toBe("mock");
 
-		// Ephemeral-session discipline: marker meta, single prompt, disposed.
-		expect(createSession).toHaveBeenCalledTimes(1);
-		expect(createSession.mock.calls[0][1]).toMatchObject(RETROSPECTIVE_SESSION_META);
-		expect(promptSpy).toHaveBeenCalledTimes(1);
-		expect(promptSpy.mock.calls[0][0]).toContain("Add pagination");
-		expect(promptSpy.mock.calls[0][0]).toContain("Find trends");
-		expect(disposeSpy).toHaveBeenCalled();
+		// Dispatcher contract: exactly one impromptu turn carrying the
+		// project, the assembled prompt (context + transcript), and the
+		// resolved harness. The route never drives the session itself.
+		expect(dispatcherCalls).toHaveLength(1);
+		expect(dispatcherCalls[0].projectId).toBe("proj-1");
+		expect(dispatcherCalls[0].harness).toBe("mock");
+		expect(dispatcherCalls[0].prompt).toContain("Add pagination");
+		expect(dispatcherCalls[0].prompt).toContain("Find trends");
 		// The mock echoes the prompt, which carries the ```json instruction but
 		// no real drafts — unparseable replies degrade to an empty list.
 		expect(body.suggestions).toEqual([]);
+		await app.close();
+	});
+
+	it("passes harness, model, turnId, and runnerId through to the dispatcher", async () => {
+		const harness = { createSession: async () => createReferenceMockSession() };
+		const { app, dispatcherCalls } = await buildApp({
+			project,
+			tasksById: {},
+			harness,
+			harnessName: "muse",
+		});
+		const res = await app.inject({
+			method: "POST",
+			url: "/retrospective/chat",
+			payload: {
+				projectId: "proj-1",
+				messages: [{ role: "user", content: "hi" }],
+				harness: "muse",
+				model: "m1",
+				turnId: "turn-9",
+				runnerId: "runner-2",
+			},
+		});
+		expect(res.statusCode).toBe(200);
+		expect(dispatcherCalls).toHaveLength(1);
+		expect(dispatcherCalls[0]).toMatchObject({
+			projectId: "proj-1",
+			harness: "muse",
+			model: "m1",
+			turnId: "turn-9",
+			runnerId: "runner-2",
+		});
+		expect(JSON.parse(res.payload).model).toBe("m1");
+		await app.close();
+	});
+
+	it("wires registry resolution through to the dispatcher (never a local session)", async () => {
+		const prompts = [];
+		const factory = () => ({
+			async createSession() {
+				throw new Error("the route must never create a local session");
+			},
+			async prompt(text) {
+				prompts.push(text);
+				return `Mock reply: ${text}`;
+			},
+		});
+		registerHarness(WIRING_HARNESS_NAME, factory, {
+			description: "retrospective wiring-test mock",
+		});
+		const dispatcherCalls = [];
+		const app = Fastify();
+		await app.register(retrospectiveRoutes, {
+			deps: {
+				projectStore: makeProjectStore({ ...project, harness: WIRING_HARNESS_NAME }),
+				taskStore: makeTaskStore({ "proj-1:task-1": sampleTask() }),
+				workflowRegistry: { list: () => [] },
+				resolveAndGuardProject,
+				resolveHarness: resolveHarnessForProject,
+				impromptuDispatcher: async (args) => {
+					dispatcherCalls.push(args);
+					return { reply: `Runner says: ${args.prompt.slice(0, 20)}`, output: "", harness: args.harness, model: args.model ?? null };
+				},
+			},
+		});
+		await app.ready();
+		const res = await app.inject({
+			method: "POST",
+			url: "/retrospective/chat",
+			payload: {
+				messages: [{ role: "user", content: "Prove the wiring" }],
+				taskIds: ["task-1"],
+			},
+		});
+		expect(res.statusCode).toBe(200);
+		const body = JSON.parse(res.payload);
+		expect(body.harness).toBe(WIRING_HARNESS_NAME);
+		expect(dispatcherCalls).toHaveLength(1);
+		expect(dispatcherCalls[0].prompt).toContain("Prove the wiring");
+		expect(dispatcherCalls[0].prompt).toContain("Add pagination");
+		expect(prompts).toEqual([]);
 		await app.close();
 	});
 
@@ -175,20 +294,19 @@ describe("POST /retrospective/chat", () => {
 		await app.close();
 	});
 
-	it("degrades with 501 when the session lacks prompt", async () => {
+	it("degrades with 503 when no impromptu dispatcher is wired", async () => {
 		const harness = {
 			createSession: async () => ({ isStreaming: false, dispose: async () => {} }),
 		};
-		const { app } = await buildApp({ project, tasksById: {}, harness });
+		const { app } = await buildApp({ project, tasksById: {}, harness, extraDeps: { impromptuDispatcher: null } });
 		const res = await app.inject({
 			method: "POST",
 			url: "/retrospective/chat",
 			payload: { messages: [{ role: "user", content: "hi" }] },
 		});
-		expect(res.statusCode).toBe(501);
+		expect(res.statusCode).toBe(503);
 		const body = JSON.parse(res.payload);
-		expect(body.code).toBe("unsupported_by_harness");
-		expect(body.capability).toBe("prompt");
+		expect(body.code).toBe("no_runner_available");
 		await app.close();
 	});
 
@@ -242,40 +360,34 @@ describe("POST /retrospective/chat", () => {
 		await app.close();
 	});
 
-	it("applies a requested model via switchModel and reports the active model", async () => {
-		const session = createReferenceMockSession({
-			models: [{ provider: "mock", id: "m1" }],
-		});
-		const switchSpy = vi.spyOn(session, "switchModel");
+	it("passes the requested model to the dispatcher and reports it", async () => {
 		const harness = {
-			createSession: async () => session,
-			resolveModelRef: async (target) =>
-				target === "m1" ? { provider: "mock", id: "m1" } : null,
+			createSession: async () => createReferenceMockSession(),
+			resolveModelRef: async () => null,
 		};
-		const { app } = await buildApp({ project, tasksById: {}, harness });
+		const { app, dispatcherCalls } = await buildApp({ project, tasksById: {}, harness });
 		const res = await app.inject({
 			method: "POST",
 			url: "/retrospective/chat",
 			payload: { messages: [{ role: "user", content: "hi" }], model: "m1" },
 		});
 		expect(res.statusCode).toBe(200);
-		expect(switchSpy).toHaveBeenCalledWith({ provider: "mock", id: "m1" });
-		expect(JSON.parse(res.payload).model).toBe("m1");
+		expect(dispatcherCalls).toHaveLength(1);
+		expect(dispatcherCalls[0].model).toBe("m1");
+		const body = JSON.parse(res.payload);
+		expect(body.model).toBe("m1");
+		expect(body.modelRequested).toBe(true);
 		await app.close();
 	});
 
-	it("never resolves or switches a model on a none harness (muse-shaped)", async () => {
-		const session = createReferenceMockSession({
-			models: [{ provider: "mock", id: "m1" }],
-		});
-		const switchSpy = vi.spyOn(session, "switchModel");
+	it("never resolves a model on a none harness (muse-shaped)", async () => {
 		const resolveSpy = vi.fn(async () => ({ provider: "mock", id: "m1" }));
 		const harness = {
 			modelSelection: "none",
-			createSession: async () => session,
+			createSession: async () => createReferenceMockSession(),
 			resolveModelRef: resolveSpy,
 		};
-		const { app } = await buildApp({
+		const { app, dispatcherCalls } = await buildApp({
 			project,
 			tasksById: {},
 			harness,
@@ -292,79 +404,8 @@ describe("POST /retrospective/chat", () => {
 		});
 		expect(res.statusCode).toBe(200);
 		expect(resolveSpy).not.toHaveBeenCalled();
-		expect(switchSpy).not.toHaveBeenCalled();
+		expect(dispatcherCalls).toHaveLength(1);
 		expect(JSON.parse(res.payload).modelRequested).toBe(false);
-		await app.close();
-	});
-
-	it("wires registry -> createSession -> prompt -> dispose through a test-registered harness", async () => {
-		const prompts = [];
-		const disposed = [];
-		const factory = () =>
-			createMockHarnessWithHooks({
-				onPrompt: (text) => prompts.push(text),
-				onDispose: () => disposed.push(true),
-			});
-		registerHarness(WIRING_HARNESS_NAME, factory, {
-			description: "retrospective wiring-test mock",
-		});
-		const app = Fastify();
-		await app.register(retrospectiveRoutes, {
-			deps: {
-				projectStore: makeProjectStore({ ...project, harness: WIRING_HARNESS_NAME }),
-				taskStore: makeTaskStore({ "proj-1:task-1": sampleTask() }),
-				workflowRegistry: { list: () => [] },
-				resolveAndGuardProject,
-				guardSessionCapability,
-				resolveHarness: resolveHarnessForProject,
-			},
-		});
-		await app.ready();
-		const res = await app.inject({
-			method: "POST",
-			url: "/retrospective/chat",
-			payload: {
-				messages: [{ role: "user", content: "Prove the wiring" }],
-				taskIds: ["task-1"],
-			},
-		});
-		expect(res.statusCode).toBe(200);
-		const body = JSON.parse(res.payload);
-		expect(body.harness).toBe(WIRING_HARNESS_NAME);
-		expect(prompts).toHaveLength(1);
-		expect(prompts[0]).toContain("Prove the wiring");
-		expect(prompts[0]).toContain("Add pagination");
-		expect(disposed).toHaveLength(1);
-		await app.close();
-	});
-
-	it("falls back (never crashes) for an unknown harness name", async () => {
-		const factory = () => createMockHarness();
-		const name = "retrospective-fallback-mock";
-		registerHarness(name, factory, { description: "fallback wiring-test mock" });
-		const app = Fastify();
-		await app.register(retrospectiveRoutes, {
-			deps: {
-				projectStore: makeProjectStore({ ...project, harness: name }),
-				taskStore: makeTaskStore({}),
-				workflowRegistry: { list: () => [] },
-				resolveAndGuardProject,
-				guardSessionCapability,
-				resolveHarness: resolveHarnessForProject,
-			},
-		});
-		await app.ready();
-		const res = await app.inject({
-			method: "POST",
-			url: "/retrospective/chat",
-			payload: {
-				messages: [{ role: "user", content: "hi" }],
-				harness: "no-such-harness",
-			},
-		});
-		expect(res.statusCode).toBe(200);
-		// Unknown override degrades to the project's own resolution.
-		expect(JSON.parse(res.payload).harness).toBe(name);
 		await app.close();
 	});
 });
@@ -498,20 +539,21 @@ function createReferenceMockSessionWithReply(replyText) {
 	return session;
 }
 
-describe("POST /retrospective/chat robustness", () => {
-	it("returns 504 chat_prompt_timeout when the model hangs, and still disposes", async () => {
-		const dispose = vi.fn(async () => {});
-		const harness = {
-			createSession: async () => ({
-				prompt: () => new Promise(() => {}), // never settles
-				dispose,
-			}),
-		};
-		const { app } = await buildApp({
+describe("POST /retrospective/chat dispatcher failures", () => {
+	it("returns 504 chat_prompt_timeout when the Runner turn times out", async () => {
+		const harness = { createSession: async () => createReferenceMockSession() };
+		const { app, dispatcherCalls } = await buildApp({
 			project,
 			tasksById: {},
 			harness,
-			extraDeps: { promptTimeoutMs: 20 },
+			extraDeps: {
+				dispatcherFail: dispatcherError({
+					message: "Chat prompt timed out after 20ms",
+					code: "chat_prompt_timeout",
+					statusCode: 504,
+					partialOutput: "",
+				}),
+			},
 		});
 		const res = await app.inject({
 			method: "POST",
@@ -520,21 +562,26 @@ describe("POST /retrospective/chat robustness", () => {
 		});
 		expect(res.statusCode).toBe(504);
 		expect(JSON.parse(res.payload).code).toBe("chat_prompt_timeout");
-		expect(dispose).toHaveBeenCalled();
+		// The turn was still dispatched before it timed out.
+		expect(dispatcherCalls).toHaveLength(1);
 		await app.close();
 	});
 
-	it("returns 502 chat_prompt_failed when prompt() throws, and still disposes", async () => {
-		const dispose = vi.fn(async () => {});
-		const harness = {
-			createSession: async () => ({
-				prompt: async () => {
-					throw new Error("Model exploded");
-				},
-				dispose,
-			}),
-		};
-		const { app } = await buildApp({ project, tasksById: {}, harness });
+	it("returns 502 chat_prompt_failed when the Runner reports failure", async () => {
+		const harness = { createSession: async () => createReferenceMockSession() };
+		const { app } = await buildApp({
+			project,
+			tasksById: {},
+			harness,
+			extraDeps: {
+				dispatcherFail: dispatcherError({
+					message: "Chat prompt failed: Model exploded",
+					code: "chat_prompt_failed",
+					statusCode: 502,
+					partialOutput: "",
+				}),
+			},
+		});
 		const res = await app.inject({
 			method: "POST",
 			url: "/retrospective/chat",
@@ -544,11 +591,36 @@ describe("POST /retrospective/chat robustness", () => {
 		const body = JSON.parse(res.payload);
 		expect(body.code).toBe("chat_prompt_failed");
 		expect(body.error).toContain("Model exploded");
-		expect(dispose).toHaveBeenCalled();
 		await app.close();
 	});
 
-	it("includes the streamed output tail in the 200 body (schema-valid)", async () => {
+	it("maps 503 no_runner_available / runner_unavailable and 429 queue-full", async () => {
+		const cases = [
+			{ code: "no_runner_available", statusCode: 503, status: 503 },
+			{ code: "runner_unavailable", statusCode: 503, status: 503 },
+			{ code: "impromptu_disabled", statusCode: 503, status: 503 },
+			{ code: "impromptu_queue_full", statusCode: 429, status: 429 },
+		];
+		for (const { code, statusCode, status } of cases) {
+			const harness = { createSession: async () => createReferenceMockSession() };
+			const { app } = await buildApp({
+				project,
+				tasksById: {},
+				harness,
+				extraDeps: { dispatcherFail: dispatcherError({ message: code, code, statusCode }) },
+			});
+			const res = await app.inject({
+				method: "POST",
+				url: "/retrospective/chat",
+				payload: { messages: [{ role: "user", content: "hi" }] },
+			});
+			expect(res.statusCode).toBe(status);
+			expect(JSON.parse(res.payload).code).toBe(code);
+			await app.close();
+		}
+	});
+
+	it("includes the Runner output tail in the 200 body (schema-valid)", async () => {
 		const harness = { createSession: async () => createReferenceMockSession() };
 		const { app } = await buildApp({ project, tasksById: {}, harness });
 		const res = await app.inject({
@@ -564,14 +636,16 @@ describe("POST /retrospective/chat robustness", () => {
 		await app.close();
 	});
 
-	it("omits the output field when the session streams nothing", async () => {
-		const harness = {
-			createSession: async () => ({
-				prompt: async () => "silent reply",
-				dispose: async () => {},
-			}),
-		};
-		const { app } = await buildApp({ project, tasksById: {}, harness });
+	it("omits the output field when the Runner returns no output", async () => {
+		const harness = { createSession: async () => createReferenceMockSession() };
+		const { app } = await buildApp({
+			project,
+			tasksById: {},
+			harness,
+			extraDeps: {
+				impromptuDispatcher: async () => ({ reply: "silent reply", output: "", harness: "mock", model: null }),
+			},
+		});
 		const res = await app.inject({
 			method: "POST",
 			url: "/retrospective/chat",
@@ -582,22 +656,20 @@ describe("POST /retrospective/chat robustness", () => {
 		await app.close();
 	});
 
-	it("includes partial output in the 504 body when deltas arrived before the timeout", async () => {
-		const dispose = vi.fn(async () => {});
-		const harness = {
-			createSession: async () => ({
-				prompt: (_text, { onChunk } = {}) =>
-					new Promise(() => {
-						onChunk?.("warming up…");
-					}), // never settles
-				dispose,
-			}),
-		};
+	it("includes partial output in the 504 body when the Runner streamed first", async () => {
+		const harness = { createSession: async () => createReferenceMockSession() };
 		const { app } = await buildApp({
 			project,
 			tasksById: {},
 			harness,
-			extraDeps: { promptTimeoutMs: 20 },
+			extraDeps: {
+				dispatcherFail: dispatcherError({
+					message: "Chat prompt timed out after 20ms",
+					code: "chat_prompt_timeout",
+					statusCode: 504,
+					partialOutput: "warming up…",
+				}),
+			},
 		});
 		const res = await app.inject({
 			method: "POST",
@@ -608,21 +680,24 @@ describe("POST /retrospective/chat robustness", () => {
 		const body = JSON.parse(res.payload);
 		expect(body.code).toBe("chat_prompt_timeout");
 		expect(body.output).toBe("warming up…");
-		expect(dispose).toHaveBeenCalled();
 		await app.close();
 	});
 
-	it("includes partial output in the 502 body when deltas arrived before the failure", async () => {
-		const harness = {
-			createSession: async () => ({
-				prompt: async (_text, { onChunk } = {}) => {
-					onChunk?.("before the boom");
-					throw new Error("Model exploded");
-				},
-				dispose: async () => {},
-			}),
-		};
-		const { app } = await buildApp({ project, tasksById: {}, harness });
+	it("includes partial output in the 502 body when the Runner streamed first", async () => {
+		const harness = { createSession: async () => createReferenceMockSession() };
+		const { app } = await buildApp({
+			project,
+			tasksById: {},
+			harness,
+			extraDeps: {
+				dispatcherFail: dispatcherError({
+					message: "Chat prompt failed: Model exploded",
+					code: "chat_prompt_failed",
+					statusCode: 502,
+					partialOutput: "before the boom",
+				}),
+			},
+		});
 		const res = await app.inject({
 			method: "POST",
 			url: "/retrospective/chat",
@@ -691,10 +766,8 @@ describe("POST /retrospective/chat robustness", () => {
 	});
 
 	it("prunes unknown task ids leniently and reports them in the 200", async () => {
-		const session = createReferenceMockSession();
-		const promptSpy = vi.spyOn(session, "prompt");
-		const harness = { createSession: async () => session };
-		const { app } = await buildApp({
+		const harness = { createSession: async () => createReferenceMockSession() };
+		const { app, dispatcherCalls } = await buildApp({
 			project,
 			tasksById: { "proj-1:task-1": sampleTask() },
 			harness,
@@ -713,8 +786,9 @@ describe("POST /retrospective/chat robustness", () => {
 		expect(body.contextTaskIds).toEqual(["task-1"]);
 		expect(typeof body.contextChars).toBe("number");
 		expect(body.contextTruncated).toBe(false);
-		expect(promptSpy.mock.calls[0][0]).toContain("Add pagination");
-		expect(promptSpy.mock.calls[0][0]).not.toContain("ghost-task");
+		expect(dispatcherCalls).toHaveLength(1);
+		expect(dispatcherCalls[0].prompt).toContain("Add pagination");
+		expect(dispatcherCalls[0].prompt).not.toContain("ghost-task");
 		await app.close();
 	});
 
@@ -770,14 +844,10 @@ describe("POST /retrospective/chat robustness", () => {
 		await app.close();
 	});
 
-	it("reports modelRequested true on success and false on switch failure", async () => {
-		const okSession = createReferenceMockSession({
-			models: [{ provider: "mock", id: "m1" }],
-		});
+	it("reports modelRequested true on success and false on a none harness", async () => {
 		const okHarness = {
-			createSession: async () => okSession,
-			resolveModelRef: async (target) =>
-				target === "m1" ? { provider: "mock", id: "m1" } : null,
+			createSession: async () => createReferenceMockSession(),
+			resolveModelRef: async () => null,
 		};
 		const okBuilt = await buildApp({ project, tasksById: {}, harness: okHarness });
 		const okRes = await okBuilt.app.inject({
@@ -789,41 +859,31 @@ describe("POST /retrospective/chat robustness", () => {
 		expect(JSON.parse(okRes.payload).modelRequested).toBe(true);
 		await okBuilt.app.close();
 
-		const failingSession = createReferenceMockSession();
-		vi.spyOn(failingSession, "switchModel").mockRejectedValueOnce(
-			new Error("no such model"),
-		);
-		const failingHarness = { createSession: async () => failingSession };
-		const failingBuilt = await buildApp({
+		const noneHarness = {
+			modelSelection: "none",
+			createSession: async () => createReferenceMockSession(),
+			resolveModelRef: async () => null,
+		};
+		const noneBuilt = await buildApp({
 			project,
 			tasksById: {},
-			harness: failingHarness,
+			harness: noneHarness,
+			harnessName: "muse",
 		});
-		const failingRes = await failingBuilt.app.inject({
+		const noneRes = await noneBuilt.app.inject({
 			method: "POST",
 			url: "/retrospective/chat",
-			payload: { messages: [{ role: "user", content: "hi" }], model: "ghost-model" },
+			payload: {
+				messages: [{ role: "user", content: "hi" }],
+				harness: "muse",
+				model: "ghost-model",
+			},
 		});
-		expect(failingRes.statusCode).toBe(200);
-		const failingBody = JSON.parse(failingRes.payload);
-		expect(failingBody.modelRequested).toBe(false);
-		expect(failingBody.model).toBe("ghost-model");
-		await failingBuilt.app.close();
-	});
-
-	it("reports modelRequested false when a model is asked but the session cannot switch", async () => {
-		const session = createReferenceMockSession();
-		session.switchModel = undefined;
-		const harness = { createSession: async () => session };
-		const { app } = await buildApp({ project, tasksById: {}, harness });
-		const res = await app.inject({
-			method: "POST",
-			url: "/retrospective/chat",
-			payload: { messages: [{ role: "user", content: "hi" }], model: "m1" },
-		});
-		expect(res.statusCode).toBe(200);
-		expect(JSON.parse(res.payload).modelRequested).toBe(false);
-		await app.close();
+		expect(noneRes.statusCode).toBe(200);
+		const noneBody = JSON.parse(noneRes.payload);
+		expect(noneBody.modelRequested).toBe(false);
+		expect(noneBody.model).toBe("ghost-model");
+		await noneBuilt.app.close();
 	});
 
 	it("reports modelRequested true when no model is asked", async () => {
@@ -840,135 +900,10 @@ describe("POST /retrospective/chat robustness", () => {
 	});
 });
 
-describe("POST /retrospective/chat live progress", () => {
-	it("broadcasts throttled CHAT_PROGRESS frames tagged with the turnId", async () => {
-		const broadcast = vi.fn();
-		const harness = { createSession: async () => createReferenceMockSession() };
-		const { app } = await buildApp({
-			project,
-			tasksById: {},
-			harness,
-			extraDeps: { eventBridge: { broadcast } },
-		});
-		const res = await app.inject({
-			method: "POST",
-			url: "/retrospective/chat",
-			payload: {
-				projectId: "proj-1",
-				messages: [{ role: "user", content: "hi" }],
-				turnId: "turn-123",
-			},
-		});
-		expect(res.statusCode).toBe(200);
-		const body = JSON.parse(res.payload);
-		expect(broadcast).toHaveBeenCalled();
-		for (const call of broadcast.mock.calls) {
-			expect(call[0]).toBe("proj-1");
-			expect(call[1]).toBe("CHAT_PROGRESS");
-			expect(call[2].turnId).toBe("turn-123");
-			expect(typeof call[2].tail).toBe("string");
-		}
-		// The final frame's tail agrees with the body's output tail (same
-		// winner rule, never double-counted across the two streams).
-		const lastTail = broadcast.mock.calls.at(-1)[2].tail;
-		expect(lastTail).toBe(body.output);
-		await app.close();
-	});
-
-	it("broadcasts subscribe-only (pi-style) streams too", async () => {
-		const broadcast = vi.fn();
-		const handlers = new Set();
-		const harness = {
-			createSession: async () => ({
-				subscribe: (handler) => {
-					handlers.add(handler);
-					return () => handlers.delete(handler);
-				},
-				prompt: async () => {
-					for (const handler of [...handlers]) {
-						handler({ type: "assistant_delta", delta: "thinking out loud" });
-					}
-					return "thinking out loud";
-				},
-				dispose: async () => {},
-			}),
-		};
-		const { app } = await buildApp({
-			project,
-			tasksById: {},
-			harness,
-			extraDeps: { eventBridge: { broadcast } },
-		});
-		const res = await app.inject({
-			method: "POST",
-			url: "/retrospective/chat",
-			payload: {
-				messages: [{ role: "user", content: "hi" }],
-				turnId: "turn-sub",
-			},
-		});
-		expect(res.statusCode).toBe(200);
-		expect(broadcast).toHaveBeenCalledWith(
-			"proj-1",
-			"CHAT_PROGRESS",
-			expect.objectContaining({ turnId: "turn-sub", tail: "thinking out loud" }),
-		);
-		await app.close();
-	});
-
-	it("broadcasts nothing without a turnId, and survives a missing bridge", async () => {
-		const broadcast = vi.fn();
-		const harness = { createSession: async () => createReferenceMockSession() };
-		const withBridge = await buildApp({
-			project,
-			tasksById: {},
-			harness,
-			extraDeps: { eventBridge: { broadcast } },
-		});
-		const res = await withBridge.app.inject({
-			method: "POST",
-			url: "/retrospective/chat",
-			payload: { messages: [{ role: "user", content: "hi" }] },
-		});
-		expect(res.statusCode).toBe(200);
-		expect(broadcast).not.toHaveBeenCalled();
-		await withBridge.app.close();
-
-		// Old wiring without eventBridge in deps: the turn still succeeds.
-		const withoutBridge = await buildApp({ project, tasksById: {}, harness });
-		const res2 = await withoutBridge.app.inject({
-			method: "POST",
-			url: "/retrospective/chat",
-			payload: { messages: [{ role: "user", content: "hi" }], turnId: "turn-x" },
-		});
-		expect(res2.statusCode).toBe(200);
-		await withoutBridge.app.close();
-	});
-
-	it("never fails the turn when the progress broadcast throws", async () => {
-		const harness = { createSession: async () => createReferenceMockSession() };
-		const { app } = await buildApp({
-			project,
-			tasksById: {},
-			harness,
-			extraDeps: {
-				eventBridge: {
-					broadcast: () => {
-						throw new Error("socket gone");
-					},
-				},
-			},
-		});
-		const res = await app.inject({
-			method: "POST",
-			url: "/retrospective/chat",
-			payload: { messages: [{ role: "user", content: "hi" }], turnId: "turn-boom" },
-		});
-		expect(res.statusCode).toBe(200);
-		expect(JSON.parse(res.payload).reply).toContain("Mock reply:");
-		await app.close();
-	});
-});
+// Live CHAT_PROGRESS broadcast is owned by the impromptu store's progress sink
+// (see impromptuStore.test.js "createChatProgressForwarder"): the route only
+// forwards the Runner's settled answer, so there is no route-level broadcast
+// left to test here.
 
 describe("POST /retrospective/chat skill injection", () => {
 	function skillDescriptor(overrides = {}) {
@@ -983,10 +918,8 @@ describe("POST /retrospective/chat skill injection", () => {
 	}
 
 	it("injects the skill between system instructions and task context", async () => {
-		const session = createReferenceMockSession();
-		const promptSpy = vi.spyOn(session, "prompt");
-		const harness = { createSession: async () => session };
-		const { app } = await buildApp({
+		const harness = { createSession: async () => createReferenceMockSession() };
+		const { app, dispatcherCalls } = await buildApp({
 			project,
 			tasksById: { "proj-1:task-1": sampleTask() },
 			harness,
@@ -1001,7 +934,7 @@ describe("POST /retrospective/chat skill injection", () => {
 			},
 		});
 		expect(res.statusCode).toBe(200);
-		const prompt = promptSpy.mock.calls[0][0];
+		const prompt = dispatcherCalls[0].prompt;
 		expect(prompt).toContain("SKILL-BODY-MARKER");
 		expect(prompt).toContain("# Stage Skills");
 		const skillAt = prompt.indexOf("SKILL-BODY-MARKER");
@@ -1022,10 +955,8 @@ describe("POST /retrospective/chat skill injection", () => {
 			},
 		];
 		for (const loadSkill of loaders) {
-			const session = createReferenceMockSession();
-			const promptSpy = vi.spyOn(session, "prompt");
-			const harness = { createSession: async () => session };
-			const { app } = await buildApp({
+			const harness = { createSession: async () => createReferenceMockSession() };
+			const { app, dispatcherCalls } = await buildApp({
 				project,
 				tasksById: {},
 				harness,
@@ -1037,19 +968,18 @@ describe("POST /retrospective/chat skill injection", () => {
 				payload: { messages: [{ role: "user", content: "hi" }] },
 			});
 			expect(res.statusCode).toBe(200);
-			expect(promptSpy.mock.calls[0][0]).not.toContain("SKILL-BODY-MARKER");
+			expect(dispatcherCalls).toHaveLength(1);
+			expect(dispatcherCalls[0].prompt).not.toContain("SKILL-BODY-MARKER");
 			await app.close();
 		}
 	});
 
 	it("injects the REAL retrospective-task-lookup skill via the registry", async () => {
-		const session = createReferenceMockSession();
-		const promptSpy = vi.spyOn(session, "prompt");
-		const harness = { createSession: async () => session };
+		const harness = { createSession: async () => createReferenceMockSession() };
 		const skillsRegistry = new SkillsRegistry({
 			skillsDir: path.resolve(import.meta.dirname, "..", "..", "skills"),
 		});
-		const { app } = await buildApp({
+		const { app, dispatcherCalls } = await buildApp({
 			project,
 			tasksById: { "proj-1:task-1": sampleTask() },
 			harness,
@@ -1064,7 +994,7 @@ describe("POST /retrospective/chat skill injection", () => {
 			},
 		});
 		expect(res.statusCode).toBe(200);
-		const prompt = promptSpy.mock.calls[0][0];
+		const prompt = dispatcherCalls[0].prompt;
 		// The real package grounds the turn: lookup ladder + citation contract.
 		expect(prompt).toContain("# Stage Skills");
 		expect(prompt).toContain("## retrospective-task-lookup");
@@ -1085,13 +1015,11 @@ describe("POST /retrospective/chat skill injection", () => {
 	});
 
 	it("turns a no-selection request 200 with real skill listing guidance and no placeholders", async () => {
-		const session = createReferenceMockSession();
-		const promptSpy = vi.spyOn(session, "prompt");
-		const harness = { createSession: async () => session };
+		const harness = { createSession: async () => createReferenceMockSession() };
 		const skillsRegistry = new SkillsRegistry({
 			skillsDir: path.resolve(import.meta.dirname, "..", "..", "skills"),
 		});
-		const { app } = await buildApp({
+		const { app, dispatcherCalls } = await buildApp({
 			project,
 			tasksById: {},
 			harness,
@@ -1103,7 +1031,7 @@ describe("POST /retrospective/chat skill injection", () => {
 			payload: { messages: [{ role: "user", content: "General trends?" }] },
 		});
 		expect(res.statusCode).toBe(200);
-		const prompt = promptSpy.mock.calls[0][0];
+		const prompt = dispatcherCalls[0].prompt;
 		// Empty selection: the prompt must equip the model with generic
 		// recent-task tooling, never "conversation alone".
 		expect(prompt).toContain("No tasks selected");
@@ -1116,14 +1044,12 @@ describe("POST /retrospective/chat skill injection", () => {
 	});
 
 	it("falls back to ./ when project.cwd is missing so no placeholder leaks", async () => {
-		const session = createReferenceMockSession();
-		const promptSpy = vi.spyOn(session, "prompt");
-		const harness = { createSession: async () => session };
+		const harness = { createSession: async () => createReferenceMockSession() };
 		const cwdlessProject = { id: "proj-1", name: "Fixture" };
 		const skillsRegistry = new SkillsRegistry({
 			skillsDir: path.resolve(import.meta.dirname, "..", "..", "skills"),
 		});
-		const { app } = await buildApp({
+		const { app, dispatcherCalls } = await buildApp({
 			project: cwdlessProject,
 			tasksById: {},
 			harness,
@@ -1135,17 +1061,15 @@ describe("POST /retrospective/chat skill injection", () => {
 			payload: { messages: [{ role: "user", content: "hi" }] },
 		});
 		expect(res.statusCode).toBe(200);
-		const prompt = promptSpy.mock.calls[0][0];
+		const prompt = dispatcherCalls[0].prompt;
 		expect(prompt).toContain("## retrospective-task-lookup");
 		expect(prompt).not.toMatch(/\{\{[^}]+\}\}/);
 		await app.close();
 	});
 
 	it("omits an oversized skill with a marker and still turns 200", async () => {
-		const session = createReferenceMockSession();
-		const promptSpy = vi.spyOn(session, "prompt");
-		const harness = { createSession: async () => session };
-		const { app } = await buildApp({
+		const harness = { createSession: async () => createReferenceMockSession() };
+		const { app, dispatcherCalls } = await buildApp({
 			project,
 			tasksById: {},
 			harness,
@@ -1157,7 +1081,7 @@ describe("POST /retrospective/chat skill injection", () => {
 			payload: { messages: [{ role: "user", content: "hi" }] },
 		});
 		expect(res.statusCode).toBe(200);
-		const prompt = promptSpy.mock.calls[0][0];
+		const prompt = dispatcherCalls[0].prompt;
 		expect(prompt).toContain("[skill retrospective-task-lookup omitted: size cap]");
 		expect(prompt).not.toContain("z".repeat(100));
 		await app.close();
@@ -1233,27 +1157,6 @@ describe("buildChatPrompt skills seam", () => {
 	});
 });
 
-function createMockHarnessWithHooks({ onPrompt, onDispose }) {
-	const harness = createMockHarness();
-	return {
-		...harness,
-		createSession: async (projectArg, meta) => {
-			const session = await harness.createSession(projectArg, meta);
-			const basePrompt = session.prompt.bind(session);
-			const baseDispose = session.dispose.bind(session);
-			session.prompt = async (text, opts) => {
-				onPrompt?.(text);
-				return basePrompt(text, opts);
-			};
-			session.dispose = async () => {
-				onDispose?.();
-				return baseDispose();
-			};
-			return session;
-		},
-	};
-}
-
 describe("POST /retrospective/chat target resolution", () => {
 	const aliasProject = {
 		id: "proj-1",
@@ -1263,13 +1166,13 @@ describe("POST /retrospective/chat target resolution", () => {
 		defaultModel: "mock::echo-v1",
 		modelAliases: [{ name: "worker", harness: "mock", model: "mock::echo-v1" }],
 	};
-	const echoModels = [
-		{ provider: "mock", id: "echo-v1", name: "Echo", key: "mock::echo-v1" },
-	];
 
-	it("resolves harness:alias chat turns through the alias (harness + model together)", async () => {
-		const harness = createMockHarness({ models: echoModels });
-		const { app, createSession, resolveHarness } = await buildApp({
+	it("resolves harness:alias turns to the concrete target for the dispatcher", async () => {
+		const harness = {
+			createSession: async () => createReferenceMockSession(),
+			resolveModelRef: async () => null,
+		};
+		const { app, dispatcherCalls } = await buildApp({
 			project: aliasProject,
 			tasksById: { "proj-1:task-1": sampleTask() },
 			harness,
@@ -1287,22 +1190,20 @@ describe("POST /retrospective/chat target resolution", () => {
 		});
 		expect(res.statusCode).toBe(200);
 		// The alias resolved to its concrete harness (not the virtual id)…
-		expect(resolveHarness).toHaveBeenCalledWith(aliasProject, {
-			harnessName: "mock",
-		});
-		// …and its concrete model rode to session creation (target hand-off).
-		expect(createSession.mock.calls[0][1]).toMatchObject({
-			...RETROSPECTIVE_SESSION_META,
-			model: "mock::echo-v1",
-		});
-		const body = JSON.parse(res.payload);
-		expect(body.model).toBe("echo-v1");
+		expect(dispatcherCalls).toHaveLength(1);
+		expect(dispatcherCalls[0].harness).toBe("mock");
+		// …and its concrete model rode to the dispatcher (target hand-off).
+		expect(dispatcherCalls[0].model).toBe("mock::echo-v1");
+		expect(JSON.parse(res.payload).model).toBe("mock::echo-v1");
 		await app.close();
 	});
 
 	it("falls back to the project default on unknown chat aliases (never the alias name)", async () => {
-		const harness = createMockHarness({ models: echoModels });
-		const { app, createSession } = await buildApp({
+		const harness = {
+			createSession: async () => createReferenceMockSession(),
+			resolveModelRef: async () => null,
+		};
+		const { app, dispatcherCalls } = await buildApp({
 			project: aliasProject,
 			tasksById: { "proj-1:task-1": sampleTask() },
 			harness,
@@ -1319,11 +1220,10 @@ describe("POST /retrospective/chat target resolution", () => {
 			},
 		});
 		expect(res.statusCode).toBe(200);
-		// Alias-miss fallbacks pass nothing to creation (project-default path)…
-		expect("model" in createSession.mock.calls[0][1]).toBe(false);
-		// …and the turn still lands on the project default, never "ghost-alias".
-		const body = JSON.parse(res.payload);
-		expect(body.model).toBe("echo-v1");
+		// Alias-miss fallbacks ride the project default, never the alias name.
+		expect(dispatcherCalls).toHaveLength(1);
+		expect(dispatcherCalls[0].model).toBe("mock::echo-v1");
+		expect(JSON.parse(res.payload).model).toBe("mock::echo-v1");
 		await app.close();
 	});
 });

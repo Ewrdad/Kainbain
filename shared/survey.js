@@ -9,6 +9,14 @@
  *   `{ round, generatedAt, stage, questions: [{ id, type, text, options,
  *   required, showIf }], answers: { [qid]: { selected: string[], notes } } }`
  *
+ *   Image questions (`type: "image"`) behave like `single` (one favourite out
+ *   of ≤4) but render generated pictures: the agent writes description
+ *   `options`, the backend fills the `images[]` array
+ *   (`{ option, file, status, error? }`), and answers still select by
+ *   description string — so every validation/completion path below keeps
+ *   working, and a question whose images are missing or failed simply renders
+ *   its descriptions instead.
+ *
  *   Conditional questions use a deliberately small `showIf` grammar so agents
  *   cannot get confused: `{ questionId, value }` (visible when the referenced
  *   answer selected `value`) or `{ questionId, values: [...] }` (visible when
@@ -28,7 +36,34 @@
 
 export const SURVEY_FENCE = "survey-json";
 
-export const QUESTION_TYPES = ["single", "multiple"];
+export const QUESTION_TYPES = ["single", "multiple", "image"];
+
+/***
+ * MARK: IMAGE_QUESTION_MAX_OPTIONS
+ * @description Most descriptions one image question may carry (one generated
+ *   picture per description; the human picks a single favourite).
+ * @example IMAGE_QUESTION_MAX_OPTIONS => 4
+ ***/
+export const IMAGE_QUESTION_MAX_OPTIONS = 4;
+
+/***
+ * MARK: IMAGE_ENTRY_STATUSES
+ * @description Lifecycle of one generated survey image: `pending` (queued or
+ *   generating), `ready` (bytes on disk under `file`), `failed` (see
+ *   `error` — the UI falls back to the written description).
+ * @example IMAGE_ENTRY_STATUSES.includes('ready') => true
+ ***/
+export const IMAGE_ENTRY_STATUSES = ["pending", "ready", "failed"];
+
+/***
+ * MARK: IMAGE_ENTRY_FAILURE_CODES
+ * @description Machine-readable `code` carried by failed image entries
+ *   (informational — validation ignores it): `no-key` (no API key saved when
+ *   the job ran — retried once a key exists), `cap` (per-survey image budget
+ *   spent), `gen` (the provider call itself failed).
+ * @example IMAGE_ENTRY_FAILURE_CODES.includes('no-key') => true
+ ***/
+export const IMAGE_ENTRY_FAILURE_CODES = ["no-key", "cap", "gen"];
 
 /***
  * MARK: extractFenceBlocks
@@ -84,8 +119,9 @@ export function normalizeRound(value, index = 0) {
 /***
  * MARK: normalizeQuestion
  * @description Coerces one question descriptor into canonical shape.
- *   Returns null for non-objects; `showIf` is passed through untouched so
- *   `validateSurvey` (not the reader) decides whether it is well-formed.
+ *   Returns null for non-objects; `showIf` and `images` are passed through
+ *   untouched so `validateSurvey` (not the reader) decides whether they are
+ *   well-formed.
  * @example normalizeQuestion({ id: 'q1', text: 'T?', options: ['a'] }).type => 'single'
  * @param {*} value
  * @returns {Object|null}
@@ -99,12 +135,18 @@ export function normalizeQuestion(value) {
 		: [];
 	return {
 		id,
-		type: value.type === "multiple" ? "multiple" : "single",
+		type:
+			value.type === "multiple"
+				? "multiple"
+				: value.type === "image"
+					? "image"
+					: "single",
 		text,
 		options,
 		required: value.required === true,
 		showIf:
 			value.showIf === undefined || value.showIf === null ? null : value.showIf,
+		images: Array.isArray(value.images) ? value.images : [],
 	};
 }
 
@@ -143,7 +185,9 @@ export function parseSurvey(markdown) {
  * MARK: serializeRound
  * @description Serializes one round to indented JSON for embedding in a
  *   `survey-json` fence. Key order is fixed (round, generatedAt, stage,
- *   questions, answers) so diffs stay readable.
+ *   questions, answers) so diffs stay readable; a question's `images` array
+ *   is emitted only when non-empty, so surveys without generated pictures
+ *   serialize byte-identical to before image questions existed.
  * @example serializeRound({ round: 1, questions: [], answers: {} }) => '{\n  "round": 1, ...'
  * @param {Object} round
  * @returns {string}
@@ -160,6 +204,7 @@ export function serializeRound(round) {
 			options: q.options || [],
 			required: q.required === true,
 			showIf: q.showIf === undefined ? null : q.showIf,
+			...(Array.isArray(q.images) && q.images.length > 0 ? { images: q.images } : {}),
 		})),
 		answers: round.answers || {},
 	};
@@ -290,9 +335,50 @@ export function validateSurvey(rounds) {
 				errors.push(`${qlabel}: at least one option is required`);
 			} else if (q.options.some((option) => !String(option).trim())) {
 				errors.push(`${qlabel}: options must not be empty`);
+			} else if (
+				q.type === "image" &&
+				q.options.length > IMAGE_QUESTION_MAX_OPTIONS
+			) {
+				errors.push(
+					`${qlabel}: image questions allow at most ${IMAGE_QUESTION_MAX_OPTIONS} options`,
+				);
 			}
-			if (q.type !== "single" && q.type !== "multiple") {
+			if (q.type !== "single" && q.type !== "multiple" && q.type !== "image") {
 				errors.push(`${qlabel}: unknown type '${q.type}'`);
+			}
+			if (q.images !== undefined && q.images !== null) {
+				if (!Array.isArray(q.images)) {
+					errors.push(`${qlabel}: images must be an array`);
+				} else {
+					q.images.forEach((entry, index) => {
+						const elabel = `${qlabel} images[${index}]`;
+						if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+							errors.push(`${elabel}: must be an object`);
+							return;
+						}
+						if (
+							!Number.isInteger(entry.option) ||
+							entry.option < 0 ||
+							entry.option >= (q.options?.length || 0)
+						) {
+							errors.push(`${elabel}: option must be an option index`);
+						}
+						if (!IMAGE_ENTRY_STATUSES.includes(entry.status)) {
+							errors.push(`${elabel}: unknown status '${entry.status}'`);
+						}
+						// Ready and pending entries name their artifact; a failed
+						// entry has no artifact, so `file` is optional there.
+						if (
+							entry.status !== "failed" &&
+							(typeof entry.file !== "string" || !entry.file.trim())
+						) {
+							errors.push(`${elabel}: file is required`);
+						}
+						if (entry.error !== undefined && typeof entry.error !== "string") {
+							errors.push(`${elabel}: error must be a string`);
+						}
+					});
+				}
 			}
 			const showIfError = validateShowIf(q.showIf);
 			if (showIfError) {
@@ -306,7 +392,11 @@ export function validateSurvey(rounds) {
 				const laterInRound = round.questions.some((other) => other?.id === q.showIf.questionId);
 				if (!laterInRound) errors.push(`${qlabel}: showIf references unknown question '${q.showIf.questionId}'`);
 			}
-			if (q.type === "single" && q.showIf && q.showIf.questionId === q.id) {
+			if (
+				(q.type === "single" || q.type === "image") &&
+				q.showIf &&
+				q.showIf.questionId === q.id
+			) {
 				errors.push(`${qlabel}: showIf must not reference its own question`);
 			}
 		}
@@ -328,7 +418,10 @@ export function validateSurvey(rounds) {
 			}
 			const unknown = selected.filter((s) => !question.options.includes(s));
 			if (unknown.length > 0) errors.push(`${label}: answer '${qid}' selects unknown option(s): ${unknown.join(", ")}`);
-			if (question.type === "single" && selected.length > 1) {
+			if (
+				(question.type === "single" || question.type === "image") &&
+				selected.length > 1
+			) {
 				errors.push(`${label}: single-choice answer '${qid}' selects more than one option`);
 			}
 			if (answer?.notes !== undefined && typeof answer.notes !== "string") {
@@ -489,6 +582,153 @@ function notesFromAnswer(answer) {
 }
 
 
+/***
+ * MARK: spliceRoundsIntoMarkdown
+ * @description Rewrites every `survey-json` fence in a markdown document with
+ *   the matching round from `rounds` (document order), leaving all surrounding
+ *   prose byte-for-byte. Throws when the fence count drifts from the round
+ *   count, so a file edited underfoot is never half-rewritten.
+ * @example spliceRoundsIntoMarkdown('```survey-json\n{}\n```', [{ round: 1, questions: [], answers: {} }]).includes('"round": 1') => true
+ * @param {string} markdown
+ * @param {Array<Object>} rounds
+ * @returns {string}
+ ***/
+export function spliceRoundsIntoMarkdown(markdown, rounds) {
+	let index = 0;
+	const next = () => rounds[index++];
+	const out = String(markdown).replace(/```survey-json[ \t]*\r?\n([\s\S]*?)```/g, () => {
+		const round = next();
+		if (!round) throw new Error("survey file changed underfoot: fewer rounds than fences");
+		return `\`\`\`survey-json\n${serializeRound(round)}\n\`\`\``;
+	});
+	if (index !== rounds.length) {
+		throw new Error("survey file changed underfoot: more rounds than fences");
+	}
+	return out;
+}
+
+/***
+ * MARK: mergeSurveyDocuments
+ * @description Merges a Runner-shipped survey copy (`incomingMarkdown`) with the
+ *   backend's own copy (`backendMarkdown`) without losing either side's work.
+ *   Runners author questions, humans (via the backend) author answers, and a
+ *   Runner copy can lag behind: a remote Runner never sees answers saved after
+ *   its worktree was prepared, so writing its copy over the backend file would
+ *   wipe them. The merge keeps every round from both sides (matched by round
+ *   number), unions questions by id (incoming wording wins — the Runner wrote
+ *   them), and unions answers by question id (backend wins — the human wrote
+ *   them). Backend-only rounds are appended as new blocks at the bottom.
+ *   When the backend holds no rounds the incoming copy passes through
+ *   untouched (survey creation); when the incoming copy holds no rounds the
+ *   backend copy passes through untouched (nothing new to add). When the merge
+ *   itself would produce an invalid survey (concurrent same-number rounds),
+ *   the backend copy wins untouched so answers are never traded for questions.
+ *   A backend answer for a question neither side asks anymore is dropped —
+ *   keeping it would fail validation and reject the whole merge.
+ *   Fail-safe: this function never throws and never returns a document that
+ *   loses backend answers. Any unexpected shape (unparseable fences, fence
+ *   count drift, non-string input) degrades to returning the backend copy
+ *   untouched with `merged: false`.
+ *   Inputs are labelled (`{ backendMarkdown, incomingMarkdown }`), so argument
+ *   order can never silently invert the merge: `backendMarkdown` is always the
+ *   backend copy (the answers to keep) and `incomingMarkdown` is always the
+ *   Runner shipment (the questions to land).
+ * @example mergeSurveyDocuments({ backendMarkdown: backendDoc, incomingMarkdown: staleRunnerDoc }).merged => true
+ * @param {Object} [labelled={}] - Labelled inputs (order-free).
+ * @param {string} [labelled.backendMarkdown] - Backend copy (answers to keep).
+ * @param {string} [labelled.incomingMarkdown] - Runner shipment (questions to land).
+ * @returns {{ markdown: string, merged: boolean }} `merged` is true only when
+ *   backend content (answers, questions, or rounds) survived inside the result.
+ ***/
+export function mergeSurveyDocuments({ backendMarkdown, incomingMarkdown } = {}) {
+	const backendText = typeof backendMarkdown === "string" ? backendMarkdown : "";
+	const incomingText = typeof incomingMarkdown === "string" ? incomingMarkdown : "";
+	const backend = parseSurvey(backendText);
+	const incoming = parseSurvey(incomingText);
+	if (backend.rounds.length === 0) return { markdown: incomingText, merged: false };
+	if (incoming.rounds.length === 0) return { markdown: backendText, merged: false };
+
+	const backendByNumber = new Map();
+	for (const round of backend.rounds) {
+		if (!backendByNumber.has(round.round)) backendByNumber.set(round.round, round);
+	}
+	const backendAnswers = combinedAnswers(backend.rounds);
+	let contributed = false;
+	const mergedRounds = incoming.rounds.map((incomingRound) => {
+		const backendRound = backendByNumber.get(incomingRound.round) || null;
+		const questions = [...incomingRound.questions];
+		const known = new Set(questions.map((question) => question.id));
+		if (backendRound) {
+			for (const question of backendRound.questions) {
+				if (!known.has(question.id)) {
+					known.add(question.id);
+					questions.push(question);
+					contributed = true;
+				}
+			}
+		}
+		const answers = { ...incomingRound.answers };
+		for (const [qid, entry] of Object.entries(backendAnswers)) {
+			if (!known.has(qid)) continue;
+			const normalized = { selected: selectedFromAnswer(entry), notes: notesFromAnswer(entry) };
+			if (!checkAnswersMatch({ existingAnswer: answers[qid], backendAnswer: normalized })) {
+				answers[qid] = normalized;
+				contributed = true;
+			}
+		}
+		return { ...incomingRound, questions, answers };
+	});
+
+	const incomingNumbers = new Set(incoming.rounds.map((round) => round.round));
+	const seenAppended = new Set();
+	const appended = [];
+	for (const round of backend.rounds) {
+		if (!incomingNumbers.has(round.round) && !seenAppended.has(round.round)) {
+			seenAppended.add(round.round);
+			appended.push(round);
+		}
+	}
+
+	if (!contributed && appended.length === 0) return { markdown: incomingText, merged: false };
+
+	// The splice below can throw when the incoming copy carries fence blocks
+	// the parser skipped (invalid JSON) — its fence count then exceeds the
+	// merged round count. That must degrade to keeping the backend copy, the
+	// same as an invalid merge: throwing here would let the caller fall back
+	// to a plain overwrite and wipe the very answers the merge protects.
+	try {
+		let markdown = spliceRoundsIntoMarkdown(incomingText, mergedRounds);
+		for (const extra of appended) {
+			markdown = `${markdown.replace(/\s+$/, "")}\n\n## Round ${extra.round}\n\n\`\`\`survey-json\n${serializeRound(extra)}\n\`\`\`\n`;
+		}
+		const merged = parseSurvey(markdown);
+		if (!validateSurvey(merged.rounds).ok) return { markdown: backendText, merged: false };
+		return { markdown, merged: true };
+	} catch {
+		return { markdown: backendText, merged: false };
+	}
+}
+
+/***
+ * MARK: checkAnswersMatch
+ * @description Whether the answer already kept in a merged round matches the
+ *   backend's normalized answer (same selected options in order, same notes),
+ *   so the survey merge can skip no-op overwrites and only flag real
+ *   contributions. A missing kept answer never matches.
+ * @example checkAnswersMatch({ existingAnswer: { selected: ['a'], notes: '' }, backendAnswer: { selected: ['a'], notes: '' } }) => true
+ * @param {Object} [labelled={}] - Labelled answers to compare.
+ * @param {*} [labelled.existingAnswer] - Answer already kept in the merged round.
+ * @param {Object} [labelled.backendAnswer] - Normalized backend answer (`{ selected, notes }`).
+ * @returns {boolean}
+ ***/
+function checkAnswersMatch({ existingAnswer, backendAnswer } = {}) {
+	if (!existingAnswer || typeof existingAnswer !== "object") return false;
+	const selected = selectedFromAnswer(existingAnswer);
+	if (selected.length !== backendAnswer.selected.length) return false;
+	if (selected.some((value, index) => value !== backendAnswer.selected[index])) return false;
+	return notesFromAnswer(existingAnswer) === backendAnswer.notes;
+}
+
 export const QUESTION_ME_SKILL_NAME = "question-me";
 
 /***
@@ -506,4 +746,156 @@ export function stageHasQuestionMe(stage) {
 		const name = typeof entry === "string" ? entry : entry?.name;
 		return typeof name === "string" && name.trim().toLowerCase() === QUESTION_ME_SKILL_NAME;
 	});
+}
+
+/***
+ * MARK: SURVEY FILE NAMING
+ * @description Default task-folder file holding question-me rounds.
+ * @example DEFAULT_SURVEY_FILENAME => 'SURVEY.md'
+ ***/
+export const DEFAULT_SURVEY_FILENAME = "SURVEY.md";
+
+/***
+ * MARK: SURVEY FILE ALIASES
+ * @description Configuration keys that may carry the selected output file name,
+ *   in precedence order. `outputFile` is canonical; the rest are accepted as
+ *   backward-compatible aliases by backend resolution.
+ * @example SURVEY_OUTPUT_FILE_KEYS[0] => 'outputFile'
+ ***/
+export const SURVEY_OUTPUT_FILE_KEYS = [
+	"outputFile",
+	"surveyFile",
+	"surveyFileName",
+	"fileName",
+	"targetFile",
+	"file",
+];
+
+function _isPresentValue(value) {
+	if (value === undefined || value === null) return false;
+	if (typeof value === "string" && value.trim() === "") return false;
+	return true;
+}
+
+function _rawConfigValue(source, key) {
+	if (!source || typeof source !== "object" || Array.isArray(source)) return undefined;
+	if (!Object.prototype.hasOwnProperty.call(source, key)) return undefined;
+	const value = source[key];
+	if (value && typeof value === "object" && !Array.isArray(value) && Object.prototype.hasOwnProperty.call(value, "value")) {
+		return value.value;
+	}
+	return value;
+}
+
+function _hasQuestionMeName(value) {
+	// Same entry shape as the shared gate (`stageHasQuestionMe`: a string or
+	// `{ name }`) so file resolution and parking can never disagree about
+	// which attachment is the question-me skill.
+	const name = typeof value === "string" ? value : value?.name;
+	return typeof name === "string" && name.trim().toLowerCase() === QUESTION_ME_SKILL_NAME;
+}
+
+function _candidateSources(input) {
+	const sources = [];
+	if (!input || typeof input !== "object" || Array.isArray(input)) return sources;
+	sources.push(input);
+	if (input.config) sources.push(input.config);
+	if (input.keywords) sources.push(input.keywords);
+	if (input.skill) {
+		sources.push(input.skill);
+		if (input.skill.config) sources.push(input.skill.config);
+		if (input.skill.keywords) sources.push(input.skill.keywords);
+	}
+	if (input.questionMeSkill) {
+		sources.push(input.questionMeSkill);
+		if (input.questionMeSkill.config) sources.push(input.questionMeSkill.config);
+	}
+	return sources;
+}
+
+/***
+ * MARK: normalizeSurveyFileName
+ * @description Normalizes a configured survey file name into a safe basename
+ *   inside the task folder. Anything unsafe falls back to the default
+ *   (`SURVEY.md`) — never throws, never escapes the task directory. A bare
+ *   name without a dot gains a `.md` extension; an explicit extension must
+ *   already be `.md` (case-insensitive).
+ * @example normalizeSurveyFileName('FEEDBACK') => 'FEEDBACK.md'
+ * @example normalizeSurveyFileName('') => 'SURVEY.md'
+ * @param {*} value - Candidate file name (or `{ value }` keyword wrapper).
+ * @returns {string} Safe basename, or `DEFAULT_SURVEY_FILENAME`.
+ ***/
+export function normalizeSurveyFileName(value) {
+	let raw = value;
+	if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+		if (Object.prototype.hasOwnProperty.call(raw, "value")) raw = raw.value;
+		else return DEFAULT_SURVEY_FILENAME;
+	}
+	// Only strings name files: numbers, booleans, and other scalars are a
+	// misconfiguration, so they fail safe to the default instead of
+	// minting surprising names like `true.md`.
+	if (typeof raw !== "string") return DEFAULT_SURVEY_FILENAME;
+	raw = raw.trim();
+	if (!raw) return DEFAULT_SURVEY_FILENAME;
+	if (raw.length > 64) return DEFAULT_SURVEY_FILENAME;
+	if (
+		raw.includes("/") ||
+		raw.includes("\\") ||
+		raw.includes("\0") ||
+		raw.includes("\n") ||
+		raw.includes("\r") ||
+		raw.includes(":")
+	) {
+		return DEFAULT_SURVEY_FILENAME;
+	}
+	if (raw === "." || raw === ".." || raw.includes("..")) return DEFAULT_SURVEY_FILENAME;
+	// Hidden files (`.md`, `.survey.md`) have no visible stem: reject.
+	if (raw.startsWith(".")) return DEFAULT_SURVEY_FILENAME;
+	if (!raw.includes(".")) return `${raw}.md`;
+	const ext = raw.slice(raw.lastIndexOf(".")).toLowerCase();
+	if (ext !== ".md") return DEFAULT_SURVEY_FILENAME;
+	// A bare `.md` passed the dot checks only when it starts with a dot,
+	// which is rejected above — this guards ` .md`-style trims.
+	if (raw.length <= 3) return DEFAULT_SURVEY_FILENAME;
+	return raw;
+}
+
+/***
+ * MARK: outputFileFromSkillAttachment
+ * @description Resolves a raw output-file value from a stage (or skill attachment)
+ *   by inspecting the `question-me` skill entry's config and any supplied
+ *   keyword defaults. Canonical key first, then accepted aliases.
+ * @example outputFileFromSkillAttachment({ skills: [{ name: 'question-me', config: { outputFile: 'FEEDBACK.md' } }] }) => 'FEEDBACK.md'
+ * @param {Object} [stageOrConfig]
+ * @returns {*}
+ ***/
+export function outputFileFromSkillAttachment(stageOrConfig) {
+	const entries = Array.isArray(stageOrConfig?.skills) ? stageOrConfig.skills : [];
+	const qmEntry = entries.find(_hasQuestionMeName) || null;
+
+	const sources = [];
+	if (qmEntry) sources.push(..._candidateSources(qmEntry));
+	sources.push(..._candidateSources(stageOrConfig));
+
+	for (const key of SURVEY_OUTPUT_FILE_KEYS) {
+		for (const source of sources) {
+			const value = _rawConfigValue(source, key);
+			if (_isPresentValue(value)) return value;
+		}
+	}
+	return null;
+}
+
+/***
+ * MARK: resolveQuestionMeOutputFile
+ * @description Normalizes the selected survey file name for a stage/config value.
+ * @example resolveQuestionMeOutputFile({ skills: [{ name: 'question-me', config: { outputFile: 'FEEDBACK.md' } }] }) => 'FEEDBACK.md'
+ * @param {*} [stageOrConfig]
+ * @returns {string}
+ ***/
+export function resolveQuestionMeOutputFile(stageOrConfig) {
+	if (typeof stageOrConfig === "string") return normalizeSurveyFileName(stageOrConfig);
+	if (!stageOrConfig || typeof stageOrConfig !== "object") return DEFAULT_SURVEY_FILENAME;
+	const raw = outputFileFromSkillAttachment(stageOrConfig);
+	return normalizeSurveyFileName(raw);
 }

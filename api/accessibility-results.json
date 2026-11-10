@@ -1,0 +1,222 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-25T00:00:00.000Z",
+  "appVersion": "1.0.0",
+  "contactEmail": "",
+  "wcag22aaa": [
+    {
+      "criterion": "1.2.6",
+      "status": "not-applicable",
+      "evidence": "No prerecorded video ships in the app (2026-10-25 audit scope)."
+    },
+    {
+      "criterion": "1.2.7",
+      "status": "not-applicable",
+      "evidence": "No prerecorded video ships in the app (2026-10-25 audit scope)."
+    },
+    {
+      "criterion": "1.2.8",
+      "status": "not-applicable",
+      "evidence": "No prerecorded video ships in the app (2026-10-25 audit scope)."
+    },
+    {
+      "criterion": "1.2.9",
+      "status": "not-applicable",
+      "evidence": "No live audio ships in the app (2026-10-25 audit scope)."
+    },
+    {
+      "criterion": "1.4.6",
+      "status": "pass",
+      "evidence": "Canary axe at wcag22aaa tags plus the in-page AAA contrast walk and the theme contrast gates, all green on 2026-10-25."
+    },
+    {
+      "criterion": "1.4.8",
+      "status": "partial",
+      "evidence": "Documented exemption 2: no 80-character line-length control for long-form text. Re-audit due 2027-04-15."
+    },
+    {
+      "criterion": "2.1.3",
+      "status": "pass",
+      "evidence": "Canary keyboard guards green plus a manual keyboard-only walk of every view on 2026-10-25."
+    },
+    {
+      "criterion": "2.2.3",
+      "status": "pass",
+      "evidence": "No time limits anywhere; notification timers pause on hover and focus (2026-10-25 audit)."
+    },
+    {
+      "criterion": "2.2.4",
+      "status": "pass",
+      "evidence": "No interrupting content ships (2026-10-25 audit)."
+    },
+    {
+      "criterion": "2.2.5",
+      "status": "not-applicable",
+      "evidence": "The app has no sign-in, so there is nothing to re-authenticate."
+    },
+    {
+      "criterion": "2.2.6",
+      "status": "pass",
+      "evidence": "No inactivity timeouts; drafts persist across reloads (2026-10-25 audit)."
+    },
+    {
+      "criterion": "2.3.2",
+      "status": "pass",
+      "evidence": "No flashing content ships (2026-10-25 audit)."
+    },
+    {
+      "criterion": "2.3.3",
+      "status": "pass",
+      "evidence": "Motion follows the Reduce Motion setting and collapses globally in CSS (2026-10-25 audit)."
+    },
+    {
+      "criterion": "2.4.8",
+      "status": "pass",
+      "evidence": "Every view sets a distinct document title and marks its navigation state (2026-10-25 audit)."
+    },
+    {
+      "criterion": "2.4.9",
+      "status": "pass",
+      "evidence": "Canary axe link-name rule plus named-control assertions across component suites (2026-10-25 audit)."
+    },
+    {
+      "criterion": "2.4.10",
+      "status": "pass",
+      "evidence": "Section-heading and heading-order assertions across component suites (2026-10-25 audit)."
+    },
+    {
+      "criterion": "2.4.12",
+      "status": "pass",
+      "evidence": "Canary keyboard guards plus manual focus walk; dialogs trap and restore focus (2026-10-25 audit)."
+    },
+    {
+      "criterion": "2.4.13",
+      "status": "partial",
+      "evidence": "Documented exemption 4: a very dark custom accent on a dark theme can reduce focus-ring contrast; the accent picker warns. Re-audit due 2027-04-15."
+    },
+    {
+      "criterion": "2.5.5",
+      "status": "partial",
+      "evidence": "Documented exemption 1: dense data controls hold the 24 pixel minimum instead of 44. Re-audit due 2027-04-15."
+    },
+    {
+      "criterion": "2.5.6",
+      "status": "pass",
+      "evidence": "No input modality is ever restricted (2026-10-25 audit)."
+    },
+    {
+      "criterion": "3.1.3",
+      "status": "pass",
+      "evidence": "Glossary terms plus the UI-text conventions gate and manual copy review (2026-10-25 audit)."
+    },
+    {
+      "criterion": "3.1.4",
+      "status": "pass",
+      "evidence": "Abbreviations expanded on first use with look-up terms everywhere (2026-10-25 audit)."
+    },
+    {
+      "criterion": "3.1.5",
+      "status": "partial",
+      "evidence": "Documented exemption 3: no automated grade-level gate; copy reviewed by hand on every change. Re-audit due 2027-04-15."
+    },
+    {
+      "criterion": "3.1.6",
+      "status": "pass",
+      "evidence": "No words with ambiguous pronunciation ship (2026-10-25 copy review)."
+    },
+    {
+      "criterion": "3.2.5",
+      "status": "pass",
+      "evidence": "No change of context except on user request (2026-10-25 audit)."
+    },
+    {
+      "criterion": "3.3.5",
+      "status": "pass",
+      "evidence": "System guide, tooltips, and docs reachable from every view (2026-10-25 audit)."
+    },
+    {
+      "criterion": "3.3.6",
+      "status": "pass",
+      "evidence": "Consequential actions confirm or undo; covered by form and confirmation tests (2026-10-25 audit)."
+    },
+    {
+      "criterion": "3.3.9",
+      "status": "not-applicable",
+      "evidence": "The app has no sign-in, so there is no authentication to make accessible."
+    }
+  ],
+  "wcag30": [
+    {
+      "outcome": "text-contrast",
+      "readiness": "supported",
+      "note": "7 to 1 gates plus the in-page contrast walk (2026-10-25)."
+    },
+    {
+      "outcome": "motion-and-flashing",
+      "readiness": "supported",
+      "note": "Reduce Motion honoured globally; nothing flashes (2026-10-25)."
+    },
+    {
+      "outcome": "audio-alternatives",
+      "readiness": "not-applicable",
+      "note": "No audio content ships."
+    },
+    {
+      "outcome": "sound-alerts-have-text",
+      "readiness": "supported",
+      "note": "Sounds default off and every alert also appears as text (2026-10-25)."
+    },
+    {
+      "outcome": "full-keyboard-operation",
+      "readiness": "supported",
+      "note": "Canary keyboard guards plus a manual keyboard-only walk (2026-10-25)."
+    },
+    {
+      "outcome": "pointer-targets",
+      "readiness": "partial",
+      "note": "Dense lists hold the smaller minimum (exemption 1)."
+    },
+    {
+      "outcome": "plain-language",
+      "readiness": "partial",
+      "note": "No automatic reading-grade check yet (exemption 3)."
+    },
+    {
+      "outcome": "error-help-and-undo",
+      "readiness": "supported",
+      "note": "Named errors with fix suggestions; consequential actions confirm or undo (2026-10-25)."
+    },
+    {
+      "outcome": "screen-reader-support",
+      "readiness": "supported",
+      "note": "Named controls, headings, live regions, and per-view titles with a route announcer (2026-10-25)."
+    },
+    {
+      "outcome": "respects-device-settings",
+      "readiness": "supported",
+      "note": "Reduce Motion, themes, and text size honoured (2026-10-25)."
+    }
+  ],
+  "knownIssues": [
+    {
+      "id": "target-size-dense",
+      "summary": "Dense lists use smaller touch targets: filter pills and list rows hold the 24 pixel minimum instead of 44, to keep lists readable. All main buttons are full size.",
+      "group": "getting-around"
+    },
+    {
+      "id": "line-length-control",
+      "summary": "No line-length control for long text: themes and text size can be changed, but very long lines cannot be narrowed to 80 characters.",
+      "group": "seeing"
+    },
+    {
+      "id": "reading-grade-gate",
+      "summary": "No automatic reading-grade check: copy is written plainly and reviewed by hand on every change, but no machine gate enforces a grade level.",
+      "group": "thinking"
+    },
+    {
+      "id": "focus-ring-custom-accent",
+      "summary": "A very dark custom accent on a dark theme can make the keyboard focus ring harder to see. The accent picker warns about such colours.",
+      "group": "getting-around"
+    }
+  ]
+}

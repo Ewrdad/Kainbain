@@ -1,15 +1,127 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams } from 'react-router';
 import { useKainBain } from '../../context/KainBainContext';
-import { api } from '../../services/api';
+import { API_BASE, api } from '../../services/api';
+import { resolveTaskImageUrl } from '../../services/taskImages.js';
+import { useImageRetry } from '../../services/imageRetry';
 import { isQuestionVisible, combinedAnswers, selectedValues } from '../../../../shared/survey.js';
 import { SurveyTaskPanel } from './SurveyTaskPanel';
+
+/***
+ * MARK: SURVEY_IMAGE_POLL_MS
+ * @description How often the survey page re-reads while image questions are
+ *   still generating: the read doubles as the recovery kick, so a restarted
+ *   server resumes illustration without any user action. Polling stops as
+ *   soon as every option is ready or terminally failed.
+ * @example SURVEY_IMAGE_POLL_MS => 4000
+ ***/
+export const SURVEY_IMAGE_POLL_MS = 4000;
+
+/***
+ * MARK: surveyNeedsImagePoll
+ * @description Whether any image question still awaits generation: a pending
+ *   entry always polls (it is unambiguous), while a missing entry polls only
+ *   when the survey's stage enables a provider — with image generation off,
+ *   missing entries are terminal descriptions, never a loading state.
+ * @example surveyNeedsImagePoll([{ questions: [{ type: 'image', options: ['a'], images: [] }] }], 'muse') => true
+ * @param {Array<Object>} [rounds] - Survey rounds.
+ * @param {string} [providerId] - Effective imageGen provider (`none` disables).
+ * @returns {boolean}
+ ***/
+export function surveyNeedsImagePoll(rounds, providerId) {
+  const enabled = typeof providerId === 'string' && providerId !== '' && providerId !== 'none';
+  for (const round of Array.isArray(rounds) ? rounds : []) {
+    for (const question of round?.questions || []) {
+      if (question?.type !== 'image') continue;
+      const entries = Array.isArray(question.images) ? question.images : [];
+      const byOption = new Map();
+      for (const entry of entries) {
+        if (entry && Number.isInteger(entry.option) && !byOption.has(entry.option)) {
+          byOption.set(entry.option, entry);
+        }
+      }
+      for (let index = 0; index < (question.options || []).length; index += 1) {
+        const entry = byOption.get(index);
+        if (!entry) {
+          if (enabled) return true;
+        } else if (entry.status === 'pending') {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/***
+ * MARK: describeSurveySaveError
+ * @description Turns a failed survey save into plain words for the page. The
+ *   backend answers `{ error, code }`, but the transport wraps it as
+ *   `API <status> on <path>: <body>` — showing that raw string would bury the
+ *   reason in plumbing. Prefers the backend message plus its machine-readable
+ *   code, and falls back to the raw message when no backend body is readable.
+ * @example describeSurveySaveError(Object.assign(new Error('API 400 on /s: {"error":"bad","code":"SURVEY_INVALID"}'), { body: '{"error":"bad","code":"SURVEY_INVALID"}' })) => 'bad (SURVEY_INVALID)'
+ * @param {*} err - Rejection from the survey client.
+ * @param {string} [fallback] - Last-resort text when nothing readable remains.
+ * @returns {string}
+ ***/
+export function describeSurveySaveError(err, fallback = 'Could not save answers') {
+  const candidates = [];
+  if (typeof err?.body === 'string' && err.body.trim()) candidates.push(err.body.trim());
+  // Body-less rejections (older clients, hand-built errors) still carry the
+  // wrapped `API <status> on <path>: <body>` message — the trailing JSON is
+  // recoverable when the body itself was JSON.
+  const message = typeof err?.message === 'string' ? err.message : '';
+  const tailMarker = ': {';
+  const tailStart = message.indexOf(tailMarker);
+  if (tailStart >= 0) candidates.push(message.slice(tailStart + 1).trim());
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      const backendMessage =
+        typeof parsed?.error === 'string' && parsed.error.trim() ? parsed.error.trim() : '';
+      const code =
+        typeof parsed?.code === 'string' && parsed.code.trim() ? parsed.code.trim() : '';
+      if (backendMessage && code) return `${backendMessage} (${code})`;
+      if (backendMessage) return backendMessage;
+    } catch {
+      // Not backend JSON — try the next candidate, then the raw message.
+    }
+  }
+  return message || fallback;
+}
+
+/***
+ * MARK: describeUnknownAnswers
+ * @description One sentence naming saved answers the backend ignored because
+ *   their questions are no longer asked (a question withdrawn between page
+ *   load and save). Empty when nothing was ignored. The id list is capped so
+ *   a pathological patch can never flood the notice.
+ * @example describeUnknownAnswers(['q9']) => ' One answer was for a question that is no longer asked (q9) and was ignored.'
+ * @param {*} unknownIds - Backend `unknownIds` list (question ids).
+ * @returns {string}
+ ***/
+export function describeUnknownAnswers(unknownIds) {
+  const ids = (Array.isArray(unknownIds) ? unknownIds : []).filter(
+    (id) => typeof id === 'string' && id,
+  );
+  if (ids.length === 0) return '';
+  const shown =
+    ids.length > 5 ? `${ids.slice(0, 5).join(', ')} and ${ids.length - 5} more` : ids.join(', ');
+  return ids.length === 1
+    ? ` One answer was for a question that is no longer asked (${shown}) and was ignored.`
+    : ` ${ids.length} answers were for questions that are no longer asked (${shown}) and were ignored.`;
+}
 
 /***
  * MARK: SurveyPage
  * @description Human survey page for the `question-me` skill: renders every
  *   round of `SURVEY.md` as multiple-choice questions (radio group for
- *   `single`, checkboxes for `multiple`), each with a free-form Notes field.
+ *   `single`, checkboxes for `multiple`, generated image cards with radio
+ *   semantics for `image`), each with a free-form Notes field. While image
+ *   questions are still generating, the page re-reads until every picture is
+ *   ready or terminally failed; failed or missing pictures degrade to their
+ *   written descriptions so answering never blocks.
  *   Conditional questions (`showIf`) hide until their condition is met —
  *   hidden required questions never block. Answers save without advancing
  *   (`Save answers`); `Submit & continue` advances the task once everything
@@ -172,6 +284,31 @@ export function SurveyPage({
 
   const loadingFresh = loadedTaskId !== taskId;
   const rounds = useMemo(() => (loadingFresh ? [] : survey?.rounds || []), [loadingFresh, survey]);
+  const imageGenProviderId = survey?.imageGen?.providerId;
+
+  // Generation progress: while image questions are still illustrating, the
+  // page re-reads on an interval. Only the server rounds refresh — local
+  // answer drafts are separate state and are never clobbered by a poll.
+  const needsImagePoll = useMemo(
+    () => (loadingFresh ? false : surveyNeedsImagePoll(rounds, imageGenProviderId)),
+    [loadingFresh, rounds, imageGenProviderId],
+  );
+  useEffect(() => {
+    if (!needsImagePoll || !taskId) return undefined;
+    let cancelled = false;
+    const timer = setInterval(() => {
+      http.getSurvey(projectId, taskId).then(
+        (data) => {
+          if (!cancelled) setSurvey(data);
+        },
+        () => {},
+      );
+    }, SURVEY_IMAGE_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [needsImagePoll, http, projectId, taskId]);
   const knownIds = useMemo(() => {
     const ids = new Set();
     for (const round of rounds) for (const q of round?.questions || []) if (q?.id) ids.add(q.id);
@@ -219,11 +356,30 @@ export function SurveyPage({
 
   const refreshFrom = useCallback(
     (data) => {
-      setSurvey(data);
+      // A nullish save response (dropped body, mock client) must never read
+      // as a success: say so honestly and leave every draft untouched.
+      if (!data) {
+        setSaveError('The save returned no answer — your selections are unchanged. Try again.');
+        return;
+      }
+      setSurvey((prev) => {
+        // A save response without rounds (older backend, stripped proxy body)
+        // must never blank the answered questions: keep rendering the last
+        // rounds while still picking up the fresh status and missing list.
+        if (!Array.isArray(data.rounds) && prev) {
+          return { ...data, rounds: prev.rounds || [], errors: data.errors || prev.errors || [] };
+        }
+        return data;
+      });
+      const savedAt =
+        data?.advanced || typeof window === 'undefined'
+          ? ''
+          : ` at ${new Date().toLocaleTimeString()}`;
+      const ignored = describeUnknownAnswers(data?.unknownIds);
       setNotice(
         data?.advanced
-          ? 'Survey complete — the task moved to its next stage.'
-          : 'Answers saved. Required questions still open are listed below.',
+          ? `Survey complete — the task moved to its next stage.${ignored}`
+          : `Answers saved${savedAt}. Required questions still open are listed below.${ignored}`,
       );
       if (data?.advanced) {
         setAdvanced(true);
@@ -241,7 +397,7 @@ export function SurveyPage({
       const data = await http.submitSurvey(projectId, taskId, { answers: answerPayload });
       refreshFrom(data);
     } catch (err) {
-      setSaveError(err?.message || 'Could not save answers');
+      setSaveError(describeSurveySaveError(err, 'Could not save answers'));
     } finally {
       setSaving(false);
     }
@@ -253,19 +409,28 @@ export function SurveyPage({
     setNotice(null);
     try {
       const data = await http.submitSurvey(projectId, taskId, { answers: answerPayload });
+      if (!data) {
+        setSaveError('The submit returned no answer — your selections are unchanged. Try again.');
+        return;
+      }
       if (!data?.advanced) {
         const open = (data?.missing || []).map((m) => m.id).join(', ');
         setSaveError(
           open
-            ? `Still waiting on required questions: ${open}`
-            : 'Not complete yet — answer the required questions above.',
+            ? `Still waiting on required questions: ${open}${describeUnknownAnswers(data?.unknownIds)}`
+            : `Not complete yet — answer the required questions above.${describeUnknownAnswers(data?.unknownIds)}`,
         );
+        // The save response carries the persisted rounds: render them so the
+        // questions shown always match the file on disk. Local answer drafts
+        // stay untouched — only the read-only survey state refreshes here.
         setSurvey((prev) =>
           prev
             ? {
                 ...prev,
                 missing: data?.missing || prev.missing,
                 status: data?.status || prev.status,
+                rounds: Array.isArray(data?.rounds) ? data.rounds : prev.rounds,
+                errors: Array.isArray(data?.errors) ? data.errors : prev.errors,
               }
             : prev,
         );
@@ -273,7 +438,7 @@ export function SurveyPage({
         refreshFrom(data);
       }
     } catch (err) {
-      setSaveError(err?.message || 'Could not submit the survey');
+      setSaveError(describeSurveySaveError(err, 'Could not submit the survey'));
     } finally {
       setSubmitting(false);
     }
@@ -287,7 +452,7 @@ export function SurveyPage({
       const data = await http.submitSurvey(projectId, taskId, { action: 'skip' });
       refreshFrom(data);
     } catch (err) {
-      setSaveError(err?.message || 'Could not skip the survey');
+      setSaveError(describeSurveySaveError(err, 'Could not skip the survey'));
     } finally {
       setSubmitting(false);
     }
@@ -446,6 +611,9 @@ export function SurveyPage({
                     missing={missingSet.has(q.id)}
                     onSelect={setSelected}
                     onNotes={setNotes}
+                    projectId={projectId}
+                    taskId={taskId}
+                    imageGenProviderId={imageGenProviderId}
                   />
                 ))}
               </section>
@@ -501,10 +669,11 @@ function surveyStatusLine(survey, totalQuestions) {
 
 /***
  * MARK: QuestionField
- * @description One multiple-choice question: native radio/checkbox options
- *   (full-width 44px touch targets) plus an always-present Notes textarea.
+ * @description One survey question: native radio/checkbox options (full-width
+ *   44px touch targets) for `single`/`multiple`, generated image cards with
+ *   radio semantics for `image`, plus an always-present Notes textarea.
  ***/
-function QuestionField({ question, selected, notes, missing, onSelect, onNotes }) {
+function QuestionField({ question, selected, notes, missing, onSelect, onNotes, projectId, taskId, imageGenProviderId }) {
   const multi = question.type === 'multiple';
   const inputType = multi ? 'checkbox' : 'radio';
   return (
@@ -515,35 +684,46 @@ function QuestionField({ question, selected, notes, missing, onSelect, onNotes }
           <span className="ml-1.5 text-[10px] font-mono uppercase text-secondary">required</span>
         )}
       </legend>
-      <div className="flex flex-col gap-1.5">
-        {(question.options || []).map((option) => {
-          const checked = selected.includes(String(option));
-          const inputId = `survey-${question.id}-${encodeURIComponent(String(option))}`;
-          return (
-            <label
-              key={option}
-              htmlFor={inputId}
-              className={`flex items-center gap-3 w-full min-h-[44px] px-3 py-2 rounded-sm border cursor-pointer text-sm transition-colors ${
-                checked
-                  ? 'border-secondary bg-human-fill/50 text-on-surface'
-                  : 'border-border-standard text-on-surface hover:border-secondary/60'
-              }`}
-            >
-              <input
-                id={inputId}
-                type={inputType}
-                name={`survey-${question.id}`}
-                value={String(option)}
-                checked={checked}
-                aria-label={`${question.text}: ${option}`}
-                onChange={(e) => onSelect(question.id, String(option), e.target.checked, multi)}
-                className="w-4 h-4 shrink-0 accent-secondary"
-              />
-              <span className="leading-snug">{option}</span>
-            </label>
-          );
-        })}
-      </div>
+      {question.type === 'image' ? (
+        <ImageOptions
+          question={question}
+          selected={selected}
+          onSelect={onSelect}
+          projectId={projectId}
+          taskId={taskId}
+          imageGenProviderId={imageGenProviderId}
+        />
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {(question.options || []).map((option) => {
+            const checked = selected.includes(String(option));
+            const inputId = `survey-${question.id}-${encodeURIComponent(String(option))}`;
+            return (
+              <label
+                key={option}
+                htmlFor={inputId}
+                className={`flex items-center gap-3 w-full min-h-[44px] px-3 py-2 rounded-sm border cursor-pointer text-sm transition-colors ${
+                  checked
+                    ? 'border-secondary bg-human-fill/50 text-on-surface'
+                    : 'border-border-standard text-on-surface hover:border-secondary/60'
+                }`}
+              >
+                <input
+                  id={inputId}
+                  type={inputType}
+                  name={`survey-${question.id}`}
+                  value={String(option)}
+                  checked={checked}
+                  aria-label={`${question.text}: ${option}`}
+                  onChange={(e) => onSelect(question.id, String(option), e.target.checked, multi)}
+                  className="w-4 h-4 shrink-0 accent-secondary"
+                />
+                <span className="leading-snug">{option}</span>
+              </label>
+            );
+          })}
+        </div>
+      )}
       <div className="space-y-1">
         <label
           htmlFor={`survey-notes-${question.id}`}
@@ -565,6 +745,205 @@ function QuestionField({ question, selected, notes, missing, onSelect, onNotes }
         <p className="text-[11px] font-mono text-error">This question still needs an answer.</p>
       )}
     </fieldset>
+  );
+}
+
+/***
+ * MARK: ImageOptions
+ * @description One image question's options: ready pictures render as
+ *   selectable image cards (radio semantics — pick one favourite), pending
+ *   pictures as selectable generating skeletons (pick by description while
+ *   the picture renders), and failed or missing pictures as description
+ *   rows with an honest notice — answering never blocks on generation.
+ ***/
+/***
+ * MARK: SurveyIllustration
+ * @description One ready survey picture: the illustration on success, a
+ *   same-sized fallback block with the description and a Retry control on
+ *   failure (never a broken-image icon). Transient misses self-recover
+ *   through the shared retry seam; answering never blocks on generation or
+ *   on a failed load either way.
+ * @example <SurveyIllustration src="/projects/p/tasks/t/images/a.png" text="dark dashboard" hasTaskContext={true} />
+ ***/
+function SurveyIllustration({ src, text, hasTaskContext }) {
+  const { failed, retryKey, markFailed, retry } = useImageRetry({
+    src,
+    component: 'survey-illustration',
+    hasTaskContext,
+  });
+  if (failed) {
+    return (
+      <span
+        data-task-image-state="unavailable"
+        className="flex w-full aspect-video flex-col items-center justify-center gap-1.5 rounded-sm bg-surface-deep px-3 py-4 text-center"
+      >
+        <span role="img" aria-label={text} className="font-mono text-[11px] text-text-muted">
+          🖼️ illustration unavailable
+        </span>
+        <button
+          type="button"
+          // Inside the option's <label>: preventDefault keeps the click from
+          // toggling the radio — retrying a load is not answering.
+          onClick={(e) => {
+            e.preventDefault();
+            retry();
+          }}
+          aria-label={`Retry loading illustration for ${text}`}
+          className="px-2 py-0.5 rounded border border-border-standard bg-surface-container text-[10px] font-mono text-text-muted hover:text-on-surface transition-colors cursor-pointer"
+        >
+          Retry
+        </button>
+      </span>
+    );
+  }
+  return (
+    <img
+      key={retryKey}
+      src={src}
+      alt={text}
+      loading="lazy"
+      onError={markFailed}
+      className="w-full aspect-video object-cover rounded-sm bg-surface-deep"
+    />
+  );
+}
+
+function ImageOptions({ question, selected, onSelect, projectId, taskId, imageGenProviderId }) {
+  const entries = Array.isArray(question.images) ? question.images : [];
+  const byOption = new Map();
+  for (const entry of entries) {
+    if (entry && Number.isInteger(entry.option) && !byOption.has(entry.option)) {
+      byOption.set(entry.option, entry);
+    }
+  }
+  const generationOff = imageGenProviderId === 'none' || imageGenProviderId === '';
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label={question.text}>
+      {(question.options || []).map((option, index) => {
+        const text = String(option);
+        const checked = selected.includes(text);
+        const inputId = `survey-${question.id}-img-${index}`;
+        const entry = byOption.get(index);
+        // Ready means "bytes on our disk" — but `file` is agent-authored
+        // round JSON, so only relative task-asset paths render as pictures.
+        // An absolute URL (or any scheme) falls through to the description
+        // row below: the backend never writes such entries, and rendering
+        // them would let survey JSON pull foreign content into the page.
+        const rawFile = typeof entry?.file === 'string' ? entry.file.trim() : '';
+        const lowerFile = rawFile.toLowerCase();
+        const isRelativeAsset =
+          rawFile !== '' &&
+          !lowerFile.startsWith('http://') &&
+          !lowerFile.startsWith('https://') &&
+          !rawFile.startsWith('//') &&
+          !/^[a-z][a-z0-9+.-]*:/i.test(rawFile);
+        if (entry?.status === 'ready' && isRelativeAsset) {
+          const src = resolveTaskImageUrl({ apiBase: API_BASE, projectId, taskId, src: rawFile });
+          return (
+            <label
+              key={`${text}-${index}`}
+              htmlFor={inputId}
+              className={`flex flex-col gap-1.5 p-2 rounded-sm border cursor-pointer text-sm transition-colors ${
+                checked
+                  ? 'border-secondary bg-human-fill/50 text-on-surface'
+                  : 'border-border-standard text-on-surface hover:border-secondary/60'
+              }`}
+            >
+              <input
+                id={inputId}
+                type="radio"
+                name={`survey-${question.id}`}
+                value={text}
+                checked={checked}
+                aria-label={`${question.text}: ${text}`}
+                onChange={(e) => onSelect(question.id, text, e.target.checked, false)}
+                className=""
+              />
+              <SurveyIllustration
+                src={src}
+                text={text}
+                hasTaskContext={Boolean(projectId && taskId)}
+              />
+              <span className="leading-snug text-xs">{text}</span>
+            </label>
+          );
+        }
+        if (entry?.status === 'pending') {
+          // Selectable while generating: a slow provider must never block
+          // answering — the human picks by description and the ready picture
+          // (plus the chosen-design reference) lands afterwards.
+          return (
+            <label
+              key={`${text}-${index}`}
+              htmlFor={inputId}
+              className={`flex flex-col gap-1.5 p-2 rounded-sm border cursor-pointer text-sm transition-colors ${
+                checked
+                  ? 'border-secondary bg-human-fill/50 text-on-surface'
+                  : 'border-border-standard text-on-surface hover:border-secondary/60'
+              }`}
+            >
+              <input
+                id={inputId}
+                type="radio"
+                name={`survey-${question.id}`}
+                value={text}
+                checked={checked}
+                aria-label={`${question.text}: ${text}`}
+                onChange={(e) => onSelect(question.id, text, e.target.checked, false)}
+                className=""
+              />
+              <span
+                role="status"
+                aria-label={`${text}: generating illustration`}
+                className="block w-full aspect-video rounded-sm bg-surface-deep motion-safe:animate-pulse"
+              />
+              <span className="text-[11px] font-mono text-text-muted">Generating illustration…</span>
+              <span className="leading-snug text-xs">{text}</span>
+            </label>
+          );
+        }
+        return (
+          <label
+            key={`${text}-${index}`}
+            htmlFor={inputId}
+            className={`flex items-start gap-3 w-full min-h-[44px] px-3 py-2 rounded-sm border cursor-pointer text-sm transition-colors sm:col-span-2 ${
+              checked
+                ? 'border-secondary bg-human-fill/50 text-on-surface'
+                : 'border-border-standard text-on-surface hover:border-secondary/60'
+            }`}
+          >
+            <input
+              id={inputId}
+              type="radio"
+              name={`survey-${question.id}`}
+              value={text}
+              checked={checked}
+              aria-label={`${question.text}: ${text}`}
+              onChange={(e) => onSelect(question.id, text, e.target.checked, false)}
+              className="w-4 h-4 shrink-0 mt-1 accent-secondary"
+            />
+            <span className="leading-snug">
+              {text}
+              {entry?.status === 'failed' && entry?.error && (
+                <span className="block text-[11px] text-text-muted mt-0.5">
+                  Illustration unavailable: {entry.error}
+                </span>
+              )}
+              {!entry && !generationOff && (
+                <span className="block text-[11px] font-mono text-text-muted mt-0.5">
+                  Illustration on its way…
+                </span>
+              )}
+              {!entry && generationOff && (
+                <span className="block text-[11px] font-mono text-text-muted mt-0.5">
+                  Image generation is off for this survey — pick by description.
+                </span>
+              )}
+            </span>
+          </label>
+        );
+      })}
+    </div>
   );
 }
 

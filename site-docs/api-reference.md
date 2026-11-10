@@ -72,6 +72,7 @@ step); live-session values are actuals.
 | GET | `/projects` | List projects. |
 | POST | `/projects` | Create a project. |
 | POST | `/projects/register` | Register/adopt an existing project directory (`{ path, name?, kainbainDirName? }`). Idempotent. |
+| GET | `/projects/discover` | List git checkouts in the scan roots that are not projects yet (`{ roots, adoptable }`), for first-run one-click adoption. Read-only. |
 | GET | `/projects/:id` | Get one project. |
 | PATCH | `/projects/:id` | Update project fields, including the Retry & Timeouts overrides (`maxAutoIterations`, `maxTransientRetries`, `autoIterationEnabled`, `agentTimeoutMs`, `ciTimeoutMs`, `mergeTimeoutMs`; `null` clears one back to the global default). A persisted `deployTimeoutMs` still loads but is ignored — a deploy command follows `ciTimeoutMs`. |
 | DELETE | `/projects/:id` | Delete a project. |
@@ -90,6 +91,15 @@ step); live-session values are actuals.
 | GET | `/projects/:id/aliases/reliability` | Per-alias model+harness target success rates for the project (infra failures count; deliberate agent stage-fails excluded). |
 
 `modelAliases` on create/patch must satisfy the shared alias grammar (unique names, percents summing to 100) and must not pair a self-managed `none` harness (`muse`, `custom`) with a model — such rows are refused with a 400 naming the alias and harness. Blank models on `none` harnesses are the valid shape.
+
+## Onboarding (`api/routes/onboarding.js`)
+
+First-run summary for the empty state and guided-checklist UIs: one read-only
+join across the Runner registry, project store, and task store.
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| GET | `/onboarding` | Runner bootstrap summary, project/task counts, unadopted checkouts (`adoptable`, capped at 10), and the precomputed guided checklist (`steps`, `complete`). |
 
 ## Tasks (`api/work/taskWorkRoutes.js`, `api/flow/taskFlowRoutes.js`, `api/watch/taskWatchRoutes.js`)
 
@@ -132,6 +142,7 @@ approval, then heartbeat and claim with the issued per-Runner credential.
 | POST | `/runners/register` | Join request (`runnerId`, `joinToken`, `facts`); 202 + `pending`. |
 | POST | `/runners/heartbeat` | Capability/version refresh (`x-runner-credential` header). |
 | GET | `/runners` | List registrations for the approval UI. |
+| GET | `/runners/bootstrap` | First-run Runner bootstrap summary: registration/health counts plus the expected local Runner id hint. |
 | POST | `/runners/:id/approve` | Approve; issues the per-Runner credential. |
 | POST | `/runners/:id/deny` | Deny a pending join request. |
 | POST | `/runners/:id/revoke` | Revoke; the credential stops working immediately. |
@@ -139,12 +150,15 @@ approval, then heartbeat and claim with the issued per-Runner credential.
 | POST | `/runners/:id/resume` | Clear the pause flag so the Runner takes new tasks again. Idempotent. |
 | POST | `/runners/:id/skip` | Operator skip: advance the Runner's held task one stage and release the lease. 404 when unknown or holding nothing; 409 on the last stage. |
 | GET | `/runners/:id/config` | Operator-owned Runner configuration (display name, tool filter, model allowlist, job-type switches, directories, project override) for System Settings › Runners. |
-| PATCH | `/runners/:id/config` | Update one Runner's operator-owned configuration (partial `displayName`, `availableTools`, `availableModels`, `jobTypes`, `directories`, `projectScope`). 400 on invalid fields, 404 on unknown Runner. Dispatch enforces the tool filter, the model allowlist (replaces the advertised list; `null` falls back to advertised), `runsCi`/`runsMerges`, and the project scope at claim time (`TOOL_DISABLED` / `NO_MODEL` / `JOB_TYPE_DISABLED` / `PROJECT_SCOPE` miss reasons); `runsImpromptu` is a recorded preference — live steers still ride the owning Runner's heartbeat. |
+| PATCH | `/runners/:id/config` | Update one Runner's operator-owned configuration (partial `displayName`, `availableTools`, `availableModels`, `jobTypes`, `directories`, `projectScope`). 400 on invalid fields, 404 on unknown Runner. Dispatch enforces the tool filter, the model allowlist (replaces the advertised list; `null` falls back to advertised), `runsCi`/`runsMerges`/`runsImpromptu`, and the project scope at claim time (`TOOL_DISABLED` / `NO_MODEL` / `JOB_TYPE_DISABLED` / `PROJECT_SCOPE` miss reasons); live steers still ride the owning Runner's heartbeat. |
 | GET | `/runners/monitor` | Phase 2 monitor counters (stale rejections, divergences, unverifiable SHAs) plus `liveAssignments` per live lease for the multi-Runner UI. Each assignment carries `runnerId`, `projectId`, `taskId`, `executionId`, `epoch`, claim `startedAt`, current `stageId`, the reported stage `prompt` (null until the Runner's `prompted` progress event lands), the serving `{harness, model}` that execution runs on, and Runner `lastSeenAt` for per-Runner elapsed timers, prompt cards, and freshness dots. |
 | GET | `/runners/models/catalogue` | Fleet model catalogue derived live from Runner registrations (never cached): one entry per distinct model id served by a claim-eligible Runner (`{ id, harnesses, tiers, runnerCount, runnerIds }`). Stage, default, and alias pickers read this for availability instead of credential health. |
 | POST | `/runners/:id/rotate` | WP-4.1 rotation: fresh credential for an active Runner, old one dies immediately; pending Runners 409. |
 | POST | `/runners/:id/commands` | Enqueue a backend-to-Runner command (`requestModelRediscovery` or `requestUpdate`) for delivery through the next heartbeat pull channel. 202 on accept; 400 `UNKNOWN_COMMAND` for unrecognised commands; 404 on unknown Runner; command runs only when the Runner is free (idle-only update invariant, D5). |
 | POST | `/runners/dispatch` | Runner-only (WP-3.1/3.2/3.3): backend-routed dispatch poll; scan has a wait-based starvation guard; alias stages resolve through the shared backend-central smooth-WRR rotation (D3, attribution in `requirements.alias`); D8 concurrency caps (429 fleet-wide, `PROJECT_BUSY` per project); the stage Runner allow/block list gates each candidate (`RUNNER_NOT_ALLOWED` / `RUNNER_BLOCKED` misses, after operator settings); 200 `assigned` + lease, or 200 unassigned (`NO_CLAIMABLE_TASKS` / `NO_CLAIMABLE_MATCH` + miss histogram); 409 `STALE_RUNNER` when the Runner is stale. |
+| POST | `/runners/impromptu/poll` | Runner-only (ADR 0014): idle Runners poll for the oldest queued T0 read-only impromptu job (retrospective chat turns); 200 `{ assigned, job? }`, 409 `STALE_RUNNER`/`RUNNER_PAUSED`; requires `x-runner-credential`. |
+| POST | `/runners/impromptu/:jobId/progress` | Runner-only (ADR 0014): streams an impromptu job delta, fanned out as `CHAT_PROGRESS`; requires `x-runner-credential`. |
+| POST | `/runners/impromptu/:jobId/complete` | Runner-only (ADR 0014): settle an impromptu job (`completed`/`failed`); requires `x-runner-credential`. |
 | POST | `/tasks/:id/progress` | Runner-only: record a stage lifecycle event keyed by execution ID (idempotent). Event `prompted` may carry the exact stage `prompt` (capped at 20k chars) plus the serving `harness`/`model` for the monitor's with-prompt cards. |
 | POST | `/tasks/:id/logs` | Runner-only: ingest one sequenced log frame (gaps marked, never hidden). |
 | POST | `/tasks/:id/log-events` | Runner-only: ingest one sequenced batch of normalized agent events (1–200 per batch; tool calls/results with args, thinking, usage, permissions, plans, errors with per-step timings) processed into the same canonical records as the embedded path. |
@@ -176,7 +190,7 @@ across restarts at `KAINBAIN_CIRCUIT_STATE_FILE` (default
 | GET | `/tasks/:id/reports` | Stage reports for the task. |
 | POST | `/tasks/:id/report` | Submit a stage report. |
 | GET | `/tasks/:id/survey` | Read the task's question-me survey (`SURVEY.md` by default, or the configured `outputFile`) rounds, file status, missing required questions. Query `?projectId=` and optional `?file=` (safe basename, normalized). Response includes `outputFile`. |
-| POST | `/tasks/:id/survey` | Save survey answers (merge-only: `{ projectId, answers }`) or skip (`{ projectId, action: 'skip' }`). Partial saves stay parked; a complete submit advances the task. Optional `file`/`outputFile` override and response include `outputFile`. |
+| POST | `/tasks/:id/survey` | Save survey answers (merge-only: `{ projectId, answers }`) or skip (`{ projectId, action: 'skip' }`). Partial saves stay parked; a complete submit advances the task. Optional `file`/`outputFile` override and response include `outputFile`. Save rejects carry a machine-readable `code` (`SURVEY_INVALID`, `SURVEY_NOT_FOUND`, `SURVEY_INCOMPLETE` for a skip while required questions are still open). |
 
 ## Sessions (`api/routes/sessions.js`)
 
@@ -219,7 +233,7 @@ name is allowed but flagged (`shadows a KainBain default skill`).
 
 | Method | Path | Purpose |
 | ------ | ---- | ------- |
-| GET | `/harnesses` | Harness roster (pi, antigravity, opencode). |
+| GET | `/harnesses` | Harness roster (pi, antigravity, opencode, muse, codex, vibe, custom, mock). |
 | GET | `/harnesses/:id/models` | Models available on one harness. |
 | GET | `/harnesses/reliability` | Per-harness success rates (infra failures count; deliberate agent stage-fails excluded). |
 
@@ -294,7 +308,14 @@ write-once, so bytes are immutable). Errors carry a structured `reason`
 
 | Method | Path | Purpose |
 | ------ | ---- | ------- |
-| POST | `/retrospective/chat` | One stateless retrospective chat turn (`{ messages, taskIds?, harness?, model?, strictTaskIds?, turnId? }` → `{ reply, suggestions, harness, model, modelRequested, unknownTaskIds, contextTaskIds, contextTruncated, contextChars, output? }`, where `output` is the bounded (2000-char) tail of assistant text observed during the turn, also present on 502/504 bodies when anything streamed; when the client sends a `turnId`, streamed deltas are also broadcast live as `CHAT_PROGRESS` WebSocket frames (`{ turnId, tail }`, throttled) and the HTTP settle stays the done signal; input caps 50 messages / 8000 chars per message / 40000 transcript chars; 501 `unsupported_by_harness` when the harness cannot chat; 400 `chat_input_too_large` on oversized input; 404 `task_not_found` when all task ids are unknown (or any, with `strictTaskIds: true`); 502 `chat_prompt_failed` when the model errors; chat turns run with no timeout by default — they settle when the model answers or when the caller cancels (a 504 `chat_prompt_timeout` only occurs when an operator re-imposes an opt-in server ceiling via `KAINBAIN_CHAT_PROMPT_TIMEOUT_MS`, default `0` = disabled; keep `KAINBAIN_SERVER_REQUEST_TIMEOUT_MS`, default `0` = disabled, above any opt-in ceiling or long turns die with a bare 408; reverse proxies may still impose their own idle ceilings); never creates tasks). |
+| POST | `/retrospective/chat` | One stateless retrospective chat turn dispatched to a Runner as a read-only impromptu (T0) job, off the main task queue (`{ messages, taskIds?, harness?, model?, strictTaskIds?, turnId?, runnerId? }` → `{ reply, suggestions, harness, model, modelRequested, unknownTaskIds, contextTaskIds, contextTruncated, contextChars, output? }`, where `output` is the bounded (2000-char) tail of assistant text observed during the turn, also present on 502/504 bodies when anything streamed; `runnerId` pins the turn to one Runner (advanced override); when the client sends a `turnId`, the Runner's streamed deltas are also broadcast live as `CHAT_PROGRESS` WebSocket frames (`{ turnId, tail }`, throttled) and the HTTP settle stays the done signal; input caps 50 messages / 8000 chars per message / 40000 transcript chars; 503 `no_runner_available` when no capable Runner exists (`runner_unavailable` for a pinned override that cannot serve, `impromptu_queue_full` as 429 past the queue cap); 400 `chat_input_too_large` on oversized input; 404 `task_not_found` when all task ids are unknown (or any, with `strictTaskIds: true`); 502 `chat_prompt_failed` when the Runner reports failure; chat turns run with no timeout by default — they settle when the Runner answers or when the caller cancels (a 504 `chat_prompt_timeout` only occurs when an operator re-imposes an opt-in server ceiling via `KAINBAIN_CHAT_PROMPT_TIMEOUT_MS`, default `0` = disabled; keep `KAINBAIN_SERVER_REQUEST_TIMEOUT_MS`, default `0` = disabled, above any opt-in ceiling or long turns die with a bare 408; reverse proxies may still impose their own idle ceilings); never creates tasks, never modifies files). |
+
+## Accessibility (`api/routes/accessibility.js`)
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| GET | `/accessibility/results` | Serve the versioned accessibility check-results artifact the in-app statement renders from (`{ schemaVersion, generatedAt, appVersion, contactEmail, wcag22aaa, wcag30, knownIssues }`); 503 `results_unavailable` when the artifact file is missing or unparseable. |
+| POST | `/accessibility/feedback` | Accept one accessibility report (`{ message, needGroup?, contact?, pageUrl? }` → 201 `{ received, id, inbox }`); message required (max `KAINBAIN_ACCESSIBILITY_FEEDBACK_MAX_CHARS`, default 4000 chars), optional triage fields never gate submission; rate-limited to 5 reports per client per 15 minutes (429 `rate_limited` with `Retry-After`), 32 KB body cap, persisted to the JSONL inbox file (`KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE`, default `~/.kainbain/accessibility-feedback.jsonl`). |
 
 ## Deploy (`api/routes/deploy.js`)
 
@@ -373,5 +394,18 @@ queueEmpty, unrecoverableStageError } }` patch. The settings object reserves a
 | PUT | `/settings/prompt-layout` | Save a new default prompt layout markdown template (`{ layout }`). Validates mandatory stage-contract tokens and unknown tokens (returns 400 on violations). |
 | POST | `/settings/prompt-layout/reset` | Reset prompt layout back to the factory default template and clear fallback counters. |
 | POST | `/settings/prompt-layout/dry-run` | Validate and test-render a candidate layout against sample or provided task/stage context (`{ layout?, taskId?, stageId? }` → `{ renderedMarkdown, warnings, autoReinjected, fallbackUsed }`) without persisting. |
+
+## Image generation keys (`api/routes/imageGen.js`)
+
+System-level image provider keys for survey image questions. Keys stay
+server-side: the catalogue reports per-provider `configured`/`source` flags
+only, and the key value is never returned by any endpoint.
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| GET | `/settings/image-gen/providers` | List image providers (`{ id, label, requiresKey }`) with configured/source flags. |
+| PUT | `/settings/image-gen/providers/:id/key` | Store a provider key (`{ key }`). Returns 400 for unknown providers or invalid keys. |
+| DELETE | `/settings/image-gen/providers/:id/key` | Clear the stored provider key (an env override keeps the provider configured). |
+| POST | `/settings/image-gen/providers/:id/test` | User-triggered dry-run generation (`{ prompt? }` → `{ ok, bytes?, ms?, error? }`). |
 
 

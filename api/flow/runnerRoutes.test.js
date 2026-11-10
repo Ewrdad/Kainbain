@@ -1,6 +1,7 @@
 import { tempProjectsRoot, tempNotesRoot } from "../isolatedTestRoots.js";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
+import path from "node:path";
 
 // Isolation: temp roots are installed by ../isolatedTestRoots.js, which MUST
 // stay the first import. The Runner join token is set before the app (and
@@ -12,6 +13,10 @@ process.env.KAINBAIN_CLAIM_TTL_MS = "1000";
 
 const { default: app } = await import("../index.js");
 const { resolveCiTimeoutMs } = await import("./runnerRoutes.js");
+// Dynamic like the app import above: taskPersistence statically pulls the
+// flow graph, so a hoisted static import would construct singletons before
+// the join-token env assignment above runs and disable registration.
+const { parseTaskMarkdown } = await import("../work/taskPersistence.js");
 const {
 	registerStageLifecyclePlugin,
 	clearStageLifecyclePlugins,
@@ -33,6 +38,30 @@ const FACTS = {
 	diskHeadroomMb: 1024,
 	versions: { protocol: "v1", runner: "test" },
 };
+
+/***
+ * MARK: findTaskMarkdown
+ * @description Locates one fixture task's persisted `task.md` under the
+ *   isolated projects root (whatever project directory the fixture run
+ *   created), so route tests can prove disk round-trips.
+ * @example findTaskMarkdown(tempProjectsRoot, "t1") => "/tmp/.../docs/tasks/t1/task.md"
+ * @param {string} root - Directory to search.
+ * @param {string} taskId - Task whose `docs/tasks/<id>/task.md` to find.
+ * @returns {string} Absolute path of the task file.
+ ***/
+function findTaskMarkdown(root, taskId) {
+	/* eslint-disable security/detect-non-literal-fs-filename */
+	const entries = fs.readdirSync(root, { withFileTypes: true });
+	for (const entry of entries) {
+		if (!entry.isDirectory()) continue;
+		const direct = path.join(root, entry.name, "docs", "tasks", taskId, "task.md");
+		if (fs.existsSync(direct)) return direct;
+		const nested = findTaskMarkdown(path.join(root, entry.name), taskId);
+		if (nested) return nested;
+	}
+	/* eslint-enable security/detect-non-literal-fs-filename */
+	return null;
+}
 
 /***
  * MARK: Runner Routes Integration
@@ -139,6 +168,54 @@ describe("Runner Routes Integration", () => {
 			runnerId: "claimer-1",
 			epoch: 1,
 		});
+	});
+
+	it("enriches monitor assignments with cross-pipeline identity", async () => {
+		// A Runner working on a DIFFERENT pipeline than the viewer: the
+		// monitor row must still carry the real task title, project name,
+		// and stage name resolved from the held task's own pipeline.
+		const projRes = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: {
+				name: "Other Pipeline Fixture",
+				gitUrl: "https://git.example.com/team/other.git",
+			},
+		});
+		expect(projRes.statusCode).toBe(201);
+		const other = JSON.parse(projRes.payload);
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: other.id, goal: "Cross-pipeline fixture task" },
+		});
+		expect(taskRes.statusCode).toBe(200);
+		const otherTaskId = JSON.parse(taskRes.payload).id;
+		const credential = await onboard("cross-pipe-1");
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${otherTaskId}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: other.id },
+		});
+		expect(claim.statusCode).toBe(200);
+
+		const monitor = JSON.parse(
+			(await app.inject({ method: "GET", url: "/runners/monitor" })).payload,
+		);
+		const row = monitor.liveAssignments.find((r) => r.runnerId === "cross-pipe-1");
+		expect(row).toBeDefined();
+		// Legacy identity fields stay identical for older UI/clients.
+		expect(row).toMatchObject({ projectId: other.id, taskId: otherTaskId });
+		// No progress reported yet, so the ledger stage may still be null —
+		// the enriched stageName falls back to the task's current stage.
+		expect(row.stageId === null || typeof row.stageId === "string").toBe(true);
+		// Global identity: resolved from the held task's own pipeline.
+		expect(row.projectName).toBe("Other Pipeline Fixture");
+		expect(row.taskTitle).toEqual(expect.stringContaining("Cross-pipeline"));
+		expect(typeof row.stageName).toBe("string");
+		expect(row.stageName.length).toBeGreaterThan(0);
+		expect(row.workflowId).toEqual(expect.any(String));
 	});
 
 	it("renews a live hold via claim-heartbeat: 200, still fenced past TTL", async () => {
@@ -617,6 +694,71 @@ describe("Runner Routes Integration", () => {
 		expect(after.lastError.stdout).toMatch(/synthetic failing detail/);
 	});
 
+	it("claim then failed completion attributes the Runner on history, surviving reload", async () => {
+		const credential = await onboard("history-runner-1");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Runner history fixture" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		expect(claim.statusCode).toBe(200);
+		const { executionId, epoch } = JSON.parse(claim.payload);
+		// The claim stamps the Runner as the pending run attribution…
+		const claimed = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${target}?projectId=${project.id}` })).payload,
+		);
+		expect(claimed.currentRunAttribution).toMatchObject({ runnerId: "history-runner-1" });
+		const done = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/complete-execution`,
+			headers: { "x-runner-credential": credential },
+			payload: {
+				projectId: project.id,
+				executionId,
+				epoch,
+				outcome: "failed",
+				failureKind: "error",
+				failureReason: "synthetic runner failure for history",
+				output: "synthetic failing detail",
+			},
+		});
+		expect(done.statusCode).toBe(200);
+		// …and the failed finish names the Runner on its timeline row and report.
+		const after = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${target}?projectId=${project.id}` })).payload,
+		);
+		const failedRow = (after.timeline || []).find((row) => row.status === "Failed");
+		expect(failedRow).toMatchObject({ runnerId: "history-runner-1" });
+		expect((after.reports || []).at(-1)).toMatchObject({
+			status: "FAILED",
+			runnerId: "history-runner-1",
+		});
+		// Reload from disk: the structured Runner attribution survives a restart.
+		const taskMdPath = findTaskMarkdown(tempProjectsRoot, target);
+		/* eslint-disable security/detect-non-literal-fs-filename */
+		const taskMdContent = fs.readFileSync(taskMdPath, "utf8");
+		/* eslint-enable security/detect-non-literal-fs-filename */
+		const rehydrated = parseTaskMarkdown(
+			{ _resolveProjectCwd: () => null },
+			taskMdContent,
+			target,
+			project.id,
+		);
+		const reloadedRow = (rehydrated.timeline || []).find((row) => row.status === "Failed");
+		expect(reloadedRow).toMatchObject({ runnerId: "history-runner-1" });
+		expect((rehydrated.reports || []).at(-1)).toMatchObject({
+			status: "FAILED",
+			runnerId: "history-runner-1",
+		});
+	});
+
 	it("embedded execute refuses Runner-held tasks (no double dispatch)", async () => {
 		const credential = await onboard("guard-exec-1");
 		const taskRes = await app.inject({
@@ -843,6 +985,7 @@ describe("Runner Routes Integration", () => {
 		expect(task.currentRunAttribution).toMatchObject({
 			harnessId: "mock",
 			modelRef: "mock-model",
+			runnerId: "dispatch-attr",
 		});
 		// …and when an arrival row for the run's own stage exists, it carries
 		// the same stamp (a first-stage task has no arrival row — nothing to
@@ -1523,8 +1666,29 @@ describe("Runner Routes Integration", () => {
 	});
 
 	describe("operator command channel (POST /runners/:id/commands)", () => {
+		// Command-capable Runner: registers advertising both commands, like
+		// a current daemon's join facts always do.
+		async function onboardWithCommands(runnerId) {
+			const reg = await app.inject({
+				method: "POST",
+				url: "/runners/register",
+				payload: {
+					runnerId,
+					joinToken: "test-join-token",
+					facts: { ...FACTS, commands: ["requestModelRediscovery", "requestUpdate"] },
+				},
+			});
+			expect(reg.statusCode).toBe(202);
+			const approval = await app.inject({
+				method: "POST",
+				url: `/runners/${runnerId}/approve`,
+			});
+			expect(approval.statusCode).toBe(200);
+			return JSON.parse(approval.payload).credential;
+		}
+
 		it("round-trips enqueue -> heartbeat delivery -> facts ack -> recorded result", async () => {
-			const credential = await onboard("command-1");
+			const credential = await onboardWithCommands("command-1");
 			const queued = await app.inject({
 				method: "POST",
 				url: "/runners/command-1/commands",
@@ -1610,6 +1774,23 @@ describe("Runner Routes Integration", () => {
 			});
 			expect(res.statusCode).toBe(409);
 			expect(JSON.parse(res.payload).code).toBe("COMMAND_INVALID_STATE");
+		});
+
+		it("409s commands for active Runners that predate on-request commands", async () => {
+			// Plain onboard: FACTS advertise no commands, like an old daemon.
+			await onboard("command-old");
+			const res = await app.inject({
+				method: "POST",
+				url: "/runners/command-old/commands",
+				payload: { command: "requestUpdate" },
+			});
+			expect(res.statusCode).toBe(409);
+			const body = JSON.parse(res.payload);
+			expect(body.code).toBe("COMMAND_UNSUPPORTED");
+			expect(body.error).toContain("update the Runner manually");
+			const list = await app.inject({ method: "GET", url: "/runners" });
+			const record = JSON.parse(list.payload).find((r) => r.runnerId === "command-old");
+			expect(record.commands.pending).toEqual([]);
 		});
 
 		it("404s commands for unknown Runners", async () => {

@@ -392,6 +392,164 @@ describe("runSingleAssignment", () => {
 	});
 });
 
+describe("runSingleAssignment agent verdict detection", () => {
+	let dirs;
+	beforeEach(() => {
+		dirs = [];
+	});
+	afterEach(() => {
+		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+	});
+
+	const FAIL_BLOCK = "KAINBAIN_VERDICT: FAIL\nKAINBAIN_REASON: canary test red\nKAINBAIN_FIX: pause the stage in spec setup";
+
+	function verdictHarness({ reply = "done", events = [], promptThrows = null } = {}) {
+		return {
+			async createSession() {
+				return {
+					getLastAssistantText: () => reply,
+					subscribe: (handler) => {
+						for (const event of events) handler(event);
+						return () => {};
+					},
+					prompt: async () => {
+						if (promptThrows) throw promptThrows;
+						return reply;
+					},
+					dispose: async () => {},
+				};
+			},
+		};
+	}
+
+	async function runVerdictAssignment({ reply, events, promptThrows = null, claimExtra = {} }) {
+		const repo = localRepo();
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo);
+		const completed = [];
+		const warnings = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1, ...claimExtra }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed.push(args);
+				return { accepted: true, shaState: "present" };
+			},
+			interrupt: async () => ({ interrupted: true }),
+		});
+		await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => verdictHarness({ reply, events, promptThrows }),
+			logger: { log: () => {}, warn: (m) => warnings.push(String(m)) },
+		});
+		assert.equal(completed.length, 1);
+		return { completed: completed[0], warnings };
+	}
+
+	it("R1: a fail_stage tool call alone (no verdict block) fails with rejected", async () => {
+		const { completed } = await runVerdictAssignment({
+			reply: "all done, nothing to report",
+			events: [{ type: "tool_started", toolName: "fail_stage", args: { reason: "tests red on main" } }],
+		});
+		assert.equal(completed.outcome, "failed");
+		assert.equal(completed.failureKind, "rejected");
+		assert.match(completed.failureReason, /\[Agent Review Rejection\] tests red on main/);
+		// The failed report carries the same run context as a pass.
+		assert.match(completed.posture, /mock/);
+		assert.equal(typeof completed.durationMs, "number");
+		assert.match(completed.output, /all done/);
+	});
+
+	it("R2: a FAIL block with reason and fix fails with the Fix guidance: reason", async () => {
+		const { completed } = await runVerdictAssignment({
+			reply: `Deep review complete.\n${FAIL_BLOCK}`,
+		});
+		assert.equal(completed.outcome, "failed");
+		assert.equal(completed.failureKind, "rejected");
+		assert.equal(
+			completed.failureReason,
+			"[Agent Review Rejection] canary test red Fix guidance: pause the stage in spec setup",
+		);
+	});
+
+	it("R3: a reasonless FAIL still passes open with a warning", async () => {
+		const { completed, warnings } = await runVerdictAssignment({
+			reply: "Something is wrong.\nKAINBAIN_VERDICT: FAIL",
+		});
+		assert.equal(completed.outcome, "passed");
+		assert.ok(!("failureKind" in completed), "no failureKind on a pass");
+		assert.ok(warnings.some((w) => w.includes("Stage verdict FAIL ignored (fail-open)")));
+	});
+
+	it("R4: malformed blocks and prose verdicts pass silently", async () => {
+		for (const reply of [
+			"KAINBAIN_VERDICT: MAYBE",
+			"Verdict: STAGE FAILED — rework required (prose, no block)",
+			"```text\nKAINBAIN_VERDICT: FAIL\n```",
+		]) {
+			const { completed, warnings } = await runVerdictAssignment({ reply });
+			assert.equal(completed.outcome, "passed", reply);
+			assert.ok(
+				!warnings.some((w) => w.includes("Stage verdict FAIL ignored")),
+				`no fail-open warning for ${JSON.stringify(reply)}`,
+			);
+		}
+	});
+
+	it("R5: the CI branch never consults a verdict block in command output", async () => {
+		const { completed } = await runVerdictAssignment({
+			reply: "unused on the CI branch",
+			claimExtra: {
+				kind: "ci",
+				command: "printf 'KAINBAIN_VERDICT: FAIL\\nKAINBAIN_REASON: x\\nKAINBAIN_FIX: y\\n'",
+			},
+		});
+		assert.equal(completed.outcome, "passed");
+		assert.match(completed.output, /KAINBAIN_VERDICT: FAIL/);
+	});
+
+	it("R6: a fail_stage call wins over a PASS text block (Skill name + message fallback)", async () => {
+		const { completed } = await runVerdictAssignment({
+			reply: "all good\nKAINBAIN_VERDICT: PASS",
+			events: [{ type: "tool_started", toolName: "Fail_stage_skill", args: { message: "human review found a blocker" } }],
+		});
+		assert.equal(completed.outcome, "failed");
+		assert.equal(completed.failureKind, "rejected");
+		assert.equal(completed.failureReason, "[Agent Review Rejection] human review found a blocker");
+	});
+
+	it("R7: a latched fail_stage call wins over a later prompt exception", async () => {
+		// Mirrors the embedded path (api/agentRunner.js prefers
+		// stageFailureRequested over promptException): the agent's deliberate
+		// rejection reports as rejected, not as the harness error.
+		const { completed } = await runVerdictAssignment({
+			reply: "unused — prompt throws",
+			events: [{ type: "tool_started", toolName: "fail_stage", args: { reason: "tests red on main" } }],
+			promptThrows: new Error("harness connection reset"),
+		});
+		assert.equal(completed.outcome, "failed");
+		assert.equal(completed.failureKind, "rejected");
+		assert.equal(completed.failureReason, "[Agent Review Rejection] tests red on main");
+	});
+
+	it("R8: the watcher reads the same event fallbacks as the embedded path", async () => {
+		// Embedded parity (api/agentRunner.js): event.name and
+		// event.arguments are read when toolName/args are absent.
+		const { completed } = await runVerdictAssignment({
+			reply: "all done, nothing to report",
+			events: [{ type: "tool_started", name: "fail_stage", arguments: { reason: "fallback field shapes" } }],
+		});
+		assert.equal(completed.outcome, "failed");
+		assert.equal(completed.failureKind, "rejected");
+		assert.equal(completed.failureReason, "[Agent Review Rejection] fallback field shapes");
+	});
+});
+
 describe("startClaimRenewal", () => {
 	it("renews on a cadence with the lease ids and stops on demand", async () => {
 		const seen = [];
@@ -814,6 +972,141 @@ describe("runDispatchLoop", () => {
 		assert.ok(!client.calls.includes("interrupt"));
 		assert.ok(!client.calls.includes("claim"), "dispatch lease is consumed, never re-claimed");
 		assert.ok(fs.existsSync(path.join(config.workRoot, "kb-t1")));
+	});
+
+	it("serves one impromptu job on an idle iteration, then idles out", async () => {
+		const repo = localRepo();
+		const config = loopConfig();
+		dirs.push(config.workRoot, repo);
+		let impromptuPolls = 0;
+		const completed = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => ({ assigned: false, code: "NO_CLAIMABLE_TASKS" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			impromptuPoll: async () => {
+				impromptuPolls += 1;
+				return impromptuPolls === 1
+					? {
+							assigned: true,
+							job: {
+								jobId: "imp-1",
+								projectId: "p1",
+								kind: "retrospective-chat",
+								prompt: "why did t1 fail?",
+								harness: "mock",
+								model: null,
+								timeoutMs: 60000,
+								turnId: "t1",
+							},
+						}
+					: { assigned: false, code: "NO_IMPROMPTU_WORK" };
+			},
+			impromptuProgress: async () => ({ ok: true }),
+			impromptuComplete: async (args) => {
+				completed.push(args);
+				return { ok: true };
+			},
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		// The idle iteration served impromptu work, never task dispatch.
+		assert.equal(out.assignments, 0);
+		assert.equal(out.idle, true);
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].outcome, "completed");
+		assert.equal(completed[0].output, "done");
+		assert.ok(!client.calls.includes("claim"), "impromptu work never claims a task");
+		assert.ok(!client.calls.includes("interrupt"));
+		// The per-job scratch dir is removed afterwards.
+		assert.equal(fs.existsSync(path.join(config.workRoot, "impromptu-imp-1")), false);
+	});
+
+	it("keeps polling dispatch when impromptu polling is refused or fails", async () => {
+		const repo = localRepo();
+		const config = loopConfig();
+		dirs.push(config.workRoot, repo);
+		const warnings = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => ({ assigned: false, code: "NO_CLAIMABLE_TASKS" }),
+			impromptuPoll: async () => {
+				const err = new Error("boom");
+				err.statusCode = 500;
+				throw err;
+			},
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: (message) => warnings.push(String(message)) },
+		});
+		assert.equal(out.idle, true);
+		assert.ok(
+			warnings.some((message) => message.includes("Impromptu poll failed")),
+			"transport failures are logged, never thrown",
+		);
+	});
+
+	it("logs a failed impromptu job and continues with dispatch", async () => {
+		const repo = localRepo();
+		const config = loopConfig();
+		dirs.push(config.workRoot, repo);
+		let impromptuPolls = 0;
+		const warnings = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => ({ assigned: false, code: "NO_CLAIMABLE_TASKS" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			impromptuPoll: async () => {
+				impromptuPolls += 1;
+				return impromptuPolls === 1
+					? {
+							assigned: true,
+							job: {
+								jobId: "imp-9",
+								projectId: "p1",
+								kind: "retrospective-chat",
+								prompt: "hi",
+								harness: "mock",
+								model: null,
+								timeoutMs: 60000,
+								turnId: null,
+							},
+						}
+					: { assigned: false, code: "NO_IMPROMPTU_WORK" };
+			},
+			impromptuProgress: async () => ({ ok: true }),
+			impromptuComplete: async () => ({ ok: true }),
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			// The harness fails every prompt: the job reports failed, the
+			// loop logs it and keeps polling dispatch instead of crashing.
+			loadHarness: async () => ({
+				async createSession() {
+					return {
+						subscribe: () => () => {},
+						prompt: async () => {
+							throw new Error("Model exploded");
+						},
+						dispose: async () => {},
+					};
+				},
+			}),
+			logger: { log: () => {}, warn: (message) => warnings.push(String(message)) },
+		});
+		assert.equal(out.idle, true);
+		assert.ok(
+			warnings.some((message) => message.includes("imp-9") && message.includes("failed")),
+			"job failure is logged with its job id",
+		);
 	});
 
 	it("serves the dispatch answer's required model, never a substitution", async () => {
@@ -1417,6 +1710,23 @@ describe("handlePendingCommands", () => {
 		]);
 	});
 
+	it("acks requestUpdate as failed when auto-update is disabled", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig({ autoUpdate: false }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestUpdate"],
+			updateDeps: {
+				checkForUpdate: async () => { throw new Error("must not check when disabled"); },
+			},
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestUpdate", ok: false, detail: "auto-update is disabled on this Runner" },
+		]);
+	});
+
 	it("acks update failures without throwing", async () => {
 		const state = {};
 		await handlePendingCommands({
@@ -1587,10 +1897,153 @@ describe("joinAndHeartbeat command channel", () => {
 		try {
 			assert.equal(state.commandAcks.length, 1);
 			assert.equal(state.commandAcks[0].command, "requestUpdate");
-			assert.equal(state.commandAcks[0].ok, true);
+			// The fixture disables auto-update (no network in boot tests),
+			// so the honest outcome is a failed ack naming the disabled
+			// config — never the false success an unchecked update used
+			// to report. Boot delivery itself still worked: the queued
+			// command was consumed into exactly one staged ack.
+			assert.equal(state.commandAcks[0].ok, false);
+			assert.equal(state.commandAcks[0].detail, "auto-update is disabled on this Runner");
 		} finally {
 			stop();
 			fs.rmSync(config.workRoot, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("collectTaskFiles docsDirName", () => {
+	it("reads files from a custom docs folder", async () => {
+		const fs = (await import("node:fs")).default;
+		const os = (await import("node:os")).default;
+		const path = (await import("node:path")).default;
+		const { collectTaskFiles } = await import("./daemon.js");
+		const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-wt-"));
+		try {
+			fs.mkdirSync(path.join(workdir, "kdocs", "tasks", "t1"), { recursive: true });
+			fs.writeFileSync(path.join(workdir, "kdocs", "tasks", "t1", "SURVEY.md"), "x");
+			const files = collectTaskFiles({ workdir, taskId: "t1", docsDirName: "kdocs" });
+			assert.deepEqual(files, [{ name: "SURVEY.md", content: "x" }]);
+			const invalid = collectTaskFiles({ workdir, taskId: "t1", docsDirName: "../escape" });
+			assert.deepEqual(invalid, []);
+		} finally {
+			fs.rmSync(workdir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("joinAndHeartbeat one-click credential handover", () => {
+	const quiet = { log: () => {}, warn: () => {} };
+
+	it("collects the handed-over credential, stores it, and keeps booting", async () => {
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "kb-join-"));
+		const config = baseConfig({
+			credential: "",
+			joinToken: "jt",
+			home,
+			harnessIds: ["mock"],
+			autoUpdate: false,
+		});
+		const registers = [];
+		const client = {
+			register: async (args) => {
+				registers.push(args);
+				return registers.length === 1
+					? { status: "pending", credential: null }
+					: { status: "active", credential: "cred-handed-over" };
+			},
+			setCredential: (next) => {
+				client.credential = next;
+			},
+			heartbeat: async () => ({ status: "active" }),
+		};
+		const { stop } = await joinAndHeartbeat({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: quiet,
+			state: {},
+		});
+		try {
+			assert.equal(config.credential, "cred-handed-over");
+			assert.equal(client.credential, "cred-handed-over");
+			const stored = fs.readFileSync(
+				path.join(home, ".kainbain", "runner-r1.credential"),
+				"utf8",
+			);
+			assert.equal(stored.trim(), "cred-handed-over");
+			assert.equal(registers.length, 2);
+			assert.ok(registers[0].joinNonce);
+			assert.equal(registers[0].joinNonce, registers[1].joinNonce);
+		} finally {
+			stop();
+			fs.rmSync(config.workRoot, { recursive: true, force: true });
+			fs.rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("falls back to the paste instruction when no credential is handed over", async () => {
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "kb-join-"));
+		const config = baseConfig({
+			credential: "",
+			joinToken: "jt",
+			home,
+			harnessIds: ["mock"],
+			autoUpdate: false,
+		});
+		const client = {
+			register: async () => ({ status: "active", credential: null }),
+			setCredential: () => {},
+			heartbeat: async () => ({ status: "active" }),
+		};
+		await assert.rejects(
+			joinAndHeartbeat({
+				config,
+				client,
+				loadHarness: async () => fakeHarness(),
+				logger: quiet,
+				state: {},
+			}),
+			/Paste the one-time credential/,
+		);
+		assert.ok(!fs.existsSync(path.join(home, ".kainbain")));
+		fs.rmSync(config.workRoot, { recursive: true, force: true });
+		fs.rmSync(home, { recursive: true, force: true });
+	});
+
+	it("never logs the join nonce", async () => {
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "kb-join-"));
+		const lines = [];
+		const loud = { log: (m) => lines.push(String(m)), warn: (m) => lines.push(String(m)) };
+		const config = baseConfig({
+			credential: "",
+			joinToken: "jt",
+			home,
+			harnessIds: ["mock"],
+			autoUpdate: false,
+		});
+		let seenNonce = "";
+		const client = {
+			register: async (args) => {
+				seenNonce = args.joinNonce;
+				return { status: "pending", credential: null };
+			},
+			setCredential: () => {},
+			heartbeat: async () => ({ status: "active" }),
+		};
+		// approvalTimeoutMs is 100ms in baseConfig: the join times out while pending.
+		await assert.rejects(
+			joinAndHeartbeat({
+				config: { ...config, approvalTimeoutMs: 30, approvalPollMs: 5 },
+				client,
+				loadHarness: async () => fakeHarness(),
+				logger: loud,
+				state: {},
+			}),
+			/still pending after timeout/,
+		);
+		assert.ok(seenNonce);
+		assert.ok(!lines.some((line) => seenNonce && line.includes(seenNonce)));
+		fs.rmSync(config.workRoot, { recursive: true, force: true });
+		fs.rmSync(home, { recursive: true, force: true });
 	});
 });

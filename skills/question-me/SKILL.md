@@ -59,7 +59,32 @@ When the user finishes the survey, the UI updates the `answers` object in‑plac
 - If `{{outputFile}}` already exists, the skill **reads** it, determines the next `round` number, and **appends** a new JSON block under a new heading `## Round N`.
 - Existing `answers` objects are left untouched.
 - The skill must never delete or rewrite previous rounds.
+{{#if imageGen}}
+## Image questions (generated design examples)
 
+This stage may also ask **image questions**: the human sees up to 4 generated pictures (UI mocks, logos, …) and picks one favourite. Image generation for this stage runs through the configured provider (`{{imageGen}}`); the backend generates the pictures after you write the survey — you only write detailed descriptions.
+
+Write an image question like this:
+
+```survey-json
+{
+  "id": "q3",
+  "type": "image",
+  "text": "Which dashboard design should we build?",
+  "options": [
+    "Dark analytics dashboard, left sidebar navigation, teal accent charts, dense data table, modern SaaS look",
+    "Light minimal dashboard, top navigation bar, large KPI cards, generous whitespace, friendly rounded corners"
+  ],
+  "required": true,
+  "showIf": null
+}
+```
+
+Rules:
+- `type` is exactly `"image"`; `options` holds 1–4 detailed descriptions (each one becomes a picture — write them detailed enough to render a UI mock or logo: layout, palette, key elements, style).
+- Answers work like `single`: the human picks one favourite description; the chosen picture is saved into the task folder (`assets/`) and referenced from `{{outputFile}}` for downstream stages to work from.
+- Never write an `images` field yourself — the backend owns it (generation status per picture). If generation is unavailable, the survey falls back to showing your descriptions as options, so always make them self-explanatory.
+{{/if}}
 ## How the engine treats the skill
 - During stage execution, after the agent returns **success**, the backend inspects the stage’s skill list. If `question-me` is present, it reads `{{outputFile}}` and decides:
   - **Unanswered required questions** (or no `{{outputFile}}` at all) → the task parks with status `waiting_human` instead of auto‑advancing. The task detail page shows the survey banner; the survey page opens at `/tasks/:taskId/survey`.

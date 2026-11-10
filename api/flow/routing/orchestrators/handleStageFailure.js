@@ -64,6 +64,7 @@ import { handleTransientFailure } from './handleTransientFailure.js';
  * @param {string} [opts.aliasName] - Model alias the failed run resolved through (per-alias reliability attribution).
  * @param {string} [opts.modelRef] - Concrete model the alias target dispatched.
  * @param {number} [opts.targetIndex] - Weighted-target index of the alias pick (informational).
+ * @param {string} [opts.runnerId] - Runner that ran the failed stage (recorded on the failure timeline row and report when present, so a struggling Runner can be spotted per stage or task type later; absent for embedded runs).
  * @returns {Object} Failure routing result. When automatic recovery starts,
  *   `status` is the internal routing signal `"retrying"` for BOTH re-run
  *   shapes (kept stable for the scheduler and its tests) — user display must
@@ -93,6 +94,7 @@ export function handleStageFailure(
 		aliasName,
 		modelRef,
 		targetIndex,
+		runnerId,
 	} = opts;
 	const failureProject = resolveFailureProject(taskStore, projectId, opts);
 	const task = taskStore.getTask(projectId, taskId);
@@ -239,6 +241,7 @@ export function handleStageFailure(
 		aliasName,
 		modelRef,
 		targetIndex,
+		runnerId,
 	});
 	taskStore._recordTimelineWithDiffStat(
 		task,
@@ -284,6 +287,7 @@ export function handleStageFailure(
 		aliasName,
 		modelRef,
 		targetIndex,
+		runnerId,
 		// Failure traces keep the `-failure-` filename infix so they stay
 		// distinguishable from opt-in success reports in the docs folder.
 		failure: true,

@@ -13,6 +13,7 @@ const SHORTCUTS = [
     desc: 'Open the compact logs-only monitor — also in the System menu, or tap 📡 on phones',
   },
   { key: '5  or  D', desc: 'Open platform docs' },
+  { key: 'A', desc: 'Open accessibility statement' },
   { key: 'R', desc: 'Open cross-task retrospective review' },
   { key: 'Ctrl + K  or  C', desc: 'Open UI Customization & Preferences modal' },
   { key: 'G', desc: 'Open System Transparency & Architecture Guide' },

@@ -4,174 +4,35 @@ import path from "node:path";
 import { _atomicWriteFileSync } from "../house/index.js";
 import { docsProjectFor, resolveTaskDocsDir } from "../docsPath.js";
 import {
+	DEFAULT_SURVEY_FILENAME,
+	SURVEY_OUTPUT_FILE_KEYS,
 	appendRound,
 	applyAnswers,
 	parseSurvey,
 	renderSurveyMarkdown,
+	resolveQuestionMeOutputFile,
 	serializeRound,
+	spliceRoundsIntoMarkdown,
 	surveyStatus,
 	unansweredRequired,
 	validateSurvey,
 	stageHasQuestionMe,
 } from "../../shared/survey.js";
 
-/***
- * MARK: SURVEY FILE NAMING
- * @description Default task-folder file holding question-me rounds.
- * @example DEFAULT_SURVEY_FILENAME => 'SURVEY.md'
- ***/
-export const DEFAULT_SURVEY_FILENAME = "SURVEY.md";
-
 // Backward-compatible alias for older imports/tests.
 export const SURVEY_FILENAME = DEFAULT_SURVEY_FILENAME;
 
-// Re-exported from the shared survey model so frontend, backend, and task
-// store share one source of truth for the skill name (see shared/survey.js).
-export { QUESTION_ME_SKILL_NAME } from "../../shared/survey.js";
-
-/***
- * MARK: SURVEY FILE ALIASES
- * @description Configuration keys that may carry the selected output file name,
- *   in precedence order. `outputFile` is canonical; the rest are accepted as
- *   backward-compatible aliases by backend resolution.
- ***/
-export const SURVEY_OUTPUT_FILE_KEYS = [
-	"outputFile",
-	"surveyFile",
-	"surveyFileName",
-	"fileName",
-	"targetFile",
-	"file",
-];
-
-function _isPresentValue(value) {
-	if (value === undefined || value === null) return false;
-	if (typeof value === "string" && value.trim() === "") return false;
-	return true;
-}
-
-function _rawConfigValue(source, key) {
-	if (!source || typeof source !== "object" || Array.isArray(source)) return undefined;
-	if (!Object.prototype.hasOwnProperty.call(source, key)) return undefined;
-	const value = source[key];
-	if (value && typeof value === "object" && !Array.isArray(value) && Object.prototype.hasOwnProperty.call(value, "value")) {
-		return value.value;
-	}
-	return value;
-}
-
-function _hasQuestionMeName(value) {
-	// Same entry shape as the shared gate (`stageHasQuestionMe`: a string or
-	// `{ name }`) so file resolution and parking can never disagree about
-	// which attachment is the question-me skill.
-	const name = typeof value === "string" ? value : value?.name;
-	return typeof name === "string" && name.trim().toLowerCase() === "question-me";
-}
-
-function _candidateSources(input) {
-	const sources = [];
-	if (!input || typeof input !== "object" || Array.isArray(input)) return sources;
-	sources.push(input);
-	if (input.config) sources.push(input.config);
-	if (input.keywords) sources.push(input.keywords);
-	if (input.skill) {
-		sources.push(input.skill);
-		if (input.skill.config) sources.push(input.skill.config);
-		if (input.skill.keywords) sources.push(input.skill.keywords);
-	}
-	if (input.questionMeSkill) {
-		sources.push(input.questionMeSkill);
-		if (input.questionMeSkill.config) sources.push(input.questionMeSkill.config);
-	}
-	return sources;
-}
-
-/***
- * MARK: normalizeSurveyFileName
- * @description Normalizes a configured survey file name into a safe basename
- *   inside the task folder. Anything unsafe falls back to the default
- *   (`SURVEY.md`) — never throws, never escapes the task directory. A bare
- *   name without a dot gains a `.md` extension; an explicit extension must
- *   already be `.md` (case-insensitive).
- * @example normalizeSurveyFileName('FEEDBACK') => 'FEEDBACK.md'
- * @example normalizeSurveyFileName('') => 'SURVEY.md'
- * @param {*} value - Candidate file name (or `{ value }` keyword wrapper).
- * @returns {string} Safe basename, or `DEFAULT_SURVEY_FILENAME`.
- ***/
-export function normalizeSurveyFileName(value) {
-	let raw = value;
-	if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-		if (Object.prototype.hasOwnProperty.call(raw, "value")) raw = raw.value;
-		else return DEFAULT_SURVEY_FILENAME;
-	}
-	// Only strings name files: numbers, booleans, and other scalars are a
-	// misconfiguration, so they fail safe to the default instead of
-	// minting surprising names like `true.md`.
-	if (typeof raw !== "string") return DEFAULT_SURVEY_FILENAME;
-	raw = raw.trim();
-	if (!raw) return DEFAULT_SURVEY_FILENAME;
-	if (raw.length > 64) return DEFAULT_SURVEY_FILENAME;
-	if (
-		raw.includes("/") ||
-		raw.includes("\\") ||
-		raw.includes("\0") ||
-		raw.includes("\n") ||
-		raw.includes("\r") ||
-		raw.includes(":")
-	) {
-		return DEFAULT_SURVEY_FILENAME;
-	}
-	if (raw === "." || raw === ".." || raw.includes("..")) return DEFAULT_SURVEY_FILENAME;
-	// Hidden files (`.md`, `.survey.md`) have no visible stem: reject.
-	if (raw.startsWith(".")) return DEFAULT_SURVEY_FILENAME;
-	if (!raw.includes(".")) return `${raw}.md`;
-	const ext = raw.slice(raw.lastIndexOf(".")).toLowerCase();
-	if (ext !== ".md") return DEFAULT_SURVEY_FILENAME;
-	// A bare `.md` passed the dot checks only when it starts with a dot,
-	// which is rejected above — this guards ` .md`-style trims.
-	if (raw.length <= 3) return DEFAULT_SURVEY_FILENAME;
-	return raw;
-}
-
-/***
- * MARK: outputFileFromSkillAttachment
- * @description Resolves a raw output-file value from a stage (or skill attachment)
- *   by inspecting the `question-me` skill entry's config and any supplied
- *   keyword defaults. Canonical key first, then accepted aliases.
- * @example outputFileFromSkillAttachment({ skills: [{ name: 'question-me', config: { outputFile: 'FEEDBACK.md' } }] }) => 'FEEDBACK.md'
- * @param {Object} [stageOrConfig]
- * @returns {*}
- ***/
-export function outputFileFromSkillAttachment(stageOrConfig) {
-	const entries = Array.isArray(stageOrConfig?.skills) ? stageOrConfig.skills : [];
-	const qmEntry = entries.find(_hasQuestionMeName) || null;
-
-	const sources = [];
-	if (qmEntry) sources.push(..._candidateSources(qmEntry));
-	sources.push(..._candidateSources(stageOrConfig));
-
-	for (const key of SURVEY_OUTPUT_FILE_KEYS) {
-		for (const source of sources) {
-			const value = _rawConfigValue(source, key);
-			if (_isPresentValue(value)) return value;
-		}
-	}
-	return null;
-}
-
-/***
- * MARK: resolveQuestionMeOutputFile
- * @description Normalizes the selected survey file name for a stage/config value.
- * @example resolveQuestionMeOutputFile({ skills: [{ name: 'question-me', config: { outputFile: 'FEEDBACK.md' } }] }) => 'FEEDBACK.md'
- * @param {*} [stageOrConfig]
- * @returns {string}
- ***/
-export function resolveQuestionMeOutputFile(stageOrConfig) {
-	if (typeof stageOrConfig === "string") return normalizeSurveyFileName(stageOrConfig);
-	if (!stageOrConfig || typeof stageOrConfig !== "object") return DEFAULT_SURVEY_FILENAME;
-	const raw = outputFileFromSkillAttachment(stageOrConfig);
-	return normalizeSurveyFileName(raw);
-}
+// Re-exported from the shared survey model so frontend, backend, task store,
+// and prompt building share one source of truth for survey file naming (see
+// shared/survey.js). Existing importers keep working unchanged.
+export {
+	DEFAULT_SURVEY_FILENAME,
+	QUESTION_ME_SKILL_NAME,
+	SURVEY_OUTPUT_FILE_KEYS,
+	normalizeSurveyFileName,
+	outputFileFromSkillAttachment,
+	resolveQuestionMeOutputFile,
+} from "../../shared/survey.js";
 
 /***
  * MARK: resolveSurveyPath
@@ -206,6 +67,15 @@ export function surveyProjectFor(store, projectId) {
 }
 
 const EXPLICIT_FILE_KEYS = [...SURVEY_OUTPUT_FILE_KEYS];
+
+// Local presence check for explicit file keys (mirrors the shared survey
+// model's predicate; kept here so this file's explicit-before-stage
+// precedence stays a small standalone rule).
+function _isPresentValue(value) {
+	if (value === undefined || value === null) return false;
+	if (typeof value === "string" && value.trim() === "") return false;
+	return true;
+}
 
 function _explicitFileFromArgs(args) {
 	for (const key of EXPLICIT_FILE_KEYS) {
@@ -292,22 +162,9 @@ export function readSurvey(...callArgs) {
 	return { exists: true, markdown, rounds, errors, status: surveyStatus(rounds) };
 }
 
-/***
- * MARK: spliceRoundsIntoMarkdown
- ***/
-export function spliceRoundsIntoMarkdown(markdown, rounds) {
-	let index = 0;
-	const next = () => rounds[index++];
-	const out = String(markdown).replace(/```survey-json[ \t]*\r?\n([\s\S]*?)```/g, () => {
-		const round = next();
-		if (!round) throw new Error("survey file changed underfoot: fewer rounds than fences");
-		return `\`\`\`survey-json\n${serializeRound(round)}\n\`\`\``;
-	});
-	if (index !== rounds.length) {
-		throw new Error("survey file changed underfoot: more rounds than fences");
-	}
-	return out;
-}
+// Re-exported from the shared survey model so existing callers keep working;
+// the single implementation lives in shared/survey.js (see mergeSurveyDocuments).
+export { spliceRoundsIntoMarkdown } from "../../shared/survey.js";
 
 function _roundStageId(args) {
 	let roundStage = args.stage ?? args.stageId ?? null;
@@ -315,6 +172,48 @@ function _roundStageId(args) {
 		roundStage = roundStage.id ?? roundStage.stageId ?? roundStage.name ?? null;
 	}
 	return roundStage;
+}
+
+// Per-survey-file write chains: each key holds the tail promise of that
+// file's writers, so concurrent async entry points (answer submits, the
+// background image job) serialize their read-modify-write cycles instead of
+// interleaving them. The chains only ever fulfill — a throwing writer still
+// releases its successor — so a failed write can never wedge later ones.
+const SURVEY_FILE_WRITE_CHAINS = new Map();
+
+/***
+ * MARK: withSurveyFileWriteLock
+ * @description Runs `fn` holding this process's write lock for one survey
+ *   file (keyed by resolved path, so every spelling of the same file shares
+ *   one chain). Concurrent holders queue FIFO; the lock is NOT reentrant, so
+ *   a holder must never acquire the same file again before returning. A
+ *   missing/empty path skips locking and just runs `fn`.
+ * @example await withSurveyFileWriteLock('/tmp/s.md', async () => 'ok') => 'ok'
+ * @param {string|null} [filePath] - Resolved survey file path (or null).
+ * @param {Function} fn - Async critical section; its value is returned.
+ * @returns {Promise<*>} Whatever `fn` returns (rejections propagate).
+ ***/
+export async function withSurveyFileWriteLock(filePath, fn) {
+	if (typeof fn !== "function") throw new Error("withSurveyFileWriteLock requires a function");
+	const key =
+		typeof filePath === "string" && filePath.trim() ? path.resolve(filePath) : "";
+	if (!key) return fn();
+	const prev = SURVEY_FILE_WRITE_CHAINS.get(key) || Promise.resolve();
+	let release = null;
+	const gate = new Promise((resolve) => {
+		release = resolve;
+	});
+	const chained = prev.then(() => gate);
+	SURVEY_FILE_WRITE_CHAINS.set(key, chained);
+	await prev;
+	try {
+		return await fn();
+	} finally {
+		release();
+		if (SURVEY_FILE_WRITE_CHAINS.get(key) === chained) {
+			SURVEY_FILE_WRITE_CHAINS.delete(key);
+		}
+	}
 }
 
 /***
@@ -394,6 +293,89 @@ export function saveSurveyAnswers(args) {
 	const markdown = spliceRoundsIntoMarkdown(before, next);
 	_atomicWriteFileSync(filePath, markdown);
 	return { markdown, status: surveyStatus(next), missing: unansweredRequired(next), unknownIds };
+}
+
+/***
+ * MARK: updateSurveyImages
+ * @description Replaces one image question's backend-owned `images[]` array in
+ *   the configured survey file, preserving questions, answers, and surrounding
+ *   prose byte-for-byte. Follows the `saveSurveyAnswers` pattern: the file is
+ *   only rewritten after the merged rounds validate, so a rejected update
+ *   leaves the file untouched. Each call re-reads the file, so a generation
+ *   job splicing per question always merges against the latest answers.
+ * @param {Object} args - `{ cwd, project?, taskId|id, questionId, images,
+ *   round? }` plus an optional file selector (explicit file-name key or
+ *   stage object). Without `round`, the latest round containing the question
+ *   is updated.
+ * @example updateSurveyImages({ cwd: '/repo', taskId: 't1', questionId: 'q3', round: 1, images: [] })
+ * @returns {{ markdown: string, status: string, round: number }}
+ * @throws {Error} `SURVEY_NOT_FOUND` (404) when no file exists;
+ *   `SURVEY_INVALID` (400) when the round/question is missing, the question
+ *   is not an image question, or the merged round fails validation; plain
+ *   `Error` when the path cannot be resolved.
+ ***/
+export function updateSurveyImages(args) {
+	const a = args && typeof args === "object" ? args : {};
+	const cwd = a.cwd;
+	const project = a.project !== undefined ? a.project : null;
+	const taskId = a.taskId ?? a.id;
+	const questionId = a.questionId ?? a.qid;
+	const images = a.images;
+	const filePath = resolveSurveyPath(cwd, project, taskId, _fileInputForArgs(a));
+	if (!filePath) throw new Error("cannot resolve survey path: missing cwd or task id");
+	const notFound = () => Object.assign(new Error("no survey exists for this task yet"), { statusCode: 404, code: "SURVEY_NOT_FOUND" });
+	const invalid = (message) => Object.assign(new Error(message), { statusCode: 400, code: "SURVEY_INVALID" });
+	if (!fs.existsSync(filePath)) throw notFound();
+	if (typeof questionId !== "string" || !questionId) {
+		throw invalid("updateSurveyImages requires a questionId");
+	}
+	if (!Array.isArray(images)) throw invalid("updateSurveyImages requires an images array");
+	let before;
+	try {
+		before = fs.readFileSync(filePath, "utf8");
+	} catch (err) {
+		if (err?.code === "ENOENT") throw notFound();
+		throw new Error(`cannot read survey file: ${err.message}`);
+	}
+	const { rounds } = parseSurvey(before);
+	const wantedRound = a.round ?? a.roundNumber;
+	let targetIndex = -1;
+	if (wantedRound !== undefined && wantedRound !== null) {
+		targetIndex = rounds.findIndex((r) => r?.round === wantedRound);
+		if (targetIndex < 0) throw invalid(`survey has no round ${wantedRound}`);
+	} else {
+		for (let i = rounds.length - 1; i >= 0; i -= 1) {
+			if ((rounds[i]?.questions || []).some((qq) => qq?.id === questionId)) {
+				targetIndex = i;
+				break;
+			}
+		}
+		if (targetIndex < 0) throw invalid(`survey has no question '${questionId}'`);
+	}
+	const targetRound = rounds[targetIndex];
+	const questionIndex = (targetRound.questions || []).findIndex(
+		(qq) => qq?.id === questionId,
+	);
+	if (questionIndex < 0) throw invalid(`survey round ${targetRound.round} has no question '${questionId}'`);
+	/* eslint-disable-next-line security/detect-object-injection -- index comes from findIndex on the same array */
+	if (targetRound.questions[questionIndex]?.type !== "image") {
+		throw invalid(`survey question '${questionId}' is not an image question`);
+	}
+	const next = rounds.map((round, ri) => {
+		if (ri !== targetIndex) return round;
+		return {
+			...round,
+			questions: round.questions.map((qq, qi) =>
+				qi === questionIndex ? { ...qq, images: images.map((entry) => ({ ...entry })) } : qq,
+			),
+			answers: { ...(round.answers || {}) },
+		};
+	});
+	const { ok, errors } = validateSurvey(next);
+	if (!ok) throw invalid(`survey images invalid: ${errors[0]}`);
+	const markdown = spliceRoundsIntoMarkdown(before, next);
+	_atomicWriteFileSync(filePath, markdown);
+	return { markdown, status: surveyStatus(next), round: targetRound.round };
 }
 
 // Re-exported from the shared survey model (see shared/survey.js).

@@ -49,7 +49,7 @@ async function setup(customStages) {
 		post: (routePath, a, b) => routes.set(`POST ${routePath}`, b || a),
 		patch: (routePath, handler) => routes.set(`PATCH ${routePath}`, handler),
 		delete: (routePath, handler) => routes.set(`DELETE ${routePath}`, handler),
-		log: { error: vi.fn() },
+		log: { error: vi.fn(), warn: vi.fn() },
 	};
 	const task = stored();
 	const taskStore = {
@@ -77,7 +77,7 @@ async function setup(customStages) {
 		const out = await handler({ params, query, body }, reply);
 		return { out: out === undefined ? res.body : out, res };
 	};
-	return { call, taskStore };
+	return { call, taskStore, fakeApp };
 }
 
 const q = (overrides = {}) => ({
@@ -108,6 +108,32 @@ describe("GET /tasks/:id/survey", () => {
 		expect(out.missing).toEqual([{ round: 1, id: "q1" }]);
 		expect(out.rounds).toHaveLength(1);
 	});
+
+	it("kicks background image generation for image questions (crash recovery)", async () => {
+		const illustrated = [
+			{ id: "s-1", name: "Ask", type: "agent", skills: [{ name: "question-me", config: { imageGen: "mock" } }] },
+			{ id: "s-2", name: "Plan", type: "agent" },
+		];
+		const { call } = await setup(illustrated);
+		appendSurveyRound({
+			cwd: tmp,
+			project: null,
+			taskId: "t-1",
+			questions: [q({ id: "qi", type: "image", text: "Pick a design", options: ["dark", "light"] })],
+		});
+		const { out } = await call("GET", "/tasks/:id/survey", { params: { id: "t-1" } });
+		expect(out).toMatchObject({ exists: true, status: "pending" });
+		// The read itself returns immediately; the recovery job fills the
+		// images behind it.
+		let images = [];
+		for (let attempt = 0; attempt < 100 && images.filter((e) => e?.status === "ready").length < 2; attempt += 1) {
+			await new Promise((resolve) => setTimeout(resolve, 50));
+			const again = await call("GET", "/tasks/:id/survey", { params: { id: "t-1" } });
+			images = again.out.rounds[0]?.questions[0]?.images || [];
+		}
+		expect(images.map((e) => e.status)).toEqual(["ready", "ready"]);
+		expect(fs.existsSync(path.join(tmp, "docs", "tasks", "t-1", "assets", "survey-r1-qi-0.png"))).toBe(true);
+	}, 30000);
 });
 
 describe("POST /tasks/:id/survey", () => {
@@ -117,6 +143,7 @@ describe("POST /tasks/:id/survey", () => {
 		expect(badAction.res.statusCode).toBe(400);
 		const badBody = await call("POST", "/tasks/:id/survey", { params: { id: "t-1" }, body: { projectId: "p-1", answers: ["q1"] } });
 		expect(badBody.res.statusCode).toBe(400);
+		expect(badBody.res.body.code).toBe("SURVEY_INVALID");
 	});
 
 	it("partial saves stay parked and complete saves advance", async () => {
@@ -188,6 +215,7 @@ describe("POST /tasks/:id/survey", () => {
 		});
 		expect(res.statusCode).toBe(400);
 		expect(res.body.missing).toEqual([{ round: 1, id: "q1" }]);
+		expect(res.body.code).toBe("SURVEY_INCOMPLETE");
 	});
 
 	it("refuses to advance a non-survey wait even when answers are complete", async () => {
@@ -231,6 +259,40 @@ describe("POST /tasks/:id/survey", () => {
 		});
 		expect(res.statusCode).toBe(400);
 		expect(fs.readFileSync(filePath, "utf8")).toBe(before);
+	});
+
+	it("save rejects carry a machine-readable code naming the failure", async () => {
+		const { call } = await setup();
+		appendSurveyRound({ cwd: tmp, project: null, taskId: "t-1", questions: [q()] });
+		const invalid = await call("POST", "/tasks/:id/survey", {
+			params: { id: "t-1" },
+			body: { projectId: "p-1", answers: { q1: { selected: ["zzz"] } } },
+		});
+		expect(invalid.res.statusCode).toBe(400);
+		expect(invalid.res.body.code).toBe("SURVEY_INVALID");
+		expect(invalid.res.body.error).toMatch("unknown option");
+	});
+
+	it("saving with no survey file 404s with SURVEY_NOT_FOUND", async () => {
+		const { call } = await setup();
+		const { res } = await call("POST", "/tasks/:id/survey", {
+			params: { id: "t-1" },
+			body: { projectId: "p-1", answers: { q1: { selected: ["a"] } } },
+		});
+		expect(res.statusCode).toBe(404);
+		expect(res.body.code).toBe("SURVEY_NOT_FOUND");
+	});
+
+	it("still 400s with a code when the app logger has no warn method", async () => {
+		const { call, fakeApp } = await setup();
+		appendSurveyRound({ cwd: tmp, project: null, taskId: "t-1", questions: [q()] });
+		delete fakeApp.log.warn;
+		const { res } = await call("POST", "/tasks/:id/survey", {
+			params: { id: "t-1" },
+			body: { projectId: "p-1", answers: { q1: { selected: ["zzz"] } } },
+		});
+		expect(res.statusCode).toBe(400);
+		expect(res.body.code).toBe("SURVEY_INVALID");
 	});
 });
 
@@ -281,6 +343,18 @@ describe("surveyOutputFileForRequest", () => {
 		expect(surveyOutputFileForRequest(task, project, { query: { file: "INTENT_SURVEY.md" } })).toBe("INTENT_SURVEY.md");
 		expect(surveyOutputFileForRequest(task, project, {})).toBe("FEEDBACK.md");
 		expect(surveyOutputFileForRequest(task, { stages: [] }, {})).toBe("SURVEY.md");
+	});
+
+	it("honors every alias key in query and body, legacy file first", () => {
+		expect(surveyOutputFileForRequest(task, project, { query: { outputFile: "ALIASED.md" } })).toBe("ALIASED.md");
+		expect(surveyOutputFileForRequest(task, project, { body: { surveyFile: "ALIASED.md" } })).toBe("ALIASED.md");
+		expect(surveyOutputFileForRequest(task, project, { body: { targetFile: "ALIASED.md" } })).toBe("ALIASED.md");
+		// Query wins over body, and legacy file wins over outputFile.
+		expect(surveyOutputFileForRequest(task, project, { query: { file: "QUERY.md" }, body: { file: "BODY.md" } })).toBe("QUERY.md");
+		expect(surveyOutputFileForRequest(task, project, { query: { file: "LEGACY.md", outputFile: "CANON.md" } })).toBe("LEGACY.md");
+		// Unsafe values in any alias still fail safe to the default.
+		expect(surveyOutputFileForRequest(task, { stages: [] }, { query: { outputFile: "../evil.md" } })).toBe("SURVEY.md");
+		expect(surveyOutputFileForRequest(task, { stages: [] }, { body: { surveyFile: "../evil.md" } })).toBe("SURVEY.md");
 	});
 
 	it("prefers the persisted file only when no later question-me stage exists", () => {

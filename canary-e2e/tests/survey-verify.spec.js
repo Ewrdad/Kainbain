@@ -312,4 +312,131 @@ test.describe("question-me survey verification", () => {
     await pageErrors.length;
     expect(pageErrors).toEqual([]);
   });
+
+  test("image questions: mock generation at park, pick one, chosen picture persisted", async ({ request, page }) => {
+    const pageErrors = collectPageErrors(page);
+    const consoleErrors = [];
+    page.on("console", (msg) => {
+      if (msg.type() === "error") consoleErrors.push(msg.text());
+    });
+    // Own project: the shared fixture parks with image generation off (none).
+    const imgCwd = fs.mkdtempSync(path.join(os.tmpdir(), "kb-survey-img-proj-"));
+    const imgProjectName = `Survey Images ${STAMP}`;
+    const created = await request.post(`${API_BASE}/projects`, {
+      data: {
+        name: imgProjectName,
+        cwd: imgCwd,
+        useBranches: false,
+        stages: [
+          { id: "ask", name: "Ask", type: "agent", prompt: "Ask for a design", skills: [{ name: "question-me", config: { imageGen: "mock" } }] },
+          { id: "plan", name: "Plan", type: "agent", prompt: "Make a plan" },
+        ],
+      },
+    });
+    expect(created.ok()).toBeTruthy();
+    const imgProject = await created.json();
+    try {
+      await request.post(`${API_BASE}/projects/${imgProject.id}/activate`);
+      // Sanity: the imageGen skill config survived project creation.
+      const wf = await (await request.get(`${API_BASE}/projects/${imgProject.id}/workflow`)).json();
+      const ask = (wf.stages || []).find((s) => s.id === "ask");
+      expect(ask?.skills?.[0]).toMatchObject({ name: "question-me", config: { imageGen: "mock" } });
+
+      const made = await request.post(`${API_BASE}/tasks`, {
+        // Task title must not resemble the project name: selectProject matches
+        // buttons case-insensitively, and the Now Playing bar's active-task
+        // button carries the task title — a colliding title is a strict-mode
+        // violation (two matching buttons) instead of a project switch.
+        data: { projectId: imgProject.id, title: `design pick ${STAMP}`, goal: `design pick ${STAMP}`, stageId: "ask" },
+      });
+      expect(made.ok()).toBeTruthy();
+      const task = await made.json();
+      const taskDir = path.join(imgCwd, "docs", "tasks", task.id);
+      const surveyFile = path.join(taskDir, "SURVEY.md");
+      const darkOption = "Dark hero landing page, bold headline, teal gradient CTA button, product screenshot, modern SaaS look";
+      const lightOption = "Light minimal landing page, centered headline, single email input, generous whitespace, friendly rounded corners";
+      const imageRound = {
+        round: 1,
+        generatedAt: new Date().toISOString(),
+        stage: "ask",
+        questions: [
+          {
+            id: "qart",
+            type: "image",
+            text: "Which landing design should we build?",
+            options: [darkOption, lightOption],
+            required: true,
+            showIf: null,
+          },
+        ],
+        answers: {},
+      };
+      fs.mkdirSync(taskDir, { recursive: true });
+      fs.writeFileSync(surveyFile, surveyDoc([imageRound]), "utf8");
+
+      // Real engine gate reads the file and parks (pending).
+      const exec = await request.post(`${API_BASE}/tasks/${task.id}/execute`, {
+        data: { projectId: imgProject.id },
+      });
+      expect(exec.ok()).toBeTruthy();
+      const parked = await (await request.get(`${API_BASE}/tasks/${task.id}?projectId=${imgProject.id}`)).json();
+      expect(parked.status).toBe("waiting_human");
+
+      // Park-time generation is async: poll until both pictures are ready.
+      let rounds = null;
+      for (let i = 0; i < 30; i += 1) {
+        const surveyRes = await request.get(`${API_BASE}/tasks/${task.id}/survey?projectId=${imgProject.id}`);
+        expect(surveyRes.ok()).toBeTruthy();
+        const survey = await surveyRes.json();
+        expect(survey.imageGen).toEqual({ providerId: "mock" });
+        rounds = survey.rounds;
+        const images = rounds?.[0]?.questions?.[0]?.images || [];
+        if (images.length === 2 && images.every((e) => e.status === "ready")) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      const images = rounds?.[0]?.questions?.[0]?.images || [];
+      expect(images.length).toBe(2);
+      expect(images.every((e) => e.status === "ready")).toBe(true);
+      for (const entry of images) {
+        expect(fs.existsSync(path.join(taskDir, entry.file))).toBe(true);
+      }
+
+      await page.setViewportSize(DESKTOP_VIEWPORT);
+      await waitForAppReady(page);
+      await selectProject(page, imgProjectName);
+      await page.goto(`${APP_URL}/#/tasks/${task.id}/survey`);
+      await expect(page.getByText("Which landing design should we build?")).toBeVisible({ timeout: 15000 });
+      const firstArt = page.getByAltText(darkOption);
+      await expect(firstArt).toBeVisible({ timeout: 15000 });
+      await expect(firstArt).toHaveAttribute("src", /\/tasks\/.+\/images\/.+\.png/);
+      await page.screenshot({ path: `${SHOTS}/image-question.png` });
+
+      // Click the picture card itself, as a user does: the radio is visually
+      // hidden inside its label, so Playwright cannot hit-test the input
+      // directly (the label intercepts pointer events).
+      await firstArt.click();
+      await expect(page.getByLabel(`Which landing design should we build?: ${darkOption}`)).toBeChecked();
+      await page.getByRole("button", { name: /submit & continue/i }).click();
+      await expect(page.getByText(/moved to its next stage/i)).toBeVisible({ timeout: 15000 });
+      const moved = await (await request.get(`${API_BASE}/tasks/${task.id}?projectId=${imgProject.id}`)).json();
+      expect(moved.currentStageId).toBe("plan");
+
+      // The picked picture lands in assets/ with a survey file reference.
+      const chosenName = "survey-r1-qart-chosen.png";
+      expect(fs.existsSync(path.join(taskDir, "assets", chosenName))).toBe(true);
+      const finalDoc = fs.readFileSync(surveyFile, "utf8");
+      expect(finalDoc).toContain("## Chosen designs");
+      expect(finalDoc).toContain(`assets/${chosenName}`);
+      expect(pageErrors).toEqual([]);
+      expect(consoleErrors).toEqual([]);
+    } finally {
+      await request.delete(`${API_BASE}/projects/${imgProject.id}`).catch(() => {});
+      await request.post(`${API_BASE}/projects/${project.id}/activate`).catch(() => {});
+      try {
+        fs.rmSync(imgCwd, { recursive: true, force: true });
+      } catch {
+        // best effort
+      }
+    }
+  });
 });

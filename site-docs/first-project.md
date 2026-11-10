@@ -7,6 +7,10 @@ slug: first-project
 
 # Your First Project & Workflow
 
+A project is one codebase plus its pipeline definition and settings. This
+guide takes you from an empty board to a shaped pipeline and your first
+successful run.
+
 ## Create a project
 
 In the UI, create a project with a name and a working directory (`cwd`) — the sandbox root the agent's file tools and the Files & Repo explorer are confined to. Or via API:
@@ -14,58 +18,19 @@ In the UI, create a project with a name and a working directory (`cwd`) — the 
 ```bash
 curl -X POST http://localhost:3100/projects \
   -H 'Content-Type: application/json' \
-  -d '{"name": "My app", "cwd": "/home/user/projects/my-app"}'
+  -d '{"name": "My app", "cwd": "/home/user/projects/my-app", "gitUrl": "https://git.example.com/me/my-app.git"}'
 ```
+
+Creating a project requires a fetchable git remote (pass `gitUrl`, or set
+a `KAINBAIN_GIT_REMOTE_TEMPLATE` default) — without one the API answers
+`400` naming the missing remote. Local-only work stays available through
+adoption instead (see below).
 
 `POST /projects/:id/activate` marks the default project used when calls omit `projectId`.
 
-## Adopt an existing repository
-
-Already have a repository you want KainBain to work on? Adopt it in place —
-nothing is moved or deleted:
-
-- UI: **Project menu → “+ Add Existing Project…”**, then enter the absolute
-  path (optionally a display name and a state-folder name).
-- API: `POST /projects/register` with `{ "path": "/abs/path", "name"?, "kainbainDirName"? }`.
-
-```bash
-curl -X POST http://localhost:3100/projects/register \
-  -H 'Content-Type: application/json' \
-  -d '{"path": "/home/me/repos/my-app"}'
-```
-
-The call is idempotent (re-registering returns the existing project). A repo
-that lives outside every configured project root is remembered in
-`~/.kainbain/projects.json` and re-discovered after a restart. To scan a whole
-directory of repos, set `PROJECTS_ROOTS` (path-list separated) alongside the
-primary `PROJECTS_ROOT` — projects must be direct children of a root, or
-adopted explicitly.
-
-## Custom KainBain state folder
-
-Per-project engine state (`project.json`, `sessions/`, `worktrees/`,
-`quarantine/`) lives under `<cwd>/.kainbain` by default. A repo that already owns
-`.kainbain`, or that wants a different name, sets **Project Settings → Files & Links → KainBain
-Folder Name** (or `kainbainDirName` on the register/create payload), e.g. `.kb`.
-
-Changing the setting does not move existing state. The safe flow is to stop
-the API, rename the folder, then restart — the config is self-describing, so
-the project re-scans from the new folder with its sessions and worktrees:
-
-```bash
-# stop the API first
-cd /home/me/repos/my-app
-mv .kainbain .kb   # only if state already existed under .kainbain
-# start the API again
-```
-
-If you change the setting in the UI instead, KainBain writes the new config and
-removes the superseded one (so a restart cannot revert the setting), but the old
-`sessions/`, `worktrees/`, and `quarantine/` stay on disk — move them across by
-hand.
-
-The generated `.gitignore` and the git cleanliness guard follow the same name,
-so the custom folder stays ignored exactly like `.kainbain/`.
+Already have a repository? Adopt it instead — see Load Existing Projects
+(`#/docs/existing-projects`). (Formerly in `first-project`, removed —
+adoption and the custom state-folder flow now live there.)
 
 ## Shape the pipeline
 
@@ -75,7 +40,7 @@ Each project owns an ordered stage list. Start simple — one agent stage plus a
 - `PUT /projects/:id/workflow` — replace the stage list (`{ stages: [...] }`).
 - `POST /projects/:id/workflows` — save a named variant; `GET` the collection to list them.
 
-Keep stage instructions short and verifiable ("implement X, prove with `npm test`"), and attach a **stage skill** when one stage needs heavy domain instructions.
+Keep stage instructions short and verifiable ("implement X, prove with `npm test`"), and attach a **stage skill** when one stage needs heavy domain instructions (see Custom Skills (`#/docs/custom-skills`)). Stage kinds, runner policies, and the 200-stage cap are documented in Pipeline Stages (`#/docs/pipeline-stages`).
 
 ## Explore
 
@@ -83,4 +48,15 @@ The **Files & Repo** tab (keyboard `2`) browses the project's sandboxed filesyst
 
 ## Project settings tabs
 
-Project Settings is split into focused tabs: **Project** (name, model, look, retry/timeout budgets), **Aliases** (model nicknames), and **Files & Links** (folders, git address, app link), plus **Named Workflows** and **Skills**. The search box at the top right jumps to and highlights the matching setting across every tab. Switching between the Project, Aliases, and Files & Links tabs keeps unsaved edits; leaving for Named Workflows or Skills with unsaved edits asks for confirmation first.
+Project Settings is split into focused tabs: **Project Settings** (name, model, look, retry/timeout budgets), **Aliases** (model nicknames), **Files & Repos** (folders, git address), **Addresses**, **Named Workflows**, and **Skills**. The search box at the top right jumps to and highlights the matching setting across every tab. Switching between the Project, Aliases, and Files & Repos tabs keeps unsaved edits; leaving for Named Workflows or Skills with unsaved edits asks for confirmation first.
+
+## Your first successful run
+
+1. Submit one small task ("add a health-check endpoint and prove it with a test") — see Submit & Track Tasks (`#/docs/submit-track-task`).
+2. Watch it move through the pipeline on the board. Agent stages run on a runner (see Adding a New Runner (`#/docs/add-new-runner`)); if no runner is available the task waits.
+3. When the stage finishes, open the task and read the stage output. If the stage-report skill is attached, a structured report lands in the task's docs folder too.
+4. Approve the human review step to advance, then merge when the pipeline completes — see Review Gates (`#/docs/review-gates`).
+
+If the run fails, the failure report names the cause and the fix path.
+Common first-run issues (no runner, no model access) are covered in the
+Triage FAQ (`#/docs/faq`).

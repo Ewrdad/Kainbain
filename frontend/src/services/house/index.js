@@ -23,6 +23,7 @@ export function getFileRawUrl(apiBase, projectId, filePath) {
 export function houseRequests(request) {
   return {
     listProjects: () => request('/projects'),
+    getOnboarding: () => request('/onboarding'),
     createProject: (payload) =>
     request('/projects', { method: 'POST', body: JSON.stringify(payload) }),
     registerProject: (payload) =>
@@ -102,6 +103,21 @@ export function houseRequests(request) {
       request('/settings/prompt-layout/dry-run', {
         method: 'POST',
         body: JSON.stringify(payload),
+      }),
+    getImageGenProviders: () => request('/settings/image-gen/providers'),
+    saveImageGenKey: (providerId, key) =>
+      request(`/settings/image-gen/providers/${encodeURIComponent(providerId)}/key`, {
+        method: 'PUT',
+        body: JSON.stringify({ key }),
+      }),
+    clearImageGenKey: (providerId) =>
+      request(`/settings/image-gen/providers/${encodeURIComponent(providerId)}/key`, {
+        method: 'DELETE',
+      }),
+    testImageGenProvider: (providerId, prompt) =>
+      request(`/settings/image-gen/providers/${encodeURIComponent(providerId)}/test`, {
+        method: 'POST',
+        body: JSON.stringify(prompt ? { prompt } : {}),
       }),
   };
 }

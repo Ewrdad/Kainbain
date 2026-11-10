@@ -68,6 +68,13 @@ export const ENDPOINTS = [
 		purpose: "Alias of /status/config (same payload).",
 		body: null,
 	},
+	{
+		method: "GET",
+		path: "/onboarding",
+		purpose:
+			"First-run onboarding summary: Runner bootstrap story, project/task counts, unadopted checkouts, and the precomputed guided checklist. The empty state and checklist UIs read this alone.",
+		body: null,
+	},
 	// ---- Projects -----------------------------------------------------------
 	{
 		method: "GET",
@@ -86,6 +93,13 @@ export const ENDPOINTS = [
 		path: "/projects",
 		purpose: "Create a project. Requires a name; stages/model optional.",
 		body: { name: "string (required)", cwd: "string", stages: "object[]" },
+	},
+	{
+		method: "GET",
+		path: "/projects/discover",
+		purpose:
+			"List git checkouts in the scan roots that are not projects yet, for first-run one-click adoption. Read-only; adoption itself stays an explicit POST /projects/register.",
+		body: null,
 	},
 	{
 		method: "PATCH",
@@ -283,6 +297,13 @@ export const ENDPOINTS = [
 	},
 	{
 		method: "GET",
+		path: "/runners/bootstrap",
+		purpose:
+			"First-run Runner bootstrap summary: registration/health counts plus the expected local Runner id hint, so the onboarding UI can distinguish 'waiting to check in' from 'none installed'.",
+		body: null,
+	},
+	{
+		method: "GET",
 		path: "/runners/monitor",
 		purpose: "Phase 2 monitor counters (progress/log ingest, stale rejections, divergences, unverifiable SHAs) plus WP-3.4 liveAssignments (runnerId, projectId, taskId, epoch per live lease) for the multi-Runner UI.",
 		body: null,
@@ -304,7 +325,7 @@ export const ENDPOINTS = [
 		method: "POST",
 		path: "/runners/:id/commands",
 		purpose:
-			"Enqueue a backend-to-Runner command delivered through the next heartbeat pull channel (`requestModelRediscovery` re-runs model discovery; `requestUpdate` triggers the idle-only self-update). 202 on accept; 400 `UNKNOWN_COMMAND` on unrecognised commands; 404 on unknown Runner. Commands only run when the Runner is free (idle-only update invariant).",
+			"Enqueue a backend-to-Runner command delivered through the next heartbeat pull channel (`requestModelRediscovery` re-runs model discovery; `requestUpdate` triggers the idle-only self-update). 202 on accept; 400 `UNKNOWN_COMMAND` on unrecognised commands; 404 on unknown Runner; 409 `COMMAND_INVALID_STATE` when the Runner is not active, 409 `COMMAND_UNSUPPORTED` when it never advertised the command (update it manually). Commands only run when the Runner is free (idle-only update invariant).",
 		body: { command: "requestModelRediscovery | requestUpdate" },
 	},
 	{
@@ -313,6 +334,27 @@ export const ENDPOINTS = [
 		purpose:
 			"Runner-only (WP-3.1/3.2/3.3): backend-routed dispatch poll — scan claimable tasks (highest stage index, then oldest; optional starvation guard past KAINBAIN_DISPATCH_MAX_WAIT_MS only when configured — default off), resolve alias stages through the shared backend-central smooth-WRR rotation (D3; attribution stamped as requirements.alias), enforce D8 concurrency caps (429 fleet-wide, PROJECT_BUSY per project), match against this Runner's capabilities, and claim-fence the winner (200 assigned + lease, or 200 unassigned with NO_CLAIMABLE_TASKS / NO_CLAIMABLE_MATCH + miss histogram). Stale Runners get 409 STALE_RUNNER. Requires the x-runner-credential header.",
 		body: { projectIds: "string[] (optional allowlist)" },
+	},
+	{
+		method: "POST",
+		path: "/runners/impromptu/poll",
+		purpose:
+			"Runner-only (ADR 0014): idle Runners poll for the oldest queued T0 read-only impromptu job they match (retrospective chat turns). 200 { assigned: true, job } or { assigned: false, code: 'NO_IMPROMPTU_WORK' }. Requires the x-runner-credential header.",
+		body: {},
+	},
+	{
+		method: "POST",
+		path: "/runners/impromptu/:jobId/progress",
+		purpose:
+			"Runner-only (ADR 0014): stream an impromptu job delta (fanned out as CHAT_PROGRESS frames). Requires the x-runner-credential header.",
+		body: { seq: "number (required)", delta: "string (required)" },
+	},
+	{
+		method: "POST",
+		path: "/runners/impromptu/:jobId/complete",
+		purpose:
+			"Runner-only (ADR 0014): settle one impromptu job (outcome completed|failed). Requires the x-runner-credential header.",
+		body: { outcome: "string (required)", output: "string (optional)", error: "string (optional)" },
 	},
 	{
 		method: "POST",
@@ -441,7 +483,7 @@ export const ENDPOINTS = [
 		method: "PATCH",
 		path: "/runners/:id/config",
 		purpose:
-			"Update one Runner's operator-owned configuration (partial object: displayName, availableTools, jobTypes, directories, projectScope). Heartbeat facts are never touched. 400 on invalid fields, 404 on unknown Runner. Dispatch enforces the tool filter, runsCi/runsMerges, and the project scope at claim time (TOOL_DISABLED / JOB_TYPE_DISABLED / PROJECT_SCOPE miss reasons); runsImpromptu is a recorded preference — live steers still ride the owning Runner's heartbeat.",
+			"Update one Runner's operator-owned configuration (partial object: displayName, availableTools, jobTypes, directories, projectScope). Heartbeat facts are never touched. 400 on invalid fields, 404 on unknown Runner. Dispatch enforces the tool filter, runsCi/runsMerges/runsImpromptu, and the project scope at claim time (TOOL_DISABLED / JOB_TYPE_DISABLED / PROJECT_SCOPE miss reasons); live steers still ride the owning Runner's heartbeat.",
 		body: {
 			displayName: "string (optional, null resets)",
 			jobTypes: "object (optional, boolean runsCi/runsMerges/runsImpromptu)",
@@ -714,6 +756,30 @@ export const ENDPOINTS = [
 	},
 	{
 		method: "GET",
+		path: "/settings/image-gen/providers",
+		purpose: "List image providers with configured/source flags (keys are never returned).",
+		body: null,
+	},
+	{
+		method: "PUT",
+		path: "/settings/image-gen/providers/:id/key",
+		purpose: "Store an image provider key (`{ key }`).",
+		body: null,
+	},
+	{
+		method: "DELETE",
+		path: "/settings/image-gen/providers/:id/key",
+		purpose: "Clear the stored image provider key.",
+		body: null,
+	},
+	{
+		method: "POST",
+		path: "/settings/image-gen/providers/:id/test",
+		purpose: "Dry-run one image generation (`{ prompt? }` \u2192 `{ ok, bytes?, ms?, error? }`).",
+		body: null,
+	},
+	{
+		method: "GET",
 		path: "/agent",
 		purpose: "Agent status for the project session.",
 		body: null,
@@ -981,6 +1047,18 @@ export const ENDPOINTS = [
 		method: "POST",
 		path: "/retrospective/chat",
 		purpose: "One stateless retrospective chat turn (`{ messages, taskIds?, harness?, model?, strictTaskIds?, turnId? }` \u2192 `{ reply, suggestions, harness, model, modelRequested, unknownTaskIds, contextTaskIds, contextTruncated, contextChars, output? }`, where `output` is the bounded (2000-char) tail of assistant text observed during the turn, also present on 502/504 bodies when anything streamed; when the client sends a `turnId`, streamed deltas are also broadcast live as `CHAT_PROGRESS` WebSocket frames (`{ turnId, tail }`, throttled) and the HTTP settle stays the done signal; input caps 50 messages / 8000 chars per message / 40000 transcript chars; 501 `unsupported_by_harness` when the harness cannot chat; 400 `chat_input_too_large` on oversized input; 404 `task_not_found` when all task ids are unknown (or any, with `strictTaskIds: true`); 502 `chat_prompt_failed` when the model errors; chat turns run with no timeout by default \u2014 they settle when the model answers or when the caller cancels (a 504 `chat_prompt_timeout` only occurs when an operator re-imposes an opt-in server ceiling via `KAINBAIN_CHAT_PROMPT_TIMEOUT_MS`, default `0` = disabled; keep `KAINBAIN_SERVER_REQUEST_TIMEOUT_MS`, default `0` = disabled, above any opt-in ceiling or long turns die with a bare 408; reverse proxies may still impose their own idle ceilings); when no `taskIds` are sent the model may use the generic task-listing path to inspect recent jobs itself (staying within current project scoping) and cites the task ids it touches; never creates tasks).",
+		body: null,
+	},
+	{
+		method: "GET",
+		path: "/accessibility/results",
+		purpose: "Serve the versioned accessibility check-results artifact the in-app statement renders from (503 `results_unavailable` when the artifact file is missing or unparseable).",
+		body: null,
+	},
+	{
+		method: "POST",
+		path: "/accessibility/feedback",
+		purpose: "Accept one accessibility report (`{ message, needGroup?, contact?, pageUrl? }` → 201 `{ received, id, inbox }`); rate-limited to 5 per client per 15 minutes; persisted to the JSONL inbox file.",
 		body: null,
 	},
 ];

@@ -25,6 +25,13 @@ Use distinct names such as `FEEDBACK.md`, `SECURITY_QUESTIONARY.md`, or
 `INTENT_SURVEY.md` when a task has multiple question stages; plain names
 without an extension gain `.md`. Path-unsafe values fall back to `SURVEY.md`.
 
+Set the file inside the `question-me` skill attachment's `config` as shown
+above. A file key placed at the stage top level (next to `skills`) is still
+read by the backend for backwards compatibility, but the agent prompt only
+reflects attachment-level config — a stage-level key can leave the agent
+writing one file while the survey page reads another, so prefer the canonical
+attachment `outputFile` and avoid stage-level keys.
+
 The suggested minimum question count is configurable as `minQuestions` (soft
 prompt guidance only; `0` disables it).
 
@@ -80,7 +87,8 @@ any answer submit that would do so.
 ```
 ```
 
-- `type` is `single` (radio group) or `multiple` (checkboxes). Every question
+- `type` is `single` (radio group), `multiple` (checkboxes), or `image`
+  (generated picture cards, single-pick — see below). Every question
   renders with a free-form **Notes** field underneath.
 - `required: true` blocks completion until answered — unless the question is
   hidden by its condition (see below).
@@ -99,6 +107,51 @@ round. Hidden questions never block completion, and answers stored for a
 now-hidden question are preserved. A condition pointing at an unknown question
 keeps the question hidden rather than showing it.
 
+## Image questions (generated design examples)
+
+A stage can ask the human to pick a favourite from up to 4 generated pictures
+(UI mocks, logos, …). The agent writes an `image` question whose `options` are
+detailed descriptions; the backend generates one picture per description when
+the task parks, and the survey page renders them as selectable image cards
+with radio semantics (pick one, plus the usual Notes field).
+
+```json
+{
+  "id": "q3",
+  "type": "image",
+  "text": "Which dashboard design should we build?",
+  "options": [
+    "Dark analytics dashboard, left sidebar navigation, teal accent charts, modern SaaS look",
+    "Light minimal dashboard, top navigation bar, large KPI cards, generous whitespace"
+  ],
+  "required": true,
+  "showIf": null
+}
+```
+
+Rules: `options` holds 1–4 descriptions (each becomes a picture, so make them
+detailed enough to render: layout, palette, key elements, style). Agents never
+write the `images` field — the backend owns it (per-picture generation
+status). Answers work like `single`: the selected description is stored in
+`answers`, and on submit the chosen picture is copied to a stable
+`assets/survey-r<round>-<qid>-chosen.<ext>` file (the extension always matches
+the stored bytes — usually `png`) and referenced from a `## Chosen designs`
+section in the survey file, so downstream stages can work from the picked
+design.
+
+Image questions are enabled per survey stage with the question-me skill's
+`imageGen` setting (`none` by default, which removes the image-question
+guidance from the agent prompt entirely; otherwise a provider id such as
+`muse`). Provider API keys live in System Settings › Images and stay on the
+server — runners and the survey page never see them (a
+`KAINBAIN_IMAGE_GEN_MUSE_API_KEY` environment variable overrides the stored
+key). Generation runs in the background at park time and costs about $0.01 per
+picture (at most 12 per survey file); pictures that cannot be made — no key
+saved, an error, or the survey limit — degrade to their written descriptions,
+so answering never blocks. Pictures still generating stay selectable by
+description, and a submit that lands before they are ready still gains its
+chosen-picture reference once they arrive.
+
 ## When there is nothing to ask
 
 An agent with genuinely no questions writes a round with `"questions": []`.
@@ -107,3 +160,26 @@ survey page offers a plain Continue. If the agent wrote no file at all, the
 task still parks so a human confirms there is nothing to ask (the survey page
 offers the same Continue / Skip path, which only works while nothing requires
 answering).
+
+## Troubleshooting: answers not saving
+
+Answers live in the task folder's configured `outputFile` (default
+`SURVEY.md`); Save parks the task, Submit advances it once every visible
+required question is answered. When a survey looks blank after answering:
+
+- **Check the failing save first.** A rejected save keeps your selections on
+  the page and shows the backend message plus a machine-readable `code`:
+  `SURVEY_INVALID` means a selected value is not one of the question's
+  options (re-open the survey to pick up the latest questions);
+  `SURVEY_NOT_FOUND` means the survey file is missing for that task;
+  `SURVEY_INCOMPLETE` means a skip was refused because required questions
+  are still open (answer them or save first).
+- **Answer wipes from later Runner stages are merged, not lost.** A Runner
+  worktree can lag behind answers you already saved; when its files land,
+  new rounds are added but your saved answers are kept. If a survey still
+  shows stale content, reload the page — the file on disk is authoritative.
+- **Custom file names must match.** The agent is told the exact resolved
+  file (aliases honored, bare names gain `.md`). If questions land in a
+  different file than the survey page reads, check the stage's
+  `question-me` config for alias keys (`surveyFile`, `file`, …) and prefer
+  the canonical `outputFile`.

@@ -313,6 +313,7 @@ export async function resolveCiBranchPlan({ stage, cwd } = {}) {
  * @param {string} taskId
  * @param {Object} stage
  * @param {Object} [opts]
+ * @param {string} [opts.runnerId] - Runner that ran the stage (recorded on the report and history entry when present, so a struggling Runner can be spotted per stage or task type later; absent for embedded runs).
  * @returns {Promise<Object>}
  ***/
 export async function finalizePassedCommandStage(
@@ -330,6 +331,7 @@ export async function finalizePassedCommandStage(
 		stderr = "",
 		reportContent = null,
 		historyAction = null,
+		runnerId = null,
 	} = {},
 ) {
 	const task = store.getTask(projectId, taskId);
@@ -368,6 +370,9 @@ export async function finalizePassedCommandStage(
 			status: "PASSED",
 			content: reportContent,
 			projectCwd: cwd,
+			...(typeof runnerId === "string" && runnerId.trim()
+				? { runnerId: runnerId.trim() }
+				: {}),
 		});
 	}
 
@@ -391,6 +396,11 @@ export async function finalizePassedCommandStage(
 	task.history.push({
 		timestamp: new Date().toISOString(),
 		action: historyAction || `${label} stage passed (exit code 0)`,
+		// Structured Runner id alongside the action prose. Blank-safe: an
+		// embedded run stays absent, never worded.
+		...(typeof runnerId === "string" && runnerId.trim()
+			? { runnerId: runnerId.trim() }
+			: {}),
 	});
 	store._saveTaskMarkdown(cwd, task);
 	store.advanceStage(projectId, taskId, stages, bridge, cwd);
@@ -981,7 +991,11 @@ export async function runCommandStage(
 					targetRow.boundaryStartSha = boundaryStart;
 					targetRow.boundaryEndSha = boundaryEnd;
 					try {
-						const stat = await getCommitRangeDiffStat(cwd, boundaryStart, boundaryEnd);
+						const stat = await getCommitRangeDiffStat(cwd, boundaryStart, boundaryEnd, {
+							docsTasksPrefix: docsTasksIgnorePath(
+								store.projectStore?.getProject?.(projectId),
+							),
+						});
 						if (stat) {
 							targetRow.additions = stat.additions;
 							targetRow.deletions = stat.deletions;

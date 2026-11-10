@@ -1,10 +1,12 @@
 import { execFile, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, touchWorkdir } from "./project.js";
+import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, reapTerminalOrphanWorkdirs, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, resolveRunnerDocsDirName, touchWorkdir } from "./project.js";
 import { RunnerGitError } from "./project.js";
 import { runHarnessStage } from "./harness.js";
+import { runImpromptuJob } from "./impromptu.js";
 import { createStructuredEventSender } from "./logEvents.js";
 import { applyUpdate as defaultApplyUpdate, checkForUpdate as defaultCheckForUpdate } from "./updates/index.js";
 import { defaultInstallRoot, markUpdateSuccess, readUpdateState } from "./updates/state.js";
@@ -14,7 +16,9 @@ import { defaultInstallRoot, markUpdateSuccess, readUpdateState } from "./update
 import { discoverClaudeModels, resolveAdvertisedModels } from "./modelDiscovery.js";
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
+import { decideAgentStageVerdict } from "../shared/stageVerdict.js";
 import { commitAndPush } from "./gitOps.js";
+import { saveRunnerCredential } from "./credentialFile.js";
 
 /***
  * MARK: RUNNER_VERSION
@@ -472,8 +476,11 @@ function factsFor({ config, harnessVersions, updateStatus = null, commandAck = n
 /***
  * MARK: joinAndHeartbeat
  * @description Shared join prologue: poll a pending join until the human
- *   approves (then exit asking for the pasted credential), load the
- *   harness, heartbeat once, and start the background heartbeat timer.
+ *   approves (collecting the handed-over credential with this boot's
+ *   join nonce and storing it, so no paste or restart is needed — the
+ *   paste instruction is now only the fallback when the handover cannot
+ *   complete), load the harness, heartbeat once, and start the
+ *   background heartbeat timer.
  * @example const { harness, stop } = await joinAndHeartbeat({ config, client, loadHarness, logger, state })
  * @param {Object} opts - Options.
  * @param {Object} opts.config - Normalized runner config.
@@ -489,28 +496,52 @@ export async function joinAndHeartbeat({ config, client, loadHarness, logger, st
 			throw new Error("No credential and no KAINBAIN_RUNNER_JOIN_TOKEN: cannot join.");
 		}
 		const deadline = Date.now() + config.approvalTimeoutMs;
+		// Per-boot join secret (one-click approval, D2): repeated on every
+		// join poll so the backend hands this boot — and only this boot —
+		// the credential after approval. Never logged.
+		const joinNonce = randomUUID();
 		// Probe before the first register so even a pending join advertises
 		// the real harness CLI versions (G5).
 		const joinVersions = {};
 		for (const id of runnerHarnessIds(config)) {
 			Object.assign(joinVersions, await probeHarnessVersions(id));
 		}
+		let collectedCredential = "";
 		for (;;) {
 			const reg = await client.register({
 				runnerId: config.runnerId,
 				joinToken: config.joinToken,
 				facts: factsFor({ config, harnessVersions: joinVersions, commandAck: stagedCommandAck(state) }),
+				joinNonce,
 			});
-			if (reg.status === "active") break;
+			if (reg.status === "active") {
+				if (typeof reg?.credential === "string" && reg.credential.trim()) {
+					collectedCredential = reg.credential.trim();
+				}
+				break;
+			}
 			if (Date.now() > deadline) {
 				throw new Error(`Join for ${config.runnerId} still ${reg.status} after timeout.`);
 			}
 			logger.log(`Join ${reg.status}; waiting for human approval in Settings › Harness › Runners…`);
 			await new Promise((r) => setTimeout(r, config.approvalPollMs));
 		}
-		throw new Error(
-			`Join for ${config.runnerId} approved. Paste the one-time credential shown in Settings › Harness › Runners into KAINBAIN_RUNNER_CREDENTIAL and restart.`,
-		);
+		if (!collectedCredential) {
+			throw new Error(
+				`Join for ${config.runnerId} approved, but this boot cannot collect its credential by itself (the join session was lost across a restart, or the backend predates one-click approval). Paste the one-time credential shown in Settings › Harness › Runners into KAINBAIN_RUNNER_CREDENTIAL and restart.`,
+			);
+		}
+		try {
+			saveRunnerCredential(config.runnerId, collectedCredential, config.home || undefined);
+			logger.log(`Join approved; credential stored for ${config.runnerId} — no paste needed.`);
+		} catch (err) {
+			// Degraded but functional: this boot runs on the in-memory
+			// credential; the operator pastes before the next restart.
+			logger.warn?.(
+				`Join approved but the credential could not be stored (${err?.message || err}); continuing with it in memory — set KAINBAIN_RUNNER_CREDENTIAL before the next restart.`,
+			);
+		}
+		config.credential = collectedCredential;
 	}
 	client.setCredential(config.credential);
 
@@ -678,6 +709,11 @@ export async function handlePendingCommands({ config, client, logger, state, pen
 						// ok:false (never throws): surface them as a failed
 						// ack so the operator sees the reason in Settings.
 						stageCommandAck(state, { command: cmd, ok: false, detail: String(upd.reason || "update check failed").slice(0, 500) });
+					} else if (upd && upd.checked === false) {
+						// Explicit update-now with auto-update off: the only
+						// force-bypassable early return in maybeSelfUpdate.
+						// Report failure, not success — nothing was checked.
+						stageCommandAck(state, { command: cmd, ok: false, detail: "auto-update is disabled on this Runner" });
 					} else if (upd?.applied) {
 						const ack = { command: cmd, ok: true, detail: `updated to ${upd.update?.version}` };
 						stageCommandAck(state, ack);
@@ -942,15 +978,18 @@ export function sanitizeCiEnv(value) {
 		return {};
 	}
 }
-export function collectTaskFiles({ workdir, taskId } = {}) {
-	const dir = `${workdir}/docs/tasks/${taskId}`;
+export function collectTaskFiles({ workdir, taskId, docsDirName = null, project = null } = {}) {
+	const resolved = resolveRunnerDocsDirName(
+		docsDirName ?? (typeof project === "object" && project !== null ? project : null),
+	);
+	const dir = path.join(workdir, resolved, "tasks", taskId);
 	const files = [];
 	let total = 0;
 	try {
 		for (const name of fs.readdirSync(dir)) {
 			if (name === "task.md") continue;
 			try {
-				const content = fs.readFileSync(`${dir}/${name}`, "utf8");
+				const content = fs.readFileSync(path.join(dir, name), "utf8");
 				const bytes = Buffer.byteLength(content, "utf8");
 				if (bytes > 256 * 1024 || total + bytes > 1024 * 1024) continue;
 				files.push({ name, content });
@@ -1038,6 +1077,10 @@ async function executeAssignment({
 		// Hoisted so the failure path below can flush the trailing
 		// structured batch before reporting the stage as failed.
 		let structuredSender = null;
+		// Latched by the verdict watcher in the runHarnessStage onEvent
+		// callback below when the agent calls the fail_stage tool (mirrors
+		// the embedded path's stageFailureRequested in api/agentRunner.js).
+		let failStageRequest = null;
 		try {
 			await client.progress({
 				taskId: taskId,
@@ -1059,7 +1102,7 @@ async function executeAssignment({
 			// live task folder outside the task branch — mirror them into
 			// the worktree so the harness actually sees them.
 			try {
-				const synced = await syncTaskDocs({ primaryCwd: project.cwd || null, workdir, taskId });
+				const synced = await syncTaskDocs({ primaryCwd: project.cwd || null, workdir, taskId, docsDirName: project?.docsDirName });
 				if (synced > 0) logger.log(`Synced ${synced} task-doc file(s) into worktree.`);
 			} catch (err) {
 				logger.log(`Task-doc sync skipped: ${err?.message || err}`);
@@ -1141,7 +1184,7 @@ async function executeAssignment({
 						taskId, projectId, executionId, epoch, sha: null, branch,
 						outcome: "failed",
 						failureReason: `CI stage branch setup failed: ${err?.message || err}`,
-						taskFiles: collectTaskFiles({ workdir, taskId }), output: "",
+						taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: "",
 						posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
 						model: servedModel,
 						durationMs: Date.now() - runStartedAt,
@@ -1166,9 +1209,9 @@ async function executeAssignment({
 						const failureReason = ci.timedOut
 							? `CI command timed out after ${ci.timeoutMs}ms`
 							: `CI command failed with exit code ${ci.exitCode}`;
-						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
+						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 					}
-					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", taskFiles: collectTaskFiles({ workdir, taskId }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
+					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 				} finally {
 					if (ciCleanup) await ciCleanup();
 				}
@@ -1217,6 +1260,24 @@ async function executeAssignment({
 					});
 				},
 				onEvent: (event) => {
+					// Verdict watcher, FIRST: an explicit fail_stage call fails
+					// the stage even when the final text says PASS, exactly as
+					// the embedded path latches stageFailureRequested. This
+					// runs before the log transport below on purpose — the
+					// latch is the safety-critical side (a missed latch
+					// wrongly passes the stage), while a dropped log event
+					// only degrades the transcript (the text tap still
+					// carries the coarse view). runHarnessStage already
+					// guards this callback, so neither half can break the run.
+					if (event?.type === "tool_started") {
+						const toolName = event.toolName || event.name || "tool";
+						if (toolName === "fail_stage" || toolName === "Fail_stage_skill") {
+							const args = event.args || event.arguments || {};
+							failStageRequest = {
+								reason: args.reason || args.message || "Stage failure reported by agent review",
+							};
+						}
+					}
 					structuredSender.queueEvent(event);
 				},
 				onSession: (session) => {
@@ -1251,6 +1312,44 @@ async function executeAssignment({
 			if (output) {
 				await sendLogs(`stage output: ${String(output).slice(0, 4000)}`);
 			}
+			// Agent-failure detection (shared verdict contract — the same
+			// decision the embedded path makes): a latched fail_stage tool
+			// call, or a well-formed FAIL block with reason AND fix guidance,
+			// reports failed/rejected so the backend routes through
+			// routeStageError (failback per stage config) instead of
+			// advancing. A reasonless FAIL still passes open with a warning.
+			// Position is the primary agent-only guard: `integrate` returns
+			// early above and `ci` takes the CI branch, so only agent work
+			// reaches this check. The synthesized stage is belt-and-braces —
+			// TRAP: normalizeStageType("integrate") falls through to
+			// "agent", so the guard would misfire if `integrate` ever
+			// reached here; it cannot due to that early return.
+			const verdictDecision = decideAgentStageVerdict({
+				stage: { type: kind || "agent" },
+				output: String(output || ""),
+				failStageRequest,
+			});
+			if (verdictDecision.failed) {
+				return await client.complete({
+					taskId: taskId,
+					projectId: projectId,
+					executionId,
+					epoch,
+					sha,
+					branch,
+					posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
+					model: servedModel,
+					outcome: "failed",
+					failureKind: "rejected",
+					failureReason: verdictDecision.failureReason,
+					taskFiles: collectTaskFiles({ workdir, taskId }),
+					output: String(output || "").slice(0, 20000),
+					durationMs: Date.now() - runStartedAt,
+				});
+			}
+			if (verdictDecision.failOpenWarning) {
+				logger.warn(verdictDecision.failOpenWarning);
+			}
 			return await client.complete({
 				taskId: taskId,
 				projectId: projectId,
@@ -1261,7 +1360,7 @@ async function executeAssignment({
 				posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
 				model: servedModel,
 				outcome: "passed",
-				taskFiles: collectTaskFiles({ workdir, taskId }),
+				taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }),
 				output: String(output || "").slice(0, 20000),
 				durationMs: Date.now() - runStartedAt,
 			});
@@ -1294,6 +1393,32 @@ async function executeAssignment({
 					await structuredSender?.close();
 				} catch {
 					// Flushing is best-effort: the failure report matters more.
+				}
+				// A latched fail_stage decision wins over the harness exception,
+				// exactly as the embedded path prefers stageFailureRequested
+				// over promptException (api/agentRunner.js): the agent actively
+				// decided the stage should fail, so this is review feedback
+				// ("rejected", failback routing), not an infrastructure blip.
+				if (failStageRequest) {
+					const latchedDecision = decideAgentStageVerdict({
+						stage: { type: kind || "agent" },
+						output: "",
+						failStageRequest,
+					});
+					if (latchedDecision.failed) {
+						return await client.complete({
+							taskId: taskId,
+							projectId: projectId,
+							executionId,
+							epoch,
+							outcome: "failed",
+							failureKind: "rejected",
+							failureReason: latchedDecision.failureReason,
+							posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
+							model: servedModel,
+							durationMs: Date.now() - runStartedAt,
+						});
+					}
 				}
 				return await client.complete({
 					taskId: taskId,
@@ -1461,7 +1586,7 @@ async function executeIntegrationAssignment({
 				}).catch(() => {});
 				state.session = null; stopRenewal(); clearInterval(integrationTimer);
 				await finishProgress();
-				return await failTask(detail, { taskFiles: collectTaskFiles({ workdir, taskId }) });
+				return await failTask(detail, { taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }) });
 			}
 			const mergeSha = (await runGit(workdir, ["rev-parse", "HEAD"])).stdout.trim();
 			try {
@@ -1758,6 +1883,27 @@ export async function runDispatchLoop({
 	const pollMs = config.dispatchPollMs ?? 5000;
 	let assignments = 0;
 	let polls = 0;
+	// Terminal-task workdir sweep: the per-assignment reap only covers the
+	// task this Runner just ran, so workdirs of tasks finished by another
+	// Runner (or across a restart) lingered until the 30-min staleness
+	// window and refilled WORKTREE_CAP — wedging every new claim into a
+	// WORKTREE_CAP_REACHED interrupt loop. Sweep at startup and then about
+	// once a minute (12 polls at the default 5s). Best-effort: never throws,
+	// and a backend outage reaps nothing.
+	const sweepEveryPolls = 12;
+	const sweepTerminalWorkdirs = async (why) => {
+		try {
+			const reaped = await reapTerminalOrphanWorkdirs({ client, workRoot: config.workRoot });
+			if (reaped.length) {
+				logger.log(
+					`Workdir sweep (${why}): reaped ${reaped.length} terminal workdir(s): ${reaped.map((d) => path.basename(d)).join(", ")}`,
+				);
+			}
+		} catch (err) {
+			logger.warn?.(`Workdir sweep (${why}) failed: ${err?.message || err}`);
+		}
+	};
+	await sweepTerminalWorkdirs("startup");
 	try {
 		for (let idle = 0; ;) {
 			let answer;
@@ -1809,6 +1955,7 @@ export async function runDispatchLoop({
 				}
 			}
 			polls += 1;
+			if (polls % sweepEveryPolls === 0) await sweepTerminalWorkdirs("periodic");
 			if (!answer.assigned) {
 				// A busy integration slot is work waiting, not idleness:
 				// back off WITHOUT consuming idle budget, like fleet
@@ -1817,6 +1964,31 @@ export async function runDispatchLoop({
 					logger.log(`Dispatch: integration slot busy; backing off.`);
 					await new Promise((r) => setTimeout(r, pollMs));
 					continue;
+				}
+				// Impromptu T0 jobs (ADR 0014): idle iterations also poll for read-only chat turns when enabled. Task dispatch keeps priority — this only runs when dispatch had no work.
+				if (config.impromptu !== false) {
+					let imp = null;
+					try {
+						imp = await client.impromptuPoll();
+					} catch (err) {
+						if (err?.statusCode !== 409) logger.warn(`Impromptu poll failed: ${err?.message || err}`);
+					}
+					if (imp?.assigned && imp.job) {
+						let result = null;
+						try {
+							result = await runImpromptuJob({ config, client, logger, harnesses, job: imp.job });
+						} catch (err) {
+							// Transport failure mid-job (a job's own model/session
+							// failures are already reported as failed completions
+							// and return an outcome, never throw).
+							logger.warn(`Impromptu job ${imp.job?.jobId} transport failed: ${err?.message || err}`);
+						}
+						if (result?.outcome === "failed") {
+							logger.warn(`Impromptu job ${imp.job?.jobId} failed; continuing with dispatch.`);
+						}
+						idle = 0;
+						continue;
+					}
 				}
 				idle += 1;
 				// idleLimit 0 means a persistent service loop: never idle out.

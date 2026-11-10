@@ -15,6 +15,7 @@ import { curateRunnerPrompt } from "./curateRunnerPrompt.js";
 import { materializeRunnerTaskDocs } from "./execution/materializeRunnerTaskDocs.js";
 import { buildCommandKeywordContext, expandStageCommand } from "./commandStages.js";
 import { resolveStagesForTask } from "./stageResolution.js";
+import { buildRunnerAssignmentSummary } from "./runnerAssignmentSummary.js";
 import { emitStageLifecycle } from "./stageLifecycle.js";
 import {
 	resolveStageLabel,
@@ -24,6 +25,7 @@ import {
 import { redactSecretsText } from "../../shared/redactSecrets.js";
 import { buildBelowMinimumRefusal } from "./runnerVersionCompat.js";
 import { servingModelFor } from "./runnerPosture.js";
+import { resolveRunnerBootstrap } from "./runnerBootstrap.js";
 import {
 	buildTimelineAttribution,
 	stampArrivalRowAttribution,
@@ -60,15 +62,17 @@ export const resolveCiTimeoutMs = (resolved, project) => {
  *   was ACTUALLY matched, never a fallback. The requirement's harness/
  *   model name the run (model normalized through `servingModelFor`, so the
  *   "default" sentinel and non-LLM kinds never stamp); a resolved alias
- *   rides along with its name and target index. CI/merge requirements carry
- *   no harness/model, so nothing is stamped and their rows stay blank — a
- *   scripted stage must never show a model. Best-effort: a stamping failure
- *   never blocks the claim.
- * @example stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req: { harness: 'pi', model: 'm', kind: 'agent' } })
- * @param {Object} args - `{ taskStore, project, task, stage, stages, req }`.
+ *   rides along with its name and target index. The dispatching Runner's
+ *   `runnerId` rides along too, so a struggling Runner can be spotted per
+ *   stage or task type later — CI/merge requirements carry no
+ *   harness/model, but a Runner-run CI/merge row still stamps the Runner
+ *   itself (never a model: a scripted stage must never show one).
+ *   Best-effort: a stamping failure never blocks the claim.
+ * @example stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req: { harness: 'pi', model: 'm', kind: 'agent' }, runnerId: 'runner-alpha' })
+ * @param {Object} args - `{ taskStore, project, task, stage, stages, req, runnerId }`.
  * @returns {Object|null} The stamped attribution, or null when nothing ran behind the dispatch.
  ***/
-export function stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req }) {
+export function stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req, runnerId = null }) {
 	try {
 		if (!task || !req) return null;
 		const resolvedAlias =
@@ -80,6 +84,7 @@ export function stampDispatchRunAttribution({ taskStore, project, task, stage, s
 			modelRef: servingModelFor({ kind: req.kind, model: req.model }),
 			aliasName: resolvedAlias ? resolvedAlias.name : null,
 			targetIndex: resolvedAlias ? resolvedAlias.targetIndex : null,
+			runnerId,
 		});
 		if (!attribution) return null;
 		task.currentRunAttribution = {
@@ -184,6 +189,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		runnerRegistry,
 		claimStore,
 		steerStore,
+		impromptuStore,
 		executionLedger,
 		integrationQueue,
 		taskStore,
@@ -269,6 +275,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				runnerId: request.body?.runnerId,
 				joinToken: request.body?.joinToken,
 				facts: request.body?.facts || {},
+				joinNonce: request.body?.joinNonce,
 			});
 			return reply.status(result.status === "pending" ? 202 : 200).send(result);
 		} catch (err) {
@@ -325,6 +332,15 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 
 	app.get("/runners", async () => {
 		return runnerRegistry.list();
+	});
+
+	app.get("/runners/bootstrap", async () => {
+		// First-run onboarding read: the fleet's bootstrap story (counts +
+		// the one honest next action) without changing the list shape above.
+		return resolveRunnerBootstrap(runnerRegistry.list(), {
+			staleAfterMs: runnerRegistry.staleAfterMs,
+			expectedRunnerId: config.expectedRunnerId || null,
+		});
 	});
 
 	app.post("/runners/:id/approve", async (request, reply) => {
@@ -474,12 +490,20 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 
 	app.get("/runners/monitor", async () => {
 		// Multi-Runner UI (WP-3.4): who runs what right now, so
-		// Settings › Runners can show live assignments.
+		// Settings › Runners can show live assignments. This endpoint is
+		// intentionally project-agnostic (Runners are global): it always
+		// returns every live hold, and each assignment carries cross-pipeline
+		// identity (`projectName`, `taskTitle`, `stageName`, ...) resolved
+		// from the held task's own project/workflow — so the UI renders the
+		// real job even when the operator views another pipeline. Full task
+		// hydration (log entries, reports) stays on
+		// `GET /tasks/:id?projectId=...`, which already accepts `projectId`.
 		// `scheduler` exposes the cutover deferral counters so a task
 		// sitting in_stage is diagnosable: a climbing `deferredDispatch`
 		// with no Runner pickup means the fleet is empty or mismatched.
 		const liveAssignments = claimStore.liveHolds().map((hold) => {
 			const record = runnerRegistry.records().find((r) => r.runnerId === hold.runnerId) || null;
+			const stageId = executionLedger.stageFor(hold.executionId);
 			return {
 				runnerId: hold.runnerId,
 				projectId: hold.projectId,
@@ -487,10 +511,14 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				executionId: hold.executionId,
 				epoch: hold.epoch,
 				startedAt: hold.startedAt ?? null,
-				stageId: executionLedger.stageFor(hold.executionId),
+				stageId,
 				prompt: executionLedger.promptFor(hold.executionId),
 				serving: executionLedger.servingFor(hold.executionId),
 				lastSeenAt: record?.lastSeenAt ?? null,
+				// Global identity (additive; older UI ignores unknown keys):
+				// resolved from the held task's own project/workflow, never
+				// from whatever pipeline the viewer has selected.
+				...buildRunnerAssignmentSummary({ hold, projectStore, taskStore, stageId }),
 			};
 		});
 		const sched = taskStore.schedulerStats || {};
@@ -506,7 +534,13 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// via GET /runners/integration; global lease counters here) so a
 		// stuck merge queue is visible before tasks pile up behind it.
 		const integration = integrationQueue ? integrationQueue.snapshot() : {};
-		return { ...executionLedger.snapshot(), liveAssignments, scheduler, integration };
+		// Impromptu T0 channel (ADR 0014, O1): queue counters only, never
+		// task-like rows — the channel stays observable without pretending
+		// its jobs are tasks.
+		const impromptu = impromptuStore
+			? impromptuStore.snapshot()
+			: { queued: 0, claimed: 0, completed: 0, failed: 0 };
+		return { ...executionLedger.snapshot(), liveAssignments, scheduler, integration, impromptu };
 	});
 
 	app.get("/runners/models/catalogue", async () => {
@@ -730,11 +764,21 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			// Runner-authored task files (plan/survey) land in the backend
 			// task folder BEFORE the finish advances the task, so a following
 			// backend-run CI stage reading {{taskDocs}} can see them.
-			materializeRunnerTaskDocs({
+			const { merged: mergedSurveyFiles } = materializeRunnerTaskDocs({
 				project: projectStore.getProject(ctx.projectId),
 				taskId: request.params.id,
 				files: request.body?.taskFiles,
 			});
+			// A merged survey means a stale Runner shipment met already-saved
+			// answers and the backend answers were kept: one log line so
+			// operators can see the wipe guard working. Optional chaining
+			// keeps route fakes without a logger working.
+			if (mergedSurveyFiles.length > 0) {
+				request.log?.info?.(
+					{ taskId: request.params.id, files: mergedSurveyFiles },
+					"Runner task files merged into backend survey (answers kept)",
+				);
+			}
 			const harnessId =
 				runner.facts?.harnesses?.[0]?.id || request.body?.harnessId || "unknown";
 			// Runner-run integration: the merge already landed via the
@@ -889,7 +933,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			const stages = resolveStagesForTask(project, task);
 			const stage =
 				stages.find((s) => String(s?.id) === String(task.currentStageId)) || stages[0] || null;
-			stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req });
+			stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req, runnerId: runner.runnerId });
 			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...await ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project, task, stageId: task.currentStageId }) };
 		} catch (err) {
 			return sendStoreError(reply, err);
@@ -1146,7 +1190,13 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				} catch (err) {
 					claimStore.invalidate(cand.taskId);
 					if (err?.code === "INTEGRATION_BUSY") {
-						return { assigned: false, code: "INTEGRATION_BUSY" };
+						// A busy merge must not starve the fleet: the merge
+						// request stays queued for its holder while dispatch
+						// tries the next candidate. The miss is recorded so
+						// a poll whose ONLY work is a busy merge still backs
+						// off below.
+						misses.INTEGRATION_BUSY = (misses.INTEGRATION_BUSY || 0) + 1;
+						continue;
 					}
 					return sendStoreError(reply, err);
 				}
@@ -1155,6 +1205,20 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					misses.INTEGRATION_EMPTY = (misses.INTEGRATION_EMPTY || 0) + 1;
 					continue;
 				}
+				// Stamp the matched Runner onto the task so the merge stage's
+				// timeline/reports and terminal row attribute THIS run (mirrors
+				// the agent dispatch path). A Runner-run merge carries no
+				// harness/model, but the Runner itself is their attribution.
+				const mergeProject = projectStore.getProject(cand.projectId);
+				stampDispatchRunAttribution({
+					taskStore,
+					project: mergeProject,
+					task: cand.task,
+					stage: cand.stage,
+					stages: resolveStagesForTask(mergeProject, cand.task),
+					req,
+					runnerId: runner.runnerId,
+				});
 				return {
 					assigned: true,
 					projectId: cand.projectId,
@@ -1193,6 +1257,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					stage: cand.stage,
 					stages: resolveStagesForTask(candProject, cand.task),
 					req,
+					runnerId: runner.runnerId,
 				});
 				return {
 					assigned: true,
@@ -1210,6 +1275,12 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				if (err?.code === "CLAIM_CONFLICT") continue;
 				return sendStoreError(reply, err);
 			}
+		}
+		// A poll whose only matchable work is a busy merge keeps the
+		// backoff signal (no idle budget burned) instead of degrading to
+		// a capability miss.
+		if (misses.INTEGRATION_BUSY && Object.keys(misses).length === 1) {
+			return { assigned: false, code: "INTEGRATION_BUSY" };
 		}
 		return { assigned: false, code: "NO_CAPABLE_MATCH", misses };
 	});

@@ -6,6 +6,7 @@ import { resolveDisplayedStage } from '../tasks/runningTask';
 import { resolveActiveTaskDisplay, resolveUniversalNowPlaying } from './activeTaskVisibility';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { BuildHashTrigger } from './BuildHashTrigger';
+import { QueuePopupModal } from './QueuePopupModal';
 import { api } from '../../services/api';
 
 /***
@@ -19,7 +20,8 @@ import { api } from '../../services/api';
  * There is no global transport cluster: the Runner boxes own play/pause
  * (pause parks a Runner, resume re-arms it) and skip (advances that
  * Runner's held task one stage). The right rail shows honest, live data:
- * the open-task count across all pipelines (queue depth) only.
+ * the waiting-task count across all pipelines (queue depth) only — tasks
+ * waiting to be picked up, never tasks already running, blocked, or parked.
  *
  * Universal contract: the engine owns a single queue fed by every pipeline,
  * so this bar never follows the selected pipeline. The named task and badge
@@ -366,21 +368,26 @@ export function NowPlayingBar() {
     '';
 
   // Universal queue semantics (#28): the single engine queue spans every
-  // pipeline, so depth counts all open tasks across ALL projects via the
-  // engine snapshot's openQueueDepth (the loaded list is only the active
-  // project's slice).
+  // pipeline, so depth counts tasks WAITING to be picked up across ALL
+  // projects via the engine snapshot's openQueueDepth (the loaded list is
+  // only the active project's slice). Running, blocked, paused, failed,
+  // cancelled, and waiting-human tasks never count.
   /***
    * MARK: queueDepth
-   * @description Live count of open tasks (not completed/done) across all
+   * @description Live count of tasks waiting to be picked up across all
    *   pipelines — the honest replacement for the removed workflow-pointer
    *   stage label in the right rail. Resolved from the engine snapshot's
    *   openQueueDepth (global, all projects), falling back to the loaded
-   *   list only when the snapshot carries no count, so project switches
-   *   never move it.
+   *   list's waiting set only when the snapshot carries no count, so
+   *   project switches never move it. Clicking the chip opens the
+   *   dispatch-order popup (`QueuePopupModal`), which lists exactly the
+   *   same waiting set; a count-vs-list difference only means one view is
+   *   stale and settles on refresh.
    * @example queueDepth // => 3
    * @returns {number}
    ***/
   const queueDepth = universal.queueDepth;
+  const [queuePopupOpen, setQueuePopupOpen] = useState(false);
 
   return (
     <footer className="fixed bottom-0 left-0 w-full h-[72px] z-50 bg-surface-container-highest border-t border-border-standard shadow-lg flex items-center justify-between px-3 sm:px-6 md:px-8 pb-[env(safe-area-inset-bottom,0px)]">
@@ -599,6 +606,9 @@ export function NowPlayingBar() {
           greyed-out build-hash trigger (left of the queue, always visible so
           the changelog is one click away on phones too) plus the live
           queue-depth chip (sm and up; phones keep the runner boxes uncrowded).
+          Popup entry is sm+ only by decision: no phone chip, because a phone
+          entry point would crowd the runner boxes and disturb the rail
+          geometry the canary overlap gate pins at 640px and up.
           Overflow-hidden stays as cheap insurance (tooltips are
           portal-rendered to document.body, so they are not clipped). A canary
           e2e gate checks button-vs-rail rect intersections at
@@ -611,37 +621,46 @@ export function NowPlayingBar() {
             baked changelog dialog. Hidden when no build is baked. */}
         <BuildHashTrigger />
         {/* Live queue-depth chip: universal queue depth across all pipelines.
-            role="status" (aria-live polite) so screen readers hear the count
-            change as tasks advance. No text animation — WCAG 1.4.3 contract. */}
+            The button carries the single accessible name; the nested
+            role="status" live region (aria-live polite, no aria-label) lets
+            screen readers hear the count change as tasks advance without a
+            duplicate name. No text animation — WCAG 1.4.3 contract. */}
         <div className="hidden sm:flex items-center">
           <InfoTooltip
             title="Execution Queue"
-            description="Live count of open tasks (not yet completed) across all pipelines."
-            behindTheScenes="Derived from the universal task list across all pipelines on every render — unlike the removed workflow-pointer stage label, which only changed on load or manual skip."
+            description="Live count of tasks waiting to be picked up across all pipelines — tasks already running, blocked, paused, or parked are not counted. Click to view the queue in dispatch order."
+            behindTheScenes="Derived from the engine snapshot's waiting-task count across all pipelines on every render (the loaded list's waiting set is the fallback) — unlike the removed workflow-pointer stage label, which only changed on load or manual skip. Click opens a popup listing exactly that same waiting set in dispatch order."
             position="top-left"
           >
-            <div
-              role="status"
+            <button
+              type="button"
+              onClick={() => setQueuePopupOpen(true)}
               aria-label={`Execution queue: ${queueDepth} open ${
                 queueDepth === 1 ? 'task' : 'tasks'
               } across all pipelines`}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-surface-container/90 border border-border-standard/80 cursor-help select-none"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-surface-container/90 border border-border-standard/80 cursor-pointer select-none focus:outline-none focus:ring-1 focus:ring-primary"
+              data-testid="queue-chip-button"
             >
-              <span
-                className="material-symbols-outlined text-[14px] text-secondary"
-                aria-hidden="true"
-              >
-                format_list_numbered
+              <span role="status" aria-live="polite" className="contents">
+                <span
+                  className="material-symbols-outlined text-[14px] text-secondary"
+                  aria-hidden="true"
+                >
+                  format_list_numbered
+                </span>
+                <span className="font-label-caps text-[9px] text-on-surface-variant hidden lg:inline">
+                  Queue
+                </span>
+                <span className="tabular-nums text-[12px] font-semibold text-on-surface">
+                  {queueDepth}
+                </span>
               </span>
-              <span className="font-label-caps text-[9px] text-on-surface-variant hidden lg:inline">
-                Queue
-              </span>
-              <span className="tabular-nums text-[12px] font-semibold text-on-surface">
-                {queueDepth}
-              </span>
-            </div>
+            </button>
           </InfoTooltip>
         </div>
+        {queuePopupOpen && (
+          <QueuePopupModal counted={queueDepth} onClose={() => setQueuePopupOpen(false)} />
+        )}
       </div>
     </footer>
   );

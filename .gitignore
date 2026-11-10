@@ -72,3 +72,5 @@ frontend/.env
 # Any future per-task/session artefact dropped at repo root or in scratch:
 scratch/sessions/
 *.session.jsonl
+# Session transcripts dropped at repo root (e.g. 2026-...Z_<id>.jsonl): never commit (leak guard).
+/*.jsonl

@@ -22,6 +22,8 @@
  ***/
 
 import path from "node:path";
+import { QUESTION_ME_SKILL_NAME, resolveQuestionMeOutputFile } from "../../shared/survey.js";
+import { renderSkillConditionals } from "../../shared/skillConditionals.js";
 import { normalizeSkillMode, skillPathForName } from "./skillsRegistry.js";
 
 /***
@@ -29,19 +31,27 @@ import { normalizeSkillMode, skillPathForName } from "./skillsRegistry.js";
  * @description Builds the layered keyword map for one skill:
  *   stage.skills[i].config[key] > KB_config.keywords[key].value. Values keep raw
  *   `{{...}}` templates at this point (built-ins are resolved lazily at substitution
- *   time so precedence stays consistent).
+ *   time so precedence stays consistent). For the question-me skill the
+ *   `outputFile` entry is always the backend-resolved file name (same alias
+ *   precedence and normalization the survey reader uses), so the agent is told
+ *   to write exactly the file the survey page reads — never a default the
+ *   backend ignores or a bare name the backend extends.
  * @example resolveSkillKeywordMap({ keywords: { a: '1' } }, { a: '2' }) => { a: '2' }
+ * @example resolveSkillKeywordMap({ outputFile: 'SURVEY.md' }, { file: 'F.md' }, 'question-me').outputFile => 'F.md'
  * @param {Object} [skillKeywords] - KB_config keywords (raw values).
  * @param {Object} [stageConfig] - Per-stage overrides from stage.skills[i].config.
+ * @param {string|null} [skillName] - Skill name; enables the question-me output-file rule.
  * @returns {Object} Plain map of raw keyword values.
  ***/
-export function resolveSkillKeywordMap(skillKeywords = {}, stageConfig = {}) {
+export function resolveSkillKeywordMap(skillKeywords = {}, stageConfig = {}, skillName = null) {
 	const map = {};
-	const sources = [
-		skillKeywords && typeof skillKeywords === "object" ? skillKeywords : {},
+	const config =
 		stageConfig && typeof stageConfig === "object" && !Array.isArray(stageConfig)
 			? stageConfig
-			: {},
+			: {};
+	const sources = [
+		skillKeywords && typeof skillKeywords === "object" ? skillKeywords : {},
+		config,
 	];
 	/* eslint-disable security/detect-object-injection -- keys come from Object.entries of validated plain objects */
 	for (const source of sources) {
@@ -59,14 +69,22 @@ export function resolveSkillKeywordMap(skillKeywords = {}, stageConfig = {}) {
 		}
 	}
 	/* eslint-enable security/detect-object-injection */
+	if (typeof skillName === "string" && skillName.trim().toLowerCase() === QUESTION_ME_SKILL_NAME) {
+		// The backend reads the stage-resolved file (aliases honored, unsafe
+		// names failed safe, bare names extended): resolve the same value so
+		// generation and reading can never name different files.
+		map.outputFile = resolveQuestionMeOutputFile({ skills: [{ name: skillName, config }] });
+	}
 	return map;
 }
 
 /***
  * MARK: applySkillKeywords
- * @description Applies the layered keyword map to skill text. Custom keys are
- *   substituted first (so they win over built-ins), then the built-in interpolation
- *   runs for the rest, leaving unknown `{{...}}` patterns untouched.
+ * @description Applies the layered keyword map to skill text. `{{#if key}}`
+ *   conditional blocks resolve first (falsy sections are dropped whole), then
+ *   custom keys are substituted (so they win over built-ins), then the
+ *   built-in interpolation runs for the rest, leaving unknown `{{...}}`
+ *   patterns untouched.
  * @example applySkillKeywords('Target: {{targetStage}} for {{project}}', { targetStage: 'Intake' }, ctx)
  * @param {string} text
  * @param {Object} keywordMap - Raw custom keyword values (may themselves contain {{built-ins}}).
@@ -79,6 +97,11 @@ export function applySkillKeywords(
 	interpolationContext = {},
 ) {
 	if (typeof text !== "string" || text === "") return "";
+	// Conditional sections resolve first so a falsy block (and any
+	// placeholders inside it) never reaches substitution. Texts without a
+	// conditional opener pass through byte-identical (see skillConditionals).
+	text = renderSkillConditionals(text, keywordMap);
+	if (text === "") return "";
 	const keys = Object.keys(keywordMap);
 	let result = text;
 	if (keys.length > 0) {
@@ -172,6 +195,7 @@ export function buildDirectSkillBlock({
 	const keywordMap = resolveSkillKeywordMap(
 		skill.keywords,
 		stageSkill?.config || {},
+		skill?.name,
 	);
 	const contextText =
 		skill.config && typeof skill.config.context === "string"

@@ -628,6 +628,44 @@ describe("RunnerRegistry backend-to-Runner commands", () => {
 		}
 	});
 
+	test("refuses commands the Runner never advertised (409 COMMAND_UNSUPPORTED)", () => {
+		// An active Runner on a pre-command daemon: queueing anyway would
+		// expire silently 24h later, so fail fast with the manual-update
+		// guidance instead.
+		const runners = registry();
+		runners.register({ runnerId: "r1", joinToken: "join-secret", facts: FACTS });
+		runners.approve("r1");
+		try {
+			runners.enqueueCommand("r1", "requestUpdate");
+			expect.unreachable();
+		} catch (err) {
+			expect(err.statusCode).toBe(409);
+			expect(err.code).toBe("COMMAND_UNSUPPORTED");
+			expect(err.message).toContain("update the Runner manually");
+		}
+		expect(runners.peekCommands("r1")).toEqual([]);
+		expect(runners.getConfig("r1").commands.pending).toEqual([]);
+	});
+
+	test("refuses one command while the Runner supports only the other", () => {
+		const runners = registry();
+		runners.register({
+			runnerId: "r1",
+			joinToken: "join-secret",
+			facts: { ...FACTS, commands: ["requestModelRediscovery"] },
+		});
+		runners.approve("r1");
+		expect(runners.enqueueCommand("r1", "requestModelRediscovery").status).toBe("queued");
+		try {
+			runners.enqueueCommand("r1", "requestUpdate");
+			expect.unreachable();
+		} catch (err) {
+			expect(err.statusCode).toBe(409);
+			expect(err.code).toBe("COMMAND_UNSUPPORTED");
+		}
+		expect(runners.peekCommands("r1")).toEqual(["requestModelRediscovery"]);
+	});
+
 	test("refuses commands for unknown Runners (404 UNKNOWN_RUNNER)", () => {
 		const { runners } = approvedWithCommands();
 		try {

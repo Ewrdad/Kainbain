@@ -10,6 +10,10 @@ import { TabNavigator } from './TabNavigator';
 import { ProjectMenu } from './ProjectMenu';
 import { MonitorPopoutButton } from './MonitorPopoutButton';
 import { MOBILE_TOOLBAR_COLLAPSE_EVENT } from '../workflow/hooks/useMobileToolbarCollapse';
+import {
+  OPEN_ADOPT_PROJECT_EVENT,
+  OPEN_CREATE_PROJECT_EVENT,
+} from '../onboarding/onboardingEvents';
 import { requestCompactMonitorView } from '../observability/monitorCompact';
 import { openSystemSettings } from '../settings/openSystemSettings';
 import { getRepoHostFileUrl } from '../../services/repoHost';
@@ -63,6 +67,17 @@ export function getSystemMenuItems({
         close();
         requestCompactMonitorView();
         setView?.('observability');
+      },
+    },
+    {
+      key: 'accessibility',
+      icon: '♿',
+      label: 'Accessibility',
+      desc: 'Our accessibility statement — and report a problem',
+      shortcut: 'A',
+      onClick: () => {
+        close();
+        setView?.('accessibility');
       },
     },
     {
@@ -189,8 +204,8 @@ function SystemMenu() {
     <div className="relative" ref={menuRef}>
       <InfoTooltip
         title="System Menu"
-        description="Guide, docs, compact monitor, UI customization, system settings, and keyboard shortcuts in one place."
-        shortcut="G • D • C • S • ?"
+        description="Guide, docs, compact monitor, accessibility statement, UI customization, system settings, and keyboard shortcuts in one place."
+        shortcut="G • D • C • S • A • ?"
         position="bottom-left"
       >
         <button
@@ -290,6 +305,8 @@ export function Header() {
   const projectTriggerRef = useRef(null);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjName, setNewProjName] = useState('');
+  const [newProjGitUrl, setNewProjGitUrl] = useState('');
+  const [createError, setCreateError] = useState('');
   const [isRegisteringProject, setIsRegisteringProject] = useState(false);
   const [adoptPath, setAdoptPath] = useState('');
   const [adoptName, setAdoptName] = useState('');
@@ -326,6 +343,19 @@ export function Header() {
   }, []);
   const handleHeaderFocusExpand = () => setIsToolbarCollapsed(false);
 
+  // Onboarding empty state (canvas tree) opens these dialogs by event —
+  // the dialog state lives here, outside the canvas tree.
+  useEffect(() => {
+    const openCreate = () => setIsCreatingProject(true);
+    const openAdopt = () => setIsRegisteringProject(true);
+    window.addEventListener(OPEN_CREATE_PROJECT_EVENT, openCreate);
+    window.addEventListener(OPEN_ADOPT_PROJECT_EVENT, openAdopt);
+    return () => {
+      window.removeEventListener(OPEN_CREATE_PROJECT_EVENT, openCreate);
+      window.removeEventListener(OPEN_ADOPT_PROJECT_EVENT, openAdopt);
+    };
+  }, []);
+
   useEffect(() => {
     if (!isProjectDropdownOpen) return;
     const onKeyDown = (e) => {
@@ -345,18 +375,48 @@ export function Header() {
   }, [isProjectDropdownOpen, setIsProjectDropdownOpen]);
 
   /***
+   * MARK: closeCreateProjectModal
+   * @description Closes the "Create New Project" dialog and clears its error.
+   * @example closeCreateProjectModal()
+   ***/
+  const closeCreateProjectModal = () => {
+    setIsCreatingProject(false);
+    setCreateError('');
+  };
+
+  /***
+   * MARK: switchToAdoptProjectModal
+   * @description Swaps the creation dialog for the adoption dialog (the
+   *   local-only path for users with no git remote yet).
+   * @example switchToAdoptProjectModal()
+   ***/
+  const switchToAdoptProjectModal = () => {
+    setIsCreatingProject(false);
+    setCreateError('');
+    setIsRegisteringProject(true);
+  };
+
+  /***
    * MARK: handleCreateProjectSubmit
-   * @description Handles form submission for creating a new project.
+   * @description Handles form submission for creating a new project,
+   *   forwarding the optional git remote URL (D11). A rejected creation
+   *   surfaces the server message inline and keeps the dialog open.
    * @example handleCreateProjectSubmit(event)
    * @param {React.FormEvent} e
    ***/
   const handleCreateProjectSubmit = async (e) => {
     e.preventDefault();
     if (!newProjName.trim()) return;
-    await createProject(newProjName.trim());
-    setNewProjName('');
-    setIsCreatingProject(false);
-    setIsProjectDropdownOpen(false);
+    setCreateError('');
+    try {
+      await createProject(newProjName.trim(), { gitUrl: newProjGitUrl.trim() || undefined });
+      setNewProjName('');
+      setNewProjGitUrl('');
+      setIsCreatingProject(false);
+      setIsProjectDropdownOpen(false);
+    } catch (err) {
+      setCreateError(err?.message || 'Failed to create the project.');
+    }
   };
 
   /***
@@ -445,6 +505,15 @@ export function Header() {
     setView?.('observability');
   };
 
+  // Right-click shortcut to the accessibility statement (same-tab
+  // navigation, mirroring the MonitorPopoutButton precedent). This is a
+  // shortcut only: the System-menu entry above is the keyboard-operable
+  // primary path, since a context menu is not keyboard-reachable here.
+  const openAccessibilityStatement = (event) => {
+    event.preventDefault();
+    setView?.('accessibility');
+  };
+
   return (
     <>
       {/***
@@ -470,12 +539,15 @@ export function Header() {
           {/* Brand Logo & Title (#22) */}
           <InfoTooltip
             title="KainBain Orchestrator"
-            description="Autonomous multi-stage AI task pipeline orchestrator with human quality gates."
+            description="Autonomous multi-stage AI task pipeline orchestrator with human quality gates. Right-click for the accessibility statement."
             behindTheScenes="Runs on Fastify backend (:3100) with PI Agent SDK and per-project isolated SQLite/JSON persistence in ~/.kainbain/"
             shortcut="1 (Canvas) • G (Guide)"
             position="bottom-right"
           >
-            <div className="flex items-center gap-2 shrink-0 cursor-pointer">
+            <div
+              className="flex items-center gap-2 shrink-0 cursor-pointer"
+              onContextMenu={openAccessibilityStatement}
+            >
               <BrandMark className="w-7 h-7 shrink-0" />
               {/* Wordmark hidden on mobile to free header space — the brand mark
                   alone identifies the app; the KAINBAIN wordmark appears once
@@ -497,7 +569,7 @@ export function Header() {
               aria-haspopup="dialog"
               aria-expanded={isProjectDropdownOpen}
               aria-controls="project-menu"
-              aria-label={`Project: ${activeProject?.name || 'Project Alpha'}`}
+              aria-label={`Project: ${activeProject?.name || 'No project'}`}
               className="flex items-center gap-1 sm:gap-2 bg-surface-container-highest px-1.5 sm:px-3 py-1.5 min-h-[44px] rounded cursor-pointer border border-border-standard hover:border-primary transition-colors text-left"
             >
               <span
@@ -512,7 +584,7 @@ export function Header() {
                   hasAppLink ? 'xl:max-w-[96px] 2xl:max-w-[160px]' : 'lg:max-w-[160px]'
                 }`}
               >
-                {activeProject?.name || 'Project Alpha'}
+                {activeProject?.name || 'No project'}
               </span>
               <span
                 className={`material-symbols-outlined text-on-surface text-base transition-transform ${
@@ -641,7 +713,7 @@ export function Header() {
       {/* New Project Modal */}
       {isCreatingProject && (
         <Modal
-          onClose={() => setIsCreatingProject(false)}
+          onClose={closeCreateProjectModal}
           labelledBy="new-project-title"
           dialogClassName="w-full max-w-md bg-surface border border-border-standard rounded-md shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200"
         >
@@ -654,7 +726,7 @@ export function Header() {
             </h2>
             <button
               type="button"
-              onClick={() => setIsCreatingProject(false)}
+              onClick={closeCreateProjectModal}
               className="p-1 min-w-[44px] min-h-[44px] hover:bg-surface-container-high rounded text-text-muted hover:text-on-surface cursor-pointer"
               aria-label="Close modal"
             >
@@ -682,10 +754,43 @@ export function Header() {
               />
             </div>
 
+            <div>
+              <label
+                htmlFor="new-project-remote-input"
+                className="text-[10px] font-bold uppercase tracking-widest text-text-muted block mb-2"
+              >
+                Git Remote URL
+              </label>
+              <input
+                id="new-project-remote-input"
+                type="text"
+                value={newProjGitUrl}
+                onChange={(e) => setNewProjGitUrl(e.target.value)}
+                placeholder="e.g. git@github.com:me/my-repo.git"
+                className="w-full p-2.5 bg-surface-deep border border-border-standard rounded-sm text-sm text-on-surface outline-none focus:border-primary transition-colors font-mono"
+              />
+              <p className="mt-1 text-[11px] text-text-muted">
+                New projects need a fetchable git remote (unless the server configured one).{' '}
+                <button
+                  type="button"
+                  onClick={switchToAdoptProjectModal}
+                  className="underline hover:text-on-surface cursor-pointer"
+                >
+                  No remote yet — adopt a local repo instead
+                </button>
+              </p>
+            </div>
+
+            {createError && (
+              <p className="text-xs text-error" role="alert" data-testid="create-project-error">
+                {createError}
+              </p>
+            )}
+
             <div className="flex justify-end gap-3 pt-4 border-t border-border-standard">
               <button
                 type="button"
-                onClick={() => setIsCreatingProject(false)}
+                onClick={closeCreateProjectModal}
                 className="px-4 py-2 bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer"
               >
                 Cancel

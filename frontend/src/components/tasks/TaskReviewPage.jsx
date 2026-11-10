@@ -18,6 +18,13 @@ import { normalizeReportPath } from '../review/reportPaths';
 import { ReviewCommentThread } from '../review/ReviewCommentThread';
 import { TaskImageAttach } from './TaskImageAttach';
 import { appendImagesMarkdown, removeImageMarkdown } from '../../services/taskImages';
+import { useIsGlassesViewport } from '../util/viewport';
+import {
+  GlassesQuickReviewView,
+  resolveGlassesProgress,
+  resolveGlassesProgressFraction,
+  resolveGlassesSummary,
+} from '../glasses/index.js';
 
 /***
  * MARK: TaskReviewPage
@@ -32,6 +39,8 @@ import { appendImagesMarkdown, removeImageMarkdown } from '../../services/taskIm
  * Pass → `advanceTask(projectId, taskId, { guidance })` — the context's
  *   advanceTask already auto-executes the next stage when the task leaves the
  *   checkpoint. Fail → `rejectTaskWithFeedback(projectId, taskId, feedback)`.
+ *   On a Meta Ray-Ban shaped viewport (~600x600 square) the full page swaps
+ *   for `GlassesQuickReviewView` (quick review with confirming approve).
  * @param {Object} [props]
  * @param {Object} [props.task] - Optional task override (tests).
  * @param {Function} [props.onBack] - Optional back callback (tests).
@@ -70,6 +79,10 @@ export function TaskReviewPage({ task: propTask, onBack }) {
 
   const review = useReview({ projectId: activeProjectId, taskId });
   const { pendingKey, run: runAction } = usePendingAction();
+  // Meta Ray-Ban mode: a ~600x600 square viewport swaps the full MR-style
+  // page for the quick-review screen below. Every other viewport renders
+  // exactly as before.
+  const isGlassesViewport = useIsGlassesViewport();
 
   const [activeTab, setActiveTab] = usePersistentState('kainbain:review:activeTab', 'files', {
     validate: (v) => ['files', 'reports', 'conversation'].includes(v),
@@ -192,13 +205,16 @@ export function TaskReviewPage({ task: propTask, onBack }) {
     return undefined;
   }, [lastReviewEvent, data, review]);
 
-  const scrollToFile = useCallback((path) => {
-    setActiveTab('files');
-    requestAnimationFrame(() => {
-      const el = document.querySelector(`[data-file-path="${CSS.escape(path)}"]`);
-      scrollIntoViewRespectingMotion(el, { behavior: 'smooth', block: 'start' });
-    });
-  }, [setActiveTab]);
+  const scrollToFile = useCallback(
+    (path) => {
+      setActiveTab('files');
+      requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-file-path="${CSS.escape(path)}"]`);
+        scrollIntoViewRespectingMotion(el, { behavior: 'smooth', block: 'start' });
+      });
+    },
+    [setActiveTab],
+  );
 
   /***
    * MARK: handlePass
@@ -300,6 +316,30 @@ export function TaskReviewPage({ task: propTask, onBack }) {
   const formattedKey = task?.id ? formatTaskKey(task.id) : '';
   const isBusy = pendingKey !== null;
 
+  // Meta Ray-Ban (~600x600) quick review: task name, step progress, two
+  // summary lines, and Approve/Details — reusing the same pass action and
+  // review payload as the full page. Approve still confirms first (inside
+  // the glasses view) and still calls handlePass with no guidance.
+  if (isGlassesViewport) {
+    return (
+      <GlassesQuickReviewView
+        taskName={task?.title || task?.goal?.slice(0, 60) || ''}
+        stageName={stage?.name || null}
+        progressText={resolveGlassesProgress(task, project?.stages)}
+        progressFraction={resolveGlassesProgressFraction(task, project?.stages)}
+        summaryLines={resolveGlassesSummary(data)}
+        canApprove={isWaitingHuman && !isTerminallyFailed}
+        isBusy={isBusy}
+        onApprove={() => handlePass('')}
+        onBack={() => {
+          onBack?.();
+          backToTaskDetail();
+        }}
+        onRefresh={() => review.loadReview()}
+      />
+    );
+  }
+
   return (
     <div className="flex-1 overflow-hidden flex flex-col" data-testid="task-review-page">
       {/* Header */}
@@ -393,8 +433,19 @@ export function TaskReviewPage({ task: propTask, onBack }) {
         </div>
       ) : !hasReviewFiles && !hasReports ? (
         <div className="flex-1 flex items-center justify-center p-6">
-          <div className="max-w-md p-6 bg-surface-container border border-border-standard rounded-sm text-xs font-mono text-text-muted">
-            {data.reason || 'Nothing to review yet — the agent has not modified any files.'}
+          <div className="max-w-md p-6 bg-surface-container border border-border-standard rounded-sm text-xs font-mono text-text-muted space-y-2">
+            <p
+              data-testid={data.filteredTaskFilesCount > 0 ? 'filtered-task-files-hint' : undefined}
+            >
+              {data.filteredTaskFilesCount > 0
+                ? 'No reviewable code changes; task files are shown in Reports.'
+                : data.reason || 'Nothing to review yet — the agent has not modified any files.'}
+            </p>
+            {data.filteredTaskFilesCount > 0 && (
+              <p className="text-[11px]">
+                {data.filteredTaskFilesCount} task file(s) hidden from this view.
+              </p>
+            )}
           </div>
         </div>
       ) : (
@@ -421,8 +472,16 @@ export function TaskReviewPage({ task: propTask, onBack }) {
               !hasReviewFiles ? (
                 <div className="p-6 text-xs font-mono text-text-muted space-y-2">
                   <p>
-                    {data.reason || 'Nothing to review yet — the agent has not modified any files.'}
+                    {data.filteredTaskFilesCount > 0
+                      ? 'No reviewable code changes; task files are shown in Reports.'
+                      : data.reason ||
+                        'Nothing to review yet — the agent has not modified any files.'}
                   </p>
+                  {data.filteredTaskFilesCount > 0 && hasReports && (
+                    <p className="text-[11px]" data-testid="filtered-task-files-hint">
+                      {data.filteredTaskFilesCount} task file(s) hidden — see the Reports tab.
+                    </p>
+                  )}
                   {hasReports && (
                     <button
                       type="button"

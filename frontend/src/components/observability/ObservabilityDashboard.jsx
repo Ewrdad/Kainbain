@@ -25,6 +25,8 @@ import {
   clearCompactMonitorView,
   useIsNarrowViewport,
 } from './monitorCompact';
+import { useIsGlassesViewport } from '../util/viewport';
+import { GlassesTaskListView, resolveGlassesCounts } from '../glasses/index.js';
 import { KpiRibbonWidget } from './widgets/KpiRibbonWidget';
 import { KpiSuccessesWidget } from './widgets/KpiSuccessesWidget';
 import { KpiFailuresWidget } from './widgets/KpiFailuresWidget';
@@ -157,11 +159,15 @@ export function ObservabilityDashboard() {
     clearLogs,
     uiPreferences = {},
     stages = [],
+    openRunnerTask,
+    activeProjectId,
+    refreshTasks = () => {},
   } = useKainBain();
 
   // Widget layout & customization state
   const [layout, setLayout] = useState(loadSavedLayout);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [queuePopupOpen, setQueuePopupOpen] = useState(false);
   const [isManagerOpen, setIsManagerOpen] = useState(false);
   // Whether the configuration controls (project select, presets, edit, customize)
   // are visible. Off by default so the default monitor view is clean and
@@ -183,7 +189,12 @@ export function ObservabilityDashboard() {
   // the header Monitor button) or an automatically detected phone viewport.
   const [compactRequested, setCompactRequested] = useState(readCompactMonitorRequest);
   const isNarrowViewport = useIsNarrowViewport();
-  const showCompact = compactRequested || isNarrowViewport;
+  // Meta Ray-Ban mode wins over the phone compact view: a glasses-shaped
+  // viewport renders the glasses summary instead of the mobile console, and
+  // every other viewport keeps its exact current presentation.
+  const isGlassesViewport = useIsGlassesViewport();
+  const showCompact = (compactRequested || isNarrowViewport) && !isGlassesViewport;
+  const showGlasses = isGlassesViewport;
 
   // Leaving the monitor always returns to viewport-driven presentation, so
   // a one-off desktop compact request never sticks for the next visit.
@@ -455,6 +466,18 @@ export function ObservabilityDashboard() {
     };
   }, [metricsData, filteredTasks, engineState]);
 
+  // Meta Ray-Ban branch inputs: the three big count cards plus the live
+  // task-list refetch behind the glasses auto-refresh beat. Only consumed
+  // when showGlasses renders below; inert everywhere else.
+  const glassesCounts = useMemo(
+    () => resolveGlassesCounts(filteredTasks, engineState, isAgentRunning),
+    [filteredTasks, engineState, isAgentRunning],
+  );
+  const glassesRefresh = useCallback(() => {
+    if (activeProjectId) return refreshTasks(activeProjectId);
+    return undefined;
+  }, [activeProjectId, refreshTasks]);
+
   // Resolved Active Task details: the engine owner, or nothing.
   // Single-active invariant — there is deliberately NO fallback to the
   // first task with a running_* label here (nor to a server snapshot that
@@ -604,6 +627,7 @@ export function ObservabilityDashboard() {
             scheduledQueue={scheduledQueue}
             engineState={engineState}
             activeTask={activeTask}
+            onQueueClick={() => setQueuePopupOpen(true)}
           />
         );
       case 'kpi-successes':
@@ -611,7 +635,13 @@ export function ObservabilityDashboard() {
       case 'kpi-failures':
         return <KpiFailuresWidget stats={stats} />;
       case 'kpi-queue':
-        return <KpiQueueDepthWidget stats={stats} scheduledQueue={scheduledQueue} />;
+        return (
+          <KpiQueueDepthWidget
+            stats={stats}
+            scheduledQueue={scheduledQueue}
+            onClick={() => setQueuePopupOpen(true)}
+          />
+        );
       case 'kpi-checkpoints':
         return <KpiCheckpointsWidget stats={stats} />;
       case 'kpi-engine':
@@ -634,7 +664,14 @@ export function ObservabilityDashboard() {
           />
         );
       case 'runnerTasks':
-        return <PerRunnerTasksWidget tasks={filteredTasks} stages={stages} compact={false} />;
+        return (
+          <PerRunnerTasksWidget
+            tasks={filteredTasks}
+            stages={stages}
+            compact={false}
+            onOpenTask={openRunnerTask}
+          />
+        );
       case 'console':
         return <LiveConsoleWidget processLogs={processLogs} onClearLogs={clearLogs} />;
       case 'health':
@@ -677,6 +714,29 @@ export function ObservabilityDashboard() {
     }
   };
 
+  // Meta Ray-Ban (~600x600) presentation: observability-only task
+  // summary with a View button into quick review. Same view id, same data
+  // hooks — presentation only, and strictly gated by the shape check.
+  if (showGlasses) {
+    return (
+      <div
+        data-testid="observability-dashboard"
+        className="flex-1 flex flex-col h-full min-w-0 bg-slate-100 font-sans overflow-hidden"
+      >
+        <h1 className="sr-only">Observability monitor</h1>
+        <GlassesTaskListView
+          tasks={filteredTasks}
+          runningTask={activeTask}
+          engineState={engineState}
+          stages={stages}
+          counts={glassesCounts}
+          onOpenTask={(task) => setView('task-review', { taskId: task.id })}
+          onRefresh={glassesRefresh}
+        />
+      </div>
+    );
+  }
+
   // Compact logs-only presentation for phones and explicit desktop
   // requests: slim status header + live console, none of the cockpit
   // widgets. Same view id, same data hooks — presentation only.
@@ -694,6 +754,7 @@ export function ObservabilityDashboard() {
           isAgentRunning={isAgentRunning}
           runnerTasks={filteredTasks}
           runnerStages={stages}
+          onOpenTask={openRunnerTask}
           stats={stats}
           queueCount={scheduledQueue.length}
           schedulerRunning={metricsData?.schedulerRunning}
@@ -1043,6 +1104,28 @@ export function ObservabilityDashboard() {
           <span>Zero-Touch Monitor</span>
         </div>
       </footer>
+
+      {/* Queue Popup Modal */}
+      {queuePopupOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+          <div className="bg-[#0b0f17] p-4 rounded-lg max-w-3xl w-full h-3/4 overflow-auto">
+            <div className="flex justify-between items-center mb-2">
+              <h2 className="text-lg font-bold text-slate-200">Task Queue</h2>
+              <button
+                onClick={() => setQueuePopupOpen(false)}
+                className="text-slate-300 hover:text-slate-100"
+              >
+                ✖ Close
+              </button>
+            </div>
+            <QueueOrderWidget
+              scheduledQueue={scheduledQueue}
+              engineState={engineState}
+              schedulerRunning={metricsData?.schedulerRunning}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Widget Customizer Modal */}
       <WidgetManagerModal

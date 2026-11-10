@@ -62,16 +62,18 @@ test.describe("Mobile Responsive Layout", () => {
 	});
 
 	test("slide-over inspector opens in mobile drawer mode with accessible touch controls", async ({ page }) => {
-		// Create a task via in-line column add
-		const addBtn = page.getByRole("button", { name: /Add task to/i }).first();
-		await expect(addBtn).toBeVisible({ timeout: 10000 });
-		await addBtn.click();
-
-		const input = page.locator('input[placeholder*="task goal" i]');
-		await expect(input).toBeVisible();
+		// Passive fixture via API, pinned to the first (agent) column: this
+		// test measures the inspector drawer, not task creation, and
+		// in-column create auto-executes the agent stage (F1) — the card can
+		// leave the visible mobile column before it is ever tapped, which
+		// reads as a "hidden" card failure. Creation UX itself is covered by
+		// the submit-flow and workflow specs.
+		const projectId = await activeProjectId(page.request);
 		const goal = `Mobile task ${Date.now()}`;
-		await input.fill(goal);
-		await input.press("Enter");
+		await createTaskViaApi(page.request, projectId, goal, { stageId: "1" });
+		await page.reload();
+		await waitForAppReady(page);
+		await selectProject(page, "Project A");
 
 		// Click on created task card to open slide-over inspector
 		const taskCard = page.getByText(goal).first();
@@ -81,6 +83,14 @@ test.describe("Mobile Responsive Layout", () => {
 		// Mobile slide-over inspector opens
 		const inspector = page.getByRole("complementary", { name: "Task Inspector" });
 		await expect(inspector).toBeVisible({ timeout: 10000 });
+
+		// Fixed-overlay contract: below the md breakpoint the drawer must
+		// keep `position: fixed` so it overlays the board — a stray
+		// `relative` class would silently break the slide-over on mobile.
+		const drawerPosition = await inspector.evaluate(
+			(el) => getComputedStyle(el).position,
+		);
+		expect(drawerPosition).toBe("fixed");
 
 		// Close inspector button has minimum 44px touch target
 		const closeBtn = page.getByRole("button", { name: "Close Task Inspector" });

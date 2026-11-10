@@ -1,6 +1,6 @@
 # Risk Assessment — New Portable Architecture (Runner Paradigm)
 
-> **Scope:** [NewArchitecture.md](NewArchitecture.md) + `NewArchitecture.excalidraw` (2026-10-25), assessed against [EscalationLadder.md](~/projects/kainbain/docs/Reliability&Risk/EscalationLadder.md), [HandNotesOnParallelism.md](~/projects/kainbain/docs/MuseCodeHackathon2026/HandNotesOnParallelism.md), [MuseIntegrationSpike.md](~/projects/kainbain/docs/MuseCodeHackathon2026/MuseIntegrationSpike.md), [Deliverables.md](~/projects/kainbain/docs/MuseCodeHackathon2026/Deliverables.md), `KB Architecture.md`, `PORTABLE_DEPLOYMENT.md`, `Disaster Model Plan.md`, ADRs 0001–0007, and the risk template in `Reliability&Risk/RiskRegister/Template.md`.
+> **Scope:** [NewArchitecture.md](NewArchitecture.md) + `NewArchitecture.excalidraw` (2026-10-25), assessed against [EscalationLadder.md](~/projects/kainbain/docs/Reliability&Risk/EscalationLadder.md), [HandNotesOnParallelism.md](~/projects/kainbain/docs/MuseCodeHackathon2026/HandNotesOnParallelism.md), [MuseIntegrationSpike.md](~/projects/kainbain/docs/MuseCodeHackathon2026/MuseIntegrationSpike.md), [Deliverables.md](~/projects/kainbain/docs/MuseCodeHackathon2026/Deliverables.md), `KB Architecture.md`, `docs/PORTABLE_DEPLOYMENT.md`, `Disaster Model Plan.md`, ADRs 0001–0007, and the risk template in `Reliability&Risk/RiskRegister/Template.md`.
 > **Status:** Replaces the 2026-10-25 first-pass assessment (see §2 for the critique of that pass). Draft for decision, not yet accepted.
 > **Method:** Template scoring — Impact = max(C, I, A) on 1–4, Likelihood 1–4, Score = Impact × Likelihood (1–16). Every risk also carries a **residual score**: the score that remains *if* its stated Prevention is actually built and tested. Likelihood means "likelihood if shipped exactly as documented today," not likelihood in the current single-process system.
 
@@ -384,7 +384,7 @@ Highest residuals after mitigation are R03 (8 — accepted SPOF, documented, rep
 - [HandNotesOnParallelism.md](~/projects/kainbain/docs/MuseCodeHackathon2026/HandNotesOnParallelism.md) — queue UI by Runner count, Runner config screen, per-Runner project allowlist, priority/weighted harness routing, Docker-Compose + native-Runner packaging
 - [MuseIntegrationSpike.md](~/projects/kainbain/docs/MuseCodeHackathon2026/MuseIntegrationSpike.md) — harness session lifecycle, allow-all posture, harness schema/version drift
 - [Deliverables.md](~/projects/kainbain/docs/MuseCodeHackathon2026/Deliverables.md) — multithreading, run-anywhere, open-sourceable
-- `Reliability&Risk/RiskRegister/Template.md` — scoring rubric; `Disaster Model Plan.md` — failure domains; `KB Architecture.md`, `PORTABLE_DEPLOYMENT.md`, ADRs 0001–0007 — invariants cited per risk
+- `Reliability&Risk/RiskRegister/Template.md` — scoring rubric; `Disaster Model Plan.md` — failure domains; `KB Architecture.md`, `docs/PORTABLE_DEPLOYMENT.md`, ADRs 0001–0007 — invariants cited per risk
 
 ---
 

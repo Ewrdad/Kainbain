@@ -51,4 +51,25 @@ describe("operatorConfigVerdict", () => {
 		expect(operatorConfigVerdict(record, { harness: "vibe" }, {}).reason).toBe("TOOL_DISABLED");
 		expect(operatorConfigVerdict(record, { kind: "ci" }, {}).ok).toBe(true);
 	});
+
+	test("allows all projects when projectScope is an empty array (global runner)", () => {
+		// Empty array should be treated as no scope restriction (global runner)
+		const record = { operatorConfig: { projectScope: [] } };
+		expect(operatorConfigVerdict(record, {}, { projectId: "p1" })).toEqual({
+			ok: true,
+			reason: "MATCH",
+		});
+		expect(operatorConfigVerdict(record, {}, { projectId: "p2" })).toEqual({
+			ok: true,
+			reason: "MATCH",
+		});
+		expect(operatorConfigVerdict(record, { projectId: "p1" }, {}).ok).toBe(true);
+	});
+
+	test("respects non-empty projectScope and refuses out-of-scope projects", () => {
+		const record = { operatorConfig: { projectScope: ["p1", "p2"] } };
+		expect(operatorConfigVerdict(record, {}, { projectId: "p1" }).ok).toBe(true);
+		expect(operatorConfigVerdict(record, {}, { projectId: "p2" }).ok).toBe(true);
+		expect(operatorConfigVerdict(record, {}, { projectId: "p3" }).reason).toBe("PROJECT_SCOPE");
+	});
 });

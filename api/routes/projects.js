@@ -124,6 +124,20 @@ export default async function projectsRoutes(app, { deps }) {
 	});
 
 	/***
+	 * MARK: Discover Adoptable Projects
+	 * Lists git checkouts sitting in the scan roots that are not projects
+	 * yet (no config file, not adopted), so first-run UI can offer
+	 * one-click adoption instead of a silently empty board. Read-only:
+	 * adoption itself stays an explicit POST /projects/register.
+	 ***/
+	app.get("/projects/discover", async () => {
+		return {
+			roots: projectStore._scanRoots(),
+			adoptable: projectStore.discoverAdoptable(),
+		};
+	});
+
+	/***
 	 * MARK: Create Project
 	 * Automated provisioning: creates project directory, notes space,
 	 * symlinks <projectRoot>/docs -> notes space, and initializes <kainbainDirName>/project.json.
