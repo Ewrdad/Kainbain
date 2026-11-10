@@ -9,7 +9,6 @@ import { GoToAppLink } from '../common/GoToAppLink';
 import { TabNavigator } from './TabNavigator';
 import { ProjectMenu } from './ProjectMenu';
 import { MonitorPopoutButton } from './MonitorPopoutButton';
-import { AuthUserChip } from '../auth/AuthUserChip';
 import { MOBILE_TOOLBAR_COLLAPSE_EVENT } from '../workflow/hooks/useMobileToolbarCollapse';
 import {
   OPEN_ADOPT_PROJECT_EVENT,
@@ -704,10 +703,6 @@ export function Header() {
 
           {/* Consolidated System Menu (Guide, Customize, Shortcuts) */}
           <SystemMenu />
-
-          {/* Signed-in user (organisation sign-in only): renders nothing
-              while access control is off. */}
-          <AuthUserChip />
         </div>
       </header>
 

@@ -159,6 +159,7 @@ export function ObservabilityDashboard() {
     clearLogs,
     uiPreferences = {},
     stages = [],
+    openRunnerTask,
     activeProjectId,
     refreshTasks = () => {},
   } = useKainBain();
@@ -663,7 +664,14 @@ export function ObservabilityDashboard() {
           />
         );
       case 'runnerTasks':
-        return <PerRunnerTasksWidget tasks={filteredTasks} stages={stages} compact={false} />;
+        return (
+          <PerRunnerTasksWidget
+            tasks={filteredTasks}
+            stages={stages}
+            compact={false}
+            onOpenTask={openRunnerTask}
+          />
+        );
       case 'console':
         return <LiveConsoleWidget processLogs={processLogs} onClearLogs={clearLogs} />;
       case 'health':
@@ -746,6 +754,7 @@ export function ObservabilityDashboard() {
           isAgentRunning={isAgentRunning}
           runnerTasks={filteredTasks}
           runnerStages={stages}
+          onOpenTask={openRunnerTask}
           stats={stats}
           queueCount={scheduledQueue.length}
           schedulerRunning={metricsData?.schedulerRunning}

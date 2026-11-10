@@ -211,15 +211,6 @@ module.exports = {
 	use: {
 		baseURL,
 		screenshot: "only-on-failure",
-		// Gate-host reliability fix (shared-gate blocker, reproduced on main
-		// too): headless Chromium otherwise uses /dev/shm for its scratch
-		// space and fails a large slice of the vite dev-server module burst
-		// with net::ERR_INSUFFICIENT_RESOURCES whenever the app reloads, which
-		// reds every spec whose readiness gate follows a reload. Redirecting
-		// Chromium's scratch space to /tmp (the standard --disable-dev-shm-usage
-		// flag) makes app readiness deterministic without changing anything
-		// the specs assert.
-		launchOptions: { args: ["--disable-dev-shm-usage"] },
 	},
 	// Never reuse a running stack: a server orphaned by a crashed run (or by
 	// an older config without the scratch env isolation) would silently
