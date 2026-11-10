@@ -2,47 +2,18 @@ import { useState, useEffect, useRef } from 'react';
 
 import {
   TASK_INSPECTOR_WIDTH_MIN,
-  TASK_INSPECTOR_WIDTH_MAX,
 } from '../../../context/useUiPreferences';
+import { clampToRange } from './useTaskInspectorResize/clampToRange';
+import { getTaskInspectorDynamicMax } from './useTaskInspectorResize/getTaskInspectorDynamicMax';
+import { widthFromPreference } from './useTaskInspectorResize/widthFromPreference';
+import { DEFAULT_TASK_INSPECTOR_WIDTH } from './useTaskInspectorResize/defaultTaskInspectorWidth';
 
-/**
- * @example DEFAULT_TASK_INSPECTOR_WIDTH // 560
- */
-export const DEFAULT_TASK_INSPECTOR_WIDTH = 560;
+// Re-exported so existing imports of the width constant and the dynamic-max
+// helper keep working from this entry point.
+export { DEFAULT_TASK_INSPECTOR_WIDTH } from './useTaskInspectorResize/defaultTaskInspectorWidth';
+export { getTaskInspectorDynamicMax } from './useTaskInspectorResize/getTaskInspectorDynamicMax';
+
 const KEYBOARD_STEP = 20;
-// Space always left for the main canvas, even at the widest drag.
-const VIEWPORT_MARGIN = 80;
-
-function clampToRange(value, min, max) {
-  const numeric = Number.isFinite(value) ? value : min;
-  return Math.min(max, Math.max(min, Math.round(numeric)));
-}
-
-/***
- * MARK: getTaskInspectorDynamicMax
- * @description Widest the inspector may be right now: the stored maximum,
- *   reduced so `VIEWPORT_MARGIN` px of the canvas stays visible, but never
- *   below the minimum width. Falls back to the stored maximum when there is
- *   no `window` (server render / tests without a DOM).
- * @example getTaskInspectorDynamicMax() // 1840 on a 1920px-wide window
- * @returns {number}
- ***/
-export function getTaskInspectorDynamicMax() {
-  if (typeof window === 'undefined') return TASK_INSPECTOR_WIDTH_MAX;
-  const viewportWidth = window.innerWidth || TASK_INSPECTOR_WIDTH_MIN + VIEWPORT_MARGIN;
-  return Math.max(
-    TASK_INSPECTOR_WIDTH_MIN,
-    Math.min(TASK_INSPECTOR_WIDTH_MAX, viewportWidth - VIEWPORT_MARGIN),
-  );
-}
-
-function widthFromPreference(requestedWidth) {
-  const safeRequested =
-    typeof requestedWidth === 'number' && Number.isFinite(requestedWidth)
-      ? requestedWidth
-      : DEFAULT_TASK_INSPECTOR_WIDTH;
-  return clampToRange(safeRequested, TASK_INSPECTOR_WIDTH_MIN, getTaskInspectorDynamicMax());
-}
 
 /***
  * MARK: useTaskInspectorResize
