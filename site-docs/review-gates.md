@@ -81,10 +81,14 @@ before I mark it as done") and speak-now-or-forever-hold-your-peace pauses
 (get advice, assume silence means go). Default is off — stages without a
 hold wait forever, exactly as before.
 
-- **Set it per stage** (same every run): an integer millisecond count, or a
-  human duration string like `10 days`, `36 hours`, `1 week`, `90m` (bare
-  numbers mean milliseconds). Saves refuse garbage, sub-minute holds
-  (minimum 60s), and holds over 365 days with 400.
+- **Set it per stage** (same every run): open the human stage's Stage
+  Settings in the workflow canvas and enable "Auto-approve after hold",
+  then pick an amount and unit (minutes / hours / days / weeks; enabling
+  defaults to 7 days). The stored form is an integer millisecond count, and
+  the save boundary also accepts a human duration string like `10 days`,
+  `36 hours`, `1 week`, `90m` (bare numbers mean milliseconds). Saves
+  refuse garbage, sub-minute holds (minimum 60s), and holds over 365 days
+  with 400.
 - **The deadline is a minimum, never exact**: the hold is stamped once when
   the task enters the stage (`autoApproveAt = enteredStageAt + hold`) and
   the timer may fire a little late under load — never early. A 10-day hold
