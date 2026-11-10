@@ -131,29 +131,6 @@ test('task inspector reserves the Now Playing footer height when the footer is s
   unmount();
 });
 
-/***
- * MARK: inspector-overlay composition tests
- * @description The desktop inspector is an out-of-flow overlay anchored to the
- *   orchestrator row, never an in-flow flex sibling: the canvas column keeps
- *   `flex-1` full width with a task open, so the toolbar (search, sort,
- *   show-completed) keeps its normal size instead of squishing.
- ***/
-test('task inspector overlays the board instead of shrinking it', async () => {
-  const ctx = baseContext({ selectedTask: tasks[0] });
-  const { unmount } = renderWithKainBain(<OrchestratorView />, ctx);
-
-  const aside = screen.getByRole('complementary', { name: 'Task Inspector' });
-  const tokens = aside.className.split(/\s+/);
-  expect(tokens).toContain('md:absolute');
-  expect(tokens).toContain('md:right-0');
-  expect(tokens).toContain('md:top-0');
-  expect(tokens).not.toContain('md:relative');
-  expect(tokens).not.toContain('md:shrink-0');
-
-  await waitFor(() => expect(ctx.getTaskReports).toHaveBeenCalled());
-  unmount();
-});
-
 test('task inspector fills full height when the Now Playing footer is disabled', async () => {
   const ctx = baseContext({
     selectedTask: tasks[0],

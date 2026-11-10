@@ -74,10 +74,7 @@ export function OrchestratorView() {
         </GlassesViewportGate>
       </div>
 
-      {/* Integrated Slide-Over Task Inspector (No full-screen blocking modal).
-          Desktop overlay: absolutely positioned against this row (which is
-          `relative`), so the canvas column keeps full width and the toolbar
-          never squishes — the panel covers the board's right edge. */}
+      {/* Integrated Slide-Over Task Inspector (No full-screen blocking modal) */}
       {selectedTask && !isGlassesViewport && (
         <TaskDetailOverlay
           task={selectedTask}
