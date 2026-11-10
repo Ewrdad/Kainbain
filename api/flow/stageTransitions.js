@@ -5,6 +5,11 @@ import { isBranchModeEnabled } from '../work/taskBranches.js';
 import { docsTasksIgnorePath } from "../docsPath.js";
 import { normalizeStageType } from '../projectStore.js';
 import { buildHumanApprovalContent } from '../reviewCommentFormatter.js';
+import {
+	formatAutoApproveDuration,
+	parseAutoApproveDuration,
+	resolveAutoApproveAt,
+} from '../../shared/autoApproveDuration.js';
 import { isTerminalTaskStatus, resolveStageLabel, stageElapsedSeconds, clearResumedMarker, findStageByIdOrName, findStageIndexByIdOrName, isEngineOwnerOf } from './stagePolicy.js';
 import { resolveStagesForTask } from './taskScheduler.js';
 import { killTaskProcess } from './taskControl.js';
@@ -69,6 +74,13 @@ function interruptLiveRun(store, projectId, taskId) {
  * records stage = source): the display layer (buildDisplayTimeline) owns
  * rendering the pair honestly, and the arrival row is load-bearing for
  * diff-stat baselines, so the write pair must stay as-is.
+ * Auto-approve rule: entering a `human` stage with an `autoApproveAfterMs`
+ * hold stamps `task.autoApproveAt = enteredStageAt + hold` once (immutable
+ * for this visit — later config edits affect only future entries); every
+ * other destination clears the stamp and its reminder marker, so a stale
+ * deadline can never fire after the task left. `options.automated` marks an
+ * arrival driven by the auto-approve sweeper (history + timeline badge only;
+ * the row status stays Advanced for analytics).
  ***/
 export function moveToStage(
 	store,
@@ -124,9 +136,28 @@ export function moveToStage(
 
 	task.enteredStageAt = new Date().toISOString();
 	task.updatedAt = task.enteredStageAt;
+	// Auto-approve deadline stamp (see the MARK note above): stamped once on
+	// entry to a human stage with a hold, cleared on every other arrival.
+	const entryHoldMs =
+		stageType === "human"
+			? parseAutoApproveDuration(targetStage?.autoApproveAfterMs)
+			: null;
+	if (entryHoldMs) {
+		task.autoApproveAt = resolveAutoApproveAt(task.enteredStageAt, entryHoldMs);
+		task.autoApproveRemindedAt = null;
+	} else {
+		task.autoApproveAt = null;
+		task.autoApproveRemindedAt = null;
+	}
+	const automatedArrival =
+		options?.automated && typeof options.automated === "object"
+			? options.automated
+			: null;
 	task.history.push({
 		timestamp: task.updatedAt,
-		action: `${reason} to stage '${toLabel}'`,
+		action: automatedArrival
+			? `Advanced to stage '${toLabel}' (automatic)`
+			: `${reason} to stage '${toLabel}'`,
 	});
 	// Arrival rows never carry run attribution: a row's badge must describe
 	// the run of the stage the row is headed with, and that stamp happens at
@@ -144,6 +175,15 @@ export function moveToStage(
 			durationStageId: fromStageId,
 			durationStartedAt,
 			timestamp: task.updatedAt,
+			// Sweeper-driven arrivals badge the row without changing its
+			// status (analytics keep reading Advanced/Moved).
+			...(automatedArrival
+				? {
+						automated: true,
+						autoApproveAt: automatedArrival.autoApproveAt || null,
+						autoApproveFiredAt: automatedArrival.firedAt || null,
+					}
+				: {}),
 		},
 		projectCwd,
 		{
@@ -245,14 +285,62 @@ export function moveToStage(
 }
 
 /***
+ * MARK: resolveAutomatedApprovalDetail
+ * @description Builds the audit detail for a sweeper-driven human exit:
+ *   fire time, stamped deadline, held-since entry, and the rendered hold
+ *   length. Every field degrades to a readable fallback (never undefined)
+ *   so attribution text can always be written; the duration prefers the
+ *   sweeper-passed value and falls back to the stamp-minus-entry span.
+ * @example resolveAutomatedApprovalDetail({ enteredStageAt: '2026-11-01T00:00:00.000Z' }, { automated: true, durationMs: 60000 }) => { firedAt, … }
+ * @param {Object} task - Task leaving the checkpoint.
+ * @param {Object} humanReview - Sweeper marker (`automated/autoApproveAt/firedAt/durationMs`).
+ * @returns {Object} `{ firedAt, autoApproveAt, heldSince, durationMs, durationText }`.
+ ***/
+function resolveAutomatedApprovalDetail(task, humanReview) {
+	const firedAt =
+		typeof humanReview?.firedAt === "string" && humanReview.firedAt
+			? humanReview.firedAt
+			: new Date().toISOString();
+	const autoApproveAt =
+		(typeof humanReview?.autoApproveAt === "string" && humanReview.autoApproveAt) ||
+		(typeof task?.autoApproveAt === "string" && task.autoApproveAt) ||
+		"unknown deadline";
+	const heldSince =
+		(typeof task?.enteredStageAt === "string" && task.enteredStageAt) ||
+		"unknown time";
+	let durationMs =
+		typeof humanReview?.durationMs === "number" &&
+		Number.isFinite(humanReview.durationMs) &&
+		humanReview.durationMs > 0
+			? humanReview.durationMs
+			: null;
+	if (durationMs === null) {
+		const span = Date.parse(autoApproveAt) - Date.parse(heldSince);
+		if (Number.isFinite(span) && span > 0) durationMs = span;
+	}
+	return {
+		firedAt,
+		autoApproveAt,
+		heldSince,
+		durationMs,
+		durationText: formatAutoApproveDuration(durationMs) || "the configured hold",
+	};
+}
+
+/***
  * MARK: advanceStage
  * @description Advances a task to the next sequential stage in the project pipeline and persists to disk.
  *   When leaving a human checkpoint, `humanReview.comments` (line-by-line review
  *   threads) and `humanReview.guidance` are folded into the `# Human approval`
  *   report, so a pass keeps the reviewer's notes in the durable record.
+ *   The auto-approve sweeper takes this same path with
+ *   `humanReview.automated: true` (plus `autoApproveAt`/`firedAt`/
+ *   `durationMs`): the exit stays a PASS, but the history line, timeline
+ *   row, report header, and alert all say *automatic* with the deadline and
+ *   fire time. Manual exits (no marker) render byte-identically to before.
  * @example advanceStage(store, 'p1', 't1', stages, bridge, '/repo', { comments, guidance: 'ship it' })
  * @param {Object} store - TaskStore instance.
- * @param {Object} [humanReview] - `{ comments?: Array, guidance?: string }` for the exiting human stage.
+ * @param {Object} [humanReview] - `{ comments?: Array, guidance?: string, automated?: boolean, autoApproveAt?: string, firedAt?: string, durationMs?: number }` for the exiting human stage.
  ***/
 export function advanceStage(
 	store,
@@ -307,16 +395,32 @@ export function advanceStage(
 		);
 	}
 	const exitingStage = effectiveStages.at(index);
+	const exitingIsHuman = normalizeStageType(exitingStage?.type) === "human";
+	// The sweeper's marker is honoured only on a human exit: an automated
+	// flag arriving with any other stage type is meaningless and ignored.
+	const automatedDetail =
+		exitingIsHuman && humanReview?.automated === true
+			? resolveAutomatedApprovalDetail(task, humanReview)
+			: null;
 	// Human approval reports are written for normalized human checkpoints
 	// (legacy `review` included); only agent stages can fail a verdict gate,
 	// so a human exit is always a PASS.
-	if (normalizeStageType(exitingStage?.type) === "human") {
+	if (exitingIsHuman) {
 		// Review comments captured during the checkpoint ride along in the
 		// approval report (a line-by-line pass still leaves a written record)
 		// and in the optional pass guidance for downstream stages.
 		const reviewComments = Array.isArray(humanReview?.comments)
 			? humanReview.comments
 			: [];
+		if (automatedDetail) {
+			task.history.push({
+				timestamp: automatedDetail.firedAt,
+				action:
+					`Auto-approved after ${automatedDetail.durationText} (automatic): ` +
+					`held since ${automatedDetail.heldSince}, ` +
+					`deadline ${automatedDetail.autoApproveAt}, fired ${automatedDetail.firedAt}`,
+			});
+		}
 		store.saveStageReport(projectId, taskId, {
 			stageName: exitingStage.name || exitingStage.id,
 			stageId: exitingStage.id,
@@ -326,9 +430,27 @@ export function advanceStage(
 				stageName: exitingStage.name || exitingStage.id,
 				guidance: humanReview?.guidance,
 				comments: reviewComments,
+				...(automatedDetail ? { automated: automatedDetail } : {}),
 			})}`,
 			projectCwd,
 		});
+		if (automatedDetail) {
+			// Fire-and-forget: a dead alert sink never affects the advance.
+			void emitAlert(bridge, {
+				event: "task.auto_approve",
+				severity: "info",
+				projectId,
+				taskId,
+				stage: {
+					id: exitingStage.id,
+					name: exitingStage.name || exitingStage.id,
+					type: "human",
+				},
+				message:
+					`Auto-approved after ${automatedDetail.durationText} ` +
+					`(deadline ${automatedDetail.autoApproveAt}, fired ${automatedDetail.firedAt})`,
+			});
+		}
 	}
 	if (index >= effectiveStages.length - 1) {
 		const currentName = effectiveStages.at(index)?.name || "Final Stage";
@@ -341,7 +463,13 @@ export function advanceStage(
 			pipelineFinished: true,
 			message: `Stage '${currentName}' complete — pipeline finished`,
 		});
-		return completeTask(store, projectId, taskId, projectCwd);
+		return completeTask(
+			store,
+			projectId,
+			taskId,
+			projectCwd,
+			automatedDetail ? { automated: automatedDetail } : undefined,
+		);
 	}
 	const currentStage = effectiveStages.at(index);
 	const nextStage = effectiveStages.at(index + 1);
@@ -362,6 +490,7 @@ export function advanceStage(
 		"Advanced",
 		bridge,
 		projectCwd,
+		automatedDetail ? { automated: automatedDetail } : undefined,
 	);
 }
 
@@ -415,6 +544,9 @@ export function failbackStage(
 		targetId = effectiveStages[0]?.id;
 	} else if (policy === "abort") {
 		store.updateTask(projectId, taskId, { status: "failed" }, projectCwd);
+		// A terminal settle cancels any live auto-approve wait.
+		task.autoApproveAt = null;
+		task.autoApproveRemindedAt = null;
 		task.history.push({
 			timestamp: new Date().toISOString(),
 			action: "Aborted by failback policy",
@@ -470,8 +602,11 @@ export function failbackStage(
 /***
  * MARK: completeTask
  * @description Transitions a task to the completed state and records terminal history and timeline.
+ *   A terminal settle cancels any live auto-approve wait. `options.automated`
+ *   (from a sweeper-driven advance out of a final human checkpoint) badges
+ *   the terminal timeline row without changing its Completed status.
  ***/
-export function completeTask(store, projectId, taskId, projectCwd) {
+export function completeTask(store, projectId, taskId, projectCwd, options = {}) {
 	const task = store.getTask(projectId, taskId);
 	if (!task) return null;
 	if (task.status === "completed") return task;
@@ -485,7 +620,13 @@ export function completeTask(store, projectId, taskId, projectCwd) {
 	task.lastError = null;
 	task.autoRetrying = false;
 	task.autoIterating = false;
+	task.autoApproveAt = null;
+	task.autoApproveRemindedAt = null;
 	task.updatedAt = new Date().toISOString();
+	const automatedTerminal =
+		options?.automated && typeof options.automated === "object"
+			? options.automated
+			: null;
 	task.history.push({
 		timestamp: task.updatedAt,
 		action: "Completed",
@@ -536,6 +677,13 @@ export function completeTask(store, projectId, taskId, projectCwd) {
 			durationStageId: task.currentStageId,
 			timestamp: task.updatedAt,
 			...(runAttribution || {}),
+			...(automatedTerminal
+				? {
+						automated: true,
+						autoApproveAt: automatedTerminal.autoApproveAt || null,
+						autoApproveFiredAt: automatedTerminal.firedAt || null,
+					}
+				: {}),
 			...(finalBoundaryStart && finalBoundaryEnd
 				? {
 						boundaryStartSha: finalBoundaryStart,
@@ -580,6 +728,10 @@ export function pauseTask(store, projectId, taskId, projectCwd) {
 	task.status = "paused";
 	task.autoRetrying = false;
 	task.autoIterating = false;
+	// Pausing parks the task out of the queue entirely: any live
+	// auto-approve wait is cancelled (re-parking re-stamps a fresh visit).
+	task.autoApproveAt = null;
+	task.autoApproveRemindedAt = null;
 	// A paused task sits out the queue entirely; any startup-recovery
 	// priority would be meaningless until an operator resumes it.
 	clearResumedMarker(task);

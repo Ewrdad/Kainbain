@@ -204,6 +204,9 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		dispatchMaxWaitMs: 0,
 		// Sessions & Workflows
 		schedulerIntervalMs: 3000,
+		autoApproveSweepMs: 60000,
+		autoApproveBatch: 25,
+		autoApproveReminderLeadMs: 86400000,
 		schedulerDisabled: false,
 		sessionTtlMs: 30 * 60 * 1000,
 		sessionCleanupMs: 60 * 1000,
