@@ -21,6 +21,7 @@ source of truth. This file intentionally lists only high-impact changes.
 
 ### Added
 
+- Task detail pages and `GET /tasks/:id` now show where a task works (branch, workspace-isolation mode, worktree path) via the additive `workingLocation` field, and a new `Develop Alongside KainBain` site-docs article teaches the pause-edit-resume, separate-branch, and review-gate flows; dirty-tree guard errors now name the blocking paths plus the safe next step for hand edits (task 8dafdce1).
 - Per-stage Runner allow/block list at the bottom of stage settings (`Off` / `Only these runners` / `All except these runners`): dispatch, direct claims, and merge leases refuse ineligible Runners loudly while unrestricted stages behave exactly as before (task a3753643).
 - Runner model auto-detect for every supported harness (pi, muse, antigravity, vibe, plus honest-empty opencode/codex legs) with per-harness counts and the first leg warning in Settings › Runners next to Re-detect, driven by the existing refresh command (task 2cbe91b6).
 

@@ -285,6 +285,14 @@ export function TaskDetailPage({ task: propTask, onBack }) {
       setTimeout(() => setCopiedCheckout(false), 2000);
     }
   };
+  // Where this task's work lives (branch / isolation mode / worktree path),
+  // from the additive `workingLocation` field on GET /tasks/:id. Falls back
+  // to the derived branch name when the field is absent (older payloads).
+  const workingLocationBranch =
+    task?.workingLocation?.branch || getTaskBranchName(task);
+  const workingLocationText = workingLocationBranch
+    ? `Works on ${workingLocationBranch} · ${task?.workingLocation?.workspaceIsolation || 'quarantine'}${task?.workingLocation?.worktreePath ? ` · ${task.workingLocation.worktreePath}` : ''}`
+    : null;
   const isInterrupted = task?.wasInterrupted === true || task?.status === 'interrupted';
   const isPaused = task?.status === 'paused';
   // RETRYING is reserved for a same-stage in-place retry: a task whose
@@ -1043,6 +1051,14 @@ export function TaskDetailPage({ task: propTask, onBack }) {
                     {copiedCheckout ? 'Copied ✓' : '⧉ Copy Checkout'}
                   </button>
                 </div>
+                {workingLocationText && (
+                  <p
+                    className="text-[11px] font-mono text-text-muted break-all"
+                    title="Where this task's work lives: branch, isolation mode, and worktree path when enabled"
+                  >
+                    {workingLocationText}
+                  </p>
+                )}
               </div>
             )}
 

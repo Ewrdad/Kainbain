@@ -27,6 +27,41 @@ describe('RunAttributionBadge', () => {
     expect(screen.getByText('gemini-3.8-flash-low')).toBeInTheDocument();
   });
 
+  test('appends the runner when a remote Runner ran the stage', () => {
+    render(
+      <RunAttributionBadge
+        entry={{ harnessId: 'pi', modelRef: 'glm', runnerId: 'local-alpha' }}
+      />,
+    );
+    const badge = screen.getByText('pi · glm · runner local-alpha');
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveAttribute(
+      'title',
+      'Stage run attribution — harness: pi, model: glm, runner: local-alpha',
+    );
+  });
+
+  test('renders the runner alone for Runner-run CI/merge rows (no harness/model)', () => {
+    render(<RunAttributionBadge entry={{ stage: 'CI', status: 'Moved', runnerId: 'server2-alpha' }} />);
+    const badge = screen.getByText('runner server2-alpha');
+    expect(badge).toBeInTheDocument();
+    expect(badge.tagName).toBe('ABBR');
+    expect(badge).toHaveAttribute(
+      'title',
+      'Stage run attribution — harness: unknown, model: unknown, runner: server2-alpha',
+    );
+  });
+
+  test('ignores a blank runnerId instead of wording it', () => {
+    const { container } = render(
+      <RunAttributionBadge entry={{ harnessId: 'pi', modelRef: 'glm', runnerId: '  ' }} />,
+    );
+    expect(screen.getByText('pi · glm')).toBeInTheDocument();
+    expect(container.textContent).not.toContain('runner');
+    const blankOnly = render(<RunAttributionBadge entry={{ runnerId: '' }} />);
+    expect(blankOnly.container).toBeEmptyDOMElement();
+  });
+
   test('renders absolutely nothing for plain rows (no placeholder wording)', () => {
     const cases = [
       { stage: 'CI', status: 'Advanced', duration: '4s' },
@@ -90,5 +125,14 @@ describe('formatRunAttribution', () => {
     expect(formatRunAttribution({ harnessId: 'pi', modelRef: 'glm', aliasName: 'w' })).toBe(
       'pi · glm · alias w',
     );
+  });
+
+  test('formats the runner alongside the run choice, or alone for Runner-run scripted rows', () => {
+    expect(formatRunAttribution({ harnessId: 'pi', modelRef: 'glm', runnerId: 'r1' })).toBe(
+      'pi · glm · runner r1',
+    );
+    expect(formatRunAttribution({ runnerId: 'r1' })).toBe('runner r1');
+    expect(formatRunAttribution({ runnerId: '  ' })).toBeNull();
+    expect(formatRunAttribution({ aliasName: 'worker', runnerId: 'r1' })).toBe('runner r1');
   });
 });
