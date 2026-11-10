@@ -481,7 +481,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		if (!projectId) return null;
 		const task = taskStore.getTask(projectId, request.params.id);
 		if (!task) {
-			reply.status(404).send({ error: "Task not found" });
+			reply.status(404).send({ error: "Task not found", code: "TASK_NOT_FOUND" });
 			return null;
 		}
 		return { projectId, task };
@@ -883,7 +883,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		);
 		if (!projectId) return;
 		const task = taskStore.getTask(projectId, request.params.id);
-		if (!task) return reply.status(404).send({ error: "Task not found" });
+		if (!task) return reply.status(404).send({ error: "Task not found", code: "TASK_NOT_FOUND" });
 		// Operator settings (System Settings › Runners) bind this direct
 		// claim exactly like the dispatch scan: a Runner whose project is
 		// unloaded, whose job-type switch is off, or whose tool subset

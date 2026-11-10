@@ -14,8 +14,9 @@ export { TASK_BRANCH_PREFIX, taskBranchName, resolveTaskBranch, isBranchModeEnab
 export { finalizeTaskBranch } from './taskFinalize.js';
 export { isUnrecoverableError, isTransientInfrastructureError, isOperatorAbortError, isGitLockError, classifyStageError } from './taskErrors.js';
 export { safeParseJsonArray, parseStoredRecords, _formatFrontmatterValue, _parseFrontmatter } from './taskFiles.js';
-export { saveTaskMarkdown, recordHistory, recordTimeline, recordTimelineWithDiffStat, formatTimelineDiffStat, parseTimelineDiffStat, syncTaskReports, parseTaskMarkdown } from './taskPersistence.js';
+export { saveTaskMarkdown, recordHistory, recordTimeline, recordTimelineWithDiffStat, formatTimelineDiffStat, parseTimelineDiffStat, syncTaskReports, parseTaskMarkdown, _isTaskStillRegistered } from './taskPersistence.js';
 export { scanTasks, createTask, listTasks, getTasks, getTask, getTaskLogFeed, isTaskBlocked, parseBlockedByValue, blockedByCreatesCycle, validateBlockedBy, updateTask, deleteTask, removeTask, cancelProjectExecutions, clearProject, removeTaskWorktreeSync, reapOrphanedWorktreesSync, WORKTREE_REAPABLE_STATUSES } from './taskLifecycle.js';
+export { tombstonePathFor, loadDeletedTaskIds, recordTaskDeletion, isTaskDeleted, clearTaskDeletions } from './taskTombstones.js';
 export { isAllowedImageExt, imageMediaType, sanitizeImageName, dedupeImageName, taskAssetDir, resolveTaskAssetFile, taskAssetRelPath, listTaskImages, collectTaskImageRefs, writeTaskImage, deleteTaskImage } from './taskAssets.js';
 export { resolveTaskCwd, ensureTaskWorktree, removeTaskWorktree, reapOrphanedWorktrees, resolveProjectCwdForStore, repairDocsLinkAfterSwitch, worktreesBaseFor, quarantineDirFor, workspaceProjectFor, WORKTREE_BASE_DIR, QUARANTINE_DIR } from './taskWorkspace.js';
 export { resolveEngineOwnerSnapshot, countOpenTasksGlobal } from './taskEngineState.js';

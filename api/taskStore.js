@@ -12,6 +12,7 @@ import {
 	_formatFrontmatterValue,
 	_parseFrontmatter,
 	saveTaskMarkdown,
+	_isTaskStillRegistered,
 	recordHistory,
 	recordTimeline,
 	recordTimelineWithDiffStat,
@@ -329,6 +330,14 @@ export class TaskStore {
 	 * @returns {void}
 	 ***/
 	_saveTaskMarkdown(projectCwd, task) {
+		// Deleted-task guard at the single save seam: every engine write path
+		// funnels through here, and an in-flight stage/settle that settles
+		// after deleteTask would otherwise recreate
+		// `docs/tasks/<id>/task.md`, which the next scanTasks re-imports — the
+		// deleted task reappears. Skip the write only when liveness is
+		// definitively false; unknown (stub stores without a membership API)
+		// preserves the historical write.
+		if (_isTaskStillRegistered(this, task) === false) return;
 		// Repair-after-switch: a branch checkout may have removed the
 		// `<cwd>/docs` symlink (old kb/* branches still track it while
 		// master ignores it); saving without the link would cement a

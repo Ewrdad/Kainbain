@@ -74,7 +74,11 @@ describe("TaskStore save-time docs-link repair", () => {
 		// Simulate a branch checkout removing the tracked link:
 		fs.unlinkSync(docsLink);
 
-		taskStore._saveTaskMarkdown(project.cwd, makeTask(project));
+		// A real engine save always has the task registered; saves for
+		// unregistered (deleted) tasks are skipped by design.
+		const task = makeTask(project);
+		taskStore._getMap(project.id).set(task.id, task);
+		taskStore._saveTaskMarkdown(project.cwd, task);
 
 		expect(fs.lstatSync(docsLink).isSymbolicLink()).toBe(true);
 		expect(fs.realpathSync(docsLink)).toBe(
@@ -117,7 +121,9 @@ describe("TaskStore save-time docs-link repair", () => {
 		const docsLink = path.join(project.cwd, "docs");
 		const before = fs.readlinkSync(docsLink);
 
-		taskStore._saveTaskMarkdown(project.cwd, makeTask(project));
+		const task = makeTask(project);
+		taskStore._getMap(project.id).set(task.id, task);
+		taskStore._saveTaskMarkdown(project.cwd, task);
 
 		expect(fs.readlinkSync(docsLink)).toBe(before);
 		expect(
@@ -131,11 +137,9 @@ describe("TaskStore save-time docs-link repair", () => {
 			path.join(os.tmpdir(), "kainbain-test-savelink-bare-"),
 		);
 		try {
-			bare._saveTaskMarkdown(cwd, {
-				id: "t",
-				projectId: "p",
-				title: "T",
-			});
+			const task = { id: "t", projectId: "p", title: "T" };
+			bare._getMap("p").set("t", task);
+			bare._saveTaskMarkdown(cwd, task);
 			expect(
 				fs.existsSync(path.join(cwd, "docs", "tasks", "t", "task.md")),
 			).toBe(true);
@@ -154,13 +158,9 @@ describe("TaskStore save-time docs-link repair", () => {
 			},
 		};
 		const store = new TaskStore({ projectStore: throwing });
-		expect(() =>
-			store._saveTaskMarkdown(tempProjectsDir, {
-				id: "t",
-				projectId: "missing",
-				title: "T",
-			}),
-		).not.toThrow();
+		const task = { id: "t", projectId: "missing", title: "T" };
+		store._getMap("missing").set("t", task);
+		expect(() => store._saveTaskMarkdown(tempProjectsDir, task)).not.toThrow();
 		expect(
 			fs.existsSync(
 				path.join(tempProjectsDir, "docs", "tasks", "t", "task.md"),

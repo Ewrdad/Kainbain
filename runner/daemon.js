@@ -265,6 +265,32 @@ export function applyBackendPrompt({ prompt, backendCwd, workdir } = {}) {
 }
 
 /***
+ * MARK: isTerminalLeaseError
+ * @description True when a backend answer means the execution's lease is
+ *   permanently gone: the stage budget expired (`STAGE_TIMEOUT`), another
+ *   Runner holds the lease (`STALE_EPOCH`), or the task itself was deleted
+ *   (404 / `TASK_NOT_FOUND`). Transient transport failures are NOT terminal
+ *   — renewal just retries on the next tick. Drives both the renewal
+ *   stop-and-notify in `startClaimRenewal` and the abandon-instead-of-crash
+ *   path in `executeAssignment`, so an orphaned run is aborted promptly
+ *   instead of burning to natural finish (or killing the daemon).
+ * @example isTerminalLeaseError({ code: 'STALE_EPOCH' }) => true
+ * @example isTerminalLeaseError({ statusCode: 404 }) => true
+ * @example isTerminalLeaseError(new Error('fetch failed')) => false
+ * @param {Object} [err]
+ * @returns {boolean}
+ ***/
+export function isTerminalLeaseError(err) {
+	return Boolean(
+		err &&
+			(err.code === "STAGE_TIMEOUT" ||
+				err.code === "STALE_EPOCH" ||
+				err.code === "TASK_NOT_FOUND" ||
+				err.statusCode === 404),
+	);
+}
+
+/***
  * MARK: startClaimRenewal
  * @description Renews the task claim on a cadence while a harness runs
  *   (D1): agent stages routinely outlive the claim TTL, and without
@@ -272,9 +298,13 @@ export function applyBackendPrompt({ prompt, backendCwd, workdir } = {}) {
  *   assignment vanishes, and the finisher reports STALE_EPOCH. Renewal
  *   is best-effort (a failure warns, the final complete surfaces
  *   staleness) and the timer is unref'd so it dies with the daemon —
- *   a dead Runner's hold still lapses.
- * @example const stop = startClaimRenewal({ client, logger, taskId: 't1', ... }); stop();
- * @param {Object} opts - Options (client, logger, taskId, projectId, executionId, epoch, intervalMs?).
+ *   a dead Runner's hold still lapses. A TERMINAL failure (stage timeout,
+ *   lease stolen by another Runner, task deleted — see
+ *   `isTerminalLeaseError`) stops the timer and fires `onLeaseLost` exactly
+ *   once, so the caller can abort the in-flight run instead of letting it
+ *   run orphaned.
+ * @example const stop = startClaimRenewal({ client, logger, taskId: 't1', onLeaseLost: (e) => abortRun(e) }); stop();
+ * @param {Object} opts - Options (client, logger, taskId, projectId, executionId, epoch, intervalMs?, onTick?, onLeaseLost?).
  * @returns {Function} Call to stop the renewal timer.
  ***/
 export function startClaimRenewal({
@@ -286,6 +316,7 @@ export function startClaimRenewal({
 	epoch,
 	intervalMs = CLAIM_HEARTBEAT_MS,
 	onTick = null,
+	onLeaseLost = null,
 }) {
 	const fireTick = () => {
 		try {
@@ -294,19 +325,32 @@ export function startClaimRenewal({
 			// Liveness marking must never break lease renewal.
 		}
 	};
+	let leaseLostNotified = false;
+	const notifyLeaseLost = (err) => {
+		if (leaseLostNotified) return;
+		leaseLostNotified = true;
+		clearInterval(timer);
+		if (typeof onLeaseLost === "function") {
+			try {
+				onLeaseLost(err);
+			} catch {
+				// The abort hook must never break renewal handling.
+			}
+		}
+	};
 	const timer = setInterval(() => {
 		client
 			.claimHeartbeat({ taskId, projectId, executionId, epoch })
 			.then(
 				() => fireTick(),
 				(err) => {
-				logger.warn(`Claim renewal failed: ${err?.message || err}`);
-				// The backend timed the stage out and released the hold:
-				// stop propping it up. The harness run itself continues to
-				// its natural finish, whose complete is then stale-rejected
-				// by the lease fence — never reported as fresh work.
-				if (err?.code === "STAGE_TIMEOUT") clearInterval(timer);
-			});
+					logger.warn(`Claim renewal failed: ${err?.message || err}`);
+					// The backend timed the stage out / released the hold /
+					// lost the task: stop propping it up and tell the caller
+					// so the run aborts instead of finishing orphaned (whose
+					// complete the lease fence would stale-reject anyway).
+					if (isTerminalLeaseError(err)) notifyLeaseLost(err);
+				});
 	}, intervalMs);
 	if (typeof timer.unref === "function") timer.unref();
 	return () => clearInterval(timer);
@@ -887,10 +931,12 @@ export async function resolveCiWorkdir({ runOnBranch, customBranch, workdir, pro
  *   (it ran to green while close() reported signal-death as exit 1, task
  *   b5716327).
  * @example await runCiCommand({ command: 'true', workdir: '/w', onLog: () => {} }) => { exitCode: 0 }
- * @param {Object} opts - `{ command, workdir, timeoutMs?, onLog?, env? }`.
+ * @param {Object} opts - `{ command, workdir, timeoutMs?, onLog?, env?, onChild? }`.
+ * @param {Function} [opts.onChild] - Called with the spawned child so the
+ *   caller can kill the process group on an external abort (lease lost).
  * @returns {Promise<Object>} `{ exitCode, timedOut, timeoutMs, output }`.
  ***/
-export function runCiCommand({ command, workdir, timeoutMs = 600000, onLog = () => {}, env = {} } = {}) {
+export function runCiCommand({ command, workdir, timeoutMs = 600000, onLog = () => {}, env = {}, onChild = null } = {}) {
 	return new Promise((resolve) => {
 		const shell = process.platform === "win32" ? "cmd" : "/bin/bash";
 		const args = process.platform === "win32" ? ["/c", command] : ["-c", command];
@@ -904,6 +950,13 @@ export function runCiCommand({ command, workdir, timeoutMs = 600000, onLog = () 
 			});
 		}
 		catch (err) { resolve({ exitCode: 1, timedOut: false, timeoutMs: effectiveTimeoutMs, output: String(err?.message || err) }); return; }
+		if (typeof onChild === "function") {
+			try {
+				onChild(child);
+			} catch {
+				// Observer only.
+			}
+		}
 		let output = "";
 		let timedOut = false;
 		const timer = setTimeout(() => {
@@ -1016,15 +1069,42 @@ async function executeAssignment({
 	integration = null,
 }) {
 	const servingHarnessId = harnessId || config.harnessId || "unknown";
-		const project = await client.getProject(projectId);
-		const task = await client.getTask(projectId, taskId);
+		// Hoisted so the catch below can always stop renewal / consult the
+		// lease state even when the failure happened before the renewal
+		// timer started (e.g. getTask 404s on a deleted task).
+		let stopRenewal = () => {};
+		let leaseLost = null;
+		let ciChild = null;
+		// Pre-run load/claim: a task deleted (or re-claimed) between dispatch
+		// and start must abandon cleanly, not crash the daemon — 2026-11-10
+		// local-alpha died here with "Runner failed: Task not found" and
+		// systemd restart-looped on it.
+		let project;
+		let task;
+		let claim;
+		try {
+			project = await client.getProject(projectId);
+			task = await client.getTask(projectId, taskId);
+			// Dispatch already holds the lease (scan → match → claim-fence);
+			// re-claiming it would 409 against ourselves. Single-assignment
+			// has no lease yet, so it claims here.
+			claim = lease ?? (await client.claim({ taskId, projectId }));
+		} catch (err) {
+			if (err?.statusCode === 404 || err?.statusCode === 409 || isTerminalLeaseError(err)) {
+				const reason = `Assignment invalid before start (${err?.code || err?.statusCode || err?.message || err}); task ${taskId} abandoned.`;
+				logger.warn(reason);
+				try {
+					await client.interrupt({ taskId, projectId, executionId: lease?.executionId ?? null, reason });
+				} catch {
+					// Best-effort: a deleted task 404s here, which is fine.
+				}
+				return { interrupted: true, executionId: lease?.executionId ?? null, epoch: lease?.epoch ?? null, reason };
+			}
+			throw err;
+		}
 		const stageId = String(task.currentStageId ?? task.stages?.[0]?.id ?? "stage");
 
 		const runStartedAt = Date.now();
-		// Dispatch already holds the lease (scan → match → claim-fence);
-		// re-claiming it would 409 against ourselves. Single-assignment
-		// has no lease yet, so it claims here.
-		const claim = lease ?? (await client.claim({ taskId, projectId }));
 		const { executionId, epoch } = claim;
 		if (!backendPrompt && typeof claim.prompt === "string") backendPrompt = claim.prompt;
 		if (!kind && typeof claim.kind === "string") kind = claim.kind;
@@ -1055,8 +1135,11 @@ async function executeAssignment({
 		state.session = null;
 		// Lease renewal (D1): agent stages routinely outlive the claim
 		// TTL, so extend the hold while the harness runs (see
-		// startClaimRenewal).
-		const stopRenewal = startClaimRenewal({
+		// startClaimRenewal). A terminal renewal failure (stage timeout,
+		// lease stolen, task deleted) means this run is orphaned: abort the
+		// live session / CI child immediately instead of burning to a
+		// natural finish that the lease fence would stale-reject anyway.
+		stopRenewal = startClaimRenewal({
 			client,
 			logger,
 			taskId,
@@ -1067,6 +1150,28 @@ async function executeAssignment({
 			// look stale to a sibling Runner's cap relief.
 			onTick: () => {
 				if (state.workdir) touchWorkdir(state.workdir);
+			},
+			onLeaseLost: (err) => {
+				if (leaseLost) return;
+				leaseLost = err;
+				logger.warn(
+					`Lease lost mid-run (${err?.code || err?.statusCode || err?.message || err}); aborting execution ${executionId} of task ${taskId}.`,
+				);
+				try {
+					state.session?.abort?.();
+				} catch {
+					// Abort is best-effort: the catch below still abandons.
+				}
+				if (ciChild) {
+					try {
+						if (ciChild.pid !== undefined && process.platform !== "win32") {
+							process.kill(-ciChild.pid, "SIGKILL");
+						}
+					} catch {}
+					try {
+						ciChild.kill("SIGKILL");
+					} catch {}
+				}
 			},
 		});
 		// Hoisted so the failure path below can flush the trailing
@@ -1196,7 +1301,22 @@ async function executeAssignment({
 						timeoutMs: ciTimeoutMs || 600000,
 						env: { ...sanitizeCiEnv(ciEnv), KAINBAIN_TASK_ID: taskId, KAINBAIN_TASK_DOCS: `${workdir}/docs/tasks/${taskId}` },
 						onLog: (text) => { sendLogs(text).catch(() => {}); },
+						onChild: (child) => { ciChild = child; },
 					});
+					// Lease lost while the CI command ran (child killed by
+					// onLeaseLost): abandon instead of reporting an outcome
+					// for a lease the backend no longer attributes to us.
+					if (leaseLost) {
+						state.session = null; stopRenewal();
+						const reason = `Lease lost mid-run (${leaseLost?.code || leaseLost?.statusCode || leaseLost?.message || leaseLost}); CI execution abandoned.`;
+						logger.warn(reason);
+						try {
+							await client.interrupt({ taskId, projectId, executionId, reason });
+						} catch {
+							// Best-effort: a deleted task 404s here, which is fine.
+						}
+						return { interrupted: true, executionId, epoch, reason };
+					}
 					state.session = null; stopRenewal();
 					await client.progress({ taskId, projectId, executionId, epoch, stageId, event: "finished" });
 					const sha = (await runGit(ciWorkdir, ["rev-parse", "HEAD"])).stdout.trim();
@@ -1279,6 +1399,28 @@ async function executeAssignment({
 					state.session = session;
 				},
 			});
+			// Lease lost while the harness ran (renewal got STALE_EPOCH /
+			// STAGE_TIMEOUT / TASK_NOT_FOUND): this run is orphaned — do NOT
+			// commit/push/complete on a branch another Runner may now own.
+			// Abandon quietly; the interrupt report is best-effort (the
+			// backend may already have re-queued or deleted the task).
+			if (leaseLost) {
+				state.session = null;
+				stopRenewal();
+				const reason = `Lease lost mid-run (${leaseLost?.code || leaseLost?.statusCode || leaseLost?.message || leaseLost}); execution abandoned.`;
+				logger.warn(reason);
+				try {
+					await structuredSender?.close();
+				} catch {
+					// Flush is best-effort.
+				}
+				try {
+					await client.interrupt({ taskId, projectId, executionId, reason });
+				} catch {
+					// Best-effort: a deleted task 404s here, which is fine.
+				}
+				return { interrupted: true, executionId, epoch, reason };
+			}
 			state.session = null;
 			stopRenewal();
 			// Ship the trailing structured batch BEFORE the finished marker
@@ -1361,7 +1503,29 @@ async function executeAssignment({
 			});
 		} catch (err) {
 			stopRenewal();
-			if (err?.code === "STALE_EPOCH") throw err;
+			// Terminal lease/task errors (lease stolen, stage timed out, task
+			// deleted mid-run — including the abort our own onLeaseLost
+			// triggered): abandon the execution and keep the daemon alive.
+			// Rethrowing here exited the Runner process ("Runner failed: Task
+			// not found"), and systemd restart storms turned one deleted task
+			// into a crash loop (local-alpha, 2026-11-10). Returning
+			// `interrupted` lets the dispatch loop re-poll immediately.
+			if (leaseLost || isTerminalLeaseError(err)) {
+				const cause = leaseLost || err;
+				const reason = `Lease lost or task gone (${cause?.code || cause?.statusCode || cause?.message || cause}); execution ${executionId} abandoned.`;
+				logger.warn(reason);
+				try {
+					await structuredSender?.close();
+				} catch {
+					// Flush is best-effort.
+				}
+				try {
+					await client.interrupt({ taskId, projectId, executionId, reason });
+				} catch {
+					// Best-effort: a deleted task 404s here, which is fine.
+				}
+				return { interrupted: true, executionId, epoch, reason };
+			}
 			if (err?.code === "WORKTREE_CAP_REACHED") {
 				// Infra exhaustion, not task fault: re-queue via interrupt
 				// and keep polling. Throwing here killed the Runner process,

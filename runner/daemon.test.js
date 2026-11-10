@@ -21,6 +21,7 @@ import {
 	runDispatchLoop,
 	runSingleAssignment,
 	applyBackendPrompt,
+	isTerminalLeaseError,
 	startClaimRenewal,
 	RUNNER_API_VERSION,
 	RUNNER_VERSION,
@@ -186,6 +187,80 @@ describe("runSingleAssignment", () => {
 		assert.equal(out.accepted, true);
 		assert.ok(!client.calls.includes("interrupt"));
 		assert.ok(fs.existsSync(path.join(config.workRoot, "kb-t1")));
+	});
+
+	it("abandons cleanly (no crash) when the task was deleted before the run starts", async () => {
+		// local-alpha 2026-11-10: a delete pass removed the claimed task and
+		// the daemon died with "Runner failed: Task not found", restart-
+		// looping under systemd. The assignment must return interrupted.
+		const repo = localRepo();
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo);
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => {
+				throw Object.assign(new Error("Task not found"), { code: "TASK_NOT_FOUND", statusCode: 404 });
+			},
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async () => ({ accepted: true }),
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const out = await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.interrupted, true);
+		assert.ok(client.calls.includes("interrupt"), "best-effort interrupt attempted");
+		assert.ok(!client.calls.includes("complete"), "no completion reported for a deleted task");
+	});
+
+	it("aborts instead of completing when the lease is lost mid-run", async () => {
+		// server2-alpha 2026-11-10: the backend restart dropped the in-memory
+		// claim, another Runner re-claimed, and this Runner kept burning CPU
+		// on the orphan. A STALE_EPOCH mid-run must abandon, not complete.
+		const repo = localRepo();
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo);
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1", status: "in_stage" }),
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async () => ({ accepted: true }),
+			interrupt: async () => ({ interrupted: true }),
+		});
+		let abortCalled = false;
+		const abortingHarness = {
+			async createSession() {
+				return {
+					getLastAssistantText: () => "",
+					subscribe: () => () => {},
+					prompt: async () => {
+						// Simulates the session aborting after onLeaseLost fired.
+						throw Object.assign(new Error("Stale execution: lease belongs to another Runner."), { code: "STALE_EPOCH", statusCode: 409 });
+					},
+					abort: () => { abortCalled = true; },
+					dispose: async () => {},
+				};
+			},
+		};
+		const out = await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => abortingHarness,
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.interrupted, true);
+		assert.match(String(out.reason), /Lease lost or task gone/);
+		assert.ok(client.calls.includes("interrupt"), "task re-queues via interrupt");
+		assert.ok(!client.calls.includes("complete"), "orphaned run never reports completion");
 	});
 
 	it("reports a worktree-cap refusal as an interrupt instead of crashing", async () => {
@@ -630,6 +705,92 @@ describe("startClaimRenewal", () => {
 		stop();
 		assert.ok(warnings.length >= 1);
 		assert.match(warnings[0], /Claim renewal failed/);
+	});
+
+	it("fires onLeaseLost exactly once and stops the timer on a terminal lease error", async () => {
+		const seen = [];
+		const lost = [];
+		const client = {
+			claimHeartbeat: async (args) => {
+				seen.push(args);
+				throw Object.assign(new Error("lease belongs to another Runner."), { code: "STALE_EPOCH", statusCode: 409 });
+			},
+		};
+		const logger = { log: () => {}, warn: () => {} };
+		startClaimRenewal({
+			client,
+			logger,
+			taskId: "t1",
+			projectId: "p1",
+			executionId: "e1",
+			epoch: 1,
+			intervalMs: 10,
+			onLeaseLost: (err) => lost.push(err),
+		});
+		await new Promise((r) => setTimeout(r, 55));
+		assert.equal(lost.length, 1, `onLeaseLost fired ${lost.length} times`);
+		assert.equal(lost[0].code, "STALE_EPOCH");
+		const count = seen.length;
+		await new Promise((r) => setTimeout(r, 40));
+		assert.equal(seen.length, count, "timer stopped after terminal error");
+	});
+
+	it("treats a 404 / TASK_NOT_FOUND renewal failure as terminal (deleted task)", async () => {
+		const lost = [];
+		const client = {
+			claimHeartbeat: async () => {
+				throw Object.assign(new Error("Task not found"), { code: "TASK_NOT_FOUND", statusCode: 404 });
+			},
+		};
+		const logger = { log: () => {}, warn: () => {} };
+		startClaimRenewal({
+			client,
+			logger,
+			taskId: "t1",
+			projectId: "p1",
+			executionId: "e1",
+			epoch: 1,
+			intervalMs: 10,
+			onLeaseLost: (err) => lost.push(err),
+		});
+		await new Promise((r) => setTimeout(r, 35));
+		assert.equal(lost.length, 1);
+		assert.equal(lost[0].code, "TASK_NOT_FOUND");
+	});
+
+	it("does not fire onLeaseLost for transient transport failures", async () => {
+		const lost = [];
+		const client = {
+			claimHeartbeat: async () => {
+				throw new TypeError("fetch failed");
+			},
+		};
+		const logger = { log: () => {}, warn: () => {} };
+		const stop = startClaimRenewal({
+			client,
+			logger,
+			taskId: "t1",
+			projectId: "p1",
+			executionId: "e1",
+			epoch: 1,
+			intervalMs: 10,
+			onLeaseLost: (err) => lost.push(err),
+		});
+		await new Promise((r) => setTimeout(r, 45));
+		stop();
+		assert.equal(lost.length, 0);
+	});
+});
+
+describe("isTerminalLeaseError", () => {
+	it("matches stage timeout, stolen lease, and deleted task only", () => {
+		assert.equal(isTerminalLeaseError({ code: "STAGE_TIMEOUT" }), true);
+		assert.equal(isTerminalLeaseError({ code: "STALE_EPOCH" }), true);
+		assert.equal(isTerminalLeaseError({ code: "TASK_NOT_FOUND", statusCode: 404 }), true);
+		assert.equal(isTerminalLeaseError({ statusCode: 404 }), true);
+		assert.equal(isTerminalLeaseError(new TypeError("fetch failed")), false);
+		assert.equal(isTerminalLeaseError({ code: "RUNNER_PAUSED", statusCode: 409 }), false);
+		assert.equal(isTerminalLeaseError(null), false);
 	});
 });
 
