@@ -688,11 +688,37 @@ describe("model auto-discovery refresh", () => {
 		assert.deepEqual(out, ["muse::meta::m"]);
 		assert.equal(calls, 1);
 	});
-	it("auto-detect scans even when the operator pinned models (survey q4: discovery wins)", async () => {
+	it("skips scanning when the operator pinned models (pin wins by default)", async () => {
 		clearDiscoveredModelsCache();
 		let calls = 0;
 		const out = await refreshDiscoveredModels({
 			config: { ...base, models: ["pinned"] },
+			discoverFn: async () => {
+				calls += 1;
+				return ["muse::meta::m"];
+			},
+		});
+		assert.deepEqual(out, []);
+		assert.equal(calls, 0);
+	});
+	it("skips scanning for a singular model pin too", async () => {
+		clearDiscoveredModelsCache();
+		let calls = 0;
+		const out = await refreshDiscoveredModels({
+			config: { ...base, model: "pinned" },
+			discoverFn: async () => {
+				calls += 1;
+				return ["muse::meta::m"];
+			},
+		});
+		assert.deepEqual(out, []);
+		assert.equal(calls, 0);
+	});
+	it("scans despite the pin with the discovery-wins opt-in (survey q4)", async () => {
+		clearDiscoveredModelsCache();
+		let calls = 0;
+		const out = await refreshDiscoveredModels({
+			config: { ...base, models: ["pinned"], modelDiscoveryWins: true },
 			discoverFn: async () => {
 				calls += 1;
 				return ["muse::meta::m"];
@@ -1708,10 +1734,25 @@ describe("handlePendingCommands", () => {
 		]);
 	});
 
-	it("re-detects even when models are pinned (survey q4: discovery wins)", async () => {
+	it("acks pinned without scanning when models are pinned (pin wins by default)", async () => {
 		const state = {};
 		await handlePendingCommands({
 			config: claudeConfig({ models: ["pinned-model"] }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => { throw new Error("must not probe when pinned"); },
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "models pinned; discovery skipped" },
+		]);
+	});
+
+	it("re-detects despite the pin with the discovery-wins opt-in (survey q4)", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig({ models: ["pinned-model"], modelDiscoveryWins: true }),
 			client: {},
 			logger: quiet,
 			state,

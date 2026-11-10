@@ -45,11 +45,12 @@ asks the installed CLI over `muse serve` stdio `model/list` at boot
 and refreshes every
 `KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS` (default 12h, `0`
 disables all scanning), advertising the returned `muse::<provider>::<model>` ids.
-A non-empty discovery result replaces a pinned `KAINBAIN_RUNNER_MODELS`
-list (the pin only fills in while discovery yielded nothing).
+A pinned `KAINBAIN_RUNNER_MODELS` list always wins over discovered
+ids (set `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1` to let auto-detect
+replace the pin).
 Discovery failures keep the previous list and warn — they never
 break heartbeats. From System Settings › Runners, Re-detect models re-runs
-discovery promptly for every configured harness.
+discovery promptly for every configured harness (skipped with a "models pinned" ack when pinned).
 
 ## Verify
 

@@ -50,7 +50,7 @@ Runner (`#/docs/add-new-runner`).
 OpenCode auto-discovery needs `OPENCODE_URL` on the runner host (plus
 `OPENCODE_SERVER_PASSWORD` when the server needs auth); without it the
 leg lists nothing and reports `OPENCODE_NOT_CONFIGURED`. A pinned
-`KAINBAIN_RUNNER_MODELS` list fills in while discovery yielded nothing.
+`KAINBAIN_RUNNER_MODELS` list always wins over discovered ids.
 Make sure the runner host can reach the OpenCode server (spawned
 locally needs the binary; connect mode needs the URL).
 

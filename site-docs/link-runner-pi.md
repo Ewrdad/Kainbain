@@ -39,10 +39,10 @@ There are no `KAINBAIN_PI_*` variables — Pi is an SDK, not a binary.
 Pi auto-discovers its models from the host's `~/.pi/agent` login at
 boot (refreshed every `KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS`,
 default 12h), advertising the ready-to-use `pi::…` ids — no
-hand-typed list needed. A non-empty discovery result replaces a pinned
-`KAINBAIN_RUNNER_MODELS` list (the pin only fills in while discovery
-yielded nothing); set the interval to `0` to disable scanning and keep
-the pin. The backend matches assignments against the advertisement;
+hand-typed list needed. A pinned `KAINBAIN_RUNNER_MODELS` list always
+wins over discovered ids (set
+`KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1` to let auto-detect replace
+the pin). The backend matches assignments against the advertisement;
 each assignment serves exactly the required model.
 
 ## Verify

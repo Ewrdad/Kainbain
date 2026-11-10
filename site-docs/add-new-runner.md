@@ -170,7 +170,7 @@ pinned with `--manual --harness <name>`.
 ## Health and steering
 
 - **System Settings › Runners** shows every runner: status, heartbeat age, harnesses, models, and lifecycle buttons. A runner that stops checking in goes stale there.
-- **On-request commands** ride the heartbeat: Re-detect models re-runs model discovery promptly for every configured harness (acked with per-harness counts; failures keep the previous list), and Update now queues an idle-only self-update. Older daemons that predate the channel show manual guidance instead of a dead button.
+- **On-request commands** ride the heartbeat: Re-detect models re-runs model discovery promptly for every configured harness (acked with per-harness counts; failures keep the previous list; skipped with a "models pinned" ack when you pinned models), and Update now queues an idle-only self-update. Older daemons that predate the channel show manual guidance instead of a dead button.
 - **Steering** queued while no execution is live for the runner is ignored (never its work); live sessions receive steers on the next heartbeat.
 
 ## Self-update

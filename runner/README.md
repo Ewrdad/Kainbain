@@ -59,11 +59,15 @@ KAINBAIN_RUNNER_DISPATCH_IDLE_LIMIT=3 \
 node runner/main.js
 ```
 
-`KAINBAIN_RUNNER_MODELS` seeds the servable-model pin the backend
+`KAINBAIN_RUNNER_MODELS` is the servable-model advertisement the backend
 matches against (csv; singular `KAINBAIN_RUNNER_MODEL` seeds a
-1-element pin; empty matches model-less tasks only) — but survey q4
-says auto-detect wins, so a non-empty discovery result replaces the pin
-and the pin only fills in while discovery yielded nothing. Each
+1-element pin; empty matches model-less tasks only). A pinned list
+always wins over discovered ids: pinned installs skip discovery scans
+(boot, cadence, and Re-detect all ack `models pinned; discovery
+skipped`) and keep advertising exactly their pin across self-updates.
+Set `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1` to opt in to
+discovery-wins (survey q4: a non-empty discovery result replaces the
+pin, the pin only fills in while discovery yielded nothing). Each
 assignment serves exactly the dispatch answer's required model — never
 a substitution.
 
@@ -86,11 +90,18 @@ ready right now are listed; ids advertise in the fleet grammar
 
 Discovery runs once at boot and refreshes every
 `KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS` (default 12h; `0`
-disables all scanning, leaving the pin as the advertised list).
-Failures keep the previous list per harness and warn, never break
-heartbeats; the per-harness counts and first error ride the heartbeat
-as `facts.discoveryStatus` and surface in Settings › Runners next to
-the Re-detect button.
+disables all scanning). Failures keep the previous list per harness
+and warn, never break heartbeats; the per-harness counts and first
+error ride the heartbeat as `facts.discoveryStatus` and surface in
+Settings › Runners next to the Re-detect button.
+
+Migration note: this release generalizes discovery from muse-only to
+one leg per harness, but pinned-model semantics are unchanged — an
+install with `KAINBAIN_RUNNER_MODELS`/`KAINBAIN_RUNNER_MODEL` set
+advertises exactly that pin after updating, with no new scanning.
+Unpinned installs newly advertise auto-detected ids for every
+configured harness (previously muse-only). To let auto-detect replace
+an explicit pin, set `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1`.
 
 Model reporting contract (`servingModelFor` / `formatPosture` in
 `shared/` — one copy executed by both this Runner and the backend via
@@ -246,8 +257,10 @@ Re-detect models re-runs model discovery promptly for every configured
 harness (bypassing the 12h gate once; acked as
 `discovered N model(s) (pi:12, muse:3)` with the first leg error code
 when a leg fails, cache kept; a Runner with no legged harness acks
-`discovered 0 model(s) (no discovery legs configured)`) and Update now
-queues an idle-only self-update. Both ride
+`discovered 0 model(s) (no discovery legs configured)`; skipped with
+a `models pinned` ack when the operator pinned models, unless
+`KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1` opts in to discovery-wins)
+and Update now queues an idle-only self-update. Both ride
 `pendingCommands` on the heartbeat response and ack via `facts.commandAck`;
 a queued command waits for the next heartbeat, and Update now never
 interrupts live work — it applies at the next idle point. Older daemons

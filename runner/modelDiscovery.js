@@ -56,22 +56,32 @@ export async function discoverClaudeModels({ bin = "muse", timeoutMs = 20000, sp
 
 /***
  * MARK: resolveAdvertisedModels
- * @description Picks the model list a heartbeat advertises: survey q4 says
- *   auto-detect wins, so a non-empty discovery cache replaces the
- *   operator's explicit `config.models`/`config.model` pin; the pin only
- *   fills in when discovery yielded nothing yet (fallback, never a
- *   restriction). Empty everywhere means unpinned (matches model-less
- *   tasks only) — never invents a capability.
- * @example resolveAdvertisedModels({ models: ['a'] }, ['b']) => ['b']
- * @param {Object} [config] - Runner config (`models` array / `model`).
+ * @description Picks the model list a heartbeat advertises. Default is
+ *   pin-wins (upgrade-safe): the operator's explicit `config.models`
+ *   wins when non-empty, then the singular `config.model`; the
+ *   discovery cache only fills in when nothing is pinned. Opt in to
+ *   discovery-wins with `config.modelDiscoveryWins` (env
+ *   `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1`, survey q4): a non-empty
+ *   discovery cache then replaces the pin, and the pin only fills in
+ *   when discovery yielded nothing yet. Empty everywhere means unpinned
+ *   (matches model-less tasks only) — never invents a capability.
+ * @example resolveAdvertisedModels({ models: ['a'] }, ['b']) => ['a']
+ * @example resolveAdvertisedModels({ models: ['a'], modelDiscoveryWins: true }, ['b']) => ['b']
+ * @param {Object} [config] - Runner config (`models` array / `model` / `modelDiscoveryWins`).
  * @param {string[]} [discovered] - Last discovery result.
  * @returns {string[]} Advertised model ids.
  ***/
 export function resolveAdvertisedModels(config, discovered) {
-	if (Array.isArray(discovered) && discovered.length > 0) return [...discovered];
-	if (Array.isArray(config?.models) && config.models.length > 0) return [...config.models];
-	if (typeof config?.model === "string" && config.model.trim()) return [config.model.trim()];
-	return [];
+	const discoveredIds = Array.isArray(discovered) ? [...discovered] : [];
+	const pinnedModels = Array.isArray(config?.models) && config.models.length > 0 ? [...config.models] : null;
+	const pinnedModel = typeof config?.model === "string" && config.model.trim() ? [config.model.trim()] : null;
+	const pin = pinnedModels ?? pinnedModel ?? [];
+	if (config?.modelDiscoveryWins) {
+		if (discoveredIds.length > 0) return discoveredIds;
+		return pin;
+	}
+	if (pin.length > 0) return pin;
+	return discoveredIds;
 }
 
 /***

@@ -383,9 +383,10 @@ export async function defaultLoadHarness(harnessId) {
  * MARK: discoveredModelsCache
  * @description Last model auto-discovery result, shared by every factsFor
  *   call until the next refresh. Seeded at boot, refreshed on the
- *   modelDiscoveryIntervalMs cadence (default 12h). Auto-detect wins over
- *   the operator's explicit MODELS/MODEL list when non-empty (survey q4;
- *   see resolveAdvertisedModels) — the pin is only a fallback.
+ *   modelDiscoveryIntervalMs cadence (default 12h). The operator's explicit
+ *   MODELS/MODEL list wins by default (see resolveAdvertisedModels), so this
+ *   cache only matters when nothing is pinned — unless
+ *   `modelDiscoveryWins` opts in to discovery-wins (survey q4).
  ***/
 let discoveredModelsCache = [];
 
@@ -399,18 +400,36 @@ export function clearDiscoveredModelsCache() {
 }
 
 /***
+ * MARK: isModelsPinned
+ * @description Whether the operator pinned an explicit model list
+ *   (`config.models` non-empty or `config.model` set). Pinned installs
+ *   skip discovery scans and advertise the pin (unless
+ *   `modelDiscoveryWins` opts in to discovery-wins).
+ * @example isModelsPinned({ models: ['a'] }) => true
+ * @param {Object} [config] - Normalized runner config.
+ * @returns {boolean} True when a pin is set.
+ ***/
+export function isModelsPinned(config = {}) {
+	return (
+		(Array.isArray(config?.models) && config.models.length > 0) ||
+		(typeof config?.model === "string" && config.model.trim() !== "")
+	);
+}
+
+/***
  * MARK: refreshDiscoveredModels
  * @description One discovery round across every configured harness with a
  *   discovery leg (pi, muse, antigravity, vibe, opencode, codex): each leg
  *   reuses its backend harness's own `listModels()` (box-local login, no
- *   keys leave the host) and caches the ids per harness. Auto-detect always
- *   scans — survey q4 says it wins over the operator's MODELS/MODEL pin,
- *   which only fills in when discovery yielded nothing (see
- *   resolveAdvertisedModels). Best-effort — failures keep the previous
- *   cache (per-harness slice) and warn, never throw, so discovery can
- *   never break heartbeats. `modelDiscoveryIntervalMs: 0` disables all
- *   scanning (boot seed and re-detect alike), so a pinned operator keeps
- *   an escape hatch now that auto-detect wins.
+ *   keys leave the host) and caches the ids per harness. Skipped entirely
+ *   when the operator pinned MODELS/MODEL — pins win by default (see
+ *   resolveAdvertisedModels), so scanning would only waste CLI spawns;
+ *   set `modelDiscoveryWins` (env `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1`,
+ *   survey q4) to scan anyway and let a non-empty result replace the pin.
+ *   Best-effort — failures keep the previous cache (per-harness slice)
+ *   and warn, never throw, so discovery can never break heartbeats.
+ *   `modelDiscoveryIntervalMs: 0` disables all scanning (boot seed and
+ *   re-detect alike).
  * @example await refreshDiscoveredModels({ config }) => ['muse::meta::muse-spark-1.3']
  * @param {Object} [opts]
  * @param {Object} [opts.config] - Normalized runner config.
@@ -426,6 +445,7 @@ export async function refreshDiscoveredModels({ config, logger, discoverFn, disc
 			logger?.log?.("Model discovery disabled (interval 0); advertising the pinned list.");
 			return [...discoveredModelsCache];
 		}
+		if (isModelsPinned(config) && !config?.modelDiscoveryWins) return [...discoveredModelsCache];
 		const idsConfigured = runnerHarnessIds(config);
 		// The muse probe override rides the leg seam, so even overridden
 		// ids pass grammar validation before advertisement.
@@ -676,9 +696,10 @@ function stageCommandAck(state, ack) {
  * MARK: handlePendingCommands
  * @description Acts on backend-to-Runner commands delivered through the
  *   heartbeat pull channel (ADR 0013): `requestModelRediscovery` re-runs
- *   model discovery promptly (fresh probe, not the 12h cache cadence —
- *   auto-detect always scans since survey q4 says it wins over the pin);
- *   `requestUpdate` runs the existing idle-only
+ *   model discovery promptly (fresh probe, not the 12h cache cadence;
+ *   skipped with a success ack when the operator pinned models, since
+ *   pins win by default — `modelDiscoveryWins` opts in to scanning
+ *   anyway); `requestUpdate` runs the existing idle-only
  *   self-update at once when idle, or parks `state.pendingUpdate` for
  *   the next idle point when an execution is live (never interrupts
  *   work, D5). Every handled command stages exactly one ack on
@@ -704,6 +725,10 @@ export async function handlePendingCommands({ config, client, logger, state, pen
 				logger.log?.("Runner command: re-detecting models");
 				if (config?.modelDiscoveryIntervalMs === 0) {
 					stageCommandAck(state, { command: cmd, ok: true, detail: "discovery disabled (interval 0); advertising pinned list" });
+					continue;
+				}
+				if (isModelsPinned(config) && !config?.modelDiscoveryWins) {
+					stageCommandAck(state, { command: cmd, ok: true, detail: "models pinned; discovery skipped" });
 					continue;
 				}
 				const ids = await refreshDiscoveredModels({ config, logger, discoverFn, discoveryCtx });
