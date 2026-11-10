@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { DiffStatBadge } from './DiffStatBadge';
 import { RunAttributionBadge } from './RunAttributionBadge';
 import { HistoryFailureReason } from './HistoryFailureReason';
@@ -8,7 +8,9 @@ import { formatTryCount } from './taskFormatters';
  * MARK: TaskDetailHistoryPane
  * @description History tab body for the task detail page: stage transition
  *   timeline plus the deduplicated audit log. Pure presentation over props
- *   owned by the page shell — it fetches nothing itself.
+ *   owned by the page shell — it fetches nothing itself. The timeline always
+ *   shows in full; the audit log previews the first few events and hides the
+ *   rest behind a "Show all" disclosure so long histories stay scannable.
  * @example
  * <TaskDetailHistoryPane
  *   timelineData={timelineData}
@@ -23,6 +25,15 @@ export function TaskDetailHistoryPane({
   timelineDotClass = () => '',
   timelineTextClass = () => '',
 }) {
+  // Long audit logs collapse past the preview count; the toggle only renders
+  // when there is actually more to show.
+  const [showAllAuditEvents, setShowAllAuditEvents] = useState(false);
+  const auditPreviewCount = 5;
+  const hasMoreAuditEvents = auditEvents.length > auditPreviewCount;
+  const visibleAuditEvents =
+    showAllAuditEvents || !hasMoreAuditEvents
+      ? auditEvents
+      : auditEvents.slice(0, auditPreviewCount);
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <section>
@@ -64,7 +75,7 @@ export function TaskDetailHistoryPane({
         <h2 className="text-xs font-bold uppercase tracking-wider text-text-high mb-3 font-mono">
           Audit Log Events
         </h2>
-        {auditEvents.map((event, i) => (
+        {visibleAuditEvents.map((event, i) => (
           <div
             key={i}
             className="p-3 bg-surface-container border border-border-standard rounded-sm text-xs space-y-1"
@@ -73,6 +84,18 @@ export function TaskDetailHistoryPane({
             <div className="text-on-surface font-medium">{event.action}</div>
           </div>
         ))}
+        {hasMoreAuditEvents && (
+          <button
+            type="button"
+            aria-expanded={showAllAuditEvents}
+            onClick={() => setShowAllAuditEvents((show) => !show)}
+            className="px-3 py-1.5 min-h-[44px] bg-surface-container hover:bg-surface-container-high border border-border-standard rounded-sm text-[11px] font-mono font-bold uppercase tracking-wider text-text-muted hover:text-on-surface transition-all cursor-pointer"
+          >
+            {showAllAuditEvents
+              ? 'Show fewer'
+              : `Show all ${auditEvents.length} events (${auditEvents.length - auditPreviewCount} more)`}
+          </button>
+        )}
       </section>
     </div>
   );

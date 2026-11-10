@@ -176,6 +176,59 @@ test('deep link route selects the matching article', async () => {
 });
 
 /***
+ * MARK: DocsView collapsible sections
+ * @description The article viewer opts into collapsible `h2` sections with
+ *   Expand all / Collapse all controls, shown only when the article holds
+ *   sections. Sections start open; collapsing hides one body only.
+ ***/
+const SECTIONED_ARTICLE = [
+  '# System Architecture',
+  '',
+  'Intro stays visible.',
+  '',
+  '## First Section',
+  '',
+  'First body.',
+  '',
+  '## Second Section',
+  '',
+  'Second body.',
+].join('\n');
+
+test('article h2 headers collapse and expand individually', async () => {
+  api.docsArticle.mockResolvedValue(SECTIONED_ARTICLE);
+  renderWithKainBain(<DocsView />);
+  expect(await screen.findByRole('button', { name: 'First Section' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'First Section' }));
+  expect(screen.queryByText('First body.')).not.toBeInTheDocument();
+  expect(screen.getByText('Second body.')).toBeInTheDocument();
+  expect(screen.getByText('Intro stays visible.')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'First Section' }));
+  expect(screen.getByText('First body.')).toBeInTheDocument();
+});
+
+test('expand-all and collapse-all controls flip every section at once', async () => {
+  api.docsArticle.mockResolvedValue(SECTIONED_ARTICLE);
+  renderWithKainBain(<DocsView />);
+  await screen.findByRole('button', { name: 'First Section' });
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
+  expect(screen.queryByText('First body.')).not.toBeInTheDocument();
+  expect(screen.queryByText('Second body.')).not.toBeInTheDocument();
+  expect(screen.getByText('Intro stays visible.')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Expand all' }));
+  expect(screen.getByText('First body.')).toBeInTheDocument();
+  expect(screen.getByText('Second body.')).toBeInTheDocument();
+});
+
+test('expand/collapse controls hide when the article has no sections', async () => {
+  api.docsArticle.mockResolvedValue('# Short Note\n\nJust a paragraph.');
+  renderWithKainBain(<DocsView />);
+  await screen.findByRole('heading', { name: 'Short Note' });
+  expect(screen.queryByRole('button', { name: 'Expand all' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Collapse all' })).not.toBeInTheDocument();
+});
+
+/***
  * MARK: DocsView heading order
  * @description The sidebar avenue headings are h2, so the article's h1 never
  *   follows an h3 (WCAG 1.3.1/2.4.10; axe heading-order).
