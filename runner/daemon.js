@@ -18,6 +18,13 @@ import { clearDiscoveryCache, getDiscoveryStatus, runDiscoveryRound, summarizeDi
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { decideAgentStageVerdict } from "../shared/stageVerdict.js";
+// The Runner bundle ships api/ next to runner/, so the backend's own
+// discovery helpers (standard install dirs, the pi snapshot path, the
+// KAINBAIN_*_BIN overrides) are the single source of truth for where harness
+// binaries live — the Runner must auto-detect exactly what the backend
+// detects on the same host (SDK-style pi installs under ~/.pi/agent are
+// frequently NOT on PATH, which is why PATH-only probing missed them).
+import { DISCOVERY_ENV_VARS, standardSearchDirs, piSnapshotPath } from "../api/agent/harnessDiscovery.js";
 import { commitAndPush } from "./gitOps.js";
 import { saveRunnerCredential } from "./credentialFile.js";
 
@@ -98,9 +105,25 @@ const harnessVersionCache = new Map();
 export async function probeHarnessVersions(harnessId, { timeoutMs = 4000 } = {}) {
 	if (harnessVersionCache.has(harnessId)) return harnessVersionCache.get(harnessId);
 	let version = harnessId === "mock" ? "mock" : "unknown";
+	const ctx = harnessProbeContext({});
+	const dirs = harnessProbeDirsFor(harnessId, ctx);
 	for (const bin of HARNESS_VERSION_BINS[harnessId] ?? []) {
 		try {
-			const res = await execFileAsync(bin, ["--version"], { timeout: timeoutMs });
+			// Resolve through PATH + standard dirs + the harness's own install
+			// dir, so a binary that lives only off PATH (e.g. ~/.local/bin/pi)
+			// still reports its real version; fall back to the bare name.
+			let binPath = bin;
+			for (const dir of dirs) {
+				try {
+					if (ctx.checkExec(bin, dir)) {
+						binPath = path.join(dir, bin);
+						break;
+					}
+				} catch {
+					// Keep scanning.
+				}
+			}
+			const res = await execFileAsync(binPath, ["--version"], { timeout: timeoutMs });
 			const text = typeof res === "string" ? res : (res?.stdout ?? "");
 			const first = String(text).split("\n")[0].trim();
 			if (first) {
@@ -154,25 +177,23 @@ export function runnerHarnessIds(config = {}) {
 export const AUTO_DETECTABLE_HARNESSES = ["pi", "muse", "antigravity", "vibe"];
 
 /***
- * MARK: detectAvailableHarnesses
- * @description Scans PATH for harness CLIs (default behaviour; --manual
- *   opts out). One entry per harness whose first binary resolves to an
- *   executable file. Pure sync scan so boot can fail fast before join.
- * @example detectAvailableHarnesses({ pathValue: '/usr/bin:/bin' }) => ['pi']
- * @param {Object} [opts] - Options.
- * @param {string} [opts.pathValue] - PATH to scan (defaults to process.env.PATH).
- * @param {string} [opts.pathDelimiter] - PATH separator (defaults to path.delimiter).
- * @param {Function} [opts.isExecutable] - (bin, dir) => boolean override (tests).
- * @returns {string[]} Detected harness ids in AUTO_DETECTABLE_HARNESSES order.
+ * MARK: harnessProbeContext
+ * @description Normalizes the inputs for harness auto-detect: the env
+ *   mapping (tests inject a fake one), the platform, and the two fs seams.
+ *   When a caller injects `isExecutable` the call is synthetic: every binary
+ *   check (PATH, standard dirs, pi agent bin, env overrides) runs through
+ *   it, and the pi snapshot probe defaults to "absent" unless `fileExists`
+ *   is injected too — hermetic tests must never observe the real host's
+ *   `~/.pi`.
+ * @example harnessProbeContext({ pathValue: '/x', isExecutable: () => true })
+ * @param {Object} [opts] - Probe options (see detectAvailableHarnesses).
+ * @returns {Object} `{ env, platform, home, pathDirs, checkExec, checkFile }`.
  ***/
-export function detectAvailableHarnesses({ pathValue, pathDelimiter, isExecutable } = {}) {
-	const pathStr = typeof pathValue === "string" ? pathValue : (process.env.PATH ?? "");
-	const delimiter = typeof pathDelimiter === "string" ? pathDelimiter : path.delimiter;
-	const dirs = String(pathStr)
-		.split(delimiter)
-		.map((d) => d.trim())
-		.filter(Boolean);
-	const check =
+function harnessProbeContext({ pathValue, pathDelimiter, isExecutable, fileExists, env, homeDir, platform } = {}) {
+	const envMap = env ?? (homeDir ? { ...process.env, HOME: homeDir } : process.env);
+	const platformValue = platform ?? process.platform;
+	const synthetic = typeof isExecutable === "function";
+	const checkExec =
 		typeof isExecutable === "function"
 			? isExecutable
 			: (bin, dir) => {
@@ -183,14 +204,105 @@ export function detectAvailableHarnesses({ pathValue, pathDelimiter, isExecutabl
 						return false;
 					}
 				};
+	const checkFile =
+		typeof fileExists === "function"
+			? fileExists
+			: synthetic
+				? () => false
+				: (file) => {
+						try {
+							return fs.statSync(file).isFile();
+						} catch {
+							return false;
+						}
+					};
+	const home =
+		typeof homeDir === "string" && homeDir
+			? homeDir
+			: String(envMap.HOME ?? (platformValue === "win32" ? envMap.USERPROFILE : "") ?? "");
+	const delimiter = typeof pathDelimiter === "string" ? pathDelimiter : path.delimiter;
+	const pathStr = typeof pathValue === "string" ? pathValue : (envMap.PATH ?? "");
+	const pathDirs = String(pathStr)
+		.split(delimiter)
+		.map((d) => d.trim())
+		.filter(Boolean);
+	return { env: envMap, platform: platformValue, home, pathDirs, checkExec, checkFile };
+}
+
+/***
+ * MARK: harnessProbeDirsFor
+ * @description Ordered binary-search dirs for one harness: PATH first, then
+ *   the standard install dirs (`~/.local/bin`, `~/bin` on POSIX — the same
+ *   list the backend's `standardSearchDirs` returns, so a Runner detects
+ *   exactly what the backend detects on the same host), then the harness's
+ *   own install dir (pi: `~/.pi/agent/bin` and `$PI_AGENT_DIR/bin` —
+ *   SDK-style pi installs are frequently not on the service PATH, which is
+ *   why PATH-only probing missed pi on hosts like server2).
+ * @example harnessProbeDirsFor('pi', harnessProbeContext({})) // includes ~/.pi/agent/bin
+ * @param {string} harnessId - Harness id.
+ * @param {Object} ctx - From harnessProbeContext.
+ * @returns {string[]} Dirs in probe order (PATH entries first).
+ ***/
+function harnessProbeDirsFor(harnessId, ctx) {
+	const dirs = [...ctx.pathDirs];
+	if (ctx.home) {
+		for (const { dir } of standardSearchDirs({ ...ctx.env, HOME: ctx.home }, ctx.platform)) {
+			if (!dirs.includes(dir)) dirs.push(dir);
+		}
+	}
+	if (harnessId === "pi") {
+		if (ctx.home) dirs.push(path.join(ctx.home, ".pi", "agent", "bin"));
+		const agentDir = ctx.env.PI_AGENT_DIR;
+		if (typeof agentDir === "string" && agentDir.trim()) dirs.push(path.join(agentDir.trim(), "bin"));
+	}
+	return dirs;
+}
+
+/***
+ * MARK: detectAvailableHarnesses
+ * @description Detects the harnesses installed on this host (default
+ *   behaviour; --manual opts out). A harness counts as installed when any
+ *   of its binaries resolves to an executable file in PATH, in the standard
+ *   install dirs, in its own install dir (pi), or via its `KAINBAIN_*_BIN`
+ *   override — or, for pi only, when its agent dir holds a `models.json`
+ *   snapshot (the same "pi-snapshot" signal the backend's discoverHarnesses
+ *   reports, covering SDK-only installs with no CLI on PATH). One entry per
+ *   detected harness, in AUTO_DETECTABLE_HARNESSES order. Pure sync scan so
+ *   boot can fail fast before join.
+ * @example detectAvailableHarnesses({ pathValue: '/usr/bin:/bin' }) => ['pi']
+ * @param {Object} [opts] - Options.
+ * @param {string} [opts.pathValue] - PATH to scan (defaults to env.PATH).
+ * @param {string} [opts.pathDelimiter] - PATH separator (defaults to path.delimiter).
+ * @param {Function} [opts.isExecutable] - (bin, dir) => boolean override (tests; synthetic mode).
+ * @param {Function} [opts.fileExists] - (file) => boolean override for the pi snapshot probe.
+ * @param {Object} [opts.env] - Environment mapping (defaults to process.env).
+ * @param {string} [opts.homeDir] - Home override (defaults to env.HOME).
+ * @param {string} [opts.platform] - Platform override (defaults to process.platform).
+ * @returns {string[]} Detected harness ids in AUTO_DETECTABLE_HARNESSES order.
+ ***/
+export function detectAvailableHarnesses({ pathValue, pathDelimiter, isExecutable, fileExists, env, homeDir, platform } = {}) {
+	const ctx = harnessProbeContext({ pathValue, pathDelimiter, isExecutable, fileExists, env, homeDir, platform });
 	const found = [];
 	for (const id of AUTO_DETECTABLE_HARNESSES) {
-		const bins = HARNESS_VERSION_BINS[id] ?? [];
 		let ok = false;
-		for (const bin of bins) {
+		// Env override (KAINBAIN_MUSE_BIN etc.): a value with a path separator
+		// names the file directly; a bare name is searched like a PATH binary.
+		const override = typeof ctx.env[DISCOVERY_ENV_VARS[id]] === "string" ? ctx.env[DISCOVERY_ENV_VARS[id]].trim() : "";
+		const candidates = [];
+		if (override) {
+			if (override.includes("/") || override.includes(path.sep) || path.isAbsolute(override)) {
+				candidates.push({ bin: path.basename(override), dirs: [path.dirname(override)] });
+			} else {
+				candidates.push({ bin: override, dirs: harnessProbeDirsFor(id, ctx) });
+			}
+		}
+		for (const bin of HARNESS_VERSION_BINS[id] ?? []) {
+			candidates.push({ bin, dirs: harnessProbeDirsFor(id, ctx) });
+		}
+		for (const { bin, dirs } of candidates) {
 			for (const dir of dirs) {
 				try {
-					if (check(bin, dir)) {
+					if (ctx.checkExec(bin, dir)) {
 						ok = true;
 						break;
 					}
@@ -199,6 +311,12 @@ export function detectAvailableHarnesses({ pathValue, pathDelimiter, isExecutabl
 				}
 			}
 			if (ok) break;
+		}
+		// pi needs no CLI to be real: a configured agent dir (models.json
+		// snapshot) proves an installed pi stack.
+		if (!ok && id === "pi") {
+			const snapshot = piSnapshotPath(ctx.env, ctx.platform);
+			if (snapshot && ctx.checkFile(snapshot)) ok = true;
 		}
 		if (ok) found.push(id);
 	}
@@ -235,7 +353,7 @@ export function resolveHarnessConfig(config = {}, { detected, detectOpts } = {})
 	for (const id of runnerHarnessIds(config)) push(id);
 	if (out.length === 0) {
 		throw new Error(
-			"Runner auto-detect found no harness CLIs (probed pi, muse, agy/antigravity, vibe on PATH); install one or re-run with --manual --harness NAME.",
+			"Runner auto-detect found no harnesses (probed pi, muse, agy/antigravity, vibe on PATH, in ~/.local/bin and ~/bin, and pi via ~/.pi/agent); install one or re-run with --manual --harness NAME.",
 		);
 	}
 	config.harnessIds = out;

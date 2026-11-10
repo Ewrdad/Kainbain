@@ -828,6 +828,96 @@ describe("harness auto-detect (default)", () => {
 		assert.deepEqual(got, []);
 	});
 
+	it("never probes the real ~/.pi snapshot in synthetic mode", () => {
+		// Even on a host where ~/.pi/agent/models.json really exists, a test
+		// that injects only isExecutable must not observe it.
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin:/bin",
+			pathDelimiter: ":",
+			isExecutable: () => false,
+			env: { PATH: "/usr/bin:/bin", HOME: "/definitely/not/real" },
+			platform: "linux",
+		});
+		assert.deepEqual(got, []);
+	});
+
+	it("detects binaries in standard install dirs off PATH (~/.local/bin)", () => {
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin",
+			pathDelimiter: ":",
+			env: { PATH: "/usr/bin", HOME: "/home/tester" },
+			homeDir: "/home/tester",
+			platform: "linux",
+			isExecutable: (bin, dir) => bin === "muse" && dir === "/home/tester/.local/bin",
+			fileExists: () => false,
+		});
+		assert.deepEqual(got, ["muse"]);
+	});
+
+	it("detects pi via its own install dir (~/.pi/agent/bin)", () => {
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin",
+			pathDelimiter: ":",
+			env: { PATH: "/usr/bin", HOME: "/home/tester" },
+			homeDir: "/home/tester",
+			platform: "linux",
+			isExecutable: (bin, dir) => bin === "pi" && dir === "/home/tester/.pi/agent/bin",
+			fileExists: () => false,
+		});
+		assert.deepEqual(got, ["pi"]);
+	});
+
+	it("detects pi from the models.json snapshot when no binary exists (SDK-only install)", () => {
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin",
+			pathDelimiter: ":",
+			env: { PATH: "/usr/bin", HOME: "/home/tester" },
+			homeDir: "/home/tester",
+			platform: "linux",
+			isExecutable: () => false,
+			fileExists: (file) => file === "/home/tester/.pi/agent/models.json",
+		});
+		assert.deepEqual(got, ["pi"]);
+	});
+
+	it("detects pi via $PI_AGENT_DIR snapshot", () => {
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin",
+			pathDelimiter: ":",
+			env: { PATH: "/usr/bin", HOME: "/home/tester", PI_AGENT_DIR: "/opt/pi-agent" },
+			platform: "linux",
+			isExecutable: () => false,
+			fileExists: (file) => file === "/opt/pi-agent/models.json",
+		});
+		assert.deepEqual(got, ["pi"]);
+	});
+
+	it("honours a KAINBAIN_*_BIN override as a direct path", () => {
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin",
+			pathDelimiter: ":",
+			env: { PATH: "/usr/bin", HOME: "/home/tester", KAINBAIN_MUSE_BIN: "/opt/muse/bin/muse" },
+			homeDir: "/home/tester",
+			platform: "linux",
+			isExecutable: (bin, dir) => bin === "muse" && dir === "/opt/muse/bin",
+			fileExists: () => false,
+		});
+		assert.deepEqual(got, ["muse"]);
+	});
+
+	it("searches a bare KAINBAIN_*_BIN name across PATH and standard dirs", () => {
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin",
+			pathDelimiter: ":",
+			env: { PATH: "/usr/bin", HOME: "/home/tester", KAINBAIN_AGY_BIN: "agy-custom" },
+			homeDir: "/home/tester",
+			platform: "linux",
+			isExecutable: (bin, dir) => bin === "agy-custom" && dir === "/home/tester/bin",
+			fileExists: () => false,
+		});
+		assert.deepEqual(got, ["antigravity"]);
+	});
+
 	it("leaves manual configs untouched", () => {
 		const config = { harnessIds: ["mock"], harnessId: "mock", harnessAuto: false };
 		assert.equal(resolveHarnessConfig(config), config);

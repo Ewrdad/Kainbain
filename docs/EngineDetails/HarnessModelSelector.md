@@ -106,7 +106,11 @@ persisting the harness choice per project/stage stays an explicit follow-up unti
 
 Runners advertise the same harness-scoped keys into the fleet catalogue
 (`buildFleetModelCatalog` over heartbeat `facts.models`): one discovery leg
-per configured harness in `runner/harnessModelDiscovery.js`, each reusing
+per configured harness in `runner/harnessModelDiscovery.js` (the harness
+list itself comes from auto-detect — PATH plus `~/.local/bin`/`~/bin`,
+per-harness install dirs, `KAINBAIN_*_BIN` overrides, and pi's
+`~/.pi/agent` snapshot — see `runner/daemon.js` `detectAvailableHarnesses`,
+mirroring the backend's `discoverHarnesses`), each reusing
 its backend harness's own `listModels()` as the single source of truth for
 "ready to use right now" (survey q2). The Runner's
 `KAINBAIN_RUNNER_MODELS`/`MODEL` pin wins over auto-detect by default

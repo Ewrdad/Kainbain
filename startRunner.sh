@@ -6,10 +6,14 @@
 #   ./startRunner.sh --id local-pi --manual --harnesses pi,muse [--backend http://localhost:3100]
 #   ./startRunner.sh --ensure    # (re)create units for existing ~/.kainbain/runner-*.env, restart them
 #   ./startRunner.sh --restart   # restart all kainbain-runner-* units onto the files in ./runner
-# Harness selection defaults to auto-detect: the installer probes PATH for
-# pi, muse, agy/antigravity and vibe and writes the concrete csv into the
-# env file (fail-fast when none is found). Pass --manual with --harness or
-# --harnesses to pin a list instead (mock has no CLI, so it is manual-only).
+# Harness selection defaults to auto-detect: the installer probes PATH plus
+# the standard install dirs (~/.local/bin, ~/bin) and each harness's own
+# install dir (pi: ~/.pi/agent/bin, $PI_AGENT_DIR/bin; a configured
+# ~/.pi/agent/models.json snapshot also counts for pi) — the same probe set
+# the daemon uses (runner/daemon.js detectAvailableHarnesses) — and writes
+# the concrete csv into the env file (fail-fast when none is found). Pass
+# --manual with --harness or --harnesses to pin a list instead (mock has no
+# CLI, so it is manual-only).
 set -euo pipefail
 cd "$(dirname "$0")"
 ID="" HARNESS="auto" HARNESSES="" MANUAL=0 HARNESS_SET=0 BACKEND="http://localhost:3100" MODE="create"
@@ -33,10 +37,21 @@ fi
 detect_harnesses() {
   local out=""
   add_h() { if [ -z "$out" ]; then out="$1"; else out="$out,$1"; fi; }
-  if command -v pi >/dev/null 2>&1; then add_h "pi"; fi
-  if command -v muse >/dev/null 2>&1; then add_h "muse"; fi
-  if command -v agy >/dev/null 2>&1 || command -v antigravity >/dev/null 2>&1; then add_h "antigravity"; fi
-  if command -v vibe >/dev/null 2>&1; then add_h "vibe"; fi
+  # Same probe set as the daemon (runner/daemon.js detectAvailableHarnesses):
+  # PATH, the standard install dirs, and each harness's own install dir.
+  # SDK-style pi installs under ~/.pi/agent are often not on the service
+  # PATH, so probe those dirs explicitly (and accept the models.json
+  # snapshot as proof of a configured pi stack, like the backend does).
+  local dirs="$PATH:$HOME/.local/bin:$HOME/bin"
+  [ -n "${PI_AGENT_DIR:-}" ] && dirs="$dirs:$PI_AGENT_DIR/bin"
+  dirs="$dirs:$HOME/.pi/agent/bin"
+  find_bin() { local d; for d in $(printf '%s' "$dirs" | tr ':' ' '); do [ -x "$d/$1" ] && return 0; done; return 1; }
+  if find_bin pi; then add_h "pi"; else
+    [ -f "${PI_AGENT_DIR:-$HOME/.pi/agent}/models.json" ] && add_h "pi"
+  fi
+  if find_bin muse; then add_h "muse"; fi
+  if find_bin agy || find_bin antigravity; then add_h "antigravity"; fi
+  if find_bin vibe; then add_h "vibe"; fi
   printf '%s' "$out"
 }
 is_auto_token() { [ "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" = "auto" ]; }
@@ -65,7 +80,7 @@ resolve_harness_selection() {
     if [ -z "$HARNESSES" ] || is_auto_token "$HARNESSES"; then
       HARNESSES="$(detect_harnesses)"
       if [ -z "$HARNESSES" ]; then
-        echo "Runner auto-detect found no harness CLIs (probed pi, muse, agy/antigravity, vibe on PATH); install one or re-run with --manual --harness NAME." >&2; exit 1
+        echo "Runner auto-detect found no harnesses (probed pi, muse, agy/antigravity, vibe on PATH, ~/.local/bin, ~/bin, and pi via ~/.pi/agent); install one or re-run with --manual --harness NAME." >&2; exit 1
       fi
       echo "Auto-detected harnesses: $HARNESSES"
     else
