@@ -5,6 +5,7 @@ import {
 	closeTaskInspector,
 	createTaskViaApi,
 	openTaskInspector,
+	reloadApp,
 	resetProject,
 	waitForAppReadyOnProject,
 	waitForTaskVisible,
@@ -23,7 +24,11 @@ import {
  *     breaking neighbouring click targets (task fa5f7234);
  *   - the inspector width is user-adjustable via the left-edge splitter,
  *     keyboard nudging, and double-click reset, and persists to the
- *     `taskInspectorWidth` UI preference.
+ *     `taskInspectorWidth` UI preference;
+ *   - on desktop the open inspector is a right-anchored overlay covering
+ *     the board's right edge, so the toolbar (search, sort,
+ *     show-completed) keeps its full size instead of squishing
+ *     (task f56e9878).
  * The error-length cap + Show more guard lives in task-errors.spec.js
  * (it needs its own failing-CI fixture project).
  */
@@ -34,7 +39,7 @@ test.describe("Task inspector core behaviors", () => {
 	test.beforeEach(async ({ page }) => {
 		await waitForAppReadyOnProject(page);
 		await resetProject(page.request, await activeProjectId(page.request));
-		await page.reload();
+		await reloadApp(page);
 		await waitForAppReadyOnProject(page);
 	});
 
@@ -45,7 +50,7 @@ test.describe("Task inspector core behaviors", () => {
 		const projectId = await activeProjectId(request);
 		const goal = `Inspector edit default ${Date.now()}`;
 		await createTaskViaApi(request, projectId, goal);
-		await page.reload();
+		await reloadApp(page);
 		await waitForAppReadyOnProject(page);
 		await waitForTaskVisible(page, goal);
 
@@ -64,7 +69,7 @@ test.describe("Task inspector core behaviors", () => {
 		const projectId = await activeProjectId(request);
 		const goal = `Inspector toggle ${Date.now()}`;
 		await createTaskViaApi(request, projectId, goal);
-		await page.reload();
+		await reloadApp(page);
 		await waitForAppReadyOnProject(page);
 		await waitForTaskVisible(page, goal);
 
@@ -94,7 +99,7 @@ test.describe("Task inspector core behaviors", () => {
 		const projectId = await activeProjectId(request);
 		const goal = `Inspector copy id ${Date.now()}`;
 		const created = await createTaskViaApi(request, projectId, goal);
-		await page.reload();
+		await reloadApp(page);
 		await waitForAppReadyOnProject(page);
 		await waitForTaskVisible(page, goal);
 
@@ -124,7 +129,7 @@ test.describe("Task inspector core behaviors", () => {
 		const projectId = await activeProjectId(request);
 		const goal = `Inspector resize ${Date.now()}`;
 		await createTaskViaApi(request, projectId, goal);
-		await page.reload();
+		await reloadApp(page);
 		await waitForAppReadyOnProject(page);
 		await waitForTaskVisible(page, goal);
 
@@ -186,5 +191,52 @@ test.describe("Task inspector core behaviors", () => {
 		expect(Math.abs(reset - 560)).toBeLessThanOrEqual(1);
 
 		await closeTaskInspector(page);
+	});
+
+	test.describe("desktop overlay geometry (task f56e9878)", () => {
+		// Desktop viewport with the Now Playing footer on: the inspector is
+		// a right-anchored overlay, never an in-flow flex sibling.
+		test.use({ viewport: { width: 1280, height: 800 } });
+
+		test("open inspector overlaps the board without squishing the toolbar", async ({
+			page,
+			request,
+		}) => {
+			const projectId = await activeProjectId(request);
+			const goal = `Inspector overlay ${Date.now()}`;
+			await createTaskViaApi(request, projectId, goal);
+			await reloadApp(page);
+			await waitForAppReadyOnProject(page);
+			await waitForTaskVisible(page, goal);
+
+			const canvas = page.getByTestId("orchestrator-canvas-column");
+			await expect(canvas).toBeVisible();
+			const closedWidth = (await canvas.boundingBox()).width;
+
+			const inspector = await openTaskInspector(page, goal);
+
+			// The canvas column keeps its full width underneath the panel:
+			// an in-flow panel would steal ~560px of flex space and fail
+			// this (the reported squish); the overlay covers instead.
+			const openWidth = (await canvas.boundingBox()).width;
+			expect(Math.abs(openWidth - closedWidth)).toBeLessThanOrEqual(1);
+
+			// The panel is an out-of-flow overlay: computed `absolute`
+			// (in-flow `relative` fails this), right-anchored over the
+			// board's right edge.
+			expect(await inspector.evaluate((el) => getComputedStyle(el).position)).toBe(
+				"absolute",
+			);
+			const panel = await inspector.boundingBox();
+			const viewport = page.viewportSize();
+			expect(
+				Math.abs(panel.x + panel.width - viewport.width),
+			).toBeLessThanOrEqual(2);
+
+			await closeTaskInspector(page);
+			expect(
+				Math.abs((await canvas.boundingBox()).width - closedWidth),
+			).toBeLessThanOrEqual(1);
+		});
 	});
 });

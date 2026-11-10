@@ -1,5 +1,4 @@
 import { test, expect } from "@playwright/test";
-import { APP_URL } from "./urls";
 import { waitForAppReady, waitForFontsSettled } from "./helpers";
 
 test.describe("KainBain Functional E2E Tests", () => {
@@ -91,11 +90,10 @@ test.describe("KainBain Functional E2E Tests", () => {
 		 */
 		for (const width of [640, 768, 800, 900, 1024, 1280]) {
 			await page.setViewportSize({ width, height: 720 });
-			await page.goto(APP_URL);
-			await expect(page).toHaveTitle(/Kainbain/);
-			await expect(page.getByRole("button", { name: /Project/i }).first()).toBeVisible({
-				timeout: 15000,
-			});
+			// Shared readiness gate (bounded re-navigation on transient
+			// blank shells), not an inline wait: a single 15 s wait reds
+			// this loop whenever a mid-suite resource window lands here.
+			await waitForAppReady(page);
 			// Typography must settle before any geometry measurement (see
 			// waitForFontsSettled): the real overlap defect this gate guards is
 			// flex overflow, not FOUT.

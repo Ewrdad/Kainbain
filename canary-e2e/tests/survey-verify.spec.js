@@ -14,6 +14,7 @@ import {
   collectPageErrors,
   DESKTOP_VIEWPORT,
   MOBILE_VIEWPORT,
+  reloadApp,
 } from "./helpers.js";
 
 const SHOTS = "/tmp/kb-survey-verify";
@@ -230,7 +231,7 @@ test.describe("question-me survey verification", () => {
       data: { projectId: project.id, stageId: "ask", status: "waiting_human" },
     });
     // Same-URL goto is a no-op: reload so the page refetches the new round.
-    await page.reload();
+    await reloadApp(page);
     await expect(page.getByText("Encryption at rest?")).toBeVisible({ timeout: 15000 });
     await expect(page.getByText("Round 2")).toBeVisible();
     // Round 1 keeps its answers (radio still checked).

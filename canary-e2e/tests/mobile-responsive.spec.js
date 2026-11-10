@@ -4,6 +4,7 @@ import {
 	MOBILE_VIEWPORT,
 	activeProjectId,
 	createTaskViaApi,
+	reloadApp,
 	selectProject,
 	taskButtonKey,
 	waitForAppReady,
@@ -71,7 +72,7 @@ test.describe("Mobile Responsive Layout", () => {
 		const projectId = await activeProjectId(page.request);
 		const goal = `Mobile task ${Date.now()}`;
 		await createTaskViaApi(page.request, projectId, goal, { stageId: "1" });
-		await page.reload();
+		await reloadApp(page);
 		await waitForAppReady(page);
 		await selectProject(page, "Project A");
 
@@ -181,7 +182,7 @@ test.describe("Mobile Responsive Layout", () => {
 		const projectId = await activeProjectId(page.request);
 		const goal = `Compact task ${Date.now()}`;
 		await createTaskViaApi(page.request, projectId, goal, { stageId: "1" });
-		await page.reload();
+		await reloadApp(page);
 		await waitForAppReady(page);
 		await selectProject(page, "Project A");
 
@@ -258,7 +259,7 @@ test.describe("Mobile tap popups deconfliction (task e2cf55ac)", () => {
 		// (F1) and run the card off the board before it can be tapped.
 		const projectId = await activeProjectId(page.request);
 		await createTaskViaApi(page.request, projectId, goal, { stageId: "1" });
-		await page.reload();
+		await reloadApp(page);
 		await waitForAppReady(page);
 		await selectProject(page, "Project A");
 
