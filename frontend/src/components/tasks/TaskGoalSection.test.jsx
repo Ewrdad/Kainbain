@@ -141,6 +141,16 @@ test('clicking Edit while the stage is executing reveals the next-stage warning 
   expect(screen.getByLabelText('Task Title')).toBeInTheDocument();
 });
 
+test('running-stage warning guidance reads at text-xs, not fine print', () => {
+  renderWithKainBain(<TaskGoalSection {...makeProps({ isExecuting: true })} />);
+  fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+  const note = screen.getByRole('note');
+  const guidance = note.querySelector('.space-y-1');
+  expect(guidance).not.toBeNull();
+  expect(guidance.className).toContain('text-xs');
+  expect(guidance.className).not.toContain('text-[11px]');
+});
+
 test('shows no warning when manually editing a task that is not executing', () => {
   renderWithKainBain(<TaskGoalSection {...makeProps()} />);
   // Old idle task opens in preview; the user opts into edit mode.
