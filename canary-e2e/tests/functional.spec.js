@@ -1,5 +1,4 @@
 import { test, expect } from "@playwright/test";
-import { APP_URL } from "./urls";
 import { waitForAppReady, waitForFontsSettled } from "./helpers";
 
 test.describe("KainBain Functional E2E Tests", () => {
@@ -91,11 +90,11 @@ test.describe("KainBain Functional E2E Tests", () => {
 		 */
 		for (const width of [640, 768, 800, 900, 1024, 1280]) {
 			await page.setViewportSize({ width, height: 720 });
-			await page.goto(APP_URL);
-			await expect(page).toHaveTitle(/Kainbain/);
-			await expect(page.getByRole("button", { name: /Project/i }).first()).toBeVisible({
-				timeout: 15000,
-			});
+			// Hardened readiness (reload+retry) with a per-width budget: the
+			// old inline single wait had no re-issue path, so a blank-root
+			// module-burst resource window on any of the six loads failed the
+			// whole gate.
+			await waitForAppReady(page, { readyTimeoutMs: 30000 });
 			// Typography must settle before any geometry measurement (see
 			// waitForFontsSettled): the real overlap defect this gate guards is
 			// flex overflow, not FOUT.

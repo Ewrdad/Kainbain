@@ -42,8 +42,13 @@ export const DESKTOP_VIEWPORT = { width: 1280, height: 720 };
  *   re-issued, never waited out).
  * @example await waitForAppReady(page)
  * @param {import("@playwright/test").Page} page
+ * @param {Object} [opts] - Options.
+ * @param {number} [opts.readyTimeoutMs=APP_READY_TIMEOUT_MS] - Total
+ *   readiness budget, split across the first attempt and the one bounded
+ *   reload+retry (multi-navigation specs pass a smaller budget per load so
+ *   the summed worst case stays inside the per-test timeout).
  ***/
-export async function waitForAppReady(page) {
+export async function waitForAppReady(page, { readyTimeoutMs = APP_READY_TIMEOUT_MS } = {}) {
 	try {
 		await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
 	} catch (err) {
@@ -60,9 +65,12 @@ export async function waitForAppReady(page) {
 		await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
 	}
 	await expect(page).toHaveTitle(/Kainbain/);
+	const totalBudget = Number.isFinite(readyTimeoutMs) && readyTimeoutMs > 0 ? readyTimeoutMs : APP_READY_TIMEOUT_MS;
+	const firstHalf = Math.max(1000, Math.floor(totalBudget / 2));
+	const secondHalf = Math.max(1000, totalBudget - firstHalf);
 	try {
 		await expect(page.getByRole("button", { name: /Project/i }).first()).toBeVisible({
-			timeout: APP_READY_TIMEOUT_MS / 2,
+			timeout: firstHalf,
 		});
 	} catch (err) {
 		// Blank-root resource window (net::ERR_INSUFFICIENT_RESOURCES across
@@ -75,7 +83,7 @@ export async function waitForAppReady(page) {
 		await page.reload({ waitUntil: "domcontentloaded" });
 		await expect(page).toHaveTitle(/Kainbain/);
 		await expect(page.getByRole("button", { name: /Project/i }).first()).toBeVisible({
-			timeout: APP_READY_TIMEOUT_MS / 2,
+			timeout: secondHalf,
 		});
 	}
 }
