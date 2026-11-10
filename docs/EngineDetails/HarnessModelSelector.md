@@ -106,7 +106,11 @@ persisting the harness choice per project/stage stays an explicit follow-up unti
 
 Runners advertise the same harness-scoped keys into the fleet catalogue
 (`buildFleetModelCatalog` over heartbeat `facts.models`): one discovery leg
-per configured harness in `runner/harnessModelDiscovery.js`, each reusing
+per configured harness in `runner/harnessModelDiscovery.js` (the harness
+list itself comes from auto-detect — PATH plus `~/.local/bin`/`~/bin`,
+per-harness install dirs, `KAINBAIN_*_BIN` overrides, and pi's
+`~/.pi/agent` snapshot — see `runner/daemon.js` `detectAvailableHarnesses`,
+mirroring the backend's `discoverHarnesses`), each reusing
 its backend harness's own `listModels()` as the single source of truth for
 "ready to use right now" (survey q2). The Runner's
 `KAINBAIN_RUNNER_MODELS`/`MODEL` pin wins over auto-detect by default
@@ -118,6 +122,11 @@ Re-detect button in Settings › Runners drives `requestModelRediscovery`
 over the heartbeat pull channel (survey q3) and the ack
 (`discovered N model(s) (pi:12, muse:3)`) plus the heartbeat
 `facts.discoveryStatus` (`{ [harness]: { ok, count, atMs, error? } }`)
-surface per-harness counts and the first leg warning. Detected models join
+surface per-harness counts and the first leg warning. Empty scans fail
+loud, never silent: pi reports `PI_MODELS_EMPTY` (with the login state),
+muse reports `MUSE_MSP_BIN_MISSING` / `MUSE_MSP_MODELS_EMPTY`, and a round
+that sees detected-but-unconfigured harnesses appends the
+`harness auto-detect also sees: …` hint (re-detection scans configured
+harnesses only). Detected models join
 the picker as normal fleet choices (survey q6) — see `runner/README.md`
 for the per-harness legs matrix.
