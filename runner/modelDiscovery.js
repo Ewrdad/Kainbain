@@ -56,20 +56,21 @@ export async function discoverClaudeModels({ bin = "muse", timeoutMs = 20000, sp
 
 /***
  * MARK: resolveAdvertisedModels
- * @description Picks the model list a heartbeat advertises: the operator's
- *   explicit `config.models` wins when non-empty (pin/restrict), then the
- *   singular `config.model`; otherwise the discovery cache fills in. Empty
- *   everywhere means unpinned (matches model-less tasks only) — never
- *   invents a capability.
- * @example resolveAdvertisedModels({ models: ['a'] }, ['b']) => ['a']
+ * @description Picks the model list a heartbeat advertises: survey q4 says
+ *   auto-detect wins, so a non-empty discovery cache replaces the
+ *   operator's explicit `config.models`/`config.model` pin; the pin only
+ *   fills in when discovery yielded nothing yet (fallback, never a
+ *   restriction). Empty everywhere means unpinned (matches model-less
+ *   tasks only) — never invents a capability.
+ * @example resolveAdvertisedModels({ models: ['a'] }, ['b']) => ['b']
  * @param {Object} [config] - Runner config (`models` array / `model`).
  * @param {string[]} [discovered] - Last discovery result.
  * @returns {string[]} Advertised model ids.
  ***/
 export function resolveAdvertisedModels(config, discovered) {
+	if (Array.isArray(discovered) && discovered.length > 0) return [...discovered];
 	if (Array.isArray(config?.models) && config.models.length > 0) return [...config.models];
 	if (typeof config?.model === "string" && config.model.trim()) return [config.model.trim()];
-	if (Array.isArray(discovered)) return [...discovered];
 	return [];
 }
 

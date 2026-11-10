@@ -1,5 +1,4 @@
-import { spawnSync } from "node:child_process";
-import { parseModelKey } from "../shared/modelKeys.js";
+import { harnessModelKey, parseModelKey } from "../shared/modelKeys.js";
 import { discoverClaudeModels as discoverMuseModelsRaw } from "./modelDiscovery.js";
 
 /**
@@ -54,14 +53,34 @@ function withTimeout(promise, timeoutMs) {
 	});
 }
 
-/** Best-effort error classification for a generic leg. */
+/**
+ * Best-effort error classification for a generic leg. Classified errors
+ * thrown by legs (`{ code, message, hint }`, e.g. the agy/vibe catalogues'
+ * retained discovery failures) pass through untouched so the status slot
+ * names the real cause; anything else becomes `<HARNESS>_DISCOVERY_FAILED`.
+ */
 function classifyLegError(error, harnessId) {
+	if (error && typeof error === "object" && typeof error.code === "string" && error.code.trim()) {
+		return {
+			code: error.code.trim().slice(0, 120),
+			message: String(error.message || error.code).slice(0, 500),
+			hint: typeof error.hint === "string" ? error.hint.slice(0, 500) : "",
+		};
+	}
 	const detail = String(error?.message || error || "unknown error");
 	return {
 		code: `${String(harnessId || "harness").toUpperCase()}_DISCOVERY_FAILED`,
 		message: detail.slice(0, 500),
 		hint: `Re-run model re-detection after fixing the ${harnessId} setup.`,
 	};
+}
+
+/** Throws a classified leg error (caught by `runDiscoveryLeg` into the status slot). */
+function throwLegError(code, message, hint = "") {
+	const err = new Error(message);
+	err.code = code;
+	err.hint = hint;
+	throw err;
 }
 
 /**
@@ -197,7 +216,16 @@ export async function discoverAntigravityModels(ctx = {}) {
 	const models = typeof catalog.listAgyModels === "function"
 		? await catalog.listAgyModels()
 		: (typeof catalog.listModels === "function" ? await catalog.listModels() : []);
-	return dedupeStrings((models || []).map((m) => (typeof m === "string" ? m : m?.key)));
+	const ids = dedupeStrings((models || []).map((m) => (typeof m === "string" ? m : m?.key)));
+	if (ids.length === 0) {
+		// The catalogue degrades failures to [] with a warning; surface its
+		// retained classified error so the status slot names the cause.
+		const retained = typeof catalog.lastDiscoveryError === "function" ? catalog.lastDiscoveryError() : null;
+		if (retained && typeof retained.code === "string" && retained.code) {
+			throwLegError(retained.code, String(retained.message || retained.code), typeof retained.hint === "string" ? retained.hint : "");
+		}
+	}
+	return ids;
 }
 
 async function defaultVibeCatalog(ctx) {
@@ -211,7 +239,16 @@ export async function discoverVibeModels(ctx = {}) {
 		: await defaultVibeCatalog(ctx);
 	if (typeof catalog.clearCache === "function") catalog.clearCache();
 	const models = typeof catalog.listModels === "function" ? await catalog.listModels() : [];
-	return dedupeStrings((models || []).map((m) => (typeof m === "string" ? m : m?.key)));
+	const ids = dedupeStrings((models || []).map((m) => (typeof m === "string" ? m : m?.key)));
+	if (ids.length === 0) {
+		// Exec-only hosts and missing agents degrade to [] — retain the
+		// catalogue's classified failure so the status slot names the cause.
+		const retained = typeof catalog.lastDiscoveryError === "function" ? catalog.lastDiscoveryError() : null;
+		if (retained && typeof retained.code === "string" && retained.code) {
+			throwLegError(retained.code, String(retained.message || retained.code), typeof retained.hint === "string" ? retained.hint : "");
+		}
+	}
+	return ids;
 }
 
 export async function discoverMuseModels(ctx = {}) {
@@ -219,7 +256,6 @@ export async function discoverMuseModels(ctx = {}) {
 		const raw = await ctx.discoverFn(ctx);
 		return dedupeStrings(Array.isArray(raw) ? raw : []);
 	}
-	const fn = ctx?.binOpts ? null : null;
 	const opts = {};
 	if (ctx?.bin) opts.bin = ctx.bin;
 	if (Number.isFinite(ctx?.timeoutMs)) opts.timeoutMs = ctx.timeoutMs;
@@ -230,7 +266,15 @@ export async function discoverMuseModels(ctx = {}) {
 
 export async function discoverOpencodeModels(ctx = {}) {
 	const url = (ctx && (ctx.baseUrl || ctx.url)) || process.env.OPENCODE_URL || process.env.OPENCODE_SERVER_URL;
-	if (!url) return [];
+	if (!url) {
+		// Honest-empty: discovery needs a reachable opencode server and this
+		// host has none configured (spawning one per scan is out of scope).
+		throwLegError(
+			"OPENCODE_NOT_CONFIGURED",
+			"No opencode server configured on this Runner host.",
+			"Set OPENCODE_URL (and OPENCODE_SERVER_PASSWORD when the server needs auth), then re-run model re-detection.",
+		);
+	}
 	const { OpencodeModelDiscovery } = await import("../api/agent/harnesses/opencode/OpencodeModelDiscovery.js");
 	const discovery = new OpencodeModelDiscovery({
 		baseUrl: url,
@@ -239,17 +283,32 @@ export async function discoverOpencodeModels(ctx = {}) {
 		cacheTtlMs: 0,
 	});
 	const models = await discovery.listModels({ refresh: true });
-	return dedupeStrings((models || []).map((m) => {
-		if (typeof m === "string") return m;
-		const provider = m?.provider;
-		const id = m?.id;
-		if (provider && id) return `opencode::${provider}::${id}`;
-		return m?.key;
-	}));
+	const ids = [];
+	for (const m of models || []) {
+		if (typeof m === "string") {
+			if (m.trim()) ids.push(m.trim());
+			continue;
+		}
+		// The server catalogue keys are legacy 2-part (`provider::id`); the
+		// fleet grammar needs harness-scoped 3-part keys. Malformed rows are
+		// skipped, never served.
+		try {
+			ids.push(harnessModelKey("opencode", m?.provider, m?.id));
+		} catch {
+			// Skip malformed rows.
+		}
+	}
+	return dedupeStrings(ids);
 }
 
 export async function discoverCodexModels(_ctx = {}) {
-	return [];
+	// Honest-empty: the codex model-listing surface is UNVERIFIED (see
+	// codexHarness.js header), so there is nothing truthful to serve.
+	throwLegError(
+		"CODEX_DISCOVERY_UNAVAILABLE",
+		"Codex model discovery is not available (live codex transport unverified).",
+		"Codex stays runnable by explicit model ref; re-detection will pick it up once the live transport lands.",
+	);
 }
 
 // --- default legs ----------------------------------------------------------

@@ -688,7 +688,7 @@ describe("model auto-discovery refresh", () => {
 		assert.deepEqual(out, ["muse::meta::m"]);
 		assert.equal(calls, 1);
 	});
-	it("skips discovery when the operator pinned models", async () => {
+	it("auto-detect scans even when the operator pinned models (survey q4: discovery wins)", async () => {
 		clearDiscoveredModelsCache();
 		let calls = 0;
 		const out = await refreshDiscoveredModels({
@@ -698,10 +698,23 @@ describe("model auto-discovery refresh", () => {
 				return ["muse::meta::m"];
 			},
 		});
+		assert.deepEqual(out, ["muse::meta::m"]);
+		assert.equal(calls, 1);
+	});
+	it("skips scanning when discovery is disabled (interval 0), keeping the cache for the pin fallback", async () => {
+		clearDiscoveredModelsCache();
+		let calls = 0;
+		const out = await refreshDiscoveredModels({
+			config: { ...base, models: ["pinned"], modelDiscoveryIntervalMs: 0 },
+			discoverFn: async () => {
+				calls += 1;
+				return ["muse::meta::m"];
+			},
+		});
 		assert.deepEqual(out, []);
 		assert.equal(calls, 0);
 	});
-	it("skips discovery without the muse harness", async () => {
+	it("skips harnesses without a discovery leg", async () => {
 		clearDiscoveredModelsCache();
 		let calls = 0;
 		const out = await refreshDiscoveredModels({
@@ -713,6 +726,19 @@ describe("model auto-discovery refresh", () => {
 		});
 		assert.deepEqual(out, []);
 		assert.equal(calls, 0);
+	});
+	it("scans every configured harness leg and combines the ids", async () => {
+		clearDiscoveredModelsCache();
+		const out = await refreshDiscoveredModels({
+			config: { harnessIds: ["muse", "pi"], models: [], model: "" },
+			discoverFn: async () => ["muse::meta::m"],
+			discoveryCtx: {
+				createHarness: async () => ({
+					listModels: async () => [{ key: "pi::mistral::x" }, { key: "pi::mistral::y" }],
+				}),
+			},
+		});
+		assert.deepEqual(out, ["muse::meta::m", "pi::mistral::x", "pi::mistral::y"]);
 	});
 	it("keeps the previous cache when a later round fails", async () => {
 		clearDiscoveredModelsCache();
@@ -1658,7 +1684,7 @@ describe("handlePendingCommands", () => {
 		]);
 	});
 
-	it("skips discovery with a success ack when models are pinned", async () => {
+	it("re-detects even when models are pinned (survey q4: discovery wins)", async () => {
 		const state = {};
 		await handlePendingCommands({
 			config: claudeConfig({ models: ["pinned-model"] }),
@@ -1666,10 +1692,45 @@ describe("handlePendingCommands", () => {
 			logger: quiet,
 			state,
 			pendingCommands: ["requestModelRediscovery"],
-			discoverFn: async () => { throw new Error("must not probe when pinned"); },
+			discoverFn: async () => ["m1", "m2"],
 		});
 		assert.deepEqual(state.commandAcks, [
-			{ command: "requestModelRediscovery", ok: true, detail: "models pinned; discovery skipped" },
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 2 model(s) (muse:2)" },
+		]);
+	});
+
+	it("acks re-detection across legs with per-harness counts", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: baseConfig({ harnessIds: ["muse", "pi"], harnessId: "muse" }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => ["muse::meta::m"],
+			discoveryCtx: {
+				createHarness: async () => ({
+					listModels: async () => [{ key: "pi::mistral::x" }],
+				}),
+			},
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 2 model(s) (muse:1, pi:1)" },
+		]);
+	});
+
+	it("acks without scanning when discovery is disabled (interval 0)", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig({ models: ["pinned-model"], modelDiscoveryIntervalMs: 0 }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => { throw new Error("must not probe when disabled"); },
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "discovery disabled (interval 0); advertising pinned list" },
 		]);
 	});
 

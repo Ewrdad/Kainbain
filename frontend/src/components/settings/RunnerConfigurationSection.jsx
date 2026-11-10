@@ -11,6 +11,7 @@ import {
   effectiveModels,
   displayDirectories,
   modelUnion,
+  discoveryStatusSummary,
   modelTogglePatch,
   loadedProjectIds,
   partitionProjects,
@@ -347,6 +348,7 @@ export function RunnerConfigurationSection() {
   const config = selected ? defaultRunnerConfig(selected) : null;
   const effectiveModelIds = selected ? effectiveModels(selected) : [];
   const allModelIds = selected ? modelUnion(selected) : [];
+  const discoverySummary = selected ? discoveryStatusSummary(selected) : null;
   const modelsOverridden = selected ? Array.isArray(config.availableModels) : false;
   const loadedIds = selected ? loadedProjectIds(selected, projects || []) : [];
   const { available, loaded } = partitionProjects(projects || [], loadedIds);
@@ -869,6 +871,23 @@ export function RunnerConfigurationSection() {
                     data-testid={`runner-redetect-status-${selected.runnerId}`}
                   >
                     {redetectStatusLine}
+                  </p>
+                )}
+                {discoverySummary && (
+                  <p
+                    className="text-[11px] text-text-muted"
+                    data-testid={`runner-discovery-status-${selected.runnerId}`}
+                  >
+                    {`Auto-detect: ${discoverySummary.counts}`}
+                  </p>
+                )}
+                {discoverySummary?.warning && (
+                  <p
+                    className="text-[11px] text-warning"
+                    role="status"
+                    data-testid={`runner-discovery-warning-${selected.runnerId}`}
+                  >
+                    {discoverySummary.warning}
                   </p>
                 )}
                 {allModelIds.length === 0 ? (

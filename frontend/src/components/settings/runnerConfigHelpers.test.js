@@ -11,6 +11,7 @@ import {
   effectiveDirectoryValue,
   displayDirectories,
   modelUnion,
+  discoveryStatusSummary,
   modelTogglePatch,
   parseModelsInput,
   loadedProjectIds,
@@ -344,6 +345,39 @@ describe('runnerConfigHelpers', () => {
     expect(modelTogglePatch(runner, ['m2', 'm1'])).toBeNull();
     expect(modelTogglePatch(runner, ['m1'])).toEqual(['m1']);
     expect(modelTogglePatch(runner, [])).toEqual([]);
+  });
+
+  it('summarizes discoveryStatus counts with the first leg warning', () => {
+    const runner = {
+      capabilities: {
+        discoveryStatus: {
+          pi: { ok: true, count: 77, atMs: 1 },
+          antigravity: { ok: false, count: 0, atMs: 2, error: { code: 'AGY_BIN_MISSING', message: 'no agy' } },
+        },
+      },
+    };
+    expect(discoveryStatusSummary(runner)).toEqual({
+      counts: 'antigravity:0, pi:77',
+      warning: 'antigravity: AGY_BIN_MISSING — no agy',
+    });
+    expect(discoveryStatusSummary({ capabilities: { discoveryStatus: { pi: { ok: true, count: 1 } } } })).toEqual({
+      counts: 'pi:1',
+      warning: null,
+    });
+  });
+
+  it('returns null discoveryStatus for old or malformed records, facts fallback otherwise', () => {
+    expect(discoveryStatusSummary({})).toBeNull();
+    expect(discoveryStatusSummary({ capabilities: {} })).toBeNull();
+    expect(discoveryStatusSummary({ capabilities: { discoveryStatus: {} } })).toBeNull();
+    expect(discoveryStatusSummary({ capabilities: { discoveryStatus: [] } })).toBeNull();
+    expect(discoveryStatusSummary({ capabilities: { discoveryStatus: null } })).toBeNull();
+    expect(
+      discoveryStatusSummary({ facts: { discoveryStatus: { pi: { ok: true, count: 3 } } } }),
+    ).toEqual({ counts: 'pi:3', warning: null });
+    expect(
+      discoveryStatusSummary({ capabilities: { discoveryStatus: { pi: { ok: false, count: 0 } } } }).warning,
+    ).toBe('pi: discovery failed');
   });
 
   it('prefers the operator directory override over the Runner folders', () => {

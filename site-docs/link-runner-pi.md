@@ -36,16 +36,14 @@ or set `KAINBAIN_RUNNER_HARNESS=pi` (single) /
 `KAINBAIN_RUNNER_HARNESSES=pi,muse` (multi) in the runner env file.
 There are no `KAINBAIN_PI_*` variables — Pi is an SDK, not a binary.
 
-Pin the advertised models when the runner should only serve some:
-
-```bash
-KAINBAIN_RUNNER_MODELS=deepseek-v4-flash:0731-cloud
-```
-
-Pi has no model auto-discovery (only the Muse harness discovers), so
-an unpinned Pi runner matches model-less tasks only. The backend
-matches assignments against the advertisement; each assignment serves
-exactly the required model.
+Pi auto-discovers its models from the host's `~/.pi/agent` login at
+boot (refreshed every `KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS`,
+default 12h), advertising the ready-to-use `pi::…` ids — no
+hand-typed list needed. A non-empty discovery result replaces a pinned
+`KAINBAIN_RUNNER_MODELS` list (the pin only fills in while discovery
+yielded nothing); set the interval to `0` to disable scanning and keep
+the pin. The backend matches assignments against the advertisement;
+each assignment serves exactly the required model.
 
 ## Verify
 
@@ -58,7 +56,7 @@ exactly the required model.
 | Symptom | Fix |
 | --- | --- |
 | Pi stages fail on model access | Check the `GET /status` backend probes (LiteLLM / Ollama Cloud) and the `KAINBAIN_DEFAULT_MODEL` default, then re-run |
-| Runner never matches Pi tasks | It advertises no Pi models: set `KAINBAIN_RUNNER_MODELS`, or scope the task model-less |
+| Runner never matches Pi tasks | It advertises no Pi models: log Pi in on that host and press Re-detect models in Settings › Runners (or pin `KAINBAIN_RUNNER_MODELS` / scope the task model-less) |
 | Wrong model served | Dispatch owns the harness+model combination — check the stage's effective harness/model in the picker, not the runner default |
 
 ## See also

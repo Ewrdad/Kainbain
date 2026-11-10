@@ -58,4 +58,26 @@ describe("normalizeCapabilities", () => {
 		expect(out.runnable).toBe(false);
 		expect(out.diskHeadroomMb).toBeNull();
 	});
+
+	test("passes discoveryStatus through (additive, old runners omit it)", () => {
+		const status = {
+			pi: { ok: true, count: 77, atMs: 123 },
+			antigravity: { ok: false, count: 0, atMs: 124, error: { code: "AGY_BIN_MISSING", message: "no agy" } },
+		};
+		const out = normalizeCapabilities({ models: ["m1"], discoveryStatus: status });
+		expect(out.errors).toEqual([]);
+		expect(out.discoveryStatus).toEqual(status);
+		const absent = normalizeCapabilities({ models: ["m1"] });
+		expect(absent.errors).toEqual([]);
+		expect("discoveryStatus" in absent).toBe(false);
+		const nulled = normalizeCapabilities({ discoveryStatus: null });
+		expect(nulled.errors).toEqual([]);
+		expect(nulled.discoveryStatus).toBeNull();
+	});
+
+	test("rejects a malformed discoveryStatus without throwing", () => {
+		const out = normalizeCapabilities({ discoveryStatus: ["pi"] });
+		expect(out.errors).toContain("discoveryStatus must be an object or null");
+		expect("discoveryStatus" in out).toBe(false);
+	});
 });

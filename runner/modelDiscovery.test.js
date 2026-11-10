@@ -51,10 +51,13 @@ test("spawn failure, timeout error, and unparsable output resolve to []", async 
 	assert.deepEqual(await discoverClaudeModels({ spawnSyncFn: () => ({ stdout: "garbage\n" }) }), []);
 });
 
-test("explicit operator models win; discovery fills only when unset", () => {
-	assert.deepEqual(resolveAdvertisedModels({ models: ["a"] }, ["b"]), ["a"]);
+test("auto-detect wins over the pin; the pin only fills in when discovery is empty (survey q4)", () => {
+	assert.deepEqual(resolveAdvertisedModels({ models: ["a"] }, ["b"]), ["b"]);
 	assert.deepEqual(resolveAdvertisedModels({ models: [] }, ["b"]), ["b"]);
-	assert.deepEqual(resolveAdvertisedModels({ model: "a" }, ["b"]), ["a"]);
+	assert.deepEqual(resolveAdvertisedModels({ model: "a" }, ["b"]), ["b"]);
 	assert.deepEqual(resolveAdvertisedModels({}, ["b"]), ["b"]);
+	assert.deepEqual(resolveAdvertisedModels({ models: ["a"] }, []), ["a"]);
+	assert.deepEqual(resolveAdvertisedModels({ model: "a" }, []), ["a"]);
 	assert.deepEqual(resolveAdvertisedModels({ models: [] }, []), []);
+	assert.deepEqual(resolveAdvertisedModels({}, undefined), []);
 });

@@ -383,9 +383,9 @@ export async function defaultLoadHarness(harnessId) {
  * MARK: discoveredModelsCache
  * @description Last model auto-discovery result, shared by every factsFor
  *   call until the next refresh. Seeded at boot, refreshed on the
- *   modelDiscoveryIntervalMs cadence (default 12h). The operator's explicit
- *   MODELS/MODEL list always wins (see resolveAdvertisedModels), so this
- *   cache only matters when nothing is pinned.
+ *   modelDiscoveryIntervalMs cadence (default 12h). Auto-detect wins over
+ *   the operator's explicit MODELS/MODEL list when non-empty (survey q4;
+ *   see resolveAdvertisedModels) — the pin is only a fallback.
  ***/
 let discoveredModelsCache = [];
 
@@ -400,27 +400,33 @@ export function clearDiscoveredModelsCache() {
 
 /***
  * MARK: refreshDiscoveredModels
- * @description One discovery round: when the operator pinned no models and
- *   the `muse` harness is configured, asks the installed CLI for its model
- *   menu (muse serve model/list, box-local login, no keys leave the host)
- *   and caches the ids. Best-effort — failures keep the previous cache and
- *   warn, never throw, so discovery can never break heartbeats.
+ * @description One discovery round across every configured harness with a
+ *   discovery leg (pi, muse, antigravity, vibe, opencode, codex): each leg
+ *   reuses its backend harness's own `listModels()` (box-local login, no
+ *   keys leave the host) and caches the ids per harness. Auto-detect always
+ *   scans — survey q4 says it wins over the operator's MODELS/MODEL pin,
+ *   which only fills in when discovery yielded nothing (see
+ *   resolveAdvertisedModels). Best-effort — failures keep the previous
+ *   cache (per-harness slice) and warn, never throw, so discovery can
+ *   never break heartbeats. `modelDiscoveryIntervalMs: 0` disables all
+ *   scanning (boot seed and re-detect alike), so a pinned operator keeps
+ *   an escape hatch now that auto-detect wins.
  * @example await refreshDiscoveredModels({ config }) => ['muse::meta::muse-spark-1.3']
  * @param {Object} [opts]
  * @param {Object} [opts.config] - Normalized runner config.
  * @param {Object} [opts.logger] - Logger.
- * @param {Function} [opts.discoverFn=discoverClaudeModels] - Test seam.
+ * @param {Function} [opts.discoverFn] - Test seam for the muse leg (raw id override).
+ * @param {Object} [opts.discoveryCtx] - Test ctx forwarded to the other legs' seams.
  * @returns {Promise<string[]>} Current cache copy.
  ***/
-export async function refreshDiscoveredModels({ config, logger, discoverFn } = {}) {
+export async function refreshDiscoveredModels({ config, logger, discoverFn, discoveryCtx } = {}) {
 	try {
-		if (Array.isArray(config?.models) && config.models.length > 0) return [...discoveredModelsCache];
-		if (typeof config?.model === "string" && config.model.trim()) return [...discoveredModelsCache];
+		if (config?.modelDiscoveryIntervalMs === 0) {
+			logger?.log?.("Model discovery disabled (interval 0); advertising the pinned list.");
+			return [...discoveredModelsCache];
+		}
 		const idsConfigured = runnerHarnessIds(config);
 		let combined = [];
-		let firstError = null;
-		let perHarness = {};
-		const pinned = false;
 		for (const id of idsConfigured) {
 			if (!Object.prototype.hasOwnProperty.call(DISCOVERY_LEGS, id)) continue;
 			let res;
@@ -438,18 +444,16 @@ export async function refreshDiscoveredModels({ config, logger, discoverFn } = {
 					const prev = DISCOVERY_CACHE[id]?.ids || [];
 					const ok = incoming.length > 0;
 					const ids = ok ? incoming : (prev.length ? prev : incoming);
-					DISCOVERY_CACHE[id] = { ids, atMs: Date.now(), error: ok ? null : (incoming.length === 0 && prev.length === 0 ? null : null) };
+					DISCOVERY_CACHE[id] = { ids, atMs: Date.now(), error: null };
 					// Note: only hard failures carry an error code; empty success is silent.
 					res = { harnessId: id, ids: DISCOVERY_CACHE[id].ids, error: null };
 				} else {
-					res = await runDiscoveryLeg(id, { timeoutMs: DISCOVER_LEG_TIMEOUT_DEFAULT_MS });
+					res = await runDiscoveryLeg(id, { timeoutMs: DISCOVER_LEG_TIMEOUT_DEFAULT_MS, ...(discoveryCtx || {}) });
 				}
 			} catch (err) {
 				res = { harnessId: id, ids: DISCOVERY_CACHE[id]?.ids ? [...DISCOVERY_CACHE[id].ids] : [], error: { code: `${id.toUpperCase()}_DISCOVERY_FAILED`, message: String(err?.message || err).slice(0, 500) } };
 				DISCOVERY_CACHE[id] = { ids: res.ids, atMs: Date.now(), error: res.error };
 			}
-			perHarness[id] = res;
-			if (res.error && !firstError) firstError = res.error;
 			for (const mid of res.ids || []) {
 				if (!combined.includes(mid)) combined.push(mid);
 			}
@@ -695,9 +699,9 @@ function stageCommandAck(state, ack) {
  * MARK: handlePendingCommands
  * @description Acts on backend-to-Runner commands delivered through the
  *   heartbeat pull channel (ADR 0013): `requestModelRediscovery` re-runs
- *   model discovery promptly (fresh probe, not the 12h cache cadence;
- *   skipped with a success ack when the operator pinned models, since
- *   pins always win); `requestUpdate` runs the existing idle-only
+ *   model discovery promptly (fresh probe, not the 12h cache cadence —
+ *   auto-detect always scans since survey q4 says it wins over the pin);
+ *   `requestUpdate` runs the existing idle-only
  *   self-update at once when idle, or parks `state.pendingUpdate` for
  *   the next idle point when an execution is live (never interrupts
  *   work, D5). Every handled command stages exactly one ack on
@@ -706,10 +710,10 @@ function stageCommandAck(state, ack) {
  *   Commands already staged or in flight are skipped, so the backend's
  *   at-least-once redelivery never double-applies.
  * @example await handlePendingCommands({ config, client, logger, state, pendingCommands: ['requestModelRediscovery'] })
- * @param {Object} opts - Options (config, client, logger, state, pendingCommands, updateDeps?, discoverFn?).
+ * @param {Object} opts - Options (config, client, logger, state, pendingCommands, updateDeps?, discoverFn?, discoveryCtx?).
  * @returns {Promise<void>} Resolves once every command acted (or the process exits 0 into a staged update).
  ***/
-export async function handlePendingCommands({ config, client, logger, state, pendingCommands = [], updateDeps, discoverFn } = {}) {
+export async function handlePendingCommands({ config, client, logger, state, pendingCommands = [], updateDeps, discoverFn, discoveryCtx } = {}) {
 	if (!state) state = {};
 	if (!Array.isArray(state.commandAcks)) state.commandAcks = [];
 	if (!(state.commandFlight instanceof Set)) state.commandFlight = new Set();
@@ -721,23 +725,22 @@ export async function handlePendingCommands({ config, client, logger, state, pen
 		try {
 			if (cmd === "requestModelRediscovery") {
 				logger.log?.("Runner command: re-detecting models");
-				const pinned = (Array.isArray(config?.models) && config.models.length > 0) || (typeof config?.model === "string" && config.model.trim());
-				if (pinned) {
-					stageCommandAck(state, { command: cmd, ok: true, detail: "models pinned; discovery skipped" });
-				} else {
-					const ids = await refreshDiscoveredModels({ config, logger, discoverFn });
-					const count = Array.isArray(ids) ? ids.length : 0;
-					const countsStr = runnerHarnessIds(config)
-						.filter((id) => Object.prototype.hasOwnProperty.call(DISCOVERY_LEGS, id))
-						.map((id) => `${id}:${(DISCOVERY_CACHE[id]?.ids || []).length}`)
-						.join(", ");
-					const firstErr = runnerHarnessIds(config)
-						.map((id) => DISCOVERY_CACHE[id]?.error)
-						.find((e) => e && e.code);
-					let detail = `discovered ${count} model(s) (${countsStr})`;
-					if (firstErr?.code) detail += ` (${firstErr.code})`;
-					stageCommandAck(state, { command: cmd, ok: true, detail });
+				if (config?.modelDiscoveryIntervalMs === 0) {
+					stageCommandAck(state, { command: cmd, ok: true, detail: "discovery disabled (interval 0); advertising pinned list" });
+					continue;
 				}
+				const ids = await refreshDiscoveredModels({ config, logger, discoverFn, discoveryCtx });
+				const count = Array.isArray(ids) ? ids.length : 0;
+				const countsStr = runnerHarnessIds(config)
+					.filter((id) => Object.prototype.hasOwnProperty.call(DISCOVERY_LEGS, id))
+					.map((id) => `${id}:${(DISCOVERY_CACHE[id]?.ids || []).length}`)
+					.join(", ");
+				const firstErr = runnerHarnessIds(config)
+					.map((id) => DISCOVERY_CACHE[id]?.error)
+					.find((e) => e && e.code);
+				let detail = `discovered ${count} model(s) (${countsStr})`;
+				if (firstErr?.code) detail += ` (${firstErr.code})`;
+				stageCommandAck(state, { command: cmd, ok: true, detail });
 			}
 			if (cmd === "requestUpdate") {
 				// Idle-only: do not interrupt active work (D5)
@@ -799,10 +802,10 @@ export async function handlePendingCommands({ config, client, logger, state, pen
  *   A session without either method NACKs UNSUPPORTED_HARNESS — loud,
  *   never silently dropped.
  * @example await deliverSteers({ config, client, logger, facts, state })
- * @param {Object} opts - Options (config, client, logger, facts, state, updateDeps?, discoverFn?).
+ * @param {Object} opts - Options (config, client, logger, facts, state, updateDeps?, discoverFn?, discoveryCtx?).
  * @returns {Promise<number>} Steers delivered (acked) this cycle.
  ***/
-export async function deliverSteers({ config, client, logger, facts, state, updateDeps, discoverFn }) {
+export async function deliverSteers({ config, client, logger, facts, state, updateDeps, discoverFn, discoveryCtx }) {
 	const pendingAck = stagedCommandAck(state);
 	const factsWithAck = pendingAck ? { ...facts, commandAck: pendingAck } : facts;
 	const beat = await client.heartbeat({ runnerId: config.runnerId, facts: factsWithAck });
@@ -810,7 +813,7 @@ export async function deliverSteers({ config, client, logger, facts, state, upda
 		state.commandAcks.shift();
 	}
 	if (Array.isArray(beat.pendingCommands) && beat.pendingCommands.length) {
-		await handlePendingCommands({ config, client, logger, state, pendingCommands: beat.pendingCommands, updateDeps, discoverFn });
+		await handlePendingCommands({ config, client, logger, state, pendingCommands: beat.pendingCommands, updateDeps, discoverFn, discoveryCtx });
 	}
 	const due = (beat.pendingSteers || []).filter((s) => s && s.executionId === state?.executionId);
 	let delivered = 0;

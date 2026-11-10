@@ -59,12 +59,13 @@ export function loadRunnerConfig(env = process.env) {
 	// Servable model advertisement (capability matching is backend-side, so
 	// the list is the operator's claim of what this host can run; the
 	// dispatch answer carries the required model per assignment and the
-	// daemon serves exactly that). KAINBAIN_RUNNER_MODELS (csv) wins when
-	// set; otherwise the singular KAINBAIN_RUNNER_MODEL seeds a 1-element
-	// list; when both are empty, periodic model auto-discovery fills in
-	// (muse serve model/list every KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS,
-	// default 12h, 0 disables) — empty everywhere means unpinned
-	// (matches model-less tasks only).
+	// daemon serves exactly that). KAINBAIN_RUNNER_MODELS (csv) seeds the
+	// pin; otherwise the singular KAINBAIN_RUNNER_MODEL seeds a 1-element
+	// pin; but survey q4 says auto-detect wins, so a non-empty discovery
+	// result replaces the pin (every KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS,
+	// default 12h) and the pin only fills in when discovery yielded
+	// nothing — empty everywhere means unpinned (matches model-less
+	// tasks only).
 	// The "default" sentinel means harness-managed (no pinned model),
 	// never a model this host can serve, so it is never advertised:
 	// an operator who sets KAINBAIN_RUNNER_MODEL=default gets the
@@ -108,9 +109,11 @@ export function loadRunnerConfig(env = process.env) {
 		10,
 	);
 
-	// Model auto-discovery cadence (muse serve model/list), default 12h.
-	// 0 disables discovery; the operator's explicit MODELS/MODEL list
-	// always wins over discovered ids. Invalid values fall back to 12h.
+	// Model auto-discovery cadence (one leg per configured harness),
+	// default 12h. 0 disables all scanning (boot seed and re-detect
+	// alike), leaving the MODELS/MODEL pin as the advertised list;
+	// otherwise a non-empty discovery result replaces the pin (survey
+	// q4). Invalid values fall back to 12h.
 	const modelDiscoveryIntervalMs = Number.parseInt(
 		str("KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS", "43200000"),
 		10,

@@ -40,15 +40,16 @@ or set `KAINBAIN_RUNNER_HARNESS=muse` in the runner env file
 System Settings › Runners — see Adding a New Runner
 (`#/docs/add-new-runner`).
 
-Muse is the **only harness with model auto-discovery**: the daemon
+Muse auto-discovers its models like every supported harness: the daemon
 asks the installed CLI over `muse serve` stdio `model/list` at boot
 and refreshes every
 `KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS` (default 12h, `0`
-disables), advertising the returned `muse::<provider>::<model>` ids.
-A pinned `KAINBAIN_RUNNER_MODELS` list always wins over discovered
-ids. Discovery failures keep the previous list and warn — they never
+disables all scanning), advertising the returned `muse::<provider>::<model>` ids.
+A non-empty discovery result replaces a pinned `KAINBAIN_RUNNER_MODELS`
+list (the pin only fills in while discovery yielded nothing).
+Discovery failures keep the previous list and warn — they never
 break heartbeats. From System Settings › Runners, Re-detect models re-runs
-discovery promptly (skipped with a "models pinned" ack when pinned).
+discovery promptly for every configured harness.
 
 ## Verify
 

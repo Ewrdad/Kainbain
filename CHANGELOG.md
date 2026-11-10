@@ -22,9 +22,11 @@ source of truth. This file intentionally lists only high-impact changes.
 ### Added
 
 - Per-stage Runner allow/block list at the bottom of stage settings (`Off` / `Only these runners` / `All except these runners`): dispatch, direct claims, and merge leases refuse ineligible Runners loudly while unrestricted stages behave exactly as before (task a3753643).
+- Runner model auto-detect for every supported harness (pi, muse, antigravity, vibe, plus honest-empty opencode/codex legs) with per-harness counts and the first leg warning in Settings › Runners next to Re-detect, driven by the existing refresh command (task 2cbe91b6).
 
 ### Changed
 
+- Runner model precedence follows answered survey q4: a non-empty auto-detect result replaces the `KAINBAIN_RUNNER_MODELS`/`MODEL` pin (pin is fallback-only; interval `0` disables scanning) instead of the pin always winning (task 2cbe91b6).
 - Consolidated root-level markdown files into `docs/`: moved `CI_SCRIPTS.md`, `PORTABLE_DEPLOYMENT.md`, `agent-docs/`, and `research/phase0-branch-dry-run.md`; deleted 13 obsolete one-off summaries and superseded phase-2 plans (task fc3acfff).
 - Merged the ALL / FAILED / HUMAN ONLY board pills into the unified search bar as `!` system filters (e.g. `auth #Dev !failed`): same dropdown, chips, and Any/All toggle as `#` tags; unknown `!tokens` stay as text; future native filters register via `frontend/src/components/workflow/systemFilters/` (task c213d3a9).
 
