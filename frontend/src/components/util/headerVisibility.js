@@ -12,11 +12,8 @@
  * @example shouldShowGlobalHeader('system-settings') => false
  * @example shouldShowGlobalHeader('orchestrator') => true
  * @param {string} view - The active app view (e.g. 'orchestrator', 'observability').
- * @returns {boolean} False for the monitor, system-settings, and task-detail views, true otherwise.
+ * @returns {boolean} False for the monitor and system-settings views, true otherwise.
  ***/
 export function shouldShowGlobalHeader(view) {
-  // Hide the global header for full-screen views where a dedicated header is already present.
-  // This includes the observability monitor and system settings, as well as the task detail view,
-  // which renders its own top bar and does not need the global navigation bar.
-  return view !== 'observability' && view !== 'system-settings' && view !== 'task-detail';
+  return view !== 'observability' && view !== 'system-settings';
 }

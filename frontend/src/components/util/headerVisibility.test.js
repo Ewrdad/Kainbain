@@ -10,8 +10,7 @@ import { shouldShowGlobalHeader } from './headerVisibility';
  * MARK: headerVisibility tests
  * @description Black-box tests for the global header visibility rule: hidden
  * only on the views that render their own full-bleed chrome (observability
- * monitor, system-settings screen, task-detail page with its own header and
- * Back to Board control), shown everywhere else.
+ * monitor, system-settings screen), shown everywhere else.
  ***/
 
 test('hides the global header on the observability monitor view', () => {
@@ -22,16 +21,13 @@ test('hides the global header on the System Settings screen (owns its own h1 chr
   expect(shouldShowGlobalHeader('system-settings')).toBe(false);
 });
 
-test('hides the global header on the task-detail page (owns its own header chrome)', () => {
-  expect(shouldShowGlobalHeader('task-detail')).toBe(false);
-});
-
 test('shows the global header on every other known view', () => {
   for (const view of [
     'orchestrator',
     'explorer',
     'settings',
     'docs',
+    'task-detail',
     'task',
     'task-review',
   ]) {

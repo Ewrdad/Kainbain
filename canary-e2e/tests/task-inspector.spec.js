@@ -23,7 +23,11 @@ import {
  *     breaking neighbouring click targets (task fa5f7234);
  *   - the inspector width is user-adjustable via the left-edge splitter,
  *     keyboard nudging, and double-click reset, and persists to the
- *     `taskInspectorWidth` UI preference.
+ *     `taskInspectorWidth` UI preference;
+ *   - on desktop the open inspector is a right-anchored overlay covering
+ *     the board's right edge, so the toolbar (search, sort,
+ *     show-completed) keeps its full size instead of squishing
+ *     (task f56e9878).
  * The error-length cap + Show more guard lives in task-errors.spec.js
  * (it needs its own failing-CI fixture project).
  */
@@ -186,5 +190,48 @@ test.describe("Task inspector core behaviors", () => {
 		expect(Math.abs(reset - 560)).toBeLessThanOrEqual(1);
 
 		await closeTaskInspector(page);
+	});
+
+	test.describe("desktop overlay geometry (task f56e9878)", () => {
+		// Desktop viewport with the Now Playing footer on: the inspector is
+		// a right-anchored overlay, never an in-flow flex sibling.
+		test.use({ viewport: { width: 1280, height: 800 } });
+
+		test("open inspector overlaps the board without squishing the toolbar", async ({
+			page,
+			request,
+		}) => {
+			const projectId = await activeProjectId(request);
+			const goal = `Inspector overlay ${Date.now()}`;
+			await createTaskViaApi(request, projectId, goal);
+			await page.reload();
+			await waitForAppReadyOnProject(page);
+			await waitForTaskVisible(page, goal);
+
+			const searchBox = page.getByPlaceholder(/Search tasks/i);
+			await expect(searchBox).toBeVisible();
+			const closedWidth = (await searchBox.boundingBox()).width;
+
+			const inspector = await openTaskInspector(page, goal);
+
+			// The toolbar keeps its full size underneath the panel: the
+			// search input's width is identical with the inspector open
+			// vs closed. An in-flow panel would steal flex space and fail
+			// this (the reported squish).
+			const openWidth = (await searchBox.boundingBox()).width;
+			expect(Math.abs(openWidth - closedWidth)).toBeLessThanOrEqual(1);
+
+			// The panel is right-anchored, covering the board's right edge.
+			const panel = await inspector.boundingBox();
+			const viewport = page.viewportSize();
+			expect(
+				Math.abs(panel.x + panel.width - viewport.width),
+			).toBeLessThanOrEqual(2);
+
+			await closeTaskInspector(page);
+			expect(
+				Math.abs((await searchBox.boundingBox()).width - closedWidth),
+			).toBeLessThanOrEqual(1);
+		});
 	});
 });
