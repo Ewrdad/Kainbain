@@ -335,8 +335,8 @@ export function clearDiscoveryCache() {
  * MARK: loadPiHarness
  * @description Loads the pi harness for discovery: the injected test
  *   double when `ctx.createHarness` is set, else the bundled backend pi
- *   harness factory (lazy import — the Runner bundle ships `api/` next
- *   to `runner/`). Imports the factory directly rather than through the
+ *   harness builder (lazy import — the Runner bundle ships `api/` next
+ *   to `runner/`). Imports the builder directly rather than through the
  *   daemon's loader so discovery never cycles back into `daemon.js`.
  * @example const harness = await loadPiHarness({})
  * @param {Object} [ctx] - Leg seams (`createHarness` test double).

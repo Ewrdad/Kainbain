@@ -797,14 +797,10 @@ describe("RunnerRegistry discovery status", () => {
 		expect("discoveryStatus" in (beat.capabilities || {})).toBe(false);
 	});
 
-	test("a malformed discoveryStatus rejects the heartbeat like any bad capability", () => {
+	test("a malformed discoveryStatus is dropped and the heartbeat stays alive", () => {
 		const { runners, credential } = approved();
-		try {
-			runners.heartbeat({ runnerId: "r1", credential, facts: { ...FACTS, discoveryStatus: "pi" } });
-			expect.unreachable();
-		} catch (err) {
-			expect(err.statusCode).toBe(400);
-			expect(err.code).toBe("CAPABILITIES_INVALID");
-		}
+		const beat = runners.heartbeat({ runnerId: "r1", credential, facts: { ...FACTS, discoveryStatus: "pi" } });
+		expect("discoveryStatus" in (beat.capabilities || {})).toBe(false);
+		expect(runners.getConfig("r1").capabilities.discoveryStatus).toBe(undefined);
 	});
 });

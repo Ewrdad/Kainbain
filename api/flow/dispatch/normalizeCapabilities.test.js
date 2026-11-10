@@ -75,10 +75,12 @@ describe("normalizeCapabilities", () => {
 		expect(nulled.discoveryStatus).toBeNull();
 	});
 
-	test("rejects a malformed discoveryStatus without throwing", () => {
-		const out = normalizeCapabilities({ discoveryStatus: ["pi"] });
-		expect(out.errors).toContain("discoveryStatus must be an object or null");
-		expect("discoveryStatus" in out).toBe(false);
+	test("drops a malformed discoveryStatus without failing the heartbeat", () => {
+		for (const bad of ["pi", 42, ["pi"], true]) {
+			const out = normalizeCapabilities({ discoveryStatus: bad });
+			expect(out.errors).toEqual([]);
+			expect("discoveryStatus" in out).toBe(false);
+		}
 	});
 
 	test("sanitizes discoveryStatus slices without failing the heartbeat", () => {

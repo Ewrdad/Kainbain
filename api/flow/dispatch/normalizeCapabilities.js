@@ -51,9 +51,10 @@ const sanitizeDiscoveryStatus = (value) => {
  *   capability advertisement struct: harnesses (id + version), models,
  *   tiers, runnable flag, disk headroom, protocol versions, and the
  *   additive per-harness discovery status (sanitized, absent for old
- *   Runners). Unknown shapes are rejected with an explanatory error list
- *   instead of throwing, so the register/heartbeat routes can answer 400
- *   with all problems.
+ *   Runners; a malformed value is dropped, never an error). Unknown
+ *   shapes are rejected with an explanatory error list instead of
+ *   throwing, so the register/heartbeat routes can answer 400 with all
+ *   problems.
  * @example normalizeCapabilities({ harnesses: [{ id: 'pi', version: '1.2.3' }], tiers: ['T1'] }) => { harnesses: [...], errors: [] }
  * @param {Object} [facts] - Raw heartbeat facts.
  * @returns {Object} Normalized capabilities plus `errors`.
@@ -148,9 +149,11 @@ export function normalizeCapabilities(facts = {}) {
 			discoveryStatus = null;
 		} else if (typeof src.discoveryStatus === "object" && !Array.isArray(src.discoveryStatus)) {
 			discoveryStatus = sanitizeDiscoveryStatus(src.discoveryStatus);
-		} else {
-			errors.push("discoveryStatus must be an object or null");
 		}
+		// Anything else (a string, number, or array from a buggy Runner)
+		// is dropped silently: discovery status is advisory display data
+		// for Settings, and a cosmetic field must never 400 a heartbeat
+		// and take a working Runner offline.
 	}
 
 	return { harnesses, models, tiers, runnable, diskHeadroomMb, versions, errors, ...(discoveryStatus !== undefined ? { discoveryStatus } : {}) };
