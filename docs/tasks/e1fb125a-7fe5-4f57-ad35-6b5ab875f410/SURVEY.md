@@ -79,6 +79,43 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "On the step itself, so it is the same every time it runs (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Type any length, like 10 days or 36 hours (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Approve or reject early as normal – the timer is just a backup (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "No warning needed"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Clearly marked as automatic, with when it happened (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Yes – never early, a little late is fine (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
