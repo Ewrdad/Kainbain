@@ -80,4 +80,41 @@ describe("normalizeCapabilities", () => {
 		expect(out.errors).toContain("discoveryStatus must be an object or null");
 		expect("discoveryStatus" in out).toBe(false);
 	});
+
+	test("sanitizes discoveryStatus slices without failing the heartbeat", () => {
+		const out = normalizeCapabilities({
+			discoveryStatus: {
+				pi: "junk",
+				muse: { ok: false, count: -5, atMs: "now", error: { code: 42 } },
+				vibe: { ok: true, count: Number.POSITIVE_INFINITY },
+				codex: { count: 2 },
+				antigravity: { ok: false, count: 0, atMs: 7, error: { code: "AGY_BIN_MISSING", message: "no agy", hint: "install" } },
+			},
+		});
+		expect(out.errors).toEqual([]);
+		expect(out.discoveryStatus).toEqual({
+			muse: { ok: false, count: 0, atMs: null },
+			vibe: { ok: true, count: 0, atMs: null },
+			codex: { ok: true, count: 2, atMs: null },
+			antigravity: { ok: false, count: 0, atMs: 7, error: { code: "AGY_BIN_MISSING", message: "no agy", hint: "install" } },
+		});
+	});
+
+	test("caps discoveryStatus size and error strings", () => {
+		const many = {};
+		for (let i = 0; i < 100; i += 1) many[`h${i}`] = { ok: true, count: 1, atMs: 1 };
+		const out = normalizeCapabilities({
+			discoveryStatus: {
+				pi: { ok: false, count: 0, atMs: 1, error: { code: ` ${"C".repeat(200)} `, message: "M".repeat(900), hint: "H".repeat(900) } },
+				...many,
+			},
+		});
+		expect(out.errors).toEqual([]);
+		expect(Object.keys(out.discoveryStatus).length).toBe(64);
+		expect(out.discoveryStatus.pi.error).toEqual({
+			code: "C".repeat(120),
+			message: "M".repeat(500),
+			hint: "H".repeat(500),
+		});
+	});
 });

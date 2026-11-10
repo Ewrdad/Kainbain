@@ -245,8 +245,9 @@ Settings › Runners can nudge this daemon through the heartbeat pull channel:
 Re-detect models re-runs model discovery promptly for every configured
 harness (bypassing the 12h gate once; acked as
 `discovered N model(s) (pi:12, muse:3)` with the first leg error code
-when a leg fails, cache kept) and Update now queues an idle-only
-self-update. Both ride
+when a leg fails, cache kept; a Runner with no legged harness acks
+`discovered 0 model(s) (no discovery legs configured)`) and Update now
+queues an idle-only self-update. Both ride
 `pendingCommands` on the heartbeat response and ack via `facts.commandAck`;
 a queued command waits for the next heartbeat, and Update now never
 interrupts live work — it applies at the next idle point. Older daemons

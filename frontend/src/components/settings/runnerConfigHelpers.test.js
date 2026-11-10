@@ -366,6 +366,18 @@ describe('runnerConfigHelpers', () => {
     });
   });
 
+  it('reads non-finite counts as zero instead of rendering Infinity', () => {
+    expect(
+      discoveryStatusSummary({ capabilities: { discoveryStatus: { pi: { ok: true, count: Infinity } } } }),
+    ).toEqual({ counts: 'pi:0', warning: null });
+    expect(
+      discoveryStatusSummary({ capabilities: { discoveryStatus: { pi: { ok: true, count: NaN } } } }),
+    ).toEqual({ counts: 'pi:0', warning: null });
+    expect(
+      discoveryStatusSummary({ capabilities: { discoveryStatus: { pi: { ok: true, count: -3 } } } }),
+    ).toEqual({ counts: 'pi:0', warning: null });
+  });
+
   it('returns null discoveryStatus for old or malformed records, facts fallback otherwise', () => {
     expect(discoveryStatusSummary({})).toBeNull();
     expect(discoveryStatusSummary({ capabilities: {} })).toBeNull();

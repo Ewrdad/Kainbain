@@ -14,7 +14,7 @@ import { defaultInstallRoot, markUpdateSuccess, readUpdateState } from "./update
 // in prod and in the distributable tarball), so ../shared resolves both in the
 // repo and in every deployed layout — the same copy the backend executes.
 import { resolveAdvertisedModels } from "./modelDiscovery.js";
-import { DISCOVERY_LEGS, discoveryCache as DISCOVERY_CACHE, clearDiscoveryCache, getDiscoveryStatus, runDiscoveryLeg, DISCOVER_LEG_TIMEOUT_DEFAULT_MS } from "./harnessModelDiscovery.js";
+import { clearDiscoveryCache, getDiscoveryStatus, runDiscoveryRound, summarizeDiscoverySlices, DISCOVER_LEG_TIMEOUT_DEFAULT_MS } from "./harnessModelDiscovery.js";
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { decideAgentStageVerdict } from "../shared/stageVerdict.js";
@@ -415,8 +415,9 @@ export function clearDiscoveredModelsCache() {
  * @param {Object} [opts]
  * @param {Object} [opts.config] - Normalized runner config.
  * @param {Object} [opts.logger] - Logger.
- * @param {Function} [opts.discoverFn] - Test seam for the muse leg (raw id override).
- * @param {Object} [opts.discoveryCtx] - Test ctx forwarded to the other legs' seams.
+ * @param {Function} [opts.discoverFn] - Test seam overriding the muse probe
+ *   (called with the leg ctx; overridden ids still pass grammar validation).
+ * @param {Object} [opts.discoveryCtx] - Test seams forwarded to every leg.
  * @returns {Promise<string[]>} Current cache copy.
  ***/
 export async function refreshDiscoveredModels({ config, logger, discoverFn, discoveryCtx } = {}) {
@@ -426,49 +427,25 @@ export async function refreshDiscoveredModels({ config, logger, discoverFn, disc
 			return [...discoveredModelsCache];
 		}
 		const idsConfigured = runnerHarnessIds(config);
-		let combined = [];
-		for (const id of idsConfigured) {
-			if (!Object.prototype.hasOwnProperty.call(DISCOVERY_LEGS, id)) continue;
-			let res;
-			try {
-				if (id === "muse" && typeof discoverFn === "function") {
-					// Back-compat seam: callers may override discovery. Support
-					// both no-arg and (harnessId) shapes.
-					let raw;
-					if (discoverFn.length >= 1) {
-						raw = await discoverFn(id);
-					} else {
-						raw = await discoverFn();
-					}
-					const incoming = Array.isArray(raw) ? raw : [];
-					const prev = DISCOVERY_CACHE[id]?.ids || [];
-					const ok = incoming.length > 0;
-					const ids = ok ? incoming : (prev.length ? prev : incoming);
-					DISCOVERY_CACHE[id] = { ids, atMs: Date.now(), error: null };
-					// Note: only hard failures carry an error code; empty success is silent.
-					res = { harnessId: id, ids: DISCOVERY_CACHE[id].ids, error: null };
-				} else {
-					res = await runDiscoveryLeg(id, { timeoutMs: DISCOVER_LEG_TIMEOUT_DEFAULT_MS, ...(discoveryCtx || {}) });
-				}
-			} catch (err) {
-				res = { harnessId: id, ids: DISCOVERY_CACHE[id]?.ids ? [...DISCOVERY_CACHE[id].ids] : [], error: { code: `${id.toUpperCase()}_DISCOVERY_FAILED`, message: String(err?.message || err).slice(0, 500) } };
-				DISCOVERY_CACHE[id] = { ids: res.ids, atMs: Date.now(), error: res.error };
-			}
-			for (const mid of res.ids || []) {
-				if (!combined.includes(mid)) combined.push(mid);
-			}
+		// The muse probe override rides the leg seam, so even overridden
+		// ids pass grammar validation before advertisement.
+		const legOptions = { ...(discoveryCtx || {}) };
+		if (typeof discoverFn === "function") legOptions.discoverFn = discoverFn;
+		const { combinedIds } = await runDiscoveryRound({
+			harnessIds: idsConfigured,
+			timeoutMs: DISCOVER_LEG_TIMEOUT_DEFAULT_MS,
+			legOptions,
+		});
+		// Keep-old global: an empty round retains the previous cache.
+		if (combinedIds.length > 0) {
+			discoveredModelsCache = combinedIds;
 		}
-		// Keep-old global: if combined empty, retain previous cache.
-		if (combined.length > 0) {
-			discoveredModelsCache = combined;
+		const { countsText, firstError } = summarizeDiscoverySlices(idsConfigured);
+		const scope = countsText ? ` (${countsText})` : " (no discovery legs configured)";
+		logger?.log?.(`Model discovery: ${discoveredModelsCache.length} model(s)${scope}; next refresh per modelDiscoveryIntervalMs.`);
+		if (firstError?.code) {
+			logger?.warn?.(`Model discovery warning (${firstError.code}): ${firstError.message || "a harness scan failed"}; keeping the previous list for that harness.`);
 		}
-		const count = discoveredModelsCache.length;
-		const countsStr = idsConfigured
-			.filter((id) => Object.prototype.hasOwnProperty.call(DISCOVERY_LEGS, id))
-			.map((id) => `${id}:${DISCOVERY_CACHE[id]?.ids?.length ?? 0}`)
-			.join(", ");
-		logger?.log?.(`Model discovery: ${count} model(s) (${countsStr}); next refresh per modelDiscoveryIntervalMs.`);
-		// Stash first error code on a module-level? Surface via DISCOVERY_CACHE.
 	} catch (err) {
 		logger?.warn?.(`Model discovery failed, keeping previous list: ${err?.message || err}`);
 	}
@@ -514,7 +491,7 @@ function factsFor({ config, harnessVersions, updateStatus = null, commandAck = n
 		directories: effectiveDirectoriesFor(config),
 		commands: SUPPORTED_RUNNER_COMMANDS,
 		workRoot: typeof config.workRoot === "string" ? config.workRoot : null,
-		discoveryStatus: typeof getDiscoveryStatus === "function" ? getDiscoveryStatus() : undefined,
+		discoveryStatus: getDiscoveryStatus(runnerHarnessIds(config)),
 		...(updateStatus ? { updateStatus } : {}),
 		...(commandAck ? { commandAck } : {}),
 	};
@@ -731,15 +708,10 @@ export async function handlePendingCommands({ config, client, logger, state, pen
 				}
 				const ids = await refreshDiscoveredModels({ config, logger, discoverFn, discoveryCtx });
 				const count = Array.isArray(ids) ? ids.length : 0;
-				const countsStr = runnerHarnessIds(config)
-					.filter((id) => Object.prototype.hasOwnProperty.call(DISCOVERY_LEGS, id))
-					.map((id) => `${id}:${(DISCOVERY_CACHE[id]?.ids || []).length}`)
-					.join(", ");
-				const firstErr = runnerHarnessIds(config)
-					.map((id) => DISCOVERY_CACHE[id]?.error)
-					.find((e) => e && e.code);
-				let detail = `discovered ${count} model(s) (${countsStr})`;
-				if (firstErr?.code) detail += ` (${firstErr.code})`;
+				const { countsText, firstError } = summarizeDiscoverySlices(runnerHarnessIds(config));
+				const scope = countsText ? ` (${countsText})` : " (no discovery legs configured)";
+				let detail = `discovered ${count} model(s)${scope}`;
+				if (firstError?.code) detail += ` (${firstError.code})`;
 				stageCommandAck(state, { command: cmd, ok: true, detail });
 			}
 			if (cmd === "requestUpdate") {

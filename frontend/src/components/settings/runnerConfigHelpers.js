@@ -316,7 +316,8 @@ export const discoveryStatusSummary = (runner = {}) => {
   const counts = ids
     .map((id) => {
       const slice = status[id];
-      const count = slice && typeof slice.count === 'number' && slice.count >= 0 ? Math.floor(slice.count) : 0;
+      const rawCount = slice && typeof slice.count === 'number' ? slice.count : 0;
+      const count = Number.isFinite(rawCount) && rawCount >= 0 ? Math.floor(rawCount) : 0;
       return `${id}:${count}`;
     })
     .join(', ');

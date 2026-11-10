@@ -752,6 +752,30 @@ describe("model auto-discovery refresh", () => {
 		});
 		assert.deepEqual(out, ["muse::meta::m"]);
 	});
+	it("validates overridden ids before advertisement (garbage never ships)", async () => {
+		clearDiscoveredModelsCache();
+		const warnings = [];
+		const out = await refreshDiscoveredModels({
+			config: base,
+			logger: { log: () => {}, warn: (m) => warnings.push(m) },
+			discoverFn: async () => ["garbage", "muse::meta::m", "muse::meta::m"],
+		});
+		assert.deepEqual(out, ["muse::meta::m"]);
+	});
+	it("warns with the leg error code when a leg fails, keeping the old list", async () => {
+		clearDiscoveredModelsCache();
+		const warnings = [];
+		const logger = { log: () => {}, warn: (m) => warnings.push(m) };
+		await refreshDiscoveredModels({ config: base, logger, discoverFn: async () => ["muse::meta::m"] });
+		const out = await refreshDiscoveredModels({
+			config: base,
+			logger,
+			discoverFn: async () => { throw new Error("serve down"); },
+		});
+		assert.deepEqual(out, ["muse::meta::m"]);
+		assert.equal(warnings.length, 1);
+		assert.match(warnings[0], /MUSE_DISCOVERY_FAILED/);
+	});
 });
 
 describe("harness auto-detect (default)", () => {
@@ -1676,7 +1700,7 @@ describe("handlePendingCommands", () => {
 			logger: quiet,
 			state,
 			pendingCommands: ["requestModelRediscovery"],
-			discoverFn: async () => { probes += 1; return ["m1", "m2"]; },
+			discoverFn: async () => { probes += 1; return ["muse::test::m1", "muse::test::m2"]; },
 		});
 		assert.equal(probes, 1);
 		assert.deepEqual(state.commandAcks, [
@@ -1692,7 +1716,7 @@ describe("handlePendingCommands", () => {
 			logger: quiet,
 			state,
 			pendingCommands: ["requestModelRediscovery"],
-			discoverFn: async () => ["m1", "m2"],
+			discoverFn: async () => ["muse::test::m1", "muse::test::m2"],
 		});
 		assert.deepEqual(state.commandAcks, [
 			{ command: "requestModelRediscovery", ok: true, detail: "discovered 2 model(s) (muse:2)" },
@@ -1731,6 +1755,36 @@ describe("handlePendingCommands", () => {
 		});
 		assert.deepEqual(state.commandAcks, [
 			{ command: "requestModelRediscovery", ok: true, detail: "discovery disabled (interval 0); advertising pinned list" },
+		]);
+	});
+
+	it("acks plainly when no configured harness has a discovery leg", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: baseConfig({ harnessIds: ["mock"], harnessId: "mock" }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => { throw new Error("must not probe without a leg"); },
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 0 model(s) (no discovery legs configured)" },
+		]);
+	});
+
+	it("acks with the first leg error code when a leg fails, cache kept", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig(),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => { throw new Error("serve down"); },
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 0 model(s) (muse:0) (MUSE_DISCOVERY_FAILED)" },
 		]);
 	});
 
@@ -1845,7 +1899,7 @@ describe("handlePendingCommands", () => {
 			logger: quiet,
 			state,
 			pendingCommands: ["requestModelRediscovery"],
-			discoverFn: async () => { probes += 1; await gate; return ["m1"]; },
+			discoverFn: async () => { probes += 1; await gate; return ["muse::test::m1"]; },
 		};
 		const first = handlePendingCommands(opts);
 		// Second overlapping delivery while the first probe is in flight.
@@ -1855,7 +1909,7 @@ describe("handlePendingCommands", () => {
 		assert.equal(probes, 1);
 		assert.equal(state.commandAcks.length, 1);
 		// A later redelivery after the ack staged still acts only once.
-		await handlePendingCommands({ ...opts, discoverFn: async () => { probes += 1; return ["m1"]; } });
+		await handlePendingCommands({ ...opts, discoverFn: async () => { probes += 1; return ["muse::test::m1"]; } });
 		assert.equal(probes, 1);
 		assert.equal(state.commandAcks.length, 1);
 	});
@@ -1868,7 +1922,7 @@ describe("handlePendingCommands", () => {
 			logger: quiet,
 			state,
 			pendingCommands: ["requestModelRediscovery", "requestUpdate"],
-			discoverFn: async () => ["m1"],
+			discoverFn: async () => ["muse::test::m1"],
 			updateDeps: {
 				checkForUpdate: async () => ({ ok: true, update: null, reason: "up to date" }),
 			},
@@ -1903,7 +1957,7 @@ describe("deliverSteers command channel", () => {
 				logger: quiet,
 				facts: {},
 				state,
-				discoverFn: async () => ["m1"],
+				discoverFn: async () => ["muse::test::m1"],
 			});
 			assert.equal(heartbeats[0].facts.commandAck, undefined);
 			assert.equal(state.commandAcks.length, 1);
