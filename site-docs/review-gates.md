@@ -99,7 +99,9 @@ hold wait forever, exactly as before.
   until they next enter the stage — move them out and back in to start one.
 - **Humans always win the race**: approve or reject early as normal and the
   timer is cancelled — no double-advance, no auto-approve after you acted.
-  Pausing, aborting, moving, or completing also cancels the wait.
+  Pausing, aborting, moving, or completing also cancels the wait; coming
+  back starts a fresh full hold. Simply re-running a task that never left
+  the checkpoint keeps its original deadline.
 - **One reminder**: shortly before the deadline (24h out, or half the hold
   for short holds) a `task.auto_approve_soon` webhook fires once per wait,
   naming the deadline. Set `KAINBAIN_AUTO_APPROVE_REMINDER_LEAD_MS=0` to
