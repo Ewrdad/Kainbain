@@ -3,6 +3,7 @@ import { msToMinutes, minutesToMs } from '../../utils/timeoutUnits';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { StageAutoApproveField } from './StageAutoApproveField';
 import { ModelSelector } from '../common/ModelSelector';
+import { normalizeStageType } from '../stageTypes';
 import { StageSkillsPanel } from './StageSkillsPanel';
 import { STAGE_KEYWORD_TOKENS } from './stageTokens';
 import { SelectDropdown } from '../common/SelectDropdown';
@@ -276,7 +277,7 @@ export function StageTypeConfig({
         </>
       )}
 
-      {stage.type === 'human' && (
+      {normalizeStageType(stage.type) === 'human' && (
         <>
           <div className="space-y-1">
             <div className="flex items-center justify-between">
