@@ -6,12 +6,16 @@ import os from "node:os";
 import path from "node:path";
 import {
 	AUTO_DETECTABLE_HARNESSES,
+	HARNESS_DETECT_BINS,
+	HARNESS_VERSION_BINS,
 	clearDiscoveredModelsCache,
 	clearHarnessVersionCache,
 	defaultLoadHarness,
+	describeUnconfiguredHarnessHint,
 	detectAvailableHarnesses,
 	deliverSteers,
 	diskHeadroomMbFor,
+	findUnconfiguredHarnesses,
 	handlePendingCommands,
 	joinAndHeartbeat,
 	probeHarnessVersions,
@@ -21,6 +25,7 @@ import {
 	runDispatchLoop,
 	runSingleAssignment,
 	applyBackendPrompt,
+	staleHarnessHintFor,
 	startClaimRenewal,
 	RUNNER_API_VERSION,
 	RUNNER_VERSION,
@@ -688,7 +693,7 @@ describe("model auto-discovery refresh", () => {
 		assert.deepEqual(out, ["muse::meta::m"]);
 		assert.equal(calls, 1);
 	});
-	it("skips discovery when the operator pinned models", async () => {
+	it("skips scanning when the operator pinned models (pin wins by default)", async () => {
 		clearDiscoveredModelsCache();
 		let calls = 0;
 		const out = await refreshDiscoveredModels({
@@ -701,11 +706,11 @@ describe("model auto-discovery refresh", () => {
 		assert.deepEqual(out, []);
 		assert.equal(calls, 0);
 	});
-	it("skips discovery without the muse harness", async () => {
+	it("skips scanning for a singular model pin too", async () => {
 		clearDiscoveredModelsCache();
 		let calls = 0;
 		const out = await refreshDiscoveredModels({
-			config: { ...base, harnessIds: ["pi"] },
+			config: { ...base, model: "pinned" },
 			discoverFn: async () => {
 				calls += 1;
 				return ["muse::meta::m"];
@@ -713,6 +718,58 @@ describe("model auto-discovery refresh", () => {
 		});
 		assert.deepEqual(out, []);
 		assert.equal(calls, 0);
+	});
+	it("scans despite the pin with the discovery-wins opt-in (survey q4)", async () => {
+		clearDiscoveredModelsCache();
+		let calls = 0;
+		const out = await refreshDiscoveredModels({
+			config: { ...base, models: ["pinned"], modelDiscoveryWins: true },
+			discoverFn: async () => {
+				calls += 1;
+				return ["muse::meta::m"];
+			},
+		});
+		assert.deepEqual(out, ["muse::meta::m"]);
+		assert.equal(calls, 1);
+	});
+	it("skips scanning when discovery is disabled (interval 0), keeping the cache for the pin fallback", async () => {
+		clearDiscoveredModelsCache();
+		let calls = 0;
+		const out = await refreshDiscoveredModels({
+			config: { ...base, models: ["pinned"], modelDiscoveryIntervalMs: 0 },
+			discoverFn: async () => {
+				calls += 1;
+				return ["muse::meta::m"];
+			},
+		});
+		assert.deepEqual(out, []);
+		assert.equal(calls, 0);
+	});
+	it("skips harnesses without a discovery leg", async () => {
+		clearDiscoveredModelsCache();
+		let calls = 0;
+		const out = await refreshDiscoveredModels({
+			config: { ...base, harnessIds: ["mock"] },
+			discoverFn: async () => {
+				calls += 1;
+				return ["muse::meta::m"];
+			},
+		});
+		assert.deepEqual(out, []);
+		assert.equal(calls, 0);
+	});
+	it("scans every configured harness leg and combines the ids", async () => {
+		clearDiscoveredModelsCache();
+		const out = await refreshDiscoveredModels({
+			config: { harnessIds: ["muse", "pi"], models: [], model: "" },
+			discoverFn: async () => ["muse::meta::m"],
+			discoveryCtx: {
+				createHarness: async () => ({
+					listModels: async () => [{ key: "pi::mistral::x" }, { key: "pi::mistral::y" }],
+				}),
+			},
+		});
+		assert.deepEqual(out, ["muse::meta::m", "pi::mistral::x", "pi::mistral::y"]);
 	});
 	it("keeps the previous cache when a later round fails", async () => {
 		clearDiscoveredModelsCache();
@@ -725,6 +782,55 @@ describe("model auto-discovery refresh", () => {
 			},
 		});
 		assert.deepEqual(out, ["muse::meta::m"]);
+	});
+	it("validates overridden ids before advertisement (garbage never ships)", async () => {
+		clearDiscoveredModelsCache();
+		const warnings = [];
+		const out = await refreshDiscoveredModels({
+			config: base,
+			logger: { log: () => {}, warn: (m) => warnings.push(m) },
+			discoverFn: async () => ["garbage", "muse::meta::m", "muse::meta::m"],
+		});
+		assert.deepEqual(out, ["muse::meta::m"]);
+	});
+	it("warns with the leg error code when a leg fails, keeping the old list", async () => {
+		clearDiscoveredModelsCache();
+		const warnings = [];
+		const logger = { log: () => {}, warn: (m) => warnings.push(m) };
+		await refreshDiscoveredModels({ config: base, logger, discoverFn: async () => ["muse::meta::m"] });
+		const out = await refreshDiscoveredModels({
+			config: base,
+			logger,
+			discoverFn: async () => { throw new Error("serve down"); },
+		});
+		assert.deepEqual(out, ["muse::meta::m"]);
+		assert.equal(warnings.length, 1);
+		assert.match(warnings[0], /MUSE_DISCOVERY_FAILED/);
+	});
+	it("warns the stale-pin hint when detection sees unconfigured harnesses", async () => {
+		clearDiscoveredModelsCache();
+		const warnings = [];
+		const logger = { log: () => {}, warn: (m) => warnings.push(m) };
+		await refreshDiscoveredModels({
+			config: base,
+			logger,
+			discoverFn: async () => ["muse::meta::m"],
+			detectedHarnesses: ["pi", "muse"],
+		});
+		assert.ok(warnings.some((w) => w.includes("harness auto-detect also sees: pi")), warnings.join("\n"));
+	});
+	it("stays silent on the stale pin when detection matches the config or is omitted", async () => {
+		clearDiscoveredModelsCache();
+		const warnings = [];
+		const logger = { log: () => {}, warn: (m) => warnings.push(m) };
+		await refreshDiscoveredModels({
+			config: base,
+			logger,
+			discoverFn: async () => ["muse::meta::m"],
+			detectedHarnesses: ["muse"],
+		});
+		await refreshDiscoveredModels({ config: base, logger, discoverFn: async () => ["muse::meta::m"] });
+		assert.deepEqual(warnings, []);
 	});
 });
 
@@ -750,6 +856,204 @@ describe("harness auto-detect (default)", () => {
 			isExecutable: () => false,
 		});
 		assert.deepEqual(got, []);
+	});
+
+	it("never probes the real ~/.pi snapshot in synthetic mode", () => {
+		// Even on a host where ~/.pi/agent/models.json really exists, a test
+		// that injects only isExecutable must not observe it.
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin:/bin",
+			pathDelimiter: ":",
+			isExecutable: () => false,
+			env: { PATH: "/usr/bin:/bin", HOME: "/definitely/not/real" },
+			platform: "linux",
+		});
+		assert.deepEqual(got, []);
+	});
+
+	it("detects binaries in standard install dirs off PATH (~/.local/bin)", () => {
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin",
+			pathDelimiter: ":",
+			env: { PATH: "/usr/bin", HOME: "/home/tester" },
+			homeDir: "/home/tester",
+			platform: "linux",
+			isExecutable: (bin, dir) => bin === "muse" && dir === "/home/tester/.local/bin",
+			fileExists: () => false,
+		});
+		assert.deepEqual(got, ["muse"]);
+	});
+
+	it("detects pi via its own install dir (~/.pi/agent/bin)", () => {
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin",
+			pathDelimiter: ":",
+			env: { PATH: "/usr/bin", HOME: "/home/tester" },
+			homeDir: "/home/tester",
+			platform: "linux",
+			isExecutable: (bin, dir) => bin === "pi" && dir === "/home/tester/.pi/agent/bin",
+			fileExists: () => false,
+		});
+		assert.deepEqual(got, ["pi"]);
+	});
+
+	it("detects pi from the models.json snapshot when no binary exists (SDK-only install)", () => {
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin",
+			pathDelimiter: ":",
+			env: { PATH: "/usr/bin", HOME: "/home/tester" },
+			homeDir: "/home/tester",
+			platform: "linux",
+			isExecutable: () => false,
+			fileExists: (file) => file === "/home/tester/.pi/agent/models.json",
+		});
+		assert.deepEqual(got, ["pi"]);
+	});
+
+	it("detects pi via $PI_AGENT_DIR snapshot", () => {
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin",
+			pathDelimiter: ":",
+			env: { PATH: "/usr/bin", HOME: "/home/tester", PI_AGENT_DIR: "/opt/pi-agent" },
+			platform: "linux",
+			isExecutable: () => false,
+			fileExists: (file) => file === "/opt/pi-agent/models.json",
+		});
+		assert.deepEqual(got, ["pi"]);
+	});
+
+	it("honours a KAINBAIN_*_BIN override as a direct path", () => {
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin",
+			pathDelimiter: ":",
+			env: { PATH: "/usr/bin", HOME: "/home/tester", KAINBAIN_MUSE_BIN: "/opt/muse/bin/muse" },
+			homeDir: "/home/tester",
+			platform: "linux",
+			isExecutable: (bin, dir) => bin === "muse" && dir === "/opt/muse/bin",
+			fileExists: () => false,
+		});
+		assert.deepEqual(got, ["muse"]);
+	});
+
+	it("searches a bare KAINBAIN_*_BIN name across PATH and standard dirs", () => {
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin",
+			pathDelimiter: ":",
+			env: { PATH: "/usr/bin", HOME: "/home/tester", KAINBAIN_AGY_BIN: "agy-custom" },
+			homeDir: "/home/tester",
+			platform: "linux",
+			isExecutable: (bin, dir) => bin === "agy-custom" && dir === "/home/tester/bin",
+			fileExists: () => false,
+		});
+		assert.deepEqual(got, ["antigravity"]);
+	});
+
+	it("treats a set-but-missing override as not installed (fail-closed, backend parity)", () => {
+		// The default `muse` binary IS present, but the explicit override
+		// wins: a typo'd override must surface as missing, never silently
+		// detect the default binary instead.
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin",
+			pathDelimiter: ":",
+			env: { PATH: "/usr/bin", HOME: "/home/tester", KAINBAIN_MUSE_BIN: "/opt/muse/bin/muse-typo" },
+			homeDir: "/home/tester",
+			platform: "linux",
+			isExecutable: (bin, dir) => bin === "muse" && dir === "/usr/bin",
+			fileExists: () => false,
+		});
+		assert.deepEqual(got, []);
+	});
+
+	it("detects antigravity on agy only (the binary the harness spawns)", () => {
+		assert.deepEqual(HARNESS_DETECT_BINS.antigravity, ["agy"]);
+		// The display-only `antigravity` alias still feeds the version probe…
+		assert.deepEqual(HARNESS_VERSION_BINS.antigravity, ["agy", "antigravity"]);
+		// …but never counts as an install on its own.
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin:/bin",
+			pathDelimiter: ":",
+			isExecutable: (bin) => bin === "antigravity",
+			fileExists: () => false,
+			env: { PATH: "/usr/bin:/bin", HOME: "/definitely/not/real" },
+			platform: "linux",
+		});
+		assert.deepEqual(got, []);
+	});
+
+	it("detects a real executable on the filesystem (POSIX, no seams)", () => {
+		const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-detect-posix-"));
+		const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-detect-home-"));
+		try {
+			const museBin = path.join(binDir, "muse");
+			fs.writeFileSync(museBin, "#!/bin/sh\necho muse\n");
+			fs.chmodSync(museBin, 0o755);
+			const got = detectAvailableHarnesses({
+				pathValue: binDir,
+				pathDelimiter: ":",
+				env: { PATH: binDir, HOME: homeDir },
+				platform: "linux",
+				fileExists: () => false,
+			});
+			assert.deepEqual(got, ["muse"]);
+		} finally {
+			fs.rmSync(binDir, { recursive: true, force: true });
+			fs.rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
+	it("detects Windows executables via PATHEXT (no execute bit needed)", () => {
+		const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-detect-win-"));
+		try {
+			// No chmod: on Windows any regular file with a PATHEXT
+			// extension is runnable.
+			fs.writeFileSync(path.join(binDir, "vibe.EXE"), "MZ");
+			const got = detectAvailableHarnesses({
+				pathValue: binDir,
+				pathDelimiter: ";",
+				env: { PATH: binDir, USERPROFILE: "C:\\Users\\tester", PATHEXT: ".COM;.EXE;.BAT;.CMD" },
+				platform: "win32",
+				fileExists: () => false,
+			});
+			assert.deepEqual(got, ["vibe"]);
+		} finally {
+			fs.rmSync(binDir, { recursive: true, force: true });
+		}
+	});
+
+	it("finds detected-but-unconfigured harnesses (pure set difference, total)", () => {
+		assert.deepEqual(
+			findUnconfiguredHarnesses({ configuredHarnessIds: ["muse"], detectedHarnesses: ["pi", "muse"] }),
+			["pi"],
+		);
+		assert.deepEqual(
+			findUnconfiguredHarnesses({ configuredHarnessIds: ["pi", "muse"], detectedHarnesses: ["pi", "muse"] }),
+			[],
+		);
+		// Blanks, duplicates, and foreign inputs degrade to empty, never throw.
+		assert.deepEqual(
+			findUnconfiguredHarnesses({ configuredHarnessIds: ["  muse "], detectedHarnesses: ["pi", "pi", "", null, "muse"] }),
+			["pi"],
+		);
+		assert.deepEqual(findUnconfiguredHarnesses({}), []);
+		assert.deepEqual(findUnconfiguredHarnesses({ configuredHarnessIds: null, detectedHarnesses: "pi" }), []);
+	});
+
+	it("describes the stale-pin hint in one actionable line", () => {
+		assert.equal(
+			describeUnconfiguredHarnessHint(["pi"]),
+			"harness auto-detect also sees: pi (add it to KAINBAIN_RUNNER_HARNESSES or use auto, then restart)",
+		);
+		assert.equal(describeUnconfiguredHarnessHint([]), null);
+		assert.equal(describeUnconfiguredHarnessHint(null), null);
+	});
+
+	it("builds the stale-pin hint from a runner config, skipped when detection is omitted", () => {
+		assert.equal(
+			staleHarnessHintFor({ config: { harnessIds: ["muse"] }, detectedHarnesses: ["pi", "muse"] }),
+			"harness auto-detect also sees: pi (add it to KAINBAIN_RUNNER_HARNESSES or use auto, then restart)",
+		);
+		assert.equal(staleHarnessHintFor({ config: { harnessIds: ["muse"] }, detectedHarnesses: ["muse"] }), null);
+		assert.equal(staleHarnessHintFor({ config: { harnessIds: ["muse"] } }), null);
 	});
 
 	it("leaves manual configs untouched", () => {
@@ -1650,15 +1954,15 @@ describe("handlePendingCommands", () => {
 			logger: quiet,
 			state,
 			pendingCommands: ["requestModelRediscovery"],
-			discoverFn: async () => { probes += 1; return ["m1", "m2"]; },
+			discoverFn: async () => { probes += 1; return ["muse::test::m1", "muse::test::m2"]; },
 		});
 		assert.equal(probes, 1);
 		assert.deepEqual(state.commandAcks, [
-			{ command: "requestModelRediscovery", ok: true, detail: "discovered 2 model(s)" },
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 2 model(s) (muse:2)" },
 		]);
 	});
 
-	it("skips discovery with a success ack when models are pinned", async () => {
+	it("acks pinned without scanning when models are pinned (pin wins by default)", async () => {
 		const state = {};
 		await handlePendingCommands({
 			config: claudeConfig({ models: ["pinned-model"] }),
@@ -1670,6 +1974,117 @@ describe("handlePendingCommands", () => {
 		});
 		assert.deepEqual(state.commandAcks, [
 			{ command: "requestModelRediscovery", ok: true, detail: "models pinned; discovery skipped" },
+		]);
+	});
+
+	it("re-detects despite the pin with the discovery-wins opt-in (survey q4)", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig({ models: ["pinned-model"], modelDiscoveryWins: true }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => ["muse::test::m1", "muse::test::m2"],
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 2 model(s) (muse:2)" },
+		]);
+	});
+
+	it("acks re-detection across legs with per-harness counts", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: baseConfig({ harnessIds: ["muse", "pi"], harnessId: "muse" }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => ["muse::meta::m"],
+			discoveryCtx: {
+				createHarness: async () => ({
+					listModels: async () => [{ key: "pi::mistral::x" }],
+				}),
+			},
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 2 model(s) (muse:1, pi:1)" },
+		]);
+	});
+
+	it("acks without scanning when discovery is disabled (interval 0)", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig({ models: ["pinned-model"], modelDiscoveryIntervalMs: 0 }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => { throw new Error("must not probe when disabled"); },
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "discovery disabled (interval 0); advertising pinned list" },
+		]);
+	});
+
+	it("acks plainly when no configured harness has a discovery leg", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: baseConfig({ harnessIds: ["mock"], harnessId: "mock" }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => { throw new Error("must not probe without a leg"); },
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 0 model(s) (no discovery legs configured)" },
+		]);
+	});
+
+	it("acks with the first leg error code when a leg fails, cache kept", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig(),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => { throw new Error("serve down"); },
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 0 model(s) (muse:0) (MUSE_DISCOVERY_FAILED)" },
+		]);
+	});
+
+	it("appends the stale-pin hint to re-detection acks when detection sees more", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig(),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => ["muse::test::m1"],
+			detectedHarnesses: ["pi", "muse"],
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 1 model(s) (muse:1); harness auto-detect also sees: pi (add it to KAINBAIN_RUNNER_HARNESSES or use auto, then restart)" },
+		]);
+	});
+
+	it("appends the stale-pin hint to pinned acks too (the pin hides those models)", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig({ models: ["pinned-model"] }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestModelRediscovery"],
+			detectedHarnesses: ["pi", "muse"],
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestModelRediscovery", ok: true, detail: "models pinned; discovery skipped; harness auto-detect also sees: pi (add it to KAINBAIN_RUNNER_HARNESSES or use auto, then restart)" },
 		]);
 	});
 
@@ -1784,7 +2199,7 @@ describe("handlePendingCommands", () => {
 			logger: quiet,
 			state,
 			pendingCommands: ["requestModelRediscovery"],
-			discoverFn: async () => { probes += 1; await gate; return ["m1"]; },
+			discoverFn: async () => { probes += 1; await gate; return ["muse::test::m1"]; },
 		};
 		const first = handlePendingCommands(opts);
 		// Second overlapping delivery while the first probe is in flight.
@@ -1794,7 +2209,7 @@ describe("handlePendingCommands", () => {
 		assert.equal(probes, 1);
 		assert.equal(state.commandAcks.length, 1);
 		// A later redelivery after the ack staged still acts only once.
-		await handlePendingCommands({ ...opts, discoverFn: async () => { probes += 1; return ["m1"]; } });
+		await handlePendingCommands({ ...opts, discoverFn: async () => { probes += 1; return ["muse::test::m1"]; } });
 		assert.equal(probes, 1);
 		assert.equal(state.commandAcks.length, 1);
 	});
@@ -1807,13 +2222,13 @@ describe("handlePendingCommands", () => {
 			logger: quiet,
 			state,
 			pendingCommands: ["requestModelRediscovery", "requestUpdate"],
-			discoverFn: async () => ["m1"],
+			discoverFn: async () => ["muse::test::m1"],
 			updateDeps: {
 				checkForUpdate: async () => ({ ok: true, update: null, reason: "up to date" }),
 			},
 		});
 		assert.deepEqual(state.commandAcks, [
-			{ command: "requestModelRediscovery", ok: true, detail: "discovered 1 model(s)" },
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 1 model(s) (muse:1)" },
 			{ command: "requestUpdate", ok: true, detail: "up to date" },
 		]);
 	});
@@ -1842,7 +2257,10 @@ describe("deliverSteers command channel", () => {
 				logger: quiet,
 				facts: {},
 				state,
-				discoverFn: async () => ["m1"],
+				discoverFn: async () => ["muse::test::m1"],
+				// Explicit detection matching the config: the ack stays
+				// exact, and the test never observes the real host.
+				detectedHarnesses: ["mock", "muse"],
 			});
 			assert.equal(heartbeats[0].facts.commandAck, undefined);
 			assert.equal(state.commandAcks.length, 1);
@@ -1850,9 +2268,35 @@ describe("deliverSteers command channel", () => {
 			assert.deepEqual(heartbeats[1].facts.commandAck, {
 				command: "requestModelRediscovery",
 				ok: true,
-				detail: "discovered 1 model(s)",
+				detail: "discovered 1 model(s) (muse:1)",
 			});
 			assert.deepEqual(state.commandAcks, []);
+		} finally {
+			clearDiscoveredModelsCache();
+			fs.rmSync(config.workRoot, { recursive: true, force: true });
+		}
+	});
+
+	it("forwards explicit detection so heartbeat re-detection acks name stale harnesses", async () => {
+		clearDiscoveredModelsCache();
+		const client = {
+			heartbeat: async () => ({ status: "active", pendingCommands: ["requestModelRediscovery"] }),
+		};
+		const config = baseConfig({ harnessIds: ["mock", "muse"] });
+		const state = {};
+		try {
+			await deliverSteers({
+				config,
+				client,
+				logger: quiet,
+				facts: {},
+				state,
+				discoverFn: async () => ["muse::test::m1"],
+				detectedHarnesses: ["pi", "muse"],
+			});
+			assert.deepEqual(state.commandAcks, [
+				{ command: "requestModelRediscovery", ok: true, detail: "discovered 1 model(s) (muse:1); harness auto-detect also sees: pi (add it to KAINBAIN_RUNNER_HARNESSES or use auto, then restart)" },
+			]);
 		} finally {
 			clearDiscoveredModelsCache();
 			fs.rmSync(config.workRoot, { recursive: true, force: true });

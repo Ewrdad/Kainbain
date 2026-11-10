@@ -754,3 +754,53 @@ describe("RunnerRegistry backend-to-Runner commands", () => {
 		});
 	});
 });
+
+/***
+ * MARK: RunnerRegistry discovery status tests
+ * @description Covers the additive per-harness discovery status the Runner
+ *   reports in heartbeat facts: persisted into the capabilities
+ *   projection, served on the public record, and absent (never misleading)
+ *   for old Runners that do not report it.
+ ***/
+describe("RunnerRegistry discovery status", () => {
+	const STATUS = {
+		pi: { ok: true, count: 77, atMs: 123 },
+		muse: { ok: true, count: 5, atMs: 124 },
+		antigravity: { ok: false, count: 0, atMs: 125, error: { code: "AGY_BIN_MISSING", message: "no agy" } },
+	};
+
+	test("heartbeat persists discoveryStatus into capabilities and serves it", () => {
+		const { runners, credential } = approved();
+		const beat = runners.heartbeat({
+			runnerId: "r1",
+			credential,
+			facts: { ...FACTS, discoveryStatus: STATUS },
+		});
+		expect(beat.capabilities.discoveryStatus).toEqual(STATUS);
+		expect(runners.getConfig("r1").capabilities.discoveryStatus).toEqual(STATUS);
+		expect(runners.list()[0].capabilities.discoveryStatus).toEqual(STATUS);
+	});
+
+	test("register persists discoveryStatus for pending runners too", () => {
+		const runners = registry();
+		const rec = runners.register({
+			runnerId: "r1",
+			joinToken: "join-secret",
+			facts: { ...FACTS, discoveryStatus: STATUS },
+		});
+		expect(rec.capabilities.discoveryStatus).toEqual(STATUS);
+	});
+
+	test("old runners without discoveryStatus stay absent, never misleading", () => {
+		const { runners, credential } = approved();
+		const beat = runners.heartbeat({ runnerId: "r1", credential, facts: FACTS });
+		expect("discoveryStatus" in (beat.capabilities || {})).toBe(false);
+	});
+
+	test("a malformed discoveryStatus is dropped and the heartbeat stays alive", () => {
+		const { runners, credential } = approved();
+		const beat = runners.heartbeat({ runnerId: "r1", credential, facts: { ...FACTS, discoveryStatus: "pi" } });
+		expect("discoveryStatus" in (beat.capabilities || {})).toBe(false);
+		expect(runners.getConfig("r1").capabilities.discoveryStatus).toBe(undefined);
+	});
+});

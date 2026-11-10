@@ -1,6 +1,7 @@
 // Domain: services/client — JSON transport core (timeout + GET-only retry).
 // Used by every domain request list; api.js re-exports it unchanged.
 import { API_BASE } from '../apiBase.js';
+import { notifyUnauthorized } from '../auth/index.js';
 
 /** Default ceiling for one REST attempt before it is aborted. */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
@@ -48,6 +49,9 @@ export const MAX_GET_RETRIES = 1;
  *   with AbortError and is never retried, even for GETs. Pass
  *   `timeoutMs: NO_REQUEST_TIMEOUT` (0) to disable the client timer for
  *   calls that must run until the server settles or the caller cancels.
+ *   Always sends the session cookie (`credentials: 'include'` so split-origin
+ *   setups stay signed in) and broadcasts the unauthorized event on 401 so
+ *   the route guard can bounce an expired session back to the login page.
  * @param {string} path
  * @param {Object} [options]
  * @param {Object} [opts]
@@ -105,12 +109,17 @@ export async function request(path, options = {}, { timeoutMs = DEFAULT_REQUEST_
       }
       const attemptFetch = fetch(`${API_BASE}${path}`, {
         signal: controller ? controller.signal : undefined,
+        credentials: 'include',
         ...options,
         headers: { ...headers, ...options.headers },
       });
       const res = timeoutArmed ? await Promise.race([attemptFetch, timeoutPromise]) : await attemptFetch;
       clearTimeout(timer);
       unlinkExternalAbort();
+      // 401 only ever means "signed-in session missing" (the server's
+      // `requireRole` guards are the sole 401 source), so every transport
+      // 401 is a session loss: tell the route guard to bounce to login.
+      if (res.status === 401) notifyUnauthorized();
       if (!res.ok) {
         const body = await res.text();
         const err = new Error(`API ${res.status} on ${path}: ${body}`);
