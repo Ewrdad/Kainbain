@@ -83,13 +83,23 @@ ready right now are listed; ids advertise in the fleet grammar
 
 | Harness | Source | Notes |
 |---|---|---|
-| `pi` | pi SDK availability snapshot | Needs `~/.pi/agent` login; empty login lists nothing |
-| `muse` | `muse serve` stdio `model/list` | Needs the `muse` CLI + login |
+| `pi` | pi SDK availability snapshot | Needs `~/.pi/agent` login; empty login reports `PI_MODELS_EMPTY` (login state in the message) |
+| `muse` | `muse serve` stdio `model/list` | Needs the `muse` CLI (resolved off-PATH too); missing CLI = `MUSE_MSP_BIN_MISSING`, zero-row answer = `MUSE_MSP_MODELS_EMPTY` |
 | `antigravity` | `agy models` spawn + parse | Classified `{code,message,hint}` errors |
-| `vibe` | ACP handshake model select | Exec-only hosts list nothing (honest empty) |
+| `vibe` | ACP handshake model select | Exec-only hosts list nothing (honest empty + retained error) |
 | `opencode` | `GET {OPENCODE_URL}/config/providers` | Needs `OPENCODE_URL` (+ `OPENCODE_SERVER_PASSWORD`); unset = honest empty + `OPENCODE_NOT_CONFIGURED` |
 | `codex` | — (live transport unverified) | Always honest empty + `CODEX_DISCOVERY_UNAVAILABLE` |
 | `custom` / `mock` | — | No legs by design (`mock` is test-only, `custom` manages its own model) |
+
+Every leg fails loud into its status slot: an empty or failed scan keeps the
+previous ids for that harness and records a classified `{code,message,hint}`
+(the ack detail carries the first code, Settings shows the warning), so a
+bare `0` with `ok: true` never hides a broken login or an empty catalogue
+again. When auto-detect sees harnesses the Runner is not configured to serve
+(a harness installed after the env file was written), the round also warns
+`harness auto-detect also sees: …` in the journal and on the re-detect ack —
+re-detection scans configured harnesses only, so the operator must add the
+harness (or use `auto`) and restart.
 
 Discovery runs once at boot and refreshes every
 `KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS` (default 12h; `0`
@@ -104,12 +114,17 @@ probes the same locations as the backend's own `discoverHarnesses`
 (`api/agent/harnessDiscovery.js`): PATH, then the standard install dirs
 (`~/.local/bin`, `~/bin` on POSIX), then each harness's own install dir
 (pi: `~/.pi/agent/bin`, `$PI_AGENT_DIR/bin`), plus `KAINBAIN_*_BIN` env
-overrides; pi additionally counts as installed when its agent dir holds a
-`models.json` snapshot (`~/.pi/agent/models.json` or
-`$PI_AGENT_DIR/models.json`) — SDK-only pi installs are frequently not on
-the service PATH (e.g. a systemd unit's minimal PATH), and PATH-only
+overrides (a set override replaces the default names — a typo'd override
+reads as missing, never falls back); pi additionally counts as installed
+when its agent dir holds a `models.json` snapshot (`~/.pi/agent/models.json`
+or `$PI_AGENT_DIR/models.json`) — SDK-only pi installs are frequently not
+on the service PATH (e.g. a systemd unit's minimal PATH), and PATH-only
 probing used to miss them, so their models never reached the fleet
-catalogue. `startRunner.sh` probes the same set at install time.
+catalogue. Detection names only the binary each harness actually spawns
+(antigravity: `agy`), so a detected harness can always run stages.
+`startRunner.sh` probes the same set at install time to validate, then
+records `auto` in the env file so every boot re-detects; `--manual` pins a
+list (also how to deliberately exclude an installed harness).
 
 Migration note: this release generalizes discovery from muse-only to
 one leg per harness, but pinned-model semantics are unchanged — an

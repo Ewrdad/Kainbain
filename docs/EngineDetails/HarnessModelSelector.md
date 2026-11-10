@@ -122,6 +122,11 @@ Re-detect button in Settings › Runners drives `requestModelRediscovery`
 over the heartbeat pull channel (survey q3) and the ack
 (`discovered N model(s) (pi:12, muse:3)`) plus the heartbeat
 `facts.discoveryStatus` (`{ [harness]: { ok, count, atMs, error? } }`)
-surface per-harness counts and the first leg warning. Detected models join
+surface per-harness counts and the first leg warning. Empty scans fail
+loud, never silent: pi reports `PI_MODELS_EMPTY` (with the login state),
+muse reports `MUSE_MSP_BIN_MISSING` / `MUSE_MSP_MODELS_EMPTY`, and a round
+that sees detected-but-unconfigured harnesses appends the
+`harness auto-detect also sees: …` hint (re-detection scans configured
+harnesses only). Detected models join
 the picker as normal fleet choices (survey q6) — see `runner/README.md`
 for the per-harness legs matrix.
