@@ -19,6 +19,9 @@ Read the stage reports and the preceding error output, then `retry` (fresh promp
 **The agent seems stuck.**
 Check `GET /compute/status` and the activity tail: `PROCESS_*` frames show live output, and a missing heartbeat plus `interrupted` status means it can be resumed. `abort` resets the engine to idle.
 
+**Docs pages feel long to scan.**
+Each `##` section header on a docs page collapses: click it (or press Enter/Space on it) to hide that section, and use Expand all / Collapse all above the article to flip every section at once. Sections always open expanded.
+
 **The UI shows nothing / the socket drops.**
 Confirm the API is up (`GET /status`), check the header traffic light, and verify `VITE_API_BASE` / `VITE_WS_URL` point at the API origin — a bundle opened from another host with loopback baked in self-heals to the serving host. See Ports & Environment (`#/docs/ports-env`) and Transport & Health (`#/docs/transport-health`).
 
