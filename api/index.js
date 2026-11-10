@@ -44,10 +44,12 @@ import { DeployManager } from "./deployManager.js";
 import { healthChecker } from "./healthChecker.js";
 import { buildHarnessRoster, hasSessionCapability, guardSessionCapability } from "./crew/index.js";
 import { prepareProjects, projectsRootBootWarning } from "./house/index.js";
+import { createAuthService } from "./auth/index.js";
 export { hasSessionCapability, guardSessionCapability } from "./crew/index.js";
 export { isAllowedCorsOrigin } from "./cors.js";
 
 import statusRoutes from "./routes/status.js";
+import authRoutes from "./routes/auth.js";
 import deployRoutes from "./routes/deploy.js";
 import projectsRoutes from "./routes/projects.js";
 import computeRoutes from "./routes/compute.js";
@@ -126,6 +128,10 @@ app.register(fastifyCors, {
 			cb(new Error("CORS origin not allowed"), false);
 		}
 	},
+	// Split-origin stacks (canary vite 5299 -> api 3399, LAN installs) send
+	// cookies (`credentials: include` for the session cookie); the CORS
+	// response must allow credentials or the browser blocks the response.
+	credentials: true,
 	// The API serves GET/POST/PATCH/PUT/DELETE; the plugin default
 	// (GET,HEAD,POST) would CORS-block every browser-issued PATCH/PUT/DELETE
 	// on split-origin stacks (scratch e2e, LAN installs) — e.g. the project
@@ -179,6 +185,15 @@ taskStore.sessionStore = sessionStore;
 
 const harnessRegistry = buildHarnessRoster(sessionStore);
 
+// Access control (togglable, OFF by default): the auth service owns the
+// user/session stores, the live access config, the request hook, and the
+// role guards. While disabled every request is attributed to the shared
+// builtin admin and all guards pass through, so behaviour is byte-identical
+// to today. The state dir comes from KAINBAIN_AUTH_STATE_PATH (tests point
+// it at a temp dir); otherwise it resolves to ~/.kainbain/engine/auth/.
+const authService = createAuthService({ schemaConfig: config });
+export { authService };
+
 // Phase 2 Runner ledger (D1/D4, ADR 0009): in-memory while the backend is
 // the single writer; durability is Phase 4. The join token comes from
 // config (empty disables registration); claims share the ClaimStore TTL.
@@ -216,6 +231,7 @@ const integrationQueue = new IntegrationQueue({ ttlMs: config.claimTtlMs });
 taskStore.claimStore = claimStore;
 
 const deps = {
+	authService,
 	projectStore,
 	taskStore,
 	sessionStore,
@@ -274,7 +290,13 @@ healthChecker.registerProbe({
 	},
 });
 
+// The auth hook runs first so every route can rely on `request.user` and
+// `request.auth`. It never rejects on its own — public routes skip
+// attribution and `requireRole` preHandlers enforce the guarded surface.
+app.addHook("onRequest", authService.requestHook);
+
 app.register(statusRoutes, { deps });
+app.register(authRoutes, { deps });
 app.register(deployRoutes, { deps });
 app.register(projectsRoutes, { deps });
 app.register(computeRoutes, { deps });

@@ -756,6 +756,92 @@ describe('RunnerConfigurationSection', () => {
     expect(failed).toHaveAttribute('role', 'alert');
   });
 
+  it('shows per-harness auto-detect counts from discoveryStatus', async () => {
+    runnersFixture([
+      {
+        ...SUPPORTED_RUNNER,
+        capabilities: {
+          harnesses: [{ id: 'pi' }, { id: 'muse' }],
+          models: ['pi::mistral::x', 'muse::meta::m'],
+          discoveryStatus: {
+            pi: { ok: true, count: 77, atMs: 1 },
+            muse: { ok: true, count: 5, atMs: 2 },
+          },
+        },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.getByTestId('runner-discovery-status-r1')).toHaveTextContent(
+      'Auto-detect: muse:5, pi:77',
+    );
+    expect(screen.queryByTestId('runner-discovery-warning-r1')).toBeNull();
+  });
+
+  it('shows the first leg warning from discoveryStatus', async () => {
+    runnersFixture([
+      {
+        ...SUPPORTED_RUNNER,
+        capabilities: {
+          harnesses: [{ id: 'pi' }, { id: 'antigravity' }],
+          models: ['pi::mistral::x'],
+          discoveryStatus: {
+            pi: { ok: true, count: 1, atMs: 1 },
+            antigravity: {
+              ok: false,
+              count: 0,
+              atMs: 2,
+              error: { code: 'AGY_BIN_MISSING', message: 'agy CLI not found' },
+            },
+          },
+        },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.getByTestId('runner-discovery-status-r1')).toHaveTextContent(
+      'Auto-detect: antigravity:0, pi:1',
+    );
+    expect(screen.getByTestId('runner-discovery-warning-r1')).toHaveTextContent(
+      'antigravity: AGY_BIN_MISSING — agy CLI not found',
+    );
+  });
+
+  it('renders no discovery lines for runners that predate discoveryStatus', async () => {
+    runnersFixture([SUPPORTED_RUNNER]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.queryByTestId('runner-discovery-status-r1')).toBeNull();
+    expect(screen.queryByTestId('runner-discovery-warning-r1')).toBeNull();
+  });
+
+  it('keeps the old model rows visible when re-detection failed', async () => {
+    runnersFixture([
+      {
+        ...SUPPORTED_RUNNER,
+        capabilities: {
+          harnesses: [{ id: 'pi' }],
+          models: ['pi::mistral::x', 'pi::mistral::y'],
+        },
+        commands: {
+          pending: [],
+          results: {
+            requestModelRediscovery: { ok: false, detail: 'scan failed', at: new Date().toISOString() },
+          },
+          supported: ['requestModelRediscovery', 'requestUpdate'],
+        },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.getByTestId('runner-redetect-status-r1')).toHaveTextContent(
+      'Re-detection failed: scan failed',
+    );
+    expect(screen.getByTestId('runner-models-list-r1')).toBeTruthy();
+    expect(screen.getByTestId('runner-model-r1-pi::mistral::x')).toBeTruthy();
+    expect(screen.getByTestId('runner-model-r1-pi::mistral::y')).toBeTruthy();
+  });
+
   it('ignores an over-long custom model id with no network call', async () => {
     runnersFixture([{ ...ACTIVE_RUNNER, capabilities: { harnesses: [{ id: 'pi' }], models: ['m1'] } }]);
     render(<RunnerConfigurationSection />);

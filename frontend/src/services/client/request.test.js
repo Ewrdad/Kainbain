@@ -174,6 +174,47 @@ describe('request transport seam', () => {
     },
   );
 
+  it('sends the session cookie on every request (split-origin safe)', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true }),
+    }));
+    global.fetch = fetchMock;
+    await request('/settings/prompt-layout', { method: 'GET' });
+    expect(fetchMock.mock.calls[0][1].credentials).toBe('include');
+  });
+
+  it('broadcasts the unauthorized event on 401 so the guard bounces to login', async () => {
+    const { UNAUTHORIZED_EVENT } = await import('../auth/index.js');
+    const seen = [];
+    const realWindow = global.window;
+    global.window = {
+      CustomEvent: class CustomEvent {
+        constructor(type) {
+          this.type = type;
+        }
+      },
+      dispatchEvent: (event) => {
+        seen.push(event.type);
+        return true;
+      },
+    };
+    try {
+      global.fetch = vi.fn(async () => ({
+        ok: false,
+        status: 401,
+        text: async () => JSON.stringify({ error: 'Sign-in required', code: 'unauthenticated' }),
+      }));
+      const err = await request('/settings/prompt-layout', { method: 'GET' }).catch((e) => e);
+      expect(err.status).toBe(401);
+      expect(seen).toEqual([UNAUTHORIZED_EVENT]);
+    } finally {
+      if (typeof realWindow === 'undefined') delete global.window;
+      else global.window = realWindow;
+    }
+  });
+
   it('still retries a timed-out GET once when no external signal is given', async () => {
     let calls = 0;
     global.fetch = vi.fn(() => {

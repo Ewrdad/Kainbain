@@ -1061,6 +1061,78 @@ export const ENDPOINTS = [
 		purpose: "Accept one accessibility report (`{ message, needGroup?, contact?, pageUrl? }` → 201 `{ received, id, inbox }`); rate-limited to 5 per client per 15 minutes; persisted to the JSONL inbox file.",
 		body: null,
 	},
+	{
+		method: "GET",
+		path: "/auth/login",
+		purpose: "Start organisation sign-in (302 to the identity provider; 404 `auth_disabled` when access control is off, 503 `oidc_unconfigured` when the provider fields are unset).",
+		body: null,
+	},
+	{
+		method: "GET",
+		path: "/auth/callback",
+		purpose: "OIDC callback: exchanges the code, verifies the ID token, provisions the user, sets the session cookie, and redirects to `/`.",
+		body: null,
+	},
+	{
+		method: "POST",
+		path: "/auth/logout",
+		purpose: "End the browser session server-side and clear the cookie (→ `{ ok: true }`).",
+		body: null,
+	},
+	{
+		method: "GET",
+		path: "/auth/me",
+		purpose: "Auth status for the frontend gate (`{ authEnabled, user, roles }`; when off, `user` is the built-in admin).",
+		body: null,
+	},
+	{
+		method: "GET",
+		path: "/auth/users",
+		purpose: "List provisioned users (role-manager roles only while access control is on).",
+		body: null,
+	},
+	{
+		method: "PUT",
+		path: "/auth/users/:id/roles",
+		purpose: "Replace a user's installation-wide direct roles (`{ roles }`; role-manager roles only).",
+		body: null,
+	},
+	{
+		method: "PUT",
+		path: "/auth/users/:id/projects/:projectId/roles",
+		purpose: "Replace a user's roles for one project (`{ roles }`; role-manager roles only).",
+		body: null,
+	},
+	{
+		method: "PUT",
+		path: "/auth/users/:id/disabled",
+		purpose: "Disable or re-enable a user (`{ disabled }`; cannot target self; role-manager roles only).",
+		body: null,
+	},
+	{
+		method: "GET",
+		path: "/auth/group-mappings",
+		purpose: "Load the IdP-group to role mappings (role-manager roles only).",
+		body: null,
+	},
+	{
+		method: "PUT",
+		path: "/auth/group-mappings",
+		purpose: "Replace the IdP-group to role mappings (`{ mappings }`; role-manager roles only).",
+		body: null,
+	},
+	{
+		method: "GET",
+		path: "/auth/settings",
+		purpose: "Load the effective access-control settings view (the client secret is never returned; role-manager roles only).",
+		body: null,
+	},
+	{
+		method: "PUT",
+		path: "/auth/settings",
+		purpose: "Persist one access-settings change (role-manager roles only; applies without a restart).",
+		body: null,
+	},
 ];
 
 /***

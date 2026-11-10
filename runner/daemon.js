@@ -13,7 +13,8 @@ import { defaultInstallRoot, markUpdateSuccess, readUpdateState } from "./update
 // The Runner bundle ships shared/ next to this folder (runner/{runner,api,shared}
 // in prod and in the distributable tarball), so ../shared resolves both in the
 // repo and in every deployed layout — the same copy the backend executes.
-import { discoverClaudeModels, resolveAdvertisedModels } from "./modelDiscovery.js";
+import { resolveAdvertisedModels } from "./modelDiscovery.js";
+import { clearDiscoveryCache, getDiscoveryStatus, runDiscoveryRound, summarizeDiscoverySlices, DISCOVER_LEG_TIMEOUT_DEFAULT_MS } from "./harnessModelDiscovery.js";
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { decideAgentStageVerdict } from "../shared/stageVerdict.js";
@@ -383,8 +384,9 @@ export async function defaultLoadHarness(harnessId) {
  * @description Last model auto-discovery result, shared by every factsFor
  *   call until the next refresh. Seeded at boot, refreshed on the
  *   modelDiscoveryIntervalMs cadence (default 12h). The operator's explicit
- *   MODELS/MODEL list always wins (see resolveAdvertisedModels), so this
- *   cache only matters when nothing is pinned.
+ *   MODELS/MODEL list wins by default (see resolveAdvertisedModels), so this
+ *   cache only matters when nothing is pinned — unless
+ *   `modelDiscoveryWins` opts in to discovery-wins (survey q4).
  ***/
 let discoveredModelsCache = [];
 
@@ -394,34 +396,75 @@ let discoveredModelsCache = [];
  ***/
 export function clearDiscoveredModelsCache() {
 	discoveredModelsCache = [];
+	clearDiscoveryCache();
+}
+
+/***
+ * MARK: isModelsPinned
+ * @description Whether the operator pinned an explicit model list
+ *   (`config.models` non-empty or `config.model` set). Pinned installs
+ *   skip discovery scans and advertise the pin (unless
+ *   `modelDiscoveryWins` opts in to discovery-wins).
+ * @example isModelsPinned({ models: ['a'] }) => true
+ * @param {Object} [config] - Normalized runner config.
+ * @returns {boolean} True when a pin is set.
+ ***/
+export function isModelsPinned(config = {}) {
+	return (
+		(Array.isArray(config?.models) && config.models.length > 0) ||
+		(typeof config?.model === "string" && config.model.trim() !== "")
+	);
 }
 
 /***
  * MARK: refreshDiscoveredModels
- * @description One discovery round: when the operator pinned no models and
- *   the `muse` harness is configured, asks the installed CLI for its model
- *   menu (muse serve model/list, box-local login, no keys leave the host)
- *   and caches the ids. Best-effort — failures keep the previous cache and
- *   warn, never throw, so discovery can never break heartbeats.
+ * @description One discovery round across every configured harness with a
+ *   discovery leg (pi, muse, antigravity, vibe, opencode, codex): each leg
+ *   reuses its backend harness's own `listModels()` (box-local login, no
+ *   keys leave the host) and caches the ids per harness. Skipped entirely
+ *   when the operator pinned MODELS/MODEL — pins win by default (see
+ *   resolveAdvertisedModels), so scanning would only waste CLI spawns;
+ *   set `modelDiscoveryWins` (env `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1`,
+ *   survey q4) to scan anyway and let a non-empty result replace the pin.
+ *   Best-effort — failures keep the previous cache (per-harness slice)
+ *   and warn, never throw, so discovery can never break heartbeats.
+ *   `modelDiscoveryIntervalMs: 0` disables all scanning (boot seed and
+ *   re-detect alike).
  * @example await refreshDiscoveredModels({ config }) => ['muse::meta::muse-spark-1.3']
  * @param {Object} [opts]
  * @param {Object} [opts.config] - Normalized runner config.
  * @param {Object} [opts.logger] - Logger.
- * @param {Function} [opts.discoverFn=discoverClaudeModels] - Test seam.
+ * @param {Function} [opts.discoverFn] - Test seam overriding the muse probe
+ *   (called with the leg ctx; overridden ids still pass grammar validation).
+ * @param {Object} [opts.discoveryCtx] - Test seams forwarded to every leg.
  * @returns {Promise<string[]>} Current cache copy.
  ***/
-export async function refreshDiscoveredModels({ config, logger, discoverFn = discoverClaudeModels } = {}) {
+export async function refreshDiscoveredModels({ config, logger, discoverFn, discoveryCtx } = {}) {
 	try {
-		if (Array.isArray(config?.models) && config.models.length > 0) return [...discoveredModelsCache];
-		if (typeof config?.model === "string" && config.model.trim()) return [...discoveredModelsCache];
-		if (!runnerHarnessIds(config).includes("muse")) return [...discoveredModelsCache];
-		for (const bin of HARNESS_VERSION_BINS.muse) {
-			const ids = await discoverFn({ bin });
-			if (ids.length > 0) {
-				discoveredModelsCache = ids;
-				logger?.log?.(`Model discovery: ${ids.length} model(s) from ${bin}; next refresh per modelDiscoveryIntervalMs.`);
-				break;
-			}
+		if (config?.modelDiscoveryIntervalMs === 0) {
+			logger?.log?.("Model discovery disabled (interval 0); advertising the pinned list.");
+			return [...discoveredModelsCache];
+		}
+		if (isModelsPinned(config) && !config?.modelDiscoveryWins) return [...discoveredModelsCache];
+		const idsConfigured = runnerHarnessIds(config);
+		// The muse probe override rides the leg seam, so even overridden
+		// ids pass grammar validation before advertisement.
+		const legOptions = { ...(discoveryCtx || {}) };
+		if (typeof discoverFn === "function") legOptions.discoverFn = discoverFn;
+		const { combinedIds } = await runDiscoveryRound({
+			harnessIds: idsConfigured,
+			timeoutMs: DISCOVER_LEG_TIMEOUT_DEFAULT_MS,
+			legOptions,
+		});
+		// Keep-old global: an empty round retains the previous cache.
+		if (combinedIds.length > 0) {
+			discoveredModelsCache = combinedIds;
+		}
+		const { countsText, firstError } = summarizeDiscoverySlices(idsConfigured);
+		const scope = countsText ? ` (${countsText})` : " (no discovery legs configured)";
+		logger?.log?.(`Model discovery: ${discoveredModelsCache.length} model(s)${scope}; next refresh per modelDiscoveryIntervalMs.`);
+		if (firstError?.code) {
+			logger?.warn?.(`Model discovery warning (${firstError.code}): ${firstError.message || "a harness scan failed"}; keeping the previous list for that harness.`);
 		}
 	} catch (err) {
 		logger?.warn?.(`Model discovery failed, keeping previous list: ${err?.message || err}`);
@@ -468,6 +511,7 @@ function factsFor({ config, harnessVersions, updateStatus = null, commandAck = n
 		directories: effectiveDirectoriesFor(config),
 		commands: SUPPORTED_RUNNER_COMMANDS,
 		workRoot: typeof config.workRoot === "string" ? config.workRoot : null,
+		discoveryStatus: getDiscoveryStatus(runnerHarnessIds(config)),
 		...(updateStatus ? { updateStatus } : {}),
 		...(commandAck ? { commandAck } : {}),
 	};
@@ -654,7 +698,8 @@ function stageCommandAck(state, ack) {
  *   heartbeat pull channel (ADR 0013): `requestModelRediscovery` re-runs
  *   model discovery promptly (fresh probe, not the 12h cache cadence;
  *   skipped with a success ack when the operator pinned models, since
- *   pins always win); `requestUpdate` runs the existing idle-only
+ *   pins win by default — `modelDiscoveryWins` opts in to scanning
+ *   anyway); `requestUpdate` runs the existing idle-only
  *   self-update at once when idle, or parks `state.pendingUpdate` for
  *   the next idle point when an execution is live (never interrupts
  *   work, D5). Every handled command stages exactly one ack on
@@ -663,10 +708,10 @@ function stageCommandAck(state, ack) {
  *   Commands already staged or in flight are skipped, so the backend's
  *   at-least-once redelivery never double-applies.
  * @example await handlePendingCommands({ config, client, logger, state, pendingCommands: ['requestModelRediscovery'] })
- * @param {Object} opts - Options (config, client, logger, state, pendingCommands, updateDeps?, discoverFn?).
+ * @param {Object} opts - Options (config, client, logger, state, pendingCommands, updateDeps?, discoverFn?, discoveryCtx?).
  * @returns {Promise<void>} Resolves once every command acted (or the process exits 0 into a staged update).
  ***/
-export async function handlePendingCommands({ config, client, logger, state, pendingCommands = [], updateDeps, discoverFn } = {}) {
+export async function handlePendingCommands({ config, client, logger, state, pendingCommands = [], updateDeps, discoverFn, discoveryCtx } = {}) {
 	if (!state) state = {};
 	if (!Array.isArray(state.commandAcks)) state.commandAcks = [];
 	if (!(state.commandFlight instanceof Set)) state.commandFlight = new Set();
@@ -678,14 +723,21 @@ export async function handlePendingCommands({ config, client, logger, state, pen
 		try {
 			if (cmd === "requestModelRediscovery") {
 				logger.log?.("Runner command: re-detecting models");
-				const pinned = (Array.isArray(config?.models) && config.models.length > 0) || (typeof config?.model === "string" && config.model.trim());
-				if (pinned) {
-					stageCommandAck(state, { command: cmd, ok: true, detail: "models pinned; discovery skipped" });
-				} else {
-					const ids = await refreshDiscoveredModels({ config, logger, discoverFn });
-					const count = Array.isArray(ids) ? ids.length : 0;
-					stageCommandAck(state, { command: cmd, ok: true, detail: `discovered ${count} model(s)` });
+				if (config?.modelDiscoveryIntervalMs === 0) {
+					stageCommandAck(state, { command: cmd, ok: true, detail: "discovery disabled (interval 0); advertising pinned list" });
+					continue;
 				}
+				if (isModelsPinned(config) && !config?.modelDiscoveryWins) {
+					stageCommandAck(state, { command: cmd, ok: true, detail: "models pinned; discovery skipped" });
+					continue;
+				}
+				const ids = await refreshDiscoveredModels({ config, logger, discoverFn, discoveryCtx });
+				const count = Array.isArray(ids) ? ids.length : 0;
+				const { countsText, firstError } = summarizeDiscoverySlices(runnerHarnessIds(config));
+				const scope = countsText ? ` (${countsText})` : " (no discovery legs configured)";
+				let detail = `discovered ${count} model(s)${scope}`;
+				if (firstError?.code) detail += ` (${firstError.code})`;
+				stageCommandAck(state, { command: cmd, ok: true, detail });
 			}
 			if (cmd === "requestUpdate") {
 				// Idle-only: do not interrupt active work (D5)
@@ -747,10 +799,10 @@ export async function handlePendingCommands({ config, client, logger, state, pen
  *   A session without either method NACKs UNSUPPORTED_HARNESS — loud,
  *   never silently dropped.
  * @example await deliverSteers({ config, client, logger, facts, state })
- * @param {Object} opts - Options (config, client, logger, facts, state, updateDeps?, discoverFn?).
+ * @param {Object} opts - Options (config, client, logger, facts, state, updateDeps?, discoverFn?, discoveryCtx?).
  * @returns {Promise<number>} Steers delivered (acked) this cycle.
  ***/
-export async function deliverSteers({ config, client, logger, facts, state, updateDeps, discoverFn }) {
+export async function deliverSteers({ config, client, logger, facts, state, updateDeps, discoverFn, discoveryCtx }) {
 	const pendingAck = stagedCommandAck(state);
 	const factsWithAck = pendingAck ? { ...facts, commandAck: pendingAck } : facts;
 	const beat = await client.heartbeat({ runnerId: config.runnerId, facts: factsWithAck });
@@ -758,7 +810,7 @@ export async function deliverSteers({ config, client, logger, facts, state, upda
 		state.commandAcks.shift();
 	}
 	if (Array.isArray(beat.pendingCommands) && beat.pendingCommands.length) {
-		await handlePendingCommands({ config, client, logger, state, pendingCommands: beat.pendingCommands, updateDeps, discoverFn });
+		await handlePendingCommands({ config, client, logger, state, pendingCommands: beat.pendingCommands, updateDeps, discoverFn, discoveryCtx });
 	}
 	const due = (beat.pendingSteers || []).filter((s) => s && s.executionId === state?.executionId);
 	let delivered = 0;

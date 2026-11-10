@@ -51,10 +51,22 @@ test("spawn failure, timeout error, and unparsable output resolve to []", async 
 	assert.deepEqual(await discoverClaudeModels({ spawnSyncFn: () => ({ stdout: "garbage\n" }) }), []);
 });
 
-test("explicit operator models win; discovery fills only when unset", () => {
-	assert.deepEqual(resolveAdvertisedModels({ models: ["a"] }, ["b"]), ["a"]);
+test("pin wins by default: a pinned list is still advertised when discovery is non-empty", () => {
+	assert.deepEqual(resolveAdvertisedModels({ models: ["pinned-a"] }, ["discovered-b"]), ["pinned-a"]);
+	assert.deepEqual(resolveAdvertisedModels({ model: "pinned-a" }, ["discovered-b"]), ["pinned-a"]);
+	assert.deepEqual(resolveAdvertisedModels({ models: ["pinned-a"] }, []), ["pinned-a"]);
+	assert.deepEqual(resolveAdvertisedModels({ model: "pinned-a" }, []), ["pinned-a"]);
 	assert.deepEqual(resolveAdvertisedModels({ models: [] }, ["b"]), ["b"]);
-	assert.deepEqual(resolveAdvertisedModels({ model: "a" }, ["b"]), ["a"]);
 	assert.deepEqual(resolveAdvertisedModels({}, ["b"]), ["b"]);
 	assert.deepEqual(resolveAdvertisedModels({ models: [] }, []), []);
+	assert.deepEqual(resolveAdvertisedModels({}, undefined), []);
+});
+
+test("discovery wins only with the explicit opt-in (modelDiscoveryWins, survey q4)", () => {
+	const optIn = { models: ["pinned-a"], modelDiscoveryWins: true };
+	assert.deepEqual(resolveAdvertisedModels(optIn, ["discovered-b"]), ["discovered-b"]);
+	assert.deepEqual(resolveAdvertisedModels(optIn, []), ["pinned-a"]);
+	assert.deepEqual(resolveAdvertisedModels({ model: "pinned-a", modelDiscoveryWins: true }, ["discovered-b"]), ["discovered-b"]);
+	assert.deepEqual(resolveAdvertisedModels({ model: "pinned-a", modelDiscoveryWins: true }, []), ["pinned-a"]);
+	assert.deepEqual(resolveAdvertisedModels({ models: [], modelDiscoveryWins: true }, ["b"]), ["b"]);
 });

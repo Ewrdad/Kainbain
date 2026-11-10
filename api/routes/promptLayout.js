@@ -43,6 +43,10 @@ export default async function promptLayoutRoutes(app, { deps } = {}) {
 	const engine =
 		deps?.promptEngine ||
 		new PromptCurationEngine({ promptLayoutDir: dir });
+	// PoC enforcement surface (q11): layout writes need the admin role while
+	// access control is on; without an auth service the routes stay open.
+	const adminOnly = deps?.authService?.guards?.requireRole(["admin"]);
+	const guard = adminOnly ? { preHandler: adminOnly } : {};
 
 	app.get("/settings/prompt-layout", async () => {
 		try {
@@ -63,7 +67,7 @@ export default async function promptLayoutRoutes(app, { deps } = {}) {
 		}
 	});
 
-	app.put("/settings/prompt-layout", async (request, reply) => {
+	app.put("/settings/prompt-layout", guard, async (request, reply) => {
 		const body = request.body || {};
 		const layout = body.layout;
 		if (typeof layout !== "string") {
@@ -104,7 +108,7 @@ export default async function promptLayoutRoutes(app, { deps } = {}) {
 		}
 	});
 
-	app.post("/settings/prompt-layout/reset", async () => {
+	app.post("/settings/prompt-layout/reset", guard, async () => {
 		const state = resetPromptLayout({ dir });
 		return {
 			...state,

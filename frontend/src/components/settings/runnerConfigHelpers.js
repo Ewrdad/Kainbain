@@ -298,6 +298,44 @@ export const modelUnion = (runner = {}) => {
 };
 
 /***
+ * MARK: discoveryStatusSummary
+ * @description Summarizes the Runner's per-harness auto-detect status
+ *   (`capabilities.discoveryStatus`, falling back to the raw facts copy)
+ *   for the Models block: stable per-harness counts plus the first leg
+ *   warning. Null when the Runner/backend predates discovery status, so
+ *   old records render exactly as before.
+ * @example discoveryStatusSummary({ capabilities: { discoveryStatus: { pi: { ok: true, count: 2 } } } }) => { counts: 'pi:2', warning: null }
+ * @param {Object} [runner={}] - Runner record.
+ * @returns {{counts: string, warning: string|null}|null} Summary, or null when unknown.
+ ***/
+export const discoveryStatusSummary = (runner = {}) => {
+  const status = runner?.capabilities?.discoveryStatus ?? runner?.facts?.discoveryStatus;
+  if (!status || typeof status !== 'object' || Array.isArray(status)) return null;
+  const ids = Object.keys(status).sort();
+  if (ids.length === 0) return null;
+  const counts = ids
+    .map((id) => {
+      const slice = status[id];
+      const rawCount = slice && typeof slice.count === 'number' ? slice.count : 0;
+      const count = Number.isFinite(rawCount) && rawCount >= 0 ? Math.floor(rawCount) : 0;
+      return `${id}:${count}`;
+    })
+    .join(', ');
+  const warned = ids.find((id) => {
+    const slice = status[id];
+    return Boolean(slice && typeof slice === 'object' && (slice.ok === false || (slice.error && typeof slice.error === 'object')));
+  });
+  let warning = null;
+  if (warned) {
+    const err = status[warned]?.error;
+    const code = err && typeof err.code === 'string' && err.code ? err.code : 'discovery failed';
+    const msg = err && typeof err.message === 'string' && err.message ? err.message.slice(0, 200) : '';
+    warning = msg ? `${warned}: ${code} — ${msg}` : `${warned}: ${code}`;
+  }
+  return { counts, warning };
+};
+
+/***
  * MARK: modelTogglePatch
  * @description Patch value for toggled model ids; `null` when matching advertised.
  * @example modelTogglePatch({ capabilities: { models: ['m1'] } }, ['m1']) => null
