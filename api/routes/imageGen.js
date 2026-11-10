@@ -36,6 +36,10 @@ const TEST_PROMPT = "Connectivity test: a small plain grey square icon, flat, no
 export default async function imageGenRoutes(app, { deps } = {}) {
 	const dir = deps?.imageGenDir || resolveImageGenDir();
 	const fetchImpl = deps?.imageGenFetch;
+	// PoC enforcement surface (q11): provider-key writes need the admin
+	// role while access control is on.
+	const adminOnly = deps?.authService?.guards?.requireRole(["admin"]);
+	const guard = adminOnly ? { preHandler: adminOnly } : {};
 
 	app.get("/settings/image-gen/providers", async () => ({
 		providers: listImageGenProviders().map((provider) => ({
@@ -46,7 +50,7 @@ export default async function imageGenRoutes(app, { deps } = {}) {
 		})),
 	}));
 
-	app.put("/settings/image-gen/providers/:id/key", async (request, reply) => {
+	app.put("/settings/image-gen/providers/:id/key", guard, async (request, reply) => {
 		const providerId = String(request.params?.id || "");
 		if (!getImageGenProvider(providerId)) {
 			return reply.status(400).send({
@@ -70,7 +74,7 @@ export default async function imageGenRoutes(app, { deps } = {}) {
 		}
 	});
 
-	app.delete("/settings/image-gen/providers/:id/key", async (request, reply) => {
+	app.delete("/settings/image-gen/providers/:id/key", guard, async (request, reply) => {
 		const providerId = String(request.params?.id || "");
 		if (!getImageGenProvider(providerId)) {
 			return reply.status(400).send({

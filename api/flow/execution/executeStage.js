@@ -55,6 +55,10 @@ import {
 	emitAlert,
 } from '../../observability/alerts.js';
 import {
+	parseAutoApproveDuration,
+	resolveAutoApproveAt,
+} from '../../../shared/autoApproveDuration.js';
+import {
 	hasHarness,
 } from '../../agent/harnessRegistry.js';
 import {
@@ -403,6 +407,26 @@ export async function executeStage(
 					}
 				}
 				store.updateTask(projectId, taskId, { status: "waiting_human" }, cwd);
+				// Run-loop park at a human checkpoint (execute/resume/retry of
+				// a task sitting at one). A live wait keeps its stamped
+				// deadline: re-parking is not a new visit, so it must neither
+				// extend the hold nor reset the reminder marker (a manual
+				// re-execute while waiting changes nothing). Only a park with
+				// no live stamp starts a fresh wait — based on the parking
+				// moment, never the stale stage-entry time — so an
+				// abort/resume cycle always gets the full configured hold
+				// (late is safe, early is a bug).
+				const parkHoldMs = parseAutoApproveDuration(stage?.autoApproveAfterMs);
+				if (!parkHoldMs) {
+					task.autoApproveAt = null;
+					task.autoApproveRemindedAt = null;
+				} else if (!Number.isFinite(Date.parse(task.autoApproveAt ?? ""))) {
+					task.autoApproveAt = resolveAutoApproveAt(
+						new Date().toISOString(),
+						parkHoldMs,
+					);
+					task.autoApproveRemindedAt = null;
+				}
 				task.history.push({
 					timestamp: new Date().toISOString(),
 					action: `Stage checkpoint: waiting for human approval in stage ${stage.name || stage.id}`,

@@ -16,8 +16,11 @@ Runner by default — install it with:
 scripts/install-local-runner.sh --id local-pi
 # remote host: add --backend https://kainbain.home
 # Harnesses auto-detect by default (pi, muse, antigravity, vibe probed on
-# PATH); pin with --manual --harness pi or --manual --harnesses pi,muse.
-# mock has no CLI, so it is manual-only.
+# PATH plus the standard install dirs ~/.local/bin and ~/bin, each harness's
+# own install dir, and pi additionally via its ~/.pi/agent models.json
+# snapshot — so SDK-only pi installs that are not on the service PATH are
+# still detected); pin with --manual --harness pi or
+# --manual --harnesses pi,muse. mock has no CLI, so it is manual-only.
 ```
 
 ## Onboard (human approval required, D4)
@@ -60,19 +63,76 @@ node runner/main.js
 ```
 
 `KAINBAIN_RUNNER_MODELS` is the servable-model advertisement the backend
-matches against (csv; singular `KAINBAIN_RUNNER_MODEL` seeds a 1-element
-list; empty matches model-less tasks only). Each assignment serves
-exactly the dispatch answer's required model — never a substitution.
+matches against (csv; singular `KAINBAIN_RUNNER_MODEL` seeds a
+1-element pin; empty matches model-less tasks only). A pinned list
+always wins over discovered ids: pinned installs skip discovery scans
+(boot, cadence, and Re-detect all ack `models pinned; discovery
+skipped`) and keep advertising exactly their pin across self-updates.
+Set `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1` to opt in to
+discovery-wins (survey q4: a non-empty discovery result replaces the
+pin, the pin only fills in while discovery yielded nothing). Each
+assignment serves exactly the dispatch answer's required model — never
+a substitution.
 
-When no models are pinned, the daemon auto-discovers them: for the
-`muse` harness it asks the installed CLI over its own wire protocol
-(`muse serve` stdio `model/list`, box-local login — keys never leave
-the host) and advertises the returned ids (`muse::<provider>::<model>`).
+The daemon auto-discovers models with one leg per configured harness
+(`runner/harnessModelDiscovery.js`), each reusing its backend
+harness's own `listModels()` so "ready to use" means the same thing on
+both sides (box-local login — keys never leave the host). Only models
+ready right now are listed; ids advertise in the fleet grammar
+`<harness>::<provider>::<model>`:
+
+| Harness | Source | Notes |
+|---|---|---|
+| `pi` | pi SDK availability snapshot | Needs `~/.pi/agent` login; empty login reports `PI_MODELS_EMPTY` (login state in the message) |
+| `muse` | `muse serve` stdio `model/list` | Needs the `muse` CLI (resolved off-PATH too); missing CLI = `MUSE_MSP_BIN_MISSING`, zero-row answer = `MUSE_MSP_MODELS_EMPTY` |
+| `antigravity` | `agy models` spawn + parse | Classified `{code,message,hint}` errors |
+| `vibe` | ACP handshake model select | Exec-only hosts list nothing (honest empty + retained error) |
+| `opencode` | `GET {OPENCODE_URL}/config/providers` | Needs `OPENCODE_URL` (+ `OPENCODE_SERVER_PASSWORD`); unset = honest empty + `OPENCODE_NOT_CONFIGURED` |
+| `codex` | — (live transport unverified) | Always honest empty + `CODEX_DISCOVERY_UNAVAILABLE` |
+| `custom` / `mock` | — | No legs by design (`mock` is test-only, `custom` manages its own model) |
+
+Every leg fails loud into its status slot: an empty or failed scan keeps the
+previous ids for that harness and records a classified `{code,message,hint}`
+(the ack detail carries the first code, Settings shows the warning), so a
+bare `0` with `ok: true` never hides a broken login or an empty catalogue
+again. When auto-detect sees harnesses the Runner is not configured to serve
+(a harness installed after the env file was written), the round also warns
+`harness auto-detect also sees: …` in the journal and on the re-detect ack —
+re-detection scans configured harnesses only, so the operator must add the
+harness (or use `auto`) and restart.
+
 Discovery runs once at boot and refreshes every
-`KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS` (default 12h, `0`
-disables); failures keep the previous list and warn, never break
-heartbeats. A pinned list always wins over discovered ids. Other
-harnesses have no discovery yet and stay manual-only.
+`KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS` (default 12h; `0`
+disables all scanning). Failures keep the previous list per harness
+and warn, never break heartbeats; the per-harness counts and first
+error ride the heartbeat as `facts.discoveryStatus` and surface in
+Settings › Runners next to the Re-detect button.
+
+Harness auto-detect (`detectAvailableHarnesses` in `runner/daemon.js`,
+default when `KAINBAIN_RUNNER_HARNESS`/`HARNESSES` is empty or `auto`)
+probes the same locations as the backend's own `discoverHarnesses`
+(`api/agent/harnessDiscovery.js`): PATH, then the standard install dirs
+(`~/.local/bin`, `~/bin` on POSIX), then each harness's own install dir
+(pi: `~/.pi/agent/bin`, `$PI_AGENT_DIR/bin`), plus `KAINBAIN_*_BIN` env
+overrides (a set override replaces the default names — a typo'd override
+reads as missing, never falls back); pi additionally counts as installed
+when its agent dir holds a `models.json` snapshot (`~/.pi/agent/models.json`
+or `$PI_AGENT_DIR/models.json`) — SDK-only pi installs are frequently not
+on the service PATH (e.g. a systemd unit's minimal PATH), and PATH-only
+probing used to miss them, so their models never reached the fleet
+catalogue. Detection names only the binary each harness actually spawns
+(antigravity: `agy`), so a detected harness can always run stages.
+`startRunner.sh` probes the same set at install time to validate, then
+records `auto` in the env file so every boot re-detects; `--manual` pins a
+list (also how to deliberately exclude an installed harness).
+
+Migration note: this release generalizes discovery from muse-only to
+one leg per harness, but pinned-model semantics are unchanged — an
+install with `KAINBAIN_RUNNER_MODELS`/`KAINBAIN_RUNNER_MODEL` set
+advertises exactly that pin after updating, with no new scanning.
+Unpinned installs newly advertise auto-detected ids for every
+configured harness (previously muse-only). To let auto-detect replace
+an explicit pin, set `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1`.
 
 Model reporting contract (`servingModelFor` / `formatPosture` in
 `shared/` — one copy executed by both this Runner and the backend via
@@ -174,7 +234,7 @@ cannot see them until that Runner self-updates.
 - Boot surfaces orphaned workdirs (unpushed work) in the log; nothing is
   ever deleted by cleanup.
 - Log gaps are reported as data (`frames X–Y missing`), never papered over.
-- `node --test runner/ciBranchWorkdir.test.js runner/daemon.test.js runner/client.test.js runner/impromptu.test.js runner/config.test.js runner/gitOps.test.js runner/harness.test.js runner/logEvents.test.js runner/modelDiscovery.test.js runner/project.test.js runner/updates-check.test.js runner/updates-daemon.test.js runner/updates-fixture.test.js runner/updates-manifest.test.js runner/updates-platform.test.js runner/updates-state.test.js runner/updates-verify.test.js runner/updates-wrapper.test.js`
+- `node --test runner/ciBranchWorkdir.test.js runner/daemon.test.js runner/client.test.js runner/impromptu.test.js runner/config.test.js runner/gitOps.test.js runner/harness.test.js runner/logEvents.test.js runner/modelDiscovery.test.js runner/harnessModelDiscovery.test.js runner/project.test.js runner/updates-check.test.js runner/updates-daemon.test.js runner/updates-fixture.test.js runner/updates-manifest.test.js runner/updates-platform.test.js runner/updates-state.test.js runner/updates-verify.test.js runner/updates-wrapper.test.js`
   runs the daemon suite (no ports, real temp git repos, mock harness).
   Name each file: a bare `node --test runner/` directory arg mis-resolves
   on current Node, and this same explicit list is what the `Unit Tests
@@ -224,8 +284,13 @@ not supported in v1 (linux/darwin × x64/arm64).
 ## On-request commands (ADR 0013)
 
 Settings › Runners can nudge this daemon through the heartbeat pull channel:
-Re-detect models re-runs model discovery promptly (bypassing the 12h gate
-once; skipped with a "models pinned" ack when the operator pinned models)
+Re-detect models re-runs model discovery promptly for every configured
+harness (bypassing the 12h gate once; acked as
+`discovered N model(s) (pi:12, muse:3)` with the first leg error code
+when a leg fails, cache kept; a Runner with no legged harness acks
+`discovered 0 model(s) (no discovery legs configured)`; skipped with
+a `models pinned` ack when the operator pinned models, unless
+`KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1` opts in to discovery-wins)
 and Update now queues an idle-only self-update. Both ride
 `pendingCommands` on the heartbeat response and ack via `facts.commandAck`;
 a queued command waits for the next heartbeat, and Update now never

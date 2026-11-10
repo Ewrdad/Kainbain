@@ -13,10 +13,18 @@ import { defaultInstallRoot, markUpdateSuccess, readUpdateState } from "./update
 // The Runner bundle ships shared/ next to this folder (runner/{runner,api,shared}
 // in prod and in the distributable tarball), so ../shared resolves both in the
 // repo and in every deployed layout — the same copy the backend executes.
-import { discoverClaudeModels, resolveAdvertisedModels } from "./modelDiscovery.js";
+import { resolveAdvertisedModels } from "./modelDiscovery.js";
+import { clearDiscoveryCache, getDiscoveryStatus, runDiscoveryRound, summarizeDiscoverySlices, DISCOVER_LEG_TIMEOUT_DEFAULT_MS } from "./harnessModelDiscovery.js";
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { decideAgentStageVerdict } from "../shared/stageVerdict.js";
+// The Runner bundle ships api/ next to runner/, so the backend's own
+// discovery helpers (standard install dirs, the pi snapshot path, the
+// KAINBAIN_*_BIN overrides) are the single source of truth for where harness
+// binaries live — the Runner must auto-detect exactly what the backend
+// detects on the same host (SDK-style pi installs under ~/.pi/agent are
+// frequently NOT on PATH, which is why PATH-only probing missed them).
+import { DISCOVERY_ENV_VARS, candidateExecutables, standardSearchDirs, piSnapshotPath } from "../api/agent/harnessDiscovery.js";
 import { commitAndPush } from "./gitOps.js";
 import { saveRunnerCredential } from "./credentialFile.js";
 
@@ -80,6 +88,103 @@ export const HARNESS_VERSION_BINS = {
 	vibe: ["vibe"],
 };
 
+/***
+ * MARK: HARNESS_DETECT_BINS
+ * @description CLI binaries whose presence counts a harness as installed
+ *   (auto-detect proof). Narrower than HARNESS_VERSION_BINS by design:
+ *   detection must name only the binary the harness actually spawns
+ *   (the antigravity harness spawns `agy`, never `antigravity`), so a
+ *   detected harness can always run stages — detecting on a display-only
+ *   alias would pass boot and then fail every stage with ENOENT. `mock`
+ *   has no CLI (manual-only); `pi` needs no CLI either (its agent
+ *   snapshot also counts — see detectAvailableHarnesses).
+ * @example HARNESS_DETECT_BINS.antigravity => ['agy']
+ ***/
+export const HARNESS_DETECT_BINS = {
+	mock: [],
+	pi: ["pi"],
+	muse: ["muse"],
+	antigravity: ["agy"],
+	vibe: ["vibe"],
+};
+
+/***
+ * MARK: isRunnableFile
+ * @description Whether `file` names something the host can execute: a
+ *   regular file with the execute bit on POSIX, any regular file on
+ *   Windows (extensions are probed by the caller via PATHEXT — same
+ *   semantics as the backend's `isExecutableFile`, so the Runner and the
+ *   backend agree on every host). Never throws.
+ * @example isRunnableFile({ file: '/usr/bin/muse', platform: 'linux' }) => true
+ * @param {Object} [opts] - Labelled inputs.
+ * @param {string} opts.file - Candidate absolute path.
+ * @param {string} [opts.platform] - Platform (defaults to process.platform).
+ * @returns {boolean} True when the file is runnable.
+ ***/
+function isRunnableFile({ file, platform = process.platform } = {}) {
+	if (typeof file !== "string" || !file) return false;
+	try {
+		/* eslint-disable security/detect-non-literal-fs-filename -- candidate paths are constructed by the resolver from env/PATH entries, mirroring api/agent/harnessDiscovery.js */
+		const stat = fs.statSync(file);
+		if (!stat.isFile()) return false;
+		if (platform === "win32") return true;
+		fs.accessSync(file, fs.constants.X_OK);
+		/* eslint-enable security/detect-non-literal-fs-filename */
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/***
+ * MARK: firstExecutableDirFor
+ * @description First directory (in probe order) where `bin` resolves to an
+ *   executable file, or null when none does. Harness auto-detect funnels
+ *   every candidate through here so all harnesses share one "installed"
+ *   rule. One bad directory never fails the scan.
+ * @example firstExecutableDirFor({ bin: 'muse', dirs: ['/usr/bin'], checkExec: () => true }) => '/usr/bin'
+ * @param {Object} [opts] - Labelled inputs.
+ * @param {string} opts.bin - Bare binary name.
+ * @param {string[]} [opts.dirs] - Directories in probe order.
+ * @param {Function} opts.checkExec - `(bin, dir) => boolean` filesystem seam.
+ * @returns {string|null} The winning directory, or null.
+ ***/
+function firstExecutableDirFor({ bin, dirs = [], checkExec } = {}) {
+	for (const dir of dirs) {
+		try {
+			if (checkExec(bin, dir)) return dir;
+		} catch {
+			// Keep scanning; one bad dir never fails detection.
+		}
+	}
+	return null;
+}
+
+/***
+ * MARK: resolveVersionBinaryPath
+ * @description Full spawn path for one `--version` probe: the first
+ *   runnable candidate across the probe dirs (PATHEXT variants included
+ *   on Windows, where the on-disk name carries the extension), or the
+ *   bare name when nothing resolves (the spawn then fails into
+ *   "unknown", never into a boot failure).
+ * @example resolveVersionBinaryPath({ bin: 'muse', dirs: ['/usr/bin'], ctx: { platform: 'linux', env: {} } }) => '/usr/bin/muse'
+ * @param {Object} [opts] - Labelled inputs.
+ * @param {string} opts.bin - Bare binary name.
+ * @param {string[]} [opts.dirs] - Directories in probe order.
+ * @param {Object} opts.ctx - Probe context (platform + env for PATHEXT).
+ * @returns {string} Runnable path, or the bare name.
+ ***/
+function resolveVersionBinaryPath({ bin, dirs = [], ctx } = {}) {
+	const platformValue = ctx?.platform ?? process.platform;
+	const pathExt = platformValue === "win32" ? ctx?.env?.PATHEXT : undefined;
+	for (const dir of dirs) {
+		for (const candidate of candidateExecutables(dir, bin, { platform: platformValue, pathExt })) {
+			if (isRunnableFile({ file: candidate, platform: platformValue })) return candidate;
+		}
+	}
+	return bin;
+}
+
 const harnessVersionCache = new Map();
 
 /***
@@ -97,9 +202,15 @@ const harnessVersionCache = new Map();
 export async function probeHarnessVersions(harnessId, { timeoutMs = 4000 } = {}) {
 	if (harnessVersionCache.has(harnessId)) return harnessVersionCache.get(harnessId);
 	let version = harnessId === "mock" ? "mock" : "unknown";
+	const ctx = harnessProbeContext({});
+	const dirs = harnessProbeDirsFor(harnessId, ctx);
 	for (const bin of HARNESS_VERSION_BINS[harnessId] ?? []) {
 		try {
-			const res = await execFileAsync(bin, ["--version"], { timeout: timeoutMs });
+			// Resolve through PATH + standard dirs + the harness's own install
+			// dir, so a binary that lives only off PATH (e.g. ~/.local/bin/pi)
+			// still reports its real version; fall back to the bare name.
+			const binPath = resolveVersionBinaryPath({ bin, dirs, ctx });
+			const res = await execFileAsync(binPath, ["--version"], { timeout: timeoutMs });
 			const text = typeof res === "string" ? res : (res?.stdout ?? "");
 			const first = String(text).split("\n")[0].trim();
 			if (first) {
@@ -153,55 +264,219 @@ export function runnerHarnessIds(config = {}) {
 export const AUTO_DETECTABLE_HARNESSES = ["pi", "muse", "antigravity", "vibe"];
 
 /***
- * MARK: detectAvailableHarnesses
- * @description Scans PATH for harness CLIs (default behaviour; --manual
- *   opts out). One entry per harness whose first binary resolves to an
- *   executable file. Pure sync scan so boot can fail fast before join.
- * @example detectAvailableHarnesses({ pathValue: '/usr/bin:/bin' }) => ['pi']
- * @param {Object} [opts] - Options.
- * @param {string} [opts.pathValue] - PATH to scan (defaults to process.env.PATH).
- * @param {string} [opts.pathDelimiter] - PATH separator (defaults to path.delimiter).
- * @param {Function} [opts.isExecutable] - (bin, dir) => boolean override (tests).
- * @returns {string[]} Detected harness ids in AUTO_DETECTABLE_HARNESSES order.
+ * MARK: harnessProbeContext
+ * @description Normalizes the inputs for harness auto-detect: the env
+ *   mapping (tests inject a fake one), the platform, and the two fs seams.
+ *   When a caller injects `isExecutable` the call is synthetic: every binary
+ *   check (PATH, standard dirs, pi agent bin, env overrides) runs through
+ *   it, and the pi snapshot probe defaults to "absent" unless `fileExists`
+ *   is injected too — hermetic tests must never observe the real host's
+ *   `~/.pi`.
+ * @example harnessProbeContext({ pathValue: '/x', isExecutable: () => true })
+ * @param {Object} [opts] - Probe options (see detectAvailableHarnesses).
+ * @returns {Object} `{ env, platform, home, pathDirs, checkExec, checkFile }`.
  ***/
-export function detectAvailableHarnesses({ pathValue, pathDelimiter, isExecutable } = {}) {
-	const pathStr = typeof pathValue === "string" ? pathValue : (process.env.PATH ?? "");
+function harnessProbeContext({ pathValue, pathDelimiter, isExecutable, fileExists, env, homeDir, platform } = {}) {
+	const envMap = env ?? (homeDir ? { ...process.env, HOME: homeDir } : process.env);
+	const platformValue = platform ?? process.platform;
+	const synthetic = typeof isExecutable === "function";
+	// Real filesystem check, mirroring the backend resolver: the bare
+	// name on POSIX, plus every PATHEXT-suffixed variant on Windows
+	// (where the on-disk file carries the extension and the execute bit
+	// is meaningless).
+	const pathExt = platformValue === "win32" ? envMap?.PATHEXT : undefined;
+	const checkExec =
+		typeof isExecutable === "function"
+			? isExecutable
+			: (bin, dir) => candidateExecutables(dir, bin, { platform: platformValue, pathExt })
+				.some((candidate) => isRunnableFile({ file: candidate, platform: platformValue }));
+	const checkFile =
+		typeof fileExists === "function"
+			? fileExists
+			: synthetic
+				? () => false
+				: (file) => {
+						try {
+							return fs.statSync(file).isFile();
+						} catch {
+							return false;
+						}
+					};
+	const home =
+		typeof homeDir === "string" && homeDir
+			? homeDir
+			: String(envMap.HOME ?? (platformValue === "win32" ? envMap.USERPROFILE : "") ?? "");
 	const delimiter = typeof pathDelimiter === "string" ? pathDelimiter : path.delimiter;
-	const dirs = String(pathStr)
+	const pathStr = typeof pathValue === "string" ? pathValue : (envMap.PATH ?? "");
+	const pathDirs = String(pathStr)
 		.split(delimiter)
 		.map((d) => d.trim())
 		.filter(Boolean);
-	const check =
-		typeof isExecutable === "function"
-			? isExecutable
-			: (bin, dir) => {
-					try {
-						fs.accessSync(path.join(dir, bin), fs.constants.X_OK);
-						return true;
-					} catch {
-						return false;
-					}
-				};
+	return { env: envMap, platform: platformValue, home, pathDirs, checkExec, checkFile };
+}
+
+/***
+ * MARK: harnessProbeDirsFor
+ * @description Ordered binary-search dirs for one harness: PATH first, then
+ *   the standard install dirs (`~/.local/bin`, `~/bin` on POSIX — the same
+ *   list the backend's `standardSearchDirs` returns, so a Runner detects
+ *   exactly what the backend detects on the same host), then the harness's
+ *   own install dir (pi: `~/.pi/agent/bin` and `$PI_AGENT_DIR/bin` —
+ *   SDK-style pi installs are frequently not on the service PATH, which is
+ *   why PATH-only probing missed pi on hosts like server2).
+ * @example harnessProbeDirsFor('pi', harnessProbeContext({})) // includes ~/.pi/agent/bin
+ * @param {string} harnessId - Harness id.
+ * @param {Object} ctx - From harnessProbeContext.
+ * @returns {string[]} Dirs in probe order (PATH entries first).
+ ***/
+function harnessProbeDirsFor(harnessId, ctx) {
+	const dirs = [...ctx.pathDirs];
+	if (ctx.home) {
+		for (const { dir } of standardSearchDirs({ ...ctx.env, HOME: ctx.home }, ctx.platform)) {
+			if (!dirs.includes(dir)) dirs.push(dir);
+		}
+	}
+	if (harnessId === "pi") {
+		if (ctx.home) dirs.push(path.join(ctx.home, ".pi", "agent", "bin"));
+		const agentDir = ctx.env.PI_AGENT_DIR;
+		if (typeof agentDir === "string" && agentDir.trim()) dirs.push(path.join(agentDir.trim(), "bin"));
+	}
+	return dirs;
+}
+
+/***
+ * MARK: detectAvailableHarnesses
+ * @description Detects the harnesses installed on this host (default
+ *   behaviour; --manual opts out). A harness counts as installed when any
+ *   of its binaries resolves to an executable file in PATH, in the standard
+ *   install dirs, in its own install dir (pi), or via its `KAINBAIN_*_BIN`
+ *   override — or, for pi only, when its agent dir holds a `models.json`
+ *   snapshot (the same "pi-snapshot" signal the backend's discoverHarnesses
+ *   reports, covering SDK-only installs with no CLI on PATH). One entry per
+ *   detected harness, in AUTO_DETECTABLE_HARNESSES order. Pure sync scan so
+ *   boot can fail fast before join.
+ * @example detectAvailableHarnesses({ pathValue: '/usr/bin:/bin' }) => ['pi']
+ * @param {Object} [opts] - Options.
+ * @param {string} [opts.pathValue] - PATH to scan (defaults to env.PATH).
+ * @param {string} [opts.pathDelimiter] - PATH separator (defaults to path.delimiter).
+ * @param {Function} [opts.isExecutable] - (bin, dir) => boolean override (tests; synthetic mode).
+ * @param {Function} [opts.fileExists] - (file) => boolean override for the pi snapshot probe.
+ * @param {Object} [opts.env] - Environment mapping (defaults to process.env).
+ * @param {string} [opts.homeDir] - Home override (defaults to env.HOME).
+ * @param {string} [opts.platform] - Platform override (defaults to process.platform).
+ * @returns {string[]} Detected harness ids in AUTO_DETECTABLE_HARNESSES order.
+ ***/
+export function detectAvailableHarnesses({ pathValue, pathDelimiter, isExecutable, fileExists, env, homeDir, platform } = {}) {
+	const ctx = harnessProbeContext({ pathValue, pathDelimiter, isExecutable, fileExists, env, homeDir, platform });
 	const found = [];
 	for (const id of AUTO_DETECTABLE_HARNESSES) {
-		const bins = HARNESS_VERSION_BINS[id] ?? [];
 		let ok = false;
-		for (const bin of bins) {
-			for (const dir of dirs) {
-				try {
-					if (check(bin, dir)) {
-						ok = true;
-						break;
-					}
-				} catch {
-					// Keep scanning; one bad dir never fails detection.
-				}
+		// Env override (KAINBAIN_MUSE_BIN etc.): a value with a path separator
+		// names the file directly; a bare name is searched like a PATH binary.
+		// pi has no override variable (SDK install, often no CLI at all), so
+		// a missing mapping reads as "no override", never as a lookup of
+		// `env[undefined]`.
+		const overrideVar = DISCOVERY_ENV_VARS[id];
+		const rawOverride = typeof overrideVar === "string" ? ctx.env[overrideVar] : undefined;
+		const override = typeof rawOverride === "string" ? rawOverride.trim() : "";
+		const candidates = [];
+		// A set override replaces the default names (backend parity: an
+		// override that resolves to nothing reads as "not installed", never
+		// falls back to the default binary — a typo'd path must surface as
+		// missing, not silently detect something else).
+		if (override) {
+			if (override.includes("/") || override.includes(path.sep) || path.isAbsolute(override)) {
+				candidates.push({ bin: path.basename(override), dirs: [path.dirname(override)] });
+			} else {
+				candidates.push({ bin: override, dirs: harnessProbeDirsFor(id, ctx) });
 			}
-			if (ok) break;
+		} else {
+			for (const bin of HARNESS_DETECT_BINS[id] ?? []) {
+				candidates.push({ bin, dirs: harnessProbeDirsFor(id, ctx) });
+			}
+		}
+		for (const { bin, dirs } of candidates) {
+			if (firstExecutableDirFor({ bin, dirs, checkExec: ctx.checkExec })) {
+				ok = true;
+				break;
+			}
+		}
+		// pi needs no CLI to be real: a configured agent dir (models.json
+		// snapshot) proves an installed pi stack.
+		if (!ok && id === "pi") {
+			const snapshot = piSnapshotPath(ctx.env, ctx.platform);
+			if (snapshot && ctx.checkFile(snapshot)) ok = true;
 		}
 		if (ok) found.push(id);
 	}
 	return found;
+}
+
+/***
+ * MARK: safeDetectAvailableHarnesses
+ * @description Total wrapper over harness auto-detect for advisory uses
+ *   (the stale-harness hint on re-detection): a probe failure reads as
+ *   "nothing detected" so a hint can never break discovery, a heartbeat,
+ *   or boot.
+ * @example safeDetectAvailableHarnesses() => ['pi', 'muse']
+ * @returns {string[]} Detected harness ids (possibly empty, never throws).
+ ***/
+function safeDetectAvailableHarnesses() {
+	try {
+		return detectAvailableHarnesses();
+	} catch {
+		return [];
+	}
+}
+
+/***
+ * MARK: findUnconfiguredHarnesses
+ * @description Harness ids auto-detect sees that the Runner is not
+ *   configured to serve: the install-time pin went stale (a harness was
+ *   installed after the env file was written) or the operator pinned a
+ *   subset by hand. Pure set difference over cleaned ids — blanks,
+ *   duplicates, and non-array inputs degrade to empty, never throw.
+ *   The caller turns a non-empty result into the "add it to
+ *   KAINBAIN_RUNNER_HARNESSES or use auto, then restart" hint.
+ * @example findUnconfiguredHarnesses({ configuredHarnessIds: ['muse'], detectedHarnesses: ['pi', 'muse'] }) => ['pi']
+ * @param {Object} [opts] - Labelled inputs.
+ * @param {string[]} [opts.configuredHarnessIds] - Harness ids this Runner serves.
+ * @param {string[]} [opts.detectedHarnesses] - Fresh auto-detect output.
+ * @returns {string[]} Detected-but-unconfigured ids, in detect order.
+ ***/
+export function findUnconfiguredHarnesses({ configuredHarnessIds = [], detectedHarnesses = [] } = {}) {
+	try {
+		const configured = new Set(
+			(Array.isArray(configuredHarnessIds) ? configuredHarnessIds : [])
+				.map((id) => String(id ?? "").trim())
+				.filter(Boolean),
+		);
+		const extras = [];
+		for (const id of Array.isArray(detectedHarnesses) ? detectedHarnesses : []) {
+			const clean = String(id ?? "").trim();
+			if (!clean || configured.has(clean) || extras.includes(clean)) continue;
+			extras.push(clean);
+		}
+		return extras;
+	} catch {
+		return [];
+	}
+}
+
+/***
+ * MARK: describeUnconfiguredHarnessHint
+ * @description One-line operator hint for detected-but-unconfigured
+ *   harnesses, or null when there is nothing to say. Covers both
+ *   install shapes in one sentence: auto installs pick the harness up
+ *   on restart, pinned installs must name it first.
+ * @example describeUnconfiguredHarnessHint(['pi']) => 'harness auto-detect also sees: pi (add it to KAINBAIN_RUNNER_HARNESSES or use auto, then restart)'
+ * @param {string[]} [unconfiguredHarnesses] - From findUnconfiguredHarnesses.
+ * @returns {string|null} Hint text, or null.
+ ***/
+export function describeUnconfiguredHarnessHint(unconfiguredHarnesses = []) {
+	const extras = (Array.isArray(unconfiguredHarnesses) ? unconfiguredHarnesses : []).filter((id) => typeof id === "string" && id);
+	if (extras.length === 0) return null;
+	return `harness auto-detect also sees: ${extras.join(", ")} (add it to KAINBAIN_RUNNER_HARNESSES or use auto, then restart)`;
 }
 
 /***
@@ -234,7 +509,7 @@ export function resolveHarnessConfig(config = {}, { detected, detectOpts } = {})
 	for (const id of runnerHarnessIds(config)) push(id);
 	if (out.length === 0) {
 		throw new Error(
-			"Runner auto-detect found no harness CLIs (probed pi, muse, agy/antigravity, vibe on PATH); install one or re-run with --manual --harness NAME.",
+			"Runner auto-detect found no harnesses (probed pi, muse, agy, vibe on PATH, in ~/.local/bin and ~/bin, and pi via ~/.pi/agent); install one or re-run with --manual --harness NAME.",
 		);
 	}
 	config.harnessIds = out;
@@ -383,8 +658,9 @@ export async function defaultLoadHarness(harnessId) {
  * @description Last model auto-discovery result, shared by every factsFor
  *   call until the next refresh. Seeded at boot, refreshed on the
  *   modelDiscoveryIntervalMs cadence (default 12h). The operator's explicit
- *   MODELS/MODEL list always wins (see resolveAdvertisedModels), so this
- *   cache only matters when nothing is pinned.
+ *   MODELS/MODEL list wins by default (see resolveAdvertisedModels), so this
+ *   cache only matters when nothing is pinned — unless
+ *   `modelDiscoveryWins` opts in to discovery-wins (survey q4).
  ***/
 let discoveredModelsCache = [];
 
@@ -394,34 +670,104 @@ let discoveredModelsCache = [];
  ***/
 export function clearDiscoveredModelsCache() {
 	discoveredModelsCache = [];
+	clearDiscoveryCache();
+}
+
+/***
+ * MARK: isModelsPinned
+ * @description Whether the operator pinned an explicit model list
+ *   (`config.models` non-empty or `config.model` set). Pinned installs
+ *   skip discovery scans and advertise the pin (unless
+ *   `modelDiscoveryWins` opts in to discovery-wins).
+ * @example isModelsPinned({ models: ['a'] }) => true
+ * @param {Object} [config] - Normalized runner config.
+ * @returns {boolean} True when a pin is set.
+ ***/
+export function isModelsPinned(config = {}) {
+	return (
+		(Array.isArray(config?.models) && config.models.length > 0) ||
+		(typeof config?.model === "string" && config.model.trim() !== "")
+	);
+}
+
+/***
+ * MARK: staleHarnessHintFor
+ * @description Advisory hint for one discovery round: when fresh
+ *   auto-detect output names harnesses the Runner is not configured to
+ *   serve, the install-time pin went stale and re-detection can never
+ *   find those harnesses' models until the operator acts. Returns the
+ *   one-line hint, or null when there is nothing to say (no detection
+ *   output provided, or nothing unconfigured). Never throws.
+ * @example staleHarnessHintFor({ config: { harnessIds: ['muse'] }, detectedHarnesses: ['pi', 'muse'] }) => 'harness auto-detect also sees: pi (add it to KAINBAIN_RUNNER_HARNESSES or use auto, then restart)'
+ * @param {Object} [opts] - Labelled inputs.
+ * @param {Object} [opts.config] - Normalized runner config.
+ * @param {string[]} [opts.detectedHarnesses] - Fresh auto-detect output (hint skipped when omitted).
+ * @returns {string|null} Hint text, or null.
+ ***/
+export function staleHarnessHintFor({ config, detectedHarnesses } = {}) {
+	if (!Array.isArray(detectedHarnesses)) return null;
+	return describeUnconfiguredHarnessHint(
+		findUnconfiguredHarnesses({ configuredHarnessIds: runnerHarnessIds(config), detectedHarnesses }),
+	);
 }
 
 /***
  * MARK: refreshDiscoveredModels
- * @description One discovery round: when the operator pinned no models and
- *   the `muse` harness is configured, asks the installed CLI for its model
- *   menu (muse serve model/list, box-local login, no keys leave the host)
- *   and caches the ids. Best-effort — failures keep the previous cache and
- *   warn, never throw, so discovery can never break heartbeats.
+ * @description One discovery round across every configured harness with a
+ *   discovery leg (pi, muse, antigravity, vibe, opencode, codex): each leg
+ *   reuses its backend harness's own `listModels()` (box-local login, no
+ *   keys leave the host) and caches the ids per harness. Skipped entirely
+ *   when the operator pinned MODELS/MODEL — pins win by default (see
+ *   resolveAdvertisedModels), so scanning would only waste CLI spawns;
+ *   set `modelDiscoveryWins` (env `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1`,
+ *   survey q4) to scan anyway and let a non-empty result replace the pin.
+ *   Best-effort — failures keep the previous cache (per-harness slice)
+ *   and warn, never throw, so discovery can never break heartbeats.
+ *   `modelDiscoveryIntervalMs: 0` disables all scanning (boot seed and
+ *   re-detect alike). Pass fresh `detectedHarnesses` (production callers
+ *   probe the host) to also warn when auto-detect sees harnesses this
+ *   Runner is not configured to serve — re-detection scans configured
+ *   harnesses only, so a stale pin would otherwise hide models forever.
  * @example await refreshDiscoveredModels({ config }) => ['muse::meta::muse-spark-1.3']
  * @param {Object} [opts]
  * @param {Object} [opts.config] - Normalized runner config.
  * @param {Object} [opts.logger] - Logger.
- * @param {Function} [opts.discoverFn=discoverClaudeModels] - Test seam.
+ * @param {Function} [opts.discoverFn] - Test seam overriding the muse probe
+ *   (called with the leg ctx; overridden ids still pass grammar validation).
+ * @param {Object} [opts.discoveryCtx] - Test seams forwarded to every leg.
+ * @param {string[]} [opts.detectedHarnesses] - Fresh auto-detect output for the stale-pin hint (skipped when omitted).
  * @returns {Promise<string[]>} Current cache copy.
  ***/
-export async function refreshDiscoveredModels({ config, logger, discoverFn = discoverClaudeModels } = {}) {
+export async function refreshDiscoveredModels({ config, logger, discoverFn, discoveryCtx, detectedHarnesses } = {}) {
 	try {
-		if (Array.isArray(config?.models) && config.models.length > 0) return [...discoveredModelsCache];
-		if (typeof config?.model === "string" && config.model.trim()) return [...discoveredModelsCache];
-		if (!runnerHarnessIds(config).includes("muse")) return [...discoveredModelsCache];
-		for (const bin of HARNESS_VERSION_BINS.muse) {
-			const ids = await discoverFn({ bin });
-			if (ids.length > 0) {
-				discoveredModelsCache = ids;
-				logger?.log?.(`Model discovery: ${ids.length} model(s) from ${bin}; next refresh per modelDiscoveryIntervalMs.`);
-				break;
-			}
+		if (config?.modelDiscoveryIntervalMs === 0) {
+			logger?.log?.("Model discovery disabled (interval 0); advertising the pinned list.");
+			return [...discoveredModelsCache];
+		}
+		if (isModelsPinned(config) && !config?.modelDiscoveryWins) return [...discoveredModelsCache];
+		const idsConfigured = runnerHarnessIds(config);
+		// The muse probe override rides the leg seam, so even overridden
+		// ids pass grammar validation before advertisement.
+		const legOptions = { ...(discoveryCtx || {}) };
+		if (typeof discoverFn === "function") legOptions.discoverFn = discoverFn;
+		const { combinedIds } = await runDiscoveryRound({
+			harnessIds: idsConfigured,
+			timeoutMs: DISCOVER_LEG_TIMEOUT_DEFAULT_MS,
+			legOptions,
+		});
+		// Keep-old global: an empty round retains the previous cache.
+		if (combinedIds.length > 0) {
+			discoveredModelsCache = combinedIds;
+		}
+		const { countsText, firstError } = summarizeDiscoverySlices(idsConfigured);
+		const scope = countsText ? ` (${countsText})` : " (no discovery legs configured)";
+		logger?.log?.(`Model discovery: ${discoveredModelsCache.length} model(s)${scope}; next refresh per modelDiscoveryIntervalMs.`);
+		if (firstError?.code) {
+			logger?.warn?.(`Model discovery warning (${firstError.code}): ${firstError.message || "a harness scan failed"}; keeping the previous list for that harness.`);
+		}
+		const staleHint = staleHarnessHintFor({ config, detectedHarnesses });
+		if (staleHint) {
+			logger?.warn?.(`Model discovery note: ${staleHint}.`);
 		}
 	} catch (err) {
 		logger?.warn?.(`Model discovery failed, keeping previous list: ${err?.message || err}`);
@@ -468,6 +814,7 @@ function factsFor({ config, harnessVersions, updateStatus = null, commandAck = n
 		directories: effectiveDirectoriesFor(config),
 		commands: SUPPORTED_RUNNER_COMMANDS,
 		workRoot: typeof config.workRoot === "string" ? config.workRoot : null,
+		discoveryStatus: getDiscoveryStatus(runnerHarnessIds(config)),
 		...(updateStatus ? { updateStatus } : {}),
 		...(commandAck ? { commandAck } : {}),
 	};
@@ -572,7 +919,7 @@ export async function joinAndHeartbeat({ config, client, loadHarness, logger, st
 	// instead of dropping it. The Runner is idle here (no execution yet),
 	// so an update applies immediately.
 	if (Array.isArray(beat.pendingCommands) && beat.pendingCommands.length) {
-		await handlePendingCommands({ config, client, logger, state, pendingCommands: beat.pendingCommands });
+		await handlePendingCommands({ config, client, logger, state, pendingCommands: beat.pendingCommands, detectedHarnesses: safeDetectAvailableHarnesses() });
 	}
 	// Self-update close-out (Option A, ADR 0012): a fresh boot that staged
 	// an update left state pending-boot; the first successful heartbeat on
@@ -591,8 +938,10 @@ export async function joinAndHeartbeat({ config, client, loadHarness, logger, st
 	// Model auto-discovery seed: one round at boot (after the version
 	// probes, before the first heartbeat) so early facts already carry
 	// discovered ids. Best-effort inside and bounded by the discovery
-	// timeout; failures keep the cache empty, never fail boot.
-	await refreshDiscoveredModels({ config, logger });
+	// timeout; failures keep the cache empty, never fail boot. Fresh
+	// auto-detect output rides along so a stale harness pin is logged
+	// loudly at boot instead of hiding models silently.
+	await refreshDiscoveredModels({ config, logger, detectedHarnesses: safeDetectAvailableHarnesses() });
 	const heartbeatTimer = setInterval(() => {
 		deliverSteers({ config, client, logger, facts: factsFor({ config, updateStatus: state?.updateStatus ?? null, commandAck: stagedCommandAck(state) }), state }).catch((err) => {
 			logger.warn(`Heartbeat failed: ${err?.message || err}`);
@@ -605,7 +954,7 @@ export async function joinAndHeartbeat({ config, client, loadHarness, logger, st
 	let discoveryTimer = null;
 	if (discoveryIntervalMs > 0) {
 		discoveryTimer = setInterval(() => {
-			refreshDiscoveredModels({ config, logger }).catch((err) => {
+			refreshDiscoveredModels({ config, logger, detectedHarnesses: safeDetectAvailableHarnesses() }).catch((err) => {
 				logger.warn(`Model discovery refresh failed: ${err?.message || err}`);
 			});
 		}, discoveryIntervalMs);
@@ -654,19 +1003,23 @@ function stageCommandAck(state, ack) {
  *   heartbeat pull channel (ADR 0013): `requestModelRediscovery` re-runs
  *   model discovery promptly (fresh probe, not the 12h cache cadence;
  *   skipped with a success ack when the operator pinned models, since
- *   pins always win); `requestUpdate` runs the existing idle-only
+ *   pins win by default — `modelDiscoveryWins` opts in to scanning
+ *   anyway); `requestUpdate` runs the existing idle-only
  *   self-update at once when idle, or parks `state.pendingUpdate` for
  *   the next idle point when an execution is live (never interrupts
  *   work, D5). Every handled command stages exactly one ack on
  *   `state.commandAcks` for the next heartbeat facts; unknown commands
  *   are ignored (the backend never sends them — enqueue is fail-closed).
  *   Commands already staged or in flight are skipped, so the backend's
- *   at-least-once redelivery never double-applies.
+ *   at-least-once redelivery never double-applies. Pass fresh
+ *   `detectedHarnesses` (production callers probe the host) to append the
+ *   stale-pin hint to re-detection acks when auto-detect sees harnesses
+ *   this Runner is not configured to serve.
  * @example await handlePendingCommands({ config, client, logger, state, pendingCommands: ['requestModelRediscovery'] })
- * @param {Object} opts - Options (config, client, logger, state, pendingCommands, updateDeps?, discoverFn?).
+ * @param {Object} opts - Options (config, client, logger, state, pendingCommands, updateDeps?, discoverFn?, discoveryCtx?, detectedHarnesses?).
  * @returns {Promise<void>} Resolves once every command acted (or the process exits 0 into a staged update).
  ***/
-export async function handlePendingCommands({ config, client, logger, state, pendingCommands = [], updateDeps, discoverFn } = {}) {
+export async function handlePendingCommands({ config, client, logger, state, pendingCommands = [], updateDeps, discoverFn, discoveryCtx, detectedHarnesses } = {}) {
 	if (!state) state = {};
 	if (!Array.isArray(state.commandAcks)) state.commandAcks = [];
 	if (!(state.commandFlight instanceof Set)) state.commandFlight = new Set();
@@ -678,14 +1031,23 @@ export async function handlePendingCommands({ config, client, logger, state, pen
 		try {
 			if (cmd === "requestModelRediscovery") {
 				logger.log?.("Runner command: re-detecting models");
-				const pinned = (Array.isArray(config?.models) && config.models.length > 0) || (typeof config?.model === "string" && config.model.trim());
-				if (pinned) {
-					stageCommandAck(state, { command: cmd, ok: true, detail: "models pinned; discovery skipped" });
-				} else {
-					const ids = await refreshDiscoveredModels({ config, logger, discoverFn });
-					const count = Array.isArray(ids) ? ids.length : 0;
-					stageCommandAck(state, { command: cmd, ok: true, detail: `discovered ${count} model(s)` });
+				const staleHint = staleHarnessHintFor({ config, detectedHarnesses });
+				const withHint = (detail) => (staleHint ? `${detail}; ${staleHint}` : detail);
+				if (config?.modelDiscoveryIntervalMs === 0) {
+					stageCommandAck(state, { command: cmd, ok: true, detail: withHint("discovery disabled (interval 0); advertising pinned list") });
+					continue;
 				}
+				if (isModelsPinned(config) && !config?.modelDiscoveryWins) {
+					stageCommandAck(state, { command: cmd, ok: true, detail: withHint("models pinned; discovery skipped") });
+					continue;
+				}
+				const ids = await refreshDiscoveredModels({ config, logger, discoverFn, discoveryCtx, detectedHarnesses });
+				const count = Array.isArray(ids) ? ids.length : 0;
+				const { countsText, firstError } = summarizeDiscoverySlices(runnerHarnessIds(config));
+				const scope = countsText ? ` (${countsText})` : " (no discovery legs configured)";
+				let detail = `discovered ${count} model(s)${scope}`;
+				if (firstError?.code) detail += ` (${firstError.code})`;
+				stageCommandAck(state, { command: cmd, ok: true, detail: withHint(detail) });
 			}
 			if (cmd === "requestUpdate") {
 				// Idle-only: do not interrupt active work (D5)
@@ -745,12 +1107,15 @@ export async function handlePendingCommands({ config, client, logger, state, pen
  *   (`steer`, falling back to `followUp`), and ack exactly once. Steers
  *   for any other execution are ignored (stale lease, never ours).
  *   A session without either method NACKs UNSUPPORTED_HARNESS — loud,
- *   never silently dropped.
+ *   never silently dropped. When commands arrive, fresh auto-detect
+ *   output rides along (explicit `detectedHarnesses` wins for tests;
+ *   otherwise the host is probed) so re-detection acks can name
+ *   detected-but-unconfigured harnesses.
  * @example await deliverSteers({ config, client, logger, facts, state })
- * @param {Object} opts - Options (config, client, logger, facts, state, updateDeps?, discoverFn?).
+ * @param {Object} opts - Options (config, client, logger, facts, state, updateDeps?, discoverFn?, discoveryCtx?, detectedHarnesses?).
  * @returns {Promise<number>} Steers delivered (acked) this cycle.
  ***/
-export async function deliverSteers({ config, client, logger, facts, state, updateDeps, discoverFn }) {
+export async function deliverSteers({ config, client, logger, facts, state, updateDeps, discoverFn, discoveryCtx, detectedHarnesses }) {
 	const pendingAck = stagedCommandAck(state);
 	const factsWithAck = pendingAck ? { ...facts, commandAck: pendingAck } : facts;
 	const beat = await client.heartbeat({ runnerId: config.runnerId, facts: factsWithAck });
@@ -758,7 +1123,7 @@ export async function deliverSteers({ config, client, logger, facts, state, upda
 		state.commandAcks.shift();
 	}
 	if (Array.isArray(beat.pendingCommands) && beat.pendingCommands.length) {
-		await handlePendingCommands({ config, client, logger, state, pendingCommands: beat.pendingCommands, updateDeps, discoverFn });
+		await handlePendingCommands({ config, client, logger, state, pendingCommands: beat.pendingCommands, updateDeps, discoverFn, discoveryCtx, detectedHarnesses: Array.isArray(detectedHarnesses) ? detectedHarnesses : safeDetectAvailableHarnesses() });
 	}
 	const due = (beat.pendingSteers || []).filter((s) => s && s.executionId === state?.executionId);
 	let delivered = 0;

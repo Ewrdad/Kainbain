@@ -21,11 +21,17 @@ source of truth. This file intentionally lists only high-impact changes.
 
 ### Added
 
+- Docs article `h2` sections collapse and expand via their headers (chevron toggle, keyboard-operable, Expand all / Collapse all above the article), and headers render larger and bolder for scanning (task e3369ccb).
 - Task detail pages and `GET /tasks/:id` now show where a task works (branch, workspace-isolation mode, worktree path) via the additive `workingLocation` field, and a new `Develop Alongside KainBain` site-docs article teaches the pause-edit-resume, separate-branch, and review-gate flows; dirty-tree guard errors now name the blocking paths plus the safe next step for hand edits (task 8dafdce1).
 - Per-stage Runner allow/block list at the bottom of stage settings (`Off` / `Only these runners` / `All except these runners`): dispatch, direct claims, and merge leases refuse ineligible Runners loudly while unrestricted stages behave exactly as before (task a3753643).
+- Runner model auto-detect for every supported harness (pi, muse, antigravity, vibe, plus honest-empty opencode/codex legs) with per-harness counts and the first leg warning in Settings › Runners next to Re-detect, driven by the existing refresh command (task 2cbe91b6).
+- Runner harness auto-detect now probes beyond PATH — standard install dirs (`~/.local/bin`, `~/bin`), each harness's own install dir, `KAINBAIN_*_BIN` overrides, and pi via its `~/.pi/agent` `models.json` snapshot — matching the backend's `discoverHarnesses`, so hosts with an SDK-only pi install (e.g. server2, whose service PATH lacks `~/.pi/agent/bin`) now detect pi and advertise its models in the fleet picker (task 2cbe91b6).
+- Runner model discovery fails loud instead of reporting silent zeros: empty pi/muse scans record classified `PI_MODELS_EMPTY` / `MUSE_MSP_*` reasons with fixes in Settings, and re-detection names detected-but-unconfigured harnesses (`harness auto-detect also sees: …`) so a stale harness pin can no longer hide models; new installs record `auto` so every boot re-detects (task 2cbe91b6).
 
 ### Changed
 
+- Task surfaces read easier: card titles render larger and semibold with the status as a chip (colour dot plus text label), details-tab banner text steps up to body size, and long audit logs preview behind a Show all disclosure (task e3369ccb).
+- Runner model precedence stays pin-wins by default (pinned installs skip discovery and advertise exactly their pin across updates); `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1` opts in to survey-q4 discovery-wins, where a non-empty auto-detect result replaces the pin (task 2cbe91b6).
 - Consolidated root-level markdown files into `docs/`: moved `CI_SCRIPTS.md`, `PORTABLE_DEPLOYMENT.md`, `agent-docs/`, and `research/phase0-branch-dry-run.md`; deleted 13 obsolete one-off summaries and superseded phase-2 plans (task fc3acfff).
 - Merged the ALL / FAILED / HUMAN ONLY board pills into the unified search bar as `!` system filters (e.g. `auth #Dev !failed`): same dropdown, chips, and Any/All toggle as `#` tags; unknown `!tokens` stay as text; future native filters register via `frontend/src/components/workflow/systemFilters/` (task c213d3a9).
 

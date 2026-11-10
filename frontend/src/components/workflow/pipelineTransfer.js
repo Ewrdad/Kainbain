@@ -17,6 +17,7 @@ import {
   collectInvalidStageRunnerPolicies,
   normalizeStageRunnerPolicy,
 } from '../../../../shared/stageRunnerPolicy.js';
+import { collectInvalidStageAutoApproves } from '../../../../shared/autoApproveDuration.js';
 import { normalizeStageTags } from '../../../../shared/stageTags.js';
 
 export const PIPELINE_EXPORT_VERSION = 1;
@@ -126,6 +127,9 @@ const STAGE_KEY_ORDER = [
   // | 'custom', plus the branch name for 'custom'.
   'runOnBranch',
   'customBranch',
+  // human-stage auto-approve hold in ms (additive; absent stays absent so
+  // legacy exports are unchanged).
+  'autoApproveAfterMs',
 ];
 
 function coalesceStage(stage) {
@@ -411,6 +415,25 @@ export function validatePipelineDoc(doc) {
   // Stage Runner allow/block lists are canonical pipeline fields (validated
   // like known types, not as unknown keys); a mistyped mode fails here
   // with a named problem rather than importing as silently-unrestricted.
+  for (const problem of collectInvalidStageAutoApproves(doc.stages)) {
+    const label = doc.stages[problem.index]?.name
+      ? `"${doc.stages[problem.index].name}"`
+      : `#${problem.index + 1}`;
+    const ref = `stages[${problem.index}] (${label})`;
+    if (problem.problem === 'UNPARSEABLE') {
+      errors.push(
+        `${ref}: "autoApproveAfterMs" must be a duration like "10 days" or a positive number of milliseconds, got ${JSON.stringify(doc.stages[problem.index]?.autoApproveAfterMs)}.`,
+      );
+    } else if (problem.problem === 'TOO_SHORT') {
+      errors.push(
+        `${ref}: "autoApproveAfterMs" is shorter than the 1 minute minimum — a typo-length hold would auto-approve almost immediately.`,
+      );
+    } else {
+      errors.push(
+        `${ref}: "autoApproveAfterMs" is longer than the 365 day maximum — check the unit (bare numbers are milliseconds).`,
+      );
+    }
+  }
   for (const problem of collectInvalidStageRunnerPolicies(doc.stages)) {
     const label = doc.stages[problem.index]?.name
       ? `"${doc.stages[problem.index].name}"`

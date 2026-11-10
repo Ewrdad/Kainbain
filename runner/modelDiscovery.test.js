@@ -51,10 +51,77 @@ test("spawn failure, timeout error, and unparsable output resolve to []", async 
 	assert.deepEqual(await discoverClaudeModels({ spawnSyncFn: () => ({ stdout: "garbage\n" }) }), []);
 });
 
-test("explicit operator models win; discovery fills only when unset", () => {
-	assert.deepEqual(resolveAdvertisedModels({ models: ["a"] }, ["b"]), ["a"]);
+test("strict mode throws MUSE_MSP_BIN_MISSING for a missing CLI", async () => {
+	const enoent = Object.assign(new Error("spawn muse ENOENT"), { code: "ENOENT" });
+	for (const spawnSyncFn of [
+		() => { throw enoent; },
+		() => ({ error: enoent }),
+	]) {
+		try {
+			await discoverClaudeModels({ strict: true, spawnSyncFn });
+			assert.fail("must throw");
+		} catch (err) {
+			assert.equal(err.code, "MUSE_MSP_BIN_MISSING");
+			assert.match(err.message, /not found/);
+			assert.match(err.hint, /KAINBAIN_MUSE_BIN/);
+		}
+	}
+});
+
+test("strict mode throws MUSE_MSP_TIMEOUT for a killed/timed-out child", async () => {
+	const timedOut = Object.assign(new Error("spawnSync timed out"), { code: "ETIMEDOUT" });
+	try {
+		await discoverClaudeModels({ strict: true, spawnSyncFn: () => ({ error: timedOut, status: null, signal: "SIGTERM" }) });
+		assert.fail("must throw");
+	} catch (err) {
+		assert.equal(err.code, "MUSE_MSP_TIMEOUT");
+		assert.match(err.message, /timed out/);
+	}
+});
+
+test("strict mode throws MUSE_MSP_DISCOVERY_FAILED when model/list is never answered", async () => {
+	try {
+		await discoverClaudeModels({ strict: true, spawnSyncFn: () => ({ stdout: "garbage\n" }) });
+		assert.fail("must throw");
+	} catch (err) {
+		assert.equal(err.code, "MUSE_MSP_DISCOVERY_FAILED");
+		assert.match(err.message, /did not answer model\/list/);
+	}
+	// A JSON-RPC error frame from the host is surfaced in the message.
+	const errorFrame = JSON.stringify({ jsonrpc: "2.0", id: 2, error: { code: -32601, message: "Method not found" } });
+	try {
+		await discoverClaudeModels({ strict: true, spawnSyncFn: () => ({ stdout: `${errorFrame}\n` }) });
+		assert.fail("must throw");
+	} catch (err) {
+		assert.equal(err.code, "MUSE_MSP_DISCOVERY_FAILED");
+		assert.match(err.message, /Method not found/);
+	}
+});
+
+test("strict mode still resolves [] when the CLI answers with zero rows (the leg reports MODELS_EMPTY)", async () => {
+	const emptyAnswer = JSON.stringify({ jsonrpc: "2.0", id: 2, result: { models: [] } });
+	assert.deepEqual(
+		await discoverClaudeModels({ strict: true, spawnSyncFn: () => ({ stdout: `${emptyAnswer}\n` }) }),
+		[],
+	);
+});
+
+test("pin wins by default: a pinned list is still advertised when discovery is non-empty", () => {
+	assert.deepEqual(resolveAdvertisedModels({ models: ["pinned-a"] }, ["discovered-b"]), ["pinned-a"]);
+	assert.deepEqual(resolveAdvertisedModels({ model: "pinned-a" }, ["discovered-b"]), ["pinned-a"]);
+	assert.deepEqual(resolveAdvertisedModels({ models: ["pinned-a"] }, []), ["pinned-a"]);
+	assert.deepEqual(resolveAdvertisedModels({ model: "pinned-a" }, []), ["pinned-a"]);
 	assert.deepEqual(resolveAdvertisedModels({ models: [] }, ["b"]), ["b"]);
-	assert.deepEqual(resolveAdvertisedModels({ model: "a" }, ["b"]), ["a"]);
 	assert.deepEqual(resolveAdvertisedModels({}, ["b"]), ["b"]);
 	assert.deepEqual(resolveAdvertisedModels({ models: [] }, []), []);
+	assert.deepEqual(resolveAdvertisedModels({}, undefined), []);
+});
+
+test("discovery wins only with the explicit opt-in (modelDiscoveryWins, survey q4)", () => {
+	const optIn = { models: ["pinned-a"], modelDiscoveryWins: true };
+	assert.deepEqual(resolveAdvertisedModels(optIn, ["discovered-b"]), ["discovered-b"]);
+	assert.deepEqual(resolveAdvertisedModels(optIn, []), ["pinned-a"]);
+	assert.deepEqual(resolveAdvertisedModels({ model: "pinned-a", modelDiscoveryWins: true }, ["discovered-b"]), ["discovered-b"]);
+	assert.deepEqual(resolveAdvertisedModels({ model: "pinned-a", modelDiscoveryWins: true }, []), ["pinned-a"]);
+	assert.deepEqual(resolveAdvertisedModels({ models: [], modelDiscoveryWins: true }, ["b"]), ["b"]);
 });

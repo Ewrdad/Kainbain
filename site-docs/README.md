@@ -44,5 +44,9 @@ slug: my-article
   (`README.md`, `SystemGuideModal`, `agentGuide.js`) so content cannot rot.
 - Code samples use `bash`/`text` fences; tables need leading/trailing `|` per
   the `MarkdownViewer` parser. No raw HTML — it renders as inert text.
+- Use `##` headings for article sections: the Docs view renders each `h2` as
+  a collapsible section (click its header to collapse/expand, or use Expand
+  all / Collapse all above the article). Keep a single `#` title at the top;
+  everything before the first `##` always stays visible.
 - Never put secrets, tokens, or host-specific credentials in an article: every
   file in this directory is served unauthenticated over HTTP by design.

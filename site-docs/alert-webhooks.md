@@ -32,6 +32,8 @@ payloads, logs, or the timeline.
 | ----- | -------- | ------- |
 | `task.failed` | `critical` | Unscheduled park: a human must step in. |
 | `task.checkpoint_wait` | `info` | Scheduled checkpoint the flow designed for. Never pages. |
+| `task.auto_approve_soon` | `info` | One reminder shortly before a human-stage hold auto-approves. Never pages. |
+| `task.auto_approve` | `info` | A human-stage hold elapsed and the task auto-approved. Never pages. |
 | `engine.trip` | `critical` | Circuit breaker tripped: all dispatch stopped. |
 | `engine.reset` | `info` | Circuit breaker containment lifted. |
 | `deploy.rollback` | `critical` | Live build rewound to the last known-good deployment. |
