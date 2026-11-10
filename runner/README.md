@@ -16,8 +16,11 @@ Runner by default — install it with:
 scripts/install-local-runner.sh --id local-pi
 # remote host: add --backend https://kainbain.home
 # Harnesses auto-detect by default (pi, muse, antigravity, vibe probed on
-# PATH); pin with --manual --harness pi or --manual --harnesses pi,muse.
-# mock has no CLI, so it is manual-only.
+# PATH plus the standard install dirs ~/.local/bin and ~/bin, each harness's
+# own install dir, and pi additionally via its ~/.pi/agent models.json
+# snapshot — so SDK-only pi installs that are not on the service PATH are
+# still detected); pin with --manual --harness pi or
+# --manual --harnesses pi,muse. mock has no CLI, so it is manual-only.
 ```
 
 ## Onboard (human approval required, D4)
@@ -94,6 +97,19 @@ disables all scanning). Failures keep the previous list per harness
 and warn, never break heartbeats; the per-harness counts and first
 error ride the heartbeat as `facts.discoveryStatus` and surface in
 Settings › Runners next to the Re-detect button.
+
+Harness auto-detect (`detectAvailableHarnesses` in `runner/daemon.js`,
+default when `KAINBAIN_RUNNER_HARNESS`/`HARNESSES` is empty or `auto`)
+probes the same locations as the backend's own `discoverHarnesses`
+(`api/agent/harnessDiscovery.js`): PATH, then the standard install dirs
+(`~/.local/bin`, `~/bin` on POSIX), then each harness's own install dir
+(pi: `~/.pi/agent/bin`, `$PI_AGENT_DIR/bin`), plus `KAINBAIN_*_BIN` env
+overrides; pi additionally counts as installed when its agent dir holds a
+`models.json` snapshot (`~/.pi/agent/models.json` or
+`$PI_AGENT_DIR/models.json`) — SDK-only pi installs are frequently not on
+the service PATH (e.g. a systemd unit's minimal PATH), and PATH-only
+probing used to miss them, so their models never reached the fleet
+catalogue. `startRunner.sh` probes the same set at install time.
 
 Migration note: this release generalizes discovery from muse-only to
 one leg per harness, but pinned-model semantics are unchanged — an
