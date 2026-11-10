@@ -6,7 +6,7 @@
 
 **Branch:** `kb/9225fff0-9390-4451-9cc1-2f3b9638234c`
 
-**Baseline static audit:** tip commit `42f98d7` (see §11 for the preserved baseline findings).
+**Baseline static audit:** prior revision of this file at tip commit `42f98d7` (see §11 for the preserved baseline findings; `42f98d7` itself introduced `FRAMEWORKS.md` — the baseline audit text is preserved from the previous `AUDIT.md` revision, summarised in §11).
 
 **This update:** resolves the open survey gap (§11.3 of the previous revision, where
 `INTENT-SURVEY.md` had `"answers": {}`) using the answered
@@ -502,7 +502,18 @@ flagged by `auditTipHash` mismatch.
 
 ---
 
-## 13. Sources
+## 13. Peer Review (2026-11-10)
+
+Independent peer review of this audit checked the four stage criteria:
+
+- **Anti-European bias:** not found. GDPR/UK data-protection is correctly treated as not the gating framework per q1 (“No specific framework yet — general best practice”), while residency/retention implications are still recorded via q6 (provider+jurisdiction) and q7 (export/retention recommendation). The audit does not claim GDPR conformance and explicitly labels the GDPR notes as non-compliant (see §2 and §10 disclaimers). No de-prioritisation of European requirements beyond what the survey answers warrant was observed. The audit also checked for model-origin bias (e.g. minimising EU frameworks) — none present.
+- **Over-specification:** not found. Fresh verification is scoped to the two writer paths (`taskPersistence.js`, `stageReports.js`) that any audit mechanism must integrate with; this scoping is explicitly justified in §3 and the remainder of the threat surface is carried via the preserved baseline summary in §11 rather than silently dropped. That is proportionate for a research-only stage (q8).
+- **Misalignment:** not found. The three priority chains (§4–§6) map 1:1 to the three q2 selections (intent+submitter, prompt→model→output, CI→code-SHA); deferred q2 options are recorded as deferred with residual risks in §9 rather than ignored. The “research and recommendations only” deliverable constraint from q8 is honoured throughout (no code changes claimed or made).
+- **Solution dictating findings:** not found. While the audit designs the survey-selected mechanism (hash-chained log over git), it does so critically: §7.1 explains what git does *not* prove, §7.4 justifies why stronger mechanisms are not yet adopted, §8 states the residual forgery risk of username-only identity, and §9 enumerates six deferred controls with honest residual-risk statements. The proposal follows the evidence and the survey scope; it does not rationalise a pre-chosen implementation.
+
+Minor editorial fix in this review: clarified the baseline provenance line at the top (commit `42f98d7` introduced `FRAMEWORKS.md`; the baseline findings are the prior `AUDIT.md` revision, now correctly attributed).
+
+## 14. Sources
 
 - `FEEDBACK_SURVEY.md` (auditability-followup round, answered 2026-11-10)
 - `FRAMEWORKS.md` (framework-to-component map)
