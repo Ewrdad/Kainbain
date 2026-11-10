@@ -135,6 +135,35 @@ mechanical once the seam is chosen. Timebox: half a session.
 **Validation:** throwaway spike only (no commit); decision note appended to
 this plan. No test changes yet.
 
+### Step 1 decision (recorded 2026-11-10, implementer)
+
+- **Seam: option (A).** One registry; column-scoping entries carry
+  `hidesColumns: true`. A new `isColumnSystemFilter(id)` helper (one function
+  per file, exported from the `systemFilters` barrel) owns that lookup so the
+  hook, the selector, and the clear-actions all read one source.
+- **Composition order:** column-filter visibility ∩ tag visibility, computed as
+  filter-then-group — `groupStagesByTagFilter(stages ∩ columnVisible, tags,
+  mode)`. The visible set is identical to tag-first-then-column (intersection
+  commutes); filter-then-group reuses the existing grouping untouched in one
+  call. Known cosmetic edge: a column-hidden stage sitting between two
+  tag-hidden stages lets those two merge into one collapsed bar — truthful
+  (every stage in the bar is genuinely tag-hidden), positions stay true
+  (render keys/indexes still use the full stage list).
+- **Column-hidden stages are omitted** (no collapsed rail) — they carry no
+  tasks of interest.
+- **`allStagesHiddenByTags` must be recomputed tag-dimension-only** over the
+  full stage list (today it reads the final `visibleStages`, which becomes the
+  intersection). Sibling flag `allStagesHiddenByColumnFilters` =
+  column-filters-active && intersection-empty, so a `#tag` + `!running` mix
+  that empties the board via the intersection still gets an empty state
+  (Q4: never a silent empty board). Render precedence: tag branch first
+  (preserves existing `#`-only tests), column branch second.
+- **Mobile pill:** `hiddenStageCount` (stages − visible) counts both
+  dimensions; the pill clears both via a new `clearStageVisibilityFilters`
+  (prop renamed from `onClearStageTagFilter`), with a dynamic aria-label that
+  keeps the legacy "(clears the tag filter)" wording when only tags are
+  active so existing pill tests stay green unmodified.
+
 ### Step 2 — Thread engine context through the filter pipeline (refactor, no behavior change)
 
 **Goal:** `match` predicates can optionally see engine liveness without

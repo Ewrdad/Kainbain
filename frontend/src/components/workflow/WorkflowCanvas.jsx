@@ -196,12 +196,17 @@ export function WorkflowCanvas() {
     stageTagFilterMode,
     setStageTagFilterMode,
     clearTagFilter,
+    clearColumnFilters,
+    clearStageVisibilityFilters,
+    hasActiveTagFilter,
+    hasActiveColumnFilters,
     filteredTasks,
     stageTagOptions,
     tagRenderEntries,
     visibleStages,
     hiddenStageCount,
     allStagesHiddenByTags,
+    allStagesHiddenByColumnFilters,
     effectiveMobileStageId,
   } = useCanvasSearchFilter({
     uiPreferences,
@@ -211,6 +216,8 @@ export function WorkflowCanvas() {
     activeWfId,
     currentStageId,
     setExpandedSettingsStageId,
+    engineState,
+    isAgentRunning,
   });
 
   // Show-completed scope: the fetch layer defaults lean, so flipping the
@@ -483,7 +490,9 @@ export function WorkflowCanvas() {
         setStageTagFilterMode={setStageTagFilterMode}
         visibleStages={visibleStages}
         hiddenStageCount={hiddenStageCount}
-        onClearStageTagFilter={clearTagFilter}
+        onClearStageVisibilityFilters={clearStageVisibilityFilters}
+        hasActiveTagFilter={hasActiveTagFilter}
+        hasActiveColumnFilters={hasActiveColumnFilters}
         isToolbarCollapsed={isToolbarCollapsed}
         onExpandToolbar={expandToolbar}
       />
@@ -576,6 +585,24 @@ export function WorkflowCanvas() {
               className="px-4 py-2 bg-primary text-on-primary rounded text-xs font-bold uppercase tracking-wider cursor-pointer hover:brightness-110"
             >
               Clear tag filter
+            </button>
+          </div>
+        ) : allStagesHiddenByColumnFilters ? (
+          <div
+            className="flex-1 h-full flex flex-col items-center justify-center text-text-muted space-y-4"
+            role="status"
+            aria-label="No columns match the active filters"
+          >
+            <div className="text-5xl grayscale">🔍</div>
+            <p className="text-sm font-mono uppercase tracking-widest">
+              No columns match the active filters
+            </p>
+            <button
+              type="button"
+              onClick={clearColumnFilters}
+              className="px-4 py-2 bg-primary text-on-primary rounded text-xs font-bold uppercase tracking-wider cursor-pointer hover:brightness-110"
+            >
+              Clear column filters
             </button>
           </div>
         ) : (
