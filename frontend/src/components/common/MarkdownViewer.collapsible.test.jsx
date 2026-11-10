@@ -1,8 +1,9 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import '@testing-library/jest-dom';
 import { MarkdownViewer, HEADING_STYLES } from './MarkdownViewer';
+import { logger } from '../../services/logger';
 
 /***
  * MARK: MarkdownViewer collapsible tests
@@ -118,6 +119,28 @@ describe('MarkdownViewer collapsible sections', () => {
     expect(container.querySelector(`#${CSS.escape(bodyId)}`)).not.toBeNull();
   });
 
+  it('omits aria-controls while collapsed so the reference never dangles', () => {
+    render(<MarkdownViewer content={ARTICLE} collapsibleSections />);
+    const toggle = screen.getByRole('button', { name: 'First Section' });
+    expect(toggle).toHaveAttribute('aria-controls');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).not.toHaveAttribute('aria-controls');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-controls');
+  });
+
+  it('gives a blank h2 an Untitled label so the toggle keeps its name', () => {
+    const blankHeadingArticle = ['## ', '', 'Hidden body.'].join('\n');
+    render(<MarkdownViewer content={blankHeadingArticle} collapsibleSections />);
+    // A nameless button fails accessibility checks; the fallback is the name.
+    const toggle = screen.getByRole('button', { name: 'Untitled section' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Hidden body.')).toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(screen.queryByText('Hidden body.')).not.toBeInTheDocument();
+  });
+
   it('never makes the h1 title or preamble collapsible', () => {
     render(<MarkdownViewer content={ARTICLE} collapsibleSections />);
     const title = screen.getByRole('heading', { level: 1, name: 'Article Title' });
@@ -212,16 +235,22 @@ describe('MarkdownViewer collapsible sections', () => {
     );
   });
 
-  it('ignores unknown signal actions', () => {
-    render(
-      <MarkdownViewer
-        content={ARTICLE}
-        collapsibleSections
-        sectionVisibilitySignal={{ action: 'mystery', nonce: 1 }}
-      />,
-    );
-    expect(screen.getByText('First section body.')).toBeInTheDocument();
-    expect(screen.getByText('Second section body.')).toBeInTheDocument();
+  it('ignores unknown signal actions but reports them so sender typos cannot hide', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    try {
+      render(
+        <MarkdownViewer
+          content={ARTICLE}
+          collapsibleSections
+          sectionVisibilitySignal={{ action: 'mystery', nonce: 1 }}
+        />,
+      );
+      expect(screen.getByText('First section body.')).toBeInTheDocument();
+      expect(screen.getByText('Second section body.')).toBeInTheDocument();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('mystery'));
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it('marks the chevron decorative, animated, and reduced-motion safe', () => {

@@ -104,6 +104,18 @@ describe('groupBlocksIntoSections', () => {
     expect(sections[0].blocks[0].itemLines).toEqual([5, 6]);
   });
 
+  it('passes null entries through untouched so positions never shift', () => {
+    // The viewer derives review-wrapper indices from positions, so a bad
+    // entry must never be filtered out (which would shift every index after
+    // it) — it rides along and renders as nothing.
+    const blocks = [null, block('h2', 'A', 3), null, block('p', 'body', 7)];
+    const { preamble, sections } = groupBlocksIntoSections(blocks);
+    expect(preamble).toEqual([null]);
+    expect(sections).toHaveLength(1);
+    expect(sections[0].headingBlock).toBe(blocks[1]);
+    expect(sections[0].blocks).toEqual([null, blocks[3]]);
+  });
+
   it('gives each section a stable id from its heading position', () => {
     const blocks = [block('p', 'intro', 1), block('h2', 'A', 3), block('h2', 'B', 5)];
     const first = groupBlocksIntoSections(blocks);

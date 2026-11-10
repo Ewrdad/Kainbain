@@ -22,6 +22,13 @@ describe('TaskDetailHistoryPane', () => {
     expect(screen.getByText('Created')).toBeInTheDocument();
   });
 
+  it('renders empty sections instead of crashing on null history payloads', () => {
+    render(<TaskDetailHistoryPane timelineData={null} auditEvents={null} />);
+    expect(screen.getByText(/Stage Transition Timeline/i)).toBeInTheDocument();
+    expect(screen.getByText(/Audit Log Events/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Show all/ })).not.toBeInTheDocument();
+  });
+
   it('shows every audit event with no toggle when the log is short', () => {
     const auditEvents = Array.from({ length: 5 }, (_, i) => ({
       timestamp: `12:0${i}`,

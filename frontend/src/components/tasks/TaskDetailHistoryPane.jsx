@@ -11,6 +11,9 @@ import { formatTryCount } from './taskFormatters';
  *   owned by the page shell — it fetches nothing itself. The timeline always
  *   shows in full; the audit log previews the first few events and hides the
  *   rest behind a "Show all" disclosure so long histories stay scannable.
+ *   Non-array props (a null payload from a corrupted task, a future caller
+ *   passing nothing) render as empty lists rather than crashing the detail
+ *   view — a missing history must never take the whole tab down.
  * @example
  * <TaskDetailHistoryPane
  *   timelineData={timelineData}
@@ -25,15 +28,19 @@ export function TaskDetailHistoryPane({
   timelineDotClass = () => '',
   timelineTextClass = () => '',
 }) {
+  // Normalise before anything touches `.length` or `.map`: defaults only
+  // cover `undefined`, while a null task payload would crash the render.
+  const safeTimelineData = Array.isArray(timelineData) ? timelineData : [];
+  const safeAuditEvents = Array.isArray(auditEvents) ? auditEvents : [];
   // Long audit logs collapse past the preview count; the toggle only renders
   // when there is actually more to show.
   const [showAllAuditEvents, setShowAllAuditEvents] = useState(false);
   const auditPreviewCount = 5;
-  const hasMoreAuditEvents = auditEvents.length > auditPreviewCount;
+  const hasMoreAuditEvents = safeAuditEvents.length > auditPreviewCount;
   const visibleAuditEvents =
     showAllAuditEvents || !hasMoreAuditEvents
-      ? auditEvents
-      : auditEvents.slice(0, auditPreviewCount);
+      ? safeAuditEvents
+      : safeAuditEvents.slice(0, auditPreviewCount);
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <section>
@@ -41,7 +48,7 @@ export function TaskDetailHistoryPane({
           Stage Transition Timeline
         </h2>
         <div className="flex flex-col gap-4 ml-3 border-l-2 border-border-standard pl-5">
-          {timelineData.map((item, i) => {
+          {safeTimelineData.map((item, i) => {
             const tryLabel = formatTryCount(item);
             return (
               <div key={i} className="relative flex flex-col gap-1">
@@ -93,7 +100,7 @@ export function TaskDetailHistoryPane({
           >
             {showAllAuditEvents
               ? 'Show fewer'
-              : `Show all ${auditEvents.length} events (${auditEvents.length - auditPreviewCount} more)`}
+              : `Show all ${safeAuditEvents.length} events (${safeAuditEvents.length - auditPreviewCount} more)`}
           </button>
         )}
       </section>

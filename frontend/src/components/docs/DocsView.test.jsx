@@ -228,6 +228,28 @@ test('expand/collapse controls hide when the article has no sections', async () 
   expect(screen.queryByRole('button', { name: 'Collapse all' })).not.toBeInTheDocument();
 });
 
+const OTHER_SECTIONED_ARTICLE = ['# Install & Run', '', '## Other Section', '', 'Other body.'].join(
+  '\n',
+);
+
+test('a collapse-all never leaks into the next article', async () => {
+  api.docsArticle.mockImplementation(async (slug) =>
+    slug === 'architecture' ? SECTIONED_ARTICLE : OTHER_SECTIONED_ARTICLE,
+  );
+  renderWithKainBain(<DocsView />);
+  expect(await screen.findByRole('button', { name: 'First Section' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
+  expect(screen.queryByText('First body.')).not.toBeInTheDocument();
+  // Switching articles remounts the viewer: the stale collapse-all must not
+  // apply to the new article — it opens in its default all-open state.
+  fireEvent.click(screen.getByRole('button', { name: 'Install & Run' }));
+  expect(await screen.findByText('Other body.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Other Section' })).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  );
+});
+
 /***
  * MARK: DocsView heading order
  * @description The sidebar avenue headings are h2, so the article's h1 never

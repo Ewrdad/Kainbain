@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback, useId } from 'react';
 import { API_BASE } from '../../services/apiBase';
 import { resolveTaskImageUrl } from '../../services/taskImages';
 import { useImageRetry } from '../../services/imageRetry';
+import { logger } from '../../services/logger';
 import { groupBlocksIntoSections } from './markdownSections';
 
 /***
@@ -332,10 +333,7 @@ export function parseMarkdownBlocks(markdown) {
 
   // CRLF (and lone CR) normalize to LF first so 1-based source line numbers
   // stay aligned with viewers that split on /\r?\n/.
-  const lines = markdown
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .split('\n');
+  const lines = markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
   const blocks = [];
   let i = 0;
 
@@ -523,8 +521,11 @@ export function parseMarkdownBlocks(markdown) {
 /***
  * MARK: HEADING_STYLES
  * @description The single home of the six markdown heading class strings, so
- *   prominence tweaks touch one place instead of six switch branches. Values
- *   are the exact classes the viewer has always rendered.
+ *   prominence tweaks touch one place instead of six switch branches. Every
+ *   level except `h2` keeps the exact classes the viewer has always rendered;
+ *   `h2` carries the docs-prominence treatment (larger, bolder, stronger rule
+ *   and spacing) shared by the flat and collapsible paths — do not "restore"
+ *   it to the old tokens thinking it drifted.
  * @example HEADING_STYLES.h1 => 'font-display-lg text-xl font-bold ...'
  ***/
 export const HEADING_STYLES = {
@@ -541,15 +542,21 @@ export const HEADING_STYLES = {
  * @description Renders one parsed markdown block (headings, lists, code,
  *   tables, quotes, rules, paragraphs) to its React element. Shared by the
  *   flat rendering path and the collapsible-section path so both paint
- *   identical blocks.
- * @param {Object} block - One block from `parseMarkdownBlocks`.
- * @param {string|number} blockKey - React key for the rendered element.
- * @param {Object} imageContext - Task context for relative image resolution.
- * @param {boolean} enableCopy - Whether code blocks show copy buttons.
+ *   identical blocks. Inputs arrive as one labelled object (never positions),
+ *   so a new option later cannot silently shift the existing arguments.
+ * @param {Object} labelledInputs - The named inputs for this block.
+ * @param {Object} labelledInputs.block - One block from `parseMarkdownBlocks`.
+ * @param {string|number} labelledInputs.blockKey - React key for the rendered element.
+ * @param {Object} labelledInputs.imageContext - Task context for relative image resolution.
+ * @param {boolean} labelledInputs.enableCopy - Whether code blocks show copy buttons.
  * @returns {React.ReactNode} The rendered block element.
- * @example renderMarkdownBlock({ type: 'h1', text: 'Hi' }, 0, {}, true) => <h1>Hi</h1>
+ * @example renderMarkdownBlock({ block: { type: 'h1', text: 'Hi' }, blockKey: 0, imageContext: {}, enableCopy: true }) => <h1>Hi</h1>
  ***/
-function renderMarkdownBlock(block, blockKey, imageContext, enableCopy) {
+function renderMarkdownBlock({ block, blockKey, imageContext, enableCopy }) {
+  // The parser never produces a malformed block, so this guard is pure
+  // defense in depth: one bad block renders nothing rather than crashing
+  // the whole article.
+  if (!block || typeof block.type !== 'string') return null;
   let rendered;
   switch (block.type) {
     case 'h1':
@@ -714,9 +721,9 @@ function renderMarkdownBlock(block, blockKey, imageContext, enableCopy) {
  * @param {string} [props.projectId] - Task context so relative `assets/...` image references resolve to the raw image endpoint.
  * @param {string} [props.taskId] - Task context for image resolution (see resolveTaskImageUrl).
  * @param {Function|null} [props.renderBlockWrapper] - Optional `(block, rendered, index) => ReactNode` seam for review UIs: wraps each parsed block (which carries `startLine`/`endLine`) with hover affordances. `null` renders byte-identical default output.
- * @param {boolean} [props.collapsibleSections=false] - Opt-in: each `h2` becomes a collapsible toggle with a chevron; the `h1` title and pre-`h2` content stay always visible. `false` renders exactly as before.
- * @param {boolean} [props.defaultCollapsed=false] - Initial state when `collapsibleSections` is on: `false` starts every section open.
- * @param {{ action: 'expand-all'|'collapse-all', nonce: number }|null} [props.sectionVisibilitySignal=null] - One-shot request from the parent (e.g. Expand all / Collapse all buttons). Each `nonce` applies once, then is forgotten.
+ * @param {boolean} [props.collapsibleSections=false] - Opt-in: each `h2` becomes a collapsible toggle with a chevron; the `h1` title and pre-`h2` content stay always visible. A blank `##` heading shows an "Untitled section" fallback so the toggle always keeps a name. `false` renders the flat path (identical blocks, no toggle chrome).
+ * @param {boolean} [props.defaultCollapsed=false] - Initial state when `collapsibleSections` is on: `false` starts every section open. Applies on mount and whenever the article changes; later prop flips alone do nothing.
+ * @param {{ action: 'expand-all'|'collapse-all', nonce: number }|null} [props.sectionVisibilitySignal=null] - One-shot request from the parent (e.g. Expand all / Collapse all buttons). Each `nonce` applies once, then is forgotten; an article change consumes any pending signal and resets to the default. Unknown actions are ignored and reported via the logger so a sender typo cannot hide.
  * @example <MarkdownViewer content="# Overview\n\nTask details here." />
  * @example <MarkdownViewer content={article} collapsibleSections sectionVisibilitySignal={{ action: 'expand-all', nonce: 1 }} />
  ***/
@@ -776,6 +783,15 @@ export function MarkdownViewer({
         collapsedIds: new Set(sections.map((section) => section.id)),
       });
     } else {
+      // Fail safe and LOUD: an unknown action (a sender typo — the only
+      // caller is DocsView's Expand all / Collapse all) must never touch
+      // collapse state, but swallowing it silently would hide the bug, so
+      // the nonce is still consumed and the action is reported once.
+      logger.warn(
+        `MarkdownViewer ignoring unknown sectionVisibilitySignal action: ${String(
+          sectionVisibilitySignal.action,
+        )}`,
+      );
       setCollapsedState({ ...collapsedState, appliedSignalNonce: sectionVisibilitySignal.nonce });
     }
   }
@@ -794,7 +810,12 @@ export function MarkdownViewer({
 
   const renderWrappedBlock = useCallback(
     (block, blockIndex) => {
-      const rendered = renderMarkdownBlock(block, blockIndex, imageContext, enableCopy);
+      const rendered = renderMarkdownBlock({
+        block,
+        blockKey: blockIndex,
+        imageContext,
+        enableCopy,
+      });
       if (renderBlockWrapper) return renderBlockWrapper(block, rendered, blockIndex);
       return rendered;
     },
@@ -822,12 +843,21 @@ export function MarkdownViewer({
           {sections.map((section) => {
             const isCollapsed = collapsedState.collapsedIds.has(section.id);
             const bodyId = `${sectionGroupId}-${section.id}-body`;
+            // A blank `##` heading would leave the toggle with no name at
+            // all, and a nameless button fails accessibility checks — so it
+            // gets a visible fallback label. Visible and announced text stay
+            // the same string on purpose.
+            const rawHeadingText = section.headingBlock.text;
+            const hasHeadingText =
+              typeof rawHeadingText === 'string' && rawHeadingText.trim() !== '';
             const header = (
               <h2 className={HEADING_STYLES.h2}>
                 <button
                   type="button"
                   aria-expanded={!isCollapsed}
-                  aria-controls={bodyId}
+                  // The collapsed body unmounts, so the reference only exists
+                  // while expanded — a dangling id helps nobody.
+                  aria-controls={isCollapsed ? undefined : bodyId}
                   onClick={() => toggleSectionCollapsed(section.id)}
                   className="flex w-full items-center gap-2 text-left cursor-pointer rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 >
@@ -838,7 +868,9 @@ export function MarkdownViewer({
                     ▾
                   </span>
                   <span className="flex-1">
-                    {parseInlineMarkdown(section.headingBlock.text, imageContext)}
+                    {hasHeadingText
+                      ? parseInlineMarkdown(rawHeadingText, imageContext)
+                      : 'Untitled section'}
                   </span>
                 </button>
               </h2>

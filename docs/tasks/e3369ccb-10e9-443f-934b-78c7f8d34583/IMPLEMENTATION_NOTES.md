@@ -88,3 +88,67 @@ Tests (all co-located with their components):
 - Mini table-of-contents at the top of articles if Q3 asks for it.
 - Colour/shaded header backgrounds beyond the v1 type/spacing treatment.
 - Task review-screen readability pass if Q4 asks for it.
+
+## Cleanup / hardening pass (this stage)
+
+Found and fixed one real bug, plus fail-safe and standards hardening. No
+user-visible behaviour changed except the bug fix.
+
+Bug fix — stale collapse-all leaked into the next article: `DocsView` held
+the one-shot `sectionVisibilitySignal` across article switches, and because
+the viewer remounts per article (it unmounts while the next article loads),
+the old signal applied to the new article — contradicting the documented
+"every article opens all-open" promise (and the `site-docs/faq.md` line
+"Sections always open expanded"). The signal now drops when the slug changes,
+during render (never in an effect, keeping `react-hooks/set-state-in-effect`
+clean — same precedent as `TaskGoalSection`'s task-switch reset). Pinned by
+`DocsView.test.jsx` "a collapse-all never leaks into the next article"
+(proven red before the fix, green after).
+
+Fail-safe hardening:
+
+- `MarkdownViewer`: a blank `##` heading renders an "Untitled section"
+  fallback so the toggle always keeps an accessible name (a nameless button
+  fails a11y checks); `aria-controls` is only set while expanded so the id
+  never dangles at an unmounted body; unknown visibility-signal actions are
+  still ignored but now reported once via `logger.warn` so a sender typo
+  cannot hide; `renderMarkdownBlock` renders nothing for a malformed block
+  instead of crashing the article.
+- `TaskDetailHistoryPane`: non-array `timelineData`/`auditEvents` (a null
+  task payload) render as empty lists instead of crashing the detail view.
+- `groupBlocksIntoSections`: null entries pass through untouched so
+  positional ids and review-wrapper indices never shift (pinned by test).
+
+Standards cleanup (per `docs/KB Code Standards.md`):
+
+- `renderMarkdownBlock` takes one labelled input object instead of four
+  positional arguments; JSDoc corrected where it claimed `HEADING_STYLES`
+  values were all historical (`h2` intentionally carries the new prominence
+  tokens); failure modes documented on the `MarkdownViewer` props
+  (unknown-action ignore+warn, signal consumed on article change,
+  `defaultCollapsed` applies on mount/article change only).
+- Deliberately NOT changed: `groupBlocksIntoSections(blocks)` stays a
+  single positional argument to match its siblings (`parseMarkdownBlocks`,
+  `sanitizeUrl`); `markdownSections.js` stays in `common/` next to its main
+  consumer, mirroring the existing `DocsView` → `common/MarkdownViewer`
+  import; no new files, so the one-function-per-file allowlist is untouched.
+
+Test counts after this stage: `markdownSections.test.js` 9,
+`MarkdownViewer.collapsible.test.jsx` 18, `DocsView.test.jsx` 16,
+`TaskDetailHistoryPane.test.jsx` 5 (others unchanged). Full frontend suite at
+handoff: 331 files / 4499 tests green;
+`eslint` 0 errors; `check-one-function-per-file`, `check-jsdoc-example`,
+`check-doc-links` pass; `prettier --check` clean on touched files.
+
+Transfer / continuation of operations (operational environment):
+
+- No API, backend, database, or persisted-state changes: collapse state is
+  in-memory React state only (no localStorage keys added), so there is no
+  migration, no backfill, no stale cross-version state, and nothing to clean
+  on rollback — redeploying the previous frontend bundle fully reverts.
+- Blast radius of the global `h2` prominence tokens (shared viewer): visual
+  only, across task goal previews, reports, review UIs, file preview, and
+  settings previews. Verified: full frontend suite green, no test or
+  canary-e2e selector pins the old tokens, no snapshot files reference them.
+- Deploy/rollback is a static bundle swap; a mid-session deploy behaves like
+  any SPA reload (docs reopen all-open, history panes reopen previewed).

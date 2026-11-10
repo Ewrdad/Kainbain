@@ -110,6 +110,18 @@ export function DocsView() {
   // so bare entry never leaves a slug-less docs location behind).
   const effectiveSlug = routeSlug ?? (docs.length > 0 ? docs[0].slug : null);
 
+  // A one-shot expand/collapse-all request belongs to the article it was sent
+  // for: switching articles remounts the viewer while the old signal is still
+  // set, and the stale request (e.g. collapse-all) would otherwise apply to
+  // the new article too. The current slug is tracked alongside the signal, and
+  // a slug change drops the signal during render (never in an effect) so every
+  // article opens in its default all-open state.
+  const [signalSlug, setSignalSlug] = useState(effectiveSlug);
+  if (signalSlug !== effectiveSlug) {
+    setSignalSlug(effectiveSlug);
+    setSectionSignal(null);
+  }
+
   useEffect(() => {
     // userSelectedRef is read at effect-run time (refs are live, not
     // captured): when the index resolves just as the user clicks an article,
