@@ -37,7 +37,9 @@ export const DESKTOP_VIEWPORT = { width: 1280, height: 720 };
  *   the API) is visible, which means projects have loaded and an active
  *   project has been selected. Does NOT pin the active project — use
  *   `waitForAppReadyOnProject` when the spec's API assertions target one
- *   specific project.
+ *   specific project. One bounded reload+retry inside the standard budget
+ *   heals blank-root module-burst resource windows (failed loads must be
+ *   re-issued, never waited out).
  * @example await waitForAppReady(page)
  * @param {import("@playwright/test").Page} page
  ***/
@@ -58,9 +60,24 @@ export async function waitForAppReady(page) {
 		await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
 	}
 	await expect(page).toHaveTitle(/Kainbain/);
-	await expect(page.getByRole("button", { name: /Project/i }).first()).toBeVisible({
-		timeout: APP_READY_TIMEOUT_MS,
-	});
+	try {
+		await expect(page.getByRole("button", { name: /Project/i }).first()).toBeVisible({
+			timeout: APP_READY_TIMEOUT_MS / 2,
+		});
+	} catch (err) {
+		// Blank-root resource window (net::ERR_INSUFFICIENT_RESOURCES across
+		// the vite module burst AFTER navigation commits: title loads, but a
+		// hundred module requests fail and React never mounts): a longer wait
+		// cannot heal it — the failed loads must be re-issued. One bounded
+		// reload+retry with the budget's second half (same total as the old
+		// single wait); a genuinely broken shell fails twice and stays red.
+		// Mirrors the accessibility spec's waitForAppShell retry.
+		await page.reload({ waitUntil: "domcontentloaded" });
+		await expect(page).toHaveTitle(/Kainbain/);
+		await expect(page.getByRole("button", { name: /Project/i }).first()).toBeVisible({
+			timeout: APP_READY_TIMEOUT_MS / 2,
+		});
+	}
 }
 
 /***
