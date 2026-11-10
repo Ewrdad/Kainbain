@@ -58,8 +58,28 @@ export async function waitForAppReady(page) {
 		await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
 	}
 	await expect(page).toHaveTitle(/Kainbain/);
+	// Readiness budget split in two with one bounded re-issue in between:
+	// on the loaded 4-core gate host the vite dev module burst intermittently
+	// loses individual module loads to net::ERR_INSUFFICIENT_RESOURCES, and
+	// waiting longer cannot heal that — but a re-issued load in the SAME
+	// browser context reuses every module that already landed and only
+	// refetches the missing ones, which reliably completes the graph. The
+	// first attempt gets a short budget so the retry still fits inside the
+	// per-test timeout; a genuinely hung app fails both attempts and the
+	// test still times out red (retries: 0 keeps that signal honest).
+	const firstAttemptMs = 25000;
+	try {
+		await expect(page.getByRole("button", { name: /Project/i }).first()).toBeVisible({
+			timeout: firstAttemptMs,
+		});
+		return;
+	} catch {
+		// fall through to the bounded re-issue below
+	}
+	await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
+	await expect(page).toHaveTitle(/Kainbain/);
 	await expect(page.getByRole("button", { name: /Project/i }).first()).toBeVisible({
-		timeout: APP_READY_TIMEOUT_MS,
+		timeout: APP_READY_TIMEOUT_MS - firstAttemptMs,
 	});
 }
 

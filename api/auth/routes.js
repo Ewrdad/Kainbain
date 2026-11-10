@@ -214,16 +214,18 @@ export const buildAuthRoutes = ({ authService } = {}) => {
 			}
 			// The provider itself can refuse (access_denied when the user
 			// cancels): bounce back to the login page carrying the reason.
-			const providerError =
+			// The redirect target is always the fixed same-app hash route —
+			// the provider's error code is allowlisted to a strict token
+			// shape and the free-text description never enters the URL, so
+			// no query-controlled value can turn this into an open redirect.
+			const rawError =
 				typeof request.query?.error === "string" ? request.query.error : "";
-			if (providerError !== "") {
-				const detail =
-					typeof request.query?.error_description === "string"
-						? request.query.error_description
-						: "";
+			const providerError = /^[a-z][a-z0-9_]{0,63}$/.test(rawError)
+				? rawError
+				: "access_denied";
+			if (rawError !== "") {
 				reply.header("Set-Cookie", clearPending);
-				const loginTarget = `/#/login?error=${encodeURIComponent(providerError)}${detail ? `&message=${encodeURIComponent(detail)}` : ""}`;
-				return reply.redirect(loginTarget);
+				return reply.redirect(`/#/login?error=${providerError}`);
 			}
 			const attempt = readPendingAttempt(request);
 			const { code, state } = request.query || {};
