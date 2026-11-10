@@ -110,27 +110,38 @@ export const parseAutoApproveDuration = (value) => {
 		return Math.ceil(ms);
 	}
 	// Unit parts must consume the ENTIRE string: trailing garbage ("10 days
-	// ish") is unparseable, never silently truncated. Longest-first order:
-	// a short alternative must never match the prefix of a longer unit
-	// ("m" eating the "m" of "ms", "s" eating the "s" of "sec").
+	// ish") and embedded suffix noise ("1.2.3 days") are unparseable, never
+	// silently truncated or partially accepted. The alternation is longest-first
+	// so a short unit can never swallow the prefix of a longer one ("m"
+	// eating the "m" of "ms", "s" eating the "s" of "sec"). Matches are also
+	// checked for contiguity: only whitespace may sit between them, so a later
+	// "3 days" hidden inside "1.2.3 days" never gets scraped out on its own.
 	// eslint-disable-next-line security/detect-unsafe-regex -- bounded to 128 chars above, flat alternation
 	const partPattern = /(\d+(?:\.\d+)?)\s*(milliseconds?|seconds?|minutes?|hours?|days?|weeks?|secs?|mins?|hrs?|ms|s|m|h|d|w)/g;
 	let total = 0;
 	let consumed = 0;
-	let match = partPattern.exec(text);
-	if (!match) return null;
-	while (match) {
+	let match = null;
+	partPattern.lastIndex = 0;
+	while ((match = partPattern.exec(text)) !== null) {
+		// Only whitespace may sit between the previous part and this one:
+		// any other gap means the text was not fully consumed as parts.
+		const gapText = text.slice(consumed, match.index);
+		if (gapText.trim() !== "") return null;
+		// A zero-length advance would spin forever on empty matches.
+		if (match[0].length === 0) return null;
 		const amount = Number(match[1]);
 		/* eslint-disable-next-line security/detect-object-injection -- unit comes from the fixed alternation above */
 		const unitMs = AUTO_APPROVE_UNIT_MS[match[2]];
 		if (!Number.isFinite(amount) || !unitMs) return null;
 		total += amount * unitMs;
 		consumed = match.index + match[0].length;
-		match = partPattern.exec(text);
+		// Reset lastIndex defensively: exec otherwise continues from
+		// lastIndex, which a failed re-entrancy could desync.
+		partPattern.lastIndex = consumed;
 	}
-	const rest = text.slice(consumed).trim();
-	if (rest !== "") return null;
-	if (!Number.isFinite(total) || total <= 0) return null;
+	const tailText = text.slice(consumed);
+	if (tailText.trim() !== "") return null;
+	if (consumed === 0 || !Number.isFinite(total) || total <= 0) return null;
 	return Math.ceil(total);
 };
 

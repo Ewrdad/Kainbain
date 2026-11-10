@@ -144,6 +144,71 @@ describe("human-stage auto-approve API", () => {
 		expect(wf.statusCode).toBe(400);
 	});
 
+	it("refuses invalid holds sent as stages on PATCH project (no save-boundary bypass)", async () => {
+		const project = await seedProject("Hold Patch Guard");
+		for (const [label, hold, problem] of [
+			["garbage", "soon", "UNPARSEABLE"],
+			["too short", "30s", "TOO_SHORT"],
+		]) {
+			const res = await app.inject({
+				method: "PATCH",
+				url: `/projects/${project.id}`,
+				payload: { stages: pipelineWithHold(hold) },
+			});
+			expect([label, res.statusCode]).toEqual([label, 400]);
+			expect(JSON.parse(res.payload).details[0].problem).toBe(problem);
+		}
+		// The paired Runner-policy guard rides along on the same path.
+		const policyRes = await app.inject({
+			method: "PATCH",
+			url: `/projects/${project.id}`,
+			payload: {
+				stages: [
+					{ id: "build", name: "Build", type: "agent", runnerPolicy: { mode: "sometimes", runners: [] } },
+				],
+			},
+		});
+		expect(policyRes.statusCode).toBe(400);
+		// Valid stages still pass through untouched.
+		const ok = await app.inject({
+			method: "PATCH",
+			url: `/projects/${project.id}`,
+			payload: { stages: pipelineWithHold(61000) },
+		});
+		expect(ok.statusCode).toBe(200);
+	});
+
+	it("stamps a pipeline-flip park from the flip moment, not the stale entry time", async () => {
+		const project = await seedProject("Hold Flip Stamp");
+		// The task sits in_stage at an agent stage with an old entry clock…
+		const agentPipeline = [
+			{ id: "build", name: "Build", type: "agent", paused: false, failback: "previous" },
+			{ id: "done", name: "Done", type: "agent", paused: false, failback: "previous" },
+		];
+		expect((await putStages(project.id, agentPipeline)).statusCode).toBe(200);
+		const created = await createTaskAt(project.id, "build", "Flip me");
+		expect(created.status).toBe("in_stage");
+		taskStore.getTask(project.id, created.id).enteredStageAt = new Date(
+			Date.now() - 12 * 3600000,
+		).toISOString();
+
+		// …then a pipeline edit turns its stage into a human checkpoint.
+		const before = Date.now();
+		const flip = await putStages(project.id, [
+			{ id: "build", name: "Build", type: "human", paused: false, failback: "previous", autoApproveAfterMs: 61000 },
+			{ id: "done", name: "Done", type: "agent", paused: false, failback: "previous" },
+		]);
+		expect(flip.statusCode).toBe(200);
+
+		const fetched = await getTask(project.id, created.id);
+		expect(fetched.status).toBe("waiting_human");
+		const deadlineMs = Date.parse(fetched.autoApproveAt);
+		// Full 61s hold from the flip (generous 60s test tolerance); the old
+		// stale base would land ~12h in the past instead.
+		expect(deadlineMs - before).toBeGreaterThan(61000 - 60000);
+		expect(deadlineMs - before).toBeLessThan(61000 + 60000);
+	});
+
 	it("stamps autoApproveAt on entry to a configured human stage", async () => {
 		const project = await seedProject("Hold Entry Stamp");
 		expect((await putStages(project.id, pipelineWithHold(61000))).statusCode).toBe(200);

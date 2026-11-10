@@ -81,10 +81,14 @@ before I mark it as done") and speak-now-or-forever-hold-your-peace pauses
 (get advice, assume silence means go). Default is off — stages without a
 hold wait forever, exactly as before.
 
-- **Set it per stage** (same every run): an integer millisecond count, or a
-  human duration string like `10 days`, `36 hours`, `1 week`, `90m` (bare
-  numbers mean milliseconds). Saves refuse garbage, sub-minute holds
-  (minimum 60s), and holds over 365 days with 400.
+- **Set it per stage** (same every run): open the human stage's Stage
+  Settings in the workflow canvas and enable "Auto-approve after hold",
+  then pick an amount and unit (minutes / hours / days / weeks; enabling
+  defaults to 7 days). The stored form is an integer millisecond count, and
+  the save boundary also accepts a human duration string like `10 days`,
+  `36 hours`, `1 week`, `90m` (bare numbers mean milliseconds). Saves
+  refuse garbage, sub-minute holds (minimum 60s), and holds over 365 days
+  with 400.
 - **The deadline is a minimum, never exact**: the hold is stamped once when
   the task enters the stage (`autoApproveAt = enteredStageAt + hold`) and
   the timer may fire a little late under load — never early. A 10-day hold
@@ -95,7 +99,9 @@ hold wait forever, exactly as before.
   until they next enter the stage — move them out and back in to start one.
 - **Humans always win the race**: approve or reject early as normal and the
   timer is cancelled — no double-advance, no auto-approve after you acted.
-  Pausing, aborting, moving, or completing also cancels the wait.
+  Pausing, aborting, moving, or completing also cancels the wait; coming
+  back starts a fresh full hold. Simply re-running a task that never left
+  the checkpoint keeps its original deadline.
 - **One reminder**: shortly before the deadline (24h out, or half the hold
   for short holds) a `task.auto_approve_soon` webhook fires once per wait,
   naming the deadline. Set `KAINBAIN_AUTO_APPROVE_REMINDER_LEAD_MS=0` to
