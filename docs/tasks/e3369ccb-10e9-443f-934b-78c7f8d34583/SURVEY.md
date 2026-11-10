@@ -87,6 +87,44 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Both big titles and smaller sub-titles"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Remember what I left open last time"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "A small arrow or icon showing open / closed",
+        "A short list of sections at the top of the page"
+      ],
+      "notes": "Crutailly this is also about the guide picker "
+    },
+    "q4": {
+      "selected": [
+        "Task history and logs"
+      ],
+      "notes": "Nothing about tasks this is about site docs"
+    },
+    "q5": {
+      "selected": [
+        "Clearer status labels and colours"
+      ],
+      "notes": "Nothing about tasks this is about site docs"
+    },
+    "q6": {
+      "selected": [
+        "Both equally"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
