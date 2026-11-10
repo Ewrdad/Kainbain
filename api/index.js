@@ -128,6 +128,10 @@ app.register(fastifyCors, {
 			cb(new Error("CORS origin not allowed"), false);
 		}
 	},
+	// Split-origin stacks (canary vite 5299 -> api 3399, LAN installs) send
+	// cookies (`credentials: include` for the session cookie); the CORS
+	// response must allow credentials or the browser blocks the response.
+	credentials: true,
 	// The API serves GET/POST/PATCH/PUT/DELETE; the plugin default
 	// (GET,HEAD,POST) would CORS-block every browser-issued PATCH/PUT/DELETE
 	// on split-origin stacks (scratch e2e, LAN installs) — e.g. the project
