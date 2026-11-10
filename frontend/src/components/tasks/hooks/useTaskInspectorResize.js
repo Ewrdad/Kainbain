@@ -13,10 +13,10 @@ const KEYBOARD_STEP = 20;
 // Space always left for the main canvas, even at the widest drag.
 const VIEWPORT_MARGIN = 80;
 
-function clampToRange(value, min, max) {
+const clampToRange = (value, min, max) => {
   const numeric = Number.isFinite(value) ? value : min;
   return Math.min(max, Math.max(min, Math.round(numeric)));
-}
+};
 
 /***
  * MARK: getTaskInspectorDynamicMax
@@ -27,22 +27,22 @@ function clampToRange(value, min, max) {
  * @example getTaskInspectorDynamicMax() // 1840 on a 1920px-wide window
  * @returns {number}
  ***/
-export function getTaskInspectorDynamicMax() {
+export const getTaskInspectorDynamicMax = () => {
   if (typeof window === 'undefined') return TASK_INSPECTOR_WIDTH_MAX;
   const viewportWidth = window.innerWidth || TASK_INSPECTOR_WIDTH_MIN + VIEWPORT_MARGIN;
   return Math.max(
     TASK_INSPECTOR_WIDTH_MIN,
     Math.min(TASK_INSPECTOR_WIDTH_MAX, viewportWidth - VIEWPORT_MARGIN),
   );
-}
+};
 
-function widthFromPreference(requestedWidth) {
+const widthFromPreference = (requestedWidth) => {
   const safeRequested =
     typeof requestedWidth === 'number' && Number.isFinite(requestedWidth)
       ? requestedWidth
       : DEFAULT_TASK_INSPECTOR_WIDTH;
   return clampToRange(safeRequested, TASK_INSPECTOR_WIDTH_MIN, getTaskInspectorDynamicMax());
-}
+};
 
 /***
  * MARK: useTaskInspectorResize
