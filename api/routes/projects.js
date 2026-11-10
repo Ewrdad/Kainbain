@@ -22,6 +22,11 @@ import {
 import { computeAliasReliability } from "../watch/aliasReliability.js";
 import { normalizeStageType } from "../projectStore.js";
 import { assertValidStageRunnerPolicies } from "../../shared/stageRunnerPolicy.js";
+import {
+	assertValidStageAutoApproves,
+	parseAutoApproveDuration,
+	resolveAutoApproveAt,
+} from "../../shared/autoApproveDuration.js";
 
 /***
  * MARK: saveValidationProbes
@@ -263,6 +268,8 @@ export default async function projectsRoutes(app, { deps }) {
 			}
 			const policyError = assertValidStageRunnerPolicies(stages);
 			if (policyError) return reply.status(400).send(policyError);
+			const autoApproveError = assertValidStageAutoApproves(stages);
+			if (autoApproveError) return reply.status(400).send(autoApproveError);
 			const saveWarnings = [];
 			const { modelIdsFor = defaultModelIdsFor, modelSelectionFor } = saveValidationProbes(deps);
 			const selectionProbe = modelSelectionFor ? { modelSelectionFor } : {};
@@ -625,6 +632,8 @@ export default async function projectsRoutes(app, { deps }) {
 
 		const policyError = assertValidStageRunnerPolicies(stages);
 		if (policyError) return reply.status(400).send(policyError);
+		const autoApproveError = assertValidStageAutoApproves(stages);
+		if (autoApproveError) return reply.status(400).send(autoApproveError);
 
 		// Save-time semantic validation of skill attachment configs: values of
 		// kbRef-declared keywords must resolve to a known project/workflow/stage.
@@ -672,17 +681,28 @@ export default async function projectsRoutes(app, { deps }) {
 						// as human exactly like an explicit `human` stage.
 						const stageType = normalizeStageType(stage.type);
 						if (stageType === "human" && task.status === "in_stage") {
+							// A pipeline edit just parked this task at a human
+							// checkpoint: stamp the auto-approve deadline exactly
+							// like a moveToStage entry (or clear it when the
+							// stage carries no hold).
+							const holdMs = parseAutoApproveDuration(stage.autoApproveAfterMs);
 							taskStore.updateTask(
 								request.params.id,
 								task.id,
-								{ status: "waiting_human" },
+								{
+									status: "waiting_human",
+									autoApproveAt: holdMs
+										? resolveAutoApproveAt(task.enteredStageAt, holdMs)
+										: null,
+									autoApproveRemindedAt: null,
+								},
 								project?.cwd,
 							);
 						} else if (stageType !== "human" && task.status === "waiting_human") {
 							taskStore.updateTask(
 								request.params.id,
 								task.id,
-								{ status: "in_stage" },
+								{ status: "in_stage", autoApproveAt: null, autoApproveRemindedAt: null },
 								project?.cwd,
 							);
 						}
@@ -726,6 +746,8 @@ export default async function projectsRoutes(app, { deps }) {
 
 		const policyError = assertValidStageRunnerPolicies(stages);
 		if (policyError) return reply.status(400).send(policyError);
+		const workflowAutoApproveError = assertValidStageAutoApproves(stages);
+		if (workflowAutoApproveError) return reply.status(400).send(workflowAutoApproveError);
 
 		try {
 			const workflow = projectStore.createWorkflow(request.params.id, {
@@ -768,6 +790,8 @@ export default async function projectsRoutes(app, { deps }) {
 
 		const policyError = assertValidStageRunnerPolicies((request.body || {}).stages);
 		if (policyError) return reply.status(400).send(policyError);
+		const patchAutoApproveError = assertValidStageAutoApproves((request.body || {}).stages);
+		if (patchAutoApproveError) return reply.status(400).send(patchAutoApproveError);
 
 		const updated = projectStore.updateWorkflow(
 			request.params.id,

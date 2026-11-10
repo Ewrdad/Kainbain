@@ -41,3 +41,6 @@ export { stopScheduler } from './stopScheduler.js';
 export { ensureScheduler } from './ensureScheduler.js';
 export { kickScheduler } from './kickScheduler.js';
 export { getScheduledQueue } from './getScheduledQueue.js';
+export { checkAutoApproveTask, collectAutoApproveCandidates } from './collectAutoApproveCandidates.js';
+export { autoApproveSweep } from './autoApproveSweep.js';
+export { ensureAutoApproveTimer } from './ensureAutoApproveTimer.js';

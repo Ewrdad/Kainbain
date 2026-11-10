@@ -65,7 +65,7 @@ Each history row's `+N -M` badge measures that stage's own commit range (stage s
 
 ## Task statuses
 
-A task's `status` tells you where it stands: `idle`, `in_stage`, `waiting_human`, `running_agent`, `running_ci`, `advancing`, `checkpoint`, `blocked`, `paused`, `interrupted`, `failed`, `passed`, `completed`. (Old records may still carry the legacy `running_deploy` label, which reads as `running_ci`.)
+A task's `status` tells you where it stands: `idle`, `in_stage`, `waiting_human`, `running_agent`, `running_ci`, `advancing`, `checkpoint`, `blocked`, `paused`, `interrupted`, `failed`, `passed`, `completed`. (Old records may still carry the legacy `running_deploy` label, which reads as `running_ci`.) A `waiting_human` task at a stage with an auto-approve hold advances itself past its deadline — see "Automatic approval after a hold" in `#/docs/review-gates`.
 
 ## Driving a task
 

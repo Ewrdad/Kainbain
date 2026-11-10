@@ -55,6 +55,10 @@ import {
 	emitAlert,
 } from '../../observability/alerts.js';
 import {
+	parseAutoApproveDuration,
+	resolveAutoApproveAt,
+} from '../../../shared/autoApproveDuration.js';
+import {
 	hasHarness,
 } from '../../agent/harnessRegistry.js';
 import {
@@ -403,6 +407,15 @@ export async function executeStage(
 					}
 				}
 				store.updateTask(projectId, taskId, { status: "waiting_human" }, cwd);
+				// Run-loop park at a human checkpoint (execute/resume/retry of
+				// a task sitting at one): stamp the auto-approve deadline
+				// exactly like a moveToStage entry, or clear it when the
+				// stage carries no hold.
+				const parkHoldMs = parseAutoApproveDuration(stage?.autoApproveAfterMs);
+				task.autoApproveAt = parkHoldMs
+					? resolveAutoApproveAt(task.enteredStageAt, parkHoldMs)
+					: null;
+				task.autoApproveRemindedAt = null;
 				task.history.push({
 					timestamp: new Date().toISOString(),
 					action: `Stage checkpoint: waiting for human approval in stage ${stage.name || stage.id}`,

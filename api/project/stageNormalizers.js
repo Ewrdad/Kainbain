@@ -1,5 +1,6 @@
 import { normalizeStageTags } from "../../shared/stageTags.js";
 import { normalizeStageRunnerPolicy } from "../../shared/stageRunnerPolicy.js";
+import { parseAutoApproveDuration } from "../../shared/autoApproveDuration.js";
 import { DEFAULT_DEPLOY_COMMAND, isDeployCommand } from "./deployCommands.js";
 
 /***
@@ -127,8 +128,15 @@ export function normalizeStageSkills(skills) {
  *   (`{ mode: 'allow' | 'block', runners: [...] }`) naming which Runners may
  *   take it; absent or empty means every Runner may (see
  *   normalizeStageRunnerPolicy).
+ *   Any stage may carry an optional `autoApproveAfterMs` hold (integer ms,
+ *   or a human duration string like `'10 days'` coerced here): only `human`
+ *   stages act on it, but the value is kept on every stage type so pipeline
+ *   reorders never lose it. Absent/zero means the timer is off; invalid
+ *   values are dropped on load (tolerant read — the stage-save boundary
+ *   refuses them with 400 instead). Bare numbers mean milliseconds.
  * @example normalizeStage({ id: '1', name: 'Test', type: 'script' }) => { id: '1', name: 'Test', type: 'ci' }
  * @example normalizeStage({ id: '1', harness: '  custom  ' }).harness => 'custom'
+ * @example normalizeStage({ id: '1', type: 'human', autoApproveAfterMs: '10 days' }).autoApproveAfterMs => 864000000
  * @param {Object} stage
  * @returns {Object}
  ***/
@@ -166,6 +174,18 @@ export function normalizeStage(stage) {
 		const runnerPolicy = normalizeStageRunnerPolicy(stage.runnerPolicy);
 		if (runnerPolicy !== undefined) normalized.runnerPolicy = runnerPolicy;
 		else delete normalized.runnerPolicy;
+	}
+	// Optional per-stage auto-approve hold (additive): normalise only when
+	// present so legacy stage objects round-trip byte-identically. Valid
+	// values coerce to integer ms (human strings included); off-values and
+	// invalid values drop the key (unrestricted/off) so stored stages stay
+	// clean. Deliberately shape-only: the 60s/365d bounds live at the
+	// stage-save boundary (400), not here, so in-memory stages can carry
+	// short holds and type flips never strand a value.
+	if (stage.autoApproveAfterMs !== undefined) {
+		const holdMs = parseAutoApproveDuration(stage.autoApproveAfterMs);
+		if (holdMs !== null) normalized.autoApproveAfterMs = holdMs;
+		else delete normalized.autoApproveAfterMs;
 	}
 	// Optional per-stage harness override (additive): same explicit-choice-only
 	// rule as project.harness — blank clears it (undefined).

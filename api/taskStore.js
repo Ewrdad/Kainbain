@@ -90,6 +90,7 @@ import {
 	kickScheduler,
 	freshSchedulerStats,
 	getScheduledQueue,
+	autoApproveSweep,
 	moveToStage,
 	advanceStage,
 	failbackStage,
@@ -203,11 +204,17 @@ export class TaskStore {
 		// Autonomous scheduler state
 		this.schedulerRunning = false;
 		this.schedulerTimer = null;
+		// Human-stage auto-approve sweeper: one slow interval sharing the
+		// scheduler lifecycle (see ensureAutoApproveTimer).
+		this.autoApproveTimer = null;
 		// Tick-outcome telemetry (dispatched / no-candidate-idle / skipped-busy)
 		// so idle-vs-stuck is answerable from evidence.
 		this.schedulerStats = freshSchedulerStats();
 		this.lastCompletedTask = null; // { projectId, taskId, timestamp } for Priority 1 follow-on
 		this.defaultSchedulerInterval = config.schedulerIntervalMs;
+		this.defaultAutoApproveSweepMs = config.autoApproveSweepMs;
+		this.defaultAutoApproveBatch = config.autoApproveBatch;
+		this.defaultAutoApproveReminderLeadMs = config.autoApproveReminderLeadMs;
 		this.defaultAgentRunner = null;
 		this.defaultPromptEngine = null;
 		// Global engine state snapshot
@@ -805,8 +812,8 @@ export class TaskStore {
 	 * @param {string} [projectCwd]
 	 * @returns {Object|null}
 	 ***/
-	completeTask(projectId, taskId, projectCwd) {
-		return completeTask(this, projectId, taskId, projectCwd);
+	completeTask(projectId, taskId, projectCwd, options) {
+		return completeTask(this, projectId, taskId, projectCwd, options);
 	}
 
 	pauseTask(projectId, taskId, projectCwd) {
@@ -897,6 +904,21 @@ export class TaskStore {
 
 	async scheduleTick(opts = {}) {
 		return scheduleTick(this, opts);
+	}
+
+	/***
+	 * MARK: autoApproveSweep
+	 * @description Runs one human-stage auto-approve sweeper pass over this
+	 *   store: advances deadline-passed waits (oldest first, batch-capped)
+	 *   and sends once-per-visit pre-deadline reminders. The interval calls
+	 *   this on cadence; operators and tests call it directly with an
+	 *   injected clock. Never throws — see `autoApproveSweep`.
+	 * @example taskStore.autoApproveSweep({ now: Date.now() })
+	 * @param {Object} [opts] - `{ now, batch, configuredLeadMs }` overrides.
+	 * @returns {Object} Sweep summary (`advanced/reminded/deferred/errors/outcome`).
+	 ***/
+	autoApproveSweep(opts = {}) {
+		return autoApproveSweep(this, opts);
 	}
 
 	/***
