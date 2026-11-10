@@ -1174,6 +1174,18 @@ test('inspector reserves the Now Playing footer height by default (footer-overla
  *   expect(tokens).toContain('fixed');
  *   expect(tokens).not.toContain('relative');
  ***/
+/***
+ * MARK: desktop overlay positioning tests
+ * @description On desktop (>= md) the inspector is an out-of-flow overlay
+ *   anchored to the right edge of the orchestrator row (`md:absolute
+ *   md:right-0 md:top-0`), so the board keeps its full width instead of
+ *   shrinking beside an in-flow flex sibling. `md:relative`, `md:inset-auto`
+ *   and `md:shrink-0` would put the panel back in flow and reintroduce the
+ *   toolbar squish — none of them may return.
+ * @example
+ *   expect(tokens).toContain('md:absolute');
+ *   expect(tokens).not.toContain('md:relative');
+ ***/
 test('inspector keeps fixed overlay positioning on mobile (no stray relative class)', () => {
   renderWithKainBain(<TaskDetailOverlay task={task} onClose={() => {}} />, { stages });
 
@@ -1181,7 +1193,35 @@ test('inspector keeps fixed overlay positioning on mobile (no stray relative cla
   const tokens = aside.className.split(/\s+/);
   expect(tokens).toContain('fixed');
   expect(tokens).not.toContain('relative');
-  expect(tokens).toContain('md:relative');
+  // Desktop overlay: out of flow, right-anchored, top-anchored, with the
+  // mobile inset-0 left/bottom offsets explicitly released.
+  expect(tokens).toContain('md:absolute');
+  expect(tokens).toContain('md:right-0');
+  expect(tokens).toContain('md:top-0');
+  expect(tokens).toContain('md:left-auto');
+  expect(tokens).toContain('md:bottom-auto');
+  expect(tokens).not.toContain('md:relative');
+  expect(tokens).not.toContain('md:inset-auto');
+  expect(tokens).not.toContain('md:shrink-0');
+  // Stacking already favors the overlay: the panel paints above the
+  // toolbar (z-20) with no z-index change.
+  expect(tokens).toContain('md:z-50');
+});
+
+test('inspector overlay keeps the canvas column full-width when a task is open', async () => {
+  const { unmount } = renderWithKainBain(<TaskDetailOverlay task={task} onClose={() => {}} />, {
+    stages,
+  });
+
+  const aside = screen.getByRole('complementary', { name: 'Task Inspector' });
+  const tokens = aside.className.split(/\s+/);
+  // Out-of-flow overlay tokens prove the panel cannot steal flex space from
+  // the canvas column: absolute positioning removes it from flex layout, so
+  // the toolbar keeps its full width instead of wrapping.
+  expect(tokens).toContain('md:absolute');
+  expect(tokens).not.toContain('md:relative');
+  expect(tokens).not.toContain('md:shrink-0');
+  unmount();
 });
 
 test('inspector fills the full height when the Now Playing footer is hidden', () => {
