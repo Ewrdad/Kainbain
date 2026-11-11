@@ -393,7 +393,17 @@ export const CONFIG_SCHEMA = [
 		default: 0,
 		min: 0,
 		group: "tasks",
-		doc: "Optional starvation guard (WP-3.3), OFF by default (0): dispatch order is highest stage index first (closest to completion), then oldest entered-stage first — the same order as the embedded scheduler. Set KAINBAIN_DISPATCH_MAX_WAIT_MS to a positive millisecond wait to opt in: candidates waiting past it jump ahead oldest-first, bounding worst-case wait under perpetual late-stage influx.",
+		doc: "Starvation ceiling for the central queue, in ms. Candidates waiting past it jump ahead oldest-first, bounding worst-case wait under perpetual late-stage influx. Default 0 means: in the default oldest-first order the built-in 15-minute ceiling applies (the FIFO order itself already bounds the wait), and in legacy furthest-along mode the guard is off — set a positive value to enable it there too. Both dispatch paths (embedded scheduler and runner fleet) share this ceiling.",
+	},
+	{
+		key: "centralQueueOrder",
+		env: "KAINBAIN_CENTRAL_QUEUE_ORDER",
+		aliases: [],
+		type: "enum",
+		values: ["oldest-first", "furthest-along"],
+		default: "oldest-first",
+		group: "tasks",
+		doc: "Central-queue dispatch order across ALL projects/pipelines, shared by the embedded scheduler, the runner fleet scan, and the queue display (task 16d6fbd6). oldest-first (default): the oldest waiting task runs next wherever it lives; furthest-along as a percentage of its own pipeline is only a tiebreak, and a wait ceiling (KAINBAIN_DISPATCH_MAX_WAIT_MS or the built-in 15 min) gates the follow-on pre-emption. furthest-along: legacy order — highest absolute stage index first, then oldest (config-only rollback).",
 	},
 	{
 		key: "claimTtlMs",

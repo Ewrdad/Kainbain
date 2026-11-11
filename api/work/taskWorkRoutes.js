@@ -222,7 +222,12 @@ export async function registerTaskWorkRoutes(app, deps) {
 				},
 			},
 			async (request, reply) => {
-				const id = resolveAndGuardProject(request.query?.projectId, reply);
+				// No projectId means the CENTRAL queue: waiting work across ALL
+				// projects in dispatch order, never just the UI-focused project
+				// (task 16d6fbd6). An explicit projectId keeps the per-project view.
+				const requested = request.query?.projectId;
+				if (!requested) return taskStore.getScheduledQueue();
+				const id = resolveAndGuardProject(requested, reply);
 				if (!id) return;
 				return taskStore.getScheduledQueue(id);
 			},

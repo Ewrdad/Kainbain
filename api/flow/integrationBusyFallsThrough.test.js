@@ -58,7 +58,11 @@ const makeTasks = () => [
 		branch: "kb/tm",
 		status: "in_stage",
 		currentStageId: "merge-1",
-		enteredStageAt: "2026-11-04T08:00:00.000Z",
+		// Oldest waiting candidate: under the default oldest-first central
+		// queue (task 16d6fbd6) the merge task is picked before the agent
+		// task regardless of stage index, so these merge-slot tests keep
+		// their intent.
+		enteredStageAt: "2026-11-04T07:00:00.000Z",
 		stages,
 		reports: [],
 	},
@@ -66,7 +70,7 @@ const makeTasks = () => [
 		id: "ta",
 		status: "in_stage",
 		currentStageId: "agent-1",
-		enteredStageAt: "2026-11-04T07:00:00.000Z",
+		enteredStageAt: "2026-11-04T08:00:00.000Z",
 		stages,
 		reports: [],
 	},
