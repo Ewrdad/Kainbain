@@ -192,7 +192,7 @@ component_paths() {
   case "$1" in
     backend) echo "api shared Dockerfile docker-entrypoint.sh" ;;
     frontend) echo "frontend shared" ;;
-    runner) echo "runner shared api startRunner.sh scripts/package-runner.sh" ;;
+    runner) echo "runner shared api startRunner.sh scripts/package-runner.sh scripts/package-runner.mjs scripts/generate-runner-manifest.mjs scripts/migrate-runner-to-wrapper.sh scripts/install-local-runner.sh scripts/lib/runner-install-root.sh" ;;
   esac
 }
 for c in $COMPONENTS; do
@@ -251,7 +251,7 @@ gate_for() {
   case "$1" in
     backend) run npm run test:api && run npm run lint:api ;;
     frontend) run npm run test:frontend && run npm run lint:frontend && run npm run build:frontend ;;
-    runner) run node --test runner/daemon.test.js runner/config.test.js runner/project.test.js runner/gitOps.test.js runner/harness.test.js runner/client.test.js ;;
+    runner) run node --test runner/ciBranchWorkdir.test.js runner/daemon.test.js runner/client.test.js runner/impromptu.test.js runner/config.test.js runner/gitOps.test.js runner/harness.test.js runner/logEvents.test.js runner/modelDiscovery.test.js runner/harnessModelDiscovery.test.js runner/project.test.js runner/updates-check.test.js runner/updates-compat.test.js runner/updates-daemon.test.js runner/updates-fixture.test.js runner/updates-manifest.test.js runner/updates-platform.test.js runner/updates-state.test.js runner/updates-verify.test.js runner/updates-wrapper.test.js ;;
   esac
 }
 if [ "$COMPONENTS" = "backend frontend runner" ] && [ "$FAST" != "1" ]; then
@@ -307,6 +307,11 @@ if [ "$DRY_RUN" = "1" ]; then
         echo "would run: docker tag kainbain-$c:$TAG docker.io/$KAINBAIN_DOCKERHUB_NAMESPACE/kainbain-$c:latest"
         echo "would run: docker push docker.io/$KAINBAIN_DOCKERHUB_NAMESPACE/kainbain-$c:latest"
         ;;
+      runner)
+        RUNNER_V="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("runner/version.json","utf8")).runnerVersion)' 2>/dev/null || echo unknown)"
+        echo "would run: git tag -a runner-v${RUNNER_V#v} -m <release notes> $FULLSHA"
+        echo "would run: git push origin runner-v${RUNNER_V#v}"
+        ;;
     esac
   done
   log "dry-run: nothing built, pushed, or written"
@@ -327,6 +332,33 @@ digest_of_image() {
 }
 PUBLISHED=""
 DIGEST_backend=""; DIGEST_frontend=""
+# release_runner_tag cuts the runner release: an annotated runner-v* tag on
+# the published commit, pushed to origin, which triggers runner-release.yml
+# (build + sign + GitHub release). The tag is the version source of truth;
+# cutting a release is bumping runner/version.json's runnerVersion, merging,
+# and publishing the runner. Idempotent: an existing tag (local or remote)
+# skips with a message instead of failing, so re-publishing an unchanged
+# runner is a no-op success.
+release_runner_tag() {
+  local ver tag
+  ver="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("runner/version.json","utf8")).runnerVersion)')"; ver="${ver#v}"
+  if ! [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    echo "publish.sh: runner/version.json runnerVersion '$ver' is not semver — bump it to cut a release" >&2
+    return 1
+  fi
+  tag="runner-v$ver"
+  if git rev-parse "$tag" >/dev/null 2>&1; then
+    log "runner release $tag already exists locally — skipping tag (fleet updates from the existing release)"
+    return 0
+  fi
+  if git ls-remote --tags origin "$tag" 2>/dev/null | grep -q .; then
+    log "runner release $tag already exists on origin — skipping tag (fleet updates from the existing release)"
+    return 0
+  fi
+  git tag -a "$tag" -m "Runner $tag" "$FULLSHA" || return 1
+  git push origin "$tag" || return 1
+  log "tagged + pushed $tag — runner-release.yml builds the signed release from it"
+}
 for c in $COMPONENTS; do
   case "$c" in
     backend|frontend)
@@ -342,7 +374,10 @@ for c in $COMPONENTS; do
       case "$c" in backend) DIGEST_backend="$D" ;; frontend) DIGEST_frontend="$D" ;; esac
       PUBLISHED="$PUBLISHED $c"
       ;;
-    runner) PUBLISHED="$PUBLISHED runner" ;;
+    runner)
+      release_runner_tag || exit 1
+      PUBLISHED="$PUBLISHED runner"
+      ;;
   esac
 done
 

@@ -131,8 +131,12 @@ resolve_harness_selection() {
 restart_units() { for u in "$HOME"/.config/systemd/user/kainbain-runner-*.service; do [ -e "$u" ] || continue; systemctl --user restart "$(basename "$u")" 2>/dev/null && echo "Restarted $(basename "$u")" || echo "WARN: restart failed: $u"; done; }
 if [ "$MODE" = "restart" ]; then restart_units; exit 0; fi
 if [ "$MODE" = "ensure" ]; then
-  # Point every existing runner unit at this install's runner files, then restart.
+  # Point every DIRECT runner unit at this install's runner files, then
+  # restart all units. Wrapper units are skipped (their WorkingDirectory is
+  # the versioned install root, which a deploy must never rewrite — wrapper
+  # runners advance through releases, not through deploy copies).
   for u in "$HOME"/.config/systemd/user/kainbain-runner-*.service; do [ -e "$u" ] || continue
+    if grep -q 'kainbain-runner' "$u"; then echo "ensure: $(basename "$u") is on the wrapper (left alone)"; continue; fi
     sed -i "s|^WorkingDirectory=.*|WorkingDirectory=$PWD/runner/runner|" "$u"; done
   systemctl --user daemon-reload 2>/dev/null || true; restart_units; exit 0
 fi
@@ -140,6 +144,7 @@ fi
 resolve_harness_selection
 SHORT="${ID#local-}"; ENV_FILE="$HOME/.kainbain/runner-${SHORT}.env"; [ "$SHORT" = "$ID" ] && ENV_FILE="$HOME/.kainbain/runner-${ID}.env"
 UNIT="$HOME/.config/systemd/user/kainbain-runner-${SHORT}.service"; [ "$SHORT" = "$ID" ] && UNIT="$HOME/.config/systemd/user/kainbain-runner-${ID}.service"
+INSTALL_ROOT="${KAINBAIN_RUNNER_INSTALL_ROOT:-$HOME/.kainbain/runner-install}"
 mkdir -p "$HOME/.kainbain" "$HOME/.config/systemd/user"
 if [ ! -f "$ENV_FILE" ]; then
   JOIN=""; [ -f "$HOME/.kainbain/runner-join.token" ] && JOIN="$(cat "$HOME/.kainbain/runner-join.token")"
@@ -147,23 +152,33 @@ if [ ! -f "$ENV_FILE" ]; then
     echo "KAINBAIN_RUNNER_BACKEND=$BACKEND"; echo "KAINBAIN_RUNNER_JOIN_TOKEN=$JOIN"
     echo "KAINBAIN_RUNNER_ID=$ID"; echo "KAINBAIN_RUNNER_HARNESS=$HARNESS"; echo "KAINBAIN_RUNNER_HARNESSES=$HARNESSES"
     echo "KAINBAIN_RUNNER_DISPATCH=1"; echo "KAINBAIN_RUNNER_DISPATCH_IDLE_LIMIT=0"
-    echo "KAINBAIN_RUNNER_WORK_ROOT=$HOME/.kainbain/runner-work"; } > "$ENV_FILE"; chmod 600 "$ENV_FILE"
+    echo "KAINBAIN_RUNNER_WORK_ROOT=$HOME/.kainbain/runner-work"
+    echo "KAINBAIN_RUNNER_INSTALL_ROOT=$INSTALL_ROOT"; } > "$ENV_FILE"; chmod 600 "$ENV_FILE"
   echo "Wrote $ENV_FILE (harnesses $HARNESSES) — approve in Settings > Harness > Runners; the Runner collects its own credential (paste KAINBAIN_RUNNER_CREDENTIAL only if it asks for it)."
 fi
-cat > "$UNIT" <<EOF
+if [ -f "$UNIT" ] && grep -q 'kainbain-runner' "$UNIT"; then
+  echo "Unit $(basename "$UNIT") is already on the wrapper (left alone)."
+else
+  # New (or direct-entrypoint) units boot through the self-update wrapper:
+  # lay the versioned tree down FIRST so a bad tree aborts the install.
+  . "$PWD/scripts/lib/runner-install-root.sh"
+  LAID_VERSION="$(lay_down_runner_install_root "$PWD/runner" "$INSTALL_ROOT")" || exit 1
+  echo "Laid down $INSTALL_ROOT/releases/$LAID_VERSION/unpacked (+ wrapper shim)"
+  cat > "$UNIT" <<EOF
 [Unit]
 Description=KainBain Runner $ID
 After=network-online.target
 Wants=network-online.target
 [Service]
 Type=simple
-WorkingDirectory=$PWD/runner/runner
+WorkingDirectory=$INSTALL_ROOT
 EnvironmentFile=$ENV_FILE
-ExecStart=$NODE_BIN main.js
+ExecStart=$INSTALL_ROOT/bin/kainbain-runner
 Restart=always
 RestartSec=5
 [Install]
 WantedBy=default.target
 EOF
+fi
 systemctl --user daemon-reload; systemctl --user enable --now "$(basename "$UNIT")"
 echo "Runner $ID running via $(basename "$UNIT") (backend $BACKEND, harnesses $HARNESSES)"

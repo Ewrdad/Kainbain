@@ -47,6 +47,7 @@ source of truth. This file intentionally lists only high-impact changes.
 - Bottom (now-playing) bar on mobile is horizontally scrollable, so all runners are reachable instead of only the first (task a654a254).
 - Pipeline releases published from the deploy tip worktree are synced back to the primary `dist/` and verified there; a stranded release now fails Publish loudly, and the Update stage verifies the installed commit against the last-publish pointer instead of reporting "already current" (task a654a254).
 - Bottom (now-playing) bar stays live with no page refresh: runner boxes follow stage/task changes within one 5s fleet poll (all fleet surfaces share a single poller), and the queue chip refreshes within about a second of task activity with a 15s safety poll; background tabs pause polling and catch up on return (task ed00c209).
+- Remote runners now self-update reliably: version selection is compatibility-gated (newest release whose manifest `requires.backendApi` admits the backend, never past it), the backend advertises its update directive and auto-nudges outdated command-capable runners daily, releases are cut by the publish pipeline instead of manual tags, and systemd installs boot through the self-update wrapper (with a migration script plus a read-only `doctor` for triage); see `docs/runner-update-runbook.md` (task 82e49a05).
 
 ## [1.0.0] - 2026-10-23
 

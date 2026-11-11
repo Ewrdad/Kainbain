@@ -268,15 +268,23 @@ KAINBAIN_RUNNER_INSTALL_ROOT=$HOME/.kainbain/runner-install \
 
 On idle (no active task) the dispatch loop checks the release pointer on a
 jittered hourly interval, verifies the manifest signature against the
-pinned key in `runner/updates/verify.js`, verifies the asset sha256,
-atomically flips `current` to the new tree (keeping `previous` for
-rollback), and exits 0 so the wrapper restarts it. Direct
+pinned key in `runner/updates/verify.js`, and installs the newest release
+that is strictly newer, not a pre-release, and compatible with the backend
+it talks to (each manifest's `requires.backendApi` range must admit the
+backend API version learned from heartbeats; unknown backend versions
+stay ungated). It verifies the asset sha256, atomically flips `current`
+to the new tree (keeping `previous` for rollback), and exits 0 so the
+wrapper restarts it. When latest verifies but is incompatible, the GitHub
+path walks one bounded releases-list page (30 entries, newest-first) for
+the newest older release that qualifies. Direct
 `node runner/main.js` is dev-only: it stages updates but cannot restart
 itself. New knobs:
 
 - `KAINBAIN_RUNNER_UPDATE_URL` — release pointer override for air-gapped
-  mirrors (a base serving `manifest.json` + `.minisig` + assets, or a full
-  `manifest.json` URL). Default is the GitHub `releases/latest` API.
+  mirrors (a base serving `manifest.json` + `.minisig` + assets plus an
+  optional `releases.json` index for multi-release selection, or a full
+  `manifest.json` URL as an explicit single-candidate pin). Default is
+  the GitHub `releases/latest` API.
 - `KAINBAIN_RUNNER_AUTO_UPDATE=0` — opt out of self-update checks.
 - `KAINBAIN_RUNNER_UPDATE_CHECK_INTERVAL_MS` — poll base in ms (default
   3600000, min 300000; ±20% jitter).
@@ -292,7 +300,9 @@ Settings › Runners via the next heartbeat. Any apply failure (network cut
 mid-download, busy updater, missing `tar`) is contained the same way: the
 loop backs off and keeps serving the old version, never crashing. Hung
 mirrors time out (30s pointer/manifest, 5 min assets). Windows hosts are
-not supported in v1 (linux/darwin × x64/arm64).
+not supported in v1 (linux/darwin × x64/arm64). Operator procedures
+(release cutting, rollback, wrapper migration, "says out of date"
+triage) live in `docs/runner-update-runbook.md`.
 
 ## On-request commands (ADR 0013)
 
