@@ -53,6 +53,31 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Only tasks doing work right now – a step is actively running"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Columns with unfinished tasks only – hide columns holding just finished tasks"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Narrow it down – everything typed must match at the same time"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Just an empty board with no message"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```

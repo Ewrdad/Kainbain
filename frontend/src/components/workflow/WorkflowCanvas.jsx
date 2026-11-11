@@ -459,43 +459,43 @@ export function WorkflowCanvas() {
           switching, and stage creation are all meaningless without a
           project, so the toolbar hides until one exists. */}
       {!showOnboardingEmpty && (
-      <CanvasToolbar
-        projectWorkflows={projectWorkflows}
-        activeWorkflow={activeWorkflow}
-        activeWorkflowId={activeWorkflowId}
-        workflowSwitching={workflowSwitching}
-        activeProjectId={activeProjectId}
-        switchWorkflow={switchWorkflow}
-        setView={setView}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        showCompleted={showCompleted}
-        setShowCompleted={setShowCompleted}
-        stages={stages}
-        filteredTasks={filteredTasks}
-        tasks={tasks}
-        tasksLoading={tasksLoading}
-        tasksError={tasksError}
-        retryTasks={retryTasks}
-        effectiveMobileStageId={effectiveMobileStageId}
-        setSelectedMobileStageId={setSelectedMobileStageId}
-        addStageAndSave={addStageAndSave}
-        onImportWorkflow={(payload) => createWorkflow?.(activeProjectId, payload)}
-        notifySuccess={notifySuccess}
-        notifyError={notifyError}
-        taskSort={uiPreferences?.taskSort === 'oldest' ? 'oldest' : 'manual'}
-        onTaskSortChange={(next) => updateUiPreference?.('taskSort', next)}
-        stageTagOptions={stageTagOptions}
-        stageTagFilterMode={stageTagFilterMode}
-        setStageTagFilterMode={setStageTagFilterMode}
-        visibleStages={visibleStages}
-        hiddenStageCount={hiddenStageCount}
-        onClearStageVisibilityFilters={clearStageVisibilityFilters}
-        hasActiveTagFilter={hasActiveTagFilter}
-        hasActiveColumnFilters={hasActiveColumnFilters}
-        isToolbarCollapsed={isToolbarCollapsed}
-        onExpandToolbar={expandToolbar}
-      />
+        <CanvasToolbar
+          projectWorkflows={projectWorkflows}
+          activeWorkflow={activeWorkflow}
+          activeWorkflowId={activeWorkflowId}
+          workflowSwitching={workflowSwitching}
+          activeProjectId={activeProjectId}
+          switchWorkflow={switchWorkflow}
+          setView={setView}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          showCompleted={showCompleted}
+          setShowCompleted={setShowCompleted}
+          stages={stages}
+          filteredTasks={filteredTasks}
+          tasks={tasks}
+          tasksLoading={tasksLoading}
+          tasksError={tasksError}
+          retryTasks={retryTasks}
+          effectiveMobileStageId={effectiveMobileStageId}
+          setSelectedMobileStageId={setSelectedMobileStageId}
+          addStageAndSave={addStageAndSave}
+          onImportWorkflow={(payload) => createWorkflow?.(activeProjectId, payload)}
+          notifySuccess={notifySuccess}
+          notifyError={notifyError}
+          taskSort={uiPreferences?.taskSort === 'oldest' ? 'oldest' : 'manual'}
+          onTaskSortChange={(next) => updateUiPreference?.('taskSort', next)}
+          stageTagOptions={stageTagOptions}
+          stageTagFilterMode={stageTagFilterMode}
+          setStageTagFilterMode={setStageTagFilterMode}
+          visibleStages={visibleStages}
+          hiddenStageCount={hiddenStageCount}
+          onClearStageVisibilityFilters={clearStageVisibilityFilters}
+          hasActiveTagFilter={hasActiveTagFilter}
+          hasActiveColumnFilters={hasActiveColumnFilters}
+          isToolbarCollapsed={isToolbarCollapsed}
+          onExpandToolbar={expandToolbar}
+        />
       )}
 
       {/* Horizontal Pipeline Board: scrollable region is keyboard-focusable so
