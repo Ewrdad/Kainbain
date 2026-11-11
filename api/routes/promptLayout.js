@@ -45,7 +45,10 @@ export default async function promptLayoutRoutes(app, { deps } = {}) {
 		new PromptCurationEngine({ promptLayoutDir: dir });
 	// PoC enforcement surface (q11): layout writes need the admin role while
 	// access control is on; without an auth service the routes stay open.
-	const adminOnly = deps?.authService?.guards?.requireRole(["admin"]);
+	// API keys never touch settings in v1 (task-surface only).
+	const adminOnly = deps?.authService?.guards?.requireRole(["admin"], {
+		allowApiKeys: false,
+	});
 	const guard = adminOnly ? { preHandler: adminOnly } : {};
 
 	app.get("/settings/prompt-layout", async () => {

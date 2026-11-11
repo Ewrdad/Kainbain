@@ -21,6 +21,7 @@ source of truth. This file intentionally lists only high-impact changes.
 
 ### Added
 
+- API key system for agents and external services (off by default, separate `KAINBAIN_API_KEYS_ENABLED` switch): admin-managed keys with catalogue roles plus narrowing scopes, secret shown once and stored hashed, task mutations gated per key grant, every key action flagged by key name in task history and the audit log, and a per-key usage view — browser sessions and Runners work unchanged with the switch on or off (task ac988ba8).
 - Docs article `h2` sections collapse and expand via their headers (chevron toggle, keyboard-operable, Expand all / Collapse all above the article), and headers render larger and bolder for scanning (task e3369ccb).
 - Task detail pages and `GET /tasks/:id` now show where a task works (branch, workspace-isolation mode, worktree path) via the additive `workingLocation` field, and a new `Develop Alongside KainBain` site-docs article teaches the pause-edit-resume, separate-branch, and review-gate flows; dirty-tree guard errors now name the blocking paths plus the safe next step for hand edits (task 8dafdce1).
 - Per-stage Runner allow/block list at the bottom of stage settings (`Off` / `Only these runners` / `All except these runners`): dispatch, direct claims, and merge leases refuse ineligible Runners loudly while unrestricted stages behave exactly as before (task a3753643).

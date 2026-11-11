@@ -17,8 +17,12 @@ import {
 	readSessionIdFromHeader,
 	shouldUseSecureCookie,
 } from "./sessionStore.js";
-import { recordAuthAudit } from "./auditLog.js";
-import { KNOWN_ROLES } from "./roles.js";
+import { recordAuthAudit, readAuthAudit } from "./auditLog.js";
+import { KNOWN_ROLES, sanitizeRoles } from "./roles.js";
+import {
+	KNOWN_API_KEY_SCOPES,
+	sanitizeApiKeyScopes,
+} from "./apiKeyScopes.js";
 
 /***
  * MARK: PENDING_AUTH_COOKIE
@@ -32,6 +36,7 @@ const PENDING_AUTH_MAX_AGE_MS = 10 * 60 * 1000;
 
 const SETTINGS_BODY_KEYS = [
 	"authEnabled",
+	"apiKeysEnabled",
 	"authIssuerUrl",
 	"authClientId",
 	"authClientSecret",
@@ -104,7 +109,9 @@ const publicUserShape = (user) => {
 
 const settingsView = (resolved) => ({
 	knownRoles: [...KNOWN_ROLES],
+	knownApiKeyScopes: [...KNOWN_API_KEY_SCOPES],
 	enabled: resolved.enabled,
+	apiKeysEnabled: resolved.apiKeysEnabled === true,
 	issuerUrl: resolved.issuerUrl,
 	clientId: resolved.clientId,
 	hasClientSecret: resolved.clientSecret !== "",
@@ -122,6 +129,29 @@ const settingsView = (resolved) => ({
 	groupRoleMappings: resolved.groupRoleMappings,
 });
 
+// Key creation is modestly rate-limited per client IP so a compromised or
+// curious caller cannot mint keys in a loop. In-memory and per-process:
+// restarts reset the window, which is fine for a blunt anti-enumeration
+// cap rather than a billing control.
+const API_KEY_CREATE_WINDOW_MS = 60 * 1000;
+const API_KEY_CREATE_MAX_PER_WINDOW = 20;
+const apiKeyCreateHits = new Map();
+
+const apiKeyCreateAllowed = (ip) => {
+	const key = typeof ip === "string" && ip !== "" ? ip : "unknown";
+	const now = Date.now();
+	const recent = (apiKeyCreateHits.get(key) || []).filter(
+		(stamp) => now - stamp < API_KEY_CREATE_WINDOW_MS,
+	);
+	if (recent.length >= API_KEY_CREATE_MAX_PER_WINDOW) {
+		apiKeyCreateHits.set(key, recent);
+		return false;
+	}
+	recent.push(now);
+	apiKeyCreateHits.set(key, recent);
+	return true;
+};
+
 /***
  * MARK: buildAuthRoutes
  * @description Registers every `/auth/*` endpoint on a Fastify app:
@@ -134,13 +164,22 @@ const settingsView = (resolved) => ({
  * @returns {Function} Fastify plugin registering the auth routes.
  ***/
 export const buildAuthRoutes = ({ authService } = {}) => {
-	const { authConfig, userStore, sessionStore, guards } = authService;
+	const { authConfig, userStore, sessionStore, apiKeyStore, guards } =
+		authService;
 	const getConfig = () => authConfig.get();
+	// User, settings, and key administration is human-only in v1: API keys
+	// never manage users or other keys, even admin-role ones.
 	const managerOnly = async (request, reply) => {
-		await guards.requireRole(getConfig().roleManagerRoles)(request, reply);
+		await guards.requireRole(getConfig().roleManagerRoles, {
+			allowApiKeys: false,
+		})(request, reply);
 	};
-	const actorOf = (request) =>
-		request.user?.id || request.auth?.userId || "anonymous";
+	const actorOf = (request) => {
+		if (request.auth?.kind === "api-key" && request.auth?.keyName) {
+			return `api-key:${request.auth.keyName}`;
+		}
+		return request.user?.id || request.auth?.userId || "anonymous";
+	};
 
 	return async (app) => {
 		app.get("/auth/login", async (request, reply) => {
@@ -359,9 +398,24 @@ export const buildAuthRoutes = ({ authService } = {}) => {
 
 		app.get("/auth/me", async (request) => {
 			const resolved = getConfig();
+			if (request.auth?.kind === "api-key") {
+				return {
+					authEnabled: resolved.enabled === true,
+					apiKeysEnabled: true,
+					user: {
+						id: `api-key:${request.auth.keyId}`,
+						name: `api-key:${request.auth.keyName}`,
+						roles: request.auth.roles || [],
+						apiKey: true,
+					},
+					roles: request.auth.roles || [],
+					scopes: request.auth.scopes || [],
+				};
+			}
 			if (resolved.enabled !== true) {
 				return {
 					authEnabled: false,
+					apiKeysEnabled: resolved.apiKeysEnabled === true,
 					user: {
 						id: "admin",
 						name: "admin",
@@ -372,10 +426,16 @@ export const buildAuthRoutes = ({ authService } = {}) => {
 				};
 			}
 			if (!request.user) {
-				return { authEnabled: true, user: null, roles: [] };
+				return {
+					authEnabled: true,
+					apiKeysEnabled: resolved.apiKeysEnabled === true,
+					user: null,
+					roles: [],
+				};
 			}
 			return {
 				authEnabled: true,
+				apiKeysEnabled: resolved.apiKeysEnabled === true,
 				user: publicUserShape({
 					...request.user,
 					roles: request.auth?.roles || [],
@@ -512,6 +572,124 @@ export const buildAuthRoutes = ({ authService } = {}) => {
 		);
 
 		app.get(
+			"/auth/api-keys",
+			{ preHandler: managerOnly },
+			async () => ({
+				apiKeysEnabled: getConfig().apiKeysEnabled === true,
+				knownScopes: [...KNOWN_API_KEY_SCOPES],
+				keys: apiKeyStore.listApiKeys(),
+			}),
+		);
+
+		app.post("/auth/api-keys", { preHandler: managerOnly }, async (request, reply) => {
+			if (!apiKeyCreateAllowed(request.ip)) {
+				return reply.code(429).send({
+					error: "Too many keys created — wait a minute and try again",
+					code: "rate_limited",
+				});
+			}
+			const body =
+				request.body && typeof request.body === "object" ? request.body : {};
+			if (typeof body.name !== "string" || body.name.trim() === "") {
+				return reply.code(400).send({
+					error: "Body needs { name, roles?, scopes?, expiresAt? }",
+					code: "invalid_body",
+				});
+			}
+			if (body.roles !== undefined) {
+				if (!Array.isArray(body.roles) || sanitizeRoles(body.roles).length === 0) {
+					return reply.code(400).send({
+						error: `roles must name at least one known role (${KNOWN_ROLES.join(", ")})`,
+						code: "invalid_body",
+					});
+				}
+			}
+			if (body.scopes !== undefined && !Array.isArray(body.scopes)) {
+				return reply.code(400).send({
+					error: "scopes must be an array of scope names",
+					code: "invalid_body",
+				});
+			}
+			let created = null;
+			try {
+				created = apiKeyStore.createApiKey({
+					name: body.name,
+					roles: body.roles,
+					scopes: sanitizeApiKeyScopes(body.scopes),
+					expiresAt: body.expiresAt ?? null,
+					createdBy: actorOf(request),
+				});
+			} catch (error) {
+				if (/already exists/.test(error.message)) {
+					return reply.code(409).send({
+						error: error.message,
+						code: "duplicate_name",
+					});
+				}
+				return reply.code(400).send({
+					error: error.message,
+					code: "invalid_body",
+				});
+			}
+			recordAuthAudit({
+				stateDir: authConfig.stateDir,
+				actor: actorOf(request),
+				action: "apikey.created",
+				detail: {
+					keyId: created.key.id,
+					name: created.key.name,
+					prefix: created.key.prefix,
+					roles: created.key.roles,
+					scopes: created.key.scopes,
+					expiresAt: created.key.expiresAt,
+				},
+			});
+			// The secret is returned exactly once, here. It is never stored
+			// and never appears in listings, logs, or error payloads.
+			return reply.code(201).send({ key: created.key, secret: created.secret });
+		});
+
+		app.get(
+			"/auth/api-keys/:id/usage",
+			{ preHandler: managerOnly },
+			async (request, reply) => {
+				const key = apiKeyStore.findById(request.params.id);
+				if (!key) {
+					return reply.code(404).send({
+						error: "API key not found",
+						code: "api_key_not_found",
+					});
+				}
+				const entries = readAuthAudit({
+					stateDir: authConfig.stateDir,
+					limit: 500,
+				}).filter((entry) => entry?.detail?.keyId === key.id);
+				return { key, usage: entries };
+			},
+		);
+
+		app.delete(
+			"/auth/api-keys/:id",
+			{ preHandler: managerOnly },
+			async (request, reply) => {
+				const revoked = apiKeyStore.revokeApiKey(request.params.id);
+				if (!revoked) {
+					return reply.code(404).send({
+						error: "API key not found",
+						code: "api_key_not_found",
+					});
+				}
+				recordAuthAudit({
+					stateDir: authConfig.stateDir,
+					actor: actorOf(request),
+					action: "apikey.revoked",
+					detail: { keyId: revoked.id, name: revoked.name },
+				});
+				return { key: revoked };
+			},
+		);
+
+		app.get(
 			"/auth/settings",
 			{ preHandler: managerOnly },
 			async () => settingsView(getConfig()),
@@ -529,14 +707,17 @@ export const buildAuthRoutes = ({ authService } = {}) => {
 					// eslint-disable-next-line security/detect-object-injection -- key comes from the SETTINGS_BODY_KEYS allowlist above
 					partial[key] = body[key];
 				}
-				if (
-					Object.hasOwn(partial, "authEnabled") &&
-					typeof partial.authEnabled !== "boolean"
-				) {
-					return reply.code(400).send({
-						error: "authEnabled must be true or false",
-						code: "invalid_body",
-					});
+				for (const key of ["authEnabled", "apiKeysEnabled"]) {
+					if (
+						Object.hasOwn(partial, key) &&
+						// eslint-disable-next-line security/detect-object-injection -- key comes from the fixed pair above
+						typeof partial[key] !== "boolean"
+					) {
+						return reply.code(400).send({
+							error: `${key} must be true or false`,
+							code: "invalid_body",
+						});
+					}
 				}
 				for (const key of ["authSessionTtlMs", "authSessionIdleMs"]) {
 					if (

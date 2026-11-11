@@ -37,8 +37,11 @@ export default async function imageGenRoutes(app, { deps } = {}) {
 	const dir = deps?.imageGenDir || resolveImageGenDir();
 	const fetchImpl = deps?.imageGenFetch;
 	// PoC enforcement surface (q11): provider-key writes need the admin
-	// role while access control is on.
-	const adminOnly = deps?.authService?.guards?.requireRole(["admin"]);
+	// role while access control is on. API keys never touch settings in v1
+	// (task-surface only).
+	const adminOnly = deps?.authService?.guards?.requireRole(["admin"], {
+		allowApiKeys: false,
+	});
 	const guard = adminOnly ? { preHandler: adminOnly } : {};
 
 	app.get("/settings/image-gen/providers", async () => ({

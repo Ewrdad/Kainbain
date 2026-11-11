@@ -232,6 +232,7 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		authCookieName: "kb_session",
 		authRoleManagerRoles: ["admin"],
 		authStatePath: "",
+		apiKeysEnabled: false,
 	};
 
 	it("covers every schema key in the defaults table", () => {

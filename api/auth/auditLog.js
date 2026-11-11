@@ -58,3 +58,41 @@ export const recordAuthAudit = ({ stateDir, action, actor, detail } = {}) => {
 		return false;
 	}
 };
+
+/***
+ * MARK: readAuthAudit
+ * @description Reads the audit log back (newest first) for the per-key usage
+ *   view. Corrupt lines are skipped, a missing log reads as empty — reading
+ *   never throws.
+ * @example readAuthAudit({ stateDir: '/tmp/x' }) => []
+ * @param {Object} [args] - Labelled inputs.
+ * @param {string} [args.stateDir] - Auth state directory.
+ * @param {number} [args.limit] - Most entries to return (default 200).
+ * @returns {Object[]} Audit entries, newest first.
+ ***/
+export const readAuthAudit = ({ stateDir, limit } = {}) => {
+	if (typeof stateDir !== "string" || stateDir === "") return [];
+	const max =
+		Number.isFinite(Number(limit)) && Number(limit) > 0
+			? Math.floor(Number(limit))
+			: 200;
+	let raw = "";
+	try {
+		/* eslint-disable-next-line security/detect-non-literal-fs-filename -- path built by auditFilePath from the resolved state dir */
+		raw = fs.readFileSync(auditFilePath(stateDir), "utf8");
+	} catch {
+		return [];
+	}
+	const entries = [];
+	for (const line of raw.split("\n")) {
+		const trimmed = line.trim();
+		if (trimmed === "") continue;
+		try {
+			const parsed = JSON.parse(trimmed);
+			if (parsed && typeof parsed === "object") entries.push(parsed);
+		} catch {
+			// skip corrupt lines
+		}
+	}
+	return entries.reverse().slice(0, max);
+};
