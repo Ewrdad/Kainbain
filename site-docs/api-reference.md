@@ -432,5 +432,9 @@ role). Full operator guide: Authentication & Access Control
 | PUT | `/auth/group-mappings` | Replace the mappings (`{ mappings: { group: [role] } }`). |
 | GET | `/auth/settings` | Load the effective access settings view (secret returned only as `hasClientSecret`). |
 | PUT | `/auth/settings` | Persist one access-settings change (applies without a restart). |
+| GET | `/auth/api-keys` | List API-key metadata (never secrets; role managers, human sessions only). |
+| POST | `/auth/api-keys` | Create an API key (`{ name, roles?, scopes?, expiresAt? }`; secret returned once). |
+| GET | `/auth/api-keys/:id/usage` | One key's metadata plus its recent audit-log usage. |
+| DELETE | `/auth/api-keys/:id` | Revoke an API key immediately. |
 
 

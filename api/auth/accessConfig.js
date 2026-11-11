@@ -32,6 +32,7 @@ export const ACCESS_OVERRIDES_FILENAME = "access.json";
  ***/
 export const RUNTIME_OVERRIDE_KEYS = [
 	"authEnabled",
+	"apiKeysEnabled",
 	"authIssuerUrl",
 	"authClientId",
 	"authClientSecret",
@@ -144,7 +145,7 @@ export const toPositiveInt = (value, fallback) => {
  * @param {Object} args - Labelled inputs.
  * @param {Object} [args.schemaConfig] - Validated schema config object.
  * @param {string} [args.stateDir] - Auth state directory.
- * @returns {Object} Effective auth config (enabled, issuerUrl, ..., groupRoleMappings, roleManagerRoles).
+ * @returns {Object} Effective auth config (enabled, apiKeysEnabled, issuerUrl, ..., groupRoleMappings, roleManagerRoles).
  ***/
 export const resolveAuthConfig = ({ schemaConfig = {}, stateDir } = {}) => {
 	const overrides = readAccessOverrides(stateDir);
@@ -169,6 +170,7 @@ export const resolveAuthConfig = ({ schemaConfig = {}, stateDir } = {}) => {
 	return {
 		publicKbUrl,
 		enabled: pick("authEnabled") === true,
+		apiKeysEnabled: pick("apiKeysEnabled") === true,
 		issuerUrl:
 			typeof pick("authIssuerUrl") === "string" ? pick("authIssuerUrl") : "",
 		clientId:

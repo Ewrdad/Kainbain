@@ -11,6 +11,7 @@ import { PushNotificationsSection } from './PushNotificationsSection';
 import { PromptLayoutSection } from './PromptLayoutSection';
 import { AccessControlSection } from './AccessControlSection';
 import { AccessUserList } from './AccessUserList';
+import { ApiKeysSection } from './ApiKeysSection';
 import { UiPreferencesPanel } from './UiPreferencesPanel';
 import { MODEL_REFRESH_CONFIG_KEY } from './modelRefreshFlag';
 import { SETTINGS_TABS, isFooterResetVisible } from './settingsTabs';
@@ -319,6 +320,7 @@ export function SystemSettingsContent({
           <div role="tabpanel" aria-label="Access control settings">
             <AccessControlSection />
             <AccessUserList />
+            <ApiKeysSection />
           </div>
         )}
 

@@ -16,3 +16,7 @@ export { getGroupMappings } from './getGroupMappings.js';
 export { setGroupMappings } from './setGroupMappings.js';
 export { getAuthSettings } from './getAuthSettings.js';
 export { saveAuthSettings } from './saveAuthSettings.js';
+export { listApiKeys } from './listApiKeys.js';
+export { createApiKey } from './createApiKey.js';
+export { revokeApiKey } from './revokeApiKey.js';
+export { getApiKeyUsage } from './getApiKeyUsage.js';

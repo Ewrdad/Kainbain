@@ -408,6 +408,257 @@ describe("admin APIs", () => {
 	});
 });
 
+describe("API key management", () => {
+	const signInAs = async (service, { sub, roles }) => {
+		service.userStore.provisionFromSignIn({ sub, groups: [] });
+		if (roles?.length) service.userStore.setDirectRoles(sub, roles);
+		const { sessionId } = service.sessionStore.createSession({ userId: sub });
+		return `kb_session=${sessionId}`;
+	};
+
+	it("creates keys with a once-only secret, lists metadata, and revokes", async () => {
+		const built = await buildApp({ apiKeysEnabled: true });
+		app = built.app;
+		const admin = await signInAs(built.service, { sub: "root", roles: ["admin"] });
+
+		const created = await app.inject({
+			method: "POST",
+			url: "/auth/api-keys",
+			headers: { cookie: admin },
+			payload: {
+				name: "scanner",
+				roles: ["member"],
+				scopes: ["tasks:create"],
+				expiresAt: "2030-01-01T00:00:00.000Z",
+			},
+		});
+		expect(created.statusCode).toBe(201);
+		const body = JSON.parse(created.payload);
+		expect(body.secret.startsWith("kb_")).toBe(true);
+		expect(body.key).toMatchObject({
+			name: "scanner",
+			roles: ["member"],
+			scopes: ["tasks:create"],
+			revoked: false,
+		});
+
+		const listed = await app.inject({
+			method: "GET",
+			url: "/auth/api-keys",
+			headers: { cookie: admin },
+		});
+		const listBody = JSON.parse(listed.payload);
+		expect(listBody.apiKeysEnabled).toBe(true);
+		expect(listBody.knownScopes).toContain("tasks:create");
+		expect(listBody.keys).toHaveLength(1);
+		expect(listed.payload).not.toContain(body.secret);
+		expect(listBody.keys[0].hash).toBeUndefined();
+
+		const usage = await app.inject({
+			method: "GET",
+			url: `/auth/api-keys/${body.key.id}/usage`,
+			headers: { cookie: admin },
+		});
+		expect(usage.statusCode).toBe(200);
+		expect(JSON.parse(usage.payload).key.name).toBe("scanner");
+
+		const missing = await app.inject({
+			method: "GET",
+			url: "/auth/api-keys/nope/usage",
+			headers: { cookie: admin },
+		});
+		expect(missing.statusCode).toBe(404);
+
+		const revoked = await app.inject({
+			method: "DELETE",
+			url: `/auth/api-keys/${body.key.id}`,
+			headers: { cookie: admin },
+		});
+		expect(revoked.statusCode).toBe(200);
+		expect(JSON.parse(revoked.payload).key.revoked).toBe(true);
+		expect(built.service.apiKeyStore.verifyApiKey(body.secret).ok).toBe(false);
+
+		const revokedMissing = await app.inject({
+			method: "DELETE",
+			url: "/auth/api-keys/nope",
+			headers: { cookie: admin },
+		});
+		expect(revokedMissing.statusCode).toBe(404);
+	});
+
+	it("validates key bodies and rejects duplicate names", async () => {
+		const built = await buildApp({ apiKeysEnabled: true });
+		app = built.app;
+		const admin = await signInAs(built.service, { sub: "root", roles: ["admin"] });
+		const create = (payload) =>
+			app.inject({
+				method: "POST",
+				url: "/auth/api-keys",
+				headers: { cookie: admin },
+				payload,
+			});
+
+		expect((await create({})).statusCode).toBe(400);
+		expect((await create({ name: "  " })).statusCode).toBe(400);
+		expect((await create({ name: "a", roles: ["nope"] })).statusCode).toBe(400);
+		expect((await create({ name: "a", roles: "member" })).statusCode).toBe(400);
+		expect((await create({ name: "a", scopes: "tasks:create" })).statusCode).toBe(
+			400,
+		);
+		expect(
+			(await create({ name: "a", expiresAt: "whenever" })).statusCode,
+		).toBe(400);
+
+		const first = await create({ name: "dup", roles: ["member"] });
+		expect(first.statusCode).toBe(201);
+		const second = await create({ name: "dup", roles: ["member"] });
+		expect(second.statusCode).toBe(409);
+		expect(JSON.parse(second.payload).code).toBe("duplicate_name");
+		// Unknown scopes are dropped, not fatal.
+		const narrowed = await create({
+			name: "narrow",
+			roles: ["member"],
+			scopes: ["tasks:create", "nope"],
+		});
+		expect(JSON.parse(narrowed.payload).key.scopes).toEqual(["tasks:create"]);
+	});
+
+	it("keeps strangers out and non-managers forbidden", async () => {
+		const built = await buildApp({ apiKeysEnabled: true });
+		app = built.app;
+		const admin = await signInAs(built.service, { sub: "root", roles: ["admin"] });
+		const member = await signInAs(built.service, {
+			sub: "pleb",
+			roles: ["member"],
+		});
+
+		const strangerList = await app.inject({ method: "GET", url: "/auth/api-keys" });
+		expect(strangerList.statusCode).toBe(401);
+
+		const memberList = await app.inject({
+			method: "GET",
+			url: "/auth/api-keys",
+			headers: { cookie: member },
+		});
+		expect(memberList.statusCode).toBe(403);
+
+		const memberCreate = await app.inject({
+			method: "POST",
+			url: "/auth/api-keys",
+			headers: { cookie: member },
+			payload: { name: "sneaky" },
+		});
+		expect(memberCreate.statusCode).toBe(403);
+		expect(built.service.apiKeyStore.countApiKeys()).toBe(0);
+
+		// The manager gate still works for admins.
+		const adminList = await app.inject({
+			method: "GET",
+			url: "/auth/api-keys",
+			headers: { cookie: admin },
+		});
+		expect(adminList.statusCode).toBe(200);
+	});
+
+	it("denies keys themselves on every management route", async () => {
+		const built = await buildApp({ apiKeysEnabled: true });
+		app = built.app;
+		const admin = await signInAs(built.service, { sub: "root", roles: ["admin"] });
+		const created = built.service.apiKeyStore.createApiKey({
+			name: "boss-key",
+			roles: ["admin"],
+			createdBy: "root",
+		});
+		const keyHeaders = { authorization: `Bearer ${created.secret}` };
+
+		for (const target of [
+			{ method: "GET", url: "/auth/api-keys" },
+			{ method: "POST", url: "/auth/api-keys", payload: { name: "x" } },
+			{ method: "GET", url: "/auth/users" },
+			{ method: "GET", url: "/auth/settings" },
+			{
+				method: "PUT",
+				url: "/auth/settings",
+				payload: { apiKeysEnabled: false },
+			},
+		]) {
+			const response = await app.inject({ ...target, headers: keyHeaders });
+			expect(`${target.method} ${target.url}: ${response.statusCode}`).toContain(
+				"403",
+			);
+		}
+
+		// ...while the admin session still passes.
+		const adminList = await app.inject({
+			method: "GET",
+			url: "/auth/api-keys",
+			headers: { cookie: admin },
+		});
+		expect(adminList.statusCode).toBe(200);
+	});
+
+	it("reports key identity on /auth/me and toggles keys via settings", async () => {
+		const built = await buildApp({ apiKeysEnabled: true });
+		app = built.app;
+		const admin = await signInAs(built.service, { sub: "root", roles: ["admin"] });
+		const created = built.service.apiKeyStore.createApiKey({
+			name: "scanner",
+			roles: ["member"],
+			scopes: ["tasks:create"],
+		});
+
+		const me = await app.inject({
+			method: "GET",
+			url: "/auth/me",
+			headers: { authorization: `Bearer ${created.secret}` },
+		});
+		expect(JSON.parse(me.payload)).toMatchObject({
+			authEnabled: true,
+			apiKeysEnabled: true,
+			user: { name: "api-key:scanner", apiKey: true },
+			roles: ["member"],
+			scopes: ["tasks:create"],
+		});
+
+		const settings = await app.inject({
+			method: "GET",
+			url: "/auth/settings",
+			headers: { cookie: admin },
+		});
+		expect(JSON.parse(settings.payload)).toMatchObject({
+			apiKeysEnabled: true,
+			knownApiKeyScopes: expect.arrayContaining(["tasks:create"]),
+		});
+
+		const badFlag = await app.inject({
+			method: "PUT",
+			url: "/auth/settings",
+			headers: { cookie: admin },
+			payload: { apiKeysEnabled: "yes" },
+		});
+		expect(badFlag.statusCode).toBe(400);
+
+		const saved = await app.inject({
+			method: "PUT",
+			url: "/auth/settings",
+			headers: { cookie: admin },
+			payload: { apiKeysEnabled: false },
+		});
+		expect(JSON.parse(saved.payload).apiKeysEnabled).toBe(false);
+		// The toggle bites immediately without a restart: key headers are now
+		// ignored, so the key reads as a stranger.
+		const meAfter = await app.inject({
+			method: "GET",
+			url: "/auth/me",
+			headers: { authorization: `Bearer ${created.secret}` },
+		});
+		expect(JSON.parse(meAfter.payload)).toMatchObject({
+			authEnabled: true,
+			user: null,
+		});
+	});
+});
+
 describe("access control OFF", () => {
 	it("reports the builtin admin and leaves login unavailable", async () => {
 		const built = await buildApp({ authEnabled: false });

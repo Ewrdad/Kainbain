@@ -97,6 +97,63 @@ describe("enforcement surface with access control ON", () => {
 		expect(JSON.parse(login.payload).code).toBe("oidc_unconfigured");
 	});
 
+	it("guards task mutations while leaving task reads open", async () => {
+		for (const target of [
+			{ method: "POST", url: "/tasks", payload: { goal: "x" } },
+			{ method: "PATCH", url: "/tasks/nope", payload: { title: "x" } },
+			{ method: "DELETE", url: "/tasks/nope" },
+			{ method: "POST", url: "/tasks/nope/survey", payload: {} },
+		]) {
+			const response = await app.inject(target);
+			expect(`${target.method} ${target.url}: ${response.statusCode}`).toContain(
+				"401",
+			);
+			expect(JSON.parse(response.payload).code).toBe("unauthenticated");
+		}
+
+		const viewer = await sessionCookieFor("viewer-task", ["viewer"]);
+		for (const target of [
+			{ method: "POST", url: "/tasks", payload: { goal: "x" } },
+			{ method: "PATCH", url: "/tasks/nope", payload: { title: "x" } },
+			{ method: "DELETE", url: "/tasks/nope" },
+		]) {
+			const denied = await app.inject({
+				...target,
+				headers: { cookie: viewer },
+			});
+			expect(`${target.method} ${target.url}: ${denied.statusCode}`).toContain(
+				"403",
+			);
+		}
+
+		// Members and admins pass the guard: the handlers answer 400/404 for
+		// the bogus payloads (never 401/403), proving the guard let them in.
+		const member = await sessionCookieFor("member-task", ["member"]);
+		const created = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			headers: { cookie: member },
+			payload: {},
+		});
+		expect(created.statusCode).toBe(400);
+
+		const admin = await sessionCookieFor("admin-task", ["admin"]);
+		const patched = await app.inject({
+			method: "PATCH",
+			url: "/tasks/nope",
+			headers: { cookie: admin },
+			payload: { title: "x" },
+		});
+		expect([400, 404]).toContain(patched.statusCode);
+
+		// Reads stay open so Runner fetches and board polling work in every
+		// mode: anonymous reads never 401.
+		for (const url of ["/tasks", "/tasks/queue", "/tasks/nope"]) {
+			const read = await app.inject({ method: "GET", url });
+			expect(read.statusCode).not.toBe(401);
+		}
+	});
+
 	it("attributes viewer sessions to their user on open routes", async () => {
 		const viewer = await sessionCookieFor("viewer-2", ["viewer"]);
 		const me = await app.inject({

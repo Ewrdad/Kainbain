@@ -2046,6 +2046,15 @@ export const CONFIG_SCHEMA = [
 		group: "auth",
 		doc: "Override directory for auth state files (users, sessions, access overrides, audit log). Empty resolves to ~/.kainbain/engine/auth/.",
 	},
+	{
+		key: "apiKeysEnabled",
+		env: "KAINBAIN_API_KEYS_ENABLED",
+		aliases: [],
+		type: "bool",
+		default: false,
+		group: "auth",
+		doc: "Separate switch for API-key authentication (off by default). On means requests bearing an `Authorization: Bearer kb_…` or `x-api-key` credential are attributed to that key and authorised per its roles/scopes; requests without key credentials still follow the access-control switch above, so turn both on to actually require credentials. Browser sessions and the Runner credential channel are never asked for a key.",
+	},
 ];
 
 /***

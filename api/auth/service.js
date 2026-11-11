@@ -4,6 +4,7 @@
 import { createAccessConfig, resolveAuthStateDir } from "./accessConfig.js";
 import { createUserStore } from "./userStore.js";
 import { createSessionStore, readSessionIdFromHeader } from "./sessionStore.js";
+import { createApiKeyStore } from "./apiKeyStore.js";
 import { createAuthRequestHook } from "./middleware.js";
 import { createAccessGuards } from "./rbac.js";
 
@@ -19,7 +20,7 @@ import { createAccessGuards } from "./rbac.js";
  * @param {Object} [args] - Labelled inputs.
  * @param {Object} [args.schemaConfig] - Validated schema config object.
  * @param {string} [args.stateDir] - Auth state directory (tests win).
- * @returns {{ authConfig: Object, userStore: Object, sessionStore: Object, requestHook: Function, guards: Object, resolveWsUser: Function, stateDir: string }} Wired auth service.
+ * @returns {{ authConfig: Object, userStore: Object, sessionStore: Object, apiKeyStore: Object, requestHook: Function, guards: Object, resolveWsUser: Function, stateDir: string }} Wired auth service.
  ***/
 export const createAuthService = ({ schemaConfig = {}, stateDir } = {}) => {
 	const dir = resolveAuthStateDir({
@@ -29,12 +30,14 @@ export const createAuthService = ({ schemaConfig = {}, stateDir } = {}) => {
 	const getAuthConfig = () => authConfig.get();
 	const userStore = createUserStore({ stateDir: dir });
 	const sessionStore = createSessionStore({ stateDir: dir });
+	const apiKeyStore = createApiKeyStore({ stateDir: dir });
 	const requestHook = createAuthRequestHook({
 		getAuthConfig,
 		userStore,
 		sessionStore,
+		apiKeyStore,
 	});
-	const guards = createAccessGuards({ getAuthConfig });
+	const guards = createAccessGuards({ getAuthConfig, authStateDir: dir });
 	const resolveWsUser = (request = {}) => {
 		const resolved = getAuthConfig();
 		if (!resolved || resolved.enabled !== true) {
@@ -57,6 +60,7 @@ export const createAuthService = ({ schemaConfig = {}, stateDir } = {}) => {
 		authConfig,
 		userStore,
 		sessionStore,
+		apiKeyStore,
 		requestHook,
 		guards,
 		resolveWsUser,
