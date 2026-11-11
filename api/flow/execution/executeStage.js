@@ -63,6 +63,7 @@ import {
 } from '../../agent/harnessRegistry.js';
 import {
 	stageWantsReport,
+	buildNoCodePromptSection,
 } from '../../promptCuration.js';
 import {
 	parkTaskForSurvey,
@@ -84,7 +85,6 @@ import { displayModelForInit } from './displayModelForInit.js';
 import { routeStageError } from './routeStageError.js';
 import { docsTasksIgnorePath } from '../../docsPath.js';
 import { resolveDocsDirName } from '../../docsPath.js';
-import { buildNoCodePromptSection } from '../../promptCuration.js';
 import { buildRetryFailureDetails } from './buildRetryFailureDetails.js';
 import { resolveCommandStageRuntime } from './resolveCommandStageRuntime.js';
 import { isDispatchServable } from '../dispatch/isDispatchServable.js';

@@ -932,7 +932,7 @@ export class PromptCurationEngine {
 		}
 
 		// 6b. No-Code Enforcement
-		if (stage.noCode) {
+		if (stage?.noCode === true) {
 			sectionMap.noCode = buildNoCodePromptSection(docsDirName);
 		}
 
@@ -1135,7 +1135,6 @@ export function buildNoCodePromptSection(docsDirName) {
 	}
 	return [
 		"# No Code (Docs-Only)",
-		"# No-Code Mode",
 		`This stage is marked no-code (docs-only). You may read and search the entire repository for context,`,
 		`but you must ONLY create or modify files under \`./${dir}/\` (in particular this task's docs folder).`,
 		`Do not edit source code, configuration, tests, or any file outside the documentation directory.`,

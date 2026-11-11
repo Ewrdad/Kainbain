@@ -93,6 +93,25 @@ describe("normalizeStage", () => {
 		expect("runnerPolicy" in normalizeStage({ id: "1", type: "agent" })).toBe(false);
 	});
 
+	it("preserves an explicit noCode toggle and coerces truthiness strictly", () => {
+		expect(normalizeStage({ id: "1", type: "agent", noCode: true }).noCode).toBe(true);
+		expect(normalizeStage({ id: "1", type: "agent", noCode: false }).noCode).toBe(false);
+		expect("noCode" in normalizeStage({ id: "1", type: "agent", noCode: false })).toBe(true);
+		expect(normalizeStage({ id: "1", type: "agent", noCode: "yes" }).noCode).toBe(false);
+		expect(normalizeStage({ id: "1", type: "agent", noCode: 1 }).noCode).toBe(false);
+		expect(normalizeStage({ id: "1", type: "agent", noCode: null }).noCode).toBe(false);
+	});
+
+	it("keeps legacy stages byte-identical when noCode is absent", () => {
+		expect("noCode" in normalizeStage({ id: "s1", name: "Ship", type: "deploy" })).toBe(false);
+	});
+
+	it("is idempotent under repeated normalization", () => {
+		const once = normalizeStage({ id: "1", type: "agent", noCode: true });
+		const twice = normalizeStage(once);
+		expect(twice).toEqual(once);
+	});
+
 	it("preserves a valid runnerPolicy and cleans its runner list", () => {
 		expect(
 			normalizeStage({ id: "1", type: "ci", runnerPolicy: { mode: " Allow ", runners: ["  r1 ", "r1", "r2"] } }).runnerPolicy,
