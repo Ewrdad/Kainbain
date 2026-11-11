@@ -202,6 +202,13 @@ describe("createFleetModelSnapshotStore", () => {
 		const store = createFleetModelSnapshotStore({ filePath: "" });
 		const snapshot = store.update([fleetRunnerRecord({ runnerId: "box-a" })]);
 		expect(snapshot.models.map((m) => m.id)).toEqual([NEW_MODEL_ID]);
+		// null disables too — an explicit null must never read/write the
+		// configured live engine file.
+		const nullStore = createFleetModelSnapshotStore({ filePath: null });
+		expect(nullStore.update([fleetRunnerRecord({ runnerId: "box-a" })]).models.map((m) => m.id)).toEqual([
+			NEW_MODEL_ID,
+		]);
+		expect(nullStore.read().models).toHaveLength(1);
 	});
 
 	test("evicts oldest-unavailable entries first under the cap", () => {
@@ -231,10 +238,10 @@ describe("normalizeSnapshotState", () => {
 });
 
 describe("resolveFleetSnapshotPath", () => {
-	test("resolves explicit, empty-disables, else configured default", () => {
+	test("resolves explicit, null/empty disable, else configured default", () => {
 		expect(resolveFleetSnapshotPath("/tmp/x.json")).toBe("/tmp/x.json");
 		expect(resolveFleetSnapshotPath("")).toBeNull();
-		expect(resolveFleetSnapshotPath(null)).toMatch(/fleet-catalog\.json$/);
+		expect(resolveFleetSnapshotPath(null)).toBeNull();
 		expect(resolveFleetSnapshotPath(undefined)).toMatch(/fleet-catalog\.json$/);
 	});
 });

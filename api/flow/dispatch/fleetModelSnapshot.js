@@ -27,25 +27,44 @@ import { effectiveRunnerModels } from "./runnerMatches/effectiveRunnerModels.js"
  * @example store.update([{ status: 'active', runnerId: 'r1', capabilities: { harnesses: [{ id: 'muse' }], models: ['muse::meta::m'], tiers: ['T0'] } }])
  ***/
 
-/** Generous entry cap: eviction drops oldest-unavailable first, never an available entry unless the cap itself is exceeded by live data. */
+/***
+ * MARK: FLEET_SNAPSHOT_MAX_MODELS
+ * @description Generous entry cap for the persisted snapshot: eviction drops
+ *   oldest-unavailable entries first and never an available entry unless the
+ *   cap itself is exceeded by live data alone.
+ * @example FLEET_SNAPSHOT_MAX_MODELS => 10000
+ ***/
 export const FLEET_SNAPSHOT_MAX_MODELS = 10000;
 
-/** Quarantine cap: oldest last-seen first. */
+/***
+ * MARK: FLEET_SNAPSHOT_MAX_QUARANTINED
+ * @description Quarantine cap for malformed advertised ids: when exceeded,
+ *   the oldest last-seen quarantine records are dropped first.
+ * @example FLEET_SNAPSHOT_MAX_QUARANTINED => 1000
+ ***/
 export const FLEET_SNAPSHOT_MAX_QUARANTINED = 1000;
 
-/** Reason carried by entries no claim-eligible runner currently serves. */
+/***
+ * MARK: FLEET_ENTRY_UNAVAILABLE_REASON
+ * @description The reason text carried by catalogue entries that no
+ *   claim-eligible runner currently serves (marked unavailable, never deleted).
+ * @example FLEET_ENTRY_UNAVAILABLE_REASON => "No claim-eligible runner serves this model right now."
+ ***/
 export const FLEET_ENTRY_UNAVAILABLE_REASON = "No claim-eligible runner serves this model right now.";
 
 /***
  * MARK: resolveFleetSnapshotPath
  * @description Resolves the snapshot file path: an explicit string wins
- *   (tests), empty disables persistence, else the configured
- *   `KAINBAIN_FLEET_CATALOG_FILE`, else `~/.kainbain/engine/fleet-catalog.json`.
- * @example resolveFleetSnapshotPath(null) => '/home/u/.kainbain/engine/fleet-catalog.json'
- * @param {string|null|undefined} explicit - Explicit path override.
+ *   (tests), `null` or an empty string disables persistence (memory-only),
+ *   else the configured `KAINBAIN_FLEET_CATALOG_FILE` (empty disables too),
+ *   else `~/.kainbain/engine/fleet-catalog.json`.
+ * @example resolveFleetSnapshotPath(null) => null
+ * @example resolveFleetSnapshotPath(undefined) => '/home/u/.kainbain/engine/fleet-catalog.json'
+ * @param {string|null|undefined} explicit - Explicit path override; null disables, undefined falls through to the configured default.
  * @returns {string|null} Resolved path, or null when disabled.
  ***/
 export const resolveFleetSnapshotPath = (explicit) => {
+	if (explicit === null) return null;
 	if (typeof explicit === "string") return explicit.trim() ? explicit : null;
 	const configured = config?.fleetCatalogFile;
 	if (typeof configured === "string" && !configured.trim()) return null;
@@ -121,15 +140,15 @@ export const normalizeSnapshotState = (raw) => {
  *   missing entries marked unavailable, malformed ids quarantined, caps
  *   enforced) and persists; `read()` serves `{ models, quarantined,
  *   updatedAtMs }` (id-sorted, cloned); `clear()` empties the store
- *   (tests). `filePath: null` disables persistence (pure memory).
+ *   (tests). `filePath: null` or `''` disables persistence (pure memory).
  * @example const store = createFleetModelSnapshotStore({ filePath: '' }); store.update([]).models => []
  * @param {Object} [opts]
- * @param {string|null} [opts.filePath] - Explicit state path (undefined/null = configured default, '' = memory-only).
+ * @param {string|null} [opts.filePath] - Explicit state path (undefined = configured default, null/'' = memory-only).
  * @param {Function} [opts.now] - Clock seam (ms epoch).
  * @returns {{update: Function, read: Function, clear: Function}} The store.
  ***/
 export const createFleetModelSnapshotStore = ({ filePath, now = () => Date.now() } = {}) => {
-	const stateFile = resolveFleetSnapshotPath(filePath === undefined ? undefined : filePath);
+	const stateFile = resolveFleetSnapshotPath(filePath);
 	const models = new Map();
 	const quarantined = new Map();
 	let updatedAtMs = null;
