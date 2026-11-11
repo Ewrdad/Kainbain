@@ -44,6 +44,17 @@ validation, harness-scoped `key` tagging — see `docs/EngineDetails/ModelKeys.m
   cache slot, one listing) so `harnesses[0].models` is always the exact flat catalogue.
   The field must stay declared in the route's response schema — Fastify strips response
   fields missing from the schema.
+- `harnesses` is the **central list**: the route folds the persisted fleet snapshot
+  into the backend views (`mergeFleetIntoSections` in
+  `api/flow/dispatch/fleetSectionMerge.js`), so the harness set is the UNION of
+  backend-known and fleet-served harnesses. Fleet-only ids append to their sections
+  (backend entries win ties by option key, so their richer labels survive) and
+  fleet-only harness ids gain synthesized sections (`fleetOnly: true`,
+  `detectionSource: "fleet"`). Fleet-merged entries carry additive availability
+  (`fleet`, `runnerCount`, `runnerIds`, `tiers`, `available`,
+  `unavailableReason`); entries no claim-eligible Runner serves stay listed with
+  `available: false` instead of vanishing (survey q4). Every picker reads this one
+  list — including brand-new models the backend host itself cannot list.
 - `?refresh=true` bypasses the model cache for both views (network-free disk refresh).
 - The same data is also served per harness by `/harnesses` (identity + capabilities +
   live `isDefault`) and `/harnesses/:id/models` (one harness's catalogue).
@@ -86,9 +97,11 @@ reports the resolved pair (one peeked display-target read, no rotation consumed)
 Project saves validate stored combinations in two tiers (`api/aliasTargets.js`, wired
 in `POST/PATCH /projects`):
 
-- **Hard (400):** model on a `none` harness; unknown harness id; malformed ref.
-- **Soft (200 + `warnings[]`):** catalog-miss targets/defaults; ignored defaults on
-  `none` harnesses; unresolvable project-default aliases.
+- **Hard (400):** unknown harness id; malformed ref.
+- **Soft (200 + `warnings[]`):** catalog-miss targets/defaults; stored models on
+  `none` harnesses (kept — the backend's `none` is transient and fleet coverage can
+  lift it at any time, so the value must survive every save+load round-trip);
+  ignored defaults on `none` harnesses; unresolvable project-default aliases.
 
 Response-schema note: any added `warnings` field on save responses must be declared
 in the Fastify response schema or Fastify strips it — the POST 201 schema declares
@@ -130,3 +143,13 @@ that sees detected-but-unconfigured harnesses appends the
 harnesses only). Detected models join
 the picker as normal fleet choices (survey q6) — see `runner/README.md`
 for the per-harness legs matrix.
+
+Every advertised id is normalized through `parseModelKey` at ingestion
+(`api/flow/dispatch/catalogIngest.js`): the exact advertised string stays
+the served `key` (dispatch matches verbatim), while malformed ids quarantine
+with a reason (`quarantined[]` on `GET /runners/models/catalogue`,
+surfaced in Settings › Runners) instead of serving or silently dropping.
+The live derivation merges into the persisted snapshot on every catalogue
+read (`api/flow/dispatch/fleetModelSnapshot.js`, ADR 0016), so the UI never
+depends on a transient read — entries carry effort `tiers`, availability,
+and per-runner provenance (detecting leg + detected-at).

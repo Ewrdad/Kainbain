@@ -148,6 +148,7 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		claimStateFile: path.join(os.homedir(), ".kainbain", "engine", "claims.json"),
 		runnerStateFile: path.join(os.homedir(), ".kainbain", "engine", "runners.json"),
 		steerStateFile: path.join(os.homedir(), ".kainbain", "engine", "steers.json"),
+		fleetCatalogFile: path.join(os.homedir(), ".kainbain", "engine", "fleet-catalog.json"),
 		circuitInfraSensorEnabled: true,
 		circuitInfraFailureThreshold: 3,
 		circuitInfraFailureWindowMs: 600000,

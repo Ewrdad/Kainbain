@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import { buildFleetModelCatalog } from "../api/flow/dispatch/fleetModelCatalog.js";
+import { NEW_MODEL_COLON_ID, NEW_MODEL_ID, fleetRunnerRecord } from "../api/flow/dispatch/fleetModelFixtures.mjs";
 import {
 	DISCOVERY_LEGS,
 	runDiscoveryLeg,
@@ -14,6 +17,7 @@ import {
 	discoverCodexModels,
 	clearDiscoveryCache,
 	discoveryCache,
+	provenanceForIds,
 } from "./harnessModelDiscovery.js";
 
 function withLegStub(id, fn) {
@@ -23,6 +27,26 @@ function withLegStub(id, fn) {
 		DISCOVERY_LEGS[id] = prev;
 	};
 }
+
+test("provenanceForIds attributes advertised ids to their detecting leg + time", async () => {
+	clearDiscoveryCache();
+	const restorePi = withLegStub("pi", async () => ["pi::p::a"]);
+	const restoreMuse = withLegStub("muse", async () => ["muse::meta::m"]);
+	try {
+		await runDiscoveryLeg("pi", {});
+		await runDiscoveryLeg("muse", {});
+		const provenance = provenanceForIds(["muse::meta::m", "pi::p::a", "pinned-elsewhere"]);
+		assert.equal(provenance["pi::p::a"].harness, "pi");
+		assert.equal(typeof provenance["pi::p::a"].atMs, "number");
+		assert.equal(provenance["muse::meta::m"].harness, "muse");
+		assert.equal(provenance["pinned-elsewhere"], undefined);
+		assert.deepEqual(provenanceForIds(null), {});
+	} finally {
+		restorePi();
+		restoreMuse();
+		clearDiscoveryCache();
+	}
+});
 
 test("registry includes all supported harness legs", () => {
 	for (const id of ["pi", "muse", "antigravity", "vibe", "opencode", "codex"]) {
@@ -260,6 +284,15 @@ test("summarizeDiscoverySlices renders counts and the first leg error in order",
 	}
 });
 
+test("pi leg serves single-colon ids verbatim (no stricter filter)", async () => {
+	const ids = await discoverPiModels({
+		createHarness: async () => ({
+			listModels: async () => [{ key: "pi::ollama-cloud::glm-5.3-flash:cloud" }],
+		}),
+	});
+	assert.deepEqual(ids, ["pi::ollama-cloud::glm-5.3-flash:cloud"]);
+});
+
 test("pi leg maps harness keys and reports an empty catalogue as PI_MODELS_EMPTY", async () => {
 	const ids = await discoverPiModels({
 		createHarness: async () => ({
@@ -440,6 +473,39 @@ test("muse leg surfaces strict probe failures (unparsable output, missing CLI)",
 	}
 });
 
+test("new-model fixture rows flow from the muse leg into the fleet catalogue (chain gate)", async () => {
+	// End-to-end seam proof: the committed `muse serve` transcript
+	// fixture drives the REAL leg parser (no hand-written rows), and the
+	// resulting ids land in the fleet catalogue byte-identical.
+	clearDiscoveryCache();
+	const fixture = JSON.parse(
+		fs.readFileSync(
+			new URL("../api/agent/harnesses/muse/fixtures/msp-model-list.new-model.json", import.meta.url),
+			"utf8",
+		),
+	);
+	const stdout = [
+		JSON.stringify({ jsonrpc: "2.0", id: 1, result: { serverInfo: { name: "muse" } } }),
+		JSON.stringify({ jsonrpc: "2.0", id: 2, result: fixture }),
+	].join("\n");
+	const out = await runDiscoveryLeg("muse", { spawnSyncFn: () => ({ stdout }) });
+	assert.equal(out.error, null);
+	assert.ok(out.ids.includes(NEW_MODEL_ID));
+	assert.ok(out.ids.includes(NEW_MODEL_COLON_ID));
+	const catalogue = buildFleetModelCatalog([
+		fleetRunnerRecord({ runnerId: "box-a", capabilities: { models: out.ids } }),
+	]);
+	const entry = catalogue.models.find((m) => m.id === NEW_MODEL_ID);
+	assert.deepEqual(entry, {
+		id: NEW_MODEL_ID,
+		harnesses: ["muse"],
+		tiers: ["T0", "T1"],
+		runnerCount: 1,
+		runnerIds: ["box-a"],
+	});
+	clearDiscoveryCache();
+});
+
 test("muse leg keeps the old slice with MUSE_MSP_MODELS_EMPTY through the registry", async () => {
 	clearDiscoveryCache();
 	discoveryCache.muse = { ids: ["muse::meta::old"], atMs: 1, error: null };
@@ -454,12 +520,12 @@ test("opencode leg maps server rows to harness-scoped keys and skips malformed r
 		baseUrl: "http://127.0.0.1:9",
 		fetchModels: async () => ({
 			providers: [
-				{ id: "anthropic", models: { "claude-x": { name: "Claude X" } } },
+				{ id: "anthropic", models: { "claude-x": { name: "Claude X" }, "claude-x:1m": {} } },
 				{ id: "bad provider", models: { "m::weird": {} } },
 			],
 		}),
 	});
-	assert.deepEqual(ids, ["opencode::anthropic::claude-x"]);
+	assert.deepEqual(ids, ["opencode::anthropic::claude-x", "opencode::anthropic::claude-x:1m"]);
 });
 
 test("opencode leg reports honest-empty with a reason when no server is configured", async () => {

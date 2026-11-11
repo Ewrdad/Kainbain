@@ -46,12 +46,46 @@ const sanitizeDiscoveryStatus = (value) => {
 };
 
 /***
+ * MARK: sanitizeModelProvenance
+ * @description Bounds one Runner-reported per-model provenance map to a
+ *   servable shape: at most 1000 id entries, each a plain
+ *   `{harness?, atMs?}` with a short harness string and a finite
+ *   timestamp (or null). Lenient like the discovery status (malformed
+ *   entries are dropped, never rejected): provenance is advisory display
+ *   data, and a cosmetic field must never 400 a heartbeat.
+ * @example sanitizeModelProvenance({ 'muse::meta::m': { harness: 'muse', atMs: 1 } }) => { 'muse::meta::m': { harness: 'muse', atMs: 1 } }
+ * @param {Object} value - Raw `facts.modelProvenance` object.
+ * @returns {Object} Sanitized provenance (possibly empty).
+ ***/
+const sanitizeModelProvenance = (value) => {
+	const out = {};
+	const entries = Object.entries(value);
+	for (let i = 0; i < entries.length && Object.keys(out).length < 1000; i += 1) {
+		const [id, slice] = entries[i];
+		if (typeof id !== "string" || !id.trim() || id.length > 500) continue;
+		if (!slice || typeof slice !== "object" || Array.isArray(slice)) continue;
+		const entry = {};
+		if (typeof slice.harness === "string" && slice.harness.trim()) {
+			entry.harness = slice.harness.trim().slice(0, 64);
+		}
+		if (typeof slice.atMs === "number" && Number.isFinite(slice.atMs) && slice.atMs >= 0) {
+			entry.atMs = slice.atMs;
+		} else {
+			entry.atMs = null;
+		}
+		out[id] = entry;
+	}
+	return out;
+};
+
+/***
  * MARK: normalizeCapabilities
  * @description Validates and normalizes a Runner's heartbeat facts into a
  *   capability advertisement struct: harnesses (id + version), models,
- *   tiers, runnable flag, disk headroom, protocol versions, and the
- *   additive per-harness discovery status (sanitized, absent for old
- *   Runners; a malformed value is dropped, never an error). Unknown
+ *   tiers, runnable flag, disk headroom, protocol versions, the additive
+ *   per-harness discovery status, and the additive model advertisement
+ *   source + per-model provenance (all sanitized, absent for old Runners;
+ *   a malformed value is dropped, never an error). Unknown
  *   shapes are rejected with an explanatory error list instead of
  *   throwing, so the register/heartbeat routes can answer 400 with all
  *   problems.
@@ -156,5 +190,32 @@ export function normalizeCapabilities(facts = {}) {
 		// and take a working Runner offline.
 	}
 
-	return { harnesses, models, tiers, runnable, diskHeadroomMb, versions, errors, ...(discoveryStatus !== undefined ? { discoveryStatus } : {}) };
+	let modelSource;
+	if (src.modelSource !== undefined) {
+		if (src.modelSource === "pinned" || src.modelSource === "discovered" || src.modelSource === "unpinned") {
+			modelSource = src.modelSource;
+		}
+		// Anything else is dropped silently (same advisory rule as above).
+	}
+
+	let modelProvenance;
+	if (src.modelProvenance !== undefined) {
+		if (src.modelProvenance !== null && typeof src.modelProvenance === "object" && !Array.isArray(src.modelProvenance)) {
+			modelProvenance = sanitizeModelProvenance(src.modelProvenance);
+		}
+		// Anything else is dropped silently (same advisory rule as above).
+	}
+
+	return {
+		harnesses,
+		models,
+		tiers,
+		runnable,
+		diskHeadroomMb,
+		versions,
+		errors,
+		...(discoveryStatus !== undefined ? { discoveryStatus } : {}),
+		...(modelSource !== undefined ? { modelSource } : {}),
+		...(modelProvenance !== undefined ? { modelProvenance } : {}),
+	};
 }

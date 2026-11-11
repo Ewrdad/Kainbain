@@ -13,8 +13,8 @@ import { defaultInstallRoot, markUpdateSuccess, readUpdateState } from "./update
 // The Runner bundle ships shared/ next to this folder (runner/{runner,api,shared}
 // in prod and in the distributable tarball), so ../shared resolves both in the
 // repo and in every deployed layout — the same copy the backend executes.
-import { resolveAdvertisedModels } from "./modelDiscovery.js";
-import { clearDiscoveryCache, getDiscoveryStatus, runDiscoveryRound, summarizeDiscoverySlices, DISCOVER_LEG_TIMEOUT_DEFAULT_MS } from "./harnessModelDiscovery.js";
+import { resolveAdvertisedModels, resolveAdvertisedModelSource } from "./modelDiscovery.js";
+import { clearDiscoveryCache, getDiscoveryStatus, provenanceForIds, runDiscoveryRound, summarizeDiscoverySlices, DISCOVER_LEG_TIMEOUT_DEFAULT_MS } from "./harnessModelDiscovery.js";
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { decideAgentStageVerdict } from "../shared/stageVerdict.js";
@@ -805,9 +805,12 @@ export function effectiveDirectoriesFor(config = {}) {
 function factsFor({ config, harnessVersions, updateStatus = null, commandAck = null } = {}) {
 	const versionFor = (id) =>
 		harnessVersions?.[id] ?? harnessVersionCache.get(id)?.[id] ?? "unknown";
+	const advertisedModels = resolveAdvertisedModels(config, discoveredModelsCache);
 	return {
 		harnesses: runnerHarnessIds(config).map((id) => ({ id, version: versionFor(id) })),
-		models: resolveAdvertisedModels(config, discoveredModelsCache),
+		models: advertisedModels,
+		modelSource: resolveAdvertisedModelSource(config, discoveredModelsCache),
+		modelProvenance: provenanceForIds(advertisedModels),
 		tiers: config.tiers,
 		diskHeadroomMb: diskHeadroomMbFor(config.workRoot),
 		versions: { protocol: "v1", runner: RUNNER_VERSION, api: RUNNER_API_VERSION },

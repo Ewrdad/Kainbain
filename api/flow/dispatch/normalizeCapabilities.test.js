@@ -119,4 +119,33 @@ describe("normalizeCapabilities", () => {
 			hint: "H".repeat(500),
 		});
 	});
+
+	test("passes the model source through, dropping unknown values silently", () => {
+		expect(normalizeCapabilities({ modelSource: "discovered" }).modelSource).toBe("discovered");
+		expect(normalizeCapabilities({ modelSource: "pinned" }).modelSource).toBe("pinned");
+		expect(normalizeCapabilities({ modelSource: "unpinned" }).modelSource).toBe("unpinned");
+		const out = normalizeCapabilities({ modelSource: "bogus" });
+		expect(out.errors).toEqual([]);
+		expect(out.modelSource).toBeUndefined();
+		expect(normalizeCapabilities({}).modelSource).toBeUndefined();
+	});
+
+	test("passes per-model provenance through, lenient like discovery status", () => {
+		const out = normalizeCapabilities({
+			modelProvenance: {
+				"muse::meta::m": { harness: "muse", atMs: 1700000000000 },
+				"pi::p::a": { harness: "  pi  ", atMs: Number.NaN },
+				"": { harness: "muse", atMs: 1 },
+				"m2": "not-an-object",
+			},
+		});
+		expect(out.errors).toEqual([]);
+		expect(out.modelProvenance).toEqual({
+			"muse::meta::m": { harness: "muse", atMs: 1700000000000 },
+			"pi::p::a": { harness: "pi", atMs: null },
+		});
+		const dropped = normalizeCapabilities({ modelProvenance: ["bogus"] });
+		expect(dropped.errors).toEqual([]);
+		expect(dropped.modelProvenance).toBeUndefined();
+	});
 });

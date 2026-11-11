@@ -129,7 +129,10 @@ export async function discoverClaudeModels({ bin = "muse", timeoutMs = 20000, sp
 		for (const row of rows) {
 			const provider = typeof row?.providerId === "string" ? row.providerId.trim() : "";
 			const model = typeof row?.modelId === "string" ? row.modelId.trim() : "";
-			if (!provider || !model || provider.includes(":") || model.includes(":")) continue;
+			// Grammar-aligned with parseModelKey: segments must be
+			// non-empty and free of the `::` separator — single `:`
+			// inside an id (muse-spark-1.4:cloud) is legal and served.
+			if (!provider || !model || provider.includes("::") || model.includes("::")) continue;
 			const id = `muse::${provider}::${model}`;
 			if (!ids.includes(id)) ids.push(id);
 		}
@@ -176,6 +179,35 @@ export function resolveAdvertisedModels(config, discovered) {
 	}
 	if (pin.length > 0) return pin;
 	return discoveredIds;
+}
+
+/***
+ * MARK: resolveAdvertisedModelSource
+ * @description Names which list a heartbeat advertises: `pinned` (the
+ *   operator's explicit `config.models`/`config.model` wins),
+ *   `discovered` (the discovery cache fills in), or `unpinned` (empty
+ *   everywhere — matches model-less tasks only). Mirrors
+ *   `resolveAdvertisedModels` branch-for-branch so the label can never
+ *   disagree with the advertised list; the backend surfaces it per
+ *   runner so operators see WHY a model list looks the way it does.
+ * @example resolveAdvertisedModelSource({ models: ['a'] }, ['b']) => 'pinned'
+ * @example resolveAdvertisedModelSource({ models: ['a'], modelDiscoveryWins: true }, ['b']) => 'discovered'
+ * @example resolveAdvertisedModelSource({}, []) => 'unpinned'
+ * @param {Object} [config] - Runner config (`models` array / `model` / `modelDiscoveryWins`).
+ * @param {string[]} [discovered] - Last discovery result.
+ * @returns {"pinned"|"discovered"|"unpinned"} Effective advertisement source.
+ ***/
+export function resolveAdvertisedModelSource(config, discovered) {
+	const discoveredIds = Array.isArray(discovered) ? discovered : [];
+	const pinned =
+		(Array.isArray(config?.models) && config.models.length > 0) ||
+		(typeof config?.model === "string" && config.model.trim() !== "");
+	if (config?.modelDiscoveryWins) {
+		if (discoveredIds.length > 0) return "discovered";
+		return pinned ? "pinned" : "unpinned";
+	}
+	if (pinned) return "pinned";
+	return discoveredIds.length > 0 ? "discovered" : "unpinned";
 }
 
 /***

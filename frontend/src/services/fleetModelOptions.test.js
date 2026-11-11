@@ -41,6 +41,23 @@ describe('fleetModelsForHarness', () => {
     expect(fleetModelsForHarness('pi', counts)).toEqual([]);
   });
 
+  it('offers a newly discovered fleet id under its harness with the identical key', () => {
+    // Fleet entry ⇒ UI option: the option key is the exact advertised id
+    // (dispatch matches verbatim, so keys must be byte-equal end to end).
+    const counts = {
+      'muse::meta::muse-spark-1.4': entry(['muse']),
+    };
+    expect(fleetModelsForHarness('muse', counts)).toEqual([
+      {
+        key: 'muse::meta::muse-spark-1.4',
+        id: 'muse-spark-1.4',
+        provider: 'meta',
+        name: 'muse-spark-1.4',
+        fleet: true,
+      },
+    ]);
+  });
+
   it('skips malformed ids and stays empty without loaded fleet data', () => {
     const counts = { 'a::b::c::d::e': entry(['muse']), '': entry(['muse']) };
     expect(fleetModelsForHarness('muse', counts)).toEqual([]);

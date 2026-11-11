@@ -35,6 +35,7 @@ import {
 	createImpromptuDispatcher,
 } from "./flow/impromptuStore.js";
 import { RunnerRegistry } from "./flow/runnerRegistry.js";
+import { createFleetModelSnapshotStore } from "./flow/dispatch/fleetModelSnapshot.js";
 import { ExecutionLedger } from "./flow/executionLedger.js";
 import { workflowRegistry } from "./workflowRegistry.js";
 import { createAgentRunner } from "./agentRunner.js";
@@ -201,6 +202,11 @@ const runnerRegistry = new RunnerRegistry({
 	joinToken: config.runnerJoinToken,
 	staleAfterMs: config.runnerStaleAfterMs,
 });
+// Central model catalogue (ADR 0016): the persisted fleet snapshot behind
+// GET /runners/models/catalogue and the /compute/models union sections.
+// The configured file (isolated per test file) loads at boot; every
+// catalogue read refreshes it from the live registrations.
+const fleetModelSnapshot = createFleetModelSnapshotStore({});
 const claimStore = new ClaimStore({ ttlMs: config.claimTtlMs });
 const steerStore = new SteerStore({});
 // Impromptu T0 channel (ADR 0014): read-only Runner jobs off the main task
@@ -252,6 +258,7 @@ const deps = {
 	skillsRegistry,
 	harnessRegistry,
 	runnerRegistry,
+	fleetModelSnapshot,
 	claimStore,
 	steerStore,
 	impromptuStore,
