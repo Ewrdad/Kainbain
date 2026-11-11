@@ -111,6 +111,56 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "The newest release that keeps the same backend API version"
+      ],
+      "notes": "We want to allow for asymetric updates so as long as its compatible with the backend it can have the newest (pinning maybe should be an option)"
+    },
+    "q2": {
+      "selected": [
+        "Backend automatically commands updates for out-of-date runners (Recommended)"
+      ],
+      "notes": "Mostly all of the above"
+    },
+    "q3": {
+      "selected": [
+        "Keep using published GitHub Releases; backend only chooses the target version (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Use the self-update wrapper that watches for a staged new version (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Below the minimum version: stop sending work until updated (current behaviour) (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Git tag runner-vX.Y.Z creates a GitHub Release automatically (current behaviour)"
+      ],
+      "notes": ""
+    },
+    "q7": {
+      "selected": [
+        "Remote machine can reach the public internet or GitHub",
+        "Remote machine can only reach the KainBain backend"
+      ],
+      "notes": ""
+    },
+    "q8": {
+      "selected": [
+        "Keep running the old version and show a clear error in Settings (current behaviour) (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
