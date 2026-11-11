@@ -815,6 +815,41 @@ describe('RunnerConfigurationSection', () => {
     expect(screen.queryByTestId('runner-discovery-warning-r1')).toBeNull();
   });
 
+  it('shows the effective model source plus the last scan time', async () => {
+    runnersFixture([
+      {
+        ...SUPPORTED_RUNNER,
+        capabilities: {
+          harnesses: [{ id: 'muse' }],
+          models: ['muse::meta::m'],
+          modelSource: 'discovered',
+          discoveryStatus: { muse: { ok: true, count: 1, atMs: 1700000000000 } },
+        },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.getByText('(auto-detected from Runner)')).toBeTruthy();
+    expect(screen.getByTestId('runner-last-scan-r1')).toHaveTextContent('Last scan:');
+  });
+
+  it('labels a pinned Runner list honestly instead of auto-detected', async () => {
+    runnersFixture([
+      {
+        ...SUPPORTED_RUNNER,
+        capabilities: {
+          harnesses: [{ id: 'muse' }],
+          models: ['pinned-model'],
+          modelSource: 'pinned',
+        },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.getByText('(pinned on Runner)')).toBeTruthy();
+    expect(screen.queryByTestId('runner-last-scan-r1')).toBeNull();
+  });
+
   it('keeps the old model rows visible when re-detection failed', async () => {
     runnersFixture([
       {

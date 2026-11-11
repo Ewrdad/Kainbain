@@ -563,4 +563,29 @@ describe("sanitizeAliasTargetModels", () => {
 			dropped: [],
 		});
 	});
+
+	it("keeps none-harness models with a warning instead of wiping them (alias trust)", () => {
+		// A stored target the user saved must survive load even when the
+		// backend harness currently reports `none` (muse on the exec
+		// transport): keep the last working value, warn loudly, never blank.
+		const { aliases, warnings } = sanitizeAliasTargetModels(
+			[
+				{
+					name: "worker",
+					harness: "muse",
+					model: "muse::meta::muse-spark-1.3",
+					targets: [{ harness: "muse", model: "muse::meta::muse-spark-1.3", percent: 100 }],
+				},
+			],
+			{ modelSelectionFor },
+		);
+		expect(aliases[0].model).toBe("muse::meta::muse-spark-1.3");
+		expect(aliases[0].targets[0].model).toBe("muse::meta::muse-spark-1.3");
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toMatchObject({
+			alias: "worker",
+			harness: "muse",
+			model: "muse::meta::muse-spark-1.3",
+		});
+	});
 });

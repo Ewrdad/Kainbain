@@ -330,6 +330,32 @@ export function clearDiscoveryCache() {
 	for (const key of Object.keys(discoveryCache)) delete discoveryCache[key];
 }
 
+/***
+ * MARK: provenanceForIds
+ * @description Attributes advertised ids to the discovery slice that
+ *   produced them: `{ [id]: { harness, atMs } }` — which harness leg
+ *   detected the id, and when. Reads the live slices (first harness
+ *   claiming the id wins); ids no slice holds (pins, allowlist rows)
+ *   carry no entry — the heartbeat's `modelSource` already says why.
+ *   Advisory display data for the central catalogue, never dispatch input.
+ * @example provenanceForIds(['pi::mistral::x']) => { 'pi::mistral::x': { harness: 'pi', atMs: 123 } }
+ * @param {string[]} [ids] - Advertised model ids.
+ * @returns {Object} Provenance by id (possibly empty).
+ ***/
+export function provenanceForIds(ids) {
+	const out = {};
+	for (const id of Array.isArray(ids) ? ids : []) {
+		if (typeof id !== "string" || !id || Object.hasOwn(out, id)) continue;
+		for (const [harness, slice] of Object.entries(discoveryCache)) {
+			if (Array.isArray(slice?.ids) && slice.ids.includes(id)) {
+				out[id] = { harness, atMs: slice?.atMs ?? null };
+				break;
+			}
+		}
+	}
+	return out;
+}
+
 // --- Individual legs ------------------------------------------------------
 
 /***

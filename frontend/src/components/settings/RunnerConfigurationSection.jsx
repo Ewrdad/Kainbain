@@ -12,6 +12,7 @@ import {
   displayDirectories,
   modelUnion,
   discoveryStatusSummary,
+  modelSourceSummary,
   modelTogglePatch,
   loadedProjectIds,
   partitionProjects,
@@ -349,7 +350,21 @@ export function RunnerConfigurationSection() {
   const effectiveModelIds = selected ? effectiveModels(selected) : [];
   const allModelIds = selected ? modelUnion(selected) : [];
   const discoverySummary = selected ? discoveryStatusSummary(selected) : null;
+  const sourceSummary = selected ? modelSourceSummary(selected) : null;
   const modelsOverridden = selected ? Array.isArray(config.availableModels) : false;
+  // Effective advertisement source: an operator allowlist wins first, then
+  // the Runner's own pin-vs-discovery label; old Runners (no source) keep
+  // the historic caption.
+  const modelsCaption = modelsOverridden
+    ? '(operator override)'
+    : sourceSummary?.source === 'pinned'
+      ? '(pinned on Runner)'
+      : sourceSummary?.source === 'unpinned'
+        ? '(none advertised)'
+        : '(auto-detected from Runner)';
+  const lastScanLine = sourceSummary?.scannedAtMs != null
+    ? `Last scan: ${new Date(sourceSummary.scannedAtMs).toLocaleString()}`
+    : null;
   const loadedIds = selected ? loadedProjectIds(selected, projects || []) : [];
   const { available, loaded } = partitionProjects(projects || [], loadedIds);
   const advertised = selected ? advertisedToolIds(selected) : [];
@@ -859,7 +874,7 @@ export function RunnerConfigurationSection() {
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-bold text-on-surface">Models</span>
-                  {modelsOverridden ? <span className="text-[11px] text-text-muted">(operator override)</span> : <span className="text-[11px] text-text-muted">(auto-detected from Runner)</span>}
+                  <span className="text-[11px] text-text-muted">{modelsCaption}</span>
                   <button type="button" data-testid={`runner-redetect-models-${selected.runnerId}`} onClick={handleRediscover} disabled={busyKey === `rediscover:${selected.runnerId}` || !redetectReady} title={redetectTitle} className="ml-auto px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-[11px] font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">
                     {busyKey === `rediscover:${selected.runnerId}` ? 'Queued…' : 'Re-detect models'}
                   </button>
@@ -879,6 +894,14 @@ export function RunnerConfigurationSection() {
                     data-testid={`runner-discovery-status-${selected.runnerId}`}
                   >
                     {`Auto-detect: ${discoverySummary.counts}`}
+                  </p>
+                )}
+                {lastScanLine && (
+                  <p
+                    className="text-[11px] text-text-muted"
+                    data-testid={`runner-last-scan-${selected.runnerId}`}
+                  >
+                    {lastScanLine}
                   </p>
                 )}
                 {discoverySummary?.warning && (

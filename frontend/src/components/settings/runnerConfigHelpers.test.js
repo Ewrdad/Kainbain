@@ -12,6 +12,7 @@ import {
   displayDirectories,
   modelUnion,
   discoveryStatusSummary,
+  modelSourceSummary,
   modelTogglePatch,
   parseModelsInput,
   loadedProjectIds,
@@ -390,6 +391,28 @@ describe('runnerConfigHelpers', () => {
     expect(
       discoveryStatusSummary({ capabilities: { discoveryStatus: { pi: { ok: false, count: 0 } } } }).warning,
     ).toBe('pi: discovery failed');
+  });
+
+  it('summarizes the model advertisement source plus the newest scan time', () => {
+    expect(
+      modelSourceSummary({
+        capabilities: {
+          modelSource: 'discovered',
+          discoveryStatus: { pi: { ok: true, count: 2, atMs: 100 }, muse: { ok: true, count: 1, atMs: 300 } },
+        },
+      }),
+    ).toEqual({ source: 'discovered', scannedAtMs: 300 });
+    expect(modelSourceSummary({ capabilities: { modelSource: 'pinned' } })).toEqual({
+      source: 'pinned',
+      scannedAtMs: null,
+    });
+    expect(modelSourceSummary({ facts: { modelSource: 'unpinned' } })).toEqual({
+      source: 'unpinned',
+      scannedAtMs: null,
+    });
+    expect(modelSourceSummary({ capabilities: { modelSource: 'bogus' } })).toBeNull();
+    expect(modelSourceSummary({})).toBeNull();
+    expect(modelSourceSummary({ capabilities: {} })).toBeNull();
   });
 
   it('prefers the operator directory override over the Runner folders', () => {

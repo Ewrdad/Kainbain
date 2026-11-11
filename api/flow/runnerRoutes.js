@@ -544,13 +544,21 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 	});
 
 	app.get("/runners/models/catalogue", async () => {
-		// Fleet model catalogue: derived live from Runner registrations
-		// (never cached), so joins, leaves, heartbeat updates, and
-		// operator allowlist edits reflect on the next read. One entry
-		// per distinct model id served by at least one claim-eligible
-		// Runner (active, not paused), with the serving harness ids,
-		// tiers, and runner count/ids. Stage, default, and alias pickers
-		// read this for availability instead of credential health.
+		// Fleet model catalogue (ADR 0016): the live derivation merged
+		// into the persisted snapshot on every read, so joins, leaves,
+		// heartbeat updates, and operator allowlist edits reflect on the
+		// next read while the UI never depends on a transient read. One
+		// entry per distinct model id, available ones with their serving
+		// harness ids, effort tiers, runner count/ids, and per-runner
+		// provenance; entries no claim-eligible Runner serves stay
+		// marked unavailable with a reason instead of vanishing; and
+		// malformed ids quarantine with a reason instead of serving.
+		// Stage, default, and alias pickers read this for availability
+		// instead of credential health. Dispatch keeps reading the live
+		// derivation (`buildFleetModelCatalog`), never this snapshot.
+		if (typeof deps?.fleetModelSnapshot?.update === "function") {
+			return deps.fleetModelSnapshot.update(runnerRegistry.list());
+		}
 		return buildFleetModelCatalog(runnerRegistry.list());
 	});
 

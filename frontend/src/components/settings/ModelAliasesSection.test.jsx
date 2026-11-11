@@ -213,6 +213,40 @@ describe('ModelAliasesSection', () => {
     ]);
   });
 
+  it('preserves the draft model when the row harness changes (alias trust)', () => {
+    // Switching harnesses must never wipe the stored model text: the row
+    // keeps the last value and badges unknown-model instead of clearing.
+    const onChange = vi.fn();
+    const twoList = [
+      ...HARNESSES,
+      {
+        id: 'antigravity',
+        label: 'Antigravity',
+        description: 'agy',
+        modelSelection: 'list',
+        models: [{ id: 'g1', name: 'G1', provider: 'google', key: 'antigravity::google::g1' }],
+      },
+    ];
+    render(
+      <ModelAliasesSection
+        aliases={[{ name: 'small', harness: 'pi', model: 'google::m1' }]}
+        onChange={onChange}
+        harnesses={twoList}
+      />,
+    );
+    expandAllCards();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Alias 1 harness' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Antigravity' }));
+    expect(onChange).toHaveBeenCalledWith([
+      {
+        name: 'small',
+        harness: 'antigravity',
+        model: 'google::m1',
+        targets: [{ harness: 'antigravity', model: 'google::m1', percent: 100 }],
+      },
+    ]);
+  });
+
   it('shows the managed-model note for none harnesses and deletes rows', () => {
     const onChange = vi.fn();
     render(
