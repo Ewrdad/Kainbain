@@ -919,6 +919,9 @@ export async function joinAndHeartbeat({ config, client, loadHarness, logger, st
 	if (beat.status !== "active") {
 		throw new Error(`Runner ${config.runnerId} is ${beat.status}; need an active registration.`);
 	}
+	// Remember the backend's update directive for compat-gated selection:
+	// every later idle/409/commanded check filters releases against it.
+	if (state && typeof state === "object") state.updateDirective = updateDirectiveFromBeat(beat);
 	// Boot-time commands: anything queued while the Runner was down is
 	// delivered on this first heartbeat (peek-until-ack) — act on it now
 	// instead of dropping it. The Runner is idle here (no execution yet),
@@ -973,6 +976,27 @@ export async function joinAndHeartbeat({ config, client, loadHarness, logger, st
 			clearInterval(heartbeatTimer);
 			if (discoveryTimer) clearInterval(discoveryTimer);
 		},
+	};
+}
+
+/***
+ * MARK: updateDirectiveFromBeat
+ * @description Reads the backend's update directive off a heartbeat (or
+ *   register) response: the backend API version the runner's compat-gated
+ *   selection filters on, plus the managed desired/minimum versions for
+ *   status reporting. Missing fields read null (old backends predate the
+ *   advertisement — selection then behaves as before, ungated).
+ * @example updateDirectiveFromBeat({ update: { backendApiVersion: '1.0.0' } }) => { backendApiVersion: '1.0.0', ... }
+ * @param {Object} [beat] - Heartbeat/register response body.
+ * @returns {{backendApiVersion: string|null, desiredRunnerVersion: string|null, minimumRunnerVersion: string|null}} Directive.
+ ***/
+export function updateDirectiveFromBeat(beat = {}) {
+	const update = beat?.update && typeof beat.update === "object" ? beat.update : {};
+	const pick = (value) => (typeof value === "string" && value.trim() ? value.trim() : null);
+	return {
+		backendApiVersion: pick(update.backendApiVersion),
+		desiredRunnerVersion: pick(update.desiredRunnerVersion),
+		minimumRunnerVersion: pick(update.minimumRunnerVersion),
 	};
 }
 
@@ -1076,6 +1100,12 @@ export async function handlePendingCommands({ config, client, logger, state, pen
 						// ok:false (never throws): surface them as a failed
 						// ack so the operator sees the reason in Settings.
 						stageCommandAck(state, { command: cmd, ok: false, detail: String(upd.reason || "update check failed").slice(0, 500) });
+					} else if (upd && upd.checked === false) {
+						// The check did not run at all: with force:true that
+						// only means the host opted out of self-updates. A
+						// failed ack (not a quiet success) tells the
+						// operator exactly which switch to flip.
+						stageCommandAck(state, { command: cmd, ok: false, detail: "skipped: auto-update is disabled on this runner (KAINBAIN_RUNNER_AUTO_UPDATE=0)" });
 					} else if (upd?.applied) {
 						const ack = { command: cmd, ok: true, detail: `updated to ${upd.update?.version}` };
 						stageCommandAck(state, ack);
@@ -1124,6 +1154,7 @@ export async function deliverSteers({ config, client, logger, facts, state, upda
 	const pendingAck = stagedCommandAck(state);
 	const factsWithAck = pendingAck ? { ...facts, commandAck: pendingAck } : facts;
 	const beat = await client.heartbeat({ runnerId: config.runnerId, facts: factsWithAck });
+	if (state && typeof state === "object") state.updateDirective = updateDirectiveFromBeat(beat);
 	if (pendingAck && Array.isArray(state?.commandAcks)) {
 		state.commandAcks.shift();
 	}
@@ -2222,9 +2253,14 @@ export async function maybeSelfUpdate({
 	};
 	let result;
 	try {
+		// Compat-gated selection: the check filters releases against the
+		// backend API version learned from heartbeats (null until the
+		// first heartbeat — ungated, today's behaviour).
+		const directive = state?.updateDirective && typeof state.updateDirective === "object" ? state.updateDirective : {};
 		result = await check({
 			currentVersion: RUNNER_VERSION,
 			updateUrl: config.updateUrl,
+			backendApiVersion: typeof directive.backendApiVersion === "string" ? directive.backendApiVersion : null,
 			logger,
 		});
 	} catch (err) {

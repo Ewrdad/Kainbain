@@ -383,7 +383,7 @@ export const CONFIG_SCHEMA = [
 		type: "string",
 		default: "0.1.0",
 		group: "tasks",
-		doc: "Runner self-update target (Option A, ADR 0012): Runners below this show an 'update available' badge in Settings › Runners but still dispatch (same API contract). Lower alongside the min in the rollback runbook to stop badge nagging after reverting a release.",
+		doc: "Runner self-update target (Option A, ADR 0012): Runners below this show an 'update available' badge in Settings › Runners but still dispatch (same API contract), and the backend nudges command-capable ones with requestUpdate at most daily (survey q2; runners still apply only when idle and honour their own KAINBAIN_RUNNER_AUTO_UPDATE=0 opt-out). Runners may run newer than this while backend-compatible (asymmetric updates, survey q1) — the knob nudges, never caps. Lower alongside the min in the rollback runbook to stop badge nagging after reverting a release.",
 	},
 	{
 		key: "dispatchMaxWaitMs",

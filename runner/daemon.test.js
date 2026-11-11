@@ -24,6 +24,7 @@ import {
 	runCiCommand,
 	runDispatchLoop,
 	runSingleAssignment,
+	updateDirectiveFromBeat,
 	applyBackendPrompt,
 	staleHarnessHintFor,
 	startClaimRenewal,
@@ -1232,6 +1233,34 @@ describe("deliverSteers", () => {
 		assert.equal(acked[0].ok, true);
 	});
 
+	it("stores the backend update directive from each heartbeat", async () => {
+		const client = {
+			heartbeat: async () => ({
+				status: "active",
+				pendingSteers: [],
+				update: { backendApiVersion: "1.0.0", desiredRunnerVersion: "0.2.0", minimumRunnerVersion: "0.1.0" },
+			}),
+			steerAck: async () => ({}),
+		};
+		const state = {};
+		await deliverSteers({ config, client, logger, facts, state });
+		assert.deepEqual(state.updateDirective, {
+			backendApiVersion: "1.0.0",
+			desiredRunnerVersion: "0.2.0",
+			minimumRunnerVersion: "0.1.0",
+		});
+	});
+
+	it("reads a null directive from old backends without the advertisement", () => {
+		assert.deepEqual(updateDirectiveFromBeat({ status: "active" }), {
+			backendApiVersion: null,
+			desiredRunnerVersion: null,
+			minimumRunnerVersion: null,
+		});
+		assert.deepEqual(updateDirectiveFromBeat(null).backendApiVersion, null);
+		assert.equal(updateDirectiveFromBeat({ update: { backendApiVersion: "  " } }).backendApiVersion, null);
+	});
+
 	it("ignores steers for other executions and NACKs unsupported harnesses", async () => {
 		const acked = [];
 		const client = {
@@ -2261,6 +2290,24 @@ describe("handlePendingCommands", () => {
 		assert.match(state.commandAcks[0].detail, /mirror down/);
 	});
 
+	it("acks a failed skip when the host opted out of self-updates", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig({ autoUpdate: false }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestUpdate"],
+			updateDeps: {
+				checkForUpdate: async () => { throw new Error("must not check"); },
+			},
+		});
+		assert.equal(state.commandAcks.length, 1);
+		assert.equal(state.commandAcks[0].command, "requestUpdate");
+		assert.equal(state.commandAcks[0].ok, false);
+		assert.match(state.commandAcks[0].detail, /KAINBAIN_RUNNER_AUTO_UPDATE=0/);
+	});
+
 	it("confirms the ack over a final heartbeat before exiting into a staged update", async () => {
 		const heartbeats = [];
 		const state = {};
@@ -2426,6 +2473,9 @@ describe("joinAndHeartbeat command channel", () => {
 	const quiet = { log: () => {}, warn: () => {} };
 
 	it("acts on commands queued while the runner was down (boot delivery)", async () => {
+		// autoUpdate:false keeps this hermetic (no real check runs); the
+		// ack is a FAILED skip naming the opt-out switch, never a quiet
+		// success — the operator must see that nothing was applied.
 		const config = baseConfig({ harnessIds: ["mock"], autoUpdate: false });
 		const client = {
 			setCredential: () => {},
@@ -2442,7 +2492,8 @@ describe("joinAndHeartbeat command channel", () => {
 		try {
 			assert.equal(state.commandAcks.length, 1);
 			assert.equal(state.commandAcks[0].command, "requestUpdate");
-			assert.equal(state.commandAcks[0].ok, true);
+			assert.equal(state.commandAcks[0].ok, false);
+			assert.match(state.commandAcks[0].detail, /KAINBAIN_RUNNER_AUTO_UPDATE=0/);
 		} finally {
 			stop();
 			fs.rmSync(config.workRoot, { recursive: true, force: true });

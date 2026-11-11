@@ -796,7 +796,7 @@ export function RunnerConfigurationSection() {
                       <span className="text-[10px] font-bold uppercase tracking-widest text-error" data-testid={`runner-below-minimum-${runner.runnerId}`} title={runner.minimumVersion ? `Runner ${runner.runnerId} is below minimum ${runner.minimumVersion}` : `Below minimum version`}>below minimum</span>
                     )}
                     {runner.updateStatus?.state === 'failed' && (
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-error" data-testid={`runner-update-failed-${runner.runnerId}`} title={`Last self-update failed: ${runner.updateStatus.reason || 'unknown'}`}>update failed</span>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-error" data-testid={`runner-update-failed-${runner.runnerId}`} title={`Last self-update failed: ${runner.updateStatus.reason || 'unknown'} — see docs/runner-update-runbook.md “runner says out of date” triage`}>update failed</span>
                     )}
                   </li>
                 );

@@ -560,6 +560,57 @@ describe("RunnerRegistry operator config", () => {
 		expect(beat.belowMinimum).toBe(false);
 		expect(beat.updateAvailable).toBe(false);
 	});
+
+	test("advertises the update directive (desired + backend API version) on heartbeats", () => {
+		const { runners, credential } = approved();
+		const beat = runners.heartbeat({ runnerId: "r1", credential, facts: FACTS });
+		expect(beat.update).toMatchObject({
+			desiredRunnerVersion: "0.1.0",
+			backendApiVersion: "1.0.0",
+		});
+	});
+
+	test("heartbeat auto-nudges outdated command-capable runners, once until acked", () => {
+		const runners = registry();
+		const outdated = {
+			...FACTS,
+			versions: { protocol: RUNNER_PROTOCOL, runner: "0.0.9" },
+			commands: ["requestModelRediscovery", "requestUpdate"],
+		};
+		runners.register({ runnerId: "r1", joinToken: "join-secret", facts: outdated });
+		const { credential } = runners.approve("r1");
+		const first = runners.heartbeat({ runnerId: "r1", credential, facts: outdated });
+		expect(first.updateAvailable).toBe(true);
+		expect(runners.peekCommands("r1")).toEqual(["requestUpdate"]);
+		// A second heartbeat does not queue a duplicate while one pends.
+		runners.heartbeat({ runnerId: "r1", credential, facts: outdated });
+		expect(runners.peekCommands("r1")).toEqual(["requestUpdate"]);
+		// After the runner acks, the cooldown holds the next nudge back.
+		runners.heartbeat({
+			runnerId: "r1",
+			credential,
+			facts: { ...outdated, commandAck: { command: "requestUpdate", ok: true, detail: "updated to 0.1.0" } },
+		});
+		expect(runners.peekCommands("r1")).toEqual([]);
+	});
+
+	test("heartbeat never auto-nudges current runners or runners without the command", () => {
+		const { runners, credential } = approved();
+		// 0.1.0 trails nothing at the default recommended 0.1.0.
+		runners.heartbeat({
+			runnerId: "r1",
+			credential,
+			facts: { ...FACTS, commands: ["requestModelRediscovery", "requestUpdate"] },
+		});
+		expect(runners.peekCommands("r1")).toEqual([]);
+		// Outdated but too old to advertise commands: no nudge.
+		runners.heartbeat({
+			runnerId: "r1",
+			credential,
+			facts: { ...FACTS, versions: { protocol: RUNNER_PROTOCOL, runner: "0.0.9" } },
+		});
+		expect(runners.peekCommands("r1")).toEqual([]);
+	});
 });
 
 /***
