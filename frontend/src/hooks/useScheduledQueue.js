@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../services/api';
 import { subscribeObservability } from '../services/observabilityEvents';
+import { INVALIDATION_DEBOUNCE_MS, QUEUE_POPUP_POLL_MS } from '../services/pollingCadences.js';
 import { logger } from '../services/logger';
 
 /***
@@ -110,7 +111,7 @@ export function useScheduledQueue({ projectScope = 'all', enabled = false } = {}
           if (mountedRef.current) {
             void fetchQueue(true);
           }
-        }, 500);
+        }, INVALIDATION_DEBOUNCE_MS);
       }
     };
     const unsubscribe = subscribeObservability((event) => {
@@ -124,7 +125,7 @@ export function useScheduledQueue({ projectScope = 'all', enabled = false } = {}
       }
       scheduleRefresh();
     });
-    const interval = setInterval(() => void fetchQueue(true), 15000);
+    const interval = setInterval(() => void fetchQueue(true), QUEUE_POPUP_POLL_MS);
     const onVisibility = () => {
       if (document.visibilityState !== 'hidden') void fetchQueue(true);
     };
