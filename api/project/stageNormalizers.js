@@ -165,6 +165,14 @@ export function normalizeStage(stage) {
 		if (tags !== undefined) normalized.tags = tags;
 		else delete normalized.tags;
 	}
+	// Optional per-stage no-code toggle (additive): docs-only writes.
+	// Normalized only when present so legacy stages round-trip byte-identically.
+	// Strict boolean coercion: only an explicit `true` turns it on.
+	if (stage.noCode !== undefined) {
+		// Strict boolean coercion: only an explicit `true` turns it on; every
+		// other value (including truthy garbage) degrades to `false`.
+		normalized.noCode = stage.noCode === true;
+	}
 	// Optional per-stage Runner allow/block list (additive): normalise only
 	// when present so legacy stage objects round-trip byte-identically. An
 	// empty or malformed policy drops the key (unrestricted) so stored

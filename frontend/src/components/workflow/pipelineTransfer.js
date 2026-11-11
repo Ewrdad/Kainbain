@@ -46,7 +46,10 @@ export function oversizeImportError() {
  ***/
 export function isFileOversize(file) {
   return (
-    !!file && typeof file.size === 'number' && Number.isFinite(file.size) && file.size > MAX_IMPORT_BYTES
+    !!file &&
+    typeof file.size === 'number' &&
+    Number.isFinite(file.size) &&
+    file.size > MAX_IMPORT_BYTES
   );
 }
 
@@ -120,6 +123,7 @@ const STAGE_KEY_ORDER = [
   'timeout',
   'skills',
   'paused',
+  'noCode',
   'failback',
   // per-stage Runner allow/block list (additive; absent stays absent so legacy exports are unchanged)
   'runnerPolicy',
@@ -367,6 +371,9 @@ export function validatePipelineDoc(doc) {
     if (!isAbsent(stage.paused) && typeof stage.paused !== 'boolean') {
       errors.push(`${ref}: "paused" must be true or false, got ${JSON.stringify(stage.paused)}.`);
     }
+    if (!isAbsent(stage.noCode) && typeof stage.noCode !== 'boolean') {
+      errors.push(`${ref}: "noCode" must be true or false, got ${JSON.stringify(stage.noCode)}.`);
+    }
     // ci-only branch execution mode. The legacy 'main' spelling is accepted
     // here (the backend normalizer migrates it to 'primary' on save); any
     // other value is a typo worth failing loudly at import time rather than
@@ -441,7 +448,7 @@ export function validatePipelineDoc(doc) {
     const ref = `stages[${problem.index}] (${label})`;
     if (problem.problem === 'UNKNOWN_MODE') {
       errors.push(
-        `${ref}: "runnerPolicy".mode must be "allow" or "block", got ${JSON.stringify(problem.mode)}.`
+        `${ref}: "runnerPolicy".mode must be "allow" or "block", got ${JSON.stringify(problem.mode)}.`,
       );
     } else if (problem.problem === 'RUNNERS_NOT_ARRAY') {
       errors.push(`${ref}: "runnerPolicy".runners must be an array of Runner ids.`);
