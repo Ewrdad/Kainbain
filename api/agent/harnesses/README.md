@@ -7,15 +7,20 @@ engine never imports an SDK directly — it talks to the `AgentHarness` /
 
 ## Supported harnesses
 
-| Harness | Folder | Model selection | Notes |
-| --- | --- | --- | --- |
-| `pi` | `pi/` | `list` (model catalogue dropdown) | In-process pi coding agent SDK sessions (engine default). |
-| `antigravity` | `antigravity/` | `list` (`agy models` discovery) | Headless `agy` CLI runs per stage turn; the project default model is resolved at session creation. Discovery failures warn LOUDLY (console + bridge, with a `KAINBAIN_AGY_BIN` hint on ENOENT) — the service PATH must see the `agy` binary. |
-| `opencode` | `opencode/` | `list` (server provider list) | Sessions on an OpenCode server (`opencode serve` spawned per project, or `OPENCODE_URL`); SSE streams translated to the normalized event vocabulary; per-message model selection; transcript JSONL persistence. See `opencode/FACTS.md`. Without a reachable server the list is honestly empty. |
-| `custom` | `custom/` | `none` (no model selection) | Runs a project-configured command line with the curated prompt appended; model flags (e.g. `--model <id>`) bake into the command line itself. |
-| `muse` | `muse/` | `none` (no model selection) | Headless `muse exec` CLI runs per stage turn (`--json` parsed, YOLO by default until an approval UI exists). See `docs/EngineDetails/MuseHarness.md`. |
-| `vibe` | `vibe/` | `none` (no model selection) | Headless `vibe --prompt` CLI runs per stage turn (`--output streaming` rows parsed; auto-approve by default until an approval UI exists). Pins `VIBE_CLI=python` (`KAINBAIN_VIBE_CLI`) because the Rust TUI rejects the harness-owned `--output-dir`/`--time-limit`/`--prompt-file`; a `--help` preflight reports `VIBE_CLI_INCOMPATIBLE`. See `docs/EngineDetails/VibeHarness.md`. |
-| `codex` | `codex/` | `list` (Codex catalogue when available) | Tier 2 *theoretical shim* on this device: `codex` is not installed, so the harness detects absence, marks itself unavailable, never spawns, and returns an honest "not installed" hint (`KAINBAIN_CODEX_BIN`). See `docs/EngineDetails/CodexHarness.md`. |
+| Harness | Folder | Model selection | Runner discovery | Notes |
+| --- | --- | --- | --- | --- |
+| `pi` | `pi/` | `list` (model catalogue dropdown) | ✅ SDK snapshot | In-process pi coding agent SDK sessions (engine default). |
+| `antigravity` | `antigravity/` | `list` (`agy models` discovery) | ✅ `agy models` | Headless `agy` CLI runs per stage turn; the project default model is resolved at session creation. Discovery failures warn LOUDLY (console + bridge, with a `KAINBAIN_AGY_BIN` hint on ENOENT) — the service PATH must see the `agy` binary. |
+| `opencode` | `opencode/` | `list` (server provider list) | ⚠️ `OPENCODE_URL` only | Sessions on an OpenCode server (`opencode serve` spawned per project, or `OPENCODE_URL`); SSE streams translated to the normalized event vocabulary; per-message model selection; transcript JSONL persistence. See `opencode/FACTS.md`. Without a reachable server the list is honestly empty. |
+| `custom` | `custom/` | `none` (no model selection) | ➖ none by design | Runs a project-configured command line with the curated prompt appended; model flags (e.g. `--model <id>`) bake into the command line itself. |
+| `muse` | `muse/` | `none` (no model selection) | ✅ `muse serve` | Headless `muse exec` CLI runs per stage turn (`--json` parsed, YOLO by default until an approval UI exists). See `docs/EngineDetails/MuseHarness.md`. |
+| `vibe` | `vibe/` | `none` (no model selection) | ✅ ACP handshake | Headless `vibe --prompt` CLI runs per stage turn (`--output streaming` rows parsed; auto-approve by default until an approval UI exists). Pins `VIBE_CLI=python` (`KAINBAIN_VIBE_CLI`) because the Rust TUI rejects the harness-owned `--output-dir`/`--time-limit`/`--prompt-file`; a `--help` preflight reports `VIBE_CLI_INCOMPATIBLE`. See `docs/EngineDetails/VibeHarness.md`. |
+| `codex` | `codex/` | `list` (Codex catalogue when available) | ➖ honest empty (transport unverified) | Tier 2 *theoretical shim* on this device: `codex` is not installed, so the harness detects absence, marks itself unavailable, never spawns, and returns an honest "not installed" hint (`KAINBAIN_CODEX_BIN`). See `docs/EngineDetails/CodexHarness.md`. |
+
+`Runner discovery` is the Runner-side auto-detect leg
+(`runner/harnessModelDiscovery.js`): whether a Runner host lists that
+harness's models into the fleet catalogue (✅), only when configured (⚠️),
+or never (➖) — see `runner/README.md` for the full legs matrix.
 
 `modelSelection` is declared on each harness factory and projected verbatim by
 the discovery routes (`/harnesses`, `/compute/models` harnesses[]) so the UI

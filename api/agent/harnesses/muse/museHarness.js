@@ -47,10 +47,12 @@ import {
  *   Model contract: the harness declares `modelSelection: "list"` on both
  *   transports — MSP serves the live `model/list` catalogue (pinned via
  *   `session/setModel`), and exec plumbs a resolved model through `--model`,
- *   so a model ref is meaningful there too. Declaring "none" on exec hid the
- *   model control AND made the alias load/save paths blank stored muse
- *   models (data loss). On exec the local catalogue is empty; the picker is
- *   filled from the central/fleet catalogue merge instead.
+ *   so a model ref is meaningful there too; on exec the local catalogue is
+ *   empty and the picker is filled from the central/fleet catalogue merge.
+ *   Alias targets for muse keep their stored model with a warning (alias
+ *   trust — the API saves muse + model rows with a soft warning and
+ *   the load path keeps them, so the value survives until fleet
+ *   coverage offers a catalog).
  *
  *   Safety: argv/env come from `musePermissions.js` — `--workspace` is
  *   always pinned, `--yolo` is ON by default (operator-chosen: no approval
@@ -560,9 +562,9 @@ export function createMuseHarness(deps = {}) {
 
 		/** Model catalogue: "list" on BOTH transports — the exec transport
 		 *  consumes a resolved model via `--model`, so "none" would wrongly
-		 *  hide the model control and (via the alias load/save paths) wipe
-		 *  stored muse alias models. On exec the local list is empty and the
-		 *  picker is filled from the fleet catalogue merge instead. */
+		 *  hide the model control on exec backends. On exec the local list is
+		 *  empty and the picker is filled from the central/fleet catalogue
+		 *  merge instead (effectiveModelSelection none→list flip as fallback). */
 		modelSelection: "list",
 		reasoningLevels: null,
 

@@ -155,6 +155,8 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 			failureReason,
 			durationMs,
 			taskFiles,
+			configHash = null,
+			committed = undefined,
 		}) {
 			return call(`/tasks/${encodeURIComponent(taskId)}/complete-execution`, {
 				method: "POST",
@@ -165,6 +167,15 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 					...(sha ? { sha } : {}),
 					...(branch ? { branch } : {}),
 					...(posture ? { posture } : {}),
+					// Stage attestation (additive): the config hash this run
+					// attested in its wrap-up commit, plus whether this run
+					// actually committed (CI stages and clean trees report a
+					// HEAD SHA without producing a commit). Old backends ignore
+					// both keys; explicit `committed: false` must survive.
+					...(typeof configHash === "string" && configHash.trim()
+						? { configHash: configHash.trim() }
+						: {}),
+					...(typeof committed === "boolean" ? { committed } : {}),
 					// Explicit served-model field (observability): the posture
 					// string also carries the model as its last segment, but
 					// model ids may contain single `:` so the segment is not

@@ -69,6 +69,7 @@ afterEach(() => {
 	delete process.env.MUSE_MOCK_USER_INPUT;
 	delete process.env.MUSE_MOCK_SESSION_STORE;
 	delete process.env.MUSE_MOCK_NO_WINDOW;
+	delete process.env.MUSE_MOCK_EXTRA_MODELS;
 	while (workspaces.length > 0) {
 		const dir = workspaces.pop();
 		try {
@@ -131,6 +132,18 @@ describe("muse MSP lifecycle (mock serve)", () => {
 		expect(lines.join("\n")).toMatch(/\[MUSE MSP\]/);
 		expect(lines.join("\n")).not.toContain("Say hello"); // no prompt text in logs
 		await session.dispose();
+	});
+
+	it("serves a brand-new model row from the live host without code changes", async () => {
+		// A new model released in the harness appears through the normal
+		// detection path: the mock host serves an extra row and the live
+		// catalogue carries it with its canonical key.
+		process.env.MUSE_MOCK_EXTRA_MODELS = JSON.stringify([
+			{ modelId: "muse-spark-1.4", providerId: "meta" },
+		]);
+		const harness = makeHarness();
+		const models = await harness.listModels({ refresh: true });
+		expect(models.map((m) => m.key)).toContain("muse::meta::muse-spark-1.4");
 	});
 
 	it("steers a RUNNING turn with the acknowledged turn id", async () => {

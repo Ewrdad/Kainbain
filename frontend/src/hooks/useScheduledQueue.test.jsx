@@ -111,3 +111,39 @@ test('project-scoped hook ignores events for other projects', async () => {
   await new Promise((r) => setTimeout(r, 700));
   expect(api.observabilityStatus).toHaveBeenCalledTimes(1);
 });
+
+test('background tabs pause the safety poll and catch up on return', async () => {
+  vi.useFakeTimers();
+  const visibilityDescriptor = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+  const setVisibility = (state) => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+  };
+  try {
+    api.observabilityStatus.mockResolvedValue({ observability: { queue: [] } });
+    renderHook(() => useScheduledQueue({ projectScope: 'all', enabled: true }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(api.observabilityStatus).toHaveBeenCalledTimes(1);
+
+    // A full hidden minute issues zero further queue reads.
+    setVisibility('hidden');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(api.observabilityStatus).toHaveBeenCalledTimes(1);
+
+    // Returning refreshes immediately instead of waiting for the tick.
+    setVisibility('visible');
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(api.observabilityStatus).toHaveBeenCalledTimes(2);
+  } finally {
+    if (visibilityDescriptor) {
+      Object.defineProperty(document, 'visibilityState', visibilityDescriptor);
+    }
+    vi.useRealTimers();
+  }
+});

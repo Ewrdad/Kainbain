@@ -13,12 +13,12 @@ import {
 /***
  * MARK: aliasTargets tests
  * @description Pins the harness-aware alias target rules in two tiers: HARD
- *   errors refuse structurally impossible combinations (`none` harnesses
- *   paired with a model string, unknown harness ids, malformed refs) while
- *   SOFT warnings surface catalog-miss combinations (valid shape, absent
- *   from the target harness's catalog right now — never blocking) and
- *   `none`-harness pairings (kept with a warning — never refused, never
- *   blanked on load).
+ *   errors refuse structurally impossible combinations (unknown harness
+ *   ids, malformed refs) while SOFT warnings surface catalog-miss
+ *   combinations (valid shape, absent from the target harness's catalog
+ *   right now — never blocking) and models stored on `none` harnesses
+ *   (kept with a warning — alias trust). Stored rows survive load+save
+ *   round-trips byte-identical, with warnings for the kept models.
  ***/
 
 const noneHarnesses = new Set(["muse", "custom"]);
@@ -35,7 +35,10 @@ const modelIdsFor = async (harnessId) =>
 const opts = { modelSelectionFor, isKnownHarness, modelIdsFor };
 
 describe("validateAliasTargetModels", () => {
-	it("softly warns (never refuses) on a muse + model target, keeping the stored value", async () => {
+	it("saves a muse + model target with a warning, naming the alias and harness", async () => {
+		// Alias trust: a stored model on a self-managed harness is kept
+		// (the backend's `none` is transient — fleet coverage can lift it
+		// at any time), so the save succeeds with a loud warning.
 		const { error, warnings } = await validateAliasTargetModels(
 			{
 				name: "worker",
@@ -53,12 +56,13 @@ describe("validateAliasTargetModels", () => {
 		expect(warnings[0]).toContain("kept");
 	});
 
-	it("softly warns (never refuses) on the legacy single-target shape on custom", async () => {
+	it("saves the legacy single-target shape on custom with a warning", async () => {
 		const { error, warnings } = await validateAliasTargetModels(
 			{ name: "cli", harness: "custom", model: "pi::m" },
 			opts,
 		);
 		expect(error).toBeNull();
+		expect(warnings).toHaveLength(1);
 		expect(warnings[0]).toContain("cli");
 		expect(warnings[0]).toContain("custom");
 	});
@@ -275,14 +279,13 @@ describe("validateAliasTargetModels", () => {
 		});
 	});
 
-	it("resolves against the real registry by default (muse is list on both transports, unknown harness is a hard error)", async () => {
-		// muse declares "list" on exec too (it consumes --model), so a muse +
-		// model target is accepted; the model is simply catalog-probed like any
-		// other harness now.
-		expect(
-			(await validateAliasTargetModels({ name: "w", harness: "muse", model: "m" }))
-				.error,
-		).toBeNull();
+	it("resolves against the real registry by default (muse is none, pi is list)", async () => {
+		// muse on the exec transport is backend-`none`: the stored model
+		// saves with a warning (kept), never refused.
+		const kept = await validateAliasTargetModels({ name: "w", harness: "muse", model: "m" });
+		expect(kept.error).toBeNull();
+		expect(kept.warnings).toHaveLength(1);
+		expect(kept.warnings[0]).toContain("muse");
 		// Unknown harness against the real registry: hard error, no probe needed.
 		expect(
 			(
@@ -497,7 +500,10 @@ describe("fleet-aware validation probes", () => {
 });
 
 describe("sanitizeAliasTargetModels", () => {
-	it("never blanks none-harness models — keeps them and reports the flags", () => {
+	it("keeps none-harness models and reports the kept values", () => {
+		// Alias trust: the load path never destroys a stored target — a
+		// model on a `none` harness survives verbatim, with one warning
+		// per kept model for the load log.
 		const input = [
 			{
 				name: "worker",
@@ -514,10 +520,9 @@ describe("sanitizeAliasTargetModels", () => {
 				targets: [{ harness: "pi", model: "google::m", percent: 100 }],
 			},
 		];
-		const { aliases, flagged } = sanitizeAliasTargetModels(input, {
+		const { aliases, warnings } = sanitizeAliasTargetModels(input, {
 			modelSelectionFor,
 		});
-		// Stored models are user data: they survive the load path unchanged.
 		expect(aliases).toEqual([
 			{
 				name: "worker",
@@ -534,7 +539,7 @@ describe("sanitizeAliasTargetModels", () => {
 				targets: [{ harness: "pi", model: "google::m", percent: 100 }],
 			},
 		]);
-		expect(flagged).toEqual([
+		expect(warnings).toEqual([
 			{
 				alias: "worker",
 				harness: "muse",
@@ -545,7 +550,7 @@ describe("sanitizeAliasTargetModels", () => {
 		expect(input[0].model).toBe("antigravity::google::gemini-legacy");
 	});
 
-	it("recomputes the legacy mirror from the first target without clearing it", () => {
+	it("recomputes the legacy mirror from the first target", () => {
 		const { aliases } = sanitizeAliasTargetModels(
 			[
 				{
@@ -560,6 +565,8 @@ describe("sanitizeAliasTargetModels", () => {
 			],
 			{ modelSelectionFor },
 		);
+		// The legacy mirror recomputes from the first target — whose
+		// stored model is kept, never blanked.
 		expect(aliases[0].model).toBe("stale");
 		expect(aliases[0].targets[1]).toEqual({
 			harness: "pi",
@@ -571,7 +578,88 @@ describe("sanitizeAliasTargetModels", () => {
 	it("passes non-array input through as no aliases", () => {
 		expect(sanitizeAliasTargetModels(undefined, { modelSelectionFor })).toEqual({
 			aliases: [],
-			flagged: [],
+			warnings: [],
 		});
+	});
+
+	it("keeps none-harness models with a warning instead of wiping them (alias trust)", () => {
+		// A stored target the user saved must survive load even when the
+		// backend harness currently reports `none` (muse on the exec
+		// transport): keep the last working value, warn loudly, never blank.
+		const { aliases, warnings } = sanitizeAliasTargetModels(
+			[
+				{
+					name: "worker",
+					harness: "muse",
+					model: "muse::meta::muse-spark-1.3",
+					targets: [{ harness: "muse", model: "muse::meta::muse-spark-1.3", percent: 100 }],
+				},
+			],
+			{ modelSelectionFor },
+		);
+		expect(aliases[0].model).toBe("muse::meta::muse-spark-1.3");
+		expect(aliases[0].targets[0].model).toBe("muse::meta::muse-spark-1.3");
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toMatchObject({
+			alias: "worker",
+			harness: "muse",
+			model: "muse::meta::muse-spark-1.3",
+		});
+	});
+
+	it("byte-survives catalogue churn across save+load round-trips (phase 5 gate)", async () => {
+		// Save a muse alias target, then churn the world around it: the
+		// harness flaps none→list→none, the catalog empties, a new model
+		// arrives. The stored target must survive every round-trip
+		// byte-identical, with a warning whenever the harness cannot
+		// serve it right now — never a wipe, never a retarget.
+		const stored = "muse::meta::muse-spark-1.3";
+		const row = {
+			name: "worker",
+			harness: "muse",
+			model: stored,
+			targets: [{ harness: "muse", model: stored, percent: 100 }],
+		};
+		const noneThenList = (harnessId) =>
+			harnessId === "muse" ? "none" : "list";
+		// 1. Exec backend (muse is none): save succeeds with a warning.
+		const saved = await validateAliasTargetModels(row, {
+			...opts,
+			modelSelectionFor: noneThenList,
+		});
+		expect(saved.error).toBeNull();
+		expect(saved.warnings).toHaveLength(1);
+		// 2. Load on the exec backend keeps the value with a warning.
+		const loaded = sanitizeAliasTargetModels([row], {
+			modelSelectionFor: noneThenList,
+		});
+		expect(loaded.aliases[0].targets[0].model).toBe(stored);
+		expect(loaded.warnings).toHaveLength(1);
+		// 3. Fleet coverage arrives (muse behaves as list, new model in
+		// the catalog): the stored target still saves, unmoved.
+		const fleetList = (harnessId) => "list";
+		const fleetCatalog = async (harnessId) =>
+			new Set([`${harnessId}::known-model`, stored, "muse::meta::muse-spark-1.4"]);
+		const covered = await validateAliasTargetModels(row, {
+			...opts,
+			modelSelectionFor: fleetList,
+			modelIdsFor: fleetCatalog,
+		});
+		expect(covered.error).toBeNull();
+		// 4. Coverage lapses and the catalog empties: still saves with a
+		// soft catalog-miss warning, still byte-identical.
+		const emptyCatalog = async () => new Set();
+		const lapsed = await validateAliasTargetModels(row, {
+			...opts,
+			modelSelectionFor: fleetList,
+			modelIdsFor: emptyCatalog,
+		});
+		expect(lapsed.error).toBeNull();
+		expect(lapsed.warnings).toHaveLength(1);
+		expect(lapsed.warnings[0]).toContain(stored);
+		const reloaded = sanitizeAliasTargetModels([row], {
+			modelSelectionFor: noneThenList,
+		});
+		expect(reloaded.aliases[0].model).toBe(stored);
 	});
 });

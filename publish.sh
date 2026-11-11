@@ -192,7 +192,7 @@ component_paths() {
   case "$1" in
     backend) echo "api shared Dockerfile docker-entrypoint.sh" ;;
     frontend) echo "frontend shared" ;;
-    runner) echo "runner shared api startRunner.sh scripts/package-runner.sh" ;;
+    runner) echo "runner shared api startRunner.sh scripts/package-runner.sh scripts/package-runner.mjs scripts/generate-runner-manifest.mjs scripts/migrate-runner-to-wrapper.sh scripts/install-local-runner.sh scripts/lib/runner-install-root.sh" ;;
   esac
 }
 for c in $COMPONENTS; do
@@ -251,11 +251,7 @@ gate_for() {
   case "$1" in
     backend) run npm run test:api && run npm run lint:api ;;
     frontend) run npm run test:frontend && run npm run lint:frontend && run npm run build:frontend ;;
-    # The runner gate covers the WHOLE runner suite, including every
-    # updates-* suite for the self-update channel — a green publish must not
-    # ship a broken updater (previously the 8 updates-* suites ran only in
-    # the release workflow, so publish.sh could ship a broken update path).
-    runner) run node --test runner/daemon.test.js runner/config.test.js runner/project.test.js runner/gitOps.test.js runner/harness.test.js runner/client.test.js runner/modelDiscovery.test.js runner/updates-check.test.js runner/updates-daemon.test.js runner/updates-fixture.test.js runner/updates-manifest.test.js runner/updates-platform.test.js runner/updates-state.test.js runner/updates-verify.test.js runner/updates-wrapper.test.js ;;
+    runner) run node --test runner/ciBranchWorkdir.test.js runner/daemon.test.js runner/client.test.js runner/impromptu.test.js runner/config.test.js runner/gitOps.test.js runner/harness.test.js runner/logEvents.test.js runner/modelDiscovery.test.js runner/harnessModelDiscovery.test.js runner/project.test.js runner/updates-check.test.js runner/updates-compat.test.js runner/updates-daemon.test.js runner/updates-fixture.test.js runner/updates-manifest.test.js runner/updates-platform.test.js runner/updates-state.test.js runner/updates-verify.test.js runner/updates-wrapper.test.js ;;
   esac
 }
 if [ "$COMPONENTS" = "backend frontend runner" ] && [ "$FAST" != "1" ]; then
@@ -304,16 +300,17 @@ done
 if [ "$DRY_RUN" = "1" ]; then
   for c in $COMPONENTS; do
     case "$c" in
-      runner)
-        RUNNER_VERSION="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("runner/version.json","utf8")).runnerVersion || "")')"
-        echo "would run: git tag runner-v${RUNNER_VERSION} $FULLSHA && git push origin runner-v${RUNNER_VERSION} (only when the tag does not already exist)"
-        ;;
       backend|frontend)
         TAG="$(api_version_of "$([ "$c" = backend ] && echo api || echo frontend)")-$SHORTSHA"
         echo "would run: docker tag kainbain-$c:$TAG docker.io/$KAINBAIN_DOCKERHUB_NAMESPACE/kainbain-$c:$TAG"
         echo "would run: docker push docker.io/$KAINBAIN_DOCKERHUB_NAMESPACE/kainbain-$c:$TAG"
         echo "would run: docker tag kainbain-$c:$TAG docker.io/$KAINBAIN_DOCKERHUB_NAMESPACE/kainbain-$c:latest"
         echo "would run: docker push docker.io/$KAINBAIN_DOCKERHUB_NAMESPACE/kainbain-$c:latest"
+        ;;
+      runner)
+        RUNNER_V="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("runner/version.json","utf8")).runnerVersion)' 2>/dev/null || echo unknown)"
+        echo "would run: git tag -a runner-v${RUNNER_V#v} -m <release notes> $FULLSHA"
+        echo "would run: git push origin runner-v${RUNNER_V#v}"
         ;;
     esac
   done
@@ -335,6 +332,33 @@ digest_of_image() {
 }
 PUBLISHED=""
 DIGEST_backend=""; DIGEST_frontend=""
+# release_runner_tag cuts the runner release: an annotated runner-v* tag on
+# the published commit, pushed to origin, which triggers runner-release.yml
+# (build + sign + GitHub release). The tag is the version source of truth;
+# cutting a release is bumping runner/version.json's runnerVersion, merging,
+# and publishing the runner. Idempotent: an existing tag (local or remote)
+# skips with a message instead of failing, so re-publishing an unchanged
+# runner is a no-op success.
+release_runner_tag() {
+  local ver tag
+  ver="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("runner/version.json","utf8")).runnerVersion)')"; ver="${ver#v}"
+  if ! [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    echo "publish.sh: runner/version.json runnerVersion '$ver' is not semver — bump it to cut a release" >&2
+    return 1
+  fi
+  tag="runner-v$ver"
+  if git rev-parse "$tag" >/dev/null 2>&1; then
+    log "runner release $tag already exists locally — skipping tag (fleet updates from the existing release)"
+    return 0
+  fi
+  if git ls-remote --tags origin "$tag" 2>/dev/null | grep -q .; then
+    log "runner release $tag already exists on origin — skipping tag (fleet updates from the existing release)"
+    return 0
+  fi
+  git tag -a "$tag" -m "Runner $tag" "$FULLSHA" || return 1
+  git push origin "$tag" || return 1
+  log "tagged + pushed $tag — runner-release.yml builds the signed release from it"
+}
 for c in $COMPONENTS; do
   case "$c" in
     backend|frontend)
@@ -351,24 +375,7 @@ for c in $COMPONENTS; do
       PUBLISHED="$PUBLISHED $c"
       ;;
     runner)
-      # Cut the release the runner self-update channel actually reads: the
-      # runner-release.yml workflow builds the signed GitHub release from a
-      # runner-v* TAG, so a pipeline runner publish must create + push that
-      # tag or no runner can ever see the release (the 2026-11 stall where
-      # releases/latest sat at runner-v0.1.0 while the pipeline kept
-      # "publishing"). The tag is cut at the commit being published and is
-      # idempotent: an existing tag (local or remote) means runner/version.json
-      # was not bumped — nothing to release.
-      RUNNER_VERSION="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("runner/version.json","utf8")).runnerVersion || "")')"
-      RUNNER_TAG="runner-v${RUNNER_VERSION}"
-      if [ -n "$RUNNER_VERSION" ] && ! git rev-parse --verify --quiet "refs/tags/$RUNNER_TAG" >/dev/null 2>&1 \
-         && ! git ls-remote --exit-code --tags origin "$RUNNER_TAG" >/dev/null 2>&1; then
-        run git tag "$RUNNER_TAG" "$FULLSHA" || { echo "publish.sh: failed to tag $RUNNER_TAG — nothing released to the update channel" >&2; exit 1; }
-        run git push origin "$RUNNER_TAG" || { echo "publish.sh: failed to push $RUNNER_TAG — the runner update channel would not see this release" >&2; exit 1; }
-        log "cut + pushed $RUNNER_TAG at $FULLSHA — runner-release.yml will build the signed GitHub release"
-      else
-        log "runner release tag ${RUNNER_TAG:-<unset>} already exists (or runner/version.json has no runnerVersion) — not re-cutting; bump runner/version.json to release a new runner"
-      fi
+      release_runner_tag || exit 1
       PUBLISHED="$PUBLISHED runner"
       ;;
   esac

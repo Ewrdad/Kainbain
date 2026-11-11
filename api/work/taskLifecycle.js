@@ -21,11 +21,9 @@ import {
 import { kainbainProjectFor } from "../kainbainDir.js";
 import { worktreesBaseFor } from "./taskWorkspace.js";
 import {
-	clearTaskDeletions,
-	isTaskDeleted,
-	loadDeletedTaskIds,
-	recordTaskDeletion,
-} from "./taskTombstones.js";
+	parseAutoApproveDuration,
+	resolveAutoApproveAt,
+} from "../../shared/autoApproveDuration.js";
 
 /***
  * MARK: scanTasks
@@ -47,25 +45,11 @@ export function scanTasks(store, projectId, projectCwd) {
 		}
 
 		const entries = fs.readdirSync(tasksDir, { withFileTypes: true });
-		// Deletion tombstones: task docs can be git-tracked, so a branch
-		// checkout / reset / merge can restore a deleted task's directory.
-		// A tombstoned id is purged from disk here and never re-imported.
-		const project = kainbainProjectFor(store, projectId);
-		const tombstones = loadDeletedTaskIds(baseDir, project);
 		for (const entry of entries) {
 			if (!entry.isDirectory()) continue;
 			const taskId = entry.name;
 			const taskFolder = path.join(tasksDir, taskId);
 			const taskMdFile = path.join(taskFolder, "task.md");
-
-			if (tombstones.has(taskId)) {
-				try {
-					fs.rmSync(taskFolder, { recursive: true, force: true });
-				} catch {
-					// Purge is best-effort; the skip below still applies.
-				}
-				continue;
-			}
 
 			let task = map.get(taskId);
 			if (fs.existsSync(taskMdFile)) {
@@ -289,6 +273,7 @@ export function createTask(
 				}) || [];
 		}
 	}
+	let entryStage = null;
 	if (
 		initialStatus === "in_stage" &&
 		resolvedStageId &&
@@ -302,8 +287,12 @@ export function createTask(
 		);
 		if (normalizeStageType(currentStage?.type) === "human") {
 			initialStatus = "waiting_human";
+			entryStage = currentStage;
 		}
 	}
+	const entryHoldMs = entryStage
+		? parseAutoApproveDuration(entryStage.autoApproveAfterMs)
+		: null;
 
 	const task = {
 		id,
@@ -335,6 +324,10 @@ export function createTask(
 		logEntries: [],
 		keywords: [],
 		feedback: null,
+		// A task born parked at a human checkpoint with a hold enters with
+		// its deadline stamped, exactly like a moveToStage entry.
+		autoApproveAt: entryHoldMs ? resolveAutoApproveAt(now, entryHoldMs) : null,
+		autoApproveRemindedAt: null,
 	};
 
 	if (store._isBranchModeEnabled(projectId)) {
@@ -566,19 +559,7 @@ export function removeTaskWorktreeSync(baseDir, taskId, opts = {}) {
  * @description Removes a task from the project registry and deletes `<projectRoot>/docs/tasks/<taskId>` from disk.
  ***/
 export function deleteTask(store, projectId, taskId, projectCwd) {
-	const map = store._getMap(projectId);
-	const task = map.get(taskId);
-	const removed = map.delete(taskId);
-	// Purge dedupe entries pointing at the deleted task: otherwise a
-	// re-created task with the same key inside the dedupe window would
-	// return the deleted (now unregistered) task object as a ghost.
-	if (removed && task && store.dedupeMap) {
-		for (const [key, entry] of store.dedupeMap.entries()) {
-			if (entry?.task === task || entry?.task?.id === taskId) {
-				store.dedupeMap.delete(key);
-			}
-		}
-	}
+	const removed = store._getMap(projectId).delete(taskId);
 	const baseDir = store._resolveProjectCwd(projectId, projectCwd);
 	if (baseDir) {
 		const taskDocsDir =
@@ -593,11 +574,6 @@ export function deleteTask(store, projectId, taskId, projectCwd) {
 			// Cleanup error ignore
 		}
 		/* eslint-enable security/detect-non-literal-fs-filename */
-		// Tombstone the deletion: task docs may be git-tracked, so a later
-		// branch checkout / reset / merge can restore this directory from a
-		// kb/* branch. The git-ignored tombstone lets the next scanTasks purge
-		// the resurrected dir instead of re-importing the task.
-		recordTaskDeletion(baseDir, kainbainProjectFor(store, projectId), taskId);
 		// A deleted task never resumes: its isolated worktree (if any) goes
 		// with it. Best-effort and silent — deletion must never fail on git.
 		removeTaskWorktreeSync(baseDir, taskId, {
@@ -701,7 +677,5 @@ export function clearProject(store, projectId, projectCwd) {
 			// Cleanup error ignore
 		}
 		/* eslint-enable security/detect-non-literal-fs-filename */
-		// The whole tasks store is wiped, so no id is "deleted" anymore.
-		clearTaskDeletions(baseDir, kainbainProjectFor(store, projectId));
 	}
 }

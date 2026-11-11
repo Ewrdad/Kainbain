@@ -422,3 +422,23 @@ test('candidate prefers the flagged task, then the open current-stage task, then
   expect(resolveCandidateTask([], {}, '1')).toBeNull();
   expect(resolveCandidateTask(undefined, {}, '1')).toBeNull();
 });
+
+test('a malformed snapshot depth fails safe to the loaded-list waiting count', () => {
+  // Both open tasks wait for pickup, so the honest fallback depth is 2 —
+  // whatever the snapshot claims, the chip must print a real count.
+  for (const openQueueDepth of [NaN, -1, Infinity, '3', null, undefined, {}, []]) {
+    const { queueDepth } = resolveUniversalNowPlaying({
+      tasks: openTasks,
+      engineState: { status: 'idle', openQueueDepth },
+    });
+    expect(queueDepth).toBe(2);
+  }
+});
+
+test('a fractional snapshot depth floors to a whole count', () => {
+  const { queueDepth } = resolveUniversalNowPlaying({
+    tasks: openTasks,
+    engineState: { status: 'idle', openQueueDepth: 2.7 },
+  });
+  expect(queueDepth).toBe(2);
+});

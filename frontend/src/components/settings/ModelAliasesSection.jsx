@@ -2,14 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCollapsibleRows } from './useCollapsibleRows';
 import { SelectDropdown } from '../common/SelectDropdown';
 import { resolveStoredModelValidity } from '../common/ModelSelector';
-import { splitReasoning, appendReasoning, resolveReasoningOptions, stripReasoningIfUnsupported, checkReasoningLevelText } from '../../services/modelKeys';
+import { splitReasoning, stripReasoning, appendReasoning, resolveReasoningOptions, stripReasoningIfUnsupported, checkReasoningLevelText } from '../../services/modelKeys';
 import {
   api,
   modelKeyForValue,
   groupModelsByProvider,
   normalizeModelRef,
 } from '../../services/api';
-import { fleetCountBadgeNode, fleetInfoForModel } from '../../services/modelStatus';
+import { fleetCountBadgeNode, fleetInfoForModel, fleetSnapshotBadgeNode } from '../../services/modelStatus';
 import { withFleetModels, effectiveModelSelection } from '../../services/fleetModelOptions';
 import { ReliabilityLine } from './ReliabilityLine';
 import {
@@ -120,9 +120,11 @@ function reasoningOptionsForTarget(target, catalogue) {
  *   the catalogue harness view: `valid` (known harness, model resolves —
  *   or blank where blank is legal), `unknown-harness` (hard — the backend
  *   refuses the save), `unknown-model` (soft — the save succeeds with a
- *   warning; catalogues drift), `invalid` (hard pairing error, e.g. a model
- *   on a self-managed harness), or `blank` (an empty slot the row validator
- *   already flags). An empty catalogue judges nothing (still loading).
+ *   warning; catalogues drift, and a stored model on a self-managed
+ *   harness is kept with a warning too), `invalid` (hard pairing error,
+ *   e.g. an unsupported reasoning level), or `blank` (an empty slot the
+ *   row validator already flags). An empty catalogue judges nothing
+ *   (still loading).
  * @example targetValidity({ harness: 'pi', model: 'google::m1' }, HARNESSES) => { status: 'valid', message: null }
  * @param {Object} target - One target sub-row (`{ harness, model }`).
  * @param {Array<Object>} harnesses - Catalogue harness view.
@@ -143,9 +145,12 @@ export function targetValidity(target, harnesses, fleetCounts) {
   }
   if (effectiveModelSelection(entry.modelSelection || 'list', harnessId, fleetCounts) === 'none') {
     if (model) {
+      // Alias trust: a stored model on a self-managed harness is kept
+      // with a soft warning (the backend's `none` is transient — fleet
+      // coverage can lift it at any time), never a save-blocking error.
       return {
-        status: 'invalid',
-        message: `Harness "${harnessId}" manages its own model — leave the model blank`,
+        status: 'unknown-model',
+        message: `Harness "${harnessId}" manages its own model — the stored model "${model}" is kept and ignored at dispatch until the harness offers a catalogue`,
       };
     }
     return { status: 'valid', message: null };
@@ -198,11 +203,12 @@ export function targetValidity(target, harnesses, fleetCounts) {
  *   duplicates are flagged, first wins at save — mirroring write-time
  *   dedupe); target percents must add to 100%; every target must name a
  *   registered harness (mirroring the API refusal — an empty catalogue
- *   judges nothing while loading); every target on a `list` harness needs
- *   a model; and every target on a self-managed `none` harness (muse,
- *   custom) must leave its model blank (mirroring the API refusal —
- *   dispatch would ignore the model there anyway). Catalog-miss models are
- *   NOT errors (soft backend warning only) — they render as badges.
+ *   judges nothing while loading); and every target on a `list` harness
+ *   needs a model. A stored model on a self-managed `none` harness is
+ *   NOT an error (alias trust — kept with a soft warning, mirroring the
+ *   API; dispatch ignores it until the harness offers a catalogue).
+ *   Catalog-miss models are NOT errors either (soft backend warning
+ *   only) — both render as badges.
  * @example validateAliasList([{ name: 's', harness: 'pi', model: '' }], [{ id: 'pi', modelSelection: 'list' }])
  *   => [{ index: 0, message: '…' }]
  * @param {Array<Object>} aliases - Draft alias rows.
@@ -242,10 +248,10 @@ export function validateAliasList(aliases, harnesses, fleetCounts) {
       }
       const selection = effectiveModelSelection(entry?.modelSelection || 'list', harnessId, fleetCounts);
       const validity = targetValidity(target, catalogue, fleetCounts);
-      // The validity gate adds the reasoning-level hard errors. A model on a
-      // self-managed (`none`) harness keeps its historic alias-named message
-      // from the checks below, so that path is excluded here.
-      if (validity.status === 'invalid' && validity.message && selection !== 'none') {
+      // The validity gate adds the reasoning-level hard errors. A stored
+      // model on a self-managed (`none`) harness is soft by design
+      // (alias trust — kept with a warning), so it never errors here.
+      if (validity.status === 'invalid' && validity.message) {
         errors.push({ index, message: validity.message });
         return;
       }
@@ -253,13 +259,6 @@ export function validateAliasList(aliases, harnesses, fleetCounts) {
         errors.push({
           index,
           message: `Alias "${name}" needs a model for the ${target.percent}% ${harnessId} target`,
-        });
-        return;
-      }
-      if (selection === 'none' && normalizeAliasName(target?.model)) {
-        errors.push({
-          index,
-          message: `Alias "${name}" targets harness "${harnessId}", which manages its own model — leave the model blank`,
         });
         return;
       }
@@ -452,7 +451,9 @@ export function aliasReliabilityTitles(aliasName, stats) {
  *   rate can never be misread as belonging to a neighbouring target, and
  *   the card announces itself as a labelled group for assistive
  *   technology. Responsive layout: stacks full-width on mobile (<640px),
- *   restoring the 3-column grid on desktop (sm:+).
+ *   restoring the 3-column grid on desktop (sm:+). A harness switch keeps
+ *   the stored model text (alias trust); the footer badges unknown-model
+ *   when the kept value stops resolving under the new harness.
  * @example <AliasTargetRow aliasIndex={0} targetIndex={1} targetCount={2} target={{ harness: 'pi', model: 'm1', percent: 40 }} />
  *   => a bordered card titled "Target 2 · 40%" whose footer reads
  *      "Target reliability: …"
@@ -503,6 +504,11 @@ function AliasTargetRow({
   // fleet data the options render badge-free (never mislead).
   const hasFleetCounts = fleetCounts && typeof fleetCounts === 'object';
   const modelOptions = groupModelsByProvider(modelsForHarness).map((option) => {
+    // The snapshot's explicit unavailable verdict wins over the count
+    // badge (it carries the reason) — and applies even without fleet
+    // data, so a marked entry never renders normal-looking.
+    const snapshotBadge = fleetSnapshotBadgeNode(modelsByValue.get(option.value));
+    if (snapshotBadge) return { ...option, badge: snapshotBadge };
     if (!hasFleetCounts) return option;
     const model = modelsByValue.get(option.value);
     const info = fleetInfoForModel(fleetCounts, model, option.value);
@@ -581,10 +587,10 @@ function AliasTargetRow({
                 return;
               }
               setBlockedHarnessId(null);
-              // Preserve the stored/draft model text across the harness
-              // switch: an unknown-model badge is honest, silently clearing
-              // the model is draft data loss that the next save would persist.
-              onTargetChange({ harness: next, model: target?.model || '' });
+              // Alias trust: a harness switch keeps the stored model text
+              // (the row badges unknown-model when it stops resolving —
+              // the user clears it explicitly, never the switch itself).
+              onTargetChange({ harness: next });
             }}
             disabled={disabled}
             size="sm"
@@ -602,21 +608,30 @@ function AliasTargetRow({
             Model
           </label>
           {selection === 'none' ? (
-            <div className="flex items-center gap-2 py-2">
+            <div className="flex flex-col gap-1 py-2">
               <p className="text-[10px] text-text-muted" data-testid={managedNoteTestId}>
                 Harness manages its own model.
               </p>
               {typeof target?.model === 'string' && target.model.trim() !== '' && (
-                <button
-                  type="button"
-                  onClick={() => onTargetChange({ model: '' })}
-                  disabled={disabled}
-                  aria-label={`Clear stored model for alias ${aliasIndex + 1} target ${targetIndex + 1}`}
-                  title={`Clear the stored model "${target.model.trim()}" (this harness manages its own model)`}
-                  className="px-2 py-0.5 bg-surface-deep border border-border-standard rounded-sm text-[10px] font-bold uppercase text-text-muted hover:text-on-surface disabled:opacity-50 cursor-pointer"
-                >
-                  Clear
-                </button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p
+                    className="text-[10px] font-mono text-amber-600 dark:text-amber-400"
+                    data-testid={`model-alias-kept-model-${aliasIndex}-${targetIndex}`}
+                    title="Kept with a warning — ignored at dispatch until the harness offers a catalogue"
+                  >
+                    Stored &ldquo;{target.model.trim()}&rdquo; — kept
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onTargetChange({ model: '' })}
+                    disabled={disabled}
+                    aria-label={`Clear stored model for alias ${aliasIndex + 1} target ${targetIndex + 1}`}
+                    title={`Clear the stored model "${target.model.trim()}" (this harness manages its own model)`}
+                    className="px-2 py-0.5 bg-surface-deep border border-border-standard rounded-sm text-[10px] font-bold uppercase text-text-muted hover:text-on-surface disabled:opacity-50 cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                </div>
               )}
             </div>
           ) : (
@@ -716,10 +731,10 @@ function AliasTargetRow({
           <button
             type="button"
             onClick={() => {
-              // One-click unblock: drop the level and complete the pending
-              // switch. The model resets like every harness switch (the row's
-              // normal path always clears the model on harness change).
-              onTargetChange({ harness: blockedHarnessId, model: '' });
+              // One-click unblock: drop the level but keep the base model,
+              // then complete the pending switch (alias trust — only the
+              // blocking level goes, never the stored model text).
+              onTargetChange({ harness: blockedHarnessId, model: stripReasoning(target?.model || '') });
               setBlockedHarnessId(null);
             }}
             disabled={disabled}

@@ -8,7 +8,7 @@
  *   no-op there and is hidden. Every consumer (the SystemSettingsPage screen,
  *   SystemSettingsContent, unit tests, and the canary tab-bar suite) derives
  *   from this list so a new tab can never drift the expectations again.
- * @example SETTINGS_TABS.find((t) => t.id === 'ui') => { id: 'ui', label: 'UI', showFooterReset: false }
+ * @example SETTINGS_TABS.find((t) => t.id === 'access') => { id: 'access', label: 'Access', showFooterReset: false }
  ***/
 
 export const SETTINGS_TABS = [
@@ -19,13 +19,14 @@ export const SETTINGS_TABS = [
   { id: 'notifications', label: 'Notifications', showFooterReset: false },
   { id: 'prompt-layout', label: 'Prompt Layout', showFooterReset: false },
   { id: 'images', label: 'Images', showFooterReset: false },
+  { id: 'access', label: 'Access', showFooterReset: false },
   { id: 'ui', label: 'UI', showFooterReset: false },
 ];
 
 /***
  * MARK: SETTINGS_TAB_LABELS
  * @description Ordered tab labels derived from SETTINGS_TABS (render order).
- * @example SETTINGS_TAB_LABELS => ['Runners', 'Models', 'Engine', 'Storage', 'Notifications', 'Prompt Layout', 'Images', 'UI']
+ * @example SETTINGS_TAB_LABELS => ['Runners', 'Models', 'Engine', 'Storage', 'Notifications', 'Prompt Layout', 'Images', 'Access', 'UI']
  ***/
 export const SETTINGS_TAB_LABELS = SETTINGS_TABS.map((tab) => tab.label);
 

@@ -11,6 +11,10 @@ export function stopScheduler(store) {
 		clearInterval(store.schedulerTimer);
 		store.schedulerTimer = null;
 	}
+	if (store.autoApproveTimer) {
+		clearInterval(store.autoApproveTimer);
+		store.autoApproveTimer = null;
+	}
 	if (store._onIdleTimer) {
 		clearTimeout(store._onIdleTimer);
 		store._onIdleTimer = null;

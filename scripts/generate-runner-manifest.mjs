@@ -62,7 +62,17 @@ export const minisignSign = ({ messageBytes, secretSeedHex, keynumHex }) => {
 	return `untrusted comment: kainbain runner release signature\n${envelope}\n`;
 };
 
-export const buildManifest = ({ version, dir, tag, requires }) => {
+export const readReleaseRequires = (root = REPO_ROOT) => {
+	try {
+		const versionJson = JSON.parse(fs.readFileSync(path.join(root, "runner", "version.json"), "utf8"));
+		const range = versionJson?.requires?.backendApi;
+		return typeof range === "string" && range.trim() ? range.trim() : null;
+	} catch {
+		return null;
+	}
+};
+
+export const buildManifest = ({ version, dir, tag, root = REPO_ROOT }) => {
 	const clean = String(version || "").trim().replace(/^v/, "");
 	// Full semver incl. canary pre-releases (`1.2.3-rc.1`): the manifest
 	// version always matches the release tag. Runners skip pre-release
@@ -86,25 +96,7 @@ export const buildManifest = ({ version, dir, tag, requires }) => {
 			size: stat.size,
 		});
 	}
-	// `requires.backendApi` (default: the release source tree's
-	// runner/version.json) lets runners skip releases incompatible with the
-	// backend they talk to — backend-managed update selection without the
-	// backend shipping bytes (ADR 0012).
-	const requiresBlock =
-		requires !== undefined
-			? requires
-			: (() => {
-					try {
-						return (
-							JSON.parse(
-								fs.readFileSync(path.join(REPO_ROOT, "runner/version.json"), "utf8"),
-							).requires || undefined
-						);
-					} catch {
-						return undefined;
-					}
-				})();
-	return {
+	const manifest = {
 		schema: 1,
 		component: "runner",
 		version: clean,
@@ -112,8 +104,14 @@ export const buildManifest = ({ version, dir, tag, requires }) => {
 		assetBase: `https://github.com/Ewrdad/Kainbain/releases/download/runner-v${clean}/`,
 		assets,
 		tag: tag || `runner-v${clean}`,
-		...(requiresBlock ? { requires: requiresBlock } : {}),
 	};
+	// Compat claim (task 82e49a05): stamp which backend API range this
+	// release works with, from the release source tree's own
+	// runner/version.json. Absent (legacy-shaped manifest) when the source
+	// tree carries no range — old and new runners both accept that.
+	const requires = readReleaseRequires(root);
+	if (requires) manifest.requires = { backendApi: requires };
+	return manifest;
 };
 
 const main = () => {

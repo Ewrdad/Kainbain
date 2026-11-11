@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import semver from "semver";
 
 /***
@@ -129,15 +132,86 @@ export const buildBackendUpdateAdvertisement = ({
  *   facts plus the operator knobs (registry `_public` consumes this).
  * @example updateInfoForRunner({ versions: { runner: '0.1.0' } }, { minVersion: '0.1.0', recommendedVersion: '0.2.0' }) => { runnerVersion: '0.1.0', updateAvailable: true, ... }
  ***/
-export const updateInfoForRunner = (facts, { minVersion, recommendedVersion } = {}) => {
+export const updateInfoForRunner = (facts, { minVersion, recommendedVersion, backendApiVersion } = {}) => {
 	const runnerVersion = facts?.versions?.runner ?? null;
 	const updateStatus = facts?.updateStatus ?? null;
+	const recommended = typeof recommendedVersion === "string" && recommendedVersion ? recommendedVersion : null;
 	return {
 		runnerVersion,
 		updateAvailable: updateAvailableForRunner(runnerVersion, recommendedVersion),
 		belowMinimum: belowMinimumRunnerVersion(runnerVersion, minVersion),
 		minimumVersion: typeof minVersion === "string" && minVersion ? minVersion : null,
-		recommendedVersion: typeof recommendedVersion === "string" && recommendedVersion ? recommendedVersion : null,
+		recommendedVersion: recommended,
+		// Backend advertisement (task 82e49a05): the managed fleet target
+		// plus this backend's own API version, so runners can select the
+		// newest release compatible with the backend they talk to. The
+		// desired version mirrors the recommended knob (the one managed
+		// place); it nudges via badges/auto-command but never caps a
+		// compatible runner (survey q1: asymmetric updates allowed).
+		desiredRunnerVersion: recommended,
+		backendApiVersion: typeof backendApiVersion === "string" && backendApiVersion ? backendApiVersion : null,
 		updateStatus,
 	};
+};
+
+/***
+ * MARK: loadBackendApiVersion
+ * @description Reads this backend's own API version from
+ *   api/version.json (`apiVersion`, DA1). Missing/invalid yields null
+ *   (the advertisement is then silent and runners behave as before).
+ * @example loadBackendApiVersion() => '1.0.0'
+ * @returns {string|null}
+ ***/
+export const loadBackendApiVersion = () => {
+	try {
+		const file = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "version.json");
+		const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+		const version = parsed?.apiVersion;
+		return typeof version === "string" && version.trim() ? version.trim() : null;
+	} catch {
+		return null;
+	}
+};
+
+/***
+ * MARK: BACKEND_API_VERSION
+ * @description This backend's own API version, read once at import from
+ *   `api/version.json` (null when missing/invalid). Advertised to runners
+ *   on register/heartbeat so they can select the newest release
+ *   compatible with this backend.
+ * @example BACKEND_API_VERSION => '1.0.0'
+ ***/
+export const BACKEND_API_VERSION = loadBackendApiVersion();
+
+/***
+ * MARK: RUNNER_AUTO_UPDATE_COMMAND_COOLDOWN_MS
+ * @description Minimum gap between backend-initiated `requestUpdate`
+ *   nudges for one runner (survey q2: the backend commands updates for
+ *   out-of-date runners). The runner still applies only when idle and
+ *   still honours its own `KAINBAIN_RUNNER_AUTO_UPDATE=0` opt-out, so a
+ *   daily nudge can neither interrupt work nor override the host owner.
+ * @example RUNNER_AUTO_UPDATE_COMMAND_COOLDOWN_MS => 86400000
+ ***/
+export const RUNNER_AUTO_UPDATE_COMMAND_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+/***
+ * MARK: shouldAutoRequestUpdate
+ * @description Whether this heartbeat should queue a `requestUpdate`
+ *   nudge for an out-of-date runner: active runners that advertise the
+ *   command and trail the recommended version, with none already pending
+ *   and no nudge result inside the cooldown. Pure (the registry passes
+ *   the record slices) so the nudging policy is unit-testable.
+ * @example shouldAutoRequestUpdate({ facts: { versions: { runner: '0.1.0' }, commands: ['requestUpdate'] }, pendingCommands: [], commandResults: {}, recommendedVersion: '0.2.0' }) => true
+ ***/
+export const shouldAutoRequestUpdate = ({ facts, pendingCommands = [], commandResults = {}, recommendedVersion, now = Date.now() } = {}) => {
+	const runnerVersion = facts?.versions?.runner ?? null;
+	if (!updateAvailableForRunner(runnerVersion, recommendedVersion)) return false;
+	if (!Array.isArray(facts?.commands) || !facts.commands.includes("requestUpdate")) return false;
+	if (Array.isArray(pendingCommands) && pendingCommands.some((entry) => entry?.command === "requestUpdate" || entry === "requestUpdate")) return false;
+	const last = commandResults?.requestUpdate;
+	if (last && typeof last === "object" && typeof last.at === "string" && last.at) {
+		const at = Date.parse(last.at);
+		if (Number.isFinite(at) && now - at < RUNNER_AUTO_UPDATE_COMMAND_COOLDOWN_MS) return false;
+	}
+	return true;
 };

@@ -44,6 +44,17 @@ validation, harness-scoped `key` tagging — see `docs/EngineDetails/ModelKeys.m
   cache slot, one listing) so `harnesses[0].models` is always the exact flat catalogue.
   The field must stay declared in the route's response schema — Fastify strips response
   fields missing from the schema.
+- `harnesses` is the **central list**: the route folds the persisted fleet snapshot
+  into the backend views (`mergeFleetIntoSections` in
+  `api/flow/dispatch/fleetSectionMerge.js`), so the harness set is the UNION of
+  backend-known and fleet-served harnesses. Fleet-only ids append to their sections
+  (backend entries win ties by option key, so their richer labels survive) and
+  fleet-only harness ids gain synthesized sections (`fleetOnly: true`,
+  `detectionSource: "fleet"`). Fleet-merged entries carry additive availability
+  (`fleet`, `runnerCount`, `runnerIds`, `tiers`, `available`,
+  `unavailableReason`); entries no claim-eligible Runner serves stay listed with
+  `available: false` instead of vanishing (survey q4). Every picker reads this one
+  list — including brand-new models the backend host itself cannot list.
 - `?refresh=true` bypasses the model cache for both views (network-free disk refresh).
 - The same data is also served per harness by `/harnesses` (identity + capabilities +
   live `isDefault`) and `/harnesses/:id/models` (one harness's catalogue).
@@ -86,9 +97,11 @@ reports the resolved pair (one peeked display-target read, no rotation consumed)
 Project saves validate stored combinations in two tiers (`api/aliasTargets.js`, wired
 in `POST/PATCH /projects`):
 
-- **Hard (400):** model on a `none` harness; unknown harness id; malformed ref.
-- **Soft (200 + `warnings[]`):** catalog-miss targets/defaults; ignored defaults on
-  `none` harnesses; unresolvable project-default aliases.
+- **Hard (400):** unknown harness id; malformed ref.
+- **Soft (200 + `warnings[]`):** catalog-miss targets/defaults; stored models on
+  `none` harnesses (kept — the backend's `none` is transient and fleet coverage can
+  lift it at any time, so the value must survive every save+load round-trip);
+  ignored defaults on `none` harnesses; unresolvable project-default aliases.
 
 Response-schema note: any added `warnings` field on save responses must be declared
 in the Fastify response schema or Fastify strips it — the POST 201 schema declares
@@ -101,3 +114,42 @@ when the stored default no longer resolves in the effective harness's catalogue.
 **Follow-up:** when a second harness is registered, the additive `harnesses[]` view and
 the selector already support it (the model list simply switches with the harness row);
 persisting the harness choice per project/stage stays an explicit follow-up until then.
+
+## Runner-side auto-detect (fleet catalogue source)
+
+Runners advertise the same harness-scoped keys into the fleet catalogue
+(`buildFleetModelCatalog` over heartbeat `facts.models`): one discovery leg
+per configured harness in `runner/harnessModelDiscovery.js` (the harness
+list itself comes from auto-detect — PATH plus `~/.local/bin`/`~/bin`,
+per-harness install dirs, `KAINBAIN_*_BIN` overrides, and pi's
+`~/.pi/agent` snapshot — see `runner/daemon.js` `detectAvailableHarnesses`,
+mirroring the backend's `discoverHarnesses`), each reusing
+its backend harness's own `listModels()` as the single source of truth for
+"ready to use right now" (survey q2). The Runner's
+`KAINBAIN_RUNNER_MODELS`/`MODEL` pin wins over auto-detect by default
+(pinned installs skip scanning; survey q4 discovery-wins is opt-in via
+`KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1`);
+`KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS=0` disables scanning; a failed
+or empty scan keeps the previous list per harness (survey q5). The
+Re-detect button in Settings › Runners drives `requestModelRediscovery`
+over the heartbeat pull channel (survey q3) and the ack
+(`discovered N model(s) (pi:12, muse:3)`) plus the heartbeat
+`facts.discoveryStatus` (`{ [harness]: { ok, count, atMs, error? } }`)
+surface per-harness counts and the first leg warning. Empty scans fail
+loud, never silent: pi reports `PI_MODELS_EMPTY` (with the login state),
+muse reports `MUSE_MSP_BIN_MISSING` / `MUSE_MSP_MODELS_EMPTY`, and a round
+that sees detected-but-unconfigured harnesses appends the
+`harness auto-detect also sees: …` hint (re-detection scans configured
+harnesses only). Detected models join
+the picker as normal fleet choices (survey q6) — see `runner/README.md`
+for the per-harness legs matrix.
+
+Every advertised id is normalized through `parseModelKey` at ingestion
+(`api/flow/dispatch/catalogIngest.js`): the exact advertised string stays
+the served `key` (dispatch matches verbatim), while malformed ids quarantine
+with a reason (`quarantined[]` on `GET /runners/models/catalogue`,
+surfaced in Settings › Runners) instead of serving or silently dropping.
+The live derivation merges into the persisted snapshot on every catalogue
+read (`api/flow/dispatch/fleetModelSnapshot.js`, ADR 0016), so the UI never
+depends on a transient read — entries carry effort `tiers`, availability,
+and per-runner provenance (detecting leg + detected-at).
