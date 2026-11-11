@@ -30,6 +30,8 @@ import {
 	buildTimelineAttribution,
 	stampArrivalRowAttribution,
 } from "./runAttribution.js";
+import { hashStageConfig, isWellFormedConfigHash } from "../../shared/stageAttestation.js";
+import { resolveAttestationStage } from "../work/resolveAttestationStage.js";
 
 /***
  * MARK: resolveCiTimeoutMs
@@ -52,6 +54,30 @@ export const resolveCiTimeoutMs = (resolved, project) => {
 		Number(project?.ciTimeoutMs) ||
 		600000
 	);
+};
+
+/***
+ * MARK: dispatchStageConfigHash
+ * @description Computes the stage+config hash for one dispatched claim and
+ *   stashes it on the task (`currentStageConfigHash`, in-memory like
+ *   `currentStageStartSha`): the Runner echoes the dispatched value into
+ *   its wrap-up commit and completion, and the stash covers completions
+ *   from old Runners that report none. Total — an unresolvable stage
+ *   yields null (the claim simply carries no hash, the pre-feature
+ *   posture). Only the hash is kept; the config itself is never logged.
+ * @example dispatchStageConfigHash(project, task, stage) => 'sha256:…' or null
+ * @param {Object} project - Project record.
+ * @param {Object} task - Task entity (stash target).
+ * @param {Object|null} stage - Candidate stage, if the caller resolved one.
+ * @returns {string|null} Dispatched config hash, or null.
+ ***/
+const dispatchStageConfigHash = (project, task, stage) => {
+	const attestedStage = resolveAttestationStage({ stage, project, task });
+	const configHash = attestedStage ? hashStageConfig({ task, stage: attestedStage }) : null;
+	if (configHash && task && typeof task === "object") {
+		task.currentStageConfigHash = configHash;
+	}
+	return configHash;
 };
 
 /***
@@ -732,6 +758,14 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		const ctx = guardedTask(request, reply);
 		if (!ctx) return;
 		try {
+			// Stage attestation (additive): a well-formed reported hash rides
+			// into the completion entry; a malformed one is ignored (the
+			// dispatch stash still covers the stage), never recorded.
+			const rawReportedHash = request.body?.configHash;
+			const reportedConfigHash =
+				typeof rawReportedHash === "string" && isWellFormedConfigHash(rawReportedHash)
+					? rawReportedHash.trim()
+					: null;
 			const receipt = await executionLedger.completeExecution({
 				claimStore,
 				taskStore,
@@ -744,6 +778,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				sha: request.body?.sha ?? null,
 				branch: request.body?.branch ?? null,
 				posture: request.body?.posture ?? null,
+				configHash: reportedConfigHash,
+				committed: request.body?.committed,
 			});
 			if (receipt.duplicate) return receipt;
 			// Engine-owned finish: the lease fence accepted the report, so
@@ -942,7 +978,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			const stage =
 				stages.find((s) => String(s?.id) === String(task.currentStageId)) || stages[0] || null;
 			stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req, runnerId: runner.runnerId });
-			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...await ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project, task, stageId: task.currentStageId }) };
+			const dispatchConfigHash = dispatchStageConfigHash(project, task, stage);
+			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...await ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project, task, stageId: task.currentStageId }), ...(dispatchConfigHash ? { configHash: dispatchConfigHash } : {}) };
 		} catch (err) {
 			return sendStoreError(reply, err);
 		}
@@ -1267,6 +1304,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					req,
 					runnerId: runner.runnerId,
 				});
+				const dispatchConfigHash = dispatchStageConfigHash(candProject, cand.task, cand.stage);
 				return {
 					assigned: true,
 					projectId: cand.projectId,
@@ -1278,6 +1316,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					prompt: curateRunnerPrompt({ project: candProject, task: cand.task, stageId: cand.stage?.id }),
 					...await ciPayloadFor(cand.projectId, cand.task, cand.stage),
 					requirements: req,
+					...(dispatchConfigHash ? { configHash: dispatchConfigHash } : {}),
 				};
 			} catch (err) {
 				if (err?.code === "CLAIM_CONFLICT") continue;
