@@ -4,11 +4,40 @@
 ## General Concept
 The general idea is to turn all these tasks into a linear set of activities(starting with assuming there’s only one queue for early implementations).  This will require logical separations 
 
-## Priority
+## The central queue (one queue across ALL projects/pipelines)
 
-1. Follow on from just completed task
-2. Closest to completion (furthest right)
-3. Oldest updated task
+Since task `16d6fbd6` there is exactly **one central queue** for all waiting
+work in all projects. Both dispatch paths — the embedded scheduler
+(`findNextCandidateTask`) and the runner fleet scan (`scanClaimableTasks`) —
+and the queue display (`getScheduledQueue`, backing `GET /tasks/queue` and
+the bottom-bar popup) sort through the same seam
+(`api/flow/scheduler/sortCentralQueue.js`), so they can never disagree about
+what runs next. **Dispatch never depends on which pipeline the UI has
+focused**: the server scheduler ticks on an interval and scans every project;
+the only per-runner narrowing is the explicit `KAINBAIN_RUNNER_PROJECTS`
+allowlist, which is configuration, not a stall.
+
+### Priority (canonical order)
+
+1. **Resumed interruptions** — oldest interruption first (Rule 0).
+2. **Follow-on from the just-completed task** (Rule 1) — a single-use pass,
+   *withheld* when any other candidate has waited past the starvation
+   ceiling, so a churning pipeline cannot indefinitely pre-empt older
+   cross-pipeline work.
+3. **Oldest waiting task first, wherever it lives** — the default
+   `oldest-first` mode (`KAINBAIN_CENTRAL_QUEUE_ORDER=oldest-first`). Ties
+   break to **furthest along as a percentage of the task's own pipeline**
+   (`(stageIndex+1)/totalStages`), then absolute stage index — a long
+   pipeline's mid-stage work no longer outranks a short pipeline's
+   nearly-done work.
+4. **Starvation ceiling** — any candidate waiting past the ceiling jumps
+   ahead, oldest first. The ceiling is `KAINBAIN_DISPATCH_MAX_WAIT_MS` when
+   positive, else a built-in 15 minutes in `oldest-first` mode (the FIFO
+   order itself already bounds the wait; the ceiling additionally gates the
+   follow-on pass). In legacy mode with the knob at 0 the ceiling is off.
+
+Rollback to the pre-16d6fbd6 order (closest-to-completion by absolute stage
+index, then oldest) is config-only: `KAINBAIN_CENTRAL_QUEUE_ORDER=furthest-along`.
 
 ### Follow on from just completed tasks (#1)
 
@@ -16,15 +45,15 @@ If a task is to go directly to a review or other agentic stage then that should 
 
 So by default if task 1234 goes from one agentic step to another then continue with a new 1234 instance on the new steps 
 
-### Closest to completion (furthest right) (#2)
+### Closest to completion (furthest along as a percentage) (#3 tiebreak)
 
-We want to prioritise finishing work over starting new ones.  Therefore we want to prioritise things that are the nearest to the Finished.  Obviously the stages are flexible but distance too done is important . 
+We want to prioritise finishing work over starting new ones.  Therefore we want to prioritise things that are the nearest to the Finished.  Obviously the stages are flexible but distance too done is important — compared as a percentage of the task's own pipeline so pipelines of different lengths compete fairly.
 
 This obviously only applies to agentic/automated work not human reviewable. But could see the engine moving something to final review (a human step), then after the review is done the engine can then go “oh its done lets close this off” etc
 
-### Oldest Ticket (#3)
+### Oldest Ticket (#3 primary)
 
-Finally we need just want to avoid tickets/tasks sitting around forever. So therefore we ant to pick the task that has been sitting still the longest, only if the above rules arent satisfied. This  should also allow the encapsulation of all tasks.
+Finally we need just want to avoid tickets/tasks sitting around forever. So therefore we ant to pick the task that has been sitting still the longest, wherever it lives across projects — this is now the primary rule in the default mode, which also encapsulates all tasks into one queue.
 
 ## Blocking
 

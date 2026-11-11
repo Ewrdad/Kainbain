@@ -899,8 +899,8 @@ export class TaskStore {
 		return resolveStagesForTask(project, task);
 	}
 
-	findNextCandidateTask() {
-		return findNextCandidateTask(this);
+	findNextCandidateTask(opts = {}) {
+		return findNextCandidateTask(this, opts);
 	}
 
 	async scheduleTick(opts = {}) {
@@ -1078,8 +1078,8 @@ export class TaskStore {
 		return startScheduler(this, opts);
 	}
 
-	getScheduledQueue(filterProjectId) {
-		return getScheduledQueue(this, filterProjectId);
+	getScheduledQueue(filterProjectId, opts = {}) {
+		return getScheduledQueue(this, filterProjectId, opts);
 	}
 
 	async getObservabilityMetrics(filterProjectId) {

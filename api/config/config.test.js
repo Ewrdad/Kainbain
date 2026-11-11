@@ -203,6 +203,7 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		runnerMinVersion: "0.1.0",
 		runnerRecommendedVersion: "0.1.0",
 		dispatchMaxWaitMs: 0,
+		centralQueueOrder: "oldest-first",
 		// Sessions & Workflows
 		schedulerIntervalMs: 3000,
 		autoApproveSweepMs: 60000,

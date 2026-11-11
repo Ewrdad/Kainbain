@@ -155,10 +155,17 @@ describe("GET /tasks/queue", () => {
 		expect(result).toHaveLength(1);
 	});
 
-	it("returns undefined when the project guard fails", async () => {
+	it("returns the central queue (all projects) when no projectId is given", async () => {
+		const s = await register(setup());
+		const result = await s.routes.get("GET /tasks/queue")({ query: {} }, reply());
+		expect(s.taskStore.getScheduledQueue).toHaveBeenCalledWith();
+		expect(Array.isArray(result)).toBe(true);
+	});
+
+	it("returns undefined when an explicit projectId fails the guard", async () => {
 		const s = await register(setup({ guardProjectId: null }));
 		await expect(
-			s.routes.get("GET /tasks/queue")({ query: {} }, reply()),
+			s.routes.get("GET /tasks/queue")({ query: { projectId: "p-1" } }, reply()),
 		).resolves.toBeUndefined();
 	});
 });
