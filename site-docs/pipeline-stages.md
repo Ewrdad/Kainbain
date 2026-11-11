@@ -123,7 +123,7 @@ Minimal example:
 }
 ```
 
-Rules for hand-edited files: `"kainbainPipeline"` must be `1`; `"name"` must be a non-empty string; `"stages"` must be a non-empty array (max 200); each stage needs a `"name"` and a known `"type"` (`agent`, `human`, `ci`, `merge` — legacy `review`, `script`, `deploy`, `custom` are also accepted; `deploy` normalizes to `ci`). Optional per-stage fields: `description`, `prompt`, `model`, `harness`, `command`, `timeout` (milliseconds), `skills` (array), `paused` (boolean), `failback` (string), `runOnBranch` (`ci` only: `"task"` | `"primary"` | `"custom"`), `customBranch` (string, `ci` with `runOnBranch: "custom"` only), `runnerPolicy` (`{ mode: "allow" | "block", runners: [...] }`). Files over ~1 MB are rejected. Invalid files are refused with a message naming every problem, and nothing is written.
+Rules for hand-edited files: `"kainbainPipeline"` must be `1`; `"name"` must be a non-empty string; `"stages"` must be a non-empty array (max 200); each stage needs a `"name"` and a known `"type"` (`agent`, `human`, `ci`, `merge` — legacy `review`, `script`, `deploy`, `custom` are also accepted; `deploy` normalizes to `ci`). Optional per-stage fields: `description`, `prompt`, `model`, `harness`, `command`, `timeout` (milliseconds), `skills` (array), `paused` (boolean), `noCode` (boolean, docs-only writes for agent stages), `failback` (string), `runOnBranch` (`ci` only: `"task"` | `"primary"` | `"custom"`), `customBranch` (string, `ci` with `runOnBranch: "custom"` only), `runnerPolicy` (`{ mode: "allow" | "block", runners: [...] }`). Files over ~1 MB are rejected. Invalid files are refused with a message naming every problem, and nothing is written.
 
 ## Who is "running", and in which stage
 

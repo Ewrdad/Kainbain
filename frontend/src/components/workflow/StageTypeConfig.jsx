@@ -79,9 +79,7 @@ function KeywordTokenChips({ heading, tooltip, tokens, copiedToken, onInsert }) 
           {heading}
           {tooltip}
         </span>
-        <span className="text-[8px] font-mono text-text-muted">
-          Click token to insert/copy
-        </span>
+        <span className="text-[8px] font-mono text-text-muted">Click token to insert/copy</span>
       </div>
       <div className="flex flex-wrap gap-1">
         {tokens.map((kw) => (
@@ -100,9 +98,7 @@ function KeywordTokenChips({ heading, tooltip, tokens, copiedToken, onInsert }) 
             >
               <span className="text-primary">{kw.token}</span>
               <span className="text-text-muted">{kw.label}</span>
-              {copiedToken === kw.token && (
-                <span className="text-primary font-bold">✓</span>
-              )}
+              {copiedToken === kw.token && <span className="text-primary font-bold">✓</span>}
             </button>
           </InfoTooltip>
         ))}
@@ -265,6 +261,26 @@ export function StageTypeConfig({
               }
             />
           </div>
+          {/* No Code Toggle */}
+          <div className="flex items-center justify-between py-2 border-t border-border-standard mt-2">
+            <div className="flex flex-col">
+              <span className="text-[9px] font-bold uppercase text-text-muted tracking-wider block">
+                No Code Mode
+              </span>
+              <span className="text-[10px] text-text-muted font-mono">
+                Enforce documentation only
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              className="w-4 h-4 accent-primary cursor-pointer"
+              checked={!!stage.noCode}
+              onChange={(e) => {
+                onUpdateStage?.(stage.id, { noCode: e.target.checked });
+              }}
+              aria-label={`No code mode for ${stage.name}`}
+            />
+          </div>
           <TimeoutMinutesField
             stageName={stage.name}
             timeoutMs={stage.timeout}
@@ -352,7 +368,7 @@ export function StageTypeConfig({
               tooltip={
                 <InfoTooltip
                   title="Command Keyword Tokens"
-                  description="Tokens like {{taskDocs}} resolve to live file paths when the command starts — e.g. test -f &quot;{{taskDocs}}plan.md&quot; to check a plan stage wrote its report. Quote tokens in shell commands; scripts can also read the same values from KAINBAIN_* environment variables. Unknown tokens stay literal."
+                  description='Tokens like {{taskDocs}} resolve to live file paths when the command starts — e.g. test -f "{{taskDocs}}plan.md" to check a plan stage wrote its report. Quote tokens in shell commands; scripts can also read the same values from KAINBAIN_* environment variables. Unknown tokens stay literal.'
                   behindTheScenes="Interpolated when the command starts by the CI stage runner"
                   position="top"
                 />
@@ -453,8 +469,8 @@ export function StageTypeConfig({
                 half-merged tree is kept).
               </p>
               <p>
-                To deploy after the merge, add a CI stage with the deploy command (e.g.
-                ./deploy.sh --prod) directly after this stage.
+                To deploy after the merge, add a CI stage with the deploy command (e.g. ./deploy.sh
+                --prod) directly after this stage.
               </p>
               <p className="text-warning">
                 Merge stages require <strong>Task Branches</strong> (project settings): without

@@ -210,12 +210,26 @@ export async function finalizeTaskBranch(
 	// Step 1: commit all task work (a clean tree is a no-op). The body
 	// carries the whole curated prompt verbatim when one is attached.
 	// In worktree mode this commits inside the isolated worktree.
+	let project = opts.project || null;
+	if (
+		!project &&
+		task?.projectId &&
+		typeof taskStore?.projectStore?.getProject === "function"
+	) {
+		try {
+			project = taskStore.projectStore.getProject(task.projectId) || null;
+		} catch {
+			project = null;
+		}
+	}
 	try {
 		// Branch affinity: stage output must only ever land on this task's own
 		// branch. A concurrent task that moved the shared checkout turns this
 		// into a warn-only skip below (never an alien commit).
 		const commitOpts = { expectedBranch: branch };
 		if (commitBody) commitOpts.body = commitBody;
+		commitOpts.noCode = opts.noCode === true;
+		commitOpts.project = project;
 		const commitRes = await commitAllIfNeeded(
 			execCwd,
 			commitSubject,
@@ -410,13 +424,25 @@ export async function commitFailedStageWork(taskStore, task, projectCwd, opts = 
 		}
 		if (!isRepo) return null;
 		const stageLabel = opts.stageName || opts.stageId || "stage";
+		let project = opts.project || null;
+		if (!project && task?.projectId && typeof taskStore?.projectStore?.getProject === "function") {
+			try {
+				project = taskStore.projectStore.getProject(task.projectId) || null;
+			} catch {
+				project = null;
+			}
+		}
 		const built = buildStageCommitMessage(task, stageLabel);
 		const subject = `${built.subject} ... (failed)`;
 		let commitRes = null;
 		try {
 			commitRes =
 				typeof commitAllIfNeeded === "function"
-					? await commitAllIfNeeded(execCwd, subject, { expectedBranch: branch })
+					? await commitAllIfNeeded(execCwd, subject, {
+							expectedBranch: branch,
+							noCode: opts.noCode === true,
+							project,
+						})
 					: { committed: false, hash: null };
 		} catch (commitErr) {
 			try {
