@@ -79,6 +79,37 @@
       }
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "It sits still until I open that pipeline"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Both: run everything in the background AND show one combined list"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Oldest waiting job first, wherever it is"
+      ],
+      "notes": "Well furthest along as a percentage "
+    },
+    "q4": {
+      "selected": [
+        "Yes – always keep working in the background"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "All waiting jobs in one list"
+      ],
+      "notes": "Already seems to exist visually "
+    }
+  }
 }
 ```
