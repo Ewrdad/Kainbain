@@ -1182,33 +1182,39 @@ describe("Runner Routes Integration", () => {
 		const first = JSON.parse(
 			(await app.inject({ method: "GET", url: "/runners/models/catalogue" })).payload,
 		);
-		expect(first.models).toContainEqual({
-			id: "shared-model",
-			harnesses: ["mock"],
-			tiers: ["T0", "T1"],
-			runnerCount: 2,
-			runnerIds: ["fleet-a", "fleet-b"],
-		});
-		expect(first.models).toContainEqual({
-			id: "a-only",
-			harnesses: ["mock"],
-			tiers: ["T0", "T1"],
-			runnerCount: 1,
-			runnerIds: ["fleet-a"],
-		});
+		expect(first.models).toContainEqual(
+			expect.objectContaining({
+				id: "shared-model",
+				harnesses: ["mock"],
+				tiers: ["T0", "T1"],
+				runnerCount: 2,
+				runnerIds: ["fleet-a", "fleet-b"],
+			}),
+		);
+		expect(first.models).toContainEqual(
+			expect.objectContaining({
+				id: "a-only",
+				harnesses: ["mock"],
+				tiers: ["T0", "T1"],
+				runnerCount: 1,
+				runnerIds: ["fleet-a"],
+			}),
+		);
 		// Graceful change: revoking a Runner drops it out of the catalogue.
 		const revoke = await app.inject({ method: "POST", url: "/runners/fleet-b/revoke" });
 		expect(revoke.statusCode).toBe(200);
 		const second = JSON.parse(
 			(await app.inject({ method: "GET", url: "/runners/models/catalogue" })).payload,
 		);
-		expect(second.models).toContainEqual({
-			id: "shared-model",
-			harnesses: ["mock"],
-			tiers: ["T0", "T1"],
-			runnerCount: 1,
-			runnerIds: ["fleet-a"],
-		});
+		expect(second.models).toContainEqual(
+			expect.objectContaining({
+				id: "shared-model",
+				harnesses: ["mock"],
+				tiers: ["T0", "T1"],
+				runnerCount: 1,
+				runnerIds: ["fleet-a"],
+			}),
+		);
 	});
 
 	it("GET /runners/:id/config returns the record; PATCH persists a patch", async () => {

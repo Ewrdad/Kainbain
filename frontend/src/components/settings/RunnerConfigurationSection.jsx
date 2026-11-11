@@ -123,6 +123,10 @@ export function RunnerConfigurationSection() {
   const [filter, setFilter] = useState('');
   const [customModel, setCustomModel] = useState('');
   const [revokeConfirm, setRevokeConfirm] = useState(null);
+  // Fleet-wide quarantined model ids (malformed Runner-advertised ids with
+  // their reasons): best-effort catalogue read, empty when the fetch fails
+  // or nothing is quarantined — the block below renders only when non-empty.
+  const [quarantined, setQuarantined] = useState([]);
   // Tracks follow-up refresh timers (post-command polls) and whether the
   // screen is still mounted: timers are cleared on unmount and every state
   // write behind them re-checks, so a slow poll can never write into an
@@ -171,6 +175,21 @@ export function RunnerConfigurationSection() {
         if (!isLive.current) return;
         setProjects([]);
         setProjectsError('Could not load projects — the picker is unavailable.');
+      }
+      try {
+        const catalogue =
+          typeof api.getFleetModelCatalog === 'function'
+            ? await api.getFleetModelCatalog()
+            : null;
+        if (!isLive.current) return;
+        setQuarantined(
+          Array.isArray(catalogue?.quarantined)
+            ? catalogue.quarantined.filter((q) => q && typeof q.id === 'string')
+            : [],
+        );
+      } catch {
+        if (!isLive.current) return;
+        setQuarantined([]);
       }
     } catch (err) {
       if (!isLive.current) return;
@@ -647,6 +666,33 @@ export function RunnerConfigurationSection() {
         here for approval, then heartbeats and claims tasks with its own credential.
       </p>
       <RunnerHarnessPanel runners={runners || []} />
+      {quarantined.length > 0 && (
+        <div
+          className="mt-3 px-3 py-2 bg-surface-container border border-warning/40 rounded-sm"
+          data-testid="runner-quarantined-models"
+        >
+          <p className="text-[11px] font-bold uppercase tracking-wider text-warning">
+            Quarantined model ids ({quarantined.length}) — malformed Runner advertisements,
+            never served to pickers
+          </p>
+          <ul className="mt-1 flex flex-col gap-1">
+            {quarantined.map((entry) => (
+              <li
+                key={entry.id}
+                className="text-[11px] text-text-muted"
+                data-testid={`runner-quarantined-${entry.id}`}
+                title={typeof entry.reason === 'string' ? entry.reason : undefined}
+              >
+                <span className="font-mono text-on-surface">{entry.id}</span>
+                {typeof entry.reason === 'string' && entry.reason ? ` — ${entry.reason}` : ''}
+                {Array.isArray(entry.runnerIds) && entry.runnerIds.length > 0
+                  ? ` (from ${entry.runnerIds.join(', ')})`
+                  : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {scheduler && (
         <p className="mt-1 text-[10px] font-mono text-text-muted" data-testid="runner-scheduler-deferrals">
           Scheduler: {scheduler.dispatched ?? 0} embedded dispatches, {scheduler.deferredDispatch ?? 0} deferred to Runners

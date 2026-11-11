@@ -91,6 +91,12 @@ ready right now are listed; ids advertise in the fleet grammar
 | `codex` | — (live transport unverified) | Always honest empty + `CODEX_DISCOVERY_UNAVAILABLE` |
 | `custom` / `mock` | — | No legs by design (`mock` is test-only, `custom` manages its own model) |
 
+Legs accept ids exactly like the shared grammar (`parseModelKey`): segments
+must be non-empty and free of the `::` separator, while a single `:` inside
+an id (e.g. `muse-spark-1.4:cloud`) is legal and advertised — a stricter
+leg filter used to drop such rows silently, hiding brand-new models from
+the fleet catalogue.
+
 Every leg fails loud into its status slot: an empty or failed scan keeps the
 previous ids for that harness and records a classified `{code,message,hint}`
 (the ack detail carries the first code, Settings shows the warning), so a
@@ -106,7 +112,14 @@ Discovery runs once at boot and refreshes every
 disables all scanning). Failures keep the previous list per harness
 and warn, never break heartbeats; the per-harness counts and first
 error ride the heartbeat as `facts.discoveryStatus` and surface in
-Settings › Runners next to the Re-detect button.
+Settings › Runners next to the Re-detect button. The heartbeat also
+names the effective advertisement source (`facts.modelSource`:
+`pinned` / `discovered` / `unpinned`, mirroring
+`resolveAdvertisedModels` branch-for-branch) plus per-model provenance
+(`facts.modelProvenance`: detecting leg + detected-at per id), so
+Settings › Runners shows WHY a Runner's model list looks the way it
+does — `(pinned on Runner)` vs `(auto-detected from Runner)` with the
+last scan time — instead of hiding pins and cadence gaps.
 
 Harness auto-detect (`detectAvailableHarnesses` in `runner/daemon.js`,
 default when `KAINBAIN_RUNNER_HARNESS`/`HARNESSES` is empty or `auto`)

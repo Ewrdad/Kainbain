@@ -22,14 +22,16 @@ import { buildFleetModelCatalog } from "./flow/dispatch/fleetModelCatalog.js";
  *   `shared/modelAliases.js` grammar: rules that need to know a harness's
  *   `modelSelection` mode. Save-time validation runs in two tiers
  *   (`validateAliasTargetModels`): HARD errors refuse structurally impossible
- *   combinations (a model on a `none` harness, an unknown harness id, a
- *   malformed ref), while SOFT warnings surface catalog-miss combinations
- *   (valid shape, absent from the target harness's catalog right now —
- *   catalogs drift and discovery may be offline, so these never block the
- *   save). The load path blanks legacy `none`-harness rows with a warning
- *   (`sanitizeAliasTargetModels`, defense in depth — old projects keep
- *   loading). All lookups are injectable so tests never need the real
- *   registry or live CLIs.
+ *   combinations (an unknown harness id, a malformed ref), while SOFT
+ *   warnings surface catalog-miss combinations (valid shape, absent from
+ *   the target harness's catalog right now — catalogs drift and discovery
+ *   may be offline, so these never block the save) and models stored on
+ *   `none` harnesses (kept with a warning — a `none` backend today may
+ *   gain fleet coverage tomorrow, so the stored value is never destroyed).
+ *   The load path keeps those stored values too, with a warning
+ *   (`sanitizeAliasTargetModels` — old projects keep loading AND keep
+ *   their targets). All lookups are injectable so tests never need the
+ *   real registry or live CLIs.
  ***/
 
 /***
@@ -199,13 +201,15 @@ export function stripUnsupportedReasoningLevel({
  * MARK: validateAliasTargetModels
  * @description Validates ONE grammar-valid alias record's harness↔model
  *   pairings in two tiers. HARD (returned `error`, save refused): a target
- *   on a `none` harness carrying a model string; a target naming an unknown
- *   harness id (including the virtual `"alias"` — aliases cannot point at
- *   aliases); a non-blank malformed model ref. SOFT (returned `warnings[]`,
- *   save succeeds): a model absent from its target harness's catalog right
- *   now (`list` harnesses only, and only when the probe actually read a
- *   catalog — an unreadable catalog warns about nothing).
- * @example await validateAliasTargetModels({ name: "w", harness: "muse", model: "g::m" }) => { error: 'alias "w" targets harness "muse", …', warnings: [] }
+ *   naming an unknown harness id (including the virtual `"alias"` —
+ *   aliases cannot point at aliases); a non-blank malformed model ref.
+ *   SOFT (returned `warnings[]`, save succeeds): a model stored on a
+ *   `none` harness (kept — the harness may gain a catalog via fleet
+ *   coverage later, and the stored value must survive until then); a
+ *   model absent from its target harness's catalog right now (`list`
+ *   harnesses only, and only when the probe actually read a catalog —
+ *   an unreadable catalog warns about nothing).
+ * @example await validateAliasTargetModels({ name: "w", harness: "muse", model: "g::m" }) => { error: null, warnings: ['alias "w" targets harness "muse", …'] }
  * @example await validateAliasTargetModels({ name: "s", harness: "pi", model: "google::m" }) => { error: null, warnings: [] }
  * @param {unknown} entry - One alias record (either shape; grammar-validated first).
  * @param {Object} [opts]
@@ -240,12 +244,16 @@ export async function validateAliasTargetModels(
 		}
 		if (!model) continue;
 		if (modelSelectionFor(target.harness) === "none") {
-			return {
-				error:
-					`alias "${name}" targets harness "${target.harness}", which ` +
-					`manages its own model — leave the model blank`,
-				warnings,
-			};
+			// Alias trust (survey q5): a stored model on a self-managed
+			// harness is KEPT with a loud warning, never refused — the
+			// backend's `none` is transient (muse on the exec transport
+			// gains a catalog the moment fleet coverage arrives), and
+			// refusing the save would strand the last working value.
+			warnings.push(
+				`alias "${name}" targets harness "${target.harness}", which ` +
+					`manages its own model — the stored model "${model}" is kept ` +
+					`and ignored at dispatch until the harness offers a catalog`,
+			);
 		}
 		if (validateModelRefShape(model) === null) {
 			return {
@@ -443,32 +451,32 @@ export async function validateDefaultModelCombination(
 
 /***
  * MARK: sanitizeAliasTargetModels
- * @description Blanks the model on every `none`-harness target of normalized
- *   alias records (legacy load-path defense: rows saved before the API
- *   refusal existed). List/unknown-harness targets pass through untouched.
- *   Never mutates its input — returns fresh records with the legacy
- *   `harness`/`model` mirror recomputed from the (possibly blanked) first
- *   target — plus the list of dropped models for the one-line load warning.
- * @example sanitizeAliasTargetModels([{ name: "w", harness: "muse", model: "g::m", targets: [{ harness: "muse", model: "g::m", percent: 100 }] }]).aliases => [{ name: "w", harness: "muse", model: "", targets: [{ harness: "muse", model: "", percent: 100 }] }]
+ * @description Recomputes the legacy `harness`/`model` mirror on normalized
+ *   alias records and reports every `none`-harness target that still
+ *   carries a stored model — the value is KEPT verbatim (alias trust,
+ *   survey q5: the backend's `none` is transient and the stored target
+ *   must survive every load+save round-trip), with one warning per kept
+ *   model for the load warning. Never mutates its input — returns fresh
+ *   records.
+ * @example sanitizeAliasTargetModels([{ name: "w", harness: "muse", model: "g::m", targets: [{ harness: "muse", model: "g::m", percent: 100 }] }]).aliases => [{ name: "w", harness: "muse", model: "g::m", targets: [{ harness: "muse", model: "g::m", percent: 100 }] }]
  * @param {Array} aliases - Normalized alias records.
  * @param {Object} [opts]
  * @param {Function} [opts.modelSelectionFor] - `(harnessId) => "none"|"list"` (defaults to the harness registry).
- * @returns {{aliases: Array, dropped: Array<{alias: string, harness: string, model: string}>}} Clean records and the dropped models.
+ * @returns {{aliases: Array, warnings: Array<{alias: string, harness: string, model: string}>}} Clean records and the kept-model warnings.
  ***/
 export function sanitizeAliasTargetModels(
 	aliases,
 	{ modelSelectionFor = harnessModelSelection } = {},
 ) {
 	const list = Array.isArray(aliases) ? aliases : [];
-	const dropped = [];
+	const warnings = [];
 	const clean = list.map((entry) => {
 		const name = normalizeAliasName(entry?.name);
 		const targets = getAliasTargets(entry).map((target) => {
 			const model =
 				typeof target.model === "string" ? target.model.trim() : "";
 			if (model && modelSelectionFor(target.harness) === "none") {
-				dropped.push({ alias: name, harness: target.harness, model });
-				return { ...target, model: "" };
+				warnings.push({ alias: name, harness: target.harness, model });
 			}
 			return { ...target };
 		});
@@ -479,5 +487,5 @@ export function sanitizeAliasTargetModels(
 			targets,
 		};
 	});
-	return { aliases: clean, dropped };
+	return { aliases: clean, warnings };
 }

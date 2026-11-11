@@ -72,16 +72,21 @@ describe('validateAliasList', () => {
     ).toEqual([]);
   });
 
-  it('refuses a model on a self-managed (none) harness, naming the alias and harness', () => {
-    const errors = validateAliasList(
-      [{ name: 'worker', harness: 'custom', model: 'google::m1' }],
-      HARNESSES,
-    );
-    expect(errors).toHaveLength(1);
-    expect(errors[0].index).toBe(0);
-    expect(errors[0].message).toContain('worker');
-    expect(errors[0].message).toContain('custom');
-    expect(errors[0].message).toContain('manages its own model');
+  it('keeps a model on a self-managed (none) harness with no save-blocking error', () => {
+    // Alias trust: the stored model is kept with a soft warning badge
+    // (mirroring the API), so validation reports no errors and the row
+    // classifies as unknown-model, never invalid.
+    expect(
+      validateAliasList(
+        [{ name: 'worker', harness: 'custom', model: 'google::m1' }],
+        HARNESSES,
+      ),
+    ).toEqual([]);
+    const validity = targetValidity({ harness: 'custom', model: 'google::m1' }, HARNESSES);
+    expect(validity.status).toBe('unknown-model');
+    expect(validity.message).toContain('custom');
+    expect(validity.message).toContain('manages its own model');
+    expect(validity.message).toContain('kept');
   });
 
   it('accepts a fleet-served model on a none harness the fleet serves', () => {
@@ -104,21 +109,21 @@ describe('validateAliasList', () => {
     ).toBe('valid');
   });
 
-  it('refuses a none-harness model inside a weighted split', () => {
-    const errors = validateAliasList(
-      [
-        {
-          name: 'mix',
-          targets: [
-            { harness: 'pi', model: 'google::m1', percent: 50 },
-            { harness: 'custom', model: 'google::m1', percent: 50 },
-          ],
-        },
-      ],
-      HARNESSES,
-    );
-    expect(errors).toHaveLength(1);
-    expect(errors[0].message).toContain('mix');
+  it('keeps a none-harness model inside a weighted split (alias trust)', () => {
+    expect(
+      validateAliasList(
+        [
+          {
+            name: 'mix',
+            targets: [
+              { harness: 'pi', model: 'google::m1', percent: 50 },
+              { harness: 'custom', model: 'google::m1', percent: 50 },
+            ],
+          },
+        ],
+        HARNESSES,
+      ),
+    ).toEqual([]);
   });
 });
 
@@ -191,7 +196,10 @@ describe('ModelAliasesSection', () => {
     ]);
   });
 
-  it('resets the model when the row harness changes', () => {
+  it('preserves the model when the row harness changes to a none harness', () => {
+    // Alias trust: switching onto a self-managed harness keeps the
+    // stored model text (rendered as the kept value with a warning),
+    // exactly like a list-to-list switch.
     const onChange = vi.fn();
     render(
       <ModelAliasesSection
@@ -207,8 +215,8 @@ describe('ModelAliasesSection', () => {
       {
         name: 'small',
         harness: 'custom',
-        model: '',
-        targets: [{ harness: 'custom', model: '', percent: 100 }],
+        model: 'google::m1',
+        targets: [{ harness: 'custom', model: 'google::m1', percent: 100 }],
       },
     ]);
   });
@@ -247,6 +255,44 @@ describe('ModelAliasesSection', () => {
     ]);
   });
 
+  it('marks snapshot-unavailable models Unavailable in the row dropdown (never hidden)', () => {
+    // Central-list honesty (survey q4): the option stays selectable
+    // with its reason, even without fleet data loaded.
+    const catalogue = [
+      {
+        id: 'pi',
+        label: 'pi',
+        description: 'pi',
+        modelSelection: 'list',
+        models: [
+          {
+            id: 'm1',
+            name: 'M1',
+            provider: 'google',
+            key: 'google::m1',
+            fleet: true,
+            available: false,
+            unavailableReason: 'No claim-eligible runner serves this model right now.',
+          },
+        ],
+      },
+    ];
+    render(
+      <ModelAliasesSection
+        aliases={[{ name: 'small', harness: 'pi', model: 'google::m1' }]}
+        onChange={() => {}}
+        harnesses={catalogue}
+      />,
+    );
+    expandAllCards();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Alias 1 model' }));
+    const option = screen.getByRole('option', { name: /M1/ });
+    expect(option).toHaveTextContent('Unavailable');
+    expect(option.querySelector('[title]')?.getAttribute('title')).toContain(
+      'No claim-eligible runner',
+    );
+  });
+
   it('shows the managed-model note for none harnesses and deletes rows', () => {
     const onChange = vi.fn();
     render(
@@ -263,7 +309,9 @@ describe('ModelAliasesSection', () => {
     expect(onChange).toHaveBeenCalledWith([]);
   });
 
-  it('flags a legacy stored model on a none harness and clears it on demand', () => {
+  it('keeps a legacy stored model on a none harness visible and clears it on demand', () => {
+    // Alias trust: no save-blocking alert — the kept value renders with
+    // a warning badge, and only the explicit Clear button removes it.
     const onChange = vi.fn();
     render(
       <ModelAliasesSection
@@ -273,7 +321,9 @@ describe('ModelAliasesSection', () => {
       />,
     );
     expandAllCards();
-    expect(screen.getByRole('alert')).toHaveTextContent('manages its own model');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByTestId('model-alias-kept-model-0-0')).toHaveTextContent('google::m1');
+    expect(screen.getByTestId('model-alias-target-validity-0-0')).toHaveTextContent('Unknown model');
     fireEvent.click(screen.getByRole('button', { name: /Clear stored model/ }));
     expect(onChange).toHaveBeenCalledWith([
       {
@@ -1252,11 +1302,11 @@ describe('ModelAliasesSection reasoning level picker', () => {
       'Clear the reasoning level first',
     );
 
-    // One click drops the level AND completes the pending switch (the model
-    // resets, exactly like the row's normal harness-switch path).
+    // One click drops the level AND completes the pending switch — the
+    // base model is kept (alias trust), only the blocking level goes.
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
     const saved = onChange.mock.calls[0][0];
-    expect(saved[0].targets[0]).toEqual({ harness: 'muse', model: '', percent: 100 });
+    expect(saved[0].targets[0]).toEqual({ harness: 'muse', model: 'pi::google::m1', percent: 100 });
     expect(screen.queryByTestId('reasoning-clear-notice')).not.toBeInTheDocument();
   });
 
