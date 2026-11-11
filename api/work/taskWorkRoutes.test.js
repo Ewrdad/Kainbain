@@ -26,8 +26,8 @@ function setup({ guardProjectId = "p-1" } = {}) {
 	const fakeApp = {
 		get: (routePath, a, b) => routes.set(`GET ${routePath}`, b || a),
 		post: (routePath, a, b) => routes.set(`POST ${routePath}`, b || a),
-		patch: (routePath, handler) => routes.set(`PATCH ${routePath}`, handler),
-		delete: (routePath, handler) => routes.set(`DELETE ${routePath}`, handler),
+		patch: (routePath, a, b) => routes.set(`PATCH ${routePath}`, b || a),
+		delete: (routePath, a, b) => routes.set(`DELETE ${routePath}`, b || a),
 		log: { error: vi.fn() },
 	};
 	const project = { id: "p-1", name: "P", cwd: "/repo", stages: STAGES };

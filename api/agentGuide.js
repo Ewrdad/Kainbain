@@ -1133,6 +1133,30 @@ export const ENDPOINTS = [
 		purpose: "Persist one access-settings change (role-manager roles only; applies without a restart).",
 		body: null,
 	},
+	{
+		method: "GET",
+		path: "/auth/api-keys",
+		purpose: "List API-key metadata (never secrets; role-manager roles only, human sessions only).",
+		body: null,
+	},
+	{
+		method: "POST",
+		path: "/auth/api-keys",
+		purpose: "Create an API key (`{ name, roles?, scopes?, expiresAt? }`; the secret is returned once; role-manager roles only, human sessions only).",
+		body: null,
+	},
+	{
+		method: "GET",
+		path: "/auth/api-keys/:id/usage",
+		purpose: "Show one key's metadata plus its recent audit-log usage (role-manager roles only, human sessions only).",
+		body: null,
+	},
+	{
+		method: "DELETE",
+		path: "/auth/api-keys/:id",
+		purpose: "Revoke an API key immediately (role-manager roles only, human sessions only).",
+		body: null,
+	},
 ];
 
 /***

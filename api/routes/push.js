@@ -22,8 +22,11 @@ export default async function pushRoutes(app, { deps } = {}) {
 	const service = deps?.pushService || getPushService();
 	const dir = service.dir;
 	// PoC enforcement surface (q11): notification-settings writes need the
-	// admin role while access control is on.
-	const adminOnly = deps?.authService?.guards?.requireRole(["admin"]);
+	// admin role while access control is on. API keys never touch settings
+	// in v1 (task-surface only).
+	const adminOnly = deps?.authService?.guards?.requireRole(["admin"], {
+		allowApiKeys: false,
+	});
 	const guard = adminOnly ? { preHandler: adminOnly } : {};
 
 	app.get("/push/vapid-key", async () => {
