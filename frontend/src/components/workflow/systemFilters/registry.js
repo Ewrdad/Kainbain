@@ -59,7 +59,9 @@ export const SYSTEM_FILTERS = DEFAULT_SYSTEM_FILTERS.slice();
 
 /***
  * MARK: SYSTEM_FILTER_IDS
- * @description Default system filter identifiers, in display order.
+ * @description Registered system filter identifiers in display order: the
+ *   defaults below plus anything later added through `registerSystemFilter`
+ *   (which appends here so suggestion order stays registration order).
  * @example SYSTEM_FILTER_IDS => ['failed', 'human', 'running', 'tasked']
  ***/
 export const SYSTEM_FILTER_IDS = DEFAULT_SYSTEM_FILTERS.map((entry) => entry.id);

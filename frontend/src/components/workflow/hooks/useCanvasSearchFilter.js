@@ -233,8 +233,11 @@ export function useCanvasSearchFilter({
   // column dimension killing everything and a `#tag` × `!` mix emptying the
   // intersection (Q4: never a silent empty board). The canvas renders the tag
   // branch first when both flags hold.
-  const allStagesHiddenByColumnFilters =
-    stages.length > 0 && activeColumnFilterIds.length > 0 && visibleStages.length === 0;
+  const allStagesHiddenByColumnFilters = useMemo(
+    () =>
+      stages.length > 0 && activeColumnFilterIds.length > 0 && visibleStages.length === 0,
+    [stages, activeColumnFilterIds, visibleStages],
+  );
 
   const effectiveMobileStageId = useMemo(
     () =>

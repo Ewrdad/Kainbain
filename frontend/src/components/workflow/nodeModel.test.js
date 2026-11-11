@@ -11,6 +11,7 @@ import {
   filterProcessLogs,
   formatLogsForCopy,
 } from './nodeModel';
+import { registerSystemFilter } from './systemFilters';
 
 /***
  * MARK: nodeModel tests
@@ -447,6 +448,33 @@ describe('filterVisibleStagesByColumnFilters', () => {
         columnFilterIds: ['tasked'],
       }),
     ).toEqual([]);
+  });
+
+  test('a throwing column-filter predicate degrades to no-match, never a crash', () => {
+    // Fail-safe: systemFilterMatches swallows the throw and returns false, so
+    // the column selector reports "no stages survive" (the canvas then shows
+    // the recoverable empty state) instead of taking the board down.
+    registerSystemFilter({
+      id: 'test-only-throwing-column-filter',
+      match: () => {
+        throw new Error('boom');
+      },
+      hidesColumns: true,
+    });
+    expect(
+      filterVisibleStagesByColumnFilters({
+        ...baseColumn,
+        columnFilterIds: ['test-only-throwing-column-filter'],
+      }),
+    ).toEqual([]);
+    // Mixed with a healthy filter under `any`, the healthy one still wins.
+    expect(
+      filterVisibleStagesByColumnFilters({
+        ...baseColumn,
+        columnFilterIds: ['test-only-throwing-column-filter', 'tasked'],
+        tagMode: 'any',
+      }),
+    ).toEqual(['s-build', 's-review']);
   });
 });
 
