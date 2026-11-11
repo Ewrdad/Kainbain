@@ -15,7 +15,7 @@ try {
 	gitAvailable = false;
 }
 
-const { checkoutBranch, _moveAsideBlockingLiveSnapshots } = await import("./branch.js");
+const { checkoutBranch, ensureBranchCheckedOut, withCheckedOutBranch, _moveAsideBlockingLiveSnapshots } = await import("./branch.js");
 const { commitEngineSnapshots } = await import("./commit.js");
 const { GitDirtyTreeError } = await import("./errors.js");
 
@@ -137,5 +137,53 @@ describe("commit-then-switch (real git)", () => {
 		expect(fs.readFileSync(path.join(dir, "docs", "tasks", "t", "task.md"), "utf8")).toBe("new snapshot\n");
 		// The real edit is still uncommitted working-tree dirt.
 		expect(run(dir, "status", "--porcelain")).toContain("real.js");
+	});
+});
+
+describe("ensureBranchCheckedOut never strands on untracked live snapshots (regression: tasks 82e49a05 / 9d2b75a2, 2026-11-11)", () => {
+	let dir;
+	beforeEach(() => {
+		if (!gitAvailable) return;
+		dir = initRepo();
+		tempDirs.push(dir);
+	});
+
+	function makeConflictingState() {
+		// main tracks another task's live snapshot; kb/t holds the same path
+		// as an UNTRACKED file — the exact shape that made `git checkout main`
+		// refuse with "untracked working tree files would be overwritten" and
+		// parked task pipelines as failed.
+		run(dir, "checkout", "main");
+		fs.mkdirSync(path.join(dir, "docs", "tasks", "other"), { recursive: true });
+		fs.writeFileSync(path.join(dir, "docs", "tasks", "other", "task.md"), "merged snapshot\n");
+		run(dir, "add", "-A");
+		run(dir, "commit", "-m", "main tracks other task snapshot");
+		run(dir, "checkout", "kb/t");
+		fs.mkdirSync(path.join(dir, "docs", "tasks", "other"), { recursive: true });
+		fs.writeFileSync(path.join(dir, "docs", "tasks", "other", "task.md"), "live snapshot\n");
+	}
+
+	it("ensureBranchCheckedOut to main succeeds through the move-aside", async () => {
+		if (!gitAvailable) return;
+		makeConflictingState();
+		const res = await ensureBranchCheckedOut(dir, "main", { recovery: "off" });
+		expect(res.checkedOut).toBe(true);
+		expect(run(dir, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("main");
+		// The backend-regenerated live content wins after the switch.
+		expect(fs.readFileSync(path.join(dir, "docs", "tasks", "other", "task.md"), "utf8")).toBe("live snapshot\n");
+	});
+
+	it("withCheckedOutBranch(main) runs fn on main without the untracked-overwrite refusal", async () => {
+		if (!gitAvailable) return;
+		makeConflictingState();
+		let ranOn = null;
+		await withCheckedOutBranch(dir, "main", async () => {
+			ranOn = run(dir, "rev-parse", "--abbrev-ref", "HEAD").trim();
+		});
+		// main is the default branch, so the switch is the destination itself
+		// (no restore hop needed) — the point is it must not throw.
+		expect(ranOn).toBe("main");
+		expect(run(dir, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("main");
+		expect(fs.readFileSync(path.join(dir, "docs", "tasks", "other", "task.md"), "utf8")).toBe("live snapshot\n");
 	});
 });

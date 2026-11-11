@@ -47,6 +47,28 @@ async function commitSnapshotsBeforeSwitch(projectCwd, branch, current) {
  *   are threaded into the clean-tree guard.
  * @returns {Promise<{switched: boolean}>}
  ***/
+/***
+ * MARK: checkoutWithSnapshotAside
+ * @description The ONLY safe raw `git checkout` in this module: wraps the
+ *   switch with _moveAsideBlockingLiveSnapshots + restore so engine-owned
+ *   snapshots (docs/tasks/<id>/…, state dir) that the TARGET branch tracks
+ *   while this checkout holds them untracked can never trip git's
+ *   untracked-overwrite refusal ("untracked working tree files would be
+ *   overwritten by checkout") — the exact failure that stranded task
+ *   pipelines at their Update/catchup stages (tasks 82e49a05, 9d2b75a2,
+ *   2026-11-11). Every branch switch here goes through this helper; a bare
+ *   `git(cwd, ["checkout", …])` must not exist outside it.
+ * @example await checkoutWithSnapshotAside('/repo', 'main', {}) 
+ ***/
+async function checkoutWithSnapshotAside(projectCwd, args, targetBranch, opts = {}) {
+	const aside = await _moveAsideBlockingLiveSnapshots(projectCwd, targetBranch, opts);
+	try {
+		await git(projectCwd, args);
+	} finally {
+		await restoreMovedAsideSnapshots(aside);
+	}
+}
+
 export async function checkoutBranch(projectCwd, branch, opts = {}) {
 	_assertValidBranchName(branch, "checkout");
 	const current = await currentBranch(projectCwd);
@@ -68,12 +90,7 @@ export async function checkoutBranch(projectCwd, branch, opts = {}) {
 	// aside across the checkout and restore them after: without this, git's
 	// own untracked-overwrite safety blocks the switch even though the
 	// clean-tree guard (correctly) ignores these paths.
-	const aside = await _moveAsideBlockingLiveSnapshots(projectCwd, branch, opts);
-	try {
-		await git(projectCwd, ["checkout", branch]);
-	} finally {
-		await restoreMovedAsideSnapshots(aside);
-	}
+	await checkoutWithSnapshotAside(projectCwd, ["checkout", branch], branch, opts);
 	return { switched: true };
 }
 
@@ -444,7 +461,7 @@ export async function ensureBranchCheckedOut(projectCwd, branch, opts = {}) {
 			});
 		}
 		try {
-			await git(projectCwd, ["checkout", branch]);
+			await checkoutWithSnapshotAside(projectCwd, ["checkout", branch], branch, opts);
 		} catch (checkoutError) {
 			if (!isWorktreeLockError(checkoutError)) throw checkoutError;
 			const recovery = await reconcileBranchWorktreeLock(projectCwd, branch);
@@ -456,7 +473,7 @@ export async function ensureBranchCheckedOut(projectCwd, branch, opts = {}) {
 						`Original error: ${checkoutError?.message || checkoutError}`,
 				);
 			}
-			await git(projectCwd, ["checkout", branch]);
+			await checkoutWithSnapshotAside(projectCwd, ["checkout", branch], branch, opts);
 			return {
 				created: false,
 				checkedOut: true,
@@ -489,7 +506,7 @@ export async function ensureBranchCheckedOut(projectCwd, branch, opts = {}) {
 			: null;
 	if (pinnedBase) {
 		try {
-			await git(projectCwd, ["checkout", pinnedBase]);
+			await checkoutWithSnapshotAside(projectCwd, ["checkout", pinnedBase], pinnedBase, opts);
 		} catch (checkoutError) {
 			// The base exists but cannot be checked out (worktree lock,
 			// corrupt ref): NEVER silently branch from the current HEAD —
@@ -506,7 +523,7 @@ export async function ensureBranchCheckedOut(projectCwd, branch, opts = {}) {
 					`Could not base branch '${branch}' on '${pinnedBase}': checkout of the base failed (${checkoutError?.message || checkoutError}) and pinning the start point failed too. Resolve the base branch before retrying.`,
 				);
 			}
-			await git(projectCwd, ["checkout", branch]);
+			await checkoutWithSnapshotAside(projectCwd, ["checkout", branch], branch, opts);
 			return {
 				created: pinnedCreation?.created === true,
 				checkedOut: true,
@@ -523,15 +540,15 @@ export async function ensureBranchCheckedOut(projectCwd, branch, opts = {}) {
 			const { created } = await createBranch(projectCwd, branch, {
 				startPoint: pinnedBase,
 			});
-			await git(projectCwd, ["checkout", branch]);
+			await checkoutWithSnapshotAside(projectCwd, ["checkout", branch], branch, opts);
 			return { created, checkedOut: true, switched: true };
 		}
-		await git(projectCwd, ["checkout", "-b", branch]);
+		await checkoutWithSnapshotAside(projectCwd, ["checkout", "-b", branch], branch, opts);
 		return { created: true, checkedOut: true, switched: true };
 	} catch (e) {
 		// Tolerate the create/checkout race (branch appeared in between).
 		if (await branchExists(projectCwd, branch)) {
-			await git(projectCwd, ["checkout", branch]);
+			await checkoutWithSnapshotAside(projectCwd, ["checkout", branch], branch, opts);
 			return { created: false, checkedOut: true, switched: true };
 		}
 		throw e;
