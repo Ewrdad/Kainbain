@@ -10,7 +10,7 @@ const verifyWithTestKey = ({ manifestBytes, signatureText }) =>
 const quiet = { warn: () => {}, log: () => {} };
 
 const POINTER = "https://api.github.com/repos/Ewrdad/Kainbain/releases/latest";
-const LIST = "https://api.github.com/repos/Ewrdad/Kainbain/releases?per_page=10&page=1";
+const LIST = "https://api.github.com/repos/Ewrdad/Kainbain/releases?per_page=30&page=1";
 
 // One signed candidate release: manifest + signature + the GitHub asset
 // rows pointing at them. `requires` defaults to the repo's own range.

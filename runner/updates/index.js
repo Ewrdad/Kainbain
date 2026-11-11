@@ -114,9 +114,11 @@ const checkGithubForUpdate = async ({ currentVersion, updateUrl, fetchImpl, veri
 			return { ok: true, update: null, manifest, reason: legacyFilterReason({ code: verdict.code, reason: verdict.reason, manifest, detected }) };
 		}
 		// Fast path done: latest exists and verifies but cannot run against
-		// this backend. Walk the bounded releases list (newest-first) for
-		// the newest older release that can.
-		const listUrl = githubReleasesListUrl({ pointerUrl: updateUrl });
+		// this backend. Walk the bounded releases list (newest-first, one
+		// page of 30 — the compat-spec bound; mixed manual tags consume
+		// window, so 10 would strand older fleets) for the newest older
+		// release that can.
+		const listUrl = githubReleasesListUrl({ pointerUrl: updateUrl, perPage: 30 });
 		if (!listUrl) {
 			return { ok: true, update: null, manifest, reason: `Latest release ${manifest.version} is incompatible (${verdict.reason}); cannot list older releases from this pointer.` };
 		}

@@ -148,6 +148,14 @@ export const loadBackendApiVersion = () => {
 	}
 };
 
+/***
+ * MARK: BACKEND_API_VERSION
+ * @description This backend's own API version, read once at import from
+ *   `api/version.json` (null when missing/invalid). Advertised to runners
+ *   on register/heartbeat so they can select the newest release
+ *   compatible with this backend.
+ * @example BACKEND_API_VERSION => '1.0.0'
+ ***/
 export const BACKEND_API_VERSION = loadBackendApiVersion();
 
 /***

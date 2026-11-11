@@ -348,7 +348,11 @@ export class RunnerRegistry {
 				// Update directive (task 82e49a05): the managed fleet target
 				// plus this backend's API version, consumed by the runner's
 				// compat-gated selection. Old runners ignore these fields.
+				// `minimumRunnerVersion` mirrors `minimumVersion` under the
+				// compat-contract name the daemon reads (spec item 2); the
+				// short name stays for the fleet UI.
 				desiredRunnerVersion: update.desiredRunnerVersion,
+				minimumRunnerVersion: update.minimumVersion,
 				backendApiVersion: update.backendApiVersion,
 				updateAvailable: update.updateAvailable,
 				belowMinimum: update.belowMinimum,

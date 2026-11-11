@@ -561,11 +561,14 @@ describe("RunnerRegistry operator config", () => {
 		expect(beat.updateAvailable).toBe(false);
 	});
 
-	test("advertises the update directive (desired + backend API version) on heartbeats", () => {
+	test("advertises the update directive (desired + minimum + backend API version) on heartbeats", () => {
 		const { runners, credential } = approved();
 		const beat = runners.heartbeat({ runnerId: "r1", credential, facts: FACTS });
+		// Field names are the compat contract the daemon reads
+		// (updateDirectiveFromBeat): all three must be present.
 		expect(beat.update).toMatchObject({
 			desiredRunnerVersion: "0.1.0",
+			minimumRunnerVersion: "0.1.0",
 			backendApiVersion: "1.0.0",
 		});
 	});
