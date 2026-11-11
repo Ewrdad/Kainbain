@@ -39,6 +39,23 @@ allowlist, which is configuration, not a stall.
 Rollback to the pre-16d6fbd6 order (closest-to-completion by absolute stage
 index, then oldest) is config-only: `KAINBAIN_CENTRAL_QUEUE_ORDER=furthest-along`.
 
+### Runner dispatch fallback (no starvation behind the fleet)
+
+With `KAINBAIN_RUNNER_EXECUTION_ONLY=1` (default) the scheduler defers
+all servable agent stages to runner dispatch. Two backend fallbacks
+prevent starvation when the fleet cannot keep up:
+
+* **No-capable-runner fallback** — if no active, fresh runner advertises
+  the required harness/model for this task, the defer is skipped and the
+  stage runs embedded immediately. Deferring would park the task forever
+  behind a fleet that can never claim it.
+* **Wall-clock fallback** — a task that has waited for runner dispatch
+  past `KAINBAIN_RUNNER_DISPATCH_FALLBACK_MS` (default 90 s) falls back
+  to embedded even when a capable runner exists but is busy. This bounds
+  worst-case wait when a single runner serialises work from many pipelines.
+  Set `KAINBAIN_RUNNER_DISPATCH_FALLBACK_MS=0` to disable and keep
+  runner-only always (e.g. in container-only deploys with no local harness).
+
 ### Follow on from just completed tasks (#1)
 
 If a task is to go directly to a review or other agentic stage then that should be followed. This is to reduce work becoming stale and/or the risk something else changes related things in that time. 
