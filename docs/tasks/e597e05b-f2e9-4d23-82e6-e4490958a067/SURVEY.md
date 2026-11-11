@@ -10,12 +10,23 @@
       "id": "q1",
       "type": "single",
       "text": "I think this is simple enough to not require questions. Do you agree?",
-      "options": ["Yes", "No", "Need more detail"],
+      "options": [
+        "Yes",
+        "No",
+        "Need more detail"
+      ],
       "required": true,
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Yes"
+      ],
+      "notes": "The ticket already contains the mechanism, fix direction and acceptance criteria; the durable fix is committed as bdcae41 on kb/e3369ccb (all raw checkouts routed through checkoutWithSnapshotAside + regression tests)."
+    }
+  }
 }
 ```
 
@@ -80,6 +91,34 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q2": {
+      "selected": [
+        "Refactor ensureBranchCheckedOut to use the same move-aside wrapper but keep its own retry logic"
+      ],
+      "notes": "That is exactly what bdcae41 does: every raw git checkout in ensureBranchCheckedOut now goes through checkoutWithSnapshotAside (shared _moveAsideBlockingLiveSnapshots + restore), while the worktree-lock recovery try/catch is preserved."
+    },
+    "q3": {
+      "selected": [
+        "Run it as part of normal startup/branch preparation when dirt is present"
+      ],
+      "notes": "untrackLiveTaskSnapshots already exists in api/git/commit.js; wire it into the existing startup/branch-prep path so main stops tracking live task.md snapshots, with the move-aside as the safety net meanwhile."
+    },
+    "q4": {
+      "selected": [
+        "Both a shared fixture and per-entry-point tests"
+      ],
+      "notes": "bdcae41 adds per-entry-point tests (ensureBranchCheckedOut to main, withCheckedOutBranch on main) in the shared real-git fixture file api/git/switchSnapshots.integration.test.js; extend the same fixture to cover checkoutBranch and returnToDefaultBranch in the conflicting state."
+    },
+    "q5": {
+      "selected": [
+        "Update stage running ./update.sh on primary",
+        "Catchup stage flows",
+        "Return to default branch after CI",
+        "Other callers of bare checkout"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
