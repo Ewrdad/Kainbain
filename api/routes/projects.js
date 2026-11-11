@@ -562,6 +562,16 @@ export default async function projectsRoutes(app, { deps }) {
 				}
 				saveWarnings.push(...warnings);
 			}
+			// PATCH is a project-fields endpoint, but the body passes through
+			// to the store untouched — a client sending `stages` here would
+			// otherwise bypass the save-boundary validation every other
+			// stage-write path enforces. Same pair of guards, same 400s.
+			if (request.body?.stages !== undefined) {
+				const patchStagesPolicyError = assertValidStageRunnerPolicies(request.body.stages);
+				if (patchStagesPolicyError) return reply.status(400).send(patchStagesPolicyError);
+				const patchStagesAutoApproveError = assertValidStageAutoApproves(request.body.stages);
+				if (patchStagesAutoApproveError) return reply.status(400).send(patchStagesAutoApproveError);
+			}
 			try {
 				const project = projectStore.updateProject(
 					request.params.id,
@@ -682,9 +692,12 @@ export default async function projectsRoutes(app, { deps }) {
 						const stageType = normalizeStageType(stage.type);
 						if (stageType === "human" && task.status === "in_stage") {
 							// A pipeline edit just parked this task at a human
-							// checkpoint: stamp the auto-approve deadline exactly
-							// like a moveToStage entry (or clear it when the
-							// stage carries no hold).
+							// checkpoint: stamp the auto-approve deadline (or clear
+							// it when the stage carries no hold). The checkpoint
+							// wait starts at this flip — not at the stale
+							// stage-entry time — so the hold always runs its full
+							// length from the parking moment (late is safe, early
+							// is a bug).
 							const holdMs = parseAutoApproveDuration(stage.autoApproveAfterMs);
 							taskStore.updateTask(
 								request.params.id,
@@ -692,7 +705,7 @@ export default async function projectsRoutes(app, { deps }) {
 								{
 									status: "waiting_human",
 									autoApproveAt: holdMs
-										? resolveAutoApproveAt(task.enteredStageAt, holdMs)
+										? resolveAutoApproveAt(new Date().toISOString(), holdMs)
 										: null,
 									autoApproveRemindedAt: null,
 								},
