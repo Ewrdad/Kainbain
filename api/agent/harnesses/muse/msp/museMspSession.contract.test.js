@@ -233,7 +233,10 @@ describe("muse MSP lifecycle (mock serve)", () => {
 			timeoutMs: 8000,
 		});
 		expect(harness.transport).toBe("exec");
-		expect(harness.modelSelection).toBe("none");
+		// Exec consumes `--model`, so the model control stays available on
+		// both transports; the local exec catalogue is honestly empty and
+		// the picker is filled from the central/fleet catalogue merge.
+		expect(harness.modelSelection).toBe("list");
 		expect(await harness.listModels()).toEqual([]);
 	});
 });

@@ -267,7 +267,7 @@ describe("ProjectStore model aliases", () => {
 		expect("expectedUpdatedAt" in readProjectJson(updated)).toBe(false);
 	});
 
-	it("H4: loading a legacy none-harness + model target blanks the model", () => {
+	it("H4: loading a legacy none-harness + model target KEEPS the stored model (no silent wipe)", () => {
 		const project = store.createProject({ name: "Legacy None Alias" , allowLocalOnly: true });
 		// Hand-edit the file on disk (the legacy/API write path the API
 		// refusal cannot retroactively fix).
@@ -289,12 +289,20 @@ describe("ProjectStore model aliases", () => {
 		];
 		fs.writeFileSync(configFile, JSON.stringify(onDisk, null, 2));
 		const loaded = store._loadProjectFile(project.cwd);
+		// The stored model survives the load path byte-identically — harness
+		// mode flips must never destroy a saved target (only a warning fires).
 		expect(loaded.modelAliases).toEqual([
 			{
 				name: "worker",
 				harness: "muse",
-				model: "",
-				targets: [{ harness: "muse", model: "", percent: 100 }],
+				model: "antigravity::google::gemini-legacy",
+				targets: [
+					{
+						harness: "muse",
+						model: "antigravity::google::gemini-legacy",
+						percent: 100,
+					},
+				],
 			},
 		]);
 	});

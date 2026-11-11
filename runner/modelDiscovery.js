@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { harnessModelKey } from "../shared/modelKeys.js";
 
 /***
  * MARK: discoverClaudeModels
@@ -8,9 +9,12 @@ import { spawnSync } from "node:child_process";
  *   the box's own login, so the runner never reads keys or calls provider
  *   billing APIs — only model ids come back. Rows map to the fleet id
  *   grammar `muse::<providerId>::<modelId>` (e.g.
- *   `muse::meta::muse-spark-1.3`); malformed rows are skipped, ids deduped.
- *   Best-effort: any failure (missing CLI, timeout, unparsable output)
- *   resolves to `[]`, never throws, so discovery can never break boot.
+ *   `muse::meta::muse-spark-1.3`); each row is validated with the SHARED
+ *   key grammar (`harnessModelKey`), so ids containing a single `:`
+ *   (e.g. `glm-5.3-flash:cloud`) are kept while `::`-bearing or empty
+ *   segments are skipped as malformed, ids deduped. Best-effort: any
+ *   failure (missing CLI, timeout, unparsable output) resolves to `[]`,
+ *   never throws, so discovery can never break boot.
  * @example await discoverClaudeModels() => ['muse::meta::muse-spark-1.3']
  * @param {Object} [opts]
  * @param {string} [opts.bin='muse'] - CLI binary to spawn.
@@ -46,8 +50,16 @@ export async function discoverClaudeModels({ bin = "muse", timeoutMs = 20000, sp
 		for (const row of rows) {
 			const provider = typeof row?.providerId === "string" ? row.providerId.trim() : "";
 			const model = typeof row?.modelId === "string" ? row.modelId.trim() : "";
-			if (!provider || !model || provider.includes(":") || model.includes(":")) continue;
-			const id = `muse::${provider}::${model}`;
+			if (!provider || !model) continue;
+			// Validate with the shared grammar, never a stricter local rule:
+			// a single `:` inside a segment is legal (`glm-5.3-flash:cloud`),
+			// only the `::` separator and empty segments are malformed.
+			let id;
+			try {
+				id = harnessModelKey("muse", provider, model);
+			} catch {
+				continue;
+			}
 			if (!ids.includes(id)) ids.push(id);
 		}
 	}

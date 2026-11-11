@@ -191,7 +191,7 @@ describe('ModelAliasesSection', () => {
     ]);
   });
 
-  it('resets the model when the row harness changes', () => {
+  it('preserves the model text when the row harness changes (unknown-model badge, no silent clear)', () => {
     const onChange = vi.fn();
     render(
       <ModelAliasesSection
@@ -207,8 +207,8 @@ describe('ModelAliasesSection', () => {
       {
         name: 'small',
         harness: 'custom',
-        model: '',
-        targets: [{ harness: 'custom', model: '', percent: 100 }],
+        model: 'google::m1',
+        targets: [{ harness: 'custom', model: 'google::m1', percent: 100 }],
       },
     ]);
   });

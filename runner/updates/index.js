@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { assetForPlatform, DEFAULT_RELEASES_LATEST_URL, isNewerVersion, isPrereleaseVersion, resolveUpdateUrls, validateManifest } from "./manifest.js";
+import { assetForPlatform, compareVersions, DEFAULT_RELEASES_LATEST_URL, isNewerVersion, isPrereleaseVersion, resolveUpdateUrls, satisfiesRange, validateManifest } from "./manifest.js";
 import { detectUpdatePlatform } from "./platform.js";
 import { verifyManifestSignature } from "./verify.js";
 import { downloadVerifiedAsset, fetchText } from "./download.js";
@@ -17,8 +17,14 @@ const execFileAsync = promisify(execFile);
  *   (GitHub releases/latest or an air-gapped mirror base), verifies the
  *   manifest signature against the PINNED key, and returns the matching
  *   platform asset — never touching the install when nothing is newer or
- *   anything fails. applyUpdate downloads, re-verifies sha256, extracts to
- *   a versioned dir, and atomically flips current/previous symlinks.
+ *   anything fails. Version selection is compatibility-gated: when the
+ *   backend advertises `backendApiVersion` (register/heartbeat), a release
+ *   whose manifest `requires.backendApi` range the backend does not satisfy
+ *   is skipped, and when the backend advertises `desiredRunnerVersion`, no
+ *   release above it is selected — so updates are manageable by the backend
+ *   without it ever shipping runner bytes. applyUpdate downloads,
+ *   re-verifies sha256, extracts to a versioned dir, and atomically flips
+ *   current/previous symlinks.
  *   The caller (daemon idle branch) guarantees no active task; a lock
  *   guards overlapping invocations.
  * @example await checkForUpdate({ currentVersion: '0.1.0', config }) => { version: '0.2.0', ... } | null
@@ -35,6 +41,10 @@ export const checkForUpdate = async ({
 	verifyImpl = verifyManifestSignature,
 	platform,
 	arch,
+	// Backend advertisement (from register/heartbeat); null = not managed,
+	// in which case selection stays permissive latest-compatible.
+	backendApiVersion = null,
+	desiredRunnerVersion = null,
 	logger = console,
 } = {}) => {
 	const detected = detectUpdatePlatform({ platform, arch });
@@ -96,6 +106,39 @@ export const checkForUpdate = async ({
 	if (!schema.ok) return { ok: false, reason: schema.reason };
 	if (isPrereleaseVersion(manifest.version)) {
 		return { ok: true, update: null, manifest, reason: "Manifest version is a pre-release; v1 runners skip it." };
+	}
+	// Backend compatibility gate: a release whose `requires.backendApi` range
+	// this backend's apiVersion does not satisfy is never selected. When the
+	// backend does not advertise its apiVersion (old backend), the gate is
+	// permissive — the old latest-only behavior.
+	const requiresBackendApi = manifest?.requires?.backendApi;
+	if (
+		typeof requiresBackendApi === "string" &&
+		requiresBackendApi.trim() &&
+		typeof backendApiVersion === "string" &&
+		backendApiVersion.trim() &&
+		!satisfiesRange(backendApiVersion, requiresBackendApi)
+	) {
+		return {
+			ok: true,
+			update: null,
+			manifest,
+			reason: `Release ${manifest.version} requires backendApi '${requiresBackendApi}' but this backend is ${backendApiVersion} — staying on the current version.`,
+		};
+	}
+	// Backend-managed desired-version cap: never update past the version the
+	// backend manages as desired (the fleet converges to it, no further).
+	if (
+		typeof desiredRunnerVersion === "string" &&
+		desiredRunnerVersion.trim() &&
+		compareVersions(manifest.version, desiredRunnerVersion) === 1
+	) {
+		return {
+			ok: true,
+			update: null,
+			manifest,
+			reason: `Backend desired runner version is ${desiredRunnerVersion}; release ${manifest.version} is above it — skipped.`,
+		};
 	}
 	if (!isNewerVersion(manifest.version, currentVersion)) {
 		return { ok: true, update: null, manifest, reason: "Already on the latest version." };

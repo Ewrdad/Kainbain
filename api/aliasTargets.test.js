@@ -16,8 +16,9 @@ import {
  *   errors refuse structurally impossible combinations (`none` harnesses
  *   paired with a model string, unknown harness ids, malformed refs) while
  *   SOFT warnings surface catalog-miss combinations (valid shape, absent
- *   from the target harness's catalog right now — never blocking). Legacy
- *   rows blank on load with a report of what was dropped.
+ *   from the target harness's catalog right now — never blocking) and
+ *   `none`-harness pairings (kept with a warning — never refused, never
+ *   blanked on load).
  ***/
 
 const noneHarnesses = new Set(["muse", "custom"]);
@@ -34,8 +35,8 @@ const modelIdsFor = async (harnessId) =>
 const opts = { modelSelectionFor, isKnownHarness, modelIdsFor };
 
 describe("validateAliasTargetModels", () => {
-	it("refuses a muse + model target, naming the alias and harness", async () => {
-		const { error } = await validateAliasTargetModels(
+	it("softly warns (never refuses) on a muse + model target, keeping the stored value", async () => {
+		const { error, warnings } = await validateAliasTargetModels(
 			{
 				name: "worker",
 				targets: [
@@ -44,18 +45,22 @@ describe("validateAliasTargetModels", () => {
 			},
 			opts,
 		);
-		expect(error).toContain("worker");
-		expect(error).toContain("muse");
-		expect(error).toContain("manages its own model");
+		expect(error).toBeNull();
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toContain("worker");
+		expect(warnings[0]).toContain("muse");
+		expect(warnings[0]).toContain("manages its own model");
+		expect(warnings[0]).toContain("kept");
 	});
 
-	it("refuses the legacy single-target shape on custom", async () => {
-		const { error } = await validateAliasTargetModels(
+	it("softly warns (never refuses) on the legacy single-target shape on custom", async () => {
+		const { error, warnings } = await validateAliasTargetModels(
 			{ name: "cli", harness: "custom", model: "pi::m" },
 			opts,
 		);
-		expect(error).toContain("cli");
-		expect(error).toContain("custom");
+		expect(error).toBeNull();
+		expect(warnings[0]).toContain("cli");
+		expect(warnings[0]).toContain("custom");
 	});
 
 	it("accepts blank models on none harnesses and models on list harnesses", async () => {
@@ -270,11 +275,14 @@ describe("validateAliasTargetModels", () => {
 		});
 	});
 
-	it("resolves against the real registry by default (muse is none, pi is list)", async () => {
+	it("resolves against the real registry by default (muse is list on both transports, unknown harness is a hard error)", async () => {
+		// muse declares "list" on exec too (it consumes --model), so a muse +
+		// model target is accepted; the model is simply catalog-probed like any
+		// other harness now.
 		expect(
 			(await validateAliasTargetModels({ name: "w", harness: "muse", model: "m" }))
 				.error,
-		).toContain("muse");
+		).toBeNull();
 		// Unknown harness against the real registry: hard error, no probe needed.
 		expect(
 			(
@@ -489,7 +497,7 @@ describe("fleet-aware validation probes", () => {
 });
 
 describe("sanitizeAliasTargetModels", () => {
-	it("blanks none-harness models and reports the drops", () => {
+	it("never blanks none-harness models — keeps them and reports the flags", () => {
 		const input = [
 			{
 				name: "worker",
@@ -506,15 +514,18 @@ describe("sanitizeAliasTargetModels", () => {
 				targets: [{ harness: "pi", model: "google::m", percent: 100 }],
 			},
 		];
-		const { aliases, dropped } = sanitizeAliasTargetModels(input, {
+		const { aliases, flagged } = sanitizeAliasTargetModels(input, {
 			modelSelectionFor,
 		});
+		// Stored models are user data: they survive the load path unchanged.
 		expect(aliases).toEqual([
 			{
 				name: "worker",
 				harness: "muse",
-				model: "",
-				targets: [{ harness: "muse", model: "", percent: 100 }],
+				model: "antigravity::google::gemini-legacy",
+				targets: [
+					{ harness: "muse", model: "antigravity::google::gemini-legacy", percent: 100 },
+				],
 			},
 			{
 				name: "small",
@@ -523,7 +534,7 @@ describe("sanitizeAliasTargetModels", () => {
 				targets: [{ harness: "pi", model: "google::m", percent: 100 }],
 			},
 		]);
-		expect(dropped).toEqual([
+		expect(flagged).toEqual([
 			{
 				alias: "worker",
 				harness: "muse",
@@ -534,7 +545,7 @@ describe("sanitizeAliasTargetModels", () => {
 		expect(input[0].model).toBe("antigravity::google::gemini-legacy");
 	});
 
-	it("recomputes the legacy mirror from the first target", () => {
+	it("recomputes the legacy mirror from the first target without clearing it", () => {
 		const { aliases } = sanitizeAliasTargetModels(
 			[
 				{
@@ -549,7 +560,7 @@ describe("sanitizeAliasTargetModels", () => {
 			],
 			{ modelSelectionFor },
 		);
-		expect(aliases[0].model).toBe("");
+		expect(aliases[0].model).toBe("stale");
 		expect(aliases[0].targets[1]).toEqual({
 			harness: "pi",
 			model: "google::m",
@@ -560,7 +571,7 @@ describe("sanitizeAliasTargetModels", () => {
 	it("passes non-array input through as no aliases", () => {
 		expect(sanitizeAliasTargetModels(undefined, { modelSelectionFor })).toEqual({
 			aliases: [],
-			dropped: [],
+			flagged: [],
 		});
 	});
 });

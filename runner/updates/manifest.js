@@ -56,6 +56,40 @@ export const isPrereleaseVersion = (version) => {
 	return parsed.prerelease !== null;
 };
 
+const RANGE_CLAUSE_RE = /^(>=|<=|>|<|=)?v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/;
+
+/***
+ * MARK: satisfiesRange
+ * @description Minimal semver-range check for the `requires.backendApi`
+ *   manifest field: a whitespace-separated list of clauses (`>=1.0.0`,
+ *   `<2.0.0`, `=1.2.3`, or a bare version = exact), all of which must hold.
+ *   The vocabulary matches `api/version.json` `accepts` / `runner/version.json`
+ *   `requires` (e.g. `>=1.0.0 <2.0.0`). Unknown clause shapes fail closed
+ *   (false) so a malformed range never lets an incompatible release through.
+ * @example satisfiesRange('1.2.0', '>=1.0.0 <2.0.0') => true
+ * @example satisfiesRange('2.0.0', '>=1.0.0 <2.0.0') => false
+ ***/
+export const satisfiesRange = (version, range) => {
+	if (!isValidVersion(version) || typeof range !== "string" || !range.trim()) {
+		return false;
+	}
+	for (const clause of range.trim().split(/\s+/)) {
+		const match = RANGE_CLAUSE_RE.exec(clause);
+		if (!match) return false;
+		const op = match[1] || "=";
+		const cmp = compareVersions(version, match[2]);
+		if (cmp === null) return false;
+		const ok =
+			op === ">=" ? cmp >= 0
+			: op === "<=" ? cmp <= 0
+			: op === ">" ? cmp > 0
+			: op === "<" ? cmp < 0
+			: cmp === 0;
+		if (!ok) return false;
+	}
+	return true;
+};
+
 const SHA256_RE = /^[0-9a-f]{64}$/i;
 
 export const validateManifest = (manifest) => {
@@ -86,6 +120,20 @@ export const validateManifest = (manifest) => {
 		}
 		if (!Number.isInteger(asset.size) || asset.size <= 0) {
 			return { ok: false, reason: `Manifest asset '${asset.filename}' has an invalid size.` };
+		}
+	}
+	// Additive v1 extension: `requires.backendApi` (semver range) lets the
+	// backend gate which runner releases its apiVersion supports. Absent on
+	// old manifests — accepted unchanged.
+	if (manifest.requires !== undefined) {
+		if (!manifest.requires || typeof manifest.requires !== "object" || Array.isArray(manifest.requires)) {
+			return { ok: false, reason: "Manifest 'requires' must be an object when present." };
+		}
+		if (
+			manifest.requires.backendApi !== undefined &&
+			(typeof manifest.requires.backendApi !== "string" || !manifest.requires.backendApi.trim())
+		) {
+			return { ok: false, reason: "Manifest requires.backendApi must be a non-empty semver range string." };
 		}
 	}
 	return { ok: true };

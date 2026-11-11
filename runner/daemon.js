@@ -611,6 +611,16 @@ export async function joinAndHeartbeat({ config, client, loadHarness, logger, st
 	if (beat.status !== "active") {
 		throw new Error(`Runner ${config.runnerId} is ${beat.status}; need an active registration.`);
 	}
+	// Backend version advertisement (backend-managed updates): remember it so
+	// the next self-update check can pick a release compatible with this
+	// backend and capped at the backend's desired runner version.
+	if (beat && typeof beat === "object" && state && typeof state === "object") {
+		state.backendVersions = {
+			backendApiVersion: beat.backendApiVersion ?? null,
+			minimumRunnerVersion: beat.minimumRunnerVersion ?? null,
+			desiredRunnerVersion: beat.desiredRunnerVersion ?? null,
+		};
+	}
 	// Boot-time commands: anything queued while the Runner was down is
 	// delivered on this first heartbeat (peek-until-ack) — act on it now
 	// instead of dropping it. The Runner is idle here (no execution yet),
@@ -798,6 +808,16 @@ export async function deliverSteers({ config, client, logger, facts, state, upda
 	const pendingAck = stagedCommandAck(state);
 	const factsWithAck = pendingAck ? { ...facts, commandAck: pendingAck } : facts;
 	const beat = await client.heartbeat({ runnerId: config.runnerId, facts: factsWithAck });
+	// Backend version advertisement (backend-managed updates): refresh the
+	// cached copy on every heartbeat so update checks always see the latest
+	// backend apiVersion / desired / minimum runner versions.
+	if (beat && typeof beat === "object" && state && typeof state === "object") {
+		state.backendVersions = {
+			backendApiVersion: beat.backendApiVersion ?? null,
+			minimumRunnerVersion: beat.minimumRunnerVersion ?? null,
+			desiredRunnerVersion: beat.desiredRunnerVersion ?? null,
+		};
+	}
 	if (pendingAck && Array.isArray(state?.commandAcks)) {
 		state.commandAcks.shift();
 	}
@@ -1975,6 +1995,11 @@ export async function maybeSelfUpdate({
 		result = await check({
 			currentVersion: RUNNER_VERSION,
 			updateUrl: config.updateUrl,
+			// Backend-managed selection: the last heartbeat's advertisement
+			// gates compatibility and caps the desired version (absent on old
+			// backends → permissive latest-only behavior, unchanged).
+			backendApiVersion: updateState?.backendVersions?.backendApiVersion ?? null,
+			desiredRunnerVersion: updateState?.backendVersions?.desiredRunnerVersion ?? null,
 			logger,
 		});
 	} catch (err) {

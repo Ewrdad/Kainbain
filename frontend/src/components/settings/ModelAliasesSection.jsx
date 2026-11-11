@@ -581,7 +581,10 @@ function AliasTargetRow({
                 return;
               }
               setBlockedHarnessId(null);
-              onTargetChange({ harness: next, model: '' });
+              // Preserve the stored/draft model text across the harness
+              // switch: an unknown-model badge is honest, silently clearing
+              // the model is draft data loss that the next save would persist.
+              onTargetChange({ harness: next, model: target?.model || '' });
             }}
             disabled={disabled}
             size="sm"

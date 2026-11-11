@@ -14,6 +14,8 @@ const TRANSCRIPT = [
 				{ modelId: "muse-spark-1.3", providerId: "meta" },
 				{ modelId: "", providerId: "meta" },
 				{ modelId: "odd:model", providerId: "meta" },
+				{ modelId: "bad::id", providerId: "meta" },
+				{ modelId: "muse-spark-1.3", providerId: "weird::provider" },
 				{ modelId: "muse-spark-1.3" },
 				"not-an-object",
 			],
@@ -26,7 +28,13 @@ const fakeSpawn = (stdout) => () => ({ stdout });
 
 test("maps model/list rows to composite fleet ids, deduped, malformed skipped", async () => {
 	const ids = await discoverClaudeModels({ spawnSyncFn: fakeSpawn(TRANSCRIPT) });
-	assert.deepEqual(ids, ["muse::meta::muse-spark-1.3", "muse::meta::muse-wonder-1.0"]);
+	// Single `:` inside a segment is legal grammar (e.g. glm-5.3-flash:cloud)
+	// and must survive; only `::`-bearing or empty segments are malformed.
+	assert.deepEqual(ids, [
+		"muse::meta::muse-spark-1.3",
+		"muse::meta::muse-wonder-1.0",
+		"muse::meta::odd:model",
+	]);
 });
 
 test("sends initialize, initialized, then model/list over serve stdio", async () => {

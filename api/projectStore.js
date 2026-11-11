@@ -386,15 +386,15 @@ export class ProjectStore {
 					// Alias lists hand-edited into project.json normalize on
 					// load (garbage degrades to fewer aliases, never a
 					// broken project); absent stays absent. Targets pairing
-					// a `none` harness with a model (saved before the API
-					// refusal existed) blank the model with one warning —
-					// old projects keep loading and the next save persists
-					// the clean row.
+					// a `none` harness with a model are KEPT (never blanked)
+					// and only flagged for a one-line warning — a stored
+					// model is the last working choice and survives
+					// harness-mode flips.
 					if (parsed.modelAliases !== undefined) {
 						const clean = normalizeModelAliases(parsed.modelAliases);
-						const { aliases, dropped } = sanitizeAliasTargetModels(clean);
-						for (const drop of dropped) {
-							warnLegacyNoneHarnessModel(projectDir, drop);
+						const { aliases, flagged } = sanitizeAliasTargetModels(clean);
+						for (const flag of flagged) {
+							warnLegacyNoneHarnessModel(projectDir, flag);
 						}
 						parsed.modelAliases = aliases.length ? aliases : undefined;
 					}

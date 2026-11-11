@@ -99,6 +99,31 @@ export const updateAvailableForRunner = (runnerVersion, recommendedVersion) => {
 };
 
 /***
+ * MARK: buildBackendUpdateAdvertisement
+ * @description The version block the backend attaches to register/heartbeat
+ *   responses so a Runner can pick the newest release COMPATIBLE with this
+ *   backend and respect the operator-managed desired/minimum runner versions
+ *   (backend-managed updates, ADR 0012 Option A: the backend directs the
+ *   version, it never ships runner bytes). A null field means "not managed"
+ *   and the Runner keeps its permissive latest-compatible behavior.
+ * @example buildBackendUpdateAdvertisement({ apiVersion: '1.0.0', minVersion: '0.1.0', recommendedVersion: '0.2.0' }) => { backendApiVersion: '1.0.0', minimumRunnerVersion: '0.1.0', desiredRunnerVersion: '0.2.0' }
+ ***/
+export const buildBackendUpdateAdvertisement = ({
+	apiVersion,
+	minVersion,
+	recommendedVersion,
+} = {}) => ({
+	backendApiVersion:
+		typeof apiVersion === "string" && apiVersion.trim() ? apiVersion.trim() : null,
+	minimumRunnerVersion:
+		typeof minVersion === "string" && minVersion.trim() ? minVersion.trim() : null,
+	desiredRunnerVersion:
+		typeof recommendedVersion === "string" && recommendedVersion.trim()
+			? recommendedVersion.trim()
+			: null,
+});
+
+/***
  * MARK: updateInfoForRunner
  * @description Derives the fleet-matrix version fields from heartbeat
  *   facts plus the operator knobs (registry `_public` consumes this).

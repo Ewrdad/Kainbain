@@ -62,7 +62,7 @@ export const minisignSign = ({ messageBytes, secretSeedHex, keynumHex }) => {
 	return `untrusted comment: kainbain runner release signature\n${envelope}\n`;
 };
 
-export const buildManifest = ({ version, dir, tag }) => {
+export const buildManifest = ({ version, dir, tag, requires }) => {
 	const clean = String(version || "").trim().replace(/^v/, "");
 	// Full semver incl. canary pre-releases (`1.2.3-rc.1`): the manifest
 	// version always matches the release tag. Runners skip pre-release
@@ -86,6 +86,24 @@ export const buildManifest = ({ version, dir, tag }) => {
 			size: stat.size,
 		});
 	}
+	// `requires.backendApi` (default: the release source tree's
+	// runner/version.json) lets runners skip releases incompatible with the
+	// backend they talk to — backend-managed update selection without the
+	// backend shipping bytes (ADR 0012).
+	const requiresBlock =
+		requires !== undefined
+			? requires
+			: (() => {
+					try {
+						return (
+							JSON.parse(
+								fs.readFileSync(path.join(REPO_ROOT, "runner/version.json"), "utf8"),
+							).requires || undefined
+						);
+					} catch {
+						return undefined;
+					}
+				})();
 	return {
 		schema: 1,
 		component: "runner",
@@ -94,6 +112,7 @@ export const buildManifest = ({ version, dir, tag }) => {
 		assetBase: `https://github.com/Ewrdad/Kainbain/releases/download/runner-v${clean}/`,
 		assets,
 		tag: tag || `runner-v${clean}`,
+		...(requiresBlock ? { requires: requiresBlock } : {}),
 	};
 };
 

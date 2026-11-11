@@ -93,8 +93,59 @@ describe("buildFleetModelCatalog", () => {
 	});
 
 	test("returns an empty catalogue when the fleet serves nothing", () => {
-		expect(buildFleetModelCatalog([])).toEqual({ models: [] });
-		expect(buildFleetModelCatalog()).toEqual({ models: [] });
-		expect(buildFleetModelCatalog([record({ status: "revoked" })])).toEqual({ models: [] });
+		expect(buildFleetModelCatalog([])).toEqual({ models: [], quarantined: [] });
+		expect(buildFleetModelCatalog()).toEqual({ models: [], quarantined: [] });
+		expect(buildFleetModelCatalog([record({ status: "revoked" })])).toEqual({ models: [], quarantined: [] });
+	});
+
+	test("quarantines malformed advertised ids with a reason — never serves them", () => {
+		const catalogue = buildFleetModelCatalog([
+			record({
+				runnerId: "bad-box",
+				capabilities: {
+					harnesses: [{ id: "pi" }],
+					models: ["a::b::c::d::e", "ok::model", "pi::p::m"],
+					tiers: ["T0"],
+				},
+			}),
+			record({
+				runnerId: "bad-box-2",
+				capabilities: {
+					harnesses: [{ id: "muse" }],
+					models: ["a::b::c::d::e"],
+					tiers: [],
+				},
+			}),
+		]);
+		expect(catalogue.models.map((m) => m.id).sort()).toEqual(["ok::model", "pi::p::m"]);
+		expect(catalogue.quarantined).toEqual([
+			{
+				id: "a::b::c::d::e",
+				reason: "malformed model key (empty segment or 5+ '::' segments)",
+				runnerIds: ["bad-box", "bad-box-2"],
+			},
+		]);
+	});
+
+	test("single-colon ids are valid grammar and stay served", () => {
+		const catalogue = buildFleetModelCatalog([
+			record({
+				capabilities: {
+					harnesses: [{ id: "pi" }],
+					models: ["pi::ollama-cloud::glm-5.3-flash:cloud"],
+					tiers: [],
+				},
+			}),
+		]);
+		expect(catalogue.models).toEqual([
+			{
+				id: "pi::ollama-cloud::glm-5.3-flash:cloud",
+				harnesses: ["pi"],
+				tiers: [],
+				runnerCount: 1,
+				runnerIds: ["r1"],
+			},
+		]);
+		expect(catalogue.quarantined).toEqual([]);
 	});
 });

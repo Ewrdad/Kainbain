@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { config } from "../config.js";
 import { applyRunnerReport } from "./execution/applyRunnerReport.js";
 import { applyIntegrationReport } from "./execution/applyIntegrationReport.js";
@@ -22,7 +23,10 @@ import {
 	runnerStageTimeoutStatus,
 } from "./stagePolicy.js";
 import { redactSecretsText } from "../../shared/redactSecrets.js";
-import { buildBelowMinimumRefusal } from "./runnerVersionCompat.js";
+import {
+	buildBackendUpdateAdvertisement,
+	buildBelowMinimumRefusal,
+} from "./runnerVersionCompat.js";
 import { servingModelFor } from "./runnerPosture.js";
 import { resolveRunnerBootstrap } from "./runnerBootstrap.js";
 import {
@@ -197,6 +201,31 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		eventBridge,
 	} = deps;
 
+	// Backend version advertisement (ADR 0012 Option A, backend-managed
+	// updates): register/heartbeat responses carry the backend's own apiVersion
+	// plus the operator-managed desired/minimum runner versions, so a Runner
+	// can select the newest release COMPATIBLE with this backend. Read once at
+	// boot; a missing/unreadable version.json degrades to "not managed" (null)
+	// and the Runner keeps its permissive behavior.
+	const backendApiVersion = (() => {
+		try {
+			const raw = JSON.parse(
+				fs.readFileSync(new URL("../version.json", import.meta.url), "utf8"),
+			);
+			return typeof raw?.apiVersion === "string" && raw.apiVersion.trim()
+				? raw.apiVersion.trim()
+				: null;
+		} catch {
+			return null;
+		}
+	})();
+	const updateAdvertisement = () =>
+		buildBackendUpdateAdvertisement({
+			apiVersion: backendApiVersion,
+			minVersion: config?.runnerMinVersion,
+			recommendedVersion: config?.runnerRecommendedVersion,
+		});
+
 	const sendStoreError = (reply, err) => {
 		const status = err.statusCode || 500;
 		const body = { error: err.message || "Internal error" };
@@ -276,7 +305,9 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				facts: request.body?.facts || {},
 				joinNonce: request.body?.joinNonce,
 			});
-			return reply.status(result.status === "pending" ? 202 : 200).send(result);
+			return reply
+				.status(result.status === "pending" ? 202 : 200)
+				.send({ ...result, ...updateAdvertisement() });
 		} catch (err) {
 			return sendStoreError(reply, err);
 		}
@@ -313,7 +344,12 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				}
 			}
 			const pendingCommands = runnerRegistry.peekCommands(runner.runnerId);
-			return { ...result, pendingSteers, ...(pendingCommands.length ? { pendingCommands } : {}) };
+			return {
+				...result,
+				...updateAdvertisement(),
+				pendingSteers,
+				...(pendingCommands.length ? { pendingCommands } : {}),
+			};
 		} catch (err) {
 			return sendStoreError(reply, err);
 		}
