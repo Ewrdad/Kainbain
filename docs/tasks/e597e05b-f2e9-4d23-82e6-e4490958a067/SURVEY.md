@@ -18,3 +18,68 @@
   "answers": {}
 }
 ```
+
+## Round 2
+
+```survey-json
+{
+  "round": 2,
+  "generatedAt": "2026-11-11T23:09:03.000Z",
+  "stage": "question-me",
+  "questions": [
+    {
+      "id": "q2",
+      "type": "single",
+      "text": "For ensureBranchCheckedOut (and similar flows), should it call checkoutBranch directly for all existing/new branch switches, or keep its special worktree-recovery try/catch paths?",
+      "options": [
+        "Call checkoutBranch internally and preserve recovery semantics",
+        "Refactor ensureBranchCheckedOut to use the same move-aside wrapper but keep its own retry logic",
+        "Minimal: only wrap raw checkout commands with move-aside helper",
+        "Need more detail"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q3",
+      "type": "single",
+      "text": "How should the untrackLiveTaskSnapshots migration be completed on main?",
+      "options": [
+        "Run it as part of normal startup/branch preparation when dirt is present",
+        "Add a one-time migration commit directly to main",
+        "Both automatic scheduling and a manual fallback command",
+        "Need more detail"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q4",
+      "type": "single",
+      "text": "What shape should the regression test use?",
+      "options": [
+        "One shared fixture exercising checkoutBranch, ensureBranchCheckedOut, withCheckedOutBranch, and returnToDefaultBranch",
+        "Separate focused tests for each public entry point",
+        "Both a shared fixture and per-entry-point tests",
+        "Need more detail"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q5",
+      "type": "multiple",
+      "text": "Which branch-switch callers or stage flows must be explicitly verified as passing in the conflicting state?",
+      "options": [
+        "Update stage running ./update.sh on primary",
+        "Catchup stage flows",
+        "Return to default branch after CI",
+        "Other callers of bare checkout"
+      ],
+      "required": false,
+      "showIf": null
+    }
+  ],
+  "answers": {}
+}
+```
