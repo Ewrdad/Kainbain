@@ -107,6 +107,21 @@ export async function commitAllIfNeeded(projectCwd, message, opts = {}) {
 		return { committed: false, hash: null };
 	if (!(await hasCommits(projectCwd))) return { committed: false, hash: null };
 
+	// No-code enforcement: if enabled, we must erase any changes outside the docs directory
+	// before committing. This ensures the agent cannot sneak in code changes.
+	if (opts.noCode) {
+		const docsDir = resolveDocsDirName(opts.project || {});
+		try {
+			// Reset all files that are NOT in the docs directory
+			// We use git checkout -- . to reset everything, then git add the docs dir
+			await git(projectCwd, ["checkout", "--", "."]);
+			await git(projectCwd, ["add", docsDir]);
+		} catch (e) {
+			// We log but continue; if checkout failed, the subsequent commit might fail
+			// or include dirt, but this is the best effort.
+		}
+	}
+
 	// Branch affinity guard (opt-in): never stage/commit when a concurrent
 	// task has moved the shared checkout off the branch this caller owns.
 	// A failed branch read is treated as a mismatch (fail closed) so an

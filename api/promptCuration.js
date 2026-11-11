@@ -926,7 +926,13 @@ export class PromptCurationEngine {
 				`# Testing & Verification Guidance\n${TESTING_GUIDANCE_TEXT}`;
 		}
 
+		// 6b. No-Code Enforcement
+		if (stage.noCode) {
+			sectionMap.noCode = `# No-Code Mode\nThis stage is in no-code mode. You must NOT modify any source code. Your only allowed modifications are in the project's documentation directory.`;
+		}
+
 		// 7. How to fail a stage (Standardized interface).
+
 		// Rendered from the `stage-verdict` skill (global default, project
 		// overlay wins) for agent stages, so wrapped harnesses without a
 		// Fail_stage_skill tool can still fail WITH reasoned guidance.
