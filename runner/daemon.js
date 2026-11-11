@@ -657,10 +657,11 @@ export async function defaultLoadHarness(harnessId) {
  * MARK: discoveredModelsCache
  * @description Last model auto-discovery result, shared by every factsFor
  *   call until the next refresh. Seeded at boot, refreshed on the
- *   modelDiscoveryIntervalMs cadence (default 12h). The operator's explicit
- *   MODELS/MODEL list wins by default (see resolveAdvertisedModels), so this
- *   cache only matters when nothing is pinned — unless
- *   `modelDiscoveryWins` opts in to discovery-wins (survey q4).
+ *   modelDiscoveryIntervalMs cadence (default 12h). The advertised list is
+ *   pin ∪ discovered by default (see resolveAdvertisedModels), so this
+ *   cache always matters — a pinned Runner still scans and its
+ *   discovered ids join the pin (survey q2); `modelDiscoveryWins` opts
+ *   in to discovery-replaces-pin instead.
  ***/
 let discoveredModelsCache = [];
 

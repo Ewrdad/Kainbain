@@ -38,6 +38,7 @@ source of truth. This file intentionally lists only high-impact changes.
 
 ### Fixed
 
+- Stale Runner pins no longer pose as available models: the central model catalogue confirms every harness-scoped id against the claimant's own successful scans and marks contradicted ids unavailable with the stale-pin reason and claimant list (still shown in their section, never hidden); inconclusive signals (failed scans, old Runners, legacy/bare ids) keep trusting the advertisement, and dispatch still honours the pin at runtime (task 9d2b75a2).
 - Newly released harness models are selectable automatically: pinned Runners (`KAINBAIN_RUNNER_MODELS`/`KAINBAIN_RUNNER_MODEL`) now still run model auto-discovery and advertise pin ∪ discovered ids (`modelSource: "pinned+discovered"`), so a brand-new model (e.g. a fresh Muse release) reaches the central model catalogue and every picker without editing the pin — the pin itself is never dropped; the muse discovery probe also passes `--provider` like the backend MSP catalogue so both read the host identically (task 9d2b75a2).
 - Runner fleet cards stay named on every pipeline page: `GET /runners/monitor` now carries each assignment's own project/task/stage identity, the widget renders it even when the viewer looks at another pipeline, and "Open task" jumps to the job in its pipeline (task 350ca162).
 - Bottom-bar queue number counts only tasks waiting to be picked up (never running, blocked, paused, failed, cancelled, or waiting-human tasks), and the queue popup lists exactly that same set in dispatch order (task 6d3c9317).

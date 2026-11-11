@@ -77,3 +77,23 @@ keeps discovery-replaces-pin as the explicit opt-in. The muse leg's
 `muse serve` probe now passes `--provider <meta>` and the same handshake
 shape as the backend MSP catalogue, so both sides read the host
 identically.
+
+## Amendment (same day, post-review): stale-pin marking
+
+Review found the union could serve ids no harness backs: a Runner pin
+naming a retired model advertises it as available ("runners muse code
+doesn't have"). The snapshot now confirms every harness-scoped id
+against the claimant's own discovery signals (`modelProvenance` +
+`discoveryStatus`, see `api/flow/dispatch/runnerModelConfirmation.js`
++ `api/flow/dispatch/staleAdvertReason.js`):
+an id every claimant's successful scan contradicts is marked
+unavailable with the stale-pin reason and its `claimedBy` runners —
+still shown in its section (survey q4), never served as available.
+Every inconclusive shape fails open to trusted (failed/missing scan,
+old runners with no provenance signal, truncated maps, legacy/bare
+ids), and dispatch keeps reading the live derivation unchanged
+(operator intent still wins at runtime; the catalogue is the honest
+display). The frontend safety-net merge re-attaches the snapshot
+verdict so the badge is identical whichever merge path added the
+option, and the agy/vibe row parsers skip single unkeyable rows
+instead of failing the whole harness menu.

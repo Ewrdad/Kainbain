@@ -77,6 +77,7 @@ describe("projectFleetEntry", () => {
 			fleet: true,
 			runnerCount: 2,
 			runnerIds: ["box-a", "box-b"],
+			claimedBy: [],
 			tiers: ["T0"],
 			available: true,
 			unavailableReason: null,
@@ -100,6 +101,25 @@ describe("projectFleetEntry", () => {
 			available: false,
 			unavailableReason: "No claim-eligible runner serves this model right now.",
 		});
+	});
+
+	test("carries stale entries with their claimants named", () => {
+		const model = projectFleetEntry(
+			fleetEntry("muse::meta::retired", ["muse"], {
+				runnerCount: 0,
+				runnerIds: [],
+				claimedBy: ["box-a"],
+				available: false,
+				unavailableReason: "1 runner advertises this model but its latest successful muse scan did not list it — the runner model pin may be stale.",
+			}),
+			"muse",
+		);
+		expect(model).toMatchObject({
+			key: "muse::meta::retired",
+			available: false,
+			claimedBy: ["box-a"],
+		});
+		expect(model.unavailableReason).toMatch(/stale/);
 	});
 
 	test("projects legacy and bare ids, null for malformed input", () => {

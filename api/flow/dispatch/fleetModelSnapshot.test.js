@@ -56,6 +56,7 @@ describe("createFleetModelSnapshotStore", () => {
 				tiers: ["T0", "T1"],
 				runnerIds: ["box-a"],
 				runnerCount: 1,
+				claimedBy: [],
 				available: true,
 				unavailableReason: null,
 				firstSeenAtMs: snapshot.updatedAtMs,
@@ -223,6 +224,154 @@ describe("createFleetModelSnapshotStore", () => {
 		// All unavailable now: entries exceed the cap, oldest evicted.
 		const snapshot = store.update([], { atMs: 2000 });
 		expect(snapshot.models.length).toBeLessThanOrEqual(10000);
+	});
+
+	test("marks pin-only ids stale when a successful scan contradicts them (never served as available)", () => {
+		const store = tempStore();
+		const snapshot = store.update([
+			fleetRunnerRecord({
+				runnerId: "box-a",
+				capabilities: {
+					models: ["muse::meta::retired-pin-model"],
+					modelSource: "pinned+discovered",
+					// Present-but-empty provenance from a new runner: the scan
+					// ran and confirmed nothing, so the pin is contradicted.
+					modelProvenance: {},
+					discoveryStatus: { muse: { ok: true, count: 2, atMs: 1700000000000 } },
+				},
+			}),
+		]);
+		expect(snapshot.models).toHaveLength(1);
+		expect(snapshot.models[0]).toMatchObject({
+			id: "muse::meta::retired-pin-model",
+			available: false,
+			runnerIds: [],
+			runnerCount: 0,
+			claimedBy: ["box-a"],
+			// Attribution survives: the entry still lands in its section,
+			// marked unavailable — never hidden, never normal-looking.
+			harnesses: ["muse"],
+			tiers: ["T0", "T1"],
+		});
+		expect(snapshot.models[0].unavailableReason).toMatch(/stale/i);
+		expect(snapshot.quarantined).toEqual([]);
+	});
+
+	test("a confirming runner keeps the entry available while stale claimants are named", () => {
+		const store = tempStore();
+		const snapshot = store.update([
+			fleetRunnerRecord({
+				runnerId: "box-a",
+				capabilities: {
+					modelProvenance: { [NEW_MODEL_ID]: { harness: "muse", atMs: 1700000000000 } },
+					discoveryStatus: { muse: { ok: true, count: 1, atMs: 1700000000000 } },
+				},
+			}),
+			fleetRunnerRecord({
+				runnerId: "box-b",
+				capabilities: {
+					modelProvenance: {},
+					discoveryStatus: { muse: { ok: true, count: 3, atMs: 1700000000000 } },
+				},
+			}),
+		]);
+		expect(snapshot.models[0]).toMatchObject({
+			id: NEW_MODEL_ID,
+			available: true,
+			unavailableReason: null,
+			runnerIds: ["box-a"],
+			runnerCount: 1,
+			claimedBy: ["box-b"],
+		});
+	});
+
+	test("trusts pins when the scan cannot speak: failed, missing, or old-runner signals", () => {
+		const store = tempStore();
+		const snapshot = store.update([
+			// Failed scan: inconclusive, the pin may still be right.
+			fleetRunnerRecord({
+				runnerId: "scan-failed",
+				capabilities: {
+					models: ["muse::meta::maybe-here"],
+					modelProvenance: {},
+					discoveryStatus: { muse: { ok: false, count: 0, atMs: 1, error: { code: "MUSE_MSP_TIMEOUT" } } },
+				},
+			}),
+			// Never scanned this harness: no slice, nothing to contradict.
+			fleetRunnerRecord({
+				runnerId: "never-scanned",
+				capabilities: {
+					models: ["muse::meta::maybe-here-too"],
+					modelProvenance: {},
+					discoveryStatus: {},
+				},
+			}),
+			// Old runner: no provenance signal at all, trusted as before.
+			fleetRunnerRecord({
+				runnerId: "old-runner",
+				capabilities: { models: ["muse::meta::old-pin"] },
+			}),
+		]);
+		expect(snapshot.models).toMatchObject([
+			{ id: "muse::meta::maybe-here", available: true, runnerIds: ["scan-failed"], claimedBy: [] },
+			{ id: "muse::meta::maybe-here-too", available: true, runnerIds: ["never-scanned"], claimedBy: [] },
+			{ id: "muse::meta::old-pin", available: true, runnerIds: ["old-runner"], claimedBy: [] },
+		]);
+	});
+
+	test("never marks legacy or bare ids stale (their attribution is lenient by design)", () => {
+		const store = tempStore();
+		const snapshot = store.update([
+			fleetRunnerRecord({
+				runnerId: "box-a",
+				capabilities: {
+					models: ["prov::m1", "bare-model"],
+					modelProvenance: {},
+					discoveryStatus: { muse: { ok: true, count: 1, atMs: 1 } },
+				},
+			}),
+		]);
+		expect(snapshot.models).toMatchObject([
+			{ id: "bare-model", available: true, runnerIds: ["box-a"], claimedBy: [] },
+			{ id: "prov::m1", available: true, runnerIds: ["box-a"], claimedBy: [] },
+		]);
+	});
+
+	test("a stale entry recovers when a later scan confirms it", () => {
+		const store = tempStore();
+		const stale = store.update(
+			[
+				fleetRunnerRecord({
+					runnerId: "box-a",
+					capabilities: {
+						modelProvenance: {},
+						discoveryStatus: { muse: { ok: true, count: 1, atMs: 1000 } },
+					},
+				}),
+			],
+			{ atMs: 1000 },
+		);
+		expect(stale.models[0]).toMatchObject({ available: false, claimedBy: ["box-a"] });
+		const back = store.update(
+			[
+				fleetRunnerRecord({
+					runnerId: "box-a",
+					capabilities: {
+						modelProvenance: { [NEW_MODEL_ID]: { harness: "muse", atMs: 2000 } },
+						discoveryStatus: { muse: { ok: true, count: 1, atMs: 2000 } },
+					},
+				}),
+			],
+			{ atMs: 2000 },
+		);
+		expect(back.models[0]).toMatchObject({
+			available: true,
+			unavailableReason: null,
+			runnerIds: ["box-a"],
+			claimedBy: [],
+			firstSeenAtMs: 1000,
+			lastSeenAtMs: 2000,
+		});
 	});
 });
 

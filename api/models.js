@@ -219,10 +219,13 @@ export const publicModelJsonSchema = {
 		supportedReasoning: { type: ["array", "null"], items: { type: "string" } },
 		// Fleet availability (optional — present on fleet-merged entries):
 		// whether any claim-eligible runner serves the id right now, how
-		// many, and why not when unavailable (marked, never hidden).
+		// many, which runners contradict their own scans by claiming it
+		// anyway (stale pins), and why not when unavailable (marked,
+		// never hidden).
 		fleet: { type: "boolean" },
 		runnerCount: { type: "number" },
 		runnerIds: { type: "array", items: { type: "string" } },
+		claimedBy: { type: "array", items: { type: "string" } },
 		tiers: { type: "array", items: { type: "string" } },
 		available: { type: "boolean" },
 		unavailableReason: { type: ["string", "null"] },
