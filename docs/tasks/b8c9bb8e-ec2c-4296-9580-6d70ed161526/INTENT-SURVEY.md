@@ -100,6 +100,47 @@
       }
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Whole codebase as it stands, using recent tasks as context only"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "api/ backend (work, flow, watch, house, auth, crew, agent, git, project)",
+        "frontend/ (workflow canvas, tasks, settings, context, services)",
+        "shared/, runner/, scripts/, tests/ (shared code, harnesses, tooling)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "All standards-like docs (code standards, architecture domains, hygiene, runbooks)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Oversized files that exceed agent read budgets",
+        "Slow or flaky tests and verification gates",
+        "Missing JSDoc, missing examples, and unclear module boundaries"
+      ],
+      "notes": "Whatever the evidence from recent tasks say"
+    },
+    "q5": {
+      "selected": [
+        "Implementation-ready refactor plans"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Report only — no code changes in this task"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
