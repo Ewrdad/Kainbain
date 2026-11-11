@@ -110,7 +110,7 @@ describe("promptLayout routes", () => {
 		const body = JSON.parse(res.payload);
 		expect(body.isDefault).toBe(false);
 		expect(body.layout).toBe(custom);
-		expect(body.warnings).toHaveLength(2); // failureDetails and testingGuidance omitted
+		expect(body.warnings).toHaveLength(3); // failureDetails, testingGuidance, and noCode omitted
 	});
 
 	it("POST /settings/prompt-layout/reset restores default layout", async () => {

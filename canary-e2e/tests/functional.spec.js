@@ -1,5 +1,4 @@
 import { test, expect } from "@playwright/test";
-import { APP_URL } from "./urls";
 import { waitForAppReady, waitForFontsSettled } from "./helpers";
 
 test.describe("KainBain Functional E2E Tests", () => {
@@ -88,18 +87,28 @@ test.describe("KainBain Functional E2E Tests", () => {
 		 *   (The global transport cluster is gone — play/skip live on the
 		 *   runner boxes — so the gate measures the per-runner box buttons
 		 *   instead.)
+		 *   Single load + resize (not a navigation per width): the bar holds
+		 *   no mount-time viewport logic (pure CSS breakpoints, verified — no
+		 *   innerWidth/matchMedia/resize reads in NowPlayingBar.jsx), so a
+		 *   live resize exercises the identical layout path while six cold
+		 *   navigations inside one 60s test budget flaked on loaded gate
+		 *   hosts (any single blank-root module-burst resource window failed
+		 *   the whole gate even with per-width reload+retry).
 		 */
+		await page.setViewportSize({ width: 640, height: 720 });
+		await waitForAppReady(page);
+		// Typography must settle before any geometry measurement (see
+		// waitForFontsSettled): the real overlap defect this gate guards is
+		// flex overflow, not FOUT.
+		await waitForFontsSettled(page);
 		for (const width of [640, 768, 800, 900, 1024, 1280]) {
 			await page.setViewportSize({ width, height: 720 });
-			await page.goto(APP_URL);
-			await expect(page).toHaveTitle(/Kainbain/);
-			await expect(page.getByRole("button", { name: /Project/i }).first()).toBeVisible({
-				timeout: 15000,
-			});
-			// Typography must settle before any geometry measurement (see
-			// waitForFontsSettled): the real overlap defect this gate guards is
-			// flex overflow, not FOUT.
-			await waitForFontsSettled(page);
+			// Let the resize reflow settle (two animation frames) and pin
+			// the rail's live content before measuring.
+			await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+			await expect(
+				page.getByLabel(/Execution queue: \d+ open tasks? across all pipelines/),
+			).toBeVisible();
 
 			const result = await page.evaluate(() => {
 				const intersects = (a, b) =>
@@ -146,12 +155,9 @@ test.describe("KainBain Functional E2E Tests", () => {
 				`at ${width}px the runner-box controls must not be covered by the right rail (measured ${result.centerCount} box buttons vs ${result.railCount} rail children)`,
 			).toEqual([]);
 
-			// The trigger-plus-queue rail keeps the honest live data visible at
-			// every width; the removed timer/health extras must stay gone.
+			// The removed timer/health extras must stay gone at every width
+			// (the queue chip's own visibility was pinned before measuring).
 			await expect(page.locator("#elapsed-counter")).toHaveCount(0);
-			await expect(
-				page.getByLabel(/Execution queue: \d+ open tasks? across all pipelines/),
-			).toBeVisible();
 		}
 	});
 

@@ -12,6 +12,7 @@ vi.mock("node:child_process", () => ({
 import {
 	SWEEPABLE_DIR_PREFIXES,
 	SWEEPABLE_BASENAME_PATTERNS,
+	HAND_EDIT_RECOVERY_HINT,
 	assessDirtyTree,
 	recoverDirtyTree,
 	requireCleanWorkingTree,
@@ -223,6 +224,40 @@ describe("requireCleanWorkingTree", () => {
 		expect(err).toBeInstanceOf(GitDirtyTreeError);
 		expect(err.message).toContain("checkout");
 		expect(err.dirtyPaths).toEqual(["user-notes.txt"]);
+	});
+
+	it("names the blocking path and the safe next step on the ladder-exhausted throw", async () => {
+		spawnMock.mockImplementation(() =>
+			fakeChildFromResponse({ stdout: "?? user-notes.txt\n" }),
+		);
+		const err = await requireCleanWorkingTree("/repo", {
+			context: "checkout",
+		}).catch((e) => e);
+		expect(err).toBeInstanceOf(GitDirtyTreeError);
+		expect(err.message).toContain("user-notes.txt");
+		expect(err.message).toContain(HAND_EDIT_RECOVERY_HINT);
+		expect(err.message).toContain("nothing was overwritten");
+	});
+
+	it("carries the hand-edit hint on the recovery-off throw without mutating the tree", async () => {
+		spawnMock.mockImplementation(() =>
+			fakeChildFromResponse({ stdout: " M src/one.js\n" }),
+		);
+		const err = await requireCleanWorkingTree("/repo", {
+			recovery: "off",
+			context: "checkout",
+		}).catch((e) => e);
+		expect(err).toBeInstanceOf(GitDirtyTreeError);
+		expect(err.message).toContain("src/one.js");
+		expect(err.message).toContain(HAND_EDIT_RECOVERY_HINT);
+		// The strict path reports only: no sweep, no stash, no checkout —
+		// every spawned git call is the read-only status probe.
+		for (const call of spawnMock.mock.calls) {
+			const argv = String(JSON.stringify(call));
+			expect(argv).not.toContain("stash");
+			expect(argv).not.toContain("checkout");
+			expect(argv).not.toContain("worktree");
+		}
 	});
 });
 

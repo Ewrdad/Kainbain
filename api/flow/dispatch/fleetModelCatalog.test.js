@@ -1,5 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { buildFleetModelCatalog } from "./fleetModelCatalog.js";
+import { NEW_MODEL_ID, fleetRunnerRecord } from "./fleetModelFixtures.mjs";
 
 const record = (over = {}) => ({
 	status: "active",
@@ -96,5 +97,52 @@ describe("buildFleetModelCatalog", () => {
 		expect(buildFleetModelCatalog([])).toEqual({ models: [] });
 		expect(buildFleetModelCatalog()).toEqual({ models: [] });
 		expect(buildFleetModelCatalog([record({ status: "revoked" })])).toEqual({ models: [] });
+	});
+
+	test("serves auto-detected multi-harness ids verbatim (fleet pick is a guaranteed match)", () => {
+		const catalogue = buildFleetModelCatalog([
+			record({
+				runnerId: "server2",
+				capabilities: {
+					harnesses: [{ id: "pi" }, { id: "muse" }],
+					models: ["pi::mistral::codestral-2508", "muse::meta::muse-spark-1.3"],
+					tiers: ["T0"],
+				},
+			}),
+		]);
+		expect(catalogue.models).toEqual([
+			{
+				id: "muse::meta::muse-spark-1.3",
+				harnesses: ["muse", "pi"],
+				tiers: ["T0"],
+				runnerCount: 1,
+				runnerIds: ["server2"],
+			},
+			{
+				id: "pi::mistral::codestral-2508",
+				harnesses: ["muse", "pi"],
+				tiers: ["T0"],
+				runnerCount: 1,
+				runnerIds: ["server2"],
+			},
+		]);
+	});
+
+	test("carries a newly discovered runner id into a catalogue entry (chain seam)", () => {
+		// Runner-discovered id ⇒ fleet entry: byte-identical id with its
+		// harness attribution, effort tiers, and availability. The picker
+		// and dispatch both match on this exact id string.
+		const catalogue = buildFleetModelCatalog([
+			fleetRunnerRecord({ runnerId: "box-a" }),
+		]);
+		expect(catalogue.models).toEqual([
+			{
+				id: NEW_MODEL_ID,
+				harnesses: ["muse"],
+				tiers: ["T0", "T1"],
+				runnerCount: 1,
+				runnerIds: ["box-a"],
+			},
+		]);
 	});
 });

@@ -184,3 +184,58 @@ export function groupModelsByStatus(models = []) {
   }
   return groups;
 }
+
+/***
+ * MARK: fleetSnapshotBadge
+ * @description Maps a central-catalogue model's fleet availability to badge
+ *   metadata, or null when the entry is available (or carries no verdict).
+ *   An explicit `available: false` (the persisted snapshot marking a model
+ *   no claim-eligible Runner serves right now) renders "Unavailable" with
+ *   the snapshot's reason as the tooltip — marked, never hidden, never
+ *   normal-looking. Entries without the field (backend-served models,
+ *   older backends) stay badge-free here; other badge layers judge them.
+ * @example fleetSnapshotBadge({ available: false, unavailableReason: 'No runner' }) => { label: 'Unavailable', … }
+ * @param {Object|null} model - Catalogue model from /compute/models.
+ * @returns {{ label: string, dotClass: string, title: string }|null}
+ ***/
+export function fleetSnapshotBadge(model) {
+  if (!model || typeof model !== 'object') return null;
+  if (model.available !== false) return null;
+  return {
+    label: 'Unavailable',
+    dotClass: 'bg-amber-400',
+    title:
+      typeof model.unavailableReason === 'string' && model.unavailableReason
+        ? model.unavailableReason
+        : 'No claim-eligible Runner serves this model right now',
+  };
+}
+
+/***
+ * MARK: fleetSnapshotBadgeNode
+ * @description Renders the fleet-snapshot verdict as a React node (dot +
+ *   label) suitable for SelectDropdown's existing `option.badge` slot, or
+ *   null when the entry carries no unavailable verdict. Pickers check this
+ *   FIRST, before fleet-count and credential-health badges: the snapshot's
+ *   explicit unavailable marker is authoritative for its entry and carries
+ *   the reason, so it must never be covered by a vaguer badge.
+ * @example <SelectDropdown options={[{ value, label, badge: fleetSnapshotBadgeNode(model) }]} />
+ * @param {Object|null} model - Catalogue model from /compute/models.
+ * @returns {React.ReactNode|null}
+ ***/
+export function fleetSnapshotBadgeNode(model) {
+  const badge = fleetSnapshotBadge(model);
+  if (!badge) return null;
+  return React.createElement(
+    'span',
+    {
+      className: 'inline-flex items-center gap-1 text-slate-50',
+      title: badge.title,
+    },
+    React.createElement('span', {
+      className: `inline-block w-1.5 h-1.5 rounded-full ${badge.dotClass}`,
+      'aria-hidden': 'true',
+    }),
+    badge.label,
+  );
+}

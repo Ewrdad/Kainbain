@@ -5,6 +5,7 @@
  ***/
 
 import { _sanitizeTaskTitle } from "./taskIdentity.js";
+import { resolveTaskWorkingLocation } from "./taskWorkingLocation.js";
 import { toTaskDurationSummary } from "../taskDurationSummary.js";
 import { resolveStage } from "../flow/index.js";
 import { resolveStagesForTask } from "../flow/taskScheduler.js";
@@ -89,6 +90,17 @@ export async function registerTaskWorkRoutes(app, deps) {
 		claimStore,
 	} = deps;
 
+	// Guarded writes (RBAC): task mutations need the member role while
+	// access control is on, and API-key callers additionally need the
+	// route's scope. Reads stay open so Runner task fetches and board
+	// polling work unchanged in every mode. Without an auth service (unit
+	// doubles) the routes stay open.
+	const taskGuards = deps?.authService?.guards;
+	const scopedMemberWrite = (scope) => {
+		const preHandler = taskGuards?.requireRole(["member"], { scope });
+		return preHandler ? { preHandler } : {};
+	};
+
 	// Live Runner assignment for the UI (D5): who holds this task right
 	// now, if anyone. `{ runnerId, epoch }` or null — the execution id
 	// stays server-side (it rides runner-authenticated calls only).
@@ -154,251 +166,287 @@ export async function registerTaskWorkRoutes(app, deps) {
 		},
 		async (request, reply) => {
 			const id = resolveAndGuardProject(request.query?.projectId, reply);
-			if (!id) return;
+				if (!id) return;
 
-			const { workflowId } = request.query || {};
-			// Lean board loads: completed tasks only ride the list when the
-			// UI asks for them (Show Completed). Query values arrive as
-			// strings; default includes everything (other consumers).
-			const excludeCompleted =
-				request.query?.excludeCompleted === true ||
-				request.query?.excludeCompleted === "true" ||
-				request.query?.excludeCompleted === "1";
-			const project = projectStore.getProject(id);
-			// Board lists serve duration-enriched summaries (no log bodies,
-			// prompts, histories, or report content); detail views hydrate one
-			// full task through GET /tasks/:id on open. Enrich before compacting.
-			const toTaskDurationResponse = (task) =>
-				toTaskDurationSummary(task, resolveStagesForTask(project, task));
-			const toBoardTask = (t) => ({
-				...toTaskDurationResponse(t),
-				claim: liveClaim(t.id),
-			});
-			const visible = (t) => !excludeCompleted || t?.status !== "completed";
-			if (workflowId) {
+				const { workflowId } = request.query || {};
+				// Lean board loads: completed tasks only ride the list when the
+				// UI asks for them (Show Completed). Query values arrive as
+				// strings; default includes everything (other consumers).
+				const excludeCompleted =
+					request.query?.excludeCompleted === true ||
+					request.query?.excludeCompleted === "true" ||
+					request.query?.excludeCompleted === "1";
+				const project = projectStore.getProject(id);
+				// Board lists serve duration-enriched summaries (no log bodies,
+				// prompts, histories, or report content); detail views hydrate one
+				// full task through GET /tasks/:id on open. Enrich before compacting.
+				const toTaskDurationResponse = (task) =>
+					toTaskDurationSummary(task, resolveStagesForTask(project, task));
+				const toBoardTask = (t) => ({
+					...toTaskDurationResponse(t),
+					claim: liveClaim(t.id),
+				});
+				const visible = (t) => !excludeCompleted || t?.status !== "completed";
+				if (workflowId) {
+					return taskStore
+						.getTasks(id, workflowId, project?.cwd)
+						.filter(visible)
+						.map(toBoardTask);
+				}
 				return taskStore
-					.getTasks(id, workflowId, project?.cwd)
+					.listTasks(id, project?.cwd)
 					.filter(visible)
 					.map(toBoardTask);
-			}
-			return taskStore
-				.listTasks(id, project?.cwd)
-				.filter(visible)
-				.map(toBoardTask);
-		},
-	);
-
-	/***
-	 * MARK: List Tasks Queue Order
-	 ***/
-	app.get(
-		"/tasks/queue",
-		{
-			schema: {
-				querystring: {
-					type: "object",
-					properties: {
-						projectId: { type: "string" },
-					},
-				},
-				response: {
-					200: {
-						type: "array",
-						items: { type: "object", additionalProperties: true },
-					},
-				},
-			},
-		},
-		async (request, reply) => {
-			const id = resolveAndGuardProject(request.query?.projectId, reply);
-			if (!id) return;
-			return taskStore.getScheduledQueue(id);
-		},
-	);
-
-	/***
-	 * MARK: Preview Prompt
-	 ***/
-	app.post("/tasks/preview", async (request, reply) => {
-		const ctx = resolveTaskContext(request, reply);
-		if (!ctx) return;
-
-		const curatedPrompt = promptEngine.curatePrompt(
-			{ id: "preview", title: ctx.title, goal: ctx.goal },
-			ctx.stage,
-			{
-				project: ctx.project,
-				projectName: ctx.project?.name,
-				projectRepo: ctx.project?.gitUrl || ctx.project?.gitRepo,
-				projectCwd: ctx.project?.cwd,
 			},
 		);
-		return { curatedPrompt, stageId: ctx.stage.id };
-	});
 
-	/***
-	 * MARK: Create Task
-	 ***/
-	app.post(
-		"/tasks",
-		{
-			schema: {
-				body: {
-					type: "object",
-					properties: {
-						projectId: { type: "string" },
-						title: { type: "string" },
-						goal: { type: "string" },
-						followUp: { type: "boolean" },
-						execute: { type: "boolean" },
-						stageId: { type: "string" },
-						workflowId: { type: "string" },
-						idempotencyKey: { type: "string" },
-						blockedBy: { type: "array", items: { type: "string" } },
-					},
-				},
-				response: {
-					200: {
+		/***
+		 * MARK: List Tasks Queue Order
+		 ***/
+		app.get(
+			"/tasks/queue",
+			{
+				schema: {
+					querystring: {
 						type: "object",
-						additionalProperties: true,
 						properties: {
-							id: { type: "string" },
-							title: { type: "string" },
-							goal: { type: "string" },
-							currentStageId: { type: "string" },
-							status: { type: "string" },
-							curatedPrompt: { type: "string" },
+							projectId: { type: "string" },
 						},
 					},
-					400: { type: "object", properties: { error: { type: "string" } } },
+					response: {
+						200: {
+							type: "array",
+							items: { type: "object", additionalProperties: true },
+						},
+					},
 				},
 			},
-		},
-		async (request, reply) => {
-			const { followUp, execute, idempotencyKey, workflowId } = request.body || {};
+			async (request, reply) => {
+				// No projectId means the CENTRAL queue: waiting work across ALL
+				// projects in dispatch order, never just the UI-focused project
+				// (task 16d6fbd6). An explicit projectId keeps the per-project view.
+				const requested = request.query?.projectId;
+				if (!requested) return taskStore.getScheduledQueue();
+				const id = resolveAndGuardProject(requested, reply);
+				if (!id) return;
+				return taskStore.getScheduledQueue(id);
+			},
+		);
+
+		/***
+		 * MARK: Preview Prompt
+		 ***/
+		app.post("/tasks/preview", async (request, reply) => {
 			const ctx = resolveTaskContext(request, reply);
 			if (!ctx) return;
 
-			let task;
-		try {
-			task = taskStore.createTask(ctx.id, {
-				title: ctx.title,
-				goal: ctx.goal,
-				stageId: ctx.stage.id,
-				workflowId: workflowId || ctx.project?.activeWorkflowId,
-				idempotencyKey,
-				blockedBy: ctx.blockedBy,
-				projectCwd: ctx.project?.cwd,
-			});
-		} catch (err) {
-			return reply.status(400).send({
-				error: err?.message || "Invalid blockedBy",
-			});
-		}
-
-			const finalPrompt = promptEngine.curatePrompt(task, ctx.stage, {
-				project: ctx.project,
-				projectName: ctx.project?.name,
-				projectRepo: ctx.project?.gitUrl || ctx.project?.gitRepo,
-				projectCwd: ctx.project?.cwd,
-			});
-
-			taskStore.updateTask(
-				ctx.id,
-				task.id,
-				{ prompt: finalPrompt },
-				ctx.project?.cwd,
+			const curatedPrompt = promptEngine.curatePrompt(
+				{ id: "preview", title: ctx.title, goal: ctx.goal },
+				ctx.stage,
+				{
+					project: ctx.project,
+					projectName: ctx.project?.name,
+					projectRepo: ctx.project?.gitUrl || ctx.project?.gitRepo,
+					projectCwd: ctx.project?.cwd,
+				},
 			);
+			return { curatedPrompt, stageId: ctx.stage.id };
+		});
 
-			if (execute) {
-				const stages = resolveStagesForTask(ctx.project, task);
-				taskStore
-					.executeStage(ctx.id, task.id, {
-						stages,
-						projectCwd: ctx.project?.cwd,
-						agentRunner,
-						promptEngine,
-						priority: "normal",
-					})
-					.catch((err) => {
-						app.log.error(err, "Task auto-execution error");
-					});
-			} else if (followUp) {
-				const session = await getOrCreateSession(ctx.id);
-				if (session) {
-					if (isAgentRunning(session)) {
-						await session.followUp(finalPrompt);
-					} else {
-						const stages = resolveStagesForTask(ctx.project, task);
-						taskStore
-							.executeStage(ctx.id, task.id, {
-								stages,
-								projectCwd: ctx.project?.cwd,
-								agentRunner,
-								promptEngine,
-								priority: "normal",
-							})
-							.catch((err) => {
-								app.log.error(err, "Task auto-execution error");
-							});
-					}
-				}
+		/***
+		 * MARK: Create Task
+		 ***/
+		app.post(
+			"/tasks",
+			{
+				...scopedMemberWrite("tasks:create"),
+				schema: {
+					body: {
+						type: "object",
+						properties: {
+							projectId: { type: "string" },
+							title: { type: "string" },
+							goal: { type: "string" },
+							followUp: { type: "boolean" },
+							execute: { type: "boolean" },
+							stageId: { type: "string" },
+							workflowId: { type: "string" },
+							idempotencyKey: { type: "string" },
+							blockedBy: { type: "array", items: { type: "string" } },
+						},
+					},
+					response: {
+						200: {
+							type: "object",
+							additionalProperties: true,
+							properties: {
+								id: { type: "string" },
+								title: { type: "string" },
+								goal: { type: "string" },
+								currentStageId: { type: "string" },
+								status: { type: "string" },
+								curatedPrompt: { type: "string" },
+							},
+						},
+						400: { type: "object", properties: { error: { type: "string" } } },
+					},
+				},
+			},
+			async (request, reply) => {
+				const { followUp, execute, idempotencyKey, workflowId } = request.body || {};
+				const ctx = resolveTaskContext(request, reply);
+				if (!ctx) return;
+
+				let task;
+			try {
+				task = taskStore.createTask(ctx.id, {
+					title: ctx.title,
+					goal: ctx.goal,
+					stageId: ctx.stage.id,
+					workflowId: workflowId || ctx.project?.activeWorkflowId,
+					idempotencyKey,
+					blockedBy: ctx.blockedBy,
+					projectCwd: ctx.project?.cwd,
+				});
+			} catch (err) {
+				return reply.status(400).send({
+					error: err?.message || "Invalid blockedBy",
+				});
 			}
 
+				const finalPrompt = promptEngine.curatePrompt(task, ctx.stage, {
+					project: ctx.project,
+					projectName: ctx.project?.name,
+					projectRepo: ctx.project?.gitUrl || ctx.project?.gitRepo,
+					projectCwd: ctx.project?.cwd,
+				});
+
+				taskStore.updateTask(
+					ctx.id,
+					task.id,
+					{ prompt: finalPrompt },
+					ctx.project?.cwd,
+				);
+
+				// Key attribution: creations via API key are flagged by key name
+				// in the task history. Human and builtin creates record nothing
+				// extra, exactly as today — and attribution never fails the
+				// create.
+				if (request.actor?.kind === "api-key") {
+					try {
+						taskStore._recordHistory?.(
+							task,
+							`Task created by api-key:${request.actor.name}`,
+						);
+						taskStore._saveTaskMarkdown?.(ctx.project?.cwd, task);
+					} catch {
+						// attribution is best-effort
+					}
+				}
+
+				if (execute) {
+					const stages = resolveStagesForTask(ctx.project, task);
+					taskStore
+						.executeStage(ctx.id, task.id, {
+							stages,
+							projectCwd: ctx.project?.cwd,
+							agentRunner,
+							promptEngine,
+							priority: "normal",
+						})
+						.catch((err) => {
+							app.log.error(err, "Task auto-execution error");
+						});
+				} else if (followUp) {
+					const session = await getOrCreateSession(ctx.id);
+					if (session) {
+						if (isAgentRunning(session)) {
+							await session.followUp(finalPrompt);
+						} else {
+							const stages = resolveStagesForTask(ctx.project, task);
+							taskStore
+								.executeStage(ctx.id, task.id, {
+									stages,
+									projectCwd: ctx.project?.cwd,
+									agentRunner,
+									promptEngine,
+									priority: "normal",
+								})
+								.catch((err) => {
+									app.log.error(err, "Task auto-execution error");
+								});
+						}
+					}
+				}
+
+				return {
+					...task,
+					curatedPrompt: finalPrompt,
+				};
+			},
+		);
+
+		/***
+		 * MARK: Get Task
+		 ***/
+		app.get("/tasks/:id", async (request, reply) => {
+			const id = resolveAndGuardProject(
+				request.query?.projectId || request.body?.projectId,
+				reply,
+			);
+			if (!id) return;
+
+			const task = taskStore.getTask(id, request.params.id);
+			if (!task) return reply.status(404).send({ error: "Task not found" });
+			// workingLocation answers "where is this task working" (branch /
+			// isolation mode / worktree path) for developers editing alongside
+			// the engine. Additive only: older clients ignore the extra key.
+			const project = projectStore.getProject(id);
 			return {
 				...task,
-				curatedPrompt: finalPrompt,
+				claim: liveClaim(task.id),
+				workingLocation: resolveTaskWorkingLocation(task, {
+					project,
+					projectCwd: project?.cwd,
+				}),
 			};
-		},
-	);
+		});
 
-	/***
-	 * MARK: Get Task
-	 ***/
-	app.get("/tasks/:id", async (request, reply) => {
-		const id = resolveAndGuardProject(
-			request.query?.projectId || request.body?.projectId,
-			reply,
-		);
-		if (!id) return;
+		/***
+		 * MARK: Patch Task
+		 ***/
+	app.patch(
+		"/tasks/:id",
+		scopedMemberWrite("tasks:update"),
+		async (request, reply) => {
+			const id = resolveAndGuardProject(request.body?.projectId, reply);
+			if (!id) return;
 
-		const task = taskStore.getTask(id, request.params.id);
-		if (!task) return reply.status(404).send({ error: "Task not found" });
-		return { ...task, claim: liveClaim(task.id) };
-	});
+			const project = projectStore.getProject(id);
+			const task = taskStore.getTask(id, request.params.id);
+			if (!task) return reply.status(404).send({ error: "Task not found" });
 
-	/***
-	 * MARK: Patch Task
-	 ***/
-	app.patch("/tasks/:id", async (request, reply) => {
-		const id = resolveAndGuardProject(request.body?.projectId, reply);
-		if (!id) return;
-
-		const project = projectStore.getProject(id);
-		const task = taskStore.getTask(id, request.params.id);
-		if (!task) return reply.status(404).send({ error: "Task not found" });
-
-		const updates = {};
-		if (typeof request.body?.title === "string" && request.body.title.trim()) {
+			const updates = {};
+			if (typeof request.body?.title === "string" && request.body.title.trim()) {
 			updates.title = _sanitizeTaskTitle(request.body.title);
-		}
-		if (typeof request.body?.goal === "string" && request.body.goal.trim()) {
+			}
+			if (typeof request.body?.goal === "string" && request.body.goal.trim()) {
 			updates.goal = request.body.goal.trim();
 			updates.body = updates.goal;
-		}
-		if (typeof request.body?.status === "string") {
+			}
+			if (typeof request.body?.status === "string") {
 			updates.status = request.body.status;
-		}
-		if (typeof request.body?.branch === "string") {
+			}
+			if (typeof request.body?.branch === "string") {
 			updates.branch = request.body.branch;
-		}
-		if (request.body?.blockedBy !== undefined) {
+			}
+			if (request.body?.blockedBy !== undefined) {
 			updates.blockedBy = request.body.blockedBy;
-		}
-		if (
+			}
+			if (
 			typeof request.body?.stageId === "string" &&
 			request.body.stageId !== task.currentStageId
-		) {
+			) {
 			taskStore.moveToStage(
 				id,
 				task.id,
@@ -408,39 +456,44 @@ export async function registerTaskWorkRoutes(app, deps) {
 				project?.cwd,
 				{ operatorMove: true },
 			);
-		}
+			}
 
-		if (Object.keys(updates).length === 0 && !request.body?.stageId) {
+			if (Object.keys(updates).length === 0 && !request.body?.stageId) {
 			return reply.status(400).send({ error: "Nothing to update" });
-		}
+			}
 
-		let updated;
-		try {
+			let updated;
+			try {
 			updated = taskStore.updateTask(id, task.id, updates, project?.cwd);
-		} catch (err) {
+			} catch (err) {
 			return reply.status(400).send({
 				error: err?.message || "Invalid blockedBy",
 			});
-		}
-		taskStore._recordHistory(updated, "Task details edited");
-		return updated;
-	});
+			}
+			taskStore._recordHistory(updated, request.actor?.kind === "api-key" ? `Task details edited by api-key:${request.actor.name}` : "Task details edited");
+			return updated;
+		},
+	);
 
 	/***
 	 * MARK: Delete Task
 	 ***/
-	app.delete("/tasks/:id", async (request, reply) => {
-		const id = resolveAndGuardProject(
-			request.query?.projectId || request.body?.projectId,
-			reply,
-		);
-		if (!id) return;
+	app.delete(
+		"/tasks/:id",
+		scopedMemberWrite("tasks:delete"),
+		async (request, reply) => {
+			const id = resolveAndGuardProject(
+				request.query?.projectId || request.body?.projectId,
+				reply,
+			);
+			if (!id) return;
 
-		const project = projectStore.getProject(id);
-		const ok = taskStore.deleteTask(id, request.params.id, project?.cwd);
-		if (!ok) return reply.status(404).send({ error: "Task not found" });
-		return { status: "deleted", id: request.params.id };
-	});
+			const project = projectStore.getProject(id);
+			const ok = taskStore.deleteTask(id, request.params.id, project?.cwd);
+			if (!ok) return reply.status(404).send({ error: "Task not found" });
+			return { status: "deleted", id: request.params.id };
+		},
+	);
 
 	/***
 	 * MARK: Get Survey
@@ -510,145 +563,149 @@ export async function registerTaskWorkRoutes(app, deps) {
 	 *   so the UI keeps showing the survey. `action: 'skip'` advances only
 	 *   when no question requires answering; otherwise it 400s with `missing`.
 	 ***/
-	app.post("/tasks/:id/survey", async (request, reply) => {
-		const id = resolveAndGuardProject(request.body?.projectId, reply);
-		if (!id) return;
+	app.post(
+		"/tasks/:id/survey",
+		scopedMemberWrite("tasks:update"),
+		async (request, reply) => {
+			const id = resolveAndGuardProject(request.body?.projectId, reply);
+			if (!id) return;
 
-		const project = projectStore.getProject(id);
-		const task = taskStore.getTask(id, request.params.id);
-		if (!task) return reply.status(404).send({ error: "Task not found" });
+			const project = projectStore.getProject(id);
+			const task = taskStore.getTask(id, request.params.id);
+			if (!task) return reply.status(404).send({ error: "Task not found" });
 
-		const action = request.body?.action;
-		if (action !== undefined && action !== "save" && action !== "skip") {
-			return reply.status(400).send({ error: "action must be 'save' or 'skip'" });
-		}
-
-		const outputFile = surveyOutputFileForRequest(task, project, request);
-		let survey = readSurvey(project?.cwd, project, task.id, outputFile);
-		if (action !== "skip") {
-			const patch = request.body?.answers;
-			if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
-				return reply.status(400).send({ error: "answers must be an object keyed by question id", code: "SURVEY_INVALID" });
+			const action = request.body?.action;
+			if (action !== undefined && action !== "save" && action !== "skip") {
+				return reply.status(400).send({ error: "action must be 'save' or 'skip'" });
 			}
-			try {
-				// Serialized with the background image job's splices and the
-				// chosen-image merge below (which locks internally): one
-				// survey file, one writer at a time.
-				const surveyLockPath = resolveSurveyPath(project?.cwd, project, task.id, outputFile);
-				const saved = await withSurveyFileWriteLock(surveyLockPath, () =>
-					saveSurveyAnswers({
-						cwd: project?.cwd,
-						project,
-						taskId: task.id,
-						outputFile,
-						patch,
-					}),
-				);
-				survey = { ...readSurvey(project?.cwd, project, task.id, outputFile), status: saved.status, missing: saved.missing, unknownIds: saved.unknownIds };
-			} catch (err) {
-				const code = err?.code || "SURVEY_SAVE_FAILED";
-				app.log?.warn?.({ taskId: task.id, code, error: err?.message }, "Survey save rejected");
-				return reply.status(err?.statusCode || 400).send({ error: err?.message || "Invalid survey answers", code });
-			}
-			// Chosen image-question pictures land in assets/ with a survey
-			// file reference (markdown only — rounds already re-read above
-			// are unaffected). Awaited local disk IO; never fails the submit.
-			await persistChosenSurveyImages({
-				cwd: project?.cwd,
-				project,
-				taskId: task.id,
-				surveyFile: outputFile,
-				rounds: survey.rounds,
-			});
-		}
 
-		const missing = unansweredRequired(survey.rounds || []);
-		// A skip confirms "nothing to ask": it completes an explicitly empty
-		// survey and a missing one alike. Plain saves never complete those.
-		const complete =
-			survey.status === "answered" ||
-			survey.status === "empty" ||
-			(action === "skip" && survey.status === "none");
-		if (!complete) {
-			if (action === "skip") {
-				return reply.status(400).send({
-					error: "Survey has unanswered required questions",
-					code: "SURVEY_INCOMPLETE",
-					missing,
-					status: survey.status,
+			const outputFile = surveyOutputFileForRequest(task, project, request);
+			let survey = readSurvey(project?.cwd, project, task.id, outputFile);
+			if (action !== "skip") {
+				const patch = request.body?.answers;
+				if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
+					return reply.status(400).send({ error: "answers must be an object keyed by question id", code: "SURVEY_INVALID" });
+				}
+				try {
+					// Serialized with the background image job's splices and the
+					// chosen-image merge below (which locks internally): one
+					// survey file, one writer at a time.
+					const surveyLockPath = resolveSurveyPath(project?.cwd, project, task.id, outputFile);
+					const saved = await withSurveyFileWriteLock(surveyLockPath, () =>
+						saveSurveyAnswers({
+							cwd: project?.cwd,
+							project,
+							taskId: task.id,
+							outputFile,
+							patch,
+						}),
+					);
+					survey = { ...readSurvey(project?.cwd, project, task.id, outputFile), status: saved.status, missing: saved.missing, unknownIds: saved.unknownIds };
+				} catch (err) {
+					const code = err?.code || "SURVEY_SAVE_FAILED";
+					app.log?.warn?.({ taskId: task.id, code, error: err?.message }, "Survey save rejected");
+					return reply.status(err?.statusCode || 400).send({ error: err?.message || "Invalid survey answers", code });
+				}
+				// Chosen image-question pictures land in assets/ with a survey
+				// file reference (markdown only — rounds already re-read above
+				// are unaffected). Awaited local disk IO; never fails the submit.
+				await persistChosenSurveyImages({
+					cwd: project?.cwd,
+					project,
+					taskId: task.id,
+					surveyFile: outputFile,
+					rounds: survey.rounds,
 				});
 			}
+
+			const missing = unansweredRequired(survey.rounds || []);
+			// A skip confirms "nothing to ask": it completes an explicitly empty
+			// survey and a missing one alike. Plain saves never complete those.
+			const complete =
+				survey.status === "answered" ||
+				survey.status === "empty" ||
+				(action === "skip" && survey.status === "none");
+			if (!complete) {
+				if (action === "skip") {
+					return reply.status(400).send({
+						error: "Survey has unanswered required questions",
+						code: "SURVEY_INCOMPLETE",
+						missing,
+						status: survey.status,
+					});
+				}
+				return {
+					taskId: task.id,
+					outputFile,
+					surveyFile: outputFile,
+					status: survey.status,
+					advanced: false,
+					missing,
+					unknownIds: survey.unknownIds || [],
+					rounds: survey.rounds || [],
+					errors: survey.errors || [],
+				};
+			}
+
+			// Advance guard: only a genuine survey handoff moves forward here. A
+			// human-checkpoint task opened at the survey URL by hand must never
+			// skip approval through this route — it fails safe with guidance
+			// instead. Either the persisted park flag or the stage's skill marks
+			// a genuine handoff (the flag covers restarts, the skill covers
+			// task files written before the flag existed).
+			const parkedStages = resolveStagesForTask(project, task);
+			const parkedAtStage = (Array.isArray(parkedStages) ? parkedStages : []).find(
+				(s) => String(s?.id) === String(task.currentStageId),
+			) || null;
+			const surveyParked = task.surveyPending === true || stageHasQuestionMe(parkedAtStage);
+			if (complete && !surveyParked) {
+				return {
+					taskId: task.id,
+					outputFile,
+					surveyFile: outputFile,
+					status: survey.status,
+					advanced: false,
+					missing: [],
+					unknownIds: survey.unknownIds || [],
+					rounds: survey.rounds || [],
+					errors: survey.errors || [],
+					note: "Task is not parked at a survey stage — use Approve / Retry instead of the survey to move it.",
+				};
+			}
+
+			// Double-submit guard: only the parked question-me stage advances. A
+			// re-submit after the task already moved on saves answers but never
+			// advances a second time.
+			if (task.status !== "waiting_human") {
+				return {
+					taskId: task.id,
+					outputFile,
+					surveyFile: outputFile,
+					status: survey.status,
+					advanced: false,
+					missing: [],
+					unknownIds: survey.unknownIds || [],
+					rounds: survey.rounds || [],
+					errors: survey.errors || [],
+					note: "Task already left the survey stage — not advancing.",
+				};
+			}
+
+			task.surveyPending = false;
+			try { taskStore.updateTask(id, task.id, { surveyPending: false }, project?.cwd); } catch { /* best effort */ }
+			taskStore._recordHistory(task, `Survey completed (${survey.status}) — advancing`);
+			const advanced = taskStore.advanceStage(id, task.id, [], undefined, project?.cwd);
 			return {
 				taskId: task.id,
 				outputFile,
 				surveyFile: outputFile,
 				status: survey.status,
-				advanced: false,
-				missing,
+				advanced: true,
+				currentStageId: advanced?.currentStageId || task.currentStageId,
 				unknownIds: survey.unknownIds || [],
 				rounds: survey.rounds || [],
 				errors: survey.errors || [],
 			};
-		}
-
-		// Advance guard: only a genuine survey handoff moves forward here. A
-		// human-checkpoint task opened at the survey URL by hand must never
-		// skip approval through this route — it fails safe with guidance
-		// instead. Either the persisted park flag or the stage's skill marks
-		// a genuine handoff (the flag covers restarts, the skill covers
-		// task files written before the flag existed).
-		const parkedStages = resolveStagesForTask(project, task);
-		const parkedAtStage = (Array.isArray(parkedStages) ? parkedStages : []).find(
-			(s) => String(s?.id) === String(task.currentStageId),
-		) || null;
-		const surveyParked = task.surveyPending === true || stageHasQuestionMe(parkedAtStage);
-		if (complete && !surveyParked) {
-			return {
-				taskId: task.id,
-				outputFile,
-				surveyFile: outputFile,
-				status: survey.status,
-				advanced: false,
-				missing: [],
-				unknownIds: survey.unknownIds || [],
-				rounds: survey.rounds || [],
-				errors: survey.errors || [],
-				note: "Task is not parked at a survey stage — use Approve / Retry instead of the survey to move it.",
-			};
-		}
-
-		// Double-submit guard: only the parked question-me stage advances. A
-		// re-submit after the task already moved on saves answers but never
-		// advances a second time.
-		if (task.status !== "waiting_human") {
-			return {
-				taskId: task.id,
-				outputFile,
-				surveyFile: outputFile,
-				status: survey.status,
-				advanced: false,
-				missing: [],
-				unknownIds: survey.unknownIds || [],
-				rounds: survey.rounds || [],
-				errors: survey.errors || [],
-				note: "Task already left the survey stage — not advancing.",
-			};
-		}
-
-		task.surveyPending = false;
-		try { taskStore.updateTask(id, task.id, { surveyPending: false }, project?.cwd); } catch { /* best effort */ }
-		taskStore._recordHistory(task, `Survey completed (${survey.status}) — advancing`);
-		const advanced = taskStore.advanceStage(id, task.id, [], undefined, project?.cwd);
-		return {
-			taskId: task.id,
-			outputFile,
-			surveyFile: outputFile,
-			status: survey.status,
-			advanced: true,
-			currentStageId: advanced?.currentStageId || task.currentStageId,
-			unknownIds: survey.unknownIds || [],
-			rounds: survey.rounds || [],
-			errors: survey.errors || [],
-		};
-	});
+		},
+	);
 }

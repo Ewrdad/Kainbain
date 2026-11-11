@@ -1723,6 +1723,10 @@ if [ "$MODE" = "prod" ]; then
 	tar -C api --exclude=node_modules --exclude=docs --exclude="*.test.js" -cf - . | tar -C "$STAGE/runner/api" -xf -
 	tar -C shared --exclude="*.test.js" -cf - . | tar -C "$STAGE/runner/shared" -xf -
 	cp startRunner.sh "$STAGE/startRunner.sh"; cp docker-compose.prod.yml "$STAGE/docker-compose.yml"
+	# startRunner.sh create mode lays down wrapper installs through this
+	# helper, so prod needs it next to startRunner.sh (the backup/rollback
+	# below copies the whole PROD_DIR, so the two never version-skew).
+	mkdir -p "$STAGE/scripts/lib"; cp scripts/lib/runner-install-root.sh "$STAGE/scripts/lib/runner-install-root.sh"
 	log "📜 Baking Kainbain changelog..."
 	if node scripts/generate-changelog.mjs --limit 200 --out "$STAGE/changelog.json"; then log "Changelog baked into $STAGE/changelog.json."; else echo '{"entries":[],"error":"changelog generation failed during deploy"}' > "$STAGE/changelog.json"; fi
 	# Backend manifest tag doubles as the deploy's image tag (legacy
@@ -1769,6 +1773,7 @@ exec 9>"$LOCK_FILE"
 	mkdir -p "$PROD_DIR"
 	rm -rf "$PROD_DIR/api" "$PROD_DIR/frontend" "$PROD_DIR/shared" "$PROD_DIR/site-docs" "$PROD_DIR/skills"
 	cp "$STAGE/docker-compose.yml" "$PROD_DIR/docker-compose.yml"; cp "$STAGE/startRunner.sh" "$PROD_DIR/startRunner.sh"; chmod +x "$PROD_DIR/startRunner.sh"
+	mkdir -p "$PROD_DIR/scripts/lib"; cp "$STAGE/scripts/lib/runner-install-root.sh" "$PROD_DIR/scripts/lib/runner-install-root.sh"
 	rm -rf "$PROD_DIR/runner"; cp -r "$STAGE/runner" "$PROD_DIR/runner"; cp "$STAGE/changelog.json" "$PROD_DIR/changelog.json"
 	# Ship the release manifest + runner tarball so any host (or pipeline
 	# step) can roll forward to exactly these bits with homelab-pull.sh.

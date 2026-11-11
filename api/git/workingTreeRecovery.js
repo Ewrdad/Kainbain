@@ -88,6 +88,18 @@ function _isSweepablePath(repoPath, prefixes = SWEEPABLE_DIR_PREFIXES) {
 
 
 /***
+ * MARK: HAND_EDIT_RECOVERY_HINT
+ * @description Shared safe-next-step sentence appended to both
+ *   `requireCleanWorkingTree` throw paths (ladder-exhausted and
+ *   `recovery: 'off'`). It names the recovery move for a developer whose
+ *   hand edits collided with the engine and states the no-overwrite
+ *   guarantee. Message-only: the ladder itself is unchanged.
+ * @example HAND_EDIT_RECOVERY_HINT.includes('nothing was overwritten') => true
+ ***/
+export const HAND_EDIT_RECOVERY_HINT =
+	"If these are your own hand edits, commit, stash, or move them aside, then retry or resume the task — nothing was overwritten.";
+
+/***
  * MARK: dirtyTreeRecoveryJournal
  * @description Audit trail of dirty-tree recovery ladder runs that swept or
  *   stashed anything (bounded: the newest entries win). Task-level flows
@@ -345,7 +357,11 @@ function _formatLadderReport(recoveryAttempts, dirtyPaths) {
  *   branch switch so uncommitted work can never be lost. Pass
  *   `{ recovery: 'off' }` for the legacy immediate-throw behavior (used by
  *   read-only or explicitly strict paths); pass `{ taskId }` so the stash
- *   marker names the owning task for Tier 1 resume.
+ *   marker names the owning task for Tier 1 resume. Both throw paths name
+ *   the blocking paths and the safe next step (commit, stash, or move the
+ *   hand edits aside, then retry/resume) so a developer editing alongside
+ *   the engine knows how to recover; nothing is auto-overwritten.
+ *   (HAND_EDIT_RECOVERY_HINT — shared wording for both throw paths.)
  * @example await requireCleanWorkingTree(cwd); // throws if dirty
  * @param {string} projectCwd
  * @param {Object} [opts]
@@ -359,7 +375,7 @@ export async function requireCleanWorkingTree(projectCwd, opts = {}) {
 		const { clean, dirtyPaths } = await getWorkingTreeStatus(projectCwd, opts);
 		if (!clean) {
 			throw new GitDirtyTreeError(
-				`Working tree is not clean${opts.context ? ` (refusing ${opts.context})` : ""}: ${dirtyPaths.slice(0, 10).join(", ")}${dirtyPaths.length > 10 ? ` (+${dirtyPaths.length - 10} more)` : ""}. Commit or stash your changes first — switching branches now could lose work.`,
+				`Working tree is not clean${opts.context ? ` (refusing ${opts.context})` : ""}: ${dirtyPaths.slice(0, 10).join(", ")}${dirtyPaths.length > 10 ? ` (+${dirtyPaths.length - 10} more)` : ""}. Commit or stash your changes first — switching branches now could lose work. ${HAND_EDIT_RECOVERY_HINT}`,
 				{ dirtyPaths, recoveryAttempts: [] },
 			);
 		}
@@ -381,7 +397,7 @@ export async function requireCleanWorkingTree(projectCwd, opts = {}) {
 		ladder.dirtyPaths,
 	);
 	throw new GitDirtyTreeError(
-		`Working tree is not clean${opts.context ? ` (refusing ${opts.context})` : ""}: ${ladder.dirtyPaths.slice(0, 10).join(", ")}${ladder.dirtyPaths.length > 10 ? ` (+${ladder.dirtyPaths.length - 10} more)` : ""}. Commit or stash your changes first — switching branches now could lose work.` +
+		`Working tree is not clean${opts.context ? ` (refusing ${opts.context})` : ""}: ${ladder.dirtyPaths.slice(0, 10).join(", ")}${ladder.dirtyPaths.length > 10 ? ` (+${ladder.dirtyPaths.length - 10} more)` : ""}. Commit or stash your changes first — switching branches now could lose work. ${HAND_EDIT_RECOVERY_HINT}` +
 			(ladderReport ? `\n[Dirty-tree recovery ladder]\n${ladderReport}` : ""),
 		{ dirtyPaths: ladder.dirtyPaths, recoveryAttempts: ladder.recoveryAttempts },
 	);

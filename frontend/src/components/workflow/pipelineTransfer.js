@@ -17,6 +17,7 @@ import {
   collectInvalidStageRunnerPolicies,
   normalizeStageRunnerPolicy,
 } from '../../../../shared/stageRunnerPolicy.js';
+import { collectInvalidStageAutoApproves } from '../../../../shared/autoApproveDuration.js';
 import { normalizeStageTags } from '../../../../shared/stageTags.js';
 
 export const PIPELINE_EXPORT_VERSION = 1;
@@ -45,7 +46,10 @@ export function oversizeImportError() {
  ***/
 export function isFileOversize(file) {
   return (
-    !!file && typeof file.size === 'number' && Number.isFinite(file.size) && file.size > MAX_IMPORT_BYTES
+    !!file &&
+    typeof file.size === 'number' &&
+    Number.isFinite(file.size) &&
+    file.size > MAX_IMPORT_BYTES
   );
 }
 
@@ -119,6 +123,7 @@ const STAGE_KEY_ORDER = [
   'timeout',
   'skills',
   'paused',
+  'noCode',
   'failback',
   // per-stage Runner allow/block list (additive; absent stays absent so legacy exports are unchanged)
   'runnerPolicy',
@@ -126,6 +131,9 @@ const STAGE_KEY_ORDER = [
   // | 'custom', plus the branch name for 'custom'.
   'runOnBranch',
   'customBranch',
+  // human-stage auto-approve hold in ms (additive; absent stays absent so
+  // legacy exports are unchanged).
+  'autoApproveAfterMs',
 ];
 
 function coalesceStage(stage) {
@@ -363,6 +371,9 @@ export function validatePipelineDoc(doc) {
     if (!isAbsent(stage.paused) && typeof stage.paused !== 'boolean') {
       errors.push(`${ref}: "paused" must be true or false, got ${JSON.stringify(stage.paused)}.`);
     }
+    if (!isAbsent(stage.noCode) && typeof stage.noCode !== 'boolean') {
+      errors.push(`${ref}: "noCode" must be true or false, got ${JSON.stringify(stage.noCode)}.`);
+    }
     // ci-only branch execution mode. The legacy 'main' spelling is accepted
     // here (the backend normalizer migrates it to 'primary' on save); any
     // other value is a typo worth failing loudly at import time rather than
@@ -411,6 +422,25 @@ export function validatePipelineDoc(doc) {
   // Stage Runner allow/block lists are canonical pipeline fields (validated
   // like known types, not as unknown keys); a mistyped mode fails here
   // with a named problem rather than importing as silently-unrestricted.
+  for (const problem of collectInvalidStageAutoApproves(doc.stages)) {
+    const label = doc.stages[problem.index]?.name
+      ? `"${doc.stages[problem.index].name}"`
+      : `#${problem.index + 1}`;
+    const ref = `stages[${problem.index}] (${label})`;
+    if (problem.problem === 'UNPARSEABLE') {
+      errors.push(
+        `${ref}: "autoApproveAfterMs" must be a duration like "10 days" or a positive number of milliseconds, got ${JSON.stringify(doc.stages[problem.index]?.autoApproveAfterMs)}.`,
+      );
+    } else if (problem.problem === 'TOO_SHORT') {
+      errors.push(
+        `${ref}: "autoApproveAfterMs" is shorter than the 1 minute minimum — a typo-length hold would auto-approve almost immediately.`,
+      );
+    } else {
+      errors.push(
+        `${ref}: "autoApproveAfterMs" is longer than the 365 day maximum — check the unit (bare numbers are milliseconds).`,
+      );
+    }
+  }
   for (const problem of collectInvalidStageRunnerPolicies(doc.stages)) {
     const label = doc.stages[problem.index]?.name
       ? `"${doc.stages[problem.index].name}"`
@@ -418,7 +448,7 @@ export function validatePipelineDoc(doc) {
     const ref = `stages[${problem.index}] (${label})`;
     if (problem.problem === 'UNKNOWN_MODE') {
       errors.push(
-        `${ref}: "runnerPolicy".mode must be "allow" or "block", got ${JSON.stringify(problem.mode)}.`
+        `${ref}: "runnerPolicy".mode must be "allow" or "block", got ${JSON.stringify(problem.mode)}.`,
       );
     } else if (problem.problem === 'RUNNERS_NOT_ARRAY') {
       errors.push(`${ref}: "runnerPolicy".runners must be an array of Runner ids.`);

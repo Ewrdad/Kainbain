@@ -1435,6 +1435,7 @@ describe("git barrel surface contract", () => {
 		"defaultBranch",
 		"deleteBranch",
 		"diffRangeNumstat",
+		"discardChangesOutsideDocs",
 		"drainDirtyTreeRecoveries",
 		"drainGitLockRecoveries",
 		"ensureBranchCheckedOut",
@@ -1448,6 +1449,7 @@ describe("git barrel surface contract", () => {
 		"hasRemote",
 		"isBranchContentLanded",
 		"isBranchMergedInto",
+		"isDocPath",
 		"isGitRepository",
 		"isLiveTaskSnapshotPath",
 		"isMergeInProgress",
@@ -1471,7 +1473,7 @@ describe("git barrel surface contract", () => {
 		"withCheckedOutBranch",
 	];
 
-	it("exports exactly the 61 canonical public symbols", () => {
+	it("exports exactly the 63 canonical public symbols", () => {
 		expect(Object.keys(gitBarrel).sort()).toEqual(EXPECTED_EXPORTS);
 	});
 

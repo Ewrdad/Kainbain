@@ -26,8 +26,8 @@ function setup({ guardProjectId = "p-1" } = {}) {
 	const fakeApp = {
 		get: (routePath, a, b) => routes.set(`GET ${routePath}`, b || a),
 		post: (routePath, a, b) => routes.set(`POST ${routePath}`, b || a),
-		patch: (routePath, handler) => routes.set(`PATCH ${routePath}`, handler),
-		delete: (routePath, handler) => routes.set(`DELETE ${routePath}`, handler),
+		patch: (routePath, a, b) => routes.set(`PATCH ${routePath}`, b || a),
+		delete: (routePath, a, b) => routes.set(`DELETE ${routePath}`, b || a),
 		log: { error: vi.fn() },
 	};
 	const project = { id: "p-1", name: "P", cwd: "/repo", stages: STAGES };
@@ -155,10 +155,17 @@ describe("GET /tasks/queue", () => {
 		expect(result).toHaveLength(1);
 	});
 
-	it("returns undefined when the project guard fails", async () => {
+	it("returns the central queue (all projects) when no projectId is given", async () => {
+		const s = await register(setup());
+		const result = await s.routes.get("GET /tasks/queue")({ query: {} }, reply());
+		expect(s.taskStore.getScheduledQueue).toHaveBeenCalledWith();
+		expect(Array.isArray(result)).toBe(true);
+	});
+
+	it("returns undefined when an explicit projectId fails the guard", async () => {
 		const s = await register(setup({ guardProjectId: null }));
 		await expect(
-			s.routes.get("GET /tasks/queue")({ query: {} }, reply()),
+			s.routes.get("GET /tasks/queue")({ query: { projectId: "p-1" } }, reply()),
 		).resolves.toBeUndefined();
 	});
 });
@@ -329,6 +336,59 @@ describe("GET /tasks/:id", () => {
 			reply(),
 		);
 		expect(result.claim).toBeNull();
+	});
+
+	it("reports where the task works for branch-less projects", async () => {
+		const s = await register(setup());
+		const result = await s.routes.get("GET /tasks/:id")(
+			{ params: { id: "t-1" }, query: { projectId: "p-1" } },
+			reply(),
+		);
+		// The fixture project opts out of per-task branches, so there is no
+		// task branch: the agent works on the primary checkout.
+		expect(result.workingLocation).toEqual({
+			branch: null,
+			workspaceIsolation: "quarantine",
+			worktreePath: null,
+		});
+	});
+
+	it("reports branch and worktree path for worktree-isolated projects", async () => {
+		const s = setup();
+		s.projectStore.getProject = vi.fn(() => ({
+			...s.project,
+			useBranches: true,
+			workspaceIsolation: "worktree",
+		}));
+		await register(s);
+		const result = await s.routes.get("GET /tasks/:id")(
+			{ params: { id: "t-1" }, query: { projectId: "p-1" } },
+			reply(),
+		);
+		expect(result.workingLocation).toEqual({
+			branch: "kb/t-1",
+			workspaceIsolation: "worktree",
+			worktreePath: "/repo/.kainbain/worktrees/t-1",
+		});
+	});
+
+	it("prefers the persisted task branch in the working location", async () => {
+		const s = setup();
+		s.projectStore.getProject = vi.fn(() => ({
+			...s.project,
+			useBranches: true,
+		}));
+		s.taskStore.getTask = vi.fn(() => ({
+			...s.stored,
+			branch: "kb/custom",
+		}));
+		await register(s);
+		const result = await s.routes.get("GET /tasks/:id")(
+			{ params: { id: "t-1" }, query: { projectId: "p-1" } },
+			reply(),
+		);
+		expect(result.workingLocation.branch).toBe("kb/custom");
+		expect(result.workingLocation.worktreePath).toBeNull();
 	});
 
 	it("returns 404 for unknown tasks and undefined without a project", async () => {

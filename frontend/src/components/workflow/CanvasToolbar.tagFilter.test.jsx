@@ -37,7 +37,6 @@ function baseProps(overrides = {}) {
     setSearchQuery: vi.fn(),
     showCompleted: false,
     setShowCompleted: vi.fn(),
-    completedCount: 0,
     stages,
     filteredTasks: [],
     tasks: [],
@@ -52,7 +51,7 @@ function baseProps(overrides = {}) {
     setStageTagFilterMode: vi.fn(),
     visibleStages: stages,
     hiddenStageCount: 0,
-    onClearStageTagFilter: vi.fn(),
+    onClearStageVisibilityFilters: vi.fn(),
     ...overrides,
   };
 }
@@ -153,13 +152,13 @@ test('clear button wipes text and tags together', () => {
 });
 
 test('mobile strip lists only visible stages plus a hidden summary tab', () => {
-  const onClearStageTagFilter = vi.fn();
+  const onClearStageVisibilityFilters = vi.fn();
   renderWithKainBain(
     <CanvasToolbar
       {...baseProps({
         visibleStages: [stages[0], stages[1]],
         hiddenStageCount: 1,
-        onClearStageTagFilter,
+        onClearStageVisibilityFilters,
       })}
     />,
   );
@@ -171,7 +170,55 @@ test('mobile strip lists only visible stages plus a hidden summary tab', () => {
   expect(screen.queryByText('3. Build')).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('tab', { name: 'Show 1 hidden stages (clears the tag filter)' }));
-  expect(onClearStageTagFilter).toHaveBeenCalledTimes(1);
+  expect(onClearStageVisibilityFilters).toHaveBeenCalledTimes(1);
+});
+
+test('hidden summary tab names the tag scope when only tags hide stages', () => {
+  renderWithKainBain(
+    <CanvasToolbar
+      {...baseProps({
+        visibleStages: [stages[0]],
+        hiddenStageCount: 2,
+        hasActiveTagFilter: true,
+        hasActiveColumnFilters: false,
+      })}
+    />,
+  );
+  expect(
+    screen.getByRole('tab', { name: 'Show 2 hidden stages (clears the tag filter)' }),
+  ).toBeInTheDocument();
+});
+
+test('hidden summary tab names the column scope when only column filters hide stages', () => {
+  renderWithKainBain(
+    <CanvasToolbar
+      {...baseProps({
+        visibleStages: [stages[0]],
+        hiddenStageCount: 2,
+        hasActiveTagFilter: false,
+        hasActiveColumnFilters: true,
+      })}
+    />,
+  );
+  expect(
+    screen.getByRole('tab', { name: 'Show 2 hidden stages (clears the column filters)' }),
+  ).toBeInTheDocument();
+});
+
+test('hidden summary tab names both scopes when tags and column filters hide stages', () => {
+  renderWithKainBain(
+    <CanvasToolbar
+      {...baseProps({
+        visibleStages: [stages[0]],
+        hiddenStageCount: 2,
+        hasActiveTagFilter: true,
+        hasActiveColumnFilters: true,
+      })}
+    />,
+  );
+  expect(
+    screen.getByRole('tab', { name: 'Show 2 hidden stages (clears the tag and column filters)' }),
+  ).toBeInTheDocument();
 });
 
 test('mobile strip keeps true pipeline numbering for visible stages', () => {
