@@ -56,6 +56,33 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Near-live – every 15 to 30 seconds is fine"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Queue number (tasks waiting to be picked up)",
+        "Current stage of each running task",
+        "Task names and titles"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Yes – live updates are worth a small extra load"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "No – pause in the background and catch up when I return"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
