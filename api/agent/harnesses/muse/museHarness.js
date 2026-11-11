@@ -44,12 +44,11 @@ import {
  *   one `--session-id` per KainBain session (multi-turn continuity) with a
  *   resolved model plumbed through `--model`.
  *
- *   Model contract: the harness declares `modelSelection: "list"` on both
- *   transports — MSP serves the live `model/list` catalogue (pinned via
- *   `session/setModel`), and exec plumbs a resolved model through `--model`,
- *   so a model ref is meaningful there too; on exec the local catalogue is
- *   empty and the picker is filled from the central/fleet catalogue merge.
- *   Alias targets for muse keep their stored model with a warning (alias
+ *   Model contract: on MSP the harness declares `modelSelection: "list"`
+ *   (the engine may dispatch a model ref, pinned via `session/setModel`); on
+ *   exec it declares `"none"` — there is no exec-side catalogue, so the
+ *   curated fallback applies and the monitor shows no Model pill. Alias
+ *   targets for muse keep their stored model with a warning (alias
  *   trust — the API saves muse + model rows with a soft warning and
  *   the load path keeps them, so the value survives until fleet
  *   coverage offers a catalog).
@@ -560,12 +559,9 @@ export function createMuseHarness(deps = {}) {
 	const harness = {
 		id: "muse",
 
-		/** Model catalogue: "list" on BOTH transports — the exec transport
-		 *  consumes a resolved model via `--model`, so "none" would wrongly
-		 *  hide the model control on exec backends. On exec the local list is
-		 *  empty and the picker is filled from the central/fleet catalogue
-		 *  merge instead (effectiveModelSelection none→list flip as fallback). */
-		modelSelection: "list",
+		/** Model catalogue: MSP serves the live `model/list` catalogue (the UI
+		 *  shows the model control); the exec transport has none (hide it). */
+		modelSelection: transport === "msp" ? "list" : "none",
 		reasoningLevels: null,
 
 		settings,
