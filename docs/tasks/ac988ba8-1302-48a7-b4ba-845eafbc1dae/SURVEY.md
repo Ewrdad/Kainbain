@@ -80,7 +80,13 @@
         "No default – always ask"
       ],
       "required": false,
-      "showIf": { "questionId": "q5", "values": ["Optional expiry date per key (Recommended)", "All keys must expire after a set time"] }
+      "showIf": {
+        "questionId": "q5",
+        "values": [
+          "Optional expiry date per key (Recommended)",
+          "All keys must expire after a set time"
+        ]
+      }
     },
     {
       "id": "q7",
@@ -106,6 +112,59 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Own separate switch for API keys (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Narrow abilities per key – each key only gets exactly what it needs (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Tasks and tickets – create, update, and read them",
+        "Starting and controlling runs",
+        "Reading status and history",
+        "Changing system settings",
+        "Managing users and other API keys"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "On the settings page in the app, by an admin (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Optional expiry date per key (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "1 year"
+      ],
+      "notes": ""
+    },
+    "q7": {
+      "selected": [
+        "Yes – keys are only an extra way in, browser and runners unchanged (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q8": {
+      "selected": [
+        "On the task itself – in its activity/history, wherever a person's name would show"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```

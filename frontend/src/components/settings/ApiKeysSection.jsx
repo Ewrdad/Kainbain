@@ -19,7 +19,8 @@ const secondaryButtonClass =
   'px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-[11px] font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-50';
 
 const defaultExpiryInput = () => {
-  const date = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+  // Survey answer (Q6): default key lifetime is one year.
+  const date = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
   return date.toISOString().slice(0, 10);
 };
 
@@ -34,8 +35,8 @@ const formatDateTime = (value) => {
  * MARK: ApiKeysSection
  * @description System Settings › Access tab: the API-keys enable toggle,
  *   the key table (name, prefix, roles/scopes, expiry, last used), the
- *   create form (name, role, narrowing scopes, expiry pre-filled to +90
- *   days and clearable), the one-time secret reveal with a copy button,
+ *   create form (name, role, narrowing scopes, expiry pre-filled to +1
+ *   year and clearable), the one-time secret reveal with a copy button,
  *   per-key usage, and revoke with a confirm. Non-admins see the same
  *   access-denied pattern as `AccessControlSection`.
  * @example <ApiKeysSection />

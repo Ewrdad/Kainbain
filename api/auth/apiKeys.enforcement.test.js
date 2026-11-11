@@ -407,3 +407,101 @@ describe("key switch OFF ignores key headers", () => {
 		expect(after.statusCode).toBe(200);
 	});
 });
+
+describe("2x2 cell: access control OFF with keys ON", () => {
+	it("keeps allow-all for keyless traffic, still recognises and scopes keys, and leaves the runner channel alone", async () => {
+		const key = makeKey({ name: "keys-only-cell", roles: ["member"] });
+
+		// Flip access control off while keys stay on (runtime settings).
+		const saved = await app.inject({
+			method: "PUT",
+			url: "/auth/settings",
+			headers: { cookie: adminCookie },
+			payload: { authEnabled: false },
+		});
+		expect(JSON.parse(saved.payload).enabled).toBe(false);
+
+		try {
+			// Keyless requests stay allow-all — byte-identical to the
+			// default install: no credentials, no 401.
+			const anon = await createTask({});
+			expect(anon.statusCode).toBe(200);
+
+			// A valid key is still attributed and scoped, and the task
+			// history still flags the key name.
+			const viaKey = await createTask(keyHeaders(key.secret), {
+				goal: "Key-only cell ticket",
+			});
+			expect(viaKey.statusCode).toBe(200);
+			const keyTaskId = JSON.parse(viaKey.payload).id;
+			const keyRead = await app.inject({
+				method: "GET",
+				url: `/tasks/${keyTaskId}?projectId=${projectId}`,
+			});
+			const keyActions = (JSON.parse(keyRead.payload).history || []).map(
+				(entry) => entry.action,
+			);
+			expect(keyActions).toContain("Task created by api-key:keys-only-cell");
+
+			// A presented-but-unknown key is still rejected on guarded
+			// routes — bad credentials never silently degrade to allow-all.
+			const bogus = await createTask(keyHeaders("kb_not-a-real-key"));
+			expect(bogus.statusCode).toBe(401);
+
+			// /auth/me reflects the cell: builtin for keyless traffic,
+			// key identity for key traffic.
+			const meAnon = await app.inject({ method: "GET", url: "/auth/me" });
+			expect(JSON.parse(meAnon.payload)).toMatchObject({
+				authEnabled: false,
+				apiKeysEnabled: true,
+				user: { builtin: true },
+			});
+			const meKey = await app.inject({
+				method: "GET",
+				url: "/auth/me",
+				headers: keyHeaders(key.secret),
+			});
+			expect(JSON.parse(meKey.payload).user).toMatchObject({
+				name: "api-key:keys-only-cell",
+				apiKey: true,
+			});
+
+			// The runner credential channel is untouched in this cell too.
+			const reg = await app.inject({
+				method: "POST",
+				url: "/runners/register",
+				payload: {
+					runnerId: "keys-only-runner",
+					joinToken: "test-join-token",
+					facts: FACTS,
+				},
+			});
+			expect(reg.statusCode).toBe(202);
+			const approval = await app.inject({
+				method: "POST",
+				url: "/runners/keys-only-runner/approve",
+			});
+			expect(approval.statusCode).toBe(200);
+			const beat = await app.inject({
+				method: "POST",
+				url: "/runners/heartbeat",
+				headers: {
+					"x-runner-credential": JSON.parse(approval.payload).credential,
+				},
+				payload: { runnerId: "keys-only-runner", facts: FACTS },
+			});
+			expect(beat.statusCode).toBe(200);
+		} finally {
+			await app.inject({
+				method: "PUT",
+				url: "/auth/settings",
+				headers: { cookie: adminCookie },
+				payload: { authEnabled: true },
+			});
+		}
+
+		// Back in the (ON, ON) cell: keyless traffic is 401 again.
+		const anonAgain = await createTask({});
+		expect(anonAgain.statusCode).toBe(401);
+	});
+});

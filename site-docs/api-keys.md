@@ -44,7 +44,7 @@ System Settings › Access › API keys › New key (admin role required):
   work; `viewer` reads.
 - **Scopes** (optional) — narrow the role down, e.g. only `tasks:create`.
   Scopes only ever subtract: a key with no scopes gets its full role.
-- **Expiry** (optional, pre-filled to 90 days, clearable) — expired keys
+- **Expiry** (optional, pre-filled to 1 year, clearable) — expired keys
   answer `401` like unknown keys.
 
 The secret is shown **once**. Copy it immediately — it is stored hashed
