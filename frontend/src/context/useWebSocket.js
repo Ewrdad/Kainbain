@@ -29,8 +29,12 @@ export { calculateBackoffWithJitter };
  * bar's queue chip tracks the queue with no page refresh.
  * @param {Object} [opts]
  * @param {Function} [opts.onNotification] - Callback for toast notifications.
+ * @param {Function} [opts.onTaskUpdated] - Callback for TASK_UPDATED frames (live board sync).
+ * @param {Function} [opts.onTaskDeleted] - Callback for TASK_DELETED frames.
+ * @param {Function} [opts.onReviewUpdated] - Callback for REVIEW_UPDATED frames.
  * @param {Function} [opts.onChatProgress] - Callback for CHAT_PROGRESS frames.
  * @param {Function} [opts.onProjectUpdated] - Callback for APP_STATUS_UPDATED frames.
+ * @param {Function} [opts.onReconnect] - Callback fired with the projectId on every (re)connect open.
  */
 export function useWebSocket({
   onNotification,

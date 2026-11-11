@@ -20,13 +20,19 @@ export const isTabVisible = () =>
 
 /***
  * MARK: subscribeTabVisible
- * @description Registers a catch-up callback fired on every
- *   background→foreground transition (`visibilitychange` + window `focus`,
- *   the same pair `useBoardSync` uses). Returns an unsubscribe function
+ * @description Registers a catch-up callback fired on `visibilitychange` +
+ *   window `focus` signals while the tab reads visible (the same pair
+ *   `useBoardSync` uses). Deliberately NOT edge-triggered on a tracked
+ *   hidden→visible transition: a missed hide signal must never cancel the
+ *   catch-up refresh, because silent staleness on return is worse than one
+ *   extra cached read. Firing while already visible is harmless — every
+ *   subscriber's refresh rides a TTL cache or a content key that publishes
+ *   nothing when the picture is unchanged. Returns an unsubscribe function
  *   for effect cleanup. Guards `document`/`window` so server-side callers
- *   get a no-op unsubscribe instead of a crash.
+ *   get a no-op unsubscribe instead of a crash. Fails safe: a non-function
+ *   callback is ignored, never thrown.
  * @example const stop = subscribeTabVisible(() => refresh());
- * @param {Function} onVisible - Called whenever the tab becomes visible.
+ * @param {Function} onVisible - Called on visibility/focus signals while visible.
  * @returns {Function} Unsubscribe function.
  ***/
 export const subscribeTabVisible = (onVisible) => {

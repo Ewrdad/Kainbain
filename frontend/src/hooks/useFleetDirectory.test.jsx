@@ -1,6 +1,6 @@
 import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
-import { useFleetDirectory, fleetSnapshotKey } from './useFleetDirectory';
+import { useFleetDirectory, buildFleetSnapshotKey } from './useFleetDirectory';
 import '@testing-library/jest-dom';
 
 const getRunners = vi.hoisted(() => vi.fn());
@@ -19,8 +19,8 @@ vi.mock('../services/api', () => ({
  *   schedule no render, and background tabs pause with catch-up on return.
  ***/
 
-function FleetProbe({ label = 'fleet' } = {}) {
-  const { assignments, runners } = useFleetDirectory({});
+function FleetProbe({ label = 'fleet', pollMs } = {}) {
+  const { assignments, runners } = useFleetDirectory(pollMs === undefined ? {} : { pollMs });
   return (
     <div data-testid={`fleet-probe-${label}`}>
       {assignments.map((a) => `${a.runnerId}:${a.stageId}`).join(',')}|{(runners || []).length}
@@ -39,50 +39,67 @@ const setVisibility = (state) => {
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
 };
 
-describe('fleetSnapshotKey', () => {
+describe('buildFleetSnapshotKey', () => {
   test('a stage switch with an unchanged roster changes the key', () => {
-    const before = fleetSnapshotKey(
-      { liveAssignments: [{ runnerId: 'r1', taskId: 't1', stageId: 's1' }] },
-      [],
-    );
-    const after = fleetSnapshotKey(
-      { liveAssignments: [{ runnerId: 'r1', taskId: 't1', stageId: 's2' }] },
-      [],
-    );
+    const before = buildFleetSnapshotKey({
+      monitor: { liveAssignments: [{ runnerId: 'r1', taskId: 't1', stageId: 's1' }] },
+      registryList: [],
+    });
+    const after = buildFleetSnapshotKey({
+      monitor: { liveAssignments: [{ runnerId: 'r1', taskId: 't1', stageId: 's2' }] },
+      registryList: [],
+    });
     expect(after).not.toBe(before);
   });
 
   test('task, paused, and heartbeat changes change the key', () => {
     const base = { liveAssignments: [{ runnerId: 'r1', taskId: 't1', paused: false }] };
     expect(
-      fleetSnapshotKey(
-        { liveAssignments: [{ runnerId: 'r1', taskId: 't2', paused: false }] },
-        [],
-      ),
-    ).not.toBe(fleetSnapshotKey(base, []));
+      buildFleetSnapshotKey({
+        monitor: { liveAssignments: [{ runnerId: 'r1', taskId: 't2', paused: false }] },
+        registryList: [],
+      }),
+    ).not.toBe(buildFleetSnapshotKey({ monitor: base, registryList: [] }));
     expect(
-      fleetSnapshotKey({ liveAssignments: [{ runnerId: 'r1', taskId: 't1', paused: true }] }, []),
-    ).not.toBe(fleetSnapshotKey(base, []));
+      buildFleetSnapshotKey({
+        monitor: { liveAssignments: [{ runnerId: 'r1', taskId: 't1', paused: true }] },
+        registryList: [],
+      }),
+    ).not.toBe(buildFleetSnapshotKey({ monitor: base, registryList: [] }));
     expect(
-      fleetSnapshotKey(
-        { liveAssignments: [{ runnerId: 'r1', taskId: 't1', lastSeenAt: '2026-11-11T00:00:05Z' }] },
-        [],
-      ),
+      buildFleetSnapshotKey({
+        monitor: {
+          liveAssignments: [{ runnerId: 'r1', taskId: 't1', lastSeenAt: '2026-11-11T00:00:05Z' }],
+        },
+        registryList: [],
+      }),
     ).not.toBe(
-      fleetSnapshotKey(
-        { liveAssignments: [{ runnerId: 'r1', taskId: 't1', lastSeenAt: '2026-11-11T00:00:00Z' }] },
-        [],
-      ),
+      buildFleetSnapshotKey({
+        monitor: {
+          liveAssignments: [{ runnerId: 'r1', taskId: 't1', lastSeenAt: '2026-11-11T00:00:00Z' }],
+        },
+        registryList: [],
+      }),
     );
   });
 
   test('registry status changes change the key; misses key distinctly from empty', () => {
     expect(
-      fleetSnapshotKey({ liveAssignments: [] }, [{ runnerId: 'r1', status: 'active' }]),
-    ).not.toBe(fleetSnapshotKey({ liveAssignments: [] }, [{ runnerId: 'r1', status: 'revoked' }]));
+      buildFleetSnapshotKey({
+        monitor: { liveAssignments: [] },
+        registryList: [{ runnerId: 'r1', status: 'active' }],
+      }),
+    ).not.toBe(
+      buildFleetSnapshotKey({
+        monitor: { liveAssignments: [] },
+        registryList: [{ runnerId: 'r1', status: 'revoked' }],
+      }),
+    );
     // A missed read must never key as empty: a miss keeps the last-good
     // picture, while an honest empty clears the fleet.
-    expect(fleetSnapshotKey(null, null)).not.toBe(fleetSnapshotKey({ liveAssignments: [] }, []));
+    expect(buildFleetSnapshotKey({ monitor: null, registryList: null })).not.toBe(
+      buildFleetSnapshotKey({ monitor: { liveAssignments: [] }, registryList: [] }),
+    );
   });
 
   test('identical payloads key identically and reorder-only responses do not flap', () => {
@@ -95,8 +112,63 @@ describe('fleetSnapshotKey', () => {
     const reordered = {
       liveAssignments: [...monitor.liveAssignments].reverse(),
     };
-    expect(fleetSnapshotKey(reordered, [])).toBe(fleetSnapshotKey(monitor, []));
-    expect(fleetSnapshotKey(monitor, [])).toBe(fleetSnapshotKey(monitor, []));
+    expect(buildFleetSnapshotKey({ monitor: reordered, registryList: [] })).toBe(
+      buildFleetSnapshotKey({ monitor, registryList: [] }),
+    );
+    expect(buildFleetSnapshotKey({ monitor, registryList: [] })).toBe(
+      buildFleetSnapshotKey({ monitor, registryList: [] }),
+    );
+  });
+
+  test('reordered nested keys (serving/capabilities) do not flap the key', () => {
+    // The backend may serialise the same nested object with a different
+    // key order; without sorted keying that republishes every tick.
+    const monitor = {
+      liveAssignments: [{ runnerId: 'r1', taskId: 't1', serving: { harness: 'pi', model: 'm1' } }],
+    };
+    const reordered = {
+      liveAssignments: [{ runnerId: 'r1', taskId: 't1', serving: { model: 'm1', harness: 'pi' } }],
+    };
+    const registryList = [{ runnerId: 'r1', capabilities: { a: 1, b: 2 } }];
+    const registryReordered = [{ runnerId: 'r1', capabilities: { b: 2, a: 1 } }];
+    expect(buildFleetSnapshotKey({ monitor: reordered, registryList: registryReordered })).toBe(
+      buildFleetSnapshotKey({ monitor, registryList }),
+    );
+    // A real nested change still moves the key.
+    expect(
+      buildFleetSnapshotKey({
+        monitor: {
+          liveAssignments: [
+            { runnerId: 'r1', taskId: 't1', serving: { harness: 'pi', model: 'm2' } },
+          ],
+        },
+        registryList,
+      }),
+    ).not.toBe(buildFleetSnapshotKey({ monitor, registryList }));
+  });
+
+  test('malformed and cyclical input never throws', () => {
+    // The loop lives in covered fields (`serving`, `capabilities`) so it
+    // actually reaches the key builder instead of being filtered away.
+    const cyclicServing = {};
+    cyclicServing.self = cyclicServing;
+    const cyclicCaps = {};
+    cyclicCaps.self = cyclicCaps;
+    expect(() =>
+      buildFleetSnapshotKey({
+        monitor: { liveAssignments: [{ runnerId: 'r1', serving: cyclicServing }, null, 'nope'] },
+        registryList: [{ runnerId: 'r1', capabilities: cyclicCaps }, null],
+      }),
+    ).not.toThrow();
+    expect(() =>
+      buildFleetSnapshotKey({ monitor: 'not-a-monitor', registryList: 'not-a-list' }),
+    ).not.toThrow();
+    expect(() => buildFleetSnapshotKey()).not.toThrow();
+    expect(() => buildFleetSnapshotKey({})).not.toThrow();
+    // Missing sides key as misses, exactly like explicit nulls.
+    expect(buildFleetSnapshotKey({})).toBe(
+      buildFleetSnapshotKey({ monitor: null, registryList: null }),
+    );
   });
 });
 
@@ -211,6 +283,39 @@ describe('useFleetDirectory', () => {
       await vi.advanceTimersByTimeAsync(5_000);
     });
     expect(screen.getByTestId('fleet-probe-bar')).toHaveTextContent('r1:s1');
+  });
+
+  test('a synchronously throwing client is a miss, not a crash', async () => {
+    vi.useFakeTimers();
+    getRunnerMonitor.mockResolvedValue({
+      liveAssignments: [{ runnerId: 'r1', taskId: 't1', stageId: 's1' }],
+    });
+    render(<FleetProbe label="bar" />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByTestId('fleet-probe-bar')).toHaveTextContent('r1:s1');
+    // A client that throws before returning a promise (bad config, dead
+    // transport) must degrade like any other miss.
+    getRunnerMonitor.mockImplementation(() => {
+      throw new Error('transport exploded');
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(screen.getByTestId('fleet-probe-bar')).toHaveTextContent('r1:s1');
+  });
+
+  test('the shared tick honours a slower request instead of polling faster than asked', async () => {
+    // One slow surface alone: initial read + one 15s tick in 20s (a 5s
+    // floor would issue 5 reads and waste the budget it was given).
+    vi.useFakeTimers();
+    render(<FleetProbe label="slow" pollMs={15_000} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+    expect(getRunnerMonitor).toHaveBeenCalledTimes(2);
+    expect(getRunners).toHaveBeenCalledTimes(2);
   });
 
   test('foreground request budget: at most one read pair per 5s tick', async () => {

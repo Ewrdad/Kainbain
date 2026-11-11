@@ -4,7 +4,32 @@ import { FLEET_POLL_MS } from '../services/pollingCadences.js';
 import { isTabVisible, subscribeTabVisible } from '../services/tabVisibility.js';
 
 /***
- * MARK: fleetSnapshotKey
+ * MARK: orderKeyValue
+ * @description Sorts an object into key order (recursively) so the fleet
+ *   content key below never flaps when the backend serialises the same
+ *   nested object (`serving`, `capabilities`) with a different key order.
+ *   Arrays keep their order — assignment order is normalised by the runner
+ *   sort instead, because fleet order carries no meaning. Cyclical input
+ *   keys as `'[cycle]'` at the loop so the builder stays total (it never
+ *   throws, whatever shape it is handed).
+ * @example orderKeyValue({ b: 1, a: 2 }) => [['a', 2], ['b', 1]]
+ ***/
+const orderKeyValue = (value, seen = new Set()) => {
+  if (Array.isArray(value)) return value.map((entry) => orderKeyValue(entry, seen));
+  if (value && typeof value === 'object') {
+    if (seen.has(value)) return '[cycle]';
+    seen.add(value);
+    const ordered = Object.entries(value)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([key, entry]) => [key, orderKeyValue(entry, seen)]);
+    seen.delete(value);
+    return ordered;
+  }
+  return value ?? null;
+};
+
+/***
+ * MARK: buildFleetSnapshotKey
  * @description Content key for one fleet read: the monitor's live
  *   assignments plus the registry list, normalised to the fields fleet
  *   surfaces render and sorted by runner id so a reorder-only response
@@ -13,16 +38,21 @@ import { isTabVisible, subscribeTabVisible } from '../services/tabVisibility.js'
  *   heartbeat, capabilities on registry records) so a stage switch with
  *   an unchanged roster still changes the key — the ids-only key this
  *   replaces is why runner boxes needed a full page refresh to move
- *   stage. Missed reads (`null`) key as `'miss'`, never as empty, so a
- *   miss cannot wipe the last-good picture. The monitor's volatile
- *   siblings (scheduler/integration counters, prompts) are excluded: they
- *   change outside the rendered fleet and would republish every tick.
- * @example fleetSnapshotKey({ liveAssignments: [{ runnerId: 'r1', taskId: 't1', stageId: 's1' }] }, []) => '[{"a":[["r1",...]]},...]'
- * @param {Object|null} [monitor] - The `GET /runners/monitor` payload (null on miss).
- * @param {Array|null} [registryList] - The `GET /runners` payload (null on miss).
+ *   stage. Nested objects key in sorted key order, so a backend that
+ *   reorders `serving`/`capabilities` keys does not republish every tick.
+ *   Missed reads (`null`) key as `'miss'`, never as empty, so a miss
+ *   cannot wipe the last-good picture. The monitor's volatile siblings
+ *   (scheduler/integration counters, prompts) are excluded: they change
+ *   outside the rendered fleet and would republish every tick.
+ * @example const before = buildFleetSnapshotKey({ monitor: { liveAssignments: [{ runnerId: 'r1', stageId: 's1' }] }, registryList: [] })
+ * @example const after = buildFleetSnapshotKey({ monitor: { liveAssignments: [{ runnerId: 'r1', stageId: 's2' }] }, registryList: [] })
+ * @example before !== after // => true: the stage switch changes the key
+ * @param {Object} [fleetRead] - Named inputs.
+ * @param {Object|null} [fleetRead.monitor] - The `GET /runners/monitor` payload (null on miss).
+ * @param {Array|null} [fleetRead.registryList] - The `GET /runners` payload (null on miss).
  * @returns {string} The stable content key.
  ***/
-export const fleetSnapshotKey = (monitor, registryList) => {
+export const buildFleetSnapshotKey = ({ monitor, registryList } = {}) => {
   const rawAssignments = Array.isArray(monitor?.liveAssignments)
     ? monitor.liveAssignments
     : null;
@@ -65,7 +95,7 @@ export const fleetSnapshotKey = (monitor, registryList) => {
             r.capabilities ?? null,
           ])
           .sort((x, y) => String(x[0]).localeCompare(String(y[0])));
-  return JSON.stringify([assignments, registry]);
+  return JSON.stringify(orderKeyValue([assignments, registry]));
 };
 
 // Module-level shared poller: every mounted fleet surface (the Now Playing
@@ -83,10 +113,20 @@ let fleetKey = null;
 let lastGoodMonitor = null;
 let lastGoodRegistryList = null;
 
-const fleetNeeds = () => {
+/***
+ * MARK: readFleetNeeds
+ * @description Reads what the mounted fleet surfaces currently need: which
+ *   sides to fetch (a surface that injects an override skips that side's
+ *   reads) and the shared tick cadence. The tick runs at the fastest
+ *   request so the hungriest surface stays fresh; an empty room falls back
+ *   to the default cadence (callers stop the timer when nothing is needed,
+ *   so that value only ever seeds the next subscription).
+ * @example readFleetNeeds() => { needsMonitor: true, needsRegistry: true, pollMs: 5000 }
+ ***/
+const readFleetNeeds = () => {
   let needsMonitor = false;
   let needsRegistry = false;
-  let pollMs = FLEET_POLL_MS;
+  let pollMs = Infinity;
   for (const sub of subscribers.values()) {
     needsMonitor = needsMonitor || sub.needsMonitor;
     needsRegistry = needsRegistry || sub.needsRegistry;
@@ -94,9 +134,19 @@ const fleetNeeds = () => {
       pollMs = sub.pollMs;
     }
   }
-  return { needsMonitor, needsRegistry, pollMs };
+  return {
+    needsMonitor,
+    needsRegistry,
+    pollMs: Number.isFinite(pollMs) ? pollMs : FLEET_POLL_MS,
+  };
 };
 
+/***
+ * MARK: stopFleetTimer
+ * @description Stops the shared tick and its tab-return catch-up listener.
+ *   Safe to call when nothing runs (unsubscribe paths call it blindly).
+ * @example stopFleetTimer() => undefined
+ ***/
 const stopFleetTimer = () => {
   if (fleetTimer) {
     clearInterval(fleetTimer);
@@ -108,29 +158,52 @@ const stopFleetTimer = () => {
   }
 };
 
-// One read of one fleet side. Missing endpoint methods (old backends),
-// rejected reads, and synchronously throwing clients all land as a miss
-// (null) — never a throw — so a fleet outage degrades to the last-good
-// picture (or honest empty before the first success) instead of crashing
-// the bar.
+/***
+ * MARK: readFleetSide
+ * @description One read of one fleet side (`monitor` or `registry`).
+ *   Missing endpoint methods (old backends), rejected reads, and
+ *   synchronously throwing clients all land as a miss (null) — never a
+ *   throw — so a fleet outage degrades to the last-good picture (or
+ *   honest empty before the first success) instead of crashing the bar.
+ * @example readFleetSide('monitor') => { liveAssignments: [...] } (or null on a miss)
+ ***/
 const readFleetSide = async (kind) => {
   try {
     if (kind === 'monitor') {
       if (typeof api.getRunnerMonitor !== 'function') return null;
-      return await api.getRunnerMonitor().catch(() => null);
+      return await api.getRunnerMonitor();
     }
     if (typeof api.getRunners !== 'function') return null;
-    return await api.getRunners().catch(() => null);
+    return await api.getRunners();
   } catch {
     return null;
   }
 };
 
+/***
+ * MARK: isMonitorSuccess / isRegistrySuccess
+ * @description Miss detectors for one fleet side. Any non-null monitor
+ *   payload counts (even a half-shaped one — the key builder and the hook
+ *   filter defensively downstream); only a real array counts for the
+ *   registry, so a malformed list never wipes the last-good roster.
+ * @example isRegistrySuccess(null) => false
+ ***/
 const isMonitorSuccess = (m) => m !== null && m !== undefined;
 const isRegistrySuccess = (list) => Array.isArray(list);
 
+/***
+ * MARK: publishFleetSnapshot
+ * @description Republishes the last-good fleet picture to every subscriber
+ *   — but only when the content key moved, so an identical poll schedules
+ *   no render anywhere (the `act()`-warning protection). One throwing
+ *   listener never blocks the rest of the fleet.
+ * @example publishFleetSnapshot() => undefined
+ ***/
 const publishFleetSnapshot = () => {
-  const key = fleetSnapshotKey(lastGoodMonitor, lastGoodRegistryList);
+  const key = buildFleetSnapshotKey({
+    monitor: lastGoodMonitor,
+    registryList: lastGoodRegistryList,
+  });
   if (key === fleetKey) return;
   fleetKey = key;
   const snapshot = { monitor: lastGoodMonitor, registryList: lastGoodRegistryList };
@@ -143,9 +216,19 @@ const publishFleetSnapshot = () => {
   }
 };
 
+/***
+ * MARK: loadFleet
+ * @description Issues one shared fleet read (in-flight sharing: concurrent
+ *   callers await the same promise, so a tick racing a fresh mount never
+ *   double-fetches). Only the sides some subscriber needs are read; each
+ *   side updates on success only, so a miss leaves the last-good picture
+ *   untouched instead of strobing the bar. A read that lands after the
+ *   last unsubscribe is dropped, never published into an unowned store.
+ * @example loadFleet() => Promise<{ monitor, registryList }>
+ ***/
 const loadFleet = () => {
   if (fleetInFlight) return fleetInFlight;
-  const { needsMonitor, needsRegistry } = fleetNeeds();
+  const { needsMonitor, needsRegistry } = readFleetNeeds();
   if (!needsMonitor && !needsRegistry) return Promise.resolve(null);
   fleetInFlight = (async () => {
     try {
@@ -171,9 +254,18 @@ const loadFleet = () => {
   return fleetInFlight;
 };
 
+/***
+ * MARK: restartFleetTimer
+ * @description Rebuilds the shared tick from the current subscriber needs
+ *   (sides + fastest cadence). Ticks skip their read while the tab is
+ *   hidden; the tab-return catch-up refreshes immediately, so a hidden tab
+ *   issues zero fleet reads. Restarts on every subscribe/unsubscribe so a
+ *   new surface's needs take effect at once (at most one timer ever runs).
+ * @example restartFleetTimer() => undefined
+ ***/
 const restartFleetTimer = () => {
   stopFleetTimer();
-  const { needsMonitor, needsRegistry, pollMs } = fleetNeeds();
+  const { needsMonitor, needsRegistry, pollMs } = readFleetNeeds();
   if (!needsMonitor && !needsRegistry) return;
   fleetTimer = setInterval(() => {
     // Background tabs pause (survey q4); the catch-up below refreshes on
@@ -186,6 +278,15 @@ const restartFleetTimer = () => {
   });
 };
 
+/***
+ * MARK: subscribeFleet
+ * @description Adds one fleet surface to the shared poller and returns its
+ *   unsubscribe. A newly mounted surface renders the live picture at once
+ *   (no waiting a full cadence) and then shares the next fresh read
+ *   in-flight. The last unsubscribe stops the timer and clears the
+ *   snapshot, so a later mount always starts from honest empty.
+ * @example const stop = subscribeFleet({ notify: render, pollMs: 5000, needsMonitor: true, needsRegistry: true })
+ ***/
 const subscribeFleet = ({ notify, pollMs, needsMonitor, needsRegistry }) => {
   const id = nextSubscriberId++;
   subscribers.set(id, { notify, pollMs, needsMonitor, needsRegistry });
@@ -228,6 +329,10 @@ const subscribeFleet = ({ notify, pollMs, needsMonitor, needsRegistry }) => {
  *   that side's reads; `enabled: false` skips the subscription entirely.
  *   An unusable `pollMs` (zero, negative, non-numeric) falls back to the
  *   5s default so the hook can never busy-loop the fleet endpoints.
+ *   How it fails: endpoint outages, old backends without the fleet
+ *   methods, and malformed payloads all degrade to the last-good picture
+ *   (honest empty before the first success) — the hook never throws, and
+ *   the next successful tick repairs the picture on its own.
  * @example const { assignments, runners } = useFleetDirectory({});
  * @param {Object} [opts]
  * @param {number} [opts.pollMs=5000] - Requested cadence (the shared tick uses the fastest request).

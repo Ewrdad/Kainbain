@@ -76,7 +76,7 @@ const FRESHNESS_DOT = {
  *   fleet endpoint is intentionally project-agnostic (Runners are global):
  *   there is exactly one poller and no per-project variant. Background
  *   tabs pause and catch up on return (survey q4).
- * @example const { assignments, registry } = useRunnerMonitor({ pollMs: 5000 });
+ * @example const { assignments, registry } = useRunnerMonitor({ pollMs: FLEET_POLL_MS });
  ***/
 export const useRunnerMonitor = ({ pollMs = FLEET_POLL_MS, enabled = true } = {}) => {
   const { assignments, runners, scheduler } = useFleetDirectory({ pollMs, enabled });
@@ -206,7 +206,7 @@ export function PerRunnerTasksWidget({
   tasks = [],
   stages = [],
   compact = false,
-  pollMs = 5000,
+  pollMs = FLEET_POLL_MS,
   assignmentsOverride,
   registryOverride,
   onOpenTask,
