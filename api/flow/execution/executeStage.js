@@ -63,6 +63,7 @@ import {
 } from '../../agent/harnessRegistry.js';
 import {
 	stageWantsReport,
+	buildNoCodePromptSection,
 } from '../../promptCuration.js';
 import {
 	parkTaskForSurvey,
@@ -83,6 +84,7 @@ import { peekStageDisplayTarget } from './peekStageDisplayTarget.js';
 import { displayModelForInit } from './displayModelForInit.js';
 import { routeStageError } from './routeStageError.js';
 import { docsTasksIgnorePath } from '../../docsPath.js';
+import { resolveDocsDirName } from '../../docsPath.js';
 import { buildRetryFailureDetails } from './buildRetryFailureDetails.js';
 import { resolveCommandStageRuntime } from './resolveCommandStageRuntime.js';
 import { isDispatchServable } from '../dispatch/isDispatchServable.js';
@@ -720,6 +722,9 @@ export async function executeStage(
 				: [
 						stage.prompt || stage.criteria || task.goal,
 						failureDetails ? `\n# Failure Details\n${failureDetails}` : null,
+						stage?.noCode === true
+							? buildNoCodePromptSection(resolveDocsDirName(projectObj))
+							: null,
 					]
 						.filter(Boolean)
 						.join("\n\n");
@@ -1007,6 +1012,7 @@ export async function executeStage(
 						bridge,
 						stageName: stage.name || stage.id,
 						startSha: task.currentStageStartSha,
+						noCode: stage?.noCode === true,
 					});
 					// Record the explicit commit boundary for this stage and
 					// attribute its own diff from that range instead of the

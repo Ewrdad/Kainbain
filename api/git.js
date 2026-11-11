@@ -67,6 +67,8 @@ export {
 	DEFAULT_GIT_AUTHOR_EMAIL,
 	ensureGitIdentity,
 	commitAllIfNeeded,
+	discardChangesOutsideDocs,
+	isDocPath,
 	isLiveTaskSnapshotPath,
 	untrackLiveTaskSnapshots,
 } from "./git/commit.js";
