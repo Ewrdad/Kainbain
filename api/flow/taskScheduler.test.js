@@ -185,12 +185,19 @@ describe("findNextCandidateTask", () => {
 		expect(findNextCandidateTask(store)).toBeNull();
 	});
 
-	it("prefers the furthest stage, then the oldest entry", () => {
+	it("picks the oldest waiting entry by default; furthest-along only in legacy mode", () => {
 		const store = makeStore();
 		store.seed("p-1", task({ id: "early", currentStageId: "s-3", enteredStageAt: "2026-09-24T09:00:00.000Z" }));
 		store.seed("p-1", task({ id: "late", currentStageId: "s-3", enteredStageAt: "2026-09-24T11:00:00.000Z" }));
 		store.seed("p-1", task({ id: "behind", currentStageId: "s-1", enteredStageAt: "2026-09-24T08:00:00.000Z" }));
-		expect(findNextCandidateTask(store)?.taskId).toBe("early");
+		// Default central queue (oldest-first, task 16d6fbd6): the oldest
+		// waiting task wins even though it sits at an earlier stage.
+		expect(findNextCandidateTask(store)?.taskId).toBe("behind");
+		// Legacy rollback mode: furthest stage first, then oldest entry.
+		expect(
+			findNextCandidateTask(store, { queue: { order: "furthest-along", maxWaitMs: 0 } })
+				?.taskId,
+		).toBe("early");
 	});
 
 	it("skips blocked, stageless, unknown-stage, manual, and paused candidates", () => {
@@ -401,10 +408,11 @@ describe("getScheduledQueue", () => {
 
 	it("lists only waiting tasks: active, blocked, and paused tasks are excluded", () => {
 		const store = makeStore();
-		store.seed("p-1", task({ id: "std", currentStageId: "s-3" }));
+		const fresh = (minutesAgo) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
+		store.seed("p-1", task({ id: "std", currentStageId: "s-3", enteredStageAt: fresh(5), updatedAt: fresh(5) }));
 		store.seed("p-1", task({ id: "blocked", blockedBy: ["base"] }));
 		store.blockedIds.add("p-1:blocked");
-		store.seed("p-1", task({ id: "base" }));
+		store.seed("p-1", task({ id: "base", enteredStageAt: fresh(1), updatedAt: fresh(1) }));
 		store.seed("p-1", task({ id: "paused", status: "paused" }));
 		store.seed("p-1", task({ id: "active" }));
 		store.engineState.activeTaskId = "active";
@@ -446,7 +454,7 @@ describe("getScheduledQueue", () => {
 		expect(getScheduledQueue(store).map((i) => i.id)).toEqual(["waiting"]);
 	});
 
-	it("filters by project and orders rank-2 by stage then age", () => {
+	it("filters by project and orders rank-2 oldest-first by default (stage then age in legacy mode)", () => {
 		const store = makeStore({
 			projects: [
 				{ id: "p-1", name: "P", cwd: "/repo", stages: STAGES },
@@ -458,9 +466,17 @@ describe("getScheduledQueue", () => {
 		store.seed("p-2", task({ id: "c", projectId: "p-2", currentStageId: "s-1" }));
 		const filtered = getScheduledQueue(store, "p-2");
 		expect(filtered.map((i) => i.id)).toEqual(["c"]);
+		// Default central queue (oldest-first, task 16d6fbd6): wait age
+		// decides across projects; stage index only breaks exact-age ties.
 		const all = getScheduledQueue(store);
-		expect(all.map((i) => i.id)).toEqual(["b", "a", "c"]);
+		expect(all.map((i) => i.id)).toEqual(["b", "c", "a"]);
 		expect(all[0]).toMatchObject({ projectName: "P", workflowId: "wf-default", queueOrder: 1 });
+		// Legacy rollback mode: furthest stage first, then oldest.
+		const legacy = getScheduledQueue(store, undefined, {
+			order: "furthest-along",
+			maxWaitMs: 0,
+		});
+		expect(legacy.map((i) => i.id)).toEqual(["b", "a", "c"]);
 	});
 
 	it("resolves the harness from the session store when available", () => {
@@ -980,8 +996,9 @@ describe("scheduleTick resume pickup", () => {
 describe("getScheduledQueue resume display", () => {
 	it("ranks a resumable interruption ahead of follow-on and standard work", () => {
 		const store = makeStore();
-		store.seed("p-1", task({ id: "std", currentStageId: "s-3" }));
-		store.seed("p-1", task({ id: "base" }));
+		const fresh = new Date(Date.now() - 60_000).toISOString();
+		store.seed("p-1", task({ id: "std", currentStageId: "s-3", enteredStageAt: fresh, updatedAt: fresh }));
+		store.seed("p-1", task({ id: "base", enteredStageAt: fresh, updatedAt: fresh }));
 		store.seed(
 			"p-1",
 			task({
@@ -1072,8 +1089,9 @@ describe("getScheduledQueue resume display", () => {
 				updatedAt: "2026-09-24T12:00:01.000Z",
 			}),
 		);
-		store.seed("p-1", task({ id: "base" }));
-		store.seed("p-1", task({ id: "std", currentStageId: "s-3" }));
+		const fresh = new Date(Date.now() - 60_000).toISOString();
+		store.seed("p-1", task({ id: "base", enteredStageAt: fresh, updatedAt: fresh }));
+		store.seed("p-1", task({ id: "std", currentStageId: "s-3", enteredStageAt: fresh, updatedAt: fresh }));
 		store.lastCompletedTask = { projectId: "p-1", taskId: "base" };
 		const queue = getScheduledQueue(store);
 		const order = Object.fromEntries(queue.map((item) => [item.id, item]));

@@ -18,6 +18,8 @@ import { clearDiscoveryCache, getDiscoveryStatus, provenanceForIds, runDiscovery
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { decideAgentStageVerdict } from "../shared/stageVerdict.js";
+import { appendAttestationTrailers, hashStageConfig, isWellFormedConfigHash } from "../shared/stageAttestation.js";
+import { resolveAttestationStage } from "../api/work/resolveAttestationStage.js";
 // The Runner bundle ships api/ next to runner/, so the backend's own
 // discovery helpers (standard install dirs, the pi snapshot path, the
 // KAINBAIN_*_BIN overrides) are the single source of truth for where harness
@@ -921,6 +923,9 @@ export async function joinAndHeartbeat({ config, client, loadHarness, logger, st
 	if (beat.status !== "active") {
 		throw new Error(`Runner ${config.runnerId} is ${beat.status}; need an active registration.`);
 	}
+	// Remember the backend's update directive for compat-gated selection:
+	// every later idle/409/commanded check filters releases against it.
+	if (state && typeof state === "object") state.updateDirective = updateDirectiveFromBeat(beat);
 	// Boot-time commands: anything queued while the Runner was down is
 	// delivered on this first heartbeat (peek-until-ack) — act on it now
 	// instead of dropping it. The Runner is idle here (no execution yet),
@@ -975,6 +980,27 @@ export async function joinAndHeartbeat({ config, client, loadHarness, logger, st
 			clearInterval(heartbeatTimer);
 			if (discoveryTimer) clearInterval(discoveryTimer);
 		},
+	};
+}
+
+/***
+ * MARK: updateDirectiveFromBeat
+ * @description Reads the backend's update directive off a heartbeat (or
+ *   register) response: the backend API version the runner's compat-gated
+ *   selection filters on, plus the managed desired/minimum versions for
+ *   status reporting. Missing fields read null (old backends predate the
+ *   advertisement — selection then behaves as before, ungated).
+ * @example updateDirectiveFromBeat({ update: { backendApiVersion: '1.0.0' } }) => { backendApiVersion: '1.0.0', ... }
+ * @param {Object} [beat] - Heartbeat/register response body.
+ * @returns {{backendApiVersion: string|null, desiredRunnerVersion: string|null, minimumRunnerVersion: string|null}} Directive.
+ ***/
+export function updateDirectiveFromBeat(beat = {}) {
+	const update = beat?.update && typeof beat.update === "object" ? beat.update : {};
+	const pick = (value) => (typeof value === "string" && value.trim() ? value.trim() : null);
+	return {
+		backendApiVersion: pick(update.backendApiVersion),
+		desiredRunnerVersion: pick(update.desiredRunnerVersion),
+		minimumRunnerVersion: pick(update.minimumRunnerVersion),
 	};
 }
 
@@ -1077,6 +1103,12 @@ export async function handlePendingCommands({ config, client, logger, state, pen
 						// ok:false (never throws): surface them as a failed
 						// ack so the operator sees the reason in Settings.
 						stageCommandAck(state, { command: cmd, ok: false, detail: String(upd.reason || "update check failed").slice(0, 500) });
+					} else if (upd && upd.checked === false) {
+						// The check did not run at all: with force:true that
+						// only means the host opted out of self-updates. A
+						// failed ack (not a quiet success) tells the
+						// operator exactly which switch to flip.
+						stageCommandAck(state, { command: cmd, ok: false, detail: "skipped: auto-update is disabled on this runner (KAINBAIN_RUNNER_AUTO_UPDATE=0)" });
 					} else if (upd?.applied) {
 						const ack = { command: cmd, ok: true, detail: `updated to ${upd.update?.version}` };
 						stageCommandAck(state, ack);
@@ -1125,6 +1157,7 @@ export async function deliverSteers({ config, client, logger, facts, state, upda
 	const pendingAck = stagedCommandAck(state);
 	const factsWithAck = pendingAck ? { ...facts, commandAck: pendingAck } : facts;
 	const beat = await client.heartbeat({ runnerId: config.runnerId, facts: factsWithAck });
+	if (state && typeof state === "object") state.updateDirective = updateDirectiveFromBeat(beat);
 	if (pendingAck && Array.isArray(state?.commandAcks)) {
 		state.commandAcks.shift();
 	}
@@ -1405,6 +1438,37 @@ async function executeAssignment({
 		if (!customBranch && typeof claim.customBranch === "string") customBranch = claim.customBranch;
 		if (ciEnv === null || ciEnv === undefined) ciEnv = claim.env;
 		if (integration === null || integration === undefined) integration = claim.integration ?? null;
+		// Stage attestation: the backend dispatches the config hash it computed
+		// at claim time (single source of truth — zero drift). A malformed or
+		// absent hash (old backend) falls back to hashing the same inputs
+		// locally from the project+task just fetched; an unresolvable stage
+		// degrades to the plain pre-feature report — never a fake hash. Only
+		// the hash travels onward; the config itself is never logged.
+		// The resolver reads currentStageId off the task; the daemon's own
+		// stageId fallback (first stage, then "stage") is mirrored onto the
+		// lookup copy so both agree even for tasks mid-migration. The hash
+		// input ignores currentStageId (id/goal/workflow only), so the copy
+		// cannot skew the hashed bytes.
+		const dispatchedConfigHash =
+			typeof claim?.configHash === "string" && isWellFormedConfigHash(claim.configHash)
+				? claim.configHash.trim()
+				: null;
+		let attestedConfigHash = dispatchedConfigHash;
+		if (!attestedConfigHash) {
+			try {
+				const attestedStage =
+					project && task
+						? resolveAttestationStage({
+								project,
+								task: { ...task, currentStageId: stageId },
+							})
+						: null;
+				attestedConfigHash = attestedStage ? hashStageConfig({ task, stage: attestedStage }) : null;
+			} catch {
+				attestedConfigHash = null;
+			}
+		}
+		const configHash = attestedConfigHash || null;
 		// The ONE served-model answer for every observable this execution
 		// writes (prompted progress, completion posture, completion model
 		// field): the dispatched requirement wins, else the Runner's pinned
@@ -1550,6 +1614,8 @@ async function executeAssignment({
 						taskId, projectId, executionId, epoch, sha: null, branch,
 						outcome: "failed",
 						failureReason: `CI stage branch setup failed: ${err?.message || err}`,
+						...(configHash ? { configHash } : {}),
+						committed: false,
 						taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: "",
 						posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
 						model: servedModel,
@@ -1575,9 +1641,9 @@ async function executeAssignment({
 						const failureReason = ci.timedOut
 							? `CI command timed out after ${ci.timeoutMs}ms`
 							: `CI command failed with exit code ${ci.exitCode}`;
-						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
+						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, ...(configHash ? { configHash } : {}), committed: false, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 					}
-					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
+					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", ...(configHash ? { configHash } : {}), committed: false, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 				} finally {
 					if (ciCleanup) await ciCleanup();
 				}
@@ -1667,11 +1733,14 @@ async function executeAssignment({
 				event: "finished",
 			});
 
-			const { sha, pushed, pushSkipped, beforeSha, pushState } = await commitAndPush({
+			const stageMessage = `kb/${taskId} ${stageId}: Runner ${config.runnerId} stage output`;
+			const { sha, pushed, pushSkipped, beforeSha, pushState, skipped } = await commitAndPush({
 				workdir,
 				branch,
 				taskDocsPath: `docs/tasks/${taskId}`,
-				message: `kb/${taskId} ${stageId}: Runner ${config.runnerId} stage output`,
+				message: configHash
+					? appendAttestationTrailers(stageMessage, { taskId, stageId, configHash })
+					: stageMessage,
 				author: `kainbain-runner/${config.runnerId}`,
 			});
 			logger.log(`Committed ${sha} (pushed: ${pushed}${pushSkipped ? `, ${pushSkipped}` : ""}${pushState && pushState !== "pushed" ? `, ${pushState}` : ""}${beforeSha && beforeSha !== sha ? `, base was ${beforeSha.slice(0, 7)}` : ""}).`);
@@ -1708,6 +1777,8 @@ async function executeAssignment({
 					outcome: "failed",
 					failureKind: "rejected",
 					failureReason: verdictDecision.failureReason,
+					...(configHash ? { configHash } : {}),
+					committed: !skipped,
 					taskFiles: collectTaskFiles({ workdir, taskId }),
 					output: String(output || "").slice(0, 20000),
 					durationMs: Date.now() - runStartedAt,
@@ -1726,6 +1797,8 @@ async function executeAssignment({
 				posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
 				model: servedModel,
 				outcome: "passed",
+				...(configHash ? { configHash } : {}),
+				committed: !skipped,
 				taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }),
 				output: String(output || "").slice(0, 20000),
 				durationMs: Date.now() - runStartedAt,
@@ -1780,6 +1853,8 @@ async function executeAssignment({
 							outcome: "failed",
 							failureKind: "rejected",
 							failureReason: latchedDecision.failureReason,
+						...(configHash ? { configHash } : {}),
+						committed: false,
 							posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
 							model: servedModel,
 							durationMs: Date.now() - runStartedAt,
@@ -1793,6 +1868,8 @@ async function executeAssignment({
 					epoch,
 					outcome: "failed",
 					failureReason: err.failedOutcome,
+					...(configHash ? { configHash } : {}),
+					committed: false,
 					posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
 					model: servedModel,
 					durationMs: Date.now() - runStartedAt,
@@ -2179,9 +2256,14 @@ export async function maybeSelfUpdate({
 	};
 	let result;
 	try {
+		// Compat-gated selection: the check filters releases against the
+		// backend API version learned from heartbeats (null until the
+		// first heartbeat — ungated, today's behaviour).
+		const directive = state?.updateDirective && typeof state.updateDirective === "object" ? state.updateDirective : {};
 		result = await check({
 			currentVersion: RUNNER_VERSION,
 			updateUrl: config.updateUrl,
+			backendApiVersion: typeof directive.backendApiVersion === "string" ? directive.backendApiVersion : null,
 			logger,
 		});
 	} catch (err) {
@@ -2400,7 +2482,16 @@ export async function runDispatchLoop({
 				state,
 				projectId: answer.projectId,
 				taskId: answer.taskId,
-				lease: { executionId: answer.executionId, epoch: answer.epoch },
+				lease: {
+				executionId: answer.executionId,
+				epoch: answer.epoch,
+				// Stage attestation rides the lease: the hash the backend
+				// computed at dispatch, echoed into the wrap-up commit and
+				// the completion below. Old backends omit it (local compute).
+				...(typeof answer.configHash === "string" && answer.configHash.trim()
+					? { configHash: answer.configHash.trim() }
+					: {}),
+			},
 				backendPrompt: answer.prompt || "",
 				kind: answer.kind || "",
 				ciCommand: answer.command || "",

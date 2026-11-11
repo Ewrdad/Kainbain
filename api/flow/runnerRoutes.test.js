@@ -17,6 +17,8 @@ const { resolveCiTimeoutMs } = await import("./runnerRoutes.js");
 // flow graph, so a hoisted static import would construct singletons before
 // the join-token env assignment above runs and disable registration.
 const { parseTaskMarkdown } = await import("../work/taskPersistence.js");
+const { resolveStagesForTask } = await import("./stageResolution.js");
+const { hashStageConfig, parseAttestationToken } = await import("../../shared/stageAttestation.js");
 const {
 	registerStageLifecyclePlugin,
 	clearStageLifecyclePlugins,
@@ -859,6 +861,137 @@ describe("Runner Routes Integration", () => {
 		// Leased now: a second dispatch finds no work for this runner.
 		const again = JSON.parse((await dispatchAs(credential)).payload);
 		expect(again.assigned).toBe(false);
+	});
+
+	it("claim dispatches the stage config hash for the Runner to echo", async () => {
+		const credential = await onboard("attest-claim-1");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Attested claim fixture" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		expect(claim.statusCode).toBe(200);
+		const lease = JSON.parse(claim.payload);
+		expect(lease.configHash).toMatch(/^sha256:[0-9a-f]{64}$/);
+		// The dispatched hash equals what the Runner recomputes from the
+		// project+task it fetches — the cross-path equality contract.
+		const task = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${target}?projectId=${project.id}` })).payload,
+		);
+		const proj = JSON.parse(
+			(await app.inject({ method: "GET", url: `/projects/${project.id}` })).payload,
+		);
+		const stages = resolveStagesForTask(proj, task);
+		const stage = stages.find((s) => String(s.id) === String(task.currentStageId));
+		expect(hashStageConfig({ task, stage })).toBe(lease.configHash);
+		// …and the backend stashed it for completions from old Runners.
+		expect(task.currentStageConfigHash).toBe(lease.configHash);
+	});
+
+	it("dispatch assigns the stage config hash with the lease", async () => {
+		await mockProject("Dispatch Attest");
+		const credential = await onboard("attest-dispatch-1");
+		await app.inject({
+			method: "POST",
+			url: "/runners/heartbeat",
+			headers: { "x-runner-credential": credential },
+			payload: { runnerId: "attest-dispatch-1", facts: FACTS },
+		});
+		const res = await dispatchAs(credential);
+		expect(res.statusCode).toBe(200);
+		const out = JSON.parse(res.payload);
+		expect(out.assigned).toBe(true);
+		expect(out.configHash).toMatch(/^sha256:[0-9a-f]{64}$/);
+		const task = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${out.taskId}?projectId=${out.projectId}` })).payload,
+		);
+		const proj = JSON.parse(
+			(await app.inject({ method: "GET", url: `/projects/${out.projectId}` })).payload,
+		);
+		const stages = resolveStagesForTask(proj, task);
+		const stage = stages.find((s) => String(s.id) === String(task.currentStageId));
+		expect(hashStageConfig({ task, stage })).toBe(out.configHash);
+	});
+
+	it("completion with attestation records both hashes in history", async () => {
+		const credential = await onboard("attest-complete-1");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Attested completion fixture" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		const { executionId, epoch, configHash } = JSON.parse(claim.payload);
+		expect(configHash).toMatch(/^sha256:/);
+		const sha = "a".repeat(40);
+		const done = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/complete-execution`,
+			headers: { "x-runner-credential": credential },
+			payload: {
+				projectId: project.id,
+				executionId,
+				epoch,
+				sha,
+				branch: `kb/${target}`,
+				configHash,
+				committed: true,
+				outcome: "passed",
+				output: "did the thing",
+			},
+		});
+		expect(done.statusCode).toBe(200);
+		expect(JSON.parse(done.payload).accepted).toBe(true);
+		const after = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${target}?projectId=${project.id}` })).payload,
+		);
+		const entry = after.history.find((h) => h.action.includes("Runner completed execution"));
+		expect(entry).toMatchObject({ configHash, commitSha: sha });
+		expect(parseAttestationToken(entry.action)).toMatchObject({ configHash, commitSha: sha });
+	});
+
+	it("completion without attestation fields still records the dispatched hash", async () => {
+		const credential = await onboard("attest-old-1");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Old-Runner completion fixture" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		const { executionId, epoch, configHash: dispatched } = JSON.parse(claim.payload);
+		const sha = "b".repeat(40);
+		// Old Runner: reports its HEAD with no attestation fields.
+		const done = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/complete-execution`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id, executionId, epoch, sha, branch: `kb/${target}`, outcome: "passed", output: "did it" },
+		});
+		expect(done.statusCode).toBe(200);
+		const after = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${target}?projectId=${project.id}` })).payload,
+		);
+		const entry = after.history.find((h) => h.action.includes("Runner completed execution"));
+		expect(entry).toMatchObject({ configHash: dispatched, commitSha: sha });
 	});
 
 	it("dispatch rejects stale runners loudly", async () => {

@@ -24,6 +24,7 @@ import {
 	runCiCommand,
 	runDispatchLoop,
 	runSingleAssignment,
+	updateDirectiveFromBeat,
 	applyBackendPrompt,
 	staleHarnessHintFor,
 	startClaimRenewal,
@@ -35,6 +36,7 @@ import {
 import { isAdminCommitSubject } from "../shared/changelogHistory/isAdminCommitSubject.js";
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
+import { hashStageConfig, parseAttestationTrailers } from "../shared/stageAttestation.js";
 
 describe("integrationMergeSubject", () => {
 	it("carries the task title and survives the changelog admin filter", () => {
@@ -552,6 +554,123 @@ describe("runSingleAssignment agent verdict detection", () => {
 		assert.equal(completed.outcome, "failed");
 		assert.equal(completed.failureKind, "rejected");
 		assert.equal(completed.failureReason, "[Agent Review Rejection] fallback field shapes");
+	});
+});
+
+describe("runSingleAssignment stage attestation", () => {
+	let dirs;
+	beforeEach(() => {
+		dirs = [];
+	});
+	afterEach(() => {
+		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+	});
+
+	const STAGE = { id: "s1", name: "Build", type: "agent", prompt: "Build it.", failback: "previous" };
+	const DISPATCHED = `sha256:${"ab".repeat(32)}`;
+
+	function writingHarness() {
+		return {
+			async createSession(project, meta) {
+				fs.writeFileSync(path.join(meta.sessionDir, "agent-work.txt"), "agent output\n");
+				return {
+					getLastAssistantText: () => "done",
+					subscribe: () => () => {},
+					prompt: async () => "done",
+					dispose: async () => {},
+				};
+			},
+		};
+	}
+
+	async function runAttestedAssignment({ claimExtra = {}, projectExtra = {}, taskExtra = {}, harness = null } = {}) {
+		const repo = localRepo();
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo);
+		const task = { id: "t1", goal: "do it", currentStageId: "s1", ...taskExtra };
+		const project = { id: "p1", cwd: repo, stages: [STAGE], ...projectExtra };
+		const completed = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => project,
+			getTask: async () => task,
+			claim: async () => ({ executionId: "e1", epoch: 1, ...claimExtra }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed.push(args);
+				return { accepted: true, shaState: "present" };
+			},
+			interrupt: async () => ({ interrupted: true }),
+		});
+		await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => harness || fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(completed.length, 1);
+		return { completed: completed[0], workdir: path.join(config.workRoot, "kb-t1"), task, project };
+	}
+
+	it("attests the wrap-up commit with the dispatched hash and reports it", async () => {
+		const { completed, workdir } = await runAttestedAssignment({
+			claimExtra: { configHash: DISPATCHED },
+			harness: writingHarness(),
+		});
+		const full = execFileSync("git", ["log", "-1", "--format=%B"], { cwd: workdir, encoding: "utf8" });
+		const subject = execFileSync("git", ["log", "-1", "--format=%s"], { cwd: workdir, encoding: "utf8" }).trim();
+		assert.equal(subject, "kb/t1 s1: Runner r1 stage output");
+		assert.deepEqual(parseAttestationTrailers(full), {
+			taskId: "t1",
+			stageId: "s1",
+			configHash: DISPATCHED,
+		});
+		assert.equal(completed.configHash, DISPATCHED);
+		assert.equal(completed.committed, true);
+		assert.match(completed.sha, /^[0-9a-f]{40}$/);
+	});
+
+	it("computes the hash locally when the backend predates attestation", async () => {
+		const { completed, task, project } = await runAttestedAssignment({});
+		const expected = hashStageConfig({
+			task,
+			stage: project.stages.find((s) => s.id === "s1"),
+		});
+		assert.ok(expected);
+		assert.equal(completed.configHash, expected);
+		// Clean tree (the mock harness writes nothing): no commit, so the
+		// report names the config that ran without claiming a commit.
+		assert.equal(completed.committed, false);
+	});
+
+	it("reports without attestation when the stage cannot be resolved", async () => {
+		const { completed } = await runAttestedAssignment({
+			projectExtra: { stages: [{ id: "other", type: "agent" }] },
+		});
+		assert.ok(!("configHash" in completed));
+	});
+
+	it("reports the dispatched hash with committed:false for CI stages", async () => {
+		// CI stages never commit: the report names the config that ran
+		// without claiming the reported HEAD as stage output.
+		const { completed } = await runAttestedAssignment({
+			claimExtra: { kind: "ci", command: "echo ci-attested", configHash: DISPATCHED },
+		});
+		assert.equal(completed.outcome, "passed");
+		assert.equal(completed.configHash, DISPATCHED);
+		assert.equal(completed.committed, false);
+	});
+
+	it("ignores a malformed dispatched hash and computes locally", async () => {
+		const { completed, task, project } = await runAttestedAssignment({
+			claimExtra: { configHash: "sha256:abc\ninjected: newline" },
+		});
+		const expected = hashStageConfig({
+			task,
+			stage: project.stages.find((s) => s.id === "s1"),
+		});
+		assert.equal(completed.configHash, expected);
 	});
 });
 
@@ -1115,6 +1234,34 @@ describe("deliverSteers", () => {
 		assert.equal(acked.length, 1);
 		assert.equal(acked[0].steerId, "s1");
 		assert.equal(acked[0].ok, true);
+	});
+
+	it("stores the backend update directive from each heartbeat", async () => {
+		const client = {
+			heartbeat: async () => ({
+				status: "active",
+				pendingSteers: [],
+				update: { backendApiVersion: "1.0.0", desiredRunnerVersion: "0.2.0", minimumRunnerVersion: "0.1.0" },
+			}),
+			steerAck: async () => ({}),
+		};
+		const state = {};
+		await deliverSteers({ config, client, logger, facts, state });
+		assert.deepEqual(state.updateDirective, {
+			backendApiVersion: "1.0.0",
+			desiredRunnerVersion: "0.2.0",
+			minimumRunnerVersion: "0.1.0",
+		});
+	});
+
+	it("reads a null directive from old backends without the advertisement", () => {
+		assert.deepEqual(updateDirectiveFromBeat({ status: "active" }), {
+			backendApiVersion: null,
+			desiredRunnerVersion: null,
+			minimumRunnerVersion: null,
+		});
+		assert.deepEqual(updateDirectiveFromBeat(null).backendApiVersion, null);
+		assert.equal(updateDirectiveFromBeat({ update: { backendApiVersion: "  " } }).backendApiVersion, null);
 	});
 
 	it("ignores steers for other executions and NACKs unsupported harnesses", async () => {
@@ -2147,6 +2294,24 @@ describe("handlePendingCommands", () => {
 		assert.match(state.commandAcks[0].detail, /mirror down/);
 	});
 
+	it("acks a failed skip when the host opted out of self-updates", async () => {
+		const state = {};
+		await handlePendingCommands({
+			config: claudeConfig({ autoUpdate: false }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestUpdate"],
+			updateDeps: {
+				checkForUpdate: async () => { throw new Error("must not check"); },
+			},
+		});
+		assert.equal(state.commandAcks.length, 1);
+		assert.equal(state.commandAcks[0].command, "requestUpdate");
+		assert.equal(state.commandAcks[0].ok, false);
+		assert.match(state.commandAcks[0].detail, /KAINBAIN_RUNNER_AUTO_UPDATE=0/);
+	});
+
 	it("confirms the ack over a final heartbeat before exiting into a staged update", async () => {
 		const heartbeats = [];
 		const state = {};
@@ -2312,6 +2477,9 @@ describe("joinAndHeartbeat command channel", () => {
 	const quiet = { log: () => {}, warn: () => {} };
 
 	it("acts on commands queued while the runner was down (boot delivery)", async () => {
+		// autoUpdate:false keeps this hermetic (no real check runs); the
+		// ack is a FAILED skip naming the opt-out switch, never a quiet
+		// success — the operator must see that nothing was applied.
 		const config = baseConfig({ harnessIds: ["mock"], autoUpdate: false });
 		const client = {
 			setCredential: () => {},
@@ -2328,7 +2496,8 @@ describe("joinAndHeartbeat command channel", () => {
 		try {
 			assert.equal(state.commandAcks.length, 1);
 			assert.equal(state.commandAcks[0].command, "requestUpdate");
-			assert.equal(state.commandAcks[0].ok, true);
+			assert.equal(state.commandAcks[0].ok, false);
+			assert.match(state.commandAcks[0].detail, /KAINBAIN_RUNNER_AUTO_UPDATE=0/);
 		} finally {
 			stop();
 			fs.rmSync(config.workRoot, { recursive: true, force: true });

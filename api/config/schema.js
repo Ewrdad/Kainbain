@@ -383,7 +383,7 @@ export const CONFIG_SCHEMA = [
 		type: "string",
 		default: "0.1.0",
 		group: "tasks",
-		doc: "Runner self-update target (Option A, ADR 0012): Runners below this show an 'update available' badge in Settings › Runners but still dispatch (same API contract). Lower alongside the min in the rollback runbook to stop badge nagging after reverting a release.",
+		doc: "Runner self-update target (Option A, ADR 0012): Runners below this show an 'update available' badge in Settings › Runners but still dispatch (same API contract), and the backend nudges command-capable ones with requestUpdate at most daily (survey q2; runners still apply only when idle and honour their own KAINBAIN_RUNNER_AUTO_UPDATE=0 opt-out). Runners may run newer than this while backend-compatible (asymmetric updates, survey q1) — the knob nudges, never caps. Lower alongside the min in the rollback runbook to stop badge nagging after reverting a release.",
 	},
 	{
 		key: "dispatchMaxWaitMs",
@@ -393,7 +393,17 @@ export const CONFIG_SCHEMA = [
 		default: 0,
 		min: 0,
 		group: "tasks",
-		doc: "Optional starvation guard (WP-3.3), OFF by default (0): dispatch order is highest stage index first (closest to completion), then oldest entered-stage first — the same order as the embedded scheduler. Set KAINBAIN_DISPATCH_MAX_WAIT_MS to a positive millisecond wait to opt in: candidates waiting past it jump ahead oldest-first, bounding worst-case wait under perpetual late-stage influx.",
+		doc: "Starvation ceiling for the central queue, in ms. Candidates waiting past it jump ahead oldest-first, bounding worst-case wait under perpetual late-stage influx. Default 0 means: in the default oldest-first order the built-in 15-minute ceiling applies (the FIFO order itself already bounds the wait), and in legacy furthest-along mode the guard is off — set a positive value to enable it there too. Both dispatch paths (embedded scheduler and runner fleet) share this ceiling.",
+	},
+	{
+		key: "centralQueueOrder",
+		env: "KAINBAIN_CENTRAL_QUEUE_ORDER",
+		aliases: [],
+		type: "enum",
+		values: ["oldest-first", "furthest-along"],
+		default: "oldest-first",
+		group: "tasks",
+		doc: "Central-queue dispatch order across ALL projects/pipelines, shared by the embedded scheduler, the runner fleet scan, and the queue display (task 16d6fbd6). oldest-first (default): the oldest waiting task runs next wherever it lives; furthest-along as a percentage of its own pipeline is only a tiebreak, and a wait ceiling (KAINBAIN_DISPATCH_MAX_WAIT_MS or the built-in 15 min) gates the follow-on pre-emption. furthest-along: legacy order — highest absolute stage index first, then oldest (config-only rollback).",
 	},
 	{
 		key: "claimTtlMs",
@@ -480,6 +490,15 @@ export const CONFIG_SCHEMA = [
 		default: true,
 		group: "tasks",
 		doc: "Runner-only execution (default): servable agent stages defer to Runner dispatch instead of spawning an in-process agent child. Set false only as an emergency rollback to legacy embedded execution — the embedded agent path is deprecated and unmaintained. Human checkpoints, commands, CI, unresolvable aliases, and circuit-canary probes keep their embedded behavior regardless. Requires at least one approved live Runner (local by default).",
+	},
+	{
+		key: "runnerDispatchFallbackMs",
+		env: "KAINBAIN_RUNNER_DISPATCH_FALLBACK_MS",
+		aliases: [],
+		type: "int",
+		default: 90000,
+		group: "tasks",
+		doc: "After a task has waited this long for Runner dispatch without being claimed (ms), fall back to embedded execution so waiting work never starves behind a busy or incapable fleet. Zero disables the fallback (Runner-only always). Covers both the \"no capable Runner\" and \"fleet busy\" cases — once the ceiling passes, the backend runs it itself. Central queue ordering still decides which waiting task falls back first (task 16d6fbd6).",
 	},
 
 	// --- Storage & Paths --------------------------------------------------

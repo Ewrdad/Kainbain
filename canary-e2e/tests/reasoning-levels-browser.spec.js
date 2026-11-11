@@ -165,7 +165,7 @@ test.describe("Reasoning levels browser verification (scratch stack)", () => {
     for (const harnessName of ["Muse Code", "Mistral Vibe", "OpenCode server", "Codex", "Custom command"]) {
       await picker.getByRole("combobox", { name: "AI Harness" }).click();
       await page.getByRole("option", { name: harnessName }).first().click();
-      await expect(picker.getByRole("combobox", { name: "Reasoning" })).toHaveCount(0);
+      await expect(picker.getByRole("combobox", { name: "Reasoning" })).toHaveCount(0, { timeout: 5000 });
     }
     await page.screenshot({ path: `${SHOTS}/05-picker-muse-no-reasoning.png` });
     console.log("NULL HARNESSES: Reasoning hidden for muse/vibe/opencode/codex/custom");

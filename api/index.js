@@ -235,6 +235,7 @@ const integrationQueue = new IntegrationQueue({ ttlMs: config.claimTtlMs });
 // execute path must see them to avoid double-dispatching a Runner-held
 // task (same precedent as taskStore.sessionStore).
 taskStore.claimStore = claimStore;
+taskStore.runnerRegistry = runnerRegistry;
 
 const deps = {
 	authService,

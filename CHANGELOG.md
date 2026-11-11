@@ -21,6 +21,8 @@ source of truth. This file intentionally lists only high-impact changes.
 
 ### Added
 
+- Stage+config attestation for compliance proof: every per-stage wrap-up commit and its stage-history entry now carry the same task+stage config hash (git trailers plus a durable prose token with the commit SHA), verifiable offline with `node scripts/verify-stage-attestation.mjs --repo <path> --task <id>` (see the Stage Attestation site-docs article); clean-tree stages attest with an explicit null commit, and entries predating the feature stay valid without hashes (task d20f0c83).
+
 - API key system for agents and external services (off by default, separate `KAINBAIN_API_KEYS_ENABLED` switch): admin-managed keys with catalogue roles plus narrowing scopes, secret shown once and stored hashed, task mutations gated per key grant, every key action flagged by key name in task history and the audit log, and a per-key usage view — browser sessions and Runners work unchanged with the switch on or off (task ac988ba8).
 - Docs article `h2` sections collapse and expand via their headers (chevron toggle, keyboard-operable, Expand all / Collapse all above the article), and headers render larger and bolder for scanning (task e3369ccb).
 - Task detail pages and `GET /tasks/:id` now show where a task works (branch, workspace-isolation mode, worktree path) via the additive `workingLocation` field, and a new `Develop Alongside KainBain` site-docs article teaches the pause-edit-resume, separate-branch, and review-gate flows; dirty-tree guard errors now name the blocking paths plus the safe next step for hand edits (task 8dafdce1).
@@ -31,6 +33,7 @@ source of truth. This file intentionally lists only high-impact changes.
 
 ### Changed
 
+- Central queue across all pipelines/projects: both dispatch paths (embedded scheduler and runner fleet) and the queue display now sort through one shared seam in `oldest-first` mode by default — the oldest waiting task runs next wherever it lives, with furthest-along as a percentage of its own pipeline as tiebreak — so waiting work on a pipeline you are not viewing no longer starves behind late-stage work on the focused one; the follow-on pass can no longer pre-empt work waiting past the starvation ceiling (built-in 15 min, `KAINBAIN_DISPATCH_MAX_WAIT_MS`), `GET /tasks/queue` without `?projectId=` returns the all-projects queue instead of the UI-focused project, and the queue popup shows per-project waiting counts plus the current worker. Rollback: `KAINBAIN_CENTRAL_QUEUE_ORDER=furthest-along` (task 16d6fbd6).
 - Task surfaces read easier: card titles render larger and semibold with the status as a chip (colour dot plus text label), details-tab banner text steps up to body size, and long audit logs preview behind a Show all disclosure (task e3369ccb).
 - Runner model precedence stays pin-wins by default (pinned installs skip discovery and advertise exactly their pin across updates); `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1` opts in to survey-q4 discovery-wins, where a non-empty auto-detect result replaces the pin (task 2cbe91b6).
 - Consolidated root-level markdown files into `docs/`: moved `CI_SCRIPTS.md`, `PORTABLE_DEPLOYMENT.md`, `agent-docs/`, and `research/phase0-branch-dry-run.md`; deleted 13 obsolete one-off summaries and superseded phase-2 plans (task fc3acfff).
@@ -45,6 +48,8 @@ source of truth. This file intentionally lists only high-impact changes.
 - Survey answers survive later Runner stages: Runner task-file shipments merge into the backend survey (new rounds land, saved answers are kept) instead of overwriting them with stale worktree copies; the question-me prompt also names the exact backend-resolved file for alias/extension-less configs (task fbcaef1d).
 - Bottom (now-playing) bar on mobile is horizontally scrollable, so all runners are reachable instead of only the first (task a654a254).
 - Pipeline releases published from the deploy tip worktree are synced back to the primary `dist/` and verified there; a stranded release now fails Publish loudly, and the Update stage verifies the installed commit against the last-publish pointer instead of reporting "already current" (task a654a254).
+- Bottom (now-playing) bar stays live with no page refresh: runner boxes follow stage/task changes within one 5s fleet poll (all fleet surfaces share a single poller), and the queue chip refreshes within about a second of task activity with a 15s safety poll; background tabs pause polling and catch up on return (task ed00c209).
+- Remote runners now self-update reliably: version selection is compatibility-gated (newest release whose manifest `requires.backendApi` admits the backend, never past it), the backend advertises its update directive and auto-nudges outdated command-capable runners daily, releases are cut by the publish pipeline instead of manual tags, and systemd installs boot through the self-update wrapper (with a migration script plus a read-only `doctor` for triage); see `docs/runner-update-runbook.md` (task 82e49a05).
 
 ## [1.0.0] - 2026-10-23
 

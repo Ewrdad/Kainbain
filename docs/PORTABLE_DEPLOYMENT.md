@@ -409,15 +409,22 @@ External Runners self-update from versioned GitHub Releases — never from
 the backend (rejected Option B: backend-served code would maximise the R05
 blast radius and couple updates to backend uptime).
 
-- **Automatic, idle-only.** The dispatch loop checks
+- **Automatic, idle-only, compatibility-gated.** The dispatch loop checks
   `https://api.github.com/repos/Ewrdad/Kainbain/releases/latest` on a
   jittered hourly interval (`KAINBAIN_RUNNER_UPDATE_CHECK_INTERVAL_MS`,
   min 5 min) when it holds no task, and immediately (interval bypassed)
   when the backend refuses dispatch with 409
-  `RUNNER_VERSION_BELOW_MINIMUM`. Set `KAINBAIN_RUNNER_AUTO_UPDATE=0` to
-  opt out. Pointer/manifest fetches time out after 30s, asset downloads
-  after 5 min — a hung mirror backs off and retries instead of wedging the
-  loop, and any failure keeps the old version running.
+  `RUNNER_VERSION_BELOW_MINIMUM`. It installs the newest release that is
+  strictly newer, not a pre-release, and compatible with the backend it
+  talks to (each manifest's `requires.backendApi` range must admit the
+  backend API version learned from heartbeats) — never "latest,
+  always". When latest verifies but is incompatible, the GitHub path
+  walks one bounded releases-list page (30 entries, newest-first) for
+  the newest older release that qualifies. Set
+  `KAINBAIN_RUNNER_AUTO_UPDATE=0` to opt out. Pointer/manifest fetches
+  time out after 30s, asset downloads after 5 min — a hung mirror backs
+  off and retries instead of wedging the loop, and any failure keeps
+  the old version running.
 - **Verified, not trusted.** The manifest signature is checked against the
   public key pinned in `runner/updates/verify.js` (never fetched from the
   network), then the asset sha256 against the manifest. Any mismatch aborts,
@@ -438,12 +445,19 @@ blast radius and couple updates to backend uptime).
   successful heartbeat on the new version prunes superseded releases while
   always keeping `current` + `previous`.
 - **Backend coordination, no code transfer.** Runners report
-  `facts.versions.runner` on register/heartbeat. Settings › Runners shows
-  the fleet version matrix with an "update available" badge (below
-  `KAINBAIN_RUNNER_RECOMMENDED_VERSION`) and a "below minimum" flag.
-  Dispatch and direct claim refuse Runners below
-  `KAINBAIN_RUNNER_MIN_VERSION` with 409 (routine releases raise only the
-  recommended knob, so dispatch keeps flowing).
+  `facts.versions.runner` on register/heartbeat, and the backend
+  advertises its update directive back (`backendApiVersion`,
+  `desiredRunnerVersion`, `minimumRunnerVersion` inside the `update`
+  object). Settings › Runners shows the fleet version matrix with an
+  "update available" badge (below `KAINBAIN_RUNNER_RECOMMENDED_VERSION`)
+  and a "below minimum" flag. Dispatch and direct claim refuse Runners
+  below `KAINBAIN_RUNNER_MIN_VERSION` with 409 (routine releases raise
+  only the recommended knob, so dispatch keeps flowing). The backend
+  also auto-commands updates: heartbeats queue `requestUpdate` for
+  active, command-capable Runners trailing the recommended version (at
+  most daily per Runner); Runners still apply only when idle. Desired
+  nudges, never caps — a Runner may run newer than desired while
+  backend-compatible.
 - **Rollback a bad release.** Delete (or un-publish) the bad GitHub release
   so `releases/latest` resolves to the prior tag, then lower
   `KAINBAIN_RUNNER_RECOMMENDED_VERSION` to stop badge nagging. Runners still
@@ -457,17 +471,29 @@ blast radius and couple updates to backend uptime).
 - **Air-gapped/offline hosts.** Point `KAINBAIN_RUNNER_UPDATE_URL` at a
   mirror serving `manifest.json` + `manifest.json.minisig` + the asset
   tarballs at one base URL (or a full `manifest.json` URL). The same
-  signature + sha256 gates apply to mirrors.
+  signature + sha256 gates apply to mirrors. A mirror base may also
+  serve a `releases.json` index (`{ schema: 1, component: "runner",
+  releases: [{ version, manifestUrl, signatureUrl }] }`, newest-first)
+  so compat-gated selection can walk older releases exactly like the
+  GitHub path; a missing index (404) falls back to the single manifest,
+  while a present-but-invalid index fails the check loudly. Hosts that
+  can only reach the backend (not GitHub) update through such a mirror
+  on their own network — the backend itself never serves bytes (R05).
 - **First-release key provisioning (operator, once).** Run
   `node scripts/runner-release-keygen.mjs`, commit the printed public line
   to `scripts/runner-pinned-key/runner-release.pub` **and** to
   `PINNED_RELEASE_PUBLIC_KEY` in `runner/updates/verify.js` (CI fails the
   release when they differ), and store the secret halves in the GitHub
   Actions secrets `RUNNER_RELEASE_SIGNING_KEY` / `RUNNER_RELEASE_SIGNING_KEYNUM`.
-  Cutting a release is `git tag runner-vX.Y.Z && git push origin runner-vX.Y.Z`
-  (pre-release tags `*-rc.N`/`*-beta*`/`*-alpha*` publish as pre-release and
-  are skipped by v1 Runners; the manifest keeps the full canary version,
-  never the stripped final it previews). `minisign` CLI install is not required
+  Cutting a release is: bump `runnerVersion` in `runner/version.json`,
+  merge, and publish the runner (`publish.sh` cuts and pushes the
+  annotated `runner-vX.Y.Z` tag, which triggers the release builder);
+  manual `git tag runner-vX.Y.Z && git push origin runner-vX.Y.Z` stays
+  the emergency path (pre-release tags `*-rc.N`/`*-beta*`/`*-alpha*`
+  publish as pre-release and are skipped by v1 Runners; the manifest
+  keeps the full canary version, never the stripped final it previews).
+  Full procedure, rollback drill, wrapper migration, and "says out of
+  date" triage live in `docs/runner-update-runbook.md`. `minisign` CLI install is not required
   anywhere — signing and verification are pure Node + Ed25519. Linux and
   macOS (x64/arm64) ship; Windows is deferred.
 - **Linux/macOS only in v1** (x64 + arm64, four assets per release).
