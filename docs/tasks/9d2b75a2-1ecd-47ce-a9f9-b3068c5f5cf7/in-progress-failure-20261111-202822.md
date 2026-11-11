@@ -1,0 +1,32 @@
+<!-- KAINBAIN AUTO-GENERATED REPORT -->
+# Stage Report: In Progress
+
+**Task:** Runners are not autodetecting correctly  Key error seems to be with muse code but I suspect on others. Muse has just released a new model in the harness however for some reason it is not selectable in the ui ( but is in muse code)   Crutially this hasnt made it sway to the alias choices either, especailly since muse code keeps having its model for aliases wiped.    Please fix all this behaviour and make sure we have a firm and trusted way to build our model catalogue from the attached harnesses. For context the model catalogue should get model options from the runner, convert them into the kainbain standard harness::model::effort and save them then the Ui should allow selecting from that central list.
+**Stage Type:** `agent`
+**Model:** `worker`
+**Duration:** 179.879s
+**Status:** FAILED
+
+### Summary of Changes
+Execution failed: git checkout main failed (exit 1): error: The following untracked working tree files would be overwritten by checkout:
+	docs/tasks/d1e56caa-743e-49ee-9bc9-d8a7062a92bd/task.md
+Please move or remove them before you switch branches.
+Aborting
+
+### Execution Output
+```
+git checkout main failed (exit 1): error: The following untracked working tree files would be overwritten by checkout:
+	docs/tasks/d1e56caa-743e-49ee-9bc9-d8a7062a92bd/task.md
+Please move or remove them before you switch branches.
+Aborting
+```
+
+### Modified Files
+- (No files modified / inspection only)
+
+### Verification Status
+- Stage execution failed with error: git checkout main failed (exit 1): error: The following untracked working tree files would be overwritten by checkout:
+	docs/tasks/d1e56caa-743e-49ee-9bc9-d8a7062a92bd/task.md
+Please move or remove them before you switch branches.
+Aborting
+- Triggered fallback routing.
