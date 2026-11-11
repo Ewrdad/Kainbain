@@ -4,12 +4,14 @@ import { describe, expect, test } from 'vitest';
 import {
   filterActiveWorkflowTasks,
   filterBoardTasksWithTags,
+  filterVisibleStagesByColumnFilters,
   isFailedTask,
   isHumanTask,
   resolveEffectiveMobileStageId,
   filterProcessLogs,
   formatLogsForCopy,
 } from './nodeModel';
+import { registerSystemFilter } from './systemFilters';
 
 /***
  * MARK: nodeModel tests
@@ -308,6 +310,227 @@ describe('filterBoardTasksWithTags system filters', () => {
   test('no system filters returns every visible task', () => {
     const { filteredTasks } = filterBoardTasksWithTags({ ...baseFilters });
     expect(filteredTasks.map((t) => t.id)).toEqual(['KB-20', 'KB-21', 'KB-22']);
+  });
+});
+
+describe('filterVisibleStagesByColumnFilters', () => {
+  const columnStages = [
+    { id: 's-build', name: 'Build', type: 'agent' },
+    { id: 's-review', name: 'Review', type: 'human' },
+    { id: 's-empty', name: 'Empty', type: 'agent' },
+  ];
+  const runningCtx = {
+    engineState: { status: 'running', activeTaskId: 'KB-30' },
+  };
+  const columnTasks = [
+    { id: 'KB-30', goal: 'Build login', status: 'running_agent', currentStageId: 's-build' },
+    { id: 'KB-31', goal: 'Review auth', status: 'waiting_human', currentStageId: 's-review' },
+  ];
+  const baseColumn = {
+    stages: columnStages,
+    tasks: columnTasks,
+    tagMode: 'any',
+    filterCtx: runningCtx,
+  };
+
+  test('no column filters: every stage survives', () => {
+    expect(filterVisibleStagesByColumnFilters({ ...baseColumn, columnFilterIds: [] })).toEqual([
+      's-build',
+      's-review',
+      's-empty',
+    ]);
+    expect(filterVisibleStagesByColumnFilters({ ...baseColumn })).toEqual([
+      's-build',
+      's-review',
+      's-empty',
+    ]);
+    expect(filterVisibleStagesByColumnFilters()).toEqual([]);
+  });
+
+  test('task-level !failed/!human never hide columns (backward compatibility)', () => {
+    expect(
+      filterVisibleStagesByColumnFilters({ ...baseColumn, columnFilterIds: ['failed', 'human'] }),
+    ).toEqual(['s-build', 's-review', 's-empty']);
+  });
+
+  test('unknown ids are ignored and cannot wipe the board', () => {
+    expect(
+      filterVisibleStagesByColumnFilters({ ...baseColumn, columnFilterIds: ['bogus'] }),
+    ).toEqual(['s-build', 's-review', 's-empty']);
+  });
+
+  test('!tasked keeps only columns that hold tasks', () => {
+    expect(
+      filterVisibleStagesByColumnFilters({ ...baseColumn, columnFilterIds: ['tasked'] }),
+    ).toEqual(['s-build', 's-review']);
+  });
+
+  test('!running keeps only columns with a genuinely executing task', () => {
+    expect(
+      filterVisibleStagesByColumnFilters({ ...baseColumn, columnFilterIds: ['running'] }),
+    ).toEqual(['s-build']);
+  });
+
+  test('!running trusts the engine lock, not stale labels', () => {
+    const staleLabel = {
+      id: 'KB-32',
+      goal: 'Stale runner',
+      status: 'running_agent',
+      currentStageId: 's-review',
+    };
+    // KB-32 carries a running_* label but does not own the engine: s-review
+    // still drops out because its only live-looking task is stale.
+    expect(
+      filterVisibleStagesByColumnFilters({
+        ...baseColumn,
+        tasks: [columnTasks[0], staleLabel],
+        columnFilterIds: ['running'],
+      }),
+    ).toEqual(['s-build']);
+  });
+
+  test('!running follows the engine when a task moves stage', () => {
+    const moved = { ...columnTasks[0], currentStageId: 's-review' };
+    expect(
+      filterVisibleStagesByColumnFilters({
+        ...baseColumn,
+        tasks: [moved, columnTasks[1]],
+        columnFilterIds: ['running'],
+      }),
+    ).toEqual(['s-review']);
+  });
+
+  test('!running with no engine snapshot trusts the label', () => {
+    expect(
+      filterVisibleStagesByColumnFilters({
+        ...baseColumn,
+        filterCtx: undefined,
+        columnFilterIds: ['running'],
+      }),
+    ).toEqual(['s-build']);
+  });
+
+  test('column filters match tasks via the legacy stageId fallback too', () => {
+    expect(
+      filterVisibleStagesByColumnFilters({
+        ...baseColumn,
+        tasks: [{ id: 'KB-33', goal: 'Legacy', status: 'active', stageId: 's-empty' }],
+        columnFilterIds: ['tasked'],
+      }),
+    ).toEqual(['s-empty']);
+  });
+
+  test('!running !tasked under any needs only one match per stage', () => {
+    expect(
+      filterVisibleStagesByColumnFilters({
+        ...baseColumn,
+        columnFilterIds: ['running', 'tasked'],
+        tagMode: 'any',
+      }),
+    ).toEqual(['s-build', 's-review']);
+  });
+
+  test('!running !tasked under all needs every match per stage', () => {
+    expect(
+      filterVisibleStagesByColumnFilters({
+        ...baseColumn,
+        columnFilterIds: ['running', 'tasked'],
+        tagMode: 'all',
+      }),
+    ).toEqual(['s-build']);
+  });
+
+  test('empty board yields no stages under any column filter', () => {
+    expect(
+      filterVisibleStagesByColumnFilters({
+        stages: columnStages,
+        tasks: [],
+        columnFilterIds: ['tasked'],
+      }),
+    ).toEqual([]);
+  });
+
+  test('a throwing column-filter predicate degrades to no-match, never a crash', () => {
+    // Fail-safe: systemFilterMatches swallows the throw and returns false, so
+    // the column selector reports "no stages survive" (the canvas then shows
+    // the recoverable empty state) instead of taking the board down.
+    registerSystemFilter({
+      id: 'test-only-throwing-column-filter',
+      match: () => {
+        throw new Error('boom');
+      },
+      hidesColumns: true,
+    });
+    expect(
+      filterVisibleStagesByColumnFilters({
+        ...baseColumn,
+        columnFilterIds: ['test-only-throwing-column-filter'],
+      }),
+    ).toEqual([]);
+    // Mixed with a healthy filter under `any`, the healthy one still wins.
+    expect(
+      filterVisibleStagesByColumnFilters({
+        ...baseColumn,
+        columnFilterIds: ['test-only-throwing-column-filter', 'tasked'],
+        tagMode: 'any',
+      }),
+    ).toEqual(['s-build', 's-review']);
+  });
+});
+
+describe('filterBoardTasksWithTags liveness-aware filters', () => {
+  const liveStages = [
+    { id: 's-agent', name: 'Build', type: 'agent' },
+    { id: 's-review', name: 'Review', type: 'human' },
+  ];
+  const liveTasks = [
+    { id: 'KB-40', goal: 'Build login', status: 'running_agent', currentStageId: 's-agent' },
+    { id: 'KB-41', goal: 'Review auth', status: 'waiting_human', currentStageId: 's-review' },
+  ];
+  const liveBase = {
+    tasks: liveTasks,
+    stages: liveStages,
+    showCompleted: true,
+    textQuery: '',
+    selectedTags: [],
+    tagMode: 'any',
+  };
+  const liveCtx = { engineState: { status: 'running', activeTaskId: 'KB-40' } };
+
+  test('!running keeps only the engine owner when ctx is threaded', () => {
+    const { filteredTasks } = filterBoardTasksWithTags({
+      ...liveBase,
+      systemFilters: ['running'],
+      filterCtx: liveCtx,
+    });
+    expect(filteredTasks.map((t) => t.id)).toEqual(['KB-40']);
+  });
+
+  test('!running without ctx trusts the running_* label', () => {
+    const { filteredTasks } = filterBoardTasksWithTags({
+      ...liveBase,
+      systemFilters: ['running'],
+    });
+    expect(filteredTasks.map((t) => t.id)).toEqual(['KB-40']);
+  });
+
+  test('!tasked keeps every task (column scoping happens at the stage level)', () => {
+    const { filteredTasks } = filterBoardTasksWithTags({
+      ...liveBase,
+      systemFilters: ['tasked'],
+      filterCtx: liveCtx,
+    });
+    expect(filteredTasks.map((t) => t.id)).toEqual(['KB-40', 'KB-41']);
+  });
+
+  test('text query ANDs with !running', () => {
+    const { filteredTasks } = filterBoardTasksWithTags({
+      ...liveBase,
+      textQuery: 'review',
+      systemFilters: ['running'],
+      filterCtx: liveCtx,
+    });
+    expect(filteredTasks).toEqual([]);
   });
 });
 
