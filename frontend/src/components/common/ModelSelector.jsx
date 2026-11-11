@@ -11,7 +11,7 @@ import {
   resolveReasoningOptions,
   stripReasoningIfUnsupported,
 } from '../../services/api';
-import { fleetCountBadgeNode, fleetInfoForModel, modelBadgeNode } from '../../services/modelStatus';
+import { fleetCountBadgeNode, fleetInfoForModel, fleetSnapshotBadgeNode, modelBadgeNode } from '../../services/modelStatus';
 import { withFleetModels, effectiveModelSelection } from '../../services/fleetModelOptions';
 import {
   availabilityBadge,
@@ -315,7 +315,10 @@ export function ModelSelector({
 
   // Models grouped by provider: the group header carries the provider name,
   // so option labels are the plain model names (no "(provider)" suffix).
-  // Fleet-availability badges attach the claim-eligible Runner count from
+  // An entry the central catalogue marks unavailable renders its
+  // "Unavailable" verdict first (with the snapshot's reason as tooltip) —
+  // marked, never hidden, never normal-looking. Otherwise,
+  // fleet-availability badges attach the claim-eligible Runner count from
   // /runners/models/catalogue ("2 runners" / "No runners") — availability
   // is judged by the fleet, never by backend-host credential health. Without
   // fleet data the options render badge-free (never mislead), unless the
@@ -328,6 +331,11 @@ export function ModelSelector({
   const modelOptions = [
     ...(allowEmpty ? [{ value: '', label: emptyLabel }] : []),
     ...groupModelsByProvider(modelsForHarness).map((option) => {
+      // The snapshot's explicit unavailable verdict wins over every other
+      // badge layer (it carries the reason); entries without one fall
+      // through to the fleet-count / credential-health badges below.
+      const snapshotBadge = fleetSnapshotBadgeNode(modelsByValue.get(option.value));
+      if (snapshotBadge) return { ...option, badge: snapshotBadge };
       if (hasFleetCounts) {
         const model = modelsByValue.get(option.value);
         const info = fleetInfoForModel(fleetCounts, model, option.value);

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { discoverClaudeModels, resolveAdvertisedModels } from "./modelDiscovery.js";
+import { discoverClaudeModels, resolveAdvertisedModels, resolveAdvertisedModelSource } from "./modelDiscovery.js";
 
 const TRANSCRIPT = [
 	JSON.stringify({ jsonrpc: "2.0", id: 1, result: { serverInfo: { name: "muse" } } }),
@@ -26,7 +26,41 @@ const fakeSpawn = (stdout) => () => ({ stdout });
 
 test("maps model/list rows to composite fleet ids, deduped, malformed skipped", async () => {
 	const ids = await discoverClaudeModels({ spawnSyncFn: fakeSpawn(TRANSCRIPT) });
-	assert.deepEqual(ids, ["muse::meta::muse-spark-1.3", "muse::meta::muse-wonder-1.0"]);
+	assert.deepEqual(ids, ["muse::meta::muse-spark-1.3", "muse::meta::muse-wonder-1.0", "muse::meta::odd:model"]);
+});
+
+test("serves single-colon ids exactly like the shared grammar (new-model chain)", async () => {
+	// The shared grammar allows single `:` in ids (glm-5.3-flash:cloud);
+	// the leg must align with parseModelKey instead of its own stricter
+	// rule, or new `muse serve` rows never reach the fleet catalogue.
+	const transcript = JSON.stringify({
+		jsonrpc: "2.0",
+		id: 2,
+		result: {
+			models: [
+				{ modelId: "muse-spark-1.4", providerId: "meta" },
+				{ modelId: "muse-spark-1.4:cloud", providerId: "meta" },
+			],
+		},
+	});
+	const ids = await discoverClaudeModels({ spawnSyncFn: fakeSpawn(transcript) });
+	assert.deepEqual(ids, ["muse::meta::muse-spark-1.4", "muse::meta::muse-spark-1.4:cloud"]);
+});
+
+test("still skips rows whose segments contain the :: separator", async () => {
+	const transcript = JSON.stringify({
+		jsonrpc: "2.0",
+		id: 2,
+		result: {
+			models: [
+				{ modelId: "fine", providerId: "meta" },
+				{ modelId: "bad::id", providerId: "meta" },
+				{ modelId: "fine-too", providerId: "bad::provider" },
+			],
+		},
+	});
+	const ids = await discoverClaudeModels({ spawnSyncFn: fakeSpawn(transcript) });
+	assert.deepEqual(ids, ["muse::meta::fine"]);
 });
 
 test("sends initialize, initialized, then model/list over serve stdio", async () => {
@@ -124,4 +158,16 @@ test("discovery wins only with the explicit opt-in (modelDiscoveryWins, survey q
 	assert.deepEqual(resolveAdvertisedModels({ model: "pinned-a", modelDiscoveryWins: true }, ["discovered-b"]), ["discovered-b"]);
 	assert.deepEqual(resolveAdvertisedModels({ model: "pinned-a", modelDiscoveryWins: true }, []), ["pinned-a"]);
 	assert.deepEqual(resolveAdvertisedModels({ models: [], modelDiscoveryWins: true }, ["b"]), ["b"]);
+});
+
+test("resolveAdvertisedModelSource names the winning list branch-for-branch", () => {
+	assert.equal(resolveAdvertisedModelSource({ models: ["a"] }, ["b"]), "pinned");
+	assert.equal(resolveAdvertisedModelSource({ model: "a" }, ["b"]), "pinned");
+	assert.equal(resolveAdvertisedModelSource({ models: ["a"], modelDiscoveryWins: true }, ["b"]), "discovered");
+	assert.equal(resolveAdvertisedModelSource({ models: ["a"], modelDiscoveryWins: true }, []), "pinned");
+	assert.equal(resolveAdvertisedModelSource({ models: [] }, ["b"]), "discovered");
+	assert.equal(resolveAdvertisedModelSource({}, ["b"]), "discovered");
+	assert.equal(resolveAdvertisedModelSource({ models: [] }, []), "unpinned");
+	assert.equal(resolveAdvertisedModelSource({}, undefined), "unpinned");
+	assert.equal(resolveAdvertisedModelSource({ model: "  " }, []), "unpinned");
 });

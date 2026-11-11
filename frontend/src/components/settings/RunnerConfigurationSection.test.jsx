@@ -14,11 +14,13 @@ const getRunnerConfig = vi.hoisted(() => vi.fn());
 const updateRunnerConfig = vi.hoisted(() => vi.fn());
 const requestModelRediscovery = vi.hoisted(() => vi.fn());
 const requestRunnerUpdate = vi.hoisted(() => vi.fn());
+const getFleetModelCatalog = vi.hoisted(() => vi.fn());
 
 vi.mock('../../services/api', () => ({
   api: {
     getRunners,
     getRunnerMonitor,
+    getFleetModelCatalog,
     approveRunner,
     denyRunner,
     revokeRunner,
@@ -98,6 +100,7 @@ describe('RunnerConfigurationSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getRunnerMonitor.mockResolvedValue({ liveAssignments: [] });
+    getFleetModelCatalog.mockResolvedValue({ models: [], quarantined: [] });
     listProjects.mockResolvedValue(PROJECTS);
     updateRunnerConfig.mockImplementation(async (id, patch) => ({
       runnerId: id,
@@ -813,6 +816,74 @@ describe('RunnerConfigurationSection', () => {
     await screen.findByTestId('runner-detail-r1');
     expect(screen.queryByTestId('runner-discovery-status-r1')).toBeNull();
     expect(screen.queryByTestId('runner-discovery-warning-r1')).toBeNull();
+  });
+
+  it('shows the effective model source plus the last scan time', async () => {
+    runnersFixture([
+      {
+        ...SUPPORTED_RUNNER,
+        capabilities: {
+          harnesses: [{ id: 'muse' }],
+          models: ['muse::meta::m'],
+          modelSource: 'discovered',
+          discoveryStatus: { muse: { ok: true, count: 1, atMs: 1700000000000 } },
+        },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.getByText('(auto-detected from Runner)')).toBeTruthy();
+    expect(screen.getByTestId('runner-last-scan-r1')).toHaveTextContent('Last scan:');
+  });
+
+  it('labels a pinned Runner list honestly instead of auto-detected', async () => {
+    runnersFixture([
+      {
+        ...SUPPORTED_RUNNER,
+        capabilities: {
+          harnesses: [{ id: 'muse' }],
+          models: ['pinned-model'],
+          modelSource: 'pinned',
+        },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.getByText('(pinned on Runner)')).toBeTruthy();
+    expect(screen.queryByTestId('runner-last-scan-r1')).toBeNull();
+  });
+
+  it('shows quarantined model ids with their reasons, hidden when empty', async () => {
+    // Malformed Runner advertisements are never silently dropped: the
+    // catalogue quarantines them with a reason and Settings names them.
+    getFleetModelCatalog.mockResolvedValueOnce({
+      models: [],
+      quarantined: [
+        {
+          id: 'a::b::c::d::e',
+          reason: 'Model id "a::b::c::d::e" has 5 segments (want at most 4).',
+          runnerIds: ['r1'],
+        },
+      ],
+    });
+    runnersFixture([ACTIVE_RUNNER]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-quarantined-models');
+    expect(screen.getByTestId('runner-quarantined-a::b::c::d::e')).toHaveTextContent(
+      'a::b::c::d::e',
+    );
+    expect(screen.getByTestId('runner-quarantined-a::b::c::d::e')).toHaveTextContent('5 segments');
+    expect(screen.getByTestId('runner-quarantined-a::b::c::d::e')).toHaveTextContent('r1');
+  });
+
+  it('hides the quarantined block when nothing is quarantined', async () => {
+    runnersFixture([ACTIVE_RUNNER]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    await waitFor(() => {
+      expect(getFleetModelCatalog).toHaveBeenCalled();
+    });
+    expect(screen.queryByTestId('runner-quarantined-models')).toBeNull();
   });
 
   it('keeps the old model rows visible when re-detection failed', async () => {

@@ -35,6 +35,7 @@ import {
 import { isAdminCommitSubject } from "../shared/changelogHistory/isAdminCommitSubject.js";
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
+import { hashStageConfig, parseAttestationTrailers } from "../shared/stageAttestation.js";
 
 describe("integrationMergeSubject", () => {
 	it("carries the task title and survives the changelog admin filter", () => {
@@ -552,6 +553,123 @@ describe("runSingleAssignment agent verdict detection", () => {
 		assert.equal(completed.outcome, "failed");
 		assert.equal(completed.failureKind, "rejected");
 		assert.equal(completed.failureReason, "[Agent Review Rejection] fallback field shapes");
+	});
+});
+
+describe("runSingleAssignment stage attestation", () => {
+	let dirs;
+	beforeEach(() => {
+		dirs = [];
+	});
+	afterEach(() => {
+		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+	});
+
+	const STAGE = { id: "s1", name: "Build", type: "agent", prompt: "Build it.", failback: "previous" };
+	const DISPATCHED = `sha256:${"ab".repeat(32)}`;
+
+	function writingHarness() {
+		return {
+			async createSession(project, meta) {
+				fs.writeFileSync(path.join(meta.sessionDir, "agent-work.txt"), "agent output\n");
+				return {
+					getLastAssistantText: () => "done",
+					subscribe: () => () => {},
+					prompt: async () => "done",
+					dispose: async () => {},
+				};
+			},
+		};
+	}
+
+	async function runAttestedAssignment({ claimExtra = {}, projectExtra = {}, taskExtra = {}, harness = null } = {}) {
+		const repo = localRepo();
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo);
+		const task = { id: "t1", goal: "do it", currentStageId: "s1", ...taskExtra };
+		const project = { id: "p1", cwd: repo, stages: [STAGE], ...projectExtra };
+		const completed = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => project,
+			getTask: async () => task,
+			claim: async () => ({ executionId: "e1", epoch: 1, ...claimExtra }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed.push(args);
+				return { accepted: true, shaState: "present" };
+			},
+			interrupt: async () => ({ interrupted: true }),
+		});
+		await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => harness || fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(completed.length, 1);
+		return { completed: completed[0], workdir: path.join(config.workRoot, "kb-t1"), task, project };
+	}
+
+	it("attests the wrap-up commit with the dispatched hash and reports it", async () => {
+		const { completed, workdir } = await runAttestedAssignment({
+			claimExtra: { configHash: DISPATCHED },
+			harness: writingHarness(),
+		});
+		const full = execFileSync("git", ["log", "-1", "--format=%B"], { cwd: workdir, encoding: "utf8" });
+		const subject = execFileSync("git", ["log", "-1", "--format=%s"], { cwd: workdir, encoding: "utf8" }).trim();
+		assert.equal(subject, "kb/t1 s1: Runner r1 stage output");
+		assert.deepEqual(parseAttestationTrailers(full), {
+			taskId: "t1",
+			stageId: "s1",
+			configHash: DISPATCHED,
+		});
+		assert.equal(completed.configHash, DISPATCHED);
+		assert.equal(completed.committed, true);
+		assert.match(completed.sha, /^[0-9a-f]{40}$/);
+	});
+
+	it("computes the hash locally when the backend predates attestation", async () => {
+		const { completed, task, project } = await runAttestedAssignment({});
+		const expected = hashStageConfig({
+			task,
+			stage: project.stages.find((s) => s.id === "s1"),
+		});
+		assert.ok(expected);
+		assert.equal(completed.configHash, expected);
+		// Clean tree (the mock harness writes nothing): no commit, so the
+		// report names the config that ran without claiming a commit.
+		assert.equal(completed.committed, false);
+	});
+
+	it("reports without attestation when the stage cannot be resolved", async () => {
+		const { completed } = await runAttestedAssignment({
+			projectExtra: { stages: [{ id: "other", type: "agent" }] },
+		});
+		assert.ok(!("configHash" in completed));
+	});
+
+	it("reports the dispatched hash with committed:false for CI stages", async () => {
+		// CI stages never commit: the report names the config that ran
+		// without claiming the reported HEAD as stage output.
+		const { completed } = await runAttestedAssignment({
+			claimExtra: { kind: "ci", command: "echo ci-attested", configHash: DISPATCHED },
+		});
+		assert.equal(completed.outcome, "passed");
+		assert.equal(completed.configHash, DISPATCHED);
+		assert.equal(completed.committed, false);
+	});
+
+	it("ignores a malformed dispatched hash and computes locally", async () => {
+		const { completed, task, project } = await runAttestedAssignment({
+			claimExtra: { configHash: "sha256:abc\ninjected: newline" },
+		});
+		const expected = hashStageConfig({
+			task,
+			stage: project.stages.find((s) => s.id === "s1"),
+		});
+		assert.equal(completed.configHash, expected);
 	});
 });
 

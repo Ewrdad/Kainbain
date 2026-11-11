@@ -13,7 +13,13 @@ import {
 } from "../git.js";
 import { resolveTaskBranch, syncMainToRemoteBestEffort } from "./taskBranches.js";
 import { resolveTaskCwd } from "./taskWorkspace.js";
+import { resolveAttestationStage } from "./resolveAttestationStage.js";
 import { _appendProcessLog } from "../watch/index.js";
+import {
+	appendAttestationTrailers,
+	attachAttestationToEntry,
+	hashStageConfig,
+} from "../../shared/stageAttestation.js";
 
 /***
  * MARK: STAGE_COMMIT_BODY_MAX_CHARS
@@ -111,14 +117,26 @@ export function buildStageCommitMessage(task, stageLabel) {
  *   on the same object; command stages have no curation, so their commits
  *   carry the task's latest curated prompt (or the legacy subject when none
  *   exists).
+ *   Stage attestation: when the stage definition resolves (explicit
+ *   `opts.stage`, else the task's current stage from the project), the
+ *   task+stage config hash is appended to the commit body as git trailers
+ *   (after truncation, so the proof survives; prompt-less stages attest with
+ *   a trailer-only body) and the history entry gains the same hash plus the
+ *   commit's full SHA — structured fields for live consumers and a durable
+ *   prose token that survives `task.md` persistence. Clean-tree stages
+ *   record their own entry with an explicit null commit; failed commits
+ *   record the hash without a SHA. An explicit `opts.message` keeps its
+ *   subject-only contract (no attestation), and an unresolvable stage
+ *   degrades to the plain pre-feature entry — never a fake hash.
  * @example await finalizeTaskBranch(taskStore, task, '/repo', { stageName: 'Plan' })
- *   => { branch, committed, hash, commitError, pushed, pushSkipped, pushError, defaultBranch, switched, returnError }
+ *   => { branch, committed, hash, configHash, commitError, pushed, pushSkipped, pushError, defaultBranch, switched, returnError }
  * @param {Object} taskStore - TaskStore instance.
  * @param {Object} task - The task entity (branch resolved from it).
  * @param {string} [projectCwd] - Project working directory.
  * @param {Object} [opts]
  * @param {Object} [opts.bridge] - Event bridge override.
  * @param {string} [opts.stageName] - Stage name for log/commit messages.
+ * @param {Object} [opts.stage] - Stage definition the attestation hash covers (else resolved from the project).
  * @param {string} [opts.message] - Commit subject override (wins over the prompt-derived message, subject-only).
  * @returns {Promise<Object|null>} Summary object, or null when cwd cannot be resolved.
  ***/
@@ -150,7 +168,9 @@ export async function finalizeTaskBranch(
 		task.history = [];
 	}
 	const record = (action) => {
-		task.history.push({ timestamp: new Date().toISOString(), action });
+		const entry = { timestamp: new Date().toISOString(), action };
+		task.history.push(entry);
+		return entry;
 	};
 	const save = () => {
 		try {
@@ -169,6 +189,7 @@ export async function finalizeTaskBranch(
 		endSha: null,
 		committed: false,
 		hash: null,
+		configHash: null,
 		commitError: null,
 		pushed: false,
 		pushSkipped: null,
@@ -222,12 +243,44 @@ export async function finalizeTaskBranch(
 			project = null;
 		}
 	}
+	// Stage attestation: hash the task+stage config now so the wrap-up
+	// commit and the history entry below carry the same proof. An explicit
+	// opts.message keeps its subject-only contract (no attestation), and an
+	// unresolvable stage degrades to the plain pre-feature entry — never a
+	// fake hash. Only the hash is kept; the config itself is never logged.
+	let attestation = null;
+	if (!opts.message) {
+		const attestedStage = resolveAttestationStage({
+			stage: opts.stage,
+			project,
+			task,
+		});
+		const configHash = attestedStage
+			? hashStageConfig({ task, stage: attestedStage })
+			: null;
+		if (configHash && typeof attestedStage?.id === "string") {
+			attestation = {
+				taskId: task.id,
+				stageId: attestedStage.id,
+				configHash,
+			};
+			summary.configHash = configHash;
+		}
+	}
+
+	let commitEntry = null;
 	try {
 		// Branch affinity: stage output must only ever land on this task's own
 		// branch. A concurrent task that moved the shared checkout turns this
 		// into a warn-only skip below (never an alien commit).
 		const commitOpts = { expectedBranch: branch };
-		if (commitBody) commitOpts.body = commitBody;
+		// Trailers append AFTER body truncation (see buildStageCommitMessage),
+		// so the proof can never be truncated away; prompt-less stages attest
+		// with a trailer-only body.
+		const attestedBody = attestation
+			? appendAttestationTrailers(commitBody, attestation)
+			: commitBody;
+		if (attestedBody) commitOpts.body = attestedBody;
 		commitOpts.noCode = opts.noCode === true;
 		commitOpts.project = project;
 		const commitRes = await commitAllIfNeeded(
@@ -239,16 +292,23 @@ export async function finalizeTaskBranch(
 		summary.hash = commitRes?.hash || null;
 		if (summary.committed) {
 			const detail = `Auto-committed task work on '${branch}' (${summary.hash || "no hash"}) after stage '${stageLabel}'`;
-			record(detail);
+			commitEntry = record(detail);
 			_appendProcessLog(task, `[GIT] ${detail}`);
 			systemLog(
 				`[GIT] Task #KB-${taskShortId}: auto-committed pending work on '${branch}' after stage '${stageLabel}'`,
+			);
+		} else if (attestation) {
+			// Clean tree: compliance needs "stage ran, nothing to commit"
+			// distinguishable from "no record", so the attestation gets its
+			// own entry with an explicit null commit.
+			commitEntry = record(
+				`Stage '${stageLabel}' completed with a clean tree — nothing to commit`,
 			);
 		}
 	} catch (commitErr) {
 		summary.commitError = commitErr?.message || String(commitErr);
 		const detail = `Warning: auto-commit after stage '${stageLabel}' failed (${summary.commitError})`;
-		record(detail);
+		commitEntry = record(detail);
 		_appendProcessLog(task, `[WARN] ${detail}`);
 	}
 
@@ -262,6 +322,18 @@ export async function finalizeTaskBranch(
 	}
 	if (!summary.endSha && (task?.currentStageEndSha)) {
 		summary.endSha = task.currentStageEndSha;
+	}
+
+	// The commit SHA is only known after the commit above (never predicted
+	// before), so the history entry is attested here: structured fields for
+	// live consumers plus the durable prose token. A stage that committed
+	// names its full tip SHA; clean-tree and failed commits attest with an
+	// explicit null instead of a fake SHA.
+	if (attestation && commitEntry) {
+		attachAttestationToEntry(commitEntry, {
+			...attestation,
+			commitSha: summary.committed ? summary.endSha || null : null,
+		});
 	}
 
 	// Step 2: push the task branch when a remote exists (warn-only on failure).

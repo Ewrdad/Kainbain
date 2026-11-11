@@ -77,6 +77,16 @@ describe("parseVibeConfigModels (pure parsing)", () => {
 		]);
 		expect(model).toMatchObject({ id: "bare-model", name: "bare-model" });
 	});
+
+	it("serves single-colon deployment ids exactly like the shared grammar", () => {
+		const [model] = parseVibeConfigModels([
+			{ category: "model", options: [{ value: "mistral-large:cloud", name: "Large" }] },
+		]);
+		expect(model).toMatchObject({
+			id: "mistral-large:cloud",
+			key: "vibe::mistral::mistral-large:cloud",
+		});
+	});
 });
 
 describe("createVibeModelCatalog (contract over the mock ACP agent)", () => {

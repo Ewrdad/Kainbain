@@ -1400,6 +1400,17 @@ export const CONFIG_SCHEMA = [
 		doc: "Durable JSON file holding the D5 pending-steer queue + ack receipts across restarts. Empty disables persistence.",
 	},
 	{
+		key: "fleetCatalogFile",
+		env: "KAINBAIN_FLEET_CATALOG_FILE",
+		aliases: [],
+		type: "path",
+		default: () =>
+			path.join(os.homedir(), ".kainbain", "engine", "fleet-catalog.json"),
+		defaultDoc: "~/.kainbain/engine/fleet-catalog.json",
+		group: "tasks",
+		doc: "Durable JSON file holding the fleet model catalogue snapshot (available entries with provenance, marked-unavailable entries, quarantined ids). Refreshed on every catalogue read so the UI never depends on a transient read. Empty disables persistence.",
+	},
+	{
 		key: "circuitStateFile",
 		env: "KAINBAIN_CIRCUIT_STATE_FILE",
 		aliases: [],
