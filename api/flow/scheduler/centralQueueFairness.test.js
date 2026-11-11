@@ -111,8 +111,10 @@ describe("central queue fairness (task 16d6fbd6)", () => {
 	test("embedded scheduler picks the oldest waiting task even when the focused pipeline is further along", () => {
 		// Current symptom: Rule 2 (absolute stage index) always picks the
 		// focused pipeline's late-stage task; the other pipeline starves.
+		// Explicit queue clock: the fixtures are anchored at NOW, so the
+		// verdict must not depend on the wall clock the suite runs under.
 		const store = fakeStore();
-		const candidate = findNextCandidateTask(store);
+		const candidate = findNextCandidateTask(store, { queue: { now: NOW } });
 		expect(candidate?.taskId).toBe("task-other");
 		expect(candidate?.projectId).toBe("other");
 	});
@@ -126,7 +128,7 @@ describe("central queue fairness (task 16d6fbd6)", () => {
 	test("dispatch outcome is identical no matter which project the UI has focused", () => {
 		const outcomes = ["focused", "other", null].map((activeProjectId) => {
 			const store = fakeStore({ activeProjectId });
-			const embedded = findNextCandidateTask(store)?.taskId;
+			const embedded = findNextCandidateTask(store, { queue: { now: NOW } })?.taskId;
 			const { deps, opts } = scanDeps();
 			const fleet = scanClaimableTasks(deps, opts).map((c) => c.taskId);
 			const display = getScheduledQueue(store).map((i) => i.id);
@@ -154,7 +156,7 @@ describe("central queue fairness (task 16d6fbd6)", () => {
 		const store = fakeStore({
 			lastCompletedTask: { projectId: "focused", taskId: "task-focused" },
 		});
-		const candidate = findNextCandidateTask(store);
+		const candidate = findNextCandidateTask(store, { queue: { now: NOW } });
 		expect(candidate?.taskId).toBe("task-other");
 	});
 
@@ -179,7 +181,7 @@ describe("central queue fairness (task 16d6fbd6)", () => {
 			isTaskBlocked: () => ({ blocked: false }),
 			claimStore: new ClaimStore({ stateFile: tmpClaimState() }),
 		};
-		const candidate = findNextCandidateTask(store);
+		const candidate = findNextCandidateTask(store, { queue: { now: NOW } });
 		expect(candidate?.taskId).toBe("task-focused");
 		expect(candidate?.priorityReason).toBe("follow_on");
 	});
@@ -191,7 +193,7 @@ describe("central queue fairness (task 16d6fbd6)", () => {
 		// oldest waiting work).
 		const store = fakeStore();
 		for (let tick = 0; tick < 5; tick += 1) {
-			const candidate = findNextCandidateTask(store);
+			const candidate = findNextCandidateTask(store, { queue: { now: NOW } });
 			expect(candidate?.projectId).toBe("other");
 			// Each tick simulates the focused pipeline producing another
 			// late-stage candidate; the other pipeline's task keeps waiting
