@@ -66,6 +66,22 @@ describe("commitAndPush", () => {
 		assert.match(out.sha, /^[0-9a-f]{40}$/);
 	});
 
+	it("preserves a multi-line message body byte-for-byte in the commit", async () => {
+		// Characterization for stage attestation: the Runner carries its
+		// proof as trailers appended to the single -m message, so newlines
+		// in `message` must survive into `git log --format=%B` verbatim.
+		ctx = worktreeRepo(false);
+		fs.writeFileSync(path.join(ctx.dir, "g.txt"), "y");
+		const message = "kb/t1 s1: Runner host-9 stage output\n\nKainBain-Task: t1\nKainBain-Stage: s1\nKainBain-Config-Hash: sha256:abc123";
+		await commitAndPush({ workdir: ctx.dir, branch: "kb/t1", message });
+		const full = execFileSync("git", ["log", "-1", "--format=%B"], { cwd: ctx.dir, encoding: "utf8" });
+		assert.ok(full.includes("KainBain-Task: t1"));
+		assert.ok(full.includes("KainBain-Stage: s1"));
+		assert.ok(full.includes("KainBain-Config-Hash: sha256:abc123"));
+		const subject = execFileSync("git", ["log", "-1", "--format=%s"], { cwd: ctx.dir, encoding: "utf8" }).trim();
+		assert.equal(subject, "kb/t1 s1: Runner host-9 stage output");
+	});
+
 	it("records per-Runner commit identity without touching repo config", async () => {
 		ctx = worktreeRepo(false);
 		fs.writeFileSync(path.join(ctx.dir, "g.txt"), "y");

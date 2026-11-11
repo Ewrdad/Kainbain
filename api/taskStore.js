@@ -562,6 +562,7 @@ export class TaskStore {
 	 * @param {Object} [opts]
 	 * @param {Object} [opts.bridge] - Event bridge override.
 	 * @param {string} [opts.stageName] - Stage name for log/commit messages.
+	 * @param {Object} [opts.stage] - Stage definition the attestation hash covers.
 	 * @returns {Promise<Object|null>} Finalisation summary, or null when the cwd cannot be resolved.
 	 **/
 	async finalizeTaskBranch(task, projectCwd, opts = {}) {
