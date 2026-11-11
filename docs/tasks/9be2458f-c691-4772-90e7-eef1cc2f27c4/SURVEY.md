@@ -55,6 +55,31 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "All connected tools, fixed properly (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Show up on its own at the next automatic check (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Keep the shortcut as it is and show a clear warning (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Thinking depth / reasoning level (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
