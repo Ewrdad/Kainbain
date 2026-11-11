@@ -15,7 +15,13 @@ try {
 	gitAvailable = false;
 }
 
-const { checkoutBranch, _moveAsideBlockingLiveSnapshots } = await import("./branch.js");
+const {
+	checkoutBranch,
+	ensureBranchCheckedOut,
+	withCheckedOutBranch,
+	returnToDefaultBranch,
+	_moveAsideBlockingLiveSnapshots,
+} = await import("./branch.js");
 const { commitEngineSnapshots } = await import("./commit.js");
 const { GitDirtyTreeError } = await import("./errors.js");
 
@@ -137,5 +143,174 @@ describe("commit-then-switch (real git)", () => {
 		expect(fs.readFileSync(path.join(dir, "docs", "tasks", "t", "task.md"), "utf8")).toBe("new snapshot\n");
 		// The real edit is still uncommitted working-tree dirt.
 		expect(run(dir, "status", "--porcelain")).toContain("real.js");
+	});
+});
+
+// Regression for the branch-switch bug that stranded tasks 82e49a05
+// (runner auto-update, Update stage) and 9d2b75a2 (runner/model autodetect,
+// In Progress + catchup) on 2026-11-11: the primary checkout sits on a
+// kb/* branch holding ANOTHER task's engine snapshot
+// (docs/tasks/<other-id>/task.md) as an UNTRACKED file while main TRACKS
+// it, so a raw `git checkout main` is refused by git's own
+// untracked-overwrite safety. Every public branch-switch entry point must
+// survive this conflicting state. Throwaway temp dirs — never the KainBain
+// repo.
+const OTHER_TASK = "d1e56caa-743e-49ee-9bc9-d8a7062a92bd";
+const OTHER_SNAPSHOT = path.join("docs", "tasks", OTHER_TASK, "task.md");
+
+/**
+ * Builds the EXACT conflicting state: main tracks
+ * docs/tasks/<other>/task.md (a merged task's snapshot), the working tree
+ * is on kb/t, and the same path exists there as an untracked live copy.
+ */
+function initConflictingRepo() {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-conflict-"));
+	run(dir, "init", "-b", "main");
+	run(dir, "config", "user.email", "kainbain-test@example.com");
+	run(dir, "config", "user.name", "KainBain Test");
+	fs.writeFileSync(path.join(dir, "real.js"), "base code\n");
+	run(dir, "add", "-A");
+	run(dir, "commit", "-m", "base");
+	run(dir, "checkout", "-b", "kb/t");
+	// A second task merges: main now tracks its live snapshot.
+	run(dir, "checkout", "main");
+	fs.mkdirSync(path.join(dir, "docs", "tasks", OTHER_TASK), { recursive: true });
+	fs.writeFileSync(path.join(dir, OTHER_SNAPSHOT), "main snapshot\n");
+	run(dir, "add", "-A");
+	run(dir, "commit", "-m", "merge task d1e56caa");
+	// Back on the task branch the engine wrote the same path as an
+	// untracked live file — the conflicting state.
+	run(dir, "checkout", "kb/t");
+	fs.mkdirSync(path.join(dir, "docs", "tasks", OTHER_TASK), { recursive: true });
+	fs.writeFileSync(path.join(dir, OTHER_SNAPSHOT), "live snapshot\n");
+	return dir;
+}
+
+function headBranch(cwd) {
+	return run(cwd, "rev-parse", "--abbrev-ref", "HEAD").trim();
+}
+
+describe("branch switches in the conflicting state (real git)", () => {
+	let dir;
+	beforeEach(() => {
+		if (!gitAvailable) return;
+		dir = initConflictingRepo();
+		tempDirs.push(dir);
+	});
+
+	it("reproduces the original failure: raw git checkout main is refused", () => {
+		if (!gitAvailable) return;
+		expect(headBranch(dir)).toBe("kb/t");
+		let failure = null;
+		try {
+			run(dir, "checkout", "main");
+		} catch (e) {
+			failure = e;
+		}
+		expect(failure).not.toBeNull();
+		expect(String(failure.stderr || failure.message)).toMatch(
+			/untracked working tree files would be overwritten/i,
+		);
+		expect(headBranch(dir)).toBe("kb/t");
+	});
+
+	it("checkoutBranch switches to main and restores the live snapshot", async () => {
+		if (!gitAvailable) return;
+		const res = await checkoutBranch(dir, "main");
+		expect(res).toEqual({ switched: true });
+		expect(headBranch(dir)).toBe("main");
+		// The live (newer) content wins over main's stale tracked copy.
+		expect(fs.readFileSync(path.join(dir, OTHER_SNAPSHOT), "utf8")).toBe("live snapshot\n");
+	});
+
+	it("ensureBranchCheckedOut switches an existing branch to main (the shape that failed 82e49a05/9d2b75a2)", async () => {
+		if (!gitAvailable) return;
+		const res = await ensureBranchCheckedOut(dir, "main");
+		expect(res).toMatchObject({ created: false, checkedOut: true, switched: true });
+		expect(headBranch(dir)).toBe("main");
+		expect(fs.readFileSync(path.join(dir, OTHER_SNAPSHOT), "utf8")).toBe("live snapshot\n");
+	});
+
+	it("ensureBranchCheckedOut creates a missing branch pinned to main through the protected path", async () => {
+		if (!gitAvailable) return;
+		const res = await ensureBranchCheckedOut(dir, "kb/new", { baseBranch: "main" });
+		expect(res).toMatchObject({ created: true, checkedOut: true, switched: true });
+		expect(headBranch(dir)).toBe("kb/new");
+		// Pinned to main, not to the current HEAD.
+		expect(run(dir, "rev-parse", "kb/new").trim()).toBe(run(dir, "rev-parse", "main").trim());
+		expect(fs.readFileSync(path.join(dir, OTHER_SNAPSHOT), "utf8")).toBe("live snapshot\n");
+	});
+
+	it("withCheckedOutBranch runs fn on main (Update-stage shape) despite the conflict", async () => {
+		if (!gitAvailable) return;
+		let seenBranch = null;
+		const result = await withCheckedOutBranch(dir, "main", async () => {
+			seenBranch = headBranch(dir);
+			return "update-done";
+		});
+		expect(result).toBe("update-done");
+		expect(seenBranch).toBe("main");
+		expect(headBranch(dir)).toBe("main");
+		expect(fs.readFileSync(path.join(dir, OTHER_SNAPSHOT), "utf8")).toBe("live snapshot\n");
+	});
+
+	it("withCheckedOutBranch on a CI branch restores the default branch afterwards", async () => {
+		if (!gitAvailable) return;
+		run(dir, "branch", "kb/ci", "main");
+		let seenBranch = null;
+		await withCheckedOutBranch(dir, "kb/ci", async () => {
+			seenBranch = headBranch(dir);
+		});
+		expect(seenBranch).toBe("kb/ci");
+		// Restore hopped back to the default branch through the same
+		// protected path.
+		expect(headBranch(dir)).toBe("main");
+		expect(fs.readFileSync(path.join(dir, OTHER_SNAPSHOT), "utf8")).toBe("live snapshot\n");
+	});
+
+	it("returnToDefaultBranch lands on main from the conflicting kb/t (catchup/finalize shape)", async () => {
+		if (!gitAvailable) return;
+		const res = await returnToDefaultBranch(dir, { recovery: "off" });
+		expect(res).toEqual({ switched: true, branch: "main" });
+		expect(headBranch(dir)).toBe("main");
+		expect(fs.readFileSync(path.join(dir, OTHER_SNAPSHOT), "utf8")).toBe("live snapshot\n");
+	});
+
+	it("a REAL untracked file tracked by main still blocks the switch loudly", async () => {
+		if (!gitAvailable) return;
+		// main also tracks a real source file; kb/t holds both it and the
+		// engine snapshot as untracked live copies.
+		await checkoutBranch(dir, "main");
+		fs.writeFileSync(path.join(dir, "real2.js"), "main real\n");
+		run(dir, "add", "-A");
+		run(dir, "commit", "-m", "main real2");
+		await checkoutBranch(dir, "kb/t");
+		fs.mkdirSync(path.join(dir, "docs", "tasks", OTHER_TASK), { recursive: true });
+		fs.writeFileSync(path.join(dir, OTHER_SNAPSHOT), "live snapshot\n");
+		fs.writeFileSync(path.join(dir, "real2.js"), "live real\n");
+
+		// The move-aside only ever touches ENGINE-OWNED paths, so the real
+		// untracked file still refuses the switch at the clean-tree guard.
+		await expect(checkoutBranch(dir, "main", { recovery: "off" })).rejects.toBeInstanceOf(
+			GitDirtyTreeError,
+		);
+		await expect(ensureBranchCheckedOut(dir, "main")).rejects.toBeInstanceOf(GitDirtyTreeError);
+		// Nothing was switched or committed.
+		expect(headBranch(dir)).toBe("kb/t");
+		expect(fs.readFileSync(path.join(dir, "real2.js"), "utf8")).toBe("live real\n");
+	});
+
+	it("migration: after one round trip through main, main no longer tracks the snapshot and even a raw checkout succeeds", async () => {
+		if (!gitAvailable) return;
+		// Land on main (move-aside), which leaves the live copy as tracked
+		// dirt on main; the next pre-switch commit untracks it there.
+		await checkoutBranch(dir, "main");
+		await checkoutBranch(dir, "kb/t");
+		// main's tree no longer carries the snapshot.
+		expect(run(dir, "ls-tree", "main", "--", OTHER_SNAPSHOT).trim()).toBe("");
+		// A raw checkout (no move-aside) can no longer be blocked by it.
+		run(dir, "checkout", "main");
+		expect(headBranch(dir)).toBe("main");
+		expect(fs.readFileSync(path.join(dir, OTHER_SNAPSHOT), "utf8")).toBe("live snapshot\n");
 	});
 });
