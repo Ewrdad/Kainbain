@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../services/api';
 import { subscribeObservability } from '../services/observabilityEvents';
+import { INVALIDATION_DEBOUNCE_MS, QUEUE_POPUP_POLL_MS } from '../services/pollingCadences.js';
+import { isTabVisible, subscribeTabVisible } from '../services/tabVisibility.js';
 import { logger } from '../services/logger';
 
 /***
@@ -10,7 +12,8 @@ import { logger } from '../services/logger';
  *   is the global observability snapshot (`api.observabilityStatus(undefined)`
  *   serves every project in dispatch order, so no new endpoint was needed).
  *   Fetches on enable only, refreshes on observability invalidations, and
- *   keeps a 15 s safety poll plus visibility/focus returns. The monitor
+ *   keeps a 15 s visibility-gated safety poll (hidden tabs issue zero
+ *   reads) plus immediate catch-up on visibility/focus returns. The monitor
  *   dashboard deliberately keeps its own inline fetch: it publishes metrics
  *   and queue atomically from one response with monitor-only guards
  *   (TASK_UPDATED active-task filter, hidden-tab gating, a staleness rule),
@@ -110,7 +113,7 @@ export function useScheduledQueue({ projectScope = 'all', enabled = false } = {}
           if (mountedRef.current) {
             void fetchQueue(true);
           }
-        }, 500);
+        }, INVALIDATION_DEBOUNCE_MS);
       }
     };
     const unsubscribe = subscribeObservability((event) => {
@@ -124,18 +127,20 @@ export function useScheduledQueue({ projectScope = 'all', enabled = false } = {}
       }
       scheduleRefresh();
     });
-    const interval = setInterval(() => void fetchQueue(true), 15000);
-    const onVisibility = () => {
-      if (document.visibilityState !== 'hidden') void fetchQueue(true);
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('focus', onVisibility);
+    // Background tabs pause (survey q4): the tick skips its read while
+    // hidden and the shared catch-up refreshes on return, so a hidden tab
+    // issues zero queue reads.
+    const interval = setInterval(() => {
+      if (isTabVisible()) void fetchQueue(true);
+    }, QUEUE_POPUP_POLL_MS);
+    const stopVisibility = subscribeTabVisible(() => {
+      void fetchQueue(true);
+    });
     return () => {
       unsubscribe();
       clearInterval(interval);
       clearTimeout(debounceTimer);
-      document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('focus', onVisibility);
+      stopVisibility();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchQueue closes over enabled/projectScope which are already deps; its identity is intentionally unstable to let the compiler auto-memoize
   }, [enabled, projectScope]);

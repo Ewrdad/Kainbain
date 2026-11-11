@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { api } from '../../../services/api';
+import { useFleetDirectory } from '../../../hooks/useFleetDirectory';
+import { FLEET_POLL_MS } from '../../../services/pollingCadences.js';
 import { MarkdownViewer } from '../../common/MarkdownViewer';
 import { formatTaskTitleFirstLine } from '../../tasks/taskFormatters';
 
@@ -57,12 +59,14 @@ const FRESHNESS_DOT = {
 
 /***
  * MARK: useRunnerMonitor
- * @description Polls the Runner fleet monitor (`GET /runners/monitor`) plus
- *   the registry list (`GET /runners`) for harness capabilities. Shared by
- *   the desktop per-runner widget and the compact mobile rows so both show
- *   the same fleet picture. Pass `enabled: false` when the caller injects
- *   `assignmentsOverride`/`registryOverride` (the mobile header's single
- *   poller) so one tick issues exactly one fleet read. An unusable `pollMs`
+ * @description Reads the Runner fleet monitor (`GET /runners/monitor`) plus
+ *   the registry list (`GET /runners`) for harness capabilities via the
+ *   shared `useFleetDirectory` poller. Shared by the desktop per-runner
+ *   widget and the compact mobile rows so both show the same fleet picture
+ *   — and with the Now Playing bar, so one tick issues exactly one fleet
+ *   read no matter how many surfaces mount. Pass `enabled: false` when the
+ *   caller injects `assignmentsOverride`/`registryOverride` (the mobile
+ *   header's single poller) so no second read starts. An unusable `pollMs`
  *   (zero, negative, or non-numeric) falls back to the 5s default so the
  *   hook can never busy-loop the fleet endpoints. Missing endpoint methods
  *   and rejected reads never throw: before the first successful read they
@@ -70,66 +74,26 @@ const FRESHNESS_DOT = {
  *   old backends and outages), and afterwards the last-known fleet picture
  *   stays until the next poll succeeds instead of flapping to empty. The
  *   fleet endpoint is intentionally project-agnostic (Runners are global):
- *   there is exactly one poller and no per-project variant.
- * @example const { assignments, registry } = useRunnerMonitor({ pollMs: 5000 });
+ *   there is exactly one poller and no per-project variant. Background
+ *   tabs pause and catch up on return (survey q4).
+ * @example const { assignments, registry } = useRunnerMonitor({ pollMs: FLEET_POLL_MS });
  ***/
-export const useRunnerMonitor = ({ pollMs = 5000, enabled = true } = {}) => {
-  const [monitor, setMonitor] = useState(null);
-  const [runners, setRunners] = useState(null);
-  // A zero or non-numeric interval would busy-loop the fleet endpoints
-  // (`setInterval` treats NaN as 0), so unusable values fall back to the
-  // default cadence and the fleet keeps updating instead of hammering.
-  const safePollMs = Number.isFinite(pollMs) && pollMs > 0 ? pollMs : 5000;
-
-  useEffect(() => {
-    if (!enabled) return undefined;
-    let mounted = true;
-    let timer = null;
-    const load = async () => {
-      try {
-        // The fleet endpoints may not exist on older backends or in hosts
-        // that mock only part of the api surface: a missing method reads as
-        // empty instead of throwing, so the failure stays a quiet empty
-        // fleet (legacy fallback visible) rather than a thrown TypeError.
-        const monitorRead =
-          typeof api.getRunnerMonitor === 'function'
-            ? api.getRunnerMonitor().catch(() => null)
-            : Promise.resolve(null);
-        const registryRead =
-          typeof api.getRunners === 'function'
-            ? api.getRunners().catch(() => null)
-            : Promise.resolve(null);
-        const [m, list] = await Promise.all([monitorRead, registryRead]);
-        if (!mounted) return;
-        if (m) setMonitor(m);
-        if (Array.isArray(list)) setRunners(list);
-      } catch {
-        // Best-effort: stale cards stay until the next poll succeeds.
-      }
-    };
-    void load();
-    timer = setInterval(() => void load(), safePollMs);
-    return () => {
-      mounted = false;
-      if (timer) clearInterval(timer);
-    };
-  }, [safePollMs, enabled]);
+export const useRunnerMonitor = ({ pollMs = FLEET_POLL_MS, enabled = true } = {}) => {
+  const { assignments, runners, scheduler } = useFleetDirectory({ pollMs, enabled });
 
   return useMemo(() => {
     // Text-or-numeric Runner ids only: an object id would crash the row that
     // renders it, so malformed assignments are ignored (fail-safe) instead.
-    const assignments = Array.isArray(monitor?.liveAssignments)
-      ? monitor.liveAssignments.filter(
-          (a) => a && a.runnerId && (typeof a.runnerId === 'string' || typeof a.runnerId === 'number'),
-        )
-      : [];
+    const filtered = (Array.isArray(assignments) ? assignments : []).filter(
+      (a) => a && a.runnerId && (typeof a.runnerId === 'string' || typeof a.runnerId === 'number'),
+    );
     const registry = new Map(
       (Array.isArray(runners) ? runners : [])
         .filter((r) => r && r.runnerId)
         .map((r) => [r.runnerId, r]),
     );
-    return { assignments, registry, scheduler: monitor?.scheduler || null };
-  }, [monitor, runners]);
+    return { assignments: filtered, registry, scheduler };
+  }, [assignments, runners, scheduler]);
 };
 
 const taskTitle = (task) => {
@@ -242,7 +206,7 @@ export function PerRunnerTasksWidget({
   tasks = [],
   stages = [],
   compact = false,
-  pollMs = 5000,
+  pollMs = FLEET_POLL_MS,
   assignmentsOverride,
   registryOverride,
   onOpenTask,

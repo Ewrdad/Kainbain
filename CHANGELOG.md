@@ -45,6 +45,7 @@ source of truth. This file intentionally lists only high-impact changes.
 - Survey answers survive later Runner stages: Runner task-file shipments merge into the backend survey (new rounds land, saved answers are kept) instead of overwriting them with stale worktree copies; the question-me prompt also names the exact backend-resolved file for alias/extension-less configs (task fbcaef1d).
 - Bottom (now-playing) bar on mobile is horizontally scrollable, so all runners are reachable instead of only the first (task a654a254).
 - Pipeline releases published from the deploy tip worktree are synced back to the primary `dist/` and verified there; a stranded release now fails Publish loudly, and the Update stage verifies the installed commit against the last-publish pointer instead of reporting "already current" (task a654a254).
+- Bottom (now-playing) bar stays live with no page refresh: runner boxes follow stage/task changes within one 5s fleet poll (all fleet surfaces share a single poller), and the queue chip refreshes within about a second of task activity with a 15s safety poll; background tabs pause polling and catch up on return (task ed00c209).
 
 ## [1.0.0] - 2026-10-23
 
