@@ -279,6 +279,12 @@ export async function executeStage(
 						}
 					}
 					const registry = store.runnerRegistry || null;
+					// A registry must actually exist before we can prove the
+					// fleet cannot serve this task (test doubles and older
+					// wiring without one keep deferring as before). With a
+					// registry attached, an empty or no-match result still
+					// falls back so a fleet that can never claim the work does
+					// not park it forever.
 					if (registry && !isRunnerClaimable(registry, req, { projectId })) {
 						fallbackDue = true;
 						fallbackReason = " (no capable runner for this task)";
