@@ -107,9 +107,11 @@ export function autoApproveSweep(store, { now = Date.now(), batch, configuredLea
 				try {
 					store._saveTaskMarkdown?.(candidate.projectCwd ?? project?.cwd, fresh);
 				} catch {
-					// A failed marker write still sends the reminder below —
-					// the next sweep retries the marker (at-most-once per
-					// persisted write, at-least-once delivery).
+					// A failed marker write still sends the reminder below. The
+					// marker stays set in memory, so this process never sends a
+					// second one; only a restart (disk never got the marker) can
+					// re-fire it — at-most-once per process, at-least-once across
+					// restarts, which is the fail-safe direction for a nudge.
 				}
 				try {
 					store.eventBridge?.broadcastGlobal?.("TASK_UPDATED", fresh);

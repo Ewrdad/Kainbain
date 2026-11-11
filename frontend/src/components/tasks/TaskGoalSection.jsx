@@ -262,7 +262,7 @@ export function TaskGoalSection({
             className="w-2 h-2 mt-1 rounded-full bg-warning animate-pulse shrink-0"
             aria-hidden="true"
           />
-          <div className="space-y-1 text-[11px] font-mono leading-relaxed">
+          <div className="space-y-1 text-xs font-mono leading-relaxed">
             <p className="font-bold uppercase tracking-wider text-warning">
               Stage is running — this edit applies from the next stage
             </p>

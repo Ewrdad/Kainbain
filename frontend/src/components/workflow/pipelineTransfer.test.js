@@ -492,3 +492,63 @@ describe('hostile key hardening', () => {
     expect(doc.stages[0].note).toBe('keep');
   });
 });
+
+describe('human auto-approve hold in pipeline transfer', () => {
+  function validDoc() {
+    return JSON.parse(
+      serializePipelineJson({ name: 'Main' }, [{ id: 's1', name: 'A', type: 'agent', prompt: 'hi' }]),
+    );
+  }
+
+  test('export preserves the hold and import carries it verbatim', () => {
+    const stages = [
+      { id: 's1', name: 'Legal', type: 'human', prompt: 'Check', autoApproveAfterMs: 10 * 24 * 60 * 60 * 1000 },
+    ];
+    const doc = serializePipeline({ name: 'Main' }, stages);
+    expect(doc.stages[0].autoApproveAfterMs).toBe(864000000);
+    expect(validatePipelineDoc(doc).ok).toBe(true);
+    const payload = buildImportPayload(doc, { timestamp: 7 });
+    expect(payload.stages[0].autoApproveAfterMs).toBe(864000000);
+  });
+
+  test('stages without the hold export unchanged (legacy round-trip)', () => {
+    const doc = serializePipeline({ name: 'Main' }, [
+      { id: 's1', name: 'Legal', type: 'human', prompt: 'Check' },
+    ]);
+    expect('autoApproveAfterMs' in doc.stages[0]).toBe(false);
+    expect(validatePipelineDoc(doc).ok).toBe(true);
+  });
+
+  test('a human string hold validates and round-trips', () => {
+    const doc = validDoc();
+    doc.stages = [{ name: 'Legal', type: 'human', autoApproveAfterMs: '10 days' }];
+    expect(validatePipelineDoc(doc).ok).toBe(true);
+    const payload = buildImportPayload(doc, { timestamp: 7 });
+    expect(payload.stages[0].autoApproveAfterMs).toBe('10 days');
+  });
+
+  test('garbage holds fail import with a named error', () => {
+    const doc = validDoc();
+    doc.stages = [{ name: 'Legal', type: 'human', autoApproveAfterMs: 'ten days' }];
+    const result = validatePipelineDoc(doc);
+    expect(result.ok).toBe(false);
+    expect(result.errors.join(' ')).toMatch(/autoApproveAfterMs/);
+    expect(() => buildImportPayload(doc, { timestamp: 7 })).toThrow(/Invalid pipeline file/i);
+  });
+
+  test('sub-minute holds fail import (typo guard)', () => {
+    const doc = validDoc();
+    doc.stages = [{ name: 'Legal', type: 'human', autoApproveAfterMs: 30000 }];
+    const result = validatePipelineDoc(doc);
+    expect(result.ok).toBe(false);
+    expect(result.errors.join(' ')).toMatch(/1 minute minimum/);
+  });
+
+  test('over-maximum holds fail import with a unit hint', () => {
+    const doc = validDoc();
+    doc.stages = [{ name: 'Legal', type: 'human', autoApproveAfterMs: 400 * 24 * 60 * 60 * 1000 }];
+    const result = validatePipelineDoc(doc);
+    expect(result.ok).toBe(false);
+    expect(result.errors.join(' ')).toMatch(/365 day maximum/);
+  });
+});
