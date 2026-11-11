@@ -81,6 +81,43 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "All connected helper tools"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Show it automatically as soon as it is detected"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "One combined list, each model labelled with which helper it came from"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Keep the last working choice and show a warning"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "No - shortcuts stay as they are, the new model just appears as an extra option"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Keep showing them but marked as unavailable"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
