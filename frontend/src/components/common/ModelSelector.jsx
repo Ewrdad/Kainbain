@@ -268,7 +268,7 @@ export function ModelSelector({
   };
 
   const handleReasoningChange = (level, option) => {
-    const base = resolvedValue || splitReasoning(value).baseRef;
+    const base = splitReasoning(value).baseRef || resolvedValue;
     if (!base) return;
     if (level) {
       try {
