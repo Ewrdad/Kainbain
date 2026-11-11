@@ -61,3 +61,19 @@ which also wipes stored alias models on load.
   with no store. It fixes selection but keeps the transient-read
   failure (a restart or a brief runner outage blanks the list with no
   explanation), which the snapshot's mark-unavailable semantics solve.
+
+## Amendment (same day, post-review): pin ∪ discovered advertisement
+
+Review found the catalogue could still hide a brand-new harness model:
+pinned Runners (`KAINBAIN_RUNNER_MODELS`/`KAINBAIN_RUNNER_MODEL`) skipped
+discovery entirely, so a fresh release (e.g. a new Muse model) never
+reached the fleet. The Runner default is now **pin ∪ discovered**
+(`resolveAdvertisedModels`): discovery scans pinned Runners too (boot,
+cadence, Re-detect), grammar-validated discovered ids join the pin, and
+the pin is never dropped — a broken scan cannot hide it. The heartbeat
+labels this `facts.modelSource: "pinned+discovered"` (additive vocabulary;
+old backends drop it silently). `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1`
+keeps discovery-replaces-pin as the explicit opt-in. The muse leg's
+`muse serve` probe now passes `--provider <meta>` and the same handshake
+shape as the backend MSP catalogue, so both sides read the host
+identically.

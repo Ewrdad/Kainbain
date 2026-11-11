@@ -693,7 +693,7 @@ describe("model auto-discovery refresh", () => {
 		assert.deepEqual(out, ["muse::meta::m"]);
 		assert.equal(calls, 1);
 	});
-	it("skips scanning when the operator pinned models (pin wins by default)", async () => {
+	it("scans even when the operator pinned models — the pin unions with discovery (survey q2)", async () => {
 		clearDiscoveredModelsCache();
 		let calls = 0;
 		const out = await refreshDiscoveredModels({
@@ -703,10 +703,13 @@ describe("model auto-discovery refresh", () => {
 				return ["muse::meta::m"];
 			},
 		});
-		assert.deepEqual(out, []);
-		assert.equal(calls, 0);
+		assert.deepEqual(out, ["muse::meta::m"]);
+		assert.equal(calls, 1);
+		// The advertised list is the union: pin first, discovered appended.
+		const { resolveAdvertisedModels } = await import("./modelDiscovery.js");
+		assert.deepEqual(resolveAdvertisedModels({ models: ["pinned"] }, out), ["pinned", "muse::meta::m"]);
 	});
-	it("skips scanning for a singular model pin too", async () => {
+	it("scans for a singular model pin too", async () => {
 		clearDiscoveredModelsCache();
 		let calls = 0;
 		const out = await refreshDiscoveredModels({
@@ -716,10 +719,10 @@ describe("model auto-discovery refresh", () => {
 				return ["muse::meta::m"];
 			},
 		});
-		assert.deepEqual(out, []);
-		assert.equal(calls, 0);
+		assert.deepEqual(out, ["muse::meta::m"]);
+		assert.equal(calls, 1);
 	});
-	it("scans despite the pin with the discovery-wins opt-in (survey q4)", async () => {
+	it("scans with the discovery-wins opt-in as well (replaces the pin at advertisement)", async () => {
 		clearDiscoveredModelsCache();
 		let calls = 0;
 		const out = await refreshDiscoveredModels({
@@ -1962,7 +1965,7 @@ describe("handlePendingCommands", () => {
 		]);
 	});
 
-	it("acks pinned without scanning when models are pinned (pin wins by default)", async () => {
+	it("re-detect scans even when models are pinned (pin unions with discovery)", async () => {
 		const state = {};
 		await handlePendingCommands({
 			config: claudeConfig({ models: ["pinned-model"] }),
@@ -1970,10 +1973,10 @@ describe("handlePendingCommands", () => {
 			logger: quiet,
 			state,
 			pendingCommands: ["requestModelRediscovery"],
-			discoverFn: async () => { throw new Error("must not probe when pinned"); },
+			discoverFn: async () => ["muse::test::m1", "muse::meta::muse-spark-1.4"],
 		});
 		assert.deepEqual(state.commandAcks, [
-			{ command: "requestModelRediscovery", ok: true, detail: "models pinned; discovery skipped" },
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 2 model(s) (muse:2)" },
 		]);
 	});
 
@@ -2073,7 +2076,7 @@ describe("handlePendingCommands", () => {
 		]);
 	});
 
-	it("appends the stale-pin hint to pinned acks too (the pin hides those models)", async () => {
+	it("appends the stale-pin hint to pinned re-detect acks too", async () => {
 		const state = {};
 		await handlePendingCommands({
 			config: claudeConfig({ models: ["pinned-model"] }),
@@ -2081,10 +2084,11 @@ describe("handlePendingCommands", () => {
 			logger: quiet,
 			state,
 			pendingCommands: ["requestModelRediscovery"],
+			discoverFn: async () => ["muse::test::m1"],
 			detectedHarnesses: ["pi", "muse"],
 		});
 		assert.deepEqual(state.commandAcks, [
-			{ command: "requestModelRediscovery", ok: true, detail: "models pinned; discovery skipped; harness auto-detect also sees: pi (add it to KAINBAIN_RUNNER_HARNESSES or use auto, then restart)" },
+			{ command: "requestModelRediscovery", ok: true, detail: "discovered 1 model(s) (muse:1); harness auto-detect also sees: pi (add it to KAINBAIN_RUNNER_HARNESSES or use auto, then restart)" },
 		]);
 	});
 

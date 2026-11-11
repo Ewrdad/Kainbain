@@ -192,7 +192,14 @@ export function normalizeCapabilities(facts = {}) {
 
 	let modelSource;
 	if (src.modelSource !== undefined) {
-		if (src.modelSource === "pinned" || src.modelSource === "discovered" || src.modelSource === "unpinned") {
+		// "pinned+discovered" = the operator pin is advertised together with
+		// the union of scanned ids (the runner default since task 9d2b75a2).
+		if (
+			src.modelSource === "pinned" ||
+			src.modelSource === "pinned+discovered" ||
+			src.modelSource === "discovered" ||
+			src.modelSource === "unpinned"
+		) {
 			modelSource = src.modelSource;
 		}
 		// Anything else is dropped silently (same advisory rule as above).

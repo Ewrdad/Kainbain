@@ -445,6 +445,19 @@ test("muse leg honors the discoverFn seam and the spawn seam", async () => {
 	assert.deepEqual(viaSpawn, ["muse::meta::m1"]);
 });
 
+test("muse leg probes with --provider like the backend MSP catalogue (host parity)", async () => {
+	let argv = null;
+	const transcript = JSON.stringify({ jsonrpc: "2.0", id: 2, result: { models: [{ modelId: "m1", providerId: "meta" }] } });
+	const capture = (bin, args) => {
+		argv = [bin, ...args];
+		return { stdout: transcript };
+	};
+	await discoverMuseModels({ spawnSyncFn: capture });
+	assert.deepEqual(argv, ["muse", "serve", "--provider", "meta", "--no-session-log"]);
+	await discoverMuseModels({ spawnSyncFn: capture, provider: "echo" });
+	assert.deepEqual(argv, ["muse", "serve", "--provider", "echo", "--no-session-log"]);
+});
+
 test("muse leg throws MUSE_MSP_MODELS_EMPTY when the CLI answers with zero rows", async () => {
 	const emptyAnswer = JSON.stringify({ jsonrpc: "2.0", id: 2, result: { models: [] } });
 	try {

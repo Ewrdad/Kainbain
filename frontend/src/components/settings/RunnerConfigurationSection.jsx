@@ -378,9 +378,11 @@ export function RunnerConfigurationSection() {
     ? '(operator override)'
     : sourceSummary?.source === 'pinned'
       ? '(pinned on Runner)'
-      : sourceSummary?.source === 'unpinned'
-        ? '(none advertised)'
-        : '(auto-detected from Runner)';
+      : sourceSummary?.source === 'pinned+discovered'
+        ? '(pinned on Runner + auto-detected)'
+        : sourceSummary?.source === 'unpinned'
+          ? '(none advertised)'
+          : '(auto-detected from Runner)';
   const lastScanLine = sourceSummary?.scannedAtMs != null
     ? `Last scan: ${new Date(sourceSummary.scannedAtMs).toLocaleString()}`
     : null;
