@@ -419,6 +419,67 @@ describe("ProjectStore", () => {
 		});
 	});
 
+	describe("stage runnerPolicy data model", () => {
+		it("keeps legacy stages byte-identical through normalizeStage (no runnerPolicy key)", () => {
+			const p = store.createProject({ name: "Policy Legacy" , allowLocalOnly: true });
+			const stages = store.getStages(p.id);
+			expect(stages.some((s) => "runnerPolicy" in s)).toBe(false);
+			store.updateStages(p.id, DEFAULT_STAGES.map((s) => ({ ...s })));
+			expect(store.getStages(p.id).some((s) => "runnerPolicy" in s)).toBe(false);
+		});
+
+		it("round-trips stage.runnerPolicy through updateStages + _saveProjectFile + reload", () => {
+			const p = store.createProject({ name: "Policy Roundtrip" , allowLocalOnly: true });
+			const stages = store
+				.getStages(p.id)
+				.map((s, i) =>
+					i === 0
+						? {
+								...s,
+								runnerPolicy: { mode: "allow", runners: ["onsite-1", "onsite-1 ", " cloud-2"] },
+							}
+						: s,
+				);
+			store.updateStages(p.id, stages);
+
+			// In-memory (normalized: trimmed and deduped)
+			expect(store.getStages(p.id)[0].runnerPolicy).toEqual({
+				mode: "allow",
+				runners: ["onsite-1", "cloud-2"],
+			});
+
+			// On disk
+			const diskData = JSON.parse(
+				fs.readFileSync(path.join(p.cwd, ".kainbain", "project.json"), "utf8"),
+			);
+			expect(diskData.stages[0].runnerPolicy).toEqual({
+				mode: "allow",
+				runners: ["onsite-1", "cloud-2"],
+			});
+
+			// And reload from disk
+			const reloaded = store._loadProjectFile(p.cwd);
+			const reloadedStage = reloaded.workflows[0].stages[0];
+			expect(reloadedStage.runnerPolicy).toEqual({
+				mode: "allow",
+				runners: ["onsite-1", "cloud-2"],
+			});
+		});
+
+		it("round-trips stage.runnerPolicy through named workflows (create/update)", () => {
+			const p = store.createProject({ name: "Policy Workflows" , allowLocalOnly: true });
+			const created = store.createWorkflow(p.id, {
+				name: "Restricted",
+				stages: [{ id: "s1", name: "Publish", type: "ci", runnerPolicy: { mode: "block", runners: ["cloud-9"] } }],
+			});
+			expect(created.stages[0].runnerPolicy).toEqual({ mode: "block", runners: ["cloud-9"] });
+			const updated = store.updateWorkflow(p.id, created.id, {
+				stages: [{ id: "s1", name: "Publish", type: "ci", runnerPolicy: { mode: "allow", runners: ["onsite-1"] } }],
+			});
+			expect(updated.stages[0].runnerPolicy).toEqual({ mode: "allow", runners: ["onsite-1"] });
+		});
+	});
+
 	it("persists useBranches (per-task branch support) as an opt-in project flag", () => {
 		// Default OFF for backwards compatibility.
 		const plain = store.createProject({ name: "Single Branch" , allowLocalOnly: true });

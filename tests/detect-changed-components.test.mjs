@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const { detectFromFiles, parseOverride } = await import(
+const { detectFromFiles, parseOverride, detectAdsiteSync, adsiteForPath } = await import(
 	"../scripts/detect-changed-components.mjs"
 );
 
@@ -32,6 +32,38 @@ describe("detectFromFiles", () => {
 		assert.deepEqual(detectFromFiles(["api/version.json"]).components, ["backend"]);
 		assert.deepEqual(detectFromFiles(["frontend/version.json"]).components, ["frontend"]);
 		assert.deepEqual(detectFromFiles(["runner/version.json"]).components, ["runner"]);
+	});
+
+	it("ad-site-only paths flag no image components (the S3 sync ships them)", () => {
+		for (const f of [
+			"kainbain-addsite/Kainbain-adsite",
+			"kainbain-addsite/Kainbain-adsite/src/App.tsx",
+			"deploy/install.sh",
+			"deploy/install-runner.sh",
+			"deploy/update.sh",
+			"deploy/redeploy.sh",
+			"scripts/sync-adsite.sh",
+		]) {
+			assert.deepEqual(detectFromFiles([f]).components, [], f);
+		}
+		// ...while the surrounding contracts hold: unknown paths still fail
+		// safe, true release machinery still flags all three.
+		assert.deepEqual(detectFromFiles(["some/new/tool.xyz"]).components, ["backend", "frontend", "runner"]);
+		assert.deepEqual(detectFromFiles(["deploy.sh"]).components, ["backend", "frontend", "runner"]);
+		assert.deepEqual(detectFromFiles(["deploy/homelab-pull.sh"]).components, ["backend", "frontend", "runner"]);
+	});
+});
+
+describe("detectAdsiteSync", () => {
+	it("fires for ad-site paths and stays quiet otherwise", () => {
+		assert.equal(adsiteForPath("kainbain-addsite/Kainbain-adsite"), true);
+		assert.equal(adsiteForPath("deploy/install-runner.sh"), true);
+		assert.equal(adsiteForPath("api/routes/status.js"), false);
+		assert.deepEqual(detectAdsiteSync(["deploy/install-runner.sh", "api/routes/status.js"]).reasons, [
+			"deploy/install-runner.sh",
+		]);
+		assert.equal(detectAdsiteSync(["api/routes/status.js"]).sync, false);
+		assert.equal(detectAdsiteSync([]).sync, false);
 	});
 });
 

@@ -68,4 +68,23 @@ describe("taskRequirements", () => {
 			expect(out.tier).toBe("T0");
 		}
 	});
+
+	test("carries the stage's normalized runnerPolicy, present only when restricted", () => {
+		const restricted = taskRequirements(
+			{},
+			{
+				currentStageId: "s1",
+				stages: [{ id: "s1", type: "ci", runnerPolicy: { mode: " Allow ", runners: ["  r1 ", "r1"] } }],
+			},
+		);
+		expect(restricted.runnerPolicy).toEqual({ mode: "allow", runners: ["r1"] });
+		// Unrestricted stages keep their exact legacy shape (no key at all).
+		const legacy = taskRequirements({}, { currentStageId: "s1", stages: [{ id: "s1", type: "agent" }] });
+		expect("runnerPolicy" in legacy).toBe(false);
+		const empty = taskRequirements(
+			{},
+			{ currentStageId: "s1", stages: [{ id: "s1", type: "agent", runnerPolicy: { mode: "allow", runners: [] } }] },
+		);
+		expect("runnerPolicy" in empty).toBe(false);
+	});
 });

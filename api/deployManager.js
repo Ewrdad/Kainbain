@@ -3,6 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import { spawn, spawnSync } from "node:child_process";
 import { notifyDeployRollback } from "./observability/alerts.js";
+import { DEFAULT_LIMIT } from "../shared/changelogHistory/changelogLimits.js";
+import { buildChangelogGitFormat } from "../shared/changelogHistory/changelogGitFormat.js";
+import { isAdminCommitSubject } from "../shared/changelogHistory/isAdminCommitSubject.js";
+import { filterChangelogEntries } from "../shared/changelogHistory/filterChangelogEntries.js";
+import { parseGitLog } from "../shared/changelogHistory/parseGitLog.js";
 
 /***
  * MARK: defaultBashCheck
@@ -42,6 +47,8 @@ function defaultBashCheck() {
  * @example const manager = new DeployManager(); manager.triggerDeploy({ fast: true })
  ***/
 export class DeployManager {
+	#liveChangelog = null;
+
 	/***
 	 * MARK: constructor
 	 * @description Initializes the manager with the repo root and deploy state dir.
@@ -281,19 +288,66 @@ export class DeployManager {
 
 	/***
 	 * MARK: readChangelog
-	 * @description Reads the baked Kainbain changelog (`changelog.json`, written
-	 *   by `scripts/generate-changelog.mjs` during `deploy.sh --prod`) from the
-	 *   live production directory. Returns null when no changelog was baked
-	 *   (dev mode, pre-first-deploy) or the file is missing/malformed. A
-	 *   generation failure is NOT null: deploy.sh bakes a marker object with an
-	 *   `error` field so callers can report `generation-failed` distinctly.
+	 * @description Reads the Kainbain changelog, first usable source wins:
+	 *   1. `$PROD_DIR/changelog.json` baked by `deploy.sh --prod`,
+	 *   2. `api/bundled-changelog.json` baked into the backend image by
+	 *      `publish.sh` (the container has no `.git` and the host file is not
+	 *      mounted, so without this the live UI always reported "not-baked"
+	 *      despite a successful bake),
+	 *   3. live git history from this checkout (host/dev runs, where a real
+	 *      `.git` exists, so existing logs show without waiting for a bake).
+	 *   How it can fail: a well-formed `generation-failed` marker is terminal
+	 *   (the deploy recorded its own bake failure loudly); a corrupt file
+	 *   (valid JSON but no `entries` array and no `error`) is skipped in
+	 *   favour of the next source; null means every source missed, and the
+	 *   route reports `not-baked` (redeploy or rebake to fix).
 	 * @example manager.readChangelog() => { branch: 'master', totalCount: 537, entries: [...] }
 	 * @returns {Object|null}
 	 **/
 	readChangelog() {
+		const baked = this.#usableChangelogRecord(
+			this.#readChangelogFile(path.join(this.prodDir, "changelog.json")),
+		);
+		if (baked) return baked;
+		for (const candidate of [
+			path.join(this.repoRoot, "api", "bundled-changelog.json"),
+			path.join(this.repoRoot, "changelog.json"),
+			path.join(this.repoRoot, "bundled-changelog.json"),
+		]) {
+			const bundled = this.#usableChangelogRecord(this.#readChangelogFile(candidate));
+			if (bundled) return bundled;
+		}
+		// Mounted deploy state (container installs expose only the `.kainbain`
+		// state volume) keeps every previous bake under `deploy/releases/`, so
+		// a build whose image lacks a bundled artifact can still serve the most
+		// recent real history instead of reporting "not-baked".
+		const released = this.#usableChangelogRecord(this.#readLatestReleaseChangelog());
+		if (released) return released;
+		return this.#readLiveGitChangelog();
+	}
+
+	/***
+	 * MARK: usableChangelogRecord
+	 * @description Accepts only records the `/deploy/changelog` route can
+	 *   serve: a `generation-failed` marker (string `error`) or an artifact
+	 *   with an `entries` array. Anything else (missing file, bad JSON, a
+	 *   half-written bake) reads as null so the caller falls through to the
+	 *   next changelog source instead of serving a corrupt dialog.
+	 * @example manager.usableChangelogRecord({ entries: [] }) => { entries: [] }
+	 * @param {*} data - Parsed JSON from a changelog file.
+	 * @returns {Object|null} The record when servable, else null.
+	 **/
+	#usableChangelogRecord(data) {
+		if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+		if (typeof data.error === "string") return data;
+		if (!Array.isArray(data.entries)) return null;
+		return data;
+	}
+
+	#readChangelogFile(file) {
 		try {
-			/* eslint-disable security/detect-non-literal-fs-filename -- prodDir is derived from os.homedir(), not user input */
-			const raw = fs.readFileSync(path.join(this.prodDir, "changelog.json"), "utf8");
+			/* eslint-disable security/detect-non-literal-fs-filename -- path is derived from prodDir/repoRoot, not user input */
+			const raw = fs.readFileSync(file, "utf8");
 			/* eslint-enable security/detect-non-literal-fs-filename */
 			const parsed = JSON.parse(raw);
 			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
@@ -301,6 +355,133 @@ export class DeployManager {
 		} catch {
 			return null;
 		}
+	}
+
+	/***
+	 * MARK: readLiveGitChangelog
+	 * @description Serves live git history when no baked artifact exists
+	 *   (host/dev checkout). Parsing, filtering, and bounds come from
+	 *   `shared/changelogHistory/` — the same code the baker uses — so the
+	 *   dialog shows the same history with or without a bake. Branch choice
+	 *   matches the baker (`master`, then `main`, then `origin/HEAD`).
+	 *   How it can fail: no `.git` here (containers), no resolvable branch,
+	 *   or a git error all read as null (route reports `not-baked`); a
+	 *   resolved branch with only noise reads as an honest empty artifact
+	 *   ("No commits recorded"), never as missing.
+	 * @example manager.readLiveGitChangelog() => { branch: 'master', totalCount: 2, entries: [...] }
+	 * @returns {Object|null} The live artifact, or null when history is unreadable.
+	 **/
+	#readLiveGitChangelog() {
+		try {
+			if (typeof spawnSync !== "function") return null;
+			/* eslint-disable security/detect-non-literal-fs-filename -- repoRoot is server-derived, not user input */
+			if (!fs.existsSync(path.join(this.repoRoot, ".git"))) return null;
+			/* eslint-enable security/detect-non-literal-fs-filename */
+			const now = Date.now();
+			if (this.#liveChangelog && now - this.#liveChangelog.at < 60000) return this.#liveChangelog.data;
+			const branch = this.#resolveChangelogBranch();
+			if (!branch) return null;
+			const git = (args) => {
+				const r = spawnSync("git", args, { cwd: this.repoRoot, encoding: "utf8", maxBuffer: 8 * 1024 * 1024 });
+				if (r.error || r.status !== 0) throw new Error("git failed");
+				return String(r.stdout || "");
+			};
+			// Same NUL/RS wire format the baker parses: the exact value
+			// lives in `shared/changelogHistory/changelogGitFormat.js` so
+			// serve-time output can never drift from the parser.
+			const logFormat = buildChangelogGitFormat();
+			const raw = git(["log", branch, "-n", "2000", `--format=${logFormat}`]);
+			const entries = filterChangelogEntries(parseGitLog(raw)).slice(0, DEFAULT_LIMIT);
+			const subjects = git(["log", branch, "--format=%s"]).split("\n");
+			const totalCount = subjects.filter((subject) => !isAdminCommitSubject(subject)).length;
+			const data = {
+				generatedAt: new Date().toISOString(), branch,
+				commit: git(["rev-parse", branch]).trim(),
+				totalCount, truncated: totalCount > entries.length, limit: DEFAULT_LIMIT, entries,
+			};
+			this.#liveChangelog = { at: now, data };
+			return data;
+		} catch {
+			return null;
+		}
+	}
+
+	/***
+	 * MARK: readLatestReleaseChangelog
+	 * @description Scans the deployDir releases build-* changelog.json files (the durable
+	 *   per-deploy artifacts written by self-deploys) and returns the newest
+	 *   usable record, so an install that only mounts the `.kainbain` state
+	 *   volume — no `.git`, no bundled artifact — can still serve real history.
+	 *   Numeric build directories are tried newest-first; only usable records
+	 *   count, so a corrupt or empty release never hides an older good one.
+	 * @returns {Object|null}
+	 **/
+	#readLatestReleaseChangelog() {
+		try {
+			/* eslint-disable security/detect-non-literal-fs-filename -- releasesDir is derived from deployDir, not user input */
+			const releasesDir = path.join(this.deployDir, "releases");
+			if (!fs.existsSync(releasesDir)) return null;
+			const builds = fs
+				.readdirSync(releasesDir, { withFileTypes: true })
+				.filter((entry) => entry.isDirectory() && /^build-\d+$/.test(entry.name))
+				.map((entry) => ({ name: entry.name, build: Number(entry.name.slice("build-".length)) }))
+				/* eslint-enable security/detect-non-literal-fs-filename */
+				.sort((a, b) => b.build - a.build || a.name.localeCompare(b.name));
+			for (const { name } of builds) {
+				const record = this.#readChangelogFile(path.join(releasesDir, name, "changelog.json"));
+				const usable = this.#usableChangelogRecord(record);
+				if (usable) return usable;
+			}
+			return null;
+		} catch {
+			return null;
+		}
+	}
+
+	/***
+	 * MARK: resolveChangelogBranch
+	 * @description Picks the history to serve live: local `master` first,
+	 *   then local `main`, then the `origin/HEAD` symbolic target, then the
+	 *   remote-tracking `origin/master` / `origin/main` refs directly — the
+	 *   same order the baker (`scripts/generate-changelog.mjs`) resolves, so
+	 *   a checkout without a local default branch still serves the history it
+	 *   has instead of reporting "not-baked". Candidate refs are verified with
+	 *   `rev-parse --verify` (argv array, no shell) and the symbolic target
+	 *   is shape-checked before use, so an odd ref reads as null rather than
+	 *   running an unintended revision.
+	 * @example manager.resolveChangelogBranch() => 'master'
+	 * @returns {string|null} The branch to read, or null when none resolves.
+	 **/
+	#resolveChangelogBranch() {
+		for (const name of ["master", "main"]) {
+			const probe = spawnSync("git", ["rev-parse", "--verify", "--quiet", `refs/heads/${name}`], {
+				cwd: this.repoRoot,
+				encoding: "utf8",
+			});
+			if (!probe.error && probe.status === 0) return name;
+		}
+		const head = spawnSync("git", ["symbolic-ref", "refs/remotes/origin/HEAD"], {
+			cwd: this.repoRoot,
+			encoding: "utf8",
+		});
+		if (!head.error && head.status === 0) {
+			const branch = String(head.stdout || "").replace("refs/remotes/origin/", "").trim();
+			if (branch && !branch.startsWith("-") && !branch.includes("..") && !/\s/.test(branch)) {
+				const verify = spawnSync("git", ["rev-parse", "--verify", "--quiet", branch], {
+					cwd: this.repoRoot,
+					encoding: "utf8",
+				});
+				if (!verify.error && verify.status === 0) return branch;
+			}
+		}
+		for (const name of ["origin/master", "origin/main"]) {
+			const probe = spawnSync("git", ["rev-parse", "--verify", "--quiet", `refs/remotes/${name}`], {
+				cwd: this.repoRoot,
+				encoding: "utf8",
+			});
+			if (!probe.error && probe.status === 0) return name;
+		}
+		return null;
 	}
 
 	/***

@@ -77,4 +77,8 @@ process.env.KAINBAIN_CIRCUIT_MEM_ENABLED = "false";
 // flag off for every suite so embedded-execution tests keep running the
 // code they cover. Suites that verify runner-only behavior opt back in
 // explicitly per test (see `flow/execution/executeStage.cutover.test.js`).
+// NOTE: keep this pin HERE, not as a `VAR=` prefix on the `test` script in
+// api/package.json — a shell env prefix breaks Windows `cmd` and fails the
+// `tests/entry-platform.test.mjs` gate. Setup files run before each
+// worker's test imports, so import-time config reads see this value.
 process.env.KAINBAIN_RUNNER_EXECUTION_ONLY = "false";

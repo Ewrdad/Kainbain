@@ -5,21 +5,48 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+	AUTO_DETECTABLE_HARNESSES,
+	clearDiscoveredModelsCache,
 	clearHarnessVersionCache,
 	defaultLoadHarness,
+	detectAvailableHarnesses,
 	deliverSteers,
 	diskHeadroomMbFor,
 	probeHarnessVersions,
+	refreshDiscoveredModels,
+	resolveHarnessConfig,
 	runCiCommand,
 	runDispatchLoop,
 	runSingleAssignment,
 	applyBackendPrompt,
 	startClaimRenewal,
 	RUNNER_API_VERSION,
+	RUNNER_VERSION,
 	ciWorkdirFor,
+	integrationMergeSubject,
 } from "./daemon.js";
+import { isAdminCommitSubject } from "../shared/changelogHistory/isAdminCommitSubject.js";
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
+
+describe("integrationMergeSubject", () => {
+	it("carries the task title and survives the changelog admin filter", () => {
+		const subject = integrationMergeSubject({
+			taskBranch: "kb/a654a254-ba7c-4f38-bb5e-d767fc25b6ff",
+			targetBranch: "main",
+			task: { title: "fix horizontal scroll on bottom bar on mobile" },
+		});
+		assert.equal(subject, "Merge kb/a654a254-ba7c-4f38-bb5e-d767fc25b6ff into main: fix horizontal scroll on bottom bar on mobile");
+		assert.equal(isAdminCommitSubject(subject), false);
+	});
+	it("collapses multiline titles and falls back to the branch pair", () => {
+		assert.equal(
+			integrationMergeSubject({ taskBranch: "kb/x", targetBranch: "main", task: { title: "a\n  b" } }),
+			"Merge kb/x into main: a b",
+		);
+		assert.equal(integrationMergeSubject({ taskBranch: "kb/x", targetBranch: "main", task: {} }), "Merge kb/x into main");
+	});
+});
 
 describe("ciWorkdirFor", () => {
 	it("runs primary stages in the primary checkout, task stages in the worktree", () => {
@@ -34,6 +61,18 @@ describe("RUNNER_API_VERSION", () => {
 	it("equals runner/version.json apiVersion", () => {
 		const parsed = JSON.parse(fs.readFileSync(new URL("./version.json", import.meta.url), "utf8"));
 		assert.equal(RUNNER_API_VERSION, parsed.apiVersion);
+	});
+});
+
+describe("RUNNER_VERSION", () => {
+	it("equals runner/version.json runnerVersion (the update channel + fleet matrix compare this)", () => {
+		const parsed = JSON.parse(fs.readFileSync(new URL("./version.json", import.meta.url), "utf8"));
+		assert.equal(RUNNER_VERSION, parsed.runnerVersion);
+	});
+
+	it("is a semver product version independent of the api version", () => {
+		assert.match(String(RUNNER_VERSION), /^\d+\.\d+\.\d+/);
+		assert.equal(typeof RUNNER_VERSION, "string");
 	});
 });
 
@@ -311,6 +350,7 @@ describe("runSingleAssignment", () => {
 		const prompted = progressCalls.find((c) => c.event === "prompted");
 		assert.equal(prompted.model, null);
 		assert.equal(completed.posture, "T0/T1:mock");
+		assert.equal(completed.model, null);
 		assert.ok(!completed.posture.includes("default"));
 		assert.ok(!completed.posture.includes("m-pin"));
 	});
@@ -470,6 +510,106 @@ describe("runner facts (G4/G5)", () => {
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("model auto-discovery refresh", () => {
+	const base = { harnessIds: ["muse"], models: [], model: "" };
+	it("caches discovered ids when nothing is pinned", async () => {
+		clearDiscoveredModelsCache();
+		let calls = 0;
+		const out = await refreshDiscoveredModels({
+			config: base,
+			discoverFn: async () => {
+				calls += 1;
+				return ["muse::meta::m"];
+			},
+		});
+		assert.deepEqual(out, ["muse::meta::m"]);
+		assert.equal(calls, 1);
+	});
+	it("skips discovery when the operator pinned models", async () => {
+		clearDiscoveredModelsCache();
+		let calls = 0;
+		const out = await refreshDiscoveredModels({
+			config: { ...base, models: ["pinned"] },
+			discoverFn: async () => {
+				calls += 1;
+				return ["muse::meta::m"];
+			},
+		});
+		assert.deepEqual(out, []);
+		assert.equal(calls, 0);
+	});
+	it("skips discovery without the muse harness", async () => {
+		clearDiscoveredModelsCache();
+		let calls = 0;
+		const out = await refreshDiscoveredModels({
+			config: { ...base, harnessIds: ["pi"] },
+			discoverFn: async () => {
+				calls += 1;
+				return ["muse::meta::m"];
+			},
+		});
+		assert.deepEqual(out, []);
+		assert.equal(calls, 0);
+	});
+	it("keeps the previous cache when a later round fails", async () => {
+		clearDiscoveredModelsCache();
+		const config = base;
+		await refreshDiscoveredModels({ config, discoverFn: async () => ["muse::meta::m"] });
+		const out = await refreshDiscoveredModels({
+			config,
+			discoverFn: async () => {
+				throw new Error("serve down");
+			},
+		});
+		assert.deepEqual(out, ["muse::meta::m"]);
+	});
+});
+
+describe("harness auto-detect (default)", () => {
+	it("advertises only loadable harnesses in stable order", () => {
+		assert.deepEqual(AUTO_DETECTABLE_HARNESSES, ["pi", "muse", "antigravity", "vibe"]);
+	});
+
+	it("detects pi and antigravity via either binary name", () => {
+		const present = new Set(["pi", "agy"]);
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin:/bin",
+			pathDelimiter: ":",
+			isExecutable: (bin) => present.has(bin),
+		});
+		assert.deepEqual(got, ["pi", "antigravity"]);
+	});
+
+	it("returns empty when no CLI is on PATH", () => {
+		const got = detectAvailableHarnesses({
+			pathValue: "/usr/bin:/bin",
+			pathDelimiter: ":",
+			isExecutable: () => false,
+		});
+		assert.deepEqual(got, []);
+	});
+
+	it("leaves manual configs untouched", () => {
+		const config = { harnessIds: ["mock"], harnessId: "mock", harnessAuto: false };
+		assert.equal(resolveHarnessConfig(config), config);
+		assert.deepEqual(config.harnessIds, ["mock"]);
+	});
+
+	it("resolves auto configs from injected detection and drops the harness error", () => {
+		const config = { harnessIds: [], harnessId: "", harnessAuto: true, errors: ["KAINBAIN_RUNNER_HARNESS is required"] };
+		resolveHarnessConfig(config, { detected: ["muse", "pi"] });
+		assert.deepEqual(config.harnessIds, ["muse", "pi"]);
+		assert.equal(config.harnessId, "muse");
+		assert.equal(config.harnessAuto, false);
+		assert.deepEqual(config.errors, []);
+	});
+
+	it("fail-fasts when auto-detect finds nothing", () => {
+		const config = { harnessIds: [], harnessId: "", harnessAuto: true, errors: [] };
+		assert.throws(() => resolveHarnessConfig(config, { detected: [] }), /auto-detect found no harness/);
 	});
 });
 
@@ -723,6 +863,63 @@ describe("runDispatchLoop", () => {
 		assert.equal(seenMeta?.model, "m-want");
 	});
 
+	it("runs the harness on the reported model when the dispatch model is the default sentinel", async () => {
+		// The harness must receive the SAME model every observable
+		// reports: the raw "default" sentinel would otherwise run
+		// literally while the UI reports the Runner fallback.
+		const repo = localRepo();
+		const config = loopConfig({ model: "m-pin", models: ["m-pin"] });
+		dirs.push(config.workRoot, repo);
+		let seenMeta = null;
+		let completed = null;
+		const capturingHarness = () => ({
+			async createSession(project, meta) {
+				seenMeta = meta;
+				return {
+					getLastAssistantText: () => "done",
+					subscribe: () => () => {},
+					prompt: async () => "done",
+					dispose: async () => {},
+				};
+			},
+		});
+		let polls = 0;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				polls += 1;
+				return polls === 1
+					? {
+							assigned: true,
+							projectId: "p1",
+							taskId: "t1",
+							executionId: "e1",
+							epoch: 1,
+							requirements: { harness: "mock", model: "default" },
+						}
+					: { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed = args;
+				return { accepted: true, shaState: "present" };
+			},
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => capturingHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.assignments, 1);
+		assert.equal(seenMeta?.model, "m-pin");
+		assert.equal(completed?.model, "m-pin");
+	});
+
 	it("reports the served model accurately: dispatch model on agent stages, none on CI stages", async () => {
 		// The regression this pins: every observable path used to write the
 		// Runner default (`config.model || "default"`), so the UI showed
@@ -778,15 +975,17 @@ describe("runDispatchLoop", () => {
 		assert.equal(agentPrompted.harness, "mock");
 		const agentComplete = completeCalls.find((c) => c.executionId === "e-agent");
 		assert.equal(agentComplete.posture, "T0/T1:mock:m-want");
+		assert.equal(agentComplete.model, "m-want");
 		assert.ok(!agentComplete.posture.includes("default"));
 		assert.ok(!agentComplete.posture.includes("m-pin"));
 		// CI assignment: no model anywhere — progress reports null (omitted on
-		// the wire by client.progress) and the posture has no model segment.
+		// the wire by client.progress) and the posture/complete carry no model.
 		const ciPrompted = progressCalls.find((c) => c.executionId === "e-ci" && c.event === "prompted");
 		assert.equal(ciPrompted.model, null);
 		assert.equal(ciPrompted.harness, "mock");
 		const ciComplete = completeCalls.find((c) => c.executionId === "e-ci");
 		assert.equal(ciComplete.posture, "T0/T1:mock");
+		assert.equal(ciComplete.model, null);
 		assert.ok(!ciComplete.posture.includes("default"));
 		assert.ok(!ciComplete.posture.includes("m-pin"));
 	});
@@ -1116,11 +1315,13 @@ describe("formatPosture", () => {
 		assert.equal(formatPosture({ tiers: ["T0"], harness: "pi", model: "m" }), "T0:pi:m");
 		assert.equal(formatPosture({ tiers: ["T0", "T1"], harness: "pi", model: "  m  " }), "T0/T1:pi:m");
 	});
-	it("omits model segment when null, blank, or non-string", () => {
+	it("omits model segment when null, blank, non-string, or the default sentinel", () => {
 		assert.equal(formatPosture({ tiers: ["T0"], harness: "pi", model: null }), "T0:pi");
 		assert.equal(formatPosture({ tiers: ["T0", "T1"], harness: "pi", model: "" }), "T0/T1:pi");
 		assert.equal(formatPosture({ tiers: ["T0"], harness: "pi", model: "   " }), "T0:pi");
 		assert.equal(formatPosture({ tiers: ["T0"], harness: "pi", model: 42 }), "T0:pi");
+		assert.equal(formatPosture({ tiers: ["T0"], harness: "pi", model: "default" }), "T0:pi");
+		assert.equal(formatPosture({ tiers: ["T0"], harness: "pi", model: "  Default " }), "T0:pi");
 	});
 	it("never emits stray segments for missing tiers or harness", () => {
 		assert.equal(formatPosture({ tiers: ["T0"], harness: "", model: "m" }), "T0:m");
