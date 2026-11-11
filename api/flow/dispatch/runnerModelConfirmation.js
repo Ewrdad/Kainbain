@@ -54,6 +54,20 @@ export function confirmRunnerModel(record = {}, rawId) {
 		return { status: "unknown", harness };
 	}
 	const caps = record?.capabilities && typeof record.capabilities === "object" ? record.capabilities : {};
+	// A runner's reported capability set is the authority for "does this
+	// runner serve this harness at all": an id scoped to a harness the
+	// runner never reported can never run there, so treat it as a stale
+	// pin when the runner did publish a harness list. Runners with no
+	// capability signal (old runners, tests) stay trusted via the existing
+	// fail-open rules below.
+	const reportedHarnesses = Array.isArray(caps.harnesses)
+		? caps.harnesses
+			.map((h) => (typeof h === "string" ? h.trim() : String(h?.id ?? "").trim()))
+			.filter(Boolean)
+		: [];
+	if (parsed?.harness && reportedHarnesses.length > 0 && !reportedHarnesses.includes(parsed.harness)) {
+		return { status: "stale", harness };
+	}
 	const provenance = caps.modelProvenance;
 	// No provenance signal at all (old runner): nothing can contradict.
 	if (!provenance || typeof provenance !== "object" || Array.isArray(provenance)) {
