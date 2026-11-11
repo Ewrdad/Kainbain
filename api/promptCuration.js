@@ -526,6 +526,11 @@ export function resolveAutoReinjectedTokens(
 	if (!present.includes("testingGuidance") && stageExpectsAgentVerdict(stage)) {
 		autoReinjected.push("testingGuidance");
 	}
+	// No-code safety guard: when a stage is docs-only, the guard section must
+	// never be silently dropped by a custom layout that omits it.
+	if (!present.includes("noCode") && stage?.noCode === true) {
+		autoReinjected.push("noCode");
+	}
 	return autoReinjected;
 }
 
@@ -928,7 +933,7 @@ export class PromptCurationEngine {
 
 		// 6b. No-Code Enforcement
 		if (stage.noCode) {
-			sectionMap.noCode = `# No-Code Mode\nThis stage is in no-code mode. You must NOT modify any source code. Your only allowed modifications are in the project's documentation directory.`;
+			sectionMap.noCode = buildNoCodePromptSection(docsDirName);
 		}
 
 		// 7. How to fail a stage (Standardized interface).
@@ -997,6 +1002,13 @@ export class PromptCurationEngine {
 				) {
 					sectionMap.testingGuidance =
 						`# Testing & Verification Guidance\n${TESTING_GUIDANCE_TEXT}`;
+				}
+
+				if (
+					autoReinjected.includes("noCode") &&
+					!sectionMap.noCode
+				) {
+					sectionMap.noCode = buildNoCodePromptSection(docsDirName);
 				}
 
 				let rendered = renderCustomLayout(
@@ -1100,4 +1112,33 @@ export function renderStageVerdictGuidance({
 		// Fall through to the legacy text below.
 	}
 	return fallback;
+}
+
+/***
+ * MARK: buildNoCodePromptSection
+ * @description Pure helper building the docs-only instruction block injected into
+ *   an agent prompt when a stage is marked `noCode`. The docs directory name
+ *   honours the project's resolved link folder (falls back to `docs`).
+ * @example buildNoCodePromptSection('docs').includes('docs') => true
+ * @param {string|Object} [docsDirName] - Docs folder name or project carrying it.
+ * @returns {string} Markdown block.
+ ***/
+export function buildNoCodePromptSection(docsDirName) {
+	let dir = docsDirName;
+	if (dir && typeof dir === "object") {
+		dir = resolveDocsDirName(dir);
+	}
+	if (typeof dir !== "string" || !dir.trim()) {
+		dir = "docs";
+	} else {
+		dir = dir.trim();
+	}
+	return [
+		"# No Code (Docs-Only)",
+		"# No-Code Mode",
+		`This stage is marked no-code (docs-only). You may read and search the entire repository for context,`,
+		`but you must ONLY create or modify files under \`./${dir}/\` (in particular this task's docs folder).`,
+		`Do not edit source code, configuration, tests, or any file outside the documentation directory.`,
+		`Any code changes you make outside \`./${dir}/\` will be discarded by the engine and will not be committed.`,
+	].join("\n");
 }

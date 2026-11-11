@@ -2,11 +2,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { git } from "./exec.js";
+import { resolveDocsDirName } from "../docsPath.js";
 import { currentBranch, hasCommits, isGitRepository } from "./status.js";
 import {
 	getWorkingTreeStatus,
 	isWorkingTreeClean,
 	_resolveIgnorePaths,
+	_parsePorcelainEntries,
 } from "./workingTreeStatus.js";
 import { GitBranchMismatchError } from "./errors.js";
 
@@ -107,19 +109,17 @@ export async function commitAllIfNeeded(projectCwd, message, opts = {}) {
 		return { committed: false, hash: null };
 	if (!(await hasCommits(projectCwd))) return { committed: false, hash: null };
 
-	// No-code enforcement: if enabled, we must erase any changes outside the docs directory
-	// before committing. This ensures the agent cannot sneak in code changes.
+	// No-code enforcement: if enabled, erase any changes outside the docs
+	// directory before staging, so code edits cannot leak into the commit.
 	if (opts.noCode) {
-		const docsDir = resolveDocsDirName(opts.project || {});
-		try {
-			// Reset all files that are NOT in the docs directory
-			// We use git checkout -- . to reset everything, then git add the docs dir
-			await git(projectCwd, ["checkout", "--", "."]);
-			await git(projectCwd, ["add", docsDir]);
-		} catch (e) {
-			// We log but continue; if checkout failed, the subsequent commit might fail
-			// or include dirt, but this is the best effort.
-		}
+		const projectHint =
+			opts.project && typeof opts.project === "object"
+				? opts.project
+				: opts.docsDirName
+					? { docsDirName: opts.docsDirName }
+					: {};
+		const docsDir = resolveDocsDirName(projectHint);
+		await discardChangesOutsideDocs(projectCwd, docsDir);
 	}
 
 	// Branch affinity guard (opt-in): never stage/commit when a concurrent
@@ -408,3 +408,100 @@ export async function commitEngineSnapshots(projectCwd, message, opts = {}) {
 }
 
 
+
+/***
+ * MARK: isDocPath
+ * @description Pure predicate: true when a repo-relative path lives under the
+ *   project's docs directory (any depth). Used by no-code stages to decide
+ *   which changes survive.
+ * @example isDocPath('docs/tasks/t/plan.md', 'docs') => true
+ * @example isDocPath('src/index.js', 'docs') => false
+ * @param {string} relativePath
+ * @param {string} [docsDirName='docs']
+ * @returns {boolean}
+ ***/
+export function isDocPath(relativePath, docsDirName) {
+	if (typeof relativePath !== "string" || !relativePath) return false;
+	const name =
+		typeof docsDirName === "string" && docsDirName.trim()
+			? docsDirName.trim()
+			: resolveDocsDirName({});
+	const norm = String(relativePath)
+		.replace(/\\/g, "/")
+		.replace(/["']/g, "")
+		.replace(/^\.?\//, "");
+	return norm === name || norm.startsWith(`${name}/`);
+}
+
+/***
+ * MARK: discardChangesOutsideDocs
+ * @description Best-effort erase of every working-tree change outside the
+ *   project's docs directory: tracked modifications are reset/restored,
+ *   staged paths are unstaged, and untracked files/directories are removed.
+ *   Paths under the docs directory (and the docs directory itself) are left
+ *   untouched so documentation work survives. Never throws.
+ * @example await discardChangesOutsideDocs('/repo', 'docs') => { discarded: ['src/index.js'] }
+ * @param {string} projectCwd
+ * @param {string} [docsDirName='docs']
+ * @param {Object} [opts]
+ * @returns {Promise<{discarded: Array<string>}>}
+ ***/
+export async function discardChangesOutsideDocs(projectCwd, docsDirName, opts = {}) {
+	const discarded = [];
+	try {
+		if (!(await isGitRepository(projectCwd))) return { discarded };
+		const { stdout } = await git(projectCwd, ["status", "--porcelain", "-uall"]);
+		const entries = _parsePorcelainEntries(stdout);
+		const dirName =
+			typeof docsDirName === "string" && docsDirName.trim()
+				? docsDirName.trim()
+				: resolveDocsDirName(
+						opts && typeof opts.project === "object" ? opts.project : {},
+					);
+		const nonDoc = [];
+		const tracked = [];
+		const untracked = [];
+		for (const entry of entries) {
+			const p = String(entry.path || "")
+				.replace(/\\/g, "/")
+				.replace(/["']/g, "");
+			if (!p || isDocPath(p, dirName)) continue;
+			if (!nonDoc.includes(p)) nonDoc.push(p);
+			if (!discarded.includes(p)) discarded.push(p);
+			if ((entry.status || "").trim() === "??") {
+				if (!untracked.includes(p)) untracked.push(p);
+			} else {
+				if (!tracked.includes(p)) tracked.push(p);
+			}
+		}
+		if (nonDoc.length === 0) return { discarded };
+
+		// Unstage any staged/known non-doc paths first (best-effort). Only
+		// call reset on tracked paths — untracked pathspecs make the whole
+		// command fail and would leave tracked changes in place.
+		if (tracked.length > 0) {
+			try {
+				await git(projectCwd, ["reset", "-q", "HEAD", "--", ...tracked]);
+			} catch {
+				// Best-effort.
+			}
+			// Restore tracked changes.
+			try {
+				await git(projectCwd, ["checkout", "--", ...tracked]);
+			} catch {
+				// Best-effort.
+			}
+		}
+		// Remove untracked (and formerly staged-turned-untracked) non-doc
+		// paths. Clean only; tracked modified files remain protected by
+		// checkout above.
+		try {
+			await git(projectCwd, ["clean", "-fd", "--", ...nonDoc]);
+		} catch {
+			// Best-effort.
+		}
+	} catch {
+		// Erase semantics are best-effort; never block commit.
+	}
+	return { discarded };
+}
