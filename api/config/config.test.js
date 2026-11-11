@@ -197,6 +197,7 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		expectedRunnerId: "",
 		seedDemo: false,
 		runnerExecutionOnly: true,
+		runnerDispatchFallbackMs: 90000,
 		runnerStaleAfterMs: 60000,
 		runnerMaxConcurrentPerProject: 0,
 		runnerMaxConcurrentFleet: 0,
