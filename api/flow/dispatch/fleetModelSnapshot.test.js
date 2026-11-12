@@ -285,6 +285,33 @@ describe("createFleetModelSnapshotStore", () => {
 		});
 	});
 
+	test("serves operator-asserted ids as available despite a contradicting scan", () => {
+		// The availableModels override is an explicit servability
+		// declaration: it wins over the runner's own scan, in the
+		// snapshot exactly as in dispatch.
+		const store = tempStore();
+		const snapshot = store.update([
+			fleetRunnerRecord({
+				runnerId: "box-a",
+				capabilities: {
+					models: [],
+					modelProvenance: {},
+					discoveryStatus: { muse: { ok: true, count: 2, atMs: 1700000000000 } },
+				},
+				operatorConfig: { availableModels: ["muse::meta::declared-model"] },
+			}),
+		]);
+		expect(snapshot.models).toHaveLength(1);
+		expect(snapshot.models[0]).toMatchObject({
+			id: "muse::meta::declared-model",
+			available: true,
+			unavailableReason: null,
+			runnerIds: ["box-a"],
+			runnerCount: 1,
+			claimedBy: [],
+		});
+	});
+
 	test("trusts pins when the scan cannot speak: failed, missing, or old-runner signals", () => {
 		const store = tempStore();
 		const snapshot = store.update([

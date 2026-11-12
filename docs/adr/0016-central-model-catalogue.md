@@ -78,6 +78,22 @@ keeps discovery-replaces-pin as the explicit opt-in. The muse leg's
 shape as the backend MSP catalogue, so both sides read the host
 identically.
 
+## Amendment (2026-11-12, post-review): stale claims are not dispatchable
+
+Review found the catalogue marked stale pins unavailable in the UI while
+dispatch still honoured them at runtime — the fleet would route work to a
+runner for a model its own scan proved absent. The shared
+`confirmRunnerModel` verdict now also gates the live paths: `runnerMatches`
+refuses a `stale` model exactly like an unoffered one (`NO_MODEL`, same
+loud diagnostics), and `buildFleetModelCatalog` drops stale claimants
+from counts (stale-only ids vanish from the live view; the snapshot
+still marks them unavailable per survey q4). The match itself stays
+verbatim — only conclusive `stale` verdicts refuse, so old runners,
+failed scans, and legacy/bare ids match exactly as before. The
+operator's `availableModels` override is an explicit servability
+declaration and wins over runner-reported signals in all three views
+(snapshot, live, dispatch).
+
 ## Amendment (same day, post-review): stale-pin marking
 
 Review found the union could serve ids no harness backs: a Runner pin

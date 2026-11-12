@@ -75,5 +75,43 @@ describe("confirmRunnerModel", () => {
 		expect(confirmRunnerModel(record(caps), null).status).toBe("unknown");
 		expect(confirmRunnerModel(record(caps), "a::b::c::d::e").status).toBe("unknown");
 	});
+
+	test("marks ids stale when they scope a harness the runner never reported", () => {
+		// String and {id} harness shapes both speak (registry vs raw facts).
+		for (const harnesses of [[{ id: "pi", version: "x" }], ["pi"]]) {
+			expect(
+				confirmRunnerModel(record({ harnesses }), "muse::meta::muse-spark-1.4").status,
+			).toBe("stale");
+		}
+		// The reported harness itself stays trusted (nothing contradicts yet).
+		expect(confirmRunnerModel(record({ harnesses: [{ id: "muse" }] }), "muse::meta::m").status).toBe(
+			"unknown",
+		);
+		// No harness signal at all (old runners, bare fixtures): fail open.
+		expect(confirmRunnerModel(record({}), "muse::meta::m").status).toBe("unknown");
+		expect(confirmRunnerModel(record({ harnesses: [] }), "muse::meta::m").status).toBe("unknown");
+	});
+
+	test("trusts operator-asserted override ids over every runner-reported signal", () => {
+		const contradicting = {
+			harnesses: [{ id: "pi" }],
+			modelProvenance: {},
+			discoveryStatus: { muse: { ok: true, count: 2, atMs: 1 } },
+		};
+		const asserted = (availableModels) => ({
+			...record(contradicting),
+			operatorConfig: { availableModels },
+		});
+		// Without the override both stale rules fire.
+		expect(confirmRunnerModel(record(contradicting), "muse::meta::old").status).toBe("stale");
+		// The override wins over the scan contradiction AND the harness gap.
+		expect(confirmRunnerModel(asserted(["muse::meta::old"]), "muse::meta::old").status).toBe("unknown");
+		// Whitespace-tolerant, exact-id match only.
+		expect(confirmRunnerModel(asserted(["  muse::meta::old  "]), "muse::meta::old").status).toBe("unknown");
+		expect(confirmRunnerModel(asserted(["muse::meta::other"]), "muse::meta::old").status).toBe("stale");
+		// A non-array override (null = advertised) asserts nothing.
+		expect(confirmRunnerModel(asserted(null), "muse::meta::old").status).toBe("stale");
+		expect(confirmRunnerModel(asserted("muse::meta::old"), "muse::meta::old").status).toBe("stale");
+	});
 });
 

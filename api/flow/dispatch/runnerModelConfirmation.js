@@ -7,12 +7,16 @@ import { parseModelKey } from "../../../shared/modelKeys.js";
  *   the id) and the per-harness `discoveryStatus` (which scans succeeded).
  *   A harness-scoped pin the runner's own successful scan contradicts is
  *   `stale` — the catalogue marks it unavailable with a reason instead of
- *   serving it as available ("runners muse code doesn't have" is a stale
- *   pin, not a capability). Every inconclusive shape fails OPEN to
- *   `unknown` (trusted): a failed or missing scan, an old runner with no
- *   provenance signal, a truncated provenance map, and legacy/bare ids
+ *   serving it as available, and dispatch refuses it like an unoffered
+ *   model ("runners muse code doesn't have" is a stale pin, not a
+ *   capability). Every inconclusive shape fails OPEN to `unknown`
+ *   (trusted): a failed or missing scan, an old runner with no
+ *   provenance signal, a truncated provenance map, legacy/bare ids
  *   (their attribution is lenient by design — no single leg can deny
- *   them). Pure classifier, no I/O: the snapshot store owns persistence.
+ *   them), and operator-asserted ids (the `availableModels` override is
+ *   an explicit servability declaration that wins over runner-reported
+ *   signals). Pure classifier, no I/O: the snapshot store owns
+ *   persistence, `runnerMatches` owns the dispatch refusal.
  * @example confirmRunnerModel({ capabilities: { modelProvenance: { 'muse::meta::m': {} }, discoveryStatus: { muse: { ok: true } } } }, 'muse::meta::m').status => 'confirmed'
  ***/
 
@@ -30,13 +34,18 @@ export const MODEL_PROVENANCE_TRUST_CAP = 1000;
  * MARK: confirmRunnerModel
  * @description Classifies ONE effective advertised id for ONE runner record
  *   as `confirmed` (a scan listed it), `stale` (the named harness leg
- *   succeeded without it — the pin contradicts the harness's own menu),
- *   or `unknown` (nothing speaks conclusively — trusted). Only
- *   harness-scoped ids (`harness`/`harnessReasoning` forms) can be stale:
- *   they name the leg that denies them. Never throws — malformed input
- *   reads as `unknown` (ingest quarantines malformed ids separately).
+ *   succeeded without it — the pin contradicts the harness's own menu —
+ *   or the id scopes a harness the runner never reported), or `unknown`
+ *   (nothing speaks conclusively — trusted). Only harness-scoped ids
+ *   (`harness`/`harnessReasoning` forms) can be stale: they name the
+ *   leg that denies them. An id the operator explicitly asserted via
+ *   `operatorConfig.availableModels` is always `unknown` (trusted) —
+ *   the override is a servability declaration, not a claim to verify.
+ *   Never throws — malformed input reads as `unknown` (ingest
+ *   quarantines malformed ids separately).
  * @example confirmRunnerModel({ capabilities: { modelProvenance: {}, discoveryStatus: { muse: { ok: true } } } }, 'muse::meta::old').status => 'stale'
  * @example confirmRunnerModel({ capabilities: {} }, 'muse::meta::old').status => 'unknown'
+ * @example confirmRunnerModel({ capabilities: { modelProvenance: {}, discoveryStatus: { muse: { ok: true } } }, operatorConfig: { availableModels: ['muse::meta::old'] } }, 'muse::meta::old').status => 'unknown'
  * @param {Object} [record] - Runner registry record (`capabilities.modelProvenance` / `capabilities.discoveryStatus`).
  * @param {unknown} [rawId] - Advertised id (any JSON value; trimmed like the fleet builder).
  * @returns {{status: "confirmed"|"stale"|"unknown", harness: string|null}} Verdict plus the parsed harness (null when unparsed).
@@ -50,6 +59,15 @@ export function confirmRunnerModel(record = {}, rawId) {
 		parsed = null;
 	}
 	const harness = parsed?.harness ?? null;
+	// Operator-asserted ids are declarations, not claims: the override
+	// exists so an under-reporting runner can serve declared models, so
+	// it wins over every runner-reported signal below (scan or harness
+	// list). Trimmed like the fleet builder; a non-array override (null
+	// = advertised) asserts nothing.
+	const override = record?.operatorConfig?.availableModels;
+	if (id && Array.isArray(override) && override.some((m) => String(m ?? "").trim() === id)) {
+		return { status: "unknown", harness };
+	}
 	if (!parsed || (parsed.form !== "harness" && parsed.form !== "harnessReasoning")) {
 		return { status: "unknown", harness };
 	}
