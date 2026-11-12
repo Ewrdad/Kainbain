@@ -118,6 +118,80 @@ describe("scanClaimableTasks", () => {
 		).toEqual(["other"]);
 	});
 
+	test("picks up tasks on the non-active pipeline with their own stage's requirements", () => {
+		// Two pipelines with disjoint stage ids; the UI views "default"
+		// while the waiting task sits on "audit". The scan must return it
+		// with the audit stage's requirements — never the active pipeline's
+		// first stage (a human intake here, which would wrongly exclude it).
+		const auditStage = { id: "audit-1", name: "Audit", type: "agent", harness: "codex", model: "m2" };
+		const projectStore = {
+			listProjects: () => [
+				{
+					id: "p1",
+					name: "p1",
+					cwd: "/tmp",
+					harness: "pi",
+					defaultModel: "m1",
+					activeWorkflowId: "wf-default",
+					stages: [{ id: "s1", name: "Intake", type: "human" }],
+					workflows: [
+						{ id: "wf-default", stages: [{ id: "s1", name: "Intake", type: "human" }] },
+						{ id: "wf-audit", stages: [auditStage] },
+					],
+				},
+			],
+		};
+		const out = scanClaimableTasks({
+			projectStore,
+			taskStore: {
+				listTasks: () => [t("audit-task", { workflowId: "wf-audit", currentStageId: "audit-1" })],
+				isTaskBlocked: () => ({ blocked: false }),
+			},
+			claimStore: new ClaimStore({ stateFile: tmpClaimState() }),
+		});
+		expect(out).toHaveLength(1);
+		expect(out[0]).toMatchObject({
+			projectId: "p1",
+			taskId: "audit-task",
+			req: { harness: "codex", model: "m2", runnableType: true, stageId: "audit-1" },
+		});
+	});
+
+	test("active-pipeline tasks dispatch exactly as before (characterization)", () => {
+		// Same two-pipeline fixture, task on the active pipeline: the fix
+		// must not change what already worked.
+		const projectStore = {
+			listProjects: () => [
+				{
+					id: "p1",
+					name: "p1",
+					cwd: "/tmp",
+					harness: "pi",
+					defaultModel: "m1",
+					activeWorkflowId: "wf-default",
+					stages: [{ id: "s1", name: "Build", type: "agent" }],
+					workflows: [
+						{ id: "wf-default", stages: [{ id: "s1", name: "Build", type: "agent" }] },
+						{ id: "wf-audit", stages: [{ id: "audit-1", name: "Audit", type: "agent" }] },
+					],
+				},
+			],
+		};
+		const out = scanClaimableTasks({
+			projectStore,
+			taskStore: {
+				listTasks: () => [t("active-task", { workflowId: "wf-default", currentStageId: "s1" })],
+				isTaskBlocked: () => ({ blocked: false }),
+			},
+			claimStore: new ClaimStore({ stateFile: tmpClaimState() }),
+		});
+		expect(out).toHaveLength(1);
+		expect(out[0]).toMatchObject({
+			taskId: "active-task",
+			req: { harness: "pi", model: "m1", tier: "T1", runnableType: true, stageId: "s1" },
+		});
+	});
+
 	test("over-waiting tasks jump ahead oldest-first (starvation guard)", () => {
 		const stages = [
 			{ id: "s1", type: "agent" },

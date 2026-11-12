@@ -63,7 +63,10 @@ export function scanClaimableTasks(deps = {}, opts = {}) {
 			) {
 				continue;
 			}
-			const req = taskRequirements(project, task);
+			// The task's own pipeline stages (resolved above) travel into
+			// requirements, so a task on any pipeline is judged by its own
+			// stage — never the viewed pipeline's mirror.
+			const req = taskRequirements(project, task, stages);
 			if (!req.runnableType) continue;
 			const enteredAt = new Date(task.enteredStageAt || task.updatedAt || 0).getTime();
 			out.push({
