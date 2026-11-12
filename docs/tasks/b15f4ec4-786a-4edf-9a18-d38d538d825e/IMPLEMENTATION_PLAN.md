@@ -61,36 +61,44 @@ permanently clipped or hidden behind an unreachable overflow indicator.
   the row clips at the bar edge and rendering is hard-capped
   (`MAX_VISIBLE_RUNNER_BOXES = 4`, `runnerBoxes.slice(0, 4)`) with a `+N more`
   overflow chip whose `title` tooltip lists hidden runners — unusable on touch.
-  Verified: `resolveRunnerBoxes` already returns the full fleet, so the bug is
-  purely presentational (clipping + render cap), not data.
+  Verified: `resolveRunnerBoxes` already returns the full fleet (union of
+  registry actives + assignment-only ids), so the bug is purely presentational
+  (clipping + render cap), not data.
 - Each box already carries `shrink-0`, so boxes will not squash once the
   parent allows scrolling — the parent overflow plus the JS slice are the only
   two things hiding runners.
 - `frontend/src/components/layout/NowPlayingBar.test.jsx` — the cap-and-chip
   test pins the old behaviour and must be rewritten into new-behaviour tests,
   not deleted.
-- `frontend/src/index.css` — home of the thin-scrollbar styling for the strip.
+- `frontend/src/index.css` — home of the thin-scrollbar styling for the strip
+  (`.now-playing-runner-strip` block with `scrollbar-width: thin`, 3 px
+  webkit thumb, `overscroll-behavior-x: contain`, touch scrolling,
+  `scroll-padding-inline`).
 
 ### 4.2 Layout contracts that must hold
 
 - Footer: `fixed bottom-0 h-[72px]`, `pb-[env(safe-area-inset-bottom)]`.
 - Left side flex chain (`flex-1 min-w-0`) must keep `min-w-0` discipline so the
   scroll container cannot push into the right rail on desktop.
-- Right rail (`data-testid="now-playing-right-rail"`) keeps `overflow-hidden`
-  as cheap insurance; tooltips are portal-rendered to `document.body`, so they
-  stay unclipped.
-- Right-rail queue chip is `hidden sm:flex`, so on mobile the strip gets the
-  full bar width.
+- Right rail (`data-testid="now-playing-right-rail"`, line 629) keeps
+  `overflow-hidden` as cheap insurance (asserted in the test file, line 411);
+  tooltips are portal-rendered to `document.body`, so they stay unclipped.
+- Right-rail queue chip is `hidden sm:flex` (line 638), so on mobile the strip
+  gets the full bar width.
 
 ### 4.3 Existing gates that touch this area
 
-- `frontend/src/components/layout/NowPlayingBar.test.jsx` — cap-and-chip test.
+- `frontend/src/components/layout/NowPlayingBar.test.jsx` — cap-and-chip test
+  plus the runner-strip scroll contract tests (`overflow-x-auto`,
+  `overflow-y-hidden`, `overscroll-contain`, `now-playing-runner-strip`,
+  `tabindex="0"`, `RUNNER_STRIP_SCROLL_HINT` accessible description).
 - `canary-e2e/tests/functional.spec.js` — "right rail never overlaps the
-  runner boxes" gate (rect intersections at 640/768/800/900/1024/1280 px).
-- `canary-e2e/tests/mobile-responsive.spec.js` — compact-bar visibility; page
-  body must keep zero horizontal overflow.
+  runner boxes at any supported width" gate.
+- `canary-e2e/tests/mobile-responsive.spec.js` — "now playing bar is compact
+  and controls are visible without clipping"; page body must keep zero
+  horizontal overflow.
 - `canary-e2e/tests/workflow.spec.js` — "Now Playing bar: runner boxes own
-  play/skip" E2E.
+  play/skip, no global engine controls" E2E.
 
 ---
 
@@ -140,8 +148,9 @@ permanently clipped or hidden behind an unreachable overflow indicator.
 7. **Container:** change the `now-playing-runner-boxes` row to
    `overflow-x-auto` + `overflow-y-hidden` (keep `flex`, `min-w-0`,
    `max-w-full`, `whitespace-nowrap`, `overscroll-contain`), add the
-   `now-playing-runner-strip` class for the thin scrollbar, `-webkit-overflow-scrolling: touch`,
-   and `scroll-padding-inline` so a scrolled-to box clears the strip edge.
+   `now-playing-runner-strip` class for the thin scrollbar,
+   `-webkit-overflow-scrolling: touch`, and `scroll-padding-inline` so a
+   scrolled-to box clears the strip edge.
 8. **Render all boxes:** drop `.slice(0, MAX_VISIBLE_RUNNER_BOXES)`; delete
    the `+N more` chip and `hiddenRunnerCount`; delete
    `MAX_VISIBLE_RUNNER_BOXES` (prefer removal + test update over a dead
@@ -170,9 +179,9 @@ permanently clipped or hidden behind an unreachable overflow indicator.
     - Single-runner case keeps the singular `aria-label` inside the same
       scrollable strip.
 13. Update component docs: replace the `runnerBoxVisibilityCap` MARK comment
-    with the `runnerBoxStrip` MARK comment (no render cap, horizontal scroll,
-    `shrink-0`, tab stop, reduced-motion safe). No user-docs change needed
-    (pure CSS/layout fix).
+    with the `runnerBoxStrip` / `runnerStripOwnsOverflow` MARK comments (no
+    render cap, horizontal scroll, `shrink-0`, tab stop, reduced-motion safe).
+    No user-docs change needed (pure CSS/layout fix).
 
 ---
 
@@ -183,15 +192,21 @@ permanently clipped or hidden behind an unreachable overflow indicator.
 | Frontend unit tests (primary gate) | `npm run test:frontend` | Green |
 | Full unit suite | `npm run test:unit` (api + frontend) | Green (at minimum the frontend half) |
 | Lint on touched files | `npm run lint:frontend` | Clean |
-| Frontend build | `npm run build --prefix frontend` | Passes |
-| E2E overlap gate | `canary-e2e/tests/functional.spec.js` — right rail vs. runner boxes at 640/768/800/900/1024/1280 px | Zero rect intersections |
-| Mobile E2E | `canary-e2e/tests/mobile-responsive.spec.js` + `workflow.spec.js` Now Playing case | Compact bar visible; runner play/skip pass |
+| Frontend build | `npm run build:frontend` | Passes |
+| E2E overlap gate | `canary-e2e/tests/functional.spec.js` — right rail vs. runner boxes at supported widths | Zero rect intersections |
+| Mobile E2E | `canary-e2e/tests/mobile-responsive.spec.js` + `workflow.spec.js` Now Playing case | Compact bar visible, no clipping; runner play/skip pass |
 | Headless visual check | `npm run capture:screenshot -- --width 390` (and 768) with 2+ runners; save after-shot next to `assets/18743.png` | First box fully visible, last box reachable by scroll, bar/rail layout intact. No persistent dev server — isolated headless runner only |
 | Touch/keyboard pass | Manual swipe or Playwright swipe + Tab script | Swipe reaches the last box; Tab reaches every box's buttons; no page-level horizontal scroll (`document.scrollingElement.scrollWidth <= innerWidth`) |
 
 Highest-risk step: the E2E overlap gate — a scrollable strip that grows the
 flex child could reintroduce rail overlap on desktop if `min-w-0` discipline
 slips. Run the canary subset explicitly.
+
+Note on prior CI history: the unit, lint, build, and container suites all
+pass; the only recent CI failure is the unrelated canary `pr-review.spec.js`
+case failing on `git push` to the unresolvable `git.example.com` host (see
+`automated-tests-failure-20261101-123148.md`). That failure is environmental
+and out of scope for this change.
 
 ---
 
@@ -218,7 +233,7 @@ verified in the workspace.
 2. Execute phases in order; keep each phase to one commit so review can see
    the before/after.
 3. No user-facing documentation change is required — pure CSS/layout fix.
-   Internal docs: update the MARK comment in `NowPlayingBar.jsx` (step 13).
+   Internal docs: update the MARK comments in `NowPlayingBar.jsx` (step 13).
 4. After merge, verify on a real mobile device that swipe works and no
    page-level horizontal scroll was introduced.
 
