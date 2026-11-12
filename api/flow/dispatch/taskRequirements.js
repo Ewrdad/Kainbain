@@ -32,11 +32,20 @@ import { resolveCandidateStage, resolveStagesForTask } from "../stageResolution.
  * @returns {Object} `{ harness, model, tier, alias, runnableType, hostCommand, kind, stageId, runnerPolicy? }`.
  ***/
 export function taskRequirements(project = {}, task = {}, stages = null) {
+	// Workflow resolution wins over any stale `task.stages` mirror: a task on
+	// a non-active pipeline must be judged by its own pipeline's stage. Only
+	// when the task's pipeline resolves no stages (legacy/no workflow) do we
+	// fall back to stages carried on the task, and never to a stages[0] guess.
+	const resolvedWorkflowStages = resolveStagesForTask(project, task);
+	const fallbackTaskStages =
+		Array.isArray(resolvedWorkflowStages) && resolvedWorkflowStages.length > 0
+			? resolvedWorkflowStages
+			: Array.isArray(task.stages)
+				? task.stages
+				: resolvedWorkflowStages;
 	const effectiveStages = Array.isArray(stages)
 		? stages
-		: Array.isArray(task.stages)
-			? task.stages
-			: resolveStagesForTask(project, task);
+		: fallbackTaskStages;
 	const found = resolveCandidateStage(
 		Array.isArray(effectiveStages) ? effectiveStages : [],
 		task.currentStageId,

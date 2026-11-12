@@ -1,7 +1,7 @@
 import { taskRequirements } from "./taskRequirements.js";
 import { selectAliasTarget } from "../../aliasSelector.js";
 import { normalizeStageType } from "../../projectStore.js";
-import { resolveCandidateStage } from "../stageResolution.js";
+import { resolveCandidateStage, resolveStagesForTask } from "../stageResolution.js";
 
 /***
  * MARK: isDispatchServable
@@ -29,11 +29,16 @@ import { resolveCandidateStage } from "../stageResolution.js";
  * @returns {boolean} Whether a Runner over the wire can take this stage.
  ***/
 export function isDispatchServable({ project = {}, task = {}, stages = null, stage = null } = {}) {
+	const resolvedWorkflowStages = resolveStagesForTask(project, task);
+	const fallbackTaskStages =
+		Array.isArray(resolvedWorkflowStages) && resolvedWorkflowStages.length > 0
+			? resolvedWorkflowStages
+			: Array.isArray(task.stages)
+				? task.stages
+				: resolvedWorkflowStages;
 	const effectiveStages = Array.isArray(stages)
 		? stages
-		: Array.isArray(task.stages)
-			? task.stages
-			: [];
+		: fallbackTaskStages;
 	// Strict like the queue display: an explicit stage, else the task's
 	// stage by id (falling back to a name match), else unknown — a task
 	// pointing at a deleted stage parks, never the first stage's job.
