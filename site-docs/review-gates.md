@@ -7,7 +7,7 @@ slug: review-gates
 
 # Review Gates
 
-`human` stages and checkpoints park a task in `waiting_human` until you decide. Nothing advances past you silently.
+`human` stages and checkpoints park a task in `waiting_human` until you decide. Nothing advances past you silently. For hand-editing files outside a review comment, see `#/docs/develop-alongside`.
 
 ## Your three moves
 

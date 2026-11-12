@@ -565,6 +565,9 @@ export function completeTask(store, projectId, taskId, projectCwd) {
  *   cancelled the moment the task parks — leaving the flags set would label a
  *   paused task RETRYING. Iteration counters are deliberately preserved so
  *   retry budgets remain auditable across the pause (resume resets them).
+ *   Hand-edit contract (see `site-docs/develop-alongside.md`): pause stops
+ *   the live run, so edits committed on the task branch while paused survive
+ *   the resume — resume re-runs the current stage on that branch.
  ***/
 export function pauseTask(store, projectId, taskId, projectCwd) {
 	const task = store.getTask(projectId, taskId);

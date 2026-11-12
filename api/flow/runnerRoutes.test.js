@@ -170,6 +170,54 @@ describe("Runner Routes Integration", () => {
 		});
 	});
 
+	it("enriches monitor assignments with cross-pipeline identity", async () => {
+		// A Runner working on a DIFFERENT pipeline than the viewer: the
+		// monitor row must still carry the real task title, project name,
+		// and stage name resolved from the held task's own pipeline.
+		const projRes = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: {
+				name: "Other Pipeline Fixture",
+				gitUrl: "https://git.example.com/team/other.git",
+			},
+		});
+		expect(projRes.statusCode).toBe(201);
+		const other = JSON.parse(projRes.payload);
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: other.id, goal: "Cross-pipeline fixture task" },
+		});
+		expect(taskRes.statusCode).toBe(200);
+		const otherTaskId = JSON.parse(taskRes.payload).id;
+		const credential = await onboard("cross-pipe-1");
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${otherTaskId}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: other.id },
+		});
+		expect(claim.statusCode).toBe(200);
+
+		const monitor = JSON.parse(
+			(await app.inject({ method: "GET", url: "/runners/monitor" })).payload,
+		);
+		const row = monitor.liveAssignments.find((r) => r.runnerId === "cross-pipe-1");
+		expect(row).toBeDefined();
+		// Legacy identity fields stay identical for older UI/clients.
+		expect(row).toMatchObject({ projectId: other.id, taskId: otherTaskId });
+		// No progress reported yet, so the ledger stage may still be null —
+		// the enriched stageName falls back to the task's current stage.
+		expect(row.stageId === null || typeof row.stageId === "string").toBe(true);
+		// Global identity: resolved from the held task's own pipeline.
+		expect(row.projectName).toBe("Other Pipeline Fixture");
+		expect(row.taskTitle).toEqual(expect.stringContaining("Cross-pipeline"));
+		expect(typeof row.stageName).toBe("string");
+		expect(row.stageName.length).toBeGreaterThan(0);
+		expect(row.workflowId).toEqual(expect.any(String));
+	});
+
 	it("renews a live hold via claim-heartbeat: 200, still fenced past TTL", async () => {
 		const credential = await onboard("heartbeat-1");
 		const taskRes = await app.inject({

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { api } from '../../../services/api';
 import { MarkdownViewer } from '../../common/MarkdownViewer';
@@ -68,7 +68,9 @@ const FRESHNESS_DOT = {
  *   and rejected reads never throw: before the first successful read they
  *   land as empty fleet state (hosts keep their legacy fallback signal on
  *   old backends and outages), and afterwards the last-known fleet picture
- *   stays until the next poll succeeds instead of flapping to empty.
+ *   stays until the next poll succeeds instead of flapping to empty. The
+ *   fleet endpoint is intentionally project-agnostic (Runners are global):
+ *   there is exactly one poller and no per-project variant.
  * @example const { assignments, registry } = useRunnerMonitor({ pollMs: 5000 });
  ***/
 export const useRunnerMonitor = ({ pollMs = 5000, enabled = true } = {}) => {
@@ -135,6 +137,67 @@ const taskTitle = (task) => {
   return (typeof title === 'string' && title.trim()) || '(untitled task)';
 };
 
+/***
+ * MARK: resolveAssignmentTask
+ * @description Picks the task object one Runner card renders. A local task
+ *   wins when its id matches the assignment (and its project agrees, when
+ *   both sides name one) because only the local record carries the log tail.
+ *   Otherwise a lightweight task built from the assignment's own global
+ *   identity (`taskTitle`/`taskGoal`/ids, resolved backend-side from the
+ *   held task's pipeline) keeps cross-pipeline Runners named even when the
+ *   viewer looks at another pipeline. Null when nothing names the task, so
+ *   the card keeps its honest "details unavailable" state on old backends.
+ * @example resolveAssignmentTask({ taskId: 't1', taskTitle: 'Fix login' }, null) => { id: 't1', title: 'Fix login', ... }
+ * @example resolveAssignmentTask({ taskId: 't1' }, { id: 't1', title: 'Local' }) => { id: 't1', title: 'Local' }
+ ***/
+export const resolveAssignmentTask = (assignment, localTask) => {
+  if (
+    localTask &&
+    localTask.id != null &&
+    assignment?.taskId != null &&
+    String(localTask.id) === String(assignment.taskId) &&
+    (localTask.projectId == null ||
+      assignment.projectId == null ||
+      String(localTask.projectId) === String(assignment.projectId))
+  ) {
+    return localTask;
+  }
+  if (assignment?.taskId == null || String(assignment.taskId) === '') return null;
+  const title = typeof assignment.taskTitle === 'string' ? assignment.taskTitle.trim() : '';
+  const goal = typeof assignment.taskGoal === 'string' ? assignment.taskGoal : '';
+  if (!title && !goal.trim()) return null;
+  return {
+    id: assignment.taskId,
+    projectId: assignment.projectId ?? null,
+    title,
+    goal,
+    status: assignment.taskStatus ?? null,
+    logEntries: [],
+  };
+};
+
+/***
+ * MARK: resolveAssignmentStageName
+ * @description Names the stage one Runner card shows. The view's own stages
+ *   win when they contain the id; otherwise the assignment's global
+ *   `stageName` (resolved backend-side from the held task's own workflow, so
+ *   cross-pipeline Runners stay named); otherwise the raw id. A missing id
+ *   reads as an ellipsis, never `undefined`/`null` text.
+ * @example resolveAssignmentStageName({ stageId: 'build', stageName: 'Build' }, []) => 'Build'
+ * @example resolveAssignmentStageName({ stageId: 'build' }, [{ id: 'build', name: 'Local' }]) => 'Local'
+ ***/
+export const resolveAssignmentStageName = (assignment, stages) => {
+  const stageId = assignment?.stageId;
+  if (stageId == null || stageId === '') return '…';
+  const list = Array.isArray(stages) ? stages : [];
+  const found = list.find((s) => s && String(s.id) === String(stageId));
+  const local = found?.name || found?.title;
+  if (typeof local === 'string' && local.trim()) return local;
+  const global = assignment?.stageName;
+  if (typeof global === 'string' && global.trim()) return global;
+  return String(stageId);
+};
+
 const runnerLogTail = (task, runnerId, limit = 6) => {
   const entries = Array.isArray(task?.logEntries) ? task.logEntries : [];
   const mine = entries.filter((e) => {
@@ -164,8 +227,16 @@ const runnerLogTail = (task, runnerId, limit = 6) => {
  *   Runner id are ignored, so a half-shaped fleet payload can never crash
  *   a row. Compact rows truncate long runner, stage, harness, and model
  *   text on one line (full text in tooltips) so crowded phone screens
- *   never scroll sideways.
+ *   never scroll sideways. Runners are global: the fleet endpoint is never
+ *   filtered by the selected pipeline, and each card resolves its task
+ *   title and stage name from the assignment's own global identity first —
+ *   `tasks` is only optional enrichment for the active pipeline (log
+ *   tails), and tasks on other pipelines hydrate once via
+ *   `api.getTask(projectId, taskId)`. `onOpenTask(assignment)` (optional)
+ *   backs the "Open task" affordance that jumps to the Runner's job in its
+ *   own pipeline.
  * @example <PerRunnerTasksWidget tasks={tasks} compact={false} />
+ * @example <PerRunnerTasksWidget tasks={tasks} onOpenTask={(a) => openRunnerTask(a)} />
  ***/
 export function PerRunnerTasksWidget({
   tasks = [],
@@ -174,6 +245,7 @@ export function PerRunnerTasksWidget({
   pollMs = 5000,
   assignmentsOverride,
   registryOverride,
+  onOpenTask,
 }) {
   const skipPoll = assignmentsOverride !== undefined || registryOverride !== undefined;
   const polled = useRunnerMonitor({ pollMs, enabled: !skipPoll });
@@ -201,32 +273,62 @@ export function PerRunnerTasksWidget({
     return () => clearInterval(timer);
   }, [assignments.length]);
 
+  // Cross-pipeline hydration: assignments on other pipelines carry only
+  // global identity (`taskTitle`/`stageName`); the full record (log tail)
+  // is fetched once per task via `GET /tasks/:id?projectId=...` and merged
+  // below. A rejected read leaves the A1 identity intact and the tail empty.
+  const [hydratedTasks, setHydratedTasks] = useState(() => new Map());
+  const hydrateRequestedRef = useRef(new Set());
+
   const taskById = useMemo(() => {
     const map = new Map();
     for (const t of Array.isArray(tasks) ? tasks : []) {
       if (t && t.id != null) map.set(String(t.id), t);
     }
-    return map;
-  }, [tasks]);
-
-  const stageById = useMemo(() => {
-    const map = new Map();
-    for (const s of Array.isArray(stages) ? stages : []) {
-      if (s && s.id != null) map.set(String(s.id), s);
+    // Local board records win: hydration only fills tasks the view lacks.
+    for (const [id, t] of hydratedTasks) {
+      if (!map.has(String(id))) map.set(String(id), t);
     }
     return map;
-  }, [stages]);
+  }, [tasks, hydratedTasks]);
+  useEffect(() => {
+    if (typeof api.getTask !== 'function') return;
+    const missing = assignments.filter((a) => {
+      if (!a || a.taskId == null || a.projectId == null) return false;
+      const key = `${String(a.projectId)}:${String(a.taskId)}`;
+      if (hydrateRequestedRef.current.has(key)) return false;
+      if (taskById.has(String(a.taskId))) return false;
+      return true;
+    });
+    if (missing.length === 0) return;
+    for (const a of missing) {
+      const key = `${String(a.projectId)}:${String(a.taskId)}`;
+      hydrateRequestedRef.current.add(key);
+      api
+        .getTask(a.projectId, a.taskId)
+        .then((full) => {
+          if (full && full.id != null) {
+            setHydratedTasks((prev) => {
+              if (prev.has(String(full.id))) return prev;
+              const next = new Map(prev);
+              next.set(String(full.id), full);
+              return next;
+            });
+          }
+        })
+        .catch(() => {
+          // Fail closed: title/stage from the assignment stay on screen.
+        });
+    }
+  }, [assignments, taskById]);
 
-  const stageName = (stageId) => {
-    if (stageId == null || stageId === '') return '…';
-    const stage = stageById.get(String(stageId));
-    const name = stage?.name || stage?.title;
-    return (typeof name === 'string' && name.trim()) || String(stageId);
-  };
+  // Stage names resolve against the view's own stages first, then the
+  // assignment's global `stageName` — so cross-pipeline Runners stay named.
+  const stageName = (assignment) => resolveAssignmentStageName(assignment, stages);
 
   const cards = assignments.map((a) => ({
     assignment: a,
-    task: taskById.get(String(a.taskId)) || null,
+    task: resolveAssignmentTask(a, a?.taskId != null ? taskById.get(String(a.taskId)) || null : null),
     record: registry.get(a.runnerId) || null,
   }));
 
@@ -257,11 +359,12 @@ export function PerRunnerTasksWidget({
       >
         {cards.map(({ assignment: a, task }, index) => (
           <PerRunnerCompactRow
-            key={`${a.runnerId}:${a.executionId || a.taskId || index}`}
+            key={`${a.runnerId}:${a.executionId || a.taskId || index}:${a.stageId || ''}`}
             assignment={a}
             task={task}
             nowMs={nowMs}
             stageName={stageName}
+            onOpenTask={onOpenTask}
           />
         ))}
       </section>
@@ -276,19 +379,20 @@ export function PerRunnerTasksWidget({
     >
       {cards.map(({ assignment: a, task, record }, index) => (
         <PerRunnerCard
-          key={`${a.runnerId}:${a.executionId || a.taskId || index}`}
+          key={`${a.runnerId}:${a.executionId || a.taskId || index}:${a.stageId || ''}`}
           assignment={a}
           task={task}
           record={record}
           nowMs={nowMs}
           stageName={stageName}
+          onOpenTask={onOpenTask}
         />
       ))}
     </section>
   );
 }
 
-const PerRunnerCompactRow = ({ assignment: a, task, nowMs, stageName }) => {
+const PerRunnerCompactRow = ({ assignment: a, task, nowMs, stageName, onOpenTask }) => {
   const serving = a?.serving && typeof a.serving === 'object' ? a.serving : null;
   return (
     <details
@@ -296,6 +400,22 @@ const PerRunnerCompactRow = ({ assignment: a, task, nowMs, stageName }) => {
       className="px-2 py-1 bg-slate-800/60 border border-slate-700/60 rounded-sm text-[11px] font-mono text-slate-300"
     >
       <summary className="flex items-center gap-2 min-w-0 cursor-pointer list-none">
+        {typeof onOpenTask === 'function' && (
+          <button
+            type="button"
+            data-testid={`per-runner-open-${a.runnerId}`}
+            title={a?.projectName ? `Open task in ${a.projectName}` : 'Open task'}
+            aria-label={`Open task ${formatShortRunnerTaskId(a.taskId)}`}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onOpenTask(a);
+            }}
+            className="shrink-0 px-1 rounded bg-slate-700/60 hover:bg-emerald-700/60 text-slate-200 border border-slate-600 cursor-pointer"
+          >
+            ↗
+          </button>
+        )}
         <span
           className={`inline-block w-2 h-2 rounded-full shrink-0 ${FRESHNESS_DOT[runnerFreshness(a.lastSeenAt, nowMs)]}`}
           aria-hidden="true"
@@ -304,8 +424,8 @@ const PerRunnerCompactRow = ({ assignment: a, task, nowMs, stageName }) => {
           {a.runnerId}
         </strong>
         <span className="truncate min-w-0">{formatShortRunnerTaskId(a.taskId)}</span>
-        <span className="text-slate-400 truncate min-w-0" title={stageName(a.stageId)}>
-          {stageName(a.stageId)}
+        <span className="text-slate-400 truncate min-w-0" title={stageName(a)}>
+          {stageName(a)}
         </span>
         {/* Serving fields cross the fleet API boundary untyped: String()
             keeps a malformed object from crashing the row (React cannot
@@ -340,7 +460,7 @@ const PerRunnerCompactRow = ({ assignment: a, task, nowMs, stageName }) => {
   );
 };
 
-const PerRunnerCard = ({ assignment: a, task, record, nowMs, stageName }) => {
+const PerRunnerCard = ({ assignment: a, task, record, nowMs, stageName, onOpenTask }) => {
   const harnesses = Array.isArray(record?.capabilities?.harnesses)
     ? record.capabilities.harnesses.map((h) => h?.id || h).filter(Boolean)
     : [];
@@ -362,6 +482,30 @@ const PerRunnerCard = ({ assignment: a, task, record, nowMs, stageName }) => {
         <span className="text-cyan-300" data-testid={`per-runner-task-${a.runnerId}`}>
           {formatShortRunnerTaskId(a.taskId)}
         </span>
+        {typeof a?.projectName === 'string' && a.projectName.trim() && (
+          <span
+            className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700 text-slate-400 truncate max-w-40"
+            title={`Pipeline: ${a.projectName}`}
+            data-testid={`per-runner-project-${a.runnerId}`}
+          >
+            {a.projectName}
+          </span>
+        )}
+        {typeof onOpenTask === 'function' && (
+          <button
+            type="button"
+            data-testid={`per-runner-open-${a.runnerId}`}
+            title={
+              a?.projectName
+                ? `Open task in ${a.projectName}`
+                : 'Open task in its pipeline'
+            }
+            onClick={() => onOpenTask(a)}
+            className="px-1.5 py-0.5 rounded bg-slate-700/60 hover:bg-emerald-700/60 text-slate-200 border border-slate-600 text-[10px] cursor-pointer"
+          >
+            Open task ↗
+          </button>
+        )}
         <span
           className="ml-auto text-emerald-300 font-bold"
           data-testid={`per-runner-elapsed-${a.runnerId}`}
@@ -375,7 +519,7 @@ const PerRunnerCard = ({ assignment: a, task, record, nowMs, stageName }) => {
       </p>
       <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-slate-400">
         <span className="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700">
-          Stage: <strong className="text-slate-200">{stageName(a.stageId)}</strong>
+          Stage: <strong className="text-slate-200">{stageName(a)}</strong>
         </span>
         {/* Epoch and serving fields cross the fleet API boundary untyped:
             String() keeps a malformed object from crashing the card. */}

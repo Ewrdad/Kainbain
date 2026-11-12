@@ -61,10 +61,14 @@ export function loadRunnerConfig(env = process.env) {
 	// dispatch answer carries the required model per assignment and the
 	// daemon serves exactly that). KAINBAIN_RUNNER_MODELS (csv) wins when
 	// set; otherwise the singular KAINBAIN_RUNNER_MODEL seeds a 1-element
-	// list; when both are empty, periodic model auto-discovery fills in
-	// (muse serve model/list every KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS,
-	// default 12h, 0 disables) — empty everywhere means unpinned
-	// (matches model-less tasks only).
+	// pin; when both are empty, periodic model auto-discovery fills in
+	// (every KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS, default 12h) —
+	// empty everywhere means unpinned (matches model-less tasks only).
+	// Opt in to discovery-wins with KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1
+	// (survey q4): a non-empty discovery result then replaces the pin and
+	// the pin only fills in when discovery yielded nothing. Default stays
+	// pin-wins so existing pinned installs keep advertising exactly their
+	// pin across self-updates.
 	// The "default" sentinel means harness-managed (no pinned model),
 	// never a model this host can serve, so it is never advertised:
 	// an operator who sets KAINBAIN_RUNNER_MODEL=default gets the
@@ -108,9 +112,11 @@ export function loadRunnerConfig(env = process.env) {
 		10,
 	);
 
-	// Model auto-discovery cadence (muse serve model/list), default 12h.
-	// 0 disables discovery; the operator's explicit MODELS/MODEL list
-	// always wins over discovered ids. Invalid values fall back to 12h.
+	// Model auto-discovery cadence (one leg per configured harness),
+	// default 12h. 0 disables all scanning (boot seed and re-detect
+	// alike). The operator's explicit MODELS/MODEL pin always wins over
+	// discovered ids unless KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1 opts
+	// in to discovery-wins. Invalid values fall back to 12h.
 	const modelDiscoveryIntervalMs = Number.parseInt(
 		str("KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS", "43200000"),
 		10,
@@ -171,6 +177,7 @@ export function loadRunnerConfig(env = process.env) {
 			Number.isFinite(modelDiscoveryIntervalMs) && modelDiscoveryIntervalMs >= 0
 				? modelDiscoveryIntervalMs
 				: 43200000,
+		modelDiscoveryWins: str("KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS", "") === "1",
 		approvalPollMs: Number.isFinite(approvalPollMs) && approvalPollMs > 0 ? approvalPollMs : 5000,
 		approvalTimeoutMs:
 			Number.isFinite(approvalTimeoutMs) && approvalTimeoutMs > 0 ? approvalTimeoutMs : 300000,

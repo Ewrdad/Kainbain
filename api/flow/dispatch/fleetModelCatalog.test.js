@@ -97,4 +97,33 @@ describe("buildFleetModelCatalog", () => {
 		expect(buildFleetModelCatalog()).toEqual({ models: [] });
 		expect(buildFleetModelCatalog([record({ status: "revoked" })])).toEqual({ models: [] });
 	});
+
+	test("serves auto-detected multi-harness ids verbatim (fleet pick is a guaranteed match)", () => {
+		const catalogue = buildFleetModelCatalog([
+			record({
+				runnerId: "server2",
+				capabilities: {
+					harnesses: [{ id: "pi" }, { id: "muse" }],
+					models: ["pi::mistral::codestral-2508", "muse::meta::muse-spark-1.3"],
+					tiers: ["T0"],
+				},
+			}),
+		]);
+		expect(catalogue.models).toEqual([
+			{
+				id: "muse::meta::muse-spark-1.3",
+				harnesses: ["muse", "pi"],
+				tiers: ["T0"],
+				runnerCount: 1,
+				runnerIds: ["server2"],
+			},
+			{
+				id: "pi::mistral::codestral-2508",
+				harnesses: ["muse", "pi"],
+				tiers: ["T0"],
+				runnerCount: 1,
+				runnerIds: ["server2"],
+			},
+		]);
+	});
 });
