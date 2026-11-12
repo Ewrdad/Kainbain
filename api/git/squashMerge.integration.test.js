@@ -27,8 +27,12 @@ const { GitMergeConflictError } = await import("./errors.js");
 function run(cwd, ...args) {
 	return execFileSync("git", args, { cwd, stdio: ["ignore", "pipe", "pipe"] }).toString();
 }
+const tempDirs = [];
 function initRepo() {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-squash-"));
+	// Tracked BEFORE the throwing git setup below so a failed init cannot
+	// leak the temp dir (same leak class as the 2026-11-12 CI failure).
+	tempDirs.push(dir);
 	run(dir, "init", "-b", "main");
 	run(dir, "config", "user.email", "kainbain-test@example.com");
 	run(dir, "config", "user.name", "KainBain Test");
@@ -46,8 +50,7 @@ function initRepo() {
 	run(dir, "checkout", "main");
 	return dir;
 }
-const tempDirs = [];
-beforeEach(() => { if (gitAvailable) tempDirs.push(initRepo()); });
+beforeEach(() => { if (gitAvailable) initRepo(); });
 afterEach(() => {
 	while (tempDirs.length > 0) {
 		try { fs.rmSync(tempDirs.pop(), { recursive: true, force: true }); } catch { /* ignore */ }

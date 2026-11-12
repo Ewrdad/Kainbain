@@ -31,8 +31,13 @@ function run(cwd, ...args) {
 	return execFileSync("git", args, { cwd, stdio: ["ignore", "pipe", "pipe"] }).toString();
 }
 
+const tempDirs = [];
+
 function initRepo() {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-switch-"));
+	// Tracked BEFORE the throwing git setup below so a failed init cannot
+	// leak the temp dir (same leak class as the 2026-11-12 CI failure).
+	tempDirs.push(dir);
 	run(dir, "init", "-b", "main");
 	run(dir, "config", "user.email", "kainbain-test@example.com");
 	run(dir, "config", "user.name", "KainBain Test");
@@ -44,8 +49,6 @@ function initRepo() {
 	run(dir, "checkout", "-b", "kb/t");
 	return dir;
 }
-
-const tempDirs = [];
 
 afterEach(() => {
 	while (tempDirs.length > 0) {
@@ -63,7 +66,6 @@ describe("commit-then-switch (real git)", () => {
 	beforeEach(() => {
 		if (!gitAvailable) return;
 		dir = initRepo();
-		tempDirs.push(dir);
 	});
 
 	it("auto-commits snapshot dirt and switches", async () => {
@@ -167,6 +169,8 @@ const OTHER_SNAPSHOT = path.join("docs", "tasks", OTHER_TASK, "task.md");
  */
 function initConflictingRepo() {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-conflict-"));
+	// Tracked BEFORE the throwing git setup below, same as initRepo above.
+	tempDirs.push(dir);
 	run(dir, "init", "-b", "main");
 	run(dir, "config", "user.email", "kainbain-test@example.com");
 	run(dir, "config", "user.name", "KainBain Test");
@@ -192,12 +196,40 @@ function headBranch(cwd) {
 	return run(cwd, "rev-parse", "--abbrev-ref", "HEAD").trim();
 }
 
+const CUSTOM_DOCS = "kdocs";
+
+/**
+ * Same conflicting shape under a CUSTOM docs folder: main tracks
+ * kdocs/tasks/<other>/task.md while kb/t holds it untracked. The prefix
+ * hint (`docsDirName` / project) must reach the guard AND the move-aside
+ * on every entry point, or the custom folder reads as real dirt.
+ */
+function initCustomDirConflictingRepo() {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-conflict-"));
+	tempDirs.push(dir);
+	run(dir, "init", "-b", "main");
+	run(dir, "config", "user.email", "kainbain-test@example.com");
+	run(dir, "config", "user.name", "KainBain Test");
+	fs.writeFileSync(path.join(dir, "real.js"), "base code\n");
+	run(dir, "add", "-A");
+	run(dir, "commit", "-m", "base");
+	run(dir, "checkout", "-b", "kb/t");
+	run(dir, "checkout", "main");
+	fs.mkdirSync(path.join(dir, CUSTOM_DOCS, "tasks", OTHER_TASK), { recursive: true });
+	fs.writeFileSync(path.join(dir, CUSTOM_DOCS, "tasks", OTHER_TASK, "task.md"), "main snapshot\n");
+	run(dir, "add", "-A");
+	run(dir, "commit", "-m", "merge task d1e56caa");
+	run(dir, "checkout", "kb/t");
+	fs.mkdirSync(path.join(dir, CUSTOM_DOCS, "tasks", OTHER_TASK), { recursive: true });
+	fs.writeFileSync(path.join(dir, CUSTOM_DOCS, "tasks", OTHER_TASK, "task.md"), "live snapshot\n");
+	return dir;
+}
+
 describe("branch switches in the conflicting state (real git)", () => {
 	let dir;
 	beforeEach(() => {
 		if (!gitAvailable) return;
 		dir = initConflictingRepo();
-		tempDirs.push(dir);
 	});
 
 	it("reproduces the original failure: raw git checkout main is refused", () => {
@@ -325,6 +357,7 @@ describe("branch switches in the conflicting state (real git)", () => {
 		// snapshot backstop would commit it onto kb/t and the checkout to
 		// main would remove it, dangling the restored link.
 		const real = path.join(os.tmpdir(), `kainbain-link-target-${process.pid}-${Date.now()}.txt`);
+		tempDirs.push(real);
 		fs.writeFileSync(real, "live via link\n");
 		fs.rmSync(path.join(dir, OTHER_SNAPSHOT));
 		fs.symlinkSync(real, path.join(dir, OTHER_SNAPSHOT));
@@ -337,14 +370,82 @@ describe("branch switches in the conflicting state (real git)", () => {
 		expect(fs.readFileSync(path.join(dir, OTHER_SNAPSHOT), "utf8")).toBe("live via link\n");
 	});
 
+	it("moves aside engine-owned names byte-exact (a trailing space survives NUL parsing, never trimmed)", async () => {
+		if (!gitAvailable) return;
+		// main tracks an engine-owned report whose name ends in a space;
+		// kb/t holds it as an untracked live copy. Trimming the listing
+		// would mangle the name and miss the file entirely.
+		const fresh = initRepo();
+		const spacedRel = "docs/tasks/t/trailing-space.md ";
+		run(fresh, "checkout", "main");
+		fs.writeFileSync(path.join(fresh, spacedRel), "main report\n");
+		run(fresh, "add", "-A");
+		run(fresh, "commit", "-m", "main spaced report");
+		run(fresh, "checkout", "kb/t");
+		fs.writeFileSync(path.join(fresh, spacedRel), "live report\n");
+
+		const aside = await _moveAsideBlockingLiveSnapshots(fresh, "main");
+
+		expect(aside).not.toBeNull();
+		expect(aside.moved.map((m) => m.rel)).toEqual([spacedRel]);
+		const report = await _restoreMovedAsideSnapshots(aside);
+		expect(report).toEqual({ restored: [spacedRel], failed: [] });
+		expect(fs.readFileSync(path.join(fresh, spacedRel), "utf8")).toBe("live report\n");
+	});
+
+	it("custom docs folder: checkoutBranch honors the prefix hint (and refuses loudly without it)", async () => {
+		if (!gitAvailable) return;
+		const custom = initCustomDirConflictingRepo();
+		const customSnapshot = path.join(CUSTOM_DOCS, "tasks", OTHER_TASK, "task.md");
+		// Without the hint the custom folder reads as real dirt: loud
+		// refusal, nothing switched.
+		await expect(
+			checkoutBranch(custom, "main", { recovery: "off" }),
+		).rejects.toBeInstanceOf(GitDirtyTreeError);
+		expect(headBranch(custom)).toBe("kb/t");
+		// With the hint the conflicting live copy moves aside and restores.
+		const res = await checkoutBranch(custom, "main", { docsDirName: CUSTOM_DOCS });
+		expect(res).toEqual({ switched: true });
+		expect(headBranch(custom)).toBe("main");
+		expect(fs.readFileSync(path.join(custom, customSnapshot), "utf8")).toBe("live snapshot\n");
+	});
+
+	it("custom docs folder: withCheckedOutBranch and returnToDefaultBranch honor the hint on switch AND restore", async () => {
+		if (!gitAvailable) return;
+		const custom = initCustomDirConflictingRepo();
+		const customSnapshot = path.join(CUSTOM_DOCS, "tasks", OTHER_TASK, "task.md");
+		run(custom, "branch", "kb/ci", "main");
+		let seenBranch = null;
+		await withCheckedOutBranch(custom, "kb/ci", async () => {
+			seenBranch = headBranch(custom);
+		}, { docsDirName: CUSTOM_DOCS });
+		expect(seenBranch).toBe("kb/ci");
+		expect(headBranch(custom)).toBe("main");
+		expect(fs.readFileSync(path.join(custom, customSnapshot), "utf8")).toBe("live snapshot\n");
+
+		// And the finalize-shaped return honors it too.
+		await checkoutBranch(custom, "kb/t", { docsDirName: CUSTOM_DOCS });
+		const back = await returnToDefaultBranch(custom, {
+			recovery: "off",
+			docsDirName: CUSTOM_DOCS,
+		});
+		expect(back).toEqual({ switched: true, branch: "main" });
+		expect(fs.readFileSync(path.join(custom, customSnapshot), "utf8")).toBe("live snapshot\n");
+		// The untrack migration finishes for custom folders as well: the
+		// round trip above committed the snapshot's removal from main.
+		expect(run(custom, "ls-tree", "main", "--", customSnapshot).trim()).toBe("");
+	});
+
 	it("a FAILED switch (branch held by a linked worktree) still restores the live snapshot", async () => {
 		if (!gitAvailable) return;
 		const holder = path.join(
 			os.tmpdir(),
 			`kainbain-holder-${process.pid}-${Date.now()}`,
 		);
-		run(dir, "worktree", "add", holder, "main");
+		// Tracked BEFORE the throwing add so a failed add cannot leak a
+		// half-created holder directory.
 		tempDirs.push(holder);
+		run(dir, "worktree", "add", holder, "main");
 
 		// The checkout is refused (worktree lock) and recovery refuses too
 		// (no upstream to prove nothing unpushed is orphaned): the switch
@@ -389,6 +490,30 @@ describe("move-aside/restore fail-safe (real fs)", () => {
 		expect(fs.readdirSync(dir).sort()).toEqual(["dest.txt"]);
 	});
 
+	it("_moveFileSafely keeps a symlink a symlink when rename fails across filesystems", () => {
+		const target = path.join(dir, "target.txt");
+		fs.writeFileSync(target, "data\n");
+		const src = path.join(dir, "src-link");
+		fs.symlinkSync(target, src);
+		const dest = path.join(dir, "dest-link");
+		const renameSpy = vi.spyOn(fs, "renameSync").mockImplementationOnce(() => {
+			const err = new Error("cross-device link not permitted");
+			err.code = "EXDEV";
+			throw err;
+		});
+		try {
+			_moveFileSafely(src, dest);
+		} finally {
+			renameSpy.mockRestore();
+		}
+		// The fallback recreates the link itself — a plain copy would have
+		// followed it and left a regular file with the target's content.
+		expect(fs.lstatSync(dest).isSymbolicLink()).toBe(true);
+		expect(fs.readlinkSync(dest)).toBe(target);
+		expect(fs.existsSync(src)).toBe(false);
+		expect(fs.readdirSync(dir).sort()).toEqual(["dest-link", "target.txt"]);
+	});
+
 	it("_moveFileSafely leaves both files untouched when the move is impossible", () => {
 		const src = path.join(dir, "src.txt");
 		fs.writeFileSync(src, "live content\n");
@@ -407,14 +532,19 @@ describe("move-aside/restore fail-safe (real fs)", () => {
 		const backupDir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-restore-"));
 		tempDirs.push(backupDir);
 
-		await _restoreMovedAsideSnapshots({
+		const report = await _restoreMovedAsideSnapshots({
 			cwd: dir,
 			backupDir,
 			moved: [{ rel: "docs/tasks/t/task.md", backup: path.join(backupDir, "missing.snapshot") }],
 		});
 
-		// The target keeps its content — restore is never destructive.
+		// The target keeps its content — restore is never destructive — and
+		// the failure is VISIBLE in the report instead of swallowed.
 		expect(fs.readFileSync(target, "utf8")).toBe("checked-out copy\n");
+		expect(report).toEqual({ restored: [], failed: ["docs/tasks/t/task.md"] });
+		// The backup dir is KEPT on failure: stranded live content stays
+		// auditable in temp instead of being deleted with it.
+		expect(fs.existsSync(backupDir)).toBe(true);
 	});
 
 	it("_restoreMovedAsideSnapshots overwrites the stale tracked copy with the live backup", async () => {
@@ -426,13 +556,25 @@ describe("move-aside/restore fail-safe (real fs)", () => {
 		const backup = path.join(backupDir, "0.snapshot");
 		fs.writeFileSync(backup, "live content\n");
 
-		await _restoreMovedAsideSnapshots({
+		const report = await _restoreMovedAsideSnapshots({
 			cwd: dir,
 			backupDir,
 			moved: [{ rel: "docs/tasks/t/task.md", backup }],
 		});
 
 		expect(fs.readFileSync(target, "utf8")).toBe("live content\n");
+		expect(report).toEqual({ restored: ["docs/tasks/t/task.md"], failed: [] });
 		expect(fs.existsSync(backupDir)).toBe(false);
+	});
+
+	it("_restoreMovedAsideSnapshots reports null input as an empty report (never throws)", async () => {
+		await expect(_restoreMovedAsideSnapshots(null)).resolves.toEqual({
+			restored: [],
+			failed: [],
+		});
+		await expect(_restoreMovedAsideSnapshots(undefined)).resolves.toEqual({
+			restored: [],
+			failed: [],
+		});
 	});
 });

@@ -3398,8 +3398,11 @@ describe("TaskStore branch support & merge stage", () => {
 		// The return stays strict (recovery off): dirt after the commit step
 		// means the commit failed, and that must refuse loudly, never stash.
 		expect(gitHelpers.pushBranchIfRemote).toHaveBeenCalledWith(tempCwd, task.branch);
+		// The return switch carries the same project hint as the commit step,
+		// so a custom docs folder counts as engine-owned there too.
 		expect(gitHelpers.returnToDefaultBranch).toHaveBeenCalledWith(tempCwd, {
 			recovery: "off",
+			project: { useBranches: true, cwd: tempCwd },
 		});
 	});
 

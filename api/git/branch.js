@@ -19,13 +19,20 @@ import { GitError } from "./errors.js";
  *   those snapshots onto the current branch (affinity-guarded) closes the
  *   gap; real dirt is never staged and still refuses loudly at the guard.
  *   Best-effort and warn-silent: the guard below owns real failures.
+ *   The caller's prefix hints travel along: without them the backstop
+ *   would read a custom docs folder as real dirt and no-op — while the
+ *   hinted guard passes — leaving tracked-modified engine files for git
+ *   itself to refuse. All three switch companions (backstop, guard,
+ *   move-aside) must agree on what is engine-owned.
  ***/
-async function commitSnapshotsBeforeSwitch(projectCwd, branch, current) {
+async function commitSnapshotsBeforeSwitch(projectCwd, branch, current, opts = {}) {
 	try {
+		const commitOpts = { expectedBranch: current || undefined };
+		_forwardPrefixHints(opts, commitOpts);
 		await commitEngineSnapshots(
 			projectCwd,
 			`KainBain: auto-commit engine snapshots before switching to '${branch}'`,
-			{ expectedBranch: current || undefined },
+			commitOpts,
 		);
 	} catch {
 		// Best-effort: the clean-tree guard below owns real failures loudly.
@@ -54,7 +61,7 @@ export async function checkoutBranch(projectCwd, branch, opts = {}) {
 	// Commit-then-switch: our own just-written snapshots must be committed
 	// before git's checkout safety sees them (the guard below ignores them
 	// by design). Real dirt is never staged and still refuses loudly.
-	await commitSnapshotsBeforeSwitch(projectCwd, branch, current);
+	await commitSnapshotsBeforeSwitch(projectCwd, branch, current, opts);
 	if (opts.checkClean !== false) {
 		await requireCleanWorkingTree(projectCwd, {
 			...opts,
@@ -86,6 +93,11 @@ export async function checkoutBranch(projectCwd, branch, opts = {}) {
  *   lands on (used to detect the blocking paths); for `checkout -b` from
  *   the current HEAD the tree does not change, so any ref works (an
  *   unresolvable one simply yields no move-aside).
+ *   Failure contract: a refused checkout throws git's own error AFTER the
+ *   live files are back in place (retry-safe: re-running re-moves and
+ *   retries). The restore itself never throws — even a partial restore
+ *   leaves checked-out copies behind, never holes — so a thrown error
+ *   always means "still on the old branch, live files intact".
  * @param {string} projectCwd
  * @param {Array<string>} args - Full checkout args, e.g. ["checkout", branch]
  *   or ["checkout", "-b", branch].
@@ -103,6 +115,14 @@ async function checkoutWithSnapshotAside(projectCwd, args, targetRef, opts = {})
 }
 
 /***
+ * MARK: moveStagingCounter
+ * @description Process-wide counter that makes every move-aside staging name
+ *   unique. The pid alone is not enough: one process can move several files
+ *   (or retry a move) and each staging file must be its own.
+ ***/
+let moveStagingCounter = 0;
+
+/***
  * MARK: _moveFileSafely
  * @description Moves one file from `src` to `dest`, overwriting `dest` only
  *   after the source content is safely in place, and surviving a
@@ -113,8 +133,13 @@ async function checkoutWithSnapshotAside(projectCwd, args, targetRef, opts = {})
  *   the final rename is atomic and can never straddle filesystems) and
  *   only then renamed over `dest` and the source removed. `dest` is never
  *   deleted before its replacement is durable, so a failed move can never
- *   lose the live snapshot content. Symlinks are moved as links (lstat
- *   semantics come from the caller passing the link path).
+ *   lose the live snapshot content. Symlinks are moved as links on BOTH
+ *   paths: the fast rename moves the link itself, and the copy fallback
+ *   recreates the link (plain `copyFileSync` would follow it and turn the
+ *   snapshot into a regular file holding the target's content).
+ *   Fails LOUD: any failure throws with `src` untouched, so the caller can
+ *   let git's own safety refuse the checkout instead of silently carrying
+ *   half-moved state.
  * @example _moveFileSafely('/tmp/bak/0.snapshot', '/repo/docs/tasks/t/task.md')
  * @param {string} src - Absolute source path (must exist).
  * @param {string} dest - Absolute destination path.
@@ -127,9 +152,16 @@ export function _moveFileSafely(src, dest) {
 	} catch {
 		// Fall through to the copy fallback (EXDEV or an exotic fs error).
 	}
-	const staging = `${dest}.kainbain-move-${process.pid}`;
+	moveStagingCounter += 1;
+	const staging = `${dest}.kainbain-move-${process.pid}-${moveStagingCounter}`;
 	try {
-		fs.copyFileSync(src, staging);
+		/* eslint-disable security/detect-non-literal-fs-filename -- src/staging are move-aside paths resolved against fixed roots (same as the renames above/below) */
+		if (fs.lstatSync(src).isSymbolicLink()) {
+			fs.symlinkSync(fs.readlinkSync(src), staging);
+		} else {
+			fs.copyFileSync(src, staging);
+		}
+		/* eslint-enable security/detect-non-literal-fs-filename */
 		/* eslint-disable-next-line security/detect-non-literal-fs-filename -- staging sits next to dest, same filesystem, so this rename cannot EXDEV */
 		fs.renameSync(staging, dest);
 		fs.rmSync(src, { force: true });
@@ -158,35 +190,61 @@ export function _moveFileSafely(src, dest) {
  *   and assets committed on main blocked the pre-deploy sync's return to main
  *   the same way (publish of e3b2624a-bc24-4698-9c78-86af7f6f3b5b,
  *   2026-10-30).
+ *   Both git listings are SCOPED to the engine prefixes and NUL-separated:
+ *   a full-tree listing on a large repo would blow past the runner's 1 MB
+ *   output cap and silently truncate — losing blocking paths — while `-z`
+ *   keeps names with spaces or quotes byte-exact (never trimmed). Prefixes
+ *   go to git as `:(literal)` pathspecs so a custom folder name holding
+ *   glob characters matches itself instead of acting as a pattern.
+ *   Fails SAFE: an unreadable target ref or index yields null (no move-aside)
+ *   so git's own safety refuses the checkout loudly; only a temp-dir failure
+ *   throws, because then the checkout it guards must not run unprotected.
  * @example await _moveAsideBlockingLiveSnapshots('/repo', 'main') => { cwd: '/repo', backupDir: '/tmp/...', moved: [...] } | null
  ***/
 export async function _moveAsideBlockingLiveSnapshots(projectCwd, targetBranch, opts = {}) {
-	let tracked;
-	try {
-		({ stdout: tracked } = await git(projectCwd, ["ls-tree", "-r", "--name-only", targetBranch]));
-	} catch {
-		return null;
-	}
 	const ignorePrefixes = _resolveIgnorePaths(opts).map((p) =>
 		p.endsWith("/") ? p : `${p}/`,
 	);
+	if (ignorePrefixes.length === 0) return null;
+	const literalPrefixes = ignorePrefixes.map((p) => `:(literal)${p}`);
+	let tracked;
+	try {
+		({ stdout: tracked } = await git(projectCwd, [
+			"ls-tree",
+			"-r",
+			"-z",
+			"--name-only",
+			targetBranch,
+			"--",
+			...literalPrefixes,
+		]));
+	} catch {
+		return null;
+	}
 	const isEngineOwned = (f) =>
 		isLiveTaskSnapshotPath(f, opts) ||
 		ignorePrefixes.some((prefix) => f.startsWith(prefix));
-	const live = tracked
-		.split("\n")
-		.map((s) => s.trim())
-		.filter((f) => f && isEngineOwned(f));
+	const live = tracked.split("\0").filter((f) => f && isEngineOwned(f));
 	if (live.length === 0) return null;
 	let indexed;
 	try {
 		indexed = new Set(
-			(await git(projectCwd, ["ls-files", "-z"])).stdout.split("\0").map((s) => s.trim()).filter(Boolean),
+			(await git(projectCwd, ["ls-files", "-z", "--", ...literalPrefixes])).stdout
+				.split("\0")
+				.filter(Boolean),
 		);
 	} catch {
 		return null;
 	}
-	const backupDir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-snap-aside-"));
+	let backupDir;
+	try {
+		backupDir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-snap-aside-"));
+	} catch (err) {
+		throw new GitError(
+			`Could not switch branches: the engine-snapshot move-aside area could not be created (${err?.message || err}). ` +
+				`Nothing was moved and the working tree is untouched — free temp space and retry.`,
+		);
+	}
 	const moved = [];
 	for (const rel of live) {
 		if (indexed.has(rel)) continue;
@@ -224,12 +282,21 @@ export async function _moveAsideBlockingLiveSnapshots(projectCwd, targetBranch, 
  * @description Restores files moved aside by _moveAsideBlockingLiveSnapshots,
  *   overwriting the target branch's stale tracked copy with the newer
  *   backend-regenerated content (the backend re-saves task.md on every
- *   event, so the aside copy is authoritative). Never throws: leftovers
- *   are inert files the next save overwrites.
- * @example await _restoreMovedAsideSnapshots(aside)
+ *   event, so the aside copy is authoritative). Never throws: every file is
+ *   attempted and per-file outcomes come back in the report, so a caller or
+ *   test can SEE a partial restore instead of guessing. A failed file keeps
+ *   the checked-out copy in the worktree (never a hole — `_moveFileSafely`
+ *   only replaces once the backup content is durable) and its aside copy
+ *   stays in the backup dir, which is then deliberately KEPT: stranded
+ *   live content in a temp dir is auditable, deleted content is not. The
+ *   next backend save regenerates the worktree file either way.
+ * @example await _restoreMovedAsideSnapshots(aside) => { restored: ['docs/tasks/t/task.md'], failed: [] }
+ * @returns {Promise<{restored: Array<string>, failed: Array<string>}>}
  ***/
 export async function _restoreMovedAsideSnapshots(aside) {
-	if (!aside) return;
+	if (!aside) return { restored: [], failed: [] };
+	const restored = [];
+	const failed = [];
 	for (const { rel, backup } of aside.moved) {
 		try {
 			const full = path.join(aside.cwd, rel);
@@ -239,15 +306,19 @@ export async function _restoreMovedAsideSnapshots(aside) {
 			// it once the backup content is durably in place, so a failed
 			// restore leaves the checked-out copy — never a hole.
 			_moveFileSafely(backup, full);
+			restored.push(rel);
 		} catch {
-			// Inert leftover in the temp dir; the next save regenerates.
+			failed.push(rel);
 		}
 	}
-	try {
-		fs.rmSync(aside.backupDir, { recursive: true, force: true });
-	} catch {
-		// Scratch dir only.
+	if (failed.length === 0) {
+		try {
+			fs.rmSync(aside.backupDir, { recursive: true, force: true });
+		} catch {
+			// Scratch dir only.
+		}
 	}
+	return { restored, failed };
 }
 
 
@@ -510,7 +581,7 @@ export async function ensureBranchCheckedOut(projectCwd, branch, opts = {}) {
 
 	// Commit-then-switch backstop (see checkoutBranch): snapshot dirt must
 	// be committed before either the checkout guard or git's own safety.
-	await commitSnapshotsBeforeSwitch(projectCwd, branch, current);
+	await commitSnapshotsBeforeSwitch(projectCwd, branch, current, opts);
 
 	if (await branchExists(projectCwd, branch)) {
 		if (current !== "HEAD" || (await hasCommits(projectCwd))) {
@@ -668,6 +739,31 @@ export async function defaultBranch(projectCwd, opts = {}) {
 
 
 /***
+ * MARK: _forwardPrefixHints
+ * @description Copies the engine-path prefix hints (`project`, `docsDirName`,
+ *   `kainbainDirName`, `ignorePaths`) from one options bag to another, but
+ *   ONLY when the source actually carries them — default projects keep
+ *   byte-identical option shapes. One shared copier (not four hand-rolled
+ *   spreads) so the clean-tree guard and the snapshot move-aside can never
+ *   disagree about which paths are engine-owned: a guard that ignores a
+ *   custom docs folder while the move-aside watches the default one (or the
+ *   reverse) is exactly the mismatch class that stranded tasks 82e49a05
+ *   and 9d2b75a2.
+ * @example _forwardPrefixHints({ recovery: 'off', project }, {}) => { project }
+ * @param {Object} from - Options bag carrying the hints.
+ * @param {Object} to - Options bag receiving the hints (mutated, returned).
+ * @returns {Object} The receiving bag.
+ ***/
+function _forwardPrefixHints(from, to) {
+	if (!from || !to) return to;
+	if (from.project !== undefined && from.project !== null) to.project = from.project;
+	if (from.docsDirName !== undefined) to.docsDirName = from.docsDirName;
+	if (from.kainbainDirName !== undefined) to.kainbainDirName = from.kainbainDirName;
+	if (from.ignorePaths !== undefined) to.ignorePaths = from.ignorePaths;
+	return to;
+}
+
+/***
  * MARK: returnToDefaultBranch
  * @description Checks out the project's default branch (resolved by
  *   defaultBranch). Idempotent no-op when already there. Refuses on a dirty
@@ -680,6 +776,9 @@ export async function defaultBranch(projectCwd, opts = {}) {
  * @param {string} [opts.fallback] - Fallback default-branch name.
  * @param {boolean} [opts.checkClean=true] - Enforce the clean-tree guard.
  * @param {string} [opts.recovery] - 'ladder' or 'off' for the clean-tree guard.
+ * @param {Object} [opts.project] - Project record hint for custom docs/state
+ *   dir names; forwarded to the guard and the snapshot move-aside so custom
+ *   folders behave exactly like the defaults.
  * @returns {Promise<{switched: boolean, branch: string}>}
  ***/
 export async function returnToDefaultBranch(projectCwd, opts = {}) {
@@ -690,6 +789,7 @@ export async function returnToDefaultBranch(projectCwd, opts = {}) {
 	const checkoutOpts = { checkClean: opts.checkClean };
 	if (opts.taskId) checkoutOpts.taskId = opts.taskId;
 	if (opts.recovery) checkoutOpts.recovery = opts.recovery;
+	_forwardPrefixHints(opts, checkoutOpts);
 	const result = await checkoutBranch(projectCwd, def, checkoutOpts);
 	return { switched: result.switched, branch: def };
 }
@@ -737,6 +837,9 @@ export async function deleteBranch(projectCwd, branch) {
  * @param {string} [opts.context] - Human string for the clean-tree guard.
  * @param {string} [opts.fallback] - Fallback default-branch name.
  * @param {string} [opts.taskId] - Owning task id for guard markers.
+ * @param {Object} [opts.project] - Project record hint for custom docs/state
+ *   dir names; forwarded to the guard, the switch, and the restore so all
+ *   three agree on which paths are engine-owned.
  * @returns {Promise<*>} Whatever `fn` resolved with.
  * @throws {GitError} Invalid branch name, dirty tree (refused switch), failed
  *   checkout, failed restore, or the original `fn` error re-thrown unchanged
@@ -758,10 +861,12 @@ export async function withCheckedOutBranch(projectCwd, branch, fn, opts = {}) {
 	const context = opts.context || `execution on branch '${branch}'`;
 	const cleanOpts = { context, recovery: "off" };
 	if (opts.taskId) cleanOpts.taskId = opts.taskId;
+	_forwardPrefixHints(opts, cleanOpts);
 	await requireCleanWorkingTree(projectCwd, cleanOpts);
 
 	const switchOpts = { checkClean: false, recovery: "off" };
 	if (opts.taskId) switchOpts.taskId = opts.taskId;
+	_forwardPrefixHints(opts, switchOpts);
 	await checkoutBranch(projectCwd, branch, switchOpts);
 
 	// Capture (never swallow) the fn error so the restore below can run on
@@ -781,6 +886,7 @@ export async function withCheckedOutBranch(projectCwd, branch, fn, opts = {}) {
 			const restoreOpts = { recovery: "off" };
 			if (opts.fallback) restoreOpts.fallback = opts.fallback;
 			if (opts.taskId) restoreOpts.taskId = opts.taskId;
+			_forwardPrefixHints(opts, restoreOpts);
 			await returnToDefaultBranch(projectCwd, restoreOpts);
 		} catch (restoreErr) {
 			throw new GitError(
