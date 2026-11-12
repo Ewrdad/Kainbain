@@ -28,6 +28,7 @@ export const SECTION_TOKENS = Object.freeze([
 	"reporting",
 	"failureDetails",
 	"testingGuidance",
+	"noCode",
 	"failureGuidance",
 ]);
 
@@ -89,6 +90,7 @@ export const MANDATORY_LAYOUT_TOKENS = Object.freeze([
 export const CONDITIONAL_LAYOUT_TOKENS = Object.freeze([
 	"failureDetails",
 	"testingGuidance",
+	"noCode",
 ]);
 
 /***
@@ -156,6 +158,14 @@ export const LAYOUT_TOKENS = Object.freeze([
 		requirement: "conditional",
 		description:
 			"Test verification gate — auto-appended for verdict stages.",
+	},
+	{
+		token: "noCode",
+		label: "No code (docs-only)",
+		category: "section",
+		requirement: "conditional",
+		description:
+			"Docs-only enforcement — auto-appended for no-code stages.",
 	},
 	{
 		token: "failureGuidance",
@@ -251,7 +261,7 @@ export const LAYOUT_TOKENS = Object.freeze([
  *   exactly: task, stage, skills, images, previous reports, reporting,
  *   failure details, testing guidance, stage failure guidance. Rendered
  *   through `renderPromptLayout` it is byte-identical to the legacy join.
- * @example DEFAULT_PROMPT_LAYOUT.split('\n\n').length => 9
+ * @example DEFAULT_PROMPT_LAYOUT.split('\n\n').length => 10
  ***/
 export const DEFAULT_PROMPT_LAYOUT = SECTION_TOKENS.map(
 	(name) => `{{${name}}}`,

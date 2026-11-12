@@ -5,6 +5,7 @@ import {
 	modelKey,
 	withModelKey,
 } from "../shared/modelKeys.js";
+import { mergeFleetIntoSections } from "./flow/dispatch/fleetSectionMerge.js";
 
 /***
  * MARK: FALLBACK_MODELS
@@ -216,6 +217,15 @@ export const publicModelJsonSchema = {
 		statusLabel: { type: "string" },
 		// Per-model advertised reasoning levels (optional).
 		supportedReasoning: { type: ["array", "null"], items: { type: "string" } },
+		// Fleet availability (optional — present on fleet-merged entries):
+		// whether any claim-eligible runner serves the id right now, how
+		// many, and why not when unavailable (marked, never hidden).
+		fleet: { type: "boolean" },
+		runnerCount: { type: "number" },
+		runnerIds: { type: "array", items: { type: "string" } },
+		tiers: { type: "array", items: { type: "string" } },
+		available: { type: "boolean" },
+		unavailableReason: { type: ["string", "null"] },
 	},
 	additionalProperties: true,
 };
@@ -432,6 +442,14 @@ async function listCatalogWithTimeout(
  *   cache with the per-harness timeout budget, so one hanging/throwing
  *   harness can never stall or break the whole catalogue. The default
  *   entry reuses the flat list's array (one cache slot, one listing).
+ *
+ *   Central list: pass the fleet entries (`fleet`, the snapshot's
+ *   `models`) and the returned harness set becomes the UNION of
+ *   backend-known and fleet-served harnesses — fleet-only ids merge
+ *   into their sections (backend entries win ties by key) and
+ *   fleet-only harness ids gain synthesized sections, so every
+ *   advertised id is selectable without backend-side registration.
+ *   Omitted/empty `fleet` returns the backend views unchanged.
  * @example await aggregateModelCatalog({ registry, defaultHarness }) => { models: [...], harnesses: [{ id: 'pi', models: [...] }] }
  * @param {Object} [opts]
  * @param {Object} [opts.registry] - The id-keyed harness view registry (`{ list() }`).
@@ -440,6 +458,7 @@ async function listCatalogWithTimeout(
  * @param {boolean} [opts.refresh=false] - Ask harnesses for a network-free disk refresh and bypass the caches.
  * @param {number} [opts.timeoutMs] - Per-harness listing budget (defaults to the configured models timeout).
  * @param {boolean} [opts.fallbackWhenEmpty] - Serve the curated fallback for an empty default catalog (defaults to the default harness's modelSelection: list ⇒ true, none ⇒ false).
+ * @param {Array<Object>} [opts.fleet] - Fleet catalogue entries to merge (`{ id, harnesses, tiers, runnerCount, runnerIds, … }`).
  * @returns {Promise<{models: Array<Object>, harnesses: Array<Object>}> The merged catalog (never throws for harness failures).
  ***/
 export async function aggregateModelCatalog({
@@ -449,6 +468,7 @@ export async function aggregateModelCatalog({
 	refresh = false,
 	timeoutMs = config.modelsHarnessTimeoutMs,
 	fallbackWhenEmpty,
+	fleet = null,
 } = {}) {
 	const entries = typeof registry?.list === "function" ? registry.list() : [];
 	const flatFallback =
@@ -554,7 +574,7 @@ export async function aggregateModelCatalog({
 			}
 		}),
 	);
-	return { models, harnesses };
+	return { models, harnesses: mergeFleetIntoSections(harnesses, fleet) };
 }
 
 /***

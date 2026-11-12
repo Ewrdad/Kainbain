@@ -20,12 +20,11 @@ import fs from "node:fs";
 // The secret half lives in the GitHub Actions secret
 // RUNNER_RELEASE_SIGNING_KEY; this constant must never be replaced by a
 // value read from disk, config, or the network at runtime.
-// Provisioning: run `node scripts/runner-release-keygen.mjs` ONCE, commit
-// the printed public line here (and in scripts/runner-pinned-key/
-// runner-release.pub — CI fails the release when they differ), and store
-// the secret halves in GitHub Actions secrets. The value below is the
-// initial placeholder: replace it before cutting the first real release,
-// otherwise runners will reject that release's manifest signature.
+// This key is live: it verifies the published runner-v0.1.0 release (and
+// must stay byte-identical to scripts/runner-pinned-key/runner-release.pub
+// — CI fails the release when they differ). Rotation happens only via a
+// new runner release signed by the old key (or a fresh bootstrap install),
+// never by editing this line for an already-cut release.
 export const PINNED_RELEASE_PUBLIC_KEY =
 	"RWSQEBHai7CRR5kCeIbhz4AuZxyghDr69fY2wF1ETbjkiwCYdIrWkypA";
 export const PINNED_RELEASE_KEYNUM = "901011da8bb09147";

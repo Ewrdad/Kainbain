@@ -116,16 +116,19 @@ export async function harnessesView({
 	models,
 	refresh = false,
 	timeoutMs = config.modelsHarnessTimeoutMs,
+	fleet = null,
 } = {}) {
 	// Single implementation: the domain aggregator (api/models.js) owns the
 	// per-harness projection; this crew seam forwards the caller's
-	// precomputed flat list so the default entry reuses its array.
+	// precomputed flat list so the default entry reuses its array, plus the
+	// fleet entries for the central-list union sections.
 	const { harnesses } = await aggregateModelCatalog({
 		registry,
 		defaultHarness,
 		flatModels: models,
 		refresh,
 		timeoutMs,
+		fleet,
 	});
 	return harnesses;
 }

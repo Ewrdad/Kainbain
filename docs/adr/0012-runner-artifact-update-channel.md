@@ -82,4 +82,55 @@ Supported entrypoint becomes `runner/bin/kainbain-runner`; direct
 
 ## Amendments
 
-(None yet — record deviations here, not by rewriting history.)
+### Amendment 1 — Backend-managed, compatibility-gated selection (2026-11-11, task `82e49a05`)
+
+The R05 boundary stands: the backend directs version selection but never
+serves runner bytes. Everything else in this section refines the Decision
+above; nothing is rewritten.
+
+- **Compatibility is explicit data.** Release manifests gain an additive
+  `requires.backendApi` semver range, stamped by
+  `scripts/generate-runner-manifest.mjs` from the release source tree's
+  `runner/version.json`. Schema stays `1`; manifests without it validate
+  unchanged (legacy releases count as compatible).
+- **The backend advertises its directive.** Register/heartbeat responses
+  carry, inside the existing `update` object, `backendApiVersion` (from
+  `api/version.json`), `desiredRunnerVersion` (= the recommended knob),
+  and `minimumRunnerVersion` (= the min knob). Env knobs stay the managed
+  surface; no settings store was invented.
+- **Runners select the newest compatible release.** The update client
+  verifies each candidate manifest signature first, then filters:
+  strictly newer than current (never downgrade), not a pre-release, the
+  backend API version satisfies `requires.backendApi`, and an asset exists
+  for this platform. `releases/latest` stays the fast path when it already
+  qualifies; otherwise the GitHub path walks one bounded releases-list
+  page (30 entries, newest-first) and mirror bases walk an optional
+  `releases.json` index. An unknown backend version (no heartbeat yet)
+  counts as compatible, so R03 offline updates keep working. A full
+  `manifest.json` override URL stays an explicit single-candidate pin,
+  still compat-filtered.
+- **Desired nudges, never caps.** Per the task survey (newest release
+  compatible with the backend API, asymmetric updates allowed), a runner
+  may run newer than desired while compatible. Desired/min keep their
+  badge, 409-floor, and auto-command roles.
+- **The backend auto-commands updates.** Heartbeats queue `requestUpdate`
+  for active runners that advertise the command and trail the recommended
+  version, at most one pending per runner and at most daily per runner.
+  Runners still apply only when idle and still honour their own
+  `KAINBAIN_RUNNER_AUTO_UPDATE=0` opt-out (acked loudly so the operator
+  sees which switch to flip).
+- **Releases flow from the pipeline.** Publishing the runner
+  (`publish.sh`) cuts and pushes the annotated `runner-v*` tag (the
+  version source of truth is `runner/version.json`), which triggers the
+  unchanged `runner-release.yml` builder. Bumping the version, merging,
+  and publishing is the normal path; manual `git tag` stays the
+  emergency path. One packager builds every bundle
+  (`scripts/package-runner.mjs`; the `.sh` packager is a thin wrapper),
+  and a layout-conformance test pins the bundle against what
+  `applyUpdate` boots.
+- **The wrapper is the installed entrypoint.** New installs and the
+  `scripts/migrate-runner-to-wrapper.sh` migration put systemd units on
+  `$KAINBAIN_RUNNER_INSTALL_ROOT/bin/kainbain-runner` with a versioned
+  install root; direct `node main.js` stays dev-only. Rollback of a bad
+  release is delete/un-publish + lower the knobs + cut a patch forward
+  (never a downgrade); the drill is in `docs/runner-update-runbook.md`.

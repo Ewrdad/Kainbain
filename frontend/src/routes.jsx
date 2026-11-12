@@ -11,6 +11,8 @@ import { TaskReviewPage } from './components/tasks/TaskReviewPage';
 import { SurveyPage } from './components/tasks/SurveyPage';
 import { RetrospectivePage } from './components/retrospective/RetrospectivePage';
 import { SystemSettingsPage } from './components/settings/SystemSettingsPage';
+import { LoginPage } from './components/auth/LoginPage';
+import { RequireAuth } from './components/auth/RequireAuth';
 import { AccessibilityStatementPage } from './components/accessibility/AccessibilityStatementPage';
 
 /***
@@ -27,8 +29,12 @@ import { AccessibilityStatementPage } from './components/accessibility/Accessibi
  * @example <MemoryRouter initialEntries={['/docs/faq']}><AppRoutes /></MemoryRouter>
  ***/
 export function AppRoutes() {
+  // The sign-in page stays public; every other route passes through the
+  // access-control guard (a pass-through while access control is off).
   return (
+    <RequireAuth>
     <Routes>
+      <Route path="/login" element={<LoginPage />} />
       <Route path="/" element={<OrchestratorView />} />
       {/* Legacy alias: normalise with a history REPLACE, never a push. */}
       <Route path="/orchestrator" element={<Navigate to="/" replace />} />
@@ -52,6 +58,7 @@ export function AppRoutes() {
           the router bridge keeps the current view on unmatched paths. */}
       <Route path="*" element={<OrchestratorView />} />
     </Routes>
+    </RequireAuth>
   );
 }
 

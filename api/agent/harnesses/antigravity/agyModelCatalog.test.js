@@ -98,6 +98,12 @@ describe("agy models output parser", () => {
 		expect(parseAgyModelsOutput("")).toEqual([]);
 		expect(parseAgyModelsOutput(null)).toEqual([]);
 	});
+
+	it("serves single-colon slugs exactly like the shared grammar", () => {
+		const models = parseAgyModelsOutput("gemini-3-pro:cloud  Cloud variant\n");
+		expect(models.map((model) => model.id)).toEqual(["gemini-3-pro:cloud"]);
+		expect(models[0].key).toBe("antigravity::antigravity::gemini-3-pro:cloud");
+	});
 });
 
 describe("agy model catalog (TTL cache + resolution)", () => {

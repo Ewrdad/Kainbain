@@ -962,6 +962,7 @@ export async function runCommandStage(
 			const finalSummary = await store.finalizeTaskBranch(task, cwd, {
 				bridge,
 				stageName: stage.name || stage.id,
+				stage,
 				startSha: task.currentStageStartSha,
 			});
 			const boundaryStart =

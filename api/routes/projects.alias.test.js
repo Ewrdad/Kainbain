@@ -379,7 +379,9 @@ describe("Project model-alias API", () => {
 		expect(JSON.parse(patchRes.payload).warnings ?? []).toEqual([]);
 	});
 
-	it("H3: refuses the legacy single-target shape pairing custom with a model", async () => {
+	it("H3: saves the legacy single-target shape pairing custom with a model (kept + warning)", async () => {
+		// Alias trust: a stored model on a self-managed harness saves
+		// (200) with a visible warning, and the value persists verbatim.
 		const created = await createProject();
 		const patchRes = await app.inject({
 			method: "PATCH",
@@ -388,8 +390,14 @@ describe("Project model-alias API", () => {
 				modelAliases: [{ name: "cli", harness: "custom", model: "pi::m" }],
 			},
 		});
-		expect(patchRes.statusCode).toBe(400);
-		expect(JSON.parse(patchRes.payload).error).toContain("cli");
+		expect(patchRes.statusCode).toBe(200);
+		const body = JSON.parse(patchRes.payload);
+		expect(body.warnings ?? []).toEqual(
+			expect.arrayContaining([expect.stringContaining("custom")]),
+		);
+		expect(body.modelAliases).toEqual([
+			expect.objectContaining({ name: "cli", harness: "custom", model: "pi::m" }),
+		]);
 	});
 
 	it("accepts blank models on none harnesses (the valid muse/custom shape)", async () => {

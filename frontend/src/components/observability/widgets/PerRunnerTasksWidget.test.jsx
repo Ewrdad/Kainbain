@@ -4,6 +4,8 @@ import {
   PerRunnerTasksWidget,
   formatRunnerElapsed,
   formatShortRunnerTaskId,
+  resolveAssignmentStageName,
+  resolveAssignmentTask,
   runnerFreshness,
 } from './PerRunnerTasksWidget';
 
@@ -447,6 +449,194 @@ describe('PerRunnerTasksWidget', () => {
     });
   });
 
+  test('a cross-pipeline assignment renders its own title and stage with no local tasks or stages', async () => {
+    // Regression guard for the multi-pipeline issue: the operator views
+    // pipeline A (empty local tasks/stages) while the Runner works on B.
+    render(
+      <PerRunnerTasksWidget
+        tasks={[]}
+        stages={[]}
+        compact={false}
+        assignmentsOverride={[
+          {
+            runnerId: 'remote-1',
+            projectId: 'project-b',
+            projectName: 'Project B',
+            taskId: 'task-b-1',
+            taskTitle: 'Fix login on B',
+            taskGoal: 'Repair the login flow',
+            executionId: 'exec-b-1',
+            epoch: 1,
+            startedAt: new Date().toISOString(),
+            stageId: 'verify',
+            stageName: 'Verify',
+            lastSeenAt: new Date().toISOString(),
+          },
+        ]}
+        registryOverride={[{ runnerId: 'remote-1' }]}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('per-runner-card-remote-1')).toBeInTheDocument();
+    });
+    const card = screen.getByTestId('per-runner-card-remote-1');
+    expect(card).toHaveTextContent('Fix login on B');
+    expect(card).toHaveTextContent('Verify');
+    expect(card).not.toHaveTextContent('Task details unavailable');
+    expect(screen.getByTestId('per-runner-project-remote-1')).toHaveTextContent('Project B');
+  });
+
+  test('a cross-pipeline compact row names the foreign stage without local stages', async () => {
+    render(
+      <PerRunnerTasksWidget
+        tasks={[]}
+        stages={[]}
+        compact
+        assignmentsOverride={[
+          {
+            runnerId: 'remote-2',
+            projectId: 'project-b',
+            taskId: 'task-b-2',
+            taskTitle: 'Other job',
+            stageId: 'verify',
+            stageName: 'Verify',
+            startedAt: new Date().toISOString(),
+            lastSeenAt: new Date().toISOString(),
+          },
+        ]}
+        registryOverride={[{ runnerId: 'remote-2' }]}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('per-runner-row-remote-2')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('per-runner-row-remote-2')).toHaveTextContent('Verify');
+  });
+
+  test('clicking the open-task affordance calls onOpenTask with the assignment', async () => {
+    const onOpenTask = vi.fn();
+    const assignment = {
+      runnerId: 'remote-3',
+      projectId: 'project-b',
+      projectName: 'Project B',
+      taskId: 'task-b-3',
+      taskTitle: 'Foreign job',
+      stageId: 'build',
+      stageName: 'Build',
+      startedAt: new Date().toISOString(),
+      lastSeenAt: new Date().toISOString(),
+    };
+    const { unmount } = render(
+      <PerRunnerTasksWidget
+        tasks={[]}
+        stages={[]}
+        compact={false}
+        assignmentsOverride={[assignment]}
+        registryOverride={[{ runnerId: 'remote-3' }]}
+        onOpenTask={onOpenTask}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('per-runner-open-remote-3')).toBeInTheDocument();
+    });
+    screen.getByTestId('per-runner-open-remote-3').click();
+    expect(onOpenTask).toHaveBeenCalledTimes(1);
+    expect(onOpenTask).toHaveBeenCalledWith(expect.objectContaining({ runnerId: 'remote-3', taskId: 'task-b-3' }));
+    unmount();
+
+    render(
+      <PerRunnerTasksWidget
+        tasks={[]}
+        stages={[]}
+        compact
+        assignmentsOverride={[assignment]}
+        registryOverride={[{ runnerId: 'remote-3' }]}
+        onOpenTask={onOpenTask}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('per-runner-open-remote-3')).toBeInTheDocument();
+    });
+    screen.getByTestId('per-runner-open-remote-3').click();
+    expect(onOpenTask).toHaveBeenCalledTimes(2);
+  });
+
+  test('a rejected cross-pipeline hydrate leaves title and stage intact without crashing', async () => {
+    api.getTask = vi.fn().mockRejectedValue(new Error('task gone'));
+    try {
+      render(
+        <PerRunnerTasksWidget
+          tasks={[]}
+          stages={[]}
+          compact={false}
+          assignmentsOverride={[
+            {
+              runnerId: 'remote-4',
+              projectId: 'project-b',
+              taskId: 'task-b-4',
+              taskTitle: 'Foreign job',
+              stageId: 'build',
+              stageName: 'Build',
+              startedAt: new Date().toISOString(),
+              lastSeenAt: new Date().toISOString(),
+            },
+          ]}
+          registryOverride={[{ runnerId: 'remote-4' }]}
+        />,
+      );
+      await waitFor(() => {
+        expect(screen.getByTestId('per-runner-card-remote-4')).toBeInTheDocument();
+      });
+      const card = screen.getByTestId('per-runner-card-remote-4');
+      expect(card).toHaveTextContent('Foreign job');
+      expect(card).toHaveTextContent('Build');
+      await waitFor(() => {
+        expect(api.getTask).toHaveBeenCalledWith('project-b', 'task-b-4');
+      });
+      // One attempt only: the failed hydrate never retries in a loop.
+      await new Promise((r) => setTimeout(r, 50));
+      expect(api.getTask).toHaveBeenCalledTimes(1);
+    } finally {
+      delete api.getTask;
+    }
+  });
+
+  test('a resolved cross-pipeline hydrate fills the log tail', async () => {
+    api.getTask = vi.fn().mockResolvedValue({
+      id: 'task-b-5',
+      title: 'Foreign job',
+      logEntries: [{ id: 'l1', text: '[runner remote-5] hello', meta: { runnerId: 'remote-5' } }],
+    });
+    try {
+      render(
+        <PerRunnerTasksWidget
+          tasks={[]}
+          stages={[]}
+          compact={false}
+          assignmentsOverride={[
+            {
+              runnerId: 'remote-5',
+              projectId: 'project-b',
+              taskId: 'task-b-5',
+              taskTitle: 'Foreign job',
+              stageId: 'build',
+              stageName: 'Build',
+              startedAt: new Date().toISOString(),
+              lastSeenAt: new Date().toISOString(),
+            },
+          ]}
+          registryOverride={[{ runnerId: 'remote-5' }]}
+        />,
+      );
+      await waitFor(() => {
+        expect(screen.getByTestId('per-runner-tail-remote-5')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('per-runner-tail-remote-5')).toHaveTextContent('hello');
+    } finally {
+      delete api.getTask;
+    }
+  });
+
   test('full card hides the model pill for CI stages with no serving model', async () => {
     getRunnerMonitor.mockResolvedValue({
       liveAssignments: [
@@ -469,5 +659,53 @@ describe('PerRunnerTasksWidget', () => {
       expect(screen.getByTestId('per-runner-card-local-ci')).toBeInTheDocument();
     });
     expect(screen.getByTestId('per-runner-card-local-ci')).not.toHaveTextContent('Model:');
+  });
+});
+
+describe('resolveAssignmentTask', () => {
+  test('prefers the matching local task so the log tail stays available', () => {
+    const local = { id: 't1', projectId: 'p1', title: 'Local', logEntries: [] };
+    expect(
+      resolveAssignmentTask({ taskId: 't1', projectId: 'p1', taskTitle: 'Remote' }, local),
+    ).toBe(local);
+  });
+
+  test('rejects a local task from another pipeline and falls back to the assignment identity', () => {
+    const local = { id: 't1', projectId: 'p-other', title: 'Wrong pipe' };
+    const resolved = resolveAssignmentTask(
+      { taskId: 't1', projectId: 'p1', taskTitle: 'Right pipe', taskGoal: 'g' },
+      local,
+    );
+    expect(resolved).toMatchObject({ id: 't1', projectId: 'p1', title: 'Right pipe' });
+  });
+
+  test('builds a lightweight task from assignment identity when local is missing', () => {
+    expect(
+      resolveAssignmentTask({ taskId: 't1', projectId: 'p1', taskTitle: 'Remote job' }, null),
+    ).toMatchObject({ id: 't1', title: 'Remote job' });
+  });
+
+  test('returns null when nothing names the task, preserving the honest empty state', () => {
+    expect(resolveAssignmentTask({ taskId: 't1', projectId: 'p1' }, null)).toBeNull();
+    expect(resolveAssignmentTask({ projectId: 'p1' }, null)).toBeNull();
+    expect(resolveAssignmentTask(null, null)).toBeNull();
+  });
+});
+
+describe('resolveAssignmentStageName', () => {
+  test('prefers the view stages, then the assignment stageName, then the raw id', () => {
+    const stages = [{ id: 'build', name: 'Local Build' }];
+    expect(
+      resolveAssignmentStageName({ stageId: 'build', stageName: 'Remote Build' }, stages),
+    ).toBe('Local Build');
+    expect(resolveAssignmentStageName({ stageId: 'verify', stageName: 'Verify' }, stages)).toBe(
+      'Verify',
+    );
+    expect(resolveAssignmentStageName({ stageId: 'verify' }, stages)).toBe('verify');
+  });
+
+  test('a missing stage id renders as an ellipsis, never undefined', () => {
+    expect(resolveAssignmentStageName({ stageId: null }, [])).toBe('…');
+    expect(resolveAssignmentStageName({}, [])).toBe('…');
   });
 });

@@ -1,6 +1,10 @@
 import { isTaskCompleted } from '../tasks/taskFormatters';
 import { normalizeSelectedTagTokens, stageMatchesTags } from './stageTagFilter';
-import { normalizeSystemFilterTokens, systemFilterMatches } from './systemFilters';
+import {
+  isColumnSystemFilter,
+  normalizeSystemFilterTokens,
+  systemFilterMatches,
+} from './systemFilters';
 export { isFailedTask, isHumanTask } from './systemFilters';
 import { adaptProcessLogLines, excludeToolMirrorLinesWhenToolCardsShown } from '../logs/adapters';
 import { filterLogRecords, legacyTagToCategories } from '../logs/logCategories';
@@ -38,7 +42,9 @@ export function filterActiveWorkflowTasks(tasks, activeWfId, activeWorkflow) {
  *   by the selected stage tags (collapsing non-matching runs), and tasks within
  *   the surviving stages are filtered by the remaining text query, the `!`
  *   system filters (registry predicates under the tagMode any/all logic), and
- *   the completed toggle. Returns `{ visibleStageIds, filteredTasks }`.
+ *   the completed toggle. Returns `{ visibleStageIds, filteredTasks }`. The
+ *   optional `filterCtx` (`{ engineState, isAgentRunning }`) is forwarded to
+ *   each system predicate so liveness-aware filters such as `!running` see it.
  * @example filterBoardTasksWithTags({ tasks, stages, showCompleted: false, textQuery: 'auth', selectedTags: ['Dev'], tagMode: 'any', systemFilters: ['failed'] })
  ***/
 export function filterBoardTasksWithTags({
@@ -49,6 +55,7 @@ export function filterBoardTasksWithTags({
   selectedTags,
   tagMode = 'any',
   systemFilters,
+  filterCtx,
 }) {
   const normalizedTags = normalizeSelectedTagTokens(selectedTags);
   const visibleStageIds =
@@ -77,7 +84,7 @@ export function filterBoardTasksWithTags({
     const normalizedSystemFilters = normalizeSystemFilterTokens(systemFilters);
     if (normalizedSystemFilters.length > 0) {
       const matchers = normalizedSystemFilters.map((id) => () =>
-        systemFilterMatches(id, task, stages),
+        systemFilterMatches(id, task, stages, filterCtx),
       );
       const passes =
         tagMode === 'all'
@@ -90,6 +97,43 @@ export function filterBoardTasksWithTags({
   });
 
   return { visibleStageIds, filteredTasks };
+}
+
+/***
+ * MARK: filterVisibleStagesByColumnFilters
+ * @description Column-scoping companion to `filterBoardTasksWithTags`: answers
+ *   "which stages survive the active `!` column filters". Only ids whose
+ *   registry entry carries `hidesColumns: true` (`!running`, `!tasked`)
+ *   participate — task-level `!failed`/`!human` and unknown ids never hide a
+ *   column. A stage survives iff it holds at least one task passing that
+ *   filter's predicate; multiple column filters combine under the tagMode
+ *   any/all logic already used for `!` filters. Pass the board task set AFTER
+ *   the completed toggle so a column whose only tasks are hidden by that
+ *   toggle hides too (survey Q2: evaluated over what the user can see).
+ * @example filterVisibleStagesByColumnFilters({ stages, tasks, columnFilterIds: ['tasked'] })
+ ***/
+export function filterVisibleStagesByColumnFilters({
+  stages,
+  tasks,
+  columnFilterIds,
+  tagMode = 'any',
+  filterCtx,
+} = {}) {
+  const list = Array.isArray(stages) ? stages : [];
+  const ids = normalizeSystemFilterTokens(columnFilterIds).filter(isColumnSystemFilter);
+  if (ids.length === 0) return list.map((stage) => stage?.id);
+  const boardTasks = Array.isArray(tasks) ? tasks : [];
+  return list
+    .filter((stage) => {
+      const inStage = boardTasks.filter(
+        (task) => (task?.currentStageId || task?.stageId) === stage?.id,
+      );
+      if (inStage.length === 0) return false;
+      const passes = (id) =>
+        inStage.some((task) => systemFilterMatches(id, task, list, filterCtx));
+      return tagMode === 'all' ? ids.every(passes) : ids.some(passes);
+    })
+    .map((stage) => stage?.id);
 }
 
 /***

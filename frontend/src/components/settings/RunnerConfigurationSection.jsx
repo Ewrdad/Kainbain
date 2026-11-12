@@ -11,6 +11,8 @@ import {
   effectiveModels,
   displayDirectories,
   modelUnion,
+  discoveryStatusSummary,
+  modelSourceSummary,
   modelTogglePatch,
   loadedProjectIds,
   partitionProjects,
@@ -121,6 +123,10 @@ export function RunnerConfigurationSection() {
   const [filter, setFilter] = useState('');
   const [customModel, setCustomModel] = useState('');
   const [revokeConfirm, setRevokeConfirm] = useState(null);
+  // Fleet-wide quarantined model ids (malformed Runner-advertised ids with
+  // their reasons): best-effort catalogue read, empty when the fetch fails
+  // or nothing is quarantined — the block below renders only when non-empty.
+  const [quarantined, setQuarantined] = useState([]);
   // Tracks follow-up refresh timers (post-command polls) and whether the
   // screen is still mounted: timers are cleared on unmount and every state
   // write behind them re-checks, so a slow poll can never write into an
@@ -169,6 +175,21 @@ export function RunnerConfigurationSection() {
         if (!isLive.current) return;
         setProjects([]);
         setProjectsError('Could not load projects — the picker is unavailable.');
+      }
+      try {
+        const catalogue =
+          typeof api.getFleetModelCatalog === 'function'
+            ? await api.getFleetModelCatalog()
+            : null;
+        if (!isLive.current) return;
+        setQuarantined(
+          Array.isArray(catalogue?.quarantined)
+            ? catalogue.quarantined.filter((q) => q && typeof q.id === 'string')
+            : [],
+        );
+      } catch {
+        if (!isLive.current) return;
+        setQuarantined([]);
       }
     } catch (err) {
       if (!isLive.current) return;
@@ -347,7 +368,22 @@ export function RunnerConfigurationSection() {
   const config = selected ? defaultRunnerConfig(selected) : null;
   const effectiveModelIds = selected ? effectiveModels(selected) : [];
   const allModelIds = selected ? modelUnion(selected) : [];
+  const discoverySummary = selected ? discoveryStatusSummary(selected) : null;
+  const sourceSummary = selected ? modelSourceSummary(selected) : null;
   const modelsOverridden = selected ? Array.isArray(config.availableModels) : false;
+  // Effective advertisement source: an operator allowlist wins first, then
+  // the Runner's own pin-vs-discovery label; old Runners (no source) keep
+  // the historic caption.
+  const modelsCaption = modelsOverridden
+    ? '(operator override)'
+    : sourceSummary?.source === 'pinned'
+      ? '(pinned on Runner)'
+      : sourceSummary?.source === 'unpinned'
+        ? '(none advertised)'
+        : '(auto-detected from Runner)';
+  const lastScanLine = sourceSummary?.scannedAtMs != null
+    ? `Last scan: ${new Date(sourceSummary.scannedAtMs).toLocaleString()}`
+    : null;
   const loadedIds = selected ? loadedProjectIds(selected, projects || []) : [];
   const { available, loaded } = partitionProjects(projects || [], loadedIds);
   const advertised = selected ? advertisedToolIds(selected) : [];
@@ -630,6 +666,33 @@ export function RunnerConfigurationSection() {
         here for approval, then heartbeats and claims tasks with its own credential.
       </p>
       <RunnerHarnessPanel runners={runners || []} />
+      {quarantined.length > 0 && (
+        <div
+          className="mt-3 px-3 py-2 bg-surface-container border border-warning/40 rounded-sm"
+          data-testid="runner-quarantined-models"
+        >
+          <p className="text-[11px] font-bold uppercase tracking-wider text-warning">
+            Quarantined model ids ({quarantined.length}) — malformed Runner advertisements,
+            never served to pickers
+          </p>
+          <ul className="mt-1 flex flex-col gap-1">
+            {quarantined.map((entry) => (
+              <li
+                key={entry.id}
+                className="text-[11px] text-text-muted"
+                data-testid={`runner-quarantined-${entry.id}`}
+                title={typeof entry.reason === 'string' ? entry.reason : undefined}
+              >
+                <span className="font-mono text-on-surface">{entry.id}</span>
+                {typeof entry.reason === 'string' && entry.reason ? ` — ${entry.reason}` : ''}
+                {Array.isArray(entry.runnerIds) && entry.runnerIds.length > 0
+                  ? ` (from ${entry.runnerIds.join(', ')})`
+                  : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {scheduler && (
         <p className="mt-1 text-[10px] font-mono text-text-muted" data-testid="runner-scheduler-deferrals">
           Scheduler: {scheduler.dispatched ?? 0} embedded dispatches, {scheduler.deferredDispatch ?? 0} deferred to Runners
@@ -733,7 +796,7 @@ export function RunnerConfigurationSection() {
                       <span className="text-[10px] font-bold uppercase tracking-widest text-error" data-testid={`runner-below-minimum-${runner.runnerId}`} title={runner.minimumVersion ? `Runner ${runner.runnerId} is below minimum ${runner.minimumVersion}` : `Below minimum version`}>below minimum</span>
                     )}
                     {runner.updateStatus?.state === 'failed' && (
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-error" data-testid={`runner-update-failed-${runner.runnerId}`} title={`Last self-update failed: ${runner.updateStatus.reason || 'unknown'}`}>update failed</span>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-error" data-testid={`runner-update-failed-${runner.runnerId}`} title={`Last self-update failed: ${runner.updateStatus.reason || 'unknown'} — see docs/runner-update-runbook.md “runner says out of date” triage`}>update failed</span>
                     )}
                   </li>
                 );
@@ -857,7 +920,7 @@ export function RunnerConfigurationSection() {
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-bold text-on-surface">Models</span>
-                  {modelsOverridden ? <span className="text-[11px] text-text-muted">(operator override)</span> : <span className="text-[11px] text-text-muted">(auto-detected from Runner)</span>}
+                  <span className="text-[11px] text-text-muted">{modelsCaption}</span>
                   <button type="button" data-testid={`runner-redetect-models-${selected.runnerId}`} onClick={handleRediscover} disabled={busyKey === `rediscover:${selected.runnerId}` || !redetectReady} title={redetectTitle} className="ml-auto px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-[11px] font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">
                     {busyKey === `rediscover:${selected.runnerId}` ? 'Queued…' : 'Re-detect models'}
                   </button>
@@ -869,6 +932,31 @@ export function RunnerConfigurationSection() {
                     data-testid={`runner-redetect-status-${selected.runnerId}`}
                   >
                     {redetectStatusLine}
+                  </p>
+                )}
+                {discoverySummary && (
+                  <p
+                    className="text-[11px] text-text-muted"
+                    data-testid={`runner-discovery-status-${selected.runnerId}`}
+                  >
+                    {`Auto-detect: ${discoverySummary.counts}`}
+                  </p>
+                )}
+                {lastScanLine && (
+                  <p
+                    className="text-[11px] text-text-muted"
+                    data-testid={`runner-last-scan-${selected.runnerId}`}
+                  >
+                    {lastScanLine}
+                  </p>
+                )}
+                {discoverySummary?.warning && (
+                  <p
+                    className="text-[11px] text-warning"
+                    role="status"
+                    data-testid={`runner-discovery-warning-${selected.runnerId}`}
+                  >
+                    {discoverySummary.warning}
                   </p>
                 )}
                 {allModelIds.length === 0 ? (

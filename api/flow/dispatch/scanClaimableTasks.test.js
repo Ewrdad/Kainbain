@@ -85,15 +85,34 @@ describe("scanClaimableTasks", () => {
 		const old = t("old", { currentStageId: "s1", updatedAt: new Date(1_000).toISOString() });
 		const newer = t("new", { currentStageId: "s1", updatedAt: new Date(2_000).toISOString() });
 		const far = t("far", { currentStageId: "s2", updatedAt: new Date(500).toISOString() });
+		// Same late stage as "far" but newer: distinguishes the two modes.
+		const farNew = t("far-new", {
+			currentStageId: "s2",
+			updatedAt: new Date(1_500).toISOString(),
+		});
 		const d = {
 			projectStore: { listProjects: () => [project("p1", stages), project("p2", stages)] },
 			taskStore: {
-				listTasks: (pid) => (pid === "p1" ? [old, newer, far] : [t("other")]),
+				listTasks: (pid) =>
+					pid === "p1" ? [old, newer, far, farNew] : [t("other")],
 				isTaskBlocked: () => ({ blocked: false }),
 			},
 			claimStore: new ClaimStore({ stateFile: tmpClaimState() }),
 		};
-		expect(scanClaimableTasks(d).map((c) => c.taskId)).toEqual(["far", "old", "new", "other"]);
+		// Default (oldest-first, task 16d6fbd6): oldest waiting first across
+		// projects; stage index no longer outranks wait age.
+		expect(scanClaimableTasks(d).map((c) => c.taskId)).toEqual([
+			"far",
+			"old",
+			"far-new",
+			"new",
+			"other",
+		]);
+		// Legacy rollback mode: closest-to-completion (highest stage index)
+		// first, then oldest — the pre-16d6fbd6 order.
+		expect(
+			scanClaimableTasks(d, { order: "furthest-along", maxWaitMs: 0 }).map((c) => c.taskId),
+		).toEqual(["far", "far-new", "old", "new", "other"]);
 		expect(
 			scanClaimableTasks(d, { projectIds: ["p2"] }).map((c) => c.taskId),
 		).toEqual(["other"]);
@@ -129,18 +148,31 @@ describe("scanClaimableTasks", () => {
 		expect(
 			scanClaimableTasks(d, { maxWaitMs: 5_000, now: 10_000 }).map((c) => c.taskId),
 		).toEqual(["starved-older", "starved", "fresh-far"]);
-		// Disabled (0): pure scheduler order — closest-to-completion first.
+		// Default mode (oldest-first, task 16d6fbd6): the oldest waiting task
+		// runs first no matter the stage index — starvation is bounded by
+		// construction, however long the early-stage tasks have waited.
 		expect(scanClaimableTasks(d, { maxWaitMs: 0, now: 10_000 }).map((c) => c.taskId)).toEqual([
-			"fresh-far",
 			"starved-older",
 			"starved",
-		]);
-		// Default (guard not configured): same pure scheduler order, however
-		// long the early-stage tasks have waited — the guard is opt-in only.
-		expect(scanClaimableTasks(d).map((c) => c.taskId)).toEqual([
 			"fresh-far",
+		]);
+		expect(scanClaimableTasks(d, { now: 10_000 }).map((c) => c.taskId)).toEqual([
 			"starved-older",
 			"starved",
+			"fresh-far",
 		]);
+		// Legacy rollback mode (KAINBAIN_CENTRAL_QUEUE_ORDER=furthest-along)
+		// with the guard off: pure closest-to-completion order, as before.
+		expect(
+			scanClaimableTasks(d, { order: "furthest-along", maxWaitMs: 0, now: 10_000 }).map(
+				(c) => c.taskId,
+			),
+		).toEqual(["fresh-far", "starved-older", "starved"]);
+		// Legacy mode WITH a configured guard: over-waiting tasks jump ahead.
+		expect(
+			scanClaimableTasks(d, { order: "furthest-along", maxWaitMs: 5_000, now: 10_000 }).map(
+				(c) => c.taskId,
+			),
+		).toEqual(["starved-older", "starved", "fresh-far"]);
 	});
 });

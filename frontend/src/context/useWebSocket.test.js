@@ -607,5 +607,150 @@ describe('useWebSocket', () => {
       expect(JSON.stringify(events)).not.toContain('Secret dispatched prompt');
     } finally { unsubscribe(); }
   });
+
+  it('refreshes the engine snapshot (queue depth) shortly after task activity, without a reconnect', async () => {
+    // Step 0 repro for the stale queue chip: engineState.openQueueDepth only
+    // arrived on ENGINE_STATE broadcasts and connect-time reconcile, so the
+    // bar's queue number sat stale until a full page refresh. Task activity
+    // (create/complete/advance/pause/resume all broadcast TASK_UPDATED)
+    // must refresh the snapshot on its own.
+    vi.useFakeTimers();
+    try {
+      api.sessionHistory.mockResolvedValue({ messages: [], isStreaming: false });
+      api.engineStatus.mockResolvedValue({
+        status: 'ok',
+        engine: { status: 'idle', openQueueDepth: 2 },
+      });
+      const { result } = renderHook(() => useWebSocket({}));
+      await act(async () => {
+        result.current.connectWebSocket('proj-1');
+        currentSocket()._open();
+      });
+      expect(result.current.engineState.openQueueDepth).toBe(2);
+
+      api.engineStatus.mockClear();
+      api.engineStatus.mockResolvedValue({
+        status: 'ok',
+        engine: { status: 'idle', openQueueDepth: 1 },
+      });
+      await act(async () => {
+        currentSocket()._message({
+          type: 'TASK_UPDATED',
+          payload: { id: 't1', projectId: 'proj-1' },
+        });
+      });
+      // Debounced: the frame itself schedules the refresh, it does not
+      // refetch synchronously (bursts coalesce into one read).
+      expect(api.engineStatus).not.toHaveBeenCalled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(api.engineStatus).toHaveBeenCalledTimes(1);
+      expect(result.current.engineState.openQueueDepth).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('coalesces a burst of task-activity frames into one snapshot read', async () => {
+    vi.useFakeTimers();
+    try {
+      api.sessionHistory.mockResolvedValue({ messages: [], isStreaming: false });
+      api.engineStatus.mockResolvedValue({ status: 'ok', engine: { status: 'idle' } });
+      const { result } = renderHook(() => useWebSocket({}));
+      await act(async () => {
+        result.current.connectWebSocket('proj-1');
+        currentSocket()._open();
+      });
+      api.engineStatus.mockClear();
+      await act(async () => {
+        const ws = currentSocket();
+        for (let i = 0; i < 5; i += 1) {
+          ws._message({ type: 'TASK_UPDATED', payload: { id: `t${i}`, projectId: 'proj-1' } });
+        }
+        ws._message({ type: 'TASK_DELETED', payload: { projectId: 'proj-1', taskId: 't9' } });
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      // Six frames, one debounced read (deletes move the waiting set too).
+      expect(api.engineStatus).toHaveBeenCalledTimes(1);
+      expect(result.current.engineState).toMatchObject({ status: 'idle' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the last engine snapshot when the activity refresh fails', async () => {
+    vi.useFakeTimers();
+    try {
+      api.sessionHistory.mockResolvedValue({ messages: [], isStreaming: false });
+      api.engineStatus.mockResolvedValue({
+        status: 'ok',
+        engine: { status: 'idle', openQueueDepth: 2 },
+      });
+      const { result } = renderHook(() => useWebSocket({}));
+      await act(async () => {
+        result.current.connectWebSocket('proj-1');
+        currentSocket()._open();
+      });
+      expect(result.current.engineState.openQueueDepth).toBe(2);
+      api.engineStatus.mockRejectedValue(new Error('status down'));
+      await act(async () => {
+        currentSocket()._message({ type: 'TASK_UPDATED', payload: { id: 't1' } });
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      // The failed read logs and keeps the last snapshot — never throws,
+      // never clears the chip to a fabricated zero.
+      expect(result.current.engineState.openQueueDepth).toBe(2);
+      expect(logger.error).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('engine safety poll stays within budget, pauses in background tabs, and catches up on return', async () => {
+    // Step 9 budget: with no task activity the safety net issues one
+    // snapshot read per 15s tick (4/minute); a hidden tab issues zero and
+    // refreshes immediately on return.
+    vi.useFakeTimers();
+    const visibilityDescriptor = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+    const setVisibility = (state) => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+    };
+    try {
+      api.sessionHistory.mockResolvedValue({ messages: [], isStreaming: false });
+      api.engineStatus.mockResolvedValue({ status: 'ok', engine: { status: 'idle' } });
+      const { result } = renderHook(() => useWebSocket({}));
+      await act(async () => {
+        result.current.connectWebSocket('proj-1');
+        currentSocket()._open();
+      });
+      api.engineStatus.mockClear();
+      expect(result.current.connectionStatus).toBe('connected');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(api.engineStatus.mock.calls.length).toBeLessThanOrEqual(4);
+      expect(api.engineStatus.mock.calls.length).toBeGreaterThan(0);
+
+      setVisibility('hidden');
+      api.engineStatus.mockClear();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(api.engineStatus).not.toHaveBeenCalled();
+
+      setVisibility('visible');
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'));
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(api.engineStatus).toHaveBeenCalledTimes(1);
+    } finally {
+      if (visibilityDescriptor) {
+        Object.defineProperty(document, 'visibilityState', visibilityDescriptor);
+      }
+      vi.useRealTimers();
+    }
+  });
 });
 
