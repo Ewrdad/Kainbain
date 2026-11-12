@@ -947,7 +947,10 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// excludes the stage harness must not claim the task by asking for
 		// it directly. Fail loud (409 + the verdict code) instead of
 		// silently honouring a claim the operator switched off.
-		const req = taskRequirements(projectStore.getProject(projectId) || {}, task);
+		// Requirements resolve from the task's own pipeline stages (never
+		// the viewed pipeline's mirror), exactly like the dispatch scan.
+		const claimProject = projectStore.getProject(projectId) || {};
+		const req = taskRequirements(claimProject, task, resolveStagesForTask(claimProject, task));
 		const claimVerdict = operatorConfigVerdict(runner, req, { projectId });
 		if (!claimVerdict.ok) {
 			return reply.status(409).send({

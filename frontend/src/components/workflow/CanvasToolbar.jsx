@@ -119,7 +119,7 @@ export function CanvasToolbar({
             <div className="relative sm:order-1" ref={workflowMenuRef}>
               <InfoTooltip
                 title="Workflow Pipeline Switcher"
-                description="Select which named multi-stage workflow pipeline to view and execute."
+                description="Select which pipeline to view. Runners serve every pipeline, not just the one shown."
                 position="bottom"
               >
                 <button
