@@ -20,6 +20,10 @@ export const NEW_MODEL_COLON_ID = "muse::meta::muse-spark-1.4:cloud";
  * @description Builds one claim-eligible mock Runner registration
  *   advertising the new-model ids through the muse harness. Overrides
  *   merge shallowly (`capabilities` / `operatorConfig` merge one level).
+ *   The default carries a healthy muse scan but NO `modelProvenance` —
+ *   the old-runner/inconclusive shape, so the snapshot trusts the
+ *   advertisement (see `runnerModelConfirmation`); pass an explicit
+ *   `modelProvenance` (possibly `{}`) to speak as a new runner.
  * @example fleetRunnerRecord({ runnerId: 'box-a' })
  * @param {Object} [over] - Field overrides.
  * @returns {Object} Runner registry record.

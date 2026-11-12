@@ -406,6 +406,10 @@ describe('runnerConfigHelpers', () => {
       source: 'pinned',
       scannedAtMs: null,
     });
+    expect(modelSourceSummary({ capabilities: { modelSource: 'pinned+discovered' } })).toEqual({
+      source: 'pinned+discovered',
+      scannedAtMs: null,
+    });
     expect(modelSourceSummary({ facts: { modelSource: 'unpinned' } })).toEqual({
       source: 'unpinned',
       scannedAtMs: null,

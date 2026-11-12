@@ -18,8 +18,13 @@ function run(cwd, ...args) {
 	return execFileSync("git", args, { cwd, stdio: ["ignore", "pipe", "pipe"] }).toString();
 }
 
+const tempDirs = [];
+
 function initRepo(docsDir) {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-nocode-"));
+	// Tracked BEFORE the throwing git setup below so a failed init cannot
+	// leak the temp dir (same leak class as the 2026-11-12 CI failure).
+	tempDirs.push(dir);
 	run(dir, "init", "-b", "main");
 	run(dir, "config", "user.email", "kainbain-test@example.com");
 	run(dir, "config", "user.name", "KainBain Test");
@@ -38,8 +43,6 @@ function committedFiles(cwd) {
 		.map((line) => line.trim())
 		.filter(Boolean);
 }
-
-const tempDirs = [];
 
 afterEach(() => {
 	while (tempDirs.length > 0) {
@@ -66,7 +69,6 @@ describe("discardChangesOutsideDocs (real git)", () => {
 	it("keeps docs changes and erases tracked + untracked code changes", async () => {
 		if (!gitAvailable) return;
 		const dir = initRepo("docs");
-		tempDirs.push(dir);
 		fs.writeFileSync(path.join(dir, "docs", "new.md"), "new doc\n");
 		fs.writeFileSync(path.join(dir, "src", "app.js"), "changed code\n");
 		fs.writeFileSync(path.join(dir, "src", "extra.js"), "untracked\n");
@@ -94,7 +96,6 @@ describe("commitAllIfNeeded no-code (real git)", () => {
 	beforeEach(() => {
 		if (!gitAvailable) return;
 		dir = initRepo("docs");
-		tempDirs.push(dir);
 	});
 
 	it("commits only docs changes and discards code changes", async () => {
@@ -130,7 +131,6 @@ describe("commitAllIfNeeded no-code (real git)", () => {
 	it("honours a custom docs directory name", async () => {
 		if (!gitAvailable) return;
 		const customDir = initRepo("kdocs");
-		tempDirs.push(customDir);
 		fs.writeFileSync(path.join(customDir, "kdocs", "new.md"), "new doc\n");
 		fs.writeFileSync(path.join(customDir, "src", "app.js"), "changed code\n");
 
