@@ -17,6 +17,19 @@ focused**: the server scheduler ticks on an interval and scans every project;
 the only per-runner narrowing is the explicit `KAINBAIN_RUNNER_PROJECTS`
 allowlist, which is configuration, not a stall.
 
+### Workflow-aware requirements (the viewed pipeline is view-only)
+
+Every dispatch path resolves each task's stage from the task's **own**
+pipeline (`task.workflowId` via `resolveStagesForTask`), never from the
+viewed pipeline's stages mirror — the fleet scan (`scanClaimableTasks`)
+passes its already-resolved stages into `taskRequirements`, and the
+direct-claim route resolves the same way, so a waiting task on any
+pipeline is matched against its own harness/model/tier/runner-policy.
+Switching the viewed pipeline changes what the operator sees, never what
+workers do. A task pointing at a deleted stage is unknown
+(`runnableType: false`) and parks, strict like this queue display —
+never another stage's job.
+
 ### Priority (canonical order)
 
 1. **Resumed interruptions** — oldest interruption first (Rule 0).

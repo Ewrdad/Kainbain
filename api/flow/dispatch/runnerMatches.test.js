@@ -238,4 +238,81 @@ describe("runnerMatches", () => {
 			runnerMatches(record(), { kind: "agent", tier: "T1" }, { now: at, projectId: "p9" }).ok,
 		).toBe(true);
 	});
+
+	test("refuses a model the runner's own successful scan contradicts (stale pin is NO_MODEL)", () => {
+		const STALE = "muse::meta::muse-spark-0.9-gone";
+		const LIVE = "muse::meta::muse-spark-1.4";
+		const stalePin = record({
+			capabilities: {
+				harnesses: [{ id: "muse", version: "1.4.15" }],
+				models: [STALE, LIVE],
+				tiers: ["T0"],
+				runnable: true,
+				diskHeadroomMb: 512,
+				versions: { protocol: "v1" },
+				modelSource: "pinned+discovered",
+				modelProvenance: { [LIVE]: { harness: "muse", atMs: at - 1000 } },
+				discoveryStatus: { muse: { ok: true, count: 1, atMs: at - 1000 } },
+			},
+		});
+		// The contradicted pin misses exactly like an unoffered model …
+		expect(runnerMatches(stalePin, { harness: "muse", model: STALE }, { now: at })).toEqual({
+			ok: false,
+			reason: "NO_MODEL",
+		});
+		// … while the scan-confirmed sibling still matches.
+		expect(runnerMatches(stalePin, { harness: "muse", model: LIVE }, { now: at })).toEqual({
+			ok: true,
+			reason: "MATCH",
+		});
+		// A harness the runner never reported misses the same way.
+		const foreignPin = record({
+			capabilities: {
+				...stalePin.capabilities,
+				harnesses: [{ id: "pi", version: "1.2.3" }],
+			},
+		});
+		expect(runnerMatches(foreignPin, { model: LIVE }, { now: at }).reason).toBe("NO_MODEL");
+	});
+
+	test("stale refusal fails open: inconclusive signals and operator assertions still match", () => {
+		const ID = "muse::meta::muse-spark-1.4";
+		const base = {
+			harnesses: [{ id: "muse", version: "1.4.15" }],
+			models: [ID],
+			tiers: ["T0"],
+			runnable: true,
+			diskHeadroomMb: 512,
+			versions: { protocol: "v1" },
+		};
+		// Old runner: no provenance signal at all.
+		expect(
+			runnerMatches(record({ capabilities: base }), { harness: "muse", model: ID }, { now: at }),
+		).toEqual({ ok: true, reason: "MATCH" });
+		// Failed scan: nothing conclusive to contradict the pin.
+		const failedScan = record({
+			capabilities: {
+				...base,
+				modelProvenance: {},
+				discoveryStatus: { muse: { ok: false, count: 0, atMs: at - 1000 } },
+			},
+		});
+		expect(runnerMatches(failedScan, { harness: "muse", model: ID }, { now: at })).toEqual({
+			ok: true,
+			reason: "MATCH",
+		});
+		// Operator-asserted override wins over a contradicting scan.
+		const asserted = record({
+			capabilities: {
+				...base,
+				modelProvenance: {},
+				discoveryStatus: { muse: { ok: true, count: 1, atMs: at - 1000 } },
+			},
+			operatorConfig: { availableModels: [ID] },
+		});
+		expect(runnerMatches(asserted, { harness: "muse", model: ID }, { now: at })).toEqual({
+			ok: true,
+			reason: "MATCH",
+		});
+	});
 });

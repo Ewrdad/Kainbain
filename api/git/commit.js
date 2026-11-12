@@ -236,6 +236,27 @@ export function isLiveTaskSnapshotPath(p, opts = {}) {
 }
 
 /***
+ * MARK: _listTrackedLiveTaskSnapshots
+ * @description Lists the live task snapshots (`docs/tasks/<id>/task.md`)
+ *   currently TRACKED in the index — the dual-ownership residue the
+ *   untrack migration removes. Pure listing; stages nothing.
+ * @param {string} projectCwd - Working directory for the command.
+ * @param {Object} [opts] - Same prefix hints as the clean-tree guard.
+ * @returns {Promise<Array<string>>}
+ ***/
+async function _listTrackedLiveTaskSnapshots(projectCwd, opts = {}) {
+	try {
+		const { stdout } = await git(projectCwd, ["ls-files", "-z"]);
+		return stdout
+			.split("\0")
+			.map((s) => s.trim())
+			.filter((f) => f && isLiveTaskSnapshotPath(f, opts));
+	} catch {
+		return [];
+	}
+}
+
+/***
  * MARK: untrackLiveTaskSnapshots
  * @description One-time-per-checkout migration (Step 5): removes tracked
  *   live snapshots (`docs/tasks/<id>/task.md`) from the index WITHOUT
@@ -246,36 +267,41 @@ export function isLiveTaskSnapshotPath(p, opts = {}) {
  *   ignores them, switches no longer trip on them, and no branch can carry
  *   them again (commitEngineSnapshots never stages them). Best-effort:
  *   returns the untracked paths, or `[]` when there is nothing to do.
+ *   By default only snapshots with dirt RIGHT NOW are untracked: untracking
+ *   a clean copy stages a deletion with no corresponding commit in the same
+ *   call — the staged deletion is left behind and blocks the very switch
+ *   the caller is preparing ("untracked files would be removed"), so clean
+ *   copies migrate lazily on their next dirt unless the caller passes
+ *   `includeClean: true` AND commits the deletion in the same call (which
+ *   is exactly what commitEngineSnapshots does).
  * @example await untrackLiveTaskSnapshots('/repo') => { untracked: ['docs/tasks/t/task.md'] }
  * @param {string} projectCwd - Working directory for the command.
  * @param {Object} [opts] - Same prefix hints as the clean-tree guard.
+ * @param {boolean} [opts.includeClean=false] - Also untrack clean tracked
+ *   snapshots. Only safe when a commit of the staged deletions follows in
+ *   the same call.
  * @returns {Promise<{untracked: Array<string>}>}
  ***/
 export async function untrackLiveTaskSnapshots(projectCwd, opts = {}) {
 	if (!(await isGitRepository(projectCwd))) return { untracked: [] };
 	if (!(await hasCommits(projectCwd))) return { untracked: [] };
-	let files;
-	try {
-		const { stdout } = await git(projectCwd, ["ls-files", "-z"]);
-		files = stdout.split("\0").map((s) => s.trim()).filter(Boolean);
-	} catch {
-		return { untracked: [] };
+	const files = await _listTrackedLiveTaskSnapshots(projectCwd, opts);
+	if (files.length === 0) return { untracked: [] };
+	let live = files;
+	if (!opts.includeClean) {
+		// Scope the migration to files with snapshot dirt RIGHT NOW (see
+		// the MARK above): clean copies migrate lazily on their next dirt.
+		let dirty = [];
+		try {
+			({ dirtyPaths: dirty } = await getWorkingTreeStatus(projectCwd, { ignorePaths: [] }));
+		} catch {
+			return { untracked: [] };
+		}
+		const dirtySet = new Set(
+			(dirty || []).map((raw) => String(raw).replace(/\\/g, "/").replace(/["']/g, "")),
+		);
+		live = files.filter((f) => dirtySet.has(f));
 	}
-	// Scope the migration to files with snapshot dirt RIGHT NOW. Untracking
-	// a clean tracked copy would stage a deletion with no corresponding
-	// snapshot commit in the same call — the staged deletion is left behind
-	// and blocks the very switch the caller is preparing ("untracked files
-	// would be removed"). Clean copies migrate lazily on their next dirt.
-	let dirty = [];
-	try {
-		({ dirtyPaths: dirty } = await getWorkingTreeStatus(projectCwd, { ignorePaths: [] }));
-	} catch {
-		return { untracked: [] };
-	}
-	const dirtySet = new Set(
-		(dirty || []).map((raw) => String(raw).replace(/\\/g, "/").replace(/["']/g, "")),
-	);
-	const live = files.filter((f) => isLiveTaskSnapshotPath(f, opts) && dirtySet.has(f));
 	if (live.length === 0) return { untracked: [] };
 	try {
 		await git(projectCwd, ["rm", "--cached", "-q", "--", ...live]);
@@ -295,8 +321,12 @@ export async function untrackLiveTaskSnapshots(projectCwd, opts = {}) {
  *   Real work — operator edits, task deliverables, anything outside the
  *   ignore prefixes — is never staged: the clean-tree guard still refuses
  *   loudly on it after this runs. Staged real changes stay staged (the
- *   commit is pathspec-limited to snapshot paths). No-op when no snapshot
- *   dirt exists. Opt-in branch affinity via `opts.expectedBranch`, same
+ *   commit is pathspec-limited to snapshot paths). No-op when there is no
+ *   snapshot dirt AND no tracked live snapshot. Finishes the untrack
+ *   migration: clean tracked `docs/tasks/<id>/task.md` copies (e.g. on
+ *   main) are untracked here too, with the deletion committed in this same
+ *   call, so no branch can carry them — and block a switch — again.
+ *   Opt-in branch affinity via `opts.expectedBranch`, same
  *   fail-closed contract as commitAllIfNeeded.
  * @example await commitEngineSnapshots('/repo', 'pre-switch snapshots') => { committed: true, hash: 'abc' }
  * @param {string} projectCwd
@@ -330,37 +360,52 @@ export async function commitEngineSnapshots(projectCwd, message, opts = {}) {
 		ignorePaths: [],
 	});
 	const prefixes = _resolveIgnorePaths(opts);
-	const snapshotPaths = dirtyPaths.filter((raw) => {
+	const isIgnoredPath = (raw) => {
 		const p = String(raw).replace(/\\/g, "/").replace(/["']/g, "");
 		return prefixes.some((prefix) => {
 			const normPrefix = prefix.endsWith("/") ? prefix : `${prefix}/`;
 			return p === prefix || p.startsWith(normPrefix);
 		});
-	});
+	};
+	const snapshotPaths = dirtyPaths.filter(isIgnoredPath);
+	const realDirt = dirtyPaths.filter((raw) => !isIgnoredPath(raw));
+	// Tracked live snapshots on this branch are dual-ownership residue
+	// (Step 5): even CLEAN copies must leave the index, otherwise a branch
+	// switch onto a branch that tracks them trips git's untracked-overwrite
+	// safety while this checkout holds the same path untracked (the exact
+	// shape that stranded tasks 82e49a05 and 9d2b75a2 on 2026-11-11). Their
+	// deletion is committed below in this same call.
+	const trackedLive = await _listTrackedLiveTaskSnapshots(projectCwd, opts);
 	// Nothing engine-owned to do: return BEFORE untracking. Untracking
 	// stages a deletion in the real index, so it must only ever run when
 	// a snapshot commit follows in the same call — otherwise the staged
 	// deletion is left behind and blocks the pending switch with
-	// "untracked files would be removed".
-	if (snapshotPaths.length === 0) return { committed: false, hash: null };
+	// "untracked files would be removed". When only REAL dirt exists we
+	// also no-op: the clean-tree guard refuses the switch loudly and no
+	// engine commit is made (operator work is never swept into one).
+	if (snapshotPaths.length === 0 && (trackedLive.length === 0 || realDirt.length > 0)) {
+		return { committed: false, hash: null };
+	}
 
 	// Live task snapshots are store state, never branch content: untrack
 	// them (worktree files preserved) and never stage them — only the
 	// remaining report/asset snapshots are committable (Step 5). A
 	// just-untracked snapshot leaves a staged deletion that would block
 	// the very switch this commit prepares, so the deletion rides along
-	// in the same snapshot commit.
+	// in the same snapshot commit. Clean tracked copies are untracked too
+	// (`includeClean`) because this commit carries their deletion in the
+	// same call — that is what finishes the migration on main.
 	let untracked = [];
 	try {
-		({ untracked } = await untrackLiveTaskSnapshots(projectCwd, opts));
+		({ untracked } = await untrackLiveTaskSnapshots(projectCwd, {
+			...opts,
+			includeClean: true,
+		}));
 	} catch {
 		// Best-effort: the staging below owns real failures.
 	}
 	const committable = snapshotPaths.filter((raw) => !isLiveTaskSnapshotPath(raw, opts));
-	const normalized = new Set(
-		snapshotPaths.map((raw) => String(raw).replace(/\\/g, "/").replace(/["']/g, "")),
-	);
-	const stagedRemovals = untracked.filter((u) => normalized.has(u));
+	const stagedRemovals = untracked;
 	const commitPaths = [...committable, ...stagedRemovals];
 	if (commitPaths.length === 0) return { committed: false, hash: null };
 

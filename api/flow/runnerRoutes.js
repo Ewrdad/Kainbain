@@ -14,7 +14,7 @@ import { taskRequirements } from "./dispatch/taskRequirements.js";
 import { curateRunnerPrompt } from "./curateRunnerPrompt.js";
 import { materializeRunnerTaskDocs } from "./execution/materializeRunnerTaskDocs.js";
 import { buildCommandKeywordContext, expandStageCommand } from "./commandStages.js";
-import { resolveStagesForTask } from "./stageResolution.js";
+import { resolveStagesForTask, resolveCandidateStage } from "./stageResolution.js";
 import { buildRunnerAssignmentSummary } from "./runnerAssignmentSummary.js";
 import { emitStageLifecycle } from "./stageLifecycle.js";
 import {
@@ -947,7 +947,10 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// excludes the stage harness must not claim the task by asking for
 		// it directly. Fail loud (409 + the verdict code) instead of
 		// silently honouring a claim the operator switched off.
-		const req = taskRequirements(projectStore.getProject(projectId) || {}, task);
+		// Requirements resolve from the task's own pipeline stages (never
+		// the viewed pipeline's mirror), exactly like the dispatch scan.
+		const claimProject = projectStore.getProject(projectId) || {};
+		const req = taskRequirements(claimProject, task, resolveStagesForTask(claimProject, task));
 		const claimVerdict = operatorConfigVerdict(runner, req, { projectId });
 		if (!claimVerdict.ok) {
 			return reply.status(409).send({
@@ -975,8 +978,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			// resolved harness/model names this run on the timeline/reports.
 			const project = projectStore.getProject(projectId);
 			const stages = resolveStagesForTask(project, task);
-			const stage =
-				stages.find((s) => String(s?.id) === String(task.currentStageId)) || stages[0] || null;
+			const stage = resolveCandidateStage(stages, task.currentStageId);
 			stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req, runnerId: runner.runnerId });
 			const dispatchConfigHash = dispatchStageConfigHash(project, task, stage);
 			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...await ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project, task, stageId: task.currentStageId }), ...(dispatchConfigHash ? { configHash: dispatchConfigHash } : {}) };

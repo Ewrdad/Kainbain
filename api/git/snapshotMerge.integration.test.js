@@ -27,8 +27,13 @@ function run(cwd, ...args) {
 	return execFileSync("git", args, { cwd, stdio: ["ignore", "pipe", "pipe"] }).toString();
 }
 
+const tempDirs = [];
+
 function initRepo() {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-snapmerge-"));
+	// Tracked BEFORE the throwing git setup below so a failed init cannot
+	// leak the temp dir (same leak class as the 2026-11-12 CI failure).
+	tempDirs.push(dir);
 	run(dir, "init", "-b", "main");
 	run(dir, "config", "user.email", "kainbain-test@example.com");
 	run(dir, "config", "user.name", "KainBain Test");
@@ -67,8 +72,6 @@ function divergeSnapshotsOnly(dir) {
 	run(dir, "commit", "-m", "main snapshots");
 }
 
-const tempDirs = [];
-
 afterEach(() => {
 	while (tempDirs.length > 0) {
 		const dir = tempDirs.pop();
@@ -85,7 +88,6 @@ describe("snapshot-only merge healing (real git)", () => {
 	beforeEach(() => {
 		if (!gitAvailable) return;
 		dir = initRepo();
-		tempDirs.push(dir);
 	});
 
 	it("resolves snapshot conflicts with the incoming branch and finalizes", async () => {

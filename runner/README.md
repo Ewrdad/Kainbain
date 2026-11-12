@@ -62,15 +62,17 @@ KAINBAIN_RUNNER_DISPATCH_IDLE_LIMIT=3 \
 node runner/main.js
 ```
 
-`KAINBAIN_RUNNER_MODELS` is the servable-model advertisement the backend
-matches against (csv; singular `KAINBAIN_RUNNER_MODEL` seeds a
-1-element pin; empty matches model-less tasks only). A pinned list
-always wins over discovered ids: pinned installs skip discovery scans
-(boot, cadence, and Re-detect all ack `models pinned; discovery
-skipped`) and keep advertising exactly their pin across self-updates.
-Set `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1` to opt in to
-discovery-wins (survey q4: a non-empty discovery result replaces the
-pin, the pin only fills in while discovery yielded nothing). Each
+`KAINBAIN_RUNNER_MODELS` is the servable-model pin the backend matches
+against (csv; singular `KAINBAIN_RUNNER_MODEL` seeds a 1-element pin;
+empty matches model-less tasks only). The advertised list is the
+**pin ∪ auto-discovered ids** (survey q2: a brand-new harness model —
+e.g. a fresh Muse release — appears in the fleet catalogue automatically
+on the next scan, no pin edit needed): discovery runs at boot, every
+cadence tick, and on Re-detect EVEN WHEN PINNED, and the pin is never
+dropped, so a broken scan cannot hide it. Set
+`KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1` to opt in to
+discovery-wins instead (a non-empty discovery result replaces the pin,
+the pin only fills in while discovery yielded nothing). Each
 assignment serves exactly the dispatch answer's required model — never
 a substitution.
 
@@ -84,7 +86,7 @@ ready right now are listed; ids advertise in the fleet grammar
 | Harness | Source | Notes |
 |---|---|---|
 | `pi` | pi SDK availability snapshot | Needs `~/.pi/agent` login; empty login reports `PI_MODELS_EMPTY` (login state in the message) |
-| `muse` | `muse serve` stdio `model/list` | Needs the `muse` CLI (resolved off-PATH too); missing CLI = `MUSE_MSP_BIN_MISSING`, zero-row answer = `MUSE_MSP_MODELS_EMPTY` |
+| `muse` | `muse serve --provider <p> --no-session-log` stdio `model/list` | Same spawn shape as the backend MSP catalogue (provider defaults to `meta`); needs the `muse` CLI (resolved off-PATH too); missing CLI = `MUSE_MSP_BIN_MISSING`, zero-row answer = `MUSE_MSP_MODELS_EMPTY` |
 | `antigravity` | `agy models` spawn + parse | Classified `{code,message,hint}` errors |
 | `vibe` | ACP handshake model select | Exec-only hosts list nothing (honest empty + retained error) |
 | `opencode` | `GET {OPENCODE_URL}/config/providers` | Needs `OPENCODE_URL` (+ `OPENCODE_SERVER_PASSWORD`); unset = honest empty + `OPENCODE_NOT_CONFIGURED` |
@@ -114,12 +116,13 @@ and warn, never break heartbeats; the per-harness counts and first
 error ride the heartbeat as `facts.discoveryStatus` and surface in
 Settings › Runners next to the Re-detect button. The heartbeat also
 names the effective advertisement source (`facts.modelSource`:
-`pinned` / `discovered` / `unpinned`, mirroring
+`pinned` / `pinned+discovered` / `discovered` / `unpinned`, mirroring
 `resolveAdvertisedModels` branch-for-branch) plus per-model provenance
 (`facts.modelProvenance`: detecting leg + detected-at per id), so
 Settings › Runners shows WHY a Runner's model list looks the way it
-does — `(pinned on Runner)` vs `(auto-detected from Runner)` with the
-last scan time — instead of hiding pins and cadence gaps.
+does — `(pinned on Runner)` / `(pinned on Runner + auto-detected)` vs
+`(auto-detected from Runner)` with the last scan time — instead of
+hiding pins and cadence gaps.
 
 Harness auto-detect (`detectAvailableHarnesses` in `runner/daemon.js`,
 default when `KAINBAIN_RUNNER_HARNESS`/`HARNESSES` is empty or `auto`)
@@ -140,11 +143,13 @@ records `auto` in the env file so every boot re-detects; `--manual` pins a
 list (also how to deliberately exclude an installed harness).
 
 Migration note: this release generalizes discovery from muse-only to
-one leg per harness, but pinned-model semantics are unchanged — an
-install with `KAINBAIN_RUNNER_MODELS`/`KAINBAIN_RUNNER_MODEL` set
-advertises exactly that pin after updating, with no new scanning.
-Unpinned installs newly advertise auto-detected ids for every
-configured harness (previously muse-only). To let auto-detect replace
+one leg per harness, and changes pinned-model semantics from pin-wins
+to pin ∪ discovered — an install with `KAINBAIN_RUNNER_MODELS`/
+`KAINBAIN_RUNNER_MODEL` set now scans (boot, cadence, Re-detect) and
+advertises its pin PLUS every auto-detected id, so new harness models
+appear without editing the pin; the pin itself is never lost to a
+broken scan. Unpinned installs advertise auto-detected ids for every
+configured harness (previously muse-only). To let auto-detect REPLACE
 an explicit pin, set `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1`.
 
 Model reporting contract (`servingModelFor` / `formatPosture` in

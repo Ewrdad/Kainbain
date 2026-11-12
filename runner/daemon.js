@@ -659,10 +659,11 @@ export async function defaultLoadHarness(harnessId) {
  * MARK: discoveredModelsCache
  * @description Last model auto-discovery result, shared by every factsFor
  *   call until the next refresh. Seeded at boot, refreshed on the
- *   modelDiscoveryIntervalMs cadence (default 12h). The operator's explicit
- *   MODELS/MODEL list wins by default (see resolveAdvertisedModels), so this
- *   cache only matters when nothing is pinned — unless
- *   `modelDiscoveryWins` opts in to discovery-wins (survey q4).
+ *   modelDiscoveryIntervalMs cadence (default 12h). The advertised list is
+ *   pin ∪ discovered by default (see resolveAdvertisedModels), so this
+ *   cache always matters — a pinned Runner still scans and its
+ *   discovered ids join the pin (survey q2); `modelDiscoveryWins` opts
+ *   in to discovery-replaces-pin instead.
  ***/
 let discoveredModelsCache = [];
 
@@ -678,9 +679,10 @@ export function clearDiscoveredModelsCache() {
 /***
  * MARK: isModelsPinned
  * @description Whether the operator pinned an explicit model list
- *   (`config.models` non-empty or `config.model` set). Pinned installs
- *   skip discovery scans and advertise the pin (unless
- *   `modelDiscoveryWins` opts in to discovery-wins).
+ *   (`config.models` non-empty or `config.model` set). A pin never stops
+ *   discovery scans anymore — the advertised list is pin ∪ discovered
+ *   (see resolveAdvertisedModels); `modelDiscoveryWins` opts in to
+ *   discovery-replaces-pin instead.
  * @example isModelsPinned({ models: ['a'] }) => true
  * @param {Object} [config] - Normalized runner config.
  * @returns {boolean} True when a pin is set.
@@ -718,11 +720,12 @@ export function staleHarnessHintFor({ config, detectedHarnesses } = {}) {
  * @description One discovery round across every configured harness with a
  *   discovery leg (pi, muse, antigravity, vibe, opencode, codex): each leg
  *   reuses its backend harness's own `listModels()` (box-local login, no
- *   keys leave the host) and caches the ids per harness. Skipped entirely
- *   when the operator pinned MODELS/MODEL — pins win by default (see
- *   resolveAdvertisedModels), so scanning would only waste CLI spawns;
- *   set `modelDiscoveryWins` (env `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1`,
- *   survey q4) to scan anyway and let a non-empty result replace the pin.
+ *   keys leave the host) and caches the ids per harness. Runs even when the
+ *   operator pinned MODELS/MODEL — the default advertisement is pin ∪
+ *   discovered (see resolveAdvertisedModels, survey q2), so a pinned
+ *   Runner still surfaces brand-new harness models; set
+ *   `modelDiscoveryWins` (env `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1`) to
+ *   let a non-empty discovery result REPLACE the pin instead.
  *   Best-effort — failures keep the previous cache (per-harness slice)
  *   and warn, never throw, so discovery can never break heartbeats.
  *   `modelDiscoveryIntervalMs: 0` disables all scanning (boot seed and
@@ -746,7 +749,8 @@ export async function refreshDiscoveredModels({ config, logger, discoverFn, disc
 			logger?.log?.("Model discovery disabled (interval 0); advertising the pinned list.");
 			return [...discoveredModelsCache];
 		}
-		if (isModelsPinned(config) && !config?.modelDiscoveryWins) return [...discoveredModelsCache];
+		// Pinned Runners scan too: the default advertisement is pin ∪
+		// discovered, so new harness models appear without a pin edit.
 		const idsConfigured = runnerHarnessIds(config);
 		// The muse probe override rides the leg seam, so even overridden
 		// ids pass grammar validation before advertisement.
@@ -1066,10 +1070,9 @@ export async function handlePendingCommands({ config, client, logger, state, pen
 					stageCommandAck(state, { command: cmd, ok: true, detail: withHint("discovery disabled (interval 0); advertising pinned list") });
 					continue;
 				}
-				if (isModelsPinned(config) && !config?.modelDiscoveryWins) {
-					stageCommandAck(state, { command: cmd, ok: true, detail: withHint("models pinned; discovery skipped") });
-					continue;
-				}
+				// Re-detect always scans (pinned Runners included): the
+				// advertised list is pin ∪ discovered, so this is how a
+				// brand-new harness model reaches the fleet catalogue.
 				const ids = await refreshDiscoveredModels({ config, logger, discoverFn, discoveryCtx, detectedHarnesses });
 				const count = Array.isArray(ids) ? ids.length : 0;
 				const { countsText, firstError } = summarizeDiscoverySlices(runnerHarnessIds(config));

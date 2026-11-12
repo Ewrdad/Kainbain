@@ -82,8 +82,8 @@ export const fleetEntriesForHarness = (harnessId, entries) => {
  *   section-model shape: the EXACT advertised id as `key` (dispatch
  *   matches verbatim, so keys stay byte-equal), parsed provider/model
  *   segments, the owning `harness`, and the additive fleet availability
- *   (`fleet`, `runnerCount`, `runnerIds`, `tiers`, `available`,
- *   `unavailableReason`) the pickers badge from.
+ *   (`fleet`, `runnerCount`, `runnerIds`, `claimedBy`, `tiers`,
+ *   `available`, `unavailableReason`) the pickers badge from.
  * @example projectFleetEntry({ id: 'muse::meta::m', runnerCount: 1 }, 'muse').key => 'muse::meta::m'
  * @param {Object} entry - Attributable fleet entry.
  * @param {string} harnessId - Owning section id.
@@ -102,6 +102,7 @@ export const projectFleetEntry = (entry, harnessId) => {
 			? Math.floor(entry.runnerCount)
 			: 0,
 		runnerIds: cleanEntryList(entry?.runnerIds),
+		claimedBy: cleanEntryList(entry?.claimedBy),
 		tiers: cleanEntryList(entry?.tiers),
 		available: entry?.available !== false,
 		unavailableReason: typeof entry?.unavailableReason === "string" ? entry.unavailableReason : null,

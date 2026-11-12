@@ -2615,6 +2615,12 @@ describe("TaskStore", () => {
 
 			const tQueued1 = store.createTask("p1", { goal: "Automated Agent Task", stageId: "1" });
 			const tQueued2 = store.createTask("p1", { goal: "Automated CI Task", stageId: "3" });
+			// Deterministic ordering: both queued tasks wait the same amount of
+			// time, so the tie breaks by furthest-along progression and the
+			// CI (stage 3) lands ahead of the agent (stage 1).
+			const sharedWait = new Date(1_000_000).toISOString();
+			store.updateTask("p1", tQueued1.id, { enteredStageAt: sharedWait, updatedAt: sharedWait });
+			store.updateTask("p1", tQueued2.id, { enteredStageAt: sharedWait, updatedAt: sharedWait });
 
 			const queue = store.getScheduledQueue("p1");
 
@@ -3398,8 +3404,11 @@ describe("TaskStore branch support & merge stage", () => {
 		// The return stays strict (recovery off): dirt after the commit step
 		// means the commit failed, and that must refuse loudly, never stash.
 		expect(gitHelpers.pushBranchIfRemote).toHaveBeenCalledWith(tempCwd, task.branch);
+		// The return switch carries the same project hint as the commit step,
+		// so a custom docs folder counts as engine-owned there too.
 		expect(gitHelpers.returnToDefaultBranch).toHaveBeenCalledWith(tempCwd, {
 			recovery: "off",
+			project: { useBranches: true, cwd: tempCwd },
 		});
 	});
 
