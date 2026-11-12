@@ -367,7 +367,13 @@ export async function finalizeTaskBranch(
 	// the commit step means the commit itself failed, and stashing it away
 	// would strand work the merge stage never restores — refuse loudly.
 	try {
-		const back = await returnToDefaultBranch(cwd, { recovery: "off" });
+		const back = await returnToDefaultBranch(cwd, {
+			recovery: "off",
+			// Same project hint the commit step above uses: a custom docs
+			// folder must count as engine-owned on the return switch too,
+			// or the strict guard refuses a tree holding only snapshots.
+			...(project ? { project } : {}),
+		});
 		summary.defaultBranch = back?.branch || null;
 		summary.switched = back?.switched === true;
 		if (summary.switched) {
