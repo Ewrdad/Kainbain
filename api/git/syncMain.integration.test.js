@@ -27,8 +27,16 @@ function initBare(dir) {
 	run(dir, "init", "--bare", "-b", "main");
 }
 
+const tempDirs = [];
+function track(dir) {
+	tempDirs.push(dir);
+	return dir;
+}
+
 function seedRemote(remoteDir, file, content) {
-	const seed = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-sync-seed-"));
+	// Tracked BEFORE the throwing clone below so a failed setup cannot leak
+	// the temp dir (same leak class as the 2026-11-12 CI failure).
+	const seed = track(fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-sync-seed-")));
 	run(seed, "clone", remoteDir, ".");
 	run(seed, "config", "user.email", "kainbain-test@example.com");
 	run(seed, "config", "user.name", "KainBain Test");
@@ -46,24 +54,19 @@ function seedRemote(remoteDir, file, content) {
 }
 
 function cloneRemote(remoteDir) {
-	const work = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-sync-work-"));
+	// Tracked BEFORE the throwing clone below, same as seedRemote above.
+	const work = track(fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-sync-work-")));
 	run(work, "clone", remoteDir, ".");
 	run(work, "config", "user.email", "kainbain-test@example.com");
 	run(work, "config", "user.name", "KainBain Test");
 	return work;
 }
 
-const tempDirs = [];
-function track(dir) {
-	tempDirs.push(dir);
-	return dir;
-}
-
 beforeEach(() => {
 	if (!gitAvailable) return;
 	const remoteDir = track(fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-sync-remote-")));
 	initBare(remoteDir);
-	track(seedRemote(remoteDir, "truth.txt", "remote truth v1\n"));
+	seedRemote(remoteDir, "truth.txt", "remote truth v1\n");
 });
 
 afterEach(() => {
@@ -84,7 +87,7 @@ function remoteDirOf() {
 describe("syncDefaultBranchToRemote", () => {
 	it("reports already-in-sync for a fresh clone", async () => {
 		if (!gitAvailable) return;
-		const work = track(cloneRemote(remoteDirOf()));
+		const work = cloneRemote(remoteDirOf());
 		const res = await syncDefaultBranchToRemote(work);
 		expect(res.synced).toBe(false);
 		expect(res.skipped).toBe("already-in-sync");
@@ -94,8 +97,8 @@ describe("syncDefaultBranchToRemote", () => {
 
 	it("hard-resets a behind main to the remote tip", async () => {
 		if (!gitAvailable) return;
-		const work = track(cloneRemote(remoteDirOf()));
-		track(seedRemote(remoteDirOf(), "truth.txt", "remote truth v2\n"));
+		const work = cloneRemote(remoteDirOf());
+		seedRemote(remoteDirOf(), "truth.txt", "remote truth v2\n");
 		const before = run(work, "rev-parse", "main").trim();
 		const res = await syncDefaultBranchToRemote(work);
 		expect(res.synced).toBe(true);
@@ -110,7 +113,7 @@ describe("syncDefaultBranchToRemote", () => {
 
 	it("discards tracked modifications on main and reports them", async () => {
 		if (!gitAvailable) return;
-		const work = track(cloneRemote(remoteDirOf()));
+		const work = cloneRemote(remoteDirOf());
 		fs.writeFileSync(path.join(work, "truth.txt"), "local operator edit\n");
 		const res = await syncDefaultBranchToRemote(work);
 		expect(res.synced).toBe(true);
@@ -124,7 +127,7 @@ describe("syncDefaultBranchToRemote", () => {
 
 	it("never resets an ahead ref: unpushed work survives the sync", async () => {
 		if (!gitAvailable) return;
-		const work = track(cloneRemote(remoteDirOf()));
+		const work = cloneRemote(remoteDirOf());
 		fs.writeFileSync(path.join(work, "local-only.txt"), "never pushed\n");
 		run(work, "add", "-A");
 		run(work, "commit", "-m", "local-only commit");
@@ -141,8 +144,8 @@ describe("syncDefaultBranchToRemote", () => {
 
 	it("moves the main ref while checked out on a task branch", async () => {
 		if (!gitAvailable) return;
-		const work = track(cloneRemote(remoteDirOf()));
-		track(seedRemote(remoteDirOf(), "truth.txt", "remote truth v2\n"));
+		const work = cloneRemote(remoteDirOf());
+		seedRemote(remoteDirOf(), "truth.txt", "remote truth v2\n");
 		run(work, "checkout", "-b", "kb/task-1");
 		fs.writeFileSync(path.join(work, "task-work.txt"), "task work\n");
 		const res = await syncDefaultBranchToRemote(work);
@@ -170,7 +173,7 @@ describe("syncDefaultBranchToRemote", () => {
 
 	it("never throws when the fetch fails", async () => {
 		if (!gitAvailable) return;
-		const work = track(cloneRemote(remoteDirOf()));
+		const work = cloneRemote(remoteDirOf());
 		run(work, "remote", "set-url", "origin", "/nonexistent/kainbain-sync-remote.git");
 		const res = await syncDefaultBranchToRemote(work);
 		expect(res.synced).toBe(false);
@@ -179,14 +182,14 @@ describe("syncDefaultBranchToRemote", () => {
 
 	it("converges a diverged main by merging the remote tip in and pushing, landing HEAD on the tip", async () => {
 		if (!gitAvailable) return;
-		const work = track(cloneRemote(remoteDirOf()));
+		const work = cloneRemote(remoteDirOf());
 		// Local-only commit (ahead side — e.g. a landed merge whose push failed).
 		fs.writeFileSync(path.join(work, "local-only.txt"), "local work\n");
 		run(work, "add", "-A");
 		run(work, "commit", "-m", "local-only commit");
 		const localSha = run(work, "rev-parse", "main").trim();
 		// Remote moves on (behind side — e.g. the Runner pushed a task merge).
-		track(seedRemote(remoteDirOf(), "truth.txt", "remote truth v2\n"));
+		seedRemote(remoteDirOf(), "truth.txt", "remote truth v2\n");
 		const res = await syncDefaultBranchToRemote(work);
 		expect(res.synced).toBe(true);
 		expect(res.skipped).toBe(null);
@@ -208,12 +211,12 @@ describe("syncDefaultBranchToRemote", () => {
 
 	it("skips loudly on a conflicting divergence and touches neither ref", async () => {
 		if (!gitAvailable) return;
-		const work = track(cloneRemote(remoteDirOf()));
+		const work = cloneRemote(remoteDirOf());
 		fs.writeFileSync(path.join(work, "truth.txt"), "local conflicting edit\n");
 		run(work, "add", "-A");
 		run(work, "commit", "-m", "local edit");
 		const before = run(work, "rev-parse", "main").trim();
-		track(seedRemote(remoteDirOf(), "truth.txt", "remote truth v2\n"));
+		seedRemote(remoteDirOf(), "truth.txt", "remote truth v2\n");
 		const remoteBefore = run(remoteDirOf(), "rev-parse", "refs/heads/main").trim();
 		const res = await syncDefaultBranchToRemote(work);
 		expect(res.synced).toBe(false);
@@ -228,11 +231,11 @@ describe("syncDefaultBranchToRemote", () => {
 
 	it("converges a diverged main while checked out on a task branch, leaving the task worktree alone", async () => {
 		if (!gitAvailable) return;
-		const work = track(cloneRemote(remoteDirOf()));
+		const work = cloneRemote(remoteDirOf());
 		fs.writeFileSync(path.join(work, "local-only.txt"), "local work\n");
 		run(work, "add", "-A");
 		run(work, "commit", "-m", "local-only commit on main");
-		track(seedRemote(remoteDirOf(), "truth.txt", "remote truth v2\n"));
+		seedRemote(remoteDirOf(), "truth.txt", "remote truth v2\n");
 		run(work, "checkout", "-b", "kb/task-1");
 		fs.writeFileSync(path.join(work, "task-work.txt"), "task work\n");
 		const res = await syncDefaultBranchToRemote(work);

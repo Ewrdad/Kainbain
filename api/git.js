@@ -1,9 +1,10 @@
 /***
- * MARK: Git barrel
- * @description Thin re-export barrel over `api/git/*.js`. Preserves the
- *   historical public surface of the git helper module so callers (flow engine,
- *   work modules, stores) need no import changes. Implementation lives in the
- *   command-family modules under `api/git/`.
+ * MARK: Git helpers, one front door
+ * @description One front door for the git command helpers in `api/git/*.js`:
+ *   every helper is re-exported here under its own name, so callers (flow
+ *   engine, work modules, stores) import from one place and need no import
+ *   changes. Implementation lives in the command-family modules under
+ *   `api/git/`.
  ***/
 
 export {

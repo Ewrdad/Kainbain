@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api } from '../../services/api';
 import { Modal } from '../Modal';
 import { usePendingAction } from '../../hooks/usePendingAction';
@@ -36,7 +36,10 @@ export function AccessibilityReportDialog({ contactEmail = '', onClose }) {
   const [submitted, setSubmitted] = useState(null);
   const confirmationRef = useRef(null);
 
-  useEffect(() => {
+  // useLayoutEffect so the confirmation heading receives focus synchronously
+  // after it mounts — useEffect is too late and makes the assertion racy in
+  // jsdom / React 18.
+  useLayoutEffect(() => {
     if (submitted) confirmationRef.current?.focus?.();
   }, [submitted]);
 

@@ -71,6 +71,11 @@ function describeMuseSpawnFailure({ spawnError, spawnResult, bin } = {}) {
  *   billing APIs — only model ids come back. Rows map to the fleet id
  *   grammar `muse::<providerId>::<modelId>` (e.g.
  *   `muse::meta::muse-spark-1.3`); malformed rows are skipped, ids deduped.
+ *   The spawn mirrors the backend MSP probe (same `--provider` default and
+ *   handshake shape, `api/agent/harnesses/muse/msp/museMspSupport.js`), so
+ *   the runner leg and the backend catalogue read the same host the same
+ *   way — a provider the host must be told about (`meta` by default) is
+ *   passed explicitly instead of relying on the CLI's implicit default.
  *   Lenient by default: any failure (missing CLI, timeout, unparsable
  *   output) resolves to `[]`, never throws, so discovery can never break
  *   boot. Strict mode (`strict: true`, used by the discovery leg) throws
@@ -86,17 +91,22 @@ function describeMuseSpawnFailure({ spawnError, spawnResult, bin } = {}) {
  * @param {number} [opts.timeoutMs=20000] - Whole round-trip budget.
  * @param {Function} [opts.spawnSyncFn=spawnSync] - Test seam.
  * @param {boolean} [opts.strict=false] - Throw classified failures instead of resolving `[]`.
+ * @param {string} [opts.provider='meta'] - Provider passed as `--provider` (the backend MSP default).
+ * @param {string[]} [opts.args] - Full argv override after the binary (test seam; defaults to the serve plan).
  * @returns {Promise<string[]>} Discovered catalogue ids (possibly empty).
  ***/
-export async function discoverClaudeModels({ bin = "muse", timeoutMs = 20000, spawnSyncFn = spawnSync, strict = false } = {}) {
+export async function discoverClaudeModels({ bin = "muse", timeoutMs = 20000, spawnSyncFn = spawnSync, strict = false, provider = "meta", args } = {}) {
 	const messages = [
-		{ jsonrpc: "2.0", id: 1, method: "initialize", params: { clientInfo: { name: "kainbain", version: "0.1.0" } } },
+		{ jsonrpc: "2.0", id: 1, method: "initialize", params: { clientInfo: { name: "kainbain", version: "1.0.0" }, capabilities: {} } },
 		{ jsonrpc: "2.0", method: "initialized", params: {} },
 		{ jsonrpc: "2.0", id: 2, method: "model/list", params: {} },
 	].map((m) => `${JSON.stringify(m)}\n`).join("");
+	const serveArgs = Array.isArray(args) && args.length > 0
+		? [...args]
+		: ["serve", "--provider", String(provider || "meta"), "--no-session-log"];
 	let res;
 	try {
-		res = spawnSyncFn(bin, ["serve", "--no-session-log"], { input: messages, timeout: timeoutMs, encoding: "utf8" });
+		res = spawnSyncFn(bin, serveArgs, { input: messages, timeout: timeoutMs, encoding: "utf8" });
 	} catch (spawnError) {
 		if (!strict) return [];
 		const classified = describeMuseSpawnFailure({ spawnError, bin });
@@ -154,15 +164,18 @@ export async function discoverClaudeModels({ bin = "muse", timeoutMs = 20000, sp
 /***
  * MARK: resolveAdvertisedModels
  * @description Picks the model list a heartbeat advertises. Default is
- *   pin-wins (upgrade-safe): the operator's explicit `config.models`
- *   wins when non-empty, then the singular `config.model`; the
- *   discovery cache only fills in when nothing is pinned. Opt in to
+ *   pin-UNION-discovered (survey q2 — a newly detected harness model must
+ *   appear automatically): the operator's explicit `config.models` /
+ *   `config.model` pin is always advertised, and every grammar-validated
+ *   discovered id joins it, so a brand-new model (e.g. a fresh Muse
+ *   release) is selectable without editing the pin — while the pin itself
+ *   can never be lost to a broken scan (upgrade-safe). Opt in to
  *   discovery-wins with `config.modelDiscoveryWins` (env
- *   `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1`, survey q4): a non-empty
- *   discovery cache then replaces the pin, and the pin only fills in
- *   when discovery yielded nothing yet. Empty everywhere means unpinned
- *   (matches model-less tasks only) — never invents a capability.
- * @example resolveAdvertisedModels({ models: ['a'] }, ['b']) => ['a']
+ *   `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1`): a non-empty discovery cache
+ *   then replaces the pin, and the pin only fills in when discovery
+ *   yielded nothing yet. Empty everywhere means unpinned (matches
+ *   model-less tasks only) — never invents a capability.
+ * @example resolveAdvertisedModels({ models: ['a'] }, ['b']) => ['a', 'b']
  * @example resolveAdvertisedModels({ models: ['a'], modelDiscoveryWins: true }, ['b']) => ['b']
  * @param {Object} [config] - Runner config (`models` array / `model` / `modelDiscoveryWins`).
  * @param {string[]} [discovered] - Last discovery result.
@@ -177,7 +190,15 @@ export function resolveAdvertisedModels(config, discovered) {
 		if (discoveredIds.length > 0) return discoveredIds;
 		return pin;
 	}
-	if (pin.length > 0) return pin;
+	// Default: pin ∪ discovered (pin order first, discovered ids appended
+	// deduped) — the pin is never dropped, discovery only adds.
+	if (pin.length > 0) {
+		const out = [...pin];
+		for (const id of discoveredIds) {
+			if (!out.includes(id)) out.push(id);
+		}
+		return out;
+	}
 	return discoveredIds;
 }
 
@@ -190,12 +211,13 @@ export function resolveAdvertisedModels(config, discovered) {
  *   `resolveAdvertisedModels` branch-for-branch so the label can never
  *   disagree with the advertised list; the backend surfaces it per
  *   runner so operators see WHY a model list looks the way it does.
- * @example resolveAdvertisedModelSource({ models: ['a'] }, ['b']) => 'pinned'
+ * @example resolveAdvertisedModelSource({ models: ['a'] }, ['b']) => 'pinned+discovered'
+ * @example resolveAdvertisedModelSource({ models: ['a'] }, []) => 'pinned'
  * @example resolveAdvertisedModelSource({ models: ['a'], modelDiscoveryWins: true }, ['b']) => 'discovered'
  * @example resolveAdvertisedModelSource({}, []) => 'unpinned'
  * @param {Object} [config] - Runner config (`models` array / `model` / `modelDiscoveryWins`).
  * @param {string[]} [discovered] - Last discovery result.
- * @returns {"pinned"|"discovered"|"unpinned"} Effective advertisement source.
+ * @returns {"pinned"|"pinned+discovered"|"discovered"|"unpinned"} Effective advertisement source.
  ***/
 export function resolveAdvertisedModelSource(config, discovered) {
 	const discoveredIds = Array.isArray(discovered) ? discovered : [];
@@ -206,7 +228,7 @@ export function resolveAdvertisedModelSource(config, discovered) {
 		if (discoveredIds.length > 0) return "discovered";
 		return pinned ? "pinned" : "unpinned";
 	}
-	if (pinned) return "pinned";
+	if (pinned) return discoveredIds.length > 0 ? "pinned+discovered" : "pinned";
 	return discoveredIds.length > 0 ? "discovered" : "unpinned";
 }
 

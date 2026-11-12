@@ -87,6 +87,16 @@ describe("parseVibeConfigModels (pure parsing)", () => {
 			key: "vibe::mistral::mistral-large:cloud",
 		});
 	});
+
+	it("skips one unkeyable row instead of failing the whole menu", () => {
+		const models = parseVibeConfigModels([
+			{
+				category: "model",
+				options: [{ value: "weird::row-1", name: "Bad" }, { value: "mistral-large-4-0-3", name: "Good" }],
+			},
+		]);
+		expect(models.map((model) => model.id)).toEqual(["mistral-large-4-0-3"]);
+	});
 });
 
 describe("createVibeModelCatalog (contract over the mock ACP agent)", () => {

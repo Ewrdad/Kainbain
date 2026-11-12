@@ -1718,6 +1718,32 @@ describe("runCommandStage ci run-on-branch", () => {
 		expect(start).toMatchObject({ branch: "main", runOnBranch: "primary" });
 	});
 
+	it("forwards the project hint to the guarded checkout so custom docs folders count as engine-owned", async () => {
+		const project = { docsDirName: "kdocs" };
+		const store = stubStore({
+			projectStore: { getProject: vi.fn(() => project) },
+		});
+		const task = ciTask();
+		store.getTask.mockReturnValue(task);
+		const runner = vi.fn(okRunner);
+
+		const result = await runCommandStage(
+			store,
+			"proj-1",
+			"task-1",
+			baseStage({ runOnBranch: "primary" }),
+			runOpts({ execRunner: runner }),
+		);
+
+		expect(result.status).toBe("passed");
+		expect(gitMocks.withCheckedOutBranch).toHaveBeenCalledWith(
+			"/repo",
+			"main",
+			expect.any(Function),
+			expect.objectContaining({ taskId: "task-1", project }),
+		);
+	});
+
 	it("runs custom-mode CI on the configured branch", async () => {
 		const store = stubStore();
 		const task = ciTask();
