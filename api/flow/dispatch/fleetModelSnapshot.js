@@ -3,6 +3,8 @@ import { loadStateFile } from "../loadStateFile.js";
 import { resolveStatePath } from "../resolveStatePath.js";
 import { saveStateFile } from "../saveStateFile.js";
 import { ingestAdvertisedIds } from "./catalogIngest.js";
+import { confirmRunnerModel } from "./runnerModelConfirmation.js";
+import { staleAdvertReason } from "./staleAdvertReason.js";
 import { claimEligibleRunner } from "./runnerMatches/claimEligibleRunner.js";
 import { effectiveRunnerModels } from "./runnerMatches/effectiveRunnerModels.js";
 
@@ -17,8 +19,12 @@ import { effectiveRunnerModels } from "./runnerMatches/effectiveRunnerModels.js"
  *   `harness::model` attributes, effort `tiers`, availability, and
  *   per-runner provenance (detecting leg + detected-at). An entry no live
  *   runner serves is marked unavailable with a reason instead of deleted
- *   (survey q4); a malformed advertised id is quarantined with a reason
- *   instead of silently dropped or served. Persisted atomically to
+ *   (survey q4); an entry only stale-claimed (advertised, but contradicted
+ *   by every claimant's own successful scan — see `runnerModelConfirmation`)
+ *   is likewise marked unavailable with the stale-pin reason and its
+ *   `claimedBy` runner list, never served as available; a malformed
+ *   advertised id is quarantined with a reason instead of silently dropped
+ *   or served. Persisted atomically to
  *   `KAINBAIN_FLEET_CATALOG_FILE` (empty disables); after a backend
  *   restart every entry reads unavailable until its runners heartbeat
  *   again. Never a dispatch input — dispatch keeps reading the live
@@ -107,6 +113,7 @@ export const normalizeSnapshotState = (raw) => {
 			tiers: strings(value.tiers),
 			runnerIds: strings(value.runnerIds),
 			runnerCount: Number.isInteger(value.runnerCount) && value.runnerCount >= 0 ? value.runnerCount : 0,
+			claimedBy: strings(value.claimedBy),
 			available: value.available !== false,
 			unavailableReason: typeof value.unavailableReason === "string" ? value.unavailableReason : null,
 			firstSeenAtMs: typeof value.firstSeenAtMs === "number" && Number.isFinite(value.firstSeenAtMs) ? value.firstSeenAtMs : null,
@@ -229,12 +236,22 @@ export const createFleetModelSnapshotStore = ({ filePath, now = () => Date.now()
 						harnesses: new Set(),
 						tiers: new Set(),
 						runnerIds: new Set(),
+						claimedBy: new Set(),
 						provenance: {},
 					};
 					live.set(entry.id, slot);
 				}
+				// Attribution unions across every claimant (stale entries
+				// still land in their section, marked unavailable); only
+				// serving runners (confirmed or inconclusive) count toward
+				// availability and provenance.
 				for (const h of entry.harnesses) slot.harnesses.add(h);
 				for (const t of entry.tiers) slot.tiers.add(t);
+				const verdict = confirmRunnerModel(record, entry.id).status;
+				if (verdict === "stale") {
+					slot.claimedBy.add(runnerId);
+					continue;
+				}
 				slot.runnerIds.add(runnerId);
 				slot.provenance[runnerId] = {
 					harnesses: [...entry.harnesses],
@@ -253,6 +270,31 @@ export const createFleetModelSnapshotStore = ({ filePath, now = () => Date.now()
 		}
 		for (const [id, slot] of live) {
 			const previous = models.get(id);
+			const claimedBy = [...slot.claimedBy].sort();
+			if (slot.runnerIds.size === 0) {
+				// Advertised but contradicted by every claimant's own
+				// successful scan: a stale pin, marked unavailable with
+				// its claimants named — never served as available.
+				models.set(id, {
+					id,
+					form: slot.form,
+					harness: slot.harness,
+					provider: slot.provider,
+					model: slot.model,
+					reasoning: slot.reasoning,
+					harnesses: [...slot.harnesses].sort(),
+					tiers: [...slot.tiers].sort(),
+					runnerIds: [],
+					runnerCount: 0,
+					claimedBy,
+					available: false,
+					unavailableReason: staleAdvertReason(slot.harness, claimedBy.length),
+					firstSeenAtMs: previous?.firstSeenAtMs ?? seenAt,
+					lastSeenAtMs: seenAt,
+					provenance: previous?.provenance ?? {},
+				});
+				continue;
+			}
 			models.set(id, {
 				id,
 				form: slot.form,
@@ -264,6 +306,7 @@ export const createFleetModelSnapshotStore = ({ filePath, now = () => Date.now()
 				tiers: [...slot.tiers].sort(),
 				runnerIds: [...slot.runnerIds].sort(),
 				runnerCount: slot.runnerIds.size,
+				claimedBy,
 				available: true,
 				unavailableReason: null,
 				firstSeenAtMs: previous?.firstSeenAtMs ?? seenAt,
@@ -279,6 +322,7 @@ export const createFleetModelSnapshotStore = ({ filePath, now = () => Date.now()
 					unavailableReason: FLEET_ENTRY_UNAVAILABLE_REASON,
 					runnerIds: [],
 					runnerCount: 0,
+					claimedBy: [],
 				});
 			}
 		}

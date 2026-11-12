@@ -72,11 +72,27 @@ test("sends initialize, initialized, then model/list over serve stdio", async ()
 		return { stdout: JSON.stringify({ jsonrpc: "2.0", id: 2, result: { models: [] } }) };
 	};
 	await discoverClaudeModels({ spawnSyncFn: capture });
-	assert.deepEqual(argv, ["muse", "serve", "--no-session-log"]);
+	// Probe parity with the backend MSP catalogue: the provider is passed
+	// explicitly (backend default: meta) and the handshake carries the
+	// empty capabilities block, exactly like buildMuseMspHandshake().
+	assert.deepEqual(argv, ["muse", "serve", "--provider", "meta", "--no-session-log"]);
 	const lines = input.trim().split("\n").map((l) => JSON.parse(l));
 	assert.equal(lines[0].method, "initialize");
+	assert.deepEqual(lines[0].params, { clientInfo: { name: "kainbain", version: "1.0.0" }, capabilities: {} });
 	assert.equal(lines[1].method, "initialized");
 	assert.equal(lines[2].method, "model/list");
+});
+
+test("provider and argv are overridable (leg seams)", async () => {
+	let argv = null;
+	const capture = (bin, args) => {
+		argv = [bin, ...args];
+		return { stdout: JSON.stringify({ jsonrpc: "2.0", id: 2, result: { models: [] } }) };
+	};
+	await discoverClaudeModels({ spawnSyncFn: capture, provider: "echo" });
+	assert.deepEqual(argv, ["muse", "serve", "--provider", "echo", "--no-session-log"]);
+	await discoverClaudeModels({ spawnSyncFn: capture, args: ["serve", "--custom"] });
+	assert.deepEqual(argv, ["muse", "serve", "--custom"]);
 });
 
 test("spawn failure, timeout error, and unparsable output resolve to []", async () => {
@@ -140,9 +156,10 @@ test("strict mode still resolves [] when the CLI answers with zero rows (the leg
 	);
 });
 
-test("pin wins by default: a pinned list is still advertised when discovery is non-empty", () => {
-	assert.deepEqual(resolveAdvertisedModels({ models: ["pinned-a"] }, ["discovered-b"]), ["pinned-a"]);
-	assert.deepEqual(resolveAdvertisedModels({ model: "pinned-a" }, ["discovered-b"]), ["pinned-a"]);
+test("default is pin ∪ discovered: the pin never drops, new ids join (survey q2)", () => {
+	assert.deepEqual(resolveAdvertisedModels({ models: ["pinned-a"] }, ["discovered-b"]), ["pinned-a", "discovered-b"]);
+	assert.deepEqual(resolveAdvertisedModels({ model: "pinned-a" }, ["discovered-b"]), ["pinned-a", "discovered-b"]);
+	assert.deepEqual(resolveAdvertisedModels({ models: ["pinned-a"] }, ["pinned-a", "discovered-b"]), ["pinned-a", "discovered-b"]);
 	assert.deepEqual(resolveAdvertisedModels({ models: ["pinned-a"] }, []), ["pinned-a"]);
 	assert.deepEqual(resolveAdvertisedModels({ model: "pinned-a" }, []), ["pinned-a"]);
 	assert.deepEqual(resolveAdvertisedModels({ models: [] }, ["b"]), ["b"]);
@@ -151,7 +168,7 @@ test("pin wins by default: a pinned list is still advertised when discovery is n
 	assert.deepEqual(resolveAdvertisedModels({}, undefined), []);
 });
 
-test("discovery wins only with the explicit opt-in (modelDiscoveryWins, survey q4)", () => {
+test("discovery wins (replaces the pin) only with the explicit opt-in (modelDiscoveryWins)", () => {
 	const optIn = { models: ["pinned-a"], modelDiscoveryWins: true };
 	assert.deepEqual(resolveAdvertisedModels(optIn, ["discovered-b"]), ["discovered-b"]);
 	assert.deepEqual(resolveAdvertisedModels(optIn, []), ["pinned-a"]);
@@ -161,8 +178,9 @@ test("discovery wins only with the explicit opt-in (modelDiscoveryWins, survey q
 });
 
 test("resolveAdvertisedModelSource names the winning list branch-for-branch", () => {
-	assert.equal(resolveAdvertisedModelSource({ models: ["a"] }, ["b"]), "pinned");
-	assert.equal(resolveAdvertisedModelSource({ model: "a" }, ["b"]), "pinned");
+	assert.equal(resolveAdvertisedModelSource({ models: ["a"] }, ["b"]), "pinned+discovered");
+	assert.equal(resolveAdvertisedModelSource({ model: "a" }, ["b"]), "pinned+discovered");
+	assert.equal(resolveAdvertisedModelSource({ models: ["a"] }, []), "pinned");
 	assert.equal(resolveAdvertisedModelSource({ models: ["a"], modelDiscoveryWins: true }, ["b"]), "discovered");
 	assert.equal(resolveAdvertisedModelSource({ models: ["a"], modelDiscoveryWins: true }, []), "pinned");
 	assert.equal(resolveAdvertisedModelSource({ models: [] }, ["b"]), "discovered");

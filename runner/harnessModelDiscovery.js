@@ -587,11 +587,14 @@ function resolveMuseProbeBinary(ctx = {}) {
  *   overrides the probe (called with the leg ctx; a no-arg override
  *   works too) and `ctx.spawnSyncFn` seams the spawn — when the spawn
  *   is stubbed the binary pre-check is skipped so tests never touch
- *   the real host. The daemon's test seam rides through here so even
+ *   the real host. The spawn matches the backend MSP probe — `--provider`
+ *   (default `meta`, `ctx.provider` overrides) plus the standard handshake —
+ *   so the leg and the backend catalogue read the same host the same way.
+ *   The daemon's test seam rides through here so even
  *   overridden ids pass grammar validation before advertisement.
  * @example await discoverMuseModels({}) => ['muse::meta::muse-spark-1.3']
  * @example await discoverMuseModels({}) // throws MUSE_MSP_MODELS_EMPTY when the CLI answers with zero rows
- * @param {Object} [ctx] - Leg seams (`discoverFn`, `bin`, `env`, `platform`, `timeoutMs`, `spawnSyncFn`).
+ * @param {Object} [ctx] - Leg seams (`discoverFn`, `bin`, `env`, `platform`, `timeoutMs`, `spawnSyncFn`, `provider`, `args`).
  * @returns {Promise<string[]>} Canonical muse model ids (never silently empty).
  ***/
 export async function discoverMuseModels(ctx = {}) {
@@ -607,6 +610,12 @@ export async function discoverMuseModels(ctx = {}) {
 	} else {
 		opts.bin = resolveMuseProbeBinary(ctx);
 	}
+	// Probe parity with the backend MSP catalogue: the host is told its
+	// provider explicitly (`--provider`, default meta) instead of relying
+	// on the CLI's implicit default, so the leg and the backend read the
+	// same host the same way.
+	if (typeof ctx?.provider === "string" && ctx.provider.trim()) opts.provider = ctx.provider.trim();
+	if (Array.isArray(ctx?.args)) opts.args = ctx.args;
 	if (Number.isFinite(ctx?.timeoutMs)) opts.timeoutMs = ctx.timeoutMs;
 	const raw = await discoverMuseModelsRaw(opts);
 	const ids = dedupeStrings(Array.isArray(raw) ? raw : []);
