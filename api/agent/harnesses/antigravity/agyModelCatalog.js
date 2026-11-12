@@ -175,16 +175,21 @@ export function parseAgyModelsOutput(output) {
 		const slugLike = /[-._]/.test(slug) || /\d/.test(slug);
 		if (!slugLike) continue;
 		const name = descriptionParts.join(" ").trim();
-		models.push(
-			withModelKey(
-				{
-					provider: "antigravity",
-					id: slug,
-					name: name || slug,
-				},
-				AGY_HARNESS_ID,
-			),
-		);
+		try {
+			models.push(
+				withModelKey(
+					{
+						provider: "antigravity",
+						id: slug,
+						name: name || slug,
+					},
+					AGY_HARNESS_ID,
+				),
+			);
+		} catch {
+			// One unkeyable row (e.g. a slug containing `::`) is skipped —
+			// a single weird CLI line must never fail the whole menu.
+		}
 	}
 	return models;
 }

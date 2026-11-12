@@ -65,6 +65,36 @@ describe('fleetModelsForHarness', () => {
     expect(fleetModelsForHarness('muse', {})).toEqual([]);
     expect(fleetModelsForHarness('', counts)).toEqual([]);
   });
+
+  it('carries the snapshot verdict so stale entries badge Unavailable', () => {
+    const counts = {
+      'muse::meta::retired': {
+        ...entry(['muse']),
+        runnerCount: 0,
+        runnerIds: [],
+        available: false,
+        unavailableReason: 'stale pin',
+      },
+    };
+    expect(fleetModelsForHarness('muse', counts)).toEqual([
+      {
+        key: 'muse::meta::retired',
+        id: 'retired',
+        provider: 'meta',
+        name: 'retired',
+        fleet: true,
+        available: false,
+        unavailableReason: 'stale pin',
+      },
+    ]);
+  });
+
+  it('stays verdict-free for older backends (count badges judge those)', () => {
+    const counts = { 'muse::meta::m': entry(['muse']) };
+    const [option] = fleetModelsForHarness('muse', counts);
+    expect(option).not.toHaveProperty('available');
+    expect(option).not.toHaveProperty('unavailableReason');
+  });
 });
 
 describe('fleetServesHarness', () => {

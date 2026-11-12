@@ -61,3 +61,55 @@ which also wipes stored alias models on load.
   with no store. It fixes selection but keeps the transient-read
   failure (a restart or a brief runner outage blanks the list with no
   explanation), which the snapshot's mark-unavailable semantics solve.
+
+## Amendment (same day, post-review): pin ∪ discovered advertisement
+
+Review found the catalogue could still hide a brand-new harness model:
+pinned Runners (`KAINBAIN_RUNNER_MODELS`/`KAINBAIN_RUNNER_MODEL`) skipped
+discovery entirely, so a fresh release (e.g. a new Muse model) never
+reached the fleet. The Runner default is now **pin ∪ discovered**
+(`resolveAdvertisedModels`): discovery scans pinned Runners too (boot,
+cadence, Re-detect), grammar-validated discovered ids join the pin, and
+the pin is never dropped — a broken scan cannot hide it. The heartbeat
+labels this `facts.modelSource: "pinned+discovered"` (additive vocabulary;
+old backends drop it silently). `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1`
+keeps discovery-replaces-pin as the explicit opt-in. The muse leg's
+`muse serve` probe now passes `--provider <meta>` and the same handshake
+shape as the backend MSP catalogue, so both sides read the host
+identically.
+
+## Amendment (2026-11-12, post-review): stale claims are not dispatchable
+
+Review found the catalogue marked stale pins unavailable in the UI while
+dispatch still honoured them at runtime — the fleet would route work to a
+runner for a model its own scan proved absent. The shared
+`confirmRunnerModel` verdict now also gates the live paths: `runnerMatches`
+refuses a `stale` model exactly like an unoffered one (`NO_MODEL`, same
+loud diagnostics), and `buildFleetModelCatalog` drops stale claimants
+from counts (stale-only ids vanish from the live view; the snapshot
+still marks them unavailable per survey q4). The match itself stays
+verbatim — only conclusive `stale` verdicts refuse, so old runners,
+failed scans, and legacy/bare ids match exactly as before. The
+operator's `availableModels` override is an explicit servability
+declaration and wins over runner-reported signals in all three views
+(snapshot, live, dispatch).
+
+## Amendment (same day, post-review): stale-pin marking
+
+Review found the union could serve ids no harness backs: a Runner pin
+naming a retired model advertises it as available ("runners muse code
+doesn't have"). The snapshot now confirms every harness-scoped id
+against the claimant's own discovery signals (`modelProvenance` +
+`discoveryStatus`, see `api/flow/dispatch/runnerModelConfirmation.js`
++ `api/flow/dispatch/staleAdvertReason.js`):
+an id every claimant's successful scan contradicts is marked
+unavailable with the stale-pin reason and its `claimedBy` runners —
+still shown in its section (survey q4), never served as available.
+Every inconclusive shape fails open to trusted (failed/missing scan,
+old runners with no provenance signal, truncated maps, legacy/bare
+ids), and dispatch keeps reading the live derivation unchanged
+(operator intent still wins at runtime; the catalogue is the honest
+display). The frontend safety-net merge re-attaches the snapshot
+verdict so the badge is identical whichever merge path added the
+option, and the agy/vibe row parsers skip single unkeyable rows
+instead of failing the whole harness menu.

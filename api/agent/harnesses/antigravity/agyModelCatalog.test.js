@@ -99,6 +99,11 @@ describe("agy models output parser", () => {
 		expect(parseAgyModelsOutput(null)).toEqual([]);
 	});
 
+	it("skips one unkeyable row instead of failing the whole menu", () => {
+		const models = parseAgyModelsOutput("weird::slug-1  Bad row\ngemini-3-pro  Good row\n");
+		expect(models.map((model) => model.id)).toEqual(["gemini-3-pro"]);
+	});
+
 	it("serves single-colon slugs exactly like the shared grammar", () => {
 		const models = parseAgyModelsOutput("gemini-3-pro:cloud  Cloud variant\n");
 		expect(models.map((model) => model.id)).toEqual(["gemini-3-pro:cloud"]);

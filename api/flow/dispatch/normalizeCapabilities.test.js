@@ -123,6 +123,7 @@ describe("normalizeCapabilities", () => {
 	test("passes the model source through, dropping unknown values silently", () => {
 		expect(normalizeCapabilities({ modelSource: "discovered" }).modelSource).toBe("discovered");
 		expect(normalizeCapabilities({ modelSource: "pinned" }).modelSource).toBe("pinned");
+		expect(normalizeCapabilities({ modelSource: "pinned+discovered" }).modelSource).toBe("pinned+discovered");
 		expect(normalizeCapabilities({ modelSource: "unpinned" }).modelSource).toBe("unpinned");
 		const out = normalizeCapabilities({ modelSource: "bogus" });
 		expect(out.errors).toEqual([]);

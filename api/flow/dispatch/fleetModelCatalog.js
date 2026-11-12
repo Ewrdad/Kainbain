@@ -1,4 +1,5 @@
 import { claimEligibleRunner, effectiveRunnerModels } from "./runnerMatches.js";
+import { confirmRunnerModel } from "./runnerModelConfirmation.js";
 
 /***
  * MARK: fleetModelCatalog
@@ -18,6 +19,12 @@ import { claimEligibleRunner, effectiveRunnerModels } from "./runnerMatches.js";
  *   - `tiers`: union of the serving Runners' tiers (effort levels).
  *   - `runnerCount` / `runnerIds`: how many (and which) Runners serve it —
  *     the availability signal pickers show instead of credential health.
+ *     A stale claim (the claimant's own successful scan contradicts the
+ *     pin — see `runnerModelConfirmation`) is not servable and counts
+ *     toward nothing here; the persisted snapshot still marks such ids
+ *     unavailable for the UI, while this live derivation only names
+ *     what can run. Fail-open: inconclusive signals and
+ *     operator-asserted ids count exactly as before.
  * @example buildFleetModelCatalog([{ status: 'active', runnerId: 'r1', capabilities: { harnesses: [{ id: 'muse' }], models: ['m1'], tiers: ['T0'] } }])
  *   => { models: [{ id: 'm1', harnesses: ['muse'], tiers: ['T0'], runnerCount: 1, runnerIds: ['r1'] }] }
  * @param {Array<Object>} [runners=[]] - Registry records (`runners.list()`).
@@ -44,6 +51,11 @@ export function buildFleetModelCatalog(runners = []) {
 		for (const raw of effectiveRunnerModels(record)) {
 			const id = String(raw ?? "").trim();
 			if (!id) continue;
+			// Stale claims are not servable (same rule dispatch applies):
+			// skip the claimant, so counts name only runners that could
+			// actually run the id. Ids no serving runner claims vanish
+			// from this live view (the snapshot marks them instead).
+			if (confirmRunnerModel(record, id).status === "stale") continue;
 			let entry = byId.get(id);
 			if (!entry) {
 				entry = { harnesses: new Set(), tiers: new Set(), runnerIds: new Set() };
