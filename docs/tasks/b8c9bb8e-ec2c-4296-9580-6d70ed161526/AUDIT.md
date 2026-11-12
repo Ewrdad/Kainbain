@@ -113,6 +113,233 @@ All gates in §2 except knip passed on the current tree at audit time: 11,721 un
 - Whether freeze-list file growth (§4.4) is new responsibility or rewiring was not determined.
 - Node runtime used for gates was v26.4.0 while `.nvmrc`/`.node-version` pin 24; gates passed regardless.
 
+## 7. Feedback resolutions (FEEDBACK_SURVEY.md Round 1, answered 2026-11-12)
+
+This section records what the survey answers decide. It is the only
+recommendation-bearing part of this document; §§0–6 remain findings-only.
+Verified against the current tree on 2026-11-12 (Node v26.4.0) unless noted.
+
+### 7.1 Q1 — breakdown proposals first (all four selected)
+
+The next stage must turn **all four** hotspot groups into concrete breakdown
+proposals, in this order (agent read-budget impact first):
+
+1. `runner/` — daemon, routes, registry, scheduler.
+2. `api/` — config/schema, commandStages, executeStage.
+3. Agent-facing docs/maps before code (unblocks the other two).
+4. Frontend largest components/pages.
+
+Proposal sketches live in §8. They are docs/maps/tests-only sketches (see
+§7.7): seam names, target homes, and characterization-test notes — no code
+moved in this task.
+
+### 7.2 Q2 — only one blocker, rest is backlog
+
+- **Blocker:** new source files with no co-located tests. Re-verified:
+  `api/imageGen/surveyImages.js` **does** have `surveyImages.test.js` (27
+  tests), so the §4.1 size finding is not a coverage blocker; the blocker
+  population is the §4.4 tail — 96 new files without same-basename tests, of
+  which 15 are referenced by no test file at all (`api/auth/rbac.js`,
+  `claimEligibleRunner.js`, `effectiveRunnerModels.js`,
+  `canary-e2e/global-teardown.js`, 4 onboarding helpers, `ReportLineRow.jsx`,
+  `FailureMessageImage.jsx`, 3 `useTaskInspectorResize/*` helpers,
+  `unauthorizedEvent.js`, `scripts/refresh-accessibility-results.mjs`).
+  Next stage: add characterization tests for the 15 unreferenced files first,
+  then work through the remaining 81 by churn order.
+- **Backlog (explicitly not blockers):** the 19 cross-domain imports bypassing
+  domain `index.js` (§4.4, rule confirmed in `docs/ARCHITECTURE_DOMAINS.md`:
+  "Outside a new backend domain, import through its `index.js`"); freeze-list
+  file growth (`api/taskStore.js` +25, `api/projectStore.js` +66,
+  `WorkflowCanvas.jsx` +94, `KainBainContext.jsx` +40, `services/api.js` +2 —
+  growth confirmed, responsibility-vs-rewiring still undetermined per §6);
+  pattern-name mentions (~19 added lines matching `factory|singleton|barrel`,
+  e.g. `api/work/index.js` "MARK: work barrel", `api/push/index.js` "push
+  singleton"). Log all three as backlog items with file/line pointers; do not
+  gate merges on them.
+
+### 7.3 Q3 — top-level docs are canonical
+
+Decision: **`docs/KB Code Standards.md` (and `docs/KB Architecture.md`) are
+canonical; `docs/agent-docs/*` vendored copies get reconciled.**
+Re-verified 2026-11-12: `diff` of the standards pair is 227 lines (228 at
+audit time — same divergence modulo line counting); the vendored copy lacks
+the `MARK`/`@description`/`@example` and plain-language rules the WP-8 gates
+enforce, while `agents.md` (2026-11-04) still instructs agents to treat the
+vendored copies as source of truth. Next stage (docs-only): reconcile the
+vendored copies from the top-level files byte-for-byte (plus a vendoring
+header), or replace the `agents.md` source-of-truth pointer — do not delete
+either file in this task and do not leave both divergent.
+
+### 7.4 Q4 — size-rule enforcement is forward-only
+
+Decision: **only enforce on future files.** `api/imageGen/surveyImages.js`
+(879 lines, added 2026-11-02, commit `015104a`) exceeds the 800-line hard
+review-rejection line with no documented exception in `docs/`,
+`AGENTS-MAP.md`, or `CHANGELOG.md` — re-searched 2026-11-12, still none —
+but per this answer it is **grandfathered backlog**, not a merge blocker and
+not remediated in this task. Its JSDoc coverage is good (12 `MARK:` for 12
+exports: `SURVEY_IMAGE_CAP`, `IMAGE_GEN_DISABLED`, `imageGenRequestedBy`,
+`resolveImageGenProvider`, `surveyImageFileName`, `ensureSurveyImages`,
+`kickSurveyImageJob`, `reportSurveyImagesToTask`, `chosenSurveyImageFileName`,
+`upsertChosenDesignsSection`, `persistChosenSurveyImages`) and it has a
+co-located test, so the split proposal (§8) is tracked debt. Same treatment
+for the 400-line soft-line newcomers (`api/auth/routes.js` 746,
+`shared/accessibilityStatement.js` 717, `runner/harnessModelDiscovery.js`
+712, `api/flow/impromptuStore.js` 648, `api/imageGen/providers.js` 456).
+Future new files over 800 lines require a documented exception before merge.
+
+### 7.5 Q5 — stabilize tests as-is, then refactor
+
+Decision: **stabilize the oversized test helpers first; split production code
+only after.** Re-verified sizes: `runner/daemon.test.js` 2,643 lines
+(≈2,509-line `stubClient` helper at audit time), `api/flow/runnerRoutes.test.js`
+2,039 lines (≈1,985-line `findTaskMarkdown`), `api/flow/commandStages.test.js`
+2,050 lines (≈1,895-line `baseStage`). Next stage: keep these suites green
+unchanged (they pass — §2: 11,721 unit tests green), add characterization
+coverage for the 15 unreferenced files (§7.2), and only then extract
+production seams with the existing suites as the safety net. No
+production+test co-refactor in one step.
+
+### 7.6 Q6 — evidence gaps to close (three selected, one declined)
+
+Close these before declaring the audit complete:
+
+1. **Fix knip and run the dead-export check.** Re-verified 2026-11-12:
+   `.knip.json` still uses arrays under `workspaces` (`.`, `api`,
+   `frontend`, `canary-e2e`), which knip 6.45.1 rejects, and knip is still
+   unpinned. Rewrite config to the installed knip's object schema (or pin
+   knip to the version the config targets), then record the dead-export
+   list — rewrite leftovers are otherwise unmeasured.
+2. **Reduce or justify lint warnings.** Baseline stands: `npm run lint`
+   exits 0 with 0 errors, 498 api-pass + 215 frontend-pass warnings,
+   dominated by `security/detect-*` and unused eslint-disable directives.
+   Next stage triages by rule (justify the `security/detect-*` class where
+   inputs are trusted, remove dead disables), not a blind warning-count
+   campaign.
+3. **Run canary E2E or the full `npm test` gate.** This audit ran only
+   `test:unit`; canary/full-gate status is still unverified.
+4. **Declined:** aligning tooling to the pinned Node version. Gates were run
+   on Node v26.4.0 vs `.nvmrc`/`.node-version` pin 24 and passed; no
+   re-run on 24 is required by this survey.
+
+### 7.7 Q7 — scope and risk boundary for later implementation
+
+Decision: **report plus docs/maps/tests only; no behavior changes.**
+This task stays report-only in effect: the follow-up may update
+`AGENTS-MAP.md`, `docs/agent-docs/*` reconciliation, `ARCHITECTURE_DOMAINS.md`
+notes, JSDoc/`MARK:`/`@example` additions, and new characterization tests —
+all green-gated. No production splits, no behavior changes, no larger
+restructuring in this task even if gates pass. Execution-stage proposals in
+§8 are therefore sized as follow-up tasks, each with its own green gate.
+
+## 8. Concrete breakdown proposals (from Q1 order; docs/tests-only sketches)
+
+Conventions: each proposal names the seam to extract, the target home
+(caller-named folder per KB co-location value), and the characterization
+test that must exist first. No code is moved here.
+
+### 8.1 `runner/` first (2,530-line daemon is the #1 churn × size overlap, 65 changes since 2026-10-26 / 24 in 10 days)
+
+- `runner/daemon.js` (2,530 lines; verified exports cluster):
+  harness-probing seam (lines ~126–500: `isRunnableFile`,
+  `firstExecutableDirFor`, `probeHarnessVersions`, `harnessProbeContext`,
+  `harnessProbeDirsFor`, `detectAvailableHarnesses`, `findUnconfiguredHarnesses`,
+  `describeUnconfiguredHarnessHint`, `resolveHarnessConfig`,
+  `refreshDiscoveredModels`) → `runner/daemon/harnessProbe.*`;
+  claim-renewal seam (`startClaimRenewal`, `CLAIM_HEARTBEAT_MS`) →
+  `runner/daemon/claimRenewal.*`; dispatch-loop seam (`runDispatchLoop` 217,
+  `executeAssignment` 527, `executeIntegrationAssignment` 187) →
+  `runner/daemon/dispatchLoop.*` + `runner/daemon/executeAssignment.*`.
+  Characterization net: existing `runner/daemon.test.js` stays green as-is
+  (§7.5); new tests pin probe/dir-resolution edge cases before any move.
+- `api/flow/runnerRoutes.js` (1,521 lines; `registerRunnerRoutes` ≈1,309-line
+  span, single `export` at line 213 — the file is one registration function):
+  split by route group into `api/flow/runnerRoutes/<group>.js` (registration,
+  assignment/claim, status/history, dispatch-match read paths), keeping one
+  thin `registerRunnerRoutes` that only wires group registrars. Net:
+  `runnerRoutes.test.js` green as-is first; add per-group characterization
+  tests around `runnerMatches.js` (branch density 29.6, churn 11–20).
+- `api/flow/runnerRegistry.js` (1,052 lines; `resolveRunnerStatePath` ~855
+  span) → extract path-resolution seam to
+  `api/flow/runnerRegistry/resolveRunnerStatePath.js`. Scheduler pair
+  (`startScheduler.js` density 31.4, `compareCentralQueueCandidates.js` 29.9,
+  `getScheduledQueue.js` 29.1) → one file per scheduler step under
+  `api/flow/scheduler/`, no shared-state extraction in this task.
+
+### 8.2 `api/` config / stages (second)
+
+- `api/config/schema.js` (2,328 lines; exports: `FRONTEND_CHAT_TIMEOUT_MS`,
+  `CONFIG_GROUPS`, `ConfigError`, `parseTypedValue`, `CONFIG_SCHEMA`,
+  `loadConfig`, `checkCiStallCoherence`, `checkTimeoutPairing`, path exports):
+  split `CONFIG_SCHEMA` entries by `CONFIG_GROUPS` section into
+  `api/config/schema/<section>.js` with `schema.js` as the concatenating
+  surface; `loadConfig` + validators stay until characterization tests pin
+  them (config churn: 23 changes / 12 in 10 days; `config.test.js` churn 20/11
+  is the net).
+- `api/flow/execution/executeStage.js` (1,334 lines; single exported
+  `executeStage`, ~1,233-line span; stage-type dispatch at ~line 146,
+  command-stage runtime at ~557, timeout resolution at ~860, report content
+  at ~1052) → phase splits under `api/flow/execution/executeStage/`:
+  normalize/dispatch, command-runtime resolution, timeout, report-content.
+  `api/flow/commandStages.js` (2,173 lines; test helper `baseStage` 1,895
+  lines) follows the same phase seams only after `commandStages.test.js` is
+  stabilized green (§7.5).
+
+### 8.3 Agent-facing docs/maps before code (third in build order, first enabler)
+
+- Reconcile `docs/agent-docs/KB-Code-Standards.md` from canonical
+  `docs/KB Code Standards.md` (and architecture pair likewise); fix the
+  `agents.md` source-of-truth pointer consistently.
+- Refresh `AGENTS-MAP.md` numbers to tree truth (`WorkflowCanvas.jsx` 671,
+  `KainBainContext.jsx` 539, `api/taskStore.js` 1,094, `api/projectStore.js`
+  2,344, `services/api.js` 139, `api/routes/tasks.js` 53, `api/git.js` 99)
+  and add the missing ownership rows: `runner/` (39 files / 14.5k lines),
+  `canary-e2e/`, root shell scripts (`deploy.sh` 1,878 lines et al.).
+- Record the `docs/TASK_DIRECTORY_HYGIENE.md` vs `.gitignore` drift (672 files
+  under 58 task dirs tracked in-repo) as a hygiene backlog item, not a silent
+  fix.
+
+### 8.4 Frontend largest components/pages (fourth)
+
+- `TaskDetailPageContent.jsx` (1,290 lines; `TaskDetailPage` ~1,236-line span,
+  single export at line 54): extract by rendered section
+  (`TaskDetailPage/<Section>.jsx` — header, stages, history, overlays),
+  keeping data hooks (`useTaskInspectorResize` + its 4-file subfolder —
+  resolve the §4.4 file+folder collision by moving the 186-line parent body
+  into the subfolder or renaming) in place first.
+- `TaskDetailOverlayContent.jsx` (1,071), `ObservabilityDashboard.jsx`
+  (1,143), `ModelAliasesSection.jsx` (1,439), `TaskCard.jsx` (1,019),
+  `RunnerConfigurationSection.jsx` (1,018, churn 22/15), `StageSkillsPanel.jsx`
+  (1,052): same section-split treatment, ordered by churn (RunnerConfiguration
+  first). `SurveyPage.jsx` (956, churn 14 in 10 days) likewise.
+- High branch-density frontend files (`review/reportAnchors.js` 36.6,
+  `layout/activeTaskVisibility.js` 32.7, `tasks/logEntryModel.js` 29.5) get
+  characterization tests before any split; `shared/survey.js` (27.9, 252
+  branches/902 lines) is tested at the shared level, not duplicated per page.
+
+## 9. Sequencing for the follow-up (combines Q5 + Q6 + Q7)
+
+1. Docs/maps reconciliation (§8.3) — no code, unblocks agent orientation.
+2. Stabilize suites as-is + characterization tests for the 15 unreferenced
+   files (§7.2) — the only blocker class.
+3. Fix knip config, run dead-export check; triage lint warnings by rule;
+   run canary or full `npm test` (§7.6).
+4. Execute §8.1 → §8.2 → §8.4 splits as separate follow-up tasks, each small,
+   each green-gated, each with its §8 characterization net in place first.
+   Freeze-list files and cross-domain imports stay backlog until a split
+   proposal explicitly touches them with a documented rationale.
+
 ## Appendix — commands run (all from repo root unless noted)
 
 `npm ci` (root, `api/`, `frontend/`); `npm run check:one-function`; `npm run check:jsdoc-example`; `npm run docs:check`; `npm run lint`; `npm run test:unit`; `npm run depcheck`; `npm run build`; `npx knip` (failed, config schema); `./Security_scans.sh` (Trivy done, Semgrep in progress); `git log --since=2026-10-26 / 2026-11-02 --name-only` churn mining; `wc -l` size surveys; custom shingle/density scripts (scratchpad only, not committed).
+
+Feedback-stage re-verification (2026-11-12, §§7–8): `wc -l` on
+`runner/daemon.js`, `runnerRoutes.js`, `schema.js`, `agentGuide.js`,
+`executeStage.js`, `daemon.test.js`, `runnerRoutes.test.js`,
+`commandStages.test.js`, `TaskDetailPageContent.jsx`, `TaskCard.jsx`,
+`surveyImages.js`; `grep` export/`MARK:`/route-registration structure surveys;
+`diff` of the standards pair (227 lines); `agents.md` source-of-truth header;
+`.knip.json` schema check; `ARCHITECTURE_DOMAINS.md` import-rule quote;
+`AGENTS-MAP.md` ownership-gap grep; `surveyImages.js` exception re-search in
+`docs/`/`AGENTS-MAP.md`/`CHANGELOG.md` (none found); `api/imageGen/` co-located
+test listing.

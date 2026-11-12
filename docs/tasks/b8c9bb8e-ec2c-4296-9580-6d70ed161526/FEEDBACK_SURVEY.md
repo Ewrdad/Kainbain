@@ -100,6 +100,54 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "runner/ daemon, routes, registry, scheduler",
+        "api/ config/schema, commandStages, executeStage",
+        "agent-facing docs/maps before code",
+        "frontend largest components/pages"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "New source files with no co-located tests"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Make top-level docs canonical and reconcile agent-docs"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Only enforce on future files"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Stabilize tests as-is, then refactor"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Fix knip and run dead-export check",
+        "Reduce or justify lint warnings",
+        "Run canary or full npm test gate"
+      ],
+      "notes": ""
+    },
+    "q7": {
+      "selected": [
+        "Report plus docs/maps/tests only; no behavior changes"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
