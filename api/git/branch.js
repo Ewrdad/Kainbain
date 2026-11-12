@@ -98,7 +98,48 @@ async function checkoutWithSnapshotAside(projectCwd, args, targetRef, opts = {})
 	try {
 		await git(projectCwd, args);
 	} finally {
-		await restoreMovedAsideSnapshots(aside);
+		await _restoreMovedAsideSnapshots(aside);
+	}
+}
+
+/***
+ * MARK: _moveFileSafely
+ * @description Moves one file from `src` to `dest`, overwriting `dest` only
+ *   after the source content is safely in place, and surviving a
+ *   cross-filesystem move (`EXDEV` — the backup temp dir and the repo can
+ *   live on different mounts in containers, where `renameSync` throws).
+ *   Rename is tried first (atomic overwrite on POSIX); on failure the
+ *   content is copied to a temp name NEXT TO `dest` (same directory, so
+ *   the final rename is atomic and can never straddle filesystems) and
+ *   only then renamed over `dest` and the source removed. `dest` is never
+ *   deleted before its replacement is durable, so a failed move can never
+ *   lose the live snapshot content. Symlinks are moved as links (lstat
+ *   semantics come from the caller passing the link path).
+ * @example _moveFileSafely('/tmp/bak/0.snapshot', '/repo/docs/tasks/t/task.md')
+ * @param {string} src - Absolute source path (must exist).
+ * @param {string} dest - Absolute destination path.
+ ***/
+export function _moveFileSafely(src, dest) {
+	try {
+		/* eslint-disable-next-line security/detect-non-literal-fs-filename -- src/dest are repo-relative snapshot paths resolved against fixed roots */
+		fs.renameSync(src, dest);
+		return;
+	} catch {
+		// Fall through to the copy fallback (EXDEV or an exotic fs error).
+	}
+	const staging = `${dest}.kainbain-move-${process.pid}`;
+	try {
+		fs.copyFileSync(src, staging);
+		/* eslint-disable-next-line security/detect-non-literal-fs-filename -- staging sits next to dest, same filesystem, so this rename cannot EXDEV */
+		fs.renameSync(staging, dest);
+		fs.rmSync(src, { force: true });
+	} catch (err) {
+		try {
+			fs.rmSync(staging, { force: true });
+		} catch {
+			// Scratch file only.
+		}
+		throw err;
 	}
 }
 
@@ -152,17 +193,23 @@ export async function _moveAsideBlockingLiveSnapshots(projectCwd, targetBranch, 
 		const full = path.join(projectCwd, rel);
 		let stat;
 		try {
-			stat = fs.statSync(full);
+			// lstat (not stat): a symlinked snapshot must move as a link,
+			// and a broken symlink must not be silently skipped — either
+			// would still block git's checkout safety.
+			/* eslint-disable-next-line security/detect-non-literal-fs-filename -- full is a git-reported repo-relative path joined to the project root */
+			stat = fs.lstatSync(full);
 		} catch {
 			continue;
 		}
-		if (!stat.isFile()) continue;
+		if (stat.isDirectory()) continue;
 		try {
 			const backup = path.join(backupDir, `${moved.length}.snapshot`);
-			fs.renameSync(full, backup);
+			_moveFileSafely(full, backup);
 			moved.push({ rel, backup });
 		} catch {
 			// Best-effort per file; successfully moved files still restore.
+			// A file that failed to move stays in place and git's own
+			// safety refuses the checkout loudly — never silently carried.
 		}
 	}
 	if (moved.length === 0) {
@@ -173,26 +220,25 @@ export async function _moveAsideBlockingLiveSnapshots(projectCwd, targetBranch, 
 }
 
 /***
- * MARK: restoreMovedAsideSnapshots
+ * MARK: _restoreMovedAsideSnapshots
  * @description Restores files moved aside by _moveAsideBlockingLiveSnapshots,
  *   overwriting the target branch's stale tracked copy with the newer
  *   backend-regenerated content (the backend re-saves task.md on every
  *   event, so the aside copy is authoritative). Never throws: leftovers
  *   are inert files the next save overwrites.
- * @example await restoreMovedAsideSnapshots(aside)
+ * @example await _restoreMovedAsideSnapshots(aside)
  ***/
-async function restoreMovedAsideSnapshots(aside) {
+export async function _restoreMovedAsideSnapshots(aside) {
 	if (!aside) return;
 	for (const { rel, backup } of aside.moved) {
 		try {
 			const full = path.join(aside.cwd, rel);
+			/* eslint-disable-next-line security/detect-non-literal-fs-filename -- full is a git-reported repo-relative path joined to the project root */
 			fs.mkdirSync(path.dirname(full), { recursive: true });
-			try {
-				fs.rmSync(full, { force: true });
-			} catch {
-				// Fall through to the rename.
-			}
-			fs.renameSync(backup, full);
+			// Never delete the target first: _moveFileSafely only replaces
+			// it once the backup content is durably in place, so a failed
+			// restore leaves the checked-out copy — never a hole.
+			_moveFileSafely(backup, full);
 		} catch {
 			// Inert leftover in the temp dir; the next save regenerates.
 		}

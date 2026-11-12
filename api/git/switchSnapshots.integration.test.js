@@ -1,5 +1,5 @@
 /* eslint-disable security/detect-non-literal-fs-filename */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -21,9 +21,11 @@ const {
 	withCheckedOutBranch,
 	returnToDefaultBranch,
 	_moveAsideBlockingLiveSnapshots,
+	_restoreMovedAsideSnapshots,
+	_moveFileSafely,
 } = await import("./branch.js");
 const { commitEngineSnapshots } = await import("./commit.js");
-const { GitDirtyTreeError } = await import("./errors.js");
+const { GitDirtyTreeError, GitError } = await import("./errors.js");
 
 function run(cwd, ...args) {
 	return execFileSync("git", args, { cwd, stdio: ["ignore", "pipe", "pipe"] }).toString();
@@ -312,5 +314,125 @@ describe("branch switches in the conflicting state (real git)", () => {
 		run(dir, "checkout", "main");
 		expect(headBranch(dir)).toBe("main");
 		expect(fs.readFileSync(path.join(dir, OTHER_SNAPSHOT), "utf8")).toBe("live snapshot\n");
+	});
+
+	it("a symlinked live snapshot is moved aside and restored too (lstat, not stat)", async () => {
+		if (!gitAvailable) return;
+		// A symlink at the conflicting path would still block git's
+		// checkout safety; statSync would follow (or skip a broken) link,
+		// lstat moves the link itself.
+		// The link target lives OUTSIDE the repo: inside docs/tasks/ the
+		// snapshot backstop would commit it onto kb/t and the checkout to
+		// main would remove it, dangling the restored link.
+		const real = path.join(os.tmpdir(), `kainbain-link-target-${process.pid}-${Date.now()}.txt`);
+		fs.writeFileSync(real, "live via link\n");
+		fs.rmSync(path.join(dir, OTHER_SNAPSHOT));
+		fs.symlinkSync(real, path.join(dir, OTHER_SNAPSHOT));
+
+		const res = await checkoutBranch(dir, "main");
+
+		expect(res).toEqual({ switched: true });
+		expect(headBranch(dir)).toBe("main");
+		expect(fs.lstatSync(path.join(dir, OTHER_SNAPSHOT)).isSymbolicLink()).toBe(true);
+		expect(fs.readFileSync(path.join(dir, OTHER_SNAPSHOT), "utf8")).toBe("live via link\n");
+	});
+
+	it("a FAILED switch (branch held by a linked worktree) still restores the live snapshot", async () => {
+		if (!gitAvailable) return;
+		const holder = path.join(
+			os.tmpdir(),
+			`kainbain-holder-${process.pid}-${Date.now()}`,
+		);
+		run(dir, "worktree", "add", holder, "main");
+		tempDirs.push(holder);
+
+		// The checkout is refused (worktree lock) and recovery refuses too
+		// (no upstream to prove nothing unpushed is orphaned): the switch
+		// must fail loudly AND the moved-aside live file must be back.
+		await expect(ensureBranchCheckedOut(dir, "main")).rejects.toBeInstanceOf(GitError);
+		expect(headBranch(dir)).toBe("kb/t");
+		expect(fs.readFileSync(path.join(dir, OTHER_SNAPSHOT), "utf8")).toBe("live snapshot\n");
+
+		run(dir, "worktree", "remove", holder);
+	});
+});
+
+// Fail-safe unit-level checks for the move-aside plumbing itself: the
+// backup/restore must survive cross-filesystem temp dirs (EXDEV) and must
+// never delete the live file when a move-back fails.
+describe("move-aside/restore fail-safe (real fs)", () => {
+	let dir;
+	beforeEach(() => {
+		dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-aside-"));
+		tempDirs.push(dir);
+	});
+
+	it("_moveFileSafely falls back to copy when rename fails across filesystems (EXDEV)", () => {
+		const src = path.join(dir, "src.txt");
+		const dest = path.join(dir, "dest.txt");
+		fs.writeFileSync(src, "live content\n");
+		fs.writeFileSync(dest, "old tracked copy\n");
+		const renameSpy = vi.spyOn(fs, "renameSync").mockImplementationOnce(() => {
+			const err = new Error("cross-device link not permitted");
+			err.code = "EXDEV";
+			throw err;
+		});
+		try {
+			_moveFileSafely(src, dest);
+		} finally {
+			renameSpy.mockRestore();
+		}
+		// The destination holds the moved content and the source is gone;
+		// no staging leftovers remain.
+		expect(fs.readFileSync(dest, "utf8")).toBe("live content\n");
+		expect(fs.existsSync(src)).toBe(false);
+		expect(fs.readdirSync(dir).sort()).toEqual(["dest.txt"]);
+	});
+
+	it("_moveFileSafely leaves both files untouched when the move is impossible", () => {
+		const src = path.join(dir, "src.txt");
+		fs.writeFileSync(src, "live content\n");
+		// Dest parent is a FILE: both rename and copy-then-rename must fail.
+		const dest = path.join(dir, "blocker", "dest.txt");
+		fs.writeFileSync(path.join(dir, "blocker"), "not a dir\n");
+		expect(() => _moveFileSafely(src, dest)).toThrow();
+		// The source survives — a failed move-aside must never lose content.
+		expect(fs.readFileSync(src, "utf8")).toBe("live content\n");
+	});
+
+	it("_restoreMovedAsideSnapshots never deletes the target when the backup is gone", async () => {
+		const target = path.join(dir, "docs", "tasks", "t", "task.md");
+		fs.mkdirSync(path.dirname(target), { recursive: true });
+		fs.writeFileSync(target, "checked-out copy\n");
+		const backupDir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-restore-"));
+		tempDirs.push(backupDir);
+
+		await _restoreMovedAsideSnapshots({
+			cwd: dir,
+			backupDir,
+			moved: [{ rel: "docs/tasks/t/task.md", backup: path.join(backupDir, "missing.snapshot") }],
+		});
+
+		// The target keeps its content — restore is never destructive.
+		expect(fs.readFileSync(target, "utf8")).toBe("checked-out copy\n");
+	});
+
+	it("_restoreMovedAsideSnapshots overwrites the stale tracked copy with the live backup", async () => {
+		const target = path.join(dir, "docs", "tasks", "t", "task.md");
+		fs.mkdirSync(path.dirname(target), { recursive: true });
+		fs.writeFileSync(target, "stale main copy\n");
+		const backupDir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-restore-"));
+		tempDirs.push(backupDir);
+		const backup = path.join(backupDir, "0.snapshot");
+		fs.writeFileSync(backup, "live content\n");
+
+		await _restoreMovedAsideSnapshots({
+			cwd: dir,
+			backupDir,
+			moved: [{ rel: "docs/tasks/t/task.md", backup }],
+		});
+
+		expect(fs.readFileSync(target, "utf8")).toBe("live content\n");
+		expect(fs.existsSync(backupDir)).toBe(false);
 	});
 });
