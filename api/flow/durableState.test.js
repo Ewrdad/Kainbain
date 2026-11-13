@@ -3,7 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { loadStateFile } from "./loadStateFile.js";
-import { isLiveEnginePath, resolveStatePath } from "./resolveStatePath.js";
+import {
+	isLiveEnginePath,
+	resolveStatePath,
+	throwIfLiveEnginePathUnderTest,
+} from "./resolveStatePath.js";
 import { saveStateFile } from "./saveStateFile.js";
 
 /***
@@ -39,6 +43,10 @@ describe("durableState", () => {
 		expect(() => resolveStatePath(null, live, "s.json")).toThrow(
 			/live engine path under test/,
 		);
+		// A padded live path is still live (no whitespace bypass).
+		expect(() => resolveStatePath(`  ${live}  `, null, "s.json")).toThrow(
+			/live engine path under test/,
+		);
 		// A similarly-prefixed dir is NOT the engine dir (no false positive).
 		const engine2 = path.join(os.homedir(), ".kainbain", "engine2", "s.json");
 		expect(resolveStatePath(engine2, null, "s.json")).toBe(engine2);
@@ -47,8 +55,15 @@ describe("durableState", () => {
 	test("isLiveEnginePath marks exactly the live engine dir", () => {
 		const liveFile = path.join(os.homedir(), ".kainbain", "engine", "s.json");
 		const liveDir = path.join(os.homedir(), ".kainbain", "engine", "auth");
+		const engineDirItself = path.join(os.homedir(), ".kainbain", "engine");
 		expect(isLiveEnginePath(liveFile)).toBe(true);
 		expect(isLiveEnginePath(liveDir)).toBe(true);
+		// The dir itself counts: a state dir pointed AT it writes live files.
+		expect(isLiveEnginePath(engineDirItself)).toBe(true);
+		expect(isLiveEnginePath(`${engineDirItself}${path.sep}`)).toBe(true);
+		// Surrounding whitespace never hides a live path (or a temp one).
+		expect(isLiveEnginePath(`  ${liveFile}  `)).toBe(true);
+		expect(isLiveEnginePath(`  ${tmp()}  `)).toBe(false);
 		expect(isLiveEnginePath(tmp())).toBe(false);
 		// A similarly-prefixed dir is NOT the engine dir.
 		expect(
@@ -59,6 +74,46 @@ describe("durableState", () => {
 		expect(isLiveEnginePath("   ")).toBe(false);
 		expect(isLiveEnginePath(null)).toBe(false);
 		expect(isLiveEnginePath(undefined)).toBe(false);
+	});
+
+	test("throwIfLiveEnginePathUnderTest names the caller and stays quiet otherwise", () => {
+		expect(process.env.VITEST).toBeTruthy();
+		const live = path.join(os.homedir(), ".kainbain", "engine", "s.json");
+		// The caller name lands in the message so the fix location is obvious.
+		expect(() =>
+			throwIfLiveEnginePathUnderTest({
+				candidatePath: live,
+				callerName: "resolveExamplePath",
+			}),
+		).toThrow(/resolveExamplePath refused live engine path under test/);
+		// A missing caller name degrades to the generic guard name, never crashes.
+		expect(() => throwIfLiveEnginePathUnderTest({ candidatePath: live })).toThrow(
+			/engine-state guard refused live engine path under test/,
+		);
+		// Temp paths and non-paths are a silent no-op under VITEST.
+		expect(
+			throwIfLiveEnginePathUnderTest({
+				candidatePath: tmp(),
+				callerName: "resolveExamplePath",
+			}),
+		).toBeUndefined();
+		expect(
+			throwIfLiveEnginePathUnderTest({ candidatePath: null }),
+		).toBeUndefined();
+		// Outside VITEST (production) even a live path resolves quietly.
+		const saved = process.env.VITEST;
+		delete process.env.VITEST;
+		try {
+			expect(
+				throwIfLiveEnginePathUnderTest({
+					candidatePath: live,
+					callerName: "resolveExamplePath",
+				}),
+			).toBeUndefined();
+		} finally {
+			if (saved === undefined) delete process.env.VITEST;
+			else process.env.VITEST = saved;
+		}
 	});
 
 	test("fallback names that escape the engine dir throw in every environment", () => {

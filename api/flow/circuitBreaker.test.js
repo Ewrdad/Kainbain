@@ -317,4 +317,15 @@ describe("resolveCircuitStatePath isolation", () => {
 			process.env.KAINBAIN_CIRCUIT_STATE_FILE,
 		);
 	});
+
+	it("live engine paths throw on every branch under VITEST (never silently trip production)", () => {
+		expect(process.env.VITEST).toBeTruthy();
+		const live = path.join(os.homedir(), ".kainbain", "engine", "circuit.json");
+		expect(() => resolveCircuitStatePath({}, live)).toThrow(
+			/resolveCircuitStatePath refused live engine path under test/,
+		);
+		expect(() => resolveCircuitStatePath({ circuitStatePath: live })).toThrow(
+			/resolveCircuitStatePath refused live engine path under test/,
+		);
+	});
 });

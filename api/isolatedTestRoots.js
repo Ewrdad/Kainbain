@@ -39,7 +39,15 @@ process.env.KAINBAIN_PROJECTS_REGISTRY_FILE = tempIsolatedRegistryFile;
 // credentials, pending steers, fleet catalogue snapshot). Every
 // isolated-roots importer mints its own set; importers delete them in
 // `afterAll` via tempStateFiles.
-function tempStateFile(name) {
+/***
+ * MARK: makeTempStateFile
+ * @description Mints one throwaway durable-state file path: a fresh temp
+ *   dir holding `name`, so every importing suite writes its own copy
+ *   and the live `~/.kainbain/engine/` is never touched. Importers
+ *   delete these in `afterAll`.
+ * @example makeTempStateFile('steers.json') => '/tmp/kainbain-test-state-XXXX/steers.json'
+ ***/
+function makeTempStateFile(name) {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-test-state-"));
 	return path.join(dir, name);
 }
@@ -53,22 +61,26 @@ function tempStateFile(name) {
  * @example import { tempStateFiles } from "./isolatedTestRoots.js"
  ***/
 export const tempStateFiles = {
-	claims: tempStateFile("claims.json"),
-	runners: tempStateFile("runners.json"),
-	steers: tempStateFile("steers.json"),
-	fleetCatalog: tempStateFile("fleet-catalog.json"),
+	claims: makeTempStateFile("claims.json"),
+	runners: makeTempStateFile("runners.json"),
+	steers: makeTempStateFile("steers.json"),
+	fleetCatalog: makeTempStateFile("fleet-catalog.json"),
 };
 process.env.KAINBAIN_CLAIM_STATE_FILE = tempStateFiles.claims;
 process.env.KAINBAIN_RUNNER_STATE_FILE = tempStateFiles.runners;
 process.env.KAINBAIN_STEER_STATE_FILE = tempStateFiles.steers;
 process.env.KAINBAIN_FLEET_CATALOG_FILE = tempStateFiles.fleetCatalog;
 
-// Auth state: per-file temp dir, same backstop — no suite may read or
-// write the live `~/.kainbain/engine/auth/` (users, sessions, access
-// overrides, audit log). Mirrors `tempAuthStateDir` in the global setup
-// backstop. Suites that need their own dir keep setting
-// `KAINBAIN_AUTH_STATE_PATH` themselves (module body runs after this
-// import, so their value wins before the app boots).
+/***
+ * MARK: tempIsolatedAuthStateDir
+ * @description Per-file temp auth state dir, same backstop — no suite may
+ *   read or write the live `~/.kainbain/engine/auth/` (users, sessions,
+ *   access overrides, audit log). Mirrors `tempAuthStateDir` in the
+ *   global setup backstop. Suites that need their own dir keep setting
+ *   `KAINBAIN_AUTH_STATE_PATH` themselves (module body runs after this
+ *   import, so their value wins before the app boots).
+ * @example tempIsolatedAuthStateDir => '/tmp/kainbain-test-auth-XXXX'
+ ***/
 export const tempIsolatedAuthStateDir = fs.mkdtempSync(
 	path.join(os.tmpdir(), "kainbain-test-auth-"),
 );

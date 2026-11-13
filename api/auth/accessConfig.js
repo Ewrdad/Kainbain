@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { isLiveEnginePath } from "../flow/resolveStatePath.js";
+import { throwIfLiveEnginePathUnderTest } from "../flow/resolveStatePath.js";
 import { _atomicWriteFileSync } from "../house/fileWriting.js";
 import { sanitizeRoles } from "./roles.js";
 
@@ -54,11 +54,12 @@ export const RUNTIME_OVERRIDE_KEYS = [
  *   test path first, then the configured override, then the engine default.
  *
  *   Shares the 2026-11 test-pollution guard (cause N5): while `VITEST`
- *   is set, resolving a dir under the LIVE `~/.kainbain/engine/` THROWS,
- *   so a suite that forgets its temp auth dir fails loudly instead of
- *   writing users/sessions/overrides into production. The standard
- *   setup (`testSetup.isolation.js`) pins `KAINBAIN_AUTH_STATE_PATH` at
- *   a temp dir for every suite; per-file suites pass `explicitDir`.
+ *   is set, resolving a dir at or under the LIVE `~/.kainbain/engine/`
+ *   THROWS (via `throwIfLiveEnginePathUnderTest`), so a suite that
+ *   forgets its temp auth dir fails loudly instead of writing
+ *   users/sessions/overrides into production. The standard setup
+ *   (`testSetup.isolation.js`) pins `KAINBAIN_AUTH_STATE_PATH` at a temp
+ *   dir for every suite; per-file suites pass `explicitDir`.
  *   Production (`VITEST` unset) resolves byte-identically to before.
  * @example resolveAuthStateDir({ configuredDir: '/tmp/x' }) => '/tmp/x'
  * @param {Object} [args] - Labelled inputs.
@@ -78,15 +79,10 @@ export const resolveAuthStateDir = ({ explicitDir, configuredDir } = {}) => {
 	} else {
 		dir = path.join(os.homedir(), ".kainbain", "engine", AUTH_STATE_DIRNAME);
 	}
-	if (process.env.VITEST && isLiveEnginePath(dir)) {
-		throw new Error(
-			`resolveAuthStateDir refused live engine path under test: ${dir} ` +
-				`(VITEST is set). Pin the auth store at a temp dir via ` +
-				`KAINBAIN_AUTH_STATE_PATH (see api/testSetup.isolation.js) or ` +
-				`an explicitDir instead of reading or writing ` +
-				`~/.kainbain/engine/auth/ from tests.`,
-		);
-	}
+	throwIfLiveEnginePathUnderTest({
+		candidatePath: dir,
+		callerName: "resolveAuthStateDir",
+	});
 	return dir;
 };
 

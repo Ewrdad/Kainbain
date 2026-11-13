@@ -73,7 +73,14 @@ process.env.KAINBAIN_PROMPT_LAYOUT_DIR = tempPromptLayoutDir;
 // (`tempStateFiles`); keep basenames identical so basename assertions
 // (e.g. `fleetModelSnapshot.test.js`) keep passing. See the structural
 // guard in `flow/resolveStatePath.js` and `flow/engineStateIsolation.test.js`.
-function tempEngineStateFile(name) {
+/***
+ * MARK: makeTempEngineStateFile
+ * @description Mints one throwaway engine-state file path: a fresh temp
+ *   dir holding `name`, so every suite writes its own copy and the live
+ *   `~/.kainbain/engine/` is never touched.
+ * @example makeTempEngineStateFile('runners.json') => '/tmp/kainbain-test-state-XXXX/runners.json'
+ ***/
+function makeTempEngineStateFile(name) {
 	return path.join(
 		fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-test-state-")),
 		name,
@@ -87,23 +94,27 @@ function tempEngineStateFile(name) {
  * @example import { tempEngineStateFiles } from "./testSetup.isolation.js"
  ***/
 export const tempEngineStateFiles = {
-	claims: tempEngineStateFile("claims.json"),
-	runners: tempEngineStateFile("runners.json"),
-	steers: tempEngineStateFile("steers.json"),
-	fleetCatalog: tempEngineStateFile("fleet-catalog.json"),
+	claims: makeTempEngineStateFile("claims.json"),
+	runners: makeTempEngineStateFile("runners.json"),
+	steers: makeTempEngineStateFile("steers.json"),
+	fleetCatalog: makeTempEngineStateFile("fleet-catalog.json"),
 };
 process.env.KAINBAIN_CLAIM_STATE_FILE = tempEngineStateFiles.claims;
 process.env.KAINBAIN_RUNNER_STATE_FILE = tempEngineStateFiles.runners;
 process.env.KAINBAIN_STEER_STATE_FILE = tempEngineStateFiles.steers;
 process.env.KAINBAIN_FLEET_CATALOG_FILE = tempEngineStateFiles.fleetCatalog;
-// The auth store is ALSO engine-scoped by default
-// (`~/.kainbain/engine/auth/`): `api/index.js` boots `createAuthService`
-// on every app import, so without this pin any suite that saves access
-// overrides (or signs a user in through the app) would write LIVE
-// users/sessions/audit rows. Point it at a per-file temp dir before
-// config loads. Mirrors `tempIsolatedAuthStateDir` in
-// `isolatedTestRoots.js`; the loud guard lives in
-// `auth/accessConfig.js` (`resolveAuthStateDir`).
+/***
+ * MARK: tempAuthStateDir
+ * @description Per-file temp auth state dir: the auth store is ALSO
+ *   engine-scoped by default (`~/.kainbain/engine/auth/`), and
+ *   `api/index.js` boots `createAuthService` on every app import, so
+ *   without this pin any suite that saves access overrides (or signs a
+ *   user in through the app) would write LIVE users/sessions/audit
+ *   rows. Mirrors `tempIsolatedAuthStateDir` in `isolatedTestRoots.js`;
+ *   the loud guard lives in `auth/accessConfig.js`
+ *   (`resolveAuthStateDir`).
+ * @example tempAuthStateDir => '/tmp/kainbain-test-auth-XXXX'
+ ***/
 export const tempAuthStateDir = fs.mkdtempSync(
 	path.join(os.tmpdir(), "kainbain-test-auth-"),
 );

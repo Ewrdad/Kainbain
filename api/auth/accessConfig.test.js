@@ -175,6 +175,17 @@ describe("resolveAuthStateDir", () => {
 		expect(() => resolveAuthStateDir({ configuredDir: live })).toThrow(
 			/live engine path under test/,
 		);
+		// A padded live dir is still live (no whitespace bypass), and the
+		// engine dir itself counts (a state dir pointed AT it writes live).
+		expect(() => resolveAuthStateDir({ explicitDir: `  ${live}  ` })).toThrow(
+			/live engine path under test/,
+		);
+		expect(
+			() =>
+				resolveAuthStateDir({
+					explicitDir: path.join(os.homedir(), ".kainbain", "engine"),
+				}),
+		).toThrow(/live engine path under test/);
 	});
 
 	it("live engine fallback still resolves outside VITEST (production)", () => {
