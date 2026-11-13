@@ -61,6 +61,33 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "It has always been this way in my experience"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Just browsing the model selection menu"
+      ],
+      "notes": "I noticed the dummy models and things before but noticed after a model release the enw ones werent added"
+    },
+    "q3": {
+      "selected": [
+        "Models that should be available are marked 'unavailable'",
+        "Models that don't exist in the harness appear in the list",
+        "Dummy models (test models) are appearing in production"
+      ],
+      "notes": "will say I do want it to still show if a model has been dropped by a harness saying 0 runners (so we can handle model deprecaition over time in harnesses ) but I dont think this is the case"
+    },
+    "q4": {
+      "selected": [
+        "Restarting the backend"
+      ],
+      "notes": "Basically all and updating the runners to the latest and nothing seemed to work"
+    }
+  }
 }
 ```
