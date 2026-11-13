@@ -421,6 +421,67 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q15": {
+      "selected": [
+        "Yes, but only warn, never block"
+      ],
+      "notes": "Only block stale runners if there is a version incompatibility "
+    },
+    "q16": {
+      "selected": [
+        "Yes, 24 hours is reasonable (Recommended)"
+      ],
+      "notes": "Yeah Good just still show those models"
+    },
+    "q17": {
+      "selected": [
+        "Yes, block invalid IDs and keep audit trail (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q18": {
+      "selected": [
+        "Move it to the harness it actually serves"
+      ],
+      "notes": "Again shouldnt be possible if it is advertising it under a harness presumably that runner now runs that harness . But yeah agin the model catalogue should be harness:model:effort . As two harnesses may also show the same model but may interact with it differently and the user deserves that choice"
+    },
+    "q19": {
+      "selected": [
+        "Yes, runner counts should drive badges (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q20": {
+      "selected": [
+        "Yes, selectable but clearly unverified (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q21": {
+      "selected": [
+        "Adopt after cleanup proves healthy (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q22": {
+      "selected": [
+        "Immediate permanent removal is fine (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q23": {
+      "selected": [
+        "Removing test or dummy catalogue entries"
+      ],
+      "notes": "I would say restarting local runners but that would likely cause task agents to kill themselves so maybe not but maybe reccomend to user to do"
+    },
+    "q24": {
+      "selected": [
+        "Approve all proposed packages (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
