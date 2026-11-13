@@ -37,11 +37,18 @@ export const DESKTOP_VIEWPORT = { width: 1280, height: 720 };
  *   the API) is visible, which means projects have loaded and an active
  *   project has been selected. Does NOT pin the active project — use
  *   `waitForAppReadyOnProject` when the spec's API assertions target one
- *   specific project.
+ *   specific project. One bounded reload+retry inside the standard budget
+ *   heals blank-root module-burst resource windows (failed loads must be
+ *   re-issued, never waited out).
  * @example await waitForAppReady(page)
  * @param {import("@playwright/test").Page} page
+ * @param {Object} [opts] - Options.
+ * @param {number} [opts.readyTimeoutMs=APP_READY_TIMEOUT_MS] - Total
+ *   readiness budget, split across the first attempt and the one bounded
+ *   reload+retry (multi-navigation specs pass a smaller budget per load so
+ *   the summed worst case stays inside the per-test timeout).
  ***/
-export async function waitForAppReady(page) {
+export async function waitForAppReady(page, { readyTimeoutMs = APP_READY_TIMEOUT_MS } = {}) {
 	try {
 		await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
 	} catch (err) {
@@ -58,9 +65,27 @@ export async function waitForAppReady(page) {
 		await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
 	}
 	await expect(page).toHaveTitle(/Kainbain/);
-	await expect(page.getByRole("button", { name: /Project/i }).first()).toBeVisible({
-		timeout: APP_READY_TIMEOUT_MS,
-	});
+	const totalBudget = Number.isFinite(readyTimeoutMs) && readyTimeoutMs > 0 ? readyTimeoutMs : APP_READY_TIMEOUT_MS;
+	const firstHalf = Math.max(1000, Math.floor(totalBudget / 2));
+	const secondHalf = Math.max(1000, totalBudget - firstHalf);
+	try {
+		await expect(page.getByRole("button", { name: /Project/i }).first()).toBeVisible({
+			timeout: firstHalf,
+		});
+	} catch (err) {
+		// Blank-root resource window (net::ERR_INSUFFICIENT_RESOURCES across
+		// the vite module burst AFTER navigation commits: title loads, but a
+		// hundred module requests fail and React never mounts): a longer wait
+		// cannot heal it — the failed loads must be re-issued. One bounded
+		// reload+retry with the budget's second half (same total as the old
+		// single wait); a genuinely broken shell fails twice and stays red.
+		// Mirrors the accessibility spec's waitForAppShell retry.
+		await page.reload({ waitUntil: "domcontentloaded" });
+		await expect(page).toHaveTitle(/Kainbain/);
+		await expect(page.getByRole("button", { name: /Project/i }).first()).toBeVisible({
+			timeout: secondHalf,
+		});
+	}
 }
 
 /***
@@ -341,4 +366,147 @@ export function collectPageErrors(page) {
 	const pageErrors = [];
 	page.on("pageerror", (err) => pageErrors.push(String(err)));
 	return pageErrors;
+}
+
+/***
+ * MARK: collectConsoleErrors
+ * @description Attaches a console-error collector; the returned array holds
+ *   every console error text. Pair with `realConsoleErrors` (which drops
+ *   generic resource-load noise) plus `localLoadFailures` (which keeps the
+ *   local-load signal with URLs attached) — see `localLoadFailures`.
+ * @example const consoleErrors = collectConsoleErrors(page)
+ * @param {import("@playwright/test").Page} page
+ * @returns {Array<string>} The collected console error texts.
+ ***/
+export function collectConsoleErrors(page) {
+	const consoleErrors = [];
+	page.on("console", (msg) => {
+		if (msg.type() === "error") consoleErrors.push(msg.text());
+	});
+	return consoleErrors;
+}
+
+/***
+ * MARK: collectFailedRequests
+ * @description Taps requestfailed: the returned array holds one
+ *   `{ url, error }` per request that died without a response (DNS,
+ *   disconnect, abort). HTTP error statuses do NOT land here — see
+ *   `collectBadResponses`.
+ * @example const failed = collectFailedRequests(page)
+ * @param {import("@playwright/test").Page} page
+ * @returns {Array<{url: string, error: string}>} The failed requests.
+ ***/
+export function collectFailedRequests(page) {
+	const failed = [];
+	page.on("requestfailed", (req) => {
+		let error = "";
+		try {
+			error = req.failure()?.errorText || "";
+		} catch {
+			// A tap must never break the spec it observes.
+		}
+		failed.push({ url: req.url(), error });
+	});
+	return failed;
+}
+
+/***
+ * MARK: collectBadResponses
+ * @description Taps response: the returned array holds one
+ *   `{ url, status }` per HTTP response with a 4xx/5xx status. Only real
+ *   error statuses count — 3xx (redirect, 304 revalidation) is healthy
+ *   traffic, never a failure.
+ * @example const bad = collectBadResponses(page)
+ * @param {import("@playwright/test").Page} page
+ * @returns {Array<{url: string, status: number}>} The error responses.
+ ***/
+export function collectBadResponses(page) {
+	const bad = [];
+	page.on("response", (res) => {
+		let status = 0;
+		try {
+			status = res.status();
+		} catch {
+			// A tap must never break the spec it observes.
+		}
+		if (status >= 400) bad.push({ url: res.url(), status });
+	});
+	return bad;
+}
+
+/***
+ * MARK: EXTERNAL_FONT_HOSTS
+ * @description The only cross-origin loads in the app shell (Google Fonts
+ *   stylesheets, see frontend/index.html). A CDN blip surfaces as a
+ *   generic "Failed to load resource" console error with no URL — the
+ *   gate must not read Google's reachability as an app defect.
+ * @example EXTERNAL_FONT_HOSTS.includes("fonts.googleapis.com") => true
+ ***/
+export const EXTERNAL_FONT_HOSTS = ["fonts.googleapis.com", "fonts.gstatic.com"];
+
+/***
+ * MARK: isExternalFontUrl
+ * @description True when a request URL targets the external font CDN
+ *   (the loads `localLoadFailures` forgives).
+ * @example isExternalFontUrl("https://fonts.gstatic.com/x.woff2") => true
+ * @param {string} url - Request URL.
+ * @returns {boolean} True for external font CDN URLs.
+ ***/
+export function isExternalFontUrl(url) {
+	try {
+		return EXTERNAL_FONT_HOSTS.includes(new URL(String(url)).hostname);
+	} catch {
+		return false;
+	}
+}
+
+/***
+ * MARK: localLoadFailures
+ * @description Folds the `collectFailedRequests` + `collectBadResponses`
+ *   taps into human-readable failure lines for every load the canary
+ *   stack itself owns — forgiving only external font CDN fetches and
+ *   superseded (aborted/cancelled) navigation loads. A same-origin image,
+ *   script, stylesheet, or API failure stays red WITH its URL, so this is
+ *   strictly more precise than the bare console-text assertion it
+ *   replaces (whose "Failed to load resource" lines carry no URL).
+ * @example expect(localLoadFailures({ failed, bad })).toEqual([])
+ * @param {Object} [taps] - `{ failed, bad }` tap arrays.
+ * @returns {Array<string>} One line per owned load failure (empty = green).
+ ***/
+export function localLoadFailures({ failed = [], bad = [] } = {}) {
+	const out = [];
+	for (const entry of failed || []) {
+		if (isExternalFontUrl(entry?.url)) continue;
+		if (/abort|cancel/i.test(String(entry?.error || ""))) continue;
+		out.push(`request failed: ${entry?.url} (${entry?.error || "no response"})`);
+	}
+	for (const entry of bad || []) {
+		if (isExternalFontUrl(entry?.url)) continue;
+		out.push(`bad response: ${entry?.status} ${entry?.url}`);
+	}
+	return out;
+}
+
+/***
+ * MARK: CONSOLE_RESOURCE_NOISE
+ * @description Matches the generic resource-load console lines Chromium
+ *   emits without a URL ("Failed to load resource…" / "net::ERR…").
+ *   `realConsoleErrors` drops these (their owned-load signal moves to
+ *   `localLoadFailures`, which names URLs); every other console error —
+ *   including a bare "404" outside a load line — still fails.
+ * @example CONSOLE_RESOURCE_NOISE.test("Failed to load resource: net::ERR_INTERNET_DISCONNECTED") => true
+ ***/
+export const CONSOLE_RESOURCE_NOISE = /Failed to load resource|net::ERR/;
+
+/***
+ * MARK: realConsoleErrors
+ * @description Drops generic resource-load noise from a
+ *   `collectConsoleErrors` array, keeping real runtime errors. Always
+ *   assert `localLoadFailures` alongside, or local asset breakage hides.
+ * @example expect(realConsoleErrors(consoleErrors)).toEqual([])
+ * @param {Array<string>} [errors] - Collected console error texts.
+ * @returns {Array<string>} The runtime errors (empty = green).
+ ***/
+export function realConsoleErrors(errors) {
+	return (errors || []).filter((text) => !CONSOLE_RESOURCE_NOISE.test(String(text)));
 }

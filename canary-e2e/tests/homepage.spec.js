@@ -1,13 +1,13 @@
 import { test, expect } from "@playwright/test";
-import { APP_URL } from "./urls";
+import { waitForAppReady } from "./helpers";
 
 test("homepage has correct title", async ({ page }) => {
-	await page.goto(APP_URL);
+	await waitForAppReady(page);
 	await expect(page).toHaveTitle(/Kainbain/);
 });
 
 test("homepage displays the orchestrator cockpit", async ({ page }) => {
-	await page.goto(APP_URL);
+	await waitForAppReady(page);
 	// The orchestrator header brand
 	const brand = page.locator("h1");
 	await expect(brand).toContainText("KAINBAIN");

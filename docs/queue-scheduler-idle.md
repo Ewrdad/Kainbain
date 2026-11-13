@@ -1,5 +1,13 @@
 # Queue / Scheduler Idle Invariant
 
+> **How is the next task chosen?** The canonical answer lives in
+> [`docs/EngineDetails/TaskQueueing.md`](./EngineDetails/TaskQueueing.md):
+> one central queue across ALL projects, sorted by the shared seam
+> (`api/flow/scheduler/sortCentralQueue.js`) — oldest-waiting-first by
+> default (`KAINBAIN_CENTRAL_QUEUE_ORDER=oldest-first`), with a starvation
+> ceiling and a gated follow-on pass. Dispatch never depends on which
+> pipeline the UI has focused (task `16d6fbd6`).
+
 An empty execution queue is **idle and polling, never stopped**.
 
 - `schedulerRunning === true` + engine `status === "idle"` + `queue.size === 0`

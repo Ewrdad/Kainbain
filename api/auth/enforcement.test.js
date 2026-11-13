@@ -1,0 +1,170 @@
+import { tempProjectsRoot, tempNotesRoot } from "../isolatedTestRoots.js";
+import { describe, it, expect, afterAll } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+/***
+ * MARK: auth enforcement tests
+ * @description Proves the PoC enforcement surface on the REAL wired server:
+ *   with access control on, settings mutations answer 401 without a
+ *   session and 403 for a viewer, admins pass through, runner routes and
+ *   health checks stay untouched, and `/auth/me` reports the mode. The app
+ *   is imported dynamically AFTER pointing KAINBAIN_AUTH_STATE_PATH at a
+ *   temp dir, so the live `~/.kainbain/engine/auth/` is never touched.
+ ***/
+
+const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-auth-enforce-"));
+process.env.KAINBAIN_AUTH_STATE_PATH = stateDir;
+process.env.KAINBAIN_AUTH_ENABLED = "true";
+
+const { default: app, authService } = await import("../index.js");
+
+await app.ready();
+
+afterAll(async () => {
+	await app.close();
+	fs.rmSync(stateDir, { recursive: true, force: true });
+	try {
+		fs.rmSync(tempProjectsRoot, { recursive: true, force: true });
+		fs.rmSync(tempNotesRoot, { recursive: true, force: true });
+	} catch {
+		// ignore cleanup errors
+	}
+});
+
+const sessionCookieFor = async (sub, roles = []) => {
+	authService.userStore.provisionFromSignIn({ sub, groups: [] });
+	if (roles.length > 0) authService.userStore.setDirectRoles(sub, roles);
+	const { sessionId } = authService.sessionStore.createSession({
+		userId: sub,
+	});
+	return `kb_session=${sessionId}`;
+};
+
+describe("enforcement surface with access control ON", () => {
+	it("answers 401 without a session on the settings mutations", async () => {
+		for (const target of [
+			{ method: "PUT", url: "/settings/prompt-layout", payload: {} },
+			{ method: "POST", url: "/settings/prompt-layout/reset" },
+			{ method: "PUT", url: "/push/settings", payload: {} },
+		]) {
+			const response = await app.inject(target);
+			expect(`${target.method} ${target.url}: ${response.statusCode}`).toContain(
+				"401",
+			);
+			expect(JSON.parse(response.payload).code).toBe("unauthenticated");
+		}
+	});
+
+	it("answers 403 for a viewer and lets an admin through", async () => {
+		const viewer = await sessionCookieFor("viewer-1", ["viewer"]);
+		const denied = await app.inject({
+			method: "POST",
+			url: "/settings/prompt-layout/reset",
+			headers: { cookie: viewer },
+		});
+		expect(denied.statusCode).toBe(403);
+		expect(JSON.parse(denied.payload).code).toBe("forbidden");
+
+		const admin = await sessionCookieFor("admin-1", ["admin"]);
+		const allowed = await app.inject({
+			method: "POST",
+			url: "/settings/prompt-layout/reset",
+			headers: { cookie: admin },
+		});
+		expect(allowed.statusCode).toBe(200);
+	});
+
+	it("leaves runner routes, health, docs, and the sign-in endpoints open", async () => {
+		const runners = await app.inject({ method: "GET", url: "/runners" });
+		expect(runners.statusCode).toBe(200);
+		const health = await app.inject({ method: "GET", url: "/status/health" });
+		expect(health.statusCode).toBe(200);
+		const me = await app.inject({ method: "GET", url: "/auth/me" });
+		expect(me.statusCode).toBe(200);
+		expect(JSON.parse(me.payload)).toMatchObject({
+			authEnabled: true,
+			user: null,
+		});
+		const login = await app.inject({
+			method: "GET",
+			url: "/auth/login",
+		});
+		// No provider is configured in this environment: the endpoint must
+		// fail as "unconfigured" (503), never as unauthenticated (401).
+		expect(login.statusCode).toBe(503);
+		expect(JSON.parse(login.payload).code).toBe("oidc_unconfigured");
+	});
+
+	it("guards task mutations while leaving task reads open", async () => {
+		for (const target of [
+			{ method: "POST", url: "/tasks", payload: { goal: "x" } },
+			{ method: "PATCH", url: "/tasks/nope", payload: { title: "x" } },
+			{ method: "DELETE", url: "/tasks/nope" },
+			{ method: "POST", url: "/tasks/nope/survey", payload: {} },
+		]) {
+			const response = await app.inject(target);
+			expect(`${target.method} ${target.url}: ${response.statusCode}`).toContain(
+				"401",
+			);
+			expect(JSON.parse(response.payload).code).toBe("unauthenticated");
+		}
+
+		const viewer = await sessionCookieFor("viewer-task", ["viewer"]);
+		for (const target of [
+			{ method: "POST", url: "/tasks", payload: { goal: "x" } },
+			{ method: "PATCH", url: "/tasks/nope", payload: { title: "x" } },
+			{ method: "DELETE", url: "/tasks/nope" },
+		]) {
+			const denied = await app.inject({
+				...target,
+				headers: { cookie: viewer },
+			});
+			expect(`${target.method} ${target.url}: ${denied.statusCode}`).toContain(
+				"403",
+			);
+		}
+
+		// Members and admins pass the guard: the handlers answer 400/404 for
+		// the bogus payloads (never 401/403), proving the guard let them in.
+		const member = await sessionCookieFor("member-task", ["member"]);
+		const created = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			headers: { cookie: member },
+			payload: {},
+		});
+		expect(created.statusCode).toBe(400);
+
+		const admin = await sessionCookieFor("admin-task", ["admin"]);
+		const patched = await app.inject({
+			method: "PATCH",
+			url: "/tasks/nope",
+			headers: { cookie: admin },
+			payload: { title: "x" },
+		});
+		expect([400, 404]).toContain(patched.statusCode);
+
+		// Reads stay open so Runner fetches and board polling work in every
+		// mode: anonymous reads never 401.
+		for (const url of ["/tasks", "/tasks/queue", "/tasks/nope"]) {
+			const read = await app.inject({ method: "GET", url });
+			expect(read.statusCode).not.toBe(401);
+		}
+	});
+
+	it("attributes viewer sessions to their user on open routes", async () => {
+		const viewer = await sessionCookieFor("viewer-2", ["viewer"]);
+		const me = await app.inject({
+			method: "GET",
+			url: "/auth/me",
+			headers: { cookie: viewer },
+		});
+		expect(JSON.parse(me.payload)).toMatchObject({
+			authEnabled: true,
+			user: { id: "viewer-2" },
+			roles: ["viewer"],
+		});
+	});
+});

@@ -11,6 +11,8 @@ import {
   groupModelsByStatus,
   fleetCountBadgeNode,
   fleetInfoForModel,
+  fleetSnapshotBadge,
+  fleetSnapshotBadgeNode,
 } from './modelStatus';
 
 /***
@@ -180,5 +182,40 @@ describe('groupModelsByStatus', () => {
     const groups = groupModelsByStatus(undefined);
     expect(groups.runnable).toEqual([]);
     expect(groups.unknown).toEqual([]);
+  });
+});
+
+describe('fleetSnapshotBadge', () => {
+  it('maps an explicit unavailable verdict to an Unavailable badge with the reason', () => {
+    const badge = fleetSnapshotBadge({
+      available: false,
+      unavailableReason: 'No claim-eligible runner serves this model right now.',
+    });
+    expect(badge.label).toBe('Unavailable');
+    expect(badge.dotClass).toBe('bg-amber-400');
+    expect(badge.title).toContain('No claim-eligible runner');
+  });
+
+  it('falls back to the default reason when none is carried', () => {
+    expect(fleetSnapshotBadge({ available: false }).title).toContain('No claim-eligible Runner');
+    expect(fleetSnapshotBadge({ available: false, unavailableReason: '' }).title).toContain(
+      'No claim-eligible Runner',
+    );
+  });
+
+  it('stays badge-free for available entries and entries without a verdict', () => {
+    expect(fleetSnapshotBadge({ available: true })).toBeNull();
+    expect(fleetSnapshotBadge({ id: 'm', provider: 'p' })).toBeNull();
+    expect(fleetSnapshotBadge(null)).toBeNull();
+    expect(fleetSnapshotBadge(undefined)).toBeNull();
+  });
+
+  it('renders the badge node only for unavailable entries', () => {
+    const node = fleetSnapshotBadgeNode({ available: false, unavailableReason: 'paused' });
+    expect(node).toBeTruthy();
+    expect(node.props.title).toBe('paused');
+    expect(node.props.children[1]).toBe('Unavailable');
+    expect(fleetSnapshotBadgeNode({ available: true })).toBeNull();
+    expect(fleetSnapshotBadgeNode({ id: 'm' })).toBeNull();
   });
 });

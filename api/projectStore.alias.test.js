@@ -267,10 +267,12 @@ describe("ProjectStore model aliases", () => {
 		expect("expectedUpdatedAt" in readProjectJson(updated)).toBe(false);
 	});
 
-	it("H4: loading a legacy none-harness + model target blanks the model", () => {
+	it("H4: loading a legacy none-harness + model target keeps the model (alias trust)", () => {
 		const project = store.createProject({ name: "Legacy None Alias" , allowLocalOnly: true });
-		// Hand-edit the file on disk (the legacy/API write path the API
-		// refusal cannot retroactively fix).
+		// Hand-edit the file on disk, then load: the stored model must
+		// survive byte-identical (the reported wipe blanked it here and
+		// the next save persisted the blank). A console warning names
+		// the kept value instead.
 		const configFile = path.join(project.cwd, ".kainbain", "project.json");
 		const onDisk = JSON.parse(fs.readFileSync(configFile, "utf8"));
 		onDisk.modelAliases = [
@@ -288,15 +290,31 @@ describe("ProjectStore model aliases", () => {
 			},
 		];
 		fs.writeFileSync(configFile, JSON.stringify(onDisk, null, 2));
-		const loaded = store._loadProjectFile(project.cwd);
-		expect(loaded.modelAliases).toEqual([
-			{
-				name: "worker",
-				harness: "muse",
-				model: "",
-				targets: [{ harness: "muse", model: "", percent: 100 }],
-			},
-		]);
+		const warnings = [];
+		const originalWarn = console.warn;
+		console.warn = (...args) => {
+			warnings.push(args.join(" "));
+		};
+		try {
+			const loaded = store._loadProjectFile(project.cwd);
+			expect(loaded.modelAliases).toEqual([
+				{
+					name: "worker",
+					harness: "muse",
+					model: "antigravity::google::gemini-legacy",
+					targets: [
+						{
+							harness: "muse",
+							model: "antigravity::google::gemini-legacy",
+							percent: 100,
+						},
+					],
+				},
+			]);
+		} finally {
+			console.warn = originalWarn;
+		}
+		expect(warnings.some((line) => line.includes("worker") && line.includes("keeping"))).toBe(true);
 	});
 });
 

@@ -81,6 +81,60 @@ describe('ModelSelector', () => {
     expect(option).not.toHaveTextContent('Ready');
   });
 
+  it('marks snapshot-unavailable entries Unavailable with the reason, even without fleet counts', () => {
+    // Central-list honesty (survey q4): an entry the snapshot marks
+    // unavailable stays selectable but never normal-looking — with the
+    // reason as tooltip — whether or not fleet counts loaded.
+    const catalogue = [
+      {
+        ...MODELS[0],
+        fleet: true,
+        available: false,
+        unavailableReason: 'No claim-eligible runner serves this model right now.',
+      },
+      { ...MODELS[1], fleet: true, available: true, runnerCount: 1 },
+    ];
+    render(<ModelSelector models={catalogue} ariaLabel="Default AI Model" />);
+    fireEvent.click(screen.getByRole('combobox', { name: 'Default AI Model' }));
+    const option = screen.getByRole('option', { name: /DeepSeek v4 Flash/ });
+    expect(option).toHaveTextContent('Unavailable');
+    expect(option.querySelector('[title]')?.getAttribute('title')).toContain(
+      'No claim-eligible runner',
+    );
+    expect(screen.getByRole('option', { name: /Gemini 2.5 Pro/ })).not.toHaveTextContent(
+      'Unavailable',
+    );
+  });
+
+  it('prefers the snapshot unavailable verdict over fleet counts and health badges', () => {
+    const catalogue = [
+      {
+        ...MODELS[0],
+        fleet: true,
+        available: false,
+        unavailableReason: 'Runner paused.',
+        runnable: true,
+        authConfigured: true,
+        statusLabel: 'Ready',
+      },
+    ];
+    render(
+      <ModelSelector
+        models={catalogue}
+        ariaLabel="Chat model"
+        healthBadges
+        fleetCounts={{
+          'ollama-cloud::deepseek-v4-flash': { runnerCount: 2, runnerIds: ['a', 'b'] },
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('combobox', { name: 'Chat model' }));
+    const option = screen.getByRole('option', { name: /DeepSeek v4 Flash/ });
+    expect(option).toHaveTextContent('Unavailable');
+    expect(option).not.toHaveTextContent('2 runners');
+    expect(option).not.toHaveTextContent('Ready');
+  });
+
   it('offers fleet-served models on a none harness with exact advertised values', () => {
     const onChange = vi.fn();
     render(

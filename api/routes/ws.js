@@ -9,9 +9,22 @@
 const WS_PARSE_BASE = "http://localhost";
 
 export default async function wsRoutes(app, { deps }) {
-	const { resolveProjectId, eventBridge, sessionStore } = deps;
+	const { resolveProjectId, eventBridge, sessionStore, authService } = deps;
 
 	app.get("/ws", { websocket: true }, (connection, request) => {
+		// With access control on, the upgrade must carry a live browser
+		// session: unauthenticated sockets are refused before subscribing.
+		// While access control is off every socket is the builtin admin.
+		if (authService && !authService.resolveWsUser(request)) {
+			const socket =
+				connection && typeof connection.send === "function"
+					? connection
+					: connection && connection.socket;
+			if (socket && typeof socket.close === "function") {
+				socket.close(4401, "Sign-in required");
+			}
+			return;
+		}
 		// In @fastify/websocket the request object may not expose `query` directly,
 		// so parse the projectId from the raw URL to be robust.
 		let projectId;

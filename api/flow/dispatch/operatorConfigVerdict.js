@@ -36,7 +36,7 @@ export const operatorConfigVerdict = (record = {}, req = {}, opts = {}) => {
 	const scope = Array.isArray(operatorConfig.projectScope)
 		? operatorConfig.projectScope
 		: null;
-	if (scope) {
+	if (scope && scope.length > 0) {
 		const projectId =
 			typeof safeOpts.projectId === "string" && safeOpts.projectId
 				? safeOpts.projectId

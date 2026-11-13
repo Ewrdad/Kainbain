@@ -56,8 +56,12 @@ const E2E_STAGES = [
 		// runCommandStage executes stage.command (stage.prompt is agent-stage
 		// wording and would fall through to the instant default echo) — the
 		// long sleep keeps the engine in the RUNNING state for the whole
-		// switch-and-assert window.
-		command: "sleep 12 && echo cross-project-now-playing-window && echo done",
+		// switch-and-assert window. 45s, not 12s: the 2026-11-12 gate run
+		// proved 12s too tight — the loaded host needed >15s from execute
+		// to the post-switch assert, the engine went idle first, and the bar
+		// cleared (element not found). The window must cover the switch
+		// with headroom; the test waits it out below via poll-for-idle.
+		command: "sleep 45 && echo cross-project-now-playing-window && echo done",
 		paused: false,
 		failback: "start",
 	},
@@ -209,6 +213,9 @@ test.describe("Now Playing bar is one pipeline for all projects", () => {
 		page,
 		request,
 	}) => {
+		// The 45s RUNNING window plus two project switches exceeds the 60s
+		// suite default on a loaded host (same pattern as pr-review.spec.js).
+		test.setTimeout(120000);
 		// Dispatch a REAL engine run in Project A: the slow ci stage keeps the
 		// engine RUNNING for the whole switch-and-assert window.
 		const goal = `Now Playing owner run ${Date.now()}`;
@@ -259,7 +266,7 @@ test.describe("Now Playing bar is one pipeline for all projects", () => {
 		// state (waiting_human) for the last assertions.
 		await expect
 			.poll(async () => (await getEngineState(request)).status, {
-				timeout: 30000,
+				timeout: 60000,
 				message: "engine should return to idle after the ci stage passes",
 			})
 			.toBe("idle");
