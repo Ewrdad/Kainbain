@@ -1,12 +1,14 @@
 # WIDE_NET_ANALYSIS — Runner catalogue creation bug
 
 Task: `b3401f19-2897-4049-aa3c-227bcee46a4c`  
-Stage: investigation (docs-only)  
+Stage: investigation + replication & structural fix proposal (docs-only)  
 Inputs: bug report (`assets/image.png`), `SURVEY.md`, task spec, plus repo history and prior tickets (notably `9d2b75a2-1ecd-47ce-a9f9-b3068c5f5cf7`).
 
 ## Scope
 
-This report is investigatory only. It proposes possible *causes* of the runner catalogue defect; it does not propose fixes. The reported symptoms are:
+This report is investigatory. It proposes possible *causes* of the runner catalogue defect, assesses replicability/testability, and proposes the shape of a structural long-term fix. No code is changed in this stage.
+
+The reported symptoms are:
 
 - newly released harness models (e.g. `muse-ember`) never appear;
 - dummy/test models appear in production catalogue views;
@@ -40,7 +42,7 @@ runner harness scan → discoveredModelsCache → heartbeat facts.models
 
 ### Summary
 
-Discovery on each leg is deliberately non-destructive: `runDiscoveryLeg` keeps the *previous* per-harness slice on failure, empty result, unparseable output, or grammar-invalid incoming ids. `refreshDiscoveredModels` then keeps the global `discoveredModelsCache` when the combined round is empty. Persisted backend `/api/flow/dispatch/fleetModelSnapshot.js` additionally keeps stale entries as *unavailable* rather than deleting them.
+Discovery on each leg is deliberately non-destructive: `runDiscoveryLeg` keeps the *previous* per-harness slice on failure, empty result, unparseable output, or grammar-invalid incoming ids. `refreshDiscoveredModels` then keeps the global `discoveredModelsCache` when the combined round is empty. Persisted backend `fleetModelSnapshot.js` additionally keeps stale entries as *unavailable* rather than deleting them.
 
 ### Why this could be the bug
 
@@ -57,6 +59,10 @@ Discovery on each leg is deliberately non-destructive: `runDiscoveryLeg` keeps t
   - `runner/daemon.js` — `refreshDiscoveredModels` (`if (combinedIds.length > 0) { discoveredModelsCache = combinedIds; }`)
   - `api/flow/dispatch/fleetModelSnapshot.js` — `update()` marks non-live entries `available: false` instead of deleting
   - `docs/tasks/9d2b.../ROOT_CAUSE.md` — suspect (d) pin-wins + TTL cadence; suspect corridor “empty round keeps cache”
+
+### Replicability
+
+Replicable without prod. See `REPLICATION_GUIDE.md` §1 and `TESTING_GUIDE.md` §1. Unit-testable by seeding `discoveryCache` with a dummy id, simulating a failed/empty leg, and asserting the dummy survives.
 
 ---
 
@@ -82,6 +88,10 @@ Discovery on each leg is deliberately non-destructive: `runDiscoveryLeg` keeps t
   - `api/flow/runnerRegistry.js` — `normalizeOperatorConfig`, `availableModels`, persisted state (`_loadState`/`_persist`)
   - `docs/tasks/9d2b.../ROOT_CAUSE.md` — suspect (g) operator allowlist shadow
 
+### Replicability
+
+Replicable without prod. Set `availableModels: ["deepseek::deepseek::fake", "muse::meta::dummy"]` on a runner, heartbeat, and observe catalogue. See `REPLICATION_GUIDE.md` §2.
+
 ---
 
 ## Candidate cause 3 — Grammar/filtering mismatches across legs drop valid new models and leak invalid ones
@@ -90,8 +100,8 @@ Discovery on each leg is deliberately non-destructive: `runDiscoveryLeg` keeps t
 
 Different parts of the chain apply different validity rules to model ids:
 
-- runner muse leg (`runner/modelDiscovery.js`) rejects any provider/model containing `:`;
-- backend MSP parser (`api/agent/harnesses/muse/msp/...`) does not;
+- runner muse leg (`runner/modelDiscovery.js`) previously rejected any provider/model containing `:` — now fixed to reject only `::` but other legs still differ in edge cases;
+- backend MSP parser (`api/agent/harnesses/muse/msp/...`) does not filter `:` ;
 - shared grammar allows single `:` in ids;
 - several backend transforms (`shared/modelKeys.js:withModelKey`) throw on `::`, which can discard a whole agy/vibe result set;
 - frontend `fleetModelsForHarness` creates synthesized entries from snapshot ids without re-validating against the backend harness section.
@@ -99,18 +109,22 @@ Different parts of the chain apply different validity rules to model ids:
 ### Why this could be the bug
 
 - Pros:
-  - A newly released model whose provider/model id contains `:` (common for cloud-tagged models) is dropped by the runner leg while other backend/probe paths might retain it, so the runner never pushes it to the catalogue. The reverse mismatch can make a model present in one view but absent elsewhere.
-  - The muse-vs-rest asymmetry explains why “muse-ember” (or similar new muse row) and models like `gemma4`/`deepseek` drift between harness sections: IDs can survive in some transforms and be dropped in others, creating inconsistent catalogue subsets.
-  - The strict section gate in `fleetModelsForHarness` drops ids when serving harnesses do not include the rendered harness, so a runner that advertises an id for the wrong harness causes silent disappearance from that section.
+  - A newly released model whose provider/model id contains `:` (common for cloud-tagged models) can be dropped by one leg while other paths retain it, so the runner never pushes it to the catalogue. The reverse mismatch can make a model present in one view but absent elsewhere.
+  - The muse-vs-rest asymmetry explains why “muse-ember” and models like `gemma4`/`deepseek` drift between harness sections.
+  - The strict section gate in `fleetModelsForHarness` drops ids when serving harnesses do not include the rendered harness, so a runner that advertises an id for the wrong harness causes silent disappearance.
   - Dummy/test models can remain if they are grammatically valid but no longer real (keep-old behaviour compounds this), with no authority to reconcile against live harness menus.
 - Cons / counter-evidence:
   - The filter bug alone does not explain stale *persistence* after the list should update, or the disappearance of the `runnerCount` display focus.
   - Backend MSP has no colon filter and therefore already handles `:` correctly, so a pure colon filter only explains runner leg omission, not leakages from backend models.
 - References:
-  - `runner/modelDiscovery.js` (`discoverClaudeModels` colon filter)
+  - `runner/modelDiscovery.js` (`discoverClaudeModels` colon filter — now `::`-only)
   - `shared/modelKeys.js` (parse rules, `withModelKey`, throws on `::`)
   - `frontend/src/services/fleetModelOptions/fleetModelsForHarness.js` (serving harness gate)
   - `docs/tasks/9d2b.../ROOT_CAUSE.md` — suspect (c), section 3 “other-leg audit”
+
+### Replicability
+
+Replicable without prod. Inject a `muse serve` row with `modelId: "muse-ember:cloud"` and verify leg output. See `REPLICATION_GUIDE.md` §3.
 
 ---
 
@@ -135,6 +149,10 @@ The UI now treats fleet availability as runner count (`fleetCountBadgeNode`) whi
   - `api/flow/dispatch/fleetModelSnapshot.js` (`available`, `unavailableReason`, `runnerCount`)
   - `SURVEY.md` q3 notes
 
+### Replicability
+
+Replicable without prod (frontend unit test) and with a snapshot reload (backend restart without heartbeats). See `REPLICATION_GUIDE.md` §4.
+
 ---
 
 ## Cross-cutting observations
@@ -152,3 +170,77 @@ At least four interacting mechanisms are plausible root causes, and the defect l
 4. mixed `available` vs runner-count presentation with persisted snapshot staleness.
 
 These should be examined together in the structural fix.
+
+---
+
+## Structural long-term fix — proposal (docs-only, not yet implemented)
+
+The recurring failure mode is: **no single source of truth and no clear lifecycle** for "which models are real right now". Each layer (leg slice → global cache → heartbeat → registry → fleet snapshot → frontend section) has its own keep-old, trust-allowlists, or mark-unavailable-not-delete rule. Piecewise patches to one layer cannot fix the others. A durable fix needs a structural contract.
+
+### Principles
+
+1. **One canonical lifecycle:** `discovered → advertised → registered → catalogued → displayed` with explicit TTL/eviction at each step, not implicit keep-old.
+2. **Provenance everywhere:** every model id carries *who saw it, when, via which leg/harness*, so stale/dummy entries are attributable.
+3. **No silent keep-old without expiry:** a cached entry that is not reconfirmed within a bounded window is either evicted or demoted to `available: false` with a countdown to deletion, not retained forever.
+4. **Grammar validated once, at the edge:** normalize/validate at discovery ingestion; downstream layers never re-filter or re-invent validity.
+5. **Counts, not flags, as primary UX:** frontend renders `runnerCount` as truth; `available/unavailable` is derived, never stored as independent flag.
+
+### Recommended shape (4 layers)
+
+#### Layer A — Runner discovery: slice TTL + explicit eviction
+
+- Each `discoveryCache[harnessId]` entry gets `atMs` + `ttlMs` (e.g. 24 h, configurable via `KAINBAIN_DISCOVERY_TTL_MS`).
+- `runDiscoveryLeg` on **successful non-empty** round: replaces slice (current behaviour).
+- `runDiscoveryLeg` on **failure/empty/invalid**: keeps previous slice *but* records `error` and checks TTL. If `now - atMs > ttlMs`, the slice is **evicted** (set to `[]` with `error: STALE_EVICTED`), not kept indefinitely.
+- `refreshDiscoveredModels` combined cache: same TTL gate. Optionally add a `forceRefresh` heartbeat field so the backend can request re-probe.
+- Telemetry: expose `getDiscoveryStatus()` with `ageMs`, `ttlMs`, `error` per harness so Settings can show "stale (12 h old, next eviction in 12 h)".
+
+#### Layer B — Heartbeat advertisement: pin semantics made explicit
+
+- Keep `resolveAdvertisedModels` pin-UNION-discovered default, but:
+  - Tag each advertised id with source: `pin` vs `discovered` vs `allowlist` (via a parallel `advertisedProvenance` map, not just a string label).
+  - When `operatorConfig.availableModels` is set, the backend should still **record** the discovery list alongside the allowlist (new field `discoveredModels` in capabilities) so divergence is observable.
+  - Add an operator warning when allowlist and discovery disagree (e.g. allowlist id not seen in discovery for > TTL).
+
+#### Layer C — Backend fleet snapshot: single ingestion point with quarantine and retention policy
+
+- Already partially exists (`fleetModelSnapshot.js` quarantine + `FLEET_SNAPSHOT_MAX_MODELS` eviction). Extend:
+  - **Grammar gate once:** `catalogIngest.js` validates every incoming `facts.models` against `shared/modelKeys.js` grammar. Malformed ids go to `quarantined` with reason, never to `models`.
+  - **Stale-pin detection:** `runnerModelConfirmation` already exists — keep it, but surface `staleAdvertReason` in snapshot `unavailableReason` so UI can say "advertised by runner X but never discovered by it".
+  - **Retention policy:** replace "mark unavailable forever" with: mark `available: false` immediately, but evict entries that stay unavailable for `KAINBAIN_FLEET_CATALOG_RETENTION_MS` (e.g. 14 days, to satisfy the "keep dropped models at 0 runners for deprecation" requirement) — configurable, with oldest-unavailable-first eviction when cap exceeded.
+  - **Restart behaviour:** after backend restart, snapshot reloads as unavailable until heartbeats reconfirm (current), but with visible `lastSeenAtMs` age so UI can show "waiting for runners to re-report (X min ago)".
+
+#### Layer D — Frontend: count-first rendering, no dual truth
+
+- Frontend `fleetCountsById` + `fleetCountBadgeNode` is already the intended new contract ("how many runners have that harness/model"). Complete the migration:
+  - Remove any `fleetSnapshotBadgeNode` "Unavailable" badge from picker rows; replace with `N runners` / `0 runners — not currently served` (grey, but not an error badge).
+  - Quarantined ids never render as selectable options (only in diagnostics/Settings if exposed).
+  - Stale-pin / retention-warning ids render with a subtle annotation ("advertised but not discovered by runner") not a blocking badge.
+
+### Migration checklist
+
+- [ ] Add `KAINBAIN_DISCOVERY_TTL_MS` + eviction in `runner/harnessModelDiscovery.js` + `runner/daemon.js`.
+- [ ] Add `KAINBAIN_FLEET_CATALOG_RETENTION_MS` + eviction in `api/flow/dispatch/fleetModelSnapshot.js`.
+- [ ] Make `catalogIngest` the single grammar gate; remove downstream re-filtering.
+- [ ] Surface `discoveredModels` alongside `availableModels` in registry; warn on divergence.
+- [ ] Frontend: retire `fleetSnapshotBadgeNode` "Unavailable" as primary badge in pickers.
+- [ ] Add persistence tests: backend restart → snapshot → heartbeat reconfirm → eviction.
+
+### Why this survives repeated tickets
+
+- TTL+eviction bounds staleness even if one leg stays broken.
+- Single grammar gate prevents per-leg drift.
+- Provenance makes "where did this dummy id come from?" answerable without guessing.
+- Retention window satisfies the deprecation-visibility requirement (0 runners) without permanent clutter.
+- Count-first UX removes the old "unavailable" flag as a source of confusion.
+
+---
+
+## Replicability & testability summary
+
+All four candidate causes are replicable **without touching prod or invoking real agents**. See the companion guides:
+
+- `REPLICATION_GUIDE.md` — quick manual replication steps per symptom (all flagged where prod/real-agent invocation would be needed, and not attempted here).
+- `TESTING_GUIDE.md` — runnable test examples (TDD-style) for each cause, including what needs a harness mock vs a real CLI spawn.
+
+If a symptom cannot be reproduced under mock conditions, the guide flags it and describes what a prod-safe reproduction would look like (with explicit permission required).
