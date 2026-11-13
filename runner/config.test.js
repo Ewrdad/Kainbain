@@ -62,21 +62,21 @@ describe("loadRunnerConfig", () => {
 	it("advertises a csv MODELS list, singular MODEL seeds it, empty stays unpinned", () => {
 		const csv = loadRunnerConfig({
 			KAINBAIN_RUNNER_ID: "r1",
-			KAINBAIN_RUNNER_HARNESS: "pi",
+			KAINBAIN_RUNNER_HARNESSES: "pi,muse",
 			KAINBAIN_RUNNER_DISPATCH: "1",
 			KAINBAIN_RUNNER_MODEL: "ignored-when-csv",
-			KAINBAIN_RUNNER_MODELS: " a ,b,, c ",
+			KAINBAIN_RUNNER_MODELS: " pi::a::1 ,muse::b::2,, pi::a::1 ",
 		});
-		assert.deepEqual(csv.models, ["a", "b", "c"]);
-		assert.equal(csv.model, "ignored-when-csv");
+		assert.deepEqual(csv.models, ["pi::a::1", "muse::b::2"]);
+		assert.equal(csv.model, "");
 
 		const single = loadRunnerConfig({
 			KAINBAIN_RUNNER_ID: "r1",
 			KAINBAIN_RUNNER_HARNESS: "pi",
 			KAINBAIN_RUNNER_DISPATCH: "1",
-			KAINBAIN_RUNNER_MODEL: "m1",
+			KAINBAIN_RUNNER_MODEL: "pi::prov::m1",
 		});
-		assert.deepEqual(single.models, ["m1"]);
+		assert.deepEqual(single.models, ["pi::prov::m1"]);
 
 		const bare = loadRunnerConfig({
 			KAINBAIN_RUNNER_ID: "r1",
@@ -101,9 +101,79 @@ describe("loadRunnerConfig", () => {
 			KAINBAIN_RUNNER_ID: "r1",
 			KAINBAIN_RUNNER_HARNESS: "pi",
 			KAINBAIN_RUNNER_DISPATCH: "1",
-			KAINBAIN_RUNNER_MODELS: "default, m1, m1, Default, m2",
+			KAINBAIN_RUNNER_MODELS: "default, pi::p::m1, pi::p::m1, Default, pi::p::m2",
 		});
-		assert.deepEqual(mixed.models, ["m1", "m2"]);
+		assert.deepEqual(mixed.models, ["pi::p::m1", "pi::p::m2"]);
+	});
+
+	it("drops malformed model pins with a warning instead of advertising them", () => {
+		const base = {
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESSES: "muse",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+		};
+		// N2 evidence: a 2-part provider key was advertised as-is.
+		const legacy = loadRunnerConfig({ ...base, KAINBAIN_RUNNER_MODELS: "deepseek-v4-flash:0731-cloud" });
+		assert.deepEqual(legacy.models, []);
+		assert.equal(legacy.warnings.length, 1);
+		assert.match(legacy.warnings[0], /deepseek-v4-flash:0731-cloud/);
+		assert.match(legacy.warnings[0], /harness::provider::model/);
+
+		// A well-formed key for a harness that is not enabled is dropped too.
+		const foreign = loadRunnerConfig({ ...base, KAINBAIN_RUNNER_MODELS: "ollama-cloud-direct::gemma4:31b-cloud" });
+		assert.deepEqual(foreign.models, []);
+		assert.equal(foreign.warnings.length, 1);
+		assert.match(foreign.warnings[0], /ollama-cloud-direct::gemma4:31b-cloud/);
+
+		// Wrong-harness pins are dropped (once per id); good ones survive in order.
+		const mixed = loadRunnerConfig({
+			...base,
+			KAINBAIN_RUNNER_MODELS: "pi::x::y, muse::meta::a, pi::x::y, bare, muse::meta::b::high",
+		});
+		assert.deepEqual(mixed.models, ["muse::meta::a", "muse::meta::b::high"]);
+		assert.equal(mixed.warnings.length, 2);
+		assert.ok(mixed.warnings.some((w) => w.includes("pi::x::y") && w.includes("KAINBAIN_RUNNER_HARNESSES")));
+		assert.ok(mixed.warnings.some((w) => w.includes("bare")));
+
+		// An invalid singular MODEL is dropped as well (never advertised).
+		const singular = loadRunnerConfig({ ...base, KAINBAIN_RUNNER_MODEL: "m1" });
+		assert.deepEqual(singular.models, []);
+		assert.equal(singular.model, "");
+		assert.equal(singular.warnings.length, 1);
+		assert.match(singular.warnings[0], /KAINBAIN_RUNNER_MODEL/);
+
+		// A valid singular MODEL still seeds the pin.
+		const valid = loadRunnerConfig({ ...base, KAINBAIN_RUNNER_MODEL: "muse::meta::a" });
+		assert.deepEqual(valid.models, ["muse::meta::a"]);
+		assert.equal(valid.model, "muse::meta::a");
+		assert.deepEqual(valid.warnings, []);
+
+		// Auto-detect installs skip the membership check (nothing is
+		// enabled yet) but still enforce the fleet grammar.
+		const auto = loadRunnerConfig({ KAINBAIN_RUNNER_ID: "r1", KAINBAIN_RUNNER_DISPATCH: "1", KAINBAIN_RUNNER_MODELS: "pi::x::y, garbage" });
+		assert.deepEqual(auto.models, ["pi::x::y"]);
+		assert.equal(auto.warnings.length, 1);
+
+		// Dropping everything behaves as unpinned (matches model-less tasks).
+		const emptied = loadRunnerConfig({ ...base, KAINBAIN_RUNNER_MODELS: "nope" });
+		assert.deepEqual(emptied.models, []);
+		assert.equal(emptied.model, "");
+	});
+
+	it("defaults the discovery staleness threshold to 24h, honours overrides, clamps garbage", () => {
+		const env = {
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "mock",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+		};
+		assert.equal(loadRunnerConfig(env).modelDiscoveryStaleMs, 86400000);
+		assert.equal(
+			loadRunnerConfig({ ...env, KAINBAIN_RUNNER_DISCOVERY_STALE_MS: "3600000" }).modelDiscoveryStaleMs,
+			3600000,
+		);
+		assert.equal(loadRunnerConfig({ ...env, KAINBAIN_RUNNER_DISCOVERY_STALE_MS: "soon" }).modelDiscoveryStaleMs, 86400000);
+		assert.equal(loadRunnerConfig({ ...env, KAINBAIN_RUNNER_DISCOVERY_STALE_MS: "0" }).modelDiscoveryStaleMs, 86400000);
+		assert.equal(loadRunnerConfig({ ...env, KAINBAIN_RUNNER_DISCOVERY_STALE_MS: "-5" }).modelDiscoveryStaleMs, 86400000);
 	});
 
 	it("reads a csv HARNESSES list, singular HARNESS seeds it", () => {

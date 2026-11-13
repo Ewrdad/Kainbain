@@ -1,4 +1,5 @@
 import { loadRunnerCredential } from "./credentialFile.js";
+import { parseModelKey } from "../shared/modelKeys.js";
 
 /***
  * MARK: loadRunnerConfig
@@ -78,13 +79,47 @@ export function loadRunnerConfig(env = process.env) {
 	// match against. Duplicates carry no information either.
 	const isServableModelName = (name) =>
 		Boolean(name) && name.toLowerCase() !== "default";
+	// Canonical pin validation (survey q7/q8: malformed ids are blocked
+	// from being saved/advertised, never fatal). A pin must parse as a
+	// harness-scoped fleet key (`harness::provider::model[::effort]`);
+	// when the runner pins explicit harnesses the pin's harness must be
+	// one of them (auto-detect installs skip the membership check — the
+	// set is still unknown at load). Drops collect into `warnings`
+	// (surfaced via `facts.errors` + one boot log line per drop) so a
+	// typo (e.g. `deepseek-v4-flash:0731-cloud`, a 2-part provider key
+	// for a harness that is not enabled) can never be advertised.
+	const warnings = [];
+	const harnessSet = new Set(harnessIds);
+	const pinRejection = (id) => {
+		const parsed = parseModelKey(id);
+		if (!parsed || (parsed.form !== "harness" && parsed.form !== "harnessReasoning")) {
+			return `ignoring KAINBAIN_RUNNER_MODELS entry '${id}': not a harness::provider::model[::effort] id`;
+		}
+		if (harnessSet.size > 0 && !harnessSet.has(parsed.harness)) {
+			return `ignoring KAINBAIN_RUNNER_MODELS entry '${id}': harness '${parsed.harness}' is not in KAINBAIN_RUNNER_HARNESSES [${harnessIds.join(", ")}]`;
+		}
+		return null;
+	};
 	const model = str("KAINBAIN_RUNNER_MODEL", "");
-	const cleanedSingularModel = isServableModelName(model) ? model : "";
-	const models = str("KAINBAIN_RUNNER_MODELS", "")
-		.split(",")
-		.map((m) => m.trim())
-		.filter(isServableModelName)
-		.filter((m, index, all) => all.indexOf(m) === index);
+	const rawSingularModel = isServableModelName(model) ? model : "";
+	const singularRejection = rawSingularModel ? pinRejection(rawSingularModel) : null;
+	if (singularRejection) {
+		warnings.push(singularRejection.replace("KAINBAIN_RUNNER_MODELS entry", "KAINBAIN_RUNNER_MODEL"));
+	}
+	const cleanedSingularModel = singularRejection ? "" : rawSingularModel;
+	const models = [];
+	const seenPins = new Set();
+	for (const candidate of str("KAINBAIN_RUNNER_MODELS", "").split(",")) {
+		const trimmed = candidate.trim();
+		if (!isServableModelName(trimmed) || seenPins.has(trimmed)) continue;
+		seenPins.add(trimmed);
+		const rejection = pinRejection(trimmed);
+		if (rejection) {
+			warnings.push(rejection);
+			continue;
+		}
+		models.push(trimmed);
+	}
 	if (models.length === 0 && cleanedSingularModel) models.push(cleanedSingularModel);
 	const projectId = str("KAINBAIN_RUNNER_PROJECT_ID", "");
 	const taskId = str("KAINBAIN_RUNNER_TASK_ID", "");
@@ -176,6 +211,13 @@ export function loadRunnerConfig(env = process.env) {
 		dispatchIdleLimit:
 			Number.isFinite(dispatchIdleLimit) && dispatchIdleLimit >= 0 ? dispatchIdleLimit : 3,
 		heartbeatMs: Number.isFinite(heartbeatMs) && heartbeatMs > 0 ? heartbeatMs : 15000,
+		modelDiscoveryStaleMs: (() => {
+			// Staleness threshold for discovery slices (survey q5/q16):
+			// older slices keep their ids but report `stale: true`.
+			// Default 24h; invalid values fall back to 24h.
+			const staleMs = Number.parseInt(str("KAINBAIN_RUNNER_DISCOVERY_STALE_MS", "86400000"), 10);
+			return Number.isFinite(staleMs) && staleMs > 0 ? staleMs : 86400000;
+		})(),
 		modelDiscoveryIntervalMs:
 			Number.isFinite(modelDiscoveryIntervalMs) && modelDiscoveryIntervalMs >= 0
 				? modelDiscoveryIntervalMs
@@ -185,5 +227,6 @@ export function loadRunnerConfig(env = process.env) {
 		approvalTimeoutMs:
 			Number.isFinite(approvalTimeoutMs) && approvalTimeoutMs > 0 ? approvalTimeoutMs : 300000,
 		errors,
+		warnings,
 	};
 }

@@ -954,6 +954,37 @@ describe("model auto-discovery refresh", () => {
 		await refreshDiscoveredModels({ config: base, logger, discoverFn: async () => ["muse::meta::m"] });
 		assert.deepEqual(warnings, []);
 	});
+	it("scans with a canonical pin and advertises pin ∪ discovered", async () => {
+		clearDiscoveredModelsCache();
+		const out = await refreshDiscoveredModels({
+			config: { harnessIds: ["muse"], models: ["muse::meta::a"], model: "" },
+			discoverFn: async () => ["muse::meta::a", "muse::meta::b"],
+		});
+		assert.deepEqual(out, ["muse::meta::a", "muse::meta::b"]);
+		const { resolveAdvertisedModels } = await import("./modelDiscovery.js");
+		assert.deepEqual(resolveAdvertisedModels({ models: ["muse::meta::a"] }, out), ["muse::meta::a", "muse::meta::b"]);
+	});
+	it("records ROUND_FAILED on every configured harness when the round itself throws", async () => {
+		clearDiscoveredModelsCache();
+		const { discoveryCache, getDiscoveryStatus } = await import("./harnessModelDiscovery.js");
+		discoveryCache.muse = { ids: ["muse::meta::old"], atMs: 1, error: null };
+		const warnings = [];
+		const out = await refreshDiscoveredModels({
+			config: { harnessIds: ["muse", "pi"], models: [], model: "" },
+			logger: { log: () => {}, warn: (m) => warnings.push(m) },
+			discoveryCtx: new Proxy({}, { ownKeys() { throw new Error("round boom"); } }),
+		});
+		assert.deepEqual(out, []);
+		// Keep-old ids survive; every untouched harness names the round failure.
+		assert.deepEqual(discoveryCache.muse.ids, ["muse::meta::old"]);
+		assert.equal(discoveryCache.muse.error.code, "ROUND_FAILED");
+		assert.match(discoveryCache.muse.error.message, /muse/);
+		assert.equal(discoveryCache.pi.error.code, "ROUND_FAILED");
+		const status = getDiscoveryStatus(["muse", "pi"]);
+		assert.deepEqual(Object.keys(status).sort(), ["muse", "pi"]);
+		assert.ok(warnings.some((w) => w.includes("keeping the previous list")));
+		clearDiscoveredModelsCache();
+	});
 });
 
 describe("harness auto-detect (default)", () => {
@@ -2192,6 +2223,27 @@ describe("handlePendingCommands", () => {
 		]);
 	});
 
+	it("re-probes on every re-detection (no stale cache between commands)", async () => {
+		clearDiscoveredModelsCache();
+		const { discoveryCache } = await import("./harnessModelDiscovery.js");
+		for (const ids of [["muse::test::m1"], ["muse::test::m2"]]) {
+			const state = {};
+			await handlePendingCommands({
+				config: claudeConfig(),
+				client: {},
+				logger: quiet,
+				state,
+				pendingCommands: ["requestModelRediscovery"],
+				discoverFn: async () => ids,
+			});
+			assert.deepEqual(state.commandAcks, [
+				{ command: "requestModelRediscovery", ok: true, detail: "discovered 1 model(s) (muse:1)" },
+			]);
+			// The live slice reflects THIS round's probe, not the previous one.
+			assert.deepEqual(discoveryCache.muse.ids, ids);
+		}
+		clearDiscoveredModelsCache();
+	});
 	it("acks with the first leg error code when a leg fails, cache kept", async () => {
 		const state = {};
 		await handlePendingCommands({
@@ -2475,6 +2527,46 @@ describe("deliverSteers command channel", () => {
 
 describe("joinAndHeartbeat command channel", () => {
 	const quiet = { log: () => {}, warn: () => {} };
+
+	it("first-heartbeat facts name every configured harness and surface pin warnings", async () => {
+		clearDiscoveredModelsCache();
+		const heartbeats = [];
+		const warnings = [];
+		const config = baseConfig({
+			harnessIds: ["mock"],
+			warnings: ["ignoring KAINBAIN_RUNNER_MODELS entry 'nope': not a fleet id"],
+			autoUpdate: false,
+		});
+		const client = {
+			setCredential: () => {},
+			heartbeat: async (args) => {
+				heartbeats.push(args);
+				return { status: "active" };
+			},
+		};
+		const { stop } = await joinAndHeartbeat({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: (m) => warnings.push(m) },
+			state: {},
+		});
+		try {
+			assert.ok(heartbeats.length >= 1);
+			const facts = heartbeats[0].facts;
+			// mock has no discovery leg and the seed round cannot scan
+			// it — the heartbeat must still name it, never read {}.
+			assert.deepEqual(Object.keys(facts.discoveryStatus), ["mock"]);
+			assert.equal(facts.discoveryStatus.mock.error.code, "NOT_YET_RUN");
+			// Dropped pins surface in facts.errors AND the boot log.
+			assert.ok(facts.errors.includes("ignoring KAINBAIN_RUNNER_MODELS entry 'nope': not a fleet id"));
+			assert.ok(warnings.some((w) => w.includes("Runner config:") && w.includes("nope")));
+		} finally {
+			stop();
+			fs.rmSync(config.workRoot, { recursive: true, force: true });
+			clearDiscoveredModelsCache();
+		}
+	});
 
 	it("acts on commands queued while the runner was down (boot delivery)", async () => {
 		// autoUpdate:false keeps this hermetic (no real check runs); the

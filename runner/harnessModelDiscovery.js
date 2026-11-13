@@ -27,6 +27,38 @@ import { discoverClaudeModels as discoverMuseModelsRaw } from "./modelDiscovery.
 export const DISCOVER_LEG_TIMEOUT_DEFAULT_MS = 20000;
 
 /***
+ * MARK: DISCOVERY_STALE_MS_DEFAULT_MS
+ * @description Default staleness threshold for discovery slices (24h):
+ *   a slice older than this reports `stale: true` in `getDiscoveryStatus`
+ *   while keeping its ids (survey q5/q16 — stale models stay listed and
+ *   usable, the flag only tells Settings the scan is overdue). Overridden
+ *   per runner via `KAINBAIN_RUNNER_DISCOVERY_STALE_MS` (see
+ *   `loadRunnerConfig`); invalid values fall back here.
+ * @example DISCOVERY_STALE_MS_DEFAULT_MS => 86400000
+ ***/
+export const DISCOVERY_STALE_MS_DEFAULT_MS = 24 * 60 * 60 * 1000;
+
+/***
+ * MARK: LEG_MODULE_SPECIFIERS
+ * @description The exact module specifiers every discovery leg loads, in
+ *   one table: harness modules under `api/` plus the npm package the pi
+ *   leg reaches through its harness (`@earendil-works/pi-coding-agent`).
+ *   All four lazy loaders import through this table, the boot self-check
+ *   (`verifyDiscoveryLegModules`) eagerly imports it, and the runner
+ *   packager ships it — one table, three consumers, so the bundle can
+ *   never drift from what the legs actually load (the N3 gap: legs lazily
+ *   imported backend modules the runner install did not ship, and the
+ *   runner advertised 0 models with `{}` status instead of naming it).
+ * @example LEG_MODULE_SPECIFIERS.pi => ['../api/agent/harnesses/pi/piHarness.js', '@earendil-works/pi-coding-agent']
+ ***/
+export const LEG_MODULE_SPECIFIERS = {
+	pi: ["../api/agent/harnesses/pi/piHarness.js", "@earendil-works/pi-coding-agent"],
+	antigravity: ["../api/agent/harnesses/antigravity/agyModelCatalog.js"],
+	vibe: ["../api/agent/harnesses/vibe/vibeModelCatalog.js"],
+	opencode: ["../api/agent/harnesses/opencode/OpencodeModelDiscovery.js"],
+};
+
+/***
  * MARK: discoveryCache
  * @description Per-harness discovery slices, the single place a round
  *   reads and writes: `{ [harnessId]: { ids, atMs, error } }`. A slice
@@ -271,18 +303,30 @@ export async function runDiscoveryRound({ harnessIds = [], timeoutMs, legOptions
 /***
  * MARK: getDiscoveryStatus
  * @description Reads the per-harness discovery status for heartbeat
- *   facts: `{ [harnessId]: { ok, count, atMs, error? } }`. Pass the
+ *   facts: `{ [harnessId]: { ok, count, atMs, stale, error? } }`. Pass the
  *   configured harness ids to filter out stale slices from harnesses no
  *   longer configured (read-time filter, so concurrent rounds cannot
- *   race a prune); omit it to read every slice (tests, debugging).
- * @example getDiscoveryStatus(['pi']) => { pi: { ok: true, count: 1, atMs: 123 } }
+ *   race a prune); omit it to read every slice (tests, debugging). Every
+ *   wanted harness id is ALWAYS present: an id with no slice yet (never
+ *   scanned, or a legless harness such as `mock`/`custom` that can never
+ *   scan) reads `{ ok: false, error: { code: 'NOT_YET_RUN' } }` instead of
+ *   vanishing into `{}` (the N2 gap). Staleness is computed at READ time
+ *   (`Date.now() - atMs > staleMs`, default 24h): a stale slice keeps its
+ *   ids and only gains `stale: true` — the runner never evicts, the flag
+ *   is advisory for Settings/the catalogue (survey q5/q16; stale models
+ *   stay usable).
+ * @example getDiscoveryStatus(['pi']) => { pi: { ok: true, count: 1, atMs: 123, stale: false } }
  * @param {string[]} [onlyHarnessIds] - Harness ids to include (all when omitted).
+ * @param {Object} [opts] - `{ staleMs }` staleness threshold (defaults to 24h).
  * @returns {Object} Status by harness id.
  ***/
-export function getDiscoveryStatus(onlyHarnessIds) {
+export function getDiscoveryStatus(onlyHarnessIds, { staleMs = DISCOVERY_STALE_MS_DEFAULT_MS } = {}) {
+	const thresholdMs = Number.isFinite(staleMs) && staleMs > 0 ? staleMs : DISCOVERY_STALE_MS_DEFAULT_MS;
 	const wanted = Array.isArray(onlyHarnessIds)
 		? new Set(onlyHarnessIds.map((id) => String(id ?? "").trim()).filter(Boolean))
 		: null;
+	const isStale = (atMs) =>
+		typeof atMs === "number" && Number.isFinite(atMs) && Date.now() - atMs > thresholdMs;
 	const out = {};
 	for (const [id, slice] of Object.entries(discoveryCache)) {
 		if (wanted && !wanted.has(id)) continue;
@@ -290,8 +334,25 @@ export function getDiscoveryStatus(onlyHarnessIds) {
 			ok: slice?.error == null,
 			count: Array.isArray(slice?.ids) ? slice.ids.length : 0,
 			atMs: slice?.atMs ?? null,
+			stale: isStale(slice?.atMs),
 			...(slice?.error ? { error: slice.error } : {}),
 		};
+	}
+	if (wanted) {
+		for (const id of wanted) {
+			if (Object.hasOwn(out, id)) continue;
+			out[id] = {
+				ok: false,
+				count: 0,
+				atMs: null,
+				stale: false,
+				error: {
+					code: "NOT_YET_RUN",
+					message: `No discovery scan has run yet for '${id}'.`,
+					hint: "Wait for the boot seed round or re-run model re-detection; legless harnesses (mock, custom) always read this way.",
+				},
+			};
+		}
 	}
 	return out;
 }
@@ -371,7 +432,7 @@ export function provenanceForIds(ids) {
  ***/
 async function loadPiHarness(ctx) {
 	if (ctx && typeof ctx.createHarness === "function") return ctx.createHarness();
-	const { createPiHarness } = await import("../api/agent/harnesses/pi/piHarness.js");
+	const { createPiHarness } = await import(LEG_MODULE_SPECIFIERS.pi[0]);
 	return createPiHarness({});
 }
 
@@ -452,7 +513,7 @@ export async function discoverPiModels(ctx = {}) {
  ***/
 async function loadAgyCatalog(ctx) {
 	if (ctx && typeof ctx.createCatalog === "function") return ctx.createCatalog();
-	const { createAgyModelCatalog } = await import("../api/agent/harnesses/antigravity/agyModelCatalog.js");
+	const { createAgyModelCatalog } = await import(LEG_MODULE_SPECIFIERS.antigravity[0]);
 	return createAgyModelCatalog({
 		spawnAgyModels: ctx?.spawnAgyModels,
 		agyBin: ctx?.agyBin,
@@ -501,7 +562,7 @@ export async function discoverAntigravityModels(ctx = {}) {
  ***/
 async function loadVibeCatalog(ctx) {
 	if (ctx && typeof ctx.createCatalog === "function") return ctx.createCatalog();
-	const { createVibeModelCatalog } = await import("../api/agent/harnesses/vibe/vibeModelCatalog.js");
+	const { createVibeModelCatalog } = await import(LEG_MODULE_SPECIFIERS.vibe[0]);
 	return createVibeModelCatalog({
 		endpoint: ctx?.endpoint,
 		discoverModels: ctx?.discoverModels,
@@ -653,7 +714,7 @@ export async function discoverOpencodeModels(ctx = {}) {
 			"Set OPENCODE_URL (and OPENCODE_SERVER_PASSWORD when the server needs auth), then re-run model re-detection.",
 		);
 	}
-	const { OpencodeModelDiscovery } = await import("../api/agent/harnesses/opencode/OpencodeModelDiscovery.js");
+	const { OpencodeModelDiscovery } = await import(LEG_MODULE_SPECIFIERS.opencode[0]);
 	const discovery = new OpencodeModelDiscovery({
 		baseUrl: url,
 		password: (ctx && ctx.password) || process.env.OPENCODE_SERVER_PASSWORD || null,
@@ -710,3 +771,55 @@ export const DISCOVERY_LEGS = {
 	opencode: async (ctx) => discoverOpencodeModels(ctx),
 	codex: async () => discoverCodexModels(),
 };
+
+/***
+ * MARK: verifyDiscoveryLegModules
+ * @description Boot self-check: eagerly imports every discovery-leg module
+ *   for the configured harnesses (see `LEG_MODULE_SPECIFIERS`) so a leg
+ *   whose code never shipped on this host fails LOUD at boot instead of
+ *   advertising 0 models with `{}` status (the N3 gap: the runner install
+ *   lacked the pi SDK while the leg lazily imported it). A specifier that
+ *   fails to load writes a keep-old slice with
+ *   `error.code === 'LEG_MODULE_MISSING'` (naming the missing specifier)
+ *   and logs one loud line through the logger (console fallback, so
+ *   `--manual` boots without a logger still see it). A harness whose
+ *   modules all load is left untouched — success writes no fake `ok`,
+ *   the seed round records the real result. Never throws.
+ * @example await verifyDiscoveryLegModules(['pi'], { importer: async () => { throw Object.assign(new Error('nope'), { code: 'ERR_MODULE_NOT_FOUND' }); } }) => { pi: { code: 'LEG_MODULE_MISSING', ... } }
+ * @param {string[]} [harnessIds] - Configured harness ids to check.
+ * @param {Object} [opts] - Seams (`logger`, `importer` test double).
+ * @returns {Promise<Object>} Errors by harness id (empty when all load).
+ ***/
+export async function verifyDiscoveryLegModules(harnessIds = [], { logger, importer = (spec) => import(spec) } = {}) {
+	const errors = {};
+	const announce = (message) => {
+		if (typeof logger?.warn === "function") logger.warn(message);
+		else if (typeof logger?.log === "function") logger.log(message);
+		else console.warn(message);
+	};
+	for (const raw of Array.isArray(harnessIds) ? harnessIds : []) {
+		const harnessId = String(raw ?? "").trim();
+		if (!harnessId) continue;
+		const specifiers = LEG_MODULE_SPECIFIERS[harnessId];
+		if (!specifiers) continue;
+		for (const specifier of specifiers) {
+			try {
+				await importer(specifier);
+			} catch (err) {
+				const previous = discoveryCache[harnessId];
+				const previousIds = Array.isArray(previous?.ids) ? [...previous.ids] : [];
+				const detail = String(err?.message || err || "unknown error").slice(0, 300);
+				const error = {
+					code: "LEG_MODULE_MISSING",
+					message: `Discovery leg module for '${harnessId}' failed to load ('${specifier}'): ${detail}.`,
+					hint: `Repair the runner install so '${specifier}' resolves (re-install or re-run the update), then re-run model re-detection.`,
+				};
+				discoveryCache[harnessId] = { ids: previousIds, atMs: Date.now(), error };
+				errors[harnessId] = error;
+				announce(`Model discovery (LEG_MODULE_MISSING): ${error.message} ${error.hint}`);
+				break;
+			}
+		}
+	}
+	return errors;
+}

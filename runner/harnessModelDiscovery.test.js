@@ -5,10 +5,13 @@ import { buildFleetModelCatalog } from "../api/flow/dispatch/fleetModelCatalog.j
 import { NEW_MODEL_COLON_ID, NEW_MODEL_ID, fleetRunnerRecord } from "../api/flow/dispatch/fleetModelFixtures.mjs";
 import {
 	DISCOVERY_LEGS,
+	DISCOVERY_STALE_MS_DEFAULT_MS,
+	LEG_MODULE_SPECIFIERS,
 	runDiscoveryLeg,
 	runDiscoveryRound,
 	getDiscoveryStatus,
 	summarizeDiscoverySlices,
+	verifyDiscoveryLegModules,
 	discoverPiModels,
 	discoverAntigravityModels,
 	discoverVibeModels,
@@ -567,6 +570,103 @@ test("codex leg is honest-empty with a stable reason", async () => {
 	const out = await runDiscoveryLeg("codex", {});
 	assert.deepEqual(out.ids, []);
 	assert.equal(out.error.code, "CODEX_DISCOVERY_UNAVAILABLE");
+});
+
+test("LEG_MODULE_SPECIFIERS names every lazy leg import (N3 table)", () => {
+	assert.equal(DISCOVERY_STALE_MS_DEFAULT_MS, 86400000);
+	assert.deepEqual(Object.keys(LEG_MODULE_SPECIFIERS).sort(), ["antigravity", "opencode", "pi", "vibe"]);
+	for (const [harness, specs] of Object.entries(LEG_MODULE_SPECIFIERS)) {
+		assert.ok(Array.isArray(specs) && specs.length > 0, harness);
+		assert.ok(specs[0].startsWith("../api/"), `${harness}: first specifier is the harness module`);
+	}
+	assert.ok(LEG_MODULE_SPECIFIERS.pi.includes("@earendil-works/pi-coding-agent"));
+});
+
+test("verifyDiscoveryLegModules records LEG_MODULE_MISSING on an unshippable leg import", async () => {
+	clearDiscoveryCache();
+	const announced = [];
+	const logger = { warn: (m) => announced.push(m), log: (m) => announced.push(m) };
+	const bomb = Object.assign(new Error("Cannot find module './gone'"), { code: "ERR_MODULE_NOT_FOUND" });
+	const errors = await verifyDiscoveryLegModules(["pi", "muse", "  "], {
+		logger,
+		importer: async (spec) => {
+			assert.equal(typeof spec, "string");
+			throw bomb;
+		},
+	});
+	// pi has a table entry so it fails named; muse has no entry so it is skipped.
+	assert.equal(errors.pi.code, "LEG_MODULE_MISSING");
+	assert.match(errors.pi.message, /piHarness\.js/);
+	assert.equal(errors.muse, undefined);
+	const status = getDiscoveryStatus(["pi", "muse"]);
+	assert.equal(status.pi.ok, false);
+	assert.equal(status.pi.error.code, "LEG_MODULE_MISSING");
+	assert.equal(status.muse.error.code, "NOT_YET_RUN");
+	assert.ok(announced.some((m) => m.includes("LEG_MODULE_MISSING") && m.includes("pi")), announced.join("\n"));
+	clearDiscoveryCache();
+});
+
+test("verifyDiscoveryLegModules keeps the old slice ids and never throws", async () => {
+	clearDiscoveryCache();
+	discoveryCache.pi = { ids: ["pi::mistral::old"], atMs: 1, error: null };
+	const errors = await verifyDiscoveryLegModules(["pi"], {
+		logger: { warn: () => {}, log: () => {} },
+		importer: async () => { throw new Error("boom"); },
+	});
+	assert.equal(errors.pi.code, "LEG_MODULE_MISSING");
+	assert.deepEqual(discoveryCache.pi.ids, ["pi::mistral::old"]);
+	const out = await verifyDiscoveryLegModules(["pi"], { importer: async () => ({}) });
+	assert.deepEqual(out, {});
+	assert.equal(discoveryCache.pi.error.code, "LEG_MODULE_MISSING");
+	// A harness whose modules all load is left untouched (no fake ok).
+	const untouched = await verifyDiscoveryLegModules(["antigravity"], {
+		logger: { warn: () => { throw new Error("must stay silent on success"); } },
+		importer: async () => ({}),
+	});
+	assert.deepEqual(untouched, {});
+	clearDiscoveryCache();
+});
+
+test("getDiscoveryStatus names never-scanned harnesses instead of returning {}", async () => {
+	clearDiscoveryCache();
+	const status = getDiscoveryStatus(["pi", "muse"]);
+	assert.deepEqual(Object.keys(status).sort(), ["muse", "pi"]);
+	for (const id of ["pi", "muse"]) {
+		assert.equal(status[id].ok, false);
+		assert.equal(status[id].count, 0);
+		assert.equal(status[id].atMs, null);
+		assert.equal(status[id].error.code, "NOT_YET_RUN");
+	}
+	// Legless configured harnesses (mock, custom) never scan, so they
+	// must read named too — never {}.
+	const legless = getDiscoveryStatus(["mock", "custom"]);
+	assert.equal(legless.mock.error.code, "NOT_YET_RUN");
+	assert.equal(legless.custom.error.code, "NOT_YET_RUN");
+	// No filter still reads only real slices (cold cache stays empty).
+	assert.deepEqual(getDiscoveryStatus(), {});
+	clearDiscoveryCache();
+});
+
+test("getDiscoveryStatus marks stale slices without evicting ids", async () => {
+	clearDiscoveryCache();
+	const old = Date.now() - 25 * 60 * 60 * 1000;
+	discoveryCache.pi = { ids: ["pi::mistral::kept"], atMs: old, error: null };
+	try {
+		const status = getDiscoveryStatus(["pi"]);
+		assert.deepEqual(discoveryCache.pi.ids, ["pi::mistral::kept"]);
+		assert.equal(status.pi.count, 1);
+		assert.equal(status.pi.stale, true);
+		assert.equal(status.pi.ok, true);
+		// Fresh slices are explicitly not stale.
+		discoveryCache.muse = { ids: ["muse::meta::m"], atMs: Date.now(), error: null };
+		assert.equal(getDiscoveryStatus(["muse"]).muse.stale, false);
+		// Callers can tighten the threshold; invalid values fall back to 24h.
+		assert.equal(getDiscoveryStatus(["pi"], { staleMs: 26 * 60 * 60 * 1000 }).pi.stale, false);
+		assert.equal(getDiscoveryStatus(["pi"], { staleMs: -1 }).pi.stale, true);
+		assert.equal(getDiscoveryStatus(["pi"], { staleMs: undefined }).pi.stale, true);
+	} finally {
+		clearDiscoveryCache();
+	}
 });
 
 test("clearDiscoveryCache resets slices and status", async () => {
