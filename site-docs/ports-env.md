@@ -64,6 +64,31 @@ stage restarts every budget from zero.
 
 Deploying elsewhere? Point `VITE_API_BASE` / `VITE_WS_URL` at your API origin (or leave them empty for same-origin production builds).
 
+## Access control (off by default)
+
+Organisation sign-in is **off** until you turn it on: with every knob below
+at its default, each request runs as the shared built-in `admin` user and no
+login screen appears. To enable it, point the OIDC knobs at your identity
+provider, set `KAINBAIN_AUTH_ENABLED` to `true`, and restart. The full setup
+walkthrough (provider examples, group mapping, lockout recovery) is
+Authentication & Access Control (`#/docs/authentication`).
+
+| Variable | Default | Effect |
+| -------- | ------- | ------ |
+| `KAINBAIN_AUTH_ENABLED` | `false` | Master switch. Off keeps today's behaviour; on requires a signed-in session with a sufficient role on the guarded routes |
+| `KAINBAIN_OIDC_ISSUER_URL` | _(unset)_ | OIDC provider base URL (discovery lives at `<issuer>/.well-known/openid-configuration`) |
+| `KAINBAIN_OIDC_CLIENT_ID` / `KAINBAIN_OIDC_CLIENT_SECRET` | _(unset)_ | Client registration at your provider; the secret is redacted in `GET /status/config` |
+| `KAINBAIN_OIDC_REDIRECT_URI` | _(unset)_ | Exact callback URI registered at the provider; empty falls back to `<PUBLIC_KB_URL>/api/auth/callback` |
+| `KAINBAIN_OIDC_SCOPES` | `openid profile email groups` | Space-separated scopes requested at sign-in |
+| `KAINBAIN_AUTH_GROUPS_CLAIM` | `groups` | ID-token claim carrying the user's groups |
+| `KAINBAIN_AUTH_ADMIN_GROUP` | _(unset)_ | IdP group whose members always sign in as `admin` (lockout recovery) |
+| `KAINBAIN_AUTH_BOOTSTRAP_ADMINS` | _(unset)_ | Comma-separated subject ids or emails that always sign in as `admin` |
+| `KAINBAIN_AUTH_SESSION_TTL_MS` | 43200000 (12h) | Absolute browser-session lifetime |
+| `KAINBAIN_AUTH_SESSION_IDLE_MS` | 1800000 (30m) | Idle session timeout (each request slides the window) |
+| `KAINBAIN_AUTH_COOKIE_NAME` | `kb_session` | Cookie carrying the opaque session id |
+| `KAINBAIN_AUTH_ROLE_MANAGER_ROLES` | `admin` | Roles allowed to change assignments and access settings |
+| `KAINBAIN_AUTH_STATE_PATH` | _(unset)_ | Override dir for auth state files; empty resolves to `~/.kainbain/engine/auth/` |
+
 ## Network-agnostic defaults
 
 KainBain assumes nothing about your network: there are no implicit `.home`

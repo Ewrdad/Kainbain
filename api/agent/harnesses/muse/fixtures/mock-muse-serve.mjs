@@ -31,6 +31,10 @@
  *                                (the name avoids the secret-redaction pattern:
  *                                *TOKEN* names never reach a child env)
  *     MUSE_MOCK_ARGV_LOG         append the received argv (JSON line)
+ *     MUSE_MOCK_EXTRA_MODELS      JSON array of extra model/list rows
+ *                                (appended after the two canned rows, so
+ *                                discovery tests can serve a brand-new
+ *                                model id without forking the mock)
  *
  *   It also enforces `--workspace` is NEVER passed (serve has no such flag)
  *   and rejects a v4 UUID commandId, so the client's UUIDv7 generator is
@@ -237,6 +241,65 @@ function echoTurn(session, turnId, text) {
 	timer.unref?.();
 }
 
+const CANNED_MSP_MODELS = [
+	{
+		modelId: "muse-wonder-1.0",
+		displayLabel: "muse-wonder-1.0",
+		providerId: "meta",
+		profileId: "tbh",
+		contextLimit: 1000000,
+		outputLimit: 128000,
+		isDefault: true,
+		isActive: false,
+	},
+	{
+		modelId: "muse-spark-1.3",
+		displayLabel: "muse-spark-1.3",
+		providerId: "meta",
+		profileId: "tbh",
+		contextLimit: 1000000,
+		outputLimit: 128000,
+		isDefault: false,
+		isActive: false,
+	},
+];
+
+// Extra model/list rows for discovery tests: MUSE_MOCK_EXTRA_MODELS holds a
+// JSON array of row objects (each needs a string modelId; providerId
+// defaults to "meta", displayLabel to the modelId). Unset or unparsable
+// serves the two canned rows exactly as before.
+function extraMockServeModels() {
+	const raw = process.env.MUSE_MOCK_EXTRA_MODELS;
+	if (typeof raw !== "string" || !raw.trim()) return [];
+	let parsed;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return [];
+	}
+	if (!Array.isArray(parsed)) return [];
+	const out = [];
+	for (const row of parsed) {
+		if (!row || typeof row !== "object") continue;
+		const modelId = typeof row.modelId === "string" ? row.modelId.trim() : "";
+		if (!modelId) continue;
+		const providerId =
+			typeof row.providerId === "string" && row.providerId.trim() ? row.providerId.trim() : "meta";
+		out.push({
+			modelId,
+			displayLabel:
+				typeof row.displayLabel === "string" && row.displayLabel ? row.displayLabel : modelId,
+			providerId,
+			profileId: "tbh",
+			contextLimit: 1000000,
+			outputLimit: 128000,
+			isDefault: false,
+			isActive: false,
+		});
+	}
+	return out;
+}
+
 function handleRequest(id, method, params) {
 	if (method === "initialize") {
 		if (initialized) {
@@ -275,28 +338,7 @@ function handleRequest(id, method, params) {
 	}
 	if (method === "model/list") {
 		result(id, {
-			models: [
-				{
-					modelId: "muse-wonder-1.0",
-					displayLabel: "muse-wonder-1.0",
-					providerId: "meta",
-					profileId: "tbh",
-					contextLimit: 1000000,
-					outputLimit: 128000,
-					isDefault: true,
-					isActive: false,
-				},
-				{
-					modelId: "muse-spark-1.3",
-					displayLabel: "muse-spark-1.3",
-					providerId: "meta",
-					profileId: "tbh",
-					contextLimit: 1000000,
-					outputLimit: 128000,
-					isDefault: false,
-					isActive: false,
-				},
-			],
+			models: [...CANNED_MSP_MODELS, ...extraMockServeModels()],
 			profileId: "tbh",
 			providerId: "meta",
 			source: "providerCatalog",

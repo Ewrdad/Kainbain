@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { ClaimStore } from "./claimStore.js";
 import { ExecutionLedger, MAX_RUNNER_INTERRUPTS } from "./executionLedger.js";
+import { parseAttestationToken } from "../../shared/stageAttestation.js";
 const tmpClaimState = () =>
 	path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kb-claim-test-")), "claims.json");
 
@@ -135,6 +136,28 @@ describe("ExecutionLedger", () => {
 		});
 		expect(ledger.promptFor(executionId)).toBeNull();
 		expect(ledger.servingFor(executionId)).toBeNull();
+	});
+
+	test("carries the structured runnerId on the completion audit entry", async () => {
+		const { executionId, epoch } = claimed(ctx, "server2-alpha");
+		await ledger.completeExecution({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectStore: ctx.projectStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "server2-alpha",
+			executionId,
+			epoch,
+			posture: "T1:pi:model",
+		});
+		const completion = ctx.taskStore
+			.getTask()
+			.history.find((entry) => entry.action.includes("Runner completed execution"));
+		expect(completion).toMatchObject({
+			action: expect.stringContaining("runner server2-alpha"),
+			runnerId: "server2-alpha",
+		});
 	});
 
 	test("cleans an old Runner's default posture segment before storing history", async () => {
@@ -815,5 +838,147 @@ describe("ExecutionLedger", () => {
 			expect(err.statusCode).toBe(409);
 			expect(err.code).toBe("NOTHING_TO_INTERRUPT");
 		}
+	});
+
+	test("attests the completion entry with the reported hash and SHA", async () => {
+		const { executionId, epoch } = claimed(ctx);
+		const sha = "b".repeat(40);
+		const configHash = `sha256:${"c".repeat(64)}`;
+		ledger.recordProgress({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+			stageId: "s1",
+			event: "started",
+		});
+		await ledger.completeExecution({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectStore: ctx.projectStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+			sha,
+			branch: "kb/t1",
+			configHash,
+			committed: true,
+		});
+		const completion = ctx.taskStore
+			.getTask()
+			.history.find((entry) => entry.action.includes("Runner completed execution"));
+		expect(completion).toMatchObject({ configHash, commitSha: sha });
+		expect(parseAttestationToken(completion.action)).toEqual({
+			taskId: "t1",
+			stageId: "s1",
+			configHash,
+			commitSha: sha,
+		});
+	});
+
+	test("records a null commit when the Runner reports committed:false", async () => {
+		const { executionId, epoch } = claimed(ctx);
+		const configHash = `sha256:${"d".repeat(64)}`;
+		await ledger.completeExecution({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectStore: ctx.projectStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+			sha: "e".repeat(40),
+			branch: "kb/t1",
+			configHash,
+			committed: false,
+		});
+		const completion = ctx.taskStore
+			.getTask()
+			.history.find((entry) => entry.action.includes("Runner completed execution"));
+		expect(completion.configHash).toBe(configHash);
+		expect("commitSha" in completion).toBe(true);
+		expect(completion.commitSha).toBeNull();
+		expect(parseAttestationToken(completion.action)).toMatchObject({
+			configHash,
+			commitSha: null,
+		});
+	});
+
+	test("falls back to the dispatched hash for old Runners", async () => {
+		const { executionId, epoch } = claimed(ctx);
+		const dispatched = `sha256:${"f".repeat(64)}`;
+		ctx.taskStore.getTask().currentStageConfigHash = dispatched;
+		const sha = "1".repeat(40);
+		await ledger.completeExecution({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectStore: ctx.projectStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+			sha,
+			branch: "kb/t1",
+		});
+		const completion = ctx.taskStore
+			.getTask()
+			.history.find((entry) => entry.action.includes("Runner completed execution"));
+		expect(completion).toMatchObject({ configHash: dispatched, commitSha: sha });
+	});
+
+	test("flags a dispatched-vs-reported hash conflict without rejecting", async () => {
+		const { executionId, epoch } = claimed(ctx);
+		ctx.taskStore.getTask().currentStageConfigHash = `sha256:${"1".repeat(64)}`;
+		const reported = `sha256:${"2".repeat(64)}`;
+		await ledger.completeExecution({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectStore: ctx.projectStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+			sha: "3".repeat(40),
+			branch: "kb/t1",
+			configHash: reported,
+			committed: true,
+		});
+		const completion = ctx.taskStore
+			.getTask()
+			.history.find((entry) => entry.action.includes("Runner completed execution"));
+		// The reported hash wins: it names the commit the Runner actually made.
+		expect(completion.configHash).toBe(reported);
+		expect(completion.configHashMismatch).toBe(true);
+		expect(completion.action.toLowerCase()).toContain("conflict");
+		expect(ledger.snapshot().divergences).toBe(1);
+	});
+
+	test("leaves completions unattested when no hash exists anywhere", async () => {
+		const { executionId, epoch } = claimed(ctx);
+		await ledger.completeExecution({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectStore: ctx.projectStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+			sha: "4".repeat(40),
+			branch: "kb/t1",
+		});
+		const completion = ctx.taskStore
+			.getTask()
+			.history.find((entry) => entry.action.includes("Runner completed execution"));
+		expect(completion).not.toHaveProperty("configHash");
+		expect(completion.action).not.toContain("[attestation ");
 	});
 });

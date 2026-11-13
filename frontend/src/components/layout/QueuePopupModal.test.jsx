@@ -125,3 +125,35 @@ test('malformed queue payload renders the empty state instead of crashing', asyn
   renderWithKainBain(<QueuePopupModal counted={0} onClose={() => {}} />, { engineState: { openQueueDepth: 0 } });
   await waitFor(() => expect(screen.getByText('Queue is Clear')).toBeInTheDocument());
 });
+
+test('combined view shows per-project waiting counts across all pipelines', async () => {
+  api.observabilityStatus.mockResolvedValue({
+    observability: {
+      queue: [
+        { id: 'task-1', title: 'First', projectName: 'Alpha', projectId: 'alpha', currentStageName: 'Work', queueOrder: 1 },
+        { id: 'task-2', title: 'Second', projectName: 'Beta', projectId: 'beta', currentStageName: 'Build', queueOrder: 2 },
+        { id: 'task-3', title: 'Third', projectName: 'Beta', projectId: 'beta', currentStageName: 'Build', queueOrder: 3 },
+      ],
+    },
+  });
+  renderWithKainBain(<QueuePopupModal counted={3} onClose={() => {}} />, { engineState: { openQueueDepth: 3 } });
+  await waitFor(() => expect(screen.getByTestId('queue-item-task-3')).toBeInTheDocument());
+  // The combined list spans projects and the header breaks the wait down
+  // per project — regardless of which pipeline the UI has focused.
+  expect(screen.getByText(/Alpha: 1/)).toBeInTheDocument();
+  expect(screen.getByText(/Beta: 2/)).toBeInTheDocument();
+});
+
+test('combined view shows the current worker activity while the engine runs', async () => {
+  renderWithKainBain(<QueuePopupModal counted={1} onClose={() => {}} />, {
+    engineState: {
+      openQueueDepth: 1,
+      status: 'running',
+      activeTaskId: 'task-live',
+      activeTask: { id: 'task-live', title: 'Live one', projectName: 'Alpha' },
+    },
+  });
+  await waitFor(() => expect(screen.getByTestId('queue-item-task-1')).toBeInTheDocument());
+  const worker = await screen.findByTestId('queue-active-worker');
+  expect(worker).toHaveTextContent('Running now: Live one (Alpha)');
+});

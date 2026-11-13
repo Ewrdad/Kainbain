@@ -13,6 +13,9 @@ import { isResumedAfterInterruption } from './isResumedAfterInterruption.js';
 import { isResumedStageRunnable } from './isResumedStageRunnable.js';
 import { isAutoResumable } from './isAutoResumable.js';
 import { isWaitingForPickup } from './isWaitingForPickup.js';
+import { compareCentralQueueCandidates } from './compareCentralQueueCandidates.js';
+import { isCentralQueueCandidateOverdue } from './isCentralQueueCandidateOverdue.js';
+import { resolveCentralQueuePolicy } from './centralQueuePolicy.js';
 
 /***
  * MARK: getScheduledQueue
@@ -29,15 +32,21 @@ import { isWaitingForPickup } from './isWaitingForPickup.js';
  * `alias: null` plus `aliasMissing: "<name>"` with the fallback actually
  * shown. Picks are peek previews (display reads never consume a rotation
  * step). Non-alias items carry `alias: null` / `aliasMissing: null` with
- * today's raw stage model unchanged.
+ * today's raw stage model unchanged. The list order is the shared
+ * central-queue dispatch order (`sortCentralQueue`), so the popup mirrors
+ * what runs next.
+ * @param {Object} store
+ * @param {string} [filterProjectId] - Restrict to one project; omitted = ALL projects (the central queue).
+ * @param {Object} [opts] - Central-queue policy overrides (`order`, `maxWaitMs`, `now`); omitted = config defaults.
   * @example getScheduledQueue(store) => [{ taskId, status, … }]
  ***/
-export function getScheduledQueue(store, filterProjectId) {
+export function getScheduledQueue(store, filterProjectId, opts = {}) {
 	const projects =
 		store.projectStore && typeof store.projectStore.listProjects === "function"
 			? store.projectStore.listProjects()
 			: [];
 	const activeEngine = store.getEngineState();
+	const queuePolicy = resolveCentralQueuePolicy(opts);
 	const items = [];
 
 	const targetProjects = filterProjectId
@@ -116,7 +125,10 @@ export function getScheduledQueue(store, filterProjectId) {
 				priorityReason = "Follow-On Priority";
 			} else {
 				priorityRank = 2;
-				priorityReason = `Stage ${stageIndex + 1}/${stages.length || 1} (Priority Rule: Furthest Along)`;
+				priorityReason =
+					queuePolicy.order === 'furthest-along'
+						? `Stage ${stageIndex + 1}/${stages.length || 1} (Priority Rule: Furthest Along)`
+						: `Stage ${stageIndex + 1}/${stages.length || 1} (Central Queue: oldest waiting first)`;
 			}
 
 			// Display-only read: the full-pick display seam owns stage alias
@@ -201,23 +213,33 @@ export function getScheduledQueue(store, filterProjectId) {
 		const parsed = new Date(value || 0).getTime();
 		return Number.isFinite(parsed) ? parsed : 0;
 	};
+	// The display sorts through the SAME central-queue seam as both dispatch
+	// paths, so the popup order is the dispatch order by construction
+	// (task 16d6fbd6). A follow-on keeps its display pass only while no other
+	// waiting item has waited past the starvation ceiling — mirroring the
+	// dispatch-side gate in `findNextCandidateTask`.
+	const anyStandardOverdue = items.some(
+		(item) =>
+			item.priorityRank === 2 && isCentralQueueCandidateOverdue(item, queuePolicy),
+	);
+	const effectiveRank = (item) =>
+		item.priorityRank === 1 && anyStandardOverdue ? 2 : item.priorityRank;
 	items.sort((a, b) => {
-		if (a.priorityRank !== b.priorityRank) {
-			return a.priorityRank - b.priorityRank;
+		const rankA = effectiveRank(a);
+		const rankB = effectiveRank(b);
+		if (rankA !== rankB) {
+			return rankA - rankB;
 		}
-		if (a.priorityRank === 2 && b.priorityRank === 2) {
-			if (b.stageIndex !== a.stageIndex) {
-				return b.stageIndex - a.stageIndex;
-			}
-			return safeTime(a.enteredStageAt) - safeTime(b.enteredStageAt);
+		if (rankA === 2) {
+			return compareCentralQueueCandidates(a, b, queuePolicy);
 		}
 		// Resumed interruptions: oldest interruption first, matching Rule 0.
 		// Uses the `interruptedAt` snapshot, not `updatedAt`: startup
 		// recovery stamps every resumed task with "now", which would make
 		// the order arbitrary.
 		if (
-			a.priorityRank === RESUMED_PRIORITY_RANK &&
-			b.priorityRank === RESUMED_PRIORITY_RANK
+			rankA === RESUMED_PRIORITY_RANK &&
+			rankB === RESUMED_PRIORITY_RANK
 		) {
 			return safeTime(a.interruptedAt || a.updatedAt) - safeTime(b.interruptedAt || b.updatedAt);
 		}

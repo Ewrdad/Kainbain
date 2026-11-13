@@ -5,7 +5,7 @@ import { computeStageAnalytics } from '../stageAnalytics';
 /***
  * MARK: useCanvasAnalytics
  * @description Analytics seam extracted from WorkflowCanvas: active workflow
- *   tasks, stage analytics, completed count, and activity flag.
+ *   tasks, stage analytics, and activity flag.
  * @example const analytics = useCanvasAnalytics({ tasks, stages, activeWfId, activeWorkflow, messages, toolCalls, processLogs, isAgentRunning });
  ***/
 export function useCanvasAnalytics({
@@ -28,15 +28,12 @@ export function useCanvasAnalytics({
     [stages, activeWorkflowTasks],
   );
 
-  const completedCount = activeWorkflowTasks.filter((t) => t.status === 'completed').length;
-
   const hasActivity =
     messages.length > 0 || toolCalls.length > 0 || processLogs.length > 0 || isAgentRunning;
 
   return {
     activeWorkflowTasks,
     stageAnalytics,
-    completedCount,
     hasActivity,
   };
 }

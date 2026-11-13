@@ -17,6 +17,8 @@ const { resolveCiTimeoutMs } = await import("./runnerRoutes.js");
 // flow graph, so a hoisted static import would construct singletons before
 // the join-token env assignment above runs and disable registration.
 const { parseTaskMarkdown } = await import("../work/taskPersistence.js");
+const { resolveStagesForTask } = await import("./stageResolution.js");
+const { hashStageConfig, parseAttestationToken } = await import("../../shared/stageAttestation.js");
 const {
 	registerStageLifecyclePlugin,
 	clearStageLifecyclePlugins,
@@ -168,6 +170,54 @@ describe("Runner Routes Integration", () => {
 			runnerId: "claimer-1",
 			epoch: 1,
 		});
+	});
+
+	it("enriches monitor assignments with cross-pipeline identity", async () => {
+		// A Runner working on a DIFFERENT pipeline than the viewer: the
+		// monitor row must still carry the real task title, project name,
+		// and stage name resolved from the held task's own pipeline.
+		const projRes = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: {
+				name: "Other Pipeline Fixture",
+				gitUrl: "https://git.example.com/team/other.git",
+			},
+		});
+		expect(projRes.statusCode).toBe(201);
+		const other = JSON.parse(projRes.payload);
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: other.id, goal: "Cross-pipeline fixture task" },
+		});
+		expect(taskRes.statusCode).toBe(200);
+		const otherTaskId = JSON.parse(taskRes.payload).id;
+		const credential = await onboard("cross-pipe-1");
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${otherTaskId}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: other.id },
+		});
+		expect(claim.statusCode).toBe(200);
+
+		const monitor = JSON.parse(
+			(await app.inject({ method: "GET", url: "/runners/monitor" })).payload,
+		);
+		const row = monitor.liveAssignments.find((r) => r.runnerId === "cross-pipe-1");
+		expect(row).toBeDefined();
+		// Legacy identity fields stay identical for older UI/clients.
+		expect(row).toMatchObject({ projectId: other.id, taskId: otherTaskId });
+		// No progress reported yet, so the ledger stage may still be null —
+		// the enriched stageName falls back to the task's current stage.
+		expect(row.stageId === null || typeof row.stageId === "string").toBe(true);
+		// Global identity: resolved from the held task's own pipeline.
+		expect(row.projectName).toBe("Other Pipeline Fixture");
+		expect(row.taskTitle).toEqual(expect.stringContaining("Cross-pipeline"));
+		expect(typeof row.stageName).toBe("string");
+		expect(row.stageName.length).toBeGreaterThan(0);
+		expect(row.workflowId).toEqual(expect.any(String));
 	});
 
 	it("renews a live hold via claim-heartbeat: 200, still fenced past TTL", async () => {
@@ -813,6 +863,137 @@ describe("Runner Routes Integration", () => {
 		expect(again.assigned).toBe(false);
 	});
 
+	it("claim dispatches the stage config hash for the Runner to echo", async () => {
+		const credential = await onboard("attest-claim-1");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Attested claim fixture" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		expect(claim.statusCode).toBe(200);
+		const lease = JSON.parse(claim.payload);
+		expect(lease.configHash).toMatch(/^sha256:[0-9a-f]{64}$/);
+		// The dispatched hash equals what the Runner recomputes from the
+		// project+task it fetches — the cross-path equality contract.
+		const task = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${target}?projectId=${project.id}` })).payload,
+		);
+		const proj = JSON.parse(
+			(await app.inject({ method: "GET", url: `/projects/${project.id}` })).payload,
+		);
+		const stages = resolveStagesForTask(proj, task);
+		const stage = stages.find((s) => String(s.id) === String(task.currentStageId));
+		expect(hashStageConfig({ task, stage })).toBe(lease.configHash);
+		// …and the backend stashed it for completions from old Runners.
+		expect(task.currentStageConfigHash).toBe(lease.configHash);
+	});
+
+	it("dispatch assigns the stage config hash with the lease", async () => {
+		await mockProject("Dispatch Attest");
+		const credential = await onboard("attest-dispatch-1");
+		await app.inject({
+			method: "POST",
+			url: "/runners/heartbeat",
+			headers: { "x-runner-credential": credential },
+			payload: { runnerId: "attest-dispatch-1", facts: FACTS },
+		});
+		const res = await dispatchAs(credential);
+		expect(res.statusCode).toBe(200);
+		const out = JSON.parse(res.payload);
+		expect(out.assigned).toBe(true);
+		expect(out.configHash).toMatch(/^sha256:[0-9a-f]{64}$/);
+		const task = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${out.taskId}?projectId=${out.projectId}` })).payload,
+		);
+		const proj = JSON.parse(
+			(await app.inject({ method: "GET", url: `/projects/${out.projectId}` })).payload,
+		);
+		const stages = resolveStagesForTask(proj, task);
+		const stage = stages.find((s) => String(s.id) === String(task.currentStageId));
+		expect(hashStageConfig({ task, stage })).toBe(out.configHash);
+	});
+
+	it("completion with attestation records both hashes in history", async () => {
+		const credential = await onboard("attest-complete-1");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Attested completion fixture" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		const { executionId, epoch, configHash } = JSON.parse(claim.payload);
+		expect(configHash).toMatch(/^sha256:/);
+		const sha = "a".repeat(40);
+		const done = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/complete-execution`,
+			headers: { "x-runner-credential": credential },
+			payload: {
+				projectId: project.id,
+				executionId,
+				epoch,
+				sha,
+				branch: `kb/${target}`,
+				configHash,
+				committed: true,
+				outcome: "passed",
+				output: "did the thing",
+			},
+		});
+		expect(done.statusCode).toBe(200);
+		expect(JSON.parse(done.payload).accepted).toBe(true);
+		const after = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${target}?projectId=${project.id}` })).payload,
+		);
+		const entry = after.history.find((h) => h.action.includes("Runner completed execution"));
+		expect(entry).toMatchObject({ configHash, commitSha: sha });
+		expect(parseAttestationToken(entry.action)).toMatchObject({ configHash, commitSha: sha });
+	});
+
+	it("completion without attestation fields still records the dispatched hash", async () => {
+		const credential = await onboard("attest-old-1");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Old-Runner completion fixture" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		const { executionId, epoch, configHash: dispatched } = JSON.parse(claim.payload);
+		const sha = "b".repeat(40);
+		// Old Runner: reports its HEAD with no attestation fields.
+		const done = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/complete-execution`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id, executionId, epoch, sha, branch: `kb/${target}`, outcome: "passed", output: "did it" },
+		});
+		expect(done.statusCode).toBe(200);
+		const after = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${target}?projectId=${project.id}` })).payload,
+		);
+		const entry = after.history.find((h) => h.action.includes("Runner completed execution"));
+		expect(entry).toMatchObject({ configHash: dispatched, commitSha: sha });
+	});
+
 	it("dispatch rejects stale runners loudly", async () => {
 		const credential = await onboard("dispatch-stale");
 		const res = await dispatchAs(credential);
@@ -1035,6 +1216,133 @@ describe("Runner Routes Integration", () => {
 		expect(JSON.parse(ok.payload).assigned).toBe(true);
 	});
 
+	it("dispatch picks up waiting tasks on the non-active pipeline", async () => {
+		// Active pipeline "default" starts with a human intake (disjoint
+		// stage ids); the waiting task sits on the "audit" pipeline. The
+		// runner must be assigned it with the audit stage's requirements —
+		// switching the viewed pipeline changes nothing about dispatch.
+		const projRes = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: {
+				name: "Non Active Pipeline",
+				gitUrl: "https://git.example.com/team/fixture.git",
+				harness: "mock",
+				defaultModel: "mock-model",
+				stages: [
+					{ id: "intake", name: "Intake", type: "human" },
+					{ id: "build", name: "Build", type: "agent" },
+				],
+			},
+		});
+		expect(projRes.statusCode).toBe(201);
+		const proj = JSON.parse(projRes.payload);
+		const workflows = JSON.parse(
+			(await app.inject({ method: "GET", url: `/projects/${proj.id}/workflows` })).payload,
+		).workflows;
+		const defaultWf = workflows.find((w) => w.id === proj.activeWorkflowId) || workflows[0];
+		const wfRes = await app.inject({
+			method: "POST",
+			url: `/projects/${proj.id}/workflows`,
+			payload: {
+				name: "Audit",
+				stages: [{ id: "audit-review", name: "Audit Review", type: "agent" }],
+			},
+		});
+		expect(wfRes.statusCode).toBe(201);
+		const auditWf = JSON.parse(wfRes.payload);
+		// File the task onto the audit pipeline, then view default again.
+		const switchToAudit = await app.inject({
+			method: "POST",
+			url: `/projects/${proj.id}/workflows/${auditWf.id}/switch`,
+		});
+		expect(switchToAudit.statusCode).toBe(200);
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: proj.id, goal: "Audit pipeline fixture" },
+		});
+		expect(taskRes.statusCode).toBe(200);
+		const auditTask = JSON.parse(taskRes.payload).id;
+		const switchBack = await app.inject({
+			method: "POST",
+			url: `/projects/${proj.id}/workflows/${defaultWf.id}/switch`,
+		});
+		expect(switchBack.statusCode).toBe(200);
+		const credential = await onboard("dispatch-nap");
+		await heartbeatAs(credential, "dispatch-nap");
+		const res = await dispatchAs(credential, { projectIds: [proj.id] });
+		expect(res.statusCode).toBe(200);
+		expect(JSON.parse(res.payload)).toMatchObject({
+			assigned: true,
+			taskId: auditTask,
+			stageId: "audit-review",
+			requirements: { stageId: "audit-review", runnableType: true },
+		});
+	});
+
+	it("direct claim on a non-active pipeline honors that pipeline's stage policy", async () => {
+		// The active pipeline's first stage refuses this runner while the
+		// audit stage allows it: the claim must be judged by the audit
+		// stage the task sits at, not by the viewed pipeline.
+		const projRes = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: {
+				name: "Non Active Claim",
+				gitUrl: "https://git.example.com/team/fixture.git",
+				harness: "mock",
+				defaultModel: "mock-model",
+				stages: [
+					{ id: "intake", name: "Intake", type: "human", runnerPolicy: { mode: "allow", runners: ["nobody-else"] } },
+					{ id: "build", name: "Build", type: "agent" },
+				],
+			},
+		});
+		expect(projRes.statusCode).toBe(201);
+		const proj = JSON.parse(projRes.payload);
+		const workflows = JSON.parse(
+			(await app.inject({ method: "GET", url: `/projects/${proj.id}/workflows` })).payload,
+		).workflows;
+		const defaultWf = workflows.find((w) => w.id === proj.activeWorkflowId) || workflows[0];
+		const wfRes = await app.inject({
+			method: "POST",
+			url: `/projects/${proj.id}/workflows`,
+			payload: {
+				name: "Audit",
+				stages: [{ id: "audit-review", name: "Audit Review", type: "agent", runnerPolicy: { mode: "allow", runners: ["claim-nap"] } }],
+			},
+		});
+		expect(wfRes.statusCode).toBe(201);
+		const auditWf = JSON.parse(wfRes.payload);
+		const switchToAudit = await app.inject({
+			method: "POST",
+			url: `/projects/${proj.id}/workflows/${auditWf.id}/switch`,
+		});
+		expect(switchToAudit.statusCode).toBe(200);
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: proj.id, goal: "Audit claim fixture" },
+		});
+		expect(taskRes.statusCode).toBe(200);
+		const auditTask = JSON.parse(taskRes.payload).id;
+		const switchBack = await app.inject({
+			method: "POST",
+			url: `/projects/${proj.id}/workflows/${defaultWf.id}/switch`,
+		});
+		expect(switchBack.statusCode).toBe(200);
+		const credential = await onboard("claim-nap");
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${auditTask}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: proj.id },
+		});
+		expect(claim.statusCode).toBe(200);
+		expect(JSON.parse(claim.payload)).toMatchObject({ taskId: auditTask, runnerId: "claim-nap" });
+	});
+
 	it("dispatch requires Runner auth", async () => {
 		const res = await app.inject({ method: "POST", url: "/runners/dispatch", payload: {} });
 		expect(res.statusCode).toBe(401);
@@ -1134,33 +1442,39 @@ describe("Runner Routes Integration", () => {
 		const first = JSON.parse(
 			(await app.inject({ method: "GET", url: "/runners/models/catalogue" })).payload,
 		);
-		expect(first.models).toContainEqual({
-			id: "shared-model",
-			harnesses: ["mock"],
-			tiers: ["T0", "T1"],
-			runnerCount: 2,
-			runnerIds: ["fleet-a", "fleet-b"],
-		});
-		expect(first.models).toContainEqual({
-			id: "a-only",
-			harnesses: ["mock"],
-			tiers: ["T0", "T1"],
-			runnerCount: 1,
-			runnerIds: ["fleet-a"],
-		});
+		expect(first.models).toContainEqual(
+			expect.objectContaining({
+				id: "shared-model",
+				harnesses: ["mock"],
+				tiers: ["T0", "T1"],
+				runnerCount: 2,
+				runnerIds: ["fleet-a", "fleet-b"],
+			}),
+		);
+		expect(first.models).toContainEqual(
+			expect.objectContaining({
+				id: "a-only",
+				harnesses: ["mock"],
+				tiers: ["T0", "T1"],
+				runnerCount: 1,
+				runnerIds: ["fleet-a"],
+			}),
+		);
 		// Graceful change: revoking a Runner drops it out of the catalogue.
 		const revoke = await app.inject({ method: "POST", url: "/runners/fleet-b/revoke" });
 		expect(revoke.statusCode).toBe(200);
 		const second = JSON.parse(
 			(await app.inject({ method: "GET", url: "/runners/models/catalogue" })).payload,
 		);
-		expect(second.models).toContainEqual({
-			id: "shared-model",
-			harnesses: ["mock"],
-			tiers: ["T0", "T1"],
-			runnerCount: 1,
-			runnerIds: ["fleet-a"],
-		});
+		expect(second.models).toContainEqual(
+			expect.objectContaining({
+				id: "shared-model",
+				harnesses: ["mock"],
+				tiers: ["T0", "T1"],
+				runnerCount: 1,
+				runnerIds: ["fleet-a"],
+			}),
+		);
 	});
 
 	it("GET /runners/:id/config returns the record; PATCH persists a patch", async () => {

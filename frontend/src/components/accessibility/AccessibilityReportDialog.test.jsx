@@ -75,8 +75,9 @@ test('successful submit shows a confirmation with the reference', async () => {
     contact: null,
     pageUrl: '#/observability',
   });
-  // Confirmation takes focus for screen-reader users.
-  expect(screen.getByText('Report received — thank you')).toHaveFocus();
+  // Confirmation takes focus for screen-reader users — wait a tick for
+  // the layout effect that moves focus to the heading.
+  await waitFor(() => expect(screen.getByText('Report received — thank you')).toHaveFocus());
 });
 
 test('server rejections land on the fields with fix suggestions', async () => {

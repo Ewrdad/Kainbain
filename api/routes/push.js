@@ -21,6 +21,13 @@ import { isValidSubscription, isValidEndpoint } from "../push/subscriptionStore.
 export default async function pushRoutes(app, { deps } = {}) {
 	const service = deps?.pushService || getPushService();
 	const dir = service.dir;
+	// PoC enforcement surface (q11): notification-settings writes need the
+	// admin role while access control is on. API keys never touch settings
+	// in v1 (task-surface only).
+	const adminOnly = deps?.authService?.guards?.requireRole(["admin"], {
+		allowApiKeys: false,
+	});
+	const guard = adminOnly ? { preHandler: adminOnly } : {};
 
 	app.get("/push/vapid-key", async () => {
 		const publicKey = await getPublicVapidKey({ dir });
@@ -38,7 +45,7 @@ export default async function pushRoutes(app, { deps } = {}) {
 		}
 	});
 
-	app.put("/push/settings", async (request, reply) => {
+	app.put("/push/settings", guard, async (request, reply) => {
 		try {
 			return updatePushSettings({ dir, patch: request.body || {} });
 		} catch (error) {

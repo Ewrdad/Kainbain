@@ -858,6 +858,11 @@ export async function runCommandStage(
 			await withCheckedOutBranch(cwd, ciBranchPlan.branch, executeCommand, {
 				taskId,
 				context: `CI stage '${stage.name || stage.id}' execution on '${ciBranchPlan.branch}'`,
+				// Custom docs/state folders must count as engine-owned on
+				// the guard, the switch, and the restore alike — without
+				// the project hint a custom folder reads as real dirt and
+				// the guarded switch refuses a clean tree.
+				...(commandProject ? { project: commandProject } : {}),
 			});
 			const defBranch = await defaultBranch(cwd).catch(() => null);
 			if (defBranch) {
@@ -962,6 +967,7 @@ export async function runCommandStage(
 			const finalSummary = await store.finalizeTaskBranch(task, cwd, {
 				bridge,
 				stageName: stage.name || stage.id,
+				stage,
 				startSha: task.currentStageStartSha,
 			});
 			const boundaryStart =

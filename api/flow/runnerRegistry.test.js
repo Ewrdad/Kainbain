@@ -560,6 +560,60 @@ describe("RunnerRegistry operator config", () => {
 		expect(beat.belowMinimum).toBe(false);
 		expect(beat.updateAvailable).toBe(false);
 	});
+
+	test("advertises the update directive (desired + minimum + backend API version) on heartbeats", () => {
+		const { runners, credential } = approved();
+		const beat = runners.heartbeat({ runnerId: "r1", credential, facts: FACTS });
+		// Field names are the compat contract the daemon reads
+		// (updateDirectiveFromBeat): all three must be present.
+		expect(beat.update).toMatchObject({
+			desiredRunnerVersion: "0.1.0",
+			minimumRunnerVersion: "0.1.0",
+			backendApiVersion: "1.0.0",
+		});
+	});
+
+	test("heartbeat auto-nudges outdated command-capable runners, once until acked", () => {
+		const runners = registry();
+		const outdated = {
+			...FACTS,
+			versions: { protocol: RUNNER_PROTOCOL, runner: "0.0.9" },
+			commands: ["requestModelRediscovery", "requestUpdate"],
+		};
+		runners.register({ runnerId: "r1", joinToken: "join-secret", facts: outdated });
+		const { credential } = runners.approve("r1");
+		const first = runners.heartbeat({ runnerId: "r1", credential, facts: outdated });
+		expect(first.updateAvailable).toBe(true);
+		expect(runners.peekCommands("r1")).toEqual(["requestUpdate"]);
+		// A second heartbeat does not queue a duplicate while one pends.
+		runners.heartbeat({ runnerId: "r1", credential, facts: outdated });
+		expect(runners.peekCommands("r1")).toEqual(["requestUpdate"]);
+		// After the runner acks, the cooldown holds the next nudge back.
+		runners.heartbeat({
+			runnerId: "r1",
+			credential,
+			facts: { ...outdated, commandAck: { command: "requestUpdate", ok: true, detail: "updated to 0.1.0" } },
+		});
+		expect(runners.peekCommands("r1")).toEqual([]);
+	});
+
+	test("heartbeat never auto-nudges current runners or runners without the command", () => {
+		const { runners, credential } = approved();
+		// 0.1.0 trails nothing at the default recommended 0.1.0.
+		runners.heartbeat({
+			runnerId: "r1",
+			credential,
+			facts: { ...FACTS, commands: ["requestModelRediscovery", "requestUpdate"] },
+		});
+		expect(runners.peekCommands("r1")).toEqual([]);
+		// Outdated but too old to advertise commands: no nudge.
+		runners.heartbeat({
+			runnerId: "r1",
+			credential,
+			facts: { ...FACTS, versions: { protocol: RUNNER_PROTOCOL, runner: "0.0.9" } },
+		});
+		expect(runners.peekCommands("r1")).toEqual([]);
+	});
 });
 
 /***
@@ -752,5 +806,55 @@ describe("RunnerRegistry backend-to-Runner commands", () => {
 			ok: true,
 			detail: "discovered 2 model(s)",
 		});
+	});
+});
+
+/***
+ * MARK: RunnerRegistry discovery status tests
+ * @description Covers the additive per-harness discovery status the Runner
+ *   reports in heartbeat facts: persisted into the capabilities
+ *   projection, served on the public record, and absent (never misleading)
+ *   for old Runners that do not report it.
+ ***/
+describe("RunnerRegistry discovery status", () => {
+	const STATUS = {
+		pi: { ok: true, count: 77, atMs: 123 },
+		muse: { ok: true, count: 5, atMs: 124 },
+		antigravity: { ok: false, count: 0, atMs: 125, error: { code: "AGY_BIN_MISSING", message: "no agy" } },
+	};
+
+	test("heartbeat persists discoveryStatus into capabilities and serves it", () => {
+		const { runners, credential } = approved();
+		const beat = runners.heartbeat({
+			runnerId: "r1",
+			credential,
+			facts: { ...FACTS, discoveryStatus: STATUS },
+		});
+		expect(beat.capabilities.discoveryStatus).toEqual(STATUS);
+		expect(runners.getConfig("r1").capabilities.discoveryStatus).toEqual(STATUS);
+		expect(runners.list()[0].capabilities.discoveryStatus).toEqual(STATUS);
+	});
+
+	test("register persists discoveryStatus for pending runners too", () => {
+		const runners = registry();
+		const rec = runners.register({
+			runnerId: "r1",
+			joinToken: "join-secret",
+			facts: { ...FACTS, discoveryStatus: STATUS },
+		});
+		expect(rec.capabilities.discoveryStatus).toEqual(STATUS);
+	});
+
+	test("old runners without discoveryStatus stay absent, never misleading", () => {
+		const { runners, credential } = approved();
+		const beat = runners.heartbeat({ runnerId: "r1", credential, facts: FACTS });
+		expect("discoveryStatus" in (beat.capabilities || {})).toBe(false);
+	});
+
+	test("a malformed discoveryStatus is dropped and the heartbeat stays alive", () => {
+		const { runners, credential } = approved();
+		const beat = runners.heartbeat({ runnerId: "r1", credential, facts: { ...FACTS, discoveryStatus: "pi" } });
+		expect("discoveryStatus" in (beat.capabilities || {})).toBe(false);
+		expect(runners.getConfig("r1").capabilities.discoveryStatus).toBe(undefined);
 	});
 });

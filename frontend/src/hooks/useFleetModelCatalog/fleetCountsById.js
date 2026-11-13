@@ -1,8 +1,12 @@
 /***
  * MARK: fleetCountsById
  * @description Indexes a fleet catalogue payload by model id for option
- *   badges: `{ [id]: { runnerCount, runnerIds, harnesses, tiers } }`.
- *   Malformed entries never crash a picker — they are skipped.
+ *   badges: `{ [id]: { runnerCount, runnerIds, harnesses, tiers } }` plus
+ *   the snapshot's explicit availability verdict (`available` /
+ *   `unavailableReason`) when the backend served one — the safety-net
+ *   merge re-attaches it so a stale entry badges Unavailable whichever
+ *   merge path added the option. Malformed entries never crash a picker
+ *   — they are skipped.
  * @example fleetCountsById({ models: [{ id: 'm', runnerCount: 2, runnerIds: ['r1', 'r2'] }] })
  *   => { m: { runnerCount: 2, runnerIds: ['r1', 'r2'], harnesses: [], tiers: [] } }
  * @param {Object} [payload] - `/runners/models/catalogue` response.
@@ -25,6 +29,10 @@ export function fleetCountsById(payload) {
       tiers: Array.isArray(entry.tiers)
         ? entry.tiers.filter((t) => typeof t === 'string')
         : [],
+      // Entries from older backends (live derivation, no verdict) stay
+      // verdict-free — pickers fall back to the count badges as before.
+      ...(typeof entry?.available === 'boolean' ? { available: entry.available } : {}),
+      ...(typeof entry?.unavailableReason === 'string' ? { unavailableReason: entry.unavailableReason } : {}),
     };
   }
   return map;

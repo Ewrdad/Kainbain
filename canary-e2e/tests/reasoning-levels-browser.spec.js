@@ -78,7 +78,11 @@ test.describe("Reasoning levels browser verification (scratch stack)", () => {
     const catRes = await request.get(`${API_URL}/compute/models`);
     expect(catRes.ok()).toBeTruthy();
     const cat = await catRes.json();
-    const levelsOf = (id) => (cat.harnesses || []).find((h) => h.id === id)?.reasoningLevels ?? null;
+    const levelsOf = (id) => {
+      const candidates = (cat.harnesses || []).filter((h) => h.id === id);
+      const backend = candidates.find((h) => !h.fleetOnly) || candidates[0];
+      return backend?.reasoningLevels ?? null;
+    };
     console.log(`CATALOGUE pi=${JSON.stringify(levelsOf("pi"))} agy=${JSON.stringify(levelsOf("antigravity"))} mock=${JSON.stringify(levelsOf("mock"))} muse=${JSON.stringify(levelsOf("muse"))}`);
     const modelsOf = (id) => ((cat.harnesses || []).find((h) => h.id === id)?.models || []).length;
     const piModels = modelsOf("pi");
@@ -87,7 +91,11 @@ test.describe("Reasoning levels browser verification (scratch stack)", () => {
     console.log(`CATALOGUE COUNTS pi=${piModels} agy=${agyModels} mock=${mockModels}`);
     // Scratch boots with the mock default harness, so pi may be absent here;
     // pi's 7-level advertisement is pinned by unit tests + the live probe.
-    if ((cat.harnesses || []).some((h) => h.id === "pi")) {
+    // A fleet-synthesised pi section (backend-less) carries no harness
+    // metadata, so its reasoningLevels stay null — only the real backend
+    // pi section advertises the seven levels.
+    const piSection = (cat.harnesses || []).find((h) => h.id === "pi" && !h.fleetOnly);
+    if (piSection) {
       expect(levelsOf("pi")).toEqual(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
     }
     expect(levelsOf("antigravity")).toEqual(["low", "medium", "high"]);
@@ -157,7 +165,7 @@ test.describe("Reasoning levels browser verification (scratch stack)", () => {
     for (const harnessName of ["Muse Code", "Mistral Vibe", "OpenCode server", "Codex", "Custom command"]) {
       await picker.getByRole("combobox", { name: "AI Harness" }).click();
       await page.getByRole("option", { name: harnessName }).first().click();
-      await expect(picker.getByRole("combobox", { name: "Reasoning" })).toHaveCount(0);
+      await expect(picker.getByRole("combobox", { name: "Reasoning" })).toHaveCount(0, { timeout: 5000 });
     }
     await page.screenshot({ path: `${SHOTS}/05-picker-muse-no-reasoning.png` });
     console.log("NULL HARNESSES: Reasoning hidden for muse/vibe/opencode/codex/custom");

@@ -2090,7 +2090,7 @@ describe("TaskStore", () => {
 		expect(executedResult.status).toBe("in_stage");
 	});
 
-	it("schedules tasks using the 3 priority rules (follow-on, furthest right, oldest)", () => {
+	it("schedules tasks with the central-queue rules (oldest-first default; follow-on; legacy furthest-along)", () => {
 		const mockProjectStore = {
 			listProjects: () => [{ id: "p1", cwd: tempCwd, stages }],
 			getProject: () => ({ id: "p1", cwd: tempCwd, stages }),
@@ -2130,21 +2130,29 @@ describe("TaskStore", () => {
 			updatedAt: new Date(Date.now() - 1200000).toISOString(),
 		});
 
-		// Priority Rule 2 (Furthest right): Task B in Stage 2 should be picked first over Task A & C in Stage 1
+		// Default central queue (oldest-first, task 16d6fbd6): Task C waited
+		// longest (20 min — also past the built-in 15-min ceiling), so it is
+		// picked first; furthest-right no longer outranks wait age.
 		let candidate = store.findNextCandidateTask();
-		expect(candidate.taskId).toBe(taskB.id);
-
-		// Move Task B to completed
-		store.completeTask("p1", taskB.id);
-
-		// Between Task A and Task C (both in Stage 1), Priority Rule 3 (Oldest) picks Task C
-		candidate = store.findNextCandidateTask();
 		expect(candidate.taskId).toBe(taskC.id);
 
-		// Priority Rule 1 (Follow-on): If lastCompletedTask is set to Task A, it takes highest priority
-		store.lastCompletedTask = { projectId: "p1", taskId: taskA.id, timestamp: Date.now() };
+		// Legacy rollback mode (KAINBAIN_CENTRAL_QUEUE_ORDER=furthest-along,
+		// guard off): furthest right wins — Task B in Stage 2 over Stage 1.
+		candidate = store.findNextCandidateTask({ queue: { order: "furthest-along", maxWaitMs: 0 } });
+		expect(candidate.taskId).toBe(taskB.id);
+
+		// Move Task C to completed
+		store.completeTask("p1", taskC.id);
+
+		// Between Task A (10 min) and Task B (5 min), oldest waiting first: A
 		candidate = store.findNextCandidateTask();
 		expect(candidate.taskId).toBe(taskA.id);
+
+		// Follow-on: when lastCompletedTask names Task B, it takes priority —
+		// nothing else has waited past the ceiling, so the pass is granted.
+		store.lastCompletedTask = { projectId: "p1", taskId: taskB.id, timestamp: Date.now() };
+		candidate = store.findNextCandidateTask();
+		expect(candidate.taskId).toBe(taskB.id);
 		expect(candidate.priorityReason).toBe("follow_on");
 	});
 
@@ -2607,6 +2615,12 @@ describe("TaskStore", () => {
 
 			const tQueued1 = store.createTask("p1", { goal: "Automated Agent Task", stageId: "1" });
 			const tQueued2 = store.createTask("p1", { goal: "Automated CI Task", stageId: "3" });
+			// Deterministic ordering: both queued tasks wait the same amount of
+			// time, so the tie breaks by furthest-along progression and the
+			// CI (stage 3) lands ahead of the agent (stage 1).
+			const sharedWait = new Date(1_000_000).toISOString();
+			store.updateTask("p1", tQueued1.id, { enteredStageAt: sharedWait, updatedAt: sharedWait });
+			store.updateTask("p1", tQueued2.id, { enteredStageAt: sharedWait, updatedAt: sharedWait });
 
 			const queue = store.getScheduledQueue("p1");
 
@@ -3390,8 +3404,11 @@ describe("TaskStore branch support & merge stage", () => {
 		// The return stays strict (recovery off): dirt after the commit step
 		// means the commit failed, and that must refuse loudly, never stash.
 		expect(gitHelpers.pushBranchIfRemote).toHaveBeenCalledWith(tempCwd, task.branch);
+		// The return switch carries the same project hint as the commit step,
+		// so a custom docs folder counts as engine-owned there too.
 		expect(gitHelpers.returnToDefaultBranch).toHaveBeenCalledWith(tempCwd, {
 			recovery: "off",
+			project: { useBranches: true, cwd: tempCwd },
 		});
 	});
 

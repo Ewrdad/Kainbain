@@ -55,10 +55,15 @@ import {
 	emitAlert,
 } from '../../observability/alerts.js';
 import {
+	parseAutoApproveDuration,
+	resolveAutoApproveAt,
+} from '../../../shared/autoApproveDuration.js';
+import {
 	hasHarness,
 } from '../../agent/harnessRegistry.js';
 import {
 	stageWantsReport,
+	buildNoCodePromptSection,
 } from '../../promptCuration.js';
 import {
 	parkTaskForSurvey,
@@ -79,9 +84,14 @@ import { peekStageDisplayTarget } from './peekStageDisplayTarget.js';
 import { displayModelForInit } from './displayModelForInit.js';
 import { routeStageError } from './routeStageError.js';
 import { docsTasksIgnorePath } from '../../docsPath.js';
+import { resolveDocsDirName } from '../../docsPath.js';
 import { buildRetryFailureDetails } from './buildRetryFailureDetails.js';
 import { resolveCommandStageRuntime } from './resolveCommandStageRuntime.js';
 import { isDispatchServable } from '../dispatch/isDispatchServable.js';
+import { isRunnerDispatchFallbackDue } from '../dispatch/isRunnerDispatchFallbackDue.js';
+import { isRunnerClaimable } from '../dispatch/isRunnerClaimable.js';
+import { resolveAliasRequirement } from '../dispatch/resolveAliasRequirement.js';
+import { taskRequirements as taskRequirementsFor } from '../dispatch/taskRequirements.js';
 
 /***
  * MARK: executeStage
@@ -221,24 +231,90 @@ export async function executeStage(
 	// Runner-only execution by default (`KAINBAIN_RUNNER_EXECUTION_ONLY`,
 	// default true): a model stage a Runner can serve over the wire is
 	// left for dispatch instead of spawning an in-process agent child.
-	// Explicit `false` restores legacy embedded execution — emergency
-	// rollback hatch only, kept tested by the embedded suites. Pure skip —
-	// no budget touched, no state mutated, candidacy intact for the next
-	// tick and for the dispatch poll. Human checkpoints, commands, CI
-	// stages, unresolvable aliases, and circuit-canary probes keep their
-	// embedded behavior (canary bypass preserves the half-open probe).
+	// Fallback (task 16d6fbd6): when the fleet has no active runner that
+	// can actually claim this task, or the task has waited past the
+	// configured runnerDispatchFallbackMs ceiling (default 90 s), fall
+	// back to embedded so waiting work never starves behind a busy or
+	// incapable fleet. Explicit `false` restores legacy embedded
+	// execution — emergency rollback hatch only. Human checkpoints,
+	// commands, CI, unresolvable aliases, and circuit-canary probes keep
+	// their embedded behavior (canary bypass preserves the half-open probe).
 	if (
 		config.runnerExecutionOnly !== false &&
 		!isCanaryTask(store, taskId) &&
 		isDispatchServable({ project: projectEntity || {}, task, stages, stage })
 	) {
-		return {
-			task,
-			stageType,
-			status: "deferred",
-			deferred: "runner-dispatch",
-			message: "Runner execution only; stage left for wire dispatch",
-		};
+		let fallbackDue = false;
+		let fallbackReason = "";
+		// Check 1: wall-clock fallback — has this task waited past the
+		// ceiling without being claimed? Covers both "no capable runner"
+		// and "fleet busy" cases.
+		const fallbackMs = Number(config?.runnerDispatchFallbackMs) || 0;
+		if (isRunnerDispatchFallbackDue(task, fallbackMs)) {
+			fallbackDue = true;
+			fallbackReason = ` (runner fallback after ${fallbackMs}ms wait)`;
+		} else {
+			// Check 2: no runner can ever claim this task (wrong harness/
+		// model, all paused, fleet empty). Deferring would park it
+			// forever — fall back immediately.
+			try {
+				let req = taskRequirementsFor(projectEntity || {}, task);
+				if (req?.runnableType) {
+					// Alias stages defer with a concrete target resolved via
+					// D3 smooth-WRR. Mirror that resolution here so the
+					// claimability check matches the dispatch route exactly.
+					if (req.alias && typeof req.alias === "string" && req.alias.trim()) {
+						const resolved = resolveAliasRequirement({
+							project: projectEntity || {},
+							aliasName: req.alias,
+							isHarnessKnown: () => true,
+						});
+						if (resolved) {
+							req = {
+								...req,
+								harness: resolved.harness,
+								model: resolved.model,
+								alias: { name: resolved.aliasName, targetIndex: resolved.targetIndex },
+							};
+						}
+					}
+					const registry = store.runnerRegistry || null;
+					// A registry must actually exist before we can prove the
+					// fleet cannot serve this task (test doubles and older
+					// wiring without one keep deferring as before). With a
+					// registry attached, an empty or no-match result still
+					// falls back so a fleet that can never claim the work does
+					// not park it forever.
+					if (registry && !isRunnerClaimable(registry, req, { projectId })) {
+						fallbackDue = true;
+						fallbackReason = " (no capable runner for this task)";
+					}
+				}
+			} catch {
+				// Availability check is advisory — on any error, defer
+				// as before (runner dispatch stays the primary path).
+			}
+		}
+		if (!fallbackDue) {
+			return {
+				task,
+				stageType,
+				status: "deferred",
+				deferred: "runner-dispatch",
+				message: "Runner execution only; stage left for wire dispatch",
+			};
+		}
+		// Fallback: embedded execution. Log why so the operator can tell
+		// "runner took it" from "backend ran it because the fleet could not".
+		try {
+				bridge?.emitSystemLog?.(
+					projectId,
+					`[SYSTEM] Runner fallback${fallbackReason}: executing stage '${stage?.name || stage?.id || task.currentStageId}' for task #KB-${taskShortId} in-process`,
+					{ taskId: task.id, stageId: stage?.id || task.currentStageId },
+				);
+			} catch {
+				// Fallback log is advisory; execution proceeds regardless.
+			}
 	}
 
 	bridge?.emitSystemLog?.(
@@ -403,6 +479,26 @@ export async function executeStage(
 					}
 				}
 				store.updateTask(projectId, taskId, { status: "waiting_human" }, cwd);
+				// Run-loop park at a human checkpoint (execute/resume/retry of
+				// a task sitting at one). A live wait keeps its stamped
+				// deadline: re-parking is not a new visit, so it must neither
+				// extend the hold nor reset the reminder marker (a manual
+				// re-execute while waiting changes nothing). Only a park with
+				// no live stamp starts a fresh wait — based on the parking
+				// moment, never the stale stage-entry time — so an
+				// abort/resume cycle always gets the full configured hold
+				// (late is safe, early is a bug).
+				const parkHoldMs = parseAutoApproveDuration(stage?.autoApproveAfterMs);
+				if (!parkHoldMs) {
+					task.autoApproveAt = null;
+					task.autoApproveRemindedAt = null;
+				} else if (!Number.isFinite(Date.parse(task.autoApproveAt ?? ""))) {
+					task.autoApproveAt = resolveAutoApproveAt(
+						new Date().toISOString(),
+						parkHoldMs,
+					);
+					task.autoApproveRemindedAt = null;
+				}
 				task.history.push({
 					timestamp: new Date().toISOString(),
 					action: `Stage checkpoint: waiting for human approval in stage ${stage.name || stage.id}`,
@@ -696,6 +792,9 @@ export async function executeStage(
 				: [
 						stage.prompt || stage.criteria || task.goal,
 						failureDetails ? `\n# Failure Details\n${failureDetails}` : null,
+						stage?.noCode === true
+							? buildNoCodePromptSection(resolveDocsDirName(projectObj))
+							: null,
 					]
 						.filter(Boolean)
 						.join("\n\n");
@@ -982,7 +1081,9 @@ export async function executeStage(
 					const finalSummary = await store.finalizeTaskBranch(task, cwd, {
 						bridge,
 						stageName: stage.name || stage.id,
+						stage,
 						startSha: task.currentStageStartSha,
+						noCode: stage?.noCode === true,
 					});
 					// Record the explicit commit boundary for this stage and
 					// attribute its own diff from that range instead of the
