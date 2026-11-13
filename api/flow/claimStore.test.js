@@ -1,5 +1,5 @@
 import { expect, test, describe, beforeEach, vi } from "vitest";
-import { ClaimStore } from "./claimStore.js";
+import { ClaimStore, resolveClaimStatePath } from "./claimStore.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -173,5 +173,22 @@ describe("ClaimStore", () => {
 				expect(err.code).toBe("INVALID_CLAIM_ARGS");
 			}
 		}
+	});
+});
+
+describe("resolveClaimStatePath isolation", () => {
+	test("explicit live engine paths throw under VITEST (never silently pollute production)", () => {
+		expect(process.env.VITEST).toBeTruthy();
+		const live = path.join(os.homedir(), ".kainbain", "engine", "claims.json");
+		expect(() => resolveClaimStatePath(live)).toThrow(
+			/resolveClaimStatePath refused live engine path under test/,
+		);
+		// Constructing a store on a live file throws the same way.
+		expect(() => new ClaimStore({ stateFile: live })).toThrow(
+			/refused live engine path under test/,
+		);
+		// Temp explicit paths and disabled persistence still work.
+		expect(resolveClaimStatePath(tmpClaimState())).toMatch(/claims\.json$/);
+		expect(resolveClaimStatePath("")).toBeNull();
 	});
 });

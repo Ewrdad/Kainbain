@@ -1,7 +1,10 @@
 import { v4 as uuidv4 } from "uuid";
 import { config } from "../config.js";
 import { loadStateFile } from "./loadStateFile.js";
-import { resolveStatePath } from "./resolveStatePath.js";
+import {
+	resolveStatePath,
+	throwIfLiveEnginePathUnderTest,
+} from "./resolveStatePath.js";
 import { saveStateFile } from "./saveStateFile.js";
 
 const MAX_STEER_TEXT = 4000;
@@ -27,13 +30,23 @@ const MAX_RECEIPTS_KEPT = 1000;
  *   the schema path (env `KAINBAIN_STEER_STATE_FILE`), then the
  *   conventional `~/.kainbain/engine/steers.json`. Pending steers survive
  *   a restart so an operator nudge is never lost to a backend bounce;
- *   receipts are capped. Empty disables persistence.
+ *   receipts are capped. Empty disables persistence. Every branch is
+ *   test-guarded: an explicit live-engine path throws under `VITEST`
+ *   instead of silently polluting production (2026-11 incident, cause
+ *   N5) — the configured/fallback branches inherit the same guard
+ *   through `resolveStatePath`.
  * @example resolveSteerStatePath('/tmp/s.json') => '/tmp/s.json'
  * @param {string} [explicit] - Explicit path (tests).
  * @returns {string|null} Resolved path, or null when disabled.
  ***/
 export function resolveSteerStatePath(explicit) {
-	if (typeof explicit === "string") return explicit || null;
+	if (typeof explicit === "string") {
+		throwIfLiveEnginePathUnderTest({
+			candidatePath: explicit,
+			callerName: "resolveSteerStatePath",
+		});
+		return explicit || null;
+	}
 	const configured = config?.steerStateFile;
 	if (typeof configured === "string" && !configured.trim()) return null;
 	return resolveStatePath(null, configured, "steers.json");

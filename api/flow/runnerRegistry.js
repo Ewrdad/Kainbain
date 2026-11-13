@@ -1,7 +1,10 @@
 import { v4 as uuidv4 } from "uuid";
 import { config } from "../config.js";
 import { loadStateFile } from "./loadStateFile.js";
-import { resolveStatePath } from "./resolveStatePath.js";
+import {
+	resolveStatePath,
+	throwIfLiveEnginePathUnderTest,
+} from "./resolveStatePath.js";
 import { saveStateFile } from "./saveStateFile.js";
 import { normalizeCapabilities } from "./dispatch/normalizeCapabilities.js";
 import { runnerApiCompatible } from "./dispatch/runnerApiCompat.js";
@@ -190,12 +193,22 @@ export const RUNNER_COMMAND_TTL_MS = 24 * 60 * 60 * 1000;
  *   liveness (`lastSeenAt`) is deliberately NOT restored — every Runner
  *   re-establishes freshness with its first post-boot heartbeat, which is
  *   the secure default after an outage. Empty disables persistence.
+ *   Every branch is test-guarded: an explicit live-engine path throws
+ *   under `VITEST` instead of silently polluting production (2026-11
+ *   incident, cause N5) — the configured/fallback branches inherit the
+ *   same guard through `resolveStatePath`.
  * @example resolveRunnerStatePath('/tmp/r.json') => '/tmp/r.json'
  * @param {string} [explicit] - Explicit path (tests).
  * @returns {string|null} Resolved path, or null when disabled.
  ***/
 export function resolveRunnerStatePath(explicit) {
-	if (typeof explicit === "string") return explicit || null;
+	if (typeof explicit === "string") {
+		throwIfLiveEnginePathUnderTest({
+			candidatePath: explicit,
+			callerName: "resolveRunnerStatePath",
+		});
+		return explicit || null;
+	}
 	const configured = config?.runnerStateFile;
 	if (typeof configured === "string" && !configured.trim()) return null;
 	return resolveStatePath(null, configured, "runners.json");

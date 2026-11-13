@@ -420,4 +420,12 @@ describe("resolveFleetSnapshotPath", () => {
 		expect(resolveFleetSnapshotPath(null)).toBeNull();
 		expect(resolveFleetSnapshotPath(undefined)).toMatch(/fleet-catalog\.json$/);
 	});
+
+	test("explicit live engine paths throw under VITEST (never silently pollute production)", () => {
+		expect(process.env.VITEST).toBeTruthy();
+		const live = path.join(os.homedir(), ".kainbain", "engine", "fleet-catalog.json");
+		expect(() => resolveFleetSnapshotPath(live)).toThrow(
+			/resolveFleetSnapshotPath refused live engine path under test/,
+		);
+	});
 });
