@@ -15,6 +15,13 @@ try {
 	gitAvailable = false;
 }
 
+import {
+	hashStageConfig,
+	parseAttestationToken,
+	parseAttestationTrailers,
+	verifyAttestationLink,
+} from "../../shared/stageAttestation.js";
+
 const { currentBranch, ensureBranchCheckedOut } = await import("../git.js");
 const { ensureTaskBranch, resolveTaskBranch } = await import("./taskBranches.js");
 const {
@@ -189,6 +196,22 @@ describe.skipIf(!gitAvailable)("finalizeTaskBranch against a real repository", (
 			task.history.some((h) => h.action.includes("Returned to default branch")),
 		).toBe(true);
 		expect(logText(task)).toContain("[GIT]");
+	});
+
+	it("round-trips the curated prompt body through git log --format=%B", async () => {
+		// Characterization for stage attestation: the commit body read back
+		// from git must equal the curated prompt verbatim, so trailers
+		// appended after it stay machine-parseable.
+		const repo = path.join(base, "body-roundtrip");
+		initRepo(repo);
+		const store = fakeStore();
+		const task = fakeTask("roundtrip-1");
+		task.prompt = "# Task\nDo the thing.\n\n# Stage\nDo it now.\n";
+		await ensureTaskBranch(store, task, repo);
+		fs.writeFileSync(path.join(repo, "work.txt"), "work\n");
+		await finalizeTaskBranch(store, task, repo, { stageName: "Plan" });
+		const full = run(repo, "log", "--format=%B", "-n", "1", resolveTaskBranch(task));
+		expect(full).toContain("# Task\nDo the thing.\n\n# Stage\nDo it now.\n");
 	});
 
 	it("pushes the task branch to a file remote and ends on the default branch", async () => {
@@ -439,6 +462,198 @@ describe.skipIf(!gitAvailable)("finalizeTaskBranch against a real repository", (
 		);
 		expect(viaDefault).toBeGreaterThanOrEqual(0);
 		expect(pickedUp).toBeGreaterThan(viaDefault);
+	});
+});
+
+describe.skipIf(!gitAvailable)("finalizeTaskBranch stage attestation", () => {
+	let base;
+
+	const attestedStage = () => ({
+		id: "stage-plan",
+		name: "Plan",
+		type: "agent",
+		prompt: "Create a detailed plan.",
+		failback: "previous",
+	});
+
+	beforeAll(() => {
+		base = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-attest-"));
+	});
+
+	afterAll(() => {
+		try {
+			fs.rmSync(base, { recursive: true, force: true });
+		} catch {
+			// ignore
+		}
+	});
+
+	it("links the wrap-up commit, the history entry, and the stage config", async () => {
+		const repo = path.join(base, "linked");
+		initRepo(repo);
+		const store = fakeStore();
+		const task = {
+			...fakeTask("attest-1"),
+			goal: "Prove the stage ran",
+			prompt: "# Task\nDo the thing.\n",
+		};
+		const stage = attestedStage();
+		const configHash = hashStageConfig({ task, stage });
+		expect(configHash).toMatch(/^sha256:[0-9a-f]{64}$/);
+		await ensureTaskBranch(store, task, repo);
+		fs.writeFileSync(path.join(repo, "work.txt"), "work\n");
+
+		const summary = await finalizeTaskBranch(store, task, repo, {
+			stageName: "Plan",
+			stage,
+		});
+		expect(summary.committed).toBe(true);
+
+		// The commit carries machine-parseable trailers; the subject is untouched.
+		const branch = resolveTaskBranch(task);
+		const full = run(repo, "log", "--format=%B", "-n", "1", branch);
+		const subject = run(repo, "log", "--format=%s", "-n", "1", branch).trim();
+		expect(subject).toContain("auto-commit work after stage 'Plan'");
+		expect(subject).not.toContain("KainBain-");
+		const trailers = parseAttestationTrailers(full);
+		expect(trailers).toEqual({ taskId: "attest-1", stageId: "stage-plan", configHash });
+
+		// The history entry carries the same config hash plus the commit SHA.
+		const tip = run(repo, "rev-parse", branch).trim();
+		expect(tip).toMatch(/^[0-9a-f]{40}$/);
+		const entry = task.history.find((h) => h.action.includes("Auto-committed task work"));
+		expect(entry).toBeTruthy();
+		expect(entry.configHash).toBe(configHash);
+		expect(entry.commitSha).toBe(tip);
+		expect(parseAttestationToken(entry.action)).toEqual({
+			taskId: "attest-1",
+			stageId: "stage-plan",
+			configHash,
+			commitSha: tip,
+		});
+
+		// The compliance loop closes: history ↔ commit ↔ config agree.
+		expect(
+			verifyAttestationLink({ historyAction: entry.action, commitBody: full, commitSha: tip }),
+		).toMatchObject({ linked: true, problems: [] });
+	});
+
+	it("attests prompt-less stages with a trailer-only body", async () => {
+		const repo = path.join(base, "no-prompt");
+		initRepo(repo);
+		const store = fakeStore();
+		const task = { ...fakeTask("attest-2"), goal: "No prompt stored" };
+		const stage = attestedStage();
+		await ensureTaskBranch(store, task, repo);
+		fs.writeFileSync(path.join(repo, "work.txt"), "work\n");
+
+		const summary = await finalizeTaskBranch(store, task, repo, {
+			stageName: "Plan",
+			stage,
+		});
+		expect(summary.committed).toBe(true);
+		const full = run(repo, "log", "--format=%B", "-n", "1", resolveTaskBranch(task));
+		expect(parseAttestationTrailers(full).configHash).toBe(
+			hashStageConfig({ task, stage }),
+		);
+		const entry = task.history.find((h) => h.action.includes("Auto-committed task work"));
+		expect(entry?.configHash).toBe(hashStageConfig({ task, stage }));
+		expect(entry?.commitSha).toMatch(/^[0-9a-f]{40}$/);
+	});
+
+	it("appends trailers after truncation, never truncated away", async () => {
+		const repo = path.join(base, "truncated-attested");
+		initRepo(repo);
+		const store = fakeStore();
+		const tail = "tail-unique-xyz-789";
+		const task = {
+			...fakeTask("attest-3"),
+			prompt: `head-${"y".repeat(STAGE_COMMIT_BODY_MAX_CHARS + 100)}${tail}`,
+		};
+		const stage = attestedStage();
+		await ensureTaskBranch(store, task, repo);
+		fs.writeFileSync(path.join(repo, "work.txt"), "work\n");
+
+		await finalizeTaskBranch(store, task, repo, { stageName: "Plan", stage });
+		const full = run(repo, "log", "--format=%B", "-n", "1", resolveTaskBranch(task));
+		expect(full).toContain("[truncated:");
+		expect(full).not.toContain(tail);
+		const trailers = parseAttestationTrailers(full);
+		expect(trailers.configHash).toBe(hashStageConfig({ task, stage }));
+		// Trailers sit after the truncated prompt, not inside it.
+		expect(full.lastIndexOf("KainBain-Config-Hash:")).toBeGreaterThan(
+			full.indexOf("[truncated:"),
+		);
+	});
+
+	it("records a clean-tree attestation with an explicit null commit", async () => {
+		const repo = path.join(base, "clean-attested");
+		initRepo(repo);
+		const store = fakeStore();
+		const task = { ...fakeTask("attest-4"), goal: "Nothing to commit" };
+		const stage = attestedStage();
+		await ensureTaskBranch(store, task, repo);
+
+		const summary = await finalizeTaskBranch(store, task, repo, {
+			stageName: "Plan",
+			stage,
+		});
+		expect(summary.committed).toBe(false);
+		expect(summary.returnError).toBeNull();
+		const entry = task.history.find((h) => typeof h.configHash === "string");
+		expect(entry).toBeTruthy();
+		expect(entry.configHash).toBe(hashStageConfig({ task, stage }));
+		expect("commitSha" in entry).toBe(true);
+		expect(entry.commitSha).toBeNull();
+		expect(entry.action).toMatch(/clean tree/i);
+		expect(parseAttestationToken(entry.action)).toMatchObject({
+			configHash: hashStageConfig({ task, stage }),
+			commitSha: null,
+		});
+	});
+
+	it("records the config hash without a SHA when the commit fails", async () => {
+		const repo = path.join(base, "failed-attested");
+		initRepo(repo);
+		const hookPath = path.join(repo, ".git", "hooks", "pre-commit");
+		fs.writeFileSync(hookPath, "#!/bin/sh\nexit 1\n");
+		fs.chmodSync(hookPath, 0o755);
+		const store = fakeStore();
+		const task = { ...fakeTask("attest-5"), goal: "Commit blocked" };
+		const stage = attestedStage();
+		await ensureTaskBranch(store, task, repo);
+		fs.writeFileSync(path.join(repo, "work.txt"), "work\n");
+
+		const summary = await finalizeTaskBranch(store, task, repo, {
+			stageName: "Plan",
+			stage,
+		});
+		expect(summary.committed).toBe(false);
+		expect(summary.commitError).toBeTruthy();
+		const entry = task.history.find((h) => h.action.includes("auto-commit after stage 'Plan' failed"));
+		expect(entry).toBeTruthy();
+		expect(entry.configHash).toBe(hashStageConfig({ task, stage }));
+		expect(entry.commitSha).toBeNull();
+	});
+
+	it("leaves history unattested when the stage cannot be resolved", async () => {
+		const repo = path.join(base, "unresolved");
+		initRepo(repo);
+		const store = fakeStore();
+		const task = { ...fakeTask("attest-6"), goal: "No stage anywhere" };
+		await ensureTaskBranch(store, task, repo);
+		fs.writeFileSync(path.join(repo, "work.txt"), "work\n");
+
+		// No opts.stage and no projectStore on the double: the pre-feature
+		// posture — a plain commit and plain history, never a fake hash.
+		const summary = await finalizeTaskBranch(store, task, repo, {
+			stageName: "Plan",
+		});
+		expect(summary.committed).toBe(true);
+		const full = run(repo, "log", "--format=%B", "-n", "1", resolveTaskBranch(task));
+		expect(parseAttestationTrailers(full).configHash).toBeNull();
+		expect(task.history.some((h) => typeof h.configHash === "string")).toBe(false);
+		expect(task.history.some((h) => h.action.includes("[attestation "))).toBe(false);
 	});
 });
 

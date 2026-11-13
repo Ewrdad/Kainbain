@@ -52,6 +52,7 @@ export function OrchestratorView() {
     <div className="flex-1 flex h-full overflow-hidden relative">
       {/* Main Center Canvas */}
       <div
+        data-testid="orchestrator-canvas-column"
         className={`flex-1 bg-surface-deep flex flex-col overflow-hidden relative ${
           showNowPlayingBar && !isGlassesViewport ? 'pb-[72px]' : 'pb-0'
         }`}
@@ -74,7 +75,10 @@ export function OrchestratorView() {
         </GlassesViewportGate>
       </div>
 
-      {/* Integrated Slide-Over Task Inspector (No full-screen blocking modal) */}
+      {/* Integrated Slide-Over Task Inspector (No full-screen blocking modal).
+          Desktop overlay: absolutely positioned against this row (which is
+          `relative`), so the canvas column keeps full width and the toolbar
+          never squishes — the panel covers the board's right edge. */}
       {selectedTask && !isGlassesViewport && (
         <TaskDetailOverlay
           task={selectedTask}

@@ -39,6 +39,7 @@ export { formatMobileMonitorTitle, resolveMobileModelLine };
  * @param {Array|null} [props.processLogs] - Log lines for the console; null shows the waiting-for-stream empty state.
  * @param {Function} [props.onClearLogs] - Clears the console.
  * @param {Function} [props.onExit] - Leaves the monitor (Back button).
+ * @param {Function} [props.onOpenTask] - Jumps to a Runner's job in its own pipeline; omitted hides the affordance.
  * @param {Array<Object>} [props.runnerAssignmentsOverride] - Injected live fleet assignments (tests); skips polling while set.
  * @param {Map|Array|number} [props.runnerRegistryOverride] - Injected Runner registry (tests): a Map, a runner list, or a positive whole count; skips polling while set. A count carries no runner records, so the rows render the fleet-idle state while the header reads it as fleet presence.
  * @example <MobileMonitorView engineState={engineState} activeTask={activeTask} processLogs={logs} onExit={...} />
@@ -58,6 +59,7 @@ export function MobileMonitorView({
   processLogs = [],
   onClearLogs,
   onExit = () => {},
+  onOpenTask,
   runnerAssignmentsOverride,
   runnerRegistryOverride,
 }) {
@@ -158,6 +160,7 @@ export function MobileMonitorView({
           compact
           assignmentsOverride={fleetAssignments}
           registryOverride={fleetRegistry}
+          onOpenTask={onOpenTask}
         />
       </div>
 

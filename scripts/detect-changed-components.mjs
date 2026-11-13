@@ -99,7 +99,11 @@ export function componentsForPath(p) {
 		file.startsWith("runner/") ||
 		file === "startRunner.sh" ||
 		file === "scripts/package-runner.sh" ||
-		file === "scripts/install-local-runner.sh"
+		file === "scripts/package-runner.mjs" ||
+		file === "scripts/generate-runner-manifest.mjs" ||
+		file === "scripts/migrate-runner-to-wrapper.sh" ||
+		file === "scripts/install-local-runner.sh" ||
+		file === "scripts/lib/runner-install-root.sh"
 	)
 		return ["runner"];
 	if (file === "Dockerfile" || file === "docker-entrypoint.sh") return ["backend"];

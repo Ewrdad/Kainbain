@@ -146,6 +146,22 @@ test('shows completed tasks when checkbox is toggled', () => {
   expect(screen.getByText('Old task')).toBeInTheDocument();
 });
 
+test('Show Completed label never shows a count, toggle off or on', () => {
+  renderWithKainBain(<WorkflowCanvas />, {
+    stages,
+    tasks,
+    activeProjectId: 'proj-1',
+  });
+
+  expect(screen.getByText('Show Completed')).toBeInTheDocument();
+  expect(screen.queryByText(/Show Completed \(/)).toBeNull();
+
+  fireEvent.click(screen.getByLabelText(/Show Completed/i));
+
+  expect(screen.getByText('Show Completed')).toBeInTheDocument();
+  expect(screen.queryByText(/Show Completed \(/)).toBeNull();
+});
+
 test('toggling Show Completed refetches tasks with the matching scope', () => {
   const retryTasks = vi.fn(() => Promise.resolve([]));
   renderWithKainBain(<WorkflowCanvas />, {

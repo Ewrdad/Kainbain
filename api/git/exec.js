@@ -34,6 +34,10 @@ export function git(
 	if (typeof projectCwd !== "string" || !projectCwd.trim()) {
 		return Promise.reject(new GitError("git requires a working directory"));
 	}
+	// `timeout: null` disables ...
+	const effectiveTimeout =
+		typeof timeout === "number" && Number.isFinite(timeout) && timeout > 0 ? timeout : null;
+
 	if (!Array.isArray(args) || args.length === 0) {
 		return Promise.reject(
 			new GitError("git requires a non-empty argument array"),
@@ -52,7 +56,7 @@ export function git(
 	// is one fast local op, and the engine runs one task at a time anyway.
 	return withRepoGitLock(projectCwd, async () => {
 		try {
-			return await _spawnGit(projectCwd, args, { timeout, env });
+			return await _spawnGit(projectCwd, args, { timeout: effectiveTimeout, env });
 		} catch (err) {
 			if (!isGitLockError(err)) throw err;
 			const recoveryOpts = {};
@@ -67,7 +71,7 @@ export function git(
 				throw _withLockCheckSuffix(err, recovery);
 			}
 			try {
-				return await _spawnGit(projectCwd, args, { timeout, env });
+				return await _spawnGit(projectCwd, args, { timeout: effectiveTimeout, env });
 			} catch (retryErr) {
 				// The retry ran on a cleared lock and still failed: keep the
 				// recovery evidence on the error so failure routing and logs
@@ -108,27 +112,31 @@ function _spawnGit(projectCwd, args, { timeout = 60000, env } = {}) {
 		let stdout = "";
 		let stderr = "";
 		let settled = false;
-		const timer = setTimeout(() => {
-			if (settled) return;
-			settled = true;
-			try {
-				child.kill("SIGKILL");
-			} catch {
-				// already gone
-			}
-			// Kill-path hygiene: a SIGKILLed git can orphan `.git/index.lock`,
-			// but ownership is unknowable here, so no eager deletion. The next
-			// gated op re-assesses the lock via maybeRecoverStaleLock (age +
-			// live-holder check) and recovers only provably stale locks.
-			reject(
-				new GitError(`git ${args.join(" ")} timed out after ${timeout}ms`, {
-					args,
-					stdout,
-					stderr,
-				}),
-			);
-		}, timeout);
-		if (timer.unref) timer.unref();
+		let timer = null;
+		if (typeof timeout === "number" && Number.isFinite(timeout) && timeout > 0) {
+			timer = setTimeout(() => {
+				if (settled) return;
+				settled = true;
+				try {
+					child.kill("SIGKILL");
+				} catch {
+					// already gone
+				}
+				// Kill-path hygiene: a SIGKILLed git can orphan `.git/index.lock`,
+				// but ownership is unknowable here, so no eager deletion. The next
+				// gated op re-assesses the lock via maybeRecoverStaleLock (age +
+				// live-holder check) and recovers only provably stale locks.
+				reject(
+					new GitError(`git ${args.join(" ")} timed out after ${timeout}ms`, {
+						args,
+						stdout,
+						stderr,
+					}),
+				);
+			}, timeout);
+			if (timer && timer.unref) timer.unref();
+		}
+
 
 		child.stdout?.on("data", (d) => {
 			if (stdout.length < MAX_CAPTURE_BYTES) stdout += d.toString();
@@ -139,7 +147,7 @@ function _spawnGit(projectCwd, args, { timeout = 60000, env } = {}) {
 		child.on("error", (err) => {
 			if (settled) return;
 			settled = true;
-			clearTimeout(timer);
+			if (timer) clearTimeout(timer);
 			reject(
 				new GitError(`Failed to start git: ${err.message} (is git installed?)`, {
 					args,
@@ -150,7 +158,7 @@ function _spawnGit(projectCwd, args, { timeout = 60000, env } = {}) {
 		child.on("close", (code, signal) => {
 			if (settled) return;
 			settled = true;
-			clearTimeout(timer);
+			if (timer) clearTimeout(timer);
 			// Trim trailing whitespace/newlines only: stripping LEADING whitespace
 			// would corrupt `git status --porcelain` v1 output, where the first
 			// entry's status column (e.g. ' M') is significant.

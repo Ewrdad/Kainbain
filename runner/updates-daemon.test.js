@@ -152,4 +152,33 @@ describe("maybeSelfUpdate", () => {
 	it("never claims to be newer than itself (sanity on RUNNER_VERSION)", () => {
 		assert.match(String(RUNNER_VERSION), /^\d+\.\d+\.\d+/);
 	});
+
+	it("passes the heartbeat-learned backend version into the check (compat gating)", async () => {
+		let received = null;
+		const state = { updateDirective: { backendApiVersion: "1.0.0", desiredRunnerVersion: "0.2.0", minimumRunnerVersion: "0.1.0" } };
+		await maybeSelfUpdate({
+			config: baseConfig(),
+			logger: quiet,
+			now: 10_000_000,
+			updateState: state,
+			updateDeps: {
+				checkForUpdate: async (args) => { received = args; return { ok: true, update: null }; },
+			},
+		});
+		assert.equal(received?.backendApiVersion, "1.0.0");
+	});
+
+	it("passes null when no heartbeat arrived yet (ungated, today's behaviour)", async () => {
+		let received = null;
+		await maybeSelfUpdate({
+			config: baseConfig(),
+			logger: quiet,
+			now: 10_000_000,
+			updateState: {},
+			updateDeps: {
+				checkForUpdate: async (args) => { received = args; return { ok: true, update: null }; },
+			},
+		});
+		assert.equal(received?.backendApiVersion, null);
+	});
 });
