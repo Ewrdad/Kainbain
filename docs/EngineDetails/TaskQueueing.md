@@ -52,22 +52,34 @@ never another stage's job.
 Rollback to the pre-16d6fbd6 order (closest-to-completion by absolute stage
 index, then oldest) is config-only: `KAINBAIN_CENTRAL_QUEUE_ORDER=furthest-along`.
 
-### Runner dispatch fallback (no starvation behind the fleet)
+### Runner dispatch (hard defer, no embedded fallback)
 
-With `KAINBAIN_RUNNER_EXECUTION_ONLY=1` (default) the scheduler defers
-all servable agent stages to runner dispatch. Two backend fallbacks
-prevent starvation when the fleet cannot keep up:
+With `KAINBAIN_RUNNER_EXECUTION_ONLY=1` (default) the scheduler defers all
+servable stages to runner dispatch and the backend never runs them in process.
+A task that no runner can claim (empty registry, stale fleet, wrong
+harness/model, or a busy single-concurrency runner) stays `in_stage` and
+re-competes on every scheduler tick; the backend does not fall back to embedded
+execution. The backend container has no provider credentials and no harness
+CLIs, so an in-process run could only fail — and CI/command stages must run on
+a runner host anyway (e.g. wf-default's Update stage `cd /home/server/apps/kainbain && ./update.sh`
+resolves only on a runner in the `local-alpha`/`local-bravo` whitelist, never in
+the container, which does not mount `/home/server/apps`).
 
-* **No-capable-runner fallback** — if no active, fresh runner advertises
-  the required harness/model for this task, the defer is skipped and the
-  stage runs embedded immediately. Deferring would park the task forever
-  behind a fleet that can never claim it.
-* **Wall-clock fallback** — a task that has waited for runner dispatch
-  past `KAINBAIN_RUNNER_DISPATCH_FALLBACK_MS` (default 90 s) falls back
-  to embedded even when a capable runner exists but is busy. This bounds
-  worst-case wait when a single runner serialises work from many pipelines.
-  Set `KAINBAIN_RUNNER_DISPATCH_FALLBACK_MS=0` to disable and keep
-  runner-only always (e.g. in container-only deploys with no local harness).
+Visibility:
+
+- Scheduler stats: `deferredDispatch` count and `lastOutcome = deferred-runner-dispatch`.
+- Runner settings screen: "N deferred to Runners".
+- Task rows keep their normal `in_stage` state.
+
+Recovery (operator):
+
+- Approve/attach/unpause a capable runner, clear a `paused` runner, or scale
+  concurrency; the next tick dispatches.
+- Emergency only: `KAINBAIN_RUNNER_EXECUTION_ONLY=false` restores the legacy
+  (unmaintained) embedded path.
+
+The `KAINBAIN_RUNNER_DISPATCH_FALLBACK_MS` knob was removed; setting it has
+no effect (no error).
 
 ### Follow on from just completed tasks (#1)
 

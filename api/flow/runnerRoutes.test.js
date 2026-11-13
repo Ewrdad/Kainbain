@@ -1425,10 +1425,17 @@ describe("Runner Routes Integration", () => {
 	});
 
 	it("GET /runners/models/catalogue dedupes fleet models with runner counts", async () => {
-		const factsFor = (models) => ({ ...FACTS, models });
+		const atMs = Date.now();
+		const factsFor = (models) => ({
+			...FACTS,
+			harnesses: [{ id: "mock", version: "0.0.0" }],
+			models,
+			modelProvenance: Object.fromEntries(models.map((m) => [m, { harness: "mock", atMs }])),
+			discoveryStatus: { mock: { ok: true, count: models.length, atMs } },
+		});
 		for (const [runnerId, models] of [
-			["fleet-a", ["shared-model", "a-only"]],
-			["fleet-b", ["shared-model"]],
+			["fleet-a", ["mock::prov::shared-model", "mock::prov::a-only"]],
+			["fleet-b", ["mock::prov::shared-model"]],
 		]) {
 			const reg = await app.inject({
 				method: "POST",
@@ -1444,21 +1451,31 @@ describe("Runner Routes Integration", () => {
 		);
 		expect(first.models).toContainEqual(
 			expect.objectContaining({
-				id: "shared-model",
+				id: "mock::prov::shared-model",
+				harness: "mock",
 				harnesses: ["mock"],
 				tiers: ["T0", "T1"],
 				runnerCount: 2,
 				runnerIds: ["fleet-a", "fleet-b"],
+				declaredBy: [],
+				claimedBy: [],
+				verified: true,
+				available: true,
+				unavailableReason: null,
 			}),
 		);
 		expect(first.models).toContainEqual(
 			expect.objectContaining({
-				id: "a-only",
+				id: "mock::prov::a-only",
 				harnesses: ["mock"],
 				tiers: ["T0", "T1"],
 				runnerCount: 1,
 				runnerIds: ["fleet-a"],
 			}),
+		);
+		// The fleet harness footprint rides the same response for pickers.
+		expect(first.harnesses).toContainEqual(
+			expect.objectContaining({ id: "mock", runnerIds: expect.arrayContaining(["fleet-a", "fleet-b"]) }),
 		);
 		// Graceful change: revoking a Runner drops it out of the catalogue.
 		const revoke = await app.inject({ method: "POST", url: "/runners/fleet-b/revoke" });
@@ -1468,13 +1485,209 @@ describe("Runner Routes Integration", () => {
 		);
 		expect(second.models).toContainEqual(
 			expect.objectContaining({
-				id: "shared-model",
+				id: "mock::prov::shared-model",
 				harnesses: ["mock"],
 				tiers: ["T0", "T1"],
 				runnerCount: 1,
 				runnerIds: ["fleet-a"],
 			}),
 		);
+	});
+
+	it("GET /runners/models/catalogue quarantines non-canonical ids instead of serving them", async () => {
+		const facts = {
+			...FACTS,
+			harnesses: [{ id: "pi", version: "0.0.0" }, { id: "muse", version: "1.4.9" }],
+			models: ["ollama-cloud-direct::gemma4:31b-cloud", "deepseek-v4-flash:0731-cloud"],
+		};
+		const reg = await app.inject({
+			method: "POST",
+			url: "/runners/register",
+			payload: { runnerId: "wpc-quarantine", joinToken: "test-join-token", facts },
+		});
+		expect(reg.statusCode).toBe(202);
+		expect((await app.inject({ method: "POST", url: "/runners/wpc-quarantine/approve" })).statusCode).toBe(
+			200,
+		);
+		const body = JSON.parse(
+			(await app.inject({ method: "GET", url: "/runners/models/catalogue" })).payload,
+		);
+		expect(body.models.map((m) => m.id)).not.toContain("ollama-cloud-direct::gemma4:31b-cloud");
+		expect(body.models.map((m) => m.id)).not.toContain("deepseek-v4-flash:0731-cloud");
+		for (const id of ["ollama-cloud-direct::gemma4:31b-cloud", "deepseek-v4-flash:0731-cloud"]) {
+			const record = body.quarantined.find((q) => q.id === id);
+			expect(record).toBeDefined();
+			expect(record.reason).toMatch(/not harness-qualified/);
+			expect(record.runnerIds).toContain("wpc-quarantine");
+		}
+	});
+
+	it("GET /runners/models/catalogue lists unverified pins as declared with modelSource provenance", async () => {
+		const atMs = Date.now();
+		const declaredFacts = {
+			...FACTS,
+			harnesses: [{ id: "muse", version: "1.4.9" }],
+			models: ["muse::meta::wpc-pinned-x"],
+			modelSource: "pinned",
+			discoveryStatus: {},
+		};
+		const reg = await app.inject({
+			method: "POST",
+			url: "/runners/register",
+			payload: { runnerId: "wpc-pinned", joinToken: "test-join-token", facts: declaredFacts },
+		});
+		expect(reg.statusCode).toBe(202);
+		expect((await app.inject({ method: "POST", url: "/runners/wpc-pinned/approve" })).statusCode).toBe(200);
+		// A pinned runner whose own discovery CONFIRMED the id proves the
+		// modelSource passthrough end to end (heartbeat facts → catalogue).
+		const provenFacts = {
+			...FACTS,
+			harnesses: [{ id: "muse", version: "1.4.9" }],
+			models: ["muse::meta::wpc-pinned-proven"],
+			modelSource: "pinned",
+			modelProvenance: { "muse::meta::wpc-pinned-proven": { harness: "muse", atMs } },
+			discoveryStatus: { muse: { ok: true, count: 1, atMs } },
+		};
+		const regProven = await app.inject({
+			method: "POST",
+			url: "/runners/register",
+			payload: { runnerId: "wpc-pinned-proven", joinToken: "test-join-token", facts: provenFacts },
+		});
+		expect(regProven.statusCode).toBe(202);
+		expect((await app.inject({ method: "POST", url: "/runners/wpc-pinned-proven/approve" })).statusCode).toBe(
+			200,
+		);
+		const body = JSON.parse(
+			(await app.inject({ method: "GET", url: "/runners/models/catalogue" })).payload,
+		);
+		const declared = body.models.find((m) => m.id === "muse::meta::wpc-pinned-x");
+		expect(declared).toBeDefined();
+		expect(declared).toMatchObject({
+			runnerCount: 0,
+			runnerIds: [],
+			declaredBy: ["wpc-pinned"],
+			verified: false,
+			available: false,
+			harnesses: ["muse"],
+		});
+		expect(declared.unavailableReason).toMatch(/declared by 1 runner/);
+		const proven = body.models.find((m) => m.id === "muse::meta::wpc-pinned-proven");
+		expect(proven).toBeDefined();
+		expect(proven).toMatchObject({ runnerCount: 1, available: true, verified: true });
+		expect(proven.provenance["wpc-pinned-proven"]).toMatchObject({ source: "pinned" });
+	});
+
+	it("DELETE /runners/models/catalogue/:id removes entries permanently until re-advertised", async () => {
+		const atMs = Date.now();
+		const id = "mock::prov::wpc-del-me";
+		const facts = {
+			...FACTS,
+			harnesses: [{ id: "mock", version: "0.0.0" }],
+			models: [id],
+			modelProvenance: { [id]: { harness: "mock", atMs } },
+			discoveryStatus: { mock: { ok: true, count: 1, atMs } },
+		};
+		const reg = await app.inject({
+			method: "POST",
+			url: "/runners/register",
+			payload: { runnerId: "wpc-del", joinToken: "test-join-token", facts },
+		});
+		expect(reg.statusCode).toBe(202);
+		expect((await app.inject({ method: "POST", url: "/runners/wpc-del/approve" })).statusCode).toBe(200);
+		const encoded = encodeURIComponent(id);
+		const before = JSON.parse(
+			(await app.inject({ method: "GET", url: "/runners/models/catalogue" })).payload,
+		);
+		expect(before.models.map((m) => m.id)).toContain(id);
+		const deleted = await app.inject({ method: "DELETE", url: `/runners/models/catalogue/${encoded}` });
+		expect(deleted.statusCode).toBe(204);
+		expect(deleted.payload).toBe("");
+		// Every catalogue GET re-merges the live registrations, so while
+		// the runner stays registered the id reappears on the next read.
+		const remerged = JSON.parse(
+			(await app.inject({ method: "GET", url: "/runners/models/catalogue" })).payload,
+		);
+		expect(remerged.models.map((m) => m.id)).toContain(id);
+		// Revoking the runner stops the advertisement: deleting again
+		// removes it for good, the next read stays clean, and a repeat
+		// delete is a 404.
+		expect((await app.inject({ method: "POST", url: "/runners/wpc-del/revoke" })).statusCode).toBe(200);
+		const deletedAgain = await app.inject({
+			method: "DELETE",
+			url: `/runners/models/catalogue/${encoded}`,
+		});
+		expect(deletedAgain.statusCode).toBe(204);
+		const after = JSON.parse(
+			(await app.inject({ method: "GET", url: "/runners/models/catalogue" })).payload,
+		);
+		expect(after.models.map((m) => m.id)).not.toContain(id);
+		const missing = await app.inject({ method: "DELETE", url: `/runners/models/catalogue/${encoded}` });
+		expect(missing.statusCode).toBe(404);
+		// A re-advertised id reappears: a fresh runner serving it brings
+		// the entry back on the next read.
+		const reg2 = await app.inject({
+			method: "POST",
+			url: "/runners/register",
+			payload: { runnerId: "wpc-del-2", joinToken: "test-join-token", facts },
+		});
+		expect(reg2.statusCode).toBe(202);
+		expect((await app.inject({ method: "POST", url: "/runners/wpc-del-2/approve" })).statusCode).toBe(200);
+		const back = JSON.parse(
+			(await app.inject({ method: "GET", url: "/runners/models/catalogue" })).payload,
+		);
+		expect(back.models.map((m) => m.id)).toContain(id);
+	});
+
+	it("DELETE /runners/models/catalogue/quarantine/:id removes quarantine records", async () => {
+		const facts = { ...FACTS, models: ["wpc-bare-gone"] };
+		const reg = await app.inject({
+			method: "POST",
+			url: "/runners/register",
+			payload: { runnerId: "wpc-qdel", joinToken: "test-join-token", facts },
+		});
+		expect(reg.statusCode).toBe(202);
+		expect((await app.inject({ method: "POST", url: "/runners/wpc-qdel/approve" })).statusCode).toBe(200);
+		const before = JSON.parse(
+			(await app.inject({ method: "GET", url: "/runners/models/catalogue" })).payload,
+		);
+		expect(before.quarantined.map((q) => q.id)).toContain("wpc-bare-gone");
+		const encoded = encodeURIComponent("wpc-bare-gone");
+		const deleted = await app.inject({
+			method: "DELETE",
+			url: `/runners/models/catalogue/quarantine/${encoded}`,
+		});
+		expect(deleted.statusCode).toBe(204);
+		expect(deleted.payload).toBe("");
+		// While the runner still advertises the bare id the record
+		// re-merges on the next read; revoking the runner makes the
+		// removal stick, and deleting again is a 404.
+		const remerged = JSON.parse(
+			(await app.inject({ method: "GET", url: "/runners/models/catalogue" })).payload,
+		);
+		expect(remerged.quarantined.map((q) => q.id)).toContain("wpc-bare-gone");
+		expect((await app.inject({ method: "POST", url: "/runners/wpc-qdel/revoke" })).statusCode).toBe(200);
+		// Quarantine records persist like models do — removing the stuck
+		// runner stops re-advertisement, then deleting again clears it.
+		const deletedAgain = await app.inject({
+			method: "DELETE",
+			url: `/runners/models/catalogue/quarantine/${encoded}`,
+		});
+		expect(deletedAgain.statusCode).toBe(204);
+		const after = JSON.parse(
+			(await app.inject({ method: "GET", url: "/runners/models/catalogue" })).payload,
+		);
+		expect(after.quarantined.map((q) => q.id)).not.toContain("wpc-bare-gone");
+		const missing = await app.inject({
+			method: "DELETE",
+			url: `/runners/models/catalogue/quarantine/${encoded}`,
+		});
+		expect(missing.statusCode).toBe(404);
+		// An unknown quarantine id is a 404 too.
+		const unknown = await app.inject({
+			method: "DELETE",
+			url: `/runners/models/catalogue/quarantine/${encodeURIComponent("mock::prov::no-such-quarantine")}`,
+		});
+		expect(unknown.statusCode).toBe(404);
 	});
 
 	it("GET /runners/:id/config returns the record; PATCH persists a patch", async () => {

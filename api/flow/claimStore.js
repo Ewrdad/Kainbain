@@ -1,7 +1,10 @@
 import { v4 as uuidv4 } from "uuid";
 import { config } from "../config.js";
 import { loadStateFile } from "./loadStateFile.js";
-import { resolveStatePath } from "./resolveStatePath.js";
+import {
+	resolveStatePath,
+	throwIfLiveEnginePathUnderTest,
+} from "./resolveStatePath.js";
 import { saveStateFile } from "./saveStateFile.js";
 
 const CLAIM_STATE_VERSION = 1;
@@ -35,13 +38,23 @@ const MAX_COMPLETED_KEPT = 10000;
  *   epochs + completed execution IDs only — live holds are deliberately
  *   NOT restored (a restart re-queues in-flight work as interrupted per
  *   the Phase 4 gate; restoring holds would let a dead Runner's lease
- *   block re-dispatch until TTL).
+ *   block re-dispatch until TTL). Every branch is test-guarded: an
+ *   explicit live-engine path throws under `VITEST` instead of silently
+ *   polluting production (2026-11 incident, cause N5) — the
+ *   configured/fallback branches inherit the same guard through
+ *   `resolveStatePath`.
  * @example resolveClaimStatePath('/tmp/c.json') => '/tmp/c.json'
  * @param {string} [explicit] - Explicit path (tests).
  * @returns {string} Resolved path.
  ***/
 export function resolveClaimStatePath(explicit) {
-	if (typeof explicit === "string") return explicit || null;
+	if (typeof explicit === "string") {
+		throwIfLiveEnginePathUnderTest({
+			candidatePath: explicit,
+			callerName: "resolveClaimStatePath",
+		});
+		return explicit || null;
+	}
 	const configured = config?.claimStateFile;
 	if (typeof configured === "string" && !configured.trim()) return null;
 	return resolveStatePath(null, configured, "claims.json");

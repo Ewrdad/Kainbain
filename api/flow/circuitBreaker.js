@@ -2,9 +2,11 @@
 // Owns the persisted trip/reset state that gates every dispatch, the
 // half-open canary probe, and the EventBridge surfaces operators watch.
 import fs from "node:fs";
-import path from "node:path";
-import os from "node:os";
 import { config } from "../config.js";
+import {
+	resolveStatePath,
+	throwIfLiveEnginePathUnderTest,
+} from "./resolveStatePath.js";
 import { _atomicWriteFileSync } from "../house/index.js";
 import { notifyEngineReset, notifyEngineTrip } from "../observability/alerts.js";
 
@@ -87,20 +89,40 @@ export function normalizeCircuitState(raw) {
  * @description Resolves the durable containment-state file: an explicit
  *   `store.circuitStatePath` (tests) wins, then the schema's
  *   `circuitStateFile` (env `KAINBAIN_CIRCUIT_STATE_FILE`), then the
- *   conventional `~/.kainbain/engine/circuit.json`.
+ *   conventional `~/.kainbain/engine/circuit.json`. Every branch is
+ *   test-guarded: resolving a live-engine path under `VITEST` throws
+ *   instead of tripping the LIVE containment file (2026-11
+ *   test-pollution incident, cause N5). Production resolves
+ *   byte-identically.
  * @example resolveCircuitStatePath({ circuitStatePath: "/tmp/c.json" }) => "/tmp/c.json"
  * @param {Object} [store]
  * @param {string} [explicit]
  * @returns {string}
  ***/
 export function resolveCircuitStatePath(store, explicit) {
-	if (typeof explicit === "string" && explicit.trim()) return explicit;
+	if (typeof explicit === "string" && explicit.trim()) {
+		throwIfLiveEnginePathUnderTest({
+			candidatePath: explicit,
+			callerName: "resolveCircuitStatePath",
+		});
+		return explicit;
+	}
 	if (typeof store?.circuitStatePath === "string" && store.circuitStatePath.trim()) {
+		throwIfLiveEnginePathUnderTest({
+			candidatePath: store.circuitStatePath,
+			callerName: "resolveCircuitStatePath",
+		});
 		return store.circuitStatePath;
 	}
 	const configured = config?.circuitStateFile;
-	if (typeof configured === "string" && configured.trim()) return configured;
-	return path.join(os.homedir(), ".kainbain", "engine", "circuit.json");
+	if (typeof configured === "string" && configured.trim()) {
+		throwIfLiveEnginePathUnderTest({
+			candidatePath: configured,
+			callerName: "resolveCircuitStatePath",
+		});
+		return configured;
+	}
+	return resolveStatePath(null, null, "circuit.json");
 }
 
 /***
