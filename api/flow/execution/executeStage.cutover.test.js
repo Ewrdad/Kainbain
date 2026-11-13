@@ -8,7 +8,10 @@ import { config } from "../../config.js";
  *   model stages defer to dispatch without touching budgets or state, while
  *   everything else flows through to the embedded queue unchanged.
  *   Explicit `KAINBAIN_RUNNER_EXECUTION_ONLY=false` restores the legacy
- *   embedded path (rollback hatch).
+ *   embedded path (rollback hatch). The defer itself is a HARD defer with no
+ *   embedded fallback (fleet state and wait time never matter) — covered by
+ *   executeStage.runnerDispatch.test.js, which replaced the removed
+ *   runnerFallback suite.
  ***/
 describe("executeStage runner-only gate", () => {
 	const previous = config.runnerExecutionOnly;

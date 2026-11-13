@@ -88,10 +88,6 @@ import { resolveDocsDirName } from '../../docsPath.js';
 import { buildRetryFailureDetails } from './buildRetryFailureDetails.js';
 import { resolveCommandStageRuntime } from './resolveCommandStageRuntime.js';
 import { isDispatchServable } from '../dispatch/isDispatchServable.js';
-import { isRunnerDispatchFallbackDue } from '../dispatch/isRunnerDispatchFallbackDue.js';
-import { isRunnerClaimable } from '../dispatch/isRunnerClaimable.js';
-import { resolveAliasRequirement } from '../dispatch/resolveAliasRequirement.js';
-import { taskRequirements as taskRequirementsFor } from '../dispatch/taskRequirements.js';
 
 /***
  * MARK: executeStage
@@ -229,92 +225,31 @@ export async function executeStage(
 	}
 
 	// Runner-only execution by default (`KAINBAIN_RUNNER_EXECUTION_ONLY`,
-	// default true): a model stage a Runner can serve over the wire is
-	// left for dispatch instead of spawning an in-process agent child.
-	// Fallback (task 16d6fbd6): when the fleet has no active runner that
-	// can actually claim this task, or the task has waited past the
-	// configured runnerDispatchFallbackMs ceiling (default 90 s), fall
-	// back to embedded so waiting work never starves behind a busy or
-	// incapable fleet. Explicit `false` restores legacy embedded
-	// execution — emergency rollback hatch only. Human checkpoints,
-	// commands, CI, unresolvable aliases, and circuit-canary probes keep
-	// their embedded behavior (canary bypass preserves the half-open probe).
+	// default true): a stage a Runner can serve over the wire is left for
+	// dispatch instead of spawning an in-process agent child. This is a
+	// HARD defer — there is no embedded fallback, neither for a fleet with
+	// no capable runner right now nor for a task that has waited a long
+	// time: the backend container has no provider credentials and no
+	// harness CLIs, so an in-process run can only fail. Starvation is
+	// handled by the fleet and surfaced via scheduler stats
+	// (`deferredDispatch`, `lastOutcome = deferred-runner-dispatch`) plus
+	// the queue display; the operator recovers by approving/attaching a
+	// capable runner, or — emergency rollback only — by setting
+	// `KAINBAIN_RUNNER_EXECUTION_ONLY=false`. Human checkpoints, commands,
+	// CI, unresolvable aliases, and circuit-canary probes keep their
+	// embedded behavior (canary bypass preserves the half-open probe).
 	if (
 		config.runnerExecutionOnly !== false &&
 		!isCanaryTask(store, taskId) &&
 		isDispatchServable({ project: projectEntity || {}, task, stages, stage })
 	) {
-		let fallbackDue = false;
-		let fallbackReason = "";
-		// Check 1: wall-clock fallback — has this task waited past the
-		// ceiling without being claimed? Covers both "no capable runner"
-		// and "fleet busy" cases.
-		const fallbackMs = Number(config?.runnerDispatchFallbackMs) || 0;
-		if (isRunnerDispatchFallbackDue(task, fallbackMs)) {
-			fallbackDue = true;
-			fallbackReason = ` (runner fallback after ${fallbackMs}ms wait)`;
-		} else {
-			// Check 2: no runner can ever claim this task (wrong harness/
-		// model, all paused, fleet empty). Deferring would park it
-			// forever — fall back immediately.
-			try {
-				let req = taskRequirementsFor(projectEntity || {}, task);
-				if (req?.runnableType) {
-					// Alias stages defer with a concrete target resolved via
-					// D3 smooth-WRR. Mirror that resolution here so the
-					// claimability check matches the dispatch route exactly.
-					if (req.alias && typeof req.alias === "string" && req.alias.trim()) {
-						const resolved = resolveAliasRequirement({
-							project: projectEntity || {},
-							aliasName: req.alias,
-							isHarnessKnown: () => true,
-						});
-						if (resolved) {
-							req = {
-								...req,
-								harness: resolved.harness,
-								model: resolved.model,
-								alias: { name: resolved.aliasName, targetIndex: resolved.targetIndex },
-							};
-						}
-					}
-					const registry = store.runnerRegistry || null;
-					// A registry must actually exist before we can prove the
-					// fleet cannot serve this task (test doubles and older
-					// wiring without one keep deferring as before). With a
-					// registry attached, an empty or no-match result still
-					// falls back so a fleet that can never claim the work does
-					// not park it forever.
-					if (registry && !isRunnerClaimable(registry, req, { projectId })) {
-						fallbackDue = true;
-						fallbackReason = " (no capable runner for this task)";
-					}
-				}
-			} catch {
-				// Availability check is advisory — on any error, defer
-				// as before (runner dispatch stays the primary path).
-			}
-		}
-		if (!fallbackDue) {
-			return {
-				task,
-				stageType,
-				status: "deferred",
-				deferred: "runner-dispatch",
-				message: "Runner execution only; stage left for wire dispatch",
-			};
-		}
-		// Fallback: embedded execution. Log why so the operator can tell
-		// "runner took it" from "backend ran it because the fleet could not".
-		try {
-				bridge?.emitSystemLog?.(
-					projectId,
-					`[SYSTEM] Runner fallback${fallbackReason}: executing stage '${stage?.name || stage?.id || task.currentStageId}' for task #KB-${taskShortId} in-process`,
-					{ taskId: task.id, stageId: stage?.id || task.currentStageId },
-				);
-			} catch {
-				// Fallback log is advisory; execution proceeds regardless.
-			}
+		return {
+			task,
+			stageType,
+			status: "deferred",
+			deferred: "runner-dispatch",
+			message: "Runner execution only; stage left for wire dispatch",
+		};
 	}
 
 	bridge?.emitSystemLog?.(
