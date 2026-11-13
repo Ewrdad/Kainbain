@@ -87,6 +87,43 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "No — always defer to runners and remove embedded fallback completely (Recommended)"
+      ],
+      "notes": "This isnt the same as removing a local runner (ie runner on the same box) just removing the backends ability"
+    },
+    "q2": {
+      "selected": [
+        "Queue chip/popup plus existing scheduler stats is enough (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "No mount or fallback change needed; it should run only on a runner (Recommended)"
+      ],
+      "notes": "And in this case follow the runner whitelist to only the local runner"
+    },
+    "q4": {
+      "selected": [
+        "Always defer, even with an empty registry or stale fleet (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Fully remove the config key, docs, and .env.example references (Recommended)"
+      ],
+      "notes": "it is not needed if it does nothing. Obvs dont error if it is there but it is not needed"
+    },
+    "q6": {
+      "selected": [
+        "Yes, keep the helper for dispatch and future use (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
