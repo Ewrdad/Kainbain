@@ -85,18 +85,111 @@ describe("scanClaimableTasks", () => {
 		const old = t("old", { currentStageId: "s1", updatedAt: new Date(1_000).toISOString() });
 		const newer = t("new", { currentStageId: "s1", updatedAt: new Date(2_000).toISOString() });
 		const far = t("far", { currentStageId: "s2", updatedAt: new Date(500).toISOString() });
+		// Same late stage as "far" but newer: distinguishes the two modes.
+		const farNew = t("far-new", {
+			currentStageId: "s2",
+			updatedAt: new Date(1_500).toISOString(),
+		});
 		const d = {
 			projectStore: { listProjects: () => [project("p1", stages), project("p2", stages)] },
 			taskStore: {
-				listTasks: (pid) => (pid === "p1" ? [old, newer, far] : [t("other")]),
+				listTasks: (pid) =>
+					pid === "p1" ? [old, newer, far, farNew] : [t("other")],
 				isTaskBlocked: () => ({ blocked: false }),
 			},
 			claimStore: new ClaimStore({ stateFile: tmpClaimState() }),
 		};
-		expect(scanClaimableTasks(d).map((c) => c.taskId)).toEqual(["far", "old", "new", "other"]);
+		// Default (oldest-first, task 16d6fbd6): oldest waiting first across
+		// projects; stage index no longer outranks wait age.
+		expect(scanClaimableTasks(d).map((c) => c.taskId)).toEqual([
+			"far",
+			"old",
+			"far-new",
+			"new",
+			"other",
+		]);
+		// Legacy rollback mode: closest-to-completion (highest stage index)
+		// first, then oldest — the pre-16d6fbd6 order.
+		expect(
+			scanClaimableTasks(d, { order: "furthest-along", maxWaitMs: 0 }).map((c) => c.taskId),
+		).toEqual(["far", "far-new", "old", "new", "other"]);
 		expect(
 			scanClaimableTasks(d, { projectIds: ["p2"] }).map((c) => c.taskId),
 		).toEqual(["other"]);
+	});
+
+	test("picks up tasks on the non-active pipeline with their own stage's requirements", () => {
+		// Two pipelines with disjoint stage ids; the UI views "default"
+		// while the waiting task sits on "audit". The scan must return it
+		// with the audit stage's requirements — never the active pipeline's
+		// first stage (a human intake here, which would wrongly exclude it).
+		const auditStage = { id: "audit-1", name: "Audit", type: "agent", harness: "codex", model: "m2" };
+		const projectStore = {
+			listProjects: () => [
+				{
+					id: "p1",
+					name: "p1",
+					cwd: "/tmp",
+					harness: "pi",
+					defaultModel: "m1",
+					activeWorkflowId: "wf-default",
+					stages: [{ id: "s1", name: "Intake", type: "human" }],
+					workflows: [
+						{ id: "wf-default", stages: [{ id: "s1", name: "Intake", type: "human" }] },
+						{ id: "wf-audit", stages: [auditStage] },
+					],
+				},
+			],
+		};
+		const out = scanClaimableTasks({
+			projectStore,
+			taskStore: {
+				listTasks: () => [t("audit-task", { workflowId: "wf-audit", currentStageId: "audit-1" })],
+				isTaskBlocked: () => ({ blocked: false }),
+			},
+			claimStore: new ClaimStore({ stateFile: tmpClaimState() }),
+		});
+		expect(out).toHaveLength(1);
+		expect(out[0]).toMatchObject({
+			projectId: "p1",
+			taskId: "audit-task",
+			req: { harness: "codex", model: "m2", runnableType: true, stageId: "audit-1" },
+		});
+	});
+
+	test("active-pipeline tasks dispatch exactly as before (characterization)", () => {
+		// Same two-pipeline fixture, task on the active pipeline: the fix
+		// must not change what already worked.
+		const projectStore = {
+			listProjects: () => [
+				{
+					id: "p1",
+					name: "p1",
+					cwd: "/tmp",
+					harness: "pi",
+					defaultModel: "m1",
+					activeWorkflowId: "wf-default",
+					stages: [{ id: "s1", name: "Build", type: "agent" }],
+					workflows: [
+						{ id: "wf-default", stages: [{ id: "s1", name: "Build", type: "agent" }] },
+						{ id: "wf-audit", stages: [{ id: "audit-1", name: "Audit", type: "agent" }] },
+					],
+				},
+			],
+		};
+		const out = scanClaimableTasks({
+			projectStore,
+			taskStore: {
+				listTasks: () => [t("active-task", { workflowId: "wf-default", currentStageId: "s1" })],
+				isTaskBlocked: () => ({ blocked: false }),
+			},
+			claimStore: new ClaimStore({ stateFile: tmpClaimState() }),
+		});
+		expect(out).toHaveLength(1);
+		expect(out[0]).toMatchObject({
+			taskId: "active-task",
+			req: { harness: "pi", model: "m1", tier: "T1", runnableType: true, stageId: "s1" },
+		});
 	});
 
 	test("over-waiting tasks jump ahead oldest-first (starvation guard)", () => {
@@ -129,18 +222,31 @@ describe("scanClaimableTasks", () => {
 		expect(
 			scanClaimableTasks(d, { maxWaitMs: 5_000, now: 10_000 }).map((c) => c.taskId),
 		).toEqual(["starved-older", "starved", "fresh-far"]);
-		// Disabled (0): pure scheduler order — closest-to-completion first.
+		// Default mode (oldest-first, task 16d6fbd6): the oldest waiting task
+		// runs first no matter the stage index — starvation is bounded by
+		// construction, however long the early-stage tasks have waited.
 		expect(scanClaimableTasks(d, { maxWaitMs: 0, now: 10_000 }).map((c) => c.taskId)).toEqual([
-			"fresh-far",
 			"starved-older",
 			"starved",
-		]);
-		// Default (guard not configured): same pure scheduler order, however
-		// long the early-stage tasks have waited — the guard is opt-in only.
-		expect(scanClaimableTasks(d).map((c) => c.taskId)).toEqual([
 			"fresh-far",
+		]);
+		expect(scanClaimableTasks(d, { now: 10_000 }).map((c) => c.taskId)).toEqual([
 			"starved-older",
 			"starved",
+			"fresh-far",
 		]);
+		// Legacy rollback mode (KAINBAIN_CENTRAL_QUEUE_ORDER=furthest-along)
+		// with the guard off: pure closest-to-completion order, as before.
+		expect(
+			scanClaimableTasks(d, { order: "furthest-along", maxWaitMs: 0, now: 10_000 }).map(
+				(c) => c.taskId,
+			),
+		).toEqual(["fresh-far", "starved-older", "starved"]);
+		// Legacy mode WITH a configured guard: over-waiting tasks jump ahead.
+		expect(
+			scanClaimableTasks(d, { order: "furthest-along", maxWaitMs: 5_000, now: 10_000 }).map(
+				(c) => c.taskId,
+			),
+		).toEqual(["starved-older", "starved", "fresh-far"]);
 	});
 });

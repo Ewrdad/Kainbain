@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import * as gitBarrel from "./git.js";
+import * as gitHelpers from "./git.js";
 
 // Mock child_process.spawn so tests never run real git.
 const spawnMock = vi.fn();
@@ -1399,14 +1399,14 @@ describe("git helper", () => {
 });
 
 /***
- * MARK: Git barrel surface contract
+ * MARK: Git front-door surface contract
  * @description Guards the WP-4 zero-caller-churn contract: `api/git.js` must
- *   re-export exactly the 55 canonical public symbols (classes, functions,
- *   constants) with identical names, so flow/work/store callers need no
- *   import changes. Command-family implementations live under `api/git/`
+ *   re-export exactly the canonical public symbols (functions, constants)
+ *   with identical names, so flow/work/store callers need no import
+ *   changes. Command-family implementations live under `api/git/`
  *   and are covered directly by the co-located `api/git/*.test.js` suites.
  ***/
-describe("git barrel surface contract", () => {
+describe("git front-door surface contract", () => {
 	const EXPECTED_EXPORTS = [
 		"DEFAULT_GIT_AUTHOR_EMAIL",
 		"DEFAULT_GIT_AUTHOR_NAME",
@@ -1435,6 +1435,7 @@ describe("git barrel surface contract", () => {
 		"defaultBranch",
 		"deleteBranch",
 		"diffRangeNumstat",
+		"discardChangesOutsideDocs",
 		"drainDirtyTreeRecoveries",
 		"drainGitLockRecoveries",
 		"ensureBranchCheckedOut",
@@ -1448,6 +1449,7 @@ describe("git barrel surface contract", () => {
 		"hasRemote",
 		"isBranchContentLanded",
 		"isBranchMergedInto",
+		"isDocPath",
 		"isGitRepository",
 		"isLiveTaskSnapshotPath",
 		"isMergeInProgress",
@@ -1471,21 +1473,21 @@ describe("git barrel surface contract", () => {
 		"withCheckedOutBranch",
 	];
 
-	it("exports exactly the 61 canonical public symbols", () => {
-		expect(Object.keys(gitBarrel).sort()).toEqual(EXPECTED_EXPORTS);
+	it("exports exactly the 63 canonical public symbols", () => {
+		expect(Object.keys(gitHelpers).sort()).toEqual(EXPECTED_EXPORTS);
 	});
 
 	it("exposes classes, functions, and constants under their original types", () => {
-		expect(typeof gitBarrel.git).toBe("function");
-		expect(typeof gitBarrel.checkoutBranch).toBe("function");
-		expect(typeof gitBarrel.mergeBranch).toBe("function");
-		expect(typeof gitBarrel.isValidBranchName).toBe("function");
-		expect(typeof gitBarrel.redactCredentials).toBe("function");
-		expect(gitBarrel.GitError).toBeInstanceOf(Function);
-		expect(gitBarrel.GitMergeConflictError).toBeInstanceOf(Function);
-		expect(gitBarrel.STALE_GIT_LOCK_AGE_MS).toBe(30000);
-		expect(gitBarrel.MERGE_STRATEGY).toContain("auto-abort");
-		expect(gitBarrel.DEFAULT_GIT_AUTHOR_NAME).toBe("KainBain Agent");
+		expect(typeof gitHelpers.git).toBe("function");
+		expect(typeof gitHelpers.checkoutBranch).toBe("function");
+		expect(typeof gitHelpers.mergeBranch).toBe("function");
+		expect(typeof gitHelpers.isValidBranchName).toBe("function");
+		expect(typeof gitHelpers.redactCredentials).toBe("function");
+		expect(gitHelpers.GitError).toBeInstanceOf(Function);
+		expect(gitHelpers.GitMergeConflictError).toBeInstanceOf(Function);
+		expect(gitHelpers.STALE_GIT_LOCK_AGE_MS).toBe(30000);
+		expect(gitHelpers.MERGE_STRATEGY).toContain("auto-abort");
+		expect(gitHelpers.DEFAULT_GIT_AUTHOR_NAME).toBe("KainBain Agent");
 	});
 });
 

@@ -20,8 +20,10 @@ export const MUSE_MSP_MODEL_CACHE_TTL_MS = 300000;
  * @description Maps a `model/list` result onto the engine's model shape:
  *   `{ provider, id, name, contextLimit, outputLimit, isDefault, key }`,
  *   harness-keyed so the UI can resolve `muse::<provider>::<modelId>`.
- *   Rows without a `modelId` are skipped (forward tolerance); a host with no
- *   bundled models yields [], which the loader reports honestly.
+ *   Rows without a `modelId`, and rows whose segments cannot form a
+ *   canonical key (e.g. an id containing `::`), are skipped (forward
+ *   tolerance — one weird row never fails the whole menu); a host with
+ *   no bundled models yields [], which the loader reports honestly.
  * @example parseMuseMspModels({ models: [{ modelId: "muse-wonder-1.0", displayLabel: "muse-wonder-1.0", providerId: "meta" }] }) => [{ provider: "meta", id: "muse-wonder-1.0", … }]
  * @param {Object} result - The raw `model/list` result.
  * @returns {Array<Object>} The provider-tagged, key-attached model list.
@@ -35,25 +37,30 @@ export function parseMuseMspModels(result) {
 		if (!row || typeof row !== "object") continue;
 		const id = typeof row.modelId === "string" && row.modelId ? row.modelId : null;
 		if (!id) continue;
-		models.push(
-			withModelKey(
-				{
-					provider:
-						typeof row.providerId === "string" && row.providerId
-							? row.providerId
-							: providerFallback,
-					id,
-					name:
-						typeof row.displayLabel === "string" && row.displayLabel
-							? row.displayLabel
-							: id,
-					contextLimit: numberOrNull(row.contextLimit),
-					outputLimit: numberOrNull(row.outputLimit),
-					isDefault: row.isDefault === true,
-				},
-				MUSE_HARNESS_ID,
-			),
-		);
+		try {
+			models.push(
+				withModelKey(
+					{
+						provider:
+							typeof row.providerId === "string" && row.providerId
+								? row.providerId
+								: providerFallback,
+						id,
+						name:
+							typeof row.displayLabel === "string" && row.displayLabel
+								? row.displayLabel
+								: id,
+						contextLimit: numberOrNull(row.contextLimit),
+						outputLimit: numberOrNull(row.outputLimit),
+						isDefault: row.isDefault === true,
+					},
+					MUSE_HARNESS_ID,
+				),
+			);
+		} catch {
+			// One unkeyable row (e.g. an id containing `::`) is skipped —
+			// a single weird host row must never fail the whole menu.
+		}
 	}
 	return models;
 }

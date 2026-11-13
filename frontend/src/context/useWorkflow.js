@@ -193,8 +193,8 @@ export function useWorkflow({ onNotification } = {}) {
           await fetchWorkflow(projectId);
           onNotificationRef.current?.({
             type: 'info',
-            title: 'Workflow Switched',
-            message: `Switched active pipeline to "${data.workflow?.name || workflowId}"`,
+            title: 'Pipeline View Switched',
+            message: `Now viewing pipeline "${data.workflow?.name || workflowId}" — runners serve all pipelines.`,
           });
           return data;
         }

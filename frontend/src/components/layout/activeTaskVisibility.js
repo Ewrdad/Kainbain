@@ -60,7 +60,10 @@ export function resolveOwnerTask(taskList, engineState) {
  * never move it. Queue depth and hasNextTask count tasks WAITING to be
  * picked up across pipelines (never tasks already running, blocked, or
  * parked): the engine snapshot's `openQueueDepth` is authoritative, and
- * the loaded-list fallback filters with `isWaitingForPickupTask`. When
+ * the loaded-list fallback filters with `isWaitingForPickupTask`. Only a
+ * finite, non-negative snapshot depth is trusted (floored to a whole
+ * count); anything else — missing, NaN, negative, or non-numeric — fails
+ * safe to the loaded-list count so the chip can never print `NaN`. When
  * the running owner is not in the loaded list, ownerTask is null
  * (single-active invariant: name nothing rather than a second task)
  * while the ungated candidateTask keeps the fallback for queue
@@ -94,8 +97,14 @@ export function resolveUniversalNowPlaying({ tasks, engineState }) {
   // only the active project's slice, so the engine number wins whenever
   // present; the list-derived waiting count is the honest fallback
   // (tests, offline snapshots).
+  // Only a finite, non-negative snapshot depth is trusted: a malformed
+  // snapshot (NaN, negative, fractional, non-numeric) fails safe to the
+  // loaded-list count below instead of printing a nonsense chip number.
+  const rawDepth = engineState?.openQueueDepth;
   const globalDepth =
-    typeof engineState?.openQueueDepth === 'number' ? engineState.openQueueDepth : null;
+    typeof rawDepth === 'number' && Number.isFinite(rawDepth) && rawDepth >= 0
+      ? Math.floor(rawDepth)
+      : null;
   const queueDepth = globalDepth ?? waitingTasks.length;
   const hasNextTask =
     globalDepth != null

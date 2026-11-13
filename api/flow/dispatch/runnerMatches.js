@@ -1,5 +1,6 @@
 import { RUNNER_PROTOCOL } from "../runnerRegistry.js";
 import { runnerApiCompatible } from "./runnerApiCompat.js";
+import { confirmRunnerModel } from "./runnerModelConfirmation.js";
 import { operatorConfigVerdict } from "./operatorConfigVerdict.js";
 import { stageRunnerPolicyVerdict } from "../../../shared/stageRunnerPolicy.js";
 import { effectiveRunnerModels } from "./runnerMatches/effectiveRunnerModels.js";
@@ -14,8 +15,11 @@ export { claimEligibleRunner } from "./runnerMatches/claimEligibleRunner.js";
  * @description Decides whether one Runner registration can take a task with
  *   the given requirements: active status, not paused, fresh heartbeat
  *   (staleness expiry), v1 protocol, runnable flag, harness id, model
- *   offering, tier membership, and disk headroom floor. Returns
- *   `{ ok, reason }` — the
+ *   offering, tier membership, and disk headroom floor. A model the
+ *   runner's own successful scan contradicts (stale pin — see
+ *   `runnerModelConfirmation`) misses exactly like an unoffered one;
+ *   inconclusive signals and operator-asserted ids keep matching.
+ *   Returns `{ ok, reason }` — the
  *   reason code is loud by design (step-6 NO_CAPABLE_RUNNER diagnostics
  *   and the monitor surface distinguish "no runners" from "runners that
  *   cannot take this job"). Alias requirements always miss here; WP-3.2
@@ -72,6 +76,16 @@ export function runnerMatches(record = {}, req = {}, opts = {}) {
 	}
 	if (req.model) {
 		if (!effectiveRunnerModels(record).includes(req.model))
+			return { ok: false, reason: "NO_MODEL" };
+		// A stale pin is not a capability: when the runner's own
+		// successful scan contradicts the claim (or the id scopes a
+		// harness the runner never reported), refuse exactly like an
+		// unoffered model — dispatching there would run `--model` on a
+		// box whose harness menu proved it absent. Fail-open by
+		// construction: only a conclusive `stale` verdict refuses
+		// (operator-asserted override ids never read stale), so old
+		// runners and failed scans match exactly as before.
+		if (confirmRunnerModel(record, req.model).status === "stale")
 			return { ok: false, reason: "NO_MODEL" };
 	}
 	if (req.tier) {

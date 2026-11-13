@@ -275,6 +275,39 @@ describe("applyUpdate", () => {
 		fs.rmSync(root, { recursive: true, force: true });
 	});
 
+	it("carries host-installed api/node_modules over to the new tree", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "kb-apply-"));
+		const current = path.join(root, "releases", "0.1.0", "unpacked");
+		fs.mkdirSync(path.join(current, "api", "node_modules", "pi-sdk"), { recursive: true });
+		fs.writeFileSync(path.join(current, "api", "node_modules", "pi-sdk", "index.js"), "// host-installed\n");
+		fs.symlinkSync(current, path.join(root, "current"));
+		const assetBytes = Buffer.from("fake-tarball-bytes");
+		const update = {
+			version: "0.2.0",
+			manifest: fixtureManifest({ version: "0.2.0" }),
+			asset: { filename: "kainbain-runner-0.2.0-linux-x64.tar.gz", sha256: sha256HexOf(assetBytes) },
+		};
+		const fetchImpl = async () => ({ ok: true, status: 200, arrayBuffer: async () => assetBytes });
+		const extractImpl = async ({ destDir }) => {
+			fs.mkdirSync(destDir, { recursive: true });
+			fs.writeFileSync(path.join(destDir, "version.json"), JSON.stringify({ runnerVersion: "0.2.0" }));
+		};
+		const got = await applyUpdate({
+			update,
+			installRoot: root,
+			updateUrl: "http://mirror.local/r",
+			fetchImpl,
+			extractImpl,
+			logger: { warn: () => {}, log: () => {} },
+		});
+		assert.equal(got.ok, true);
+		assert.equal(
+			fs.readFileSync(path.join(root, "releases", "0.2.0", "unpacked", "api", "node_modules", "pi-sdk", "index.js"), "utf8"),
+			"// host-installed\n",
+		);
+		fs.rmSync(root, { recursive: true, force: true });
+	});
+
 	it("stages a verified update and flips current/previous", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "kb-apply-"));
 		const current = path.join(root, "releases", "0.1.0", "unpacked");

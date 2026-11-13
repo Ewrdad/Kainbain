@@ -28,7 +28,6 @@ export function CanvasToolbar({
   setSearchQuery,
   showCompleted,
   setShowCompleted,
-  completedCount,
   stages,
   filteredTasks,
   tasks,
@@ -48,12 +47,22 @@ export function CanvasToolbar({
   setStageTagFilterMode,
   visibleStages = stages,
   hiddenStageCount = 0,
-  onClearStageTagFilter,
+  onClearStageVisibilityFilters,
+  hasActiveTagFilter = false,
+  hasActiveColumnFilters = false,
   isToolbarCollapsed = false,
   onExpandToolbar,
 }) {
   const [isWorkflowDropdownOpen, setIsWorkflowDropdownOpen] = useState(false);
   const workflowMenuRef = useRef(null);
+
+  // MARK: hidden-stages pill scope (task 3318cbce)
+  // The pill clears every stage-visibility dimension (`#` tags and `!`
+  // column filters); its label names whichever dimensions are active. With
+  // neither flag set it keeps the legacy tag-only wording.
+  const hiddenClearScope = hasActiveColumnFilters
+    ? (hasActiveTagFilter ? 'the tag and column filters' : 'the column filters')
+    : 'the tag filter';
 
   // MARK: collapsed-row focus + tap expand (task 34793321)
   // Keyboard parity (WCAG 2.1.1): tabbing into the collapsed secondary row
@@ -110,7 +119,7 @@ export function CanvasToolbar({
             <div className="relative sm:order-1" ref={workflowMenuRef}>
               <InfoTooltip
                 title="Workflow Pipeline Switcher"
-                description="Select which named multi-stage workflow pipeline to view and execute."
+                description="Select which pipeline to view. Runners serve every pipeline, not just the one shown."
                 position="bottom"
               >
                 <button
@@ -263,7 +272,7 @@ export function CanvasToolbar({
               secondary row collapses (survey Q5). */}
           <InfoTooltip
             title="Search & Filter"
-            description="Search tasks by ID, goal title, or keywords. Type # to filter stages by tag (e.g. 'auth #Dev') or ! to filter by status (e.g. 'auth !failed', '!human')."
+            description="Search tasks by ID, goal title, or keywords. Type # to filter stages by tag (e.g. 'auth #Dev') or ! to filter by status (e.g. 'auth !failed', '!human'). !running and !tasked also hide columns without a running task or without any tasks."
             shortcut="N"
             position="bottom"
             className="w-full sm:w-auto min-w-0 basis-full sm:basis-auto order-last sm:order-2"
@@ -295,7 +304,11 @@ export function CanvasToolbar({
                 onChange={(e) => setShowCompleted(e.target.checked)}
                 className="rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0"
               />
-              <span>Show Completed ({completedCount})</span>
+              {/* No number on this label on purpose (task 7b69d365):
+                  finished tasks stay on the server until this box is
+                  ticked, so any number counted from the loaded tasks
+                  would wrongly read 0 while unticked. Do not add one back. */}
+              <span>Show Completed</span>
             </label>
           </InfoTooltip>
         </div>
@@ -356,9 +369,9 @@ export function CanvasToolbar({
               type="button"
               role="tab"
               aria-selected={false}
-              aria-label={`Show ${hiddenStageCount} hidden stages (clears the tag filter)`}
-              title="Clear the tag filter to show hidden stages"
-              onClick={() => onClearStageTagFilter?.()}
+              aria-label={`Show ${hiddenStageCount} hidden stages (clears ${hiddenClearScope})`}
+              title={`Clear ${hiddenClearScope} to show hidden stages`}
+              onClick={() => onClearStageVisibilityFilters?.()}
               className={`${STAGE_TAB_PILL_CLASS} border-dashed border-border-standard text-text-muted hover:text-on-surface hover:bg-surface-container-high`}
             >
               <span>{`Hidden (${hiddenStageCount})`}</span>

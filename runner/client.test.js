@@ -54,6 +54,41 @@ describe("createRunnerClient", () => {
 		assert.ok(!("sha" in body));
 	});
 
+	it("complete sends the attestation hash and committed flag", async () => {
+		const { fetchImpl, calls } = stubFetch(() => ok({ accepted: true }));
+		const client = createRunnerClient({ backendUrl: "http://x:3100", fetchImpl });
+		await client.complete({
+			taskId: "t1",
+			projectId: "p1",
+			executionId: "e1",
+			epoch: 1,
+			sha: "0123456789abcdef0123456789abcdef01234567",
+			outcome: "passed",
+			configHash: "sha256:abc123",
+			committed: true,
+		});
+		const body = JSON.parse(calls[0].opts.body);
+		assert.equal(body.configHash, "sha256:abc123");
+		assert.equal(body.committed, true);
+	});
+
+	it("complete sends committed:false explicitly but omits blank attestation", async () => {
+		const { fetchImpl, calls } = stubFetch(() => ok({ accepted: true }));
+		const client = createRunnerClient({ backendUrl: "http://x:3100", fetchImpl });
+		await client.complete({
+			taskId: "t1",
+			projectId: "p1",
+			executionId: "e1",
+			epoch: 1,
+			outcome: "passed",
+			configHash: "   ",
+			committed: false,
+		});
+		const body = JSON.parse(calls[0].opts.body);
+		assert.ok(!("configHash" in body));
+		assert.equal(body.committed, false);
+	});
+
 	it("posts the dispatch poll with and without an allowlist", async () => {
 		const { fetchImpl, calls } = stubFetch(() => ok({ assigned: false }));
 		const client = createRunnerClient({ backendUrl: "http://x:3100", fetchImpl });

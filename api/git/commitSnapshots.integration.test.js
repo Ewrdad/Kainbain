@@ -24,8 +24,13 @@ function run(cwd, ...args) {
 	return execFileSync("git", args, { cwd, stdio: ["ignore", "pipe", "pipe"] }).toString();
 }
 
+const tempDirs = [];
+
 function initRepo() {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-commit-snap-"));
+	// Tracked BEFORE the throwing git setup below: a failed `git init`
+	// (the CI disk-pressure failure of 2026-11-12) must not leak the dir.
+	tempDirs.push(dir);
 	run(dir, "init", "-b", "main");
 	run(dir, "config", "user.email", "kainbain-test@example.com");
 	run(dir, "config", "user.name", "KainBain Test");
@@ -44,8 +49,6 @@ function committedFiles(cwd) {
 		.filter(Boolean);
 }
 
-const tempDirs = [];
-
 afterEach(() => {
 	while (tempDirs.length > 0) {
 		const dir = tempDirs.pop();
@@ -62,7 +65,6 @@ describe("commitAllIfNeeded live snapshots (real git)", () => {
 	beforeEach(() => {
 		if (!gitAvailable) return;
 		dir = initRepo();
-		tempDirs.push(dir);
 	});
 
 	it("commits real work but never a snapshot deletion", async () => {

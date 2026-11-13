@@ -93,6 +93,7 @@ export async function routeStageError(
 		if (failedTask && !isConflict) {
 			await commitFailedStageWork(store, failedTask, projectCwd, {
 				stageName: stage?.name || stage?.id,
+				noCode: stage?.noCode === true,
 			});
 		}
 	} catch {

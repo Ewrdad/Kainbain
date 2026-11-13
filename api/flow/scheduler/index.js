@@ -41,3 +41,15 @@ export { stopScheduler } from './stopScheduler.js';
 export { ensureScheduler } from './ensureScheduler.js';
 export { kickScheduler } from './kickScheduler.js';
 export { getScheduledQueue } from './getScheduledQueue.js';
+export {
+	CENTRAL_QUEUE_ORDER_OLDEST_FIRST,
+	CENTRAL_QUEUE_ORDER_FURTHEST_ALONG,
+	DEFAULT_CENTRAL_QUEUE_MAX_WAIT_MS,
+	resolveCentralQueuePolicy,
+} from './centralQueuePolicy.js';
+export { isCentralQueueCandidateOverdue } from './isCentralQueueCandidateOverdue.js';
+export { compareCentralQueueCandidates } from './compareCentralQueueCandidates.js';
+export { sortCentralQueue } from './sortCentralQueue.js';
+export { checkAutoApproveTask, collectAutoApproveCandidates } from './collectAutoApproveCandidates.js';
+export { autoApproveSweep } from './autoApproveSweep.js';
+export { ensureAutoApproveTimer } from './ensureAutoApproveTimer.js';

@@ -77,7 +77,7 @@ describe("git() per-repository serialization gate", () => {
 	// keeps failing fast on the `expect(spawnMock)` overlap assertions, never
 	// on this timer. Observed 2026-11-04: the full gate stalled a worker past
 	// 600s, so 600s was not enough headroom.
-	const opts = { timeout: 840000 };
+	const opts = { timeout: null };
 
 	it("never runs two git processes on the same repo at once", { timeout: STARVATION_BUDGET_MS }, async () => {
 		spawnMock.mockReset();

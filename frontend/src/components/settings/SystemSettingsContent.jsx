@@ -9,6 +9,9 @@ import { ImageGenSection } from './ImageGenSection';
 import { StorageSection } from './StorageSection';
 import { PushNotificationsSection } from './PushNotificationsSection';
 import { PromptLayoutSection } from './PromptLayoutSection';
+import { AccessControlSection } from './AccessControlSection';
+import { AccessUserList } from './AccessUserList';
+import { ApiKeysSection } from './ApiKeysSection';
 import { UiPreferencesPanel } from './UiPreferencesPanel';
 import { MODEL_REFRESH_CONFIG_KEY } from './modelRefreshFlag';
 import { SETTINGS_TABS, isFooterResetVisible } from './settingsTabs';
@@ -44,7 +47,7 @@ export function SettingRow({ label, hint, children }) {
  * MARK: SystemSettingsContent
  * @description Route- and shell-agnostic System Settings content component.
  * Renders header, tablist, all section panels (Runners, Models, Engine, Storage,
- * Notifications, Prompt Layout, Images, UI), and footer actions. Rendered by the
+ * Notifications, Prompt Layout, Images, Access, UI), and footer actions. Rendered by the
  * standalone SystemSettingsPage screen (`/system-settings`); it takes no
  * modal state and never renders a dialog shell.
  * @param {Object} props
@@ -310,6 +313,14 @@ export function SystemSettingsContent({
         {effectiveSection === 'images' && (
           <div role="tabpanel" aria-label="Image generation settings">
             <ImageGenSection />
+          </div>
+        )}
+
+        {effectiveSection === 'access' && (
+          <div role="tabpanel" aria-label="Access control settings">
+            <AccessControlSection />
+            <AccessUserList />
+            <ApiKeysSection />
           </div>
         )}
 
