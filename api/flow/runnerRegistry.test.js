@@ -2,7 +2,12 @@ import { expect, test, describe, beforeEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { RunnerRegistry, RUNNER_COMMAND_TTL_MS, RUNNER_PROTOCOL } from "./runnerRegistry.js";
+import {
+	RunnerRegistry,
+	RUNNER_COMMAND_TTL_MS,
+	RUNNER_PROTOCOL,
+	resolveRunnerStatePath,
+} from "./runnerRegistry.js";
 
 const tmpRunnerState = () =>
 	path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kb-runner-test-")), "runners.json");
@@ -856,5 +861,22 @@ describe("RunnerRegistry discovery status", () => {
 		const beat = runners.heartbeat({ runnerId: "r1", credential, facts: { ...FACTS, discoveryStatus: "pi" } });
 		expect("discoveryStatus" in (beat.capabilities || {})).toBe(false);
 		expect(runners.getConfig("r1").capabilities.discoveryStatus).toBe(undefined);
+	});
+});
+
+describe("resolveRunnerStatePath isolation", () => {
+	test("explicit live engine paths throw under VITEST (never silently pollute production)", () => {
+		expect(process.env.VITEST).toBeTruthy();
+		const live = path.join(os.homedir(), ".kainbain", "engine", "runners.json");
+		expect(() => resolveRunnerStatePath(live)).toThrow(
+			/resolveRunnerStatePath refused live engine path under test/,
+		);
+		// Constructing a store on a live file throws the same way.
+		expect(
+			() => new RunnerRegistry({ joinToken: "join-secret", stateFile: live }),
+		).toThrow(/refused live engine path under test/);
+		// Temp explicit paths and disabled persistence still work.
+		expect(resolveRunnerStatePath(tmpRunnerState())).toMatch(/runners\.json$/);
+		expect(resolveRunnerStatePath("")).toBeNull();
 	});
 });

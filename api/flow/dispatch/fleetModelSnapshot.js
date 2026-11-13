@@ -1,7 +1,10 @@
 import { parseModelKey } from "../../../shared/modelKeys.js";
 import { config } from "../../config.js";
 import { loadStateFile } from "../loadStateFile.js";
-import { resolveStatePath } from "../resolveStatePath.js";
+import {
+	resolveStatePath,
+	throwIfLiveEnginePathUnderTest,
+} from "../resolveStatePath.js";
 import { saveStateFile } from "../saveStateFile.js";
 import { cleanHarnessIds, ingestAdvertisedIds } from "./catalogIngest.js";
 import { confirmRunnerModel } from "./runnerModelConfirmation.js";
@@ -123,7 +126,11 @@ export const deriveUnavailableReason = (entry, nowMs = Date.now()) => {
  * @description Resolves the snapshot file path: an explicit string wins
  *   (tests), `null` or an empty string disables persistence (memory-only),
  *   else the configured `KAINBAIN_FLEET_CATALOG_FILE` (empty disables too),
- *   else `~/.kainbain/engine/fleet-catalog.json`.
+ *   else `~/.kainbain/engine/fleet-catalog.json`. Every branch is
+ *   test-guarded: an explicit live-engine path throws under `VITEST`
+ *   instead of silently polluting production (2026-11 incident, cause
+ *   N5) — the configured/fallback branches inherit the same guard
+ *   through `resolveStatePath`.
  * @example resolveFleetSnapshotPath(null) => null
  * @example resolveFleetSnapshotPath(undefined) => '/home/u/.kainbain/engine/fleet-catalog.json'
  * @param {string|null|undefined} explicit - Explicit path override; null disables, undefined falls through to the configured default.
@@ -131,7 +138,14 @@ export const deriveUnavailableReason = (entry, nowMs = Date.now()) => {
  ***/
 export const resolveFleetSnapshotPath = (explicit) => {
 	if (explicit === null) return null;
-	if (typeof explicit === "string") return explicit.trim() ? explicit : null;
+	if (typeof explicit === "string") {
+		if (!explicit.trim()) return null;
+		throwIfLiveEnginePathUnderTest({
+			candidatePath: explicit,
+			callerName: "resolveFleetSnapshotPath",
+		});
+		return explicit;
+	}
 	const configured = config?.fleetCatalogFile;
 	if (typeof configured === "string" && !configured.trim()) return null;
 	return resolveStatePath(null, configured, "fleet-catalog.json");
