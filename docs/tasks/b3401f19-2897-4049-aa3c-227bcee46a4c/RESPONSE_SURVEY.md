@@ -31,7 +31,10 @@
         "A custom value I will specify"
       ],
       "required": false,
-      "showIf": { "questionId": "q1", "value": "Keep it with '0 runners' for a limited time, then remove it automatically (Proposed)" }
+      "showIf": {
+        "questionId": "q1",
+        "value": "Keep it with '0 runners' for a limited time, then remove it automatically (Proposed)"
+      }
     },
     {
       "id": "q3",
@@ -194,6 +197,86 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Keep it with '0 runners' indefinitely (current behaviour, supports deprecation tracking)"
+      ],
+      "notes": "Add some option somewhere to remove it permenantly"
+    },
+    "q3": {
+      "selected": [
+        "No: show it as unverified with '0 runners' and never treat it as served (Proposed)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Yes, but clearly marked as unverified / 0 runners (Proposed)"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Yes, but only up to a time limit, then mark them as stale/down (Proposed)"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Do not enforce a size limit at all"
+      ],
+      "notes": ""
+    },
+    "q7": {
+      "selected": [
+        "Block them from being saved at all"
+      ],
+      "notes": ""
+    },
+    "q8": {
+      "selected": [
+        "Ignore that advertisement for that harness (strict serving check) (Proposed)"
+      ],
+      "notes": "Well this should all be based around the harness::model::Effort id's so shouldnt be possible to happen"
+    },
+    "q9": {
+      "selected": [
+        "Yes, always show runner counts, even '0 runners' in grey (Proposed)"
+      ],
+      "notes": ""
+    },
+    "q10": {
+      "selected": [
+        "Yes, in Settings / admin views (Proposed)"
+      ],
+      "notes": ""
+    },
+    "q11": {
+      "selected": [
+        "Yes, allow on-demand re-scan (Proposed)"
+      ],
+      "notes": ""
+    },
+    "q12": {
+      "selected": [
+        "Only healthy runners that confirmed it recently (Proposed)"
+      ],
+      "notes": ""
+    },
+    "q13": {
+      "selected": [
+        "Keep the reference and mark it as 'not currently served' (safer, no data loss) (Proposed)"
+      ],
+      "notes": ""
+    },
+    "q14": {
+      "selected": [
+        "Dummy or test models appearing in production",
+        "Models showing under the wrong harness"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
