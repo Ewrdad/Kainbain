@@ -46,14 +46,18 @@ report the remainder instead of flooding the pipeline.
 ```json
 {
   "projectId": "<target project id>",
-  "title": "<short imperative title>",
-  "goal": "<one-paragraph description of the work>",
+  "title": "<short imperative title (first‑line summary)>",
+  "goal": "<one‑paragraph description of the work>",
   "stageId": "<target stage id or exact name>",
   "workflowId": "<target workflow id>",
+  "blockedBy": ["<taskId>", "<taskId>"],
   "idempotencyKey": "<deterministic key>",
   "execute": false
 }
 ```
+
+- **`blockedBy`** (optional) – an array of task IDs this new ticket should wait on before it can advance. Include any prerequisite tasks you identified; the API will enforce that the new task cannot start until all listed blockers are completed.
+- The **`title`** field must be a concise, imperative‑style first‑line summary (e.g., "Add blockedBy handling to create‑task skill"). This title appears as the task’s heading in the UI and in the `# Goal` section of `task.md`.
 
 - `idempotencyKey` is REQUIRED: derive it deterministically, e.g.
   `sha256(finding-summary + targetStage + currentTaskId).slice(0, 32)` — a
