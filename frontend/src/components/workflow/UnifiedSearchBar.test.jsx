@@ -806,7 +806,12 @@ test('typing ! opens the dropdown with every system filter', () => {
   fireEvent.change(input, { target: { value: '!' } });
   placeCursorAtEnd(input);
   const options = screen.getAllByRole('option');
-  expect(options.map((o) => o.textContent)).toEqual(['!failed', '!human']);
+  expect(options.map((o) => o.textContent)).toEqual([
+    '!failed',
+    '!human',
+    '!running',
+    '!tasked',
+  ]);
 });
 
 test('typing a partial !filter narrows the dropdown', () => {
@@ -818,13 +823,38 @@ test('typing a partial !filter narrows the dropdown', () => {
   expect(options.map((o) => o.textContent)).toEqual(['!failed']);
 });
 
+test('typing !r suggests the running column filter', () => {
+  renderBar();
+  const input = searchInput();
+  fireEvent.change(input, { target: { value: '!r' } });
+  placeCursorAtEnd(input);
+  const options = screen.getAllByRole('option');
+  expect(options.map((o) => o.textContent)).toEqual(['!running']);
+});
+
+test('typing !t suggests the tasked column filter', () => {
+  renderBar();
+  const input = searchInput();
+  fireEvent.change(input, { target: { value: '!t' } });
+  placeCursorAtEnd(input);
+  const options = screen.getAllByRole('option');
+  expect(options.map((o) => o.textContent)).toEqual(['!tasked']);
+});
+
 test('already-committed system filters are excluded from ! suggestions', () => {
   renderBar({ initialValue: '!failed' });
   const input = searchInput();
   fireEvent.change(input, { target: { value: '!failed !' } });
   placeCursorAtEnd(input);
   const options = screen.getAllByRole('option');
-  expect(options.map((o) => o.textContent)).toEqual(['!human']);
+  expect(options.map((o) => o.textContent)).toEqual(['!human', '!running', '!tasked']);
+});
+
+test('column filters commit to amber ! chips like task-level filters', () => {
+  renderBar({ initialValue: 'auth !running !tasked' });
+  expect(screen.getByRole('button', { name: 'Remove filter running' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Remove filter tasked' })).toBeInTheDocument();
+  expect(searchInput()).toHaveValue('auth');
 });
 
 test('clicking a ! option commits the filter and closes the dropdown', () => {

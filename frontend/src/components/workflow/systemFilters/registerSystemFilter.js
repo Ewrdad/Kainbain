@@ -27,6 +27,7 @@ export function registerSystemFilter(filter) {
     label: typeof filter.label === 'string' && filter.label.trim() ? filter.label.trim() : id,
     description: typeof filter.description === 'string' ? filter.description : '',
     match: filter.match,
+    hidesColumns: filter.hidesColumns === true,
   };
   SYSTEM_FILTERS.push(entry);
   if (Array.isArray(SYSTEM_FILTER_IDS) && !SYSTEM_FILTER_IDS.includes(entry.id)) {

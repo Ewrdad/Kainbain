@@ -23,12 +23,16 @@ export const ALERT_VERSION = 1;
  *   unscheduled intervention (nobody planned for a human to step in);
  *   `task.checkpoint_wait` is a scheduled checkpoint the flow designed for.
  *   The two are never interchangeable: receivers page on the first and
- *   merely note the second.
+ *   merely note the second. `task.auto_approve_soon` (one reminder shortly
+ *   before the deadline) and `task.auto_approve` (the timer fired) are the
+ *   scheduled human-stage auto-approve pair — always `info`, never paging.
  * @example ALERT_EVENTS.includes('task.failed') => true
  ***/
 export const ALERT_EVENTS = Object.freeze([
 	"task.failed",
 	"task.checkpoint_wait",
+	"task.auto_approve_soon",
+	"task.auto_approve",
 	"engine.trip",
 	"engine.reset",
 	"deploy.rollback",

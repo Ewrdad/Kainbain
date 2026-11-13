@@ -35,6 +35,33 @@ describe('fleetCountsById', () => {
     expect(fleetCountsById(null)).toEqual({});
     expect(fleetCountsById({})).toEqual({});
   });
+
+  it('preserves the snapshot verdict when the backend served one', () => {
+    expect(
+      fleetCountsById({
+        models: [
+          {
+            id: 'muse::meta::retired',
+            runnerCount: 0,
+            runnerIds: [],
+            harnesses: ['muse'],
+            tiers: [],
+            available: false,
+            unavailableReason: 'stale pin',
+          },
+        ],
+      }),
+    ).toEqual({
+      'muse::meta::retired': {
+        runnerCount: 0,
+        runnerIds: [],
+        harnesses: ['muse'],
+        tiers: [],
+        available: false,
+        unavailableReason: 'stale pin',
+      },
+    });
+  });
 });
 
 describe('useFleetModelCatalog', () => {
