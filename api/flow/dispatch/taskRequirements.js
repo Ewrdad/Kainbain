@@ -1,6 +1,7 @@
 import { ALIAS_HARNESS_ID } from "../../../shared/modelAliases.js";
 import { normalizeStageRunnerPolicy } from "../../../shared/stageRunnerPolicy.js";
 import { resolveHarnessName } from "../../agent/harnessRegistry.js";
+import { resolveCandidateStage, resolveStagesForTask } from "../stageResolution.js";
 
 /***
  * MARK: taskRequirements
@@ -18,21 +19,39 @@ import { resolveHarnessName } from "../../agent/harnessRegistry.js";
  *   commands) — only human stages stay embedded. The stage's normalized
  *   runnerPolicy rides along (present only when the stage restricts
  *   Runners) so every claim path enforces the same policy.
+ *   The stage list resolves workflow-aware — an explicitly passed list,
+ *   else stages carried on the task, else the task's own pipeline via
+ *   `resolveStagesForTask` (never the viewed pipeline's mirror), so work
+ *   on every pipeline is judged by its own stage. A task pointing at a
+ *   deleted stage is unknown (`runnableType: false`, `stageId: null`) and
+ *   parks, strict like the queue display — never the first stage's job.
  * @example taskRequirements({ harness: 'pi' }, { currentStageId: 's1', stages: [{ id: 's1', type: 'agent' }] }) => { harness: 'pi', ... }
  * @param {Object} project - Project entity.
  * @param {Object} task - Task entity.
+ * @param {Array} [stages] - Already-resolved stage list (a caller holding the task's own pipeline stages passes them here; omitted = resolved from the task's own pipeline).
  * @returns {Object} `{ harness, model, tier, alias, runnableType, hostCommand, kind, stageId, runnerPolicy? }`.
  ***/
-export function taskRequirements(project = {}, task = {}) {
-	const stages = Array.isArray(task.stages)
-		? task.stages
-		: Array.isArray(project?.stages)
-			? project.stages
-			: [];
-	const stage =
-		stages.find((s) => String(s?.id) === String(task.currentStageId)) ||
-		stages[0] ||
-		{};
+export function taskRequirements(project = {}, task = {}, stages = null) {
+	// Workflow resolution wins over any stale `task.stages` mirror: a task on
+	// a non-active pipeline must be judged by its own pipeline's stage. Only
+	// when the task's pipeline resolves no stages (legacy/no workflow) do we
+	// fall back to stages carried on the task, and never to a stages[0] guess.
+	const resolvedWorkflowStages = resolveStagesForTask(project, task);
+	const fallbackTaskStages =
+		Array.isArray(resolvedWorkflowStages) && resolvedWorkflowStages.length > 0
+			? resolvedWorkflowStages
+			: Array.isArray(task.stages)
+				? task.stages
+				: resolvedWorkflowStages;
+	const effectiveStages = Array.isArray(stages)
+		? stages
+		: fallbackTaskStages;
+	const found = resolveCandidateStage(
+		Array.isArray(effectiveStages) ? effectiveStages : [],
+		task.currentStageId,
+	);
+	const stage = found || {};
+	const stageKnown = found !== null;
 	const type = String(stage.type || "agent").toLowerCase();
 	const kind = type === "ci" || type === "script" || type === "deploy" || type === "command" ? "ci" : type === "merge" ? "merge" : type;
 	// Retired (was DA9): every command stage is Runner-runnable — the
@@ -42,7 +61,10 @@ export function taskRequirements(project = {}, task = {}) {
 	// Merge stages are Runner-runnable as leased `integrate` jobs (Step 4):
 	// the dispatch route matches them like CI (no harness/model, T0) and
 	// the integration lease — not a harness — is the fencing token.
-	const runnableType = type === "agent" || type === "review" || kind === "ci" || kind === "merge";
+	// An unknown stage (task points at a deleted stage) is never runnable:
+	// the task parks instead of running as the first stage's job.
+	const runnableType =
+		stageKnown && (type === "agent" || type === "review" || kind === "ci" || kind === "merge");
 
 	// Same order as the embedded run path (`resolveHarnessName`): stage
 	// override → project default → configured default → built-in. Dispatch

@@ -116,4 +116,22 @@ describe("isDispatchServable", () => {
 			}),
 		).toBe(false);
 	});
+
+	test("a task pointing at a deleted stage is not servable (no stages[0] guess)", () => {
+		// The task's stage id matches nothing: strict like the queue
+		// display, the task parks instead of serving the first stage's job.
+		expect(
+			isDispatchServable({
+				project: { harness: "pi" },
+				task: agentTask({ currentStageId: "gone", stages: [{ id: "s1", type: "agent" }] }),
+			}),
+		).toBe(false);
+		expect(
+			isDispatchServable({
+				project: { harness: "pi" },
+				task: agentTask({ currentStageId: "gone" }),
+				stages: [{ id: "s1", type: "agent" }],
+			}),
+		).toBe(false);
+	});
 });

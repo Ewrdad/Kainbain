@@ -69,6 +69,55 @@ describe("taskRequirements", () => {
 		}
 	});
 
+	test("resolves the task's own workflow stages, never the active workflow's", () => {
+		// The active pipeline ("default") and the task's pipeline ("audit")
+		// use disjoint stage ids: requirements must come from the audit
+		// stage the task actually sits at.
+		const project = {
+			harness: "pi",
+			defaultModel: "m1",
+			activeWorkflowId: "wf-default",
+			stages: [{ id: "s1", type: "human" }],
+			workflows: [
+				{ id: "wf-default", stages: [{ id: "s1", type: "human" }] },
+				{ id: "wf-audit", stages: [{ id: "audit-1", type: "agent", harness: "codex", model: "m2" }] },
+			],
+		};
+		expect(
+			taskRequirements(project, { workflowId: "wf-audit", currentStageId: "audit-1" }),
+		).toMatchObject({ harness: "codex", model: "m2", tier: "T1", runnableType: true, stageId: "audit-1" });
+	});
+
+	test("tasks without a workflowId keep resolving the project's stages", () => {
+		// Legacy tasks predate workflow stamping: the project stages (the
+		// active workflow's mirror) stay their source of truth.
+		expect(
+			taskRequirements(
+				{ harness: "pi", defaultModel: "m1", stages: [{ id: "s1", type: "agent" }] },
+				{ currentStageId: "s1" },
+			),
+		).toMatchObject({ harness: "pi", model: "m1", runnableType: true, stageId: "s1" });
+	});
+
+	test("an explicitly passed stage list wins over project and task stages", () => {
+		const out = taskRequirements(
+			{ harness: "pi", stages: [{ id: "s1", type: "human" }] },
+			{ workflowId: "wf-audit", currentStageId: "audit-1" },
+			[{ id: "audit-1", type: "agent", harness: "codex", model: "m2" }],
+		);
+		expect(out).toMatchObject({ harness: "codex", model: "m2", runnableType: true, stageId: "audit-1" });
+	});
+
+	test("a task pointing at a deleted stage parks instead of guessing stages[0]", () => {
+		// Strict like the queue display: an unresolvable stage is unknown
+		// (`stageId: null`, not runnable), never the first stage's job.
+		const out = taskRequirements(
+			{ harness: "pi", defaultModel: "m1" },
+			{ currentStageId: "gone", stages: [{ id: "s1", type: "agent" }] },
+		);
+		expect(out).toMatchObject({ runnableType: false, stageId: null });
+	});
+
 	test("carries the stage's normalized runnerPolicy, present only when restricted", () => {
 		const restricted = taskRequirements(
 			{},

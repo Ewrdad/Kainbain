@@ -163,6 +163,7 @@ const scratchCircuitFile = path.join(scratchRunBase, "engine", "circuit.json");
 // Now Playing bar renders "Runners N" runner boxes instead of the "Active
 // Task" label the specs assert. Scratch stacks must never share it.
 const scratchRunnerStateFile = path.join(scratchRunBase, "engine", "runners.json");
+const scratchFleetCatalogFile = path.join(scratchRunBase, "engine", "fleet-catalog.json");
 // Best-effort reclamation of stale runs: drop sibling run dirs older than a
 // day (never the current tag, never anything else under /tmp). A crashed run
 // otherwise leaves its projects on disk forever; concurrent live runs are
@@ -253,6 +254,7 @@ module.exports = {
 						// the host's live fleet must never appear in the
 						// scratch Now Playing bar or runner assertions.
 						KAINBAIN_RUNNER_STATE_FILE: scratchRunnerStateFile,
+						KAINBAIN_FLEET_CATALOG_FILE: scratchFleetCatalogFile,
 						// Run agent stages on the zero-credential mock harness:
 						// the suite asserts flow/UI behavior, never model
 						// output, and ambient model defaults rot (a dead

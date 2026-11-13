@@ -107,6 +107,13 @@ describe("mapProvidersPayloadToModels", () => {
 		expect(mapProvidersPayloadToModels({ providers: "nope" })).toEqual([]);
 		expect(mapProvidersPayloadToModels({ providers: [null, {}] })).toEqual([]);
 	});
+
+	it("serves single-colon model ids exactly like the shared grammar", () => {
+		const [model] = mapProvidersPayloadToModels({
+			providers: [{ id: "anthropic", models: { "claude-x:1m": { name: "Claude X" } } }],
+		});
+		expect(model).toMatchObject({ provider: "anthropic", id: "claude-x:1m" });
+	});
 });
 
 /**

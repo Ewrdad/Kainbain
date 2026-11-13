@@ -150,7 +150,7 @@ export function TaskDetailsTab({
               Stage: {taskStage?.name || task?.currentStageId || 'In Stage'}
             </span>
           </div>
-          <p className="text-xs text-on-surface leading-relaxed">
+          <p className="text-sm text-on-surface leading-relaxed">
             This task was active when the server stopped or restarted. Its state has been safely
             preserved on disk. You can resume execution from where it left off, or retry this stage.
           </p>
@@ -188,7 +188,7 @@ export function TaskDetailsTab({
               </span>
             </div>
           </div>
-          <p className="text-xs text-text-muted leading-relaxed">
+          <p className="text-sm text-text-muted leading-relaxed">
             Execution is temporarily paused. Click Resume to continue pipeline processing.
           </p>
           <div className="pt-1">
@@ -219,7 +219,7 @@ export function TaskDetailsTab({
               Stage: {taskStage?.name || 'Review'}
             </span>
           </div>
-          <p className="text-xs text-on-surface leading-relaxed">{bannerCopy.detailsExplainer}</p>
+          <p className="text-sm text-on-surface leading-relaxed">{bannerCopy.detailsExplainer}</p>
 
           {showApprovalGuidance ? (
             <div className="space-y-1.5 pt-1">
@@ -304,7 +304,7 @@ export function TaskDetailsTab({
             <div className="flex items-center gap-1">{renderExecutionControls()}</div>
           </div>
 
-          <p className="text-[11px] text-text-muted leading-relaxed font-mono">
+          <p className="text-xs text-text-muted leading-relaxed font-mono">
             Send instructions directly to the agent session or steer execution in real time without
             restarting the task.
           </p>
