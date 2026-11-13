@@ -71,6 +71,37 @@ Task: `7bd55423-5ad0-4d2c-a6e2-99141ee3266b` — Isolate API tests from live eng
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Isolation only — leave the existing polluted entries alone; removing them is the separate ops cleanup ticket that this task unblocks"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Add a new env var (e.g. KAINBAIN_SEED_DEMO_STATE_FILE) that the test setup points at a per-test temp file — explicit and minimal"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Guard throws for ANY engine-folder path while tests run; update that existing unit test to expect the throw instead of the live path"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Fast in-suite guard: snapshot the engine dir, exercise the runner-registering routes under the normal test setup, assert nothing changed — runs on every suite run"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Yes — extend only the global setup file; leave the per-file helper untouched"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
