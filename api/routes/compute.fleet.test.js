@@ -52,11 +52,16 @@ describe("central model catalogue (fleet union over HTTP)", () => {
 	}
 
 	it("serves a fleet-only harness id in a union section after one heartbeat", async () => {
+		const atMs = Date.now();
 		const facts = {
 			harnesses: [{ id: "futureharness", version: "9.9.9" }],
 			models: ["futureharness::prov::new-model"],
 			tiers: ["T0"],
 			versions: { protocol: "v1", runner: "test" },
+			// The catalogue counts only discovery-confirmed runners: the
+			// heartbeat's own scan must list the id on a fresh leg.
+			modelProvenance: { "futureharness::prov::new-model": { harness: "futureharness", atMs } },
+			discoveryStatus: { futureharness: { ok: true, count: 1, atMs } },
 		};
 		const credential = await onboard("union-runner-1", facts);
 		await heartbeat("union-runner-1", credential, facts);
@@ -80,16 +85,23 @@ describe("central model catalogue (fleet union over HTTP)", () => {
 	});
 
 	it("serves newly heartbeat ids with harness attribution and availability", async () => {
+		const atMs = Date.now();
+		const confirmed = (models) => ({
+			modelProvenance: Object.fromEntries(models.map((m) => [m, { harness: "muse", atMs }])),
+			discoveryStatus: { muse: { ok: true, count: models.length, atMs } },
+		});
 		const base = {
 			harnesses: [{ id: "muse", version: "1.4.9" }],
 			models: ["muse::meta::muse-spark-1.3"],
 			tiers: ["T0", "T1"],
 			versions: { protocol: "v1", runner: "test" },
+			...confirmed(["muse::meta::muse-spark-1.3"]),
 		};
 		const credential = await onboard("union-runner-2", base);
 		await heartbeat("union-runner-2", credential, {
 			...base,
 			models: ["muse::meta::muse-spark-1.3", "muse::meta::muse-spark-1.4"],
+			...confirmed(["muse::meta::muse-spark-1.3", "muse::meta::muse-spark-1.4"]),
 		});
 
 		const res = await app.inject({ method: "GET", url: "/runners/models/catalogue" });

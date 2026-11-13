@@ -8,11 +8,19 @@ import { parseModelKey } from "../../../shared/modelKeys.js";
  *   `:` allowed in ids) so ingestion can never disagree with the pickers;
  *   the advertised id itself is kept BYTE-IDENTICAL (dispatch matches fleet
  *   picks verbatim, so any rewrite would break the match) and the normalized
- *   attributes (harness/provider/model/effort) ride alongside it. Malformed
- *   ids are quarantined with a reason — visible in Settings, never served,
- *   never silently dropped. No I/O, no registry reads: the snapshot store
- *   owns persistence, this module only classifies.
- * @example ingestAdvertisedId('muse::meta::muse-spark-1.4', { runnerId: 'r1' }) => { ok: true, entry: { id: 'muse::meta::muse-spark-1.4', form: 'harness', harness: 'muse', … } }
+ *   attributes (harness/provider/model/effort) ride alongside it. Only
+ *   canonical harness-scoped forms (`harness`, `harnessReasoning`) are
+ *   admitted: bare and `provider::id` forms are quarantined with a
+ *   not-harness-qualified reason (audit trail, never served), and a
+ *   harness-scoped id naming a harness the runner does not serve is
+ *   quarantined with a not-served reason. Per-entry attribution is the
+ *   harness parsed from the id (`entry.harnesses = [parsed.harness]`) —
+ *   never the runner's whole harness list — so catalogue sections cannot
+ *   leak ids into pickers for other harnesses. Malformed ids are
+ *   quarantined with a reason — visible in Settings, never served, never
+ *   silently dropped. No I/O, no registry reads: the snapshot store owns
+ *   persistence, this module only classifies.
+ * @example ingestAdvertisedId('muse::meta::muse-spark-1.4', { runnerId: 'r1', harnesses: ['muse'] }) => { ok: true, entry: { id: 'muse::meta::muse-spark-1.4', form: 'harness', harness: 'muse', … } }
  * @example ingestAdvertisedId('a::b::c::d::e', { runnerId: 'r1' }) => { ok: false, quarantined: { id: 'a::b::c::d::e', reason: '…', runnerId: 'r1' } }
  ***/
 
@@ -58,18 +66,28 @@ const cleanStringList = (list) => {
 /***
  * MARK: ingestAdvertisedId
  * @description Classifies ONE runner-advertised model id for the central
- *   catalogue. Accepted forms (harness, harnessReasoning, provider, bare)
- *   return `{ ok: true, entry }` with the id byte-identical plus its parsed
- *   attributes (harness/provider/model/reasoning), the effort tiers, and the
- *   provenance (runnerId, serving harnesses, detected-at, source). Malformed
- *   ids (unparseable grammar) return `{ ok: false, quarantined }` with the
- *   reason — served nowhere, surfaced in Settings. Blank ids return
- *   `{ ok: false, skipped: true }` (nothing to quarantine, nothing to serve).
+ *   catalogue. Only canonical harness-scoped forms (`harness`,
+ *   `harnessReasoning`) return `{ ok: true, entry }` with the id
+ *   byte-identical plus its parsed attributes
+ *   (harness/provider/model/reasoning), the effort tiers, per-entry
+ *   attribution (`harnesses: [parsed.harness]` — the harness named by the
+ *   id, never the runner's whole harness list), and the provenance
+ *   (runnerId, detected-at, source). Bare and `provider::id` forms return
+ *   `{ ok: false, quarantined }` with the not-harness-qualified reason;
+ *   a harness-scoped id naming a harness the runner does not serve
+ *   (non-empty reported harness list lacking it) returns
+ *   `{ ok: false, quarantined }` with the harness-not-served reason — an
+ *   empty/absent reported harness list stays fail-open (old runners) and
+ *   accepts. Malformed ids (unparseable grammar) return
+ *   `{ ok: false, quarantined }` with the reason — served nowhere,
+ *   surfaced in Settings. Blank ids return `{ ok: false, skipped: true }`
+ *   (nothing to quarantine, nothing to serve).
  * @example ingestAdvertisedId('muse::meta::m', { runnerId: 'r1', harnesses: ['muse'], tiers: ['T0'] }).entry.harness => 'muse'
+ * @example ingestAdvertisedId('prov::m1', { runnerId: 'r1', harnesses: ['muse'] }).quarantined.reason => 'Model id "prov::m1" is not harness-qualified (want harness::provider::model[::effort]).'
  * @param {unknown} rawId - Advertised id (any JSON value; coerced like the fleet builder).
  * @param {Object} [ctx] - Provenance.
  * @param {string} [ctx.runnerId] - Serving runner id.
- * @param {Array} [ctx.harnesses] - Runner's advertised harness ids.
+ * @param {Array} [ctx.harnesses] - Runner's advertised harness ids (used only for the harness-not-served check; never copied onto the entry).
  * @param {Array} [ctx.tiers] - Runner's advertised effort tiers.
  * @param {number} [ctx.atMs] - When the runner detected it (ms epoch, null when unknown).
  * @param {string} [ctx.source] - Advertisement source ('pinned'|'discovered'|'unknown').
@@ -88,6 +106,29 @@ export const ingestAdvertisedId = (rawId, ctx = {}) => {
 			quarantined: { id, reason: `Model id "${id}" ${describeMalformedId(id)}.`, runnerId, atMs },
 		};
 	}
+	if (parsed.form !== "harness" && parsed.form !== "harnessReasoning") {
+		return {
+			ok: false,
+			quarantined: {
+				id,
+				reason: `Model id "${id}" is not harness-qualified (want harness::provider::model[::effort]).`,
+				runnerId,
+				atMs,
+			},
+		};
+	}
+	const reported = cleanStringList(ctx?.harnesses);
+	if (reported.length > 0 && !reported.includes(parsed.harness)) {
+		return {
+			ok: false,
+			quarantined: {
+				id,
+				reason: `Model id "${id}" names harness "${parsed.harness}", which runner ${runnerId} does not serve (harness not served by runner ${runnerId}).`,
+				runnerId,
+				atMs,
+			},
+		};
+	}
 	return {
 		ok: true,
 		entry: {
@@ -98,7 +139,7 @@ export const ingestAdvertisedId = (rawId, ctx = {}) => {
 			model: parsed.id ?? id,
 			reasoning: parsed.reasoning ?? null,
 			tiers: cleanStringList(ctx?.tiers),
-			harnesses: cleanStringList(ctx?.harnesses),
+			harnesses: [parsed.harness],
 			runnerId,
 			atMs,
 			source,
@@ -112,7 +153,7 @@ export const ingestAdvertisedId = (rawId, ctx = {}) => {
  *   quarantined }`. Order-preserving, never throws — one bad id cannot fail
  *   the batch. Blank ids vanish (skipped); every other input lands in
  *   exactly one of the two outputs.
- * @example ingestAdvertisedIds(['muse::meta::m', 'a::b::c::d::e'], { runnerId: 'r1' }).quarantined => [{ id: 'a::b::c::d::e', … }]
+ * @example ingestAdvertisedIds(['muse::meta::m', 'a::b::c::d::e', 'prov::m1'], { runnerId: 'r1' }).quarantined => [{ id: 'a::b::c::d::e', … }, { id: 'prov::m1', … }]
  * @param {unknown} list - Advertised id list (any mix of values).
  * @param {Object} [ctx] - Provenance shared by the batch (see ingestAdvertisedId).
  * @returns {{entries: Array<Object>, quarantined: Array<Object>}} Classification.
