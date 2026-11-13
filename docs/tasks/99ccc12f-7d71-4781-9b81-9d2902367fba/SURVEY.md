@@ -10,7 +10,10 @@
       "id": "q1",
       "type": "single",
       "text": "The new throw-guard should only block engine state files that are under the real ~/.kainbain/engine folder during tests. Should 'under that folder' be judged by a simple text path prefix, or by resolving symlinks to the real location first (stricter, catches symlink tricks)?",
-      "options": ["Simple text prefix check (simpler, recommended)", "Resolve symlinks to real path first (stricter)"],
+      "options": [
+        "Simple text prefix check (simpler, recommended)",
+        "Resolve symlinks to real path first (stricter)"
+      ],
       "required": true,
       "showIf": null
     },
@@ -51,7 +54,32 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Simple text prefix check (simpler, recommended)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Add a dedicated env var (KAINBAIN_SEED_DEMO_MARKER_FILE) read by resolveStatePath"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Update it to use an explicit temp path and stop relying on the live fallback (recommended)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Both: fail on any mtime change or any newly created file (recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
 ```
