@@ -62,6 +62,40 @@ export const tempPromptLayoutDir = fs.mkdtempSync(
 	path.join(os.tmpdir(), "kainbain-test-prompt-layout-"),
 );
 process.env.KAINBAIN_PROMPT_LAYOUT_DIR = tempPromptLayoutDir;
+// WP-4.1 durable fleet state is ALSO machine-global by default
+// (`~/.kainbain/engine/{claims,runners,steers,fleet-catalog}.json`): any
+// suite that registers a runner or reads the fleet catalogue would
+// otherwise read and write the LIVE engine files (2026-11 incident:
+// `test-fleet-muse` / `muse::meta::test-fleet-model` leaked into
+// production on every suite run — survey q14 forbids dummy/test models
+// in production). Point all four at per-file temp files before config
+// loads. Mirrors the per-file block in `isolatedTestRoots.js`
+// (`tempStateFiles`); keep basenames identical so basename assertions
+// (e.g. `fleetModelSnapshot.test.js`) keep passing. See the structural
+// guard in `flow/resolveStatePath.js` and `flow/engineStateIsolation.test.js`.
+function tempEngineStateFile(name) {
+	return path.join(
+		fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-test-state-")),
+		name,
+	);
+}
+/***
+ * MARK: tempEngineStateFiles
+ * @description Per-file temp durable-state paths for the WP-4.1 fleet
+ *   stores (claims, runners, steers, fleet catalogue): the global setup
+ *   backstop, so no suite touches the live `~/.kainbain/engine/`.
+ * @example import { tempEngineStateFiles } from "./testSetup.isolation.js"
+ ***/
+export const tempEngineStateFiles = {
+	claims: tempEngineStateFile("claims.json"),
+	runners: tempEngineStateFile("runners.json"),
+	steers: tempEngineStateFile("steers.json"),
+	fleetCatalog: tempEngineStateFile("fleet-catalog.json"),
+};
+process.env.KAINBAIN_CLAIM_STATE_FILE = tempEngineStateFiles.claims;
+process.env.KAINBAIN_RUNNER_STATE_FILE = tempEngineStateFiles.runners;
+process.env.KAINBAIN_STEER_STATE_FILE = tempEngineStateFiles.steers;
+process.env.KAINBAIN_FLEET_CATALOG_FILE = tempEngineStateFiles.fleetCatalog;
 // Host resource probes are ALSO live by default: `probeMemoryUsagePct()`
 // reads `os.freemem()`, which the CI storm (200+ vitest workers on a 16 GB
 // box) inflates past the 95% critical threshold. Any synthetic scheduler
