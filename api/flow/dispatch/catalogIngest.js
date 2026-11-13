@@ -42,9 +42,33 @@ const describeMalformedId = (id) => {
 };
 
 /***
+ * MARK: cleanHarnessIds
+ * @description Trims a runner's reported harness list into deduped ids,
+ *   accepting both registry shapes — plain strings (`'muse'`) and
+ *   objects (`{ id: 'muse' }`) — dropping blanks and non-strings. The
+ *   ingest wrong-harness quarantine, the confirmation stale rule, and
+ *   the snapshot store all funnel through here so the three can never
+ *   disagree on "does this runner serve this harness".
+ * @example cleanHarnessIds([{ id: 'muse' }, ' pi ', '', 42]) => ['muse', 'pi']
+ * @param {unknown} list - Raw harness list value.
+ * @returns {string[]} Clean unique harness ids.
+ ***/
+export const cleanHarnessIds = (list) => {
+	const out = [];
+	const seen = new Set();
+	for (const item of Array.isArray(list) ? list : []) {
+		const value = typeof item === "string" ? item.trim() : String(item?.id ?? "").trim();
+		if (!value || seen.has(value)) continue;
+		seen.add(value);
+		out.push(value);
+	}
+	return out;
+};
+
+/***
  * MARK: cleanStringList
- * @description Trims a raw attribution list (serving harnesses, tiers) into a
- *   deduped string list, dropping blanks and non-strings. Runner facts are
+ * @description Trims a raw attribution list (effort tiers) into a deduped
+ *   string list, dropping blanks and non-strings. Runner facts are
  *   operator-influenced input; the catalogue never stores the raw mix.
  * @example cleanStringList([' muse ', '', 42, 'muse']) => ['muse']
  * @param {unknown} list - Raw list value.
@@ -117,7 +141,7 @@ export const ingestAdvertisedId = (rawId, ctx = {}) => {
 			},
 		};
 	}
-	const reported = cleanStringList(ctx?.harnesses);
+	const reported = cleanHarnessIds(ctx?.harnesses);
 	if (reported.length > 0 && !reported.includes(parsed.harness)) {
 		return {
 			ok: false,

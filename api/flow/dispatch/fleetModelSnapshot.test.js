@@ -417,6 +417,24 @@ describe("createFleetModelSnapshotStore", () => {
 		expect(after.models.length).toBe(10005);
 	});
 
+	test("skips a poisoned runner record instead of failing the catalogue", () => {
+		const store = tempStore();
+		const evil = {
+			runnerId: "evil",
+			status: "active",
+			get capabilities() {
+				throw new Error("boom");
+			},
+		};
+		const snapshot = store.update([
+			evil,
+			fleetRunnerRecord({ runnerId: "box-a", capabilities: confirmedCaps(NEW_MODEL_ID) }),
+		]);
+		expect(snapshot.models.map((m) => m.id)).toEqual([NEW_MODEL_ID]);
+		expect(snapshot.models[0]).toMatchObject({ runnerIds: ["box-a"], runnerCount: 1 });
+		expect(() => store.update([evil])).not.toThrow();
+	});
+
 	test("keeps the quarantine cap (oldest last-seen drops first)", () => {
 		const store = tempStore();
 		const runners = [];
@@ -707,6 +725,43 @@ describe("normalizeSnapshotState", () => {
 		expect(kept.provenance).toEqual({ "box-a": { harnesses: ["muse"], atMs: 2000, source: "pinned" } });
 	});
 
+	test("recomputes runnerCount from runnerIds and unions every claimant list on migration", () => {
+		const loaded = normalizeSnapshotState({
+			models: [
+				// Hand-edited count disagrees with the list: the list wins.
+				{
+					id: "muse::meta::fixed",
+					runnerIds: ["box-a"],
+					runnerCount: 99,
+					claimedBy: [],
+					declaredBy: [],
+					firstSeenAtMs: 1000,
+					lastSeenAtMs: 2000,
+				},
+				// Pre-canonical entry with reporters in every claimant
+				// list: all three survive the move to quarantine.
+				{
+					id: "prov::m1",
+					runnerIds: ["box-a"],
+					runnerCount: 1,
+					declaredBy: ["box-b"],
+					claimedBy: ["box-c"],
+					firstSeenAtMs: 1000,
+					lastSeenAtMs: 2000,
+				},
+			],
+			quarantined: [],
+			updatedAtMs: 2000,
+		});
+		expect(loaded.models).toHaveLength(1);
+		expect(loaded.models[0]).toMatchObject({ id: "muse::meta::fixed", runnerIds: ["box-a"], runnerCount: 1 });
+		expect(loaded.quarantined).toHaveLength(1);
+		expect(loaded.quarantined[0]).toMatchObject({
+			id: "prov::m1",
+			runnerIds: ["box-a", "box-b", "box-c"],
+		});
+	});
+
 	test("migration is idempotent", () => {
 		const oldShape = {
 			models: [
@@ -776,6 +831,22 @@ describe("deriveUnavailableReason", () => {
 });
 
 describe("summarizeFleetHarnesses", () => {
+	test("skips poisoned records without losing healthy runners", () => {
+		const evil = {
+			runnerId: "evil",
+			status: "active",
+			get capabilities() {
+				throw new Error("boom");
+			},
+		};
+		expect(
+			summarizeFleetHarnesses([
+				evil,
+				fleetRunnerRecord({ runnerId: "box-a", capabilities: { harnesses: [{ id: "muse" }] } }),
+			]),
+		).toEqual([{ id: "muse", runnerCount: 1, runnerIds: ["box-a"] }]);
+	});
+
 	test("summarizes claim-eligible runners by harness id, sorted", () => {
 		expect(
 			summarizeFleetHarnesses([

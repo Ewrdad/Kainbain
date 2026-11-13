@@ -3,7 +3,7 @@ import { config } from "../../config.js";
 import { loadStateFile } from "../loadStateFile.js";
 import { resolveStatePath } from "../resolveStatePath.js";
 import { saveStateFile } from "../saveStateFile.js";
-import { ingestAdvertisedIds } from "./catalogIngest.js";
+import { cleanHarnessIds, ingestAdvertisedIds } from "./catalogIngest.js";
 import { confirmRunnerModel } from "./runnerModelConfirmation.js";
 import { staleAdvertReason } from "./staleAdvertReason.js";
 import { claimEligibleRunner } from "./runnerMatches/claimEligibleRunner.js";
@@ -197,8 +197,10 @@ export const normalizeSnapshotState = (raw) => {
 		if (!parsed || (parsed.form !== "harness" && parsed.form !== "harnessReasoning")) {
 			// Pre-canonical persisted entry: quarantine with the audit
 			// trail a fresh advertisement would carry. Claimant memory is
-			// the union of the stored serving + stale-claim lists;
-			// timestamps are the entry's own, so the record keeps its age.
+			// the union of every stored claimant list (serving,
+			// unconfirmed, and stale-claim) so no reporter is lost in the
+			// move; timestamps are the entry's own, so the record keeps
+			// its age.
 			const segments = id.split("::").length;
 			migrated.push({
 				id,
@@ -207,7 +209,7 @@ export const normalizeSnapshotState = (raw) => {
 					: segments >= 5
 						? `Model id "${id}" has ${segments} segments (want at most 4: harness::provider::id::reasoning).`
 						: `Model id "${id}" has an empty segment (every part between :: must be non-empty).`,
-				runnerIds: [...new Set([...strings(value.runnerIds), ...strings(value.claimedBy)])].sort(),
+				runnerIds: [...new Set([...strings(value.runnerIds), ...strings(value.declaredBy), ...strings(value.claimedBy)])].sort(),
 				firstSeenAtMs: finiteOrNull(value.firstSeenAtMs),
 				lastSeenAtMs: finiteOrNull(value.lastSeenAtMs),
 			});
@@ -225,7 +227,11 @@ export const normalizeSnapshotState = (raw) => {
 			harnesses: [parsed.harness],
 			tiers: strings(value.tiers),
 			runnerIds: storedRunnerIds,
-			runnerCount: Number.isInteger(value.runnerCount) && value.runnerCount >= 0 ? value.runnerCount : storedRunnerIds.length,
+			// Recomputed, never trusted: the store always persists
+			// `runnerCount === runnerIds.length`, and availability is
+			// derived from `runnerIds` on read — a hand-edited or
+			// forward-written count must never disagree with the list.
+			runnerCount: storedRunnerIds.length,
 			claimedBy: strings(value.claimedBy),
 			declaredBy: strings(value.declaredBy),
 			firstSeenAtMs: finiteOrNull(value.firstSeenAtMs),
@@ -268,15 +274,20 @@ export const normalizeSnapshotState = (raw) => {
 export const summarizeFleetHarnesses = (runners = []) => {
 	const byId = new Map();
 	for (const record of Array.isArray(runners) ? runners : []) {
-		if (!claimEligibleRunner(record)) continue;
-		const runnerId = String(record?.runnerId ?? "").trim();
-		if (!runnerId) continue;
-		const caps = record?.capabilities && typeof record.capabilities === "object" ? record.capabilities : {};
-		const ids = new Set(
-			(Array.isArray(caps.harnesses) ? caps.harnesses : [])
-				.map((h) => (typeof h === "string" ? h.trim() : String(h?.id ?? "").trim()))
-				.filter(Boolean),
-		);
+		// One poisoned registry record (a throwing eligibility check, a
+		// hostile capability getter) must never blank the fleet
+		// footprint: skip it, keep every healthy runner's harness.
+		let runnerId = "";
+		let ids = null;
+		try {
+			if (!claimEligibleRunner(record)) continue;
+			runnerId = String(record?.runnerId ?? "").trim();
+			if (!runnerId) continue;
+			const caps = record?.capabilities && typeof record.capabilities === "object" ? record.capabilities : {};
+			ids = new Set(cleanHarnessIds(caps.harnesses));
+		} catch {
+			continue;
+		}
 		for (const id of ids) {
 			let slot = byId.get(id);
 			if (!slot) {
@@ -363,17 +374,31 @@ export const createFleetModelSnapshotStore = ({ filePath, now = () => Date.now()
 		const live = new Map();
 		const batchQuarantine = new Map();
 		for (const record of Array.isArray(runners) ? runners : []) {
-			if (!claimEligibleRunner(record)) continue;
+			// Fail-safe per runner: the catalogue GET re-merges live
+			// registrations on every read, so one poisoned record (a
+			// throwing eligibility check, hostile capability getters, a
+			// corrupt effective-models list) must degrade to "skipped
+			// runner", never to a 500 for the whole catalogue.
+			try {
+				if (!claimEligibleRunner(record)) continue;
+			} catch {
+				continue;
+			}
 			const runnerId = String(record?.runnerId ?? "").trim();
 			if (!runnerId) continue;
-			const caps = record?.capabilities && typeof record.capabilities === "object" ? record.capabilities : {};
-			const harnessIds = Array.isArray(caps.harnesses)
-				? caps.harnesses.map((h) => (typeof h === "string" ? h.trim() : String(h?.id ?? "").trim())).filter(Boolean)
-				: [];
+			let caps = {};
+			let advertised = [];
+			try {
+				caps = record?.capabilities && typeof record.capabilities === "object" ? record.capabilities : {};
+				advertised = effectiveRunnerModels(record);
+			} catch {
+				continue;
+			}
+			const harnessIds = cleanHarnessIds(caps.harnesses);
 			const tiers = Array.isArray(caps.tiers) ? caps.tiers.map((t) => String(t ?? "").trim()).filter(Boolean) : [];
 			const source = typeof caps.modelSource === "string" && caps.modelSource.trim() ? caps.modelSource.trim() : "unknown";
 			const provenance = caps.modelProvenance && typeof caps.modelProvenance === "object" ? caps.modelProvenance : {};
-			const { entries, quarantined: bad } = ingestAdvertisedIds(effectiveRunnerModels(record), {
+			const { entries, quarantined: bad } = ingestAdvertisedIds(advertised, {
 				runnerId,
 				harnesses: harnessIds,
 				tiers,
@@ -421,14 +446,18 @@ export const createFleetModelSnapshotStore = ({ filePath, now = () => Date.now()
 					source,
 				};
 			}
-			for (const item of bad) {
-				let slot = batchQuarantine.get(item.id);
-				if (!slot) {
-					slot = { id: item.id, reason: item.reason, runnerIds: new Set() };
-					batchQuarantine.set(item.id, slot);
-				}
-				slot.runnerIds.add(runnerId);
+		for (const item of bad) {
+			let slot = batchQuarantine.get(item.id);
+			if (!slot) {
+				// First reporter's reason wins for the round; every
+				// reporter still lands in `runnerIds`, so the audit
+				// trail names who, even when the wording names the
+				// first why.
+				slot = { id: item.id, reason: item.reason, runnerIds: new Set() };
+				batchQuarantine.set(item.id, slot);
 			}
+			slot.runnerIds.add(runnerId);
+		}
 		}
 		for (const [id, slot] of live) {
 			const previous = models.get(id);

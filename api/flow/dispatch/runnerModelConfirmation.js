@@ -1,4 +1,5 @@
 import { parseModelKey } from "../../../shared/modelKeys.js";
+import { cleanHarnessIds } from "./catalogIngest.js";
 
 /***
  * MARK: runnerModelConfirmation
@@ -123,11 +124,7 @@ export function confirmRunnerModel(record = {}, rawId, clock) {
 	// pin when the runner did publish a harness list. Runners with no
 	// capability signal (old runners, tests) stay trusted via the existing
 	// fail-open rules below.
-	const reportedHarnesses = Array.isArray(caps.harnesses)
-		? caps.harnesses
-			.map((h) => (typeof h === "string" ? h.trim() : String(h?.id ?? "").trim()))
-			.filter(Boolean)
-		: [];
+	const reportedHarnesses = cleanHarnessIds(caps.harnesses);
 	if (parsed?.harness && reportedHarnesses.length > 0 && !reportedHarnesses.includes(parsed.harness)) {
 		return { status: "stale", harness };
 	}

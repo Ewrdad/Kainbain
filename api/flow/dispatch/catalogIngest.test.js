@@ -1,5 +1,17 @@
 import { describe, test, expect } from "vitest";
-import { ingestAdvertisedId, ingestAdvertisedIds } from "./catalogIngest.js";
+import { cleanHarnessIds, ingestAdvertisedId, ingestAdvertisedIds } from "./catalogIngest.js";
+
+describe("cleanHarnessIds", () => {
+	test("accepts string and { id } shapes, dedupes, drops blanks", () => {
+		expect(cleanHarnessIds([{ id: "muse" }, " pi ", "", 42, null, "muse", { id: "  " }, {}])).toEqual([
+			"muse",
+			"pi",
+		]);
+		expect(cleanHarnessIds("muse")).toEqual([]);
+		expect(cleanHarnessIds(null)).toEqual([]);
+		expect(cleanHarnessIds([{ id: 7 }])).toEqual(["7"]);
+	});
+});
 
 describe("ingestAdvertisedId", () => {
 	test("keeps canonical harness ids byte-identical with parsed attributes + provenance", () => {
