@@ -14,7 +14,8 @@ import { taskRequirements } from "./dispatch/taskRequirements.js";
 import { curateRunnerPrompt } from "./curateRunnerPrompt.js";
 import { materializeRunnerTaskDocs } from "./execution/materializeRunnerTaskDocs.js";
 import { buildCommandKeywordContext, expandStageCommand } from "./commandStages.js";
-import { resolveStagesForTask } from "./stageResolution.js";
+import { resolveStagesForTask, resolveCandidateStage } from "./stageResolution.js";
+import { buildRunnerAssignmentSummary } from "./runnerAssignmentSummary.js";
 import { emitStageLifecycle } from "./stageLifecycle.js";
 import {
 	resolveStageLabel,
@@ -29,6 +30,8 @@ import {
 	buildTimelineAttribution,
 	stampArrivalRowAttribution,
 } from "./runAttribution.js";
+import { hashStageConfig, isWellFormedConfigHash } from "../../shared/stageAttestation.js";
+import { resolveAttestationStage } from "../work/resolveAttestationStage.js";
 
 /***
  * MARK: resolveCiTimeoutMs
@@ -51,6 +54,30 @@ export const resolveCiTimeoutMs = (resolved, project) => {
 		Number(project?.ciTimeoutMs) ||
 		600000
 	);
+};
+
+/***
+ * MARK: dispatchStageConfigHash
+ * @description Computes the stage+config hash for one dispatched claim and
+ *   stashes it on the task (`currentStageConfigHash`, in-memory like
+ *   `currentStageStartSha`): the Runner echoes the dispatched value into
+ *   its wrap-up commit and completion, and the stash covers completions
+ *   from old Runners that report none. Total — an unresolvable stage
+ *   yields null (the claim simply carries no hash, the pre-feature
+ *   posture). Only the hash is kept; the config itself is never logged.
+ * @example dispatchStageConfigHash(project, task, stage) => 'sha256:…' or null
+ * @param {Object} project - Project record.
+ * @param {Object} task - Task entity (stash target).
+ * @param {Object|null} stage - Candidate stage, if the caller resolved one.
+ * @returns {string|null} Dispatched config hash, or null.
+ ***/
+const dispatchStageConfigHash = (project, task, stage) => {
+	const attestedStage = resolveAttestationStage({ stage, project, task });
+	const configHash = attestedStage ? hashStageConfig({ task, stage: attestedStage }) : null;
+	if (configHash && task && typeof task === "object") {
+		task.currentStageConfigHash = configHash;
+	}
+	return configHash;
 };
 
 /***
@@ -489,12 +516,20 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 
 	app.get("/runners/monitor", async () => {
 		// Multi-Runner UI (WP-3.4): who runs what right now, so
-		// Settings › Runners can show live assignments.
+		// Settings › Runners can show live assignments. This endpoint is
+		// intentionally project-agnostic (Runners are global): it always
+		// returns every live hold, and each assignment carries cross-pipeline
+		// identity (`projectName`, `taskTitle`, `stageName`, ...) resolved
+		// from the held task's own project/workflow — so the UI renders the
+		// real job even when the operator views another pipeline. Full task
+		// hydration (log entries, reports) stays on
+		// `GET /tasks/:id?projectId=...`, which already accepts `projectId`.
 		// `scheduler` exposes the cutover deferral counters so a task
 		// sitting in_stage is diagnosable: a climbing `deferredDispatch`
 		// with no Runner pickup means the fleet is empty or mismatched.
 		const liveAssignments = claimStore.liveHolds().map((hold) => {
 			const record = runnerRegistry.records().find((r) => r.runnerId === hold.runnerId) || null;
+			const stageId = executionLedger.stageFor(hold.executionId);
 			return {
 				runnerId: hold.runnerId,
 				projectId: hold.projectId,
@@ -502,10 +537,14 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				executionId: hold.executionId,
 				epoch: hold.epoch,
 				startedAt: hold.startedAt ?? null,
-				stageId: executionLedger.stageFor(hold.executionId),
+				stageId,
 				prompt: executionLedger.promptFor(hold.executionId),
 				serving: executionLedger.servingFor(hold.executionId),
 				lastSeenAt: record?.lastSeenAt ?? null,
+				// Global identity (additive; older UI ignores unknown keys):
+				// resolved from the held task's own project/workflow, never
+				// from whatever pipeline the viewer has selected.
+				...buildRunnerAssignmentSummary({ hold, projectStore, taskStore, stageId }),
 			};
 		});
 		const sched = taskStore.schedulerStats || {};
@@ -531,13 +570,21 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 	});
 
 	app.get("/runners/models/catalogue", async () => {
-		// Fleet model catalogue: derived live from Runner registrations
-		// (never cached), so joins, leaves, heartbeat updates, and
-		// operator allowlist edits reflect on the next read. One entry
-		// per distinct model id served by at least one claim-eligible
-		// Runner (active, not paused), with the serving harness ids,
-		// tiers, and runner count/ids. Stage, default, and alias pickers
-		// read this for availability instead of credential health.
+		// Fleet model catalogue (ADR 0016): the live derivation merged
+		// into the persisted snapshot on every read, so joins, leaves,
+		// heartbeat updates, and operator allowlist edits reflect on the
+		// next read while the UI never depends on a transient read. One
+		// entry per distinct model id, available ones with their serving
+		// harness ids, effort tiers, runner count/ids, and per-runner
+		// provenance; entries no claim-eligible Runner serves stay
+		// marked unavailable with a reason instead of vanishing; and
+		// malformed ids quarantine with a reason instead of serving.
+		// Stage, default, and alias pickers read this for availability
+		// instead of credential health. Dispatch keeps reading the live
+		// derivation (`buildFleetModelCatalog`), never this snapshot.
+		if (typeof deps?.fleetModelSnapshot?.update === "function") {
+			return deps.fleetModelSnapshot.update(runnerRegistry.list());
+		}
 		return buildFleetModelCatalog(runnerRegistry.list());
 	});
 
@@ -711,6 +758,14 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		const ctx = guardedTask(request, reply);
 		if (!ctx) return;
 		try {
+			// Stage attestation (additive): a well-formed reported hash rides
+			// into the completion entry; a malformed one is ignored (the
+			// dispatch stash still covers the stage), never recorded.
+			const rawReportedHash = request.body?.configHash;
+			const reportedConfigHash =
+				typeof rawReportedHash === "string" && isWellFormedConfigHash(rawReportedHash)
+					? rawReportedHash.trim()
+					: null;
 			const receipt = await executionLedger.completeExecution({
 				claimStore,
 				taskStore,
@@ -723,6 +778,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				sha: request.body?.sha ?? null,
 				branch: request.body?.branch ?? null,
 				posture: request.body?.posture ?? null,
+				configHash: reportedConfigHash,
+				committed: request.body?.committed,
 			});
 			if (receipt.duplicate) return receipt;
 			// Engine-owned finish: the lease fence accepted the report, so
@@ -890,7 +947,10 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// excludes the stage harness must not claim the task by asking for
 		// it directly. Fail loud (409 + the verdict code) instead of
 		// silently honouring a claim the operator switched off.
-		const req = taskRequirements(projectStore.getProject(projectId) || {}, task);
+		// Requirements resolve from the task's own pipeline stages (never
+		// the viewed pipeline's mirror), exactly like the dispatch scan.
+		const claimProject = projectStore.getProject(projectId) || {};
+		const req = taskRequirements(claimProject, task, resolveStagesForTask(claimProject, task));
 		const claimVerdict = operatorConfigVerdict(runner, req, { projectId });
 		if (!claimVerdict.ok) {
 			return reply.status(409).send({
@@ -918,10 +978,10 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			// resolved harness/model names this run on the timeline/reports.
 			const project = projectStore.getProject(projectId);
 			const stages = resolveStagesForTask(project, task);
-			const stage =
-				stages.find((s) => String(s?.id) === String(task.currentStageId)) || stages[0] || null;
+			const stage = resolveCandidateStage(stages, task.currentStageId);
 			stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req, runnerId: runner.runnerId });
-			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...await ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project, task, stageId: task.currentStageId }) };
+			const dispatchConfigHash = dispatchStageConfigHash(project, task, stage);
+			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...await ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project, task, stageId: task.currentStageId }), ...(dispatchConfigHash ? { configHash: dispatchConfigHash } : {}) };
 		} catch (err) {
 			return sendStoreError(reply, err);
 		}
@@ -1246,6 +1306,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					req,
 					runnerId: runner.runnerId,
 				});
+				const dispatchConfigHash = dispatchStageConfigHash(candProject, cand.task, cand.stage);
 				return {
 					assigned: true,
 					projectId: cand.projectId,
@@ -1257,6 +1318,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					prompt: curateRunnerPrompt({ project: candProject, task: cand.task, stageId: cand.stage?.id }),
 					...await ciPayloadFor(cand.projectId, cand.task, cand.stage),
 					requirements: req,
+					...(dispatchConfigHash ? { configHash: dispatchConfigHash } : {}),
 				};
 			} catch (err) {
 				if (err?.code === "CLAIM_CONFLICT") continue;

@@ -83,6 +83,8 @@ export function saveTaskMarkdown(taskStore, projectCwd, task) {
 			`createdAt: ${_formatFrontmatterValue(task.createdAt)}`,
 			`updatedAt: ${_formatFrontmatterValue(task.updatedAt)}`,
 			`enteredStageAt: ${_formatFrontmatterValue(task.enteredStageAt || "")}`,
+			...(task.autoApproveAt ? [`autoApproveAt: ${_formatFrontmatterValue(task.autoApproveAt)}`] : []),
+			...(task.autoApproveRemindedAt ? [`autoApproveRemindedAt: ${_formatFrontmatterValue(task.autoApproveRemindedAt)}`] : []),
 			`timeInStage: ${Number(task.timeInStage) || 0}`,
 			`reportMetadata: ${_formatFrontmatterValue(JSON.stringify((task.reports || []).map(({ filename, stageName, stageId, duration, status, createdAt, durationStartedAt, harnessId, failureKind, aliasName, modelRef, targetIndex, runnerId }) => ({ filename, stageName, stageId, duration, status, createdAt, durationStartedAt, harnessId, failureKind, aliasName, modelRef, targetIndex, runnerId }))))}`,
 			`reliabilitySamples: ${_formatFrontmatterValue(JSON.stringify(task.reliabilitySamples || []))}`,
@@ -907,6 +909,8 @@ export function parseTaskMarkdown(taskStore, content, taskId, projectId) {
 		createdAt: data.createdAt || now,
 		updatedAt: data.updatedAt || now,
 		enteredStageAt: data.enteredStageAt || undefined,
+		autoApproveAt: data.autoApproveAt || null,
+		autoApproveRemindedAt: data.autoApproveRemindedAt || null,
 		timeInStage: Number(data.timeInStage) || 0,
 		deployBuildAtEntry:
 			data.deployBuildAtEntry !== undefined &&

@@ -720,9 +720,11 @@ Harness: ${harnessId || 'unknown'}${aliasName ? `\nAlias: ${aliasName}` : ''}`}
   );
 
   // Goal title row (line-clamped by user preference; compact forces one line).
+  // The title is the card's key fact, so it renders larger and semibold while
+  // the clamp class (pinned by tests) keeps doing the truncation work.
   const titleRow = (
     <div
-      className={`font-headline-sm text-on-surface ${isCompact ? 'mb-1.5' : 'mb-3'} ${clampClass} leading-snug font-medium`}
+      className={`font-headline-sm text-sm text-on-surface ${isCompact ? 'mb-1.5' : 'mb-3'} ${clampClass} leading-snug font-semibold`}
     >
       {formatTaskTitleFirstLine(task)}
     </div>
@@ -734,7 +736,7 @@ Harness: ${harnessId || 'unknown'}${aliasName ? `\nAlias: ${aliasName}` : ''}`}
   // the elapsed-vs-average detail so colour is never the only signal.
   const ageText = isCompact ? shortStageAge : formattedTimestamp;
   const metaRow = (
-    <div className="flex justify-between items-center text-text-muted font-label-caps text-[9px] font-mono">
+    <div className="flex justify-between items-center text-text-muted font-label-caps text-[10px] font-mono">
       {showTimeInStage ? (
         showPace ? (
           <InfoTooltip
@@ -756,7 +758,7 @@ Harness: ${harnessId || 'unknown'}${aliasName ? `\nAlias: ${aliasName}` : ''}`}
         <span />
       )}
       <span
-        className={`flex items-center gap-1.5 font-bold ${statusColorClass()}`}
+        className={`flex items-center gap-1.5 font-bold px-1.5 py-0.5 rounded-sm bg-surface-container-high/50 border border-border-standard/30 ${statusColorClass()}`}
         aria-label={isBlocked ? blockedByLabel : undefined}
         title={isBlocked ? blockedByLabel : undefined}
       >

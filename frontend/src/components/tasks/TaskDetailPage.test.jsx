@@ -1221,6 +1221,32 @@ describe('TaskDetailPage Copy Checkout buttons', () => {
     expect(screen.queryByText('IN PROGRESS')).not.toBeInTheDocument();
     expect(screen.getByLabelText(/Blocked by #KB-ABC1/i)).toBeInTheDocument();
   });
+
+  test('working-location line names branch, mode, and worktree path', () => {
+    const humanTask = {
+      ...sampleTask,
+      workingLocation: {
+        branch: 'kb/task-101',
+        workspaceIsolation: 'worktree',
+        worktreePath: '/repo/.kainbain/worktrees/task-101',
+      },
+    };
+    renderWithKainBain(<TaskDetailPage task={humanTask} />, {
+      stages: sampleStages,
+      projects: [{ id: 'proj-1', name: 'KainBain', cwd: '/home/user/kainbain', useBranches: true }],
+    });
+    expect(
+      screen.getByText('Works on kb/task-101 · worktree · /repo/.kainbain/worktrees/task-101'),
+    ).toBeInTheDocument();
+  });
+
+  test('working-location line falls back to the derived branch name', () => {
+    renderWithKainBain(<TaskDetailPage task={{ ...sampleTask }} />, {
+      stages: sampleStages,
+      projects: [{ id: 'proj-1', name: 'KainBain', cwd: '/home/user/kainbain', useBranches: true }],
+    });
+    expect(screen.getByText('Works on kb/task-101 · quarantine')).toBeInTheDocument();
+  });
 });
 
 describe('TaskDetailPage survey entry points', () => {

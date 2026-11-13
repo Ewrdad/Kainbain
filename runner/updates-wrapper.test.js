@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -92,5 +92,210 @@ describe("kainbain-runner wrapper restart gate", () => {
 		assert.equal(got.status, 3);
 		assert.ok(!String(got.stdout || "").includes("restarting into"), "a crash never restarts");
 		fs.rmSync(root, { recursive: true, force: true });
+	});
+});
+
+describe("kainbain-runner doctor", () => {
+	// A fake $HOME: systemd unit + env file plus a versioned install root
+	// the doctor inspects. The backend is a local HTTP stub serving the
+	// open GET /runners fleet list with this runner's record.
+	const fakeHome = ({ entrypoint = "wrapper", version = "0.2.0", backendPort = 1, extraUnits = [] } = {}) => {
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "kb-doctor-home-"));
+		const root = path.join(home, "install");
+		const unpacked = path.join(root, "releases", version, "unpacked");
+		fs.mkdirSync(path.join(unpacked, "runner"), { recursive: true });
+		fs.writeFileSync(path.join(unpacked, "version.json"), JSON.stringify({ component: "runner", runnerVersion: version }));
+		fs.symlinkSync(unpacked, path.join(root, "current"));
+		fs.writeFileSync(path.join(root, "update-state.json"), JSON.stringify({ status: "success", version, bootAttempts: 0 }));
+		const unitDir = path.join(home, ".config", "systemd", "user");
+		const envDir = path.join(home, ".kainbain");
+		fs.mkdirSync(unitDir, { recursive: true });
+		fs.mkdirSync(envDir, { recursive: true });
+		const writeUnit = (id, kind) => {
+			const short = id.replace(/^local-/, "");
+			const envFile = path.join(envDir, `runner-${short}.env`);
+			fs.writeFileSync(
+				envFile,
+				[
+					`KAINBAIN_RUNNER_ID=${id}`,
+					`KAINBAIN_RUNNER_BACKEND=http://127.0.0.1:${backendPort}`,
+					`KAINBAIN_RUNNER_INSTALL_ROOT=${root}`,
+					`KAINBAIN_RUNNER_WORK_ROOT=${home}/work`,
+					`KAINBAIN_RUNNER_CREDENTIAL=secret-should-never-print`,
+					"",
+				].join("\n"),
+			);
+			const exec = kind === "wrapper" ? `${root}/bin/kainbain-runner` : "/usr/bin/node main.js";
+			const wd = kind === "wrapper" ? root : path.join(home, "apps", "tree", "runner");
+			if (kind === "direct") {
+				fs.mkdirSync(wd, { recursive: true });
+				fs.writeFileSync(path.join(wd, "version.json"), JSON.stringify({ component: "runner", runnerVersion: version }));
+			}
+			fs.writeFileSync(
+				path.join(unitDir, `kainbain-runner-${short}.service`),
+				["[Service]", `WorkingDirectory=${wd}`, `EnvironmentFile=${envFile}`, `ExecStart=${exec}`, "Restart=always", ""].join("\n"),
+			);
+		};
+		writeUnit("local-alpha", entrypoint);
+		for (const extra of extraUnits) writeUnit(extra.id, extra.entrypoint);
+		return { home, root };
+	};
+
+	const runDoctor = (home, root, args = []) =>
+		spawnSync("bash", [WRAPPER, "doctor", ...args], {
+			env: { ...process.env, HOME: home, KAINBAIN_RUNNER_INSTALL_ROOT: root },
+			encoding: "utf8",
+		});
+
+	// The stub backend runs in a CHILD process: runDoctor blocks this
+	// process in spawnSync, so an in-process server could never answer.
+	const serveRunners = (records) =>
+		new Promise((resolve, reject) => {
+			const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-doctor-be-"));
+			const script = path.join(dir, "server.mjs");
+			fs.writeFileSync(
+				script,
+				`import http from "node:http";\nconst records = ${JSON.stringify(JSON.stringify(records))};\n` +
+					`http.createServer((req, res) => {\nif (req.url === "/runners") { res.statusCode = 200; res.end(records); return; }\n` +
+					`res.statusCode = 404; res.end("nope");\n}).listen(0, "127.0.0.1", function () { console.log(this.address().port); });\n`,
+			);
+			const proc = spawn("node", [script], { stdio: ["ignore", "pipe", "ignore"] });
+			let out = "";
+			const timer = setTimeout(() => {
+				proc.kill();
+				reject(new Error("stub backend did not report its port"));
+			}, 10000);
+			proc.stdout.on("data", (chunk) => {
+				out += String(chunk);
+				const port = Number.parseInt(out.trim(), 10);
+				if (Number.isFinite(port) && port > 0) {
+					clearTimeout(timer);
+					resolve({
+						port,
+						close: () => {
+							proc.kill();
+							fs.rmSync(dir, { recursive: true, force: true });
+						},
+					});
+				}
+			});
+			proc.on("error", (err) => {
+				clearTimeout(timer);
+				reject(err);
+			});
+		});
+
+	const snapshotTree = (dir) => {
+		const out = [];
+		const walk = (current) => {
+			for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+				const full = path.join(current, entry.name);
+				if (entry.isDirectory()) walk(full);
+				else if (entry.isSymbolicLink()) out.push(`${path.relative(dir, full)} -> ${fs.readlinkSync(full)}`);
+				else out.push(`${path.relative(dir, full)} = ${fs.readFileSync(full, "utf8")}`);
+			}
+		};
+		walk(dir);
+		return out.sort();
+	};
+
+	it("reports a healthy wrapper install as ok with the backend record", async () => {
+		if (!haveBash()) return;
+		const server = await serveRunners([
+			{ runnerId: "local-alpha", runnerVersion: "0.2.0", recommendedVersion: "0.2.0", minimumVersion: "0.1.0", updateAvailable: false, belowMinimum: false, updateStatus: null },
+		]);
+		try {
+			const { home, root } = fakeHome({ backendPort: server.port });
+			try {
+				const got = runDoctor(home, root);
+				const out = String(got.stdout || "");
+				assert.equal(got.status, 0, out + got.stderr);
+				assert.match(out, /install_root: /);
+				assert.match(out, /installed_version: 0\.2\.0/);
+				assert.match(out, /entrypoint: wrapper/);
+				assert.match(out, /backend: reachable/);
+				assert.match(out, /desired=0\.2\.0 minimum=0\.1\.0/);
+				assert.match(out, /status: ok/);
+				assert.ok(!out.includes("secret-should-never-print"), "credentials are never printed");
+			} finally {
+				fs.rmSync(home, { recursive: true, force: true });
+			}
+		} finally {
+			server.close();
+		}
+	});
+
+	it("flags a direct node main.js entrypoint with exit 1", () => {
+		if (!haveBash()) return;
+		const { home, root } = fakeHome({ entrypoint: "direct" });
+		try {
+			const got = runDoctor(home, root);
+			const out = String(got.stdout || "");
+			assert.equal(got.status, 1, out);
+			assert.match(out, /entrypoint: direct/);
+			assert.match(out, /attention: .*directly/);
+			assert.match(out, /status: attention/);
+		} finally {
+			fs.rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("flags a missing current symlink with exit 1", () => {
+		if (!haveBash()) return;
+		const { home, root } = fakeHome();
+		try {
+			fs.rmSync(path.join(root, "current"), { force: true });
+			const got = runDoctor(home, root);
+			const out = String(got.stdout || "");
+			assert.equal(got.status, 1, out);
+			assert.match(out, /current: \(missing\)/);
+			assert.match(out, /installed_version: \(unknown\)/);
+		} finally {
+			fs.rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("reports an unreachable backend but keeps exit 0 (network state, not install damage)", () => {
+		if (!haveBash()) return;
+		const { home, root } = fakeHome({ backendPort: 1 });
+		try {
+			const got = runDoctor(home, root);
+			const out = String(got.stdout || "");
+			assert.equal(got.status, 0, out);
+			assert.match(out, /backend: unreachable/);
+		} finally {
+			fs.rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("writes nothing: the tree is byte-identical before and after", () => {
+		if (!haveBash()) return;
+		const { home, root } = fakeHome();
+		try {
+			const before = snapshotTree(home);
+			runDoctor(home, root);
+			assert.deepEqual(snapshotTree(home), before);
+		} finally {
+			fs.rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("supports --verify-install and --unit filtering", () => {
+		if (!haveBash()) return;
+		const { home, root } = fakeHome({ extraUnits: [{ id: "local-bravo", entrypoint: "direct" }] });
+		try {
+			const alias = spawnSync("bash", [WRAPPER, "--verify-install"], {
+				env: { ...process.env, HOME: home, KAINBAIN_RUNNER_INSTALL_ROOT: root },
+				encoding: "utf8",
+			});
+			assert.equal(alias.status, 1, "bravo's direct entrypoint trips attention through the alias");
+			const filtered = runDoctor(home, root, ["--unit", "kainbain-runner-alpha"]);
+			const out = String(filtered.stdout || "");
+			assert.equal(filtered.status, 0, out);
+			assert.ok(out.includes("unit: kainbain-runner-alpha.service"), "the selected unit is reported");
+			assert.ok(!out.includes("local-bravo"), "other units are skipped");
+		} finally {
+			fs.rmSync(home, { recursive: true, force: true });
+		}
 	});
 });

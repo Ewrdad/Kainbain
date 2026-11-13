@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { api } from '../../services/api';
 import { logger } from '../../services/logger';
-import { MarkdownViewer } from '../common/MarkdownViewer';
+import { MarkdownViewer, parseMarkdownBlocks } from '../common/MarkdownViewer';
+import { groupBlocksIntoSections } from '../common/markdownSections';
 
 /***
  * MARK: DOC_SECTION_LABELS
@@ -69,6 +70,14 @@ export function DocsView() {
   // normalisation effect so a normalise queued before a click but executed
   // after it can never clobber the user's choice back to the first article.
   const userSelectedRef = useRef(false);
+  // One-shot expand-all / collapse-all requests for the article viewer. Each
+  // click mints a fresh nonce, which the viewer applies exactly once.
+  const [sectionSignal, setSectionSignal] = useState(null);
+  const sectionSignalNonce = useRef(0);
+  const sendSectionSignal = useCallback((action) => {
+    sectionSignalNonce.current += 1;
+    setSectionSignal({ action, nonce: sectionSignalNonce.current });
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -100,6 +109,18 @@ export function DocsView() {
   // bare `/docs` location with the canonical `/docs/:slug` (history REPLACE,
   // so bare entry never leaves a slug-less docs location behind).
   const effectiveSlug = routeSlug ?? (docs.length > 0 ? docs[0].slug : null);
+
+  // A one-shot expand/collapse-all request belongs to the article it was sent
+  // for: switching articles remounts the viewer while the old signal is still
+  // set, and the stale request (e.g. collapse-all) would otherwise apply to
+  // the new article too. The current slug is tracked alongside the signal, and
+  // a slug change drops the signal during render (never in an effect) so every
+  // article opens in its default all-open state.
+  const [signalSlug, setSignalSlug] = useState(effectiveSlug);
+  if (signalSlug !== effectiveSlug) {
+    setSignalSlug(effectiveSlug);
+    setSectionSignal(null);
+  }
 
   useEffect(() => {
     // userSelectedRef is read at effect-run time (refs are live, not
@@ -167,6 +188,13 @@ export function DocsView() {
     () => docs.find((d) => d.slug === effectiveSlug) || null,
     [docs, effectiveSlug],
   );
+
+  // The expand/collapse-all controls only make sense when the loaded article
+  // actually holds `h2` sections; short articles without any render no chrome.
+  const hasCollapsibleSections = useMemo(() => {
+    if (!article) return false;
+    return groupBlocksIntoSections(parseMarkdownBlocks(article)).sections.length > 0;
+  }, [article]);
 
   return (
     <div className="flex-1 flex min-h-0 overflow-hidden" data-testid="docs-view">
@@ -255,19 +283,52 @@ export function DocsView() {
           )}
           {!isArticleLoading && !articleError && article !== null && (
             <>
-              {activeDoc && (
-                <p className="text-[10px] font-mono uppercase tracking-widest text-text-muted mb-1">
-                  {DOC_SECTION_LABELS[activeDoc.section] || activeDoc.section} ·{' '}
-                  <a
-                    href={`/docs/${activeDoc.slug}`}
-                    className="underline underline-offset-2 hover:text-on-surface"
-                    title="Raw markdown for agents (curl-friendly)"
-                  >
-                    raw markdown
-                  </a>
-                </p>
+              {(activeDoc || hasCollapsibleSections) && (
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <p className="text-[10px] font-mono uppercase tracking-widest text-text-muted">
+                    {activeDoc && (
+                      <>
+                        {DOC_SECTION_LABELS[activeDoc.section] || activeDoc.section} ·{' '}
+                        <a
+                          href={`/docs/${activeDoc.slug}`}
+                          className="underline underline-offset-2 hover:text-on-surface"
+                          title="Raw markdown for agents (curl-friendly)"
+                        >
+                          raw markdown
+                        </a>
+                      </>
+                    )}
+                  </p>
+                  {hasCollapsibleSections && (
+                    <div
+                      className="flex items-center gap-1.5 shrink-0"
+                      role="group"
+                      aria-label="Article sections"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => sendSectionSignal('expand-all')}
+                        className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider text-text-muted hover:text-on-surface hover:bg-surface-container-high border border-border-standard transition-all cursor-pointer"
+                      >
+                        Expand all
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => sendSectionSignal('collapse-all')}
+                        className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider text-text-muted hover:text-on-surface hover:bg-surface-container-high border border-border-standard transition-all cursor-pointer"
+                      >
+                        Collapse all
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
-              <MarkdownViewer content={article} className="text-sm" />
+              <MarkdownViewer
+                content={article}
+                className="text-sm"
+                collapsibleSections
+                sectionVisibilitySignal={sectionSignal}
+              />
             </>
           )}
           {!isArticleLoading && !articleError && article === null && !effectiveSlug && (

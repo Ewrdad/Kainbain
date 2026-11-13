@@ -110,6 +110,81 @@ describe("publish.sh", () => {
 		assert.equal(git(dir, "rev-parse", "HEAD"), primaryHead);
 		assert.match(git(dir, "status", "--porcelain"), /A {2}wip\.txt/);
 	});
+	it("runner gate runs the same suite list as scripts/run-tests.mjs (no under-tested channel)", async () => {
+		// The publish gate once ran 6 runner suites and omitted every
+		// updates-* suite, so a green publish could ship a broken updater.
+		// The two lists are pinned equal here instead of sharing code:
+		// publish.sh must stay dependency-free bash.
+		const publish = fs.readFileSync(path.join(ROOT, "publish.sh"), "utf8");
+		const gateLine = publish.split("\n").find((line) => line.includes("runner) run node --test"));
+		assert.ok(gateLine, "publish.sh has a runner gate line");
+		const gated = [...gateLine.matchAll(/runner\/[A-Za-z0-9-]+\.test\.js/g)].map((m) => m[0]).sort();
+		const { buildBranches } = await import("../scripts/run-tests.mjs");
+		const { branches } = buildBranches({ hasBash: true, hasDocker: true, hasDepcheck: true, nodeExec: "node", npmExec: "npm" });
+		const runnerBranch = branches.find((branch) => branch.name === "Unit Tests (runner)");
+		const expected = runnerBranch.args.filter((arg) => arg.startsWith("runner/")).sort();
+		assert.deepEqual(gated, expected, "publish.sh runner gate names every suite in the gate branch");
+	});
+	it("--runner cuts and pushes the runner-v* tag once, then skips it as already released", () => {
+		// Fixture repo pair with a stubbed runner build (the tag flow, not
+		// the tarball, is under test): --fast skips the unit gates.
+		const base = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-publish-tag-"));
+		const remote = path.join(base, "origin.git");
+		const dir = path.join(base, "work");
+		const git = (cwd, ...args) => {
+			const r = spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
+			assert.equal(r.status, 0, `git ${args.join(" ")}: ${r.stderr}`);
+			return r.stdout.trim();
+		};
+		const bare = (...args) => {
+			const r = spawnSync("git", args, { encoding: "utf8" });
+			assert.equal(r.status, 0, `git ${args.join(" ")}: ${r.stderr}`);
+		};
+		bare("init", "--bare", remote);
+		bare("init", "-b", "main", dir);
+		git(dir, "config", "user.email", "publish-tag@test");
+		git(dir, "config", "user.name", "publish-tag");
+		fs.mkdirSync(path.join(dir, "scripts"), { recursive: true });
+		fs.mkdirSync(path.join(dir, "runner"), { recursive: true });
+		fs.mkdirSync(path.join(dir, "api", "node_modules"), { recursive: true });
+		fs.copyFileSync(path.join(ROOT, "publish.sh"), path.join(dir, "publish.sh"));
+		fs.chmodSync(path.join(dir, "publish.sh"), 0o755);
+		fs.writeFileSync(path.join(dir, "scripts", "check-component-compat.mjs"), "process.exit(0);\n");
+		fs.writeFileSync(
+			path.join(dir, "scripts", "package-runner.sh"),
+			'#!/usr/bin/env bash\nset -euo pipefail\nmkdir -p dist\necho stub > "dist/kainbain-runner-${1:-dev}.tar.gz"\n',
+		);
+		fs.chmodSync(path.join(dir, "scripts", "package-runner.sh"), 0o755);
+		fs.writeFileSync(path.join(dir, "api", "node_modules", ".keep"), "");
+		fs.writeFileSync(
+			path.join(dir, "runner", "version.json"),
+			JSON.stringify({ component: "runner", apiVersion: "1.0.0", runnerVersion: "0.2.0", requires: { backendApi: ">=1.0.0 <2.0.0" } }),
+		);
+		fs.writeFileSync(path.join(dir, "file.txt"), "one\n");
+		git(dir, "add", "-A");
+		git(dir, "-c", "user.email=publish-tag@test", "-c", "user.name=publish-tag", "commit", "-qm", "one");
+		git(dir, "remote", "add", "origin", remote);
+		git(dir, "push", "-u", "origin", "main");
+		bare("--git-dir", remote, "symbolic-ref", "HEAD", "refs/heads/main");
+		const head = git(dir, "rev-parse", "HEAD");
+		// Dry-run first (in the fixture, so the checkout's own script runs
+		// instead of re-exec'ing into the primary like the repo tests do).
+		const planned = spawnSync("./publish.sh", ["--dry-run", "--runner"], { cwd: dir, encoding: "utf8", env: process.env });
+		assert.equal(planned.status, 0, planned.stderr + planned.stdout);
+		assert.match(planned.stdout, /would run: bash scripts\/package-runner\.sh/);
+		assert.match(planned.stdout, /would run: git tag -a runner-v0\.2\.0/);
+		assert.match(planned.stdout, /would run: git push origin runner-v0\.2\.0/);
+		assert.match(planned.stdout, /dry-run: nothing built, pushed, or written/);
+		const first = spawnSync("./publish.sh", ["--runner", "--fast"], { cwd: dir, encoding: "utf8", env: process.env });
+		assert.equal(first.status, 0, first.stderr + first.stdout);
+		assert.match(first.stdout, /tagged \+ pushed runner-v0\.2\.0/);
+		const peeled = spawnSync("git", ["--git-dir", remote, "rev-parse", "runner-v0.2.0^{}"], { encoding: "utf8" });
+		assert.equal(peeled.status, 0);
+		assert.equal(peeled.stdout.trim(), head, "the tag points at the published commit");
+		const second = spawnSync("./publish.sh", ["--runner", "--fast"], { cwd: dir, encoding: "utf8", env: process.env });
+		assert.equal(second.status, 0, second.stderr + second.stdout);
+		assert.match(second.stdout, /already exists/);
+	});
 	it("fast-forwards a behind local main ref when publishing from a kb/* branch", () => {
 		// Same fixture shape, but origin/main advances past the local main
 		// ref (via a second clone, so no history is rewritten), and the

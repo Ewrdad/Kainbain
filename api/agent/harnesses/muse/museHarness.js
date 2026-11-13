@@ -48,8 +48,10 @@ import {
  *   (the engine may dispatch a model ref, pinned via `session/setModel`); on
  *   exec it declares `"none"` — there is no exec-side catalogue, so the
  *   curated fallback applies and the monitor shows no Model pill. Alias
- *   targets for muse must leave the model blank; the API refuses muse +
- *   model rows and the load path blanks legacy ones.
+ *   targets for muse keep their stored model with a warning (alias
+ *   trust — the API saves muse + model rows with a soft warning and
+ *   the load path keeps them, so the value survives until fleet
+ *   coverage offers a catalog).
  *
  *   Safety: argv/env come from `musePermissions.js` — `--workspace` is
  *   always pinned, `--yolo` is ON by default (operator-chosen: no approval

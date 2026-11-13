@@ -41,12 +41,59 @@ describe('fleetModelsForHarness', () => {
     expect(fleetModelsForHarness('pi', counts)).toEqual([]);
   });
 
+  it('offers a newly discovered fleet id under its harness with the identical key', () => {
+    // Fleet entry ⇒ UI option: the option key is the exact advertised id
+    // (dispatch matches verbatim, so keys must be byte-equal end to end).
+    const counts = {
+      'muse::meta::muse-spark-1.4': entry(['muse']),
+    };
+    expect(fleetModelsForHarness('muse', counts)).toEqual([
+      {
+        key: 'muse::meta::muse-spark-1.4',
+        id: 'muse-spark-1.4',
+        provider: 'meta',
+        name: 'muse-spark-1.4',
+        fleet: true,
+      },
+    ]);
+  });
+
   it('skips malformed ids and stays empty without loaded fleet data', () => {
     const counts = { 'a::b::c::d::e': entry(['muse']), '': entry(['muse']) };
     expect(fleetModelsForHarness('muse', counts)).toEqual([]);
     expect(fleetModelsForHarness('muse', undefined)).toEqual([]);
     expect(fleetModelsForHarness('muse', {})).toEqual([]);
     expect(fleetModelsForHarness('', counts)).toEqual([]);
+  });
+
+  it('carries the snapshot verdict so stale entries badge Unavailable', () => {
+    const counts = {
+      'muse::meta::retired': {
+        ...entry(['muse']),
+        runnerCount: 0,
+        runnerIds: [],
+        available: false,
+        unavailableReason: 'stale pin',
+      },
+    };
+    expect(fleetModelsForHarness('muse', counts)).toEqual([
+      {
+        key: 'muse::meta::retired',
+        id: 'retired',
+        provider: 'meta',
+        name: 'retired',
+        fleet: true,
+        available: false,
+        unavailableReason: 'stale pin',
+      },
+    ]);
+  });
+
+  it('stays verdict-free for older backends (count badges judge those)', () => {
+    const counts = { 'muse::meta::m': entry(['muse']) };
+    const [option] = fleetModelsForHarness('muse', counts);
+    expect(option).not.toHaveProperty('available');
+    expect(option).not.toHaveProperty('unavailableReason');
   });
 });
 
