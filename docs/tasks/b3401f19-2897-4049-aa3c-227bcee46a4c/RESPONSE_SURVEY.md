@@ -280,3 +280,147 @@
   }
 }
 ```
+
+## Round 2
+
+```survey-json
+{
+  "round": 2,
+  "generatedAt": "2026-11-13T17:30:00.000Z",
+  "stage": "response-review",
+  "questions": [
+    {
+      "id": "q15",
+      "type": "single",
+      "text": "The plan would stop runner code from silently changing after startup and warn when a runner's version no longer matches the backend. Are you comfortable with version-mismatch warnings and required restarts?",
+      "options": [
+        "Yes, warn and block stale runners (Recommended)",
+        "Yes, but only warn, never block",
+        "No, keep running without version checks",
+        "Not sure"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q16",
+      "type": "single",
+      "text": "After 24 hours without a fresh scan, a runner's older model entries would stop counting toward 'N runners' while remaining visible with 0 runners. Is 24 hours an acceptable staleness threshold?",
+      "options": [
+        "Yes, 24 hours is reasonable (Recommended)",
+        "Use a longer window",
+        "Only mark stale after an explicit scan failure",
+        "Not sure"
+      ],
+      "required": false,
+      "showIf": null
+    },
+    {
+      "id": "q17",
+      "type": "single",
+      "text": "Non-standard model IDs, such as dummy or test names, would be blocked and kept only in an admin quarantine list. Do you want this strict blocking behaviour?",
+      "options": [
+        "Yes, block invalid IDs and keep audit trail (Recommended)",
+        "Yes, block invalid IDs with no history",
+        "No, allow them but mark unverified",
+        "Not sure"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q18",
+      "type": "single",
+      "text": "If a runner advertises a model under a harness it does not serve, that advertisement would be ignored for that harness and quarantined. Do you agree?",
+      "options": [
+        "Yes, ignore for that harness (Recommended)",
+        "Show it under both harnesses",
+        "Move it to the harness it actually serves",
+        "Not sure"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q19",
+      "type": "single",
+      "text": "Model pickers would use 'N runners' instead of an 'Unavailable' badge, and harness availability would be based on runner counts rather than the backend container's local tool check. Do you accept this change?",
+      "options": [
+        "Yes, runner counts should drive badges (Recommended)",
+        "Keep backend UNAVAILABLE alongside counts",
+        "Prefer backend probe only",
+        "Not sure"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q20",
+      "type": "single",
+      "text": "Models manually declared but never discovered would remain selectable but clearly marked 'unverified' with 0 runners and never count as served. Is that acceptable?",
+      "options": [
+        "Yes, selectable but clearly unverified (Recommended)",
+        "Hide unverified models from pickers",
+        "Count declarations as served",
+        "Not sure"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q21",
+      "type": "single",
+      "text": "Should backend dispatch adopt stricter verification only after cleanup shows healthy discovery, or switch immediately?",
+      "options": [
+        "Adopt after cleanup proves healthy (Recommended)",
+        "Switch immediately",
+        "Do not change dispatch behaviour",
+        "Not sure"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q22",
+      "type": "single",
+      "text": "Admin removal of a catalogue model would be immediate and irreversible through the normal catalogue. Are you comfortable with that, or should recovery be possible?",
+      "options": [
+        "Immediate permanent removal is fine (Recommended)",
+        "Soft delete with a recovery window",
+        "Archive but keep visible",
+        "Not sure"
+      ],
+      "required": false,
+      "showIf": null
+    },
+    {
+      "id": "q23",
+      "type": "multiple",
+      "text": "Which live impacts are you willing to accept from the cleanup phase? (Select all that apply)",
+      "options": [
+        "Restarting local runners",
+        "Temporarily lower model availability",
+        "Removing test or dummy catalogue entries",
+        "Editing runner pin configuration",
+        "None of these"
+      ],
+      "required": false,
+      "showIf": null
+    },
+    {
+      "id": "q24",
+      "type": "single",
+      "text": "Overall, do you approve proceeding with the proposed structural catalogue fix?",
+      "options": [
+        "Approve all proposed packages (Recommended)",
+        "Approve all except live cleanup review",
+        "Need more detail before proceeding",
+        "Reject or rethink the approach"
+      ],
+      "required": true,
+      "showIf": null
+    }
+  ],
+  "answers": {}
+}
+```
