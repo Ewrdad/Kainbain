@@ -20,6 +20,13 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Yes, proceed with the documented contract"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
