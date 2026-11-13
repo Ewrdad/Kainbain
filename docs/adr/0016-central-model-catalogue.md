@@ -113,3 +113,51 @@ display). The frontend safety-net merge re-attaches the snapshot
 verdict so the badge is identical whichever merge path added the
 option, and the agy/vibe row parsers skip single unkeyable rows
 instead of failing the whole harness menu.
+
+## Amendment (2026-11-13, WP-C): canonical-id contract with verified counts
+
+Review found the catalogue counted what it could not prove and served
+ids under harnesses that never named them (task `b3401f19`, causes N4/N6):
+every local-alpha entry carried the runner's WHOLE harness list, so
+provider/bare ids leaked into every picker section, and pins with no
+discovery result showed "1 runner" with zero verification. The
+catalogue now enforces a canonical-id contract with verified counts
+(task `94ee5786`):
+
+1. **Canonical ids only.** Only `harness::provider::model[::effort]`
+   ids enter `models`. Bare and `provider::id` forms are quarantined
+   with a not-harness-qualified reason (audit trail, never served),
+   and a harness-scoped id naming a harness the runner does not serve
+   is quarantined with a harness-not-served reason.
+2. **Per-entry attribution.** `entry.harnesses` is exactly
+   `[parsed.harness]` — the harness named by the id — never the
+   runner's whole harness list. Two harnesses may serve the same model
+   differently and the user deserves that choice.
+3. **Verified counts.** `runnerIds`/`runnerCount` name only
+   claim-eligible runners whose own discovery CONFIRMED the id
+   (`modelProvenance` lists it AND the naming `discoveryStatus` leg is
+   successful and fresh, ≤1 day old). Advertised-but-unconfirmed
+   claimants (pins, allowlist entries, no-signal runners) move to
+   `declaredBy`; contradicted pins stay in `claimedBy`. Unverified
+   entries read `available: false`, still visible/selectable, marked
+   with the reason.
+4. **Derived availability.** `available` (`runnerCount > 0`), `verified`,
+   and `unavailableReason` are derived on read, never persisted. The
+   reason priority is: declared (`declared by N runners, not verified
+   by discovery`) → stale (existing stale-pin wording) → last-served
+   (`0 runners -- last served 3d ago by box-a`) → `never served by
+   any runner`.
+5. **Indefinite retention + admin removal.** 0-runner entries are kept
+   forever (no models size cap; the quarantine cap stays). Admin
+   `DELETE /runners/models/catalogue/:id` and
+   `DELETE .../quarantine/:id` remove one record permanently (204/404);
+   a re-advertised id reappears on the next read. Project/alias
+   references are untouched (still served "not currently served" via
+   the derived reason).
+6. **Fleet harness summary.** The response adds `harnesses: [{ id,
+   runnerCount, runnerIds }]` computed live from claim-eligible
+   runners' `capabilities.harnesses` (never persisted).
+7. **Load-time migration (idempotent).** Persisted bare/provider entries
+   move to `quarantined` on load; harness entries get `harnesses`
+   rewritten to `[parsed.harness]` with last-served defaults, and
+   stored `available`/`unavailableReason` dropped (derived on read).
