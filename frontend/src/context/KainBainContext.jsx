@@ -277,10 +277,50 @@ export function KainBainProvider({ children }) {
     [fetchTasks, fetchWorkflow, setMessages, notifySuccess, notifyError],
   );
 
+  /***
+   * MARK: openRunnerTask
+   * @description Jumps to the job a Runner holds, even on another pipeline:
+   *   switches to the assignment's project when it differs from the active
+   *   one, hydrates the full task, selects it, and opens the canonical task
+   *   view (focusing the held stage when known). Missing ids or a failed
+   *   hydrate notify instead of navigating anywhere half-open.
+   * @example await openRunnerTask({ projectId: 'p2', taskId: 't9', stageId: 'build' })
+   ***/
+  const openRunnerTask = useCallback(
+    async (assignment) => {
+      const projectId = assignment?.projectId;
+      const taskId = assignment?.taskId;
+      if (projectId == null || String(projectId) === '' || taskId == null || String(taskId) === '') {
+        notifyError('Could not open Runner task', 'The assignment has no project or task id.');
+        return;
+      }
+      try {
+        if (String(projectId) !== String(projects.activeProjectId)) {
+          await projects.selectProject(projectId);
+        }
+        const full = await tasks.getTask(projectId, taskId);
+        if (!full) {
+          notifyError('Could not open Runner task', 'The task could not be loaded.');
+          return;
+        }
+        selection.setSelectedTask(full);
+        if (assignment?.stageId != null && String(assignment.stageId) !== '') {
+          stageNav.setFocusedStageId?.(assignment.stageId);
+        }
+        nav.setView('task-detail', { taskId });
+      } catch (e) {
+        logger.error('Failed to open Runner task', e);
+        notifyError('Could not open Runner task', e?.message || 'Unexpected error.');
+      }
+    },
+    [projects, tasks, selection, stageNav, nav, notifyError],
+  );
+
   const value = {
     // top-level state
     view: nav.view,
     setView: nav.setView,
+    openRunnerTask,
     // Router bridge internals (consumed only by KainBainRouteBridge).
     __registerRouter: nav.registerRouter,
     __syncRouteLocation: nav.syncRouteLocation,

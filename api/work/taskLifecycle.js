@@ -20,6 +20,10 @@ import {
 } from "../docsPath.js";
 import { kainbainProjectFor } from "../kainbainDir.js";
 import { worktreesBaseFor } from "./taskWorkspace.js";
+import {
+	parseAutoApproveDuration,
+	resolveAutoApproveAt,
+} from "../../shared/autoApproveDuration.js";
 
 /***
  * MARK: scanTasks
@@ -269,6 +273,7 @@ export function createTask(
 				}) || [];
 		}
 	}
+	let entryStage = null;
 	if (
 		initialStatus === "in_stage" &&
 		resolvedStageId &&
@@ -282,8 +287,12 @@ export function createTask(
 		);
 		if (normalizeStageType(currentStage?.type) === "human") {
 			initialStatus = "waiting_human";
+			entryStage = currentStage;
 		}
 	}
+	const entryHoldMs = entryStage
+		? parseAutoApproveDuration(entryStage.autoApproveAfterMs)
+		: null;
 
 	const task = {
 		id,
@@ -315,6 +324,10 @@ export function createTask(
 		logEntries: [],
 		keywords: [],
 		feedback: null,
+		// A task born parked at a human checkpoint with a hold enters with
+		// its deadline stamped, exactly like a moveToStage entry.
+		autoApproveAt: entryHoldMs ? resolveAutoApproveAt(now, entryHoldMs) : null,
+		autoApproveRemindedAt: null,
 	};
 
 	if (store._isBranchModeEnabled(projectId)) {

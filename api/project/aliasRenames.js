@@ -7,13 +7,13 @@ const warnedLegacyNoneHarnessModels = new Set();
  * MARK: warnLegacyNoneHarnessModel
  * @description Warns once per project + alias + harness that a stored alias
  *   target pairs a `none` harness (which manages its own model) with a model
- *   string — the load path blanks it (see `sanitizeAliasTargetModels`) and
- *   the next save persists the clean row.
+ *   string — the load path keeps it (see `sanitizeAliasTargetModels`) and
+ *   the next save persists the kept row.
  * @param {string} projectDir - Absolute path of the project directory (dedup key part).
  * @param {Object} options - The alias row being checked.
  * @param {string} options.alias - Alias name.
  * @param {string} options.harness - Harness name the alias targets.
- * @param {string} options.model - Stored model string (ignored for `none` harnesses).
+ * @param {string} options.model - Stored model string (kept with this warning for `none` harnesses).
  * @returns {boolean} `true` when this call emitted the warning (first occurrence),
  *   `false` when the warning was already emitted for this key (deduplicated).
  * @example const first = warnLegacyNoneHarnessModel("/proj", { alias: "x", harness: "none", model: "m" }) // true
@@ -24,7 +24,7 @@ export function warnLegacyNoneHarnessModel(projectDir, { alias, harness, model }
 	if (warnedLegacyNoneHarnessModels.has(key)) return false;
 	warnedLegacyNoneHarnessModels.add(key);
 	console.warn(
-		`[projectStore] Alias "${alias}" in ${projectDir} targets harness "${harness}", which manages its own model — ignoring the stored model "${model}". Clear the model in Settings › Model Aliases.`,
+		`[projectStore] Alias "${alias}" in ${projectDir} targets harness "${harness}", which manages its own model — keeping the stored model "${model}" (ignored at dispatch until the harness offers a catalog).`,
 	);
 	return true;
 }

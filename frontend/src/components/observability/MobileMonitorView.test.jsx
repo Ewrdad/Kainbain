@@ -620,3 +620,37 @@ test('console wrappers keep min-w-0 so wide log rows cannot push the page sidewa
   expect(consoleEl.className).toContain('overflow-x-hidden');
   expect(consoleEl.className).toContain('min-w-0');
 });
+
+test('compact runner row forwards the open-task affordance to onOpenTask', async () => {
+  const onOpenTask = vi.fn();
+  await renderView(
+    <MobileMonitorView
+      engineState={{ status: 'running', activeStageName: 'Code Generation' }}
+      activeTask={null}
+      runnerTasks={[]}
+      runnerStages={[]}
+      runnerAssignmentsOverride={[
+        {
+          runnerId: 'remote-9',
+          projectId: 'project-b',
+          projectName: 'Project B',
+          taskId: 'task-b-9',
+          taskTitle: 'Foreign job',
+          stageId: 'verify',
+          stageName: 'Verify',
+        },
+      ]}
+      runnerRegistryOverride={[{ runnerId: 'remote-9' }]}
+      processLogs={[]}
+      onExit={() => {}}
+      onOpenTask={onOpenTask}
+    />,
+  );
+
+  expect(screen.getByTestId('per-runner-row-remote-9')).toHaveTextContent('Verify');
+  screen.getByTestId('per-runner-open-remote-9').click();
+  expect(onOpenTask).toHaveBeenCalledTimes(1);
+  expect(onOpenTask).toHaveBeenCalledWith(
+    expect.objectContaining({ projectId: 'project-b', taskId: 'task-b-9' }),
+  );
+});

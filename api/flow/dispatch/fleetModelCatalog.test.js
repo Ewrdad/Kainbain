@@ -1,5 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { buildFleetModelCatalog } from "./fleetModelCatalog.js";
+import { NEW_MODEL_ID, fleetRunnerRecord } from "./fleetModelFixtures.mjs";
 
 const record = (over = {}) => ({
 	status: "active",
@@ -96,5 +97,108 @@ describe("buildFleetModelCatalog", () => {
 		expect(buildFleetModelCatalog([])).toEqual({ models: [] });
 		expect(buildFleetModelCatalog()).toEqual({ models: [] });
 		expect(buildFleetModelCatalog([record({ status: "revoked" })])).toEqual({ models: [] });
+	});
+
+	test("serves auto-detected multi-harness ids verbatim (fleet pick is a guaranteed match)", () => {
+		const catalogue = buildFleetModelCatalog([
+			record({
+				runnerId: "server2",
+				capabilities: {
+					harnesses: [{ id: "pi" }, { id: "muse" }],
+					models: ["pi::mistral::codestral-2508", "muse::meta::muse-spark-1.3"],
+					tiers: ["T0"],
+				},
+			}),
+		]);
+		expect(catalogue.models).toEqual([
+			{
+				id: "muse::meta::muse-spark-1.3",
+				harnesses: ["muse", "pi"],
+				tiers: ["T0"],
+				runnerCount: 1,
+				runnerIds: ["server2"],
+			},
+			{
+				id: "pi::mistral::codestral-2508",
+				harnesses: ["muse", "pi"],
+				tiers: ["T0"],
+				runnerCount: 1,
+				runnerIds: ["server2"],
+			},
+		]);
+	});
+
+	test("carries a newly discovered runner id into a catalogue entry (chain seam)", () => {
+		// Runner-discovered id ⇒ fleet entry: byte-identical id with its
+		// harness attribution, effort tiers, and availability. The picker
+		// and dispatch both match on this exact id string.
+		const catalogue = buildFleetModelCatalog([
+			fleetRunnerRecord({ runnerId: "box-a" }),
+		]);
+		expect(catalogue.models).toEqual([
+			{
+				id: NEW_MODEL_ID,
+				harnesses: ["muse"],
+				tiers: ["T0", "T1"],
+				runnerCount: 1,
+				runnerIds: ["box-a"],
+			},
+		]);
+	});
+
+	test("excludes stale claims: contradicted pins count toward nothing (dispatch agrees)", () => {
+		const STALE = "muse::meta::muse-spark-0.9-gone";
+		const newRunner = (over = {}) =>
+			fleetRunnerRecord({
+				capabilities: {
+					models: [STALE, NEW_MODEL_ID],
+					modelProvenance: { [NEW_MODEL_ID]: { harness: "muse", atMs: 1 } },
+					discoveryStatus: { muse: { ok: true, count: 1, atMs: 1 } },
+				},
+				...over,
+			});
+		// The stale-only id vanishes from the live view (the snapshot
+		// marks it unavailable instead); the confirmed sibling counts.
+		expect(buildFleetModelCatalog([newRunner({ runnerId: "box-a" })]).models).toEqual([
+			{
+				id: NEW_MODEL_ID,
+				harnesses: ["muse"],
+				tiers: ["T0", "T1"],
+				runnerCount: 1,
+				runnerIds: ["box-a"],
+			},
+		]);
+		// A stale claimant drops out of a shared id's count; the serving
+		// runner still carries it.
+		const shared = buildFleetModelCatalog([
+			newRunner({ runnerId: "box-stale", capabilities: { models: [NEW_MODEL_ID], modelProvenance: {}, discoveryStatus: { muse: { ok: true, count: 0, atMs: 1 } } } }),
+			newRunner({ runnerId: "box-live" }),
+		]);
+		expect(shared.models).toEqual([
+			{
+				id: NEW_MODEL_ID,
+				harnesses: ["muse"],
+				tiers: ["T0", "T1"],
+				runnerCount: 1,
+				runnerIds: ["box-live"],
+			},
+		]);
+		// Operator-asserted ids count despite a contradicting scan.
+		const asserted = buildFleetModelCatalog([
+			record({
+				runnerId: "box-asserted",
+				capabilities: {
+					harnesses: [{ id: "muse" }],
+					models: [],
+					tiers: ["T0"],
+					modelProvenance: {},
+					discoveryStatus: { muse: { ok: true, count: 0, atMs: 1 } },
+				},
+				operatorConfig: { availableModels: [STALE] },
+			}),
+		]);
+		expect(asserted.models).toEqual([
+			{ id: STALE, harnesses: ["muse"], tiers: ["T0"], runnerCount: 1, runnerIds: ["box-asserted"] },
+		]);
 	});
 });

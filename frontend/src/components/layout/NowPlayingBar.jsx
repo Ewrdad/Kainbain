@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useKainBain } from '../../context/KainBainContext';
 import { formatTaskKey, formatTaskTitleFirstLine } from '../tasks/taskFormatters';
@@ -7,7 +7,7 @@ import { resolveActiveTaskDisplay, resolveUniversalNowPlaying } from './activeTa
 import { InfoTooltip } from '../common/InfoTooltip';
 import { BuildHashTrigger } from './BuildHashTrigger';
 import { QueuePopupModal } from './QueuePopupModal';
-import { api } from '../../services/api';
+import { useFleetDirectory } from '../../hooks/useFleetDirectory';
 
 /***
  * MARK: NowPlayingBar
@@ -15,7 +15,10 @@ import { api } from '../../services/api';
  * the viewport (72px height). Shows the global engine state (status badge:
  * IDLE, RUNNING, CHECKPOINT, PAUSED), one box per configured Runner (fleet
  * roster, running or idle) with its own play/pause + skip, and the live
- * execution queue depth (right rail, queue chip only).
+ * execution queue depth (right rail, queue chip only). Boxes follow the
+ * shared 5s fleet poll and the chip follows the live engine snapshot, so
+ * the bar tracks execution with no page refresh (background tabs pause
+ * and catch up on return).
  *
  * There is no global transport cluster: the Runner boxes own play/pause
  * (pause parks a Runner, resume re-arms it) and skip (advances that
@@ -176,65 +179,19 @@ export const resolveRunnerBoxes = ({ assignments, tasks, stages, runners }) => {
 /***
  * MARK: useNowPlayingRunnerDirectory
  * @description Fleet roster behind the bar's runner boxes: the configured
- *   Runner list (GET /runners) plus live assignments (GET /runners/monitor)
- *   on the same 5s cadence as the observability widget. Tests (and any
- *   future context wiring) can inject per-piece `override` values to skip
- *   polling; each side polls only while its own override is undefined.
- *   Failures are best-effort: a missed list falls back to assignment-only
- *   boxes, a missed monitor to idle boxes, and both missed to the legacy
- *   single-task display.
+ *   Runner list plus live assignments via the shared `useFleetDirectory`
+ *   poller (one 5s tick serves every mounted fleet surface, and the
+ *   content key covers task/stage/paused/heartbeat fields so a stage
+ *   switch with an unchanged roster re-renders the box within one poll —
+ *   no page refresh). Tests (and any future context wiring) can inject
+ *   per-piece `override` values to skip polling; each side polls only
+ *   while its own override is undefined. Failures are best-effort: a
+ *   missed list falls back to assignment-only boxes, a missed monitor to
+ *   idle boxes, and both missed to the legacy single-task display.
+ *   Background tabs pause and catch up on return (survey q4).
  ***/
 const useNowPlayingRunnerDirectory = (assignmentsOverride, runnersOverride) => {
-  const [monitor, setMonitor] = useState(null);
-  const [registry, setRegistry] = useState(null);
-  // No-op polls skip the state update entirely — compared via ref so idle
-  // polling never schedules a render (nor an act() warning in tests) every
-  // 5s. The ref starts at the empty-roster key, so the first poll showing
-  // "no assignments, registry unknown" is already a no-op.
-  const keyRef = useRef(JSON.stringify([[], 'miss']));
-  const pollAssignments = assignmentsOverride === undefined;
-  const pollRunners = runnersOverride === undefined;
-  useEffect(() => {
-    if (!pollAssignments && !pollRunners) return undefined;
-    let mounted = true;
-    const load = async () => {
-      try {
-        const [m, list] = await Promise.all([
-          pollAssignments ? api.getRunnerMonitor().catch(() => null) : Promise.resolve(null),
-          pollRunners && typeof api.getRunners === 'function'
-            ? api.getRunners().catch(() => null)
-            : Promise.resolve(null),
-        ]);
-        if (!mounted) return;
-        const assignments = Array.isArray(m?.liveAssignments)
-          ? m.liveAssignments.filter((a) => a && a.runnerId)
-          : null;
-        const key = JSON.stringify([
-          assignments === null ? 'miss' : assignments.map((a) => a && a.runnerId),
-          Array.isArray(list) ? list.map((r) => r && r.runnerId) : 'miss',
-        ]);
-        if (key === keyRef.current) return;
-        keyRef.current = key;
-        if (assignments !== null) setMonitor(m);
-        if (Array.isArray(list)) setRegistry(list);
-      } catch {
-        // Best-effort: the last good roster stays until the next poll succeeds.
-      }
-    };
-    void load();
-    const timer = setInterval(() => void load(), 5000);
-    return () => {
-      mounted = false;
-      clearInterval(timer);
-    };
-  }, [pollAssignments, pollRunners]);
-  const assignments =
-    assignmentsOverride !== undefined
-      ? assignmentsOverride
-      : Array.isArray(monitor?.liveAssignments)
-        ? monitor.liveAssignments.filter((a) => a && a.runnerId)
-        : [];
-  const runners = runnersOverride !== undefined ? runnersOverride : registry;
+  const { assignments, runners } = useFleetDirectory({ assignmentsOverride, runnersOverride });
   return { assignments, runners };
 };
 
@@ -379,10 +336,13 @@ export function NowPlayingBar() {
    *   stage label in the right rail. Resolved from the engine snapshot's
    *   openQueueDepth (global, all projects), falling back to the loaded
    *   list's waiting set only when the snapshot carries no count, so
-   *   project switches never move it. Clicking the chip opens the
-   *   dispatch-order popup (`QueuePopupModal`), which lists exactly the
-   *   same waiting set; a count-vs-list difference only means one view is
-   *   stale and settles on refresh.
+   *   project switches never move it. The snapshot stays live via
+   *   ENGINE_STATE frames, a debounced refresh on every task-activity
+   *   frame, and a 15s visibility-gated safety poll (see `useWebSocket`),
+   *   so the chip tracks the queue with no page refresh. Clicking the chip
+   *   opens the dispatch-order popup (`QueuePopupModal`), which lists
+   *   exactly the same waiting set; a count-vs-list difference only means
+   *   one view is stale and settles on refresh.
    * @example queueDepth // => 3
    * @returns {number}
    ***/

@@ -20,6 +20,170 @@ set -u
 INSTALL_ROOT="${KAINBAIN_RUNNER_INSTALL_ROOT:-$HOME/.kainbain/runner-install}"
 ENTRY="runner/main.js"
 
+# doctor — read-only install health report (migration pre-check + "says out
+# of date" triage). Prints the effective install root, current/previous
+# targets, installed version, update state, and one block per
+# kainbain-runner-*.service unit (entrypoint kind, unit version, update env,
+# backend record). NEVER writes: no reloads, no restarts, no state changes.
+# Exit 0 when the install is structurally sound, 1 when something needs
+# attention (direct node main.js entrypoint, missing current link, unknown
+# version, rolled-back state). A backend that is unreachable, or a runner
+# that is merely behind the desired version, is REPORTED but keeps exit 0 —
+# those are network/release states, not install damage.
+doctor_tree_version() {
+	# $1 = tree dir. Release trees carry version.json at the root;
+	# legacy/dev trees carry it under runner/.
+	for _f in "$1/version.json" "$1/runner/version.json"; do
+		if [ -f "$_f" ] && command -v node >/dev/null 2>&1; then
+			_v="$(node -e 'const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).runnerVersion;if(typeof v!=="string"||!v)process.exit(1);console.log(v);' "$_f" 2>/dev/null)" || continue
+			[ -n "$_v" ] && { printf '%s' "$_v"; return 0; }
+		fi
+	done
+	return 1
+}
+
+doctor_env_val() {
+	# $1 = env file, $2 = key. Parsed, never sourced (values are only read).
+	[ -f "$1" ] || return 1
+	grep -m1 "^$2=" "$1" 2>/dev/null | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"
+}
+
+doctor_backend_record() {
+	# $1 = backend base URL, $2 = runner id. One line on stdout, always.
+	_backend="$1"; _id="$2"
+	if [ -z "$_backend" ] || [ -z "$_id" ]; then
+		echo "backend: (unknown — no backend URL or runner id configured)"
+		return 0
+	fi
+	if ! command -v node >/dev/null 2>&1; then
+		echo "backend: (unknown — node not on PATH)"
+		return 0
+	fi
+	node -e '
+		const [base, id] = process.argv.slice(1);
+		fetch(base.replace(/\/+$/, "") + "/runners", { signal: AbortSignal.timeout(10000) })
+			.then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+			.then((list) => {
+				const rec = (Array.isArray(list) ? list : []).find((x) => x && x.runnerId === id);
+				if (!rec) { console.log("backend: reachable (" + base + ") — runner " + id + " not registered"); return; }
+				const st = rec.updateStatus ? rec.updateStatus.state + (rec.updateStatus.reason ? ": " + rec.updateStatus.reason : "") : "(none)";
+				console.log("backend: reachable (" + base + ") reported=" + (rec.runnerVersion || "?")
+					+ " desired=" + (rec.recommendedVersion || "?") + " minimum=" + (rec.minimumVersion || "?")
+					+ " update_available=" + rec.updateAvailable + " below_minimum=" + rec.belowMinimum
+					+ " update_status=" + st);
+			})
+			.catch((e) => console.log("backend: unreachable (" + base + ": " + (e.cause?.message || e.message) + ")"));
+	' "$_backend" "$_id" 2>/dev/null || echo "backend: unreachable ($_backend)"
+}
+
+doctor() {
+	_unit_filter=""
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--unit) _unit_filter="${2:?doctor --unit needs a value}"; shift 2 ;;
+			--unit=*) _unit_filter="${1#--unit=}"; shift ;;
+			*) echo "kainbain-runner doctor: unknown arg '$1' (usage: doctor [--unit NAME])" >&2; return 2 ;;
+		esac
+	done
+	_attention=0
+	attention() { _attention=1; echo "attention: $*"; }
+	_root="${KAINBAIN_RUNNER_INSTALL_ROOT:-$HOME/.kainbain/runner-install}"
+	echo "install_root: $_root"
+	if [ -L "$_root/current" ]; then
+		_cur="$(readlink "$_root/current")"
+		echo "current: $_cur"
+	else
+		_cur=""
+		echo "current: (missing)"
+		attention "current symlink missing under $_root — nothing can boot from this install root"
+	fi
+	if [ -L "$_root/previous" ]; then
+		echo "previous: $(readlink "$_root/previous")"
+	else
+		echo "previous: (none)"
+	fi
+	if [ -n "$_cur" ] && _installed="$(doctor_tree_version "$_cur" 2>/dev/null)"; then
+		echo "installed_version: $_installed"
+	else
+		echo "installed_version: (unknown)"
+		attention "installed version unknown — no readable version.json under the current target"
+	fi
+	if [ -f "$_root/update-state.json" ]; then
+		_state="$(node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log("status="+(s.status||"?")+" to="+(s.to||s.version||"-")+" attempts="+(s.bootAttempts||0)+" at="+(s.updatedAt||"?"));' "$_root/update-state.json" 2>/dev/null || echo "(unreadable)")"
+		echo "update_state: $_state"
+		case "$_state" in
+			status=rolled-back*) attention "last update rolled back after failed boots — see the runner-update runbook before retrying" ;;
+		esac
+	else
+		echo "update_state: (none)"
+	fi
+	_found_units=0
+	for _u in "$HOME"/.config/systemd/user/kainbain-runner-*.service; do
+		[ -e "$_u" ] || continue
+		_name="$(basename "$_u")"
+		if [ -n "$_unit_filter" ] && [ "$_name" != "$_unit_filter" ] && [ "$_name" != "$_unit_filter.service" ]; then
+			continue
+		fi
+		_found_units=1
+		_exec="$(grep -m1 '^ExecStart=' "$_u" 2>/dev/null | cut -d= -f2-)"
+		_wd="$(grep -m1 '^WorkingDirectory=' "$_u" 2>/dev/null | cut -d= -f2-)"
+		_envf="$(grep -m1 '^EnvironmentFile=' "$_u" 2>/dev/null | cut -d= -f2- | cut -d' ' -f1)"
+		_envf="${_envf#-}"
+		case "$_exec" in
+			*kainbain-runner*) _kind="wrapper" ;;
+			*main.js*) _kind="direct" ;;
+			*) _kind="unknown" ;;
+		esac
+		echo "unit: $_name"
+		echo "  exec_start: ${_exec:-(none)}"
+		echo "  working_directory: ${_wd:-(none)}"
+		echo "  entrypoint: $_kind"
+		if [ "$_kind" = "direct" ]; then
+			attention "$_name runs node main.js directly — staged updates can never boot; migrate to the wrapper (runbook: wrapper cutover)"
+		elif [ "$_kind" = "unknown" ]; then
+			attention "$_name has an unrecognized ExecStart — expected the kainbain-runner wrapper"
+		fi
+		if [ -n "$_wd" ] && _uv="$(doctor_tree_version "$_wd" 2>/dev/null)"; then
+			echo "  unit_version: $_uv"
+		elif [ -n "$_wd" ] && _uv="$(doctor_tree_version "$(dirname "$_wd")" 2>/dev/null)"; then
+			echo "  unit_version: $_uv"
+		else
+			echo "  unit_version: (unknown)"
+		fi
+		if [ -n "$_envf" ] && [ -f "$_envf" ]; then
+			echo "  env_file: $_envf"
+			for _k in KAINBAIN_RUNNER_ID KAINBAIN_RUNNER_BACKEND KAINBAIN_RUNNER_INSTALL_ROOT KAINBAIN_RUNNER_WORK_ROOT KAINBAIN_RUNNER_UPDATE_URL KAINBAIN_RUNNER_AUTO_UPDATE; do
+				_vv="$(doctor_env_val "$_envf" "$_k" || true)"
+				echo "  env $_k: ${_vv:-(unset)}"
+			done
+			_backend="$(doctor_env_val "$_envf" KAINBAIN_RUNNER_BACKEND || true)"
+			_rid="$(doctor_env_val "$_envf" KAINBAIN_RUNNER_ID || true)"
+		else
+			echo "  env_file: ${_envf:-(none)}"
+			_backend="${KAINBAIN_RUNNER_BACKEND:-}"
+			_rid="${KAINBAIN_RUNNER_ID:-}"
+		fi
+		echo "  $(doctor_backend_record "$_backend" "$_rid")"
+	done
+	if [ "$_found_units" = "0" ]; then
+		echo "units: (none found under \$HOME/.config/systemd/user/kainbain-runner-*.service)"
+	fi
+	if [ "$_attention" = "0" ]; then
+		echo "status: ok"
+	else
+		echo "status: attention"
+	fi
+	return "$_attention"
+}
+
+case "${1:-}" in
+	doctor|--verify-install|--doctor)
+		shift
+		doctor "$@"
+		exit "$?"
+		;;
+esac
+
 resolve_current() {
 	if [ -L "$INSTALL_ROOT/current" ]; then
 		readlink "$INSTALL_ROOT/current"

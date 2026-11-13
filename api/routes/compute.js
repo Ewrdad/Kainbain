@@ -58,7 +58,26 @@ export default async function computeRoutes(app, { deps }) {
 		projectStore,
 		taskStore,
 		harnessRegistry,
+		runnerRegistry,
+		fleetModelSnapshot,
 	} = deps;
+	// Central-list fleet input: refresh the persisted snapshot from the
+	// live registrations and merge its entries into the harness view
+	// (union sections). Missing deps (hand-built route doubles) degrade
+	// to the backend-only views.
+	const fleetEntriesForCatalog = () => {
+		try {
+			if (
+				typeof runnerRegistry?.list !== "function" ||
+				typeof fleetModelSnapshot?.update !== "function"
+			) {
+				return null;
+			}
+			return fleetModelSnapshot.update(runnerRegistry.list()).models;
+		} catch {
+			return null;
+		}
+	};
 
 	/***
 	 * MARK: getModels
@@ -126,6 +145,7 @@ export default async function computeRoutes(app, { deps }) {
 										available: { type: ["boolean", "null"] },
 										detectionSource: { type: "string" },
 										hint: { type: ["string", "null"] },
+										fleetOnly: { type: "boolean" },
 										models: {
 											type: "array",
 											items: publicModelJsonSchema,
@@ -179,6 +199,7 @@ export default async function computeRoutes(app, { deps }) {
 				registry: harnessRegistry,
 				defaultHarness: harness,
 				refresh,
+				fleet: fleetEntriesForCatalog(),
 			});
 			const models = catalog.models;
 

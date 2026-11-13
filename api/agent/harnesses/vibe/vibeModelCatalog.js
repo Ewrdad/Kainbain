@@ -70,16 +70,22 @@ export function parseVibeConfigModels(configOptions) {
 		if (!Array.isArray(option.options)) continue;
 		for (const entry of option.options) {
 			if (typeof entry?.value !== "string" || !entry.value) continue;
-			models.push(
-				withModelKey(
-					{
-						provider: VIBE_MODEL_PROVIDER,
-						id: entry.value,
-						name: typeof entry.name === "string" && entry.name ? entry.name : entry.value,
-					},
-					VIBE_HARNESS_ID,
-				),
-			);
+			try {
+				models.push(
+					withModelKey(
+						{
+							provider: VIBE_MODEL_PROVIDER,
+							id: entry.value,
+							name: typeof entry.name === "string" && entry.name ? entry.name : entry.value,
+						},
+						VIBE_HARNESS_ID,
+					),
+				);
+			} catch {
+				// One unkeyable row (e.g. a value containing `::`) is
+				// skipped — a single weird agent row must never fail the
+				// whole menu.
+			}
 		}
 	}
 	return models;

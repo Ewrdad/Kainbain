@@ -74,3 +74,13 @@ scratch/sessions/
 *.session.jsonl
 # Session transcripts dropped at repo root (e.g. 2026-...Z_<id>.jsonl): never commit (leak guard).
 /*.jsonl
+
+# Live task snapshots are engine store state, never branch content (Step 5,
+# 2026-11-11): the backend rewrites docs/tasks/<id>/task.md on every save.
+# Keeping them ignored means `git add -A` can never re-track them and —
+# decisive for the branch-switch bug that stranded tasks 82e49a05 and
+# 9d2b75a2 — git's own checkout safety never refuses a switch because of
+# them (ignored untracked files do not block `git checkout`). Plans and
+# reports under docs/tasks/<id>/ stay tracked. Custom docs dir names are
+# covered dynamically by the backend's clean-tree guard, not by this file.
+docs/tasks/*/task.md

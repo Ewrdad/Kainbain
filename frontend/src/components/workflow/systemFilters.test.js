@@ -21,9 +21,14 @@ import {
  ***/
 
 describe('SYSTEM_FILTERS registry', () => {
-  test('ships failed + human in display order', () => {
-    expect(SYSTEM_FILTERS.map((entry) => entry.id)).toEqual(['failed', 'human']);
-    expect(SYSTEM_FILTER_IDS).toEqual(['failed', 'human']);
+  test('ships failed + human + running + tasked in display order', () => {
+    expect(SYSTEM_FILTERS.map((entry) => entry.id)).toEqual([
+      'failed',
+      'human',
+      'running',
+      'tasked',
+    ]);
+    expect(SYSTEM_FILTER_IDS).toEqual(['failed', 'human', 'running', 'tasked']);
   });
 
   test('every entry has label, description, and a match predicate', () => {
@@ -32,6 +37,13 @@ describe('SYSTEM_FILTERS registry', () => {
       expect(entry.description.length).toBeGreaterThan(0);
       expect(typeof entry.match).toBe('function');
     }
+  });
+
+  test('only running + tasked scope columns; failed + human stay task-level', () => {
+    expect(getSystemFilter('failed')?.hidesColumns).not.toBe(true);
+    expect(getSystemFilter('human')?.hidesColumns).not.toBe(true);
+    expect(getSystemFilter('running')?.hidesColumns).toBe(true);
+    expect(getSystemFilter('tasked')?.hidesColumns).toBe(true);
   });
 });
 
@@ -95,6 +107,21 @@ describe('registerSystemFilter', () => {
       /match must be a function/,
     );
   });
+
+  test('hidesColumns survives registration so custom filters can scope columns', () => {
+    const entry = registerSystemFilter({
+      id: 'test-only-hides-columns',
+      match: () => true,
+      hidesColumns: true,
+    });
+    expect(entry.hidesColumns).toBe(true);
+    expect(getSystemFilter('test-only-hides-columns')?.hidesColumns).toBe(true);
+    const taskLevel = registerSystemFilter({
+      id: 'test-only-task-level',
+      match: () => true,
+    });
+    expect(taskLevel.hidesColumns).toBe(false);
+  });
 });
 
 describe('normalizeSystemFilterTokens', () => {
@@ -148,6 +175,24 @@ describe('systemFilterMatches', () => {
       },
     });
     expect(systemFilterMatches('test-only-throws', {}, [])).toBe(false);
+  });
+
+  test('running threads ctx to the engine-owner lock', () => {
+    const owner = { id: 't1', status: 'running_agent' };
+    const ctx = { engineState: { status: 'running', activeTaskId: 't1' } };
+    expect(systemFilterMatches('running', owner, [], ctx)).toBe(true);
+    expect(systemFilterMatches('running', { id: 't2', status: 'running_agent' }, [], ctx)).toBe(
+      false,
+    );
+    // Existing two-argument predicates ignore the extra ctx argument.
+    expect(systemFilterMatches('failed', { status: 'failed' }, [], ctx)).toBe(true);
+    expect(systemFilterMatches('human', { status: 'waiting_human' }, [], ctx)).toBe(true);
+  });
+
+  test('tasked matches any task in the board set', () => {
+    expect(systemFilterMatches('tasked', { id: 't1', status: 'active' }, [])).toBe(true);
+    expect(systemFilterMatches('tasked', { id: 't2', status: 'completed' }, [])).toBe(true);
+    expect(systemFilterMatches('tasked', null, [])).toBe(false);
   });
 });
 

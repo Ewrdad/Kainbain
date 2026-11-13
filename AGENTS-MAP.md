@@ -16,6 +16,7 @@ area stands in as **Docs Steward**.
 | `api/flow/` | Scheduler, execution queue, stage execution/advancement/failback, flow routes, command stages, reports gating (`execution/`, `routing/{tables,resolvers,orchestrators}/`, `scheduler/`) | Flow reviewer |
 | `api/watch/` | Observability: process logs, log-feed routes, stage reports, metrics, reliability | Watch reviewer |
 | `api/house/` | Project startup, safe atomic file writing | House reviewer |
+| `api/auth/` | (Access domain) Organisation sign-in (OIDC), sessions, users, roles, guards, auth routes | House reviewer |
 | `api/crew/` | Harness roster, model discovery, session capabilities | Crew reviewer |
 | `api/agent/` | Harness boundary (pi, antigravity, muse, vibe, opencode, custom, mock), contracts, `logStream/` | Crew reviewer |
 | `api/git/` | (WP-4) Command-family git operations: errors, validation, exec, staleLock, status, working-tree status/recovery, branch, commit, merge, remote — each under 420 LOC, covered by co-located `*.test.js` | Work reviewer |
@@ -82,6 +83,8 @@ area stands in as **Docs Steward**.
 | Harness / model discovery | `api/crew/` (`harnessRoster.js`, `modelDiscovery.js`, `sessionCapabilities.js`) |
 | Git command families (WP-4) | `api/git/*.js` (errors, validation, exec, staleLock, status, workingTreeStatus, workingTreeRecovery, branch, commit, merge, remote) |
 | Process logs / stage reports / reliability | `api/watch/` |
+| Organisation sign-in / RBAC | `api/auth/` (HTTP surface in `api/routes/auth.js`); frontend client in `frontend/src/services/auth/`, guard + login page in `frontend/src/components/auth/` |
+| Runner fleet monitor (global, never pipeline-filtered) | `api/flow/runnerAssignmentSummary.js` (enrichment) + `PerRunnerTasksWidget.jsx` (`resolveAssignmentTask`, `resolveAssignmentStageName`, `onOpenTask`) |
 | Flow execution/routing/scheduler internals (WP-5) | `api/flow/execution/`, `api/flow/routing/` (tables/resolvers/orchestrators), `api/flow/scheduler/` |
 | Workflow canvas hooks | `frontend/src/components/workflow/hooks/` |
 | Task detail tabs | `frontend/src/components/tasks/` (`TaskDetailsTab.jsx`, `TaskReportsTab.jsx`, `TaskHistoryTab.jsx`, `TaskDetailsTabContent.jsx`) |

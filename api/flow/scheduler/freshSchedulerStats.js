@@ -32,6 +32,17 @@ export function freshSchedulerStats() {
 		// WP6 stall watchdog: stages terminated because their heartbeat went
 		// silent past the per-type threshold (see `watchdogTick`).
 		stallRecoveries: 0,
+		// Human-stage auto-approve sweeper: passes run, tasks advanced,
+		// reminders sent, due-but-deferred (batch cap), and per-task errors.
+		// The sweeper owns `lastAutoApproveOutcome`/`lastAutoApproveSweepAt`
+		// so it never disturbs the dispatch tick's `lastOutcome` diagnosis.
+		autoApproveSweeps: 0,
+		autoApproved: 0,
+		autoApproveReminded: 0,
+		autoApproveDeferred: 0,
+		autoApproveErrors: 0,
+		lastAutoApproveSweepAt: null,
+		lastAutoApproveOutcome: null,
 		lastTickAt: null,
 		lastDispatchAt: null,
 		lastOutcome: null,
