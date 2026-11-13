@@ -1,5 +1,6 @@
 import { resolveStagesForTask, candidateStageIndex } from "../stageResolution.js";
 import { isSchedulerRunnable } from "../scheduler/isSchedulerRunnable.js";
+import { sortCentralQueue } from "../scheduler/sortCentralQueue.js";
 import { taskRequirements } from "./taskRequirements.js";
 
 /***
@@ -8,29 +9,25 @@ import { taskRequirements } from "./taskRequirements.js";
  *   the embedded scheduler's scan (`findNextCandidateTask`): status
  *   in_stage, resolvable stages, on-stage index, runnable, unblocked, and
  *   — crucially — not already lease-held (the claim fence stays the
- *   single arbiter; the scan only avoids wasted attempts). Sorted like the
- *   scheduler (closest-to-completion — highest stage index — then oldest
- *   entered-stage) so backend-routed and embedded dispatch prioritize
- *   identically. The WP-3.3 starvation guard is opt-in only: it applies
- *   solely when `maxWaitMs` is explicitly configured positive (config
- *   `dispatchMaxWaitMs`, default 0 = off); then candidates waiting past
- *   `maxWaitMs` jump ahead oldest-first, bounding the worst-case wait
- *   under perpetual late-stage influx (R13).
+ *   single arbiter; the scan only avoids wasted attempts). Results are
+ *   sorted through the SAME central-queue seam as the scheduler and the
+ *   queue display (`sortCentralQueue`), so backend-routed and embedded
+ *   dispatch always prioritize identically: default "oldest-first" — the
+ *   oldest waiting task first, wherever it lives, with furthest-along-as-a-
+ *   percentage as tiebreak — plus the starvation ceiling (`maxWaitMs`):
+ *   candidates waiting past it jump ahead oldest-first. The ceiling comes
+ *   from `maxWaitMs` when given, else config `dispatchMaxWaitMs`, else the
+ *   built-in 15-minute default in oldest-first mode (task 16d6fbd6).
  *   Human/non-model stages are excluded here (their requirements mark
  *   `runnableType: false`).
  * @example scanClaimableTasks({ projectStore, taskStore, claimStore }) => [{ projectId, taskId, task, req }]
  * @param {Object} deps - Stores (`projectStore`, `taskStore`, `claimStore`).
- * @param {Object} [opts] - `{ projectIds }` (Runner-enforced allowlist), `{ maxWaitMs, now }` (opt-in starvation boost; 0 or omitted = off, the default).
+ * @param {Object} [opts] - `{ projectIds }` (Runner-enforced allowlist), `{ maxWaitMs, now, order }` (central-queue policy overrides; omitted = config defaults).
  * @returns {Array} Claimable tasks with requirements, in dispatch order.
  ***/
 export function scanClaimableTasks(deps = {}, opts = {}) {
 	const { projectStore, taskStore, claimStore } = deps;
 	const only = Array.isArray(opts.projectIds) ? new Set(opts.projectIds) : null;
-	const maxWaitMs =
-		typeof opts.maxWaitMs === "number" && Number.isFinite(opts.maxWaitMs) && opts.maxWaitMs > 0
-			? opts.maxWaitMs
-			: 0;
-	const now = typeof opts.now === "number" && Number.isFinite(opts.now) ? opts.now : Date.now();
 	if (!projectStore || typeof projectStore.listProjects !== "function") return [];
 	if (!taskStore || typeof taskStore.listTasks !== "function") return [];
 	const out = [];
@@ -66,7 +63,10 @@ export function scanClaimableTasks(deps = {}, opts = {}) {
 			) {
 				continue;
 			}
-			const req = taskRequirements(project, task);
+			// The task's own pipeline stages (resolved above) travel into
+			// requirements, so a task on any pipeline is judged by its own
+			// stage — never the viewed pipeline's mirror.
+			const req = taskRequirements(project, task, stages);
 			if (!req.runnableType) continue;
 			const enteredAt = new Date(task.enteredStageAt || task.updatedAt || 0).getTime();
 			out.push({
@@ -76,22 +76,14 @@ export function scanClaimableTasks(deps = {}, opts = {}) {
 				stage,
 				req,
 				stageIndex,
+				totalStages: stages.length,
 				enteredStageAt: Number.isFinite(enteredAt) ? enteredAt : 0,
 			});
 		}
 	}
-	// Default order: highest stage index first, then oldest entered-stage.
-	// The overdue block below runs only under an explicitly configured
-	// positive maxWaitMs (starvation guard opt-in; default off).
-	out.sort((a, b) => {
-		if (maxWaitMs > 0) {
-			const aOverdue = now - a.enteredStageAt > maxWaitMs;
-			const bOverdue = now - b.enteredStageAt > maxWaitMs;
-			if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
-			if (aOverdue && bOverdue) return a.enteredStageAt - b.enteredStageAt;
-		}
-		if (b.stageIndex !== a.stageIndex) return b.stageIndex - a.stageIndex;
-		return a.enteredStageAt - b.enteredStageAt;
-	});
-	return out;
+	// Central-queue order, shared with the embedded scheduler and the queue
+	// display: overdue (past the ceiling) first oldest-first, then the
+	// configured mode — default oldest-waiting-first with furthest-along
+	// percentage as tiebreak.
+	return sortCentralQueue(out, opts);
 }

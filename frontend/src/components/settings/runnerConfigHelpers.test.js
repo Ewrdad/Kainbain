@@ -11,6 +11,8 @@ import {
   effectiveDirectoryValue,
   displayDirectories,
   modelUnion,
+  discoveryStatusSummary,
+  modelSourceSummary,
   modelTogglePatch,
   parseModelsInput,
   loadedProjectIds,
@@ -344,6 +346,77 @@ describe('runnerConfigHelpers', () => {
     expect(modelTogglePatch(runner, ['m2', 'm1'])).toBeNull();
     expect(modelTogglePatch(runner, ['m1'])).toEqual(['m1']);
     expect(modelTogglePatch(runner, [])).toEqual([]);
+  });
+
+  it('summarizes discoveryStatus counts with the first leg warning', () => {
+    const runner = {
+      capabilities: {
+        discoveryStatus: {
+          pi: { ok: true, count: 77, atMs: 1 },
+          antigravity: { ok: false, count: 0, atMs: 2, error: { code: 'AGY_BIN_MISSING', message: 'no agy' } },
+        },
+      },
+    };
+    expect(discoveryStatusSummary(runner)).toEqual({
+      counts: 'antigravity:0, pi:77',
+      warning: 'antigravity: AGY_BIN_MISSING — no agy',
+    });
+    expect(discoveryStatusSummary({ capabilities: { discoveryStatus: { pi: { ok: true, count: 1 } } } })).toEqual({
+      counts: 'pi:1',
+      warning: null,
+    });
+  });
+
+  it('reads non-finite counts as zero instead of rendering Infinity', () => {
+    expect(
+      discoveryStatusSummary({ capabilities: { discoveryStatus: { pi: { ok: true, count: Infinity } } } }),
+    ).toEqual({ counts: 'pi:0', warning: null });
+    expect(
+      discoveryStatusSummary({ capabilities: { discoveryStatus: { pi: { ok: true, count: NaN } } } }),
+    ).toEqual({ counts: 'pi:0', warning: null });
+    expect(
+      discoveryStatusSummary({ capabilities: { discoveryStatus: { pi: { ok: true, count: -3 } } } }),
+    ).toEqual({ counts: 'pi:0', warning: null });
+  });
+
+  it('returns null discoveryStatus for old or malformed records, facts fallback otherwise', () => {
+    expect(discoveryStatusSummary({})).toBeNull();
+    expect(discoveryStatusSummary({ capabilities: {} })).toBeNull();
+    expect(discoveryStatusSummary({ capabilities: { discoveryStatus: {} } })).toBeNull();
+    expect(discoveryStatusSummary({ capabilities: { discoveryStatus: [] } })).toBeNull();
+    expect(discoveryStatusSummary({ capabilities: { discoveryStatus: null } })).toBeNull();
+    expect(
+      discoveryStatusSummary({ facts: { discoveryStatus: { pi: { ok: true, count: 3 } } } }),
+    ).toEqual({ counts: 'pi:3', warning: null });
+    expect(
+      discoveryStatusSummary({ capabilities: { discoveryStatus: { pi: { ok: false, count: 0 } } } }).warning,
+    ).toBe('pi: discovery failed');
+  });
+
+  it('summarizes the model advertisement source plus the newest scan time', () => {
+    expect(
+      modelSourceSummary({
+        capabilities: {
+          modelSource: 'discovered',
+          discoveryStatus: { pi: { ok: true, count: 2, atMs: 100 }, muse: { ok: true, count: 1, atMs: 300 } },
+        },
+      }),
+    ).toEqual({ source: 'discovered', scannedAtMs: 300 });
+    expect(modelSourceSummary({ capabilities: { modelSource: 'pinned' } })).toEqual({
+      source: 'pinned',
+      scannedAtMs: null,
+    });
+    expect(modelSourceSummary({ capabilities: { modelSource: 'pinned+discovered' } })).toEqual({
+      source: 'pinned+discovered',
+      scannedAtMs: null,
+    });
+    expect(modelSourceSummary({ facts: { modelSource: 'unpinned' } })).toEqual({
+      source: 'unpinned',
+      scannedAtMs: null,
+    });
+    expect(modelSourceSummary({ capabilities: { modelSource: 'bogus' } })).toBeNull();
+    expect(modelSourceSummary({})).toBeNull();
+    expect(modelSourceSummary({ capabilities: {} })).toBeNull();
   });
 
   it('prefers the operator directory override over the Runner folders', () => {

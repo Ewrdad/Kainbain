@@ -41,7 +41,9 @@ import { TASK_INSPECTOR_WIDTH_MIN, TASK_INSPECTOR_WIDTH_MAX } from '../../contex
  * MARK: TaskDetailOverlay
  * @description An integrated slide-over inspector for task details, rich markdown goal editing,
  * notes-viewer links, deduplicated report inspection,
- * and orchestration history. Anchored as a right-hand side panel without a full-screen blocking backdrop.
+ * and orchestration history. A right-anchored overlay panel (absolute on
+ * desktop, fixed full-screen below `md`), non-modal: the visible board stays
+ * interactive. Rendered without a full-screen blocking backdrop.
  *
  * @param {Object} props
  * @param {Object} props.task - The task object to inspect.
@@ -161,7 +163,8 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
   }, [onClose]);
 
   // Focus management & Escape-to-close for the slide-over panel.
-  // On small screens the inspector is a full-screen overlay, so it behaves
+  // The inspector is an overlay on every breakpoint (full-screen fixed below
+  // `md`, right-anchored absolute on desktop), so it behaves
   // as a dialog: move focus in on open, trap it while open, and restore it
   // to the previously-focused trigger on close (WCAG 2.1.1 / 2.1.2 / 3.2.5).
   // Mounted once (deps []) so focus is only restored on actual unmount, never
@@ -737,16 +740,27 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
       // When it is rendered (footerReserved), this panel must end ABOVE it —
       // `bottom-[72px]` overrides `inset-0`'s bottom on mobile, and
       // `h-[calc(100%-72px)]` sizes the panel 72px short of the row on desktop
-      // (md:inset-auto resets the mobile bottom offset). This mirrors the
+      // (md:bottom-auto resets the mobile bottom offset). This mirrors the
       // Configure drawer so the footer never covers the panel and the panel
       // never covers the footer.
+      // MARK: desktop overlay positioning contract
+      // On desktop (>= md) this panel is OUT OF FLOW: `md:absolute
+      // md:right-0 md:top-0` anchors it to the right edge of the
+      // orchestrator row (which carries `relative`), so the canvas column
+      // keeps its full `flex-1` width and the toolbar never squishes.
+      // `md:left-auto md:bottom-auto` release the mobile `inset-0` left/bottom
+      // offsets (without them the panel would left-anchor and stretch).
+      // Never restore `md:relative` / `md:inset-auto` / `md:shrink-0` here:
+      // any of them puts the panel back in flow as a flex sibling and
+      // reintroduces the toolbar squish. Drag math is pointer-delta based,
+      // so the resize splitter is position-scheme agnostic.
       style={{ width: isDesktopInspector ? `${panelWidth}px` : undefined }}
       // No duration-*/transition-* classes here on purpose: transition-property
       // defaults to `all`, so any duration would animate width changes over
       // that window — the panel would lag behind the drag pointer and
       // measurements taken right after a drag would race the transition.
       // Width must track the persisted preference synchronously.
-      className={`fixed inset-0 z-50 md:relative md:inset-auto md:z-50 w-full md:w-auto md:shrink-0 md:max-w-none flex-shrink-0 ${
+      className={`fixed inset-0 z-50 md:absolute md:left-auto md:bottom-auto md:right-0 md:top-0 md:z-50 w-full md:w-auto md:max-w-none flex-shrink-0 ${
         isDraggingInspector ? 'select-none' : ''
       } ${
         footerReserved ? 'bottom-[72px] h-[calc(100%-72px)]' : 'h-full'

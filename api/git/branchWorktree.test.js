@@ -24,8 +24,24 @@ function git(dir, args) {
 	return execFileSync("git", args, { cwd: dir, stdio: "pipe" }).toString();
 }
 
+// Module-wide temp registry: every helper below tracks its dir BEFORE any
+// throwing git setup runs, so a failed init cannot leak temp dirs (same
+// leak class as the 2026-11-12 CI failure). Per-test rms stay as the fast
+// path; this drain is the backstop.
+const tempDirs = [];
+afterEach(() => {
+	while (tempDirs.length > 0) {
+		try {
+			fs.rmSync(tempDirs.pop(), { recursive: true, force: true });
+		} catch {
+			// ignore teardown errors
+		}
+	}
+});
+
 function initRepo() {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-wt-main-"));
+	tempDirs.push(dir);
 	git(dir, ["init", "-q", "-b", "main"]);
 	git(dir, ["config", "user.email", "t@t.t"]);
 	git(dir, ["config", "user.name", "t"]);
@@ -53,7 +69,8 @@ describe("findBranchWorktreeHolder", () => {
 		repo = initRepo();
 	});
 	afterEach(() => {
-		fs.rmSync(repo, { recursive: true, force: true });
+		if (repo) fs.rmSync(repo, { recursive: true, force: true });
+		repo = undefined;
 	});
 
 	it("returns null when no worktree holds the branch", async () => {
@@ -84,13 +101,16 @@ describe("reconcileBranchWorktreeLock + ensureBranchCheckedOut", () => {
 	beforeEach(() => {
 		repo = initRepo();
 		origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-wt-origin-"));
+		tempDirs.push(origin);
 		git(origin, ["init", "-q", "--bare"]);
 		git(repo, ["remote", "add", "origin", origin]);
 		git(repo, ["push", "-q", "origin", "HEAD:main"]);
 	});
 	afterEach(() => {
-		fs.rmSync(repo, { recursive: true, force: true });
-		fs.rmSync(origin, { recursive: true, force: true });
+		if (repo) fs.rmSync(repo, { recursive: true, force: true });
+		if (origin) fs.rmSync(origin, { recursive: true, force: true });
+		repo = undefined;
+		origin = undefined;
 	});
 
 	let holderSeq = 0;
@@ -101,8 +121,10 @@ describe("reconcileBranchWorktreeLock + ensureBranchCheckedOut", () => {
 			path.dirname(repo),
 			`kb-wt-${process.pid}-${holderSeq}-${branch.replaceAll("/", "-")}`,
 		);
-		git(repo, ["worktree", "add", wt, branch]);
+		// Tracked BEFORE the throwing add: a failed add must not leak a
+		// half-created holder directory.
 		holders.push(wt);
+		git(repo, ["worktree", "add", wt, branch]);
 		return wt;
 	}
 	afterEach(() => {

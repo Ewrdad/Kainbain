@@ -141,6 +141,7 @@ describe('KainBainContext value surface', () => {
       'notifySuccess',
       'notifyWarning',
       'openFeedbackDialog',
+      'openRunnerTask',
       'pauseRunner',
       'pauseTask',
       'previewPrompt',

@@ -1270,4 +1270,64 @@ describe("aggregateModelCatalog", () => {
 			catalog.harnesses.find((e) => e.id === "agg-e-fail").discoveryError,
 		).toEqual({ code: "X_DOWN", message: "m", hint: "h" });
 	});
+
+	it("adds union sections for fleet-only harnesses with byte-identical keys (central list)", async () => {
+		// The central list's harness set is the UNION of backend-known and
+		// fleet-served harnesses: a fleet id for an unregistered harness
+		// must still be selectable (and dispatchable — keys byte-equal).
+		const def = listingHarness("agg-u-default", SAMPLE);
+		const registry = registryWith([
+			{ id: "agg-u-default", name: "Default", harness: def },
+		]);
+		const catalog = await aggregateModelCatalog({
+			registry,
+			defaultHarness: def,
+			fleet: [
+				{
+					id: "muse::meta::muse-spark-1.4",
+					harnesses: ["muse"],
+					tiers: ["T0"],
+					runnerCount: 1,
+					runnerIds: ["box-a"],
+				},
+			],
+		});
+		const muse = catalog.harnesses.find((e) => e.id === "muse");
+		expect(muse).toBeDefined();
+		expect(muse.models.map((m) => m.key)).toContain("muse::meta::muse-spark-1.4");
+	});
+
+	it("merges fleet-only ids into their backend section without duplicating backend ids", async () => {
+		const def = listingHarness("agg-m-default", SAMPLE);
+		const museHarness = listingHarness("muse", [
+			{ id: "muse-spark-1.3", name: "Spark 1.3", provider: "meta" },
+		]);
+		const registry = registryWith([
+			{ id: "agg-m-default", name: "Default", harness: def },
+			{ id: "muse", name: "Muse", harness: museHarness },
+		]);
+		const catalog = await aggregateModelCatalog({
+			registry,
+			defaultHarness: def,
+			fleet: [
+				{
+					id: "muse::meta::muse-spark-1.3",
+					harnesses: ["muse"],
+					tiers: ["T0"],
+					runnerCount: 2,
+					runnerIds: ["box-a", "box-b"],
+				},
+				{
+					id: "muse::meta::muse-spark-1.4",
+					harnesses: ["muse"],
+					tiers: ["T0"],
+					runnerCount: 1,
+					runnerIds: ["box-a"],
+				},
+			],
+		});
+		const keys = catalog.harnesses.find((e) => e.id === "muse").models.map((m) => m.key);
+		expect(keys.filter((k) => k === "muse::meta::muse-spark-1.3")).toHaveLength(1);
+		expect(keys).toContain("muse::meta::muse-spark-1.4");
+	});
 });

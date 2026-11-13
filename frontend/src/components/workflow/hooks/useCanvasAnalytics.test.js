@@ -3,15 +3,14 @@ import { renderHook } from '@testing-library/react';
 import { useCanvasAnalytics } from './useCanvasAnalytics';
 
 describe('useCanvasAnalytics', () => {
-  test('empty tasks -> zero active, zero completed', () => {
+  test('empty tasks -> zero active', () => {
     const { result } = renderHook(() =>
       useCanvasAnalytics({ tasks: [], stages: [], activeWfId: 'wf-1', activeWorkflow: { id: 'wf-1' } }),
     );
     expect(result.current.activeWorkflowTasks).toEqual([]);
-    expect(result.current.completedCount).toBe(0);
   });
 
-  test('completed counting', () => {
+  test('active workflow task filtering', () => {
     const tasks = [
       { id: 't1', status: 'completed', workflowId: 'wf-1' },
       { id: 't2', status: 'pending', workflowId: 'wf-1' },
@@ -19,8 +18,8 @@ describe('useCanvasAnalytics', () => {
     const { result } = renderHook(() =>
       useCanvasAnalytics({ tasks, stages: [], activeWfId: 'wf-1', activeWorkflow: { id: 'wf-1' } }),
     );
-    expect(result.current.completedCount).toBe(1);
     expect(result.current.activeWorkflowTasks).toHaveLength(2);
+    expect(result.current).not.toHaveProperty('completedCount');
   });
 
   test('hasActivity truth table', () => {

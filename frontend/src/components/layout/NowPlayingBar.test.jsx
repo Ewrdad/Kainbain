@@ -1,7 +1,7 @@
 // jsdom pin: this suite needs window.confirm stub (happy-dom differs); keep on jsdom.
 // @vitest-environment jsdom
 import { expect, test, vi, beforeEach } from 'vitest';
-import { screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { renderWithKainBain } from '../../testUtils';
 import { NowPlayingBar, resolveRunnerBoxes, runnerBoxHealth } from './NowPlayingBar';
 import { KainBainContext } from '../../context/KainBainContext';
@@ -1357,4 +1357,67 @@ test('queue popup closes on backdrop click but not on panel click', async () => 
   await waitFor(() => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
+});
+
+/***
+ * MARK: polled runner-box stage freshness (Step 0 repro)
+ * @description The reported bug: a task switching stages updates on the
+ * orchestrator canvas (TASK_UPDATED upsert) but the bottom bar's runner box
+ * keeps the old stage until a full page refresh. Reproduces the real
+ * sequence — live task list moves plus the next monitor poll reports the
+ * new stage with an unchanged runner roster — and pins the box to follow
+ * within one fleet poll.
+ ***/
+test('runner box stage tracks a polled assignment stage switch with an unchanged roster (no refresh)', async () => {
+  vi.useFakeTimers();
+  try {
+    const seenAt = new Date().toISOString();
+    api.getRunnerMonitor.mockResolvedValue({
+      liveAssignments: [
+        { runnerId: 'runner-a', taskId: 't1', stageId: '1', lastSeenAt: seenAt },
+      ],
+    });
+    const { rerender } = renderWithKainBain(<NowPlayingBar />, {
+      stages,
+      currentStageId: '1',
+      isAgentRunning: true,
+      engineState: { status: 'running', activeTaskId: 't1' },
+      tasks: [
+        { id: 't1', currentStageId: '1', status: 'running_agent', title: 'Build the widget' },
+      ],
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const box = () => screen.getByTestId('now-playing-runner-box-runner-a');
+    expect(box()).toHaveTextContent('Idea');
+
+    // The task advances: the live task list moves (the TASK_UPDATED upsert
+    // the canvas already applies) and the next monitor poll reports the new
+    // stage — the runner roster itself is unchanged.
+    rerender(
+      <NowPlayingBarContextOverlay
+        value={{
+          stages,
+          currentStageId: '2',
+          isAgentRunning: true,
+          engineState: { status: 'running', activeTaskId: 't1' },
+          tasks: [
+            { id: 't1', currentStageId: '2', status: 'running_agent', title: 'Build the widget' },
+          ],
+        }}
+      />,
+    );
+    api.getRunnerMonitor.mockResolvedValue({
+      liveAssignments: [
+        { runnerId: 'runner-a', taskId: 't1', stageId: '2', lastSeenAt: seenAt },
+      ],
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(box()).toHaveTextContent('Review');
+  } finally {
+    vi.useRealTimers();
+  }
 });

@@ -9,6 +9,10 @@ import { useScheduledQueue } from '../../hooks/useScheduledQueue';
  * @description Dialog listing the execution queue in its current dispatch order.
  * Backed by the shared `useScheduledQueue` hook (global scope) and the shared
  * `QueueOrderList` rendering, so it never forks the monitor's queue markup.
+ * The header adds per-project waiting counts over that combined queue and,
+ * while the engine runs, the current worker's task and project (task
+ * 16d6fbd6: one combined view of all waiting work, independent of which
+ * pipeline the UI has focused).
  * Loading, empty, and error + Retry states mirror `ChangelogModal`, except a
  * failed refresh keeps the last known rows visible under the alert (a stale
  * queue is more useful operationally than a blank panel). Row click
@@ -45,6 +49,23 @@ export function QueuePopupModal({ onClose, counted, openQueueDepth, engineState 
   });
 
   const shown = Array.isArray(items) ? items.length : 0;
+
+  // Per-project waiting counts over the combined (all-projects) queue, so
+  // one glance shows which pipelines hold waiting work (task 16d6fbd6).
+  const perProject = (Array.isArray(items) ? items : []).reduce((acc, item) => {
+    const key = item?.projectName || item?.projectId || 'unknown';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const perProjectSummary = Object.entries(perProject)
+    .map(([name, count]) => `${name}: ${count}`)
+    .join(' · ');
+
+  // Current worker activity: the engine owner while it runs (the single
+  // active embedded worker; runner-fleet claims live in Settings › Runners).
+  const activeTask = stateForCount?.activeTask || null;
+  const engineRunning =
+    stateForCount?.status === 'running' && activeTask && activeTask.id != null;
   const countedDisplay = countedValue == null ? shown : countedValue;
   const countsDiffer = countedValue != null && countedValue !== shown;
 
@@ -73,7 +94,17 @@ export function QueuePopupModal({ onClose, counted, openQueueDepth, engineState 
                 be picked up are listed, so an empty list means nothing waits. */}
             #{shown >= 1 ? '1' : '—'} runs next · {countedDisplay} waiting
             {countedDisplay === 1 ? ' task' : ' tasks'}
+            {perProjectSummary ? ` · ${perProjectSummary}` : ''}
           </p>
+          {engineRunning && (
+            <p
+              data-testid="queue-active-worker"
+              className="text-[11px] font-mono text-text-muted"
+            >
+              Running now: {activeTask.title || activeTask.id} (
+              {activeTask.projectName || activeTask.projectId || 'unknown project'})
+            </p>
+          )}
         </div>
         <button
           type="button"

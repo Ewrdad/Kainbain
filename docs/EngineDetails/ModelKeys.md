@@ -86,6 +86,32 @@ Safety mechanisms (defense in depth):
   harness '…'; using model default` stage message, and runs on. A level problem
   alone never fails a stage.
 
+## Effort, tiers, and the central catalogue (`harness::model::effort`)
+
+The brief's `harness::model::effort` shorthand is read as the canonical key
+**plus effort carried as catalogue attributes** — there is no separate
+3-part key format and no migration:
+
+- **harness** — the first segment of the canonical `harness::provider::id`
+  key (which harness serves the model).
+- **model** — the `provider::id` remainder (which model on that harness).
+- **effort** — the catalogue attributes around the key: the fleet entry's
+  `tiers` union (`T0`–`T3`, the effort levels the serving runners offer)
+  and, where the harness advertises adjustable reasoning, the optional
+  4th `::reasoning` key segment (e.g. `agy --effort high`).
+
+Runner-advertised ids are normalized through `parseModelKey` at ingestion
+(`api/flow/dispatch/catalogIngest.js`) into exactly this record — the
+advertised id byte-identical (dispatch matches fleet picks verbatim) with
+`{ harness, provider, model, tiers }` alongside — and saved into the
+persisted fleet snapshot that backs the central list. `GET /compute/models`
+serves that central list: its harness set is the **union** of backend-known
+and fleet-served harnesses, so a fleet-only harness (or a brand-new model
+id) is selectable without any backend-side registration. Malformed ids are
+quarantined with a reason (visible in Settings › Runners), never served,
+never silently dropped. See `docs/EngineDetails/HarnessModelSelector.md`
+and ADR 0016.
+
 ## Optional batch migration
 
 `scripts/migrate-model-refs.mjs` (delivered unused — runtime never needs it) rewrites legacy `provider::id` values in `.kainbain/project.json` stores (`defaultModel`, stage `model` fields) to the canonical harness-scoped form. Dry-run by default; `--write` applies. Bare ids and the `\"default\"` sentinel are left untouched.

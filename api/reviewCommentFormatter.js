@@ -111,18 +111,31 @@ export function feedbackAlreadyContainsComments(feedback, comments = []) {
  * @description Report body for a passed human checkpoint: the approval header
  *   plus the review threads (so a line-by-line pass still records what the
  *   reviewer said) and the optional guidance for downstream stages.
+ *   `opts.automated` (`{ heldSince, autoApproveAt, firedAt, durationText }`,
+ *   from the auto-approve sweeper) switches to the automatic header variant
+ *   with the hold audit line; without it the output is byte-identical to a
+ *   manual approval.
  * @example buildHumanApprovalContent({ stageName: 'Review', comments: [] }) => '# Human approval: Review...'
  * @param {Object} [opts]
  * @param {string} [opts.stageName] - Exiting checkpoint name.
  * @param {string} [opts.guidance] - Optional pass guidance text.
  * @param {Array} [opts.comments] - Sidecar comment records.
+ * @param {Object} [opts.automated] - Auto-approve audit detail (sweeper exits only).
  * @returns {string} Full markdown report content.
  ***/
-export function buildHumanApprovalContent({ stageName, guidance, comments = [] } = {}) {
+export function buildHumanApprovalContent({ stageName, guidance, comments = [], automated } = {}) {
 	const name = stageName || "stage";
 	const cleanGuidance = typeof guidance === "string" ? guidance.trim() : "";
 	const list = Array.isArray(comments) ? comments.filter(Boolean) : [];
-	const sections = [`# Human approval: ${name}`, "**Status:** PASSED"];
+	const automatedDetail =
+		automated && typeof automated === "object" ? automated : null;
+	const sections = automatedDetail
+		? [
+				`# Human approval (automatic): ${name}`,
+				"**Status:** PASSED",
+				`**Automatic:** approved by the auto-approve timer after ${automatedDetail.durationText || "the configured hold"} (held since ${automatedDetail.heldSince || "unknown time"}, deadline ${automatedDetail.autoApproveAt || "unknown deadline"}, fired ${automatedDetail.firedAt || "unknown time"}).`,
+			]
+		: [`# Human approval: ${name}`, "**Status:** PASSED"];
 	if (list.length > 0) {
 		sections.push("", "## Review Comments", formatCommentsMarkdown(list));
 	}

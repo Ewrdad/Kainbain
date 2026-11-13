@@ -27,6 +27,20 @@ describe("detectFromFiles", () => {
 		assert.deepEqual(r.components, ["backend"]);
 	});
 
+	it("runner release tooling flags the runner (publish cuts the release)", () => {
+		for (const f of [
+			"scripts/package-runner.sh",
+			"scripts/package-runner.mjs",
+			"scripts/generate-runner-manifest.mjs",
+			"scripts/migrate-runner-to-wrapper.sh",
+			"scripts/install-local-runner.sh",
+			"scripts/lib/runner-install-root.sh",
+			"startRunner.sh",
+		]) {
+			assert.deepEqual(detectFromFiles([f]).components, ["runner"], f);
+		}
+	});
+
 	it("release machinery flags all three; version files flag their owner", () => {
 		assert.deepEqual(detectFromFiles(["publish.sh"]).components, ["backend", "frontend", "runner"]);
 		assert.deepEqual(detectFromFiles(["api/version.json"]).components, ["backend"]);
