@@ -16,6 +16,7 @@ import {
 	recordCanaryFailure,
 	recordCanarySuccess,
 	resetEngine,
+	resolveCircuitStatePath,
 	saveCircuitState,
 	tripEngine,
 } from "./circuitBreaker.js";
@@ -299,5 +300,21 @@ describe("half-open canary admission", () => {
 		expect(snapshot.resetSource).toBe("auto:probe");
 		expect(snapshot.resetReason).toContain("canary");
 		expect(snapshot.canarySuccessCount).toBe(1);
+	});
+});
+
+describe("resolveCircuitStatePath isolation", () => {
+	it("prefers explicit, then the store path, then the configured temp file", () => {
+		expect(resolveCircuitStatePath({}, "/x.json")).toBe("/x.json");
+		expect(resolveCircuitStatePath({ circuitStatePath: statePath })).toBe(
+			statePath,
+		);
+		// No explicit path anywhere: the setup backstop's
+		// KAINBAIN_CIRCUIT_STATE_FILE wins over the live fallback, so a
+		// test trip never gates the running engine.
+		expect(process.env.KAINBAIN_CIRCUIT_STATE_FILE).toBeTruthy();
+		expect(resolveCircuitStatePath({})).toBe(
+			process.env.KAINBAIN_CIRCUIT_STATE_FILE,
+		);
 	});
 });

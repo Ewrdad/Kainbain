@@ -5,6 +5,7 @@ import path from "node:path";
 import {
 	createAccessConfig,
 	resolveAuthConfig,
+	resolveAuthStateDir,
 	writeAccessOverrides,
 	readAccessOverrides,
 	sanitizeGroupRoleMappings,
@@ -145,5 +146,47 @@ describe("createAccessConfig", () => {
 		expect(access.get().enabled).toBe(false);
 		access.save({ authEnabled: true });
 		expect(access.get().enabled).toBe(true);
+	});
+});
+
+describe("resolveAuthStateDir", () => {
+	it("prefers explicit, then configured, then the engine default", () => {
+		expect(resolveAuthStateDir({ explicitDir: stateDir })).toBe(stateDir);
+		expect(resolveAuthStateDir({ configuredDir: stateDir })).toBe(stateDir);
+		expect(
+			resolveAuthStateDir({ explicitDir: stateDir, configuredDir: "/other" }),
+		).toBe(stateDir);
+	});
+
+	it("live engine dirs throw under VITEST (never silently pollute production)", () => {
+		// The guard gates on VITEST: without it this test would assert
+		// nothing about the production fallback below.
+		expect(process.env.VITEST).toBeTruthy();
+		const live = path.join(os.homedir(), ".kainbain", "engine", "auth");
+		// The incident path (cause N5): app boot with no
+		// KAINBAIN_AUTH_STATE_PATH fell through to live `engine/auth/`.
+		expect(() => resolveAuthStateDir({})).toThrow(
+			/live engine path under test/,
+		);
+		// Defence in depth: an explicit or configured live dir throws too.
+		expect(() => resolveAuthStateDir({ explicitDir: live })).toThrow(
+			/live engine path under test/,
+		);
+		expect(() => resolveAuthStateDir({ configuredDir: live })).toThrow(
+			/live engine path under test/,
+		);
+	});
+
+	it("live engine fallback still resolves outside VITEST (production)", () => {
+		const saved = process.env.VITEST;
+		delete process.env.VITEST;
+		try {
+			expect(resolveAuthStateDir({})).toBe(
+				path.join(os.homedir(), ".kainbain", "engine", "auth"),
+			);
+		} finally {
+			if (saved === undefined) delete process.env.VITEST;
+			else process.env.VITEST = saved;
+		}
 	});
 });

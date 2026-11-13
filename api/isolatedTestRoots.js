@@ -45,9 +45,11 @@ function tempStateFile(name) {
 }
 /***
  * MARK: tempStateFiles
- * @description Per-file temp durable-state paths for WP-4.1 fleet stores
- *   (leases, Runner credentials, pending steers). Importers delete them
- *   in `afterAll`; no suite touches the live `~/.kainbain/engine/`.
+ * @description Per-file temp durable-state paths for the WP-4.1 fleet
+ *   stores (leases, Runner credentials, pending steers, fleet catalogue
+ *   snapshot). Importers delete them in `afterAll`; no suite touches the
+ *   live `~/.kainbain/engine/`. Mirrors `tempEngineStateFiles` in the
+ *   global setup backstop (`testSetup.isolation.js`).
  * @example import { tempStateFiles } from "./isolatedTestRoots.js"
  ***/
 export const tempStateFiles = {
@@ -60,6 +62,17 @@ process.env.KAINBAIN_CLAIM_STATE_FILE = tempStateFiles.claims;
 process.env.KAINBAIN_RUNNER_STATE_FILE = tempStateFiles.runners;
 process.env.KAINBAIN_STEER_STATE_FILE = tempStateFiles.steers;
 process.env.KAINBAIN_FLEET_CATALOG_FILE = tempStateFiles.fleetCatalog;
+
+// Auth state: per-file temp dir, same backstop — no suite may read or
+// write the live `~/.kainbain/engine/auth/` (users, sessions, access
+// overrides, audit log). Mirrors `tempAuthStateDir` in the global setup
+// backstop. Suites that need their own dir keep setting
+// `KAINBAIN_AUTH_STATE_PATH` themselves (module body runs after this
+// import, so their value wins before the app boots).
+export const tempIsolatedAuthStateDir = fs.mkdtempSync(
+	path.join(os.tmpdir(), "kainbain-test-auth-"),
+);
+process.env.KAINBAIN_AUTH_STATE_PATH = tempIsolatedAuthStateDir;
 
 // Hermetic vibe transport: the vibe harness auto-engages its ACP session when
 // a `vibe-acp` sibling of the resolved vibe binary EXISTS on the host running

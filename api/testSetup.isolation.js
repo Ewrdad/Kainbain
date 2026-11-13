@@ -96,6 +96,18 @@ process.env.KAINBAIN_CLAIM_STATE_FILE = tempEngineStateFiles.claims;
 process.env.KAINBAIN_RUNNER_STATE_FILE = tempEngineStateFiles.runners;
 process.env.KAINBAIN_STEER_STATE_FILE = tempEngineStateFiles.steers;
 process.env.KAINBAIN_FLEET_CATALOG_FILE = tempEngineStateFiles.fleetCatalog;
+// The auth store is ALSO engine-scoped by default
+// (`~/.kainbain/engine/auth/`): `api/index.js` boots `createAuthService`
+// on every app import, so without this pin any suite that saves access
+// overrides (or signs a user in through the app) would write LIVE
+// users/sessions/audit rows. Point it at a per-file temp dir before
+// config loads. Mirrors `tempIsolatedAuthStateDir` in
+// `isolatedTestRoots.js`; the loud guard lives in
+// `auth/accessConfig.js` (`resolveAuthStateDir`).
+export const tempAuthStateDir = fs.mkdtempSync(
+	path.join(os.tmpdir(), "kainbain-test-auth-"),
+);
+process.env.KAINBAIN_AUTH_STATE_PATH = tempAuthStateDir;
 // Host resource probes are ALSO live by default: `probeMemoryUsagePct()`
 // reads `os.freemem()`, which the CI storm (200+ vitest workers on a 16 GB
 // box) inflates past the 95% critical threshold. Any synthetic scheduler

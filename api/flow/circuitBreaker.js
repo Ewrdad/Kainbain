@@ -2,9 +2,8 @@
 // Owns the persisted trip/reset state that gates every dispatch, the
 // half-open canary probe, and the EventBridge surfaces operators watch.
 import fs from "node:fs";
-import path from "node:path";
-import os from "node:os";
 import { config } from "../config.js";
+import { resolveStatePath } from "./resolveStatePath.js";
 import { _atomicWriteFileSync } from "../house/index.js";
 import { notifyEngineReset, notifyEngineTrip } from "../observability/alerts.js";
 
@@ -100,7 +99,11 @@ export function resolveCircuitStatePath(store, explicit) {
 	}
 	const configured = config?.circuitStateFile;
 	if (typeof configured === "string" && configured.trim()) return configured;
-	return path.join(os.homedir(), ".kainbain", "engine", "circuit.json");
+	// The fallback resolves through the shared engine-state guard, so a
+	// suite that ever reaches it under VITEST fails loudly instead of
+	// tripping the LIVE containment file (2026-11 test-pollution
+	// incident, cause N5). Production resolves byte-identically.
+	return resolveStatePath(null, null, "circuit.json");
 }
 
 /***

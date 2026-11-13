@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { loadStateFile } from "./loadStateFile.js";
-import { resolveStatePath } from "./resolveStatePath.js";
+import { isLiveEnginePath, resolveStatePath } from "./resolveStatePath.js";
 import { saveStateFile } from "./saveStateFile.js";
 
 /***
@@ -42,6 +42,43 @@ describe("durableState", () => {
 		// A similarly-prefixed dir is NOT the engine dir (no false positive).
 		const engine2 = path.join(os.homedir(), ".kainbain", "engine2", "s.json");
 		expect(resolveStatePath(engine2, null, "s.json")).toBe(engine2);
+	});
+
+	test("isLiveEnginePath marks exactly the live engine dir", () => {
+		const liveFile = path.join(os.homedir(), ".kainbain", "engine", "s.json");
+		const liveDir = path.join(os.homedir(), ".kainbain", "engine", "auth");
+		expect(isLiveEnginePath(liveFile)).toBe(true);
+		expect(isLiveEnginePath(liveDir)).toBe(true);
+		expect(isLiveEnginePath(tmp())).toBe(false);
+		// A similarly-prefixed dir is NOT the engine dir.
+		expect(
+			isLiveEnginePath(path.join(os.homedir(), ".kainbain", "engine2", "s.json")),
+		).toBe(false);
+		// Non-paths never match (fail closed toward "not live").
+		expect(isLiveEnginePath("")).toBe(false);
+		expect(isLiveEnginePath("   ")).toBe(false);
+		expect(isLiveEnginePath(null)).toBe(false);
+		expect(isLiveEnginePath(undefined)).toBe(false);
+	});
+
+	test("fallback names that escape the engine dir throw in every environment", () => {
+		for (const bad of ["", "   ", ".", "..", "../x.json", "sub/s.json", "/abs.json"]) {
+			expect(
+				() => resolveStatePath(null, null, bad),
+				`fallback ${JSON.stringify(bad)} must throw`,
+			).toThrow(/bare fallback file name/);
+		}
+		// A dotted but bare name is still a valid file name.
+		const saved = process.env.VITEST;
+		delete process.env.VITEST;
+		try {
+			expect(resolveStatePath(null, null, "my.stuff.json")).toBe(
+				path.join(os.homedir(), ".kainbain", "engine", "my.stuff.json"),
+			);
+		} finally {
+			if (saved === undefined) delete process.env.VITEST;
+			else process.env.VITEST = saved;
+		}
 	});
 
 	test("live engine fallback still resolves outside VITEST (production)", () => {
