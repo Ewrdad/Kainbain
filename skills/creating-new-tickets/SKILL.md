@@ -1,7 +1,7 @@
 ---
 name: creating-new-tickets
 description: Create follow-on KainBain tasks (tickets) into a chosen project/pipeline/stage via the KainBain API. Use when findings should become actionable work items. Supports injecting the target project name and pipeline/stage through KB_config keywords (targetProject, targetWorkflow, targetStage).
-lastUpdated: 2026-09-12
+lastUpdated: 2026-11-13
 ---
 
 # Creating New Tickets (KainBain)
@@ -47,17 +47,35 @@ report the remainder instead of flooding the pipeline.
 {
   "projectId": "<target project id>",
   "title": "<short imperative title (first‑line summary)>",
-  "goal": "<one‑paragraph description of the work>",
+  "goal": "# <same title>\n\n<one‑paragraph description of the work>",
   "stageId": "<target stage id or exact name>",
   "workflowId": "<target workflow id>",
-  "blockedBy": ["<taskId>", "<taskId>"],
+  "blockedBy": ["<blocker task id>", "<blocker task id>"],
   "idempotencyKey": "<deterministic key>",
   "execute": false
 }
 ```
 
-- **`blockedBy`** (optional) – an array of task IDs this new ticket should wait on before it can advance. Include any prerequisite tasks you identified; the API will enforce that the new task cannot start until all listed blockers are completed.
-- The **`title`** field must be a concise, imperative‑style first‑line summary (e.g., "Add blockedBy handling to create‑task skill"). This title appears as the task’s heading in the UI and in the `# Goal` section of `task.md`.
+- **`blockedBy` (always state it explicitly)** – an array of **same-project** task
+  IDs this new ticket must wait on before it can advance. Reuse the listing from
+  §2 to pick real ids; **never guess an id**. Set it to `[]` when nothing blocks
+  and say `blockers: none` in the stage report (per the ask). The API returns
+  HTTP 400 on self-block (`Task cannot block itself`), an unknown id, or a
+  dependency cycle; blockers that are failed/cancelled keep the dependent blocked.
+- **`goal` must open with a title first line.** Display titles on task cards,
+  queue rows, the Now Playing bar, and detail pages are derived from the goal's
+  first line (`formatTaskTitleFirstLine`: first line, leading `# ` stripped,
+  falls back to `Untitled Task`). Mandate the format:
+  ```
+  # <title>
+
+  <one‑paragraph description>
+  ```
+  with a blank line between, and require `title` and the goal's first line to
+  match. Keep it on one line so markdown readers and the formatter agree.
+- The **`title`** field must be a concise, imperative‑style, verb‑first summary
+  (e.g., "Add blockedBy handling to create‑task skill"). It appears as the task's
+  heading in the UI and in the `# Goal` section of `task.md`.
 
 - `idempotencyKey` is REQUIRED: derive it deterministically, e.g.
   `sha256(finding-summary + targetStage + currentTaskId).slice(0, 32)` — a
@@ -72,9 +90,11 @@ report the remainder instead of flooding the pipeline.
 
 A successful response returns the created task with `id` and `status`.
 Verify by re-reading `GET {{kbApiBase}}/tasks/<id>?projectId=<projectId>`:
-confirm `currentStageId` matches the target stage. Report every created
-ticket id, title, and stage in the stage report so operators can audit the
-fan-out.
+confirm `currentStageId` matches the target stage, that `blockedBy` matches the
+decision recorded for that finding (ids or `[]`), and that the goal's first
+line is the mandated title. Report every created ticket id, title, stage, and
+blocker ids (`blockers: none` when empty) in the stage report so operators can
+audit the fan-out.
 
 ## Guardrails (always apply)
 
@@ -82,6 +102,11 @@ fan-out.
 - Hard cap: at most 10 tickets per run.
 - Never create a ticket targeting the currently executing stage.
 - Always send a deterministic `idempotencyKey`.
+- Always acknowledge blockers explicitly: `blockedBy: [...]` (ids) or `[]`, plus
+  one stage-report line naming them (`blockers: <ids>` or `blockers: none`).
+  Never guess a blocker id.
+- Every goal opens with a title line in the `# <title>` form; never open with a
+  plain paragraph.
 - If ids cannot be resolved (unknown project/workflow/stage), stop and report
   the miss instead of guessing.
 - Tickets are created with `execute:false` by default; only set `execute:true`
