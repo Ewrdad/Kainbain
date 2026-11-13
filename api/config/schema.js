@@ -489,16 +489,7 @@ export const CONFIG_SCHEMA = [
 		type: "bool",
 		default: true,
 		group: "tasks",
-		doc: "Runner-only execution (default): servable agent stages defer to Runner dispatch instead of spawning an in-process agent child. Set false only as an emergency rollback to legacy embedded execution — the embedded agent path is deprecated and unmaintained. Human checkpoints, commands, CI, unresolvable aliases, and circuit-canary probes keep their embedded behavior regardless. Requires at least one approved live Runner (local by default).",
-	},
-	{
-		key: "runnerDispatchFallbackMs",
-		env: "KAINBAIN_RUNNER_DISPATCH_FALLBACK_MS",
-		aliases: [],
-		type: "int",
-		default: 90000,
-		group: "tasks",
-		doc: "After a task has waited this long for Runner dispatch without being claimed (ms), fall back to embedded execution so waiting work never starves behind a busy or incapable fleet. Zero disables the fallback (Runner-only always). Covers both the \"no capable Runner\" and \"fleet busy\" cases — once the ceiling passes, the backend runs it itself. Central queue ordering still decides which waiting task falls back first (task 16d6fbd6).",
+		doc: "Runner-only execution (default): servable agent stages defer to Runner dispatch instead of spawning an in-process agent child. With the embedded fallback removed, a servable task waits indefinitely for a capable Runner — the backend never runs it in-process. Set false only as an emergency rollback to legacy embedded execution — the embedded agent path is deprecated and unmaintained. Human checkpoints, commands, CI, unresolvable aliases, and circuit-canary probes keep their embedded behavior regardless. Requires at least one approved live Runner (local by default).",
 	},
 
 	// --- Storage & Paths --------------------------------------------------
