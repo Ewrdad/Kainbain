@@ -153,6 +153,88 @@ describe("update channel fixture (local HTTP mirror)", () => {
 		}
 	});
 
+	it("index mode end-to-end: newest compatible wins, asset resolves beside its manifest", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-fixture-"));
+		// 0.2.0 is compatible and served with a real asset; 0.9.0 needs a
+		// newer backend, so the check must pass it over without touching it.
+		const tree = path.join(dir, "tree-0.2.0");
+		fs.mkdirSync(tree, { recursive: true });
+		fs.writeFileSync(path.join(tree, "version.json"), JSON.stringify({ component: "runner", apiVersion: "1.0.0", runnerVersion: "0.2.0" }));
+		fs.writeFileSync(path.join(tree, "main.js"), "// fixture runner\n");
+		const assetName = "kainbain-runner-0.2.0-linux-x64.tar.gz";
+		const assetPath = path.join(dir, assetName);
+		execFileSync("tar", ["-czf", assetPath, "-C", dir, "tree-0.2.0"]);
+		const bytes = fs.readFileSync(assetPath);
+		const manifestFor = (version, requires) => {
+			const manifest = fixtureManifest({
+				version,
+				...(requires ? { requires } : {}),
+				assets: [
+					{
+						platform: "linux",
+						arch: "x64",
+						filename: assetName,
+						sha256: sha256HexOf(bytes),
+						size: bytes.length,
+					},
+				],
+			});
+			const text = JSON.stringify(manifest);
+			return { text, sig: signTestManifest(Buffer.from(text, "utf8")) };
+		};
+		const newer = manifestFor("0.9.0", { backendApi: ">=2.0.0 <3.0.0" });
+		const older = manifestFor("0.2.0", { backendApi: ">=1.0.0 <2.0.0" });
+		// Mutable file map: the index needs the server's ephemeral port,
+		// known only after listen, so it is filled in before any request.
+		const files = {};
+		const server = await serve(files);
+		const base = `http://127.0.0.1:${server.address().port}`;
+		Object.assign(files, {
+			"/releases.json": JSON.stringify({
+				schema: 1,
+				component: "runner",
+				releases: [
+					{ version: "0.9.0", manifestUrl: `${base}/v/0.9.0/manifest.json`, signatureUrl: `${base}/v/0.9.0/manifest.json.minisig` },
+					{ version: "0.2.0", manifestUrl: `${base}/v/0.2.0/manifest.json`, signatureUrl: `${base}/v/0.2.0/manifest.json.minisig` },
+				],
+			}),
+			"/v/0.9.0/manifest.json": newer.text,
+			"/v/0.9.0/manifest.json.minisig": newer.sig,
+			"/v/0.2.0/manifest.json": older.text,
+			"/v/0.2.0/manifest.json.minisig": older.sig,
+			[`/v/0.2.0/${assetName}`]: bytes,
+		});
+		try {
+			const checked = await checkForUpdate({
+				currentVersion: "0.1.0",
+				updateUrl: base,
+				verifyImpl: verifyWithTestKey,
+				backendApiVersion: "1.0.0",
+				platform: "linux",
+				arch: "x64",
+				logger: { warn: () => {}, log: () => {} },
+			});
+			assert.equal(checked.ok, true);
+			assert.equal(checked.update?.version, "0.2.0");
+			const root = path.join(dir, "install");
+			const current = path.join(root, "releases", "0.1.0", "unpacked");
+			fs.mkdirSync(current, { recursive: true });
+			fs.symlinkSync(current, path.join(root, "current"));
+			const applied = await applyUpdate({
+				update: checked.update,
+				installRoot: root,
+				updateUrl: base,
+				logger: { warn: () => {}, log: () => {} },
+			});
+			assert.equal(applied.ok, true);
+			const flipped = fs.readlinkSync(path.join(root, "current"));
+			assert.equal(JSON.parse(fs.readFileSync(path.join(flipped, "version.json"), "utf8")).runnerVersion, "0.2.0");
+		} finally {
+			server.close();
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it("tampered manifest aborts before any download (A3)", async () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-fixture-"));
 		const { manifestText, assetName, bytes } = buildRelease(dir, { version: "0.2.0" });

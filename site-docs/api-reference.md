@@ -408,4 +408,33 @@ only, and the key value is never returned by any endpoint.
 | DELETE | `/settings/image-gen/providers/:id/key` | Clear the stored provider key (an env override keeps the provider configured). |
 | POST | `/settings/image-gen/providers/:id/test` | User-triggered dry-run generation (`{ prompt? }` → `{ ok, bytes?, ms?, error? }`). |
 
+## Authentication & access control (`api/routes/auth.js`, `api/auth/`)
+
+Organisation sign-in (OIDC) plus role administration. Off by default: with
+access control disabled, `GET /auth/me` reports the built-in admin and the
+sign-in endpoints answer 404. The admin APIs need the configured
+role-manager roles (default `admin`) while access control is on; guard
+failures are 401 `unauthenticated` (no session) or 403 `forbidden` (wrong
+role). Full operator guide: Authentication & Access Control
+(`#/docs/authentication`).
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| GET | `/auth/login` | Start sign-in: 302 to the provider's authorize page (PKCE + state + nonce). 404 `auth_disabled` when off, 503 `oidc_unconfigured` when the provider fields are unset. |
+| GET | `/auth/callback` | Provider callback: exchanges the code, verifies the ID token, JIT-provisions the user, refreshes groups, sets the session cookie, redirects to `/`. |
+| POST | `/auth/logout` | End the browser session server-side and clear the cookie (→ `{ ok: true }`). |
+| GET | `/auth/me` | Auth status (`{ authEnabled, user, roles }`) — the frontend gate. |
+| GET | `/auth/users` | List provisioned users (role-manager roles only). |
+| PUT | `/auth/users/:id/roles` | Replace a user's installation-wide direct roles (`{ roles }`). |
+| PUT | `/auth/users/:id/projects/:projectId/roles` | Replace a user's roles for one project (`{ roles }`). |
+| PUT | `/auth/users/:id/disabled` | Disable or re-enable a user (`{ disabled }`; cannot target self). |
+| GET | `/auth/group-mappings` | Load the IdP-group to role mappings. |
+| PUT | `/auth/group-mappings` | Replace the mappings (`{ mappings: { group: [role] } }`). |
+| GET | `/auth/settings` | Load the effective access settings view (secret returned only as `hasClientSecret`). |
+| PUT | `/auth/settings` | Persist one access-settings change (applies without a restart). |
+| GET | `/auth/api-keys` | List API-key metadata (never secrets; role managers, human sessions only). |
+| POST | `/auth/api-keys` | Create an API key (`{ name, roles?, scopes?, expiresAt? }`; secret returned once). |
+| GET | `/auth/api-keys/:id/usage` | One key's metadata plus its recent audit-log usage. |
+| DELETE | `/auth/api-keys/:id` | Revoke an API key immediately. |
+
 

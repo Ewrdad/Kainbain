@@ -235,6 +235,23 @@ describe("loadRunnerConfig", () => {
 			43200000,
 		);
 	});
+
+	it("keeps pin-wins by default, =1 opts in to discovery-wins", () => {
+		const env = {
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESS: "mock",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+		};
+		assert.equal(loadRunnerConfig(env).modelDiscoveryWins, false);
+		assert.equal(
+			loadRunnerConfig({ ...env, KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS: "1" }).modelDiscoveryWins,
+			true,
+		);
+		assert.equal(
+			loadRunnerConfig({ ...env, KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS: "0" }).modelDiscoveryWins,
+			false,
+		);
+	});
 });
 
 describe("runner credential file (one-click approval)", () => {

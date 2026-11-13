@@ -85,11 +85,15 @@ UNIT_FILE="$HOME/.config/systemd/user/${UNIT}"
 RUNNER_DIR="$HOME/apps/kainbain/runner/runner"
 [ -d "$RUNNER_DIR" ] || RUNNER_DIR="$(cd "$(dirname "$0")/../runner" && pwd)"
 NODE_BIN="$(command -v node)"
+TREE_ROOT="$(dirname "$RUNNER_DIR")"
+INSTALL_ROOT="${KAINBAIN_RUNNER_INSTALL_ROOT:-$HOME/.kainbain/runner-install}"
 
 if [ "$DRY_RUN" -eq 1 ]; then
 	echo "UNIT=$UNIT_FILE"
 	echo "ENV=$ENV_FILE"
 	echo "RUNNER_DIR=$RUNNER_DIR"
+	echo "TREE_ROOT=$TREE_ROOT"
+	echo "INSTALL_ROOT=$INSTALL_ROOT"
 	echo "BACKEND=$BACKEND"
 	exit 0
 fi
@@ -113,6 +117,7 @@ if [ ! -f "$ENV_FILE" ]; then
 		echo "KAINBAIN_RUNNER_DISPATCH_IDLE_LIMIT=0"
 		echo "KAINBAIN_RUNNER_DISPATCH_POLL_MS=5000"
 		echo "KAINBAIN_RUNNER_WORK_ROOT=$HOME/.kainbain/runner-work"
+		echo "KAINBAIN_RUNNER_INSTALL_ROOT=$INSTALL_ROOT"
 	} >"$ENV_FILE"
 	chmod 600 "$ENV_FILE"
 	if [ -n "$JOIN_TOKEN" ]; then
@@ -125,6 +130,11 @@ elif [ "$ENSURE" -eq 0 ]; then
 fi
 
 if [ ! -f "$UNIT_FILE" ]; then
+	# New installs boot through the self-update wrapper: lay the versioned
+	# tree down FIRST so a bad source tree aborts before any unit exists.
+	. "$(dirname "$0")/lib/runner-install-root.sh"
+	LAID_VERSION="$(lay_down_runner_install_root "$TREE_ROOT" "$INSTALL_ROOT")" || exit 1
+	echo "Laid down $INSTALL_ROOT/releases/$LAID_VERSION/unpacked (+ wrapper shim)"
 	cat >"$UNIT_FILE" <<EOF
 [Unit]
 Description=KainBain local Runner $ID (wire executor, runner-only)
@@ -133,16 +143,16 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=$RUNNER_DIR
+WorkingDirectory=$INSTALL_ROOT
 EnvironmentFile=$ENV_FILE
-ExecStart=$NODE_BIN main.js
+ExecStart=$INSTALL_ROOT/bin/kainbain-runner
 Restart=always
 RestartSec=5
 
 [Install]
 WantedBy=default.target
 EOF
-	echo "Wrote $UNIT_FILE"
+	echo "Wrote $UNIT_FILE (wrapper entrypoint)"
 elif [ "$ENSURE" -eq 0 ]; then
 	echo "Exists (left alone): $UNIT_FILE"
 fi

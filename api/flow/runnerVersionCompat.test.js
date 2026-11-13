@@ -1,10 +1,14 @@
 import { describe, it } from "vitest";
 import assert from "node:assert/strict";
 import {
+	BACKEND_API_VERSION,
 	belowMinimumRunnerVersion,
 	buildBelowMinimumRefusal,
 	coerceRunnerVersion,
+	loadBackendApiVersion,
+	RUNNER_AUTO_UPDATE_COMMAND_COOLDOWN_MS,
 	runnerVersionAtLeast,
+	shouldAutoRequestUpdate,
 	updateAvailableForRunner,
 	updateInfoForRunner,
 } from "./runnerVersionCompat.js";
@@ -75,5 +79,54 @@ describe("runnerVersionCompat", () => {
 		const noVersion = { runnerId: "r3", facts: {} };
 		assert.equal(buildBelowMinimumRefusal({ runner: noVersion, minVersion: "9.9.9" }), null);
 		assert.equal(buildBelowMinimumRefusal({ runner: null, minVersion: "0.1.0" }), null);
+	});
+
+	it("advertises the desired version and backend API version", () => {
+		const info = updateInfoForRunner(
+			{ versions: { runner: "0.1.0" } },
+			{ minVersion: "0.1.0", recommendedVersion: "0.2.0", backendApiVersion: "1.0.0" },
+		);
+		assert.equal(info.desiredRunnerVersion, "0.2.0");
+		assert.equal(info.backendApiVersion, "1.0.0");
+		const silent = updateInfoForRunner({ versions: { runner: "0.1.0" } }, { minVersion: "0.1.0", recommendedVersion: "0.1.0" });
+		assert.equal(silent.desiredRunnerVersion, "0.1.0");
+		assert.equal(silent.backendApiVersion, null);
+	});
+
+	it("loads the backend API version from api/version.json", () => {
+		assert.equal(loadBackendApiVersion(), "1.0.0");
+		assert.equal(BACKEND_API_VERSION, "1.0.0");
+		assert.equal(RUNNER_AUTO_UPDATE_COMMAND_COOLDOWN_MS, 24 * 60 * 60 * 1000);
+	});
+
+	it("nudges outdated command-capable runners, at most daily", () => {
+		const base = {
+			facts: { versions: { runner: "0.1.0" }, commands: ["requestModelRediscovery", "requestUpdate"] },
+			pendingCommands: [],
+			commandResults: {},
+			recommendedVersion: "0.2.0",
+		};
+		assert.equal(shouldAutoRequestUpdate(base), true);
+		// Current runners, old runners, queued runners, and recently
+		// nudged runners are left alone.
+		assert.equal(shouldAutoRequestUpdate({ ...base, facts: { versions: { runner: "0.2.0" }, commands: base.facts.commands } }), false);
+		assert.equal(shouldAutoRequestUpdate({ ...base, facts: { versions: { runner: "0.1.0" } } }), false);
+		assert.equal(shouldAutoRequestUpdate({ ...base, facts: { versions: {} }, recommendedVersion: "9.9.9" }), false);
+		assert.equal(
+			shouldAutoRequestUpdate({ ...base, pendingCommands: [{ command: "requestUpdate", requestedAt: new Date().toISOString() }] }),
+			false,
+		);
+		assert.equal(
+			shouldAutoRequestUpdate({ ...base, commandResults: { requestUpdate: { ok: true, detail: "done", at: new Date().toISOString() } } }),
+			false,
+		);
+		assert.equal(
+			shouldAutoRequestUpdate({
+				...base,
+				commandResults: { requestUpdate: { ok: false, detail: "failed", at: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString() } },
+				now: Date.now(),
+			}),
+			true,
+		);
 	});
 });

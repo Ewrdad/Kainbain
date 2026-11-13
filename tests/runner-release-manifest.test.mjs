@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildManifest, sha256FileHex } from "../scripts/generate-runner-manifest.mjs";
+import { buildManifest, readReleaseRequires, sha256FileHex } from "../scripts/generate-runner-manifest.mjs";
 import { packageRunner } from "../scripts/package-runner.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -50,6 +50,37 @@ describe("buildManifest", () => {
 		const dir = fakeDistWith("1.2.3");
 		assert.throws(() => buildManifest({ version: "not-a-version", dir }), /semver/);
 		fs.rmSync(dir, { recursive: true, force: true });
+	});
+
+	it("stamps requires.backendApi from the release source tree", () => {
+		const dir = fakeDistWith("1.2.3");
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "kb-reqroot-"));
+		fs.mkdirSync(path.join(root, "runner"), { recursive: true });
+		fs.writeFileSync(
+			path.join(root, "runner", "version.json"),
+			JSON.stringify({ component: "runner", apiVersion: "1.0.0", runnerVersion: "1.2.3", requires: { backendApi: ">=1.0.0 <2.0.0" } }),
+		);
+		const manifest = buildManifest({ version: "1.2.3", dir, root });
+		assert.deepEqual(manifest.requires, { backendApi: ">=1.0.0 <2.0.0" });
+		assert.equal(readReleaseRequires(root), ">=1.0.0 <2.0.0");
+		fs.rmSync(dir, { recursive: true, force: true });
+		fs.rmSync(root, { recursive: true, force: true });
+	});
+
+	it("omits requires when the source tree carries no range (legacy shape)", () => {
+		const dir = fakeDistWith("1.2.3");
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "kb-reqroot-"));
+		fs.mkdirSync(path.join(root, "runner"), { recursive: true });
+		fs.writeFileSync(
+			path.join(root, "runner", "version.json"),
+			JSON.stringify({ component: "runner", apiVersion: "1.0.0", runnerVersion: "1.2.3" }),
+		);
+		const manifest = buildManifest({ version: "1.2.3", dir, root });
+		assert.equal(manifest.requires, undefined);
+		assert.equal(readReleaseRequires(root), null);
+		assert.equal(readReleaseRequires(path.join(root, "missing")), null);
+		fs.rmSync(dir, { recursive: true, force: true });
+		fs.rmSync(root, { recursive: true, force: true });
 	});
 
 	it("sha256FileHex matches the manifest's hashing", () => {

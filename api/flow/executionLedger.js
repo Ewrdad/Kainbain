@@ -2,6 +2,7 @@ import { _appendLogEntries, _appendProcessLog } from "../watch/index.js";
 import { config } from "../config.js";
 import { git } from "../git.js";
 import { createLogProcessor } from "../agent/logStream/logProcessor.js";
+import { attachAttestationToEntry } from "../../shared/stageAttestation.js";
 
 /***
  * MARK: ExecutionLedger
@@ -347,6 +348,8 @@ export class ExecutionLedger {
 		sha = null,
 		branch = null,
 		posture = null,
+		configHash = null,
+		committed = undefined,
 	}) {
 		let outcome;
 		try {
@@ -420,10 +423,54 @@ export class ExecutionLedger {
 		]
 			.filter(Boolean)
 			.join(", ");
-		task?.history?.push({
+		// Stage attestation: the Runner-reported hash names the commit the
+		// Runner actually made, so it wins; the dispatch-stashed hash covers
+		// old Runners that report none. A Runner that reports committed:false
+		// (CI stages, clean trees) attests the config it ran under with an
+		// explicit null commit — its reported HEAD is prose context above,
+		// never the attested SHA. A conflict between reported and dispatched
+		// is flagged loudly but never rejects the completion.
+		const reportedHash =
+			typeof configHash === "string" && configHash.trim() ? configHash.trim() : null;
+		const dispatchedHash =
+			typeof task?.currentStageConfigHash === "string" && task.currentStageConfigHash.trim()
+				? task.currentStageConfigHash.trim()
+				: null;
+		const attestedHash = reportedHash || dispatchedHash || null;
+		const attestedSha = committed === false ? null : (sha ?? null);
+		const hashConflict = Boolean(reportedHash && dispatchedHash && reportedHash !== dispatchedHash);
+		const completionEntry = {
 			timestamp: new Date().toISOString(),
-			action: `Runner completed execution ${executionId} (${postureBits}). Lease released.`,
-		});
+			action:
+				`Runner completed execution ${executionId} (${postureBits}). Lease released.` +
+				(hashConflict
+					? ` Config hash conflict: Runner reported ${reportedHash} but dispatch recorded ${dispatchedHash}.`
+					: ""),
+			// Structured Runner id alongside the prose, same as the
+			// progress entries above, so consumers need not parse the
+			// action string.
+			...(typeof runnerId === "string" && runnerId.trim()
+				? { runnerId: runnerId.trim() }
+				: {}),
+		};
+		const attestedStageId = reportedStage ?? task?.currentStageId;
+		if (
+			attestedHash &&
+			typeof attestedStageId === "string" &&
+			attestedStageId.trim()
+		) {
+			attachAttestationToEntry(completionEntry, {
+				taskId,
+				stageId: attestedStageId,
+				configHash: attestedHash,
+				commitSha: attestedSha,
+			});
+		}
+		if (hashConflict) {
+			completionEntry.configHashMismatch = true;
+			this.counters.divergences += 1;
+		}
+		task?.history?.push(completionEntry);
 		// G7: a finished stage breaks the death loop — the next stage (or
 		// a later retry of this one after real progress) counts from zero.
 		if (task) {

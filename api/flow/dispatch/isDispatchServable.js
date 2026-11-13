@@ -1,6 +1,7 @@
 import { taskRequirements } from "./taskRequirements.js";
 import { selectAliasTarget } from "../../aliasSelector.js";
 import { normalizeStageType } from "../../projectStore.js";
+import { resolveCandidateStage, resolveStagesForTask } from "../stageResolution.js";
 
 /***
  * MARK: isDispatchServable
@@ -28,15 +29,22 @@ import { normalizeStageType } from "../../projectStore.js";
  * @returns {boolean} Whether a Runner over the wire can take this stage.
  ***/
 export function isDispatchServable({ project = {}, task = {}, stages = null, stage = null } = {}) {
+	const resolvedWorkflowStages = resolveStagesForTask(project, task);
+	const fallbackTaskStages =
+		Array.isArray(resolvedWorkflowStages) && resolvedWorkflowStages.length > 0
+			? resolvedWorkflowStages
+			: Array.isArray(task.stages)
+				? task.stages
+				: resolvedWorkflowStages;
 	const effectiveStages = Array.isArray(stages)
 		? stages
-		: Array.isArray(task.stages)
-			? task.stages
-			: [];
+		: fallbackTaskStages;
+	// Strict like the queue display: an explicit stage, else the task's
+	// stage by id (falling back to a name match), else unknown — a task
+	// pointing at a deleted stage parks, never the first stage's job.
 	const resolved =
 		stage ||
-		effectiveStages.find((s) => String(s?.id) === String(task.currentStageId)) ||
-		effectiveStages[0] ||
+		resolveCandidateStage(effectiveStages, task.currentStageId) ||
 		{};
 	const stageKind = normalizeStageType(resolved.type);
 	// All command stages run on Runners (any branch mode, any command):
@@ -54,11 +62,23 @@ export function isDispatchServable({ project = {}, task = {}, stages = null, sta
 	// Runner. Everything else (human checkpoints, unknown legacy types)
 	// keeps its exact embedded behavior.
 	if (stageKind !== "agent") return false;
-	const req = taskRequirements(project, {
-		...task,
-		...(Array.isArray(stages) ? { stages } : {}),
-		...(resolved.id ? { currentStageId: resolved.id } : {}),
-	});
+	// Requirements ride the same resolution: an explicitly passed stage is
+	// authoritative (prepended, so the caller's resolution wins), else the
+	// passed list, else the task's own pipeline via the requirements
+	// default — never the viewed pipeline's mirror.
+	const requirementStages = stage
+		? [stage, ...effectiveStages.filter((s) => String(s?.id) !== String(stage?.id))]
+		: Array.isArray(stages)
+			? stages
+			: null;
+	const req = taskRequirements(
+		project,
+		{
+			...task,
+			...(resolved.id ? { currentStageId: resolved.id } : {}),
+		},
+		requirementStages,
+	);
 	if (!req || !req.runnableType) return false;
 	if (!req.alias) return true;
 	try {

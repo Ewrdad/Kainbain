@@ -29,9 +29,11 @@ export function loadRunnerConfig(env = process.env) {
 	// KAINBAIN_RUNNER_HARNESS seeds a 1-element list. The first entry
 	// stays the primary harness (single-assignment default, posture).
 	// Auto-detect is the default: an empty harness config or a literal
-	// "auto" token means the daemon probes PATH on boot (see
-	// detectAvailableHarnesses in daemon.js) and fail-fasts when nothing
-	// is found. Pass --manual --harness NAME at install time to pin.
+	// "auto" token means the daemon probes the host on boot (PATH, the
+	// standard install dirs, per-harness install dirs, KAINBAIN_*_BIN
+	// overrides, and the pi agent snapshot — see detectAvailableHarnesses
+	// in daemon.js) and fail-fasts when nothing is found. Pass --manual
+	// --harness NAME at install time to pin.
 	const isAutoToken = (h) => String(h ?? "").trim().toLowerCase() === "auto";
 	let harnessAuto = false;
 	const harnessIds = str("KAINBAIN_RUNNER_HARNESSES", "")
@@ -59,12 +61,16 @@ export function loadRunnerConfig(env = process.env) {
 	// Servable model advertisement (capability matching is backend-side, so
 	// the list is the operator's claim of what this host can run; the
 	// dispatch answer carries the required model per assignment and the
-	// daemon serves exactly that). KAINBAIN_RUNNER_MODELS (csv) wins when
-	// set; otherwise the singular KAINBAIN_RUNNER_MODEL seeds a 1-element
-	// list; when both are empty, periodic model auto-discovery fills in
-	// (muse serve model/list every KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS,
-	// default 12h, 0 disables) — empty everywhere means unpinned
-	// (matches model-less tasks only).
+	// daemon serves exactly that). KAINBAIN_RUNNER_MODELS (csv) sets the
+	// pin; otherwise the singular KAINBAIN_RUNNER_MODEL seeds a 1-element
+	// pin. Periodic model auto-discovery (every
+	// KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS, default 12h) runs even
+	// when pinned: the advertised list is pin ∪ discovered (survey q2 — a
+	// newly released harness model appears automatically), so the pin is
+	// never lost to a broken scan. Opt in to discovery-wins with
+	// KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1: a non-empty discovery result
+	// then replaces the pin. Empty everywhere means unpinned (matches
+	// model-less tasks only).
 	// The "default" sentinel means harness-managed (no pinned model),
 	// never a model this host can serve, so it is never advertised:
 	// an operator who sets KAINBAIN_RUNNER_MODEL=default gets the
@@ -108,9 +114,12 @@ export function loadRunnerConfig(env = process.env) {
 		10,
 	);
 
-	// Model auto-discovery cadence (muse serve model/list), default 12h.
-	// 0 disables discovery; the operator's explicit MODELS/MODEL list
-	// always wins over discovered ids. Invalid values fall back to 12h.
+	// Model auto-discovery cadence (one leg per configured harness),
+	// default 12h. 0 disables all scanning (boot seed and re-detect
+	// alike). Discovered ids are UNIONED onto the operator's explicit
+	// MODELS/MODEL pin by default (pin never drops); KAINBAIN_RUNNER_
+	// MODEL_DISCOVERY_WINS=1 opts in to discovery-replaces-pin instead.
+	// Invalid values fall back to 12h.
 	const modelDiscoveryIntervalMs = Number.parseInt(
 		str("KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS", "43200000"),
 		10,
@@ -171,6 +180,7 @@ export function loadRunnerConfig(env = process.env) {
 			Number.isFinite(modelDiscoveryIntervalMs) && modelDiscoveryIntervalMs >= 0
 				? modelDiscoveryIntervalMs
 				: 43200000,
+		modelDiscoveryWins: str("KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS", "") === "1",
 		approvalPollMs: Number.isFinite(approvalPollMs) && approvalPollMs > 0 ? approvalPollMs : 5000,
 		approvalTimeoutMs:
 			Number.isFinite(approvalTimeoutMs) && approvalTimeoutMs > 0 ? approvalTimeoutMs : 300000,

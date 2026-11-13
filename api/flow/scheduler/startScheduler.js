@@ -2,6 +2,7 @@ import {
 	config,
 } from '../../config.js';
 import { runScheduledTick } from './runScheduledTick.js';
+import { ensureAutoApproveTimer } from './ensureAutoApproveTimer.js';
 
 /***
  * MARK: startScheduler
@@ -27,4 +28,7 @@ export function startScheduler(store, opts = {}) {
 	if (store.schedulerTimer?.unref) {
 		store.schedulerTimer.unref();
 	}
+	// The human-stage auto-approve sweeper shares this lifecycle (one loop
+	// model, independent slow cadence); a sweep cadence of 0 leaves it off.
+	ensureAutoApproveTimer(store, opts);
 }

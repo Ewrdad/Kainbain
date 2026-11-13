@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, wsUrl } from '../services/api';
 import { logger } from '../services/logger';
 import { invalidateObservability } from '../services/observabilityEvents';
+import {
+  ENGINE_QUEUE_SYNC_POLL_MS,
+  INVALIDATION_DEBOUNCE_MS,
+} from '../services/pollingCadences.js';
+import { isTabVisible, subscribeTabVisible } from '../services/tabVisibility.js';
 import { calculateBackoffWithJitter } from './wsUtils.js';
 import { dispatchWsMessage } from './wsMessageDispatch.js';
 import { summarizeToolResult } from '../../../shared/toolLogFormat.js';
@@ -16,11 +21,20 @@ export { calculateBackoffWithJitter };
  * UI state it drives (messages, tool calls, agent-running flag). Reconnects
  * automatically with capped exponential backoff and jitter, and re-syncs full history
  * after a reconnect so no events are lost during the gap. Inbound frames are
- * routed by wsMessageDispatch.js; pure helpers live in wsUtils.js.
+ * routed by wsMessageDispatch.js; pure helpers live in wsUtils.js. The engine
+ * snapshot (status, owner, queue depth) stays live three ways: ENGINE_STATE
+ * frames replace it, task-activity frames schedule a debounced REST refresh
+ * (every queue-affecting mutation broadcasts TASK_UPDATED), and a
+ * visibility-gated 15s safety poll covers the rest — so the Now Playing
+ * bar's queue chip tracks the queue with no page refresh.
  * @param {Object} [opts]
  * @param {Function} [opts.onNotification] - Callback for toast notifications.
+ * @param {Function} [opts.onTaskUpdated] - Callback for TASK_UPDATED frames (live board sync).
+ * @param {Function} [opts.onTaskDeleted] - Callback for TASK_DELETED frames.
+ * @param {Function} [opts.onReviewUpdated] - Callback for REVIEW_UPDATED frames.
  * @param {Function} [opts.onChatProgress] - Callback for CHAT_PROGRESS frames.
  * @param {Function} [opts.onProjectUpdated] - Callback for APP_STATUS_UPDATED frames.
+ * @param {Function} [opts.onReconnect] - Callback fired with the projectId on every (re)connect open.
  */
 export function useWebSocket({
   onNotification,
@@ -325,6 +339,79 @@ export function useWebSocket({
     }
   }, []);
 
+  /***
+   * MARK: refreshEngineSnapshot
+   * @description Re-reads the global engine snapshot (`GET /status`) and
+   *   merges it over the live state, so queue-affecting mutations that
+   *   broadcast no ENGINE_STATE frame (task create/complete/advance of a
+   *   non-owner task, Runner claim/release) still move the bar's queue
+   *   chip. Same merge + running-flag reconciliation as fetchHistory's
+   *   connect-time reconcile; a missing endpoint method or a failed read
+   *   keeps the last snapshot instead of throwing.
+   ***/
+  const refreshEngineSnapshot = useCallback(async () => {
+    if (typeof api.engineStatus !== 'function') return;
+    try {
+      const status = await api.engineStatus();
+      const engine = status?.engine;
+      if (engine && typeof engine === 'object') {
+        setEngineState((prev) => ({
+          ...prev,
+          ...engine,
+        }));
+        if (engine.status === 'running') {
+          setIsAgentRunning(true);
+        } else if (
+          engine.status === 'idle' ||
+          engine.status === 'checkpoint' ||
+          engine.status === 'waiting_human' ||
+          engine.status === 'paused'
+        ) {
+          setIsAgentRunning(false);
+        }
+      }
+    } catch (e) {
+      logger.error('Failed to refresh engine status', e);
+    }
+  }, []);
+
+  // Coalesced engine refresh for task-activity frames. A stage-advance
+  // burst or a sweeper pass emits many TASK_UPDATED frames; the trailing
+  // debounce collapses them into one snapshot read (which itself rides
+  // the 5s TTL `/status` cache).
+  const engineRefreshTimerRef = useRef(null);
+  const scheduleEngineRefresh = useCallback(() => {
+    if (engineRefreshTimerRef.current) return; // already queued
+    engineRefreshTimerRef.current = setTimeout(() => {
+      engineRefreshTimerRef.current = null;
+      // Hidden tabs skip the read; the visibility catch-up below refreshes
+      // on return, so a background tab issues zero engine reads.
+      if (!isTabVisible()) return;
+      void refreshEngineSnapshot();
+    }, INVALIDATION_DEBOUNCE_MS);
+  }, [refreshEngineSnapshot]);
+
+  // Engine-queue safety net: task activity refreshes the snapshot within
+  // the debounce above, and this visibility-gated 15s poll covers the
+  // paths that broadcast no task frame (Runner claim/release) plus any
+  // frames a throttled background tab missed — with an immediate catch-up
+  // refresh whenever the tab returns.
+  useEffect(() => {
+    const tick = () => {
+      if (isTabVisible()) void refreshEngineSnapshot();
+    };
+    const interval = setInterval(tick, ENGINE_QUEUE_SYNC_POLL_MS);
+    const stopVisibility = subscribeTabVisible(tick);
+    return () => {
+      clearInterval(interval);
+      stopVisibility();
+      if (engineRefreshTimerRef.current) {
+        clearTimeout(engineRefreshTimerRef.current);
+        engineRefreshTimerRef.current = null;
+      }
+    };
+  }, [refreshEngineSnapshot]);
+
   // ---- WebSocket connection ----
   const connectWebSocket = useCallback(
     (projectId) => {
@@ -382,6 +469,12 @@ export function useWebSocket({
             )
           ) {
             invalidateObservability(type, payload);
+          }
+          // Live queue chip: task create/update/delete moves the waiting
+          // set, so schedule a coalesced engine-snapshot refresh (the
+          // queue depth rides the snapshot, not the task frame).
+          if (type === 'TASK_UPDATED' || type === 'TASK_DELETED') {
+            scheduleEngineRefresh();
           }
           dispatchWsMessage(type, payload, {
             handlers: {
@@ -476,6 +569,7 @@ export function useWebSocket({
       fetchHistory,
       addProcessLog,
       addProcessLogEntries,
+      scheduleEngineRefresh,
     ],
   );
 

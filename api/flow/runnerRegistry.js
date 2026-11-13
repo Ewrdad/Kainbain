@@ -5,7 +5,7 @@ import { resolveStatePath } from "./resolveStatePath.js";
 import { saveStateFile } from "./saveStateFile.js";
 import { normalizeCapabilities } from "./dispatch/normalizeCapabilities.js";
 import { runnerApiCompatible } from "./dispatch/runnerApiCompat.js";
-import { updateInfoForRunner } from "./runnerVersionCompat.js";
+import { BACKEND_API_VERSION, shouldAutoRequestUpdate, updateInfoForRunner } from "./runnerVersionCompat.js";
 
 const RUNNER_STATE_VERSION = 3;
 
@@ -316,6 +316,7 @@ export class RunnerRegistry {
 		const update = updateInfoForRunner(record?.facts, {
 			minVersion: config?.runnerMinVersion,
 			recommendedVersion: config?.runnerRecommendedVersion,
+			backendApiVersion: BACKEND_API_VERSION,
 		});
 		this._expireStale(record);
 		const pendingEntries = Array.isArray(record.pendingCommands) ? record.pendingCommands : [];
@@ -344,6 +345,15 @@ export class RunnerRegistry {
 			update: {
 				minimumVersion: update.minimumVersion,
 				recommendedVersion: update.recommendedVersion,
+				// Update directive (task 82e49a05): the managed fleet target
+				// plus this backend's API version, consumed by the runner's
+				// compat-gated selection. Old runners ignore these fields.
+				// `minimumRunnerVersion` mirrors `minimumVersion` under the
+				// compat-contract name the daemon reads (spec item 2); the
+				// short name stays for the fleet UI.
+				desiredRunnerVersion: update.desiredRunnerVersion,
+				minimumRunnerVersion: update.minimumVersion,
+				backendApiVersion: update.backendApiVersion,
 				updateAvailable: update.updateAvailable,
 				belowMinimum: update.belowMinimum,
 				apiCompatible: apiCompat.ok,
@@ -1018,6 +1028,20 @@ export class RunnerRegistry {
 		record.capabilities = capabilities;
 		record.lastSeenAt = new Date().toISOString();
 		this._expireStale(record);
+		// Backend-managed updates (survey q2): nudge out-of-date runners
+		// that advertise the command, at most daily per runner. The nudge
+		// is a queued command like an operator's Update click — the runner
+		// still applies it only when idle.
+		if (shouldAutoRequestUpdate({
+			facts,
+			pendingCommands: record.pendingCommands,
+			commandResults: record.commandResults,
+			recommendedVersion: config?.runnerRecommendedVersion,
+		})) {
+			if (!Array.isArray(record.pendingCommands)) record.pendingCommands = [];
+			record.pendingCommands.push({ command: "requestUpdate", requestedAt: new Date().toISOString() });
+			this._persist();
+		}
 		if (changedByAck) this._persist();
 		return this._public(record);
 	}
