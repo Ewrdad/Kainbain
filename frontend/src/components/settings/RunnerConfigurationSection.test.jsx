@@ -15,12 +15,14 @@ const updateRunnerConfig = vi.hoisted(() => vi.fn());
 const requestModelRediscovery = vi.hoisted(() => vi.fn());
 const requestRunnerUpdate = vi.hoisted(() => vi.fn());
 const getFleetModelCatalog = vi.hoisted(() => vi.fn());
+const systemStatus = vi.hoisted(() => vi.fn());
 
 vi.mock('../../services/api', () => ({
   api: {
     getRunners,
     getRunnerMonitor,
     getFleetModelCatalog,
+    systemStatus,
     approveRunner,
     denyRunner,
     revokeRunner,
@@ -101,6 +103,7 @@ describe('RunnerConfigurationSection', () => {
     vi.clearAllMocks();
     getRunnerMonitor.mockResolvedValue({ liveAssignments: [] });
     getFleetModelCatalog.mockResolvedValue({ models: [], quarantined: [] });
+    systemStatus.mockResolvedValue(null);
     listProjects.mockResolvedValue(PROJECTS);
     updateRunnerConfig.mockImplementation(async (id, patch) => ({
       runnerId: id,
@@ -997,5 +1000,111 @@ describe('RunnerConfigurationSection', () => {
     // tabs test: the models reset keeps its distinct accessible name.
     expect(screen.getByTestId('runner-models-reset-r1')).toHaveTextContent('Reset to auto-detected');
     expect(screen.queryByRole('button', { name: 'Reset', exact: true })).toBeNull();
+  });
+
+  it('shows the build sha next to the version badge', async () => {
+    systemStatus.mockResolvedValue({ build: { commit: 'abc1234def' } });
+    runnersFixture([
+      {
+        ...ACTIVE_RUNNER,
+        facts: {
+          versions: {
+            runner: '0.3.0',
+            protocol: 'v1',
+            build: { sha: 'abc1234def', builtAt: '2026-11-01T00:00:00.000Z', dirty: false, source: 'package' },
+            bootedAtMs: 1700000000000,
+            codeChangedSinceBoot: false,
+          },
+        },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.getByTestId('runner-version-r1').textContent).toContain('0.3.0');
+    const badge = screen.getByTestId('runner-build-r1');
+    expect(badge.textContent).toContain('abc1234');
+    expect(badge.title).toContain('abc1234def');
+    expect(screen.getByTestId('runner-build-detail-r1').textContent).toContain('abc1234');
+    expect(screen.queryByTestId('runner-stale-r1')).toBeNull();
+    expect(screen.queryByTestId('runner-build-warning-r1')).toBeNull();
+  });
+
+  it('warns (never blocks) when the runner build sha differs from the backend', async () => {
+    systemStatus.mockResolvedValue({ build: { commit: 'bbbb2222' } });
+    runnersFixture([
+      {
+        ...ACTIVE_RUNNER,
+        facts: {
+          versions: {
+            runner: '0.3.0',
+            build: { sha: 'aaaa1111', builtAt: '2026-11-01T00:00:00.000Z', dirty: false, source: 'package' },
+            codeChangedSinceBoot: false,
+          },
+        },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-stale-r1').textContent).toContain('stale code');
+    });
+    const banner = screen.getByTestId('runner-build-warning-r1');
+    expect(banner).toHaveTextContent(/restart or update/);
+    expect(banner).toHaveTextContent(/aaaa111/);
+    // Warn-only: lifecycle actions stay enabled.
+    expect(screen.getByRole('button', { name: 'Pause runner r1' })).toBeEnabled();
+  });
+
+  it('warns when the runner code changed after boot, even matching the backend', async () => {
+    systemStatus.mockResolvedValue({ build: { commit: 'abc1234def' } });
+    runnersFixture([
+      {
+        ...ACTIVE_RUNNER,
+        facts: {
+          versions: {
+            runner: '0.3.0',
+            build: { sha: 'abc1234def', builtAt: null, dirty: false, source: 'package' },
+            codeChangedSinceBoot: true,
+          },
+        },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-build-warning-r1')).toHaveTextContent(/changed after it started/);
+    });
+    expect(screen.getByTestId('runner-stale-r1')).toBeTruthy();
+  });
+
+  it('shows build info without warnings for dev checkouts and unknown builds', async () => {
+    systemStatus.mockResolvedValue({ build: { commit: 'bbbb2222' } });
+    runnersFixture([
+      {
+        ...ACTIVE_RUNNER,
+        runnerId: 'rdev',
+        facts: {
+          versions: {
+            runner: '0.3.0',
+            build: { sha: 'devsha1', builtAt: null, dirty: true, source: 'checkout' },
+            codeChangedSinceBoot: true,
+          },
+        },
+      },
+      { ...ACTIVE_RUNNER, runnerId: 'rold' },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-rdev');
+    expect(screen.getByTestId('runner-build-rdev').textContent).toContain('devsha1');
+    expect(screen.getByTestId('runner-build-detail-rdev').textContent).toContain('dev checkout');
+    expect(screen.queryByTestId('runner-stale-rdev')).toBeNull();
+    expect(screen.queryByTestId('runner-build-warning-rdev')).toBeNull();
+    fireEvent.click(screen.getByTestId('runner-row-rold'));
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-detail-rold')).toBeTruthy();
+    });
+    expect(screen.getByTestId('runner-build-detail-rold').textContent).toContain('Build unknown');
+    expect(screen.queryByTestId('runner-stale-rold')).toBeNull();
+    expect(screen.queryByTestId('runner-build-warning-rold')).toBeNull();
   });
 });

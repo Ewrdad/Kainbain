@@ -25,6 +25,8 @@ import {
   resolveSelectedId,
   runRunnerAction,
   describeRunnerVersion,
+  describeRunnerBuild,
+  runnerBuildWarning,
   runnerStatusLabel,
   stalenessLabel,
   runnerCommands,
@@ -127,6 +129,11 @@ export function RunnerConfigurationSection() {
   // their reasons): best-effort catalogue read, empty when the fetch fails
   // or nothing is quarantined — the block below renders only when non-empty.
   const [quarantined, setQuarantined] = useState([]);
+  // Backend build commit (`GET /status` → `build.commit`): the sha the
+  // per-runner stale-code warning compares against. Best-effort — null
+  // (unknown backend) simply disables the sha-mismatch branch, never the
+  // changed-since-boot branch.
+  const [backendCommit, setBackendCommit] = useState(null);
   // Tracks follow-up refresh timers (post-command polls) and whether the
   // screen is still mounted: timers are cleared on unmount and every state
   // write behind them re-checks, so a slow poll can never write into an
@@ -190,6 +197,18 @@ export function RunnerConfigurationSection() {
       } catch {
         if (!isLive.current) return;
         setQuarantined([]);
+      }
+      try {
+        const status =
+          typeof api.systemStatus === 'function'
+            ? await api.systemStatus()
+            : null;
+        if (!isLive.current) return;
+        const commit = status?.build?.commit;
+        setBackendCommit(typeof commit === 'string' && commit ? commit : null);
+      } catch {
+        if (!isLive.current) return;
+        setBackendCommit(null);
       }
     } catch (err) {
       if (!isLive.current) return;
@@ -446,6 +465,16 @@ export function RunnerConfigurationSection() {
           ? updateTitle
           : 'This Runner is too old to update on request — update it manually.')
         : 'Updates apply when the Runner is idle — running work is never interrupted.');
+  const selectedBuild = selected ? describeRunnerBuild(selected) : null;
+  const selectedBuildWarning = selected ? runnerBuildWarning(selected, backendCommit) : null;
+  const selectedBuiltAtLabel =
+    selectedBuild?.builtAt && !Number.isNaN(Date.parse(selectedBuild.builtAt))
+      ? new Date(selectedBuild.builtAt).toLocaleString()
+      : null;
+  const selectedBootedAtLabel =
+    typeof selectedBuild?.bootedAtMs === 'number'
+      ? new Date(selectedBuild.bootedAtMs).toLocaleString()
+      : null;
 
   /***
    * MARK: handleNameSave
@@ -751,6 +780,8 @@ export function RunnerConfigurationSection() {
                 const isSelected = runner.runnerId === selectedId;
                 const assignment = assignments[runner.runnerId];
                 const versionLabel = describeRunnerVersion(runner);
+                const build = describeRunnerBuild(runner);
+                const staleBuild = runnerBuildWarning(runner, backendCommit);
                 const stale = nowMs ? stalenessLabel(runner, nowMs) : null;
                 return (
                   <li
@@ -790,6 +821,14 @@ export function RunnerConfigurationSection() {
                     )}
                     {versionLabel && (
                       <span className="text-[10px] font-mono text-text-muted" data-testid={`runner-version-${runner.runnerId}`}>v{versionLabel}</span>
+                    )}
+                    {build && (
+                      <span className="text-[10px] font-mono text-text-muted" data-testid={`runner-build-${runner.runnerId}`} title={`Build ${build.sha}${build.builtAt ? `, built ${build.builtAt}` : ''}${build.dirty ? ', dirty tree' : ''}${build.isDev ? ' (dev checkout)' : ''}`}>
+                        build {build.shortSha}{build.dirty ? ' dirty' : ''}{build.isDev ? ' dev' : ''}
+                      </span>
+                    )}
+                    {staleBuild && (
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-warning" data-testid={`runner-stale-${runner.runnerId}`} title={staleBuild.message}>stale code</span>
                     )}
                     {runner.updateAvailable && (
                       <span className="text-[10px] font-bold uppercase tracking-widest text-warning" data-testid={`runner-update-available-${runner.runnerId}`} title={runner.recommendedVersion ? `Runner ${runner.runnerId} can update to ${runner.recommendedVersion}` : `Runner ${runner.runnerId} has an update available`}>update available</span>
@@ -860,6 +899,28 @@ export function RunnerConfigurationSection() {
                   data-testid={`runner-update-status-${selected.runnerId}`}
                 >
                   {updateStatusLine}
+                </p>
+              )}
+              {selectedBuild ? (
+                <p className="text-[11px] text-text-muted" data-testid={`runner-build-detail-${selected.runnerId}`}>
+                  Build {selectedBuild.shortSha}
+                  {selectedBuild.dirty ? ' (dirty tree)' : ''}
+                  {selectedBuild.isDev ? ' · dev checkout' : ''}
+                  {selectedBuiltAtLabel ? ` · built ${selectedBuiltAtLabel}` : ''}
+                  {selectedBootedAtLabel ? ` · booted ${selectedBootedAtLabel}` : ''}
+                </p>
+              ) : (
+                <p className="text-[11px] text-text-muted" data-testid={`runner-build-detail-${selected.runnerId}`}>
+                  Build unknown (this Runner predates build identity).
+                </p>
+              )}
+              {selectedBuildWarning && (
+                <p
+                  className="text-[11px] text-warning"
+                  role="alert"
+                  data-testid={`runner-build-warning-${selected.runnerId}`}
+                >
+                  {selectedBuildWarning.message}
                 </p>
               )}
 
