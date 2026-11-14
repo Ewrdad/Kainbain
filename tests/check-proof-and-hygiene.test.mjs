@@ -16,8 +16,10 @@ import {
 	loadAllowlist,
 	loadBaseline,
 	magicForExtension,
+	main,
 	matchBaseline,
 	matchScratchPattern,
+	toPosix,
 } from "../scripts/check-proof-and-hygiene.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -68,6 +70,24 @@ describe("magicForExtension", () => {
 		assert.equal(magicForExtension(".svg"), null);
 		assert.equal(magicForExtension(".mp4"), null);
 	});
+
+	it("returns null for missing or non-string input instead of throwing", () => {
+		assert.equal(magicForExtension(""), null);
+		assert.equal(magicForExtension(undefined), null);
+		assert.equal(magicForExtension(null), null);
+	});
+});
+
+describe("toPosix", () => {
+	it("normalizes both separator styles so matching is identical on Windows and POSIX", () => {
+		assert.equal(toPosix("docs\\tasks\\abc\\pretty-proof.png"), "docs/tasks/abc/pretty-proof.png");
+		assert.equal(toPosix("docs/tasks/abc/pretty-proof.png"), "docs/tasks/abc/pretty-proof.png");
+	});
+
+	it("returns an empty string for non-string input instead of throwing", () => {
+		assert.equal(toPosix(undefined), "");
+		assert.equal(toPosix(null), "");
+	});
 });
 
 describe("isProofPath", () => {
@@ -113,6 +133,20 @@ describe("isRootScratch", () => {
 	it("honours exact-path allowlist entries", () => {
 		assert.equal(isRootScratch("rt.mjs", ["rt.mjs"]), false);
 		assert.equal(isRootScratch("other.mjs", ["rt.mjs"]), true);
+	});
+
+	it("returns false for missing or non-string input instead of throwing", () => {
+		assert.equal(isRootScratch("", []), false);
+		assert.equal(isRootScratch(undefined, []), false);
+		assert.equal(isProofPath(""), false);
+		assert.equal(isProofPath(null), false);
+		assert.equal(matchScratchPattern(""), null);
+		assert.equal(matchScratchPattern(undefined), null);
+	});
+
+	it("matches backslash-separated proof paths the same as POSIX ones", () => {
+		assert.equal(isProofPath("docs\\tasks\\abc\\pretty-proof.png"), true);
+		assert.equal(isRootScratch("docs\\tasks\\x.png", []), false);
 	});
 });
 
@@ -169,6 +203,31 @@ describe("checkFileMagic", () => {
 			const result = checkFileMagic(path.join(root, "bad.webp"));
 			assert.equal(result.ok, false);
 			assert.equal(result.expected, "52494646-57454250");
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("fails an empty PNG with a readable message instead of an empty diff", () => {
+		const root = makeFixtureTree({ "empty.png": Buffer.alloc(0) });
+		try {
+			const result = checkFileMagic(path.join(root, "empty.png"));
+			assert.equal(result.ok, false);
+			assert.match(formatFailure({
+				kind: "magic",
+				relPath: "docs/tasks/x/empty.png",
+				expected: result.expected,
+				actual: result.actual,
+			}), /found \(empty or unreadable head\)/);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("fails a truncated PNG head instead of passing it", () => {
+		const root = makeFixtureTree({ "short.png": Buffer.from([0x89, 0x50]) });
+		try {
+			assert.equal(checkFileMagic(path.join(root, "short.png")).ok, false);
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}
@@ -361,6 +420,40 @@ describe("CLI exit contract", () => {
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}
+	});
+
+	it("exits 2 on an unknown flag instead of silently passing", () => {
+		const root = makeFixtureTree({ "package.json": Buffer.from("{}\n") });
+		try {
+			const result = spawnSync(process.execPath, [CHECKER, "--root", root, "--strcit"], { encoding: "utf8" });
+			assert.equal(result.status, 2);
+			assert.match(result.stderr, /unknown flag/);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("exits 2 when --root steals another flag as its value", () => {
+		const result = spawnSync(process.execPath, [CHECKER, "--root", "--strict"], { encoding: "utf8" });
+		assert.equal(result.status, 2);
+		assert.match(result.stderr, /--root requires a directory argument/);
+	});
+
+	it("uses the last --root when the flag repeats", () => {
+		const clean = makeFixtureTree({ "package.json": Buffer.from("{}\n") });
+		const dirty = makeFixtureTree({ "rt.mjs": Buffer.from("x\n") });
+		try {
+			const result = spawnSync(process.execPath, [CHECKER, "--root", dirty, "--root", clean], { encoding: "utf8" });
+			assert.equal(result.status, 0);
+		} finally {
+			fs.rmSync(clean, { recursive: true, force: true });
+			fs.rmSync(dirty, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects main() argument errors with exit 2 without touching the filesystem", () => {
+		assert.equal(main(["node", "check-proof-and-hygiene.mjs", "--nope"]), 2);
+		assert.equal(main(["node", "check-proof-and-hygiene.mjs", "--root"]), 2);
 	});
 
 	it("exits 0 by default but 1 under --strict on a baselined violation", () => {

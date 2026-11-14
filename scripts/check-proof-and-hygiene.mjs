@@ -66,7 +66,9 @@ const IMAGE_EXTS = new Set(Object.keys(MAGIC_TABLE));
  * @returns {string|null} Lowercase hex magic, or null when unknown.
  ***/
 export function magicForExtension(ext) {
-	const normalized = ext.toLowerCase().startsWith(".") ? ext.toLowerCase() : `.${ext.toLowerCase()}`;
+	if (typeof ext !== "string" || ext.length === 0) return null;
+	const lowered = ext.toLowerCase();
+	const normalized = lowered.startsWith(".") ? lowered : `.${lowered}`;
 	return MAGIC_TABLE[normalized] ?? null;
 }
 
@@ -79,7 +81,8 @@ export function magicForExtension(ext) {
  * @returns {string} POSIX-style relative path.
  ***/
 export function toPosix(relPath) {
-	return relPath.split(path.sep).join("/");
+	if (typeof relPath !== "string") return "";
+	return relPath.split(/[\\/]/).join("/");
 }
 
 /***
@@ -94,6 +97,7 @@ export function toPosix(relPath) {
  * @returns {boolean} True when the path is checked for magic bytes.
  ***/
 export function isProofPath(relPath) {
+	if (typeof relPath !== "string" || relPath.length === 0) return false;
 	const posix = toPosix(relPath);
 	const ext = path.posix.extname(posix).toLowerCase();
 	if (!IMAGE_EXTS.has(ext)) return false;
@@ -133,6 +137,7 @@ export const SCRATCH_PATTERNS = [
  * @returns {boolean} True when the path is a root scratch violation.
  ***/
 export function isRootScratch(relPath, allowlist = []) {
+	if (typeof relPath !== "string" || relPath.length === 0) return false;
 	const posix = toPosix(relPath);
 	if (posix.includes("/")) return false;
 	if (allowlist.includes(posix)) return false;
@@ -149,6 +154,7 @@ export function isRootScratch(relPath, allowlist = []) {
  * @returns {string|null} Matching pattern name or null.
  ***/
 export function matchScratchPattern(base) {
+	if (typeof base !== "string" || base.length === 0) return null;
 	const entry = SCRATCH_PATTERNS.find((pattern) => pattern.test(base));
 	return entry ? entry.name : null;
 }
@@ -205,7 +211,8 @@ export function checkFileMagic(absPath) {
  ***/
 export function formatFailure(violation) {
 	if (violation.kind === "magic") {
-		return `${violation.relPath}: expected magic ${violation.expected}, found ${violation.actual} `
+		const seen = typeof violation.actual === "string" && violation.actual.length > 0 ? violation.actual : "(empty or unreadable head)";
+		return `${violation.relPath}: expected magic ${violation.expected}, found ${seen} `
 			+ `(binary file was rewritten through a text path; restore binary-safely via git checkout <ref> -- ${violation.relPath}, then re-verify with xxd -l 8 and file)`;
 	}
 	return `${violation.relPath}: root scratch file matching ${violation.pattern} `
@@ -411,26 +418,48 @@ export function main(argv = process.argv) {
 		console.log("  --strict  fail on baselined (pre-existing) violations too.");
 		return 0;
 	}
-	const strict = args.includes("--strict");
-	let root = REPO_ROOT;
-	const rootIdx = args.indexOf("--root");
-	if (rootIdx !== -1) {
-		if (!args[rootIdx + 1]) {
-			console.error("error: --root requires a directory argument");
+	const knownFlags = new Set(["--strict", "--root"]);
+	for (const arg of args) {
+		if (arg.startsWith("-") && !knownFlags.has(arg) && !arg.startsWith("--root=")) {
+			console.error(`error: unknown flag ${arg} (usage: [--root <dir>] [--strict])`);
 			return 2;
 		}
-		root = path.resolve(args[rootIdx + 1]);
+	}
+	const strict = args.includes("--strict");
+	let root = REPO_ROOT;
+	const rootValues = [];
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === "--root") {
+			const value = args[i + 1];
+			if (!value || value.startsWith("-")) {
+				console.error("error: --root requires a directory argument");
+				return 2;
+			}
+			rootValues.push(value);
+			i++;
+		} else if (args[i].startsWith("--root=")) {
+			const value = args[i].slice("--root=".length);
+			if (!value) {
+				console.error("error: --root requires a directory argument");
+				return 2;
+			}
+			rootValues.push(value);
+		}
+	}
+	if (rootValues.length > 0) {
+		root = path.resolve(rootValues[rootValues.length - 1]);
 	}
 	const allowlist = loadAllowlist(root);
 	const baseline = loadBaseline(root);
 	const { magicViolations, scratchViolations, knownViolations } = checkTree({ root, allowlist, baseline });
+	const knownSet = new Set(knownViolations);
 	const failures = strict
 		? [...magicViolations, ...scratchViolations, ...knownViolations]
 		: [...magicViolations, ...scratchViolations];
 	if (failures.length > 0) {
 		console.error(`proof-and-hygiene check FAILED (${failures.length} violation(s)):`);
 		for (const violation of failures) {
-			console.error(`  ${knownViolations.includes(violation) ? formatKnown(violation) : formatFailure(violation)}`);
+			console.error(`  ${knownSet.has(violation) ? formatKnown(violation) : formatFailure(violation)}`);
 		}
 		return 1;
 	}
