@@ -12,7 +12,11 @@
       "id": "q1",
       "type": "single",
       "text": "Where should the simple guide for saving proof pictures live so people actually see it?",
-      "options": ["In the main project guide", "As a short checklist near the proof folder", "Both places"],
+      "options": [
+        "In the main project guide",
+        "As a short checklist near the proof folder",
+        "Both places"
+      ],
       "required": true,
       "showIf": null
     },
@@ -20,7 +24,11 @@
       "id": "q2",
       "type": "single",
       "text": "How strict should the automatic tidy check be?",
-      "options": ["Stop bad files from being saved", "Only show a warning", "Stop plus explain how to fix"],
+      "options": [
+        "Stop bad files from being saved",
+        "Only show a warning",
+        "Stop plus explain how to fix"
+      ],
       "required": true,
       "showIf": null
     },
@@ -28,7 +36,11 @@
       "id": "q3",
       "type": "multiple",
       "text": "Which kinds of stray files at the top level of the project should be stopped?",
-      "options": ["Test scripts (like rt.mjs)", "Temporary notes and logs", "Loose pictures outside proof folders"],
+      "options": [
+        "Test scripts (like rt.mjs)",
+        "Temporary notes and logs",
+        "Loose pictures outside proof folders"
+      ],
       "required": true,
       "showIf": null
     },
@@ -36,11 +48,41 @@
       "id": "q4",
       "type": "single",
       "text": "What should we do about the old note that said a broken picture was valid?",
-      "options": ["Fix it now if it is still wrong", "Leave old notes untouched", "Add a new correction note beside it"],
+      "options": [
+        "Fix it now if it is still wrong",
+        "Leave old notes untouched",
+        "Add a new correction note beside it"
+      ],
       "required": true,
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Both places"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Stop plus explain how to fix"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Test scripts (like rt.mjs)",
+        "Loose pictures outside proof folders"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Fix it now if it is still wrong"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
