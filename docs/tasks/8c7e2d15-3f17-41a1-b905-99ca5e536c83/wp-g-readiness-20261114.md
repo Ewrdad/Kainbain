@@ -127,3 +127,12 @@ at `/home/server2/.kainbain/backups/wp-f-20261114-1135/` (SHA256SUMS
 verified). No product code changed in this run (docs only); no live
 mutation performed (read-only GETs + test suites, engine dir externally
 verified untouched).
+
+## Addendum 2026-11-14 ~22:52Z (run27 re-verification)
+
+NOT READY (unchanged since run25/26). §6.1 PARTIAL: local-alpha +
+local-bravo fully PASS; server2-alpha still FAIL (pre-WP-B, pi
+`ERR_MODULE_NOT_FOUND`, Bundle B reinstall+restart pending). §6.2 PASS
+(zero `test-fleet`); §6.3 live + §6.4 live pending operator; q3-scope
+human grant + q4 infeasibility acceptance still absent. Evidence in
+`run27-20261114-2252.md` (+ `verification-20261114.md` addendum).
