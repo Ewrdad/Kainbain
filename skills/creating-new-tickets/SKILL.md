@@ -182,7 +182,9 @@ Rules while sending:
 - **`goal` must equal the draft file byte-for-byte (exact file content).** Do not re-wrap, collapse,
   or reformat while sending; the first line of the file doubles as the title
   first line (`# <title>`), and the `title` field and the goal's first line must
-  match. The `title` field is a concise, imperative, verb-first summary; the
+  match. Copy the `title` value straight from the file's first line, `# ` marker
+  included — the API strips the marker when storing, so a verbatim copy lands
+  exactly. The `title` field is a concise, imperative, verb-first summary; the
   formatter derives display titles from the goal's first line
   (`formatTaskTitleFirstLine`: first line, leading `# ` stripped, falls back to
   `Untitled Task`), so the first line must stay on one line.
