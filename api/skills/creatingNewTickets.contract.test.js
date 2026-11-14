@@ -5,6 +5,13 @@ import { fileURLToPath } from "node:url";
 import { PromptCurationEngine } from "../promptCuration.js";
 import { loadSkill } from "./skillsRegistry.js";
 
+/**
+ * MARK: Contract for creating-new-tickets skill content
+ * @description Pins the invariants agents depend on when turning findings into
+ *   KainBain tickets: blockers are acknowledged explicitly and every goal opens
+ *   with a title first line. Any future skill edit that drops either rule fails
+ *   here before agents ever see the degraded text.
+ */
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SKILLS_DIR = path.join(REPO_ROOT, "skills");
 const SKILL_NAME = "creating-new-tickets";
@@ -66,6 +73,19 @@ describe("Contract: creating-new-tickets skill content", () => {
 		expect(prompt).not.toContain("{{targetProject}}");
 	});
 
+	it("documents API validation and same-project blockers", () => {
+		const prompt = directPrompt();
+		expect(prompt).toContain("same-project");
+		expect(prompt).toContain("HTTP 400");
+		expect(prompt).toContain("failed/cancelled");
+	});
+
+	it("ties the goal title to the formatter fallback", () => {
+		const prompt = directPrompt();
+		expect(prompt).toContain("formatTaskTitleFirstLine");
+		expect(prompt).toContain("Untitled Task");
+		expect(prompt).toContain("Never target the stage that is CURRENTLY executing");
+	});
 	it("stays within the direct-mode prompt budget", () => {
 		const prompt = directPrompt();
 		expect(prompt.length).toBeLessThan(16000 + 2000);
