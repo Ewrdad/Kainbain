@@ -429,6 +429,46 @@ describe('SystemSettingsContent', () => {
     expect(screen.queryByRole('button', { name: 'Refresh models' })).not.toBeInTheDocument();
   });
 
+  it('Models tab shows Backend harnesses probe badges + install hints (q10)', async () => {
+    // The backend-local discovery probe moved out of pickers: its badge and
+    // install hint render here and only here.
+    getModels.mockResolvedValue({
+      models: [{ id: 'model-1', name: 'Model One', provider: 'ollama-cloud' }],
+      harnesses: [
+        { id: 'pi', label: 'pi', modelSelection: 'list', models: [], available: true },
+        {
+          id: 'agy',
+          label: 'Agy',
+          modelSelection: 'list',
+          models: [],
+          available: false,
+          hint: 'Install the Antigravity CLI or set KAINBAIN_AGY_BIN.',
+        },
+      ],
+    });
+    renderContent();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Models' }));
+    const section = await screen.findByTestId('backend-harnesses');
+    expect(section).toHaveTextContent('Detected');
+    expect(section).toHaveTextContent('Unavailable');
+    expect(screen.getByTestId('backend-harness-hint')).toHaveTextContent(
+      'Install the Antigravity CLI or set KAINBAIN_AGY_BIN.',
+    );
+  });
+
+  it('Models tab mounts the fleet-catalogue admin section', async () => {
+    renderContent();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Models' }));
+    // No fleet endpoint in this mock → the honest unavailable note, never a
+    // blank table that reads as "no models".
+    expect(await screen.findByTestId('fleet-catalogue-section')).toBeInTheDocument();
+    expect(screen.getByTestId('fleet-catalogue-unavailable')).toBeInTheDocument();
+  });
+
   it('Runners tab selects the first Runner by default', async () => {
     renderContent();
     await screen.findByTestId('runner-detail-r1');

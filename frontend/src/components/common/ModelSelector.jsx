@@ -11,37 +11,16 @@ import {
   resolveReasoningOptions,
   stripReasoningIfUnsupported,
 } from '../../services/api';
-import { fleetCountBadgeNode, fleetInfoForModel, fleetSnapshotBadgeNode, modelBadgeNode } from '../../services/modelStatus';
-import { withFleetModels, effectiveModelSelection } from '../../services/fleetModelOptions';
 import {
-  availabilityBadge,
-  availabilityFromEntry,
-  availabilityToneClass,
-} from '../../services/harnessPrefs';
+  fleetInfoForModel,
+  fleetModelRowBadge,
+  fleetHarnessBadgeNode,
+  modelBadgeNode,
+  notCurrentlyServedBadge,
+  readRunnerCount,
+} from '../../services/modelStatus';
+import { withFleetModels, effectiveModelSelection } from '../../services/fleetModelOptions';
 import { ALIAS_HARNESS_ID } from '../../../../shared/modelAliases.js';
-
-/***
- * MARK: harnessAvailabilityBadgeNode
- * @description Availability badge for one harness dropdown option, derived
- *   from the backend's discovery projection (`available`) — the same
- *   text + tones as the System Settings harness list. Entries from older
- *   backends (no `available` field) render badge-free, never mislead.
- * @example harnessAvailabilityBadgeNode({ id: 'pi', available: true }) => <span>Detected</span>
- * @param {Object} entry - Harness view entry.
- * @returns {React.ReactNode|null} The badge node, or null when unjudgeable.
- ***/
-function harnessAvailabilityBadgeNode(entry) {
-  const availability = availabilityFromEntry(entry);
-  if (!availability) return null;
-  const badge = availabilityBadge({ enabled: true, autoDetect: true }, availability);
-  return (
-    <span
-      className={`px-1.5 py-px text-[10px] font-bold uppercase tracking-wider rounded-full border ${availabilityToneClass(badge.tone)}`}
-    >
-      {badge.text}
-    </span>
-  );
-}
 
 /***
  * MARK: DEFAULT_HARNESS_ID
@@ -127,7 +106,8 @@ export function resolveStoredModelValidity(models, stored) {
  * @param {Function} [props.onRefresh] - Refresh action for the empty-catalogue state (re-runs discovery).
  * @param {boolean} [props.refreshing=false] - Refresh in flight (disables the Refresh action).
  * @param {Function} [props.isHarnessDisabled] - Optional predicate over a visible harness entry returning a disabled reason string (truthy = that harness option renders disabled with the reason shown), or a falsy value when the harness stays selectable. Omitted = every harness selectable. Callers disable only on an explicit negative signal (e.g. `supportsDiagnosis === false`) so entries from older backends that carry no flag keep working.
- * @param {Object} [props.fleetCounts] - Fleet availability map (`fleetCountsById`): fleet-served models missing from the backend section join the options as exact advertised ids (a fleet pick is a guaranteed dispatch match), a `none` harness the fleet serves behaves as `list`, and badges show claim-eligible Runner counts ("2 runners" / "No runners") instead of credential health. Omitted = backend catalogue only, badge-free options (never mislead).
+ * @param {Object} [props.fleetCounts] - Fleet availability map (`fleetCountsById`): fleet-served models missing from the backend section join the options as exact advertised ids (a fleet pick is a guaranteed dispatch match), a `none` harness the fleet serves behaves as `list`, and badges show claim-eligible Runner counts ("2 runners" / "0 runners") instead of credential health. Omitted = backend catalogue only, badge-free options (never mislead).
+ * @param {Array<Object>} [props.fleetHarnesses] - Fleet harness summary (`catalogue.harnesses[]`): the harness dropdown badges the claim-eligible Runner count per harness ("2 runners" / grey "0 runners"), ignoring the backend-local discovery probe (which lives in System Settings › Models › Backend harnesses). Omitted = badge-free harness options (never mislead).
  * @param {boolean} [props.healthBadges=false] - Render the backend-host credential-health badges instead. Only for pickers whose model call executes on the backend host itself (retrospective chat, stuck check) — fleet counts would mislead there. Ignored when `fleetCounts` is provided (fleet wins).
  ***/
 export function ModelSelector({
@@ -157,6 +137,7 @@ export function ModelSelector({
   refreshing = false,
   isHarnessDisabled,
   fleetCounts,
+  fleetHarnesses,
   healthBadges = false,
 }) {
   // Harness-first navigation: the model catalogue is scoped to the selected
@@ -315,15 +296,14 @@ export function ModelSelector({
 
   // Models grouped by provider: the group header carries the provider name,
   // so option labels are the plain model names (no "(provider)" suffix).
-  // An entry the central catalogue marks unavailable renders its
-  // "Unavailable" verdict first (with the snapshot's reason as tooltip) —
-  // marked, never hidden, never normal-looking. Otherwise,
-  // fleet-availability badges attach the claim-eligible Runner count from
-  // /runners/models/catalogue ("2 runners" / "No runners") — availability
-  // is judged by the fleet, never by backend-host credential health. Without
-  // fleet data the options render badge-free (never mislead), unless the
-  // caller opts into backend-host credential-health badges (`healthBadges`:
-  // only for pickers whose model call executes on the backend host itself).
+  // Counts always win: with loaded fleet data every option renders its
+  // claim-eligible Runner count from /runners/models/catalogue ("2 runners"
+  // / "0 runners") — availability is judged by the fleet, never by the
+  // snapshot's `available` verdict or backend-host credential health.
+  // Without fleet data the options render badge-free (never mislead),
+  // unless the caller opts into backend-host credential-health badges
+  // (`healthBadges`: only for pickers whose model call executes on the
+  // backend host itself).
   const modelsByValue = new Map(
     modelsForHarness.map((m) => [m?.key || (m?.provider ? `${m.provider}::${m.id}` : m?.id), m]),
   );
@@ -331,15 +311,14 @@ export function ModelSelector({
   const modelOptions = [
     ...(allowEmpty ? [{ value: '', label: emptyLabel }] : []),
     ...groupModelsByProvider(modelsForHarness).map((option) => {
-      // The snapshot's explicit unavailable verdict wins over every other
-      // badge layer (it carries the reason); entries without one fall
-      // through to the fleet-count / credential-health badges below.
-      const snapshotBadge = fleetSnapshotBadgeNode(modelsByValue.get(option.value));
-      if (snapshotBadge) return { ...option, badge: snapshotBadge };
+      // Counts always win: render the fleet runner count ("N runners" /
+      // "0 runners") for every row when fleet data loaded, never the
+      // persisted "Unavailable" verdict (q9, q19). Unverified entries keep
+      // a subtle annotation but stay selectable (q20).
       if (hasFleetCounts) {
         const model = modelsByValue.get(option.value);
         const info = fleetInfoForModel(fleetCounts, model, option.value);
-        return { ...option, badge: fleetCountBadgeNode(info) };
+        return { ...option, badge: fleetModelRowBadge(info) };
       }
       if (healthBadges) {
         const badge = modelBadgeNode(modelsByValue.get(option.value));
@@ -358,7 +337,17 @@ export function ModelSelector({
     ...(harnessAllowEmpty ? [{ value: '', label: inheritLabel }] : []),
     ...visibleHarnesses.map((h) => {
       const reason = typeof isHarnessDisabled === 'function' ? isHarnessDisabled(h) : null;
-      const badge = harnessAvailabilityBadgeNode(h);
+      // Harness badges come from the fleet harness summary, never from the
+      // backend-local discovery probe (that lives in System Settings ›
+      // Models › Backend harnesses now): "N runners" green, grey "0 runners"
+      // for fleet-known-but-unserved harnesses, badge-free when fleet data
+      // never loaded. A harness missing from a LOADED summary serves zero
+      // runners — an honest grey zero, not a badge-free unknown.
+      const badge = Array.isArray(fleetHarnesses)
+        ? fleetHarnessBadgeNode(
+            fleetHarnesses.find((e) => e && e.id === h.id) ?? { runnerCount: 0 },
+          )
+        : null;
       return {
         value: h.id,
         label: h.label || h.id,
@@ -373,6 +362,22 @@ export function ModelSelector({
   // The trigger shows the inherit label while inheriting (the '' value has
   // no harness of its own to name).
   const harnessTriggerValue = isInheriting ? '' : effectiveHarnessId;
+
+  // Stored refs to absent/0-runner ids are marked, never cleared (q13):
+  // with loaded fleet data, a non-empty stored ref that names no catalogue
+  // option — or names one no Runner serves — renders "not currently served"
+  // under the model control. The stored string itself is never rewritten
+  // here (no spontaneous onChange); the line below only annotates it.
+  const selectedFleetInfo = hasFleetCounts
+    ? fleetInfoForModel(fleetCounts, selectedModelEntry, resolvedValue)
+    : null;
+  const selectedRunnerCount = readRunnerCount(selectedFleetInfo);
+  const showNotServedNote =
+    hasFleetCounts &&
+    modelSelection !== 'none' &&
+    modelsForHarness.length > 0 &&
+    Boolean(value) &&
+    (!selectedModelEntry || selectedRunnerCount === 0);
 
   return (
     <div
@@ -392,11 +397,6 @@ export function ModelSelector({
             className={className}
             options={harnessOptions}
           />
-          {selectedHarness?.hint && (
-            <p className="text-[10px] text-text-muted" data-testid="harness-availability-hint">
-              {selectedHarness.hint}
-            </p>
-          )}
         </>
       )}
       {modelSelection === 'none' ? (
@@ -407,21 +407,28 @@ export function ModelSelector({
         <>
           {modelLabelNode}
           <p className="text-[10px] text-text-muted" data-testid="model-empty-note">
-            {selectedHarness?.id === ALIAS_HARNESS_ID ? (
-              <>No aliases yet — add them in Settings › Model Aliases.</>
-            ) : selectedHarness?.discoveryError?.message ? (
-              <>
-                {selectedHarness.discoveryError.message} {selectedHarness.discoveryError.hint}
-              </>
-            ) : selectedHarness?.hint ? (
-              <>{selectedHarness.hint}</>
-            ) : (
-              <>
-                No models discovered for{' '}
-                {selectedHarness?.label || selectedHarness?.id || 'this harness'} yet — check
-                harness availability.
-              </>
-            )}
+            {(() => {
+              if (selectedHarness?.id === ALIAS_HARNESS_ID) {
+                return <>No aliases yet — add them in Settings › Model Aliases.</>;
+              }
+              if (selectedHarness?.discoveryError?.message) {
+                return (
+                  <>
+                    {selectedHarness.discoveryError.message} {selectedHarness.discoveryError.hint}
+                  </>
+                );
+              }
+              if (selectedHarness?.hint) {
+                return <>{selectedHarness.hint}</>;
+              }
+              return (
+                <>
+                  No models discovered for{' '}
+                  {selectedHarness?.label || selectedHarness?.id || 'this harness'} yet — check
+                  harness availability.
+                </>
+              );
+            })()}
             {selectedHarness?.id !== ALIAS_HARNESS_ID && onRefresh && (
               <>
                 {' '}
@@ -450,6 +457,11 @@ export function ModelSelector({
             className={className}
             options={modelOptions}
           />
+          {showNotServedNote && (
+            <p className="text-[10px] text-text-muted" data-testid="model-not-served-note">
+              {notCurrentlyServedBadge()}
+            </p>
+          )}
           {reasoningLevelOptions && (
             <>
               {reasoningLabelNode}

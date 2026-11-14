@@ -62,6 +62,53 @@ describe('fleetCountsById', () => {
       },
     });
   });
+
+  it('keys hostile ids safely and clamps hostile counts', () => {
+    const map = fleetCountsById({
+      models: [
+        { id: '__proto__', runnerCount: 1, runnerIds: ['r1'] },
+        { id: 'neg', runnerCount: -4 },
+        { id: 'frac', runnerCount: 2.7 },
+        { id: 'inf', runnerCount: Number.POSITIVE_INFINITY },
+        { id: 'str', runnerCount: '2' },
+      ],
+    });
+    expect(Object.hasOwn(map, '__proto__')).toBe(true);
+    expect(map['__proto__'].runnerCount).toBe(1);
+    expect(Object.getPrototypeOf(map)).toBeNull();
+    expect(map.neg.runnerCount).toBe(0);
+    expect(map.frac.runnerCount).toBe(2);
+    expect(map.inf.runnerCount).toBe(0);
+    expect(map.str.runnerCount).toBe(0);
+  });
+
+  it('carries WP-C fields (declaredBy, verified, provenance) for pickers and admin', () => {
+    const entry = {
+      id: 'muse::meta::m',
+      runnerCount: 0,
+      runnerIds: [],
+      harnesses: ['muse'],
+      tiers: [],
+      declaredBy: ['local-alpha'],
+      claimedBy: [],
+      verified: false,
+      harness: 'muse',
+      lastServedAtMs: 123,
+      provenance: { 'box-a': { source: 'discovery' } },
+    };
+    expect(fleetCountsById({ models: [entry] })['muse::meta::m']).toEqual({
+      runnerCount: 0,
+      runnerIds: [],
+      harnesses: ['muse'],
+      tiers: [],
+      declaredBy: ['local-alpha'],
+      claimedBy: [],
+      verified: false,
+      harness: 'muse',
+      lastServedAtMs: 123,
+      provenance: { 'box-a': { source: 'discovery' } },
+    });
+  });
 });
 
 describe('useFleetModelCatalog', () => {
@@ -109,6 +156,52 @@ describe('useFleetModelCatalog', () => {
     expect(result.current.counts.m9.runnerCount).toBe(1);
   });
 
+  it('exposes harnesses, models, and quarantined for pickers and admin', async () => {
+    const harnesses = [{ id: 'muse', runnerCount: 1, runnerIds: ['r1'] }];
+    const models = [{ id: 'muse::meta::m', runnerCount: 1, runnerIds: ['r1'] }];
+    const quarantined = [{ id: 'prov::m', reason: 'not-harness-qualified' }];
+    api.getFleetModelCatalog.mockResolvedValue({ models, harnesses, quarantined });
+    const { result } = renderHook(() => useFleetModelCatalog());
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true);
+    });
+    expect(result.current.harnesses).toEqual(harnesses);
+    expect(result.current.models).toEqual(models);
+    expect(result.current.quarantined).toEqual(quarantined);
+  });
+
+  it('defaults harnesses, models, and quarantined to empty lists', () => {
+    const { result } = renderHook(() => useFleetModelCatalog({ enabled: false }));
+    expect(result.current.harnesses).toEqual([]);
+    expect(result.current.models).toEqual([]);
+    expect(result.current.quarantined).toEqual([]);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('records fetch errors without losing the last-good state', async () => {
+    api.getFleetModelCatalog.mockResolvedValueOnce({
+      models: [{ id: 'm1', runnerCount: 1, runnerIds: ['a'] }],
+    });
+    const { result } = renderHook(() => useFleetModelCatalog());
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true);
+    });
+    expect(result.current.error).toBeNull();
+    api.getFleetModelCatalog.mockRejectedValueOnce(new Error('flaky'));
+    await act(async () => {
+      await result.current.refresh();
+    });
+    expect(result.current.error).toBe('flaky');
+    // Last-good data survives; loaded never downgrades.
+    expect(result.current.loaded).toBe(true);
+    expect(result.current.counts.m1.runnerCount).toBe(1);
+    api.getFleetModelCatalog.mockResolvedValue({ models: [] });
+    await act(async () => {
+      await result.current.refresh();
+    });
+    expect(result.current.error).toBeNull();
+  });
+
   it('does not fetch until enabled flips true', () => {
     const { result, rerender } = renderHook(({ enabled }) => useFleetModelCatalog({ enabled }), {
       initialProps: { enabled: false },
@@ -126,7 +219,7 @@ describe('useFleetModelCatalog', () => {
       expect(result.current.loading).toBe(false);
     });
     // Failed fetch: counts stay empty AND loaded stays false, so pickers
-    // render badge-free instead of a misleading "No runners".
+    // render badge-free instead of a misleading "0 runners".
     expect(result.current.counts).toEqual({});
     expect(result.current.loaded).toBe(false);
     api.getFleetModelCatalog.mockResolvedValue({ models: [] });
