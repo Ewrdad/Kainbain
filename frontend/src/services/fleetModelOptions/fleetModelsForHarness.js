@@ -4,13 +4,12 @@ import { parseModelKey } from '../modelKeys.js';
  * MARK: fleetModelsForHarness
  * @description Synthesizes fleet-served model entries for one harness
  *   section: `{ key, id, provider, name, fleet: true }`. `key` is the exact
- *   advertised id (the stored selection value). The snapshot's explicit
- *   availability verdict (`available` / `unavailableReason`) rides along
- *   when the entry carries one, so a stale entry badges Unavailable even
- *   when this safety-net merge (rather than the backend section merge)
- *   added the option. Only meaningful when fleet data loaded — pass
- *   `undefined` counts and it returns `[]` (badge-free and option-free,
- *   never mislead).
+ *   advertised id (the stored selection value). Only canonical harness-scoped
+ *   ids (`harness::provider::id[::reasoning]`) with `parsed.harness === hid`
+ *   render — provider-form and bare ids are quarantined (WP-C) and never
+ *   fan out into a section. The entry's `harnesses[]` list stays as defence
+ *   in depth: a runner must actually advertise the section. Counts (not the
+ *   persisted `available` verdict) drive badges downstream.
  * @example fleetModelsForHarness('muse', { 'muse::meta::muse-spark-1.3': { runnerCount: 1 } })
  *   => [{ key: 'muse::meta::muse-spark-1.3', id: 'muse-spark-1.3', provider: 'meta', name: 'muse-spark-1.3', fleet: true }]
  * @param {string} harnessId - Catalogue harness section being rendered.
@@ -31,49 +30,23 @@ export function fleetModelsForHarness(harnessId, fleetCounts) {
       continue;
     }
     if (!parsed) continue;
-    // Section gate: the entry's serving harnesses (empty = unknown, keep
-    // lenient). An operator allowlist can advertise ids for harnesses the
-    // runner does not offer — those sections must not offer the id, or
-    // dispatch would match a model no serving runner can run there.
+    // Only canonical harness-scoped ids render in a section. Provider-form
+    // and bare ids never join a harness section (WIDE_NET cause 2 / WP-C).
+    if (parsed.form !== 'harness' && parsed.form !== 'harnessReasoning') continue;
+    if (parsed.harness !== hid) continue;
     // eslint-disable-next-line security/detect-object-injection -- exactId is a catalogue model id, not user input
     const entry = fleetCounts[exactId];
     const serving =
       entry && typeof entry === 'object' && Array.isArray(entry.harnesses) ? entry.harnesses : [];
+    // Defence in depth: a runner must actually advertise this section.
     if (serving.length > 0 && !serving.includes(hid)) continue;
-    // The snapshot verdict (when the backend served one): entries from
-    // older backends stay verdict-free and badge from counts as before.
-    const verdict =
-      entry && typeof entry === 'object' && typeof entry.available === 'boolean'
-        ? {
-            available: entry.available,
-            ...(typeof entry.unavailableReason === 'string'
-              ? { unavailableReason: entry.unavailableReason }
-              : {}),
-          }
-        : {};
-    if (parsed.form === 'harness' || parsed.form === 'harnessReasoning') {
-      // Harness-scoped ids additionally name their section: strict match.
-      if (parsed.harness !== hid) continue;
-      out.push({
-        key: id,
-        id: parsed.form === 'harnessReasoning' ? `${parsed.id}::${parsed.reasoning}` : parsed.id,
-        provider: parsed.provider,
-        name: parsed.id,
-        fleet: true,
-        ...verdict,
-      });
-    } else if (parsed.form === 'provider') {
-      out.push({
-        key: id,
-        id: parsed.id,
-        provider: parsed.provider,
-        name: parsed.id,
-        fleet: true,
-        ...verdict,
-      });
-    } else if (parsed.form === 'bare') {
-      out.push({ key: id, id: parsed.id, provider: '', name: parsed.id, fleet: true, ...verdict });
-    }
+    out.push({
+      key: id,
+      id: parsed.form === 'harnessReasoning' ? `${parsed.id}::${parsed.reasoning}` : parsed.id,
+      provider: parsed.provider,
+      name: parsed.id,
+      fleet: true,
+    });
   }
   return out;
 }

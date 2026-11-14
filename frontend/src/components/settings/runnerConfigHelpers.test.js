@@ -38,6 +38,8 @@ import {
   buildDirectoryDraft,
   normalizeModelId,
   filterVisibleRunners,
+  describeRunnerBuild,
+  runnerBuildWarning,
 } from './runnerConfigHelpers';
 
 /***
@@ -527,5 +529,77 @@ describe('runnerConfigHelpers', () => {
     expect(filterVisibleRunners({ runners, query: 'pending' })).toHaveLength(1);
     expect(filterVisibleRunners({ runners, query: 'zzz' })).toEqual([]);
     expect(filterVisibleRunners({ runners: null, query: 'a' })).toEqual([]);
+  });
+
+  it('summarizes the runner build from capabilities, falling back to facts', () => {
+    const versions = {
+      build: { sha: 'abc1234def', builtAt: '2026-11-01T00:00:00.000Z', dirty: true, source: 'package' },
+      bootedAtMs: 1700000000000,
+      codeChangedSinceBoot: false,
+    };
+    expect(describeRunnerBuild({ capabilities: { versions } })).toEqual({
+      sha: 'abc1234def',
+      shortSha: 'abc1234',
+      builtAt: '2026-11-01T00:00:00.000Z',
+      dirty: true,
+      isDev: false,
+      codeChangedSinceBoot: false,
+      bootedAtMs: 1700000000000,
+    });
+    expect(describeRunnerBuild({ facts: { versions } }).shortSha).toBe('abc1234');
+    expect(describeRunnerBuild({
+      capabilities: { versions },
+      facts: { versions: { build: { sha: 'other' } } },
+    }).sha).toBe('abc1234def');
+    expect(describeRunnerBuild({
+      facts: { versions: { build: { sha: 'dev-sha', source: 'checkout' } } },
+    }).isDev).toBe(true);
+  });
+
+  it('reports an unknown build for old runners and malformed blocks', () => {
+    expect(describeRunnerBuild({})).toBeNull();
+    expect(describeRunnerBuild(undefined)).toBeNull();
+    expect(describeRunnerBuild({ facts: { versions: { runner: '0.1.0' } } })).toBeNull();
+    expect(describeRunnerBuild({ facts: { versions: { build: null } } })).toBeNull();
+    expect(describeRunnerBuild({ facts: { versions: { build: 'bogus' } } })).toBeNull();
+    expect(describeRunnerBuild({ facts: { versions: { build: { sha: '' } } } })).toBeNull();
+    expect(describeRunnerBuild({ facts: { versions: { build: { sha: 42 } } } })).toBeNull();
+    expect(describeRunnerBuild({ facts: null })).toBeNull();
+  });
+
+  it('warns when the runner code changed after boot, telling the operator what to do', () => {
+    const warning = runnerBuildWarning(
+      { facts: { versions: { build: { sha: 'abc1234', source: 'package' }, codeChangedSinceBoot: true } } },
+      'abc1234',
+    );
+    expect(warning.kind).toBe('code-changed');
+    expect(warning.message).toMatch(/changed after it started/);
+    expect(warning.message).toMatch(/restart or update/);
+  });
+
+  it('warns on a proven sha mismatch against the backend commit', () => {
+    const runner = { facts: { versions: { build: { sha: 'aaaa1111', source: 'package' } } } };
+    const warning = runnerBuildWarning(runner, 'bbbb2222');
+    expect(warning.kind).toBe('sha-mismatch');
+    expect(warning.message).toMatch(/aaaa111/);
+    expect(warning.message).toMatch(/bbbb222/);
+    expect(warning.message).toMatch(/restart or update/);
+  });
+
+  it('stays silent on matching shas (exact or prefix), unknown builds, and dev checkouts', () => {
+    const packaged = (sha) => ({ facts: { versions: { build: { sha, source: 'package' } } } });
+    expect(runnerBuildWarning(packaged('abc1234def'), 'abc1234def')).toBeNull();
+    expect(runnerBuildWarning(packaged('abc1234def'), 'abc1234')).toBeNull();
+    expect(runnerBuildWarning(packaged('abc1234'), 'abc1234def')).toBeNull();
+    expect(runnerBuildWarning(packaged('ABC1234DEF'), 'abc1234')).toBeNull();
+    expect(runnerBuildWarning(packaged('abc1234def'), null)).toBeNull();
+    expect(runnerBuildWarning(packaged('abc1234def'), 'abc')).toBeNull();
+    expect(runnerBuildWarning({}, 'abc1234')).toBeNull();
+    expect(runnerBuildWarning({ facts: { versions: { runner: '0.1.0' } } }, 'abc1234')).toBeNull();
+    expect(runnerBuildWarning(
+      { facts: { versions: { build: { sha: 'dev-sha-here', source: 'checkout' }, codeChangedSinceBoot: true } } },
+      'other-sha-here',
+    )).toBeNull();
+    expect(runnerBuildWarning(undefined, undefined)).toBeNull();
   });
 });

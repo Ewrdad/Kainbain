@@ -14,6 +14,10 @@ export function runnerRequests(request) {
     getRunners: () => request('/runners'),
     getRunnerMonitor: () => request('/runners/monitor'),
     getFleetModelCatalog: () => request('/runners/models/catalogue'),
+    deleteFleetCatalogueModel: (id) =>
+      request(`/runners/models/catalogue/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    deleteFleetQuarantinedModel: (id) =>
+      request(`/runners/models/catalogue/quarantine/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     getRunnerConfig: (id) =>
       request(`/runners/${encodeURIComponent(id)}/config`),
     updateRunnerConfig: (id, patch) =>

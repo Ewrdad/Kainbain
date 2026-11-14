@@ -123,8 +123,9 @@ export function WorkflowCanvas() {
   // badges on every stage model option. Gated on `loaded` (not merely
   // finished loading) so a failed fetch renders badge-free options instead
   // of a misleading "No runners".
-  const { counts: loadedFleetCounts, loaded: fleetLoaded } = useFleetModelCatalog();
+  const { counts: loadedFleetCounts, harnesses: loadedFleetHarnesses, loaded: fleetLoaded } = useFleetModelCatalog();
   const fleetCounts = fleetLoaded ? loadedFleetCounts : undefined;
+  const fleetHarnesses = fleetLoaded ? loadedFleetHarnesses : undefined;
   // Stages inherit the project's harness unless overridden: the per-stage
   // picker offers an explicit inherit choice naming the project harness, and
   // the model control stays scoped to the effective (stage or inherited)
@@ -434,6 +435,7 @@ export function WorkflowCanvas() {
         availableModels={availableModels}
         availableHarnesses={availableHarnesses}
         fleetCounts={fleetCounts}
+        fleetHarnesses={fleetHarnesses}
         modelsRefreshing={modelsRefreshing}
         refreshModels={refreshModels}
         projectHarnessId={projectHarnessId}

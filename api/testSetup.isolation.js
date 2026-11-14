@@ -119,6 +119,31 @@ export const tempAuthStateDir = fs.mkdtempSync(
 	path.join(os.tmpdir(), "kainbain-test-auth-"),
 );
 process.env.KAINBAIN_AUTH_STATE_PATH = tempAuthStateDir;
+// The accessibility-feedback inbox is ALSO machine-global by default
+// (`~/.kainbain/accessibility-feedback.jsonl`): any suite that boots the
+// full app (`api/index.js` registers `accessibilityRoutes` with `{ deps }`
+// only, no `feedbackFile` opt) and POSTs feedback would otherwise append
+// test reports to the LIVE user inbox (2026-11 incident, residual D9 of
+// 99ccc12f — the inbox lives directly under `~/.kainbain/`, outside
+// `~/.kainbain/engine/`, so the engine guard is a no-op for it). Point it
+// at a per-file temp file before config loads. Mirrors
+// `makeTempEngineStateFile` (keep the real basename so any basename
+// assertion keeps passing). The structural guard lives in
+// `flow/resolveStatePath.js`
+// (`throwIfLiveAccessibilityFeedbackPathUnderTest`), called from
+// `resolveFeedbackFile` in `routes/accessibility.js` (task b3dec9b0).
+/***
+ * MARK: tempAccessibilityFeedbackFile
+ * @description Per-file temp accessibility-feedback inbox: the global setup
+ *   backstop, so no suite touches the live
+ *   `~/.kainbain/accessibility-feedback.jsonl`.
+ * @example import { tempAccessibilityFeedbackFile } from "./testSetup.isolation.js"
+ ***/
+export const tempAccessibilityFeedbackFile = path.join(
+	fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-test-a11y-")),
+	"accessibility-feedback.jsonl",
+);
+process.env.KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE = tempAccessibilityFeedbackFile;
 // Host resource probes are ALSO live by default: `probeMemoryUsagePct()`
 // reads `os.freemem()`, which the CI storm (200+ vitest workers on a 16 GB
 // box) inflates past the 95% critical threshold. Any synthetic scheduler

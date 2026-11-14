@@ -30,6 +30,13 @@ import {
 	startClaimRenewal,
 	RUNNER_API_VERSION,
 	RUNNER_VERSION,
+	RUNNER_BUILD,
+	BOOTED_AT_MS,
+	factsFor,
+	hasCodeChangedSinceBoot,
+	loadRunnerVersionInfo,
+	resolveRunnerBuild,
+	snapshotCodeTree,
 	ciWorkdirFor,
 	integrationMergeSubject,
 } from "./daemon.js";
@@ -2731,5 +2738,257 @@ describe("joinAndHeartbeat one-click credential handover", () => {
 		assert.ok(!lines.some((line) => seenNonce && line.includes(seenNonce)));
 		fs.rmSync(config.workRoot, { recursive: true, force: true });
 		fs.rmSync(home, { recursive: true, force: true });
+	});
+});
+
+describe("runner build identity", () => {
+	const makeVersionDir = (versionJson) => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-build-id-"));
+		if (versionJson !== null) {
+			fs.writeFileSync(path.join(dir, "version.json"), JSON.stringify(versionJson));
+		}
+		return dir;
+	};
+
+	it("loads runner/api versions plus the stamped build block from a version.json dir", () => {
+		const dir = makeVersionDir({
+			component: "runner",
+			apiVersion: "1.2.0",
+			runnerVersion: "0.9.0",
+			build: { sha: "abc123", builtAt: "2026-11-01T00:00:00.000Z", dirty: false },
+		});
+		try {
+			assert.deepEqual(loadRunnerVersionInfo(dir), {
+				runnerVersion: "0.9.0",
+				apiVersion: "1.2.0",
+				build: { sha: "abc123", builtAt: "2026-11-01T00:00:00.000Z", dirty: false },
+			});
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("falls back to pinned versions and a null build when version.json is missing or malformed", () => {
+		const missing = makeVersionDir(null);
+		const malformed = makeVersionDir({ runnerVersion: 42 });
+		try {
+			assert.deepEqual(loadRunnerVersionInfo(missing), {
+				runnerVersion: "0.1.0",
+				apiVersion: "1.0.0",
+				build: { sha: null, builtAt: null, dirty: null },
+			});
+			assert.deepEqual(loadRunnerVersionInfo(malformed), {
+				runnerVersion: "0.1.0",
+				apiVersion: "1.0.0",
+				build: { sha: null, builtAt: null, dirty: null },
+			});
+		} finally {
+			fs.rmSync(missing, { recursive: true, force: true });
+			fs.rmSync(malformed, { recursive: true, force: true });
+		}
+	});
+
+	it("prefers the stamped package build over the git checkout", () => {
+		const dir = makeVersionDir({
+			component: "runner",
+			apiVersion: "1.0.0",
+			runnerVersion: "0.9.0",
+			build: { sha: "stamped-sha", builtAt: "2026-11-01T00:00:00.000Z", dirty: false },
+		});
+		try {
+			let gitCalls = 0;
+			const build = resolveRunnerBuild({
+				versionDir: dir,
+				runnerDir: dir,
+				runGit: () => { gitCalls += 1; return "checkout-sha"; },
+			});
+			assert.deepEqual(build, { sha: "stamped-sha", builtAt: "2026-11-01T00:00:00.000Z", dirty: false, source: "package" });
+			assert.equal(gitCalls, 0, "stamped builds never consult git");
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("falls back to the git checkout (rev-parse + status) when no stamp exists", () => {
+		const dir = makeVersionDir({ component: "runner", apiVersion: "1.0.0", runnerVersion: "0.1.0" });
+		try {
+			const seen = [];
+			const build = resolveRunnerBuild({
+				versionDir: dir,
+				runnerDir: dir,
+				runGit: (args) => {
+					seen.push(args);
+					if (args[0] === "rev-parse") return "deadbeef\n";
+					return " M daemon.js\n";
+				},
+			});
+			assert.deepEqual(build, { sha: "deadbeef", builtAt: null, dirty: true, source: "checkout" });
+			assert.ok(seen.some((args) => args[0] === "rev-parse" && args[1] === "HEAD"));
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("reports nulls (never throws) outside a git checkout", () => {
+		const dir = makeVersionDir({ component: "runner", apiVersion: "1.0.0", runnerVersion: "0.1.0" });
+		try {
+			const build = resolveRunnerBuild({
+				versionDir: dir,
+				runnerDir: dir,
+				runGit: () => { throw new Error("not a git repository"); },
+			});
+			assert.deepEqual(build, { sha: null, builtAt: null, dirty: null, source: null });
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("exposes the module build identity and boot time with a stable shape", () => {
+		assert.deepEqual(Object.keys(RUNNER_BUILD).sort(), ["builtAt", "dirty", "sha", "source"]);
+		assert.equal(typeof BOOTED_AT_MS, "number");
+		assert.ok(Number.isFinite(BOOTED_AT_MS) && BOOTED_AT_MS > 0);
+		assert.ok(BOOTED_AT_MS <= Date.now());
+	});
+});
+
+describe("runner stale-code detection", () => {
+	const makeCodeTree = () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-code-tree-"));
+		fs.writeFileSync(path.join(dir, "daemon.js"), "v1");
+		fs.writeFileSync(path.join(dir, "version.json"), JSON.stringify({ runnerVersion: "0.1.0" }));
+		return dir;
+	};
+
+	it("snapshots a code tree and stays quiet when nothing changed", () => {
+		const dir = makeCodeTree();
+		try {
+			const baseline = snapshotCodeTree(dir);
+			assert.equal(baseline.fileCount, 2);
+			assert.ok(baseline.totalBytes > 0);
+			assert.ok(Number.isFinite(baseline.latestMtimeMs));
+			assert.equal(hasCodeChangedSinceBoot({ rootDir: dir, baseline }), false);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("flips to true after a file touch under the tree", () => {
+		const dir = makeCodeTree();
+		try {
+			const baseline = snapshotCodeTree(dir);
+			const later = new Date(Date.now() + 10_000);
+			fs.utimesSync(path.join(dir, "daemon.js"), later, later);
+			assert.equal(hasCodeChangedSinceBoot({ rootDir: dir, baseline }), true);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("flips to true when a file is added or removed", () => {
+		const added = makeCodeTree();
+		const removed = makeCodeTree();
+		try {
+			const baselineAdded = snapshotCodeTree(added);
+			fs.writeFileSync(path.join(added, "extra.js"), "new");
+			assert.equal(hasCodeChangedSinceBoot({ rootDir: added, baseline: baselineAdded }), true);
+			const baselineRemoved = snapshotCodeTree(removed);
+			fs.rmSync(path.join(removed, "daemon.js"));
+			assert.equal(hasCodeChangedSinceBoot({ rootDir: removed, baseline: baselineRemoved }), true);
+		} finally {
+			fs.rmSync(added, { recursive: true, force: true });
+			fs.rmSync(removed, { recursive: true, force: true });
+		}
+	});
+
+	it("skips node_modules and .git so dependency installs never flag the tree", () => {
+		const dir = makeCodeTree();
+		try {
+			const baseline = snapshotCodeTree(dir);
+			fs.mkdirSync(path.join(dir, "node_modules"), { recursive: true });
+			fs.writeFileSync(path.join(dir, "node_modules", "dep.js"), "x");
+			fs.mkdirSync(path.join(dir, ".git"), { recursive: true });
+			fs.writeFileSync(path.join(dir, ".git", "index"), "x");
+			assert.equal(hasCodeChangedSinceBoot({ rootDir: dir, baseline }), false);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("never throws on an unreadable tree (fail quiet, warn-only feature)", () => {
+		assert.deepEqual(snapshotCodeTree(path.join(os.tmpdir(), "kb-code-tree-missing-no-such-dir")), {
+			fileCount: 0,
+			totalBytes: 0,
+			latestMtimeMs: 0,
+		});
+		assert.equal(hasCodeChangedSinceBoot({ rootDir: path.join(os.tmpdir(), "kb-code-tree-missing-no-such-dir"), baseline: null }), false);
+	});
+
+	it("stays quiet when the boot scan saw zero files (no baseline, nothing provable)", () => {
+		const dir = makeCodeTree();
+		try {
+			const emptyBaseline = { fileCount: 0, totalBytes: 0, latestMtimeMs: 0 };
+			assert.equal(hasCodeChangedSinceBoot({ rootDir: dir, baseline: emptyBaseline }), false);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("factsFor build identity", () => {
+	const factsConfig = (overrides = {}) => ({
+		harnessIds: ["mock"],
+		harnessId: "mock",
+		tiers: ["T0"],
+		workRoot: fs.mkdtempSync(path.join(os.tmpdir(), "kb-facts-w-")),
+		...overrides,
+	});
+
+	it("reports build identity, bootedAtMs, and codeChangedSinceBoot in versions", () => {
+		const config = factsConfig();
+		try {
+			const facts = factsFor({ config });
+			assert.equal(facts.versions.protocol, "v1");
+			assert.equal(facts.versions.runner, RUNNER_VERSION);
+			assert.equal(facts.versions.api, RUNNER_API_VERSION);
+			assert.deepEqual(facts.versions.build, RUNNER_BUILD);
+			assert.deepEqual(Object.keys(facts.versions.build).sort(), ["builtAt", "dirty", "sha", "source"]);
+			assert.equal(facts.versions.bootedAtMs, BOOTED_AT_MS);
+			assert.equal(typeof facts.versions.codeChangedSinceBoot, "boolean");
+		} finally {
+			fs.rmSync(config.workRoot, { recursive: true, force: true });
+		}
+	});
+
+	it("reports codeChangedSinceBoot=true after a file touch under a temp-dir tree", () => {
+		const config = factsConfig();
+		const tree = fs.mkdtempSync(path.join(os.tmpdir(), "kb-facts-tree-"));
+		try {
+			fs.writeFileSync(path.join(tree, "daemon.js"), "v1");
+			const bootedAtMs = Date.now();
+			const baseline = snapshotCodeTree(tree);
+			const before = factsFor({ config, codeTree: { rootDir: tree, baseline, bootedAtMs } });
+			assert.equal(before.versions.codeChangedSinceBoot, false);
+			assert.equal(before.versions.bootedAtMs, bootedAtMs);
+			const later = new Date(Date.now() + 10_000);
+			fs.utimesSync(path.join(tree, "daemon.js"), later, later);
+			const after = factsFor({ config, codeTree: { rootDir: tree, baseline, bootedAtMs } });
+			assert.equal(after.versions.codeChangedSinceBoot, true);
+		} finally {
+			fs.rmSync(config.workRoot, { recursive: true, force: true });
+			fs.rmSync(tree, { recursive: true, force: true });
+		}
+	});
+
+	it("hands each heartbeat its own build copy (a mutated facts object never corrupts the next)", () => {
+		const config = factsConfig();
+		try {
+			const first = factsFor({ config });
+			assert.notEqual(first.versions.build, RUNNER_BUILD, "no shared reference with the module singleton");
+			first.versions.build.sha = "mutated-by-a-middleware";
+			const second = factsFor({ config });
+			assert.deepEqual(second.versions.build, RUNNER_BUILD);
+		} finally {
+			fs.rmSync(config.workRoot, { recursive: true, force: true });
+		}
 	});
 });

@@ -1,7 +1,8 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, reapTerminalOrphanWorkdirs, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, resolveRunnerDocsDirName, touchWorkdir } from "./project.js";
 import { RunnerGitError } from "./project.js";
@@ -31,6 +32,190 @@ import { commitAndPush } from "./gitOps.js";
 import { saveRunnerCredential } from "./credentialFile.js";
 
 /***
+ * MARK: RUNNER_SOURCE_DIR
+ * @description Directory holding this daemon's own code: the repo
+ *   `runner/` dir for dev checkouts, the staged `runner/` dir inside an
+ *   installed bundle. Both the version loader and the stale-code scanner
+ *   root here.
+ * @example RUNNER_SOURCE_DIR => '/repo/runner'
+ ***/
+const RUNNER_SOURCE_DIR = path.dirname(fileURLToPath(import.meta.url));
+
+/***
+ * MARK: loadRunnerVersionInfo
+ * @description Reads one `version.json` dir into `{ runnerVersion,
+ *   apiVersion, build }`: the product version the update channel compares,
+ *   the backend API version this Runner speaks, and the stamped build
+ *   identity (`{ sha, builtAt, dirty }`, all null when the bundle predates
+ *   stamping). Wrong-typed or missing fields fall back to the pinned
+ *   versions and a null build — never throws, so a corrupt file can never
+ *   fail boot.
+ * @example loadRunnerVersionInfo('/repo/runner') => { runnerVersion: '0.1.0', apiVersion: '1.0.0', build: { sha: null, ... } }
+ * @param {string} [versionDir] - Dir holding version.json (defaults to this daemon's dir).
+ * @returns {{runnerVersion: string, apiVersion: string, build: {sha: string|null, builtAt: string|null, dirty: boolean|null}}} Version info.
+ ***/
+export function loadRunnerVersionInfo(versionDir = RUNNER_SOURCE_DIR) {
+	const fallback = {
+		runnerVersion: "0.1.0",
+		apiVersion: "1.0.0",
+		build: { sha: null, builtAt: null, dirty: null },
+	};
+	try {
+		const parsed = JSON.parse(fs.readFileSync(path.join(versionDir, "version.json"), "utf8"));
+		const rawBuild = parsed?.build && typeof parsed.build === "object" && !Array.isArray(parsed.build)
+			? parsed.build
+			: {};
+		return {
+			runnerVersion: typeof parsed?.runnerVersion === "string" && parsed.runnerVersion
+				? parsed.runnerVersion
+				: fallback.runnerVersion,
+			apiVersion: typeof parsed?.apiVersion === "string" && parsed.apiVersion
+				? parsed.apiVersion
+				: fallback.apiVersion,
+			build: {
+				sha: typeof rawBuild.sha === "string" && rawBuild.sha.trim() ? rawBuild.sha.trim().slice(0, 128) : null,
+				builtAt: typeof rawBuild.builtAt === "string" && rawBuild.builtAt.trim() ? rawBuild.builtAt.trim().slice(0, 64) : null,
+				dirty: typeof rawBuild.dirty === "boolean" ? rawBuild.dirty : null,
+			},
+		};
+	} catch {
+		return fallback;
+	}
+}
+
+/***
+ * MARK: runGitSync
+ * @description Runs one git command synchronously in a dir, returning
+ *   stdout (or throwing when git is missing, slow, or outside a checkout).
+ *   Stderr is swallowed: a dev-checkout probe must stay silent.
+ * @example runGitSync(['rev-parse', 'HEAD'], '/repo/runner') => 'abc123\n'
+ * @param {string[]} args - Git argv.
+ * @param {string} cwd - Directory to run in.
+ * @returns {string} Stdout text.
+ ***/
+function runGitSync(args, cwd) {
+	return execFileSync("git", args, { cwd, encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
+}
+
+/***
+ * MARK: resolveRunnerBuild
+ * @description Effective build identity for this Runner: the stamped
+ *   `version.json` build wins (`source: "package"`), else a dev checkout
+ *   computes one at boot from `git rev-parse HEAD` plus dirty from
+ *   `git status --porcelain` scoped to the runner tree
+ *   (`source: "checkout"`, no bundle time). Outside a checkout with no
+ *   stamp every field is null. Best-effort — never throws, so identity
+ *   can never fail boot.
+ * @example resolveRunnerBuild() => { sha: 'abc123', builtAt: null, dirty: true, source: 'checkout' }
+ * @param {Object} [opts] - Options.
+ * @param {string} [opts.versionDir] - Dir holding version.json.
+ * @param {string} [opts.runnerDir] - Runner tree root for the git fallback.
+ * @param {Function} [opts.runGit] - `(args, cwd) => stdout` seam (tests).
+ * @returns {{sha: string|null, builtAt: string|null, dirty: boolean|null, source: string|null}} Build identity.
+ ***/
+export function resolveRunnerBuild({ versionDir = RUNNER_SOURCE_DIR, runnerDir = RUNNER_SOURCE_DIR, runGit = runGitSync } = {}) {
+	const stamped = loadRunnerVersionInfo(versionDir).build;
+	if (stamped.sha) {
+		return { ...stamped, source: "package" };
+	}
+	try {
+		const sha = String(runGit(["rev-parse", "HEAD"], runnerDir) ?? "").trim();
+		if (!sha) return { sha: null, builtAt: null, dirty: null, source: null };
+		const status = String(runGit(["status", "--porcelain", "."], runnerDir) ?? "");
+		return { sha: sha.slice(0, 128), builtAt: null, dirty: status.trim() ? true : false, source: "checkout" };
+	} catch {
+		return { sha: null, builtAt: null, dirty: null, source: null };
+	}
+}
+
+/***
+ * MARK: CODE_TREE_SKIP_DIRS
+ * @description Directory names the stale-code scanner never descends
+ *   into: version-control metadata and installed dependencies change for
+ *   reasons unrelated to the Runner's own code.
+ * @example CODE_TREE_SKIP_DIRS.has('node_modules') => true
+ ***/
+const CODE_TREE_SKIP_DIRS = new Set([".git", "node_modules"]);
+
+/***
+ * MARK: snapshotCodeTree
+ * @description Cheap fingerprint of one code tree: file count, total
+ *   bytes, and the newest mtime across every file (no content hashing —
+ *   a heartbeat-time rescan must stay sub-millisecond on a small tree).
+ *   Skips `.git`/`node_modules`; an unreadable tree fingerprints as zeros
+ *   (never throws, so scanning can never break a heartbeat).
+ * @example snapshotCodeTree('/repo/runner') => { fileCount: 30, totalBytes: 12345, latestMtimeMs: 1730000000000 }
+ * @param {string} rootDir - Tree root to walk.
+ * @returns {{fileCount: number, totalBytes: number, latestMtimeMs: number}} Fingerprint.
+ ***/
+export function snapshotCodeTree(rootDir) {
+	const snapshot = { fileCount: 0, totalBytes: 0, latestMtimeMs: 0 };
+	try {
+		const stack = [rootDir];
+		while (stack.length > 0) {
+			const current = stack.pop();
+			let entries;
+			try {
+				entries = fs.readdirSync(current, { withFileTypes: true });
+			} catch {
+				continue;
+			}
+			for (const entry of entries) {
+				const full = path.join(current, entry.name);
+				try {
+					if (entry.isDirectory()) {
+						if (!CODE_TREE_SKIP_DIRS.has(entry.name)) stack.push(full);
+					} else if (entry.isFile()) {
+						const stat = fs.statSync(full);
+						snapshot.fileCount += 1;
+						snapshot.totalBytes += stat.size;
+						if (stat.mtimeMs > snapshot.latestMtimeMs) snapshot.latestMtimeMs = stat.mtimeMs;
+					}
+				} catch {
+					// One unreadable entry never fails the scan.
+				}
+			}
+		}
+	} catch {
+		// An unscannable tree reads as zeros (fail quiet: this is warn-only).
+	}
+	return snapshot;
+}
+
+/***
+ * MARK: hasCodeChangedSinceBoot
+ * @description Whether the code tree under `rootDir` differs from its
+ *   boot fingerprint: any file newer than boot, or a changed file
+ *   count/total size (added, removed, or rewritten files). A missing
+ *   baseline, a baseline that saw zero files (a failed boot scan — a
+ *   real tree always holds this daemon's own files), or an unscannable
+ *   tree answers false — staleness is a warn-only signal, so an
+ *   unprovable change stays quiet rather than flagging every
+ *   heartbeat.
+ * @example hasCodeChangedSinceBoot({ rootDir: '/repo/runner', baseline: snapshotCodeTree('/repo/runner') }) => false
+ * @param {Object} [opts] - Options.
+ * @param {string} opts.rootDir - Tree root to rescan.
+ * @param {Object|null} [opts.baseline] - Boot fingerprint from snapshotCodeTree.
+ * @returns {boolean} True when the tree provably changed after boot.
+ ***/
+export function hasCodeChangedSinceBoot({ rootDir, baseline } = {}) {
+	try {
+		if (!baseline || typeof baseline !== "object") return false;
+		if (typeof rootDir !== "string" || !rootDir) return false;
+		if (!Number.isFinite(baseline.fileCount) || baseline.fileCount === 0) return false;
+		const current = snapshotCodeTree(rootDir);
+		if (current.fileCount === 0) return false;
+		return (
+			current.latestMtimeMs > baseline.latestMtimeMs ||
+			current.fileCount !== baseline.fileCount ||
+			current.totalBytes !== baseline.totalBytes
+		);
+	} catch {
+		return false;
+	}
+}
+
+/***
  * MARK: RUNNER_VERSION
  * @description Runner product version (the update channel + fleet matrix
  *   compare this, not the API version). Loaded from runner/version.json
@@ -39,15 +224,7 @@ import { saveRunnerCredential } from "./credentialFile.js";
  *   per release, so a self-updated Runner re-registers as the new version.
  * @example RUNNER_VERSION => '0.1.0'
  ***/
-export const RUNNER_VERSION = (() => {
-	try {
-		const file = new URL("./version.json", import.meta.url);
-		const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
-		return typeof parsed?.runnerVersion === "string" && parsed.runnerVersion ? parsed.runnerVersion : "0.1.0";
-	} catch {
-		return "0.1.0";
-	}
-})();
+export const RUNNER_VERSION = loadRunnerVersionInfo().runnerVersion;
 
 /***
  * MARK: RUNNER_API_VERSION
@@ -57,15 +234,35 @@ export const RUNNER_VERSION = (() => {
  *   suite pins the fallback to runner/version.json.
  * @example RUNNER_API_VERSION => '1.0.0'
  ***/
-export const RUNNER_API_VERSION = (() => {
-	try {
-		const file = new URL("./version.json", import.meta.url);
-		const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
-		return typeof parsed?.apiVersion === "string" && parsed.apiVersion ? parsed.apiVersion : "1.0.0";
-	} catch {
-		return "1.0.0";
-	}
-})();
+export const RUNNER_API_VERSION = loadRunnerVersionInfo().apiVersion;
+
+/***
+ * MARK: RUNNER_BUILD
+ * @description Build identity this Runner reports on every heartbeat
+ *   (`versions.build`): the release stamp (`source: "package"`) or the
+ *   dev-checkout git fallback (`source: "checkout"`). All null when
+ *   neither is available (old bundles, non-checkout trees) — callers
+ *   treat that as "unknown", never as a mismatch.
+ * @example RUNNER_BUILD => { sha: 'abc123', builtAt: null, dirty: true, source: 'checkout' }
+ ***/
+export const RUNNER_BUILD = resolveRunnerBuild();
+
+/***
+ * MARK: BOOTED_AT_MS
+ * @description Wall-clock boot time of this daemon process, reported as
+ *   `versions.bootedAtMs` so Settings can tell a fresh boot from a stale
+ *   long-runner.
+ * @example BOOTED_AT_MS => 1730000000000
+ ***/
+export const BOOTED_AT_MS = Date.now();
+
+/***
+ * MARK: BOOT_CODE_SNAPSHOT
+ * @description Boot fingerprint of this daemon's own code tree; each
+ *   heartbeat rescans and reports `codeChangedSinceBoot` when the tree
+ *   moved underneath the running process.
+ ***/
+const BOOT_CODE_SNAPSHOT = snapshotCodeTree(RUNNER_SOURCE_DIR);
 
 // Claim renewal cadence: comfortably inside the 5-minute production lease
 // TTL (KAINBAIN_CLAIM_TTL_MS) so long harness runs keep their fence. A
@@ -832,10 +1029,32 @@ export function effectiveDirectoriesFor(config = {}) {
 	};
 }
 
-function factsFor({ config, harnessVersions, updateStatus = null, commandAck = null } = {}) {
+/***
+ * MARK: factsFor
+ * @description Heartbeat facts for one Runner: harnesses, models, tiers,
+ *   disk headroom, versions (protocol + runner + api + this boot's build
+ *   identity, boot time, and stale-code flag), directories, commands, and
+ *   discovery status. `codeTree` overrides the stale-code scan root (tests
+ *   point it at a temp-dir fixture); production callers omit it and scan
+ *   this daemon's own tree against its boot fingerprint. The `build`
+ *   object is a fresh copy per call, so a downstream mutation of one
+ *   heartbeat's facts can never corrupt the module singleton or the
+ *   next heartbeat.
+ * @example factsFor({ config }).versions.codeChangedSinceBoot => false
+ * @param {Object} [opts] - Options.
+ * @param {Object} opts.config - Normalized runner config.
+ * @param {Object} [opts.harnessVersions] - Probed CLI versions.
+ * @param {Object|null} [opts.updateStatus] - Self-update status.
+ * @param {Object|null} [opts.commandAck] - Command acknowledgement.
+ * @param {Object|null} [opts.codeTree] - `{ rootDir, baseline, bootedAtMs }` scan override (tests).
+ * @returns {Object} Heartbeat facts.
+ ***/
+export function factsFor({ config, harnessVersions, updateStatus = null, commandAck = null, codeTree = null } = {}) {
 	const versionFor = (id) =>
 		harnessVersions?.[id] ?? harnessVersionCache.get(id)?.[id] ?? "unknown";
 	const advertisedModels = resolveAdvertisedModels(config, discoveredModelsCache);
+	const scanRoot = codeTree?.rootDir ?? RUNNER_SOURCE_DIR;
+	const scanBaseline = codeTree && "baseline" in codeTree ? codeTree.baseline : BOOT_CODE_SNAPSHOT;
 	return {
 		harnesses: runnerHarnessIds(config).map((id) => ({ id, version: versionFor(id) })),
 		models: advertisedModels,
@@ -843,7 +1062,14 @@ function factsFor({ config, harnessVersions, updateStatus = null, commandAck = n
 		modelProvenance: provenanceForIds(advertisedModels),
 		tiers: config.tiers,
 		diskHeadroomMb: diskHeadroomMbFor(config.workRoot),
-		versions: { protocol: "v1", runner: RUNNER_VERSION, api: RUNNER_API_VERSION },
+		versions: {
+			protocol: "v1",
+			runner: RUNNER_VERSION,
+			api: RUNNER_API_VERSION,
+			build: { ...RUNNER_BUILD },
+			bootedAtMs: codeTree?.bootedAtMs ?? BOOTED_AT_MS,
+			codeChangedSinceBoot: hasCodeChangedSinceBoot({ rootDir: scanRoot, baseline: scanBaseline }),
+		},
 		directories: effectiveDirectoriesFor(config),
 		commands: SUPPORTED_RUNNER_COMMANDS,
 		workRoot: typeof config.workRoot === "string" ? config.workRoot : null,

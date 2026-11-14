@@ -11,6 +11,15 @@ import { applyUpdate } from "../runner/updates/index.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+const repoIsGitCheckout = (() => {
+	try {
+		execFileSync("git", ["-C", ROOT, "rev-parse", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+		return true;
+	} catch {
+		return false;
+	}
+})();
+
 // Layout-against-consumer conformance (D4): the canonical packager's
 // output must satisfy the real applyUpdate staging path — version.json at
 // the unpacked root with the manifest's version, the runner/main.js

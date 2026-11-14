@@ -182,7 +182,17 @@ export const packageRunner = ({ platform, arch, version, outDir, root = REPO_ROO
 	// Release metadata + entrypoint live at the archive root.
 	const versionJson = JSON.parse(fs.readFileSync(path.join(root, "runner", "version.json"), "utf8"));
 	versionJson.runnerVersion = clean;
+	const stamp = build !== undefined ? build : resolveBuildStamp({ root });
+	if (build === undefined && !stamp.sha) {
+		console.error("package-runner: warning: no git checkout at the release root — packaging with an unknown build identity.");
+	}
+	versionJson.build = {
+		sha: typeof stamp?.sha === "string" && stamp.sha ? stamp.sha : null,
+		builtAt: typeof stamp?.builtAt === "string" && stamp.builtAt ? stamp.builtAt : null,
+		dirty: typeof stamp?.dirty === "boolean" ? stamp.dirty : null,
+	};
 	fs.writeFileSync(path.join(stage, "version.json"), `${JSON.stringify(versionJson, null, 2)}\n`);
+	fs.writeFileSync(path.join(stage, "runner", "version.json"), `${JSON.stringify(versionJson, null, 2)}\n`);
 	fs.writeFileSync(
 		path.join(stage, "INSTALL.txt"),
 		[
@@ -204,7 +214,7 @@ export const packageRunner = ({ platform, arch, version, outDir, root = REPO_ROO
 	const tarball = path.join(outDir, `${name}.tar.gz`);
 	fs.rmSync(tarball, { force: true });
 	execFileSync("tar", ["-czf", tarball, "-C", outDir, name]);
-	return { name, tarball, version: clean, platform, arch };
+	return { name, tarball, version: clean, platform, arch, build: versionJson.build };
 };
 
 const main = () => {

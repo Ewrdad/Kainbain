@@ -25,13 +25,13 @@ describe('fleetModelsForHarness', () => {
     expect(fleetModelsForHarness('pi', counts)).toEqual([]);
   });
 
-  it('offers legacy and bare ids on every served section', () => {
+  it('blocks legacy provider-form and bare ids from every section (strict canonical gate)', () => {
     const counts = {
       'prov::m1': entry(['muse', 'pi']),
       m2: entry(['pi']),
     };
-    expect(fleetModelsForHarness('muse', counts).map((m) => m.key)).toEqual(['prov::m1']);
-    expect(fleetModelsForHarness('pi', counts).map((m) => m.key)).toEqual(['prov::m1', 'm2']);
+    expect(fleetModelsForHarness('muse', counts)).toEqual([]);
+    expect(fleetModelsForHarness('pi', counts)).toEqual([]);
   });
 
   it('withholds ids from sections no serving runner offers', () => {
@@ -66,7 +66,7 @@ describe('fleetModelsForHarness', () => {
     expect(fleetModelsForHarness('', counts)).toEqual([]);
   });
 
-  it('carries the snapshot verdict so stale entries badge Unavailable', () => {
+  it('does not carry the snapshot verdict (counts drive badges)', () => {
     const counts = {
       'muse::meta::retired': {
         ...entry(['muse']),
@@ -76,17 +76,9 @@ describe('fleetModelsForHarness', () => {
         unavailableReason: 'stale pin',
       },
     };
-    expect(fleetModelsForHarness('muse', counts)).toEqual([
-      {
-        key: 'muse::meta::retired',
-        id: 'retired',
-        provider: 'meta',
-        name: 'retired',
-        fleet: true,
-        available: false,
-        unavailableReason: 'stale pin',
-      },
-    ]);
+    const [option] = fleetModelsForHarness('muse', counts);
+    expect(option).not.toHaveProperty('available');
+    expect(option).not.toHaveProperty('unavailableReason');
   });
 
   it('stays verdict-free for older backends (count badges judge those)', () => {
@@ -94,6 +86,18 @@ describe('fleetModelsForHarness', () => {
     const [option] = fleetModelsForHarness('muse', counts);
     expect(option).not.toHaveProperty('available');
     expect(option).not.toHaveProperty('unavailableReason');
+  });
+});
+
+describe('fleetModelsForHarness strict gate (WP-D)', () => {
+  it('A2: returns 0 entries for non-harness-qualified provider id', () => {
+    expect(
+      fleetModelsForHarness('muse', { 'ollama-cloud-direct::gemma4:31b-cloud': { harnesses: ['muse', 'pi'] } }),
+    ).toEqual([]);
+  });
+
+  it('returns 0 for bare ids even when serving muse', () => {
+    expect(fleetModelsForHarness('muse', { 'deepseek-v4-flash:0731-cloud': { harnesses: ['muse'] } })).toEqual([]);
   });
 });
 

@@ -22,6 +22,7 @@ const ACCENT_PRESETS = [
  * @param {Array} props.models - Flat model catalogue for the picker.
  * @param {Array} props.labeledHarnesses - Harness entries with default labelling.
  * @param {Object} props.fleetCounts - Fleet availability map for count badges.
+ * @param {Array} props.fleetHarnesses - Fleet harness summary for harness count badges.
  * @param {string} props.defaultModel - Draft default model reference.
  * @param {Function} props.onDefaultModelChange - Model change handler.
  * @param {string} props.effectiveHarnessId - Resolved harness id.
@@ -52,6 +53,7 @@ export function ProjectBasicsSection({
   models,
   labeledHarnesses,
   fleetCounts,
+  fleetHarnesses,
   defaultModel,
   onDefaultModelChange,
   effectiveHarnessId,
@@ -109,6 +111,7 @@ export function ProjectBasicsSection({
           models={models}
           harnesses={labeledHarnesses}
           fleetCounts={fleetCounts}
+          fleetHarnesses={fleetHarnesses}
           value={defaultModel}
           onChange={onDefaultModelChange}
           harnessId={effectiveHarnessId}

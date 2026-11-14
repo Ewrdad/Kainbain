@@ -8,7 +8,7 @@ import '@testing-library/jest-dom';
  * MARK: WorkflowCanvas model status tests
  * @description Verifies the stage-model override dropdown against a mocked
  *   /compute/models payload plus a mocked fleet catalogue: runner-count
- *   badges ("2 runners" / "No runners") render on the grouped options of
+ *   badges ("2 runners" / "0 runners") render on the grouped options of
  *   the shared harness-first ModelSelector, the empty-value inherit choice
  *   stays badge-free, and a failed model fetch falls back to the DE-STALED
  *   curated list (ollama-cloud entries only — the removed stale
@@ -141,18 +141,18 @@ test('stage-model dropdown options carry fleet runner-count badges', async () =>
   expect(within(servedOption).getByText('2 runners')).toBeInTheDocument();
 
   const unservedOption = screen.getByRole('option', { name: /Gemini 2\.5 Pro/i });
-  expect(within(unservedOption).getByText('No runners')).toBeInTheDocument();
+  expect(within(unservedOption).getByText('0 runners')).toBeInTheDocument();
 
   // The inherit option stays badge-free.
   const inheritOption = screen.getByRole('option', { name: 'Inherit Project Default' });
   expect(within(inheritOption).queryByText('2 runners')).not.toBeInTheDocument();
-  expect(within(inheritOption).queryByText('No runners')).not.toBeInTheDocument();
+  expect(within(inheritOption).queryByText('0 runners')).not.toBeInTheDocument();
 });
 
 test('failed model fetch falls back to the de-staled curated list (no stale providers)', async () => {
   api.getModels.mockRejectedValue(new Error('api down'));
   // Fleet catalogue down too: fallback entries must render with NO badge
-  // rather than a misleading "No runners".
+  // rather than a misleading "0 runners".
   api.getFleetModelCatalog.mockRejectedValue(new Error('fleet down'));
 
   await openStageModelDropdown();
@@ -171,7 +171,7 @@ test('failed model fetch falls back to the de-staled curated list (no stale prov
     ).toBeInTheDocument();
   }
   expect(screen.queryByText('2 runners')).not.toBeInTheDocument();
-  expect(screen.queryByText('No runners')).not.toBeInTheDocument();
+  expect(screen.queryByText('0 runners')).not.toBeInTheDocument();
 
   // The inherit choice survives the fallback too.
   expect(screen.getByRole('option', { name: 'Inherit Project Default' })).toBeInTheDocument();

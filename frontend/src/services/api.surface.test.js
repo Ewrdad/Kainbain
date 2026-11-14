@@ -36,6 +36,8 @@ describe('api public surface', () => {
       'createProject',
       'createProjectWorkflow',
       'createTask',
+      'deleteFleetCatalogueModel',
+      'deleteFleetQuarantinedModel',
       'deleteProjectWorkflow',
       'deleteReviewComment',
       'deleteSkill',

@@ -341,3 +341,28 @@ a queued command waits for the next heartbeat, and Update now never
 interrupts live work — it applies at the next idle point. Older daemons
 that predate `facts.commands` ignore the channel; Settings shows manual
 guidance instead of a dead button.
+
+## Build identity and stale-code detection
+
+Every heartbeat reports `versions.build` (`{ sha, builtAt, dirty, source }`),
+`versions.bootedAtMs`, and `versions.codeChangedSinceBoot`:
+
+- Packaged Runners carry the release stamp (`source: "package"`): the
+  commit, bundle time, and tree dirtiness recorded by
+  `scripts/package-runner.mjs` at bundle time.
+- Dev Runners booted from a git checkout compute it at boot instead
+  (`source: "checkout"`): `git rev-parse HEAD` plus dirty from
+  `git status --porcelain` scoped to `runner/`. No bundle time exists for
+  a live checkout, so `builtAt` is null. Outside a checkout with no stamp
+  every field is null ("unknown") — never a boot failure.
+- At boot the daemon fingerprints its own `runner/` tree (file count,
+  bytes, newest mtime); each heartbeat rescans cheaply and reports
+  `codeChangedSinceBoot: true` once any file changes underneath the
+  running process (edits, added/removed files). `.git` and
+  `node_modules` are never scanned.
+
+Settings › Runners shows the short sha next to the version badge and warns
+(warn-only, never a block) when the code changed after boot or when the
+build sha differs from the backend commit. Dev checkouts show their build
+info but never warn. Old Runners without build identity show "unknown"
+with no warning, and old backends ignore the new `versions` keys.
