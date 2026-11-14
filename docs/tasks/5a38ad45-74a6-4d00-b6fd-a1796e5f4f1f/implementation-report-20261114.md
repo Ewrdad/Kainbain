@@ -20,6 +20,24 @@
 > reworded to plain language (`// Re-exports: ...`), `pretty-proof.png` was
 > re-committed via the binary-safe path above and re-checked with `xxd`/`file`,
 > and the gates named below all pass on the current tree.
+>
+> **Cleanup-stage re-verification (2026-11-14, final tree):** the working
+> tree once again held a text-corrupted UNSTAGED copy of `pretty-proof.png`
+> (magic `ef bf bd 50 4e 47`, `file` → `data`, 191679 bytes, first and IEND
+> bytes mangled); it was backed up to `/tmp/pretty-proof.png.corrupt-backup`
+> and then discarded in favour of the committed valid PNG, so the tree now
+> matches HEAD byte-for-byte. Evidence on the final tree: `xxd -l 8` →
+> `8950 4e47 0d0a 1a0a`, IEND trailer `ae 42 60 82` intact, `file` →
+> `PNG image data, 1440 x 1600, 8-bit/color RGB, non-interlaced`, 107722
+> bytes, `git status` clean. Gates re-run on this tree:
+> `check:one-function` PASS (822 files scanned), `check:jsdoc-example` PASS,
+> no banned technical terms anywhere in the source diff (only inside quoted
+> failure reports), `check-doc-links` PASS (71 doc files), docs suites
+> 37/37 passed, full unit suites green (api 7180 passed / 1 skipped across
+> 443 files; frontend 4727 passed across 346 files), `lint:api` and
+> `lint:frontend` 0 errors, frontend build PASS with
+> `check-mermaid-bundled: OK` and `mermaid.core` / `mermaid-parser.core`
+> chunks emitted in `dist/assets/`, `depcheck:frontend` clean.
 
 Task `5a38ad45-74a6-4d00-b6fd-a1796e5f4f1f`. This run verified the plan end to
 end on the current tree, re-ran every gate that previously failed, proved the
