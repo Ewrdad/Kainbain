@@ -77,6 +77,34 @@ describe('parseMarkdownBlocks mermaid fences', () => {
     const padded = parseMarkdownBlocks('```  mermaid  \ngraph TD\nA-->B\n```');
     expect(padded[0]).toMatchObject({ type: 'mermaid', code: 'graph TD\nA-->B' });
   });
+
+  it('parses tilde fences exactly like backtick fences (mermaid and code)', () => {
+    const mermaid = parseMarkdownBlocks('before\n~~~mermaid\ngraph TD\nA-->B\n~~~\nafter');
+    expect(mermaid.filter((b) => b.type === 'mermaid')).toHaveLength(1);
+    expect(mermaid.find((b) => b.type === 'mermaid')).toMatchObject({
+      code: 'graph TD\nA-->B',
+    });
+    const code = parseMarkdownBlocks('~~~js\nconst x = 1;\n~~~');
+    expect(code).toHaveLength(1);
+    expect(code[0]).toMatchObject({ type: 'code', language: 'js' });
+  });
+
+  it('only closes a tilde fence with tildes, never with backticks', () => {
+    const blocks = parseMarkdownBlocks('~~~md\n```\n# History\n~~~\nafter');
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]).toMatchObject({
+      type: 'code',
+      language: 'md',
+      code: '```\n# History',
+    });
+    expect(blocks[1]).toMatchObject({ type: 'p' });
+  });
+
+  it('treats an unclosed tilde fence as a code block so source is never lost', () => {
+    const blocks = parseMarkdownBlocks('~~~mermaid\ngraph TD\nA-->B');
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({ type: 'mermaid', code: 'graph TD\nA-->B' });
+  });
 });
 
 describe('MermaidDiagram', () => {

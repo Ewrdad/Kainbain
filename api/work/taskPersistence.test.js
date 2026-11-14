@@ -520,6 +520,37 @@ describe("The Work: markdown log persistence (single storage path)", () => {
 		expect(task.logEntries.map((e) => e.text)).toEqual(["hello"]);
 	});
 
+	it("stops history parsing at # Log Entries when no # Timeline follows it", () => {
+		// A hand-edited or corrupt `# Log Entries` fence may hold a "- " line
+		// (never valid JSON, so logEntries stays empty); it must not leak
+		// into history. The writer always emits single-line JSON, so on
+		// machine-written files both scans agree — this pins the fail-safe
+		// reading of damaged files.
+		const store = stubStore();
+		const content = [
+			"---",
+			"id: task-hl",
+			"---",
+			"",
+			"# Goal",
+			"Goal",
+			"",
+			"# History",
+			"- 2026-09-24T00:00:00.000Z: Created",
+			"",
+			"# Log Entries",
+			"```json",
+			"- this line is not JSON and is not history",
+			"```",
+		].join("\n");
+
+		const task = parseTaskMarkdown(store, content, "task-hl", "proj-1");
+		expect(task.history).toEqual([
+			{ timestamp: "2026-09-24T00:00:00.000Z", action: "Created" },
+		]);
+		expect(task.logEntries).toEqual([]);
+	});
+
 	it("round-trips the startup-recovery priority marker", () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-resume-marker-"));
 		const task = {

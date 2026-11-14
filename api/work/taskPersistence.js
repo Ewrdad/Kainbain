@@ -678,8 +678,9 @@ export function syncTaskReports(taskStore, projectId, task, projectCwd) {
 export function extractGoalSection(body) {
 	if (typeof body !== "string" || !body) return "";
 	const lines = body.split(/\r\n|\r|\n/);
-	const start = lines.findIndex((line) => line.trim() === "# Goal") + 1;
-	if (start <= 0) return "";
+	const goalHeadingIndex = lines.findIndex((line) => line.trim() === "# Goal");
+	if (goalHeadingIndex < 0) return "";
+	const start = goalHeadingIndex + 1;
 	const terminators = new Set(["# History", "# Timeline", "# Process Logs", "# Log Entries"]);
 	let fenceChar = "";
 	let end = lines.length;
@@ -725,8 +726,11 @@ export function parseTaskMarkdown(taskStore, content, taskId, projectId) {
 	// merely contains `# History`-style text never truncates the goal.
 	goal = extractGoalSection(body);
 
+	// Goal and timeline scans above already treat `# Log Entries` as a
+	// section boundary; history must too, or a task.md with no `# Timeline`
+	// section would let the history scan swallow the log-entries block.
 	const historyMatch = body.match(
-		/# History\r?\n([\s\S]*?)(?=(?:\r?\n# (?:Timeline|Process Logs)|\r?\n$|$))/,
+		/# History\r?\n([\s\S]*?)(?=(?:\r?\n# (?:Timeline|Process Logs|Log Entries)|\r?\n$|$))/,
 	);
 	if (historyMatch) {
 		const historyLines = historyMatch[1].split(/\r?\n/);

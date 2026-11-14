@@ -433,7 +433,7 @@ export function parseInlineMarkdown(text, imageContext = {}) {
 
 /***
  * MARK: parseMarkdownBlocks
- * @description Parses multiline markdown content into structured AST blocks (headings, code blocks, lists, tables, quotes, hr, paragraphs). Every block carries 1-based `startLine`/`endLine` source spans (CRLF-normalized) so review UIs can anchor integer-line comments to rendered blocks; lists also expose per-item `itemLines`, tables expose `headerLine`/`rowLines`.
+ * @description Parses multiline markdown content into structured AST blocks (headings, code blocks, lists, tables, quotes, hr, paragraphs). Every block carries 1-based `startLine`/`endLine` source spans (CRLF-normalized) so review UIs can anchor integer-line comments to rendered blocks; lists also expose per-item `itemLines`, tables expose `headerLine`/`rowLines`. Fences open with three or more backticks OR tildes and close only on the same marker character (matching the API-side goal scan in `extractGoalSection`), so `~~~mermaid` and `~~~js` fences render exactly like their backtick twins.
  * @param {string} markdown - The markdown raw string.
  * @returns {Array<Object>} List of parsed block objects.
  * @example parseMarkdownBlocks('# Title\n\nContent') => [{ type: 'h1', text: 'Title', startLine: 1, endLine: 1 }, { type: 'p', text: 'Content', startLine: 3, endLine: 3 }]
@@ -447,16 +447,25 @@ export function parseMarkdownBlocks(markdown) {
   const blocks = [];
   let i = 0;
 
+  // A fence is three or more backticks or tildes at the line start
+  // (after trim). This one helper doubles as the paragraph-loop guard below
+  // so a fence always opens a code block instead of joining a paragraph.
+  const fenceMarkerOf = (textLine) => {
+    const fenceOpen = textLine.trim().match(/^(`{3,}|~{3,})/);
+    return fenceOpen ? fenceOpen[1][0] : null;
+  };
+
   while (i < lines.length) {
     const line = lines[i];
 
-    // 1. Fenced Code Block: ```lang
-    if (line.trim().startsWith('```')) {
+    // 1. Fenced Code Block: ```lang or ~~~lang
+    const openingFenceChar = fenceMarkerOf(line);
+    if (openingFenceChar) {
       const startLine = i + 1;
-      const language = line.trim().replace(/^```/, '').trim();
+      const language = line.trim().replace(/^(`{3,}|~{3,})/, '').trim();
       const codeLines = [];
       i += 1;
-      while (i < lines.length && !lines[i].trim().startsWith('```')) {
+      while (i < lines.length && fenceMarkerOf(lines[i]) !== openingFenceChar) {
         codeLines.push(lines[i]);
         i += 1;
       }
@@ -606,7 +615,7 @@ export function parseMarkdownBlocks(markdown) {
     while (
       i < lines.length &&
       lines[i].trim() &&
-      !lines[i].trim().startsWith('```') &&
+      !fenceMarkerOf(lines[i]) &&
       !lines[i].match(/^(#{1,6})\s+/) &&
       !lines[i].trim().startsWith('>') &&
       !/^\s*[-*+]\s+/.test(lines[i]) &&
