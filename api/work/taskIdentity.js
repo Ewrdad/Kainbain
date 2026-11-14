@@ -32,8 +32,8 @@ export function _sanitizeTaskTitle(raw) {
  *   `maxTitleLength` (60, matching the historical `goal.slice(0, 60)` cap).
  *   Returns "" for empty or non-string input so callers can layer their own
  *   fallback (e.g. `_sanitizeTaskTitle`'s "Untitled task").
- * @example deriveTaskTitleFromGoal({ goal: '# Fix it\\n\\nbody text' }) => '# Fix it'
- * @example deriveTaskTitleFromGoal({ goal: 'a\\r\\nb' }) => 'a'
+ * @example deriveTaskTitleFromGoal({ goal: '# Fix it\n\nbody text' }) => '# Fix it'
+ * @example deriveTaskTitleFromGoal({ goal: 'a\r\nb' }) => 'a'
  * @example deriveTaskTitleFromGoal({ goal: null }) => ''
  * @param {Object} [args]
  * @param {string} [args.goal] - Raw goal text (may be multi-line markdown).

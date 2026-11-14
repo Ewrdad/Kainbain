@@ -76,11 +76,16 @@ Two deliverables, per the brief:
 
 ## Survey record (SURVEY.md) and plan assumptions
 
-`SURVEY.md` in this folder contains 6 grill questions with `"answers": {}` —
-**the survey was generated but never answered**. The plan proceeds on the
-assumptions below (each maps 1:1 to a question); if the human answers the survey
-before implementation, the answers override the assumptions without changing the
-plan's shape.
+`SURVEY.md` in this folder contains 6 grill questions. **Update (2026-11-14):
+the survey HAS since been answered** — the answers select "Full neat document
+with pictures or diagrams" (q1, with a note that at minimum tasks should use
+newlines/headings/spacing, plus bullets/diagrams/screenshots for credit),
+all four feature options (q2), agent-uploads-picture-inline (q3), "Always
+write the file first, then send it" (q4), "Yes, but small tweaks are allowed"
+(q5), and "old tasks must keep working" (q6). The assumptions below remain
+accurate under those answers (each maps 1:1 to a question); where an answer
+is stricter than the assumption it confirms the strict reading (notably q4:
+Stage 1 drafting is mandatory, never skipped).
 
 | # | Question | Assumption adopted |
 |---|----------|-------------------|
@@ -274,8 +279,16 @@ visual proof uses isolated headless runners, existing mock fixtures, and
 
 ## Non-goals
 
-- No change to title derivation, `blockedBy` validation, idempotency, dedupe,
+- No change to `blockedBy` validation, idempotency, dedupe,
   caps, `execute` default, or recursion guard.
+- **Approved exception — title derivation (2026-11-14, per survey q5 "small
+  tweaks are allowed"):** `goal.slice(0, 60)` was replaced by
+  `deriveTaskTitleFromGoal` (`api/work/taskIdentity.js`: goal's FIRST line
+  only, capped at the same 60 chars, CRLF/CR-safe). Identical for every
+  legacy single-line goal; only multi-line markdown goals change (they now
+  take the `# title` line instead of a mid-document slice that leaked body
+  text and raw newlines into card titles). Pinned by
+  `api/work/taskIdentity.test.js` and `api/work/taskMarkdownGoal.test.js`.
 - No migration or re-formatting of existing tasks.
 - No new image storage backend (branch-checkout flapping stays covered by the
   existing retry seam, per `docs/task-images.md`).

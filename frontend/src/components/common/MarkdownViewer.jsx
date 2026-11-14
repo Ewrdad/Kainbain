@@ -185,7 +185,11 @@ async function loadMermaid() {
  *   falling back to a syntax-highlighted source block when rendering fails
  *   (broken diagram, missing library, unsupported DOM, etc.) so the source is
  *   never lost — a bad diagram degrades to readable code, never a blank hole.
+ *   Failures also log a one-line warning (no diagram source in the log line,
+ *   so task text never leaks into logs) for production triage.
  * @example <MermaidDiagram code="graph TD\nA-->B" />
+ * @param {Object} props - The labelled inputs for this diagram.
+ * @param {string} [props.code=''] - The mermaid diagram source from the fence.
  ***/
 export function MermaidDiagram({ code = '' }) {
   const [svg, setSvg] = useState(null);
@@ -205,13 +209,17 @@ export function MermaidDiagram({ code = '' }) {
         const rendered = await mermaid.render(mermaidRenderId, code);
         const out = rendered?.svg || rendered;
         if (cancelled) return;
-        if (typeof out === 'string' && out.trim()) {
-          setSvg(out);
-        } else {
+        if (typeof out !== 'string' || !out.trim()) {
+          throw new Error('mermaid rendered empty output');
+        }
+        setSvg(out);
+      } catch {
+        if (!cancelled) {
+          // Fail LOUD in the log but soft in the UI: operators grepping logs
+          // can see a diagram degraded, while readers still get the source.
+          logger.warn('Mermaid diagram failed to render; showing source block instead.');
           setFailed(true);
         }
-      } catch {
-        if (!cancelled) setFailed(true);
       }
     })();
     return () => {
