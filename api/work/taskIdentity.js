@@ -108,6 +108,13 @@ export function resolveTaskBody({ body, goal } = {}) {
 	return "Untitled task";
 }
 
+// Board lists fetch every task on load: a long-lived task can accumulate
+// hundreds of report entries, so summaries carry only the recent few.
+// `body` mirrors `goal`, and `reliabilitySamples`/`reviewBaseline` serve
+// api-side or detail views — none of them ride the list (detail views
+// hydrate the full task through `GET /tasks/:id` on open).
+const SUMMARY_REPORT_LIMIT = 5;
+
 /***
  * MARK: toTaskSummary
  * @description Projects one task onto its board-list shape: everything the
@@ -119,17 +126,10 @@ export function resolveTaskBody({ body, goal } = {}) {
  *   stage) so counts and links still resolve, capped at the 5 most
  *   recent with the total in `reportCount`; detail views hydrate the
  *   full task through `GET /tasks/:id` on open.
- * @example toTaskSummary(task) => { id: 'task-1', reports: [{ path, … }], … }
+ * @example toTaskSummary({ id: 't-1', reports: [{ path: 'a.md', content: 'x' }] }) => { id: 't-1', reports: [{ path: 'a.md' }], reportCount: 1 }
  * @param {Object} [task] - The full task record (never mutated).
  * @returns {Object} The summary projection ({} when task is missing).
  ***/
-// Board lists fetch every task on load: a long-lived task can accumulate
-// hundreds of report entries, so summaries carry only the recent few.
-// `body` mirrors `goal`, and `reliabilitySamples`/`reviewBaseline` serve
-// api-side or detail views — none of them ride the list (detail views
-// hydrate the full task through `GET /tasks/:id` on open).
-const SUMMARY_REPORT_LIMIT = 5;
-
 export function toTaskSummary(task) {
 	if (!task || typeof task !== "object") return {};
 	const {
