@@ -45,12 +45,27 @@ POST /tasks
   "projectId": "<projectId>",     // optional; defaults to active project
   "title": "Implement health endpoint",
   "goal": "Add GET /health returning JSON status.",
-  "execute": true                  // true = dispatch to AI queue now
+  "execute": true,                 // true = dispatch to AI queue now
+  "content": "# Task Details\n\nHere you can write **rich markdown** including code blocks, mermaid diagrams, and images.\n\n```javascript\nconsole.log('Hello, world!');\n```\n\n```mermaid\nflowchart TD; A-->B;\n```\n\n![Diagram](./diagram.png)"
 }
 ```
 
+- `content` is an optional markdown string. The API accepts any valid Markdown, allowing code blocks, mermaid diagrams, and image references. These are rendered in the UI and in exported task documentation.
 - Use `idempotencyKey` to make creation safe to retry.
-- To review a task's prompt without running it: `POST /tasks/preview`.
+- To preview a task's prompt without running it: `POST /tasks/preview`.
+
+### Recommended task file layout
+
+When creating complex tasks, the skill now recommends writing each task's description as a separate Markdown file in its dedicated directory, e.g.:
+```
+/tasks/<task-id>/description.md
+```
+Include the same markdown content you would pass via the `content` field. After creating the task with minimal metadata (`title`, `goal`), upload the markdown file using the `POST /tasks/:id/attach` endpoint (or embed it in the initial `content`). This two‑stage approach improves readability for agents and humans alike and keeps the UI tidy.
+
+- Step 1: `POST /tasks` with `title` and `goal` (no `content`).
+- Step 2: `POST /tasks/:id/attach` with the Markdown file or send the `content` field referencing the file path.
+- The UI will render the attached Markdown as the task's main body.
+
 
 ## Viewing tasks
 
