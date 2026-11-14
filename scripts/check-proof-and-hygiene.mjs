@@ -15,15 +15,21 @@
  *   unless the exact path is allowlisted in
  *   `scripts/allowlists/repo-root-files.json`.
  *   Reads actual bytes from disk (worktree + tracked set), so corruption
- *   introduced before staging is still caught. Unknown extensions are
- *   skipped, never failed: this is a corruption detector, not file-type
- *   police. Dependency-free (Node stdlib only).
+ *   introduced before staging is still caught. Unknown extensions and files
+ *   that vanish mid-scan are skipped, never failed: this is a corruption
+ *   detector, not file-type police — but an UNREADABLE proof file fails, so
+ *   an unverifiable file can never pass. Symlinks are followed (link path,
+ *   target bytes); broken links are skipped. Dependency-free (Node stdlib
+ *   only). An invocation that cannot run (bad flag, stray argument, missing
+ *   `--root` directory) exits 2 — never a false PASS.
  *   Pre-existing violations owned by other tasks (corrupt on origin/main
  *   with no valid source to restore) are recorded in
  *   `scripts/baselines/proof-hygiene-known-violations.json` — the repo's
  *   established baseline pattern (cf. jsdoc-example-missing.json) — so the
  *   gate stays green while still failing on any NEW violation. `--strict`
  *   fails on baselined entries too (acceptance rehearsal, detector proof).
+ *   A passing run names baseline entries that matched nothing, so healed
+ *   or deleted files get pruned instead of rotting the baseline.
  * @example node scripts/check-proof-and-hygiene.mjs (exit 0 on a clean tree)
  * @example node scripts/check-proof-and-hygiene.mjs --root /tmp/fixture-tree
  * @example node scripts/check-proof-and-hygiene.mjs --strict
@@ -75,14 +81,19 @@ export function magicForExtension(ext) {
 /***
  * MARK: toPosix
  * @description Normalizes a repo-relative path to POSIX separators so the
- *   matchers behave identically on Windows and POSIX checkouts.
+ *   matchers behave identically on Windows and POSIX checkouts. Also strips
+ *   leading `./` segments: without this, `./rt.mjs` carries a directory part
+ *   and would slip past the root-scratch rule while `rt.mjs` fails it.
  * @example toPosix("docs\\tasks\\x.png") => "docs/tasks/x.png"
+ * @example toPosix("./rt.mjs") => "rt.mjs"
  * @param {string} relPath - Repo-relative path in any separator style.
  * @returns {string} POSIX-style relative path.
  ***/
 export function toPosix(relPath) {
 	if (typeof relPath !== "string") return "";
-	return relPath.split(/[\\/]/).join("/");
+	let posix = relPath.split(/[\\/]/).join("/");
+	while (posix.startsWith("./")) posix = posix.slice(2);
+	return posix;
 }
 
 /***
@@ -101,7 +112,7 @@ export function isProofPath(relPath) {
 	const posix = toPosix(relPath);
 	const ext = path.posix.extname(posix).toLowerCase();
 	if (!IMAGE_EXTS.has(ext)) return false;
-	if (posix === "docs/tasks" || posix.startsWith("docs/tasks/")) return true;
+	if (posix.startsWith("docs/tasks/")) return true;
 	const base = path.posix.basename(posix).toLowerCase();
 	if (base.startsWith("screenshot")) return true;
 	if (base.includes("-proof.")) return true;
@@ -148,26 +159,33 @@ export function isRootScratch(relPath, allowlist = []) {
 /***
  * MARK: matchScratchPattern
  * @description Names the first SCRATCH_PATTERNS entry a root basename
- *   matches, for failure messages. Returns null when nothing matches.
+ *   matches, for failure messages. Lowercases its input like isRootScratch
+ *   does, so every flagged file gets a pattern name (no `null` in messages).
+ *   Returns null when nothing matches.
  * @example matchScratchPattern("rt.mjs") => "rt.*"
- * @param {string} base - Lowercased root basename.
+ * @example matchScratchPattern("RT.MJS") => "rt.*"
+ * @param {string} base - Root basename in any casing.
  * @returns {string|null} Matching pattern name or null.
  ***/
 export function matchScratchPattern(base) {
 	if (typeof base !== "string" || base.length === 0) return null;
-	const entry = SCRATCH_PATTERNS.find((pattern) => pattern.test(base));
+	const lowered = base.toLowerCase();
+	const entry = SCRATCH_PATTERNS.find((pattern) => pattern.test(lowered));
 	return entry ? entry.name : null;
 }
 
 /***
  * MARK: checkFileMagic
  * @description Reads the leading bytes of a file and compares them against
- *   the expected magic for its extension. Missing/unreadable files and
- *   unknown extensions return `{ ok: true, skipped }` — the check never
- *   fails closed on what it does not understand.
+ *   the expected magic for its extension. Unknown extensions and files that
+ *   vanished between listing and reading (ENOENT) return
+ *   `{ ok: true, skipped }` — the check never fails on what it does not
+ *   understand or can no longer see. Any other read error (permission
+ *   denied, EISDIR) FAILS with `readError`: an unverifiable proof file must
+ *   not pass, or chmodding a corrupt file would evade the gate.
  * @example checkFileMagic("/repo/docs/tasks/x/ok.png") => { ok: true, ... }
  * @param {string} absPath - Absolute file path.
- * @returns {{ ok: boolean, expected: string|null, actual: string|null, skipped?: string }}
+ * @returns {{ ok: boolean, expected: string|null, actual: string|null, skipped?: string, readError?: string }}
  ***/
 export function checkFileMagic(absPath) {
 	const ext = path.extname(absPath).toLowerCase();
@@ -186,8 +204,12 @@ export function checkFileMagic(absPath) {
 		} finally {
 			fs.closeSync(fd);
 		}
-	} catch {
-		return { ok: true, expected, actual: null, skipped: "unreadable or missing file" };
+	} catch (err) {
+		if (err && err.code === "ENOENT") {
+			return { ok: true, expected, actual: null, skipped: "file vanished between listing and reading" };
+		}
+		const reason = err && err.code ? `${err.code}: ${absPath}` : `read failed: ${absPath}`;
+		return { ok: false, expected, actual: null, readError: reason };
 	}
 	if (ext === ".webp") {
 		const actual = head.toString("hex");
@@ -204,18 +226,30 @@ export function checkFileMagic(absPath) {
 /***
  * MARK: formatFailure
  * @description One-line violation text naming the file, expected vs actual
- *   magic (or the matched scratch pattern), and the concrete remedy.
+ *   magic (or the matched scratch pattern), and the concrete remedy. Never
+ *   prints a bare null/undefined: an empty head and an unreadable file get
+ *   distinct placeholders, and a missing pattern name gets a defensive label.
  * @example formatFailure({ kind: "magic", relPath: "docs/tasks/x/p.png", expected: "89504e47", actual: "efbfbd50" })
- * @param {{ kind: "magic"|"scratch", relPath: string, expected?: string, actual?: string, pattern?: string }} violation
+ * @param {{ kind: "magic"|"scratch", relPath: string, expected?: string, actual?: string, readError?: string, pattern?: string }} violation
  * @returns {string} Single-line failure message.
  ***/
 export function formatFailure(violation) {
 	if (violation.kind === "magic") {
-		const seen = typeof violation.actual === "string" && violation.actual.length > 0 ? violation.actual : "(empty or unreadable head)";
+		let seen;
+		if (typeof violation.actual === "string" && violation.actual.length > 0) {
+			seen = violation.actual;
+		} else if (typeof violation.readError === "string" && violation.readError.length > 0) {
+			seen = `(unreadable: ${violation.readError})`;
+		} else {
+			seen = "(empty or unreadable head)";
+		}
 		return `${violation.relPath}: expected magic ${violation.expected}, found ${seen} `
 			+ `(binary file was rewritten through a text path; restore binary-safely via git checkout <ref> -- ${violation.relPath}, then re-verify with xxd -l 8 and file)`;
 	}
-	return `${violation.relPath}: root scratch file matching ${violation.pattern} `
+	const pattern = typeof violation.pattern === "string" && violation.pattern.length > 0
+		? violation.pattern
+		: "an unnamed scratch pattern";
+	return `${violation.relPath}: root scratch file matching ${pattern} `
 		+ `(move to scratch/ (gitignored) or /tmp, or delete; to keep it at the root, add the exact path to scripts/allowlists/repo-root-files.json)`;
 }
 
@@ -277,8 +311,11 @@ export function loadBaseline(root = REPO_ROOT) {
  * MARK: matchBaseline
  * @description Finds the baseline entry covering a violation: same path, and
  *   the recorded expected/actual magic still matches the observed bytes.
- *   Returns null when the violation is new or its bytes changed.
+ *   A null recorded side is no constraint (this is how a scratch entry with
+ *   no magic bytes covers a scratch violation at its path). Returns null
+ *   when the violation is new or its bytes changed.
  * @example matchBaseline({ relPath: "a.png", expected: "89504e47", actual: "efbfbd" }, baseline) => entry|null
+ * @example matchBaseline({ relPath: "rt.mjs" }, [{ relPath: "rt.mjs", expected: null, actual: null }]) => entry
  * @param {{ relPath: string, expected?: string, actual?: string }} violation
  * @param {Array} baseline - Entries from loadBaseline().
  * @returns {Object|null} Matching baseline entry or null.
@@ -294,15 +331,37 @@ export function matchBaseline(violation, baseline) {
 /***
  * MARK: collectCandidateFiles
  * @description Lists worktree files in scope: every file under `docs/` plus
- *   every depth-1 entry at the repo root. Never descends into build output,
- *   dependencies, or VCS metadata.
+ *   every depth-1 entry at the repo root. Follows symlinks to files and
+ *   directories (a symlinked proof image is checked by its link path against
+ *   its target bytes); broken links are skipped — there are no bytes to
+ *   verify. Never descends into build output, dependencies, or VCS metadata,
+ *   and never revisits a directory it already walked (symlink loops end).
  * @example collectCandidateFiles("/repo") => [{ relPath, absPath }, ...]
  * @param {string} root - Repo root to scan.
  * @returns {Array<{ relPath: string, absPath: string }>} Candidate files.
  ***/
 export function collectCandidateFiles(root) {
 	const out = [];
+	const seenDirectories = new Set();
+	const resolveEntry = (full, entry) => {
+		if (!entry.isSymbolicLink()) return { isDirectory: entry.isDirectory(), isFile: entry.isFile() };
+		let target;
+		try {
+			target = fs.statSync(full);
+		} catch {
+			return { isDirectory: false, isFile: false };
+		}
+		return { isDirectory: target.isDirectory(), isFile: target.isFile() };
+	};
 	const walk = (dir) => {
+		let realDir;
+		try {
+			realDir = fs.realpathSync(dir);
+		} catch {
+			return;
+		}
+		if (seenDirectories.has(realDir)) return;
+		seenDirectories.add(realDir);
 		let entries;
 		try {
 			entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -312,9 +371,10 @@ export function collectCandidateFiles(root) {
 		for (const entry of entries) {
 			if (entry.name === "node_modules" || entry.name === ".git" || entry.name === "dist") continue;
 			const full = path.join(dir, entry.name);
-			if (entry.isDirectory()) {
+			const { isDirectory, isFile } = resolveEntry(full, entry);
+			if (isDirectory) {
 				walk(full);
-			} else if (entry.isFile()) {
+			} else if (isFile) {
 				out.push({ relPath: path.relative(root, full), absPath: full });
 			}
 		}
@@ -327,8 +387,8 @@ export function collectCandidateFiles(root) {
 		rootEntries = [];
 	}
 	for (const entry of rootEntries) {
-		if (!entry.isFile()) continue;
 		const full = path.join(root, entry.name);
+		if (!resolveEntry(full, entry).isFile) continue;
 		out.push({ relPath: entry.name, absPath: full });
 	}
 	return out;
@@ -379,6 +439,7 @@ export function checkTree({ root = REPO_ROOT, allowlist = loadAllowlist(root), b
 					relPath: posix,
 					expected: result.expected,
 					actual: result.actual,
+					readError: result.readError,
 				});
 			}
 		}
@@ -405,7 +466,11 @@ export function formatKnown(violation) {
  *   summary and exits 0 when only baselined (pre-existing, recorded) issues
  *   remain. `--root <dir>` points the scan at a fixture tree (used by tests,
  *   where no baseline file exists so every violation fails); `--strict`
- *   fails on baselined entries too; `--help` prints usage.
+ *   fails on baselined entries too; `--help` prints usage. Unknown flags,
+ *   positional arguments, and a missing or non-directory `--root` exit 2 —
+ *   a scan that cannot run must never report a false PASS. On a passing run
+ *   with baseline entries that matched nothing, prints a prune note naming
+ *   them (healed or deleted files leave stale entries behind).
  * @example main(["node", "check-proof-and-hygiene.mjs", "--root", "/tmp/fix"])
  * @param {string[]} [argv] - Process argv; defaults to process.argv.
  * @returns {number} Process exit code (0 clean, 1 violations, 2 usage error).
@@ -416,20 +481,16 @@ export function main(argv = process.argv) {
 		console.log("Usage: node scripts/check-proof-and-hygiene.mjs [--root <dir>] [--strict]");
 		console.log("Checks proof-image magic bytes and rejects repo-root scratch files.");
 		console.log("  --strict  fail on baselined (pre-existing) violations too.");
+		console.log("Exit codes: exit 0 clean (or only baselined issues), exit 1 violations found, exit 2 usage error.");
 		return 0;
 	}
-	const knownFlags = new Set(["--strict", "--root"]);
-	for (const arg of args) {
-		if (arg.startsWith("-") && !knownFlags.has(arg) && !arg.startsWith("--root=")) {
-			console.error(`error: unknown flag ${arg} (usage: [--root <dir>] [--strict])`);
-			return 2;
-		}
-	}
-	const strict = args.includes("--strict");
-	let root = REPO_ROOT;
+	let strict = false;
 	const rootValues = [];
 	for (let i = 0; i < args.length; i++) {
-		if (args[i] === "--root") {
+		const arg = args[i];
+		if (arg === "--strict") {
+			strict = true;
+		} else if (arg === "--root") {
 			const value = args[i + 1];
 			if (!value || value.startsWith("-")) {
 				console.error("error: --root requires a directory argument");
@@ -437,17 +498,33 @@ export function main(argv = process.argv) {
 			}
 			rootValues.push(value);
 			i++;
-		} else if (args[i].startsWith("--root=")) {
-			const value = args[i].slice("--root=".length);
+		} else if (arg.startsWith("--root=")) {
+			const value = arg.slice("--root=".length);
 			if (!value) {
 				console.error("error: --root requires a directory argument");
 				return 2;
 			}
 			rootValues.push(value);
+		} else if (arg.startsWith("-")) {
+			console.error(`error: unknown flag ${arg} (usage: [--root <dir>] [--strict])`);
+			return 2;
+		} else {
+			console.error(`error: unexpected argument ${arg} (usage: [--root <dir>] [--strict])`);
+			return 2;
 		}
 	}
+	let root = REPO_ROOT;
 	if (rootValues.length > 0) {
 		root = path.resolve(rootValues[rootValues.length - 1]);
+	}
+	try {
+		if (!fs.statSync(root).isDirectory()) {
+			console.error(`error: --root ${root} is not a readable directory`);
+			return 2;
+		}
+	} catch {
+		console.error(`error: --root ${root} is not a readable directory`);
+		return 2;
 	}
 	const allowlist = loadAllowlist(root);
 	const baseline = loadBaseline(root);
@@ -470,6 +547,15 @@ export function main(argv = process.argv) {
 		}
 	} else {
 		console.log("✓ proof artifacts and repo-root hygiene OK.");
+	}
+	const matchedBaselinePaths = new Set(knownViolations.map((violation) => violation.relPath));
+	const unusedBaseline = baseline.filter((entry) => !matchedBaselinePaths.has(entry.relPath));
+	if (unusedBaseline.length > 0) {
+		const plural = unusedBaseline.length === 1 ? "entry" : "entries";
+		console.log(`note: ${unusedBaseline.length} baseline ${plural} matched no current violation (healed or deleted? prune from scripts/baselines/proof-hygiene-known-violations.json):`);
+		for (const entry of unusedBaseline) {
+			console.log(`  ${entry.relPath}`);
+		}
 	}
 	return 0;
 }

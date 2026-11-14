@@ -88,6 +88,12 @@ describe("toPosix", () => {
 		assert.equal(toPosix(undefined), "");
 		assert.equal(toPosix(null), "");
 	});
+
+	it("strips leading ./ segments so ./-prefixed paths match the same rules", () => {
+		assert.equal(toPosix("./rt.mjs"), "rt.mjs");
+		assert.equal(toPosix("././docs/tasks/abc/p.png"), "docs/tasks/abc/p.png");
+		assert.equal(toPosix(".\\rt.mjs"), "rt.mjs");
+	});
 });
 
 describe("isProofPath", () => {
@@ -109,6 +115,10 @@ describe("isProofPath", () => {
 	it("ignores images that are not proof artifacts", () => {
 		assert.equal(isProofPath("api/work/icon.png"), false);
 		assert.equal(isProofPath("frontend/src/logo.webp"), false);
+	});
+
+	it("matches ./-prefixed proof paths the same as bare ones", () => {
+		assert.equal(isProofPath("./docs/tasks/abc/pretty-proof.png"), true);
 	});
 });
 
@@ -148,6 +158,10 @@ describe("isRootScratch", () => {
 		assert.equal(isProofPath("docs\\tasks\\abc\\pretty-proof.png"), true);
 		assert.equal(isRootScratch("docs\\tasks\\x.png", []), false);
 	});
+
+	it("flags ./-prefixed root scratch names the same as bare ones", () => {
+		assert.equal(isRootScratch("./rt.mjs", []), true);
+	});
 });
 
 describe("matchScratchPattern", () => {
@@ -158,6 +172,11 @@ describe("matchScratchPattern", () => {
 
 	it("returns null when nothing matches", () => {
 		assert.equal(matchScratchPattern("package.json"), null);
+	});
+
+	it("matches case-insensitively so every isRootScratch hit has a pattern name", () => {
+		assert.equal(matchScratchPattern("RT.MJS"), "rt.*");
+		assert.equal(matchScratchPattern("DEBUG.LOG"), "*.log");
 	});
 });
 
@@ -246,6 +265,31 @@ describe("checkFileMagic", () => {
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});
+
+	it("fails an unreadable proof path instead of passing it (only a missing file skips)", () => {
+		// A directory carrying a proof-image name reads as EISDIR on every
+		// platform (even for root, where chmod 000 stays readable): the
+		// same error a permission-denied proof file produces.
+		const root = makeFixtureTree({ "placeholder.txt": Buffer.from("x\n") });
+		try {
+			const dirAsPng = path.join(root, "bad.png");
+			fs.mkdirSync(dirAsPng);
+			const result = checkFileMagic(dirAsPng);
+			assert.equal(result.ok, false);
+			assert.equal(result.expected, "89504e47");
+			assert.equal(result.actual, null);
+			assert.ok(result.readError, "expected a read-error reason");
+			assert.match(formatFailure({
+				kind: "magic",
+				relPath: "docs/tasks/x/bad.png",
+				expected: result.expected,
+				actual: result.actual,
+				readError: result.readError,
+			}), /expected magic 89504e47, found \(unreadable: /);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
 });
 
 describe("formatFailure", () => {
@@ -267,6 +311,12 @@ describe("formatFailure", () => {
 		assert.match(text, /rt\.\*/);
 		assert.match(text, /repo-root-files\.json/);
 	});
+
+	it("never prints a bare null/undefined pattern name", () => {
+		const text = formatFailure({ kind: "scratch", relPath: "rt.mjs" });
+		assert.match(text, /rt\.mjs/);
+		assert.doesNotMatch(text, /null|undefined/);
+	});
 });
 
 describe("loadAllowlist", () => {
@@ -277,6 +327,15 @@ describe("loadAllowlist", () => {
 
 	it("degrades to an empty list outside a repo checkout", () => {
 		assert.deepEqual(loadAllowlist(path.join(os.tmpdir(), "proof-hygiene-nope")), []);
+	});
+
+	it("degrades strict (empty) on corrupt JSON instead of failing the gate on its own config", () => {
+		const root = makeFixtureTree({ "scripts/allowlists/repo-root-files.json": Buffer.from("{oops") });
+		try {
+			assert.deepEqual(loadAllowlist(root), []);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
 	});
 });
 
@@ -320,6 +379,53 @@ describe("checkTree acceptance scenarios", () => {
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});
+
+	it("follows a symlinked proof file to its target bytes", () => {
+		const root = makeFixtureTree({ "docs/tasks/demo/target.bin": CORRUPT_PNG });
+		try {
+			fs.symlinkSync("target.bin", path.join(root, "docs/tasks/demo/link-proof.png"));
+			const { magicViolations } = checkTree({ root, allowlist: [], baseline: [] });
+			assert.equal(magicViolations.length, 1);
+			assert.equal(magicViolations[0].relPath, "docs/tasks/demo/link-proof.png");
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("passes a symlinked proof file with valid target bytes", () => {
+		const root = makeFixtureTree({ "docs/tasks/demo/target.bin": VALID_PNG });
+		try {
+			fs.symlinkSync("target.bin", path.join(root, "docs/tasks/demo/link-proof.png"));
+			const { magicViolations, scratchViolations } = checkTree({ root, allowlist: [], baseline: [] });
+			assert.deepEqual(magicViolations, []);
+			assert.deepEqual(scratchViolations, []);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("skips a broken proof symlink (nothing to read) instead of failing", () => {
+		const root = makeFixtureTree({ "docs/tasks/demo/placeholder.txt": Buffer.from("x\n") });
+		try {
+			fs.symlinkSync("missing-target.png", path.join(root, "docs/tasks/demo/dangling-proof.png"));
+			const { magicViolations } = checkTree({ root, allowlist: [], baseline: [] });
+			assert.deepEqual(magicViolations, []);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("flags a symlinked scratch file at the root", () => {
+		const root = makeFixtureTree({ "real-target.txt": Buffer.from("x\n") });
+		try {
+			fs.symlinkSync("real-target.txt", path.join(root, "rt.mjs"));
+			const { scratchViolations } = checkTree({ root, allowlist: [], baseline: [] });
+			assert.equal(scratchViolations.length, 1);
+			assert.equal(scratchViolations[0].relPath, "rt.mjs");
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
 });
 
 describe("baseline", () => {
@@ -337,6 +443,28 @@ describe("baseline", () => {
 
 	it("degrades to an empty list outside a repo checkout", () => {
 		assert.deepEqual(loadBaseline(path.join(os.tmpdir(), "proof-hygiene-nope")), []);
+	});
+
+	it("degrades strict (empty) on corrupt JSON so baselined damage re-fails loudly", () => {
+		const root = makeFixtureTree({ "scripts/baselines/proof-hygiene-known-violations.json": Buffer.from("{oops") });
+		try {
+			assert.deepEqual(loadBaseline(root), []);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("covers a scratch violation whose baseline entry carries no magic bytes", () => {
+		const root = makeFixtureTree({ "rt.mjs": Buffer.from("x\n") });
+		try {
+			const baseline = [{ relPath: "rt.mjs", expected: null, actual: null, note: "kept intentionally" }];
+			const result = checkTree({ root, allowlist: [], baseline });
+			assert.deepEqual(result.scratchViolations, []);
+			assert.equal(result.knownViolations.length, 1);
+			assert.equal(result.knownViolations[0].relPath, "rt.mjs");
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
 	});
 
 	it("covers a violation only while its bytes still match the recording", () => {
@@ -454,6 +582,63 @@ describe("CLI exit contract", () => {
 	it("rejects main() argument errors with exit 2 without touching the filesystem", () => {
 		assert.equal(main(["node", "check-proof-and-hygiene.mjs", "--nope"]), 2);
 		assert.equal(main(["node", "check-proof-and-hygiene.mjs", "--root"]), 2);
+		assert.equal(main(["node", "check-proof-and-hygiene.mjs", "extra-positional"]), 2);
+		assert.equal(main(["node", "check-proof-and-hygiene.mjs", "--root", path.join(os.tmpdir(), "proof-hygiene-nope")]), 2);
+	});
+
+	it("exits 2 on a positional argument instead of silently ignoring it", () => {
+		const root = makeFixtureTree({ "package.json": Buffer.from("{}\n") });
+		try {
+			const result = spawnSync(process.execPath, [CHECKER, "--root", root, "extra"], { encoding: "utf8" });
+			assert.equal(result.status, 2);
+			assert.match(result.stderr, /unexpected argument/);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("exits 2 on a missing or non-directory --root instead of a false PASS", () => {
+		const root = makeFixtureTree({ "package.json": Buffer.from("{}\n") });
+		try {
+			const missing = spawnSync(process.execPath, [CHECKER, "--root", path.join(root, "does-not-exist")], { encoding: "utf8" });
+			assert.equal(missing.status, 2);
+			assert.match(missing.stderr, /not a readable directory/);
+			const fileRoot = spawnSync(process.execPath, [CHECKER, "--root", path.join(root, "package.json")], { encoding: "utf8" });
+			assert.equal(fileRoot.status, 2);
+			assert.match(fileRoot.stderr, /not a readable directory/);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("documents the exit-code contract in --help", () => {
+		const result = spawnSync(process.execPath, [CHECKER, "--help"], { encoding: "utf8" });
+		assert.equal(result.status, 0);
+		assert.match(result.stdout, /exit 0/);
+		assert.match(result.stdout, /exit 1/);
+		assert.match(result.stdout, /exit 2/);
+	});
+
+	it("notes baseline entries that matched nothing so healed files get pruned", () => {
+		const root = makeFixtureTree({
+			"docs/tasks/demo/ok.png": VALID_PNG,
+			"scripts/baselines/proof-hygiene-known-violations.json": Buffer.from(JSON.stringify({
+				violations: [{
+					relPath: "docs/tasks/demo/gone.png",
+					expected: "89504e47",
+					actual: "efbfbd504e470d0a",
+					note: "healed or deleted since",
+				}],
+			})),
+		});
+		try {
+			const result = spawnSync(process.execPath, [CHECKER, "--root", root], { encoding: "utf8" });
+			assert.equal(result.status, 0);
+			assert.match(result.stdout, /baseline entr(y|ies) matched no current violation/);
+			assert.match(result.stdout, /gone\.png/);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
 	});
 
 	it("exits 0 by default but 1 under --strict on a baselined violation", () => {

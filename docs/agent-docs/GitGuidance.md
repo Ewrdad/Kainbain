@@ -39,8 +39,10 @@
   outputs in the stage report next to the claim.
 - Enforcement: `npm run check:proof-hygiene` (scripts/check-proof-and-hygiene.mjs)
   fails any proof image whose magic bytes do not match its extension, naming
-  the file with expected vs actual magic and the remedy. Pre-existing damage
-  owned by other tasks lives in
+  the file with expected vs actual magic and the remedy. It runs automatically
+  in `npm test` (the `Proof Hygiene` gate branch), so a corrupt proof or stray
+  root scratch file fails the gate on the next automated stage. Pre-existing
+  damage owned by other tasks lives in
   `scripts/baselines/proof-hygiene-known-violations.json` (same-path,
   same-bytes only; use `--strict` to fail on those too).
 
