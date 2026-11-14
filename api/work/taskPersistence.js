@@ -119,8 +119,11 @@ export function saveTaskMarkdown(taskStore, projectCwd, task) {
 		const bodySections = [
 			frontmatter,
 			"",
-			"# Goal",
+"# Goal",
 			task.goal || task.title || "Untitled task",
+			"",
+			"# Details",
+			task.body && task.body.trim() ? task.body : "- (no detailed markdown provided)",
 			"",
 			"# History",
 			historyMarkdown || "- (no history recorded)",
