@@ -3,7 +3,13 @@
 WP-G ticket: `6ba7e727-8b7a-4c46-ad4a-960bcd099bcb` (decision-gated on WP-F;
 blocked by this task).
 
-## Verdict: WP-G NOT READY — do not start it
+
+## Addendum 2026-11-14 (later run)
+
+- Verdict: still **NOT READY** (self-host safety + server2 Bundle B pending).
+- Progress: `local-bravo` now reports healthy discovery + build identity; `local-alpha` service/env pin-clean but process still needs an operator safewindow restart; `server2-alpha` pi leg dependency staged but Bundle B reinstall+restart still required.
+- §6.2 PASS (purge complete/verified absent); suites PASS; WP-E guard PASS.
+- WP-G must continue waiting for operator restart receipts: per-runner `modelSource`, `discoveryStatus` (never `{}`), `versions.build.sha` == deployed commit, `codeChangedSinceBoot:false`. Until all three active runners show these, WP-G's HUMAN dispatch decision must not start.
 
 WP-G's entry condition (RESPONSE.md §5 / WP-G ticket) is "WP-F verification
 shows every live runner reporting healthy discovery". Current state
