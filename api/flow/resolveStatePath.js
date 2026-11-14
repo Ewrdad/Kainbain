@@ -2,8 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import { throwIfLiveEnginePathUnderTest } from "./throwIfLiveEnginePathUnderTest.js";
 
-// Barrel re-exports: the live-path guards live in one file each
-// (one-function-per-file gate); callers keep importing from here.
+// Re-exports: each guard lives in its own file so the one-function check passes; callers keep importing from here.
 export { isLiveEnginePath } from "./isLiveEnginePath.js";
 export { throwIfLiveEnginePathUnderTest } from "./throwIfLiveEnginePathUnderTest.js";
 export { getLiveAccessibilityFeedbackFile } from "./getLiveAccessibilityFeedbackFile.js";

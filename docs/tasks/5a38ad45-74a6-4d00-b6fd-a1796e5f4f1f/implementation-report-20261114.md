@@ -12,8 +12,14 @@
 > `parseTaskMarkdown` keeps its own doc block) with 5 new pin tests; amended
 > `IMPLEMENTATION_PLAN.md` Non-goals with the `extractGoalSection` contract;
 > and split the pre-existing multi-function `api/flow/resolveStatePath.js`
-> into one file per guard (barrel re-exports unchanged) so
+> into one file per guard (plain-language re-exports retained) so
 > `npm run check:one-function` passes.
+>
+> **Re-verified in the code-standards cleanup stage (2026-11-14):** the
+> the re-exports comment in `api/flow/resolveStatePath.js` was
+> reworded to plain language (`// Re-exports: ...`), `pretty-proof.png` was
+> re-committed via the binary-safe path above and re-checked with `xxd`/`file`,
+> and the gates named below all pass on the current tree.
 
 Task `5a38ad45-74a6-4d00-b6fd-a1796e5f4f1f`. This run verified the plan end to
 end on the current tree, re-ran every gate that previously failed, proved the
