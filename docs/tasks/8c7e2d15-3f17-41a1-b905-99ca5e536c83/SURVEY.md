@@ -78,6 +78,43 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Yes, agent suggests restarts, I (or an operator) do them (Recommended)"
+      ],
+      "notes": "The main worry is that they kill themselves while executing a task if we can avoid that it's safer to execute "
+    },
+    "q2": {
+      "selected": [
+        "As soon as the earlier fixes are merged and live (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Test entries plus old leftover entries that no runner provides"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Delete it completely"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Remove the manual list so automatic discovery is the source of truth (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Stop immediately and report the failure (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
