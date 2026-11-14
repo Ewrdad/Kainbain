@@ -10,9 +10,10 @@
  *   code without a bump fails, loudly naming the fix.
  *
  *   Runner code means `runner/**` or `api/agent/harnesses/**`, except
- *   paths that never reach the bundle: `runner/version.json` itself (the
- *   bump), test/spec files, and markdown docs. A version.json-only
- *   release passes trivially.
+ *   paths that never change runtime behavior: `runner/version.json`
+ *   itself (the bump), test/spec files, and markdown docs (docs still
+ *   ship in the archive — they just cannot change what the Runner
+ *   does). A version.json-only release passes trivially.
  * @example node scripts/check-runner-version-bump.mjs --head-version 1.2.3
  * @example node scripts/check-runner-version-bump.mjs --base runner-v1.2.2 --head-version 1.2.3
  * @example node scripts/check-runner-version-bump.mjs --files changed.txt --base-version 1.2.2 --head-version 1.2.3
@@ -30,8 +31,10 @@ const REPO_ROOT = path.resolve(HERE, "..");
  * MARK: isRunnerCodePath
  * @description Whether a repo-relative changed path counts as runner
  *   code for the bump gate: `runner/**` or `api/agent/harnesses/**`,
- *   minus paths that never reach the bundle (the version file itself,
- *   tests, markdown docs).
+ *   minus paths that never change runtime behavior (the version file
+ *   itself, test/spec files, markdown docs). The exclusions match
+ *   case-insensitively — a `README.MD` or `daemon.TEST.js` must not
+ *   fail a release.
  * @example isRunnerCodePath('runner/daemon.js') => true
  * @param {string} p - Repo-relative changed path.
  * @returns {boolean} True when the path triggers the bump requirement.
@@ -39,9 +42,10 @@ const REPO_ROOT = path.resolve(HERE, "..");
 export function isRunnerCodePath(p) {
 	const file = String(p || "").replace(/\\/g, "/").replace(/^\.\//, "");
 	if (!file) return false;
-	if (file === "runner/version.json") return false;
-	if (file.endsWith(".md")) return false;
-	if (/\.test\.[^.]+$/.test(file) || /\.spec\.[^.]+$/.test(file)) return false;
+	const lowered = file.toLowerCase();
+	if (lowered === "runner/version.json") return false;
+	if (lowered.endsWith(".md") || lowered.endsWith(".markdown") || lowered.endsWith(".mdx")) return false;
+	if (/\.test\.[^.]+$/.test(lowered) || /\.spec\.[^.]+$/.test(lowered)) return false;
 	if (file.startsWith("runner/")) return true;
 	if (file.startsWith("api/agent/harnesses/")) return true;
 	return false;

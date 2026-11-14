@@ -187,9 +187,11 @@ export function snapshotCodeTree(rootDir) {
  * @description Whether the code tree under `rootDir` differs from its
  *   boot fingerprint: any file newer than boot, or a changed file
  *   count/total size (added, removed, or rewritten files). A missing
- *   baseline or an unscannable tree answers false — staleness is a
- *   warn-only signal, so an unprovable change stays quiet rather than
- *   flagging every heartbeat.
+ *   baseline, a baseline that saw zero files (a failed boot scan — a
+ *   real tree always holds this daemon's own files), or an unscannable
+ *   tree answers false — staleness is a warn-only signal, so an
+ *   unprovable change stays quiet rather than flagging every
+ *   heartbeat.
  * @example hasCodeChangedSinceBoot({ rootDir: '/repo/runner', baseline: snapshotCodeTree('/repo/runner') }) => false
  * @param {Object} [opts] - Options.
  * @param {string} opts.rootDir - Tree root to rescan.
@@ -200,8 +202,9 @@ export function hasCodeChangedSinceBoot({ rootDir, baseline } = {}) {
 	try {
 		if (!baseline || typeof baseline !== "object") return false;
 		if (typeof rootDir !== "string" || !rootDir) return false;
+		if (!Number.isFinite(baseline.fileCount) || baseline.fileCount === 0) return false;
 		const current = snapshotCodeTree(rootDir);
-		if (current.fileCount === 0 && baseline.fileCount > 0) return false;
+		if (current.fileCount === 0) return false;
 		return (
 			current.latestMtimeMs > baseline.latestMtimeMs ||
 			current.fileCount !== baseline.fileCount ||
@@ -1009,7 +1012,10 @@ export function effectiveDirectoriesFor(config = {}) {
  *   identity, boot time, and stale-code flag), directories, commands, and
  *   discovery status. `codeTree` overrides the stale-code scan root (tests
  *   point it at a temp-dir fixture); production callers omit it and scan
- *   this daemon's own tree against its boot fingerprint.
+ *   this daemon's own tree against its boot fingerprint. The `build`
+ *   object is a fresh copy per call, so a downstream mutation of one
+ *   heartbeat's facts can never corrupt the module singleton or the
+ *   next heartbeat.
  * @example factsFor({ config }).versions.codeChangedSinceBoot => false
  * @param {Object} [opts] - Options.
  * @param {Object} opts.config - Normalized runner config.
@@ -1036,7 +1042,7 @@ export function factsFor({ config, harnessVersions, updateStatus = null, command
 			protocol: "v1",
 			runner: RUNNER_VERSION,
 			api: RUNNER_API_VERSION,
-			build: RUNNER_BUILD,
+			build: { ...RUNNER_BUILD },
 			bootedAtMs: codeTree?.bootedAtMs ?? BOOTED_AT_MS,
 			codeChangedSinceBoot: hasCodeChangedSinceBoot({ rootDir: scanRoot, baseline: scanBaseline }),
 		},

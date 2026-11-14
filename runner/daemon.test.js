@@ -2830,6 +2830,16 @@ describe("runner stale-code detection", () => {
 		});
 		assert.equal(hasCodeChangedSinceBoot({ rootDir: path.join(os.tmpdir(), "kb-code-tree-missing-no-such-dir"), baseline: null }), false);
 	});
+
+	it("stays quiet when the boot scan saw zero files (no baseline, nothing provable)", () => {
+		const dir = makeCodeTree();
+		try {
+			const emptyBaseline = { fileCount: 0, totalBytes: 0, latestMtimeMs: 0 };
+			assert.equal(hasCodeChangedSinceBoot({ rootDir: dir, baseline: emptyBaseline }), false);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
 });
 
 describe("factsFor build identity", () => {
@@ -2874,6 +2884,19 @@ describe("factsFor build identity", () => {
 		} finally {
 			fs.rmSync(config.workRoot, { recursive: true, force: true });
 			fs.rmSync(tree, { recursive: true, force: true });
+		}
+	});
+
+	it("hands each heartbeat its own build copy (a mutated facts object never corrupts the next)", () => {
+		const config = factsConfig();
+		try {
+			const first = factsFor({ config });
+			assert.notEqual(first.versions.build, RUNNER_BUILD, "no shared reference with the module singleton");
+			first.versions.build.sha = "mutated-by-a-middleware";
+			const second = factsFor({ config });
+			assert.deepEqual(second.versions.build, RUNNER_BUILD);
+		} finally {
+			fs.rmSync(config.workRoot, { recursive: true, force: true });
 		}
 	});
 });
