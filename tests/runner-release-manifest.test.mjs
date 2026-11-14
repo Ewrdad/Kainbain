@@ -111,7 +111,7 @@ describe("packageRunner", () => {
 	it("packages a canary version under its full name and stamps version.json", () => {
 		const root = fakeRoot();
 		const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-pkgout-"));
-		const got = packageRunner({ platform: "linux", arch: "x64", version: "1.2.3-rc.1", outDir, root });
+		const got = packageRunner({ platform: "linux", arch: "x64", version: "1.2.3-rc.1", outDir, root, installLegDeps: false });
 		assert.equal(got.version, "1.2.3-rc.1");
 		assert.match(got.tarball, /kainbain-runner-1\.2\.3-rc\.1-linux-x64\.tar\.gz$/);
 		assert.ok(fs.existsSync(got.tarball));
@@ -148,7 +148,7 @@ describe("packageRunner", () => {
 		const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-pkgout-"));
 		const packaged = [];
 		for (const [platform, arch] of [["linux", "x64"], ["linux", "arm64"], ["darwin", "x64"], ["darwin", "arm64"]]) {
-			packaged.push(packageRunner({ platform, arch, version: "2.0.0", outDir, root }));
+			packaged.push(packageRunner({ platform, arch, version: "2.0.0", outDir, root, installLegDeps: false }));
 		}
 		const manifest = buildManifest({ version: "2.0.0", dir: outDir });
 		const names = manifest.assets.map((a) => a.filename);
