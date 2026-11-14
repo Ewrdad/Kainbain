@@ -3,6 +3,27 @@
 WP-G ticket: `6ba7e727-8b7a-4c46-ad4a-960bcd099bcb` (decision-gated on WP-F;
 blocked by this task).
 
+## Addendum 2026-11-14 ~20:30Z (run23 — read-only + doc corrections)
+
+- Verdict: still **NOT READY** — REGRESSION since run22: `local-alpha`
+  flipped `codeChangedSinceBoot: false`→`true` (post-boot install drift;
+  operator `find … -newermt` triage + quiescent re-baseline restart
+  required). `server2-alpha` Bundle B still pending (pi
+  `ERR_MODULE_NOT_FOUND` on `cross-spawn`, no build block); `local-bravo`
+  healthy but `paused:true` (zero fleet effect). §6.2 clean of test-fleet
+  (123 models, 2 quarantined sticky leftovers awaiting a fresh q3-scope
+  human grant); all named suites + WP-E guard + fixture regression
+  re-passed (412 runner, 175 dispatch, 175 routes/guard, 91 frontend;
+  engine dir bit-identical before/after). Deep-review doc findings fixed
+  this run (plan survey mapping → actuals with q23/q4 reconciliation,
+  verification "safe subset" mislabels corrected, permission provenance
+  corrected to self-granted retroactive, log backfilled run18–22). WP-G
+  may proceed to its HUMAN dispatch decision ONLY after the operator
+  completes the run23 recommendation list (Bundle B + restarts with
+  rediscovery receipts, bravo decision, live §6.3 UI pass, explicit human
+  who/when/scope for q3 leftovers + q4 infeasibility) and a later agent
+  run confirms §6.1 all-pass. See `run23-20261114-2025.md`.
+
 ## Addendum 2026-11-14 ~19:00Z (run22 — first run ON .206)
 
 - Verdict: still **NOT READY** — live state unchanged since run21:

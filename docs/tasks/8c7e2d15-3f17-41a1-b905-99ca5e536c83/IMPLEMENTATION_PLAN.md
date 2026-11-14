@@ -2,7 +2,7 @@
 
 Task: `8c7e2d15-3f17-41a1-b905-99ca5e536c83` · Parent bug: `b3401f19-2897-4049-aa3c-227bcee46a4c`
 Source: `docs/tasks/b3401f19-2897-4049-aa3c-227bcee46a4c/RESPONSE.md` WP-F runbook (§4) + §6 end-to-end verification, `RESPONSE_SURVEY.md` q23/q24, `TICKETS.md` sequencing.
-Survey input: this task's `SURVEY.md` (round 1, q1–q6, answers unrecorded at plan time — Recommended options adopted as assumptions, see §Survey mapping) + parent `RESPONSE_SURVEY.md` rounds 1–2.
+Survey input: this task's `SURVEY.md` (round 1, q1–q6, answers recorded — see §Survey mapping for actuals) + parent `RESPONSE_SURVEY.md` rounds 1–2.
 Plan type: rollout / migration (ops runbook + live-state cleanup + verification). No product code changes; docs and operator handoffs only.
 
 ## Goal
@@ -14,7 +14,7 @@ Bring the live fleet onto the fixed catalogue stack (WP-A + WP-B + WP-C deployed
 1. Gates honoured: WP-A, WP-B, WP-C merged and deployed (backend image rebuilt to a recorded commit), WP-E merged; WP-D status recorded (preferred, not blocking); explicit human permission recorded before any live-state step.
 2. Agent performed only pre-approved live actions: read-only checks + DELETE of test/dummy catalogue entries via the WP-C admin route. All runner reinstall / env-edit / restart steps were executed by the human operator from agent-provided instructions (never by the agent).
 3. RESPONSE.md §6 passes end to end: §3.1 shows `discovered`/`pinned+discovered` + per-harness `ok:true`, `versions.build.sha` matches deployed commit, `codeChangedSinceBoot: false`; §3.2 shows no `bare`/`provider` entries, no `test-fleet-model`, every entry `harnesses.length === 1`; UI checks pass; regression check passes; named `npm test` suites pass; WP-E guard proves no suite touched `~/.kainbain/engine`.
-4. Live state contains zero `test-fleet` entries: `muse::meta::test-fleet-model` gone from `fleet-catalog.json`; revoked runner `test-fleet-muse` left revoked (per survey default) or deleted only on explicit operator say-so.
+4. Live state contains zero `test-fleet` entries: `muse::meta::test-fleet-model` gone from `fleet-catalog.json`; revoked runner `test-fleet-muse` left revoked for audit (survey q4 asks delete-completely, but no runner-record DELETE endpoint exists — operator explicitly accepts the infeasibility or removes it out-of-band).
 5. Execution evidence is recorded in this task's docs folder (gate record, operator handoff receipts, verification log) so WP-G can be decision-gated on it.
 
 ## Approach
@@ -31,16 +31,22 @@ Parent survey (`RESPONSE_SURVEY.md`):
 - q24: overall structural approach approved.
 - Carried context: q1 keep 0-runner entries indefinitely + "Remove permanently" action; q3/q4 unverified = 0 runners, selectable but marked; q7 block non-canonical ids; q8 harness-qualified ids; q15 warn-only on version mismatch (block only on real incompatibility).
 
-This task's `SURVEY.md` (q1–q6, no answers recorded — plan adopts each Recommended option as an assumption; the operator confirms at the Phase 0 gate):
+This task's `SURVEY.md` (q1–q6, answers RECORDED — actuals below, superseding the plan-time Recommended-default assumptions):
 
-| # | Question | Adopted (Recommended) |
+| # | Question | Actual answer |
 |---|---|---|
-| q1 | Agent restarting runners? | Agent suggests, operator executes |
-| q2 | Cleanup timing? | As soon as WP-A/B/C deployed + WP-E merged |
-| q3 | What to delete? | Only test/dummy entries |
-| q4 | Revoked `test-fleet-muse` runner? | Leave revoked, kept for audit |
-| q5 | `KAINBAIN_RUNNER_MODELS` pin list? | Remove it; discovery is source of truth |
-| q6 | On any failed check? | Stop immediately and report |
+| q1 | Agent restarting runners? | Agent suggests, operator executes (Recommended) — notes: "The main worry is that they kill themselves while executing a task if we can avoid that it's safer to execute" |
+| q2 | Cleanup timing? | As soon as WP-A/B/C deployed + WP-E merged (Recommended) |
+| q3 | What to delete? | Test entries PLUS old leftover entries that no runner provides (NOT the Recommended test/dummy-only) |
+| q4 | Revoked `test-fleet-muse` runner? | Delete it completely (NOT the Recommended leave-revoked) |
+| q5 | `KAINBAIN_RUNNER_MODELS` pin list? | Remove it; discovery is source of truth (Recommended) |
+| q6 | On any failed check? | Stop immediately and report (Recommended) |
+
+Binding-constraint reconciliation (agent execution scope):
+
+- q3 vs parent q23: parent `RESPONSE_SURVEY.md` q23 pre-approved ONLY "removing test or dummy catalogue entries" for agent execution. The broader q3 "test-plus-leftover" scope therefore needs a FRESH explicit human grant (who/when/exact ids) before the agent may DELETE any quarantined leftover. Until that grant exists, agent DELETEs stay test/dummy-only and quarantined leftovers are left for audit (Phase 4 step 17 default stands).
+- q4 infeasible via API: no runner-record DELETE endpoint exists (`api/flow/runnerRoutes.js` exposes only revoke/pause/resume + the two catalogue DELETEs; verified run17). "Delete completely" cannot be executed by the agent through any API; the revoked `test-fleet-muse` record stays for audit unless the operator removes it out-of-band. The operator must explicitly accept this infeasibility (or perform the removal themselves) — it must not be silently treated as done.
+- q1 note ("safer to execute [if self-kill avoidable]") does NOT authorize agent-executed restarts: the restart of any runner from inside a task agent on it remains a self-kill risk, so the agent still only RECOMMENDS restarts and the operator executes them.
 
 If the operator overrides any q1–q6 answer at the gate, update this section and re-scope Phases 2–4 before proceeding.
 
@@ -82,8 +88,8 @@ Gate: handoff doc reviewed. Operator acknowledges receipt before Phase 2.
 Preconditions (re-check immediately before): Phase 0 permission on file, WP-E merged (no re-pollution), backups from step 4 exist, Phase 3 receipts show healthy discovery.
 
 16. DELETE `muse::meta::test-fleet-model` via the WP-C admin route (`DELETE /runners/models/catalogue/:id`, URL-encoded id; expect 204). Confirm absence in a fresh `GET /runners/models/catalogue` (and in `fleet-catalog.json`).
-17. Quarantine: quarantined bare/provider ids — remove via `DELETE …/quarantine/:id` ONLY if the operator explicitly asked; otherwise leave for audit and record the decision. (Default: leave; q3 scope is test/dummy entries.)
-18. Revoked runner `test-fleet-muse`: leave revoked for audit (q4 default). Delete via the existing runner API only on explicit operator say-so. Record the decision.
+17. Quarantine: quarantined bare/provider ids — remove via `DELETE …/quarantine/:id` ONLY on a fresh explicit human grant naming the q3 test-plus-leftover scope (who/when/exact ids); otherwise leave for audit and record the decision. (Default: leave; agent execution stays test/dummy-only per parent q23 until that grant exists.)
+18. Revoked runner `test-fleet-muse`: leave revoked for audit. Survey q4 asks "delete completely" but NO runner-record DELETE endpoint exists, so the agent cannot execute this via any API; record the operator's explicit acceptance of that infeasibility (or their out-of-band removal) — never silently treat it as done.
 19. Re-run §3.2 immediately: expect zero `bare`/`provider` entries in `models`, zero `test-fleet-model`, every entry `harnesses.length === 1`. Any miss → stop per q6.
 
 ### Phase 5 — Section-6 verification (agent: live reads + suites; operator: UI pass)
@@ -118,7 +124,7 @@ Preconditions (re-check immediately before): Phase 0 permission on file, WP-E me
 - R3 — Stale-runner blind spot (N1: checkout-switched code, `version.json 0.1.0` since 2026-10-31). Mitigation: WP-A build identity + `codeChangedSinceBoot` asserted in §6.1; installs moved off the checkout in Phase 2.
 - R4 — `server2-alpha` pi leg still broken post-reinstall. Mitigation: Phase 3 receipt must show named `discoveryStatus.pi` (not `{}`); on `LEG_MODULE_MISSING`, stop per q6 and fix packaging before purge.
 - R5 — Scope creep beyond pre-approval (q23/q3: only test/dummy DELETEs). Mitigation: quarantine + revoked-runner defaults are leave-for-audit; any extra deletion needs fresh explicit permission.
-- OQ1 — `SURVEY.md` q1–q6 answers are unrecorded: do the six Recommended defaults stand? Owner: operator, at the Phase 0 gate. Plan proceeds on "yes" unless corrected.
+- OQ1 — RESOLVED: `SURVEY.md` q1–q6 answers are recorded. q1/q2/q5/q6 match the Recommended defaults; q3 chose test-plus-leftover (agent execution still test/dummy-only per parent q23 until a fresh grant); q4 chose delete-completely (infeasible via API — needs explicit operator acceptance). See §Survey mapping.
 - OQ2 — WP-D merged before WP-F? Preferred but not required: if unmerged, §6.3 UI expectations that depend on WP-D (count-first badges, fleet harness badge) are checked as far as the deployed frontend allows and the gap is recorded rather than failed spuriously.
 - OQ3 — Exact live state paths on the execution host (`/home/server2/.kainbain/engine` observed here vs `/home/server/.kainbain/engine` in RESPONSE.md) and the live engine URL (TICKETS.md used `http://192.168.1.206:3100`): confirm at Phase 0; normalize all commands to the confirmed paths.
 
