@@ -10,7 +10,7 @@ Normative agent guidance for this repo. Architecture: [`docs/agent-docs/KB-Archi
 2. [`AGENTS-MAP.md`](AGENTS-MAP.md) — repo map: directory ownership, god-file warnings, entry points (R1).
 3. [`docs/agent-docs/`](docs/agent-docs) — vendored KB architecture & code standards.
 4. [`site-docs/README.md`](site-docs/README.md) — Docs-tab authoring rules.
-5. [`docs/agent-docs/GitGuidance.md`](docs/agent-docs/GitGuidance.md) — branch discipline for agents: stay on the current task branch, the engine owns the branch lifecycle.
+5. [`docs/agent-docs/GitGuidance.md`](docs/agent-docs/GitGuidance.md) — branch discipline for agents: stay on the current task branch, the engine owns the branch lifecycle; plus binary-safe proof handling and repo-root scratch hygiene.
 
 ## Commands
 

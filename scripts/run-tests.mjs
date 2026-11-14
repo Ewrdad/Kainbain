@@ -3,8 +3,9 @@
  * MARK: run-tests.mjs
  * @description Cross-platform full-project verification gate: the same seven
  *   checks the old `run-tests.sh` ran plus the Container Tests branch, the
- *   Frontend Build branch (exercises the deprecation gate), and the
- *   Dependency Audit Gate, in a single overlap window (the two unit suites
+ *   Frontend Build branch (exercises the deprecation gate), the Dependency
+ *   Audit Gate, and the Proof Hygiene branch, in a single overlap window
+ *   (the two unit suites
  *   alone take ~2x35s sequentially, so overlapping keeps the wall near one
  *   suite), with identical `Running <name>... PASS/FAIL (<s>s)` lines and exit semantics —
  *   but driven by Node (`node:child_process`, no shell), so it runs on
@@ -37,8 +38,8 @@
  *   never blanks the output (see scripts/lib/run-parallel.mjs).
  *   `run-tests.sh` is a thin shim over this file so `deploy.sh --prod` and
  *   older docs keep working.
- * @example `npm test` => twelve PASS lines (eleven fast branches + Canary Tests), exit 0
- * @example `npm test -- --no-canary` => eleven PASS lines, exit 0
+ * @example `npm test` => thirteen PASS lines (twelve fast branches + Canary Tests), exit 0
+ * @example `npm test -- --no-canary` => twelve PASS lines, exit 0
  ***/
 
 import { spawnSync } from "node:child_process";
@@ -340,8 +341,8 @@ export function resolveCanary({ argv = process.argv, env = process.env } = {}) {
 
 /***
  * MARK: buildBranches
- * @description Builds the twelve gate branches in canonical order (the
- *   eleven fast branches plus the Canary Tests branch). Branch
+ * @description Builds the thirteen gate branches in canonical order (the
+ *   twelve fast branches plus the Canary Tests branch). Branch
  *   names match the old shell gate byte-for-byte so output parsers keep
  *   working. The low-priority branches (lint, build, scans, depcheck, audit
  *   gate, self-tests, containers, canary) carry `lowPriority`, the helper's
@@ -461,6 +462,19 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 			lowPriority: true,
 		},
 		{
+			// Real-tree enforcement for binary-safe proof artifacts and
+			// repo-root scratch hygiene (task b1c069e0): the Harness
+			// Self-Tests pin the checker's logic on fixtures, but only this
+			// branch scans the worktree — without it a corrupt proof or a
+			// stray root scratch file would sail through `npm test`.
+			// Dependency-free (Node stdlib only) and sub-second, so it needs
+			// no workspace provisioning and no timeout override.
+			name: "Proof Hygiene",
+			file: nodeExec,
+			args: ["scripts/check-proof-and-hygiene.mjs"],
+			lowPriority: true,
+		},
+		{
 			name: "Harness Self-Tests",
 			file: nodeExec,
 			args: [
@@ -497,6 +511,7 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 				"tests/install-runner-wrapper.test.mjs",
 				"tests/redeploy.test.mjs",
 				"tests/verify-stage-attestation.test.mjs",
+				"tests/check-proof-and-hygiene.test.mjs",
 			],
 			lowPriority: true,
 		},
