@@ -116,7 +116,7 @@ export function saveTaskMarkdown(taskStore, projectCwd, task) {
 			})
 			.join("\n");
 
-const bodySections = [
+		const bodySections = [
 			frontmatter,
 			"",
 			"# Goal",
@@ -125,19 +125,6 @@ const bodySections = [
 			"# History",
 			historyMarkdown || "- (no history recorded)",
 		];
-
-			// A detail body that says something beyond the goal (code samples,
-			// mermaid diagrams, image references) rides in its own `# Details`
-			// section. A body that only mirrors the goal stays out, so the
-			// file never stores the same markdown twice.
-			const detailBody = typeof task.body === "string" ? task.body.trim() : "";
-			const goalText =
-				typeof task.goal === "string" && task.goal.trim()
-					? task.goal.trim()
-					: task.title || "Untitled task";
-			if (detailBody && detailBody !== goalText.trim()) {
-				bodySections.push("", "# Details", detailBody);
-			}
 
 		if (timelineMarkdown) {
 			bodySections.push("", "# Timeline", timelineMarkdown);

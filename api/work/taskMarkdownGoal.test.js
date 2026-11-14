@@ -213,24 +213,6 @@ describe("POST /tasks with a rich-markdown goal", () => {
 		expect(stored.stageId).toBe("s-1");
 	});
 
-	it("forwards an explicit markdown field as the detail body", async () => {
-		const s = await register(setup());
-		await s.routes.get("POST /tasks")(
-			{
-				body: {
-					projectId: "p-1",
-					goal: RICH_GOAL,
-					stageId: "s-1",
-					markdown: "# Extra\n\nA separate detail body",
-				},
-			},
-			reply(),
-		);
-		const stored = s.taskStore.createTask.mock.calls[0][1];
-		expect(stored.goal).toBe(RICH_GOAL);
-		expect(stored.body).toBe("# Extra\n\nA separate detail body");
-	});
-
 	it("forwards blockedBy so dependents stay parked behind their blockers", async () => {
 		const s = await register(setup());
 		await s.routes.get("POST /tasks")(
@@ -268,20 +250,4 @@ describe("PATCH /tasks/:id with a rich-markdown goal", () => {
 		expect(result.goal).toBe(RICH_GOAL.trim());
 	});
 
-	it("lets an explicit markdown patch override the mirrored body", async () => {
-		const s = await register(setup());
-		await s.routes.get("PATCH /tasks/:id")(
-			{
-				params: { id: "t-1" },
-				body: { projectId: "p-1", goal: RICH_GOAL, markdown: "# Detail only" },
-			},
-			reply(),
-		);
-		expect(s.taskStore.updateTask).toHaveBeenCalledWith(
-			"p-1",
-			"t-1",
-			expect.objectContaining({ goal: RICH_GOAL.trim(), body: "# Detail only" }),
-			"/repo",
-		);
-	});
 });

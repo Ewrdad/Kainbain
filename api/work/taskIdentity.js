@@ -87,27 +87,6 @@ export function resolveTaskTitleAndGoal({ title, goal } = {}) {
 	return { title: cleanTitle, goal: goal || cleanTitle || "Untitled task" };
 }
 
-/***
- * MARK: resolveTaskBody
- * @description Picks the stored detail body for a new task. A caller-supplied
- *   body (the API's `markdown` field) wins when it is a non-blank string and
- *   is kept byte-identical, exactly like the goal; anything missing, blank, or
- *   not a string falls back to the goal so the body always mirrors the goal
- *   instead of storing blanks or crashing on odd input.
- * @example resolveTaskBody({ body: '# Steps', goal: 'g' }) => '# Steps'
- * @example resolveTaskBody({ body: '  ', goal: 'g' }) => 'g'
- * @example resolveTaskBody({ body: 42, goal: 'g' }) => 'g'
- * @param {Object} [args]
- * @param {*} [args.body] - Optional caller-supplied markdown (kept as-is when usable).
- * @param {string} [args.goal] - The resolved goal (the mirror fallback).
- * @returns {string} The body to store.
- ***/
-export function resolveTaskBody({ body, goal } = {}) {
-	if (typeof body === "string" && body.trim()) return body;
-	if (typeof goal === "string" && goal) return goal;
-	return "Untitled task";
-}
-
 // Board lists fetch every task on load: a long-lived task can accumulate
 // hundreds of report entries, so summaries carry only the recent few.
 // `body` mirrors `goal`, and `reliabilitySamples`/`reviewBaseline` serve
@@ -126,7 +105,7 @@ const SUMMARY_REPORT_LIMIT = 5;
  *   stage) so counts and links still resolve, capped at the 5 most
  *   recent with the total in `reportCount`; detail views hydrate the
  *   full task through `GET /tasks/:id` on open.
- * @example toTaskSummary({ id: 't-1', reports: [{ path: 'a.md', content: 'x' }] }) => { id: 't-1', reports: [{ path: 'a.md' }], reportCount: 1 }
+ * @example toTaskSummary(task) => { id: 'task-1', reports: [{ path, … }], … }
  * @param {Object} [task] - The full task record (never mutated).
  * @returns {Object} The summary projection ({} when task is missing).
  ***/

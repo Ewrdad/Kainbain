@@ -3,7 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import { v4 as uuidv4 } from "uuid";
-import { _sanitizeTaskTitle, resolveTaskBody, resolveTaskTitleAndGoal } from "./taskIdentity.js";
+import { _sanitizeTaskTitle, resolveTaskTitleAndGoal } from "./taskIdentity.js";
 import { safeParseJsonArray } from "./taskFiles.js";
 import { taskBranchName } from "./taskBranches.js";
 import {
@@ -200,11 +200,9 @@ export function validateBlockedBy(map, taskId, blockedBy) {
  * MARK: createTask
  * @description Creates a discrete task instance, saves it to `<projectRoot>/docs/tasks/<taskId>/task.md`,
  * records workflowId, and uses an in-flight / idempotency lock to prevent duplicate creations.
- * The goal stays byte-identical (headings, code fences, mermaid fences, image
- * references included) and the title is the goal's first line; an optional
- * `body` (the API's `markdown` field) is stored as the detail body, otherwise
- * the body mirrors the goal. A missing stage id parks the task unplaced.
- * @example createTask(store, 'p-1', { title: 'Fix it', goal: '# Fix it\n\n## Steps\n1. x' }) => task
+ * The goal is stored byte-identical (headings, code fences, mermaid fences, image
+ * references included) and the title is the goal's first line.
+ * @example createTask(store, 'p-1', { title: 'Fix it', goal: '# Fix it' }) => task
  ***/
 export function createTask(
 	store,
@@ -212,7 +210,6 @@ export function createTask(
 	{
 		title,
 		goal,
-		body,
 		stageId,
 		status = "in_stage",
 		workflowId,
@@ -303,7 +300,7 @@ export function createTask(
 		workflowId: resolvedWorkflowId,
 		title: taskTitle,
 		goal: taskGoal,
-		body: resolveTaskBody({ body, goal: taskGoal }),
+		body: taskGoal,
 		prompt: "",
 		currentStageId: resolvedStageId,
 		status: initialStatus,

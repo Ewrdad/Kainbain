@@ -1,0 +1,29 @@
+<!-- KAINBAIN AUTO-GENERATED REPORT -->
+# Stage Report: Deep Review
+
+**Task:** Can you make sure the create tasks skill is able to create pretty tasks. Looking at recent task created by the created kainbain task skill they end up being a little ugly and just big paragraphs.  Please do as follows: A) Make sure the api can accept nice looking markdown tasks including codeblocks, mermaid diagrams and image references B) Re-structure the skill so it recommends writing each task as its own MARKDOWN file in its task directory then sending them accross (hopefully to trick agents into making it a more readable bit of documentation) We should still continue the existing behaviour such as the first line title and blocking behaviour just want to make the tasks more human readable. (Which hopefully a two stage execution can do)
+**Stage Type:** `agent`
+**Model:** `worker`
+**Duration:** 538.519s
+**Status:** FAILED
+
+### Summary of Changes
+Execution failed: [Agent Review Rejection] The latest delta adds an unnecessary and incomplete detail-body/markdown layer on top of the accepted pretty-tasks implementation. api/work/taskIdentity.js now exports `resolveTaskBody`; api/work/taskLifecycle.js accepts and stores a separate `body` (via optional `body` and the API `markdown` field); api/work/taskWorkRoutes.js exposes `markdown` in the POST /tasks schema and PATCH body; and api/work/taskPersistence.js conditionally writes a `# Details` section when `task.body` differs from `goal`. This conflicts with the settled, documented contract in the same branch where `extractGoalSection` keeps `# Details` as ordinary goal text because "no writer emits one" (api/work/taskPersistence.test.js line ~2016), and the parser always rehydrates `body` as the goal, so the optional detail body is silently lost on re-read rather than supported end-to-end. The additions are also unused: the skill uses only `goal`, the frontend renders only `goal`, and no documentation describes the dual representation. This adds avoidable tech debt and reintroduces a known-bad `# Details` writer that the prior settled implementation deliberately removed, without improving clauses A/B. Supporting evidence: full suites were green only because the new tests target the half-implemented behavior; `git diff main...HEAD` reviewers had already recorded PASS before these body/markdown additions existed.
+
+### Execution Output
+```
+Reviewed the branch against the task brief and all prior reports. The accepted core implementation (byte-identical markdown `goal` round-trip, first-line title, fence-aware goal parsing, mermaid rendering, two-stage skill with drafts, blocking/idempotency/dedupe guards) is coherent and test-backed. However, the most recent delta reintroduced an incomplete `body`/`markdown`/`# Details` layer that is not part of clauses A/B and contradicts the already-settled contract that `# Details` is ordinary markdown goal text because no writer emits it. The parser still resets `body` to the goal on read, so the optional detail body is lost, the frontend/skill do not use it, and its code/style+budget effects are unnecessary tech debt. The docs do not describe this dual representation either.
+
+Because of that unfinished, undocumented, and internally inconsistent change, the stage should not pass.
+
+KAINBAIN_VERDICT: FAIL
+KAINBAIN_REASON: The latest delta added an incomplete dual representation (resolveTaskBody/body/markdown/# Details writer) on top of the accepted goal-only implementation; it conflicts with the settled # Details-as-goal-text contract, is silently lost on re-read, is unused by skill/UI, and lacks docs, adding unnecessary tech debt. Relevant files: api/work/taskIdentity.js, api/work/taskLifecycle.js, api/work/taskWorkRoutes.js, api/work/taskPersistence.js.
+KAINBAIN_FIX: Revert the body/markdown/# Details additions and their tests only, keeping the accepted core pretty-task behavior; then rerun npm run test:api, check:jsdoc-example, check:one-function, and targeted lint/standards gates. Optionally document only the goal-based markdown flow in skills and docs.
+```
+
+### Modified Files
+- (No files modified / inspection only)
+
+### Verification Status
+- Stage execution failed with error: [Agent Review Rejection] The latest delta adds an unnecessary and incomplete detail-body/markdown layer on top of the accepted pretty-tasks implementation. api/work/taskIdentity.js now exports `resolveTaskBody`; api/work/taskLifecycle.js accepts and stores a separate `body` (via optional `body` and the API `markdown` field); api/work/taskWorkRoutes.js exposes `markdown` in the POST /tasks schema and PATCH body; and api/work/taskPersistence.js conditionally writes a `# Details` section when `task.body` differs from `goal`. This conflicts with the settled, documented contract in the same branch where `extractGoalSection` keeps `# Details` as ordinary goal text because "no writer emits one" (api/work/taskPersistence.test.js line ~2016), and the parser always rehydrates `body` as the goal, so the optional detail body is silently lost on re-read rather than supported end-to-end. The additions are also unused: the skill uses only `goal`, the frontend renders only `goal`, and no documentation describes the dual representation. This adds avoidable tech debt and reintroduces a known-bad `# Details` writer that the prior settled implementation deliberately removed, without improving clauses A/B. Supporting evidence: full suites were green only because the new tests target the half-implemented behavior; `git diff main...HEAD` reviewers had already recorded PASS before these body/markdown additions existed.
+- Triggered fallback routing.

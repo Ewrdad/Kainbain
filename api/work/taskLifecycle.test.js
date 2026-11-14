@@ -252,23 +252,6 @@ describe("createTask", () => {
 		expect(t.body).toBe(goal);
 	});
 
-	it("stores an explicit body byte-identical", () => {
-		const store = makeStore();
-		const t = createTask(store, "p-1", {
-			title: "Fix it",
-			goal: "# Fix it",
-			body: "# Fix it\n\nExtra detail",
-		});
-		expect(t.body).toBe("# Fix it\n\nExtra detail");
-	});
-
-	it("falls back to the goal for blank or non-string bodies", () => {
-		const store = makeStore();
-		for (const body of ["", "   ", 42, null, undefined, { text: "x" }]) {
-			const t = createTask(store, "p-1", { title: "T", goal: "G", body });
-			expect(t.body).toBe("G");
-		}
-	});
 });
 
 describe("listTasks / getTasks / getTask", () => {

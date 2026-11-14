@@ -279,8 +279,6 @@ export async function registerTaskWorkRoutes(app, deps) {
 							workflowId: { type: "string" },
 							idempotencyKey: { type: "string" },
 							blockedBy: { type: "array", items: { type: "string" } },
-							markdown: { type: "string" },
-
 						},
 					},
 					response: {
@@ -310,7 +308,6 @@ export async function registerTaskWorkRoutes(app, deps) {
 				task = taskStore.createTask(ctx.id, {
 					title: ctx.title,
 					goal: ctx.goal,
-					body: request.body?.markdown,
 					stageId: ctx.stage.id,
 					workflowId: workflowId || ctx.project?.activeWorkflowId,
 					idempotencyKey,
@@ -441,14 +438,8 @@ export async function registerTaskWorkRoutes(app, deps) {
 			}
 			if (typeof request.body?.goal === "string" && request.body.goal.trim()) {
 				updates.goal = request.body.goal.trim();
-				// The detail body mirrors the goal unless an explicit markdown
-				// override follows, so a plain goal patch never leaves a stale body.
 				updates.body = updates.goal;
 			}
-			if (typeof request.body?.markdown === "string" && request.body.markdown.trim()) {
-				updates.body = request.body.markdown.trim();
-			}
-
 			if (typeof request.body?.status === "string") {
 			updates.status = request.body.status;
 			}
