@@ -86,3 +86,11 @@ helper. Live re-run after Phase 4 per plan.
 - `touch` WP-E guard (isolation) rerun: 2/2 pass; engine dir untouched.
 - Full suite rerun this run: `runner/` 412/412 pass; `api/flow/dispatch/` 175/175 pass; `api routes/projects + runnerRoutes + isolation` pass; frontend `fleetModelOptions + ModelSelector + FleetCatalogueSection` 88/88 pass.
 - Runner health (§6.1) remains open until the operator executes the restart bundle `operator-handoff-20261114.md`: `local-alpha` process is still the old checkout build (pinned 17-model env), `local-bravo` is operator-paused. No agent-executed restarts (survey q1/q23).
+
+## Addendum 2026-11-14 ~14:00Z (run15 re-verification, server2, read-only)
+
+- Live `GET /runners` 13:59Z: unchanged — `local-alpha` pre-WP-A/B pinned daemon (no `modelSource`/`discoveryStatus`/build, 17 pinned models incl. the 2 non-qualified ids); `server2-alpha` pi `ERR_MODULE_NOT_FOUND`, muse ok count 6, no build; `local-bravo` healthy (`discovered`, 4× `ok:true`, sha `fbcf8442`, `codeChangedSinceBoot:false`) but `paused:true`. §6.1 still FAIL on two runners.
+- Live catalogue: 123 models, 2 quarantined, zero `test-fleet` in full payload, zero bare/provider in `models[]`, all `harnesses.length === 1`. §6.2 PASS. Only server2-alpha's 6 muse models served (incl. `muse::meta::muse-ember-1.0`); 117 entries at 0 runners. Purge target absent — no DELETE issued.
+- §6.4 fixture regression fresh PASS (`/tmp/wpf-run15/regression.mjs`, REGRESSION-FIXTURE-PASS). §6.3 live look still pending operator.
+- §6.5 fresh PASS: runner 412/412; dispatch 17 files 175/175; projects+guard+runnerRoutes 15 files 175/175; frontend fleetModelOptions+ModelSelector 5 files 91/91. Engine-dir sha256 identical before/after (ENGINE-DIR-UNTOUCHED-BY-SUITES). Merge gates re-verified (all five ancestors of `7783e2c5`).
+- Bundle B tarball re-verified staged (`~/kainbain-runner-fbcf8442.tar.gz`, sha256 `ac919e2a…d43ade402`). Full detail in `run15-20261114-1410.md`. Per q6: STOP — operator restarts/rediscovery required; WP-G NOT READY.
