@@ -217,3 +217,21 @@ fixture regression re-passed (412 runner, 175 dispatch, 175 routes/guard,
 91 frontend; 7/7 fixture) with ENGINE-DIR-UNTOUCHED proven against the
 LIVE engine files. Evidence in `run35-20261114-2355.md` (+
 `verification-20261114.md` addendum).
+
+## Addendum 2026-11-14 ~23:34Z (run37 re-verification, ON .206)
+
+NOT READY (unchanged since run36). §6.1 PARTIAL: local-alpha +
+local-bravo fully PASS; server2-alpha still FAIL (pre-WP-B, pi
+`ERR_MODULE_NOT_FOUND`, Bundle B reinstall+restart pending — re-confirmed
+read-only on server2: tarball staged with matching sha256 `ac919e2a…`,
+service still on the old install). §6.2 PASS (zero `test-fleet` in the
+catalogue payload and in on-disk `fleet-catalog.json`); §6.3 live + §6.4
+live pending operator; q3-scope human grant + q4 infeasibility acceptance
+still absent. New this run: deploy-commit question RESOLVED — deploy log
+build 637 headSha `93970db0…` (main) contains WP-A/B/C/E, so the live
+backend image provably includes every blocker (`/status` commit field is
+a stale label). All named suites + fixture regression re-passed (412
+runner, 175 dispatch, 175 routes/guard, 91 frontend; 8/8 fixture) with
+ENGINE-DIR-UNTOUCHED proven bit-identical against the LIVE engine files.
+Evidence in `run37-20261114-2334.md` (+ `verification-20261114.md`
+addendum).
