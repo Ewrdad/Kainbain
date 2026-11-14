@@ -63,6 +63,25 @@ describe('fleetCountsById', () => {
     });
   });
 
+  it('keys hostile ids safely and clamps hostile counts', () => {
+    const map = fleetCountsById({
+      models: [
+        { id: '__proto__', runnerCount: 1, runnerIds: ['r1'] },
+        { id: 'neg', runnerCount: -4 },
+        { id: 'frac', runnerCount: 2.7 },
+        { id: 'inf', runnerCount: Number.POSITIVE_INFINITY },
+        { id: 'str', runnerCount: '2' },
+      ],
+    });
+    expect(Object.hasOwn(map, '__proto__')).toBe(true);
+    expect(map['__proto__'].runnerCount).toBe(1);
+    expect(Object.getPrototypeOf(map)).toBeNull();
+    expect(map.neg.runnerCount).toBe(0);
+    expect(map.frac.runnerCount).toBe(2);
+    expect(map.inf.runnerCount).toBe(0);
+    expect(map.str.runnerCount).toBe(0);
+  });
+
   it('carries WP-C fields (declaredBy, verified, provenance) for pickers and admin', () => {
     const entry = {
       id: 'muse::meta::m',

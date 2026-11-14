@@ -63,8 +63,14 @@ describe('FleetCatalogueSection', () => {
     const retired = rowById('custom::acme::retired');
     expect(within(retired).getByText('0 runners')).toBeInTheDocument();
     expect(within(retired).getByText('no')).toBeInTheDocument();
-    // The snapshot's unavailable verdict renders in ADMIN (never pickers).
+    // The snapshot's unavailable verdict renders in ADMIN (never pickers),
+    // with the snapshot reason as its tooltip; served rows carry no verdict.
     expect(within(retired).getByText('Unavailable')).toBeInTheDocument();
+    expect(within(retired).getByTestId('fleet-catalogue-verdict')).toHaveAttribute(
+      'title',
+      '0 runners -- last served 3d ago by box-a',
+    );
+    expect(within(spark).queryByTestId('fleet-catalogue-verdict')).not.toBeInTheDocument();
 
     const unverified = rowById('muse::meta::unverified-9');
     expect(within(unverified).getByText('0 runners')).toBeInTheDocument();

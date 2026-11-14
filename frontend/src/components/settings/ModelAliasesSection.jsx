@@ -16,7 +16,12 @@ import {
   groupModelsByProvider,
   normalizeModelRef,
 } from '../../services/api';
-import { fleetInfoForModel, fleetModelRowBadge } from '../../services/modelStatus';
+import {
+  fleetInfoForModel,
+  fleetModelRowBadge,
+  notCurrentlyServedBadge,
+  readRunnerCount,
+} from '../../services/modelStatus';
 import { withFleetModels, effectiveModelSelection } from '../../services/fleetModelOptions';
 import { ReliabilityLine } from './ReliabilityLine';
 import {
@@ -550,12 +555,7 @@ function AliasTargetRow({
   const targetFleetInfo = hasFleetCounts
     ? fleetInfoForModel(fleetCounts, targetModelEntry, resolvedModel)
     : null;
-  const targetRunnerCount =
-    targetFleetInfo &&
-    typeof targetFleetInfo.runnerCount === 'number' &&
-    targetFleetInfo.runnerCount > 0
-      ? targetFleetInfo.runnerCount
-      : 0;
+  const targetRunnerCount = readRunnerCount(targetFleetInfo);
   const showNotServed =
     hasFleetCounts &&
     selection !== 'none' &&

@@ -68,8 +68,7 @@ export function modelStatusBadge(model) {
  * @returns {React.ReactNode} The badge node.
  ***/
 export function fleetCountBadgeNode(info) {
-  const count =
-    info && typeof info.runnerCount === 'number' && info.runnerCount > 0 ? info.runnerCount : 0;
+  const count = readRunnerCount(info);
   const label = count === 0 ? '0 runners' : `${count} runner${count === 1 ? '' : 's'}`;
   const dotClass = count === 0 ? 'bg-slate-400' : 'bg-emerald-400';
   return React.createElement(
@@ -217,12 +216,12 @@ export function fleetSnapshotBadge(model) {
 /***
  * MARK: fleetSnapshotBadgeNode
  * @description Renders the fleet-snapshot verdict as a React node (dot +
- *   label) suitable for SelectDropdown's existing `option.badge` slot, or
- *   null when the entry carries no unavailable verdict. Pickers check this
- *   FIRST, before fleet-count and credential-health badges: the snapshot's
- *   explicit unavailable marker is authoritative for its entry and carries
- *   the reason, so it must never be covered by a vaguer badge.
- * @example <SelectDropdown options={[{ value, label, badge: fleetSnapshotBadgeNode(model) }]} />
+ *   label) suitable for a health-detail slot, or null when the entry carries
+ *   no unavailable verdict. Health/admin surfaces ONLY — pickers never call
+ *   this: every picker row renders the fleet runner count
+ *   (`fleetModelRowBadge`) instead, so the count can never lose to the
+ *   "Unavailable" verdict.
+ * @example fleetSnapshotBadgeNode({ available: false, unavailableReason: 'paused' }) => <span>Unavailable</span>
  * @param {Object|null} model - Catalogue model from /compute/models.
  * @returns {React.ReactNode|null}
  ***/
@@ -244,50 +243,40 @@ export function fleetSnapshotBadgeNode(model) {
 }
 
 /***
- * MARK: fleetUnverifiedBadge
- * @description Subtle "unverified" badge label for fleet model entries where
- *   `verified === false` and at least one Runner declared the id.
- * @example fleetUnverifiedBadge({ declaredBy: ['local-alpha'] }) => 'unverified'
- * @param {Object|null} info - Fleet entry.
- * @returns {string|null} The badge label, or null.
+ * MARK: readRunnerCount
+ * @description Reads the claim-eligible runner count from a fleet entry (a
+ *   `fleetCountsById` value or a `catalogue.harnesses[]` entry) or a raw
+ *   number, failing safe to 0 for missing, malformed, negative, fractional,
+ *   or non-finite values — a hostile or half-written payload must badge an
+ *   honest grey zero, never "NaN runners" or "-1 runners". Single source for
+ *   the count-clamping rule every badge and marker below shares.
+ * @example readRunnerCount({ runnerCount: 2 }) => 2
+ * @example readRunnerCount({ runnerCount: -3 }) => 0
+ * @example readRunnerCount(null) => 0
+ * @param {Object|number|null} [source] - Fleet entry or raw count.
+ * @returns {number} Non-negative integer runner count.
  ***/
-export const fleetUnverifiedBadge = (info) => {
-  if (!info || typeof info !== 'object') return null;
-  if (info.verified !== false) return null;
-  if (!Array.isArray(info.declaredBy) || info.declaredBy.length === 0) return null;
-  return 'unverified';
-};
+export function readRunnerCount(source) {
+  const raw = typeof source === 'number' ? source : source?.runnerCount;
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return 0;
+  return Math.max(0, Math.floor(raw));
+}
 
-/***
- * MARK: fleetUnverifiedBadgeNode
- * @description Subtle "unverified" annotation React node for fleet model
- *   entries where `verified === false` and at least one Runner declared the id.
- * @example fleetUnverifiedBadgeNode({ declaredBy: ['local-alpha'] }) => <span>unverified</span>
- * @param {Object|null} info - Fleet entry.
- * @returns {React.ReactNode|null} The badge node.
- ***/
-export const fleetUnverifiedBadgeNode = (info) => {
-  const label = fleetUnverifiedBadge(info);
-  if (!label) return null;
-  return React.createElement(
-    'span',
-    {
-      className: 'text-[10px] italic text-amber-300',
-      title: `declared by ${info.declaredBy.join(', ')}, not found by its discovery`,
-      'data-testid': 'fleet-unverified-note',
-    },
-    label,
-  );
-};
+// How many declaring runners the unverified tooltip names before folding the
+// rest into "+N more": a long declarant list must not produce a novel-sized
+// tooltip on one picker row.
+const MAX_TOOLTIP_DECLARANTS = 5;
 
 /***
  * MARK: fleetUnverifiedNote
  * @description Subtle "unverified" annotation for fleet model entries where
- *   `verified === false` and at least one Runner declared the id
- *   (`declaredBy.length > 0`). Verified entries and entries with no
- *   declarants render null. Tooltip reads "declared by {ids}, not found by
- *   its discovery" (single source of truth for the q20 wording). Accepts the
- *   fleet-info entry returned by `fleetInfoForModel` / `fleetCountsById`.
+ *   `verified === false` and at least one Runner declared the id: the row
+ *   stays selectable, the note only marks it (q20). Tooltip reads "declared
+ *   by {ids}, not found by its discovery" (single source of truth for the
+ *   q20 wording); long declarant lists fold after five names ("+N more").
+ *   Verified entries, entries with no (string) declarants, and non-objects
+ *   render null. Accepts the fleet-info entry returned by
+ *   `fleetInfoForModel` / `fleetCountsById`.
  * @example fleetUnverifiedNote({ verified: false, declaredBy: ['local-alpha'] }) => <span>unverified</span>
  * @param {Object|null} info - Fleet entry.
  * @returns {React.ReactNode|null}
@@ -295,13 +284,16 @@ export const fleetUnverifiedBadgeNode = (info) => {
 export function fleetUnverifiedNote(info) {
   if (!info || typeof info !== 'object') return null;
   if (info.verified !== false) return null;
-  if (!Array.isArray(info.declaredBy) || info.declaredBy.length === 0) return null;
-  const declarants = info.declaredBy.join(', ');
+  if (!Array.isArray(info.declaredBy)) return null;
+  const declarants = info.declaredBy.filter((id) => typeof id === 'string' && id);
+  if (declarants.length === 0) return null;
+  const shown = declarants.slice(0, MAX_TOOLTIP_DECLARANTS).join(', ');
+  const hidden = declarants.length - MAX_TOOLTIP_DECLARANTS;
   return React.createElement(
     'span',
     {
       className: 'text-[10px] italic text-amber-300',
-      title: `declared by ${declarants}, not found by its discovery`,
+      title: `declared by ${shown}${hidden > 0 ? `, +${hidden} more` : ''}, not found by its discovery`,
       'data-testid': 'fleet-unverified-note',
     },
     'unverified',
@@ -309,107 +301,60 @@ export function fleetUnverifiedNote(info) {
 }
 
 /***
- * MARK: fleetModelRowBadgeNode
- * @description React node wrapper for the fleet model row badge that
- *   combines the count badge with the unverified annotation when present.
- * @example fleetModelRowBadgeNode({ runnerCount: 2 }) => <span>2 runners<span>unverified</span></span>
- * @param {Object|null} info - Fleet entry.
- * @returns {React.ReactNode} The badge node.
- ***/
-export const fleetModelRowBadgeNode = (info) => {
-  const countNode = fleetCountBadgeNode(info);
-  const note = fleetUnverifiedBadgeNode(info);
-  if (!note) return countNode;
-  return React.createElement(React.Fragment, null, countNode, note);
-};
-
-/***
  * MARK: fleetModelRowBadge
  * @description The one composition pickers call per row: ALWAYS the count
- *   badge ("N runners" / "0 runners"), plus the subtle "unverified"
- *   annotation when applicable. Never reads `available` / `unavailableReason`.
+ *   badge ("N runners" green/neutral, grey "0 runners"), plus the subtle
+ *   "unverified" annotation when applicable. Never reads `available` /
+ *   `unavailableReason`, so the count can never lose to the snapshot's
+ *   "Unavailable" verdict (q9, q19). Unknown ids (null info) render an
+ *   honest grey "0 runners", never a blank row.
  * @example fleetModelRowBadge({ runnerCount: 2 }) => <span>2 runners</span>
  * @param {Object|null} info - Fleet entry.
  * @returns {React.ReactNode} The badge node.
  ***/
 export function fleetModelRowBadge(info) {
-  return fleetModelRowBadgeNode(info);
+  const countNode = fleetCountBadgeNode(info);
+  const note = fleetUnverifiedNote(info);
+  if (!note) return countNode;
+  return React.createElement(React.Fragment, null, countNode, note);
 }
-
-/***
- * MARK: notCurrentlyServedAnnotation
- * @description Subtle "not currently served" annotation text for stored
- *   references to absent / 0-runner ids. Accepts no arguments.
- * @example notCurrentlyServedAnnotation() => 'not currently served'
- * @returns {React.ReactNode} The annotation node.
- ***/
-export const notCurrentlyServedAnnotation = React.createElement(
-  'span',
-  {
-    className: 'text-[10px] italic text-slate-400',
-    'data-testid': 'not-currently-served',
-  },
-  'not currently served',
-);
 
 /***
  * MARK: notCurrentlyServedBadge
  * @description "not currently served" marker for stored references to
- *   absent / 0-runner ids. Mark, never hide, never clear (q13).
+ *   absent / 0-runner ids. Mark, never hide, never clear (q13): callers
+ *   annotate the stored string beside the control and leave the value
+ *   itself untouched (no spontaneous onChange).
  * @example notCurrentlyServedBadge() => <span>not currently served</span>
  * @returns {React.ReactNode} The marker node.
  ***/
 export function notCurrentlyServedBadge() {
-  return notCurrentlyServedAnnotation;
+  return React.createElement(
+    'span',
+    {
+      className: 'text-[10px] italic text-slate-400',
+      'data-testid': 'not-currently-served',
+    },
+    'not currently served',
+  );
 }
-
-/***
- * MARK: notCurrentlyServedBadgeNode
- * @description React node wrapper for the "not currently served" marker.
- * @example notCurrentlyServedBadgeNode() => <span>not currently served</span>
- * @returns {React.ReactNode} The marker node.
- ***/
-export const notCurrentlyServedBadgeNode = notCurrentlyServedAnnotation;
-
-/***
- * MARK: fleetHarnessBadge
- * @description Harness dropdown badge label for fleet catalogue entries.
- * @example fleetHarnessBadge({ runnerCount: 1 }) => '1 runner'
- * @param {Object|number|null} entry - Fleet harness entry or count.
- * @returns {string} The badge label.
- ***/
-export const fleetHarnessBadge = (entry) => {
-  if (entry == null) return '0 runners';
-  const count =
-    typeof entry === 'number'
-      ? entry
-      : typeof entry?.runnerCount === 'number'
-        ? entry.runnerCount
-        : 0;
-  return count === 0 ? '0 runners' : `${count} runner${count === 1 ? '' : 's'}`;
-};
 
 /***
  * MARK: fleetHarnessBadgeNode
  * @description Harness dropdown badge sourced from the fleet catalogue's
  *   `harnesses[]` entry: "N runners" green/neutral, grey "0 runners".
  *   Returns null only when the entry is missing/unloaded (badge-free, never
- *   mislead). Accepts a harness entry ({ runnerCount }) or a number.
+ *   mislead). A harness missing from a LOADED summary is passed as an
+ *   explicit zero by the caller — this helper cannot tell "loaded zero"
+ *   from "unloaded unknown" when the entry is absent, so absent means null.
+ *   Accepts a harness entry ({ runnerCount }) or a raw number.
  * @example fleetHarnessBadgeNode({ id: 'muse', runnerCount: 1 }) => <span>1 runner</span>
  * @param {Object|number|null} entry - Fleet harness entry or count.
  * @returns {React.ReactNode|null} The badge node, or null when unloaded.
  ***/
 export function fleetHarnessBadgeNode(entry) {
   if (entry == null) return null;
-  const count =
-    typeof entry === 'number'
-      ? entry
-      : typeof entry?.runnerCount === 'number'
-        ? entry.runnerCount
-        : 0;
-  // We cannot distinguish "loaded zero" from "unloaded unknown" at helper
-  // level when entry is absent; absent => null (badge-free). When an entry
-  // is passed, render its count including zero.
+  const count = readRunnerCount(entry);
   const label = count === 0 ? '0 runners' : `${count} runner${count === 1 ? '' : 's'}`;
   const dotClass = count === 0 ? 'bg-slate-400' : 'bg-emerald-400';
   return React.createElement(

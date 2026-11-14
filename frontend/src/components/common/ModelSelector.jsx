@@ -17,6 +17,7 @@ import {
   fleetHarnessBadgeNode,
   modelBadgeNode,
   notCurrentlyServedBadge,
+  readRunnerCount,
 } from '../../services/modelStatus';
 import { withFleetModels, effectiveModelSelection } from '../../services/fleetModelOptions';
 import { ALIAS_HARNESS_ID } from '../../../../shared/modelAliases.js';
@@ -370,12 +371,7 @@ export function ModelSelector({
   const selectedFleetInfo = hasFleetCounts
     ? fleetInfoForModel(fleetCounts, selectedModelEntry, resolvedValue)
     : null;
-  const selectedRunnerCount =
-    selectedFleetInfo &&
-    typeof selectedFleetInfo.runnerCount === 'number' &&
-    selectedFleetInfo.runnerCount > 0
-      ? selectedFleetInfo.runnerCount
-      : 0;
+  const selectedRunnerCount = readRunnerCount(selectedFleetInfo);
   const showNotServedNote =
     hasFleetCounts &&
     modelSelection !== 'none' &&

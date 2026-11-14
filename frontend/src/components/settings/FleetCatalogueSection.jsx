@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../../services/api';
 import { useFleetModelCatalog } from '../../hooks/useFleetModelCatalog';
-import { fleetCountBadgeNode } from '../../services/modelStatus';
+import { fleetSnapshotBadge, readRunnerCount } from '../../services/modelStatus';
 
 /***
  * MARK: formatFleetAge
@@ -206,27 +206,36 @@ export function FleetCatalogueSection({ isAdmin = true }) {
             <tbody>
               {models.map((entry) => {
                 const id = typeof entry?.id === 'string' ? entry.id : '';
-                const count =
-                  typeof entry?.runnerCount === 'number' && entry.runnerCount > 0
-                    ? entry.runnerCount
-                    : 0;
+                const count = readRunnerCount(entry);
                 const declaredBy = Array.isArray(entry?.declaredBy)
                   ? entry.declaredBy.filter((r) => typeof r === 'string')
                   : [];
                 const runners = runnerRowsForEntry(entry);
                 const busy = busyKey === `model:${id}`;
+                // The snapshot's explicit unavailable verdict renders HERE in
+                // admin (never in pickers): the count stays the headline and
+                // the verdict + reason ride beside it as health detail (q10).
+                const verdict = fleetSnapshotBadge(entry);
                 return (
                   <tr
                     key={id}
                     data-testid="fleet-catalogue-row"
                     className="border-t border-border-standard/40 align-top"
                   >
-                    <td className="py-1.5 pr-3 font-mono text-on-surface break-all">
-                      {id}
-                      <span className="block mt-0.5">{fleetCountBadgeNode(entry)}</span>
-                    </td>
+                    <td className="py-1.5 pr-3 font-mono text-on-surface break-all">{id}</td>
                     <td className="py-1.5 pr-3 text-on-surface whitespace-nowrap">
-                      {count} runner{count === 1 ? '' : 's'}
+                      <span>
+                        {count} runner{count === 1 ? '' : 's'}
+                      </span>
+                      {verdict && (
+                        <span
+                          data-testid="fleet-catalogue-verdict"
+                          title={verdict.title}
+                          className="ml-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400"
+                        >
+                          {verdict.label}
+                        </span>
+                      )}
                     </td>
                     <td className="py-1.5 pr-3 text-on-surface">
                       {entry?.verified === false ? 'no' : 'yes'}
