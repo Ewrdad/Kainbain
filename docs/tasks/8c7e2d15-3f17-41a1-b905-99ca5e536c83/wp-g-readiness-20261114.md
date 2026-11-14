@@ -4,6 +4,10 @@ WP-G ticket: `6ba7e727-8b7a-4c46-ad4a-960bcd099bcb` (decision-gated on WP-F;
 blocked by this task).
 
 
+## Addendum 2026-11-14 ~14:25Z (run18)
+
+- Verdict: still **NOT READY** — live state unchanged since run17: `local-alpha` never restarted (old pinned daemon), `server2-alpha` Bundle B pending (pi `ERR_MODULE_NOT_FOUND`, no build), `local-bravo` healthy but paused. §6.2 clean of test-fleet; all named suites + WP-E guard + fixture regression re-passed this run. Awaiting operator restart receipts + rediscovery; see `run18-20261114-1425.md`.
+
 ## Addendum 2026-11-14 ~14:15Z (run16)
 
 - Verdict: still **NOT READY** — live state unchanged since run15: `local-alpha` never restarted (old pinned daemon), `server2-alpha` Bundle B pending (pi `ERR_MODULE_NOT_FOUND` because the running process predates the staged dep; no build), `local-bravo` healthy but paused. §6.2 clean of test-fleet; all named suites + WP-E guard + fixture regression re-passed this run (durable §6.4 coverage confirmed in `api/flow/dispatch/fleetModelSnapshot.test.js`). Awaiting operator restart receipts + rediscovery; see `run16-20261114-1415.md`.
