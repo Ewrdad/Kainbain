@@ -181,6 +181,17 @@ describe("POST /tasks with a rich-markdown goal", () => {
 		expect(stored.goal).toBe(RICH_GOAL);
 	});
 
+	it("falls back to Untitled task when the goal opens with a blank line, goal still verbatim", async () => {
+		const s = await register(setup());
+		await s.routes.get("POST /tasks")(
+			{ body: { projectId: "p-1", goal: "\nbody without a title line", stageId: "s-1" } },
+			reply(),
+		);
+		const stored = s.taskStore.createTask.mock.calls[0][1];
+		expect(stored.goal).toBe("\nbody without a title line");
+		expect(stored.title).toBe("Untitled task");
+	});
+
 	it("falls back to the title as the goal when goal is absent (legacy behavior)", async () => {
 		const s = await register(setup());
 		await s.routes.get("POST /tasks")(

@@ -5,3 +5,12 @@
 *.jsx text eol=lf
 *.json text eol=lf
 *.md text eol=lf
+# Screenshots and other binary evidence must never pass through text
+# normalization: a UTF-8 round-trip replaces high bytes with U+FFFD and
+# silently corrupts the image (seen on pretty-proof.png).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary

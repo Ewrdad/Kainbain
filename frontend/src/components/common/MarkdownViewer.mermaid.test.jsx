@@ -105,6 +105,21 @@ describe('MermaidDiagram', () => {
     expect(screen.getByText(/A->>B: hi/)).toBeInTheDocument();
   });
 
+  it('logs a one-line warning when it degrades so failures stay observable', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      mermaidRender.mockRejectedValue(new Error('bad diagram'));
+      render(<MermaidDiagram code={'graph TD\nA-->B'} />);
+      expect(await screen.findByText('MERMAID')).toBeInTheDocument();
+      expect(warnSpy).toHaveBeenCalledWith(
+        '[kainbain]',
+        expect.stringContaining('Mermaid diagram failed to render'),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it('renders each diagram on a page with a unique, DOM-safe render id', async () => {
     mermaidRender.mockResolvedValue({ svg: '<svg>x</svg>' });
     render(

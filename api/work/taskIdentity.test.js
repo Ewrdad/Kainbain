@@ -29,6 +29,11 @@ describe('The Work: task identity and classification', () => {
 		expect(deriveTaskTitleFromGoal({ goal: 'a\rb' })).toBe('a');
 		// Cap matches the historical 60-char slice
 		expect(deriveTaskTitleFromGoal({ goal: 'x'.repeat(100) })).toBe('x'.repeat(60));
+		// A goal with no title on its first line yields "" (or the blank
+		// line itself) so callers fall back to "Untitled task" — trimming
+		// stays the sanitizer's job, never the deriver's.
+		expect(deriveTaskTitleFromGoal({ goal: '\nbody text' })).toBe('');
+		expect(deriveTaskTitleFromGoal({ goal: '   \ncontent' })).toBe('   ');
 		// Fails safe on absent/empty/non-string input
 		expect(deriveTaskTitleFromGoal({ goal: '' })).toBe('');
 		expect(deriveTaskTitleFromGoal({ goal: null })).toBe('');
