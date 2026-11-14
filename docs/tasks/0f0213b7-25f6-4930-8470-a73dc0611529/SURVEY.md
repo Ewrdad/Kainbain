@@ -44,6 +44,25 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Early automatic check in the pipeline, before the website build (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Whole project: website, server and shared code"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Stop with a clear error naming the file and the missing package (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
