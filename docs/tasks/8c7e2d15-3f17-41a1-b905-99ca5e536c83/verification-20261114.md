@@ -102,3 +102,12 @@ helper. Live re-run after Phase 4 per plan.
 - §6.4 fixture regression fresh PASS (`/tmp/wpf-run15/regression.mjs`, REGRESSION-FIXTURE-PASS). §6.3 live look still pending operator.
 - §6.5 fresh PASS: runner 412/412; dispatch 17 files 175/175; projects+guard+runnerRoutes 15 files 175/175; frontend fleetModelOptions+ModelSelector 5 files 91/91. Engine-dir sha256 identical before/after (ENGINE-DIR-UNTOUCHED-BY-SUITES). Merge gates re-verified (all five ancestors of `7783e2c5`).
 - Bundle B tarball re-verified staged (`~/kainbain-runner-fbcf8442.tar.gz`, sha256 `ac919e2a…d43ade402`). Full detail in `run15-20261114-1410.md`. Per q6: STOP — operator restarts/rediscovery required; WP-G NOT READY.
+
+## Addendum 2026-11-14 ~14:15Z (run17 re-verification, server2, read-only)
+
+- Live `GET /runners` 14:10Z, re-confirmed 14:12Z: unchanged — `local-alpha` pre-WP-A/B pinned daemon (no `modelSource`/`discoveryStatus`/build, 17 pinned models incl. the 2 non-qualified ids); `server2-alpha` pi `ERR_MODULE_NOT_FOUND`, muse ok count 6, no build; `local-bravo` healthy (`discovered`, 4× `ok:true`, sha `fbcf8442`, `versions.codeChangedSinceBoot:false`) but `paused:true`. §6.1 still FAIL on two runners.
+- Live catalogue: 123 models, 2 quarantined (the two non-qualified ids, correctly held), zero `test-fleet` in full payload, zero bare/provider in `models[]`, all `harnesses.length === 1`. §6.2 PASS. Only server2-alpha's 6 muse models served (incl. `muse::meta::muse-ember-1.0`); 117 entries at 0 runners. Purge target absent — no DELETE issued.
+- No runner-record DELETE endpoint exists in `api/flow/runnerRoutes.js` (only revoke/pause/resume + catalogue DELETEs) — survey q4 "delete completely" for revoked `test-fleet-muse` infeasible via API; left revoked for audit. Verified this run.
+- §6.4 fixture regression fresh PASS (`/tmp/wpf-run17/regression.mjs`, REGRESSION-FIXTURE-PASS: advertised→1, drop→stays 0, remove→true-then-false, re-advertise→1, bare→quarantine). §6.3 live look still pending operator.
+- §6.5 fresh PASS: runner 412/412; dispatch 17 files 175/175; projects+guard+runnerRoutes 15 files 175/175; frontend fleetModelOptions+ModelSelector 5 files 91/91. Engine-dir sha256 identical before/after (ENGINE-DIR-UNTOUCHED-BY-SUITES). Merge gates re-verified (all five ancestors of `16e909fb`).
+- Bundle B tarball re-verified staged (`~/kainbain-runner-fbcf8442.tar.gz`, sha256 `ac919e2a…d43ade402`); handoff doc current (127 lines). Full detail in `run17-20261114-1415.md`. Per q6: STOP — operator restarts/rediscovery required; WP-G NOT READY.
