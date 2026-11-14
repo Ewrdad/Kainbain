@@ -202,6 +202,16 @@ Recorded here as a breach for audit, not as precedent.
 - §6.5 fresh PASS: runner 412/412 (74 suites); dispatch 17 files 175/175; routes/projects+guard+runnerRoutes 15 files 175/175; frontend fleetModelOptions+ModelSelector 5 files 91/91. ENGINE-DIR-UNTOUCHED-BY-SUITES (server2 local engine files bit-identical before/after; strongest direct proof remains run22's on-host check). Merge gates re-verified (all five ancestors of `964ac9cd`). Handoff current (236 lines); Bundle B tarball staged.
 - Full detail in `run25-20261114-2255.md`. Per q6: STOP — server2-alpha Bundle B, live §6.3 UI pass, and explicit human who/when/scope (q3 leftover scope + q4 infeasibility acceptance) still pending; WP-G NOT READY.
 
+## Addendum 2026-11-14 ~23:20Z (run29 re-verification, server2, read-only)
+
+- Live `GET /runners` 23:02Z: UNCHANGED since run25–28 — `local-alpha` + `local-bravo` fully PASS (`discovered`, 4× `ok:true`, sha `fbcf8442` `dirty:false`, `codeChangedSinceBoot:false`, unpaused). `server2-alpha` still FAIL (pi `ERR_MODULE_NOT_FOUND` on `cross-spawn`, identical atMs 1794695731093; no build block; Bundle B pending). §6.1 PARTIAL (2 of 3 fully PASS).
+- Backend `/status`: build 637, `deployedAt` 2026-11-14T22:35:11Z (unchanged), commit still stale `1.0.0-28aac94`; engine idle.
+- Live catalogue (`updatedAtMs` 1794697355967, heartbeat refresh only): 123 models, 2 quarantined (same sticky leftovers, `not harness-qualified`), zero `test-fleet`, zero bare/provider in `models[]` (115×`harness`, 8×`harnessReasoning` via `form`), all `harnesses.length === 1`. §6.2 PASS. Purge target absent — no DELETE issued. Quarantine DELETEs NOT issued (fresh q3-scope human grant still absent). Revoked `test-fleet-muse` (`status: revoked`) left for audit (no runner DELETE endpoint; q4 infeasible via API).
+- §6.4 fresh fixture PASS (`/tmp/wpf-run29/regression.mjs`, repo's own store + `fleetRunnerRecord` with confirmed provenance, 6/6 incl. bare→quarantined-never-in-models); durable coverage in `api/flow/dispatch/fleetModelSnapshot.test.js` green — no new maintained test added (verification-only + docs-only, no product-code behavior change; smallest honest coverage already exists and is green).
+- §6.3 live PENDING operator (fixture evidence 91/91 PASS incl. "0 runners" grey rendering; agent spawned no servers).
+- §6.5 fresh PASS (checkout @ `e621960`): runner 412/412; dispatch 175/175; routes/projects+guard+runnerRoutes 15 files 175/175; frontend fleetModelOptions+ModelSelector 5 files 91/91. No live mutation possible from this host (GETs only against .206). Merge gates re-verified (all five ancestors). Handoff current; Bundle B tarball staged.
+- Full detail in `run29-20261114-2320.md`. Per q6: STOP — server2-alpha Bundle B, live §6.3 UI pass, and explicit human who/when/scope (q3 leftover scope + q4 infeasibility acceptance) still pending; WP-G NOT READY.
+
 ## Addendum 2026-11-14 ~22:52Z (run27 re-verification, server2, read-only)
 
 - Live `GET /runners` 22:52Z: UNCHANGED since run25/26 — `local-alpha` + `local-bravo` fully PASS (`discovered`, 4× `ok:true`, sha `fbcf8442` `dirty:false`, `codeChangedSinceBoot:false`, unpaused; identical atMs). `server2-alpha` still FAIL (pi `ERR_MODULE_NOT_FOUND` on `cross-spawn`, identical atMs; no build block; Bundle B pending). §6.1 PARTIAL (2 of 3 fully PASS).
