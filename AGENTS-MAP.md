@@ -103,6 +103,7 @@ area stands in as **Docs Steward**.
 | Fast documentation coverage & link integrity | `npm run docs:check` |
 | WP-8 one-function gate | `npm run check:one-function` |
 | WP-8 JSDoc `@example` gate | `npm run check:jsdoc-example` |
+| Frontend imports-declared guardrail | `npm run check:deps:frontend` (also first step of `build:frontend` + gate preflight) |
 
 ## Read-budget rules
 

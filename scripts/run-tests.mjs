@@ -51,6 +51,10 @@ import {
 	checkDirectoryForDuplicates,
 	formatViolationsReport,
 } from "./check-duplicate-settings.mjs";
+import {
+	checkPackageDirectory as checkFrontendImportsDeclared,
+	formatUndeclaredReport,
+} from "../frontend/scripts/check-imports-declared.js";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const NPM = npmExecutable();
@@ -481,6 +485,7 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 				"tests/check-one-function-per-file.test.mjs",
 				"tests/check-jsdoc-example.test.mjs",
 				"tests/check-duplicate-settings.test.mjs",
+				"tests/check-imports-declared.test.mjs",
 				"tests/check-component-compat.test.mjs",
 				"tests/detect-changed-components.test.mjs",
 				"tests/publish.test.mjs",
@@ -572,6 +577,25 @@ async function main() {
 	}
 	console.log(
 		`✅ Settings duplicate check passed (${fastPreflightResult.totalFilesScanned} files in ${fastPreflightResult.durationMilliseconds}ms)`,
+	);
+	// Fail-first manifest guardrail (frontend-only): an undeclared import
+	// used to sail through every cheap stage and then fail the expensive
+	// ones (Frontend Build, depcheck, canary, publish). This preflight runs
+	// in milliseconds, before the overlap window starts anything.
+	const frontendImportsResult = checkFrontendImportsDeclared({
+		packageDirectoryPath: path.join(REPO_ROOT, "frontend"),
+	});
+	if (!frontendImportsResult.isClean) {
+		console.error(
+			formatUndeclaredReport({
+				violationsList: frontendImportsResult.violationsList,
+			}),
+		);
+		process.exitCode = 1;
+		return;
+	}
+	console.log(
+		`✅ Frontend imports check passed (${frontendImportsResult.totalFilesScanned} files in ${frontendImportsResult.durationMilliseconds}ms)`,
 	);
 	const { ok: fastOk } = await runParallel(fast, { cwd: REPO_ROOT });
 	let canaryOk = true;
