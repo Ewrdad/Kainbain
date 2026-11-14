@@ -1074,10 +1074,10 @@ function stageCommandAck(state, ack) {
  * MARK: handlePendingCommands
  * @description Acts on backend-to-Runner commands delivered through the
  *   heartbeat pull channel (ADR 0013): `requestModelRediscovery` re-runs
- *   model discovery promptly (fresh probe, not the 12h cache cadence;
- *   skipped with a success ack when the operator pinned models, since
- *   pins win by default — `modelDiscoveryWins` opts in to scanning
- *   anyway); `requestUpdate` runs the existing idle-only
+ *   model discovery promptly (fresh probe, not the 12h cache cadence —
+ *   pinned Runners scan too, because the advertised list is pin ∪
+ *   discovered and this is how a brand-new harness model reaches the
+ *   catalogue without a pin edit); `requestUpdate` runs the existing idle-only
  *   self-update at once when idle, or parks `state.pendingUpdate` for
  *   the next idle point when an execution is live (never interrupts
  *   work, D5). Every handled command stages exactly one ack on

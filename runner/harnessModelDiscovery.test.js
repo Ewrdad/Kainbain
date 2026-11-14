@@ -681,3 +681,96 @@ test("clearDiscoveryCache resets slices and status", async () => {
 	clearDiscoveryCache();
 	assert.deepEqual(getDiscoveryStatus(), {});
 });
+
+test("a leg whose import is missing reports LEG_MODULE_MISSING, not a bare module error", async () => {
+	clearDiscoveryCache();
+	const missing = Object.assign(new Error("Cannot find module '../api/agent/harnesses/pi/piHarness.js'"), {
+		code: "ERR_MODULE_NOT_FOUND",
+	});
+	const restore = withLegStub("pi", async () => { throw missing; });
+	try {
+		const out = await runDiscoveryLeg("pi", {});
+		assert.deepEqual(out.ids, []);
+		assert.equal(out.error.code, "LEG_MODULE_MISSING");
+		assert.match(out.error.hint, /re-install|re-run the update/);
+	} finally {
+		restore();
+		clearDiscoveryCache();
+	}
+});
+
+test("boot self-check and seed round agree on LEG_MODULE_MISSING", async () => {
+	clearDiscoveryCache();
+	const announced = [];
+	const logger = { warn: (m) => announced.push(m) };
+	const bomb = Object.assign(new Error("Cannot find module './gone'"), { code: "ERR_MODULE_NOT_FOUND" });
+	const errors = await verifyDiscoveryLegModules(["pi"], {
+		logger,
+		importer: async () => { throw bomb; },
+	});
+	assert.equal(errors.pi.code, "LEG_MODULE_MISSING");
+	// The seed round re-imports the same specifier and must keep the same
+	// code (classifyLegError maps ERR_MODULE_NOT_FOUND), never overwrite
+	// the named record with a raw module error.
+	const restore = withLegStub("pi", async () => { throw bomb; });
+	try {
+		await runDiscoveryLeg("pi", {});
+		assert.equal(discoveryCache.pi.error.code, "LEG_MODULE_MISSING");
+		const status = getDiscoveryStatus(["pi"]);
+		assert.equal(status.pi.ok, false);
+		assert.equal(status.pi.error.code, "LEG_MODULE_MISSING");
+	} finally {
+		restore();
+		clearDiscoveryCache();
+	}
+});
+
+test("a pinned runner whose leg import throws still names the failure (never {})", async () => {
+	clearDiscoveryCache();
+	// Acceptance shape: models ['muse::meta::a'] pinned, leg fake throwing
+	// on import — the heartbeat status must carry a NAMED error.
+	const restore = withLegStub("muse", async () => {
+		throw Object.assign(new Error("Cannot find module './museHarness.js'"), { code: "ERR_MODULE_NOT_FOUND" });
+	});
+	try {
+		const out = await runDiscoveryRound({ harnessIds: ["muse"] });
+		assert.deepEqual(out.combinedIds, []);
+		assert.equal(out.resultsByHarness.muse.error.code, "LEG_MODULE_MISSING");
+		const status = getDiscoveryStatus(["muse"]);
+		assert.deepEqual(Object.keys(status), ["muse"]);
+		assert.notDeepEqual(status.muse.error, {});
+		assert.equal(status.muse.error.code, "LEG_MODULE_MISSING");
+	} finally {
+		restore();
+		clearDiscoveryCache();
+	}
+});
+
+test("entry points accept a single harness id string (never a silent empty scan)", async () => {
+	clearDiscoveryCache();
+	const restore = withLegStub("pi", async () => ["pi::mistral::x"]);
+	try {
+		const out = await runDiscoveryRound({ harnessIds: "pi" });
+		assert.deepEqual(out.combinedIds, ["pi::mistral::x"]);
+		assert.deepEqual(Object.keys(out.resultsByHarness), ["pi"]);
+		// A second slice proves the string filters to just the named id
+		// (the old code read every slice for a non-array filter).
+		discoveryCache.muse = { ids: ["muse::meta::m"], atMs: Date.now(), error: null };
+		assert.deepEqual(Object.keys(getDiscoveryStatus("pi")), ["pi"]);
+		assert.deepEqual(Object.keys(getDiscoveryStatus(["pi", "muse"])).sort(), ["muse", "pi"]);
+		// Null opts read as the defaults, never throw.
+		assert.deepEqual(Object.keys(getDiscoveryStatus(["pi"], null)), ["pi"]);
+		const errors = await verifyDiscoveryLegModules("pi", { importer: async () => ({}) });
+		assert.deepEqual(errors, {});
+	} finally {
+		restore();
+		clearDiscoveryCache();
+	}
+});
+
+test("runDiscoveryRound tolerates a null opts object", async () => {
+	clearDiscoveryCache();
+	const out = await runDiscoveryRound(null);
+	assert.deepEqual(out, { combinedIds: [], resultsByHarness: {} });
+	clearDiscoveryCache();
+});

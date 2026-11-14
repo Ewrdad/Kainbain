@@ -10,6 +10,18 @@
  *   leg cannot back. The daemon drives one round per boot, per
  *   `modelDiscoveryIntervalMs` tick, and per Re-detect command.
  * @example await runDiscoveryRound({ harnessIds: ['pi', 'muse'] }) => { combinedIds: ['pi::mistral::x'], resultsByHarness: { pi: {...}, muse: {...} } }
+ *
+ * How a scan can fail (every code below lands in `getDiscoveryStatus`
+ * instead of `{}`; ids are always keep-old, never evicted):
+ * `NOT_YET_RUN` (never scanned — boot seed still pending, or a legless
+ * harness such as `mock`/`custom` that can never scan), `NO_DISCOVERY_LEG`
+ * (unknown harness id), `LEG_MODULE_MISSING` (a leg import the install
+ * does not ship — repair the install), `ROUND_FAILED` (the round itself
+ * threw above the legs — retry re-detection), `<HARNESS>_DISCOVERY_FAILED`
+ * (unclassified leg throw, e.g. a down CLI), `<HARNESS>_MODELS_UNPARSEABLE`
+ * (leg answered garbage), plus each leg's own honest-empty reasons
+ * (`PI_MODELS_EMPTY`, `MUSE_MSP_*`, `AGY_*`, `VIBE_*`,
+ * `OPENCODE_NOT_CONFIGURED`, `CODEX_DISCOVERY_UNAVAILABLE`).
  ***/
 import { harnessModelKey, parseModelKey } from "../shared/modelKeys.js";
 import { DISCOVERY_ENV_VARS, resolveBinary } from "../api/agent/harnessDiscovery.js";
@@ -40,15 +52,22 @@ export const DISCOVERY_STALE_MS_DEFAULT_MS = 24 * 60 * 60 * 1000;
 
 /***
  * MARK: LEG_MODULE_SPECIFIERS
- * @description The exact module specifiers every discovery leg loads, in
- *   one table: harness modules under `api/` plus the npm package the pi
- *   leg reaches through its harness (`@earendil-works/pi-coding-agent`).
- *   All four lazy loaders import through this table, the boot self-check
+ * @description Every discovery-leg import that can be missing from a
+ *   runner install, in one table: harness modules under `api/` plus the
+ *   npm package the pi leg reaches through its harness
+ *   (`@earendil-works/pi-coding-agent`). The `muse` leg needs no entry
+ *   (its only import is `runner/modelDiscovery.js`, which ships inside
+ *   the runner tree itself) and `codex` needs none (it imports nothing —
+ *   honestly empty until the live transport lands). Every other lazy
+ *   loader imports through this table, the boot self-check
  *   (`verifyDiscoveryLegModules`) eagerly imports it, and the runner
  *   packager ships it — one table, three consumers, so the bundle can
  *   never drift from what the legs actually load (the N3 gap: legs lazily
  *   imported backend modules the runner install did not ship, and the
  *   runner advertised 0 models with `{}` status instead of naming it).
+ *   The bundle-import conformance test pins this table against
+ *   `RUNNER_LEG_BUNDLED_DEPS`, so a new bare specifier here fails the
+ *   build until the packager ships it.
  * @example LEG_MODULE_SPECIFIERS.pi => ['../api/agent/harnesses/pi/piHarness.js', '@earendil-works/pi-coding-agent']
  ***/
 export const LEG_MODULE_SPECIFIERS = {
@@ -91,6 +110,30 @@ function dedupeStrings(list) {
 		out.push(value);
 	}
 	return out;
+}
+
+/***
+ * MARK: asIdList
+ * @description Normalizes a harness-id argument into a clean list: an
+ *   array passes through trimmed and de-blanked, a single string reads as
+ *   a one-id list (a bare string reaching a round/status call means the
+ *   caller named one harness — scanning nothing would silently lie), and
+ *   anything else (null, undefined, objects) reads as no ids. Keeps the
+ *   three entry points (`runDiscoveryRound`, `getDiscoveryStatus`,
+ *   `verifyDiscoveryLegModules`) agreeing on one input shape.
+ * @example asIdList('pi') => ['pi']
+ * @example asIdList(['pi', '  ', null]) => ['pi']
+ * @example asIdList(null) => []
+ * @param {unknown} value - Harness ids (array, single id, or absent).
+ * @returns {string[]} Clean harness ids.
+ ***/
+function asIdList(value) {
+	if (typeof value === "string") {
+		const clean = value.trim();
+		return clean ? [clean] : [];
+	}
+	if (!Array.isArray(value)) return [];
+	return value.map((id) => String(id ?? "").trim()).filter(Boolean);
 }
 
 /***
@@ -161,19 +204,33 @@ function awaitWithTimeout(promise, timeoutMs) {
  *   `{code,message,hint}` shape. Classified errors thrown by legs (the
  *   agy/vibe catalogues' retained discovery failures, the honest-empty
  *   legs' reasons) pass through untouched so the slot names the real
- *   cause; anything else becomes `<HARNESS>_DISCOVERY_FAILED` with the
- *   raw message attached. All strings are length-capped so one chatty
- *   CLI cannot bloat every heartbeat.
+ *   cause; a bare `ERR_MODULE_NOT_FOUND` (a leg import the install does
+ *   not ship — the N3 gap) reads as `LEG_MODULE_MISSING` with the repair
+ *   fix, so the boot self-check (`verifyDiscoveryLegModules`) and the
+ *   seed round that re-imports the same specifier report the SAME code
+ *   instead of disagreeing. Anything else becomes
+ *   `<HARNESS>_DISCOVERY_FAILED` with the raw message attached. All
+ *   strings are length-capped so one chatty CLI cannot bloat every
+ *   heartbeat.
  * @example classifyLegError(Object.assign(new Error('no agy'), { code: 'AGY_BIN_MISSING', hint: 'install' }), 'antigravity') => { code: 'AGY_BIN_MISSING', message: 'no agy', hint: 'install' }
+ * @example classifyLegError(Object.assign(new Error("Cannot find module 'x'"), { code: 'ERR_MODULE_NOT_FOUND' }), 'pi') => { code: 'LEG_MODULE_MISSING', ... }
  * @param {unknown} error - Whatever the leg threw.
  * @param {string} harnessId - Harness the leg scanned for.
  * @returns {{code: string, message: string, hint: string}} Status-slot error.
  ***/
 function classifyLegError(error, harnessId) {
 	if (error && typeof error === "object" && typeof error.code === "string" && error.code.trim()) {
+		const code = error.code.trim();
+		if (code === "ERR_MODULE_NOT_FOUND") {
+			return {
+				code: "LEG_MODULE_MISSING",
+				message: String(error.message || code).slice(0, 500),
+				hint: `Repair the runner install so the '${harnessId}' discovery module resolves (re-install or re-run the update), then re-run model re-detection.`,
+			};
+		}
 		return {
-			code: error.code.trim().slice(0, 120),
-			message: String(error.message || error.code).slice(0, 500),
+			code: code.slice(0, 120),
+			message: String(error.message || code).slice(0, 500),
 			hint: typeof error.hint === "string" ? error.hint.slice(0, 500) : "",
 		};
 	}
@@ -277,19 +334,18 @@ export async function runDiscoveryLeg(harnessId, ctx = {}) {
  *   entries are dropped. Returns a plain object — the per-harness
  *   slices stay readable via `getDiscoveryStatus()`.
  * @example await runDiscoveryRound({ harnessIds: ['pi'] }) => { combinedIds: ['pi::mistral::x'], resultsByHarness: { pi: { harnessId: 'pi', ids: [...], error: null } } }
- * @param {Object} [opts] - Labelled inputs.
- * @param {string[]} [opts.harnessIds] - Harness ids to scan, in order.
+ * @param {Object} [opts] - Labelled inputs (null-safe: a null opts reads as {}).
+ * @param {string[]|string} [opts.harnessIds] - Harness ids to scan, in order (a single id string scans just it).
  * @param {number} [opts.timeoutMs] - Per-leg watchdog budget (ms).
  * @param {Object} [opts.legOptions] - Seams forwarded to every leg (each leg gets a fresh copy).
  * @returns {Promise<{combinedIds: string[], resultsByHarness: Object}>} Combined ids plus per-leg outcomes.
  ***/
-export async function runDiscoveryRound({ harnessIds = [], timeoutMs, legOptions = {} } = {}) {
+export async function runDiscoveryRound(opts) {
+	const { harnessIds = [], timeoutMs, legOptions = {} } = opts ?? {};
 	const effectiveTimeoutMs = resolveLegTimeoutMs(timeoutMs);
 	const combinedIds = [];
 	const resultsByHarness = {};
-	for (const id of Array.isArray(harnessIds) ? harnessIds : []) {
-		const clean = String(id ?? "").trim();
-		if (!clean) continue;
+	for (const clean of asIdList(harnessIds)) {
 		if (!Object.prototype.hasOwnProperty.call(DISCOVERY_LEGS, clean)) continue;
 		const legResult = await runDiscoveryLeg(clean, { ...legOptions, timeoutMs: effectiveTimeoutMs });
 		resultsByHarness[clean] = legResult;
@@ -316,15 +372,16 @@ export async function runDiscoveryRound({ harnessIds = [], timeoutMs, legOptions
  *   is advisory for Settings/the catalogue (survey q5/q16; stale models
  *   stay usable).
  * @example getDiscoveryStatus(['pi']) => { pi: { ok: true, count: 1, atMs: 123, stale: false } }
- * @param {string[]} [onlyHarnessIds] - Harness ids to include (all when omitted).
- * @param {Object} [opts] - `{ staleMs }` staleness threshold (defaults to 24h).
+ * @param {string[]|string} [onlyHarnessIds] - Harness ids to include (all when omitted; a single id string filters to just it).
+ * @param {Object} [opts] - `{ staleMs }` staleness threshold (defaults to 24h; null-safe).
  * @returns {Object} Status by harness id.
  ***/
-export function getDiscoveryStatus(onlyHarnessIds, { staleMs = DISCOVERY_STALE_MS_DEFAULT_MS } = {}) {
+export function getDiscoveryStatus(onlyHarnessIds, opts) {
+	const { staleMs = DISCOVERY_STALE_MS_DEFAULT_MS } = opts ?? {};
 	const thresholdMs = Number.isFinite(staleMs) && staleMs > 0 ? staleMs : DISCOVERY_STALE_MS_DEFAULT_MS;
-	const wanted = Array.isArray(onlyHarnessIds)
-		? new Set(onlyHarnessIds.map((id) => String(id ?? "").trim()).filter(Boolean))
-		: null;
+	const wanted = onlyHarnessIds === undefined || onlyHarnessIds === null
+		? null
+		: new Set(asIdList(onlyHarnessIds));
 	const isStale = (atMs) =>
 		typeof atMs === "number" && Number.isFinite(atMs) && Date.now() - atMs > thresholdMs;
 	const out = {};
@@ -786,20 +843,19 @@ export const DISCOVERY_LEGS = {
  *   modules all load is left untouched — success writes no fake `ok`,
  *   the seed round records the real result. Never throws.
  * @example await verifyDiscoveryLegModules(['pi'], { importer: async () => { throw Object.assign(new Error('nope'), { code: 'ERR_MODULE_NOT_FOUND' }); } }) => { pi: { code: 'LEG_MODULE_MISSING', ... } }
- * @param {string[]} [harnessIds] - Configured harness ids to check.
- * @param {Object} [opts] - Seams (`logger`, `importer` test double).
+ * @param {string[]|string} [harnessIds] - Configured harness ids to check (a single id string checks just it).
+ * @param {Object} [opts] - Seams (`logger`, `importer` test double; null-safe).
  * @returns {Promise<Object>} Errors by harness id (empty when all load).
  ***/
-export async function verifyDiscoveryLegModules(harnessIds = [], { logger, importer = (spec) => import(spec) } = {}) {
+export async function verifyDiscoveryLegModules(harnessIds = [], opts) {
+	const { logger, importer = (spec) => import(spec) } = opts ?? {};
 	const errors = {};
 	const announce = (message) => {
 		if (typeof logger?.warn === "function") logger.warn(message);
 		else if (typeof logger?.log === "function") logger.log(message);
 		else console.warn(message);
 	};
-	for (const raw of Array.isArray(harnessIds) ? harnessIds : []) {
-		const harnessId = String(raw ?? "").trim();
-		if (!harnessId) continue;
+	for (const harnessId of asIdList(harnessIds)) {
 		const specifiers = LEG_MODULE_SPECIFIERS[harnessId];
 		if (!specifiers) continue;
 		for (const specifier of specifiers) {
