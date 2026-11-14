@@ -9,7 +9,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run check:react && node scripts/check-no-deprecations.js",
+    "build": "npm run check:react && node scripts/check-no-deprecations.js && node scripts/check-mermaid-bundled.js",
     "check:react": "node scripts/check-react-imports.js",
     "preview": "vite preview",
     "test": "npm run check:duplicate-identifiers && vitest run",

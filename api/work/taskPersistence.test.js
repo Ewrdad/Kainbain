@@ -7,6 +7,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
 	saveTaskMarkdown,
 	parseTaskMarkdown,
+	extractGoalSection,
 	recordTimeline,
 	recordTimelineWithDiffStat,
 	_isTaskStillRegistered,
@@ -517,6 +518,37 @@ describe("The Work: markdown log persistence (single storage path)", () => {
 		expect(task.timeline).toHaveLength(1);
 		expect(task.timeline[0]).toMatchObject({ stage: "Idea", status: "Moved" });
 		expect(task.logEntries.map((e) => e.text)).toEqual(["hello"]);
+	});
+
+	it("stops history parsing at # Log Entries when no # Timeline follows it", () => {
+		// A hand-edited or corrupt `# Log Entries` fence may hold a "- " line
+		// (never valid JSON, so logEntries stays empty); it must not leak
+		// into history. The writer always emits single-line JSON, so on
+		// machine-written files both scans agree — this pins the fail-safe
+		// reading of damaged files.
+		const store = stubStore();
+		const content = [
+			"---",
+			"id: task-hl",
+			"---",
+			"",
+			"# Goal",
+			"Goal",
+			"",
+			"# History",
+			"- 2026-09-24T00:00:00.000Z: Created",
+			"",
+			"# Log Entries",
+			"```json",
+			"- this line is not JSON and is not history",
+			"```",
+		].join("\n");
+
+		const task = parseTaskMarkdown(store, content, "task-hl", "proj-1");
+		expect(task.history).toEqual([
+			{ timestamp: "2026-09-24T00:00:00.000Z", action: "Created" },
+		]);
+		expect(task.logEntries).toEqual([]);
 	});
 
 	it("round-trips the startup-recovery priority marker", () => {
@@ -1936,3 +1968,109 @@ Legacy task
 	});
 });
 
+
+describe("extractGoalSection fence-aware extraction", () => {
+	it("stops at a real top-level History heading", () => {
+		const body = "# Goal\nhello world\n\n# History\n- item";
+		expect(extractGoalSection(body)).toBe("hello world");
+	});
+
+	it("keeps headings that live inside a fenced code block", () => {
+		const body =
+			"# Goal\nintro\n\n```md\n# History\nfake\n# Goal\nanother\n```\n\n## Steps\n1. x\n";
+		expect(extractGoalSection(body)).toBe("intro\n\n```md\n# History\nfake\n# Goal\nanother\n```\n\n## Steps\n1. x");
+	});
+
+	it("returns an empty string when there is no Goal section", () => {
+		expect(extractGoalSection("# Title\nbody")).toBe("");
+	});
+
+	it("tolerates CRLF input", () => {
+		const body = "# Goal\r\nhello\r\n\r\n# History\r\n- x";
+		expect(extractGoalSection(body)).toBe("hello");
+	});
+
+	it("falls back to the first terminator when a fence is never closed", () => {
+		const body = "# Goal\nintro\n```js\nconst x = 1;\n\n# History\n- real entry\n";
+		expect(extractGoalSection(body)).toBe("intro\n```js\nconst x = 1;");
+	});
+
+	it("only closes a fence with the marker character that opened it", () => {
+		const body = "# Goal\n~~~md\n```\n# History\n~~~\nafter\n\n# History\n- x";
+		expect(extractGoalSection(body)).toBe("~~~md\n```\n# History\n~~~\nafter");
+	});
+
+	it("treats an indented terminator heading outside a fence as the end of the goal", () => {
+		const body = "# Goal\nhello\n  # Timeline\n- x";
+		expect(extractGoalSection(body)).toBe("hello");
+	});
+
+	it("stops at a Log Entries heading", () => {
+		expect(extractGoalSection("# Goal\nhello\n# Log Entries\nlog")).toBe("hello");
+	});
+
+	it("keeps a top-level Details heading: no writer emits one, so it is goal text", () => {
+		// `# Details` is ordinary markdown inside a goal (pretty tickets use
+		// headings freely). Nothing in the writer emits a Details section, so
+		// treating it as a terminator would silently truncate the goal.
+		const body = "# Goal\n# Ship it\n\n# Details\nSome detail text\n\n# History\n- x";
+		expect(extractGoalSection(body)).toBe("# Ship it\n\n# Details\nSome detail text");
+	});
+
+	it("returns an empty string for non-string input", () => {
+		expect(extractGoalSection(undefined)).toBe("");
+		expect(extractGoalSection("")).toBe("");
+	});
+});
+
+
+describe("task goal containing section-like headings round-trips", () => {
+	it("preserves a fenced code block whose contents look like section headings", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-goal-fence-"));
+		const store = stubStore({ cwd: dir });
+		const goal =
+			"# Pretty ticket\n\n```md\n# History\nfake\n# Goal\nanother\n```\n\n## Steps\n1. x";
+		const task = {
+			id: "task-fence-1",
+			projectId: "proj-1",
+			title: "Pretty ticket",
+			goal,
+			status: "in_stage",
+			createdAt: "2026-10-01T00:00:00.000Z",
+			updatedAt: "2026-10-01T00:00:00.000Z",
+			history: [],
+			reports: [],
+		};
+		saveTaskMarkdown(store, dir, task);
+		const content = fs.readFileSync(
+			path.join(dir, "docs", "tasks", "task-fence-1", "task.md"),
+			"utf8",
+		);
+		const rehydrated = parseTaskMarkdown(store, content, "task-fence-1", "proj-1");
+		expect(rehydrated.goal).toBe(goal);
+	});
+
+	it("round-trips a goal whose own top-level heading reads Details", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-goal-details-"));
+		const store = stubStore({ cwd: dir });
+		const goal = "# Ship it\n\n# Details\nSome detail text\n\n## Steps\n1. x";
+		const task = {
+			id: "task-details-1",
+			projectId: "proj-1",
+			title: "Ship it",
+			goal,
+			status: "in_stage",
+			createdAt: "2026-10-01T00:00:00.000Z",
+			updatedAt: "2026-10-01T00:00:00.000Z",
+			history: [],
+			reports: [],
+		};
+		saveTaskMarkdown(store, dir, task);
+		const content = fs.readFileSync(
+			path.join(dir, "docs", "tasks", "task-details-1", "task.md"),
+			"utf8",
+		);
+		const rehydrated = parseTaskMarkdown(store, content, "task-details-1", "proj-1");
+		expect(rehydrated.goal).toBe(goal);
+	});
+});

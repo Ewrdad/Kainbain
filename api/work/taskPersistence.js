@@ -660,6 +660,52 @@ export function syncTaskReports(taskStore, projectId, task, projectCwd) {
 }
 
 /***
+ * MARK: extractGoalSection
+ * @description Extracts the `# Goal` section body from a task.md body. The goal
+ *   ends at the first terminator heading (`# History`, `# Timeline`,
+ *   `# Process Logs`, `# Log Entries`; surrounding whitespace ignored) that is
+ *   OUTSIDE a fenced code block, so heading-like example text inside a ` ``` `
+ *   or `~~~` fence (common in rich markdown tasks) never truncates the goal.
+ *   A fence only closes on the same marker character that opened it. If a
+ *   fence is never closed, the scan falls back to the first terminator
+ *   regardless of fences so an unbalanced fence cannot swallow the History
+ *   section. Line endings are normalised to LF. Returns the trimmed goal text
+ *   ("" when there is no `# Goal` section).
+ * @example extractGoalSection("# Goal\nhello\n# History\n- x") => "hello"
+ * @param {string} body - The markdown body after frontmatter.
+ * @returns {string}
+ ***/
+export function extractGoalSection(body) {
+	if (typeof body !== "string" || !body) return "";
+	const lines = body.split(/\r\n|\r|\n/);
+	const goalHeadingIndex = lines.findIndex((line) => line.trim() === "# Goal");
+	if (goalHeadingIndex < 0) return "";
+	const start = goalHeadingIndex + 1;
+	const terminators = new Set(["# History", "# Timeline", "# Process Logs", "# Log Entries"]);
+	let fenceChar = "";
+	let end = lines.length;
+	let firstRawTerminator = -1;
+	for (let i = start; i < lines.length; i += 1) {
+		const trimmed = lines[i].trim();
+		const fence = /^(`{3,}|~{3,})/.exec(trimmed);
+		if (fence) {
+			const char = fence[1][0];
+			if (!fenceChar) fenceChar = char;
+			else if (char === fenceChar) fenceChar = "";
+			continue;
+		}
+		if (!terminators.has(trimmed)) continue;
+		if (firstRawTerminator < 0) firstRawTerminator = i;
+		if (!fenceChar) {
+			end = i;
+			break;
+		}
+	}
+	if (fenceChar && firstRawTerminator >= 0) end = firstRawTerminator;
+	return lines.slice(start, end).join("\n").trim();
+}
+
+/***
  * MARK: parseTaskMarkdown
  * @description Parses `<projectRoot>/docs/tasks/<taskId>/task.md` into a task entity.
  * @param {Object} taskStore - TaskStore instance.
@@ -676,16 +722,15 @@ export function parseTaskMarkdown(taskStore, content, taskId, projectId) {
 	let history = [];
 	let processLogs = "";
 
-	// Parse body sections
-	const goalMatch = body.match(
-		/# Goal\r?\n([\s\S]*?)(?=(?:\r?\n# (?:History|Timeline|Process Logs)|\r?\n$|$))/,
-	);
-	if (goalMatch) {
-		goal = goalMatch[1].trim();
-	}
+	// Parse body sections. Use a fence-aware scan so a code block that
+	// merely contains `# History`-style text never truncates the goal.
+	goal = extractGoalSection(body);
 
+	// Goal and timeline scans above already treat `# Log Entries` as a
+	// section boundary; history must too, or a task.md with no `# Timeline`
+	// section would let the history scan swallow the log-entries block.
 	const historyMatch = body.match(
-		/# History\r?\n([\s\S]*?)(?=(?:\r?\n# (?:Timeline|Process Logs)|\r?\n$|$))/,
+		/# History\r?\n([\s\S]*?)(?=(?:\r?\n# (?:Timeline|Process Logs|Log Entries)|\r?\n$|$))/,
 	);
 	if (historyMatch) {
 		const historyLines = historyMatch[1].split(/\r?\n/);

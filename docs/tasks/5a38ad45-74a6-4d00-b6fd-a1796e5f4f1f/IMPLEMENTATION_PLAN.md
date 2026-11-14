@@ -289,6 +289,24 @@ visual proof uses isolated headless runners, existing mock fixtures, and
   take the `# title` line instead of a mid-document slice that leaked body
   text and raw newlines into card titles). Pinned by
   `api/work/taskIdentity.test.js` and `api/work/taskMarkdownGoal.test.js`.
+- **Approved exception — fence-aware goal parsing (2026-11-14, amendment
+  after review round 3):** `parseTaskMarkdown` re-reads the goal via
+  `extractGoalSection` (`api/work/taskPersistence.js`) instead of the old
+  regex, so a rich-markdown goal whose code fence contains `# History`-like
+  example text round-trips byte-identically (clause A). Contract:
+  - Terminators: `# History`, `# Timeline`, `# Process Logs`, `# Log Entries`
+    (`# Log Entries` is new; whitespace around the heading is ignored, so an
+    indented terminator now also ends the goal — the old regex required
+    column zero).
+  - Terminators inside a ` ``` ` / `~~~` fence are ignored; a fence closes
+    only on the marker character that opened it.
+  - Unclosed fence: falls back to the first terminator regardless of fences
+    (same as the old regex), so an unbalanced fence never swallows History.
+  - CRLF/CR goals normalize to LF on re-read. The `# History` section parser
+    is unchanged (still regex-based).
+  - Pinned by the `extractGoalSection fence-aware extraction` and
+    `task goal containing section-like headings round-trips` suites in
+    `api/work/taskPersistence.test.js`.
 - No migration or re-formatting of existing tasks.
 - No new image storage backend (branch-checkout flapping stays covered by the
   existing retry seam, per `docs/task-images.md`).

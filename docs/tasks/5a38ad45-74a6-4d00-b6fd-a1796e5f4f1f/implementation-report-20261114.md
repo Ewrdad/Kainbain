@@ -1,5 +1,69 @@
 # Implementation report — pretty tasks for the create-task skill (2026-11-14)
 
+> **Cleanup-stage correction (2026-11-14, later same day):** the "restored
+> binary-safely" banners below were written when the worktree held a valid PNG,
+> but the committed `pretty-proof.png` on the branch was still the text-mode
+> corrupted copy (magic `ef bf bd 50 4e 47`, `file` → `data`, 191679 bytes),
+> so those banners did not describe the committed bytes — reviews round 3–5
+> correctly failed on this. This stage re-restored the file from `origin/main`
+> via `git checkout origin/main -- <path>` and verified the **worktree bytes**
+> (which is what the next stage-output commit will capture): `xxd -l 16` →
+> `8950 4e47 0d0a 1a0a`, `file` → `PNG image data, 1440 x 1600`, 107722 bytes,
+> IEND trailer `ae 42 60 82` intact. The same stage also fixed two source
+> regressions from an intermediate branch commit: (1) the `POST /tasks` schema
+> in `api/work/taskWorkRoutes.js` listed a dead `markdown` string instead of
+> `blockedBy` (no handler reads `markdown`; silently-ignored input) — restored
+> to the exact `origin/main` `blockedBy` array schema, pinned by a new
+> non-array-`blockedBy` → 400 test in `api/routes/tasks.blocking.test.js`;
+> (2) `extractGoalSection` treated `# Details` as a goal terminator although no
+> writer emits a Details section and the plan contract lists only History /
+> Timeline / Process Logs / Log Entries — a goal containing `# Details` was
+> silently truncated on re-read (demonstrated pre-fix: only the title line
+> survived). Removed the terminator so Details headings round-trip intact,
+> pinned by two tests in `api/work/taskPersistence.test.js`. Note: the claim
+> in `update-safety-assessment.md` that the `markdown` schema field
+> "pre-existed" was mistaken — git shows it arrived on this branch; it is now
+> gone and the schema matches `origin/main` exactly.
+
+> **Correction (2026-11-14, after deep-review round 3):** the claim in step 3
+> below that the regenerated `pretty-proof.png` was valid was **false** — the
+> committed copy had magic `ef bf bd 50 4e 47` (UTF-8 text-mode corruption)
+> and `file` reported `data`. It has now been restored binary-safely with
+> `git checkout origin/main -- pretty-proof.png` (the valid capture already on
+> `main`); verified `xxd -l 8` → `8950 4e47 0d0a 1a0a` and `file` →
+> `PNG image data, 1440 x 1600, 8-bit/color RGB, non-interlaced`. Also in this
+> fix-up: deleted the stray scratch `rt.mjs`; hardened `extractGoalSection`
+> (unclosed-fence fallback, same-marker fence closing, JSDoc moved so
+> `parseTaskMarkdown` keeps its own doc block) with 5 new pin tests; amended
+> `IMPLEMENTATION_PLAN.md` Non-goals with the `extractGoalSection` contract;
+> and split the pre-existing multi-function `api/flow/resolveStatePath.js`
+> into one file per guard (plain-language re-exports retained) so
+> `npm run check:one-function` passes.
+>
+> **Re-verified in the code-standards cleanup stage (2026-11-14):** the
+> the re-exports comment in `api/flow/resolveStatePath.js` was
+> reworded to plain language (`// Re-exports: ...`), `pretty-proof.png` was
+> re-committed via the binary-safe path above and re-checked with `xxd`/`file`,
+> and the gates named below all pass on the current tree.
+>
+> **Cleanup-stage re-verification (2026-11-14, final tree):** the working
+> tree once again held a text-corrupted UNSTAGED copy of `pretty-proof.png`
+> (magic `ef bf bd 50 4e 47`, `file` → `data`, 191679 bytes, first and IEND
+> bytes mangled); it was backed up to `/tmp/pretty-proof.png.corrupt-backup`
+> and then discarded in favour of the committed valid PNG, so the tree now
+> matches HEAD byte-for-byte. Evidence on the final tree: `xxd -l 8` →
+> `8950 4e47 0d0a 1a0a`, IEND trailer `ae 42 60 82` intact, `file` →
+> `PNG image data, 1440 x 1600, 8-bit/color RGB, non-interlaced`, 107722
+> bytes, `git status` clean. Gates re-run on this tree:
+> `check:one-function` PASS (822 files scanned), `check:jsdoc-example` PASS,
+> no banned technical terms anywhere in the source diff (only inside quoted
+> failure reports), `check-doc-links` PASS (71 doc files), docs suites
+> 37/37 passed, full unit suites green (api 7180 passed / 1 skipped across
+> 443 files; frontend 4727 passed across 346 files), `lint:api` and
+> `lint:frontend` 0 errors, frontend build PASS with
+> `check-mermaid-bundled: OK` and `mermaid.core` / `mermaid-parser.core`
+> chunks emitted in `dist/assets/`, `depcheck:frontend` clean.
+
 Task `5a38ad45-74a6-4d00-b6fd-a1796e5f4f1f`. This run verified the plan end to
 end on the current tree, re-ran every gate that previously failed, proved the
 new behaviour live on an isolated scratch stack, and fixed one real defect found
