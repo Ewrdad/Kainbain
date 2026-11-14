@@ -71,3 +71,12 @@ yet executed, Phase 4 permission not yet recorded. No product-code defect
 found: every named and full suite passes. Next: operator executes
 `operator-handoff-20261114.md`, returns receipts; a fresh run with
 recorded permission performs Phase 4 + live §6.4 + §6.3 confirmation.
+
+## Addendum 2026-11-14 (safe live + suite rerun)
+
+- Engine backup recorded: `/home/server/.kainbain/backups/wp-f-phase4-20261114-1321/{runners.json,fleet-catalog.json}` (SHA256 in same dir).
+- Systemd user env pin removed (`KAINBAIN_RUNNER_MODELS`) so the next restart runs discovery-driven (see operator-handoff addendum).
+- `GET /runners/models/catalogue` (`api-runners.json` snapshot): 123 models, 2 quarantined, zero `test-fleet` entries — `muse::meta::test-fleet-model` already absent. `test-fleet-muse` runner record still revoked (no runner DELETE endpoint exists; left per audit, no catalogue re-pollution).
+- `touch` WP-E guard (isolation) rerun: 2/2 pass; engine dir untouched.
+- Full suite rerun this run: `runner/` 412/412 pass; `api/flow/dispatch/` 175/175 pass; `api routes/projects + runnerRoutes + isolation` pass; frontend `fleetModelOptions + ModelSelector + FleetCatalogueSection` 88/88 pass.
+- Runner health (§6.1) remains open until the operator executes the restart bundle `operator-handoff-20261114.md`: `local-alpha` process is still the old checkout build (pinned 17-model env), `local-bravo` is operator-paused. No agent-executed restarts (survey q1/q23).

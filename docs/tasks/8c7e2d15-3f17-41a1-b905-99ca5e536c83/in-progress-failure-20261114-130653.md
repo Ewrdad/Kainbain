@@ -1,0 +1,29 @@
+<!-- KAINBAIN AUTO-GENERATED REPORT -->
+# Stage Report: In Progress
+
+**Task:** Roll out catalogue fix to live runners and purge test entries
+**Stage Type:** `agent`
+**Model:** `worker`
+**Duration:** 199.11s
+**Status:** FAILED
+
+### Summary of Changes
+Execution failed: [Agent Review Rejection] §6.1 fails on 2 of 3 live runners: local-alpha still runs the old pre-WP-A/B pinned daemon (no modelSource/discoveryStatus/build identity, 17 models incl. 2 bare ids re-advertised every heartbeat) and server2-alpha still reports pi ERR_MODULE_NOT_FOUND with no build identity; only local-bravo passes runner health and it is paused:true so its discovery has zero fleet effect. No explicit human permission is recorded, so the 2 quarantined leftover rows cannot be purged yet (alpha's old daemon would instantly re-advertise them) and live §6.3/§6.4 confirmation cannot proceed per q6 stop-immediately. Fix guidance: Operator (1) restarts local-alpha ONE at a time in a quiescent window from its staged ~/.kainbain/runner-install/local-alpha dir @ fbcf8442 (env already clean, no reinstall needed; never from inside a task agent on it), then triggers requestModelRediscovery and confirms discovered + per-harness ok:true + build sha fbcf8442 + codeChangedSinceBoot false; (2) decides whether to unpause local-bravo; (3) runs Bundle B for server2-alpha on server2 so the pi leg dependency resolves, restarts it quiescently, same receipts; (4) records explicit permission (who/when/exact scope, noting survey q3 test-plus-leftover scope and q4 delete request vs no DELETE-runner route). Next agent run then issues the 2 quarantine DELETEs, confirms live §6.1/§6.3/§6.4, and closes WP-G readiness.
+
+### Execution Output
+```
+This run performed the full agent-safe WP-F subset with fresh live reads. §6.1 still fails on local-alpha (old pre-WP-A/B pinned daemon, no discovery/build identity) and server2-alpha (pi ERR_MODULE_NOT_FOUND, no build identity); only paused local-bravo passes runner health. Catalogue holds zero test-fleet entries, all named suites green (runner 412/412, API 175+175, frontend 91/91), §6.4 fixture regression passes, engine mtimes bit-identical, and all five merge gates re-verified. Evidence is in [run11-20261114-1312.md](/home/[REDACTED]/.kainbain/runner-work/kb-8c7e2d15-3f17-41a1-b905-99ca5e536c83/docs/tasks/8c7e2d15-3f17-41a1-b905-99ca5e536c83/run11-20261114-1312.md); no live mutation was performed and no product code changed.
+
+Operator recommendation (agent must not execute): restart local-alpha quiescently from its staged bundle, then requestModelRediscovery with healthy receipts; decide on unpausing bravo; run handoff Bundle B for server2-alpha; record explicit who/when/scope permission. Next agent run then issues the 2 quarantine DELETEs and closes §6.1/§6.3/§6.4 plus WP-G readiness.
+
+KAINBAIN_VERDICT: FAIL
+KAINBAIN_REASON: §6.1 fails on 2 of 3 live runners: local-alpha still runs the old pre-WP-A/B pinned daemon (no modelSource/discoveryStatus/build identity, 17 models incl. 2 bare ids re-advertised every heartbeat) and server2-alpha still reports pi ERR_MODULE_NOT_FOUND with no build identity; only local-bravo passes runner health and it is paused:true so its discovery has zero fleet effect. No explicit human permission is recorded, so the 2 quarantined leftover rows cannot be purged yet (alpha's old daemon would instantly re-advertise them) and live §6.3/§6.4 confirmation cannot proceed per q6 stop-immediately.
+KAINBAIN_FIX: Operator (1) restarts local-alpha ONE at a time in a quiescent window from its staged ~/.kainbain/runner-install/local-alpha dir @ fbcf8442 (env already clean, no reinstall needed; never from inside a task agent on it), then triggers requestModelRediscovery and confirms discovered + per-harness ok:true + build sha fbcf8442 + codeChangedSinceBoot false; (2) decides whether to unpause local-bravo; (3) runs Bundle B for server2-alpha on server2 so the pi leg dependency resolves, restarts it quiescently, same receipts; (4) records explicit permission (who/when/exact scope, noting survey q3 test-plus-leftover scope and q4 delete request vs no DELETE-runner route). Next agent run then issues the 2 quarantine DELETEs, confirms live §6.1/§6.3/§6.4, and closes WP-G readiness.
+```
+
+### Modified Files
+- (No files modified / inspection only)
+
+### Verification Status
+- Stage execution failed with error: [Agent Review Rejection] §6.1 fails on 2 of 3 live runners: local-alpha still runs the old pre-WP-A/B pinned daemon (no modelSource/discoveryStatus/build identity, 17 models incl. 2 bare ids re-advertised every heartbeat) and server2-alpha still reports pi ERR_MODULE_NOT_FOUND with no build identity; only local-bravo passes runner health and it is paused:true so its discovery has zero fleet effect. No explicit human permission is recorded, so the 2 quarantined leftover rows cannot be purged yet (alpha's old daemon would instantly re-advertise them) and live §6.3/§6.4 confirmation cannot proceed per q6 stop-immediately. Fix guidance: Operator (1) restarts local-alpha ONE at a time in a quiescent window from its staged ~/.kainbain/runner-install/local-alpha dir @ fbcf8442 (env already clean, no reinstall needed; never from inside a task agent on it), then triggers requestModelRediscovery and confirms discovered + per-harness ok:true + build sha fbcf8442 + codeChangedSinceBoot false; (2) decides whether to unpause local-bravo; (3) runs Bundle B for server2-alpha on server2 so the pi leg dependency resolves, restarts it quiescently, same receipts; (4) records explicit permission (who/when/exact scope, noting survey q3 test-plus-leftover scope and q4 delete request vs no DELETE-runner route). Next agent run then issues the 2 quarantine DELETEs, confirms live §6.1/§6.3/§6.4, and closes WP-G readiness.
+- Triggered fallback routing.

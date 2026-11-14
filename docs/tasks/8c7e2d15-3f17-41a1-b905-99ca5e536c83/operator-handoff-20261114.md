@@ -107,3 +107,21 @@ STOP rules (q6): any runner reporting `LEG_MODULE_MISSING`, `NOT_YET_RUN`
 (after a completed round), a stale `build.sha`, or `codeChangedSinceBoot:
 true` → stop, diagnose with the agent, do NOT proceed to purge. Purge +
 §6 need a fresh agent run holding explicit recorded permission.
+
+## Addendum 2026-11-14 (agent safe action) — systemd user-level pin trap
+
+`~/.kainbain/runner-local-{alpha,bravo}.env` is NOT the only source of
+`KAINBAIN_RUNNER_MODELS`. `local-alpha` was inheriting a 17-model pin
+from the systemd *user* environment (`systemctl --user show-environment`),
+so the env-file removal alone never took effect and the upgraded daemon
+kept reporting `modelSource: pinned` with `discoveryStatus: {}`. Bravo did
+not inherit it. Before restarting any runner, the operator MUST:
+
+```bash
+systemctl --user unset-environment KAINBAIN_RUNNER_MODELS
+# also check persistence:
+grep -R KAINBAIN_RUNNER_MODELS ~/.config/environment.d 2>/dev/null || true
+```
+
+Only after the user environment is clean will a post-WP-B restart flip
+`modelSource` to `discovered`/`pinned+discovered`.
