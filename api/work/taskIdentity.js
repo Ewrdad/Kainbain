@@ -87,6 +87,13 @@ export function resolveTaskTitleAndGoal({ title, goal } = {}) {
 	return { title: cleanTitle, goal: goal || cleanTitle || "Untitled task" };
 }
 
+// Board lists fetch every task on load: a long-lived task can accumulate
+// hundreds of report entries, so summaries carry only the recent few.
+// `body` mirrors `goal`, and `reliabilitySamples`/`reviewBaseline` serve
+// api-side or detail views — none of them ride the list (detail views
+// hydrate the full task through `GET /tasks/:id` on open).
+const SUMMARY_REPORT_LIMIT = 5;
+
 /***
  * MARK: toTaskSummary
  * @description Projects one task onto its board-list shape: everything the
@@ -102,13 +109,6 @@ export function resolveTaskTitleAndGoal({ title, goal } = {}) {
  * @param {Object} [task] - The full task record (never mutated).
  * @returns {Object} The summary projection ({} when task is missing).
  ***/
-// Board lists fetch every task on load: a long-lived task can accumulate
-// hundreds of report entries, so summaries carry only the recent few.
-// `body` mirrors `goal`, and `reliabilitySamples`/`reviewBaseline` serve
-// api-side or detail views — none of them ride the list (detail views
-// hydrate the full task through `GET /tasks/:id` on open).
-const SUMMARY_REPORT_LIMIT = 5;
-
 export function toTaskSummary(task) {
 	if (!task || typeof task !== "object") return {};
 	const {

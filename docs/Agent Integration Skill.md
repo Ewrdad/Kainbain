@@ -44,13 +44,25 @@ POST /tasks
 {
   "projectId": "<projectId>",     // optional; defaults to active project
   "title": "Implement health endpoint",
-  "goal": "Add GET /health returning JSON status.",
-  "execute": true                  // true = dispatch to AI queue now
+  "goal": "# Implement health endpoint\n\n## Steps\n1. Add `GET /health` returning JSON status.",
+  "execute": true,                 // true = dispatch to AI queue now
+  "blockedBy": [],                 // optional; same-project task ids this task waits on
+  "idempotencyKey": "<deterministic key>"  // optional; makes retries safe
 }
 ```
 
+- `goal` accepts rich Markdown **verbatim** — headings, lists, tables, fenced code blocks, ` ```mermaid ` diagrams, and image references (`![alt](assets/name.png)` or absolute URLs). Create stores it byte-identical (no trimming or re-wrapping) and it renders as markdown in the UI and in `docs/tasks/<taskId>/task.md`. The goal's **first line** (e.g. `# <title>`) becomes the task title; the `#` marker is stripped when storing.
 - Use `idempotencyKey` to make creation safe to retry.
-- To review a task's prompt without running it: `POST /tasks/preview`.
+- To preview a task's prompt without running it: `POST /tasks/preview`.
+
+### Recommended two-stage layout for readable tasks
+
+The `creating-new-tickets` skill drafts each ticket as its own Markdown file in the current task's directory first, then sends that file's exact contents — so tickets land as structured documents instead of paragraphs:
+
+1. Write one file per ticket under the current task's docs folder, e.g. `docs/tasks/<current-task-id>/drafts/draft-<slug>.md`, starting with a `# <title>` first line (the skill's template: Context / Steps / Acceptance criteria / Notes with code, mermaid, image refs).
+2. `POST /tasks` with `goal` = the **exact file contents** and `title` = the file's first line (verbatim, `#` included — the API strips it when storing).
+3. For local images only: after the task exists, upload each picture via `POST /projects/<projectId>/tasks/<taskId>/images`, then `PATCH /tasks/<taskId>` with a `goal` whose `![alt](assets/<name>)` refs use the names returned by the upload (never guessed filenames). Absolute `https://` image URLs pass through unchanged and need no upload.
+
 
 ## Viewing tasks
 

@@ -244,6 +244,14 @@ describe("createTask", () => {
 		expect(t.title).toBe("Untitled task");
 		expect(t.workflowId).toBe("wf-default");
 	});
+
+	it("mirrors the goal into the body when no body is given", () => {
+		const store = makeStore();
+		const goal = "# Fix it\n\n```js\nconst x = 1;\n```\n\n```mermaid\ngraph TD\n```";
+		const t = createTask(store, "p-1", { goal });
+		expect(t.body).toBe(goal);
+	});
+
 });
 
 describe("listTasks / getTasks / getTask", () => {
