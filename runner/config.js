@@ -82,20 +82,24 @@ export function loadRunnerConfig(env = process.env) {
 	// Canonical pin validation (survey q7/q8: malformed ids are blocked
 	// from being saved/advertised, never fatal). A pin must parse as a
 	// harness-scoped fleet key (`harness::provider::model[::effort]`);
-	// when the runner pins explicit harnesses the pin's harness must be
-	// one of them (auto-detect installs skip the membership check — the
-	// set is still unknown at load). Drops collect into `warnings`
-	// (surfaced via `facts.errors` + one boot log line per drop) so a
-	// typo (e.g. `deepseek-v4-flash:0731-cloud`, a 2-part provider key
-	// for a harness that is not enabled) can never be advertised.
+	// when the runner pins explicit harnesses WITHOUT auto-detect the
+	// pin's harness must be one of them (auto-detect installs skip the
+	// membership check — the final set is still unknown at load, and a
+	// mixed `muse,auto` pin plus a pi model is valid when the host has
+	// pi; pins for never-detected harnesses are marked stale downstream,
+	// never fatal). Drops collect into `warnings` (surfaced via
+	// `facts.errors` + one boot log line per drop) so a typo (e.g.
+	// `deepseek-v4-flash:0731-cloud`, a 2-part provider key for a harness
+	// that is not enabled) can never be advertised.
 	const warnings = [];
 	const harnessSet = new Set(harnessIds);
+	const checkPinMembership = !harnessAuto && harnessSet.size > 0;
 	const pinRejection = (id) => {
 		const parsed = parseModelKey(id);
 		if (!parsed || (parsed.form !== "harness" && parsed.form !== "harnessReasoning")) {
 			return `ignoring KAINBAIN_RUNNER_MODELS entry '${id}': not a harness::provider::model[::effort] id`;
 		}
-		if (harnessSet.size > 0 && !harnessSet.has(parsed.harness)) {
+		if (checkPinMembership && !harnessSet.has(parsed.harness)) {
 			return `ignoring KAINBAIN_RUNNER_MODELS entry '${id}': harness '${parsed.harness}' is not in KAINBAIN_RUNNER_HARNESSES [${harnessIds.join(", ")}]`;
 		}
 		return null;

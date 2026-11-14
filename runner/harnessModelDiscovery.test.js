@@ -21,6 +21,7 @@ import {
 	clearDiscoveryCache,
 	discoveryCache,
 	provenanceForIds,
+	recordRoundFailure,
 } from "./harnessModelDiscovery.js";
 
 function withLegStub(id, fn) {
@@ -604,6 +605,65 @@ test("verifyDiscoveryLegModules records LEG_MODULE_MISSING on an unshippable leg
 	assert.equal(status.muse.error.code, "NOT_YET_RUN");
 	assert.ok(announced.some((m) => m.includes("LEG_MODULE_MISSING") && m.includes("pi")), announced.join("\n"));
 	clearDiscoveryCache();
+});
+
+test("verifyDiscoveryLegModules with the real importer stays silent on a healthy tree", async () => {
+	clearDiscoveryCache();
+	try {
+		// No `importer` override: every relative table entry must import
+		// from this repo, and the bare pi SDK entry must NOT be imported
+		// from runner/ (it resolves only from the api tree — importing it
+		// here used to cry LEG_MODULE_MISSING on healthy installs).
+		const errors = await verifyDiscoveryLegModules(Object.keys(LEG_MODULE_SPECIFIERS));
+		assert.deepEqual(errors, {});
+		assert.deepEqual({ ...discoveryCache }, {}, "success writes no slices");
+	} finally {
+		clearDiscoveryCache();
+	}
+});
+
+test("verifyDiscoveryLegModules never hands bare packages to the importer", async () => {
+	clearDiscoveryCache();
+	const seen = [];
+	const errors = await verifyDiscoveryLegModules(["pi"], {
+		logger: { warn: () => {}, log: () => {} },
+		importer: async (spec) => { seen.push(spec); return {}; },
+	});
+	assert.deepEqual(errors, {});
+	assert.deepEqual(seen, LEG_MODULE_SPECIFIERS.pi.filter((spec) => spec.startsWith(".")));
+	assert.ok(seen.length > 0, "the harness module itself is still checked");
+	clearDiscoveryCache();
+});
+
+test("recordRoundFailure stamps untouched harnesses and keeps fresh slices", () => {
+	clearDiscoveryCache();
+	const roundStartMs = Date.now();
+	discoveryCache.muse = { ids: ["muse::meta::old"], atMs: 1, error: null };
+	discoveryCache.pi = { ids: ["pi::p::fresh"], atMs: roundStartMs, error: null };
+	try {
+		const stamped = recordRoundFailure({
+			harnessIds: ["muse", "pi", "vibe"],
+			error: new Error("round boom"),
+			roundStartMs,
+		});
+		assert.deepEqual(stamped.sort(), ["muse", "vibe"]);
+		// Untouched: keep-old ids plus the named record.
+		assert.deepEqual(discoveryCache.muse.ids, ["muse::meta::old"]);
+		assert.equal(discoveryCache.muse.error.code, "ROUND_FAILED");
+		assert.match(discoveryCache.muse.error.message, /muse/);
+		assert.match(discoveryCache.muse.error.message, /round boom/);
+		// Touched by the failed round: the fresh per-leg result survives.
+		assert.deepEqual(discoveryCache.pi.ids, ["pi::p::fresh"]);
+		assert.equal(discoveryCache.pi.error, null);
+		// Never-scanned: an empty slice with the named record.
+		assert.deepEqual(discoveryCache.vibe.ids, []);
+		assert.equal(discoveryCache.vibe.error.code, "ROUND_FAILED");
+		// Garbage inputs record nothing and never throw.
+		assert.deepEqual(recordRoundFailure(null), []);
+		assert.deepEqual(recordRoundFailure({ harnessIds: null, error: null }), []);
+	} finally {
+		clearDiscoveryCache();
+	}
 });
 
 test("verifyDiscoveryLegModules keeps the old slice ids and never throws", async () => {

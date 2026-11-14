@@ -6,9 +6,11 @@
  *   (runner/, shared/, the harness modules under api/ it loads) into a
  *   versioned dir, installs the discovery-leg npm closure
  *   (`RUNNER_LEG_BUNDLED_DEPS`, pinned from api/package-lock.json) into
- *   the staged api/ tree, stamps runnerVersion into the packaged
- *   version.json, and tars it as
- *   kainbain-runner-<version>-<platform>-<arch>.tar.gz. The staged bundle
+ *   the staged api/ tree, stamps runnerVersion + the build identity
+ *   (`build { sha, builtAt, dirty }`, from git HEAD at release time) into
+ *   BOTH packaged version.json copies — the archive-root one the updater
+ *   checks and the runner/ one the booted daemon actually reads — and
+ *   tars it as kainbain-runner-<version>-<platform>-<arch>.tar.gz. The staged bundle
  *   ships its whole leg closure (the pi SDK used to be a manual
  *   `npm install --prefix api` step hosts routinely skipped, so pi legs
  *   failed with ERR_MODULE_NOT_FOUND while the runner advertised 0
@@ -152,7 +154,40 @@ export const stageLegNpmDeps = ({ stage, root = REPO_ROOT } = {}) => {
 	}
 };
 
-export const packageRunner = ({ platform, arch, version, outDir, root = REPO_ROOT, installLegDeps = true } = {}) => {
+/***
+ * MARK: resolveBuildStamp
+ * @description Builds the release's build identity from git: `sha` is HEAD,
+ *   `builtAt` is now (ISO), `dirty` is whether the packaged tree
+ *   (runner/, shared/, api/) has uncommitted changes. Best-effort: when
+ *   git is missing or the root is not a checkout every field is null and
+ *   the caller warns — a release from a non-checkout still packages, but
+ *   its runners report an unknown build.
+ * @example resolveBuildStamp({ root: '/repo' }) => { sha: 'abc123', builtAt: '2026-11-01T00:00:00.000Z', dirty: false }
+ * @param {Object} [opts] - Options.
+ * @param {string} [opts.root] - Repo root (defaults to the checkout).
+ * @param {Function} [opts.runGit] - `(args, cwd) => stdout` seam (tests).
+ * @param {string} [opts.now] - ISO builtAt override (tests).
+ * @returns {{sha: string|null, builtAt: string|null, dirty: boolean|null}} Build stamp.
+ ***/
+export const resolveBuildStamp = ({ root = REPO_ROOT, runGit, now } = {}) => {
+	const run = typeof runGit === "function"
+		? runGit
+		: (args, cwd) => execFileSync("git", args, { cwd, encoding: "utf8", timeout: 15000, stdio: ["ignore", "pipe", "ignore"] });
+	try {
+		const sha = String(run(["rev-parse", "HEAD"], root) ?? "").trim();
+		if (!sha) return { sha: null, builtAt: null, dirty: null };
+		const status = String(run(["status", "--porcelain", "--", "runner", "shared", "api"], root) ?? "");
+		return {
+			sha: sha.slice(0, 128),
+			builtAt: typeof now === "string" && now ? now : new Date().toISOString(),
+			dirty: status.trim() ? true : false,
+		};
+	} catch {
+		return { sha: null, builtAt: null, dirty: null };
+	}
+};
+
+export const packageRunner = ({ platform, arch, version, outDir, root = REPO_ROOT, installLegDeps = true, build } = {}) => {
 	if (!["linux", "darwin"].includes(platform)) {
 		throw new Error(`package-runner: unsupported platform '${platform}' (v1: linux, darwin).`);
 	}

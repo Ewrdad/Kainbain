@@ -154,6 +154,20 @@ describe("loadRunnerConfig", () => {
 		assert.deepEqual(auto.models, ["pi::x::y"]);
 		assert.equal(auto.warnings.length, 1);
 
+		// Mixed explicit-plus-auto installs also skip membership: the
+		// final harness set is still unknown at load, so a pin for a
+		// not-yet-detected harness is kept (pins for never-detected
+		// harnesses are marked stale downstream, never fatal here).
+		const mixedAuto = loadRunnerConfig({
+			KAINBAIN_RUNNER_ID: "r1",
+			KAINBAIN_RUNNER_HARNESSES: "muse,auto",
+			KAINBAIN_RUNNER_DISPATCH: "1",
+			KAINBAIN_RUNNER_MODELS: "pi::x::y, garbage",
+		});
+		assert.equal(mixedAuto.harnessAuto, true);
+		assert.deepEqual(mixedAuto.models, ["pi::x::y"]);
+		assert.equal(mixedAuto.warnings.length, 1);
+
 		// Dropping everything behaves as unpinned (matches model-less tasks).
 		const emptied = loadRunnerConfig({ ...base, KAINBAIN_RUNNER_MODELS: "nope" });
 		assert.deepEqual(emptied.models, []);

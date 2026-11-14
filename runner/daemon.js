@@ -15,7 +15,7 @@ import { defaultInstallRoot, markUpdateSuccess, readUpdateState } from "./update
 // in prod and in the distributable tarball), so ../shared resolves both in the
 // repo and in every deployed layout — the same copy the backend executes.
 import { resolveAdvertisedModels, resolveAdvertisedModelSource } from "./modelDiscovery.js";
-import { clearDiscoveryCache, discoveryCache, getDiscoveryStatus, provenanceForIds, runDiscoveryRound, summarizeDiscoverySlices, verifyDiscoveryLegModules, DISCOVER_LEG_TIMEOUT_DEFAULT_MS } from "./harnessModelDiscovery.js";
+import { clearDiscoveryCache, getDiscoveryStatus, provenanceForIds, recordRoundFailure, runDiscoveryRound, summarizeDiscoverySlices, verifyDiscoveryLegModules, DISCOVER_LEG_TIMEOUT_DEFAULT_MS } from "./harnessModelDiscovery.js";
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { decideAgentStageVerdict } from "../shared/stageVerdict.js";
@@ -981,22 +981,9 @@ export async function refreshDiscoveredModels({ config, logger, discoverFn, disc
 		// A round-level throw (a bug above the legs, never a leg failure —
 		// those land per-harness inside the round) must still leave a named
 		// record on every configured harness, or the heartbeat would read
-		// `{}` again. Slices the failed round already touched keep their
-		// fresh per-leg result; only untouched harnesses get ROUND_FAILED.
-		for (const harnessId of idsConfigured) {
-			const slice = discoveryCache[harnessId];
-			if (slice && slice.atMs >= roundStartMs) continue;
-			const previousIds = Array.isArray(slice?.ids) ? [...slice.ids] : [];
-			discoveryCache[harnessId] = {
-				ids: previousIds,
-				atMs: Date.now(),
-				error: {
-					code: "ROUND_FAILED",
-					message: `Model discovery round failed before '${harnessId}' was scanned: ${String(err?.message || err || "unknown error").slice(0, 300)}.`,
-					hint: "Re-run model re-detection; if this repeats, report the runner logs.",
-				},
-			};
-		}
+		// `{}` again. Untouched harnesses get ROUND_FAILED (slices the
+		// failed round already touched keep their fresh per-leg result).
+		recordRoundFailure({ harnessIds: idsConfigured, error: err, roundStartMs });
 		logger?.warn?.(`Model discovery failed, keeping the previous list: ${err?.message || err}`);
 	}
 	return [...discoveredModelsCache];
@@ -1213,12 +1200,13 @@ export async function joinAndHeartbeat({ config, client, loadHarness, logger, st
 	// never shipped (N3) lands a named LEG_MODULE_MISSING error instead
 	// of a silent 0-model scan. Never throws, never fails boot.
 	await verifyDiscoveryLegModules(runnerHarnessIds(config), { logger });
-	// Model auto-discovery seed: one round at boot (after the version
-	// probes, before the first heartbeat) so early facts already carry
-	// discovered ids. Best-effort inside and bounded by the discovery
-	// timeout; failures keep the cache empty, never fail boot. Fresh
-	// auto-detect output rides along so a stale harness pin is logged
-	// loudly at boot instead of hiding models silently.
+	// Model auto-discovery seed: one round at boot (after the first
+	// heartbeat, before the periodic timer) so early facts carry
+	// NOT_YET_RUN honestly and later beats carry discovered ids.
+	// Best-effort inside and bounded by the discovery timeout; failures
+	// keep the cache empty, never fail boot. Fresh auto-detect output
+	// rides along so a stale harness pin is logged loudly at boot
+	// instead of hiding models silently.
 	await refreshDiscoveredModels({ config, logger, detectedHarnesses: safeDetectAvailableHarnesses() });
 	const heartbeatTimer = setInterval(() => {
 		deliverSteers({ config, client, logger, facts: factsFor({ config, updateStatus: state?.updateStatus ?? null, commandAck: stagedCommandAck(state) }), state }).catch((err) => {

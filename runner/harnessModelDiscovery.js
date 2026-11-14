@@ -59,15 +59,23 @@ export const DISCOVERY_STALE_MS_DEFAULT_MS = 24 * 60 * 60 * 1000;
  *   (its only import is `runner/modelDiscovery.js`, which ships inside
  *   the runner tree itself) and `codex` needs none (it imports nothing —
  *   honestly empty until the live transport lands). Every other lazy
- *   loader imports through this table, the boot self-check
- *   (`verifyDiscoveryLegModules`) eagerly imports it, and the runner
- *   packager ships it — one table, three consumers, so the bundle can
- *   never drift from what the legs actually load (the N3 gap: legs lazily
- *   imported backend modules the runner install did not ship, and the
- *   runner advertised 0 models with `{}` status instead of naming it).
- *   The bundle-import conformance test pins this table against
- *   `RUNNER_LEG_BUNDLED_DEPS`, so a new bare specifier here fails the
- *   build until the packager ships it.
+ *   loader imports its relative entry through this table, the runner
+ *   packager ships the whole table, and the boot self-check
+ *   (`verifyDiscoveryLegModules`) eagerly imports the RELATIVE entries —
+ *   one table, three consumers, so the bundle can never drift from what
+ *   the legs actually load (the N3 gap: legs lazily imported backend
+ *   modules the runner install did not ship, and the runner advertised 0
+ *   models with `{}` status instead of naming it). Bare package entries
+ *   are deliberately NOT imported by the self-check: they resolve from
+ *   the api tree (the harness module that loads them), so importing them
+ *   from this runner/ file would cry LEG_MODULE_MISSING on every healthy
+ *   install. Bare entries are verified twice instead: at build time by
+ *   the bundle-import conformance test (which imports each bare spec from
+ *   the staged api tree), and at boot by the seed round (which loads them
+ *   through the legs from the correct tree and reports the same
+ *   LEG_MODULE_MISSING code). The conformance test also pins this table
+ *   against `RUNNER_LEG_BUNDLED_DEPS`, so a new bare specifier here fails
+ *   the build until the packager ships it.
  * @example LEG_MODULE_SPECIFIERS.pi => ['../api/agent/harnesses/pi/piHarness.js', '@earendil-works/pi-coding-agent']
  ***/
 export const LEG_MODULE_SPECIFIERS = {
@@ -354,6 +362,49 @@ export async function runDiscoveryRound(opts) {
 		}
 	}
 	return { combinedIds, resultsByHarness };
+}
+
+/***
+ * MARK: recordRoundFailure
+ * @description Records a round-level throw (a bug above the legs — leg
+ *   failures land per-harness inside the round instead) as `ROUND_FAILED`
+ *   on every configured harness the failed round did not touch, so the
+ *   heartbeat names the failure instead of reading `{}` again. Slices
+ *   written at or after `roundStartMs` keep their fresh per-leg result;
+ *   only untouched harnesses are stamped, and every stamp keeps the
+ *   previous ids (keep-old, never evicted). Never throws — a reporting
+ *   helper must not fail the catch block that calls it.
+ * @example recordRoundFailure({ harnessIds: ['pi'], error: new Error('boom'), roundStartMs: Date.now() }) => ['pi']
+ * @param {Object} [opts] - Labelled inputs (null-safe: a null opts records nothing).
+ * @param {string[]|string} [opts.harnessIds] - Configured harness ids (a single id string records just it).
+ * @param {unknown} [opts.error] - Whatever the round threw (its message is quoted, capped).
+ * @param {number} [opts.roundStartMs] - `Date.now()` taken when the round started (slices at/after it are kept).
+ * @returns {string[]} Harness ids stamped ROUND_FAILED.
+ ***/
+export function recordRoundFailure(opts) {
+	try {
+		const { harnessIds = [], error, roundStartMs = 0 } = opts ?? {};
+		const stamped = [];
+		const roundStart = Number.isFinite(roundStartMs) && roundStartMs > 0 ? roundStartMs : 0;
+		for (const harnessId of asIdList(harnessIds)) {
+			const slice = discoveryCache[harnessId];
+			if (slice && typeof slice.atMs === "number" && slice.atMs >= roundStart) continue;
+			const previousIds = Array.isArray(slice?.ids) ? [...slice.ids] : [];
+			discoveryCache[harnessId] = {
+				ids: previousIds,
+				atMs: Date.now(),
+				error: {
+					code: "ROUND_FAILED",
+					message: `Model discovery round failed before '${harnessId}' was scanned: ${String(error?.message || error || "unknown error").slice(0, 300)}.`,
+					hint: "Re-run model re-detection; if this repeats, report the runner logs.",
+				},
+			};
+			stamped.push(harnessId);
+		}
+		return stamped;
+	} catch {
+		return [];
+	}
 }
 
 /***
@@ -832,16 +883,18 @@ export const DISCOVERY_LEGS = {
 /***
  * MARK: verifyDiscoveryLegModules
  * @description Boot self-check: eagerly imports every discovery-leg module
- *   for the configured harnesses (see `LEG_MODULE_SPECIFIERS`) so a leg
- *   whose code never shipped on this host fails LOUD at boot instead of
- *   advertising 0 models with `{}` status (the N3 gap: the runner install
- *   lacked the pi SDK while the leg lazily imported it). A specifier that
- *   fails to load writes a keep-old slice with
- *   `error.code === 'LEG_MODULE_MISSING'` (naming the missing specifier)
- *   and logs one loud line through the logger (console fallback, so
- *   `--manual` boots without a logger still see it). A harness whose
- *   modules all load is left untouched — success writes no fake `ok`,
- *   the seed round records the real result. Never throws.
+ *   (the RELATIVE entries in `LEG_MODULE_SPECIFIERS`) for the configured
+ *   harnesses, so a leg whose code never shipped on this host fails LOUD
+ *   at boot instead of advertising 0 models with `{}` status (the N3 gap).
+ *   Bare package entries are skipped here on purpose — they resolve from
+ *   the api tree and the seed round verifies them from that tree seconds
+ *   later (see the table docs) — so this check can never cry wolf on a
+ *   healthy install. A specifier that fails to load writes a keep-old
+ *   slice with `error.code === 'LEG_MODULE_MISSING'` (naming the missing
+ *   specifier) and logs one loud line through the logger (console
+ *   fallback, so `--manual` boots without a logger still see it). A
+ *   harness whose modules all load is left untouched — success writes no
+ *   fake `ok`, the seed round records the real result. Never throws.
  * @example await verifyDiscoveryLegModules(['pi'], { importer: async () => { throw Object.assign(new Error('nope'), { code: 'ERR_MODULE_NOT_FOUND' }); } }) => { pi: { code: 'LEG_MODULE_MISSING', ... } }
  * @param {string[]|string} [harnessIds] - Configured harness ids to check (a single id string checks just it).
  * @param {Object} [opts] - Seams (`logger`, `importer` test double; null-safe).
@@ -859,6 +912,12 @@ export async function verifyDiscoveryLegModules(harnessIds = [], opts) {
 		const specifiers = LEG_MODULE_SPECIFIERS[harnessId];
 		if (!specifiers) continue;
 		for (const specifier of specifiers) {
+			// Bare packages resolve from the api tree, not from this
+			// runner/ file — importing them here would report
+			// LEG_MODULE_MISSING on every healthy install (the SDK ships
+			// under api/node_modules). The seed round loads them through
+			// the legs from the correct tree and reports the same code.
+			if (typeof specifier !== "string" || !specifier.startsWith(".")) continue;
 			try {
 				await importer(specifier);
 			} catch (err) {

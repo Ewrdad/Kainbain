@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { packageRunner } from "../scripts/package-runner.mjs";
+import { packageRunner, resolveBuildStamp } from "../scripts/package-runner.mjs";
 import { execFileSync } from "node:child_process";
 import { applyUpdate } from "../runner/updates/index.js";
 
@@ -111,6 +111,103 @@ describe("package-runner layout conformance", () => {
 			fs.rmSync(outDir, { recursive: true, force: true });
 			fs.rmSync(installRoot, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("package-runner build stamping", () => {
+	const STAMP = { sha: "stamp-sha-123", builtAt: "2026-11-01T00:00:00.000Z", dirty: false };
+
+	it("stamps the release version and build into both version.json copies", () => {
+		const root = fakeRoot();
+		const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-stamp-out-"));
+		try {
+			const got = packageRunner({ platform: "linux", arch: "x64", version: "0.9.0", outDir, root, build: STAMP, installLegDeps: false });
+			assert.deepEqual(got.build, STAMP);
+			for (const copy of ["version.json", path.join("runner", "version.json")]) {
+				const staged = JSON.parse(fs.readFileSync(path.join(outDir, got.name, copy), "utf8"));
+				assert.equal(staged.runnerVersion, "0.9.0", `${copy} carries the release version`);
+				assert.deepEqual(staged.build, STAMP, `${copy} carries the build stamp`);
+			}
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+			fs.rmSync(outDir, { recursive: true, force: true });
+		}
+	});
+
+	it("a staged bundle's daemon-readable copy self-identifies as the release", async () => {
+		// The booted daemon reads runner/version.json beside itself, not the
+		// archive-root copy — stamping only the root left updated Runners
+		// reporting their old version (and no build) forever.
+		const root = fakeRoot();
+		const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-stamp-out-"));
+		const installRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kb-stamp-install-"));
+		try {
+			const got = packageRunner({ platform: "linux", arch: "x64", version: "0.9.0", outDir, root, build: STAMP, installLegDeps: false });
+			const bytes = fs.readFileSync(got.tarball);
+			const sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
+			const filename = path.basename(got.tarball);
+			const update = {
+				version: "0.9.0",
+				manifest: { schema: 1, component: "runner", version: "0.9.0", assets: [{ platform: "linux", arch: "x64", filename, sha256, size: bytes.length }] },
+				asset: { platform: "linux", arch: "x64", filename, sha256, size: bytes.length },
+				releaseMeta: null,
+			};
+			const applied = await applyUpdate({
+				update,
+				installRoot,
+				updateUrl: "http://mirror.local/r",
+				fetchImpl: async () => ({ ok: true, status: 200, arrayBuffer: async () => bytes }),
+				logger: { warn: () => {}, log: () => {} },
+			});
+			assert.equal(applied.ok, true);
+			const current = fs.readlinkSync(path.join(installRoot, "current"));
+			const daemonCopy = JSON.parse(fs.readFileSync(path.join(current, "runner", "version.json"), "utf8"));
+			assert.equal(daemonCopy.runnerVersion, "0.9.0", "the daemon-readable copy carries the release version");
+			assert.deepEqual(daemonCopy.build, STAMP, "the daemon-readable copy carries the build stamp");
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+			fs.rmSync(outDir, { recursive: true, force: true });
+			fs.rmSync(installRoot, { recursive: true, force: true });
+		}
+	});
+
+	it("resolveBuildStamp reads HEAD plus packaged-tree dirtiness", () => {
+		const seen = [];
+		const stamp = resolveBuildStamp({
+			root: "/fake/root",
+			now: "2026-11-01T00:00:00.000Z",
+			runGit: (args, cwd) => {
+				seen.push([args, cwd]);
+				if (args[0] === "rev-parse") return "abc123\n";
+				return "";
+			},
+		});
+		assert.deepEqual(stamp, { sha: "abc123", builtAt: "2026-11-01T00:00:00.000Z", dirty: false });
+		assert.ok(seen.some(([args]) => args[0] === "rev-parse" && args[1] === "HEAD"));
+		const statusCall = seen.find(([args]) => args[0] === "status");
+		assert.ok(statusCall, "dirty is probed via git status");
+		assert.ok(statusCall[0].includes("runner") && statusCall[0].includes("shared") && statusCall[0].includes("api"));
+	});
+
+	it("resolveBuildStamp marks dirty trees and degrades to nulls without git", () => {
+		const dirty = resolveBuildStamp({
+			root: "/fake/root",
+			runGit: (args) => (args[0] === "rev-parse" ? "abc123" : " M runner/daemon.js\n"),
+		});
+		assert.equal(dirty.dirty, true);
+		const missing = resolveBuildStamp({
+			root: "/fake/root",
+			runGit: () => { throw new Error("git not found"); },
+		});
+		assert.deepEqual(missing, { sha: null, builtAt: null, dirty: null });
+	});
+
+	it("resolveBuildStamp matches this checkout's HEAD", { skip: !repoIsGitCheckout }, () => {
+		const head = execFileSync("git", ["-C", ROOT, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+		const stamp = resolveBuildStamp({ root: ROOT });
+		assert.equal(stamp.sha, head);
+		assert.ok(stamp.builtAt && !Number.isNaN(Date.parse(stamp.builtAt)));
+		assert.equal(typeof stamp.dirty, "boolean");
 	});
 });
 

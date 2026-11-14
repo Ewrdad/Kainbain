@@ -117,7 +117,8 @@ harness (or use `auto`) and restart. Every configured harness always has an
 entry — never `{}`: a harness with no scan yet reads
 `{ ok: false, error: { code: 'NOT_YET_RUN' } }` (legless `mock`/`custom`
 always read this way); a leg whose module never shipped reads
-`LEG_MODULE_MISSING` (boot self-check, before the seed round); a round that
+`LEG_MODULE_MISSING` (boot self-check for the harness module itself,
+seed round for its npm deps — same code either way); a round that
 throws above the legs records `ROUND_FAILED` on every harness it did not
 touch (per-leg errors recorded microseconds earlier are kept).
 
