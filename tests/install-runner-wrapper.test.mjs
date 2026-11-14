@@ -8,6 +8,19 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+// The runner host exports KAINBAIN_RUNNER_INSTALL_ROOT for its own operation,
+// and both scripts under test honour it
+// (`${KAINBAIN_RUNNER_INSTALL_ROOT:-$HOME/.kainbain/runner-install}`).
+// Every spawn below fakes $HOME, so it must start from a scrubbed copy of
+// process.env — otherwise the host value defeats the fake HOME and the
+// install lands outside the sandbox (3 failures under CI).
+const sandboxEnv = (home, bin) => {
+	const env = { ...process.env, HOME: home };
+	delete env.KAINBAIN_RUNNER_INSTALL_ROOT;
+	if (bin) env.PATH = `${bin}${path.delimiter}${process.env.PATH}`;
+	return env;
+};
+
 // New installs boot through the self-update wrapper (task 82e49a05 K4):
 // both installers lay a versioned install root down from their source
 // tree and write wrapper-based units. Everything runs under a fake $HOME
@@ -35,13 +48,32 @@ describe("install-local-runner.sh wrapper installs", () => {
 		const home = fs.mkdtempSync(path.join(os.tmpdir(), "kb-install-home-"));
 		try {
 			const got = spawnSync("bash", [path.join(ROOT, "scripts", "install-local-runner.sh"), "--id", "local-x", "--manual", "--harness", "mock", "--dry-run"], {
-				env: { ...process.env, HOME: home },
+				env: sandboxEnv(home),
 				encoding: "utf8",
 			});
 			assert.equal(got.status, 0, got.stderr);
 			assert.match(got.stdout, new RegExp(`INSTALL_ROOT=${home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/\\.kainbain/runner-install`));
 			assert.deepEqual(fs.readdirSync(home), [], "dry-run writes nothing under HOME");
 		} finally {
+			fs.rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("ignores a leaked KAINBAIN_RUNNER_INSTALL_ROOT from the operator environment", () => {
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "kb-install-home-"));
+		const leaked = process.env.KAINBAIN_RUNNER_INSTALL_ROOT;
+		process.env.KAINBAIN_RUNNER_INSTALL_ROOT = path.join(os.tmpdir(), "kb-install-leak-");
+		try {
+			const got = spawnSync("bash", [path.join(ROOT, "scripts", "install-local-runner.sh"), "--id", "local-x", "--manual", "--harness", "mock", "--dry-run"], {
+				env: sandboxEnv(home),
+				encoding: "utf8",
+			});
+			assert.equal(got.status, 0, got.stderr);
+			assert.match(got.stdout, new RegExp(`INSTALL_ROOT=${home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/\\.kainbain/runner-install`));
+			assert.deepEqual(fs.readdirSync(home), [], "dry-run writes nothing under HOME");
+		} finally {
+			if (leaked === undefined) delete process.env.KAINBAIN_RUNNER_INSTALL_ROOT;
+			else process.env.KAINBAIN_RUNNER_INSTALL_ROOT = leaked;
 			fs.rmSync(home, { recursive: true, force: true });
 		}
 	});
@@ -54,7 +86,7 @@ describe("install-local-runner.sh wrapper installs", () => {
 			const got = spawnSync(
 				"bash",
 				[path.join(ROOT, "scripts", "install-local-runner.sh"), "--id", "local-x", "--manual", "--harness", "mock", "--backend", "http://127.0.0.1:1"],
-				{ env: { ...process.env, HOME: home, PATH: `${bin}${path.delimiter}${process.env.PATH}` }, encoding: "utf8" },
+				{ env: sandboxEnv(home, bin), encoding: "utf8" },
 			);
 			assert.equal(got.status, 0, got.stdout + got.stderr);
 			const root = path.join(home, ".kainbain", "runner-install");
@@ -85,7 +117,7 @@ describe("install-local-runner.sh wrapper installs", () => {
 			const got = spawnSync(
 				"bash",
 				[path.join(ROOT, "scripts", "install-local-runner.sh"), "--id", "local-x", "--manual", "--harness", "mock", "--ensure"],
-				{ env: { ...process.env, HOME: home, PATH: `${bin}${path.delimiter}${process.env.PATH}` }, encoding: "utf8" },
+				{ env: sandboxEnv(home, bin), encoding: "utf8" },
 			);
 			assert.equal(got.status, 0, got.stdout + got.stderr);
 			assert.equal(fs.readFileSync(unitFile, "utf8"), "[Service]\nExecStart=/usr/bin/node main.js\n");
@@ -116,7 +148,7 @@ describe("startRunner.sh wrapper installs", () => {
 		try {
 			const got = spawnSync("bash", ["./startRunner.sh", "--id", "remote-x", "--manual", "--harness", "mock", "--backend", "http://127.0.0.1:1"], {
 				cwd: prod,
-				env: { ...process.env, HOME: home, PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+				env: sandboxEnv(home, bin),
 				encoding: "utf8",
 			});
 			assert.equal(got.status, 0, got.stdout + got.stderr);
@@ -150,7 +182,7 @@ describe("startRunner.sh wrapper installs", () => {
 			);
 			const got = spawnSync("bash", ["./startRunner.sh", "--ensure"], {
 				cwd: prod,
-				env: { ...process.env, HOME: home, PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+				env: sandboxEnv(home, bin),
 				encoding: "utf8",
 			});
 			assert.equal(got.status, 0, got.stdout + got.stderr);
