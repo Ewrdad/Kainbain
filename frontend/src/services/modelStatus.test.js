@@ -1,8 +1,5 @@
 // node env pin: pure-logic suite (no DOM needs); skips the DOM env cost per CI-wall budget.
 // @vitest-environment node
-// Run in the lighter node environment: this suite is pure logic with
-// no DOM needs (skips jsdom setup, keeps the CI suite fast).
-// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import {
   modelStatusBadge,
@@ -13,6 +10,11 @@ import {
   fleetInfoForModel,
   fleetSnapshotBadge,
   fleetSnapshotBadgeNode,
+  readRunnerCount,
+  fleetUnverifiedNote,
+  fleetModelRowBadge,
+  fleetHarnessBadgeNode,
+  notCurrentlyServedBadge,
 } from './modelStatus';
 
 /***
@@ -86,13 +88,47 @@ describe('fleetCountBadgeNode', () => {
     expect(label).toBe('2 runners');
   });
 
-  it('renders one runner singular and zero as slate No runners', () => {
+  it('renders one runner singular and zero as slate 0 runners', () => {
     expect(fleetCountBadgeNode({ runnerCount: 1 }).props.children[1]).toBe('1 runner');
     const zero = fleetCountBadgeNode(null);
-    expect(zero.props.children[1]).toBe('No runners');
+    expect(zero.props.children[1]).toBe('0 runners');
     expect(zero.props.children[0].props.className).toContain('bg-slate-400');
     const malformed = fleetCountBadgeNode({ runnerCount: -3 });
-    expect(malformed.props.children[1]).toBe('No runners');
+    expect(malformed.props.children[1]).toBe('0 runners');
+  });
+
+  it('clamps hostile counts to an honest zero, never NaN/negative labels', () => {
+    for (const runnerCount of [Number.NaN, Number.POSITIVE_INFINITY, -1, 1.9, '2', null]) {
+      const node = fleetCountBadgeNode({ runnerCount });
+      const label =
+        runnerCount === 1.9 ? '1 runner' : '0 runners';
+      expect(node.props.children[1], `runnerCount ${String(runnerCount)}`).toBe(label);
+    }
+  });
+});
+
+describe('readRunnerCount', () => {
+  it('reads entry counts and raw numbers', () => {
+    expect(readRunnerCount({ runnerCount: 2 })).toBe(2);
+    expect(readRunnerCount({ id: 'muse', runnerCount: 1 })).toBe(1);
+    expect(readRunnerCount(3)).toBe(3);
+    expect(readRunnerCount(0)).toBe(0);
+  });
+
+  it('fails safe to 0 for missing, malformed, and non-finite counts', () => {
+    expect(readRunnerCount(null)).toBe(0);
+    expect(readRunnerCount(undefined)).toBe(0);
+    expect(readRunnerCount({})).toBe(0);
+    expect(readRunnerCount({ runnerCount: '2' })).toBe(0);
+    expect(readRunnerCount({ runnerCount: Number.NaN })).toBe(0);
+    expect(readRunnerCount({ runnerCount: Number.POSITIVE_INFINITY })).toBe(0);
+    expect(readRunnerCount(Number.NaN)).toBe(0);
+  });
+
+  it('clamps negative and fractional counts down to a whole zero-or-more', () => {
+    expect(readRunnerCount({ runnerCount: -3 })).toBe(0);
+    expect(readRunnerCount(-1)).toBe(0);
+    expect(readRunnerCount({ runnerCount: 1.9 })).toBe(1);
   });
 });
 
@@ -217,5 +253,83 @@ describe('fleetSnapshotBadge', () => {
     expect(node.props.children[1]).toBe('Unavailable');
     expect(fleetSnapshotBadgeNode({ available: true })).toBeNull();
     expect(fleetSnapshotBadgeNode({ id: 'm' })).toBeNull();
+  });
+});
+
+describe('fleetUnverifiedNote', () => {
+  it('annotates verified:false entries with declarants and their tooltip', () => {
+    const note = fleetUnverifiedNote({ verified: false, declaredBy: ['local-alpha'] });
+    expect(note).toBeTruthy();
+    expect(note.props.children).toBe('unverified');
+    expect(note.props.title).toBe('declared by local-alpha, not found by its discovery');
+    const multi = fleetUnverifiedNote({ verified: false, declaredBy: ['a', 'b'] });
+    expect(multi.props.title).toBe('declared by a, b, not found by its discovery');
+  });
+
+  it('stays null for verified entries, empty declarants, and non-objects', () => {
+    expect(fleetUnverifiedNote({ verified: true, declaredBy: ['a'] })).toBeNull();
+    expect(fleetUnverifiedNote({ runnerCount: 1 })).toBeNull();
+    expect(fleetUnverifiedNote({ verified: false, declaredBy: [] })).toBeNull();
+    expect(fleetUnverifiedNote({ verified: false })).toBeNull();
+    expect(fleetUnverifiedNote({ verified: false, declaredBy: [null, 42, ''] })).toBeNull();
+    expect(fleetUnverifiedNote(null)).toBeNull();
+  });
+
+  it('folds long declarant lists in the tooltip after five names', () => {
+    const note = fleetUnverifiedNote({
+      verified: false,
+      declaredBy: ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+    });
+    expect(note.props.title).toBe('declared by a, b, c, d, e, +2 more, not found by its discovery');
+    const five = fleetUnverifiedNote({ verified: false, declaredBy: ['a', 'b', 'c', 'd', 'e'] });
+    expect(five.props.title).toBe('declared by a, b, c, d, e, not found by its discovery');
+  });
+});
+
+describe('fleetModelRowBadge', () => {
+  it('always renders the count, never the snapshot verdict', () => {
+    // A1: {available:false, runnerCount:0} renders "0 runners".
+    const zero = fleetModelRowBadge({ available: false, runnerCount: 0 });
+    expect(zero.props.children[1]).toBe('0 runners');
+    const two = fleetModelRowBadge({ available: false, runnerCount: 2 });
+    expect(two.props.children[1]).toBe('2 runners');
+    expect(fleetModelRowBadge(null).props.children[1]).toBe('0 runners');
+  });
+
+  it('appends the unverified annotation when applicable', () => {
+    const node = fleetModelRowBadge({ runnerCount: 0, verified: false, declaredBy: ['x'] });
+    expect(node.type).toBe(Symbol.for('react.fragment'));
+    const plain = fleetModelRowBadge({ runnerCount: 1 });
+    expect(plain.props.children[1]).toBe('1 runner');
+  });
+});
+
+describe('fleetHarnessBadgeNode', () => {
+  it('renders harness counts and null only when unloaded', () => {
+    expect(fleetHarnessBadgeNode({ id: 'muse', runnerCount: 1 }).props.children[1]).toBe('1 runner');
+    const zero = fleetHarnessBadgeNode({ id: 'pi', runnerCount: 0 });
+    expect(zero.props.children[1]).toBe('0 runners');
+    expect(zero.props.children[0].props.className).toContain('bg-slate-400');
+    expect(fleetHarnessBadgeNode(3).props.children[1]).toBe('3 runners');
+    expect(fleetHarnessBadgeNode(null)).toBeNull();
+    expect(fleetHarnessBadgeNode(undefined)).toBeNull();
+  });
+
+  it('clamps hostile harness counts to an honest zero', () => {
+    expect(fleetHarnessBadgeNode({ id: 'x', runnerCount: -2 }).props.children[1]).toBe('0 runners');
+    expect(fleetHarnessBadgeNode({ id: 'x' }).props.children[1]).toBe('0 runners');
+    expect(fleetHarnessBadgeNode(Number.NaN).props.children[1]).toBe('0 runners');
+  });
+});
+
+describe('notCurrentlyServedBadge', () => {
+  it('marks stored absent/0-runner refs without clearing them', () => {
+    const node = notCurrentlyServedBadge();
+    expect(node.props.children).toBe('not currently served');
+    expect(node.props['data-testid']).toBe('not-currently-served');
+  });
+
+  it('returns a fresh marker element on every call', () => {
+    expect(notCurrentlyServedBadge()).not.toBe(notCurrentlyServedBadge());
   });
 });

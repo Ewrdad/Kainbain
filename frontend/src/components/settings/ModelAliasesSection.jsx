@@ -2,14 +2,26 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCollapsibleRows } from './useCollapsibleRows';
 import { SelectDropdown } from '../common/SelectDropdown';
 import { resolveStoredModelValidity } from '../common/ModelSelector';
-import { splitReasoning, stripReasoning, appendReasoning, resolveReasoningOptions, stripReasoningIfUnsupported, checkReasoningLevelText } from '../../services/modelKeys';
+import {
+  splitReasoning,
+  stripReasoning,
+  appendReasoning,
+  resolveReasoningOptions,
+  stripReasoningIfUnsupported,
+  checkReasoningLevelText,
+} from '../../services/modelKeys';
 import {
   api,
   modelKeyForValue,
   groupModelsByProvider,
   normalizeModelRef,
 } from '../../services/api';
-import { fleetCountBadgeNode, fleetInfoForModel, fleetSnapshotBadgeNode } from '../../services/modelStatus';
+import {
+  fleetInfoForModel,
+  fleetModelRowBadge,
+  notCurrentlyServedBadge,
+  readRunnerCount,
+} from '../../services/modelStatus';
 import { withFleetModels, effectiveModelSelection } from '../../services/fleetModelOptions';
 import { ReliabilityLine } from './ReliabilityLine';
 import {
@@ -246,7 +258,11 @@ export function validateAliasList(aliases, harnesses, fleetCounts) {
         });
         return;
       }
-      const selection = effectiveModelSelection(entry?.modelSelection || 'list', harnessId, fleetCounts);
+      const selection = effectiveModelSelection(
+        entry?.modelSelection || 'list',
+        harnessId,
+        fleetCounts,
+      );
       const validity = targetValidity(target, catalogue, fleetCounts);
       // The validity gate adds the reasoning-level hard errors. A stored
       // model on a self-managed (`none`) harness is soft by design
@@ -483,7 +499,11 @@ function AliasTargetRow({
   // fleet pick is a guaranteed dispatch match); a `none` harness the fleet
   // serves behaves as `list` here. Without fleet data the row shows the
   // backend catalogue unchanged.
-  const selection = effectiveModelSelection(entry?.modelSelection || 'list', harnessId, fleetCounts);
+  const selection = effectiveModelSelection(
+    entry?.modelSelection || 'list',
+    harnessId,
+    fleetCounts,
+  );
   // Fail-safe: a malformed catalogue entry (models not an array) must never
   // crash the whole section — treat it as an empty model list so the row
   // still renders its harness/percent controls. `targetValidity` guards the
@@ -504,15 +524,10 @@ function AliasTargetRow({
   // fleet data the options render badge-free (never mislead).
   const hasFleetCounts = fleetCounts && typeof fleetCounts === 'object';
   const modelOptions = groupModelsByProvider(modelsForHarness).map((option) => {
-    // The snapshot's explicit unavailable verdict wins over the count
-    // badge (it carries the reason) — and applies even without fleet
-    // data, so a marked entry never renders normal-looking.
-    const snapshotBadge = fleetSnapshotBadgeNode(modelsByValue.get(option.value));
-    if (snapshotBadge) return { ...option, badge: snapshotBadge };
     if (!hasFleetCounts) return option;
     const model = modelsByValue.get(option.value);
     const info = fleetInfoForModel(fleetCounts, model, option.value);
-    return { ...option, badge: fleetCountBadgeNode(info) };
+    return { ...option, badge: fleetModelRowBadge(info) };
   });
   // First target keeps the historic labels so single-target rows read
   // exactly like the old one-harness-per-alias table.
@@ -531,6 +546,22 @@ function AliasTargetRow({
     : `model-alias-target-managed-note-${aliasIndex}-${targetIndex}`;
   const validity = targetValidity(target, catalogue, fleetCounts);
   const validityTestId = `model-alias-target-validity-${aliasIndex}-${targetIndex}`;
+  const notServedTestId = `model-alias-target-not-served-${aliasIndex}-${targetIndex}`;
+  // Stored refs to absent/0-runner ids are marked, never cleared (q13):
+  // with loaded fleet data, a non-empty target model that no Runner serves
+  // (unknown to the catalogue or an honest zero) renders "not currently
+  // served" beside the validity line. The stored string is never rewritten.
+  const targetModelEntry = modelsByValue.get(resolvedModel);
+  const targetFleetInfo = hasFleetCounts
+    ? fleetInfoForModel(fleetCounts, targetModelEntry, resolvedModel)
+    : null;
+  const targetRunnerCount = readRunnerCount(targetFleetInfo);
+  const showNotServed =
+    hasFleetCounts &&
+    selection !== 'none' &&
+    typeof target?.model === 'string' &&
+    target.model.trim() !== '' &&
+    (validity.status === 'unknown-model' || targetRunnerCount === 0);
   // The card's accessible name: which alias and which target (plus harness)
   // the grouped controls belong to.
   const cardLabel = single
@@ -566,7 +597,9 @@ function AliasTargetRow({
           </button>
         )}
       </div>
-      <div className={`grid grid-cols-1 ${reasoningOptions && selection !== 'none' ? 'sm:grid-cols-[1fr_1fr_1fr_64px]' : 'sm:grid-cols-[1fr_1fr_64px]'} gap-2 items-start`}>
+      <div
+        className={`grid grid-cols-1 ${reasoningOptions && selection !== 'none' ? 'sm:grid-cols-[1fr_1fr_1fr_64px]' : 'sm:grid-cols-[1fr_1fr_64px]'} gap-2 items-start`}
+      >
         <div className="flex flex-col gap-1 min-w-0">
           <label
             className="text-[9px] font-bold uppercase text-text-muted tracking-wider"
@@ -726,7 +759,10 @@ function AliasTargetRow({
           level cleared through the Reasoning dropdown retires the notice;
           the next switch resets the pending state. */}
       {blockedHarnessId && splitReasoning(target?.model || '').reasoning && (
-        <div data-testid="reasoning-clear-notice" className="flex items-center gap-2 text-[10px] text-text-muted">
+        <div
+          data-testid="reasoning-clear-notice"
+          className="flex items-center gap-2 text-[10px] text-text-muted"
+        >
           <span>Clear the reasoning level first</span>
           <button
             type="button"
@@ -734,7 +770,10 @@ function AliasTargetRow({
               // One-click unblock: drop the level but keep the base model,
               // then complete the pending switch (alias trust — only the
               // blocking level goes, never the stored model text).
-              onTargetChange({ harness: blockedHarnessId, model: stripReasoning(target?.model || '') });
+              onTargetChange({
+                harness: blockedHarnessId,
+                model: stripReasoning(target?.model || ''),
+              });
               setBlockedHarnessId(null);
             }}
             disabled={disabled}
@@ -773,6 +812,11 @@ function AliasTargetRow({
               >
                 ✕ {validity.message}
               </p>
+            )}
+            {showNotServed && (
+              <span data-testid={notServedTestId} className="text-[10px] text-text-muted">
+                {notCurrentlyServedBadge()}
+              </span>
             )}
           </div>
           {showReliabilityLines && (
@@ -1239,7 +1283,7 @@ export function ModelAliasesSection({
                             testId={`alias-reliability-${index}`}
                             stats={aliasStats}
                             pending={reliabilityPending}
-                showRecent
+                            showRecent
                             {...aliasReliabilityTitles(row?.name, aliasStats)}
                           />
                         </div>
@@ -1317,7 +1361,7 @@ export function ModelAliasesSection({
                             testId={`alias-reliability-${index}`}
                             stats={aliasStats}
                             pending={reliabilityPending}
-                showRecent
+                            showRecent
                             {...aliasReliabilityTitles(row?.name, aliasStats)}
                           />
                         </div>

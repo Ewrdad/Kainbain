@@ -198,8 +198,9 @@ export function ProjectSettingsForm({
   // /runners/models/catalogue replace credential-health badges. Gated on
   // `loaded` (not merely finished loading) so a failed fetch renders
   // badge-free options instead of a misleading "No runners".
-  const { counts: loadedFleetCounts, loaded: fleetLoaded } = useFleetModelCatalog();
+  const { counts: loadedFleetCounts, harnesses: loadedFleetHarnesses, loaded: fleetLoaded } = useFleetModelCatalog();
   const fleetCounts = fleetLoaded ? loadedFleetCounts : undefined;
+  const fleetHarnesses = fleetLoaded ? loadedFleetHarnesses : undefined;
   const [saveState, setSaveState] = useState('idle');
   const [validationError, setValidationError] = useState('');
   // Soft combination warnings returned by the last save (the save succeeded;
@@ -574,6 +575,7 @@ export function ProjectSettingsForm({
             models={models}
             labeledHarnesses={labeledHarnesses}
             fleetCounts={fleetCounts}
+            fleetHarnesses={fleetHarnesses}
             defaultModel={defaultModel}
             onDefaultModelChange={(val) => {
               defaultModelTouchedRef.current = true;

@@ -255,9 +255,9 @@ describe('ModelAliasesSection', () => {
     ]);
   });
 
-  it('marks snapshot-unavailable models Unavailable in the row dropdown (never hidden)', () => {
-    // Central-list honesty (survey q4): the option stays selectable
-    // with its reason, even without fleet data loaded.
+  it('renders snapshot-unavailable models as 0 runners in the row dropdown (A1)', () => {
+    // Counts drive badges (q19): the snapshot's available:false verdict
+    // never renders in pickers — the option shows its honest zero instead.
     const catalogue = [
       {
         id: 'pi',
@@ -282,15 +282,88 @@ describe('ModelAliasesSection', () => {
         aliases={[{ name: 'small', harness: 'pi', model: 'google::m1' }]}
         onChange={() => {}}
         harnesses={catalogue}
+        fleetCounts={{
+          'google::m1': { runnerCount: 0, runnerIds: [], available: false },
+        }}
       />,
     );
     expandAllCards();
     fireEvent.click(screen.getByRole('combobox', { name: 'Alias 1 model' }));
     const option = screen.getByRole('option', { name: /M1/ });
-    expect(option).toHaveTextContent('Unavailable');
-    expect(option.querySelector('[title]')?.getAttribute('title')).toContain(
-      'No claim-eligible runner',
+    expect(option).toHaveTextContent('0 runners');
+    expect(option).not.toHaveTextContent('Unavailable');
+  });
+
+  it('marks unverified alias rows but keeps them selectable (q20)', () => {
+    const onChange = vi.fn();
+    const catalogue = [
+      {
+        id: 'pi',
+        label: 'pi',
+        description: 'pi',
+        modelSelection: 'list',
+        models: [{ id: 'm1', name: 'M1', provider: 'google', key: 'google::m1' }],
+      },
+    ];
+    render(
+      <ModelAliasesSection
+        aliases={[{ name: 'small', harness: 'pi', model: '' }]}
+        onChange={onChange}
+        harnesses={catalogue}
+        fleetCounts={{
+          'google::m1': {
+            runnerCount: 0,
+            runnerIds: [],
+            verified: false,
+            declaredBy: ['local-alpha'],
+          },
+        }}
+      />,
     );
+    expandAllCards();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Alias 1 model' }));
+    const option = screen.getByRole('option', { name: /M1/ });
+    expect(option).toHaveTextContent('0 runners');
+    expect(option.querySelector('[data-testid="fleet-unverified-note"]')).toHaveTextContent(
+      'unverified',
+    );
+    fireEvent.click(option);
+    expect(onChange).toHaveBeenCalled();
+  });
+
+  it('marks stored absent/0-runner alias targets "not currently served" without clearing (q13)', () => {
+    const onChange = vi.fn();
+    const catalogue = [
+      {
+        id: 'pi',
+        label: 'pi',
+        description: 'pi',
+        modelSelection: 'list',
+        models: [{ id: 'm1', name: 'M1', provider: 'google', key: 'google::m1' }],
+      },
+    ];
+    render(
+      <ModelAliasesSection
+        aliases={[
+          { name: 'zero', harness: 'pi', model: 'google::m1' },
+          { name: 'ghost', harness: 'pi', model: 'ghost::phantom-1' },
+        ]}
+        onChange={onChange}
+        harnesses={catalogue}
+        fleetCounts={{
+          'google::m1': { runnerCount: 0, runnerIds: [] },
+        }}
+      />,
+    );
+    expandAllCards();
+    expect(screen.getByTestId('model-alias-target-not-served-0-0')).toHaveTextContent(
+      'not currently served',
+    );
+    expect(screen.getByTestId('model-alias-target-not-served-1-0')).toHaveTextContent(
+      'not currently served',
+    );
+    // Mounting a marked target never rewrites the stored string.
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it('shows the managed-model note for none harnesses and deletes rows', () => {
@@ -1230,7 +1303,7 @@ describe('ModelAliasesSection reasoning level picker', () => {
     fireEvent.click(screen.getByLabelText('Alias 1 model'));
     expect(screen.getByRole('option', { name: /M1/ })).toHaveTextContent('2 runners');
     // Unknown ids render an honest zero, never a health badge.
-    expect(screen.getByRole('option', { name: /M2/ })).toHaveTextContent('No runners');
+    expect(screen.getByRole('option', { name: /M2/ })).toHaveTextContent('0 runners');
   });
 
   it('strips a stored suffix on load for null-harness targets, keeps capable ones (Q2)', () => {

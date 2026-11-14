@@ -15,6 +15,12 @@ import { ApiKeysSection } from './ApiKeysSection';
 import { UiPreferencesPanel } from './UiPreferencesPanel';
 import { MODEL_REFRESH_CONFIG_KEY } from './modelRefreshFlag';
 import { SETTINGS_TABS, isFooterResetVisible } from './settingsTabs';
+import { FleetCatalogueSection } from './FleetCatalogueSection';
+import {
+  availabilityBadge,
+  availabilityFromEntry,
+  availabilityToneClass,
+} from '../../services/harnessPrefs';
 
 export const SYSTEM_SETTINGS_SECTIONS = SETTINGS_TABS.map(({ id, label }) => ({ id, label }));
 
@@ -223,6 +229,62 @@ export function SystemSettingsContent({
                 >
                   Model refresh is disabled by the {MODEL_REFRESH_CONFIG_KEY} setting.
                 </p>
+              )}
+            </div>
+            <div className="border-b border-border-standard">
+              <FleetCatalogueSection />
+            </div>
+            <div
+              data-testid="backend-harnesses"
+              className="flex flex-col gap-2 py-3 border-b border-border-standard"
+            >
+              <span className="text-xs font-bold text-on-surface">Backend harnesses</span>
+              <p className="text-[11px] text-text-muted">
+                Local harness detection on the backend host itself — the probe behind the old
+                picker badges. Pickers judge availability by fleet runner counts instead.
+              </p>
+              {harnesses.length === 0 ? (
+                <p
+                  data-testid="backend-harnesses-empty"
+                  className="text-[11px] text-text-muted"
+                >
+                  No harnesses reported by the backend catalogue yet.
+                </p>
+              ) : (
+                <ul className="flex flex-col gap-1.5">
+                  {harnesses.map((harness) => {
+                    const availability = availabilityFromEntry(harness);
+                    const badge = availability
+                      ? availabilityBadge({ enabled: true, autoDetect: true }, availability)
+                      : null;
+                    return (
+                      <li
+                        key={harness?.id || harness?.label}
+                        data-testid="backend-harness-row"
+                        className="flex items-center gap-2 flex-wrap text-[11px]"
+                      >
+                        <span className="font-mono text-on-surface">
+                          {harness?.label || harness?.id}
+                        </span>
+                        {badge && (
+                          <span
+                            className={`px-1.5 py-px text-[10px] font-bold uppercase tracking-wider rounded-full border ${availabilityToneClass(badge.tone)}`}
+                          >
+                            {badge.text}
+                          </span>
+                        )}
+                        {harness?.hint && (
+                          <span
+                            data-testid="backend-harness-hint"
+                            className="text-text-muted"
+                          >
+                            {harness.hint}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </div>
             <SettingRow
