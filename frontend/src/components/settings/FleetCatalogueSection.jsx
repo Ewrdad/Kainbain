@@ -25,6 +25,26 @@ export const formatFleetAge = (atMs, nowMs = Date.now()) => {
   return `${Math.floor(diff / day)}d ago`;
 };
 
+// One runner's discovery state in plain words: the provenance `source` when
+// the backend names one, plus the first status-like field it carries
+// (`status`/`code`/`state`/`discoveryStatus`) rendered verbatim — the WP-B
+// vocabulary rides along untouched, whatever it names the field.
+const discoveryStateText = (provenance) => {
+  if (!provenance || typeof provenance !== 'object') return '';
+  const parts = [];
+  if (typeof provenance.source === 'string' && provenance.source) parts.push(provenance.source);
+  for (const key of ['status', 'code', 'state', 'discoveryStatus']) {
+    // eslint-disable-next-line security/detect-object-injection -- fixed key list into our own catalogue payload
+    const value = provenance[key];
+    if (typeof value === 'string' && value) {
+      parts.push(value);
+      break;
+    }
+  }
+  if (typeof provenance.atMs === 'number') parts.push(formatFleetAge(provenance.atMs));
+  return parts.length > 0 ? `, ${parts.join(', ')}` : '';
+};
+
 // Per-runner discovery rows for one catalogue entry: the union of serving,
 // declared, claimed, and provenance-seen runner ids (sorted), each tagged
 // with its role. Provenance renders verbatim — unknown WP-B discovery
@@ -86,6 +106,7 @@ export function FleetCatalogueSection({ isAdmin = true }) {
   const [notice, setNotice] = useState(null);
 
   const runRemove = async (kind, id) => {
+    if (typeof id !== 'string' || !id) return;
     const key = `${kind}:${id}`;
     setBusyKey(key);
     setActionError(null);
@@ -118,6 +139,7 @@ export function FleetCatalogueSection({ isAdmin = true }) {
   };
 
   const runRescan = async (runnerId) => {
+    if (typeof runnerId !== 'string' || !runnerId) return;
     const key = `rescan:${runnerId}`;
     setBusyKey(key);
     setActionError(null);
@@ -204,7 +226,7 @@ export function FleetCatalogueSection({ isAdmin = true }) {
               </tr>
             </thead>
             <tbody>
-              {models.map((entry) => {
+              {models.map((entry, index) => {
                 const id = typeof entry?.id === 'string' ? entry.id : '';
                 const count = readRunnerCount(entry);
                 const declaredBy = Array.isArray(entry?.declaredBy)
@@ -216,13 +238,18 @@ export function FleetCatalogueSection({ isAdmin = true }) {
                 // admin (never in pickers): the count stays the headline and
                 // the verdict + reason ride beside it as health detail (q10).
                 const verdict = fleetSnapshotBadge(entry);
+                // A blank id is a contract violation the backend never sends:
+                // render the row honestly with a placeholder (never hide it,
+                // never key two rows the same) and disable its Remove — there
+                // is no id to DELETE.
+                const displayId = id || `(row ${index + 1}: missing id)`;
                 return (
                   <tr
-                    key={id}
+                    key={id ? `model:${id}` : `model-row:${index}`}
                     data-testid="fleet-catalogue-row"
                     className="border-t border-border-standard/40 align-top"
                   >
-                    <td className="py-1.5 pr-3 font-mono text-on-surface break-all">{id}</td>
+                    <td className="py-1.5 pr-3 font-mono text-on-surface break-all">{displayId}</td>
                     <td className="py-1.5 pr-3 text-on-surface whitespace-nowrap">
                       <span>
                         {count} runner{count === 1 ? '' : 's'}
@@ -263,11 +290,7 @@ export function FleetCatalogueSection({ isAdmin = true }) {
                                 }
                               >
                                 {runner.id} ({runner.role}
-                                {runner.provenance?.source ? `, ${runner.provenance.source}` : ''}
-                                {typeof runner.provenance?.atMs === 'number'
-                                  ? `, ${formatFleetAge(runner.provenance.atMs)}`
-                                  : ''}
-                                )
+                                {discoveryStateText(runner.provenance)})
                               </span>
                               <button
                                 type="button"
@@ -287,9 +310,10 @@ export function FleetCatalogueSection({ isAdmin = true }) {
                       <td className="py-1.5 whitespace-nowrap">
                         <button
                           type="button"
-                          aria-label={`Remove ${id} permanently`}
+                          aria-label={`Remove ${displayId} permanently`}
+                          title={id ? undefined : 'No model id to remove'}
                           onClick={() => void runRemove('model', id)}
-                          disabled={busyKey != null}
+                          disabled={busyKey != null || !id}
                           className="px-2 py-0.5 bg-surface-deep border border-error/50 rounded-sm text-[10px] font-bold uppercase text-error hover:brightness-110 disabled:opacity-50 cursor-pointer"
                         >
                           {busy ? 'Removing…' : 'Remove permanently'}
@@ -316,25 +340,27 @@ export function FleetCatalogueSection({ isAdmin = true }) {
           </p>
         ) : (
           <ul className="flex flex-col gap-1.5">
-            {quarantined.map((record) => {
+            {quarantined.map((record, index) => {
               const id = typeof record?.id === 'string' ? record.id : '';
               const busy = busyKey === `quarantine:${id}`;
+              const displayId = id || `(row ${index + 1}: missing id)`;
               return (
                 <li
-                  key={id}
+                  key={id ? `quarantine:${id}` : `quarantine-row:${index}`}
                   data-testid="fleet-quarantine-row"
                   className="flex items-center gap-2 flex-wrap text-[11px]"
                 >
-                  <span className="font-mono text-on-surface break-all">{id}</span>
+                  <span className="font-mono text-on-surface break-all">{displayId}</span>
                   <span className="text-text-muted" title={record?.reason || ''}>
                     {record?.reason || 'no reason recorded'}
                   </span>
                   {isAdmin && (
                     <button
                       type="button"
-                      aria-label={`Remove quarantined ${id}`}
+                      aria-label={`Remove quarantined ${displayId}`}
+                      title={id ? undefined : 'No model id to remove'}
                       onClick={() => void runRemove('quarantine', id)}
-                      disabled={busyKey != null}
+                      disabled={busyKey != null || !id}
                       className="px-2 py-0.5 bg-surface-deep border border-error/50 rounded-sm text-[10px] font-bold uppercase text-error hover:brightness-110 disabled:opacity-50 cursor-pointer"
                     >
                       {busy ? 'Removing…' : 'Remove'}

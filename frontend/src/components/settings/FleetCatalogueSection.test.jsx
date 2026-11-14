@@ -221,6 +221,66 @@ describe('FleetCatalogueSection', () => {
   });
 });
 
+describe('FleetCatalogueSection hardening', () => {
+  it('renders a WP-B-style discovery status verbatim in the discovery cell', async () => {
+    getFleetModelCatalog.mockResolvedValue({
+      models: [
+        {
+          id: 'muse::meta::m',
+          harness: 'muse',
+          runnerCount: 1,
+          runnerIds: ['box-a'],
+          declaredBy: [],
+          claimedBy: [],
+          verified: true,
+          available: true,
+          tiers: [],
+          lastServedAtMs: WP_C_FIXTURE_NOW_MS - 3600 * 1000,
+          provenance: {
+            'box-a': {
+              harnesses: ['muse'],
+              atMs: WP_C_FIXTURE_NOW_MS - 3600 * 1000,
+              source: 'discovery',
+              status: 'NOT_YET_RUN',
+            },
+          },
+        },
+      ],
+      harnesses: [],
+      quarantined: [],
+    });
+    render(<FleetCatalogueSection />);
+    const row = await screen.findByTestId('fleet-catalogue-row');
+    expect(
+      within(row).getByText(/box-a \(serving, discovery, NOT_YET_RUN, .* ago\)/),
+    ).toBeInTheDocument();
+  });
+
+  it('renders blank-id rows honestly with Remove disabled (never hides, never crashes)', async () => {
+    getFleetModelCatalog.mockResolvedValue({
+      models: [{ runnerCount: 0 }, null],
+      harnesses: [],
+      quarantined: [{ reason: 'not-harness-qualified' }, null],
+    });
+    render(<FleetCatalogueSection />);
+    const rows = await screen.findAllByTestId('fleet-catalogue-row');
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0]).getByText('(row 1: missing id)')).toBeInTheDocument();
+    expect(
+      within(rows[0]).getByRole('button', { name: 'Remove (row 1: missing id) permanently' }),
+    ).toBeDisabled();
+    const quarantine = screen.getAllByTestId('fleet-quarantine-row');
+    expect(quarantine).toHaveLength(2);
+    expect(
+      within(quarantine[0]).getByRole('button', {
+        name: 'Remove quarantined (row 1: missing id)',
+      }),
+    ).toBeDisabled();
+    expect(deleteFleetCatalogueModel).not.toHaveBeenCalled();
+    expect(deleteFleetQuarantinedModel).not.toHaveBeenCalled();
+  });
+});
+
 describe('formatFleetAge', () => {
   const NOW = 1790000000000;
   it('formats ages and never-served', () => {

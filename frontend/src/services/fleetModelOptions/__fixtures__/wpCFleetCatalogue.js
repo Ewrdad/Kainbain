@@ -125,7 +125,10 @@ export const wpCCatalogue = () => {
       },
     ],
     harnesses: [
-      { id: 'muse', runnerCount: 1, runnerIds: ['box-a'] },
+      // Both muse-model servers advertise the harness (the backend
+      // quarantines harness-scoped ids from runners that do not serve the
+      // named harness, so model servers are always harness advertisers).
+      { id: 'muse', runnerCount: 2, runnerIds: ['box-a', 'box-b'] },
       { id: 'pi', runnerCount: 2, runnerIds: ['box-a', 'box-b'] },
     ],
     quarantined: [
