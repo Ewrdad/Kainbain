@@ -1,5 +1,20 @@
 # Implementation report — pretty tasks for the create-task skill (2026-11-14)
 
+> **Correction (2026-11-14, after deep-review round 3):** the claim in step 3
+> below that the regenerated `pretty-proof.png` was valid was **false** — the
+> committed copy had magic `ef bf bd 50 4e 47` (UTF-8 text-mode corruption)
+> and `file` reported `data`. It has now been restored binary-safely with
+> `git checkout origin/main -- pretty-proof.png` (the valid capture already on
+> `main`); verified `xxd -l 8` → `8950 4e47 0d0a 1a0a` and `file` →
+> `PNG image data, 1440 x 1600, 8-bit/color RGB, non-interlaced`. Also in this
+> fix-up: deleted the stray scratch `rt.mjs`; hardened `extractGoalSection`
+> (unclosed-fence fallback, same-marker fence closing, JSDoc moved so
+> `parseTaskMarkdown` keeps its own doc block) with 5 new pin tests; amended
+> `IMPLEMENTATION_PLAN.md` Non-goals with the `extractGoalSection` contract;
+> and split the pre-existing multi-function `api/flow/resolveStatePath.js`
+> into one file per guard (barrel re-exports unchanged) so
+> `npm run check:one-function` passes.
+
 Task `5a38ad45-74a6-4d00-b6fd-a1796e5f4f1f`. This run verified the plan end to
 end on the current tree, re-ran every gate that previously failed, proved the
 new behaviour live on an isolated scratch stack, and fixed one real defect found

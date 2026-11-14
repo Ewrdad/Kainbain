@@ -1958,6 +1958,30 @@ describe("extractGoalSection fence-aware extraction", () => {
 		const body = "# Goal\r\nhello\r\n\r\n# History\r\n- x";
 		expect(extractGoalSection(body)).toBe("hello");
 	});
+
+	it("falls back to the first terminator when a fence is never closed", () => {
+		const body = "# Goal\nintro\n```js\nconst x = 1;\n\n# History\n- real entry\n";
+		expect(extractGoalSection(body)).toBe("intro\n```js\nconst x = 1;");
+	});
+
+	it("only closes a fence with the marker character that opened it", () => {
+		const body = "# Goal\n~~~md\n```\n# History\n~~~\nafter\n\n# History\n- x";
+		expect(extractGoalSection(body)).toBe("~~~md\n```\n# History\n~~~\nafter");
+	});
+
+	it("treats an indented terminator heading outside a fence as the end of the goal", () => {
+		const body = "# Goal\nhello\n  # Timeline\n- x";
+		expect(extractGoalSection(body)).toBe("hello");
+	});
+
+	it("stops at a Log Entries heading", () => {
+		expect(extractGoalSection("# Goal\nhello\n# Log Entries\nlog")).toBe("hello");
+	});
+
+	it("returns an empty string for non-string input", () => {
+		expect(extractGoalSection(undefined)).toBe("");
+		expect(extractGoalSection("")).toBe("");
+	});
 });
 
 
