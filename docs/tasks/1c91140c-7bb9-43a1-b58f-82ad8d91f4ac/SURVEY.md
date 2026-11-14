@@ -10,7 +10,12 @@
       "id": "q1",
       "type": "single",
       "text": "What should the new ticket helper always include on a new ticket?",
-      "options": ["A one-line title plus the blocked-by info", "Only the one-line title", "Only the blocked-by info", "Something else (describe in Notes)"],
+      "options": [
+        "A one-line title plus the blocked-by info",
+        "Only the one-line title",
+        "Only the blocked-by info",
+        "Something else (describe in Notes)"
+      ],
       "required": true,
       "showIf": null
     },
@@ -18,7 +23,11 @@
       "id": "q2",
       "type": "single",
       "text": "How should the helper handle the blocked-by field?",
-      "options": ["Always fill it in, even if just to say nothing is blocking", "Only fill it in when the work is actually blocked", "Leave it empty unless the ticket text mentions a blocker"],
+      "options": [
+        "Always fill it in, even if just to say nothing is blocking",
+        "Only fill it in when the work is actually blocked",
+        "Leave it empty unless the ticket text mentions a blocker"
+      ],
       "required": true,
       "showIf": null
     },
@@ -26,7 +35,11 @@
       "id": "q3",
       "type": "single",
       "text": "What should the one-line title look like?",
-      "options": ["A short plain summary of the work", "A short action-style title (verb first, e.g. Fix login error)", "Either style is fine as long as there is a title"],
+      "options": [
+        "A short plain summary of the work",
+        "A short action-style title (verb first, e.g. Fix login error)",
+        "Either style is fine as long as there is a title"
+      ],
       "required": false,
       "showIf": null
     },
@@ -34,11 +47,39 @@
       "id": "q4",
       "type": "single",
       "text": "How deep should this update go?",
-      "options": ["Just fix these two gaps (title + blocked-by)", "Full check-up of the whole ticket helper"],
+      "options": [
+        "Just fix these two gaps (title + blocked-by)",
+        "Full check-up of the whole ticket helper"
+      ],
       "required": true,
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "A one-line title plus the blocked-by info"
+      ],
+      "notes": "Blocked by only if it is blocked by not everything will have a blocked by"
+    },
+    "q2": {
+      "selected": [
+        "Only fill it in when the work is actually blocked"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Either style is fine as long as there is a title"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Full check-up of the whole ticket helper"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```

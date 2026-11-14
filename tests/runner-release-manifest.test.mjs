@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildManifest, readReleaseRequires, sha256FileHex } from "../scripts/generate-runner-manifest.mjs";
-import { packageRunner } from "../scripts/package-runner.mjs";
+import { hasLegDepSource, packageRunner, stageLegNpmDeps } from "../scripts/package-runner.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -111,7 +111,7 @@ describe("packageRunner", () => {
 	it("packages a canary version under its full name and stamps version.json", () => {
 		const root = fakeRoot();
 		const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-pkgout-"));
-		const got = packageRunner({ platform: "linux", arch: "x64", version: "1.2.3-rc.1", outDir, root });
+		const got = packageRunner({ platform: "linux", arch: "x64", version: "1.2.3-rc.1", outDir, root, installLegDeps: false });
 		assert.equal(got.version, "1.2.3-rc.1");
 		assert.match(got.tarball, /kainbain-runner-1\.2\.3-rc\.1-linux-x64\.tar\.gz$/);
 		assert.ok(fs.existsSync(got.tarball));
@@ -143,12 +143,31 @@ describe("packageRunner", () => {
 		fs.rmSync(outDir, { recursive: true, force: true });
 	});
 
+	it("leaves the default leg-closure install on for fake roots without crashing (auto-skip)", () => {
+		const root = fakeRoot();
+		const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-pkgout-"));
+		assert.equal(hasLegDepSource({ root }), false);
+		const got = packageRunner({ platform: "linux", arch: "x64", version: "2.0.1", outDir, root });
+		assert.ok(fs.existsSync(got.tarball));
+		assert.ok(!fs.existsSync(path.join(outDir, got.name, "api", "node_modules")), "no leg closure staged from a root with nothing to pin from");
+		fs.rmSync(root, { recursive: true, force: true });
+		fs.rmSync(outDir, { recursive: true, force: true });
+	});
+
+	it("stageLegNpmDeps fails closed with a named error when the root has no api/package.json", () => {
+		const root = fakeRoot();
+		const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-pkgout-"));
+		assert.throws(() => stageLegNpmDeps({ stage: outDir, root }), /no api\/package\.json/);
+		fs.rmSync(root, { recursive: true, force: true });
+		fs.rmSync(outDir, { recursive: true, force: true });
+	});
+
 	it("agrees with buildManifest on the asset filename grammar", () => {
 		const root = fakeRoot();
 		const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-pkgout-"));
 		const packaged = [];
 		for (const [platform, arch] of [["linux", "x64"], ["linux", "arm64"], ["darwin", "x64"], ["darwin", "arm64"]]) {
-			packaged.push(packageRunner({ platform, arch, version: "2.0.0", outDir, root }));
+			packaged.push(packageRunner({ platform, arch, version: "2.0.0", outDir, root, installLegDeps: false }));
 		}
 		const manifest = buildManifest({ version: "2.0.0", dir: outDir });
 		const names = manifest.assets.map((a) => a.filename);

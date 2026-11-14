@@ -5,8 +5,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFileSync } from "node:child_process";
 import { packageRunner, resolveBuildStamp } from "../scripts/package-runner.mjs";
+import { execFileSync } from "node:child_process";
 import { applyUpdate } from "../runner/updates/index.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -78,7 +78,7 @@ describe("package-runner layout conformance", () => {
 		const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-conform-out-"));
 		const installRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kb-conform-install-"));
 		try {
-			const got = packageRunner({ platform: "linux", arch: "x64", version: "0.9.0", outDir, root });
+			const got = packageRunner({ platform: "linux", arch: "x64", version: "0.9.0", outDir, root, installLegDeps: false });
 			const bytes = fs.readFileSync(got.tarball);
 			const sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
 			const filename = path.basename(got.tarball);
@@ -121,7 +121,7 @@ describe("package-runner build stamping", () => {
 		const root = fakeRoot();
 		const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-stamp-out-"));
 		try {
-			const got = packageRunner({ platform: "linux", arch: "x64", version: "0.9.0", outDir, root, build: STAMP });
+			const got = packageRunner({ platform: "linux", arch: "x64", version: "0.9.0", outDir, root, build: STAMP, installLegDeps: false });
 			assert.deepEqual(got.build, STAMP);
 			for (const copy of ["version.json", path.join("runner", "version.json")]) {
 				const staged = JSON.parse(fs.readFileSync(path.join(outDir, got.name, copy), "utf8"));
@@ -142,7 +142,7 @@ describe("package-runner build stamping", () => {
 		const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-stamp-out-"));
 		const installRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kb-stamp-install-"));
 		try {
-			const got = packageRunner({ platform: "linux", arch: "x64", version: "0.9.0", outDir, root, build: STAMP });
+			const got = packageRunner({ platform: "linux", arch: "x64", version: "0.9.0", outDir, root, build: STAMP, installLegDeps: false });
 			const bytes = fs.readFileSync(got.tarball);
 			const sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
 			const filename = path.basename(got.tarball);
@@ -209,4 +209,63 @@ describe("package-runner build stamping", () => {
 		assert.ok(stamp.builtAt && !Number.isNaN(Date.parse(stamp.builtAt)));
 		assert.equal(typeof stamp.dirty, "boolean");
 	});
+});
+
+describe("package-runner leg closure (N3 regression gate)", () => {
+	it("every bare leg specifier is a bundled dep (table and packager cannot drift)", async () => {
+		const { LEG_MODULE_SPECIFIERS } = await import("../runner/harnessModelDiscovery.js");
+		const { RUNNER_LEG_BUNDLED_DEPS } = await import("../scripts/package-runner.mjs");
+		const bare = [
+			...new Set(
+				Object.values(LEG_MODULE_SPECIFIERS)
+					.flat()
+					.filter((spec) => !spec.startsWith(".")),
+			),
+		].sort();
+		assert.deepEqual(
+			bare,
+			[...RUNNER_LEG_BUNDLED_DEPS].sort(),
+			"a discovery leg loads an npm package the bundle does not ship (N3)",
+		);
+	});
+
+	it(
+		"every leg specifier imports from the staged bundle tree",
+		{ timeout: 600000 },
+		async () => {
+			const { LEG_MODULE_SPECIFIERS } = await import("../runner/harnessModelDiscovery.js");
+			const specs = [...new Set(Object.values(LEG_MODULE_SPECIFIERS).flat())];
+			// Relative harness modules resolve from runner/ (same spot the
+			// legs import them from); bare npm deps resolve from api/ (same
+			// spot the harness modules import them from). One probe per
+			// base, so every specifier is imported exactly as the bundle
+			// resolves it — a missing dep fails here, not on a host.
+			const relativeSpecs = specs.filter((spec) => spec.startsWith("."));
+			const bareSpecs = specs.filter((spec) => !spec.startsWith("."));
+			const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-legclosure-out-"));
+			try {
+				const got = packageRunner({ platform: "linux", arch: "x64", version: "0.9.0", outDir, root: ROOT });
+				const stage = path.join(outDir, got.name);
+				const runnerProbe = path.join(stage, "runner", "leg-closure-probe.mjs");
+				fs.writeFileSync(
+					runnerProbe,
+					`const specs = ${JSON.stringify(relativeSpecs)};\nfor (const spec of specs) { await import(spec); }\nconsole.log("relative leg closure ok");\n`,
+				);
+				const runnerOut = execFileSync(process.execPath, [runnerProbe], { encoding: "utf8", timeout: 300000 });
+				assert.match(runnerOut, /relative leg closure ok/);
+				if (bareSpecs.length > 0) {
+					const apiProbe = path.join(stage, "api", "leg-closure-probe.mjs");
+					fs.writeFileSync(
+						apiProbe,
+						`const specs = ${JSON.stringify(bareSpecs)};\nfor (const spec of specs) { await import(spec); }\nconsole.log("bare leg closure ok");\n`,
+					);
+					const apiOut = execFileSync(process.execPath, [apiProbe], { encoding: "utf8", timeout: 300000 });
+					assert.match(apiOut, /bare leg closure ok/);
+				}
+				assert.ok(bareSpecs.length > 0, "the table must name at least one npm dep to guard");
+			} finally {
+				fs.rmSync(outDir, { recursive: true, force: true });
+			}
+		},
+	);
 });
