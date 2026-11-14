@@ -116,7 +116,7 @@ export function saveTaskMarkdown(taskStore, projectCwd, task) {
 			})
 			.join("\n");
 
-		const bodySections = [
+const bodySections = [
 			frontmatter,
 			"",
 			"# Goal",
@@ -125,6 +125,11 @@ export function saveTaskMarkdown(taskStore, projectCwd, task) {
 			"# History",
 			historyMarkdown || "- (no history recorded)",
 		];
+
+			// If a detailed markdown body is provided (e.g., full task description with codeblocks, mermaid, images), include it as a separate section.
+			if (task.body && typeof task.body === "string" && task.body.trim()) {
+						bodySections.push("", "# Details", task.body.trim());
+			}
 
 		if (timelineMarkdown) {
 			bodySections.push("", "# Timeline", timelineMarkdown);

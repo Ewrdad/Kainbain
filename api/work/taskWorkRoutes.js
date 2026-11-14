@@ -278,7 +278,8 @@ export async function registerTaskWorkRoutes(app, deps) {
 							stageId: { type: "string" },
 							workflowId: { type: "string" },
 							idempotencyKey: { type: "string" },
-							blockedBy: { type: "array", items: { type: "string" } },
+							markdown: { type: "string" },
+
 						},
 					},
 					response: {
@@ -308,7 +309,7 @@ export async function registerTaskWorkRoutes(app, deps) {
 				task = taskStore.createTask(ctx.id, {
 					title: ctx.title,
 					goal: ctx.goal,
-					stageId: ctx.stage.id,
+					body: request.body?.markdown,
 					workflowId: workflowId || ctx.project?.activeWorkflowId,
 					idempotencyKey,
 					blockedBy: ctx.blockedBy,
@@ -437,9 +438,12 @@ export async function registerTaskWorkRoutes(app, deps) {
 			updates.title = _sanitizeTaskTitle(request.body.title);
 			}
 			if (typeof request.body?.goal === "string" && request.body.goal.trim()) {
-			updates.goal = request.body.goal.trim();
-			updates.body = updates.goal;
+				updates.goal = request.body.goal.trim();
 			}
+			if (typeof request.body?.markdown === "string" && request.body.markdown.trim()) {
+				updates.body = request.body.markdown.trim();
+			}
+
 			if (typeof request.body?.status === "string") {
 			updates.status = request.body.status;
 			}

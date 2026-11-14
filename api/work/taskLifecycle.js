@@ -297,7 +297,7 @@ export function createTask(
 		workflowId: resolvedWorkflowId,
 		title: taskTitle,
 		goal: taskGoal,
-		body: taskGoal,
+		body: opts.body || taskGoal,
 		prompt: "",
 		currentStageId: resolvedStageId,
 		status: initialStatus,
