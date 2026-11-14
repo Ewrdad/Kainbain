@@ -128,6 +128,18 @@ verified). No product code changed in this run (docs only); no live
 mutation performed (read-only GETs + test suites, engine dir externally
 verified untouched).
 
+## Addendum 2026-11-14 ~23:10Z (run31 re-verification, ON .206)
+
+NOT READY (unchanged since run29). §6.1 PARTIAL: local-alpha +
+local-bravo fully PASS; server2-alpha still FAIL (pre-WP-B, pi
+`ERR_MODULE_NOT_FOUND`, Bundle B reinstall+restart pending). §6.2 PASS
+(zero `test-fleet`); §6.3 live + §6.4 live pending operator; q3-scope
+human grant + q4 infeasibility acceptance still absent. All named suites +
+fixture regression re-passed (412 runner, 175 dispatch, 175 routes/guard,
+91 frontend) with ENGINE-DIR-UNTOUCHED proven against the LIVE engine
+files. Evidence in `run31-20261114-2330.md` (+
+`verification-20261114.md` addendum).
+
 ## Addendum 2026-11-14 ~23:20Z (run29 re-verification)
 
 NOT READY (unchanged since run25–28). §6.1 PARTIAL: local-alpha +
