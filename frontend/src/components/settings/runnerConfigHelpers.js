@@ -705,3 +705,106 @@ export const filterVisibleRunners = ({ runners = [], query = '' } = {}) => {
     );
   });
 };
+
+/***
+ * MARK: runnerVersionsBlock
+ * @description Versions block for one Runner record: the sanitized
+ *   `capabilities.versions`, falling back to the raw `facts.versions`
+ *   copy (same fallback order as the discovery-status summary). Null
+ *   when neither is an object.
+ * @example runnerVersionsBlock({ facts: { versions: { runner: '0.1.0' } } }) => { runner: '0.1.0' }
+ * @param {Object} [runner={}] - Runner record.
+ * @returns {Object|null} Versions block, or null.
+ ***/
+const runnerVersionsBlock = (runner = {}) => {
+  const versions = runner?.capabilities?.versions ?? runner?.facts?.versions;
+  return versions && typeof versions === 'object' && !Array.isArray(versions) ? versions : null;
+};
+
+/***
+ * MARK: describeRunnerBuild
+ * @description Build identity for one roster row: the commit sha the
+ *   Runner was built (or booted) from, short sha, bundle time, dirty
+ *   flag, dev-checkout flag, stale-code flag, and boot time. Null when
+ *   the Runner reports no sha (old Runners predate build identity) —
+ *   callers render "unknown" and never warn on a null build.
+ * @example describeRunnerBuild({ facts: { versions: { build: { sha: 'abc1234', source: 'package' } } } }) => { sha: 'abc1234', shortSha: 'abc1234', … }
+ * @param {Object} [runner={}] - Runner record.
+ * @returns {Object|null} Build summary, or null when unknown.
+ ***/
+export const describeRunnerBuild = (runner = {}) => {
+  const versions = runnerVersionsBlock(runner);
+  const raw = versions?.build;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const sha = typeof raw.sha === 'string' && raw.sha.trim() ? raw.sha.trim() : null;
+  if (!sha) return null;
+  const bootedAtMs = versions.bootedAtMs;
+  return {
+    sha,
+    shortSha: sha.slice(0, 7),
+    builtAt: typeof raw.builtAt === 'string' && raw.builtAt.trim() ? raw.builtAt.trim() : null,
+    dirty: raw.dirty === true,
+    isDev: raw.source === 'checkout',
+    codeChangedSinceBoot: versions.codeChangedSinceBoot === true,
+    bootedAtMs:
+      typeof bootedAtMs === 'number' && Number.isFinite(bootedAtMs) && bootedAtMs >= 0
+        ? bootedAtMs
+        : null,
+  };
+};
+
+/***
+ * MARK: runnerShasMatch
+ * @description Whether two commit shas name the same commit: exact match
+ *   or either side a prefix of the other (the backend reports a short
+ *   commit while Runners report full shas). Both sides need at least 4
+ *   hex characters — anything shorter reads as unknown, never as a
+ *   match or a mismatch.
+ * @example runnerShasMatch('abc1234def', 'abc1234') => true
+ * @param {string|null} [runnerSha=null] - Runner build sha.
+ * @param {string|null} [backendSha=null] - Backend build commit.
+ * @returns {boolean} True when both are known and name the same commit.
+ ***/
+const runnerShasMatch = (runnerSha = null, backendSha = null) => {
+  const a = typeof runnerSha === 'string' ? runnerSha.trim().toLowerCase() : '';
+  const b = typeof backendSha === 'string' ? backendSha.trim().toLowerCase() : '';
+  if (a.length < 4 || b.length < 4) return false;
+  return a === b || a.startsWith(b) || b.startsWith(a);
+};
+
+/***
+ * MARK: runnerBuildWarning
+ * @description Stale-code warning for one Runner record, or null when
+ *   there is nothing to say. Warns when the Runner's own code changed
+ *   after boot, or when its build sha provably differs from the backend
+ *   commit — and stays silent for dev checkouts (build info still
+ *   shows), for unknown builds or backend commits, and for matching
+ *   shas. Advisory only: the caller renders the message and never
+ *   disables anything (warn, never block).
+ * @example runnerBuildWarning({ facts: { versions: { build: { sha: 'aaa' }, codeChangedSinceBoot: true } } }, 'bbb') => { kind: 'code-changed', message: '…' }
+ * @param {Object} [runner={}] - Runner record.
+ * @param {string|null} [backendSha=null] - Backend build commit (`GET /status` → `build.commit`).
+ * @returns {{kind: string, message: string}|null} Warning, or null.
+ ***/
+export const runnerBuildWarning = (runner = {}, backendSha = null) => {
+  const versions = runnerVersionsBlock(runner);
+  if (!versions || typeof versions !== 'object') return null;
+  const build = describeRunnerBuild(runner);
+  if (build?.isDev) return null;
+  // An explicit true is provable staleness on its own: old Runners never
+  // send the flag at all, so no sha comparison is needed for this branch.
+  if (versions.codeChangedSinceBoot === true) {
+    return {
+      kind: 'code-changed',
+      message:
+        "This runner's code changed after it started — restart or update it so it runs the current code.",
+    };
+  }
+  const backend = typeof backendSha === 'string' && backendSha.trim().length >= 4 ? backendSha.trim() : null;
+  if (!build || !backend) return null;
+  if (runnerShasMatch(build.sha, backend)) return null;
+  return {
+    kind: 'sha-mismatch',
+    message: `This runner was built from ${build.shortSha} but the backend runs ${backend.slice(0, 7)} — restart or update it so they match.`,
+  };
+};

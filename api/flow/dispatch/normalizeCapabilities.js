@@ -79,16 +79,83 @@ const sanitizeModelProvenance = (value) => {
 };
 
 /***
+ * MARK: sanitizeRunnerBuild
+ * @description Bounds one Runner-reported build identity to a servable
+ *   shape: `{ sha, builtAt, dirty, source }` with capped strings (or
+ *   null), a boolean-or-null dirty flag, and a known source label (or
+ *   null). Lenient like the discovery status (a malformed block is
+ *   dropped, invalid fields degrade to null, never an error): build
+ *   identity is advisory display data, and a cosmetic field must never
+ *   400 a heartbeat. Well-formed Runner output passes through
+ *   byte-identical.
+ * @example sanitizeRunnerBuild({ sha: 'abc123', builtAt: null, dirty: false, source: 'package' }) => { sha: 'abc123', builtAt: null, dirty: false, source: 'package' }
+ * @param {Object} value - Raw `facts.versions.build` object.
+ * @returns {Object} Sanitized build (stable keys, possibly all null).
+ ***/
+const sanitizeRunnerBuild = (value) => {
+	const sha = typeof value.sha === "string" && value.sha.trim() ? value.sha.trim().slice(0, 128) : null;
+	const builtAt = typeof value.builtAt === "string" && value.builtAt.trim() ? value.builtAt.trim().slice(0, 64) : null;
+	return {
+		sha,
+		builtAt,
+		dirty: typeof value.dirty === "boolean" ? value.dirty : null,
+		source: value.source === "package" || value.source === "checkout" ? value.source : null,
+	};
+};
+
+/***
+ * MARK: sanitizeVersions
+ * @description Bounds one Runner-reported versions block to a servable
+ *   shape: known advisory fields (`build`, `bootedAtMs`,
+ *   `codeChangedSinceBoot`) are sanitized, unknown and future keys pass
+ *   through untouched so additive Runner fields never need a backend
+ *   deploy to survive. Lenient like the discovery status (a malformed
+ *   advisory value is dropped, never an error): version display data must
+ *   never 400 a heartbeat. Old Runners without `build` pass through
+ *   unchanged (no `build` key, no error).
+ * @example sanitizeVersions({ protocol: 'v1', runner: '0.1.0', build: { sha: 'abc' } }) => { protocol: 'v1', runner: '0.1.0', build: { sha: 'abc', ... } }
+ * @param {Object} value - Raw `facts.versions` object.
+ * @returns {Object} Sanitized versions.
+ ***/
+const sanitizeVersions = (value) => {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+	const out = { ...value };
+	if (value.build === undefined || value.build === null) {
+		delete out.build;
+	} else if (typeof value.build === "object" && !Array.isArray(value.build)) {
+		out.build = sanitizeRunnerBuild(value.build);
+	} else {
+		delete out.build;
+	}
+	if (
+		typeof value.bootedAtMs === "number" &&
+		Number.isFinite(value.bootedAtMs) &&
+		value.bootedAtMs >= 0
+	) {
+		out.bootedAtMs = value.bootedAtMs;
+	} else {
+		delete out.bootedAtMs;
+	}
+	if (typeof value.codeChangedSinceBoot === "boolean") {
+		out.codeChangedSinceBoot = value.codeChangedSinceBoot;
+	} else {
+		delete out.codeChangedSinceBoot;
+	}
+	return out;
+};
+
+/***
  * MARK: normalizeCapabilities
  * @description Validates and normalizes a Runner's heartbeat facts into a
  *   capability advertisement struct: harnesses (id + version), models,
- *   tiers, runnable flag, disk headroom, protocol versions, the additive
- *   per-harness discovery status, and the additive model advertisement
- *   source + per-model provenance (all sanitized, absent for old Runners;
- *   a malformed value is dropped, never an error). Unknown
- *   shapes are rejected with an explanatory error list instead of
- *   throwing, so the register/heartbeat routes can answer 400 with all
- *   problems.
+ *   tiers, runnable flag, disk headroom, protocol versions (with the
+ *   additive build identity, boot time, and stale-code flag sanitized
+ *   through), the additive per-harness discovery status, and the additive
+ *   model advertisement source + per-model provenance (all sanitized,
+ *   absent for old Runners; a malformed value is dropped, never an
+ *   error). Unknown shapes are rejected with an explanatory error list
+ *   instead of throwing, so the register/heartbeat routes can answer 400
+ *   with all problems.
  * @example normalizeCapabilities({ harnesses: [{ id: 'pi', version: '1.2.3' }], tiers: ['T1'] }) => { harnesses: [...], errors: [] }
  * @param {Object} [facts] - Raw heartbeat facts.
  * @returns {Object} Normalized capabilities plus `errors`.
@@ -174,8 +241,7 @@ export function normalizeCapabilities(facts = {}) {
 		}
 	}
 
-	const versions =
-		src.versions && typeof src.versions === "object" ? src.versions : {};
+	const versions = sanitizeVersions(src.versions);
 
 	let discoveryStatus;
 	if (src.discoveryStatus !== undefined) {

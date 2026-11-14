@@ -4,8 +4,10 @@
  * @description Builds one versioned runner archive for the GitHub Releases
  *   update channel (Option A, ADR 0012): copies the dependency-free runner
  *   runtime tree (runner/, shared/, the harness modules under api/ it loads,
- *   api/package.json) into a versioned dir, stamps runnerVersion into the
- *   packaged version.json, and tars it as
+ *   api/package.json) into a versioned dir, stamps runnerVersion + the
+ *   build identity (`build { sha, builtAt, dirty }`) into BOTH packaged
+ *   version.json copies — the archive-root one the updater checks and the
+ *   runner/ one the booted daemon actually reads — and tars it as
  *   kainbain-runner-<version>-<platform>-<arch>.tar.gz. The runtime closure
  *   was verified npm-free except a lazy pi-SDK dynamic import (hosts that
  *   serve pi models install it separately); tests, node_modules, secrets,
@@ -76,7 +78,40 @@ const assertClean = (stageDir) => {
 	}
 };
 
-export const packageRunner = ({ platform, arch, version, outDir, root = REPO_ROOT } = {}) => {
+/***
+ * MARK: resolveBuildStamp
+ * @description Builds the release's build identity from git: `sha` is HEAD,
+ *   `builtAt` is now (ISO), `dirty` is whether the packaged tree
+ *   (runner/, shared/, api/) has uncommitted changes. Best-effort: when
+ *   git is missing or the root is not a checkout every field is null and
+ *   the caller warns — a release from a non-checkout still packages, but
+ *   its runners report an unknown build.
+ * @example resolveBuildStamp({ root: '/repo' }) => { sha: 'abc123', builtAt: '2026-11-01T00:00:00.000Z', dirty: false }
+ * @param {Object} [opts] - Options.
+ * @param {string} [opts.root] - Repo root (defaults to the checkout).
+ * @param {Function} [opts.runGit] - `(args, cwd) => stdout` seam (tests).
+ * @param {string} [opts.now] - ISO builtAt override (tests).
+ * @returns {{sha: string|null, builtAt: string|null, dirty: boolean|null}} Build stamp.
+ ***/
+export const resolveBuildStamp = ({ root = REPO_ROOT, runGit, now } = {}) => {
+	const run = typeof runGit === "function"
+		? runGit
+		: (args, cwd) => execFileSync("git", args, { cwd, encoding: "utf8", timeout: 15000, stdio: ["ignore", "pipe", "ignore"] });
+	try {
+		const sha = String(run(["rev-parse", "HEAD"], root) ?? "").trim();
+		if (!sha) return { sha: null, builtAt: null, dirty: null };
+		const status = String(run(["status", "--porcelain", "--", "runner", "shared", "api"], root) ?? "");
+		return {
+			sha: sha.slice(0, 128),
+			builtAt: typeof now === "string" && now ? now : new Date().toISOString(),
+			dirty: status.trim() ? true : false,
+		};
+	} catch {
+		return { sha: null, builtAt: null, dirty: null };
+	}
+};
+
+export const packageRunner = ({ platform, arch, version, outDir, root = REPO_ROOT, build } = {}) => {
 	if (!["linux", "darwin"].includes(platform)) {
 		throw new Error(`package-runner: unsupported platform '${platform}' (v1: linux, darwin).`);
 	}
@@ -97,10 +132,25 @@ export const packageRunner = ({ platform, arch, version, outDir, root = REPO_ROO
 	copyPruned(path.join(root, "runner"), path.join(stage, "runner"));
 	copyPruned(path.join(root, "shared"), path.join(stage, "shared"));
 	copyPruned(path.join(root, "api"), path.join(stage, "api"));
-	// Release metadata + entrypoint live at the archive root.
+	// Release metadata + entrypoint live at the archive root. The
+	// version stamp lands in BOTH copies: the archive-root version.json
+	// (read by the updater's version check and the wrapper doctor) and
+	// the runner/ copy (read by the booted daemon beside it — stamping
+	// only the root left every self-updated Runner reporting its old
+	// version forever).
 	const versionJson = JSON.parse(fs.readFileSync(path.join(root, "runner", "version.json"), "utf8"));
 	versionJson.runnerVersion = clean;
+	const stamp = build !== undefined ? build : resolveBuildStamp({ root });
+	if (build === undefined && !stamp.sha) {
+		console.error("package-runner: warning: no git checkout at the release root — packaging with an unknown build identity.");
+	}
+	versionJson.build = {
+		sha: typeof stamp?.sha === "string" && stamp.sha ? stamp.sha : null,
+		builtAt: typeof stamp?.builtAt === "string" && stamp.builtAt ? stamp.builtAt : null,
+		dirty: typeof stamp?.dirty === "boolean" ? stamp.dirty : null,
+	};
 	fs.writeFileSync(path.join(stage, "version.json"), `${JSON.stringify(versionJson, null, 2)}\n`);
+	fs.writeFileSync(path.join(stage, "runner", "version.json"), `${JSON.stringify(versionJson, null, 2)}\n`);
 	fs.writeFileSync(
 		path.join(stage, "INSTALL.txt"),
 		[
@@ -121,7 +171,7 @@ export const packageRunner = ({ platform, arch, version, outDir, root = REPO_ROO
 	const tarball = path.join(outDir, `${name}.tar.gz`);
 	fs.rmSync(tarball, { force: true });
 	execFileSync("tar", ["-czf", tarball, "-C", outDir, name]);
-	return { name, tarball, version: clean, platform, arch };
+	return { name, tarball, version: clean, platform, arch, build: versionJson.build };
 };
 
 const main = () => {
