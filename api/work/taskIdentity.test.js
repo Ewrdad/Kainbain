@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
 	_sanitizeTaskTitle,
+	deriveTaskTitleFromGoal,
 	toTaskSummary,
 } from './taskIdentity.js';
 import {
@@ -18,6 +19,22 @@ describe('The Work: task identity and classification', () => {
 		expect(_sanitizeTaskTitle('# My Task Header')).toBe('My Task Header');
 		expect(_sanitizeTaskTitle('`Code Task`')).toBe('Code Task');
 		expect(_sanitizeTaskTitle('  "Quoted Task"  ')).toBe('Quoted Task');
+	});
+
+	it('derives the fallback title from the goal first line only', () => {
+		expect(deriveTaskTitleFromGoal({ goal: '# Fix it\n\n## Context\nbody' })).toBe('# Fix it');
+		expect(deriveTaskTitleFromGoal({ goal: 'plain paragraph goal' })).toBe('plain paragraph goal');
+		// Windows and old-Mac line endings split the same as LF
+		expect(deriveTaskTitleFromGoal({ goal: 'a\r\nb' })).toBe('a');
+		expect(deriveTaskTitleFromGoal({ goal: 'a\rb' })).toBe('a');
+		// Cap matches the historical 60-char slice
+		expect(deriveTaskTitleFromGoal({ goal: 'x'.repeat(100) })).toBe('x'.repeat(60));
+		// Fails safe on absent/empty/non-string input
+		expect(deriveTaskTitleFromGoal({ goal: '' })).toBe('');
+		expect(deriveTaskTitleFromGoal({ goal: null })).toBe('');
+		expect(deriveTaskTitleFromGoal({ goal: 42 })).toBe('');
+		expect(deriveTaskTitleFromGoal({})).toBe('');
+		expect(deriveTaskTitleFromGoal()).toBe('');
 	});
 
 	it('formats branch names correctly with prefix', () => {

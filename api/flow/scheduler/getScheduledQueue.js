@@ -13,6 +13,7 @@ import { isResumedAfterInterruption } from './isResumedAfterInterruption.js';
 import { isResumedStageRunnable } from './isResumedStageRunnable.js';
 import { isAutoResumable } from './isAutoResumable.js';
 import { isWaitingForPickup } from './isWaitingForPickup.js';
+import { deriveTaskTitleFromGoal } from '../../work/taskIdentity.js';
 import { compareCentralQueueCandidates } from './compareCentralQueueCandidates.js';
 import { isCentralQueueCandidateOverdue } from './isCentralQueueCandidateOverdue.js';
 import { resolveCentralQueuePolicy } from './centralQueuePolicy.js';
@@ -152,7 +153,7 @@ export function getScheduledQueue(store, filterProjectId, opts = {}) {
 					: null;
 			items.push({
 				id: task.id,
-				title: task.title || task.goal?.slice(0, 60) || "Untitled task",
+				title: task.title || deriveTaskTitleFromGoal({ goal: task.goal }) || "Untitled task",
 				goal: task.goal || task.title || "",
 				prompt: task.prompt || "",
 				projectId: project.id,

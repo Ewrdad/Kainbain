@@ -4,7 +4,7 @@
  *   get, edit, and delete discrete work items.
  ***/
 
-import { _sanitizeTaskTitle } from "./taskIdentity.js";
+import { _sanitizeTaskTitle, deriveTaskTitleFromGoal } from "./taskIdentity.js";
 import { resolveTaskWorkingLocation } from "./taskWorkingLocation.js";
 import { toTaskDurationSummary } from "../taskDurationSummary.js";
 import { resolveStage } from "../flow/index.js";
@@ -132,7 +132,7 @@ export async function registerTaskWorkRoutes(app, deps) {
 		const project = projectStore.getProject(id);
 		const stage = resolveStage(project, stageId);
 		return {
-			title: _sanitizeTaskTitle(title || taskGoal.slice(0, 60)),
+			title: _sanitizeTaskTitle(title || deriveTaskTitleFromGoal({ goal: taskGoal })),
 			goal: taskGoal,
 			id,
 			stage,

@@ -16,40 +16,42 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const SKILLS_DIR = path.join(REPO_ROOT, "skills");
 const SKILL_NAME = "creating-new-tickets";
 
-describe("Contract: creating-new-tickets skill content", () => {
-	beforeAll(() => {
-		expect(fs.existsSync(path.join(SKILLS_DIR, SKILL_NAME, "SKILL.md"))).toBe(true);
+beforeAll(() => {
+	expect(fs.existsSync(path.join(SKILLS_DIR, SKILL_NAME, "SKILL.md"))).toBe(true);
+});
+
+// Curates the skill exactly the way a direct-mode stage prompt does, so the
+// pins below assert on the text agents actually receive.
+const directPrompt = () => {
+	const skill = loadSkill({ name: SKILL_NAME, skillsDir: SKILLS_DIR });
+	expect(skill.invalid).toBe(false);
+	const engine = new PromptCurationEngine({
+		loadSkill: (name) => (name === SKILL_NAME ? skill : null),
+		skillsMaxChars: 16000,
 	});
-
-	const directPrompt = () => {
-		const skill = loadSkill({ name: SKILL_NAME, skillsDir: SKILLS_DIR });
-		expect(skill.invalid).toBe(false);
-		const engine = new PromptCurationEngine({
-			loadSkill: (name) => (name === SKILL_NAME ? skill : null),
-			skillsMaxChars: 16000,
-		});
-		return engine.curatePrompt(
-			{ id: "contract-1", goal: "Audit the deployment and report findings" },
-			{
-				id: "audit",
-				name: "Audit Findings",
-				prompt: "Audit the project.",
-				skills: [
-					{
-						name: SKILL_NAME,
-						mode: "direct",
-						config: {
-							targetProject: "KainBain",
-							targetWorkflow: "wf-default",
-							targetStage: "Intake",
-						},
+	return engine.curatePrompt(
+		{ id: "contract-1", goal: "Audit the deployment and report findings" },
+		{
+			id: "audit",
+			name: "Audit Findings",
+			prompt: "Audit the project.",
+			skills: [
+				{
+					name: SKILL_NAME,
+					mode: "direct",
+					config: {
+						targetProject: "KainBain",
+						targetWorkflow: "wf-default",
+						targetStage: "Intake",
 					},
-				],
-			},
-			{ timestamp: "20261113-000000", projectName: "KainBain", projectCwd: "/tmp/contract" },
-		);
-	};
+				},
+			],
+		},
+		{ timestamp: "20261113-000000", projectName: "KainBain", projectCwd: "/tmp/contract" },
+	);
+};
 
+describe("Contract: creating-new-tickets skill content", () => {
 	it("does not leak unresolved custom keywords", () => {
 		const prompt = directPrompt();
 		expect(prompt).not.toContain("{{targetProject}}");
@@ -89,5 +91,30 @@ describe("Contract: creating-new-tickets skill content", () => {
 	it("stays within the direct-mode prompt budget", () => {
 		const prompt = directPrompt();
 		expect(prompt.length).toBeLessThan(16000 + 2000);
+	});
+});
+
+describe("Contract: pretty two-stage flow", () => {
+	it("documents the two-stage flow and draft files", () => {
+		const prompt = directPrompt();
+		expect(prompt).toContain("Stage 1");
+		expect(prompt).toContain("Stage 2");
+		expect(prompt).toContain("drafts/");
+		expect(prompt).toContain("EXACT contents");
+	});
+	it("documents the draft template headings", () => {
+		const prompt = directPrompt();
+		expect(prompt).toContain("## Context");
+		expect(prompt).toContain("## Steps");
+		expect(prompt).toContain("## Acceptance criteria");
+	});
+	it("documents create-upload-patch image ordering", () => {
+		const prompt = directPrompt();
+		expect(prompt).toContain("create → upload → patch");
+		expect(prompt).toContain("assets/");
+	});
+	it("keeps the prompt under budget", () => {
+		const prompt = directPrompt();
+		expect(prompt.length).toBeLessThan(18000);
 	});
 });

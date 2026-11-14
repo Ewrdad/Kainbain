@@ -90,3 +90,20 @@ default worktree isolation) are deliberately out of scope here.
   bytes or the reference by hand after confirming ownership.
 - **Case/space drift** needs no repair: serve-side canonicalisation already
   resolves it (proven: zero remaining on-disk drift candidates at fix time).
+
+## API-created tasks (create-task skill)
+
+Tickets created through the create-task skill have no task id until after
+`POST /tasks`. Their image bytes therefore follow a strict ordering:
+
+1. `POST /tasks` with the goal's text-only draft (image refs omitted or left
+   as placeholders).
+2. For each picture, `POST /projects/:id/tasks/:taskId/images` and capture the
+   returned stored `name`.
+3. `PATCH /tasks/:taskId` with a `goal` whose `![alt](assets/<name>)` refs
+   use only those returned names.
+
+Absolute `https://` URLs may be left untouched (they pass through resolution
+and sanitization as before). Guessing a filename is unsafe: `sanitizeImageName`
+and `dedupeImageName` may rewrite (`foo.png` → `foo-2.png`) and the request
+will 404.

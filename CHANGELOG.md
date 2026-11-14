@@ -21,6 +21,8 @@ source of truth. This file intentionally lists only high-impact changes.
 
 ### Added
 
+- Task goals render ` ```mermaid ` fences as inline SVG diagrams in the markdown viewer (mermaid lazy-loads only when a diagram is present and sanitizes at `strict` security level; a broken or unrenderable diagram degrades to its readable source block, never a blank hole), and the `creating-new-tickets` skill now drafts each ticket as its own markdown file under the task directory's `drafts/` folder before POSTing the file's exact contents, so API-created tickets land as structured documents (headings, steps, code, diagrams, image refs) instead of paragraphs; the first-line title, `blockedBy` validation, idempotency, and dedupe behave exactly as before (task 5a38ad45).
+
 - Stage+config attestation for compliance proof: every per-stage wrap-up commit and its stage-history entry now carry the same task+stage config hash (git trailers plus a durable prose token with the commit SHA), verifiable offline with `node scripts/verify-stage-attestation.mjs --repo <path> --task <id>` (see the Stage Attestation site-docs article); clean-tree stages attest with an explicit null commit, and entries predating the feature stay valid without hashes (task d20f0c83).
 
 - API key system for agents and external services (off by default, separate `KAINBAIN_API_KEYS_ENABLED` switch): admin-managed keys with catalogue roles plus narrowing scopes, secret shown once and stored hashed, task mutations gated per key grant, every key action flagged by key name in task history and the audit log, and a per-key usage view — browser sessions and Runners work unchanged with the switch on or off (task ac988ba8).
