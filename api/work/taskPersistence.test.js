@@ -2009,6 +2009,14 @@ describe("extractGoalSection fence-aware extraction", () => {
 		expect(extractGoalSection("# Goal\nhello\n# Log Entries\nlog")).toBe("hello");
 	});
 
+	it("keeps a top-level Details heading: no writer emits one, so it is goal text", () => {
+		// `# Details` is ordinary markdown inside a goal (pretty tickets use
+		// headings freely). Nothing in the writer emits a Details section, so
+		// treating it as a terminator would silently truncate the goal.
+		const body = "# Goal\n# Ship it\n\n# Details\nSome detail text\n\n# History\n- x";
+		expect(extractGoalSection(body)).toBe("# Ship it\n\n# Details\nSome detail text");
+	});
+
 	it("returns an empty string for non-string input", () => {
 		expect(extractGoalSection(undefined)).toBe("");
 		expect(extractGoalSection("")).toBe("");
@@ -2039,6 +2047,30 @@ describe("task goal containing section-like headings round-trips", () => {
 			"utf8",
 		);
 		const rehydrated = parseTaskMarkdown(store, content, "task-fence-1", "proj-1");
+		expect(rehydrated.goal).toBe(goal);
+	});
+
+	it("round-trips a goal whose own top-level heading reads Details", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-goal-details-"));
+		const store = stubStore({ cwd: dir });
+		const goal = "# Ship it\n\n# Details\nSome detail text\n\n## Steps\n1. x";
+		const task = {
+			id: "task-details-1",
+			projectId: "proj-1",
+			title: "Ship it",
+			goal,
+			status: "in_stage",
+			createdAt: "2026-10-01T00:00:00.000Z",
+			updatedAt: "2026-10-01T00:00:00.000Z",
+			history: [],
+			reports: [],
+		};
+		saveTaskMarkdown(store, dir, task);
+		const content = fs.readFileSync(
+			path.join(dir, "docs", "tasks", "task-details-1", "task.md"),
+			"utf8",
+		);
+		const rehydrated = parseTaskMarkdown(store, content, "task-details-1", "proj-1");
 		expect(rehydrated.goal).toBe(goal);
 	});
 });

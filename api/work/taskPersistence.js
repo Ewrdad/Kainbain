@@ -663,7 +663,7 @@ export function syncTaskReports(taskStore, projectId, task, projectCwd) {
  * MARK: extractGoalSection
  * @description Extracts the `# Goal` section body from a task.md body. The goal
  *   ends at the first terminator heading (`# History`, `# Timeline`,
- *   `# Process Logs`, `# Log Entries`, `# Details`; surrounding whitespace ignored) that is
+ *   `# Process Logs`, `# Log Entries`; surrounding whitespace ignored) that is
  *   OUTSIDE a fenced code block, so heading-like example text inside a ` ``` `
  *   or `~~~` fence (common in rich markdown tasks) never truncates the goal.
  *   A fence only closes on the same marker character that opened it. If a
@@ -681,7 +681,7 @@ export function extractGoalSection(body) {
 	const goalHeadingIndex = lines.findIndex((line) => line.trim() === "# Goal");
 	if (goalHeadingIndex < 0) return "";
 	const start = goalHeadingIndex + 1;
-	const terminators = new Set(["# History", "# Timeline", "# Process Logs", "# Log Entries", "# Details"]);
+	const terminators = new Set(["# History", "# Timeline", "# Process Logs", "# Log Entries"]);
 	let fenceChar = "";
 	let end = lines.length;
 	let firstRawTerminator = -1;

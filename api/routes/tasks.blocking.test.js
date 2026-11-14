@@ -74,6 +74,15 @@ describe("Task blocking API", () => {
 		expect(JSON.parse(execRes.payload).blockedBy).toEqual([blocker.id]);
 	});
 
+	it("rejects create with a non-array blockedBy with 400 (fails safe, never stores it)", async () => {
+		const project = await activeProject();
+		const created = await createTask(project.id, {
+			goal: "Wrong shape dependent",
+			blockedBy: "not-an-array",
+		});
+		expect(created.statusCode).toBe(400);
+	});
+
 	it("rejects create with an unknown blocker id with 400", async () => {
 		const project = await activeProject();
 		const created = await createTask(project.id, {

@@ -1,5 +1,30 @@
 # Implementation report — pretty tasks for the create-task skill (2026-11-14)
 
+> **Cleanup-stage correction (2026-11-14, later same day):** the "restored
+> binary-safely" banners below were written when the worktree held a valid PNG,
+> but the committed `pretty-proof.png` on the branch was still the text-mode
+> corrupted copy (magic `ef bf bd 50 4e 47`, `file` → `data`, 191679 bytes),
+> so those banners did not describe the committed bytes — reviews round 3–5
+> correctly failed on this. This stage re-restored the file from `origin/main`
+> via `git checkout origin/main -- <path>` and verified the **worktree bytes**
+> (which is what the next stage-output commit will capture): `xxd -l 16` →
+> `8950 4e47 0d0a 1a0a`, `file` → `PNG image data, 1440 x 1600`, 107722 bytes,
+> IEND trailer `ae 42 60 82` intact. The same stage also fixed two source
+> regressions from an intermediate branch commit: (1) the `POST /tasks` schema
+> in `api/work/taskWorkRoutes.js` listed a dead `markdown` string instead of
+> `blockedBy` (no handler reads `markdown`; silently-ignored input) — restored
+> to the exact `origin/main` `blockedBy` array schema, pinned by a new
+> non-array-`blockedBy` → 400 test in `api/routes/tasks.blocking.test.js`;
+> (2) `extractGoalSection` treated `# Details` as a goal terminator although no
+> writer emits a Details section and the plan contract lists only History /
+> Timeline / Process Logs / Log Entries — a goal containing `# Details` was
+> silently truncated on re-read (demonstrated pre-fix: only the title line
+> survived). Removed the terminator so Details headings round-trip intact,
+> pinned by two tests in `api/work/taskPersistence.test.js`. Note: the claim
+> in `update-safety-assessment.md` that the `markdown` schema field
+> "pre-existed" was mistaken — git shows it arrived on this branch; it is now
+> gone and the schema matches `origin/main` exactly.
+
 > **Correction (2026-11-14, after deep-review round 3):** the claim in step 3
 > below that the regenerated `pretty-proof.png` was valid was **false** — the
 > committed copy had magic `ef bf bd 50 4e 47` (UTF-8 text-mode corruption)

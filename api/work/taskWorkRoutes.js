@@ -278,7 +278,7 @@ export async function registerTaskWorkRoutes(app, deps) {
 							stageId: { type: "string" },
 							workflowId: { type: "string" },
 							idempotencyKey: { type: "string" },
-							markdown: { type: "string" },
+							blockedBy: { type: "array", items: { type: "string" } },
 						},
 					},
 					response: {
