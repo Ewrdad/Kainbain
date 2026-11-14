@@ -74,6 +74,80 @@ the first `# <title>` line:
 <code, tables, mermaid diagrams, or image references as needed>
 ```
 
+**This skill specifically enables beautiful, readable tasks!** The KainBain task
+viewer renders markdown beautifully, supporting:
+
+- **Headings** (##, ###) for clear structure
+- **Bullet lists** and **numbered lists** for steps and criteria
+- **Fenced code blocks** with syntax highlighting
+- **Mermaid diagrams** (flowcharts, sequence diagrams, class diagrams, etc.)
+- **Tables** for structured data
+- **Images** (local assets or absolute URLs)
+- **Bold**, *italic*, and `inline code` formatting
+
+**Example of a well-formatted ticket draft:**
+
+```markdown
+# Implement user authentication API
+
+## Context
+Discovered during security audit (see automated-tests-failure-20261114-045255.md)
+that the application lacks proper authentication. This was flagged by the
+security scanner as a high-priority issue.
+
+## Steps
+1. Create new `auth` service module
+2. Implement JWT token generation and validation
+3. Add authentication middleware to API routes
+4. Write unit tests for authentication logic
+5. Update API documentation
+
+## Acceptance criteria
+- [ ] JWT tokens are generated with proper expiration
+- [ ] Authentication middleware validates tokens correctly
+- [ ] Unit tests cover all authentication scenarios
+- [ ] API documentation includes authentication section
+- [ ] Security scan passes with no critical issues
+
+## Implementation details
+
+### Code structure
+```typescript
+// auth/service.ts
+export class AuthService {
+  async login(credentials: LoginDto): Promise<TokenResponse> { ... }
+  async validateToken(token: string): Promise<User> { ... }
+}
+```
+
+### API endpoints
+```http
+POST /api/auth/login
+Content-Type: application/json
+
+{
+  "username": "user@example.com",
+  "password": "secret123"
+}
+```
+
+### Mermaid flow diagram
+```mermaid
+graph TD
+    A[User Login] --> B{Validate credentials}
+    B -->|Valid| C[Generate JWT Token]
+    B -->|Invalid| D[Return 401 Unauthorized]
+    C --> E[Return token to user]
+```
+
+### Related findings
+- Security scan report: [link to report]
+- CVE database: CVE-2023-12345
+
+### Screenshot reference
+![Authentication flow diagram](assets/auth-flow.png)
+```
+
 Headings, bullet lists, tables, fenced code blocks, ` ```mermaid ` diagrams,
 and `![name](assets/name)` image references are all supported by the task goal
 view — prefer a well-structured document over a paragraph. A broken diagram
