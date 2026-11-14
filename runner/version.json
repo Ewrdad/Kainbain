@@ -1,2 +1,3 @@
 { "component": "runner", "apiVersion": "1.0.0", "runnerVersion": "0.1.0",
-  "requires": { "backendApi": ">=1.0.0 <2.0.0" } }
+  "requires": { "backendApi": ">=1.0.0 <2.0.0" },
+  "build": { "sha": null, "builtAt": null, "dirty": null } }
