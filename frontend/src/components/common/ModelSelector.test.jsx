@@ -109,7 +109,7 @@ describe('ModelSelector', () => {
     expect(screen.getByRole('option', { name: /Gemini 2.5 Pro/ })).toHaveTextContent('1 runner');
   });
 
-  it('prefers the snapshot unavailable verdict over fleet counts and health badges', () => {
+  it('prefers fleet counts over the snapshot unavailable verdict and health badges', () => {
     const catalogue = [
       {
         ...MODELS[0],
@@ -136,6 +136,128 @@ describe('ModelSelector', () => {
     expect(option).not.toHaveTextContent('Unavailable');
     expect(option).toHaveTextContent('2 runners');
     expect(option).not.toHaveTextContent('Ready');
+  });
+
+  it('marks unverified rows but keeps them selectable (q20)', () => {
+    const onChange = vi.fn();
+    render(
+      <ModelSelector
+        models={MODELS}
+        ariaLabel="Default AI Model"
+        onChange={onChange}
+        fleetCounts={{
+          'ollama-cloud::deepseek-v4-flash': {
+            runnerCount: 0,
+            runnerIds: [],
+            verified: false,
+            declaredBy: ['local-alpha'],
+          },
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('combobox', { name: 'Default AI Model' }));
+    const option = screen.getByRole('option', { name: /DeepSeek v4 Flash/ });
+    expect(option).toHaveTextContent('0 runners');
+    const note = option.querySelector('[data-testid="fleet-unverified-note"]');
+    expect(note).toHaveTextContent('unverified');
+    expect(note?.getAttribute('title')).toBe('declared by local-alpha, not found by its discovery');
+    fireEvent.click(option);
+    expect(onChange).toHaveBeenCalledWith(
+      'ollama-cloud::deepseek-v4-flash',
+      expect.anything(),
+    );
+  });
+
+  it('keeps 0-runner rows selectable (q20)', () => {
+    const onChange = vi.fn();
+    render(
+      <ModelSelector
+        models={MODELS}
+        ariaLabel="Default AI Model"
+        onChange={onChange}
+        fleetCounts={{}}
+      />,
+    );
+    fireEvent.click(screen.getByRole('combobox', { name: 'Default AI Model' }));
+    const option = screen.getByRole('option', { name: /Gemini 2.5 Pro/ });
+    expect(option).toHaveTextContent('0 runners');
+    fireEvent.click(option);
+    expect(onChange).toHaveBeenCalledWith('google::gemini-2.5-pro', expect.anything());
+  });
+
+  it('marks a stored unknown ref "not currently served" without clearing it (q13)', () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <ModelSelector
+        models={MODELS}
+        ariaLabel="Default AI Model"
+        value="ghost::phantom-1"
+        onChange={onChange}
+        fleetCounts={{}}
+      />,
+    );
+    expect(screen.getByTestId('model-not-served-note')).toHaveTextContent('not currently served');
+    expect(onChange).not.toHaveBeenCalled();
+    // A catalogue refresh re-renders the same stored ref — still marked,
+    // still stored, never rewritten.
+    rerender(
+      <ModelSelector
+        models={MODELS}
+        ariaLabel="Default AI Model"
+        value="ghost::phantom-1"
+        onChange={onChange}
+        fleetCounts={{}}
+      />,
+    );
+    expect(screen.getByTestId('model-not-served-note')).toHaveTextContent('not currently served');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('marks a stored 0-runner ref "not currently served" at the trigger (q13)', () => {
+    render(
+      <ModelSelector
+        models={MODELS}
+        ariaLabel="Default AI Model"
+        value="ollama-cloud::deepseek-v4-flash"
+        fleetCounts={{
+          'ollama-cloud::deepseek-v4-flash': { runnerCount: 0, runnerIds: [] },
+        }}
+      />,
+    );
+    expect(screen.getByTestId('model-not-served-note')).toHaveTextContent('not currently served');
+    fireEvent.click(screen.getByRole('combobox', { name: 'Default AI Model' }));
+    expect(screen.getByRole('option', { name: /DeepSeek v4 Flash/ })).toHaveTextContent('0 runners');
+  });
+
+  it('shows no not-served marker for served, blank, or unfleeted selections', () => {
+    const { rerender } = render(
+      <ModelSelector
+        models={MODELS}
+        ariaLabel="Default AI Model"
+        value="ollama-cloud::deepseek-v4-flash"
+        fleetCounts={{
+          'ollama-cloud::deepseek-v4-flash': { runnerCount: 2, runnerIds: ['a', 'b'] },
+        }}
+      />,
+    );
+    expect(screen.queryByTestId('model-not-served-note')).not.toBeInTheDocument();
+    rerender(
+      <ModelSelector
+        models={MODELS}
+        ariaLabel="Default AI Model"
+        value=""
+        fleetCounts={{}}
+      />,
+    );
+    expect(screen.queryByTestId('model-not-served-note')).not.toBeInTheDocument();
+    rerender(
+      <ModelSelector
+        models={MODELS}
+        ariaLabel="Default AI Model"
+        value="ghost::phantom-1"
+      />,
+    );
+    expect(screen.queryByTestId('model-not-served-note')).not.toBeInTheDocument();
   });
 
   it('offers fleet-served models on a none harness with exact advertised values', () => {
@@ -704,7 +826,41 @@ describe('ModelSelector harness availability', () => {
     },
   ];
 
-  it('badges harness options from the backend discovery projection', () => {
+  it('badges harness options from the fleet harness summary, ignoring the backend probe (A3)', () => {
+    // Counts drive badges (q19): muse serves 1 runner in the fleet even
+    // though the backend-local probe says available:false — the option
+    // renders "1 runner", never "Unavailable". The probe badge lives in
+    // System Settings › Models › Backend harnesses now.
+    const harnesses = [
+      { ...AVAILABILITY_HARNESSES[0], id: 'muse', label: 'Muse', available: false },
+      AVAILABILITY_HARNESSES[1],
+      AVAILABILITY_HARNESSES[2],
+    ];
+    render(
+      <ModelSelector
+        models={MODELS}
+        harnesses={harnesses}
+        harnessId="muse"
+        value=""
+        ariaLabel="Model for Idea"
+        harnessAriaLabel="Harness for Idea"
+        fleetHarnesses={[{ id: 'muse', runnerCount: 1, runnerIds: ['r1'] }]}
+      />,
+    );
+
+    // The selected option's badge renders in the trigger.
+    expect(screen.getByRole('combobox', { name: 'Harness for Idea' })).toHaveTextContent('1 runner');
+    fireEvent.click(screen.getByRole('combobox', { name: 'Harness for Idea' }));
+    expect(screen.getByRole('option', { name: /Muse/ })).toHaveTextContent('1 runner');
+    expect(screen.getByRole('option', { name: /Muse/ })).not.toHaveTextContent('Unavailable');
+    // Harnesses missing from a loaded summary serve zero runners: honest
+    // grey zero, never badge-free, never the probe verdict.
+    expect(screen.getByRole('option', { name: /Agy/ })).toHaveTextContent('0 runners');
+    expect(screen.getByRole('option', { name: /Agy/ })).not.toHaveTextContent('Unavailable');
+    expect(screen.getByRole('option', { name: /Legacy/ })).toHaveTextContent('0 runners');
+  });
+
+  it('renders harness options badge-free without fleet harness data', () => {
     render(
       <ModelSelector
         models={MODELS}
@@ -716,11 +872,12 @@ describe('ModelSelector harness availability', () => {
       />,
     );
 
-    // The selected option's badge renders in the trigger.
-    expect(screen.getByRole('combobox', { name: 'Harness for Idea' })).toHaveTextContent('Detected');
+    // No fleet data = no badge at all (never the backend probe, never a
+    // misleading zero): the probe badge lives in Settings now.
+    expect(screen.getByRole('combobox', { name: 'Harness for Idea' })).not.toHaveTextContent('Detected');
     fireEvent.click(screen.getByRole('combobox', { name: 'Harness for Idea' }));
-    expect(screen.getByRole('option', { name: /Agy/ })).toHaveTextContent('Unavailable');
-    // Entries from older backends (no available field) stay badge-free.
+    expect(screen.getByRole('option', { name: /Agy/ })).not.toHaveTextContent('Unavailable');
+    expect(screen.getByRole('option', { name: /Agy/ })).not.toHaveTextContent('0 runners');
     expect(screen.getByRole('option', { name: 'Legacy' })).not.toHaveTextContent('Detected');
     expect(screen.getByRole('option', { name: 'Legacy' })).not.toHaveTextContent('Unavailable');
     expect(screen.getByRole('option', { name: 'Legacy' })).not.toHaveTextContent('Unknown');

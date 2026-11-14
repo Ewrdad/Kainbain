@@ -9,7 +9,7 @@ import {
   groupModelsByProvider,
   normalizeModelRef,
 } from '../../services/api';
-import { fleetInfoForModel, fleetModelRowBadge } from '../../services/modelStatus';
+import { fleetInfoForModel, fleetModelRowBadge, notCurrentlyServedBadge } from '../../services/modelStatus';
 import { withFleetModels, effectiveModelSelection } from '../../services/fleetModelOptions';
 import { ReliabilityLine } from './ReliabilityLine';
 import {
@@ -526,6 +526,27 @@ function AliasTargetRow({
     : `model-alias-target-managed-note-${aliasIndex}-${targetIndex}`;
   const validity = targetValidity(target, catalogue, fleetCounts);
   const validityTestId = `model-alias-target-validity-${aliasIndex}-${targetIndex}`;
+  const notServedTestId = `model-alias-target-not-served-${aliasIndex}-${targetIndex}`;
+  // Stored refs to absent/0-runner ids are marked, never cleared (q13):
+  // with loaded fleet data, a non-empty target model that no Runner serves
+  // (unknown to the catalogue or an honest zero) renders "not currently
+  // served" beside the validity line. The stored string is never rewritten.
+  const targetModelEntry = modelsByValue.get(resolvedModel);
+  const targetFleetInfo = hasFleetCounts
+    ? fleetInfoForModel(fleetCounts, targetModelEntry, resolvedModel)
+    : null;
+  const targetRunnerCount =
+    targetFleetInfo &&
+    typeof targetFleetInfo.runnerCount === 'number' &&
+    targetFleetInfo.runnerCount > 0
+      ? targetFleetInfo.runnerCount
+      : 0;
+  const showNotServed =
+    hasFleetCounts &&
+    selection !== 'none' &&
+    typeof target?.model === 'string' &&
+    target.model.trim() !== '' &&
+    (validity.status === 'unknown-model' || targetRunnerCount === 0);
   // The card's accessible name: which alias and which target (plus harness)
   // the grouped controls belong to.
   const cardLabel = single
@@ -768,6 +789,11 @@ function AliasTargetRow({
               >
                 ✕ {validity.message}
               </p>
+            )}
+            {showNotServed && (
+              <span data-testid={notServedTestId} className="text-[10px] text-text-muted">
+                {notCurrentlyServedBadge()}
+              </span>
             )}
           </div>
           {showReliabilityLines && (

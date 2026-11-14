@@ -248,6 +248,7 @@ export function fleetSnapshotBadgeNode(model) {
  *   declarants render null. Tooltip reads "declared by {ids}, not found by
  *   its discovery" (single source of truth for the q20 wording). Accepts the
  *   fleet-info entry returned by `fleetInfoForModel` / `fleetCountsById`.
+ * @example fleetUnverifiedNote({ verified: false, declaredBy: ['local-alpha'] }) => <span>unverified</span>
  * @param {Object|null} info - Fleet entry.
  * @returns {React.ReactNode|null}
  ***/
@@ -267,15 +268,14 @@ export function fleetUnverifiedNote(info) {
   );
 }
 
-export const fleetUnverifiedNoteNode = fleetUnverifiedNote;
-export const fleetUnverifiedBadge = fleetUnverifiedNote;
-export const fleetUnverifiedBadgeNode = fleetUnverifiedNote;
-
 /***
  * MARK: fleetModelRowBadge
  * @description The one composition pickers call per row: ALWAYS the count
  *   badge ("N runners" / "0 runners"), plus the subtle "unverified"
  *   annotation when applicable. Never reads `available` / `unavailableReason`.
+ * @example fleetModelRowBadge({ runnerCount: 2 }) => <span>2 runners</span>
+ * @param {Object|null} info - Fleet entry.
+ * @returns {React.ReactNode} The badge node.
  ***/
 export function fleetModelRowBadge(info) {
   const countNode = fleetCountBadgeNode(info);
@@ -284,12 +284,12 @@ export function fleetModelRowBadge(info) {
   return React.createElement(React.Fragment, null, countNode, note);
 }
 
-export const fleetModelRowBadgeNode = fleetModelRowBadge;
-
 /***
  * MARK: notCurrentlyServedBadge
  * @description "not currently served" marker for stored references to
  *   absent / 0-runner ids. Mark, never hide, never clear (q13).
+ * @example notCurrentlyServedBadge() => <span>not currently served</span>
+ * @returns {React.ReactNode} The marker node.
  ***/
 export function notCurrentlyServedBadge() {
   return React.createElement(
@@ -302,15 +302,15 @@ export function notCurrentlyServedBadge() {
   );
 }
 
-export const notCurrentlyServedBadgeNode = notCurrentlyServedBadge;
-export const notCurrentlyServedAnnotation = notCurrentlyServedBadge;
-
 /***
  * MARK: fleetHarnessBadgeNode
  * @description Harness dropdown badge sourced from the fleet catalogue's
  *   `harnesses[]` entry: "N runners" green/neutral, grey "0 runners".
  *   Returns null only when the entry is missing/unloaded (badge-free, never
  *   mislead). Accepts a harness entry ({ runnerCount }) or a number.
+ * @example fleetHarnessBadgeNode({ id: 'muse', runnerCount: 1 }) => <span>1 runner</span>
+ * @param {Object|number|null} entry - Fleet harness entry or count.
+ * @returns {React.ReactNode|null} The badge node, or null when unloaded.
  ***/
 export function fleetHarnessBadgeNode(entry) {
   if (entry == null) return null;
@@ -337,5 +337,3 @@ export function fleetHarnessBadgeNode(entry) {
     label,
   );
 }
-
-export const fleetHarnessBadge = fleetHarnessBadgeNode;

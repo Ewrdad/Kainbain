@@ -52,9 +52,12 @@ describe('Business-owned request lists', () => {
     // the 2 Runner command operations (requestModelRediscovery,
     // requestRunnerUpdate) for the on-request model re-detection and
     // self-update buttons +
+    // the 2 fleet-catalogue removal operations (deleteFleetCatalogueModel,
+    // deleteFleetQuarantinedModel) for the System Settings › Models
+    // fleet-catalogue admin table +
     // the first-run onboarding summary (getOnboarding) for the empty
     // state and guided-checklist UIs.
-    expect(names).toHaveLength(102);
+    expect(names).toHaveLength(104);
     for (const name of names) expect(typeof api[name]).toBe('function');
   });
 

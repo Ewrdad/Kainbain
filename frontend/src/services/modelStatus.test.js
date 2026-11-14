@@ -13,6 +13,10 @@ import {
   fleetInfoForModel,
   fleetSnapshotBadge,
   fleetSnapshotBadgeNode,
+  fleetUnverifiedNote,
+  fleetModelRowBadge,
+  fleetHarnessBadgeNode,
+  notCurrentlyServedBadge,
 } from './modelStatus';
 
 /***
@@ -217,5 +221,62 @@ describe('fleetSnapshotBadge', () => {
     expect(node.props.children[1]).toBe('Unavailable');
     expect(fleetSnapshotBadgeNode({ available: true })).toBeNull();
     expect(fleetSnapshotBadgeNode({ id: 'm' })).toBeNull();
+  });
+});
+
+describe('fleetUnverifiedNote', () => {
+  it('annotates verified:false entries with declarants and their tooltip', () => {
+    const note = fleetUnverifiedNote({ verified: false, declaredBy: ['local-alpha'] });
+    expect(note).toBeTruthy();
+    expect(note.props.children).toBe('unverified');
+    expect(note.props.title).toBe('declared by local-alpha, not found by its discovery');
+    const multi = fleetUnverifiedNote({ verified: false, declaredBy: ['a', 'b'] });
+    expect(multi.props.title).toBe('declared by a, b, not found by its discovery');
+  });
+
+  it('stays null for verified entries, empty declarants, and non-objects', () => {
+    expect(fleetUnverifiedNote({ verified: true, declaredBy: ['a'] })).toBeNull();
+    expect(fleetUnverifiedNote({ runnerCount: 1 })).toBeNull();
+    expect(fleetUnverifiedNote({ verified: false, declaredBy: [] })).toBeNull();
+    expect(fleetUnverifiedNote({ verified: false })).toBeNull();
+    expect(fleetUnverifiedNote(null)).toBeNull();
+  });
+});
+
+describe('fleetModelRowBadge', () => {
+  it('always renders the count, never the snapshot verdict', () => {
+    // A1: {available:false, runnerCount:0} renders "0 runners".
+    const zero = fleetModelRowBadge({ available: false, runnerCount: 0 });
+    expect(zero.props.children[1]).toBe('0 runners');
+    const two = fleetModelRowBadge({ available: false, runnerCount: 2 });
+    expect(two.props.children[1]).toBe('2 runners');
+    expect(fleetModelRowBadge(null).props.children[1]).toBe('0 runners');
+  });
+
+  it('appends the unverified annotation when applicable', () => {
+    const node = fleetModelRowBadge({ runnerCount: 0, verified: false, declaredBy: ['x'] });
+    expect(node.type).toBe(Symbol.for('react.fragment'));
+    const plain = fleetModelRowBadge({ runnerCount: 1 });
+    expect(plain.props.children[1]).toBe('1 runner');
+  });
+});
+
+describe('fleetHarnessBadgeNode', () => {
+  it('renders harness counts and null only when unloaded', () => {
+    expect(fleetHarnessBadgeNode({ id: 'muse', runnerCount: 1 }).props.children[1]).toBe('1 runner');
+    const zero = fleetHarnessBadgeNode({ id: 'pi', runnerCount: 0 });
+    expect(zero.props.children[1]).toBe('0 runners');
+    expect(zero.props.children[0].props.className).toContain('bg-slate-400');
+    expect(fleetHarnessBadgeNode(3).props.children[1]).toBe('3 runners');
+    expect(fleetHarnessBadgeNode(null)).toBeNull();
+    expect(fleetHarnessBadgeNode(undefined)).toBeNull();
+  });
+});
+
+describe('notCurrentlyServedBadge', () => {
+  it('marks stored absent/0-runner refs without clearing them', () => {
+    const node = notCurrentlyServedBadge();
+    expect(node.props.children).toBe('not currently served');
+    expect(node.props['data-testid']).toBe('not-currently-served');
   });
 });
