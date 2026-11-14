@@ -45,6 +45,25 @@ This task closes a test-safety gap: when automated tests run, one part of the ap
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Stop the test with a clear error (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "A setting holding the full file path (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Only this one feedback file (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
