@@ -3,6 +3,20 @@
 WP-G ticket: `6ba7e727-8b7a-4c46-ad4a-960bcd099bcb` (decision-gated on WP-F;
 blocked by this task).
 
+## Addendum 2026-11-14 ~19:00Z (run22 — first run ON .206)
+
+- Verdict: still **NOT READY** — live state unchanged since run21:
+  `local-alpha` fully healthy (`discovered`, 4×`ok:true`, `fbcf8442`,
+  `codeChangedSinceBoot: false`, unpaused); `server2-alpha` Bundle B
+  pending (pi `ERR_MODULE_NOT_FOUND` on `cross-spawn`, no build block);
+  `local-bravo` healthy but `paused:true` (zero fleet effect). §6.2 clean
+  of test-fleet; all named suites + WP-E guard re-passed (412 runner, 175
+  dispatch, 175 routes/guard, 91 frontend); engine dir bit-identical
+  before/after suites — against the LIVE files, strongest proof yet.
+  Backend redeployed 17:57:35Z (build 637) but `/status` commit still
+  stale. Awaiting operator restart receipts + rediscovery; see
+  `run22-20261114-1900.md`.
+
 ## Addendum 2026-11-14 ~14:35Z (run19)
 
 - Verdict: still **NOT READY** — live state unchanged since run18: `local-alpha` never restarted (old pinned daemon), `server2-alpha` Bundle B pending (pi `ERR_MODULE_NOT_FOUND`, no build), `local-bravo` healthy but paused. §6.2 clean of test-fleet; all named suites + WP-E guard + fixture regression re-passed this run. Awaiting operator restart receipts + rediscovery; see `run19-20261114-1435.md`.
