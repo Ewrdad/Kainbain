@@ -181,3 +181,27 @@ human grant + q4 infeasibility acceptance still absent. All named suites +
 fixture regression re-passed (412 runner, 175 dispatch, 175 routes/guard,
 91 frontend; 7/7 fixture). Evidence in `run33-20261114-2322.md` (+
 `verification-20261114.md` addendum).
+
+## Addendum 2026-11-14 ~23:45Z (run34 re-verification, ON .206)
+
+NOT READY (unchanged since run33). §6.1 PARTIAL: local-alpha +
+local-bravo fully PASS; server2-alpha still FAIL (pre-WP-B, pi
+`ERR_MODULE_NOT_FOUND`, Bundle B reinstall+restart pending). §6.2 PASS
+(zero `test-fleet`); §6.3 live + §6.4 live pending operator; q3-scope
+human grant + q4 infeasibility acceptance still absent. All named suites +
+fixture regression re-passed (412 runner, 175 dispatch, 175 routes/guard,
+91 frontend; 7/7 fixture) with ENGINE-DIR-UNTOUCHED proven against the
+LIVE engine files. Evidence in `run34-20261114-2345.md` (+
+`verification-20261114.md` addendum).
+
+## Addendum 2026-11-14 ~23:55Z (run35 re-verification, ON .206)
+
+NOT READY (unchanged since run34). §6.1 PARTIAL: local-alpha +
+local-bravo fully PASS; server2-alpha still FAIL (pre-WP-B, pi
+`ERR_MODULE_NOT_FOUND`, Bundle B reinstall+restart pending). §6.2 PASS
+(zero `test-fleet`); §6.3 live + §6.4 live pending operator; q3-scope
+human grant + q4 infeasibility acceptance still absent. All named suites +
+fixture regression re-passed (412 runner, 175 dispatch, 175 routes/guard,
+91 frontend; 7/7 fixture) with ENGINE-DIR-UNTOUCHED proven against the
+LIVE engine files. Evidence in `run35-20261114-2355.md` (+
+`verification-20261114.md` addendum).
