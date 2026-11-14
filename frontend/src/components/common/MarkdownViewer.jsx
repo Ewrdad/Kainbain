@@ -200,7 +200,13 @@ export function MermaidDiagram({ code = '' }) {
   const reactId = useId();
   const mermaidRenderId = `mermaid-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
+  // An empty fence is a draft artifact, not a render failure: the render
+  // path below shows the source block straight away, and the effect skips
+  // the library entirely (no download, no warning-log spam).
+  const isEmptyFence = !code || !code.trim();
+
   useEffect(() => {
+    if (isEmptyFence) return;
     let cancelled = false;
     (async () => {
       try {
@@ -225,9 +231,9 @@ export function MermaidDiagram({ code = '' }) {
     return () => {
       cancelled = true;
     };
-  }, [code, mermaidRenderId]);
+  }, [code, isEmptyFence, mermaidRenderId]);
 
-  if (failed) {
+  if (isEmptyFence || failed) {
     return <CodeBlock code={code} language="mermaid" enableCopy={true} />;
   }
   if (!svg) {

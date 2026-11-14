@@ -177,10 +177,15 @@ export function formatTaskKey(taskId) {
  * MARK: formatTaskTitleFirstLine
  * @description Single source of truth for the one-line task title shown on
  * cards, inspector headers, queue rows, and the Now Playing bar. Task goals
- * are markdown: only the first line is shown and a leading `# ` heading
- * marker is stripped. Fails safe: non-string or empty input renders the
- * fallback (default `'Untitled Task'`) instead of a blank or crashed label.
+ * are markdown: only the first line is shown and leading `#` heading markers
+ * are stripped (every level, so `## Section` reads `Section` exactly like the
+ * stored title the API sanitized). Splits on CR, LF, or CRLF so Windows
+ * line endings never leak a trailing carriage return into the title —
+ * matching the API-side split in `deriveTaskTitleFromGoal`. Fails safe:
+ * non-string or empty input renders the fallback (default `'Untitled Task'`)
+ * instead of a blank or crashed label.
  * @example formatTaskTitleFirstLine({ goal: '# Ship it\nbody' }) => 'Ship it'
+ * @example formatTaskTitleFirstLine({ goal: '# Ship it\r\nbody' }) => 'Ship it'
  * @example formatTaskTitleFirstLine(null) => 'Untitled Task'
  * @param {Object|string} [taskOrText] - Task object (goal/title) or raw text.
  * @param {string} [fallback='Untitled Task'] - Label when no title line exists.
@@ -194,7 +199,7 @@ export function formatTaskTitleFirstLine(taskOrText, fallback = 'Untitled Task')
       ? taskOrText
       : (taskOrText?.goal || taskOrText?.title || '');
   const line =
-    typeof raw === 'string' ? raw.split('\n')[0].replace(/^#\s+/, '') : '';
+    typeof raw === 'string' ? raw.split(/\r\n|\r|\n/)[0].replace(/^#+\s*/, '') : '';
   return line || fallback;
 }
 

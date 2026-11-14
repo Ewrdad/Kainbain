@@ -129,6 +129,14 @@ describe('taskFormatters', () => {
       expect(formatTaskTitleFirstLine('# Raw\nsecond')).toBe('Raw');
     });
 
+    it('splits on CRLF/CR and strips every heading level like the stored title', () => {
+      expect(formatTaskTitleFirstLine({ goal: '# Ship it\r\nbody' })).toBe('Ship it');
+      expect(formatTaskTitleFirstLine({ goal: 'a\rb' })).toBe('a');
+      expect(formatTaskTitleFirstLine({ goal: '## Section\nbody' })).toBe('Section');
+      expect(formatTaskTitleFirstLine({ goal: '#NoSpace\nbody' })).toBe('NoSpace');
+      expect(formatTaskTitleFirstLine('# CR\r\nsecond')).toBe('CR');
+    });
+
     it('fails safe to the fallback for missing or non-string input', () => {
       expect(formatTaskTitleFirstLine(null)).toBe('Untitled Task');
       expect(formatTaskTitleFirstLine(undefined)).toBe('Untitled Task');

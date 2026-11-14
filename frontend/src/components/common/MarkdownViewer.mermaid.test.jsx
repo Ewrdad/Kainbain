@@ -8,11 +8,14 @@ import {
   parseMarkdownBlocks,
 } from './MarkdownViewer';
 
-const { mermaidRender } = vi.hoisted(() => ({ mermaidRender: vi.fn() }));
+const { mermaidRender, mermaidInitialize } = vi.hoisted(() => ({
+  mermaidRender: vi.fn(),
+  mermaidInitialize: vi.fn(),
+}));
 
 vi.mock('mermaid', () => ({
   default: {
-    initialize: vi.fn(),
+    initialize: (...args) => mermaidInitialize(...args),
     render: (...args) => mermaidRender(...args),
   },
 }));
@@ -87,6 +90,28 @@ describe('MermaidDiagram', () => {
     const diagram = await screen.findByTestId('mermaid-diagram');
     expect(diagram.innerHTML).toContain('<svg>pretty</svg>');
     expect(mermaidRender).toHaveBeenCalledWith(expect.any(String), 'graph TD\nA-->B');
+  });
+
+  it('initializes mermaid with strict sanitization so diagram SVG cannot inject scripts', async () => {
+    // The loader memoizes the import promise module-wide, so only the first
+    // diagram on the page ever initializes; re-import the viewer for a fresh
+    // load here so this pin holds no matter which test ran first (mock call
+    // history is cleared between tests, but the memoized promise is not).
+    vi.resetModules();
+    mermaidRender.mockResolvedValue({ svg: '<svg>x</svg>' });
+    const freshViewer = await import('./MarkdownViewer');
+    render(<freshViewer.MermaidDiagram code={'graph TD\nA-->B'} />);
+    await screen.findByTestId('mermaid-diagram');
+    expect(mermaidInitialize).toHaveBeenCalledWith({
+      startOnLoad: false,
+      securityLevel: 'strict',
+    });
+  });
+
+  it('shows the source block for an empty fence without loading the library', async () => {
+    render(<MermaidDiagram code={'   '} />);
+    expect(await screen.findByText('MERMAID')).toBeInTheDocument();
+    expect(mermaidRender).not.toHaveBeenCalled();
   });
 
   it('degrades to a readable MERMAID source block when rendering fails', async () => {
