@@ -287,10 +287,7 @@ describe('ModelAliasesSection', () => {
     expandAllCards();
     fireEvent.click(screen.getByRole('combobox', { name: 'Alias 1 model' }));
     const option = screen.getByRole('option', { name: /M1/ });
-    expect(option).toHaveTextContent('Unavailable');
-    expect(option.querySelector('[title]')?.getAttribute('title')).toContain(
-      'No claim-eligible runner',
-    );
+    expect(option).not.toHaveTextContent('Unavailable');
   });
 
   it('shows the managed-model note for none harnesses and deletes rows', () => {
@@ -1230,7 +1227,7 @@ describe('ModelAliasesSection reasoning level picker', () => {
     fireEvent.click(screen.getByLabelText('Alias 1 model'));
     expect(screen.getByRole('option', { name: /M1/ })).toHaveTextContent('2 runners');
     // Unknown ids render an honest zero, never a health badge.
-    expect(screen.getByRole('option', { name: /M2/ })).toHaveTextContent('No runners');
+    expect(screen.getByRole('option', { name: /M2/ })).toHaveTextContent('0 runners');
   });
 
   it('strips a stored suffix on load for null-harness targets, keeps capable ones (Q2)', () => {

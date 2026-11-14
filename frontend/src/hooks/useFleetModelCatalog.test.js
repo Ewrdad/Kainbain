@@ -126,7 +126,7 @@ describe('useFleetModelCatalog', () => {
       expect(result.current.loading).toBe(false);
     });
     // Failed fetch: counts stay empty AND loaded stays false, so pickers
-    // render badge-free instead of a misleading "No runners".
+    // render badge-free instead of a misleading "0 runners".
     expect(result.current.counts).toEqual({});
     expect(result.current.loaded).toBe(false);
     api.getFleetModelCatalog.mockResolvedValue({ models: [] });

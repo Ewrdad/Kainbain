@@ -37,7 +37,7 @@ describe('ModelSelector', () => {
       '2 runners',
     );
     // Unknown ids render an honest zero instead of a credential badge.
-    expect(screen.getByRole('option', { name: /Gemini 2.5 Pro/ })).toHaveTextContent('No runners');
+    expect(screen.getByRole('option', { name: /Gemini 2.5 Pro/ })).toHaveTextContent('0 runners');
   });
 
   it('renders model options badge-free without fleet counts', () => {
@@ -81,29 +81,32 @@ describe('ModelSelector', () => {
     expect(option).not.toHaveTextContent('Ready');
   });
 
-  it('marks snapshot-unavailable entries Unavailable with the reason, even without fleet counts', () => {
-    // Central-list honesty (survey q4): an entry the snapshot marks
-    // unavailable stays selectable but never normal-looking — with the
-    // reason as tooltip — whether or not fleet counts loaded.
+  it('does not mark snapshot-unavailable entries Unavailable in pickers (counts drive badges)', () => {
     const catalogue = [
       {
         ...MODELS[0],
         fleet: true,
         available: false,
         unavailableReason: 'No claim-eligible runner serves this model right now.',
+        runnerCount: 0,
       },
       { ...MODELS[1], fleet: true, available: true, runnerCount: 1 },
     ];
-    render(<ModelSelector models={catalogue} ariaLabel="Default AI Model" />);
+    render(
+      <ModelSelector
+        models={catalogue}
+        ariaLabel="Default AI Model"
+        fleetCounts={{
+          'ollama-cloud::deepseek-v4-flash': { runnerCount: 0, runnerIds: [], available: false },
+          'google::gemini-2.5-pro': { runnerCount: 1, runnerIds: ['r1'] },
+        }}
+      />,
+    );
     fireEvent.click(screen.getByRole('combobox', { name: 'Default AI Model' }));
     const option = screen.getByRole('option', { name: /DeepSeek v4 Flash/ });
-    expect(option).toHaveTextContent('Unavailable');
-    expect(option.querySelector('[title]')?.getAttribute('title')).toContain(
-      'No claim-eligible runner',
-    );
-    expect(screen.getByRole('option', { name: /Gemini 2.5 Pro/ })).not.toHaveTextContent(
-      'Unavailable',
-    );
+    expect(option).toHaveTextContent('0 runners');
+    expect(option).not.toHaveTextContent('Unavailable');
+    expect(screen.getByRole('option', { name: /Gemini 2.5 Pro/ })).toHaveTextContent('1 runner');
   });
 
   it('prefers the snapshot unavailable verdict over fleet counts and health badges', () => {
@@ -130,8 +133,8 @@ describe('ModelSelector', () => {
     );
     fireEvent.click(screen.getByRole('combobox', { name: 'Chat model' }));
     const option = screen.getByRole('option', { name: /DeepSeek v4 Flash/ });
-    expect(option).toHaveTextContent('Unavailable');
-    expect(option).not.toHaveTextContent('2 runners');
+    expect(option).not.toHaveTextContent('Unavailable');
+    expect(option).toHaveTextContent('2 runners');
     expect(option).not.toHaveTextContent('Ready');
   });
 
@@ -734,9 +737,7 @@ describe('ModelSelector harness availability', () => {
         harnessAriaLabel="Harness for Idea"
       />,
     );
-    expect(screen.getByTestId('harness-availability-hint')).toHaveTextContent(
-      'Install the Antigravity CLI or set KAINBAIN_AGY_BIN.',
-    );
+    expect(screen.queryByTestId('harness-availability-hint')).not.toBeInTheDocument();
   });
 
   it('shows no hint when the selected harness reports none', () => {

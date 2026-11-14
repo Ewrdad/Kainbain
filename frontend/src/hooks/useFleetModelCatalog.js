@@ -21,9 +21,12 @@ export { fleetCountsById } from './useFleetModelCatalog/fleetCountsById';
  ***/
 export function useFleetModelCatalog({ enabled = true } = {}) {
   const [counts, setCounts] = useState({});
+  const [harnesses, setHarnesses] = useState([]);
+  const [models, setModels] = useState([]);
+  const [quarantined, setQuarantined] = useState([]);
   // True only after a catalogue fetch succeeds: pickers gate badges on this
   // (not on `counts` being non-empty) so a failed fetch — or a backend
-  // without the endpoint — renders badge-free instead of "No runners".
+  // without the endpoint — renders badge-free instead of "0 runners".
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(
     () => enabled && typeof api.getFleetModelCatalog === 'function',
@@ -39,6 +42,9 @@ export function useFleetModelCatalog({ enabled = true } = {}) {
       .then((res) => {
         if (!isMounted) return;
         setCounts(fleetCountsById(res));
+        setHarnesses(Array.isArray(res?.harnesses) ? res.harnesses : []);
+        setModels(Array.isArray(res?.models) ? res.models : []);
+        setQuarantined(Array.isArray(res?.quarantined) ? res.quarantined : []);
         setLoaded(true);
       })
       .catch(() => {
@@ -57,11 +63,14 @@ export function useFleetModelCatalog({ enabled = true } = {}) {
     try {
       const res = await api.getFleetModelCatalog();
       setCounts(fleetCountsById(res));
+      setHarnesses(Array.isArray(res?.harnesses) ? res.harnesses : []);
+      setModels(Array.isArray(res?.models) ? res.models : []);
+      setQuarantined(Array.isArray(res?.quarantined) ? res.quarantined : []);
       setLoaded(true);
     } catch {
       // Keep the current map; a refresh failure never downgrades `loaded`.
     }
   }, []);
 
-  return { counts, loading, loaded, refresh };
+  return { counts, loading, loaded, refresh, harnesses, models, quarantined };
 }

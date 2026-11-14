@@ -83,7 +83,7 @@ vi.mock('../../services/api', async (importOriginal) => {
         ],
       }),
       // Fleet catalogue unreachable by default: pickers render badge-free
-      // (never a misleading "No runners"). The runner-count badge test
+      // (never a misleading "0 runners"). The runner-count badge test
       // below resolves this per-test.
       getFleetModelCatalog: vi.fn().mockRejectedValue(new Error('fleet down')),
     },
@@ -1251,7 +1251,7 @@ test('harness row offers the default harness plus the Alias entry (alias-free em
 
 test('default-model dropdown options carry fleet runner-count badges', async () => {
   // Fleet catalogue serves claude + deepseek, nothing else: claude shows its
-  // claim-eligible Runner count, every other model shows "No runners".
+  // claim-eligible Runner count, every other model shows "0 runners".
   api.getFleetModelCatalog.mockResolvedValue({
     generatedAt: '2026-11-01T00:00:00.000Z',
     totalModels: 2,
@@ -1297,13 +1297,13 @@ test('default-model dropdown options carry fleet runner-count badges', async () 
   const deepseekOption = screen.getByRole('option', { name: /DeepSeek v4 Flash/i });
   expect(within(deepseekOption).getByText('1 runner')).toBeInTheDocument();
 
-  // "No runners" on the model the fleet does not serve, including one the
+  // "0 runners" on the model the fleet does not serve, including one the
   // fleet catalogue never mentions (unknown id, catalogue loaded).
   const geminiOption = screen.getByRole('option', { name: /Gemini 2\.5 Pro/i });
-  expect(within(geminiOption).getByText('No runners')).toBeInTheDocument();
+  expect(within(geminiOption).getByText('0 runners')).toBeInTheDocument();
 
   const glmOption = screen.getByRole('option', { name: /GLM 5\.3 Flash/i });
-  expect(within(glmOption).getByText('No runners')).toBeInTheDocument();
+  expect(within(glmOption).getByText('0 runners')).toBeInTheDocument();
 });
 
 test('failed model discovery shows the Alias empty state (no stale providers)', async () => {

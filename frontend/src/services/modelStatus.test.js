@@ -86,13 +86,13 @@ describe('fleetCountBadgeNode', () => {
     expect(label).toBe('2 runners');
   });
 
-  it('renders one runner singular and zero as slate No runners', () => {
+  it('renders one runner singular and zero as slate 0 runners', () => {
     expect(fleetCountBadgeNode({ runnerCount: 1 }).props.children[1]).toBe('1 runner');
     const zero = fleetCountBadgeNode(null);
-    expect(zero.props.children[1]).toBe('No runners');
+    expect(zero.props.children[1]).toBe('0 runners');
     expect(zero.props.children[0].props.className).toContain('bg-slate-400');
     const malformed = fleetCountBadgeNode({ runnerCount: -3 });
-    expect(malformed.props.children[1]).toBe('No runners');
+    expect(malformed.props.children[1]).toBe('0 runners');
   });
 });
 

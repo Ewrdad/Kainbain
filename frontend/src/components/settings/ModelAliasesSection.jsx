@@ -9,7 +9,7 @@ import {
   groupModelsByProvider,
   normalizeModelRef,
 } from '../../services/api';
-import { fleetCountBadgeNode, fleetInfoForModel, fleetSnapshotBadgeNode } from '../../services/modelStatus';
+import { fleetInfoForModel, fleetModelRowBadge } from '../../services/modelStatus';
 import { withFleetModels, effectiveModelSelection } from '../../services/fleetModelOptions';
 import { ReliabilityLine } from './ReliabilityLine';
 import {
@@ -504,15 +504,10 @@ function AliasTargetRow({
   // fleet data the options render badge-free (never mislead).
   const hasFleetCounts = fleetCounts && typeof fleetCounts === 'object';
   const modelOptions = groupModelsByProvider(modelsForHarness).map((option) => {
-    // The snapshot's explicit unavailable verdict wins over the count
-    // badge (it carries the reason) — and applies even without fleet
-    // data, so a marked entry never renders normal-looking.
-    const snapshotBadge = fleetSnapshotBadgeNode(modelsByValue.get(option.value));
-    if (snapshotBadge) return { ...option, badge: snapshotBadge };
     if (!hasFleetCounts) return option;
     const model = modelsByValue.get(option.value);
     const info = fleetInfoForModel(fleetCounts, model, option.value);
-    return { ...option, badge: fleetCountBadgeNode(info) };
+    return { ...option, badge: fleetModelRowBadge(info) };
   });
   // First target keeps the historic labels so single-target rows read
   // exactly like the old one-harness-per-alias table.
