@@ -88,6 +88,27 @@ export function resolveTaskTitleAndGoal({ title, goal } = {}) {
 }
 
 /***
+ * MARK: resolveTaskBody
+ * @description Picks the stored detail body for a new task. A caller-supplied
+ *   body (the API's `markdown` field) wins when it is a non-blank string and
+ *   is kept byte-identical, exactly like the goal; anything missing, blank, or
+ *   not a string falls back to the goal so the body always mirrors the goal
+ *   instead of storing blanks or crashing on odd input.
+ * @example resolveTaskBody({ body: '# Steps', goal: 'g' }) => '# Steps'
+ * @example resolveTaskBody({ body: '  ', goal: 'g' }) => 'g'
+ * @example resolveTaskBody({ body: 42, goal: 'g' }) => 'g'
+ * @param {Object} [args]
+ * @param {*} [args.body] - Optional caller-supplied markdown (kept as-is when usable).
+ * @param {string} [args.goal] - The resolved goal (the mirror fallback).
+ * @returns {string} The body to store.
+ ***/
+export function resolveTaskBody({ body, goal } = {}) {
+	if (typeof body === "string" && body.trim()) return body;
+	if (typeof goal === "string" && goal) return goal;
+	return "Untitled task";
+}
+
+/***
  * MARK: toTaskSummary
  * @description Projects one task onto its board-list shape: everything the
  *   kanban board, search, and analytics read, without the detail-only

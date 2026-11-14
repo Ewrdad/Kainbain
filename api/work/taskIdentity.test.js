@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	_sanitizeTaskTitle,
 	deriveTaskTitleFromGoal,
+	resolveTaskBody,
 	resolveTaskTitleAndGoal,
 	toTaskSummary,
 } from './taskIdentity.js';
@@ -131,6 +132,14 @@ describe('The Work: task identity and classification', () => {
 		expect(summary.reports).toHaveLength(5);
 		expect(summary.reports[0]).toEqual({ path: 'r-10.md', name: 'R10' });
 		expect(summary.reports[4]).toEqual({ path: 'r-14.md', name: 'R14' });
+	});
+
+	it('keeps a usable body and mirrors the goal when the body is missing or blank', () => {
+		expect(resolveTaskBody({ body: '# Steps\n1. x', goal: 'g' })).toBe('# Steps\n1. x');
+		expect(resolveTaskBody({ body: '  ', goal: 'g' })).toBe('g');
+		expect(resolveTaskBody({ body: 42, goal: 'g' })).toBe('g');
+		expect(resolveTaskBody({ goal: 'g' })).toBe('g');
+		expect(resolveTaskBody({})).toBe('Untitled task');
 	});
 
 	it('classifies unrecoverable vs transient infrastructure errors', () => {
