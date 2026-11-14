@@ -311,7 +311,19 @@ export const ENDPOINTS = [
 	{
 		method: "GET",
 		path: "/runners/models/catalogue",
-		purpose: "Fleet model catalogue derived live from Runner registrations (never cached): one entry per distinct model id served by a claim-eligible Runner, with serving harness ids, tiers, and runner count/ids. Stage, default, and alias pickers read this for availability instead of credential health.",
+		purpose: "Fleet model catalogue (ADR 0016): one entry per distinct canonical harness-scoped model id with VERIFIED runner count/ids (only discovery-confirmed runners), declaredBy (advertised but unconfirmed claimants), claimedBy (contradicted pins), derived available/verified/unavailableReason, and last-served memory; non-canonical ids quarantine with a reason; harnesses[] summarizes the fleet footprint. Stage, default, and alias pickers read this for availability instead of credential health.",
+		body: null,
+	},
+	{
+		method: "DELETE",
+		path: "/runners/models/catalogue/quarantine/:id",
+		purpose: "Admin-only permanent removal of one quarantined catalogue id (204, empty body; 404 when unknown). A re-advertised id reappears on the next catalogue read.",
+		body: null,
+	},
+	{
+		method: "DELETE",
+		path: "/runners/models/catalogue/:id",
+		purpose: "Admin-only permanent removal of one catalogue model entry (204, empty body; 404 when unknown). 0-runner entries are otherwise kept indefinitely; a re-advertised id reappears on the next catalogue read.",
 		body: null,
 	},
 	{

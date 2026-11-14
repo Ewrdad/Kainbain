@@ -2,7 +2,7 @@ import { expect, test, describe, beforeEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { SteerStore } from "./steerStore.js";
+import { SteerStore, resolveSteerStatePath } from "./steerStore.js";
 
 const tmpSteerState = () =>
 	path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kb-steer-test-")), "steers.json");
@@ -58,5 +58,22 @@ describe("SteerStore", () => {
 		).toThrowError(/exceeds 4000/);
 		expect(() => steers.queue({ executionId: "e", text: "hi" })).toThrowError(/taskId/);
 		expect(() => steers.ack("nope", "nope", { ok: true })).toThrowError(/Unknown steer/);
+	});
+});
+
+describe("resolveSteerStatePath isolation", () => {
+	test("explicit live engine paths throw under VITEST (never silently pollute production)", () => {
+		expect(process.env.VITEST).toBeTruthy();
+		const live = path.join(os.homedir(), ".kainbain", "engine", "steers.json");
+		expect(() => resolveSteerStatePath(live)).toThrow(
+			/resolveSteerStatePath refused live engine path under test/,
+		);
+		// Constructing a store on a live file throws the same way.
+		expect(() => new SteerStore({ stateFile: live })).toThrow(
+			/refused live engine path under test/,
+		);
+		// Temp explicit paths and disabled persistence still work.
+		expect(resolveSteerStatePath(tmpSteerState())).toMatch(/steers\.json$/);
+		expect(resolveSteerStatePath("")).toBeNull();
 	});
 });

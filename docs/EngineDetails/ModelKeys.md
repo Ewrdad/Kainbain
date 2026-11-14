@@ -104,7 +104,15 @@ Runner-advertised ids are normalized through `parseModelKey` at ingestion
 (`api/flow/dispatch/catalogIngest.js`) into exactly this record — the
 advertised id byte-identical (dispatch matches fleet picks verbatim) with
 `{ harness, provider, model, tiers }` alongside — and saved into the
-persisted fleet snapshot that backs the central list. `GET /compute/models`
+persisted fleet snapshot that backs the central list. Only canonical
+harness-scoped ids are admitted: bare and `provider::id` forms are
+quarantined with a not-harness-qualified reason, and ids naming a
+harness the runner does not serve are quarantined with a
+harness-not-served reason (both visible in Settings › Runners, never
+served). Each entry's `harnesses` is exactly the harness parsed from
+the id, and `runnerCount`/`runnerIds` name only discovery-confirmed
+runners (unconfirmed claimants land in `declaredBy`; see ADR 0016
+WP-C amendment). `GET /compute/models`
 serves that central list: its harness set is the **union** of backend-known
 and fleet-served harnesses, so a fleet-only harness (or a brand-new model
 id) is selectable without any backend-side registration. Malformed ids are

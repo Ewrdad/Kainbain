@@ -197,7 +197,6 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		expectedRunnerId: "",
 		seedDemo: false,
 		runnerExecutionOnly: true,
-		runnerDispatchFallbackMs: 90000,
 		runnerStaleAfterMs: 60000,
 		runnerMaxConcurrentPerProject: 0,
 		runnerMaxConcurrentFleet: 0,
@@ -261,6 +260,16 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		const first = loadQuietly({}).config;
 		const second = loadQuietly({}).config;
 		expect(first.corsAllowedOrigins).not.toBe(second.corsAllowedOrigins);
+	});
+
+	it("ignores the removed KAINBAIN_RUNNER_DISPATCH_FALLBACK_MS env var (no warning, no key)", () => {
+		// The embedded runner-dispatch fallback was removed entirely; the loader
+		// indexes only schema entries, so a legacy env file that still sets the
+		// old knob must boot silently with no config key and no deprecation noise.
+		const { config, warnings } = loadQuietly({ KAINBAIN_RUNNER_DISPATCH_FALLBACK_MS: "90000" });
+		expect(warnings).toEqual([]);
+		expect(config).not.toHaveProperty("runnerDispatchFallbackMs");
+		expect(CONFIG_SCHEMA.some((entry) => entry.key === "runnerDispatchFallbackMs")).toBe(false);
 	});
 });
 

@@ -6,6 +6,7 @@ import { git, defaultBranch } from "../git.js";
 import { circuitSnapshot, isTripped } from "./circuitBreaker.js";
 import { scanClaimableTasks } from "./dispatch/scanClaimableTasks.js";
 import { buildFleetModelCatalog } from "./dispatch/fleetModelCatalog.js";
+import { summarizeFleetHarnesses } from "./dispatch/fleetModelSnapshot.js";
 import { resolveAliasRequirement } from "./dispatch/resolveAliasRequirement.js";
 import { runnerMatches } from "./dispatch/runnerMatches.js";
 import { operatorConfigVerdict } from "./dispatch/operatorConfigVerdict.js";
@@ -231,6 +232,11 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		if (err.holder) body.holder = err.holder;
 		return reply.status(status).send(body);
 	};
+
+	// Admin-only catalogue removal (mirrors imageGen): the requireRole
+	// guard when auth is wired, open while access control is disabled.
+	const adminOnly = deps?.authService?.guards?.requireRole(["admin"], { allowApiKeys: false });
+	const adminGuard = adminOnly ? { preHandler: adminOnly } : {};
 
 	const ciPayloadFor = async (projectId, task, stage) => {
 		const project = projectStore.getProject(projectId);
@@ -574,18 +580,55 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// into the persisted snapshot on every read, so joins, leaves,
 		// heartbeat updates, and operator allowlist edits reflect on the
 		// next read while the UI never depends on a transient read. One
-		// entry per distinct model id, available ones with their serving
-		// harness ids, effort tiers, runner count/ids, and per-runner
-		// provenance; entries no claim-eligible Runner serves stay
-		// marked unavailable with a reason instead of vanishing; and
-		// malformed ids quarantine with a reason instead of serving.
-		// Stage, default, and alias pickers read this for availability
-		// instead of credential health. Dispatch keeps reading the live
-		// derivation (`buildFleetModelCatalog`), never this snapshot.
+		// entry per distinct canonical harness-scoped model id with its
+		// parsed harness, effort tiers, VERIFIED runner count/ids (only
+		// discovery-confirmed runners), `declaredBy` (advertised but
+		// unconfirmed claimants), `claimedBy` (contradicted pins),
+		// derived `available`/`verified`/`unavailableReason`, first/last
+		// seen plus last-served timestamps, and per-runner provenance;
+		// entries no claim-eligible Runner advertises stay (marked
+		// unavailable with a derived reason) instead of vanishing;
+		// non-canonical ids quarantine with a reason instead of serving;
+		// and `harnesses[]` summarizes the fleet's harness footprint for
+		// the pickers. Stage, default, and alias pickers read this for
+		// availability instead of credential health. Dispatch keeps
+		// reading the live derivation (`buildFleetModelCatalog`), never
+		// this snapshot.
+		// PoC admin surface (mirrors imageGen): permanent catalogue
+		// removal needs the admin role while access control is on.
+		const runners = runnerRegistry.list();
 		if (typeof deps?.fleetModelSnapshot?.update === "function") {
-			return deps.fleetModelSnapshot.update(runnerRegistry.list());
+			return { ...deps.fleetModelSnapshot.update(runners), harnesses: summarizeFleetHarnesses(runners) };
 		}
-		return buildFleetModelCatalog(runnerRegistry.list());
+		return { ...buildFleetModelCatalog(runners), harnesses: summarizeFleetHarnesses(runners) };
+	});
+
+	// Permanent catalogue removal (survey q1/q22): the admin role only
+	// (same guard as the image-gen key routes; open while access control
+	// is disabled). Quarantine first (segment counts differ, but explicit
+	// ordering keeps the intent obvious): both answer 204 with no body
+	// on success, 404 when the id is unknown (or no snapshot dep owns
+	// it). A re-advertised id reappears on the next update.
+	app.delete("/runners/models/catalogue/quarantine/:id", adminGuard, async (request, reply) => {
+		if (typeof deps?.fleetModelSnapshot?.removeQuarantined !== "function") {
+			return reply.status(404).send({ error: "Unknown quarantined model.", code: "UNKNOWN_MODEL" });
+		}
+		const id = String(request.params?.id ?? "");
+		if (!deps.fleetModelSnapshot.removeQuarantined(id)) {
+			return reply.status(404).send({ error: `Unknown quarantined model ${id}.`, code: "UNKNOWN_MODEL" });
+		}
+		return reply.status(204).send();
+	});
+
+	app.delete("/runners/models/catalogue/:id", adminGuard, async (request, reply) => {
+		if (typeof deps?.fleetModelSnapshot?.remove !== "function") {
+			return reply.status(404).send({ error: "Unknown catalogue model.", code: "UNKNOWN_MODEL" });
+		}
+		const id = String(request.params?.id ?? "");
+		if (!deps.fleetModelSnapshot.remove(id)) {
+			return reply.status(404).send({ error: `Unknown catalogue model ${id}.`, code: "UNKNOWN_MODEL" });
+		}
+		return reply.status(204).send();
 	});
 
 	app.post("/tasks/:id/progress", async (request, reply) => {
