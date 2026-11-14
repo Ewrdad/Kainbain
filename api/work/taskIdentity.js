@@ -24,6 +24,14 @@ export function _sanitizeTaskTitle(raw) {
 }
 
 /***
+ * MARK: HISTORICAL_TITLE_CAP
+ * @description The historical `goal.slice(0, 60)` cap, kept so multi-line
+ *   markdown goals take the title line without leaking body text into card
+ *   titles. One named place so every title path caps the same length.
+ ***/
+const HISTORICAL_TITLE_CAP = 60;
+
+/***
  * MARK: deriveTaskTitleFromGoal
  * @description Derives the fallback task title from a goal's FIRST line only:
  *   goals are markdown documents, so only the title line may become a title
@@ -31,19 +39,52 @@ export function _sanitizeTaskTitle(raw) {
  *   old-Mac line endings behave the same, and caps the result at
  *   `maxTitleLength` (60, matching the historical `goal.slice(0, 60)` cap).
  *   Returns "" for empty or non-string input so callers can layer their own
- *   fallback (e.g. `_sanitizeTaskTitle`'s "Untitled task").
+ *   fallback (e.g. `_sanitizeTaskTitle`'s "Untitled task"). A missing or
+ *   unusable cap (NaN, Infinity, a non-number, a negative) fails safe to the
+ *   historical 60 instead of slicing oddly (`slice(0, -1)` would silently
+ *   drop the last character; `slice(0, NaN)` would erase the title).
  * @example deriveTaskTitleFromGoal({ goal: '# Fix it\n\nbody text' }) => '# Fix it'
  * @example deriveTaskTitleFromGoal({ goal: 'a\r\nb' }) => 'a'
  * @example deriveTaskTitleFromGoal({ goal: null }) => ''
+ * @example deriveTaskTitleFromGoal({ goal: 'x'.repeat(100) }) => 'x'.repeat(60)
  * @param {Object} [args]
  * @param {string} [args.goal] - Raw goal text (may be multi-line markdown).
  * @param {number} [args.maxTitleLength=60] - Max characters kept from the first line.
  * @returns {string} The first line sliced to `maxTitleLength` ("" when absent).
  ***/
-export function deriveTaskTitleFromGoal({ goal, maxTitleLength = 60 } = {}) {
+export function deriveTaskTitleFromGoal({ goal, maxTitleLength = HISTORICAL_TITLE_CAP } = {}) {
 	if (!goal || typeof goal !== "string") return "";
+	const safeMaxLength =
+		typeof maxTitleLength === "number" && Number.isFinite(maxTitleLength)
+			? Math.max(0, Math.floor(maxTitleLength))
+			: HISTORICAL_TITLE_CAP;
 	const firstLine = goal.split(/\r\n|\r|\n/)[0] ?? "";
-	return firstLine.slice(0, maxTitleLength);
+	return firstLine.slice(0, safeMaxLength);
+}
+
+/***
+ * MARK: resolveTaskTitleAndGoal
+ * @description Resolves one task's display title and stored goal together so
+ *   every creation path (HTTP intake, in-memory create, disk load) follows
+ *   the same rule: the title is the sanitized first line of the goal (an
+ *   explicit title wins verbatim), and the goal stays byte-identical —
+ *   markdown, code fences, mermaid fences, and image references included.
+ *   Only the title is ever cleaned; the goal is never trimmed, collapsed,
+ *   or re-wrapped here (PATCH trims edge whitespace by its own rule — see
+ *   `taskWorkRoutes.js` — so a plain create stays byte-for-byte verifiable
+ *   against the skill's draft file). Fails safe: with neither a title nor a
+ *   goal, both fall back to "Untitled task" instead of storing blanks.
+ * @example resolveTaskTitleAndGoal({ goal: '# Fix it\n\nbody' }) => { title: 'Fix it', goal: '# Fix it\n\nbody' }
+ * @example resolveTaskTitleAndGoal({ title: 'Only a title' }) => { title: 'Only a title', goal: 'Only a title' }
+ * @example resolveTaskTitleAndGoal({}) => { title: 'Untitled task', goal: 'Untitled task' }
+ * @param {Object} [args]
+ * @param {string} [args.title] - Explicit title (wins over the goal-derived one).
+ * @param {string} [args.goal] - Raw goal text (stored verbatim).
+ * @returns {{ title: string, goal: string }} Sanitized title plus verbatim goal.
+ ***/
+export function resolveTaskTitleAndGoal({ title, goal } = {}) {
+	const cleanTitle = _sanitizeTaskTitle(title || deriveTaskTitleFromGoal({ goal }));
+	return { title: cleanTitle, goal: goal || cleanTitle || "Untitled task" };
 }
 
 /***

@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	_sanitizeTaskTitle,
 	deriveTaskTitleFromGoal,
+	resolveTaskTitleAndGoal,
 	toTaskSummary,
 } from './taskIdentity.js';
 import {
@@ -40,6 +41,43 @@ describe('The Work: task identity and classification', () => {
 		expect(deriveTaskTitleFromGoal({ goal: 42 })).toBe('');
 		expect(deriveTaskTitleFromGoal({})).toBe('');
 		expect(deriveTaskTitleFromGoal()).toBe('');
+	});
+
+	it('fails safe to the historical cap on an unusable maxTitleLength', () => {
+		expect(deriveTaskTitleFromGoal({ goal: 'x'.repeat(100), maxTitleLength: 10 })).toBe('x'.repeat(10));
+		expect(deriveTaskTitleFromGoal({ goal: 'x'.repeat(100), maxTitleLength: NaN })).toBe('x'.repeat(60));
+		expect(deriveTaskTitleFromGoal({ goal: 'x'.repeat(100), maxTitleLength: Infinity })).toBe('x'.repeat(60));
+		expect(deriveTaskTitleFromGoal({ goal: 'x'.repeat(100), maxTitleLength: -5 })).toBe('');
+		expect(deriveTaskTitleFromGoal({ goal: 'x'.repeat(100), maxTitleLength: 0 })).toBe('');
+		expect(deriveTaskTitleFromGoal({ goal: 'x'.repeat(100), maxTitleLength: '10' })).toBe('x'.repeat(60));
+		expect(deriveTaskTitleFromGoal({ goal: 'x'.repeat(100), maxTitleLength: 10.9 })).toBe('x'.repeat(10));
+	});
+
+	it('resolves the display title and the verbatim goal together', () => {
+		// Explicit titles win; the goal still rides through byte-identical.
+		expect(resolveTaskTitleAndGoal({ title: '# Explicit', goal: '# Goal\n\nbody' })).toEqual({
+			title: 'Explicit',
+			goal: '# Goal\n\nbody',
+		});
+		// No explicit title: the goal's first line becomes the title.
+		expect(resolveTaskTitleAndGoal({ goal: '# Fix it\n\nbody text' })).toEqual({
+			title: 'Fix it',
+			goal: '# Fix it\n\nbody text',
+		});
+		// Title-only tasks store the title as the goal (legacy behavior).
+		expect(resolveTaskTitleAndGoal({ title: 'Only a title' })).toEqual({
+			title: 'Only a title',
+			goal: 'Only a title',
+		});
+		// Blank-first-line goals keep their bytes; the title falls back.
+		expect(resolveTaskTitleAndGoal({ goal: '\nbody without a title line' })).toEqual({
+			title: 'Untitled task',
+			goal: '\nbody without a title line',
+		});
+		// Nothing to work with fails safe to "Untitled task", never blanks.
+		expect(resolveTaskTitleAndGoal({})).toEqual({ title: 'Untitled task', goal: 'Untitled task' });
+		expect(resolveTaskTitleAndGoal()).toEqual({ title: 'Untitled task', goal: 'Untitled task' });
+		expect(resolveTaskTitleAndGoal({ title: '   ' })).toEqual({ title: 'Untitled task', goal: 'Untitled task' });
 	});
 
 	it('formats branch names correctly with prefix', () => {

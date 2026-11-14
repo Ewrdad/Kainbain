@@ -4,7 +4,7 @@
  *   get, edit, and delete discrete work items.
  ***/
 
-import { _sanitizeTaskTitle, deriveTaskTitleFromGoal } from "./taskIdentity.js";
+import { _sanitizeTaskTitle, resolveTaskTitleAndGoal } from "./taskIdentity.js";
 import { resolveTaskWorkingLocation } from "./taskWorkingLocation.js";
 import { toTaskDurationSummary } from "../taskDurationSummary.js";
 import { resolveStage } from "../flow/index.js";
@@ -131,8 +131,14 @@ export async function registerTaskWorkRoutes(app, deps) {
 		if (!id) return null;
 		const project = projectStore.getProject(id);
 		const stage = resolveStage(project, stageId);
+		// The goal rides through byte-identical on purpose: the create-task
+		// skill verifies the stored goal against its draft file byte-for-byte,
+		// so create never trims or re-wraps (PATCH trims edge whitespace by
+		// its own rule below — compare against the trimmed draft after a
+		// patch, as the skill text already notes).
+		const { title: cleanTitle } = resolveTaskTitleAndGoal({ title, goal: taskGoal });
 		return {
-			title: _sanitizeTaskTitle(title || deriveTaskTitleFromGoal({ goal: taskGoal })),
+			title: cleanTitle,
 			goal: taskGoal,
 			id,
 			stage,

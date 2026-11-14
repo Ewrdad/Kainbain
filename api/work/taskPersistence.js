@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { backfillReliabilitySamples } from '../watch/reliabilityShared.js';
 import { _formatFrontmatterValue, _parseFrontmatter } from "./taskFiles.js";
 import { normalizeSurveyFileName } from "./taskSurvey.js";
-import { _sanitizeTaskTitle, deriveTaskTitleFromGoal } from "./taskIdentity.js";
+import { resolveTaskTitleAndGoal } from "./taskIdentity.js";
 import { computeStageDelta, getTaskDiffStat, getCommitRangeDiffStat } from "./taskDiffStat.js";
 import { _atomicWriteFileSync } from "../house/index.js";
 import { parseStoredRecords } from "./taskFiles.js";
@@ -778,8 +778,7 @@ export function parseTaskMarkdown(taskStore, content, taskId, projectId) {
 		logEntries = parseLegacyProcessLogText(processLogs);
 	}
 
-	const title = _sanitizeTaskTitle(data.title || deriveTaskTitleFromGoal({ goal }));
-	const taskGoal = goal || title || "Untitled task";
+	const { title, goal: taskGoal } = resolveTaskTitleAndGoal({ title: data.title, goal });
 
 	let blockedBy = [];
 	if (data.blockedBy) {
