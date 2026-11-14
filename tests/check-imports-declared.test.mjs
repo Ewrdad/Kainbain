@@ -256,6 +256,7 @@ describe("extractImportSpecifiers edge forms", () => {
     const source = [
       'const chunked = import(/* webpackChunkName: "lazy" */ "comment-between-pkg");',
       'import split from /* inline */ "comment-from-pkg";',
+      'const beforeParen = import /* chunk */ ("comment-before-paren-pkg");',
       "const lazy = await import(",
       '  "multiline-dynamic-pkg",',
       ");",
@@ -263,6 +264,7 @@ describe("extractImportSpecifiers edge forms", () => {
     assert.deepEqual(
       extractImportSpecifiers(source).sort(),
       [
+        "comment-before-paren-pkg",
         "comment-between-pkg",
         "comment-from-pkg",
         "multiline-dynamic-pkg",

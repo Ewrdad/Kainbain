@@ -12,6 +12,19 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // both installers lay a versioned install root down from their source
 // tree and write wrapper-based units. Everything runs under a fake $HOME
 // with a stubbed systemctl, so no real unit is ever touched.
+const childEnv = (home, extra = {}) => {
+	// The installers honor KAINBAIN_RUNNER_INSTALL_ROOT as an operational
+	// override of the $HOME-derived default, and the CI host itself runs
+	// with that variable set (its own live install root). A child that
+	// inherits it would report and write outside the fake $HOME: the
+	// dry-run assertion would see the host path, real runs would lay the
+	// versioned tree into the live host root, and the fake-home readlink
+	// would fail with ENOENT. Strip it so every assertion observes the
+	// $HOME-derived layout the test actually built.
+	const env = { ...process.env, HOME: home, ...extra };
+	delete env.KAINBAIN_RUNNER_INSTALL_ROOT;
+	return env;
+};
 const fakeTree = (treeRoot) => {
 	fs.mkdirSync(path.join(treeRoot, "runner", "bin"), { recursive: true });
 	fs.mkdirSync(path.join(treeRoot, "api"), { recursive: true });
@@ -35,7 +48,7 @@ describe("install-local-runner.sh wrapper installs", () => {
 		const home = fs.mkdtempSync(path.join(os.tmpdir(), "kb-install-home-"));
 		try {
 			const got = spawnSync("bash", [path.join(ROOT, "scripts", "install-local-runner.sh"), "--id", "local-x", "--manual", "--harness", "mock", "--dry-run"], {
-				env: { ...process.env, HOME: home },
+				env: childEnv(home),
 				encoding: "utf8",
 			});
 			assert.equal(got.status, 0, got.stderr);
@@ -43,6 +56,29 @@ describe("install-local-runner.sh wrapper installs", () => {
 			assert.deepEqual(fs.readdirSync(home), [], "dry-run writes nothing under HOME");
 		} finally {
 			fs.rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("ignores a host KAINBAIN_RUNNER_INSTALL_ROOT so CI never installs outside the fake HOME", () => {
+		// The CI host itself runs with KAINBAIN_RUNNER_INSTALL_ROOT set to
+		// its own live install root; an inheriting child would report that
+		// host path and lay the versioned tree into it instead of the fake
+		// HOME (dry-run mismatch plus ENOENT on <fakehome>/current).
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "kb-install-home-"));
+		const decoy = fs.mkdtempSync(path.join(os.tmpdir(), "kb-install-decoy-"));
+		try {
+			const got = spawnSync("bash", [path.join(ROOT, "scripts", "install-local-runner.sh"), "--id", "local-x", "--manual", "--harness", "mock", "--dry-run"], {
+				env: childEnv(home, { KAINBAIN_RUNNER_INSTALL_ROOT: path.join(decoy, "runner-install", "local-alpha") }),
+				encoding: "utf8",
+			});
+			assert.equal(got.status, 0, got.stderr);
+			assert.match(got.stdout, new RegExp(`INSTALL_ROOT=${home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/\\.kainbain/runner-install`));
+			assert.ok(!got.stdout.includes(decoy), "dry-run must not mention the host override");
+			assert.deepEqual(fs.readdirSync(home), [], "dry-run writes nothing under HOME");
+			assert.deepEqual(fs.readdirSync(decoy), [], "dry-run writes nothing under the host override");
+		} finally {
+			fs.rmSync(home, { recursive: true, force: true });
+			fs.rmSync(decoy, { recursive: true, force: true });
 		}
 	});
 
@@ -54,7 +90,7 @@ describe("install-local-runner.sh wrapper installs", () => {
 			const got = spawnSync(
 				"bash",
 				[path.join(ROOT, "scripts", "install-local-runner.sh"), "--id", "local-x", "--manual", "--harness", "mock", "--backend", "http://127.0.0.1:1"],
-				{ env: { ...process.env, HOME: home, PATH: `${bin}${path.delimiter}${process.env.PATH}` }, encoding: "utf8" },
+				{ env: childEnv(home, { PATH: `${bin}${path.delimiter}${process.env.PATH}` }), encoding: "utf8" },
 			);
 			assert.equal(got.status, 0, got.stdout + got.stderr);
 			const root = path.join(home, ".kainbain", "runner-install");
@@ -85,7 +121,7 @@ describe("install-local-runner.sh wrapper installs", () => {
 			const got = spawnSync(
 				"bash",
 				[path.join(ROOT, "scripts", "install-local-runner.sh"), "--id", "local-x", "--manual", "--harness", "mock", "--ensure"],
-				{ env: { ...process.env, HOME: home, PATH: `${bin}${path.delimiter}${process.env.PATH}` }, encoding: "utf8" },
+				{ env: childEnv(home, { PATH: `${bin}${path.delimiter}${process.env.PATH}` }), encoding: "utf8" },
 			);
 			assert.equal(got.status, 0, got.stdout + got.stderr);
 			assert.equal(fs.readFileSync(unitFile, "utf8"), "[Service]\nExecStart=/usr/bin/node main.js\n");
@@ -116,7 +152,7 @@ describe("startRunner.sh wrapper installs", () => {
 		try {
 			const got = spawnSync("bash", ["./startRunner.sh", "--id", "remote-x", "--manual", "--harness", "mock", "--backend", "http://127.0.0.1:1"], {
 				cwd: prod,
-				env: { ...process.env, HOME: home, PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+				env: childEnv(home, { PATH: `${bin}${path.delimiter}${process.env.PATH}` }),
 				encoding: "utf8",
 			});
 			assert.equal(got.status, 0, got.stdout + got.stderr);
@@ -150,7 +186,7 @@ describe("startRunner.sh wrapper installs", () => {
 			);
 			const got = spawnSync("bash", ["./startRunner.sh", "--ensure"], {
 				cwd: prod,
-				env: { ...process.env, HOME: home, PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+				env: childEnv(home, { PATH: `${bin}${path.delimiter}${process.env.PATH}` }),
 				encoding: "utf8",
 			});
 			assert.equal(got.status, 0, got.stdout + got.stderr);

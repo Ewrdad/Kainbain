@@ -29,7 +29,9 @@
  *
  *   Known limitations (still covered by the slow depcheck/build): regex
  *   literals containing comment markers or quote characters can mask nearby
- *   code, template-literal dynamic imports with interpolation are skipped,
+ *   code, an unterminated block comment masks the rest of its file (such a
+ *   file is a syntax error and fails the build anyway), template-literal
+ *   dynamic imports with interpolation are skipped,
  *   bare words inside JSX text are read as code (quote import examples in
  *   JSX strings instead), and `vi.mock("x")` / `jest.mock("x")` calls are not
  *   scanned (an undeclared mock target fails its own suite loudly instead).
