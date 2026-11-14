@@ -25,6 +25,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { config } from "../config.js";
+import { throwIfLiveAccessibilityFeedbackPathUnderTest } from "../flow/resolveStatePath.js";
 import {
 	isNeedGroupId,
 	parseResultsArtifact,
@@ -71,15 +72,35 @@ export const FEEDBACK_PAGE_URL_MAX_CHARS = 2048;
 /***
  * MARK: resolveFeedbackFile
  * @description Resolves the JSONL inbox path: the configured path when set,
- *   else `~/.kainbain/accessibility-feedback.jsonl`.
+ *   else `~/.kainbain/accessibility-feedback.jsonl` (the
+ *   `KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE` schema key, empty by default).
+ *
+ *   Test-pollution guard (2026-11 incident, residual D9 of 99ccc12f,
+ *   task b3dec9b0): while `VITEST` is set, resolving the LIVE inbox
+ *   THROWS (via `throwIfLiveAccessibilityFeedbackPathUnderTest`), on EVERY
+ *   branch — including an explicit literal live path — so a suite that
+ *   forgets its temp pin fails loudly instead of appending test reports
+ *   to the real user inbox. Production (`VITEST` unset) resolves
+ *   byte-identically to before.
  * @example resolveFeedbackFile('/tmp/inbox.jsonl') => '/tmp/inbox.jsonl'
  * @example resolveFeedbackFile('') => os.homedir() + '/.kainbain/accessibility-feedback.jsonl'
  ***/
 export const resolveFeedbackFile = (configuredPath) => {
+	let resolved;
 	if (typeof configuredPath === "string" && configuredPath.trim() !== "") {
-		return configuredPath;
+		resolved = configuredPath;
+	} else {
+		resolved = path.join(
+			os.homedir(),
+			".kainbain",
+			"accessibility-feedback.jsonl",
+		);
 	}
-	return path.join(os.homedir(), ".kainbain", "accessibility-feedback.jsonl");
+	throwIfLiveAccessibilityFeedbackPathUnderTest({
+		candidatePath: resolved,
+		callerName: "resolveFeedbackFile",
+	});
+	return resolved;
 };
 
 /***

@@ -266,12 +266,40 @@ describe("POST /accessibility/feedback", () => {
 });
 
 describe("accessibility route helpers", () => {
-	it("resolves the inbox path from config or the home default", () => {
-		expect(resolveFeedbackFile("/tmp/inbox.jsonl")).toBe("/tmp/inbox.jsonl");
-		expect(resolveFeedbackFile("")).toBe(
-			path.join(os.homedir(), ".kainbain", "accessibility-feedback.jsonl"),
+	it("resolves the inbox path from explicit/configured values and refuses the live inbox under test", () => {
+		// 2026-11 test-pollution guard (task b3dec9b0, residual D9 of
+		// 99ccc12f): while VITEST is set, resolving the LIVE
+		// ~/.kainbain/accessibility-feedback.jsonl inbox THROWS instead of
+		// silently reading/writing real user data. Explicit and temp paths
+		// never throw.
+		const liveInbox = path.join(
+			os.homedir(),
+			".kainbain",
+			"accessibility-feedback.jsonl",
 		);
-		expect(resolveFeedbackFile(null)).toContain("accessibility-feedback.jsonl");
+		// Explicit wins, no throw.
+		expect(resolveFeedbackFile("/tmp/inbox.jsonl")).toBe("/tmp/inbox.jsonl");
+		// Temp/configured path (e.g. the testSetup.isolation.js pin) never throws.
+		const tempInbox = path.join(tmpDir, "inbox.jsonl");
+		expect(resolveFeedbackFile(tempInbox)).toBe(tempInbox);
+		// Fallback under test throws with a message naming the live path
+		// and the KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE fix.
+		expect(() => resolveFeedbackFile("")).toThrow(/accessibility-feedback\.jsonl/);
+		expect(() => resolveFeedbackFile("")).toThrow(/KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE/);
+		expect(() => resolveFeedbackFile(null)).toThrow(/accessibility-feedback\.jsonl/);
+		expect(() => resolveFeedbackFile("   ")).toThrow(/accessibility-feedback\.jsonl/);
+		// Even an explicit literal live path throws under test.
+		expect(() => resolveFeedbackFile(liveInbox)).toThrow(/accessibility-feedback\.jsonl/);
+		// Production (VITEST unset) still resolves the live fallback
+		// byte-identically.
+		const savedVitest = process.env.VITEST;
+		delete process.env.VITEST;
+		try {
+			expect(resolveFeedbackFile("")).toBe(liveInbox);
+			expect(resolveFeedbackFile(null)).toBe(liveInbox);
+		} finally {
+			if (savedVitest !== undefined) process.env.VITEST = savedVitest;
+		}
 	});
 
 	it("prefers the artifact inbox, then config, then empty", () => {

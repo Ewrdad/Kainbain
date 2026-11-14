@@ -73,6 +73,88 @@ export function throwIfLiveEnginePathUnderTest({ candidatePath, callerName } = {
 }
 
 /***
+ * MARK: liveAccessibilityFeedbackFile
+ * @description The one canonical live accessibility-feedback inbox path
+ *   (`~/.kainbain/accessibility-feedback.jsonl`). Single definition so the
+ *   predicate, the guard, and the route resolver can never drift apart.
+ * @example liveAccessibilityFeedbackFile() => os.homedir() + '/.kainbain/accessibility-feedback.jsonl'
+ * @returns {string} Absolute live inbox path.
+ ***/
+export function liveAccessibilityFeedbackFile() {
+	return path.resolve(
+		path.join(os.homedir(), ".kainbain", "accessibility-feedback.jsonl"),
+	);
+}
+
+/***
+ * MARK: isLiveAccessibilityFeedbackPath
+ * @description Whether a path IS the live accessibility-feedback inbox
+ *   (`~/.kainbain/accessibility-feedback.jsonl`). Exact-file comparison
+ *   (not a dir-prefix like `isLiveEnginePath`): the inbox lives directly
+ *   under `~/.kainbain/`, outside `~/.kainbain/engine/`, so the engine
+ *   guard is a no-op for it (residual D9 of 99ccc12f, task b3dec9b0).
+ *
+ *   The comparison normalizes with `path.resolve` and trims surrounding
+ *   whitespace, so a padded path cannot slip past the guard. On Windows
+ *   the comparison is case-insensitive (the filesystem is). It
+ *   deliberately does NOT resolve symlinks (no `realpath`), mirroring
+ *   the `isLiveEnginePath` contract: callers pass already-absolute
+ *   literal-built paths, so a text comparison on the normalized path
+ *   is exact.
+ * @example isLiveAccessibilityFeedbackPath('/home/u/.kainbain/accessibility-feedback.jsonl') => true
+ * @example isLiveAccessibilityFeedbackPath('/tmp/kainbain-test-a11y-XXXX/accessibility-feedback.jsonl') => false
+ * @param {string} candidatePath - Path to test.
+ * @returns {boolean} True when the path is the live inbox file.
+ ***/
+export function isLiveAccessibilityFeedbackPath(candidatePath) {
+	if (typeof candidatePath !== "string" || !candidatePath.trim()) return false;
+	const live = liveAccessibilityFeedbackFile();
+	let resolved = path.resolve(candidatePath.trim());
+	let wanted = live;
+	if (process.platform === "win32") {
+		resolved = resolved.toLowerCase();
+		wanted = live.toLowerCase();
+	}
+	return resolved === wanted;
+}
+
+/***
+ * MARK: throwIfLiveAccessibilityFeedbackPathUnderTest
+ * @description Test-pollution guard for the accessibility-feedback inbox
+ *   (residual D9 of 99ccc12f, task b3dec9b0): while `VITEST` is set,
+ *   resolving the LIVE `~/.kainbain/accessibility-feedback.jsonl` inbox
+ *   THROWS, so a suite that forgets its `KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE`
+ *   temp override fails loudly in CI instead of silently appending test
+ *   reports to the real user inbox (survey q1: throw, not silent redirect).
+ *   A no-op when `VITEST` is unset (production resolves byte-identically)
+ *   or when the path is a temp/explicit inbox — including non-string
+ *   values, which carry no path to guard. Gate matches the engine guard
+ *   (`VITEST` only) so both guards sleep and fire together.
+ * @example throwIfLiveAccessibilityFeedbackPathUnderTest({ candidatePath: '/tmp/x.json', callerName: 'resolveFeedbackFile' }) => undefined
+ * @param {Object} args - Labelled inputs.
+ * @param {*} args.candidatePath - Resolved path to guard (anything; only the live inbox string throws).
+ * @param {string} [args.callerName] - Resolver name stamped into the error so the fix location is obvious.
+ * @returns {void}
+ ***/
+export function throwIfLiveAccessibilityFeedbackPathUnderTest({
+	candidatePath,
+	callerName,
+} = {}) {
+	if (!process.env.VITEST) return;
+	if (!isLiveAccessibilityFeedbackPath(candidatePath)) return;
+	const caller =
+		typeof callerName === "string" && callerName.trim()
+			? callerName.trim()
+			: "accessibility-feedback guard";
+	throw new Error(
+		`${caller} refused live accessibility-feedback path under test: ${candidatePath} ` +
+			`(VITEST is set). Pin the inbox at a temp path via its ` +
+			`KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE env var (see api/testSetup.isolation.js) ` +
+			`instead of reading or writing ~/.kainbain/accessibility-feedback.jsonl from tests.`,
+	);
+}
+
+/***
  * MARK: resolveStatePath
  * @description Resolves one durable state file path: an explicit string
  *   wins, then the schema-configured path (env), then the conventional
