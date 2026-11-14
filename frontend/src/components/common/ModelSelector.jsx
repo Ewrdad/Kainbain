@@ -11,7 +11,13 @@ import {
   resolveReasoningOptions,
   stripReasoningIfUnsupported,
 } from '../../services/api';
-import { fleetInfoForModel, fleetModelRowBadge, fleetHarnessBadgeNode, modelBadgeNode, notCurrentlyServedBadge } from '../../services/modelStatus';
+import {
+  fleetInfoForModel,
+  fleetModelRowBadge,
+  fleetHarnessBadgeNode,
+  modelBadgeNode,
+  notCurrentlyServedBadge,
+} from '../../services/modelStatus';
 import { withFleetModels, effectiveModelSelection } from '../../services/fleetModelOptions';
 import { ALIAS_HARNESS_ID } from '../../../../shared/modelAliases.js';
 
@@ -395,7 +401,6 @@ export function ModelSelector({
             className={className}
             options={harnessOptions}
           />
-
         </>
       )}
       {modelSelection === 'none' ? (
@@ -406,21 +411,28 @@ export function ModelSelector({
         <>
           {modelLabelNode}
           <p className="text-[10px] text-text-muted" data-testid="model-empty-note">
-            {selectedHarness?.id === ALIAS_HARNESS_ID ? (
-              <>No aliases yet — add them in Settings › Model Aliases.</>
-            ) : selectedHarness?.discoveryError?.message ? (
-              <>
-                {selectedHarness.discoveryError.message} {selectedHarness.discoveryError.hint}
-              </>
-            ) : selectedHarness?.hint ? (
-              <>{selectedHarness.hint}</>
-            ) : (
-              <>
-                No models discovered for{' '}
-                {selectedHarness?.label || selectedHarness?.id || 'this harness'} yet — check
-                harness availability.
-              </>
-            )}
+            {(() => {
+              if (selectedHarness?.id === ALIAS_HARNESS_ID) {
+                return <>No aliases yet — add them in Settings › Model Aliases.</>;
+              }
+              if (selectedHarness?.discoveryError?.message) {
+                return (
+                  <>
+                    {selectedHarness.discoveryError.message} {selectedHarness.discoveryError.hint}
+                  </>
+                );
+              }
+              if (selectedHarness?.hint) {
+                return <>{selectedHarness.hint}</>;
+              }
+              return (
+                <>
+                  No models discovered for{' '}
+                  {selectedHarness?.label || selectedHarness?.id || 'this harness'} yet — check
+                  harness availability.
+                </>
+              );
+            })()}
             {selectedHarness?.id !== ALIAS_HARNESS_ID && onRefresh && (
               <>
                 {' '}

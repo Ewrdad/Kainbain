@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../../services/api';
 import { useFleetModelCatalog } from '../../hooks/useFleetModelCatalog';
-import { fleetSnapshotBadgeNode } from '../../services/modelStatus';
+import { fleetCountBadgeNode } from '../../services/modelStatus';
 
 /***
  * MARK: formatFleetAge
@@ -41,7 +41,13 @@ const runnerRowsForEntry = (entry) => {
   const seen = new Set([...serving, ...declared, ...claimed, ...Object.keys(provenance)]);
   return [...seen].sort().map((id) => ({
     id,
-    role: serving.has(id) ? 'serving' : declared.has(id) ? 'declared' : claimed.has(id) ? 'claimed' : 'seen',
+    role: serving.has(id)
+      ? 'serving'
+      : declared.has(id)
+        ? 'declared'
+        : claimed.has(id)
+          ? 'claimed'
+          : 'seen',
     // eslint-disable-next-line security/detect-object-injection -- runner id key into our own catalogue payload
     provenance: provenance[id] ?? null,
   }));
@@ -217,9 +223,7 @@ export function FleetCatalogueSection({ isAdmin = true }) {
                   >
                     <td className="py-1.5 pr-3 font-mono text-on-surface break-all">
                       {id}
-                      {entry?.available === false && (
-                        <span className="block mt-0.5">{fleetSnapshotBadgeNode(entry)}</span>
-                      )}
+                      <span className="block mt-0.5">{fleetCountBadgeNode(entry)}</span>
                     </td>
                     <td className="py-1.5 pr-3 text-on-surface whitespace-nowrap">
                       {count} runner{count === 1 ? '' : 's'}

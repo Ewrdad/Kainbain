@@ -14,9 +14,15 @@ import {
   fleetSnapshotBadge,
   fleetSnapshotBadgeNode,
   fleetUnverifiedNote,
+  fleetUnverifiedBadge,
+  fleetUnverifiedBadgeNode,
   fleetModelRowBadge,
+  fleetModelRowBadgeNode,
+  fleetHarnessBadge,
   fleetHarnessBadgeNode,
   notCurrentlyServedBadge,
+  notCurrentlyServedBadgeNode,
+  notCurrentlyServedAnnotation,
 } from './modelStatus';
 
 /***
@@ -278,5 +284,58 @@ describe('notCurrentlyServedBadge', () => {
     const node = notCurrentlyServedBadge();
     expect(node.props.children).toBe('not currently served');
     expect(node.props['data-testid']).toBe('not-currently-served');
+  });
+});
+
+describe('fleetHarnessBadge', () => {
+  it('returns harness count labels', () => {
+    expect(fleetHarnessBadge({ id: 'muse', runnerCount: 1 })).toBe('1 runner');
+    expect(fleetHarnessBadge({ id: 'pi', runnerCount: 0 })).toBe('0 runners');
+    expect(fleetHarnessBadge(3)).toBe('3 runners');
+    expect(fleetHarnessBadge(null)).toBe('0 runners');
+    expect(fleetHarnessBadge(undefined)).toBe('0 runners');
+  });
+});
+
+describe('fleetUnverifiedBadge', () => {
+  it('returns unverified label or null', () => {
+    expect(fleetUnverifiedBadge({ verified: false, declaredBy: ['local-alpha'] })).toBe('unverified');
+    expect(fleetUnverifiedBadge({ verified: true, declaredBy: ['local-alpha'] })).toBeNull();
+    expect(fleetUnverifiedBadge({ runnerCount: 1 })).toBeNull();
+    expect(fleetUnverifiedBadge({ verified: false, declaredBy: [] })).toBeNull();
+    expect(fleetUnverifiedBadge(null)).toBeNull();
+  });
+});
+
+describe('fleetUnverifiedBadgeNode', () => {
+  it('renders unverified annotation node', () => {
+    const node = fleetUnverifiedBadgeNode({ verified: false, declaredBy: ['local-alpha'] });
+    expect(node.props.children).toBe('unverified');
+    expect(node.props['data-testid']).toBe('fleet-unverified-note');
+    expect(node.props.title).toContain('declared by local-alpha');
+  });
+});
+
+describe('fleetModelRowBadgeNode', () => {
+  it('combines count and unverified annotation', () => {
+    const node = fleetModelRowBadgeNode({ runnerCount: 2 });
+    expect(node.props.children[1]).toBe('2 runners');
+    
+    const unverified = fleetModelRowBadgeNode({ runnerCount: 0, verified: false, declaredBy: ['x'] });
+    expect(unverified.props.children[1]).toBe('0 runners');
+  });
+});
+
+describe('notCurrentlyServedAnnotation', () => {
+  it('is the constant React element', () => {
+    expect(notCurrentlyServedAnnotation.props.children).toBe('not currently served');
+    expect(notCurrentlyServedAnnotation.props['data-testid']).toBe('not-currently-served');
+  });
+});
+
+describe('notCurrentlyServedBadgeNode', () => {
+  it('wraps the constant annotation', () => {
+    const node = notCurrentlyServedBadgeNode();
+    expect(node).toBe(notCurrentlyServedAnnotation);
   });
 });

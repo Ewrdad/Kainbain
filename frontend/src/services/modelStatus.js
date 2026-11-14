@@ -69,9 +69,7 @@ export function modelStatusBadge(model) {
  ***/
 export function fleetCountBadgeNode(info) {
   const count =
-    info && typeof info.runnerCount === 'number' && info.runnerCount > 0
-      ? info.runnerCount
-      : 0;
+    info && typeof info.runnerCount === 'number' && info.runnerCount > 0 ? info.runnerCount : 0;
   const label = count === 0 ? '0 runners' : `${count} runner${count === 1 ? '' : 's'}`;
   const dotClass = count === 0 ? 'bg-slate-400' : 'bg-emerald-400';
   return React.createElement(
@@ -107,7 +105,12 @@ export function fleetInfoForModel(counts, model, optionValue) {
   if (typeof optionValue === 'string' && optionValue) candidates.push(optionValue);
   if (model && typeof model === 'object') {
     if (typeof model.key === 'string' && model.key) candidates.push(model.key);
-    if (typeof model.provider === 'string' && typeof model.id === 'string' && model.provider && model.id) {
+    if (
+      typeof model.provider === 'string' &&
+      typeof model.id === 'string' &&
+      model.provider &&
+      model.id
+    ) {
       candidates.push(`${model.provider}::${model.id}`);
     }
     if (typeof model.id === 'string' && model.id) candidates.push(model.id);
@@ -241,6 +244,43 @@ export function fleetSnapshotBadgeNode(model) {
 }
 
 /***
+ * MARK: fleetUnverifiedBadge
+ * @description Subtle "unverified" badge label for fleet model entries where
+ *   `verified === false` and at least one Runner declared the id.
+ * @example fleetUnverifiedBadge({ declaredBy: ['local-alpha'] }) => 'unverified'
+ * @param {Object|null} info - Fleet entry.
+ * @returns {string|null} The badge label, or null.
+ ***/
+export const fleetUnverifiedBadge = (info) => {
+  if (!info || typeof info !== 'object') return null;
+  if (info.verified !== false) return null;
+  if (!Array.isArray(info.declaredBy) || info.declaredBy.length === 0) return null;
+  return 'unverified';
+};
+
+/***
+ * MARK: fleetUnverifiedBadgeNode
+ * @description Subtle "unverified" annotation React node for fleet model
+ *   entries where `verified === false` and at least one Runner declared the id.
+ * @example fleetUnverifiedBadgeNode({ declaredBy: ['local-alpha'] }) => <span>unverified</span>
+ * @param {Object|null} info - Fleet entry.
+ * @returns {React.ReactNode|null} The badge node.
+ ***/
+export const fleetUnverifiedBadgeNode = (info) => {
+  const label = fleetUnverifiedBadge(info);
+  if (!label) return null;
+  return React.createElement(
+    'span',
+    {
+      className: 'text-[10px] italic text-amber-300',
+      title: `declared by ${info.declaredBy.join(', ')}, not found by its discovery`,
+      'data-testid': 'fleet-unverified-note',
+    },
+    label,
+  );
+};
+
+/***
  * MARK: fleetUnverifiedNote
  * @description Subtle "unverified" annotation for fleet model entries where
  *   `verified === false` and at least one Runner declared the id
@@ -269,6 +309,21 @@ export function fleetUnverifiedNote(info) {
 }
 
 /***
+ * MARK: fleetModelRowBadgeNode
+ * @description React node wrapper for the fleet model row badge that
+ *   combines the count badge with the unverified annotation when present.
+ * @example fleetModelRowBadgeNode({ runnerCount: 2 }) => <span>2 runners<span>unverified</span></span>
+ * @param {Object|null} info - Fleet entry.
+ * @returns {React.ReactNode} The badge node.
+ ***/
+export const fleetModelRowBadgeNode = (info) => {
+  const countNode = fleetCountBadgeNode(info);
+  const note = fleetUnverifiedBadgeNode(info);
+  if (!note) return countNode;
+  return React.createElement(React.Fragment, null, countNode, note);
+};
+
+/***
  * MARK: fleetModelRowBadge
  * @description The one composition pickers call per row: ALWAYS the count
  *   badge ("N runners" / "0 runners"), plus the subtle "unverified"
@@ -278,11 +333,24 @@ export function fleetUnverifiedNote(info) {
  * @returns {React.ReactNode} The badge node.
  ***/
 export function fleetModelRowBadge(info) {
-  const countNode = fleetCountBadgeNode(info);
-  const note = fleetUnverifiedNote(info);
-  if (!note) return countNode;
-  return React.createElement(React.Fragment, null, countNode, note);
+  return fleetModelRowBadgeNode(info);
 }
+
+/***
+ * MARK: notCurrentlyServedAnnotation
+ * @description Subtle "not currently served" annotation text for stored
+ *   references to absent / 0-runner ids. Accepts no arguments.
+ * @example notCurrentlyServedAnnotation() => 'not currently served'
+ * @returns {React.ReactNode} The annotation node.
+ ***/
+export const notCurrentlyServedAnnotation = React.createElement(
+  'span',
+  {
+    className: 'text-[10px] italic text-slate-400',
+    'data-testid': 'not-currently-served',
+  },
+  'not currently served',
+);
 
 /***
  * MARK: notCurrentlyServedBadge
@@ -292,15 +360,34 @@ export function fleetModelRowBadge(info) {
  * @returns {React.ReactNode} The marker node.
  ***/
 export function notCurrentlyServedBadge() {
-  return React.createElement(
-    'span',
-    {
-      className: 'text-[10px] italic text-slate-400',
-      'data-testid': 'not-currently-served',
-    },
-    'not currently served',
-  );
+  return notCurrentlyServedAnnotation;
 }
+
+/***
+ * MARK: notCurrentlyServedBadgeNode
+ * @description React node wrapper for the "not currently served" marker.
+ * @example notCurrentlyServedBadgeNode() => <span>not currently served</span>
+ * @returns {React.ReactNode} The marker node.
+ ***/
+export const notCurrentlyServedBadgeNode = notCurrentlyServedAnnotation;
+
+/***
+ * MARK: fleetHarnessBadge
+ * @description Harness dropdown badge label for fleet catalogue entries.
+ * @example fleetHarnessBadge({ runnerCount: 1 }) => '1 runner'
+ * @param {Object|number|null} entry - Fleet harness entry or count.
+ * @returns {string} The badge label.
+ ***/
+export const fleetHarnessBadge = (entry) => {
+  if (entry == null) return '0 runners';
+  const count =
+    typeof entry === 'number'
+      ? entry
+      : typeof entry?.runnerCount === 'number'
+        ? entry.runnerCount
+        : 0;
+  return count === 0 ? '0 runners' : `${count} runner${count === 1 ? '' : 's'}`;
+};
 
 /***
  * MARK: fleetHarnessBadgeNode
