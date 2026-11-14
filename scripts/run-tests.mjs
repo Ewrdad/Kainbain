@@ -581,10 +581,20 @@ async function main() {
 	// Fail-first manifest guardrail (frontend-only): an undeclared import
 	// used to sail through every cheap stage and then fail the expensive
 	// ones (Frontend Build, depcheck, canary, publish). This preflight runs
-	// in milliseconds, before the overlap window starts anything.
-	const frontendImportsResult = checkFrontendImportsDeclared({
-		packageDirectoryPath: path.join(REPO_ROOT, "frontend"),
-	});
+	// in milliseconds, before the overlap window starts anything. The check
+	// throws (instead of passing) when the manifest or a source file cannot
+	// be read, or nothing is found to scan — reported here as a one-line
+	// gate failure, not a stack trace.
+	let frontendImportsResult;
+	try {
+		frontendImportsResult = checkFrontendImportsDeclared({
+			packageDirectoryPath: path.join(REPO_ROOT, "frontend"),
+		});
+	} catch (error) {
+		console.error(`❌ Frontend imports check failed: ${error.message}`);
+		process.exitCode = 1;
+		return;
+	}
 	if (!frontendImportsResult.isClean) {
 		console.error(
 			formatUndeclaredReport({
