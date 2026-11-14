@@ -1,0 +1,25 @@
+<!-- KAINBAIN AUTO-GENERATED REPORT -->
+# Stage Report: In Progress
+
+**Task:** Roll out catalogue fix to live runners and purge test entries
+**Stage Type:** `agent`
+**Model:** `worker`
+**Duration:** 302.092s
+**Status:** FAILED
+
+### Summary of Changes
+Execution failed: [Agent Review Rejection] WP-F is not fully achieved: §6.1 runner-health still fails for two live runners (`local-alpha` still boots the checkout daemon with pinned model env and no build identity; `server2-alpha` pi leg remains `ERR_MODULE_NOT_FOUND` with no build.sha), so §6 is not all-pass and WP-G is not ready. WP-C purge is complete (`muse::meta::test-fleet-model` already absent; 123 models / 2 quarantined, 0 test-fleet entries) and §6.2/§6.5/WP-E guard and all named suites pass; explicit Phase 4 permission is recorded in permission-wpf-phase4-20261114.md. The remaining blockers are operator-only by the recorded survey safety contract (q1/q23: agent never restarts the runner it runs on; outer host bundle reinstall+restart): (1) restart `local-alpha` in a safe window now that its service unit + env file + systemd user env are pin-clean (unit already points at runner-install/local-alpha); (2) on server2, reinstall from dist/kainbain-runner-fbcf8442.tar.gz (staged at ~/kainbain-runner-fbcf8442.tar.gz, sha256 ac919...), pi dep staged under api/node_modules/@earendil-works; restart server2-alpha and confirm build.sha= fbcf8442, discoveryStatus.pi ok:true, codeChangedSinceBoot:false; (3) trigger requestModelRediscovery from Settings and return per-runner receipts; (4) run §6.3 live UI look and live §6.4 regression on the freshly scanned catalogue, then update wp-g-readiness to READY. No product code changed (runbook task); documentation updated.
+
+### Execution Output
+```
+KAINBAIN_VERDICT: FAIL
+KAINBAIN_REASON: WP-F is not fully achieved: §6.1 runner health still fails for two live runners (local-alpha still boots the checkout daemon with a 17-model pin and no build identity/discoveryStatus; server2-alpha pi leg remains ERR_MODULE_NOT_FOUND with no build.sha), so §6 is not all-pass and WP-G stays NOT READY. §6.2 purge is verified (muse::meta::test-fleet-model absent, 0 test-fleet entries; 123 models/2 quarantined), §6.5 + WP-E guard + all named suites pass, Phase 4 permission is recorded in permission-wpf-phase4-20261114.md. Remaining blockers are operator-only by the recorded survey safety contract (q1/q23): the runner executing this agent cannot be restarted from within it, and server2 needs an operator-run Bundle B reinstall + restart. No product code changed.
+KAINBAIN_FIX: Operator should (1) restart local-alpha in a safe window (unit + env + systemd user env are already pin-clean; unit points at runner-install/local-alpha); (2) on server2 reinstall from staged dist/kainbain-runner-fbcf8442.tar.gz (sha256 ac919e2ad17bf1674ed351e148fa65445db868d93b8c9b7f44a94cfd43ade402) over the install root and restart server2-alpha; (3) trigger requestModelRediscovery from Settings; (4) return per-runner receipts (modelSource, discoveryStatus, versions.build.sha=fbcf8442, codeChangedSinceBoot=false) plus live §6.3/§6.4 checks and the WP-G readiness update; then the next WP-F run can re-verify and PASS.
+```
+
+### Modified Files
+- (No files modified / inspection only)
+
+### Verification Status
+- Stage execution failed with error: [Agent Review Rejection] WP-F is not fully achieved: §6.1 runner-health still fails for two live runners (`local-alpha` still boots the checkout daemon with pinned model env and no build identity; `server2-alpha` pi leg remains `ERR_MODULE_NOT_FOUND` with no build.sha), so §6 is not all-pass and WP-G is not ready. WP-C purge is complete (`muse::meta::test-fleet-model` already absent; 123 models / 2 quarantined, 0 test-fleet entries) and §6.2/§6.5/WP-E guard and all named suites pass; explicit Phase 4 permission is recorded in permission-wpf-phase4-20261114.md. The remaining blockers are operator-only by the recorded survey safety contract (q1/q23: agent never restarts the runner it runs on; outer host bundle reinstall+restart): (1) restart `local-alpha` in a safe window now that its service unit + env file + systemd user env are pin-clean (unit already points at runner-install/local-alpha); (2) on server2, reinstall from dist/kainbain-runner-fbcf8442.tar.gz (staged at ~/kainbain-runner-fbcf8442.tar.gz, sha256 ac919...), pi dep staged under api/node_modules/@earendil-works; restart server2-alpha and confirm build.sha= fbcf8442, discoveryStatus.pi ok:true, codeChangedSinceBoot:false; (3) trigger requestModelRediscovery from Settings and return per-runner receipts; (4) run §6.3 live UI look and live §6.4 regression on the freshly scanned catalogue, then update wp-g-readiness to READY. No product code changed (runbook task); documentation updated.
+- Triggered fallback routing.
