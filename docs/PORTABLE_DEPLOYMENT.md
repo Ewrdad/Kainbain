@@ -468,6 +468,17 @@ blast radius and couple updates to backend uptime).
   itself back to `previous` after 3 failed boots, and raising
   `KAINBAIN_RUNNER_MIN_VERSION` above the bad version stops it dispatching
   (409) while the patch is cut. Re-tagging is never needed.
+- **Bump the version with every runner-code release.** The self-updater
+  compares versions, not bytes, so a release that changes `runner/**` or
+  `api/agent/harnesses/**` without increasing `runnerVersion` would ship
+  code no Runner is ever offered. The `version-bump-gate` job in
+  `.github/workflows/runner-release.yml` (via
+  `scripts/check-runner-version-bump.mjs`) fails such a release before any
+  archive is built. Fix: bump `runnerVersion` in `runner/version.json`
+  and re-tag (test/spec files, markdown docs, and the version file itself
+  never trigger the gate). The normal flow needs no manual tagging:
+  bump, merge, and `./publish.sh --runner` cuts `runner-v*` from the
+  bumped version.
 - **Air-gapped/offline hosts.** Point `KAINBAIN_RUNNER_UPDATE_URL` at a
   mirror serving `manifest.json` + `manifest.json.minisig` + the asset
   tarballs at one base URL (or a full `manifest.json` URL). The same

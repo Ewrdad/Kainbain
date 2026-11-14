@@ -24,7 +24,7 @@
       "dependsOn": "targetWorkflow"
     }
   },
-  "context": "You may create follow-on KainBain tasks for verified findings using the KainBain API. Follow the skill exactly: resolve ids, dedupe, cap at 10 tickets, and never target the currently executing stage.",
+  "context": "You may create follow-on KainBain tasks for verified findings using the KainBain API. Follow the skill exactly: resolve ids, dedupe, cap at 10 tickets, state blockers explicitly, open every goal with a title line, and never target the currently executing stage.",
   "defaults": {
     "mode": "direct"
   },

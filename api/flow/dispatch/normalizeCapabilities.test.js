@@ -149,4 +149,64 @@ describe("normalizeCapabilities", () => {
 		expect(dropped.errors).toEqual([]);
 		expect(dropped.modelProvenance).toBeUndefined();
 	});
+
+	test("preserves versions.build, bootedAtMs, and codeChangedSinceBoot", () => {
+		const out = normalizeCapabilities({
+			versions: {
+				protocol: "v1",
+				runner: "0.9.0",
+				api: "1.0.0",
+				build: { sha: "abc123", builtAt: "2026-11-01T00:00:00.000Z", dirty: false, source: "package" },
+				bootedAtMs: 1700000000000,
+				codeChangedSinceBoot: true,
+			},
+		});
+		expect(out.errors).toEqual([]);
+		expect(out.versions).toEqual({
+			protocol: "v1",
+			runner: "0.9.0",
+			api: "1.0.0",
+			build: { sha: "abc123", builtAt: "2026-11-01T00:00:00.000Z", dirty: false, source: "package" },
+			bootedAtMs: 1700000000000,
+			codeChangedSinceBoot: true,
+		});
+	});
+
+	test("leaves old-runners versions without build untouched (no build key, no error)", () => {
+		const out = normalizeCapabilities({ versions: { protocol: "v1", runner: "0.1.0" } });
+		expect(out.errors).toEqual([]);
+		expect(out.versions).toEqual({ protocol: "v1", runner: "0.1.0" });
+		expect("build" in out.versions).toBe(false);
+		expect(normalizeCapabilities({}).versions).toEqual({});
+	});
+
+	test("drops malformed advisory version values without failing the heartbeat", () => {
+		const out = normalizeCapabilities({
+			versions: {
+				protocol: "v1",
+				runner: "0.9.0",
+				build: "not-an-object",
+				bootedAtMs: "yesterday",
+				codeChangedSinceBoot: "yes",
+			},
+		});
+		expect(out.errors).toEqual([]);
+		expect(out.versions).toEqual({ protocol: "v1", runner: "0.9.0" });
+	});
+
+	test("degrades invalid build fields to null and caps long strings", () => {
+		const out = normalizeCapabilities({
+			versions: {
+				build: { sha: 42, builtAt: "x".repeat(200), dirty: "maybe", source: "tarball", extra: "dropped" },
+			},
+		});
+		expect(out.errors).toEqual([]);
+		expect(out.versions.build).toEqual({ sha: null, builtAt: "x".repeat(64), dirty: null, source: null });
+	});
+
+	test("passes unknown future versions keys through untouched", () => {
+		const out = normalizeCapabilities({ versions: { protocol: "v1", someFutureKey: { nested: [1] } } });
+		expect(out.errors).toEqual([]);
+		expect(out.versions).toEqual({ protocol: "v1", someFutureKey: { nested: [1] } });
+	});
 });

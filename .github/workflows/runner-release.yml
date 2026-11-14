@@ -15,7 +15,29 @@ permissions:
   contents: write
 
 jobs:
+  version-bump-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+      - name: Runner version bump gate
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [ -n "${INPUT_VERSION:-}" ]; then
+            TAG="runner-v${INPUT_VERSION#v}"
+          fi
+          VERSION="${TAG#runner-v}"
+          node scripts/check-runner-version-bump.mjs --head-version "$VERSION"
+
   build:
+    needs: version-bump-gate
     strategy:
       fail-fast: true
       matrix:
