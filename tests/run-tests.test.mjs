@@ -9,7 +9,7 @@ const { buildBranches, depcheckAvailable, ensureWorkspaceDeps, pruneStaleTestDir
 /***
  * MARK: run-tests tests
  * @description Hermetic tests for the gate's branch assembly and canary
- *   resolution (scripts/run-tests.mjs): the twelve canonical branches in
+ *   resolution (scripts/run-tests.mjs): the thirteen canonical branches in
  *   order with shell-free spawn shapes, the bash-less SKIP path for the
  *   bash-only security-scan branch, the docker-less SKIP path for the
  *   Container Tests branch, the depcheck-less SKIP path for the Dependency
@@ -31,13 +31,14 @@ const CANONICAL_NAMES = [
 	"Security Script Tests",
 	"Dependency Check",
 	"Dependency Audit Gate",
+	"Proof Hygiene",
 	"Harness Self-Tests",
 	"Container Tests",
 	"Canary Tests",
 ];
 
 describe("buildBranches", () => {
-	it("builds the twelve canonical branches in order when bash and docker exist", () => {
+	it("builds the thirteen canonical branches in order when bash and docker exist", () => {
 		const { branches, skipped } = buildBranches({ hasBash: true, hasDocker: true, hasDepcheck: true, nodeExec: "node", npmExec: "npm" });
 		assert.deepEqual(
 			branches.map((branch) => branch.name),
@@ -135,6 +136,18 @@ describe("buildBranches", () => {
 		assert.deepEqual(skipped, []);
 	});
 
+	it("runs the proof-hygiene gate against the real tree (not just its fixture tests)", () => {
+		// The Harness Self-Tests pin the checker's logic on fixtures; this
+		// branch is the actual enforcement — it scans the worktree, so a
+		// corrupt proof or a stray root scratch file fails the gate.
+		const { branches } = buildBranches({ hasBash: true, hasDocker: true, hasDepcheck: true, nodeExec: "node", npmExec: "npm" });
+		const proofHygiene = branches.find((branch) => branch.name === "Proof Hygiene");
+		assert.equal(proofHygiene.file, "node");
+		assert.deepEqual(proofHygiene.args, ["scripts/check-proof-and-hygiene.mjs"]);
+		assert.equal(proofHygiene.lowPriority, true);
+		assert.equal(proofHygiene.shell, undefined, "must not use a shell");
+	});
+
 	it("container tests run the docker suite through node --test", () => {
 		const { branches } = buildBranches({ hasBash: true, hasDocker: true, hasDepcheck: true, nodeExec: "node", npmExec: "npm" });
 		const containerTests = branches.find((branch) => branch.name === "Container Tests");
@@ -153,6 +166,8 @@ describe("buildBranches", () => {
 		assert.ok(selfTests.args.some((arg) => arg.endsWith("deploy-reexec.test.mjs")), "deploy re-exec contract must stay in the gate");
 		assert.ok(selfTests.args.some((arg) => arg.endsWith("check-one-function-per-file.test.mjs")), "WP-8 shape gate tests must stay in the gate");
 		assert.ok(selfTests.args.some((arg) => arg.endsWith("check-jsdoc-example.test.mjs")), "WP-8 @example gate tests must stay in the gate");
+		assert.ok(selfTests.args.some((arg) => arg.endsWith("check-proof-and-hygiene.test.mjs")), "proof/hygiene gate tests must stay in the gate");
+		assert.ok(selfTests.args.some((arg) => arg.endsWith("check-imports-declared.test.mjs")), "imports-declared guardrail tests must stay in the gate");
 		assert.ok(!selfTests.args.some((arg) => arg.endsWith(".sh")), "no shell suites");
 	});
 

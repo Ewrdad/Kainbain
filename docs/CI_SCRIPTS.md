@@ -34,6 +34,9 @@ component mapping), `scripts/check-component-compat.mjs` (API-range gate),
 - Gates run per changed component only (backend: api tests+lint; frontend:
   frontend tests+lint+build; runner: runner tests). `--all` without
   `--fast` also runs canary once. All gates pass before any push (atomic).
+  The frontend build starts with the `check:deps` imports-declared
+  guardrail, so an undeclared import fails in milliseconds before vite,
+  canary, or publish ever run.
 - `--fast` skips the unit gates. It never skips the compatibility check or
   the frontend build.
 - Needs `KAINBAIN_DOCKERHUB_NAMESPACE` for image components (exit 2 without

@@ -1,0 +1,4 @@
+{
+	"_comment": "Exact repo-relative paths exempt from the repo-root scratch rules in scripts/check-proof-and-hygiene.mjs. The current tree needs no exemptions (no legitimate root file matches a scratch pattern); add a path here only to keep a scratch-shaped file at the root permanently.",
+	"allowlist": []
+}

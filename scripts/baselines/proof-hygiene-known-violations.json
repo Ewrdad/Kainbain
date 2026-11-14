@@ -1,0 +1,71 @@
+{
+	"_comment": "Known pre-existing proof-hygiene violations, recorded 2026-11-14: text-mode-corrupted PNGs (magic efbfbd instead of 89504e47) committed by other tasks' stages. Each is also corrupt on origin/main, so there is no valid source to restore from; fixing them belongs to the owning tasks. An entry covers a violation only while its bytes still match the recording — changed bytes re-fail as new, healed files pass silently. Remove an entry once its file is genuinely repaired.",
+	"violations": [
+		{
+			"relPath": "docs/tasks/32714fcd-d3f9-402a-be8a-7f3a1050c79a/shot-checklist-360.png",
+			"expected": "89504e47",
+			"actual": "efbfbd504e470d0a",
+			"note": "pre-existing text-mode corruption, also corrupt on origin/main; owned by task 32714fcd"
+		},
+		{
+			"relPath": "docs/tasks/32714fcd-d3f9-402a-be8a-7f3a1050c79a/shot-checklist.png",
+			"expected": "89504e47",
+			"actual": "efbfbd504e470d0a",
+			"note": "pre-existing text-mode corruption, also corrupt on origin/main; owned by task 32714fcd"
+		},
+		{
+			"relPath": "docs/tasks/32714fcd-d3f9-402a-be8a-7f3a1050c79a/shot-create-dialog.png",
+			"expected": "89504e47",
+			"actual": "efbfbd504e470d0a",
+			"note": "pre-existing text-mode corruption, also corrupt on origin/main; owned by task 32714fcd"
+		},
+		{
+			"relPath": "docs/tasks/32714fcd-d3f9-402a-be8a-7f3a1050c79a/shot-empty-state.png",
+			"expected": "89504e47",
+			"actual": "efbfbd504e470d0a",
+			"note": "pre-existing text-mode corruption, also corrupt on origin/main; owned by task 32714fcd"
+		},
+		{
+			"relPath": "docs/tasks/b4b86592-4920-4c7e-86e3-63f004e603d9/review-runners-desktop.png",
+			"expected": "89504e47",
+			"actual": "efbfbd504e470d0a",
+			"note": "pre-existing text-mode corruption, also corrupt on origin/main; owned by task b4b86592"
+		},
+		{
+			"relPath": "docs/tasks/b4b86592-4920-4c7e-86e3-63f004e603d9/review-runners-detail-bottom.png",
+			"expected": "89504e47",
+			"actual": "efbfbd504e470d0a",
+			"note": "pre-existing text-mode corruption, also corrupt on origin/main; owned by task b4b86592"
+		},
+		{
+			"relPath": "docs/tasks/b4b86592-4920-4c7e-86e3-63f004e603d9/review-runners-mobile.png",
+			"expected": "89504e47",
+			"actual": "efbfbd504e470d0a",
+			"note": "pre-existing text-mode corruption, also corrupt on origin/main; owned by task b4b86592"
+		},
+		{
+			"relPath": "docs/tasks/f42d4ab0-15c8-4707-98da-75c26b505bcc/queue-bar.png",
+			"expected": "89504e47",
+			"actual": "efbfbd504e470d0a",
+			"note": "pre-existing text-mode corruption, also corrupt on origin/main; owned by task f42d4ab0"
+		},
+		{
+			"relPath": "docs/tasks/f42d4ab0-15c8-4707-98da-75c26b505bcc/queue-popup-empty.png",
+			"expected": "89504e47",
+			"actual": "efbfbd504e470d0a",
+			"note": "pre-existing text-mode corruption, also corrupt on origin/main; owned by task f42d4ab0"
+		},
+		{
+			"relPath": "docs/tasks/f42d4ab0-15c8-4707-98da-75c26b505bcc/queue-popup-open.png",
+			"expected": "89504e47",
+			"actual": "efbfbd504e470d0a",
+			"note": "pre-existing text-mode corruption, also corrupt on origin/main; owned by task f42d4ab0"
+		},
+		{
+			"relPath": "docs/tasks/f42d4ab0-15c8-4707-98da-75c26b505bcc/queue-popup-reopened.png",
+			"expected": "89504e47",
+			"actual": "efbfbd504e470d0a",
+			"note": "pre-existing text-mode corruption, also corrupt on origin/main; owned by task f42d4ab0"
+		}
+	]
+}

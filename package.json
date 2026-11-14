@@ -9,6 +9,7 @@
   "scripts": {
     "docs:check": "npm run test --prefix api -- siteDocs docs.apiCoverage agentGuide docs.envCoverage && node scripts/check-doc-links.mjs && node scripts/check-jsdoc-example.mjs",
     "check:one-function": "node scripts/check-one-function-per-file.mjs",
+    "check:proof-hygiene": "node scripts/check-proof-and-hygiene.mjs",
     "check:jsdoc-example": "node scripts/check-jsdoc-example.mjs",
     "test": "node scripts/run-tests.mjs",
     "audit:deprecations": "node scripts/check-dep-audit.mjs --report",
@@ -36,7 +37,8 @@
     "deploy:fast": "./deploy.sh --prod --fast",
     "deploy:rollback": "./deploy.sh --rollback",
     "sec": "./Security_scans.sh",
-    "check:duplicate-settings": "node scripts/check-duplicate-settings.mjs"
+    "check:duplicate-settings": "node scripts/check-duplicate-settings.mjs",
+    "check:deps:frontend": "npm run check:deps --prefix frontend"
   },
   "dependencies": {
     "@playwright/test": "^1.62.1"

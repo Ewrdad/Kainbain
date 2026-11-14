@@ -7,6 +7,14 @@
  * Usage:
  *   node scripts/capture-screenshot.mjs --url "http://localhost:3100/#/orchestrator" --out "./docs/tasks/task-1/screenshot.png"
  *   node scripts/capture-screenshot.mjs --path "#/tasks/9940bbbc" --out "./docs/tasks/9940bbbc/stage-review.png"
+ *
+ * Proof checklist (canonical rules: docs/agent-docs/GitGuidance.md):
+ *   1. This script writes bytes directly — never open the PNG in an editor
+ *      or rewrite it with a text-oriented tool (UTF-8 round-trips corrupt
+ *      it: magic `ef bf bd` instead of `89 50 4e 47`).
+ *   2. Before claiming validity: `xxd -l 8 <out>` (expect `8950 4e47…`)
+ *      and `file <out>` (expect `PNG image data`, not `data`).
+ *   3. Gate: `npm run check:proof-hygiene` re-verifies every proof image.
  ***/
 
 import path from "node:path";

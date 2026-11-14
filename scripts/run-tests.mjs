@@ -3,8 +3,9 @@
  * MARK: run-tests.mjs
  * @description Cross-platform full-project verification gate: the same seven
  *   checks the old `run-tests.sh` ran plus the Container Tests branch, the
- *   Frontend Build branch (exercises the deprecation gate), and the
- *   Dependency Audit Gate, in a single overlap window (the two unit suites
+ *   Frontend Build branch (exercises the deprecation gate), the Dependency
+ *   Audit Gate, and the Proof Hygiene branch, in a single overlap window
+ *   (the two unit suites
  *   alone take ~2x35s sequentially, so overlapping keeps the wall near one
  *   suite), with identical `Running <name>... PASS/FAIL (<s>s)` lines and exit semantics —
  *   but driven by Node (`node:child_process`, no shell), so it runs on
@@ -37,8 +38,8 @@
  *   never blanks the output (see scripts/lib/run-parallel.mjs).
  *   `run-tests.sh` is a thin shim over this file so `deploy.sh --prod` and
  *   older docs keep working.
- * @example `npm test` => twelve PASS lines (eleven fast branches + Canary Tests), exit 0
- * @example `npm test -- --no-canary` => eleven PASS lines, exit 0
+ * @example `npm test` => thirteen PASS lines (twelve fast branches + Canary Tests), exit 0
+ * @example `npm test -- --no-canary` => twelve PASS lines, exit 0
  ***/
 
 import { spawnSync } from "node:child_process";
@@ -51,6 +52,10 @@ import {
 	checkDirectoryForDuplicates,
 	formatViolationsReport,
 } from "./check-duplicate-settings.mjs";
+import {
+	checkPackageDirectory as checkFrontendImportsDeclared,
+	formatUndeclaredReport,
+} from "../frontend/scripts/check-imports-declared.js";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const NPM = npmExecutable();
@@ -336,8 +341,8 @@ export function resolveCanary({ argv = process.argv, env = process.env } = {}) {
 
 /***
  * MARK: buildBranches
- * @description Builds the twelve gate branches in canonical order (the
- *   eleven fast branches plus the Canary Tests branch). Branch
+ * @description Builds the thirteen gate branches in canonical order (the
+ *   twelve fast branches plus the Canary Tests branch). Branch
  *   names match the old shell gate byte-for-byte so output parsers keep
  *   working. The low-priority branches (lint, build, scans, depcheck, audit
  *   gate, self-tests, containers, canary) carry `lowPriority`, the helper's
@@ -457,6 +462,19 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 			lowPriority: true,
 		},
 		{
+			// Real-tree enforcement for binary-safe proof artifacts and
+			// repo-root scratch hygiene (task b1c069e0): the Harness
+			// Self-Tests pin the checker's logic on fixtures, but only this
+			// branch scans the worktree — without it a corrupt proof or a
+			// stray root scratch file would sail through `npm test`.
+			// Dependency-free (Node stdlib only) and sub-second, so it needs
+			// no workspace provisioning and no timeout override.
+			name: "Proof Hygiene",
+			file: nodeExec,
+			args: ["scripts/check-proof-and-hygiene.mjs"],
+			lowPriority: true,
+		},
+		{
 			name: "Harness Self-Tests",
 			file: nodeExec,
 			args: [
@@ -481,6 +499,7 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 				"tests/check-one-function-per-file.test.mjs",
 				"tests/check-jsdoc-example.test.mjs",
 				"tests/check-duplicate-settings.test.mjs",
+				"tests/check-imports-declared.test.mjs",
 				"tests/check-component-compat.test.mjs",
 				"tests/detect-changed-components.test.mjs",
 				"tests/publish.test.mjs",
@@ -492,6 +511,7 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 				"tests/install-runner-wrapper.test.mjs",
 				"tests/redeploy.test.mjs",
 				"tests/verify-stage-attestation.test.mjs",
+				"tests/check-proof-and-hygiene.test.mjs",
 			],
 			lowPriority: true,
 		},
@@ -572,6 +592,35 @@ async function main() {
 	}
 	console.log(
 		`✅ Settings duplicate check passed (${fastPreflightResult.totalFilesScanned} files in ${fastPreflightResult.durationMilliseconds}ms)`,
+	);
+	// Fail-first manifest guardrail (frontend-only): an undeclared import
+	// used to sail through every cheap stage and then fail the expensive
+	// ones (Frontend Build, depcheck, canary, publish). This preflight runs
+	// in milliseconds, before the overlap window starts anything. The check
+	// throws (instead of passing) when the manifest or a source file cannot
+	// be read, or nothing is found to scan — reported here as a one-line
+	// gate failure, not a stack trace.
+	let frontendImportsResult;
+	try {
+		frontendImportsResult = checkFrontendImportsDeclared({
+			packageDirectoryPath: path.join(REPO_ROOT, "frontend"),
+		});
+	} catch (error) {
+		console.error(`❌ Frontend imports check failed: ${error.message}`);
+		process.exitCode = 1;
+		return;
+	}
+	if (!frontendImportsResult.isClean) {
+		console.error(
+			formatUndeclaredReport({
+				violationsList: frontendImportsResult.violationsList,
+			}),
+		);
+		process.exitCode = 1;
+		return;
+	}
+	console.log(
+		`✅ Frontend imports check passed (${frontendImportsResult.totalFilesScanned} files in ${frontendImportsResult.durationMilliseconds}ms)`,
 	);
 	const { ok: fastOk } = await runParallel(fast, { cwd: REPO_ROOT });
 	let canaryOk = true;
