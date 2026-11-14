@@ -7,6 +7,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
 	saveTaskMarkdown,
 	parseTaskMarkdown,
+	extractGoalSection,
 	recordTimeline,
 	recordTimelineWithDiffStat,
 	_isTaskStillRegistered,
@@ -1936,3 +1937,53 @@ Legacy task
 	});
 });
 
+
+describe("extractGoalSection fence-aware extraction", () => {
+	it("stops at a real top-level History heading", () => {
+		const body = "# Goal\nhello world\n\n# History\n- item";
+		expect(extractGoalSection(body)).toBe("hello world");
+	});
+
+	it("keeps headings that live inside a fenced code block", () => {
+		const body =
+			"# Goal\nintro\n\n```md\n# History\nfake\n# Goal\nanother\n```\n\n## Steps\n1. x\n";
+		expect(extractGoalSection(body)).toBe("intro\n\n```md\n# History\nfake\n# Goal\nanother\n```\n\n## Steps\n1. x");
+	});
+
+	it("returns an empty string when there is no Goal section", () => {
+		expect(extractGoalSection("# Title\nbody")).toBe("");
+	});
+
+	it("tolerates CRLF input", () => {
+		const body = "# Goal\r\nhello\r\n\r\n# History\r\n- x";
+		expect(extractGoalSection(body)).toBe("hello");
+	});
+});
+
+
+describe("task goal containing section-like headings round-trips", () => {
+	it("preserves a fenced code block whose contents look like section headings", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-goal-fence-"));
+		const store = stubStore({ cwd: dir });
+		const goal =
+			"# Pretty ticket\n\n```md\n# History\nfake\n# Goal\nanother\n```\n\n## Steps\n1. x";
+		const task = {
+			id: "task-fence-1",
+			projectId: "proj-1",
+			title: "Pretty ticket",
+			goal,
+			status: "in_stage",
+			createdAt: "2026-10-01T00:00:00.000Z",
+			updatedAt: "2026-10-01T00:00:00.000Z",
+			history: [],
+			reports: [],
+		};
+		saveTaskMarkdown(store, dir, task);
+		const content = fs.readFileSync(
+			path.join(dir, "docs", "tasks", "task-fence-1", "task.md"),
+			"utf8",
+		);
+		const rehydrated = parseTaskMarkdown(store, content, "task-fence-1", "proj-1");
+		expect(rehydrated.goal).toBe(goal);
+	});
+});

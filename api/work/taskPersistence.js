@@ -668,6 +668,48 @@ export function syncTaskReports(taskStore, projectId, task, projectCwd) {
  * @param {string} projectId
  * @returns {Object}
  ***/
+
+/***
+ * MARK: extractGoalSection
+ * @description Extracts the `# Goal` section body from a task.md body, stopping
+ *   only at a top-level section heading that appears at column zero OUTSIDE a
+ *   fenced code block (` ``` ` or ` ~~~ `). This keeps a heading-like line
+ *   that is merely example/documentation text inside a code fence (common in
+ *   rich markdown tasks) from terminating the goal early. Returns the trimmed
+ *   goal text ("" when there is no `# Goal` section).
+ * @example extractGoalSection("# Goal\nhello\n# History\n- x") => "hello"
+ * @param {string} body - The markdown body after frontmatter.
+ * @returns {string}
+ ***/
+export function extractGoalSection(body) {
+	if (typeof body !== "string" || !body) return "";
+	const lines = body.split(/\r\n|\r|\n/);
+	let start = -1;
+	for (let i = 0; i < lines.length; i += 1) {
+		if (lines[i].trim() === "# Goal") {
+			start = i + 1;
+			break;
+		}
+	}
+	if (start < 0) return "";
+	const terminators = new Set(["# History", "# Timeline", "# Process Logs", "# Log Entries"]);
+	let inFence = false;
+	const collected = [];
+	for (let i = start; i < lines.length; i += 1) {
+		const trimmed = lines[i].trim();
+		if (/^(```|~~~)/.test(trimmed)) {
+			inFence = !inFence;
+			collected.push(lines[i]);
+			continue;
+		}
+		if (!inFence && terminators.has(trimmed)) {
+			break;
+		}
+		collected.push(lines[i]);
+	}
+	return collected.join("\n").trim();
+}
+
 export function parseTaskMarkdown(taskStore, content, taskId, projectId) {
 	const { data, content: body } = _parseFrontmatter(content);
 	const now = new Date().toISOString();
@@ -676,13 +718,9 @@ export function parseTaskMarkdown(taskStore, content, taskId, projectId) {
 	let history = [];
 	let processLogs = "";
 
-	// Parse body sections
-	const goalMatch = body.match(
-		/# Goal\r?\n([\s\S]*?)(?=(?:\r?\n# (?:History|Timeline|Process Logs)|\r?\n$|$))/,
-	);
-	if (goalMatch) {
-		goal = goalMatch[1].trim();
-	}
+	// Parse body sections. Use a fence-aware scan so a code block that
+	// merely contains `# History`-style text never truncates the goal.
+	goal = extractGoalSection(body);
 
 	const historyMatch = body.match(
 		/# History\r?\n([\s\S]*?)(?=(?:\r?\n# (?:Timeline|Process Logs)|\r?\n$|$))/,
