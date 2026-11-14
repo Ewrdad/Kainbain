@@ -142,29 +142,67 @@ export function CodeBlock({ code, language = '', enableCopy = true }) {
   );
 }
 
+// One shared import for the whole page: the dynamic import keeps mermaid's
+// diagram code out of the main bundle (it only downloads when a ```mermaid
+// fence actually renders), and memoizing the promise means N diagrams on one
+// page fire exactly ONE module load instead of N racing dynamic imports.
+// A failed load resets the cache so a later diagram can retry.
+let mermaidImportPromise = null;
+
+/***
+ * MARK: loadMermaid
+ * @description Loads the mermaid library exactly once per page and shares the
+ *   promise across every MermaidDiagram, initializing it with
+ *   `securityLevel: 'strict'` so diagram labels and SVG are sanitized before
+ *   they touch the DOM. Resolves to the library object, or null when the
+ *   library cannot load or exposes no render function — callers treat null as
+ *   "fall back to showing the source".
+ * @example const mermaid = await loadMermaid(); const { svg } = await mermaid.render('id-1', code);
+ * @returns {Promise<Object|null>} The initialized mermaid module, or null on failure.
+ ***/
+async function loadMermaid() {
+  if (!mermaidImportPromise) {
+    mermaidImportPromise = import('mermaid')
+      .then((loaded) => {
+        const mermaid = loaded?.default || loaded;
+        if (!mermaid || typeof mermaid.render !== 'function') return null;
+        if (typeof mermaid.initialize === 'function') {
+          mermaid.initialize({ startOnLoad: false, securityLevel: 'strict' });
+        }
+        return mermaid;
+      })
+      .catch(() => {
+        mermaidImportPromise = null;
+        return null;
+      });
+  }
+  return mermaidImportPromise;
+}
+
 /***
  * MARK: MermaidDiagram
  * @description Renders a mermaid diagram fence (` ```mermaid `) as inline SVG,
  *   falling back to a syntax-highlighted source block when rendering fails
- *   (broken diagram, missing library, jsdom, etc.) so the source is never lost.
+ *   (broken diagram, missing library, unsupported DOM, etc.) so the source is
+ *   never lost — a bad diagram degrades to readable code, never a blank hole.
  * @example <MermaidDiagram code="graph TD\nA-->B" />
  ***/
 export function MermaidDiagram({ code = '' }) {
   const [svg, setSvg] = useState(null);
   const [failed, setFailed] = useState(false);
+  // Mermaid's render needs a unique DOM id per call; useId keeps it
+  // deterministic and collision-free when several diagrams share a page
+  // (Math.random would break under deterministic replay and could collide).
+  const reactId = useId();
+  const mermaidRenderId = `mermaid-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const loaded = await import('mermaid');
-        const mermaid = loaded?.default || loaded;
-        if (!mermaid || typeof mermaid.render !== 'function') throw new Error('mermaid unavailable');
-        if (typeof mermaid.initialize === 'function') {
-          mermaid.initialize({ startOnLoad: false, securityLevel: 'strict' });
-        }
-        const id = `mermaid-${Math.random().toString(36).slice(2)}`;
-        const rendered = await mermaid.render(id, code);
+        const mermaid = await loadMermaid();
+        if (!mermaid) throw new Error('mermaid unavailable');
+        const rendered = await mermaid.render(mermaidRenderId, code);
         const out = rendered?.svg || rendered;
         if (cancelled) return;
         if (typeof out === 'string' && out.trim()) {
@@ -179,7 +217,7 @@ export function MermaidDiagram({ code = '' }) {
     return () => {
       cancelled = true;
     };
-  }, [code]);
+  }, [code, mermaidRenderId]);
 
   if (failed) {
     return <CodeBlock code={code} language="mermaid" enableCopy={true} />;
@@ -198,17 +236,6 @@ export function MermaidDiagram({ code = '' }) {
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );
-}
-
-// Back-compat aliases for test/consumer expectations.
-export const MermaidBlock = MermaidDiagram;
-export const Mermaid = MermaidDiagram;
-export async function renderMermaid(code) {
-  const loaded = await import('mermaid');
-  const mermaid = loaded?.default || loaded;
-  if (typeof mermaid?.initialize === 'function') mermaid.initialize({ startOnLoad: false });
-  const rendered = await mermaid.render(`mermaid-${Math.random().toString(36).slice(2)}`, code);
-  return rendered?.svg || rendered;
 }
 
 /***
@@ -419,24 +446,17 @@ export function parseMarkdownBlocks(markdown) {
         codeLines.push(lines[i]);
         i += 1;
       }
-      if (language === 'mermaid') {
-        blocks.push({
-          type: 'mermaid',
-          language: 'mermaid',
-          code: codeLines.join('\n'),
-          startLine,
-          endLine: Math.min(i + 1, lines.length),
-        });
-      } else {
-        blocks.push({
-          type: 'code',
-          language,
-          code: codeLines.join('\n'),
-          startLine,
-          // Closing fence when present, else the last content line.
-          endLine: Math.min(i + 1, lines.length),
-        });
-      }
+      // `mermaid` fences (any letter case) become diagram blocks; every
+      // other fence stays a plain code block carrying its language.
+      const isMermaid = language.toLowerCase() === 'mermaid';
+      blocks.push({
+        type: isMermaid ? 'mermaid' : 'code',
+        language,
+        code: codeLines.join('\n'),
+        startLine,
+        // Closing fence when present, else the last content line.
+        endLine: Math.min(i + 1, lines.length),
+      });
       i += 1;
       continue;
     }

@@ -150,6 +150,47 @@ describe("POST /tasks with a rich-markdown goal", () => {
 		expect(res.status).toHaveBeenCalledWith(400);
 		expect(s.taskStore.createTask).not.toHaveBeenCalled();
 	});
+
+	it("derives the title from the first line of a CRLF goal and stores the goal verbatim", async () => {
+		const crlfGoal = "# CRLF Title\r\n\r\n## Context\r\nbody with windows endings\r\n";
+		const s = await register(setup());
+		await s.routes.get("POST /tasks")(
+			{ body: { projectId: "p-1", goal: crlfGoal, stageId: "s-1" } },
+			reply(),
+		);
+		const stored = s.taskStore.createTask.mock.calls[0][1];
+		expect(stored.goal).toBe(crlfGoal);
+		expect(stored.title).toBe("CRLF Title");
+	});
+
+	it("lets an explicit title win over the goal-derived one, goal still verbatim", async () => {
+		const s = await register(setup());
+		await s.routes.get("POST /tasks")(
+			{
+				body: {
+					projectId: "p-1",
+					title: "# Explicit title",
+					goal: RICH_GOAL,
+					stageId: "s-1",
+				},
+			},
+			reply(),
+		);
+		const stored = s.taskStore.createTask.mock.calls[0][1];
+		expect(stored.title).toBe("Explicit title");
+		expect(stored.goal).toBe(RICH_GOAL);
+	});
+
+	it("falls back to the title as the goal when goal is absent (legacy behavior)", async () => {
+		const s = await register(setup());
+		await s.routes.get("POST /tasks")(
+			{ body: { projectId: "p-1", title: "Title only task", stageId: "s-1" } },
+			reply(),
+		);
+		const stored = s.taskStore.createTask.mock.calls[0][1];
+		expect(stored.goal).toBe("Title only task");
+		expect(stored.title).toBe("Title only task");
+	});
 });
 
 describe("PATCH /tasks/:id with a rich-markdown goal", () => {

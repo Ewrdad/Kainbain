@@ -3,7 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import { v4 as uuidv4 } from "uuid";
-import { _sanitizeTaskTitle } from "./taskIdentity.js";
+import { _sanitizeTaskTitle, deriveTaskTitleFromGoal } from "./taskIdentity.js";
 import { safeParseJsonArray } from "./taskFiles.js";
 import { taskBranchName } from "./taskBranches.js";
 import {
@@ -217,9 +217,7 @@ export function createTask(
 ) {
 	const now = new Date().toISOString();
 	const nowMs = Date.now();
-	const taskTitle = _sanitizeTaskTitle(
-		title || (goal ? goal.slice(0, 60) : "Untitled task"),
-	);
+	const taskTitle = _sanitizeTaskTitle(title || deriveTaskTitleFromGoal({ goal }));
 	const taskGoal = goal || taskTitle || "Untitled task";
 	const resolvedStageId = stageId || null;
 

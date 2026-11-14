@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import '@testing-library/jest-dom';
 import {
@@ -67,6 +67,13 @@ describe('parseMarkdownBlocks mermaid fences', () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0]).toMatchObject({ type: 'mermaid', code: 'graph TD\nA-->B' });
   });
+
+  it('detects mermaid fences case-insensitively and with padded language tags', () => {
+    const upper = parseMarkdownBlocks('```Mermaid\ngraph TD\nA-->B\n```');
+    expect(upper[0]).toMatchObject({ type: 'mermaid', code: 'graph TD\nA-->B' });
+    const padded = parseMarkdownBlocks('```  mermaid  \ngraph TD\nA-->B\n```');
+    expect(padded[0]).toMatchObject({ type: 'mermaid', code: 'graph TD\nA-->B' });
+  });
 });
 
 describe('MermaidDiagram', () => {
@@ -96,6 +103,20 @@ describe('MermaidDiagram', () => {
     render(<MermaidDiagram code="sequenceDiagram\nA->>B: hi" />);
     expect(await screen.findByText('MERMAID')).toBeInTheDocument();
     expect(screen.getByText(/A->>B: hi/)).toBeInTheDocument();
+  });
+
+  it('renders each diagram on a page with a unique, DOM-safe render id', async () => {
+    mermaidRender.mockResolvedValue({ svg: '<svg>x</svg>' });
+    render(
+      <>
+        <MermaidDiagram code={'graph TD\nA-->B'} />
+        <MermaidDiagram code={'graph TD\nC-->D'} />
+      </>,
+    );
+    await waitFor(() => expect(screen.getAllByTestId('mermaid-diagram')).toHaveLength(2));
+    const ids = mermaidRender.mock.calls.map((call) => call[0]);
+    expect(new Set(ids).size).toBe(2);
+    expect(ids.every((id) => /^mermaid-[a-zA-Z0-9_-]+$/.test(id))).toBe(true);
   });
 });
 

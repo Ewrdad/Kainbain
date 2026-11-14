@@ -24,6 +24,29 @@ export function _sanitizeTaskTitle(raw) {
 }
 
 /***
+ * MARK: deriveTaskTitleFromGoal
+ * @description Derives the fallback task title from a goal's FIRST line only:
+ *   goals are markdown documents, so only the title line may become a title
+ *   (never a mid-document slice). Splits on CR, LF, or CRLF so Windows and
+ *   old-Mac line endings behave the same, and caps the result at
+ *   `maxTitleLength` (60, matching the historical `goal.slice(0, 60)` cap).
+ *   Returns "" for empty or non-string input so callers can layer their own
+ *   fallback (e.g. `_sanitizeTaskTitle`'s "Untitled task").
+ * @example deriveTaskTitleFromGoal({ goal: '# Fix it\\n\\nbody text' }) => '# Fix it'
+ * @example deriveTaskTitleFromGoal({ goal: 'a\\r\\nb' }) => 'a'
+ * @example deriveTaskTitleFromGoal({ goal: null }) => ''
+ * @param {Object} [args]
+ * @param {string} [args.goal] - Raw goal text (may be multi-line markdown).
+ * @param {number} [args.maxTitleLength=60] - Max characters kept from the first line.
+ * @returns {string} The first line sliced to `maxTitleLength` ("" when absent).
+ ***/
+export function deriveTaskTitleFromGoal({ goal, maxTitleLength = 60 } = {}) {
+	if (!goal || typeof goal !== "string") return "";
+	const firstLine = goal.split(/\r\n|\r|\n/)[0] ?? "";
+	return firstLine.slice(0, maxTitleLength);
+}
+
+/***
  * MARK: toTaskSummary
  * @description Projects one task onto its board-list shape: everything the
  *   kanban board, search, and analytics read, without the detail-only

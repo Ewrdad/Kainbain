@@ -118,7 +118,9 @@ Rules while sending:
   for each image, and only after every upload succeeds `PATCH /tasks/<taskId>`
   with a `goal` that contains the returned `assets/<name>` references. Never
   guess filenames; reuse the names returned by the upload response. Absolute
-  URLs pass through unchanged.
+  URLs pass through unchanged. Note: `PATCH /tasks/:id` trims leading/trailing
+  whitespace from the goal (create does not) — after an image-ref patch, compare
+  against the trimmed draft, not the raw file bytes.
 - `idempotencyKey` is REQUIRED: derive it deterministically, e.g.
   `sha256(finding-summary + targetStage + currentTaskId).slice(0, 32)` — a
   retry of the same finding must not create a second ticket.
@@ -134,10 +136,11 @@ A successful response returns the created task with `id` and `status`.
 Verify by re-reading `GET {{kbApiBase}}/tasks/<id>?projectId=<projectId>`:
 confirm `currentStageId` matches the target stage, that `blockedBy` matches the
 decision recorded for that finding (ids or `[]`), that the goal's first line is
-the mandated title, and that the fetched `goal` byte-for-byte equals the draft
-file written in Stage 1 (after any image-ref patch). Report every created ticket
-id, title, stage, and blocker ids (`blockers: none` when empty) in the stage
-report so operators can audit the fan-out.
+the mandated title, and that the fetched `goal` equals the draft file written
+in Stage 1 — byte-for-byte for a plain create, or against the edge-trimmed
+draft after an image-ref `PATCH` (see the note above). Report every created
+ticket id, title, stage, and blocker ids (`blockers: none` when empty) in the
+stage report so operators can audit the fan-out.
 
 ## Guardrails (always apply)
 
