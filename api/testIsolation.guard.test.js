@@ -71,4 +71,33 @@ describe("test isolation guard (never touch live systems)", () => {
 		expect(resolvePromptLayoutDir()).not.toBe(liveLayoutDir);
 		expect(resolvePromptLayoutDir().startsWith(os.tmpdir())).toBe(true);
 	});
+
+	// Regression coverage for the 2026-11 inbox leak (residual D9 of
+	// 99ccc12f, task b3dec9b0): the accessibility-feedback inbox is
+	// machine-global by default
+	// (`~/.kainbain/accessibility-feedback.jsonl`, outside
+	// `~/.kainbain/engine/`, so the engine guard is a no-op for it), and
+	// any suite booting the full app without a `feedbackFile` opt
+	// appended test reports to the LIVE user inbox. The setup backstop
+	// pins it at a per-file temp file before config loads.
+	it("points KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE at a temp inbox file", () => {
+		const inboxFile = process.env.KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE;
+		expect(inboxFile).toBeTruthy();
+		expect(inboxFile.startsWith(os.tmpdir())).toBe(true);
+		expect(path.basename(inboxFile)).toBe("accessibility-feedback.jsonl");
+		expect(fs.existsSync(path.dirname(inboxFile))).toBe(true);
+		expect(fs.statSync(path.dirname(inboxFile)).isDirectory()).toBe(true);
+		expect(inboxFile).not.toBe(
+			path.join(os.homedir(), ".kainbain", "accessibility-feedback.jsonl"),
+		);
+	});
+
+	it("snapshotted the setup inbox pin, not the live default", () => {
+		expect(config.accessibilityFeedbackFile).toBe(
+			process.env.KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE,
+		);
+		expect(config.accessibilityFeedbackFile).not.toBe(
+			liveDefaults.accessibilityFeedbackFile,
+		);
+	});
 });
