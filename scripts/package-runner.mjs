@@ -110,10 +110,19 @@ const assertClean = (stageDir) => {
  *   exact versions in the source api/package-lock.json and honoring the
  *   source api/package.json overrides (security pins), `--omit=dev`.
  *   Needs `npm` on PATH and registry access (release CI has both). Skipped
- *   only by tests staging fake roots (`installLegDeps: false`).
+ *   by tests staging fake roots (`installLegDeps: false`), and auto-skipped
+ *   by `packageRunner` when the root has no api/package.json to pin from.
  * @example stageLegNpmDeps({ stage: '/tmp/stage/name', root: '/repo' })
  ***/
+export const hasLegDepSource = ({ root = REPO_ROOT } = {}) =>
+	fs.existsSync(path.join(root, "api", "package.json"));
+
 export const stageLegNpmDeps = ({ stage, root = REPO_ROOT } = {}) => {
+	if (!hasLegDepSource({ root })) {
+		throw new Error(
+			`package-runner: cannot stage the discovery-leg closure: no api/package.json under '${root}' (fake/layout roots must pass installLegDeps: false).`,
+		);
+	}
 	const apiPkg = JSON.parse(fs.readFileSync(path.join(root, "api", "package.json"), "utf8"));
 	let lock = null;
 	try {
@@ -165,9 +174,11 @@ export const packageRunner = ({ platform, arch, version, outDir, root = REPO_ROO
 	copyPruned(path.join(root, "shared"), path.join(stage, "shared"));
 	copyPruned(path.join(root, "api"), path.join(stage, "api"));
 	// Ship the whole discovery-leg closure: without the pi SDK the pi leg
-	// throws ERR_MODULE_NOT_FOUND on every scan (N3). Fake roots used by
-	// layout-only tests opt out (no lockfile there to pin from).
-	if (installLegDeps) stageLegNpmDeps({ stage, root });
+	// throws ERR_MODULE_NOT_FOUND on every scan (N3). Fake/layout roots
+	// used by layout-only tests carry no api/package.json to pin from, so
+	// the closure is skipped there even when the caller leaves the default
+	// on — release builds always have the source tree, so they still ship it.
+	if (installLegDeps && hasLegDepSource({ root })) stageLegNpmDeps({ stage, root });
 	// Release metadata + entrypoint live at the archive root.
 	const versionJson = JSON.parse(fs.readFileSync(path.join(root, "runner", "version.json"), "utf8"));
 	versionJson.runnerVersion = clean;
