@@ -64,7 +64,13 @@ node runner/main.js
 
 `KAINBAIN_RUNNER_MODELS` is the servable-model pin the backend matches
 against (csv; singular `KAINBAIN_RUNNER_MODEL` seeds a 1-element pin;
-empty matches model-less tasks only). The advertised list is the
+empty matches model-less tasks only). Every pin must be a canonical
+fleet id (`<harness>::<provider>::<model>[::<effort>]`) for a harness in
+`KAINBAIN_RUNNER_HARNESSES` — anything else (a bare id, a 2-part
+`provider::model` key, a harness that is not enabled) is dropped at load
+with a boot warning and listed in `facts.errors`, never advertised.
+(Auto-detect installs skip the harness-membership check — the set is
+still unknown at load — but still enforce the fleet grammar.) The advertised list is the
 **pin ∪ auto-discovered ids** (survey q2: a brand-new harness model —
 e.g. a fresh Muse release — appears in the fleet catalogue automatically
 on the next scan, no pin edit needed): discovery runs at boot, every
@@ -107,14 +113,25 @@ again. When auto-detect sees harnesses the Runner is not configured to serve
 (a harness installed after the env file was written), the round also warns
 `harness auto-detect also sees: …` in the journal and on the re-detect ack —
 re-detection scans configured harnesses only, so the operator must add the
-harness (or use `auto`) and restart.
+harness (or use `auto`) and restart. Every configured harness always has an
+entry — never `{}`: a harness with no scan yet reads
+`{ ok: false, error: { code: 'NOT_YET_RUN' } }` (legless `mock`/`custom`
+always read this way); a leg whose module never shipped reads
+`LEG_MODULE_MISSING` (boot self-check for the harness module itself,
+seed round for its npm deps — same code either way); a round that
+throws above the legs records `ROUND_FAILED` on every harness it did not
+touch (per-leg errors recorded microseconds earlier are kept).
 
 Discovery runs once at boot and refreshes every
 `KAINBAIN_RUNNER_MODEL_DISCOVERY_INTERVAL_MS` (default 12h; `0`
 disables all scanning). Failures keep the previous list per harness
 and warn, never break heartbeats; the per-harness counts and first
 error ride the heartbeat as `facts.discoveryStatus` and surface in
-Settings › Runners next to the Re-detect button. The heartbeat also
+Settings › Runners next to the Re-detect button. Slices older than
+`KAINBAIN_RUNNER_DISCOVERY_STALE_MS` (default 24h) keep their ids but
+report `stale: true` — stale models stay listed and usable, the flag only
+tells Settings the scan is overdue. Dropped pins and other config problems
+ride every heartbeat as `facts.errors`. The heartbeat also
 names the effective advertisement source (`facts.modelSource`:
 `pinned` / `pinned+discovered` / `discovered` / `unpinned`, mirroring
 `resolveAdvertisedModels` branch-for-branch) plus per-model provenance

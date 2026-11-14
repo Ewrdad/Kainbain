@@ -15,7 +15,7 @@ import { defaultInstallRoot, markUpdateSuccess, readUpdateState } from "./update
 // in prod and in the distributable tarball), so ../shared resolves both in the
 // repo and in every deployed layout — the same copy the backend executes.
 import { resolveAdvertisedModels, resolveAdvertisedModelSource } from "./modelDiscovery.js";
-import { clearDiscoveryCache, getDiscoveryStatus, provenanceForIds, runDiscoveryRound, summarizeDiscoverySlices, DISCOVER_LEG_TIMEOUT_DEFAULT_MS } from "./harnessModelDiscovery.js";
+import { clearDiscoveryCache, getDiscoveryStatus, provenanceForIds, recordRoundFailure, runDiscoveryRound, summarizeDiscoverySlices, verifyDiscoveryLegModules, DISCOVER_LEG_TIMEOUT_DEFAULT_MS } from "./harnessModelDiscovery.js";
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { decideAgentStageVerdict } from "../shared/stageVerdict.js";
@@ -941,14 +941,19 @@ export function staleHarnessHintFor({ config, detectedHarnesses } = {}) {
  * @returns {Promise<string[]>} Current cache copy.
  ***/
 export async function refreshDiscoveredModels({ config, logger, discoverFn, discoveryCtx, detectedHarnesses } = {}) {
+	// idsConfigured is assigned inside the try so even a pathological
+	// config object keeps the never-throws contract; the catch records
+	// ROUND_FAILED for whatever subset was resolved before the throw.
+	let idsConfigured = [];
+	const roundStartMs = Date.now();
 	try {
+		idsConfigured = runnerHarnessIds(config);
 		if (config?.modelDiscoveryIntervalMs === 0) {
 			logger?.log?.("Model discovery disabled (interval 0); advertising the pinned list.");
 			return [...discoveredModelsCache];
 		}
 		// Pinned Runners scan too: the default advertisement is pin ∪
 		// discovered, so new harness models appear without a pin edit.
-		const idsConfigured = runnerHarnessIds(config);
 		// The muse probe override rides the leg seam, so even overridden
 		// ids pass grammar validation before advertisement.
 		const legOptions = { ...(discoveryCtx || {}) };
@@ -973,7 +978,13 @@ export async function refreshDiscoveredModels({ config, logger, discoverFn, disc
 			logger?.warn?.(`Model discovery note: ${staleHint}.`);
 		}
 	} catch (err) {
-		logger?.warn?.(`Model discovery failed, keeping previous list: ${err?.message || err}`);
+		// A round-level throw (a bug above the legs, never a leg failure —
+		// those land per-harness inside the round) must still leave a named
+		// record on every configured harness, or the heartbeat would read
+		// `{}` again. Untouched harnesses get ROUND_FAILED (slices the
+		// failed round already touched keep their fresh per-leg result).
+		recordRoundFailure({ harnessIds: idsConfigured, error: err, roundStartMs });
+		logger?.warn?.(`Model discovery failed, keeping the previous list: ${err?.message || err}`);
 	}
 	return [...discoveredModelsCache];
 }
@@ -1049,7 +1060,12 @@ export function factsFor({ config, harnessVersions, updateStatus = null, command
 		directories: effectiveDirectoriesFor(config),
 		commands: SUPPORTED_RUNNER_COMMANDS,
 		workRoot: typeof config.workRoot === "string" ? config.workRoot : null,
-		discoveryStatus: getDiscoveryStatus(runnerHarnessIds(config)),
+		discoveryStatus: getDiscoveryStatus(runnerHarnessIds(config), { staleMs: config.modelDiscoveryStaleMs }),
+		// Config warnings (dropped malformed model pins) plus fatal config
+		// errors ride every heartbeat so Settings shows WHY an advertised
+		// list looks the way it does (survey q4: logs + status page).
+		// Always an array — old backends ignore unknown fact fields.
+		errors: [...(config.errors ?? []), ...(config.warnings ?? [])],
 		...(updateStatus ? { updateStatus } : {}),
 		...(commandAck ? { commandAck } : {}),
 	};
@@ -1173,12 +1189,24 @@ export async function joinAndHeartbeat({ config, client, loadHarness, logger, st
 	} catch {
 		// Best effort only.
 	}
-	// Model auto-discovery seed: one round at boot (after the version
-	// probes, before the first heartbeat) so early facts already carry
-	// discovered ids. Best-effort inside and bounded by the discovery
-	// timeout; failures keep the cache empty, never fail boot. Fresh
-	// auto-detect output rides along so a stale harness pin is logged
-	// loudly at boot instead of hiding models silently.
+	// Dropped-pin warnings (malformed KAINBAIN_RUNNER_MODELS/MODEL entries
+	// never advertise): one loud line per drop at boot, plus the durable
+	// facts.errors surface on every heartbeat (survey q4).
+	for (const warning of config.warnings ?? []) {
+		logger?.warn?.(`Runner config: ${warning}`);
+	}
+	// Discovery-leg self-check: eagerly import every leg module for the
+	// configured harnesses BEFORE the seed round, so a leg whose code
+	// never shipped (N3) lands a named LEG_MODULE_MISSING error instead
+	// of a silent 0-model scan. Never throws, never fails boot.
+	await verifyDiscoveryLegModules(runnerHarnessIds(config), { logger });
+	// Model auto-discovery seed: one round at boot (after the first
+	// heartbeat, before the periodic timer) so early facts carry
+	// NOT_YET_RUN honestly and later beats carry discovered ids.
+	// Best-effort inside and bounded by the discovery timeout; failures
+	// keep the cache empty, never fail boot. Fresh auto-detect output
+	// rides along so a stale harness pin is logged loudly at boot
+	// instead of hiding models silently.
 	await refreshDiscoveredModels({ config, logger, detectedHarnesses: safeDetectAvailableHarnesses() });
 	const heartbeatTimer = setInterval(() => {
 		deliverSteers({ config, client, logger, facts: factsFor({ config, updateStatus: state?.updateStatus ?? null, commandAck: stagedCommandAck(state) }), state }).catch((err) => {
@@ -1260,10 +1288,10 @@ function stageCommandAck(state, ack) {
  * MARK: handlePendingCommands
  * @description Acts on backend-to-Runner commands delivered through the
  *   heartbeat pull channel (ADR 0013): `requestModelRediscovery` re-runs
- *   model discovery promptly (fresh probe, not the 12h cache cadence;
- *   skipped with a success ack when the operator pinned models, since
- *   pins win by default — `modelDiscoveryWins` opts in to scanning
- *   anyway); `requestUpdate` runs the existing idle-only
+ *   model discovery promptly (fresh probe, not the 12h cache cadence —
+ *   pinned Runners scan too, because the advertised list is pin ∪
+ *   discovered and this is how a brand-new harness model reaches the
+ *   catalogue without a pin edit); `requestUpdate` runs the existing idle-only
  *   self-update at once when idle, or parks `state.pendingUpdate` for
  *   the next idle point when an execution is live (never interrupts
  *   work, D5). Every handled command stages exactly one ack on
