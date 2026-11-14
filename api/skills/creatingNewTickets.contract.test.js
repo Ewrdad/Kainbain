@@ -91,3 +91,59 @@ describe("Contract: creating-new-tickets skill content", () => {
 		expect(prompt.length).toBeLessThan(16000 + 2000);
 	});
 });
+
+describe("Contract: pretty two-stage flow", () => {
+	const REPO_ROOT2 = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+	const SKILLS_DIR2 = path.join(REPO_ROOT2, "skills");
+	const SKILL_NAME2 = "creating-new-tickets";
+	const directPrompt2 = () => {
+		const skill = loadSkill({ name: SKILL_NAME2, skillsDir: SKILLS_DIR2 });
+		const engine = new PromptCurationEngine({
+			loadSkill: (name) => (name === SKILL_NAME2 ? skill : null),
+			skillsMaxChars: 16000,
+		});
+		return engine.curatePrompt(
+			{ id: "contract-1", goal: "Audit the deployment and report findings" },
+			{
+				id: "audit",
+				name: "Audit Findings",
+				prompt: "Audit the project.",
+				skills: [
+					{
+						name: SKILL_NAME2,
+						mode: "direct",
+						config: {
+							targetProject: "KainBain",
+							targetWorkflow: "wf-default",
+							targetStage: "Intake",
+						},
+					},
+				],
+			},
+			{ timestamp: "20261113-000000", projectName: "KainBain", projectCwd: "/tmp/contract" },
+		);
+	};
+
+	it("documents the two-stage flow and draft files", () => {
+		const prompt = directPrompt2();
+		expect(prompt).toContain("Stage 1");
+		expect(prompt).toContain("Stage 2");
+		expect(prompt).toContain("drafts/");
+		expect(prompt).toContain("EXACT contents");
+	});
+	it("documents the draft template headings", () => {
+		const prompt = directPrompt2();
+		expect(prompt).toContain("## Context");
+		expect(prompt).toContain("## Steps");
+		expect(prompt).toContain("## Acceptance criteria");
+	});
+	it("documents create-upload-patch image ordering", () => {
+		const prompt = directPrompt2();
+		expect(prompt).toContain("create → upload → patch");
+		expect(prompt).toContain("assets/");
+	});
+	it("keeps the prompt under budget", () => {
+		const prompt = directPrompt2();
+		expect(prompt.length).toBeLessThan(18000);
+	});
+});

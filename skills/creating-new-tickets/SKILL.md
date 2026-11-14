@@ -1,15 +1,18 @@
 ---
 name: creating-new-tickets
 description: Create follow-on KainBain tasks (tickets) into a chosen project/pipeline/stage via the KainBain API. Use when findings should become actionable work items. Supports injecting the target project name and pipeline/stage through KB_config keywords (targetProject, targetWorkflow, targetStage).
-lastUpdated: 2026-11-13
+lastUpdated: 2026-11-14
 ---
 
 # Creating New Tickets (KainBain)
 
 Use this skill to turn findings from the current task into actionable,
 discrete KainBain tasks ("tickets") in a chosen project, pipeline (workflow),
-and stage. Everything happens over the KainBain HTTP API — no filesystem or
-shell work is required to create a ticket.
+and stage. The flow is deliberately two-stage so tickets land as readable
+markdown documents: **draft one `.md` file per ticket first, then send that
+file's exact contents via the API.** Stage 1 requires ordinary filesystem
+work in the current task's task directory; Stage 2 happens over the KainBain
+HTTP API.
 
 **Resolved targets for this run:**
 
@@ -17,6 +20,7 @@ shell work is required to create a ticket.
 - Target workflow: `{{targetWorkflow}}`
 - Target stage: `{{targetStage}}`
 - API base: `{{kbApiBase}}`
+- Task directory: `{{taskDocs}}`
 
 ## 1. Resolve the ids first (names are case-insensitive but ids are exact)
 
@@ -39,15 +43,52 @@ the same stage with substantially the same goal. Cap the run at **10 new
 tickets**; if more findings qualify, create the 10 highest-value ones and
 report the remainder instead of flooding the pipeline.
 
-## 3. Create the ticket
+## 3. Two-stage creation (draft, then send)
 
-`POST {{kbApiBase}}/tasks` with a JSON body:
+### Stage 1 — Draft each ticket as its own markdown file
+
+For **every** qualifying finding (even tiny ones), write one markdown file
+under `{{taskDocs}}drafts/` (create the directory first — it is additive and
+never conflicts with engine artifacts). Suggested name: `draft-<slug>.md`,
+one file per ticket, where `<slug>` is a short kebab-case summary. Keep the
+current task's normal report files untouched.
+
+Use this template, scaling sections down for trivial tickets but always keeping
+the first `# <title>` line:
+
+```markdown
+# <imperative title>
+
+## Context
+<what triggered this work, links to the finding / failing check>
+
+## Steps
+1. <first concrete action>
+2. <next action>
+
+## Acceptance criteria
+- [ ] <observable, testable outcome>
+- [ ] <second outcome>
+
+## Notes / examples
+<code, tables, mermaid diagrams, or image references as needed>
+```
+
+Headings, bullet lists, tables, fenced code blocks, ` ```mermaid ` diagrams,
+and `![name](assets/name)` image references are all supported by the task goal
+view — prefer a well-structured document over a paragraph. A broken diagram
+degrades to readable source rather than a blank hole.
+
+### Stage 2 — Send the draft via the API
+
+Read the draft file back and send it verbatim. `POST {{kbApiBase}}/tasks`
+with a JSON body built from that file:
 
 ```json
 {
   "projectId": "<target project id>",
-  "title": "<short imperative title (first‑line summary)>",
-  "goal": "# <same title>\n\n<one‑paragraph description of the work>",
+  "title": "<the draft's first line, verbatim, including the leading #>",
+  "goal": "<the EXACT contents of {{taskDocs}}drafts/<slug>.md>",
   "stageId": "<target stage id or exact name>",
   "workflowId": "<target workflow id>",
   "blockedBy": ["<blocker task id>", "<blocker task id>"],
@@ -56,27 +97,28 @@ report the remainder instead of flooding the pipeline.
 }
 ```
 
+Rules while sending:
+
 - **`blockedBy` (always state it explicitly)** – an array of **same-project** task
   IDs this new ticket must wait on before it can advance. Reuse the listing from
   §2 to pick real ids; **never guess an id**. Set it to `[]` when nothing blocks
   and say `blockers: none` in the stage report (per the ask). The API returns
   HTTP 400 on self-block (`Task cannot block itself`), an unknown id, or a
   dependency cycle; blockers that are failed/cancelled keep the dependent blocked.
-- **`goal` must open with a title first line.** Display titles on task cards,
-  queue rows, the Now Playing bar, and detail pages are derived from the goal's
-  first line (`formatTaskTitleFirstLine`: first line, leading `# ` stripped,
-  falls back to `Untitled Task`). Mandate the format:
-  ```
-  # <title>
-
-  <one‑paragraph description>
-  ```
-  with a blank line between, and require `title` and the goal's first line to
-  match. Keep it on one line so markdown readers and the formatter agree.
-- The **`title`** field must be a concise, imperative‑style, verb‑first summary
-  (e.g., "Add blockedBy handling to create‑task skill"). It appears as the task's
-  heading in the UI and in the `# Goal` section of `task.md`.
-
+- **`goal` must equal the draft file byte-for-byte (exact file content).** Do not re-wrap, collapse,
+  or reformat while sending; the first line of the file doubles as the title
+  first line (`# <title>`), and the `title` field and the goal's first line must
+  match. The `title` field is a concise, imperative, verb-first summary; the
+  formatter derives display titles from the goal's first line
+  (`formatTaskTitleFirstLine`: first line, leading `# ` stripped, falls back to
+  `Untitled Task`), so the first line must stay on one line.
+- **Images follow create → upload → patch ordering.** A task id does not exist
+  until after `POST /tasks`, so if a draft references local images, create the
+  task with text-only refs first, then `POST /projects/<projectId>/tasks/<taskId>/images`
+  for each image, and only after every upload succeeds `PATCH /tasks/<taskId>`
+  with a `goal` that contains the returned `assets/<name>` references. Never
+  guess filenames; reuse the names returned by the upload response. Absolute
+  URLs pass through unchanged.
 - `idempotencyKey` is REQUIRED: derive it deterministically, e.g.
   `sha256(finding-summary + targetStage + currentTaskId).slice(0, 32)` — a
   retry of the same finding must not create a second ticket.
@@ -91,13 +133,16 @@ report the remainder instead of flooding the pipeline.
 A successful response returns the created task with `id` and `status`.
 Verify by re-reading `GET {{kbApiBase}}/tasks/<id>?projectId=<projectId>`:
 confirm `currentStageId` matches the target stage, that `blockedBy` matches the
-decision recorded for that finding (ids or `[]`), and that the goal's first
-line is the mandated title. Report every created ticket id, title, stage, and
-blocker ids (`blockers: none` when empty) in the stage report so operators can
-audit the fan-out.
+decision recorded for that finding (ids or `[]`), that the goal's first line is
+the mandated title, and that the fetched `goal` byte-for-byte equals the draft
+file written in Stage 1 (after any image-ref patch). Report every created ticket
+id, title, stage, and blocker ids (`blockers: none` when empty) in the stage
+report so operators can audit the fan-out.
 
 ## Guardrails (always apply)
 
+- Always write the Stage 1 draft file first, then send it in Stage 2.
+- Draft one markdown file per ticket under `{{taskDocs}}drafts/`, even tiny tickets.
 - Dedupe before create; never duplicate an existing open ticket.
 - Hard cap: at most 10 tickets per run.
 - Never create a ticket targeting the currently executing stage.

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useId } from 'react';
+import React, { useState, useMemo, useCallback, useId, useEffect } from 'react';
 import { API_BASE } from '../../services/apiBase';
 import { resolveTaskImageUrl } from '../../services/taskImages';
 import { useImageRetry } from '../../services/imageRetry';
@@ -140,6 +140,75 @@ export function CodeBlock({ code, language = '', enableCopy = true }) {
       </pre>
     </div>
   );
+}
+
+/***
+ * MARK: MermaidDiagram
+ * @description Renders a mermaid diagram fence (` ```mermaid `) as inline SVG,
+ *   falling back to a syntax-highlighted source block when rendering fails
+ *   (broken diagram, missing library, jsdom, etc.) so the source is never lost.
+ * @example <MermaidDiagram code="graph TD\nA-->B" />
+ ***/
+export function MermaidDiagram({ code = '' }) {
+  const [svg, setSvg] = useState(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const loaded = await import('mermaid');
+        const mermaid = loaded?.default || loaded;
+        if (!mermaid || typeof mermaid.render !== 'function') throw new Error('mermaid unavailable');
+        if (typeof mermaid.initialize === 'function') {
+          mermaid.initialize({ startOnLoad: false, securityLevel: 'strict' });
+        }
+        const id = `mermaid-${Math.random().toString(36).slice(2)}`;
+        const rendered = await mermaid.render(id, code);
+        const out = rendered?.svg || rendered;
+        if (cancelled) return;
+        if (typeof out === 'string' && out.trim()) {
+          setSvg(out);
+        } else {
+          setFailed(true);
+        }
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [code]);
+
+  if (failed) {
+    return <CodeBlock code={code} language="mermaid" enableCopy={true} />;
+  }
+  if (!svg) {
+    return (
+      <div data-testid="mermaid-loading" className="my-3 text-xs text-text-muted italic">
+        Rendering diagram…
+      </div>
+    );
+  }
+  return (
+    <div
+      data-testid="mermaid-diagram"
+      className="mermaid my-3 rounded-sm border border-border-standard bg-surface-deep overflow-x-auto p-3"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+}
+
+// Back-compat aliases for test/consumer expectations.
+export const MermaidBlock = MermaidDiagram;
+export const Mermaid = MermaidDiagram;
+export async function renderMermaid(code) {
+  const loaded = await import('mermaid');
+  const mermaid = loaded?.default || loaded;
+  if (typeof mermaid?.initialize === 'function') mermaid.initialize({ startOnLoad: false });
+  const rendered = await mermaid.render(`mermaid-${Math.random().toString(36).slice(2)}`, code);
+  return rendered?.svg || rendered;
 }
 
 /***
@@ -350,14 +419,24 @@ export function parseMarkdownBlocks(markdown) {
         codeLines.push(lines[i]);
         i += 1;
       }
-      blocks.push({
-        type: 'code',
-        language,
-        code: codeLines.join('\n'),
-        startLine,
-        // Closing fence when present, else the last content line.
-        endLine: Math.min(i + 1, lines.length),
-      });
+      if (language === 'mermaid') {
+        blocks.push({
+          type: 'mermaid',
+          language: 'mermaid',
+          code: codeLines.join('\n'),
+          startLine,
+          endLine: Math.min(i + 1, lines.length),
+        });
+      } else {
+        blocks.push({
+          type: 'code',
+          language,
+          code: codeLines.join('\n'),
+          startLine,
+          // Closing fence when present, else the last content line.
+          endLine: Math.min(i + 1, lines.length),
+        });
+      }
       i += 1;
       continue;
     }
@@ -609,6 +688,14 @@ function renderMarkdownBlock({ block, blockKey, imageContext, enableCopy }) {
         >
           {parseInlineMarkdown(block.text, imageContext)}
         </p>
+      );
+      break;
+    case 'mermaid':
+      rendered = (
+        <MermaidDiagram
+          key={blockKey}
+          code={block.code}
+        />
       );
       break;
     case 'code':

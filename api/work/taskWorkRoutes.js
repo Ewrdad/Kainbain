@@ -132,7 +132,7 @@ export async function registerTaskWorkRoutes(app, deps) {
 		const project = projectStore.getProject(id);
 		const stage = resolveStage(project, stageId);
 		return {
-			title: _sanitizeTaskTitle(title || taskGoal.slice(0, 60)),
+			title: _sanitizeTaskTitle(title || String(taskGoal).split(/\r?\n/)[0].slice(0, 60)),
 			goal: taskGoal,
 			id,
 			stage,

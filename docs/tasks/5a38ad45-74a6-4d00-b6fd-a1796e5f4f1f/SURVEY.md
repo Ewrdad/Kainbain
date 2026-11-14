@@ -81,6 +81,46 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Full neat document with pictures or diagrams"
+      ],
+      "notes": "Depends on the complexity of the change but at the bare min it should use new lines headers and spacings, extra points for bullet points , extra extra points for diagrams or screenshots "
+    },
+    "q2": {
+      "selected": [
+        "Code blocks",
+        "Simple diagrams",
+        "Pictures or image links",
+        "Headings, lists and tables"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Agent uploads the picture with the task and it shows inline"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Always write the file first, then send it"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Yes, but small tweaks are allowed"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Yes, old tasks must keep working"
+      ],
+      "notes": "This should be fine as it is a skill *touch wood* should just involve updating the guidance or minimal changes to the body "
+    }
+  }
 }
 ```
