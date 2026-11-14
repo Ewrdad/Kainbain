@@ -251,4 +251,69 @@ describe("publish.sh", () => {
 		assert.equal(git(dir, "rev-parse", "HEAD"), primaryHead);
 		assert.match(git(dir, "status", "--porcelain"), /A {2}wip\.txt/);
 	});
+
+	it("installs frontend deps on a warm checkout when a newly declared package.json dependency is missing from node_modules", () => {
+		const base = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-publish-stale-deps-"));
+		const remote = path.join(base, "origin.git");
+		const dir = path.join(base, "work");
+		const git = (cwd, ...args) => {
+			const r = spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
+			assert.equal(r.status, 0, `git ${args.join(" ")}: ${r.stderr}`);
+			return r.stdout.trim();
+		};
+		const bare = (...args) => {
+			const r = spawnSync("git", args, { encoding: "utf8" });
+			assert.equal(r.status, 0, `git ${args.join(" ")}: ${r.stderr}`);
+		};
+		bare("init", "--bare", remote);
+		bare("init", "-b", "main", dir);
+		git(dir, "config", "user.email", "publish-deps@test");
+		git(dir, "config", "user.name", "publish-deps");
+		fs.mkdirSync(path.join(dir, "scripts"), { recursive: true });
+		fs.mkdirSync(path.join(dir, "frontend", "node_modules", "react"), { recursive: true });
+		fs.copyFileSync(path.join(ROOT, "publish.sh"), path.join(dir, "publish.sh"));
+		fs.chmodSync(path.join(dir, "publish.sh"), 0o755);
+		fs.writeFileSync(path.join(dir, "scripts", "check-component-compat.mjs"), "process.exit(0);\n");
+		fs.writeFileSync(
+			path.join(dir, "frontend", "version.json"),
+			JSON.stringify({ component: "frontend", apiVersion: "1.0.0", requires: { backendApi: ">=1.0.0 <2.0.0" } }),
+		);
+		fs.writeFileSync(
+			path.join(dir, "frontend", "package.json"),
+			JSON.stringify({ name: "frontend", dependencies: { react: "^18.0.0", mermaid: "^12.3.0" } }),
+		);
+		fs.writeFileSync(
+			path.join(dir, "frontend", "node_modules", "react", "package.json"),
+			JSON.stringify({ name: "react", version: "18.0.0" }),
+		);
+		fs.writeFileSync(path.join(dir, ".gitignore"), "frontend/node_modules/\n");
+		git(dir, "add", "-A");
+		git(dir, "-c", "user.email=publish-deps@test", "-c", "user.name=publish-deps", "commit", "-qm", "add mermaid");
+		git(dir, "remote", "add", "origin", remote);
+		git(dir, "push", "-u", "origin", "main");
+		bare("--git-dir", remote, "symbolic-ref", "HEAD", "refs/heads/main");
+
+		// Even though frontend/node_modules exists (warm checkout), mermaid is missing:
+		const r1 = spawnSync("./publish.sh", ["--dry-run", "--frontend"], {
+			cwd: dir,
+			encoding: "utf8",
+			env: { ...process.env, KAINBAIN_DOCKERHUB_NAMESPACE: "dryrun-probe" },
+		});
+		assert.equal(r1.status, 0, r1.stderr + r1.stdout);
+		assert.match(r1.stdout, /would run: npm install --prefix frontend --include=dev/);
+
+		// Once mermaid lands in frontend/node_modules, publish skips the install:
+		fs.mkdirSync(path.join(dir, "frontend", "node_modules", "mermaid"), { recursive: true });
+		fs.writeFileSync(
+			path.join(dir, "frontend", "node_modules", "mermaid", "package.json"),
+			JSON.stringify({ name: "mermaid", version: "12.3.0" }),
+		);
+		const r2 = spawnSync("./publish.sh", ["--dry-run", "--frontend"], {
+			cwd: dir,
+			encoding: "utf8",
+			env: { ...process.env, KAINBAIN_DOCKERHUB_NAMESPACE: "dryrun-probe" },
+		});
+		assert.equal(r2.status, 0, r2.stderr + r2.stdout);
+		assert.doesNotMatch(r2.stdout, /would run: npm install --prefix frontend/);
+	});
 });

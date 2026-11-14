@@ -1511,11 +1511,6 @@
   },
   {
     "file": "api/work/taskLifecycle.js",
-    "exportName": "createTask",
-    "kind": "function"
-  },
-  {
-    "file": "api/work/taskLifecycle.js",
     "exportName": "deleteTask",
     "kind": "function"
   },
@@ -1577,11 +1572,6 @@
   {
     "file": "api/work/taskPersistence.js",
     "exportName": "docsProjectForStore",
-    "kind": "function"
-  },
-  {
-    "file": "api/work/taskPersistence.js",
-    "exportName": "parseTaskMarkdown",
     "kind": "function"
   },
   {
@@ -1782,16 +1772,6 @@
   {
     "file": "frontend/src/components/KeyboardShortcutsModal.jsx",
     "exportName": "KeyboardShortcutsModal",
-    "kind": "function"
-  },
-  {
-    "file": "frontend/src/components/layout/activeTaskVisibility.js",
-    "exportName": "resolveActiveTaskDisplay",
-    "kind": "function"
-  },
-  {
-    "file": "frontend/src/components/layout/activeTaskVisibility.js",
-    "exportName": "resolveUniversalNowPlaying",
     "kind": "function"
   },
   {

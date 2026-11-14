@@ -214,28 +214,39 @@ api_version_of() {
   node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).apiVersion)' "$1/version.json"
 }
 
-# --- Dependency bootstrap (clean-checkout safe) ----------------------------
-# Publish may run in a pristine tree — the deploy tip worktree, a fresh
-# clone, CI — where node_modules does not exist yet. The old assumption
-# "deps are installed because the primary checkout has them" broke every
-# publish from the tip worktree (2026-11-01, tasks 5c3497b5/e3b2624a:
-# frontend build died with `Cannot find module
-# '.../frontend/node_modules/vite/bin/vite.js'`). Install only what is
-# missing, per component being published; a warm tree is a no-op, and the
-# persistent tip worktree pays this once. Install failure is a gate
-# failure (exit 1, nothing published).
+# --- Dependency bootstrap (clean-checkout & stale-worktree safe) -----------
+# Publish may run in a pristine tree (fresh tip worktree, fresh clone, CI)
+# where node_modules does not exist yet, OR in a persistent warm tip worktree
+# where node_modules exists from an older commit before a new dependency (e.g.
+# mermaid in frontend/package.json, 2026-11-14 task 5a38ad45) was added.
+# Checking `[ ! -d frontend/node_modules ]` alone missed new dependencies on
+# warm tip worktrees (`Rolldown failed to resolve import "mermaid"`). Verify
+# that every dependency in package.json resolves under node_modules/<name>,
+# matching scripts/run-tests.mjs workspaceDepsInstalled.
+deps_installed_for() {
+  [ -d "$1/node_modules" ] || return 1
+  [ -f "$1/package.json" ] || return 0
+  node -e '
+    const fs = require("fs"), path = require("path"), pkg = process.argv[1];
+    const m = JSON.parse(fs.readFileSync(path.join(pkg, "package.json"), "utf8"));
+    const deps = Object.keys({ ...(m.dependencies || {}), ...(m.devDependencies || {}) });
+    for (const d of deps) {
+      if (!fs.existsSync(path.join(pkg, "node_modules", d, "package.json"))) process.exit(1);
+    }
+  ' "$1" 2>/dev/null
+}
 ensure_deps_for() {
   case "$1" in
     backend|runner)
       # Backend gates run the api suite; the runner bundle embeds api/.
-      if [ ! -d api/node_modules ]; then
-        log "installing api dependencies (clean checkout)..."
+      if ! deps_installed_for api; then
+        log "installing api dependencies (clean or stale checkout)..."
         run npm install --prefix api --include=dev || return 1
       fi
       ;;
     frontend)
-      if [ ! -d frontend/node_modules ]; then
-        log "installing frontend dependencies (clean checkout)..."
+      if ! deps_installed_for frontend; then
+        log "installing frontend dependencies (clean or stale checkout)..."
         run npm install --prefix frontend --include=dev || return 1
       fi
       ;;

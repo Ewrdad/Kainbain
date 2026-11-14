@@ -1634,16 +1634,16 @@ if [ "$MODE" = "prod" ]; then
 	# An empty VITE_API_BASE/VITE_WS_URL means "same origin" (see api.js).
 	# (`env`, not inline assignments: assignments preceding a shell function
 	# persist after it returns — env keeps them scoped to the one command.)
-	# Clean-checkout bootstrap: in the pristine tip worktree (or a fresh
-	# clone) frontend/node_modules does not exist and the build dies with
-	# `Cannot find module '.../frontend/node_modules/vite/bin/vite.js'`
-	# (publish failures 2026-11-01, tasks 5c3497b5/e3b2624a). Install only
-	# when missing — a warm tree (incl. the persistent tip worktree after
-	# its first deploy) skips straight to the build.
+	# Clean-checkout & stale-worktree bootstrap: in a pristine tip worktree
+	# frontend/node_modules does not exist (`Cannot find module '.../vite.js'`,
+	# tasks 5c3497b5/e3b2624a), and in a warm persistent tip worktree a newly
+	# added dependency in frontend/package.json (e.g. mermaid, task 5a38ad45)
+	# is missing even though frontend/node_modules exists. Install when the
+	# directory or any declared package.json dependency is absent.
 	if [ "$PUBLISH_ONLY" = "true" ]; then
 		log "⏭️ Publish-only: frontend build is publish.sh's gate — skipping deploy-level build."
 	else
-		if [ ! -d frontend/node_modules ]; then
+		if [ ! -d frontend/node_modules ] || ! node -e 'const fs=require("fs"),p="frontend/package.json";if(fs.existsSync(p)){const m=JSON.parse(fs.readFileSync(p,"utf8"));for(const d of Object.keys({...m.dependencies,...m.devDependencies}))if(!fs.existsSync("frontend/node_modules/"+d+"/package.json"))process.exit(1)}' 2>/dev/null; then
 			run_gate "frontend-install" "npm install --prefix frontend --include=dev" npm install --prefix frontend --include=dev
 		fi
 		run_gate "frontend-build" "npm run build --prefix frontend" env VITE_API_BASE= VITE_WS_URL= npm run build --prefix frontend

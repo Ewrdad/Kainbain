@@ -202,6 +202,33 @@ describe("POST /tasks with a rich-markdown goal", () => {
 		expect(stored.goal).toBe("Title only task");
 		expect(stored.title).toBe("Title only task");
 	});
+
+	it("places the task in the resolved stage (first-line title and blocking need a stage)", async () => {
+		const s = await register(setup());
+		await s.routes.get("POST /tasks")(
+			{ body: { projectId: "p-1", goal: RICH_GOAL, stageId: "s-1" } },
+			reply(),
+		);
+		const stored = s.taskStore.createTask.mock.calls[0][1];
+		expect(stored.stageId).toBe("s-1");
+	});
+
+	it("forwards blockedBy so dependents stay parked behind their blockers", async () => {
+		const s = await register(setup());
+		await s.routes.get("POST /tasks")(
+			{
+				body: {
+					projectId: "p-1",
+					goal: RICH_GOAL,
+					stageId: "s-1",
+					blockedBy: ["t-0"],
+				},
+			},
+			reply(),
+		);
+		const stored = s.taskStore.createTask.mock.calls[0][1];
+		expect(stored.blockedBy).toEqual(["t-0"]);
+	});
 });
 
 describe("PATCH /tasks/:id with a rich-markdown goal", () => {
@@ -222,4 +249,5 @@ describe("PATCH /tasks/:id with a rich-markdown goal", () => {
 		);
 		expect(result.goal).toBe(RICH_GOAL.trim());
 	});
+
 });

@@ -437,8 +437,8 @@ export async function registerTaskWorkRoutes(app, deps) {
 			updates.title = _sanitizeTaskTitle(request.body.title);
 			}
 			if (typeof request.body?.goal === "string" && request.body.goal.trim()) {
-			updates.goal = request.body.goal.trim();
-			updates.body = updates.goal;
+				updates.goal = request.body.goal.trim();
+				updates.body = updates.goal;
 			}
 			if (typeof request.body?.status === "string") {
 			updates.status = request.body.status;
