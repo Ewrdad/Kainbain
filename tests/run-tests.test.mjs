@@ -153,6 +153,7 @@ describe("buildBranches", () => {
 		assert.ok(selfTests.args.some((arg) => arg.endsWith("deploy-reexec.test.mjs")), "deploy re-exec contract must stay in the gate");
 		assert.ok(selfTests.args.some((arg) => arg.endsWith("check-one-function-per-file.test.mjs")), "WP-8 shape gate tests must stay in the gate");
 		assert.ok(selfTests.args.some((arg) => arg.endsWith("check-jsdoc-example.test.mjs")), "WP-8 @example gate tests must stay in the gate");
+		assert.ok(selfTests.args.some((arg) => arg.endsWith("check-imports-declared.test.mjs")), "imports-declared guardrail tests must stay in the gate");
 		assert.ok(!selfTests.args.some((arg) => arg.endsWith(".sh")), "no shell suites");
 	});
 

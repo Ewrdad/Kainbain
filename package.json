@@ -36,7 +36,8 @@
     "deploy:fast": "./deploy.sh --prod --fast",
     "deploy:rollback": "./deploy.sh --rollback",
     "sec": "./Security_scans.sh",
-    "check:duplicate-settings": "node scripts/check-duplicate-settings.mjs"
+    "check:duplicate-settings": "node scripts/check-duplicate-settings.mjs",
+    "check:deps:frontend": "npm run check:deps --prefix frontend"
   },
   "dependencies": {
     "@playwright/test": "^1.62.1"
