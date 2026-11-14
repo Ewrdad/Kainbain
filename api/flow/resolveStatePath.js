@@ -73,14 +73,17 @@ export function throwIfLiveEnginePathUnderTest({ candidatePath, callerName } = {
 }
 
 /***
- * MARK: liveAccessibilityFeedbackFile
+ * MARK: getLiveAccessibilityFeedbackFile
  * @description The one canonical live accessibility-feedback inbox path
  *   (`~/.kainbain/accessibility-feedback.jsonl`). Single definition so the
- *   predicate, the guard, and the route resolver can never drift apart.
- * @example liveAccessibilityFeedbackFile() => os.homedir() + '/.kainbain/accessibility-feedback.jsonl'
+ *   predicate, the guard, and the route resolver (`resolveFeedbackFile`,
+ *   which calls this instead of rebuilding the path) can never drift
+ *   apart. `path.resolve` on the already-absolute join is the identity,
+ *   so this string is byte-identical to the historic fallback.
+ * @example getLiveAccessibilityFeedbackFile() => os.homedir() + '/.kainbain/accessibility-feedback.jsonl'
  * @returns {string} Absolute live inbox path.
  ***/
-export function liveAccessibilityFeedbackFile() {
+export function getLiveAccessibilityFeedbackFile() {
 	return path.resolve(
 		path.join(os.homedir(), ".kainbain", "accessibility-feedback.jsonl"),
 	);
@@ -95,12 +98,14 @@ export function liveAccessibilityFeedbackFile() {
  *   guard is a no-op for it (residual D9 of 99ccc12f, task b3dec9b0).
  *
  *   The comparison normalizes with `path.resolve` and trims surrounding
- *   whitespace, so a padded path cannot slip past the guard. On Windows
- *   the comparison is case-insensitive (the filesystem is). It
- *   deliberately does NOT resolve symlinks (no `realpath`), mirroring
- *   the `isLiveEnginePath` contract: callers pass already-absolute
- *   literal-built paths, so a text comparison on the normalized path
- *   is exact.
+ *   whitespace, so a padded path cannot slip past the guard (a trailing
+ *   slash also still matches — `path.resolve` strips it — so that
+ *   spelling fails closed toward throwing). On Windows the comparison
+ *   is case-insensitive (the filesystem is). It deliberately does NOT
+ *   resolve symlinks (no `realpath`), mirroring the `isLiveEnginePath`
+ *   contract: callers pass already-absolute literal-built paths, so a
+ *   text comparison on the normalized path is exact. Non-string and
+ *   blank inputs return false (they carry no path to guard).
  * @example isLiveAccessibilityFeedbackPath('/home/u/.kainbain/accessibility-feedback.jsonl') => true
  * @example isLiveAccessibilityFeedbackPath('/tmp/kainbain-test-a11y-XXXX/accessibility-feedback.jsonl') => false
  * @param {string} candidatePath - Path to test.
@@ -108,7 +113,7 @@ export function liveAccessibilityFeedbackFile() {
  ***/
 export function isLiveAccessibilityFeedbackPath(candidatePath) {
 	if (typeof candidatePath !== "string" || !candidatePath.trim()) return false;
-	const live = liveAccessibilityFeedbackFile();
+	const live = getLiveAccessibilityFeedbackFile();
 	let resolved = path.resolve(candidatePath.trim());
 	let wanted = live;
 	if (process.platform === "win32") {

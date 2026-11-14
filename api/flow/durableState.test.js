@@ -4,8 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { loadStateFile } from "./loadStateFile.js";
 import {
+	getLiveAccessibilityFeedbackFile,
+	isLiveAccessibilityFeedbackPath,
 	isLiveEnginePath,
 	resolveStatePath,
+	throwIfLiveAccessibilityFeedbackPathUnderTest,
 	throwIfLiveEnginePathUnderTest,
 } from "./resolveStatePath.js";
 import { saveStateFile } from "./saveStateFile.js";
@@ -143,6 +146,106 @@ describe("durableState", () => {
 			expect(resolveStatePath(null, null, "s.json")).toBe(
 				path.join(os.homedir(), ".kainbain", "engine", "s.json"),
 			);
+		} finally {
+			if (saved === undefined) delete process.env.VITEST;
+			else process.env.VITEST = saved;
+		}
+	});
+
+	test("getLiveAccessibilityFeedbackFile is the one canonical live inbox path", () => {
+		expect(getLiveAccessibilityFeedbackFile()).toBe(
+			path.join(os.homedir(), ".kainbain", "accessibility-feedback.jsonl"),
+		);
+	});
+
+	test("isLiveAccessibilityFeedbackPath marks exactly the live inbox file", () => {
+		// Residual D9 of 99ccc12f (task b3dec9b0): the inbox lives
+		// directly under ~/.kainbain/, outside ~/.kainbain/engine/, so
+		// the engine-dir guard is a no-op for it — this exact-file
+		// comparison is the guard that covers it.
+		const liveInbox = path.join(
+			os.homedir(),
+			".kainbain",
+			"accessibility-feedback.jsonl",
+		);
+		expect(isLiveAccessibilityFeedbackPath(liveInbox)).toBe(true);
+		// Surrounding whitespace never hides a live path (or a temp one).
+		expect(isLiveAccessibilityFeedbackPath(`  ${liveInbox}  `)).toBe(true);
+		expect(isLiveAccessibilityFeedbackPath(`  ${tmp()}  `)).toBe(false);
+		expect(isLiveAccessibilityFeedbackPath(tmp())).toBe(false);
+		// Near-misses are NOT the live inbox (no false positives):
+		// same basename in a temp dir, sibling files, the parent dir.
+		expect(
+			isLiveAccessibilityFeedbackPath(
+				path.join(os.tmpdir(), "accessibility-feedback.jsonl"),
+			),
+		).toBe(false);
+		expect(
+			isLiveAccessibilityFeedbackPath(
+				path.join(os.homedir(), ".kainbain", "accessibility-feedback.jsonl.bak"),
+			),
+		).toBe(false);
+		expect(
+			isLiveAccessibilityFeedbackPath(path.join(os.homedir(), ".kainbain")),
+		).toBe(false);
+		// The engine dir is a different store with its own guard.
+		expect(
+			isLiveAccessibilityFeedbackPath(
+				path.join(os.homedir(), ".kainbain", "engine", "s.json"),
+			),
+		).toBe(false);
+		// Non-paths never match (fail closed toward "not live").
+		expect(isLiveAccessibilityFeedbackPath("")).toBe(false);
+		expect(isLiveAccessibilityFeedbackPath("   ")).toBe(false);
+		expect(isLiveAccessibilityFeedbackPath(null)).toBe(false);
+		expect(isLiveAccessibilityFeedbackPath(undefined)).toBe(false);
+	});
+
+	test("throwIfLiveAccessibilityFeedbackPathUnderTest names the caller and stays quiet otherwise", () => {
+		expect(process.env.VITEST).toBeTruthy();
+		const liveInbox = path.join(
+			os.homedir(),
+			".kainbain",
+			"accessibility-feedback.jsonl",
+		);
+		// The caller name lands in the message so the fix location is obvious,
+		// and the message names the env-var fix.
+		expect(() =>
+			throwIfLiveAccessibilityFeedbackPathUnderTest({
+				candidatePath: liveInbox,
+				callerName: "resolveFeedbackFile",
+			}),
+		).toThrow(/resolveFeedbackFile refused live accessibility-feedback path under test/);
+		expect(() =>
+			throwIfLiveAccessibilityFeedbackPathUnderTest({
+				candidatePath: liveInbox,
+				callerName: "resolveFeedbackFile",
+			}),
+		).toThrow(/KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE/);
+		// A missing caller name degrades to the generic guard name, never crashes.
+		expect(() =>
+			throwIfLiveAccessibilityFeedbackPathUnderTest({ candidatePath: liveInbox }),
+		).toThrow(/accessibility-feedback guard refused live accessibility-feedback path under test/);
+		// Temp paths and non-paths are a silent no-op under VITEST.
+		expect(
+			throwIfLiveAccessibilityFeedbackPathUnderTest({
+				candidatePath: tmp(),
+				callerName: "resolveFeedbackFile",
+			}),
+		).toBeUndefined();
+		expect(
+			throwIfLiveAccessibilityFeedbackPathUnderTest({ candidatePath: null }),
+		).toBeUndefined();
+		// Outside VITEST (production) even a live path resolves quietly.
+		const saved = process.env.VITEST;
+		delete process.env.VITEST;
+		try {
+			expect(
+				throwIfLiveAccessibilityFeedbackPathUnderTest({
+					candidatePath: liveInbox,
+					callerName: "resolveFeedbackFile",
+				}),
+			).toBeUndefined();
 		} finally {
 			if (saved === undefined) delete process.env.VITEST;
 			else process.env.VITEST = saved;

@@ -23,7 +23,11 @@ import { config } from "../config.js";
  *   validation (message required, triage fields optional), the 201 +
  *   JSONL persistence path, rate limiting (429 + Retry-After), the 32 KB
  *   body cap, and the store-failure 500. Every POST test points the inbox
- *   at a temp file, so the real `~/.kainbain` inbox is never touched.
+ *   at a temp file (explicit `feedbackFile` opt or the
+ *   `KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE` setup backstop), and the
+ *   2026-11 test-pollution guard (task b3dec9b0) makes resolving the
+ *   real `~/.kainbain/accessibility-feedback.jsonl` inbox throw while
+ *   `VITEST` is set — so the live user inbox is never touched.
  ***/
 
 let tmpDir;
@@ -266,39 +270,140 @@ describe("POST /accessibility/feedback", () => {
 });
 
 describe("accessibility route helpers", () => {
-	it("resolves the inbox path from explicit/configured values and refuses the live inbox under test", () => {
-		// 2026-11 test-pollution guard (task b3dec9b0, residual D9 of
-		// 99ccc12f): while VITEST is set, resolving the LIVE
-		// ~/.kainbain/accessibility-feedback.jsonl inbox THROWS instead of
-		// silently reading/writing real user data. Explicit and temp paths
-		// never throw.
-		const liveInbox = path.join(
-			os.homedir(),
-			".kainbain",
-			"accessibility-feedback.jsonl",
-		);
-		// Explicit wins, no throw.
+	// 2026-11 test-pollution guard (task b3dec9b0, residual D9 of
+	// 99ccc12f): while VITEST is set, resolving the LIVE
+	// ~/.kainbain/accessibility-feedback.jsonl inbox THROWS instead of
+	// silently reading/writing real user data. Explicit and temp paths
+	// never throw. The live path below is built from the historic
+	// segments (independent of the shared getter, which
+	// `flow/durableState.test.js` pins to the same string).
+	const liveInbox = path.join(
+		os.homedir(),
+		".kainbain",
+		"accessibility-feedback.jsonl",
+	);
+
+	it("returns explicit and temp inbox paths without throwing", () => {
+		expect(process.env.VITEST).toBeTruthy();
 		expect(resolveFeedbackFile("/tmp/inbox.jsonl")).toBe("/tmp/inbox.jsonl");
 		// Temp/configured path (e.g. the testSetup.isolation.js pin) never throws.
 		const tempInbox = path.join(tmpDir, "inbox.jsonl");
 		expect(resolveFeedbackFile(tempInbox)).toBe(tempInbox);
-		// Fallback under test throws with a message naming the live path
-		// and the KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE fix.
-		expect(() => resolveFeedbackFile("")).toThrow(/accessibility-feedback\.jsonl/);
+		// The setup backstop itself never throws.
+		expect(resolveFeedbackFile(process.env.KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE)).toBe(
+			process.env.KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE,
+		);
+	});
+
+	it("refuses the live fallback under test for every empty/non-string shape", () => {
+		expect(process.env.VITEST).toBeTruthy();
+		// The fallback (empty/non-string configured path) is the incident
+		// path: an app booted without a `feedbackFile` opt and with an
+		// unpinned env var appended test reports to the live user inbox.
+		for (const empty of ["", "   ", null, undefined, 0, 123, {}, [], true]) {
+			expect(
+				() => resolveFeedbackFile(empty),
+				`configured ${JSON.stringify(empty)} must throw under VITEST`,
+			).toThrow(/accessibility-feedback\.jsonl/);
+		}
+		// The message names the env-var fix.
 		expect(() => resolveFeedbackFile("")).toThrow(/KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE/);
-		expect(() => resolveFeedbackFile(null)).toThrow(/accessibility-feedback\.jsonl/);
-		expect(() => resolveFeedbackFile("   ")).toThrow(/accessibility-feedback\.jsonl/);
-		// Even an explicit literal live path throws under test.
+		expect(() => resolveFeedbackFile(null)).toThrow(/KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE/);
+	});
+
+	it("refuses an explicit live inbox path under test, however it is spelled", () => {
+		expect(process.env.VITEST).toBeTruthy();
+		// Defence in depth: even a literal live path passed explicitly
+		// throws — the guard covers every return branch, not just the
+		// fallback.
 		expect(() => resolveFeedbackFile(liveInbox)).toThrow(/accessibility-feedback\.jsonl/);
-		// Production (VITEST unset) still resolves the live fallback
-		// byte-identically.
+		// A padded live path is still live (no whitespace bypass).
+		expect(() => resolveFeedbackFile(`  ${liveInbox}  `)).toThrow(
+			/accessibility-feedback\.jsonl/,
+		);
+		// A trailing slash still matches (path.resolve strips it).
+		expect(() => resolveFeedbackFile(`${liveInbox}${path.sep}`)).toThrow(
+			/accessibility-feedback\.jsonl/,
+		);
+		// A relative spelling that resolves to the live inbox still throws.
+		const relativeLive = path.relative(process.cwd(), liveInbox);
+		expect(() => resolveFeedbackFile(relativeLive)).toThrow(/accessibility-feedback\.jsonl/);
+	});
+
+	it("resolves the live fallback outside VITEST (production, byte-identical)", () => {
 		const savedVitest = process.env.VITEST;
 		delete process.env.VITEST;
 		try {
 			expect(resolveFeedbackFile("")).toBe(liveInbox);
 			expect(resolveFeedbackFile(null)).toBe(liveInbox);
+			expect(resolveFeedbackFile(undefined)).toBe(liveInbox);
+			expect(resolveFeedbackFile("   ")).toBe(liveInbox);
+			// Production allows an explicit live path (e.g. an operator
+			// pointing the env var at the real inbox on purpose).
+			expect(resolveFeedbackFile(liveInbox)).toBe(liveInbox);
+			expect(resolveFeedbackFile("/tmp/inbox.jsonl")).toBe("/tmp/inbox.jsonl");
 		} finally {
 			if (savedVitest !== undefined) process.env.VITEST = savedVitest;
+		}
+	});
+
+	it("refuses a live inbox passed as the route feedbackFile opt under test", async () => {
+		expect(process.env.VITEST).toBeTruthy();
+		// The `feedbackFile` opt bypasses `resolveFeedbackFile`, so the
+		// route guards the merged inbox itself — a suite passing the live
+		// path as the opt must fail loudly at boot, not at first POST.
+		// Called directly (the guard throws before the app object is
+		// touched, so no Fastify instance is needed).
+		let bootError = null;
+		try {
+			await accessibilityRoutes({}, { deps: {}, feedbackFile: liveInbox });
+		} catch (err) {
+			bootError = err;
+		}
+		expect(bootError).not.toBeNull();
+		expect(String(bootError && bootError.message)).toMatch(/accessibility-feedback\.jsonl/);
+		expect(String(bootError && bootError.message)).toMatch(/KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE/);
+		expect(String(bootError && bootError.message)).toMatch(/accessibilityRoutes/);
+	});
+
+	it("writes through the config backstop (no feedbackFile opt) to the temp pin, never the live inbox", async () => {
+		expect(process.env.VITEST).toBeTruthy();
+		// This is the incident path end to end: an app booted like
+		// production (`{ deps }` only, no `feedbackFile` opt) must write
+		// through `config.accessibilityFeedbackFile` — the
+		// `testSetup.isolation.js` temp pin — and leave the live inbox
+		// byte-identical.
+		const pinnedInbox = config.accessibilityFeedbackFile;
+		expect(pinnedInbox).toBe(process.env.KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE);
+		expect(pinnedInbox.startsWith(os.tmpdir())).toBe(true);
+		/* eslint-disable-next-line security/detect-non-literal-fs-filename -- test snapshot of the known live inbox path */
+		const liveExistedBefore = fs.existsSync(liveInbox);
+		/* eslint-disable-next-line security/detect-non-literal-fs-filename -- test snapshot of the known live inbox path */
+		const liveBefore = liveExistedBefore ? fs.readFileSync(liveInbox) : null;
+		const linesBefore = inboxLines(pinnedInbox).length;
+
+		const app = Fastify({ logger: false });
+		await app.register(accessibilityRoutes, { deps: {} });
+		await app.ready();
+		const response = await app.inject({
+			method: "POST",
+			url: "/accessibility/feedback",
+			payload: { message: "Backstop write must land in the temp pin." },
+		});
+		expect(response.statusCode).toBe(201);
+		await app.close();
+
+		const linesAfter = inboxLines(pinnedInbox);
+		expect(linesAfter.length).toBe(linesBefore + 1);
+		expect(linesAfter[linesAfter.length - 1]).toMatchObject({
+			message: "Backstop write must land in the temp pin.",
+		});
+		if (liveExistedBefore) {
+			/* eslint-disable-next-line security/detect-non-literal-fs-filename -- test snapshot of the known live inbox path */
+			expect(fs.readFileSync(liveInbox).equals(liveBefore)).toBe(true);
+		} else {
+			/* eslint-disable-next-line security/detect-non-literal-fs-filename -- test snapshot of the known live inbox path */
+			expect(fs.existsSync(liveInbox)).toBe(false);
 		}
 	});
 

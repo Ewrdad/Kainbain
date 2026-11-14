@@ -20,12 +20,14 @@
  ***/
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { config } from "../config.js";
-import { throwIfLiveAccessibilityFeedbackPathUnderTest } from "../flow/resolveStatePath.js";
+import {
+	getLiveAccessibilityFeedbackFile,
+	throwIfLiveAccessibilityFeedbackPathUnderTest,
+} from "../flow/resolveStatePath.js";
 import {
 	isNeedGroupId,
 	parseResultsArtifact,
@@ -74,6 +76,9 @@ export const FEEDBACK_PAGE_URL_MAX_CHARS = 2048;
  * @description Resolves the JSONL inbox path: the configured path when set,
  *   else `~/.kainbain/accessibility-feedback.jsonl` (the
  *   `KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE` schema key, empty by default).
+ *   The fallback comes from the one shared `getLiveAccessibilityFeedbackFile`
+ *   definition, so the resolver, the predicate, and the guard can never
+ *   drift apart.
  *
  *   Test-pollution guard (2026-11 incident, residual D9 of 99ccc12f,
  *   task b3dec9b0): while `VITEST` is set, resolving the LIVE inbox
@@ -82,19 +87,23 @@ export const FEEDBACK_PAGE_URL_MAX_CHARS = 2048;
  *   forgets its temp pin fails loudly instead of appending test reports
  *   to the real user inbox. Production (`VITEST` unset) resolves
  *   byte-identically to before.
+ *
+ *   How it can fail: under `VITEST`, an empty/non-string configured
+ *   path (fallback to the live inbox) or a configured path that IS the
+ *   live inbox throws `Error("<caller> refused live
+ *   accessibility-feedback path under test ...")`. Fix: point the
+ *   suite at a temp inbox via `KAINBAIN_ACCESSIBILITY_FEEDBACK_FILE`
+ *   (the `api/testSetup.isolation.js` backstop does this for the
+ *   standard run) or pass an explicit temp `feedbackFile`.
  * @example resolveFeedbackFile('/tmp/inbox.jsonl') => '/tmp/inbox.jsonl'
- * @example resolveFeedbackFile('') => os.homedir() + '/.kainbain/accessibility-feedback.jsonl'
+ * @example resolveFeedbackFile('') => os.homedir() + '/.kainbain/accessibility-feedback.jsonl' (production; throws under VITEST)
  ***/
 export const resolveFeedbackFile = (configuredPath) => {
 	let resolved;
 	if (typeof configuredPath === "string" && configuredPath.trim() !== "") {
 		resolved = configuredPath;
 	} else {
-		resolved = path.join(
-			os.homedir(),
-			".kainbain",
-			"accessibility-feedback.jsonl",
-		);
+		resolved = getLiveAccessibilityFeedbackFile();
 	}
 	throwIfLiveAccessibilityFeedbackPathUnderTest({
 		candidatePath: resolved,
@@ -289,12 +298,25 @@ const errorResponseSchema = {
  *   inbox path, `clock` overrides `Date.now`, and `rateLimitStore` overrides
  *   the in-memory buckets (all test seams; production passes `{ deps }`
  *   only).
+ *
+ *   Test-pollution guard (task b3dec9b0): the resolved inbox is guarded
+ *   again here because an explicit `feedbackFile` opt bypasses
+ *   `resolveFeedbackFile` — without this call a suite passing the LIVE
+ *   inbox as `feedbackFile` would silently append test reports to real
+ *   user data. Production (`VITEST` unset) is unaffected (no-op).
  * @example app.register(accessibilityRoutes, { deps })
  ***/
 export default async function accessibilityRoutes(app, opts = {}) {
 	const { resultsFile, feedbackFile, clock, rateLimitStore } = opts;
 	const artifactFile = resultsFile || RESULTS_FILE;
 	const inboxFile = feedbackFile || resolveFeedbackFile(config.accessibilityFeedbackFile);
+	// The `feedbackFile` opt above bypasses `resolveFeedbackFile`, so guard
+	// the merged result too: a literal live inbox passed as the opt must
+	// fail loudly under test, exactly like a live configured path.
+	throwIfLiveAccessibilityFeedbackPathUnderTest({
+		candidatePath: inboxFile,
+		callerName: "accessibilityRoutes",
+	});
 	const now = typeof clock === "function" ? clock : () => Date.now();
 	const buckets = rateLimitStore instanceof Map ? rateLimitStore : new Map();
 
