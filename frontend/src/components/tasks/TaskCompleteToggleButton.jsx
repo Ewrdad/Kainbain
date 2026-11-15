@@ -35,7 +35,7 @@ export function TaskCompleteToggleButton({
   return (
     <button
       type="button"
-      disabled={isMutating}
+      disabled={isMutating || pendingAction === action}
       aria-busy={pendingAction === action}
       onClick={() => {
         runTaskAction(action, () => handler?.(activeProjectId, task.id)).catch(() => {
@@ -56,4 +56,9 @@ export function TaskCompleteToggleButton({
   );
 }
 
+/***
+ * MARK: TaskCompleteToggleButton default
+ * @description Default export of the shared Complete/Uncomplete toggle button.
+ * @example <TaskCompleteToggleButton task={task} activeProjectId={activeProjectId} completeTask={completeTask} uncompleteTask={uncompleteTask} isMutating={isMutating} pendingAction={pendingAction} runTaskAction={runTaskAction} />
+ ***/
 export default TaskCompleteToggleButton;

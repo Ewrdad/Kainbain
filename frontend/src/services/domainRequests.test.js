@@ -56,8 +56,10 @@ describe('Business-owned request lists', () => {
     // deleteFleetQuarantinedModel) for the System Settings › Models
     // fleet-catalogue admin table +
     // the first-run onboarding summary (getOnboarding) for the empty
-    // state and guided-checklist UIs.
-    expect(names).toHaveLength(104);
+    // state and guided-checklist UIs +
+    // the task-reopen operation (uncompleteTask) for the Uncomplete button
+    // on completed tasks.
+    expect(names).toHaveLength(105);
     for (const name of names) expect(typeof api[name]).toBe('function');
   });
 
