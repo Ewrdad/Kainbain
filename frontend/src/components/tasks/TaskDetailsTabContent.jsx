@@ -7,6 +7,7 @@
  ***/
 import { TaskGoalSection } from './TaskGoalSection';
 import { BlockedByEditor } from './BlockedByEditor';
+import { TaskCompleteToggleButton } from './TaskCompleteToggleButton';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { approvalCopy } from '../stageTypes';
 import { FailureMessage } from './FailureMessage';
@@ -15,6 +16,7 @@ export function TaskDetailsTab({
   activeProjectId,
   approvalGuidance,
   completeTask,
+  uncompleteTask,
   copiedKeyword,
   currentStageId,
   failureMessage,
@@ -496,30 +498,15 @@ export function TaskDetailsTab({
         </div>
 
         <div className="flex items-center gap-2">
-          {task.status !== 'completed' && (
-            <button
-              type="button"
-              disabled={isMutating}
-              aria-busy={pendingAction === 'complete'}
-              onClick={() => {
-                runTaskAction('complete', () => completeTask?.(activeProjectId, task.id)).catch(
-                  () => {
-                    // completeTask surfaces failures via its notification layer.
-                  },
-                );
-              }}
-              className="px-3.5 py-2.5 min-h-[44px] border border-primary/40 text-primary hover:bg-primary hover:text-on-primary rounded-sm text-xs font-bold uppercase transition-colors cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5"
-            >
-              {pendingAction === 'complete' ? (
-                <>
-                  <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  <span>Completing...</span>
-                </>
-              ) : (
-                <span>✓ Complete</span>
-              )}
-            </button>
-          )}
+          <TaskCompleteToggleButton
+            task={task}
+            activeProjectId={activeProjectId}
+            completeTask={completeTask}
+            uncompleteTask={uncompleteTask}
+            isMutating={isMutating}
+            pendingAction={pendingAction}
+            runTaskAction={runTaskAction}
+          />
           <button
             type="button"
             disabled={isMutating}

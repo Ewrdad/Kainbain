@@ -52,6 +52,47 @@ export function isTerminalTaskStatus(status) {
 }
 
 /***
+ * MARK: resolveReopenedStatus
+ * @description Pure resolution of the status/stage a completed task returns to
+ *   when uncompleted (reopened). `completeTask` snapshots the pre-completion
+ *   status/stage (`statusBeforeComplete`/`stageBeforeComplete`); the snapshot
+ *   wins when present and non-terminal. A live `running_*` snapshot can never
+ *   be restored honestly (completing killed the run), so it reopens as
+ *   `in_stage` — runnable like any other queued task without the uncomplete
+ *   call itself restarting a run. Terminal snapshot statuses collapse to
+ *   `idle`. Legacy tasks completed before the snapshot shipped have no
+ *   snapshot and reopen as `idle` on their current stage.
+ * @example resolveReopenedStatus({ statusBeforeComplete: 'paused', stageBeforeComplete: 's-1', currentStageId: 's-2' }) => { status: 'paused', stageId: 's-1' }
+ * @example resolveReopenedStatus({ statusBeforeComplete: 'running_agent', currentStageId: 's-1' }) => { status: 'in_stage', stageId: 's-1' }
+ * @example resolveReopenedStatus({ status: 'completed', currentStageId: 's-1' }) => { status: 'idle', stageId: 's-1' }
+ * @param {Object} task - The completed task record.
+ * @returns {{ status: string, stageId: string|null }} The status/stage to restore.
+ ***/
+export function resolveReopenedStatus(task) {
+	const snapStatus =
+		typeof task?.statusBeforeComplete === "string" &&
+		task.statusBeforeComplete.trim()
+			? task.statusBeforeComplete
+			: null;
+	const snapStage =
+		typeof task?.stageBeforeComplete === "string" &&
+		task.stageBeforeComplete.trim()
+			? task.stageBeforeComplete
+			: null;
+	const currentStageId =
+		typeof task?.currentStageId === "string" && task.currentStageId.trim()
+			? task.currentStageId
+			: null;
+	if (snapStatus && !isTerminalTaskStatus(snapStatus)) {
+		return {
+			status: snapStatus.startsWith("running_") ? "in_stage" : snapStatus,
+			stageId: snapStage || currentStageId,
+		};
+	}
+	return { status: "idle", stageId: currentStageId };
+}
+
+/***
  * MARK: findStageByIdOrName
  * @description Single id-or-name stage lookup shared by every transition and
  *   projection path, so matching semantics cannot drift between writers and

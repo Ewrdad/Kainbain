@@ -1270,10 +1270,25 @@ describe("TaskStore", () => {
 		expect(done.status).toBe("completed");
 	});
 
+	it("uncompletes a completed task back to its pre-completion status", () => {
+		const store = new TaskStore();
+		const task = store.createTask("p1", { goal: "Reopen", stageId: "1" });
+		const statusBefore = task.status;
+		store.completeTask("p1", task.id);
+		const reopened = store.uncompleteTask("p1", task.id);
+		expect(reopened.status).toBe(statusBefore);
+		expect(reopened.status).not.toBe("completed");
+		expect(reopened.history.some((h) => h.action === "Uncompleted")).toBe(true);
+		// No-op when not completed, null when unknown.
+		expect(store.uncompleteTask("p1", task.id).status).toBe(statusBefore);
+		expect(store.uncompleteTask("p1", "nope")).toBeNull();
+	});
+
 	it("returns null for unknown tasks on transitions", () => {
 		const store = new TaskStore();
 		expect(store.advanceStage("p1", "nope", stages)).toBeNull();
 		expect(store.completeTask("p1", "nope")).toBeNull();
+		expect(store.uncompleteTask("p1", "nope")).toBeNull();
 		expect(store.deleteTask("p1", "nope")).toBe(false);
 	});
 

@@ -95,6 +95,7 @@ import {
 	advanceStage,
 	failbackStage,
 	completeTask,
+	uncompleteTask,
 	pauseTask,
 	resumeTask,
 	retryStage,
@@ -815,6 +816,20 @@ export class TaskStore {
 	 ***/
 	completeTask(projectId, taskId, projectCwd, options) {
 		return completeTask(this, projectId, taskId, projectCwd, options);
+	}
+
+	/***
+	 * MARK: uncompleteTask
+	 * @description Reopens a completed task back into the workflow (restoring the
+	 *   status/stage it had before completion) and persists to disk.
+	 * @example taskStore.uncompleteTask('proj-1', taskId)
+	 * @param {string} projectId
+	 * @param {string} taskId
+	 * @param {string} [projectCwd]
+	 * @returns {Object|null}
+	 ***/
+	uncompleteTask(projectId, taskId, projectCwd) {
+		return uncompleteTask(this, projectId, taskId, projectCwd);
 	}
 
 	pauseTask(projectId, taskId, projectCwd) {

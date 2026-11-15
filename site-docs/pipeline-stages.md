@@ -74,6 +74,7 @@ A task's `status` tells you where it stands: `idle`, `in_stage`, `waiting_human`
 - **Reject** sends it back with required human feedback.
 - **Failback / move / jump** route a task to an earlier or arbitrary stage.
 - **Retry** re-runs a failed stage with a freshly curated prompt; **pause/resume** and **abort** control live execution.
+- **Complete** marks a task done (`POST /tasks/:id/complete`). On a completed task the same button becomes **Uncomplete** (`POST /tasks/:id/uncomplete`), which reopens the task back to the status and stage it had just before completion — it then behaves like any other non-completed task (the scheduler may pick it up again when its restored status is `in_stage`), and its history keeps both the `Completed` and `Uncompleted` entries.
 
 Auto-iteration can re-run a failed stage automatically (fix, re-test, re-review) up to a configured limit before parking the task as `failed` for a human.
 

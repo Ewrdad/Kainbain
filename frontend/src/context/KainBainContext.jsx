@@ -456,6 +456,7 @@ export function KainBainProvider({ children }) {
     jumpTask: tasks.jumpTask,
     moveTask: tasks.moveTask,
     completeTask: tasks.completeTask,
+    uncompleteTask: tasks.uncompleteTask,
     updateTask: tasks.updateTask,
     refreshTasks: tasks.refreshTasks,
     followUpTask: tasks.followUpTask,

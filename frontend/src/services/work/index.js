@@ -59,6 +59,11 @@ export function workRequests(request, isValidProjectId) {
       method: 'POST',
       body: JSON.stringify({ projectId }),
     }),
+    uncompleteTask: (projectId, taskId) =>
+    request(`/tasks/${taskId}/uncomplete`, {
+      method: 'POST',
+      body: JSON.stringify({ projectId }),
+    }),
     updateTask: (projectId, taskId, updates) =>
     request(`/tasks/${taskId}`, {
       method: 'PATCH',

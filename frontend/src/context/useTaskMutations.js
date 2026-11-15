@@ -364,6 +364,25 @@ export function useTaskMutations({
     [refreshTasks],
   );
 
+  // Mirror of completeTask: reopens a completed task back into the workflow
+  // (the backend restores the status/stage it had before completion).
+  const uncompleteTask = useCallback(
+    async (projectId, taskId) => {
+      try {
+        await api.uncompleteTask(projectId, taskId);
+        await refreshTasks(projectId);
+        onNotificationRef.current?.({
+          type: 'success',
+          title: 'Task Reopened',
+          message: 'Task uncompleted and back in the workflow',
+        });
+      } catch (e) {
+        logger.error('Failed to uncomplete task', e);
+      }
+    },
+    [refreshTasks],
+  );
+
   // Edit a task's title / goal from the Task Detail view. Rejects when the
   // backend refuses the edit so callers can block checkpoint actions (approve /
   // reject) on top of an unsaved edit instead of advancing on stale data.
@@ -512,6 +531,7 @@ export function useTaskMutations({
     closeFeedbackDialog,
     jumpTask,
     completeTask,
+    uncompleteTask,
     updateTask,
     feedbackTask,
     followUpTask,

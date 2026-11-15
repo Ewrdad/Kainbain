@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
 	advanceStage,
 	completeTask,
+	uncompleteTask,
 	failbackStage,
 	moveToStage,
 	pauseTask,
@@ -557,6 +558,94 @@ describe("completeTask", () => {
 		};
 		store.seed("p-1", task());
 		expect(completeTask(store, "p-1", "t-1").status).toBe("completed");
+	});
+
+	it("snapshots the pre-completion status and stage for uncompleteTask", () => {
+		const store = makeStore();
+		store.seed("p-1", task({ status: "paused", currentStageId: "s-2" }));
+		const done = completeTask(store, "p-1", "t-1");
+		expect(done.status).toBe("completed");
+		expect(done.statusBeforeComplete).toBe("paused");
+		expect(done.stageBeforeComplete).toBe("s-2");
+	});
+});
+
+describe("uncompleteTask", () => {
+	it("returns null for unknown tasks and is a no-op for non-completed tasks", () => {
+		const store = makeStore();
+		expect(uncompleteTask(store, "p-1", "ghost")).toBeNull();
+		const live = store.seed("p-1", task({ status: "in_stage" }));
+		expect(uncompleteTask(store, "p-1", "t-1")).toBe(live);
+		expect(live.status).toBe("in_stage");
+		expect(live.history).toHaveLength(0);
+		expect(store._recordTimelineWithDiffStat).not.toHaveBeenCalled();
+	});
+
+	it("complete -> uncomplete round-trip restores the snapshotted status and stage", () => {
+		const store = makeStore();
+		store.seed("p-1", task({ status: "paused", currentStageId: "s-2" }));
+		completeTask(store, "p-1", "t-1");
+		const reopened = uncompleteTask(store, "p-1", "t-1");
+		expect(reopened.status).toBe("paused");
+		expect(reopened.currentStageId).toBe("s-2");
+		// The snapshot is consumed on reopen.
+		expect(reopened.statusBeforeComplete).toBeNull();
+		expect(reopened.stageBeforeComplete).toBeNull();
+		// History keeps both transitions; the timeline gained a Reopened row.
+		expect(reopened.history.map((h) => h.action)).toEqual([
+			"Completed",
+			"Uncompleted",
+		]);
+		expect(store._recordTimelineWithDiffStat).toHaveBeenLastCalledWith(
+			reopened,
+			expect.objectContaining({ status: "Reopened" }),
+			undefined,
+			expect.anything(),
+		);
+		expect(store._saveTaskMarkdown).toHaveBeenCalled();
+		expect(store.eventBridge.broadcastGlobal).toHaveBeenCalledWith(
+			"TASK_UPDATED",
+			reopened,
+		);
+	});
+
+	it("normalizes a mid-run completion back to in_stage instead of a dead running_* label", () => {
+		const store = makeStore();
+		store.seed("p-1", task({ status: "running_agent" }));
+		completeTask(store, "p-1", "t-1");
+		const reopened = uncompleteTask(store, "p-1", "t-1");
+		expect(reopened.status).toBe("in_stage");
+		expect(reopened.currentStageId).toBe("s-1");
+	});
+
+	it("reopens legacy completed tasks (no snapshot) as idle on the current stage", () => {
+		const store = makeStore();
+		store.seed("p-1", task({ status: "completed", currentStageId: "s-3" }));
+		const reopened = uncompleteTask(store, "p-1", "t-1");
+		expect(reopened.status).toBe("idle");
+		expect(reopened.currentStageId).toBe("s-3");
+		expect(reopened.history.at(-1).action).toBe("Uncompleted");
+	});
+
+	it("double-uncomplete is a safe no-op and re-completion re-snapshots", () => {
+		const store = makeStore();
+		store.seed("p-1", task({ status: "in_stage" }));
+		completeTask(store, "p-1", "t-1");
+		uncompleteTask(store, "p-1", "t-1");
+		const again = uncompleteTask(store, "p-1", "t-1");
+		expect(again.status).toBe("in_stage");
+		expect(again.history.filter((h) => h.action === "Uncompleted")).toHaveLength(1);
+		// Complete again from the reopened state: the new snapshot wins.
+		store.seed("p-1", { ...again, status: "paused" });
+		completeTask(store, "p-1", "t-1");
+		const reopened2 = uncompleteTask(store, "p-1", "t-1");
+		expect(reopened2.status).toBe("paused");
+		expect(reopened2.history.map((h) => h.action)).toEqual([
+			"Completed",
+			"Uncompleted",
+			"Completed",
+			"Uncompleted",
+		]);
 	});
 });
 

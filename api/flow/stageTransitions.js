@@ -10,7 +10,7 @@ import {
 	parseAutoApproveDuration,
 	resolveAutoApproveAt,
 } from '../../shared/autoApproveDuration.js';
-import { isTerminalTaskStatus, resolveStageLabel, stageElapsedSeconds, clearResumedMarker, findStageByIdOrName, findStageIndexByIdOrName, isEngineOwnerOf } from './stagePolicy.js';
+import { isTerminalTaskStatus, resolveReopenedStatus, resolveStageLabel, stageElapsedSeconds, clearResumedMarker, findStageByIdOrName, findStageIndexByIdOrName, isEngineOwnerOf } from './stagePolicy.js';
 import { resolveStagesForTask } from './taskScheduler.js';
 import { killTaskProcess } from './taskControl.js';
 import { buildTimelineAttribution } from './runAttribution.js';
@@ -605,6 +605,8 @@ export function failbackStage(
  *   A terminal settle cancels any live auto-approve wait. `options.automated`
  *   (from a sweeper-driven advance out of a final human checkpoint) badges
  *   the terminal timeline row without changing its Completed status.
+ *   The pre-completion status/stage are snapshotted (`statusBeforeComplete`/
+ *   `stageBeforeComplete`) so uncompleteTask can restore them exactly.
  ***/
 export function completeTask(store, projectId, taskId, projectCwd, options = {}) {
 	const task = store.getTask(projectId, taskId);
@@ -615,6 +617,11 @@ export function completeTask(store, projectId, taskId, projectCwd, options = {})
 	// task visibly reverts to an automated stage.
 	interruptLiveRun(store, projectId, taskId);
 	const durationSeconds = stageElapsedSeconds(task);
+	// Snapshot the pre-completion state so uncompleteTask can restore it
+	// exactly ("restore it to before"); the snapshot is consumed on reopen
+	// and re-stamped by every later complete.
+	task.statusBeforeComplete = task.status;
+	task.stageBeforeComplete = task.currentStageId ?? null;
 	task.status = "completed";
 	task.failureReason = null;
 	task.lastError = null;
@@ -700,6 +707,72 @@ export function completeTask(store, projectId, taskId, projectCwd, options = {})
 		},
 	);
 	task.currentRunAttribution = null;
+	store._saveTaskMarkdown(projectCwd, task);
+	store.eventBridge?.broadcastGlobal?.("TASK_UPDATED", task);
+	return task;
+}
+
+/***
+ * MARK: uncompleteTask
+ * @description Reopens a completed task back into the workflow, mirroring
+ *   completeTask. Restores the status/stage snapshotted at completion time
+ *   (`statusBeforeComplete`/`stageBeforeComplete` via resolveReopenedStatus,
+ *   falling back to `idle` on the current stage for tasks completed before
+ *   the snapshot shipped) and records an `Uncompleted` history entry plus a
+ *   `Reopened` timeline row, so history and reports stay intact and the
+ *   reopen is visible. A completed task has no live run by construction, so
+ *   nothing is interrupted and no run is started here — the reopened task is
+ *   simply an ordinary task again (the scheduler picks it up on its normal
+ *   cycle when the restored status is `in_stage`). Non-completed tasks are a
+ *   no-op, mirroring completeTask's idempotence.
+ * @example uncompleteTask(store, 'p-1', 't-1', '/cwd') => { ...task, status: 'in_stage' }
+ ***/
+export function uncompleteTask(store, projectId, taskId, projectCwd) {
+	const task = store.getTask(projectId, taskId);
+	if (!task) return null;
+	if (task.status !== "completed") return task;
+	const restored = resolveReopenedStatus(task);
+	task.status = restored.status;
+	if (restored.stageId) task.currentStageId = restored.stageId;
+	// The snapshot is consumed here: a later complete re-snapshots fresh.
+	task.statusBeforeComplete = null;
+	task.stageBeforeComplete = null;
+	// Any auto-approve wait from the pre-completion visit died with the
+	// complete; a reopened task waits for an explicit operator action.
+	task.autoApproveAt = null;
+	task.autoApproveRemindedAt = null;
+	task.updatedAt = new Date().toISOString();
+	task.history.push({
+		timestamp: task.updatedAt,
+		action: "Uncompleted",
+	});
+	let reopenedStages = [];
+	if (store.projectStore && typeof store.projectStore.getProject === "function") {
+		const proj = store.projectStore.getProject(projectId);
+		if (proj) {
+			reopenedStages = resolveStagesForTask(proj, task) || [];
+		}
+	}
+	store._recordTimelineWithDiffStat(
+		task,
+		{
+			stage: task.currentStageId
+				? resolveStageLabel(task.currentStageId, reopenedStages)
+				: "Final Stage",
+			status: "Reopened",
+			duration: "--",
+			durationSeconds: undefined,
+			durationStageId: task.currentStageId,
+			timestamp: task.updatedAt,
+		},
+		projectCwd,
+		{
+			useBranches: isBranchModeEnabled(store.projectStore, projectId),
+			docsTasksPrefix: docsTasksIgnorePath(
+				store.projectStore?.getProject?.(projectId),
+			),
+		},
+	);
 	store._saveTaskMarkdown(projectCwd, task);
 	store.eventBridge?.broadcastGlobal?.("TASK_UPDATED", task);
 	return task;
