@@ -60,7 +60,7 @@ export function DocsSidebarGroup({
           </span>
           <Icon
             name="chevron-down"
-            className={`w-4 h-4 ml-auto shrink-0 text-text-muted transition-transform motion-safe:duration-200 ${
+            className={`w-4 h-4 ml-auto shrink-0 text-text-muted motion-safe:transition-transform motion-safe:duration-200 ${
               collapsed ? '-rotate-90' : ''
             }`}
           />
