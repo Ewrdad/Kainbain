@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import {
 	DOC_SECTIONS,
+	LEGACY_SECTION_ALIASES,
 	isValidSlug,
 	parseFrontmatter,
 	readDocFile,
@@ -152,6 +153,60 @@ describe("getDoc", () => {
 		expect(getDoc("missing", { dir })).toBeNull();
 		expect(getDoc("../secret", { dir })).toBeNull();
 		expect(getDoc("..", { dir })).toBeNull();
+	});
+});
+
+describe("LEGACY_SECTION_ALIASES (retired how-it-works / working-with)", () => {
+	/***
+	 * MARK: legacy-section regression guard
+	 * @description Custom `KAINBAIN_SITE_DOCS` dirs may still carry the
+	 *   pre-regroup two-avenue frontmatter. These must resolve to the new
+	 *   groups (with a warn), never silently vanish from the index.
+	 ***/
+	it("maps the retired avenues to the new groups", () => {
+		expect(LEGACY_SECTION_ALIASES).toEqual({
+			"how-it-works": "concepts",
+			"working-with": "workflows",
+		});
+	});
+
+	it("readDocFile resolves old sections instead of returning null", () => {
+		write("legacy-a.md", article("title: Legacy A\nsection: how-it-works\norder: 1"));
+		write("legacy-b.md", article("title: Legacy B\nsection: working-with\norder: 1"));
+		expect(readDocFile(path.join(dir, "legacy-a.md"))).toMatchObject({
+			slug: "legacy-a",
+			section: "concepts",
+		});
+		expect(readDocFile(path.join(dir, "legacy-b.md"))).toMatchObject({
+			slug: "legacy-b",
+			section: "workflows",
+		});
+	});
+
+	it("listDocs/getDoc still index old-section custom articles", () => {
+		const legacyDir = fs.mkdtempSync(path.join(os.tmpdir(), "sitedocs-legacy-"));
+		/* eslint-disable security/detect-non-literal-fs-filename */
+		fs.writeFileSync(
+			path.join(legacyDir, "a.md"),
+			article("title: A\nsection: how-it-works\norder: 1", "# A"),
+		);
+		fs.writeFileSync(
+			path.join(legacyDir, "b.md"),
+			article("title: B\nsection: working-with\norder: 1", "# B"),
+		);
+		/* eslint-enable security/detect-non-literal-fs-filename */
+		const docs = listDocs({ dir: legacyDir });
+		expect(docs.map((d) => d.slug).sort()).toEqual(["a", "b"]);
+		expect(docs.find((d) => d.slug === "a")).toMatchObject({ section: "concepts" });
+		expect(docs.find((d) => d.slug === "b")).toMatchObject({ section: "workflows" });
+		expect(getDoc("a", { dir: legacyDir })).toMatchObject({
+			slug: "a",
+			section: "concepts",
+		});
+		expect(getDoc("b", { dir: legacyDir })).toMatchObject({
+			slug: "b",
+			section: "workflows",
+		});
 	});
 });
 

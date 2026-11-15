@@ -50,6 +50,23 @@ export const SECTION_LABELS = {
 };
 
 /***
+ * MARK: LEGACY_SECTION_ALIASES
+ * @description Backward-compat aliases for the pre-regroup taxonomy
+ *   (`how-it-works` / `working-with`, two avenues). Custom content dirs
+ *   (`KAINBAIN_SITE_DOCS` overrides) may still carry old `section:`
+ *   frontmatter; `readDocFile` resolves these to the closest new group so
+ *   old articles keep indexing instead of silently vanishing. `how-it-works`
+ *   held the conceptual articles (now `concepts`); `working-with` held the
+ *   operational guides (now `workflows`). Emits a `console.warn` naming the
+ *   file so owners can update frontmatter at their convenience.
+ * @example LEGACY_SECTION_ALIASES['how-it-works'] => 'concepts'
+ ***/
+export const LEGACY_SECTION_ALIASES = {
+	"how-it-works": "concepts",
+	"working-with": "workflows",
+};
+
+/***
  * MARK: SLUG_PATTERN
  * @description Strict allowlist for article slugs. Only lowercase alphanumerics
  *   and single hyphens — this makes path traversal impossible by construction.
@@ -126,10 +143,18 @@ export function readDocFile(filePath) {
 	const fallbackSlug = path.basename(filePath, ".md").toLowerCase();
 	const slug = (meta.slug || fallbackSlug).toLowerCase();
 	const title = (meta.title || "").trim();
-	const section = (meta.section || "").trim();
+	const rawSection = (meta.section || "").trim();
 	const order = Number.parseInt(meta.order, 10);
 	if (!isValidSlug(slug)) return null;
 	if (!title) return null;
+	let section = rawSection;
+	const aliased = LEGACY_SECTION_ALIASES[rawSection];
+	if (aliased) {
+		section = aliased;
+		console.warn(
+			`[siteDocs] ${path.basename(filePath)} uses retired section "${rawSection}"; resolved to "${aliased}". Update frontmatter to "section: ${aliased}".`,
+		);
+	}
 	if (!DOC_SECTIONS.includes(section)) return null;
 	return {
 		slug,
