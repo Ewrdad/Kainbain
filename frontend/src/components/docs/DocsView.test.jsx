@@ -366,6 +366,48 @@ test('deep link into a stored-collapsed group forces that group open', async () 
   );
 });
 
+test('articles in a section the bundle does not know render under their id', async () => {
+  api.docsIndex.mockResolvedValue({
+    sections: ['getting-started', 'concepts', 'workflows', 'reference'],
+    docs: [
+      { slug: 'getting-started', title: 'Getting Started', section: 'getting-started', order: 5 },
+      { slug: 'future-thing', title: 'Future Thing', section: 'future-group', order: 10 },
+    ],
+  });
+  renderWithKainBain(<DocsView />);
+  // The unknown group appends after the known order under its own id, so a
+  // backend regroup shipped ahead of the frontend never hides articles.
+  expect(await screen.findByText('future-group')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Future Thing' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Getting Started' })).toBeInTheDocument();
+});
+
+test('a malformed index entry cannot break the filter or sidebar', async () => {
+  api.docsIndex.mockResolvedValue({
+    sections: ['getting-started'],
+    docs: [
+      { slug: 'getting-started', title: 'Getting Started', section: 'getting-started', order: 5 },
+      { slug: 'broken-entry', section: 'getting-started', order: 99 },
+      null,
+    ],
+  });
+  renderWithKainBain(<DocsView />);
+  await screen.findByText('Getting started');
+  // The bad entry renders under its slug and stays searchable by slug.
+  expect(screen.getByRole('button', { name: 'broken-entry' })).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Filter docs articles'), {
+    target: { value: 'broken' },
+  });
+  expect(screen.getByRole('button', { name: 'broken-entry' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Getting Started' })).not.toBeInTheDocument();
+});
+
+test('a non-array docs payload renders the empty state instead of throwing', async () => {
+  api.docsIndex.mockResolvedValue({ sections: [], docs: null });
+  renderWithKainBain(<DocsView />);
+  expect(await screen.findByText('No docs articles yet.')).toBeInTheDocument();
+});
+
 test('collapsing a group never changes the route', async () => {
   renderWithKainBain(
     <>

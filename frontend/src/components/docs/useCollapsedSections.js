@@ -29,7 +29,9 @@ export const readStoredCollapsed = () => {
  *   localStorage (survey mandate: choices persist across visits) and written
  *   back on every change. `isCollapsed` forces a stored-collapsed group open
  *   when it holds the filter match or the active article — callers pass the
- *   forced-open set, the hook only owns the stored set.
+ *   forced-open set, the hook only owns the stored set. `toggle` ignores
+ *   empty or non-string ids so a wiring mistake can never poison the stored
+ *   payload; every storage failure falls back to expanded, never throws.
  * @returns {{ collapsed: Set<string>, toggle: (section: string) => void }}
  * @example const { collapsed, toggle } = useCollapsedSections();
  ***/
@@ -37,6 +39,7 @@ export function useCollapsedSections() {
   const [collapsed, setCollapsed] = useState(readStoredCollapsed);
 
   const toggle = useCallback((section) => {
+    if (typeof section !== 'string' || section.length === 0) return;
     setCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(section)) next.delete(section);

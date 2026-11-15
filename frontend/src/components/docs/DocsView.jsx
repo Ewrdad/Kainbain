@@ -93,7 +93,9 @@ export function DocsView() {
     };
   }, []);
 
-  const docs = useMemo(() => index?.docs || [], [index]);
+  // A malformed index payload (non-array `docs`) falls back to empty rather
+  // than throwing in the filter/group memos below.
+  const docs = useMemo(() => (Array.isArray(index?.docs) ? index.docs : []), [index]);
 
   // Default to the first article once the index arrives (unless deep-linked).
   // Rendered immediately; the normalisation effect below then replaces the
@@ -157,35 +159,54 @@ export function DocsView() {
     };
   }, [effectiveSlug]);
 
+  // Title/slug are coerced so one malformed index entry (missing title)
+  // can never throw the whole sidebar filter.
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
     if (!q) return docs;
-    return docs.filter(
-      (d) => d.title.toLowerCase().includes(q) || d.slug.toLowerCase().includes(q),
-    );
+    return docs.filter((d) => {
+      if (!d || typeof d !== 'object') return false;
+      const title = typeof d.title === 'string' ? d.title : '';
+      const slug = typeof d.slug === 'string' ? d.slug : '';
+      return title.toLowerCase().includes(q) || slug.toLowerCase().includes(q);
+    });
   }, [docs, filter]);
 
   // Group order follows the backend index (`sections`) so a regroup needs
   // no frontend change; the static order is the offline/test fallback.
-  // Unknown sections render under their id so new groups can never vanish.
+  // Groups the backend added since this bundle shipped append after the
+  // known order under their id, so new groups can never vanish silently.
   const sectionOrder = useMemo(
     () =>
-      index?.sections && index.sections.length > 0 ? index.sections : DOC_SECTION_ORDER,
+      Array.isArray(index?.sections) && index.sections.length > 0
+        ? index.sections.filter((s) => typeof s === 'string' && s.length > 0)
+        : DOC_SECTION_ORDER,
     [index],
   );
 
-  const grouped = useMemo(
-    () =>
-      sectionOrder.map((section) => ({
-        section,
-        label: DOC_SECTION_LABELS[section] || section,
-        docs: filtered.filter((d) => d.section === section),
-      })).filter((g) => g.docs.length > 0),
-    [sectionOrder, filtered],
-  );
+  const grouped = useMemo(() => {
+    const bySection = new Map();
+    for (const doc of filtered) {
+      if (!doc || typeof doc !== 'object') continue;
+      if (typeof doc.section !== 'string' || doc.section.length === 0) continue;
+      if (!bySection.has(doc.section)) bySection.set(doc.section, []);
+      bySection.get(doc.section).push(doc);
+    }
+    const ordered = [
+      ...sectionOrder.filter((s) => bySection.has(s)),
+      ...[...bySection.keys()].filter((s) => !sectionOrder.includes(s)),
+    ];
+    return ordered.map((section) => ({
+      section,
+      label: DOC_SECTION_LABELS[section] || section,
+      docs: bySection.get(section),
+    }));
+  }, [sectionOrder, filtered]);
 
+  // The `d &&` guard mirrors the filter/group memos: a malformed index
+  // entry must never throw the active-article lookup either.
   const activeDoc = useMemo(
-    () => docs.find((d) => d.slug === effectiveSlug) || null,
+    () => docs.find((d) => d && d.slug === effectiveSlug) || null,
     [docs, effectiveSlug],
   );
 

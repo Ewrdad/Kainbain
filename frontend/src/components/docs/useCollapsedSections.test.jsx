@@ -80,6 +80,33 @@ test('readStoredCollapsed ignores unknown and empty ids without throwing', () =>
   expect(readStoredCollapsed()).toEqual(new Set(['concepts', 'retired-group']));
 });
 
+function JunkProbe() {
+  const { collapsed, toggle } = useCollapsedSections();
+  return (
+    <div>
+      <span data-testid="junk-collapsed">{[...collapsed].sort().join(',')}</span>
+      <button type="button" onClick={() => toggle('')}>
+        toggle-empty
+      </button>
+      <button type="button" onClick={() => toggle(42)}>
+        toggle-nonsense
+      </button>
+      <button type="button" onClick={() => toggle(null)}>
+        toggle-null
+      </button>
+    </div>
+  );
+}
+
+test('toggle ignores empty or non-string ids without touching storage', () => {
+  render(<JunkProbe />);
+  fireEvent.click(screen.getByRole('button', { name: 'toggle-empty' }));
+  fireEvent.click(screen.getByRole('button', { name: 'toggle-nonsense' }));
+  fireEvent.click(screen.getByRole('button', { name: 'toggle-null' }));
+  expect(screen.getByTestId('junk-collapsed')).toHaveTextContent('');
+  expect(window.localStorage.getItem(DOCS_SIDEBAR_STORAGE_KEY)).toBeNull();
+});
+
 test('a storage write failure never breaks the toggle', () => {
   const setItem = vi.spyOn(window.Storage.prototype, 'setItem').mockImplementation(() => {
     throw new Error('quota exceeded');

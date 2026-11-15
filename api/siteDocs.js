@@ -143,8 +143,10 @@ export function readDocFile(filePath) {
 /***
  * MARK: listDocs
  * @description Builds the docs index from frontmatter: `[{ slug, title,
- *   section, order }]`, ordered by avenue then `order` then title. Files with
- *   invalid frontmatter are skipped so one bad article cannot break the index.
+ *   section, order }]`, ordered by section group then `order` then title.
+ *   Files with invalid frontmatter are skipped so one bad article cannot
+ *   break the index; the skipped file still fails loudly in tests that read
+ *   the real content dir, so a typoed `section:` is caught, not hidden.
  * @param {object} [options]
  * @param {string} [options.dir] - Content directory override (tests).
  * @returns {Array<object>}

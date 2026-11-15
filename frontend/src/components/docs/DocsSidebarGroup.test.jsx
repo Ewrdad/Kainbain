@@ -99,3 +99,24 @@ test('header toggle is reachable by keyboard focus', () => {
   button.focus();
   expect(document.activeElement).toBe(button);
 });
+
+test('missing handlers, label, and titles fail safe instead of throwing', () => {
+  const docs = [
+    { slug: 'architecture', title: 'System Architecture' },
+    { slug: 'untitled-article' },
+    { slug: '', title: 'No Slug' },
+    null,
+  ];
+  render(<DocsSidebarGroup section="future-group" docs={docs} collapsed={false} />);
+  // The label falls back to the section id and the count skips bad entries.
+  expect(screen.getByRole('button', { name: 'Collapse future-group' })).toBeInTheDocument();
+  expect(screen.getByText('2')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'System Architecture' })).toBeInTheDocument();
+  // A missing title falls back to the slug; entries without a slug vanish.
+  expect(screen.getByRole('button', { name: 'untitled-article' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'No Slug' })).not.toBeInTheDocument();
+  // Clicks with no handlers wired are no-ops, never throws.
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse future-group' }));
+  fireEvent.click(screen.getByRole('button', { name: 'System Architecture' }));
+  expect(screen.getByRole('button', { name: 'System Architecture' })).toBeInTheDocument();
+});
