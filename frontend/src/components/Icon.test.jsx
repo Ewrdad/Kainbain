@@ -16,7 +16,7 @@ test('renders the close icon as an aria-hidden svg', () => {
 });
 
 test('renders known icons without throwing', () => {
-  for (const name of ['close', 'gear', 'edit', 'delete', 'grip']) {
+  for (const name of ['close', 'gear', 'edit', 'delete', 'grip', 'menu', 'chevron-down']) {
     const { container } = render(<Icon name={name} />);
     expect(container.querySelector('svg')).toBeInTheDocument();
   }

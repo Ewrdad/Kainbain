@@ -1,6 +1,6 @@
 ---
 title: Stage Liveness, Silence & Stalls
-section: how-it-works
+section: concepts
 order: 25
 slug: stage-liveness-and-stalls
 ---

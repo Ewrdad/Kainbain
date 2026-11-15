@@ -49,6 +49,6 @@ All commands are verbatim root `package.json` scripts, run from the repo root.
 
 Before reading source, check the markdown site docs — the same articles the
 in-app Docs tab renders: `GET /docs` returns the index
-(`[{ slug, title, section, order }]` across `how-it-works` and `working-with`),
+(`[{ slug, title, section, order }]` across `getting-started`, `concepts`, `workflows` and `reference`),
 and `GET /docs/:slug` returns one article as raw markdown. Authoring rules live
 in `site-docs/README.md`.

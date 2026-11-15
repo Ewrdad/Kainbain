@@ -4,24 +4,13 @@ import { api } from '../../services/api';
 import { logger } from '../../services/logger';
 import { MarkdownViewer, parseMarkdownBlocks } from '../common/MarkdownViewer';
 import { groupBlocksIntoSections } from '../common/markdownSections';
+import { DOC_SECTION_LABELS, DOC_SECTION_ORDER } from './docsSections';
+import { useCollapsedSections } from './useCollapsedSections';
+import { DocsSidebarGroup } from './DocsSidebarGroup';
 
-/***
- * MARK: DOC_SECTION_LABELS
- * @description Display labels for the two docs avenues, mirroring the API's
- *   SECTION_LABELS so the sidebar reads the same with or without backend copy.
- * @example DOC_SECTION_LABELS['how-it-works'] => 'How KainBain works'
- ***/
-export const DOC_SECTION_LABELS = {
-  'how-it-works': 'How KainBain works',
-  'working-with': 'How to work with KainBain',
-};
-
-/***
- * MARK: DOC_SECTION_ORDER
- * @description Sidebar avenue ordering (onboarding: concepts before operations).
- * @example DOC_SECTION_ORDER => ['how-it-works', 'working-with']
- ***/
-export const DOC_SECTION_ORDER = ['how-it-works', 'working-with'];
+// Re-exported so existing importers keep working; the canonical definitions
+// live in `./docsSections` (mirroring the API's SECTION_LABELS).
+export { DOC_SECTION_LABELS, DOC_SECTION_ORDER };
 
 /***
  * MARK: slugFromHash
@@ -45,11 +34,13 @@ export function slugFromHash(hash) {
 /***
  * MARK: DocsView
  * @description Markdown-driven docs browser and agent knowledge-base reader.
- *   Sidebar groups articles by the two avenues with a title filter; the body
- *   renders via the shared XSS-safe MarkdownViewer. The selected slug IS the
- *   route (`/docs/:slug`): selecting navigates, and back/forward/deep-links
- *   arrive via params — the router is the single writer, so leaving docs can
- *   never strand a docs location behind.
+ *   Sidebar groups articles by category with a title filter; each group has a
+ *   badge-style collapsible header (choice persists in localStorage). The
+ *   body renders via the shared XSS-safe MarkdownViewer. The selected slug
+ *   IS the route (`/docs/:slug`): selecting navigates, and
+ *   back/forward/deep-links arrive via params — the router is the single
+ *   writer, so leaving docs can never strand a docs location behind.
+ *   Collapsing a group never touches the route.
  * @example <DocsView />
  ***/
 export function DocsView() {
@@ -174,19 +165,41 @@ export function DocsView() {
     );
   }, [docs, filter]);
 
+  // Group order follows the backend index (`sections`) so a regroup needs
+  // no frontend change; the static order is the offline/test fallback.
+  // Unknown sections render under their id so new groups can never vanish.
+  const sectionOrder = useMemo(
+    () =>
+      index?.sections && index.sections.length > 0 ? index.sections : DOC_SECTION_ORDER,
+    [index],
+  );
+
   const grouped = useMemo(
     () =>
-      DOC_SECTION_ORDER.map((section) => ({
+      sectionOrder.map((section) => ({
         section,
         label: DOC_SECTION_LABELS[section] || section,
         docs: filtered.filter((d) => d.section === section),
       })).filter((g) => g.docs.length > 0),
-    [filtered],
+    [sectionOrder, filtered],
   );
 
   const activeDoc = useMemo(
     () => docs.find((d) => d.slug === effectiveSlug) || null,
     [docs, effectiveSlug],
+  );
+
+  // Collapsible sidebar groups (persisted). While a title filter is typed,
+  // matching groups force open so results are never hidden inside a folded
+  // group; clearing the filter restores the stored state untouched. A
+  // deep-linked / active article likewise forces its own group open, so the
+  // selection is never stranded inside a stored-collapsed group.
+  const { collapsed: storedCollapsed, toggle: toggleGroup } = useCollapsedSections();
+  const isFiltering = filter.trim().length > 0;
+  const isGroupCollapsed = useCallback(
+    (section) =>
+      storedCollapsed.has(section) && !isFiltering && section !== activeDoc?.section,
+    [storedCollapsed, isFiltering, activeDoc],
   );
 
   // The expand/collapse-all controls only make sense when the loaded article
@@ -228,32 +241,16 @@ export function DocsView() {
             </p>
           )}
           {grouped.map((group) => (
-            <section key={group.section} aria-label={group.label} className="mb-3">
-              <h2 className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-text-muted font-mono">
-                {group.label}
-              </h2>
-              <ul className="space-y-0.5">
-                {group.docs.map((doc) => {
-                  const isActive = doc.slug === effectiveSlug;
-                  return (
-                    <li key={doc.slug}>
-                      <button
-                        type="button"
-                        onClick={() => selectArticle(doc.slug)}
-                        aria-current={isActive ? 'page' : undefined}
-                        className={`w-full text-left px-2 py-1.5 min-h-[44px] rounded-sm text-xs transition-colors cursor-pointer ${
-                          isActive
-                            ? 'bg-primary text-on-primary font-bold'
-                            : 'text-on-surface hover:bg-surface-container-high'
-                        }`}
-                      >
-                        {doc.title}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
+            <DocsSidebarGroup
+              key={group.section}
+              section={group.section}
+              label={group.label}
+              docs={group.docs}
+              activeSlug={effectiveSlug}
+              collapsed={isGroupCollapsed(group.section)}
+              onSelect={selectArticle}
+              onToggle={toggleGroup}
+            />
           ))}
         </div>
       </aside>

@@ -1,6 +1,6 @@
 ---
 title: Question-Me Surveys
-section: working-with
+section: workflows
 order: 36
 slug: surveys
 ---

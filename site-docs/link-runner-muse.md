@@ -1,6 +1,6 @@
 ---
 title: Link Runner to Muse
-section: working-with
+section: getting-started
 order: 14
 slug: link-runner-muse
 ---

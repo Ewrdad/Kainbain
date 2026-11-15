@@ -35,24 +35,23 @@ describe("Docs routes", () => {
 		expect(app.hasRoute({ method: "GET", url: "/docs/:slug" })).toBe(true);
 	});
 
-	it("GET /docs lists both avenues in order", async () => {
+	it("GET /docs lists all four groups in order", async () => {
 		const res = await app.inject({ method: "GET", url: "/docs" });
 		expect(res.statusCode).toBe(200);
 		const body = JSON.parse(res.payload);
-		expect(body.sections).toEqual(["how-it-works", "working-with"]);
+		expect(body.sections).toEqual(["getting-started", "concepts", "workflows", "reference"]);
 		expect(Array.isArray(body.docs)).toBe(true);
 		expect(body.docs.length).toBeGreaterThan(0);
 		const sections = new Set(body.docs.map((d) => d.section));
-		expect(sections.has("how-it-works")).toBe(true);
-		expect(sections.has("working-with")).toBe(true);
-		// Ordering: every how-it-works article precedes every working-with one.
-		const lastHow = Math.max(
-			...body.docs.map((d, i) => (d.section === "how-it-works" ? i : -1)),
-		);
-		const firstWorking = Math.min(
-			...body.docs.map((d, i) => (d.section === "working-with" ? i : body.docs.length)),
-		);
-		expect(lastHow).toBeLessThan(firstWorking);
+		for (const section of body.sections) expect(sections.has(section)).toBe(true);
+		// Ordering: groups stay together in `sections` order (no interleaving).
+		const rank = new Map(body.sections.map((s, i) => [s, i]));
+		let prev = -1;
+		for (const d of body.docs) {
+			const r = rank.get(d.section);
+			expect(r).toBeGreaterThanOrEqual(prev);
+			prev = r;
+		}
 		for (const d of body.docs) {
 			expect(typeof d.slug).toBe("string");
 			expect(typeof d.title).toBe("string");

@@ -45,8 +45,8 @@ describe("siteDocs in the deployed layout", () => {
 		expect(docs.length).toBe(prodDocsCount);
 		expect(docs.length).toBeGreaterThan(0);
 		const sections = new Set(docs.map((d) => d.section));
-		expect(sections.has("how-it-works")).toBe(true);
-		expect(sections.has("working-with")).toBe(true);
+		for (const section of ["getting-started", "concepts", "workflows", "reference"])
+			expect(sections.has(section)).toBe(true);
 	});
 
 	it("serves a raw markdown article for an indexed slug", () => {

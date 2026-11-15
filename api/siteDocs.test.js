@@ -35,29 +35,29 @@ beforeEach(() => {
 	write(
 		"architecture.md",
 		article(
-			"title: Architecture\nsection: how-it-works\norder: 10",
+			"title: Architecture\nsection: concepts\norder: 10",
 			"# Architecture\n\nHow it works.",
 		),
 	);
 	write(
 		"install.md",
 		article(
-			"title: Install & Run\nsection: working-with\norder: 10",
+			"title: Install & Run\nsection: getting-started\norder: 10",
 			"# Install\n\nHow to run it.",
 		),
 	);
 	write(
 		"first-task.md",
 		article(
-			"title: First Task\nsection: working-with\norder: 20",
+			"title: First Task\nsection: workflows\norder: 20",
 			"# First Task\n\nSubmit a task.",
 		),
 	);
 });
 
 describe("DOC_SECTIONS", () => {
-	it("exposes exactly the two onboarding avenues", () => {
-		expect(DOC_SECTIONS).toEqual(["how-it-works", "working-with"]);
+	it("exposes exactly the four docs groups in sidebar order", () => {
+		expect(DOC_SECTIONS).toEqual(["getting-started", "concepts", "workflows", "reference"]);
 	});
 });
 
@@ -83,9 +83,9 @@ describe("isValidSlug", () => {
 describe("parseFrontmatter", () => {
 	it("splits meta from body", () => {
 		const { meta, body } = parseFrontmatter(
-			"---\ntitle: Hi\nsection: how-it-works\norder: 3\n---\n\nHello.",
+			"---\ntitle: Hi\nsection: concepts\norder: 3\n---\n\nHello.",
 		);
-		expect(meta).toMatchObject({ title: "Hi", section: "how-it-works", order: "3" });
+		expect(meta).toMatchObject({ title: "Hi", section: "concepts", order: "3" });
 		expect(body.trim()).toBe("Hello.");
 	});
 
@@ -102,14 +102,14 @@ describe("readDocFile", () => {
 		expect(doc).toMatchObject({
 			slug: "architecture",
 			title: "Architecture",
-			section: "how-it-works",
+			section: "concepts",
 			order: 10,
 		});
 		expect(doc.markdown).toContain("# Architecture");
 	});
 
 	it("returns null for missing title, bad section, or missing file", () => {
-		write("no-title.md", article("section: how-it-works\norder: 1"));
+		write("no-title.md", article("section: concepts\norder: 1"));
 		write("bad-section.md", article("title: X\nsection: nope\norder: 1"));
 		expect(readDocFile(path.join(dir, "no-title.md"))).toBeNull();
 		expect(readDocFile(path.join(dir, "bad-section.md"))).toBeNull();
@@ -120,11 +120,11 @@ describe("readDocFile", () => {
 describe("listDocs", () => {
 	it("returns the index ordered by section then order", () => {
 		const docs = listDocs({ dir });
-		expect(docs.map((d) => d.slug)).toEqual(["architecture", "install", "first-task"]);
+		expect(docs.map((d) => d.slug)).toEqual(["install", "architecture", "first-task"]);
 		expect(docs[0]).toEqual({
-			slug: "architecture",
-			title: "Architecture",
-			section: "how-it-works",
+			slug: "install",
+			title: "Install & Run",
+			section: "getting-started",
 			order: 10,
 		});
 	});
@@ -133,7 +133,7 @@ describe("listDocs", () => {
 		write("broken.md", article("title: Broken\nsection: nope\norder: 1"));
 		write("notes.txt", "not markdown");
 		const docs = listDocs({ dir });
-		expect(docs.map((d) => d.slug)).toEqual(["architecture", "install", "first-task"]);
+		expect(docs.map((d) => d.slug)).toEqual(["install", "architecture", "first-task"]);
 	});
 
 	it("returns [] for a missing directory", () => {
@@ -160,7 +160,7 @@ describe("first-time-setup article (real content dir)", () => {
 	 * MARK: first-time-setup regression guard
 	 * @description Guards the onboarding path article against silent index
 	 *   skips (a frontmatter typo drops the file from GET /docs with no
-	 *   error): the slug must be listed in `working-with` between
+	 *   error): the slug must be listed in `getting-started` between
 	 *   `install-run` and `ports-env`, with valid frontmatter, and the body
 	 *   must serve without a frontmatter leak. Reads the real site-docs dir
 	 *   (defaultDocsDir) on purpose — the temp-dir suites above cannot see
@@ -169,15 +169,15 @@ describe("first-time-setup article (real content dir)", () => {
 	 ***/
 	const realDir = defaultDocsDir();
 
-	it("lists first-time-setup in working-with between install-run and ports-env", () => {
+	it("lists first-time-setup in getting-started between install-run and ports-env", () => {
 		const docs = listDocs({ dir: realDir });
-		const working = docs.filter((d) => d.section === "working-with");
-		const slugs = working.map((d) => d.slug);
+		const starters = docs.filter((d) => d.section === "getting-started");
+		const slugs = starters.map((d) => d.slug);
 		expect(slugs).toContain("first-time-setup");
-		expect(working.find((d) => d.slug === "first-time-setup")).toEqual({
+		expect(starters.find((d) => d.slug === "first-time-setup")).toEqual({
 			slug: "first-time-setup",
 			title: "First-Time Setup",
-			section: "working-with",
+			section: "getting-started",
 			order: 15,
 		});
 		expect(slugs.indexOf("install-run")).toBeLessThan(slugs.indexOf("first-time-setup"));
@@ -188,6 +188,6 @@ describe("first-time-setup article (real content dir)", () => {
 		const doc = getDoc("first-time-setup", { dir: realDir });
 		expect(doc).not.toBeNull();
 		expect(doc.markdown).toContain("# First-Time Setup");
-		expect(doc.markdown).not.toContain("section: working-with");
+		expect(doc.markdown).not.toContain("section: getting-started");
 	});
 });

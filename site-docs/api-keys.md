@@ -1,6 +1,6 @@
 ---
 title: API Keys for Agents & Services
-section: working-with
+section: reference
 order: 23
 slug: api-keys
 ---

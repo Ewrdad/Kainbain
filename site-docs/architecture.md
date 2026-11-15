@@ -1,6 +1,6 @@
 ---
 title: System Architecture
-section: how-it-works
+section: concepts
 order: 10
 slug: architecture
 ---

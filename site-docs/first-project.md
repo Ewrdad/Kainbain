@@ -1,6 +1,6 @@
 ---
 title: Your First Project & Workflow
-section: working-with
+section: getting-started
 order: 30
 slug: first-project
 ---

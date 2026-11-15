@@ -1,6 +1,6 @@
 ---
 title: Workflow Pipeline & Stage Types
-section: how-it-works
+section: concepts
 order: 20
 slug: pipeline-stages
 ---

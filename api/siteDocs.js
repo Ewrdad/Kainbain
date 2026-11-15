@@ -12,7 +12,7 @@
  *
  *   ---
  *   title: My Article
- *   section: how-it-works | working-with
+ *   section: getting-started | concepts | workflows | reference
  *   order: 10
  *   slug: my-article        (optional — defaults to the file basename)
  *   ---
@@ -26,19 +26,27 @@ import { config } from "./config.js";
 
 /***
  * MARK: DOC_SECTIONS
- * @description The two docs avenues. Every article belongs to exactly one.
- * @example DOC_SECTIONS => ['how-it-works', 'working-with']
+ * @description The four docs groups, ordered for onboarding (setup before
+ *   concepts before daily use before lookup). Every article belongs to
+ *   exactly one. The order here is the sidebar order: the frontend follows
+ *   the `sections` array of the GET /docs index, which mirrors this list.
+ * @example DOC_SECTIONS => ['getting-started', 'concepts', 'workflows', 'reference']
  ***/
-export const DOC_SECTIONS = ["how-it-works", "working-with"];
+export const DOC_SECTIONS = ["getting-started", "concepts", "workflows", "reference"];
 
 /***
  * MARK: SECTION_LABELS
- * @description Human-readable labels for the two avenues, shared by API and UI copy.
- * @example SECTION_LABELS['how-it-works'] => 'How KainBain works'
+ * @description Human-readable labels for the four groups, shared by API and
+ *   UI copy. The frontend `docsSections` module duplicates these for
+ *   offline/fallback rendering; `docsSections.test` locks the two copies
+ *   together so they cannot drift.
+ * @example SECTION_LABELS['getting-started'] => 'Getting started'
  ***/
 export const SECTION_LABELS = {
-	"how-it-works": "How KainBain works",
-	"working-with": "How to work with KainBain",
+	"getting-started": "Getting started",
+	concepts: "Concepts",
+	workflows: "Everyday workflows",
+	reference: "Reference & runbooks",
 };
 
 /***
@@ -140,7 +148,7 @@ export function readDocFile(filePath) {
  * @param {object} [options]
  * @param {string} [options.dir] - Content directory override (tests).
  * @returns {Array<object>}
- * @example listDocs() => [{ slug: 'architecture', section: 'how-it-works', ... }]
+ * @example listDocs() => [{ slug: 'architecture', section: 'concepts', ... }]
  ***/
 export function listDocs({ dir } = {}) {
 	const docsDir = defaultDocsDir(dir);

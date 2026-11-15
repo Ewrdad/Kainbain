@@ -53,15 +53,15 @@ vi.mock('../services/api', async (importOriginal) => {
       startWorkflow: vi.fn().mockResolvedValue({}),
       updateProject: vi.fn().mockResolvedValue({}),
       docsIndex: vi.fn().mockResolvedValue({
-        sections: ['how-it-works', 'working-with'],
+        sections: ['getting-started', 'concepts', 'workflows', 'reference'],
         docs: [
           {
             slug: 'architecture',
             title: 'System Architecture',
-            section: 'how-it-works',
+            section: 'concepts',
             order: 10,
           },
-          { slug: 'install-run', title: 'Install & Run', section: 'working-with', order: 10 },
+          { slug: 'install-run', title: 'Install & Run', section: 'getting-started', order: 10 },
         ],
       }),
       docsArticle: vi.fn().mockResolvedValue('# Doc body'),
@@ -291,8 +291,8 @@ test('opens Docs from the System Menu and renders the knowledge base', async () 
     expect(screen.getByTestId('docs-view')).toBeInTheDocument();
   });
   // Full App boot settles many mocked stores first; allow extra time.
-  expect(await screen.findByText('How KainBain works', {}, { timeout: 5000 })).toBeInTheDocument();
-  expect(screen.getByText('How to work with KainBain')).toBeInTheDocument();
+  expect(await screen.findByText('Getting started', {}, { timeout: 5000 })).toBeInTheDocument();
+  expect(screen.getByText('Concepts')).toBeInTheDocument();
   // Docs keeps the global header like explorer/settings.
   expect(screen.getByRole('banner')).toBeInTheDocument();
   window.location.hash = '';
@@ -431,7 +431,7 @@ test('keyboard shortcut 5 opens the Docs view', async () => {
   await waitFor(() => {
     expect(screen.getByTestId('docs-view')).toBeInTheDocument();
   });
-  expect(await screen.findByText('How KainBain works', {}, { timeout: 5000 })).toBeInTheDocument();
+  expect(await screen.findByText('Getting started', {}, { timeout: 5000 })).toBeInTheDocument();
   window.location.hash = '';
 });
 

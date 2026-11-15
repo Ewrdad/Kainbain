@@ -12,7 +12,7 @@ view renders them with the shared `MarkdownViewer`.
 ```md
 ---
 title: My Article
-section: how-it-works
+section: concepts
 order: 10
 slug: my-article
 ---
@@ -26,8 +26,10 @@ slug: my-article
 
 ## Rules
 
-- `section` is exactly `how-it-works` (how the system works) or `working-with`
-  (how to operate it). Files with any other section are skipped from the index.
+- `section` is exactly one of `getting-started` (setup and onboarding),
+  `concepts` (how the system works), `workflows` (everyday use), or
+  `reference` (lookup and runbooks). Files with any other section are skipped
+  from the index.
 - `slug` must equal the filename (`my-article.md` declares `slug: my-article`).
   `getDoc` falls back to a directory scan on mismatch, so a mismatch still
   resolves — but it is fragile, and the integrity test below fails on it.

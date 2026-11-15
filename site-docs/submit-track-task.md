@@ -1,7 +1,7 @@
 ---
 title: Submitting & Tracking a Task
-section: working-with
-order: 40
+section: workflows
+order: 10
 slug: submit-track-task
 ---
 

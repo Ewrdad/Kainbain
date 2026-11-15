@@ -1,6 +1,6 @@
 ---
 title: Ports & Environment
-section: working-with
+section: getting-started
 order: 20
 slug: ports-env
 ---

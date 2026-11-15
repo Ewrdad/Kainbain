@@ -6,6 +6,7 @@ import React from 'react';
  * same icon is not copy-pasted across components.
  * @param {string} name - The icon name ('close' | 'gear').
  * @param {string} [className] - Tailwind classes for sizing/color.
+ * Available names: 'close' | 'gear' | 'edit' | 'delete' | 'grip' | 'menu' | 'chevron-down'.
  */
 const ICONS = {
   close: (
@@ -45,6 +46,14 @@ const ICONS = {
       strokeLinejoin="round"
       strokeWidth={2}
       d="M4 6h16M4 12h16M4 18h16"
+    />
+  ),
+  'chevron-down': (
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M6 9l6 6 6-6"
     />
   ),
 };

@@ -1,6 +1,6 @@
 ---
 title: Alert Webhooks
-section: working-with
+section: reference
 order: 76
 slug: alert-webhooks
 ---

@@ -1,6 +1,6 @@
 ---
 title: Agent Execution & Sandboxing
-section: how-it-works
+section: concepts
 order: 30
 slug: agent-execution
 ---

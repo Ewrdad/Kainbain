@@ -1,6 +1,6 @@
 ---
 title: First-Time Setup
-section: working-with
+section: getting-started
 order: 15
 slug: first-time-setup
 ---

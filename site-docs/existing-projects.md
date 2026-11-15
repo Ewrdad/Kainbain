@@ -1,6 +1,6 @@
 ---
 title: Load Existing Projects
-section: working-with
+section: getting-started
 order: 28
 slug: existing-projects
 ---

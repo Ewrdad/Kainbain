@@ -1,6 +1,6 @@
 ---
 title: Git Index-Lock Runbook
-section: working-with
+section: reference
 order: 65
 slug: git-index-lock-runbook
 ---

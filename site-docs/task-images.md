@@ -1,6 +1,6 @@
 ---
 title: Task Images
-section: working-with
+section: workflows
 order: 35
 slug: task-images
 ---

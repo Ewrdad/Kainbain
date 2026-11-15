@@ -1,6 +1,6 @@
 ---
 title: Link Runner to OpenCode
-section: working-with
+section: getting-started
 order: 16
 slug: link-runner-opencode
 ---

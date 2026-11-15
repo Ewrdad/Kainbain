@@ -1,6 +1,6 @@
 ---
 title: Self-Deployment & Rollback
-section: how-it-works
+section: concepts
 order: 60
 slug: self-deploy
 ---

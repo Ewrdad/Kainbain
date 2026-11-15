@@ -1,6 +1,6 @@
 ---
 title: Custom Skills
-section: working-with
+section: workflows
 order: 52
 slug: custom-skills
 ---

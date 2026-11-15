@@ -1,6 +1,6 @@
 ---
 title: Getting Started
-section: working-with
+section: getting-started
 order: 5
 slug: getting-started
 ---

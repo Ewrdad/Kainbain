@@ -1,6 +1,6 @@
 ---
 title: Authentication & Access Control
-section: working-with
+section: reference
 order: 22
 slug: authentication
 ---

@@ -1,6 +1,6 @@
 ---
 title: Stage Attestation
-section: working-with
+section: workflows
 order: 51
 slug: stage-attestation
 ---

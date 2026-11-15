@@ -1,7 +1,7 @@
 ---
 title: Develop Alongside KainBain
-section: working-with
-order: 46
+section: workflows
+order: 40
 slug: develop-alongside
 ---
 
