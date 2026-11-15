@@ -42,7 +42,13 @@
         "No preference"
       ],
       "required": false,
-      "showIf": { "questionId": "q2", "values": ["Yes, collapse any category", "Yes, but keep it simple (just tap the header to open/close)"] }
+      "showIf": {
+        "questionId": "q2",
+        "values": [
+          "Yes, collapse any category",
+          "Yes, but keep it simple (just tap the header to open/close)"
+        ]
+      }
     },
     {
       "id": "q4",
@@ -66,9 +72,64 @@
         "Dark sidebar, bold white headers with a small folder icon and collapse arrow, thin divider line between groups, article names slightly smaller and indented, classic documentation look"
       ],
       "required": false,
-      "showIf": null
+      "showIf": null,
+      "images": [
+        {
+          "option": 0,
+          "file": "assets/survey-r1-q5-0.png",
+          "status": "ready"
+        },
+        {
+          "option": 1,
+          "file": "assets/survey-r1-q5-1.png",
+          "status": "ready"
+        },
+        {
+          "option": 2,
+          "status": "failed",
+          "code": "gen",
+          "error": "Generation failed: Muse image request failed: fetch failed"
+        }
+      ]
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Totally new sidebar style (happy for a fresh look)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Yes, collapse any category"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Remember my choice (stays collapsed when I come back)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Yes, reorganise freely if it makes sense"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Dark sidebar, headers as small rounded badge labels with soft purple background and dark text, article names in lighter grey indented underneath, arrow to collapse each group, modern app look"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
+
+## Chosen designs
+
+Image-question selections, saved automatically when the survey is submitted (re-submitting updates this list).
+
+- [r1/q5] ![Which sidebar header style do you prefer?: Dark sidebar, headers as small rounded badge labels with soft purple background and dark text, article names in lighter grey indented underneath, arrow to co](assets/survey-r1-q5-chosen.png)
