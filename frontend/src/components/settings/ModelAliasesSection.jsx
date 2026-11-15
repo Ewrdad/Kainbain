@@ -24,6 +24,7 @@ import {
 } from '../../services/modelStatus';
 import { withFleetModels, effectiveModelSelection } from '../../services/fleetModelOptions';
 import { ReliabilityLine } from './ReliabilityLine';
+import { TruncatedText } from '../common/TruncatedText';
 import {
   ALIAS_HARNESS_ID,
   getAliasTargets,
@@ -610,6 +611,7 @@ function AliasTargetRow({
           <SelectDropdown
             id={`model-alias-harness-${aliasIndex}-${targetIndex}`}
             ariaLabel={harnessLabel}
+            className="block w-full min-w-0"
             value={harnessId}
             onChange={(next) => {
               const nextEntry = catalogue.find((h) => h.id === next);
@@ -671,6 +673,7 @@ function AliasTargetRow({
             <SelectDropdown
               id={`model-alias-model-${aliasIndex}-${targetIndex}`}
               ariaLabel={modelLabel}
+              className="block w-full min-w-0"
               value={resolvedModel}
               onChange={(next) => {
                 const { reasoning: currentLevel } = splitReasoning(target?.model || '');
@@ -701,6 +704,7 @@ function AliasTargetRow({
             <SelectDropdown
               id={`model-alias-reasoning-${aliasIndex}-${targetIndex}`}
               ariaLabel="Reasoning"
+              className="block w-full min-w-0"
               value={draftReasoning || ''}
               onChange={(level) => {
                 const base = resolvedModel || splitReasoning(target?.model || '').baseRef;
@@ -899,7 +903,7 @@ function CollapseToggleButton({ index, aliasName, expanded, onToggle, disabled =
       aria-label={`${expanded ? 'Collapse' : 'Expand'} alias ${label}`}
       onClick={onToggle}
       disabled={disabled}
-      className="px-1.5 py-0.5 text-xs text-text-muted hover:text-on-surface cursor-pointer select-none font-mono"
+      className="shrink-0 px-1.5 py-0.5 text-xs text-text-muted hover:text-on-surface cursor-pointer select-none font-mono"
     >
       {expanded ? '▾' : '▸'}
     </button>
@@ -1300,8 +1304,8 @@ export function ModelAliasesSection({
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
                         <CollapseToggleButton
                           index={index}
                           aliasName={row?.name}
@@ -1309,19 +1313,21 @@ export function ModelAliasesSection({
                           onToggle={() => toggleCollapse(key)}
                           disabled={disabled}
                         />
-                        <span
+                        <TruncatedText
                           id={`model-alias-header-${index}`}
+                          text={row?.name ? `Alias: ${row.name}` : `Alias ${index + 1}`}
+                          title={row?.name || `Alias ${index + 1}`}
                           className="text-xs font-bold uppercase text-text-muted tracking-wider"
-                        >
-                          {row?.name ? `Alias: ${row.name}` : `Alias ${index + 1}`}
-                        </span>
+                        />
                       </div>
-                      <DeleteAliasButton
-                        index={index}
-                        aliasName={row?.name}
-                        onDelete={() => deleteRow(index)}
-                        disabled={disabled}
-                      />
+                      <div className="shrink-0">
+                        <DeleteAliasButton
+                          index={index}
+                          aliasName={row?.name}
+                          onDelete={() => deleteRow(index)}
+                          disabled={disabled}
+                        />
+                      </div>
                     </div>
                     <div
                       id={`model-alias-body-${index}`}

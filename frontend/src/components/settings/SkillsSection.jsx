@@ -4,6 +4,7 @@ import { api } from '../../services/api';
 import { logger } from '../../services/logger';
 import { Modal } from '../Modal';
 import { MarkdownViewer } from '../common/MarkdownViewer';
+import { TruncatedText } from '../common/TruncatedText';
 
 /***
  * MARK: serverErrorMessage
@@ -89,7 +90,7 @@ function SkillRow({
     <li className="flex flex-wrap items-center gap-2 p-3 bg-surface-deep border border-border-standard rounded-sm">
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-xs font-bold text-on-surface">{skill.name}</span>
+          <TruncatedText text={skill.name} className="font-mono text-xs font-bold text-on-surface" />
           {skill.invalid && (
             <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-sm bg-red-500/15 text-red-500 border border-red-500/30">
               Invalid
@@ -113,7 +114,7 @@ function SkillRow({
           {skill.description || 'No description'}
         </p>
         {skill.invalid && skill.error && (
-          <p className="text-[10px] text-red-500 mt-1 font-mono">{skill.error}</p>
+          <p className="text-[10px] text-red-500 mt-1 font-mono break-words">{skill.error}</p>
         )}
         {showConfigToggle && (
           <div className="mt-1">

@@ -176,6 +176,7 @@ export function AppLinkSection({ project, projectId, onChanged }) {
         <SelectDropdown
           id="project-applink-status-select"
           ariaLabel="App Status"
+          className="block w-full min-w-0"
           value={status}
           onChange={setStatus}
           options={STATUS_OPTIONS}
