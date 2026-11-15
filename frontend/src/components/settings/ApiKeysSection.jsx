@@ -8,6 +8,7 @@ import {
   getApiKeyUsage,
 } from '../../services/auth/index.js';
 import { copyToClipboard } from '../../services/clipboard.js';
+import { TruncatedText } from '../common/TruncatedText';
 
 const labelClass = 'text-xs font-bold text-on-surface';
 const hintClass = 'text-[11px] text-text-muted';
@@ -192,7 +193,7 @@ export function ApiKeysSection() {
       {notice && (
         <p
           role={notice.kind === 'error' ? 'alert' : 'status'}
-          className="px-3 py-2 text-[11px] text-on-surface bg-surface-container-high border border-border-standard rounded-sm"
+          className="px-3 py-2 text-[11px] text-on-surface bg-surface-container-high border border-border-standard rounded-sm break-words"
         >
           {notice.text}
         </p>
@@ -215,7 +216,7 @@ export function ApiKeysSection() {
           data-testid="apikey-secret-once"
           className="px-3 py-2 bg-surface-container-high border border-primary rounded-sm flex flex-col gap-2"
         >
-          <span className={labelClass}>
+          <span className={`${labelClass} break-words`}>
             Secret for “{createdSecret.name}” — shown once, copy it now
           </span>
           <code className="text-xs text-on-surface break-all select-all">{createdSecret.secret}</code>
@@ -315,8 +316,8 @@ export function ApiKeysSection() {
               data-testid={`apikey-row-${key.id}`}
               className="px-3 py-2 bg-surface-container-high border border-border-standard rounded-sm flex flex-col gap-1"
             >
-              <div className="flex flex-wrap items-center gap-2">
-                <span className={labelClass}>{key.name}</span>
+              <div className="flex flex-wrap min-w-0 items-center gap-2">
+                <TruncatedText text={key.name} className={labelClass} />
                 <span className={hintClass}>…{key.prefix}</span>
                 {key.revoked === true && (
                   <span className="text-[11px] font-bold text-error">revoked</span>

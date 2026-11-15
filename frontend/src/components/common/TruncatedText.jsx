@@ -25,4 +25,9 @@ export function TruncatedText({ text, className = '', title, id }) {
   );
 }
 
+/***
+ * MARK: TruncatedText default export
+ * @description Default entry point for the shared truncation label (same component).
+ * @example import TruncatedText from '../common/TruncatedText';
+ ***/
 export default TruncatedText;

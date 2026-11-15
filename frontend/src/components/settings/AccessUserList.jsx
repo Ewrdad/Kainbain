@@ -6,6 +6,7 @@ import {
   setUserProjectRoles,
   setUserRoles,
 } from '../../services/auth/index.js';
+import { TruncatedText } from '../common/TruncatedText';
 
 const secondaryButtonClass =
   'px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-[11px] font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-50';
@@ -109,7 +110,7 @@ export function AccessUserList() {
         Direct roles apply everywhere; project roles add rights for one project.
       </span>
       {notice && (
-        <p role="alert" className="px-3 py-2 text-[11px] text-on-surface bg-surface-container-high border border-border-standard rounded-sm">
+        <p role="alert" className="px-3 py-2 text-[11px] text-on-surface bg-surface-container-high border border-border-standard rounded-sm break-words">
           {notice}
         </p>
       )}
@@ -122,11 +123,12 @@ export function AccessUserList() {
           data-testid={`access-user-${user.id}`}
           className="flex flex-col gap-2 py-2 border-b border-border-standard"
         >
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-bold text-on-surface">
-              {user.name || user.email || user.id}
-            </span>
-            <span className="text-[11px] text-text-muted">{user.email}</span>
+          <div className="flex flex-wrap min-w-0 items-center gap-2">
+            <TruncatedText
+              text={user.name || user.email || user.id}
+              className="text-xs font-bold text-on-surface"
+            />
+            <TruncatedText text={user.email} className="text-[11px] text-text-muted" />
             {user.disabled === true && (
               <span className="text-[11px] font-bold uppercase tracking-widest text-text-muted">
                 Disabled
@@ -150,7 +152,7 @@ export function AccessUserList() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[11px] text-text-muted">Project roles:</span>
-            <span className="text-[11px] text-on-surface" data-testid={`project-roles-${user.id}`}>
+            <span className="text-[11px] text-on-surface break-words" data-testid={`project-roles-${user.id}`}>
               {Object.entries(user.projectRoles || {})
                 .map(([projectId, roles]) => `${projectId}: ${(roles || []).join(', ')}`)
                 .join(' · ') || 'none'}

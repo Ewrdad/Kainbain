@@ -159,4 +159,22 @@ describe('AccessUserList', () => {
     });
     expect(await screen.findByText('Disabled')).toBeInTheDocument();
   });
+
+  it('truncates very long user names and emails with the full value on hover', async () => {
+    const longName = `Ada Lovelace Release Automation Administrator ${'n'.repeat(140)}`;
+    const longEmail = `ada.lovelace.release.automation.administrator.${'e'.repeat(120)}@example.com`;
+    mocks.listUsers.mockResolvedValue({
+      users: [{ ...ada, name: longName, email: longEmail }],
+    });
+    mocks.getAuthSettings.mockResolvedValue(settingsView);
+    render(<AccessUserList />);
+    expect(await screen.findByTestId('access-user-ada-1')).toBeInTheDocument();
+
+    const nameLabel = screen.getByText(longName);
+    expect(nameLabel).toHaveClass('min-w-0', 'truncate');
+    expect(nameLabel).toHaveAttribute('title', longName);
+    const emailLabel = screen.getByText(longEmail);
+    expect(emailLabel).toHaveClass('min-w-0', 'truncate');
+    expect(emailLabel).toHaveAttribute('title', longEmail);
+  });
 });

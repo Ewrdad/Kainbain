@@ -149,4 +149,15 @@ describe('ApiKeysSection', () => {
     render(<ApiKeysSection />);
     expect(await screen.findByTestId('apikeys-denied')).toBeInTheDocument();
   });
+
+  it('truncates very long key names with the full name on hover', async () => {
+    const longName = `security-scanner-for-release-automation-${'k'.repeat(150)}`;
+    await loadSection({
+      keys: [keyRow({ name: longName })],
+      knownScopes: settingsView.knownApiKeyScopes,
+    });
+    const label = await screen.findByText(longName);
+    expect(label).toHaveClass('min-w-0', 'truncate');
+    expect(label).toHaveAttribute('title', longName);
+  });
 });

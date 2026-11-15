@@ -35,6 +35,8 @@ Two companion guards, applied at usage sites (not in the helper):
 | `settings/ModelAliasesSection.jsx` | harness/model/reasoning dropdowns | `block w-full min-w-0` |
 | `settings/ProjectSettings.jsx` | active-project dropdown | `block w-full min-w-0` (user project names) |
 | `settings/AppLinkSection.jsx` | status dropdown | `block w-full min-w-0` (consistency hardening) |
+| `settings/ApiKeysSection.jsx` | `key.name` row | `TruncatedText` + `min-w-0` row; `break-words` on notice + secret-for lines (names render inside them) |
+| `settings/AccessUserList.jsx` | user name / email row | `TruncatedText` for both + `min-w-0` row; `break-words` on notice + project-roles lines |
 
 Checked and clean (no user-controlled text in flex headers): `AddressesSection`,
 `PathsAndReposSection`, `ProjectBasicsSection` (form inputs clip natively),
@@ -47,8 +49,9 @@ the System Settings route, outside this task's scope).
 ## Proof
 
 - `TruncatedText.test.jsx` (3), `WorkflowManagementPanel.overflow.test.jsx`
-  (4), `SettingsCards.overflow.test.jsx` (2) — all pass; full frontend suite
-  green (349 files / 4736 tests).
+  (4), `SettingsCards.overflow.test.jsx` (2), plus one long-name truncation
+  case each in `ApiKeysSection.test.jsx` and `AccessControl.test.jsx` — all
+  pass; full frontend suite green (349 files / 4738 tests).
 - Headless Chromium check rendering the real components with 200-char
   spaceless names: zero visual spill at 320/768/1440px —
   `overflow-after-320.png`, `overflow-after-768.png`, `overflow-after-1440.png`.
