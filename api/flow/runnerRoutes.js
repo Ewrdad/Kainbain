@@ -5,6 +5,19 @@ import { normalizeStageType } from "../projectStore.js";
 import { git, defaultBranch } from "../git.js";
 import { circuitSnapshot, isTripped } from "./circuitBreaker.js";
 import { scanClaimableTasks } from "./dispatch/scanClaimableTasks.js";
+import {
+	recordClaimAttempt,
+	recordClaimConflict,
+	recordClaimError,
+	recordClaimExcluded,
+	recordClaimSuccess,
+	recordDispatchLatency,
+	recordDispatchMiss,
+	recordFencing,
+	recordFleetCapExhausted,
+	recordProjectClaim,
+	recordProjectCompletion,
+} from "../watch/productionSignals.js";
 import { buildFleetModelCatalog } from "./dispatch/fleetModelCatalog.js";
 import { summarizeFleetHarnesses } from "./dispatch/fleetModelSnapshot.js";
 import { resolveAliasRequirement } from "./dispatch/resolveAliasRequirement.js";
@@ -677,6 +690,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				model: request.body?.model ?? null,
 			});
 		} catch (err) {
+			// WP2 signal: a stale-epoch progress report is fencing evidence.
+			if (err?.code === "STALE_EPOCH") recordFencing(taskStore, "STALE_EPOCH");
 			return sendStoreError(reply, err);
 		}
 	});
@@ -940,8 +955,14 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					runnerId: runner.runnerId,
 				},
 			});
+			if (receipt && !receipt.duplicate) {
+				// WP2 signal: one completed execution for this project.
+				recordProjectCompletion(taskStore, ctx.projectId);
+			}
 			return { ...receipt, ...finish };
 		} catch (err) {
+			// WP2 signal: a stale-epoch finish is fencing evidence.
+			if (err?.code === "STALE_EPOCH") recordFencing(taskStore, "STALE_EPOCH");
 			return sendStoreError(reply, err);
 		}
 	});
@@ -988,6 +1009,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			});
 		}
 		if (runner.paused === true) {
+			// WP2 signal: an intentional skip, never a success-rate debit.
+			recordClaimExcluded(taskStore, "RUNNER_PAUSED");
 			return reply.status(409).send({
 				error: `Runner ${runner.runnerId} is paused — resume it to take new tasks`,
 				code: "RUNNER_PAUSED",
@@ -997,7 +1020,11 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// version below KAINBAIN_RUNNER_MIN_VERSION is refused so it cannot
 		// mis-execute — the daemon self-updates on this code and retries.
 		const belowMinimum = buildBelowMinimumRefusal({ runner, minVersion: config.runnerMinVersion });
-		if (belowMinimum) return reply.status(409).send(belowMinimum);
+		if (belowMinimum) {
+			// WP2 signal: a version refusal is an intentional skip.
+			recordClaimExcluded(taskStore, "BELOW_MINIMUM_VERSION");
+			return reply.status(409).send(belowMinimum);
+		}
 		const projectId = resolveAndGuardProject(
 			request.body?.projectId || request.query?.projectId,
 			reply,
@@ -1017,6 +1044,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		const req = taskRequirements(claimProject, task, resolveStagesForTask(claimProject, task));
 		const claimVerdict = operatorConfigVerdict(runner, req, { projectId });
 		if (!claimVerdict.ok) {
+			// WP2 signal: a scope refusal is fencing evidence.
+			recordDispatchMiss(taskStore, claimVerdict.reason, { projectId });
 			return reply.status(409).send({
 				error: `Runner ${runner.runnerId} settings refuse this task (${claimVerdict.reason}).`,
 				code: claimVerdict.reason,
@@ -1027,17 +1056,26 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// must not bypass a stage the Runner is not allowed on.
 		const claimPolicyVerdict = stageRunnerPolicyVerdict(req.runnerPolicy, runner.runnerId);
 		if (!claimPolicyVerdict.ok) {
+			// WP2 signal: a policy refusal is dispatch-miss evidence.
+			recordDispatchMiss(taskStore, claimPolicyVerdict.reason, { projectId });
 			return reply.status(409).send({
 				error: `Runner ${runner.runnerId} is refused by this stage's Runner list (${claimPolicyVerdict.reason}).`,
 				code: claimPolicyVerdict.reason,
 			});
 		}
+		// WP2 signal: this claim() try enters the success-rate denominator.
+		recordClaimAttempt(taskStore);
 		try {
 			const { executionId, epoch } = claimStore.claim(
 				request.params.id,
 				runner.runnerId,
 				projectId,
 			);
+			// WP2 signals: a non-conflict claim and one unit of throughput.
+			recordClaimSuccess(taskStore);
+			recordProjectClaim(taskStore, projectId, {
+				waitMs: Date.now() - new Date(task.enteredStageAt || task.updatedAt || 0).getTime(),
+			});
 			// Same run attribution as the dispatch path: the requirement's
 			// resolved harness/model names this run on the timeline/reports.
 			const project = projectStore.getProject(projectId);
@@ -1047,6 +1085,11 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			const dispatchConfigHash = dispatchStageConfigHash(project, task, stage);
 			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...await ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project, task, stageId: task.currentStageId }), taskAssets: taskAssetsFor(project, request.params.id), ...(dispatchConfigHash ? { configHash: dispatchConfigHash } : {}) };
 		} catch (err) {
+			// WP2 signals: conflicts feed the fencing breakdown; other
+			// claim failures debit the success rate.
+			if (err?.code === "CLAIM_CONFLICT") recordClaimConflict(taskStore);
+			else if (err?.code === "STALE_EPOCH") recordFencing(taskStore, "STALE_EPOCH");
+			else recordClaimError(taskStore);
 			return sendStoreError(reply, err);
 		}
 	});
@@ -1134,6 +1177,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			);
 			return { taskId: request.params.id, runnerId: runner.runnerId, epoch };
 		} catch (err) {
+			// WP2 signal: a stale-epoch heartbeat is fencing evidence.
+			if (err?.code === "STALE_EPOCH") recordFencing(taskStore, "STALE_EPOCH");
 			return sendStoreError(reply, err);
 		}
 	});
@@ -1156,6 +1201,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// the per-candidate match, so a paused fleet reads as paused and
 		// not "no capable match".
 		if (runner.paused === true) {
+			// WP2 signal: an intentional skip, never a success-rate debit.
+			recordClaimExcluded(taskStore, "RUNNER_PAUSED");
 			return reply.status(409).send({
 				error: `Runner ${runner.runnerId} is paused — resume it to take new tasks`,
 				code: "RUNNER_PAUSED",
@@ -1164,8 +1211,14 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// Runner self-update floor (Option A, ADR 0012): same refusal as
 		// direct claim — shared helper so the two gates cannot drift.
 		const belowMinimum = buildBelowMinimumRefusal({ runner, minVersion: config.runnerMinVersion });
-		if (belowMinimum) return reply.status(409).send(belowMinimum);
+		if (belowMinimum) {
+			// WP2 signal: a version refusal is an intentional skip.
+			recordClaimExcluded(taskStore, "BELOW_MINIMUM_VERSION");
+			return reply.status(409).send(belowMinimum);
+		}
 		if (isTripped(taskStore)) {
+			// WP2 signal: a tripped engine defers work on purpose.
+			recordClaimExcluded(taskStore, "CIRCUIT_TRIPPED");
 			const circuit = circuitSnapshot(taskStore);
 			return reply.status(409).send({
 				error: "Engine is tripped — dispatch is stopped",
@@ -1184,17 +1237,23 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// below. 0 disables that cap (default: single-Runner behaviour).
 		const fleetCap = config.runnerMaxConcurrentFleet || 0;
 		if (fleetCap > 0 && claimStore.countLiveHolds() >= fleetCap) {
+			// WP2 signal: fleet-cap backoff is an intentional skip.
+			recordFleetCapExhausted(taskStore);
 			return reply.status(429).send({
 				error: `Fleet at Runner concurrency cap (${fleetCap}); backing off.`,
 				code: "FLEET_CONCURRENCY_EXHAUSTED",
 			});
 		}
 		const projectCap = config.runnerMaxConcurrentPerProject || 0;
+		// WP2 signal: scan-to-decision dispatch latency (observation only —
+		// the recorded duration never alters the decision below).
+		const dispatchScanStartedAt = Date.now();
 		const candidates = scanClaimableTasks(
 			{ projectStore, taskStore, claimStore },
 			{ projectIds, maxWaitMs: config.dispatchMaxWaitMs || 0 },
 		);
 		if (candidates.length === 0) {
+			recordDispatchLatency(taskStore, Date.now() - dispatchScanStartedAt);
 			return { assigned: false, code: "NO_CLAIMABLE_TASKS" };
 		}
 		// A harness is dispatch-servable when some active, fresh Runner
@@ -1239,6 +1298,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			});
 			if (!verdict.ok) {
 				misses[verdict.reason] = (misses[verdict.reason] || 0) + 1;
+				// WP2 signal: scope/fencing refusals feed the breakdown.
+				recordDispatchMiss(taskStore, verdict.reason, { projectId: cand.projectId });
 				continue;
 			}
 			if (
@@ -1246,6 +1307,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				claimStore.countLiveHolds({ projectId: cand.projectId }) >= projectCap
 			) {
 				misses.PROJECT_BUSY = (misses.PROJECT_BUSY || 0) + 1;
+				// WP2 signal: per-project busy skip (fairness evidence).
+				recordDispatchMiss(taskStore, "PROJECT_BUSY", { projectId: cand.projectId });
 				continue;
 			}
 			// Merge stages dispatch as leased `integrate` jobs (Step 4): the
@@ -1271,12 +1334,24 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				}
 				let executionId;
 				let epoch;
+				// WP2 signal: this claim() try enters the success-rate denominator.
+				recordClaimAttempt(taskStore);
 				try {
 					({ executionId, epoch } = claimStore.claim(cand.taskId, runner.runnerId, cand.projectId));
 				} catch (err) {
-					if (err?.code === "CLAIM_CONFLICT") continue;
+					// WP2 signal: a lost race feeds the fencing breakdown.
+					if (err?.code === "CLAIM_CONFLICT") {
+						recordClaimConflict(taskStore);
+						continue;
+					}
+					recordClaimError(taskStore);
 					return sendStoreError(reply, err);
 				}
+				// WP2 signals: a non-conflict claim and one unit of throughput.
+				recordClaimSuccess(taskStore);
+				recordProjectClaim(taskStore, cand.projectId, {
+					waitMs: Date.now() - (Number.isFinite(cand.enteredStageAt) ? cand.enteredStageAt : Date.now()),
+				});
 				if (!integrationQueue) {
 					claimStore.invalidate(cand.taskId);
 					misses.NO_INTEGRATION_QUEUE = (misses.NO_INTEGRATION_QUEUE || 0) + 1;
@@ -1330,6 +1405,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					req,
 					runnerId: runner.runnerId,
 				});
+				// WP2 signal: scan-to-decision latency for this poll.
+				recordDispatchLatency(taskStore, Date.now() - dispatchScanStartedAt);
 				return {
 					assigned: true,
 					projectId: cand.projectId,
@@ -1351,12 +1428,21 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					requirements: req,
 				};
 			}
+			// WP2 signal: this claim() try enters the success-rate denominator.
+			recordClaimAttempt(taskStore);
 			try {
 				const { executionId, epoch } = claimStore.claim(
 					cand.taskId,
 					runner.runnerId,
 					cand.projectId,
 				);
+				// WP2 signals: a non-conflict claim, one unit of throughput,
+				// and the scan-to-decision latency for this poll.
+				recordClaimSuccess(taskStore);
+				recordProjectClaim(taskStore, cand.projectId, {
+					waitMs: Date.now() - (Number.isFinite(cand.enteredStageAt) ? cand.enteredStageAt : Date.now()),
+				});
+				recordDispatchLatency(taskStore, Date.now() - dispatchScanStartedAt);
 				// Stamp the matched harness/model/alias onto the task so the
 				// timeline and reports attribute THIS run (mirrors the
 				// embedded dispatch stamp); CI/merge stamp nothing.
@@ -1386,7 +1472,12 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					...(dispatchConfigHash ? { configHash: dispatchConfigHash } : {}),
 				};
 			} catch (err) {
-				if (err?.code === "CLAIM_CONFLICT") continue;
+				// WP2 signal: a lost race feeds the fencing breakdown.
+				if (err?.code === "CLAIM_CONFLICT") {
+					recordClaimConflict(taskStore);
+					continue;
+				}
+				recordClaimError(taskStore);
 				return sendStoreError(reply, err);
 			}
 		}
@@ -1394,8 +1485,10 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// backoff signal (no idle budget burned) instead of degrading to
 		// a capability miss.
 		if (misses.INTEGRATION_BUSY && Object.keys(misses).length === 1) {
+			recordDispatchLatency(taskStore, Date.now() - dispatchScanStartedAt);
 			return { assigned: false, code: "INTEGRATION_BUSY" };
 		}
+		recordDispatchLatency(taskStore, Date.now() - dispatchScanStartedAt);
 		return { assigned: false, code: "NO_CAPABLE_MATCH", misses };
 	});
 

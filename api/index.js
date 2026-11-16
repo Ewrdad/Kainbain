@@ -236,6 +236,9 @@ const integrationQueue = new IntegrationQueue({ ttlMs: config.claimTtlMs });
 // task (same precedent as taskStore.sessionStore).
 taskStore.claimStore = claimStore;
 taskStore.runnerRegistry = runnerRegistry;
+// WP2: read-only ledger handle for the observability exposition (the
+// cumulative `staleRejected` counter feeds the fencing breakdown).
+taskStore.executionLedger = executionLedger;
 
 const deps = {
 	authService,

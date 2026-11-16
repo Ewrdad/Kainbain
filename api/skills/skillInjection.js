@@ -25,6 +25,7 @@ import path from "node:path";
 import { QUESTION_ME_SKILL_NAME, resolveQuestionMeOutputFile } from "../../shared/survey.js";
 import { renderSkillConditionals } from "../../shared/skillConditionals.js";
 import { normalizeSkillMode, skillPathForName } from "./skillsRegistry.js";
+import { recordSkillSizeCapOmission } from "../watch/productionSignals.js";
 
 /***
  * MARK: resolveSkillKeywordMap
@@ -317,6 +318,10 @@ export function buildSkillsPromptSections({
 	for (const item of prepared) {
 		if (cap && used + item.text.length > cap) {
 			result.omitted.push({ name: item.name, reason: "size cap" });
+			// WP2 signal: size-cap omission (§3.8 minimum). The return
+			// value is untouched — this only feeds the process total
+			// merged at observability exposition.
+			recordSkillSizeCapOmission();
 			continue;
 		}
 		used += item.text.length;

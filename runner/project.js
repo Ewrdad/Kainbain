@@ -10,6 +10,10 @@ import {
 	isAllowedImageExt,
 	sanitizeImageName,
 } from "../api/work/taskAssets.js";
+// WP2 signal: worktree evictions (§3.8 minimum). The import is cycle-free
+// (productionSignals.js imports nothing) and recording never alters the
+// eviction decision below.
+import { recordWorktreeEviction } from "../api/watch/productionSignals.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -485,7 +489,10 @@ export async function evictOldestWorkdir({ workRoot, currentTaskId = null, stale
 		try {
 			const parkedTo = await preserveEvictedWorkdir(dir);
 			const gone = await removeTaskWorkdir({ workRoot, repoDir, localPath, dir });
-			if (gone) return { evicted: dir, parkedTo };
+			if (gone) {
+				recordWorktreeEviction();
+				return { evicted: dir, parkedTo };
+			}
 		} catch {
 			// Try the next-oldest candidate instead of failing the deploy.
 		}
