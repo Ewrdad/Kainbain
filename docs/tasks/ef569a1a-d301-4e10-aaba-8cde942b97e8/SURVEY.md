@@ -68,6 +68,39 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Both: automatic tool plus a short guide"
+      ],
+      "notes": "Ideally photos/images/tagged files should be stored in the task directory and then referenced (how this works with the UI is for you to decide but tagged photos should always be in the task directory)"
+    },
+    "q2": {
+      "selected": [
+        "Both places"
+      ],
+      "notes": "Ideally photos/images/tagged files should be stored in the task directory and then referenced (how this works with the UI is for you to decide but tagged photos should always be in the task directory)"
+    },
+    "q3": {
+      "selected": [
+        "Stop it and explain the safe way to do it"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Proof pictures (PNG)",
+        "All pictures (PNG, JPG, and similar)",
+        "All non-text files (pictures, zips, and similar)"
+      ],
+      "notes": "I would like to expand the taggable files infra (like this) in the future to support more file types/formats so therefore I think it'd be smart to make it extendable"
+    },
+    "q5": {
+      "selected": [
+        "Also repair old broken pictures if any are found"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
