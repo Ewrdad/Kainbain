@@ -61,6 +61,13 @@ export function DocsView() {
   // normalisation effect so a normalise queued before a click but executed
   // after it can never clobber the user's choice back to the first article.
   const userSelectedRef = useRef(false);
+  // Pin for an explicit in-session collapse of the group being read. The
+  // active-article force-open exists so a deep link is never stranded inside
+  // a stored-collapsed group — it must not swallow the user's own click on
+  // that same header, or the chevron reads as a dead control. The pin names
+  // the collapsed slug and clears on the next explicit selection, so the
+  // newly read group forces open again.
+  const [pinnedClosedSlug, setPinnedClosedSlug] = useState(null);
   // One-shot expand-all / collapse-all requests for the article viewer. Each
   // click mints a fresh nonce, which the viewer applies exactly once.
   const [sectionSignal, setSectionSignal] = useState(null);
@@ -125,9 +132,14 @@ export function DocsView() {
   }, [routeSlug, docs, navigate]);
 
   // Selecting an article IS a navigation; back/forward lands via params.
+  // Any explicit new selection clears the pinned-closed override, so the
+  // newly read group forces open again. (Deep-link/back-forward arrivals
+  // need no clearing: the pin names the old slug, so it can never match the
+  // new selection and the force-open applies on the first render.)
   const selectArticle = useCallback(
     (slug) => {
       userSelectedRef.current = true;
+      setPinnedClosedSlug(null);
       const target = `/docs/${encodeURIComponent(slug)}`;
       if (location.pathname !== target) navigate(target);
     },
@@ -215,12 +227,23 @@ export function DocsView() {
   // group; clearing the filter restores the stored state untouched. A
   // deep-linked / active article likewise forces its own group open, so the
   // selection is never stranded inside a stored-collapsed group.
-  const { collapsed: storedCollapsed, toggle: toggleGroup } = useCollapsedSections();
+  const { collapsed: storedCollapsed, toggle: toggleStoredGroup } = useCollapsedSections();
+  const toggleGroup = useCallback(
+    (section) => {
+      if (section === activeDoc?.section) {
+        setPinnedClosedSlug(storedCollapsed.has(section) ? null : effectiveSlug);
+      }
+      toggleStoredGroup(section);
+    },
+    [activeDoc?.section, effectiveSlug, storedCollapsed, toggleStoredGroup, setPinnedClosedSlug],
+  );
   const isFiltering = filter.trim().length > 0;
   const isGroupCollapsed = useCallback(
     (section) =>
-      storedCollapsed.has(section) && !isFiltering && section !== activeDoc?.section,
-    [storedCollapsed, isFiltering, activeDoc],
+      storedCollapsed.has(section) &&
+      !isFiltering &&
+      (section !== activeDoc?.section || pinnedClosedSlug === effectiveSlug),
+    [storedCollapsed, isFiltering, activeDoc, effectiveSlug, pinnedClosedSlug],
   );
 
   // The expand/collapse-all controls only make sense when the loaded article

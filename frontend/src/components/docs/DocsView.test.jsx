@@ -318,6 +318,35 @@ test('clicking a header chevron collapses only that group', async () => {
   expect(screen.getByRole('button', { name: 'System Architecture' })).toBeInTheDocument();
 });
 
+test('collapsing the group that holds the active article folds it in-session', async () => {
+  renderWithKainBain(
+    <>
+      <DocsView />
+      <RouteLocation />
+    </>,
+    {},
+    { initialEntries: ['/docs/architecture'] },
+  );
+  await screen.findByText('Getting started');
+  expect(screen.getByRole('button', { name: 'System Architecture' })).toBeInTheDocument();
+  // The explicit click wins over the deep-link force-open for this session:
+  // the active group folds instead of reading as a dead control.
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse Concepts' }));
+  expect(screen.queryByRole('button', { name: 'System Architecture' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Expand Concepts (2)' })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  );
+  expect(screen.getByTestId('route-location')).toHaveTextContent('/docs/architecture');
+  // Reopening works, and moving to another article clears the pin: the new
+  // selection forces its own group open while the stored collapse stands.
+  fireEvent.click(screen.getByRole('button', { name: 'Install & Run' }));
+  expect(screen.getByRole('button', { name: 'Install & Run' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'System Architecture' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Expand Concepts (2)' }));
+  expect(screen.getByRole('button', { name: 'System Architecture' })).toBeInTheDocument();
+});
+
 test('collapsed state persists across remounts via localStorage', async () => {
   const first = renderWithKainBain(<DocsView />);
   await screen.findByText('Getting started');
