@@ -110,9 +110,57 @@
         "Describe in Notes"
       ],
       "required": false,
-      "showIf": { "questionId": "q7", "value": "Must hold a specific scale target (give numbers in Notes)" }
+      "showIf": {
+        "questionId": "q7",
+        "value": "Must hold a specific scale target (give numbers in Notes)"
+      }
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "UI active-project switch while runners keep working"
+      ],
+      "notes": "as well as making sure if Runnner A has Project 1 and Project 2 loaded it can easily work on tasks for either project without issue"
+    },
+    "q2": {
+      "selected": [
+        "One global shared queue all runners pull from"
+      ],
+      "notes": "This is what kainbain does to smooth out compute over time"
+    },
+    "q3": {
+      "selected": [
+        "Manual attach/detach of a project in the UI"
+      ],
+      "notes": "Allows the user to decide which runners run which projects (say maybe project b can only run on Runner B for compliance reasons etc)"
+    },
+    "q4": {
+      "selected": [
+        "One task at a time per runner",
+        "Git branch / workdir isolation between projects",
+        "Project-scoped credentials and secrets"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "In-memory or mocked stores only, no new dirs or DB rows"
+      ],
+      "notes": "There wont always be a running version of kainbain to use. Touching a live system is always last resort"
+    },
+    "q6": {
+      "selected": [
+        "Per-project skills directory that merges with (not replaces) core skills"
+      ],
+      "notes": ""
+    },
+    "q7": {
+      "selected": [
+        "Auditor's judgement call"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```

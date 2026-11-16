@@ -110,9 +110,59 @@
         "Describe in Notes"
       ],
       "required": false,
-      "showIf": { "questionId": "q7", "value": "Must hold a specific scale target (give numbers in Notes)" }
+      "showIf": {
+        "questionId": "q7",
+        "value": "Must hold a specific scale target (give numbers in Notes)"
+      }
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "One global shared queue all runners pull from"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Drain and fence: in-flight work finishes or is safely parked, no new claims, re-load resumes cleanly"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "UI active-project switch never cancels, reassigns, or starves another project's work",
+        "One runner can interleave tasks across projects with correct projectId on every claim/progress/verify/steer call",
+        "Git workdir/branch isolation holds between concurrent projects"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Per-project skills merge with core skills (they never replace the core set)",
+        "A same-name project skill may shadow the core skill for that project only, never leaking to others",
+        "Core skills must work on any project with per-project config (no hard-coded project)"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Blocker — must be fixed and re-tested before production use"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "In-memory or mocked stores only — no new directories or registry rows at all"
+      ],
+      "notes": ""
+    },
+    "q7": {
+      "selected": [
+        "Auditor's judgement call"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
