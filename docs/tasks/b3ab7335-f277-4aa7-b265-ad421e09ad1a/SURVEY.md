@@ -43,6 +43,25 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Yes – save into the current task's folder by default (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Stop and show a short message explaining how to give a save location (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "A new file each time with the date and time in the name, so nothing is overwritten (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
