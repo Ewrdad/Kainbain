@@ -15,6 +15,7 @@ I feel like code should always be understandable by users as they are the ones w
 - Use a labelled data inport pattern (IE  `({varA , varB}) => {}`)
 - NEVER MENTION DESIGN PATTERNS
 - Use @example tags in js doc to easily explain functionality
+- Every new export also carries a `MARK:` label in the same JSDoc block, sitting directly above the export (only whitespace between `*/` and `export`); `npm run check:jsdoc-example` (<1s) checks this before pushing — copy-paste shapes in docs/agent-docs/KB-Code-Standards.md §Documentation/Jsdoc
   
   
 
