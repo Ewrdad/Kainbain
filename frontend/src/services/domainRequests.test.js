@@ -1,7 +1,5 @@
-// node env pin: pure-logic suite (no DOM needs); skips the DOM env cost per CI-wall budget.
-// @vitest-environment node
-// Run in the lighter node environment: this suite is pure logic with
-// no DOM needs (skips jsdom setup, keeps the CI suite fast).
+// node env pin: this suite is pure logic with no DOM needs
+// (skips jsdom setup, keeps the CI suite fast).
 // @vitest-environment node
 // Domains: existing callers keep the same request contracts after the split.
 import { describe, it, expect, vi } from 'vitest';
@@ -10,57 +8,38 @@ import { flowRequests } from './flow/index.js';
 import { crewRequests } from './crew/index.js';
 import { watchRequests } from './watch/index.js';
 import { houseRequests } from './house/index.js';
-import { runnerRequests } from './runners/index.js';
 import { accessibilityRequests } from './accessibility/index.js';
+import { domainRegistry, collectDomainOperationNames, buildDomainClients } from './domainRegistry.js';
 import { api } from './api.js';
 
 describe('Business-owned request lists', () => {
-  it('has no duplicate operations and exposes every domain operation through the old client', () => {
+  it('exposes exactly the registry operations with no duplicates', () => {
     const request = vi.fn();
-    const clients = [workRequests(request, () => true), flowRequests(request), crewRequests(request), watchRequests(request), houseRequests(request), runnerRequests(request), accessibilityRequests(request)];
+    // Derived from domainRegistry.js: adding an endpoint updates the
+    // registry (same diff as the request list), never this file.
+    const deps = { request, isValidProjectId: () => true };
+    // Per-domain key-set equality: a request-list key missing from the
+    // registry (unregistered add) or a registry entry missing from the
+    // request list (dropped op) fails here naming the domain.
+    for (const entry of domainRegistry) {
+      expect(Object.keys(entry.build(deps)).sort(), `${entry.domain} client keys`).toEqual(
+        [...entry.operations].sort(),
+      );
+    }
+    const clients = buildDomainClients(deps);
     const names = clients.flatMap(Object.keys);
-    expect(new Set(names).size).toBe(names.length);
-    // 60 legacy operations + the 3 task-image operations (uploadTaskImage,
-    // listTaskImages, deleteTaskImage) added with task image support + the
-    // explorer image-preview URL builder (getFileRawUrl) + the per-harness
-    // availability probe (getHarnessModels) for System Settings › Harness +
-    // the 2 skill-import operations (importSkill, deleteSkill) for the
-    // Settings › Skills tab + the baked-changelog reader (deployChangelog)
-    // for the header build badge dialog + the per-harness reliability reader
-    // (getHarnessReliability) for System Settings › Harness + the per-alias
-    // reliability reader (getAliasReliability) for Settings › Model Aliases +
-    // the 2 "Go to App" operations (updateAppStatus, checkAppHealth).
-    // the 3 Tier-5 engine-containment operations (engineState, engineTrip,
-    // engineReset) added with the global circuit breaker +
-    // the 4 prompt layout operations (getPromptLayout, updatePromptLayout,
-    // resetPromptLayout, dryRunPromptLayout) for System Settings › Prompt Layout +
-    // the adopt-existing-project operation (registerProject) for the project
-    // switcher's "+ Add Existing Project…" dialog +
-    // the 2 survey operations (getSurvey, submitSurvey) for the question-me
-    // survey page +
-    // the 4 image-gen operations (getImageGenProviders, saveImageGenKey,
-    // clearImageGenKey, testImageGenProvider) for System Settings › Images
-    // and the question-me imageGen provider dropdown +
-    // the 2 accessibility operations (accessibilityResults,
-    // submitAccessibilityFeedback) for the accessibility statement view +
-    // the 9 Runner operations (getRunners, getRunnerMonitor,
-    // getFleetModelCatalog, approveRunner, denyRunner, revokeRunner,
-    // pauseRunner, resumeRunner, skipRunner) for Settings › Runners, the
-    // per-runner Now Playing controls, and the fleet model catalogue +
-    // the 2 Runner config operations (getRunnerConfig, updateRunnerConfig)
-    // for the System Settings › Runners detail form +
-    // the 2 Runner command operations (requestModelRediscovery,
-    // requestRunnerUpdate) for the on-request model re-detection and
-    // self-update buttons +
-    // the 2 fleet-catalogue removal operations (deleteFleetCatalogueModel,
-    // deleteFleetQuarantinedModel) for the System Settings › Models
-    // fleet-catalogue admin table +
-    // the first-run onboarding summary (getOnboarding) for the empty
-    // state and guided-checklist UIs +
-    // the task-reopen operation (uncompleteTask) for the Uncomplete button
-    // on completed tasks.
-    expect(names).toHaveLength(105);
-    for (const name of names) expect(typeof api[name]).toBe('function');
+    // Cross-domain no-duplicates: the same op name from two request lists
+    // fails here naming the duplicated operation.
+    const seenNames = new Set();
+    const duplicatedNames = new Set();
+    for (const name of names) {
+      if (seenNames.has(name)) duplicatedNames.add(name);
+      else seenNames.add(name);
+    }
+    expect([...duplicatedNames], 'duplicate domain operations').toEqual([]);
+    expect([...names].sort()).toEqual([...collectDomainOperationNames()].sort());
+    // Client exposure: every registered op must be callable on `api`.
+    for (const name of collectDomainOperationNames()) expect(typeof api[name], name).toBe('function');
   });
 
   it.each([
