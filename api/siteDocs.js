@@ -30,6 +30,24 @@ import { config } from "./config.js";
  *   concepts before daily use before lookup). Every article belongs to
  *   exactly one. The order here is the sidebar order: the frontend follows
  *   the `sections` array of the GET /docs index, which mirrors this list.
+ *
+ *   REQUIRED RENAME PROCEDURE (follow first time — a rename without these
+ *   steps silently drops custom `KAINBAIN_SITE_DOCS` articles carrying old
+ *   `section:` frontmatter; see `DEPRECATIONS.md` "Docs taxonomy rename"):
+ *   1. Choose the new id; update `DOC_SECTIONS` and `SECTION_LABELS` here
+ *      plus the frontend mirror (`frontend/src/components/docs/docsSections.js`,
+ *      locked together by `siteDocs.frontendParity.test.js`).
+ *   2. Add `LEGACY_SECTION_ALIASES['<old-id>'] = '<new-id>'` — never delete
+ *      entries; aliases are kept forever so old frontmatter keeps indexing.
+ *   3. Add a `DEPRECATIONS.md` entry (retired id, new id, date, automatic
+ *      migration note).
+ *   4. Append the retired id to `KNOWN_SECTION_HISTORY` in
+ *      `api/siteDocs.test.js` if it is not already there (and any brand-new
+ *      current id too), so the taxonomy guardrail keeps covering it.
+ *   5. Migrate in-repo `site-docs/*.md` frontmatter to the new ids.
+ *   6. Run the siteDocs suites (`npm run test --prefix api -- siteDocs`).
+ *   The guardrail fails naming the retired id when step 2/3 is missed, and
+ *   names a dangling alias target when the new id in step 1 is mistyped.
  * @example DOC_SECTIONS => ['getting-started', 'concepts', 'workflows', 'reference']
  ***/
 export const DOC_SECTIONS = ["getting-started", "concepts", "workflows", "reference"];
@@ -58,7 +76,8 @@ export const SECTION_LABELS = {
  *   old articles keep indexing instead of silently vanishing. `how-it-works`
  *   held the conceptual articles (now `concepts`); `working-with` held the
  *   operational guides (now `workflows`). Emits a `console.warn` naming the
- *   file so owners can update frontmatter at their convenience.
+ *   file so owners can update frontmatter at their convenience. Entries are
+ *   never removed — see the REQUIRED RENAME PROCEDURE on `DOC_SECTIONS`.
  * @example LEGACY_SECTION_ALIASES['how-it-works'] => 'concepts'
  ***/
 export const LEGACY_SECTION_ALIASES = {

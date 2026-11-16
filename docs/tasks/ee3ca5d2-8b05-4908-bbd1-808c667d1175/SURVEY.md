@@ -44,6 +44,25 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Keep showing the old category until the owner updates the articles"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Forever — old names always keep working (Recommended)"
+      ],
+      "notes": "It shhould really be docs derived I think ideally so bottom up so we dont have tomaintain  a central list"
+    },
+    "q3": {
+      "selected": [
+        "Docs categories only, keep it simple (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
