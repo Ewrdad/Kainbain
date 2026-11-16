@@ -430,10 +430,86 @@ export function checkMissing(missing, baseline, strict = false) {
 	return { failures, prunable };
 }
 
+// Display name for a failing export: the declared name, or — for anonymous
+// `export default` (which the scanner records as exportName "default") — an
+// identifier sanitized from the file's base name, so the tailored snippet can
+// still name its MARK block and @example.
+function displayNameFor(entry) {
+	if (entry.exportName && entry.exportName !== "default") return entry.exportName;
+	const base = path.posix.basename(entry.file, path.posix.extname(entry.file));
+	const clean = base.replace(/[^A-Za-z0-9_$]/g, "");
+	if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(clean)) return clean;
+	return "DefaultExport";
+}
+
+// One-line export statement the snippet must be pasted above, e.g.
+// "export function Fresh" or "export default function Widget".
+function exportHintFor(entry) {
+	const name = displayNameFor(entry);
+	if (entry.kind === "default") return "export default …";
+	if (entry.kind === "function") {
+		return entry.exportName === "default"
+			? `export default function ${name}`
+			: `export function ${name}`;
+	}
+	if (entry.kind === "class") {
+		return entry.exportName === "default"
+			? `export default class ${name}`
+			: `export class ${name}`;
+	}
+	return `export ${entry.kind} ${name}`;
+}
+
+/***
+ * MARK: exampleSnippetFor
+ * @description Renders the ready-to-paste JSDoc block for one failing export,
+ *   tailored to its kind (function / class / const-like / default) and
+ *   pre-filled with the real export name (or the file's base name for
+ *   anonymous `export default`). Pasting the block directly above the export
+ *   — only whitespace between `*\/` and `export` — turns the gate green. The
+ *   templates match the shapes in KB Code Standards §Jsdoc word-for-word.
+ * @example exampleSnippetFor({ file: "f.js", exportName: "g", kind: "function" }) mentions MARK: g
+ * @param {{file: string, exportName: string, kind: string}} entry - One failing export.
+ * @returns {string} The JSDoc block, ready to paste (no trailing newline).
+ ***/
+export function exampleSnippetFor(entry) {
+	const name = displayNameFor(entry);
+	const isDefault = entry.exportName === "default";
+	let mark = name;
+	let description = `What ${name} does.`;
+	let example = `${name}(input) => expectedOutput`;
+	if (entry.kind === "class") {
+		description = isDefault ? `What the default-exported ${name} is.` : `What ${name} is.`;
+		example = `new ${name}(args) => instance`;
+	} else if (entry.kind === "const" || entry.kind === "let" || entry.kind === "var") {
+		description = `What ${name} holds.`;
+		example = `${name} => value`;
+	} else if (entry.kind === "default") {
+		mark = `${name} default`;
+		description = `Default export of ${name}.`;
+		example = `import ${name} from './${name}';`;
+	} else if (isDefault) {
+		// `export default function …` (scanner records kind "function").
+		description = `What the default-exported ${name} does.`;
+	}
+	return [
+		"/**",
+		` * MARK: ${mark}`,
+		` * @description ${description}`,
+		` * @example ${example}`,
+		" */",
+	].join("\n");
+}
+
+// Tailored snippets stay readable for large violations: show full blocks for
+// the first few failures, summarize the rest (every failure is still listed).
+const MAX_SNIPPETS = 5;
+
 /***
  * MARK: formatExampleFailure
  * @description Renders the remediation-forward gate failure (plan §5.5/§7:
- *   gate name, offending locations, why, remediation, local repro).
+ *   gate name, offending locations, why, per-export ready-to-paste snippets,
+ *   remediation, local repro).
  * @example formatExampleFailure([{ file: "f.js", exportName: "g", kind: "function" }]) mentions @example
  * @param {Array<Object>} failures - Newly-missing exports.
  * @returns {string} Human-readable failure text.
@@ -454,6 +530,20 @@ export function formatExampleFailure(failures) {
 	}
 	lines.push("Every public export needs an @example tag in its JSDoc block.");
 	lines.push("");
+	lines.push("Ready-to-paste fixes (paste each block directly above its export —");
+	lines.push("only whitespace may sit between `*/` and `export`):");
+	lines.push("");
+	const shown = failures.slice(0, MAX_SNIPPETS);
+	for (const entry of shown) {
+		lines.push(`  ${entry.file} · ${entry.kind} ${entry.exportName} — paste above \`${exportHintFor(entry)}\`:`);
+		lines.push(exampleSnippetFor(entry));
+		lines.push("");
+	}
+	if (failures.length > shown.length) {
+		lines.push(`  … and ${failures.length - shown.length} more export(s) not shown individually —`);
+		lines.push("  same MARK + @description + @example pattern directly above each export.");
+		lines.push("");
+	}
 	lines.push("Remediation:");
 	lines.push("  1. Add a JSDoc block directly above each export with a runnable example:");
 	lines.push("       /**");

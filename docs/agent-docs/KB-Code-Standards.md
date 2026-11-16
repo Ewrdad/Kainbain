@@ -78,13 +78,56 @@ It should easily be extendable so we can do exploratory screenshots. This is the
 As mentioned above Jsdoc should be used to make sure things are in line with business behaviour. Key to use examples and make them readable.
 
 **Enforced (WP-8 automated gates — not advisory):**
-- `@example` on every public export (`export function/class/const/let/var/default`
+- `MARK:` + `@description` + `@example` on every public export (`export function/class/const/let/var/default`
   in `api/`, `shared/`, `frontend/src/`): enforced for all *new* exports by
   `npm run check:jsdoc-example` (wired into `npm run docs:check` and CI).
+  Scope: any new exported item, including a new export added to an existing
+  file — not just new files. The JSDoc block must sit directly above the
+  export: only whitespace may sit between `*/` and `export`, or the gate does
+  not see it. Every new block needs all three lines: a `MARK:` name (shows in
+  the VSCode minimap), a `@description`, and a runnable `@example`.
   Pre-existing gaps are grandfathered in
   `scripts/baselines/jsdoc-example-missing.json` and shrink via `--prune`;
   never add a new export to that baseline (see §q6: new exports document
-  themselves). Reproduce: `node scripts/check-jsdoc-example.mjs --report`.
+  themselves). Before pushing, run `npm run check:jsdoc-example` (<1s)
+  whenever you add or rename an export — it is the same check CI runs, so a
+  local PASS means CI will not fail on this gate. Reproduce/triage:
+  `node scripts/check-jsdoc-example.mjs --report`.
+
+  Minimal compliant shapes (copy the block, paste it directly above the
+  export, then fill in a real example — these are the same templates the gate
+  failure message prints, pre-filled with your file and export name):
+
+  ```js
+  /**
+   * MARK: myExport
+   * @description What myExport does.
+   * @example myExport(input) => expectedOutput
+   */
+  export function myExport(input) { /* ... */ }
+  ```
+
+  ```js
+  /**
+   * MARK: myValue
+   * @description What myValue holds.
+   * @example myValue => value
+   */
+  export const myValue = /* ... */;
+  ```
+
+  Default exports use the file's base name (this is the exact shape that fixed
+  the `TaskCompleteToggleButton` CI failure — the block goes above the
+  `export default` line):
+
+  ```js
+  /**
+   * MARK: TaskCompleteToggleButton default
+   * @description Default export of TaskCompleteToggleButton.
+   * @example import TaskCompleteToggleButton from './TaskCompleteToggleButton';
+   */
+  export default TaskCompleteToggleButton;
+  ```
 - One function per file for newly added source files: at most one top-level
   named `function` declaration per new file in `api/`, `shared/`,
   `frontend/src/` (nested helpers and arrow constants are fine), enforced by

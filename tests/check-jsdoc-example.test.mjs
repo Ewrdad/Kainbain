@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
 	checkMissing,
+	exampleSnippetFor,
 	findPublicExports,
 	formatExampleFailure,
 	hasExampleTag,
@@ -148,6 +149,116 @@ describe("formatExampleFailure", () => {
 		assert.match(text, /function Fresh/);
 		assert.match(text, /Remediation:/);
 		assert.match(text, /npm run check:jsdoc-example/);
+	});
+
+	it("emits a tailored ready-to-paste snippet per export kind", () => {
+		const text = formatExampleFailure([
+			{ file: "frontend/src/new.js", exportName: "Fresh", kind: "function" },
+			{ file: "frontend/src/thing.js", exportName: "Thing", kind: "class" },
+			{ file: "shared/cfg.js", exportName: "CONFIG", kind: "const" },
+			{
+				file: "frontend/src/components/tasks/TaskCompleteToggleButton.jsx",
+				exportName: "default",
+				kind: "default",
+			},
+		]);
+		// Function: file + name embedded, tailored to `export function`.
+		assert.match(text, /frontend\/src\/new\.js · function Fresh/);
+		assert.match(text, /paste above `export function Fresh`/);
+		assert.match(text, /MARK: Fresh/);
+		assert.match(text, /@example Fresh\(input\) => expectedOutput/);
+		// Class: tailored to `export class`.
+		assert.match(text, /paste above `export class Thing`/);
+		assert.match(text, /MARK: Thing/);
+		assert.match(text, /@example new Thing\(args\) => instance/);
+		// Const-like: tailored to `export const`.
+		assert.match(text, /paste above `export const CONFIG`/);
+		assert.match(text, /MARK: CONFIG/);
+		// Default export: name derived from the file base name.
+		assert.match(text, /MARK: TaskCompleteToggleButton default/);
+		assert.match(text, /paste above `export default …`/);
+		assert.match(text, /import TaskCompleteToggleButton from '\.\/TaskCompleteToggleButton'/);
+	});
+
+	it("caps tailored snippets and summarizes the rest", () => {
+		const failures = Array.from({ length: 7 }, (_, i) => ({
+			file: `shared/mod${i}.js`,
+			exportName: `fn${i}`,
+			kind: "function",
+		}));
+		const text = formatExampleFailure(failures);
+		assert.equal((text.match(/paste above/g) || []).length, 5);
+		assert.match(text, /and 2 more export\(s\)/);
+		for (const failure of failures) {
+			assert.match(text, new RegExp(failure.file.replaceAll("/", "\\/")));
+		}
+	});
+});
+
+describe("exampleSnippetFor", () => {
+	it("each snippet passes the gate when pasted above its export", () => {
+		const cases = [
+			[
+				{ file: "frontend/src/new.js", exportName: "Fresh", kind: "function" },
+				"export function Fresh() {}",
+			],
+			[
+				{ file: "frontend/src/thing.js", exportName: "Thing", kind: "class" },
+				"export class Thing {}",
+			],
+			[
+				{ file: "shared/cfg.js", exportName: "CONFIG", kind: "const" },
+				"export const CONFIG = {};",
+			],
+			[
+				{ file: "shared/cfg.js", exportName: "count", kind: "let" },
+				"export let count = 0;",
+			],
+			[
+				{
+					file: "frontend/src/components/tasks/TaskCompleteToggleButton.jsx",
+					exportName: "default",
+					kind: "default",
+				},
+				"export default TaskCompleteToggleButton;",
+			],
+			[
+				{ file: "frontend/src/anon.js", exportName: "default", kind: "function" },
+				"export default function anon() {}",
+			],
+		];
+		for (const [entry, exportLine] of cases) {
+			const src = `${exampleSnippetFor(entry)}\n${exportLine}\n`;
+			const found = findPublicExports(src);
+			assert.equal(found.length, 1, `${entry.kind} ${entry.exportName}: one export`);
+			assert.equal(found[0].hasExample, true, `${entry.kind} ${entry.exportName}: pasted snippet carries @example`);
+		}
+	});
+
+	it("pins the TaskCompleteToggleButton CI failure to an actionable message", () => {
+		// Pre-fix shape from task cccd8b9d (automated-tests-failure-20261115):
+		// documented named export + JSDoc-less default export.
+		const src = [
+			"/***",
+			" * MARK: TaskCompleteToggleButton",
+			" * @description The shared Complete/Uncomplete toggle button.",
+			" * @example <TaskCompleteToggleButton task={task} />",
+			" ***/",
+			"export function TaskCompleteToggleButton({ task }) { return task; }",
+			"export default TaskCompleteToggleButton;",
+		].join("\n");
+		const file = "frontend/src/components/tasks/TaskCompleteToggleButton.jsx";
+		const missing = findPublicExports(src)
+			.filter((entry) => !entry.hasExample)
+			.map((entry) => ({ file, exportName: entry.exportName, kind: entry.kind }));
+		assert.deepEqual(missing, [{ file, exportName: "default", kind: "default" }]);
+		const { failures } = checkMissing(missing, [], false);
+		const text = formatExampleFailure(failures);
+		assert.match(text, /frontend\/src\/components\/tasks\/TaskCompleteToggleButton\.jsx/);
+		assert.match(text, /default default/);
+		assert.match(text, /MARK: TaskCompleteToggleButton default/);
+		assert.match(text, /paste above `export default …`/);
+		assert.match(text, /@example/);
 	});
 });
 
