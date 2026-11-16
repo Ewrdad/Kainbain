@@ -14,6 +14,7 @@ import { skillsRegistry } from "./skills/skillsRegistry.js";
 import { stageExpectsAgentVerdict } from "./agent/verdictContract.js";
 import { config as appConfig } from "./config.js";
 import { collectTaskImageRefs } from "./work/taskAssets.js";
+import { listTaskDocsFiles } from "./work/taskDocsFiles.js";
 import { resolveDocsDirName } from "./docsPath.js";
 import {
 	DEFAULT_PROMPT_LAYOUT,
@@ -104,6 +105,57 @@ export function formatImageRefs(imageRefs, { maxRefs } = {}) {
 }
 
 /***
+ * MARK: formatPreviousReportsSection
+ * @description Formats the "# Previous Reports" prompt section from the
+ *   relative task-folder paths actually present on disk (newest first):
+ *   one `- <path>` line per file, capped at `maxRefs` entries with an
+ *   overflow pointer at the task folder. An empty list still renders the
+ *   section with an explicit "none available yet" line (q4), so agents
+ *   never second-guess whether history exists.
+ * @example formatPreviousReportsSection(['./docs/tasks/t/a.md'], { docsDirName: 'docs', taskId: 't' }) => '# Previous Reports\n...' (multi-line block)
+ * @param {string[]} filePaths - Newest-first relative file paths from disk.
+ * @param {Object} [opts]
+ * @param {number} [opts.maxRefs] - Cap on listed files (default config.taskReportsMaxPromptRefs; 0 = list all).
+ * @param {string} [opts.docsDirName] - Docs link-folder name for the header.
+ * @param {string} [opts.taskId] - Task id for the header.
+ * @returns {string}
+ ***/
+export function formatPreviousReportsSection(
+	filePaths,
+	{ maxRefs, docsDirName = "docs", taskId = "task" } = {},
+) {
+	const paths = (Array.isArray(filePaths) ? filePaths : [])
+		.map((filePath) => String(filePath || "").trim())
+		.filter(Boolean);
+	const folder = `./${docsDirName}/tasks/${taskId}/`;
+	if (paths.length === 0) {
+		return `# Previous Reports\nNo previous reports are available yet — the task folder ${folder} contains no files.`;
+	}
+	const configured = appConfig.taskReportsMaxPromptRefs;
+	const requested = maxRefs === undefined || maxRefs === null ? configured : maxRefs;
+	// An explicit 0 (or an unset/invalid cap with a 0/invalid configured
+	// default) lists everything; otherwise the explicit value wins and the
+	// configured default is the fallback.
+	let limit = paths.length;
+	if (Number.isFinite(requested) && requested > 0) {
+		limit = Math.min(Math.floor(requested), paths.length);
+	} else if (requested !== 0 && Number.isFinite(configured) && configured > 0) {
+		limit = Math.min(configured, paths.length);
+	}
+	const lines = paths.slice(0, limit).map((filePath) => `- ${filePath}`);
+	if (paths.length > limit) {
+		lines.push(
+			`- (+${paths.length - limit} more files not listed; list ${folder} to see them)`,
+		);
+	}
+	return [
+		"# Previous Reports",
+		`The following files are present in ${folder}:`,
+		...lines,
+	].join("\n");
+}
+
+/***
  * MARK: interpolatePromptKeywords
  * @description Replaces runtime template keywords in stage or task prompts with live context:
  *   - {{project}}: Name of the project.
@@ -113,7 +165,7 @@ export function formatImageRefs(imageRefs, { maxRefs } = {}) {
  *   - {{projectRepo}} / {{taskRepo}}: Git repository URL or path.
  *   - {{taskGoal}}: Goal or title of the task.
  *   - {{taskDocs}}: Path to <projectRoot>/docs/tasks/<taskId>/.
- *   - {{previousReports}}: Newline-separated paths of all prior stage reports for this task.
+ *   - {{previousReports}}: Newline-separated paths of the files actually present in the task docs folder, newest first.
  *   - {{latestReportPath}}: Path of the most recent stage report for this task.
  *   - {{latestReportPath:<stageSlug>}}: Path of the most recent report from <stageSlug> (or fallback if none exists).
  *   - {{latestReport:<stageSlug>}}: Markdown content of the most recent report from <stageSlug> (or fallback if none exists).
@@ -240,6 +292,30 @@ export function resolveStageCustomKeywords(stage, projectCwd, loadSkill = null) 
 	return Object.keys(keywordMap).length > 0 ? keywordMap : null;
 }
 
+/***
+ * MARK: reportEntryFilename
+ * @description The disk-match key for one report metadata entry: the bare
+ *   filename (`filename`, then `name`, then the basename of `path`; plain
+ *   string entries match by their own basename). Used to reconcile
+ *   `task.reports` metadata with the files actually on disk.
+ * @example reportEntryFilename({ path: './docs/tasks/t/plan-20261007.md' }) => 'plan-20261007.md'
+ * @param {string|Object} entry - Report metadata entry.
+ * @returns {string} Bare filename, or "" when none is derivable.
+ ***/
+function reportEntryFilename(entry) {
+	if (typeof entry === "string") {
+		return String(entry).split("/").pop() || "";
+	}
+	if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+		const key =
+			entry.filename ||
+			entry.name ||
+			(entry.path ? String(entry.path).split("/").pop() : null);
+		return key ? String(key).split("/").pop() : "";
+	}
+	return "";
+}
+
 export function interpolatePromptKeywords(template, context = {}) {
 	if (!template || typeof template !== "string") return "";
 	const resolvedContext =
@@ -306,6 +382,62 @@ export function interpolatePromptKeywords(template, context = {}) {
 		return String(ta).localeCompare(String(tb));
 	});
 
+	// Disk-authoritative report lists: when the project working directory is
+	// known and the template asks for a report keyword, enumerate the files
+	// actually present in the task docs folder and drop metadata entries
+	// whose file is gone (phantoms). Without a resolvable cwd the legacy
+	// metadata passthrough below stays byte-identical.
+	const wantsDiskReports =
+		Boolean(projectCwd) &&
+		Boolean(task.id) &&
+		/{{[^}]*(previousReports|latestReport)/.test(template);
+	let diskReportPaths = null;
+	let diskMergedReports = null;
+	if (wantsDiskReports) {
+		const diskProject =
+			project && typeof project === "object"
+				? project
+				: task.project && typeof task.project === "object"
+					? task.project
+					: null;
+		try {
+			const { files } = listTaskDocsFiles(projectCwd, task.id, diskProject);
+			const metaByFilename = new Map();
+			for (const entry of allReports) {
+				const entryKey = reportEntryFilename(entry);
+				if (entryKey && !metaByFilename.has(entryKey)) {
+					metaByFilename.set(entryKey, entry);
+				}
+			}
+			const mtimeByFilename = new Map(
+				files.map((file) => [file.filename, file.mtimeMs]),
+			);
+			diskReportPaths = files.map((file) => file.path);
+			diskMergedReports = files
+				.map((file) => {
+					const meta = metaByFilename.get(file.filename);
+					if (meta && typeof meta === "object" && !Array.isArray(meta)) {
+						return { ...meta, path: file.path, filename: file.filename };
+					}
+					return {
+						path: file.path,
+						filename: file.filename,
+						stageSlug: file.filename.replace(/-\d{8}[-T]\d{6}Z?\.md$/, ""),
+					};
+				})
+				.sort((a, b) => {
+					const ma = mtimeByFilename.get(a.filename) || 0;
+					const mb = mtimeByFilename.get(b.filename) || 0;
+					if (ma !== mb) return ma - mb;
+					return String(a.filename).localeCompare(String(b.filename));
+				});
+		} catch {
+			diskReportPaths = null;
+			diskMergedReports = null;
+		}
+	}
+	const effectiveReports = diskMergedReports || allReports;
+
 	return template.replace(/\{\{([^}]+)\}\}/g, (match, rawKey) => {
 		const key = rawKey.trim();
 
@@ -346,6 +478,11 @@ export function interpolatePromptKeywords(template, context = {}) {
 		}
 
 		if (key === "previousReports") {
+			if (diskReportPaths) {
+				return diskReportPaths.length > 0
+					? diskReportPaths.join("\n")
+					: "(No previous stage reports available)";
+			}
 			const paths = allReports
 				.map((r) =>
 					typeof r === "string" ? r : r.path || r.filename || r.stageSlug,
@@ -378,7 +515,7 @@ export function interpolatePromptKeywords(template, context = {}) {
 		}
 
 		if (key === "latestReportPath") {
-			const last = allReports[allReports.length - 1];
+			const last = effectiveReports[effectiveReports.length - 1];
 			if (last) {
 				return typeof last === "string" ? last : last.path || last.filename || "";
 			}
@@ -393,7 +530,7 @@ export function interpolatePromptKeywords(template, context = {}) {
 			// Path-only sibling of `latestReport:<slug>`: returns the report
 			// path (never content) so CI shell commands can test for a prior
 			// stage's report without hitting command-line length limits.
-			const matchingReports = allReports.filter((r) => {
+			const matchingReports = effectiveReports.filter((r) => {
 				if (!r) return false;
 				const slug = r.stageSlug || slugifyStageName(r.stageName || r.name || "");
 				return slug === targetSlug;
@@ -419,7 +556,7 @@ export function interpolatePromptKeywords(template, context = {}) {
 			);
 
 			// Find matching reports by stageSlug or stageName
-			const matchingReports = allReports.filter((r) => {
+			const matchingReports = effectiveReports.filter((r) => {
 				if (!r) return false;
 				const slug = r.stageSlug || slugifyStageName(r.stageName || r.name || "");
 				return slug === targetSlug;
@@ -879,8 +1016,40 @@ export class PromptCurationEngine {
 					: null;
 		const docsDirName = resolveDocsDirName(docsProject);
 
-		// 3. Previous Stage Reports (if available)
-		if (previousReports.length > 0) {
+		// 3. Previous Stage Reports — disk-authoritative when the project
+		// working directory is known: list the files actually present in the
+		// task docs folder (phantoms from report metadata are omitted).
+		// Without a cwd (pure previews) keep the legacy metadata passthrough.
+		if (projectCwd && task.id) {
+			let diskFiles = null;
+			try {
+				diskFiles = listTaskDocsFiles(projectCwd, task.id, docsProject).files;
+			} catch {
+				diskFiles = null;
+			}
+			if (diskFiles) {
+				sectionMap.previousReports = formatPreviousReportsSection(
+					diskFiles.map((file) => file.path),
+					{
+						maxRefs: appConfig.taskReportsMaxPromptRefs,
+						docsDirName,
+						taskId: task.id,
+					},
+				);
+			} else if (previousReports.length > 0) {
+				const reportList = previousReports
+					.map((p) =>
+						typeof p === "string" ? p : p.path || p.filename || p.stageSlug,
+					)
+					.filter(Boolean)
+					.map((p) => `- ${p}`)
+					.join("\n");
+				if (reportList) {
+					sectionMap.previousReports =
+						`# Previous Reports\nThe following prior stage reports are available in ./${docsDirName}/tasks/${task.id || "task"}/:\n${reportList}`;
+				}
+			}
+		} else if (previousReports.length > 0) {
 			const reportList = previousReports
 				.map((p) =>
 					typeof p === "string" ? p : p.path || p.filename || p.stageSlug,

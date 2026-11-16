@@ -583,7 +583,7 @@ export function recordTimelineWithDiffStat(
 
 /***
  * MARK: syncTaskReports
- * @description Synchronizes and deduplicates markdown report files from disk for a task.
+ * @description Synchronizes and deduplicates markdown report files from disk for a task. Metadata entries whose file is absent from a readable task folder are kept but flagged `missingOnDisk: true` (never deleted).
  * @param {Object} taskStore - TaskStore instance.
  * @param {string} projectId
  * @param {Object} task
@@ -619,6 +619,7 @@ export function syncTaskReports(taskStore, projectId, task, projectCwd) {
 		try {
 			if (fs.existsSync(taskDocsDir)) {
 				const files = fs.readdirSync(taskDocsDir);
+				const onDisk = new Set(files);
 				for (const file of files) {
 					if (file.endsWith(".md") && file !== "task.md") {
 						const relPath = reportRelPath(docsProject, task.id, file);
@@ -634,7 +635,7 @@ export function syncTaskReports(taskStore, projectId, task, projectCwd) {
 						// Extract timestamp from filename if available (e.g. stage-20260824T120000Z.md)
 						const tsMatch = file.match(/-(\d{8}[-T]\d{6}Z?)\.md$/);
 						const extractedTs = tsMatch ? tsMatch[1] : "";
-						reportsMap.set(file, {
+						const merged = {
 							...existing,
 							stageName: existing?.stageName || stageSlug || "stage",
 							stageSlug,
@@ -646,7 +647,18 @@ export function syncTaskReports(taskStore, projectId, task, projectCwd) {
 							timestamp:
 								existing?.timestamp || extractedTs || existing?.createdAt || "",
 							createdAt: reportCreatedAt({ ...existing, filename: file }),
-						});
+						};
+						if ("missingOnDisk" in merged) delete merged.missingOnDisk;
+						reportsMap.set(file, merged);
+					}
+				}
+				// Non-destructive phantom flag: metadata entries whose file is
+				// absent from a readable task folder are marked (never deleted —
+				// reliability readers consume metadata, not files). The prompt
+				// enumerates disk directly and never reads this flag.
+				for (const [key, entry] of reportsMap) {
+					if (!onDisk.has(key)) {
+						entry.missingOnDisk = true;
 					}
 				}
 			}
