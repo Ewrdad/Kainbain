@@ -23,11 +23,14 @@ function fullEngine() {
 	});
 }
 
+// No projectCwd on purpose: this baseline pins the no-cwd legacy
+// metadata passthrough byte-for-byte. Prompts WITH a cwd are
+// disk-authoritative (see promptCuration.diskReports.test.js) and would
+// enumerate the real task folder instead of the fixture list.
 const TASK = {
 	id: "task-1",
 	goal: "Fix the login bug for {{project}}",
 	project: "Demo",
-	projectCwd: "/projects/demo",
 };
 
 const FULL_OPTIONS = {

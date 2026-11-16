@@ -29,7 +29,7 @@ This should be horizontally scalable and not require much in memory storage such
 
 ## One session per stage
 
-Agent/review stages never share a session. Every stage execution begins a brand-new agent session whose only context is that stage's curated prompt: the task goal, the stage instructions, references to prior stages' report artifacts, and any failure/steering guidance. Earlier stages contribute their distilled REPORTS, never the research/conversation they performed to produce them.
+Agent/review stages never share a session. Every stage execution begins a brand-new agent session whose only context is that stage's curated prompt: the task goal, the stage instructions, references to prior stages' report artifacts, and any failure/steering guidance. Earlier stages contribute their distilled REPORTS, never the research/conversation they performed to produce them. `# Previous Reports` (and the `{{previousReports}}` / `{{latestReport*}}` keywords) enumerate the files actually present in `docs/tasks/<taskId>/` — newest first, capped at `KAINBAIN_TASK_REPORTS_MAX_PROMPT_REFS` (default 5) with an overflow pointer — so a report that no longer exists on disk is never presented as available.
 
 Why: long-lived shared sessions accumulate stale context (context rot) and bias later stages with irrelevant detail, and oversized histories make provider requests stall entirely (KB-9940). Fresh-per-stage keeps prompts small (smaller/cheaper models per stage), keeps runs isolated from each other's failures, and every run's full transcript is still persisted to disk per stage for audit and debugging.
 

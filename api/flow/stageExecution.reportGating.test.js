@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { TaskStore } from "../taskStore.js";
+import { PromptCurationEngine } from "../promptCuration.js";
 
 /***
  * MARK: Stage success-report gating contract
@@ -94,6 +95,40 @@ describe("executeStage success-report gating", () => {
 		expect(reports).toHaveLength(0);
 		expect(task.reports).toHaveLength(0);
 		expect(task.outputReport || "").toBe("");
+	});
+
+	it("curates # Previous Reports from disk only: phantom history entries never render", async () => {
+		const { store, dir } = makeStore();
+		const task = store.createTask("p1", {
+			goal: "phantom-free prompt",
+			stageId: "a1",
+			projectCwd: dir,
+		});
+		// Real file on disk (hand-written, no report metadata).
+		const taskDir = path.join(dir, "docs", "tasks", task.id);
+		fs.mkdirSync(taskDir, { recursive: true });
+		fs.writeFileSync(path.join(taskDir, "SURVEY.md"), "# Survey\nReal.\n");
+		// Phantom history entry: claimed by history, never saved to disk.
+		task.reports.push({
+			stageName: "Ghost",
+			stageSlug: "ghost",
+			path: `./docs/tasks/${task.id}/ghost-20200101-000000.md`,
+			filename: "ghost-20200101-000000.md",
+			name: "ghost-20200101-000000.md",
+			timestamp: "20200101-000000",
+		});
+
+		const result = await store.executeStage("p1", task.id, {
+			stages: [{ id: "a1", name: "Work", type: "agent", prompt: "Do work" }],
+			projectCwd: dir,
+			agentRunner: SUCCESS_RUNNER,
+			promptEngine: new PromptCurationEngine(),
+		});
+
+		expect(result.status).toBe("passed");
+		expect(task.prompt).toContain("# Previous Reports");
+		expect(task.prompt).not.toContain("ghost-20200101-000000.md");
+		expect(task.prompt).toContain(`- ./docs/tasks/${task.id}/SURVEY.md`);
 	});
 
 	it("writes exactly one PASSED report when the stage opts in via `report: true`", async () => {

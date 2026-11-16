@@ -183,6 +183,7 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		taskImageMaxBytes: 10 * 1024 * 1024,
 		taskImageMaxPerTask: 20,
 		taskImageMaxPromptRefs: 10,
+		taskReportsMaxPromptRefs: 5,
 		taskImageMaxAttachBytes: 10 * 1024 * 1024,
 		stuckCheckMaxLogChars: 20000,
 		reviewDiffMaxBytes: 256 * 1024,

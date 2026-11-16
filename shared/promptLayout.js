@@ -134,7 +134,8 @@ export const LAYOUT_TOKENS = Object.freeze([
 		label: "Previous reports",
 		category: "section",
 		requirement: "optional",
-		description: "Prior stage report list (# Previous Reports).",
+		description:
+			"Files actually present in the task docs folder, newest first (# Previous Reports).",
 	},
 	{
 		token: "reporting",
