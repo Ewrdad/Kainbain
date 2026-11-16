@@ -260,6 +260,53 @@ describe("exampleSnippetFor", () => {
 		assert.match(text, /paste above `export default …`/);
 		assert.match(text, /@example/);
 	});
+
+	it("covers default-class, var, async-default, and odd file names", () => {
+		const cases = [
+			[
+				{ file: "frontend/src/widget.js", exportName: "default", kind: "class" },
+				"export default class Widget {}",
+				/What the default-exported widget is\./,
+			],
+			[
+				{ file: "shared/vars.js", exportName: "counter", kind: "var" },
+				"export var counter = 0;",
+				/@example counter => value/,
+			],
+			[
+				{ file: "frontend/src/loader.js", exportName: "default", kind: "default" },
+				"export default async function load() {}",
+				/MARK: loader default/,
+			],
+			[
+				// File base name is not a valid identifier: fall back safely.
+				{ file: "frontend/src/123-odd.jsx", exportName: "default", kind: "default" },
+				"export default function odd() {}",
+				/MARK: DefaultExport default/,
+			],
+		];
+		for (const [entry, exportLine, extra] of cases) {
+			const snippet = exampleSnippetFor(entry);
+			const found = findPublicExports(`${snippet}\n${exportLine}\n`);
+			assert.equal(found.length, 1, `${entry.file}: one export`);
+			assert.equal(found[0].hasExample, true, `${entry.file}: pasted snippet carries @example`);
+			assert.match(snippet, extra);
+		}
+	});
+
+	it("emits exactly one well-formed JSDoc block (MARK + @description + @example)", () => {
+		const snippet = exampleSnippetFor({
+			file: "frontend/src/x.js",
+			exportName: "default",
+			kind: "default",
+		});
+		assert.equal(snippet.split("/**").length - 1, 1, "one block opener");
+		assert.equal(snippet.split("*/").length - 1, 1, "no premature comment close");
+		assert.match(snippet, /^\/\*\*\n \* MARK: /);
+		assert.match(snippet, /\n \* @description /);
+		assert.match(snippet, /\n \* @example /);
+		assert.match(snippet, /\n \*\/$/);
+	});
 });
 
 describe("committed-tree grandfather proof", () => {

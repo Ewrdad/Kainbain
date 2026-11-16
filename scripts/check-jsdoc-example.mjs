@@ -555,7 +555,7 @@ export function formatExampleFailure(failures) {
 	lines.push("  3. Do NOT edit scripts/baselines/jsdoc-example-missing.json to silence this:");
 	lines.push("     that file only covers exports that already lacked @example before the gate.");
 	lines.push("     New exports must document themselves (q6).");
-	lines.push("See: AGENTS-MAP.md §automated-gates, KB Code Standards §documentation.");
+	lines.push("See: AGENTS-MAP.md §Test & lint commands (pre-push gates), docs/agent-docs/KB-Code-Standards.md §Documentation/Jsdoc.");
 	lines.push("");
 	lines.push("Reproduce locally: npm run check:jsdoc-example");
 	lines.push("Triage the remaining gap: node scripts/check-jsdoc-example.mjs --report");

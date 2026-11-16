@@ -18,6 +18,7 @@ Normative agent guidance for this repo. Architecture: [`docs/agent-docs/KB-Archi
 - Lint: `npm run lint` (api + frontend)
 - Build: `npm run build` (api + frontend)
 - Deps: `npm run check:deps:frontend` — every new bare import must land with its `package.json` (+ lockfile) change in the same commit; the check fails the build and the gate otherwise
+- Docs gate: `npm run check:jsdoc-example` (<1s) — run before pushing whenever you add or rename an export in `api/`, `shared/`, or `frontend/src/` (including a new export in an existing file); each new export needs a JSDoc block with `MARK:` + `@description` + `@example` directly above it (shapes: `docs/agent-docs/KB-Code-Standards.md` §Jsdoc)
 
 All commands are verbatim root `package.json` scripts, run from the repo root.
 
