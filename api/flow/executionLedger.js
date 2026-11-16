@@ -73,6 +73,7 @@ export class ExecutionLedger {
 			completions: 0,
 			completionDuplicates: 0,
 			staleRejected: 0,
+			fencedRejected: 0,
 			interrupts: 0,
 			interruptEscalations: 0,
 			divergences: 0,
@@ -88,7 +89,14 @@ export class ExecutionLedger {
 		return err;
 	}
 
-	_holdOrThrow(claimStore, taskId, executionId, epoch) {
+	static _fenceMismatch(taskId, why) {
+		const err = new Error(`Cross-project lease use rejected for task ${taskId}: ${why}.`);
+		err.statusCode = 409;
+		err.code = "PROJECT_FENCE_MISMATCH";
+		return err;
+	}
+
+	_holdOrThrow(claimStore, taskId, executionId, epoch, projectId = undefined, taskStore = null) {
 		const hold = claimStore.describe(taskId);
 		if (
 			!hold ||
@@ -98,7 +106,57 @@ export class ExecutionLedger {
 			this.counters.staleRejected += 1;
 			throw ExecutionLedger._stale(taskId, "epoch or execution mismatch");
 		}
-		return hold;
+		return this._assertProjectFence({ taskStore, taskId, projectId, hold });
+	}
+
+	_assertProjectFence({ taskStore, taskId, projectId, hold }) {
+		// WP1 tenant fence (AUDIT H-4): the lease names its home project and
+		// every guarded write must name the same one. Fail closed on a real
+		// mismatch, but honor legacy holds (claimed before projectId existed)
+		// and pre-fence direct callers that name no project — strictness for
+		// new requests comes from the route-level 400, not from here.
+		// The hold is never touched on a mismatch: the rejection counts and
+		// audits, then throws, leaving the legitimate lease usable.
+		if (!hold) return hold;
+		if (hold.projectId == null) return hold;
+		if (projectId == null) return hold;
+		if (hold.projectId === projectId) return hold;
+		this.counters.fencedRejected += 1;
+		// Security audit, written to the lease's HOME task — writing it to
+		// the request-named project would itself be a cross-project write.
+		// Best-effort: an audit failure must never mask the rejection.
+		try {
+			const home = taskStore?.getTask?.(hold.projectId, taskId);
+			home?.history?.push({
+				timestamp: new Date().toISOString(),
+				action:
+					`Security: rejected a cross-project write naming project ${projectId} ` +
+					`against this task's lease (execution ${hold.executionId}, epoch ${hold.epoch}) — ` +
+					`original lease untouched.`,
+				code: "PROJECT_FENCE_MISMATCH",
+			});
+		} catch {
+			// ignore audit failures; the throw below is the contract
+		}
+		throw ExecutionLedger._fenceMismatch(
+			taskId,
+			`lease belongs to project ${hold.projectId}, request names ${projectId}`,
+		);
+	}
+
+	/***
+	 * MARK: checkProjectFence
+	 * @description Project-fence check for the lease-guarded routes that do
+	 *   not go through `_holdOrThrow` (claim-heartbeat, steer-ack): rejects
+	 *   a request whose `projectId` differs from the live hold's home
+	 *   project with 409 `PROJECT_FENCE_MISMATCH`, leaving the hold
+	 *   untouched. Returns the live hold (or null when there is none) so
+	 *   callers can run their own runner/execution checks afterwards.
+	 * @example ledger.checkProjectFence({ claimStore, taskStore, taskId: 't', projectId: 'p' }) => hold or null
+	 ***/
+	checkProjectFence({ claimStore, taskStore, taskId, projectId }) {
+		const hold = claimStore.describe(taskId);
+		return this._assertProjectFence({ taskStore, taskId, projectId, hold });
 	}
 
 	recordProgress({
@@ -115,7 +173,7 @@ export class ExecutionLedger {
 		harness = null,
 		model = null,
 	}) {
-		const hold = this._holdOrThrow(claimStore, taskId, executionId, epoch);
+		const hold = this._holdOrThrow(claimStore, taskId, executionId, epoch, projectId, taskStore);
 		if (hold.runnerId !== runnerId) {
 			this.counters.staleRejected += 1;
 			throw ExecutionLedger._stale(taskId, "lease belongs to another Runner");
@@ -183,7 +241,7 @@ export class ExecutionLedger {
 		seq,
 		bytes,
 	}) {
-		this._holdOrThrow(claimStore, taskId, executionId, epoch);
+		this._holdOrThrow(claimStore, taskId, executionId, epoch, projectId, taskStore);
 		if (!Number.isInteger(seq) || seq < 0 || typeof bytes !== "string") {
 			const err = new Error("logs requires an integer seq and string bytes.");
 			err.statusCode = 400;
@@ -241,7 +299,7 @@ export class ExecutionLedger {
 		seq,
 		events,
 	}) {
-		this._holdOrThrow(claimStore, taskId, executionId, epoch);
+		this._holdOrThrow(claimStore, taskId, executionId, epoch, projectId, taskStore);
 		if (
 			!Number.isInteger(seq) ||
 			seq < 0 ||
@@ -351,6 +409,21 @@ export class ExecutionLedger {
 		configHash = null,
 		committed = undefined,
 	}) {
+		// WP1 tenant fence: a cross-project completion must neither release
+		// A's lease nor write into B — so the fence runs BEFORE
+		// claimStore.complete() consumes the hold. The peek preserves the
+		// exec-first error ordering (a wrong execution/epoch stays
+		// STALE_EPOCH exactly as claimStore.complete would report it) without
+		// consuming anything on either rejection path.
+		const preHold = claimStore.describe(taskId);
+		if (
+			preHold &&
+			(preHold.executionId !== executionId || preHold.epoch !== epoch)
+		) {
+			this.counters.staleRejected += 1;
+			throw ExecutionLedger._stale(taskId, "epoch or execution mismatch");
+		}
+		this._assertProjectFence({ taskStore, taskId, projectId, hold: preHold });
 		let outcome;
 		try {
 			outcome = claimStore.complete(taskId, executionId, epoch);
@@ -508,7 +581,7 @@ export class ExecutionLedger {
 		sha,
 		present,
 	}) {
-		const hold = this._holdOrThrow(claimStore, taskId, executionId, epoch);
+		const hold = this._holdOrThrow(claimStore, taskId, executionId, epoch, projectId, taskStore);
 		if (hold.runnerId !== runnerId) {
 			this.counters.staleRejected += 1;
 			throw ExecutionLedger._stale(taskId, "lease belongs to another Runner");
@@ -559,6 +632,11 @@ export class ExecutionLedger {
 			this.counters.staleRejected += 1;
 			throw ExecutionLedger._stale(taskId, "not the lease holder");
 		}
+		// WP1 tenant fence: a cross-project interrupt must not drop A's
+		// lease — so the fence runs BEFORE claimStore.invalidate(). It sits
+		// after the execution check above to keep the exec-first error
+		// ordering shared with _holdOrThrow.
+		this._assertProjectFence({ taskStore, taskId, projectId, hold });
 		const task = taskStore.getTask(projectId, taskId);
 		if (["complete", "failed"].includes(String(task?.status).toLowerCase())) {
 			const err = new Error(`Task ${taskId} is already terminal.`);

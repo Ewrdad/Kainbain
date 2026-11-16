@@ -231,6 +231,7 @@ export class ClaimStore {
 		if (!hold) return null;
 		return {
 			runnerId: hold.runnerId,
+			projectId: hold.projectId ?? null,
 			executionId: hold.executionId,
 			epoch: hold.epoch,
 			startedAt: hold.startedAt ?? null,
