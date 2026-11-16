@@ -58,6 +58,31 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Read automatically from the published docs content"
+      ],
+      "notes": "Derive from docs"
+    },
+    "q2": {
+      "selected": [
+        "Smallest safe cleanup (remove just one manual step)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Not sure - please recommend"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Yes - reuse one list, no second copy"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
