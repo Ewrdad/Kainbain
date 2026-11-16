@@ -1,141 +1,53 @@
-// node env pin: pure-logic suite (no DOM needs); skips the DOM env cost per CI-wall budget.
-// @vitest-environment node
-// Run in the lighter node environment: surface shape only, no DOM needs.
+// node env pin: surface shape only, no DOM needs
+// (skips jsdom setup, keeps the CI suite fast).
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
+import { collectDomainOperationNames } from './domainRegistry.js';
 
 /***
  * MARK: api public-surface pin
  * @description Compatibility oracle for the api.js hotspot split: the `api`
  * object key set and the named-export set must stay identical while
  * implementations move to sibling modules. Any rename/drop fails here first.
+ * The stable non-domain surface stays literally pinned below; the domain
+ * portion derives from domainRegistry.js so a new endpoint updates one
+ * registry file, never this test.
  ***/
 describe('api public surface', () => {
-  it('exposes the exact pinned `api` object key set', async () => {
+  it('exposes the pinned non-domain keys plus exactly the registry operations', async () => {
     const { api } = await import('./api');
-    expect(Object.keys(api).sort()).toEqual([
+    // Stable non-domain surface: intentional change-detector, pinned literally.
+    const nonDomainKeys = [
       'API_BASE',
-      'abortTask',
-      'accessibilityResults',
-      'activateProject',
-      'addReviewComment',
-      'addReviewCommentReply',
-      'advanceTask',
-      'approveRunner',
-      'checkAppHealth',
-      'checkTaskStuck',
       'clearApiCaches',
-      'clearImageGenKey',
       'clearModelsCache',
       'clearStatusCache',
-      'completeTask',
       'computeModels',
-      'computeStart',
       'computeStatus',
-      'computeStop',
-      'createProject',
-      'createProjectWorkflow',
-      'createTask',
-      'deleteFleetCatalogueModel',
-      'deleteFleetQuarantinedModel',
-      'deleteProjectWorkflow',
-      'deleteReviewComment',
-      'deleteSkill',
-      'deleteTask',
-      'deleteTaskImage',
-      'denyRunner',
-      'deployChangelog',
-      'deployLog',
-      'deployStatus',
       'docsArticle',
       'docsIndex',
-      'dryRunPromptLayout',
-      'engineReset',
-      'engineState',
       'engineStatus',
-      'engineTrip',
-      'executeTaskStage',
-      'failbackTask',
-      'followUp',
-      'followUpTask',
-      'getAliasReliability',
       'getConfigSpec',
-      'getFileContent',
       'getFileRawUrl',
-      'getFleetModelCatalog',
-      'getHarnessModels',
-      'getHarnessReliability',
-      'getHarnesses',
-      'getImageGenProviders',
       'getModels',
-      'getOnboarding',
-      'getProject',
-      'getPromptLayout',
-      'getRunnerConfig',
-      'getRunnerMonitor',
-      'getRunners',
-      'getSkill',
-      'getSkills',
-      'getSurvey',
-      'getTask',
-      'getTaskQueue',
-      'getTaskReports',
-      'getTaskReview',
-      'getWorkflow',
-      'getWorkflows',
       'healthStatus',
-      'importSkill',
       'isValidProjectId',
-      'jumpTask',
-      'jumpToStage',
-      'listFiles',
-      'listProjects',
-      'listTaskImages',
-      'listTasks',
-      'listWorkflows',
-      'moveTask',
       'observabilityStatus',
-      'pauseRunner',
-      'pauseTask',
-      'previewTask',
-      'registerProject',
-      'rejectTaskWithFeedback',
-      'requestModelRediscovery',
-      'requestRunnerUpdate',
-      'resetPromptLayout',
-      'restoreSession',
-      'resumeRunner',
-      'resumeTask',
-      'retrospectiveChat',
-      'retryTask',
-      'revokeRunner',
-      'saveImageGenKey',
-      'sessionHistory',
-      'sessionStatus',
-      'skipRunner',
-      'skipStage',
-      'startWorkflow',
-      'steer',
-      'steerTask',
-      'submitAccessibilityFeedback',
-      'submitSurvey',
-      'submitTask',
-      'switchProjectWorkflow',
       'systemStatus',
-      'testImageGenProvider',
-      'triggerDeploy',
-      'triggerRollback',
-      'uncompleteTask',
-      'updateAppStatus',
-      'updateProject',
-      'updateProjectWorkflow',
-      'updatePromptLayout',
-      'updateReviewComment',
-      'updateRunnerConfig',
-      'updateTask',
-      'updateWorkflow',
-      'uploadTaskImage',
+    ];
+    // Domain portion derived from the registry (not a literal): adding an
+    // endpoint updates domainRegistry.js, never this file.
+    const registeredNames = collectDomainOperationNames();
+    // The one intentional overlap: `api.js` keeps an explicit `getFileRawUrl`
+    // override after the domain spread, so that name appears in both lists.
+    // Any other overlap would silently replace a stable key with a domain
+    // op — fail here naming it.
+    const overlappingKeys = nonDomainKeys.filter((key) => registeredNames.includes(key));
+    expect(overlappingKeys.sort(), 'stable keys shadowed by domain operations').toEqual([
+      'getFileRawUrl',
     ]);
+    const expected = [...new Set([...nonDomainKeys, ...registeredNames])].sort();
+    expect(Object.keys(api).sort()).toEqual(expected);
   });
 
   it('exposes the exact pinned named-export set', async () => {

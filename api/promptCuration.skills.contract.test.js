@@ -26,10 +26,12 @@ describe("promptCuration skills contract", () => {
 		type: "agent",
 		prompt: "Elaborate specs for {{taskGoal}}",
 	};
+	// No projectCwd on purpose: this contract pins the no-cwd legacy
+	// metadata passthrough for # Previous Reports. Prompts WITH a cwd are
+	// disk-authoritative (see promptCuration.diskReports.test.js).
 	const options = {
 		timestamp: "20260818-120000",
 		projectName: "KainBain",
-		projectCwd: "/tmp/some-project",
 		reports: ["./docs/tasks/task-77/idea-20260818-100000.md"],
 	};
 

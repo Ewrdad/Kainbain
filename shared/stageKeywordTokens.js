@@ -66,7 +66,7 @@ export const STAGE_KEYWORD_TOKENS = Object.freeze([
 	{
 		token: "{{previousReports}}",
 		label: "Previous Reports",
-		hint: "Paths of all prior stage reports",
+		hint: "Files actually present in the task docs folder, newest first",
 		kind: "path",
 	},
 	{

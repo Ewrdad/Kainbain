@@ -22,7 +22,7 @@ describe("shared/promptLayout", () => {
 		expect(required.sort()).toEqual([...MANDATORY_LAYOUT_TOKENS].sort());
 
 		const conditional = LAYOUT_TOKENS.filter((t) => t.requirement === "conditional").map((t) => t.token);
-		expect(conditional).toEqual(["failureDetails", "testingGuidance", "noCode"]);
+		expect(conditional).toEqual(["missingAssets", "failureDetails", "testingGuidance", "noCode"]);
 	});
 
 	it("validates DEFAULT_PROMPT_LAYOUT cleanly", () => {
@@ -90,10 +90,11 @@ describe("shared/promptLayout", () => {
 		const res = validatePromptLayout(chaffCut);
 		expect(res.ok).toBe(true);
 		expect(res.errors).toEqual([]);
-		expect(res.warnings).toHaveLength(3);
+		expect(res.warnings).toHaveLength(4);
 		expect(res.warnings.some((w) => w.includes("{{failureDetails}}"))).toBe(true);
 		expect(res.warnings.some((w) => w.includes("{{testingGuidance}}"))).toBe(true);
 		expect(res.warnings.some((w) => w.includes("{{noCode}}"))).toBe(true);
+		expect(res.warnings.some((w) => w.includes("{{missingAssets}}"))).toBe(true);
 	});
 
 	it("LAYOUT_TOKENS has no duplicate token names", () => {

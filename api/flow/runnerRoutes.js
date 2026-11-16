@@ -13,6 +13,7 @@ import { operatorConfigVerdict } from "./dispatch/operatorConfigVerdict.js";
 import { stageRunnerPolicyVerdict } from "../../shared/stageRunnerPolicy.js";
 import { taskRequirements } from "./dispatch/taskRequirements.js";
 import { curateRunnerPrompt } from "./curateRunnerPrompt.js";
+import { collectTaskAssetPayload } from "../work/taskAssets.js";
 import { materializeRunnerTaskDocs } from "./execution/materializeRunnerTaskDocs.js";
 import { buildCommandKeywordContext, expandStageCommand } from "./commandStages.js";
 import { resolveStagesForTask, resolveCandidateStage } from "./stageResolution.js";
@@ -80,6 +81,26 @@ const dispatchStageConfigHash = (project, task, stage) => {
 	}
 	return configHash;
 };
+
+/***
+ * MARK: taskAssetsFor
+ * @description The task's on-disk images as base64 claim-shipment entries
+ *   for one Runner assignment. Remote Runners have no local primary
+ *   checkout (`syncTaskDocs` returns 0 there), so these bytes are the only
+ *   way the referenced screenshots reach their worktree before the first
+ *   stage runs; the daemon writes entries the worktree lacks and skips the
+ *   rest. Capped like vision dispatch (per-file `taskImageMaxBytes`, total
+ *   `taskImageMaxAttachBytes`); tasks without images ship [].
+ * @example taskAssetsFor({ cwd: '/repo' }, 't1') => [{ name: 'a.png', size: 12, contentBase64: '...' }]
+ * @param {Object} project - Project record (carries `cwd`, `docsDirName`).
+ * @param {string} taskId - Task whose assets ship.
+ * @returns {Array} Shipment entries (possibly empty, never throws).
+ ***/
+const taskAssetsFor = (project, taskId) =>
+	collectTaskAssetPayload(project?.cwd, taskId, project, {
+		maxFileBytes: config.taskImageMaxBytes,
+		maxTotalBytes: config.taskImageMaxAttachBytes,
+	});
 
 /***
  * MARK: stampDispatchRunAttribution
@@ -1024,7 +1045,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			const stage = resolveCandidateStage(stages, task.currentStageId);
 			stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req, runnerId: runner.runnerId });
 			const dispatchConfigHash = dispatchStageConfigHash(project, task, stage);
-			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...await ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project, task, stageId: task.currentStageId }), ...(dispatchConfigHash ? { configHash: dispatchConfigHash } : {}) };
+			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...await ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project, task, stageId: task.currentStageId }), taskAssets: taskAssetsFor(project, request.params.id), ...(dispatchConfigHash ? { configHash: dispatchConfigHash } : {}) };
 		} catch (err) {
 			return sendStoreError(reply, err);
 		}
@@ -1359,6 +1380,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					epoch,
 					stageId: cand.stage?.id ?? null,
 					prompt: curateRunnerPrompt({ project: candProject, task: cand.task, stageId: cand.stage?.id }),
+					taskAssets: taskAssetsFor(candProject, cand.taskId),
 					...await ciPayloadFor(cand.projectId, cand.task, cand.stage),
 					requirements: req,
 					...(dispatchConfigHash ? { configHash: dispatchConfigHash } : {}),

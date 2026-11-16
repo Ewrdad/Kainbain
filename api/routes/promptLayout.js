@@ -18,6 +18,10 @@ import {
 	resolveAutoReinjectedTokens,
 } from "../promptCuration.js";
 import {
+	filterBranchBackedRefs,
+	findMissingAssetRefs,
+} from "../work/taskAssets.js";
+import {
 	getPromptLayoutState,
 	resetPromptLayout,
 	resolvePromptLayoutDir,
@@ -178,8 +182,37 @@ export default async function promptLayoutRoutes(app, { deps } = {}) {
 		};
 
 		const layoutTokens = extractLayoutTokens(candidateLayout);
+		// The dry-run predicts re-injection with the same inputs dispatch
+		// uses: the sample goal plus the sample failure text, resolved
+		// against the sample task's own checkout and branch (usually
+		// unverifiable, so the fixture predicts no warning — exactly what
+		// dispatch renders).
+		const sampleRefSources = [
+			sampleTask?.goal || sampleTask?.title || sampleTask?.description || "",
+			"Sample test failure output: login.spec failed on assertion",
+		].join("\n");
+		const sampleTaskId = sampleTask?.id || "unassigned";
+		const sampleBranch =
+			typeof sampleTask?.branch === "string" && sampleTask.branch
+				? sampleTask.branch
+				: sampleTaskId !== "unassigned"
+					? `kb/${sampleTaskId}`
+					: null;
 		const autoReinjected = resolveAutoReinjectedTokens(layoutTokens, {
 			hasFailureDetails: true,
+			hasMissingAssets:
+				filterBranchBackedRefs(
+					sampleTask?.projectCwd || null,
+					sampleBranch,
+					sampleTaskId,
+					findMissingAssetRefs(
+						sampleTask?.projectCwd || null,
+						sampleTaskId,
+						sampleRefSources,
+						sampleTask?.project,
+					),
+					sampleTask?.project,
+				).length > 0,
 			stage: sampleStage,
 		});
 

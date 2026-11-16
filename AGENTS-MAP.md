@@ -102,8 +102,12 @@ area stands in as **Docs Steward**.
 | Unit tests | `npm run test:unit` — or per-area `npm run test:api` / `npm run test:frontend` |
 | Fast documentation coverage & link integrity | `npm run docs:check` |
 | WP-8 one-function gate | `npm run check:one-function` |
-| WP-8 JSDoc `@example` gate | `npm run check:jsdoc-example` |
+| WP-8 JSDoc `@example` gate | `npm run check:jsdoc-example` — run before pushing when you add/rename an export (<1s) |
 | Frontend imports-declared guardrail | `npm run check:deps:frontend` (also first step of `build:frontend` + gate preflight) |
+
+### Before pushing (fast local gates, <1 min total)
+
+- New/renamed export in `api/`, `shared/`, or `frontend/src/` (including a new export in an existing file)? Attach a JSDoc block with `MARK:` + `@description` + `@example` directly above it — only whitespace between `*/` and `export` — then run `npm run check:jsdoc-example` (<1s). Same check CI runs, so a local PASS means no CI surprise. Shapes: `docs/agent-docs/KB-Code-Standards.md` §Jsdoc.
 
 ## Read-budget rules
 

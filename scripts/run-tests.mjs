@@ -4,7 +4,8 @@
  * @description Cross-platform full-project verification gate: the same seven
  *   checks the old `run-tests.sh` ran plus the Container Tests branch, the
  *   Frontend Build branch (exercises the deprecation gate), the Dependency
- *   Audit Gate, and the Proof Hygiene branch, in a single overlap window
+ *   Audit Gate, the Proof Hygiene branch, and the Binary Guard branch, in a
+ *   single overlap window
  *   (the two unit suites
  *   alone take ~2x35s sequentially, so overlapping keeps the wall near one
  *   suite), with identical `Running <name>... PASS/FAIL (<s>s)` lines and exit semantics —
@@ -537,6 +538,19 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 			lowPriority: true,
 		},
 		{
+			// Fail-fast prevention complement to Proof Hygiene (task
+			// ef569a1a): magic-checks every binary this run touched — images
+			// plus zip/gz/tgz, anywhere in the tree, not just proof paths —
+			// in seconds, naming the file and the safe remedy. Changed-files
+			// mode never false-fails on baselined legacy corruption (those
+			// files are unchanged in a clean checkout), so it is safe on
+			// every gate run.
+			name: "Binary Guard",
+			file: nodeExec,
+			args: ["scripts/check-binary-guard.mjs"],
+			lowPriority: true,
+		},
+		{
 			name: "Harness Self-Tests",
 			file: nodeExec,
 			args: [
@@ -577,6 +591,10 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 				"tests/redeploy.test.mjs",
 				"tests/verify-stage-attestation.test.mjs",
 				"tests/check-proof-and-hygiene.test.mjs",
+				"tests/check-binary-guard.test.mjs",
+				"tests/capture-screenshot.test.mjs",
+				"tests/pre-commit-hook.test.mjs",
+				"tests/install-git-hooks.test.mjs",
 			],
 			lowPriority: true,
 		},

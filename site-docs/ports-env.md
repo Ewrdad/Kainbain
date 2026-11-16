@@ -167,6 +167,12 @@ guides: Link Runner to Pi (`#/docs/link-runner-pi`), Link Runner to Muse
 are not KainBain variables at all — they live only on the machine where
 the harness runs, and the backend never handles them.
 
+## Prompt assembly knobs
+
+| Variable | Default | Effect |
+| -------- | ------- | ------ |
+| `KAINBAIN_TASK_REPORTS_MAX_PROMPT_REFS` | `5` | Max task-folder files listed in one curated stage prompt's `# Previous Reports` section (newest first; overflow is summarized). `0` lists all |
+
 ## Homelab migration
 
 The previous implicit homelab behavior is fully restorable through config

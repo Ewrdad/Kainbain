@@ -48,6 +48,7 @@ System Settings (`#/system-settings` → **Prompt Layout**) features a **Prompt 
 - **Section Tokens**: `{{task}}`, `{{stage}}`, `{{skills}}`, `{{taskImages}}`, `{{previousReports}}`, `{{reporting}}`, `{{failureDetails}}`, `{{testingGuidance}}`, `{{failureGuidance}}`.
 - **Inline Tokens**: `{{project}}`, `{{projectRoot}}`, `{{projectRepo}}`, `{{taskRepo}}`, `{{taskId}}`, `{{taskGoal}}`, `{{stageName}}`, `{{taskDocs}}`, `{{latestReportPath}}`, `{{latestReport:<slug>}}`.
 - **Mandatory Tokens**: `{{task}}`, `{{stage}}`, and `{{failureGuidance}}` must remain present so the agent stage contract (verdicts, failure guidance) is never silently omitted.
+- **Disk-Authoritative Reports**: `{{previousReports}}` (the `# Previous Reports` section) always lists the files actually present in the task docs folder — newest first, capped with an overflow pointer — never stale history entries. `{{latestReportPath}}` and `{{latestReport:<slug>}}` likewise resolve only to files on disk.
 - **Conditional Auto-Re-Injection**: `{{failureDetails}}` and `{{testingGuidance}}` auto-re-inject when needed context is present even if omitted in the template.
 - **Blast-Radius Containment & Fallbacks**: Dry-run preview allows testing layout changes before saving; per-task safe-mode (`useDefaultLayout`) allows bypassing custom layouts; persistent fallback detection automatically serves the default layout if runtime render errors occur.
 

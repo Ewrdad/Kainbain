@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, reapTerminalOrphanWorkdirs, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, resolveRunnerDocsDirName, touchWorkdir } from "./project.js";
+import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, reapTerminalOrphanWorkdirs, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, writeClaimTaskAssets, resolveRunnerDocsDirName, touchWorkdir } from "./project.js";
 import { RunnerGitError } from "./project.js";
 import { runHarnessStage } from "./harness.js";
 import { runImpromptuJob } from "./impromptu.js";
@@ -1599,6 +1599,10 @@ export function runCiCommand({ command, workdir, timeoutMs = 600000, onLog = () 
  *   dispatched CI command (opaque string bag, e.g. continuity markers the
  *   command needs to recognise a re-dispatch). Sanitized and merged under
  *   the daemon-owned identity keys, which always win.
+ * @param {Array|null} [opts.taskAssets] - Claim-shipped task images from the
+ *   dispatch answer (`[{ name, contentBase64 }]`); written into the
+ *   worktree when the local task-doc sync cannot deliver them (remote
+ *   Runner). Single-assignment mode reads them from the claim instead.
  * @returns {Promise<Object>} Execution summary.
  ***/
 
@@ -1672,6 +1676,7 @@ async function executeAssignment({
 	runOnBranch = "",
 	customBranch = "",
 	integration = null,
+	taskAssets = null,
 }) {
 	const servingHarnessId = harnessId || config.harnessId || "unknown";
 		const project = await client.getProject(projectId);
@@ -1692,6 +1697,13 @@ async function executeAssignment({
 		if (!customBranch && typeof claim.customBranch === "string") customBranch = claim.customBranch;
 		if (ciEnv === null || ciEnv === undefined) ciEnv = claim.env;
 		if (integration === null || integration === undefined) integration = claim.integration ?? null;
+		// Claim-shipped task images: the dispatch loop passes them
+		// explicitly, single-assignment mode reads them from the claim.
+		const claimTaskAssets = Array.isArray(taskAssets)
+			? taskAssets
+			: Array.isArray(claim?.taskAssets)
+				? claim.taskAssets
+				: [];
 		// Stage attestation: the backend dispatches the config hash it computed
 		// at claim time (single source of truth — zero drift). A malformed or
 		// absent hash (old backend) falls back to hashing the same inputs
@@ -1786,8 +1798,16 @@ async function executeAssignment({
 			// live task folder outside the task branch — mirror them into
 			// the worktree so the harness actually sees them.
 			try {
-				const synced = await syncTaskDocs({ primaryCwd: project.cwd || null, workdir, taskId, docsDirName: project?.docsDirName });
-				if (synced > 0) logger.log(`Synced ${synced} task-doc file(s) into worktree.`);
+				const syncStats = {};
+				const synced = await syncTaskDocs({ primaryCwd: project.cwd || null, workdir, taskId, docsDirName: project?.docsDirName, stats: syncStats });
+				if (synced > 0) logger.log(`Synced ${synced} task-doc file(s) (${syncStats.assets ?? 0} task asset(s)) into worktree.`);
+				// Remote-Runner delivery arm: with no local primary checkout
+				// the sync above copies nothing, so the claim's taskAssets
+				// bytes land here instead — before the first stage runs.
+				// Entries the worktree already has are skipped, never
+				// overwritten (a local sync or the agent wins).
+				const shipped = await writeClaimTaskAssets({ workdir, taskId, assets: claimTaskAssets, docsDirName: project?.docsDirName });
+				if (shipped > 0) logger.log(`Wrote ${shipped} claim-shipped task asset(s) into worktree.`);
 			} catch (err) {
 				logger.log(`Task-doc sync skipped: ${err?.message || err}`);
 			}
@@ -2747,6 +2767,7 @@ export async function runDispatchLoop({
 					: {}),
 			},
 				backendPrompt: answer.prompt || "",
+				taskAssets: answer.taskAssets,
 				kind: answer.kind || "",
 				ciCommand: answer.command || "",
 				runOnBranch: answer.runOnBranch || "",

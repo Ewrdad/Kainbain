@@ -110,7 +110,7 @@ describe("promptLayout routes", () => {
 		const body = JSON.parse(res.payload);
 		expect(body.isDefault).toBe(false);
 		expect(body.layout).toBe(custom);
-		expect(body.warnings).toHaveLength(3); // failureDetails, testingGuidance, and noCode omitted
+		expect(body.warnings).toHaveLength(4); // failureDetails, testingGuidance, noCode, and missingAssets omitted
 	});
 
 	it("POST /settings/prompt-layout/reset restores default layout", async () => {
@@ -153,6 +153,52 @@ describe("promptLayout routes", () => {
 		const getRes = await app.inject({ method: "GET", url: "/settings/prompt-layout" });
 		const getBody = JSON.parse(getRes.payload);
 		expect(getBody.isDefault).toBe(true);
+	});
+
+	it("POST /settings/prompt-layout/dry-run predicts the missing-asset warning for a real task", async () => {
+		const projectCwd = fs.mkdtempSync(path.join(os.tmpdir(), "kb-prompt-layout-dryrun-"));
+		try {
+			fs.mkdirSync(path.join(projectCwd, "docs", "tasks", "dryrun-t1"), { recursive: true });
+			const engine = new PromptCurationEngine({
+				promptLayoutDir: tempDir,
+				loadSkill: () => null,
+			});
+			const taskApp = fastify();
+			await taskApp.register(promptLayoutRoutes, {
+				deps: {
+					promptLayoutDir: tempDir,
+					promptEngine: engine,
+					taskStore: {
+						getTask: () => ({
+							id: "dryrun-t1",
+							goal: "See ![x](assets/gone.png).",
+							projectCwd,
+						}),
+					},
+				},
+			});
+			await taskApp.ready();
+			try {
+				const res = await taskApp.inject({
+					method: "POST",
+					url: "/settings/prompt-layout/dry-run",
+					payload: {
+						layout: "{{task}}\n\n{{stage}}\n\n{{failureGuidance}}",
+						taskId: "dryrun-t1",
+						projectId: "p1",
+					},
+				});
+				expect(res.statusCode).toBe(200);
+				const body = JSON.parse(res.payload);
+				expect(body.autoReinjected).toContain("missingAssets");
+				expect(body.renderedMarkdown).toContain("MISSING-ASSET");
+				expect(body.renderedMarkdown.startsWith("# Missing Task Assets\n")).toBe(true);
+			} finally {
+				await taskApp.close();
+			}
+		} finally {
+			fs.rmSync(projectCwd, { recursive: true, force: true });
+		}
 	});
 
 	it("POST /settings/prompt-layout/dry-run rejects invalid layouts with 400", async () => {
