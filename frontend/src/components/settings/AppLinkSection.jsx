@@ -204,7 +204,7 @@ export function AppLinkSection({ project, projectId, onChanged }) {
       )}
 
       {error && (
-        <p role="alert" className="text-[11px] font-bold text-red-500">
+        <p role="alert" className="text-[11px] font-bold text-red-500 break-words">
           {error}
         </p>
       )}
@@ -212,7 +212,7 @@ export function AppLinkSection({ project, projectId, onChanged }) {
       {probeResult && (
         <p
           data-testid="applink-probe-result"
-          className={`text-[11px] font-mono ${probeResult.healthy ? 'text-green-500' : 'text-red-500'}`}
+          className={`text-[11px] font-mono break-words ${probeResult.healthy ? 'text-green-500' : 'text-red-500'}`}
         >
           {probeResult.healthy ? '✓ Healthy' : '✗ Unhealthy'}
           {` — HTTP ${probeResult.statusCode} in ${probeResult.latencyMs}ms`}

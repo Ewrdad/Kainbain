@@ -110,7 +110,10 @@ function SkillRow({
             </span>
           )}
         </div>
-        <p className="text-[11px] text-text-muted mt-1 truncate">
+        <p
+          className="text-[11px] text-text-muted mt-1 truncate"
+          title={skill.description || 'No description'}
+        >
           {skill.description || 'No description'}
         </p>
         {skill.invalid && skill.error && (
@@ -150,12 +153,12 @@ function SkillRow({
                   const description = entryObject ? (entry.description || '') : '';
                   return (
                     <div key={key} className="space-y-0.5">
-                      <dt className="font-mono text-[10px] font-bold text-on-surface">{key}</dt>
+                      <dt className="font-mono text-[10px] font-bold text-on-surface break-all">{key}</dt>
                       <dd className="font-mono text-[10px] text-text-muted break-all">
                         default: {String(value) === '' ? '—' : String(value)}
                       </dd>
                       {description ? (
-                        <dd className="text-[10px] text-text-muted">{description}</dd>
+                        <dd className="text-[10px] text-text-muted break-words">{description}</dd>
                       ) : null}
                     </div>
                   );
@@ -483,19 +486,19 @@ export function SkillsSection({ activeProjectId }) {
           </button>
         </div>
         {importError && (
-          <p role="alert" className="text-[11px] font-bold text-red-500">
+          <p role="alert" className="text-[11px] font-bold text-red-500 break-words">
             {importError}
           </p>
         )}
         {importSuccess && (
-          <p role="status" className="text-[11px] font-bold text-primary">
+          <p role="status" className="text-[11px] font-bold text-primary break-words">
             {importSuccess}
           </p>
         )}
         {importWarnings.length > 0 && (
           <ul aria-label="Import warnings" className="space-y-1">
             {importWarnings.map((warning, idx) => (
-              <li key={idx} className="text-[11px] text-ochre font-mono">
+              <li key={idx} className="text-[11px] text-ochre font-mono break-words">
                 ⚠ {warning}
               </li>
             ))}
@@ -508,7 +511,7 @@ export function SkillsSection({ activeProjectId }) {
         <p className="text-xs text-text-muted">Loading skills…</p>
       ) : skillsError ? (
         <div className="space-y-2 max-w-3xl">
-          <p role="alert" className="text-[11px] font-bold text-red-500">
+          <p role="alert" className="text-[11px] font-bold text-red-500 break-words">
             Failed to load skills: {skillsError}
           </p>
           <button
@@ -522,7 +525,7 @@ export function SkillsSection({ activeProjectId }) {
       ) : (
         <div className="space-y-6 max-w-3xl">
           {deleteError && (
-            <p role="alert" className="text-[11px] font-bold text-red-500">
+            <p role="alert" className="text-[11px] font-bold text-red-500 break-words">
               {deleteError}
             </p>
           )}
@@ -584,7 +587,7 @@ export function SkillsSection({ activeProjectId }) {
       {previewName && (
         <Modal onClose={() => setPreviewName(null)} labelledBy="skill-preview-title">
           <div className="p-4 space-y-3 max-w-2xl">
-            <h3 id="skill-preview-title" className="font-mono text-sm font-bold text-on-surface">
+            <h3 id="skill-preview-title" className="font-mono text-sm font-bold text-on-surface break-words">
               {previewName}
             </h3>
             {previewLoading ? (

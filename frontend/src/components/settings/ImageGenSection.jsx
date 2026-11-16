@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../services/api';
+import { TruncatedText } from '../common/TruncatedText';
 
 /***
  * MARK: providerStatusLabel
@@ -173,11 +174,11 @@ export function ImageGenSection({ client }) {
           role="alert"
           className="p-2.5 rounded-sm bg-red-950/40 border border-red-700/60 text-red-200 flex items-center justify-between gap-2"
         >
-          <span>{loadError}</span>
+          <span className="min-w-0 break-words">{loadError}</span>
           <button
             type="button"
             onClick={() => void refresh()}
-            className="px-3 py-1.5 min-h-[44px] bg-surface-container-high text-on-surface text-[11px] font-bold uppercase tracking-wider rounded-sm cursor-pointer"
+            className="shrink-0 px-3 py-1.5 min-h-[44px] bg-surface-container-high text-on-surface text-[11px] font-bold uppercase tracking-wider rounded-sm cursor-pointer"
           >
             Retry
           </button>
@@ -187,7 +188,7 @@ export function ImageGenSection({ client }) {
       {message && (
         <div
           role="status"
-          className={`p-2.5 rounded-sm border ${
+          className={`p-2.5 rounded-sm border break-words ${
             message.type === 'error'
               ? 'bg-red-950/40 border-red-700/60 text-red-200'
               : message.type === 'success'
@@ -209,11 +210,14 @@ export function ImageGenSection({ client }) {
             data-testid={`image-gen-provider-${provider.id}`}
             className="p-3 rounded-sm bg-surface-container border border-border-standard flex flex-col gap-2"
           >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-bold text-on-surface">{provider.label || provider.id}</span>
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <TruncatedText
+                text={provider.label || provider.id}
+                className="text-xs font-bold text-on-surface"
+              />
               <span
                 data-testid={`image-gen-status-${provider.id}`}
-                className={`text-[10px] font-mono px-1.5 py-0.5 rounded-sm border ${
+                className={`shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded-sm border ${
                   configured || provider.requiresKey !== true
                     ? 'text-emerald-200 border-emerald-700/60 bg-emerald-950/40'
                     : 'text-text-muted border-border-standard bg-surface-deep'
@@ -222,7 +226,7 @@ export function ImageGenSection({ client }) {
                 {status}
               </span>
             </div>
-            {provider.description && <p className="text-[11px] text-text-muted">{provider.description}</p>}
+            {provider.description && <p className="text-[11px] text-text-muted break-words">{provider.description}</p>}
             {provider.requiresKey === true ? (
               <div className="flex flex-col sm:flex-row gap-2">
                 <input

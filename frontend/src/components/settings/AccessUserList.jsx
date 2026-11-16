@@ -138,15 +138,15 @@ export function AccessUserList() {
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[11px] text-text-muted">Direct roles:</span>
             {knownRoles.map((role) => (
-              <label key={role} className="flex items-center gap-1 cursor-pointer text-xs text-on-surface">
+              <label key={role} className="flex min-w-0 items-center gap-1 cursor-pointer text-xs text-on-surface">
                 <input
                   type="checkbox"
                   aria-label={`${user.id} direct role ${role}`}
                   checked={(user.directRoles || []).includes(role)}
                   onChange={() => onToggleDirectRole(user, role)}
-                  className="rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0 cursor-pointer"
+                  className="shrink-0 rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0 cursor-pointer"
                 />
-                <span>{role}</span>
+                <span className="break-all">{role}</span>
               </label>
             ))}
           </div>

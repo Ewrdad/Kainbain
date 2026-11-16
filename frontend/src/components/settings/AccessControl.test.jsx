@@ -71,7 +71,9 @@ describe('AccessControlSection', () => {
       authIssuerUrl: 'https://idp.example.com',
     });
     expect(partial.authClientSecret).toBeUndefined();
-    expect(await screen.findByText('Access settings saved.')).toBeInTheDocument();
+    const savedNotice = await screen.findByText('Access settings saved.');
+    // Notices also carry server error text, so the line must wrap.
+    expect(savedNotice).toHaveClass('break-words');
   });
 
   it('adds a group mapping and saves it', async () => {
@@ -176,5 +178,19 @@ describe('AccessUserList', () => {
     const emailLabel = screen.getByText(longEmail);
     expect(emailLabel).toHaveClass('min-w-0', 'truncate');
     expect(emailLabel).toHaveAttribute('title', longEmail);
+  });
+
+  it('wraps very long role names in the direct-role checkboxes', async () => {
+    const longRole = `release-automation-administrator-${'r'.repeat(140)}`;
+    mocks.listUsers.mockResolvedValue({ users: [ada] });
+    mocks.getAuthSettings.mockResolvedValue({ ...settingsView, knownRoles: ['admin', longRole] });
+    render(<AccessUserList />);
+    expect(await screen.findByTestId('access-user-ada-1')).toBeInTheDocument();
+
+    // The role also renders as an <option> in the project-role picker: pin the row label.
+    const roleLabel = screen.getByText(longRole, { selector: 'span' });
+    expect(roleLabel).toHaveClass('break-all');
+    // The wrapping label must squeeze inside its flex row.
+    expect(roleLabel.closest('label')).toHaveClass('min-w-0');
   });
 });

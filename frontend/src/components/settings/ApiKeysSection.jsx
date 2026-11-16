@@ -291,14 +291,14 @@ export function ApiKeysSection() {
             <legend className={hintClass}>Scopes (empty means the full role; scopes only narrow)</legend>
             <div className="flex flex-wrap gap-2">
               {knownScopes.map((scope) => (
-                <label key={scope} className="flex items-center gap-1 text-[11px] text-on-surface cursor-pointer">
+                <label key={scope} className="flex min-w-0 items-center gap-1 text-[11px] text-on-surface cursor-pointer">
                   <input
                     type="checkbox"
                     checked={scopes.includes(scope)}
                     onChange={() => toggleScope(scope)}
-                    className="rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0 cursor-pointer"
+                    className="shrink-0 rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0 cursor-pointer"
                   />
-                  <span>{scope}</span>
+                  <span className="break-all">{scope}</span>
                 </label>
               ))}
             </div>
@@ -326,7 +326,7 @@ export function ApiKeysSection() {
                   <span className="text-[11px] font-bold text-error">expired</span>
                 )}
               </div>
-              <span className={hintClass}>
+              <span className={`${hintClass} break-words`}>
                 Roles: {(key.roles || []).join(', ') || '—'} · Scopes:{' '}
                 {(key.scopes || []).length > 0 ? key.scopes.join(', ') : 'full role'} · Expires:{' '}
                 {key.expiresAt ? formatDateTime(key.expiresAt) : 'never'} · Last used:{' '}
@@ -353,7 +353,7 @@ export function ApiKeysSection() {
                     <li className={hintClass}>No recorded usage.</li>
                   ) : (
                     (usageById[key.id] || []).map((entry, index) => (
-                      <li key={`${entry.at}-${index}`} className={hintClass}>
+                      <li key={`${entry.at}-${index}`} className={`${hintClass} break-words`}>
                         {formatDateTime(entry.at)} · {entry.action}
                         {entry.detail?.route ? ` · ${entry.detail.method || ''} ${entry.detail.route}` : ''}
                         {entry.detail?.reason ? ` · ${entry.detail.reason}` : ''}

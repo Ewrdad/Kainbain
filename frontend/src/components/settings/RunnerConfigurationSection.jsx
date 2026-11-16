@@ -84,7 +84,7 @@ const DirectoryField = ({ label, testId, value, hint, isDefault, isUnknown, erro
       </button>
     </div>
     {error && (
-      <p className="text-[11px] text-error" role="alert" data-testid={`${testId}-error`}>
+      <p className="text-[11px] text-error break-words" role="alert" data-testid={`${testId}-error`}>
         {error}
       </p>
     )}

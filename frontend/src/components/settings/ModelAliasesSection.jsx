@@ -812,7 +812,7 @@ function AliasTargetRow({
               <p
                 data-testid={validityTestId}
                 title={validity.message}
-                className="text-[10px] font-bold text-error"
+                className="text-[10px] font-bold text-error break-words"
               >
                 ✕ {validity.message}
               </p>
@@ -1253,15 +1253,15 @@ export function ModelAliasesSection({
                       </span>
                       <span
                         data-testid={`model-alias-summary-${index}`}
-                        className="px-1.5 py-0.5 bg-surface-deep border border-border-standard rounded-sm text-[10px] text-text-muted font-mono"
+                        className="px-1.5 py-0.5 bg-surface-deep border border-border-standard rounded-sm text-[10px] text-text-muted font-mono min-w-0 max-w-full inline-flex"
                       >
-                        {formatAliasSummary(targets, targetHarnesses)}
+                        <TruncatedText text={formatAliasSummary(targets, targetHarnesses)} />
                       </span>
                       {rowError && (
                         <span
                           role="alert"
                           data-testid={`model-alias-error-alert-${index}`}
-                          className="inline-flex"
+                          className="inline-flex min-w-0 max-w-full"
                         >
                           {/* Read-only view change: intentionally not disabled —
                               expanding a card to read its error mutates
@@ -1271,7 +1271,7 @@ export function ModelAliasesSection({
                             data-testid={`model-alias-error-badge-${index}`}
                             onClick={() => toggleCollapse(key)}
                             title={`${rowError} (Click to expand)`}
-                            className="px-1.5 py-0.5 bg-error/10 border border-error/50 rounded-sm text-[10px] font-bold text-error cursor-pointer"
+                            className="px-1.5 py-0.5 bg-error/10 border border-error/50 rounded-sm text-[10px] font-bold text-error cursor-pointer break-all"
                           >
                             ⚠ {rowError}
                           </button>
@@ -1453,7 +1453,7 @@ export function ModelAliasesSection({
                       {(rowError || usageCount > 0 || usage?.usesAsDefault) && (
                         <div>
                           {rowError && (
-                            <p role="alert" className="text-[11px] font-bold text-error">
+                            <p role="alert" className="text-[11px] font-bold text-error break-words">
                               {rowError}
                             </p>
                           )}
