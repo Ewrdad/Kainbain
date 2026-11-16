@@ -1,6 +1,6 @@
 ---
 title: API reference
-section: working-with
+section: reference
 order: 80
 slug: api-reference
 ---

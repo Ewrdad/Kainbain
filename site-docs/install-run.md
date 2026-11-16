@@ -1,6 +1,6 @@
 ---
 title: Install & Run
-section: working-with
+section: getting-started
 order: 10
 slug: install-run
 ---

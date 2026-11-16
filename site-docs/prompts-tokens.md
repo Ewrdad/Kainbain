@@ -1,6 +1,6 @@
 ---
 title: Prompts, Tokens & Stage Skills
-section: how-it-works
+section: concepts
 order: 50
 slug: prompts-tokens
 ---

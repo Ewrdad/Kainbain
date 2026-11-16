@@ -680,7 +680,7 @@ export const ENDPOINTS = [
 		method: "GET",
 		path: "/docs",
 		purpose:
-			"List the markdown knowledge-base articles (site Docs section): [{ slug, title, section, order }]. Sections are 'how-it-works' and 'working-with'.",
+			"List the markdown knowledge-base articles (site Docs section): [{ slug, title, section, order }]. Sections are 'getting-started', 'concepts', 'workflows' and 'reference'.",
 		body: null,
 	},
 	{

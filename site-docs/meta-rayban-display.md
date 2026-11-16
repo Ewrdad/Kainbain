@@ -1,6 +1,6 @@
 ---
 title: Meta Ray-Ban Display Mode
-section: working-with
+section: reference
 order: 11
 slug: meta-rayban-display
 ---

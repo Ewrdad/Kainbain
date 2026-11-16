@@ -12,7 +12,7 @@
  *
  *   ---
  *   title: My Article
- *   section: how-it-works | working-with
+ *   section: getting-started | concepts | workflows | reference
  *   order: 10
  *   slug: my-article        (optional — defaults to the file basename)
  *   ---
@@ -26,19 +26,44 @@ import { config } from "./config.js";
 
 /***
  * MARK: DOC_SECTIONS
- * @description The two docs avenues. Every article belongs to exactly one.
- * @example DOC_SECTIONS => ['how-it-works', 'working-with']
+ * @description The four docs groups, ordered for onboarding (setup before
+ *   concepts before daily use before lookup). Every article belongs to
+ *   exactly one. The order here is the sidebar order: the frontend follows
+ *   the `sections` array of the GET /docs index, which mirrors this list.
+ * @example DOC_SECTIONS => ['getting-started', 'concepts', 'workflows', 'reference']
  ***/
-export const DOC_SECTIONS = ["how-it-works", "working-with"];
+export const DOC_SECTIONS = ["getting-started", "concepts", "workflows", "reference"];
 
 /***
  * MARK: SECTION_LABELS
- * @description Human-readable labels for the two avenues, shared by API and UI copy.
- * @example SECTION_LABELS['how-it-works'] => 'How KainBain works'
+ * @description Human-readable labels for the four groups, shared by API and
+ *   UI copy. The frontend `docsSections` module duplicates these for
+ *   offline/fallback rendering; `docsSections.test` locks the two copies
+ *   together so they cannot drift.
+ * @example SECTION_LABELS['getting-started'] => 'Getting started'
  ***/
 export const SECTION_LABELS = {
-	"how-it-works": "How KainBain works",
-	"working-with": "How to work with KainBain",
+	"getting-started": "Getting started",
+	concepts: "Concepts",
+	workflows: "Everyday workflows",
+	reference: "Reference & runbooks",
+};
+
+/***
+ * MARK: LEGACY_SECTION_ALIASES
+ * @description Backward-compat aliases for the pre-regroup taxonomy
+ *   (`how-it-works` / `working-with`, two avenues). Custom content dirs
+ *   (`KAINBAIN_SITE_DOCS` overrides) may still carry old `section:`
+ *   frontmatter; `readDocFile` resolves these to the closest new group so
+ *   old articles keep indexing instead of silently vanishing. `how-it-works`
+ *   held the conceptual articles (now `concepts`); `working-with` held the
+ *   operational guides (now `workflows`). Emits a `console.warn` naming the
+ *   file so owners can update frontmatter at their convenience.
+ * @example LEGACY_SECTION_ALIASES['how-it-works'] => 'concepts'
+ ***/
+export const LEGACY_SECTION_ALIASES = {
+	"how-it-works": "concepts",
+	"working-with": "workflows",
 };
 
 /***
@@ -118,10 +143,18 @@ export function readDocFile(filePath) {
 	const fallbackSlug = path.basename(filePath, ".md").toLowerCase();
 	const slug = (meta.slug || fallbackSlug).toLowerCase();
 	const title = (meta.title || "").trim();
-	const section = (meta.section || "").trim();
+	const rawSection = (meta.section || "").trim();
 	const order = Number.parseInt(meta.order, 10);
 	if (!isValidSlug(slug)) return null;
 	if (!title) return null;
+	let section = rawSection;
+	const aliased = LEGACY_SECTION_ALIASES[rawSection];
+	if (aliased) {
+		section = aliased;
+		console.warn(
+			`[siteDocs] ${path.basename(filePath)} uses retired section "${rawSection}"; resolved to "${aliased}". Update frontmatter to "section: ${aliased}".`,
+		);
+	}
 	if (!DOC_SECTIONS.includes(section)) return null;
 	return {
 		slug,
@@ -135,12 +168,14 @@ export function readDocFile(filePath) {
 /***
  * MARK: listDocs
  * @description Builds the docs index from frontmatter: `[{ slug, title,
- *   section, order }]`, ordered by avenue then `order` then title. Files with
- *   invalid frontmatter are skipped so one bad article cannot break the index.
+ *   section, order }]`, ordered by section group then `order` then title.
+ *   Files with invalid frontmatter are skipped so one bad article cannot
+ *   break the index; the skipped file still fails loudly in tests that read
+ *   the real content dir, so a typoed `section:` is caught, not hidden.
  * @param {object} [options]
  * @param {string} [options.dir] - Content directory override (tests).
  * @returns {Array<object>}
- * @example listDocs() => [{ slug: 'architecture', section: 'how-it-works', ... }]
+ * @example listDocs() => [{ slug: 'architecture', section: 'concepts', ... }]
  ***/
 export function listDocs({ dir } = {}) {
 	const docsDir = defaultDocsDir(dir);

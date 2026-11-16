@@ -34,19 +34,30 @@ vi.mock('../../services/logger', () => ({
  *   empty/error states, and XSS payloads render inert.
  */
 const INDEX = {
-  sections: ['how-it-works', 'working-with'],
+  sections: ['getting-started', 'concepts', 'workflows', 'reference'],
   docs: [
-    { slug: 'architecture', title: 'System Architecture', section: 'how-it-works', order: 10 },
-    { slug: 'install-run', title: 'Install & Run', section: 'working-with', order: 10 },
+    { slug: 'getting-started', title: 'Getting Started', section: 'getting-started', order: 5 },
+    { slug: 'install-run', title: 'Install & Run', section: 'getting-started', order: 10 },
+    { slug: 'architecture', title: 'System Architecture', section: 'concepts', order: 10 },
+    {
+      slug: 'pipeline-stages',
+      title: 'Workflow Pipeline & Stage Types',
+      section: 'concepts',
+      order: 20,
+    },
+    { slug: 'submit-track-task', title: 'Submitting & Tracking a Task', section: 'workflows', order: 10 },
+    { slug: 'api-reference', title: 'API reference', section: 'reference', order: 80 },
   ],
 };
 
 beforeEach(() => {
+  window.localStorage.clear();
   vi.clearAllMocks();
   api.docsIndex.mockResolvedValue(INDEX);
-  api.docsArticle.mockImplementation(async (slug) =>
-    slug === 'architecture' ? '# System Architecture\n\nBody.' : '# Install & Run\n\nSteps.',
-  );
+  api.docsArticle.mockImplementation(async (slug) => {
+    const doc = INDEX.docs.find((d) => d.slug === slug);
+    return `# ${doc ? doc.title : slug}\n\nBody.`;
+  });
 });
 
 test('slugFromHash parses deep links', () => {
@@ -56,19 +67,21 @@ test('slugFromHash parses deep links', () => {
   expect(slugFromHash('')).toBeNull();
 });
 
-test('lists both avenues and renders the first article', async () => {
+test('lists all four groups and renders the first article', async () => {
   renderWithKainBain(<DocsView />);
-  expect(await screen.findByText('How KainBain works')).toBeInTheDocument();
-  expect(screen.getByText('How to work with KainBain')).toBeInTheDocument();
+  expect(await screen.findByText('Getting started')).toBeInTheDocument();
+  expect(screen.getByText('Concepts')).toBeInTheDocument();
+  expect(screen.getByText('Everyday workflows')).toBeInTheDocument();
+  expect(screen.getByText('Reference & runbooks')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'System Architecture' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Install & Run' })).toBeInTheDocument();
   // First article auto-selected and rendered as markdown.
-  expect(await screen.findByRole('heading', { name: 'System Architecture' })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'Getting Started' })).toBeInTheDocument();
 });
 
 test('marks the view as platform documentation, not project docs', async () => {
   renderWithKainBain(<DocsView />);
-  await screen.findByText('How KainBain works');
+  await screen.findByText('Getting started');
   const eyebrow = screen.getByTestId('docs-platform-eyebrow');
   expect(eyebrow).toBeInTheDocument();
   expect(eyebrow.textContent).toMatch(/Platform documentation/i);
@@ -82,7 +95,7 @@ test('selecting an article renders its markdown and navigates the route', async 
       <RouteLocation />
     </>,
   );
-  await screen.findByText('How KainBain works');
+  await screen.findByText('Getting started');
   fireEvent.click(screen.getByRole('button', { name: 'Install & Run' }));
   expect(await screen.findByRole('heading', { name: 'Install & Run' })).toBeInTheDocument();
   // Selecting IS a navigation: the router location carries the slug, so no
@@ -104,7 +117,7 @@ test('explicit selection survives a late bare-route normalisation', async () => 
       <RouteLocation />
     </>,
   );
-  await screen.findByText('How KainBain works');
+  await screen.findByText('Getting started');
   fireEvent.click(screen.getByRole('button', { name: 'Install & Run' }));
   expect(await screen.findByRole('heading', { name: 'Install & Run' })).toBeInTheDocument();
   expect(screen.getByTestId('route-location')).toHaveTextContent('/docs/install-run');
@@ -118,7 +131,7 @@ test('explicit selection survives a late bare-route normalisation', async () => 
 
 test('title filter narrows the sidebar and shows an empty-search state', async () => {
   renderWithKainBain(<DocsView />);
-  await screen.findByText('How KainBain works');
+  await screen.findByText('Getting started');
   fireEvent.change(screen.getByLabelText('Filter docs articles'), {
     target: { value: 'install' },
   });
@@ -159,13 +172,13 @@ test('bare /docs normalises to the first article route', async () => {
     {},
     { initialEntries: ['/docs'] },
   );
-  await waitFor(() => expect(api.docsArticle).toHaveBeenCalledWith('architecture'));
-  expect(await screen.findByRole('heading', { name: 'System Architecture' })).toBeInTheDocument();
+  await waitFor(() => expect(api.docsArticle).toHaveBeenCalledWith('getting-started'));
+  expect(await screen.findByRole('heading', { name: 'Getting Started' })).toBeInTheDocument();
   // Bare entry is replaced with the canonical slug route (no extra history).
   // The heading renders from the non-route fetch before the replace-navigate
   // reaches RouteLocation under gate load, so wait for the route to settle.
   await waitFor(() =>
-    expect(screen.getByTestId('route-location')).toHaveTextContent('/docs/architecture'),
+    expect(screen.getByTestId('route-location')).toHaveTextContent('/docs/getting-started'),
   );
 });
 
@@ -236,7 +249,7 @@ test('a collapse-all never leaks into the next article', async () => {
   api.docsArticle.mockImplementation(async (slug) =>
     slug === 'architecture' ? SECTIONED_ARTICLE : OTHER_SECTIONED_ARTICLE,
   );
-  renderWithKainBain(<DocsView />);
+  renderWithKainBain(<DocsView />, {}, { initialEntries: ['/docs/architecture'] });
   expect(await screen.findByRole('button', { name: 'First Section' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
   expect(screen.queryByText('First body.')).not.toBeInTheDocument();
@@ -252,16 +265,194 @@ test('a collapse-all never leaks into the next article', async () => {
 
 /***
  * MARK: DocsView heading order
- * @description The sidebar avenue headings are h2, so the article's h1 never
- *   follows an h3 (WCAG 1.3.1/2.4.10; axe heading-order).
+ * @description The sidebar group headers are h2 with the collapse toggle as
+ *   the button inside them, so the article's h1 never follows an h3
+ *   (WCAG 1.3.1/2.4.10; axe heading-order). Collapsible headers are
+ *   interactive by design, hence h2 > button[aria-expanded] instead of a
+ *   plain h2 — an intentional, reviewed contract evolution.
  ***/
-test('sidebar avenue headings are h2 so heading order never skips', async () => {
+test('sidebar group headers are h2 with an inner toggle so heading order never skips', async () => {
   renderWithKainBain(<DocsView />);
   await waitFor(() => expect(api.docsIndex).toHaveBeenCalled());
+  // The h2 carries the visible group label; the toggle button inside it
+  // carries the Collapse/Expand action name plus aria-expanded.
+  for (const [label, action] of [
+    ['Getting started', 'Collapse Getting started'],
+    ['Concepts', 'Collapse Concepts'],
+    ['Everyday workflows', 'Collapse Everyday workflows'],
+    ['Reference & runbooks', 'Collapse Reference & runbooks'],
+  ]) {
+    const heading = await screen.findByRole('heading', { level: 2, name: label });
+    expect(heading).toBeInTheDocument();
+    expect(heading.tagName).toBe('H2');
+    const button = screen.getByRole('button', { name: action });
+    expect(heading.contains(button)).toBe(true);
+    expect(button).toHaveAttribute('aria-expanded', 'true');
+  }
+});
+
+/***
+ * MARK: DocsView collapsible sidebar
+ * @description The badge-style group headers collapse their article list,
+ *   persist across visits, yield to the title filter and the active article,
+ *   and never touch the route.
+ ***/
+test('clicking a header chevron collapses only that group', async () => {
+  renderWithKainBain(<DocsView />);
+  await screen.findByText('Getting started');
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse Concepts' }));
+  expect(screen.queryByRole('button', { name: 'System Architecture' })).not.toBeInTheDocument();
   expect(
-    await screen.findByRole('heading', { level: 2, name: 'How KainBain works' }),
-  ).toBeInTheDocument();
+    screen.queryByRole('button', { name: 'Workflow Pipeline & Stage Types' }),
+  ).not.toBeInTheDocument();
+  // Other groups stay open.
+  expect(screen.getByRole('button', { name: 'Install & Run' })).toBeInTheDocument();
   expect(
-    screen.getByRole('heading', { level: 2, name: 'How to work with KainBain' }),
-  ).toBeInTheDocument();
+    screen.getByRole('button', { name: 'Collapse Getting started' }),
+  ).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: 'Expand Concepts (2)' })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Expand Concepts (2)' }));
+  expect(screen.getByRole('button', { name: 'System Architecture' })).toBeInTheDocument();
+});
+
+test('collapsing the group that holds the active article folds it in-session', async () => {
+  renderWithKainBain(
+    <>
+      <DocsView />
+      <RouteLocation />
+    </>,
+    {},
+    { initialEntries: ['/docs/architecture'] },
+  );
+  await screen.findByText('Getting started');
+  expect(screen.getByRole('button', { name: 'System Architecture' })).toBeInTheDocument();
+  // The explicit click wins over the deep-link force-open for this session:
+  // the active group folds instead of reading as a dead control.
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse Concepts' }));
+  expect(screen.queryByRole('button', { name: 'System Architecture' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Expand Concepts (2)' })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  );
+  expect(screen.getByTestId('route-location')).toHaveTextContent('/docs/architecture');
+  // Reopening works, and moving to another article clears the pin: the new
+  // selection forces its own group open while the stored collapse stands.
+  fireEvent.click(screen.getByRole('button', { name: 'Install & Run' }));
+  expect(screen.getByRole('button', { name: 'Install & Run' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'System Architecture' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Expand Concepts (2)' }));
+  expect(screen.getByRole('button', { name: 'System Architecture' })).toBeInTheDocument();
+});
+
+test('collapsed state persists across remounts via localStorage', async () => {
+  const first = renderWithKainBain(<DocsView />);
+  await screen.findByText('Getting started');
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse Concepts' }));
+  expect(screen.queryByRole('button', { name: 'System Architecture' })).not.toBeInTheDocument();
+  first.unmount();
+  renderWithKainBain(<DocsView />);
+  await screen.findByText('Getting started');
+  // Stored-collapsed group stays folded; the rest reopen.
+  expect(screen.queryByRole('button', { name: 'System Architecture' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Install & Run' })).toBeInTheDocument();
+});
+
+test('filter auto-expands matching groups and restores collapse on clear', async () => {
+  renderWithKainBain(<DocsView />);
+  await screen.findByText('Getting started');
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse Concepts' }));
+  expect(screen.queryByRole('button', { name: 'System Architecture' })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Filter docs articles'), {
+    target: { value: 'architecture' },
+  });
+  // Filter overrides the stored collapse: the match is visible.
+  expect(screen.getByRole('button', { name: 'System Architecture' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Collapse Concepts' })).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  );
+  fireEvent.change(screen.getByLabelText('Filter docs articles'), { target: { value: '' } });
+  // Clearing restores the stored collapsed state.
+  expect(screen.getByRole('button', { name: 'Expand Concepts (2)' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'System Architecture' })).not.toBeInTheDocument();
+});
+
+test('deep link into a stored-collapsed group forces that group open', async () => {
+  window.localStorage.setItem(
+    'kainbain.docsSidebar.collapsed.v1',
+    JSON.stringify(['concepts']),
+  );
+  renderWithKainBain(<DocsView />, {}, { initialEntries: ['/docs/architecture'] });
+  await waitFor(() => expect(api.docsArticle).toHaveBeenCalledWith('architecture'));
+  expect(await screen.findByRole('heading', { name: 'System Architecture' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'System Architecture' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Collapse Concepts' })).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  );
+});
+
+test('articles in a section the bundle does not know render under their id', async () => {
+  api.docsIndex.mockResolvedValue({
+    sections: ['getting-started', 'concepts', 'workflows', 'reference'],
+    docs: [
+      { slug: 'getting-started', title: 'Getting Started', section: 'getting-started', order: 5 },
+      { slug: 'future-thing', title: 'Future Thing', section: 'future-group', order: 10 },
+    ],
+  });
+  renderWithKainBain(<DocsView />);
+  // The unknown group appends after the known order under its own id, so a
+  // backend regroup shipped ahead of the frontend never hides articles.
+  expect(await screen.findByText('future-group')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Future Thing' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Getting Started' })).toBeInTheDocument();
+});
+
+test('a malformed index entry cannot break the filter or sidebar', async () => {
+  api.docsIndex.mockResolvedValue({
+    sections: ['getting-started'],
+    docs: [
+      { slug: 'getting-started', title: 'Getting Started', section: 'getting-started', order: 5 },
+      { slug: 'broken-entry', section: 'getting-started', order: 99 },
+      null,
+    ],
+  });
+  renderWithKainBain(<DocsView />);
+  await screen.findByText('Getting started');
+  // The bad entry renders under its slug and stays searchable by slug.
+  expect(screen.getByRole('button', { name: 'broken-entry' })).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Filter docs articles'), {
+    target: { value: 'broken' },
+  });
+  expect(screen.getByRole('button', { name: 'broken-entry' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Getting Started' })).not.toBeInTheDocument();
+});
+
+test('a non-array docs payload renders the empty state instead of throwing', async () => {
+  api.docsIndex.mockResolvedValue({ sections: [], docs: null });
+  renderWithKainBain(<DocsView />);
+  expect(await screen.findByText('No docs articles yet.')).toBeInTheDocument();
+});
+
+test('collapsing a group never changes the route', async () => {
+  renderWithKainBain(
+    <>
+      <DocsView />
+      <RouteLocation />
+    </>,
+    {},
+    { initialEntries: ['/docs/architecture'] },
+  );
+  await screen.findByText('Getting started');
+  expect(screen.getByTestId('route-location')).toHaveTextContent('/docs/architecture');
+  // Collapse a group that does NOT hold the active article: its list folds
+  // away while the route stays exactly where it was.
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse Getting started' }));
+  expect(screen.queryByRole('button', { name: 'Install & Run' })).not.toBeInTheDocument();
+  expect(screen.getByTestId('route-location')).toHaveTextContent('/docs/architecture');
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse Everyday workflows' }));
+  expect(screen.getByTestId('route-location')).toHaveTextContent('/docs/architecture');
 });

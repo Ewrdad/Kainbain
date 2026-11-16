@@ -1,6 +1,6 @@
 ---
 title: Review Gates
-section: working-with
+section: workflows
 order: 50
 slug: review-gates
 ---

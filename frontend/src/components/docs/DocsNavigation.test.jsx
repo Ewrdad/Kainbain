@@ -51,10 +51,10 @@ class MockWebSocket {
 vi.stubGlobal('WebSocket', MockWebSocket);
 
 const INDEX = {
-  sections: ['how-it-works', 'working-with'],
+  sections: ['getting-started', 'concepts', 'workflows', 'reference'],
   docs: [
-    { slug: 'architecture', title: 'System Architecture', section: 'how-it-works', order: 10 },
-    { slug: 'install-run', title: 'Install & Run', section: 'working-with', order: 10 },
+    { slug: 'architecture', title: 'System Architecture', section: 'concepts', order: 10 },
+    { slug: 'install-run', title: 'Install & Run', section: 'getting-started', order: 10 },
   ],
 };
 

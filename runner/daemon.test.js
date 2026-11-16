@@ -45,6 +45,26 @@ import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { hashStageConfig, parseAttestationTrailers } from "../shared/stageAttestation.js";
 
+/***
+ * MARK: waitFor
+ * @description Polls a condition until it holds or the deadline passes.
+ *   Cadence tests assert behaviour (renewals repeat, then stop) instead of
+ *   wall-clock timing: a loaded CI box can stall the event loop past a fixed
+ *   sleep, which is what flaked "expected renewals, saw 1" before.
+ * @param {() => boolean} condition - Condition to poll every 5ms.
+ * @param {number} [timeoutMs] - Deadline in ms (default 5s, generous for CI).
+ * @returns {Promise<boolean>} True when the condition held before the deadline.
+ * @example const renewed = await waitFor(() => seen.length >= 2)
+ ***/
+async function waitFor(condition, timeoutMs = 5000) {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (condition()) return true;
+		await new Promise((r) => setTimeout(r, 5));
+	}
+	return condition();
+}
+
 describe("integrationMergeSubject", () => {
 	it("carries the task title and survives the changelog admin filter", () => {
 		const subject = integrationMergeSubject({
@@ -701,14 +721,18 @@ describe("startClaimRenewal", () => {
 			epoch: 1,
 			intervalMs: 15,
 		});
-		await new Promise((r) => setTimeout(r, 60));
+		// Poll instead of sleeping a fixed window: the cadence must repeat,
+		// but when it fires is the event loop's business, not the test's.
+		const renewed = await waitFor(() => seen.length >= 2);
 		stop();
-		assert.ok(seen.length >= 2, `expected renewals, saw ${seen.length}`);
+		assert.ok(renewed, `expected renewals, saw ${seen.length}`);
 		assert.ok(
 			seen.every((a) => a.taskId === "t1" && a.executionId === "e1" && a.epoch === 1),
 		);
+		// stop() clears the interval; heartbeats push synchronously inside the
+		// timer callback, so once stop() returns no further renewal can land.
 		const count = seen.length;
-		await new Promise((r) => setTimeout(r, 40));
+		await new Promise((r) => setTimeout(r, 50));
 		assert.equal(seen.length, count);
 		assert.equal(warnings.length, 0);
 	});
@@ -732,11 +756,12 @@ describe("startClaimRenewal", () => {
 			epoch: 1,
 			intervalMs: 10,
 		});
-		await new Promise((r) => setTimeout(r, 50));
-		assert.ok(seen.length >= 1);
-		assert.ok(warnings.length >= 1);
+		// The warn and the clearInterval run in the same rejection handler, so
+		// once a warning is observed the timer is already dead.
+		const warned = await waitFor(() => seen.length >= 1 && warnings.length >= 1);
+		assert.ok(warned, `expected a renewal and a warning, saw ${seen.length}/${warnings.length}`);
 		const count = seen.length;
-		await new Promise((r) => setTimeout(r, 40));
+		await new Promise((r) => setTimeout(r, 50));
 		assert.equal(seen.length, count);
 	});
 
@@ -757,9 +782,9 @@ describe("startClaimRenewal", () => {
 			epoch: 1,
 			intervalMs: 10,
 		});
-		await new Promise((r) => setTimeout(r, 40));
+		const warned = await waitFor(() => warnings.length >= 1);
 		stop();
-		assert.ok(warnings.length >= 1);
+		assert.ok(warned, "expected a renewal warning");
 		assert.match(warnings[0], /Claim renewal failed/);
 	});
 });

@@ -59,7 +59,7 @@ describe("API reference coverage", () => {
 		const entry = index.docs.find((d) => d.slug === "api-reference");
 		expect(entry).toMatchObject({
 			title: "API reference",
-			section: "working-with",
+			section: "reference",
 		});
 		const res = await app.inject({ method: "GET", url: "/docs/api-reference" });
 		expect(res.statusCode).toBe(200);

@@ -1,6 +1,6 @@
 ---
 title: Adding a New Runner
-section: working-with
+section: getting-started
 order: 12
 slug: add-new-runner
 ---

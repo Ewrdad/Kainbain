@@ -1,6 +1,6 @@
 ---
 title: Link Runner to Pi
-section: working-with
+section: getting-started
 order: 13
 slug: link-runner-pi
 ---

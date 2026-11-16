@@ -45,6 +45,10 @@ module.exports = {
         'on-warning': '#3a2e00',
         'warning-container': '#4a3c00',
         'on-warning-container': '#ffe082',
+        // Docs sidebar category badges (survey-chosen soft-lavender pill on
+        // the dark sidebar; pair verified AAA in containerContrast.test.js).
+        'docs-badge': '#dccdf7',
+        'on-docs-badge': '#221d35',
         'primary-fixed': '#97f89e',
         'primary-fixed-dim': '#7bdb85',
         'on-primary-fixed': '#002107',
