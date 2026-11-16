@@ -758,6 +758,35 @@ function walkFiles(dir) {
 }
 
 /***
+ * MARK: ensureRepoHooksPath
+ * @description Best-effort activation of the repo's committed git hooks
+ *   (`core.hooksPath=scripts/githooks` — the pre-commit binary guard that
+ *   fails fast on a text-path-rewritten PNG) in a repo dir: the Runner
+ *   mirror in clone mode or the adopted checkout. Linked worktrees share
+ *   the repo's common config, so one set covers every kb-* worktree; a
+ *   worktree whose branch predates scripts/githooks simply finds no hook
+ *   file and runs none. A foreign hooksPath (another hook manager) is left
+ *   untouched. Never throws: hook installation must not block task
+ *   preparation — the `npm test` "Binary Guard" branch is the enforcement
+ *   backstop.
+ * @example await ensureRepoHooksPath('/w/mirrors/repo') => true
+ * @param {string} repoDir - Repository to configure.
+ * @returns {Promise<boolean>} True when the hooks path was newly set.
+ ***/
+export async function ensureRepoHooksPath(repoDir) {
+	try {
+		const current = await runGit(repoDir, ["config", "--get", "core.hooksPath"])
+			.then((result) => result.stdout.trim())
+			.catch(() => "");
+		if (current) return false; // already ours, or foreign — either way, do not touch
+		await runGit(repoDir, ["config", "core.hooksPath", "scripts/githooks"]);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/***
  * MARK: prepareWorkdir
  * @description Project load per the transport matrix (MigrationPlan §4):
  *   remote-backed clones the origin into the Runner mirror dir and pulls,
@@ -821,6 +850,11 @@ export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evi
 		mode = "adopt";
 		repoDir = localPath;
 	}
+
+	// Activate the committed pre-commit binary guard for this repo and every
+	// linked kb-* worktree (worktrees share the common config). Best-effort:
+	// a failure here must never block task preparation.
+	await ensureRepoHooksPath(repoDir);
 
 	if (fs.existsSync(workdir)) {
 		let recoveredTo = null;

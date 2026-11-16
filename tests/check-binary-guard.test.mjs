@@ -10,10 +10,12 @@ import {
 	BINARY_MAGIC,
 	binaryMagicForExtension,
 	checkBinaryMagic,
+	checkPaths,
 	formatGuardFailure,
 	isGuardedPath,
 	listChangedFiles,
 	main,
+	parsePorcelainZero,
 } from "../scripts/check-binary-guard.mjs";
 import { MAGIC_TABLE } from "../scripts/check-proof-and-hygiene.mjs";
 
@@ -217,6 +219,22 @@ describe("checkBinaryMagic", () => {
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});
+
+	it("follows a symlink to its target bytes: corrupt target fails, broken link is skipped", () => {
+		const root = makeFixtureTree({ "real-corrupt.png": CORRUPT_PNG, "real-ok.png": VALID_PNG });
+		try {
+			fs.symlinkSync(path.join(root, "real-corrupt.png"), path.join(root, "link-corrupt.png"));
+			fs.symlinkSync(path.join(root, "real-ok.png"), path.join(root, "link-ok.png"));
+			fs.symlinkSync(path.join(root, "nowhere.png"), path.join(root, "link-broken.png"));
+			assert.equal(checkBinaryMagic(path.join(root, "link-corrupt.png")).ok, false);
+			assert.equal(checkBinaryMagic(path.join(root, "link-ok.png")).ok, true);
+			const broken = checkBinaryMagic(path.join(root, "link-broken.png"));
+			assert.equal(broken.ok, true);
+			assert.ok(broken.skipped);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
 });
 
 describe("formatGuardFailure", () => {
@@ -242,6 +260,51 @@ describe("formatGuardFailure", () => {
 		});
 		assert.match(text, /bad\.png/);
 		assert.doesNotMatch(text, /null|undefined/);
+	});
+});
+
+describe("parsePorcelainZero", () => {
+	it("parses plain records and drops the trailing empty field after the final NUL", () => {
+		assert.deepEqual(parsePorcelainZero("?? new.png\0M  mod.png\0"), ["new.png", "mod.png"]);
+		assert.deepEqual(parsePorcelainZero(""), []);
+	});
+
+	it("consumes the source field of rename/copy records and keeps the current path", () => {
+		// In -z format the record is `XY PATH\0ORIG_PATH\0` (order reversed vs the arrow form).
+		assert.deepEqual(parsePorcelainZero("R  new.png\0old.png\0"), ["new.png"]);
+		assert.deepEqual(parsePorcelainZero("C  copy.png\0orig.png\0"), ["copy.png"]);
+	});
+
+	it("drops deletions on either side (no bytes left to verify)", () => {
+		assert.deepEqual(parsePorcelainZero(" D gone.png\0D  gone2.png\0"), []);
+		assert.deepEqual(parsePorcelainZero("RD new.png\0old.png\0"), []);
+	});
+
+	it("keeps unmerged and path-with-spaces records intact", () => {
+		assert.deepEqual(parsePorcelainZero("UU both.png\0?? my proof.png\0"), ["both.png", "my proof.png"]);
+	});
+});
+
+describe("checkPaths", () => {
+	it("skips unguarded candidates and collects only guarded violations with their relPath", () => {
+		const root = makeFixtureTree({
+			"ok.png": VALID_PNG,
+			"bad.png": CORRUPT_PNG,
+			"notes.md": Buffer.from("text\n"),
+		});
+		try {
+			const violations = checkPaths([
+				{ relPath: "ok.png", absPath: path.join(root, "ok.png") },
+				{ relPath: "bad.png", absPath: path.join(root, "bad.png") },
+				{ relPath: "notes.md", absPath: path.join(root, "notes.md") },
+			]);
+			assert.equal(violations.length, 1);
+			assert.equal(violations[0].relPath, "bad.png");
+			assert.equal(violations[0].expected, "89504e47");
+			assert.ok(violations[0].actual.startsWith("efbfbd"));
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
 	});
 });
 
@@ -414,6 +477,31 @@ describe("CLI exit contract", () => {
 			const missing = runGuard("--root", path.join(root, "does-not-exist"), "x.png");
 			assert.equal(missing.status, 2);
 			assert.match(missing.stderr, /not a readable directory/);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("exits 2 naming an explicit path that does not exist (never a false PASS on a typo)", () => {
+		const root = makeFixtureTree({ "docs/tasks/demo/real.png": VALID_PNG });
+		try {
+			const result = runGuard("--root", root, "docs/tasks/demo/typo.png");
+			assert.equal(result.status, 2);
+			assert.match(result.stderr, /typo\.png/);
+			assert.match(result.stderr, /does not exist/);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("exits 2 naming an explicit path that is a broken symlink", () => {
+		const root = makeFixtureTree({ "placeholder.txt": Buffer.from("x\n") });
+		try {
+			const link = path.join(root, "link.png");
+			fs.symlinkSync(path.join(root, "gone.png"), link);
+			const result = runGuard("--root", root, "link.png");
+			assert.equal(result.status, 2);
+			assert.match(result.stderr, /link\.png/);
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}

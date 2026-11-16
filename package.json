@@ -12,6 +12,7 @@
     "check:proof-hygiene": "node scripts/check-proof-and-hygiene.mjs",
     "check:binaries": "node scripts/check-binary-guard.mjs",
     "check:binaries:staged": "node scripts/check-binary-guard.mjs --staged",
+    "hooks:install": "node scripts/install-git-hooks.mjs",
     "check:jsdoc-example": "node scripts/check-jsdoc-example.mjs",
     "test": "node scripts/run-tests.mjs",
     "audit:deprecations": "node scripts/check-dep-audit.mjs --report",

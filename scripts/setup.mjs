@@ -4,8 +4,10 @@
  * @description Single-command contributor setup (`npm run setup`): installs
  *   the root, `api`, `frontend`, and `canary-e2e` dependency trees in order,
  *   then installs the Playwright Chromium browsers used by the root
- *   `@playwright/test` (screenshot tooling) AND by `canary-e2e`. Fails fast
- *   naming the step that failed. The browser install selects flags per OS:
+ *   `@playwright/test` (screenshot tooling) AND by `canary-e2e`, then
+ *   installs the repo's committed git hooks (pre-commit binary guard) for
+ *   this checkout, warn-only. Fails fast naming the step that failed.
+ *   The browser install selects flags per OS:
  *   Linux additionally installs the browser's system dependencies
  *   (`--with-deps`, needs apt and usually root) and falls back to a plain
  *   browser install with a warning when that fails; macOS/Windows install
@@ -102,6 +104,26 @@ export function browserInstallTargets(targetPlatform = process.platform) {
 }
 
 /***
+ * MARK: hookInstallStep
+ * @description The final setup step: installs this repo's committed git hooks
+ *   (`core.hooksPath` → `scripts/githooks`, the pre-commit binary guard that
+ *   fails fast on a text-path-rewritten PNG) for this checkout. Linked
+ *   worktrees share the repo's common config, so engine-created kb-* worktrees
+ *   inherit the hook. Warn-only in main() when it fails — outside a git work
+ *   tree there is nothing to hook, and the `npm test` "Binary Guard" branch
+ *   still enforces binary magic on every gate run.
+ * @example hookInstallStep() => { name: "git hooks ...", file: <node>, args: ["<root>/scripts/install-git-hooks.mjs"] }
+ * @returns {{ name: string, file: string, args: Array<string> }}
+ ***/
+export function hookInstallStep(nodeExec = process.execPath) {
+	return {
+		name: "git hooks (pre-commit binary guard)",
+		file: nodeExec,
+		args: [path.join(REPO_ROOT, "scripts", "install-git-hooks.mjs")],
+	};
+}
+
+/***
  * MARK: runInherited
  * @description Runs one command with inherited stdio (the user watches the
  *   install live) and resolves its exit code. A spawn failure resolves as 1
@@ -171,6 +193,15 @@ async function main() {
 			process.exitCode = exitCode;
 			return;
 		}
+	}
+
+	const hooks = hookInstallStep();
+	console.log(`→ Installing ${hooks.name}...`);
+	const hooksExit = await runInherited(hooks.file, hooks.args, { cwd: REPO_ROOT });
+	if (hooksExit !== 0) {
+		console.warn(
+			"⚠️  Git hook install did not complete (see above) — not fatal: the Binary Guard branch of `npm test` still enforces binary magic on every run. Run `npm run hooks:install` manually to enable the commit-time hook.",
+		);
 	}
 
 	console.log("--------------------------------------------------");

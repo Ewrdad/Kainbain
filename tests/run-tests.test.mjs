@@ -9,7 +9,7 @@ const { buildBranches, depcheckAvailable, ensureWorkspaceDeps, pruneStaleTestDir
 /***
  * MARK: run-tests tests
  * @description Hermetic tests for the gate's branch assembly and canary
- *   resolution (scripts/run-tests.mjs): the thirteen canonical branches in
+ *   resolution (scripts/run-tests.mjs): the fourteen canonical branches in
  *   order with shell-free spawn shapes, the bash-less SKIP path for the
  *   bash-only security-scan branch, the docker-less SKIP path for the
  *   Container Tests branch, the depcheck-less SKIP path for the Dependency
@@ -32,13 +32,14 @@ const CANONICAL_NAMES = [
 	"Dependency Check",
 	"Dependency Audit Gate",
 	"Proof Hygiene",
+	"Binary Guard",
 	"Harness Self-Tests",
 	"Container Tests",
 	"Canary Tests",
 ];
 
 describe("buildBranches", () => {
-	it("builds the thirteen canonical branches in order when bash and docker exist", () => {
+	it("builds the fourteen canonical branches in order when bash and docker exist", () => {
 		const { branches, skipped } = buildBranches({ hasBash: true, hasDocker: true, hasDepcheck: true, nodeExec: "node", npmExec: "npm" });
 		assert.deepEqual(
 			branches.map((branch) => branch.name),
@@ -148,6 +149,22 @@ describe("buildBranches", () => {
 		assert.equal(proofHygiene.shell, undefined, "must not use a shell");
 	});
 
+	it("runs the binary-guard gate against the real tree (fail-fast prevention, task ef569a1a)", () => {
+		// Prevention complement to Proof Hygiene: magic-checks every changed
+		// binary (images + zip/gz/tgz anywhere, not just proof paths) in the
+		// gate, so a text-path PNG rewrite fails in seconds inside `npm test`
+		// instead of only after a full CI cycle.
+		const { branches } = buildBranches({ hasBash: true, hasDocker: true, hasDepcheck: true, nodeExec: "node", npmExec: "npm" });
+		const binaryGuard = branches.find((branch) => branch.name === "Binary Guard");
+		assert.equal(binaryGuard.file, "node");
+		assert.deepEqual(binaryGuard.args, ["scripts/check-binary-guard.mjs"]);
+		assert.equal(binaryGuard.lowPriority, true);
+		assert.equal(binaryGuard.shell, undefined, "must not use a shell");
+		// Ordered right after Proof Hygiene so the two binary gates sit together.
+		const names = branches.map((branch) => branch.name);
+		assert.equal(names.indexOf("Binary Guard"), names.indexOf("Proof Hygiene") + 1);
+	});
+
 	it("container tests run the docker suite through node --test", () => {
 		const { branches } = buildBranches({ hasBash: true, hasDocker: true, hasDepcheck: true, nodeExec: "node", npmExec: "npm" });
 		const containerTests = branches.find((branch) => branch.name === "Container Tests");
@@ -167,6 +184,10 @@ describe("buildBranches", () => {
 		assert.ok(selfTests.args.some((arg) => arg.endsWith("check-one-function-per-file.test.mjs")), "WP-8 shape gate tests must stay in the gate");
 		assert.ok(selfTests.args.some((arg) => arg.endsWith("check-jsdoc-example.test.mjs")), "WP-8 @example gate tests must stay in the gate");
 		assert.ok(selfTests.args.some((arg) => arg.endsWith("check-proof-and-hygiene.test.mjs")), "proof/hygiene gate tests must stay in the gate");
+		assert.ok(selfTests.args.some((arg) => arg.endsWith("check-binary-guard.test.mjs")), "binary-guard unit tests must stay in the gate");
+		assert.ok(selfTests.args.some((arg) => arg.endsWith("capture-screenshot.test.mjs")), "capture self-verification tests must stay in the gate");
+		assert.ok(selfTests.args.some((arg) => arg.endsWith("pre-commit-hook.test.mjs")), "pre-commit hook end-to-end tests must stay in the gate");
+		assert.ok(selfTests.args.some((arg) => arg.endsWith("install-git-hooks.test.mjs")), "hook installer tests must stay in the gate");
 		assert.ok(selfTests.args.some((arg) => arg.endsWith("check-imports-declared.test.mjs")), "imports-declared guardrail tests must stay in the gate");
 		assert.ok(!selfTests.args.some((arg) => arg.endsWith(".sh")), "no shell suites");
 	});

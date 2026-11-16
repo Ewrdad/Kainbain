@@ -43,12 +43,18 @@ npm run check:binaries
 
 - `npm run check:binaries` — fail-fast local guard over changed
   binaries (run before every handoff; seconds, names the file with
-  expected vs actual magic and this remedy).
-- Pre-commit hook (`scripts/githooks/pre-commit`, installed via
-  `git config core.hooksPath scripts/githooks`) — same guard over staged
-  binaries at commit time.
-- `npm run check:proof-hygiene` — CI gate re-verifying every proof
-  image (detection stays as the backstop).
+  expected vs actual magic and this remedy). Also runs automatically in
+  `npm test` as the `Binary Guard` branch, so a corrupt binary fails the
+  verification gate even without the hook.
+- Pre-commit hook (`scripts/githooks/pre-commit`) — same guard over
+  staged binaries at commit time; fails closed (if it cannot run, the
+  commit is refused). Installed automatically by `npm run setup`, or
+  manually with `npm run hooks:install` (sets `core.hooksPath` to
+  `scripts/githooks`; linked worktrees — including engine-created `kb-*`
+  task worktrees — inherit it via the shared repo config). Bypass with
+  `git commit --no-verify` only for an intentional baseline entry.
+- `npm run check:proof-hygiene` — tree-wide CI gate re-verifying every
+  proof image (detection stays as the backstop).
 
 Canonical agent rule: `docs/agent-docs/GitGuidance.md`
 ("Binary-safe proof artifacts"). Guarded extensions are data in

@@ -286,9 +286,10 @@ export function checkPaths(candidates) {
  *   exits 1 when any binary is corrupt, 0 with a one-line PASS summary
  *   when clean. `--root <dir>` resolves the scan and explicit paths
  *   against a fixture tree (used by tests); `--help` prints usage.
- *   Unknown flags and a missing or non-directory `--root` exit 2, as does
- *   a changed-file scan outside a git repository — a scan that cannot run
- *   must never report a false PASS.
+ *   Unknown flags, a missing or non-directory `--root`, an explicit
+ *   positional path that does not exist on disk, and a changed-file scan
+ *   outside a git repository all exit 2 — a check that cannot run must
+ *   never report a false PASS.
  * @example main(["node", "check-binary-guard.mjs", "--staged"])
  * @param {string[]} [argv] - Process argv; defaults to process.argv.
  * @returns {number} Process exit code (0 clean, 1 corrupt, 2 usage error).
@@ -299,7 +300,8 @@ export function main(argv = process.argv) {
 		console.log("Usage: node scripts/check-binary-guard.mjs [--staged] [--root <dir>] [path ...]");
 		console.log("Fail-fast local guard: magic-checks changed binaries (or explicit paths) before handoff/commit.");
 		console.log("  --staged  check staged binaries only (pre-commit hook path).");
-		console.log("Exit codes: exit 0 clean, exit 1 corrupt binary found, exit 2 usage error.");
+		console.log("  --root    resolve the scan and explicit paths against this directory (default: repo root).");
+		console.log("Exit codes: exit 0 clean, exit 1 corrupt binary found, exit 2 usage error (unknown flag, bad --root, missing explicit path, not a git repo).");
 		return 0;
 	}
 	let stagedOnly = false;
@@ -346,10 +348,18 @@ export function main(argv = process.argv) {
 	}
 	let candidates;
 	if (positionalPaths.length > 0) {
-		candidates = positionalPaths.map((relPath) => ({
-			relPath: toPosix(relPath),
-			absPath: path.resolve(root, relPath),
-		}));
+		candidates = [];
+		for (const relPath of positionalPaths) {
+			const absPath = path.resolve(root, relPath);
+			// An explicitly requested path that is not on disk (typo, broken
+			// symlink, wrong --root) is a usage error: the check could not
+			// run, so it must never report a pass.
+			if (!fs.existsSync(absPath)) {
+				console.error(`error: explicit path ${toPosix(relPath)} does not exist under ${root}`);
+				return 2;
+			}
+			candidates.push({ relPath: toPosix(relPath), absPath });
+		}
 	} else {
 		try {
 			candidates = listChangedFiles({ root, stagedOnly });
