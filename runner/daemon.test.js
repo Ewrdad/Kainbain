@@ -222,6 +222,43 @@ describe("runSingleAssignment", () => {
 		assert.ok(fs.existsSync(path.join(config.workRoot, "kb-t1")));
 	});
 
+	it("writes claim-shipped task images into the worktree when the primary checkout has none", async () => {
+		// Remote-Runner delivery arm: the primary checkout holds no task
+		// docs (syncTaskDocs copies 0), so the claim's taskAssets bytes are
+		// the only way the screenshots reach the worktree pre-stage.
+		const repo = localRepo();
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo);
+		const shot = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			claim: async () => ({
+				executionId: "e1",
+				epoch: 1,
+				taskAssets: [
+					{ name: "shot.png", size: shot.length, contentBase64: shot.toString("base64") },
+				],
+			}),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async () => ({ accepted: true, shaState: "present" }),
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const out = await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.accepted, true);
+		assert.deepEqual(
+			fs.readFileSync(path.join(config.workRoot, "kb-t1", "docs", "tasks", "t1", "assets", "shot.png")),
+			shot,
+		);
+	});
+
 	it("reports a worktree-cap refusal as an interrupt instead of crashing", async () => {
 		// e79b1d25 outage: the cap refusal killed the Runner process, and
 		// systemd restart storms turned one refusal into a death loop. The
