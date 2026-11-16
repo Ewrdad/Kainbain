@@ -1,7 +1,8 @@
 /***
  * MARK: taskFlowRoutes
  * @description The Flow routes: stage execution, advancement, failback,
- *   rejection, steering, follow-up, pausing, resuming, and completion.
+ *   rejection, steering, follow-up, pausing, resuming, completion, and
+ *   uncompletion (reopen).
  ***/
 
 import {
@@ -630,6 +631,25 @@ export async function registerTaskFlowRoutes(app, deps) {
 
 		const project = projectStore.getProject(id);
 		const task = taskStore.completeTask(id, request.params.id, project?.cwd);
+		if (!task) return reply.status(404).send({ error: "Task not found" });
+		return task;
+	});
+
+	/***
+	 * MARK: Uncomplete Task
+	 * @description Reopens a completed task back into the workflow, restoring the
+	 *   status/stage it had before it was completed. Same authorization as
+	 *   complete; no-op for tasks that are not completed.
+	 ***/
+	app.post("/tasks/:id/uncomplete", async (request, reply) => {
+		const id = resolveAndGuardProject(
+			request.body?.projectId || request.query?.projectId,
+			reply,
+		);
+		if (!id) return;
+
+		const project = projectStore.getProject(id);
+		const task = taskStore.uncompleteTask(id, request.params.id, project?.cwd);
 		if (!task) return reply.status(404).send({ error: "Task not found" });
 		return task;
 	});

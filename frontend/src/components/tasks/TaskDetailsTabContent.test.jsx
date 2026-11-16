@@ -16,6 +16,7 @@ function makeProps(overrides = {}) {
     activeProjectId: 'proj-1',
     approvalGuidance: '',
     completeTask: vi.fn(),
+    uncompleteTask: vi.fn(),
     copiedKeyword: null,
     currentStageId: 'stage-1',
     failureMessage: 'Something broke',

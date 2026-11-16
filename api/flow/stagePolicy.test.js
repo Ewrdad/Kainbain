@@ -13,6 +13,7 @@ import {
 	findStageIndexByIdOrName,
 	isEngineOwnerOf,
 	isTerminalTaskStatus,
+	resolveReopenedStatus,
 } from './stagePolicy.js';
 
 describe('The Flow: stage policy and resolution', () => {
@@ -225,5 +226,66 @@ describe('The Flow: shared stage lookup and engine ownership', () => {
 		for (const status of ['in_stage', 'paused', 'running_agent', 'waiting_human', null, undefined, '']) {
 			expect(isTerminalTaskStatus(status)).toBe(false);
 		}
+	});
+});
+
+describe('The Flow: resolveReopenedStatus', () => {
+	it('restores the snapshotted status and stage when present', () => {
+		expect(
+			resolveReopenedStatus({
+				status: 'completed',
+				statusBeforeComplete: 'paused',
+				stageBeforeComplete: 's-1',
+				currentStageId: 's-3',
+			}),
+		).toEqual({ status: 'paused', stageId: 's-1' });
+	});
+
+	it('normalizes a live running_* snapshot to in_stage (the run was killed by complete)', () => {
+		expect(
+			resolveReopenedStatus({
+				statusBeforeComplete: 'running_agent',
+				currentStageId: 's-2',
+			}),
+		).toEqual({ status: 'in_stage', stageId: 's-2' });
+	});
+
+	it('collapses a terminal snapshot status to idle', () => {
+		expect(
+			resolveReopenedStatus({
+				statusBeforeComplete: 'failed',
+				stageBeforeComplete: 's-2',
+				currentStageId: 's-2',
+			}),
+		).toEqual({ status: 'idle', stageId: 's-2' });
+	});
+
+	it('falls back to idle on the current stage for legacy tasks without a snapshot', () => {
+		expect(resolveReopenedStatus({ status: 'completed', currentStageId: 's-3' })).toEqual({
+			status: 'idle',
+			stageId: 's-3',
+		});
+		expect(resolveReopenedStatus({ status: 'completed' })).toEqual({
+			status: 'idle',
+			stageId: null,
+		});
+		expect(resolveReopenedStatus(null)).toEqual({ status: 'idle', stageId: null });
+	});
+
+	it('ignores blank snapshot fields and prefers the snapshot stage over the current one', () => {
+		expect(
+			resolveReopenedStatus({
+				statusBeforeComplete: '  ',
+				stageBeforeComplete: '',
+				currentStageId: 's-9',
+			}),
+		).toEqual({ status: 'idle', stageId: 's-9' });
+		expect(
+			resolveReopenedStatus({
+				statusBeforeComplete: 'in_stage',
+				stageBeforeComplete: '',
+				currentStageId: 's-9',
+			}),
+		).toEqual({ status: 'in_stage', stageId: 's-9' });
 	});
 });

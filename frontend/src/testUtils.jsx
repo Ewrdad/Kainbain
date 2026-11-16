@@ -110,6 +110,7 @@ export function renderWithKainBain(ui, overrides = {}, options = {}) {
     jumpTask: () => {},
     moveTask: () => {},
     completeTask: () => {},
+    uncompleteTask: () => {},
     updateTask: () => {},
     refreshTasks: () => {},
     // Pending task-editor save flush (checkpoint approve/reject gating)

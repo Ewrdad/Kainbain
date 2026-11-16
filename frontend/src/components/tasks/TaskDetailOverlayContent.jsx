@@ -65,6 +65,7 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
     jumpTask,
     moveTask,
     completeTask,
+    uncompleteTask,
     advanceTask,
     executeTaskStage,
     openFeedbackDialog,
@@ -943,6 +944,7 @@ export function TaskDetailOverlay({ task, onClose, footerReserved = true }) {
             activeProjectId={activeProjectId}
             approvalGuidance={approvalGuidance}
             completeTask={completeTask}
+            uncompleteTask={uncompleteTask}
             copiedKeyword={copiedKeyword}
             currentStageId={currentStageId}
             failureMessage={failureMessage}
