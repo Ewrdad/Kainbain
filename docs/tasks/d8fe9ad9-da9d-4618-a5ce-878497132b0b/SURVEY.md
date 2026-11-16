@@ -10,11 +10,21 @@
       "id": "q1",
       "type": "single",
       "text": "I think this is simple enough to not require questions. Do you agree?",
-      "options": ["Yes, proceed with the fix as described", "No, I have concerns (explain in Notes)"],
+      "options": [
+        "Yes, proceed with the fix as described",
+        "No, I have concerns (explain in Notes)"
+      ],
       "required": true,
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Yes, proceed with the fix as described"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
