@@ -680,6 +680,37 @@ export const CANARY_SERIAL_START_LINE =
 	"Fast gate complete — starting Canary Tests alone (serial phase, no shared CPUs with the unit suites)...";
 
 /***
+ * MARK: resolvePhaseOutcome
+ * @description Reads one overlap-window run the way the verdict needs it:
+ *   the phase passes only when the runner claims success AND no branch
+ *   result disagrees. A runner that reports failure without naming a failed
+ *   branch (a custom seam, a truncated return) still fails the gate, and
+ *   the verdict names the gap as `unknown branch` instead of claiming ok —
+ *   the verdict and the exit code can never disagree.
+ * @example resolvePhaseOutcome({ run: { ok: false, results: [] } }) => { ok: false, failedNames: ["unknown branch"], … }
+ * @param {Object} [opts]
+ * @param {Object} [opts.run] - A `runParallel` result ({ ok, results }).
+ * @param {string} [opts.fallbackName] - Failed-branch name when the run names none.
+ * @returns {{ ok: boolean, verdictResults: Array<Object>, failedNames: Array<string> }}
+ ***/
+export function resolvePhaseOutcome({ run, fallbackName = "unknown branch" } = {}) {
+	const results = Array.isArray(run?.results) ? run.results : [];
+	const failedResults = results.filter((result) => result && result.ok !== true);
+	const failedNames = failedResults.map((result) => String(result?.name ?? "unknown branch"));
+	if (failedNames.length > 0) {
+		return { ok: false, verdictResults: results, failedNames };
+	}
+	if (run?.ok === true) {
+		return { ok: true, verdictResults: results, failedNames: [] };
+	}
+	return {
+		ok: false,
+		verdictResults: [...results, { name: fallbackName, ok: false, exitCode: null, wallSecs: 0 }],
+		failedNames: [fallbackName],
+	};
+}
+
+/***
  * MARK: runGatePhases
  * @description Runs the gate's two phases — the fast overlap window, then
  *   the canary suite alone — with fail-fast verdict reporting. The moment
@@ -689,7 +720,10 @@ export const CANARY_SERIAL_START_LINE =
  *   phase is skipped with an explicit SKIP line and the gate returns within
  *   seconds instead of after the canary. A green fast phase always runs
  *   canary (the #KB-0417 parity requirement); every `Running <name>...
- *   PASS/FAIL` line keeps its exact shape.
+ *   PASS/FAIL` line keeps its exact shape. Phase outcomes are read through
+ *   resolvePhaseOutcome, so a runner that reports failure without naming a
+ *   branch still fails the gate as `unknown branch` — the verdict and the
+ *   exit code can never disagree.
  * @example const { ok } = await runGatePhases({ fastBranches: [], canaryBranches: [] })
  * @param {Object} [opts]
  * @param {Array<Object>} [opts.fastBranches] - Fast overlap-window branches.
@@ -751,11 +785,10 @@ export async function runGatePhases({
 		failureOutputTailLines: tailLines,
 		failureDetailsPreamble,
 	});
+	const fastOutcome = resolvePhaseOutcome({ run: fastRun });
 	const fastResults = Array.isArray(fastRun?.results) ? fastRun.results : [];
-	const fastOk = fastRun?.ok === true;
-	const failedNames = fastResults
-		.filter((result) => result && result.ok !== true)
-		.map((result) => String(result.name ?? "unknown branch"));
+	const fastOk = fastOutcome.ok;
+	const failedNames = fastOutcome.failedNames;
 
 	const skipCanary = failFast === true && !fastOk && canaryBranches.length > 0;
 	const earlyDecision =
@@ -765,7 +798,7 @@ export async function runGatePhases({
 				? "skipped_due_to_fast_gate_failure"
 				: "pending";
 	const earlyVerdict = buildFastGateVerdict({
-		fastResults,
+		fastResults: fastOutcome.verdictResults,
 		fastGateNames: FAST_GATE_BRANCH_NAMES,
 		canaryDecision: earlyDecision,
 	});
@@ -786,13 +819,14 @@ export async function runGatePhases({
 			failureOutputTailLines: tailLines,
 			failureDetailsPreamble,
 		});
-		canaryResults = Array.isArray(canaryRun?.results) ? canaryRun.results : [];
-		canaryOk = canaryRun?.ok === true;
+		const canaryOutcome = resolvePhaseOutcome({ run: canaryRun });
+		canaryResults = canaryOutcome.verdictResults;
+		canaryOk = canaryOutcome.ok;
 		canaryDecision = "ran";
 	}
 
 	const closingVerdict = buildFastGateVerdict({
-		fastResults,
+		fastResults: fastOutcome.verdictResults,
 		fastGateNames: FAST_GATE_BRANCH_NAMES,
 		canaryDecision,
 		canaryResults,

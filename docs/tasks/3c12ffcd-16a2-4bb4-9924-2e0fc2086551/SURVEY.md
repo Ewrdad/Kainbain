@@ -44,6 +44,25 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Stop everything right away and report the failure"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Full untrimmed log, but only for checks that failed"
+      ],
+      "notes": "We mainly just want enough information for an agent to fix it. but not too much that we pollute context unneccesarily"
+    },
+    "q3": {
+      "selected": [
+        "Unit tests, code style checks, and harness self-tests"
+      ],
+      "notes": "Just make sure we dont end up with dummy playwright processes hanging around\n"
+    }
+  }
 }
 ```

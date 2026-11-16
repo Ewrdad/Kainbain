@@ -11,6 +11,7 @@ const {
 	buildFastGateVerdict,
 	ensureVerdictDir,
 	formatFastGateBanner,
+	formatVerdictTimestamp,
 	resolveVerdictDir,
 	writeBranchFullLog,
 	writeFastGateVerdict,
@@ -70,6 +71,19 @@ describe("branchSlug", () => {
 		assert.equal(branchSlug(""), "branch");
 		assert.equal(branchSlug("!!!"), "branch");
 		assert.equal(branchSlug(null), "branch");
+	});
+});
+
+describe("formatVerdictTimestamp", () => {
+	it("renders a UTC stamp beside its run", () => {
+		assert.equal(formatVerdictTimestamp(new Date("2026-11-16T12:00:00.000Z")), "20261116-120000");
+	});
+
+	it("falls back to the current time for an unreadable clock reading", () => {
+		for (const unreadable of ["not-a-date", NaN, new Date(NaN)]) {
+			assert.match(formatVerdictTimestamp(unreadable), /^\d{8}-\d{6}$/);
+		}
+		assert.doesNotMatch(formatVerdictTimestamp("not-a-date"), /NaN/);
 	});
 });
 

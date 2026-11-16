@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const { CANARY_SERIAL_START_LINE, FAST_GATE_BRANCH_NAMES, buildBranches, depcheckAvailable, ensureWorkspaceDeps, pruneStaleTestDirectories, reportPreflightFailure, resolveCanary, resolveFailFast, runGatePhases, splitGatePhases, workspaceDepsInstalled } = await import("../scripts/run-tests.mjs");
+const { CANARY_SERIAL_START_LINE, FAST_GATE_BRANCH_NAMES, buildBranches, depcheckAvailable, ensureWorkspaceDeps, resolvePhaseOutcome, pruneStaleTestDirectories, reportPreflightFailure, resolveCanary, resolveFailFast, runGatePhases, splitGatePhases, workspaceDepsInstalled } = await import("../scripts/run-tests.mjs");
 
 /***
  * MARK: run-tests tests
@@ -664,6 +664,79 @@ describe("runGatePhases", () => {
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}
+	});
+
+	it("a failure without named branch results still fails and skips canary as unknown branch", async () => {
+		const { root, verdictDir } = makeVerdictDir();
+		try {
+			const out = makeCollector();
+			const { calls, runParallelFn } = stubRunner({ fast: { ok: false } });
+			const result = await runGatePhases({
+				fastBranches: [{ name: "Unit Tests (api)" }],
+				canaryBranches: [{ name: "Canary Tests" }],
+				failFast: true,
+				verdictDir,
+				verdictReady: true,
+				cwd: root,
+				runParallelFn,
+				log: out.log,
+			});
+			assert.equal(calls.length, 1);
+			assert.equal(result.ok, false);
+			assert.equal(result.canaryDecision, "skipped_due_to_fast_gate_failure");
+			assert.match(out.joined(), /SKIP \(fast-gate failed: unknown branch;/);
+			const verdict = JSON.parse(fs.readFileSync(path.join(verdictDir, "verdict.json"), "utf8"));
+			assert.equal(verdict.ok, false);
+			assert.deepEqual(verdict.failedBranches.map((entry) => entry.name), ["unknown branch"]);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("resolvePhaseOutcome", () => {
+	it("passes a clean run with its results untouched", () => {
+		const run = {
+			ok: true,
+			results: [{ name: "Unit Tests (api)", ok: true, exitCode: 0, output: "", wallSecs: 3 }],
+		};
+		assert.deepEqual(resolvePhaseOutcome({ run }), {
+			ok: true,
+			verdictResults: run.results,
+			failedNames: [],
+		});
+	});
+
+	it("fails a named branch failure and names it", () => {
+		const run = {
+			ok: false,
+			results: [{ name: "Linting (api)", ok: false, exitCode: 1, output: "boom\n", wallSecs: 5 }],
+		};
+		const outcome = resolvePhaseOutcome({ run });
+		assert.equal(outcome.ok, false);
+		assert.deepEqual(outcome.failedNames, ["Linting (api)"]);
+		assert.equal(outcome.verdictResults, run.results);
+	});
+
+	it("fails a nameless failure as unknown branch instead of claiming ok", () => {
+		for (const run of [{ ok: false }, { ok: false, results: [] }, null, undefined]) {
+			const outcome = resolvePhaseOutcome({ run });
+			assert.equal(outcome.ok, false);
+			assert.deepEqual(outcome.failedNames, ["unknown branch"]);
+			assert.equal(outcome.verdictResults.length, 1);
+			assert.equal(outcome.verdictResults[0].name, "unknown branch");
+		}
+	});
+
+	it("fails when the runner claims success but a branch result disagrees", () => {
+		const outcome = resolvePhaseOutcome({
+			run: {
+				ok: true,
+				results: [{ name: "Unit Tests (api)", ok: false, exitCode: 1, output: "boom\n", wallSecs: 3 }],
+			},
+		});
+		assert.equal(outcome.ok, false);
+		assert.deepEqual(outcome.failedNames, ["Unit Tests (api)"]);
 	});
 });
 

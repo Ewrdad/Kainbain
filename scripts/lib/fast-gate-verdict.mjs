@@ -79,7 +79,10 @@ export function branchSlug(branchName) {
  * @returns {string} Timestamp stamp for the verdict directory name.
  ***/
 export function formatVerdictTimestamp(now = new Date()) {
-	const at = now instanceof Date ? now : new Date(now);
+	const parsed = now instanceof Date ? now : new Date(now);
+	// Fail safe: an unreadable clock reading falls back to the current time
+	// so the verdict directory always sorts beside its run, never `NaN…`.
+	const at = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 	const pad = (value) => String(value).padStart(2, "0");
 	return (
 		`${at.getUTCFullYear()}${pad(at.getUTCMonth() + 1)}${pad(at.getUTCDate())}` +
