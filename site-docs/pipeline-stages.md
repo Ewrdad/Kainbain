@@ -47,6 +47,20 @@ How it behaves at run time:
 - Task-branch finalize (commit + push of task work) is **skipped** for `primary`/`custom` runs: a verification or deploy run must never commit or push onto the primary or custom branch. Keep CI commands on these modes read-only (tests, lint, builds) and gitignore their artifacts — a command that dirties the tree will make the restore refuse and fail the stage loudly.
 - The stage report records the resolved branch and its tip SHA (`**Branch:** main (primary) @ <sha>`) so a failed run is auditable.
 
+## CI failure detail: fast gate, verdicts, and budgets
+
+The `npm test` gate (and any `ci` stage running it) reports fast-gate failures — unit tests, lint, harness self-tests — without waiting for the slow serial canary phase. When the fast phase fails, the gate writes a verdict directory under the task docs (`ci-fast-gate-<timestamp>/` holding `verdict.json` plus one untrimmed `<branch-slug>.full.log` per **failed** branch only), prints a `KAINBAIN_FAST_GATE_RESULT` banner naming the failed suites and their files, and skips canary with an explicit `SKIP (fast-gate failed: …)` line — so the failure surfaces seconds after the fast phase instead of ~13 minutes later. Opt out with `--no-fail-fast` / `KAINBAIN_NO_FAIL_FAST=1` (canary still runs after a red fast phase, but the verdict still lands early); a green fast phase always runs canary. While a serial phase still runs after a fast failure, the engine also records the banner's suites and verdict path in task history and the live system feed — an early operator signal that never changes routing.
+
+Failure detail travels in files; the budgeted surfaces carry pointers. Three trims apply, innermost first:
+
+| Layer | Budget | What survives |
+| ---- | ------ | ------------- |
+| Inline `Details for <branch>:` tail | 120 lines (`KAINBAIN_FAILURE_TAIL_LINES` to tune), plus a `Full log:` pointer | The failure summary at the branch output's end |
+| Timeline `Failed` row excerpt | 3072 chars, head+tail | Failed suite names and verdict-file paths (printed at the gate output's head and tail) |
+| Retry-prompt `Failure Details` section | 4000 chars per stream, head+tail | The same pointers plus the assertion lines the next attempt must fix |
+
+The stage report itself embeds the full gate stdout, and the verdict files hold the byte-complete output of every failed suite — so when an excerpt points at a file, read the file for the untrimmed middle.
+
 ## Stage Runner access
 
 Every stage has an optional **Runner access** list at the bottom of its settings. It restricts which Runners may take that stage — without blocking a whole category of work:

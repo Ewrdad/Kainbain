@@ -1488,6 +1488,136 @@ describe("runCommandStage deploy-command CI failure (ordinary CI contract)", () 
 });
 
 /***
+ * MARK: fast-gate early signal tests
+ * @description Pins the advisory fast-gate scan in runCommandStage: a failing
+ *   KAINBAIN_FAST_GATE_RESULT marker in live output records one history +
+ *   process-log entry and one system-feed line naming the failed suites and
+ *   the verdict path — without changing routing (the stage still fails back
+ *   on the command's own exit code). Passing markers and marker-free output
+ *   record nothing; a marker split across two chunks still fires exactly once.
+ ***/
+describe("runCommandStage fast-gate early signal", () => {
+	const FAIL_MARKER =
+		'KAINBAIN_FAST_GATE_RESULT ok=false failedBranches="Unit Tests (frontend)" canary=skipped_due_to_fast_gate_failure verdict="/tmp/v/verdict.json"';
+	const PASS_MARKER =
+		'KAINBAIN_FAST_GATE_RESULT ok=true failedBranches="" canary=ran verdict="/tmp/v/verdict.json"';
+
+	function gateOpts({ execRunner, bridge } = {}) {
+		return {
+			stages: [baseStage()],
+			cwd: "/repo",
+			kind: "ci",
+			label: "CI",
+			logTag: "CI/CMD",
+			reportTitle: "CI Stage Report",
+			statusValue: "running_ci",
+			defaultCommand: "npm test",
+			execRunner,
+			...(bridge ? { bridge } : {}),
+		};
+	}
+
+	function fastGateHistory(task) {
+		return (task.history || []).filter((entry) =>
+			String(entry?.action || "").includes("Fast-gate FAILED"),
+		);
+	}
+
+	it("records the failing suites and verdict path from streamed chunks, still failing back on exit code", async () => {
+		const store = stubStore();
+		const task = ciTask();
+		store.getTask.mockReturnValue(task);
+		const bridge = { emitProcessEvent: vi.fn(), emitSystemLog: vi.fn() };
+		await runCommandStage(
+			store,
+			"proj-1",
+			"task-1",
+			baseStage(),
+			gateOpts({
+				bridge,
+				execRunner: async (_command, { onStdout }) => {
+					onStdout("Starting full project verification...\n");
+					onStdout(`${FAIL_MARKER}\nFast-gate verdict: FAILED\n`);
+					return { exitCode: 1 };
+				},
+			}),
+		);
+		const entries = fastGateHistory(task);
+		expect(entries).toHaveLength(1);
+		expect(entries[0].action).toContain("Unit Tests (frontend)");
+		expect(entries[0].action).toContain("/tmp/v/verdict.json");
+		expect(logText(task)).toContain("Fast-gate FAILED: Unit Tests (frontend)");
+		expect(bridge.emitSystemLog).toHaveBeenCalledTimes(1);
+		expect(bridge.emitSystemLog.mock.calls[0][1]).toContain("[FAST-GATE]");
+		// Advisory only: routing still follows the command's exit code.
+		expect(store.handleStageFailure).toHaveBeenCalledTimes(1);
+	});
+
+	it("fires exactly once when the marker repeats and when chunks split it", async () => {
+		const store = stubStore();
+		const task = ciTask();
+		store.getTask.mockReturnValue(task);
+		const head = FAIL_MARKER.slice(0, 40);
+		const tail = FAIL_MARKER.slice(40);
+		await runCommandStage(
+			store,
+			"proj-1",
+			"task-1",
+			baseStage(),
+			gateOpts({
+				execRunner: async (_command, { onStdout }) => {
+					onStdout(`noise\n${head}`);
+					onStdout(`${tail}\nmore\n${FAIL_MARKER}\n`);
+					return { exitCode: 1 };
+				},
+			}),
+		);
+		expect(fastGateHistory(task)).toHaveLength(1);
+		expect(store.handleStageFailure).toHaveBeenCalledTimes(1);
+	});
+
+	it("finds the marker in buffered (non-streamed) runner output too", async () => {
+		const store = stubStore();
+		const task = ciTask();
+		store.getTask.mockReturnValue(task);
+		await runCommandStage(
+			store,
+			"proj-1",
+			"task-1",
+			baseStage(),
+			gateOpts({
+				execRunner: async () => ({ exitCode: 1, stdout: `log\n${FAIL_MARKER}\n`, stderr: "" }),
+			}),
+		);
+		expect(fastGateHistory(task)).toHaveLength(1);
+	});
+
+	it("records nothing for a passing marker or marker-free output", async () => {
+		for (const stdout of [`log\n${PASS_MARKER}\n`, "Running Unit Tests (api)... PASS (3s)\n"]) {
+			const store = stubStore();
+			const task = ciTask();
+			store.getTask.mockReturnValue(task);
+			const bridge = { emitProcessEvent: vi.fn(), emitSystemLog: vi.fn() };
+			await runCommandStage(
+				store,
+				"proj-1",
+				"task-1",
+				baseStage(),
+				gateOpts({
+					bridge,
+					execRunner: async (_command, { onStdout }) => {
+						onStdout(stdout);
+						return { exitCode: stdout.includes("PASS (") ? 0 : 1 };
+					},
+				}),
+			);
+			expect(fastGateHistory(task)).toHaveLength(0);
+			expect(bridge.emitSystemLog).not.toHaveBeenCalled();
+		}
+	});
+});
+
+/***
  * MARK: resolveCiBranchPlan tests
  * @description Pins the ci branch-mode policy: absent/unknown modes stay on
  *   the task branch (fail-open, never a broken pipeline), while misconfigured
