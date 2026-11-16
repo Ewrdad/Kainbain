@@ -85,6 +85,48 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Screen version (the part you see and click)",
+        "Server version (the part that runs in the background)",
+        "Connection versions (the links between screen and server)",
+        "Latest safety check result for this build",
+        "Warning when a newer version exists",
+        "Links to simple update guides"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Not sure - pick the simplest sensible option"
+      ],
+      "notes": "I mean the version of the API that is used to detect compatibility between versions"
+    },
+    "q3": {
+      "selected": [
+        "Summary plus a link to the full report (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Check by itself each time the page is opened"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Everyone who can open global settings"
+      ],
+      "notes": "Give it its own role. Two roles really for viewing updates and view security"
+    },
+    "q6": {
+      "selected": [
+        "Open the step-by-step update guide in the site docs"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
