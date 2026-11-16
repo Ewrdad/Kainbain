@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import {
 	RunnerGitError,
+	ensureRepoHooksPath,
 	listOrphanWorkdirs,
 	maybeRecoverWorkdirLock,
 	prepareIntegrationWorkdir,
@@ -358,6 +359,36 @@ describe("runner project prep", () => {
 		assert.ok(fs.existsSync(path.join(workdir, "f.txt")));
 		const again = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "t1" });
 		assert.equal(again.reused, true);
+	});
+
+	it("activates the committed pre-commit hook path so kb-* worktrees inherit the binary guard", async () => {
+		// Linked worktrees share the repo's common config, so setting
+		// core.hooksPath once in the adopted repo covers the worktree.
+		const { workdir } = await prepareWorkdir({ localPath: repo, workRoot: tmp, taskId: "t1" });
+		const readBack = execFileSync("git", ["config", "--get", "core.hooksPath"], {
+			cwd: workdir,
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		}).trim();
+		assert.equal(readBack, "scripts/githooks");
+	});
+
+	it("ensureRepoHooksPath sets, idempotently skips, never clobbers a foreign hooksPath, and never throws outside a repo", async () => {
+		assert.equal(await ensureRepoHooksPath(repo), true);
+		assert.equal(await ensureRepoHooksPath(repo), false, "second run is a no-op");
+		git(repo, ["config", "core.hooksPath", ".husky"]);
+		assert.equal(await ensureRepoHooksPath(repo), false, "foreign hooksPath is left untouched");
+		const hooksPath = execFileSync("git", ["-C", repo, "config", "--get", "core.hooksPath"], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		}).trim();
+		assert.equal(hooksPath, ".husky");
+		const notARepo = fs.mkdtempSync(path.join(os.tmpdir(), "kb-runner-notrepo-"));
+		try {
+			assert.equal(await ensureRepoHooksPath(notARepo), false, "outside a repo: no throw, no set");
+		} finally {
+			fs.rmSync(notARepo, { recursive: true, force: true });
+		}
 	});
 
 	it("clones a remote-backed repo and pulls on revisit", async () => {

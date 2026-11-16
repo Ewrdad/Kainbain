@@ -1749,6 +1749,16 @@ export const CONFIG_SCHEMA = [
 		doc: "Max image file references injected into one curated stage prompt (overflow is summarized).",
 	},
 	{
+		key: "taskReportsMaxPromptRefs",
+		env: "KAINBAIN_TASK_REPORTS_MAX_PROMPT_REFS",
+		aliases: [],
+		type: "int",
+		default: 5,
+		min: 0,
+		group: "tasks",
+		doc: "Max task-folder files listed in one curated stage prompt's # Previous Reports section (newest first; overflow is summarized). 0 = list all.",
+	},
+	{
 		key: "taskImageMaxAttachBytes",
 		env: "KAINBAIN_TASK_IMAGE_MAX_ATTACH_BYTES",
 		aliases: [],

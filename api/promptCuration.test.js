@@ -336,31 +336,53 @@ describe("PromptCurationEngine", () => {
 	});
 
 	it("interpolates {{projectRoot}}, {{previousReports}}, and {{latestReportPath}}", () => {
-		const engine = new PromptCurationEngine();
-		const task = {
-			id: "task-77",
-			goal: "Ship feature",
-			reports: [
-				{ stageSlug: "idea", path: "./docs/tasks/task-77/idea-1.md" },
-				{ stageSlug: "plan", path: "./docs/tasks/task-77/plan-2.md" },
-			],
-		};
-		const stage = {
-			id: "3",
-			name: "Plan",
-			prompt:
-				"Root: {{projectRoot}}\nPrior:\n{{previousReports}}\nLatest: {{latestReportPath}}",
-		};
-
-		const prompt = engine.curatePrompt(task, stage, {
-			projectCwd: "/home/server/projects/kainbain",
-		});
-
-		expect(prompt).toContain("Root: /home/server/projects/kainbain");
-		expect(prompt).toContain(
-			"Prior:\n./docs/tasks/task-77/idea-1.md\n./docs/tasks/task-77/plan-2.md",
+		// Disk-authoritative: the prompt lists the real files in a tmp task
+		// folder (phantom metadata entries are dropped).
+		const projectCwd = fs.mkdtempSync(
+			path.join(os.tmpdir(), "kainbain-prompt-curation-"),
 		);
-		expect(prompt).toContain("Latest: ./docs/tasks/task-77/plan-2.md");
+		try {
+			const taskDir = path.join(projectCwd, "docs", "tasks", "task-77");
+			fs.mkdirSync(taskDir, { recursive: true });
+			fs.writeFileSync(path.join(taskDir, "idea-1.md"), "idea");
+			fs.writeFileSync(path.join(taskDir, "plan-2.md"), "plan");
+			const older = new Date(Date.now() - 2000);
+			const newer = new Date();
+			fs.utimesSync(path.join(taskDir, "idea-1.md"), older, older);
+			fs.utimesSync(path.join(taskDir, "plan-2.md"), newer, newer);
+			const engine = new PromptCurationEngine();
+			const task = {
+				id: "task-77",
+				goal: "Ship feature",
+				reports: [
+					{ stageSlug: "idea", path: "./docs/tasks/task-77/idea-1.md" },
+					{ stageSlug: "plan", path: "./docs/tasks/task-77/plan-2.md" },
+					{
+						stageSlug: "ghost",
+						path: "./docs/tasks/task-77/ghost-9.md",
+					},
+				],
+			};
+			const stage = {
+				id: "3",
+				name: "Plan",
+				prompt:
+					"Root: {{projectRoot}}\nPrior:\n{{previousReports}}\nLatest: {{latestReportPath}}",
+			};
+
+			const prompt = engine.curatePrompt(task, stage, {
+				projectCwd,
+			});
+
+			expect(prompt).toContain(`Root: ${projectCwd}`);
+			expect(prompt).toContain(
+				"Prior:\n./docs/tasks/task-77/plan-2.md\n./docs/tasks/task-77/idea-1.md",
+			);
+			expect(prompt).toContain("Latest: ./docs/tasks/task-77/plan-2.md");
+			expect(prompt).not.toContain("ghost-9.md");
+		} finally {
+			fs.rmSync(projectCwd, { recursive: true, force: true });
+		}
 	});
 
 	it("provides graceful fallbacks for {{projectRoot}}, {{previousReports}}, {{latestReportPath}} when absent", () => {

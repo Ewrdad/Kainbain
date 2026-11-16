@@ -209,8 +209,14 @@ new ids.
 - **Recommended:** update custom article frontmatter to the new `section:`
   values at your convenience; the alias is retained indefinitely and there
   is no removal date.
-- **Coverage:** `api/siteDocs.test.js` ("LEGACY_SECTION_ALIASES") proves
-  `readDocFile` / `listDocs` / `getDoc` resolve old-section files.
+- **Coverage:** `api/siteDocs.test.js` proves `readDocFile` / `listDocs` /
+  `getDoc` resolve old-section files ("LEGACY_SECTION_ALIASES" suite, incl. a
+  recorded warning per aliased file), and the "siteDocs taxonomy rename
+  guardrail" suite fails — naming the retired id — when any id in
+  `KNOWN_SECTION_HISTORY` is neither current nor aliased, when an alias
+  points at a non-current id, or when a retired id lacks a note here.
+  Section-caused skips are never silent at runtime either: unknown, missing,
+  or unaliased-retired sections warn naming the file (`readDocFile`).
 
 ## Dated exceptions (all carry reason + expiry in the allowlist)
 

@@ -478,6 +478,70 @@ describe("TaskStore", () => {
 		expect(contents).toContain("# Implementation Stage\nCode written.");
 	});
 
+	it("flags phantom report metadata missingOnDisk without deleting it, and picks up hand-written files", () => {
+		const store = new TaskStore();
+		const task = store.createTask("p1", {
+			goal: "Phantom flag task",
+			stageId: "1",
+		});
+		store.saveStageReport("p1", task.id, {
+			stageName: "Idea",
+			content: "# Idea\nReal.",
+			projectCwd: tempCwd,
+		});
+		// Hand-written file with no report metadata.
+		fs.writeFileSync(
+			path.join(tempCwd, "docs", "tasks", task.id, "MY_NOTES.md"),
+			"# Notes\nHand-written.",
+		);
+		// History claims a file that was never saved.
+		task.reports.push({
+			stageName: "Ghost",
+			stageSlug: "ghost",
+			path: `./docs/tasks/${task.id}/ghost-20200101-000000.md`,
+			filename: "ghost-20200101-000000.md",
+			name: "ghost-20200101-000000.md",
+			timestamp: "20200101-000000",
+		});
+
+		const retrieved = store.getTaskReports("p1", task.id, tempCwd);
+		const ghost = retrieved.find(
+			(r) => r.filename === "ghost-20200101-000000.md",
+		);
+		expect(ghost).toBeTruthy();
+		expect(ghost.missingOnDisk).toBe(true);
+		const real = retrieved.find((r) =>
+			String(r.filename || "").startsWith("idea-"),
+		);
+		expect(real).toBeTruthy();
+		expect(real.missingOnDisk).not.toBe(true);
+		const hand = retrieved.find((r) => r.filename === "MY_NOTES.md");
+		expect(hand).toBeTruthy();
+		expect(hand.content).toContain("Hand-written.");
+		expect(hand.missingOnDisk).not.toBe(true);
+
+		// Metadata-only entries stay unflagged when the task folder is absent.
+		const task2 = store.createTask("p1", {
+			goal: "Metadata-only task",
+			stageId: "1",
+		});
+		task2.reports.push({
+			stageName: "Ghost",
+			stageSlug: "ghost",
+			path: `./docs/tasks/${task2.id}/ghost-20200101-000000.md`,
+			filename: "ghost-20200101-000000.md",
+			name: "ghost-20200101-000000.md",
+			timestamp: "20200101-000000",
+		});
+		const retrieved2 = store.getTaskReports(
+			"p1",
+			task2.id,
+			path.join(tempCwd, "no-such-project"),
+		);
+		expect(retrieved2.length).toBe(1);
+		expect(retrieved2[0].missingOnDisk).toBeUndefined();
+	});
+
 	it("routes failback directly to a target stage ID configured in stage.failback", () => {
 		const customStages = [
 			{ id: "idea", name: "Idea", type: "agent", failback: "start" },
