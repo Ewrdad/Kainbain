@@ -132,7 +132,10 @@ describe('FleetCatalogueSection', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Remove custom::acme::retired permanently' }),
     );
-    expect(await screen.findByTestId('fleet-catalogue-error')).toHaveTextContent('forbidden');
+    const removalError = await screen.findByTestId('fleet-catalogue-error');
+    expect(removalError).toHaveTextContent('forbidden');
+    // Server error text must wrap inside the card.
+    expect(removalError).toHaveClass('break-words');
     // The table is still there — never a blank that reads as "no models".
     expect(screen.getAllByTestId('fleet-catalogue-row')).toHaveLength(4);
   });
@@ -150,9 +153,9 @@ describe('FleetCatalogueSection', () => {
     expect(screen.getAllByRole('button', { name: 'Re-scan box-a' })[0]).toHaveTextContent('Queuing…');
     release(undefined);
     await waitFor(() => expect(requestModelRediscovery).toHaveBeenCalledWith('box-a'));
-    expect(await screen.findByTestId('fleet-catalogue-notice')).toHaveTextContent(
-      'Re-scan queued — box-a will refresh on next heartbeat.',
-    );
+    const notice = await screen.findByTestId('fleet-catalogue-notice');
+    expect(notice).toHaveTextContent('Re-scan queued — box-a will refresh on next heartbeat.');
+    expect(notice).toHaveClass('break-words');
   });
 
   it('notes a failed re-scan without losing the table', async () => {
@@ -207,7 +210,9 @@ describe('FleetCatalogueSection', () => {
     getFleetModelCatalog.mockRejectedValueOnce(new Error('boom'));
     render(<FleetCatalogueSection />);
     expect(await screen.findByTestId('fleet-catalogue-unavailable')).toBeInTheDocument();
-    expect(screen.getByTestId('fleet-catalogue-error')).toHaveTextContent('boom');
+    const fetchError = screen.getByTestId('fleet-catalogue-error');
+    expect(fetchError).toHaveTextContent('boom');
+    expect(fetchError).toHaveClass('break-words');
     expect(screen.queryByTestId('fleet-catalogue-empty')).not.toBeInTheDocument();
   });
 

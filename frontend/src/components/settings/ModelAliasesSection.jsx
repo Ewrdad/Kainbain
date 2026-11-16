@@ -24,6 +24,7 @@ import {
 } from '../../services/modelStatus';
 import { withFleetModels, effectiveModelSelection } from '../../services/fleetModelOptions';
 import { ReliabilityLine } from './ReliabilityLine';
+import { TruncatedText } from '../common/TruncatedText';
 import {
   ALIAS_HARNESS_ID,
   getAliasTargets,
@@ -610,6 +611,7 @@ function AliasTargetRow({
           <SelectDropdown
             id={`model-alias-harness-${aliasIndex}-${targetIndex}`}
             ariaLabel={harnessLabel}
+            className="block w-full min-w-0"
             value={harnessId}
             onChange={(next) => {
               const nextEntry = catalogue.find((h) => h.id === next);
@@ -671,6 +673,7 @@ function AliasTargetRow({
             <SelectDropdown
               id={`model-alias-model-${aliasIndex}-${targetIndex}`}
               ariaLabel={modelLabel}
+              className="block w-full min-w-0"
               value={resolvedModel}
               onChange={(next) => {
                 const { reasoning: currentLevel } = splitReasoning(target?.model || '');
@@ -701,6 +704,7 @@ function AliasTargetRow({
             <SelectDropdown
               id={`model-alias-reasoning-${aliasIndex}-${targetIndex}`}
               ariaLabel="Reasoning"
+              className="block w-full min-w-0"
               value={draftReasoning || ''}
               onChange={(level) => {
                 const base = resolvedModel || splitReasoning(target?.model || '').baseRef;
@@ -808,7 +812,7 @@ function AliasTargetRow({
               <p
                 data-testid={validityTestId}
                 title={validity.message}
-                className="text-[10px] font-bold text-error"
+                className="text-[10px] font-bold text-error break-words"
               >
                 ✕ {validity.message}
               </p>
@@ -899,7 +903,7 @@ function CollapseToggleButton({ index, aliasName, expanded, onToggle, disabled =
       aria-label={`${expanded ? 'Collapse' : 'Expand'} alias ${label}`}
       onClick={onToggle}
       disabled={disabled}
-      className="px-1.5 py-0.5 text-xs text-text-muted hover:text-on-surface cursor-pointer select-none font-mono"
+      className="shrink-0 px-1.5 py-0.5 text-xs text-text-muted hover:text-on-surface cursor-pointer select-none font-mono"
     >
       {expanded ? '▾' : '▸'}
     </button>
@@ -1249,15 +1253,15 @@ export function ModelAliasesSection({
                       </span>
                       <span
                         data-testid={`model-alias-summary-${index}`}
-                        className="px-1.5 py-0.5 bg-surface-deep border border-border-standard rounded-sm text-[10px] text-text-muted font-mono"
+                        className="px-1.5 py-0.5 bg-surface-deep border border-border-standard rounded-sm text-[10px] text-text-muted font-mono min-w-0 max-w-full inline-flex"
                       >
-                        {formatAliasSummary(targets, targetHarnesses)}
+                        <TruncatedText text={formatAliasSummary(targets, targetHarnesses)} />
                       </span>
                       {rowError && (
                         <span
                           role="alert"
                           data-testid={`model-alias-error-alert-${index}`}
-                          className="inline-flex"
+                          className="inline-flex min-w-0 max-w-full"
                         >
                           {/* Read-only view change: intentionally not disabled —
                               expanding a card to read its error mutates
@@ -1267,7 +1271,7 @@ export function ModelAliasesSection({
                             data-testid={`model-alias-error-badge-${index}`}
                             onClick={() => toggleCollapse(key)}
                             title={`${rowError} (Click to expand)`}
-                            className="px-1.5 py-0.5 bg-error/10 border border-error/50 rounded-sm text-[10px] font-bold text-error cursor-pointer"
+                            className="px-1.5 py-0.5 bg-error/10 border border-error/50 rounded-sm text-[10px] font-bold text-error cursor-pointer break-all"
                           >
                             ⚠ {rowError}
                           </button>
@@ -1300,8 +1304,8 @@ export function ModelAliasesSection({
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
                         <CollapseToggleButton
                           index={index}
                           aliasName={row?.name}
@@ -1309,19 +1313,21 @@ export function ModelAliasesSection({
                           onToggle={() => toggleCollapse(key)}
                           disabled={disabled}
                         />
-                        <span
+                        <TruncatedText
                           id={`model-alias-header-${index}`}
+                          text={row?.name ? `Alias: ${row.name}` : `Alias ${index + 1}`}
+                          title={row?.name || `Alias ${index + 1}`}
                           className="text-xs font-bold uppercase text-text-muted tracking-wider"
-                        >
-                          {row?.name ? `Alias: ${row.name}` : `Alias ${index + 1}`}
-                        </span>
+                        />
                       </div>
-                      <DeleteAliasButton
-                        index={index}
-                        aliasName={row?.name}
-                        onDelete={() => deleteRow(index)}
-                        disabled={disabled}
-                      />
+                      <div className="shrink-0">
+                        <DeleteAliasButton
+                          index={index}
+                          aliasName={row?.name}
+                          onDelete={() => deleteRow(index)}
+                          disabled={disabled}
+                        />
+                      </div>
                     </div>
                     <div
                       id={`model-alias-body-${index}`}
@@ -1447,7 +1453,7 @@ export function ModelAliasesSection({
                       {(rowError || usageCount > 0 || usage?.usesAsDefault) && (
                         <div>
                           {rowError && (
-                            <p role="alert" className="text-[11px] font-bold text-error">
+                            <p role="alert" className="text-[11px] font-bold text-error break-words">
                               {rowError}
                             </p>
                           )}

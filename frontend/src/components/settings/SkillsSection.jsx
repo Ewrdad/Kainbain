@@ -4,6 +4,7 @@ import { api } from '../../services/api';
 import { logger } from '../../services/logger';
 import { Modal } from '../Modal';
 import { MarkdownViewer } from '../common/MarkdownViewer';
+import { TruncatedText } from '../common/TruncatedText';
 
 /***
  * MARK: serverErrorMessage
@@ -89,7 +90,7 @@ function SkillRow({
     <li className="flex flex-wrap items-center gap-2 p-3 bg-surface-deep border border-border-standard rounded-sm">
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-xs font-bold text-on-surface">{skill.name}</span>
+          <TruncatedText text={skill.name} className="font-mono text-xs font-bold text-on-surface" />
           {skill.invalid && (
             <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-sm bg-red-500/15 text-red-500 border border-red-500/30">
               Invalid
@@ -109,11 +110,14 @@ function SkillRow({
             </span>
           )}
         </div>
-        <p className="text-[11px] text-text-muted mt-1 truncate">
+        <p
+          className="text-[11px] text-text-muted mt-1 truncate"
+          title={skill.description || 'No description'}
+        >
           {skill.description || 'No description'}
         </p>
         {skill.invalid && skill.error && (
-          <p className="text-[10px] text-red-500 mt-1 font-mono">{skill.error}</p>
+          <p className="text-[10px] text-red-500 mt-1 font-mono break-words">{skill.error}</p>
         )}
         {showConfigToggle && (
           <div className="mt-1">
@@ -149,12 +153,12 @@ function SkillRow({
                   const description = entryObject ? (entry.description || '') : '';
                   return (
                     <div key={key} className="space-y-0.5">
-                      <dt className="font-mono text-[10px] font-bold text-on-surface">{key}</dt>
+                      <dt className="font-mono text-[10px] font-bold text-on-surface break-all">{key}</dt>
                       <dd className="font-mono text-[10px] text-text-muted break-all">
                         default: {String(value) === '' ? '—' : String(value)}
                       </dd>
                       {description ? (
-                        <dd className="text-[10px] text-text-muted">{description}</dd>
+                        <dd className="text-[10px] text-text-muted break-words">{description}</dd>
                       ) : null}
                     </div>
                   );
@@ -482,19 +486,19 @@ export function SkillsSection({ activeProjectId }) {
           </button>
         </div>
         {importError && (
-          <p role="alert" className="text-[11px] font-bold text-red-500">
+          <p role="alert" className="text-[11px] font-bold text-red-500 break-words">
             {importError}
           </p>
         )}
         {importSuccess && (
-          <p role="status" className="text-[11px] font-bold text-primary">
+          <p role="status" className="text-[11px] font-bold text-primary break-words">
             {importSuccess}
           </p>
         )}
         {importWarnings.length > 0 && (
           <ul aria-label="Import warnings" className="space-y-1">
             {importWarnings.map((warning, idx) => (
-              <li key={idx} className="text-[11px] text-ochre font-mono">
+              <li key={idx} className="text-[11px] text-ochre font-mono break-words">
                 ⚠ {warning}
               </li>
             ))}
@@ -507,7 +511,7 @@ export function SkillsSection({ activeProjectId }) {
         <p className="text-xs text-text-muted">Loading skills…</p>
       ) : skillsError ? (
         <div className="space-y-2 max-w-3xl">
-          <p role="alert" className="text-[11px] font-bold text-red-500">
+          <p role="alert" className="text-[11px] font-bold text-red-500 break-words">
             Failed to load skills: {skillsError}
           </p>
           <button
@@ -521,7 +525,7 @@ export function SkillsSection({ activeProjectId }) {
       ) : (
         <div className="space-y-6 max-w-3xl">
           {deleteError && (
-            <p role="alert" className="text-[11px] font-bold text-red-500">
+            <p role="alert" className="text-[11px] font-bold text-red-500 break-words">
               {deleteError}
             </p>
           )}
@@ -583,7 +587,7 @@ export function SkillsSection({ activeProjectId }) {
       {previewName && (
         <Modal onClose={() => setPreviewName(null)} labelledBy="skill-preview-title">
           <div className="p-4 space-y-3 max-w-2xl">
-            <h3 id="skill-preview-title" className="font-mono text-sm font-bold text-on-surface">
+            <h3 id="skill-preview-title" className="font-mono text-sm font-bold text-on-surface break-words">
               {previewName}
             </h3>
             {previewLoading ? (

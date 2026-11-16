@@ -87,9 +87,10 @@ describe('AppLinkSection', () => {
       target: { value: 'javascript:alert(1)' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save Link' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'App URL must be an absolute http(s) URL.',
-    );
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('App URL must be an absolute http(s) URL.');
+    // Errors carry server text, so the alert must wrap.
+    expect(alert).toHaveClass('break-words');
     expect(api.updateAppStatus).not.toHaveBeenCalled();
   });
 
@@ -107,9 +108,10 @@ describe('AppLinkSection', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Test Health' }));
     await waitFor(() => expect(api.checkAppHealth).toHaveBeenCalledWith('p1'));
-    expect(await screen.findByTestId('applink-probe-result')).toHaveTextContent(
-      '✓ Healthy — HTTP 200 in 12ms',
-    );
+    const probeResult = await screen.findByTestId('applink-probe-result');
+    expect(probeResult).toHaveTextContent('✓ Healthy — HTTP 200 in 12ms');
+    // Probe failures append raw error text, so the line must wrap.
+    expect(probeResult).toHaveClass('break-words');
     expect(onChanged).toHaveBeenCalledWith({ id: 'p1', appStatus: fresh });
   });
 

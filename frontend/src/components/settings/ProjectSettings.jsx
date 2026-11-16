@@ -267,6 +267,7 @@ export function ProjectSettings() {
                   <SelectDropdown
                     id="active-project-select"
                     ariaLabel="Active Project"
+                    className="block w-full min-w-0"
                     value={activeProjectId || ''}
                     onChange={handleActiveProjectChange}
                     options={projects.map((p) => ({ value: p.id, label: p.name }))}
