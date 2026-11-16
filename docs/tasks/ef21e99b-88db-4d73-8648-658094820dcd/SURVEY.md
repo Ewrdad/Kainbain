@@ -57,6 +57,31 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Both the guide and the checklist (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Add the check to the quick checks run on their own computer before pushing (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Any new shared item, even when added to an existing file (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "File name, item name, and a small ready-to-paste fixed example (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
