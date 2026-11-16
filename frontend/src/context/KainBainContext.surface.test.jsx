@@ -195,6 +195,7 @@ describe('KainBainContext value surface', () => {
       'toggleHideProject',
       'toolCalls',
       'uiPreferences',
+      'uncompleteTask',
       'updateHarnessPref',
       'updateProjectInState',
       'updateTask',

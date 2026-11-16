@@ -125,6 +125,7 @@ describe('api public surface', () => {
       'testImageGenProvider',
       'triggerDeploy',
       'triggerRollback',
+      'uncompleteTask',
       'updateAppStatus',
       'updateProject',
       'updateProjectWorkflow',

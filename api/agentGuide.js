@@ -269,6 +269,13 @@ export const ENDPOINTS = [
 	},
 	{
 		method: "POST",
+		path: "/tasks/:id/uncomplete",
+		purpose:
+			"Reopen a completed task back into the workflow, restoring the status/stage it had before completion (no-op when not completed).",
+		body: null,
+	},
+	{
+		method: "POST",
 		path: "/tasks/:id/claim",
 		purpose:
 			"Runner-only: atomically claim a task (200 + lease { executionId, epoch } or 409 + holder). Requires the x-runner-credential header.",

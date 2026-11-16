@@ -25,6 +25,7 @@ import { ReportViewer } from '../reports/ReportViewer';
 import { copyToClipboard } from '../../services/clipboard';
 import { getTaskBranchName, buildCheckoutCommand } from './taskBranch';
 import { TaskGoalSection } from './TaskGoalSection';
+import { TaskCompleteToggleButton } from './TaskCompleteToggleButton';
 import { CopyableTaskKey } from './CopyableTaskKey';
 import { DiffStatBadge } from './DiffStatBadge';
 import { RunAttributionBadge } from './RunAttributionBadge';
@@ -65,6 +66,7 @@ export function TaskDetailPage({ task: propTask, onBack }) {
     jumpTask,
     moveTask,
     completeTask,
+    uncompleteTask,
     advanceTask,
     executeTaskStage,
     openFeedbackDialog,
@@ -1209,30 +1211,16 @@ export function TaskDetailPage({ task: propTask, onBack }) {
                   </button>
                 )}
 
-                {task.status !== 'completed' && (
-                  <button
-                    type="button"
-                    disabled={isMutating}
-                    aria-busy={pendingAction === 'complete'}
-                    onClick={() => {
-                      runTaskAction('complete', () =>
-                        completeTask?.(activeProjectId, task.id),
-                      ).catch(() => {
-                        // completeTask surfaces failures via its notification layer.
-                      });
-                    }}
-                    className="px-4 py-2.5 min-h-[44px] border border-primary/40 text-primary hover:bg-primary hover:text-on-primary rounded-sm text-xs font-bold uppercase transition-colors cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5"
-                  >
-                    {pendingAction === 'complete' ? (
-                      <>
-                        <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        <span>Completing...</span>
-                      </>
-                    ) : (
-                      <span>✓ Complete</span>
-                    )}
-                  </button>
-                )}
+                <TaskCompleteToggleButton
+                  task={task}
+                  activeProjectId={activeProjectId}
+                  completeTask={completeTask}
+                  uncompleteTask={uncompleteTask}
+                  isMutating={isMutating}
+                  pendingAction={pendingAction}
+                  runTaskAction={runTaskAction}
+                  className="px-4 py-2.5 min-h-[44px] border border-primary/40 text-primary hover:bg-primary hover:text-on-primary rounded-sm text-xs font-bold uppercase transition-colors cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5"
+                />
                 <button
                   type="button"
                   disabled={isMutating}

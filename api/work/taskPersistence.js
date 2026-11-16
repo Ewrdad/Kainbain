@@ -80,6 +80,11 @@ export function saveTaskMarkdown(taskStore, projectCwd, task) {
 				? [`surveyFile: ${_formatFrontmatterValue(normalizeSurveyFileName(task.surveyFile))}`]
 				: []),
 			`currentStageId: ${_formatFrontmatterValue(task.currentStageId || "")}`,
+			// Pre-completion snapshot consumed by uncompleteTask ("restore it to
+			// before"); written only while a completed task still carries it, so a
+			// reopen (or a never-completed task) leaves the line out of the file.
+			...(task.statusBeforeComplete ? [`statusBeforeComplete: ${_formatFrontmatterValue(task.statusBeforeComplete)}`] : []),
+			...(task.stageBeforeComplete ? [`stageBeforeComplete: ${_formatFrontmatterValue(task.stageBeforeComplete)}`] : []),
 			`createdAt: ${_formatFrontmatterValue(task.createdAt)}`,
 			`updatedAt: ${_formatFrontmatterValue(task.updatedAt)}`,
 			`enteredStageAt: ${_formatFrontmatterValue(task.enteredStageAt || "")}`,
@@ -932,6 +937,11 @@ export function parseTaskMarkdown(taskStore, content, taskId, projectId) {
 		body: taskGoal,
 		prompt: "",
 		currentStageId: data.currentStageId || null,
+		// Pre-completion snapshot written by completeTask; read back so an
+		// uncomplete after a server restart still restores the exact prior
+		// status/stage instead of falling back to idle. Absent on legacy files.
+		statusBeforeComplete: data.statusBeforeComplete || null,
+		stageBeforeComplete: data.stageBeforeComplete || null,
 		status: effectiveStatus,
 		wasInterrupted: Boolean(isInterruptedOnDisk),
 		resumedAfterInterruption:
