@@ -10,6 +10,7 @@ import { runHarnessStage } from "./harness.js";
 import { runImpromptuJob } from "./impromptu.js";
 import { createStructuredEventSender } from "./logEvents.js";
 import { applyUpdate as defaultApplyUpdate, checkForUpdate as defaultCheckForUpdate } from "./updates/index.js";
+import { isValidVersion } from "./updates/manifest.js";
 import { defaultInstallRoot, markUpdateSuccess, readUpdateState } from "./updates/state.js";
 // The Runner bundle ships shared/ next to this folder (runner/{runner,api,shared}
 // in prod and in the distributable tarball), so ../shared resolves both in the
@@ -996,7 +997,7 @@ export async function refreshDiscoveredModels({ config, logger, discoverFn, disc
  *   `facts.commands` so Settings can tell "too old" from "failed" (R1).
  * @example SUPPORTED_RUNNER_COMMANDS.includes('requestUpdate') => true
  ***/
-export const SUPPORTED_RUNNER_COMMANDS = ["requestModelRediscovery", "requestUpdate"];
+export const SUPPORTED_RUNNER_COMMANDS = ["requestModelRediscovery", "requestUpdate", "requestRestart"];
 
 /***
  * MARK: effectiveDirectoriesFor
@@ -1246,7 +1247,7 @@ export async function joinAndHeartbeat({ config, client, loadHarness, logger, st
  *   advertisement — selection then behaves as before, ungated).
  * @example updateDirectiveFromBeat({ update: { backendApiVersion: '1.0.0' } }) => { backendApiVersion: '1.0.0', ... }
  * @param {Object} [beat] - Heartbeat/register response body.
- * @returns {{backendApiVersion: string|null, desiredRunnerVersion: string|null, minimumRunnerVersion: string|null}} Directive.
+ * @returns {{backendApiVersion: string|null, desiredRunnerVersion: string|null, minimumRunnerVersion: string|null, desiredVersion: string|null}} Directive.
  ***/
 export function updateDirectiveFromBeat(beat = {}) {
 	const update = beat?.update && typeof beat.update === "object" ? beat.update : {};
@@ -1255,7 +1256,32 @@ export function updateDirectiveFromBeat(beat = {}) {
 		backendApiVersion: pick(update.backendApiVersion),
 		desiredRunnerVersion: pick(update.desiredRunnerVersion),
 		minimumRunnerVersion: pick(update.minimumRunnerVersion),
+		// Operator's per-runner version setting ('latest' default, or one
+		// exact release). Old backends omit it — null reads as 'latest',
+		// which preserves today's behaviour exactly.
+		desiredVersion: pick(update.desiredVersion),
 	};
+}
+
+/***
+ * MARK: pinnedDesiredVersion
+ * @description Exact release the runner must run instead of tracking
+ *   latest, read off the heartbeat directive (`update.desiredVersion`):
+ *   a valid version string, or null for `latest`/missing/unknown (old
+ *   backends, or junk that must never strand the runner — fail-open to
+ *   today's latest-tracking behaviour). Pinned runners never auto-update;
+ *   only a manual Update installs the pin.
+ * @example pinnedDesiredVersion({ desiredVersion: '1.2.3' }) => '1.2.3'
+ * @example pinnedDesiredVersion({ desiredVersion: 'latest' }) => null
+ * @param {Object} [directive] - Directive from updateDirectiveFromBeat.
+ * @returns {string|null} Pinned version, or null when tracking latest.
+ ***/
+export function pinnedDesiredVersion(directive = {}) {
+	const raw = directive && typeof directive === "object" ? directive.desiredVersion : null;
+	if (typeof raw !== "string") return null;
+	const trimmed = raw.trim();
+	if (!trimmed || trimmed.toLowerCase() === "latest") return null;
+	return isValidVersion(trimmed) ? trimmed : null;
 }
 
 /***
@@ -1294,9 +1320,13 @@ function stageCommandAck(state, ack) {
  *   catalogue without a pin edit); `requestUpdate` runs the existing idle-only
  *   self-update at once when idle, or parks `state.pendingUpdate` for
  *   the next idle point when an execution is live (never interrupts
- *   work, D5). Every handled command stages exactly one ack on
- *   `state.commandAcks` for the next heartbeat facts; unknown commands
- *   are ignored (the backend never sends them — enqueue is fail-closed).
+ *   work, D5); `requestRestart` reboots the runner on its current
+ *   version at once — a live execution is stopped (destructive,
+ *   operator-confirmed in Settings) and its claim lease expires so the
+ *   work re-queues, exactly like a crash. Every handled command stages
+ *   exactly one ack on `state.commandAcks` for the next heartbeat facts;
+ *   unknown commands are ignored (the backend never sends them — enqueue
+ *   is fail-closed).
  *   Commands already staged or in flight are skipped, so the backend's
  *   at-least-once redelivery never double-applies. Pass fresh
  *   `detectedHarnesses` (production callers probe the host) to append the
@@ -1312,7 +1342,7 @@ export async function handlePendingCommands({ config, client, logger, state, pen
 	if (!(state.commandFlight instanceof Set)) state.commandFlight = new Set();
 	const alreadyStaged = (cmd) => state.commandAcks.some((a) => a && a.command === cmd);
 	for (const cmd of pendingCommands) {
-		if (cmd !== "requestModelRediscovery" && cmd !== "requestUpdate") continue;
+		if (cmd !== "requestModelRediscovery" && cmd !== "requestUpdate" && cmd !== "requestRestart") continue;
 		if (alreadyStaged(cmd) || state.commandFlight.has(cmd)) continue;
 		state.commandFlight.add(cmd);
 		try {
@@ -1385,6 +1415,32 @@ export async function handlePendingCommands({ config, client, logger, state, pen
 						stageCommandAck(state, { command: cmd, ok: true, detail: upd?.reason || "no update available" });
 					}
 				}
+			}
+			if (cmd === "requestRestart") {
+				// Reboot on the CURRENT version: no update check is
+				// interleaved (Restart !== Update). A live execution is
+				// stopped at once — the operator confirmed this in
+				// Settings, and the orphaned claim lease expires so the
+				// work re-queues like after a crash. Confirm the ack with
+				// a final heartbeat first (same peek-until-ack reason as
+				// the update path: without it the rebooted runner would
+				// collect the same command again and restart in a loop).
+				const busy = Boolean(state?.executionId);
+				const ack = {
+					command: cmd,
+					ok: true,
+					detail: busy ? "restarting now; running work stopped" : "restarting on current version",
+				};
+				stageCommandAck(state, ack);
+				try {
+					if (typeof client?.heartbeat === "function") {
+						await client.heartbeat({ runnerId: config.runnerId, facts: factsFor({ config, commandAck: ack }) });
+					}
+				} catch (err) {
+					logger.warn?.(`Restart ack heartbeat failed (restarting anyway): ${err?.message || err}`);
+				}
+				logger.log?.(`Runner restarting on current version${busy ? " (running work stopped)" : ""}`);
+				process.exit(0);
 			}
 		} finally {
 			state.commandFlight.delete(cmd);
@@ -2491,10 +2547,13 @@ export function installRootFor(config = {}) {
  *   into the new version. Any verification failure returns ok:false and
  *   keeps the current installation untouched.
  * @example await maybeSelfUpdate({ config, client }) => { checked: false, ... }
- * @param {Object} opts - Options (config, client?, logger?, installRoot?, now?, updateState?, updateDeps?, force?).
+ * @param {Object} opts - Options (config, client?, logger?, installRoot?, now?, updateState?, updateDeps?, force?, targetVersion?).
  *   `force` bypasses the interval gate for the 409 path, where the backend
  *   explicitly ordered an update — the Runner checks immediately instead of
- *   waiting out the jittered hour.
+ *   waiting out the jittered hour. A pinned `desiredVersion` in the
+ *   heartbeat directive (`updateState.updateDirective`) skips non-force
+ *   checks entirely (manual Update only) and becomes the force-check
+ *   target; an explicit `targetVersion` overrides it.
  * @returns {Promise<Object>} `{ checked, ok, update?, applied?, reason? }`. Apply
  *   failures are contained here (ok:false, failed status noted) and never throw.
  ***/
@@ -2507,8 +2566,19 @@ export async function maybeSelfUpdate({
 	updateState = null,
 	updateDeps = {},
 	force = false,
+	targetVersion = null,
 } = {}) {
 	if (!config?.autoUpdate) return { checked: false, reason: "auto-update disabled" };
+	// Per-runner version setting (heartbeat directive): pinned runners
+	// never auto-update — only a manual Update (force) installs the pin,
+	// resolved here as the check target. An explicit targetVersion wins
+	// for callers that already resolved one.
+	const directivePin = pinnedDesiredVersion(updateState?.updateDirective);
+	const effectiveTarget =
+		typeof targetVersion === "string" && targetVersion ? targetVersion : directivePin;
+	if (effectiveTarget && !force) {
+		return { checked: false, reason: `pinned to ${effectiveTarget}: manual update only` };
+	}
 	const interval = Number(config.updateCheckIntervalMs) || 3600000;
 	const state = updateState || {};
 	const last = Number(state.lastUpdateCheckAt) || 0;
@@ -2538,6 +2608,7 @@ export async function maybeSelfUpdate({
 			currentVersion: RUNNER_VERSION,
 			updateUrl: config.updateUrl,
 			backendApiVersion: typeof directive.backendApiVersion === "string" ? directive.backendApiVersion : null,
+			targetVersion: effectiveTarget || null,
 			logger,
 		});
 	} catch (err) {

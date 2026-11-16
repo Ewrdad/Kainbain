@@ -32,7 +32,13 @@ import {
   supportedRunnerCommands,
   canRequestCommand,
   canRequestUpdate,
+  canRequestRestart,
   canRequestRediscovery,
+  compareRunnerVersions,
+  normalizeDesiredVersion,
+  resolveDesiredVersion,
+  resolveVersionTarget,
+  versionWarningForRunner,
   mergeRunnerRecord,
   dropDraftFor,
   buildDirectoryDraft,
@@ -67,6 +73,7 @@ describe('runnerConfigHelpers', () => {
       jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
       directories: { masterDir: '', worktreeDir: '' },
       projectScope: null,
+      desiredVersion: 'latest',
     });
     expect(defaultRunnerConfig(undefined).jobTypes.runsMerges).toBe(true);
   });
@@ -88,6 +95,9 @@ describe('runnerConfigHelpers', () => {
     expect(config.jobTypes).toEqual({ runsCi: false, runsMerges: true, runsImpromptu: true });
     expect(config.directories).toEqual({ masterDir: '/srv/kb', worktreeDir: '' });
     expect(config.projectScope).toEqual(['p1']);
+    expect(config.desiredVersion).toBe('latest');
+    expect(defaultRunnerConfig({ operatorConfig: { desiredVersion: ' 1.2.3 ' } }).desiredVersion).toBe('1.2.3');
+    expect(defaultRunnerConfig({ operatorConfig: { desiredVersion: 'LATEST' } }).desiredVersion).toBe('latest');
   });
 
   it('falls back to the Runner id for display', () => {
@@ -332,6 +342,78 @@ describe('runnerConfigHelpers', () => {
     expect(canRequestRediscovery({ commands: { supported: ['requestModelRediscovery'] } })).toBe(true);
     expect(canRequestRediscovery({ commands: { supported: ['requestUpdate'] } })).toBe(false);
     expect(canRequestRediscovery({})).toBe(false);
+  });
+
+  it('allows restart only when the runner advertises requestRestart', () => {
+    expect(canRequestRestart({ commands: { supported: ['requestRestart'] } })).toBe(true);
+    expect(canRequestRestart({ commands: { supported: ['requestUpdate'] } })).toBe(false);
+    expect(canRequestRestart({})).toBe(false);
+  });
+
+  it('normalizes the per-runner version setting to latest-or-trimmed', () => {
+    expect(normalizeDesiredVersion(null)).toBe('latest');
+    expect(normalizeDesiredVersion(undefined)).toBe('latest');
+    expect(normalizeDesiredVersion('')).toBe('latest');
+    expect(normalizeDesiredVersion('Latest')).toBe('latest');
+    expect(normalizeDesiredVersion(' 1.2.3 ')).toBe('1.2.3');
+    expect(resolveDesiredVersion({ desiredVersion: '1.2.3' })).toBe('1.2.3');
+    expect(resolveDesiredVersion({ operatorConfig: { desiredVersion: '1.2.3' } })).toBe('1.2.3');
+    expect(resolveDesiredVersion({})).toBe('latest');
+    expect(resolveDesiredVersion({ desiredVersion: null, operatorConfig: { desiredVersion: '1.2.3' } })).toBe('1.2.3');
+    expect(resolveVersionTarget({ desiredVersion: '1.2.3', recommendedVersion: '2.0.0' })).toBe('1.2.3');
+    expect(resolveVersionTarget({ desiredVersion: 'latest', recommendedVersion: '2.0.0' })).toBe('2.0.0');
+    expect(resolveVersionTarget({})).toBeNull();
+  });
+
+  it('compares runner versions numerically, unknown reads as unknown', () => {
+    expect(compareRunnerVersions('0.1.0', '0.2.0')).toBe(-1);
+    expect(compareRunnerVersions('0.2.0', '0.1.0')).toBe(1);
+    expect(compareRunnerVersions('0.2.0', '0.2.0')).toBe(0);
+    expect(compareRunnerVersions('v0.2.0', '0.2.0')).toBe(0);
+    expect(compareRunnerVersions('1.2', '1.2.0')).toBe(0);
+    expect(compareRunnerVersions('0.10.0', '0.9.0')).toBe(1);
+    expect(compareRunnerVersions('bogus', '0.2.0')).toBeNull();
+    expect(compareRunnerVersions(null, '0.2.0')).toBeNull();
+  });
+
+  it('stays quiet when the running version matches its own setting', () => {
+    expect(versionWarningForRunner({ runnerVersion: '0.2.0', desiredVersion: 'latest', recommendedVersion: '0.2.0' })).toBeNull();
+    expect(versionWarningForRunner({ runnerVersion: '0.3.0', desiredVersion: 'latest', recommendedVersion: '0.2.0' })).toBeNull();
+    expect(versionWarningForRunner({ runnerVersion: '1.2.3', desiredVersion: '1.2.3', recommendedVersion: '2.0.0' })).toBeNull();
+    expect(versionWarningForRunner({})).toBeNull();
+    expect(versionWarningForRunner({ runnerVersion: '0.1.0', desiredVersion: 'latest' })).toBeNull();
+  });
+
+  it('warns red when a newer version exists than the one running', () => {
+    const latestTrailing = versionWarningForRunner({ runnerVersion: '0.1.0', desiredVersion: 'latest', recommendedVersion: '0.2.0' });
+    expect(latestTrailing.kind).toBe('newer-available');
+    expect(latestTrailing.tier).toBe('red');
+    expect(latestTrailing.target).toBe('0.2.0');
+    expect(latestTrailing.message).toMatch(/0\.1\.0/);
+    const pinnedTrailing = versionWarningForRunner({ runnerVersion: '0.1.0', desiredVersion: '0.2.0', recommendedVersion: '0.1.0' });
+    expect(pinnedTrailing.kind).toBe('newer-available');
+    expect(pinnedTrailing.tier).toBe('red');
+    expect(pinnedTrailing.target).toBe('0.2.0');
+  });
+
+  it('warns softer when the pin is older than the running version', () => {
+    const warning = versionWarningForRunner({ runnerVersion: '0.3.0', desiredVersion: '0.2.0', recommendedVersion: '0.3.0' });
+    expect(warning.kind).toBe('mismatch');
+    expect(warning.tier).toBe('soft');
+    expect(warning.message).toMatch(/never downgrades/);
+  });
+
+  it('warns red below the fleet minimum with the floor named', () => {
+    const warning = versionWarningForRunner({
+      runnerVersion: '0.0.9',
+      desiredVersion: 'latest',
+      recommendedVersion: '0.2.0',
+      minimumVersion: '0.1.0',
+      belowMinimum: true,
+    });
+    expect(warning.kind).toBe('below-minimum');
+    expect(warning.tier).toBe('red');
+    expect(warning.message).toMatch(/0\.1\.0/);
   });
 
   it('unions advertised and effective models in sorted order', () => {
