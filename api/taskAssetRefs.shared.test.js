@@ -34,6 +34,15 @@ describe("normalizeAssetSrc", () => {
 		expect(normalizeAssetSrc("<assets/a.png>")).toBe("assets/a.png");
 	});
 
+	it("unwraps angle destinations carrying a trailing title", () => {
+		expect(normalizeAssetSrc('<assets/a.png> "shot"')).toBe("assets/a.png");
+		expect(normalizeAssetSrc("<./assets/a.png>")).toBe("assets/a.png");
+	});
+
+	it("drops a stray trailing angle bracket like the serve sanitizer", () => {
+		expect(normalizeAssetSrc("assets/a.png>")).toBe("assets/a.png");
+	});
+
 	it("keeps unquoted spaced remainders whole (viewer parity)", () => {
 		expect(normalizeAssetSrc("assets/my shot.png")).toBe(
 			"assets/my shot.png",
@@ -79,6 +88,12 @@ describe("extractAssetRefs", () => {
 				'![a](./assets/a.png "shot") and ![b](docs/tasks/t1/assets/b.png)',
 			),
 		).toEqual(["assets/a.png", "assets/b.png"]);
+	});
+
+	it("captures angle destinations holding parens whole", () => {
+		expect(extractAssetRefs("![a](<assets/my (1).png>)")).toEqual([
+			"assets/my (1).png",
+		]);
 	});
 
 	it("ignores absolute URLs and non-asset destinations", () => {

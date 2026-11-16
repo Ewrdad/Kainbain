@@ -14,6 +14,7 @@
  *   viewer leaves those untouched for its sanitizer, and curation never
  *   warns on them).
  * @example normalizeAssetSrc('./assets/shot.png "titled"') => 'assets/shot.png'
+ * @example normalizeAssetSrc('<assets/shot.png> "titled"') => 'assets/shot.png'
  * @example normalizeAssetSrc('https://x/assets/shot.png') => null
  * @param {string} src - Raw destination from inside the markdown parens.
  * @returns {string|null} Canonical `assets/<name>` ref, or null.
@@ -27,13 +28,22 @@ export function normalizeAssetSrc(src) {
 	if (/^(https?:)?\/\//i.test(trimmed) || /^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
 		return null;
 	}
-	// CommonMark destinations may use the `<...>` form (spaced names) and
-	// may carry a trailing quoted title (`![a](assets/a.png "shot")`);
-	// resolve on the bare destination. An unquoted remainder is kept whole
-	// so stored paths containing spaces still resolve.
-	const unwrapped = trimmed.replace(/^<|>$/g, "");
-	const titled = unwrapped.match(/^(.*?)\s+["'][^"']*["']\s*$/);
-	const bare = (titled ? titled[1] : unwrapped).trim();
+	// CommonMark destinations may use the `<...>` form (spaced names, and
+	// parens the plain `[^)]+` scan would otherwise cut short) and may
+	// carry a trailing quoted title (`![a](assets/a.png "shot")`); resolve
+	// on the bare destination. The angle destination ends at the first
+	// `>`, so an angle form with a title still resolves to the file.
+	// An unquoted remainder is kept whole so stored paths containing
+	// spaces still resolve.
+	const angle = trimmed.match(/^<([^>\n]+)>(\s+["'][^"']*["']\s*)?$/);
+	const withoutAngle = angle
+		? angle[1].trim()
+		: trimmed.replace(/^<|>$/g, "");
+	const titled = withoutAngle.match(/^(.*?)\s+["'][^"']*["']\s*$/);
+	// A stray trailing `>` (a cut-off angle form) reads as the file: the
+	// serve route's own sanitizer drops it the same way, so keeping it
+	// would warn on a name serving already resolves.
+	const bare = (titled ? titled[1] : withoutAngle).trim().replace(/>$/, "");
 	const assetMatch = bare.match(/(?:^|\/)(assets\/[^/?#]+)$/);
 	if (!assetMatch) return null;
 	return assetMatch[1];

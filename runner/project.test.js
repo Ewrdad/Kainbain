@@ -304,6 +304,22 @@ describe("writeClaimTaskAssets", () => {
 		fs.rmSync(workdir, { recursive: true, force: true });
 	});
 
+	it("skips malformed base64 instead of writing garbage that hides the warning", async () => {
+		const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-work-"));
+		const written = await writeClaimTaskAssets({
+			workdir,
+			taskId: "t1",
+			assets: [
+				{ name: "shot.png", size: 7, contentBase64: "!!!not-base64!!!" },
+				{ name: "other.png", size: 1, contentBase64: "eA==" },
+			],
+		});
+		assert.equal(written, 1);
+		assert.ok(!fs.existsSync(path.join(workdir, "docs", "tasks", "t1", "assets", "shot.png")));
+		assert.ok(fs.existsSync(path.join(workdir, "docs", "tasks", "t1", "assets", "other.png")));
+		fs.rmSync(workdir, { recursive: true, force: true });
+	});
+
 	it("honours a custom docs folder name", async () => {
 		const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-work-"));
 		const written = await writeClaimTaskAssets({

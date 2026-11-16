@@ -59,6 +59,31 @@
       }
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Keep working, but put a clear 'picture missing' warning at the top of the instructions"
+      ],
+      "notes": "Ideally photos/images/tagged files should be stored in the task directory and then referenced (how this works with the UI is for you to decide but tagged photos should always be in the task directory)"
+    },
+    "q2": {
+      "selected": [
+        "Any attached file (pictures, documents, anything the task links to)"
+      ],
+      "notes": "Would like to expand this system to include custom formats (maybe a whiteboard or pdfs) in the future so it needs to be flexible"
+    },
+    "q3": {
+      "selected": [
+        "Yes — add the warning to older tasks too"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "A short general warning is enough"
+      ],
+      "notes": "Exact missing file cant help really as the user may of already deleted it so if we can make sure it is gotten right first time. Ideally photos/images/tagged files should be stored in the task directory and then referenced (how this works with the UI is for you to decide but tagged photos should always be in the task directory)"
+    }
+  }
 }
 ```

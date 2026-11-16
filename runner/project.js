@@ -781,9 +781,9 @@ export const RUNNER_TASK_ASSET_MAX_BYTES = 10 * 1024 * 1024;
  *   claim bytes are the only way the screenshots reach the worktree before
  *   the first stage runs. Defense in depth on top of the backend's
  *   sanitized shipment: flat allowlisted image names only (traversal and
- *   non-image entries are skipped), size-capped decodes, and existing
- *   worktree files are never overwritten (a local sync or the agent wins).
- *   Never throws: every entry is best-effort.
+ *   non-image entries are skipped), strict-base64 decodes, size-capped
+ *   writes, and existing worktree files are never overwritten (a local
+ *   sync or the agent wins). Never throws: every entry is best-effort.
  * @example await writeClaimTaskAssets({ workdir: '/w/kb-t', taskId: 't1', assets: [{ name: 'a.png', contentBase64: '...' }] }) => 1
  * @param {Object} opts - `{ workdir, taskId, assets, docsDirName, project }` (last two optional; a valid custom docs folder name wins).
  * @returns {Promise<number>} Number of files written.
@@ -801,6 +801,10 @@ export async function writeClaimTaskAssets({ workdir, taskId, assets, docsDirNam
 		// drifted case) is skipped rather than coerced.
 		if (!name || sanitizeImageName(name) !== name || !isAllowedImageExt(name)) continue;
 		if (!encoded) continue;
+		// `Buffer.from` never throws on bad input — it silently drops
+		// non-alphabet bytes, so without this guard a corrupt entry would
+		// decode to garbage that then suppresses the MISSING-ASSET warning.
+		if (!/^[A-Za-z0-9+/=\s]+$/.test(encoded)) continue;
 		let buffer;
 		try {
 			buffer = Buffer.from(encoded, "base64");

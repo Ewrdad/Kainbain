@@ -21,7 +21,10 @@ export function extractAssetRefs(markdown) {
 	if (!markdown || typeof markdown !== "string") return [];
 	const refs = [];
 	const seen = new Set();
-	const pattern = /!?\[([^\]]*)\]\(([^)]+)\)/g;
+	// The `<...>` alternative comes first so CommonMark angle destinations
+	// holding parens (`![a](<assets/my (1).png>)`) capture whole: the plain
+	// `[^)]+` branch would stop at the first `)` and name a truncated file.
+	const pattern = /!?\[([^\]]*)\]\((<[^>\n]+>|[^)]+)\)/g;
 	let match;
 	while ((match = pattern.exec(markdown)) !== null) {
 		const ref = normalizeAssetSrc(match[2]);
