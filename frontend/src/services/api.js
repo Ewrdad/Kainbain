@@ -1,4 +1,4 @@
-// Role: full frontend API client — barrel over work/flow/crew/watch/house/retrospective request lists. Base-URL resolution lives in apiBase.js.
+// Role: full frontend API client — joins the work/flow/crew/watch/house/retrospective request lists. Base-URL resolution lives in apiBase.js.
 // Domain composition comes from domainRegistry.js (the single source of
 // truth for domain operations); only the stable non-domain surface is listed here.
 import { getFileRawUrl } from './house/index.js';
@@ -7,11 +7,11 @@ import { domainRegistry } from './domainRegistry.js';
 /**
  * MARK: api
  * @description Centralized API client for the KainBain frontend.
- * Backward-compatible barrel: implementations live in client/request.js
- * (transport), client/cache.js (TTL caches), modelKeys.js (model grammar),
- * client/docs.js (markdown fetch), and the work/flow/crew/watch/house/
- * retrospective domain lists. This module only composes the `api` object +
- * re-exports.
+ * Single place that joins the pieces: implementations live in
+ * client/request.js (transport), client/cache.js (TTL caches), modelKeys.js
+ * (model grammar), client/docs.js (markdown fetch), and the work/flow/
+ * crew/watch/house/retrospective domain lists. This module only composes
+ * the `api` object + re-exports.
  */
 
 // Base resolution (loopback self-heal) lives in apiBase.js — one tiny module

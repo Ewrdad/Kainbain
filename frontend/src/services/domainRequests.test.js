@@ -1,7 +1,5 @@
-// node env pin: pure-logic suite (no DOM needs); skips the DOM env cost per CI-wall budget.
-// @vitest-environment node
-// Run in the lighter node environment: this suite is pure logic with
-// no DOM needs (skips jsdom setup, keeps the CI suite fast).
+// node env pin: this suite is pure logic with no DOM needs
+// (skips jsdom setup, keeps the CI suite fast).
 // @vitest-environment node
 // Domains: existing callers keep the same request contracts after the split.
 import { describe, it, expect, vi } from 'vitest';
@@ -11,18 +9,18 @@ import { crewRequests } from './crew/index.js';
 import { watchRequests } from './watch/index.js';
 import { houseRequests } from './house/index.js';
 import { accessibilityRequests } from './accessibility/index.js';
-import { domainRegistry, domainOperationNames, buildDomainClients } from './domainRegistry.js';
+import { domainRegistry, collectDomainOperationNames, buildDomainClients } from './domainRegistry.js';
 import { api } from './api.js';
 
 describe('Business-owned request lists', () => {
   it('exposes exactly the registry operations with no duplicates', () => {
     const request = vi.fn();
     // Derived from domainRegistry.js: adding an endpoint updates the
-    // registry (same diff as the factory), never this file.
+    // registry (same diff as the request list), never this file.
     const deps = { request, isValidProjectId: () => true };
-    // Per-domain key-set equality: a factory key missing from the registry
-    // (unregistered add) or a registry entry missing from the factory
-    // (dropped op) fails here naming the domain.
+    // Per-domain key-set equality: a request-list key missing from the
+    // registry (unregistered add) or a registry entry missing from the
+    // request list (dropped op) fails here naming the domain.
     for (const entry of domainRegistry) {
       expect(Object.keys(entry.build(deps)).sort(), `${entry.domain} client keys`).toEqual(
         [...entry.operations].sort(),
@@ -30,14 +28,18 @@ describe('Business-owned request lists', () => {
     }
     const clients = buildDomainClients(deps);
     const names = clients.flatMap(Object.keys);
-    // Cross-domain no-duplicates: the same op name from two factories fails
-    // here naming the duplicated operation.
-    const seen = new Set();
-    const duplicates = [...new Set(names.filter((name) => seen.has(name) || !seen.add(name)))];
-    expect(duplicates, 'duplicate domain operations').toEqual([]);
-    expect([...names].sort()).toEqual([...domainOperationNames()].sort());
+    // Cross-domain no-duplicates: the same op name from two request lists
+    // fails here naming the duplicated operation.
+    const seenNames = new Set();
+    const duplicatedNames = new Set();
+    for (const name of names) {
+      if (seenNames.has(name)) duplicatedNames.add(name);
+      else seenNames.add(name);
+    }
+    expect([...duplicatedNames], 'duplicate domain operations').toEqual([]);
+    expect([...names].sort()).toEqual([...collectDomainOperationNames()].sort());
     // Client exposure: every registered op must be callable on `api`.
-    for (const name of domainOperationNames()) expect(typeof api[name], name).toBe('function');
+    for (const name of collectDomainOperationNames()) expect(typeof api[name], name).toBe('function');
   });
 
   it.each([

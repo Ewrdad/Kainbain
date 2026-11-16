@@ -1,9 +1,8 @@
-// node env pin: pure-logic suite (no DOM needs); skips the DOM env cost per CI-wall budget.
-// @vitest-environment node
-// Run in the lighter node environment: surface shape only, no DOM needs.
+// node env pin: surface shape only, no DOM needs
+// (skips jsdom setup, keeps the CI suite fast).
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
-import { domainOperationNames } from './domainRegistry.js';
+import { collectDomainOperationNames } from './domainRegistry.js';
 
 /***
  * MARK: api public-surface pin
@@ -38,7 +37,16 @@ describe('api public surface', () => {
     ];
     // Domain portion derived from the registry (not a literal): adding an
     // endpoint updates domainRegistry.js, never this file.
-    const expected = [...new Set([...nonDomainKeys, ...domainOperationNames()])].sort();
+    const registeredNames = collectDomainOperationNames();
+    // The one intentional overlap: `api.js` keeps an explicit `getFileRawUrl`
+    // override after the domain spread, so that name appears in both lists.
+    // Any other overlap would silently replace a stable key with a domain
+    // op — fail here naming it.
+    const overlappingKeys = nonDomainKeys.filter((key) => registeredNames.includes(key));
+    expect(overlappingKeys.sort(), 'stable keys shadowed by domain operations').toEqual([
+      'getFileRawUrl',
+    ]);
+    const expected = [...new Set([...nonDomainKeys, ...registeredNames])].sort();
     expect(Object.keys(api).sort()).toEqual(expected);
   });
 
