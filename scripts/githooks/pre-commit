@@ -1,0 +1,20 @@
+#!/bin/sh
+# Binary-guard pre-commit hook: fail fast when a staged binary (PNG proof,
+# image asset, zip/tgz bundle) has corrupt magic bytes — usually from a
+# text-tool rewrite (magic `ef bf bd` instead of e.g. PNG `89 50 4e 47`).
+# This is the commit-time backstop; the pre-handoff preflight is
+# `npm run check:binaries`, and the documented safe path is
+# docs/tasks/_PROOF_RULE.md (capture via
+# `node scripts/capture-screenshot.mjs --out <path>`, never text tools).
+#
+# Install once per checkout (engine-owned checkouts: run during setup):
+#   git config core.hooksPath scripts/githooks
+# Bypass only to land an intentional baseline entry (never for new damage):
+#   git commit --no-verify
+set -u
+node scripts/check-binary-guard.mjs --staged
+status=$?
+if [ "$status" -ne 0 ]; then
+	echo "pre-commit: binary guard rejected staged binaries (see above for the file and the safe remedy)." >&2
+fi
+exit "$status"

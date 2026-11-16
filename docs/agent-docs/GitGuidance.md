@@ -32,11 +32,24 @@
 - Safe paths: screenshot capture scripts that write bytes directly (e.g.
   `node scripts/capture-screenshot.mjs --out <path>`), or restoring a known
   good copy with `git checkout <ref> -- <path>`. Never open a binary in an
-  editor or rewrite it with a text-oriented tool.
+  editor or rewrite it with a text-oriented tool. The copy-pasteable safe
+  recipe lives at `docs/tasks/_PROOF_RULE.md` — follow it exactly, no
+  improvisation.
 - Before claiming a proof file is valid, verify the worktree bytes:
   `xxd -l 8 <path>` (expect `8950 4e47 0d0a 1a0a` for PNG) and
   `file <path>` (expect `PNG image data, ...`, not `data`). Quote both
-  outputs in the stage report next to the claim.
+  outputs in the stage report next to the claim. The capture script also
+  self-verifies PNG magic after writing — quote its `PNG magic verified`
+  line as the primary evidence.
+- Fail fast locally before handoff: `npm run check:binaries`
+  (scripts/check-binary-guard.mjs) magic-checks every binary you changed
+  (images plus `.zip`/`.gz`/`.tgz`) in seconds, exiting non-zero naming
+  the file with expected vs actual magic and the safe remedy. Run it
+  before every handoff so a text-path rewrite fails on your machine, not
+  after a 15+ minute CI run. A pre-commit hook ships at
+  `scripts/githooks/pre-commit` (install with
+  `git config core.hooksPath scripts/githooks`); it runs the same guard
+  in `--staged` mode.
 - Enforcement: `npm run check:proof-hygiene` (scripts/check-proof-and-hygiene.mjs)
   fails any proof image whose magic bytes do not match its extension, naming
   the file with expected vs actual magic and the remedy. It runs automatically

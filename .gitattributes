@@ -14,3 +14,8 @@
 *.gif binary
 *.webp binary
 *.ico binary
+# Guarded archive binaries (scripts/check-binary-guard.mjs): same rule —
+# no text normalization, no text-tool rewrites.
+*.zip binary
+*.gz binary
+*.tgz binary
