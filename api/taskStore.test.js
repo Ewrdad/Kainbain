@@ -1284,6 +1284,28 @@ describe("TaskStore", () => {
 		expect(store.uncompleteTask("p1", "nope")).toBeNull();
 	});
 
+	it("kicks the scheduler when uncomplete leaves the task runnable (in_stage)", () => {
+		const store = new TaskStore();
+		store.kickScheduler = vi.fn();
+		const task = store.createTask("p1", { goal: "Reopen runnable", stageId: "1" });
+		// createTask leaves the task in_stage; complete snapshots that, so the
+		// reopen restores in_stage and must kick the scheduler for pickup.
+		expect(task.status).toBe("in_stage");
+		store.completeTask("p1", task.id);
+		store.kickScheduler.mockClear();
+		const reopened = store.uncompleteTask("p1", task.id);
+		expect(reopened.status).toBe("in_stage");
+		expect(store.kickScheduler).toHaveBeenCalledTimes(1);
+		// A reopen to a non-runnable status (paused) does not kick.
+		store.completeTask("p1", task.id);
+		store.updateTask("p1", task.id, { status: "paused" });
+		store.completeTask("p1", task.id);
+		store.kickScheduler.mockClear();
+		const paused = store.uncompleteTask("p1", task.id);
+		expect(paused.status).toBe("paused");
+		expect(store.kickScheduler).not.toHaveBeenCalled();
+	});
+
 	it("returns null for unknown tasks on transitions", () => {
 		const store = new TaskStore();
 		expect(store.advanceStage("p1", "nope", stages)).toBeNull();

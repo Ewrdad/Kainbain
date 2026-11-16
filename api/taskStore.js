@@ -821,7 +821,9 @@ export class TaskStore {
 	/***
 	 * MARK: uncompleteTask
 	 * @description Reopens a completed task back into the workflow (restoring the
-	 *   status/stage it had before completion) and persists to disk.
+	 *   status/stage it had before completion) and persists to disk. Kicks the
+	 *   scheduler when the reopen leaves the task runnable (`in_stage`), so
+	 *   continuation picks it up within one debounce like any other task.
 	 * @example taskStore.uncompleteTask('proj-1', taskId)
 	 * @param {string} projectId
 	 * @param {string} taskId
@@ -829,7 +831,9 @@ export class TaskStore {
 	 * @returns {Object|null}
 	 ***/
 	uncompleteTask(projectId, taskId, projectCwd) {
-		return uncompleteTask(this, projectId, taskId, projectCwd);
+		return this._kickIfRunnable(
+			uncompleteTask(this, projectId, taskId, projectCwd),
+		);
 	}
 
 	pauseTask(projectId, taskId, projectCwd) {
