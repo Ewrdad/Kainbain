@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -94,9 +94,55 @@ describe("listTaskDocsFiles", () => {
 	});
 
 	it("rejects traversal taskIds", () => {
-		const { files, dirExists } = listTaskDocsFiles(tempRoot, "../escape");
-		expect(dirExists).toBe(false);
-		expect(files).toEqual([]);
+		for (const taskId of ["../escape", "a/b", "/etc", "..\\escape"]) {
+			const { files, dirExists } = listTaskDocsFiles(tempRoot, taskId);
+			expect(dirExists).toBe(false);
+			expect(files).toEqual([]);
+		}
+	});
+
+	it("lists links that resolve to a file and omits broken or directory links", () => {
+		const taskId = "task-links-1";
+		const dir = makeTaskDir(taskId, { "REAL.md": "real" });
+		fs.mkdirSync(path.join(dir, "assets"));
+		fs.symlinkSync(
+			path.join(dir, "REAL.md"),
+			path.join(dir, "LINK.md"),
+		);
+		fs.symlinkSync(
+			path.join(dir, "does-not-exist.md"),
+			path.join(dir, "BROKEN.md"),
+		);
+		fs.symlinkSync(path.join(dir, "assets"), path.join(dir, "DIRLINK.md"));
+
+		const { files, dirExists } = listTaskDocsFiles(tempRoot, taskId);
+		expect(dirExists).toBe(true);
+		const filenames = files.map((f) => f.filename);
+		expect(filenames).toContain("REAL.md");
+		expect(filenames).toContain("LINK.md");
+		expect(filenames).not.toContain("BROKEN.md");
+		expect(filenames).not.toContain("DIRLINK.md");
+		expect(filenames).not.toContain("assets");
+	});
+
+	it("omits entries that cannot be stat'ed instead of listing a phantom", () => {
+		const taskId = "task-statfail-1";
+		makeTaskDir(taskId, { "GOOD.md": "good", "GONE.md": "gone" });
+		const realStatSync = fs.statSync;
+		const statSpy = vi
+			.spyOn(fs, "statSync")
+			.mockImplementation(((target, ...rest) => {
+				if (String(target).endsWith(`${path.sep}GONE.md`)) {
+					throw new Error("ENOENT: raced deletion");
+				}
+				return realStatSync(target, ...rest);
+			}));
+		try {
+			const { files } = listTaskDocsFiles(tempRoot, taskId);
+			expect(files.map((f) => f.filename)).toEqual(["GOOD.md"]);
+		} finally {
+			statSpy.mockRestore();
+		}
 	});
 
 	it("returns dirExists false for missing cwd or taskId without throwing", () => {

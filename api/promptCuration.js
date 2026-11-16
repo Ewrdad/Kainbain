@@ -110,9 +110,13 @@ export function formatImageRefs(imageRefs, { maxRefs } = {}) {
  *   relative task-folder paths actually present on disk (newest first):
  *   one `- <path>` line per file, capped at `maxRefs` entries with an
  *   overflow pointer at the task folder. An empty list still renders the
- *   section with an explicit "none available yet" line (q4), so agents
- *   never second-guess whether history exists.
+ *   section with an explicit "none available yet" line, so agents never
+ *   second-guess whether history exists. How it can fail: a non-array input
+ *   or blank entries are treated as "no files"; an unusable cap (missing,
+ *   negative, non-numeric) falls back to the configured cap, and an
+ *   unusable configured cap lists everything rather than hiding files.
  * @example formatPreviousReportsSection(['./docs/tasks/t/a.md'], { docsDirName: 'docs', taskId: 't' }) => '# Previous Reports\n...' (multi-line block)
+ * @example formatPreviousReportsSection([], { docsDirName: 'docs', taskId: 't' }).includes('No previous reports are available yet') => true
  * @param {string[]} filePaths - Newest-first relative file paths from disk.
  * @param {Object} [opts]
  * @param {number} [opts.maxRefs] - Cap on listed files (default config.taskReportsMaxPromptRefs; 0 = list all).
@@ -131,16 +135,23 @@ export function formatPreviousReportsSection(
 	if (paths.length === 0) {
 		return `# Previous Reports\nNo previous reports are available yet — the task folder ${folder} contains no files.`;
 	}
-	const configured = appConfig.taskReportsMaxPromptRefs;
-	const requested = maxRefs === undefined || maxRefs === null ? configured : maxRefs;
-	// An explicit 0 (or an unset/invalid cap with a 0/invalid configured
-	// default) lists everything; otherwise the explicit value wins and the
-	// configured default is the fallback.
+	const configuredCap = appConfig.taskReportsMaxPromptRefs;
+	const requestedCap =
+		maxRefs === undefined || maxRefs === null ? configuredCap : maxRefs;
+	// Cap precedence: an explicit positive number wins (fractionals floor);
+	// an explicit 0 lists everything; anything else falls back to the
+	// configured cap, and an unusable configured cap lists everything rather
+	// than hiding files (the config loader fails fast on malformed values,
+	// so that last fallback is unreachable in a running server).
 	let limit = paths.length;
-	if (Number.isFinite(requested) && requested > 0) {
-		limit = Math.min(Math.floor(requested), paths.length);
-	} else if (requested !== 0 && Number.isFinite(configured) && configured > 0) {
-		limit = Math.min(configured, paths.length);
+	if (Number.isFinite(requestedCap) && requestedCap > 0) {
+		limit = Math.min(Math.floor(requestedCap), paths.length);
+	} else if (
+		requestedCap !== 0 &&
+		Number.isFinite(configuredCap) &&
+		configuredCap > 0
+	) {
+		limit = Math.min(configuredCap, paths.length);
 	}
 	const lines = paths.slice(0, limit).map((filePath) => `- ${filePath}`);
 	if (paths.length > limit) {
@@ -293,24 +304,29 @@ export function resolveStageCustomKeywords(stage, projectCwd, loadSkill = null) 
 }
 
 /***
- * MARK: reportEntryFilename
+ * MARK: extractReportEntryFilename
  * @description The disk-match key for one report metadata entry: the bare
- *   filename (`filename`, then `name`, then the basename of `path`; plain
- *   string entries match by their own basename). Used to reconcile
- *   `task.reports` metadata with the files actually on disk.
- * @example reportEntryFilename({ path: './docs/tasks/t/plan-20261007.md' }) => 'plan-20261007.md'
+ *   filename (`filename`, then `name`, then the basename of `path` or
+ *   `filePath`; plain string entries match by their own basename). Used to
+ *   reconcile `task.reports` metadata with the files actually on disk, so a
+ *   metadata entry whose file is gone is dropped as a phantom instead of
+ *   rendered. Returns "" when no filename is derivable (fail closed: an
+ *   entry that cannot be matched to disk is never listed as available).
+ * @example extractReportEntryFilename({ path: './docs/tasks/t/plan-20261007.md' }) => 'plan-20261007.md'
+ * @example extractReportEntryFilename({ stageSlug: 'idea' }) => ''
  * @param {string|Object} entry - Report metadata entry.
  * @returns {string} Bare filename, or "" when none is derivable.
  ***/
-function reportEntryFilename(entry) {
+function extractReportEntryFilename(entry) {
 	if (typeof entry === "string") {
 		return String(entry).split("/").pop() || "";
 	}
 	if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+		const rawPath = entry.path || entry.filePath;
 		const key =
 			entry.filename ||
 			entry.name ||
-			(entry.path ? String(entry.path).split("/").pop() : null);
+			(rawPath ? String(rawPath).split("/").pop() : null);
 		return key ? String(key).split("/").pop() : "";
 	}
 	return "";
@@ -404,7 +420,7 @@ export function interpolatePromptKeywords(template, context = {}) {
 			const { files } = listTaskDocsFiles(projectCwd, task.id, diskProject);
 			const metaByFilename = new Map();
 			for (const entry of allReports) {
-				const entryKey = reportEntryFilename(entry);
+				const entryKey = extractReportEntryFilename(entry);
 				if (entryKey && !metaByFilename.has(entryKey)) {
 					metaByFilename.set(entryKey, entry);
 				}
@@ -425,11 +441,13 @@ export function interpolatePromptKeywords(template, context = {}) {
 						stageSlug: file.filename.replace(/-\d{8}[-T]\d{6}Z?\.md$/, ""),
 					};
 				})
-				.sort((a, b) => {
-					const ma = mtimeByFilename.get(a.filename) || 0;
-					const mb = mtimeByFilename.get(b.filename) || 0;
-					if (ma !== mb) return ma - mb;
-					return String(a.filename).localeCompare(String(b.filename));
+				.sort((firstReport, secondReport) => {
+					const firstMtimeMs = mtimeByFilename.get(firstReport.filename) || 0;
+					const secondMtimeMs = mtimeByFilename.get(secondReport.filename) || 0;
+					if (firstMtimeMs !== secondMtimeMs) return firstMtimeMs - secondMtimeMs;
+					return String(firstReport.filename).localeCompare(
+						String(secondReport.filename),
+					);
 				});
 		} catch {
 			diskReportPaths = null;

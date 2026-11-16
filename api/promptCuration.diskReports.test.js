@@ -268,6 +268,111 @@ describe("PromptCurationEngine disk-authoritative Previous Reports", () => {
 		expect(prompt).toContain("Idea: (No report available for stage idea)");
 	});
 
+	it("falls back cleanly when the disk folder is empty but metadata claims reports", () => {
+		const taskId = "task-kwempty-1";
+		fs.mkdirSync(path.join(projectCwd, "docs", "tasks", taskId), {
+			recursive: true,
+		});
+		const engine = new PromptCurationEngine();
+		const prompt = engine.curatePrompt(
+			{
+				id: taskId,
+				goal: "G",
+				reports: [
+					{
+						stageSlug: "ghost",
+						path: `./docs/tasks/${taskId}/ghost-20200101-000000.md`,
+						filename: "ghost-20200101-000000.md",
+						content: "phantom content",
+					},
+				],
+			},
+			{
+				id: "s",
+				name: "Code",
+				prompt: "Prior: {{previousReports}} | Latest: {{latestReportPath}} | Ghost: {{latestReport:ghost}}",
+			},
+			{ projectCwd },
+		);
+		expect(prompt).not.toContain("ghost-20200101-000000.md");
+		expect(prompt).not.toContain("phantom content");
+		expect(prompt).toContain("Prior: (No previous stage reports available)");
+		expect(prompt).toContain("Latest: (No report available)");
+		expect(prompt).toContain("Ghost: (No report available for stage ghost)");
+		expect(prompt).toContain("No previous reports are available yet");
+	});
+
+	it("matches on-disk reports by filePath as well as path", () => {
+		const taskId = "task-kwfilepath-1";
+		seedTaskDir(taskId, ["plan-20261116-000000.md"]);
+		const engine = new PromptCurationEngine();
+		const prompt = engine.curatePrompt(
+			{
+				id: taskId,
+				goal: "G",
+				reports: [
+					{
+						stageSlug: "plan",
+						filePath: `./docs/tasks/${taskId}/plan-20261116-000000.md`,
+						content: "filePath plan content",
+					},
+				],
+			},
+			{ id: "s", name: "Code", prompt: "Plan: {{latestReport:plan}}" },
+			{ projectCwd },
+		);
+		expect(prompt).toContain("Plan: filePath plan content");
+	});
+
+	it("pins section-builder cap boundaries: floor, fallback, and blank handling", () => {
+		const files = ["a.md", "b.md", "c.md", "d.md", "e.md", "f.md", "g.md"].map(
+			(name) => `./docs/tasks/t/${name}`,
+		);
+		// Fractionals floor.
+		const floored = formatPreviousReportsSection(files, {
+			maxRefs: 2.9,
+			docsDirName: "docs",
+			taskId: "t",
+		});
+		expect(floored).toContain("- ./docs/tasks/t/b.md");
+		expect(floored).not.toContain("- ./docs/tasks/t/c.md");
+		// Negative and non-numeric caps fall back to the configured cap (5).
+		for (const maxRefs of [-1, Number.NaN, "two"]) {
+			const fallback = formatPreviousReportsSection(files, {
+				maxRefs,
+				docsDirName: "docs",
+				taskId: "t",
+			});
+			expect(fallback).toContain("- ./docs/tasks/t/e.md");
+			expect(fallback).not.toContain("- ./docs/tasks/t/f.md");
+			expect(fallback).toContain("(+2 more files not listed;");
+		}
+		// Non-array input and blank entries render the none-yet line.
+		for (const badInput of [null, "not-a-list", ["  ", ""]]) {
+			const noneYet = formatPreviousReportsSection(badInput, {
+				docsDirName: "docs",
+				taskId: "t",
+			});
+			expect(noneYet).toContain("No previous reports are available yet");
+		}
+	});
+
+	it("keeps legacy passthrough when the task has no id even with a cwd", () => {
+		const engine = new PromptCurationEngine();
+		const prompt = engine.curatePrompt(
+			{ goal: "G" },
+			{ id: "s", name: "Plan", prompt: "P" },
+			{
+				projectCwd,
+				previousReports: ["./docs/tasks/t/stale.md"],
+			},
+		);
+		expect(prompt).toContain(
+			"The following prior stage reports are available in ./docs/tasks/task/:",
+		);
+		expect(prompt).toContain("- ./docs/tasks/t/stale.md");
+	});
+
 	it("case-study regression: 0d29c64c-style phantoms never render and every listed file exists", () => {
 		const taskId = "task-case-1";
 		const dir = seedTaskDir(taskId, [
