@@ -69,6 +69,37 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Leave it out completely — only list files that really exist on disk"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Every file in the folder, including pictures and screenshots"
+      ],
+      "notes": "This should be capped to the top 5 or so most recently edited then a guide to view the rest"
+    },
+    "q3": {
+      "selected": [
+        "Newest first, most recent at the top"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Keep the section but say that no reports are available yet"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Yes — every stage prompt of every task, always"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
