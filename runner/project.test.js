@@ -17,6 +17,7 @@ import {
 	resolveRunnerDocsDirName,
 	runGit,
 	syncTaskDocs,
+	writeClaimTaskAssets,
 } from "./project.js";
 
 function git(dir, args) {
@@ -204,6 +205,132 @@ describe("syncTaskDocs", () => {
 		assert.ok(!fs.existsSync(path.join(workdir, "docs", "tasks", "t1", "task.md")));
 		assert.equal(fs.readFileSync(path.join(workdir, "docs", "tasks", "t1", "idea-1.md"), "utf8"), "idea");
 		fs.rmSync(primary, { recursive: true, force: true });
+		fs.rmSync(workdir, { recursive: true, force: true });
+	});
+
+	it("delivers every task screenshot into the worktree before the first stage runs", async () => {
+		const primary = fs.mkdtempSync(path.join(os.tmpdir(), "kb-primary-"));
+		const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-work-"));
+		fs.mkdirSync(path.join(primary, "docs", "tasks", "t1", "assets"), { recursive: true });
+		fs.writeFileSync(path.join(primary, "docs", "tasks", "t1", "assets", "shot.png"), "png-bytes");
+		fs.writeFileSync(path.join(primary, "docs", "tasks", "t1", "assets", "diagram.png"), "diagram-bytes");
+		const copied = await syncTaskDocs({ primaryCwd: primary, workdir, taskId: "t1" });
+		assert.equal(copied, 2);
+		assert.equal(
+			fs.readFileSync(path.join(workdir, "docs", "tasks", "t1", "assets", "shot.png"), "utf8"),
+			"png-bytes",
+		);
+		assert.equal(
+			fs.readFileSync(path.join(workdir, "docs", "tasks", "t1", "assets", "diagram.png"), "utf8"),
+			"diagram-bytes",
+		);
+		fs.rmSync(primary, { recursive: true, force: true });
+		fs.rmSync(workdir, { recursive: true, force: true });
+	});
+
+	it("reports the synced asset count through the optional stats collector", async () => {
+		const primary = fs.mkdtempSync(path.join(os.tmpdir(), "kb-primary-"));
+		const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-work-"));
+		fs.mkdirSync(path.join(primary, "docs", "tasks", "t1", "assets"), { recursive: true });
+		fs.writeFileSync(path.join(primary, "docs", "tasks", "t1", "idea-1.md"), "idea");
+		fs.writeFileSync(path.join(primary, "docs", "tasks", "t1", "assets", "shot.png"), "png");
+		const stats = {};
+		const copied = await syncTaskDocs({ primaryCwd: primary, workdir, taskId: "t1", stats });
+		assert.equal(copied, 2);
+		assert.equal(stats.assets, 1);
+		const emptyStats = {};
+		assert.equal(
+			await syncTaskDocs({ primaryCwd: primary, workdir, taskId: "missing", stats: emptyStats }),
+			0,
+		);
+		assert.equal(emptyStats.assets, 0);
+		fs.rmSync(primary, { recursive: true, force: true });
+		fs.rmSync(workdir, { recursive: true, force: true });
+	});
+});
+
+describe("writeClaimTaskAssets", () => {
+	it("writes claim-shipped images the worktree lacks, byte-identical", async () => {
+		const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-work-"));
+		const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+		const written = await writeClaimTaskAssets({
+			workdir,
+			taskId: "t1",
+			assets: [{ name: "shot.png", size: bytes.length, contentBase64: bytes.toString("base64") }],
+		});
+		assert.equal(written, 1);
+		assert.deepEqual(
+			fs.readFileSync(path.join(workdir, "docs", "tasks", "t1", "assets", "shot.png")),
+			bytes,
+		);
+		fs.rmSync(workdir, { recursive: true, force: true });
+	});
+
+	it("never overwrites files already in the worktree", async () => {
+		const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-work-"));
+		fs.mkdirSync(path.join(workdir, "docs", "tasks", "t1", "assets"), { recursive: true });
+		fs.writeFileSync(path.join(workdir, "docs", "tasks", "t1", "assets", "shot.png"), "mine");
+		const written = await writeClaimTaskAssets({
+			workdir,
+			taskId: "t1",
+			assets: [{ name: "shot.png", size: 3, contentBase64: Buffer.from("new").toString("base64") }],
+		});
+		assert.equal(written, 0);
+		assert.equal(
+			fs.readFileSync(path.join(workdir, "docs", "tasks", "t1", "assets", "shot.png"), "utf8"),
+			"mine",
+		);
+		fs.rmSync(workdir, { recursive: true, force: true });
+	});
+
+	it("rejects traversal, non-image, and oversized entries without throwing", async () => {
+		const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-work-"));
+		const written = await writeClaimTaskAssets({
+			workdir,
+			taskId: "t1",
+			assets: [
+				{ name: "../escape.png", size: 1, contentBase64: "eA==" },
+				{ name: "sub/nested.png", size: 1, contentBase64: "eA==" },
+				{ name: "notes.txt", size: 1, contentBase64: "eA==" },
+				{ name: "ok.png", size: 1, contentBase64: "" },
+				{ name: "ok.png", size: 1 },
+				null,
+			],
+		});
+		assert.equal(written, 0);
+		assert.ok(!fs.existsSync(path.join(workdir, "docs", "tasks", "t1", "assets", "escape.png")));
+		assert.equal(await writeClaimTaskAssets({ workdir, taskId: "t1", assets: [] }), 0);
+		assert.equal(await writeClaimTaskAssets({ workdir, taskId: "t1" }), 0);
+		assert.equal(await writeClaimTaskAssets({}), 0);
+		fs.rmSync(workdir, { recursive: true, force: true });
+	});
+
+	it("skips malformed base64 instead of writing garbage that hides the warning", async () => {
+		const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-work-"));
+		const written = await writeClaimTaskAssets({
+			workdir,
+			taskId: "t1",
+			assets: [
+				{ name: "shot.png", size: 7, contentBase64: "!!!not-base64!!!" },
+				{ name: "other.png", size: 1, contentBase64: "eA==" },
+			],
+		});
+		assert.equal(written, 1);
+		assert.ok(!fs.existsSync(path.join(workdir, "docs", "tasks", "t1", "assets", "shot.png")));
+		assert.ok(fs.existsSync(path.join(workdir, "docs", "tasks", "t1", "assets", "other.png")));
+		fs.rmSync(workdir, { recursive: true, force: true });
+	});
+
+	it("honours a custom docs folder name", async () => {
+		const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-work-"));
+		const written = await writeClaimTaskAssets({
+			workdir,
+			taskId: "t1",
+			docsDirName: "kdocs",
+			assets: [{ name: "shot.png", size: 1, contentBase64: "eA==" }],
+		});
+		assert.equal(written, 1);
+		assert.ok(fs.existsSync(path.join(workdir, "kdocs", "tasks", "t1", "assets", "shot.png")));
 		fs.rmSync(workdir, { recursive: true, force: true });
 	});
 });

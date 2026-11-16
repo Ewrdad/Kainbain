@@ -2,6 +2,14 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
+// The Runner bundle ships api/ next to runner/, so the backend's own asset
+// guards are the single source of truth for which claim-shipped names may
+// land in the worktree — the Runner must accept exactly what the backend
+// would have stored (flat, sanitized, allowlisted image names).
+import {
+	isAllowedImageExt,
+	sanitizeImageName,
+} from "../api/work/taskAssets.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -709,11 +717,16 @@ export function resolveRunnerDocsDirName(value) {
  *   failures (a5228675) — the Runner commits it on the task branch while the
  *   backend holds an untracked copy on main.
  * @example await syncTaskDocs({ primaryCwd: '/repo', workdir: '/w/kb-t', taskId: 't1' }) => 3
- * @param {Object} opts - `{ primaryCwd, workdir, taskId, docsDirName, project }` (last two optional; a valid custom docs folder name wins).
+ * @param {Object} opts - `{ primaryCwd, workdir, taskId, docsDirName, project, stats }` (last three optional; a valid custom docs folder name wins; `stats` is filled with `{ assets }` when provided).
  * @returns {Promise<number>} Number of files copied (0 when nothing to copy).
  ***/
-export async function syncTaskDocs({ primaryCwd, workdir, taskId, docsDirName = null, project = null } = {}) {
-	if (!primaryCwd || !workdir || !taskId) return 0;
+export async function syncTaskDocs({ primaryCwd, workdir, taskId, docsDirName = null, project = null, stats = null } = {}) {
+	const tally = { assets: 0 };
+	const finish = (copied) => {
+		if (stats && typeof stats === "object") stats.assets = tally.assets;
+		return copied;
+	};
+	if (!primaryCwd || !workdir || !taskId) return finish(0);
 	const resolvedDocsDirName = resolveRunnerDocsDirName(docsDirName ?? project);
 	const src = path.join(primaryCwd, resolvedDocsDirName, "tasks", taskId);
 	const dest = path.join(workdir, resolvedDocsDirName, "tasks", taskId);
@@ -721,9 +734,9 @@ export async function syncTaskDocs({ primaryCwd, workdir, taskId, docsDirName = 
 	try {
 		entries = fs.readdirSync(src, { withFileTypes: true });
 	} catch {
-		return 0;
+		return finish(0);
 	}
-	if (!entries.length) return 0;
+	if (!entries.length) return finish(0);
 	fs.mkdirSync(dest, { recursive: true });
 	let copied = 0;
 	for (const entry of entries) {
@@ -735,7 +748,9 @@ export async function syncTaskDocs({ primaryCwd, workdir, taskId, docsDirName = 
 			const stat = fs.statSync(from);
 			if (stat.isDirectory()) {
 				fs.cpSync(from, to, { recursive: true });
-				for (const f of walkFiles(to)) copied += 1;
+				const walked = walkFiles(to);
+				for (const f of walked) copied += 1;
+				if (entry.name === "assets") tally.assets += walked.length;
 			} else if (stat.isFile()) {
 				fs.copyFileSync(from, to);
 				copied += 1;
@@ -744,7 +759,70 @@ export async function syncTaskDocs({ primaryCwd, workdir, taskId, docsDirName = 
 			// Best-effort: one unreadable asset must not block the stage.
 		}
 	}
-	return copied;
+	return finish(copied);
+}
+
+/***
+ * MARK: RUNNER_TASK_ASSET_MAX_BYTES
+ * @description Largest single claim-shipped image the Runner writes into a
+ *   worktree (10 MiB, mirroring the backend's `taskImageMaxBytes` upload
+ *   cap): a corrupt or hostile payload entry past this size is skipped, so
+ *   one bad entry can neither fill the disk nor wedge the stage.
+ * @example RUNNER_TASK_ASSET_MAX_BYTES => 10485760
+ ***/
+export const RUNNER_TASK_ASSET_MAX_BYTES = 10 * 1024 * 1024;
+
+/***
+ * MARK: writeClaimTaskAssets
+ * @description Writes claim-shipped task images (the backend's `taskAssets`
+ *   payload entries, `{ name, contentBase64 }`) into the worktree's
+ *   `docs/tasks/<id>/assets/` folder. This is the remote-Runner delivery
+ *   arm: `syncTaskDocs` returns 0 with no local primary checkout, so the
+ *   claim bytes are the only way the screenshots reach the worktree before
+ *   the first stage runs. Defense in depth on top of the backend's
+ *   sanitized shipment: flat allowlisted image names only (traversal and
+ *   non-image entries are skipped), strict-base64 decodes, size-capped
+ *   writes, and existing worktree files are never overwritten (a local
+ *   sync or the agent wins). Never throws: every entry is best-effort.
+ * @example await writeClaimTaskAssets({ workdir: '/w/kb-t', taskId: 't1', assets: [{ name: 'a.png', contentBase64: '...' }] }) => 1
+ * @param {Object} opts - `{ workdir, taskId, assets, docsDirName, project }` (last two optional; a valid custom docs folder name wins).
+ * @returns {Promise<number>} Number of files written.
+ ***/
+export async function writeClaimTaskAssets({ workdir, taskId, assets, docsDirName = null, project = null } = {}) {
+	if (!workdir || !taskId || !Array.isArray(assets) || assets.length === 0) return 0;
+	const resolvedDocsDirName = resolveRunnerDocsDirName(docsDirName ?? project);
+	const dir = path.join(workdir, resolvedDocsDirName, "tasks", taskId, "assets");
+	let written = 0;
+	for (const entry of assets) {
+		const name = typeof entry?.name === "string" ? entry.name : "";
+		const encoded = typeof entry?.contentBase64 === "string" ? entry.contentBase64 : "";
+		// Exactly what the backend would have stored: an already-sanitized
+		// flat image name. Anything else (traversal, subdirs, non-images,
+		// drifted case) is skipped rather than coerced.
+		if (!name || sanitizeImageName(name) !== name || !isAllowedImageExt(name)) continue;
+		if (!encoded) continue;
+		// `Buffer.from` never throws on bad input — it silently drops
+		// non-alphabet bytes, so without this guard a corrupt entry would
+		// decode to garbage that then suppresses the MISSING-ASSET warning.
+		if (!/^[A-Za-z0-9+/=\s]+$/.test(encoded)) continue;
+		let buffer;
+		try {
+			buffer = Buffer.from(encoded, "base64");
+		} catch {
+			continue;
+		}
+		if (buffer.length === 0 || buffer.length > RUNNER_TASK_ASSET_MAX_BYTES) continue;
+		try {
+			const dest = path.join(dir, name);
+			if (fs.existsSync(dest)) continue;
+			fs.mkdirSync(dir, { recursive: true });
+			fs.writeFileSync(dest, buffer);
+			written += 1;
+		} catch {
+			// Best-effort: one unwritable asset must not block the stage.
+		}
+	}
+	return written;
 }
 
 function walkFiles(dir) {

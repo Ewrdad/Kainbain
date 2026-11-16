@@ -1,5 +1,6 @@
 // Domain: The Work — task image assets (upload, list, delete) and the
 // markdown image-URL resolution the inline renderer relies on.
+import { normalizeAssetSrc } from '../../../shared/taskAssetRefs/index.js';
 
 /***
  * MARK: resolveTaskImageUrl
@@ -29,14 +30,13 @@ export function resolveTaskImageUrl({ apiBase = '', projectId, taskId, src }) {
     return trimmed;
   }
   if (!projectId || !taskId) return trimmed;
-  // CommonMark image destinations may carry a trailing quoted title
-  // (`![a](assets/a.png "shot")`); resolve on the bare destination so the
-  // title never becomes part of the requested asset name.
-  const resolvedSrc = firstSrcToken(trimmed);
-  const assetMatch = resolvedSrc.match(/(?:^|\/)(assets\/[^/?#]+)$/);
-  if (!assetMatch) return trimmed;
+  // The canonical asset ref (prefixes, `<...>` form, and trailing titles
+  // tolerated) comes from the shared grammar, so the viewer resolves
+  // exactly what backend curation detects — the two can never drift.
+  const assetRef = normalizeAssetSrc(trimmed);
+  if (!assetRef) return trimmed;
   const base = String(apiBase || '').replace(/\/+$/, '');
-  return `${base}/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/images/${encodeURIComponent(assetMatch[1].slice('assets/'.length))}`;
+  return `${base}/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/images/${encodeURIComponent(assetRef.slice('assets/'.length))}`;
 }
 
 /***

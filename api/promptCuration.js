@@ -13,7 +13,12 @@ import {
 import { skillsRegistry } from "./skills/skillsRegistry.js";
 import { stageExpectsAgentVerdict } from "./agent/verdictContract.js";
 import { config as appConfig } from "./config.js";
-import { collectTaskImageRefs } from "./work/taskAssets.js";
+import {
+	collectTaskImageRefs,
+	filterBranchBackedRefs,
+	findMissingAssetRefs,
+	formatMissingAssetWarning,
+} from "./work/taskAssets.js";
 import { listTaskDocsFiles } from "./work/taskDocsFiles.js";
 import { resolveDocsDirName } from "./docsPath.js";
 import {
@@ -660,18 +665,20 @@ const TESTING_GUIDANCE_TEXT =
  * @description Predicts which conditional contract sections a layout omits
  *   but the run still needs: `failureDetails` whenever failure/feedback
  *   context is non-empty, `testingGuidance` for agent stages expecting a
- *   verdict. Shared by the engine render path and the dry-run endpoint so
- *   the preview can never disagree with dispatch.
+ *   verdict, `missingAssets` for verdict stages whose goal references
+ *   assets with no bytes on disk. Shared by the engine render path and the
+ *   dry-run endpoint so the preview can never disagree with dispatch.
  * @example resolveAutoReinjectedTokens([], { hasFailureDetails: true, stage: { type: 'agent' } }) => ['failureDetails', 'testingGuidance']
  * @param {string[]} names - Token names present in the layout.
  * @param {Object} [facts]
  * @param {boolean} [facts.hasFailureDetails] - Failure/feedback context exists.
+ * @param {boolean} [facts.hasMissingAssets] - A MISSING-ASSET warning was rendered.
  * @param {Object} [facts.stage] - Current stage entity.
- * @returns {string[]} Conditional tokens to auto-append.
+ * @returns {string[]} Conditional tokens to auto-append (`missingAssets` is prepended instead, so the warning stays first).
  ***/
 export function resolveAutoReinjectedTokens(
 	names = [],
-	{ hasFailureDetails, stage } = {},
+	{ hasFailureDetails, hasMissingAssets, stage } = {},
 ) {
 	const present = Array.isArray(names) ? names : [];
 	const autoReinjected = [];
@@ -685,6 +692,17 @@ export function resolveAutoReinjectedTokens(
 	// never be silently dropped by a custom layout that omits it.
 	if (!present.includes("noCode") && stage?.noCode === true) {
 		autoReinjected.push("noCode");
+	}
+	// Missing-asset guard (mirrors the testingGuidance precedent): a custom
+	// layout that omits the warning must not hide dangling refs from a
+	// verdict-expecting agent stage. The render path prepends it (rather
+	// than appending with the rest) so it stays the first section.
+	if (
+		!present.includes("missingAssets") &&
+		hasMissingAssets &&
+		stageExpectsAgentVerdict(stage)
+	) {
+		autoReinjected.push("missingAssets");
 	}
 	return autoReinjected;
 }
@@ -1034,6 +1052,46 @@ export class PromptCurationEngine {
 					: null;
 		const docsDirName = resolveDocsDirName(docsProject);
 
+		// 2d. Missing Task Assets (dangling `assets/<name>` refs in the goal
+		// or failure/feedback text with no bytes in the task's assets
+		// folder). Renders first via the `missingAssets` layout token; with
+		// no dangling refs the section stays empty and prompts keep
+		// byte-identical bytes. Stored goal text is never mutated, so
+		// re-uploading the file heals the next run with no cleanup.
+		try {
+			const refSources = [rawTaskPrompt, failureDetails]
+				.filter((text) => typeof text === "string" && text)
+				.join("\n");
+			let missing = findMissingAssetRefs(projectCwd, taskId, refSources, docsProject);
+			// Branch-flap second look: assets are tracked files and the
+			// shared checkout flaps between task branches, so bytes that
+			// ride the task's own branch must not warn even when a sibling
+			// branch is out at curate time (the agent's worktree is on the
+			// task branch and has them). The persisted task.branch wins;
+			// otherwise the `kb/<taskId>` derivation is attempted.
+			if (missing.length > 0) {
+				const branch =
+					typeof task?.branch === "string" && task.branch
+						? task.branch
+						: taskId && taskId !== "unassigned"
+							? `kb/${taskId}`
+							: null;
+				missing = filterBranchBackedRefs(
+					projectCwd,
+					branch,
+					taskId,
+					missing,
+					docsProject,
+				);
+			}
+			const warning = formatMissingAssetWarning(missing);
+			if (warning) {
+				sectionMap.missingAssets = warning;
+			}
+		} catch {
+			// Best-effort: dispatching without the warning beats failing dispatch.
+		}
+
 		// 3. Previous Stage Reports — disk-authoritative when the project
 		// working directory is known: list the files actually present in the
 		// task docs folder (phantoms from report metadata are omitted).
@@ -1180,6 +1238,7 @@ export class PromptCurationEngine {
 			try {
 				const autoReinjected = resolveAutoReinjectedTokens(layoutTokens, {
 					hasFailureDetails: Boolean(failureDetails),
+					hasMissingAssets: Boolean(sectionMap.missingAssets),
 					stage,
 				});
 
@@ -1205,13 +1264,24 @@ export class PromptCurationEngine {
 				);
 
 				const extraSections = [];
+				let missingFirst = null;
 				for (const token of autoReinjected) {
-					if (sectionMap[token]) {
+					if (!sectionMap[token]) continue;
+					// The missing-asset warning must stay the first section —
+					// ahead of the task the agent is about to plan — so it
+					// prepends while every other re-injected section appends.
+					if (token === "missingAssets") {
+						missingFirst = sectionMap[token];
+					} else {
 						extraSections.push(sectionMap[token]);
 					}
 				}
-				if (extraSections.length > 0) {
-					rendered = [rendered, ...extraSections].join("\n\n");
+				if (missingFirst || extraSections.length > 0) {
+					rendered = [
+						...(missingFirst ? [missingFirst] : []),
+						rendered,
+						...extraSections,
+					].join("\n\n");
 					this._logger?.warn?.(
 						{
 							taskId: task?.id,

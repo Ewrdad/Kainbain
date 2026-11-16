@@ -863,6 +863,59 @@ describe("Runner Routes Integration", () => {
 		expect(again.assigned).toBe(false);
 	});
 
+	it("claim ships the task's image assets as base64 for remote Runners", async () => {
+		const credential = await onboard("assets-claim-1");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Assets claim fixture" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+		/* eslint-disable security/detect-non-literal-fs-filename */
+		const assetsDir = path.join(path.dirname(findTaskMarkdown(tempProjectsRoot, target)), "assets");
+		fs.mkdirSync(assetsDir, { recursive: true });
+		fs.writeFileSync(path.join(assetsDir, "shot.png"), Buffer.from([1, 2, 3]));
+		fs.writeFileSync(path.join(assetsDir, "notes.txt"), "not shipped");
+		/* eslint-enable security/detect-non-literal-fs-filename */
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		expect(claim.statusCode).toBe(200);
+		const lease = JSON.parse(claim.payload);
+		expect(lease.taskAssets.map((entry) => entry.name)).toEqual(["shot.png"]);
+		expect(lease.taskAssets[0].size).toBe(3);
+		expect(Buffer.from(lease.taskAssets[0].contentBase64, "base64")).toEqual(
+			Buffer.from([1, 2, 3]),
+		);
+	});
+
+	it("dispatch ships the task's image assets with the lease", async () => {
+		const { taskId: target } = await mockProject("Dispatch Assets");
+		/* eslint-disable security/detect-non-literal-fs-filename */
+		const assetsDir = path.join(path.dirname(findTaskMarkdown(tempProjectsRoot, target)), "assets");
+		fs.mkdirSync(assetsDir, { recursive: true });
+		fs.writeFileSync(path.join(assetsDir, "shot.png"), Buffer.from([9]));
+		/* eslint-enable security/detect-non-literal-fs-filename */
+		const credential = await onboard("assets-dispatch-1");
+		await app.inject({
+			method: "POST",
+			url: "/runners/heartbeat",
+			headers: { "x-runner-credential": credential },
+			payload: { runnerId: "assets-dispatch-1", facts: FACTS },
+		});
+		const res = await dispatchAs(credential);
+		expect(res.statusCode).toBe(200);
+		const out = JSON.parse(res.payload);
+		expect(out.assigned).toBe(true);
+		expect(out.taskAssets.map((entry) => entry.name)).toEqual(["shot.png"]);
+		expect(Buffer.from(out.taskAssets[0].contentBase64, "base64")).toEqual(
+			Buffer.from([9]),
+		);
+	});
+
 	it("claim dispatches the stage config hash for the Runner to echo", async () => {
 		const credential = await onboard("attest-claim-1");
 		const taskRes = await app.inject({
