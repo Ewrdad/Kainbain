@@ -5,8 +5,15 @@
  * screenshots during PR review or verification stages without running ad-hoc background servers.
  *
  * Usage:
+ *   node scripts/capture-screenshot.mjs --path "#/tasks/<task-id>"
  *   node scripts/capture-screenshot.mjs --url "http://localhost:3100/#/orchestrator" --out "./docs/tasks/task-1/screenshot.png"
  *   node scripts/capture-screenshot.mjs --path "#/tasks/9940bbbc" --out "./docs/tasks/9940bbbc/stage-review.png"
+ *
+ * Output default (no --out): resolves the current task id — $TASK_ID, else
+ *   $KAINBAIN_TASK_ID, else the kb/<task-id> branch name — and writes to
+ *   docs/tasks/<task-id>/screenshot-<YYYYMMDD-HHMMSS>.png (directory created).
+ *   An explicit --out always wins. With no discoverable id the script exits
+ *   non-zero naming the expected --out form instead of writing to repo root.
  *
  * Proof checklist (canonical rules: docs/agent-docs/GitGuidance.md):
  *   1. This script writes bytes directly — never open the PNG in an editor
@@ -23,6 +30,7 @@
 
 import path from "node:path";
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 /***
@@ -62,6 +70,129 @@ export function verifyPngMagic(absPath) {
 		: { ok, expected, actual, error: `capture bytes do not start with PNG magic ${expected}` };
 }
 
+/***
+ * MARK: sanitizeTaskId
+ * @description Validates one raw task-id candidate for safe use as a path
+ *   segment under docs/tasks/. Returns the trimmed id, or null when it is
+ *   empty or could escape the task folder (separators, traversal, whitespace)
+ *   — callers treat null as "no id" and fail fast naming --out.
+ * @example sanitizeTaskId("  9940bbbc  ") => "9940bbbc"
+ * @param {*} raw - One raw candidate (env value or branch segment).
+ * @returns {string|null} The safe id, or null when unusable.
+ ***/
+export function sanitizeTaskId(raw) {
+	if (raw === null || raw === undefined) return null;
+	const id = String(raw).trim();
+	if (id === "") return null;
+	if (id.includes("/") || id.includes("\\") || id.includes("..") || /\s/.test(id)) return null;
+	return id;
+}
+
+/***
+ * MARK: resolveTaskId
+ * @description Resolves the current task id for the no-flag default output:
+ *   $TASK_ID first, else $KAINBAIN_TASK_ID, else the kb/<task-id> branch
+ *   name. Empty values count as unset and fall through; a non-empty but
+ *   unsafe value resolves to null (fail fast) rather than falling through
+ *   to a different source or building a traversal path. Pure: env and branch
+ *   are injected so tests never touch process.env or git.
+ * @example resolveTaskId({ env: {}, branch: "kb/9940bbbc" }) => "9940bbbc"
+ * @param {Object} [opts]
+ * @param {Object} [opts.env] - Environment mapping to read the id from.
+ * @param {string|null} [opts.branch] - Current git branch name, if known.
+ * @returns {string|null} The task id, or null when none is discoverable.
+ ***/
+export function resolveTaskId({ env = {}, branch = null } = {}) {
+	const scope = env || {};
+	for (const raw of [scope.TASK_ID, scope.KAINBAIN_TASK_ID]) {
+		if (raw === null || raw === undefined) continue;
+		if (String(raw).trim() === "") continue;
+		return sanitizeTaskId(raw);
+	}
+	if (typeof branch === "string") {
+		const name = branch.trim();
+		if (name.startsWith("kb/")) {
+			const raw = name.slice("kb/".length);
+			if (raw.trim() === "") return null;
+			return sanitizeTaskId(raw);
+		}
+	}
+	return null;
+}
+
+/***
+ * MARK: defaultTaskScreenshotPath
+ * @description Builds the no-flag default output path for a task:
+ *   docs/tasks/<task-id>/screenshot-<YYYYMMDD-HHMMSS>.png (local time, so
+ *   each capture lands in a fresh file instead of overwriting). Throws on
+ *   an unsafe id rather than building a traversal path.
+ * @example defaultTaskScreenshotPath("9940bbbc", new Date(2026, 10, 16, 18, 30, 5)) => "docs/tasks/9940bbbc/screenshot-20261116-183005.png"
+ * @param {string} taskId - Resolved task id (a docs/tasks/ segment).
+ * @param {Date} [now] - Clock for the timestamp, defaults to now.
+ * @returns {string} Repo-relative default output path.
+ ***/
+export function defaultTaskScreenshotPath(taskId, now = new Date()) {
+	const id = sanitizeTaskId(taskId);
+	if (!id) {
+		throw new Error(
+			`Refusing to build a default screenshot path for unsafe task id ${JSON.stringify(taskId)}. `
+			+ "Pass --out explicitly, e.g. --out docs/tasks/<task-id>/<name>-proof.png",
+		);
+	}
+	const pad = (value) => String(value).padStart(2, "0");
+	const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
+		+ `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+	return `docs/tasks/${id}/screenshot-${stamp}.png`;
+}
+
+/***
+ * MARK: resolveOutputPath
+ * @description Resolves the capture output path: an explicit --out always
+ *   wins byte-for-byte; otherwise the task-folder default for the resolved
+ *   task id. Throws naming the expected --out form when no id is
+ *   discoverable — never a repo-root fallback. Pure: env, branch, and clock
+ *   are injected so tests never launch git or Playwright.
+ * @example resolveOutputPath({ env: {}, branch: "kb/9940bbbc" }) => "docs/tasks/9940bbbc/screenshot-<timestamp>.png"
+ * @param {Object} [opts]
+ * @param {string|null} [opts.outArg] - The explicit --out value, if given.
+ * @param {Object} [opts.env] - Environment mapping for task-id resolution.
+ * @param {string|null} [opts.branch] - Current git branch name, if known.
+ * @param {Date} [opts.now] - Clock for the default timestamp.
+ * @returns {string} The output path to write.
+ ***/
+export function resolveOutputPath({ outArg = null, env = {}, branch = null, now = new Date() } = {}) {
+	if (typeof outArg === "string" && outArg.length > 0) return outArg;
+	const taskId = resolveTaskId({ env, branch });
+	if (!taskId) {
+		throw new Error(
+			"Cannot determine task id (checked $TASK_ID/$KAINBAIN_TASK_ID and the kb/<task-id> branch). "
+			+ "Pass --out explicitly, e.g. --out docs/tasks/<task-id>/<name>-proof.png",
+		);
+	}
+	return defaultTaskScreenshotPath(taskId, now);
+}
+
+/***
+ * MARK: getCurrentBranch
+ * @description Reads the current git branch name for task-id resolution.
+ *   Any failure (not a repo, git missing, detached HEAD with no name)
+ *   returns null — "no id", never a crash with a raw stack.
+ * @example getCurrentBranch() => "kb/9940bbbc" or null
+ * @returns {string|null} The branch name, or null when git cannot answer.
+ ***/
+function getCurrentBranch() {
+	try {
+		const out = execFileSync("git", ["branch", "--show-current"], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		});
+		const branch = String(out).trim();
+		return branch === "" ? null : branch;
+	} catch {
+		return null;
+	}
+}
+
 async function main() {
 	const args = process.argv.slice(2);
 	const getArg = (name) => {
@@ -71,7 +202,16 @@ async function main() {
 
 	let targetUrl = getArg("--url");
 	const relPath = getArg("--path");
-	const outputPath = getArg("--out") || "screenshot.png";
+	const outArg = getArg("--out");
+	let outputPath = outArg;
+	if (!outputPath) {
+		try {
+			outputPath = resolveOutputPath({ env: process.env, branch: getCurrentBranch() });
+		} catch (err) {
+			console.error(err.message);
+			process.exit(1);
+		}
+	}
 	const width = Number(getArg("--width")) || 1440;
 	const height = Number(getArg("--height")) || 900;
 	const waitMs = Number(getArg("--wait")) || 1500;
