@@ -1,12 +1,8 @@
 // Role: full frontend API client — barrel over work/flow/crew/watch/house/retrospective request lists. Base-URL resolution lives in apiBase.js.
-import { workRequests } from './work/index.js';
-import { flowRequests } from './flow/index.js';
-import { crewRequests } from './crew/index.js';
-import { watchRequests } from './watch/index.js';
-import { runnerRequests } from './runners/index.js';
-import { houseRequests, getFileRawUrl } from './house/index.js';
-import { retrospectiveRequests } from './retrospective/index.js';
-import { accessibilityRequests } from './accessibility/index.js';
+// Domain composition comes from domainRegistry.js (the single source of
+// truth for domain operations); only the stable non-domain surface is listed here.
+import { getFileRawUrl } from './house/index.js';
+import { domainRegistry } from './domainRegistry.js';
 
 /**
  * MARK: api
@@ -110,14 +106,16 @@ export const api = {
   healthStatus: (refresh = false) => fetchCachedHealthStatus(refresh),
   observabilityStatus: (projectId, bypassCache = false) =>
     fetchCachedObservabilityStatus(projectId, bypassCache),
-  ...workRequests(request, isValidProjectId),
-  ...flowRequests(request),
-  ...crewRequests(request),
-  ...watchRequests(request),
-  ...runnerRequests(request),
-  ...houseRequests(request),
-  ...retrospectiveRequests(request),
-  ...accessibilityRequests(request),
+  // Domain operations, in registry order (later entries win on overlap,
+  // exactly as the previous hand-written spreads did). The `getFileRawUrl`
+  // explicit override below is kept intentionally: it is behaviorally
+  // identical to the `houseRequests` key today (both resolve against the
+  // same imported `API_BASE`), but keeping the override means a future
+  // divergence in either definition cannot silently change `api` clients.
+  ...Object.assign(
+    {},
+    ...domainRegistry.map((entry) => entry.build({ request, isValidProjectId })),
+  ),
   getFileRawUrl: (projectId, filePath) => getFileRawUrl(API_BASE, projectId, filePath),
 };
 
