@@ -64,6 +64,13 @@ export const ENDPOINTS = [
 	},
 	{
 		method: "GET",
+		path: "/status/versions",
+		purpose:
+			"Installed UI/backend/API versions, latest-known releases, security summary, and update warnings (the Settings About page source; optional ?uiVersion reports the running UI).",
+		body: null,
+	},
+	{
+		method: "GET",
 		path: "/api/system/config-spec",
 		purpose: "Alias of /status/config (same payload).",
 		body: null,

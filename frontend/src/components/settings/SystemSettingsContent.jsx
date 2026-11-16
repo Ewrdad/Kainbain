@@ -13,6 +13,7 @@ import { AccessControlSection } from './AccessControlSection';
 import { AccessUserList } from './AccessUserList';
 import { ApiKeysSection } from './ApiKeysSection';
 import { UiPreferencesPanel } from './UiPreferencesPanel';
+import { VersionInfoSection } from './VersionInfoSection';
 import { MODEL_REFRESH_CONFIG_KEY } from './modelRefreshFlag';
 import { SETTINGS_TABS, isFooterResetVisible } from './settingsTabs';
 import { FleetCatalogueSection } from './FleetCatalogueSection';
@@ -389,6 +390,12 @@ export function SystemSettingsContent({
         {effectiveSection === 'ui' && (
           <div role="tabpanel" aria-label="UI settings">
             <UiPreferencesPanel onOpenPushNotifications={() => setActiveSection('notifications')} />
+          </div>
+        )}
+
+        {effectiveSection === 'about' && (
+          <div role="tabpanel" aria-label="About settings">
+            <VersionInfoSection />
           </div>
         )}
       </div>
