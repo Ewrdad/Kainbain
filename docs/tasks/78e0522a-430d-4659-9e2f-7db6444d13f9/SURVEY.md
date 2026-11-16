@@ -83,6 +83,43 @@ This round clarifies your runner Restart / Update request in plain, non-technica
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Restart = reboot the runner on its current version, Update = reinstall it onto a different/newer version (Recommended)"
+      ],
+      "notes": "restart may be used if a runner looks stuck as a debug"
+    },
+    "q2": {
+      "selected": [
+        "Warn that any work currently running on that runner will be stopped (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "A dropdown on each runner showing 'Latest' plus every released version to pick from (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Whenever the runner's version differs from its own setting, whether it is fixed or 'Latest' (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Only when the runner next restarts or is sitting idle with no work running"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Red when a newer version exists than the one the runner is on, softer colour for other mismatches (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
