@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const { buildBranches, depcheckAvailable, ensureWorkspaceDeps, pruneStaleTestDirectories, resolveCanary, splitGatePhases, workspaceDepsInstalled } = await import("../scripts/run-tests.mjs");
+const { CANARY_SERIAL_START_LINE, FAST_GATE_BRANCH_NAMES, buildBranches, depcheckAvailable, ensureWorkspaceDeps, resolvePhaseOutcome, pruneStaleTestDirectories, reportPreflightFailure, resolveCanary, resolveFailFast, runGatePhases, splitGatePhases, workspaceDepsInstalled } = await import("../scripts/run-tests.mjs");
 
 /***
  * MARK: run-tests tests
@@ -174,6 +174,14 @@ describe("buildBranches", () => {
 		assert.equal(containerTests.lowPriority, true);
 	});
 
+	it("harness self-tests run the fast-gate verdict, excerpt, and acceptance suites", () => {
+		const { branches } = buildBranches({ hasBash: true, hasDocker: true, hasDepcheck: true, nodeExec: "node", npmExec: "npm" });
+		const selfTests = branches.find((branch) => branch.name === "Harness Self-Tests");
+		assert.ok(selfTests.args.some((arg) => arg.endsWith("fast-gate-verdict.test.mjs")), "verdict-helper tests must stay in the gate");
+		assert.ok(selfTests.args.some((arg) => arg.endsWith("fast-gate-excerpts.test.mjs")), "excerpt-survival tests must stay in the gate");
+		assert.ok(selfTests.args.some((arg) => arg.endsWith("fast-gate-acceptance.test.mjs")), "fail-fast acceptance tests must stay in the gate");
+	});
+
 	it("harness self-tests run the ported node suites (not the old shell one)", () => {
 		const { branches } = buildBranches({ hasBash: true, hasDocker: true, hasDepcheck: true, nodeExec: "node", npmExec: "npm" });
 		const selfTests = branches.find((branch) => branch.name === "Harness Self-Tests");
@@ -292,6 +300,464 @@ describe("resolveCanary", () => {
 			resolveCanary({ argv: ["node", "scripts/run-tests.mjs", "--canary"], env: { KAINBAIN_SKIP_CANARY: "1" } }),
 			false,
 		);
+	});
+});
+
+describe("FAST_GATE_BRANCH_NAMES", () => {
+	it("names the six fast-gate branches from the problem statement", () => {
+		assert.deepEqual(FAST_GATE_BRANCH_NAMES, [
+			"Unit Tests (api)",
+			"Unit Tests (frontend)",
+			"Unit Tests (runner)",
+			"Linting (api)",
+			"Linting (frontend)",
+			"Harness Self-Tests",
+		]);
+	});
+
+	it("every fast-gate name is a real canonical branch in the fast phase", () => {
+		const { branches } = buildBranches({ hasBash: true, hasDocker: true, hasDepcheck: true, nodeExec: "node", npmExec: "npm" });
+		const { fast } = splitGatePhases(branches);
+		const fastNames = new Set(fast.map((branch) => branch.name));
+		for (const name of FAST_GATE_BRANCH_NAMES) {
+			assert.ok(fastNames.has(name), `${name} must be a fast-phase branch`);
+		}
+	});
+});
+
+describe("resolveFailFast", () => {
+	it("skips canary on fast failure by default", () => {
+		assert.equal(resolveFailFast({ argv: ["node", "scripts/run-tests.mjs"], env: {} }), true);
+		assert.equal(resolveFailFast({ argv: [], env: {} }), true);
+	});
+
+	it("accepts the explicit --fail-fast flag as a no-op", () => {
+		assert.equal(resolveFailFast({ argv: ["node", "scripts/run-tests.mjs", "--fail-fast"], env: {} }), true);
+	});
+
+	it("opts out via --no-fail-fast", () => {
+		assert.equal(resolveFailFast({ argv: ["node", "scripts/run-tests.mjs", "--no-fail-fast"], env: {} }), false);
+	});
+
+	it("opts out via KAINBAIN_NO_FAIL_FAST=1", () => {
+		assert.equal(resolveFailFast({ argv: ["node", "scripts/run-tests.mjs"], env: { KAINBAIN_NO_FAIL_FAST: "1" } }), false);
+	});
+
+	it("treats other KAINBAIN_NO_FAIL_FAST values as unset", () => {
+		assert.equal(resolveFailFast({ argv: [], env: { KAINBAIN_NO_FAIL_FAST: "" } }), true);
+		assert.equal(resolveFailFast({ argv: [], env: { KAINBAIN_NO_FAIL_FAST: "0" } }), true);
+	});
+
+	it("the opt-out wins over the explicit opt-in", () => {
+		assert.equal(
+			resolveFailFast({ argv: ["node", "scripts/run-tests.mjs", "--fail-fast", "--no-fail-fast"], env: {} }),
+			false,
+		);
+	});
+});
+
+describe("reportPreflightFailure", () => {
+	function makeCollector() {
+		const lines = [];
+		return { lines, log: (text) => lines.push(text), joined: () => lines.join("\n") };
+	}
+
+	it("writes the verdict with the preflight entry plus its untrimmed report", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-preflight-"));
+		try {
+			const verdictDir = path.join(root, "run");
+			fs.mkdirSync(verdictDir, { recursive: true });
+			const out = makeCollector();
+			const reportText = "duplicate setting X\nsecond line\n";
+			const result = reportPreflightFailure({
+				name: "Settings duplicate check",
+				reportText,
+				verdictDir,
+				verdictReady: true,
+				withCanary: true,
+				log: out.log,
+			});
+			assert.equal(result.ok, false);
+			assert.equal(result.verdictPath, path.join(verdictDir, "verdict.json"));
+			const verdict = JSON.parse(fs.readFileSync(result.verdictPath, "utf8"));
+			assert.equal(verdict.ok, false);
+			assert.equal(verdict.canary, "skipped_due_to_fast_gate_failure");
+			assert.deepEqual(verdict.preflight, { name: "Settings duplicate check", detail: "duplicate setting X" });
+			assert.equal(result.logPaths.length, 1);
+			assert.equal(fs.readFileSync(result.logPaths[0].path, "utf8"), reportText);
+			assert.match(out.joined(), /KAINBAIN_FAST_GATE_RESULT ok=false/);
+			assert.match(out.joined(), /Settings duplicate check/);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("degrades to an unavailable banner when the verdict cannot be written", () => {
+		const out = makeCollector();
+		const result = reportPreflightFailure({
+			name: "Frontend imports check",
+			reportText: "undeclared import!",
+			verdictDir: null,
+			verdictReady: false,
+			withCanary: false,
+			log: out.log,
+		});
+		assert.equal(result.ok, false);
+		assert.equal(result.verdictPath, null);
+		assert.match(out.joined(), /verdict="unavailable"/);
+		assert.match(out.joined(), /Frontend imports check/);
+	});
+});
+
+describe("runGatePhases", () => {
+	function makeCollector() {
+		const lines = [];
+		return { lines, log: (text) => lines.push(text), joined: () => lines.join("\n") };
+	}
+
+	function stubRunner({ fast = null, canary = null } = {}) {
+		const calls = [];
+		const runParallelFn = async (branches, opts) => {
+			// First call is the fast phase, second (if any) the canary phase.
+			const phase = calls.length === 0 ? "fast" : "canary";
+			calls.push({ phase, branches: branches.map((branch) => branch.name), opts });
+			const scripted = phase === "fast" ? fast : canary;
+			if (scripted) return scripted;
+			return {
+				ok: true,
+				results: branches.map((branch) => ({ name: branch.name, ok: true, exitCode: 0, output: "", wallSecs: 1 })),
+			};
+		};
+		return { calls, runParallelFn };
+	}
+
+	function failedRun(name, output = `boom in ${name}\n`) {
+		return {
+			ok: false,
+			results: [{ name, ok: false, exitCode: 1, output, wallSecs: 5 }],
+		};
+	}
+
+	function makeVerdictDir() {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-gate-phases-"));
+		const verdictDir = path.join(root, "run");
+		fs.mkdirSync(verdictDir, { recursive: true });
+		return { root, verdictDir };
+	}
+
+	it("fast failure skips the canary spawn, names the suites, and lands the verdict early", async () => {
+		const { root, verdictDir } = makeVerdictDir();
+		try {
+			const out = makeCollector();
+			const { calls, runParallelFn } = stubRunner({ fast: failedRun("Unit Tests (frontend)") });
+			const result = await runGatePhases({
+				fastBranches: [{ name: "Unit Tests (frontend)" }],
+				canaryBranches: [{ name: "Canary Tests" }],
+				failFast: true,
+				verdictDir,
+				verdictReady: true,
+				cwd: root,
+				runParallelFn,
+				log: out.log,
+			});
+			// The canary spawn is never attempted: one overlap call, fast only.
+			assert.equal(calls.length, 1);
+			assert.deepEqual(calls[0].branches, ["Unit Tests (frontend)"]);
+			assert.equal(result.ok, false);
+			assert.equal(result.canaryDecision, "skipped_due_to_fast_gate_failure");
+			assert.match(
+				out.joined(),
+				/Running Canary Tests\.\.\. SKIP \(fast-gate failed: Unit Tests \(frontend\); verdict at .*verdict\.json\)/,
+			);
+			// Banner printed twice (early + closing) with the marker line.
+			assert.equal(out.joined().split("KAINBAIN_FAST_GATE_RESULT").length - 1, 2);
+			// Verdict on disk: failed branch only, byte-complete.
+			const verdict = JSON.parse(fs.readFileSync(path.join(verdictDir, "verdict.json"), "utf8"));
+			assert.equal(verdict.ok, false);
+			assert.equal(verdict.canary, "skipped_due_to_fast_gate_failure");
+			assert.deepEqual(verdict.failedBranches.map((entry) => entry.name), ["Unit Tests (frontend)"]);
+			assert.deepEqual(fs.readdirSync(verdictDir).sort(), [
+				"unit-tests-frontend.full.log",
+				"verdict.json",
+			]);
+			assert.equal(
+				fs.readFileSync(path.join(verdictDir, "unit-tests-frontend.full.log"), "utf8"),
+				"boom in Unit Tests (frontend)\n",
+			);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("a non-fast-gate fast failure also skips canary (uniform predicate)", async () => {
+		const { root, verdictDir } = makeVerdictDir();
+		try {
+			const out = makeCollector();
+			const { calls, runParallelFn } = stubRunner({ fast: failedRun("Frontend Build") });
+			const result = await runGatePhases({
+				fastBranches: [{ name: "Frontend Build" }],
+				canaryBranches: [{ name: "Canary Tests" }],
+				failFast: true,
+				verdictDir,
+				verdictReady: true,
+				cwd: root,
+				runParallelFn,
+				log: out.log,
+			});
+			assert.equal(calls.length, 1);
+			assert.equal(result.ok, false);
+			assert.equal(result.canaryDecision, "skipped_due_to_fast_gate_failure");
+			const verdict = JSON.parse(fs.readFileSync(path.join(verdictDir, "verdict.json"), "utf8"));
+			assert.deepEqual(verdict.failedBranches, [
+				{ name: "Frontend Build", exitCode: 1, wallSecs: 5, fastGate: false },
+			]);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("a green fast phase always runs canary (the #KB-0417 parity requirement)", async () => {
+		const { root, verdictDir } = makeVerdictDir();
+		try {
+			const out = makeCollector();
+			const { calls, runParallelFn } = stubRunner({});
+			const result = await runGatePhases({
+				fastBranches: [{ name: "Unit Tests (api)" }],
+				canaryBranches: [{ name: "Canary Tests" }],
+				failFast: true,
+				verdictDir,
+				verdictReady: true,
+				cwd: root,
+				runParallelFn,
+				log: out.log,
+			});
+			assert.equal(calls.length, 2);
+			assert.deepEqual(calls[1].branches, ["Canary Tests"]);
+			assert.equal(result.ok, true);
+			assert.equal(result.canaryDecision, "ran");
+			assert.ok(out.joined().includes(CANARY_SERIAL_START_LINE));
+			assert.doesNotMatch(out.joined(), /SKIP \(fast-gate failed/);
+			const verdict = JSON.parse(fs.readFileSync(path.join(verdictDir, "verdict.json"), "utf8"));
+			assert.equal(verdict.ok, true);
+			assert.equal(verdict.canary, "ran");
+			// No full logs for passing suites — verdict.json alone.
+			assert.deepEqual(fs.readdirSync(verdictDir), ["verdict.json"]);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("with --no-fail-fast the verdict still lands early but canary runs on", async () => {
+		const { root, verdictDir } = makeVerdictDir();
+		try {
+			const out = makeCollector();
+			const { calls, runParallelFn } = stubRunner({ fast: failedRun("Linting (api)") });
+			const result = await runGatePhases({
+				fastBranches: [{ name: "Linting (api)" }],
+				canaryBranches: [{ name: "Canary Tests" }],
+				failFast: false,
+				verdictDir,
+				verdictReady: true,
+				cwd: root,
+				runParallelFn,
+				log: out.log,
+			});
+			assert.equal(calls.length, 2);
+			assert.equal(result.ok, false);
+			assert.equal(result.canaryDecision, "ran");
+			// The early banner precedes the serial-phase start: operators see
+			// the failure while canary still runs.
+			const joined = out.joined();
+			assert.ok(joined.indexOf("KAINBAIN_FAST_GATE_RESULT") < joined.indexOf(CANARY_SERIAL_START_LINE));
+			assert.doesNotMatch(joined, /SKIP \(fast-gate failed/);
+			const verdict = JSON.parse(fs.readFileSync(path.join(verdictDir, "verdict.json"), "utf8"));
+			assert.equal(verdict.canary, "ran");
+			assert.deepEqual(verdict.failedBranches.map((entry) => entry.name), ["Linting (api)"]);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("an opted-out gate runs one phase and records opted_out", async () => {
+		const { root, verdictDir } = makeVerdictDir();
+		try {
+			const out = makeCollector();
+			const { calls, runParallelFn } = stubRunner({});
+			const result = await runGatePhases({
+				fastBranches: [{ name: "Unit Tests (api)" }],
+				canaryBranches: [],
+				failFast: true,
+				verdictDir,
+				verdictReady: true,
+				cwd: root,
+				runParallelFn,
+				log: out.log,
+			});
+			assert.equal(calls.length, 1);
+			assert.equal(result.ok, true);
+			assert.equal(result.canaryDecision, "opted_out");
+			const verdict = JSON.parse(fs.readFileSync(path.join(verdictDir, "verdict.json"), "utf8"));
+			assert.equal(verdict.canary, "opted_out");
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("a canary-only failure surfaces canary detail and exits 1", async () => {
+		const { root, verdictDir } = makeVerdictDir();
+		try {
+			const out = makeCollector();
+			const { calls, runParallelFn } = stubRunner({
+				canary: failedRun("Canary Tests", "playwright boom\n"),
+			});
+			const result = await runGatePhases({
+				fastBranches: [{ name: "Unit Tests (api)" }],
+				canaryBranches: [{ name: "Canary Tests" }],
+				failFast: true,
+				verdictDir,
+				verdictReady: true,
+				cwd: root,
+				runParallelFn,
+				log: out.log,
+			});
+			assert.equal(calls.length, 2);
+			assert.equal(result.ok, false);
+			assert.equal(result.canaryDecision, "ran");
+			const verdict = JSON.parse(fs.readFileSync(path.join(verdictDir, "verdict.json"), "utf8"));
+			assert.deepEqual(verdict.failedBranches.map((entry) => entry.name), ["Canary Tests"]);
+			assert.equal(
+				fs.readFileSync(path.join(verdictDir, "canary-tests.full.log"), "utf8"),
+				"playwright boom\n",
+			);
+			assert.match(out.joined(), /KAINBAIN_FAST_GATE_RESULT ok=false/);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("hands runParallel a preamble pointing at the branch's full log", async () => {
+		const { root, verdictDir } = makeVerdictDir();
+		try {
+			const out = makeCollector();
+			const { calls, runParallelFn } = stubRunner({ fast: failedRun("Linting (frontend)") });
+			await runGatePhases({
+				fastBranches: [{ name: "Linting (frontend)" }],
+				canaryBranches: [],
+				failFast: true,
+				verdictDir,
+				verdictReady: true,
+				cwd: root,
+				runParallelFn,
+				log: out.log,
+			});
+			const preamble = calls[0].opts.failureDetailsPreamble;
+			assert.equal(typeof preamble, "function");
+			assert.equal(
+				preamble({ name: "Linting (frontend)" }),
+				`Full log: Linting (frontend) → ${path.join(verdictDir, "linting-frontend.full.log")}`,
+			);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("an unwritable verdict dir skips files but still skips canary on failure", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-gate-phases-"));
+		try {
+			const out = makeCollector();
+			const { calls, runParallelFn } = stubRunner({ fast: failedRun("Unit Tests (api)") });
+			const result = await runGatePhases({
+				fastBranches: [{ name: "Unit Tests (api)" }],
+				canaryBranches: [{ name: "Canary Tests" }],
+				failFast: true,
+				verdictDir: null,
+				verdictReady: false,
+				cwd: root,
+				runParallelFn,
+				log: out.log,
+			});
+			assert.equal(calls.length, 1);
+			assert.equal(result.ok, false);
+			assert.equal(result.verdictPath, null);
+			assert.match(out.joined(), /verdict at unavailable/);
+			assert.match(out.joined(), /verdict="unavailable"/);
+			assert.equal(calls[0].opts.failureDetailsPreamble, undefined);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("a failure without named branch results still fails and skips canary as unknown branch", async () => {
+		const { root, verdictDir } = makeVerdictDir();
+		try {
+			const out = makeCollector();
+			const { calls, runParallelFn } = stubRunner({ fast: { ok: false } });
+			const result = await runGatePhases({
+				fastBranches: [{ name: "Unit Tests (api)" }],
+				canaryBranches: [{ name: "Canary Tests" }],
+				failFast: true,
+				verdictDir,
+				verdictReady: true,
+				cwd: root,
+				runParallelFn,
+				log: out.log,
+			});
+			assert.equal(calls.length, 1);
+			assert.equal(result.ok, false);
+			assert.equal(result.canaryDecision, "skipped_due_to_fast_gate_failure");
+			assert.match(out.joined(), /SKIP \(fast-gate failed: unknown branch;/);
+			const verdict = JSON.parse(fs.readFileSync(path.join(verdictDir, "verdict.json"), "utf8"));
+			assert.equal(verdict.ok, false);
+			assert.deepEqual(verdict.failedBranches.map((entry) => entry.name), ["unknown branch"]);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("resolvePhaseOutcome", () => {
+	it("passes a clean run with its results untouched", () => {
+		const run = {
+			ok: true,
+			results: [{ name: "Unit Tests (api)", ok: true, exitCode: 0, output: "", wallSecs: 3 }],
+		};
+		assert.deepEqual(resolvePhaseOutcome({ run }), {
+			ok: true,
+			verdictResults: run.results,
+			failedNames: [],
+		});
+	});
+
+	it("fails a named branch failure and names it", () => {
+		const run = {
+			ok: false,
+			results: [{ name: "Linting (api)", ok: false, exitCode: 1, output: "boom\n", wallSecs: 5 }],
+		};
+		const outcome = resolvePhaseOutcome({ run });
+		assert.equal(outcome.ok, false);
+		assert.deepEqual(outcome.failedNames, ["Linting (api)"]);
+		assert.equal(outcome.verdictResults, run.results);
+	});
+
+	it("fails a nameless failure as unknown branch instead of claiming ok", () => {
+		for (const run of [{ ok: false }, { ok: false, results: [] }, null, undefined]) {
+			const outcome = resolvePhaseOutcome({ run });
+			assert.equal(outcome.ok, false);
+			assert.deepEqual(outcome.failedNames, ["unknown branch"]);
+			assert.equal(outcome.verdictResults.length, 1);
+			assert.equal(outcome.verdictResults[0].name, "unknown branch");
+		}
+	});
+
+	it("fails when the runner claims success but a branch result disagrees", () => {
+		const outcome = resolvePhaseOutcome({
+			run: {
+				ok: true,
+				results: [{ name: "Unit Tests (api)", ok: false, exitCode: 1, output: "boom\n", wallSecs: 3 }],
+			},
+		});
+		assert.equal(outcome.ok, false);
+		assert.deepEqual(outcome.failedNames, ["Unit Tests (api)"]);
 	});
 });
 

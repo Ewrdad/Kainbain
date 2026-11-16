@@ -84,3 +84,7 @@ scratch/sessions/
 # reports under docs/tasks/<id>/ stay tracked. Custom docs dir names are
 # covered dynamically by the backend's clean-tree guard, not by this file.
 docs/tasks/*/task.md
+# Local fast-gate verdicts (a developer's bare `npm test` outside CI): full
+# branch output is run history, never branch content (leak guard, like
+# transcripts above). CI verdicts land under the task's own docs dir.
+docs/tasks/local-gate-runs/

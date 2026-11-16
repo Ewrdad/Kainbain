@@ -67,6 +67,31 @@ export function failureDetailsExcerpt(output, tailLines = FAILURE_OUTPUT_TAIL_LI
 }
 
 /***
+ * MARK: resolveFailureTailLines
+ * @description Resolves the failure Details tail size: the `runParallel`
+ *   option wins, otherwise the `KAINBAIN_FAILURE_TAIL_LINES` env override,
+ *   otherwise the 120-line default. Only positive integers count — a
+ *   missing, zero, negative, or non-numeric value falls through to the
+ *   next arm, so a stray env value can never silence failure output or
+ *   flood the logs.
+ * @example resolveFailureTailLines({ env: { KAINBAIN_FAILURE_TAIL_LINES: "400" } }) => 400
+ * @param {Object} [opts]
+ * @param {number} [opts.tailLines] - Explicit option (takes precedence).
+ * @param {Object} [opts.env] - Env-like object, defaults to process.env.
+ * @returns {number} Tail size in lines (always a positive integer).
+ ***/
+export function resolveFailureTailLines({
+	tailLines,
+	env = process.env,
+} = {}) {
+	const usable = (value) => {
+		const parsed = Number(value);
+		return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+	};
+	return usable(tailLines) ?? usable(env.KAINBAIN_FAILURE_TAIL_LINES) ?? FAILURE_OUTPUT_TAIL_LINES;
+}
+
+/***
  * MARK: resolveProgressIntervalMs
  * @description Resolves the progress-tick cadence: the `runParallel`
  *   option wins, otherwise the `KAINBAIN_GATE_PROGRESS_INTERVAL_MS` env
@@ -338,7 +363,8 @@ function runOneBranch(branch, { cwd, spawnFn = spawn, onSpawn, termGraceMs = TER
  * @param {number} [opts.progressIntervalMs] - progress-tick cadence (defaults to resolveProgressIntervalMs).
  * @param {number} [opts.termGraceMs] - SIGTERM→(SIGKILL, branch report) grace for a timed-out branch.
  * @param {number} [opts.settleGraceMs] - extra wait after that before reporting a branch whose stdio never closed.
- * @param {number} [opts.failureOutputTailLines] - failure Details tail size (defaults to FAILURE_OUTPUT_TAIL_LINES).
+ * @param {number} [opts.failureOutputTailLines] - failure Details tail size (defaults to resolveFailureTailLines: option, else KAINBAIN_FAILURE_TAIL_LINES, else FAILURE_OUTPUT_TAIL_LINES).
+ * @param {Function} [opts.failureDetailsPreamble] - called with each failed branch's result; its string return prints between the `Details for <name>:` line and the output excerpt (the gate points at the branch's untrimmed full log here). A throwing or non-string return prints nothing and never fails the run.
  * @returns {Promise<Object>} { ok, results: [{ name, ok, exitCode, output, timedOut?, wallSecs }] }.
  ***/
 export async function runParallel(
@@ -350,10 +376,12 @@ export async function runParallel(
 		progressIntervalMs = resolveProgressIntervalMs(),
 		termGraceMs = TERM_GRACE_MS,
 		settleGraceMs = KILL_SETTLE_GRACE_MS,
-		failureOutputTailLines = FAILURE_OUTPUT_TAIL_LINES,
+		failureOutputTailLines,
+		failureDetailsPreamble,
 	} = {},
 ) {
 	const batchStart = Date.now();
+	const resolvedTailLines = resolveFailureTailLines({ tailLines: failureOutputTailLines });
 	// Branches are spawned detached (own process group) so the hang guard can
 	// reap a whole tree. That also means they no longer receive the operator's
 	// terminal SIGINT, so an aborted gate must reap them explicitly — otherwise
@@ -428,7 +456,17 @@ export async function runParallel(
 				write(`Running ${entry.name}... ${RED}FAIL${NC} (${wallSecs}s)\n`);
 				write("----------------------------------------------------------------------\n");
 				write(`Details for ${entry.name}:\n`);
-				write(failureDetailsExcerpt(entry.output, failureOutputTailLines));
+				if (typeof failureDetailsPreamble === "function") {
+					try {
+						const preamble = failureDetailsPreamble(entry);
+						if (typeof preamble === "string" && preamble.length > 0) {
+							write(preamble.endsWith("\n") ? preamble : `${preamble}\n`);
+						}
+					} catch {
+						// A preamble callback must never fail the run it annotates.
+					}
+				}
+				write(failureDetailsExcerpt(entry.output, resolvedTailLines));
 				write("----------------------------------------------------------------------\n");
 			}
 		}

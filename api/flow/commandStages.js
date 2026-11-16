@@ -9,6 +9,7 @@ import {
 } from "./commandLiveness.js";
 import { failureLogExcerptLimit, excerptLog } from "./stageFailureRouting.js";
 import { emitStageLifecycle } from "./stageLifecycle.js";
+import { extractFastGateResult } from "./fastGateMarker.js";
 import {
 	GitError,
 	GitMergeConflictError,
@@ -711,6 +712,40 @@ export async function runCommandStage(
 	let exitCode = 0;
 	let error = null;
 
+	// Fast-gate early signal: the test gate prints a KAINBAIN_FAST_GATE_RESULT
+	// marker line the moment its fast phase resolves — minutes before a long
+	// serial phase ends. Live chunks are scanned for it (with a rolling tail
+	// so a line split across two chunks still matches) and the first failing
+	// verdict is recorded once in history, the process log, and the live
+	// system feed. Advisory only: it never changes routing — the stage still
+	// exits (and fails back) on the command's own exit code, and a passing
+	// marker records nothing.
+	let fastGateScanTail = "";
+	let fastGateSignalled = false;
+	const scanFastGateChunk = (chunk) => {
+		try {
+			if (fastGateSignalled || typeof chunk !== "string" || !chunk) return;
+			fastGateScanTail = `${fastGateScanTail}${chunk}`.slice(-4096);
+			const parsed = extractFastGateResult(fastGateScanTail);
+			if (!parsed || parsed.ok) return;
+			fastGateSignalled = true;
+			const suites =
+				parsed.failedBranches.length > 0 ? parsed.failedBranches.join(", ") : "unknown suites";
+			const verdictNote = parsed.verdictPath ? ` (verdict: ${parsed.verdictPath})` : "";
+			const action =
+				`Fast-gate FAILED: ${suites}${verdictNote} — ` +
+				"full detail lands in the stage report when the command exits";
+			task.history.push({ timestamp: new Date().toISOString(), action });
+			_appendProcessLog(task, `[${logTag}] ${action}`);
+			bridge?.emitSystemLog?.(projectId, `[FAST-GATE] ${action}`, {
+				taskId,
+				stageId: stage?.id,
+			});
+		} catch {
+			// The early signal must never break the stage it observes.
+		}
+	};
+
 	recordStageHeartbeat(store, taskId, { stageId: stage.id, kind });
 
 	// Silence is not death: while a command-stage child runs, a keep-alive
@@ -732,6 +767,7 @@ export async function runCommandStage(
 			const onStdout = (chunk) => {
 				recordStageHeartbeat(store, taskId, { stageId: stage.id, kind });
 				stdout += chunk;
+				scanFastGateChunk(chunk);
 				bridge?.emitProcessEvent?.(projectId, "process:stdout", {
 					taskId,
 					chunk,
@@ -741,6 +777,7 @@ export async function runCommandStage(
 			const onStderr = (chunk) => {
 				recordStageHeartbeat(store, taskId, { stageId: stage.id, kind });
 				stderr += chunk;
+				scanFastGateChunk(chunk);
 				bridge?.emitProcessEvent?.(projectId, "process:stderr", {
 					taskId,
 					chunk,
@@ -757,6 +794,7 @@ export async function runCommandStage(
 			});
 			if (result.stdout && !stdout) {
 				stdout = result.stdout;
+				scanFastGateChunk(stdout);
 				bridge?.emitProcessEvent?.(projectId, "process:stdout", {
 					taskId,
 					chunk: stdout,
@@ -765,6 +803,7 @@ export async function runCommandStage(
 			}
 			if (result.stderr && !stderr) {
 				stderr = result.stderr;
+				scanFastGateChunk(stderr);
 				bridge?.emitProcessEvent?.(projectId, "process:stderr", {
 					taskId,
 					chunk: stderr,
@@ -796,6 +835,7 @@ export async function runCommandStage(
 				recordStageHeartbeat(store, taskId, { stageId: stage.id, kind });
 				const chunk = d.toString();
 				stdout += chunk;
+				scanFastGateChunk(chunk);
 				bridge?.emitProcessEvent?.(projectId, "process:stdout", {
 					taskId,
 					chunk,
@@ -806,6 +846,7 @@ export async function runCommandStage(
 				recordStageHeartbeat(store, taskId, { stageId: stage.id, kind });
 				const chunk = d.toString();
 				stderr += chunk;
+				scanFastGateChunk(chunk);
 				bridge?.emitProcessEvent?.(projectId, "process:stderr", {
 					taskId,
 					chunk,

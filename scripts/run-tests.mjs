@@ -17,7 +17,21 @@
  *   The fast branches share one overlap window; the Canary Tests branch runs
  *   alone afterwards (see splitGatePhases) — same suites, same exit
  *   semantics, but the heaviest branch never shares CPUs with the unit
- *   suites.
+ *   suites. Fail-fast is ON by default (see resolveFailFast): when the fast
+ *   phase fails, the gate writes its verdict (`verdict.json` plus one
+ *   untrimmed `<branch-slug>.full.log` per failed branch) under
+ *   `$KAINBAIN_TASK_DOCS/ci-fast-gate-<timestamp>/`, prints the
+ *   `KAINBAIN_FAST_GATE_RESULT` banner, and skips the serial canary phase
+ *   with an explicit SKIP line — so the failure surfaces seconds after the
+ *   fast phase instead of ~13 minutes later. Opt out with `--no-fail-fast`
+ *   or `KAINBAIN_NO_FAIL_FAST=1` (canary still runs after a red fast phase,
+ *   but the verdict still lands early). A green fast phase always runs
+ *   canary (the #KB-0417 parity requirement); deploy.sh --prod passes
+ *   `--no-canary` to its final-test-suite gate, so fail-fast changes
+ *   nothing there. Failure Details tails stay bounded (120 lines by
+ *   default, `KAINBAIN_FAILURE_TAIL_LINES` to tune) with a `Full log:`
+ *   pointer at the untrimmed file; the verdict pointers are printed at the
+ *   gate's head and tail so they survive the engine's head+tail excerpts.
  *   The Container Tests branch runs the static Dockerfile/compose assertions
  *   only; the minutes-long live image build/boot tests are opt-in via
  *   `KAINBAIN_CONTAINER_TESTS=live` (direct suite run, not the gate).
@@ -48,7 +62,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { npmExecutable, runParallel } from "./lib/run-parallel.mjs";
+import { npmExecutable, resolveFailureTailLines, runParallel } from "./lib/run-parallel.mjs";
+import {
+	branchSlug,
+	buildFastGateVerdict,
+	ensureVerdictDir,
+	formatFastGateBanner,
+	resolveVerdictDir,
+	writeFastGateVerdict,
+} from "./lib/fast-gate-verdict.mjs";
 import {
 	checkDirectoryForDuplicates,
 	formatViolationsReport,
@@ -341,6 +363,46 @@ export function resolveCanary({ argv = process.argv, env = process.env } = {}) {
 }
 
 /***
+ * MARK: FAST_GATE_BRANCH_NAMES
+ * @description The fast-gate set: the branches whose failure reports first —
+ *   the three unit suites, the two lint branches, and the Harness
+ *   Self-Tests. The fail-fast predicate itself is uniform (ANY fast-phase
+ *   failure skips the serial canary phase), but the verdict flags these
+ *   branches' failures as the fast-gate signal so the fixing agent sees
+ *   the cheap, deterministic failures before anything else.
+ * @example FAST_GATE_BRANCH_NAMES.includes("Unit Tests (api)") => true
+ ***/
+export const FAST_GATE_BRANCH_NAMES = [
+	"Unit Tests (api)",
+	"Unit Tests (frontend)",
+	"Unit Tests (runner)",
+	"Linting (api)",
+	"Linting (frontend)",
+	"Harness Self-Tests",
+];
+
+/***
+ * MARK: resolveFailFast
+ * @description Resolves whether the gate skips the serial canary phase when
+ *   the fast phase fails. ON by default (the agent-visible verdict lands
+ *   seconds after the fast phase instead of ~13 minutes later); the
+ *   explicit opt-outs are `--no-fail-fast` on the command line or
+ *   `KAINBAIN_NO_FAIL_FAST=1` in the environment. The explicit `--fail-fast`
+ *   flag is accepted as a no-op so scripts can pin the behaviour. Deploy
+ *   is unaffected: it already passes `--no-canary` to its `final-test-suite`
+ *   gate, so there is no canary branch left to skip.
+ * @example resolveFailFast({ argv: ["node", "run-tests.mjs"], env: {} }) => true
+ * @example resolveFailFast({ argv: ["node", "run-tests.mjs", "--no-fail-fast"], env: {} }) => false
+ * @param {Object} [opts]
+ * @param {Array<string>} [opts.argv] - defaults to process.argv.
+ * @param {Object} [opts.env] - defaults to process.env.
+ * @returns {boolean} True when a failed fast phase skips canary.
+ ***/
+export function resolveFailFast({ argv = process.argv, env = process.env } = {}) {
+	return !(argv.includes("--no-fail-fast") || env.KAINBAIN_NO_FAIL_FAST === "1");
+}
+
+/***
  * MARK: buildBranches
  * @description Builds the thirteen gate branches in canonical order (the
  *   twelve fast branches plus the Canary Tests branch). Branch
@@ -494,6 +556,9 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 			args: [
 				"--test",
 				"tests/run-parallel.test.mjs",
+				"tests/fast-gate-verdict.test.mjs",
+				"tests/fast-gate-excerpts.test.mjs",
+				"tests/fast-gate-acceptance.test.mjs",
 				"tests/repeat-tests.test.mjs",
 				"tests/deprecation-gate.test.mjs",
 				"tests/free-port.test.mjs",
@@ -569,6 +634,238 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 }
 
 /***
+ * MARK: reportPreflightFailure
+ * @description Reports a preflight failure (the settings-duplicate or
+ *   frontend-imports guardrail that runs before the overlap window opens):
+ *   writes the fast-gate verdict with the preflight entry plus its full
+ *   report, and logs the banner — so even the fastest gate of all leaves
+ *   the same machine-readable trail as a branch failure. The caller still
+ *   owns the stderr report and the exit code.
+ * @example reportPreflightFailure({ name: "Settings duplicate check", reportText: "dup!", verdictDir: "/tmp/v", verdictReady: true, withCanary: true }) => { ok: false, … }
+ * @param {Object} [opts]
+ * @param {string} [opts.name] - Preflight name (a verdict failed-branch entry).
+ * @param {string} [opts.reportText] - Full preflight report (becomes the untrimmed full log).
+ * @param {string} [opts.verdictDir] - Verdict directory (must already exist when verdictReady).
+ * @param {boolean} [opts.verdictReady] - False degrades every pointer to "unavailable".
+ * @param {boolean} [opts.withCanary] - Whether canary was in the gate (recorded as skipped, never silent).
+ * @param {Function} [opts.log] - Line sink, defaults to console.log.
+ * @returns {Object} { ok: false, verdictPath, logPaths }.
+ ***/
+export function reportPreflightFailure({
+	name,
+	reportText = "",
+	verdictDir = null,
+	verdictReady = false,
+	withCanary = true,
+	log = (...args) => console.log(...args),
+} = {}) {
+	const verdict = buildFastGateVerdict({
+		fastResults: [],
+		fastGateNames: FAST_GATE_BRANCH_NAMES,
+		canaryDecision: withCanary ? "skipped_due_to_fast_gate_failure" : "opted_out",
+		preflightFailure: {
+			name: String(name ?? "Preflight check"),
+			detail: String(reportText ?? "").split("\n")[0] ?? "",
+		},
+	});
+	let written = { ok: false, verdictPath: null, logPaths: [] };
+	if (verdictReady) {
+		written = writeFastGateVerdict({
+			dir: verdictDir,
+			verdict,
+			fullOutputs: [{ name: String(name ?? "Preflight check"), output: String(reportText ?? "") }],
+		});
+	}
+	log(
+		formatFastGateBanner({
+			verdict,
+			verdictPath: written.verdictPath ?? null,
+			logPaths: written.logPaths ?? [],
+			verdictAvailable: written.ok === true,
+		}),
+	);
+	return { ok: false, verdictPath: written.verdictPath ?? null, logPaths: written.logPaths ?? [] };
+}
+
+/***
+ * MARK: CANARY_SERIAL_START_LINE
+ * @description The line the gate prints when the fast phase passed (or
+ *   fail-fast is off) and the canary suite starts its serial phase. Pinned
+ *   byte-for-byte: operators and log scrapers match it.
+ * @example CANARY_SERIAL_START_LINE => "Fast gate complete — starting Canary Tests alone …"
+ ***/
+export const CANARY_SERIAL_START_LINE =
+	"Fast gate complete — starting Canary Tests alone (serial phase, no shared CPUs with the unit suites)...";
+
+/***
+ * MARK: resolvePhaseOutcome
+ * @description Reads one overlap-window run the way the verdict needs it:
+ *   the phase passes only when the runner claims success AND no branch
+ *   result disagrees. A runner that reports failure without naming a failed
+ *   branch (a custom seam, a truncated return) still fails the gate, and
+ *   the verdict names the gap as `unknown branch` instead of claiming ok —
+ *   the verdict and the exit code can never disagree.
+ * @example resolvePhaseOutcome({ run: { ok: false, results: [] } }) => { ok: false, failedNames: ["unknown branch"], … }
+ * @param {Object} [opts]
+ * @param {Object} [opts.run] - A `runParallel` result ({ ok, results }).
+ * @param {string} [opts.fallbackName] - Failed-branch name when the run names none.
+ * @returns {{ ok: boolean, verdictResults: Array<Object>, failedNames: Array<string> }}
+ ***/
+export function resolvePhaseOutcome({ run, fallbackName = "unknown branch" } = {}) {
+	const results = Array.isArray(run?.results) ? run.results : [];
+	const failedResults = results.filter((result) => result && result.ok !== true);
+	const failedNames = failedResults.map((result) => String(result?.name ?? "unknown branch"));
+	if (failedNames.length > 0) {
+		return { ok: false, verdictResults: results, failedNames };
+	}
+	if (run?.ok === true) {
+		return { ok: true, verdictResults: results, failedNames: [] };
+	}
+	return {
+		ok: false,
+		verdictResults: [...results, { name: fallbackName, ok: false, exitCode: null, wallSecs: 0 }],
+		failedNames: [fallbackName],
+	};
+}
+
+/***
+ * MARK: runGatePhases
+ * @description Runs the gate's two phases — the fast overlap window, then
+ *   the canary suite alone — with fail-fast verdict reporting. The moment
+ *   the fast phase resolves the verdict (`verdict.json` plus one untrimmed
+ *   full log per failed branch) is written and the banner is logged; when
+ *   fail-fast is on and the fast phase failed, the ~13-minute serial canary
+ *   phase is skipped with an explicit SKIP line and the gate returns within
+ *   seconds instead of after the canary. A green fast phase always runs
+ *   canary (the #KB-0417 parity requirement); every `Running <name>...
+ *   PASS/FAIL` line keeps its exact shape. Phase outcomes are read through
+ *   resolvePhaseOutcome, so a runner that reports failure without naming a
+ *   branch still fails the gate as `unknown branch` — the verdict and the
+ *   exit code can never disagree.
+ * @example const { ok } = await runGatePhases({ fastBranches: [], canaryBranches: [] })
+ * @param {Object} [opts]
+ * @param {Array<Object>} [opts.fastBranches] - Fast overlap-window branches.
+ * @param {Array<Object>} [opts.canaryBranches] - Serial-phase branches (empty when canary is opted out).
+ * @param {boolean} [opts.failFast] - Skip canary on fast-phase failure; defaults to true.
+ * @param {string} [opts.verdictDir] - Verdict directory (must already exist when verdictReady).
+ * @param {boolean} [opts.verdictReady] - False degrades every pointer to "unavailable".
+ * @param {string} [opts.cwd] - Working directory for every branch.
+ * @param {Function} [opts.runParallelFn] - Overlap runner seam, defaults to runParallel.
+ * @param {Function} [opts.log] - Line sink, defaults to console.log.
+ * @returns {Promise<Object>} { ok, fastOk, canaryOk, canaryDecision, verdictPath, logPaths }.
+ ***/
+export async function runGatePhases({
+	fastBranches = [],
+	canaryBranches = [],
+	failFast = true,
+	verdictDir = null,
+	verdictReady = false,
+	cwd = REPO_ROOT,
+	runParallelFn = runParallel,
+	log = (...args) => console.log(...args),
+} = {}) {
+	const tailLines = resolveFailureTailLines();
+	const canPointAtFullLogs =
+		verdictReady === true && typeof verdictDir === "string" && verdictDir.length > 0;
+	const failureDetailsPreamble = canPointAtFullLogs
+		? (result) =>
+				`Full log: ${result.name} → ${path.join(verdictDir, `${branchSlug(result.name)}.full.log`)}`
+		: undefined;
+	const failedOutputsOf = (results) =>
+		(Array.isArray(results) ? results : [])
+			.filter((result) => result && result.ok !== true)
+			.map((result) => ({
+				name: String(result.name ?? "unknown branch"),
+				output: typeof result.output === "string" ? result.output : "",
+			}));
+	const writePhaseVerdict = (verdict, fullOutputs) => {
+		if (!canPointAtFullLogs) return { ok: false, verdictPath: null, logPaths: [] };
+		const written = writeFastGateVerdict({ dir: verdictDir, verdict, fullOutputs });
+		return {
+			ok: written.ok === true,
+			verdictPath: written.verdictPath ?? null,
+			logPaths: written.logPaths ?? [],
+		};
+	};
+	const logBanner = (verdict, written) => {
+		log(
+			formatFastGateBanner({
+				verdict,
+				verdictPath: written.verdictPath,
+				logPaths: written.logPaths,
+				verdictAvailable: written.ok,
+			}),
+		);
+	};
+
+	const fastRun = await runParallelFn(fastBranches, {
+		cwd,
+		failureOutputTailLines: tailLines,
+		failureDetailsPreamble,
+	});
+	const fastOutcome = resolvePhaseOutcome({ run: fastRun });
+	const fastResults = Array.isArray(fastRun?.results) ? fastRun.results : [];
+	const fastOk = fastOutcome.ok;
+	const failedNames = fastOutcome.failedNames;
+
+	const skipCanary = failFast === true && !fastOk && canaryBranches.length > 0;
+	const earlyDecision =
+		canaryBranches.length === 0
+			? "opted_out"
+			: skipCanary
+				? "skipped_due_to_fast_gate_failure"
+				: "pending";
+	const earlyVerdict = buildFastGateVerdict({
+		fastResults: fastOutcome.verdictResults,
+		fastGateNames: FAST_GATE_BRANCH_NAMES,
+		canaryDecision: earlyDecision,
+	});
+	const earlyWritten = writePhaseVerdict(earlyVerdict, failedOutputsOf(fastResults));
+	logBanner(earlyVerdict, earlyWritten);
+
+	let canaryOk = true;
+	let canaryResults = null;
+	let canaryDecision = earlyDecision;
+	if (skipCanary) {
+		log(
+			`Running Canary Tests... SKIP (fast-gate failed: ${failedNames.join(", ")}; verdict at ${earlyWritten.verdictPath ?? "unavailable"})`,
+		);
+	} else if (canaryBranches.length > 0) {
+		log(CANARY_SERIAL_START_LINE);
+		const canaryRun = await runParallelFn(canaryBranches, {
+			cwd,
+			failureOutputTailLines: tailLines,
+			failureDetailsPreamble,
+		});
+		const canaryOutcome = resolvePhaseOutcome({ run: canaryRun });
+		canaryResults = canaryOutcome.verdictResults;
+		canaryOk = canaryOutcome.ok;
+		canaryDecision = "ran";
+	}
+
+	const closingVerdict = buildFastGateVerdict({
+		fastResults: fastOutcome.verdictResults,
+		fastGateNames: FAST_GATE_BRANCH_NAMES,
+		canaryDecision,
+		canaryResults,
+	});
+	const closingWritten = writePhaseVerdict(closingVerdict, [
+		...failedOutputsOf(fastResults),
+		...failedOutputsOf(canaryResults),
+	]);
+	logBanner(closingVerdict, closingWritten);
+
+	return {
+		ok: fastOk && canaryOk,
+		fastOk,
+		canaryOk,
+		canaryDecision,
+		verdictPath: closingWritten.verdictPath,
+		logPaths: closingWritten.logPaths,
+	};
+}
+
+/***
  * MARK: main
  * @description Runs the gate: one overlap window over every branch, then
  *   the canary opt-out note when canary was skipped. Exits 0 only when
@@ -579,6 +876,22 @@ async function main() {
 	pruneStaleTestDirectories();
 	ensureCompileCache();
 	const withCanary = resolveCanary();
+	const failFast = resolveFailFast();
+	// The verdict directory is resolved and created BEFORE the first branch
+	// runs: the head pointer line below survives the engine's head+tail
+	// excerpts, and every failure Details section can point at full-log
+	// paths that are guaranteed creatable.
+	const verdictSelection = resolveVerdictDir({ env: process.env });
+	const verdictReady = ensureVerdictDir({ dir: verdictSelection.dir });
+	if (verdictReady) {
+		console.log(
+			`Fast-gate verdict dir: ${verdictSelection.dir} (verdict.json + untrimmed failed-branch logs land here)`,
+		);
+	} else {
+		console.log(
+			`Fast-gate verdict files unavailable (cannot write ${verdictSelection.dir}); inline excerpts carry the detail`,
+		);
+	}
 	// Provision workspace installs BEFORE anything that needs them: the
 	// Settings duplicate check below parses with the frontend toolchain, so
 	// it also depends on provisioned node_modules (fresh-clone gate, 2026-10-27).
@@ -593,18 +906,25 @@ async function main() {
 		console.log(`Running ${entry.name}... SKIP (${entry.reason})`);
 	}
 	// Two phases, same suites: the fast branches overlap as before, then the
-	// canary suite runs alone (see splitGatePhases). Every branch still runs
-	// to completion and the exit semantics are unchanged.
+	// canary suite runs alone (see splitGatePhases) — unless fail-fast skips
+	// it after a fast-phase failure (see runGatePhases). Every fast branch
+	// still runs to completion and the exit semantics are unchanged.
 	const { fast, canary } = splitGatePhases(branches);
 	const fastPreflightResult = await checkDirectoryForDuplicates({
 		baseDirectoryPath: REPO_ROOT,
 	});
 	if (!fastPreflightResult.isClean) {
-		console.error(
-			formatViolationsReport({
-				violationsList: fastPreflightResult.violationsList,
-			}),
-		);
+		const preflightReport = formatViolationsReport({
+			violationsList: fastPreflightResult.violationsList,
+		});
+		console.error(preflightReport);
+		reportPreflightFailure({
+			name: "Settings duplicate check",
+			reportText: preflightReport,
+			verdictDir: verdictSelection.dir,
+			verdictReady,
+			withCanary,
+		});
 		process.exitCode = 1;
 		return;
 	}
@@ -624,29 +944,44 @@ async function main() {
 			packageDirectoryPath: path.join(REPO_ROOT, "frontend"),
 		});
 	} catch (error) {
-		console.error(`❌ Frontend imports check failed: ${error.message}`);
+		const preflightReport = `❌ Frontend imports check failed: ${error.message}`;
+		console.error(preflightReport);
+		reportPreflightFailure({
+			name: "Frontend imports check",
+			reportText: preflightReport,
+			verdictDir: verdictSelection.dir,
+			verdictReady,
+			withCanary,
+		});
 		process.exitCode = 1;
 		return;
 	}
 	if (!frontendImportsResult.isClean) {
-		console.error(
-			formatUndeclaredReport({
-				violationsList: frontendImportsResult.violationsList,
-			}),
-		);
+		const preflightReport = formatUndeclaredReport({
+			violationsList: frontendImportsResult.violationsList,
+		});
+		console.error(preflightReport);
+		reportPreflightFailure({
+			name: "Frontend imports check",
+			reportText: preflightReport,
+			verdictDir: verdictSelection.dir,
+			verdictReady,
+			withCanary,
+		});
 		process.exitCode = 1;
 		return;
 	}
 	console.log(
 		`✅ Frontend imports check passed (${frontendImportsResult.totalFilesScanned} files in ${frontendImportsResult.durationMilliseconds}ms)`,
 	);
-	const { ok: fastOk } = await runParallel(fast, { cwd: REPO_ROOT });
-	let canaryOk = true;
-	if (canary.length > 0) {
-		console.log("Fast gate complete — starting Canary Tests alone (serial phase, no shared CPUs with the unit suites)...");
-		({ ok: canaryOk } = await runParallel(canary, { cwd: REPO_ROOT }));
-	}
-	const ok = fastOk && canaryOk;
+	const { ok } = await runGatePhases({
+		fastBranches: fast,
+		canaryBranches: canary,
+		failFast,
+		verdictDir: verdictSelection.dir,
+		verdictReady,
+		cwd: REPO_ROOT,
+	});
 	// Only on success: the old shell gate short-circuited (`|| exit 1`), so
 	// a failing run ends with the failure details, not this line.
 	if (ok && !withCanary) {
