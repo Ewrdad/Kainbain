@@ -35,6 +35,12 @@ vi.mock('../../services/logger', () => ({
  */
 const INDEX = {
   sections: ['getting-started', 'concepts', 'workflows', 'reference'],
+  sectionLabels: {
+    'getting-started': 'Getting started',
+    concepts: 'Concepts',
+    workflows: 'Everyday workflows',
+    reference: 'Reference & runbooks',
+  },
   docs: [
     { slug: 'getting-started', title: 'Getting Started', section: 'getting-started', order: 5 },
     { slug: 'install-run', title: 'Install & Run', section: 'getting-started', order: 10 },
@@ -414,6 +420,7 @@ test('articles in a section the bundle does not know render under their id', asy
 test('a malformed index entry cannot break the filter or sidebar', async () => {
   api.docsIndex.mockResolvedValue({
     sections: ['getting-started'],
+    sectionLabels: { 'getting-started': 'Getting started' },
     docs: [
       { slug: 'getting-started', title: 'Getting Started', section: 'getting-started', order: 5 },
       { slug: 'broken-entry', section: 'getting-started', order: 99 },
