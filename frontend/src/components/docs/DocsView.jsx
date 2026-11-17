@@ -4,13 +4,10 @@ import { api } from '../../services/api';
 import { logger } from '../../services/logger';
 import { MarkdownViewer, parseMarkdownBlocks } from '../common/MarkdownViewer';
 import { groupBlocksIntoSections } from '../common/markdownSections';
-import { DOC_SECTION_LABELS, DOC_SECTION_ORDER } from './docsSections';
+import { deriveSectionOrder } from './deriveSectionOrder';
+import { resolveSectionLabel } from './resolveSectionLabel';
 import { useCollapsedSections } from './useCollapsedSections';
 import { DocsSidebarGroup } from './DocsSidebarGroup';
-
-// Re-exported so existing importers keep working; the canonical definitions
-// live in `./docsSections` (mirroring the API's SECTION_LABELS).
-export { DOC_SECTION_LABELS, DOC_SECTION_ORDER };
 
 /***
  * MARK: slugFromHash
@@ -184,17 +181,13 @@ export function DocsView() {
     });
   }, [docs, filter]);
 
-  // Group order follows the backend index (`sections`) so a regroup needs
-  // no frontend change; the static order is the offline/test fallback.
-  // Groups the backend added since this bundle shipped append after the
-  // known order under their id, so new groups can never vanish silently.
-  const sectionOrder = useMemo(
-    () =>
-      Array.isArray(index?.sections) && index.sections.length > 0
-        ? index.sections.filter((s) => typeof s === 'string' && s.length > 0)
-        : DOC_SECTION_ORDER,
-    [index],
-  );
+  // Group order and labels follow the backend index (`sections` +
+  // `sectionLabels`) so a regroup needs no frontend change. Without them the
+  // order falls back to first-appearance in the loaded docs and labels to the
+  // raw section id. Groups the backend added since this bundle shipped append
+  // after the known order under their id, so new groups can never vanish
+  // silently.
+  const sectionOrder = useMemo(() => deriveSectionOrder({ index, docs }), [index, docs]);
 
   const grouped = useMemo(() => {
     const bySection = new Map();
@@ -210,10 +203,10 @@ export function DocsView() {
     ];
     return ordered.map((section) => ({
       section,
-      label: DOC_SECTION_LABELS[section] || section,
+      label: resolveSectionLabel({ index, section }),
       docs: bySection.get(section),
     }));
-  }, [sectionOrder, filtered]);
+  }, [sectionOrder, filtered, index]);
 
   // The `d &&` guard mirrors the filter/group memos: a malformed index
   // entry must never throw the active-article lookup either.
@@ -329,7 +322,7 @@ export function DocsView() {
                   <p className="text-[10px] font-mono uppercase tracking-widest text-text-muted">
                     {activeDoc && (
                       <>
-                        {DOC_SECTION_LABELS[activeDoc.section] || activeDoc.section} ·{' '}
+                        {resolveSectionLabel({ index, section: activeDoc.section })} ·{' '}
                         <a
                           href={`/docs/${activeDoc.slug}`}
                           className="underline underline-offset-2 hover:text-on-surface"

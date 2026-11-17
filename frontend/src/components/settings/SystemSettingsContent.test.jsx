@@ -41,9 +41,28 @@ const getRunnerMonitor = vi.hoisted(() => vi.fn());
 const listProjects = vi.hoisted(() => vi.fn());
 const getConfigSpec = vi.hoisted(() => vi.fn());
 const getModels = vi.hoisted(() => vi.fn());
+const getVersions = vi.hoisted(() => vi.fn());
 
 vi.mock('../../services/api', () => ({
-  api: { getRunners, getRunnerMonitor, listProjects, getConfigSpec, getModels },
+  api: { getRunners, getRunnerMonitor, listProjects, getConfigSpec, getModels, getVersions },
+}));
+
+const VERSIONS_PAYLOAD = vi.hoisted(() => ({
+  ui: { installed: '1.0.0', latest: '1.0.0', status: 'up-to-date', updateUrl: '#/docs/update-ui' },
+  backend: { installed: '1.0.0', latest: '1.0.0', status: 'up-to-date', updateUrl: '#/docs/update-backend' },
+  apis: [
+    {
+      name: 'screen-to-server',
+      installed: '1.0.0',
+      latest: null,
+      status: 'unknown',
+      accepts: { frontend: '>=1.0.0 <2.0.0' },
+      updateUrl: '#/docs/update-api',
+    },
+  ],
+  security: { status: 'unknown', checkedAt: null, summary: '', reportUrl: null },
+  checkedAt: '2026-11-16T00:00:00.000Z',
+  warnings: [],
 }));
 
 const mockPushState = vi.hoisted(() => vi.fn());
@@ -198,6 +217,8 @@ beforeEach(() => {
   listProjects.mockReset();
   getConfigSpec.mockReset();
   getModels.mockReset();
+  getVersions.mockReset();
+  getVersions.mockResolvedValue(structuredClone(VERSIONS_PAYLOAD));
   getRunners.mockResolvedValue(structuredClone(RUNNER_ROWS));
   getRunnerMonitor.mockResolvedValue({ liveAssignments: [] });
   listProjects.mockResolvedValue([{ id: 'p1', name: 'Project One' }]);
@@ -285,6 +306,18 @@ describe('SystemSettingsContent', () => {
         ).not.toBeInTheDocument();
       }
     }
+  });
+
+  it('renders the About version section when the About tab is active', async () => {
+    renderContent();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'About' }));
+    expect(await screen.findAllByText(/Installed: 1\.0\.0/)).toHaveLength(3);
+    expect(screen.getByRole('link', { name: /how to update ui/i })).toHaveAttribute(
+      'href',
+      '#/docs/update-ui',
+    );
+    expect(screen.getByText(/no security report recorded/i)).toBeInTheDocument();
   });
 
   it('lists one roster row per registered Runner with the detail form', async () => {

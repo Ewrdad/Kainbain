@@ -46,6 +46,11 @@ describe("config defaults (clean env boots on valid defaults)", () => {
 		corsAllowedOrigins: [],
 		nodeEnv: "development",
 		serverRequestTimeoutMs: 0,
+		latestUiVersion: "",
+		latestBackendVersion: "",
+		latestApiVersion: "",
+		securityReportPath: "",
+		securityReportUrl: "",
 		vapidSubject: "mailto:admin@kainbain.local",
 		// Storage & Paths
 		projectsRoot: "/home/server/projects",

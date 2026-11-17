@@ -54,6 +54,7 @@ fallback exists for legacy clients and tests.
 | GET | `/status/observability` | Observability snapshot (tasks/sessions summary). |
 | GET | `/status/config` | Active configuration (values, defaults, sources; secrets redacted). |
 | GET | `/api/system/config-spec` | Alias of `/status/config`. |
+| GET | `/status/versions` | Installed UI/backend/API versions, latest-known releases, security summary, and update warnings (the Settings About page source; `?uiVersion=` reports the running UI). |
 
 `activeTask` and queue items report the run's picked harness/model plus, for
 alias runs, a separate `alias: { name, targetIndex }` (the alias behind the
@@ -334,7 +335,7 @@ write-once, so bytes are immutable). Errors carry a structured `reason`
 
 | Method | Path | Purpose |
 | ------ | ---- | ------- |
-| GET | `/docs` | Index JSON `{ sections, docs }` of all articles. |
+| GET | `/docs` | Index JSON `{ sections, sectionLabels, docs }` of all articles — `sections` is the sidebar group order, `sectionLabels` the per-group label, `docs` the articles. |
 | GET | `/docs/:slug` | One article as raw markdown (`text/markdown`). |
 
 ## Realtime (`api/routes/ws.js`)
