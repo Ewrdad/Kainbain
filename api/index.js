@@ -107,7 +107,7 @@ if (config.seedDemo === true) {
 	});
 }
 
-const { resolveProjectId, requireProject, resolveAndGuardProject } = createProjectResolvers(projectStore);
+const { resolveProjectId, requireProject, resolveAndGuardProject, resolveRequiredProjectId, resolveAndGuardRequiredProject, resolveAndGuardPresentProject } = createProjectResolvers(projectStore);
 const { getOrCreateSession, disposeSession, isAgentRunning } = createSessionHelpers({
 	projectStore,
 	sessionStore,
@@ -248,6 +248,9 @@ const deps = {
 	agentRunner,
 	resolveProjectId,
 	resolveAndGuardProject,
+	resolveRequiredProjectId,
+	resolveAndGuardRequiredProject,
+	resolveAndGuardPresentProject,
 	hasSessionCapability,
 	guardSessionCapability,
 	getOrCreateSession,
