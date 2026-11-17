@@ -31,7 +31,13 @@ import {
   stalenessLabel,
   runnerCommands,
   canRequestUpdate,
+  canRequestRestart,
   canRequestRediscovery,
+  compareRunnerVersions,
+  pinBlocksUpdateReason,
+  resolveDesiredVersion,
+  resolveVersionTarget,
+  versionWarningForRunner,
   mergeRunnerRecord,
   dropDraftFor,
   buildDirectoryDraft,
@@ -125,6 +131,10 @@ export function RunnerConfigurationSection() {
   const [filter, setFilter] = useState('');
   const [customModel, setCustomModel] = useState('');
   const [revokeConfirm, setRevokeConfirm] = useState(null);
+  // Pending Restart confirmation (destructive: running work is stopped).
+  // Cleared on selection change like the revoke confirm below, so a confirm
+  // armed for r1 can never reboot r2.
+  const [restartConfirm, setRestartConfirm] = useState(null);
   // Fleet-wide quarantined model ids (malformed Runner-advertised ids with
   // their reasons): best-effort catalogue read, empty when the fetch fails
   // or nothing is quarantined — the block below renders only when non-empty.
@@ -232,6 +242,7 @@ export function RunnerConfigurationSection() {
     setClearedRunnerId(selectedId);
     setCustomModel('');
     setRevokeConfirm(null);
+    setRestartConfirm(null);
   }
 
   /***
@@ -433,17 +444,49 @@ export function RunnerConfigurationSection() {
   // button plus visible guidance, never a dead control.
   const redetectReady = selected ? selected.status === 'active' && canRequestRediscovery(selected) : false;
   const updateReady = selected ? selected.status === 'active' && canRequestUpdate(selected) : false;
+  const restartReady = selected ? selected.status === 'active' && canRequestRestart(selected) : false;
   const commandDisabledReason = (supported) => {
     if (!selected) return '';
     if (selected.status !== 'active') return `Needs an active Runner (this one is ${selected.status || 'unknown'}).`;
     if (!supported) return 'This Runner is too old for on-request commands — update the Runner to enable this.';
     return '';
   };
-  const updateTitle = !updateReady
-    ? `Update now is unavailable: ${commandDisabledReason(canRequestUpdate(selected))}`
-    : selectedBusy
-      ? 'Runner is busy — the update queues and applies when idle.'
-      : (selected.recommendedVersion ? `Update to ${selected.recommendedVersion} (applies when idle)` : 'Update now (applies when idle)');
+  const desiredVersion = selected ? resolveDesiredVersion(selected) : 'latest';
+  const runningVersion = selected ? describeRunnerVersion(selected) : null;
+  const versionTarget = selected ? resolveVersionTarget(selected) : null;
+  const versionWarning = selected ? versionWarningForRunner(selected) : null;
+  const runningAssignment = selected ? assignments[selected.runnerId] : null;
+  const pinBlockReason = selected ? pinBlocksUpdateReason(selected) : null;
+  const updateDisabled = Boolean(busyKey && busyKey.startsWith('update:')) || !updateReady || Boolean(pinBlockReason);
+  const updateTitle = pinBlockReason
+    ? pinBlockReason
+    : !updateReady
+      ? `Update now is unavailable: ${commandDisabledReason(canRequestUpdate(selected))}`
+      : selectedBusy
+        ? 'Runner is busy — the update queues and applies when idle.'
+        : (versionTarget ? `Update to ${versionTarget} (applies when idle)` : 'Update now (applies when idle)');
+  const versionOptions = selected
+    ? [...new Set(
+      [
+        ...(Array.isArray(selected.availableVersions) ? selected.availableVersions : []),
+        ...(typeof selected.recommendedVersion === 'string' && selected.recommendedVersion ? [selected.recommendedVersion] : []),
+        ...(runningVersion ? [runningVersion] : []),
+        ...(desiredVersion !== 'latest' ? [desiredVersion] : []),
+      ].filter((v) => typeof v === 'string' && v),
+    )].sort((a, b) => compareRunnerVersions(b, a) ?? 0)
+    : [];
+  const restartTitle = restartReady
+    ? 'Reboot this Runner on its current version (stops running work)'
+    : `Restart is unavailable: ${commandDisabledReason(canRequestRestart(selected))}`;
+  const restartPending = selectedCommands.pending.some((p) => pendingName(p) === 'requestRestart');
+  const restartResult = selectedCommands.results.requestRestart || null;
+  const restartStatusLine = restartPending
+    ? 'Restart queued — the Runner reboots on its next heartbeat, stopping running work.'
+    : restartResult
+      ? (restartResult.ok
+        ? `Last restart: ${restartResult.detail || 'done'}`
+        : `Restart failed: ${restartResult.detail || 'unknown error'}`)
+      : null;
   const redetectTitle = redetectReady
     ? 'Ask the Runner to scan for models again'
     : `Re-detection is unavailable: ${commandDisabledReason(canRequestRediscovery(selected))}`;
@@ -675,6 +718,53 @@ export function RunnerConfigurationSection() {
     }
   };
 
+  /**
+   * MARK: handleRestartConfirm
+   * @description Reboots the selected Runner on its current version after
+   *   the operator confirmed the destructive modal. Running work is
+   *   stopped (the claim lease expires so it re-queues, like a crash) —
+   *   never an update check: Restart and Update are separate actions.
+   *
+   * @returns {Promise<void>} Resolves when complete
+   */
+  const handleRestartConfirm = async () => {
+    if (!selected) return;
+    const key = `restart:${selected.runnerId}`;
+    setBusyKey(key);
+    setActionError(null);
+    try {
+      await api.requestRunnerRestart(selected.runnerId);
+      if (!isLive.current) return;
+      setNotice('Restart queued — the Runner reboots on its current version.');
+      queueRunnerRefresh({ runnerId: selected.runnerId, rounds: 5 });
+    } catch (err) {
+      if (!isLive.current) return;
+      setActionError(err?.message || 'Could not queue restart.');
+    } finally {
+      if (isLive.current) {
+        setBusyKey(null);
+        setRestartConfirm(null);
+      }
+    }
+  };
+
+  /**
+   * MARK: handleVersionChange
+   * @description Saves the per-Runner version setting (`Latest` or one
+   *   exact release) the moment the operator picks it. Latest (default)
+   *   tracks the newest release and auto-updates when idle; a fixed pin
+   *   only ever installs through the manual Update button.
+   */
+  const handleVersionChange = (value) => {
+    if (!selected || typeof value !== 'string') return;
+    const note = value === 'latest'
+      ? 'Version set to Latest — the Runner tracks the newest release.'
+      : `Version pinned to ${value} — Update installs exactly this release.`;
+    void saveConfig(selected.runnerId, { desiredVersion: value }, note).then((ok) => {
+      if (ok) loadRunners();
+    });
+  };
+
   const handleJobToggle = (jobKey, checked) => {
     if (!selected) return;
     void saveConfig(selected.runnerId, { jobTypes: { [jobKey]: checked } }, 'Job type saved.');
@@ -881,18 +971,87 @@ export function RunnerConfigurationSection() {
                         ) : (
                           <button type="button" disabled={Boolean(busyKey)} onClick={() => setRevokeConfirm(selected.runnerId)} aria-label={`Revoke runner ${selected.runnerId}`} className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">Revoke</button>
                         )}
+                        <button
+                          type="button"
+                          data-testid={`runner-restart-${selected.runnerId}`}
+                          onClick={() => setRestartConfirm(selected.runnerId)}
+                          disabled={Boolean(busyKey) || !restartReady}
+                          title={restartTitle}
+                          aria-label={`Restart runner ${selected.runnerId}`}
+                          className="px-3 py-1.5 min-h-[44px] bg-error/10 border border-error/50 hover:brightness-110 text-error text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60"
+                        >
+                          Restart
+                        </button>
                       </>
                     )
                   )}
-                  {selected.updateAvailable && (
-                    <button type="button" data-testid={`runner-update-now-${selected.runnerId}`} onClick={handleUpdateNow} disabled={busyKey === `update:${selected.runnerId}` || !updateReady} title={updateTitle} className="px-3 py-1.5 min-h-[44px] bg-warning hover:brightness-110 text-on-primary text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">
+                  {(selected.updateAvailable || versionWarning) && (
+                    <button type="button" data-testid={`runner-update-now-${selected.runnerId}`} onClick={handleUpdateNow} disabled={updateDisabled} title={updateTitle} className="px-3 py-1.5 min-h-[44px] bg-warning hover:brightness-110 text-on-primary text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60">
                       {busyKey === `update:${selected.runnerId}` ? 'Updating…' : 'Update Runner'}
                     </button>
                   )}
-                  <button type="button" onClick={reloadSelected} disabled={busyKey === `reload:${selected.runnerId}`} data-testid={`runner-reload-${selected.runnerId}`} className="px-3 py-1.5 min-h-[44px] bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-sm transition-colors cursor-pointer disabled:opacity-60" title="Reload configuration from backend">Reload</button>
+                  <button type="button" onClick={reloadSelected} disabled={busyKey === `reload:${selected.runnerId}`} data-testid={`runner-reload-${selected.runnerId}`} className="px-2 py-1.5 min-h-[44px] text-xs text-text-muted hover:text-on-surface underline underline-offset-2 cursor-pointer disabled:opacity-60" title="Reload configuration from backend">Reload</button>
                 </div>
               </div>
-              {selected.updateAvailable && (
+              {restartConfirm === selected.runnerId && (
+                <div
+                  role="alertdialog"
+                  aria-modal="true"
+                  aria-labelledby={`runner-restart-heading-${selected.runnerId}`}
+                  data-testid={`runner-restart-modal-${selected.runnerId}`}
+                  className="px-3 py-2 bg-error/10 border border-error/50 rounded-sm flex flex-col gap-2"
+                >
+                  <p id={`runner-restart-heading-${selected.runnerId}`} className="text-xs font-bold text-error">
+                    Restart runner {runnerDisplayName(selected)}?
+                  </p>
+                  <p className="text-[11px] text-on-surface">
+                    Any work currently running on this runner will be stopped. The runner reboots
+                    on its current version{runningVersion ? ` (${runningVersion})` : ''} — this does not update it.
+                  </p>
+                  {runningAssignment && (
+                    <p className="text-[11px] text-error" data-testid={`runner-restart-busy-${selected.runnerId}`}>
+                      It is currently running task {String(runningAssignment.taskId).slice(0, 8)} — that work will be stopped.
+                    </p>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      data-testid={`runner-restart-confirm-${selected.runnerId}`}
+                      onClick={handleRestartConfirm}
+                      disabled={Boolean(busyKey)}
+                      className="px-3 py-1.5 min-h-[44px] bg-error text-on-primary text-xs font-bold uppercase tracking-widest rounded-sm cursor-pointer disabled:opacity-60"
+                    >
+                      {busyKey === `restart:${selected.runnerId}` ? 'Restarting…' : 'Restart now'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRestartConfirm(null)}
+                      className="px-2 py-1.5 text-xs text-text-muted cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+              {versionWarning && (
+                <p
+                  className={`text-[11px] font-bold ${versionWarning.tier === 'red' ? 'text-error' : 'text-warning'}`}
+                  role="alert"
+                  data-testid={`runner-version-warning-${selected.runnerId}`}
+                >
+                  {versionWarning.message}
+                </p>
+              )}
+              {restartStatusLine && (
+                <p
+                  className={`text-[11px] ${restartResult && !restartResult.ok ? 'text-error' : 'text-text-muted'}`}
+                  role={restartResult && !restartResult.ok ? 'alert' : 'status'}
+                  data-testid={`runner-restart-status-${selected.runnerId}`}
+                >
+                  {restartStatusLine}
+                </p>
+              )}
+              {(selected.updateAvailable || versionWarning || updatePending || updateResult) && (
                 <p
                   className={`text-[11px] ${updateResult && !updateResult.ok ? 'text-error' : 'text-text-muted'}`}
                   role={updateResult && !updateResult.ok ? 'alert' : 'status'}
@@ -923,6 +1082,34 @@ export function RunnerConfigurationSection() {
                   {selectedBuildWarning.message}
                 </p>
               )}
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-on-surface" htmlFor={`runner-version-${selected.runnerId}`}>Runner version:</label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <select
+                    id={`runner-version-${selected.runnerId}`}
+                    data-testid={`runner-version-select-${selected.runnerId}`}
+                    value={desiredVersion}
+                    onChange={(e) => handleVersionChange(e.target.value)}
+                    disabled={Boolean(busyKey)}
+                    className="min-h-[44px] p-2 bg-surface-deep border border-border-standard rounded-sm text-sm text-on-surface outline-none focus:border-primary cursor-pointer disabled:opacity-60"
+                  >
+                    <option value="latest">
+                      Latest{selected.recommendedVersion ? ` (${selected.recommendedVersion})` : ''}
+                    </option>
+                    {versionOptions.map((version) => (
+                      <option key={version} value={version}>
+                        {version}{version === runningVersion ? ' (running)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-[11px] text-text-muted" data-testid={`runner-version-hint-${selected.runnerId}`}>
+                    {desiredVersion === 'latest'
+                      ? 'Tracks the newest release — updates automatically when idle.'
+                      : `Pinned to ${desiredVersion} — updates only when you click Update.`}
+                  </span>
+                </div>
+              </div>
 
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-on-surface" htmlFor={`runner-name-${selected.runnerId}`}>Runner Name:</label>

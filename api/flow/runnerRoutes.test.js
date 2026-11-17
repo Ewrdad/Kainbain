@@ -1521,6 +1521,7 @@ describe("Runner Routes Integration", () => {
 			jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
 			directories: { masterDir: "", worktreeDir: "" },
 			projectScope: null,
+			desiredVersion: "latest",
 		});
 	});
 
@@ -2304,7 +2305,7 @@ describe("Runner Routes Integration", () => {
 
 		it("400s unknown commands fail-closed with UNKNOWN_COMMAND", async () => {
 			await onboard("command-2");
-			for (const command of ["requestRestart", "", null]) {
+			for (const command of ["requestReboot", "", null]) {
 				const res = await app.inject({
 					method: "POST",
 					url: "/runners/command-2/commands",

@@ -8,7 +8,7 @@ import {
 import { saveStateFile } from "./saveStateFile.js";
 import { normalizeCapabilities } from "./dispatch/normalizeCapabilities.js";
 import { runnerApiCompatible } from "./dispatch/runnerApiCompat.js";
-import { BACKEND_API_VERSION, shouldAutoRequestUpdate, updateInfoForRunner } from "./runnerVersionCompat.js";
+import { BACKEND_API_VERSION, coerceRunnerVersion, fleetKnownVersions, normalizeDesiredVersion, shouldAutoRequestUpdate, updateInfoForRunner } from "./runnerVersionCompat.js";
 
 const RUNNER_STATE_VERSION = 3;
 
@@ -33,6 +33,10 @@ const defaultOperatorConfig = () => {
 		jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
 		directories: { masterDir: "", worktreeDir: "" },
 		projectScope: null,
+		// Per-runner version setting: 'latest' (default, auto-updates when
+		// idle) or one exact release the runner should run instead (manual
+		// Update only, never automatic).
+		desiredVersion: "latest",
 	};
 };
 
@@ -73,6 +77,9 @@ const normalizeOperatorConfig = (raw) => {
 		projectScope: Array.isArray(raw.projectScope)
 			? raw.projectScope.filter((p) => typeof p === "string")
 			: null,
+		// Lenient on load: old state predates the field, and hand-edited
+		// junk falls back to 'latest' instead of stranding the runner.
+		desiredVersion: normalizeDesiredVersion(raw.desiredVersion ?? "latest"),
 	};
 };
 
@@ -171,12 +178,14 @@ export const RUNNER_PROTOCOL = "v1";
 const MIN_RUNNER_PROTOCOL = "v1";
 /***
  * MARK: RUNNER_COMMANDS
- * @description Backend-to-Runner command ids the registry accepts, delivers
- *   on the heartbeat pull channel, and the Runner daemon consumes at next
- *   idle (never interrupting live work).
- * @example RUNNER_COMMANDS.includes('requestUpdate') => true
+ * @description Backend-to-Runner command ids the registry accepts and
+ *   delivers on the heartbeat pull channel. `requestModelRediscovery` and
+ *   `requestUpdate` apply idle-only (never interrupting live work);
+ *   `requestRestart` reboots the runner on its current version at once —
+ *   any running work is stopped (destructive, operator-confirmed in the UI).
+ * @example RUNNER_COMMANDS.includes('requestRestart') => true
  ***/
-export const RUNNER_COMMANDS = ["requestModelRediscovery", "requestUpdate"];
+export const RUNNER_COMMANDS = ["requestModelRediscovery", "requestUpdate", "requestRestart"];
 /***
  * MARK: RUNNER_COMMAND_TTL_MS
  * @description How long an undelivered Runner command waits for the next
@@ -336,6 +345,15 @@ export class RunnerRegistry {
 		const supported = RUNNER_COMMANDS.filter(
 			(command) => Array.isArray(record?.facts?.commands) && record.facts.commands.includes(command),
 		);
+		// Operator's per-runner version setting ('latest' default, backfilled
+		// for old records) plus the fleet-known release list that backs the
+		// Settings version dropdown (Latest + these, newest first).
+		const desiredVersion = normalizeDesiredVersion(record?.operatorConfig?.desiredVersion ?? "latest");
+		const availableVersions = fleetKnownVersions({
+			runners: [...this.runners.values()],
+			recommendedVersion: update.recommendedVersion,
+			minimumVersion: update.minimumVersion,
+		});
 		return {
 			runnerId: record.runnerId,
 			status: record.status,
@@ -347,6 +365,8 @@ export class RunnerRegistry {
 			paused: record.paused === true,
 			projectScope: Array.isArray(record.projectScope) ? [...record.projectScope] : null,
 			operatorConfig: normalizeOperatorConfig(record.operatorConfig),
+			desiredVersion,
+			availableVersions,
 			runnerVersion: update.runnerVersion,
 			apiCompatible: apiCompat.ok,
 			apiRange: apiCompat.range,
@@ -370,6 +390,11 @@ export class RunnerRegistry {
 				updateAvailable: update.updateAvailable,
 				belowMinimum: update.belowMinimum,
 				apiCompatible: apiCompat.ok,
+				// Operator's per-runner setting ('latest' or one exact
+				// release): the daemon resolves its auto/force update
+				// behaviour from this — latest auto-updates when idle,
+				// pinned runners only ever update on manual Update.
+				desiredVersion,
 			},
 			pendingCommands: pendingEntries.map((e) => e.command),
 			commands: {
@@ -423,6 +448,7 @@ export class RunnerRegistry {
 			"jobTypes",
 			"directories",
 			"projectScope",
+			"desiredVersion",
 		]);
 		for (const key of Object.keys(patch)) {
 			if (!allowed.has(key)) {
@@ -441,6 +467,7 @@ export class RunnerRegistry {
 			jobTypes: { ...current.jobTypes },
 			directories: { ...current.directories },
 			projectScope: current.projectScope ? [...current.projectScope] : null,
+			desiredVersion: current.desiredVersion ?? "latest",
 		};
 		if (Object.hasOwn(patch, "displayName")) {
 			const name = patch.displayName;
@@ -622,6 +649,33 @@ export class RunnerRegistry {
 				next.projectScope = [...new Set(scope.map((id) => id.trim()))];
 			} else {
 				next.projectScope = null;
+			}
+		}
+		if (Object.hasOwn(patch, "desiredVersion")) {
+			const wanted = patch.desiredVersion;
+			if (wanted === null) {
+				next.desiredVersion = "latest";
+			} else if (typeof wanted === "string") {
+				const trimmed = wanted.trim();
+				if (!trimmed || trimmed.toLowerCase() === "latest") {
+					next.desiredVersion = "latest";
+				} else {
+					const coerced = coerceRunnerVersion(trimmed);
+					if (!coerced) {
+						throw RunnerRegistry._fail(
+							400,
+							"INVALID_DESIRED_VERSION",
+							"desiredVersion must be 'latest' or an exact release version (e.g. '1.2.3').",
+						);
+					}
+					next.desiredVersion = coerced;
+				}
+			} else {
+				throw RunnerRegistry._fail(
+					400,
+					"INVALID_DESIRED_VERSION",
+					"desiredVersion must be 'latest' or an exact release version (e.g. '1.2.3').",
+				);
 			}
 		}
 		record.operatorConfig = next;
@@ -1050,6 +1104,7 @@ export class RunnerRegistry {
 			pendingCommands: record.pendingCommands,
 			commandResults: record.commandResults,
 			recommendedVersion: config?.runnerRecommendedVersion,
+			desiredVersion: normalizeDesiredVersion(record?.operatorConfig?.desiredVersion ?? "latest"),
 		})) {
 			if (!Array.isArray(record.pendingCommands)) record.pendingCommands = [];
 			record.pendingCommands.push({ command: "requestUpdate", requestedAt: new Date().toISOString() });

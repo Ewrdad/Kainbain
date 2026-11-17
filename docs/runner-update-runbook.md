@@ -93,6 +93,47 @@ wrapper-based units. Verify after: `doctor` reports `status: ok` with
 `entrypoint: wrapper`, and the next heartbeat shows the same version
 as before.
 
+## Restart vs Update (Settings › Runners)
+
+Two separate actions, never combined:
+
+- **Restart** reboots the runner on its **current version** — no update
+  check runs. It is destructive: any work running on that runner is
+  stopped at once (the claim lease expires so the work re-queues, like a
+  crash). The confirm window names the runner and warns about running
+  work; use it when a runner looks stuck, not to change versions.
+  Mechanism: the daemon writes a `restart-requested` sentinel beside the
+  install root and exits 0; the wrapper consumes it and boots the SAME
+  tree again. Restart therefore needs the wrapper entrypoint — a runner
+  started as bare `node main.js` exits without rebooting (migrate to the
+  wrapper, above).
+- **Update** reinstalls the runner onto its **target version** — the
+  exact pin when the runner is pinned, otherwise the newest compatible
+  release — and applies only when the runner is idle (never interrupts
+  work). A busy runner queues the update for the next idle point.
+
+## Per-runner version setting
+
+Each runner is set to **Latest** (default) or one exact release, via
+the version dropdown on its Settings › Runners detail panel:
+
+- **Latest** tracks the newest release. It auto-updates at the next
+  idle point (including right after a restart, once idle), and the
+  backend nudges trailing runners at most daily. A red banner appears
+  whenever a newer version exists than the one running — update (or
+  wait for idle) to converge it.
+- **Pinned** stays on exactly that release. Pinned runners never
+  auto-update (no nudges, no idle installs, no restart-time installs);
+  only the manual **Update** button installs the pin, and only when the
+  pin is newer than the running version — the channel never downgrades,
+  so a pin older than running shows a softer warning and the Update
+  button stays disabled with the reason. Pick Latest or a newer pin to
+  move forward.
+
+The dropdown lists Latest plus every fleet-known release (newest
+first): each runner's running version plus the fleet recommended and
+minimum knobs — offline-safe, no release catalogue fetch.
+
 ## Triage: a runner says out of date
 
 Start on the runner host (or ask the host owner to run it) — the
@@ -105,15 +146,30 @@ $KAINBAIN_RUNNER_INSTALL_ROOT/bin/kainbain-runner doctor --unit kainbain-runner-
 Match the Settings › Runners badge to a cause:
 
 - **"update available" that never clears.** The runner trails
-  `KAINBAIN_RUNNER_RECOMMENDED_VERSION`. If the doctor says
-  `entrypoint: direct`, migrate to the wrapper (above) — staged
-  updates can never boot there. If the env shows
+  `KAINBAIN_RUNNER_RECOMMENDED_VERSION` (Latest runners) or its pin.
+  If the doctor says `entrypoint: direct`, migrate to the wrapper
+  (above) — staged updates can never boot there. If the env shows
   `KAINBAIN_RUNNER_AUTO_UPDATE=0` (or `(unset)` with a host-level
   opt-out), the runner acked the nudge with "skipped: auto-update is
-  disabled" — flip that switch. If the recommended knob sits above
-  every published release, lower it to the newest release. Otherwise
-  the runner is likely just busy: it converges at the next idle
-  check, or press Update now (idle-only, never interrupts work).
+  disabled" — flip that switch. If the runner is pinned, only the
+  manual Update button installs (pins never auto-update); a pin older
+  than running refuses with "never downgrades" — pick Latest or a
+  newer pin. If the recommended knob sits above every published
+  release, lower it to the newest release. Otherwise the runner is
+  likely just busy: it converges at the next idle check, or press
+  Update now (idle-only, never interrupts work). Restart does NOT
+  clear this — Restart reboots the same version.
+- **"restart queued" that never clears / restart loop.** The runner
+  collects `requestRestart` on every heartbeat but never reboots:
+  check the journal for the `Runner restarting` line. If the line is
+  there but no reboot follows, the runner is not supervised by the
+  wrapper (bare `node main.js` exits instead of rebooting — migrate to
+  the wrapper, above) or the install root is unwritable (look for
+  `sentinel not written`). A `restart-requested` file left behind by a
+  crash causes at most one extra boot on the next clean exit — the
+  wrapper consumes it, never loops. Old runners that predate the
+  command show a disabled Restart with "too old" guidance instead —
+  update them manually.
 - **"below minimum" / 409 loop.** The runner is under
   `KAINBAIN_RUNNER_MIN_VERSION` and dispatch refuses it. It
   self-updates immediately when idle (interval bypassed). If it

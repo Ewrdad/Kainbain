@@ -33,6 +33,270 @@ export const jobTypeLabels = () => [
 ];
 
 /***
+ * MARK: DESIRED_VERSION_LATEST
+ * @description Sentinel for the per-runner version setting meaning "track
+ *   the newest release" (the default for every runner). Any other value is
+ *   an exact pinned product version the runner should run instead.
+ * @example DESIRED_VERSION_LATEST => 'latest'
+ ***/
+export const DESIRED_VERSION_LATEST = 'latest';
+
+/***
+ * MARK: normalizeDesiredVersion
+ * @description Lenient read-side normalization for the per-runner version
+ *   setting: null/undefined/blank/`latest` (any case) read as `latest`;
+ *   anything else trims to its string form (the backend canonicalizes and
+ *   strictly validates on PATCH, so the UI never has to parse versions).
+ * @example normalizeDesiredVersion(null) => 'latest'
+ * @example normalizeDesiredVersion(' 1.2.3 ') => '1.2.3'
+ * @param {*} [value='latest'] - Stored setting.
+ * @returns {string} `latest` or the trimmed pin.
+ ***/
+export const normalizeDesiredVersion = (value = 'latest') => {
+  if (value === null || value === undefined) return DESIRED_VERSION_LATEST;
+  const trimmed = String(value).trim();
+  if (!trimmed || trimmed.toLowerCase() === DESIRED_VERSION_LATEST) return DESIRED_VERSION_LATEST;
+  return trimmed;
+};
+
+/***
+ * MARK: resolveDesiredVersion
+ * @description Effective per-runner version setting for one public Runner
+ *   record: the top-level `desiredVersion` the backend exposes (falling
+ *   back to the raw operatorConfig copy, then `latest` for old backends).
+ * @example resolveDesiredVersion({ desiredVersion: '1.2.3' }) => '1.2.3'
+ * @param {Object} [runner={}] - Runner record.
+ * @returns {string} `latest` or an exact version.
+ ***/
+export const resolveDesiredVersion = (runner = {}) =>
+  normalizeDesiredVersion(
+    runner?.desiredVersion ?? runner?.operatorConfig?.desiredVersion ?? runner?.update?.desiredVersion ?? 'latest',
+  );
+
+/***
+ * MARK: versionTuple
+ * @description Numeric `major.minor.patch` tuple for one version string
+ *   (tolerates a `v` prefix, partial input, and build/prerelease suffixes),
+ *   or null when it carries no readable numbers. The UI cannot depend on
+ *   semver (no such frontend dependency), so comparison stays numeric and
+ *   conservative: unparseable versions never rank as newer or older.
+ * @example versionTuple('v1.2.3') => [1, 2, 3]
+ * @param {*} [version] - Version value.
+ * @returns {number[]|null} Numeric triple, or null.
+ ***/
+const versionTuple = (version) => {
+  if (typeof version !== 'string') return null;
+  const core = version.trim().replace(/^v/i, '').split('-')[0].split('+')[0];
+  if (!core) return null;
+  const parts = core.split('.');
+  if (parts.length === 0 || parts.length > 3) return null;
+  const nums = [];
+  for (const part of parts) {
+    if (!/^\d+$/.test(part)) return null;
+    nums.push(Number(part));
+  }
+  while (nums.length < 3) nums.push(0);
+  return nums;
+};
+
+/***
+ * MARK: compareRunnerVersions
+ * @description Numeric comparison for two product versions: -1 when `a`
+ *   is older, 0 when equal, 1 when newer, null when either side is
+ *   unreadable (callers treat null as "cannot prove a difference", never
+ *   as newer — warnings stay quiet instead of scaring on junk).
+ * @example compareRunnerVersions('0.1.0', '0.2.0') => -1
+ * @param {*} a - First version.
+ * @param {*} b - Second version.
+ * @returns {number|null} Comparison, or null.
+ ***/
+export const compareRunnerVersions = (a, b) => {
+  const pa = versionTuple(a);
+  const pb = versionTuple(b);
+  if (!pa || !pb) return null;
+  for (let i = 0; i < 3; i += 1) {
+    if (pa[i] !== pb[i]) return pa[i] < pb[i] ? -1 : 1;
+  }
+  return 0;
+};
+
+/***
+ * MARK: resolveVersionTarget
+ * @description Version an Update installs for one runner: the exact pin
+ *   when the runner is pinned, else the fleet recommended version (or
+ *   null when the backend names none — the Update button then points at
+ *   "latest" behaviour without a number).
+ * @example resolveVersionTarget({ desiredVersion: '1.2.3', recommendedVersion: '2.0.0' }) => '1.2.3'
+ * @param {Object} [runner={}] - Runner record.
+ * @returns {string|null} Target version, or null.
+ ***/
+export const resolveVersionTarget = (runner = {}) => {
+  const desired = resolveDesiredVersion(runner);
+  if (desired !== DESIRED_VERSION_LATEST) return desired;
+  const recommended = runner?.recommendedVersion;
+  return typeof recommended === 'string' && recommended.trim() ? recommended.trim() : null;
+};
+
+/***
+ * MARK: versionWarningForRunner
+ * @description Version-mismatch warning for one runner row, or null when
+ *   there is nothing to say. Fires whenever the running version differs
+ *   from the runner's own setting (fixed pin or `latest`), per survey q4:
+ *   red when a newer version exists than the one running (scare them into
+ *   updating, survey q6), softer otherwise (e.g. pinned to an older
+ *   release the channel will never downgrade to). Below the fleet minimum
+ *   is always red and names the floor distinctly from "update available".
+ * @example versionWarningForRunner({ runnerVersion: '0.1.0', desiredVersion: 'latest', recommendedVersion: '0.2.0' }) => { kind: 'newer-available', tier: 'red', … }
+ * @param {Object} [runner={}] - Runner record.
+ * @returns {{kind: string, tier: string, desired: string, running: string, target: string|null, message: string}|null} Warning, or null.
+ ***/
+export const versionWarningForRunner = (runner = {}) => {
+  const running = describeRunnerVersion(runner);
+  if (!running) return null;
+  const desired = resolveDesiredVersion(runner);
+  const recommended = typeof runner?.recommendedVersion === 'string' && runner.recommendedVersion.trim()
+    ? runner.recommendedVersion.trim()
+    : null;
+  const minimum = typeof runner?.minimumVersion === 'string' && runner.minimumVersion.trim()
+    ? runner.minimumVersion.trim()
+    : null;
+  const known = [
+    ...(desired !== DESIRED_VERSION_LATEST ? [desired] : []),
+    ...(recommended ? [recommended] : []),
+    ...(minimum ? [minimum] : []),
+    ...(Array.isArray(runner?.availableVersions) ? runner.availableVersions.filter((v) => typeof v === 'string' && v) : []),
+  ];
+  const newerExists = known.some((v) => compareRunnerVersions(running, v) === -1);
+  if (desired !== DESIRED_VERSION_LATEST) {
+    const order = compareRunnerVersions(running, desired);
+    // The dispatch floor outranks the pin: a runner under the minimum is
+    // refused work whatever it is set to, so below-minimum is always red —
+    // even when the pin already matches the running version.
+    if (runner?.belowMinimum === true) {
+      // Only a pin NEWER than running that also clears the floor makes
+      // Update useful; anything else needs a re-pick first (the Update
+      // button disables itself with the same reasoning).
+      const pinClearsFloor = order === -1 && (!minimum || compareRunnerVersions(desired, minimum) !== -1);
+      if (pinClearsFloor) {
+        return {
+          kind: 'below-minimum',
+          tier: 'red',
+          desired,
+          running,
+          target: desired,
+          message: `This Runner runs ${running}, below the fleet minimum${minimum ? ` ${minimum}` : ''} — Update now to install ${desired}.`,
+        };
+      }
+      return {
+        kind: 'below-minimum',
+        tier: 'red',
+        desired,
+        running,
+        target: recommended,
+        message: `This Runner runs ${running}, below the fleet minimum${minimum ? ` ${minimum}` : ''}, and its pinned version ${desired} cannot clear it — pick Latest or a version at or above the minimum, then Update.`,
+      };
+    }
+    if (order === 0) return null;
+    if (order === null) {
+      return {
+        kind: 'mismatch',
+        tier: 'soft',
+        desired,
+        running,
+        target: desired,
+        message: `This Runner runs ${running} but is set to version ${desired} (the running version could not be compared). Update to install ${desired} when idle.`,
+      };
+    }
+    if (order === 1) {
+      // Running newer than the pin: the channel never downgrades, so the
+      // fix is always a re-pick — red only because something even newer
+      // exists (survey q6), soft otherwise. The Update button stays
+      // disabled either way, so neither message promises it installs.
+      if (newerExists) {
+        const newerLabel = recommended ?? 'a newer release';
+        return {
+          kind: 'newer-available',
+          tier: 'red',
+          desired,
+          running,
+          target: recommended,
+          message: `This Runner runs ${running} but is set to older version ${desired}, and ${newerLabel} is available — pick Latest or a newer version, then Update.`,
+        };
+      }
+      return {
+        kind: 'mismatch',
+        tier: 'soft',
+        desired,
+        running,
+        target: desired,
+        message: `This Runner runs ${running} but is set to older version ${desired}. The Runner never downgrades — pick a newer version or Latest to update.`,
+      };
+    }
+    // The pin is newer than running, so it is itself proof a newer version
+    // exists — always red, and Update installs exactly this pin.
+    return {
+      kind: 'newer-available',
+      tier: 'red',
+      desired,
+      running,
+      target: desired,
+      message: `This Runner runs ${running} but is set to version ${desired}. Update now to install ${desired}.`,
+    };
+  }
+  // The dispatch floor outranks the setting here too: refused work whatever
+  // the knob state, so below-minimum is always red — even with no
+  // recommended version to trail.
+  if (runner?.belowMinimum === true) {
+    return {
+      kind: 'below-minimum',
+      tier: 'red',
+      desired,
+      running,
+      target: recommended,
+      message: `This Runner runs ${running}, below the fleet minimum${minimum ? ` ${minimum}` : ''} — update it past the minimum before it can take work.`,
+    };
+  }
+  if (!recommended || compareRunnerVersions(running, recommended) !== -1) return null;
+  return {
+    kind: 'newer-available',
+    tier: 'red',
+    desired,
+    running,
+    target: recommended,
+    message: `This Runner runs ${running} but ${recommended} is available. Update now — the Runner updates when idle.`,
+  };
+};
+
+/***
+ * MARK: pinBlocksUpdateReason
+ * @description Why the manual Update button must stay disabled for a pinned
+ *   runner whose pin cannot usefully install, or null when Update may
+ *   proceed: a pin older than running (the channel never downgrades), or a
+ *   pin below the fleet minimum (installing it would strand — or keep —
+ *   the runner under the dispatch floor). Latest runners never block here
+ *   (their target always moves forward). Mirrors the below-minimum branch
+ *   of `versionWarningForRunner`, which names the same re-pick.
+ * @example pinBlocksUpdateReason({ runnerVersion: '0.2.0', desiredVersion: '0.1.0' }) => 'Version 0.1.0 is older …'
+ * @param {Object} [runner={}] - Runner record.
+ * @returns {string|null} Disabled reason, or null.
+ ***/
+export const pinBlocksUpdateReason = (runner = {}) => {
+  const desired = resolveDesiredVersion(runner);
+  if (desired === DESIRED_VERSION_LATEST) return null;
+  const running = describeRunnerVersion(runner);
+  const minimum = typeof runner?.minimumVersion === 'string' && runner.minimumVersion.trim()
+    ? runner.minimumVersion.trim()
+    : null;
+  if (running && compareRunnerVersions(desired, running) === -1) {
+    return `Version ${desired} is older than the running ${running} — the Runner never downgrades. Pick a newer version or Latest first.`;
+  }
+  if (minimum && compareRunnerVersions(desired, minimum) === -1) {
+    return `Version ${desired} is below the fleet minimum ${minimum} — pick Latest or a version at or above ${minimum} first.`;
+  }
+  return null;
+};
+
+/***
  * MARK: defaultRunnerConfig
  * @description Normalizes the operator-owned config for one Runner record
  *   (older backends may omit `operatorConfig` entirely). Nulls keep their
@@ -70,6 +334,10 @@ export const defaultRunnerConfig = (runner = {}) => {
     projectScope: Array.isArray(source.projectScope)
       ? source.projectScope.filter((p) => typeof p === 'string')
       : null,
+    // Per-runner version setting: 'latest' (default, auto-updates when
+    // idle) or one exact release (manual Update only). Lenient on read
+    // (old records predate the field) — PATCH validation is strict.
+    desiredVersion: normalizeDesiredVersion(source.desiredVersion ?? 'latest'),
   };
 };
 
@@ -435,6 +703,16 @@ export const canRequestUpdate = (runner = {}) => canRequestCommand(runner, 'requ
  * @example canRequestRediscovery({ commands: { supported: ['requestModelRediscovery'] } }) => true
  ***/
 export const canRequestRediscovery = (runner = {}) => canRequestCommand(runner, 'requestModelRediscovery');
+
+/***
+ * MARK: canRequestRestart
+ * @description Whether a reboot-on-current-version can be requested: the
+ *   Runner advertises `requestRestart` support, so the queued command
+ *   will actually run. Old Runners need a manual update instead, and the
+ *   UI says so instead of offering a dead button (R1).
+ * @example canRequestRestart({ commands: { supported: ['requestRestart'] } }) => true
+ ***/
+export const canRequestRestart = (runner = {}) => canRequestCommand(runner, 'requestRestart');
 
 
 /***
