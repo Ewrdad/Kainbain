@@ -17,6 +17,7 @@ import {
 	recordFleetCapExhausted,
 	recordProjectClaim,
 	recordProjectCompletion,
+	recordRunnerSignalReport,
 } from "../watch/productionSignals.js";
 import { buildFleetModelCatalog } from "./dispatch/fleetModelCatalog.js";
 import { summarizeFleetHarnesses } from "./dispatch/fleetModelSnapshot.js";
@@ -361,6 +362,17 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				// G11 audit alert: one identity from multiple origins.
 				origin: request.ip || null,
 			});
+			// WP2 signal: Runner-reported process totals (worktree
+			// evictions) ride `facts.signals`. The Runner is a separate
+			// process, so the monotonic merge below is what makes its
+			// evictions visible on the observability exposition — and it
+			// stays correct across Runner restarts (counter resets).
+			// Observation only: the heartbeat response is untouched.
+			recordRunnerSignalReport(
+				taskStore,
+				request.body?.runnerId || runner.runnerId,
+				request.body?.facts?.signals,
+			);
 			// D5 pull channel (ADR 0011): pending steers for this
 			// Runner's live executions ride the heartbeat response, so
 			// steering needs no second channel. Stale Runner, live

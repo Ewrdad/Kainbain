@@ -19,6 +19,7 @@ export {
 	recordFleetCapExhausted,
 	recordProjectClaim,
 	recordProjectCompletion,
+	recordRunnerSignalReport,
 	recordSkillSizeCapOmission,
 	recordWorktreeEviction,
 	resetProcessSignals,

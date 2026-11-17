@@ -19,8 +19,10 @@ import {
 	recordFleetCapExhausted,
 	recordProjectClaim,
 	recordProjectCompletion,
+	recordRunnerSignalReport,
 	recordSkillSizeCapOmission,
 	recordWorktreeEviction,
+	processSignalTotals,
 	resetProcessSignals,
 	signalsFor,
 	summarizeProductionSignals,
@@ -44,6 +46,15 @@ describe("percentile", () => {
 
 	it("reads {t, ms} timestamped samples", () => {
 		expect(percentile([{ t: 1, ms: 4 }, { t: 2, ms: 8 }], 50)).toBe(6);
+	});
+
+	it("clamps out-of-range q and rejects non-finite q instead of returning NaN", () => {
+		expect(percentile([1, 2, 3], 150)).toBe(3);
+		expect(percentile([1, 2, 3], -5)).toBe(1);
+		expect(percentile([1, 2, 3], 0)).toBe(1);
+		expect(percentile([1, 2, 3], 100)).toBe(3);
+		expect(percentile([1, 2, 3], NaN)).toBeNull();
+		expect(percentile(null, 50)).toBeNull();
 	});
 });
 
@@ -254,5 +265,121 @@ describe("signalsFor", () => {
 			STALE_EPOCH: 0,
 			CLAIM_CONFLICT: 0,
 		});
+	});
+});
+
+describe("fail-safe recording (observation must never throw into dispatch)", () => {
+	it("never throws on a frozen store and drops the sample instead", () => {
+		const frozenStore = Object.freeze({});
+		expect(() => recordClaimAttempt(frozenStore)).not.toThrow();
+		expect(() => recordDispatchLatency(frozenStore, 5)).not.toThrow();
+		expect(() => recordProjectClaim(frozenStore, "proj-alpha", { waitMs: 5 })).not.toThrow();
+		expect(() => recordFencing(frozenStore, "STALE_EPOCH")).not.toThrow();
+		expect(() => recordClaimExcluded(frozenStore, "RUNNER_PAUSED")).not.toThrow();
+		expect(() => recordDispatchMiss(frozenStore, "PROJECT_BUSY", { projectId: "p" })).not.toThrow();
+		expect(() => recordFleetCapExhausted(frozenStore)).not.toThrow();
+		expect(() => recordProjectCompletion(frozenStore, "p")).not.toThrow();
+		expect(() => recordClaimConflict(frozenStore)).not.toThrow();
+		expect(() => recordClaimError(frozenStore)).not.toThrow();
+		expect(() => recordRunnerSignalReport(frozenStore, "r1", { worktreeEvictions: 1 })).not.toThrow();
+		// Nothing was attached to the frozen store.
+		expect(frozenStore.productionSignals).toBeUndefined();
+		// Reads on the frozen store still produce a total zeroed summary.
+		expect(summarizeProductionSignals(frozenStore).claim.attempts).toBe(0);
+	});
+
+	it("never throws on a frozen signals object passed directly", () => {
+		const frozen = Object.freeze(freshProductionSignals());
+		expect(() => recordClaimSuccess(frozen)).not.toThrow();
+		expect(() => recordDispatchLatency(frozen, 1, { now: 1 })).not.toThrow();
+		expect(() => recordWorktreeEviction(frozen)).not.toThrow();
+		expect(() => recordSkillSizeCapOmission(frozen, 2)).not.toThrow();
+	});
+
+	it("tolerates null/non-object opts on every recorder and the summarizer", () => {
+		const signals = freshProductionSignals();
+		expect(() => recordDispatchLatency(signals, 5, null)).not.toThrow();
+		expect(() => recordProjectClaim(signals, "p", null)).not.toThrow();
+		expect(() => recordDispatchMiss(signals, "NO_HARNESS", null)).not.toThrow();
+		expect(() => summarizeProductionSignals(signals, null)).not.toThrow();
+		expect(() => summarizeProductionSignals(signals, { windowMs: NaN, now: NaN })).not.toThrow();
+		const summary = summarizeProductionSignals(signals, { windowMs: -1, now: "nope" });
+		expect(summary.windowMs).toBeNull();
+		expect(summary.claim.attempts).toBe(0);
+	});
+
+	it("summarizes a malformed signals object without throwing (read path fails safe)", () => {
+		const mangled = {
+			claimAttempts: 2,
+			fencing: "nope",
+			dispatchLatencyMs: 42,
+			perProject: { "proj-alpha": "broken", other: null },
+			claimExcluded: 7,
+			missTotals: "x",
+		};
+		let summary;
+		expect(() => {
+			summary = summarizeProductionSignals(mangled, { windowMs: 1000, now: 5 });
+		}).not.toThrow();
+		expect(summary.dispatchLatency.count).toBe(0);
+		expect(summary.dispatchLatency.p99Ms).toBeNull();
+		expect(summary.perProject["proj-alpha"]).toMatchObject({ claimed: 0, completed: 0 });
+		expect(summary.perProject.other).toMatchObject({ claimed: 0, completed: 0 });
+		expect(summary.claim.attempts).toBe(2);
+		expect(summary.claim.excludedTotal).toBe(0);
+		expect(summary.fencing).toEqual({});
+		expect(summary.missTotals).toEqual({});
+	});
+
+	it("keeps the storeless process totals when handed a plain (non-signals) store", () => {
+		const plainStore = {};
+		recordWorktreeEviction(plainStore);
+		// A plain store is NOT a signals object: the sample went to the
+		// process total, and no signals store was attached to the store.
+		expect(plainStore.productionSignals).toBeUndefined();
+		expect(processSignalTotals().worktreeEvictions).toBe(1);
+		expect(summarizeProductionSignals(plainStore).worktreeEvictions).toBe(1);
+	});
+});
+
+describe("recordRunnerSignalReport (Runner heartbeat bridge)", () => {
+	it("merges per-Runner deltas monotonically and ignores repeats", () => {
+		const signals = freshProductionSignals();
+		expect(recordRunnerSignalReport(signals, "runner-1", { worktreeEvictions: 3 })).toBe(true);
+		expect(recordRunnerSignalReport(signals, "runner-1", { worktreeEvictions: 3 })).toBe(true);
+		expect(recordRunnerSignalReport(signals, "runner-1", { worktreeEvictions: 5 })).toBe(true);
+		expect(recordRunnerSignalReport(signals, "runner-2", { worktreeEvictions: 2 })).toBe(true);
+		expect(summarizeProductionSignals(signals).worktreeEvictions).toBe(7);
+	});
+
+	it("treats a lower reported total as a Runner restart (counter reset), never negative", () => {
+		const signals = freshProductionSignals();
+		recordRunnerSignalReport(signals, "runner-1", { worktreeEvictions: 3 });
+		// Restart: the new process reports from 0 — the new count is all delta.
+		recordRunnerSignalReport(signals, "runner-1", { worktreeEvictions: 1 });
+		expect(summarizeProductionSignals(signals).worktreeEvictions).toBe(4);
+		recordRunnerSignalReport(signals, "runner-1", { worktreeEvictions: 5 });
+		expect(summarizeProductionSignals(signals).worktreeEvictions).toBe(8);
+	});
+
+	it("rejects reports without a finite worktreeEvictions and touches nothing", () => {
+		const signals = freshProductionSignals();
+		expect(recordRunnerSignalReport(signals, "runner-1", undefined)).toBe(false);
+		expect(recordRunnerSignalReport(signals, "runner-1", null)).toBe(false);
+		expect(recordRunnerSignalReport(signals, "runner-1", {})).toBe(false);
+		expect(recordRunnerSignalReport(signals, "runner-1", { worktreeEvictions: NaN })).toBe(false);
+		expect(recordRunnerSignalReport(signals, "runner-1", { worktreeEvictions: -2 })).toBe(true);
+		expect(summarizeProductionSignals(signals).worktreeEvictions).toBe(0);
+		// A missing runnerId falls back to "unknown" instead of throwing.
+		expect(recordRunnerSignalReport(signals, null, { worktreeEvictions: 1 })).toBe(true);
+		expect(summarizeProductionSignals(signals).worktreeEvictions).toBe(1);
+	});
+
+	it("keeps Runner-reported totals separate from same-process totals", () => {
+		const signals = freshProductionSignals();
+		recordWorktreeEviction(); // process total (same-process path)
+		recordRunnerSignalReport(signals, "runner-9", { worktreeEvictions: 2 });
+		const summary = summarizeProductionSignals(signals);
+		expect(summary.worktreeEvictions).toBe(3);
 	});
 });

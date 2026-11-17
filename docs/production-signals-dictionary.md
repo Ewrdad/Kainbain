@@ -20,8 +20,8 @@ snapshots); sampled series honour `{ windowMs, now }`.
 | `productionSignals.projectBusy.<pid>` | `projectId` | Per-project `PROJECT_BUSY` (per-project cap) skips. Fairness evidence: busy skips for A while B's `claimed` still climbs. |
 | `productionSignals.fleetCapExhausted` | none | `429 FLEET_CONCURRENCY_EXHAUSTED` backoffs. Also counted in `claim.excluded`. |
 | `productionSignals.fleetCompletedExecutions` | none | Fleet-finished executions (event-counted). Reconciles against state-derived `perProject.<pid>.completed`. |
-| `productionSignals.worktreeEvictions` | none | Worktree LRU evictions. Climbing with dispatch latency points at workdir churn. |
-| `productionSignals.skillSizeCapOmissions` | none | Skills omitted by the injection size cap. Climbing with agent failures points at prompt budget, not the model. |
+| `productionSignals.worktreeEvictions` | none (fleet total) | Worktree LRU evictions. Evictions happen in the Runner process, so each Runner reports its cumulative total as `facts.signals.worktreeEvictions` on every heartbeat and the backend merges per-Runner deltas monotonically (`recordRunnerSignalReport` in `api/watch/productionSignals.js`): a repeated report never double-counts, and a lower report (Runner restart reset the counter) counts the whole new value as delta, so the fleet total never goes backwards. Same-process recordings (embedded/tests) merge from the process total at exposition. Climbing with dispatch latency points at workdir churn. |
+| `productionSignals.skillSizeCapOmissions` | none | Skills omitted by the injection size cap. Prompts are built in the backend process (`api/skills/skillInjection.js`), so this is a same-process total merged at exposition. Climbing with agent failures points at prompt budget, not the model. |
 | `queueDepthByProject.<pid>` | `projectId` | Waiting (claimable, unblocked, unclaimed) tasks per project; sums to `stats.queueDepth`. |
 | `ledgerStaleRejected` | none | Cumulative stale-epoch rejections from the execution ledger (all paths). Tracks `fencing.STALE_EPOCH` (route-observed subset). |
 
@@ -32,6 +32,30 @@ projects. Investigate = rate < 99 with no matching `excluded` rise;
 `STALE_EPOCH` climbing (zombie/partition or TTL misconfiguration);
 one project's wait p95 diverging (noisy neighbour); `PROJECT_SCOPE`
 climbing after a settings change (scope too narrow, work stranded).
+
+## Failure modes and limits (how this can fail, and how it fails safe)
+
+- Recording never gates dispatch: every `record*` in
+  `api/watch/productionSignals.js` swallows its own faults (frozen store,
+  malformed args), so a broken counter drops a sample instead of breaking a
+  dispatch. A dropped sample reads as "no signal", never as a wrong signal.
+- Sampled series (dispatch latency, per-project wait) are ring buffers capped
+  at 2048 samples each; under extreme load old samples age out first.
+  Counters are unbounded and cumulative since `productionSignals.since`.
+- Window queries (`{ windowMs, now }`) slice only the sampled series; rates
+  over a window are deltas of successive snapshots (Prometheus-style), so a
+  backend restart resets counters to zero and window rates must be read as
+  deltas, not absolutes, across a restart.
+- Cardinality is `projectId` (and fixed reason strings) only — never task or
+  message ids — so label count tracks project count, not workload.
+- Claim success rate excludes `claim.excluded.*` by design: a paused fleet
+  reads there, never as an unhealthy rate. If `excluded` climbs without a
+  matching operator action, that itself is the investigate signal.
+- Reconciliation invariant: `claim.attempts` equals `claim.successes` +
+  `claim.conflicts` + `claim.errors` exactly (attempts are recorded only at
+  the `claim()` call; intentional skips land in `claim.excluded.*` and never
+  enter the denominator); `fencing.CLAIM_CONFLICT` always equals
+  `claim.conflicts` (set together by construction).
 
 ## WP5 handoff
 
