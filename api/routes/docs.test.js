@@ -42,6 +42,14 @@ describe("Docs routes", () => {
 		expect(body.sections).toEqual(["getting-started", "concepts", "workflows", "reference"]);
 		expect(Array.isArray(body.docs)).toBe(true);
 		expect(body.docs.length).toBeGreaterThan(0);
+		// Every shipped section carries a human-readable label (exact values
+		// are pinned single-source in siteDocs.frontendParity.test.js).
+		for (const section of body.sections) {
+			/* eslint-disable-next-line security/detect-object-injection -- key comes from the schema-validated body.sections array */
+			expect(typeof body.sectionLabels?.[section]).toBe("string");
+			/* eslint-disable-next-line security/detect-object-injection -- key comes from the schema-validated body.sections array */
+			expect(body.sectionLabels[section].length).toBeGreaterThan(0);
+		}
 		const sections = new Set(body.docs.map((d) => d.section));
 		for (const section of body.sections) expect(sections.has(section)).toBe(true);
 		// Ordering: groups stay together in `sections` order (no interleaving).

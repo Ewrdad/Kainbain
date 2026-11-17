@@ -334,7 +334,7 @@ write-once, so bytes are immutable). Errors carry a structured `reason`
 
 | Method | Path | Purpose |
 | ------ | ---- | ------- |
-| GET | `/docs` | Index JSON `{ sections, docs }` of all articles. |
+| GET | `/docs` | Index JSON `{ sections, sectionLabels, docs }` of all articles — `sections` is the sidebar group order, `sectionLabels` the per-group label, `docs` the articles. |
 | GET | `/docs/:slug` | One article as raw markdown (`text/markdown`). |
 
 ## Realtime (`api/routes/ws.js`)
