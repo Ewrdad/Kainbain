@@ -86,7 +86,13 @@ export const resolveDesiredVersion = (runner = {}) =>
  ***/
 const versionTuple = (version) => {
   if (typeof version !== 'string') return null;
-  const core = version.trim().replace(/^v/i, '').split('-')[0].split('+')[0];
+  const trimmed = version.trim().replace(/^v/i, '');
+  // Mirror the backend's sha-like rejection exactly: a bare 7+ hex run
+  // (a commit hash, or an all-digit build stamp like `20261117`) is never
+  // a version — otherwise `20261117` would parse as version 20261117.0.0
+  // here while the backend rejects it, and the two would drift apart.
+  if (/^[0-9a-f]{7,40}$/i.test(trimmed)) return null;
+  const core = trimmed.split('-')[0].split('+')[0];
   if (!core) return null;
   const parts = core.split('.');
   if (parts.length === 0 || parts.length > 3) return null;
@@ -121,20 +127,105 @@ export const compareRunnerVersions = (a, b) => {
 };
 
 /***
+ * MARK: canonicalRunnerVersion
+ * @description Canonical `major.minor.patch` form of a version string, or
+ *   null when the value is not a readable version. A bare commit hash
+ *   (`f8044e37`), `latest`, `dev`, or prose never canonicalizes, so it can
+ *   never be compared against, or displayed as, a release version. A
+ *   version-tagged build (`1.0.0-28aac94`) canonicalizes to its dotted core
+ *   (`1.0.0`) — the tag suffix is build metadata, not part of the version,
+ *   so a hash never gets compared to a build tag as if they were the same
+ *   kind of thing.
+ * @example canonicalRunnerVersion('v1.2.3') => '1.2.3'
+ * @example canonicalRunnerVersion('1.0.0-28aac94') => '1.0.0'
+ * @example canonicalRunnerVersion('f8044e37') => null
+ * @param {*} [version] - Version value.
+ * @returns {string|null} Canonical version, or null when unreadable.
+ ***/
+export const canonicalRunnerVersion = (version) => {
+  const tuple = versionTuple(version);
+  return tuple ? tuple.join('.') : null;
+};
+
+/***
  * MARK: resolveVersionTarget
  * @description Version an Update installs for one runner: the exact pin
  *   when the runner is pinned, else the fleet recommended version (or
  *   null when the backend names none — the Update button then points at
- *   "latest" behaviour without a number).
+ *   "latest" behaviour without a number). Both sides are canonicalized
+ *   first, so a version-tagged recommended value (`1.0.0-28aac94`) shows
+ *   as the release `1.0.0` and a hash never shows as a target.
  * @example resolveVersionTarget({ desiredVersion: '1.2.3', recommendedVersion: '2.0.0' }) => '1.2.3'
+ * @example resolveVersionTarget({ desiredVersion: 'latest', recommendedVersion: '1.0.0-28aac94' }) => '1.0.0'
  * @param {Object} [runner={}] - Runner record.
  * @returns {string|null} Target version, or null.
  ***/
 export const resolveVersionTarget = (runner = {}) => {
   const desired = resolveDesiredVersion(runner);
-  if (desired !== DESIRED_VERSION_LATEST) return desired;
+  if (desired !== DESIRED_VERSION_LATEST) return canonicalRunnerVersion(desired) ?? desired;
   const recommended = runner?.recommendedVersion;
-  return typeof recommended === 'string' && recommended.trim() ? recommended.trim() : null;
+  if (typeof recommended !== 'string' || !recommended.trim()) return null;
+  return canonicalRunnerVersion(recommended) ?? recommended.trim();
+};
+
+/***
+ * MARK: versionSelectorOptions
+ * @description Dropdown model for the per-runner version selector: the
+ *   `latest` option plus every known release, newest first, each labelled
+ *   with `(latest)` / `(running)` flags so the newest release is visibly
+ *   the latest. Every candidate is canonicalized first (`v0.2.0`,
+ *   `0.2.0-abc1234`, and `0.2.0` are ONE option `0.2.0`), and only real
+ *   versions become options — a runner that reports a build hash as its
+ *   version never lands in the dropdown as a phantom version. Flags compare
+ *   canonical versions, never raw strings, so the newest release is always
+ *   the flagged row no matter which spelling reported it. The
+ *   `selectedValue` is the stored setting when it is still selectable
+ *   (`latest` or a listed version), else `latest`, so the closed select
+ *   never shows a value it cannot render.
+ * @example versionSelectorOptions({ availableVersions: ['0.2.0', '0.1.0'], recommendedVersion: '0.2.0', runnerVersion: '0.1.0', desiredVersion: 'latest' }).options[0].label => '0.2.0 (latest)'
+ * @example versionSelectorOptions({ availableVersions: ['1.0.0'], recommendedVersion: '1.0.0-28aac94', runnerVersion: '0.1.0' }).options[0] => { value: '1.0.0', label: '1.0.0 (latest)' }
+ * @param {Object} [runner={}] - Runner record.
+ * @returns {{latestVersion: string|null, selectedValue: string, options: Array<{value: string, label: string}>}} Selector model.
+ ***/
+export const versionSelectorOptions = (runner = {}) => {
+  const desired = resolveDesiredVersion(runner);
+  const running = canonicalRunnerVersion(describeRunnerVersion(runner));
+  const rawRecommended = typeof runner?.recommendedVersion === 'string' ? runner.recommendedVersion : null;
+  const recommended = canonicalRunnerVersion(rawRecommended);
+  const pool = [
+    ...(Array.isArray(runner?.availableVersions) ? runner.availableVersions : []),
+    ...(rawRecommended ? [rawRecommended] : []),
+    ...(describeRunnerVersion(runner) ? [describeRunnerVersion(runner)] : []),
+    ...(desired !== DESIRED_VERSION_LATEST ? [desired] : []),
+  ];
+  // One option per canonical version, newest first; junk (hashes, prose)
+  // drops out here so it can never render as a phantom release.
+  const versionsByKey = new Map();
+  for (const raw of pool) {
+    const canonical = canonicalRunnerVersion(raw);
+    if (canonical && !versionsByKey.has(canonical)) versionsByKey.set(canonical, canonical);
+  }
+  const versions = [...versionsByKey.keys()].sort((a, b) => compareRunnerVersions(b, a) ?? 0);
+  // "Latest" resolves to the newest known release: the fleet recommended
+  // version when it is known, else the newest entry in the list.
+  let latestVersion = null;
+  for (const candidate of [recommended, ...versions]) {
+    if (!candidate) continue;
+    if (!latestVersion || compareRunnerVersions(candidate, latestVersion) === 1) latestVersion = candidate;
+  }
+  const options = versions.map((version) => {
+    const flags = [];
+    if (latestVersion && compareRunnerVersions(version, latestVersion) === 0) flags.push('latest');
+    if (running && compareRunnerVersions(version, running) === 0) flags.push('running');
+    return { value: version, label: flags.length > 0 ? `${version} (${flags.join(', ')})` : version };
+  });
+  const desiredCanonical = desired === DESIRED_VERSION_LATEST ? null : canonicalRunnerVersion(desired);
+  const pinnedOption = desiredCanonical
+    ? options.find((o) => compareRunnerVersions(o.value, desiredCanonical) === 0) ?? null
+    : null;
+  const selectedValue =
+    desired === DESIRED_VERSION_LATEST ? DESIRED_VERSION_LATEST : pinnedOption ? pinnedOption.value : DESIRED_VERSION_LATEST;
+  return { latestVersion, selectedValue, options };
 };
 
 /***
@@ -146,26 +237,34 @@ export const resolveVersionTarget = (runner = {}) => {
  *   updating, survey q6), softer otherwise (e.g. pinned to an older
  *   release the channel will never downgrade to). Below the fleet minimum
  *   is always red and names the floor distinctly from "update available".
+ *   The running version is canonicalized first: a runner that reports a
+ *   build hash (or any unreadable string) as its version reads as UNKNOWN,
+ *   never as a mismatch — a hash is never compared against a version or a
+ *   build tag. All compared/displayed versions are canonical, so a
+ *   version-tagged recommended value shows as its release, not its tag.
  * @example versionWarningForRunner({ runnerVersion: '0.1.0', desiredVersion: 'latest', recommendedVersion: '0.2.0' }) => { kind: 'newer-available', tier: 'red', … }
+ * @example versionWarningForRunner({ runnerVersion: 'f8044e37', desiredVersion: '0.1.0' }) => null
  * @param {Object} [runner={}] - Runner record.
  * @returns {{kind: string, tier: string, desired: string, running: string, target: string|null, message: string}|null} Warning, or null.
  ***/
 export const versionWarningForRunner = (runner = {}) => {
-  const running = describeRunnerVersion(runner);
+  const running = canonicalRunnerVersion(describeRunnerVersion(runner));
   if (!running) return null;
   const desired = resolveDesiredVersion(runner);
-  const recommended = typeof runner?.recommendedVersion === 'string' && runner.recommendedVersion.trim()
-    ? runner.recommendedVersion.trim()
-    : null;
-  const minimum = typeof runner?.minimumVersion === 'string' && runner.minimumVersion.trim()
-    ? runner.minimumVersion.trim()
-    : null;
+  const recommended = canonicalRunnerVersion(
+    typeof runner?.recommendedVersion === 'string' ? runner.recommendedVersion : null,
+  );
+  const minimum = canonicalRunnerVersion(
+    typeof runner?.minimumVersion === 'string' ? runner.minimumVersion : null,
+  );
   const known = [
-    ...(desired !== DESIRED_VERSION_LATEST ? [desired] : []),
+    ...(desired !== DESIRED_VERSION_LATEST ? [canonicalRunnerVersion(desired)] : []),
     ...(recommended ? [recommended] : []),
     ...(minimum ? [minimum] : []),
-    ...(Array.isArray(runner?.availableVersions) ? runner.availableVersions.filter((v) => typeof v === 'string' && v) : []),
-  ];
+    ...(Array.isArray(runner?.availableVersions)
+      ? runner.availableVersions.map((v) => canonicalRunnerVersion(v))
+      : []),
+  ].filter((v) => v !== null);
   const newerExists = known.some((v) => compareRunnerVersions(running, v) === -1);
   if (desired !== DESIRED_VERSION_LATEST) {
     const order = compareRunnerVersions(running, desired);
@@ -204,7 +303,7 @@ export const versionWarningForRunner = (runner = {}) => {
         desired,
         running,
         target: desired,
-        message: `This Runner runs ${running} but is set to version ${desired} (the running version could not be compared). Update to install ${desired} when idle.`,
+        message: `This Runner runs ${running} but is set to "${desired}", which is not a readable version — pick a listed version or Latest from the selector.`,
       };
     }
     if (order === 1) {
@@ -283,10 +382,12 @@ export const versionWarningForRunner = (runner = {}) => {
 export const pinBlocksUpdateReason = (runner = {}) => {
   const desired = resolveDesiredVersion(runner);
   if (desired === DESIRED_VERSION_LATEST) return null;
-  const running = describeRunnerVersion(runner);
-  const minimum = typeof runner?.minimumVersion === 'string' && runner.minimumVersion.trim()
-    ? runner.minimumVersion.trim()
-    : null;
+  // Canonicalized: an unreadable running version (e.g. a build hash) can
+  // never prove the pin is a downgrade, so it never blocks the button.
+  const running = canonicalRunnerVersion(describeRunnerVersion(runner));
+  const minimum = canonicalRunnerVersion(
+    typeof runner?.minimumVersion === 'string' ? runner.minimumVersion : null,
+  );
   if (running && compareRunnerVersions(desired, running) === -1) {
     return `Version ${desired} is older than the running ${running} — the Runner never downgrades. Pick a newer version or Latest first.`;
   }
@@ -1032,21 +1133,47 @@ export const describeRunnerBuild = (runner = {}) => {
 };
 
 /***
+ * MARK: extractBuildSha
+ * @description Pulls the commit sha out of a build identity string: a
+ *   whole-string hex sha (`fbcf8442…`) or the trailing hex segment of a
+ *   version-tagged build (`1.0.0-28aac94` → `28aac94`, the shape prod
+ *   stamps into `/status` `build.commit` from the image tag). Needs at
+ *   least 7 hex chars (git short-sha length); anything else — `unknown`,
+ *   `dev`, `latest`, prose — returns null so callers treat the identity as
+ *   unknown instead of comparing a hash against a non-hash.
+ * @example extractBuildSha('1.0.0-28aac94') => '28aac94'
+ * @example extractBuildSha('fbcf8442ee031e2edbc9f0b30195afa410296cf3') => 'fbcf8442ee031e2edbc9f0b30195afa410296cf3'
+ * @param {*} [value] - Build identity string (sha, image tag, or junk).
+ * @returns {string|null} Lowercased hex sha, or null when none is present.
+ ***/
+export const extractBuildSha = (value) => {
+  if (typeof value !== 'string') return null;
+  const cleaned = value.trim().toLowerCase();
+  if (!cleaned) return null;
+  const whole = /^[0-9a-f]{7,40}$/.exec(cleaned);
+  if (whole) return whole[0];
+  const trailing = /(?:^|[^0-9a-f])([0-9a-f]{7,40})$/.exec(cleaned);
+  return trailing ? trailing[1] : null;
+};
+
+/***
  * MARK: runnerShasMatch
- * @description Whether two commit shas name the same commit: exact match
- *   or either side a prefix of the other (the backend reports a short
- *   commit while Runners report full shas). Both sides need at least 4
- *   hex characters — anything shorter reads as unknown, never as a
- *   match or a mismatch.
- * @example runnerShasMatch('abc1234def', 'abc1234') => true
- * @param {string|null} [runnerSha=null] - Runner build sha.
- * @param {string|null} [backendSha=null] - Backend build commit.
- * @returns {boolean} True when both are known and name the same commit.
+ * @description Whether two build identities name the same commit: the shas
+ *   are extracted first (`extractBuildSha`), so a version-tagged backend
+ *   build (`1.0.0-28aac94`) compares sha-to-sha instead of hash-to-tag.
+ *   Match means exact or either side a prefix of the other (short vs full
+ *   sha). When either side yields no sha the result is false — but callers
+ *   must check `extractBuildSha` themselves first, because false here also
+ *   means "unknown", and unknown must never render as a mismatch.
+ * @example runnerShasMatch('abc1234def', '1.0.0-abc1234') => true
+ * @param {string|null} [runnerSha=null] - Runner build identity.
+ * @param {string|null} [backendSha=null] - Backend build identity.
+ * @returns {boolean} True when both carry a sha and they name one commit.
  ***/
 const runnerShasMatch = (runnerSha = null, backendSha = null) => {
-  const a = typeof runnerSha === 'string' ? runnerSha.trim().toLowerCase() : '';
-  const b = typeof backendSha === 'string' ? backendSha.trim().toLowerCase() : '';
-  if (a.length < 4 || b.length < 4) return false;
+  const a = extractBuildSha(runnerSha);
+  const b = extractBuildSha(backendSha);
+  if (!a || !b) return false;
   return a === b || a.startsWith(b) || b.startsWith(a);
 };
 
@@ -1054,14 +1181,17 @@ const runnerShasMatch = (runnerSha = null, backendSha = null) => {
  * MARK: runnerBuildWarning
  * @description Stale-code warning for one Runner record, or null when
  *   there is nothing to say. Warns when the Runner's own code changed
- *   after boot, or when its build sha provably differs from the backend
- *   commit — and stays silent for dev checkouts (build info still
- *   shows), for unknown builds or backend commits, and for matching
- *   shas. Advisory only: the caller renders the message and never
- *   disables anything (warn, never block).
- * @example runnerBuildWarning({ facts: { versions: { build: { sha: 'aaa' }, codeChangedSinceBoot: true } } }, 'bbb') => { kind: 'code-changed', message: '…' }
+ *   after boot, or when its build sha provably differs from the backend's
+ *   commit sha — both sides are normalized through `extractBuildSha` first,
+ *   so a version-tagged backend build (`1.0.0-28aac94`) compares sha-to-sha
+ *   and is never mistaken for a hash. Stays silent for dev checkouts
+ *   (build info still shows), for builds or backend identities that carry
+ *   no sha (unknown must not read as a mismatch), and for matching shas.
+ *   Advisory only: the caller renders the message and never disables
+ *   anything (warn, never block).
+ * @example runnerBuildWarning({ facts: { versions: { build: { sha: 'aaa1111' }, codeChangedSinceBoot: true } } }, 'bbb2222') => { kind: 'code-changed', message: '…' }
  * @param {Object} [runner={}] - Runner record.
- * @param {string|null} [backendSha=null] - Backend build commit (`GET /status` → `build.commit`).
+ * @param {string|null} [backendSha=null] - Backend build identity (`GET /status` → `build.commit`: a sha or a version-tagged build like `1.0.0-28aac94`).
  * @returns {{kind: string, message: string}|null} Warning, or null.
  ***/
 export const runnerBuildWarning = (runner = {}, backendSha = null) => {
@@ -1078,11 +1208,12 @@ export const runnerBuildWarning = (runner = {}, backendSha = null) => {
         "This runner's code changed after it started — restart or update it so it runs the current code.",
     };
   }
-  const backend = typeof backendSha === 'string' && backendSha.trim().length >= 4 ? backendSha.trim() : null;
-  if (!build || !backend) return null;
-  if (runnerShasMatch(build.sha, backend)) return null;
+  const runnerSha = build ? extractBuildSha(build.sha) : null;
+  const backend = extractBuildSha(backendSha);
+  if (!runnerSha || !backend) return null;
+  if (runnerShasMatch(runnerSha, backend)) return null;
   return {
     kind: 'sha-mismatch',
-    message: `This runner was built from ${build.shortSha} but the backend runs ${backend.slice(0, 7)} — restart or update it so they match.`,
+    message: `This runner was built from commit ${runnerSha.slice(0, 7)} but the backend runs commit ${backend.slice(0, 7)} — restart or update it so they match.`,
   };
 };

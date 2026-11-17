@@ -25,6 +25,7 @@ import {
   resolveSelectedId,
   runRunnerAction,
   describeRunnerVersion,
+  canonicalRunnerVersion,
   describeRunnerBuild,
   runnerBuildWarning,
   runnerStatusLabel,
@@ -33,10 +34,9 @@ import {
   canRequestUpdate,
   canRequestRestart,
   canRequestRediscovery,
-  compareRunnerVersions,
   pinBlocksUpdateReason,
-  resolveDesiredVersion,
   resolveVersionTarget,
+  versionSelectorOptions,
   versionWarningForRunner,
   mergeRunnerRecord,
   dropDraftFor,
@@ -451,8 +451,10 @@ export function RunnerConfigurationSection() {
     if (!supported) return 'This Runner is too old for on-request commands — update the Runner to enable this.';
     return '';
   };
-  const desiredVersion = selected ? resolveDesiredVersion(selected) : 'latest';
-  const runningVersion = selected ? describeRunnerVersion(selected) : null;
+  // Canonicalized: a runner reporting a build hash as its version shows no
+  // version badge/label at all (the build line already shows the sha)
+  // instead of rendering `v<hash>` or comparing the hash to a version.
+  const runningVersion = selected ? canonicalRunnerVersion(describeRunnerVersion(selected)) : null;
   const versionTarget = selected ? resolveVersionTarget(selected) : null;
   const versionWarning = selected ? versionWarningForRunner(selected) : null;
   const runningAssignment = selected ? assignments[selected.runnerId] : null;
@@ -465,16 +467,10 @@ export function RunnerConfigurationSection() {
       : selectedBusy
         ? 'Runner is busy — the update queues and applies when idle.'
         : (versionTarget ? `Update to ${versionTarget} (applies when idle)` : 'Update now (applies when idle)');
-  const versionOptions = selected
-    ? [...new Set(
-      [
-        ...(Array.isArray(selected.availableVersions) ? selected.availableVersions : []),
-        ...(typeof selected.recommendedVersion === 'string' && selected.recommendedVersion ? [selected.recommendedVersion] : []),
-        ...(runningVersion ? [runningVersion] : []),
-        ...(desiredVersion !== 'latest' ? [desiredVersion] : []),
-      ].filter((v) => typeof v === 'string' && v),
-    )].sort((a, b) => compareRunnerVersions(b, a) ?? 0)
-    : [];
+  // Dropdown model from the helper: newest release carries the (latest)
+  // flag, the running version the (running) flag, and only parseable
+  // versions become options (a hash reported as a version stays out).
+  const versionSelector = selected ? versionSelectorOptions(selected) : { latestVersion: null, selectedValue: 'latest', options: [] };
   const restartTitle = restartReady
     ? 'Reboot this Runner on its current version (stops running work)'
     : `Restart is unavailable: ${commandDisabledReason(canRequestRestart(selected))}`;
@@ -869,7 +865,7 @@ export function RunnerConfigurationSection() {
               {filtered.map((runner) => {
                 const isSelected = runner.runnerId === selectedId;
                 const assignment = assignments[runner.runnerId];
-                const versionLabel = describeRunnerVersion(runner);
+                const versionLabel = canonicalRunnerVersion(describeRunnerVersion(runner));
                 const build = describeRunnerBuild(runner);
                 const staleBuild = runnerBuildWarning(runner, backendCommit);
                 const stale = nowMs ? stalenessLabel(runner, nowMs) : null;
@@ -1089,24 +1085,24 @@ export function RunnerConfigurationSection() {
                   <select
                     id={`runner-version-${selected.runnerId}`}
                     data-testid={`runner-version-select-${selected.runnerId}`}
-                    value={desiredVersion}
+                    value={versionSelector.selectedValue}
                     onChange={(e) => handleVersionChange(e.target.value)}
                     disabled={Boolean(busyKey)}
                     className="min-h-[44px] p-2 bg-surface-deep border border-border-standard rounded-sm text-sm text-on-surface outline-none focus:border-primary cursor-pointer disabled:opacity-60"
                   >
                     <option value="latest">
-                      Latest{selected.recommendedVersion ? ` (${selected.recommendedVersion})` : ''}
+                      Latest{versionSelector.latestVersion ? ` (${versionSelector.latestVersion})` : ''}
                     </option>
-                    {versionOptions.map((version) => (
-                      <option key={version} value={version}>
-                        {version}{version === runningVersion ? ' (running)' : ''}
+                    {versionSelector.options.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
                       </option>
                     ))}
                   </select>
                   <span className="text-[11px] text-text-muted" data-testid={`runner-version-hint-${selected.runnerId}`}>
-                    {desiredVersion === 'latest'
-                      ? 'Tracks the newest release — updates automatically when idle.'
-                      : `Pinned to ${desiredVersion} — updates only when you click Update.`}
+                    {versionSelector.selectedValue === 'latest'
+                      ? `Tracks the newest release${versionSelector.latestVersion ? ` (${versionSelector.latestVersion})` : ''} — updates automatically when idle.`
+                      : `Pinned to ${versionSelector.selectedValue} — updates only when you click Update.`}
                   </span>
                 </div>
               </div>
