@@ -13,6 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import semver from "semver";
+import { coerceRunnerVersion } from "./flow/runnerVersionCompat.js";
 
 /***
  * MARK: VERSION_UPDATE_GUIDES
@@ -32,19 +33,11 @@ export const VERSION_UPDATE_GUIDES = Object.freeze({
  * @description Reduces a raw version input to `major.minor.patch` (tolerates
  *   a `v` prefix and partial input via semver coercion). Null when absent
  *   or unparseable — callers treat that as unknown, never as up to date.
+ *   This is the runner channel's coerce helper under a page-local name, so
+ *   the two release comparisons can never drift apart; only the name is new.
  * @example normalizeRelease('v1.2.3') => '1.2.3'
  ***/
-export const normalizeRelease = (version) => {
-	if (typeof version !== "string") return null;
-	const cleaned = version.trim().replace(/^v/, "");
-	if (!cleaned) return null;
-	try {
-		const coerced = semver.coerce(cleaned);
-		return coerced ? coerced.version : null;
-	} catch {
-		return null;
-	}
-};
+export const normalizeRelease = coerceRunnerVersion;
 
 /***
  * MARK: compareRelease
@@ -104,14 +97,33 @@ export const readApiContract = ({
 		const parsed = readJson(readFile, path.join(apiDir, "version.json"));
 		return {
 			apiVersion: normalizeRelease(parsed?.apiVersion),
-			accepts:
-				parsed?.accepts && typeof parsed.accepts === "object"
-					? { ...parsed.accepts }
-					: {},
+			accepts: readAcceptsMap(parsed?.accepts),
 		};
 	} catch {
 		return { apiVersion: null, accepts: {} };
 	}
+};
+
+/***
+ * MARK: readAcceptsMap
+ * @description Reduces a raw `accepts` value to a plain who-must-satisfy
+ *   map of range strings. Anything off-contract (missing, a string, an
+ *   array, a number) becomes an empty map — the page then hides the line
+ *   instead of rendering garbage like a spread array's numeric keys.
+ * @example readAcceptsMap({ frontend: '>=1.0.0 <2.0.0' }) => { frontend: '>=1.0.0 <2.0.0' }
+ * @example readAcceptsMap(['frontend']) => {}
+ ***/
+export const readAcceptsMap = (accepts) => {
+	if (!accepts || typeof accepts !== "object" || Array.isArray(accepts)) return {};
+	const cleaned = {};
+	for (const [who, range] of Object.entries(accepts)) {
+		// A hostile version.json must not smuggle prototype keys through.
+		if (who === "__proto__" || who === "constructor" || who === "prototype") continue;
+		if (typeof range !== "string" || !range.trim()) continue;
+		/* eslint-disable-next-line security/detect-object-injection -- who is a version.json map key already screened for prototype names above */
+		cleaned[who] = range.trim();
+	}
+	return cleaned;
 };
 
 /***
@@ -196,10 +208,7 @@ export const buildVersionInfo = ({
 		installed: installedApi,
 		latest: normalizeRelease(latestVersions.api),
 		status: compareRelease(installedApi, latestVersions.api),
-		accepts:
-			contract.accepts && typeof contract.accepts === "object"
-				? { ...contract.accepts }
-				: {},
+		accepts: readAcceptsMap(contract.accepts),
 		updateUrl: VERSION_UPDATE_GUIDES.api,
 	};
 	const securityInfo =

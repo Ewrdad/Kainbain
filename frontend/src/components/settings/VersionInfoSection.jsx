@@ -3,18 +3,57 @@ import { api } from '../../services/api';
 import { UI_VERSION } from '../../version';
 
 /***
- * MARK: versionStatusLabel
+ * MARK: labelVersionStatus
  * @description Human status for one version row: update-available and
  *   up-to-date are direct, while unknown stays honest about the check
  *   instead of implying the install is current.
- * @example versionStatusLabel('unknown') => 'Unknown'
+ * @example labelVersionStatus('unknown') => 'Unknown'
  * @param {string} status - Row status from `GET /status/versions`.
  * @returns {string}
  ***/
-export const versionStatusLabel = (status) => {
+export const labelVersionStatus = (status) => {
   if (status === 'update-available') return 'Update available';
   if (status === 'up-to-date') return 'Up to date';
   return 'Unknown';
+};
+
+/***
+ * MARK: isSafeVersionLink
+ * @description Whether a version-info URL is safe to render as a clickable
+ *   link: the page's own `#/docs/...` hash guides, absolute http(s) report
+ *   links, and site-relative `/...` paths. Anything else (notably a
+ *   `javascript:` URL smuggled in through a hand-edited report file) is not
+ *   rendered as a link at all, so a bad report file can never turn the
+ *   About page into a script launcher.
+ * @example isSafeVersionLink('#/docs/update-ui') => true
+ * @example isSafeVersionLink('javascript:alert(1)') => false
+ * @param {unknown} href - The raw URL from `GET /status/versions`.
+ * @returns {boolean}
+ ***/
+export const isSafeVersionLink = (href) => {
+  if (typeof href !== 'string') return false;
+  const trimmed = href.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith('#/')) return true;
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return true;
+  return /^https?:\/\//i.test(trimmed);
+};
+
+/***
+ * MARK: describeAcceptsMap
+ * @description Human line for an API row's compatibility map (the `accepts`
+ *   ranges from `api/version.json`): who must satisfy which range. Empty
+ *   when the row carries no map, so callers can skip the line entirely.
+ * @example describeAcceptsMap({ frontend: '>=1.0.0 <2.0.0' }) => 'frontend >=1.0.0 <2.0.0'
+ * @param {unknown} accepts - The raw `accepts` value from `GET /status/versions`.
+ * @returns {string}
+ ***/
+export const describeAcceptsMap = (accepts) => {
+  if (!accepts || typeof accepts !== 'object' || Array.isArray(accepts)) return '';
+  return Object.entries(accepts)
+    .filter(([, range]) => typeof range === 'string' && range.trim() !== '')
+    .map(([who, range]) => `${who} ${range.trim()}`)
+    .join(', ');
 };
 
 /***
@@ -75,7 +114,7 @@ export function VersionInfoSection({ client, uiVersion }) {
           label: `API (${entry?.name || 'contract'})`,
           entry,
         })),
-      ]
+      ].map((row) => ({ ...row, acceptsLine: describeAcceptsMap(row.entry?.accepts) }))
     : [];
 
   const warnings = Array.isArray(info?.warnings) ? info.warnings : [];
@@ -117,7 +156,7 @@ export function VersionInfoSection({ client, uiVersion }) {
       {!loading && !loadError && info && (
         <>
           <div aria-label="Installed versions">
-            {rows.map(({ label, entry }) => (
+            {rows.map(({ label, entry, acceptsLine }) => (
               <div
                 key={label}
                 className="flex flex-col gap-1 py-3 border-b border-border-standard last:border-b-0"
@@ -126,9 +165,12 @@ export function VersionInfoSection({ client, uiVersion }) {
                 <span className="text-sm text-on-surface-variant">
                   Installed: {entry?.installed || 'Unknown'}
                   {' · '}Latest: {entry?.latest || 'Unknown'}
-                  {' · '}Status: {versionStatusLabel(entry?.status)}
+                  {' · '}Status: {labelVersionStatus(entry?.status)}
                 </span>
-                {entry?.updateUrl && (
+                {acceptsLine && (
+                  <span className="text-sm text-on-surface-variant">Accepts: {acceptsLine}</span>
+                )}
+                {isSafeVersionLink(entry?.updateUrl) && (
                   <a className="text-sm text-primary underline" href={entry.updateUrl}>
                     How to update {label.toLowerCase()}
                   </a>
@@ -152,7 +194,7 @@ export function VersionInfoSection({ client, uiVersion }) {
                 {security.summary && (
                   <span className="text-sm text-on-surface-variant">{security.summary}</span>
                 )}
-                {security.reportUrl && (
+                {isSafeVersionLink(security.reportUrl) && (
                   <a className="text-sm text-primary underline" href={security.reportUrl}>
                     Open the full report
                   </a>

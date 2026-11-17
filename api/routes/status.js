@@ -167,7 +167,9 @@ export default async function statusRoutes(app, { deps } = {}) {
 		querystring: {
 			type: "object",
 			properties: {
-				uiVersion: { type: "string" },
+				// Real UI versions are a few chars; the cap rejects absurd
+				// input with a 400 instead of feeding it to semver coercion.
+				uiVersion: { type: "string", maxLength: 128 },
 			},
 		},
 		response: {

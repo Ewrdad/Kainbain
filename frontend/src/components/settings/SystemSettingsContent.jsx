@@ -54,7 +54,7 @@ export function SettingRow({ label, hint, children }) {
  * MARK: SystemSettingsContent
  * @description Route- and shell-agnostic System Settings content component.
  * Renders header, tablist, all section panels (Runners, Models, Engine, Storage,
- * Notifications, Prompt Layout, Images, Access, UI), and footer actions. Rendered by the
+ * Notifications, Prompt Layout, Images, Access, UI, About), and footer actions. Rendered by the
  * standalone SystemSettingsPage screen (`/system-settings`); it takes no
  * modal state and never renders a dialog shell.
  * @param {Object} props

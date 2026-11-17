@@ -380,7 +380,7 @@ export const CONFIG_SCHEMA = [
 		type: "string",
 		default: "",
 		group: "server",
-		doc: "Link to the full security report (for example the SecObserve build page) shown on the Settings About page; empty (default) falls back to the update guide.",
+		doc: "Link to the full security report (for example the SecObserve build page) shown on the Settings About page; empty (default) means no full-report link is shown unless the report file carries one.",
 	},
 	{
 		key: "runnerStaleAfterMs",

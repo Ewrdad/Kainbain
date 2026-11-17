@@ -41,7 +41,22 @@ Version bookkeeping the page relies on:
   backend instead of guessing.
 - Point `KAINBAIN_SECURITY_REPORT_PATH` at the JSON security report for the
   new build (written by CI or the deploy; see `./Security_scans.sh`) so the
-  About page shows the report for exactly what is running.
+  About page shows the report for exactly what is running. The file holds one
+  JSON object:
+
+  ```json
+  {
+    "status": "pass",
+    "checkedAt": "2026-11-01T00:00:00.000Z",
+    "summary": "Trivy + Semgrep clean.",
+    "reportUrl": "https://secobserve.home/build/123"
+  }
+  ```
+
+  `status` is `pass`, `fail`, or `warn`. A missing file, unparseable JSON,
+  or any other status shows the honest "no security report recorded" state
+  instead of guessing. `reportUrl` may be omitted to fall back to
+  `KAINBAIN_SECURITY_REPORT_URL`, and omitted entirely when neither is set.
 
 ## Verify it worked
 

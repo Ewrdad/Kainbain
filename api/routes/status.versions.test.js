@@ -6,10 +6,12 @@ import statusRoutes from "./status.js";
  * MARK: status versions endpoint tests
  * @description Integration coverage for `GET /status/versions` (the Settings
  *   About page source): happy path with an update available, the honest
- *   unknown state when nothing is known, and the real-disk wiring (backend
- *   version from `api/package.json`, API contract from `api/version.json`).
- *   Registers `statusRoutes` on a throwaway Fastify instance with stubbed
- *   `deps.versions` so no test touches the global config or the live stack.
+ *   unknown state when nothing is known, malformed latest knobs collapsing
+ *   to unknown instead of a 500, the 400 on an absurd `uiVersion`, and the
+ *   real-disk wiring (backend version from `api/package.json`, API contract
+ *   from `api/version.json`). Registers `statusRoutes` on a throwaway
+ *   Fastify instance with stubbed `deps.versions` so no test touches the
+ *   global config or the live stack.
  * @example run `npm run test --prefix api -- status.versions`
  ***/
 
@@ -88,6 +90,39 @@ describe("GET /status/versions", () => {
 		expect(payload.ui).toMatchObject({ installed: null, latest: null, status: "unknown" });
 		expect(payload.security.status).toBe("unknown");
 		expect(payload.warnings).toEqual([]);
+	});
+
+	it("collapses malformed latest knobs to unknown instead of failing", async () => {
+		const malformedApp = buildServer({
+			backendVersion: "1.0.0",
+			apiContract: { apiVersion: "1.0.0", accepts: { frontend: ">=1.0.0 <2.0.0" } },
+			latest: { ui: "bogus", backend: "bogus", api: "bogus" },
+			security: { status: "fail", checkedAt: null, summary: "2 critical", reportUrl: null },
+		});
+		await malformedApp.ready();
+		try {
+			const res = await malformedApp.inject({
+				method: "GET",
+				url: "/status/versions?uiVersion=1.0.0",
+			});
+			expect(res.statusCode).toBe(200);
+			const payload = JSON.parse(res.payload);
+			expect(payload.ui.status).toBe("unknown");
+			expect(payload.backend.status).toBe("unknown");
+			expect(payload.apis[0].status).toBe("unknown");
+			expect(payload.security).toMatchObject({ status: "fail", summary: "2 critical" });
+			expect(payload.warnings).toEqual([]);
+		} finally {
+			await malformedApp.close();
+		}
+	});
+
+	it("rejects an absurd uiVersion with a 400", async () => {
+		const res = await unknownApp.inject({
+			method: "GET",
+			url: `/status/versions?uiVersion=${"1".repeat(200)}`,
+		});
+		expect(res.statusCode).toBe(400);
 	});
 
 	it("reads the real backend and API-contract versions from disk", async () => {

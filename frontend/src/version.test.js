@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import packageJson from '../../package.json';
+import packageJson from '../package.json';
 import { UI_VERSION } from './version';
 
 /***
@@ -12,6 +12,10 @@ import { UI_VERSION } from './version';
 
 describe('UI_VERSION', () => {
   it('matches the frontend package.json version', () => {
+    // Pins the source file itself: the UI version must come from the
+    // frontend manifest, never the repo-root one (both are 1.0.0 today,
+    // so a version-only assertion cannot tell them apart).
+    expect(packageJson.name).toBe('frontend');
     expect(UI_VERSION).toBe(packageJson.version);
   });
 
