@@ -138,6 +138,54 @@ export const resolveVersionTarget = (runner = {}) => {
 };
 
 /***
+ * MARK: versionSelectorOptions
+ * @description Dropdown model for the per-runner version selector: the
+ *   `latest` option plus every known release, newest first, each labelled
+ *   with `(latest)` / `(running)` flags so the newest release is visibly
+ *   the latest even when it also appears as a plain version row. Only
+ *   parseable versions become options — a runner that reports a build hash
+ *   as its version never lands in the dropdown as a phantom version. The
+ *   `selectedValue` is the stored setting when it is still selectable
+ *   (`latest` or a listed version), else `latest`, so the closed select
+ *   never shows a value it cannot render.
+ * @example versionSelectorOptions({ availableVersions: ['0.2.0', '0.1.0'], recommendedVersion: '0.2.0', runnerVersion: '0.1.0', desiredVersion: 'latest' }).options[0].label => '0.2.0 (latest)'
+ * @param {Object} [runner={}] - Runner record.
+ * @returns {{latestVersion: string|null, selectedValue: string, options: Array<{value: string, label: string}>}} Selector model.
+ ***/
+export const versionSelectorOptions = (runner = {}) => {
+  const desired = resolveDesiredVersion(runner);
+  const running = describeRunnerVersion(runner);
+  const recommended = typeof runner?.recommendedVersion === 'string' && runner.recommendedVersion.trim()
+    ? runner.recommendedVersion.trim()
+    : null;
+  const pool = [
+    ...(Array.isArray(runner?.availableVersions) ? runner.availableVersions : []),
+    ...(recommended ? [recommended] : []),
+    ...(running ? [running] : []),
+    ...(desired !== DESIRED_VERSION_LATEST ? [desired] : []),
+  ].filter((v) => typeof v === 'string' && v && versionTuple(v));
+  const versions = [...new Set(pool)].sort((a, b) => compareRunnerVersions(b, a) ?? 0);
+  // "Latest" resolves to the newest known release: the fleet recommended
+  // version when it is known, else the newest entry in the list.
+  let latestVersion = null;
+  for (const candidate of [recommended, ...versions]) {
+    if (!candidate || !versionTuple(candidate)) continue;
+    if (!latestVersion || compareRunnerVersions(candidate, latestVersion) === 1) latestVersion = candidate;
+  }
+  const options = versions.map((version) => {
+    const flags = [];
+    if (latestVersion && version === latestVersion) flags.push('latest');
+    if (running && version === running) flags.push('running');
+    return { value: version, label: flags.length > 0 ? `${version} (${flags.join(', ')})` : version };
+  });
+  const selectedValue =
+    desired === DESIRED_VERSION_LATEST || options.some((o) => o.value === desired)
+      ? desired
+      : DESIRED_VERSION_LATEST;
+  return { latestVersion, selectedValue, options };
+};
+
+/***
  * MARK: versionWarningForRunner
  * @description Version-mismatch warning for one runner row, or null when
  *   there is nothing to say. Fires whenever the running version differs
@@ -1032,21 +1080,47 @@ export const describeRunnerBuild = (runner = {}) => {
 };
 
 /***
+ * MARK: extractBuildSha
+ * @description Pulls the commit sha out of a build identity string: a
+ *   whole-string hex sha (`fbcf8442…`) or the trailing hex segment of a
+ *   version-tagged build (`1.0.0-28aac94` → `28aac94`, the shape prod
+ *   stamps into `/status` `build.commit` from the image tag). Needs at
+ *   least 7 hex chars (git short-sha length); anything else — `unknown`,
+ *   `dev`, `latest`, prose — returns null so callers treat the identity as
+ *   unknown instead of comparing a hash against a non-hash.
+ * @example extractBuildSha('1.0.0-28aac94') => '28aac94'
+ * @example extractBuildSha('fbcf8442ee031e2edbc9f0b30195afa410296cf3') => 'fbcf8442ee031e2edbc9f0b30195afa410296cf3'
+ * @param {*} [value] - Build identity string (sha, image tag, or junk).
+ * @returns {string|null} Lowercased hex sha, or null when none is present.
+ ***/
+export const extractBuildSha = (value) => {
+  if (typeof value !== 'string') return null;
+  const cleaned = value.trim().toLowerCase();
+  if (!cleaned) return null;
+  const whole = /^[0-9a-f]{7,40}$/.exec(cleaned);
+  if (whole) return whole[0];
+  const trailing = /(?:^|[^0-9a-f])([0-9a-f]{7,40})$/.exec(cleaned);
+  return trailing ? trailing[1] : null;
+};
+
+/***
  * MARK: runnerShasMatch
- * @description Whether two commit shas name the same commit: exact match
- *   or either side a prefix of the other (the backend reports a short
- *   commit while Runners report full shas). Both sides need at least 4
- *   hex characters — anything shorter reads as unknown, never as a
- *   match or a mismatch.
- * @example runnerShasMatch('abc1234def', 'abc1234') => true
- * @param {string|null} [runnerSha=null] - Runner build sha.
- * @param {string|null} [backendSha=null] - Backend build commit.
- * @returns {boolean} True when both are known and name the same commit.
+ * @description Whether two build identities name the same commit: the shas
+ *   are extracted first (`extractBuildSha`), so a version-tagged backend
+ *   build (`1.0.0-28aac94`) compares sha-to-sha instead of hash-to-tag.
+ *   Match means exact or either side a prefix of the other (short vs full
+ *   sha). When either side yields no sha the result is false — but callers
+ *   must check `extractBuildSha` themselves first, because false here also
+ *   means "unknown", and unknown must never render as a mismatch.
+ * @example runnerShasMatch('abc1234def', '1.0.0-abc1234') => true
+ * @param {string|null} [runnerSha=null] - Runner build identity.
+ * @param {string|null} [backendSha=null] - Backend build identity.
+ * @returns {boolean} True when both carry a sha and they name one commit.
  ***/
 const runnerShasMatch = (runnerSha = null, backendSha = null) => {
-  const a = typeof runnerSha === 'string' ? runnerSha.trim().toLowerCase() : '';
-  const b = typeof backendSha === 'string' ? backendSha.trim().toLowerCase() : '';
-  if (a.length < 4 || b.length < 4) return false;
+  const a = extractBuildSha(runnerSha);
+  const b = extractBuildSha(backendSha);
+  if (!a || !b) return false;
   return a === b || a.startsWith(b) || b.startsWith(a);
 };
 
@@ -1054,14 +1128,17 @@ const runnerShasMatch = (runnerSha = null, backendSha = null) => {
  * MARK: runnerBuildWarning
  * @description Stale-code warning for one Runner record, or null when
  *   there is nothing to say. Warns when the Runner's own code changed
- *   after boot, or when its build sha provably differs from the backend
- *   commit — and stays silent for dev checkouts (build info still
- *   shows), for unknown builds or backend commits, and for matching
- *   shas. Advisory only: the caller renders the message and never
- *   disables anything (warn, never block).
- * @example runnerBuildWarning({ facts: { versions: { build: { sha: 'aaa' }, codeChangedSinceBoot: true } } }, 'bbb') => { kind: 'code-changed', message: '…' }
+ *   after boot, or when its build sha provably differs from the backend's
+ *   commit sha — both sides are normalized through `extractBuildSha` first,
+ *   so a version-tagged backend build (`1.0.0-28aac94`) compares sha-to-sha
+ *   and is never mistaken for a hash. Stays silent for dev checkouts
+ *   (build info still shows), for builds or backend identities that carry
+ *   no sha (unknown must not read as a mismatch), and for matching shas.
+ *   Advisory only: the caller renders the message and never disables
+ *   anything (warn, never block).
+ * @example runnerBuildWarning({ facts: { versions: { build: { sha: 'aaa1111' }, codeChangedSinceBoot: true } } }, 'bbb2222') => { kind: 'code-changed', message: '…' }
  * @param {Object} [runner={}] - Runner record.
- * @param {string|null} [backendSha=null] - Backend build commit (`GET /status` → `build.commit`).
+ * @param {string|null} [backendSha=null] - Backend build identity (`GET /status` → `build.commit`: a sha or a version-tagged build like `1.0.0-28aac94`).
  * @returns {{kind: string, message: string}|null} Warning, or null.
  ***/
 export const runnerBuildWarning = (runner = {}, backendSha = null) => {
@@ -1078,11 +1155,12 @@ export const runnerBuildWarning = (runner = {}, backendSha = null) => {
         "This runner's code changed after it started — restart or update it so it runs the current code.",
     };
   }
-  const backend = typeof backendSha === 'string' && backendSha.trim().length >= 4 ? backendSha.trim() : null;
-  if (!build || !backend) return null;
-  if (runnerShasMatch(build.sha, backend)) return null;
+  const runnerSha = build ? extractBuildSha(build.sha) : null;
+  const backend = extractBuildSha(backendSha);
+  if (!runnerSha || !backend) return null;
+  if (runnerShasMatch(runnerSha, backend)) return null;
   return {
     kind: 'sha-mismatch',
-    message: `This runner was built from ${build.shortSha} but the backend runs ${backend.slice(0, 7)} — restart or update it so they match.`,
+    message: `This runner was built from ${runnerSha.slice(0, 7)} but the backend runs ${backend.slice(0, 7)} — restart or update it so they match.`,
   };
 };

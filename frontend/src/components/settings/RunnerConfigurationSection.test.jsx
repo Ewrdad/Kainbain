@@ -1305,6 +1305,79 @@ describe('RunnerConfigurationSection', () => {
     expect(await screen.findByTestId('runner-config-notice')).toHaveTextContent('pinned');
   });
 
+  it('flags the newest release as (latest) in the version dropdown options', async () => {
+    runnersFixture([
+      {
+        ...RESTARTABLE_RUNNER,
+        desiredVersion: 'latest',
+        runnerVersion: '0.2.0',
+        recommendedVersion: '0.3.0',
+        availableVersions: ['0.3.0', '0.2.0', '0.1.0'],
+        updateAvailable: false,
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    const select = screen.getByTestId('runner-version-select-r1');
+    const labels = Array.from(select.options).map((o) => `${o.value}=${o.textContent}`);
+    expect(labels).toEqual([
+      'latest=Latest (0.3.0)',
+      '0.3.0=0.3.0 (latest)',
+      '0.2.0=0.2.0 (running)',
+      '0.1.0=0.1.0',
+    ]);
+    expect(select.value).toBe('latest');
+  });
+
+  it('compares the runner sha against the sha inside a version-tagged backend build', async () => {
+    // Prod stamps /status build.commit from the image tag (e.g. 1.0.0-28aac94):
+    // the banner must quote shas on both sides, never the raw tag.
+    systemStatus.mockResolvedValue({ build: { commit: '1.0.0-28aac94' } });
+    runnersFixture([
+      {
+        ...ACTIVE_RUNNER,
+        facts: {
+          versions: {
+            runner: '0.1.0',
+            protocol: 'v1',
+            build: { sha: 'fbcf8442ee031e2edbc9f0b30195afa410296cf3', builtAt: null, dirty: false, source: 'package' },
+            codeChangedSinceBoot: false,
+          },
+        },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    const banner = await screen.findByTestId('runner-build-warning-r1');
+    expect(banner).toHaveTextContent(/fbcf844/);
+    expect(banner).toHaveTextContent(/28aac94/);
+    expect(banner.textContent).not.toContain('1.0.0-28aac94');
+  });
+
+  it('stays silent when the backend build identity carries no sha', async () => {
+    systemStatus.mockResolvedValue({ build: { commit: 'unknown' } });
+    runnersFixture([
+      {
+        ...ACTIVE_RUNNER,
+        facts: {
+          versions: {
+            runner: '0.1.0',
+            protocol: 'v1',
+            build: { sha: 'fbcf8442ee031e2edbc9f0b30195afa410296cf3', builtAt: null, dirty: false, source: 'package' },
+            codeChangedSinceBoot: false,
+          },
+        },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-build-r1').textContent).toContain('fbcf844');
+    });
+    expect(screen.queryByTestId('runner-build-warning-r1')).toBeNull();
+    expect(screen.queryByTestId('runner-stale-r1')).toBeNull();
+  });
+
   it('surfaces a queued restart without touching the update status', async () => {
     runnersFixture([
       {

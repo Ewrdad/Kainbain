@@ -15,17 +15,27 @@ import semver from "semver";
  *   shows unknown) so introducing the knobs cannot lock the fleet out.
  * @example runnerVersionAtLeast('0.2.0', '0.1.0') => true
  ***/
+// A bare hex run of 7+ chars is a commit sha, not a version: semver.coerce
+// would happily mangle `f8044e37` into `8044.0.0`, which then leaks into the
+// fleet version list and the dropdown as a phantom "newest release". Reject
+// those outright so hashes never compare as versions. Version-tagged builds
+// like `1.0.0-28aac94` keep their dotted core and still coerce to `1.0.0`.
+const SHA_LIKE_RE = /^[0-9a-f]{7,40}$/i;
+
 /***
  * MARK: coerceRunnerVersion
  * @description Normalizes a reported product version to `major.minor.patch`
- *   (tolerates a `v` prefix, coerces partial input). Null when absent or
- *   unparseable — callers treat that as permissive, never a block.
+ *   (tolerates a `v` prefix, coerces partial input). Null when absent,
+ *   unparseable, or sha-like (a bare 7+ hex run is a commit hash, never a
+ *   version — `semver.coerce` would invent a bogus one) — callers treat null
+ *   as permissive, never a block.
  * @example coerceRunnerVersion('v1.2.3') => '1.2.3'
+ * @example coerceRunnerVersion('f8044e37') => null
  ***/
 export const coerceRunnerVersion = (version) => {
 	if (typeof version !== "string") return null;
 	const cleaned = version.trim().replace(/^v/, "");
-	if (!cleaned) return null;
+	if (!cleaned || SHA_LIKE_RE.test(cleaned)) return null;
 	try {
 		const coerced = semver.coerce(cleaned);
 		return coerced ? coerced.version : null;

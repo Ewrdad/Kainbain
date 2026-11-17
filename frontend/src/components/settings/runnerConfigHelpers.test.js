@@ -39,6 +39,7 @@ import {
   normalizeDesiredVersion,
   resolveDesiredVersion,
   resolveVersionTarget,
+  versionSelectorOptions,
   versionWarningForRunner,
   mergeRunnerRecord,
   dropDraftFor,
@@ -46,6 +47,7 @@ import {
   normalizeModelId,
   filterVisibleRunners,
   describeRunnerBuild,
+  extractBuildSha,
   runnerBuildWarning,
 } from './runnerConfigHelpers';
 
@@ -760,6 +762,45 @@ describe('runnerConfigHelpers', () => {
     expect(warning.message).toMatch(/restart or update/);
   });
 
+  it('extracts hex shas from build identities, never inventing one from prose', () => {
+    expect(extractBuildSha('fbcf8442ee031e2edbc9f0b30195afa410296cf3')).toBe('fbcf8442ee031e2edbc9f0b30195afa410296cf3');
+    expect(extractBuildSha('1.0.0-28aac94')).toBe('28aac94');
+    expect(extractBuildSha('ABC1234')).toBe('abc1234');
+    expect(extractBuildSha('28aac94')).toBe('28aac94');
+    expect(extractBuildSha('unknown')).toBeNull();
+    expect(extractBuildSha('dev')).toBeNull();
+    expect(extractBuildSha('latest')).toBeNull();
+    expect(extractBuildSha('abc')).toBeNull();
+    expect(extractBuildSha('1.0.0')).toBeNull();
+    expect(extractBuildSha('')).toBeNull();
+    expect(extractBuildSha(null)).toBeNull();
+    expect(extractBuildSha(42)).toBeNull();
+  });
+
+  it('compares a version-tagged backend build sha-to-sha, not hash-to-tag', () => {
+    const packaged = (sha) => ({ facts: { versions: { build: { sha, source: 'package' } } } });
+    // Prod stamps /status build.commit from the image tag (1.0.0-28aac94):
+    // the warning must quote the embedded sha, never the raw tag.
+    const warning = runnerBuildWarning(
+      packaged('fbcf8442ee031e2edbc9f0b30195afa410296cf3'),
+      '1.0.0-28aac94',
+    );
+    expect(warning?.kind).toBe('sha-mismatch');
+    expect(warning.message).toMatch(/fbcf844/);
+    expect(warning.message).toMatch(/28aac94/);
+    expect(warning.message).not.toMatch(/1\.0\.0-28aac94/);
+    // Same commit behind a tag prefix reads as a match, not a mismatch.
+    expect(runnerBuildWarning(packaged('28aac94def0000'), '1.0.0-28aac94')).toBeNull();
+    expect(runnerBuildWarning(packaged('28aac94'), '28aac94')).toBeNull();
+  });
+
+  it('stays silent when either build identity carries no sha (unknown is not a mismatch)', () => {
+    const packaged = (sha) => ({ facts: { versions: { build: { sha, source: 'package' } } } });
+    for (const backend of ['unknown', 'dev', 'latest', 'not-a-build', '1.0.0', 'abc', null, undefined, 42]) {
+      expect(runnerBuildWarning(packaged('abc1234def'), backend)).toBeNull();
+    }
+  });
+
   it('stays silent on matching shas (exact or prefix), unknown builds, and dev checkouts', () => {
     const packaged = (sha) => ({ facts: { versions: { build: { sha, source: 'package' } } } });
     expect(runnerBuildWarning(packaged('abc1234def'), 'abc1234def')).toBeNull();
@@ -775,5 +816,45 @@ describe('runnerConfigHelpers', () => {
       'other-sha-here',
     )).toBeNull();
     expect(runnerBuildWarning(undefined, undefined)).toBeNull();
+  });
+
+  it('builds version selector options with the newest release flagged as latest', () => {
+    const selector = versionSelectorOptions({
+      availableVersions: ['0.3.0', '0.2.0', '0.1.0'],
+      recommendedVersion: '0.3.0',
+      runnerVersion: '0.1.0',
+      desiredVersion: 'latest',
+    });
+    expect(selector.latestVersion).toBe('0.3.0');
+    expect(selector.selectedValue).toBe('latest');
+    expect(selector.options).toEqual([
+      { value: '0.3.0', label: '0.3.0 (latest)' },
+      { value: '0.2.0', label: '0.2.0' },
+      { value: '0.1.0', label: '0.1.0 (running)' },
+    ]);
+  });
+
+  it('flags latest and running together and falls back to the newest known when no recommended is set', () => {
+    const selector = versionSelectorOptions({
+      availableVersions: ['0.2.0', '0.1.0'],
+      runnerVersion: '0.2.0',
+      desiredVersion: '0.1.0',
+    });
+    expect(selector.latestVersion).toBe('0.2.0');
+    expect(selector.selectedValue).toBe('0.1.0');
+    expect(selector.options[0]).toEqual({ value: '0.2.0', label: '0.2.0 (latest, running)' });
+  });
+
+  it('keeps a hash out of the selector options and falls back to latest for an unlisted pin', () => {
+    const selector = versionSelectorOptions({
+      availableVersions: ['0.2.0', 'f8044e37deadbeef'],
+      recommendedVersion: '0.2.0',
+      runnerVersion: 'f8044e37deadbeef',
+      desiredVersion: 'f8044e37deadbeef',
+    });
+    expect(selector.options.map((o) => o.value)).toEqual(['0.2.0']);
+    expect(selector.selectedValue).toBe('latest');
+    expect(versionSelectorOptions({}).options).toEqual([]);
+    expect(versionSelectorOptions({}).latestVersion).toBeNull();
   });
 });

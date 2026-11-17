@@ -66,6 +66,22 @@ describe("runnerVersionCompat", () => {
 		assert.equal(runnerVersionAtLeast("v0.2.0", "0.1.0"), true);
 	});
 
+	it("never coerces a commit sha into a phantom version", () => {
+		// semver.coerce would mangle these into bogus versions (8044.0.0);
+		// a bare 7+ hex run is a hash, not a product version.
+		assert.equal(coerceRunnerVersion("f8044e37"), null);
+		assert.equal(coerceRunnerVersion("fbcf8442ee031e2edbc9f0b30195afa410296cf3"), null);
+		assert.equal(coerceRunnerVersion("28aac94"), null);
+		// Version-tagged builds keep their dotted core.
+		assert.equal(coerceRunnerVersion("1.0.0-28aac94"), "1.0.0");
+		assert.equal(coerceRunnerVersion("0.1.0"), "0.1.0");
+		// Sha-like input is permissive everywhere, never a fleet lockout.
+		assert.equal(runnerVersionAtLeast("f8044e37", "9.9.9"), true);
+		assert.equal(belowMinimumRunnerVersion("f8044e37", "9.9.9"), false);
+		assert.equal(updateAvailableForRunner("f8044e37", "9.9.9"), false);
+		assert.equal(normalizeDesiredVersion("f8044e37"), DESIRED_VERSION_LATEST);
+	});
+
 	it("builds one shared 409 refusal for every below-minimum runner", () => {
 		const refused = buildBelowMinimumRefusal({
 			runner: { runnerId: "r1", facts: { versions: { runner: "0.0.1" } } },
@@ -183,5 +199,17 @@ describe("runnerVersionCompat", () => {
 		);
 		assert.deepEqual(fleetKnownVersions({ runners: [] }), []);
 		assert.deepEqual(fleetKnownVersions({}), []);
+	});
+
+	it("keeps sha-like runner reports out of the fleet version list", () => {
+		const runners = [
+			{ facts: { versions: { runner: "0.1.0" } } },
+			{ facts: { versions: { runner: "f8044e37" } } },
+			{ runnerVersion: "fbcf8442ee031e2edbc9f0b30195afa410296cf3" },
+		];
+		assert.deepEqual(
+			fleetKnownVersions({ runners, recommendedVersion: "0.2.0" }),
+			["0.2.0", "0.1.0"],
+		);
 	});
 });
