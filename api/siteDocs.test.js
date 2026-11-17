@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import {
 	DOC_SECTIONS,
+	SECTION_LABELS,
 	KNOWN_SECTION_HISTORY,
 	LEGACY_SECTION_ALIASES,
 	isValidSlug,
@@ -13,6 +14,7 @@ import {
 	listDocs,
 	getDoc,
 	defaultDocsDir,
+	buildDocsIndex,
 } from "./siteDocs.js";
 
 /**
@@ -107,6 +109,29 @@ beforeEach(() => {
 describe("DOC_SECTIONS", () => {
 	it("exposes exactly the four docs groups in sidebar order", () => {
 		expect(DOC_SECTIONS).toEqual(["getting-started", "concepts", "workflows", "reference"]);
+	});
+});
+
+describe("buildDocsIndex", () => {
+	it("ships the taxonomy and articles as one payload from the single source", () => {
+		const index = buildDocsIndex({ dir: scratchDocsDir });
+		expect(index.sections).toEqual(DOC_SECTIONS);
+		expect(index.sectionLabels).toEqual(SECTION_LABELS);
+		expect(index.docs.map((doc) => doc.slug).sort()).toEqual([
+			"architecture",
+			"first-task",
+			"install",
+		]);
+	});
+
+	it("ships copies so callers cannot mutate the canonical taxonomy", () => {
+		const index = buildDocsIndex({ dir: scratchDocsDir });
+		expect(index.sections).not.toBe(DOC_SECTIONS);
+		expect(index.sectionLabels).not.toBe(SECTION_LABELS);
+		index.sections.push("bogus");
+		index.sectionLabels.bogus = "Bogus";
+		expect(DOC_SECTIONS).not.toContain("bogus");
+		expect(Object.hasOwn(SECTION_LABELS, "bogus")).toBe(false);
 	});
 });
 

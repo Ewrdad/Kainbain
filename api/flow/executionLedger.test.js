@@ -982,3 +982,331 @@ describe("ExecutionLedger", () => {
 		expect(completion.action).not.toContain("[attestation ");
 	});
 });
+
+describe("ExecutionLedger project fence (WP1, AUDIT H-4)", () => {
+	function fencedStores() {
+		const claimStore = new ClaimStore({ stateFile: tmpClaimState() });
+		const alphaTask = {
+			id: "t1",
+			status: "in_stage",
+			currentStageId: "s1",
+			history: [],
+		};
+		const betaTask = {
+			id: "t1",
+			status: "in_stage",
+			currentStageId: "s1",
+			history: [],
+		};
+		const taskStore = {
+			getTask: (projectId) =>
+				projectId === "proj-alpha"
+					? alphaTask
+					: projectId === "proj-beta"
+						? betaTask
+						: undefined,
+		};
+		const projectStore = { getProject: () => ({ cwd: null }) };
+		return { claimStore, taskStore, projectStore, alphaTask, betaTask };
+	}
+
+	function expectFenced(fn, ctx) {
+		const before = ctx.ledger.snapshot().fencedRejected;
+		let err = null;
+		try {
+			const out = fn();
+			if (out && typeof out.then === "function") return out.then(
+				() => {
+					throw new Error("expected PROJECT_FENCE_MISMATCH, call succeeded");
+				},
+				(e) => {
+					expect(e.statusCode).toBe(409);
+					expect(e.code).toBe("PROJECT_FENCE_MISMATCH");
+					expect(ctx.ledger.snapshot().fencedRejected).toBe(before + 1);
+					return e;
+				},
+			);
+		} catch (e) {
+			err = e;
+		}
+		expect(err).not.toBeNull();
+		expect(err.statusCode).toBe(409);
+		expect(err.code).toBe("PROJECT_FENCE_MISMATCH");
+		expect(ctx.ledger.snapshot().fencedRejected).toBe(before + 1);
+		return err;
+	}
+
+	test("recordProgress honors a matching projectId and fences a mismatch", () => {
+		const fx = fencedStores();
+		const ledger = new ExecutionLedger();
+		const ctx = { ledger };
+		const { executionId, epoch } = fx.claimStore.claim("t1", "r1", "proj-alpha");
+		const base = {
+			claimStore: fx.claimStore,
+			taskStore: fx.taskStore,
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+			stageId: "s1",
+			event: "started",
+		};
+		expect(ledger.recordProgress({ ...base, projectId: "proj-alpha" })).toEqual({
+			recorded: true,
+			duplicate: false,
+		});
+		expectFenced(
+			() => ledger.recordProgress({ ...base, projectId: "proj-beta", event: "finished" }),
+			ctx,
+		);
+		// The hold survives: a legitimate retry with the home project works.
+		expect(ledger.recordProgress({ ...base, projectId: "proj-alpha", event: "finished" })).toEqual({
+			recorded: true,
+			duplicate: false,
+		});
+		// The security audit lands on the lease's HOME task; the named
+		// project's task is byte-identical (only its own absence of writes).
+		expect(fx.betaTask.history).toHaveLength(0);
+		expect(
+			fx.alphaTask.history.filter((e) => e.code === "PROJECT_FENCE_MISMATCH"),
+		).toHaveLength(1);
+	});
+
+	test("ingestLogs fences a cross-project replay and keeps the lease", () => {
+		const fx = fencedStores();
+		const ledger = new ExecutionLedger();
+		const { executionId, epoch } = fx.claimStore.claim("t1", "r1", "proj-alpha");
+		const base = {
+			claimStore: fx.claimStore,
+			taskStore: fx.taskStore,
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+			seq: 0,
+			bytes: "hello",
+		};
+		expectFenced(() => ledger.ingestLogs({ ...base, projectId: "proj-beta" }), { ledger });
+		expect(fx.betaTask.history).toHaveLength(0);
+		expect(ledger.ingestLogs({ ...base, projectId: "proj-alpha" })).toMatchObject({
+			accepted: true,
+			duplicate: false,
+		});
+	});
+
+	test("ingestLogEvents fences a cross-project replay and keeps the lease", () => {
+		const fx = fencedStores();
+		const ledger = new ExecutionLedger();
+		const { executionId, epoch } = fx.claimStore.claim("t1", "r1", "proj-alpha");
+		const base = {
+			claimStore: fx.claimStore,
+			taskStore: fx.taskStore,
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+			seq: 0,
+			events: [{ type: "text", text: "hi" }],
+		};
+		expectFenced(() => ledger.ingestLogEvents({ ...base, projectId: "proj-beta" }), { ledger });
+		expect(ledger.ingestLogEvents({ ...base, projectId: "proj-alpha" })).toMatchObject({
+			accepted: true,
+			duplicate: false,
+		});
+	});
+
+	test("noteRemoteVerification fences a cross-project confirmation", () => {
+		const fx = fencedStores();
+		const ledger = new ExecutionLedger();
+		const { executionId, epoch } = fx.claimStore.claim("t1", "r1", "proj-alpha");
+		const base = {
+			claimStore: fx.claimStore,
+			taskStore: fx.taskStore,
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+			sha: "a".repeat(40),
+			present: true,
+		};
+		expectFenced(() => ledger.noteRemoteVerification({ ...base, projectId: "proj-beta" }), {
+			ledger,
+		});
+		expect(fx.betaTask.pendingPushVerification).toBeUndefined();
+		expect(ledger.noteRemoteVerification({ ...base, projectId: "proj-alpha" })).toEqual({
+			verified: true,
+		});
+	});
+
+	test("completeExecution fences before releasing the lease (lease survives)", async () => {
+		const fx = fencedStores();
+		const ledger = new ExecutionLedger();
+		const { executionId, epoch } = fx.claimStore.claim("t1", "r1", "proj-alpha");
+		const base = {
+			claimStore: fx.claimStore,
+			taskStore: fx.taskStore,
+			projectStore: fx.projectStore,
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+		};
+		await expectFenced(() => ledger.completeExecution({ ...base, projectId: "proj-beta" }), {
+			ledger,
+		});
+		// Neither lease released nor foreign history written.
+		expect(fx.claimStore.describe("t1")).not.toBeNull();
+		expect(fx.betaTask.history).toHaveLength(0);
+		// The legitimate completion still goes through afterwards.
+		const receipt = await ledger.completeExecution({ ...base, projectId: "proj-alpha" });
+		expect(receipt).toMatchObject({ accepted: true, duplicate: false });
+	});
+
+	test("completeExecution keeps the exec-first ordering (wrong exec stays STALE_EPOCH)", async () => {
+		const fx = fencedStores();
+		const ledger = new ExecutionLedger();
+		const { executionId, epoch } = fx.claimStore.claim("t1", "r1", "proj-alpha");
+		await expect(
+			ledger.completeExecution({
+				claimStore: fx.claimStore,
+				taskStore: fx.taskStore,
+				projectStore: fx.projectStore,
+				projectId: "proj-beta",
+				taskId: "t1",
+				runnerId: "r1",
+				executionId: "wrong-execution",
+				epoch,
+			}),
+		).rejects.toMatchObject({ statusCode: 409, code: "STALE_EPOCH" });
+		// Nothing consumed: the hold is intact and the fence counter is quiet.
+		expect(fx.claimStore.describe("t1")).toMatchObject({ executionId, epoch });
+		expect(ledger.snapshot().fencedRejected).toBe(0);
+	});
+
+	test("interruptExecution fences before dropping the lease (lease survives)", () => {
+		const fx = fencedStores();
+		const ledger = new ExecutionLedger();
+		const { executionId } = fx.claimStore.claim("t1", "r1", "proj-alpha");
+		expectFenced(
+			() =>
+				ledger.interruptExecution({
+					claimStore: fx.claimStore,
+					taskStore: fx.taskStore,
+					projectId: "proj-beta",
+					taskId: "t1",
+					runnerId: "r1",
+					executionId,
+				}),
+			{ ledger },
+		);
+		expect(fx.claimStore.describe("t1")).not.toBeNull();
+		expect(fx.betaTask.history).toHaveLength(0);
+		expect(fx.betaTask.status).toBe("in_stage");
+		expect(
+			ledger.interruptExecution({
+				claimStore: fx.claimStore,
+				taskStore: fx.taskStore,
+				projectId: "proj-alpha",
+				taskId: "t1",
+				runnerId: "r1",
+				executionId,
+			}),
+		).toMatchObject({ interrupted: true });
+	});
+
+	test("legacy null-projectId holds are honored for named requests (back-compat)", () => {
+		const fx = fencedStores();
+		const ledger = new ExecutionLedger();
+		const { executionId, epoch } = fx.claimStore.claim("t1", "r1");
+		expect(
+			ledger.recordProgress({
+				claimStore: fx.claimStore,
+				taskStore: fx.taskStore,
+				projectId: "proj-alpha",
+				taskId: "t1",
+				runnerId: "r1",
+				executionId,
+				epoch,
+				stageId: "s1",
+				event: "started",
+			}),
+		).toEqual({ recorded: true, duplicate: false });
+		expect(ledger.snapshot().fencedRejected).toBe(0);
+	});
+
+	test("unnamed requests against named holds pass (strictness lives at the routes)", () => {
+		const fx = fencedStores();
+		const ledger = new ExecutionLedger();
+		const { executionId, epoch } = fx.claimStore.claim("t1", "r1", "proj-alpha");
+		expect(
+			ledger.recordProgress({
+				claimStore: fx.claimStore,
+				taskStore: fx.taskStore,
+				projectId: undefined,
+				taskId: "t1",
+				runnerId: "r1",
+				executionId,
+				epoch,
+				stageId: "s1",
+				event: "started",
+			}),
+		).toEqual({ recorded: true, duplicate: false });
+		expect(ledger.snapshot().fencedRejected).toBe(0);
+	});
+
+	test("checkProjectFence returns the hold on match, null without a hold", () => {
+		const fx = fencedStores();
+		const ledger = new ExecutionLedger();
+		expect(
+			ledger.checkProjectFence({
+				claimStore: fx.claimStore,
+				taskStore: fx.taskStore,
+				taskId: "t1",
+				projectId: "proj-alpha",
+			}),
+		).toBeNull();
+		const { executionId, epoch } = fx.claimStore.claim("t1", "r1", "proj-alpha");
+		expect(
+			ledger.checkProjectFence({
+				claimStore: fx.claimStore,
+				taskStore: fx.taskStore,
+				taskId: "t1",
+				projectId: "proj-alpha",
+			}),
+		).toMatchObject({ executionId, epoch, projectId: "proj-alpha" });
+		expect(() =>
+			ledger.checkProjectFence({
+				claimStore: fx.claimStore,
+				taskStore: fx.taskStore,
+				taskId: "t1",
+				projectId: "proj-beta",
+			}),
+		).toThrowError(expect.objectContaining({ statusCode: 409, code: "PROJECT_FENCE_MISMATCH" }));
+		expect(fx.claimStore.describe("t1")).not.toBeNull();
+	});
+
+	test("an audit-write failure never masks the fence rejection", () => {
+		const fx = fencedStores();
+		const ledger = new ExecutionLedger();
+		fx.claimStore.claim("t1", "r1", "proj-alpha");
+		const brokenStore = {
+			getTask: () => {
+				throw new Error("store exploded");
+			},
+		};
+		expect(() =>
+			ledger.recordProgress({
+				claimStore: fx.claimStore,
+				taskStore: brokenStore,
+				projectId: "proj-beta",
+				taskId: "t1",
+				runnerId: "r1",
+				executionId: fx.claimStore.describe("t1").executionId,
+				epoch: fx.claimStore.describe("t1").epoch,
+				stageId: "s1",
+				event: "started",
+			}),
+		).toThrowError(expect.objectContaining({ statusCode: 409, code: "PROJECT_FENCE_MISMATCH" }));
+		expect(ledger.snapshot().fencedRejected).toBe(1);
+	});
+});

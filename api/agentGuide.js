@@ -64,6 +64,13 @@ export const ENDPOINTS = [
 	},
 	{
 		method: "GET",
+		path: "/status/versions",
+		purpose:
+			"Installed UI/backend/API versions, latest-known releases, security summary, and update warnings (the Settings About page source; optional ?uiVersion reports the running UI).",
+		body: null,
+	},
+	{
+		method: "GET",
 		path: "/api/system/config-spec",
 		purpose: "Alias of /status/config (same payload).",
 		body: null,
@@ -680,7 +687,7 @@ export const ENDPOINTS = [
 		method: "GET",
 		path: "/docs",
 		purpose:
-			"List the markdown knowledge-base articles (site Docs section): [{ slug, title, section, order }]. Sections are 'getting-started', 'concepts', 'workflows' and 'reference'.",
+			"List the markdown knowledge-base articles (site Docs section): { sections, sectionLabels, docs: [{ slug, title, section, order }] }. `sections` is the sidebar group order, `sectionLabels` maps each group id to its human-readable label, and each article's `section` is one of the `sections` ids — read the ids from the payload, never hard-code them.",
 		body: null,
 	},
 	{

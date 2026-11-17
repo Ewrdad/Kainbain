@@ -34,6 +34,7 @@ import {
 } from "./runAttribution.js";
 import { hashStageConfig, isWellFormedConfigHash } from "../../shared/stageAttestation.js";
 import { resolveAttestationStage } from "../work/resolveAttestationStage.js";
+import { createProjectResolvers } from "../projectResolution.js";
 
 /***
  * MARK: resolveCiTimeoutMs
@@ -245,6 +246,19 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		resolveAndGuardProject,
 		eventBridge,
 	} = deps;
+	// Strict project guard for runner mutations (WP1 tenant fence): the
+	// production app injects it (api/index.js); hand-built test deps that
+	// predate it derive the same guard from the injected projectStore so
+	// the routes fail closed even under partial wiring. Single source of
+	// truth stays projectResolution.js — never reimplement it here.
+	const resolveAndGuardRequiredProject =
+		deps.resolveAndGuardRequiredProject ||
+		createProjectResolvers(projectStore).resolveAndGuardRequiredProject;
+	// Presence-only guard for the scope-keyed integration routes (same
+	// derivation fallback as above; it never touches the projectStore).
+	const resolveAndGuardPresentProject =
+		deps.resolveAndGuardPresentProject ||
+		createProjectResolvers(projectStore).resolveAndGuardPresentProject;
 
 	const sendStoreError = (reply, err) => {
 		const status = err.statusCode || 500;
@@ -527,7 +541,33 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		}
 	});
 
+	// WP1 tenant fence — route split (survey q2): runner MUTATIONS must
+	// name their project explicitly (missing/blank projectId → 400
+	// MISSING_PROJECT_ID, never the active project), while read-only VIEWS
+	// may keep the active-project fallback.
+	// Strict (guardedTask): POST progress, logs, log-events, verify-sha,
+	//   complete-execution, interrupt, claim-heartbeat, steer-ack, plus the
+	//   claim route (which guards inline below) and the integration
+	//   acquire/heartbeat/report routes (which guard inline below).
+	// Fallback (guardedTaskView): GET steers. The monitor, catalogue,
+	//   dispatch, and runner-identity routes never resolve a task project:
+	//   dispatch is exempt by construction (its claims are stamped
+	//   server-side with the candidate's own projectId, so there is no
+	//   request-named project to fence).
 	const guardedTask = (request, reply) => {
+		const projectId = resolveAndGuardRequiredProject(
+			request.body?.projectId || request.query?.projectId,
+			reply,
+		);
+		if (!projectId) return null;
+		const task = taskStore.getTask(projectId, request.params.id);
+		if (!task) {
+			reply.status(404).send({ error: "Task not found" });
+			return null;
+		}
+		return { projectId, task };
+	};
+	const guardedTaskView = (request, reply) => {
 		const projectId = resolveAndGuardProject(
 			request.body?.projectId || request.query?.projectId,
 			reply,
@@ -998,7 +1038,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// mis-execute — the daemon self-updates on this code and retries.
 		const belowMinimum = buildBelowMinimumRefusal({ runner, minVersion: config.runnerMinVersion });
 		if (belowMinimum) return reply.status(409).send(belowMinimum);
-		const projectId = resolveAndGuardProject(
+		const projectId = resolveAndGuardRequiredProject(
 			request.body?.projectId || request.query?.projectId,
 			reply,
 		);
@@ -1074,6 +1114,15 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				err.code = "STALE_EPOCH";
 				throw err;
 			}
+			// WP1 tenant fence: a heartbeat naming another project must not
+			// renew (or time out and invalidate) this lease — reject before
+			// the timeout logic below can touch the hold.
+			executionLedger.checkProjectFence({
+				claimStore,
+				taskStore,
+				taskId: request.params.id,
+				projectId: ctx.projectId,
+			});
 			// Wall-clock stage timeout (no infinite renewal): a live Runner
 			// renewing its lease forever must not outrun the stage budget —
 			// otherwise a stuck harness sits claimed indefinitely and the
@@ -1175,6 +1224,10 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				trippedAt: circuit.trippedAt,
 			});
 		}
+		// WP1 tenant fence: dispatch is exempt by construction — the
+		// optional projectIds scope only narrows the candidate scan, and
+		// every claim below is stamped server-side with the candidate's own
+		// projectId, so there is no request-named project to fence.
 		const projectIds = Array.isArray(request.body?.projectIds)
 			? request.body.projectIds
 			: undefined;
@@ -1425,10 +1478,18 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				code: "RUNNER_PAUSED",
 			});
 		}
+		// WP1 tenant fence: a merge lease is a project write — the request
+		// must name its project explicitly, never fall back. Guarded before
+		// the verdict below so the scope check always sees a real id.
+		// Presence-only (no existence check): the queue owns unknown
+		// scopes with leased:false semantics, and its exact-match scope
+		// key is already the tenant boundary.
+		const leaseProjectId = resolveAndGuardPresentProject(request.body?.projectId, reply);
+		if (!leaseProjectId) return;
 		const mergeVerdict = operatorConfigVerdict(
 			runner,
 			{ kind: "merge" },
-			{ projectId: request.body?.projectId },
+			{ projectId: leaseProjectId },
 		);
 		if (!mergeVerdict.ok) {
 			return reply.status(409).send({
@@ -1441,7 +1502,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// be granted), resolve its task's stage, and refuse Runners the
 		// stage does not allow. Anything unresolvable fails open to the
 		// legacy lease — an empty queue still reports leased:false below.
-		const acquireProjectId = request.body?.projectId;
+		const acquireProjectId = leaseProjectId;
 		const acquireBranch = request.body?.targetBranch;
 		if (acquireProjectId && acquireBranch) {
 			const headEntry = integrationQueue.peekHead({ projectId: acquireProjectId, targetBranch: acquireBranch });
@@ -1467,7 +1528,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		}
 		try {
 			return integrationQueue.acquire({
-				projectId: request.body?.projectId,
+				projectId: leaseProjectId,
 				targetBranch: request.body?.targetBranch,
 				runnerId: runner.runnerId,
 			});
@@ -1486,9 +1547,14 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		if (!integrationQueue) {
 			return reply.status(503).send({ error: "Integration queue unavailable.", code: "NO_INTEGRATION_QUEUE" });
 		}
+		// WP1 tenant fence: renewing a merge lease is a project write —
+		// the request must name its project explicitly (presence-only;
+		// unknown scopes keep the queue's STALE semantics).
+		const heartbeatProjectId = resolveAndGuardPresentProject(request.body?.projectId, reply);
+		if (!heartbeatProjectId) return;
 		try {
 			return integrationQueue.heartbeat({
-				projectId: request.body?.projectId,
+				projectId: heartbeatProjectId,
 				targetBranch: request.body?.targetBranch,
 				executionId: request.body?.executionId,
 				epoch: request.body?.epoch,
@@ -1508,9 +1574,14 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		if (!integrationQueue) {
 			return reply.status(503).send({ error: "Integration queue unavailable.", code: "NO_INTEGRATION_QUEUE" });
 		}
+		// WP1 tenant fence: settling a merge lease is a project write —
+		// the request must name its project explicitly (presence-only;
+		// unknown scopes keep the queue's STALE semantics).
+		const reportProjectId = resolveAndGuardPresentProject(request.body?.projectId, reply);
+		if (!reportProjectId) return;
 		try {
 			const receipt = integrationQueue.report({
-				projectId: request.body?.projectId,
+				projectId: reportProjectId,
 				targetBranch: request.body?.targetBranch,
 				executionId: request.body?.executionId,
 				epoch: request.body?.epoch,
@@ -1560,6 +1631,14 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					code: "STALE_EPOCH",
 				});
 			}
+			// WP1 tenant fence: an ack naming another project must not
+			// consume this execution's queued steer.
+			executionLedger.checkProjectFence({
+				claimStore,
+				taskStore,
+				taskId: request.params.id,
+				projectId: ctx.projectId,
+			});
 			return steerStore.ack(request.body.executionId, request.body?.steerId, {
 				ok: request.body?.ok,
 				detail: request.body?.detail,
@@ -1570,7 +1649,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 	});
 
 	app.get("/tasks/:id/steers", async (request, reply) => {
-		const ctx = guardedTask(request, reply);
+		const ctx = guardedTaskView(request, reply);
 		if (!ctx) return;
 		const executionId = request.query?.executionId;
 		if (!executionId || typeof executionId !== "string") {

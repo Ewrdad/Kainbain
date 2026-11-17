@@ -34,9 +34,10 @@ import { config } from "./config.js";
  *   REQUIRED RENAME PROCEDURE (follow first time — a rename without these
  *   steps silently drops custom `KAINBAIN_SITE_DOCS` articles carrying old
  *   `section:` frontmatter; see `DEPRECATIONS.md` "Docs taxonomy rename"):
- *   1. Choose the new id; update `DOC_SECTIONS` and `SECTION_LABELS` here
- *      plus the frontend mirror (`frontend/src/components/docs/docsSections.js`,
- *      locked together by `siteDocs.frontendParity.test.js`).
+ *   1. Choose the new id; update `DOC_SECTIONS` and `SECTION_LABELS` here.
+ *      The frontend and `GET /docs` derive order and labels from
+ *      `buildDocsIndex`, so no other source file needs a hand edit
+ *      (`siteDocs.frontendParity.test.js` locks that contract).
  *   2. Add `LEGACY_SECTION_ALIASES['<old-id>'] = '<new-id>'` — never delete
  *      entries; aliases are kept forever so old frontmatter keeps indexing.
  *   3. Add a `DEPRECATIONS.md` entry (retired id, new id, date, automatic
@@ -45,6 +46,10 @@ import { config } from "./config.js";
  *      brand-new current id too), so the taxonomy guardrail keeps covering it.
  *   5. Migrate in-repo `site-docs/*.md` frontmatter to the new ids.
  *   6. Run the siteDocs suites (`npm run test --prefix api -- siteDocs`).
+ *      A few test literals intentionally pin the current ids as tripwires
+ *      (the `DOC_SECTIONS` toEqual in `siteDocs.test.js`, the GET /docs
+ *      shape in `routes/docs.test.js`); update those literals as part of
+ *      the rename — the guardrail, not those literals, protects retired ids.
  *   The guardrail fails naming the retired id when step 2/3 is missed, and
  *   names a dangling alias target when the new id in step 1 is mistyped.
  * @example DOC_SECTIONS => ['getting-started', 'concepts', 'workflows', 'reference']
@@ -54,9 +59,9 @@ export const DOC_SECTIONS = ["getting-started", "concepts", "workflows", "refere
 /***
  * MARK: SECTION_LABELS
  * @description Human-readable labels for the four groups, shared by API and
- *   UI copy. The frontend `docsSections` module duplicates these for
- *   offline/fallback rendering; `docsSections.test` locks the two copies
- *   together so they cannot drift.
+ *   UI copy. Shipped to the frontend inside the `GET /docs` index
+ *   (`sectionLabels` from `buildDocsIndex`), which is the only copy the UI
+ *   reads — there is no second list to keep in sync.
  * @example SECTION_LABELS['getting-started'] => 'Getting started'
  ***/
 export const SECTION_LABELS = {
@@ -381,4 +386,25 @@ export function getDoc(slug, { dir } = {}) {
 		if (articleDescriptor && articleDescriptor.slug === slug) return articleDescriptor;
 	}
 	return null;
+}
+
+/***
+ * MARK: buildDocsIndex
+ * @description Builds the full `GET /docs` index payload from the single
+ *   taxonomy source: `sections` is a copy of `DOC_SECTIONS` (sidebar order),
+ *   `sectionLabels` is a copy of `SECTION_LABELS`, and `docs` is the
+ *   `listDocs` article index. The frontend derives its sidebar order and
+ *   group labels from this payload, so a rename edits `DOC_SECTIONS` /
+ *   `SECTION_LABELS` here and nothing else — there is no second copy.
+ * @param {object} [options]
+ * @param {string} [options.dir] - Content directory override (tests).
+ * @returns {{ sections: string[], sectionLabels: object, docs: Array<object> }}
+ * @example buildDocsIndex().sections => [...DOC_SECTIONS]
+ ***/
+export function buildDocsIndex({ dir } = {}) {
+	return {
+		sections: [...DOC_SECTIONS],
+		sectionLabels: { ...SECTION_LABELS },
+		docs: listDocs({ dir }),
+	};
 }

@@ -2,7 +2,7 @@
  * MARK: siteDocsRoutes
  * @description Agent- and UI-facing endpoints for the markdown-driven site docs:
  *
- *   GET /docs        -> index JSON [{ slug, title, section, order }]
+ *   GET /docs        -> index JSON { sections, sectionLabels, docs: [{ slug, title, section, order }] }
  *   GET /docs/:slug  -> raw article markdown (Content-Type text/markdown)
  *
  * The frontend fetches these at runtime so content edits need no rebuild, and
@@ -11,7 +11,7 @@
  *
  * @example app.register(siteDocsRoutes)
  ***/
-import { listDocs, getDoc, DOC_SECTIONS } from "../siteDocs.js";
+import { getDoc, buildDocsIndex } from "../siteDocs.js";
 
 /***
  * MARK: siteDocsRoutes
@@ -36,6 +36,10 @@ export default async function siteDocsRoutes(app) {
 								type: "array",
 								items: { type: "string" },
 							},
+							sectionLabels: {
+								type: "object",
+								additionalProperties: { type: "string" },
+							},
 							docs: {
 								type: "array",
 								items: {
@@ -55,7 +59,7 @@ export default async function siteDocsRoutes(app) {
 			},
 		},
 		async () => {
-			return { sections: [...DOC_SECTIONS], docs: listDocs() };
+			return buildDocsIndex();
 		},
 	);
 
