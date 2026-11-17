@@ -34,6 +34,7 @@ import {
   canRequestRestart,
   canRequestRediscovery,
   compareRunnerVersions,
+  pinBlocksUpdateReason,
   resolveDesiredVersion,
   resolveVersionTarget,
   versionWarningForRunner,
@@ -455,15 +456,10 @@ export function RunnerConfigurationSection() {
   const versionTarget = selected ? resolveVersionTarget(selected) : null;
   const versionWarning = selected ? versionWarningForRunner(selected) : null;
   const runningAssignment = selected ? assignments[selected.runnerId] : null;
-  const pinBlocksUpdate = Boolean(
-    selected
-    && desiredVersion !== 'latest'
-    && runningVersion
-    && compareRunnerVersions(desiredVersion, runningVersion) === -1,
-  );
-  const updateDisabled = Boolean(busyKey && busyKey.startsWith('update:')) || !updateReady || pinBlocksUpdate;
-  const updateTitle = pinBlocksUpdate
-    ? `Version ${desiredVersion} is older than the running ${runningVersion} — the Runner never downgrades. Pick a newer version or Latest first.`
+  const pinBlockReason = selected ? pinBlocksUpdateReason(selected) : null;
+  const updateDisabled = Boolean(busyKey && busyKey.startsWith('update:')) || !updateReady || Boolean(pinBlockReason);
+  const updateTitle = pinBlockReason
+    ? pinBlockReason
     : !updateReady
       ? `Update now is unavailable: ${commandDisabledReason(canRequestUpdate(selected))}`
       : selectedBusy

@@ -93,6 +93,48 @@ describe("kainbain-runner wrapper restart gate", () => {
 		assert.ok(!String(got.stdout || "").includes("restarting into"), "a crash never restarts");
 		fs.rmSync(root, { recursive: true, force: true });
 	});
+
+	it("reboots the same tree once on a restart-requested sentinel, then stops", () => {
+		if (!haveBash()) return;
+		const { root, writeEntry, pointCurrentAt } = fakeInstall();
+		const runLog = path.join(root, "boots.log");
+		const sentinel = path.join(root, "restart-requested");
+		// First boot stages the sentinel (like the daemon's requestRestart
+		// path); the reboot boots cleanly with nothing staged.
+		writeEntry(
+			"0.1.0",
+			`require("fs").appendFileSync(${JSON.stringify(runLog)}, "boot\\n");\n` +
+				`if (!require("fs").existsSync(${JSON.stringify(runLog)} + ".second")) {\n` +
+				`  require("fs").writeFileSync(${JSON.stringify(runLog)} + ".second", "x");\n` +
+				`  require("fs").writeFileSync(${JSON.stringify(sentinel)}, JSON.stringify({ pid: 1 }));\n` +
+				`}\n`,
+		);
+		pointCurrentAt("0.1.0");
+		const before = fs.readlinkSync(path.join(root, "current"));
+		const got = runWrapper(root);
+		assert.equal(got.status, 0);
+		assert.equal(fs.readlinkSync(path.join(root, "current")), before, "same tree, no update staged");
+		assert.equal(String(fs.readFileSync(runLog, "utf8")).trim().split("\n").length, 2, "the wrapper booted twice");
+		assert.ok(!fs.existsSync(sentinel), "the sentinel is consumed, never left to loop");
+		assert.ok(String(got.stdout || "").includes("restarting"), "the reboot is announced");
+		fs.rmSync(root, { recursive: true, force: true });
+	});
+
+	it("consumes a stale sentinel with exactly one extra boot", () => {
+		if (!haveBash()) return;
+		const { root, writeEntry, pointCurrentAt } = fakeInstall();
+		const runLog = path.join(root, "boots.log");
+		writeEntry("0.1.0", `require("fs").appendFileSync(${JSON.stringify(runLog)}, "boot\\n");\n`);
+		pointCurrentAt("0.1.0");
+		// Left behind by a crash between sentinel-write and exit: the next
+		// clean exit reboots once, then stops (no loop).
+		fs.writeFileSync(path.join(root, "restart-requested"), JSON.stringify({ pid: 99999 }));
+		const got = runWrapper(root);
+		assert.equal(got.status, 0);
+		assert.equal(String(fs.readFileSync(runLog, "utf8")).trim().split("\n").length, 2, "one extra boot, then stop");
+		assert.ok(!fs.existsSync(path.join(root, "restart-requested")), "the stale sentinel is consumed");
+		fs.rmSync(root, { recursive: true, force: true });
+	});
 });
 
 describe("kainbain-runner doctor", () => {

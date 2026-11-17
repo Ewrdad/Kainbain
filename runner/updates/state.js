@@ -13,6 +13,17 @@ import path from "node:path";
 export const UPDATE_STATE_FILE = "update-state.json";
 export const UPDATE_LOCK_FILE = "update.lock";
 export const MAX_BOOT_ATTEMPTS = 3;
+/***
+ * MARK: RESTART_REQUEST_FILE
+ * @description Sentinel the daemon writes beside the install root when an
+ *   operator-requested restart (`requestRestart`) needs a same-version
+ *   reboot. The `kainbain-runner` wrapper consumes it after an exit-0 with
+ *   an unchanged `current` link and boots the SAME tree again — without it
+ *   the wrapper would stop instead of rebooting (re-exec is otherwise
+ *   gated on a staged update flipping `current`).
+ * @example RESTART_REQUEST_FILE => 'restart-requested'
+ ***/
+export const RESTART_REQUEST_FILE = "restart-requested";
 
 export const defaultInstallRoot = ({ workRoot } = {}) => {
 	const base = String(workRoot || process.env.KAINBAIN_RUNNER_WORK_ROOT || "runner-work");
@@ -196,4 +207,27 @@ export const pruneOldReleases = ({ installRoot, fsImpl = fs } = {}) => {
 export const markUpdateSuccess = ({ installRoot, version }) => {
 	writeUpdateState(installRoot, { status: "success", version, bootAttempts: 0 });
 	pruneOldReleases({ installRoot });
+};
+
+/***
+ * MARK: requestWrapperRestart
+ * @description Stages a same-version reboot for the `kainbain-runner`
+ *   wrapper: writes the `restart-requested` sentinel (pid + timestamp
+ *   payload, for triage) beside the install root. The wrapper consumes it
+ *   after the daemon's exit-0 and boots the SAME tree again. A stale
+ *   sentinel (crash between write and exit) can only ever cause one extra
+ *   boot — the wrapper removes it before re-execing. Throws when the
+ *   install root is missing or unwritable; callers treat that as
+ *   best-effort (an unsupervised runner still exits).
+ * @example requestWrapperRestart({ installRoot: '/opt/runner' }) => undefined
+ * @param {Object} [opts] - Options (installRoot, fsImpl?).
+ ***/
+export const requestWrapperRestart = ({ installRoot, fsImpl = fs } = {}) => {
+	const dir = String(installRoot || "").trim();
+	if (!dir) throw new Error("requestWrapperRestart needs an install root.");
+	fsImpl.mkdirSync(dir, { recursive: true });
+	fsImpl.writeFileSync(
+		path.join(dir, RESTART_REQUEST_FILE),
+		JSON.stringify({ pid: process.pid, at: new Date().toISOString() }),
+	);
 };

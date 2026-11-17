@@ -169,27 +169,34 @@ export const versionWarningForRunner = (runner = {}) => {
   const newerExists = known.some((v) => compareRunnerVersions(running, v) === -1);
   if (desired !== DESIRED_VERSION_LATEST) {
     const order = compareRunnerVersions(running, desired);
-    if (order === 0) return null;
+    // The dispatch floor outranks the pin: a runner under the minimum is
+    // refused work whatever it is set to, so below-minimum is always red —
+    // even when the pin already matches the running version.
     if (runner?.belowMinimum === true) {
+      // Only a pin NEWER than running that also clears the floor makes
+      // Update useful; anything else needs a re-pick first (the Update
+      // button disables itself with the same reasoning).
+      const pinClearsFloor = order === -1 && (!minimum || compareRunnerVersions(desired, minimum) !== -1);
+      if (pinClearsFloor) {
+        return {
+          kind: 'below-minimum',
+          tier: 'red',
+          desired,
+          running,
+          target: desired,
+          message: `This Runner runs ${running}, below the fleet minimum${minimum ? ` ${minimum}` : ''} — Update now to install ${desired}.`,
+        };
+      }
       return {
         kind: 'below-minimum',
         tier: 'red',
         desired,
         running,
-        target: desired,
-        message: `This Runner runs ${running}, below the fleet minimum${minimum ? ` ${minimum}` : ''} — update it past the minimum before it can take work.`,
+        target: recommended,
+        message: `This Runner runs ${running}, below the fleet minimum${minimum ? ` ${minimum}` : ''}, and its pinned version ${desired} cannot clear it — pick Latest or a version at or above the minimum, then Update.`,
       };
     }
-    if (newerExists) {
-      return {
-        kind: 'newer-available',
-        tier: 'red',
-        desired,
-        running,
-        target: desired,
-        message: `This Runner runs ${running} but is set to version ${desired}. Update now to install ${desired}.`,
-      };
-    }
+    if (order === 0) return null;
     if (order === null) {
       return {
         kind: 'mismatch',
@@ -200,16 +207,45 @@ export const versionWarningForRunner = (runner = {}) => {
         message: `This Runner runs ${running} but is set to version ${desired} (the running version could not be compared). Update to install ${desired} when idle.`,
       };
     }
+    if (order === 1) {
+      // Running newer than the pin: the channel never downgrades, so the
+      // fix is always a re-pick — red only because something even newer
+      // exists (survey q6), soft otherwise. The Update button stays
+      // disabled either way, so neither message promises it installs.
+      if (newerExists) {
+        const newerLabel = recommended ?? 'a newer release';
+        return {
+          kind: 'newer-available',
+          tier: 'red',
+          desired,
+          running,
+          target: recommended,
+          message: `This Runner runs ${running} but is set to older version ${desired}, and ${newerLabel} is available — pick Latest or a newer version, then Update.`,
+        };
+      }
+      return {
+        kind: 'mismatch',
+        tier: 'soft',
+        desired,
+        running,
+        target: desired,
+        message: `This Runner runs ${running} but is set to older version ${desired}. The Runner never downgrades — pick a newer version or Latest to update.`,
+      };
+    }
+    // The pin is newer than running, so it is itself proof a newer version
+    // exists — always red, and Update installs exactly this pin.
     return {
-      kind: 'mismatch',
-      tier: 'soft',
+      kind: 'newer-available',
+      tier: 'red',
       desired,
       running,
       target: desired,
-      message: `This Runner runs ${running} but is set to older version ${desired}. The Runner never downgrades — pick a newer version or Latest to update.`,
+      message: `This Runner runs ${running} but is set to version ${desired}. Update now to install ${desired}.`,
     };
   }
-  if (!recommended || compareRunnerVersions(running, recommended) !== -1) return null;
+  // The dispatch floor outranks the setting here too: refused work whatever
+  // the knob state, so below-minimum is always red — even with no
+  // recommended version to trail.
   if (runner?.belowMinimum === true) {
     return {
       kind: 'below-minimum',
@@ -220,6 +256,7 @@ export const versionWarningForRunner = (runner = {}) => {
       message: `This Runner runs ${running}, below the fleet minimum${minimum ? ` ${minimum}` : ''} — update it past the minimum before it can take work.`,
     };
   }
+  if (!recommended || compareRunnerVersions(running, recommended) !== -1) return null;
   return {
     kind: 'newer-available',
     tier: 'red',
@@ -228,6 +265,35 @@ export const versionWarningForRunner = (runner = {}) => {
     target: recommended,
     message: `This Runner runs ${running} but ${recommended} is available. Update now — the Runner updates when idle.`,
   };
+};
+
+/***
+ * MARK: pinBlocksUpdateReason
+ * @description Why the manual Update button must stay disabled for a pinned
+ *   runner whose pin cannot usefully install, or null when Update may
+ *   proceed: a pin older than running (the channel never downgrades), or a
+ *   pin below the fleet minimum (installing it would strand — or keep —
+ *   the runner under the dispatch floor). Latest runners never block here
+ *   (their target always moves forward). Mirrors the below-minimum branch
+ *   of `versionWarningForRunner`, which names the same re-pick.
+ * @example pinBlocksUpdateReason({ runnerVersion: '0.2.0', desiredVersion: '0.1.0' }) => 'Version 0.1.0 is older …'
+ * @param {Object} [runner={}] - Runner record.
+ * @returns {string|null} Disabled reason, or null.
+ ***/
+export const pinBlocksUpdateReason = (runner = {}) => {
+  const desired = resolveDesiredVersion(runner);
+  if (desired === DESIRED_VERSION_LATEST) return null;
+  const running = describeRunnerVersion(runner);
+  const minimum = typeof runner?.minimumVersion === 'string' && runner.minimumVersion.trim()
+    ? runner.minimumVersion.trim()
+    : null;
+  if (running && compareRunnerVersions(desired, running) === -1) {
+    return `Version ${desired} is older than the running ${running} — the Runner never downgrades. Pick a newer version or Latest first.`;
+  }
+  if (minimum && compareRunnerVersions(desired, minimum) === -1) {
+    return `Version ${desired} is below the fleet minimum ${minimum} — pick Latest or a version at or above ${minimum} first.`;
+  }
+  return null;
 };
 
 /***

@@ -147,6 +147,12 @@ The R05 boundary stands (the backend never serves runner bytes) and the
   — running work is stopped (claim leases expire, work re-queues), never
   drained — and interleaves no update check. The UI confirms it as a
   destructive action. `requestUpdate` keeps its idle-only semantics.
+  The reboot goes through a `restart-requested` sentinel the daemon
+  writes beside the install root: the wrapper consumes it after the
+  exit-0 and boots the SAME tree again (a bare exit-0 would stop the
+  runner, since the wrapper otherwise re-execs only on a staged
+  update). Exit 0 + sentinel keeps systemd `Restart=on-failure`
+  supervision quiet — no failure is ever signalled.
 - **Each runner has a `desiredVersion`: `latest` (default) or one exact
   release.** It lives in `operatorConfig` (backfilled to `latest` for
   old state), is PATCH-validated strictly (`latest` or a parseable

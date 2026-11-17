@@ -11,7 +11,7 @@ import { runImpromptuJob } from "./impromptu.js";
 import { createStructuredEventSender } from "./logEvents.js";
 import { applyUpdate as defaultApplyUpdate, checkForUpdate as defaultCheckForUpdate } from "./updates/index.js";
 import { isValidVersion } from "./updates/manifest.js";
-import { defaultInstallRoot, markUpdateSuccess, readUpdateState } from "./updates/state.js";
+import { defaultInstallRoot, markUpdateSuccess, readUpdateState, requestWrapperRestart } from "./updates/state.js";
 // The Runner bundle ships shared/ next to this folder (runner/{runner,api,shared}
 // in prod and in the distributable tarball), so ../shared resolves both in the
 // repo and in every deployed layout — the same copy the backend executes.
@@ -1323,7 +1323,9 @@ function stageCommandAck(state, ack) {
  *   work, D5); `requestRestart` reboots the runner on its current
  *   version at once — a live execution is stopped (destructive,
  *   operator-confirmed in Settings) and its claim lease expires so the
- *   work re-queues, exactly like a crash. Every handled command stages
+ *   work re-queues, exactly like a crash. The reboot goes through the
+ *   wrapper's `restart-requested` sentinel (same `current` tree, no
+ *   update check). Every handled command stages
  *   exactly one ack on `state.commandAcks` for the next heartbeat facts;
  *   unknown commands are ignored (the backend never sends them — enqueue
  *   is fail-closed).
@@ -1438,6 +1440,16 @@ export async function handlePendingCommands({ config, client, logger, state, pen
 					}
 				} catch (err) {
 					logger.warn?.(`Restart ack heartbeat failed (restarting anyway): ${err?.message || err}`);
+				}
+				// Same-version reboot needs the wrapper's help: it only
+				// re-execs when `current` changed (a staged update), so a bare
+				// exit 0 here would stop the runner instead of rebooting it.
+				// The sentinel asks the wrapper to boot the SAME tree again;
+				// best-effort — an unwrapped (direct node) runner just exits.
+				try {
+					requestWrapperRestart({ installRoot: installRootFor(config) });
+				} catch (err) {
+					logger.warn?.(`Restart sentinel not written (exiting without a supervised reboot): ${err?.message || err}`);
 				}
 				logger.log?.(`Runner restarting on current version${busy ? " (running work stopped)" : ""}`);
 				process.exit(0);

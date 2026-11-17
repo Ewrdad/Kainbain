@@ -2470,16 +2470,17 @@ describe("handlePendingCommands", () => {
 		});
 	});
 
-	it("restarts on the current version when idle (ack, confirm heartbeat, exit 0)", async () => {
+	it("restarts on the current version when idle (ack, confirm heartbeat, sentinel, exit 0)", async () => {
 		const heartbeats = [];
 		const state = {};
+		const installRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kb-restart-"));
 		const realExit = process.exit;
 		let exitCode = null;
 		process.exit = (code) => { exitCode = code; throw new Error(`process.exit(${code})`); };
 		try {
 			await assert.rejects(
 				handlePendingCommands({
-					config: claudeConfig(),
+					config: claudeConfig({ installRoot }),
 					client: { heartbeat: async (args) => { heartbeats.push(args); return { status: "active" }; } },
 					logger: quiet,
 					state,
@@ -2492,6 +2493,7 @@ describe("handlePendingCommands", () => {
 			);
 		} finally {
 			process.exit = realExit;
+			fs.rmSync(installRoot, { recursive: true, force: true });
 		}
 		assert.equal(exitCode, 0);
 		assert.equal(heartbeats.length, 1);
@@ -2505,16 +2507,67 @@ describe("handlePendingCommands", () => {
 		]);
 	});
 
-	it("restarts at once when busy, stopping running work without an update check", async () => {
-		const heartbeats = [];
-		const state = { executionId: "exec-live" };
+	it("stages the wrapper reboot sentinel before exiting", async () => {
+		const installRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kb-restart-"));
+		const realExit = process.exit;
+		process.exit = () => { throw new Error("process.exit(0)"); };
+		try {
+			await assert.rejects(
+				handlePendingCommands({
+					config: claudeConfig({ installRoot }),
+					client: {},
+					logger: quiet,
+					state: {},
+					pendingCommands: ["requestRestart"],
+				}),
+				/process\.exit\(0\)/,
+			);
+			const sentinel = JSON.parse(fs.readFileSync(path.join(installRoot, "restart-requested"), "utf8"));
+			assert.equal(sentinel.pid, process.pid);
+			assert.ok(Date.parse(sentinel.at), "the sentinel carries a timestamp for triage");
+		} finally {
+			process.exit = realExit;
+			fs.rmSync(installRoot, { recursive: true, force: true });
+		}
+	});
+
+	it("still exits when the sentinel cannot be written (unwrapped runner just stops)", async () => {
+		const warnings = [];
+		const blocker = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kb-restart-")), "file-not-dir");
+		fs.writeFileSync(blocker, "occupied");
 		const realExit = process.exit;
 		let exitCode = null;
 		process.exit = (code) => { exitCode = code; throw new Error(`process.exit(${code})`); };
 		try {
 			await assert.rejects(
 				handlePendingCommands({
-					config: claudeConfig(),
+					config: claudeConfig({ installRoot: path.join(blocker, "nested") }),
+					client: {},
+					logger: { ...quiet, warn: (msg) => warnings.push(String(msg)) },
+					state: {},
+					pendingCommands: ["requestRestart"],
+				}),
+				/process\.exit\(0\)/,
+			);
+		} finally {
+			process.exit = realExit;
+			fs.rmSync(path.dirname(blocker), { recursive: true, force: true });
+		}
+		assert.equal(exitCode, 0);
+		assert.ok(warnings.some((w) => w.includes("sentinel not written")), "the unsupervised exit is loud");
+	});
+
+	it("restarts at once when busy, stopping running work without an update check", async () => {
+		const heartbeats = [];
+		const state = { executionId: "exec-live" };
+		const installRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kb-restart-"));
+		const realExit = process.exit;
+		let exitCode = null;
+		process.exit = (code) => { exitCode = code; throw new Error(`process.exit(${code})`); };
+		try {
+			await assert.rejects(
+				handlePendingCommands({
+					config: claudeConfig({ installRoot }),
 					client: { heartbeat: async (args) => { heartbeats.push(args); return { status: "active" }; } },
 					logger: quiet,
 					state,
@@ -2527,6 +2580,7 @@ describe("handlePendingCommands", () => {
 			);
 		} finally {
 			process.exit = realExit;
+			fs.rmSync(installRoot, { recursive: true, force: true });
 		}
 		assert.equal(exitCode, 0);
 		assert.equal(heartbeats.length, 1);

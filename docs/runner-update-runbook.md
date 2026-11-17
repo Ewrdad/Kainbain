@@ -102,6 +102,11 @@ Two separate actions, never combined:
   stopped at once (the claim lease expires so the work re-queues, like a
   crash). The confirm window names the runner and warns about running
   work; use it when a runner looks stuck, not to change versions.
+  Mechanism: the daemon writes a `restart-requested` sentinel beside the
+  install root and exits 0; the wrapper consumes it and boots the SAME
+  tree again. Restart therefore needs the wrapper entrypoint — a runner
+  started as bare `node main.js` exits without rebooting (migrate to the
+  wrapper, above).
 - **Update** reinstalls the runner onto its **target version** — the
   exact pin when the runner is pinned, otherwise the newest compatible
   release — and applies only when the runner is idle (never interrupts
@@ -156,9 +161,15 @@ Match the Settings › Runners badge to a cause:
   clear this — Restart reboots the same version.
 - **"restart queued" that never clears / restart loop.** The runner
   collects `requestRestart` on every heartbeat but never reboots:
-  check the journal for the `Runner restarting` line. Old runners
-  that predate the command show a disabled Restart with "too old"
-  guidance instead — update them manually.
+  check the journal for the `Runner restarting` line. If the line is
+  there but no reboot follows, the runner is not supervised by the
+  wrapper (bare `node main.js` exits instead of rebooting — migrate to
+  the wrapper, above) or the install root is unwritable (look for
+  `sentinel not written`). A `restart-requested` file left behind by a
+  crash causes at most one extra boot on the next clean exit — the
+  wrapper consumes it, never loops. Old runners that predate the
+  command show a disabled Restart with "too old" guidance instead —
+  update them manually.
 - **"below minimum" / 409 loop.** The runner is under
   `KAINBAIN_RUNNER_MIN_VERSION` and dispatch refuses it. It
   self-updates immediately when idle (interval bypassed). If it

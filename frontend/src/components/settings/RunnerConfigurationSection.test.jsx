@@ -1225,6 +1225,49 @@ describe('RunnerConfigurationSection', () => {
     expect(requestRunnerUpdate).not.toHaveBeenCalled();
   });
 
+  it('warns red and blocks Update when the pin cannot clear the fleet minimum', async () => {
+    runnersFixture([
+      {
+        ...RESTARTABLE_RUNNER,
+        runnerVersion: '0.0.9',
+        desiredVersion: '0.0.9',
+        recommendedVersion: '0.2.0',
+        minimumVersion: '0.1.0',
+        belowMinimum: true,
+        updateAvailable: true,
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    const banner = screen.getByTestId('runner-version-warning-r1');
+    expect(banner.className).toContain('text-error');
+    expect(banner).toHaveTextContent(/cannot clear it/);
+    const button = screen.getByTestId('runner-update-now-r1');
+    expect(button).toBeDisabled();
+    expect(button.title).toMatch(/below the fleet minimum/);
+    expect(requestRunnerUpdate).not.toHaveBeenCalled();
+  });
+
+  it('keeps Update enabled when the pin clears the fleet minimum', async () => {
+    runnersFixture([
+      {
+        ...RESTARTABLE_RUNNER,
+        runnerVersion: '0.0.9',
+        desiredVersion: '0.2.0',
+        recommendedVersion: '0.2.0',
+        minimumVersion: '0.1.0',
+        belowMinimum: true,
+        updateAvailable: true,
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.getByTestId('runner-version-warning-r1')).toHaveTextContent(/Update now to install 0\.2\.0/);
+    const button = screen.getByTestId('runner-update-now-r1');
+    expect(button).not.toBeDisabled();
+    expect(button.title).toContain('0.2.0');
+  });
+
   it('stays quiet with no Update button when the pin matches the running version', async () => {
     runnersFixture([
       {
