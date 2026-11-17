@@ -18,6 +18,8 @@ import {
 	findUnconfiguredHarnesses,
 	handlePendingCommands,
 	joinAndHeartbeat,
+	maybeSelfUpdate,
+	pinnedDesiredVersion,
 	probeHarnessVersions,
 	refreshDiscoveredModels,
 	resolveHarnessConfig,
@@ -1351,6 +1353,7 @@ describe("deliverSteers", () => {
 			backendApiVersion: "1.0.0",
 			desiredRunnerVersion: "0.2.0",
 			minimumRunnerVersion: "0.1.0",
+			desiredVersion: null,
 		});
 	});
 
@@ -1359,6 +1362,7 @@ describe("deliverSteers", () => {
 			backendApiVersion: null,
 			desiredRunnerVersion: null,
 			minimumRunnerVersion: null,
+			desiredVersion: null,
 		});
 		assert.deepEqual(updateDirectiveFromBeat(null).backendApiVersion, null);
 		assert.equal(updateDirectiveFromBeat({ update: { backendApiVersion: "  " } }).backendApiVersion, null);
@@ -2466,6 +2470,194 @@ describe("handlePendingCommands", () => {
 		});
 	});
 
+	it("restarts on the current version when idle (ack, confirm heartbeat, sentinel, exit 0)", async () => {
+		const heartbeats = [];
+		const state = {};
+		const installRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kb-restart-"));
+		const realExit = process.exit;
+		let exitCode = null;
+		process.exit = (code) => { exitCode = code; throw new Error(`process.exit(${code})`); };
+		try {
+			await assert.rejects(
+				handlePendingCommands({
+					config: claudeConfig({ installRoot }),
+					client: { heartbeat: async (args) => { heartbeats.push(args); return { status: "active" }; } },
+					logger: quiet,
+					state,
+					pendingCommands: ["requestRestart"],
+					updateDeps: {
+						checkForUpdate: async () => { throw new Error("restart must not check for updates"); },
+					},
+				}),
+				/process\.exit\(0\)/,
+			);
+		} finally {
+			process.exit = realExit;
+			fs.rmSync(installRoot, { recursive: true, force: true });
+		}
+		assert.equal(exitCode, 0);
+		assert.equal(heartbeats.length, 1);
+		assert.deepEqual(heartbeats[0].facts.commandAck, {
+			command: "requestRestart",
+			ok: true,
+			detail: "restarting on current version",
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestRestart", ok: true, detail: "restarting on current version" },
+		]);
+	});
+
+	it("stages the wrapper reboot sentinel before exiting", async () => {
+		const installRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kb-restart-"));
+		const realExit = process.exit;
+		process.exit = () => { throw new Error("process.exit(0)"); };
+		try {
+			await assert.rejects(
+				handlePendingCommands({
+					config: claudeConfig({ installRoot }),
+					client: {},
+					logger: quiet,
+					state: {},
+					pendingCommands: ["requestRestart"],
+				}),
+				/process\.exit\(0\)/,
+			);
+			const sentinel = JSON.parse(fs.readFileSync(path.join(installRoot, "restart-requested"), "utf8"));
+			assert.equal(sentinel.pid, process.pid);
+			assert.ok(Date.parse(sentinel.at), "the sentinel carries a timestamp for triage");
+		} finally {
+			process.exit = realExit;
+			fs.rmSync(installRoot, { recursive: true, force: true });
+		}
+	});
+
+	it("still exits when the sentinel cannot be written (unwrapped runner just stops)", async () => {
+		const warnings = [];
+		const blocker = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kb-restart-")), "file-not-dir");
+		fs.writeFileSync(blocker, "occupied");
+		const realExit = process.exit;
+		let exitCode = null;
+		process.exit = (code) => { exitCode = code; throw new Error(`process.exit(${code})`); };
+		try {
+			await assert.rejects(
+				handlePendingCommands({
+					config: claudeConfig({ installRoot: path.join(blocker, "nested") }),
+					client: {},
+					logger: { ...quiet, warn: (msg) => warnings.push(String(msg)) },
+					state: {},
+					pendingCommands: ["requestRestart"],
+				}),
+				/process\.exit\(0\)/,
+			);
+		} finally {
+			process.exit = realExit;
+			fs.rmSync(path.dirname(blocker), { recursive: true, force: true });
+		}
+		assert.equal(exitCode, 0);
+		assert.ok(warnings.some((w) => w.includes("sentinel not written")), "the unsupervised exit is loud");
+	});
+
+	it("restarts at once when busy, stopping running work without an update check", async () => {
+		const heartbeats = [];
+		const state = { executionId: "exec-live" };
+		const installRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kb-restart-"));
+		const realExit = process.exit;
+		let exitCode = null;
+		process.exit = (code) => { exitCode = code; throw new Error(`process.exit(${code})`); };
+		try {
+			await assert.rejects(
+				handlePendingCommands({
+					config: claudeConfig({ installRoot }),
+					client: { heartbeat: async (args) => { heartbeats.push(args); return { status: "active" }; } },
+					logger: quiet,
+					state,
+					pendingCommands: ["requestRestart"],
+					updateDeps: {
+						checkForUpdate: async () => { throw new Error("restart must not check for updates"); },
+					},
+				}),
+				/process\.exit\(0\)/,
+			);
+		} finally {
+			process.exit = realExit;
+			fs.rmSync(installRoot, { recursive: true, force: true });
+		}
+		assert.equal(exitCode, 0);
+		assert.equal(heartbeats.length, 1);
+		assert.deepEqual(heartbeats[0].facts.commandAck, {
+			command: "requestRestart",
+			ok: true,
+			detail: "restarting now; running work stopped",
+		});
+	});
+
+	it("carries the operator desiredVersion through the update directive", () => {
+		assert.deepEqual(updateDirectiveFromBeat({ update: { backendApiVersion: "1.0.0", desiredVersion: "1.2.3" } }), {
+			backendApiVersion: "1.0.0",
+			desiredRunnerVersion: null,
+			minimumRunnerVersion: null,
+			desiredVersion: "1.2.3",
+		});
+		assert.equal(updateDirectiveFromBeat({ update: { desiredVersion: "latest" } }).desiredVersion, "latest");
+		assert.equal(updateDirectiveFromBeat({}).desiredVersion, null);
+	});
+
+	it("reads the pinned version off the directive, latest-or-junk reads unpinned", () => {
+		assert.equal(pinnedDesiredVersion({ desiredVersion: "1.2.3" }), "1.2.3");
+		assert.equal(pinnedDesiredVersion({ desiredVersion: "latest" }), null);
+		assert.equal(pinnedDesiredVersion({ desiredVersion: "Latest" }), null);
+		assert.equal(pinnedDesiredVersion({}), null);
+		assert.equal(pinnedDesiredVersion(null), null);
+		assert.equal(pinnedDesiredVersion({ desiredVersion: "bogus" }), null);
+		assert.equal(pinnedDesiredVersion({ desiredVersion: "" }), null);
+	});
+
+	it("skips automatic update checks for pinned runners, force installs the pin", async () => {
+		const calls = [];
+		const pinnedState = { updateDirective: { desiredVersion: "1.2.3", backendApiVersion: "1.0.0" } };
+		const skipped = await maybeSelfUpdate({
+			config: claudeConfig({ autoUpdate: true }),
+			logger: quiet,
+			updateState: pinnedState,
+			updateDeps: {
+				checkForUpdate: async (args) => { calls.push(args); return { ok: true, update: null, reason: "up to date" }; },
+			},
+		});
+		assert.equal(skipped.checked, false);
+		assert.match(skipped.reason, /manual update only/);
+		assert.equal(calls.length, 0);
+		const forced = await maybeSelfUpdate({
+			config: claudeConfig({ autoUpdate: true }),
+			logger: quiet,
+			updateState: pinnedState,
+			force: true,
+			updateDeps: {
+				checkForUpdate: async (args) => { calls.push(args); return { ok: true, update: null, reason: "up to date" }; },
+			},
+		});
+		assert.equal(forced.checked, true);
+		assert.equal(calls.length, 1);
+		assert.equal(calls[0].targetVersion, "1.2.3");
+	});
+
+	it("routes a manual Update on a pinned runner at the pin, not latest", async () => {
+		const calls = [];
+		const state = { updateDirective: { desiredVersion: "0.2.0", backendApiVersion: "1.0.0" } };
+		await handlePendingCommands({
+			config: claudeConfig({ autoUpdate: true }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestUpdate"],
+			updateDeps: {
+				checkForUpdate: async (args) => { calls.push(args); return { ok: true, update: null, reason: "up to date" }; },
+			},
+		});
+		assert.equal(calls.length, 1);
+		assert.equal(calls[0].targetVersion, "0.2.0");
+		assert.deepEqual(state.commandAcks, [{ command: "requestUpdate", ok: true, detail: "up to date" }]);
+	});
+
 	it("ignores unknown commands", async () => {
 		const state = {};
 		await handlePendingCommands({
@@ -2473,7 +2665,7 @@ describe("handlePendingCommands", () => {
 			client: {},
 			logger: quiet,
 			state,
-			pendingCommands: ["requestRestart", null, undefined],
+			pendingCommands: ["requestReboot", null, undefined],
 		});
 		assert.deepEqual(state.commandAcks, []);
 	});
@@ -3049,6 +3241,26 @@ describe("factsFor build identity", () => {
 			first.versions.build.sha = "mutated-by-a-middleware";
 			const second = factsFor({ config });
 			assert.deepEqual(second.versions.build, RUNNER_BUILD);
+		} finally {
+			fs.rmSync(config.workRoot, { recursive: true, force: true });
+		}
+	});
+
+	it("reports this process's WP2 signal totals in facts.signals for the backend bridge", () => {
+		// The Runner is a separate process from the backend, so its
+		// worktree-eviction counter only reaches the observability
+		// exposition when it rides every heartbeat as `facts.signals`.
+		const config = factsConfig();
+		try {
+			const facts = factsFor({ config });
+			assert.equal(typeof facts.signals, "object");
+			assert.equal(typeof facts.signals.worktreeEvictions, "number");
+			assert.ok(Number.isFinite(facts.signals.worktreeEvictions));
+			assert.ok(facts.signals.worktreeEvictions >= 0);
+			// A fresh object per call: mutating one heartbeat's facts must
+			// not corrupt the next heartbeat.
+			const again = factsFor({ config });
+			assert.notEqual(facts.signals, again.signals);
 		} finally {
 			fs.rmSync(config.workRoot, { recursive: true, force: true });
 		}

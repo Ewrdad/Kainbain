@@ -10,11 +10,14 @@
 #
 # The wrapper resolves `current` on every (re)start, so an in-place update
 # that flips the symlink takes effect on the next boot. A restart happens
-# only when the run actually staged an update (the `current` target changed
-# while the daemon ran): a normal completion — single assignment done, or
-# dispatch idle-out — exits 0 with `current` untouched, and the wrapper
-# stops instead of re-running finished work. Any non-zero code stops the
-# loop and propagates the failure.
+# when the run actually staged an update (the `current` target changed
+# while the daemon ran), or when the daemon left a `restart-requested`
+# sentinel beside the install root (operator Restart: reboot the SAME tree
+# on its current version, no update involved). A normal completion —
+# single assignment done, or dispatch idle-out — exits 0 with `current`
+# untouched and no sentinel, and the wrapper stops instead of re-running
+# finished work. Any non-zero code stops the loop and propagates the
+# failure.
 set -u
 
 INSTALL_ROOT="${KAINBAIN_RUNNER_INSTALL_ROOT:-$HOME/.kainbain/runner-install}"
@@ -206,6 +209,22 @@ while true; do
 	fi
 	AFTER="$(resolve_current)"
 	if [ "$AFTER" = "$BEFORE" ]; then
+		# Operator-requested reboot (Settings → Restart): the daemon staged
+		# no update — `current` is untouched — but left a sentinel asking
+		# the wrapper to boot the SAME tree again. Consumed before the
+		# re-exec, so a stale file can only ever cause one extra boot; the
+		# shared restart counter still caps a tight restart loop.
+		if [ -f "$INSTALL_ROOT/restart-requested" ]; then
+			rm -f "$INSTALL_ROOT/restart-requested"
+			RESTARTS=$((RESTARTS + 1))
+			if [ "$RESTARTS" -gt 50 ]; then
+				echo "kainbain-runner: too many fast restarts; stopping" >&2
+				exit 1
+			fi
+			echo "kainbain-runner: restarting $AFTER on request (restart #$RESTARTS)"
+			sleep 2
+			continue
+		fi
 		exit 0
 	fi
 	RESTARTS=$((RESTARTS + 1))

@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { DEFAULT_RELEASES_LATEST_URL, filterReleaseCandidate, githubReleasesListUrl, isNewerVersion, isPrereleaseVersion, resolveUpdateUrls, tagVersionFor, validateManifest, validateReleasesIndex } from "./manifest.js";
+import { DEFAULT_RELEASES_LATEST_URL, compareVersions, filterReleaseCandidate, githubReleasesListUrl, isNewerVersion, isPrereleaseVersion, isValidVersion, resolveUpdateUrls, tagVersionFor, validateManifest, validateReleasesIndex } from "./manifest.js";
 import { detectUpdatePlatform } from "./platform.js";
 import { verifyManifestSignature } from "./verify.js";
 import { downloadVerifiedAsset, fetchText } from "./download.js";
@@ -71,7 +71,7 @@ const legacyFilterReason = ({ code, reason, manifest, detected }) => {
 	return `Release ${manifest.version} is not compatible with this backend: ${reason}.`;
 };
 
-const checkGithubForUpdate = async ({ currentVersion, updateUrl, fetchImpl, verifyImpl, detected, backendApiVersion, logger }) => {
+const checkGithubForUpdate = async ({ currentVersion, updateUrl, fetchImpl, verifyImpl, detected, backendApiVersion, targetVersion, logger }) => {
 	let releaseMeta = null;
 	// Any fetch failure (backend down, mirror unreachable, hung socket
 	// past the timeout) is a failed check, never a throw: the caller keeps
@@ -100,6 +100,22 @@ const checkGithubForUpdate = async ({ currentVersion, updateUrl, fetchImpl, veri
 		});
 		if (!loaded.ok) return loaded;
 		const manifest = loaded.manifest;
+		// Pinned fast path: the pointer already serves the exact pinned
+		// release — it either installs or fails loud, never walks older
+		// releases for a substitute.
+		if (targetVersion && compareVersions(manifest?.version, targetVersion) === 0) {
+			const verdict = filterReleaseCandidate({
+				manifest,
+				currentVersion,
+				backendApiVersion,
+				platform: detected.platform,
+				arch: detected.arch,
+			});
+			if (verdict.code === "OK") {
+				return { ok: true, update: { version: manifest.version, manifest, asset: verdict.asset, releaseMeta, sourceUrl: null }, manifest };
+			}
+			return { ok: false, reason: `Pinned version ${targetVersion} cannot run here: ${verdict.reason}.` };
+		}
 		const verdict = filterReleaseCandidate({
 			manifest,
 			currentVersion,
@@ -108,10 +124,17 @@ const checkGithubForUpdate = async ({ currentVersion, updateUrl, fetchImpl, veri
 			arch: detected.arch,
 		});
 		if (verdict.code === "OK") {
-			return { ok: true, update: { version: manifest.version, manifest, asset: verdict.asset, releaseMeta, sourceUrl: null }, manifest };
-		}
-		if (verdict.code !== "INCOMPATIBLE") {
-			return { ok: true, update: null, manifest, reason: legacyFilterReason({ code: verdict.code, reason: verdict.reason, manifest, detected }) };
+			if (!targetVersion) {
+				return { ok: true, update: { version: manifest.version, manifest, asset: verdict.asset, releaseMeta, sourceUrl: null }, manifest };
+			}
+			// Latest is usable but the operator pinned something else:
+			// fall through to the list walk for the exact pin.
+		} else if (verdict.code !== "INCOMPATIBLE") {
+			if (!targetVersion) {
+				return { ok: true, update: null, manifest, reason: legacyFilterReason({ code: verdict.code, reason: verdict.reason, manifest, detected }) };
+			}
+			// Latest is neither the pin nor usable: fall through to the
+			// list walk for the exact pin.
 		}
 		// Fast path done: latest exists and verifies but cannot run against
 		// this backend. Walk the bounded releases list (newest-first, one
@@ -144,8 +167,9 @@ const checkGithubForUpdate = async ({ currentVersion, updateUrl, fetchImpl, veri
 			seen.add(tagVersion);
 			// Cheap pre-filters before any download: version ordering needs
 			// no network, and the manifest re-checks after verify (a lying
-			// tag cannot promote or hide a release).
-			if (!isNewerVersion(tagVersion, currentVersion)) continue;
+			// tag cannot promote or hide a release). Pinned mode matches
+			// the exact pin only — never a newer substitute.
+			if (targetVersion ? compareVersions(tagVersion, targetVersion) !== 0 : !isNewerVersion(tagVersion, currentVersion)) continue;
 			const entryAssets = Array.isArray(entry.assets) ? entry.assets : [];
 			const entryManifest = entryAssets.find((a) => a?.name === "manifest.json");
 			const entrySig = entryAssets.find((a) => a?.name === "manifest.json.minisig");
@@ -172,6 +196,12 @@ const checkGithubForUpdate = async ({ currentVersion, updateUrl, fetchImpl, veri
 					manifest: candidate.manifest,
 				};
 			}
+			if (targetVersion) {
+				return { ok: false, reason: `Pinned version ${targetVersion} cannot run here: ${candidateVerdict.reason}.` };
+			}
+		}
+		if (targetVersion) {
+			return { ok: false, reason: `Pinned version ${targetVersion} was not found among the listed releases (checked ${examined} candidate(s)).` };
 		}
 		const backendLabel = String(backendApiVersion || "").trim() || "unknown";
 		return {
@@ -185,7 +215,7 @@ const checkGithubForUpdate = async ({ currentVersion, updateUrl, fetchImpl, veri
 	}
 };
 
-const checkSingleMirrorManifest = async ({ currentVersion, updateUrl, fetchImpl, verifyImpl, detected, backendApiVersion }) => {
+const checkSingleMirrorManifest = async ({ currentVersion, updateUrl, fetchImpl, verifyImpl, detected, backendApiVersion, targetVersion }) => {
 	const urls = resolveUpdateUrls({ updateUrl });
 	if (!urls) return { ok: false, reason: "Update URL is empty; set KAINBAIN_RUNNER_UPDATE_URL or restore the default release pointer." };
 	const loaded = await loadVerifiedManifest({
@@ -196,6 +226,11 @@ const checkSingleMirrorManifest = async ({ currentVersion, updateUrl, fetchImpl,
 	});
 	if (!loaded.ok) return loaded;
 	const manifest = loaded.manifest;
+	// An explicit manifest.json URL is itself a pin: it must serve the
+	// requested pinned version, not just any newer release.
+	if (targetVersion && compareVersions(manifest?.version, targetVersion) !== 0) {
+		return { ok: false, reason: `Pinned version ${targetVersion} does not match the mirror manifest (serves ${manifest?.version}).` };
+	}
 	const verdict = filterReleaseCandidate({
 		manifest,
 		currentVersion,
@@ -209,12 +244,12 @@ const checkSingleMirrorManifest = async ({ currentVersion, updateUrl, fetchImpl,
 	return { ok: true, update: null, manifest, reason: legacyFilterReason({ code: verdict.code, reason: verdict.reason, manifest, detected }) };
 };
 
-const checkMirrorForUpdate = async ({ currentVersion, updateUrl, fetchImpl, verifyImpl, detected, backendApiVersion, logger }) => {
+const checkMirrorForUpdate = async ({ currentVersion, updateUrl, fetchImpl, verifyImpl, detected, backendApiVersion, targetVersion, logger }) => {
 	// A full manifest.json URL is an explicit operator pin: one candidate,
 	// still compat-filtered, never a list walk.
 	if (String(updateUrl || "").trim().replace(/\/+$/, "").endsWith("manifest.json")) {
 		try {
-			return await checkSingleMirrorManifest({ currentVersion, updateUrl, fetchImpl, verifyImpl, detected, backendApiVersion });
+			return await checkSingleMirrorManifest({ currentVersion, updateUrl, fetchImpl, verifyImpl, detected, backendApiVersion, targetVersion });
 		} catch (err) {
 			return { ok: false, reason: `Update check failed: ${err?.message || err}` };
 		}
@@ -228,7 +263,7 @@ const checkMirrorForUpdate = async ({ currentVersion, updateUrl, fetchImpl, veri
 		// behave exactly as before. Any other failure is loud.
 		if (err?.statusCode === 404) {
 			try {
-				return await checkSingleMirrorManifest({ currentVersion, updateUrl, fetchImpl, verifyImpl, detected, backendApiVersion });
+				return await checkSingleMirrorManifest({ currentVersion, updateUrl, fetchImpl, verifyImpl, detected, backendApiVersion, targetVersion });
 			} catch (fallbackErr) {
 				return { ok: false, reason: `Update check failed: ${fallbackErr?.message || fallbackErr}` };
 			}
@@ -251,11 +286,13 @@ const checkMirrorForUpdate = async ({ currentVersion, updateUrl, fetchImpl, veri
 	for (const entry of index.releases) {
 		// Cheap pre-filters before any download; the manifest re-checks
 		// after verify, so a lying index entry cannot hide a release.
-		if (isPrereleaseVersion(entry.version)) {
+		// Pinned mode matches the exact pin only — never a substitute.
+		if (targetVersion) {
+			if (!isValidVersion(entry.version) || compareVersions(entry.version, targetVersion) !== 0) continue;
+		} else if (isPrereleaseVersion(entry.version)) {
 			lastSkip = `listed ${entry.version} is a pre-release; v1 runners skip it`;
 			continue;
-		}
-		if (!isNewerVersion(entry.version, currentVersion)) {
+		} else if (!isNewerVersion(entry.version, currentVersion)) {
 			lastSkip = `listed ${entry.version} is not newer than current ${currentVersion}`;
 			continue;
 		}
@@ -281,9 +318,15 @@ const checkMirrorForUpdate = async ({ currentVersion, updateUrl, fetchImpl, veri
 				manifest: candidate.manifest,
 			};
 		}
+		if (targetVersion) {
+			return { ok: false, reason: `Pinned version ${targetVersion} cannot run here: ${verdict.reason}.` };
+		}
 		lastSkip = `listed ${candidate.manifest.version} skipped: ${verdict.reason}`;
 	}
 	const backendLabel = String(backendApiVersion || "").trim() || "unknown";
+	if (targetVersion) {
+		return { ok: false, reason: `Pinned version ${targetVersion} was not found among the listed releases (checked ${examined} candidate(s)).` };
+	}
 	return {
 		ok: true,
 		update: null,
@@ -306,6 +349,11 @@ export const checkForUpdate = async ({
 	// compat gating); a known version gates selection to releases whose
 	// manifest `requires.backendApi` admits it.
 	backendApiVersion = null,
+	// Exact release the operator pinned this runner to (from the heartbeat
+	// directive). Null tracks latest (today's behaviour). A pin equal to
+	// current is a no-op; a pin older than current refuses (the channel
+	// never downgrades); otherwise the check installs exactly the pin.
+	targetVersion = null,
 } = {}) => {
 	const detected = detectUpdatePlatform({ platform, arch });
 	if (!detected.ok) {
@@ -315,10 +363,26 @@ export const checkForUpdate = async ({
 	if (!String(updateUrl || "").trim()) {
 		return { ok: false, reason: "Update URL is empty; set KAINBAIN_RUNNER_UPDATE_URL or restore the default release pointer." };
 	}
-	if (isGithubReleasesPointer(updateUrl)) {
-		return checkGithubForUpdate({ currentVersion, updateUrl, fetchImpl, verifyImpl, detected, backendApiVersion, logger });
+	if (typeof targetVersion === "string" && targetVersion) {
+		if (!isValidVersion(targetVersion)) {
+			return { ok: false, reason: `Pinned version ${targetVersion} is not a valid release version.` };
+		}
+		const order = compareVersions(targetVersion, currentVersion);
+		if (order === 0) {
+			return { ok: true, update: null, reason: `Already on pinned version ${targetVersion}.` };
+		}
+		if (order === -1) {
+			return { ok: false, reason: `Pinned version ${targetVersion} is older than running ${currentVersion}; the runner never downgrades.` };
+		}
+		if (order === null) {
+			return { ok: false, reason: `Cannot compare pinned version ${targetVersion} with running ${currentVersion}.` };
+		}
 	}
-	return checkMirrorForUpdate({ currentVersion, updateUrl, fetchImpl, verifyImpl, detected, backendApiVersion, logger });
+	const target = typeof targetVersion === "string" && targetVersion ? targetVersion : null;
+	if (isGithubReleasesPointer(updateUrl)) {
+		return checkGithubForUpdate({ currentVersion, updateUrl, fetchImpl, verifyImpl, detected, backendApiVersion, targetVersion: target, logger });
+	}
+	return checkMirrorForUpdate({ currentVersion, updateUrl, fetchImpl, verifyImpl, detected, backendApiVersion, targetVersion: target, logger });
 };
 
 const extractTarball = async ({ archivePath, destDir }) => {

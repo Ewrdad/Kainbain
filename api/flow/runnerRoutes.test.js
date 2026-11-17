@@ -12,6 +12,10 @@ process.env.KAINBAIN_RUNNER_JOIN_TOKEN = "test-join-token";
 process.env.KAINBAIN_CLAIM_TTL_MS = "1000";
 
 const { default: app } = await import("../index.js");
+// Same singleton the app wired: lets tests read the observability
+// exposition directly (imported AFTER the app so the join-token env above
+// is already set when the singletons construct).
+const { taskStore } = await import("../taskStore.js");
 const { resolveCiTimeoutMs } = await import("./runnerRoutes.js");
 // Dynamic like the app import above: taskPersistence statically pulls the
 // flow graph, so a hoisted static import would construct singletons before
@@ -170,6 +174,49 @@ describe("Runner Routes Integration", () => {
 			runnerId: "claimer-1",
 			epoch: 1,
 		});
+	});
+
+	it("merges Runner-reported worktree evictions from heartbeat facts into the exposition, restart-safe", async () => {
+		// WP2: the Runner is a separate process, so its worktree-eviction
+		// counter reaches the backend only via `facts.signals` on heartbeat;
+		// the backend merges per-Runner deltas monotonically (a restart that
+		// resets the Runner's counter must never move the total backwards).
+		const credential = await onboard("signals-1");
+		const beatWith = (worktreeEvictions) =>
+			app.inject({
+				method: "POST",
+				url: "/runners/heartbeat",
+				headers: { "x-runner-credential": credential },
+				payload: {
+					runnerId: "signals-1",
+					facts: { ...FACTS, signals: { worktreeEvictions } },
+				},
+			});
+		const readEvictions = async () => {
+			const metrics = await taskStore.getObservabilityMetrics();
+			return metrics.productionSignals.worktreeEvictions;
+		};
+		const before = await readEvictions();
+		expect((await beatWith(2)).statusCode).toBe(200);
+		expect(await readEvictions()).toBe(before + 2);
+		// A repeated report is not double-counted.
+		expect((await beatWith(2)).statusCode).toBe(200);
+		expect(await readEvictions()).toBe(before + 2);
+		// A lower report means the Runner restarted: the whole new value is delta.
+		expect((await beatWith(1)).statusCode).toBe(200);
+		expect(await readEvictions()).toBe(before + 3);
+		// Growth after the restart adds only the delta.
+		expect((await beatWith(4)).statusCode).toBe(200);
+		expect(await readEvictions()).toBe(before + 6);
+		// A heartbeat without `facts.signals` changes nothing and still 200s.
+		const plain = await app.inject({
+			method: "POST",
+			url: "/runners/heartbeat",
+			headers: { "x-runner-credential": credential },
+			payload: { runnerId: "signals-1", facts: FACTS },
+		});
+		expect(plain.statusCode).toBe(200);
+		expect(await readEvictions()).toBe(before + 6);
 	});
 
 	it("enriches monitor assignments with cross-pipeline identity", async () => {
@@ -1474,6 +1521,7 @@ describe("Runner Routes Integration", () => {
 			jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
 			directories: { masterDir: "", worktreeDir: "" },
 			projectScope: null,
+			desiredVersion: "latest",
 		});
 	});
 
@@ -2257,7 +2305,7 @@ describe("Runner Routes Integration", () => {
 
 		it("400s unknown commands fail-closed with UNKNOWN_COMMAND", async () => {
 			await onboard("command-2");
-			for (const command of ["requestRestart", "", null]) {
+			for (const command of ["requestReboot", "", null]) {
 				const res = await app.inject({
 					method: "POST",
 					url: "/runners/command-2/commands",

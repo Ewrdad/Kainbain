@@ -367,3 +367,26 @@ Settings › Runners shows the short sha next to the version badge and warns
 build sha differs from the backend commit. Dev checkouts show their build
 info but never warn. Old Runners without build identity show "unknown"
 with no warning, and old backends ignore the new `versions` keys.
+
+## Upgrade note: the backend now requires projectId on every write (WP1 tenant fence)
+
+If you run the workers, this is the one upgrade note that affects you.
+
+**Symptom after upgrading the backend.** An old Runner (one that predates
+this change) starts failing its writes with either of these errors:
+
+- `400 MISSING_PROJECT_ID` — the Runner sent a progress / logs /
+  completion / heartbeat / ack report without naming its project. Before
+  this change the backend guessed the active project; it no longer does.
+- `409 PROJECT_FENCE_MISMATCH` — the Runner replayed a lease (execution
+  id + epoch) against a different project than the one that issued it.
+  The original lease is untouched; only the replayed write is rejected.
+
+**Action.** Upgrade the Runner to this version (or newer) and restart it.
+Current Runners already send `projectId` with every write, so once both
+sides are upgraded there is nothing to configure.
+
+**No data migration.** Leases live in backend memory only — there is
+nothing to convert, backfill, or re-issue. In-flight work leases simply
+re-queue as interrupted across the backend restart, exactly like any
+other restart, and pick up fresh leases on the next dispatch poll.

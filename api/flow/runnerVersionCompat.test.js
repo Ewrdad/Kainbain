@@ -5,7 +5,11 @@ import {
 	belowMinimumRunnerVersion,
 	buildBelowMinimumRefusal,
 	coerceRunnerVersion,
+	DESIRED_VERSION_LATEST,
+	fleetKnownVersions,
+	isPinnedDesiredVersion,
 	loadBackendApiVersion,
+	normalizeDesiredVersion,
 	RUNNER_AUTO_UPDATE_COMMAND_COOLDOWN_MS,
 	runnerVersionAtLeast,
 	shouldAutoRequestUpdate,
@@ -128,5 +132,56 @@ describe("runnerVersionCompat", () => {
 			}),
 			true,
 		);
+	});
+
+	it("normalizes the per-runner version setting to latest-or-canonical", () => {
+		assert.equal(normalizeDesiredVersion(null), "latest");
+		assert.equal(normalizeDesiredVersion(undefined), "latest");
+		assert.equal(normalizeDesiredVersion(""), "latest");
+		assert.equal(normalizeDesiredVersion("latest"), "latest");
+		assert.equal(normalizeDesiredVersion("Latest"), "latest");
+		assert.equal(normalizeDesiredVersion("v1.2.3"), "1.2.3");
+		assert.equal(normalizeDesiredVersion("1.2.3"), "1.2.3");
+		assert.equal(normalizeDesiredVersion("not-a-version"), "latest");
+		assert.equal(normalizeDesiredVersion({}), "latest");
+		assert.equal(DESIRED_VERSION_LATEST, "latest");
+	});
+
+	it("treats only exact versions as pinned", () => {
+		assert.equal(isPinnedDesiredVersion("1.2.3"), true);
+		assert.equal(isPinnedDesiredVersion("latest"), false);
+		assert.equal(isPinnedDesiredVersion(null), false);
+		assert.equal(isPinnedDesiredVersion(undefined), false);
+		assert.equal(isPinnedDesiredVersion("bogus"), false);
+	});
+
+	it("never auto-nudges pinned runners, only latest-tracked trailers", () => {
+		const base = {
+			facts: { versions: { runner: "0.1.0" }, commands: ["requestModelRediscovery", "requestUpdate"] },
+			pendingCommands: [],
+			commandResults: {},
+			recommendedVersion: "0.2.0",
+		};
+		assert.equal(shouldAutoRequestUpdate(base), true);
+		assert.equal(shouldAutoRequestUpdate({ ...base, desiredVersion: "latest" }), true);
+		assert.equal(shouldAutoRequestUpdate({ ...base, desiredVersion: null }), true);
+		assert.equal(shouldAutoRequestUpdate({ ...base, desiredVersion: "0.2.0" }), false);
+		assert.equal(shouldAutoRequestUpdate({ ...base, desiredVersion: "0.1.0" }), false);
+	});
+
+	it("lists fleet-known versions newest-first for the version dropdown", () => {
+		const runners = [
+			{ facts: { versions: { runner: "0.1.0" } } },
+			{ facts: { versions: { runner: "0.3.0" } } },
+			{ facts: { versions: { runner: "0.3.0" } } },
+			{ facts: { versions: {} } },
+			{},
+		];
+		assert.deepEqual(
+			fleetKnownVersions({ runners, recommendedVersion: "0.2.0", minimumVersion: "0.1.0" }),
+			["0.3.0", "0.2.0", "0.1.0"],
+		);
+		assert.deepEqual(fleetKnownVersions({ runners: [] }), []);
+		assert.deepEqual(fleetKnownVersions({}), []);
 	});
 });

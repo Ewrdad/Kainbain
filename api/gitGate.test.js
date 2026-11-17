@@ -9,6 +9,7 @@ vi.mock("node:child_process", () => ({
 }));
 
 const { git } = await import("./git.js");
+const { getGitLockStats } = await import("./work/gitLock.js");
 
 /***
  * MARK: git serialization-gate repro
@@ -87,12 +88,22 @@ describe("git() per-repository serialization gate", () => {
 			.mockImplementationOnce(() => first.child)
 			.mockImplementationOnce(() => second.child);
 
+		// p1 must hold the gate before p2 is issued: acquisition order is the
+		// order the async repo-key normalization resolves, NOT call order, so
+		// issuing both up front lets p2 win the race under event-loop
+		// starvation — then closing `first` releases p2, p1 spawns `second`,
+		// and `await p1` deadlocks into the it-timeout (observed in the
+		// 2026-11-17 full gate). Waiting for the first spawn makes p1's hold
+		// observable and p2's queueing deterministic.
 		const p1 = git("/gate-repro-repo", ["checkout", "kb/task-a"], opts);
-		const p2 = git("/gate-repro-repo", ["checkout", "kb/task-b"], opts);
 		await waitForCondition(() => spawnMock.mock.calls.length === 1);
+		const waitsBefore = getGitLockStats().totals.waits;
+		const p2 = git("/gate-repro-repo", ["checkout", "kb/task-b"], opts);
 
-		// The second operation must wait for the first to finish: only one
-		// git process may exist at a time per repository.
+		// The second operation must wait for the first to finish: once p2 has
+		// chained behind p1 (visible as a new lock wait), still only one git
+		// process may exist at a time per repository.
+		await waitForCondition(() => getGitLockStats().totals.waits > waitsBefore);
 		expect(spawnMock).toHaveBeenCalledTimes(1);
 
 		first.close();

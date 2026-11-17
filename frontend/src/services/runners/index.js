@@ -41,5 +41,7 @@ export function runnerRequests(request) {
       request(`/runners/${encodeURIComponent(id)}/commands`, { method: 'POST', body: JSON.stringify({ command: 'requestModelRediscovery' }) }),
     requestRunnerUpdate: (id) =>
       request(`/runners/${encodeURIComponent(id)}/commands`, { method: 'POST', body: JSON.stringify({ command: 'requestUpdate' }) }),
+    requestRunnerRestart: (id) =>
+      request(`/runners/${encodeURIComponent(id)}/commands`, { method: 'POST', body: JSON.stringify({ command: 'requestRestart' }) }),
   };
 }

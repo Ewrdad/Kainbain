@@ -391,6 +391,7 @@ describe("RunnerRegistry operator config", () => {
 			jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
 			directories: { masterDir: "", worktreeDir: "" },
 			projectScope: null,
+			desiredVersion: "latest",
 		});
 	});
 
@@ -531,6 +532,7 @@ describe("RunnerRegistry operator config", () => {
 			jobTypes: { runsCi: false, runsMerges: true, runsImpromptu: true },
 			directories: { masterDir: "/srv/kb", worktreeDir: "/srv/kb-trees" },
 			projectScope: ["p1"],
+			desiredVersion: "latest",
 		});
 	});
 
@@ -631,7 +633,7 @@ describe("RunnerRegistry operator config", () => {
 describe("RunnerRegistry backend-to-Runner commands", () => {
 	const COMMAND_FACTS = {
 		...FACTS,
-		commands: ["requestModelRediscovery", "requestUpdate"],
+		commands: ["requestModelRediscovery", "requestUpdate", "requestRestart"],
 	};
 
 	function approvedWithCommands() {
@@ -663,7 +665,7 @@ describe("RunnerRegistry backend-to-Runner commands", () => {
 
 	test("refuses unknown commands fail-closed (400 UNKNOWN_COMMAND)", () => {
 		const { runners } = approvedWithCommands();
-		for (const command of ["requestRestart", "", null, undefined, 42]) {
+		for (const command of ["requestReboot", "", null, undefined, 42]) {
 			try {
 				runners.enqueueCommand("r1", command);
 				expect.unreachable(`accepted ${String(command)}`);
@@ -751,7 +753,7 @@ describe("RunnerRegistry backend-to-Runner commands", () => {
 			credential,
 			facts: {
 				...COMMAND_FACTS,
-				commandAck: { command: "requestRestart", ok: true, detail: "nope" },
+				commandAck: { command: "requestReboot", ok: true, detail: "nope" },
 			},
 		});
 		expect(beat.commands.results).toEqual({});
@@ -782,8 +784,9 @@ describe("RunnerRegistry backend-to-Runner commands", () => {
 		expect(runners.getConfig("new").commands.supported).toEqual([
 			"requestModelRediscovery",
 			"requestUpdate",
+			"requestRestart",
 		]);
-		expect(runners.getConfig("partial").commands.supported).toEqual(["requestUpdate"]);
+		expect(runners.getConfig("partial").commands.supported).toEqual(["requestUpdate", "requestRestart"]);
 		expect(runners.getConfig("old").commands.supported).toEqual([]);
 	});
 
@@ -811,6 +814,124 @@ describe("RunnerRegistry backend-to-Runner commands", () => {
 			ok: true,
 			detail: "discovered 2 model(s)",
 		});
+	});
+});
+
+/***
+ * MARK: RunnerRegistry desiredVersion tests
+ * @description Covers the per-runner version setting: `latest` default and
+ *   backfill, strict PATCH validation, fleet-known availableVersions, the
+ *   `requestRestart` round-trip, and Latest-only auto-nudging (pinned
+ *   runners never auto-update).
+ ***/
+describe("RunnerRegistry desiredVersion + requestRestart", () => {
+	test("requestRestart enqueues and records the ack result like other commands", () => {
+		const runners = registry();
+		const outdated = {
+			...FACTS,
+			commands: ["requestModelRediscovery", "requestUpdate", "requestRestart"],
+		};
+		runners.register({ runnerId: "r1", joinToken: "join-secret", facts: outdated });
+		const { credential } = runners.approve("r1");
+		const res = runners.enqueueCommand("r1", "requestRestart");
+		expect(res).toMatchObject({ runnerId: "r1", command: "requestRestart", status: "queued" });
+		expect(runners.peekCommands("r1")).toEqual(["requestRestart"]);
+		const beat = runners.heartbeat({
+			runnerId: "r1",
+			credential,
+			facts: { ...outdated, commandAck: { command: "requestRestart", ok: true, detail: "restarting on current version" } },
+		});
+		expect(beat.commands.pending).toEqual([]);
+		expect(beat.commands.results.requestRestart).toMatchObject({ ok: true, detail: "restarting on current version" });
+	});
+
+	test("new runners default to latest and expose fleet availableVersions", () => {
+		const runners = registry();
+		runners.register({ runnerId: "r1", joinToken: "join-secret", facts: FACTS });
+		runners.register({
+			runnerId: "r2",
+			joinToken: "join-secret",
+			facts: { ...FACTS, versions: { protocol: RUNNER_PROTOCOL, runner: "0.2.0" } },
+		});
+		const record = runners.getConfig("r1");
+		expect(record.desiredVersion).toBe("latest");
+		expect(record.operatorConfig.desiredVersion).toBe("latest");
+		// Newest first: the fleet's own versions plus the operator knobs.
+		expect(record.availableVersions[0]).toBe("0.2.0");
+		expect(record.availableVersions).toContain("0.1.0");
+		expect(record.update.desiredVersion).toBe("latest");
+	});
+
+	test("updateConfig accepts latest, null, and exact pins (canonicalized)", () => {
+		const { runners } = approved();
+		expect(runners.updateConfig("r1", { desiredVersion: "1.2.3" }).operatorConfig.desiredVersion).toBe("1.2.3");
+		expect(runners.updateConfig("r1", { desiredVersion: "v2.0.0" }).operatorConfig.desiredVersion).toBe("2.0.0");
+		expect(runners.updateConfig("r1", { desiredVersion: "1.2" }).operatorConfig.desiredVersion).toBe("1.2.0");
+		expect(runners.updateConfig("r1", { desiredVersion: "latest" }).operatorConfig.desiredVersion).toBe("latest");
+		expect(runners.updateConfig("r1", { desiredVersion: null }).operatorConfig.desiredVersion).toBe("latest");
+		expect(runners.getConfig("r1").desiredVersion).toBe("latest");
+		expect(runners.getConfig("r1").update.desiredVersion).toBe("latest");
+		const pinned = runners.updateConfig("r1", { desiredVersion: "1.2.3" });
+		expect(pinned.desiredVersion).toBe("1.2.3");
+		expect(pinned.update.desiredVersion).toBe("1.2.3");
+	});
+
+	test("updateConfig rejects malformed desiredVersion fail-closed", () => {
+		const { runners } = approved();
+		for (const bad of ["banana", "latestx", 42, true, ["1.2.3"]]) {
+			try {
+				runners.updateConfig("r1", { desiredVersion: bad });
+				expect.unreachable(`accepted ${JSON.stringify(bad)}`);
+			} catch (err) {
+				expect(err.statusCode).toBe(400);
+				expect(err.code).toBe("INVALID_DESIRED_VERSION");
+			}
+		}
+		expect(runners.getConfig("r1").desiredVersion).toBe("latest");
+	});
+
+	test("heartbeat never auto-nudges pinned runners", () => {
+		const runners = registry();
+		const outdated = {
+			...FACTS,
+			versions: { protocol: RUNNER_PROTOCOL, runner: "0.0.9" },
+			commands: ["requestModelRediscovery", "requestUpdate"],
+		};
+		runners.register({ runnerId: "pinned", joinToken: "join-secret", facts: outdated });
+		const { credential } = runners.approve("pinned");
+		// Pin to an exact release: outdated relative to recommended, but
+		// manual-Update-only — the heartbeat must not queue anything.
+		runners.updateConfig("pinned", { desiredVersion: "0.0.9" });
+		const beat = runners.heartbeat({ runnerId: "pinned", credential, facts: outdated });
+		expect(beat.updateAvailable).toBe(true);
+		expect(beat.desiredVersion).toBe("0.0.9");
+		expect(runners.peekCommands("pinned")).toEqual([]);
+	});
+
+	test("old state predating desiredVersion backfills to latest", () => {
+		const file = tmpRunnerState();
+		fs.writeFileSync(
+			file,
+			JSON.stringify({
+				version: 3,
+				runners: [
+					{
+						runnerId: "legacy",
+						status: "active",
+						facts: FACTS,
+						capabilities: null,
+						credential: "cred-legacy",
+						operatorConfig: { displayName: null },
+						pendingCommands: [],
+						commandResults: {},
+					},
+				],
+			}),
+		);
+		const loaded = new RunnerRegistry({ joinToken: "join-secret", newCredential: () => "cred-x", stateFile: file });
+		const record = loaded.getConfig("legacy");
+		expect(record.desiredVersion).toBe("latest");
+		expect(record.operatorConfig.desiredVersion).toBe("latest");
 	});
 });
 

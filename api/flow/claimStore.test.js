@@ -34,6 +34,22 @@ describe("ClaimStore", () => {
 		});
 	});
 
+	test("describe carries the claiming projectId (WP1 tenant fence)", () => {
+		claims.claim("t1", "runner-a", "proj-alpha");
+		expect(claims.describe("t1")).toMatchObject({
+			runnerId: "runner-a",
+			projectId: "proj-alpha",
+		});
+	});
+
+	test("describe reports null projectId for legacy holds claimed without one", () => {
+		claims.claim("t1", "runner-a");
+		expect(claims.describe("t1")).toMatchObject({
+			runnerId: "runner-a",
+			projectId: null,
+		});
+	});
+
 	test("stamps holds with a claim start time for elapsed widgets", () => {
 		claims.claim("t1", "runner-a");
 		const described = claims.describe("t1");
