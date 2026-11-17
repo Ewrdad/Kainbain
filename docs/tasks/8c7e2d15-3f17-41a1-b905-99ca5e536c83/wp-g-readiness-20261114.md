@@ -253,3 +253,24 @@ ONLY after operator completes the run38 recommendation list (Bundle B +
 bravo decision + restarts with rediscovery receipts, live §6.3 UI pass,
 explicit human who/when/scope for q3 leftovers) and a later agent run
 confirms §6.1 all-pass. Evidence in `run38-20261117-0112.md`.
+
+## Addendum 2026-11-17 ~02:35Z (run39 branch-sync + re-verification)
+
+NOT READY (unchanged since run38/review, plus one agent-side closure).
+Branch synced: task branch merged `origin/main 8b5904e0` (`52999fe9`),
+zero conflicts, merge-base == main; §6.5 now FULLY green on the synced
+HEAD — the run38 frontend env block is CLOSED (local `npm ci` only):
+runner 430/430, dispatch 175/175, routes 177/177, frontend 91/91, with
+ENGINE-DIR-UNTOUCHED proven bit-identical before/after.
+Live §6.1 PARTIAL: local-alpha fully PASS; local-bravo discovery PASS but
+`paused:true` persists (muse-ember still 2 runners); server2-alpha still
+FAIL (pre-WP-B pi `ERR_MODULE_NOT_FOUND`, Bundle B pending — tarball
+re-hashed `ac919e2a…`, install still `f430f537`). §6.2 PASS (123 models,
+zero `test-fleet`, 2 quarantined leftovers awaiting q3 grant). §6.3/§6.4
+live pending operator; explicit human grant still absent (zero DELETEs
+issued). WP-G may proceed to its HUMAN dispatch decision ONLY after
+operator completes the run39 recommendation list (Bundle B + bravo
+decision + restarts with rediscovery receipts, live §6.3 UI pass,
+explicit human who/when/scope for q3 leftovers + q4 infeasibility) and a
+later agent run confirms §6.1 all-pass. Evidence in
+`run39-20261117-0235.md` (+ `verification-20261114.md` addendum).
