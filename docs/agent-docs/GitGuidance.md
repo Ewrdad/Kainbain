@@ -30,8 +30,10 @@
   right (this shipped a corrupted `pretty-proof.png` that `file` reported as
   `data` on task 5a38ad45).
 - Safe paths: screenshot capture scripts that write bytes directly (e.g.
-  `node scripts/capture-screenshot.mjs --out <path>`), or restoring a known
-  good copy with `git checkout <ref> -- <path>`. Never open a binary in an
+  `node scripts/capture-screenshot.mjs`, which defaults into the current
+  task folder — `--out <path>` overrides when a custom name is needed),
+  or restoring a known good copy with `git checkout <ref> -- <path>`.
+  Never open a binary in an
   editor or rewrite it with a text-oriented tool. The copy-pasteable safe
   recipe lives at `docs/tasks/_PROOF_RULE.md` — follow it exactly, no
   improvisation.

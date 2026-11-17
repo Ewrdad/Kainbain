@@ -11,12 +11,15 @@ rule below is how you stay on the binary-safe path.
 ## Safe recipe (copy-paste; no improvisation)
 
 ```sh
-# 1. Capture — the script writes PNG bytes directly (agents only reference the path):
-node scripts/capture-screenshot.mjs --path "#/tasks/<task-id>" --out docs/tasks/<task-id>/<name>-proof.png
+# 1. Capture — the script writes PNG bytes directly (agents only reference the path).
+#    No --out needed: it defaults into the current task folder as screenshot-<timestamp>.png:
+node scripts/capture-screenshot.mjs --path "#/tasks/<task-id>"
+#    (Custom name instead of the timestamped default:)
+#    node scripts/capture-screenshot.mjs --path "#/tasks/<task-id>" --out docs/tasks/<task-id>/<name>-proof.png
 
-# 2. Verify the worktree bytes before claiming validity:
-xxd -l 8 docs/tasks/<task-id>/<name>-proof.png   # expect 8950 4e47…
-file docs/tasks/<task-id>/<name>-proof.png       # expect PNG image data
+# 2. Verify the worktree bytes before claiming validity (use the path the capture printed):
+xxd -l 8 docs/tasks/<task-id>/screenshot-<timestamp>.png   # expect 8950 4e47…
+file docs/tasks/<task-id>/screenshot-<timestamp>.png       # expect PNG image data
 
 # 3. Pre-handoff gate (seconds; fails fast naming the file):
 npm run check:binaries
