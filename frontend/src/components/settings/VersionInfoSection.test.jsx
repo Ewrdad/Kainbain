@@ -6,18 +6,22 @@ import { renderWithKainBain } from '../../testUtils';
 import {
   VersionInfoSection,
   describeAcceptsMap,
+  describeFrontendContract,
   isSafeVersionLink,
+  labelApiCompatibility,
   labelVersionStatus,
 } from './VersionInfoSection';
+import { FRONTEND_API_VERSION, FRONTEND_REQUIRES_BACKEND_API } from '../../version';
 
 /***
  * MARK: VersionInfoSection tests
  * @description Covers the Settings About page section in every state: the
  *   loading shimmer, the update-available warning banner, the up-to-date
- *   and unknown version rows with their compatibility map, the security
- *   summary plus full-report link, the honest no-report empty state, the
- *   load-error retry path, the manual "Check for updates" refetch, and the
- *   fail-safe rendering of hostile or malformed payloads.
+ *   and unknown version rows with their compatibility map, the UI-side API
+ *   tie-in with its compatibility verdict, the incompatibility alert, the
+ *   security summary plus full-report link, the honest no-report empty
+ *   state, the load-error retry path, the manual "Check for updates"
+ *   refetch, and the fail-safe rendering of hostile or malformed payloads.
  * @example renderWithKainBain(<VersionInfoSection client={stub} />)
  ***/
 
@@ -28,8 +32,14 @@ const updatePayload = () => ({
     {
       name: 'screen-to-server',
       installed: '1.0.0',
-      latest: null,
-      status: 'unknown',
+      latest: '1.0.0',
+      status: 'up-to-date',
+      frontendApiVersion: '1.0.0',
+      requiresBackendApi: '>=1.0.0 <2.0.0',
+      compatibility: {
+        status: 'compatible',
+        detail: "frontend API 1.0.0 and backend API 1.0.0 satisfy each other's ranges (API major 1)",
+      },
       accepts: { frontend: '>=1.0.0 <2.0.0' },
       updateUrl: '#/docs/update-api',
     },
@@ -48,8 +58,10 @@ const stubClient = (payload) => ({
   getVersions: vi.fn().mockResolvedValue(payload),
 });
 
-const renderSection = (client, uiVersion = '1.0.0') =>
-  renderWithKainBain(<VersionInfoSection client={client} uiVersion={uiVersion} />);
+const renderSection = (client, uiVersion = '1.0.0', frontendApi) =>
+  renderWithKainBain(
+    <VersionInfoSection client={client} uiVersion={uiVersion} frontendApi={frontendApi} />,
+  );
 
 describe('labelVersionStatus', () => {
   it('names each state honestly', () => {
@@ -100,6 +112,44 @@ describe('describeAcceptsMap', () => {
   });
 });
 
+describe('labelApiCompatibility', () => {
+  it('names each verdict honestly', () => {
+    expect(labelApiCompatibility('compatible')).toBe('Compatible');
+    expect(labelApiCompatibility('incompatible')).toBe('Incompatible');
+    expect(labelApiCompatibility('unknown')).toBe('Unknown');
+    expect(labelApiCompatibility('bogus')).toBe('Unknown');
+    expect(labelApiCompatibility(undefined)).toBe('Unknown');
+  });
+});
+
+describe('describeFrontendContract', () => {
+  it('ties the UI side to the API row', () => {
+    expect(
+      describeFrontendContract({
+        frontendApiVersion: '1.0.0',
+        requiresBackendApi: '>=1.0.0 <2.0.0',
+      }),
+    ).toBe('UI speaks API 1.0.0 · requires backend API >=1.0.0 <2.0.0');
+    expect(describeFrontendContract({ frontendApiVersion: '1.0.0' })).toBe(
+      'UI speaks API 1.0.0',
+    );
+    expect(describeFrontendContract({ requiresBackendApi: '>=1.0.0 <2.0.0' })).toBe(
+      'requires backend API >=1.0.0 <2.0.0',
+    );
+  });
+
+  it('stays empty for missing or malformed rows', () => {
+    expect(describeFrontendContract(undefined)).toBe('');
+    expect(describeFrontendContract(null)).toBe('');
+    expect(describeFrontendContract('1.0.0')).toBe('');
+    expect(describeFrontendContract(['1.0.0'])).toBe('');
+    expect(describeFrontendContract({})).toBe('');
+    expect(
+      describeFrontendContract({ frontendApiVersion: '', requiresBackendApi: 42 }),
+    ).toBe('');
+  });
+});
+
 describe('VersionInfoSection', () => {
   it('shows a loading state before the fetch settles', () => {
     const client = { getVersions: vi.fn().mockReturnValue(new Promise(() => {})) };
@@ -107,16 +157,27 @@ describe('VersionInfoSection', () => {
     expect(screen.getByText(/loading version information/i)).toBeInTheDocument();
   });
 
+  it('reports its baked UI version and frontend API contract to the backend', async () => {
+    const client = stubClient(updatePayload());
+    renderSection(client);
+    await waitFor(() =>
+      expect(client.getVersions).toHaveBeenCalledWith('1.0.0', {
+        apiVersion: FRONTEND_API_VERSION,
+        requiresBackendApi: FRONTEND_REQUIRES_BACKEND_API,
+      }),
+    );
+  });
+
   it('shows the update banner, version rows, guide links, and security summary', async () => {
     const client = stubClient(updatePayload());
     renderSection(client);
-    await waitFor(() => expect(client.getVersions).toHaveBeenCalledWith('1.0.0'));
+    await waitFor(() => expect(client.getVersions).toHaveBeenCalled());
 
     expect(screen.getByRole('alert')).toHaveTextContent('UI update available: 1.0.0 → 1.2.0');
     expect(screen.getAllByText(/Installed: 1\.0\.0/)).toHaveLength(3);
     expect(screen.getByText(/Status: Update available/)).toBeInTheDocument();
-    expect(screen.getByText(/Status: Up to date/)).toBeInTheDocument();
-    expect(screen.getByText(/Status: Unknown/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Status: Up to date/)).toHaveLength(2);
+    expect(screen.queryByText(/Status: Unknown/)).not.toBeInTheDocument();
 
     expect(screen.getByRole('link', { name: /how to update ui/i })).toHaveAttribute(
       'href',
@@ -144,6 +205,67 @@ describe('VersionInfoSection', () => {
     renderSection(client);
     await waitFor(() => expect(client.getVersions).toHaveBeenCalled());
     expect(screen.getByText(/Accepts: frontend >=1\.0\.0 <2\.0\.0/)).toBeInTheDocument();
+  });
+
+  it('ties the UI side to the API row with its compatibility verdict', async () => {
+    const client = stubClient(updatePayload());
+    renderSection(client);
+    await waitFor(() => expect(client.getVersions).toHaveBeenCalled());
+    expect(
+      screen.getByText(/UI speaks API 1\.0\.0 · requires backend API >=1\.0\.0 <2\.0\.0/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Compatibility: Compatible/)).toBeInTheDocument();
+    expect(screen.getByText(/API major 1/)).toBeInTheDocument();
+  });
+
+  it('shows the incompatibility alert when the verdict is incompatible', async () => {
+    const payload = updatePayload();
+    payload.warnings = [];
+    payload.apis[0].frontendApiVersion = '2.0.0';
+    payload.apis[0].requiresBackendApi = '>=2.0.0 <3.0.0';
+    payload.apis[0].compatibility = {
+      status: 'incompatible',
+      detail: 'backend API 1.0.0 does not satisfy frontend requirement >=2.0.0 <3.0.0',
+    };
+    const client = stubClient(payload);
+    renderSection(client);
+    await waitFor(() => expect(client.getVersions).toHaveBeenCalled());
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('UI and backend API versions are incompatible');
+    expect(alert).toHaveTextContent(
+      'backend API 1.0.0 does not satisfy frontend requirement >=2.0.0 <3.0.0',
+    );
+    expect(screen.getByText(/Compatibility: Incompatible/)).toBeInTheDocument();
+  });
+
+  it('omits the tie-in line and reports unknown compat when no contract was sent', async () => {
+    const payload = updatePayload();
+    payload.warnings = [];
+    payload.apis[0].frontendApiVersion = null;
+    payload.apis[0].requiresBackendApi = null;
+    payload.apis[0].compatibility = {
+      status: 'unknown',
+      detail: 'Frontend API version was not reported',
+    };
+    const client = stubClient(payload);
+    renderSection(client);
+    await waitFor(() => expect(client.getVersions).toHaveBeenCalled());
+
+    expect(screen.queryByText(/UI speaks API/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Compatibility: Unknown/)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('renders honest Unknown compat for a malformed compatibility value', async () => {
+    const payload = updatePayload();
+    payload.warnings = [];
+    payload.apis[0].compatibility = 'bogus';
+    const client = stubClient(payload);
+    renderSection(client);
+    await waitFor(() => expect(client.getVersions).toHaveBeenCalled());
+    expect(screen.getByText(/Compatibility: Unknown/)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('shows a failed security report with its summary', async () => {

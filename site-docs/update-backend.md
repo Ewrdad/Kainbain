@@ -38,7 +38,8 @@ Version bookkeeping the page relies on:
 - Installed backend version comes from `api/package.json` (the single source).
 - The newest backend release is recorded in `KAINBAIN_LATEST_BACKEND_VERSION`
   (see `.env.example`); the About page compares that knob against the running
-  backend instead of guessing.
+  backend. While the knob is unset, no newer release is advertised and the
+  running backend reports Up to date.
 - Point `KAINBAIN_SECURITY_REPORT_PATH` at the JSON security report for the
   new build (written by CI or the deploy; see `./Security_scans.sh`) so the
   About page shows the report for exactly what is running. The file holds one

@@ -54,8 +54,14 @@ const VERSIONS_PAYLOAD = vi.hoisted(() => ({
     {
       name: 'screen-to-server',
       installed: '1.0.0',
-      latest: null,
-      status: 'unknown',
+      latest: '1.0.0',
+      status: 'up-to-date',
+      frontendApiVersion: '1.0.0',
+      requiresBackendApi: '>=1.0.0 <2.0.0',
+      compatibility: {
+        status: 'compatible',
+        detail: "frontend API 1.0.0 and backend API 1.0.0 satisfy each other's ranges (API major 1)",
+      },
       accepts: { frontend: '>=1.0.0 <2.0.0' },
       updateUrl: '#/docs/update-api',
     },
@@ -317,6 +323,8 @@ describe('SystemSettingsContent', () => {
       'href',
       '#/docs/update-ui',
     );
+    expect(screen.getByText(/UI speaks API 1\.0\.0/)).toBeInTheDocument();
+    expect(screen.getByText(/Compatibility: Compatible/)).toBeInTheDocument();
     expect(screen.getByText(/no security report recorded/i)).toBeInTheDocument();
   });
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../services/api';
-import { UI_VERSION } from '../../version';
+import { UI_VERSION, FRONTEND_API_VERSION, FRONTEND_REQUIRES_BACKEND_API } from '../../version';
 
 /***
  * MARK: labelVersionStatus
@@ -57,21 +57,66 @@ export const describeAcceptsMap = (accepts) => {
 };
 
 /***
+ * MARK: labelApiCompatibility
+ * @description Human verdict for the UI↔backend API compatibility check:
+ *   compatible and incompatible are direct, while unknown stays honest
+ *   about the check instead of implying the pair was verified.
+ * @example labelApiCompatibility('incompatible') => 'Incompatible'
+ * @param {string} status - Compatibility status from `GET /status/versions`.
+ * @returns {string}
+ ***/
+export const labelApiCompatibility = (status) => {
+  if (status === 'compatible') return 'Compatible';
+  if (status === 'incompatible') return 'Incompatible';
+  return 'Unknown';
+};
+
+/***
+ * MARK: describeFrontendContract
+ * @description Human line tying the UI side to an API row: which contract
+ *   version the running UI speaks and which backend range it requires
+ *   (both reported by the UI itself). Missing parts are omitted; empty
+ *   when the row carries neither, so callers can skip the line entirely.
+ * @example describeFrontendContract({ frontendApiVersion: '1.0.0', requiresBackendApi: '>=1.0.0 <2.0.0' }) => 'UI speaks API 1.0.0 · requires backend API >=1.0.0 <2.0.0'
+ * @param {unknown} entry - One API row from `GET /status/versions`.
+ * @returns {string}
+ ***/
+export const describeFrontendContract = (entry) => {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return '';
+  const parts = [];
+  const apiVersion = entry.frontendApiVersion;
+  const requires = entry.requiresBackendApi;
+  if (typeof apiVersion === 'string' && apiVersion.trim() !== '') {
+    parts.push(`UI speaks API ${apiVersion.trim()}`);
+  }
+  if (typeof requires === 'string' && requires.trim() !== '') {
+    parts.push(`requires backend API ${requires.trim()}`);
+  }
+  return parts.join(' · ');
+};
+
+/***
  * MARK: VersionInfoSection
  * @description System Settings › About: the running build's UI, backend,
- *   and screen-to-server API versions with per-row update-guide links, a
- *   warning banner when a newer release is known, and the latest security
- *   report summary with a link to the full report (or an honest empty
- *   state when no report is recorded). Loads on mount and on demand via
- *   "Check for updates" — never a fake "up to date".
+ *   and screen-to-server API versions with per-row update-guide links, the
+ *   UI↔backend API tie-in (which contract each side speaks plus a
+ *   compatibility verdict), a warning banner when a newer release is
+ *   known, an incompatibility alert when the two sides cannot talk, and
+ *   the latest security report summary with a link to the full report (or
+ *   an honest empty state when no report is recorded). Loads on mount and
+ *   on demand via "Check for updates".
  * @example <VersionInfoSection />
  * @param {Object} [props]
  * @param {Object} [props.client] - API client override (tests); defaults to the app client.
  * @param {string} [props.uiVersion] - UI version override (tests); defaults to the baked build version.
+ * @param {Object} [props.frontendApi] - Frontend API contract override (tests); defaults to the baked `frontend/version.json` values.
  ***/
-export function VersionInfoSection({ client, uiVersion }) {
+export function VersionInfoSection({ client, uiVersion, frontendApi }) {
   const http = client || api;
   const runningUiVersion = uiVersion ?? UI_VERSION;
+  const runningFrontendApiVersion = frontendApi?.apiVersion ?? FRONTEND_API_VERSION;
+  const runningRequiresBackendApi =
+    frontendApi?.requiresBackendApi ?? FRONTEND_REQUIRES_BACKEND_API;
   const [info, setInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -81,7 +126,10 @@ export function VersionInfoSection({ client, uiVersion }) {
       setLoading(true);
       setLoadError(null);
       try {
-        const data = await http.getVersions(runningUiVersion);
+        const data = await http.getVersions(runningUiVersion, {
+          apiVersion: runningFrontendApiVersion,
+          requiresBackendApi: runningRequiresBackendApi,
+        });
         if (isCancelled()) return;
         setInfo(data && typeof data === 'object' ? data : null);
       } catch (err) {
@@ -92,7 +140,7 @@ export function VersionInfoSection({ client, uiVersion }) {
         if (!isCancelled()) setLoading(false);
       }
     },
-    [http, runningUiVersion],
+    [http, runningUiVersion, runningFrontendApiVersion, runningRequiresBackendApi],
   );
 
   useEffect(() => {
@@ -106,22 +154,49 @@ export function VersionInfoSection({ client, uiVersion }) {
     };
   }, [loadVersions]);
 
+  const apiEntries = info && Array.isArray(info.apis) ? info.apis : [];
   const rows = info
     ? [
         { label: 'UI', entry: info.ui },
         { label: 'Backend', entry: info.backend },
-        ...(Array.isArray(info.apis) ? info.apis : []).map((entry) => ({
+        ...apiEntries.map((entry) => ({
           label: `API (${entry?.name || 'contract'})`,
           entry,
+          isApi: true,
         })),
-      ].map((row) => ({ ...row, acceptsLine: describeAcceptsMap(row.entry?.accepts) }))
+      ].map((row) => ({
+        ...row,
+        acceptsLine: describeAcceptsMap(row.entry?.accepts),
+        contractLine: row.isApi ? describeFrontendContract(row.entry) : '',
+        compatibility:
+          row.isApi && row.entry && typeof row.entry === 'object'
+            ? row.entry.compatibility
+            : null,
+      }))
     : [];
 
   const warnings = Array.isArray(info?.warnings) ? info.warnings : [];
   const security = info?.security && typeof info.security === 'object' ? info.security : null;
+  const incompatibleApi = apiEntries.find(
+    (entry) => entry?.compatibility?.status === 'incompatible',
+  );
+  const incompatDetail =
+    typeof incompatibleApi?.compatibility?.detail === 'string'
+      ? incompatibleApi.compatibility.detail
+      : '';
 
   return (
     <div className="flex flex-col gap-4">
+      {!loading && !loadError && info && incompatibleApi && (
+        <div
+          role="alert"
+          className="p-3 bg-surface-container-high border border-warning rounded-sm text-sm text-on-surface"
+        >
+          <p className="font-bold">The UI and backend API versions are incompatible.</p>
+          {incompatDetail !== '' && <p className="mt-1">{incompatDetail}</p>}
+        </div>
+      )}
+
       {warnings.length > 0 && (
         <div
           role="alert"
@@ -156,7 +231,7 @@ export function VersionInfoSection({ client, uiVersion }) {
       {!loading && !loadError && info && (
         <>
           <div aria-label="Installed versions">
-            {rows.map(({ label, entry, acceptsLine }) => (
+            {rows.map(({ label, entry, isApi, acceptsLine, contractLine, compatibility }) => (
               <div
                 key={label}
                 className="flex flex-col gap-1 py-3 border-b border-border-standard last:border-b-0"
@@ -169,6 +244,17 @@ export function VersionInfoSection({ client, uiVersion }) {
                 </span>
                 {acceptsLine && (
                   <span className="text-sm text-on-surface-variant">Accepts: {acceptsLine}</span>
+                )}
+                {contractLine && (
+                  <span className="text-sm text-on-surface-variant">{contractLine}</span>
+                )}
+                {isApi && (
+                  <span className="text-sm text-on-surface-variant">
+                    Compatibility: {labelApiCompatibility(compatibility?.status)}
+                    {typeof compatibility?.detail === 'string' && compatibility.detail !== ''
+                      ? ` — ${compatibility.detail}`
+                      : ''}
+                  </span>
                 )}
                 {isSafeVersionLink(entry?.updateUrl) && (
                   <a className="text-sm text-primary underline" href={entry.updateUrl}>

@@ -2,11 +2,13 @@
  * MARK: versionInfo
  * @description Single source of truth for the Settings About page backend
  *   half: installed backend + API-contract versions, latest-known release
- *   comparison, and the latest security report for this build. Every
- *   "latest" lookup failure yields an explicit `unknown` state, never a
- *   silent "up to date"; every helper is pure (inputs in, no process.env
- *   reads) so the route layer stays a thin pass-through and the tests can
- *   pin each failure mode without touching the filesystem.
+ *   comparison, UI↔backend API compatibility, and the latest security
+ *   report for this build. An unadvertised latest (no `KAINBAIN_LATEST_*`
+ *   knob) means no newer release is known, so the installed release
+ *   reports `up-to-date`; only a malformed knob or a missing installed
+ *   version yields `unknown`. Every helper is pure (inputs in, no
+ *   process.env reads) so the route layer stays a thin pass-through and
+ *   the tests can pin each failure mode without touching the filesystem.
  * @example buildVersionInfo({ uiVersion: '1.0.0' }) => { ui, backend, apis, security, ... }
  ***/
 import fs from "node:fs";
@@ -41,10 +43,10 @@ export const normalizeRelease = coerceRunnerVersion;
 
 /***
  * MARK: compareRelease
- * @description Whether `latest` is newer than `installed`: only true when
- *   both sides parse and latest is strictly greater. Unparseable or missing
- *   input answers `unknown` so the page shows an honest unknown state
- *   instead of a fake "up to date".
+ * @description Whether an explicitly advertised `latest` is newer than
+ *   `installed`: only true when both sides parse and latest is strictly
+ *   greater. Unparseable or missing input answers `unknown` so the page
+ *   shows an honest unknown state instead of a fake "up to date".
  * @example compareRelease('1.0.0', '1.1.0') => 'update-available'
  ***/
 export const compareRelease = (installed, latest) => {
@@ -56,6 +58,145 @@ export const compareRelease = (installed, latest) => {
 	} catch {
 		return "unknown";
 	}
+};
+
+/***
+ * MARK: resolveLatestRelease
+ * @description Resolves one row's `{ latest, status }` from the installed
+ *   release and the operator's advertised-latest knob. An unset knob
+ *   (missing, empty, or blank — the default install) means no newer
+ *   release is known, so the installed release is the newest known and
+ *   the row reports `up-to-date`. A knob that is set but does not parse
+ *   is an operator typo and answers `unknown` rather than hiding it.
+ * @example resolveLatestRelease('1.0.0', '') => { latest: '1.0.0', status: 'up-to-date' }
+ ***/
+export const resolveLatestRelease = (installed, latestKnob) => {
+	const have = normalizeRelease(installed);
+	if (typeof latestKnob !== "string" || !latestKnob.trim()) {
+		return have
+			? { latest: have, status: "up-to-date" }
+			: { latest: null, status: "unknown" };
+	}
+	const want = normalizeRelease(latestKnob);
+	if (!want) return { latest: null, status: "unknown" };
+	return { latest: want, status: compareRelease(installed, latestKnob) };
+};
+
+/***
+ * MARK: normalizeFrontendContract
+ * @description Normalizes the API contract the running UI reports about
+ *   itself (its `apiVersion` plus its `requires.backendApi` range, baked
+ *   from `frontend/version.json`): trims the range, coerces the version,
+ *   and collapses anything missing or malformed to nulls so the
+ *   compatibility check degrades to unknown instead of crashing.
+ * @example normalizeFrontendContract({ apiVersion: 'v1.0.0', requiresBackendApi: '>=1.0.0 <2.0.0' }) => { apiVersion: '1.0.0', requiresBackendApi: '>=1.0.0 <2.0.0' }
+ ***/
+export const normalizeFrontendContract = (contract) => {
+	if (!contract || typeof contract !== "object" || Array.isArray(contract)) {
+		return { apiVersion: null, requiresBackendApi: null };
+	}
+	const requires = contract.requiresBackendApi;
+	return {
+		apiVersion: normalizeRelease(contract.apiVersion),
+		requiresBackendApi:
+			typeof requires === "string" && requires.trim() ? requires.trim() : null,
+	};
+};
+
+/***
+ * MARK: checkApiCompatibility
+ * @description Whether the running UI and backend can talk: the same
+ *   verdict `scripts/check-component-compat.mjs` gives at publish time,
+ *   but for the live pair. Each declared range direction is checked with
+ *   semver (frontend `requires.backendApi` must contain the backend API,
+ *   backend `accepts.frontend` must contain the frontend API); any
+ *   checkable direction that fails makes the pair incompatible. A corrupt
+ *   range cannot condemn the pair — that direction is skipped. With no
+ *   verifiable range at all, the asymmetric-update rule decides: the same
+ *   API major on both sides is compatible, a split major is not. Missing
+ *   API versions answer `unknown`, never a guess.
+ * @example checkApiCompatibility({ frontendApiVersion: '1.0.0', requiresBackendApi: '>=1.0.0 <2.0.0', backendApiVersion: '1.2.0', acceptsFrontend: '>=1.0.0 <2.0.0' }) => { status: 'compatible', detail: '...' }
+ ***/
+export const checkApiCompatibility = ({
+	frontendApiVersion = null,
+	requiresBackendApi = null,
+	backendApiVersion = null,
+	acceptsFrontend = null,
+} = {}) => {
+	const frontend = normalizeRelease(frontendApiVersion);
+	const backend = normalizeRelease(backendApiVersion);
+	if (!frontend) {
+		return { status: "unknown", detail: "Frontend API version was not reported" };
+	}
+	if (!backend) {
+		return { status: "unknown", detail: "Backend API version is not available" };
+	}
+	const requires =
+		typeof requiresBackendApi === "string" && requiresBackendApi.trim()
+			? requiresBackendApi.trim()
+			: null;
+	const accepts =
+		typeof acceptsFrontend === "string" && acceptsFrontend.trim()
+			? acceptsFrontend.trim()
+			: null;
+	// A range that does not parse is uncheckable (null), not a failure: a
+	// corrupt range file must not condemn a pair the other evidence clears.
+	// (`satisfies` answers false for garbage instead of throwing, so the
+	// range is pre-validated; blank ranges never reach this helper.)
+	const directionSatisfies = (version, range) => {
+		try {
+			if (!semver.validRange(range)) return null;
+			return semver.satisfies(version, range);
+		} catch {
+			return null;
+		}
+	};
+	const frontendToBackend = requires ? directionSatisfies(backend, requires) : null;
+	const backendAccepts = accepts ? directionSatisfies(frontend, accepts) : null;
+	if (frontendToBackend === false) {
+		return {
+			status: "incompatible",
+			detail: `backend API ${backend} does not satisfy frontend requirement ${requires}`,
+		};
+	}
+	if (backendAccepts === false) {
+		return {
+			status: "incompatible",
+			detail: `frontend API ${frontend} is outside backend accepted range ${accepts}`,
+		};
+	}
+	if (frontendToBackend === true && backendAccepts === true) {
+		return {
+			status: "compatible",
+			detail:
+				`frontend API ${frontend} and backend API ${backend} satisfy each ` +
+				`other's ranges (API major ${semver.major(frontend)})`,
+		};
+	}
+	if (frontendToBackend === true) {
+		return {
+			status: "compatible",
+			detail: `backend API ${backend} satisfies frontend requirement ${requires}`,
+		};
+	}
+	if (backendAccepts === true) {
+		return {
+			status: "compatible",
+			detail: `frontend API ${frontend} satisfies backend accepted range ${accepts}`,
+		};
+	}
+	if (semver.major(frontend) === semver.major(backend)) {
+		return {
+			status: "compatible",
+			detail: `both sides speak API major ${semver.major(frontend)}`,
+		};
+	}
+	return {
+		status: "incompatible",
+		detail:
+			`API major differs (frontend ${frontend} vs backend ${backend}) — ` +
+			`update one side to match`,
+	};
 };
 
 const readJson = (readFile, filePath) => {
@@ -167,16 +308,20 @@ export const readSecurityReport = ({
 /***
  * MARK: buildVersionInfo
  * @description Aggregates the full `/status/versions` payload from its
- *   three sources: installed versions (UI from the caller query, backend +
- *   API contract from disk), latest-known releases (operator env knobs),
- *   and the security report file. Every "latest" miss is `unknown`, and
- *   `warnings` names each component with an update available.
+ *   sources: installed versions (UI from the caller query, backend + API
+ *   contract from disk), the UI-reported frontend API contract (from the
+ *   caller query), latest-known releases (operator env knobs, defaulting
+ *   to the installed release when unadvertised), and the security report
+ *   file. `warnings` names each component with an update available; the
+ *   API row ties both sides' contract versions together with a
+ *   compatibility verdict.
  * @example buildVersionInfo({ uiVersion: '1.0.0' }).backend => { installed, latest, status, updateUrl }
  ***/
 export const buildVersionInfo = ({
 	uiVersion = null,
 	backendVersion = null,
 	apiContract = null,
+	frontendApi = null,
 	latest = {},
 	security = null,
 	checkedAt = null,
@@ -188,27 +333,40 @@ export const buildVersionInfo = ({
 			? apiContract
 			: { apiVersion: null, accepts: {} };
 	const installedApi = normalizeRelease(contract.apiVersion);
+	const frontend = normalizeFrontendContract(frontendApi);
 	const latestVersions =
 		latest && typeof latest === "object" ? latest : {};
 
+	const uiLatest = resolveLatestRelease(uiVersion, latestVersions.ui);
 	const ui = {
 		installed: installedUi,
-		latest: normalizeRelease(latestVersions.ui),
-		status: compareRelease(installedUi, latestVersions.ui),
+		latest: uiLatest.latest,
+		status: uiLatest.status,
 		updateUrl: VERSION_UPDATE_GUIDES.ui,
 	};
+	const backendLatest = resolveLatestRelease(backendVersion, latestVersions.backend);
 	const backend = {
 		installed: installedBackend,
-		latest: normalizeRelease(latestVersions.backend),
-		status: compareRelease(installedBackend, latestVersions.backend),
+		latest: backendLatest.latest,
+		status: backendLatest.status,
 		updateUrl: VERSION_UPDATE_GUIDES.backend,
 	};
+	const acceptsMap = readAcceptsMap(contract.accepts);
+	const apiLatest = resolveLatestRelease(contract.apiVersion, latestVersions.api);
 	const api = {
 		name: "screen-to-server",
 		installed: installedApi,
-		latest: normalizeRelease(latestVersions.api),
-		status: compareRelease(installedApi, latestVersions.api),
-		accepts: readAcceptsMap(contract.accepts),
+		latest: apiLatest.latest,
+		status: apiLatest.status,
+		frontendApiVersion: frontend.apiVersion,
+		requiresBackendApi: frontend.requiresBackendApi,
+		compatibility: checkApiCompatibility({
+			frontendApiVersion: frontend.apiVersion,
+			requiresBackendApi: frontend.requiresBackendApi,
+			backendApiVersion: installedApi,
+			acceptsFrontend: acceptsMap.frontend ?? null,
+		}),
+		accepts: acceptsMap,
 		updateUrl: VERSION_UPDATE_GUIDES.api,
 	};
 	const securityInfo =

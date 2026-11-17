@@ -66,7 +66,7 @@ export const ENDPOINTS = [
 		method: "GET",
 		path: "/status/versions",
 		purpose:
-			"Installed UI/backend/API versions, latest-known releases, security summary, and update warnings (the Settings About page source; optional ?uiVersion reports the running UI).",
+			"Installed UI/backend/API versions, latest-known releases, the UI/backend API compatibility verdict, security summary, and update warnings (the Settings About page source; optional ?uiVersion, ?frontendApiVersion, and ?requiresBackendApi report the running UI).",
 		body: null,
 	},
 	{

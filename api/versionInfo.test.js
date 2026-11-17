@@ -5,12 +5,15 @@ import { fileURLToPath } from "node:url";
 import {
 	VERSION_UPDATE_GUIDES,
 	buildVersionInfo,
+	checkApiCompatibility,
 	compareRelease,
+	normalizeFrontendContract,
 	normalizeRelease,
 	readAcceptsMap,
 	readApiContract,
 	readBackendVersion,
 	readSecurityReport,
+	resolveLatestRelease,
 } from "./versionInfo.js";
 
 /***
@@ -69,6 +72,174 @@ describe("compareRelease", () => {
 		expect(compareRelease(null, "1.1.0")).toBe("unknown");
 		expect(compareRelease("bogus", "1.1.0")).toBe("unknown");
 		expect(compareRelease("1.0.0", "bogus")).toBe("unknown");
+	});
+});
+
+describe("resolveLatestRelease", () => {
+	it("treats an unadvertised latest as the installed release (up-to-date)", () => {
+		// No KAINBAIN_LATEST_* knob set (the default install) means no newer
+		// release is known — the page shows Up to date, never Unknown.
+		for (const knob of [null, undefined, "", "   "]) {
+			expect(resolveLatestRelease("1.0.0", knob)).toEqual({
+				latest: "1.0.0",
+				status: "up-to-date",
+			});
+		}
+	});
+
+	it("stays unknown when the installed version itself is missing", () => {
+		for (const installed of [null, undefined, "", "bogus"]) {
+			expect(resolveLatestRelease(installed, "")).toEqual({
+				latest: null,
+				status: "unknown",
+			});
+		}
+	});
+
+	it("compares an explicitly advertised latest release", () => {
+		expect(resolveLatestRelease("1.0.0", "1.1.0")).toEqual({
+			latest: "1.1.0",
+			status: "update-available",
+		});
+		expect(resolveLatestRelease("1.1.0", "1.1.0")).toEqual({
+			latest: "1.1.0",
+			status: "up-to-date",
+		});
+		expect(resolveLatestRelease("1.2.0", "1.1.0")).toEqual({
+			latest: "1.1.0",
+			status: "up-to-date",
+		});
+	});
+
+	it("answers unknown for a malformed advertised knob (operator typo)", () => {
+		// A non-empty knob that does not parse is a misconfiguration, not a
+		// release: Unknown signals the typo instead of a fake Up to date.
+		expect(resolveLatestRelease("1.0.0", "bogus")).toEqual({
+			latest: null,
+			status: "unknown",
+		});
+	});
+});
+
+describe("normalizeFrontendContract", () => {
+	it("normalizes the UI-reported API version and requirement range", () => {
+		expect(
+			normalizeFrontendContract({
+				apiVersion: "v1.0.0",
+				requiresBackendApi: "  >=1.0.0 <2.0.0 ",
+			}),
+		).toEqual({ apiVersion: "1.0.0", requiresBackendApi: ">=1.0.0 <2.0.0" });
+	});
+
+	it("collapses missing or malformed contract input to nulls", () => {
+		expect(normalizeFrontendContract(null)).toEqual({
+			apiVersion: null,
+			requiresBackendApi: null,
+		});
+		expect(normalizeFrontendContract({})).toEqual({
+			apiVersion: null,
+			requiresBackendApi: null,
+		});
+		expect(
+			normalizeFrontendContract({ apiVersion: "bogus", requiresBackendApi: "   " }),
+		).toEqual({ apiVersion: null, requiresBackendApi: null });
+		expect(
+			normalizeFrontendContract({ apiVersion: 42, requiresBackendApi: 42 }),
+		).toEqual({ apiVersion: null, requiresBackendApi: null });
+	});
+});
+
+describe("checkApiCompatibility", () => {
+	const both = {
+		frontendApiVersion: "1.0.0",
+		requiresBackendApi: ">=1.0.0 <2.0.0",
+		backendApiVersion: "1.2.0",
+		acceptsFrontend: ">=1.0.0 <2.0.0",
+	};
+
+	it("verifies both range directions for an asymmetric pair", () => {
+		// UI 1.0.0 against backend 1.2.0: different releases, same API major
+		// — the partial redeploy this versioning exists to allow.
+		const verdict = checkApiCompatibility(both);
+		expect(verdict.status).toBe("compatible");
+		expect(verdict.detail).toContain("major 1");
+	});
+
+	it("fails the frontend->backend direction with both versions named", () => {
+		const verdict = checkApiCompatibility({
+			...both,
+			backendApiVersion: "2.0.0",
+		});
+		expect(verdict.status).toBe("incompatible");
+		expect(verdict.detail).toContain("2.0.0");
+		expect(verdict.detail).toContain(">=1.0.0 <2.0.0");
+	});
+
+	it("fails the backend-accepts-frontend direction with both versions named", () => {
+		const verdict = checkApiCompatibility({
+			...both,
+			frontendApiVersion: "2.0.0",
+		});
+		expect(verdict.status).toBe("incompatible");
+		expect(verdict.detail).toContain("2.0.0");
+		expect(verdict.detail).toContain(">=1.0.0 <2.0.0");
+	});
+
+	it("passes on one satisfied direction when the other range is missing", () => {
+		expect(
+			checkApiCompatibility({ ...both, acceptsFrontend: null }).status,
+		).toBe("compatible");
+		expect(
+			checkApiCompatibility({ ...both, requiresBackendApi: "" }).status,
+		).toBe("compatible");
+	});
+
+	it("falls back to the same-major rule when no range is declared", () => {
+		expect(
+			checkApiCompatibility({
+				frontendApiVersion: "1.0.0",
+				requiresBackendApi: null,
+				backendApiVersion: "1.9.9",
+				acceptsFrontend: null,
+			}),
+		).toMatchObject({ status: "compatible" });
+		const split = checkApiCompatibility({
+			frontendApiVersion: "1.0.0",
+			requiresBackendApi: null,
+			backendApiVersion: "2.0.0",
+			acceptsFrontend: null,
+		});
+		expect(split.status).toBe("incompatible");
+		expect(split.detail).toContain("1.0.0");
+		expect(split.detail).toContain("2.0.0");
+	});
+
+	it("ignores a corrupt range and decides on what is verifiable", () => {
+		// A garbage range cannot condemn the pair: the other direction plus
+		// the major rule still speak.
+		expect(
+			checkApiCompatibility({ ...both, requiresBackendApi: "not a range !!!" })
+				.status,
+		).toBe("compatible");
+		expect(
+			checkApiCompatibility({
+				frontendApiVersion: "1.0.0",
+				requiresBackendApi: "not a range !!!",
+				backendApiVersion: "2.0.0",
+				acceptsFrontend: "also garbage !!!",
+			}).status,
+		).toBe("incompatible");
+	});
+
+	it("answers unknown when either API version is missing", () => {
+		expect(
+			checkApiCompatibility({ ...both, frontendApiVersion: null }).status,
+		).toBe("unknown");
+		expect(
+			checkApiCompatibility({ ...both, backendApiVersion: "bogus" }).status,
+		).toBe("unknown");
+		expect(checkApiCompatibility({}).status).toBe("unknown");
+		expect(checkApiCompatibility().status).toBe("unknown");
 	});
 });
 
@@ -266,7 +437,10 @@ describe("buildVersionInfo", () => {
 		expect(payload.apis[0]).toMatchObject({
 			name: "screen-to-server",
 			installed: "1.0.0",
-			status: "unknown",
+			// The API knob is unadvertised ("") while 1.0.0 is installed:
+			// no newer release is known, so the row is Up to date.
+			latest: "1.0.0",
+			status: "up-to-date",
 			accepts: { frontend: ">=1.0.0 <2.0.0" },
 		});
 		expect(payload.security.status).toBe("pass");
@@ -300,8 +474,10 @@ describe("buildVersionInfo", () => {
 	});
 
 	it("degrades off-contract inputs instead of crashing", () => {
-		// Malformed latest knobs, contract, and security inputs all collapse
-		// to unknown — the endpoint answers 200 with honest states, not 500.
+		// A malformed latest map degrades to "nothing advertised" (installed
+		// rows report Up to date); a malformed contract or security input
+		// still collapses to unknown — the endpoint answers 200 with honest
+		// states, not 500.
 		const payload = buildVersionInfo({
 			uiVersion: "1.0.0",
 			backendVersion: "1.0.0",
@@ -310,14 +486,92 @@ describe("buildVersionInfo", () => {
 			security: "not-a-report",
 			checkedAt: "2026-11-16T00:00:00.000Z",
 		});
-		expect(payload.ui.status).toBe("unknown");
-		expect(payload.backend.status).toBe("unknown");
+		expect(payload.ui).toMatchObject({
+			installed: "1.0.0",
+			latest: "1.0.0",
+			status: "up-to-date",
+		});
+		expect(payload.backend).toMatchObject({
+			installed: "1.0.0",
+			latest: "1.0.0",
+			status: "up-to-date",
+		});
 		expect(payload.apis[0]).toMatchObject({
 			installed: null,
 			status: "unknown",
 			accepts: {},
 		});
 		expect(payload.security.status).toBe("unknown");
+		expect(payload.warnings).toEqual([]);
+	});
+});
+
+describe("buildVersionInfo API tie-in", () => {
+	const contract = (overrides = {}) => ({
+		uiVersion: "1.0.0",
+		backendVersion: "1.0.0",
+		apiContract: { apiVersion: "1.0.0", accepts: { frontend: ">=1.0.0 <2.0.0" } },
+		frontendApi: { apiVersion: "1.0.0", requiresBackendApi: ">=1.0.0 <2.0.0" },
+		latest: {},
+		checkedAt: "2026-11-16T00:00:00.000Z",
+		...overrides,
+	});
+
+	it("reports up-to-date (not unknown) when no latest release is advertised", () => {
+		// The default install advertises no latest knobs: every row shows
+		// the installed release as the newest known — never Unknown.
+		const payload = buildVersionInfo(contract());
+		expect(payload.ui).toMatchObject({
+			installed: "1.0.0",
+			latest: "1.0.0",
+			status: "up-to-date",
+		});
+		expect(payload.backend).toMatchObject({
+			installed: "1.0.0",
+			latest: "1.0.0",
+			status: "up-to-date",
+		});
+		expect(payload.apis[0]).toMatchObject({
+			installed: "1.0.0",
+			latest: "1.0.0",
+			status: "up-to-date",
+		});
+		expect(payload.warnings).toEqual([]);
+	});
+
+	it("ties the frontend API version to the backend contract with a verdict", () => {
+		const payload = buildVersionInfo(contract());
+		expect(payload.apis[0]).toMatchObject({
+			installed: "1.0.0",
+			frontendApiVersion: "1.0.0",
+			requiresBackendApi: ">=1.0.0 <2.0.0",
+			compatibility: { status: "compatible", detail: expect.any(String) },
+		});
+		expect(payload.apis[0].compatibility.detail).toContain("major 1");
+	});
+
+	it("reports incompatible when the UI and backend API contracts diverge", () => {
+		// The verdict (with both versions named) lives on the API row; the
+		// page renders its own incompatibility alert from it, so `warnings`
+		// stays purely the newer-release list.
+		const payload = buildVersionInfo(
+			contract({
+				frontendApi: { apiVersion: "2.0.0", requiresBackendApi: ">=2.0.0 <3.0.0" },
+			}),
+		);
+		expect(payload.apis[0].compatibility.status).toBe("incompatible");
+		expect(payload.apis[0].compatibility.detail).toContain("2.0.0");
+		expect(payload.apis[0].compatibility.detail).toContain("1.0.0");
+		expect(payload.warnings).toEqual([]);
+	});
+
+	it("reports unknown compatibility when the UI sends no contract", () => {
+		const payload = buildVersionInfo(contract({ frontendApi: null }));
+		expect(payload.apis[0]).toMatchObject({
+			frontendApiVersion: null,
+			requiresBackendApi: null,
+			compatibility: { status: "unknown", detail: expect.any(String) },
+		});
 		expect(payload.warnings).toEqual([]);
 	});
 });
