@@ -170,6 +170,12 @@ export default async function statusRoutes(app, { deps } = {}) {
 				// Real UI versions are a few chars; the cap rejects absurd
 				// input with a 400 instead of feeding it to semver coercion.
 				uiVersion: { type: "string", maxLength: 128 },
+				// The running UI's own API contract (baked from
+				// frontend/version.json): the apiVersion it speaks plus the
+				// backend range it requires. Ranges run longer than plain
+				// versions, hence the wider cap.
+				frontendApiVersion: { type: "string", maxLength: 128 },
+				requiresBackendApi: { type: "string", maxLength: 256 },
 			},
 		},
 		response: {
@@ -203,6 +209,15 @@ export default async function statusRoutes(app, { deps } = {}) {
 								installed: { type: ["string", "null"] },
 								latest: { type: ["string", "null"] },
 								status: { type: "string" },
+								frontendApiVersion: { type: ["string", "null"] },
+								requiresBackendApi: { type: ["string", "null"] },
+								compatibility: {
+									type: "object",
+									properties: {
+										status: { type: "string" },
+										detail: { type: "string" },
+									},
+								},
 								accepts: { type: "object", additionalProperties: true },
 								updateUrl: { type: "string" },
 							},
@@ -227,6 +242,16 @@ export default async function statusRoutes(app, { deps } = {}) {
 	app.get("/status/versions", { schema: versionInfoSchema }, async (request) => {
 		const queryUiVersion =
 			typeof request.query?.uiVersion === "string" ? request.query.uiVersion : null;
+		const queryFrontendApi = {
+			apiVersion:
+				typeof request.query?.frontendApiVersion === "string"
+					? request.query.frontendApiVersion
+					: null,
+			requiresBackendApi:
+				typeof request.query?.requiresBackendApi === "string"
+					? request.query.requiresBackendApi
+					: null,
+		};
 		// `deps.versions` is a test seam: integration tests inject stubbed
 		// sources without touching the global config singleton or disk.
 		const versionSources = deps?.versions || {};
@@ -238,6 +263,8 @@ export default async function statusRoutes(app, { deps } = {}) {
 					: readBackendVersion(),
 			apiContract:
 				"apiContract" in versionSources ? versionSources.apiContract : readApiContract(),
+			frontendApi:
+				"frontendApi" in versionSources ? versionSources.frontendApi : queryFrontendApi,
 			latest: {
 				ui: config.latestUiVersion,
 				backend: config.latestBackendVersion,

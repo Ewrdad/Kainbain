@@ -33,9 +33,11 @@ Then restart the frontend the same way it normally runs (for a production
 host, `./deploy.sh --prod`; for local work, `npm run dev` — see
 Install & Run (`#/docs/install-run`)).
 
-When a release operator publishes versions, the newest UI release is recorded
-in `KAINBAIN_LATEST_UI_VERSION` (see `.env.example`); the About page compares
-that knob against the running UI version from `frontend/package.json`.
+When a release operator publishes a newer UI, they record it in
+`KAINBAIN_LATEST_UI_VERSION` (see `.env.example`); the About page compares
+that knob against the running UI version from `frontend/package.json`. While
+the knob is unset, no newer release is advertised and the running version
+reports Up to date.
 
 ## Verify it worked
 

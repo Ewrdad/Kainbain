@@ -344,7 +344,7 @@ export const CONFIG_SCHEMA = [
 		type: "string",
 		default: "",
 		group: "server",
-		doc: "Newest published UI (frontend) version for the Settings About page; empty (default) means the latest-check reports unknown instead of guessing.",
+		doc: "Newest published UI (frontend) version for the Settings About page; empty (default) means no newer release is advertised and the running version reports Up to date.",
 	},
 	{
 		key: "latestBackendVersion",
@@ -353,7 +353,7 @@ export const CONFIG_SCHEMA = [
 		type: "string",
 		default: "",
 		group: "server",
-		doc: "Newest published backend (api) version for the Settings About page; empty (default) means the latest-check reports unknown instead of guessing.",
+		doc: "Newest published backend (api) version for the Settings About page; empty (default) means no newer release is advertised and the running version reports Up to date.",
 	},
 	{
 		key: "latestApiVersion",
@@ -362,7 +362,7 @@ export const CONFIG_SCHEMA = [
 		type: "string",
 		default: "",
 		group: "server",
-		doc: "Newest published screen-to-server API contract version for the Settings About page; empty (default) means the latest-check reports unknown instead of guessing.",
+		doc: "Newest published screen-to-server API contract version for the Settings About page; empty (default) means no newer release is advertised and the running version reports Up to date.",
 	},
 	{
 		key: "securityReportPath",

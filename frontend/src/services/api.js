@@ -95,12 +95,20 @@ export const api = {
   docsIndex: () => request('/docs'),
   docsArticle: (slug) => fetchDocsArticle(slug),
   getConfigSpec: () => request('/status/config'),
-  getVersions: (uiVersion) =>
-    request(
-      uiVersion
-        ? `/status/versions?uiVersion=${encodeURIComponent(uiVersion)}`
-        : '/status/versions',
-    ),
+  getVersions: (uiVersion, frontendContract) => {
+    const parts = [];
+    if (uiVersion) parts.push(`uiVersion=${encodeURIComponent(uiVersion)}`);
+    if (frontendContract?.apiVersion) {
+      parts.push(`frontendApiVersion=${encodeURIComponent(frontendContract.apiVersion)}`);
+    }
+    if (frontendContract?.requiresBackendApi) {
+      parts.push(
+        `requiresBackendApi=${encodeURIComponent(frontendContract.requiresBackendApi)}`,
+      );
+    }
+    const query = parts.length > 0 ? `/status/versions?${parts.join('&')}` : '/status/versions';
+    return request(query);
+  },
   computeStatus: (refresh = false) => fetchCachedComputeStatus(refresh),
   computeModels: (refresh = false) => fetchCachedModels(refresh),
   getModels: (refresh = false) => fetchCachedModels(refresh),
