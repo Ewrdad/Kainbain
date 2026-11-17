@@ -4,7 +4,8 @@ import { api } from '../../services/api';
 import { logger } from '../../services/logger';
 import { MarkdownViewer, parseMarkdownBlocks } from '../common/MarkdownViewer';
 import { groupBlocksIntoSections } from '../common/markdownSections';
-import { deriveSectionOrder, resolveSectionLabel } from './docsSections';
+import { deriveSectionOrder } from './deriveSectionOrder';
+import { resolveSectionLabel } from './resolveSectionLabel';
 import { useCollapsedSections } from './useCollapsedSections';
 import { DocsSidebarGroup } from './DocsSidebarGroup';
 
@@ -186,7 +187,7 @@ export function DocsView() {
   // raw section id. Groups the backend added since this bundle shipped append
   // after the known order under their id, so new groups can never vanish
   // silently.
-  const sectionOrder = useMemo(() => deriveSectionOrder(index, docs), [index, docs]);
+  const sectionOrder = useMemo(() => deriveSectionOrder({ index, docs }), [index, docs]);
 
   const grouped = useMemo(() => {
     const bySection = new Map();
@@ -202,7 +203,7 @@ export function DocsView() {
     ];
     return ordered.map((section) => ({
       section,
-      label: resolveSectionLabel(index, section),
+      label: resolveSectionLabel({ index, section }),
       docs: bySection.get(section),
     }));
   }, [sectionOrder, filtered, index]);
@@ -321,7 +322,7 @@ export function DocsView() {
                   <p className="text-[10px] font-mono uppercase tracking-widest text-text-muted">
                     {activeDoc && (
                       <>
-                        {resolveSectionLabel(index, activeDoc.section)} ·{' '}
+                        {resolveSectionLabel({ index, section: activeDoc.section })} ·{' '}
                         <a
                           href={`/docs/${activeDoc.slug}`}
                           className="underline underline-offset-2 hover:text-on-surface"

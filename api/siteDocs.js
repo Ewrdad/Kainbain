@@ -46,6 +46,10 @@ import { config } from "./config.js";
  *      brand-new current id too), so the taxonomy guardrail keeps covering it.
  *   5. Migrate in-repo `site-docs/*.md` frontmatter to the new ids.
  *   6. Run the siteDocs suites (`npm run test --prefix api -- siteDocs`).
+ *      A few test literals intentionally pin the current ids as tripwires
+ *      (the `DOC_SECTIONS` toEqual in `siteDocs.test.js`, the GET /docs
+ *      shape in `routes/docs.test.js`); update those literals as part of
+ *      the rename — the guardrail, not those literals, protects retired ids.
  *   The guardrail fails naming the retired id when step 2/3 is missed, and
  *   names a dangling alias target when the new id in step 1 is mistyped.
  * @example DOC_SECTIONS => ['getting-started', 'concepts', 'workflows', 'reference']

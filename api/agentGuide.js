@@ -680,7 +680,7 @@ export const ENDPOINTS = [
 		method: "GET",
 		path: "/docs",
 		purpose:
-			"List the markdown knowledge-base articles (site Docs section): [{ slug, title, section, order }]. Sections are 'getting-started', 'concepts', 'workflows' and 'reference'.",
+			"List the markdown knowledge-base articles (site Docs section): { sections, sectionLabels, docs: [{ slug, title, section, order }] }. `sections` is the sidebar group order, `sectionLabels` maps each group id to its human-readable label, and each article's `section` is one of the `sections` ids — read the ids from the payload, never hard-code them.",
 		body: null,
 	},
 	{

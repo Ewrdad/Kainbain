@@ -17,7 +17,16 @@ afterAll(() => {
 import { describe, it, expect, beforeAll } from "vitest";
 import { DOC_SECTIONS, SECTION_LABELS } from "./siteDocs.js";
 import * as frontendDocsSections from "../frontend/src/components/docs/docsSections.js";
+import * as frontendDeriveSectionOrder from "../frontend/src/components/docs/deriveSectionOrder.js";
+import * as frontendResolveSectionLabel from "../frontend/src/components/docs/resolveSectionLabel.js";
 import app from "./index.js";
+
+// Every frontend module that could re-grow a hand-maintained taxonomy copy.
+const FRONTEND_DOCS_MODULES = [
+	["docsSections.js", frontendDocsSections],
+	["deriveSectionOrder.js", frontendDeriveSectionOrder],
+	["resolveSectionLabel.js", frontendResolveSectionLabel],
+];
 
 /**
  * MARK: siteDocs frontend parity tests
@@ -55,14 +64,16 @@ describe("siteDocs frontend parity", () => {
 		}
 	});
 
-	it("keeps no second taxonomy copy on the frontend", () => {
-		expect(
-			frontendDocsSections.DOC_SECTION_ORDER,
-			"[siteDocs parity] The frontend ships its own DOC_SECTION_ORDER again — a rename would need a hand edit there. Fix: remove the literal and read the order from the GET /docs index via deriveSectionOrder.",
-		).toBeUndefined();
-		expect(
-			frontendDocsSections.DOC_SECTION_LABELS,
-			"[siteDocs parity] The frontend ships its own DOC_SECTION_LABELS again — a rename would need a hand edit there. Fix: remove the literal and read labels from the GET /docs index via resolveSectionLabel.",
-		).toBeUndefined();
+	it("keeps no second taxonomy copy in any frontend docs module", () => {
+		for (const [moduleName, moduleNamespace] of FRONTEND_DOCS_MODULES) {
+			expect(
+				moduleNamespace.DOC_SECTION_ORDER,
+				`[siteDocs parity] ${moduleName} ships its own DOC_SECTION_ORDER again — a rename would need a hand edit there. Fix: remove the literal and read the order from the GET /docs index via deriveSectionOrder.`,
+			).toBeUndefined();
+			expect(
+				moduleNamespace.DOC_SECTION_LABELS,
+				`[siteDocs parity] ${moduleName} ships its own DOC_SECTION_LABELS again — a rename would need a hand edit there. Fix: remove the literal and read labels from the GET /docs index via resolveSectionLabel.`,
+			).toBeUndefined();
+		}
 	});
 });
