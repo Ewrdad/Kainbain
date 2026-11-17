@@ -95,6 +95,12 @@ export const api = {
   docsIndex: () => request('/docs'),
   docsArticle: (slug) => fetchDocsArticle(slug),
   getConfigSpec: () => request('/status/config'),
+  getVersions: (uiVersion) =>
+    request(
+      uiVersion
+        ? `/status/versions?uiVersion=${encodeURIComponent(uiVersion)}`
+        : '/status/versions',
+    ),
   computeStatus: (refresh = false) => fetchCachedComputeStatus(refresh),
   computeModels: (refresh = false) => fetchCachedModels(refresh),
   getModels: (refresh = false) => fetchCachedModels(refresh),

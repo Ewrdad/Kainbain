@@ -30,6 +30,7 @@ describe('api public surface', () => {
       'getConfigSpec',
       'getFileRawUrl',
       'getModels',
+      'getVersions',
       'healthStatus',
       'isValidProjectId',
       'observabilityStatus',
