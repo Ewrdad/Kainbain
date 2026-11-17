@@ -9,6 +9,7 @@ import {
 	compareRelease,
 	normalizeFrontendContract,
 	normalizeRelease,
+	normalizeSecuritySummary,
 	readAcceptsMap,
 	readApiContract,
 	readBackendVersion,
@@ -118,6 +119,18 @@ describe("resolveLatestRelease", () => {
 			latest: null,
 			status: "unknown",
 		});
+	});
+
+	it("answers unknown for a non-string knob smuggled through the seam", () => {
+		// Env knobs are always strings; a number/boolean/object means a
+		// programming error upstream — Unknown surfaces it instead of a
+		// fake Up to date, while absent (null/undefined) stays unadvertised.
+		for (const knob of [42, 0, false, true, {}, ["1.0.0"]]) {
+			expect(resolveLatestRelease("1.0.0", knob)).toEqual({
+				latest: null,
+				status: "unknown",
+			});
+		}
 	});
 });
 
@@ -240,6 +253,18 @@ describe("checkApiCompatibility", () => {
 		).toBe("unknown");
 		expect(checkApiCompatibility({}).status).toBe("unknown");
 		expect(checkApiCompatibility().status).toBe("unknown");
+	});
+
+	it("tolerates v-prefixed API versions on the asymmetric pair", () => {
+		// Releases are tagged `v1.2.0` while contracts store `1.2.0` — the
+		// verdict must not split on the prefix.
+		const verdict = checkApiCompatibility({
+			...both,
+			frontendApiVersion: "v1.0.0",
+			backendApiVersion: "v1.2.0",
+		});
+		expect(verdict.status).toBe("compatible");
+		expect(verdict.detail).toContain("major 1");
 	});
 });
 
@@ -416,6 +441,52 @@ describe("readSecurityReport", () => {
 	});
 });
 
+describe("normalizeSecuritySummary", () => {
+	it("keeps a valid verdict and trims its report link", () => {
+		expect(
+			normalizeSecuritySummary({
+				status: "pass",
+				checkedAt: "2026-11-01T00:00:00.000Z",
+				summary: "Clean.",
+				reportUrl: "  https://sec.example/build/1  ",
+			}),
+		).toEqual({
+			status: "pass",
+			checkedAt: "2026-11-01T00:00:00.000Z",
+			summary: "Clean.",
+			reportUrl: "https://sec.example/build/1",
+		});
+	});
+
+	it("collapses bogus verdicts and mistyped fields to honest unknown", () => {
+		// A corrupt injected report must show the empty state — never a
+		// bogus "Status: scanned" line and never a 500 from the response
+		// validation tripping on a mistyped field.
+		expect(normalizeSecuritySummary({ status: "scanned" })).toEqual({
+			status: "unknown",
+			checkedAt: null,
+			summary: "",
+			reportUrl: null,
+		});
+		expect(
+			normalizeSecuritySummary({
+				status: "pass",
+				checkedAt: 20261101,
+				summary: ["not", "a", "string"],
+				reportUrl: { href: "https://sec.example" },
+			}),
+		).toEqual({ status: "pass", checkedAt: null, summary: "", reportUrl: null });
+		for (const input of [null, undefined, "pass", 42, ["pass"], []]) {
+			expect(normalizeSecuritySummary(input)).toEqual({
+				status: "unknown",
+				checkedAt: null,
+				summary: "",
+				reportUrl: null,
+			});
+		}
+	});
+});
+
 describe("buildVersionInfo", () => {
 	it("aggregates installed, latest, and security with warnings", () => {
 		const payload = buildVersionInfo({
@@ -503,6 +574,27 @@ describe("buildVersionInfo", () => {
 		});
 		expect(payload.security.status).toBe("unknown");
 		expect(payload.warnings).toEqual([]);
+	});
+
+	it("normalizes a bogus security verdict and a mistyped timestamp", () => {
+		// A corrupt injected report shows the empty state (never "Status:
+		// scanned"), and a non-string checkedAt regenerates — both keep
+		// the endpoint's response validation green.
+		const payload = buildVersionInfo({
+			uiVersion: "1.0.0",
+			backendVersion: "1.0.0",
+			apiContract: { apiVersion: "1.0.0", accepts: {} },
+			security: { status: "scanned", summary: "bogus" },
+			checkedAt: 42,
+		});
+		expect(payload.security).toEqual({
+			status: "unknown",
+			checkedAt: null,
+			summary: "",
+			reportUrl: null,
+		});
+		expect(typeof payload.checkedAt).toBe("string");
+		expect(payload.checkedAt).not.toBe("");
 	});
 });
 

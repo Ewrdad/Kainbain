@@ -67,12 +67,23 @@ export const compareRelease = (installed, latest) => {
  *   (missing, empty, or blank — the default install) means no newer
  *   release is known, so the installed release is the newest known and
  *   the row reports `up-to-date`. A knob that is set but does not parse
- *   is an operator typo and answers `unknown` rather than hiding it.
+ *   (an operator typo, or a non-string value smuggled through the test
+ *   seam) is misconfiguration and answers `unknown` rather than hiding
+ *   behind a fake up-to-date.
  * @example resolveLatestRelease('1.0.0', '') => { latest: '1.0.0', status: 'up-to-date' }
+ * @example resolveLatestRelease('1.0.0', 42) => { latest: null, status: 'unknown' }
  ***/
 export const resolveLatestRelease = (installed, latestKnob) => {
 	const have = normalizeRelease(installed);
-	if (typeof latestKnob !== "string" || !latestKnob.trim()) {
+	if (latestKnob === null || latestKnob === undefined) {
+		return have
+			? { latest: have, status: "up-to-date" }
+			: { latest: null, status: "unknown" };
+	}
+	if (typeof latestKnob !== "string") {
+		return { latest: null, status: "unknown" };
+	}
+	if (!latestKnob.trim()) {
 		return have
 			? { latest: have, status: "up-to-date" }
 			: { latest: null, status: "unknown" };
@@ -306,6 +317,36 @@ export const readSecurityReport = ({
 };
 
 /***
+ * MARK: normalizeSecuritySummary
+ * @description Reduces any security-report input to the endpoint's
+ *   `{ status, checkedAt, summary, reportUrl }` shape. Only the file
+ *   contract's verdicts (`pass`, `fail`, `warn`, plus the honest
+ *   `unknown`) survive; any other status, a non-object input, or
+ *   mistyped fields collapse to the honest unknown state with safe
+ *   field types — so a corrupt injected report can never fail the
+ *   endpoint's response validation with a 500 or show a bogus verdict.
+ * @example normalizeSecuritySummary({ status: 'pass', summary: 'ok' }) => { status: 'pass', checkedAt: null, summary: 'ok', reportUrl: null }
+ * @example normalizeSecuritySummary({ status: 'scanned' }) => { status: 'unknown', checkedAt: null, summary: '', reportUrl: null }
+ ***/
+export const normalizeSecuritySummary = (security) => {
+	const unknown = { status: "unknown", checkedAt: null, summary: "", reportUrl: null };
+	if (!security || typeof security !== "object" || Array.isArray(security)) return unknown;
+	if (!["pass", "fail", "warn", "unknown"].includes(security.status)) return unknown;
+	return {
+		status: security.status,
+		checkedAt:
+			typeof security.checkedAt === "string" && security.checkedAt
+				? security.checkedAt
+				: null,
+		summary: typeof security.summary === "string" ? security.summary : "",
+		reportUrl:
+			typeof security.reportUrl === "string" && security.reportUrl.trim()
+				? security.reportUrl.trim()
+				: null,
+	};
+};
+
+/***
  * MARK: buildVersionInfo
  * @description Aggregates the full `/status/versions` payload from its
  *   sources: installed versions (UI from the caller query, backend + API
@@ -369,10 +410,7 @@ export const buildVersionInfo = ({
 		accepts: acceptsMap,
 		updateUrl: VERSION_UPDATE_GUIDES.api,
 	};
-	const securityInfo =
-		security && typeof security === "object" && typeof security.status === "string"
-			? security
-			: { status: "unknown", checkedAt: null, summary: "", reportUrl: null };
+	const securityInfo = normalizeSecuritySummary(security);
 
 	const warnings = [];
 	for (const [label, entry] of [
@@ -392,7 +430,10 @@ export const buildVersionInfo = ({
 		backend,
 		apis: [api],
 		security: securityInfo,
-		checkedAt: checkedAt ?? new Date().toISOString(),
+		checkedAt:
+			typeof checkedAt === "string" && checkedAt
+				? checkedAt
+				: new Date().toISOString(),
 		warnings,
 	};
 };

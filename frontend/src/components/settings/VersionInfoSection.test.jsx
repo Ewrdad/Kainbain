@@ -7,9 +7,12 @@ import {
   VersionInfoSection,
   describeAcceptsMap,
   describeFrontendContract,
+  displayVersionText,
+  formatApiRowLabel,
   isSafeVersionLink,
   labelApiCompatibility,
   labelVersionStatus,
+  selectVersionWarnings,
 } from './VersionInfoSection';
 import { FRONTEND_API_VERSION, FRONTEND_REQUIRES_BACKEND_API } from '../../version';
 
@@ -69,6 +72,45 @@ describe('labelVersionStatus', () => {
     expect(labelVersionStatus('up-to-date')).toBe('Up to date');
     expect(labelVersionStatus('unknown')).toBe('Unknown');
     expect(labelVersionStatus('bogus')).toBe('Unknown');
+  });
+});
+
+describe('displayVersionText', () => {
+  it('trims real versions and hides mistyped values behind Unknown', () => {
+    expect(displayVersionText('1.0.0')).toBe('1.0.0');
+    expect(displayVersionText('  1.2.0  ')).toBe('1.2.0');
+    expect(displayVersionText(null)).toBe('Unknown');
+    expect(displayVersionText(undefined)).toBe('Unknown');
+    expect(displayVersionText('')).toBe('Unknown');
+    expect(displayVersionText('   ')).toBe('Unknown');
+    expect(displayVersionText(42)).toBe('Unknown');
+    expect(displayVersionText({ version: '1.0.0' })).toBe('Unknown');
+  });
+});
+
+describe('selectVersionWarnings', () => {
+  it('keeps only the printable warning lines', () => {
+    expect(selectVersionWarnings({ warnings: ['a', 'b'] })).toEqual(['a', 'b']);
+    expect(selectVersionWarnings({ warnings: ['a', 42, null, '', '   ', { text: 'b' }, 'c'] })).toEqual([
+      'a',
+      'c',
+    ]);
+    expect(selectVersionWarnings({ warnings: 'not-a-list' })).toEqual([]);
+    expect(selectVersionWarnings(null)).toEqual([]);
+    expect(selectVersionWarnings(undefined)).toEqual([]);
+  });
+});
+
+describe('formatApiRowLabel', () => {
+  it('names the contract and falls back for mistyped names', () => {
+    expect(formatApiRowLabel({ name: 'screen-to-server' })).toBe('API (screen-to-server)');
+    expect(formatApiRowLabel({ name: '  custom  ' })).toBe('API (custom)');
+    expect(formatApiRowLabel({})).toBe('API (contract)');
+    expect(formatApiRowLabel({ name: '' })).toBe('API (contract)');
+    expect(formatApiRowLabel({ name: 42 })).toBe('API (contract)');
+    expect(formatApiRowLabel({ name: { text: 'x' } })).toBe('API (contract)');
+    expect(formatApiRowLabel(null)).toBe('API (contract)');
+    expect(formatApiRowLabel('screen-to-server')).toBe('API (contract)');
   });
 });
 
@@ -316,6 +358,61 @@ describe('VersionInfoSection', () => {
     expect(screen.getByText(/no security report recorded for this build/i)).toBeInTheDocument();
   });
 
+  it('hides mistyped version values behind Unknown instead of raw garbage', async () => {
+    const client = stubClient({
+      ui: { installed: 42, latest: { version: '1.0.0' }, status: 'up-to-date', updateUrl: '#/docs/update-ui' },
+      backend: { installed: '1.0.0', latest: '1.0.0', status: 'up-to-date', updateUrl: '#/docs/update-backend' },
+      apis: [],
+      security: { status: 'unknown', checkedAt: null, summary: '', reportUrl: null },
+      warnings: [],
+    });
+    renderSection(client);
+    await waitFor(() => expect(client.getVersions).toHaveBeenCalled());
+    expect(screen.queryByText(/Installed: 42/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/object Object/)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Installed: Unknown/)).not.toHaveLength(0);
+  });
+
+  it('drops mistyped warnings and API names instead of crashing the render', async () => {
+    const client = stubClient({
+      ui: { installed: '1.0.0', latest: '1.0.0', status: 'up-to-date', updateUrl: '#/docs/update-ui' },
+      backend: { installed: '1.0.0', latest: '1.0.0', status: 'up-to-date', updateUrl: '#/docs/update-backend' },
+      apis: [
+        {
+          name: { text: 'screen-to-server' },
+          installed: '1.0.0',
+          latest: '1.0.0',
+          status: 'up-to-date',
+          compatibility: { status: 'compatible', detail: 'both sides speak API major 1' },
+          accepts: {},
+          updateUrl: '#/docs/update-api',
+        },
+      ],
+      security: { status: 'unknown', checkedAt: null, summary: '', reportUrl: null },
+      warnings: [42, null, { text: 'UI update available' }, 'Backend update available: 1.0.0 → 1.1.0'],
+    });
+    renderSection(client);
+    await waitFor(() => expect(client.getVersions).toHaveBeenCalled());
+    expect(screen.getByText('API (contract)')).toBeInTheDocument();
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('Backend update available: 1.0.0 → 1.1.0');
+    expect(alert).not.toHaveTextContent('42');
+  });
+
+  it('shows the empty security state for mistyped report fields instead of crashing', async () => {
+    const client = stubClient({
+      ui: { installed: '1.0.0', latest: '1.0.0', status: 'up-to-date', updateUrl: '#/docs/update-ui' },
+      backend: { installed: '1.0.0', latest: '1.0.0', status: 'up-to-date', updateUrl: '#/docs/update-backend' },
+      apis: [],
+      security: { status: { verdict: 'pass' }, checkedAt: 20261101, summary: ['Clean'], reportUrl: 42 },
+      warnings: [],
+    });
+    renderSection(client);
+    await waitFor(() => expect(client.getVersions).toHaveBeenCalled());
+    expect(screen.getByText(/no security report recorded for this build/i)).toBeInTheDocument();
+    expect(screen.queryByText(/object Object/)).not.toBeInTheDocument();
+  });
+
   it('shows no banner when everything is up to date', async () => {
     const payload = updatePayload();
     payload.ui = { installed: '1.2.0', latest: '1.2.0', status: 'up-to-date', updateUrl: '#/docs/update-ui' };
@@ -354,5 +451,33 @@ describe('VersionInfoSection', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }));
     await waitFor(() => expect(client.getVersions).toHaveBeenCalledTimes(3));
+  });
+
+  it('names the old backend on a 404 with a link to its update guide', async () => {
+    // The asymmetric-deploy window: this UI is newer than the running
+    // backend, so /status/versions does not exist yet. The page must say
+    // so (not a bare transport error) and point at the fix.
+    const notFound = new Error('API 404 on /status/versions: {"message":"not found"}');
+    notFound.status = 404;
+    const client = { getVersions: vi.fn().mockRejectedValue(notFound) };
+    renderSection(client);
+    await waitFor(() => expect(client.getVersions).toHaveBeenCalled());
+    expect(screen.getByRole('alert')).toHaveTextContent(/could not check versions/i);
+    expect(screen.getByText(/does not expose version information yet/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /how to update backend/i })).toHaveAttribute(
+      'href',
+      '#/docs/update-backend',
+    );
+  });
+
+  it('shows no old-backend hint for non-404 failures', async () => {
+    const serverError = new Error('API 500 on /status/versions: boom');
+    serverError.status = 500;
+    const client = { getVersions: vi.fn().mockRejectedValue(serverError) };
+    renderSection(client);
+    await waitFor(() => expect(client.getVersions).toHaveBeenCalled());
+    expect(screen.getByRole('alert')).toHaveTextContent(/could not check versions/i);
+    expect(screen.queryByText(/does not expose version information yet/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /how to update backend/i })).not.toBeInTheDocument();
   });
 });

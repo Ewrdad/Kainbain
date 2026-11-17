@@ -18,6 +18,56 @@ export const labelVersionStatus = (status) => {
 };
 
 /***
+ * MARK: displayVersionText
+ * @description Printable text for one installed/latest version value: the
+ *   trimmed string when the payload carries one, otherwise `Unknown`. A
+ *   mistyped value (a number or object smuggled through a corrupt
+ *   payload) shows as Unknown instead of rendering raw garbage like `42`.
+ * @example displayVersionText(' 1.0.0 ') => '1.0.0'
+ * @example displayVersionText(42) => 'Unknown'
+ * @param {unknown} value - The raw installed/latest value from `GET /status/versions`.
+ * @returns {string}
+ ***/
+export const displayVersionText = (value) => {
+  if (typeof value !== 'string') return 'Unknown';
+  const trimmed = value.trim();
+  return trimmed === '' ? 'Unknown' : trimmed;
+};
+
+/***
+ * MARK: selectVersionWarnings
+ * @description The warning lines worth rendering from a versions payload:
+ *   only the non-blank strings. A corrupt payload (a `warnings` array
+ *   holding numbers or objects) would otherwise crash the list render —
+ *   React cannot print an object child — so anything else is dropped and
+ *   the banner simply shows fewer lines.
+ * @example selectVersionWarnings({ warnings: ['UI update available', 42] }) => ['UI update available']
+ * @param {unknown} info - The raw `GET /status/versions` payload.
+ * @returns {string[]}
+ ***/
+export const selectVersionWarnings = (info) => {
+  const warnings = info && typeof info === 'object' && Array.isArray(info.warnings) ? info.warnings : [];
+  return warnings.filter((warning) => typeof warning === 'string' && warning.trim() !== '');
+};
+
+/***
+ * MARK: formatApiRowLabel
+ * @description Row label for one API contract entry: `API (<name>)` when
+ *   the payload names the contract, otherwise `API (contract)`. A
+ *   mistyped name (a number or object) falls back instead of crashing
+ *   the `toLowerCase` in the update link or printing `[object Object]`.
+ * @example formatApiRowLabel({ name: 'screen-to-server' }) => 'API (screen-to-server)'
+ * @example formatApiRowLabel({ name: 42 }) => 'API (contract)'
+ * @param {unknown} entry - One API row from `GET /status/versions`.
+ * @returns {string}
+ ***/
+export const formatApiRowLabel = (entry) => {
+  const name = entry && typeof entry === 'object' && !Array.isArray(entry) ? entry.name : null;
+  const trimmed = typeof name === 'string' ? name.trim() : '';
+  return `API (${trimmed === '' ? 'contract' : trimmed})`;
+};
+
+/***
  * MARK: isSafeVersionLink
  * @description Whether a version-info URL is safe to render as a clickable
  *   link: the page's own `#/docs/...` hash guides, absolute http(s) report
@@ -104,7 +154,10 @@ export const describeFrontendContract = (entry) => {
  *   known, an incompatibility alert when the two sides cannot talk, and
  *   the latest security report summary with a link to the full report (or
  *   an honest empty state when no report is recorded). Loads on mount and
- *   on demand via "Check for updates".
+ *   on demand via "Check for updates". A 404 names the old-backend cause
+ *   (the asymmetric-deploy window where the UI is newer than the backend)
+ *   with a link to the backend update guide; any other failure shows the
+ *   transport message with a retry.
  * @example <VersionInfoSection />
  * @param {Object} [props]
  * @param {Object} [props.client] - API client override (tests); defaults to the app client.
@@ -134,7 +187,10 @@ export function VersionInfoSection({ client, uiVersion, frontendApi }) {
         setInfo(data && typeof data === 'object' ? data : null);
       } catch (err) {
         if (isCancelled()) return;
-        setLoadError(err?.message || 'Could not load version information');
+        setLoadError({
+          message: err?.message || 'Could not load version information',
+          status: typeof err?.status === 'number' ? err.status : null,
+        });
         setInfo(null);
       } finally {
         if (!isCancelled()) setLoading(false);
@@ -160,7 +216,7 @@ export function VersionInfoSection({ client, uiVersion, frontendApi }) {
         { label: 'UI', entry: info.ui },
         { label: 'Backend', entry: info.backend },
         ...apiEntries.map((entry) => ({
-          label: `API (${entry?.name || 'contract'})`,
+          label: formatApiRowLabel(entry),
           entry,
           isApi: true,
         })),
@@ -175,8 +231,25 @@ export function VersionInfoSection({ client, uiVersion, frontendApi }) {
       }))
     : [];
 
-  const warnings = Array.isArray(info?.warnings) ? info.warnings : [];
-  const security = info?.security && typeof info.security === 'object' ? info.security : null;
+  const warnings = selectVersionWarnings(info);
+  const securityRaw =
+    info?.security && typeof info.security === 'object' && !Array.isArray(info.security)
+      ? info.security
+      : null;
+  const securityStatus =
+    typeof securityRaw?.status === 'string' && securityRaw.status.trim() !== ''
+      ? securityRaw.status
+      : 'unknown';
+  const securityCheckedAt =
+    typeof securityRaw?.checkedAt === 'string' && securityRaw.checkedAt !== ''
+      ? securityRaw.checkedAt
+      : '';
+  const securitySummary =
+    typeof securityRaw?.summary === 'string' && securityRaw.summary !== ''
+      ? securityRaw.summary
+      : '';
+  const securityReportUrl =
+    typeof securityRaw?.reportUrl === 'string' ? securityRaw.reportUrl : null;
   const incompatibleApi = apiEntries.find(
     (entry) => entry?.compatibility?.status === 'incompatible',
   );
@@ -216,8 +289,17 @@ export function VersionInfoSection({ client, uiVersion, frontendApi }) {
       {!loading && loadError && (
         <div className="flex flex-col gap-2">
           <p role="alert" className="text-sm text-on-surface">
-            Could not check versions: {loadError}
+            Could not check versions: {loadError.message}
           </p>
+          {loadError.status === 404 && (
+            <p className="text-sm text-on-surface-variant">
+              The backend does not expose version information yet — it is older than this UI.
+              Update the backend, then retry.{' '}
+              <a className="text-primary underline" href="#/docs/update-backend">
+                How to update backend
+              </a>
+            </p>
+          )}
           <button
             type="button"
             onClick={() => loadVersions()}
@@ -231,15 +313,15 @@ export function VersionInfoSection({ client, uiVersion, frontendApi }) {
       {!loading && !loadError && info && (
         <>
           <div aria-label="Installed versions">
-            {rows.map(({ label, entry, isApi, acceptsLine, contractLine, compatibility }) => (
+            {rows.map(({ label, entry, isApi, acceptsLine, contractLine, compatibility }, index) => (
               <div
-                key={label}
+                key={`${label}-${index}`}
                 className="flex flex-col gap-1 py-3 border-b border-border-standard last:border-b-0"
               >
                 <span className="text-xs font-bold text-on-surface">{label}</span>
                 <span className="text-sm text-on-surface-variant">
-                  Installed: {entry?.installed || 'Unknown'}
-                  {' · '}Latest: {entry?.latest || 'Unknown'}
+                  Installed: {displayVersionText(entry?.installed)}
+                  {' · '}Latest: {displayVersionText(entry?.latest)}
                   {' · '}Status: {labelVersionStatus(entry?.status)}
                 </span>
                 {acceptsLine && (
@@ -267,21 +349,21 @@ export function VersionInfoSection({ client, uiVersion, frontendApi }) {
 
           <div className="flex flex-col gap-1 py-3 border-b border-border-standard last:border-b-0">
             <span className="text-xs font-bold text-on-surface">Security report</span>
-            {!security || security.status === 'unknown' ? (
+            {securityStatus === 'unknown' ? (
               <span className="text-sm text-on-surface-variant">
                 No security report recorded for this build. Run the security scans to record one.
               </span>
             ) : (
               <>
                 <span className="text-sm text-on-surface-variant">
-                  Status: {security.status}
-                  {security.checkedAt ? ` · Checked: ${security.checkedAt}` : ''}
+                  Status: {securityStatus}
+                  {securityCheckedAt !== '' ? ` · Checked: ${securityCheckedAt}` : ''}
                 </span>
-                {security.summary && (
-                  <span className="text-sm text-on-surface-variant">{security.summary}</span>
+                {securitySummary !== '' && (
+                  <span className="text-sm text-on-surface-variant">{securitySummary}</span>
                 )}
-                {isSafeVersionLink(security.reportUrl) && (
-                  <a className="text-sm text-primary underline" href={security.reportUrl}>
+                {isSafeVersionLink(securityReportUrl) && (
+                  <a className="text-sm text-primary underline" href={securityReportUrl}>
                     Open the full report
                   </a>
                 )}
