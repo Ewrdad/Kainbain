@@ -234,3 +234,31 @@ grep -R KAINBAIN_RUNNER_MODELS ~/.config/environment.d 2>/dev/null || true
 
 Only after the user environment is clean will a post-WP-B restart flip
 `modelSource` to `discovered`/`pinned+discovered`.
+
+## Addendum 2026-11-17 (cleanup-stage hardening — operator-visible behavior changes)
+
+The cleanup stage hardened the exact tools this handoff runs. No step above
+changes meaning; the tools now fail safe where WP-F hit confusion:
+
+- `scripts/package-runner.sh` refuses a sha-looking REF that matches
+  neither HEAD nor its short form (the `fbcf8442`-filename-vs-`de62122c`-
+  stamp trap). Either check out the REF first, pass the HEAD short sha,
+  or re-run with `--allow-ref-mismatch` when you mean it. Every build
+  now prints a transfer receipt (`sha256:` + `stamped build.sha:`) —
+  re-hash before install, and compare receipts against the STAMPED sha,
+  never the filename.
+- `lay_down_runner_install_root` (Bundle A wrapper installs) now asserts
+  the laid-down tree (`runner/main.js`, both `version.json` copies, the
+  wrapper shim) before `current` may point at it, and warns when the
+  tree ships no pi discovery dependency (pi-serving runners will report
+  `LEG_MODULE_MISSING` until reinstalled from a real bundle;
+  muse/antigravity/vibe-only hosts are unaffected).
+- `codeChangedSinceBoot` no longer flips on non-code artifacts left by
+  inspection (`*.bak*`, `*~`, `*.log`, `*.tmp`, OS junk) — the false
+  positive that forced the run24 local-alpha re-baseline. It now scans
+  the whole bundle root (`version.json` + `runner/` + `api/` + `shared/`)
+  for installed bundles instead of `runner/` alone, so harness-code
+  drift under `api/` is visible — matching the `find <install-dir>`
+  triage above. Scan the unpacked bundle root
+  (`.../releases/<ver>/unpacked`, or the direct install dir) with that
+  `find`, not the wrapper root, for the tightest match to the daemon.

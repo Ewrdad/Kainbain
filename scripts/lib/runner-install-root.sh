@@ -17,6 +17,14 @@
 # Prints the laid-down version. Fails without touching the unit files when
 # the source tree has no runnable runner (callers lay down BEFORE writing
 # units, so a bad tree aborts the install instead of stranding a unit).
+#
+# Post-copy asserts catch the WP-F silent-old-boot class: an extract that
+# lands one level down (missing --strip-components=1) or a partial copy
+# fails here with the missing path named, before any unit points at it.
+# The pi discovery dependency is warn-only, not fatal: hosts that never
+# serve the pi harness run fine without it, but a pi-serving runner laid
+# down from a tree without api/node_modules will report LEG_MODULE_MISSING
+# until it is reinstalled from a real bundle (scripts/package-runner.sh).
 lay_down_runner_install_root() {
 	_tree="$1"
 	_root="$2"
@@ -40,6 +48,15 @@ lay_down_runner_install_root() {
 	cp -a "$_tree/runner/version.json" "$_unpacked/version.json"
 	cp -a "$_tree/runner/bin/kainbain-runner" "$_root/bin/kainbain-runner"
 	chmod +x "$_root/bin/kainbain-runner"
+	for _need in "$_unpacked/runner/main.js" "$_unpacked/version.json" "$_unpacked/runner/version.json" "$_root/bin/kainbain-runner"; do
+		if [ ! -f "$_need" ]; then
+			echo "runner-install-root.sh: lay-down incomplete, missing $_need (source tree $_tree) — not pointing current at it" >&2
+			return 1
+		fi
+	done
+	if [ ! -f "$_unpacked/api/node_modules/@earendil-works/pi-coding-agent/dist/utils/child-process.js" ]; then
+		echo "runner-install-root.sh: warning: no pi discovery dependency under $_unpacked/api/node_modules — a pi-serving runner will report LEG_MODULE_MISSING until reinstalled from a bundle (scripts/package-runner.sh); muse/antigravity/vibe-only hosts are unaffected." >&2
+	fi
 	if [ ! -e "$_root/current" ] && [ ! -L "$_root/current" ]; then
 		ln -s "$_unpacked" "$_root/current"
 	fi

@@ -27,16 +27,49 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..");
 
-const parseArgs = (argv) => {
-	const out = {};
-	for (let i = 0; i < argv.length; i += 1) {
-		const arg = argv[i];
-		if (arg.startsWith("--")) {
-			const key = arg.slice(2);
-			out[key] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv.splice(i + 1, 1)[0] : "true";
+/***
+ * MARK: parsePackagerArgs
+ * @description Parses `--key value` and `--key=value` command-line args into
+ *   `{ key: value }`. Pure (never mutates the input list), skips positionals
+ *   and a bare `--`, and treats a flag with no following value as `"true"`
+ *   (the caller validates required keys, so a missing value fails with the
+ *   usage error, never with a mystery `"true"` path). Unknown keys are kept
+ *   so callers can warn on typos instead of silently ignoring them.
+ * @example parsePackagerArgs({ args: ['--platform', 'linux', '--arch=x64'] }) => { platform: 'linux', arch: 'x64' }
+ * @param {Object} [opts] - Options.
+ * @param {string[]} [opts.args] - Raw argv slice (usually `process.argv.slice(2)`).
+ * @returns {Object} Parsed key/value map (all values are strings).
+ ***/
+export const parsePackagerArgs = ({ args = [] } = {}) => {
+	const parsedArgs = {};
+	const inputList = Array.isArray(args) ? [...args] : [];
+	let index = 0;
+	while (index < inputList.length) {
+		const currentArg = inputList[index];
+		if (typeof currentArg !== "string" || !currentArg.startsWith("--") || currentArg === "--") {
+			index += 1;
+			continue;
 		}
+		const withoutDashes = currentArg.slice(2);
+		const equalsAt = withoutDashes.indexOf("=");
+		if (equalsAt !== -1) {
+			const key = withoutDashes.slice(0, equalsAt).trim();
+			const value = withoutDashes.slice(equalsAt + 1);
+			if (key) parsedArgs[key] = value;
+			index += 1;
+			continue;
+		}
+		const key = withoutDashes.trim();
+		const nextValue = inputList[index + 1];
+		if (typeof nextValue === "string" && nextValue && !nextValue.startsWith("--")) {
+			if (key) parsedArgs[key] = nextValue;
+			index += 2;
+			continue;
+		}
+		if (key) parsedArgs[key] = "true";
+		index += 1;
 	}
-	return out;
+	return parsedArgs;
 };
 
 const FORBIDDEN_BASENAMES = new Set([".git", ".hg", "node_modules", ".env", ".env.local", "coverage", "dist"]);
@@ -55,17 +88,62 @@ const FORBIDDEN_SUFFIXES = [".test.js", ".test.jsx", ".spec.js"];
  ***/
 export const RUNNER_LEG_BUNDLED_DEPS = ["@earendil-works/pi-coding-agent"];
 
-const copyPruned = (src, dest) => {
-	const stat = fs.statSync(src);
-	if (stat.isDirectory()) {
+/***
+ * MARK: copyPruned
+ * @description Copies one source path into the bundle stage, skipping test
+ *   files and forbidden dirs (node_modules, .git, dist, coverage, .env).
+ *   Symlink-safe: directory symlinks are never descended (they can cycle or
+ *   escape the source tree), file symlinks resolve once to their target
+ *   bytes, dangling links and non-files (fifo, socket, device) are skipped.
+ *   A visited-dir set (by realpath) stops symlink cycles that re-enter an
+ *   already-copied tree. Throws with the failing path when the source cannot
+ *   be read, so a half-copied stage fails the build instead of shipping.
+ * @example copyPruned('/repo/runner', '/tmp/stage/name/runner')
+ * @param {string} src - Source path.
+ * @param {string} dest - Destination path.
+ * @param {Set<string>} [seenDirs] - Realpaths already copied (cycle guard).
+ ***/
+const copyPruned = (src, dest, seenDirs = new Set()) => {
+	let entryStat;
+	try {
+		entryStat = fs.lstatSync(src);
+	} catch (err) {
+		throw new Error(`package-runner: cannot copy '${src}': ${err?.message || err}`);
+	}
+	if (entryStat.isSymbolicLink()) {
+		let targetStat = null;
+		try {
+			targetStat = fs.statSync(src);
+		} catch {
+			return;
+		}
+		if (!targetStat.isFile()) return;
+		const base = path.basename(src);
+		if (FORBIDDEN_SUFFIXES.some((suffix) => base.endsWith(suffix))) return;
+		fs.mkdirSync(path.dirname(dest), { recursive: true });
+		fs.copyFileSync(src, dest);
+		return;
+	}
+	if (entryStat.isDirectory()) {
 		const base = path.basename(src);
 		if (FORBIDDEN_BASENAMES.has(base)) return;
+		let realDir = null;
+		try {
+			realDir = fs.realpathSync(src);
+		} catch {
+			realDir = null;
+		}
+		if (realDir) {
+			if (seenDirs.has(realDir)) return;
+			seenDirs.add(realDir);
+		}
 		fs.mkdirSync(dest, { recursive: true });
 		for (const entry of fs.readdirSync(src)) {
-			copyPruned(path.join(src, entry), path.join(dest, entry));
+			copyPruned(path.join(src, entry), path.join(dest, entry), seenDirs);
 		}
 		return;
 	}
+	if (!entryStat.isFile()) return;
 	const base = path.basename(src);
 	if (FORBIDDEN_SUFFIXES.some((suffix) => base.endsWith(suffix))) return;
 	fs.mkdirSync(path.dirname(dest), { recursive: true });
@@ -123,6 +201,13 @@ export const stageLegNpmDeps = ({ stage, root = REPO_ROOT } = {}) => {
 	if (!hasLegDepSource({ root })) {
 		throw new Error(
 			`package-runner: cannot stage the discovery-leg closure: no api/package.json under '${root}' (fake/layout roots must pass installLegDeps: false).`,
+		);
+	}
+	try {
+		execFileSync("npm", ["--version"], { encoding: "utf8", timeout: 15000, stdio: ["ignore", "pipe", "ignore"] });
+	} catch {
+		throw new Error(
+			"package-runner: cannot stage the discovery-leg closure: 'npm' is not on PATH (install Node.js/npm, or pass installLegDeps: false for a layout-only bundle without the pi leg).",
 		);
 	}
 	const apiPkg = JSON.parse(fs.readFileSync(path.join(root, "api", "package.json"), "utf8"));
@@ -187,12 +272,68 @@ export const resolveBuildStamp = ({ root = REPO_ROOT, runGit, now } = {}) => {
 	}
 };
 
+/***
+ * MARK: validatePackageSourceTree
+ * @description Checks the source tree holds a releasable runner layout
+ *   before anything is staged: `runner/`, `shared/`, `api/` dirs plus the
+ *   boot entrypoint (`runner/main.js`), the wrapper (`runner/bin/kainbain-runner`),
+ *   and a parseable `runner/version.json`. Fails fast with every missing
+ *   path named, so a wrong `--root` or a partial checkout fails here with
+ *   the fix attached instead of mid-copy with an ENOENT or, worse, as a
+ *   bundle that boots to a missing entrypoint on a remote host.
+ * @example validatePackageSourceTree({ root: '/repo' })
+ * @param {Object} [opts] - Options.
+ * @param {string} [opts.root] - Source tree root to check.
+ ***/
+export const validatePackageSourceTree = ({ root = REPO_ROOT } = {}) => {
+	const missingPaths = [];
+	for (const requiredDir of ["runner", "shared", "api"]) {
+		try {
+			if (!fs.statSync(path.join(root, requiredDir)).isDirectory()) missingPaths.push(`${requiredDir}/`);
+		} catch {
+			missingPaths.push(`${requiredDir}/`);
+		}
+	}
+	for (const requiredFile of ["runner/main.js", path.join("runner", "bin", "kainbain-runner"), "runner/version.json"]) {
+		try {
+			if (!fs.statSync(path.join(root, requiredFile)).isFile()) missingPaths.push(requiredFile);
+		} catch {
+			missingPaths.push(requiredFile);
+		}
+	}
+	if (missingPaths.length === 0) {
+		try {
+			JSON.parse(fs.readFileSync(path.join(root, "runner", "version.json"), "utf8"));
+		} catch (err) {
+			throw new Error(`package-runner: source tree under '${root}' has an unreadable runner/version.json (${err?.message || err}); fix or re-checkout before packaging.`);
+		}
+	}
+	if (missingPaths.length > 0) {
+		throw new Error(
+			`package-runner: source tree under '${root}' is not a releasable runner tree (missing: ${missingPaths.join(", ")}). ` +
+				"Point --root at the repo checkout (the dir holding runner/, shared/, api/), not at runner/ itself.",
+		);
+	}
+};
+
 export const packageRunner = ({ platform, arch, version, outDir, root = REPO_ROOT, installLegDeps = true, build } = {}) => {
 	if (!["linux", "darwin"].includes(platform)) {
 		throw new Error(`package-runner: unsupported platform '${platform}' (v1: linux, darwin).`);
 	}
 	if (!["x64", "arm64"].includes(arch)) {
 		throw new Error(`package-runner: unsupported arch '${arch}' (v1: x64, arm64).`);
+	}
+	validatePackageSourceTree({ root });
+	if (typeof outDir !== "string" || !outDir.trim()) {
+		throw new Error("package-runner: --out needs a directory (got an empty value).");
+	}
+	try {
+		if (fs.existsSync(outDir) && !fs.statSync(outDir).isDirectory()) {
+			throw new Error(`package-runner: --out '${outDir}' exists and is not a directory.`);
+		}
+	} catch (err) {
+		if (err?.message?.startsWith("package-runner:")) throw err;
+		throw new Error(`package-runner: cannot use --out '${outDir}': ${err?.message || err}`);
 	}
 	const clean = String(version || "").trim().replace(/^v/, "");
 	// Full semver incl. canary pre-releases (`1.2.3-rc.1`): the release
@@ -253,16 +394,34 @@ export const packageRunner = ({ platform, arch, version, outDir, root = REPO_ROO
 };
 
 const main = () => {
-	const args = parseArgs(process.argv.slice(2));
-	const outDir = path.resolve(args.out || path.join(REPO_ROOT, "dist"));
-	fs.mkdirSync(outDir, { recursive: true });
-	const result = packageRunner({
-		platform: args.platform,
-		arch: args.arch,
-		version: args.version,
-		outDir,
-	});
-	console.log(`packaged ${result.tarball}`);
+	const args = parsePackagerArgs({ args: process.argv.slice(2) });
+	if (args.help === "true" || args.h === "true") {
+		console.log("Usage: node scripts/package-runner.mjs --platform <linux|darwin> --arch <x64|arm64> --version <semver> [--out <dir>]");
+		return;
+	}
+	try {
+		if (args.out === "true") {
+			throw new Error("package-runner: --out needs a directory (got a bare --out flag with no value).");
+		}
+		for (const requiredKey of ["platform", "arch", "version"]) {
+			if (typeof args[requiredKey] !== "string" || !args[requiredKey] || args[requiredKey] === "true") {
+				throw new Error(`package-runner: missing --${requiredKey} (need --platform <linux|darwin> --arch <x64|arm64> --version <semver>).`);
+			}
+		}
+		const outDir = path.resolve(typeof args.out === "string" ? args.out : path.join(REPO_ROOT, "dist"));
+		fs.mkdirSync(outDir, { recursive: true });
+		const result = packageRunner({
+			platform: args.platform,
+			arch: args.arch,
+			version: args.version,
+			outDir,
+		});
+		console.log(`packaged ${result.tarball}`);
+	} catch (err) {
+		console.error(err?.message || err);
+		console.error("Usage: node scripts/package-runner.mjs --platform <linux|darwin> --arch <x64|arm64> --version <semver> [--out <dir>]");
+		process.exitCode = 1;
+	}
 };
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -102,14 +102,16 @@ function runGitSync(args, cwd) {
  * @description Effective build identity for this Runner: the stamped
  *   `version.json` build wins (`source: "package"`), else a dev checkout
  *   computes one at boot from `git rev-parse HEAD` plus dirty from
- *   `git status --porcelain` scoped to the runner tree
- *   (`source: "checkout"`, no bundle time). Outside a checkout with no
- *   stamp every field is null. Best-effort — never throws, so identity
- *   can never fail boot.
+ *   `git status --porcelain` scoped to the packaged tree (`runner/` plus
+ *   its `../shared` and `../api` siblings when they exist — the same three
+ *   trees `resolveBuildStamp` checks at release time, so a checkout boot
+ *   and its bundle agree on dirty). (`source: "checkout"`, no bundle
+ *   time.) Outside a checkout with no stamp every field is null.
+ *   Best-effort — never throws, so identity can never fail boot.
  * @example resolveRunnerBuild() => { sha: 'abc123', builtAt: null, dirty: true, source: 'checkout' }
  * @param {Object} [opts] - Options.
  * @param {string} [opts.versionDir] - Dir holding version.json.
- * @param {string} [opts.runnerDir] - Runner tree root for the git fallback.
+ * @param {string} [opts.runnerDir] - The `runner/` dir for the git fallback (siblings resolved from here).
  * @param {Function} [opts.runGit] - `(args, cwd) => stdout` seam (tests).
  * @returns {{sha: string|null, builtAt: string|null, dirty: boolean|null, source: string|null}} Build identity.
  ***/
@@ -121,7 +123,15 @@ export function resolveRunnerBuild({ versionDir = RUNNER_SOURCE_DIR, runnerDir =
 	try {
 		const sha = String(runGit(["rev-parse", "HEAD"], runnerDir) ?? "").trim();
 		if (!sha) return { sha: null, builtAt: null, dirty: null, source: null };
-		const status = String(runGit(["status", "--porcelain", "."], runnerDir) ?? "");
+		const statusPaths = ["."];
+		for (const sibling of ["../shared", "../api"]) {
+			try {
+				if (fs.statSync(path.join(runnerDir, sibling)).isDirectory()) statusPaths.push(sibling);
+			} catch {
+				// Sibling absent (bundle layout, temp-dir tests) — dirty covers runner/ only.
+			}
+		}
+		const status = String(runGit(["status", "--porcelain", "--", ...statusPaths], runnerDir) ?? "");
 		return { sha: sha.slice(0, 128), builtAt: null, dirty: status.trim() ? true : false, source: "checkout" };
 	} catch {
 		return { sha: null, builtAt: null, dirty: null, source: null };
@@ -138,12 +148,63 @@ export function resolveRunnerBuild({ versionDir = RUNNER_SOURCE_DIR, runnerDir =
 const CODE_TREE_SKIP_DIRS = new Set([".git", "node_modules"]);
 
 /***
+ * MARK: CODE_TREE_SKIP_FILE_NAMES
+ * @description Exact file names the stale-code scanner never counts: OS
+ *   thumbnails and lock files operators and tools leave behind. A real code
+ *   file never carries one of these names, so skipping them only removes
+ *   false `codeChangedSinceBoot: true` flips (the WP-F local-alpha
+ *   re-baseline), never a real drift signal.
+ * @example CODE_TREE_SKIP_FILE_NAMES.has('.DS_Store') => true
+ ***/
+const CODE_TREE_SKIP_FILE_NAMES = new Set([".DS_Store", "Thumbs.db", ".directory"]);
+
+/***
+ * MARK: CODE_TREE_SKIP_FILE_SUFFIXES
+ * @description File-name suffixes the stale-code scanner never counts:
+ *   editor backups (`~`, `.swp`, `.swo`), merge leftovers (`.orig`,
+ *   `.rej`), and runtime exhaust (`.tmp`, `.log`). Matched against the full
+ *   basename, so `daemon.js` never matches but `daemon.js~` and
+ *   `daemon.log` do. Backup copies (`*.bak*`) are handled separately in
+ *   `isSkippedCodeTreeFile` because the marker sits mid-name.
+ * @example CODE_TREE_SKIP_FILE_SUFFIXES => ['~', '.swp', '.swo', '.orig', '.rej', '.tmp', '.log']
+ ***/
+const CODE_TREE_SKIP_FILE_SUFFIXES = ["~", ".swp", ".swo", ".orig", ".rej", ".tmp", ".log"];
+
+/***
+ * MARK: isSkippedCodeTreeFile
+ * @description Whether one basename is a non-code artifact the stale-code
+ *   scanner ignores: exact OS junk names, editor/runtime suffixes, emacs
+ *   autosaves (`#name#`, `.#name`), and backup copies (`*.bak`, `*.bak.*`,
+ *   `*.bak-*`). Real code (`daemon.js`, `version.json`) never matches —
+ *   the WP-F false positive was an inspection artifact tripping a
+ *   content-blind fingerprint, and this is the narrow fix for exactly that.
+ * @example isSkippedCodeTreeFile({ fileName: 'daemon.js~' }) => true
+ * @example isSkippedCodeTreeFile({ fileName: 'daemon.js' }) => false
+ * @param {Object} [opts] - Labelled inputs.
+ * @param {string} opts.fileName - Bare file name (no directories).
+ * @returns {boolean} True when the scanner must ignore the file.
+ ***/
+export function isSkippedCodeTreeFile({ fileName } = {}) {
+	if (typeof fileName !== "string" || !fileName) return false;
+	if (CODE_TREE_SKIP_FILE_NAMES.has(fileName)) return true;
+	if (fileName.startsWith(".#") || (fileName.startsWith("#") && fileName.endsWith("#"))) return true;
+	if (fileName === ".bak" || fileName.endsWith(".bak") || fileName.includes(".bak.") || fileName.includes(".bak-")) return true;
+	return CODE_TREE_SKIP_FILE_SUFFIXES.some((suffix) => fileName.endsWith(suffix));
+}
+
+/***
  * MARK: snapshotCodeTree
  * @description Cheap fingerprint of one code tree: file count, total
  *   bytes, and the newest mtime across every file (no content hashing —
  *   a heartbeat-time rescan must stay sub-millisecond on a small tree).
- *   Skips `.git`/`node_modules`; an unreadable tree fingerprints as zeros
+ *   Skips `.git`/`node_modules` plus non-code artifacts (see
+ *   `isSkippedCodeTreeFile`); symlinks are never followed, so a link cycle
+ *   cannot hang a heartbeat. An unreadable tree fingerprints as zeros
  *   (never throws, so scanning can never break a heartbeat).
+ *   What it can and cannot see: it detects added/removed/rewritten files,
+ *   but NOT a same-size same-mtime content swap (use `build.sha` for
+ *   version truth) and NOT files outside `rootDir` (use
+ *   `resolveCodeTreeScanRoot` so the root covers the whole bundle).
  * @example snapshotCodeTree('/repo/runner') => { fileCount: 30, totalBytes: 12345, latestMtimeMs: 1730000000000 }
  * @param {string} rootDir - Tree root to walk.
  * @returns {{fileCount: number, totalBytes: number, latestMtimeMs: number}} Fingerprint.
@@ -166,6 +227,7 @@ export function snapshotCodeTree(rootDir) {
 					if (entry.isDirectory()) {
 						if (!CODE_TREE_SKIP_DIRS.has(entry.name)) stack.push(full);
 					} else if (entry.isFile()) {
+						if (isSkippedCodeTreeFile({ fileName: entry.name })) continue;
 						const stat = fs.statSync(full);
 						snapshot.fileCount += 1;
 						snapshot.totalBytes += stat.size;
@@ -183,15 +245,51 @@ export function snapshotCodeTree(rootDir) {
 }
 
 /***
+ * MARK: resolveCodeTreeScanRoot
+ * @description The tree the stale-code scanner must cover: the whole bundle
+ *   root (the dir holding `version.json` next to `runner/`, `api/`,
+ *   `shared/`) when this daemon runs from an installed bundle, else this
+ *   daemon's own `runner/` dir (a dev checkout — the repo root above it
+ *   holds frontend/docs/tests that must NOT trip the fingerprint). Scanning
+ *   only `runner/` blinded the flag to harness-code drift under `api/`
+ *   (the pi harness lives there), while the WP-F operator triage scanned
+ *   the whole install — this aligns the daemon with the triage. Never
+ *   throws (an unreadable parent falls back to the daemon dir).
+ * @example resolveCodeTreeScanRoot({ daemonDir: '/install/unpacked/runner' }) => '/install/unpacked'
+ * @example resolveCodeTreeScanRoot({ daemonDir: '/repo/runner' }) => '/repo/runner'
+ * @param {Object} [opts] - Options.
+ * @param {string} [opts.daemonDir] - Dir holding this daemon's code (defaults to it).
+ * @returns {string} Scan root for `snapshotCodeTree`.
+ ***/
+export function resolveCodeTreeScanRoot({ daemonDir } = {}) {
+	const daemonFolder = typeof daemonDir === "string" && daemonDir ? daemonDir : RUNNER_SOURCE_DIR;
+	try {
+		const parentFolder = path.dirname(daemonFolder);
+		if (
+			fs.statSync(path.join(parentFolder, "version.json")).isFile() &&
+			fs.statSync(path.join(parentFolder, "api")).isDirectory() &&
+			fs.statSync(path.join(parentFolder, "shared")).isDirectory()
+		) {
+			return parentFolder;
+		}
+	} catch {
+		// Not a bundle layout (dev checkout, tests, or an unreadable parent).
+	}
+	return daemonFolder;
+}
+
+/***
  * MARK: hasCodeChangedSinceBoot
  * @description Whether the code tree under `rootDir` differs from its
  *   boot fingerprint: any file newer than boot, or a changed file
- *   count/total size (added, removed, or rewritten files). A missing
- *   baseline, a baseline that saw zero files (a failed boot scan — a
- *   real tree always holds this daemon's own files), or an unscannable
- *   tree answers false — staleness is a warn-only signal, so an
- *   unprovable change stays quiet rather than flagging every
- *   heartbeat.
+ *   count/total size (added, removed, or rewritten files). Non-code
+ *   artifacts (`.bak*`, `*~`, `.log`, `.tmp`, OS junk — see
+ *   `isSkippedCodeTreeFile`) never count, so an operator inspection
+ *   leaves the flag quiet. A missing baseline, a baseline that saw zero
+ *   files (a failed boot scan — a real tree always holds this daemon's
+ *   own files), or an unscannable tree answers false — staleness is a
+ *   warn-only signal, so an unprovable change stays quiet rather than
+ *   flagging every heartbeat.
  * @example hasCodeChangedSinceBoot({ rootDir: '/repo/runner', baseline: snapshotCodeTree('/repo/runner') }) => false
  * @param {Object} [opts] - Options.
  * @param {string} opts.rootDir - Tree root to rescan.
@@ -257,12 +355,23 @@ export const RUNNER_BUILD = resolveRunnerBuild();
 export const BOOTED_AT_MS = Date.now();
 
 /***
- * MARK: BOOT_CODE_SNAPSHOT
- * @description Boot fingerprint of this daemon's own code tree; each
- *   heartbeat rescans and reports `codeChangedSinceBoot` when the tree
- *   moved underneath the running process.
+ * MARK: CODE_TREE_SCAN_ROOT
+ * @description Tree root the stale-code scanner covers: the whole bundle
+ *   root for installed bundles, this daemon's own `runner/` dir for dev
+ *   checkouts (see `resolveCodeTreeScanRoot`). Resolved once at boot so
+ *   every heartbeat compares the same tree its baseline fingerprinted.
+ * @example CODE_TREE_SCAN_ROOT => '/install/unpacked'
  ***/
-const BOOT_CODE_SNAPSHOT = snapshotCodeTree(RUNNER_SOURCE_DIR);
+export const CODE_TREE_SCAN_ROOT = resolveCodeTreeScanRoot({});
+
+/***
+ * MARK: BOOT_CODE_SNAPSHOT
+ * @description Boot fingerprint of the code tree under
+ *   `CODE_TREE_SCAN_ROOT`; each heartbeat rescans the same root and
+ *   reports `codeChangedSinceBoot` when the tree moved underneath the
+ *   running process.
+ ***/
+const BOOT_CODE_SNAPSHOT = snapshotCodeTree(CODE_TREE_SCAN_ROOT);
 
 // Claim renewal cadence: comfortably inside the 5-minute production lease
 // TTL (KAINBAIN_CLAIM_TTL_MS) so long harness runs keep their fence. A
@@ -1040,7 +1149,7 @@ export function factsFor({ config, harnessVersions, updateStatus = null, command
 	const versionFor = (id) =>
 		harnessVersions?.[id] ?? harnessVersionCache.get(id)?.[id] ?? "unknown";
 	const advertisedModels = resolveAdvertisedModels(config, discoveredModelsCache);
-	const scanRoot = codeTree?.rootDir ?? RUNNER_SOURCE_DIR;
+	const scanRoot = codeTree?.rootDir ?? CODE_TREE_SCAN_ROOT;
 	const scanBaseline = codeTree && "baseline" in codeTree ? codeTree.baseline : BOOT_CODE_SNAPSHOT;
 	return {
 		harnesses: runnerHarnessIds(config).map((id) => ({ id, version: versionFor(id) })),

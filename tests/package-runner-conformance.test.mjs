@@ -5,8 +5,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { packageRunner, resolveBuildStamp } from "../scripts/package-runner.mjs";
-import { execFileSync } from "node:child_process";
+import { packageRunner, parsePackagerArgs, resolveBuildStamp, validatePackageSourceTree } from "../scripts/package-runner.mjs";
+import { execFileSync, spawnSync } from "node:child_process";
 import { applyUpdate } from "../runner/updates/index.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -268,4 +268,158 @@ describe("package-runner leg closure (N3 regression gate)", () => {
 			}
 		},
 	);
+});
+
+describe("package-runner arg parsing", () => {
+	it("parses --key value and --key=value without mutating the input", () => {
+		const input = ["--platform", "linux", "--arch=x64", "--version", "1.2.3-rc.1"];
+		const snapshot = [...input];
+		assert.deepEqual(parsePackagerArgs({ args: input }), { platform: "linux", arch: "x64", version: "1.2.3-rc.1" });
+		assert.deepEqual(input, snapshot, "the caller's argv slice is never mutated");
+	});
+
+	it("treats a bare flag as \"true\" and skips positionals, a bare --, and non-strings", () => {
+		assert.deepEqual(parsePackagerArgs({ args: ["--out"] }), { out: "true" });
+		assert.deepEqual(parsePackagerArgs({ args: ["pos", "--", "--platform", "linux", 42, null] }), { platform: "linux" });
+		assert.deepEqual(parsePackagerArgs({ args: ["--empty=", "--", "--x", "--y", "v"] }), { empty: "", x: "true", y: "v" });
+		assert.deepEqual(parsePackagerArgs({}), {});
+		assert.deepEqual(parsePackagerArgs(), {});
+	});
+
+	it("lets the last duplicate win and keeps unknown keys for the caller to warn on", () => {
+		assert.deepEqual(parsePackagerArgs({ args: ["--arch", "x64", "--arch", "arm64"] }), { arch: "arm64" });
+		assert.deepEqual(parsePackagerArgs({ args: ["--platfrom", "linux"] }), { platfrom: "linux" });
+	});
+
+	it("the CLI names the missing required arg (never a mystery 'undefined')", () => {
+		const got = spawnSync(process.execPath, [path.join(ROOT, "scripts", "package-runner.mjs"), "--platform", "linux"], { encoding: "utf8", timeout: 30000 });
+		assert.equal(got.status, 1);
+		assert.match(got.stderr, /missing --arch/, "the error names the missing key");
+		assert.match(got.stderr, /Usage:/, "the error shows usage");
+		const bareOut = spawnSync(process.execPath, [path.join(ROOT, "scripts", "package-runner.mjs"), "--out"], { encoding: "utf8", timeout: 30000 });
+		assert.equal(bareOut.status, 1);
+		assert.match(bareOut.stderr, /--out needs a directory/, "a bare --out flag fails instead of writing to ./true");
+	});
+});
+
+describe("package-runner source validation", () => {
+	it("accepts a releasable tree and names every missing path otherwise", () => {
+		const root = fakeRoot();
+		try {
+			assert.doesNotThrow(() => validatePackageSourceTree({ root }));
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+		const empty = fs.mkdtempSync(path.join(os.tmpdir(), "kb-pack-validate-"));
+		try {
+			assert.throws(() => validatePackageSourceTree({ root: empty }), /not a releasable runner tree.*missing: .*runner\/.*shared\/.*api\//s);
+		} finally {
+			fs.rmSync(empty, { recursive: true, force: true });
+		}
+	});
+
+	it("fails fast with the fix attached when pointed at runner/ itself", () => {
+		const root = fakeRoot();
+		try {
+			assert.throws(() => validatePackageSourceTree({ root: path.join(root, "runner") }), /not at runner\/ itself/);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects an unreadable runner/version.json instead of failing mid-copy", () => {
+		const root = fakeRoot();
+		try {
+			fs.writeFileSync(path.join(root, "runner", "version.json"), "{not json");
+			assert.throws(() => validatePackageSourceTree({ root }), /unreadable runner\/version\.json/);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("packageRunner fails before staging (no partial tarball, no ENOENT)", () => {
+		const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-pack-failfast-"));
+		try {
+			assert.throws(
+				() => packageRunner({ platform: "linux", arch: "x64", version: "0.9.0", outDir, root: path.join(outDir, "no-such-root"), installLegDeps: false }),
+				/not a releasable runner tree/,
+			);
+			assert.deepEqual(fs.readdirSync(outDir), [], "nothing staged on a validation failure");
+		} finally {
+			fs.rmSync(outDir, { recursive: true, force: true });
+		}
+	});
+
+	it("packageRunner rejects a file as --out with a clear error", () => {
+		const root = fakeRoot();
+		const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-pack-out-"));
+		try {
+			const fileAsOut = path.join(outDir, "file");
+			fs.writeFileSync(fileAsOut, "x");
+			assert.throws(
+				() => packageRunner({ platform: "linux", arch: "x64", version: "0.9.0", outDir: fileAsOut, root, installLegDeps: false }),
+				/exists and is not a directory/,
+			);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+			fs.rmSync(outDir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("package-runner symlink safety", () => {
+	it("a symlink cycle in the source tree cannot hang or crash the packager", () => {
+		const root = fakeRoot();
+		const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-pack-link-"));
+		try {
+			fs.symlinkSync(root, path.join(root, "runner", "cycle-to-root"));
+			fs.symlinkSync(path.join(root, "runner"), path.join(root, "shared", "cycle-to-runner"));
+			const got = packageRunner({ platform: "linux", arch: "x64", version: "0.9.0", outDir, root, installLegDeps: false });
+			assert.ok(fs.existsSync(got.tarball), "the bundle still builds");
+			assert.equal(fs.existsSync(path.join(outDir, got.name, "runner", "cycle-to-root")), false, "dir links are never descended");
+			assert.equal(fs.existsSync(path.join(outDir, got.name, "shared", "cycle-to-runner")), false);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+			fs.rmSync(outDir, { recursive: true, force: true });
+		}
+	});
+
+	it("a file symlink ships its target bytes once, a dangling link ships nothing", () => {
+		const root = fakeRoot();
+		const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-pack-filelink-"));
+		try {
+			fs.writeFileSync(path.join(root, "shared", "real.js"), "export const real = 1;\n");
+			fs.symlinkSync(path.join(root, "shared", "real.js"), path.join(root, "shared", "alias.js"));
+			fs.symlinkSync(path.join(root, "shared", "gone.js"), path.join(root, "shared", "dangling.js"));
+			const got = packageRunner({ platform: "linux", arch: "x64", version: "0.9.0", outDir, root, installLegDeps: false });
+			assert.equal(fs.readFileSync(path.join(outDir, got.name, "shared", "alias.js"), "utf8"), "export const real = 1;\n");
+			assert.equal(fs.existsSync(path.join(outDir, got.name, "shared", "dangling.js")), false);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+			fs.rmSync(outDir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("package-runner.sh REF guard (WP-F filename-vs-stamp trap)", () => {
+	it("documents the stamp rule, the override flag, and the transfer receipt", () => {
+		const wrapper = fs.readFileSync(path.join(ROOT, "scripts", "package-runner.sh"), "utf8");
+		assert.match(wrapper, /--allow-ref-mismatch/, "the override flag exists");
+		assert.match(wrapper, /never from the filename/i, "the stamp rule is stated");
+		assert.match(wrapper, /sha256/, "the transfer receipt prints a re-hashable sha256");
+		assert.match(wrapper, /stamped build\.sha/, "the receipt names the stamped identity");
+	});
+
+	it("refuses a sha-looking REF that matches neither HEAD nor its short form", { skip: !repoIsGitCheckout }, () => {
+		const headShort = execFileSync("git", ["-C", ROOT, "rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim();
+		const lastChar = headShort[headShort.length - 1];
+		const flipped = lastChar === "0" ? "1" : "0";
+		const mismatchRef = `${headShort.slice(0, -1)}${flipped}`;
+		assert.match(mismatchRef, /^[0-9a-f]{7,40}$/, "the test REF must look like a sha to trip the guard");
+		const got = spawnSync("bash", [path.join(ROOT, "scripts", "package-runner.sh"), mismatchRef], { encoding: "utf8", timeout: 30000 });
+		assert.notEqual(got.status, 0, "a mismatched REF fails before any packaging");
+		assert.match(got.stderr, /matches neither HEAD/, "the error names the mismatch");
+		assert.match(got.stderr, /--allow-ref-mismatch/, "the error shows the override");
+		assert.equal(fs.existsSync(path.join(ROOT, "dist", `kainbain-runner-${mismatchRef}.tar.gz`)), false, "no tarball is written on a guard failure");
+	});
 });

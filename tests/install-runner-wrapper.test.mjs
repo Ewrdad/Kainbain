@@ -244,4 +244,64 @@ describe("runner-install-root.sh helper", () => {
 			fs.rmSync(sandbox, { recursive: true, force: true });
 		}
 	});
+
+	it("fails with the missing path named when the copy lands incomplete (silent-old-boot guard)", () => {
+		const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "kb-laydown-"));
+		try {
+			const tree = path.join(sandbox, "tree");
+			fakeTree(tree);
+			const root = path.join(sandbox, "install");
+			// Block the runner/ dir with a regular file so the runner copy
+			// cannot land: the post-copy assert must catch it and refuse to
+			// point `current` at the partial tree.
+			const blockedRunner = path.join(root, "releases", "0.1.0", "unpacked", "runner");
+			fs.mkdirSync(path.dirname(blockedRunner), { recursive: true });
+			fs.writeFileSync(blockedRunner, "blocker");
+			const got = spawnSync("bash", ["-c", `. ${JSON.stringify(path.join(ROOT, "scripts", "lib", "runner-install-root.sh"))} && lay_down_runner_install_root ${JSON.stringify(tree)} ${JSON.stringify(root)}`,], {
+				encoding: "utf8",
+			});
+			assert.notEqual(got.status, 0);
+			assert.match(got.stderr, /lay-down incomplete, missing .*runner\/main\.js/, "the error names the missing entrypoint");
+			assert.equal(fs.existsSync(path.join(root, "current")), false, "current never points at a partial tree");
+		} finally {
+			fs.rmSync(sandbox, { recursive: true, force: true });
+		}
+	});
+
+	it("warns (not fails) when the tree ships no pi discovery dependency", () => {
+		const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "kb-laydown-"));
+		try {
+			const tree = path.join(sandbox, "tree");
+			fakeTree(tree);
+			const root = path.join(sandbox, "install");
+			const got = spawnSync("bash", ["-c", `. ${JSON.stringify(path.join(ROOT, "scripts", "lib", "runner-install-root.sh"))} && lay_down_runner_install_root ${JSON.stringify(tree)} ${JSON.stringify(root)}`,], {
+				encoding: "utf8",
+			});
+			assert.equal(got.status, 0, got.stderr);
+			assert.match(got.stderr, /no pi discovery dependency/, "the operator is told the pi leg will report LEG_MODULE_MISSING");
+			assert.match(got.stderr, /scripts\/package-runner\.sh/, "the warning names the bundle remediation");
+		} finally {
+			fs.rmSync(sandbox, { recursive: true, force: true });
+		}
+	});
+
+	it("stays quiet about the pi leg when the dependency ships in the tree", () => {
+		const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "kb-laydown-"));
+		try {
+			const tree = path.join(sandbox, "tree");
+			fakeTree(tree);
+			const piDep = path.join(tree, "api", "node_modules", "@earendil-works", "pi-coding-agent", "dist", "utils", "child-process.js");
+			fs.mkdirSync(path.dirname(piDep), { recursive: true });
+			fs.writeFileSync(piDep, "stub\n");
+			const root = path.join(sandbox, "install");
+			const got = spawnSync("bash", ["-c", `. ${JSON.stringify(path.join(ROOT, "scripts", "lib", "runner-install-root.sh"))} && lay_down_runner_install_root ${JSON.stringify(tree)} ${JSON.stringify(root)}`,], {
+				encoding: "utf8",
+			});
+			assert.equal(got.status, 0, got.stderr);
+			assert.doesNotMatch(got.stderr, /no pi discovery dependency/);
+			assert.ok(fs.existsSync(path.join(root, "releases", "0.1.0", "unpacked", "api", "node_modules", "@earendil-works", "pi-coding-agent", "dist", "utils", "child-process.js")));
+		} finally {
+			fs.rmSync(sandbox, { recursive: true, force: true });
+		}
+	});
 });

@@ -95,9 +95,12 @@ describe("buildManifest", () => {
 describe("packageRunner", () => {
 	// A hermetic fake repo root: the packager only needs version.json plus
 	// the runner/shared/api trees, so the test never tars the real repo.
+	// The wrapper entrypoint is part of the releasable layout (the
+	// conformance suite pins that it ships in every bundle), so the fake
+	// carries it too — otherwise source validation rightly refuses the tree.
 	const fakeRoot = () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "kb-pkgroot-"));
-		fs.mkdirSync(path.join(root, "runner"), { recursive: true });
+		fs.mkdirSync(path.join(root, "runner", "bin"), { recursive: true });
 		fs.mkdirSync(path.join(root, "shared"), { recursive: true });
 		fs.mkdirSync(path.join(root, "api"), { recursive: true });
 		fs.writeFileSync(
@@ -105,6 +108,7 @@ describe("packageRunner", () => {
 			JSON.stringify({ component: "runner", apiVersion: "1.0.0", runnerVersion: "0.0.0" }),
 		);
 		fs.writeFileSync(path.join(root, "runner", "main.js"), "export const main = () => 0;\n");
+		fs.writeFileSync(path.join(root, "runner", "bin", "kainbain-runner"), "#!/bin/bash\necho wrapper\n");
 		return root;
 	};
 

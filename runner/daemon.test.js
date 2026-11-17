@@ -34,9 +34,12 @@ import {
 	BOOTED_AT_MS,
 	factsFor,
 	hasCodeChangedSinceBoot,
+	isSkippedCodeTreeFile,
 	loadRunnerVersionInfo,
+	resolveCodeTreeScanRoot,
 	resolveRunnerBuild,
 	snapshotCodeTree,
+	CODE_TREE_SCAN_ROOT,
 	ciWorkdirFor,
 	integrationMergeSubject,
 } from "./daemon.js";
@@ -2843,6 +2846,54 @@ describe("runner build identity", () => {
 		}
 	});
 
+	it("scopes checkout dirtiness to the packaged tree (runner + shared + api siblings)", () => {
+		const parent = fs.mkdtempSync(path.join(os.tmpdir(), "kb-build-scope-"));
+		try {
+			const runnerDir = path.join(parent, "runner");
+			fs.mkdirSync(runnerDir, { recursive: true });
+			fs.mkdirSync(path.join(parent, "shared"), { recursive: true });
+			fs.mkdirSync(path.join(parent, "api"), { recursive: true });
+			fs.writeFileSync(path.join(runnerDir, "version.json"), JSON.stringify({ runnerVersion: "0.1.0" }));
+			const seen = [];
+			resolveRunnerBuild({
+				versionDir: runnerDir,
+				runnerDir,
+				runGit: (args) => {
+					seen.push(args);
+					return args[0] === "rev-parse" ? "deadbeef\n" : "";
+				},
+			});
+			const statusCall = seen.find((args) => args[0] === "status");
+			assert.ok(statusCall, "dirty is probed via git status");
+			assert.ok(statusCall.includes("."), "runner/ itself is covered");
+			assert.ok(statusCall.includes("../shared") && statusCall.includes("../api"), "sibling trees match the release stamp scope");
+		} finally {
+			fs.rmSync(parent, { recursive: true, force: true });
+		}
+	});
+
+	it("falls back to runner-only dirtiness when the siblings are absent", () => {
+		const parent = fs.mkdtempSync(path.join(os.tmpdir(), "kb-build-lone-"));
+		try {
+			const runnerDir = path.join(parent, "runner");
+			fs.mkdirSync(runnerDir, { recursive: true });
+			fs.writeFileSync(path.join(runnerDir, "version.json"), JSON.stringify({ runnerVersion: "0.1.0" }));
+			const seen = [];
+			resolveRunnerBuild({
+				versionDir: runnerDir,
+				runnerDir,
+				runGit: (args) => {
+					seen.push(args);
+					return args[0] === "rev-parse" ? "deadbeef\n" : "";
+				},
+			});
+			const statusCall = seen.find((args) => args[0] === "status");
+			assert.deepEqual(statusCall, ["status", "--porcelain", "--", "."]);
+		} finally {
+			fs.rmSync(parent, { recursive: true, force: true });
+		}
+	});
+
 	it("exposes the module build identity and boot time with a stable shape", () => {
 		assert.deepEqual(Object.keys(RUNNER_BUILD).sort(), ["builtAt", "dirty", "sha", "source"]);
 		assert.equal(typeof BOOTED_AT_MS, "number");
@@ -2931,6 +2982,124 @@ describe("runner stale-code detection", () => {
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}
+	});
+
+	it("ignores non-code artifacts but still counts real code (WP-F false-positive fix)", () => {
+		assert.equal(isSkippedCodeTreeFile({ fileName: "daemon.js" }), false);
+		assert.equal(isSkippedCodeTreeFile({ fileName: "version.json" }), false);
+		assert.equal(isSkippedCodeTreeFile({ fileName: "my.bakery.js" }), false, "a code file that merely contains 'bak' still counts");
+		assert.equal(isSkippedCodeTreeFile({ fileName: "" }), false);
+		assert.equal(isSkippedCodeTreeFile({}), false);
+		assert.equal(isSkippedCodeTreeFile(), false);
+		for (const artifact of [
+			"daemon.js~",
+			"daemon.js.bak",
+			"daemon.bak.js",
+			"daemon.bak-wpf",
+			".bak",
+			"daemon.log",
+			"daemon.tmp",
+			"daemon.orig",
+			"daemon.rej",
+			"daemon.swp",
+			"daemon.swo",
+			".DS_Store",
+			"Thumbs.db",
+			"#daemon.js#",
+			".#daemon.js",
+		]) {
+			assert.equal(isSkippedCodeTreeFile({ fileName: artifact }), true, `${artifact} is skipped`);
+		}
+	});
+
+	it("stays quiet when only skipped artifacts are added or touched", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-code-tree-artifacts-"));
+		try {
+			fs.writeFileSync(path.join(dir, "daemon.js"), "v1");
+			const baseline = snapshotCodeTree(dir);
+			assert.equal(baseline.fileCount, 1);
+			const later = new Date(Date.now() + 10_000);
+			for (const artifact of ["notes.log", "daemon.js~", "daemon.bak", ".DS_Store", "#daemon.js#"]) {
+				fs.writeFileSync(path.join(dir, artifact), "artifact");
+				fs.utimesSync(path.join(dir, artifact), later, later);
+			}
+			const current = snapshotCodeTree(dir);
+			assert.equal(current.fileCount, 1, "artifacts never join the count");
+			assert.equal(current.latestMtimeMs, baseline.latestMtimeMs, "artifact mtimes never move the watermark");
+			assert.equal(hasCodeChangedSinceBoot({ rootDir: dir, baseline }), false);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("still flips when real code changes alongside artifacts", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-code-tree-mixed-"));
+		try {
+			fs.writeFileSync(path.join(dir, "daemon.js"), "v1");
+			fs.writeFileSync(path.join(dir, "notes.log"), "old");
+			const baseline = snapshotCodeTree(dir);
+			assert.equal(baseline.fileCount, 1);
+			const later = new Date(Date.now() + 10_000);
+			fs.utimesSync(path.join(dir, "daemon.js"), later, later);
+			assert.equal(hasCodeChangedSinceBoot({ rootDir: dir, baseline }), true);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("runner stale-code scan root", () => {
+	it("covers the whole bundle root for installed bundles, the daemon dir otherwise", () => {
+		const bundle = fs.mkdtempSync(path.join(os.tmpdir(), "kb-scan-root-bundle-"));
+		const checkout = fs.mkdtempSync(path.join(os.tmpdir(), "kb-scan-root-checkout-"));
+		try {
+			fs.mkdirSync(path.join(bundle, "runner"), { recursive: true });
+			fs.mkdirSync(path.join(bundle, "api"), { recursive: true });
+			fs.mkdirSync(path.join(bundle, "shared"), { recursive: true });
+			fs.writeFileSync(path.join(bundle, "version.json"), "{}");
+			fs.writeFileSync(path.join(bundle, "runner", "daemon.js"), "v1");
+			assert.equal(resolveCodeTreeScanRoot({ daemonDir: path.join(bundle, "runner") }), bundle);
+
+			fs.mkdirSync(path.join(checkout, "runner"), { recursive: true });
+			fs.mkdirSync(path.join(checkout, "api"), { recursive: true });
+			fs.mkdirSync(path.join(checkout, "shared"), { recursive: true });
+			fs.writeFileSync(path.join(checkout, "runner", "daemon.js"), "v1");
+			assert.equal(
+				resolveCodeTreeScanRoot({ daemonDir: path.join(checkout, "runner") }),
+				path.join(checkout, "runner"),
+				"a checkout (no version.json at the parent) scans runner/ only, never the repo root",
+			);
+		} finally {
+			fs.rmSync(bundle, { recursive: true, force: true });
+			fs.rmSync(checkout, { recursive: true, force: true });
+		}
+	});
+
+	it("detects harness-code drift under api/ when scanning a bundle root", () => {
+		const bundle = fs.mkdtempSync(path.join(os.tmpdir(), "kb-scan-root-drift-"));
+		try {
+			fs.mkdirSync(path.join(bundle, "runner"), { recursive: true });
+			fs.mkdirSync(path.join(bundle, "api", "agent", "harnesses", "pi"), { recursive: true });
+			fs.mkdirSync(path.join(bundle, "shared"), { recursive: true });
+			fs.writeFileSync(path.join(bundle, "version.json"), "{}");
+			fs.writeFileSync(path.join(bundle, "runner", "daemon.js"), "v1");
+			fs.writeFileSync(path.join(bundle, "api", "agent", "harnesses", "pi", "piHarness.js"), "v1");
+			const scanRoot = resolveCodeTreeScanRoot({ daemonDir: path.join(bundle, "runner") });
+			const baseline = snapshotCodeTree(scanRoot);
+			const later = new Date(Date.now() + 10_000);
+			fs.utimesSync(path.join(bundle, "api", "agent", "harnesses", "pi", "piHarness.js"), later, later);
+			assert.equal(hasCodeChangedSinceBoot({ rootDir: scanRoot, baseline }), true);
+		} finally {
+			fs.rmSync(bundle, { recursive: true, force: true });
+		}
+	});
+
+	it("never throws and defaults to this daemon's own tree", () => {
+		assert.equal(typeof CODE_TREE_SCAN_ROOT, "string");
+		assert.ok(CODE_TREE_SCAN_ROOT.length > 0);
+		assert.equal(resolveCodeTreeScanRoot({}), CODE_TREE_SCAN_ROOT);
+		assert.equal(resolveCodeTreeScanRoot({ daemonDir: path.join(os.tmpdir(), "kb-scan-root-missing-no-such-dir") }), path.join(os.tmpdir(), "kb-scan-root-missing-no-such-dir"));
+		assert.equal(resolveCodeTreeScanRoot({ daemonDir: "" }), CODE_TREE_SCAN_ROOT);
 	});
 });
 
