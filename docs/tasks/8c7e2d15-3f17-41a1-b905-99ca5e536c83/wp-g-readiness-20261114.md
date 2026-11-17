@@ -235,3 +235,21 @@ runner, 175 dispatch, 175 routes/guard, 91 frontend; 8/8 fixture) with
 ENGINE-DIR-UNTOUCHED proven bit-identical against the LIVE engine files.
 Evidence in `run37-20261114-2334.md` (+ `verification-20261114.md`
 addendum).
+
+## Addendum 2026-11-17 ~01:12Z (run38 branch-sync + re-verification)
+
+NOT READY (unchanged since run37, plus one regression). Branch synced:
+task branch merged `origin/main df30a473` (`dd9b77c4`), zero conflicts,
+merge-base == main, local code-tree scan fix + main `taskAssets` arm coexist;
+runner 430/430, dispatch 175/175, routes 177/177 green (frontend blocked on
+missing `frontend/node_modules` env, picker files untouched by the sync).
+Live §6.1 PARTIAL: local-alpha fully PASS; local-bravo discovery PASS but
+`paused:true` regression (muse-ember 3→2 runners); server2-alpha still
+FAIL (pre-WP-B pi `ERR_MODULE_NOT_FOUND`, Bundle B pending — tarball
+re-hashed `ac919e2a…`, install still `f430f537`). §6.2 PASS (123 models,
+zero `test-fleet`, 2 quarantined leftovers awaiting q3 grant). §6.3/§6.4
+live pending operator. WP-G may proceed to its HUMAN dispatch decision
+ONLY after operator completes the run38 recommendation list (Bundle B +
+bravo decision + restarts with rediscovery receipts, live §6.3 UI pass,
+explicit human who/when/scope for q3 leftovers) and a later agent run
+confirms §6.1 all-pass. Evidence in `run38-20261117-0112.md`.
