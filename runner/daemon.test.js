@@ -3222,4 +3222,24 @@ describe("factsFor build identity", () => {
 			fs.rmSync(config.workRoot, { recursive: true, force: true });
 		}
 	});
+
+	it("reports this process's WP2 signal totals in facts.signals for the backend bridge", () => {
+		// The Runner is a separate process from the backend, so its
+		// worktree-eviction counter only reaches the observability
+		// exposition when it rides every heartbeat as `facts.signals`.
+		const config = factsConfig();
+		try {
+			const facts = factsFor({ config });
+			assert.equal(typeof facts.signals, "object");
+			assert.equal(typeof facts.signals.worktreeEvictions, "number");
+			assert.ok(Number.isFinite(facts.signals.worktreeEvictions));
+			assert.ok(facts.signals.worktreeEvictions >= 0);
+			// A fresh object per call: mutating one heartbeat's facts must
+			// not corrupt the next heartbeat.
+			const again = factsFor({ config });
+			assert.notEqual(facts.signals, again.signals);
+		} finally {
+			fs.rmSync(config.workRoot, { recursive: true, force: true });
+		}
+	});
 });
