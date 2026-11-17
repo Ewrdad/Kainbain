@@ -5,30 +5,6 @@ import { createLogProcessor } from "../agent/logStream/logProcessor.js";
 import { attachAttestationToEntry } from "../../shared/stageAttestation.js";
 
 /***
- * MARK: ExecutionLedger
- * @description Backend receiving side of the Runner wire protocol (ADR 0009
- *   lifecycle steps 4–6): sequenced progress events, sequenced log frames,
- *   idempotent completion, and interruption. Every mutating call first
- *   checks the ClaimStore lease — a stale epoch is rejected before any
- *   state changes, which is what makes a partitioned zombie's late report
- *   a 409 instead of a double completion (R01). Dedupe is per execution:
- *   a retried report is a recorded no-op, never a duplicate stage (step 4).
- *   Log gaps are represented in the data ("frames missing — Runner
- *   disconnected"), never papered over (R14). Completion records the
- *   Runner's report (SHA/branch/posture) and releases the lease; stage
- *   advancement stays engine-owned until the dispatch integration lands.
- *   Monitor counters back the Phase 2 "pageable-zero" reconcile/divergence
- *   signals. In-memory for Phase 2 (same durability story as ClaimStore).
- * @example const ledger = new ExecutionLedger()
- * @param {Object} [opts] - Options.
- ***/
-/***
- * MARK: ExecutionLedger
- * @description In-memory receiving side for Runner progress/logs/complete/
- *   interrupt keyed by lease. See the module block for the fencing contract.
- * @example const ledger = new ExecutionLedger(); ledger.snapshot() => { progressRecorded: 0, ... }
- ***/
-/***
  * MARK: MAX_RUNNER_INTERRUPTS
  * @description Bound on consecutive Runner-death interrupts for one
  *   task+stage (G7): a Runner that keeps dying mid-stage re-queues as
@@ -44,10 +20,25 @@ import { cleanReportedPosture } from "./runnerPosture.js";
 
 /***
  * MARK: ExecutionLedger
- * @description In-memory receiving side for Runner progress/logs/complete/
- *   interrupt keyed by lease (D1 fencing, R01/R14); consecutive Runner-death
- *   interrupts escalate past MAX_RUNNER_INTERRUPTS (G7). See the module
- *   block above for the full fencing contract.
+ * @description Backend receiving side of the Runner wire protocol (ADR 0009
+ *   lifecycle steps 4–6): sequenced progress events, sequenced log frames,
+ *   idempotent completion, and interruption. Every mutating call first
+ *   checks the ClaimStore lease — a stale epoch is rejected before any
+ *   state changes, which is what makes a partitioned zombie's late report
+ *   a 409 instead of a double completion (R01). Dedupe is per execution:
+ *   a retried report is a recorded no-op, never a duplicate stage (step 4).
+ *   Log gaps are represented in the data ("frames missing — Runner
+ *   disconnected"), never papered over (R14). Completion records the
+ *   Runner's report (SHA/branch/posture) and releases the lease; stage
+ *   advancement stays engine-owned until the dispatch integration lands.
+ *   WP1 tenant fence (AUDIT H-4): the lease also names its home project
+ *   (`hold.projectId`), and every guarded write must name the same one —
+ *   a mismatch throws 409 PROJECT_FENCE_MISMATCH, counts
+ *   `fencedRejected`, audits on the lease's home task, and leaves the
+ *   original hold untouched. Consecutive Runner-death interrupts escalate
+ *   past MAX_RUNNER_INTERRUPTS (G7). Monitor counters back the Phase 2
+ *   "pageable-zero" reconcile/divergence signals. In-memory for Phase 2
+ *   (same durability story as ClaimStore).
  * @example const ledger = new ExecutionLedger()
  * @example ledger.snapshot() => { progressRecorded: 0, … }
  ***/

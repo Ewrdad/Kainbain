@@ -322,6 +322,28 @@ describe("Runner tenant fence (WP1 Q4 matrix)", () => {
 			expect(homeWarnings.length).toBeGreaterThanOrEqual(8);
 		});
 
+		it("cross-project operator steer → 409 PROJECT_FENCE_MISMATCH, nothing queued on the lease", async () => {
+			const before = await app.inject({
+				method: "GET",
+				url: `/tasks/${taskA}/steers?projectId=${alpha.id}&executionId=${leaseA.executionId}`,
+			});
+			expect(before.statusCode).toBe(200);
+			const pendingBefore = JSON.parse(before.payload).pending.length;
+			const res = await app.inject({
+				method: "POST",
+				url: `/tasks/${taskA}/steer`,
+				payload: { projectId: beta.id, guidance: "foreign steer must not land" },
+			});
+			expect(res.statusCode).toBe(409);
+			expect(JSON.parse(res.payload).code).toBe("PROJECT_FENCE_MISMATCH");
+			const after = await app.inject({
+				method: "GET",
+				url: `/tasks/${taskA}/steers?projectId=${alpha.id}&executionId=${leaseA.executionId}`,
+			});
+			expect(after.statusCode).toBe(200);
+			expect(JSON.parse(after.payload).pending.length).toBe(pendingBefore);
+		});
+
 		it("A's lease still works after the replay storm (original untouched)", async () => {
 			const progress = await app.inject({
 				method: "POST",

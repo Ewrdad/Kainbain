@@ -11,26 +11,6 @@ const CLAIM_STATE_VERSION = 1;
 const MAX_COMPLETED_KEPT = 10000;
 
 /***
- * MARK: ClaimStore
- * @description Backend-side mutual-exclusion ledger for task claims (D1,
- *   ADR 0009 lifecycle step 3). One task, one holder: `claim` issues a
- *   monotonically increasing backend-side fencing token (epoch — never
- *   wall-clock, so clock skew between hosts cannot reorder the lock) plus a
- *   stable execution ID. Completion and push acceptance check the epoch;
- *   a retried report with a known execution ID is a no-op, never a
- *   duplicate stage. Expiry is lazy (checked on access, not by a sweeper):
- *   an expired hold may be re-claimed with a higher epoch, which is what
- *   makes a partitioned zombie's late completion stale by construction.
- *   In-memory for Phase 2 (the backend is still the single writer); the
- *   durability story (surviving a backend restart) is Phase 4 per the
- *   risk-retirement matrix — until then a restart drops holds and
- *   in-flight work re-queues as interrupted.
- * @example const claims = new ClaimStore(); claims.claim('t1', 'runner-a')
- * @param {Object} [opts] - Options.
- * @param {number} [opts.ttlMs=300000] - Lease time-to-live per claim.
- * @param {Function} [opts.now] - Clock injection (tests control expiry).
- ***/
-/***
  * MARK: resolveClaimStatePath
  * @description Resolves the durable lease-state file: explicit wins, then
  *   the schema path (env `KAINBAIN_CLAIM_STATE_FILE`), then the
@@ -62,12 +42,26 @@ export function resolveClaimStatePath(explicit) {
 
 /***
  * MARK: ClaimStore
- * @description Backend-side mutual-exclusion ledger (D1); epochs and
- *   completed execution IDs persist across restarts (WP-4.1), live
- *   holds stay memory-only. See the module block above for the full
- *   fencing contract.
+ * @description Backend-side mutual-exclusion ledger for task claims (D1,
+ *   ADR 0009 lifecycle step 3). One task, one holder: `claim` issues a
+ *   monotonically increasing backend-side fencing token (epoch — never
+ *   wall-clock, so clock skew between hosts cannot reorder the lock) plus a
+ *   stable execution ID. Completion and push acceptance check the epoch;
+ *   a retried report with a known execution ID is a no-op, never a
+ *   duplicate stage. Expiry is lazy (checked on access, not by a sweeper):
+ *   an expired hold may be re-claimed with a higher epoch, which is what
+ *   makes a partitioned zombie's late completion stale by construction.
+ *   Each hold also stamps the claiming `projectId` (WP1 tenant fence);
+ *   `describe()` and `liveHolds()` expose it so the execution ledger can
+ *   reject cross-project lease use. Epochs and completed execution IDs
+ *   persist across restarts (WP-4.1); live holds stay memory-only, so a
+ *   restart drops holds and in-flight work re-queues as interrupted.
  * @example const claims = new ClaimStore()
- * @example claims.claim('t1', 'runner-a') => { executionId: '…', epoch: 1 }
+ * @example claims.claim('t1', 'runner-a', 'proj-1') => { executionId: '…', epoch: 1 }
+ * @param {Object} [opts] - Options.
+ * @param {number} [opts.ttlMs=300000] - Lease time-to-live per claim.
+ * @param {Function} [opts.now] - Clock injection (tests control expiry).
+ * @param {string} [opts.stateFile] - Explicit durable state file (tests).
  ***/
 export class ClaimStore {
 	constructor({ ttlMs = 300000, now = () => Date.now(), stateFile = null } = {}) {

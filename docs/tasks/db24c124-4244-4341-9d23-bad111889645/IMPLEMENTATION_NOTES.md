@@ -18,6 +18,7 @@ Strict — missing/blank `projectId` → `400 { code: "MISSING_PROJECT_ID" }`, n
 | `POST /runners/integration/acquire` | `resolveAndGuardPresentProject` (presence-only; queue owns unknown scopes) |
 | `POST /runners/integration/heartbeat` | `resolveAndGuardPresentProject` (presence-only) |
 | `POST /runners/integration/report` | `resolveAndGuardPresentProject` (presence-only) |
+| `POST /tasks/:id/steer` (operator route in `taskFlowRoutes.js`) | keeps the view fallback for project resolution, but when a live lease exists the steer is fenced: `liveHold.projectId` ≠ request project → `409 PROJECT_FENCE_MISMATCH`, nothing queued (counted/audited via `executionLedger.checkProjectFence` when wired) |
 
 Fallback kept (read-only views, survey q2):
 
@@ -53,11 +54,13 @@ Fallback kept (read-only views, survey q2):
 - `api/flow/claimStore.js` — `describe()` now carries `projectId` (additive).
 - `api/flow/executionLedger.js` — `fencedRejected` counter, `PROJECT_FENCE_MISMATCH` error, `_assertProjectFence` + public `checkProjectFence`; fenced `_holdOrThrow`, `completeExecution`, `interruptExecution`.
 - `api/flow/runnerRoutes.js` — strict/presence guards on all mutating routes; `guardedTaskView` for `GET steers`; `dispatch` exemption documented.
+- `api/flow/taskFlowRoutes.js` — `POST /tasks/:id/steer` fences the live-lease queue path by `hold.projectId` (409 `PROJECT_FENCE_MISMATCH` on cross-project steer; legacy null-projectId holds still allowed).
 - `runner/README.md` — operator-facing upgrade note (symptom → action, no data migration).
-- Tests: `api/projectResolution.test.js`, `api/flow/claimStore.test.js`, `api/flow/executionLedger.test.js` extended (no existing assertion changed); new `api/flow/runnerTenantFence.test.js` (Q4 matrix, 24 tests).
+- Tests: `api/projectResolution.test.js`, `api/flow/claimStore.test.js`, `api/flow/executionLedger.test.js` extended (no existing assertion changed); new `api/flow/runnerTenantFence.test.js` (Q4 matrix, 25 tests incl. the cross-project steer control).
 
 ## Verification
 
-- New Q4 suite green in isolation; observed 15 pre-flip failures first (14 fallback misses + cross-project heartbeat succeeding at 200), then 24/24 post-flip.
-- Named suites green with zero existing-test edits: `projectResolution`, `claimStore`, `executionLedger`, `runnerRoutes` (+ bootstrap/attribution/handover), `runnerPolicyDispatch`, `runnerPolicyAcquire`, `integrationDispatch`, `integrationBusyFallsThrough`.
-- Contamination: `~/projects` (absent), `~/.kainbain/projects.json` (absent), `~/.kainbain/engine/*.json` checksums identical before/after.
+- New Q4 suite green in isolation; observed 15 pre-flip failures first (14 fallback misses + cross-project heartbeat succeeding at 200), then 25/25 post-flip (incl. cross-project steer control).
+- Named suites green with zero existing-test edits: `projectResolution`, `claimStore`, `executionLedger`, `runnerRoutes` (+ bootstrap/attribution/handover), `runnerPolicyDispatch`, `runnerPolicyAcquire`, `integrationDispatch`, `integrationBusyFallsThrough`, `taskFlowRoutes`.
+- Full regression: api suite 450 files / 7365 tests passed (1 skipped); runner `node --test` 422 passed; eslint clean on all touched files; `npm run check:jsdoc-example` PASS.
+- Contamination: `~/projects`, `~/.kainbain/projects.json`, `~/.kainbain/engine/*.json` checksummed before/after the runs — byte-identical (live projects never touched; all fixtures under temp roots).
