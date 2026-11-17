@@ -25,6 +25,7 @@ import {
   resolveSelectedId,
   runRunnerAction,
   describeRunnerVersion,
+  canonicalRunnerVersion,
   describeRunnerBuild,
   runnerBuildWarning,
   runnerStatusLabel,
@@ -450,7 +451,10 @@ export function RunnerConfigurationSection() {
     if (!supported) return 'This Runner is too old for on-request commands — update the Runner to enable this.';
     return '';
   };
-  const runningVersion = selected ? describeRunnerVersion(selected) : null;
+  // Canonicalized: a runner reporting a build hash as its version shows no
+  // version badge/label at all (the build line already shows the sha)
+  // instead of rendering `v<hash>` or comparing the hash to a version.
+  const runningVersion = selected ? canonicalRunnerVersion(describeRunnerVersion(selected)) : null;
   const versionTarget = selected ? resolveVersionTarget(selected) : null;
   const versionWarning = selected ? versionWarningForRunner(selected) : null;
   const runningAssignment = selected ? assignments[selected.runnerId] : null;
@@ -861,7 +865,7 @@ export function RunnerConfigurationSection() {
               {filtered.map((runner) => {
                 const isSelected = runner.runnerId === selectedId;
                 const assignment = assignments[runner.runnerId];
-                const versionLabel = describeRunnerVersion(runner);
+                const versionLabel = canonicalRunnerVersion(describeRunnerVersion(runner));
                 const build = describeRunnerBuild(runner);
                 const staleBuild = runnerBuildWarning(runner, backendCommit);
                 const stale = nowMs ? stalenessLabel(runner, nowMs) : null;

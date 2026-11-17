@@ -1329,6 +1329,54 @@ describe('RunnerConfigurationSection', () => {
     expect(select.value).toBe('latest');
   });
 
+  it('flags the newest release as (latest) even when the recommended value is a build tag', async () => {
+    // Prod-style: the fleet recommended knob can be a version-tagged image
+    // tag (`0.3.0-abc1234`). The dropdown must collapse it onto the
+    // canonical release row, flag that row (latest), and label the Latest
+    // option with the release — never show the raw tag as a phantom option.
+    runnersFixture([
+      {
+        ...RESTARTABLE_RUNNER,
+        desiredVersion: 'latest',
+        runnerVersion: '0.2.0',
+        recommendedVersion: '0.3.0-abc1234',
+        availableVersions: ['0.3.0', '0.2.0', '0.1.0'],
+        updateAvailable: false,
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    const select = screen.getByTestId('runner-version-select-r1');
+    const labels = Array.from(select.options).map((o) => `${o.value}=${o.textContent}`);
+    expect(labels).toEqual([
+      'latest=Latest (0.3.0)',
+      '0.3.0=0.3.0 (latest)',
+      '0.2.0=0.2.0 (running)',
+      '0.1.0=0.1.0',
+    ]);
+    expect(labels.join(' ')).not.toContain('abc1234');
+    expect(select.value).toBe('latest');
+  });
+
+  it('shows no version badge when the runner reports a build hash as its version', async () => {
+    runnersFixture([
+      {
+        ...RESTARTABLE_RUNNER,
+        runnerVersion: 'fbcf8442ee031e2edbc9f0b30195afa410296cf3',
+        desiredVersion: 'latest',
+        recommendedVersion: '0.3.0',
+        updateAvailable: false,
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    // A hash is not a version: no `v<hash>` badge and no version warning
+    // comparing the hash against a release.
+    expect(screen.queryByTestId('runner-version-r1')).toBeNull();
+    expect(screen.queryByTestId('runner-version-warning-r1')).toBeNull();
+    expect(screen.queryByTestId('runner-update-now-r1')).toBeNull();
+  });
+
   it('compares the runner sha against the sha inside a version-tagged backend build', async () => {
     // Prod stamps /status build.commit from the image tag (e.g. 1.0.0-28aac94):
     // the banner must quote shas on both sides, never the raw tag.

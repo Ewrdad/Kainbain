@@ -35,6 +35,7 @@ import {
   canRequestRestart,
   canRequestRediscovery,
   compareRunnerVersions,
+  canonicalRunnerVersion,
   pinBlocksUpdateReason,
   normalizeDesiredVersion,
   resolveDesiredVersion,
@@ -377,6 +378,10 @@ describe('runnerConfigHelpers', () => {
     expect(compareRunnerVersions('0.10.0', '0.9.0')).toBe(1);
     expect(compareRunnerVersions('bogus', '0.2.0')).toBeNull();
     expect(compareRunnerVersions(null, '0.2.0')).toBeNull();
+    // Sha-like / all-digit stamps are not versions on either side.
+    expect(compareRunnerVersions('f8044e37', '0.2.0')).toBeNull();
+    expect(compareRunnerVersions('20261117', '0.2.0')).toBeNull();
+    expect(compareRunnerVersions('1.0.0-28aac94', '1.0.0')).toBe(0);
   });
 
   it('stays quiet when the running version matches its own setting', () => {
@@ -856,5 +861,106 @@ describe('runnerConfigHelpers', () => {
     expect(selector.selectedValue).toBe('latest');
     expect(versionSelectorOptions({}).options).toEqual([]);
     expect(versionSelectorOptions({}).latestVersion).toBeNull();
+  });
+
+  it('canonicalizes versions: dotted cores survive, hashes and prose do not', () => {
+    expect(canonicalRunnerVersion('v1.2.3')).toBe('1.2.3');
+    expect(canonicalRunnerVersion('1.2')).toBe('1.2.0');
+    expect(canonicalRunnerVersion('1.0.0-28aac94')).toBe('1.0.0');
+    expect(canonicalRunnerVersion('0.3.0-rc.1')).toBe('0.3.0');
+    expect(canonicalRunnerVersion('f8044e37')).toBeNull();
+    expect(canonicalRunnerVersion('fbcf8442ee031e2edbc9f0b30195afa410296cf3')).toBeNull();
+    // All-digit build stamps are sha-like too — the backend rejects them
+    // (SHA_LIKE_RE), so the frontend must as well or the two drift apart.
+    expect(canonicalRunnerVersion('20261117')).toBeNull();
+    expect(canonicalRunnerVersion('latest')).toBeNull();
+    expect(canonicalRunnerVersion('banana')).toBeNull();
+    expect(canonicalRunnerVersion('')).toBeNull();
+    expect(canonicalRunnerVersion(null)).toBeNull();
+    expect(canonicalRunnerVersion(42)).toBeNull();
+  });
+
+  it('flags the newest release as latest even when the recommended value is a version-tagged build', () => {
+    // Prod-style: the fleet knob is the image tag `1.0.0-28aac94` while the
+    // backend's availableVersions are canonical. The dropdown must show ONE
+    // `1.0.0` row flagged (latest), never a duplicate raw tag row, and the
+    // Latest option resolves to the release `1.0.0`, not the tag.
+    const selector = versionSelectorOptions({
+      availableVersions: ['1.0.0', '0.1.0'],
+      recommendedVersion: '1.0.0-28aac94',
+      runnerVersion: '0.1.0',
+      desiredVersion: 'latest',
+    });
+    expect(selector.latestVersion).toBe('1.0.0');
+    expect(selector.selectedValue).toBe('latest');
+    expect(selector.options).toEqual([
+      { value: '1.0.0', label: '1.0.0 (latest)' },
+      { value: '0.1.0', label: '0.1.0 (running)' },
+    ]);
+  });
+
+  it('dedupes differently-spelled spellings of one version into a single flagged row', () => {
+    const selector = versionSelectorOptions({
+      availableVersions: ['0.1.0'],
+      recommendedVersion: '0.1.0',
+      runnerVersion: 'v0.1.0',
+      desiredVersion: 'latest',
+    });
+    expect(selector.options).toEqual([{ value: '0.1.0', label: '0.1.0 (latest, running)' }]);
+    expect(selector.latestVersion).toBe('0.1.0');
+  });
+
+  it('selects the canonical option for a non-canonically stored pin', () => {
+    const selector = versionSelectorOptions({
+      availableVersions: ['0.2.0', '0.1.0'],
+      recommendedVersion: '0.2.0',
+      runnerVersion: '0.1.0',
+      desiredVersion: 'v0.2.0',
+    });
+    expect(selector.selectedValue).toBe('0.2.0');
+  });
+
+  it('stays silent when the running version is a build hash, never hash-vs-build', () => {
+    const hash = 'fbcf8442ee031e2edbc9f0b30195afa410296cf3';
+    expect(versionWarningForRunner({ runnerVersion: hash, desiredVersion: '0.1.0', recommendedVersion: '0.1.0' })).toBeNull();
+    expect(versionWarningForRunner({ runnerVersion: hash, desiredVersion: 'latest', recommendedVersion: '0.2.0' })).toBeNull();
+    expect(versionWarningForRunner({ facts: { versions: { runner: 'f8044e37' } }, desiredVersion: 'latest', recommendedVersion: '0.2.0' })).toBeNull();
+    // An unreadable running version also never blocks the Update button.
+    expect(pinBlocksUpdateReason({ desiredVersion: '0.1.0', runnerVersion: hash })).toBeNull();
+  });
+
+  it('compares a version-tagged recommended value as its release, not its tag', () => {
+    const warning = versionWarningForRunner({
+      runnerVersion: '0.1.0',
+      desiredVersion: 'latest',
+      recommendedVersion: '1.0.0-28aac94',
+    });
+    expect(warning.kind).toBe('newer-available');
+    expect(warning.tier).toBe('red');
+    expect(warning.target).toBe('1.0.0');
+    expect(warning.message).toMatch(/1\.0\.0 is available/);
+    expect(warning.message).not.toMatch(/28aac94/);
+    expect(resolveVersionTarget({ desiredVersion: 'latest', recommendedVersion: '1.0.0-28aac94' })).toBe('1.0.0');
+    // Running at the tagged release already counts as up to date.
+    expect(versionWarningForRunner({ runnerVersion: '1.0.0', desiredVersion: 'latest', recommendedVersion: '1.0.0-28aac94' })).toBeNull();
+  });
+
+  it('names both sides as commits in the sha-mismatch message', () => {
+    const warning = runnerBuildWarning(
+      { facts: { versions: { build: { sha: 'fbcf8442ee031e2edbc9f0b30195afa410296cf3', source: 'package' } } } },
+      '1.0.0-28aac94',
+    );
+    expect(warning.kind).toBe('sha-mismatch');
+    expect(warning.message).toMatch(/commit fbcf844/);
+    expect(warning.message).toMatch(/commit 28aac94/);
+    expect(warning.message).not.toMatch(/1\.0\.0-28aac94/);
+  });
+
+  it('extracts shas from image refs and refuses dirty/prose suffixes', () => {
+    expect(extractBuildSha('kainbain-backend:1.0.0-28aac94')).toBe('28aac94');
+    expect(extractBuildSha('main-28aac94')).toBe('28aac94');
+    expect(extractBuildSha('28aac94-dirty')).toBeNull();
+    expect(extractBuildSha('1.0.0-rc.1')).toBeNull();
+    expect(extractBuildSha('v1.2.3')).toBeNull();
   });
 });
