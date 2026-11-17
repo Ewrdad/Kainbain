@@ -1,6 +1,6 @@
 ---
 title: Unified Logging
-section: how-it-works
+section: concepts
 order: 75
 slug: unified-logging
 ---

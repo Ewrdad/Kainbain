@@ -13,7 +13,13 @@ import {
 import { skillsRegistry } from "./skills/skillsRegistry.js";
 import { stageExpectsAgentVerdict } from "./agent/verdictContract.js";
 import { config as appConfig } from "./config.js";
-import { collectTaskImageRefs } from "./work/taskAssets.js";
+import {
+	collectTaskImageRefs,
+	filterBranchBackedRefs,
+	findMissingAssetRefs,
+	formatMissingAssetWarning,
+} from "./work/taskAssets.js";
+import { listTaskDocsFiles } from "./work/taskDocsFiles.js";
 import { resolveDocsDirName } from "./docsPath.js";
 import {
 	DEFAULT_PROMPT_LAYOUT,
@@ -104,6 +110,68 @@ export function formatImageRefs(imageRefs, { maxRefs } = {}) {
 }
 
 /***
+ * MARK: formatPreviousReportsSection
+ * @description Formats the "# Previous Reports" prompt section from the
+ *   relative task-folder paths actually present on disk (newest first):
+ *   one `- <path>` line per file, capped at `maxRefs` entries with an
+ *   overflow pointer at the task folder. An empty list still renders the
+ *   section with an explicit "none available yet" line, so agents never
+ *   second-guess whether history exists. How it can fail: a non-array input
+ *   or blank entries are treated as "no files"; an unusable cap (missing,
+ *   negative, non-numeric) falls back to the configured cap, and an
+ *   unusable configured cap lists everything rather than hiding files.
+ * @example formatPreviousReportsSection(['./docs/tasks/t/a.md'], { docsDirName: 'docs', taskId: 't' }) => '# Previous Reports\n...' (multi-line block)
+ * @example formatPreviousReportsSection([], { docsDirName: 'docs', taskId: 't' }).includes('No previous reports are available yet') => true
+ * @param {string[]} filePaths - Newest-first relative file paths from disk.
+ * @param {Object} [opts]
+ * @param {number} [opts.maxRefs] - Cap on listed files (default config.taskReportsMaxPromptRefs; 0 = list all).
+ * @param {string} [opts.docsDirName] - Docs link-folder name for the header.
+ * @param {string} [opts.taskId] - Task id for the header.
+ * @returns {string}
+ ***/
+export function formatPreviousReportsSection(
+	filePaths,
+	{ maxRefs, docsDirName = "docs", taskId = "task" } = {},
+) {
+	const paths = (Array.isArray(filePaths) ? filePaths : [])
+		.map((filePath) => String(filePath || "").trim())
+		.filter(Boolean);
+	const folder = `./${docsDirName}/tasks/${taskId}/`;
+	if (paths.length === 0) {
+		return `# Previous Reports\nNo previous reports are available yet — the task folder ${folder} contains no files.`;
+	}
+	const configuredCap = appConfig.taskReportsMaxPromptRefs;
+	const requestedCap =
+		maxRefs === undefined || maxRefs === null ? configuredCap : maxRefs;
+	// Cap precedence: an explicit positive number wins (fractionals floor);
+	// an explicit 0 lists everything; anything else falls back to the
+	// configured cap, and an unusable configured cap lists everything rather
+	// than hiding files (the config loader fails fast on malformed values,
+	// so that last fallback is unreachable in a running server).
+	let limit = paths.length;
+	if (Number.isFinite(requestedCap) && requestedCap > 0) {
+		limit = Math.min(Math.floor(requestedCap), paths.length);
+	} else if (
+		requestedCap !== 0 &&
+		Number.isFinite(configuredCap) &&
+		configuredCap > 0
+	) {
+		limit = Math.min(configuredCap, paths.length);
+	}
+	const lines = paths.slice(0, limit).map((filePath) => `- ${filePath}`);
+	if (paths.length > limit) {
+		lines.push(
+			`- (+${paths.length - limit} more files not listed; list ${folder} to see them)`,
+		);
+	}
+	return [
+		"# Previous Reports",
+		`The following files are present in ${folder}:`,
+		...lines,
+	].join("\n");
+}
+
+/***
  * MARK: interpolatePromptKeywords
  * @description Replaces runtime template keywords in stage or task prompts with live context:
  *   - {{project}}: Name of the project.
@@ -113,7 +181,7 @@ export function formatImageRefs(imageRefs, { maxRefs } = {}) {
  *   - {{projectRepo}} / {{taskRepo}}: Git repository URL or path.
  *   - {{taskGoal}}: Goal or title of the task.
  *   - {{taskDocs}}: Path to <projectRoot>/docs/tasks/<taskId>/.
- *   - {{previousReports}}: Newline-separated paths of all prior stage reports for this task.
+ *   - {{previousReports}}: Newline-separated paths of the files actually present in the task docs folder, newest first.
  *   - {{latestReportPath}}: Path of the most recent stage report for this task.
  *   - {{latestReportPath:<stageSlug>}}: Path of the most recent report from <stageSlug> (or fallback if none exists).
  *   - {{latestReport:<stageSlug>}}: Markdown content of the most recent report from <stageSlug> (or fallback if none exists).
@@ -240,6 +308,35 @@ export function resolveStageCustomKeywords(stage, projectCwd, loadSkill = null) 
 	return Object.keys(keywordMap).length > 0 ? keywordMap : null;
 }
 
+/***
+ * MARK: extractReportEntryFilename
+ * @description The disk-match key for one report metadata entry: the bare
+ *   filename (`filename`, then `name`, then the basename of `path` or
+ *   `filePath`; plain string entries match by their own basename). Used to
+ *   reconcile `task.reports` metadata with the files actually on disk, so a
+ *   metadata entry whose file is gone is dropped as a phantom instead of
+ *   rendered. Returns "" when no filename is derivable (fail closed: an
+ *   entry that cannot be matched to disk is never listed as available).
+ * @example extractReportEntryFilename({ path: './docs/tasks/t/plan-20261007.md' }) => 'plan-20261007.md'
+ * @example extractReportEntryFilename({ stageSlug: 'idea' }) => ''
+ * @param {string|Object} entry - Report metadata entry.
+ * @returns {string} Bare filename, or "" when none is derivable.
+ ***/
+function extractReportEntryFilename(entry) {
+	if (typeof entry === "string") {
+		return String(entry).split("/").pop() || "";
+	}
+	if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+		const rawPath = entry.path || entry.filePath;
+		const key =
+			entry.filename ||
+			entry.name ||
+			(rawPath ? String(rawPath).split("/").pop() : null);
+		return key ? String(key).split("/").pop() : "";
+	}
+	return "";
+}
+
 export function interpolatePromptKeywords(template, context = {}) {
 	if (!template || typeof template !== "string") return "";
 	const resolvedContext =
@@ -306,6 +403,64 @@ export function interpolatePromptKeywords(template, context = {}) {
 		return String(ta).localeCompare(String(tb));
 	});
 
+	// Disk-authoritative report lists: when the project working directory is
+	// known and the template asks for a report keyword, enumerate the files
+	// actually present in the task docs folder and drop metadata entries
+	// whose file is gone (phantoms). Without a resolvable cwd the legacy
+	// metadata passthrough below stays byte-identical.
+	const wantsDiskReports =
+		Boolean(projectCwd) &&
+		Boolean(task.id) &&
+		/{{[^}]*(previousReports|latestReport)/.test(template);
+	let diskReportPaths = null;
+	let diskMergedReports = null;
+	if (wantsDiskReports) {
+		const diskProject =
+			project && typeof project === "object"
+				? project
+				: task.project && typeof task.project === "object"
+					? task.project
+					: null;
+		try {
+			const { files } = listTaskDocsFiles(projectCwd, task.id, diskProject);
+			const metaByFilename = new Map();
+			for (const entry of allReports) {
+				const entryKey = extractReportEntryFilename(entry);
+				if (entryKey && !metaByFilename.has(entryKey)) {
+					metaByFilename.set(entryKey, entry);
+				}
+			}
+			const mtimeByFilename = new Map(
+				files.map((file) => [file.filename, file.mtimeMs]),
+			);
+			diskReportPaths = files.map((file) => file.path);
+			diskMergedReports = files
+				.map((file) => {
+					const meta = metaByFilename.get(file.filename);
+					if (meta && typeof meta === "object" && !Array.isArray(meta)) {
+						return { ...meta, path: file.path, filename: file.filename };
+					}
+					return {
+						path: file.path,
+						filename: file.filename,
+						stageSlug: file.filename.replace(/-\d{8}[-T]\d{6}Z?\.md$/, ""),
+					};
+				})
+				.sort((firstReport, secondReport) => {
+					const firstMtimeMs = mtimeByFilename.get(firstReport.filename) || 0;
+					const secondMtimeMs = mtimeByFilename.get(secondReport.filename) || 0;
+					if (firstMtimeMs !== secondMtimeMs) return firstMtimeMs - secondMtimeMs;
+					return String(firstReport.filename).localeCompare(
+						String(secondReport.filename),
+					);
+				});
+		} catch {
+			diskReportPaths = null;
+			diskMergedReports = null;
+		}
+	}
+	const effectiveReports = diskMergedReports || allReports;
+
 	return template.replace(/\{\{([^}]+)\}\}/g, (match, rawKey) => {
 		const key = rawKey.trim();
 
@@ -346,6 +501,11 @@ export function interpolatePromptKeywords(template, context = {}) {
 		}
 
 		if (key === "previousReports") {
+			if (diskReportPaths) {
+				return diskReportPaths.length > 0
+					? diskReportPaths.join("\n")
+					: "(No previous stage reports available)";
+			}
 			const paths = allReports
 				.map((r) =>
 					typeof r === "string" ? r : r.path || r.filename || r.stageSlug,
@@ -378,7 +538,7 @@ export function interpolatePromptKeywords(template, context = {}) {
 		}
 
 		if (key === "latestReportPath") {
-			const last = allReports[allReports.length - 1];
+			const last = effectiveReports[effectiveReports.length - 1];
 			if (last) {
 				return typeof last === "string" ? last : last.path || last.filename || "";
 			}
@@ -393,7 +553,7 @@ export function interpolatePromptKeywords(template, context = {}) {
 			// Path-only sibling of `latestReport:<slug>`: returns the report
 			// path (never content) so CI shell commands can test for a prior
 			// stage's report without hitting command-line length limits.
-			const matchingReports = allReports.filter((r) => {
+			const matchingReports = effectiveReports.filter((r) => {
 				if (!r) return false;
 				const slug = r.stageSlug || slugifyStageName(r.stageName || r.name || "");
 				return slug === targetSlug;
@@ -419,7 +579,7 @@ export function interpolatePromptKeywords(template, context = {}) {
 			);
 
 			// Find matching reports by stageSlug or stageName
-			const matchingReports = allReports.filter((r) => {
+			const matchingReports = effectiveReports.filter((r) => {
 				if (!r) return false;
 				const slug = r.stageSlug || slugifyStageName(r.stageName || r.name || "");
 				return slug === targetSlug;
@@ -505,18 +665,20 @@ const TESTING_GUIDANCE_TEXT =
  * @description Predicts which conditional contract sections a layout omits
  *   but the run still needs: `failureDetails` whenever failure/feedback
  *   context is non-empty, `testingGuidance` for agent stages expecting a
- *   verdict. Shared by the engine render path and the dry-run endpoint so
- *   the preview can never disagree with dispatch.
+ *   verdict, `missingAssets` for verdict stages whose goal references
+ *   assets with no bytes on disk. Shared by the engine render path and the
+ *   dry-run endpoint so the preview can never disagree with dispatch.
  * @example resolveAutoReinjectedTokens([], { hasFailureDetails: true, stage: { type: 'agent' } }) => ['failureDetails', 'testingGuidance']
  * @param {string[]} names - Token names present in the layout.
  * @param {Object} [facts]
  * @param {boolean} [facts.hasFailureDetails] - Failure/feedback context exists.
+ * @param {boolean} [facts.hasMissingAssets] - A MISSING-ASSET warning was rendered.
  * @param {Object} [facts.stage] - Current stage entity.
- * @returns {string[]} Conditional tokens to auto-append.
+ * @returns {string[]} Conditional tokens to auto-append (`missingAssets` is prepended instead, so the warning stays first).
  ***/
 export function resolveAutoReinjectedTokens(
 	names = [],
-	{ hasFailureDetails, stage } = {},
+	{ hasFailureDetails, hasMissingAssets, stage } = {},
 ) {
 	const present = Array.isArray(names) ? names : [];
 	const autoReinjected = [];
@@ -530,6 +692,17 @@ export function resolveAutoReinjectedTokens(
 	// never be silently dropped by a custom layout that omits it.
 	if (!present.includes("noCode") && stage?.noCode === true) {
 		autoReinjected.push("noCode");
+	}
+	// Missing-asset guard (mirrors the testingGuidance precedent): a custom
+	// layout that omits the warning must not hide dangling refs from a
+	// verdict-expecting agent stage. The render path prepends it (rather
+	// than appending with the rest) so it stays the first section.
+	if (
+		!present.includes("missingAssets") &&
+		hasMissingAssets &&
+		stageExpectsAgentVerdict(stage)
+	) {
+		autoReinjected.push("missingAssets");
 	}
 	return autoReinjected;
 }
@@ -879,8 +1052,80 @@ export class PromptCurationEngine {
 					: null;
 		const docsDirName = resolveDocsDirName(docsProject);
 
-		// 3. Previous Stage Reports (if available)
-		if (previousReports.length > 0) {
+		// 2d. Missing Task Assets (dangling `assets/<name>` refs in the goal
+		// or failure/feedback text with no bytes in the task's assets
+		// folder). Renders first via the `missingAssets` layout token; with
+		// no dangling refs the section stays empty and prompts keep
+		// byte-identical bytes. Stored goal text is never mutated, so
+		// re-uploading the file heals the next run with no cleanup.
+		try {
+			const refSources = [rawTaskPrompt, failureDetails]
+				.filter((text) => typeof text === "string" && text)
+				.join("\n");
+			let missing = findMissingAssetRefs(projectCwd, taskId, refSources, docsProject);
+			// Branch-flap second look: assets are tracked files and the
+			// shared checkout flaps between task branches, so bytes that
+			// ride the task's own branch must not warn even when a sibling
+			// branch is out at curate time (the agent's worktree is on the
+			// task branch and has them). The persisted task.branch wins;
+			// otherwise the `kb/<taskId>` derivation is attempted.
+			if (missing.length > 0) {
+				const branch =
+					typeof task?.branch === "string" && task.branch
+						? task.branch
+						: taskId && taskId !== "unassigned"
+							? `kb/${taskId}`
+							: null;
+				missing = filterBranchBackedRefs(
+					projectCwd,
+					branch,
+					taskId,
+					missing,
+					docsProject,
+				);
+			}
+			const warning = formatMissingAssetWarning(missing);
+			if (warning) {
+				sectionMap.missingAssets = warning;
+			}
+		} catch {
+			// Best-effort: dispatching without the warning beats failing dispatch.
+		}
+
+		// 3. Previous Stage Reports — disk-authoritative when the project
+		// working directory is known: list the files actually present in the
+		// task docs folder (phantoms from report metadata are omitted).
+		// Without a cwd (pure previews) keep the legacy metadata passthrough.
+		if (projectCwd && task.id) {
+			let diskFiles = null;
+			try {
+				diskFiles = listTaskDocsFiles(projectCwd, task.id, docsProject).files;
+			} catch {
+				diskFiles = null;
+			}
+			if (diskFiles) {
+				sectionMap.previousReports = formatPreviousReportsSection(
+					diskFiles.map((file) => file.path),
+					{
+						maxRefs: appConfig.taskReportsMaxPromptRefs,
+						docsDirName,
+						taskId: task.id,
+					},
+				);
+			} else if (previousReports.length > 0) {
+				const reportList = previousReports
+					.map((p) =>
+						typeof p === "string" ? p : p.path || p.filename || p.stageSlug,
+					)
+					.filter(Boolean)
+					.map((p) => `- ${p}`)
+					.join("\n");
+				if (reportList) {
+					sectionMap.previousReports =
+						`# Previous Reports\nThe following prior stage reports are available in ./${docsDirName}/tasks/${task.id || "task"}/:\n${reportList}`;
+				}
+			}
+		} else if (previousReports.length > 0) {
 			const reportList = previousReports
 				.map((p) =>
 					typeof p === "string" ? p : p.path || p.filename || p.stageSlug,
@@ -993,6 +1238,7 @@ export class PromptCurationEngine {
 			try {
 				const autoReinjected = resolveAutoReinjectedTokens(layoutTokens, {
 					hasFailureDetails: Boolean(failureDetails),
+					hasMissingAssets: Boolean(sectionMap.missingAssets),
 					stage,
 				});
 
@@ -1018,13 +1264,24 @@ export class PromptCurationEngine {
 				);
 
 				const extraSections = [];
+				let missingFirst = null;
 				for (const token of autoReinjected) {
-					if (sectionMap[token]) {
+					if (!sectionMap[token]) continue;
+					// The missing-asset warning must stay the first section —
+					// ahead of the task the agent is about to plan — so it
+					// prepends while every other re-injected section appends.
+					if (token === "missingAssets") {
+						missingFirst = sectionMap[token];
+					} else {
 						extraSections.push(sectionMap[token]);
 					}
 				}
-				if (extraSections.length > 0) {
-					rendered = [rendered, ...extraSections].join("\n\n");
+				if (missingFirst || extraSections.length > 0) {
+					rendered = [
+						...(missingFirst ? [missingFirst] : []),
+						rendered,
+						...extraSections,
+					].join("\n\n");
 					this._logger?.warn?.(
 						{
 							taskId: task?.id,

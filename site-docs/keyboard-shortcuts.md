@@ -1,6 +1,6 @@
 ---
 title: Keyboard Shortcuts
-section: working-with
+section: reference
 order: 60
 slug: keyboard-shortcuts
 ---

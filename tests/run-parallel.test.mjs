@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 
-const { runParallel, resolveProgressIntervalMs, formatElapsedSeconds } = await import(
+const { runParallel, resolveFailureTailLines, resolveProgressIntervalMs, formatElapsedSeconds, FAILURE_OUTPUT_TAIL_LINES } = await import(
 	"../scripts/lib/run-parallel.mjs"
 );
 
@@ -211,6 +211,55 @@ describe("runParallel", () => {
 		assert.doesNotMatch(out.joined(), /trimmed \d+ of \d+ lines/);
 	});
 
+	it("failureDetailsPreamble prints between the Details line and the excerpt for failures only", async () => {
+		const out = makeCollector();
+		const seen = [];
+		const result = await runParallel(
+			[
+				{ name: "Step A", file: NODE, args: PASS_ARGS },
+				{
+					name: "Step B",
+					file: NODE,
+					args: ["-e", "console.log('b-boom');process.exitCode=1"],
+				},
+			],
+			{
+				write: out.write,
+				failureDetailsPreamble: (entry) => {
+					seen.push(entry.name);
+					return `Full log: /tmp/v/${entry.name}.full.log`;
+				},
+			},
+		);
+		assert.equal(result.ok, false);
+		assert.deepEqual(seen, ["Step B"]);
+		const joined = out.joined();
+		assert.match(joined, /Details for Step B:\nFull log: \/tmp\/v\/Step B\.full\.log\nb-boom/);
+		assert.doesNotMatch(joined, /Details for Step A:/);
+	});
+
+	it("a throwing or non-string preamble never fails the run", async () => {
+		for (const failureDetailsPreamble of [
+			() => { throw new Error("preamble boom"); },
+			() => 42,
+			() => "",
+		]) {
+			const out = makeCollector();
+			const result = await runParallel(
+				[
+					{
+						name: "Step",
+						file: NODE,
+						args: ["-e", "console.log('still-shown');process.exitCode=1"],
+					},
+				],
+				{ write: out.write, failureDetailsPreamble },
+			);
+			assert.equal(result.ok, false);
+			assert.match(out.joined(), /still-shown/);
+		}
+	});
+
 	it("failureOutputTailLines tunes the kept tail", async () => {
 		const out = makeCollector();
 		const prints = Array.from(
@@ -231,6 +280,60 @@ describe("runParallel", () => {
 		assert.match(out.joined(), /tuned-line-59/);
 		assert.doesNotMatch(out.joined(), /tuned-line-49\n/);
 		assert.match(out.joined(), /trimmed 50 of 60 lines/);
+	});
+});
+
+describe("resolveFailureTailLines", () => {
+	it("defaults to the 120-line pinned default", () => {
+		assert.equal(FAILURE_OUTPUT_TAIL_LINES, 120);
+		assert.equal(resolveFailureTailLines({ env: {} }), 120);
+	});
+
+	it("prefers the explicit option over the env override", () => {
+		assert.equal(
+			resolveFailureTailLines({ tailLines: 10, env: { KAINBAIN_FAILURE_TAIL_LINES: "400" } }),
+			10,
+		);
+	});
+
+	it("honours KAINBAIN_FAILURE_TAIL_LINES when no option is given", () => {
+		assert.equal(resolveFailureTailLines({ env: { KAINBAIN_FAILURE_TAIL_LINES: "400" } }), 400);
+	});
+
+	it("falls through on missing, zero, negative, or non-numeric values", () => {
+		for (const value of [undefined, "0", "-5", "3.5", "many", ""]) {
+			assert.equal(resolveFailureTailLines({ env: { KAINBAIN_FAILURE_TAIL_LINES: value } }), 120);
+		}
+		assert.equal(
+			resolveFailureTailLines({ tailLines: 0, env: { KAINBAIN_FAILURE_TAIL_LINES: "400" } }),
+			400,
+		);
+	});
+
+	it("the env override reaches the printed Details tail without an option", async () => {
+		const out = makeCollector();
+		const prints = Array.from(
+			{ length: 30 },
+			(_, index) => `console.log('env-line-${index}')`,
+		).join(";");
+		const previous = process.env.KAINBAIN_FAILURE_TAIL_LINES;
+		process.env.KAINBAIN_FAILURE_TAIL_LINES = "5";
+		try {
+			await runParallel(
+				[
+					{
+						name: "Env Step",
+						file: NODE,
+						args: ["-e", `${prints};process.exitCode=1`],
+					},
+				],
+				{ write: out.write },
+			);
+		} finally {
+			if (previous === undefined) delete process.env.KAINBAIN_FAILURE_TAIL_LINES;
+			else process.env.KAINBAIN_FAILURE_TAIL_LINES = previous;
+		}
+		assert.match(out.joined(), /trimmed 25 of 30 lines/);
 	});
 });
 

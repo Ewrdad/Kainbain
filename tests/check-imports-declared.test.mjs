@@ -671,8 +671,16 @@ describe("frontend guardrail contract", () => {
       preflightIndex !== -1,
       "scripts/run-tests.mjs must invoke the imports-declared check",
     );
+    // The overlap window opens inside runGatePhases (fail-fast gate), so the
+    // preflight must precede main()'s runGatePhases call, not a runParallel
+    // call that no longer exists at the top level.
+    const overlapStartIndex = gateSource.indexOf("const { ok } = await runGatePhases({");
     assert.ok(
-      preflightIndex < gateSource.indexOf("runParallel(fast"),
+      overlapStartIndex !== -1,
+      "scripts/run-tests.mjs must open the overlap window through runGatePhases",
+    );
+    assert.ok(
+      preflightIndex < overlapStartIndex,
       "the imports-declared check must run before the overlap window starts",
     );
   });

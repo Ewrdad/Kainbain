@@ -1,6 +1,6 @@
 ---
 title: API reference
-section: working-with
+section: reference
 order: 80
 slug: api-reference
 ---
@@ -130,6 +130,7 @@ Board lists return duration-enriched summaries; open one full task via
 | POST | `/tasks/:id/move` | Move the task (board/stage). |
 | POST | `/tasks/:id/jump` | Jump to a named stage. |
 | POST | `/tasks/:id/complete` | Mark the task complete. |
+| POST | `/tasks/:id/uncomplete` | Reopen a completed task back into the workflow, restoring the status/stage it had before completion (no-op when not completed). |
 | POST | `/tasks/:id/claim` | Runner-only: atomically claim a task (`x-runner-credential` header; 200 + lease or 409 + holder). Refuses Runners the task's stage does not allow (409 `RUNNER_NOT_ALLOWED` / `RUNNER_BLOCKED`, same as dispatch). |
 
 ## Runners (`api/flow/runnerRoutes.js`, `api/flow/runnerRegistry.js`)

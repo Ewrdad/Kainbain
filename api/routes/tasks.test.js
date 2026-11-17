@@ -377,6 +377,54 @@ describe("Task API Integration", () => {
 		expect(JSON.parse(completeRes.payload).status).toBe("completed");
 	});
 
+	it("should uncomplete a completed task back to its prior status", async () => {
+		const project = await activeProject();
+		const createRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Reopen me" },
+		});
+		const task = JSON.parse(createRes.payload);
+		const stageBefore = task.currentStageId;
+
+		const completeRes = await app.inject({
+			method: "POST",
+			url: `/tasks/${task.id}/complete`,
+			payload: { projectId: project.id },
+		});
+		expect(completeRes.statusCode).toBe(200);
+		expect(JSON.parse(completeRes.payload).status).toBe("completed");
+
+		const uncompleteRes = await app.inject({
+			method: "POST",
+			url: `/tasks/${task.id}/uncomplete`,
+			payload: { projectId: project.id },
+		});
+		expect(uncompleteRes.statusCode).toBe(200);
+		const reopened = JSON.parse(uncompleteRes.payload);
+		expect(reopened.status).not.toBe("completed");
+		expect(reopened.currentStageId).toBe(stageBefore);
+		expect(reopened.history.some((h) => h.action === "Completed")).toBe(true);
+		expect(reopened.history.some((h) => h.action === "Uncompleted")).toBe(true);
+
+		// Uncompleting a task that is not completed is a no-op (200, unchanged).
+		const againRes = await app.inject({
+			method: "POST",
+			url: `/tasks/${task.id}/uncomplete`,
+			payload: { projectId: project.id },
+		});
+		expect(againRes.statusCode).toBe(200);
+		expect(JSON.parse(againRes.payload).status).toBe(reopened.status);
+
+		// Unknown task id is a 404.
+		const missingRes = await app.inject({
+			method: "POST",
+			url: `/tasks/no-such-task/uncomplete`,
+			payload: { projectId: project.id },
+		});
+		expect(missingRes.statusCode).toBe(404);
+	});
+
 	it("should move a task via drag-and-drop endpoint", async () => {
 		const project = await activeProject();
 		const createRes = await app.inject({

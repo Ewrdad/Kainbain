@@ -1,6 +1,6 @@
 ---
 title: Task Images
-section: working-with
+section: workflows
 order: 35
 slug: task-images
 ---
@@ -118,6 +118,28 @@ context and risk log truncation):
   array, e.g. `gemma4:31b-cloud`) are the bytes also attached at dispatch.
   Unknown harnesses/models default to **no vision** and get the path mention
   only — the stage still succeeds either way.
+
+## Copy or warn: referenced images always resolve or say so
+
+A goal that references `assets/shot.png` either has the readable file in the
+agent's workspace, or the rendered prompt opens with an explicit
+`MISSING-ASSET` warning naming the file — agents never silently plan around
+a phantom screenshot:
+
+- **Local Runners** mirror the task folder (including `assets/`) from the
+  primary checkout into the per-task worktree before the first stage runs.
+- **Remote Runners** have no local checkout to mirror from, so the claim
+  ships the task's images (base64, capped like vision dispatch) and the
+  daemon writes entries the worktree lacks before the first stage runs —
+  existing worktree files are never overwritten.
+- **Genuinely missing bytes** (no file on disk or on the task's branch)
+  render a `# Missing Task Assets` section first in the prompt, one line
+  per file with its expected `docs/tasks/<taskId>/assets/<name>` path, plus
+  the instruction to proceed from source and say the screenshot was
+  unavailable. Refs whose names merely drifted (wrong case, spaces) do not
+  warn — serving already canonicalises those.
+- **Self-healing.** The stored goal text is never rewritten: re-upload the
+  file and the next run picks it up with no cleanup.
 
 ## Limits and tuning
 

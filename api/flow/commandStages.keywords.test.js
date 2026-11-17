@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 // Characterization baseline for CI command handling (Phase 0 of the CI
 // keywords plan): a token-free command must reach the runner, history, and
@@ -151,43 +154,56 @@ describe("commandStages keyword interpolation", () => {
 	}
 
 	it("expands task, project, and report keywords before execution", async () => {
-		const store = stubStore({
-			projectStore: { getProject: () => ({ name: "KainBain" }) },
-		});
-		const task = {
-			...ciTask(),
-			reports: [
+		// Report keywords are disk-authoritative: the plan report must exist
+		// on disk for {{latestReportPath:plan}} to resolve it.
+		const projectCwd = fs.mkdtempSync(
+			path.join(os.tmpdir(), "kainbain-command-expand-"),
+		);
+		try {
+			const taskDir = path.join(projectCwd, "docs", "tasks", "task-1");
+			fs.mkdirSync(taskDir, { recursive: true });
+			fs.writeFileSync(path.join(taskDir, "plan-20261017.md"), "# Plan\n");
+			const store = stubStore({
+				projectStore: { getProject: () => ({ name: "KainBain" }) },
+			});
+			const task = {
+				...ciTask(),
+				reports: [
+					{
+						stageSlug: "plan",
+						stageName: "Plan",
+						path: "./docs/tasks/task-1/plan-20261017.md",
+						content: "# Plan",
+					},
+				],
+			};
+			const execRunner = vi.fn(async () => ({
+				exitCode: 0,
+				stdout: "ok",
+				stderr: "",
+			}));
+
+			await runCi(
+				store,
+				task,
 				{
-					stageSlug: "plan",
-					stageName: "Plan",
-					path: "./docs/tasks/task-1/plan-20261017.md",
-					content: "# Plan",
+					id: "ci-1",
+					name: "Verify plan",
+					type: "ci",
+					command:
+						'test -f "{{taskDocs}}plan-20261017.md" && test -f "{{latestReportPath:plan}}" && echo "{{stageName}} {{project}}"',
 				},
-			],
-		};
-		const execRunner = vi.fn(async () => ({
-			exitCode: 0,
-			stdout: "ok",
-			stderr: "",
-		}));
+				execRunner,
+				{ cwd: projectCwd },
+			);
 
-		await runCi(
-			store,
-			task,
-			{
-				id: "ci-1",
-				name: "Verify plan",
-				type: "ci",
-				command:
-					'test -f "{{taskDocs}}plan-20261017.md" && test -f "{{latestReportPath:plan}}" && echo "{{stageName}} {{project}}"',
-			},
-			execRunner,
-		);
-
-		expect(execRunner).toHaveBeenCalledTimes(1);
-		expect(execRunner.mock.calls[0][0]).toBe(
-			'test -f "/repo/docs/tasks/task-1/plan-20261017.md" && test -f "./docs/tasks/task-1/plan-20261017.md" && echo "Verify plan KainBain"',
-		);
+			expect(execRunner).toHaveBeenCalledTimes(1);
+			expect(execRunner.mock.calls[0][0]).toBe(
+				`test -f "${projectCwd}/docs/tasks/task-1/plan-20261017.md" && test -f "./docs/tasks/task-1/plan-20261017.md" && echo "Verify plan KainBain"`,
+			);
+		} finally {
+			fs.rmSync(projectCwd, { recursive: true, force: true });
+		}
 	});
 
 	it("audits both the configured template and the expanded command", async () => {
@@ -334,31 +350,40 @@ describe("command stage keyword helpers", () => {
 	});
 
 	it("buildCommandStageEnv mirrors interpolation values as KAINBAIN_* vars", () => {
-		const context = buildCommandKeywordContext({
-			task: {
-				id: "task-1",
-				goal: "Prove keywords",
-				reports: [
-					{
-						stageSlug: "plan",
-						stageName: "Plan",
-						path: "./docs/tasks/task-1/plan.md",
-						content: "# Plan",
-					},
-				],
-			},
-			stage: { id: "ci-1", name: "Verify plan" },
-			project: { name: "KainBain" },
-			projectCwd: "/repo",
-		});
-		const env = buildCommandStageEnv("/repo", "task-1", context);
-		expect(env.KAINBAIN_PROJECT).toBe("KainBain");
-		expect(env.KAINBAIN_PROJECT_ROOT).toBe("/repo");
-		expect(env.KAINBAIN_TASK_ID).toBe("task-1");
-		expect(env.KAINBAIN_TASK_DOCS).toBe("/repo/docs/tasks/task-1/");
-		expect(env.KAINBAIN_STAGE_NAME).toBe("Verify plan");
-		expect(env.KAINBAIN_TASK_GOAL).toBe("Prove keywords");
-		expect(env.KAINBAIN_LATEST_REPORT).toBe("./docs/tasks/task-1/plan.md");
+		// Report keywords are disk-authoritative when a cwd resolves: seed a
+		// real task folder so the plan.md report exists on disk.
+		const projectCwd = fs.mkdtempSync(
+			path.join(os.tmpdir(), "kainbain-command-keywords-"),
+		);
+		try {
+			const taskDir = path.join(projectCwd, "docs", "tasks", "task-1");
+			fs.mkdirSync(taskDir, { recursive: true });
+			fs.writeFileSync(path.join(taskDir, "plan.md"), "# Plan\n");
+			const context = buildCommandKeywordContext({
+				task: {
+					id: "task-1",
+					goal: "Prove keywords",
+					reports: [
+						{
+							stageSlug: "plan",
+							stageName: "Plan",
+							path: "./docs/tasks/task-1/plan.md",
+							content: "# Plan",
+						},
+					],
+				},
+				stage: { id: "ci-1", name: "Verify plan" },
+				project: { name: "KainBain" },
+				projectCwd,
+			});
+			const env = buildCommandStageEnv(projectCwd, "task-1", context);
+			expect(env.KAINBAIN_PROJECT).toBe("KainBain");
+			expect(env.KAINBAIN_PROJECT_ROOT).toBe(projectCwd);
+			expect(env.KAINBAIN_TASK_ID).toBe("task-1");
+			expect(env.KAINBAIN_TASK_DOCS).toBe(`${projectCwd}/docs/tasks/task-1/`);
+			expect(env.KAINBAIN_STAGE_NAME).toBe("Verify plan");
+			expect(env.KAINBAIN_TASK_GOAL).toBe("Prove keywords");
+			expect(env.KAINBAIN_LATEST_REPORT).toBe("./docs/tasks/task-1/plan.md");
 		// Env values always agree with command interpolation from the same
 		// context (the engine merges context.reports with task.reports, so
 		// multi-source lists may repeat entries — env and command match either way).
@@ -366,9 +391,12 @@ describe("command stage keyword helpers", () => {
 			expandStageCommand("{{previousReports}}", context),
 		);
 		// The sanitized base still stands alongside the keyword vars.
-		expect(env.PROJECT_CWD).toBe("/repo");
+		expect(env.PROJECT_CWD).toBe(projectCwd);
 		expect(env.TASK_ID).toBe("task-1");
 		expect(env.PATH).toBeTruthy();
+		} finally {
+			fs.rmSync(projectCwd, { recursive: true, force: true });
+		}
 	});
 
 	it("buildCommandStageEnv agrees with the expanded command from the same context", () => {

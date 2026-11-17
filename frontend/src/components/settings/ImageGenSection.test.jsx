@@ -101,6 +101,25 @@ test('test runs a dry run and reports bytes, surfacing failures', async () => {
   client.testImageGenProvider.mockRejectedValueOnce(new Error('provider down'));
   fireEvent.click(screen.getByRole('button', { name: 'Test Muse Image (Meta)' }));
   expect(await screen.findByText(/test failed: provider down/)).toBeInTheDocument();
+  // Provider errors surface raw server text, so the message must wrap.
+  expect(screen.getByRole('status')).toHaveClass('break-words');
+});
+
+test('truncates very long provider labels and wraps long descriptions', async () => {
+  const longLabel = `Custom image provider for release automation ${'p'.repeat(140)}`;
+  const longDescription = `Generates survey header images on demand ${'d'.repeat(140)}`;
+  const client = mockClient({
+    getImageGenProviders: async () => ({
+      providers: [{ ...catalogue[1], id: 'custom', label: longLabel, description: longDescription }],
+    }),
+  });
+  renderWithKainBain(<ImageGenSection client={client} />);
+  await screen.findByTestId('image-gen-provider-custom');
+
+  const label = screen.getByText(longLabel);
+  expect(label).toHaveClass('min-w-0', 'truncate');
+  expect(label).toHaveAttribute('title', longLabel);
+  expect(screen.getByText(longDescription)).toHaveClass('break-words');
 });
 
 test('load failure shows an alert with a working retry', async () => {
@@ -111,7 +130,11 @@ test('load failure shows an alert with a working retry', async () => {
       .mockResolvedValueOnce({ providers: catalogue }),
   });
   renderWithKainBain(<ImageGenSection client={client} />);
-  expect(await screen.findByRole('alert')).toHaveTextContent('offline');
+  const loadAlert = await screen.findByRole('alert');
+  expect(loadAlert).toHaveTextContent('offline');
+  // Fetch errors surface raw server text next to the Retry button.
+  expect(loadAlert.firstElementChild).toHaveClass('min-w-0', 'break-words');
+  expect(screen.getByRole('button', { name: 'Retry' })).toHaveClass('shrink-0');
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(await screen.findByTestId('image-gen-provider-muse')).toBeInTheDocument();
 });

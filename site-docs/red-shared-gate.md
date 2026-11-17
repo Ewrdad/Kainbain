@@ -1,6 +1,6 @@
 ---
 title: Red Shared-Gate Runbook
-section: working-with
+section: reference
 order: 66
 slug: red-shared-gate
 ---

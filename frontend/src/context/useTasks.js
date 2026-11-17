@@ -43,6 +43,7 @@ export function useTasks({ onNotification } = {}) {
     jumpTask: mutations.jumpTask,
     moveTask: board.moveTask,
     completeTask: mutations.completeTask,
+    uncompleteTask: mutations.uncompleteTask,
     updateTask: mutations.updateTask,
     feedbackTask: mutations.feedbackTask,
     followUpTask: mutations.followUpTask,

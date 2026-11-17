@@ -45,6 +45,8 @@ const TEXT_PAIRS_AAA = [
   ['inverse-primary on inverse-surface', '#004d1c', '#e5e2e1', 7],
   ['on-error-container on error-container', '#ffdad6', '#93000a', 7],
   ['on-warning-container on warning-container', '#ffe082', '#4a3c00', 7],
+  // Docs sidebar category badge (survey-chosen soft lavender pill).
+  ['on-docs-badge on docs-badge', '#221d35', '#dccdf7', 7],
   ['on-surface on agent-fill', '#e5e2e1', '#043b0c', 7],
   ['on-surface on human-fill', '#e5e2e1', '#0d2b45', 7],
   ['on-surface on stage-fill', '#e5e2e1', '#362600', 7],

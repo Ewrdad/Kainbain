@@ -177,7 +177,7 @@ export function AccessControlSection() {
       {notice && (
         <p
           role={notice.kind === 'error' ? 'alert' : 'status'}
-          className="px-3 py-2 text-[11px] text-on-surface bg-surface-container-high border border-border-standard rounded-sm"
+          className="px-3 py-2 text-[11px] text-on-surface bg-surface-container-high border border-border-standard rounded-sm break-words"
         >
           {notice.text}
         </p>

@@ -149,4 +149,50 @@ describe('ApiKeysSection', () => {
     render(<ApiKeysSection />);
     expect(await screen.findByTestId('apikeys-denied')).toBeInTheDocument();
   });
+
+  it('truncates very long key names with the full name on hover', async () => {
+    const longName = `security-scanner-for-release-automation-${'k'.repeat(150)}`;
+    await loadSection({
+      keys: [keyRow({ name: longName })],
+      knownScopes: settingsView.knownApiKeyScopes,
+    });
+    const label = await screen.findByText(longName);
+    expect(label).toHaveClass('min-w-0', 'truncate');
+    expect(label).toHaveAttribute('title', longName);
+  });
+
+  it('wraps very long scope names in the create-form checkboxes', async () => {
+    const longScope = `tasks:release-automation-${'s'.repeat(150)}`;
+    await loadSection({ keys: [], knownScopes: [longScope] });
+
+    const scopeLabel = await screen.findByText(longScope);
+    expect(scopeLabel).toHaveClass('break-all');
+    // The wrapping label must squeeze inside the fieldset row.
+    expect(scopeLabel.closest('label')).toHaveClass('min-w-0');
+  });
+
+  it('wraps very long scopes and usage routes in key rows', async () => {
+    const longScope = `tasks:release-automation-${'s'.repeat(150)}`;
+    const longRoute = `/tasks/${'r'.repeat(150)}`;
+    await loadSection({ keys: [keyRow({ scopes: [longScope] })], knownScopes: [] });
+    mocks.getApiKeyUsage.mockResolvedValue({
+      key: keyRow(),
+      usage: [
+        { at: '2026-03-01T00:00:00.000Z', action: 'apikey.used', detail: { method: 'POST', route: longRoute } },
+      ],
+    });
+
+    // The roles/scopes meta line renders scope names verbatim.
+    const metaLine = await screen.findByText(
+      (content, element) => element?.tagName === 'SPAN' && content.includes(`Scopes: ${longScope}`),
+    );
+    expect(metaLine).toHaveClass('break-words');
+
+    fireEvent.click(screen.getByRole('button', { name: /usage/i }));
+    const usage = await screen.findByTestId('apikey-usage-k1');
+    expect(usage).toHaveTextContent('apikey.used');
+    const usageEntry = screen.getByText(/apikey\.used/);
+    expect(usageEntry.tagName).toBe('LI');
+    expect(usageEntry).toHaveClass('break-words');
+  });
 });

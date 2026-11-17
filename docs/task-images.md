@@ -74,11 +74,57 @@ retry seam above is what makes those flaps self-heal instead of latching.
 Structural alternatives (per-branch serving, branch-independent asset store,
 default worktree isolation) are deliberately out of scope here.
 
+## Agent delivery: copy-or-warn
+
+A task whose goal (or failure/feedback text) references `assets/<name>`
+either has the readable file in the agent's workspace, or its rendered
+stage prompt opens with an explicit `MISSING-ASSET` warning naming the
+file — agents fail fast instead of silently planning around a phantom
+screenshot (task `b31cab50`; case study `0d29c64c`, whose settings-page
+plan had to be grounded in source because `assets/image.png` was absent).
+
+- **Shared grammar.** `shared/taskAssetRefs/` (`normalizeAssetSrc`,
+  `extractAssetRefs`) is the single owner of the `assets/<name>`
+  destination grammar: `./`, `/`, and task-folder prefixes tolerated,
+  `<...>` destinations unwrapped, trailing quoted titles stripped,
+  absolute/protocol URLs ignored. Backend curation and the frontend
+  viewer (`resolveTaskImageUrl`) both resolve through it, so detection
+  can never drift from what the viewer shows.
+- **Warning arm (backend, curate time).** `PromptCurationEngine.curatePrompt`
+  — the choke point both the embedded path and `curateRunnerPrompt` share —
+  resolves every ref against the task assets dir
+  (`api/work/taskAssets.js`: `findMissingAssetRefs`,
+  `formatMissingAssetWarning`) and renders `# Missing Task Assets` as the
+  first prompt section (`{{missingAssets}}` layout token, auto-prepended
+  for verdict stages when a custom layout omits it). Detection is
+  extension-agnostic; a ref warns only when neither the literal name nor
+  its serve-side canonical form matches an on-disk asset, so
+  drifted-but-servable refs stay silent. Stored goal text is never
+  mutated — re-uploading the file heals the next run with no cleanup —
+  and ref-free or fully-resolved tasks keep byte-identical prompts.
+- **Branch-flap second look.** Assets are tracked files, so whatever branch
+  is checked out at curate time decides what is on disk. Before warning,
+  curation drops refs whose bytes ride the task's own branch
+  (`filterBranchBackedRefs`, one `git ls-tree`, best-effort): the agent's
+  worktree is on that branch and has them. Anything git cannot answer
+  keeps its warning.
+- **Delivery arm, local Runners.** `syncTaskDocs` (`runner/project.js`)
+  already mirrors the task folder including `assets/` into the per-task
+  worktree before the first stage runs; the daemon log now reports the
+  synced asset count alongside the file total.
+- **Delivery arm, remote Runners.** Claims and dispatch leases ship
+  `taskAssets` (`collectTaskAssetPayload`: images only, sorted, per-file
+  `taskImageMaxBytes`, total `taskImageMaxAttachBytes`), and the daemon
+  writes entries the worktree lacks (`writeClaimTaskAssets`: flat
+  allowlisted names only, size-capped, never overwrites) before the first
+  stage runs.
+
 ## Repairs
 
 - **Dangling refs (bytes nowhere).** Unrepairable automatically; the chip shows
-  the filename so the gap is actionable. Re-upload the picture or drop the
-  reference line.
+  the filename so the gap is actionable, and agent prompts carry the
+  `MISSING-ASSET` warning above. Re-upload the picture (heals the next run
+  automatically) or drop the reference line.
 - **Branch-stranded bytes** (ref 404s on main but bytes sit on the task's own
   branch — check with
   `git cat-file -e kb/<taskId>:docs/tasks/<taskId>/assets/<name>`). Recover

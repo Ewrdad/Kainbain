@@ -20,6 +20,7 @@ export const MAX_LAYOUT_CHARS = 20000;
  * @example SECTION_TOKENS.includes('task') => true
  ***/
 export const SECTION_TOKENS = Object.freeze([
+	"missingAssets",
 	"task",
 	"stage",
 	"skills",
@@ -83,6 +84,9 @@ export const MANDATORY_LAYOUT_TOKENS = Object.freeze([
  *     depends on the agent seeing what failed.
  *   - `testingGuidance`: required for agent stages that expect a verdict /
  *     test gates, so test verification cannot be silently dropped.
+ *   - `missingAssets`: required for agent stages that expect a verdict
+ *     whenever the goal references assets with no bytes on disk, so the
+ *     agent fails fast instead of planning around a phantom screenshot.
  *   Freely omittable chaff (no guard at all): `skills`, `taskImages`,
  *   `previousReports`, `reporting` and any surrounding markdown prose.
  * @example CONDITIONAL_LAYOUT_TOKENS.includes('failureDetails') => true
@@ -91,6 +95,7 @@ export const CONDITIONAL_LAYOUT_TOKENS = Object.freeze([
 	"failureDetails",
 	"testingGuidance",
 	"noCode",
+	"missingAssets",
 ]);
 
 /***
@@ -101,6 +106,14 @@ export const CONDITIONAL_LAYOUT_TOKENS = Object.freeze([
  * @example LAYOUT_TOKENS.find((t) => t.token === 'task') => { token: 'task', ... }
  ***/
 export const LAYOUT_TOKENS = Object.freeze([
+	{
+		token: "missingAssets",
+		label: "Missing assets",
+		category: "section",
+		requirement: "conditional",
+		description:
+			"MISSING-ASSET warning — auto-prepended for verdict stages whenever goal refs lack bytes.",
+	},
 	{
 		token: "task",
 		label: "Task",
@@ -134,7 +147,8 @@ export const LAYOUT_TOKENS = Object.freeze([
 		label: "Previous reports",
 		category: "section",
 		requirement: "optional",
-		description: "Prior stage report list (# Previous Reports).",
+		description:
+			"Files actually present in the task docs folder, newest first (# Previous Reports).",
 	},
 	{
 		token: "reporting",
@@ -258,10 +272,12 @@ export const LAYOUT_TOKENS = Object.freeze([
 /***
  * MARK: DEFAULT_PROMPT_LAYOUT
  * @description Canonical markdown template reproducing today's section order
- *   exactly: task, stage, skills, images, previous reports, reporting,
- *   failure details, testing guidance, stage failure guidance. Rendered
- *   through `renderPromptLayout` it is byte-identical to the legacy join.
- * @example DEFAULT_PROMPT_LAYOUT.split('\n\n').length => 10
+ *   exactly: missing-asset warning first, then task, stage, skills, images,
+ *   previous reports, reporting, failure details, testing guidance, stage
+ *   failure guidance. Rendered through `renderPromptLayout` it is
+ *   byte-identical to the legacy join (the warning chunk vanishes when no
+ *   refs dangle, like every other empty section).
+ * @example DEFAULT_PROMPT_LAYOUT.split('\n\n').length => 11
  ***/
 export const DEFAULT_PROMPT_LAYOUT = SECTION_TOKENS.map(
 	(name) => `{{${name}}}`,

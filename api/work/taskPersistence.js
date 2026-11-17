@@ -80,6 +80,11 @@ export function saveTaskMarkdown(taskStore, projectCwd, task) {
 				? [`surveyFile: ${_formatFrontmatterValue(normalizeSurveyFileName(task.surveyFile))}`]
 				: []),
 			`currentStageId: ${_formatFrontmatterValue(task.currentStageId || "")}`,
+			// Pre-completion snapshot consumed by uncompleteTask ("restore it to
+			// before"); written only while a completed task still carries it, so a
+			// reopen (or a never-completed task) leaves the line out of the file.
+			...(task.statusBeforeComplete ? [`statusBeforeComplete: ${_formatFrontmatterValue(task.statusBeforeComplete)}`] : []),
+			...(task.stageBeforeComplete ? [`stageBeforeComplete: ${_formatFrontmatterValue(task.stageBeforeComplete)}`] : []),
 			`createdAt: ${_formatFrontmatterValue(task.createdAt)}`,
 			`updatedAt: ${_formatFrontmatterValue(task.updatedAt)}`,
 			`enteredStageAt: ${_formatFrontmatterValue(task.enteredStageAt || "")}`,
@@ -578,7 +583,7 @@ export function recordTimelineWithDiffStat(
 
 /***
  * MARK: syncTaskReports
- * @description Synchronizes and deduplicates markdown report files from disk for a task.
+ * @description Synchronizes and deduplicates markdown report files from disk for a task. Metadata entries whose file is absent from a readable task folder are kept but flagged `missingOnDisk: true` (never deleted).
  * @param {Object} taskStore - TaskStore instance.
  * @param {string} projectId
  * @param {Object} task
@@ -614,6 +619,7 @@ export function syncTaskReports(taskStore, projectId, task, projectCwd) {
 		try {
 			if (fs.existsSync(taskDocsDir)) {
 				const files = fs.readdirSync(taskDocsDir);
+				const onDisk = new Set(files);
 				for (const file of files) {
 					if (file.endsWith(".md") && file !== "task.md") {
 						const relPath = reportRelPath(docsProject, task.id, file);
@@ -629,7 +635,7 @@ export function syncTaskReports(taskStore, projectId, task, projectCwd) {
 						// Extract timestamp from filename if available (e.g. stage-20260824T120000Z.md)
 						const tsMatch = file.match(/-(\d{8}[-T]\d{6}Z?)\.md$/);
 						const extractedTs = tsMatch ? tsMatch[1] : "";
-						reportsMap.set(file, {
+						const merged = {
 							...existing,
 							stageName: existing?.stageName || stageSlug || "stage",
 							stageSlug,
@@ -641,7 +647,18 @@ export function syncTaskReports(taskStore, projectId, task, projectCwd) {
 							timestamp:
 								existing?.timestamp || extractedTs || existing?.createdAt || "",
 							createdAt: reportCreatedAt({ ...existing, filename: file }),
-						});
+						};
+						if ("missingOnDisk" in merged) delete merged.missingOnDisk;
+						reportsMap.set(file, merged);
+					}
+				}
+				// Non-destructive phantom flag: metadata entries whose file is
+				// absent from a readable task folder are marked (never deleted —
+				// reliability readers consume metadata, not files). The prompt
+				// enumerates disk directly and never reads this flag.
+				for (const [key, entry] of reportsMap) {
+					if (!onDisk.has(key)) {
+						entry.missingOnDisk = true;
 					}
 				}
 			}
@@ -932,6 +949,11 @@ export function parseTaskMarkdown(taskStore, content, taskId, projectId) {
 		body: taskGoal,
 		prompt: "",
 		currentStageId: data.currentStageId || null,
+		// Pre-completion snapshot written by completeTask; read back so an
+		// uncomplete after a server restart still restores the exact prior
+		// status/stage instead of falling back to idle. Absent on legacy files.
+		statusBeforeComplete: data.statusBeforeComplete || null,
+		stageBeforeComplete: data.stageBeforeComplete || null,
 		status: effectiveStatus,
 		wasInterrupted: Boolean(isInterruptedOnDisk),
 		resumedAfterInterruption:

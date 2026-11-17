@@ -192,6 +192,32 @@ README "Multiple projects & custom state folders" section:
   `PROJECTS_ROOTS`, path-list separated) explicitly — see
   `docs/PORTABLE_DEPLOYMENT.md` scenario D.
 
+## Docs taxonomy rename: two avenues → four groups (2026-11-15)
+
+The site-docs sidebar regrouped from two avenues (`how-it-works`,
+`working-with`) to four groups (`getting-started`, `concepts`, `workflows`,
+`reference`); all in-repo `site-docs/*.md` frontmatter was migrated and
+`DOC_SECTIONS` / `SECTION_LABELS` in `api/siteDocs.js` now list the four
+new ids.
+
+- **Migration (automatic, no action required):** `readDocFile` resolves the
+  retired ids via `LEGACY_SECTION_ALIASES` — `how-it-works` → `concepts`,
+  `working-with` → `workflows` — so custom `KAINBAIN_SITE_DOCS` dirs still
+  carrying old `section:` frontmatter keep indexing (previously they would
+  have been silently skipped). Each aliased file emits one `console.warn`
+  (`[siteDocs] <file> uses retired section ...`) naming the file.
+- **Recommended:** update custom article frontmatter to the new `section:`
+  values at your convenience; the alias is retained indefinitely and there
+  is no removal date.
+- **Coverage:** `api/siteDocs.test.js` proves `readDocFile` / `listDocs` /
+  `getDoc` resolve old-section files ("LEGACY_SECTION_ALIASES" suite, incl. a
+  recorded warning per aliased file), and the "siteDocs taxonomy rename
+  guardrail" suite fails — naming the retired id — when any id in
+  `KNOWN_SECTION_HISTORY` is neither current nor aliased, when an alias
+  points at a non-current id, or when a retired id lacks a note here.
+  Section-caused skips are never silent at runtime either: unknown, missing,
+  or unaliased-retired sections warn naming the file (`readDocFile`).
+
 ## Dated exceptions (all carry reason + expiry in the allowlist)
 
 - Build warnings: none.

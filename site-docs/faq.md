@@ -1,6 +1,6 @@
 ---
 title: Triage FAQ
-section: working-with
+section: reference
 order: 70
 slug: faq
 ---

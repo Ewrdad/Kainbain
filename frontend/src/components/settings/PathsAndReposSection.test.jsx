@@ -112,4 +112,11 @@ describe('PathsAndReposSection', () => {
     expect(screen.queryByText('Application Link & Health')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('App URL')).not.toBeInTheDocument();
   });
+
+  it('wraps a very long docs folder name in the symlink hint', () => {
+    const longFolderName = `quarterly-release-docs-${'f'.repeat(140)}`;
+    renderWithKainBain(<PathsAndReposSection {...baseProps} docsDirName={longFolderName} />);
+    // The folder name renders inside a <code> hint, so it must break anywhere.
+    expect(screen.getByText(longFolderName, { exact: false })).toHaveClass('break-all');
+  });
 });

@@ -21,6 +21,7 @@ vi.mock('../services/api', () => ({
     rejectTaskWithFeedback: vi.fn(),
     jumpTask: vi.fn(),
     completeTask: vi.fn(),
+    uncompleteTask: vi.fn(),
     moveTask: vi.fn(),
     updateTask: vi.fn(),
   },
@@ -366,6 +367,36 @@ describe('useTasks', () => {
         title: 'Task Completed',
       }),
     );
+  });
+
+  it('uncompleteTask reopens and refreshes with meaningful success toast', async () => {
+    api.uncompleteTask.mockResolvedValue({ id: 't1', status: 'in_stage' });
+    api.listTasks.mockResolvedValue([{ id: 't1', status: 'in_stage' }]);
+    const onNotification = vi.fn();
+    const { result } = renderHook(() => useTasks({ onNotification }));
+    await act(async () => {
+      await result.current.uncompleteTask('proj-1', 't1');
+    });
+    expect(api.uncompleteTask).toHaveBeenCalledWith('proj-1', 't1');
+    expect(result.current.tasks[0].status).toBe('in_stage');
+    expect(onNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'success',
+        title: 'Task Reopened',
+      }),
+    );
+  });
+
+  it('uncompleteTask logs without crashing when the backend fails', async () => {
+    api.uncompleteTask.mockRejectedValue(new Error('boom'));
+    api.listTasks.mockResolvedValue([{ id: 't1', status: 'completed' }]);
+    const { result } = renderHook(() => useTasks());
+    await act(async () => {
+      await result.current.uncompleteTask('proj-1', 't1');
+    });
+    expect(api.uncompleteTask).toHaveBeenCalledWith('proj-1', 't1');
+    // Task state untouched by the failed call.
+    expect(result.current.tasks).toEqual([]);
   });
 
   it('supports followUpTask, steerTask, pauseTask, resumeTask, retryTask, abortTask', async () => {

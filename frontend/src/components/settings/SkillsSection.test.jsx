@@ -153,6 +153,8 @@ test('opens a preview modal with the raw markdown', async () => {
   fireEvent.click(previews[0]);
   await waitFor(() => expect(getSkillByName).toHaveBeenCalledWith('my-guide', 'proj-1'));
   expect(await screen.findByText('Raw skill body')).toBeInTheDocument();
+  // The modal title names the skill verbatim, so it must wrap long names.
+  expect(document.getElementById('skill-preview-title')).toHaveClass('break-words');
 
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   await waitFor(() => expect(screen.queryByText('Raw skill body')).not.toBeInTheDocument());
@@ -173,8 +175,10 @@ test('imports a picked file, shows warnings, and refreshes the list', async () =
   expect(projectId).toBe('proj-1');
   expect(payload.file.name).toBe('my-guide.md');
   expect(payload.overwrite).toBe(false);
-  expect(await screen.findByText(/Imported my-guide/)).toBeInTheDocument();
-  expect(await screen.findByText(/derived from the filename/)).toBeInTheDocument();
+  expect(await screen.findByText(/Imported my-guide/)).toHaveTextContent('Imported my-guide');
+  // Success and warning lines embed file/skill names, so they must wrap.
+  expect(screen.getByRole('status')).toHaveClass('break-words');
+  expect(await screen.findByText(/derived from the filename/)).toHaveClass('break-words');
   await waitFor(() => expect(fetchSkills).toHaveBeenCalledTimes(2));
 });
 
@@ -204,7 +208,10 @@ test('surfaces a 409 clash with the overwrite hint and no list refresh', async (
   pickFile('my-guide.md');
   fireEvent.click(screen.getByRole('button', { name: 'Import Skill' }));
 
-  expect(await screen.findByRole('alert')).toHaveTextContent("Skill 'my-guide' already exists");
+  const clashAlert = await screen.findByRole('alert');
+  expect(clashAlert).toHaveTextContent("Skill 'my-guide' already exists");
+  // Server messages embed file/skill names, so the alert must wrap.
+  expect(clashAlert).toHaveClass('break-words');
   expect(screen.getByText(/needed to retry the clash above/)).toBeInTheDocument();
   await waitFor(() => expect(api.importSkill).toHaveBeenCalledTimes(1));
   expect(fetchSkills).toHaveBeenCalledTimes(1);
@@ -245,6 +252,22 @@ test('deletes a custom skill after confirm and refreshes the list', async () => 
   }
 });
 
+test('surfaces a delete failure naming the skill', async () => {
+  renderSection();
+  api.deleteSkill.mockRejectedValue(new Error('API 500 delete failed'));
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'Delete custom skill my-guide' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('API 500 delete failed');
+    // Delete errors embed the skill name, so the alert must wrap.
+    expect(alert).toHaveClass('break-words');
+  } finally {
+    confirm.mockRestore();
+  }
+});
+
 test('aborts the delete when the confirm is dismissed', async () => {
   renderSection();
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
@@ -269,7 +292,10 @@ test('shows the fetch error state with a working retry', async () => {
     skills: [],
     skillsError: 'boom',
   });
-  expect(await screen.findByText(/Failed to load skills: boom/)).toBeInTheDocument();
+  const loadAlert = await screen.findByText(/Failed to load skills: boom/);
+  expect(loadAlert).toBeInTheDocument();
+  // Fetch errors surface server text, so the alert must wrap.
+  expect(loadAlert).toHaveClass('break-words');
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(fetchSkills).toHaveBeenCalledTimes(2);
 });

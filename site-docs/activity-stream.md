@@ -1,6 +1,6 @@
 ---
 title: Activity Stream
-section: how-it-works
+section: concepts
 order: 70
 slug: activity-stream
 ---

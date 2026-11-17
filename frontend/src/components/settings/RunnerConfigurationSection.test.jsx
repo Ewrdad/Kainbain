@@ -454,6 +454,8 @@ describe('RunnerConfigurationSection', () => {
     await waitFor(() => {
       expect(screen.getByTestId('runner-worktreedir-r1-error')).toBeTruthy();
     });
+    // Directory errors quote the rejected path, so the line must wrap.
+    expect(screen.getByTestId('runner-worktreedir-r1-error')).toHaveClass('break-words');
     expect(updateRunnerConfig).not.toHaveBeenCalled();
   });
 

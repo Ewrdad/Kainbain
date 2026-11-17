@@ -1,7 +1,7 @@
 ---
 title: Task Dependencies
-section: working-with
-order: 45
+section: workflows
+order: 30
 slug: task-dependencies
 ---
 

@@ -8,6 +8,7 @@ import {
   getApiKeyUsage,
 } from '../../services/auth/index.js';
 import { copyToClipboard } from '../../services/clipboard.js';
+import { TruncatedText } from '../common/TruncatedText';
 
 const labelClass = 'text-xs font-bold text-on-surface';
 const hintClass = 'text-[11px] text-text-muted';
@@ -192,7 +193,7 @@ export function ApiKeysSection() {
       {notice && (
         <p
           role={notice.kind === 'error' ? 'alert' : 'status'}
-          className="px-3 py-2 text-[11px] text-on-surface bg-surface-container-high border border-border-standard rounded-sm"
+          className="px-3 py-2 text-[11px] text-on-surface bg-surface-container-high border border-border-standard rounded-sm break-words"
         >
           {notice.text}
         </p>
@@ -215,7 +216,7 @@ export function ApiKeysSection() {
           data-testid="apikey-secret-once"
           className="px-3 py-2 bg-surface-container-high border border-primary rounded-sm flex flex-col gap-2"
         >
-          <span className={labelClass}>
+          <span className={`${labelClass} break-words`}>
             Secret for “{createdSecret.name}” — shown once, copy it now
           </span>
           <code className="text-xs text-on-surface break-all select-all">{createdSecret.secret}</code>
@@ -290,14 +291,14 @@ export function ApiKeysSection() {
             <legend className={hintClass}>Scopes (empty means the full role; scopes only narrow)</legend>
             <div className="flex flex-wrap gap-2">
               {knownScopes.map((scope) => (
-                <label key={scope} className="flex items-center gap-1 text-[11px] text-on-surface cursor-pointer">
+                <label key={scope} className="flex min-w-0 items-center gap-1 text-[11px] text-on-surface cursor-pointer">
                   <input
                     type="checkbox"
                     checked={scopes.includes(scope)}
                     onChange={() => toggleScope(scope)}
-                    className="rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0 cursor-pointer"
+                    className="shrink-0 rounded-sm bg-surface-deep border-border-standard text-primary focus:ring-0 cursor-pointer"
                   />
-                  <span>{scope}</span>
+                  <span className="break-all">{scope}</span>
                 </label>
               ))}
             </div>
@@ -315,8 +316,8 @@ export function ApiKeysSection() {
               data-testid={`apikey-row-${key.id}`}
               className="px-3 py-2 bg-surface-container-high border border-border-standard rounded-sm flex flex-col gap-1"
             >
-              <div className="flex flex-wrap items-center gap-2">
-                <span className={labelClass}>{key.name}</span>
+              <div className="flex flex-wrap min-w-0 items-center gap-2">
+                <TruncatedText text={key.name} className={labelClass} />
                 <span className={hintClass}>…{key.prefix}</span>
                 {key.revoked === true && (
                   <span className="text-[11px] font-bold text-error">revoked</span>
@@ -325,7 +326,7 @@ export function ApiKeysSection() {
                   <span className="text-[11px] font-bold text-error">expired</span>
                 )}
               </div>
-              <span className={hintClass}>
+              <span className={`${hintClass} break-words`}>
                 Roles: {(key.roles || []).join(', ') || '—'} · Scopes:{' '}
                 {(key.scopes || []).length > 0 ? key.scopes.join(', ') : 'full role'} · Expires:{' '}
                 {key.expiresAt ? formatDateTime(key.expiresAt) : 'never'} · Last used:{' '}
@@ -352,7 +353,7 @@ export function ApiKeysSection() {
                     <li className={hintClass}>No recorded usage.</li>
                   ) : (
                     (usageById[key.id] || []).map((entry, index) => (
-                      <li key={`${entry.at}-${index}`} className={hintClass}>
+                      <li key={`${entry.at}-${index}`} className={`${hintClass} break-words`}>
                         {formatDateTime(entry.at)} · {entry.action}
                         {entry.detail?.route ? ` · ${entry.detail.method || ''} ${entry.detail.route}` : ''}
                         {entry.detail?.reason ? ` · ${entry.detail.reason}` : ''}

@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const { browserInstallTargets, installSteps, npxExecutable, playwrightAttempts } = await import("../scripts/setup.mjs");
+const { browserInstallTargets, hookInstallStep, installSteps, npxExecutable, playwrightAttempts } = await import("../scripts/setup.mjs");
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -26,6 +26,23 @@ describe("installSteps", () => {
 		for (const step of steps) {
 			assert.equal(typeof step.dir, "string");
 		}
+	});
+});
+
+describe("hookInstallStep", () => {
+	it("pins the setup hook-install step: runs scripts/install-git-hooks.mjs with node from the repo root", () => {
+		// The pre-commit binary guard only fires in checkouts where
+		// core.hooksPath is set, so `npm run setup` must install it — a
+		// fresh clone or runner worktree otherwise never runs the hook.
+		const step = hookInstallStep();
+		assert.equal(step.file, process.execPath);
+		assert.equal(step.args.length, 1);
+		assert.ok(
+			step.args[0].endsWith(path.join("scripts", "install-git-hooks.mjs")),
+			`hook step must run scripts/install-git-hooks.mjs, got ${step.args[0]}`,
+		);
+		assert.ok(fs.existsSync(step.args[0]), `${step.args[0]} must exist on disk`);
+		assert.match(step.name, /hook/i);
 	});
 });
 

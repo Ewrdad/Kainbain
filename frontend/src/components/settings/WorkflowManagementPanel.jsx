@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useKainBain } from '../../context/KainBainContext';
 import { SelectDropdown } from '../common/SelectDropdown';
+import { TruncatedText } from '../common/TruncatedText';
 
 /***
  * MARK: WorkflowManagementPanel
@@ -126,7 +127,7 @@ export function WorkflowManagementPanel({ projectId }) {
 
       {statusMsg && (
         <div
-          className={`p-3 text-xs rounded-sm border ${
+          className={`p-3 text-xs rounded-sm border break-words ${
             statusMsg.type === 'error'
               ? 'bg-error/10 border-error text-error'
               : 'bg-primary/10 border-primary text-primary'
@@ -170,6 +171,7 @@ export function WorkflowManagementPanel({ projectId }) {
               <SelectDropdown
                 id="new-wf-template"
                 ariaLabel="Initial Pipeline Template"
+                className="block w-full min-w-0"
                 value={template}
                 onChange={setTemplate}
                 options={[
@@ -221,49 +223,52 @@ export function WorkflowManagementPanel({ projectId }) {
           return (
             <div
               key={wf.id}
-              className={`p-4 rounded-sm border transition-all ${
+              className={`p-4 rounded-sm border transition-all min-w-0 ${
                 isActive
                   ? 'bg-surface-container-high border-primary shadow-sm'
                   : 'bg-surface-container border-border-standard'
               }`}
             >
               <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                <div className="flex items-center gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
                   {isEditing ? (
-                    <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
                       <input
                         type="text"
                         value={editName}
                         onChange={(e) => setEditName(e.target.value)}
-                        className="px-2 py-1 bg-surface-deep border border-border-standard rounded-sm text-xs text-on-surface font-mono outline-none focus:border-primary"
+                        className="min-w-0 flex-1 px-2 py-1 bg-surface-deep border border-border-standard rounded-sm text-xs text-on-surface font-mono outline-none focus:border-primary"
                         // eslint-disable-next-line jsx-a11y/no-autofocus -- editor appears from the user's explicit rename action
                         autoFocus
                       />
                       <button
                         type="button"
                         onClick={() => handleSaveEdit(wf.id)}
-                        className="px-2 py-1 bg-primary text-on-primary text-[10px] font-bold uppercase rounded-sm cursor-pointer"
+                        className="shrink-0 px-2 py-1 bg-primary text-on-primary text-[10px] font-bold uppercase rounded-sm cursor-pointer"
                       >
                         Save
                       </button>
                       <button
                         type="button"
                         onClick={() => setEditingWfId(null)}
-                        className="px-2 py-1 bg-surface-deep text-text-muted text-[10px] font-bold uppercase rounded-sm cursor-pointer"
+                        className="shrink-0 px-2 py-1 bg-surface-deep text-text-muted text-[10px] font-bold uppercase rounded-sm cursor-pointer"
                       >
                         Cancel
                       </button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-sm text-text-high">{wf.name}</span>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <TruncatedText
+                        text={wf.name}
+                        className="font-bold text-sm text-text-high"
+                      />
                       <button
                         type="button"
                         onClick={() => {
                           setEditingWfId(wf.id);
                           setEditName(wf.name);
                         }}
-                        className="text-text-muted hover:text-on-surface text-xs cursor-pointer"
+                        className="shrink-0 text-text-muted hover:text-on-surface text-xs cursor-pointer"
                         title="Rename workflow"
                         aria-label={`Rename workflow ${wf.name}`}
                       >
@@ -273,18 +278,18 @@ export function WorkflowManagementPanel({ projectId }) {
                   )}
 
                   {isActive && (
-                    <span className="px-2 py-0.5 text-[9px] font-bold uppercase rounded-sm bg-primary text-on-primary font-mono">
+                    <span className="shrink-0 px-2 py-0.5 text-[9px] font-bold uppercase rounded-sm bg-primary text-on-primary font-mono">
                       Active
                     </span>
                   )}
                   {wf.isDefault && (
-                    <span className="px-2 py-0.5 text-[9px] font-bold uppercase rounded-sm bg-surface-deep border border-border-standard text-text-muted font-mono">
+                    <span className="shrink-0 px-2 py-0.5 text-[9px] font-bold uppercase rounded-sm bg-surface-deep border border-border-standard text-text-muted font-mono">
                       Default
                     </span>
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap max-w-full shrink-0 items-center gap-2">
                   {!isActive && (
                     <button
                       type="button"
@@ -316,17 +321,17 @@ export function WorkflowManagementPanel({ projectId }) {
               </div>
 
               {/* Stages Pill Strip */}
-              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <div className="flex flex-wrap min-w-0 items-center gap-1.5 pt-1">
                 {wf.stages?.map((stage, idx) => (
                   <React.Fragment key={stage.id || idx}>
                     <div
-                      className={`px-2 py-0.5 text-[10px] font-mono rounded-sm border flex items-center gap-1 ${stageTypeColor(
+                      className={`px-2 py-0.5 text-[10px] font-mono rounded-sm border flex min-w-0 max-w-full items-center gap-1 ${stageTypeColor(
                         stage.type,
                       )}`}
                     >
-                      <span className="opacity-60">{idx + 1}.</span>
-                      <span className="font-medium">{stage.name}</span>
-                      <span className="text-[8px] uppercase tracking-wider opacity-75">
+                      <span className="shrink-0 opacity-60">{idx + 1}.</span>
+                      <TruncatedText text={stage.name} className="font-medium" />
+                      <span className="shrink-0 text-[8px] uppercase tracking-wider opacity-75">
                         ({stage.type})
                       </span>
                     </div>

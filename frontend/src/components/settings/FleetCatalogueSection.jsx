@@ -177,7 +177,7 @@ export function FleetCatalogueSection({ isAdmin = true }) {
           fetch).
         </p>
         {error && (
-          <p role="alert" data-testid="fleet-catalogue-error" className="text-[11px] text-error">
+          <p role="alert" data-testid="fleet-catalogue-error" className="text-[11px] text-error break-words">
             {error}
           </p>
         )}
@@ -198,12 +198,12 @@ export function FleetCatalogueSection({ isAdmin = true }) {
         </button>
       </div>
       {notice && (
-        <p data-testid="fleet-catalogue-notice" className="text-[11px] text-text-muted">
+        <p data-testid="fleet-catalogue-notice" className="text-[11px] text-text-muted break-words">
           {notice}
         </p>
       )}
       {(actionError || error) && (
-        <p role="alert" data-testid="fleet-catalogue-error" className="text-[11px] text-error">
+        <p role="alert" data-testid="fleet-catalogue-error" className="text-[11px] text-error break-words">
           {actionError || error}
         </p>
       )}

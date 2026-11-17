@@ -104,7 +104,7 @@ export function PathsAndReposSection({
             />
             <p className="text-[10px] text-text-muted">
               Knowledge store symlinked to{' '}
-              <code className="font-mono text-primary">
+              <code className="font-mono text-primary break-all">
                 &lt;projectRoot&gt;/{docsDirName?.trim() || 'docs'}
               </code>
             </p>

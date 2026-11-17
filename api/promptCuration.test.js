@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -335,31 +336,53 @@ describe("PromptCurationEngine", () => {
 	});
 
 	it("interpolates {{projectRoot}}, {{previousReports}}, and {{latestReportPath}}", () => {
-		const engine = new PromptCurationEngine();
-		const task = {
-			id: "task-77",
-			goal: "Ship feature",
-			reports: [
-				{ stageSlug: "idea", path: "./docs/tasks/task-77/idea-1.md" },
-				{ stageSlug: "plan", path: "./docs/tasks/task-77/plan-2.md" },
-			],
-		};
-		const stage = {
-			id: "3",
-			name: "Plan",
-			prompt:
-				"Root: {{projectRoot}}\nPrior:\n{{previousReports}}\nLatest: {{latestReportPath}}",
-		};
-
-		const prompt = engine.curatePrompt(task, stage, {
-			projectCwd: "/home/server/projects/kainbain",
-		});
-
-		expect(prompt).toContain("Root: /home/server/projects/kainbain");
-		expect(prompt).toContain(
-			"Prior:\n./docs/tasks/task-77/idea-1.md\n./docs/tasks/task-77/plan-2.md",
+		// Disk-authoritative: the prompt lists the real files in a tmp task
+		// folder (phantom metadata entries are dropped).
+		const projectCwd = fs.mkdtempSync(
+			path.join(os.tmpdir(), "kainbain-prompt-curation-"),
 		);
-		expect(prompt).toContain("Latest: ./docs/tasks/task-77/plan-2.md");
+		try {
+			const taskDir = path.join(projectCwd, "docs", "tasks", "task-77");
+			fs.mkdirSync(taskDir, { recursive: true });
+			fs.writeFileSync(path.join(taskDir, "idea-1.md"), "idea");
+			fs.writeFileSync(path.join(taskDir, "plan-2.md"), "plan");
+			const older = new Date(Date.now() - 2000);
+			const newer = new Date();
+			fs.utimesSync(path.join(taskDir, "idea-1.md"), older, older);
+			fs.utimesSync(path.join(taskDir, "plan-2.md"), newer, newer);
+			const engine = new PromptCurationEngine();
+			const task = {
+				id: "task-77",
+				goal: "Ship feature",
+				reports: [
+					{ stageSlug: "idea", path: "./docs/tasks/task-77/idea-1.md" },
+					{ stageSlug: "plan", path: "./docs/tasks/task-77/plan-2.md" },
+					{
+						stageSlug: "ghost",
+						path: "./docs/tasks/task-77/ghost-9.md",
+					},
+				],
+			};
+			const stage = {
+				id: "3",
+				name: "Plan",
+				prompt:
+					"Root: {{projectRoot}}\nPrior:\n{{previousReports}}\nLatest: {{latestReportPath}}",
+			};
+
+			const prompt = engine.curatePrompt(task, stage, {
+				projectCwd,
+			});
+
+			expect(prompt).toContain(`Root: ${projectCwd}`);
+			expect(prompt).toContain(
+				"Prior:\n./docs/tasks/task-77/plan-2.md\n./docs/tasks/task-77/idea-1.md",
+			);
+			expect(prompt).toContain("Latest: ./docs/tasks/task-77/plan-2.md");
+			expect(prompt).not.toContain("ghost-9.md");
+		} finally {
+			fs.rmSync(projectCwd, { recursive: true, force: true });
+		}
 	});
 
 	it("provides graceful fallbacks for {{projectRoot}}, {{previousReports}}, {{latestReportPath}} when absent", () => {
@@ -496,6 +519,179 @@ describe("Task Images prompt section", () => {
 			expect(prompt).toContain("- ![image](assets/from-disk.png)");
 		} finally {
 			fs.rmSync(tempCwd, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("Missing Task Assets prompt section", () => {
+	function withTempCwd(fn) {
+		const tempCwd = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-prompt-missing-"));
+		try {
+			return fn(tempCwd);
+		} finally {
+			fs.rmSync(tempCwd, { recursive: true, force: true });
+		}
+	}
+
+	it("warns first, naming the dangling file, when the asset is absent", () => {
+		withTempCwd((tempCwd) => {
+			fs.mkdirSync(path.join(tempCwd, "docs", "tasks", "task-dangle"), {
+				recursive: true,
+			});
+			const engine = new PromptCurationEngine();
+			const prompt = engine.curatePrompt(
+				{
+					id: "task-dangle",
+					goal: "Fix the overflow. See ![image.png](assets/image.png).",
+				},
+				{ id: "1", name: "Plan", type: "agent", prompt: "Make a plan." },
+				{ projectCwd: tempCwd },
+			);
+			expect(prompt.startsWith("# Missing Task Assets\n")).toBe(true);
+			expect(prompt).toContain("MISSING-ASSET");
+			expect(prompt).toContain("assets/image.png");
+			expect(prompt).toContain("docs/tasks/task-dangle/assets/image.png");
+			expect(prompt.indexOf("# Missing Task Assets")).toBeLessThan(
+				prompt.indexOf("# Task\n"),
+			);
+		});
+	});
+
+	it("stays silent when the referenced asset is on disk", () => {
+		withTempCwd((tempCwd) => {
+			const assetsDir = path.join(tempCwd, "docs", "tasks", "task-healthy", "assets");
+			fs.mkdirSync(assetsDir, { recursive: true });
+			fs.writeFileSync(path.join(assetsDir, "image.png"), Buffer.from([1]));
+			const engine = new PromptCurationEngine();
+			const prompt = engine.curatePrompt(
+				{
+					id: "task-healthy",
+					goal: "Fix the overflow. See ![image.png](assets/image.png).",
+				},
+				{ id: "1", name: "Plan", type: "agent", prompt: "Make a plan." },
+				{ projectCwd: tempCwd },
+			);
+			expect(prompt).not.toContain("# Missing Task Assets");
+			expect(prompt).not.toContain("MISSING-ASSET");
+		});
+	});
+
+	it("stays silent for drifted-but-servable refs and for ref-free goals", () => {
+		withTempCwd((tempCwd) => {
+			const assetsDir = path.join(tempCwd, "docs", "tasks", "task-drift", "assets");
+			fs.mkdirSync(assetsDir, { recursive: true });
+			fs.writeFileSync(path.join(assetsDir, "my-shot.png"), Buffer.from([1]));
+			const engine = new PromptCurationEngine();
+			const drifted = engine.curatePrompt(
+				{ id: "task-drift", goal: "See ![s](assets/My Shot.PNG)." },
+				{ id: "1", name: "Plan", type: "agent", prompt: "Make a plan." },
+				{ projectCwd: tempCwd },
+			);
+			expect(drifted).not.toContain("MISSING-ASSET");
+			const plain = engine.curatePrompt(
+				{ id: "task-drift", goal: "No references here." },
+				{ id: "1", name: "Plan", type: "agent", prompt: "Make a plan." },
+				{ projectCwd: tempCwd },
+			);
+			expect(plain).not.toContain("# Missing Task Assets");
+		});
+	});
+
+	it("also warns on dangling refs carried by failure details", () => {
+		withTempCwd((tempCwd) => {
+			fs.mkdirSync(path.join(tempCwd, "docs", "tasks", "task-fail"), {
+				recursive: true,
+			});
+			const engine = new PromptCurationEngine();
+			const prompt = engine.curatePrompt(
+				{ id: "task-fail", goal: "Fix it." },
+				{ id: "1", name: "Plan", type: "agent", prompt: "Make a plan." },
+				{
+					projectCwd: tempCwd,
+					failureDetails: "Prior attempt saw ![x](assets/gone.png).",
+				},
+			);
+			expect(prompt).toContain("MISSING-ASSET");
+			expect(prompt).toContain("assets/gone.png");
+		});
+	});
+
+	it("re-injects the warning first even when a custom layout omits it", () => {
+		withTempCwd((tempCwd) => {
+			fs.mkdirSync(path.join(tempCwd, "docs", "tasks", "task-custom"), {
+				recursive: true,
+			});
+			const engine = new PromptCurationEngine();
+			const prompt = engine.curatePrompt(
+				{ id: "task-custom", goal: "See ![x](assets/gone.png)." },
+				{ id: "1", name: "Plan", type: "agent", prompt: "Make a plan." },
+				{
+					projectCwd: tempCwd,
+					promptLayout: "{{task}}\n\n{{stage}}\n\n{{failureGuidance}}",
+				},
+			);
+			expect(prompt).toContain("MISSING-ASSET");
+			expect(prompt).toContain("assets/gone.png");
+			expect(prompt.startsWith("# Missing Task Assets\n")).toBe(true);
+		});
+	});
+
+	it("stays silent when the checkout cannot be verified (no project cwd)", () => {
+		const engine = new PromptCurationEngine();
+		const prompt = engine.curatePrompt(
+			{ id: "task-nocwd", goal: "See ![x](assets/gone.png)." },
+			{ id: "1", name: "Plan", type: "agent", prompt: "Make a plan." },
+		);
+		expect(prompt).not.toContain("MISSING-ASSET");
+	});
+
+	it("stays silent when the bytes sit on the task branch (branch flap)", () => {
+		const repo = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-prompt-flap-"));
+		try {
+			const git = (args) =>
+				execFileSync("git", args, {
+					cwd: repo,
+					stdio: "ignore",
+					env: {
+						...process.env,
+						GIT_CONFIG_GLOBAL: os.devNull,
+						GIT_CONFIG_SYSTEM: os.devNull,
+					},
+				});
+			git(["init", "-q", "--initial-branch=main"]);
+			git(["config", "user.email", "t@t.t"]);
+			git(["config", "user.name", "t"]);
+			git(["config", "commit.gpgsign", "false"]);
+			const assetsDir = path.join(repo, "docs", "tasks", "task-flap", "assets");
+			fs.mkdirSync(assetsDir, { recursive: true });
+			fs.writeFileSync(path.join(assetsDir, "shot.png"), "branch-bytes");
+			fs.writeFileSync(path.join(repo, "docs", "tasks", "task-flap", "task.md"), "x");
+			git(["add", "."]);
+			git(["commit", "-qm", "seed"]);
+			git(["checkout", "-qb", "kb/task-flap"]);
+			git(["checkout", "-q", "main"]);
+			git(["rm", "-q", "-r", "--cached", "docs/tasks/task-flap"]);
+			fs.rmSync(path.join(repo, "docs", "tasks", "task-flap"), {
+				recursive: true,
+				force: true,
+			});
+			git(["commit", "-qm", "flap away"]);
+			const engine = new PromptCurationEngine();
+			const prompt = engine.curatePrompt(
+				{
+					id: "task-flap",
+					branch: "kb/task-flap",
+					goal: "See ![s](assets/shot.png) and ![g](assets/gone.png).",
+				},
+				{ id: "1", name: "Plan", type: "agent", prompt: "Make a plan." },
+				{ projectCwd: repo },
+			);
+			// shot.png rides the task branch (the agent's worktree has it);
+			// only the genuinely absent gone.png warns.
+			expect(prompt).not.toContain("assets/shot.png`");
+			expect(prompt).toContain("assets/gone.png");
+		} finally {
+			fs.rmSync(repo, { recursive: true, force: true });
 		}
 	});
 });

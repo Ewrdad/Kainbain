@@ -32,11 +32,31 @@
 - Safe paths: screenshot capture scripts that write bytes directly (e.g.
   `node scripts/capture-screenshot.mjs --out <path>`), or restoring a known
   good copy with `git checkout <ref> -- <path>`. Never open a binary in an
-  editor or rewrite it with a text-oriented tool.
+  editor or rewrite it with a text-oriented tool. The copy-pasteable safe
+  recipe lives at `docs/tasks/_PROOF_RULE.md` — follow it exactly, no
+  improvisation.
 - Before claiming a proof file is valid, verify the worktree bytes:
   `xxd -l 8 <path>` (expect `8950 4e47 0d0a 1a0a` for PNG) and
   `file <path>` (expect `PNG image data, ...`, not `data`). Quote both
-  outputs in the stage report next to the claim.
+  outputs in the stage report next to the claim. The capture script also
+  self-verifies PNG magic after writing — quote its `PNG magic verified`
+  line as the primary evidence.
+- Fail fast locally before handoff: `npm run check:binaries`
+  (scripts/check-binary-guard.mjs) magic-checks every binary you changed
+  (images plus `.zip`/`.gz`/`.tgz`) in seconds, exiting non-zero naming
+  the file with expected vs actual magic and the safe remedy. Run it
+  before every handoff so a text-path rewrite fails on your machine, not
+  after a 15+ minute CI run. It also runs automatically in `npm test`
+  (the `Binary Guard` gate branch), so a corrupt binary fails the gate on
+  the next automated stage even when the commit-time hook is absent.
+  A pre-commit hook ships at `scripts/githooks/pre-commit` and runs the
+  same guard in `--staged` mode; it is installed automatically by
+  `npm run setup` (or manually via `npm run hooks:install`, which sets
+  `core.hooksPath` to `scripts/githooks` — linked worktrees, including
+  engine-created `kb-*` task worktrees, inherit it through the shared
+  common config). The hook fails closed: if it cannot run, the commit is
+  refused; `git commit --no-verify` is for intentional baseline entries
+  only.
 - Enforcement: `npm run check:proof-hygiene` (scripts/check-proof-and-hygiene.mjs)
   fails any proof image whose magic bytes do not match its extension, naming
   the file with expected vs actual magic and the remedy. It runs automatically

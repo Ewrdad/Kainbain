@@ -638,6 +638,59 @@ describe("The Work: markdown log persistence (single storage path)", () => {
 		expect(rehydrated.resumedAfterInterruption).toBe(false);
 		expect(rehydrated.interruptedAt).toBeNull();
 	});
+
+	it("round-trips the pre-completion snapshot so uncomplete survives a restart", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-snapshot-"));
+		const task = {
+			id: "task-snapshot-1",
+			projectId: "proj-1",
+			title: "Completed task with snapshot",
+			status: "completed",
+			currentStageId: "stage-3",
+			statusBeforeComplete: "paused",
+			stageBeforeComplete: "stage-2",
+			createdAt: "2026-11-15T00:00:00.000Z",
+			updatedAt: "2026-11-15T01:00:00.000Z",
+			history: [{ timestamp: "2026-11-15T01:00:00.000Z", action: "Completed" }],
+		};
+		saveTaskMarkdown(stubStore({ cwd: dir }), dir, task);
+		const content = fs.readFileSync(
+			path.join(dir, "docs", "tasks", "task-snapshot-1", "task.md"),
+			"utf8",
+		);
+		expect(content).toContain('statusBeforeComplete: "paused"');
+		expect(content).toContain('stageBeforeComplete: "stage-2"');
+		const rehydrated = parseTaskMarkdown(stubStore(), content, "task-snapshot-1", "proj-1");
+		expect(rehydrated.status).toBe("completed");
+		expect(rehydrated.statusBeforeComplete).toBe("paused");
+		expect(rehydrated.stageBeforeComplete).toBe("stage-2");
+	});
+
+	it("omits the snapshot lines once consumed and defaults them to null for legacy files", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-snapshot-plain-"));
+		const task = {
+			id: "task-snapshot-2",
+			projectId: "proj-1",
+			title: "Plain task",
+			status: "in_stage",
+			currentStageId: "stage-1",
+			statusBeforeComplete: null,
+			stageBeforeComplete: null,
+			createdAt: "2026-11-15T00:00:00.000Z",
+			updatedAt: "2026-11-15T00:00:00.000Z",
+			history: [],
+		};
+		saveTaskMarkdown(stubStore({ cwd: dir }), dir, task);
+		const content = fs.readFileSync(
+			path.join(dir, "docs", "tasks", "task-snapshot-2", "task.md"),
+			"utf8",
+		);
+		expect(content).not.toContain("statusBeforeComplete");
+		expect(content).not.toContain("stageBeforeComplete");
+		const rehydrated = parseTaskMarkdown(stubStore(), content, "task-snapshot-2", "proj-1");
+		expect(rehydrated.statusBeforeComplete).toBeNull();
+		expect(rehydrated.stageBeforeComplete).toBeNull();
+	});
 });
 
 describe("The Work: timeline diff-stat persistence", () => {

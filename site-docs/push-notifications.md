@@ -1,6 +1,6 @@
 ---
 title: Push Notifications
-section: working-with
+section: reference
 order: 75
 slug: push-notifications
 ---
