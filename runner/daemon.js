@@ -22,6 +22,12 @@ import { formatPosture } from "../shared/formatPosture.js";
 import { decideAgentStageVerdict } from "../shared/stageVerdict.js";
 import { appendAttestationTrailers, hashStageConfig, isWellFormedConfigHash } from "../shared/stageAttestation.js";
 import { resolveAttestationStage } from "../api/work/resolveAttestationStage.js";
+// WP2 signal: this daemon's process-local production counters (worktree
+// evictions, recorded by project.js) ride every heartbeat as `facts.signals`
+// so the backend exposition can merge them — the Runner is a separate
+// process from the backend, so its counters would otherwise never surface.
+// Cycle-free: productionSignals.js imports nothing.
+import { processSignalTotals } from "../api/watch/productionSignals.js";
 // The Runner bundle ships api/ next to runner/, so the backend's own
 // discovery helpers (standard install dirs, the pi snapshot path, the
 // KAINBAIN_*_BIN overrides) are the single source of truth for where harness
@@ -1021,8 +1027,9 @@ export function effectiveDirectoriesFor(config = {}) {
  * MARK: factsFor
  * @description Heartbeat facts for one Runner: harnesses, models, tiers,
  *   disk headroom, versions (protocol + runner + api + this boot's build
- *   identity, boot time, and stale-code flag), directories, commands, and
- *   discovery status. `codeTree` overrides the stale-code scan root (tests
+ *   identity, boot time, and stale-code flag), directories, commands,
+ *   discovery status, and this process's WP2 signal totals (`signals`).
+ *   `codeTree` overrides the stale-code scan root (tests
  *   point it at a temp-dir fixture); production callers omit it and scan
  *   this daemon's own tree against its boot fingerprint. The `build`
  *   object is a fresh copy per call, so a downstream mutation of one
@@ -1061,6 +1068,10 @@ export function factsFor({ config, harnessVersions, updateStatus = null, command
 		directories: effectiveDirectoriesFor(config),
 		commands: SUPPORTED_RUNNER_COMMANDS,
 		workRoot: typeof config.workRoot === "string" ? config.workRoot : null,
+		// WP2: process-local signal totals (cumulative since this boot;
+		// the backend merges per-Runner deltas monotonically, so a restart
+		// that resets this counter can never move the fleet total backwards).
+		signals: { worktreeEvictions: processSignalTotals().worktreeEvictions },
 		discoveryStatus: getDiscoveryStatus(runnerHarnessIds(config), { staleMs: config.modelDiscoveryStaleMs }),
 		// Config warnings (dropped malformed model pins) plus fatal config
 		// errors ride every heartbeat so Settings shows WHY an advertised

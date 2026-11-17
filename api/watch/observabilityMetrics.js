@@ -6,6 +6,7 @@ import {
 } from "../activeTaskDisplay.js";
 import { getGitLockStats } from "../work/gitLock.js";
 import { normalizeStageType } from "../projectStore.js";
+import { summarizeProductionSignals } from "./productionSignals.js";
 
 /***
  * MARK: computeObservabilityMetrics
@@ -26,9 +27,12 @@ import { normalizeStageType } from "../projectStore.js";
  * (display reads never consume a step); live-session values are actuals.
  * @param {Object} taskStore - TaskStore instance.
  * @param {string} [filterProjectId]
+ * @param {Object} [opts] - `{ windowMs, now }`: load-window slice for the
+ *   sampled WP2 series (dispatch latency, wait time); counters stay
+ *   cumulative since `productionSignals.since`.
  * @returns {Promise<Object>}
  ***/
-export async function computeObservabilityMetrics(taskStore, filterProjectId) {
+export async function computeObservabilityMetrics(taskStore, filterProjectId, opts = {}) {
 	const projects =
 		taskStore.projectStore && typeof taskStore.projectStore.listProjects === "function"
 			? taskStore.projectStore.listProjects()
@@ -59,6 +63,9 @@ export async function computeObservabilityMetrics(taskStore, filterProjectId) {
 	const recentCompleted = [];
 	const recentFailed = [];
 	const allTasks = [];
+	// WP2: state-derived per-project completed counts (ground truth across
+	// embedded, fleet, and manual finishes) for the throughput view.
+	const completedByProject = {};
 
 	for (const project of targetProjects) {
 		const tasks = taskStore.listTasks(project.id, project.cwd);
@@ -69,6 +76,7 @@ export async function computeObservabilityMetrics(taskStore, filterProjectId) {
 
 			if (task.status === "completed") {
 				completed += 1;
+				completedByProject[project.id] = (completedByProject[project.id] || 0) + 1;
 				recentCompleted.push({
 					id: task.id,
 					title: task.title,
@@ -266,6 +274,29 @@ export async function computeObservabilityMetrics(taskStore, filterProjectId) {
 
 	const queue = taskStore.getScheduledQueue(filterProjectId);
 
+	// WP2: per-project queue depth (the §3.8 minimum, labelled — the global
+	// `stats.queueDepth` above stays the headline number).
+	const queueDepthByProject = {};
+	for (const item of queue) {
+		const pid =
+			item && typeof item.projectId === "string" && item.projectId
+				? item.projectId
+				: "unknown";
+		queueDepthByProject[pid] = (queueDepthByProject[pid] || 0) + 1;
+	}
+
+	// WP2 production signals on the existing exposition (no second system):
+	// dispatch-latency percentiles, per-project throughput/fairness, the
+	// exclusion-aware claim success rate, the scope/fencing breakdown, and
+	// the §3.8 remainder. Read-only: the ledger's cumulative stale-epoch
+	// rejections ride alongside the route-observed fencing counter.
+	const ledgerCounters =
+		taskStore.executionLedger && typeof taskStore.executionLedger === "object"
+			? taskStore.executionLedger.counters
+			: taskStore.ledger && typeof taskStore.ledger === "object"
+				? taskStore.ledger.counters
+				: null;
+
 	return {
 		stats: {
 			total,
@@ -293,6 +324,20 @@ export async function computeObservabilityMetrics(taskStore, filterProjectId) {
 		},
 		schedulerRunning: taskStore.schedulerRunning,
 		schedulerStats: { ...(taskStore.schedulerStats || {}) },
+		queueDepthByProject,
+		ledgerStaleRejected:
+			ledgerCounters && Number.isFinite(ledgerCounters.staleRejected)
+				? ledgerCounters.staleRejected
+				: null,
+		productionSignals: summarizeProductionSignals(
+			taskStore.productionSignals || taskStore,
+			{
+				windowMs:
+					opts && typeof opts.windowMs === "number" ? opts.windowMs : 0,
+				now: opts && typeof opts.now === "number" ? opts.now : Date.now(),
+				completedByProject,
+			},
+		),
 		// Git serialization-gate contention (totals only — per-repo paths
 		// stay out of the snapshot): waits > 0 proves the gate is
 		// serializing concurrent git demand; climbing waits with piling
